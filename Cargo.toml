@@ -1,0 +1,22 @@
+[package]
+name = "threshold-lean-xmss"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+aes = "0.9.4"
+clap = { version = "4.6.7", features = ["derive"] }
+futures = "0.3.34"
+hex = "0.4.3"
+rand = "0.9.5"
+tikv-jemallocator = "0.7.0"
+tokio = { version = "1.54.1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync"] }
+tracing = "0.1.44"
+tracing-forest = "0.3.1"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+parallel = { git = "https://github.com/leanEthereum/leanVM", rev = "1acdff19dffcaaf1642e88a9e9b522b415425168" }
+primitives = { git = "https://github.com/leanEthereum/leanVM", rev = "1acdff19dffcaaf1642e88a9e9b522b415425168" }
+signatures = { git = "https://github.com/leanEthereum/leanVM", rev = "1acdff19dffcaaf1642e88a9e9b522b415425168" }
