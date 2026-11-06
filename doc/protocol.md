@@ -26,18 +26,18 @@ Examples use $t = 2$, $n = 3$.
 
 #### 1.1.2 Terms and sharings
 
-| symbol                                                                     | definition                                                                                              |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| $\mathcal T = \{T \subseteq \{0, \dots, n-1\} : \lvert T \rvert = t - 1\}$ | the terms                                                                                               |
-| $\mathrm{holders}(T) = \{i : i \notin T\}$                                 | the $t$ operators holding $T$                                                                           |
-| $[\![ v ]\!]$                                                              | replicated: $v = c + \sum_{T \in \mathcal T} v_T$, public part $c$, $v_T$ held by $\mathrm{holders}(T)$ |
-| $\langle v \rangle$                                                        | Shamir: $P_i$ holds $v_i = V(\alpha_i)$, $\deg V \le t - 1$, $V(0) = v$                                 |
-| $\{v\}$                                                                    | additive: $P_i$ holds $v_i$, $v = \sum_i v_i$                                                           |
-| $[\![ A ]\!]$                                                              | a vector, shared elementwise                                                                            |
+| symbol                                                                       | definition                                                                                              |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| $`\mathcal T = \{T \subseteq \{0, \dots, n-1\} : \lvert T \rvert = t - 1\}`$ | the terms                                                                                               |
+| $`\mathrm{holders}(T) = \{i : i \notin T\}`$                                 | the $t$ operators holding $T$                                                                           |
+| $[\negthinspace[ v ]\negthinspace]$                                          | replicated: $v = c + \sum_{T \in \mathcal T} v_T$, public part $c$, $v_T$ held by $\mathrm{holders}(T)$ |
+| $\langle v \rangle$                                                          | Shamir: $P_i$ holds $v_i = V(\alpha_i)$, $\deg V \le t - 1$, $V(0) = v$                                 |
+| $`\{v\}`$                                                                    | additive: $P_i$ holds $v_i$, $v = \sum_i v_i$                                                           |
+| $[\negthinspace[ A ]\negthinspace]$                                          | a vector, shared elementwise                                                                            |
 
 - A coalition of $t - 1$ operators lacks exactly one term, the term equal to itself.
-- $[\![ \cdot ]\!]$ is the sharing of every wire. $\langle \cdot \rangle$ needs $n$ distinct points, so it exists over $\mathbb F_{192}$ only and is used in the check only. $\{\cdot\}$ is the output of a multiplication and is reshared in the next round.
-- For 2-of-3, a term is one operator, written $k$ for $\{k\}$, held by the two operators other than $P_k$.
+- $[\negthinspace[ \cdot ]\negthinspace]$ is the sharing of every wire. $\langle \cdot \rangle$ needs $n$ distinct points, so it exists over $\mathbb F_{192}$ only and is used in the check only. $`\{\cdot\}`$ is the output of a multiplication and is reshared in the next round.
+- For 2-of-3, a term is one operator, written $k$ for $`\{k\}`$, held by the two operators other than $P_k$.
 
 #### 1.1.3 Public constants of a group $(n, t)$
 
@@ -45,18 +45,18 @@ Examples use $t = 2$, $n = 3$.
 | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | $\mathrm{pairs}_i \subseteq \mathcal T \times \mathcal T$          | a balanced partition of all pairs of terms, pair $(A, B)$ given to an operator holding both ($\lvert A \cup B \rvert \le 2t - 2 < n$)                                     |
 | $T_i$                                                              | the term lacking $i + 1, \dots, i + t - 1 \pmod n$, filled by $P_i$ in a reshare                                                                                          |
-| $\mathcal C = \{T_0, \dots, T_{n-1}\}$                             | the filled terms                                                                                                                                                          |
+| $`\mathcal C = \{T_0, \dots, T_{n-1}\}`$                           | the filled terms                                                                                                                                                          |
 | $\mathrm{owner}(T) \in \mathrm{holders}(T)$                        | a balanced choice of one holder per term                                                                                                                                  |
 | $\psi_T(X) = \prod_{j \in T} \frac{X + \alpha_j}{\alpha_j}$        | the polynomial of term $T$ ($f_A$ in [CDI05](https://doi.org/10.1007/978-3-540-30576-7_19)): $\deg \psi_T = t - 1$, $\psi_T(0) = 1$, $\psi_T(\alpha_j) = 0$ for $j \in T$ |
 | $\lambda_i = \prod_{j \ne i} \frac{\alpha_j}{\alpha_j + \alpha_i}$ | the Lagrange weight of $\alpha_i$ at $0$ among all $n$ points                                                                                                             |
 
 For 2-of-3: $\alpha = (1, 2, 3)$, $\lambda = (1, 1, 1)$, $(T_0, T_1, T_2) = (1, 2, 0)$, $\mathrm{owner}(0, 1, 2) = (P_1, P_2, P_0)$.
 
-| term $k$ | holders    | $\psi_k(X)$ | $\psi_k(\alpha_0)$ | $\psi_k(\alpha_1)$ | $\psi_k(\alpha_2)$ | $\mathrm{pairs}_k$        |
-| -------- | ---------- | ----------- | ------------------ | ------------------ | ------------------ | ------------------------- |
-| 0        | $P_1, P_2$ | $1 + X$     | not held           | 3                  | 2                  | $\{(1,2), (2,1), (2,2)\}$ |
-| 1        | $P_0, P_2$ | $1 + 141X$  | 140                | not held           | 141                | $\{(0,0), (0,2), (2,0)\}$ |
-| 2        | $P_0, P_1$ | $1 + 246X$  | 247                | 246                | not held           | $\{(0,1), (1,0), (1,1)\}$ |
+| term $k$ | holders    | $\psi_k(X)$ | $\psi_k(\alpha_0)$ | $\psi_k(\alpha_1)$ | $\psi_k(\alpha_2)$ | $\mathrm{pairs}_k$          |
+| -------- | ---------- | ----------- | ------------------ | ------------------ | ------------------ | --------------------------- |
+| 0        | $P_1, P_2$ | $1 + X$     | not held           | 3                  | 2                  | $`\{(1,2), (2,1), (2,2)\}`$ |
+| 1        | $P_0, P_2$ | $1 + 141X$  | 140                | not held           | 141                | $`\{(0,0), (0,2), (2,0)\}`$ |
+| 2        | $P_0, P_1$ | $1 + 246X$  | 247                | 246                | not held           | $`\{(0,1), (1,0), (1,1)\}`$ |
 
 #### 1.1.4 Keys and pseudorandom streams
 
@@ -68,18 +68,18 @@ For 2-of-3: $\alpha = (1, 2, 3)$, $\lambda = (1, 1, 1)$, $(T_0, T_1, T_2) = (1, 
 
 #### 1.1.5 Gadget table
 
-| gadget                    | input $\to$ output                                            | rounds                  | messages                                                       | section |
-| ------------------------- | ------------------------------------------------------------- | ----------------------- | -------------------------------------------------------------- | ------- |
-| $\mathsf{Rand}$           | $\to [\![ r ]\!]$                                             | 0                       | none                                                           | 1.2     |
-| $\mathsf{MulRep}$         | $[\![ x ]\!], [\![ y ]\!] \to \{xy\}$                         | 0                       | none                                                           | 1.3     |
-| $\mathsf{MulSh}$          | $\langle x \rangle, \langle y \rangle \to \{xy\}$             | 0                       | none                                                           | 1.4     |
-| $\mathsf{Conv}$           | $[\![ v ]\!] \to \langle v \rangle$                           | 0                       | none                                                           | 1.5     |
-| $\mathsf{Reshare}$        | $\{v\} \to [\![ v ]\!]$                                       | 1 (2 in collector mode) | $n(t-1)$                                                       | 1.6     |
-| $\mathsf{OpenRep}$        | $[\![ v ]\!] \to v$                                           | 1                       | $n\binom{n-1}{t-2}$ copies and $n(t-1)\binom{n-1}{t-2}$ hashes | 1.7     |
-| $\mathsf{OpenSh}$         | $\langle v \rangle \to v$                                     | 1                       | $n(n-1)$                                                       | 1.8     |
-| $\mathsf{Coin}$ (derived) | $\to r$ public                                                | 1                       | as $\mathsf{OpenSh}$                                           | 1.9     |
+| gadget                    | input $\to$ output                                                                  | rounds                  | messages                                                       | section |
+| ------------------------- | ----------------------------------------------------------------------------------- | ----------------------- | -------------------------------------------------------------- | ------- |
+| $\mathsf{Rand}$           | $\to [\negthinspace[ r ]\negthinspace]$                                             | 0                       | none                                                           | 1.2     |
+| $\mathsf{MulRep}$         | $`[\negthinspace[ x ]\negthinspace], [\negthinspace[ y ]\negthinspace] \to \{xy\}`$ | 0                       | none                                                           | 1.3     |
+| $\mathsf{MulSh}$          | $`\langle x \rangle, \langle y \rangle \to \{xy\}`$                                 | 0                       | none                                                           | 1.4     |
+| $\mathsf{Conv}$           | $[\negthinspace[ v ]\negthinspace] \to \langle v \rangle$                           | 0                       | none                                                           | 1.5     |
+| $\mathsf{Reshare}$        | $`\{v\} \to [\negthinspace[ v ]\negthinspace]`$                                     | 1 (2 in collector mode) | $n(t-1)$                                                       | 1.6     |
+| $\mathsf{OpenRep}$        | $[\negthinspace[ v ]\negthinspace] \to v$                                           | 1                       | $n\binom{n-1}{t-2}$ copies and $n(t-1)\binom{n-1}{t-2}$ hashes | 1.7     |
+| $\mathsf{OpenSh}$         | $\langle v \rangle \to v$                                                           | 1                       | $n(n-1)$                                                       | 1.8     |
+| $\mathsf{Coin}$ (derived) | $\to r$ public                                                                      | 1                       | as $\mathsf{OpenSh}$                                           | 1.9     |
 
-Composition rule: a product is $\{\cdot\}$, and $\{\cdot\}$ is reshared to $[\![ \cdot ]\!]$ in the next round.
+Composition rule: a product is $`\{\cdot\}`$, and $`\{\cdot\}`$ is reshared to $[\negthinspace[ \cdot ]\negthinspace]$ in the next round.
 
 #### 1.1.6 Notation against the literature
 
@@ -88,7 +88,7 @@ Composition rule: a product is $\{\cdot\}$, and $\{\cdot\}$ is reshared to $[\![
 | here                                                                              | literature                                                                                                                                                        |
 | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | $\langle x \rangle$, degree $t - 1$                                               | $[x]_t$ in [GS20](https://eprint.iacr.org/2020/134)                                                                                                               |
-| $[\![ x ]\!]$                                                                     | replicated sharing of [CDI05](https://doi.org/10.1007/978-3-540-30576-7_19), [AFL+16](https://eprint.iacr.org/2016/768), [MR18](https://eprint.iacr.org/2018/403) |
+| $[\negthinspace[ x ]\negthinspace]$                                               | replicated sharing of [CDI05](https://doi.org/10.1007/978-3-540-30576-7_19), [AFL+16](https://eprint.iacr.org/2016/768), [MR18](https://eprint.iacr.org/2018/403) |
 | $\psi_T$                                                                          | $f_A$ in [CDI05](https://doi.org/10.1007/978-3-540-30576-7_19), $A = T$ a maximal unqualified set                                                                 |
 | $\lambda_i$                                                                       | Lagrange coefficients at $0$ from all $n$ shares                                                                                                                  |
 | $(\langle A \rangle, \langle B \rangle, \langle C \rangle)$, $C = \sum_e A_e B_e$ | the inner-product tuple $([\boldsymbol x]_t, [\boldsymbol y]_t, [z]_t)$ of [GS20, §4](https://eprint.iacr.org/2020/134)                                           |
@@ -99,12 +99,14 @@ Composition rule: a product is $\{\cdot\}$, and $\{\cdot\}$ is reshared to $[\![
 
 #### Syntax
 
-$\mathsf{Rand}(\rho, \mathrm{idx}) \to [\![ r ]\!]$. Local.
+$\mathsf{Rand}(\rho, \mathrm{idx}) \to [\negthinspace[ r ]\negthinspace]$. Local.
 
 #### Protocol
 
 Each holder of $T$ sets
-$$r_T = \mathsf{PRG}(\mathrm{seed}_T, \rho, \mathrm{idx}).$$
+```math
+r_T = \mathsf{PRG}(\mathrm{seed}_T, \rho, \mathrm{idx}).
+```
 
 #### Correctness
 
@@ -131,11 +133,13 @@ $r = 4 + 5 + 6 = 7$, known to nobody.
 
 #### Syntax
 
-$\mathsf{MulRep}([\![ x ]\!], [\![ y ]\!]) \to \{xy\}$. Local. On vectors, the additive share of $\sum_e x_e y_e$.
+$`\mathsf{MulRep}([\negthinspace[ x ]\negthinspace], [\negthinspace[ y ]\negthinspace]) \to \{xy\}`$. Local. On vectors, the additive share of $\sum_e x_e y_e$.
 
 #### Protocol
 
-$$(xy)_i = \sum_{(A,B) \in \mathrm{pairs}_i} x_A\, y_B .$$
+```math
+(xy)_i = \sum_{(A,B) \in \mathrm{pairs}_i} x_A\, y_B .
+```
 
 #### Correctness
 
@@ -152,7 +156,7 @@ Over $\mathbb F_2$: the AND gate and the slice table of the check.
 <details>
 <summary>Example</summary>
 
-$[\![ a ]\!] = (1, 1, 1)$, $[\![ b ]\!] = (0, 1, 0)$, $a = b = 1$.
+$[\negthinspace[ a ]\negthinspace] = (1, 1, 1)$, $[\negthinspace[ b ]\negthinspace] = (0, 1, 0)$, $a = b = 1$.
 
 | operator | $\sum_{\mathrm{pairs}_i} a_A b_B$         | share |
 | -------- | ----------------------------------------- | ----- |
@@ -160,7 +164,7 @@ $[\![ a ]\!] = (1, 1, 1)$, $[\![ b ]\!] = (0, 1, 0)$, $a = b = 1$.
 | $P_1$    | $a_0 b_0 + a_0 b_2 + a_2 b_0 = 0 + 0 + 0$ | 0     |
 | $P_2$    | $a_0 b_1 + a_1 b_0 + a_1 b_1 = 1 + 0 + 1$ | 0     |
 
-$\{ab\} = (1, 0, 0)$, sum $1 = ab$.
+$`\{ab\} = (1, 0, 0)`$, sum $1 = ab$.
 
 </details>
 
@@ -168,11 +172,13 @@ $\{ab\} = (1, 0, 0)$, sum $1 = ab$.
 
 #### Syntax
 
-$\mathsf{MulSh}(\langle x \rangle, \langle y \rangle) \to \{xy\}$. Local. On vectors, the additive share of $\sum_e x_e y_e$.
+$`\mathsf{MulSh}(\langle x \rangle, \langle y \rangle) \to \{xy\}`$. Local. On vectors, the additive share of $\sum_e x_e y_e$.
 
 #### Protocol
 
-$$(xy)_i = \lambda_i\, x_i\, y_i .$$
+```math
+(xy)_i = \lambda_i\, x_i\, y_i .
+```
 
 #### Correctness
 
@@ -197,7 +203,7 @@ $\langle x \rangle = (142, 14, 135)$ with $x = 7$, $\langle y \rangle = (240, 24
 | $P_1$    | $14 \cdot 247$      | 253   |
 | $P_2$    | $135 \cdot 3$       | 146   |
 
-$\{xy\} = (115, 253, 146)$, sum $28 = 7 \cdot 4$.
+$`\{xy\} = (115, 253, 146)`$, sum $28 = 7 \cdot 4$.
 
 </details>
 
@@ -205,15 +211,17 @@ $\{xy\} = (115, 253, 146)$, sum $28 = 7 \cdot 4$.
 
 #### Syntax
 
-$\mathsf{Conv}([\![ v ]\!]) \to \langle v \rangle$. Local.
+$\mathsf{Conv}([\negthinspace[ v ]\negthinspace]) \to \langle v \rangle$. Local.
 
 #### Protocol
 
-$$v_i = \sum_{T \not\ni i} \psi_T(\alpha_i)\, v_T .$$
+```math
+v_i = \sum_{T \not\ni i} \psi_T(\alpha_i)\, v_T .
+```
 
 #### Correctness
 
-$V(X) = \sum_T v_T\, \psi_T(X)$ has $\deg V \le t - 1$, $V(0) = v$, and $V(\alpha_i) = v_i$ since $\psi_T(\alpha_i) = 0$ for $T \ni i$.
+$`V(X) = \sum_T v_T\, \psi_T(X)`$ has $\deg V \le t - 1$, $V(0) = v$, and $V(\alpha_i) = v_i$ since $\psi_T(\alpha_i) = 0$ for $T \ni i$.
 
 #### Privacy
 
@@ -222,13 +230,13 @@ No message.
 <details>
 <summary>Example</summary>
 
-$[\![ v ]\!] = (4, 5, 6)$, $v = 7$, $V(X) = 4(1 + X) + 5(1 + 141X) + 6(1 + 246X) = 7 + 137X$.
+$[\negthinspace[ v ]\negthinspace] = (4, 5, 6)$, $v = 7$, $V(X) = 4(1 + X) + 5(1 + 141X) + 6(1 + 246X) = 7 + 137X$.
 
-| operator | $\sum_{T \not\ni i} \psi_T(\alpha_i)\, v_T$ | $V(\alpha_i)$ |
-| -------- | ------------------------------------------- | ------------- |
-| $P_0$    | $140 \cdot 5 + 247 \cdot 6 = 138 + 4$       | 142           |
-| $P_1$    | $3 \cdot 4 + 246 \cdot 6 = 12 + 2$          | 14            |
-| $P_2$    | $2 \cdot 4 + 141 \cdot 5 = 8 + 143$         | 135           |
+| operator | $`\sum_{T \not\ni i} \psi_T(\alpha_i)\, v_T`$ | $V(\alpha_i)$ |
+| -------- | --------------------------------------------- | ------------- |
+| $P_0$    | $140 \cdot 5 + 247 \cdot 6 = 138 + 4$         | 142           |
+| $P_1$    | $3 \cdot 4 + 246 \cdot 6 = 12 + 2$            | 14            |
+| $P_2$    | $2 \cdot 4 + 141 \cdot 5 = 8 + 143$           | 135           |
 
 </details>
 
@@ -236,18 +244,20 @@ $[\![ v ]\!] = (4, 5, 6)$, $v = 7$, $V(X) = 4(1 + X) + 5(1 + 141X) + 6(1 + 246X)
 
 #### Syntax
 
-$\mathsf{Reshare}(\{v\}) \to [\![ v ]\!]$. One round, $n(t-1)$ messages.
+$`\mathsf{Reshare}(\{v\}) \to [\negthinspace[ v ]\negthinspace]`$. One round, $n(t-1)$ messages.
 
 #### Protocol, round $\rho$
 
-1. $[\![ r ]\!] = \mathsf{Rand}(\rho, 0)$, $\zeta_i = \sum_{j \ne i} \mathsf{PRG}(K_{ij}, \rho, 0)$.
-2. $P_i$ sends $u_i = v_i + \zeta_i + \sum_{T \notin \mathcal C,\ \mathrm{owner}(T) = i} r_T$ to $\mathrm{holders}(T_i) \setminus \{i\}$.
+1. $[\negthinspace[ r ]\negthinspace] = \mathsf{Rand}(\rho, 0)$, $\zeta_i = \sum_{j \ne i} \mathsf{PRG}(K_{ij}, \rho, 0)$.
+2. $P_i$ sends $`u_i = v_i + \zeta_i + \sum_{T \notin \mathcal C,\ \mathrm{owner}(T) = i} r_T`$ to $`\mathrm{holders}(T_i) \setminus \{i\}`$.
 3. $v_{T_i} = u_i$, and $v_T = r_T$ for $T \notin \mathcal C$. Each holder of $T \in \mathcal C$ appends $v_T$ to its digest $h_T$ (see 1.9).
 
 #### Correctness
 
 $\sum_i \zeta_i = 0$ (each pair stream is added twice), and each $r_T$, $T \notin \mathcal C$, is added twice:
-$$\sum_T v_T = \sum_i u_i + \sum_{T \notin \mathcal C} r_T = \sum_i v_i = v .$$
+```math
+\sum_T v_T = \sum_i u_i + \sum_{T \notin \mathcal C} r_T = \sum_i v_i = v .
+```
 
 #### Privacy
 
@@ -264,7 +274,7 @@ A coalition $D$ lacks only term $D$.
 <details>
 <summary>Example</summary>
 
-$\{v\} = (2, 7, 4)$, $v = 1$. Pair streams $Z_{01} = 5$, $Z_{02} = 1$, $Z_{12} = 2$.
+$`\{v\} = (2, 7, 4)`$, $v = 1$. Pair streams $Z_{01} = 5$, $Z_{02} = 1$, $Z_{12} = 2$.
 
 | operator | $\zeta_i$   | $u_i = v_i + \zeta_i$ | sends to | fills     |
 | -------- | ----------- | --------------------- | -------- | --------- |
@@ -272,7 +282,7 @@ $\{v\} = (2, 7, 4)$, $v = 1$. Pair streams $Z_{01} = 5$, $Z_{02} = 1$, $Z_{12} =
 | $P_1$    | $5 + 2 = 7$ | $7 + 7 = 0$           | $P_0$    | $v_2 = 0$ |
 | $P_2$    | $1 + 2 = 3$ | $4 + 3 = 7$           | $P_1$    | $v_0 = 7$ |
 
-$[\![ v ]\!] = (7, 6, 0)$, sum $1 = v$.
+$[\negthinspace[ v ]\negthinspace] = (7, 6, 0)$, sum $1 = v$.
 
 </details>
 
@@ -280,7 +290,7 @@ $[\![ v ]\!] = (7, 6, 0)$, sum $1 = v$.
 
 #### Syntax
 
-$\mathsf{OpenRep}([\![ v ]\!]) \to v$ or abort. One round, $n\binom{n-1}{t-2}$ copies and $n(t-1)\binom{n-1}{t-2}$ hashes. Robust: no honest operator accepts a wrong value.
+$\mathsf{OpenRep}([\negthinspace[ v ]\negthinspace]) \to v$ or abort. One round, $n\binom{n-1}{t-2}$ copies and $n(t-1)\binom{n-1}{t-2}$ hashes. Robust: no honest operator accepts a wrong value.
 
 #### Protocol
 
@@ -305,7 +315,7 @@ Bit vectors: the outputs of a batch and PRF values. Bits have no Shamir sharing.
 <details>
 <summary>Example</summary>
 
-$[\![ v ]\!] = (4, 5, 6)$, $v = 7$. At $P_0$, which lacks term 0:
+$[\negthinspace[ v ]\negthinspace] = (4, 5, 6)$, $v = 7$. At $P_0$, which lacks term 0:
 
 | case          | copy from $\mathrm{owner}(0) = P_1$ | hash from $P_2$ | check           | output          |
 | ------------- | ----------------------------------- | --------------- | --------------- | --------------- |
@@ -360,8 +370,10 @@ $\mathsf{Coin}(\rho) \to r$ public. One round.
 
 #### Protocol
 
-$$r = \mathrm{expand}\Big( H\big( \mathsf{OpenSh}( \mathsf{Conv}( \mathsf{Rand}(\rho, 1) ) ) \big) \Big).$$
-A challenge is the first expanded value outside $\{0, 1\}$.
+```math
+r = \mathrm{expand}\Big( H\big( \mathsf{OpenSh}( \mathsf{Conv}( \mathsf{Rand}(\rho, 1) ) ) \big) \Big).
+```
+A challenge is the first expanded value outside $`\{0, 1\}`$.
 
 #### Soundness
 
@@ -370,52 +382,80 @@ $\mathsf{Rand}$ is unknown to any coalition and $\mathsf{OpenSh}$ is robust, so 
 #### Digests
 
 The coin of the last check step carries, from every operator to every operator,
-$$d_T = H(s_T \,\|\, h_T) \quad \text{for each held } T, \qquad s_T = \text{term } T \text{ of } \mathsf{Rand}(\rho, 2).$$
-An operator aborts unless all holders of each $T$ sent the same $d_T$, equal to its own when it holds $T$. A copy split between two honest holders is thus seen by every honest operator before any secret-dependent value opens [CGH+18, Prot. 3.3](https://eprint.iacr.org/2018/570), [KPPS23, $\Pi_{\mathrm{agree}}$](https://eprint.iacr.org/2022/675). The salt hides $h_T$ from operators lacking $T$ [GRW18, §5](https://eprint.iacr.org/2018/216).
+```math
+d_T = H(s_T \,\|\, h_T) \quad \text{for each held } T, \qquad s_T = \text{term } T \text{ of } \mathsf{Rand}(\rho, 2).
+```
+An operator aborts unless all holders of each $T$ sent the same $d_T$, equal to its own when it holds $T$. A copy split between two honest holders is thus seen by every honest operator before any secret-dependent value opens [CGH+18, Prot. 3.3](https://eprint.iacr.org/2018/570), [KPPS23](https://eprint.iacr.org/2022/675) $\Pi_{\mathrm{agree}}$. The salt hides $h_T$ from operators lacking $T$ [GRW18, §5](https://eprint.iacr.org/2018/216).
 
 ## 2. Toy example - AND of 8 secret-shared bits
 
-Inputs $[\![ b_0 ]\!], \dots, [\![ b_7 ]\!]$, bits. Output $b_0 \wedge \dots \wedge b_7$, public. Seven AND gates in $L = 3$ layers, then the check of the seven gates, then the opening. Every multiplication is a gadget, every gadget is one of 1.2 to 1.9, and every message is sent by $\mathsf{Reshare}$, $\mathsf{OpenRep}$ or $\mathsf{OpenSh}$.
+Inputs $[\negthinspace[ b_0 ]\negthinspace], \dots, [\negthinspace[ b_7 ]\negthinspace]$, bits. Output $b_0 \wedge \dots \wedge b_7$, public. Seven AND gates in $L = 3$ layers, then the check of the seven gates, then the opening. Every multiplication is a gadget, every gadget is one of 1.2 to 1.9, and every message is sent by $\mathsf{Reshare}$, $\mathsf{OpenRep}$ or $\mathsf{OpenSh}$.
 
 ### 2.1 AND layers
 
-$[\![ z^{(0)}_e ]\!] = [\![ b_e ]\!]$ for $e < 8$. For $\ell = 1, 2, 3$ and $g < 2^{3 - \ell}$:
-$$[\![ z^{(\ell)}_g ]\!] = \mathsf{Reshare}\Big( \mathsf{MulRep}\big( [\![ z^{(\ell-1)}_{2g} ]\!],\ [\![ z^{(\ell-1)}_{2g+1} ]\!] \big) \Big).$$
+$[\negthinspace[ z^{(0)}_e ]\negthinspace] = [\negthinspace[ b_e ]\negthinspace]$ for $e < 8$. For $\ell = 1, 2, 3$ and $g < 2^{3 - \ell}$:
+```math
+[\negthinspace[ z^{(\ell)}_g ]\negthinspace] = \mathsf{Reshare}\Big( \mathsf{MulRep}\big( [\negthinspace[ z^{(\ell-1)}_{2g} ]\negthinspace],\ [\negthinspace[ z^{(\ell-1)}_{2g+1} ]\negthinspace] \big) \Big).
+```
 One round per layer. Each gate records its tuple
-$$\big( [\![ x_e ]\!], [\![ y_e ]\!], [\![ z_e ]\!] \big) = \big( [\![ z^{(\ell-1)}_{2g} ]\!], [\![ z^{(\ell-1)}_{2g+1} ]\!], [\![ z^{(\ell)}_g ]\!] \big), \qquad e = 0, \dots, 6 .$$
+```math
+\big( [\negthinspace[ x_e ]\negthinspace], [\negthinspace[ y_e ]\negthinspace], [\negthinspace[ z_e ]\negthinspace] \big) = \big( [\negthinspace[ z^{(\ell-1)}_{2g} ]\negthinspace], [\negthinspace[ z^{(\ell-1)}_{2g+1} ]\negthinspace], [\negthinspace[ z^{(\ell)}_g ]\negthinspace] \big), \qquad e = 0, \dots, 6 .
+```
 $\mathsf{Reshare}$ admits an additive error, so $z_e = x_e y_e$ is not yet guaranteed.
 
 ### 2.2 Check
 
-Pad with $([\![ 0 ]\!], [\![ 0 ]\!], [\![ 0 ]\!])$ to $N = 2^m = 8$ tuples, $m = 3$.
+Pad with $([\negthinspace[ 0 ]\negthinspace], [\negthinspace[ 0 ]\negthinspace], [\negthinspace[ 0 ]\negthinspace])$ to $N = 2^m = 8$ tuples, $m = 3$.
 
 #### Setup
 
-$$(c_0, \dots, c_{m-1}) = \mathsf{Coin}, \qquad \beta_e = \prod_{k : e_k = 1} c_k \quad \text{for } e = \textstyle\sum_k e_k 2^k,$$
-$$\langle C \rangle = \mathsf{Conv}\Big( \sum_{e < N} \beta_e [\![ z_e ]\!] \Big), \qquad \langle A \rangle = \big( \mathsf{Conv}( \beta_e [\![ x_e ]\!] ) \big)_{e < N}, \qquad \langle B \rangle = \big( \mathsf{Conv}( [\![ y_e ]\!] ) \big)_{e < N} .$$
+```math
+(c_0, \dots, c_{m-1}) = \mathsf{Coin}, \qquad \beta_e = \prod_{k : e_k = 1} c_k \quad \text{for } e = \textstyle\sum_k e_k 2^k,
+```
+```math
+\langle C \rangle = \mathsf{Conv}\Big( \sum_{e < N} \beta_e [\negthinspace[ z_e ]\negthinspace] \Big), \qquad \langle A \rangle = \big( \mathsf{Conv}( \beta_e [\negthinspace[ x_e ]\negthinspace] ) \big)_{e < N}, \qquad \langle B \rangle = \big( \mathsf{Conv}( [\negthinspace[ y_e ]\negthinspace] ) \big)_{e < N} .
+```
 Claim: $C = \sum_e A_e B_e$, true iff every $z_e = x_e y_e$, up to the probability that $\beta$ hides a difference.
 
 #### Halving, $m$ times
 
 With $h = \lvert A \rvert / 2$, $A_{\mathrm{lo}} = A[0{:}h]$, $A_{\mathrm{hi}} = A[h{:}2h]$, the same for $B$:
-$$\langle p_0 \rangle, \langle p_2 \rangle = \mathsf{Conv}\Big( \mathsf{Reshare}\big( \mathsf{MulSh}(\langle A_{\mathrm{lo}} \rangle, \langle B_{\mathrm{lo}} \rangle),\ \mathsf{MulSh}(\langle A_{\mathrm{lo}} + A_{\mathrm{hi}} \rangle, \langle B_{\mathrm{lo}} + B_{\mathrm{hi}} \rangle) \big) \Big),$$
-$$r = \mathsf{Coin},$$
-$$\langle C \rangle \leftarrow \langle p_0 \rangle + (\langle C \rangle + \langle p_2 \rangle)\, r + \langle p_2 \rangle\, r^2, \qquad \langle A \rangle \leftarrow \langle A_{\mathrm{lo}} \rangle + r (\langle A_{\mathrm{lo}} \rangle + \langle A_{\mathrm{hi}} \rangle), \qquad \langle B \rangle \leftarrow \langle B_{\mathrm{lo}} \rangle + r (\langle B_{\mathrm{lo}} \rangle + \langle B_{\mathrm{hi}} \rangle).$$
+```math
+\langle p_0 \rangle, \langle p_2 \rangle = \mathsf{Conv}\Big( \mathsf{Reshare}\big( \mathsf{MulSh}(\langle A_{\mathrm{lo}} \rangle, \langle B_{\mathrm{lo}} \rangle),\ \mathsf{MulSh}(\langle A_{\mathrm{lo}} + A_{\mathrm{hi}} \rangle, \langle B_{\mathrm{lo}} + B_{\mathrm{hi}} \rangle) \big) \Big),
+```
+```math
+r = \mathsf{Coin},
+```
+```math
+\langle C \rangle \leftarrow \langle p_0 \rangle + (\langle C \rangle + \langle p_2 \rangle)\, r + \langle p_2 \rangle\, r^2, \qquad \langle A \rangle \leftarrow \langle A_{\mathrm{lo}} \rangle + r (\langle A_{\mathrm{lo}} \rangle + \langle A_{\mathrm{hi}} \rangle), \qquad \langle B \rangle \leftarrow \langle B_{\mathrm{lo}} \rangle + r (\langle B_{\mathrm{lo}} \rangle + \langle B_{\mathrm{hi}} \rangle).
+```
 Two rounds each. $P(X) = \sum_{e < h} (A_{\mathrm{lo}} + X(A_{\mathrm{lo}} + A_{\mathrm{hi}}))_e (B_{\mathrm{lo}} + X(B_{\mathrm{lo}} + B_{\mathrm{hi}}))_e$ has $P(0) = p_0$, $P(1) = C + p_0$ and leading coefficient $p_2$, so the new claim is $P(r) = \sum_e A_e B_e$ of the folded vectors. A wrong claim survives a round with probability $\le 2/(\lvert \mathbb F \rvert - 2)$.
 
 #### Final step
 
 After $m$ halvings $\langle a \rangle = \langle A_0 \rangle$, $\langle b \rangle = \langle B_0 \rangle$ and the claim is $C = ab$:
-$$\langle w_a \rangle = \mathsf{Conv}(\mathsf{Rand}), \qquad \langle w_b \rangle = \mathsf{Conv}(\mathsf{Rand}),$$
-$$\langle q_0 \rangle, \langle q_2 \rangle = \mathsf{Conv}\Big( \mathsf{Reshare}\big( \mathsf{MulSh}(\langle w_a \rangle, \langle w_b \rangle),\ \mathsf{MulSh}(\langle w_a \rangle + \langle a \rangle, \langle w_b \rangle + \langle b \rangle) \big) \Big),$$
-$$r = \mathsf{Coin} \ \text{with the digests of 1.9},$$
-$$(u, v, w) = \mathsf{OpenSh}\Big( \langle w_a \rangle + r(\langle w_a \rangle + \langle a \rangle),\ \langle w_b \rangle + r(\langle w_b \rangle + \langle b \rangle),\ \langle q_0 \rangle + (\langle C \rangle + \langle q_0 \rangle + \langle q_2 \rangle)\, r + \langle q_2 \rangle\, r^2 \Big),$$
-$$\text{accept iff } uv = w .$$
+```math
+\langle w_a \rangle = \mathsf{Conv}(\mathsf{Rand}), \qquad \langle w_b \rangle = \mathsf{Conv}(\mathsf{Rand}),
+```
+```math
+\langle q_0 \rangle, \langle q_2 \rangle = \mathsf{Conv}\Big( \mathsf{Reshare}\big( \mathsf{MulSh}(\langle w_a \rangle, \langle w_b \rangle),\ \mathsf{MulSh}(\langle w_a \rangle + \langle a \rangle, \langle w_b \rangle + \langle b \rangle) \big) \Big),
+```
+```math
+r = \mathsf{Coin} \ \text{with the digests of 1.9},
+```
+```math
+(u, v, w) = \mathsf{OpenSh}\Big( \langle w_a \rangle + r(\langle w_a \rangle + \langle a \rangle),\ \langle w_b \rangle + r(\langle w_b \rangle + \langle b \rangle),\ \langle q_0 \rangle + (\langle C \rangle + \langle q_0 \rangle + \langle q_2 \rangle)\, r + \langle q_2 \rangle\, r^2 \Big),
+```
+```math
+\text{accept iff } uv = w .
+```
 $Q(X) = (w_a + X(w_a + a))(w_b + X(w_b + b))$ has $Q(0) = q_0$, $Q(1) = ab$ and leading coefficient $q_2$. $w$ interpolates $Q$ with $Q(1)$ replaced by $C$, so $uv = w$ iff $C = ab$, up to $2/(\lvert \mathbb F \rvert - 2)$. $u = (1 + r) w_a + ra$ is uniform as $r \ne 1$, so $a, b$ stay hidden.
 
 ### 2.3 Open
 
-$$b_0 \wedge \dots \wedge b_7 = \mathsf{OpenRep}\big( [\![ z^{(3)}_0 ]\!] \big).$$
+```math
+b_0 \wedge \dots \wedge b_7 = \mathsf{OpenRep}\big( [\negthinspace[ z^{(3)}_0 ]\negthinspace] \big).
+```
 
 ### 2.4 Rounds
 
@@ -434,7 +474,7 @@ $$b_0 \wedge \dots \wedge b_7 = \mathsf{OpenRep}\big( [\![ z^{(3)}_0 ]\!] \big).
 
 | toy              | Threshold leanXMSS                                                                                                                                                                                                                                                            |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 8 random bits    | the chain start $F(x) = \bigoplus_T H(\mathrm{seed}_T \,\|\, x)$, the threshold PRF of [BBDLN26](https://eprint.iacr.org/2026/2142), a $\mathsf{Rand}$ with chosen input, no message                                                                                          |
+| 8 random bits    | the chain start $`F(x) = \bigoplus_T H(\mathrm{seed}_T \,\Vert\, x)`$, the threshold PRF of [BBDLN26](https://eprint.iacr.org/2026/2142), a $\mathsf{Rand}$ with chosen input, no message                                                                                     |
 | 3 AND layers     | 3 Keccak-f[1600] per chain (the WOTS chain of length 4 of [Wam26](https://github.com/TomWambsgans/sphincs.art/blob/9a528527d2d0ea41d2b3b322d2548c0828569a6d/leanXMSS.tex)), 24 layers each, $\chi$ as AND gates on 25 lanes × 64 bits, gates with a public operand are linear |
 | 1 gate per layer | 128 chains per batch in `u64` words, one $\mathsf{Reshare}$ round per layer                                                                                                                                                                                                   |
 | the AND          | the chain end $y_3$, for bottom trees also $y_1 \oplus F(x_1)$, $y_2 \oplus F(x_2)$ and a commitment to $F(A_{\mathrm{rnd}}(e))$, so a quorum of $t$ signers unmasks $y_p$ with no MPC                                                                                        |
