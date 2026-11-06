@@ -1,4 +1,4 @@
-# Protocol
+# DKG
 
 > [!WARNING]
 > This is an experimental proof of concept. It has no security audit and no complete security proof. Please do not use it.
@@ -11,16 +11,16 @@ This note gives the MPC gadgets that the protocol uses, and a toy example for un
 
 #### 1.1.1 Parties and field
 
-| symbol                                                        | meaning                                                                                                    |
-| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| $n = 2t - 1$                                                  | operators $P_0, \dots, P_{n-1}$                                                                            |
-| $t - 1$                                                       | corrupt operators at most, malicious, security with abort                                                  |
-| $\mathbb F_2$                                                 | the field of the circuit                                                                                   |
-| $\mathbb F_{192}$                                             | the field of the check                                                                                     |
-| $\mathbb F$                                                   | either of the two, in a gadget that works over both. Both have characteristic 2, so $+$ is XOR and $- = +$ |
-| $\mathrm{GF}(2^8) = \mathbb F_2[x]/(x^8 + x^4 + x^3 + x + 1)$ | the field of the examples, elements written as integers ($x = 2$, $2^{-1} = 141$, $3^{-1} = 246$)          |
-| $\alpha_i = i + 1$                                            | the evaluation point of $P_i$                                                                              |
-| $H$                                                           | a collision-resistant hash                                                                                 |
+| symbol                                                        | meaning                                                                                                      |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| $n = 2t - 1$                                                  | operators $P_0, \dots, P_{n-1}$                                                                              |
+| $t - 1$                                                       | corrupt operators at most, malicious, security with selective abort [GL05](https://eprint.iacr.org/2002/040) |
+| $\mathbb F_2$                                                 | the field of the circuit                                                                                     |
+| $\mathbb F_{192}$                                             | the field of the check                                                                                       |
+| $\mathbb F$                                                   | either of the two, in a gadget that works over both. Both have characteristic 2, so $+$ is XOR and $- = +$   |
+| $\mathrm{GF}(2^8) = \mathbb F_2[x]/(x^8 + x^4 + x^3 + x + 1)$ | the field of the examples, elements written as integers ($x = 2$, $2^{-1} = 141$, $3^{-1} = 246$)            |
+| $\alpha_i = i + 1$                                            | the evaluation point of $P_i$                                                                                |
+| $H$                                                           | a collision-resistant hash                                                                                   |
 
 #### 1.1.2 Terms and sharings
 
@@ -458,7 +458,7 @@ $[\negthinspace[ v ]\negthinspace] = (12, 3, 11, 1, 8, 15, 0, 9, 6, 0)$, sum $13
 
 #### Syntax
 
-$\mathsf{OpenRep}([\negthinspace[ v ]\negthinspace]) \to v$ or abort. One round, $n\binom{n-1}{t-2}$ copies and $n(t-1)\binom{n-1}{t-2}$ hashes. It is robust, so no honest operator accepts a wrong value.
+$\mathsf{OpenRep}([\negthinspace[ v ]\negthinspace]) \to v$ or abort. One round, $n\binom{n-1}{t-2}$ copies and $n(t-1)\binom{n-1}{t-2}$ hashes. It outputs the correct value or aborts, so no honest operator accepts a wrong value.
 
 #### Protocol
 
@@ -468,7 +468,7 @@ The steps run for every term $T$ and every $P_j$, $j \in T$.
 2. $P_j$ aborts unless the hash of the copy equals every received hash.
 3. $P_j$ outputs $v = c + \sum_T v_T$.
 
-#### Correctness and robustness
+#### Correctness
 
 At most $t - 1$ of the $t$ holders are corrupt, so an honest copy or an honest hash reaches $P_j$, and a wrong one aborts. This is the opening of [KPPS23, App. B](https://eprint.iacr.org/2022/675). Honest holders agree on their copies by 1.9.
 
@@ -513,7 +513,7 @@ In the honest case, $P_0$ outputs $1 + 2 + \dots + 10 = 11$. If $P_2$ is corrupt
 
 #### Syntax
 
-$\mathsf{OpenSh}(\langle v \rangle, \mathrm{payload}) \to v$ or abort. One round, $n(n-1)$ messages. Robust.
+$\mathsf{OpenSh}(\langle v \rangle, \mathrm{payload}) \to v$ or abort. One round, $n(n-1)$ messages. It outputs the correct value or aborts.
 
 #### Protocol
 
@@ -521,7 +521,7 @@ $\mathsf{OpenSh}(\langle v \rangle, \mathrm{payload}) \to v$ or abort. One round
 2. $P_j$ takes $V$ through $v_0, \dots, v_{t-1}$ and aborts unless $v_t, \dots, v_{n-1}$ lie on $V$.
 3. $P_j$ outputs $V(0)$ and the payloads.
 
-#### Correctness and robustness
+#### Correctness
 
 The $t$ honest points fix $V$, so a false point is off it.
 
@@ -575,9 +575,13 @@ r = \mathrm{expand}\Big( H\big( \mathsf{OpenSh}( \mathsf{Conv}( \mathsf{Rand}(\r
 ```
 A challenge is the first expanded value outside $`\{0, 1\}`$.
 
-#### Soundness
+#### Security
 
-$\mathsf{Rand}$ is unknown to any coalition and $\mathsf{OpenSh}$ is robust, so $r$ is unbiased. A coin that checks reshared values opens in the round after the reshare, since a rushing operator sees the honest shares first. No Fiat-Shamir transform.
+$\mathsf{Coin}$ securely computes $F_{\mathrm{coin}}$ with abort [GS20, Lemma 3](https://eprint.iacr.org/2020/134).
+
+- $\mathsf{Rand}$ is unknown to any coalition, and $\mathsf{OpenSh}$ outputs the correct value or aborts.
+- A coin that checks reshared values opens in the round after the reshare, because a rushing operator sees the honest shares first.
+- The protocol uses no Fiat-Shamir transform.
 
 #### Digests
 
@@ -720,6 +724,14 @@ A tree is a session of batches, each batch the AND layers, the check and the Ope
 
 Keys and the public parameter $P$ are dealt once at keygen by commit-reveal.
 
+#### Outputs for signing
+
+A bottom tree also opens, for each key $e$, the values that [`sign.md`](sign.md) uses.
+```math
+\mathrm{cpk}_e[l] = \big( y_{l,1} \oplus F(x_{l,1}),\ y_{l,2} \oplus F(x_{l,2}),\ y_{l,3} \big), \qquad c_e = \mathrm{Th}\big( P,\ A_{\mathrm{rnd}}(e, 1),\ F(A_{\mathrm{rnd}}(e)) \,\Vert\, 0 \big)
+```
+The commitment $c_e$ fixes the randomizer value $F(A_{\mathrm{rnd}}(e))$, which stays secret until a quorum signs at $e$.
+
 ### 3.2 Rounds and bandwidth
 
 A batch of 128 chains has $L = 72$ AND layers, $N = 128 \cdot 3 \cdot 36{,}288 \approx 1.4 \cdot 10^7$ tuple bits and $m = 24$ halvings.
@@ -750,19 +762,30 @@ A bottom tree is $2^{16} \cdot 58$ chains, 29,696 chain batches. Signing takes 2
 
 ### 3.3 Security
 
-| property | argument                                                                                                                               |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| gates    | secure up to an additive error                                                                                                         |
-| check    | before any output opens, misses a wrong tuple with probability $\le (d + 2(m+1)) / (2^{192} - 2) < 2^{-185}$, $d = 18$ coins, $m = 24$ |
-| coins    | robust openings, unbiased challenges                                                                                                   |
-| digests  | a split copy stops every honest operator before the final opening, so honest holders agree at every OpenRep                            |
-| abort    | each operator decides alone [GS20](https://eprint.iacr.org/2020/134)                                                                   |
+The key generation targets the property of [GS20, Thm. 2](https://eprint.iacr.org/2020/134). It securely computes the trusted dealer of $\mathsf{KeyGen}$ [BBDLN26](https://eprint.iacr.org/2026/2142) with abort, against a malicious adversary that statically corrupts up to $t - 1$ of the $n = 2t - 1$ operators. No complete proof exists.
 
-The abort has these consequences.
+The proof follows the steps of [GS20](https://eprint.iacr.org/2020/134).
 
-- An aborting operator sends no further message.
-- A completing honest operator holds the correct values.
-- A failed session is rerun, because a tree is a function of the seeds.
+| step      | statement                                                                                                               | source                                             |
+| --------- | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| AND gates | $\mathsf{MulRep}$ and $\mathsf{Reshare}$ securely compute $F_{\mathrm{mult}}$ up to an additive attack                  | [GS20, Lemma 4](https://eprint.iacr.org/2020/134)  |
+| coins     | $\mathsf{Coin}$ securely computes $F_{\mathrm{coin}}$ with abort                                                        | [GS20, Lemma 3](https://eprint.iacr.org/2020/134)  |
+| check     | the check securely computes $F_{\mathrm{multVerify}}$ with abort                                                        | [GS20, Lemma 11](https://eprint.iacr.org/2020/134) |
+| one batch | a batch securely computes its outputs with abort in the $`\{F_{\mathrm{mult}}, F_{\mathrm{multVerify}}\}`$-hybrid model | [GS20, Thm. 2](https://eprint.iacr.org/2020/134)   |
+
+The check misses a wrong tuple with probability at most $(d + 2(m+1)) / (2^{192} - 2) < 2^{-185}$, for $d = 18$ coins and $m = 24$ halvings.
+
+The protocol differs from [GS20](https://eprint.iacr.org/2020/134) in three points, and each point needs its own argument.
+
+- Replicated sharing [CDI05](https://doi.org/10.1007/978-3-540-30576-7_19) replaces Shamir sharing. So two honest holders of a term can hold different copies.
+  - The salted digests of 1.9 abort before any output opens.
+  - The same check is in [CGH+18, Prot. 3.3](https://eprint.iacr.org/2018/570) and in [KPPS23](https://eprint.iacr.org/2022/675) $\Pi_{\mathrm{agree}}$.
+- The outputs open with $\mathsf{OpenRep}$ [KPPS23, App. B](https://eprint.iacr.org/2022/675) in place of the Shamir reconstruction of [GS20](https://eprint.iacr.org/2020/134).
+- Each operator decides alone, as in [GS20, Prot. 15](https://eprint.iacr.org/2020/134), step 8.
+  - So the protocol has security with selective abort [GL05](https://eprint.iacr.org/2002/040).
+  - In the functionalities of [GS20](https://eprint.iacr.org/2020/134), all honest operators abort together.
+
+A failed session is rerun, because a tree is a function of the seeds.
 
 ## References
 
@@ -772,6 +795,7 @@ The abort has these consequences.
 | [BBDLN26](https://eprint.iacr.org/2026/2142)                                                                    | D. Boneh, B. Bünz, J. D., Y. Litchev, K. Nazirkhanova. PRAWNS: Threshold Hash-Based Signatures from Threshold PRFs. [ePrint 2026/2142](https://eprint.iacr.org/2026/2142)                                         |
 | [CDI05](https://doi.org/10.1007/978-3-540-30576-7_19)                                                           | R. Cramer, I. Damgård, Y. Ishai. Share Conversion, Pseudorandom Secret-Sharing and Applications to Secure Computation. TCC 2005. [doi:10.1007/978-3-540-30576-7_19](https://doi.org/10.1007/978-3-540-30576-7_19) |
 | [CGH+18](https://eprint.iacr.org/2018/570)                                                                      | K. Chida, D. Genkin, K. Hamada, D. Ikarashi, R. Kikuchi, Y. Lindell, A. Nof. Fast Large-Scale Honest-Majority MPC for Malicious Adversaries. CRYPTO 2018. [ePrint 2018/570](https://eprint.iacr.org/2018/570)     |
+| [GL05](https://eprint.iacr.org/2002/040)                                                                        | S. Goldwasser, Y. Lindell. Secure Multi-Party Computation without Agreement. Journal of Cryptology 2005. [ePrint 2002/040](https://eprint.iacr.org/2002/040)                                                      |
 | [GRW18](https://eprint.iacr.org/2018/216)                                                                       | S. D. Gordon, S. Ranellucci, X. Wang. Secure Computation with Low Communication from Cross-Checking. ASIACRYPT 2018. [ePrint 2018/216](https://eprint.iacr.org/2018/216)                                          |
 | [GS20](https://eprint.iacr.org/2020/134)                                                                        | V. Goyal, Y. Song. Malicious Security Comes Free in Honest-Majority MPC. [ePrint 2020/134](https://eprint.iacr.org/2020/134)                                                                                      |
 | [KPPS23](https://eprint.iacr.org/2022/675)                                                                      | N. Koti, S. Patil, A. Patra, A. Suresh. MPClan: Protocol Suite for Privacy-Conscious Computations. Journal of Cryptology 2023. [ePrint 2022/675](https://eprint.iacr.org/2022/675)                                |

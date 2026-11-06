@@ -7,15 +7,16 @@ mod prawns;
 mod serve;
 mod xmss;
 
-use clap::{ArgGroup, Parser};
-use dkg::BATCH_SIZE;
-use mpc::{LANES, Reshare};
-use serve::Session;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::process::exit;
 use std::str::FromStr;
 use std::thread;
+
+use clap::{ArgGroup, Parser};
+use dkg::BATCH_SIZE;
+use mpc::{LANES, Reshare};
+use serve::Session;
 use tikv_jemallocator::Jemalloc;
 use tokio::net::TcpStream;
 use tracing_forest::ForestLayer;

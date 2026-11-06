@@ -1,18 +1,20 @@
-//! This module runs an operator. An admin command starts a session, and the operator announces the session to the other operators of the session.
+//! This module runs an operator. An admin command starts a session, and the operator announces the
+//! session to the other operators of the session.
+
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::{fs, future};
+
+use tokio::net::TcpListener;
+use tokio::task;
+use tracing::{Instrument, info, info_span};
 
 use crate::dkg::{self, BottomTree};
 use crate::mpc::Reshare;
 use crate::net::{self, Network};
 use crate::prawns::{self, Operator};
 use crate::xmss::{self, KEYS};
-use std::fs;
-use std::future;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
-use tokio::net::TcpListener;
-use tokio::task;
-use tracing::{Instrument, info, info_span};
 
 pub type Outcome = Result<Vec<u8>, String>;
 
@@ -93,7 +95,8 @@ struct Server {
 impl Server {
     async fn start(&self, request: &Session) -> Outcome {
         let session = self.session(request)?;
-        // The top byte holds the operator number plus one. So for fewer than `2^24` sessions on each operator, the session numbers of different operators differ and none is 0.
+        // The top byte holds the operator number plus one. So for fewer than `2^24` sessions on
+        // each operator, the session numbers of different operators differ and none is 0.
         let session_id = (self.id as u32 + 1) << 24 | self.sessions.fetch_add(1, Ordering::Relaxed);
         let announcement = net::pack(&[&session_id.to_le_bytes()[..], &session.bytes()].concat());
         for j in session.participants(self.network.n) {
@@ -211,7 +214,8 @@ pub async fn serve(
     concurrency: usize,
 ) {
     let mut addresses = [peers, vec![address.to_string()]].concat();
-    // Each operator takes the rank of its address among all addresses, in string order, as its number.
+    // Each operator takes the rank of its address among all addresses, in string order, as its
+    // number.
     addresses.sort();
     let (id, n) = (
         addresses.iter().position(|a| a == address).unwrap(),

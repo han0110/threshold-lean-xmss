@@ -1,6 +1,7 @@
 //! This module implements the setup and the quorum signing of the leanXMSS note, with the threshold PRF of [PRAWNS](https://eprint.iacr.org/2026/2142).
 //!
-//! - `F(x)` is the XOR of `H16(k_T || x)` over all terms `T`, so the holders of the terms share `F(x)` with no messages.
+//! - `F(x)` is the XOR of `H16(k_T || x)` over all terms `T`, so the holders of the terms share
+//!   `F(x)` with no messages.
 //! - `keygen` derives `P` from a contribution of each operator.
 //!   - It derives each term seed from the parts of all its holders.
 //!   - It derives each pair key from the parts of both operators.
@@ -8,16 +9,27 @@
 //!   - An echo then carries the hash of all contributions and a hash of the shared seeds.
 //!   - An operator aborts on a mismatch.
 //!   - The keygen of the prototype sends the parts in one round with no commitments.
-//! - A quorum of `t` operators holds every term, because a term contains only `t - 1` operators. Each term goes to its first holder in the quorum.
+//! - A quorum of `t` operators holds every term, because a term contains only `t - 1` operators.
+//!   Each term goes to its first holder in the quorum.
 //! - A signer masks its part with `H16(k_ij || x || m || J)` for each co-signer `j`.
 //!   - The masks cancel only among parts with the same `x`, `m` and `J`.
 //!   - So parts of signings that differ in one of them do not combine.
-//! - Before it grinds, a signer checks the opened `F(A_rnd(e))` against the commitment `c_e` that the bottom tree stores.
+//! - Before it grinds, a signer checks the opened `F(A_rnd(e))` against the commitment `c_e` that
+//!   the bottom tree stores.
 //!   - So a corrupt signer cannot change the value and steer the codeword.
 //!   - The commitment is an addition to the note.
-//!   - In PRAWNS terms, `F(A_rnd(e))` starts one more chain of length one, as for FORS, and `c_e` is its end in `cpk`.
-//! - As the note asks, each pair of operators has one key `k_ij`, and a signer adds one mask for each co-signer.
+//!   - In PRAWNS terms, `F(A_rnd(e))` starts one more chain of length one, as for FORS, and `c_e`
+//!     is its end in `cpk`.
+//! - As the note asks, each pair of operators has one key `k_ij`, and a signer adds one mask for
+//!   each co-signer.
 //!   - PRAWNS uses the keys `k_{i,j}`, `k_{j,i}` and the masks `mask_{i,1}`, `mask_{i,2}`.
+
+use std::fs;
+use std::path::Path;
+use std::sync::Arc;
+
+use primitives::{hash, load_at};
+use tracing::{Instrument, info_span};
 
 use crate::mpc::{self, Group, Key, LANES, Party, Replicated};
 use crate::net::{Channel, Network};
@@ -25,19 +37,16 @@ use crate::xmss::{
     self, CHAIN_LEN, Digest, Layer, TWEAK_RANDOMIZER, V, layer_address, prf_address,
     truncated_hash, xor,
 };
-use primitives::{hash, load_at};
-use std::fs;
-use std::path::Path;
-use std::sync::Arc;
-use tracing::{Instrument, info_span};
 
-/// One row of `cpk`, the published values of one chain, `y_1 XOR F(X_1)`, `y_2 XOR F(X_2)` and the chain end `y_3`.
+/// One row of `cpk`, the published values of one chain, `y_1 XOR F(X_1)`, `y_2 XOR F(X_2)` and the
+/// chain end `y_3`.
 pub type ChainRow = [Digest; 3];
 
 pub struct Operator {
     pub id: usize,
     pub public_parameter: Digest,
-    /// `sk_i` of PRAWNS, the seeds `k_T` of the terms that this operator holds, in term number order.
+    /// `sk_i` of PRAWNS, the seeds `k_T` of the terms that this operator holds, in term number
+    /// order.
     pub sk: Vec<Key>,
     /// The pair key `k_ij` with each operator `j`, which is zero at `j = i`.
     pub k_ij: Vec<Key>,
@@ -74,7 +83,9 @@ impl Operator {
     }
 }
 
-/// `keygen` in three rounds. Each operator commits to and reveals `[contribution to P || seed parts of the terms shared with j || pair part for j]` for each `j`. Then it echoes `[H(all P contributions) || hash of the seeds shared with j]`, and it aborts on a mismatch.
+/// `keygen` in three rounds. Each operator commits to and reveals `[contribution to P || seed parts
+/// of the terms shared with j || pair part for j]` for each `j`. Then it echoes `[H(all P
+/// contributions) || hash of the seeds shared with j]`, and it aborts on a mismatch.
 pub async fn keygen(group: &Group, network: &Arc<Network>) -> Result<Operator, String> {
     let id = network.id;
     let shared = |j: usize| -> Vec<usize> {
@@ -175,7 +186,8 @@ pub fn lanes_digest(low: u64, high: u64) -> Digest {
     load_at(&[low, high], 0)
 }
 
-/// Adds the shares of `F(x)` for each instance into the lanes `lanes` of the held terms. The public part does not change.
+/// Adds the shares of `F(x)` for each instance into the lanes `lanes` of the held terms. The public
+/// part does not change.
 pub fn prf_inputs<const W: usize>(
     party: &Party,
     xs: &[Digest],
@@ -193,7 +205,8 @@ pub fn prf_inputs<const W: usize>(
     }
 }
 
-/// `Eval` of PRAWNS. It gives the part of this operator for `F(x)` in the quorum `J`, with the masks of the evaluation context `ec`. The context is the signed message.
+/// `Eval` of PRAWNS. It gives the part of this operator for `F(x)` in the quorum `J`, with the
+/// masks of the evaluation context `ec`. The context is the signed message.
 pub fn eval(group: &Group, operator: &Operator, quorum: &[usize], x: &Digest, ec: &[u8]) -> Digest {
     let quorum_bits = quorum.iter().map(|&j| 1u32 << j).sum::<u32>().to_le_bytes();
     let terms = group
@@ -209,7 +222,8 @@ pub fn eval(group: &Group, operator: &Operator, quorum: &[usize], x: &Digest, ec
     terms.chain(masks).fold([0; 16], xor)
 }
 
-/// Opens `F` at each `x` among the quorum in one round. Each signer sends its `eval` part to the others and runs `Combine` itself, because the note has no separate combiner.
+/// Opens `F` at each `x` among the quorum in one round. Each signer sends its `eval` part to the
+/// others and runs `Combine` itself, because the note has no separate combiner.
 pub async fn combine(
     channel: &mut Channel,
     group: &Group,
@@ -239,8 +253,10 @@ pub async fn combine(
 
 /// Signs the message `m` at the bottom key `e` with a quorum, in two rounds and with no MPC.
 ///
-/// - It runs PRAWNS `Sign` and `Combine` at each signer and returns the full signature, not a share.
-/// - `cpk` holds the published rows of the chains of key `e`, and `c_e` is the commitment of `F(A_rnd(e))`.
+/// - It runs PRAWNS `Sign` and `Combine` at each signer and returns the full signature, not a
+///   share.
+/// - `cpk` holds the published rows of the chains of key `e`, and `c_e` is the commitment of
+///   `F(A_rnd(e))`.
 pub async fn sign(
     network: &Arc<Network>,
     group: &Group,
@@ -274,7 +290,9 @@ pub async fn sign(
             .instrument(info_span!("reveal", values = xs.len()))
             .await?
             .into_iter();
-        // `sigma` holds the WOTS signature, one chain value for each chain. Position 3 is the public chain end, position 0 is `F(X_0)` itself, and positions 1 and 2 unmask the published row.
+        // `sigma` holds the WOTS signature, one chain value for each chain. Position 3 is the
+        // public chain end, position 0 is `F(X_0)` itself, and positions 1 and 2 unmask the
+        // published row.
         let sigma: Vec<Digest> = (0..V)
             .map(|chain| match digits[chain] {
                 3 => cpk[chain][2],
@@ -304,20 +322,24 @@ pub async fn sign(
 
 #[cfg(test)]
 mod tests {
+    use std::env;
+
     use crate::mpc::Reshare;
     use crate::mpc::tests::{local_parties, random_keys};
     use crate::prawns::*;
     use crate::xmss::{address, tweak};
-    use std::env;
 
-    /// The committed and the revealed message, the echo and the error of one fault of operator 2 in `keygen`.
+    /// The committed and the revealed message, the echo and the error of one fault of operator 2 in
+    /// `keygen`.
     type Fault = (
         fn(Vec<u8>) -> [Vec<u8>; 2],
         fn(Key) -> Vec<u8>,
         &'static str,
     );
 
-    /// Operator 2 runs the rounds of `keygen` by hand. `reveal` gives the message that it commits to and the message that it reveals. `echo` gives its echo from the hash of all `P` contributions.
+    /// Operator 2 runs the rounds of `keygen` by hand. `reveal` gives the message that it commits
+    /// to and the message that it reveals. `echo` gives its echo from the hash of all `P`
+    /// contributions.
     async fn corrupt_keygen(
         party: &Party,
         reveal: fn(Vec<u8>) -> [Vec<u8>; 2],
@@ -385,7 +407,8 @@ mod tests {
         }
         fs::remove_dir_all(&dir).unwrap();
         let wrong_reveal = "operator 2 reveals a value that differs from its commitment";
-        // The third fault commits to a short message, so only the length check of `commit_reveal` stops it.
+        // The third fault commits to a short message, so only the length check of `commit_reveal`
+        // stops it.
         let faults: [Fault; 5] = [
             (
                 |message| {

@@ -1,18 +1,23 @@
-//! This module evaluates circuits on replicated sharings and gives Keccak-f as a circuit of 24 layers, with chi as the AND gates. It also hashes one chain step of each instance in MPC.
+//! This module evaluates circuits on replicated sharings and gives Keccak-f as a circuit of 24
+//! layers, with chi as the AND gates. It also hashes one chain step of each instance in MPC.
 //!
-//! - `plans` finds the AND gates with two secret inputs. Only these gates send messages, and an AND gate with a public input is local.
+//! - `plans` finds the AND gates with two secret inputs. Only these gates send messages, and an AND
+//!   gate with a public input is local.
 
-use crate::mpc::{Additive, LANES, Lane, Party, Replicated, Terms, Tuples, Word, mul, xor_into};
-use crate::net::Channel;
-use primitives::hash;
 use std::array::from_fn;
 use std::iter;
 use std::ops::BitXor;
 
+use primitives::hash;
+
+use crate::mpc::{Additive, LANES, Lane, Party, Replicated, Terms, Tuples, Word, mul, xor_into};
+use crate::net::Channel;
+
 /// The public lanes of a chain step, `P` and the chain address, and then the chain number.
 pub type HashPublic = ([u64; 4], [u64; 2]);
 
-/// A lane that records only whether its value can depend on a secret input. `plans` runs the circuit on these lanes to find the AND gates that need messages.
+/// A lane that records only whether its value can depend on a secret input. `plans` runs the
+/// circuit on these lanes to find the AND gates that need messages.
 #[derive(Clone, Copy)]
 struct Secret(bool);
 
@@ -34,7 +39,9 @@ impl Lane for Secret {
     }
 }
 
-/// A layer applies `linear` and then `combine`. The AND gates of `ands` take their inputs after `linear`, and gate `a` adds its product into lane `a` after `combine`. `constant` acts on the public part only.
+/// A layer applies `linear` and then `combine`. The AND gates of `ands` take their inputs after
+/// `linear`, and gate `a` adds its product into lane `a` after `combine`. `constant` acts on the
+/// public part only.
 pub trait Circuit<const W: usize>: Sync {
     const LAYERS: usize;
     fn linear<T: Lane>(&self, layer: usize, state: &mut [T; W]);
@@ -43,7 +50,8 @@ pub trait Circuit<const W: usize>: Sync {
     fn constant<T: Lane>(&self, layer: usize, public: &mut [T; W]);
 }
 
-/// The AND gates of one layer. `shared` lists the gates with two secret inputs, which need messages, and `secret` marks the secret lanes after `linear`.
+/// The AND gates of one layer. `shared` lists the gates with two secret inputs, which need
+/// messages, and `secret` marks the secret lanes after `linear`.
 struct Plan<const W: usize> {
     ands: Vec<(usize, usize)>,
     shared: Vec<usize>,
@@ -77,7 +85,9 @@ fn plans<const W: usize, C: Circuit<W>>(circuit: &C, secret: [bool; W]) -> Vec<P
 
 /// Evaluates a circuit on all instances of the batch and records the AND tuples.
 ///
-/// Each layer takes `mul` at its gates and then `reshare`, in one pass over the blocks. The pass first adds the filled columns of the layer before, and then it adds the masks `r_T` of its own gates.
+/// Each layer takes `mul` at its gates and then `reshare`, in one pass over the blocks. The pass
+/// first adds the filled columns of the layer before, and then it adds the masks `r_T` of its own
+/// gates.
 pub async fn evaluate<const W: usize, C: Circuit<W>>(
     party: &Party,
     circuit: &C,
@@ -98,7 +108,8 @@ pub async fn evaluate<const W: usize, C: Circuit<W>>(
         copy.reserve(words * shared * LANES);
     }
     let mut product = vec![[Word::ZERO; W]; party.held.len() + 1];
-    // The gate number continues from the earlier evaluations of the batch, so the collectors rotate over all gates of the batch.
+    // The gate number continues from the earlier evaluations of the batch, so the collectors rotate
+    // over all gates of the batch.
     let (mut ands, mut gates) = (0, tuples.z[0].len() / (words * LANES).max(1));
     let (column, mut terms) = (words * LANES, Terms::default());
     let (mut filled, mut finished_start): (Vec<Vec<usize>>, _) = (vec![], 0);
@@ -128,7 +139,8 @@ pub async fn evaluate<const W: usize, C: Circuit<W>>(
             circuit.linear(step, public);
             held.iter_mut()
                 .for_each(|lanes| circuit.linear(step, lanes));
-            // The holders of term 0 move the public part of each secret lane into term 0, so the terms alone hold the gate inputs.
+            // The holders of term 0 move the public part of each secret lane into term 0, so the
+            // terms alone hold the gate inputs.
             for l in (0..W).filter(|&l| plan.secret[l]) {
                 if let Some(k) = term_zero {
                     held[k][l] ^= public[l];
@@ -220,7 +232,8 @@ impl Circuit<25> for Keccak {
         }
     }
 
-    /// Chi is `a[x] ^ !a[x + 1] & a[x + 2]`, which equals `a[x] ^ a[x + 2] ^ a[x + 1] & a[x + 2]`. So gate `x` takes lanes `x + 1` and `x + 2` of its row, and `combine` adds lane `x + 2`.
+    /// Chi is `a[x] ^ !a[x + 1] & a[x + 2]`, which equals `a[x] ^ a[x + 2] ^ a[x + 1] & a[x + 2]`.
+    /// So gate `x` takes lanes `x + 1` and `x + 2` of its row, and `combine` adds lane `x + 2`.
     fn ands(&self, layer: usize) -> Vec<(usize, usize)> {
         (0..self.lanes(layer))
             .map(|l| (neighbor(l, 1), neighbor(l, 2)))
@@ -254,7 +267,8 @@ pub fn gates() -> usize {
         .sum()
 }
 
-/// Hashes one chain step for each instance. The state holds `P || A || y || l` and the Keccak padding, and only `y` in lanes 4 and 5 is secret.
+/// Hashes one chain step for each instance. The state holds `P || A || y || l` and the Keccak
+/// padding, and only `y` in lanes 4 and 5 is secret.
 pub async fn hash(
     party: &Party,
     channel: &mut Channel,
@@ -285,11 +299,12 @@ pub async fn hash(
 
 #[cfg(test)]
 mod tests {
+    use std::iter;
+
     use crate::check;
     use crate::circuit::*;
     use crate::mpc::Reshare;
     use crate::mpc::tests::local_parties;
-    use std::iter;
 
     #[test]
     fn shared_keccak_f_matches_keccak_f() {

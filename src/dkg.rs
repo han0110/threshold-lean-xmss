@@ -3,16 +3,34 @@
 //! - `e` is the index of a one-time key in its layer.
 //! - `x_0` holds the PRF inputs `X_0` of the chain starts.
 //! - `cpk` holds the published rows of the chains, as in PRAWNS, and `pk` is the public key.
-//! - A ceremony splits the chains into chain batches of the batch size, and each batch runs on its own channel.
+//! - A ceremony splits the chains into chain batches of the batch size, and each batch runs on its
+//!   own channel.
 //! - A batch takes its inputs from the threshold PRF and hashes its chain steps in MPC.
 //! - Then `mult_verification` checks its AND tuples, and `open` opens its outputs.
-//! - Each operator starts the batches in batch order and runs at most `concurrency` of them at the same time.
+//! - Each operator starts the batches in batch order and runs at most `concurrency` of them at the
+//!   same time.
 //!   - So operators with different concurrencies do not deadlock.
-//! - The top tree opens the chain ends. A bottom tree also opens the masked middle values, so that a quorum signs with no MPC.
-//! - The top key of a bottom tree signs its root in MPC, because the top tree stores no masked values.
-//! - A bottom tree also opens the commitment `c_e` of each key `e`, in commitment batches of the batch size.
+//! - The top tree opens the chain ends. A bottom tree also opens the masked middle values, so that
+//!   a quorum signs with no MPC.
+//! - The top key of a bottom tree signs its root in MPC, because the top tree stores no masked
+//!   values.
+//! - A bottom tree also opens the commitment `c_e` of each key `e`, in commitment batches of the
+//!   batch size.
 //!   - The commitment hashes `F(A_rnd(e))` once, at `A_rnd(e)` with step 1.
-//!   - The commitment is an addition to the note. A top key needs none, because its MPC signature opens `F(A_rnd(e))` robustly.
+//!   - The commitment is an addition to the note. A top key needs none, because its MPC signature
+//!     opens `F(A_rnd(e))` robustly.
+
+use std::fs::{self, DirBuilder, File, OpenOptions};
+use std::io::Write;
+use std::os::unix::fs::{DirBuilderExt, FileExt, OpenOptionsExt};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::time::Instant;
+
+use futures::stream::{self, StreamExt, TryStreamExt};
+use primitives::field::F192;
+use tracing::info;
 
 use crate::check;
 use crate::circuit::{self, HashPublic};
@@ -23,16 +41,6 @@ use crate::xmss::{
     self, Digest, KEYS, LAYER_HEIGHT, LAYER_SIG_SIZE, Layer, TWEAK_CHAIN, TWEAK_RANDOMIZER, V,
     layer_address, prf_address,
 };
-use futures::stream::{self, StreamExt, TryStreamExt};
-use primitives::field::F192;
-use std::fs::{self, DirBuilder, File, OpenOptions};
-use std::io::Write;
-use std::os::unix::fs::{DirBuilderExt, FileExt, OpenOptionsExt};
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::atomic::Ordering;
-use std::time::Instant;
-use tracing::info;
 
 /// The default chains or keys of a batch, in 32 words of `LANES` instances.
 pub const BATCH_SIZE: usize = 32 * LANES;
@@ -49,7 +57,8 @@ fn hash_public(
     ([p0, p1, a0, a1], [chain as u64, 0])
 }
 
-/// Hashes each chain from `F(X_0)` in MPC, for the PRF input `X_0` of each chain in `x_0`, and opens the value at its position.
+/// Hashes each chain from `F(X_0)` in MPC, for the PRF input `X_0` of each chain in `x_0`, and
+/// opens the value at its position.
 async fn open_chains(
     party: &Party,
     channel: &mut Channel,
@@ -98,7 +107,8 @@ async fn open_chains(
     Ok((values, ands))
 }
 
-/// Hashes three chain steps in MPC and opens the row of each chain. The six lanes of `published` hold the three positions, two lanes each.
+/// Hashes three chain steps in MPC and opens the row of each chain. The six lanes of `published`
+/// hold the three positions, two lanes each.
 async fn masked_batch(
     party: &Party,
     channel: &mut Channel,
@@ -202,13 +212,16 @@ async fn top_signature(
     .await
 }
 
-/// The tuple words of each held term in a batch of `instances` instances that hash `hashes` times, with the padding of the check.
+/// The tuple words of each held term in a batch of `instances` instances that hash `hashes` times,
+/// with the padding of the check.
 fn padded_words(instances: usize, hashes: usize) -> usize {
     let words = instances.next_multiple_of(LANES) * hashes * circuit::gates();
     check::SLICES * check::slice_length(words)
 }
 
-/// The estimated bytes of a full chain batch and the padding of its check. A chain hashes 3 times, and the tuples of all held terms coexist with the check vectors `x` and `y` in `Slices::materialize`.
+/// The estimated bytes of a full chain batch and the padding of its check. A chain hashes 3 times,
+/// and the tuples of all held terms coexist with the check vectors `x` and `y` in
+/// `Slices::materialize`.
 fn chain_batch_estimate(party: &Party) -> (usize, f64) {
     let words = party.batch_size * 3 * circuit::gates();
     let padded = padded_words(party.batch_size, 3);
@@ -253,7 +266,8 @@ async fn ceremony(
     let (sent, start) = (party.network.sent.load(Ordering::Relaxed), Instant::now());
     let batch_size = party.batch_size;
     let chain_batches = chains.len().div_ceil(batch_size);
-    // The channels open in batch order before any batch runs, so all operators give each batch the same tag. The commitment batches follow the chain batches.
+    // The channels open in batch order before any batch runs, so all operators give each batch the
+    // same tag. The commitment batches follow the chain batches.
     let channels: Vec<Channel> = (0..chain_batches + committed.len().div_ceil(batch_size))
         .map(|_| party.network.channel())
         .collect();
@@ -442,7 +456,8 @@ pub fn tree_file(dir: &Path, bottom: u32) -> PathBuf {
     dir.join(format!("tree{bottom}"))
 }
 
-/// The file of a bottom tree holds its Merkle levels from the leaves to the root. The rows of its chains, its top signature and the commitments of its keys follow.
+/// The file of a bottom tree holds its Merkle levels from the leaves to the root. The rows of its
+/// chains, its top signature and the commitments of its keys follow.
 pub struct BottomTree(File);
 
 const NODES: usize = 2 * KEYS - 1;
@@ -510,13 +525,15 @@ fn digests(bytes: &[u8]) -> Vec<Digest> {
 
 #[cfg(test)]
 mod tests {
+    use std::array::from_fn;
+
+    use signatures::lean_xmss::{codeword, message_digest};
+
     use crate::dkg::*;
     use crate::mpc::Key;
     use crate::mpc::tests::{local_operators, local_parties};
     use crate::net::pack;
     use crate::xmss::{truncated_hash, xor};
-    use signatures::lean_xmss::{codeword, message_digest};
-    use std::array::from_fn;
 
     fn trusted_dealer(
         all_seeds: &[Key],
@@ -574,9 +591,11 @@ mod tests {
         (leaves, cpk, commitments)
     }
 
-    /// Runs a ceremony of the keys 5 and 9000 with `P = [9; 16]` at the reshare mode, batch size and concurrency of each operator.
+    /// Runs a ceremony of the keys 5 and 9000 with `P = [9; 16]` at the reshare mode, batch size
+    /// and concurrency of each operator.
     ///
-    /// It asserts that every operator opens the values of the trusted dealer, and it returns the ANDs and rounds of each operator.
+    /// It asserts that every operator opens the values of the trusted dealer, and it returns the
+    /// ANDs and rounds of each operator.
     fn local_ceremony(layer: Layer, operators: &[(Reshare, usize, usize)]) -> Vec<(u64, [u64; 2])> {
         let (public_parameter, keys) = ([9; 16], [5, 9_000]);
         let parameters: Vec<(Reshare, usize)> = operators
@@ -605,7 +624,8 @@ mod tests {
 
     #[test]
     fn a_ceremony_matches_the_trusted_dealer_at_each_batch_size_with_36288_ands_per_hash() {
-        // The rounds of a chain batch and of a commitment batch. The commitment batch holds one word of keys, and a full commitment batch of 128 keys takes 99 or 75 rounds.
+        // The rounds of a chain batch and of a commitment batch. The commitment batch holds one
+        // word of keys, and a full commitment batch of 128 keys takes 99 or 75 rounds.
         let expected_rounds = |reshare, batch_size| match (reshare, batch_size) {
             (Reshare::Collector, 128) => Some([197, 89]),
             (Reshare::Peer, 128) => Some([125, 65]),
@@ -625,7 +645,8 @@ mod tests {
                         Layer::Top => [chain, 0],
                         Layer::Bottom => [chain, commitment],
                     });
-                // Each of the two keys hashes its chains 3 times. A word holds `LANES` instances, so the commitments of the two keys take the hashes of one word.
+                // Each of the two keys hashes its chains 3 times. A word holds `LANES` instances,
+                // so the commitments of the two keys take the hashes of one word.
                 let hashes = 2 * V * 3 + if layer == Layer::Bottom { LANES } else { 0 };
                 // The operators run different concurrencies, which must not deadlock.
                 let operators: Vec<_> = (0..2 * t - 1)
@@ -643,7 +664,8 @@ mod tests {
 
     #[test]
     fn the_check_and_the_opening_of_a_bottom_chain_batch_send_the_same_bytes_in_both_modes() {
-        // The bytes that each operator sends in the check of 128 chains, and in the opening of their six lanes and of two lanes.
+        // The bytes that each operator sends in the check of 128 chains, and in the opening of
+        // their six lanes and of two lanes.
         for (t, expected) in [(2, (2_720, 6_176, 2_080)), (3, (5_952, 24_832, 8_448))] {
             for reshare in [Reshare::Collector, Reshare::Peer] {
                 let sent = local_parties(t, reshare, async |party, _| {
@@ -692,7 +714,8 @@ mod tests {
             let outcome = ceremony(&party, [9; 16], Layer::Bottom, &[5, 9_000], 1).await;
             outcome.err()
         });
-        // Each collector forwards the same wrong sum to all other holders of its term, so only the multiplication check catches it.
+        // Each collector forwards the same wrong sum to all other holders of its term, so only the
+        // multiplication check catches it.
         let failed = Some("the AND tuples fail the check".to_string());
         assert_eq!(outcomes, vec![failed; 3]);
     }
@@ -752,7 +775,8 @@ mod tests {
                 &message,
             ));
             leads_to_root(Layer::Bottom, &message, signature, leaves[0]);
-            // The signing grinds to the same digits again. Only the row of the last chain below position 3 changes, so every chain must be checked.
+            // The signing grinds to the same digits again. Only the row of the last chain below
+            // position 3 changes, so every chain must be checked.
             let chain = digits
                 .unwrap()
                 .iter()
@@ -765,7 +789,8 @@ mod tests {
                 outcome,
                 Err(format!("chain {chain} does not lead to its end"))
             );
-            // Each signer sends only its part of `F(A_rnd(e))` to its co-signer, so `reveal` never runs.
+            // Each signer sends only its part of `F(A_rnd(e))` to its co-signer, so `reveal` never
+            // runs.
             let tampered_commitment = xor(commitments[0], [1; 16]);
             assert_eq!(
                 sign(&cpk, &tampered_commitment).await,

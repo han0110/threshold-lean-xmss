@@ -1,13 +1,13 @@
 //! This module implements tagged channels between the operators over TCP.
 //!
 //! - A frame is a tag and a length in words, and then the words.
-//! - A read thread for each peer routes each frame to the channel of its tag, and a write thread for each peer sends the frames.
-//! - A dropped channel sends an abort frame to its members, in place of the disconnection of the leanSPHINCS prototype.
+//! - A read thread for each peer routes each frame to the channel of its tag, and a write thread
+//!   for each peer sends the frames.
+//! - A dropped channel sends an abort frame to its members, in place of the disconnection of the
+//!   leanSPHINCS prototype.
 //! - A receive on the channel then fails after the frames that arrived before the abort frame.
 //! - The reader ignores an abort frame for a channel that it does not know yet.
 
-use futures::future::try_join_all;
-use primitives::{cast_slice, cast_slice_mut};
 use std::collections::HashMap;
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -15,6 +15,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+
+use futures::future::try_join_all;
+use primitives::{cast_slice, cast_slice_mut};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tracing::info;
@@ -39,7 +42,8 @@ pub struct Network {
     pub sent: Arc<AtomicU64>,
 }
 
-/// Connects to all operators. Each operator dials the operators with lower numbers and accepts the others.
+/// Connects to all operators. Each operator dials the operators with lower numbers and accepts the
+/// others.
 pub fn connect(id: usize, listener: TcpListener, addresses: Vec<String>) -> Arc<Network> {
     let n = addresses.len();
     let mut streams: Vec<Option<TcpStream>> = (0..n).map(|_| None).collect();
@@ -106,7 +110,8 @@ fn read(stream: TcpStream, routes: Routes) {
         if header[0] & ABORT == 0 {
             route(routes, tag).0.send(words).ok();
         } else if let Some(route) = routes.get_mut(&tag) {
-            // The new sender drops the old one, so the receiver ends after the frames that it already has. The reader drops later frames of the channel.
+            // The new sender drops the old one, so the receiver ends after the frames that it
+            // already has. The reader drops later frames of the channel.
             route.0 = unbounded_channel().0;
         }
     }

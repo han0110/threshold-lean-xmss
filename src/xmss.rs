@@ -1,9 +1,13 @@
 //! This module implements the leanXMSS signature of [EIP-8450](https://eips.ethereum.org/EIPS/eip-8450), from leanVM [`signatures::lean_xmss`](https://github.com/leanEthereum/leanVM/tree/1acdff19dffcaaf1642e88a9e9b522b415425168/crates/signatures/src/lean_xmss).
 //!
 //! - `pp` is the public parameter `P`, and `e` is the index of a one-time key in its layer.
-//! - `Layer::Bottom` signs messages and `Layer::Top` signs the roots of the bottom trees. Their discriminants are the leanVM layer indices.
-//! - The randomizer search of `wots_sign` takes an opened value of the threshold PRF in place of the seed.
+//! - `Layer::Bottom` signs messages and `Layer::Top` signs the roots of the bottom trees. Their
+//!   discriminants are the leanVM layer indices.
+//! - The randomizer search of `wots_sign` takes an opened value of the threshold PRF in place of
+//!   the seed.
 //!   - A quorum opens it for the bottom layer, and the MPC opens it for the top layer.
+
+use std::array::from_fn;
 
 use primitives::hash;
 pub use signatures::lean_xmss::{
@@ -14,7 +18,6 @@ use signatures::lean_xmss::{
     LayerSignature, LeanXmssPublicKey, LeanXmssSignature, MAX_RANDOMIZER_TRIALS, PublicParam,
     TWEAK_MSG, TWEAK_NODE, codeword, hasher, message_digest, th, th_digests,
 };
-use std::array::from_fn;
 use tracing::info_span;
 
 pub const KEYS: usize = 1 << LAYER_HEIGHT;
@@ -41,7 +44,8 @@ pub fn prf_address(layer: Layer, e: u32, chain: usize, position: usize) -> Diges
     layer_address(TWEAK_PRF, layer, chain as u32, e, position)
 }
 
-/// The commitment `c_e` of bottom key `e` to the randomizer value `F(A_rnd(e))`. It hashes the value at `A_rnd(e)` with step 1, which no leanXMSS hash uses.
+/// The commitment `c_e` of bottom key `e` to the randomizer value `F(A_rnd(e))`. It hashes the
+/// value at `A_rnd(e)` with step 1, which no leanXMSS hash uses.
 pub fn commitment(pp: &Digest, e: u32, value: Digest) -> Digest {
     let address = tweak(TWEAK_RANDOMIZER, layer_hi(Layer::Bottom as usize, 0), e).step(1);
     th_digests(pp, &address, &[value, 0u128.to_le_bytes()])
@@ -92,7 +96,8 @@ pub fn levels(pp: &Digest, layer: Layer, tree: u32, leaves: Vec<Digest>) -> Vec<
         let below = &levels[level - 1];
         let above = (0..below.len() / 2)
             .map(|k| {
-                // A node address holds its index in the whole layer, so the index includes the tree number.
+                // A node address holds its index in the whole layer, so the index includes the tree
+                // number.
                 let j = (tree << (LAYER_HEIGHT - level)) + k as u32;
                 node(
                     pp,

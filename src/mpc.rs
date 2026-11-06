@@ -1,60 +1,82 @@
-//! This module implements the replicated secret sharing of [Cramer, Damgard and Ishai](https://doi.org/10.1007/978-3-540-30576-7_19) among `n = 2t - 1` operators, and the gadgets of `doc/protocol.md` on it. It follows [`structure.rs`](https://github.com/TomWambsgans/sphincs.art/blob/df77d5671f70ba4959264183296777bdddec778d/crates/rss/src/structure.rs), [`engine.rs`](https://github.com/TomWambsgans/sphincs.art/blob/df77d5671f70ba4959264183296777bdddec778d/crates/rss/src/engine.rs) and [`setup.rs`](https://github.com/TomWambsgans/sphincs.art/blob/df77d5671f70ba4959264183296777bdddec778d/crates/rss/src/setup.rs) of the leanSPHINCS prototype.
+//! This module implements the replicated secret sharing of [Cramer, Damgard and Ishai](https://doi.org/10.1007/978-3-540-30576-7_19) among `n = 2t - 1` operators, and the gadgets of `doc/dkg.md` on it. It follows [`structure.rs`](https://github.com/TomWambsgans/sphincs.art/blob/df77d5671f70ba4959264183296777bdddec778d/crates/rss/src/structure.rs), [`engine.rs`](https://github.com/TomWambsgans/sphincs.art/blob/df77d5671f70ba4959264183296777bdddec778d/crates/rss/src/engine.rs) and [`setup.rs`](https://github.com/TomWambsgans/sphincs.art/blob/df77d5671f70ba4959264183296777bdddec778d/crates/rss/src/setup.rs) of the leanSPHINCS prototype.
 //!
-//! - The terms are the sets of `t - 1` operators, and an operator holds each term that does not contain it.
-//! - A block of shares holds the public part first and then one part for each held term, in the order of `held`.
+//! - The terms are the sets of `t - 1` operators, and an operator holds each term that does not
+//!   contain it.
+//! - A block of shares holds the public part first and then one part for each held term, in the
+//!   order of `held`.
 //! - `rand`, `mul` and `conv` send nothing.
 //!   - `rand` gives each holder of a term `T` its pseudorandom value `r_T`.
 //!   - `conv` gives the Shamir share of a replicated value.
-//! - At an AND gate, `mul` gives operator `i` the XOR `v_i` of `a_A & b_B` over its pairs of terms `(A, B)`.
+//! - At an AND gate, `mul` gives operator `i` the XOR `v_i` of `a_A & b_B` over its pairs of terms
+//!   `(A, B)`.
 //! - Then `reshare` adds the share `zeta_i` of a pairwise zero sharing.
-//! - In collector mode, a rotation gives each gate a term `T*` and a collector `kappa` in `Hold(T*)`. Every other term is `z_T = r_T`.
-//!   - Each `i != kappa` sends `u_i = v_i ^ zeta_i ^ XOR_{T != T*, owner(T) = i} r_T` to `kappa`. Then `kappa` sends `z_T* = XOR_i u_i` to `Hold(T*) \ {kappa}`.
-//! - In peer mode, operator `i` fills the term `T_i` of the operators `i + 1` to `i + t - 1` modulo `n`.
+//! - In collector mode, a rotation gives each gate a term `T*` and a collector `kappa` in
+//!   `Hold(T*)`. Every other term is `z_T = r_T`.
+//!   - Each `i != kappa` sends `u_i = v_i ^ zeta_i ^ XOR_{T != T*, owner(T) = i} r_T` to `kappa`.
+//!     Then `kappa` sends `z_T* = XOR_i u_i` to `Hold(T*) \ {kappa}`.
+//! - In peer mode, operator `i` fills the term `T_i` of the operators `i + 1` to `i + t - 1` modulo
+//!   `n`.
 //!   - These terms form `C`, and every other term is `z_T = r_T`.
-//!   - Each `i` sends `u_i = v_i ^ zeta_i ^ XOR_{T not in C, owner(T) = i} r_T` to `Hold(T_i) \ {i}`. Then `z_T_i = u_i`, and the gate takes one round in place of two.
+//!   - Each `i` sends `u_i = v_i ^ zeta_i ^ XOR_{T not in C, owner(T) = i} r_T` to `Hold(T_i) \
+//!     {i}`. Then `z_T_i = u_i`, and the gate takes one round in place of two.
 //!   - For `n = 3`, `C` contains all three terms, and peer mode is the multiplication of [Araki et al. CCS'16](https://eprint.iacr.org/2016/768).
-//! - The generalization of peer mode to `n > 3` comes from this code. A coalition `D` of `t - 1` operators lacks only the term `D`.
-//!   - If `D` is not in `C`, then `z_D = r_D`, and the honest `u_i` that `D` sees have masks of full rank.
-//!   - If `D = T_i`, then `u_i` goes only to honest holders, and the other honest values are independent.
+//! - The generalization of peer mode to `n > 3` comes from this code. A coalition `D` of `t - 1`
+//!   operators lacks only the term `D`.
+//!   - If `D` is not in `C`, then `z_D = r_D`, and the honest `u_i` that `D` sees have masks of
+//!     full rank.
+//!   - If `D = T_i`, then `u_i` goes only to honest holders, and the other honest values are
+//!     independent.
 //! - Each holder of a filled term adds its new values to the running hash `h_T` of the term.
-//! - A coin is a pseudorandom sharing that opens robustly in the round after the messages that it checks.
+//! - A coin is a pseudorandom sharing that opens robustly in the round after the messages that it
+//!   checks.
 //!   - As in the paper and the prototype, this assumes synchronous rounds.
 //!
 //! The module differs from the prototype in these points.
 //!
 //! - The Shamir shares use the leanVM field `F192` in place of GF(2^128).
-//! - A gate covers one 64-bit lane of a circuit layer for all instances of the batch. A `Word` holds this lane for four instances.
+//! - A gate covers one 64-bit lane of a circuit layer for all instances of the batch. A `Word`
+//!   holds this lane for four instances.
 //! - The pseudorandom streams use AES-128 in place of Keccak-256 with labeled tags.
 //!   - The AES key hashes the label `rss-prss`, a seed and the session value.
-//!   - A stream depends on the channel, its round and an index, and a coin key hashes only the opened value.
-//!   - The label keeps the stream keys apart from the threshold PRF of `prawns`, which uses the same term seeds.
-//! - The prototype gives each pair to the least loaded holder in one pass and each term to its first holder.
-//!   - Here `balance` adds a local search, so the loads of the operators differ by at most one in both tables.
+//!   - A stream depends on the channel, its round and an index, and a coin key hashes only the
+//!     opened value.
+//!   - The label keeps the stream keys apart from the threshold PRF of `prawns`, which uses the
+//!     same term seeds.
+//! - The prototype gives each pair to the least loaded holder in one pass and each term to its
+//!   first holder.
+//!   - Here `balance` adds a local search, so the loads of the operators differ by at most one in
+//!     both tables.
 //! - The prototype has only collector mode.
-//!   - The message of `establish` also carries the mode and the batch size, so operators with different values abort before the first gate.
+//!   - The message of `establish` also carries the mode and the batch size, so operators with
+//!     different values abort before the first gate.
 //! - The prototype sends the digest of a term only to the other holders of the term.
-//!   - Here every operator receives the salted digest of every term, so a split copy stops every honest operator.
-//! - The prototype opens an output through a king, a coin with digests, a random linear combination and a vote, in 5 rounds.
+//!   - Here every operator receives the salted digest of every term, so a split copy stops every
+//!     honest operator.
+//! - The prototype opens an output through a king, a coin with digests, a random linear combination
+//!   and a vote, in 5 rounds.
 //!   - Here `open` takes 1 round.
-//! - The prototype ends each opening with a vote. Here each operator decides alone, as in Goyal and Song.
+//! - The prototype ends each opening with a vote. Here each operator decides alone, as in Goyal and
+//!   Song.
 //! - The caller checks the tuples before it opens outputs, and it stops at the first error.
 //!   - The prototype enforces both with the provenance of the shares and a failed state.
 //! - `reshare` and `open` pad a short message with zeros and truncate a long message.
 //!   - This gives an additive error or different hashes, where the prototype aborts.
 
-use crate::net::{Channel, Network};
-use aes::cipher::{Array, BlockCipherEncrypt, KeyInit};
-use aes::{Aes128, Block};
-use clap::ValueEnum;
-use primitives::field::F192;
-use primitives::hash::{self, Hasher};
-use primitives::{cast_slice, load_at};
 use std::array::from_fn;
 use std::fmt::Debug;
 use std::mem;
 use std::ops::{BitAnd, BitXor, BitXorAssign, Range};
 use std::slice::{Chunks, ChunksMut};
 use std::sync::Arc;
+
+use aes::cipher::{Array, BlockCipherEncrypt, KeyInit};
+use aes::{Aes128, Block};
+use clap::ValueEnum;
+use primitives::field::F192;
+use primitives::hash::{self, Hasher};
+use primitives::{cast_slice, load_at};
+
+use crate::net::{Channel, Network};
 
 pub type Key = [u8; 32];
 pub const LANES: usize = 4;
@@ -113,19 +135,26 @@ pub struct Group {
     pub t: usize,
     /// The operators of each term, as a bit set.
     pub terms: Vec<u32>,
-    /// The pairs of terms whose products each operator adds. `balance` gives each pair to one holder of both terms.
+    /// The pairs of terms whose products each operator adds. `balance` gives each pair to one
+    /// holder of both terms.
     pub product_pairs: Vec<Vec<(usize, usize)>>,
-    /// The holder that adds the pseudorandom value of each term into its gate contributions, and that sends its copy in `open`. `balance` gives each term to one of its holders.
+    /// The holder that adds the pseudorandom value of each term into its gate contributions, and
+    /// that sends its copy in `open`. `balance` gives each term to one of its holders.
     pub owner: Vec<usize>,
     /// The collected term and the collector of each gate, in rotation.
     pub collectors: Vec<(usize, usize)>,
-    /// The term `T_i` that each operator `i` fills in peer mode. It contains the operators `i + 1` to `i + t - 1` modulo `n`.
+    /// The term `T_i` that each operator `i` fills in peer mode. It contains the operators `i + 1`
+    /// to `i + t - 1` modulo `n`.
     pub peer_terms: Vec<usize>,
-    /// `phi[i][k]` weights held term `k` of operator `i` in its Shamir share. It is the value at `alpha(i)` of the polynomial of degree `t - 1` that is one at zero and zero at the operators of the term.
+    /// `phi[i][k]` weights held term `k` of operator `i` in its Shamir share. It is the value at
+    /// `alpha(i)` of the polynomial of degree `t - 1` that is one at zero and zero at the
+    /// operators of the term.
     pub phi: Vec<Vec<F192>>,
-    /// `lambda[i]` weights the share of operator `i`. The weighted shares of a polynomial of degree at most `2t - 2` add up to its value at zero.
+    /// `lambda[i]` weights the share of operator `i`. The weighted shares of a polynomial of
+    /// degree at most `2t - 2` add up to its value at zero.
     pub lambda: Vec<F192>,
-    /// The rows that give the shares of operators `t` to `n - 1`, and last the secret, from the shares of operators 0 to `t - 1`.
+    /// The rows that give the shares of operators `t` to `n - 1`, and last the secret, from the
+    /// shares of operators 0 to `t - 1`.
     interpolation: Vec<Vec<F192>>,
 }
 
@@ -145,7 +174,8 @@ fn balance(n: usize, eligible: &[Vec<usize>]) -> Vec<usize> {
         *operators.iter().min_by_key(|&&i| (load[i], i)).unwrap()
     };
     let mut load = vec![0; n];
-    // The first pass gives each item to its least loaded eligible operator, and the lowest index on a tie.
+    // The first pass gives each item to its least loaded eligible operator, and the lowest index on
+    // a tie.
     let mut owner: Vec<usize> = eligible
         .iter()
         .map(|operators| {
@@ -154,7 +184,8 @@ fn balance(n: usize, eligible: &[Vec<usize>]) -> Vec<usize> {
             i
         })
         .collect();
-    // Then each scan moves an item to its least loaded eligible operator if this lowers the larger of the two loads. A move lowers the sum of the squared loads, so the scans end.
+    // Then each scan moves an item to its least loaded eligible operator if this lowers the larger
+    // of the two loads. A move lowers the sum of the squared loads, so the scans end.
     let mut moved = true;
     while moved {
         moved = false;
@@ -183,7 +214,8 @@ impl Group {
         let pairs: Vec<(usize, usize)> = (0..terms.len())
             .flat_map(|a| (0..terms.len()).map(move |b| (a, b)))
             .collect();
-        // Two terms contain at most `2t - 2` of the `2t - 1` operators, so some operator holds both.
+        // Two terms contain at most `2t - 2` of the `2t - 1` operators, so some operator holds
+        // both.
         let pair_holders: Vec<Vec<usize>> = pairs
             .iter()
             .map(|&(a, b)| holders(a).filter(|&i| holds(i, b)).collect())
@@ -269,7 +301,8 @@ impl Group {
 
 /// A replicated sharing `[[v]]` of `W` lanes in each word of `LANES` instances.
 pub struct Replicated<const W: usize> {
-    /// The parts of all words. The block of a word holds the public part first and then one part for each held term, in the order of `held`.
+    /// The parts of all words. The block of a word holds the public part first and then one part
+    /// for each held term, in the order of `held`.
     pub parts: Vec<[Word; W]>,
     held: usize,
 }
@@ -292,7 +325,8 @@ impl<const W: usize> Replicated<W> {
     }
 }
 
-/// The held terms of a replicated sharing with no public part, in the order of `held`. Each held term has one column of `length` words for each gate, and a term that no column needs is empty.
+/// The held terms of a replicated sharing with no public part, in the order of `held`. Each held
+/// term has one column of `length` words for each gate, and a term that no column needs is empty.
 #[derive(Default)]
 pub struct Terms {
     words: Vec<Vec<u64>>,
@@ -351,7 +385,8 @@ impl Additive {
 /// A Shamir share `<v>` of this operator.
 pub type Shamir = F192;
 
-/// The AND tuples of a batch with one copy for each held term, and the running hash `h_T` of each held term.
+/// The AND tuples of a batch with one copy for each held term, and the running hash `h_T` of each
+/// held term.
 pub struct Tuples {
     pub x: Vec<Vec<u64>>,
     pub y: Vec<Vec<u64>>,
@@ -376,7 +411,8 @@ impl Tuples {
     }
 }
 
-/// `mul` of replicated sharings, the additive share of this operator. It XORs `x_A & y_B` over the pairs `(A, B)` of `pairs`.
+/// `mul` of replicated sharings, the additive share of this operator. It XORs `x_A & y_B` over the
+/// pairs `(A, B)` of `pairs`.
 pub fn mul(pairs: &[(usize, usize)], x: impl Fn(usize) -> Word, y: impl Fn(usize) -> Word) -> Word {
     pairs
         .iter()
@@ -405,7 +441,9 @@ pub async fn commit_reveal(
     }
 }
 
-/// `establish` in one round. Each operator sends `[nonce || mode || batch_size]` to all, and the session value hashes the messages of all operators in operator order. An operator aborts unless every mode and batch size equals its own.
+/// `establish` in one round. Each operator sends `[nonce || mode || batch_size]` to all, and the
+/// session value hashes the messages of all operators in operator order. An operator aborts unless
+/// every mode and batch size equals its own.
 async fn establish(
     network: &Arc<Network>,
     nonce: [u8; 16],
@@ -464,7 +502,9 @@ pub struct Party {
     pub mode: Reshare,
     /// The batch size that all operators of the ceremony use.
     pub batch_size: usize,
-    /// A test changes the messages of a reshare with this function, as a corrupt operator can. The function gets the channel and the messages, and in peer mode index `id` holds the copy that the operator keeps.
+    /// A test changes the messages of a reshare with this function, as a corrupt operator can. The
+    /// function gets the channel and the messages, and in peer mode index `id` holds the copy that
+    /// the operator keeps.
     #[cfg(test)]
     pub tamper: Tamper,
     /// A test makes a corrupt operator accept all digests with this flag.
@@ -517,7 +557,8 @@ impl Party {
     fn stream(&self, key: &Key, channel: &Channel, index: u64, length: usize) -> Vec<u64> {
         assert!(channel.rounds < 1 << 24);
         let mut words = vec![0; length];
-        // The stream number holds the channel number, the round and an 8-bit index. The session value keys every stream, so the number leaves out the session part of the tag.
+        // The stream number holds the channel number, the round and an 8-bit index. The session
+        // value keys every stream, so the number leaves out the session part of the tag.
         let stream = (channel.tag as u32 as u64) << 32 | channel.rounds << 8 | index;
         prg(key, &self.session, stream, &mut words);
         words
@@ -533,7 +574,8 @@ impl Party {
         }
     }
 
-    /// Adds the share `zeta_i` of a pairwise zero sharing to `words`. Each pair of operators adds the stream of its pair key, so the shares of all operators add up to zero.
+    /// Adds the share `zeta_i` of a pairwise zero sharing to `words`. Each pair of operators adds
+    /// the stream of its pair key, so the shares of all operators add up to zero.
     fn zero_sharing(&self, channel: &Channel, words: &mut [u64]) {
         let others = (0..self.group.n).filter(|&j| j != self.id);
         others.for_each(|j| xor_into(words, &self.stream(&self.pairs[j], channel, 0, words.len())));
@@ -546,7 +588,8 @@ impl Party {
         terms.fold(F192::ZERO, |share, (term, &phi)| share + phi * term)
     }
 
-    /// `mul` of Shamir shares, `lambda_i` times each local product `x_i y_i`. On vectors a local product is the inner product.
+    /// `mul` of Shamir shares, `lambda_i` times each local product `x_i y_i`. On vectors a local
+    /// product is the inner product.
     pub fn mul_shamir(&self, products: &[F192]) -> Additive {
         let lambda = self.group.lambda[self.id];
         Additive::values(products.iter().map(|&product| lambda * product))
@@ -558,7 +601,9 @@ impl Party {
         cast_slice(&words).to_vec()
     }
 
-    /// The masks `rand(0)` of a reshare of `additive` that fills the held terms of `filled` at each gate. A held term that the reshare fills at every gate, as each held term of `C` in peer mode, draws no stream.
+    /// The masks `rand(0)` of a reshare of `additive` that fills the held terms of `filled` at each
+    /// gate. A held term that the reshare fills at every gate, as each held term of `C` in peer
+    /// mode, draws no stream.
     pub fn reshare_masks(
         &self,
         channel: &Channel,
@@ -579,7 +624,8 @@ impl Party {
 
     /// `reshare` of the additive columns of `gates` in `mode`, with the masks of `reshare_masks`.
     ///
-    /// It returns the new held terms and the masks with the filled columns in place. Each holder of a filled term hashes its new columns.
+    /// It returns the new held terms and the masks with the filled columns in place. Each holder of
+    /// a filled term hashes its new columns.
     pub async fn reshare(
         &self,
         channel: &mut Channel,
@@ -618,7 +664,8 @@ impl Party {
         Ok(terms)
     }
 
-    /// The held terms, by local index, that a reshare in `mode` fills at each gate. These are `T*` in collector mode and the held terms of `C` in peer mode.
+    /// The held terms, by local index, that a reshare in `mode` fills at each gate. These are `T*`
+    /// in collector mode and the held terms of `C` in peer mode.
     pub fn exchanged(&self, mode: Reshare, gates: Range<usize>) -> Vec<Vec<usize>> {
         let local = |terms: &[usize]| terms.iter().filter_map(|&term| self.local(term)).collect();
         let collectors = &self.group.collectors;
@@ -630,7 +677,8 @@ impl Party {
         }
     }
 
-    /// Round 1 sends the contribution `u_i` of each gate to the other holders of `T_i`. Each held term of `C` takes the own or the received contribution.
+    /// Round 1 sends the contribution `u_i` of each gate to the other holders of `T_i`. Each held
+    /// term of `C` takes the own or the received contribution.
     async fn send_to_co_holders(
         &self,
         channel: &mut Channel,
@@ -660,7 +708,8 @@ impl Party {
         Ok(())
     }
 
-    /// Round 1 sends each contribution to the collector of its gate. Round 2 forwards each collected term to its other holders, which write it into the term of the gate.
+    /// Round 1 sends each contribution to the collector of its gate. Round 2 forwards each
+    /// collected term to its other holders, which write it into the term of the gate.
     async fn collect(
         &self,
         channel: &mut Channel,
@@ -727,7 +776,8 @@ impl Party {
 
     /// `open` of a replicated sharing in one round, as in [MPClan](https://eprint.iacr.org/2022/675) (App. B).
     ///
-    /// 1. For each term `T` and each operator `j` in `T`, `owner(T)` sends `v_T` to `j` and each other holder sends `H(v_T)`.
+    /// 1. For each term `T` and each operator `j` in `T`, `owner(T)` sends `v_T` to `j` and each
+    ///    other holder sends `H(v_T)`.
     /// 2. The receiver aborts unless the hash of each copy equals every received hash.
     /// 3. The value is the public part plus all terms.
     pub async fn open<const W: usize>(
@@ -740,7 +790,8 @@ impl Party {
         let copies: Vec<Vec<u64>> = (1..=self.held.len())
             .map(|part| words(shares.blocks().flat_map(|block| block[part])))
             .collect();
-        // The message from `i` to `j` has a segment for each term that `i` holds and `j` lacks, in term order. The segment is the copy if `i` owns the term and its hash otherwise.
+        // The message from `i` to `j` has a segment for each term that `i` holds and `j` lacks, in
+        // term order. The segment is the copy if `i` owns the term and its hash otherwise.
         let segments = |i: usize, j: usize| -> Vec<(usize, Range<usize>)> {
             let sent = group
                 .held(i)
@@ -815,7 +866,8 @@ impl Party {
         Ok(values)
     }
 
-    /// Opens Shamir shares robustly. Each operator sends its shares and `payload` to all, and the opening also returns the payload of each operator.
+    /// Opens Shamir shares robustly. Each operator sends its shares and `payload` to all, and the
+    /// opening also returns the payload of each operator.
     pub async fn open_shamir(
         &self,
         channel: &mut Channel,
@@ -848,7 +900,8 @@ impl Party {
         Ok((opened, payloads.collect()))
     }
 
-    /// `coin(payload)`, the hash of `open_shamir(conv(rand(1)), payload)`. It also returns the payload of each operator.
+    /// `coin(payload)`, the hash of `open_shamir(conv(rand(1)), payload)`. It also returns the
+    /// payload of each operator.
     pub async fn coin(
         &self,
         channel: &mut Channel,
@@ -926,13 +979,15 @@ pub fn xor_into(target: &mut [u64], source: &[u64]) {
 
 #[cfg(test)]
 pub mod tests {
+    use std::net::TcpListener;
+    use std::thread;
+
+    use tokio::runtime::Runtime;
+
     use crate::check;
     use crate::circuit::{Keccak, evaluate};
     use crate::dkg::BATCH_SIZE;
     use crate::mpc::*;
-    use std::net::TcpListener;
-    use std::thread;
-    use tokio::runtime::Runtime;
 
     pub fn local_parties<T: Send>(
         t: usize,
@@ -945,7 +1000,8 @@ pub mod tests {
         })
     }
 
-    /// Random seeds of all terms and the pair keys of each operator, with `pairs[i][j] = pairs[j][i]` and a zero key at `i = j` as `keygen` gives.
+    /// Random seeds of all terms and the pair keys of each operator, with `pairs[i][j] =
+    /// pairs[j][i]` and a zero key at `i = j` as `keygen` gives.
     pub fn random_keys(group: &Group) -> (Vec<Key>, Vec<Vec<Key>>) {
         let all_seeds = (0..group.terms.len()).map(|_| rand::random()).collect();
         let upper: Vec<Vec<Key>> = (0..group.n)
@@ -964,7 +1020,8 @@ pub mod tests {
         (all_seeds, pairs)
     }
 
-    /// Each operator runs `run` with the outcome of `Party::new` at its reshare mode and batch size of `parameters`.
+    /// Each operator runs `run` with the outcome of `Party::new` at its reshare mode and batch size
+    /// of `parameters`.
     pub fn local_operators<T: Send>(
         t: usize,
         parameters: &[(Reshare, usize)],
@@ -1178,7 +1235,8 @@ pub mod tests {
                         .fold([Word::ZERO; 2], add)
                 })
                 .collect();
-            // Operator `flipped` changes its copy of term 0, so the owner sends a wrong copy and another holder a wrong hash.
+            // Operator `flipped` changes its copy of term 0, so the owner sends a wrong copy and
+            // another holder a wrong hash.
             for flipped in [None, Some(owner), holder] {
                 let outcomes = local_parties(t, Reshare::Peer, async |party, _| {
                     let mut shares = Replicated::<2>::new(&party, 3);

@@ -1,25 +1,37 @@
 //! This module implements `mult_verification`, the check of the AND tuples of one batch, after [`verify.rs`](https://github.com/TomWambsgans/sphincs.art/blob/df77d5671f70ba4959264183296777bdddec778d/crates/rss/src/verify.rs) of the leanSPHINCS prototype. That check is the sublinear check of [Goyal and Song](https://eprint.iacr.org/2020/134) with the compression factor 2.
 //!
-//! - The semi-honest gate is secure up to an additive attack. The check rejects a wrong tuple, except with a negligible probability, before any output opens.
-//! - A coin is a random sharing from the seeds. Each operator converts it to a Shamir share, and the shares open robustly.
-//! - `de_linearization` is Protocol 13 of the paper. A coin gives the coins `tau`, and their tensor `beta` weights the tuples.
-//! - The claim is the inner-product tuple `(x, y, z)` with `x = beta x^(i)`, `y = y^(i)` and `z = sum beta z^(i)` for the tuples `(x^(i), y^(i), z^(i))`.
-//! - Each operator converts its replicated terms to a Shamir share, as Cramer, Damgard and Ishai do.
-//! - The local inner product of an operator times `lambda` is an additive share of the inner product.
+//! - The semi-honest gate is secure up to an additive attack. The check rejects a wrong tuple,
+//!   except with a negligible probability, before any output opens.
+//! - A coin is a random sharing from the seeds. Each operator converts it to a Shamir share, and
+//!   the shares open robustly.
+//! - `de_linearization` is Protocol 13 of the paper. A coin gives the coins `tau`, and their tensor
+//!   `beta` weights the tuples.
+//! - The claim is the inner-product tuple `(x, y, z)` with `x = beta x^(i)`, `y = y^(i)` and `z =
+//!   sum beta z^(i)` for the tuples `(x^(i), y^(i), z^(i))`.
+//! - Each operator converts its replicated terms to a Shamir share, as Cramer, Damgard and Ishai
+//!   do.
+//! - The local inner product of an operator times `lambda` is an additive share of the inner
+//!   product.
 //! - `dimension_reduction` is Protocol 14 for each of the `R` halving steps.
 //!   - A step splits `x` into `a^(1)`, `a^(2)` and `y` into `b^(1)`, `b^(2)`.
-//!   - It reshares `c^(1) = <a^(1), b^(1)>` and `p_2 = <a^(1) + a^(2), b^(1) + b^(2)>` in peer mode.
-//!   - A coin then gives a challenge `r` outside `{0, 1}`. The operators fold `x` and `y` at `r`, and the claim becomes `c^(1) + (z + p_2) r + p_2 r^2`.
+//!   - It reshares `c^(1) = <a^(1), b^(1)>` and `p_2 = <a^(1) + a^(2), b^(1) + b^(2)>` in peer
+//!     mode.
+//!   - A coin then gives a challenge `r` outside `{0, 1}`. The operators fold `x` and `y` at `r`,
+//!     and the claim becomes `c^(1) + (z + p_2) r + p_2 r^2`.
 //! - `randomization` is Protocol 15.
 //!   - It reshares `c^(0) = a^(0) b^(0)` and `q_2 = (a^(0) + a^(1)) (b^(0) + b^(1))`.
-//!   - Here `a^(0)` and `b^(0)` are random, and `a^(1)` and `b^(1)` are the last elements of `x` and `y`.
+//!   - Here `a^(0)` and `b^(0)` are random, and `a^(1)` and `b^(1)` are the last elements of `x`
+//!     and `y`.
 //!   - Its coin carries the salted digests of all held terms to every operator.
 //!   - An operator aborts unless all holders of each term send the same digest.
-//!   - Then `a = a^(0) + r (a^(0) + a^(1))`, `b = b^(0) + r (b^(0) + b^(1))` and `c = c^(0) + (z + c^(0) + q_2) r + q_2 r^2` open robustly, and each operator accepts if `a b = c`.
-//! - A wrong tuple passes with a probability of at most `(d + 2 (R + 1)) / (2^192 - 2)` for `d` coins and `R` halving steps.
+//!   - Then `a = a^(0) + r (a^(0) + a^(1))`, `b = b^(0) + r (b^(0) + b^(1))` and `c = c^(0) + (z +
+//!     c^(0) + q_2) r + q_2 r^2` open robustly, and each operator accepts if `a b = c`.
+//! - A wrong tuple passes with a probability of at most `(d + 2 (R + 1)) / (2^192 - 2)` for `d`
+//!   coins and `R` halving steps.
 //!   - A batch of 128 chains has `d = 18` and `R = 24`, so the bound is below `2^-185`.
 //!   - The advantages against AES-128 and Keccak-256 add to the bound.
-//! - The code writes `a^(0)`, `a^(1)`, `b^(0)` and `b^(1)` of the paper as `a_0`, `a_1`, `b_0` and `b_1`.
+//! - The code writes `a^(0)`, `a^(1)`, `b^(0)` and `b^(1)` of the paper as `a_0`, `a_1`, `b_0` and
+//!   `b_1`.
 //! - The code writes `c^(0)` and `c^(1)` of the paper as `c_0` and `c_1`.
 //! - `F64` and `F192` are binary fields, so `+` also subtracts.
 //!
@@ -27,24 +39,34 @@
 //!
 //! - The field is the leanVM field `F192` in place of GF(2^128).
 //! - Bit `q` of a tuple word has the weight `x^q` in place of a coin.
-//!   - The lift of a word to `F64` is injective, so a wrong tuple still gives a nonzero multilinear polynomial in the coins.
+//!   - The lift of a word to `F64` is injective, so a wrong tuple still gives a nonzero multilinear
+//!     polynomial in the coins.
 //! - The first seven halving steps fold the 128 slices of the tuple words with the small-value optimization of [Bagad, Dao, Domb and Thaler](https://eprint.iacr.org/2025/1117).
-//!   - Each operator adds the products of its pairs of terms into a table `T` at the 2187 points of `{0, 1, INF}^7`.
-//!   - As [Gruen](https://eprint.iacr.org/2024/108) does, step `j` keeps the slice coin `c_j` out of `x`, so `x` and `y` fold with the same weights.
-//!   - The step reshares `t_j(0)` and `t_j(INF)`, and the claim `t_j(0) + c_j t_j(1)` gives `t_j(1)`.
+//!   - Each operator adds the products of its pairs of terms into a table `T` at the 2187 points of
+//!     `{0, 1, INF}^7`.
+//!   - As [Gruen](https://eprint.iacr.org/2024/108) does, step `j` keeps the slice coin `c_j` out
+//!     of `x`, so `x` and `y` fold with the same weights.
+//!   - The step reshares `t_j(0)` and `t_j(INF)`, and the claim `t_j(0) + c_j t_j(1)` gives
+//!     `t_j(1)`.
 //! - The padding differs from the prototype, which pads to powers of two.
 //!   - A slice has a multiple of 8 words.
-//!   - A halving step pads a vector of more than 16 elements to a multiple of 16, and a shorter vector to an even length.
-//! - The callers derive the input terms from seeds whose holders compare hashes at the setup, so the check does not hash the input terms.
-//! - The reshare pads a short message with zeros and truncates a long message, which gives an additive error. The prototype aborts.
+//!   - A halving step pads a vector of more than 16 elements to a multiple of 16, and a shorter
+//!     vector to an even length.
+//! - The callers derive the input terms from seeds whose holders compare hashes at the setup, so
+//!   the check does not hash the input terms.
+//! - The reshare pads a short message with zeros and truncates a long message, which gives an
+//!   additive error. The prototype aborts.
 //! - The prototype reshares each value of the check to the holders of the term number `j mod K`.
 //!   - Here every reshare of the check is the peer reshare of the AND gates, in both modes.
 //! - The prototype compares the digests of a term only among its holders.
-//!   - Here every operator compares them, so a split copy stops every honest operator before `a`, `b` and `c` open.
-//! - The prototype ends the check with a vote. Here each operator decides alone, as in step 8 of Protocol 15.
+//!   - Here every operator compares them, so a split copy stops every honest operator before `a`,
+//!     `b` and `c` open.
+//! - The prototype ends the check with a vote. Here each operator decides alone, as in step 8 of
+//!   Protocol 15.
 
-use crate::mpc::{Additive, Key, Party, Reshare, Shamir, Tuples, xor_into};
-use crate::net::Channel;
+use std::array::from_fn;
+use std::mem;
+
 use primitives::bit_fold::BitFold;
 use primitives::bits::bit_transpose_64bytes;
 use primitives::cast_slice;
@@ -54,11 +76,13 @@ use primitives::field::{
 };
 use primitives::hash::Hasher;
 use primitives::multilinear::eq_table;
-use std::array::from_fn;
-use std::mem;
+
+use crate::mpc::{Additive, Key, Party, Reshare, Shamir, Tuples, xor_into};
+use crate::net::Channel;
 
 pub const SLICES: usize = 128;
-/// The words of a block in `accumulate`. Its table of 2187 points and its rows of the slices stay in the L2 cache.
+/// The words of a block in `accumulate`. Its table of 2187 points and its rows of the slices stay
+/// in the L2 cache.
 const ACCUMULATE_BLOCK: usize = 32;
 
 /// The words of a slice for `words` tuple words of a term.
@@ -76,7 +100,8 @@ fn tensor(factors: impl IntoIterator<Item = [F192; 2]>) -> Vec<F192> {
         })
 }
 
-/// The value at `r` of the quadratic polynomial with the given values at zero and one and the given leading coefficient.
+/// The value at `r` of the quadratic polynomial with the given values at zero and one and the given
+/// leading coefficient.
 fn interpolate(at_zero: F192, at_one: F192, leading: F192, r: F192) -> F192 {
     at_zero + (at_one + at_zero + leading) * r + leading * r * r
 }
@@ -102,10 +127,12 @@ fn challenge(party: &Party, key: &Key) -> F192 {
         .unwrap()
 }
 
-/// XORs `x_z AND y_z` into row `z` of `products` at each point `z` of `{0, 1, INF}^m`, for `2^m` rows of `x` and of `y`.
+/// XORs `x_z AND y_z` into row `z` of `products` at each point `z` of `{0, 1, INF}^m`, for `2^m`
+/// rows of `x` and of `y`.
 ///
 /// - `x_z` is the XOR of the rows that match `z` at each coordinate other than INF.
-/// - A point is a base-3 number with the digit 2 for INF, and its top digit is the top bit of a row number.
+/// - A point is a base-3 number with the digit 2 for INF, and its top digit is the top bit of a row
+///   number.
 /// - `scratch` holds `2^(m + 1)` rows.
 fn add_products(x: &[u64], y: &[u64], products: &mut [u64], scratch: &mut [u64]) {
     if x.len() == products.len() {
@@ -131,9 +158,11 @@ fn add_products(x: &[u64], y: &[u64], products: &mut [u64], scratch: &mut [u64])
     add_products(x_sum, y_sum, at_infinity, scratch);
 }
 
-/// The additive shares of `t_j(0)` and `t_j(INF)` of slice step `j`, from the additive shares of `T`. The challenges are those of the steps before `j`.
+/// The additive shares of `t_j(0)` and `t_j(INF)` of slice step `j`, from the additive shares of
+/// `T`. The challenges are those of the steps before `j`.
 fn slice_round(table: &[F192], challenges: &[F192], slice_coins: &[F192]) -> [F192; 2] {
-    // Each sum removes the last coordinate of the points, with the weights of the nodes 0, 1 and INF.
+    // Each sum removes the last coordinate of the points, with the weights of the nodes 0, 1 and
+    // INF.
     let sum_out = |table: Vec<F192>, weights: [F192; 3]| -> Vec<F192> {
         let point = |values: &[F192]| {
             let terms = values.iter().zip(weights);
@@ -141,12 +170,14 @@ fn slice_round(table: &[F192], challenges: &[F192], slice_coins: &[F192]) -> [F1
         };
         table.chunks(3).map(point).collect()
     };
-    // The positions after `j` take the weights 1 and `c_k` of `beta`. Position `k` is bit `m - 1 - k` of a slice number, so the last position takes the first coin.
+    // The positions after `j` take the weights 1 and `c_k` of `beta`. Position `k` is bit `m - 1 -
+    // k` of a slice number, so the last position takes the first coin.
     let later = &slice_coins[..slice_coins.len() - 1 - challenges.len()];
     let at_bits = later.iter().fold(table.to_vec(), |table, &coin| {
         sum_out(table, [F192::ONE, coin, F192::ZERO])
     });
-    // The positions before `j` take the Lagrange weights `L_0(r) = 1 + r`, `L_1(r) = r` and `L_INF(r) = r (1 + r)` of their challenges.
+    // The positions before `j` take the Lagrange weights `L_0(r) = 1 + r`, `L_1(r) = r` and
+    // `L_INF(r) = r (1 + r)` of their challenges.
     let lagrange = |r: F192| [F192::ONE + r, r, r * (F192::ONE + r)];
     [0, 2].map(|node| {
         let at_node = at_bits.iter().skip(node).step_by(3).copied().collect();
@@ -159,7 +190,8 @@ fn eights(vector: &[F192]) -> &[[F192; 8]] {
     vector.as_chunks().0
 }
 
-/// Pads `x` and `y`, and returns in one pass the two local inner products of a halving step, of `c^(1) = <a^(1), b^(1)>` and `p_2 = <a^(1) + a^(2), b^(1) + b^(2)>`.
+/// Pads `x` and `y`, and returns in one pass the two local inner products of a halving step, of
+/// `c^(1) = <a^(1), b^(1)>` and `p_2 = <a^(1) + a^(2), b^(1) + b^(2)>`.
 fn sums(x: &mut Vec<Shamir>, y: &mut Vec<Shamir>) -> [F192; 2] {
     let length = x.len().next_multiple_of(if x.len() > 16 { 16 } else { 2 });
     x.resize(length, F192::ZERO);
@@ -199,7 +231,8 @@ fn fold(vector: &mut Vec<Shamir>, r: F192) {
     vector.truncate(half);
 }
 
-/// The tuple words of each term as 128 slices of `length` words. Word `w` of slice `s` is at `s * length + w`.
+/// The tuple words of each term as 128 slices of `length` words. Word `w` of slice `s` is at `s *
+/// length + w`.
 struct Slices {
     length: usize,
     slice_coins: Vec<F192>,
@@ -245,7 +278,9 @@ impl Slices {
         }))
     }
 
-    /// The additive share of this operator in `T`, from its pairs of terms as in the AND gate. Entry `z` is `sum_w beta_word[w] (x_z[w] AND y_z[w])` at the point `z` of `add_products`, and `m` is the number of slice coins.
+    /// The additive share of this operator in `T`, from its pairs of terms as in the AND gate.
+    /// Entry `z` is `sum_w beta_word[w] (x_z[w] AND y_z[w])` at the point `z` of `add_products`,
+    /// and `m` is the number of slice coins.
     fn accumulate(&self, pairs: &[(usize, usize)], tuples: &Tuples) -> Vec<F192> {
         let (length, m) = (self.length, self.slice_coins.len());
         let (slices, points) = (1 << m, 3usize.pow(m as u32));
@@ -262,7 +297,8 @@ impl Slices {
             let products = &mut products[..points * block];
             products.fill(0);
             for (a, x) in tuples.x.iter().enumerate() {
-                // The local term first adds the `y` copies of its partner terms, so one AND covers all its pairs.
+                // The local term first adds the `y` copies of its partner terms, so one AND covers
+                // all its pairs.
                 partner.fill(0);
                 for &(_, b) in pairs.iter().filter(|&&(first, _)| first == a) {
                     for (s, row) in partner.chunks_mut(block).enumerate() {
@@ -282,7 +318,9 @@ impl Slices {
         sums.iter().map(|sum| sum.reduce()).collect()
     }
 
-    /// The vectors `x` and `y` after the seven slice steps, lifted from the tuples. The first challenge folds the top bit of the slice number, so the weights take the challenges in reverse order.
+    /// The vectors `x` and `y` after the seven slice steps, lifted from the tuples. The first
+    /// challenge folds the top bit of the slice number, so the weights take the challenges in
+    /// reverse order.
     fn materialize(
         &self,
         party: &Party,
@@ -296,7 +334,9 @@ impl Slices {
         )
     }
 
-    /// Lifts the tuple words to a Shamir vector and folds the 128 slices with `slice_weights`. Element `64 w + q` is bit `q` of word `w`, and `weighted` multiplies it by `beta_word[w] x^q`.
+    /// Lifts the tuple words to a Shamir vector and folds the 128 slices with `slice_weights`.
+    /// Element `64 w + q` is bit `q` of word `w`, and `weighted` multiplies it by `beta_word[w]
+    /// x^q`.
     fn lift(
         &self,
         party: &Party,
@@ -345,7 +385,8 @@ impl Slices {
     }
 }
 
-/// `MultVerification` (Protocol 17) of the AND tuples of the batch. Every operator aborts if a tuple is wrong, except with a negligible probability.
+/// `MultVerification` (Protocol 17) of the AND tuples of the batch. Every operator aborts if a
+/// tuple is wrong, except with a negligible probability.
 pub async fn mult_verification(
     party: &Party,
     channel: &mut Channel,
@@ -359,7 +400,8 @@ pub async fn mult_verification(
     randomization(party, channel, z, a_1, b_1, hashes).await
 }
 
-/// `De-Linearization` (Protocol 13). A coin gives the coins `tau` of the tensor `beta`, and the claim is `<z> = conv(sum beta [[z^(i)]])`.
+/// `De-Linearization` (Protocol 13). A coin gives the coins `tau` of the tensor `beta`, and the
+/// claim is `<z> = conv(sum beta [[z^(i)]])`.
 async fn de_linearization(
     party: &Party,
     channel: &mut Channel,
@@ -376,9 +418,11 @@ async fn de_linearization(
     Ok((slices, z))
 }
 
-/// `Dimension-Reduction` (Protocol 14) with the compression factor 2, for each of the `R` halving steps.
+/// `Dimension-Reduction` (Protocol 14) with the compression factor 2, for each of the `R` halving
+/// steps.
 ///
-/// - The slice steps fold the slices of the tuples with the table `T`, and the vector steps halve `x` and `y`.
+/// - The slice steps fold the slices of the tuples with the table `T`, and the vector steps halve
+///   `x` and `y`.
 /// - Each step reshares two values in peer mode, and a coin then gives its challenge.
 async fn dimension_reduction(
     party: &Party,
@@ -414,7 +458,9 @@ async fn dimension_reduction(
     Ok((z, x[0], y[0], hashes))
 }
 
-/// `Randomization` (Protocol 15). Random `a^(0)` and `b^(0)` mask the last elements `a^(1)` and `b^(1)` of `x` and `y`. The coin of `r` carries the digests, so a split term stops every operator before `a`, `b` and `c` open.
+/// `Randomization` (Protocol 15). Random `a^(0)` and `b^(0)` mask the last elements `a^(1)` and
+/// `b^(1)` of `x` and `y`. The coin of `r` carries the digests, so a split term stops every
+/// operator before `a`, `b` and `c` open.
 async fn randomization(
     party: &Party,
     channel: &mut Channel,
@@ -446,14 +492,16 @@ async fn randomization(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::Ordering;
+
+    use primitives::field::F64;
+    use rand::rngs::StdRng;
+    use rand::{Rng, SeedableRng};
+
     use crate::check::*;
     use crate::circuit::{Keccak, evaluate};
     use crate::mpc::tests::local_parties;
     use crate::mpc::{Group, Replicated, Reshare, Tamper, Word};
-    use primitives::field::F64;
-    use rand::rngs::StdRng;
-    use rand::{Rng, SeedableRng};
-    use std::sync::atomic::Ordering;
 
     async fn evaluated(party: &Party, channel: &mut Channel) -> (Tuples, Replicated<25>) {
         let mut blocks = Replicated::new(party, 1);
@@ -475,7 +523,8 @@ mod tests {
         outgoing
     }
 
-    /// Operator 0 keeps `u_0` and sends it with one flipped bit to the last co-holder of `T_0` in the first peer round.
+    /// Operator 0 keeps `u_0` and sends it with one flipped bit to the last co-holder of `T_0` in
+    /// the first peer round.
     fn flip_to_one_co_holder(channel: &Channel, mut outgoing: Vec<Vec<u64>>) -> Vec<Vec<u64>> {
         if channel.rounds == 0 {
             outgoing.last_mut().unwrap()[0] ^= 1;
@@ -483,7 +532,8 @@ mod tests {
         outgoing
     }
 
-    /// Operator 0 sends the messages that carry its contributions `u_0` through `send`, and every operator applies `tamper` before the check.
+    /// Operator 0 sends the messages that carry its contributions `u_0` through `send`, and every
+    /// operator applies `tamper` before the check.
     fn tampered(
         t: usize,
         reshare: Reshare,
@@ -521,7 +571,8 @@ mod tests {
                 let outcomes = tampered(t, reshare, honest, clear_tuples);
                 assert!(outcomes.iter().all(Result::is_ok));
             }
-            // A slice has 24 words, so the last flip hits the last word of slice 127, which only pads the tuples.
+            // A slice has 24 words, so the last flip hits the last word of slice 127, which only
+            // pads the tuples.
             for flips in [
                 &[(77, 1 << 13)][..],
                 &[(77, 1 << 3 | 1 << 40)],
@@ -555,7 +606,8 @@ mod tests {
                     .iter()
                     .all(Result::is_err)
             );
-            // Operator 1 hashes one more value for its first held term, so every operator sees the digests of that term differ.
+            // Operator 1 hashes one more value for its first held term, so every operator sees the
+            // digests of that term differ.
             let group = Group::new(t);
             let term = group.held(1)[0];
             let collect_another_value =
@@ -567,7 +619,8 @@ mod tests {
             let differ = Err(format!("the holders of term {term} send different digests"));
             let outcomes = tampered(t, reshare, honest, collect_another_value);
             assert_eq!(outcomes, vec![differ; group.n]);
-            // Only the operators that lack the term receive its copy or a hash of it, so only they abort.
+            // Only the operators that lack the term receive its copy or a hash of it, so only they
+            // abort.
             let flip_one_copy = |party: &Party, _: &mut Tuples, blocks: &mut Replicated<25>| {
                 if party.id == 1 {
                     blocks.parts[1][3].0[2] ^= 1;
@@ -582,7 +635,8 @@ mod tests {
                 assert_eq!(outcome, expected, "operator {id} at t = {t}");
             }
         }
-        // Operator 0 keeps `u_0` and sends it with one flipped bit in the first peer round. At `t = 2` the term `T_0` has only one co-holder.
+        // Operator 0 keeps `u_0` and sends it with one flipped bit in the first peer round. At `t =
+        // 2` the term `T_0` has only one co-holder.
         let flip_to_every_co_holder = |channel: &Channel, mut outgoing: Vec<Vec<u64>>| {
             if channel.rounds == 0 {
                 let co_holders = outgoing
@@ -593,7 +647,8 @@ mod tests {
             }
             outgoing
         };
-        // Operator 0 also flips the copy that it keeps, so all holders of `T_0` agree and only the multiplication check fails.
+        // Operator 0 also flips the copy that it keeps, so all holders of `T_0` agree and only the
+        // multiplication check fails.
         let flip_every_copy = |channel: &Channel, mut outgoing: Vec<Vec<u64>>| {
             if channel.rounds == 0 {
                 let copies = outgoing.iter_mut().filter(|words| !words.is_empty());
@@ -601,7 +656,8 @@ mod tests {
             }
             outgoing
         };
-        // The holders of `T_0` hold different copies, so every operator sees their digests differ at the coin of `r`.
+        // The holders of `T_0` hold different copies, so every operator sees their digests differ
+        // at the coin of `r`.
         let differ = |t: usize| {
             let term = Group::new(t).peer_terms[0];
             vec![Err(format!("the holders of term {term} send different digests")); 2 * t - 1]
@@ -617,7 +673,8 @@ mod tests {
         assert_eq!(outcomes, differ(3));
     }
 
-    /// Operator 0 forwards a collected term with one flipped bit to the last operator in round 2 of the first layer.
+    /// Operator 0 forwards a collected term with one flipped bit to the last operator in round 2 of
+    /// the first layer.
     fn flip_forwarded(channel: &Channel, mut outgoing: Vec<Vec<u64>>) -> Vec<Vec<u64>> {
         if channel.rounds == 1 {
             outgoing.last_mut().unwrap()[0] ^= 1;
@@ -629,7 +686,8 @@ mod tests {
     fn a_coalition_that_splits_a_gate_copy_stops_every_honest_operator_before_its_final_shares() {
         let modes = [Reshare::Collector, Reshare::Peer];
         for (t, mode) in [3, 4].into_iter().flat_map(|t| modes.map(|mode| (t, mode))) {
-            // Operators 0 to `t - 2` ignore the digests. In peer mode the honest operator `t - 1` is a member of `T_0`, so it holds no copy.
+            // Operators 0 to `t - 2` ignore the digests. In peer mode the honest operator `t - 1`
+            // is a member of `T_0`, so it holds no copy.
             let (group, stars) = (Group::new(t), &Group::new(t).collectors);
             let (send, term): (Tamper, usize) = match mode {
                 Reshare::Peer => (flip_to_one_co_holder, group.peer_terms[0]),
@@ -653,7 +711,8 @@ mod tests {
                 (outcome, sent() - start)
             });
             let differ = Err(format!("the holders of term {term} send different digests"));
-            // Every operator sends the same bytes until the coin of `r`. The final shares are 9 words for each other operator.
+            // Every operator sends the same bytes until the coin of `r`. The final shares are 9
+            // words for each other operator.
             let (honest, final_shares) = (outcomes[t - 1].1, 72 * (2 * t as u64 - 2));
             for (id, (outcome, sent)) in outcomes.into_iter().enumerate() {
                 match id + 1 < t {
@@ -701,7 +760,9 @@ mod tests {
         (tuples, slices)
     }
 
-    /// `sum_w beta_word[w] sum_q x^q X(w, q) Y(w, q)`, where `X(w, q)` adds the weights of the slices with bit `q` set in word `w`. Slice `s` has the weight `prod_k weights[k][s_k]` for its bit `s_k` at position `k`.
+    /// `sum_w beta_word[w] sum_q x^q X(w, q) Y(w, q)`, where `X(w, q)` adds the weights of the
+    /// slices with bit `q` set in word `w`. Slice `s` has the weight `prod_k weights[k][s_k]` for
+    /// its bit `s_k` at position `k`.
     fn naive(x: &[u64], y: &[u64], beta_word: &[F192], weights: &[[F192; 2]]) -> F192 {
         let (m, length) = (weights.len(), beta_word.len());
         let slice_weight = |s: usize| {
@@ -722,7 +783,8 @@ mod tests {
         })
     }
 
-    /// `t_j(0)` and `t_j(INF)` of slice step `j` from the folded words, without `T`. The challenges are those of the steps before `j`.
+    /// `t_j(0)` and `t_j(INF)` of slice step `j` from the folded words, without `T`. The challenges
+    /// are those of the steps before `j`.
     fn naive_round(x: &[u64], y: &[u64], slices: &Slices, challenges: &[F192]) -> [F192; 2] {
         let (m, j) = (slices.slice_coins.len(), challenges.len());
         let earlier = challenges.iter().map(|&r| [F192::ONE + r, r]);
@@ -818,7 +880,8 @@ mod tests {
                 let shares: Vec<[F192; 2]> = (0..challenges.len())
                     .map(|j| slice_round(&table, &challenges[..j], &slices.slice_coins))
                     .collect();
-                // Each term has one owner, so the owned copies of all operators add up to the plaintext words.
+                // Each term has one owner, so the owned copies of all operators add up to the
+                // plaintext words.
                 let owned = |copies: &[Vec<u64>]| {
                     let held = party.held.iter().zip(copies);
                     let owned = held.filter(|&(&term, _)| party.group.owner[term] == party.id);
