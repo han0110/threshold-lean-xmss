@@ -30,13 +30,13 @@ Examples use $t = 2$, $n = 3$.
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | $\mathcal T = \{T \subseteq \{0, \dots, n-1\} : \lvert T \rvert = t - 1\}$ | the terms                                                                                               |
 | $\mathrm{holders}(T) = \{i : i \notin T\}$                                 | the $t$ operators holding $T$                                                                           |
-| $\llbracket v \rrbracket$                                                  | replicated: $v = c + \sum_{T \in \mathcal T} v_T$, public part $c$, $v_T$ held by $\mathrm{holders}(T)$ |
+| $[\![ v ]\!]$                                                              | replicated: $v = c + \sum_{T \in \mathcal T} v_T$, public part $c$, $v_T$ held by $\mathrm{holders}(T)$ |
 | $\langle v \rangle$                                                        | Shamir: $P_i$ holds $v_i = V(\alpha_i)$, $\deg V \le t - 1$, $V(0) = v$                                 |
 | $\{v\}$                                                                    | additive: $P_i$ holds $v_i$, $v = \sum_i v_i$                                                           |
-| $\llbracket A \rrbracket$                                                  | a vector, shared elementwise                                                                            |
+| $[\![ A ]\!]$                                                              | a vector, shared elementwise                                                                            |
 
 - A coalition of $t - 1$ operators lacks exactly one term, the term equal to itself.
-- $\llbracket \cdot \rrbracket$ is the sharing of every wire. $\langle \cdot \rangle$ needs $n$ distinct points, so it exists over $\mathbb F_{192}$ only and is used in the check only. $\{\cdot\}$ is the output of a multiplication and is reshared in the next round.
+- $[\![ \cdot ]\!]$ is the sharing of every wire. $\langle \cdot \rangle$ needs $n$ distinct points, so it exists over $\mathbb F_{192}$ only and is used in the check only. $\{\cdot\}$ is the output of a multiplication and is reshared in the next round.
 - For 2-of-3, a term is one operator, written $k$ for $\{k\}$, held by the two operators other than $P_k$.
 
 #### 1.1.3 Public constants of a group $(n, t)$
@@ -70,16 +70,16 @@ For 2-of-3: $\alpha = (1, 2, 3)$, $\lambda = (1, 1, 1)$, $(T_0, T_1, T_2) = (1, 
 
 | gadget                    | input $\to$ output                                            | rounds                  | messages                                                       | section |
 | ------------------------- | ------------------------------------------------------------- | ----------------------- | -------------------------------------------------------------- | ------- |
-| $\mathsf{Rand}$           | $\to \llbracket r \rrbracket$                                 | 0                       | none                                                           | 1.2     |
-| $\mathsf{MulRep}$         | $\llbracket x \rrbracket, \llbracket y \rrbracket \to \{xy\}$ | 0                       | none                                                           | 1.3     |
+| $\mathsf{Rand}$           | $\to [\![ r ]\!]$                                             | 0                       | none                                                           | 1.2     |
+| $\mathsf{MulRep}$         | $[\![ x ]\!], [\![ y ]\!] \to \{xy\}$                         | 0                       | none                                                           | 1.3     |
 | $\mathsf{MulSh}$          | $\langle x \rangle, \langle y \rangle \to \{xy\}$             | 0                       | none                                                           | 1.4     |
-| $\mathsf{Conv}$           | $\llbracket v \rrbracket \to \langle v \rangle$               | 0                       | none                                                           | 1.5     |
-| $\mathsf{Reshare}$        | $\{v\} \to \llbracket v \rrbracket$                           | 1 (2 in collector mode) | $n(t-1)$                                                       | 1.6     |
-| $\mathsf{OpenRep}$        | $\llbracket v \rrbracket \to v$                               | 1                       | $n\binom{n-1}{t-2}$ copies and $n(t-1)\binom{n-1}{t-2}$ hashes | 1.7     |
+| $\mathsf{Conv}$           | $[\![ v ]\!] \to \langle v \rangle$                           | 0                       | none                                                           | 1.5     |
+| $\mathsf{Reshare}$        | $\{v\} \to [\![ v ]\!]$                                       | 1 (2 in collector mode) | $n(t-1)$                                                       | 1.6     |
+| $\mathsf{OpenRep}$        | $[\![ v ]\!] \to v$                                           | 1                       | $n\binom{n-1}{t-2}$ copies and $n(t-1)\binom{n-1}{t-2}$ hashes | 1.7     |
 | $\mathsf{OpenSh}$         | $\langle v \rangle \to v$                                     | 1                       | $n(n-1)$                                                       | 1.8     |
 | $\mathsf{Coin}$ (derived) | $\to r$ public                                                | 1                       | as $\mathsf{OpenSh}$                                           | 1.9     |
 
-Composition rule: a product is $\{\cdot\}$, and $\{\cdot\}$ is reshared to $\llbracket \cdot \rrbracket$ in the next round.
+Composition rule: a product is $\{\cdot\}$, and $\{\cdot\}$ is reshared to $[\![ \cdot ]\!]$ in the next round.
 
 #### 1.1.6 Notation against the literature
 
@@ -88,7 +88,7 @@ Composition rule: a product is $\{\cdot\}$, and $\{\cdot\}$ is reshared to $\llb
 | here                                                                              | literature                                                                                                                                                        |
 | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | $\langle x \rangle$, degree $t - 1$                                               | $[x]_t$ in [GS20](https://eprint.iacr.org/2020/134)                                                                                                               |
-| $\llbracket x \rrbracket$                                                         | replicated sharing of [CDI05](https://doi.org/10.1007/978-3-540-30576-7_19), [AFL+16](https://eprint.iacr.org/2016/768), [MR18](https://eprint.iacr.org/2018/403) |
+| $[\![ x ]\!]$                                                                     | replicated sharing of [CDI05](https://doi.org/10.1007/978-3-540-30576-7_19), [AFL+16](https://eprint.iacr.org/2016/768), [MR18](https://eprint.iacr.org/2018/403) |
 | $\psi_T$                                                                          | $f_A$ in [CDI05](https://doi.org/10.1007/978-3-540-30576-7_19), $A = T$ a maximal unqualified set                                                                 |
 | $\lambda_i$                                                                       | Lagrange coefficients at $0$ from all $n$ shares                                                                                                                  |
 | $(\langle A \rangle, \langle B \rangle, \langle C \rangle)$, $C = \sum_e A_e B_e$ | the inner-product tuple $([\boldsymbol x]_t, [\boldsymbol y]_t, [z]_t)$ of [GS20, §4](https://eprint.iacr.org/2020/134)                                           |
@@ -99,7 +99,7 @@ Composition rule: a product is $\{\cdot\}$, and $\{\cdot\}$ is reshared to $\llb
 
 #### Syntax
 
-$\mathsf{Rand}(\rho, \mathrm{idx}) \to \llbracket r \rrbracket$. Local.
+$\mathsf{Rand}(\rho, \mathrm{idx}) \to [\![ r ]\!]$. Local.
 
 #### Protocol
 
@@ -131,7 +131,7 @@ $r = 4 + 5 + 6 = 7$, known to nobody.
 
 #### Syntax
 
-$\mathsf{MulRep}(\llbracket x \rrbracket, \llbracket y \rrbracket) \to \{xy\}$. Local. On vectors, the additive share of $\sum_e x_e y_e$.
+$\mathsf{MulRep}([\![ x ]\!], [\![ y ]\!]) \to \{xy\}$. Local. On vectors, the additive share of $\sum_e x_e y_e$.
 
 #### Protocol
 
@@ -152,7 +152,7 @@ Over $\mathbb F_2$: the AND gate and the slice table of the check.
 <details>
 <summary>Example</summary>
 
-$\llbracket a \rrbracket = (1, 1, 1)$, $\llbracket b \rrbracket = (0, 1, 0)$, $a = b = 1$.
+$[\![ a ]\!] = (1, 1, 1)$, $[\![ b ]\!] = (0, 1, 0)$, $a = b = 1$.
 
 | operator | $\sum_{\mathrm{pairs}_i} a_A b_B$         | share |
 | -------- | ----------------------------------------- | ----- |
@@ -205,7 +205,7 @@ $\{xy\} = (115, 253, 146)$, sum $28 = 7 \cdot 4$.
 
 #### Syntax
 
-$\mathsf{Conv}(\llbracket v \rrbracket) \to \langle v \rangle$. Local.
+$\mathsf{Conv}([\![ v ]\!]) \to \langle v \rangle$. Local.
 
 #### Protocol
 
@@ -222,7 +222,7 @@ No message.
 <details>
 <summary>Example</summary>
 
-$\llbracket v \rrbracket = (4, 5, 6)$, $v = 7$, $V(X) = 4(1 + X) + 5(1 + 141X) + 6(1 + 246X) = 7 + 137X$.
+$[\![ v ]\!] = (4, 5, 6)$, $v = 7$, $V(X) = 4(1 + X) + 5(1 + 141X) + 6(1 + 246X) = 7 + 137X$.
 
 | operator | $\sum_{T \not\ni i} \psi_T(\alpha_i)\, v_T$ | $V(\alpha_i)$ |
 | -------- | ------------------------------------------- | ------------- |
@@ -236,11 +236,11 @@ $\llbracket v \rrbracket = (4, 5, 6)$, $v = 7$, $V(X) = 4(1 + X) + 5(1 + 141X) +
 
 #### Syntax
 
-$\mathsf{Reshare}(\{v\}) \to \llbracket v \rrbracket$. One round, $n(t-1)$ messages.
+$\mathsf{Reshare}(\{v\}) \to [\![ v ]\!]$. One round, $n(t-1)$ messages.
 
 #### Protocol, round $\rho$
 
-1. $\llbracket r \rrbracket = \mathsf{Rand}(\rho, 0)$, $\zeta_i = \sum_{j \ne i} \mathsf{PRG}(K_{ij}, \rho, 0)$.
+1. $[\![ r ]\!] = \mathsf{Rand}(\rho, 0)$, $\zeta_i = \sum_{j \ne i} \mathsf{PRG}(K_{ij}, \rho, 0)$.
 2. $P_i$ sends $u_i = v_i + \zeta_i + \sum_{T \notin \mathcal C,\ \mathrm{owner}(T) = i} r_T$ to $\mathrm{holders}(T_i) \setminus \{i\}$.
 3. $v_{T_i} = u_i$, and $v_T = r_T$ for $T \notin \mathcal C$. Each holder of $T \in \mathcal C$ appends $v_T$ to its digest $h_T$ (see 1.9).
 
@@ -272,7 +272,7 @@ $\{v\} = (2, 7, 4)$, $v = 1$. Pair streams $Z_{01} = 5$, $Z_{02} = 1$, $Z_{12} =
 | $P_1$    | $5 + 2 = 7$ | $7 + 7 = 0$           | $P_0$    | $v_2 = 0$ |
 | $P_2$    | $1 + 2 = 3$ | $4 + 3 = 7$           | $P_1$    | $v_0 = 7$ |
 
-$\llbracket v \rrbracket = (7, 6, 0)$, sum $1 = v$.
+$[\![ v ]\!] = (7, 6, 0)$, sum $1 = v$.
 
 </details>
 
@@ -280,7 +280,7 @@ $\llbracket v \rrbracket = (7, 6, 0)$, sum $1 = v$.
 
 #### Syntax
 
-$\mathsf{OpenRep}(\llbracket v \rrbracket) \to v$ or abort. One round, $n\binom{n-1}{t-2}$ copies and $n(t-1)\binom{n-1}{t-2}$ hashes. Robust: no honest operator accepts a wrong value.
+$\mathsf{OpenRep}([\![ v ]\!]) \to v$ or abort. One round, $n\binom{n-1}{t-2}$ copies and $n(t-1)\binom{n-1}{t-2}$ hashes. Robust: no honest operator accepts a wrong value.
 
 #### Protocol
 
@@ -305,7 +305,7 @@ Bit vectors: the outputs of a batch and PRF values. Bits have no Shamir sharing.
 <details>
 <summary>Example</summary>
 
-$\llbracket v \rrbracket = (4, 5, 6)$, $v = 7$. At $P_0$, which lacks term 0:
+$[\![ v ]\!] = (4, 5, 6)$, $v = 7$. At $P_0$, which lacks term 0:
 
 | case          | copy from $\mathrm{owner}(0) = P_1$ | hash from $P_2$ | check           | output          |
 | ------------- | ----------------------------------- | --------------- | --------------- | --------------- |
@@ -375,24 +375,24 @@ An operator aborts unless all holders of each $T$ sent the same $d_T$, equal to 
 
 ## 2. Toy example - AND of 8 secret-shared bits
 
-Inputs $\llbracket b_0 \rrbracket, \dots, \llbracket b_7 \rrbracket$, bits. Output $b_0 \wedge \dots \wedge b_7$, public. Seven AND gates in $L = 3$ layers, then the check of the seven gates, then the opening. Every multiplication is a gadget, every gadget is one of 1.2 to 1.9, and every message is sent by $\mathsf{Reshare}$, $\mathsf{OpenRep}$ or $\mathsf{OpenSh}$.
+Inputs $[\![ b_0 ]\!], \dots, [\![ b_7 ]\!]$, bits. Output $b_0 \wedge \dots \wedge b_7$, public. Seven AND gates in $L = 3$ layers, then the check of the seven gates, then the opening. Every multiplication is a gadget, every gadget is one of 1.2 to 1.9, and every message is sent by $\mathsf{Reshare}$, $\mathsf{OpenRep}$ or $\mathsf{OpenSh}$.
 
 ### 2.1 AND layers
 
-$\llbracket z^{(0)}_e \rrbracket = \llbracket b_e \rrbracket$ for $e < 8$. For $\ell = 1, 2, 3$ and $g < 2^{3 - \ell}$:
-$$\llbracket z^{(\ell)}_g \rrbracket = \mathsf{Reshare}\Big( \mathsf{MulRep}\big( \llbracket z^{(\ell-1)}_{2g} \rrbracket,\ \llbracket z^{(\ell-1)}_{2g+1} \rrbracket \big) \Big).$$
+$[\![ z^{(0)}_e ]\!] = [\![ b_e ]\!]$ for $e < 8$. For $\ell = 1, 2, 3$ and $g < 2^{3 - \ell}$:
+$$[\![ z^{(\ell)}_g ]\!] = \mathsf{Reshare}\Big( \mathsf{MulRep}\big( [\![ z^{(\ell-1)}_{2g} ]\!],\ [\![ z^{(\ell-1)}_{2g+1} ]\!] \big) \Big).$$
 One round per layer. Each gate records its tuple
-$$\big( \llbracket x_e \rrbracket, \llbracket y_e \rrbracket, \llbracket z_e \rrbracket \big) = \big( \llbracket z^{(\ell-1)}_{2g} \rrbracket, \llbracket z^{(\ell-1)}_{2g+1} \rrbracket, \llbracket z^{(\ell)}_g \rrbracket \big), \qquad e = 0, \dots, 6 .$$
+$$\big( [\![ x_e ]\!], [\![ y_e ]\!], [\![ z_e ]\!] \big) = \big( [\![ z^{(\ell-1)}_{2g} ]\!], [\![ z^{(\ell-1)}_{2g+1} ]\!], [\![ z^{(\ell)}_g ]\!] \big), \qquad e = 0, \dots, 6 .$$
 $\mathsf{Reshare}$ admits an additive error, so $z_e = x_e y_e$ is not yet guaranteed.
 
 ### 2.2 Check
 
-Pad with $(\llbracket 0 \rrbracket, \llbracket 0 \rrbracket, \llbracket 0 \rrbracket)$ to $N = 2^m = 8$ tuples, $m = 3$.
+Pad with $([\![ 0 ]\!], [\![ 0 ]\!], [\![ 0 ]\!])$ to $N = 2^m = 8$ tuples, $m = 3$.
 
 #### Setup
 
 $$(c_0, \dots, c_{m-1}) = \mathsf{Coin}, \qquad \beta_e = \prod_{k : e_k = 1} c_k \quad \text{for } e = \textstyle\sum_k e_k 2^k,$$
-$$\langle C \rangle = \mathsf{Conv}\Big( \sum_{e < N} \beta_e \llbracket z_e \rrbracket \Big), \qquad \langle A \rangle = \big( \mathsf{Conv}( \beta_e \llbracket x_e \rrbracket ) \big)_{e < N}, \qquad \langle B \rangle = \big( \mathsf{Conv}( \llbracket y_e \rrbracket ) \big)_{e < N} .$$
+$$\langle C \rangle = \mathsf{Conv}\Big( \sum_{e < N} \beta_e [\![ z_e ]\!] \Big), \qquad \langle A \rangle = \big( \mathsf{Conv}( \beta_e [\![ x_e ]\!] ) \big)_{e < N}, \qquad \langle B \rangle = \big( \mathsf{Conv}( [\![ y_e ]\!] ) \big)_{e < N} .$$
 Claim: $C = \sum_e A_e B_e$, true iff every $z_e = x_e y_e$, up to the probability that $\beta$ hides a difference.
 
 #### Halving, $m$ times
@@ -415,7 +415,7 @@ $Q(X) = (w_a + X(w_a + a))(w_b + X(w_b + b))$ has $Q(0) = q_0$, $Q(1) = ab$ and 
 
 ### 2.3 Open
 
-$$b_0 \wedge \dots \wedge b_7 = \mathsf{OpenRep}\big( \llbracket z^{(3)}_0 \rrbracket \big).$$
+$$b_0 \wedge \dots \wedge b_7 = \mathsf{OpenRep}\big( [\![ z^{(3)}_0 ]\!] \big).$$
 
 ### 2.4 Rounds
 
