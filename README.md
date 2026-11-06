@@ -67,37 +67,19 @@ A key has a top tree of $2^{16}$ leaves, and each bottom tree has $2^{16}$ more.
 
 ### DKG
 
-A ceremony generates one tree in batches of $128$ chains, and many batches run at the same time.
+The table gives the cost of one bottom tree, which holds $2^{16}$ one-time keys.
 
-| Group  | Mode      | Concurrency | Wall time for each tree | CPU for each operator and tree | Peak RAM for each operator | Sent by each operator for each tree |
-| ------ | --------- | ----------- | ----------------------- | ------------------------------ | -------------------------- | ----------------------------------- |
-| 2-of-3 | collector | $64$        | $3.0$ min               | $28$ min                       | $2.9$ GB                   | $52.3$ GB                           |
-| 2-of-3 | peer      | $64$        | $2.8$ min               | $27$ min                       | $2.9$ GB                   | $52.3$ GB                           |
-| 3-of-5 | collector | $64$        | $11.6$ min              | $71$ min                       | $8.4$ GB                   | $63.3$ GB                           |
-| 4-of-7 | collector | $16$        | $90.2$ min              | $400$ min                      | $9.0$ GB                   | $70.0$ GB                           |
+| Group  | Delay  | Mode      | Rounds per batch | Wall time     | Sent per operator |
+| ------ | ------ | --------- | ---------------- | ------------- | ----------------- |
+| 2-of-3 | none   | collector | $197$            | $200.5$ s     | $52.3$ GB         |
+| 2-of-3 | 150 ms | collector | $197$            | $1{,}761.6$ s | $52.3$ GB         |
+| 2-of-3 | 150 ms | peer      | $125$            | $1{,}133.0$ s | $52.3$ GB         |
 
-The measurement has this setup.
-
-- All operators run on one i9-13900K host with $32$ threads and $62$ GB, over localhost with no added latency.
-- Each row runs $4{,}096$ keys, which is $1/16$ of a bottom tree, and scales the result by $16$.
-- 4-of-7 runs at concurrency $16$, because $7$ operators at concurrency $64$ need more than the RAM of the host.
-- All operators share the host. So with one host for each operator, the CPU column is the better guide.
-- A full 2-of-3 bottom tree took $181$ s, sent $52.3$ GB and peaked at $4.0$ GB of RAM.
-  - So the time and the bytes scale by $16$.
-  - But a full tree needs about $1$ GB more RAM.
-
-The sent bytes are a little above the bandwidth of the AND layers in [`doc/dkg.md`](doc/dkg.md). They also include the check, the opening, the commitments and the message framing.
-
-A batch has a fixed number of rounds, the same for every group.
-
-| Batch            | Mode      | AND layers   | Check | Opening | Total |
-| ---------------- | --------- | ------------ | ----- | ------- | ----- |
-| Chain batch      | collector | $72 \cdot 2$ | $52$  | $1$     | $197$ |
-| Chain batch      | peer      | $72$         | $52$  | $1$     | $125$ |
-| Commitment batch | collector | $24 \cdot 2$ | $50$  | $1$     | $99$  |
-| Commitment batch | peer      | $24$         | $50$  | $1$     | $75$  |
-
-The key setup before the top tree takes $3$ rounds, and each ceremony starts with $1$ more round.
+- The CPU is Intel Core i9-13900K. Each operator has $8$ of its threads.
+- Each operator runs $512$ batches at the same time.
+- The wall time is the MPC time of one full bottom tree, as operator 0 logs it.
+- The delay is a fixed $150$ ms one way on every link, with TCP buffers of $128$ MB.
+- The links have no bandwidth limit, jitter or loss, so a real network can take longer.
 
 ### Sign
 
