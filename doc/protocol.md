@@ -44,7 +44,7 @@ This note gives the MPC gadgets that the protocol uses, and a toy example for un
 
 | constant                                                           | definition                                                                                                                                                                        |
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| $\mathrm{pairs}_i \subseteq \mathcal T \times \mathcal T$          | a balanced partition of all pairs of terms, pair $(A, B)$ given to an operator holding both ($\lvert A \cup B \rvert \le 2t - 2 < n$)                                             |
+| $`\mathrm{pairs}_i \subseteq \mathcal T \times \mathcal T`$        | a balanced partition of all pairs of terms, pair $(A, B)$ given to an operator holding both ($\lvert A \cup B \rvert \le 2t - 2 < n$)                                             |
 | $T_i$                                                              | the term lacking $i + 1, \dots, i + t - 1 \pmod n$, filled by $P_i$ in a reshare                                                                                                  |
 | $`\mathcal C = \{T_0, \dots, T_{n-1}\}`$                           | the filled terms                                                                                                                                                                  |
 | $\mathrm{owner}(T) \in \mathrm{holders}(T)$                        | a balanced choice of one holder per term                                                                                                                                          |
@@ -66,7 +66,7 @@ The constants of each term $k$ follow.
 
 The constants of each operator $P_i$ follow.
 
-| operator | held terms | $T_i$ | $\mathrm{pairs}_i$          |
+| operator | held terms | $T_i$ | $`\mathrm{pairs}_i`$        |
 | -------- | ---------- | ----- | --------------------------- |
 | $P_0$    | 1, 2       | 1     | $`\{(1,2), (2,1), (2,2)\}`$ |
 | $P_1$    | 0, 2       | 2     | $`\{(0,0), (0,2), (2,0)\}`$ |
@@ -98,15 +98,15 @@ The constants of each term $T$ follow.
 
 The constants of each operator $P_i$ follow.
 
-| operator | held terms                               | $T_i$ | $\mathrm{pairs}_i$ |
-| -------- | ---------------------------------------- | ----- | ------------------ |
-| $P_0$    | {1,2}, {1,3}, {2,3}, {1,4}, {2,4}, {3,4} | {1,2} | 20 pairs           |
-| $P_1$    | {0,2}, {0,3}, {2,3}, {0,4}, {2,4}, {3,4} | {2,3} | 20 pairs           |
-| $P_2$    | {0,1}, {0,3}, {1,3}, {0,4}, {1,4}, {3,4} | {3,4} | 20 pairs           |
-| $P_3$    | {0,1}, {0,2}, {1,2}, {0,4}, {1,4}, {2,4} | {0,4} | 20 pairs           |
-| $P_4$    | {0,1}, {0,2}, {1,2}, {0,3}, {1,3}, {2,3} | {0,1} | 20 pairs           |
+| operator | held terms                               | $T_i$ | $`\mathrm{pairs}_i`$ |
+| -------- | ---------------------------------------- | ----- | -------------------- |
+| $P_0$    | {1,2}, {1,3}, {2,3}, {1,4}, {2,4}, {3,4} | {1,2} | 20 pairs             |
+| $P_1$    | {0,2}, {0,3}, {2,3}, {0,4}, {2,4}, {3,4} | {2,3} | 20 pairs             |
+| $P_2$    | {0,1}, {0,3}, {1,3}, {0,4}, {1,4}, {3,4} | {3,4} | 20 pairs             |
+| $P_3$    | {0,1}, {0,2}, {1,2}, {0,4}, {1,4}, {2,4} | {0,4} | 20 pairs             |
+| $P_4$    | {0,1}, {0,2}, {1,2}, {0,3}, {1,3}, {2,3} | {0,1} | 20 pairs             |
 
-Each cell gives the operator $i$ with $(A, B) \in \mathrm{pairs}_i$, for row $A$ and column $B$.
+Each cell gives the operator $i$ with $`(A, B) \in \mathrm{pairs}_i`$, for row $A$ and column $B$.
 
 | $(A, B)$ | {0,1} | {0,2} | {1,2} | {0,3} | {1,3} | {2,3} | {0,4} | {1,4} | {2,4} | {3,4} |
 | -------- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- |
@@ -127,7 +127,7 @@ Each cell gives the operator $i$ with $(A, B) \in \mathrm{pairs}_i$, for row $A$
 
 | symbol                                           | definition                                        |
 | ------------------------------------------------ | ------------------------------------------------- |
-| $\mathrm{seed}_T$                                | a key known to $\mathrm{holders}(T)$              |
+| $`\mathrm{seed}_T`$                              | a key known to $\mathrm{holders}(T)$              |
 | $K_{ij} = K_{ji}$                                | a key known to $P_i$ and $P_j$                    |
 | $\mathsf{PRG}(\mathrm{key}, \rho, \mathrm{idx})$ | a pseudorandom stream for round $\rho$, used once |
 
@@ -150,15 +150,15 @@ The gadgets compose by one rule. A product is $`\{\cdot\}`$, and $`\{\cdot\}`$ i
 
 #### 1.1.6 Notation against the literature
 
-[GS20](https://eprint.iacr.org/2020/134) counts $t$ corrupt among $n = 2t + 1$. Here $t$ is the quorum size, so a sharing $[x]_t$ of [GS20](https://eprint.iacr.org/2020/134) has degree $t - 1$ here.
+[GS20](https://eprint.iacr.org/2020/134) counts $t$ corrupt among $n = 2t + 1$. Here $t$ is the quorum size, so a sharing $`[x]_t`$ of [GS20](https://eprint.iacr.org/2020/134) has degree $t - 1$ here.
 
 | here                                                                              | literature                                                                                                                                                        |
 | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| $\langle x \rangle$, degree $t - 1$                                               | $[x]_t$ in [GS20](https://eprint.iacr.org/2020/134)                                                                                                               |
+| $\langle x \rangle$, degree $t - 1$                                               | $`[x]_t`$ in [GS20](https://eprint.iacr.org/2020/134)                                                                                                             |
 | $[\negthinspace[ x ]\negthinspace]$                                               | replicated sharing of [CDI05](https://doi.org/10.1007/978-3-540-30576-7_19), [AFL+16](https://eprint.iacr.org/2016/768), [MR18](https://eprint.iacr.org/2018/403) |
 | $\psi_T$                                                                          | $f_A$ in [CDI05](https://doi.org/10.1007/978-3-540-30576-7_19), $A = T$ a maximal unqualified set                                                                 |
 | $\lambda_i$                                                                       | Lagrange coefficients at $0$ from all $n$ shares                                                                                                                  |
-| $(\langle A \rangle, \langle B \rangle, \langle C \rangle)$, $C = \sum_e A_e B_e$ | the inner-product tuple $([\boldsymbol x]_t, [\boldsymbol y]_t, [z]_t)$ of [GS20, §4](https://eprint.iacr.org/2020/134)                                           |
+| $(\langle A \rangle, \langle B \rangle, \langle C \rangle)$, $C = \sum_e A_e B_e$ | the inner-product tuple $`([\boldsymbol x]_t, [\boldsymbol y]_t, [z]_t)`$ of [GS20, §4](https://eprint.iacr.org/2020/134)                                         |
 | halving, $r$                                                                      | compression of [GS20](https://eprint.iacr.org/2020/134) with $k = 2$, challenge $r$                                                                               |
 | $\mathsf{Coin}$                                                                   | $\mathcal F_{\mathrm{coin}}$ of [GS20](https://eprint.iacr.org/2020/134)                                                                                          |
 
@@ -177,7 +177,7 @@ r_T = \mathsf{PRG}(\mathrm{seed}_T, \rho, \mathrm{idx}).
 
 #### Correctness
 
-The holders of $T$ share $\mathrm{seed}_T$.
+The holders of $T$ share $`\mathrm{seed}_T`$.
 
 #### Privacy
 
@@ -245,7 +245,7 @@ The AND gate and the slice table of the check, over $\mathbb F_2$.
 
 $[\negthinspace[ a ]\negthinspace] = (1, 1, 1)$, $[\negthinspace[ b ]\negthinspace] = (0, 1, 0)$, $a = b = 1$.
 
-| operator | $\sum_{\mathrm{pairs}_i} a_A b_B$         | share |
+| operator | $`\sum_{\mathrm{pairs}_i} a_A b_B`$       | share |
 | -------- | ----------------------------------------- | ----- |
 | $P_0$    | $a_1 b_2 + a_2 b_1 + a_2 b_2 = 0 + 1 + 0$ | 1     |
 | $P_1$    | $a_0 b_0 + a_0 b_2 + a_2 b_0 = 0 + 0 + 0$ | 0     |
@@ -260,13 +260,13 @@ $`\{ab\} = (1, 0, 0)`$, sum $1 = ab$.
 
 $[\negthinspace[ a ]\negthinspace] = (1, 0, 0, 0, 0, 1, 0, 0, 1, 0)$, $[\negthinspace[ b ]\negthinspace] = (0, 0, 0, 0, 0, 0, 0, 0, 0, 1)$, $a = b = 1$. Only $a_{01}$, $a_{23}$, $a_{24}$ and $b_{34}$ are 1, so the table gives only the nonzero products.
 
-| operator | nonzero $a_A b_B$ in $\mathrm{pairs}_i$ | share |
-| -------- | --------------------------------------- | ----- |
-| $P_0$    | $a_{24} b_{34}$                         | 1     |
-| $P_1$    | $a_{23} b_{34}$                         | 1     |
-| $P_2$    | $a_{01} b_{34}$                         | 1     |
-| $P_3$    | none                                    | 0     |
-| $P_4$    | none                                    | 0     |
+| operator | nonzero $a_A b_B$ in $`\mathrm{pairs}_i`$ | share |
+| -------- | ----------------------------------------- | ----- |
+| $P_0$    | $a_{24} b_{34}$                           | 1     |
+| $P_1$    | $a_{23} b_{34}$                           | 1     |
+| $P_2$    | $a_{01} b_{34}$                           | 1     |
+| $P_3$    | none                                      | 0     |
+| $P_4$    | none                                      | 0     |
 
 $`\{ab\} = (1, 1, 1, 0, 0)`$, sum $1 = ab$.
 
@@ -602,7 +602,7 @@ Every multiplication is a gadget, and every gadget is one of 1.2 to 1.9. Every m
 
 ### 2.1 AND layers
 
-$[\negthinspace[ z^{(0)}_e ]\negthinspace] = [\negthinspace[ b_e ]\negthinspace]$ for $e < 8$. For $\ell = 1, 2, 3$ and $g < 2^{3 - \ell}$, gate $g$ of layer $\ell$ computes
+$`[\negthinspace[ z^{(0)}_e ]\negthinspace] = [\negthinspace[ b_e ]\negthinspace]`$ for $e < 8$. For $\ell = 1, 2, 3$ and $g < 2^{3 - \ell}$, gate $g$ of layer $\ell$ computes
 ```math
 [\negthinspace[ z^{(\ell)}_g ]\negthinspace] = \mathsf{Reshare}\Big( \mathsf{MulRep}\big( [\negthinspace[ z^{(\ell-1)}_{2g} ]\negthinspace],\ [\negthinspace[ z^{(\ell-1)}_{2g+1} ]\negthinspace] \big) \Big).
 ```
@@ -638,7 +638,17 @@ r = \mathsf{Coin},
 ```math
 \langle C \rangle \leftarrow \langle p_0 \rangle + (\langle C \rangle + \langle p_2 \rangle)\, r + \langle p_2 \rangle\, r^2, \qquad \langle A \rangle \leftarrow \langle A_{\mathrm{lo}} \rangle + r (\langle A_{\mathrm{lo}} \rangle + \langle A_{\mathrm{hi}} \rangle), \qquad \langle B \rangle \leftarrow \langle B_{\mathrm{lo}} \rangle + r (\langle B_{\mathrm{lo}} \rangle + \langle B_{\mathrm{hi}} \rangle).
 ```
-Two rounds each. $P(X) = \sum_{e < h} (A_{\mathrm{lo}} + X(A_{\mathrm{lo}} + A_{\mathrm{hi}}))_e (B_{\mathrm{lo}} + X(B_{\mathrm{lo}} + B_{\mathrm{hi}}))_e$ has $P(0) = p_0$, $P(1) = C + p_0$ and leading coefficient $p_2$, so the new claim is $P(r) = \sum_e A_e B_e$ of the folded vectors. A wrong claim survives a round with probability $\le 2/(\lvert \mathbb F \rvert - 2)$.
+Each halving step takes two rounds. The inner product of the folded vectors is a quadratic polynomial in the challenge.
+
+```math
+P(X) = \sum_{e < h} \big( A_{\mathrm{lo}} + X (A_{\mathrm{lo}} + A_{\mathrm{hi}}) \big)_e \, \big( B_{\mathrm{lo}} + X (B_{\mathrm{lo}} + B_{\mathrm{hi}}) \big)_e
+```
+
+- $P(0) = p_0$.
+- $P(1) = C + p_0$.
+- The leading coefficient of $P$ is $p_2$.
+
+So the new claim is $P(r) = \sum_e A_e B_e$ for the folded vectors. A wrong claim survives a step with probability at most $2/(\lvert \mathbb F \rvert - 2)$.
 
 #### Final step
 
@@ -658,7 +668,19 @@ r = \mathsf{Coin} \ \text{with the digests of 1.9},
 ```math
 \text{accept iff } uv = w .
 ```
-$Q(X) = (w_a + X(w_a + a))(w_b + X(w_b + b))$ has $Q(0) = q_0$, $Q(1) = ab$ and leading coefficient $q_2$. $w$ interpolates $Q$ with $Q(1)$ replaced by $C$, so $uv = w$ iff $C = ab$, up to $2/(\lvert \mathbb F \rvert - 2)$. $u = (1 + r) w_a + ra$ is uniform as $r \ne 1$, so $a, b$ stay hidden.
+The masked product is a quadratic polynomial in the challenge.
+
+```math
+Q(X) = \big( w_a + X (w_a + a) \big) \, \big( w_b + X (w_b + b) \big)
+```
+
+- $Q(0) = q_0$.
+- $Q(1) = ab$.
+- The leading coefficient of $Q$ is $q_2$.
+
+The opened $w$ interpolates $Q$ with $Q(1)$ replaced by $C$. So $uv = w$ if and only if $C = ab$, except with probability $2/(\lvert \mathbb F \rvert - 2)$.
+
+The opened $u = (1 + r) w_a + r a$ is uniform, because $r \ne 1$. So $a$ and $b$ stay hidden.
 
 ### 2.3 Open
 
@@ -684,8 +706,8 @@ b_0 \wedge \dots \wedge b_7 = \mathsf{OpenRep}\big( [\negthinspace[ z^{(3)}_0 ]\
 | toy              | Threshold leanXMSS                                                                                                                                                                        |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 8 random bits    | the chain start $`F(x) = \bigoplus_T H(\mathrm{seed}_T \,\Vert\, x)`$, the threshold PRF of [BBDLN26](https://eprint.iacr.org/2026/2142), a $\mathsf{Rand}$ with chosen input, no message |
-| 3 AND layers     | 3 Keccak-f[1600] per chain, 24 layers each, with $\chi$ as AND gates on 25 lanes × 64 bits                                                                                                |
-| 1 gate per layer | 128 chains per batch in `u64` words, one $\mathsf{Reshare}$ round per layer                                                                                                               |
+| 3 AND layers     | 3 Keccak-f[1600] per chain, 24 layers each, with the 1600 AND gates of $\chi$ in each layer                                                                                               |
+| 1 gate per layer | the gates of one layer for all 128 chains of a batch, in one $\mathsf{Reshare}$ round                                                                                                     |
 | the AND          | the chain end $y_3$, for bottom trees also $y_1 \oplus F(x_1)$, $y_2 \oplus F(x_2)$ and a commitment to $F(A_{\mathrm{rnd}}(e))$                                                          |
 
 These facts complete the table.
@@ -716,13 +738,13 @@ The AND layers dominate the bandwidth.
 
 So peer wins on rounds at 2-of-3 and ties on bandwidth, and collector wins on bandwidth from 3-of-5 on.
 
-The table gives the bandwidth sent by one operator per bottom tree, in the better mode of each group.
+The formulas give the bandwidth of the AND layers that one operator sends for the 29,696 chain batches of a bottom tree. The table uses the better mode of each group.
 
-| group, mode       | bandwidth per tree |
-| ----------------- | ------------------ |
-| 2-of-3, peer      | 51.7 GB            |
-| 3-of-5, collector | 62.1 GB            |
-| 4-of-7, collector | 66.5 GB            |
+| group  | mode      | bandwidth per tree |
+| ------ | --------- | ------------------ |
+| 2-of-3 | peer      | 51.7 GB            |
+| 3-of-5 | collector | 62.1 GB            |
+| 4-of-7 | collector | 66.5 GB            |
 
 A bottom tree is $2^{16} \cdot 58$ chains, 29,696 chain batches. Signing takes 2 rounds among $t$ signers and needs no MPC.
 
@@ -738,7 +760,7 @@ A bottom tree is $2^{16} \cdot 58$ chains, 29,696 chain batches. Signing takes 2
 
 The abort has these consequences.
 
-- A failing operator drops its channel, which ends the others' receives.
+- An aborting operator sends no further message.
 - A completing honest operator holds the correct values.
 - A failed session is rerun, because a tree is a function of the seeds.
 

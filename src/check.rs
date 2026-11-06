@@ -28,8 +28,8 @@
 //! - The field is the leanVM field `F192` in place of GF(2^128).
 //! - Bit `q` of a tuple word has the weight `x^q` in place of a coin.
 //!   - The lift of a word to `F64` is injective, so a wrong tuple still gives a nonzero multilinear polynomial in the coins.
-//! - The first six halving steps fold the 64 slices of the tuple words with the small-value optimization of [Bagad, Dao, Domb and Thaler](https://eprint.iacr.org/2025/1117).
-//!   - Each operator adds the products of its pairs of terms into a table `T` at the 729 points of `{0, 1, INF}^6`.
+//! - The first seven halving steps fold the 128 slices of the tuple words with the small-value optimization of [Bagad, Dao, Domb and Thaler](https://eprint.iacr.org/2025/1117).
+//!   - Each operator adds the products of its pairs of terms into a table `T` at the 2187 points of `{0, 1, INF}^7`.
 //!   - As [Gruen](https://eprint.iacr.org/2024/108) does, step `j` keeps the slice coin `c_j` out of `x`, so `x` and `y` fold with the same weights.
 //!   - The step reshares `t_j(0)` and `t_j(INF)`, and the claim `t_j(0) + c_j t_j(1)` gives `t_j(1)`.
 //! - The padding differs from the prototype, which pads to powers of two.
@@ -57,8 +57,8 @@ use primitives::multilinear::eq_table;
 use std::array::from_fn;
 use std::mem;
 
-pub const SLICES: usize = 64;
-/// The words of a block in `accumulate`. Its table of 729 points and its rows of the slices stay in the L2 cache.
+pub const SLICES: usize = 128;
+/// The words of a block in `accumulate`. Its table of 2187 points and its rows of the slices stay in the L2 cache.
 const ACCUMULATE_BLOCK: usize = 32;
 
 /// The words of a slice for `words` tuple words of a term.
@@ -199,7 +199,7 @@ fn fold(vector: &mut Vec<Shamir>, r: F192) {
     vector.truncate(half);
 }
 
-/// The tuple words of each term as 64 slices of `length` words. Word `w` of slice `s` is at `s * length + w`.
+/// The tuple words of each term as 128 slices of `length` words. Word `w` of slice `s` is at `s * length + w`.
 struct Slices {
     length: usize,
     slice_coins: Vec<F192>,
@@ -282,7 +282,7 @@ impl Slices {
         sums.iter().map(|sum| sum.reduce()).collect()
     }
 
-    /// The vectors `x` and `y` after the six slice steps, lifted from the tuples. The first challenge folds the top bit of the slice number, so the weights take the challenges in reverse order.
+    /// The vectors `x` and `y` after the seven slice steps, lifted from the tuples. The first challenge folds the top bit of the slice number, so the weights take the challenges in reverse order.
     fn materialize(
         &self,
         party: &Party,
@@ -296,7 +296,7 @@ impl Slices {
         )
     }
 
-    /// Lifts the tuple words to a Shamir vector and folds the 64 slices with `slice_weights`. Element `64 w + q` is bit `q` of word `w`, and `weighted` multiplies it by `beta_word[w] x^q`.
+    /// Lifts the tuple words to a Shamir vector and folds the 128 slices with `slice_weights`. Element `64 w + q` is bit `q` of word `w`, and `weighted` multiplies it by `beta_word[w] x^q`.
     fn lift(
         &self,
         party: &Party,
@@ -313,8 +313,8 @@ impl Slices {
         for w in 0..self.length {
             let mut sum = [F192::ZERO; 64];
             for (copy, fold) in copies.iter().zip(&folds) {
-                // The transposes give row `q` the bit `q` of word `w` from each of the 64 slices.
-                let columns: [[u8; 64]; 8] = from_fn(|byte| {
+                // The transposes give row `q` the bit `q` of word `w` from each of the 128 slices.
+                let columns: [[u8; 64]; SLICES / 8] = from_fn(|byte| {
                     let mut rows = [0; 64];
                     for (slice, row) in rows.as_chunks_mut::<8>().0.iter_mut().enumerate() {
                         *row = copy[(8 * byte + slice) * self.length + w].to_le_bytes();
@@ -521,13 +521,13 @@ mod tests {
                 let outcomes = tampered(t, reshare, honest, clear_tuples);
                 assert!(outcomes.iter().all(Result::is_ok));
             }
-            // A slice has 40 words, so the last flip hits the last word of slice 63, which only pads the tuples.
+            // A slice has 24 words, so the last flip hits the last word of slice 127, which only pads the tuples.
             for flips in [
                 &[(77, 1 << 13)][..],
                 &[(77, 1 << 3 | 1 << 40)],
                 &[(5, 1 << 9), (900, 1 << 9)],
                 &[(0, 1)],
-                &[(SLICES * 40 - 1, 1 << 63)],
+                &[(SLICES * 24 - 1, 1 << 63)],
             ] {
                 let flip_held_term_zero =
                     |party: &Party, tuples: &mut Tuples, _: &mut Replicated<25>| {
@@ -751,7 +751,7 @@ mod tests {
     #[test]
     fn the_slice_steps_end_at_the_product_of_the_folded_words_unless_a_tuple_is_wrong() {
         let mut rng = StdRng::seed_from_u64(7);
-        for (m, wrong) in (1..=6).flat_map(|m| [(m, false), (m, true)]) {
+        for (m, wrong) in (1..=7).flat_map(|m| [(m, false), (m, true)]) {
             let (mut tuples, slices) = plaintext(&mut rng, m);
             let length = slices.length;
             if wrong {
@@ -788,7 +788,7 @@ mod tests {
     #[test]
     fn each_slice_step_gives_the_values_of_the_folded_words() {
         let mut rng = StdRng::seed_from_u64(8);
-        for m in 1..=6 {
+        for m in 1..=7 {
             let (tuples, slices) = plaintext(&mut rng, m);
             let table = slices.accumulate(&[(0, 0)], &tuples);
             let challenges = elements(&mut rng, m);

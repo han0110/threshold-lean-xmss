@@ -212,7 +212,9 @@ fn padded_words(instances: usize, hashes: usize) -> usize {
 fn chain_batch_estimate(party: &Party) -> (usize, f64) {
     let words = party.batch_size * 3 * circuit::gates();
     let padded = padded_words(party.batch_size, 3);
-    let bytes = padded * (3 * party.held.len() * size_of::<u64>() + 2 * size_of::<F192>());
+    // `lift` gives `x` and `y` one element for each bit of a slice word.
+    let vector = 64 * (padded / check::SLICES);
+    let bytes = padded * 3 * party.held.len() * size_of::<u64>() + 2 * vector * size_of::<F192>();
     (bytes, padded as f64 / words as f64)
 }
 
