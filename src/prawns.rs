@@ -1,14 +1,23 @@
 //! This module implements the setup and the quorum signing of the leanXMSS note, with the threshold PRF of [PRAWNS](https://eprint.iacr.org/2026/2142).
 //!
 //! - `F(x)` is the XOR of `H16(k_T || x)` over all terms `T`, so the holders of the terms share `F(x)` with no messages.
-//! - `keygen` derives `P` from a contribution of each operator. It derives each term seed from the parts of all its holders, and each pair key from the parts of both operators.
-//! - One commit-reveal carries all contributions and parts, as Section 2.1 of the note asks. An echo then carries the hash of all contributions and a hash of the shared seeds, and an operator aborts on a mismatch.
-//! - The keygen of the prototype sends the parts in one round with no commitments.
+//! - `keygen` derives `P` from a contribution of each operator.
+//!   - It derives each term seed from the parts of all its holders.
+//!   - It derives each pair key from the parts of both operators.
+//! - One commit-reveal carries all contributions and parts, as Section 2.1 of the note asks.
+//!   - An echo then carries the hash of all contributions and a hash of the shared seeds.
+//!   - An operator aborts on a mismatch.
+//!   - The keygen of the prototype sends the parts in one round with no commitments.
 //! - A quorum of `t` operators holds every term, because a term contains only `t - 1` operators. Each term goes to its first holder in the quorum.
-//! - A signer masks its part with `H16(k_ij || x || m || J)` for each co-signer `j`. The masks cancel only among parts with the same `x`, `m` and `J`. So parts of signings that differ in one of them do not combine.
-//! - Before it grinds, a signer checks the opened `F(A_rnd(e))` against the commitment `c_e` that the bottom tree stores. So a corrupt signer cannot change the value and steer the codeword.
-//! - The commitment is an addition to the note. In PRAWNS terms, `F(A_rnd(e))` starts one more chain of length one, as for FORS, and `c_e` is its end in `cpk`.
-//! - As the note asks, each pair of operators has one key `k_ij`, and a signer adds one mask for each co-signer. PRAWNS uses the keys `k_{i,j}`, `k_{j,i}` and the masks `mask_{i,1}`, `mask_{i,2}`.
+//! - A signer masks its part with `H16(k_ij || x || m || J)` for each co-signer `j`.
+//!   - The masks cancel only among parts with the same `x`, `m` and `J`.
+//!   - So parts of signings that differ in one of them do not combine.
+//! - Before it grinds, a signer checks the opened `F(A_rnd(e))` against the commitment `c_e` that the bottom tree stores.
+//!   - So a corrupt signer cannot change the value and steer the codeword.
+//!   - The commitment is an addition to the note.
+//!   - In PRAWNS terms, `F(A_rnd(e))` starts one more chain of length one, as for FORS, and `c_e` is its end in `cpk`.
+//! - As the note asks, each pair of operators has one key `k_ij`, and a signer adds one mask for each co-signer.
+//!   - PRAWNS uses the keys `k_{i,j}`, `k_{j,i}` and the masks `mask_{i,1}`, `mask_{i,2}`.
 
 use crate::mpc::{self, Group, Key, LANES, Party, Replicated};
 use crate::net::{Channel, Network};
@@ -228,7 +237,10 @@ pub async fn combine(
         .collect())
 }
 
-/// Signs the message `m` at the bottom key `e` with a quorum, in two rounds and with no MPC. It runs PRAWNS `Sign` and `Combine` at each signer and returns the full signature, not a share. `cpk` holds the published rows of the chains of key `e`, and `c_e` is the commitment of `F(A_rnd(e))`.
+/// Signs the message `m` at the bottom key `e` with a quorum, in two rounds and with no MPC.
+///
+/// - It runs PRAWNS `Sign` and `Combine` at each signer and returns the full signature, not a share.
+/// - `cpk` holds the published rows of the chains of key `e`, and `c_e` is the commitment of `F(A_rnd(e))`.
 pub async fn sign(
     network: &Arc<Network>,
     group: &Group,

@@ -2,7 +2,8 @@
 //!
 //! - `pp` is the public parameter `P`, and `e` is the index of a one-time key in its layer.
 //! - `Layer::Bottom` signs messages and `Layer::Top` signs the roots of the bottom trees. Their discriminants are the leanVM layer indices.
-//! - The randomizer search of `wots_sign` takes an opened value of the threshold PRF in place of the seed. A quorum opens it for the bottom layer, and the MPC opens it for the top layer.
+//! - The randomizer search of `wots_sign` takes an opened value of the threshold PRF in place of the seed.
+//!   - A quorum opens it for the bottom layer, and the MPC opens it for the top layer.
 
 use primitives::hash;
 pub use signatures::lean_xmss::{

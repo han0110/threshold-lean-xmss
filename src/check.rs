@@ -4,26 +4,43 @@
 //! - A coin is a random sharing from the seeds. Each operator converts it to a Shamir share, and the shares open robustly.
 //! - `de_linearization` is Protocol 13 of the paper. A coin gives the coins `tau`, and their tensor `beta` weights the tuples.
 //! - The claim is the inner-product tuple `(x, y, z)` with `x = beta x^(i)`, `y = y^(i)` and `z = sum beta z^(i)` for the tuples `(x^(i), y^(i), z^(i))`.
-//! - Each operator converts its replicated terms to a Shamir share, as Cramer, Damgard and Ishai do. Its local inner product times `lambda` is an additive share of the inner product.
-//! - `dimension_reduction` is Protocol 14 for each of the `R` halving steps. A step splits `x` into `a^(1)`, `a^(2)` and `y` into `b^(1)`, `b^(2)`, and it reshares `c^(1) = <a^(1), b^(1)>` and `p_2 = <a^(1) + a^(2), b^(1) + b^(2)>` in peer mode.
-//! - A coin then gives a challenge `r` outside `{0, 1}`. The operators fold `x` and `y` at `r`, and the claim becomes `c^(1) + (z + p_2) r + p_2 r^2`.
-//! - `randomization` is Protocol 15. It reshares `c^(0) = a^(0) b^(0)` and `q_2 = (a^(0) + a^(1)) (b^(0) + b^(1))` for random `a^(0)` and `b^(0)` and the last elements `a^(1)` and `b^(1)` of `x` and `y`.
-//! - Its coin carries the salted digests of all held terms to every operator. An operator aborts unless all holders of each term send the same digest.
-//! - Then `a = a^(0) + r (a^(0) + a^(1))`, `b = b^(0) + r (b^(0) + b^(1))` and `c = c^(0) + (z + c^(0) + q_2) r + q_2 r^2` open robustly, and each operator accepts if `a b = c`.
-//! - A wrong tuple passes with a probability of at most `(d + 2 (R + 1)) / (2^192 - 2)` for `d` coins and `R` halving steps. A batch of 128 chains has `d = 18` and `R = 24`, so the bound is below `2^-185`, plus the advantages against AES-128 and Keccak-256.
-//! - The code writes `a^(0)`, `a^(1)`, `b^(0)`, `b^(1)`, `c^(0)` and `c^(1)` of the paper as `a_0`, `a_1`, `b_0`, `b_1`, `c_0` and `c_1`.
+//! - Each operator converts its replicated terms to a Shamir share, as Cramer, Damgard and Ishai do.
+//! - The local inner product of an operator times `lambda` is an additive share of the inner product.
+//! - `dimension_reduction` is Protocol 14 for each of the `R` halving steps.
+//!   - A step splits `x` into `a^(1)`, `a^(2)` and `y` into `b^(1)`, `b^(2)`.
+//!   - It reshares `c^(1) = <a^(1), b^(1)>` and `p_2 = <a^(1) + a^(2), b^(1) + b^(2)>` in peer mode.
+//!   - A coin then gives a challenge `r` outside `{0, 1}`. The operators fold `x` and `y` at `r`, and the claim becomes `c^(1) + (z + p_2) r + p_2 r^2`.
+//! - `randomization` is Protocol 15.
+//!   - It reshares `c^(0) = a^(0) b^(0)` and `q_2 = (a^(0) + a^(1)) (b^(0) + b^(1))`.
+//!   - Here `a^(0)` and `b^(0)` are random, and `a^(1)` and `b^(1)` are the last elements of `x` and `y`.
+//!   - Its coin carries the salted digests of all held terms to every operator.
+//!   - An operator aborts unless all holders of each term send the same digest.
+//!   - Then `a = a^(0) + r (a^(0) + a^(1))`, `b = b^(0) + r (b^(0) + b^(1))` and `c = c^(0) + (z + c^(0) + q_2) r + q_2 r^2` open robustly, and each operator accepts if `a b = c`.
+//! - A wrong tuple passes with a probability of at most `(d + 2 (R + 1)) / (2^192 - 2)` for `d` coins and `R` halving steps.
+//!   - A batch of 128 chains has `d = 18` and `R = 24`, so the bound is below `2^-185`.
+//!   - The advantages against AES-128 and Keccak-256 add to the bound.
+//! - The code writes `a^(0)`, `a^(1)`, `b^(0)` and `b^(1)` of the paper as `a_0`, `a_1`, `b_0` and `b_1`.
+//! - The code writes `c^(0)` and `c^(1)` of the paper as `c_0` and `c_1`.
 //! - `F64` and `F192` are binary fields, so `+` also subtracts.
 //!
 //! The module differs from the prototype in these points.
 //!
 //! - The field is the leanVM field `F192` in place of GF(2^128).
-//! - Bit `q` of a tuple word has the weight `x^q` in place of a coin. The lift of a word to `F64` is injective, so a wrong tuple still gives a nonzero multilinear polynomial in the coins.
-//! - The first six halving steps fold the 64 slices of the tuple words with the small-value optimization of [Bagad, Dao, Domb and Thaler](https://eprint.iacr.org/2025/1117). Each operator adds the products of its pairs of terms into a table `T` at the 729 points of `{0, 1, INF}^6`. As [Gruen](https://eprint.iacr.org/2024/108) does, step `j` keeps the slice coin `c_j` out of `x`, so `x` and `y` fold with the same weights. The step reshares `t_j(0)` and `t_j(INF)`, and the claim `t_j(0) + c_j t_j(1)` gives `t_j(1)`.
-//! - A slice has a multiple of 8 words. A halving step pads a vector of more than 16 elements to a multiple of 16, and a shorter vector to an even length. The prototype pads to powers of two.
+//! - Bit `q` of a tuple word has the weight `x^q` in place of a coin.
+//!   - The lift of a word to `F64` is injective, so a wrong tuple still gives a nonzero multilinear polynomial in the coins.
+//! - The first six halving steps fold the 64 slices of the tuple words with the small-value optimization of [Bagad, Dao, Domb and Thaler](https://eprint.iacr.org/2025/1117).
+//!   - Each operator adds the products of its pairs of terms into a table `T` at the 729 points of `{0, 1, INF}^6`.
+//!   - As [Gruen](https://eprint.iacr.org/2024/108) does, step `j` keeps the slice coin `c_j` out of `x`, so `x` and `y` fold with the same weights.
+//!   - The step reshares `t_j(0)` and `t_j(INF)`, and the claim `t_j(0) + c_j t_j(1)` gives `t_j(1)`.
+//! - The padding differs from the prototype, which pads to powers of two.
+//!   - A slice has a multiple of 8 words.
+//!   - A halving step pads a vector of more than 16 elements to a multiple of 16, and a shorter vector to an even length.
 //! - The callers derive the input terms from seeds whose holders compare hashes at the setup, so the check does not hash the input terms.
 //! - The reshare pads a short message with zeros and truncates a long message, which gives an additive error. The prototype aborts.
-//! - The prototype reshares each value of the check to the holders of the term number `j mod K`. Here every reshare of the check is the peer reshare of the AND gates, in both modes.
-//! - The prototype compares the digests of a term only among its holders. Here every operator compares them, so a split copy stops every honest operator before `a`, `b` and `c` open.
+//! - The prototype reshares each value of the check to the holders of the term number `j mod K`.
+//!   - Here every reshare of the check is the peer reshare of the AND gates, in both modes.
+//! - The prototype compares the digests of a term only among its holders.
+//!   - Here every operator compares them, so a split copy stops every honest operator before `a`, `b` and `c` open.
 //! - The prototype ends the check with a vote. Here each operator decides alone, as in step 8 of Protocol 15.
 
 use crate::mpc::{Additive, Key, Party, Reshare, Shamir, Tuples, xor_into};
@@ -85,7 +102,11 @@ fn challenge(party: &Party, key: &Key) -> F192 {
         .unwrap()
 }
 
-/// XORs `x_z AND y_z` into row `z` of `products` at each point `z` of `{0, 1, INF}^m`, for `2^m` rows of `x` and of `y`. `x_z` is the XOR of the rows that match `z` at each coordinate other than INF. A point is a base-3 number with the digit 2 for INF, and its top digit is the top bit of a row number. `scratch` holds `2^(m + 1)` rows.
+/// XORs `x_z AND y_z` into row `z` of `products` at each point `z` of `{0, 1, INF}^m`, for `2^m` rows of `x` and of `y`.
+///
+/// - `x_z` is the XOR of the rows that match `z` at each coordinate other than INF.
+/// - A point is a base-3 number with the digit 2 for INF, and its top digit is the top bit of a row number.
+/// - `scratch` holds `2^(m + 1)` rows.
 fn add_products(x: &[u64], y: &[u64], products: &mut [u64], scratch: &mut [u64]) {
     if x.len() == products.len() {
         let terms = products.iter_mut().zip(x.iter().zip(y));
@@ -355,7 +376,10 @@ async fn de_linearization(
     Ok((slices, z))
 }
 
-/// `Dimension-Reduction` (Protocol 14) with the compression factor 2, for each of the `R` halving steps. The slice steps fold the slices of the tuples with the table `T`, and the vector steps halve `x` and `y`. Each step reshares two values in peer mode, and a coin then gives its challenge.
+/// `Dimension-Reduction` (Protocol 14) with the compression factor 2, for each of the `R` halving steps.
+///
+/// - The slice steps fold the slices of the tuples with the table `T`, and the vector steps halve `x` and `y`.
+/// - Each step reshares two values in peer mode, and a coin then gives its challenge.
 async fn dimension_reduction(
     party: &Party,
     channel: &mut Channel,
@@ -363,7 +387,8 @@ async fn dimension_reduction(
     slices: &Slices,
     z: Shamir,
 ) -> Result<(Shamir, Shamir, Shamir, Vec<Hasher>), String> {
-    // `t` is the additive share of this operator in the table `T`, and `d` is the claim `D` of the slice steps, which starts at `z`.
+    // `t` is the additive share of this operator in the table `T`.
+    // `d` is the claim `D` of the slice steps, which starts at `z`.
     let t = slices.accumulate(&party.product_pairs(), &tuples);
     let (mut d, mut challenges) = (z, vec![]);
     for &coin in slices.slice_coins.iter().rev() {

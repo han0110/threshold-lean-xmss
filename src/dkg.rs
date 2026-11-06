@@ -1,13 +1,18 @@
 //! This module runs the key ceremonies of the leanXMSS note in MPC and stores the trees.
 //!
-//! - `e` is the index of a one-time key in its layer, and `x_0` holds the PRF inputs `X_0` of the chain starts. `cpk` holds the published rows of the chains, as in PRAWNS, and `pk` is the public key.
+//! - `e` is the index of a one-time key in its layer.
+//! - `x_0` holds the PRF inputs `X_0` of the chain starts.
+//! - `cpk` holds the published rows of the chains, as in PRAWNS, and `pk` is the public key.
 //! - A ceremony splits the chains into chain batches of the batch size, and each batch runs on its own channel.
-//! - A batch takes its inputs from the threshold PRF and hashes its chain steps in MPC. Then `mult_verification` checks its AND tuples, and `open` opens its outputs.
-//! - Each operator starts the batches in batch order and runs at most `concurrency` of them at the same time. So operators with different concurrencies do not deadlock.
+//! - A batch takes its inputs from the threshold PRF and hashes its chain steps in MPC.
+//! - Then `mult_verification` checks its AND tuples, and `open` opens its outputs.
+//! - Each operator starts the batches in batch order and runs at most `concurrency` of them at the same time.
+//!   - So operators with different concurrencies do not deadlock.
 //! - The top tree opens the chain ends. A bottom tree also opens the masked middle values, so that a quorum signs with no MPC.
 //! - The top key of a bottom tree signs its root in MPC, because the top tree stores no masked values.
-//! - A bottom tree also opens the commitment `c_e` of each key `e`, in commitment batches of the batch size. The commitment hashes `F(A_rnd(e))` once, at `A_rnd(e)` with step 1.
-//! - The commitment is an addition to the note. A top key needs none, because its MPC signature opens `F(A_rnd(e))` robustly.
+//! - A bottom tree also opens the commitment `c_e` of each key `e`, in commitment batches of the batch size.
+//!   - The commitment hashes `F(A_rnd(e))` once, at `A_rnd(e)` with step 1.
+//!   - The commitment is an addition to the note. A top key needs none, because its MPC signature opens `F(A_rnd(e))` robustly.
 
 use crate::check;
 use crate::circuit::{self, HashPublic};
@@ -219,7 +224,10 @@ fn peak_rss() -> u64 {
     1024 * kilobytes.parse::<u64>().unwrap()
 }
 
-/// Runs the MPC for all chains of `keys`, with at most `concurrency` batches in flight. A bottom tree also opens the commitments of its keys. The rounds are the most rounds of a chain batch and of a commitment batch.
+/// Runs the MPC for all chains of `keys`, with at most `concurrency` batches in flight.
+///
+/// - A bottom tree also opens the commitments of its keys.
+/// - The rounds are the most rounds of a chain batch and of a commitment batch.
 async fn ceremony(
     party: &Arc<Party>,
     public_parameter: Digest,
@@ -564,7 +572,9 @@ mod tests {
         (leaves, cpk, commitments)
     }
 
-    /// Runs a ceremony of the keys 5 and 9000 with `P = [9; 16]` at the reshare mode, batch size and concurrency of each operator. It asserts that every operator opens the values of the trusted dealer, and it returns the ANDs and rounds of each operator.
+    /// Runs a ceremony of the keys 5 and 9000 with `P = [9; 16]` at the reshare mode, batch size and concurrency of each operator.
+    ///
+    /// It asserts that every operator opens the values of the trusted dealer, and it returns the ANDs and rounds of each operator.
     fn local_ceremony(layer: Layer, operators: &[(Reshare, usize, usize)]) -> Vec<(u64, [u64; 2])> {
         let (public_parameter, keys) = ([9; 16], [5, 9_000]);
         let parameters: Vec<(Reshare, usize)> = operators

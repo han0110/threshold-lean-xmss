@@ -75,7 +75,9 @@ fn plans<const W: usize, C: Circuit<W>>(circuit: &C, secret: [bool; W]) -> Vec<P
         .collect()
 }
 
-/// Evaluates a circuit on all instances of the batch and records the AND tuples. Each layer takes `mul` at its gates and then `reshare`, in one pass over the blocks. The pass first adds the filled columns of the layer before, and then it adds the masks `r_T` of its own gates.
+/// Evaluates a circuit on all instances of the batch and records the AND tuples.
+///
+/// Each layer takes `mul` at its gates and then `reshare`, in one pass over the blocks. The pass first adds the filled columns of the layer before, and then it adds the masks `r_T` of its own gates.
 pub async fn evaluate<const W: usize, C: Circuit<W>>(
     party: &Party,
     circuit: &C,

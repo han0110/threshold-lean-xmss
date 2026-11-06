@@ -2,30 +2,45 @@
 //!
 //! - The terms are the sets of `t - 1` operators, and an operator holds each term that does not contain it.
 //! - A block of shares holds the public part first and then one part for each held term, in the order of `held`.
-//! - `rand`, `mul` and `conv` send nothing. `rand` gives each holder of a term `T` its pseudorandom value `r_T`, and `conv` gives the Shamir share of a replicated value.
-//! - At an AND gate, `mul` gives operator `i` the XOR `v_i` of `a_A & b_B` over its pairs of terms `(A, B)`. Then `reshare` adds the share `zeta_i` of a pairwise zero sharing.
+//! - `rand`, `mul` and `conv` send nothing.
+//!   - `rand` gives each holder of a term `T` its pseudorandom value `r_T`.
+//!   - `conv` gives the Shamir share of a replicated value.
+//! - At an AND gate, `mul` gives operator `i` the XOR `v_i` of `a_A & b_B` over its pairs of terms `(A, B)`.
+//! - Then `reshare` adds the share `zeta_i` of a pairwise zero sharing.
 //! - In collector mode, a rotation gives each gate a term `T*` and a collector `kappa` in `Hold(T*)`. Every other term is `z_T = r_T`.
-//! - Each `i != kappa` sends `u_i = v_i ^ zeta_i ^ XOR_{T != T*, owner(T) = i} r_T` to `kappa`. Then `kappa` sends `z_T* = XOR_i u_i` to `Hold(T*) \ {kappa}`.
-//! - In peer mode, operator `i` fills the term `T_i` of the operators `i + 1` to `i + t - 1` modulo `n`. These terms form `C`, and every other term is `z_T = r_T`.
-//! - Each `i` sends `u_i = v_i ^ zeta_i ^ XOR_{T not in C, owner(T) = i} r_T` to `Hold(T_i) \ {i}`. Then `z_T_i = u_i`, and the gate takes one round in place of two.
-//! - For `n = 3`, `C` contains all three terms, and peer mode is the multiplication of [Araki et al. CCS'16](https://eprint.iacr.org/2016/768).
-//! - The generalization to `n > 3` comes from this code. A coalition `D` of `t - 1` operators lacks only the term `D`. If `D` is not in `C`, then `z_D = r_D`, and the honest `u_i` that `D` sees have masks of full rank. If `D = T_i`, then `u_i` goes only to honest holders, and the other honest values are independent.
+//!   - Each `i != kappa` sends `u_i = v_i ^ zeta_i ^ XOR_{T != T*, owner(T) = i} r_T` to `kappa`. Then `kappa` sends `z_T* = XOR_i u_i` to `Hold(T*) \ {kappa}`.
+//! - In peer mode, operator `i` fills the term `T_i` of the operators `i + 1` to `i + t - 1` modulo `n`.
+//!   - These terms form `C`, and every other term is `z_T = r_T`.
+//!   - Each `i` sends `u_i = v_i ^ zeta_i ^ XOR_{T not in C, owner(T) = i} r_T` to `Hold(T_i) \ {i}`. Then `z_T_i = u_i`, and the gate takes one round in place of two.
+//!   - For `n = 3`, `C` contains all three terms, and peer mode is the multiplication of [Araki et al. CCS'16](https://eprint.iacr.org/2016/768).
+//! - The generalization of peer mode to `n > 3` comes from this code. A coalition `D` of `t - 1` operators lacks only the term `D`.
+//!   - If `D` is not in `C`, then `z_D = r_D`, and the honest `u_i` that `D` sees have masks of full rank.
+//!   - If `D = T_i`, then `u_i` goes only to honest holders, and the other honest values are independent.
 //! - Each holder of a filled term adds its new values to the running hash `h_T` of the term.
-//! - A coin is a pseudorandom sharing that opens robustly in the round after the messages that it checks. As in the paper and the prototype, this assumes synchronous rounds.
+//! - A coin is a pseudorandom sharing that opens robustly in the round after the messages that it checks.
+//!   - As in the paper and the prototype, this assumes synchronous rounds.
 //!
 //! The module differs from the prototype in these points.
 //!
 //! - The Shamir shares use the leanVM field `F192` in place of GF(2^128).
 //! - A gate covers one 64-bit lane of a circuit layer for all instances of the batch. A `Word` holds this lane for four instances.
-//! - The pseudorandom streams use AES-128 in place of Keccak-256 with labeled tags. The AES key hashes the label `rss-prss`, a seed and the session value.
-//! - A stream depends on the channel, its round and an index, and a coin key hashes only the opened value. The label keeps the stream keys apart from the threshold PRF of `prawns`, which uses the same term seeds.
-//! - The prototype gives each pair to the least loaded holder in one pass and each term to its first holder. Here `balance` adds a local search, so the loads of the operators differ by at most one in both tables.
-//! - The prototype has only collector mode. The message of `establish` also carries the mode and the batch size, so operators with different values abort before the first gate.
-//! - The prototype sends the digest of a term only to the other holders of the term. Here every operator receives the salted digest of every term, so a split copy stops every honest operator.
-//! - The prototype opens an output through a king, a coin with digests, a random linear combination and a vote, in 5 rounds. Here `open` takes 1 round.
+//! - The pseudorandom streams use AES-128 in place of Keccak-256 with labeled tags.
+//!   - The AES key hashes the label `rss-prss`, a seed and the session value.
+//!   - A stream depends on the channel, its round and an index, and a coin key hashes only the opened value.
+//!   - The label keeps the stream keys apart from the threshold PRF of `prawns`, which uses the same term seeds.
+//! - The prototype gives each pair to the least loaded holder in one pass and each term to its first holder.
+//!   - Here `balance` adds a local search, so the loads of the operators differ by at most one in both tables.
+//! - The prototype has only collector mode.
+//!   - The message of `establish` also carries the mode and the batch size, so operators with different values abort before the first gate.
+//! - The prototype sends the digest of a term only to the other holders of the term.
+//!   - Here every operator receives the salted digest of every term, so a split copy stops every honest operator.
+//! - The prototype opens an output through a king, a coin with digests, a random linear combination and a vote, in 5 rounds.
+//!   - Here `open` takes 1 round.
 //! - The prototype ends each opening with a vote. Here each operator decides alone, as in Goyal and Song.
-//! - The caller checks the tuples before it opens outputs, and it stops at the first error. The prototype enforces both with the provenance of the shares and a failed state.
-//! - `reshare` and `open` pad a short message with zeros and truncate a long message. This gives an additive error or different hashes, where the prototype aborts.
+//! - The caller checks the tuples before it opens outputs, and it stops at the first error.
+//!   - The prototype enforces both with the provenance of the shares and a failed state.
+//! - `reshare` and `open` pad a short message with zeros and truncate a long message.
+//!   - This gives an additive error or different hashes, where the prototype aborts.
 
 use crate::net::{Channel, Network};
 use aes::cipher::{Array, BlockCipherEncrypt, KeyInit};
@@ -562,7 +577,9 @@ impl Party {
         }
     }
 
-    /// `reshare` of the additive columns of `gates` in `mode`, with the masks of `reshare_masks`. It returns the new held terms, the masks with the filled columns in place, and each holder of a filled term hashes its new columns.
+    /// `reshare` of the additive columns of `gates` in `mode`, with the masks of `reshare_masks`.
+    ///
+    /// It returns the new held terms and the masks with the filled columns in place. Each holder of a filled term hashes its new columns.
     pub async fn reshare(
         &self,
         channel: &mut Channel,
@@ -708,7 +725,11 @@ impl Party {
         Ok(())
     }
 
-    /// `open` of a replicated sharing in one round, as in [MPClan](https://eprint.iacr.org/2022/675) (App. B). For each term `T` and each operator `j` in `T`, `owner(T)` sends `v_T` to `j` and each other holder sends `H(v_T)`. The receiver aborts unless the hash of each copy equals every received hash, and the value is the public part plus all terms.
+    /// `open` of a replicated sharing in one round, as in [MPClan](https://eprint.iacr.org/2022/675) (App. B).
+    ///
+    /// 1. For each term `T` and each operator `j` in `T`, `owner(T)` sends `v_T` to `j` and each other holder sends `H(v_T)`.
+    /// 2. The receiver aborts unless the hash of each copy equals every received hash.
+    /// 3. The value is the public part plus all terms.
     pub async fn open<const W: usize>(
         &self,
         channel: &mut Channel,
@@ -1063,7 +1084,9 @@ pub mod tests {
     #[test]
     fn an_operator_with_another_session_value_or_a_short_share_aborts_the_others_at_the_first_coin()
     {
-        // With another session value the coin shares of operator 1 come from other streams, so the shares of the first coin after the 24 layers lie off one polynomial. A short share has 2 of the 3 words of an element.
+        // With another session value, the coin shares of operator 1 come from other streams.
+        // So the shares of the first coin after the 24 layers lie off one polynomial.
+        // A short share has 2 of the 3 words of an element.
         for (short, error) in [
             (false, "an opened value has shares off one polynomial"),
             (true, "operator 1 sends a short share"),
