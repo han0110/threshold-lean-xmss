@@ -1,17 +1,20 @@
 import ThresholdLeanXmss.Statement
 
 /-!
-# Threshold leanXMSS, the steps of the proofs
+# The steps of the proofs
 
-The intermediate statements that the cited proofs use, each named after its source. The proofs of
-the claims in `ThresholdLeanXmss/Statement.lean` combine them as follows.
+The intermediate results of the cited papers, each named after its source, with no proof. The
+proofs of `ThresholdLeanXmss/Statement.lean` combine them as follows.
 
-* Theorem 2 follows GS20, Theorem 2. Its steps are the reduction to `t - 1` corruptions (GS20,
-  Theorem 1), the `PRG` hop (CDI05), the additive attack of a reshare (GS20, Lemma 4) under the
-  consistency of the digests (CGH+18, Protocol 3.3), the coin (GS20, Lemma 3), the check (GS20,
-  Lemmas 8 to 11), and the robust openings (GS20, Protocol 6, and MPClan, Appendix B).
-* Theorem 4 follows PRAWNS, Theorem 3.1, with Theorem 5.1 and Lemma 5.2 for the threshold PRF.
-* Theorem 5 replaces the dealer by the simulator of Theorem 2.
+* The key generation follows GS20, Theorem 2.
+* Its gadget steps are `F_rand` from PRSS (CDI05), the reshare (GS20, Lemma 4) and the coin (GS20,
+  Lemma 3).
+* Its check steps are the digests (CGH+18, Protocol 3.3), the check (GS20, Lemmas 8 to 11), the word
+  weights of `src/check.rs`, and the slice steps (Gruen 2024). The challenges come from
+  `E \ {0, 1}`, so a step with at most two bad challenges fails with probability at most
+  `2 / (|E| - 2)`.
+* The outputs open as in MPClan, App. B. The keygen adds the extraction and programming of CDG+18.
+* The signing follows PRAWNS, Theorem 3.1, with Theorem 5.1 and Lemma 5.2 for the threshold PRF.
 -/
 
 open OracleComp OracleSpec LeanXmss ENNReal Finset
@@ -36,7 +39,7 @@ theorem prawns_quorum_holds_term (J : C.Quorum) (T : C.Term) : ∃ i ∈ J.1, i 
   sorry
 
 /-- Each term goes to exactly one signer of the quorum, so the parts combine (PRAWNS, Section 5). -/
-theorem prawns_L_partition (J : C.Quorum) (T : C.Term) : ∃! i, T ∈ L J i := by
+theorem prawns_L_partition (J : C.Quorum) (T : C.Term) : ∃! i, i ∈ J.1 ∧ T ∈ L J i := by
   sorry
 
 /-- A coalition lacks a term (PRAWNS, Section 5, second key fact, and CDI05, Section 3). -/
@@ -53,9 +56,6 @@ theorem mpclan_honest_holder (K : Constants C E) (D : C.Coalition) (T : C.Term) 
   sorry
 
 /-! ## Sharings -/
-
-/-- The context of operator `i` for the local gadgets, which read only `self`. -/
-def localContext (i : C.Party) : Context C := ⟨i, ⟨0, fun _ => 0, fun _ => 0⟩, 0⟩
 
 /-- `Conv` of a replicated sharing is a Shamir sharing of degree `t - 1` of the same value (CDI05,
 Section 4). -/
@@ -77,154 +77,25 @@ theorem gs20_mulSh_correct [CharP E 2] (K : Constants C E) (count : ℕ) (X Y : 
       ∑ g ∈ range count, (X g).eval 0 * (Y g).eval 0 := by
   sorry
 
-/-- The `t` honest shares fix the polynomial, so an accepted opening is its value at `0` (GS20,
-Protocol 6, step 2). -/
-theorem gs20_openSh_robust (K : Constants C E) (D : C.Coalition) (V : Polynomial E)
-    (hV : V.natDegree ≤ C.t - 1) (share : C.Party → E) (honest : ∀ j ∉ D.1, share j = V.eval (K.point j))
-    (accepted : ∀ j, share j =
-      ∑ l ∈ univ.filter (fun l : C.Party => l.val < C.t), lagrangeFirst K (K.point j) l * share l) :
-    ∑ l ∈ univ.filter (fun l : C.Party => l.val < C.t), lagrangeFirst K 0 l * share l = V.eval 0 := by
+/-! ## The check -/
+
+/-- A nonzero word of bit differences keeps a nonzero weight, because the weights `x^q` are linearly
+independent over `F_2` (`src/check.rs`). -/
+theorem check_word_weight_ne_zero (K : Constants C E) (b : Fin (2 ^ wordBits) → Bit) (hb : b ≠ 0) :
+    ∑ q, b q • K.weight q ≠ 0 := by
   sorry
 
-/-- The parts of a quorum combine to `F(x)` for every fixed `H`, since each mask appears twice. This
-is the correctness of PRAWNS, Definition 2.1, for the single pair key of `doc/sign.md`. -/
-theorem prawns_combine_correct (keccak : HashInput → HashOutput) (seeds : C.Term → HashOutput)
-    (pairKey : C.Pair → HashOutput) (parameter : PublicParameter) (J : C.Quorum) (x : HashInput)
-    (m : Message) :
-    let keys := fun i : C.Party => (⟨parameter, fun T => if i ∈ C.holders T then seeds T else 0,
-      fun j => if h : j = i then 0 else pairKey (C.pairOf i j (Ne.symm h))⟩ : Keys C)
-    simulateQ (fixedHash keccak) (do
-        let parts ← Concrete.sequenceFin fun i => eval (keys i) i J x m
-        pure (combine J parts)) =
-      simulateQ (fixedHash keccak) (prfValue seeds x) := by
+/-- The de-linearization keeps a wrong tuple, except with probability `s / (|E| - 1) + (d - s) / |E|`
+over its coins. The weight `τ^a` of word `a < 2^d` is multilinear in the `d` coins. The first `s`
+coins are the slice coins, which are nonzero because the check aborts on a zero slice coin, and the
+expansion draws the other coins from all of `E` (GS20, Lemma 8, with the multilinear weights of the
+prototype and Schwartz and Zippel). -/
+theorem gs20_lemma8_delinearization (s d : ℕ) (hs : s ≤ d) (δ : ℕ → E) (hδ : ∃ a < 2 ^ d, δ a ≠ 0) :
+    ((univ.filter fun τ : (Fin s → {c : E // c ≠ 0}) × (Fin (d - s) → E) =>
+        ∑ a ∈ range (2 ^ d), coinProduct (List.ofFn (fun b => (τ.1 b).1) ++ List.ofFn τ.2) 0 d a * δ a = 0).card : ℝ) /
+      ((Fintype.card E - 1 : ℝ) ^ s * (Fintype.card E : ℝ) ^ (d - s)) ≤
+      s / (Fintype.card E - 1 : ℝ) + (d - s : ℕ) / (Fintype.card E : ℝ) := by
   sorry
-
-/-! ## Reshare -/
-
-/-- `u_i` of a peer reshare. -/
-def peerMessage (K : Constants C E) (v ζ : C.Party → E) (r : C.Term → E) (i : C.Party) : E :=
-  v i + ζ i + ∑ U ∈ univ.filter (fun U => U ∉ filledTerms K ∧ K.owner U = i), r U
-
-/-- The terms after a peer reshare when each corrupt `j` gives the other holders of `T_j` the value
-`sent j` in place of `u_j`. -/
-def peerTerms (K : Constants C E) (D : C.Coalition) (v ζ : C.Party → E) (r : C.Term → E)
-    (sent : C.Party → E) : C.Term → E := fun T =>
-  if T ∈ filledTerms K then
-    ∑ j ∈ univ.filter (K.filled · = T), if j ∈ D.1 then sent j else peerMessage K v ζ r j
-  else r T
-
-/-- A peer reshare is secure up to an additive attack (GS20, Lemma 4 and Functionality 7, and
-GIP+14). If every honest holder of each filled term receives one value, the honest terms share
-`∑ v + δ`, and `δ` depends only on the messages and the view of the corrupt operators. -/
-theorem gs20_lemma4_additive_attack [CharP E 2] (K : Constants C E) (D : C.Coalition)
-    (v ζ : C.Party → E) (hζ : ∑ i, ζ i = 0) (r : C.Term → E) (sent : C.Party → E) :
-    ∑ T, peerTerms K D v ζ r sent T = ∑ i, v i + ∑ j ∈ D.1, (sent j - peerMessage K v ζ r j) := by
-  sorry
-
-/-- The peer reshare is private (`doc/dkg.md` 1.6). With uniform masks of the unfilled terms and of
-the pairs, the view of the coalition, which is its masks and the messages it receives, has one
-distribution for all honest inputs. -/
-theorem dkg_reshare_privacy [CharP E 2] (K : Constants C E) (D : C.Coalition) (v v' : C.Party → E)
-    (hv : ∀ j ∈ D.1, v j = v' j) :
-    let view := fun (w : C.Party → E) (masks : (C.Term → E) × (C.Pair → E)) =>
-      let ζ := fun i => ∑ j ∈ univ.erase i, if h : i = j then 0 else masks.2 (C.pairOf i j h)
-      let u := fun i => w i + ζ i +
-        ∑ U ∈ univ.filter (fun U => U ∉ filledTerms K ∧ K.owner U = i), masks.1 U
-      (fun i => if i ∉ D.1 ∧ ∃ j ∈ D.1, j ∈ C.holders (K.filled i) then u i else 0,
-       fun T => if ∃ j ∈ D.1, j ∈ C.holders T then masks.1 T else 0,
-       fun p : C.Pair => if p.1.1 ∈ D.1 ∨ p.1.2 ∈ D.1 then masks.2 p else 0)
-    𝒟[view v <$> ($ᵗ ((C.Term → E) × (C.Pair → E)))] = 𝒟[view v' <$> ($ᵗ ((C.Term → E) × (C.Pair → E)))] := by
-  sorry
-
-/-- In collector mode (`doc/dkg.md` 1.6), for one gate, the messages that a corrupt collector
-receives and the masks of the coalition have one distribution for all honest inputs, because the
-honest pair masks hide each `u_i` and the lacked term hides their sum. -/
-theorem dkg_collector_privacy [CharP E 2] (K : Constants C E) (D : C.Coalition) (g : ℕ)
-    (v v' : C.Party → E) (hv : ∀ j ∈ D.1, v j = v' j) :
-    let view := fun (w : C.Party → E) (masks : (C.Term → E) × (C.Pair → E)) =>
-      let ζ := fun i => ∑ j ∈ univ.erase i, if h : i = j then 0 else masks.2 (C.pairOf i j h)
-      let u := fun i => w i + ζ i +
-        ∑ U ∈ univ.filter (fun U => U ≠ (K.collector g).1 ∧ K.owner U = i), masks.1 U
-      (fun i => if i ∉ D.1 ∧ (K.collector g).2 ∈ D.1 then u i else 0,
-       if (K.collector g).2 ∉ D.1 ∧ ∃ j ∈ D.1, j ∈ C.holders (K.collector g).1 then ∑ i, u i else 0,
-       fun T => if ∃ j ∈ D.1, j ∈ C.holders T then masks.1 T else 0,
-       fun p : C.Pair => if p.1.1 ∈ D.1 ∨ p.1.2 ∈ D.1 then masks.2 p else 0)
-    𝒟[view v <$> ($ᵗ ((C.Term → E) × (C.Pair → E)))] = 𝒟[view v' <$> ($ᵗ ((C.Term → E) × (C.Pair → E)))] := by
-  sorry
-
-/-! ## Consistency, coins and openings -/
-
-/-- If two holders of a term send different digests, every operator, holder or not, aborts at the
-comparison (CGH+18, Protocol 3.3, and MPClan, `Π_agree`). This is the split-term fix of `doc/dkg.md`
-1.9. -/
-theorem cgh18_digests_abort_everywhere (K : Constants C E) (ctx : Context C)
-    (payloads : C.Party → Option (Msg E)) (T : C.Term) (h h' : C.Party) (hh : h ∈ C.holders T)
-    (hh' : h' ∈ C.holders T)
-    (hne : Msg.part (payloads h) (C.terms.idxOf T) ≠ Msg.part (payloads h') (C.terms.idxOf T)) :
-    (compareDigests (E := E) payloads : PartyM C E Unit) = failure := by
-  sorry
-
-/-- The value of a coin is uniform and independent of the terms that the coalition holds, because
-the lacked term is uniform after the `PRG` hop (GS20, Lemma 3 with CDI05). -/
-theorem gs20_lemma3_coin_uniform (D : C.Coalition) (held : C.Term → E) :
-    𝒟[(fun r : C.Term → E => (∑ T, r T, fun T => if ∃ j ∈ D.1, j ∈ C.holders T then r T else 0)) <$>
-        ($ᵗ (C.Term → E))] =
-      𝒟[(fun (c : E) (r : C.Term → E) => (c, fun T => if ∃ j ∈ D.1, j ∈ C.holders T then r T else 0)) <$>
-        ($ᵗ E) <*> ($ᵗ (C.Term → E))] := by
-  sorry
-
-/-! ## The check, as values
-
-`check` on the values it shares. The adversary adds an error to each reshared
-value, and each error depends on the coins and the challenges before it (GS20, Lemma 11). -/
-
-/-- The errors of a rushing adversary. For step `j` (the final step is `m`), they are the errors of
-the two reshared values from the weight coins and the earlier challenges. -/
-abbrev CheckErrors (E : Type) (d : ℕ) := ℕ → (Fin d → E) → List E → E × E
-
-/-- The challenges outside `{0, 1}`. -/
-abbrev Challenge (E : Type) [Field E] := {r : E // r ≠ 0 ∧ r ≠ 1}
-
-/-- The value-level check of `count` tuples, with weights, slice steps, halving steps and a final
-step. The coin `τ` gives the weights, the challenges `r` fold the vectors, and `mask` is
-`(a^(0), b^(0))`. -/
-def CheckAccepts (K : Constants C E) (count : ℕ) (x y z : ℕ → Bit) (errors : CheckErrors E (coins count))
-    (mask : E × E) (τ : Fin (coins count) → E) (r : Fin (halvings count + 1) → Challenge E) : Prop :=
-  let m := halvings count
-  let d := coins count
-  let s := sliceBits
-  let coin := List.ofFn τ
-  let lift := fun b : Bit => algebraMap Bit E b
-  let wordWeight := fun k => coinProduct coin s (d - s) (wordOf m k) * K.weight (bitOf k)
-  let challenge := fun j => (r ⟨j % (m + 1), Nat.mod_lt _ (Nat.succ_pos _)⟩).1
-  let earlier := fun j => (List.range j).map challenge
-  let claim₀ := ∑ k ∈ range (2 ^ m), coinProduct coin 0 s (sliceOf m k) * wordWeight k * lift (z k)
-  let slices := (List.range s).foldl (init := ((fun k => wordWeight k * lift (x k)), fun k => lift (y k), claim₀))
-    fun (xs, ys, D) j =>
-      let half := 2 ^ (m - j - 1)
-      let rest := fun k => ∏ b ∈ range (s - 1 - j), if k.testBit (m - s + b) then coin.getD b 0 else 1
-      let t0 := ∑ k ∈ range half, rest k * xs k * ys k + (errors j τ (earlier j)).1
-      let tInf := ∑ k ∈ range half, rest k * (xs k + xs (k + half)) * (ys k + ys (k + half)) +
-        (errors j τ (earlier j)).2
-      let c := coin.getD (s - 1 - j) 0
-      let ρ := challenge j
-      let fold := fun (v : ℕ → E) k => v k + ρ * (v k + v (k + half))
-      (fold xs, fold ys, (1 + ρ) * t0 + ρ * ((D + t0) / c) + ρ * (1 + ρ) * tInf)
-  let halved := (List.range (m - s)).foldl (init := slices) fun (A, B, D) j =>
-      let half := 2 ^ (m - s - j - 1)
-      let c1 := ∑ k ∈ range half, A k * B k + (errors (s + j) τ (earlier (s + j))).1
-      let p2 := ∑ k ∈ range half, (A k + A (k + half)) * (B k + B (k + half)) +
-        (errors (s + j) τ (earlier (s + j))).2
-      let ρ := challenge (s + j)
-      let fold := fun (v : ℕ → E) k => v k + ρ * (v k + v (k + half))
-      (fold A, fold B, c1 + (D + p2) * ρ + p2 * ρ ^ 2)
-  let (A, B, D) := halved
-  let (a0, b0) := mask
-  let c0 := a0 * b0 + (errors m τ (earlier m)).1
-  let q2 := (a0 + A 0) * (b0 + B 0) + (errors m τ (earlier m)).2
-  let ρ := challenge m
-  (∀ b < s, coin.getD b 0 ≠ 0) ∧
-    (a0 + ρ * (a0 + A 0)) * (b0 + ρ * (b0 + B 0)) = c0 + (D + c0 + q2) * ρ + q2 * ρ ^ 2
 
 /-- A halving step keeps a wrong claim wrong for all but two challenges (GS20, Protocol 14 and Lemma
 9 with `k = 2`). -/
@@ -239,12 +110,15 @@ theorem gs20_lemma9_halving_step [CharP E 2] (lo hi lo' hi' : List E) (claim e0 
           (List.zipWith (fun a b => a + ρ * (a + b)) lo' hi')).sum).card ≤ 2 := by
   sorry
 
-/-- A slice step with a nonzero coin `c` keeps a wrong claim `D ≠ t(0) + c t(1)` wrong for all but
-two challenges (Gruen, Section 3, with the slice steps of `doc/dkg.md` 3.3). -/
-theorem gruen_slice_step [CharP E 2] (t0 t1 tInf D e0 eInf c : E) (hc : c ≠ 0) (hwrong : D ≠ t0 + c * t1) :
-    (univ.filter fun ρ : E =>
-      (1 + ρ) * (t0 + e0) + ρ * ((D + (t0 + e0)) / c) + ρ * (1 + ρ) * (tInf + eInf) =
-        (1 + ρ) * t0 + ρ * t1 + ρ * (1 + ρ) * tInf).card ≤ 2 := by
+/-- A slice step keeps a wrong claim wrong for all but two challenges. It keeps the slice coin `c`
+out of `x`, so the claim is `D = t(0) + c t(1)` for the quadratic `t(X) = t₀ + t₁ X + t₂ X²` of the
+folded inner product. The step reshares `t(0)` and the leading coefficient with additive errors and
+interpolates `t(r)` at `0`, `1` and `∞` (Gruen 2024, and `doc/dkg.md` 3.3). -/
+theorem gruen_slice_step [CharP E 2] (c D t₀ t₁ t₂ e₀ eInf : E) (hc : c ≠ 0)
+    (hwrong : D ≠ t₀ + c * (t₀ + t₁ + t₂)) :
+    (univ.filter fun r : E =>
+      (1 + r) * (t₀ + e₀) + r * ((D + (t₀ + e₀)) / c) + r * (1 + r) * (t₂ + eInf) =
+        t₀ + t₁ * r + t₂ * r ^ 2).card ≤ 2 := by
   sorry
 
 /-- The final step accepts a wrong claim `D ≠ a b` for at most two challenges (GS20, Protocol 15 and
@@ -262,113 +136,7 @@ theorem gs20_lemma11_final_hides [CharP E 2] (a a' ρ : E) (hρ : ρ ≠ 1) :
     𝒟[(fun a0 : E => a0 + ρ * (a0 + a)) <$> ($ᵗ E)] = 𝒟[(fun a0 : E => a0 + ρ * (a0 + a')) <$> ($ᵗ E)] := by
   sorry
 
-/-- The weighted sum of the errors of the tuples vanishes for at most a `d / |E|` fraction of the
-coins, because the weights `x^q` are independent over `F_2` and the tuple errors are bits (GS20,
-Lemma 8, with the fixed weights `x^q` of `doc/dkg.md` 3.3). -/
-theorem gs20_lemma8_weights (K : Constants C E) (count : ℕ) (x y z : ℕ → Bit)
-    (hwrong : ∃ k < 2 ^ halvings count, z k ≠ x k * y k) :
-    Pr[fun τ : Fin (coins count) → E =>
-        ∑ k ∈ range (2 ^ halvings count),
-          coinProduct (List.ofFn τ) 0 sliceBits (sliceOf (halvings count) k) *
-            coinProduct (List.ofFn τ) sliceBits (coins count - sliceBits) (wordOf (halvings count) k) *
-            K.weight (bitOf k) * algebraMap Bit E (z k - x k * y k) = 0 |
-        $ᵗ (Fin (coins count) → E)] ≤
-      (coins count : ℝ≥0∞) / Fintype.card E := by
-  sorry
-
-/-- The slice step's values from the table of the points of `{0, 1, ∞}^j` equal the inner products
-of the folded vectors, term by term (Bagad, Dao, Domb and Thaler, Section 4). So the
-implementation's table computes the shares of `check`. -/
-theorem bddt_small_value_equivalence {R : Type} [CommRing R] [CharP R 2] (j : ℕ) (x y : ℕ → R) (ρ : Fin j → R) :
-    let basis := fun (v : Fin 3) (r : R) => match v with | 0 => 1 + r | 1 => r | 2 => r * (1 + r)
-    let entry := fun (v : ℕ → R) (z : Fin j → Fin 3) (k : ℕ) =>
-      ∑ h ∈ (univ : Finset (Fin j → Fin 2)), (if ∀ b, (z b).val = 2 ∨ (z b).val = (h b).val then 1 else 0) *
-        v (∑ b : Fin j, (h b).val * 2 ^ b.val + 2 ^ j * k)
-    let fold := fun (v : ℕ → R) k => ∑ h ∈ (univ : Finset (Fin j → Fin 2)),
-      (∏ b : Fin j, if (h b).val = 0 then 1 + ρ b else ρ b) * v (∑ b : Fin j, (h b).val * 2 ^ b.val + 2 ^ j * k)
-    ∀ k, (∑ z : Fin j → Fin 3, (∏ b, basis (z b) (ρ b)) * entry x z k * entry y z k) = fold x k * fold y k := by
-  sorry
-
-/-- The check rejects wrong tuples except with probability `(d + 2 (m + 1)) / (|E| - 2)`, for every
-rushing error and every mask (GS20, Lemmas 8 to 10, as Lemma 11 uses them). -/
-theorem gs20_check_sound [CharP E 2] (K : Constants C E) (count : ℕ) (x y z : ℕ → Bit)
-    (hwrong : ∃ k < count, z k ≠ x k * y k) (errors : CheckErrors E (coins count)) (mask : E × E)
-    [Nonempty (Challenge E)] :
-    letI := SampleableType.ofFintype (Challenge E)
-    Pr[fun c => CheckAccepts K count x y z errors mask c.1 c.2 |
-        do let τ ← $ᵗ (Fin (coins count) → E); let r ← $ᵗ (Fin (halvings count + 1) → Challenge E)
-           pure (τ, r)] ≤
-      ((coins count + 2 * (halvings count + 1) : ℕ) : ℝ≥0∞) / (Fintype.card E - 2 : ℕ) := by
-  sorry
-
-/-- The check accepts correct tuples with no errors, unless a slice coin is zero. -/
-theorem gs20_check_complete [CharP E 2] (K : Constants C E) (count : ℕ) (x y : ℕ → Bit) (mask : E × E)
-    (τ : Fin (coins count) → E) (r : Fin (halvings count + 1) → Challenge E)
-    (hτ : ∀ b < sliceBits, (List.ofFn τ).getD b 0 ≠ 0) :
-    CheckAccepts K count x y (fun k => x k * y k) (fun _ _ _ => (0, 0)) mask τ r := by
-  sorry
-
-/-! ## Threshold PRF -/
-
-/-- The oracles of PRAWNS, Figure 1, with the quorum as input (PRAWNS, Section 4). -/
-inductive TprfQuery (C : Committee)
-  | corrupt (i : C.Party)
-  | eval (i : C.Party) (J : C.Quorum) (x : HashInput) (ec : Message)
-  | challenge (x : HashInput)
-
-def TprfSpec (C : Committee) : OracleSpec (TprfQuery C)
-  | .corrupt _ => Option (Keys C)
-  | .eval .. => Option Digest
-  | .challenge _ => Option Digest
-
-structure TprfState (C : Committee) where
-  corrupt : Finset C.Party
-  queried : List (HashInput × Message × C.Party)
-  challenged : List HashInput
-  random : List (HashInput × Digest)
-
-/-- The game `G^tprf(b)` of PRAWNS, Figure 1, for the threshold PRF of `doc/sign.md`. -/
-def tprfGame (b : Bool) (A : OracleComp (LocalSpec C + TprfSpec C) Bool) : OracleComp (LocalSpec C) Bool := do
-  let (_, seeds, keys) ← liftComp prawnsKeyGen _
-  let exposed := fun (st : TprfState C) x =>
-    ∃ ec : Message, C.t ≤ (st.corrupt ∪ ((st.queried.filter fun q => q.1 = x ∧ q.2.1 = ec).map (·.2.2)).toFinset).card
-  let impl : QueryImpl (TprfSpec C) (StateT (TprfState C) (OracleComp (LocalSpec C))) := fun q =>
-    match q with
-    | .corrupt i => do
-        let st ← get
-        if (∃ x ∈ st.challenged, ∃ ec : Message, C.t ≤ (insert i (st.corrupt ∪
-            ((st.queried.filter fun q => q.1 = x ∧ q.2.1 = ec).map (·.2.2)).toFinset)).card) ∨
-          C.t - 1 < (insert i st.corrupt).card then pure none
-        else do set { st with corrupt := insert i st.corrupt }; pure (some (keys i))
-    | .eval i J x ec => do
-        let st ← get
-        if i ∉ J.1 ∨ (x ∈ st.challenged ∧ C.t ≤ (insert i (st.corrupt ∪
-            ((st.queried.filter fun q => q.1 = x ∧ q.2.1 = ec).map (·.2.2)).toFinset)).card) then pure none
-        else do
-          set { st with queried := st.queried ++ [(x, ec, i)] }
-          some <$> liftM (eval (keys i) i J x ec : OracleComp (LocalSpec C) Digest)
-    | .challenge x => do
-        let st ← get
-        if exposed st x then pure none else do
-        let value ← if !b then liftM (prfValue seeds x : OracleComp (LocalSpec C) Digest) else
-          match st.random.find? (·.1 = x) with
-          | some (_, y) => pure y
-          | none => liftM (liftComp ($ᵗ Digest) (LocalSpec C))
-        set { st with challenged := st.challenged ++ [x], random := st.random ++ [(x, value)] }
-        pure (some value)
-  (simulateQ (QueryImpl.ofLift (LocalSpec C) (StateT (TprfState C) (OracleComp (LocalSpec C))) + impl) A).run'
-    ⟨∅, [], [], []⟩
-
-/-- The threshold PRF is adaptively secure with advantage `2 · C(n, t - 1) · q / 2 ^ 256`, with the
-PRF advantage `q / 2 ^ 256` of `H16(k ‖ ·)` (PRAWNS, Theorem 5.1 and Lemma 5.2, in the random-oracle
-model, for the single pair key of `doc/sign.md`). -/
-theorem prawns_thm51_tprf (keccak : HashInput → HashOutput) (aes : Aes)
-    (A : OracleComp (LocalSpec C + TprfSpec C) Bool) (q : ℕ)
-    (hq : ∀ b, ∀ r ∈ support (runWorld keccak aes (tprfGame b A)), r.2 ≤ q) :
-    |(Pr[fun r => r.1 = true | runWorld keccak aes (tprfGame true A)]).toReal -
-      (Pr[fun r => r.1 = true | runWorld keccak aes (tprfGame false A)]).toReal| ≤
-      2 * C.n.choose (C.t - 1) * q / 2 ^ 256 := by
-  sorry
+/-! ## Signing -/
 
 /-- A uniform guess of the `t - 1` corrupt operators is right with probability `1 / C(n, t - 1)`,
 independently of the game (PRAWNS, Lemma 5.2). -/
@@ -378,50 +146,11 @@ theorem prawns_lemma52_guess (game : ProbComp (Bool × C.Term)) [Nonempty C.Term
         (C.n.choose (C.t - 1) : ℝ≥0∞) = Pr[fun g => g.1 = true | game] := by
   sorry
 
-/-! ## One-time signature -/
-
 /-- A codeword covers another only if they are equal, since all codewords have the same digit sum
 (PRAWNS, Definition 3.1, for the codewords of leanXMSS). -/
 theorem prawns_cover_free (d d' : Digest) (hd : Codeword.Valid d) (hd' : Codeword.Valid d')
     (hcover : ∀ l, Codeword.encoding d l ≤ Codeword.encoding d' l) :
     Codeword.encoding d = Codeword.encoding d' := by
-  sorry
-
-/-! ## Setup -/
-
-/-- The dealer of Theorem 2 is PRAWNS `KeyGen`. With fresh honest contributions and any corrupt
-contributions, every term seed, the parameter and every pair key with an honest operator are uniform
-and independent, up to a collision of `H` inputs (each input holds a fresh honest part). -/
-theorem dkg_dealer_is_prawnsKeyGen (keccak : HashInput → HashOutput) (aes : Aes) (D : C.Coalition)
-    (corrupt : C.Party → Contribution C) :
-    let honestView := fun (keys : C.Party → Keys C) (seeds : C.Term → HashOutput) =>
-      ((keys (firstParty C)).parameter, seeds,
-        fun (i j : C.Party) => if i ∉ D.1 ∨ j ∉ D.1 then (keys i).pairKey j else 0)
-    tvDist
-      ((fun r => r.1) <$> runWorld (C := C) keccak aes (do
-        let honest ← Concrete.sequenceFin fun i => liftComp (sampleContribution i) _
-        let contributions := fun i => if i ∈ D.1 then corrupt i else honest i
-        let keys ← dealerKeys contributions
-        let seeds ← deriveSeeds contributions
-        pure (honestView keys seeds)))
-      ((fun r => r.1) <$> runWorld (C := C) keccak aes (do
-        let (_, seeds, keys) ← liftComp prawnsKeyGen _
-        pure (honestView keys seeds))) ≤
-      ((C.n.choose (C.t - 1) + C.n ^ 2 + 1) ^ 2 : ℕ) / 2 ^ 256 := by
-  sorry
-
-/-- Security against `t - 1` corrupt operators gives security against fewer, since an adversary for
-`D'` can play the operators of `D' \ D` honestly (GIP+14, Lemma 5.2, and GS20, Theorem 1). After the
-last phase, `split` finishes the rounds of those operators. -/
-theorem gip14_lemma52_fewer_corrupt (K : Constants C E) (settings : Settings) (circuits : Circuits)
-    (keccak : HashInput → HashOutput) (aes : Aes) (schedule : List Tree) (D D' : C.Coalition)
-    (hDD' : D.1 ⊆ D'.1) (A : Adversary C E) :
-    ∃ (A' : Adversary C E) (split : A'.State → OracleComp (LocalSpec C) (A.State × (C.Party → DkgOutput C))),
-      𝒟[(fun r => r.1) <$> runWorld keccak aes (do
-          let (state, outputs) ← realExecution K settings circuits D' A' schedule
-          let (state, played) ← split state
-          pure (state, fun i => if i ∈ D'.1 ∧ i ∉ D.1 then played i else outputs i))] =
-        𝒟[(fun r => r.1) <$> runWorld keccak aes (realExecution K settings circuits D A schedule)] := by
   sorry
 
 end ThresholdLeanXmssSecurity

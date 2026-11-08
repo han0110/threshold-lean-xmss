@@ -3,8 +3,8 @@ import ThresholdLeanXmssSecurity.Proof.Lemmas
 
 namespace ThresholdLeanXmssSecurity
 
-/-- Threshold leanXMSS meets its security claim. The proof is open. -/
-theorem thresholdLeanXmss_security : ThresholdLeanXmssSecurityStatement := by
+/-- Threshold leanXMSS meets its security claim. -/
+theorem thresholdLeanXmss_security : ThresholdLeanXmss.ThresholdLeanXmssSecurityStatement := by
   sorry
 
 end ThresholdLeanXmssSecurity

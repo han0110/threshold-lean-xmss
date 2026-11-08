@@ -1,27 +1,111 @@
-import ThresholdLeanXmss.Scheme
-import LeanXmss.Statement
-import VCVio.OracleComp.QueryTracking.WriterCost
-import VCVio.OracleComp.QueryTracking.RandomOracle.Simulation
-import VCVio.EvalDist.TVDist
+import ThresholdLeanXmss.Reductions
+import Mathlib.Algebra.Polynomial.Eval.Defs
 
 /-!
 # Threshold leanXMSS security statement
 
-The claims about the protocol of `Scheme.lean`, in the classical random-oracle model.
+The claims about the protocol of `Scheme.lean`, at the level at which GS20 and PRAWNS state them.
+`Ideal.lean` holds the functionalities and the games. `Reductions.lean` holds the simulators and the
+reductions that the claims name.
+
+| claim | statement | source |
+| --- | --- | --- |
+| `KeygenCompletenessStatement` | An honest keygen gives the keys of `F_keygen`, except when two derived keys collide. | the note, Section 2.1, honest run |
+| `KeygenSecurityStatement` | The keygen securely computes `F_keygen` with selective abort, with the simulator `keygenSimulator`. | GL05 and CDG+18 |
+| `TreeCompletenessStatement` | An honest ceremony gives the tree of `F_tree`. | GS20, Theorem 2, honest run |
+| `TreeSecurityStatement` | Each ceremony securely computes `F_tree` with selective abort, with the simulator `treeSimulator`. | GS20, Theorem 2, and GL05 |
+| `CoinStatement` | `Coin` securely computes `F_coin` with selective abort in the `F_rand`-hybrid model. | GS20, Lemma 3 |
+| `CoinCompletenessStatement` | An honest `Coin` gives the output of `F_coin`. | GS20, Protocol 6, honest run |
+| `MultStatement` | `MulRep` and `Reshare` in each mode securely compute `F_mult` up to an additive attack. | GS20, Lemma 4 |
+| `ExtendMultStatement` | `MulRep` or `MulSh` and `Reshare` securely compute `F_extendMult` up to an additive attack. | GS20, Lemma 5 |
+| `MultVerifyStatement` | The check with its digests securely computes `F_multVerify` with selective abort. | GS20, Lemmas 8 to 11, and CGH+18 |
+| `MultVerifyCompletenessStatement` | An honest check accepts correct tuples. | GS20, Protocol 17, honest run |
+| `MainStatement` | A batch securely computes `F_main` in the `{F_mult, F_multVerify}`-hybrid model. | GS20, Theorem 2, for public outputs and pre-shared inputs |
+| `MainCompletenessStatement` | An honest batch gives the outputs of `F_main`. | GS20, Protocol 19, honest run |
+| `TprfCorrectnessStatement` | `Combine'` of the parts of a quorum gives `F(msk, x)`. | PRAWNS, Definition 2.1 |
+| `TprfSecurityStatement` | The threshold PRF is adaptively secure. | PRAWNS, Definition 2.2 and Theorem 5.1 |
+| `SigningCorrectnessStatement` | An honest quorum fails with probability at most `2 (1 - p)^L`, and its signature verifies. | PRAWNS, Section 3.1, honest run |
+| `SigningSecurityStatement` | The signing is strongly unforgeable with adaptive corruption, up to the reductions and `N² / 2^129` for tree collisions. | PRAWNS, Definition 3.2 and Theorem 3.1 |
+
+GS20 states no completeness lemma. Security with abort alone allows a protocol that always aborts,
+so each completeness claim is the honest run of the protocol of its row.
+
+## Model
 
 * There are `n = 2t - 1` operators, synchronous rounds and private authenticated links (GS20,
-  Section 3.1). A rushing malicious adversary corrupts at most `t - 1` operators.
-* `H` is a random oracle, except on the inputs that the MPC evaluates as a circuit, a chain step and
-  the commitment `c_e`. There `H` is the fixed function `keccak`. `PRG` is `aes` under the key
-  `H16("rss-prss" ‖ key ‖ session)`, and `aes` is a PRF. A counted oracle counts every call of `H`.
-* The key generation securely computes the trusted dealer with selective abort (GL05, Definition 5).
-  The distinguisher reads the joint output of the adversary and the honest operators (GL05,
-  Definition 8, and Canetti 2000, Definition 4).
-* The signing is strongly unforgeable in the game of PRAWNS, Figure 3, as `doc/sign.md`, Section 4,
-  changes it.
+  Section 3.1). In the keygen and ceremony claims, a rushing malicious adversary statically corrupts
+  at most `t - 1` operators.
+* The keygen and each ceremony are separate claims, each with its own static coalition. A ceremony
+  takes the keys as its input, because the operators build bottom trees on demand while they sign.
+  The coalition of a ceremony is the set of operators corrupted before it, and no operator is
+  corrupted during a ceremony.
+* The adversary gets the inputs of the corrupt operators and an auxiliary input `z`. A simulation
+  claim fixes the simulator before the inputs and `z` (Canetti 2000).
+* `Th` is one fixed function on the inputs that the MPC evaluates, namely the chain steps and the
+  commitment `c_e`, in every claim. The ceremony claims assume that the circuits compute it
+  (`CircuitsCompute`). The leaves, the nodes, the message digests and every other domain of `H` are a
+  lazy random oracle.
+* `PRG` is AES-128 under a hash of the key. The ceremony claim pays an AES term and a birthday term
+  for the 128-bit keys.
+* The budget `q` bounds the counted calls of the adversary and of the distinguisher for every answer
+  of the oracles, namely their random-oracle calls (BR93, `IsQueryBounded` with `IsQueryBoundP` of
+  VCVio). The honest operators and the functionalities call `H` for free.
+* Each simulation claim bounds the counted calls of the ideal run by `q` plus a fixed overhead
+  (Canetti 2000, efficient simulators). An explicit simulator emulates the honest operators on the
+  free copy as the real operators do, and its overhead counts only its programming queries. A
+  simulator that a claim only asserts to exist has all its calls counted, and its overhead counts
+  its emulation of the honest operators.
+* A protocol securely computes a functionality when its real execution and the ideal execution with
+  a simulator give the same joint output of the adversary and the honest operators. A distinguisher
+  with oracle access reads it.
+* With selective abort, the adversary names the honest operators that receive each output (GL05).
+* The PRSS outputs of one round play `F_rand`, as the PRSS of CDI05 realizes it.
+* The signing adversary corrupts adaptively, and a corruption gives only the keys of an operator.
+  After a ceremony, an operator erases its ceremony state.
+* At most `t - 1` operators are corrupt over the lifetime of the key.
+* The keygen and ceremony claims cover their static coalitions, and the signing claim covers
+  adaptive corruptions. End-to-end security would need a composed claim, which these claims do not
+  give.
 
-Each bound is a fixed expression in the parameters, `q / 2 ^ bits` for `q` hash calls, the exact
-error of the checks, and the advantage of a reduction that this file defines.
+## Deviations from the papers
+
+* Replicated sharing replaces Shamir sharing (CDI05). A corrupt operator that fills a term can give
+  each honest holder its own copy. So `F_mult` sums the shares of the honest operators from their
+  own views and takes a copy offset, and `F_multVerify` checks the copies (KPPS23, `Π_agree`, and
+  CGH+18, Protocol 3.3).
+* `F_mult` and `F_multVerify` leak the view of each honest operator of the terms that the corrupt
+  operators know. GS20 leaks one copy of these terms in Functionalities 7 and 16. In a run of
+  circuits, a corrupt filler chooses each split copy, so the adversary already knows the leaked
+  copies. On other inputs of the gadget claims, the leak is larger than in GS20.
+* `F_main` also leaks these views. Its inputs agree at every holder, the corrupt holders included,
+  as the keygen echo makes them, so it leaks only what GS20, Functionality 18, leaks.
+* Each operator aborts alone, so every functionality has selective abort. GS20 aborts all honest
+  operators together.
+* The de-linearization weighs tuple `k` by a product of `d` coins in place of the powers of one coin
+  of GS20, Protocol 13. The multilinear weights follow the prototype (`crates/rss/src/verify.rs`).
+* Bit `q` of a word of tuples has the public weight `x^q` in place of a coin (`src/check.rs`). This
+  owner-approved deviation has no published source. The weights are linearly independent over
+  `F_2`, so a wrong word stays a nonzero weight, and the Schwartz-Zippel count of Lemma 8 holds.
+* The first seven halving steps fold the slices with the coin kept out of `x` (Gruen 2024) and the
+  small-value table of BDDT25. Each step is still a degree-2 claim in its challenge.
+* A challenge is the first value outside `{0, 1}` of the expansion of a coin key `H(coin)`. The
+  implementation expands with AES-128 under that public key. The model takes the expansion as a
+  domain of `H`, which deviates from the implementation.
+* The explicit simulators program `H` as the programmable random oracle of CDG+18. The world has no
+  `IsProgrammed` query of CDG+18, because no party can test whether a point is programmed.
+* GS20 assumes exactly `(n - 1) / 2` corrupt parties, which is `t - 1` here (GS20, Theorem 1, writes
+  `n = 2t + 1`). `treeSimulator` handles every coalition size, because it shifts one lacked term at
+  the opening.
+* The `Eval'` of PRAWNS, Section 5.1, adds two masks under `k_ij` and `k_ji`. The note adds one mask
+  under the common key `K_ij`, and the masks still cancel in pairs.
+* The signing game takes the quorum, and `c_e` fixes the randomizer value (`doc/sign.md`, Section
+  4). `OSign` has two rounds.
+* PRAWNS lets the adversary choose `n` and `t`. Here the committee is a parameter of each claim.
+* The model splits each run into batches of `batchSize` jobs. The implementation sizes chain batches
+  and commitment batches apart, and it puts the top randomizer value in the last commitment batch.
+
+Each bound is a fixed expression, namely the exact error of the checks, `q / 2 ^ bits` terms, and the
+advantage of a reduction that `Reductions.lean` defines.
 -/
 
 open OracleComp OracleSpec LeanXmss ENNReal
@@ -30,659 +114,292 @@ noncomputable section
 
 namespace ThresholdLeanXmss
 
+attribute [local instance] Classical.propDecidable
+
 variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
 
-/-! ## The oracle world -/
+attribute [local instance] inhabitedField
 
-/-- The inputs that the MPC evaluates as a circuit, namely a chain step and the commitment `c_e`. -/
-def MpcInput (input : HashInput) : Prop :=
-  (∃ parameter lay key step l value, input = tweakableHashInput parameter (.chain lay key step)
-    (Concrete.chainPayload l value)) ∨
-  ∃ parameter e ρ, input = commitmentInput parameter e ρ
-
-/-- `H` on one input. -/
-def hashAnswer (keccak : HashInput → HashOutput) (input : HashInput) :
-    StateT HashSpec.QueryCache ProbComp HashOutput :=
-  open Classical in if MpcInput input then pure (keccak input) else HashSpec.randomOracle input
-
-/-- `"rss-prss" ‖ key ‖ session`, the input of the `aes` key of a stream. -/
-def streamKeyInput (key session : HashOutput) : HashInput :=
-  "rss-prss".toUTF8.toList ++ bytesLE 32 key ++ bytesLE 32 session
-
-/-- The `aes` model of `PRG` gives one bit of a stream at a position. -/
-abbrev Aes := PRFScheme Digest (StreamId × ℕ) Bit
-
-/-- The world gives private sampling, `H`, and `PRG` from `aes`. Each `H` call costs one query. -/
-def world (keccak : HashInput → HashOutput) (aes : Aes) :
-    QueryImpl (LocalSpec C) (AddWriterT ℕ (StateT HashSpec.QueryCache ProbComp)) :=
-  (unifFwdImpl HashSpec + hashAnswer keccak +
-    fun (x : KeyName C × HashOutput × HashOutput × StreamId × ℕ) => do
-      let derived ← hashAnswer keccak (streamKeyInput x.2.1 x.2.2.1)
-      pure (aes.eval (truncateHash derived) x.2.2.2)).withAddCost
-      fun | .inl (.inl _) => 0 | _ => 1
-
-/-- Run a computation in the world from an empty cache, with its number of hash queries. -/
-def runWorld {α : Type} (keccak : HashInput → HashOutput) (aes : Aes)
-    (oa : OracleComp (LocalSpec C) α) : ProbComp (α × ℕ) :=
-  (simulateQ (world keccak aes) oa).run.run' ∅
-
-/-! ## The network -/
-
-/-- A rushing adversary. Each round it reads the messages to the corrupt operators, then it sends
-the messages of the corrupt operators. -/
-structure Adversary (C : Committee) (E : Type) where
-  State : Type
-  start : OracleComp (LocalSpec C) State
-  /-- The start of a phase, namely the setup or a ceremony. -/
-  newPhase : State → OracleComp (LocalSpec C) State
-  round : State → (C.Party → C.Party → Option (Msg E)) →
-    OracleComp (LocalSpec C) (State × (C.Party → C.Party → Option (Msg E)))
-
-def Step.outbox {α : Type} : Step C E α → Mail C E
-  | .wait outbox _ => outbox
-  | .done _ => fun _ => none
-
-def Step.output {α : Type} : Step C E α → Option α
-  | .done out => out
-  | .wait _ _ => none
-
-def Step.isDone {α : Type} : Step C E α → Bool
-  | .done _ => true
-  | .wait _ _ => false
-
-/-- Run the honest programs in synchronous rounds with the adversary, which controls `D`. -/
-def runRounds {α : Type} (D : C.Coalition) (A : Adversary C E) :
-    ℕ → A.State → (C.Party → Step C E α) → OracleComp (LocalSpec C) (A.State × (C.Party → Option α))
-  | 0, state, steps => pure (state, fun i => (steps i).output)
-  | fuel + 1, state, steps =>
-    if C.parties.all fun i => decide (i ∈ D.1) || (steps i).isDone then
-      pure (state, fun i => (steps i).output) else do
-    let (state, sent) ← A.round state fun c i => if c ∈ D.1 ∧ i ∉ D.1 then (steps i).outbox c else none
-    let steps' ← Concrete.sequenceFin fun j => match steps j with
-      | .done out => pure (Step.done out)
-      | .wait _ resume => if j ∈ D.1 then pure (Step.done none) else
-          advance (resume fun k => if k ∈ D.1 then sent k j else (steps k).outbox j)
-    runRounds D A fuel state steps'
-
-/-- One phase, in which every honest operator runs its program to its output or its abort. -/
-def runPhase {α : Type} (D : C.Coalition) (A : Adversary C E) (state : A.State)
-    (program : C.Party → PartyM C E α) : OracleComp (LocalSpec C) (A.State × (C.Party → Option α)) := do
-  let state ← A.newPhase state
-  let steps ← Concrete.sequenceFin fun i =>
-    if i ∈ D.1 then pure (Step.done none) else advance (program i).run
-  runRounds D A roundLimit state steps
-
-/-! ## Real and ideal key generation -/
-
-/-- The outputs of an operator, namely its keys and then the output of each ceremony. `none` is an
-abort. -/
-abbrev DkgOutput (C : Committee) := Option (Keys C) × List (Option TreeOutput)
-
-def latestTop (outputs : List (Option TreeOutput)) : Option TopTree :=
-  outputs.foldl (fun top out => match out with | some (.top tree) => some tree | _ => top) none
-
-def emptyTop : TopTree := ⟨fun _ _ => 0, 0⟩
-
-variable (K : Constants C E) (settings : Settings) (circuits : Circuits)
-
-/-- The real key generation runs the setup, then the ceremonies of `schedule` in order. -/
-def realExecution (D : C.Coalition) (A : Adversary C E) (schedule : List Tree) :
-    OracleComp (LocalSpec C) (A.State × (C.Party → DkgOutput C)) := do
-  let (state, keys) ← runPhase D A (← A.start) fun i => setup i
-  let none' : C.Party → List (Option TreeOutput) := fun _ => []
-  let (state, trees) ← schedule.foldlM (init := (state, none')) fun (state, outputs) tree => do
-    let (state, output) ← runPhase D A state fun i => match keys i, tree, latestTop (outputs i) with
-      | none, _, _ => failure
-      | some _, .bottom _, none => failure
-      | some k, _, top => ceremony K circuits settings i k (top.getD emptyTop) tree
-    pure (state, fun i => outputs i ++ [output i])
-  pure (state, fun i => (keys i, trees i))
-
-/-- A simulator. It gives the contributions of the corrupt operators, reads their outputs, and names
-the honest operators that receive their outputs (GL05, Definition 5). It ends with a state of the
-adversary. The outputs of the corrupt operators in the setup are their keys and the honest reveals
-that the setup sends them. -/
-structure Simulator (C : Committee) (σ : Type) where
-  State : Type
-  contribute : OracleComp (LocalSpec C) (State × (C.Party → Contribution C))
-  setup : State → (C.Party → Option (Keys C)) → (C.Party → C.Party → List UInt8) →
-    OracleComp (LocalSpec C) (State × Finset C.Party)
-  ceremony : State → Option TreeOutput → OracleComp (LocalSpec C) (State × Finset C.Party)
-  output : State → OracleComp (LocalSpec C) σ
-
-/-- A party, which exists because `n ≥ 1`. -/
-def firstParty (C : Committee) : C.Party := ⟨0, by have := C.one_le_t; unfold Committee.n; omega⟩
-
-/-- The trusted dealer with selective abort. It derives the keys from fresh honest contributions and
-the corrupt contributions, computes each ceremony in the clear, and gives each output to the honest
-operators that the simulator names. -/
-def idealExecution {σ : Type} (D : C.Coalition) (S : Simulator C σ) (schedule : List Tree) :
-    OracleComp (LocalSpec C) (σ × (C.Party → DkgOutput C)) := do
-  let (state, corrupt) ← S.contribute
-  let honest ← Concrete.sequenceFin fun i => liftComp (sampleContribution i) _
-  let contributions := fun i => if i ∈ D.1 then corrupt i else honest i
-  let keys ← dealerKeys contributions
-  let seeds ← deriveSeeds contributions
-  let parameter := (keys (firstParty C)).parameter
-  let top ← dealerTree circuits parameter seeds emptyTop .top
-  let (state, receivers) ← S.setup state (fun i => if i ∈ D.1 then some (keys i) else none)
-    fun i j => if i ∉ D.1 ∧ j ∈ D.1 then revealTo (honest i) i j else []
-  let none' : C.Party → List (Option TreeOutput) := fun _ => []
-  let (state, trees) ← schedule.foldlM (init := (state, none')) fun (state, outputs) tree => do
-    let output ← dealerTree circuits parameter seeds
-      (match top with | some (.top t) => t | _ => emptyTop) tree
-    let (state, chosen) ← S.ceremony state output
-    pure (state, fun i => outputs i ++ [if i ∈ chosen ∧ i ∈ receivers ∧ i ∉ D.1 then output else none])
-  pure (← S.output state, fun i => (if i ∈ receivers ∧ i ∉ D.1 then some (keys i) else none, trees i))
-
-/-- The joint output of the adversary and the honest operators, read by a distinguisher with oracle
-access (GL05, Definition 8, and Canetti 2000, Definition 4). -/
-abbrev Distinguisher (C : Committee) (σ : Type) :=
-  σ × (C.Party → DkgOutput C) → OracleComp (LocalSpec C) Bool
+variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings)
 
 /-! ## Error terms -/
 
-/-- The most AND gates of one job. -/
-def Circuits.jobGates (circuits : Circuits) : ℕ :=
-  let gates := fun (c : Circuit) => (c.layers.map List.length).sum
-  (Finset.univ.sup fun x : PublicParameter × KeyIndex × ChainIndex => gates (circuits.chainEnd x.1 x.2.1 x.2.2)) ⊔
-  (Finset.univ.sup fun x : PublicParameter × KeyIndex × ChainIndex => gates (circuits.chainRow x.1 x.2.1 x.2.2)) ⊔
-  (Finset.univ.sup fun x : PublicParameter × KeyIndex × ChainIndex × Digit =>
-    gates (circuits.chainValue x.1 x.2.1 x.2.2.1 x.2.2.2)) ⊔
-  (Finset.univ.sup fun x : PublicParameter × KeyIndex => gates (circuits.commitment x.1 x.2))
+/-- The checked batches of a ceremony, of the top tree or of the two runs of a bottom tree. -/
+def treeBatches : Tree → ℕ
+  | .top => (chunks settings.batchSize topJobs).length
+  | .bottom b => (chunks settings.batchSize (bottomJobs b)).length +
+      (chunks settings.batchSize (signJobs b fun _ => digit 0)).length
 
-/-- `m` and `d` of the check of a full batch. -/
-def batchHalvings : ℕ := halvings (settings.batchSize * circuits.jobGates)
-def batchCoins : ℕ := coins (settings.batchSize * circuits.jobGates)
+/-- The soundness error of one check with `d` coins and `R` halving steps, `(d + 2 (R + 1)) / (|E| - 2)`
+(GS20, Lemmas 8 to 10). It adds `q / |E|` for each of the `R + 2` coins, for a counted call that hits
+the key input of a coin before the coin opens. -/
+def checkErrorOf (d R q : ℕ) : ℝ :=
+  (d + 2 * (R + 1) : ℕ) / (Fintype.card E - 2 : ℝ) + ((R + 2) * q : ℕ) / (Fintype.card E : ℝ)
 
-/-- The batches with a check in a ceremony. -/
-def Tree.batches (tree : Tree) : ℕ :=
-  let ceil := fun a : ℕ => (a + settings.batchSize - 1) / settings.batchSize
-  match tree with
-  | .top => ceil (2 ^ layerHeight * numChains)
-  | .bottom _ => ceil (2 ^ layerHeight * numChains + 2 ^ layerHeight) + ceil numChains
+/-- The soundness error of the checks of all batches of a ceremony. -/
+def treeCheckError (tree : Tree) (q : ℕ) : ℝ :=
+  treeBatches settings tree * checkErrorOf (E := E) (maxBatch circuits settings fun jobs => coins (tupleCount jobs))
+    (maxBatch circuits settings fun jobs => halvings (tupleCount jobs)) q
 
-/-- The soundness error of the checks of all batches, with `(d + 2 (m + 1)) / (|E| - 2)` each (GS20,
-Lemmas 8 to 10, and `doc/dkg.md` 3.3). -/
-def checkError (schedule : List Tree) : ℝ :=
-  ((schedule.map (Tree.batches settings)).sum : ℝ) *
-    ((batchCoins settings circuits + 2 * (batchHalvings settings circuits + 1) : ℕ) / (Fintype.card E - 2 : ℝ))
+/-- The probability that an honest check with `R` halving steps aborts. A slice coin is `0`, or one
+of the `R + 1` challenges finds no value outside `{0, 1}` within `challengeTries` values. -/
+def abortErrorOf (R : ℕ) : ℝ :=
+  (sliceBits : ℝ) / Fintype.card E + (R + 1 : ℕ) * (2 / Fintype.card E : ℝ) ^ challengeTries
 
-/-- Read `count` elements of `E` of the coin stream `index` from a PRF oracle, as `coinValues`. -/
-def readCoin (index count : ℕ) : OracleComp (PRFScheme.PRFOracleSpec (StreamId × ℕ) Bit) (List E) := do
-  let bits ← (List.range (elementBits * count)).mapM fun position =>
-    query (spec := (StreamId × ℕ) →ₒ Bit) (((0, index, 0), position))
-  pure ((List.range count).map fun k => K.encode.symm fun b => bits.getD (elementBits * k + b) 0)
+/-- The probability that an honest check of some batch of a ceremony aborts. -/
+def treeAbortError (tree : Tree) : ℝ :=
+  treeBatches settings tree * abortErrorOf (E := E) (maxBatch circuits settings fun jobs => halvings (tupleCount jobs))
 
-/-- The PRF test of a coin checks if its first `k` values or its challenge hit the roots of `p`. -/
-def rootTest {k : ℕ} (p : MvPolynomial (Fin k) E) (rejection : Bool) :
-    OracleComp (PRFScheme.PRFOracleSpec (StreamId × ℕ) Bit) Bool := do
-  let candidates ← (List.range 2).mapM fun index => readCoin K index 1
-  let challenge := ((candidates.map (·.getD 0 0)).filter (· ∉ ({0, 1} : Set E))).take 1
-  let values ← (if rejection then pure challenge else readCoin K 0 k :
-    OracleComp (PRFScheme.PRFOracleSpec (StreamId × ℕ) Bit) (List E))
-  pure (@decide (MvPolynomial.eval (fun b => values.getD b.val 0) p = 0) (Classical.propDecidable _))
+/-- The honest points of `H` in the keygen that a counted call must not hit, namely the parts of each
+operator, the derived keys, and the inputs of the hashes of the shared seeds. -/
+def keygenSecrets (C : Committee) : ℕ :=
+  C.n * (1 + C.n.choose (C.t - 1) + C.n) + 1 + C.n.choose (C.t - 1) + C.n.choose 2 + C.n ^ 2
 
-/-- The advantage against `aes` of the best root test of a nonzero polynomial of degree at most two
-in each of at most `d` coin values. A check needs `aes` under a fresh key to miss such roots. -/
-def coinAdvantage (aes : Aes) : ℝ :=
-  (⨆ (k : Fin (batchCoins settings circuits + 1)) (p : MvPolynomial (Fin k) E)
-      (_ : p ≠ 0 ∧ ∀ b, p.degreeOf b ≤ 2) (rejection : Bool),
-    ENNReal.ofReal ((PRFScheme.prfAdvantage aes (rootTest K p rejection)))).toReal
+/-- The birthday bound of the counted calls and the honest points of the keygen. It covers a guessed
+secret, a collision of two secrets, a failed programming and a failed extraction. -/
+def keygenHashError (C : Committee) (q : ℕ) : ℝ := ((q + keygenSecrets C) ^ 2 : ℕ) / 2 ^ 256
 
-/-- The coin term, with `m + 2` calls of `coin` in each batch. -/
-def coinError (aes : Aes) (schedule : List Tree) : ℝ :=
-  ((schedule.map (Tree.batches settings)).sum * (batchHalvings settings circuits + 2) : ℕ) *
-    coinAdvantage K settings circuits aes
+/-- The programming queries of `keygenSimulator`, one for `P`, at most one for each term and one for
+each pair of a corrupt and an honest operator. -/
+def keygenOverhead (C : Committee) : ℕ := 1 + C.n.choose (C.t - 1) + C.n ^ 2
 
-/-- A key that the coalition does not know, namely a term with no corrupt holder or a pair of honest
-operators. -/
-def Hidden (D : C.Coalition) : KeyName C → Prop
-  | .term T => ∀ j ∈ D.1, j ∉ C.holders T
-  | .pair p => p.1.1 ∉ D.1 ∧ p.1.2 ∉ D.1
-  | .coin => False
+/-- The honest points of `H` in a ceremony that a counted call must not hit. The PRSS setup has the
+parts of each operator, the derived keys and the inputs of the hashes of the shared keys. Each PRSS
+key has a stream-key input. Each batch has the history, the digest and the copy hash of each term,
+and the copies that a corrupt owner sends to each honest operator, which it hashes for free. -/
+def treeSecrets (C : Committee) (tree : Tree) : ℕ :=
+  let terms := C.n.choose (C.t - 1)
+  let pairs := C.n.choose 2
+  C.n * (terms + C.n) + terms + pairs + C.n ^ 2 + (terms + pairs) +
+    treeBatches settings tree * (3 * terms + C.n * terms)
 
-instance : Fintype (KeyName C) :=
-  Fintype.ofEquiv (C.Term ⊕ C.Pair ⊕ Unit)
-    ⟨fun | .inl T => .term T | .inr (.inl p) => .pair p | .inr (.inr ()) => .coin,
-     fun | .term T => .inl T | .pair p => .inr (.inl p) | .coin => .inr (.inr ()),
-     fun x => by rcases x with T | p | u <;> rfl, fun x => by cases x <;> rfl⟩
+/-- The birthday bound of the counted calls and the honest points of a ceremony. -/
+def treeHashError (C : Committee) (tree : Tree) (q : ℕ) : ℝ :=
+  ((q + treeSecrets settings C tree) ^ 2 : ℕ) / 2 ^ 256
 
-/-- The streams under the hidden keys, with one independent `aes` key for each key and session. -/
-def hiddenStreams (aes : Aes) :
-    PRFScheme (KeyName C × HashOutput → Digest) ((KeyName C × HashOutput) × StreamId × ℕ) Bit where
-  keygen := $ᵗ (KeyName C × HashOutput → Digest)
-  eval keys input := aes.eval (keys input.1) input.2
+/-- The birthday bound `k² / 2^129` of the 128-bit AES keys of the `k` PRSS keys of a ceremony
+(`doc/dkg.md` 3.3). -/
+def streamKeyError (C : Committee) : ℝ := ((C.n.choose (C.t - 1) + C.n.choose 2) ^ 2 : ℕ) / 2 ^ 129
 
-abbrev HiddenSpec (C : Committee) :=
-  PRFScheme.PRFOracleSpec ((KeyName C × HashOutput) × StreamId × ℕ) Bit
+/-- The error of Theorem 5.1 with `F(k, x) = H16(k ‖ x)` in the random-oracle model, for `q`
+counted calls. PRAWNS bounds it by `2 C(n, t - 1) ε_F`, which gives `2 C(n, t - 1) q / 2^256`. The
+masks add `n² q / 2^256` for the guess of a hidden pair key. Honest calls are free, so two of the
+`C(n, t - 1) + n²` keys may also collide. -/
+def tprfError (C : Committee) (q : ℕ) : ℝ :=
+  ((2 * C.n.choose (C.t - 1) + C.n ^ 2) * q + (C.n.choose (C.t - 1) + C.n ^ 2) ^ 2 : ℕ) / 2 ^ 256
 
-def liftWorld {α : Type} (oa : StateT HashSpec.QueryCache ProbComp α) :
-    StateT HashSpec.QueryCache (OracleComp (HiddenSpec C)) α :=
-  StateT.mk fun s => liftComp (oa.run s) _
+/-- The birthday bound `N² / 2^129` of a collision of the random oracle on leaves, nodes and message
+digests. `N` calls give at most `N² / 2` pairs of different inputs, and each pair has one 128-bit
+truncated output with probability `2^-128`. -/
+def treeCollisionError (N : ℕ) : ℝ := (N ^ 2 : ℕ) / 2 ^ 129
 
-/-- The reduction to `hiddenStreams`. It is the real key generation and the distinguisher, with each
-stream under a hidden key from the PRF oracle (CDI05, the PRSS of the lacked term). -/
-def prgReduction (keccak : HashInput → HashOutput) (aes : Aes) (D : C.Coalition) (A : Adversary C E)
-    (schedule : List Tree) (Z : Distinguisher C A.State) :
-    PRFScheme.PRFAdversary ((KeyName C × HashOutput) × StreamId × ℕ) Bit :=
-  let streams : QueryImpl (PrgSpec C) (StateT HashSpec.QueryCache (OracleComp (HiddenSpec C))) :=
-    fun x => open Classical in if Hidden D x.1 then
-        StateT.lift (query (spec := ((KeyName C × HashOutput) × StreamId × ℕ) →ₒ Bit)
-          (m := OracleComp (HiddenSpec C)) ((x.1, x.2.2.1), x.2.2.2))
-      else liftWorld do
-        let derived ← hashAnswer keccak (streamKeyInput x.2.1 x.2.2.1)
-        pure (aes.eval (truncateHash derived) x.2.2.2)
-  let impl : QueryImpl (LocalSpec C) (StateT HashSpec.QueryCache (OracleComp (HiddenSpec C))) :=
-    ((fun n => liftWorld (unifFwdImpl HashSpec n) :
-        QueryImpl unifSpec (StateT HashSpec.QueryCache (OracleComp (HiddenSpec C)))) +
-      (fun input => liftWorld (hashAnswer keccak input) :
-        QueryImpl HashSpec (StateT HashSpec.QueryCache (OracleComp (HiddenSpec C))))) + streams
-  (simulateQ impl (realExecution K settings circuits D A schedule >>= Z)).run' ∅
+/-- The probability that two derived keys of one kind have the same parts. A derivation hashes only
+the tag of its kind and the parts (`src/mpc.rs`), so two terms or two pairs share a key only when an
+honest part repeats. -/
+def derivedKeyCollision (C : Committee) : ℝ :=
+  (C.n.choose (C.t - 1) ^ 2 + C.n.choose 2 ^ 2 : ℕ) / 2 ^ 256
 
-/-! ## Signing -/
+/-- The calls of an emulation of the honest operators in a check of `count` tuples. Each operator
+hashes `R + 2` coin keys, `d` expanded coins, at most `challengeTries` expanded values for each of
+the `R + 1` challenges, and the history and the digest of each term. -/
+def checkOverhead (C : Committee) (count : ℕ) : ℕ :=
+  C.n * (halvings count + 2 + coins count + (halvings count + 1) * challengeTries + 2 * C.n.choose (C.t - 1))
 
-/-- `H` as the fixed function `keccak`. -/
-def fixedHash (keccak : HashInput → HashOutput) : QueryImpl HashSpec Id := fun input => keccak input
+/-- The probability `p` that one trial of a randomizer search finds a codeword, since a message
+digest is a uniform 128-bit value. -/
+def codewordProbability : ℝ :=
+  ((Finset.univ.filter fun x : Encoding => Codeword.sum x = targetSum).card : ℝ) / 2 ^ digestBits
 
-/-- `steps` chain steps from position `start` with `H = keccak`. -/
-def chainWalk (keccak : HashInput → HashOutput) (parameter : PublicParameter) (lay : Layer)
-    (e : KeyIndex) (l : ChainIndex) (start steps : ℕ) (value : Digest) : Digest :=
-  simulateQ (fixedHash keccak) (Concrete.chainWalk parameter lay e l start steps value)
+/-- The probability `(1 - p)^L` that a randomizer search of `L` trials fails. -/
+def searchFailure : ℝ := (1 - codewordProbability) ^ randomizerAttemptLimit
 
-/-- The circuits compute the chain values and the commitment of leanXMSS with `H = keccak`. -/
-def Circuits.Computes (circuits : Circuits) (keccak : HashInput → HashOutput) : Prop :=
-  (∀ P e l x, (circuits.chainEnd P e l).eval (bitsOfDigest x) =
-    bitsOfDigest (chainWalk keccak P topLayer e l 0 3 x)) ∧
-  (∀ P e l x₀ x₁ x₂, (circuits.chainRow P e l).eval (bitsOfDigest x₀ ++ bitsOfDigest x₁ ++ bitsOfDigest x₂) =
-    bitsOfDigest (chainWalk keccak P bottomLayer e l 0 1 x₀ ^^^ x₁) ++
-    bitsOfDigest (chainWalk keccak P bottomLayer e l 0 2 x₀ ^^^ x₂) ++
-    bitsOfDigest (chainWalk keccak P bottomLayer e l 0 3 x₀)) ∧
-  (∀ P e l p x, (circuits.chainValue P e l p).eval (bitsOfDigest x) =
-    bitsOfDigest (chainWalk keccak P topLayer e l 0 p.val x)) ∧
-  (∀ P e ρ, (circuits.commitment P e).eval (bitsOfDigest ρ) =
-    bitsOfDigest (truncateHash (keccak (commitmentInput P e ρ))))
+/-- The circuits compute the jobs of leanXMSS, namely chain steps and the commitment, with the fixed
+function `Th`, on every job with the number of points that its kind takes. -/
+def CircuitsCompute (Th : HashInput → HashOutput) : Prop :=
+  ∀ (parameter : PublicParameter) (job : Job) (F : Point → Digest), job.points.length = job.kind.arity →
+    (circuits parameter job.kind).eval ((job.points.map F).flatMap bitsOfDigest) =
+      referenceJob (m := Id) (fun oa => evalTh Th oa) F parameter job
 
-/-- The oracles of PRAWNS, Figure 3, namely `OCorrupt`, the public outputs of a bottom tree, and the
-two rounds of `OSign`, with the quorum as input (PRAWNS, Section 4). -/
-inductive TsigQuery (C : Committee)
-  | corrupt (i : C.Party)
-  | tree (b : Fin (2 ^ layerHeight))
-  | round1 (i : C.Party) (J : C.Quorum) (e : KeyIndex) (message : Message)
-  | round2 (i : C.Party) (J : C.Quorum) (e : KeyIndex) (message : Message) (parts : C.Party → Digest)
+/-! ## Valid inputs -/
 
-def TsigSpec (C : Committee) : OracleSpec (TsigQuery C)
-  | .corrupt _ => Option (Keys C)
-  | .tree _ => Option BottomTree
-  | .round1 .. => Option Digest
-  | .round2 .. => Option (ChainIndex → Option Digest)
+/-- The keys of all operators come from one dealing of a parameter, seeds and pair keys. -/
+def DealtInputs (_D : C.Coalition) (x : C.Party → Keys C) : Prop :=
+  ∃ parameter seeds pairKeys, ∀ i, x i = dealtKeys parameter seeds pairKeys i
 
-/-- A forger. It gets the public key, the hash, and the signing oracles. -/
-structure TsigAdversary (C : Committee) where
-  main : PublicKey → OracleComp (LocalSpec C + TsigSpec C) Forgery
+/-- The honest Shamir shares of each `shamir` entry lie on one polynomial of degree at most `t - 1`,
+and the honest operators agree on the kind and the length of each entry. -/
+def ShamirInputs (D : C.Coalition) (x : C.Party → List (Product C E)) : Prop :=
+  (∀ i j, i ∉ D.1 → j ∉ D.1 → (x i).map Product.shape = (x j).map Product.shape) ∧
+  ∀ g k : ℕ, ∃ V W : Polynomial E, V.natDegree ≤ C.t - 1 ∧ W.natDegree ≤ C.t - 1 ∧ ∀ i, i ∉ D.1 →
+    ∀ a b count, (x i)[g]? = some (.shamir a b count) → a k = V.eval (K.point i) ∧ b k = W.eval (K.point i)
 
-/-- The keys of the operators that sign, and the public outputs of the trees. -/
-structure Dealt (C : Committee) where
-  keys : C.Party → Option (Keys C)
-  parameter : PublicParameter
-  /-- The seeds of all terms, which only the game uses, for the signature of the dealer. -/
-  seed : C.Term → HashOutput
-  bottom : Fin (2 ^ layerHeight) → OracleComp (LocalSpec C) (Option BottomTree)
+/-- The honest views of the tuples have the lengths `counts` and one mode for each tuple. For each
+term, if its honest holders agree on the values of it that a corrupt operator fills, then they agree
+on all its copies. So a term with no corrupt holder always agrees, and a term with a split copy has
+a split value that a corrupt operator filled. -/
+def TupleInputs (counts : List ℕ) (D : C.Coalition) (x : C.Party → List (Tuple C)) : Prop :=
+  (∀ i, i ∉ D.1 → (x i).map (·.count) = counts) ∧
+  (∀ i j, i ∉ D.1 → j ∉ D.1 → (x i).map (·.mode) = (x j).map (·.mode)) ∧
+  ∀ T, ConsistentAt D (fun i T => (x i).map fun τ => vector τ.count fun g =>
+      if ∃ j ∈ D.1, filler K τ.mode T g = some j then τ.z T g else 0) T →
+    ConsistentAt D (fun i T => (x i).map fun τ => (vector τ.count (τ.x T), vector τ.count (τ.y T),
+      vector τ.count (τ.z T))) T
 
-structure TsigState (C : Committee) where
-  corrupt : Finset C.Party
-  /-- The one message that the honest operators sign at a key, over all quorums and aborts. -/
-  bound : KeyIndex → Option Message
-  /-- The honest operators that sent chain parts at a key for a message. -/
-  released : List (KeyIndex × Message × C.Party)
-  /-- The randomizer values that honest signers accepted. -/
-  opened : List (KeyIndex × Digest)
+/-- Every tuple is a product, with each term from its first holder. -/
+def CorrectTuples (x : C.Party → List (Tuple C)) : Prop :=
+  ∀ k < (firstInput fun i => some (x i)).length,
+    let τ := tupleAt (fun i => some (x i)) k
+    ∀ g < τ.count, shareValue τ.z g = shareValue τ.x g * shareValue τ.y g
 
-/-- The bottom tree of a bottom key. -/
-def treeOf (e : KeyIndex) : Fin (2 ^ layerHeight) :=
-  ⟨e.val / 2 ^ layerHeight, by
-    have := e.isLt; simp only [lifetime, numLayers, layerHeight] at *; omega⟩
-
-/-- The signing oracles. The rule of `doc/sign.md`, Section 4, replaces line 8 of PRAWNS, Figure 3.
-At each key, honest operators sign one message only. Corruption is adaptive unless `static`, and
-stops at `t - 1` operators. -/
-def tsigOracles (dealt : Dealt C) (static : Bool) :
-    QueryImpl (TsigSpec C) (StateT (TsigState C) (OracleComp (LocalSpec C))) := fun q =>
-  match q with
-  | .corrupt i => do
-      let st ← get
-      if static ∨ C.t - 1 < (insert i st.corrupt).card then pure none else do
-        set { st with corrupt := insert i st.corrupt }
-        pure (dealt.keys i)
-  | .tree b => liftM (dealt.bottom b)
-  | .round1 i J e message => do
-      let st ← get
-      let some keys := dealt.keys i | pure none
-      if i ∈ st.corrupt ∨ i ∉ J.1 ∨ (st.bound e).any (· ≠ message) then pure none else do
-        set { st with bound := Function.update st.bound e (some message) }
-        some <$> liftM (signRound1 keys i J e message : OracleComp (LocalSpec C) Digest)
-  | .round2 i J e message parts => do
-      let st ← get
-      let some keys := dealt.keys i | pure none
-      if i ∈ st.corrupt ∨ i ∉ J.1 ∨ st.bound e ≠ some message then pure none else do
-        let some tree ← liftM (dealt.bottom (treeOf e)) | pure none
-        let own ← liftM (signRound1 keys i J e message : OracleComp (LocalSpec C) Digest)
-        let parts := Function.update parts i own
-        let some values ← liftM (signRound2 keys i J (tree.commitment e) e message parts :
-            OracleComp (LocalSpec C) _) | pure none
-        set { st with released := st.released ++ [(e, message, i)],
-                      opened := st.opened ++ [(e, combine J parts)] }
-        pure (some values)
-
-/-- The signature of the dealer at bottom key `e` for `m`, which every honest quorum outputs. -/
-def honestSignature (dealt : Dealt C) (e : KeyIndex) (m : Message) :
-    OracleComp (LocalSpec C) (Option Signature) := do
-  let some tree ← dealt.bottom (treeOf e) | pure none
-  let value := fun x => (prfValue (C := C) dealt.seed x : OracleComp (LocalSpec C) Digest)
-  let ρ ← value (randomizerPoint bottomLayer e)
-  let some (randomness, encoding) ← signCodeword dealt.parameter (tree.commitment e) e m ρ
-    | pure none
-  let values ← Concrete.sequenceFin fun l => match (encoding l).val with
-    | 0 => value (prfPoint bottomLayer e l 0)
-    | 3 => pure (tree.cpk e l).2.2
-    | p => do
-        let f ← value (prfPoint bottomLayer e l p)
-        pure ((if p = 1 then (tree.cpk e l).1 else (tree.cpk e l).2.1) ^^^ f)
-  let path ← merklePath dealt.parameter bottomLayer (fun e l => (tree.cpk e l).2.2) e
-  pure (some ⟨e, fun lay => if lay = bottomLayer then ⟨randomness, values, path⟩
-    else tree.topSignature⟩)
-
-/-- The game of PRAWNS, Figure 3, for strong unforgeability. The forgery wins if it verifies and
-fewer than `t` operators gave chain parts at its key for its message, or if it differs from the
-signature of the dealer there. Strong unforgeability goes beyond PRAWNS, which proves plain
-unforgeability, and matches the SUF-CMA of leanVM. -/
-def tsigGameWithKeys (dealt : Dealt C) (corrupt : Finset C.Party) (static : Bool) (pk : PublicKey)
-    (forge : OracleComp (LocalSpec C + TsigSpec C) Forgery) :
-    OracleComp (LocalSpec C) (Bool × TsigState C × Forgery) := do
-  let (forgery, st) ← (simulateQ (QueryImpl.ofLift (LocalSpec C)
-      (StateT (TsigState C) (OracleComp (LocalSpec C))) + tsigOracles dealt static) forge).run
-    ⟨corrupt, fun _ => none, [], []⟩
-  let verified ← Concrete.verify pk forgery.message forgery.signature
-  let signers := st.corrupt ∪ ((st.released.filter fun r =>
-    r.1 = forgery.signature.leafIndex ∧ r.2.1 = forgery.message).map (·.2.2)).toFinset
-  let fresh ← if signers.card < C.t then pure true else do
-    let honest ← honestSignature dealt forgery.signature.leafIndex forgery.message
-    pure (decide (honest ≠ some forgery.signature))
-  pure (verified && fresh, st, forgery)
-
-/-- PRAWNS `KeyGen` samples a uniform parameter, uniform term seeds and uniform pair keys. -/
-def prawnsKeyGen : ProbComp (PublicParameter × (C.Term → HashOutput) × (C.Party → Keys C)) := do
-  let parameter ← sampleKey
-  let seeds ← $ᵗ (C.Term → HashOutput)
-  let pairKeys ← $ᵗ (C.Pair → HashOutput)
-  pure (truncateHash parameter, seeds, fun i => ⟨truncateHash parameter,
-    fun T => if i ∈ C.holders T then seeds T else 0,
-    fun j => if h : j = i then 0 else pairKeys (C.pairOf i j (Ne.symm h))⟩)
-
-/-- The dealer data of `KeyGen`, with `run` evaluating the jobs of the trees. -/
-def dealtFrom (parameter : PublicParameter) (seeds : C.Term → HashOutput) (keys : C.Party → Keys C)
-    (top : TopTree) (run : ℕ → List Job → OracleComp (LocalSpec C) (Option (List (List Bit)))) :
-    Dealt C :=
-  ⟨fun i => some (keys i), parameter, seeds, fun b => (fun | some (.bottom t) => some t | _ => none) <$>
-    ceremonyOutput circuits parameter run top (.bottom b)⟩
-
-def clearRun (seeds : C.Term → HashOutput) : ℕ → List Job → OracleComp (LocalSpec C) (Option (List (List Bit))) :=
-  fun _ jobs => some <$> jobs.mapM (evalJob seeds)
-
-/-- The game `G^tsig` of PRAWNS, Figure 3, with the trusted dealer (Theorem 4). -/
-def tsigGame (A : TsigAdversary C) :
-    OracleComp (LocalSpec C) (Bool × TsigState C × Forgery × Dealt C) := do
-  let (parameter, seeds, keys) ← liftComp prawnsKeyGen _
-  let some (.top top) ← dealerTree circuits parameter seeds emptyTop .top
-    | pure (false, ⟨∅, fun _ => none, [], []⟩,
-        ⟨0, ⟨⟨0, by decide⟩, fun _ => ⟨0, fun _ => 0, fun _ => 0⟩⟩⟩,
-        ⟨fun _ => none, parameter, seeds, fun _ => pure none⟩)
-  let pk : PublicKey := ⟨top.root, parameter⟩
-  let dealt := dealtFrom circuits parameter seeds keys top (clearRun seeds)
-  let (win, st, forgery) ← tsigGameWithKeys dealt ∅ false pk (A.main pk)
-  pure (win, st, forgery, dealt)
-
-variable (keccak : HashInput → HashOutput) (aes : Aes)
-
-def tsigAdvantage (A : TsigAdversary C) : ℝ≥0∞ :=
-  Pr[fun r => r.1.1 = true | runWorld keccak aes (tsigGame circuits A)]
-
-/-- Every execution uses at most `q` hash calls, including the dealer, the honest operators and the
-verification. -/
-def HasHashQueryBound {α : Type} (oa : OracleComp (LocalSpec C) α) (q : ℕ) : Prop :=
-  ∀ r ∈ support (runWorld keccak aes oa), r.2 ≤ q
-
-/-- The task is to find `x'` at position `j - 1` whose chain reaches `f^3(x)`, given `y = f^j(x)`
-for a uniform `x` and `j ∈ {1, 2, 3}` on a uniform chain (PRAWNS, Definition 3.3, for the chains of
-leanXMSS). -/
-abbrev SprAdversary (C : Committee) :=
-  PublicParameter → Layer → KeyIndex → ChainIndex → Digest → ℕ → OracleComp (LocalSpec C) Digest
-
-def sprGame (B : SprAdversary C) : OracleComp (LocalSpec C) Bool := do
-  let parameter ← liftComp ($ᵗ Digest) _
-  let lay ← liftComp ($ᵗ Layer) _
-  let e ← liftComp ($ᵗ KeyIndex) _
-  let l ← liftComp ($ᵗ ChainIndex) _
-  let x ← liftComp ($ᵗ Digest) _
-  let j := (← liftComp ($ᵗ Fin 3) _).val + 1
-  let y ← Concrete.chainWalk parameter lay e l 0 j x
-  let x' ← B parameter lay e l y j
-  let top ← Concrete.chainWalk parameter lay e l 0 3 x
-  let top' ← Concrete.chainWalk parameter lay e l (j - 1) (4 - j) x'
-  pure (decide (top' = top))
-
-def sprAdvantage (B : SprAdversary C) : ℝ≥0∞ :=
-  Pr[fun r => r.1 = true | runWorld keccak aes (sprGame B)]
-
-/-- The reduction to `sprGame` (PRAWNS, Theorem 3.1, Games 2 and 3). It is the dealer game with the
-challenge chain built from `y` above position `j` and uniform masked values below it. It returns the
-forged value on that chain, walked up to position `j - 1`. -/
-def sprReduction (A : TsigAdversary C) : SprAdversary C := fun parameter lay e l y j => do
-  let (_, seeds, keys) ← liftComp prawnsKeyGen _
-  let keys := fun i => { keys i with parameter := parameter }
-  let masks ← liftComp ($ᵗ (Fin 3 → Digest)) _
-  let above := fun p => Concrete.chainWalk parameter lay e l j (p - j) y
-  let run : ℕ → List Job → OracleComp (LocalSpec C) (Option (List (List Bit))) := fun _ jobs =>
-    some <$> jobs.mapM fun job => do
-      if lay = bottomLayer ∧ job.points = [prfPoint lay e l 0, prfPoint lay e l 1, prfPoint lay e l 2] then do
-        let row ← (List.finRange 3).mapM fun p => if p.val + 1 < j then pure (masks p) else do
-          let value ← above (p.val + 1)
-          if p.val + 1 = 3 then pure value
-          else pure (value ^^^ (← prfValue seeds (prfPoint lay e l (p.val + 1))))
-        pure (row.flatMap bitsOfDigest)
-      else if lay = topLayer ∧ job.points = [prfPoint lay e l 0] then
-        match (List.finRange chainLength).find? (fun p =>
-            @decide (job.circuit = circuits.chainValue parameter e l p) (Classical.propDecidable _)) with
-        | some p => if j ≤ p.val then bitsOfDigest <$> above p.val else evalJob seeds job
-        | none => bitsOfDigest <$> above 3
-      else evalJob seeds job
-  let some (.top top) ← ceremonyOutput circuits parameter run emptyTop .top | pure 0
-  let pk : PublicKey := ⟨top.root, parameter⟩
-  let (_, _, forgery) ← tsigGameWithKeys (dealtFrom circuits parameter seeds keys top run) ∅ false pk
-    (A.main pk)
-  let signature := forgery.signature
-  let message ← if lay = bottomLayer then pure (bytesLE 32 forgery.message) else do
-    let root ← Concrete.layerRoot parameter bottomLayer (keyAt signature.leafIndex bottomLayer)
-      (bytesLE 32 forgery.message) (signature.layers bottomLayer)
-    pure (bytesLE 16 (root.getD 0))
-  let part := signature.layers lay
-  let digest ← Concrete.messageDigest parameter lay e message part.randomness
-  let some encoding := Codeword.decode digest | pure 0
-  Concrete.chainWalk parameter lay e l (encoding l).val (j - 1 - (encoding l).val) (part.chainValues l)
-
-/-- A collision of one chain step on the walks of two values from `position`. -/
-def walkCollision (parameter : PublicParameter) (lay : Layer) (e : KeyIndex) (l : ChainIndex) :
-    ℕ → ℕ → Digest → Digest → OracleComp (LocalSpec C) (Option (HashInput × HashInput))
-  | 0, _, _, _ => pure none
-  | steps + 1, position, a, b =>
-    if a = b then pure none else
-    if h : position < chainLength - 1 then do
-      let inputA := tweakableHashInput parameter (.chain lay e ⟨position, h⟩) (Concrete.chainPayload l a)
-      let inputB := tweakableHashInput parameter (.chain lay e ⟨position, h⟩) (Concrete.chainPayload l b)
-      let outputA := truncateHash (← query (spec := HashSpec) inputA)
-      let outputB := truncateHash (← query (spec := HashSpec) inputB)
-      if outputA = outputB then pure (some (inputA, inputB))
-      else walkCollision parameter lay e l steps (position + 1) outputA outputB
-    else pure none
-
-/-- The reduction to a collision of `keccak` on the MPC inputs. Either an honest signer accepted a
-randomizer value with the commitment `c_e` of another value, or the forgery and the signature of
-the dealer reach one chain end from two values. -/
-def collisionReduction (A : TsigAdversary C) :
-    OracleComp (LocalSpec C) (HashInput × HashInput) := do
-  let (_, st, forgery, dealt) ← tsigGame circuits A
-  let opened ← st.opened.mapM fun (e, ρ') => do
-    let ρ ← (prfValue (C := C) dealt.seed (randomizerPoint bottomLayer e) : OracleComp (LocalSpec C) Digest)
-    pure (if ρ ≠ ρ' then some (commitmentInput dealt.parameter e ρ, commitmentInput dealt.parameter e ρ')
-      else none)
-  let signature := forgery.signature
-  let some honest ← honestSignature dealt signature.leafIndex forgery.message
-    | pure ((opened.filterMap id).headD ([], []))
-  let bottomRoot ← Concrete.layerRoot dealt.parameter bottomLayer signature.leafIndex
-    (bytesLE 32 forgery.message) (honest.layers bottomLayer)
-  let chains ← [bottomLayer, topLayer].flatMapM fun lay => do
-    let key := keyAt signature.leafIndex lay
-    let message := if lay = bottomLayer then bytesLE 32 forgery.message else bytesLE 16 (bottomRoot.getD 0)
-    let part := honest.layers lay
-    if (signature.layers lay).randomness ≠ part.randomness then pure [] else do
-    let digest ← Concrete.messageDigest dealt.parameter lay key message part.randomness
-    let some encoding := Codeword.decode digest | pure []
-    (List.finRange numChains).mapM fun l =>
-      walkCollision dealt.parameter lay key l chainLength (encoding l).val
-        ((signature.layers lay).chainValues l) (part.chainValues l)
-  pure ((opened.filterMap id ++ chains.filterMap id).headD ([], []))
-
-/-- The probability that the reduction outputs two MPC inputs with one value of `keccak`. -/
-def collisionAdvantage (A : TsigAdversary C) : ℝ≥0∞ :=
-  Pr[fun r => r.1.1 ≠ r.1.2 ∧ MpcInput r.1.1 ∧ MpcInput r.1.2 ∧
-      truncateHash (keccak r.1.1) = truncateHash (keccak r.1.2) |
-    runWorld keccak aes (collisionReduction circuits A)]
-
-/-! ## Composition and honest runs -/
-
-/-- A forger that first plays the corrupt operators in the key generation. -/
-structure ComposedAdversary (C : Committee) (E : Type) where
-  dkg : Adversary C E
-  forge : dkg.State → PublicKey → OracleComp (LocalSpec C + TsigSpec C) Forgery
-
-/-- The first honest output of a scheduled ceremony that `pick` accepts. -/
-def firstOutput {α : Type} (D : C.Coalition) (schedule : List Tree) (outputs : C.Party → DkgOutput C)
-    (pick : Tree → TreeOutput → Option α) : Option α :=
-  (C.parties.filter (· ∉ D.1)).firstM fun i =>
-    ((outputs i).2.zip schedule).firstM fun (out, tree) => out.bind (pick tree)
-
-/-- The game of Theorem 5 after the real key generation, as a distinguisher of its outputs. The
-honest operators sign with their keys, and the public key and the trees come from honest outputs.
-Without them there is no public key and the forger loses. -/
-def tsigGameAfterDkg (D : C.Coalition) (schedule : List Tree) (A : ComposedAdversary C E) :
-    Distinguisher C A.dkg.State := fun (state, outputs) => do
-  let some top := firstOutput D schedule outputs (fun _ out => match out with
-      | .top t => some t
-      | _ => none)
-    | pure false
-  let some parameter := (C.parties.filter (· ∉ D.1)).firstM fun i => (outputs i).1.map (·.parameter)
-    | pure false
-  let pk : PublicKey := ⟨top.root, parameter⟩
-  let seed := fun T => ((C.parties.filter (· ∉ D.1)).firstM fun i =>
-    if i ∈ C.holders T then (outputs i).1.map (·.seed T) else none).getD 0
-  let dealt : Dealt C := ⟨fun i => if i ∈ D.1 then none else (outputs i).1, parameter, seed, fun b =>
-    pure (firstOutput D schedule outputs fun tree out => match tree, out with
-      | .bottom b', .bottom t => if b' = b then some t else none
-      | _, _ => none)⟩
-  (·.1) <$> tsigGameWithKeys dealt D.1 true pk (A.forge state pk)
-
-/-- The adversary of an honest run, which controls no operator. -/
-def idle : Adversary C E := ⟨Unit, pure (), fun _ => pure (), fun _ _ => pure ((), fun _ _ => none)⟩
-
-def noCoalition : C.Coalition := ⟨∅, by simp⟩
-
-/-- The simulator of an honest run, which gives every output to every operator. -/
-def everyone : Simulator C Unit :=
-  ⟨Unit, pure ((), fun _ => ⟨[], fun _ => [], fun _ => []⟩), fun _ _ _ => pure ((), Finset.univ),
-    fun _ _ => pure ((), Finset.univ), fun _ => pure ()⟩
-
-/-- An honest quorum signs `m` at key `e` with the trusted dealer. The result is `none` if a
-randomizer search fails, and otherwise tells whether the signature verifies. -/
-def honestSigning (J : C.Quorum) (e : KeyIndex) (message : Message) :
-    OracleComp (LocalSpec C) (Option Bool) := do
-  let (parameter, seeds, keys) ← liftComp prawnsKeyGen _
-  let some (.top top) ← dealerTree circuits parameter seeds emptyTop .top | pure none
-  let some (.bottom tree) ← dealerTree circuits parameter seeds top (.bottom (treeOf e)) | pure none
-  let parts ← Concrete.sequenceFin fun i => if i ∈ J.1 then signRound1 (keys i) i J e message else pure 0
-  let some _ ← signCodeword parameter (tree.commitment e) e message (combine J parts) | pure none
-  let chainParts ← Concrete.sequenceFin fun i => do
-    let values ← signRound2 (keys i) i J (tree.commitment e) e message parts
-    pure fun l => ((values.bind (· l)).getD 0)
-  let some signature ← assemble parameter tree e message J parts chainParts | pure (some false)
-  some <$> Concrete.verify ⟨top.root, parameter⟩ message signature
+/-- The inputs of a batch have one sharing for each job. The terms of a job have one width at each
+honest holder and are empty elsewhere. Every holder of each term agrees on it, the corrupt holders
+included, as the inputs of a ceremony come from the seeds that the keygen echo compares. -/
+def MainInputs (jobs : List Circuit) (D : C.Coalition) (x : C.Party → List (C.Term → List Bit)) : Prop :=
+  ∃ widths : List ℕ, widths.length = jobs.length ∧
+    (∀ i, i ∉ D.1 → (x i).length = jobs.length ∧ ∀ k < jobs.length, ∀ T,
+      ((((x i)[k]?).getD fun _ => []) T).length = if i ∈ C.holders T then widths.getD k 0 else 0) ∧
+    ∀ k : ℕ, Consistent noCoalition fun i T => (((x i)[k]?).getD fun _ => []) T
 
 /-! ## The claims -/
 
-variable (K : Constants C E) (settings : Settings) (circuits : Circuits)
-variable (keccak : HashInput → HashOutput) (aes : Aes)
+/-- An honest keygen gives the keys of `F_keygen`, except when two derived keys collide. -/
+def KeygenCompletenessStatement : Prop :=
+  Completes prims (fun i (_ : Unit) => (keygen i : PartyM C E RealSpec (Keys C))) setupRounds noFunctionality
+    (fun l => l.elim) Fkeygen (fun _ => Finset.univ) (fun _ _ => True) (derivedKeyCollision C)
 
-/-- An honest key generation gives the outputs of the dealer, except when a check aborts on a zero
-coin (Theorem 1). Security with abort alone allows a protocol that always aborts. -/
-def DkgCompletenessStatement : Prop :=
-  ∀ schedule : List Tree, schedule.head? = some .top →
-    tvDist ((fun r => r.1.2) <$> runWorld keccak aes (realExecution K settings circuits noCoalition idle schedule))
-      ((fun r => r.1.2) <$> runWorld keccak aes (idealExecution circuits noCoalition everyone schedule)) ≤
-      checkError (E := E) settings circuits schedule + coinError K settings circuits aes schedule
+/-- The keygen securely computes `F_keygen` with selective abort against a static coalition, with the
+simulator `keygenSimulator` (GL05 and CDG+18). -/
+def KeygenSecurityStatement : Prop :=
+  SimulatedBy prims (fun i (_ : Unit) => (keygen i : PartyM C E RealSpec (Keys C))) setupRounds Fkeygen
+    (fun _ _ => True) keygenSimulator (keygenOverhead C) fun _ _ _ _ _ q => keygenHashError C q
 
-/-- The setup and the ceremonies of a schedule securely compute the trusted dealer with selective
-abort against a static coalition (Theorem 2, after GL05, Definition 5, and GS20, Theorem 2). The
-ideal run keeps the hash budget of the real run. -/
-def DkgSecurityStatement : Prop :=
-  ∀ (D : C.Coalition) (A : Adversary C E) (schedule : List Tree), ∃ S : Simulator C A.State,
-    ∀ (Z : Distinguisher C A.State) (q : ℕ),
-      HasHashQueryBound keccak aes (realExecution K settings circuits D A schedule >>= Z) q →
-      HasHashQueryBound keccak aes (idealExecution circuits D S schedule >>= Z) q ∧
-      |(Pr[fun r => r.1 = true | runWorld keccak aes (realExecution K settings circuits D A schedule >>= Z)]).toReal -
-        (Pr[fun r => r.1 = true | runWorld keccak aes (idealExecution circuits D S schedule >>= Z)]).toReal| ≤
-        checkError (E := E) settings circuits schedule + coinError K settings circuits aes schedule +
-          PRFScheme.prfAdvantage (hiddenStreams aes) (prgReduction K settings circuits keccak aes D A schedule Z) +
-          q / 2 ^ 125
+/-- An honest ceremony gives the tree of `F_tree`, except when an honest check aborts. -/
+def TreeCompletenessStatement : Prop :=
+  0 < settings.batchSize → ∀ (top : TopTree) (tree : Tree),
+    Completes prims (fun i keys => (ceremony K circuits settings i keys top tree : PartyM C E RealSpec TreeOutput))
+      (ceremonyFuel circuits settings) noFunctionality (fun l => l.elim) (Ftree circuits settings top tree)
+      (fun _ => Finset.univ) DealtInputs (treeAbortError (E := E) circuits settings tree)
 
-/-- Every signature of an honest quorum verifies (Theorem 3, after PRAWNS, Definition 2.1). -/
-def SigningCorrectnessStatement : Prop :=
+/-- Each ceremony securely computes `F_tree` with selective abort against its own static coalition,
+with the simulator `treeSimulator` (GS20, Theorem 2, and GL05). The bound adds the AES term of the
+reduction `prgReduction` on the real run, because `treeSimulator` already uses ideal streams. -/
+def TreeSecurityStatement : Prop :=
+  0 < settings.batchSize → ∀ (top : TopTree) (tree : Tree),
+    SimulatedBy prims (fun i keys => (ceremony K circuits settings i keys top tree : PartyM C E RealSpec TreeOutput))
+      (ceremonyFuel circuits settings) (Ftree circuits settings top tree) DealtInputs
+      (treeSimulator K circuits settings top tree) 0 fun D A x z Z q =>
+        treeCheckError (E := E) circuits settings tree q + treeHashError settings C tree q + streamKeyError C +
+          PRFScheme.prfAdvantage (hiddenStreams prims.aes) (prgReduction prims D
+            (distinguish (realExecution D A noFunctionality (ceremonyFuel circuits settings)
+              (fun i keys => (ceremony K circuits settings i keys top tree : PartyM C E RealSpec TreeOutput)) x z) Z))
+
+/-- `Coin` securely computes `F_coin` with selective abort in the `F_rand`-hybrid model, perfectly
+(GS20, Lemma 3). The simulator makes no oracle call of its own. -/
+def CoinStatement [SampleableType E] : Prop :=
+  SecurelyComputes prims (coinProtocol K) 2 (Frand E) Fcoin SameCount 0 fun _ => 0
+
+/-- An honest `Coin` gives the output of `F_coin`. -/
+def CoinCompletenessStatement [SampleableType E] : Prop :=
+  Completes prims (coinProtocol K) 2 (Frand E) (randReply E) Fcoin (fun _ => Finset.univ) SameCount 0
+
+/-- `MulRep` and `Reshare` in each mode securely compute `F_mult` up to an additive attack in the
+`F_rand`-hybrid model, perfectly (GS20, Lemma 4). The simulator makes no oracle call of its own. -/
+def MultStatement : Prop :=
+  ∀ mode : ReshareMode,
+    SecurelyComputes prims (multProtocol K mode) (1 + mode.rounds) (Frand Bit) (FmultBit K mode)
+      (fun D x => SameCount D fun i => (x i).2.2) 0 fun _ => 0
+
+/-- `MulRep` or `MulSh` and `Reshare` securely compute `F_extendMult` up to an additive attack in the
+`F_rand`-hybrid model, perfectly (GS20, Lemma 5). The simulator makes no oracle call of its own. -/
+def ExtendMultStatement [SampleableType E] : Prop :=
+  SecurelyComputes prims (extendMultProtocol K) 2 (Frand E) (FextendMult K) (ShamirInputs K) 0 fun _ => 0
+
+/-- The check with its salted digests securely computes `F_multVerify` with selective abort in the
+`{F_coin, F_extendMult, F_rand}`-hybrid model (GS20, Lemmas 8 to 11, and CGH+18, Protocol 3.3). The
+error is the soundness of the check and the birthday bound of the histories and the digests. -/
+def MultVerifyStatement [SampleableType E] : Prop :=
+  ∀ counts : List ℕ,
+    SecurelyComputes prims (checkProtocol K) (2 * halvings counts.sum + 8) (checkFunctionalities K) FmultVerify
+      (TupleInputs K counts) (checkOverhead C counts.sum)
+      fun q => checkErrorOf (E := E) (coins counts.sum) (halvings counts.sum) q +
+        ((q + 2 * C.n * C.n.choose (C.t - 1)) ^ 2 : ℕ) / 2 ^ 256
+
+/-- An honest check accepts correct tuples, except when it aborts on a coin. -/
+def MultVerifyCompletenessStatement [SampleableType E] : Prop :=
+  ∀ counts : List ℕ,
+    Completes prims (checkProtocol K) (2 * halvings counts.sum + 8) (checkFunctionalities K) checkReply
+      FmultVerify (fun _ => Finset.univ) (fun D x => TupleInputs K counts D x ∧ CorrectTuples x)
+      (abortErrorOf (E := E) (halvings counts.sum))
+
+/-- A batch securely computes `F_main` with selective abort in the `{F_mult, F_multVerify}`-hybrid
+model. This is GS20, Theorem 2, for public outputs and inputs that the operators already share.
+
+* The overhead is the emulation of the copy hashes of `OpenRep`, two for each term and operator.
+* The error `(q + n) C(n, t - 1) / 2^256` covers another copy with the hash of an honest copy. After
+  `F_multVerify` accepts, the honest copies of each term agree, so each term has one target hash. A
+  counted call tries one copy against each target. A corrupt owner also sends one copy of each term
+  to each honest operator that lacks it, and that operator hashes it for free. -/
+def MainStatement : Prop :=
+  ∀ (mode : ReshareMode) (jobs : List Circuit),
+    SecurelyComputes prims (mainProtocol K mode jobs) (depth jobs + 3) (mainFunctionalities K mode) (Fmain jobs)
+      (MainInputs jobs) (2 * C.n * C.n.choose (C.t - 1))
+      fun q => ((q + C.n) * C.n.choose (C.t - 1) : ℕ) / 2 ^ 256
+
+/-- An honest batch gives the outputs of `F_main`. -/
+def MainCompletenessStatement : Prop :=
+  ∀ (mode : ReshareMode) (jobs : List Circuit),
+    Completes prims (mainProtocol K mode jobs) (depth jobs + 3) (mainFunctionalities K mode) mainReply
+      (Fmain jobs) (fun _ => Finset.univ) (MainInputs jobs) 0
+
+/-- `Combine'` of the parts of every quorum gives `F(msk, x)` (PRAWNS, Definition 2.1). -/
+def TprfCorrectnessStatement (C : Committee) : Prop :=
+  ∀ (J : C.Quorum) (x : Point) (ec : Message), ∀ r ∈ support (runWorld prims (tprfCorrectnessRun J x ec)), r.1 = true
+
+/-- The threshold PRF is adaptively secure (PRAWNS, Definition 2.2 and Theorem 5.1). -/
+def TprfSecurityStatement (C : Committee) : Prop :=
+  ∀ (A : TprfAdversary C) (q : ℕ),
+    IsQueryBoundP A (fun t => Sum.elim Counted (fun _ => False) t) q →
+    tprfAdvantage prims A ≤ tprfError C q
+
+/-- An honest quorum fails with probability at most `2 (1 - p)^L`, for the search of the top
+signature in `KeyGen` and the search of the signature. Every signature that it outputs verifies
+(PRAWNS, Section 3.1, honest run). -/
+def SigningCorrectnessStatement (C : Committee) : Prop :=
   ∀ (J : C.Quorum) (e : KeyIndex) (m : Message),
-    ∀ r ∈ support (runWorld keccak aes (honestSigning circuits J e m)), r.1 ≠ some false
+    (∀ r ∈ support (runWorld prims (honestSigning J e m)), r.1 ≠ some false) ∧
+      (Pr[fun r => r.1 = none | runWorld prims (honestSigning J e m)]).toReal ≤ 2 * searchFailure
 
-/-- The signing is strongly unforgeable with the trusted dealer and adaptive corruption (Theorem 4,
-by the game sequence of PRAWNS, Theorem 3.1). The guess of a layer, a key, a chain and a position
-costs `2 · 2 ^ 32 · 58 · 3`. -/
-def SigningSecurityStatement : Prop :=
-  ∀ (A : TsigAdversary C) (q : ℕ), HasHashQueryBound keccak aes (tsigGame circuits A) q →
-    tsigAdvantage circuits keccak aes A ≤ q / 2 ^ 126 + collisionAdvantage circuits keccak aes A +
-      (2 * lifetime * numChains * (chainLength - 1) : ℕ) * sprAdvantage keccak aes (sprReduction circuits A)
+/-- The signing is strongly unforgeable with adaptive corruption (PRAWNS, Definition 3.2 and
+Theorem 3.1), in the reduction form of Theorem 3.1.
 
-/-- Theorem 4 holds with the setup and the ceremonies of a schedule in place of the dealer (Theorem
-5). The corruption is static, the strongest that the literature proves, because GS20 proves the key
-generation for static corruption only and no paper composes a key generation with PRAWNS. -/
-def ComposedSecurityStatement : Prop :=
-  ∀ (D : C.Coalition) (A : ComposedAdversary C E) (schedule : List Tree) (q : ℕ),
-    HasHashQueryBound keccak aes (realExecution K settings circuits D A.dkg schedule >>= tsigGameAfterDkg D schedule A) q →
-    ∃ B : TsigAdversary C, HasHashQueryBound keccak aes (tsigGame circuits B) q ∧
-      (Pr[fun r => r.1 = true | runWorld keccak aes
-          (realExecution K settings circuits D A.dkg schedule >>= tsigGameAfterDkg D schedule A)]).toReal ≤
-        (tsigAdvantage circuits keccak aes B).toReal +
-          checkError (E := E) settings circuits schedule + coinError K settings circuits aes schedule +
-          PRFScheme.prfAdvantage (hiddenStreams aes)
-            (prgReduction K settings circuits keccak aes D A.dkg schedule (tsigGameAfterDkg D schedule A)) +
-          q / 2 ^ 125
+* The guess of Game 2 costs `guessCount`. PRAWNS, equation (6), prints `ℓd ε_F + ε_f`. Its
+  equations (2) to (4) give `ℓd (ε_F + ε_f)`, which this bound uses.
+* The random-oracle events of the threshold PRF enter through `TprfSecurityStatement`, whose bound
+  is `tprfError`.
+* A collision of `E_1` is a collision of the fixed `Th` on chain steps or commitments, which
+  `collisionReduction` finds, or a collision of the random oracle on leaves, nodes or message
+  digests. The second costs `N² / 2^129` for `N` such calls by every party, the honest key
+  generation, the signers and the verification included.
+* The claim has one named coordination assumption. Honest operators sign at most one message for
+  each key over all quorums. The game enforces it, the PoC does not, and production must. -/
+def SigningSecurityStatement (C : Committee) : Prop :=
+  ∀ (A : TsigAdversary C) (N : ℕ), HasTreeCallBound prims (tsigGame A) N →
+    tsigAdvantage prims A ≤ collisionAdvantage prims (collisionReduction A) + treeCollisionError N +
+      guessCount * (tprfAdvantage prims (tprfReduction A) + sprAdvantage prims (sprReduction A))
 
-end ThresholdLeanXmss
-
-open ThresholdLeanXmss in
-/-- The security claim, for every committee of at most 16 signers and every circuit family that
-computes the chain and the commitment of `keccak`. -/
+/-- The security claim, for every committee, every check field of characteristic `2` with its
+constants, every `Th` and AES-128, every circuit family that computes `Th`, and every setting. -/
 abbrev ThresholdLeanXmssSecurityStatement : Prop :=
   ∀ (C : Committee) (E : Type) [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
-    (K : Constants C E) (settings : Settings) (circuits : Circuits)
-    (keccak : HashInput → HashOutput) (aes : Aes),
-    C.t ≤ 16 → circuits.Computes keccak →
-      DkgCompletenessStatement K settings circuits keccak aes ∧
-      DkgSecurityStatement K settings circuits keccak aes ∧
-      SigningCorrectnessStatement (C := C) circuits keccak aes ∧
-      SigningSecurityStatement (C := C) circuits keccak aes ∧
-      ComposedSecurityStatement K settings circuits keccak aes
+    (K : Constants C E) (prims : Primitives) (circuits : Circuits) (settings : Settings),
+    letI : SampleableType E := SampleableType.ofFintype E
+    CircuitsCompute circuits prims.Th →
+    KeygenCompletenessStatement (C := C) (E := E) prims ∧ KeygenSecurityStatement (C := C) (E := E) prims ∧
+      TreeCompletenessStatement prims K circuits settings ∧ TreeSecurityStatement prims K circuits settings ∧
+      CoinStatement prims K ∧ CoinCompletenessStatement prims K ∧ MultStatement prims K ∧
+      ExtendMultStatement prims K ∧ MultVerifyStatement prims K ∧ MultVerifyCompletenessStatement prims K ∧
+      MainStatement prims K ∧ MainCompletenessStatement prims K ∧
+      TprfCorrectnessStatement prims C ∧ TprfSecurityStatement prims C ∧
+      SigningCorrectnessStatement prims C ∧ SigningSecurityStatement prims C
+
+end ThresholdLeanXmss

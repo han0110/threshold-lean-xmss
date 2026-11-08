@@ -1,18 +1,37 @@
 import LeanXmss.Scheme
-import VCVio.CryptoFoundations.PRF
 import Mathlib.Algebra.Field.ZMod
 import Mathlib.LinearAlgebra.LinearIndependent.Defs
+import VCVio.CryptoFoundations.PRF
+import VCVio.OracleComp.QueryTracking.WriterCost
+import VCVio.OracleComp.QueryTracking.QueryBound
+import VCVio.OracleComp.QueryTracking.RandomOracle.Simulation
+import VCVio.EvalDist.TVDist
 
 /-!
-# Threshold leanXMSS, the protocol
+# Threshold leanXMSS
 
-The key generation of `doc/dkg.md` and the signing of `doc/sign.md`, as programs of one operator.
+The key generation of `doc/dkg.md` and the signing of `doc/sign.md`, as programs of one operator, at
+the level of GS20 and PRAWNS. The end of the file holds the execution model, the programs in the
+hybrid models of GS20, and the honest runs that the claims compare.
 
-* An operator program is an `OracleComp` with private sampling, the hash `H`, the stream `PRG`
-  and one query `exchange` for each synchronous round. A program that returns `none` aborts.
-* A receiver reads a missing or short message as zeros, as the implementation pads short messages.
-* The model keeps single bits. The check groups the tuple bits in words of `2 ^ wordBits` bits only
-  for the fixed weights `x^q`, so lanes, padding and batch sizes do not change a statement.
+* An operator program is an `OracleComp` with private sampling, the oracle `H` and one query
+  `exchange` for each synchronous round. A program that returns `none` aborts.
+* A program in a hybrid model also has a query `call` to the functionality (GS20, Section 3.1).
+* Each use of `H` has its own domain. The implementation separates the uses by tags and lengths, so
+  its inputs map to these domains one to one (BR93).
+* The domain `hash` is the tweakable hash `Th` of leanXMSS. On the inputs that the MPC evaluates,
+  namely a chain step and the commitment `c_e`, it is one fixed function. Every other input of `Th`,
+  namely a leaf, a node and a message digest, and every other domain are a random oracle.
+* `PRG(key, ρ, idx)` is AES-128 under `H(key)` truncated to 128 bits, as in the implementation.
+* Messages carry values, not bytes. Every encoding of the implementation is injective, so it does
+  not change a view.
+* A run splits its jobs into batches of `batchSize` jobs. Each batch is one run of the protocol of
+  GS20, Protocol 19, with its own check and fresh running digests.
+* The AND gates reshare in peer mode or in collector mode. `Rerand` and the check use peer mode.
+* The digests travel in their own round before the last coin. The implementation sends them with
+  that coin, which saves one round and changes no message.
+* The session nonces and the commitment of the PRSS setup in the nonce round are not modeled. Fresh
+  PRSS parts in each ceremony separate the sessions.
 -/
 
 open OracleComp OracleSpec LeanXmss
@@ -68,17 +87,17 @@ end Committee
 
 /-! ## Public constants -/
 
-/-- The bits of a gate form words of `2 ^ wordBits` bits. -/
-def wordBits : ℕ := 6
-
-/-- The check folds `2 ^ sliceBits` slices with the small-value steps. -/
-def sliceBits : ℕ := 7
-
 /-- The bits of an element of the check field. -/
 def elementBits : ℕ := 192
 
-/-- The public constants of a committee. Every choice with these properties is allowed, so the
-statements hold for the balanced choice of the implementation. -/
+/-- A word of the check holds `2 ^ wordBits` tuples. -/
+def wordBits : ℕ := 6
+
+/-- The check folds `2 ^ sliceBits` slices with the slice steps. -/
+def sliceBits : ℕ := 7
+
+/-- The public constants of a committee (`doc/dkg.md` 1.1.3). Every choice with these properties is
+allowed. -/
 structure Constants (C : Committee) (E : Type) [Field E] [Algebra Bit E] where
   /-- `α_i`, the Shamir point of operator `i`. -/
   point : C.Party ↪ E
@@ -90,25 +109,127 @@ structure Constants (C : Committee) (E : Type) [Field E] [Algebra Bit E] where
   /-- `T_i`, the term that operator `i` fills in a peer reshare. -/
   filled : C.Party ↪ C.Term
   filled_held : ∀ i, i ∈ C.holders (filled i)
-  /-- `owner(T)`, the holder that sends the copy of `T` and adds the mask of `T`. -/
-  owner : C.Term → C.Party
-  owner_held : ∀ T, owner T ∈ C.holders T
   /-- `(T*, κ)` of gate `g` in a collector reshare. -/
   collector : ℕ → C.Term × C.Party
   collector_held : ∀ g, (collector g).2 ∈ C.holders (collector g).1
-  /-- The term that a public constant joins. -/
+  /-- `owner(T)`, the holder that sends the copy of `T` and adds the mask of `T`. -/
+  owner : C.Term → C.Party
+  owner_held : ∀ T, owner T ∈ C.holders T
+  /-- The term that holds the public part `c` of a replicated sharing. -/
   publicTerm : C.Term
-  /-- `x^q`, the weight of bit `q` of a word. -/
+  /-- `x^q`, the weight of bit `q` of a word in the check. -/
   weight : Fin (2 ^ wordBits) → E
   weight_independent : LinearIndependent Bit weight
   /-- The bits of an element of `E`. -/
   encode : E ≃ (Fin elementBits → Bit)
 
-/-- The reshare of the AND gates. The check always uses the peer reshare. -/
+/-- The reshare of the AND gates. -/
 inductive ReshareMode
   | peer
   | collector
 deriving DecidableEq
+
+/-- The rounds of one reshare. -/
+def ReshareMode.rounds : ReshareMode → ℕ
+  | .peer => 1
+  | .collector => 2
+
+/-- The settings of the ceremonies, which every operator uses. -/
+structure Settings where
+  mode : ReshareMode
+  batchSize : ℕ
+
+/-! ## The oracles -/
+
+/-- A PRF point of PRAWNS, Section 3.1, as `doc/sign.md` adapts it. `A_prf(e, l, p)` is position `p`
+on chain `l` of key `e`, and `A_rnd(e)` is the randomizer value of key `e`. -/
+inductive Point
+  | chain (lay : Layer) (e : KeyIndex) (l : ChainIndex) (p : Digit)
+  | randomizer (lay : Layer) (e : KeyIndex)
+deriving DecidableEq
+
+/-- A setup with commit, reveal and echo, namely the keygen or the PRSS setup of a ceremony. -/
+inductive Phase
+  | keygen
+  | prss
+deriving DecidableEq
+
+/-- The kind of a key that a setup derives. The derivation hashes only the tag of the phase and the
+kind, and the parts. -/
+inductive KeyKind
+  | parameter
+  | term
+  | pair
+deriving DecidableEq
+
+/-- A key that a setup derives, namely `P`, the key of a term, or the key of a pair. The name only
+keeps track of a key, and no hash takes it. -/
+inductive KeyName (C : Committee)
+  | parameter
+  | term (T : C.Term)
+  | pair (p : C.Pair)
+deriving DecidableEq
+
+/-- An input of `H`. Each constructor is one use of `H`, and the tag of the implementation separates
+it (`doc/dkg.md` 1.1.4). -/
+inductive Query (C : Committee)
+  /-- The tweakable hash `Th` of leanXMSS, on the bytes of leanVM. -/
+  | hash (input : HashInput)
+  /-- `H16(seed_T ‖ x)`, the PRF of a term, which the note defines with no tag. -/
+  | prf (seed : HashOutput) (x : Point)
+  /-- `H16(K_ij ‖ x ‖ m ‖ J)`, a mask of `Eval`, which the note defines with no tag. -/
+  | mask (key : HashOutput) (x : Point) (message : Message) (J : C.Quorum)
+  /-- `com_{i → j}`, which names its sender and its receiver. The tag is `thlxmss-commit` in the
+  keygen and `thlxmss-prss-commit` in the PRSS setup. -/
+  | commit (phase : Phase) (sender receiver : C.Party) (reveal : List HashOutput)
+  /-- A key from its parts. The tags are `thlxmss-keygen-parameter`, `thlxmss-keygen-term`,
+  `thlxmss-keygen-pair`, `thlxmss-prss-term` and `thlxmss-prss-pair`. -/
+  | derive (phase : Phase) (kind : KeyKind) (parts : List HashOutput)
+  /-- The hash of the keys of the terms that two operators share, which the echo of a setup carries.
+  The tag is `thlxmss-keygen-echo` or `thlxmss-prss-echo`. -/
+  | sharedKeys (phase : Phase) (keys : List HashOutput)
+  /-- The hash of a copy in `OpenRep`, with the tag `thlxmss-copy`. -/
+  | copy (values : List Bit)
+  /-- The running hash `h_T` of the values that a term records, with the tag `thlxmss-history`. -/
+  | history (values : List Bit)
+  /-- The salted digest `d_T = H(s_T ‖ h_T)`, with the tag `thlxmss-digest`. -/
+  | digest (salt : List Bit) (history : HashOutput)
+  /-- `H(key)`, whose first 128 bits key the AES-128 of a stream, with the label `rss-prss`. -/
+  | streamKey (key : HashOutput)
+  /-- `H` of an opened coin, the key of its expansion, with the tag `thlxmss-coin`. -/
+  | coinKey (value : List Bit)
+  /-- Value `index` of the expansion of a coin key. -/
+  | expand (key : HashOutput) (index : ℕ)
+deriving DecidableEq
+
+/-- An input `(name, key, ρ, idx, position)` of `PRG`. The name of the key is not an input of AES.
+It only marks the key for the AES term of the claims. -/
+abbrev PrgInput (C : Committee) := KeyName C × HashOutput × ℕ × ℕ × ℕ
+
+/-- `H` gives 32 bytes, and `PRG` gives one bit. -/
+abbrev RoSpec (C : Committee) := (Query C →ₒ HashOutput) + (PrgInput C →ₒ Bit)
+
+/-- Private sampling, `H` and `PRG`. -/
+abbrev LocalSpec (C : Committee) := unifSpec + RoSpec C
+
+variable {C : Committee}
+
+/-- One query of `H`. -/
+def hashQuery (q : Query C) : OracleComp (RoSpec C) HashOutput :=
+  query (spec := RoSpec C) (.inl q)
+
+/-- Run a computation of leanVM on the domain `Th` of `H`. -/
+def tweakable {α : Type} (oa : OracleComp HashSpec α) : OracleComp (RoSpec C) α :=
+  simulateQ (fun input => hashQuery (.hash input)) oa
+
+/-- A computation of leanVM with the fixed function `Th`. -/
+def evalTh {α : Type} (Th : HashInput → HashOutput) (oa : OracleComp HashSpec α) : α :=
+  let impl : QueryImpl HashSpec Id := fun input => pure (Th input)
+  simulateQ impl oa
+
+/-- `F(seed, x) = H16(seed ‖ x)`, the PRF of one term. -/
+def prf (seed : HashOutput) (x : Point) : OracleComp (RoSpec C) Digest :=
+  truncateHash <$> hashQuery (.prf seed x)
 
 /-! ## Messages and programs -/
 
@@ -116,8 +237,8 @@ deriving DecidableEq
 inductive Msg (E : Type) where
   | bits (values : List Bit)
   | elements (values : List E)
-  | bytes (values : List UInt8)
-  | bundle (parts : List (Option (Msg E)))
+  | hashes (values : List HashOutput)
+  | bundle (parts : List (Msg E))
 
 namespace Msg
 
@@ -131,33 +252,15 @@ def elementAt : Option (Msg E) → ℕ → E
   | some (.elements values), k => values.getD k 0
   | _, _ => 0
 
-def bytesOf : Option (Msg E) → List UInt8
-  | some (.bytes values) => values
+def hashesOf : Option (Msg E) → List HashOutput
+  | some (.hashes values) => values
   | _ => []
 
 def part : Option (Msg E) → ℕ → Option (Msg E)
-  | some (.bundle parts), k => (parts.getD k none)
+  | some (.bundle parts), k => parts[k]?
   | _, _ => none
 
 end Msg
-
-/-- The name of a `PRG` key. The key of a term or a pair stays secret, the key of a coin is
-public. -/
-inductive KeyName (C : Committee)
-  | term (T : C.Term)
-  | pair (p : C.Pair)
-  | coin
-deriving DecidableEq
-
-/-- A batch stream, given by the batch tag, the step and the index `idx` of `doc/dkg.md` 1.1.4. -/
-abbrev StreamId := ℕ × ℕ × ℕ
-
-/-- One bit of `PRG(key, session, stream)` at a position. -/
-abbrev PrgSpec (C : Committee) :=
-  (KeyName C × HashOutput × HashOutput × StreamId × ℕ) →ₒ Bit
-
-/-- Private sampling, the shared hash `H` and the stream `PRG`. -/
-abbrev LocalSpec (C : Committee) := unifSpec + HashSpec + PrgSpec C
 
 /-- The messages that one operator sends to, or receives from, each operator. -/
 abbrev Mail (C : Committee) (E : Type) := C.Party → Option (Msg E)
@@ -165,56 +268,50 @@ abbrev Mail (C : Committee) (E : Type) := C.Party → Option (Msg E)
 /-- One synchronous round sends the outbox and receives the inbox. -/
 abbrev RoundSpec (C : Committee) (E : Type) := Mail C E →ₒ Mail C E
 
-abbrev PartySpec (C : Committee) (E : Type) := LocalSpec C + RoundSpec C E
+/-- The oracles of an operator in the `G`-hybrid model. The real network has `G = []ₒ`. -/
+abbrev PartySpec (C : Committee) (E : Type) {ι : Type} (G : OracleSpec ι) :=
+  LocalSpec C + RoundSpec C E + G
 
 /-- The program of one operator. `none` is an abort. -/
-abbrev PartyM (C : Committee) (E : Type) := OptionT (OracleComp (PartySpec C E))
+abbrev PartyM (C : Committee) (E : Type) {ι : Type} (G : OracleSpec ι) :=
+  OptionT (OracleComp (PartySpec C E G))
 
-/-- A program stopped at its output or at its next round. -/
-inductive Step (C : Committee) (E α : Type) where
+/-- A program stopped at its output, at its next round, or at its next call. -/
+inductive Step (C : Committee) (E : Type) {ι : Type} (G : OracleSpec ι) (α : Type) where
   | done (out : Option α)
-  | wait (outbox : Mail C E) (resume : Mail C E → OracleComp (PartySpec C E) (Option α))
+  | wait (outbox : Mail C E) (resume : Mail C E → OracleComp (PartySpec C E G) (Option α))
+  | call (input : ι) (resume : G input → OracleComp (PartySpec C E G) (Option α))
 
-variable {C : Committee} {E : Type}
+variable {E : Type} {ι : Type} {G : OracleSpec ι}
 
-/-- Run the local steps of a program up to its output or its next round. -/
-def advance {α : Type} : OracleComp (PartySpec C E) (Option α) → OracleComp (LocalSpec C) (Step C E α)
+/-- Run the local steps of a program up to its output, its next round or its next call. -/
+def advance {α : Type} : OracleComp (PartySpec C E G) (Option α) → OracleComp (LocalSpec C) (Step C E G α)
   | .pure out => pure (.done out)
-  | .roll (Sum.inl q) k => do
+  | .roll (Sum.inl (Sum.inl q)) k => do
       let r ← OracleComp.lift (OracleSpec.query (spec := LocalSpec C) q)
       advance (k r)
-  | .roll (Sum.inr outbox) k => pure (.wait outbox k)
+  | .roll (Sum.inl (Sum.inr outbox)) k => pure (.wait outbox k)
+  | .roll (Sum.inr input) k => pure (.call input k)
 
-def exchange (outbox : Mail C E) : PartyM C E (Mail C E) :=
-  OptionT.lift (OracleComp.lift (OracleSpec.query (spec := PartySpec C E) (Sum.inr outbox)))
+def exchange (outbox : Mail C E) : PartyM C E G (Mail C E) :=
+  OptionT.lift (OracleComp.lift (OracleSpec.query (spec := PartySpec C E G) (Sum.inl (Sum.inr outbox))))
 
-def localStep {α : Type} (oa : OracleComp (LocalSpec C) α) : PartyM C E α :=
+/-- A call to the functionality of the hybrid model. -/
+def call (input : ι) : PartyM C E G (G input) :=
+  OptionT.lift (OracleComp.lift (OracleSpec.query (spec := PartySpec C E G) (Sum.inr input)))
+
+def localStep {α : Type} (oa : OracleComp (LocalSpec C) α) : PartyM C E G α :=
   OptionT.lift (liftComp oa _)
 
-def require (condition : Prop) : PartyM C E Unit :=
-  open Classical in if condition then pure () else failure
+def oracleStep {α : Type} (oa : OracleComp (RoSpec C) α) : PartyM C E G α :=
+  localStep (liftComp oa _)
 
-/-- Run programs side by side, one round of each per round, as the batches of a ceremony run on
-their own channels. The operator aborts all of them when one aborts. -/
-def parallel {α : Type} : ℕ → List (OracleComp (PartySpec C E) (Option α)) → PartyM C E (List α)
-  | 0, _ => failure
-  | fuel + 1, programs => do
-      let steps ← localStep (programs.mapM advance)
-      if steps.any (fun | .done none => true | _ => false) then failure
-      else if steps.all (fun | .done _ => true | _ => false) then
-        pure (steps.filterMap fun | .done out => out | _ => none)
-      else
-        let outbox : Mail C E := fun j => some (.bundle (steps.map fun
-          | .wait box _ => box j
-          | .done _ => none))
-        let inbox ← exchange outbox
-        parallel fuel (steps.mapIdx fun k step => match step with
-          | .done out => pure out
-          | .wait _ resume => resume fun j => Msg.part (inbox j) k)
+def require (condition : Prop) : PartyM C E G Unit :=
+  open Classical in if condition then pure () else failure
 
 /-! ## Keys -/
 
-/-- The keys of one operator after the setup. -/
+/-- The keys of one operator after the keygen. -/
 structure Keys (C : Committee) where
   parameter : PublicParameter
   /-- `seed_T` for each held term. -/
@@ -222,96 +319,97 @@ structure Keys (C : Committee) where
   /-- `K_ij` for each other operator `j`. -/
   pairKey : C.Party → HashOutput
 
-/-- A program of operator `i` in a session of a ceremony. -/
+/-- The PRSS keys of one operator in one ceremony (CDI05). Only the streams of the ceremony use them,
+and the operator erases them at its end. -/
+structure PrssKeys (C : Committee) where
+  term : C.Term → HashOutput
+  pair : C.Party → HashOutput
+
+/-- Operator `i` in one ceremony. -/
 structure Context (C : Committee) where
   self : C.Party
   keys : Keys C
-  session : HashOutput
+  prss : PrssKeys C
 
-/-! ## Streams -/
+/-- Operator `i` with no keys, for the gadgets that read only `self`. -/
+def localContext (i : C.Party) : Context C := ⟨i, ⟨0, fun _ => 0, fun _ => 0⟩, ⟨fun _ => 0, fun _ => 0⟩⟩
 
-section Streams
+/-! ## Sharings -/
 
-variable [Field E] [Algebra Bit E] (K : Constants C E) (ctx : Context C)
-
-/-- `count` bits of `PRG(key, session, stream)`. -/
-def stream (name : KeyName C) (key : HashOutput) (s : StreamId) (count : ℕ) : PartyM C E (List Bit) :=
-  localStep ((List.range count).mapM fun position =>
-    query (spec := PrgSpec C) (name, key, ctx.session, s, position))
-
-/-- `count` elements of `E` from `PRG(key, session, stream)`. -/
-def streamElements (name : KeyName C) (key : HashOutput) (s : StreamId) (count : ℕ) :
-    PartyM C E (List E) := do
-  let bits ← stream ctx name key s (elementBits * count)
-  pure ((List.range count).map fun k =>
-    K.encode.symm fun b => bits.getD (elementBits * k + b) 0)
-
-/-- `Rand(ρ, idx)`, the terms `PRG(seed_T, ρ, idx)` of each held term. -/
-def randBits (s : StreamId) (count : ℕ) : PartyM C E (C.Term → List Bit) := do
-  let streams ← C.terms.mapM fun T =>
-    if ctx.self ∈ C.holders T then stream ctx (.term T) (ctx.keys.seed T) s count else pure []
-  pure fun T => streams.getD (C.terms.idxOf T) []
-
-def randElements (s : StreamId) (count : ℕ) : PartyM C E (C.Term → List E) := do
-  let streams ← C.terms.mapM fun T =>
-    if ctx.self ∈ C.holders T then streamElements K ctx (.term T) (ctx.keys.seed T) s count
-    else pure []
-  pure fun T => streams.getD (C.terms.idxOf T) []
-
-end Streams
-
-
-attribute [local instance] Classical.propDecidable
-
-/-! ## Sharings and gadgets
-
-At operator `i`, a replicated sharing is a vector for each term, meaningful at the held terms. A
-vector is a function on `ℕ`, and a message carries its first `count` entries. -/
-
-/-- The terms of a replicated sharing at one operator. -/
+/-- A replicated sharing of a vector at one operator, meaningful at its held terms (CDI05). The
+public part joins the term `publicTerm`. -/
 abbrev Shares (C : Committee) (R : Type) := C.Term → ℕ → R
 
-/-- The running hash `h_T` of each term, of the values that the reshares give it, as bits. -/
-abbrev History (C : Committee) := C.Term → List Bit
+/-- The state of a run, namely the running value `h_T` of each term and the next round label. -/
+structure RunState (C : Committee) where
+  history : C.Term → List Bit
+  label : ℕ
 
-/-- A program of one batch, which keeps the running hashes. -/
-abbrev BatchM (C : Committee) (E : Type) := StateT (History C) (PartyM C E)
-
-/-- How the values of a sharing travel, as bits of the circuit or as elements of the check. -/
-structure Codec (C : Committee) (E R : Type) where
-  pack : List R → Msg E
-  unpack : Option (Msg E) → ℕ → R
-  draw : KeyName C → HashOutput → StreamId → ℕ → PartyM C E (ℕ → R)
-  toBits : R → List Bit
+/-- A program of one run. -/
+abbrev RunM (C : Committee) (E : Type) {ι : Type} (G : OracleSpec ι) := StateT (RunState C) (PartyM C E G)
 
 def vector {R : Type} (count : ℕ) (v : ℕ → R) : List R := (List.range count).map v
-
-def bytesOfBits (bits : List Bit) : List UInt8 := bits.map fun b => if b = 0 then 0 else 1
 
 def bitsOfDigest (d : Digest) : List Bit := List.ofFn fun k : Fin digestBits => if d.getLsbD k then 1 else 0
 
 def digestOfBits (bits : List Bit) : Digest :=
   BitVec.ofNat digestBits (∑ k ∈ Finset.range digestBits, (bits.getD k 0).val * 2 ^ k)
 
+/-- How the values of a sharing travel and how a stream gives them, as bits of the circuit or as
+elements of the check. -/
+structure Codec (C : Committee) (E R : Type) where
+  pack : List R → Msg E
+  unpack : Option (Msg E) → ℕ → R
+  draw : KeyName C → HashOutput → ℕ → ℕ → ℕ → OracleComp (RoSpec C) (ℕ → R)
+  toBits : R → List Bit
+
+/-- The PRSS outputs of one round, namely the terms `r_T` of `Rand` and the pair streams `Z_ij`. -/
+abbrev PrssOutput (C : Committee) (R : Type) := Shares C R × (C.Party → ℕ → R)
+
+/-- An inner product that the check reshares. -/
+inductive Product (C : Committee) (E : Type)
+  /-- Of two replicated vectors, which `MulRep` shares in the slice steps. -/
+  | replicated (x y : Shares C E) (count : ℕ)
+  /-- Of two Shamir vectors, which `MulSh` shares. -/
+  | shamir (x y : ℕ → E) (count : ℕ)
+
 section Gadgets
 
 variable [Field E] [Algebra Bit E] (K : Constants C E) (ctx : Context C)
 
+/-- `count` bits of `PRG(key, ρ, idx)`. -/
+def prgBits (name : KeyName C) (key : HashOutput) (ρ idx count : ℕ) : OracleComp (RoSpec C) (ℕ → Bit) := do
+  let bits ← (List.range count).mapM fun position =>
+    (query (spec := RoSpec C) (.inr (name, key, ρ, idx, position)) : OracleComp (RoSpec C) Bit)
+  pure fun g => bits.getD g 0
+
 def bitCodec : Codec C E Bit where
   pack := .bits
   unpack := Msg.bitAt
-  draw name key s count := do
-    let bits ← stream ctx name key s count
-    pure fun g => bits.getD g 0
+  draw := prgBits
   toBits b := [b]
 
 def elementCodec : Codec C E E where
   pack := .elements
   unpack := Msg.elementAt
-  draw name key s count := do
-    let values ← streamElements K ctx name key s count
-    pure fun g => values.getD g 0
+  draw name key ρ idx count := do
+    let bits ← prgBits name key ρ idx (elementBits * count)
+    pure fun g => K.encode.symm fun b => bits (elementBits * g + b)
   toBits x := List.ofFn (K.encode x)
+
+/-- A fresh round label. -/
+def freshLabel : RunM C E G ℕ := modifyGet fun s => (s.label, { s with label := s.label + 1 })
+
+/-- `Rand(ρ, idx)` and the pair streams of round `ρ`, from the PRSS keys (CDI05). -/
+def prssRandomness {R : Type} [Zero R] (codec : Codec C E R) (idx count : ℕ) :
+    RunM C E G (PrssOutput C R) := do
+  let ρ ← freshLabel
+  let r ← StateT.lift (oracleStep (C.terms.mapM fun T =>
+    if ctx.self ∈ C.holders T then codec.draw (.term T) (ctx.prss.term T) ρ idx count else pure fun _ => 0))
+  let Z ← StateT.lift (oracleStep (C.parties.mapM fun j =>
+    if h : j = ctx.self then pure fun _ => 0
+    else codec.draw (.pair (C.pairOf ctx.self j (Ne.symm h))) (ctx.prss.pair j) ρ idx count))
+  pure (fun T => r.getD (C.terms.idxOf T) fun _ => 0, fun j => Z.getD j.val fun _ => 0)
 
 /-- `MulRep`, the additive share of the products of two replicated sharings. -/
 def mulRep {R : Type} [CommRing R] (x y : Shares C R) : ℕ → R := fun g =>
@@ -333,157 +431,307 @@ def lagrangeAll (i : C.Party) : E :=
 def mulSh (x y : ℕ → E) (count : ℕ) : E :=
   lagrangeAll K ctx.self * ∑ g ∈ Finset.range count, x g * y g
 
+/-- The additive share of an inner product. -/
+def productShare : Product C E → E
+  | .replicated x y count => ∑ g ∈ Finset.range count, mulRep K ctx x y g
+  | .shamir x y count => mulSh K ctx x y count
+
 /-- The Lagrange weight of the point of operator `l` at `x`, among the first `t` operators. -/
 def lagrangeFirst (x : E) (l : C.Party) : E :=
   ∏ k ∈ (Finset.univ.filter fun k : C.Party => k.val < C.t).erase l,
     (x - K.point k) / (K.point l - K.point k)
 
-/-- The filled terms `C` of the peer reshare. -/
+/-- The filled terms `C` of a peer reshare. -/
 def filledTerms : Finset C.Term := Finset.univ.map K.filled
 
-/-- Append the new values of the terms in `terms` to their running hashes. -/
-def record {R : Type} (codec : Codec C E R) (terms : Finset C.Term) (z : Shares C R) (count : ℕ) :
-    BatchM C E Unit :=
-  modify fun h T =>
-    if ctx.self ∈ C.holders T ∧ T ∈ terms then h T ++ (vector count (z T)).flatMap codec.toBits else h T
+/-- The operator that fills term `T` at position `g` of a reshare. In peer mode operator `i` fills
+`T_i`. In collector mode the collector `κ` of gate `g` fills `T*`. -/
+def filler : ReshareMode → C.Term → ℕ → Option C.Party
+  | .peer, T, _ => C.parties.find? (K.filled · = T)
+  | .collector, T, g => if (K.collector g).1 = T then some (K.collector g).2 else none
 
-/-- The pair masks `ζ_i`, which sum to zero over all operators. -/
-def pairMasks {R : Type} [AddCommMonoid R] (codec : Codec C E R) (s : StreamId) (count : ℕ) :
-    PartyM C E (ℕ → R) := do
-  let masks ← C.parties.mapM fun j =>
-    if h : j = ctx.self then pure (fun _ => 0)
-    else codec.draw (.pair (C.pairOf ctx.self j (Ne.symm h))) (ctx.keys.pairKey j) s count
-  pure fun g => (masks.map (· g)).sum
+/-- Each holder of a term appends the values that a reshare fills in it to `h_T` (`doc/dkg.md`
+1.6). -/
+def record {R : Type} (codec : Codec C E R) (mode : ReshareMode) (z : Shares C R) (count : ℕ) :
+    RunM C E G Unit :=
+  modify fun s => ⟨fun T => if ctx.self ∈ C.holders T then
+    s.history T ++ ((List.range count).filter fun g => (filler K mode T g).isSome).flatMap
+      (codec.toBits ∘ z T) else s.history T, s.label⟩
 
-/-- The masks `r_T` of the held terms. -/
-def termMasks {R : Type} [Zero R] (codec : Codec C E R) (s : StreamId) (count : ℕ) :
-    PartyM C E (Shares C R) := do
-  let masks ← C.terms.mapM fun T =>
-    if ctx.self ∈ C.holders T then codec.draw (.term T) (ctx.keys.seed T) s count else pure (fun _ => 0)
-  pure fun T => masks.getD (C.terms.idxOf T) (fun _ => 0)
-
-/-- `Reshare` in peer mode, one round. Operator `i` sends `u_i` to the other holders of `T_i`. -/
-def resharePeer {R : Type} [Field R] (codec : Codec C E R) (v : ℕ → R) (count : ℕ) (s : StreamId) :
-    BatchM C E (Shares C R) := do
+/-- `Reshare` of an additive sharing in one round, with the PRSS outputs `randomness`. Operator `i`
+sends `u_i` to the other holders of `T_i`, and each holder of a filled term records it in `h_T`. The
+output is zero outside the held terms and the `count` positions. -/
+def reshare {R : Type} [Field R] (codec : Codec C E R) (randomness : PrssOutput C R) (v : ℕ → R)
+    (count : ℕ) : RunM C E G (Shares C R) := do
   let i := ctx.self
-  let r ← termMasks ctx codec s count
-  let ζ ← pairMasks ctx codec s count
-  let u : ℕ → R := fun g => v g + ζ g +
+  let (r, Z) := randomness
+  let u : ℕ → R := fun g => v g + ∑ j ∈ Finset.univ.erase i, Z j g +
     ∑ T ∈ Finset.univ.filter (fun T => T ∉ filledTerms K ∧ K.owner T = i), r T g
-  let inbox ← exchange fun j =>
-    if j ≠ i ∧ j ∈ C.holders (K.filled i) then some (codec.pack (vector count u)) else none
+  let inbox ← StateT.lift (exchange fun j =>
+    if j ≠ i ∧ j ∈ C.holders (K.filled i) then some (codec.pack (vector count u)) else none)
   let z : Shares C R := fun T g =>
-    if T ∈ filledTerms K then
+    if i ∉ C.holders T ∨ count ≤ g then 0
+    else if T ∈ filledTerms K then
       ∑ j ∈ Finset.univ.filter (K.filled · = T), if j = i then u g else codec.unpack (inbox j) g
     else r T g
-  record ctx codec (filledTerms K) z count
+  record K ctx codec .peer z count
   pure z
 
-/-- The gates `g < count` of a collector reshare, numbered from `offset`, whose collector is `j`. -/
-def collectedBy (offset count : ℕ) (j : C.Party) : List ℕ :=
-  (List.range count).filter fun g => (K.collector (offset + g)).2 = j
-
-/-- `Reshare` in collector mode, two rounds. Gate `g` sends every `u_i` to its collector `κ`,
-which sends the sum to the other holders of `T*`. -/
-def reshareCollector (v : ℕ → Bit) (count offset : ℕ) (s : StreamId) : BatchM C E (Shares C Bit) := do
+/-- `Reshare` of the AND gates in collector mode, in two rounds. Operator `i` sends `u_i` of gate `g`
+to the collector `κ` of `T*`, and `κ` sends the sum to the other holders of `T*`. -/
+def reshareCollector (randomness : PrssOutput C Bit) (v : ℕ → Bit) (count : ℕ) :
+    RunM C E G (Shares C Bit) := do
   let i := ctx.self
-  let star := fun g => (K.collector (offset + g)).1
-  let kappa := fun g => (K.collector (offset + g)).2
-  let r ← termMasks ctx (bitCodec (E := E) ctx) s count
-  let ζ ← pairMasks ctx (bitCodec (E := E) ctx) s count
-  let u : ℕ → Bit := fun g => v g + ζ g +
+  let (r, Z) := randomness
+  let star := fun g => (K.collector g).1
+  let kappa := fun g => (K.collector g).2
+  let collectedBy := fun j => (List.range count).filter (kappa · = j)
+  let u : ℕ → Bit := fun g => v g + ∑ j ∈ Finset.univ.erase i, Z j g +
     ∑ T ∈ Finset.univ.filter (fun T => T ≠ star g ∧ K.owner T = i), r T g
-  let inbox ← exchange (E := E) fun j =>
-    if j ≠ i then some (.bits ((collectedBy K offset count j).map u)) else none
+  let inbox ← StateT.lift (exchange fun j =>
+    if j ≠ i then some (.bits ((collectedBy j).map u)) else none)
   let sum : ℕ → Bit := fun g => u g + ∑ j ∈ Finset.univ.erase i,
-    Msg.bitAt (inbox j) ((collectedBy K offset count i).idxOf g)
-  let forward ← exchange (E := E) fun h =>
-    if h ≠ i then some (.bits (((collectedBy K offset count i).filter fun g =>
-      h ∈ C.holders (star g)).map sum)) else none
+    Msg.bitAt (inbox j) ((collectedBy i).idxOf g)
+  let forwardedTo := fun (κ h : C.Party) => (collectedBy κ).filter fun g => h ∈ C.holders (star g)
+  let forward ← StateT.lift (exchange fun h =>
+    if h ≠ i then some (.bits ((forwardedTo i h).map sum)) else none)
   let z : Shares C Bit := fun T g =>
-    if T = star g then
-      (if kappa g = i then sum g
-       else Msg.bitAt (forward (kappa g))
-         (((collectedBy K offset count (kappa g)).filter fun g' => i ∈ C.holders (star g')).idxOf g))
+    if i ∉ C.holders T ∨ count ≤ g then 0
+    else if T = star g then
+      if kappa g = i then sum g else Msg.bitAt (forward (kappa g)) ((forwardedTo (kappa g) i).idxOf g)
     else r T g
-  modify fun h T => if i ∈ C.holders T then
-    h T ++ ((List.range count).filter (star · = T)).map (z T) else h T
+  record K ctx bitCodec .collector z count
   pure z
+
+/-- `Reshare` of the AND gates in a mode. -/
+def reshareWith (mode : ReshareMode) (randomness : PrssOutput C Bit) (v : ℕ → Bit) (count : ℕ) :
+    RunM C E G (Shares C Bit) :=
+  match mode with
+  | .peer => reshare K ctx bitCodec randomness v count
+  | .collector => reshareCollector K ctx randomness v count
+
+/-- The additive share `Σ_{owner(T) = i} v_T` of a replicated sharing, which `Rerand` reshares. -/
+def ownerSum {R : Type} [AddCommMonoid R] (v : Shares C R) : ℕ → R := fun g =>
+  ∑ T ∈ Finset.univ.filter (K.owner · = ctx.self), v T g
+
+/-- `[[1]]`, the public constant `1` in the term `publicTerm`. -/
+def one {R : Type} [Zero R] [One R] : Shares C R := fun T _ => if T = K.publicTerm then 1 else 0
 
 /-- `OpenRep` of a replicated bit vector. For each term, the owner sends its copy and every other
 holder sends the hash of its copy to each operator that lacks the term (MPClan, App. B). -/
-def openRep (v : Shares C Bit) (count : ℕ) : PartyM C E (ℕ → Bit) := do
+def openRep (v : Shares C Bit) (count : ℕ) : PartyM C E G (ℕ → Bit) := do
   let i := ctx.self
-  let digests ← localStep (C.terms.mapM fun T =>
-    query (spec := HashSpec) (bytesOfBits (vector count (v T))))
-  let inbox ← exchange fun j => some (.bundle (C.terms.mapIdx fun k T =>
-    if j ∉ C.holders T ∧ i ∈ C.holders T then
-      if K.owner T = i then some (.bits (vector count (v T)))
-      else some (.bytes (bytesLE 32 (digests.getD k 0)))
-    else none))
+  let digests ← oracleStep (C.terms.mapM fun T => hashQuery (.copy (vector count (v T))))
+  let inbox ← exchange fun j => if j = i then none else some (.bundle [
+    .bits ((C.terms.filter fun T => j ∉ C.holders T ∧ K.owner T = i).flatMap fun T => vector count (v T)),
+    .hashes ((C.terms.zip digests).filterMap fun (T, d) =>
+      if j ∉ C.holders T ∧ i ∈ C.holders T ∧ K.owner T ≠ i then some d else none)])
+  let copies := fun j => Msg.part (inbox j) 0
+  let hashes := fun j => Msg.part (inbox j) 1
   let copy : Shares C Bit := fun T g =>
-    if i ∈ C.holders T then v T g else Msg.bitAt (Msg.part (inbox (K.owner T)) (C.terms.idxOf T)) g
-  let copyDigests ← localStep (C.terms.mapM fun T =>
-    query (spec := HashSpec) (bytesOfBits (vector count (copy T))))
-  require (∀ T : C.Term, i ∉ C.holders T → ∀ h : C.Party, h ∈ C.holders T → h ≠ K.owner T →
-    Msg.bytesOf (Msg.part (inbox h) (C.terms.idxOf T)) =
-      bytesLE 32 (copyDigests.getD (C.terms.idxOf T) 0))
+    if i ∈ C.holders T then v T g else
+      let owned := C.terms.filter fun T' => i ∉ C.holders T' ∧ K.owner T' = K.owner T
+      Msg.bitAt (copies (K.owner T)) (count * owned.idxOf T + g)
+  let copyDigests ← oracleStep (C.terms.mapM fun T => hashQuery (.copy (vector count (copy T))))
+  require (∀ T : C.Term, i ∉ C.holders T → ∀ h ∈ C.holders T, h ≠ K.owner T →
+    let sent := C.terms.filter fun T' => i ∉ C.holders T' ∧ h ∈ C.holders T' ∧ K.owner T' ≠ h
+    (Msg.hashesOf (hashes h))[sent.idxOf T]? = (C.terms.zip copyDigests).lookup T)
   pure fun g => ∑ T, copy T g
 
-/-- `OpenSh` of a Shamir vector with a payload. Each operator interpolates the shares of the first
-`t` operators and aborts unless all `n` shares lie on that polynomial. -/
-def openSh (v : ℕ → E) (count : ℕ) (payload : Msg E) :
-    PartyM C E ((ℕ → E) × (C.Party → Option (Msg E))) := do
+/-- `OpenSh` of a Shamir vector. Each operator interpolates the shares of the first `t` operators
+and aborts unless all `n` shares lie on that polynomial. -/
+def openSh (v : ℕ → E) (count : ℕ) : PartyM C E G (ℕ → E) := do
   let i := ctx.self
-  let inbox ← exchange fun j =>
-    if j = i then none else some (.bundle [some (.elements (vector count v)), some payload])
-  let share : C.Party → ℕ → E := fun j g =>
-    if j = i then v g else Msg.elementAt (Msg.part (inbox j) 0) g
+  let inbox ← exchange fun j => if j = i then none else some (.elements (vector count v))
+  let share : C.Party → ℕ → E := fun j g => if j = i then v g else Msg.elementAt (inbox j) g
   let first := Finset.univ.filter fun l : C.Party => l.val < C.t
   require (∀ j : C.Party, ∀ g < count,
     share j g = ∑ l ∈ first, lagrangeFirst K (K.point j) l * share l g)
-  pure (fun g => ∑ l ∈ first, lagrangeFirst K 0 l * share l g,
-    fun j => if j = i then some payload else Msg.part (inbox j) 1)
+  pure fun g => ∑ l ∈ first, lagrangeFirst K 0 l * share l g
 
-/-- `Coin`, the hash of `OpenSh(Conv(Rand(ρ, 1)))`. It also carries a payload from each operator. -/
-def coin (s : StreamId) (payload : Msg E) : PartyM C E (HashOutput × (C.Party → Option (Msg E))) := do
-  let r ← randElements K ctx s 1
-  let (opened, payloads) ← openSh K ctx (conv K ctx fun T g => (r T).getD g 0) 1 payload
-  let key ← localStep (query (spec := HashSpec) (bytesOfBits ((elementCodec K ctx).toBits (opened 0))))
-  pure (key, payloads)
+/-- `Coin`, `count` public values `OpenSh(Conv(Rand))` (GS20, Protocol 6). -/
+def coinWith (randomness : PrssOutput C E) (count : ℕ) : RunM C E G (List E) := do
+  let opened ← StateT.lift (openSh K ctx (conv K ctx randomness.1) count)
+  pure (vector count opened)
 
-/-- `count` values of a coin. -/
-def coinValues (key : HashOutput) (index count : ℕ) : PartyM C E (List E) :=
-  streamElements K ctx .coin key (0, index, 0) count
-
-/-- The challenge of a coin is its first value outside `{0, 1}`. -/
-def challenge (key : HashOutput) : ℕ → ℕ → PartyM C E E
-  | 0, _ => failure
-  | tries + 1, index => do
-      let r := (← coinValues K ctx key index 1).getD 0 0
-      match Classical.propDecidable (r ∉ ({0, 1} : Set E)) with
-      | .isTrue _ => pure r
-      | .isFalse _ => challenge key tries (index + 1)
-
-/-- The search for a challenge stops after `2 ^ 64` candidates. -/
-def challengeTries : ℕ := 2 ^ 64
-
-/-- The salted digest `d_T = H(s_T ‖ h_T)` of each held term, as a payload to every operator. -/
-def digests (h : History C) (s : StreamId) : PartyM C E (Msg E) := do
-  let salts ← randBits ctx s 256
-  let values ← localStep (C.terms.mapM fun T => do
-    let running ← query (spec := HashSpec) (bytesOfBits (h T))
-    query (spec := HashSpec) (bytesOfBits (salts T) ++ bytesLE 32 running))
-  pure (.bundle (C.terms.mapIdx fun k T =>
-    if ctx.self ∈ C.holders T then some (.bytes (bytesLE 32 (values.getD k 0))) else none))
-
-/-- Each operator aborts unless all holders of each term send the same digest. -/
-def compareDigests (payloads : C.Party → Option (Msg E)) : PartyM C E Unit :=
-  require (∀ T : C.Term, ∀ h h' : C.Party, h ∈ C.holders T → h' ∈ C.holders T →
-    Msg.part (payloads h) (C.terms.idxOf T) = Msg.part (payloads h') (C.terms.idxOf T) ∧
-      Msg.part (payloads h) (C.terms.idxOf T) ≠ none)
+/-- The salted digests `d_T` of the held terms go to every operator. Each operator aborts unless all
+holders of each term sent the same digest (CGH+18, Protocol 3.3). -/
+def compareDigests (salts : Shares C Bit) : RunM C E G Unit := do
+  let i := ctx.self
+  let h := (← get).history
+  let digests ← StateT.lift (oracleStep (C.terms.mapM fun T =>
+    if i ∈ C.holders T then do hashQuery (.digest (vector 256 (salts T)) (← hashQuery (.history (h T))))
+    else pure 0))
+  let inbox ← StateT.lift (exchange fun j => if j = i then none else some (.hashes digests))
+  let digestOf := fun j => if j = i then digests else Msg.hashesOf (inbox j)
+  StateT.lift (require (∀ T : C.Term, ∀ j ∈ C.holders T, ∀ j' ∈ C.holders T,
+    (digestOf j)[C.terms.idxOf T]? = (digestOf j')[C.terms.idxOf T]? ∧
+      (digestOf j)[C.terms.idxOf T]?.isSome))
 
 end Gadgets
+
+/-! ## The check
+
+The check of GS20, Section 5, with compression parameter `k = 2`, in the layout of the
+implementation (`src/check.rs`). Tuple `k` is bit `q` of word `w` of slice `h`. -/
+
+/-- A multiplication tuple `([[x]], [[y]], [[z]])` of bit vectors of length `count`, from a reshare
+in `mode`. -/
+structure Tuple (C : Committee) where
+  x : Shares C Bit
+  y : Shares C Bit
+  z : Shares C Bit
+  count : ℕ
+  mode : ReshareMode
+
+/-- The words of a slice of `count` tuples, a multiple of 8 (`slice_length` of the implementation). -/
+def sliceLength (count : ℕ) : ℕ :=
+  (((count + 2 ^ wordBits - 1) / 2 ^ wordBits + 2 ^ sliceBits - 1) / 2 ^ sliceBits + 7) / 8 * 8
+
+/-- The tuples of a slice, which is also the length of the vectors after the slice steps. -/
+def sliceWidth (count : ℕ) : ℕ := 2 ^ wordBits * sliceLength count
+
+/-- The length after one halving step. The step pads a vector of more than 16 elements to a multiple
+of 16, and a shorter vector to an even length. -/
+def halvedLength (length : ℕ) : ℕ :=
+  (if 16 < length then (length + 15) / 16 * 16 else (length + 1) / 2 * 2) / 2
+
+/-- The halving steps from `length` elements down to one element. -/
+def halvingSteps (length : ℕ) : ℕ := if 1 < length then halvingSteps (halvedLength length) + 1 else 0
+termination_by length
+decreasing_by unfold halvedLength; split_ifs <;> omega
+
+/-- The number `R` of halving steps of a check of `count` tuples, the slice steps included. -/
+def halvings (count : ℕ) : ℕ := sliceBits + halvingSteps (sliceWidth count)
+
+/-- The number `d` of coins of the weights, `log2` of the padded words rounded up. -/
+def coins (count : ℕ) : ℕ := Nat.clog 2 (2 ^ sliceBits * sliceLength count)
+
+def sliceOf (count k : ℕ) : ℕ := k / sliceWidth count
+
+def wordOf (count k : ℕ) : ℕ := k / 2 ^ wordBits % sliceLength count
+
+def bitOf (k : ℕ) : Fin (2 ^ wordBits) := ⟨k % 2 ^ wordBits, Nat.mod_lt _ (by positivity)⟩
+
+/-- The tries of a challenge. -/
+def challengeTries : ℕ := 2 ^ 64
+
+/-- The gadgets that the check calls, namely the values of `F_coin`, the inner products of
+`F_extendMult` as a replicated sharing, and the PRSS outputs of `F_rand`. -/
+structure CheckGadgets (C : Committee) (E : Type) {ι : Type} (G : OracleSpec ι) where
+  coin : ℕ → RunM C E G (List E)
+  extendMult : List (Product C E) → RunM C E G (Shares C E)
+  randElements : ℕ → RunM C E G (PrssOutput C E)
+  randBits : ℕ → RunM C E G (PrssOutput C Bit)
+
+section Check
+
+variable [Field E] [Algebra Bit E] (K : Constants C E) (ctx : Context C) (gadgets : CheckGadgets C E G)
+
+/-- `τ^a`, the product of the coins `τ[offset + b]` at the set bits `b < width` of `a`. -/
+def coinProduct (τ : List E) (offset width a : ℕ) : E :=
+  ∏ b ∈ Finset.range width, if a.testBit b then τ.getD (offset + b) 0 else 1
+
+/-- An element of `E` from the first bits of a hash output. -/
+def elementOfHash (h : HashOutput) : E := K.encode.symm fun b => if h.getLsbD b.val then 1 else 0
+
+/-- The key of a coin, `H` of its opened value (`doc/dkg.md` 1.9). -/
+def coinKey : RunM C E G HashOutput := do
+  let values ← gadgets.coin 1
+  StateT.lift (oracleStep (hashQuery (.coinKey (values.flatMap fun v => List.ofFn (K.encode v)))))
+
+/-- `count` expanded values of a coin key. -/
+def expand (key : HashOutput) (count : ℕ) : RunM C E G (List E) :=
+  StateT.lift (oracleStep ((List.range count).mapM fun k => elementOfHash K <$> hashQuery (.expand key k)))
+
+/-- The first expanded value outside `{0, 1}` from position `index`, within `tries` positions. -/
+def findChallenge (key : HashOutput) : ℕ → ℕ → OracleComp (RoSpec C) (Option E)
+  | 0, _ => pure none
+  | tries + 1, index => do
+      let r := elementOfHash K (← hashQuery (.expand key index))
+      match Classical.propDecidable (r ≠ 0 ∧ r ≠ 1) with
+      | isTrue _ => pure (some r)
+      | isFalse _ => findChallenge key tries (index + 1)
+
+/-- A challenge, the first expanded value of a fresh coin outside `{0, 1}`. -/
+def challenge : RunM C E G E := do
+  let key ← coinKey K gadgets
+  let some r ← StateT.lift (oracleStep (findChallenge K key challengeTries 0)) | StateT.lift failure
+  pure r
+
+/-- The check of the tuples (GS20, Protocols 13 to 15, in the layout of `src/check.rs`). A check of
+no tuple accepts at once. -/
+def check (tuples : List (Tuple C)) : RunM C E G Unit := do
+  let lift := fun (part : Tuple C → Shares C Bit) (T : C.Term) =>
+    tuples.flatMap fun τ => vector τ.count fun g => algebraMap Bit E (part τ T g)
+  let X : Shares C E := fun T k => (lift (·.x) T).getD k 0
+  let Y : Shares C E := fun T k => (lift (·.y) T).getD k 0
+  let Z : Shares C E := fun T k => (lift (·.z) T).getD k 0
+  let count := (tuples.map (·.count)).sum
+  if count = 0 then return
+  let m := halvings count
+  let d := coins count
+  let s := sliceBits
+  let width := sliceWidth count
+  -- De-linearization with the coins `τ` and the word weights `x^q`. The claim weighs tuple `k` by
+  -- `τ^h τ^w x^q`, and `x` keeps `τ^w x^q`.
+  let τ ← expand K (← coinKey K gadgets) d
+  StateT.lift (require (∀ b < s, τ.getD b 0 ≠ 0))
+  let wordWeight := fun k => coinProduct τ s (d - s) (wordOf count k) * K.weight (bitOf k)
+  let claim : Shares C E := fun T _ => ∑ k ∈ Finset.range (2 ^ s * width),
+    coinProduct τ 0 s (sliceOf count k) * wordWeight k * Z T k
+  -- The slice steps fold the top bit of the slice with the coin `c_j` kept out of `x`.
+  let (xs, ys, D) ← (List.range s).foldlM (init := ((fun T k => wordWeight k * X T k : Shares C E), Y,
+      conv K ctx claim 0)) fun (xs, ys, D) j => do
+    let half := width * 2 ^ (s - 1 - j)
+    let rest := fun k => coinProduct τ 0 (s - 1 - j) (k / width)
+    let t ← gadgets.extendMult [.replicated (fun T k => rest k * xs T k) ys half,
+      .replicated (fun T k => rest k * (xs T k + xs T (k + half))) (fun T k => ys T k + ys T (k + half)) half]
+    let r ← challenge K gadgets
+    let t₀ := conv K ctx t 0
+    let tInf := conv K ctx t 1
+    let t₁ := (D + t₀) / τ.getD (s - 1 - j) 0
+    let fold := fun (v : Shares C E) T k => v T k + r * (v T k + v T (k + half))
+    pure (fold xs, fold ys, (1 + r) * t₀ + r * t₁ + r * (1 + r) * tInf)
+  -- Dimension-Reduction with `k = 2` (GS20, Protocol 14). The high half reads the padding as zeros.
+  let (A, B, D) ← (List.range (m - s)).foldlM (init := (conv K ctx xs, conv K ctx ys, D))
+    fun (A, B, D) j => do
+      let length := halvedLength^[j] width
+      let half := halvedLength length
+      let hi := fun (v : ℕ → E) k => if k + half < length then v (k + half) else 0
+      let sum := fun (v : ℕ → E) k => v k + hi v k
+      let p ← gadgets.extendMult [.shamir A B half, .shamir (sum A) (sum B) half]
+      let r ← challenge K gadgets
+      let fold := fun (v : ℕ → E) k => v k + r * (v k + hi v k)
+      pure (fold A, fold B, conv K ctx p 0 + (D + conv K ctx p 1) * r + conv K ctx p 1 * r ^ 2)
+  -- Randomization (GS20, Protocol 15), with the digests before its coin.
+  let w ← gadgets.randElements 2
+  let wa := conv K ctx w.1 0
+  let wb := conv K ctx w.1 1
+  let q ← gadgets.extendMult [.shamir (fun _ => wa) (fun _ => wb) 1,
+    .shamir (fun _ => wa + A 0) (fun _ => wb + B 0) 1]
+  let q₀ := conv K ctx q 0
+  let q₂ := conv K ctx q 1
+  let salts ← gadgets.randBits 256
+  compareDigests ctx salts.1
+  let r ← challenge K gadgets
+  let opened ← StateT.lift (openSh K ctx (fun k => match k with
+    | 0 => wa + r * (wa + A 0)
+    | 1 => wb + r * (wb + B 0)
+    | _ => q₀ + (D + q₀ + q₂) * r + q₂ * r ^ 2) 3)
+  StateT.lift (require (opened 0 * opened 1 = opened 2))
+
+/-- The gadgets of the real check, from the PRSS keys of the ceremony. -/
+def realCheckGadgets : CheckGadgets C E G where
+  coin count := do coinWith K ctx (← prssRandomness ctx (elementCodec K) 1 count) count
+  extendMult products := do
+    let randomness ← prssRandomness ctx (elementCodec K) 0 products.length
+    reshare K ctx (elementCodec K) randomness
+      (fun g => match products[g]? with | some p => productShare K ctx p | none => 0) products.length
+  randElements count := prssRandomness ctx (elementCodec K) 1 count
+  randBits count := prssRandomness ctx bitCodec 2 count
+
+end Check
 
 /-! ## Circuits -/
 
@@ -503,273 +751,196 @@ def Circuit.eval (c : Circuit) (x : List Bit) : List Bit :=
   let w := c.layers.foldl (fun w layer => w ++ layer.map fun ab => ab.1.eval w * ab.2.eval w) x
   c.outputs.map (·.eval w)
 
-/-- The circuit that outputs its first `width` inputs. -/
+/-- The identity on `width` input bits. -/
 def Circuit.identity (width : ℕ) : Circuit := ⟨[], (List.range width).map fun k => ⟨[k], 0⟩⟩
 
-/-- A circuit on the threshold PRF values `F(X)` of some points `X`. -/
+/-- What a job computes from the threshold PRF values of its points (`doc/dkg.md` 3.1). -/
+inductive JobKind
+  /-- `y_3` from `F(x_0)` on chain `l` of top key `e`. -/
+  | chainEnd (e : KeyIndex) (l : ChainIndex)
+  /-- `y_1 ⊕ F(x_1)`, `y_2 ⊕ F(x_2)` and `y_3` from `F(x_0), F(x_1), F(x_2)` on bottom key `e`. -/
+  | chainRow (e : KeyIndex) (l : ChainIndex)
+  /-- `y_p` from `F(x_0)` on chain `l` of top key `e`. -/
+  | chainValue (e : KeyIndex) (l : ChainIndex) (p : Digit)
+  /-- `c_e` from `F(A_rnd(e))` on bottom key `e`. -/
+  | commitment (e : KeyIndex)
+  /-- `F(A_rnd(e))` itself. -/
+  | randomizer
+
+/-- The PRF values that a job of each kind takes. -/
+def JobKind.arity : JobKind → ℕ
+  | .chainRow .. => 3
+  | _ => 1
+
+/-- A job on the threshold PRF values `F(x)` of some points `x`. -/
 structure Job where
-  circuit : Circuit
-  points : List HashInput
+  kind : JobKind
+  points : List Point
 
-/-- `seed ‖ X`, the input of term `T` of `F(X)`. -/
-def prfInput (seed : HashOutput) (point : HashInput) : HashInput := bytesLE 32 seed ++ point
+/-- The Boolean circuit of each job kind under each public parameter, which the MPC evaluates. -/
+abbrev Circuits := PublicParameter → JobKind → Circuit
 
-/-- The number `m` of halving steps of a check of `count` tuples (`doc/dkg.md` 3.3). -/
-def halvings (count : ℕ) : ℕ := max (sliceBits + wordBits) (Nat.clog 2 count)
+/-- The gadgets that a run calls, namely `F_mult` for the AND gates in `mode` and for `Rerand`, and
+`F_multVerify` for the check (GS20, Protocol 19). -/
+structure RunGadgets (C : Committee) (E : Type) {ι : Type} (G : OracleSpec ι) where
+  mode : ReshareMode
+  mult : Shares C Bit → Shares C Bit → ℕ → RunM C E G (Shares C Bit)
+  rerand : Shares C Bit → ℕ → RunM C E G (Shares C Bit)
+  verify : List (Tuple C) → RunM C E G Unit
+  /-- `OpenRep` of the outputs. -/
+  output : Shares C Bit → ℕ → RunM C E G (ℕ → Bit)
 
-/-- The number `d` of coins of the weights (`doc/dkg.md` 3.3). -/
-def coins (count : ℕ) : ℕ := halvings count - wordBits
+/-- The most AND layers of the circuits of a run. -/
+def depth (jobs : List Circuit) : ℕ := (jobs.map (·.layers.length)).foldl max 0
 
-/-- The tuple index `k` of bit `q` of word `w` in slice `h`. -/
-def sliceOf (m k : ℕ) : ℕ := k / 2 ^ (m - sliceBits)
-def wordOf (m k : ℕ) : ℕ := (k / 2 ^ wordBits) % 2 ^ (m - sliceBits - wordBits)
-def bitOf (k : ℕ) : Fin (2 ^ wordBits) := ⟨k % 2 ^ wordBits, Nat.mod_lt _ (by positivity)⟩
+/-- The tuple bits that the check of a run covers, namely the AND gates and the outputs. -/
+def tupleCount (jobs : List Circuit) : ℕ :=
+  ((List.range (depth jobs)).map fun layer => (jobs.map fun job => (job.layers.getD layer []).length).sum).sum +
+    (jobs.map (·.outputs.length)).sum
 
-section Batch
+/-- The rounds of a run of `jobs`. Each AND layer takes one reshare, `Rerand` one round and each coin
+one round. Each halving step takes two rounds, the randomization with its digests four, and
+`OpenRep` one. -/
+def runRounds (mode : ReshareMode) (jobs : List Circuit) : ℕ :=
+  depth jobs * mode.rounds + 1 + 1 + 2 * halvings (tupleCount jobs) + 4 + 1
+
+section Run
 
 variable [Field E] [Algebra Bit E] (K : Constants C E) (ctx : Context C)
 
-/-- `τ^a`, the product of the coins `τ[offset + b]` at the set bits `b < width` of `a`. -/
-def coinProduct (τ : List E) (offset width a : ℕ) : E :=
-  ∏ b ∈ Finset.range width, if a.testBit b then τ.getD (offset + b) 0 else 1
+/-- An affine function of the wires of a replicated sharing, with the constant in `publicTerm`. -/
+def Affine.share (a : Affine) (w : C.Term → List Bit) (publicTerm T : C.Term) : Bit :=
+  (a.wires.map fun k => (w T).getD k 0).sum + if T = publicTerm then a.const else 0
 
-def liftShares (x : C.Term → List Bit) : Shares C E := fun T k => algebraMap Bit E ((x T).getD k 0)
-
-/-- The check of `doc/dkg.md` 2.2 with the slice steps of `doc/dkg.md` 3.3. It aborts unless every
-tuple `(x, y, z)` has `z = x y`, except with a small probability (GS20, Protocol 17). -/
-def check (tag base : ℕ) (x y z : C.Term → List Bit) (count : ℕ) : BatchM C E Unit := do
-  let i := ctx.self
-  let m := halvings count
-  let d := coins count
-  let s := sliceBits
-  -- After de-linearization the claim is `D = ∑ β_k z_k` with `β = τ^h τ^w x^q`, and `x` keeps
-  -- `τ^w x^q`.
-  let (key, _) ← coin K ctx (tag, base, 1) (.bundle [])
-  let τ ← coinValues K ctx key 0 d
-  require (C := C) (E := E) (∀ b < s, τ.getD b 0 ≠ 0)
-  let wordWeight := fun k => coinProduct τ s (d - s) (wordOf m k) * K.weight (bitOf k)
-  let xHat : Shares C E := fun T k => wordWeight k * liftShares x T k
-  let claim : Shares C E := fun T _ => ∑ k ∈ Finset.range (2 ^ m),
-    coinProduct τ 0 s (sliceOf m k) * wordWeight k * liftShares z T k
-  -- The slice steps fold the top bit of the slice with the coin `c_j` kept out of `x` (Gruen).
-  let (xHat, yFold, D) ← (List.range s).foldlM (init := (xHat, liftShares y, conv K ctx claim 0))
-    fun (xs, ys, D) j => do
-      let half := 2 ^ (m - j - 1)
-      let rest := fun k => ∏ b ∈ Finset.range (s - 1 - j),
-        if k.testBit (m - s + b) then τ.getD b 0 else 1
-      let t0 : E := ∑ AB ∈ K.pairs i, ∑ k ∈ Finset.range half, rest k * xs AB.1 k * ys AB.2 k
-      let tInf : E := ∑ AB ∈ K.pairs i, ∑ k ∈ Finset.range half,
-        rest k * (xs AB.1 k + xs AB.1 (k + half)) * (ys AB.2 k + ys AB.2 (k + half))
-      let t ← resharePeer K ctx (elementCodec K ctx) (fun g => if g = 0 then t0 else tInf) 2
-        (tag, base + 1 + j, 0)
-      let (key, _) ← coin K ctx (tag, base + 1 + j, 1) (.bundle [])
-      let r ← challenge K ctx key challengeTries 0
-      let c := τ.getD (s - 1 - j) 0
-      let t0Share := conv K ctx t 0
-      let tInfShare := conv K ctx t 1
-      let t1Share := (D + t0Share) / c
-      let fold := fun (v : Shares C E) T k => v T k + r * (v T k + v T (k + half))
-      pure (fold xs, fold ys, (1 + r) * t0Share + r * t1Share + r * (1 + r) * tInfShare)
-  -- Halving steps on Shamir vectors (GS20, Protocol 14 with `k = 2`).
-  let (A, B, D) ← (List.range (m - s)).foldlM
-    (init := (conv K ctx xHat, conv K ctx yFold, D)) fun (A, B, D) j => do
-      let half := 2 ^ (m - s - j - 1)
-      let lo := fun (v : ℕ → E) k => v k
-      let sum := fun (v : ℕ → E) k => v k + v (k + half)
-      let c1 := mulSh K ctx (lo A) (lo B) half
-      let p2 := mulSh K ctx (sum A) (sum B) half
-      let t ← resharePeer K ctx (elementCodec K ctx) (fun g => if g = 0 then c1 else p2) 2
-        (tag, base + 1 + s + j, 0)
-      let (key, _) ← coin K ctx (tag, base + 1 + s + j, 1) (.bundle [])
-      let r ← challenge K ctx key challengeTries 0
-      let fold := fun (v : ℕ → E) k => v k + r * (v k + v (k + half))
-      pure (fold A, fold B, conv K ctx t 0 + (D + conv K ctx t 1) * r + conv K ctx t 1 * r ^ 2)
-  -- The final step (GS20, Protocol 15) uses random masks, digests to all operators and a robust
-  -- opening.
-  let final := base + 1 + m
-  let masks ← randElements K ctx (tag, final, 1) 2
-  let a0 := conv K ctx (fun T g => (masks T).getD (2 * g) 0) 0
-  let b0 := conv K ctx (fun T g => (masks T).getD (2 * g + 1) 0) 0
-  let c0 := mulSh K ctx (fun _ => a0) (fun _ => b0) 1
-  let q2 := mulSh K ctx (fun _ => a0 + A 0) (fun _ => b0 + B 0) 1
-  let q ← resharePeer K ctx (elementCodec K ctx) (fun g => if g = 0 then c0 else q2) 2 (tag, final, 0)
-  let payload ← digests (E := E) ctx (← get) (tag, final + 1, 2)
-  let (key, payloads) ← coin K ctx (tag, final + 1, 1) payload
-  compareDigests payloads
-  let r ← challenge K ctx key challengeTries 0
-  let c0Share := conv K ctx q 0
-  let q2Share := conv K ctx q 1
-  let opened ← openSh K ctx (fun g =>
-      if g = 0 then a0 + r * (a0 + A 0)
-      else if g = 1 then b0 + r * (b0 + B 0)
-      else c0Share + (D + c0Share + q2Share) * r + q2Share * r ^ 2) 3 (.bundle [])
-  require (C := C) (E := E) (opened.1 0 * opened.1 1 = opened.1 2)
-
-/-- The term of an affine wire at one operator. The public constant joins one term. -/
-def affineTerm (a : Affine) (w : C.Term → List Bit) (T : C.Term) : Bit :=
-  (a.wires.map fun k => (w T).getD k 0).sum + if T = K.publicTerm then a.const else 0
-
-/-- One batch runs the AND layers of its jobs, the check, then `OpenRep` of the outputs. -/
-def batch (mode : ReshareMode) (tag : ℕ) (jobs : List Job) : BatchM C E (List (List Bit)) := do
-  let i := ctx.self
-  let inputs : List (List (List Bit)) ← jobs.mapM fun job => localStep (C := C) (E := E) (C.terms.mapM fun T =>
-    if i ∈ C.holders T then job.points.flatMapM fun X => do
-      pure (bitsOfDigest (truncateHash (← query (spec := HashSpec) (prfInput (ctx.keys.seed T) X))))
+/-- The sharing of the PRF values of the points of a job, as its input wires. Each holder of `T`
+computes term `T` as `H16(seed_T ‖ x)`, a `Rand` with chosen input (`doc/dkg.md` 3.1). -/
+def inputShares (job : Job) : PartyM C E G (C.Term → List Bit) := do
+  let terms ← oracleStep (C.terms.mapM fun T =>
+    if ctx.self ∈ C.holders T then job.points.flatMapM fun x => bitsOfDigest <$> prf (ctx.keys.seed T) x
     else pure [])
-  let wires₀ : List (C.Term → List Bit) :=
-    inputs.map fun terms T => terms.getD (C.terms.idxOf T) []
-  let depth := (jobs.map (·.circuit.layers.length)).foldl max 0
-  let empty : C.Term → List Bit := fun _ => []
-  let (wires, x, y, z, _) ← (List.range depth).foldlM
-    (init := (wires₀, empty, empty, empty, (0 : ℕ)))
-    fun (wires, xs, ys, zs, offset) layer => do
-      let gates := (jobs.zip wires).zipIdx.flatMap fun ((job, w), j) =>
-        (job.circuit.layers.getD layer []).map fun ab => (j, ab, w)
-      let a : Shares C Bit := fun T g => (gates.getD g (0, (⟨[], 0⟩, ⟨[], 0⟩), fun _ => [])).2.2
-        |> fun w => affineTerm K (gates.getD g (0, (⟨[], 0⟩, ⟨[], 0⟩), fun _ => [])).2.1.1 w T
-      let b : Shares C Bit := fun T g => affineTerm K
-        (gates.getD g (0, (⟨[], 0⟩, ⟨[], 0⟩), fun _ => [])).2.1.2
-        (gates.getD g (0, (⟨[], 0⟩, ⟨[], 0⟩), fun _ => [])).2.2 T
-      let v := mulRep K ctx a b
-      let count := gates.length
-      let products ← match mode with
-        | .peer => resharePeer K ctx (bitCodec ctx) v count (tag, layer, 0)
-        | .collector => reshareCollector K ctx v count offset (tag, layer, 0)
-      let wires' := wires.zipIdx.map fun (w, j) T =>
-        w T ++ ((List.range count).filter fun g => (gates.getD g (0, (⟨[], 0⟩, ⟨[], 0⟩),
-          fun _ => [])).1 = j).map (products T)
-      pure (wires', fun T => xs T ++ vector count (a T), fun T => ys T ++ vector count (b T),
-        fun T => zs T ++ vector count (products T), offset + count)
-  let count := (x K.publicTerm).length
-  if count ≠ 0 then check K ctx tag depth x y z count
-  (jobs.zip wires).mapM fun (job, w) => do
-    let opened ← openRep K ctx (fun T g => affineTerm K (job.circuit.outputs.getD g ⟨[], 0⟩) w T)
-      job.circuit.outputs.length
-    pure (vector job.circuit.outputs.length opened)
+  pure fun T => terms.getD (C.terms.idxOf T) []
 
-end Batch
+/-- A run of the circuits of some jobs on their input sharings (GS20, Protocol 19). The AND gates of
+one layer of all jobs take one call of `mult`. Then `rerand` re-randomizes the outputs, `verify`
+checks every tuple, and `output` opens the outputs (BBY23, Section 4.3, and MPClan, App. B). -/
+def runJobs (gadgets : RunGadgets C E G) (jobs : List Circuit) (inputs : List (C.Term → List Bit)) :
+    RunM C E G (List (List Bit)) := do
+  let (wires, tuples) ← (List.range (depth jobs)).foldlM (init := (inputs, ([] : List (Tuple C))))
+    fun (wires, tuples) layer => do
+      let gates := jobs.zipIdx.flatMap fun (job, k) =>
+        (job.layers.getD layer []).map fun ab => (k, ab)
+      let x : Shares C Bit := fun T g => match gates[g]? with
+        | some (k, ab) => ab.1.share (wires.getD k fun _ => []) K.publicTerm T | none => 0
+      let y : Shares C Bit := fun T g => match gates[g]? with
+        | some (k, ab) => ab.2.share (wires.getD k fun _ => []) K.publicTerm T | none => 0
+      let z ← gadgets.mult x y gates.length
+      let wires := wires.zipIdx.map fun (w, k) T =>
+        w T ++ ((gates.zipIdx.filter (·.1.1 = k)).map fun (_, g) => z T g)
+      pure (wires, tuples ++ [⟨x, y, z, gates.length, gadgets.mode⟩])
+  let outputs := jobs.zipIdx.flatMap fun (job, k) => job.outputs.map fun a => (k, a)
+  let v : Shares C Bit := fun T g => match outputs[g]? with
+    | some (k, a) => a.share (wires.getD k fun _ => []) K.publicTerm T | none => 0
+  let v' ← gadgets.rerand v outputs.length
+  gadgets.verify (tuples ++ [⟨v, one K, v', outputs.length, .peer⟩])
+  let opened ← gadgets.output v' outputs.length
+  let widths := jobs.map (·.outputs.length)
+  pure (widths.zipIdx.map fun (width, k) =>
+    vector width fun g => opened ((widths.take k).sum + g))
+
+/-- The gadgets of the real run in `mode`, from the PRSS keys of the ceremony. -/
+def realRunGadgets (mode : ReshareMode) : RunGadgets C E G where
+  mode := mode
+  mult x y count := do
+    reshareWith K ctx mode (← prssRandomness ctx bitCodec 0 count) (mulRep K ctx x y) count
+  rerand v count := do
+    reshare K ctx bitCodec (← prssRandomness ctx bitCodec 0 count) (ownerSum K ctx v) count
+  verify := check K ctx (realCheckGadgets K ctx)
+  output v count := StateT.lift (openRep K ctx v count)
+
+end Run
 
 /-! ## Setup -/
 
-/-- The random contribution of one operator to the setup, namely a part of `P`, a part of each held
-term seed, and a part of each pair key. -/
-structure Contribution (C : Committee) where
-  parameter : List UInt8
-  termPart : C.Term → List UInt8
-  pairPart : C.Party → List UInt8
+/-- The parts that one operator samples in a setup, namely its part of `P`, one part for each term
+and one part for each other operator. -/
+structure Parts (C : Committee) where
+  parameter : HashOutput
+  term : C.Term → HashOutput
+  pair : C.Party → HashOutput
 
-/-- The bytes that operator `i` reveals to operator `j`. -/
-def revealTo (c : Contribution C) (i j : C.Party) : List UInt8 :=
-  c.parameter ++ (C.terms.filter fun T => i ∈ C.holders T ∧ j ∈ C.holders T).flatMap c.termPart ++
-    c.pairPart j
+def sampleParts : ProbComp (Parts C) := do
+  let parameter ← $ᵗ HashOutput
+  let term ← $ᵗ (C.Term → HashOutput)
+  let pair ← $ᵗ (C.Party → HashOutput)
+  pure ⟨parameter, term, pair⟩
 
-/-- The contribution of `j` as operator `i` reads it from the reveal of `j`. -/
-def readReveal (bytes : List UInt8) (i j : C.Party) : Contribution C where
-  parameter := bytes.take 32
-  termPart T := (bytes.drop (32 + 32 *
-    (C.terms.filter fun U => i ∈ C.holders U ∧ j ∈ C.holders U).idxOf T)).take 32
-  pairPart _ := (bytes.drop (32 + 32 *
-    (C.terms.filter fun U => i ∈ C.holders U ∧ j ∈ C.holders U).length)).take 32
+/-- The terms that operators `i` and `j` both hold. -/
+def sharedTerms (i j : C.Party) : List C.Term := C.terms.filter fun T => i ∈ C.holders T ∧ j ∈ C.holders T
 
-/-- The keys of operator `i`, namely `P = H16(parameter parts)`,
-`seed_T = H(parts of the holders of T)` and
-`K_ij = H(part of the lower operator ‖ part of the higher operator)`. -/
-def deriveKeys {m : Type → Type} [Monad m] [HasQuery HashSpec m] (i : C.Party)
-    (c : C.Party → Contribution C) : m (Keys C) := do
-  let parameter ← query (spec := HashSpec) (C.parties.flatMap fun j => (c j).parameter)
-  let seeds ← C.terms.mapM fun T =>
-    if i ∈ C.holders T then
-      query (spec := HashSpec) ((C.parties.filter (· ∈ C.holders T)).flatMap fun j => (c j).termPart T)
+/-- The reveal from `i` to `j`, namely the part of `P` in the keygen, the parts of the shared terms
+and the part for `j`. -/
+def revealTo (phase : Phase) (c : Parts C) (i j : C.Party) : List HashOutput :=
+  (if phase = .keygen then [c.parameter] else []) ++ (sharedTerms i j).map c.term ++ [c.pair j]
+
+/-- The parts that `j` revealed to `i`. -/
+def readReveal (phase : Phase) (reveal : List HashOutput) (i j : C.Party) : Parts C :=
+  let offset := if phase = .keygen then 1 else 0
+  { parameter := reveal.getD 0 0
+    term := fun T => reveal.getD (offset + (sharedTerms j i).idxOf T) 0
+    pair := fun _ => reveal.getD (offset + (sharedTerms j i).length) 0 }
+
+/-- The keys that operator `i` derives from the parts `view j` of each operator `j`. Holders and
+pair members are in increasing order. Only the keygen derives `P`. -/
+def deriveKeys (phase : Phase) (i : C.Party) (view : C.Party → Parts C) :
+    OracleComp (RoSpec C) (HashOutput × (C.Term → HashOutput) × (C.Party → HashOutput)) := do
+  let parameter ← if phase = .keygen then
+    hashQuery (.derive phase .parameter (C.parties.map fun j => (view j).parameter)) else pure 0
+  let term ← C.terms.mapM fun T => if i ∈ C.holders T then
+    hashQuery (.derive phase .term ((C.parties.filter (· ∈ C.holders T)).map fun j => (view j).term T))
     else pure 0
-  let pairKeys ← C.parties.mapM fun j =>
-    if j = i then pure 0 else
-    let (low, high) := if i < j then (i, j) else (j, i)
-    query (spec := HashSpec) ((c low).pairPart high ++ (c high).pairPart low)
-  pure ⟨truncateHash parameter, fun T => seeds.getD (C.terms.idxOf T) 0,
-    fun j => pairKeys.getD j.val 0⟩
+  let pair ← C.parties.mapM fun j => if h : j = i then pure 0 else
+    let p := C.pairOf i j (Ne.symm h)
+    hashQuery (.derive phase .pair [(view p.1.1).pair p.1.2, (view p.1.2).pair p.1.1])
+  pure (parameter, fun T => term.getD (C.terms.idxOf T) 0, fun j => pair.getD j.val 0)
 
-/-- The seeds of all terms from the contributions, as the holders derive them. -/
-def deriveSeeds {m : Type → Type} [Monad m] [HasQuery HashSpec m] (c : C.Party → Contribution C) :
-    m (C.Term → HashOutput) := do
-  let seeds ← C.terms.mapM fun T =>
-    query (spec := HashSpec) ((C.parties.filter (· ∈ C.holders T)).flatMap fun j => (c j).termPart T)
-  pure fun T => seeds.getD (C.terms.idxOf T) 0
-
-instance (w : ℕ) : SampleableType (BitVec w) := SampleableType.ofFintype _
-
-instance : NeZero lifetime := ⟨by decide⟩
-
-instance : NeZero numLayers := ⟨by decide⟩
-
-instance : NeZero numChains := ⟨by decide⟩
-
-def sampleKey : ProbComp HashOutput := $ᵗ HashOutput
-
-/-- A fresh contribution of operator `i`. -/
-def sampleContribution (i : C.Party) : ProbComp (Contribution C) := do
-  let parameter ← sampleKey
-  let termParts ← C.terms.mapM fun _ => sampleKey
-  let pairParts ← C.parties.mapM fun _ => sampleKey
-  pure ⟨bytesLE 32 parameter, fun T => bytesLE 32 (termParts.getD (C.terms.idxOf T) 0),
-    fun j => if j = i then [] else bytesLE 32 (pairParts.getD j.val 0)⟩
-
-/-- The setup in three rounds, namely commit, reveal and echo (the leanXMSS note, Section 2.1). -/
-def setup (i : C.Party) : PartyM C E (Keys C) := do
-  let c ← localStep (liftComp (sampleContribution i) _)
-  let commitments ← localStep (C.parties.mapM fun j => query (spec := HashSpec) (revealTo c i j))
-  let committed ← exchange fun j =>
-    if j = i then none else some (.bytes (bytesLE 32 (commitments.getD j.val 0)))
-  let revealed ← exchange fun j => if j = i then none else some (.bytes (revealTo c i j))
-  let opened ← localStep (C.parties.mapM fun j => query (spec := HashSpec) (Msg.bytesOf (revealed j)))
-  require (∀ j ≠ i, (Msg.bytesOf (revealed j)).length = (revealTo c i j).length ∧
-    bytesLE 32 (opened.getD j.val 0) = Msg.bytesOf (committed j))
-  let view : C.Party → Contribution C := fun j =>
-    if j = i then c else readReveal (Msg.bytesOf (revealed j)) i j
-  let keys ← localStep (deriveKeys i view)
-  let echo ← localStep (C.parties.mapM fun j => do
-    let all ← query (spec := HashSpec) (C.parties.flatMap fun k => (view k).parameter)
-    let shared ← query (spec := HashSpec)
-      ((C.terms.filter fun T => i ∈ C.holders T ∧ j ∈ C.holders T).flatMap fun T => bytesLE 32 (keys.seed T))
-    pure (bytesLE 32 all ++ bytesLE 32 shared))
-  let echoed ← exchange fun j => if j = i then none else some (.bytes (echo.getD j.val []))
-  require (∀ j ≠ i, Msg.bytesOf (echoed j) = echo.getD j.val [])
+/-- A setup with commit, reveal and echo (the note, Section 2.1). Operator `i` commits to each reveal
+with a commitment that names its sender and its receiver (CF01). The keygen echo carries the hash of
+all parts of `P`, which is `P` before truncation, and the hash of the shared seeds. The PRSS echo
+carries only the hash of the shared keys. Each operator aborts unless each reveal opens its
+commitment and each hash of each echo matches. -/
+def commitRevealEcho (phase : Phase) (i : C.Party) (own : Parts C) :
+    PartyM C E G (HashOutput × (C.Term → HashOutput) × (C.Party → HashOutput)) := do
+  let commitments ← oracleStep (C.parties.mapM fun j => hashQuery (.commit phase i j (revealTo phase own i j)))
+  let committed ← exchange fun j => if j = i then none else some (.hashes [commitments.getD j.val 0])
+  let revealed ← exchange fun j => if j = i then none else some (.hashes (revealTo phase own i j))
+  let opens ← oracleStep (C.parties.mapM fun j => hashQuery (.commit phase j i (Msg.hashesOf (revealed j))))
+  require (∀ j, j ≠ i → (Msg.hashesOf (revealed j)).length = (revealTo phase own j i).length ∧
+    [opens.getD j.val 0] = Msg.hashesOf (committed j))
+  let view := fun j => if j = i then own else readReveal phase (Msg.hashesOf (revealed j)) i j
+  let keys ← oracleStep (deriveKeys phase i view)
+  let shared ← oracleStep (C.parties.mapM fun j => hashQuery (.sharedKeys phase ((sharedTerms i j).map keys.2.1)))
+  let echo := fun j => (if phase = .keygen then [keys.1] else []) ++ [shared.getD j.val 0]
+  let received ← exchange fun j => if j = i then none else some (.hashes (echo j))
+  require (∀ j, j ≠ i → Msg.hashesOf (received j) = echo j)
   pure keys
 
-/-! ## Ceremonies -/
+/-- The keygen of operator `i` gives `P`, its seeds and its pair keys. -/
+def keygenWith (i : C.Party) (own : Parts C) : PartyM C E G (Keys C) := do
+  let (parameter, seed, pairKey) ← commitRevealEcho .keygen i own
+  pure ⟨truncateHash parameter, seed, pairKey⟩
 
-/-- The settings that all operators of a ceremony check in `establish`. -/
-structure Settings where
-  mode : ReshareMode
-  batchSize : ℕ
+def keygen (i : C.Party) : PartyM C E G (Keys C) := do
+  keygenWith i (← localStep (liftComp sampleParts _))
 
-/-- `establish` runs one round of nonces, then the session value is the hash of all messages. -/
-def establish (i : C.Party) (settings : Settings) : PartyM C E HashOutput := do
-  let nonce ← localStep (liftComp sampleKey _)
-  let message := (bytesLE 32 nonce).take 16 ++ [if settings.mode = .peer then 1 else 0] ++
-    bytesLE 8 (BitVec.ofNat 64 settings.batchSize)
-  let inbox ← exchange fun j => if j = i then none else some (.bytes message)
-  let received := fun j => if j = i then message else Msg.bytesOf (inbox j)
-  require (∀ j, (received j).length = message.length ∧ (received j).drop 16 = message.drop 16)
-  localStep (query (spec := HashSpec) (C.parties.flatMap received))
+/-- The PRSS setup of a ceremony gives fresh PRSS keys (`doc/dkg.md` 3.1). -/
+def prssSetup (i : C.Party) : PartyM C E G (PrssKeys C) := do
+  let (_, term, pair) ← commitRevealEcho .prss i (← localStep (liftComp sampleParts _))
+  pure ⟨term, pair⟩
 
-/-- The circuits that the batches evaluate, for the chain values of the leanXMSS note. -/
-structure Circuits where
-  /-- `y_3` from `F(X_0)` on chain `l` of top key `e`. -/
-  chainEnd : PublicParameter → KeyIndex → ChainIndex → Circuit
-  /-- `y_1 ⊕ F(X_1)`, `y_2 ⊕ F(X_2)` and `y_3` from `F(X_0), F(X_1), F(X_2)` on bottom key `e`. -/
-  chainRow : PublicParameter → KeyIndex → ChainIndex → Circuit
-  /-- `y_p` from `F(X_0)` on chain `l` of top key `e`. -/
-  chainValue : PublicParameter → KeyIndex → ChainIndex → Digit → Circuit
-  /-- `c_e` from `F(A_rnd(e))` on bottom key `e`. -/
-  commitment : PublicParameter → KeyIndex → Circuit
+/-- The rounds of a setup. -/
+def setupRounds : ℕ := 3
 
-/-- `A_prf(e, l, p)`, the PRF point of position `p` on chain `l` of key `e`. -/
-def prfPoint (lay : Layer) (e : KeyIndex) (l : ChainIndex) (p : ℕ) : HashInput :=
-  fieldBytes (tweakFields 0 p (layerHi lay l.val) e.val)
-
-/-- `A_rnd(e)`, the PRF point of the randomizer value of key `e`. -/
-def randomizerPoint (lay : Layer) (e : KeyIndex) : HashInput :=
-  fieldBytes (tweakFields 7 0 (layerHi lay 0) e.val)
+/-! ## Trees -/
 
 /-- `Th(P, A_rnd(e) at step 1, ρ ‖ 0)`, the input of the commitment `c_e`. -/
 def commitmentInput (parameter : PublicParameter) (e : KeyIndex) (ρ : Digest) : HashInput :=
@@ -779,7 +950,10 @@ def commitmentInput (parameter : PublicParameter) (e : KeyIndex) (ρ : Digest) :
 /-- `Th(P, A_rnd(e), ρ ‖ M)`, the input of the start `R_0` of the randomizer search. -/
 def randomizerInput (parameter : PublicParameter) (lay : Layer) (e : KeyIndex) (ρ : Digest)
     (message : HashInput) : HashInput :=
-  bytesLE 16 parameter ++ randomizerPoint lay e ++ bytesLE 16 ρ ++ message
+  bytesLE 16 parameter ++ fieldBytes (tweakFields 7 0 (layerHi lay 0) e.val) ++ bytesLE 16 ρ ++ message
+
+/-- Position `p < 4` of a chain. -/
+def digit (p : ℕ) (h : p < chainLength := by decide) : Digit := ⟨p, h⟩
 
 /-- A top key `b < 2 ^ 16` as a key index. -/
 def topKey (b : Fin (2 ^ layerHeight)) : KeyIndex :=
@@ -818,11 +992,10 @@ inductive TreeOutput
 
 section Trees
 
-variable {m : Type → Type} [Monad m] [HasQuery HashSpec m]
-
-/-- Node `idx` at `level` of a layer, from the chain ends of its keys. Indices are global. -/
+/-- Node `idx` at `level` of a layer, from the chain ends of its keys. Indices are global. leanVM
+builds a tree only from a seed, so this is the one tree routine of the model. -/
 def merkleNode (parameter : PublicParameter) (lay : Layer) (chainEnd : KeyIndex → ChainIndex → Digest) :
-    ℕ → ℕ → m Digest
+    ℕ → ℕ → OracleComp HashSpec Digest
   | 0, idx => do
       let key : KeyIndex := ⟨idx % lifetime, Nat.mod_lt _ (by decide)⟩
       Concrete.leafHash parameter lay key (chainEnd key)
@@ -833,13 +1006,13 @@ def merkleNode (parameter : PublicParameter) (lay : Layer) (chainEnd : KeyIndex 
 
 /-- The authentication path of a key. -/
 def merklePath (parameter : PublicParameter) (lay : Layer) (chainEnd : KeyIndex → ChainIndex → Digest)
-    (key : KeyIndex) : m (Fin layerHeight → Digest) :=
+    (key : KeyIndex) : OracleComp HashSpec (Fin layerHeight → Digest) :=
   Concrete.sequenceFin fun level =>
     merkleNode parameter lay chainEnd level.val (Nat.xor (key.val / 2 ^ level.val) 1)
 
 /-- The leanXMSS randomizer search from `R_0` finds the first trial whose digest is a codeword. -/
 def grind (parameter : PublicParameter) (lay : Layer) (key : KeyIndex) (message : HashInput)
-    (base : Randomness) : ℕ → ℕ → m (Option (Randomness × Encoding))
+    (base : Randomness) : ℕ → ℕ → OracleComp HashSpec (Option (Randomness × Encoding))
   | 0, _ => pure none
   | attempts + 1, trial => do
       let randomness := base + BitVec.ofNat digestBits trial
@@ -851,168 +1024,213 @@ def grind (parameter : PublicParameter) (lay : Layer) (key : KeyIndex) (message 
 /-- The digest of the `k`-th 128 bits of an output. -/
 def digestAt (bits : List Bit) (k : ℕ) : Digest := digestOfBits (bits.drop (digestBits * k))
 
-/-- The public outputs of a ceremony from the opened outputs of its jobs. `run` evaluates a list of
-jobs, in the clear for the dealer or in batches of MPC for the operators. The call number separates
-the batch tags of the three runs of a bottom tree. -/
-def ceremonyOutput (circuits : Circuits) (parameter : PublicParameter)
-    (run : ℕ → List Job → m (Option (List (List Bit)))) (top : TopTree) :
-    Tree → m (Option TreeOutput)
-  | .top => do
-      let keys := (List.finRange (2 ^ layerHeight)).flatMap fun b =>
-        (List.finRange numChains).map fun l => (topKey b, l)
-      let some outputs ← run 0 (keys.map fun (e, l) =>
-          ⟨circuits.chainEnd parameter e l, [prfPoint topLayer e l 0]⟩) | pure none
-      let chainEnd := fun (e : KeyIndex) (l : ChainIndex) =>
-        digestAt (outputs.getD (keys.idxOf (e, l)) []) 0
-      let root ← merkleNode parameter topLayer chainEnd layerHeight 0
-      pure (some (.top ⟨chainEnd, root⟩))
-  | .bottom b => do
-      let keys := (List.finRange (2 ^ layerHeight)).flatMap fun k =>
-        (List.finRange numChains).map fun l => (bottomKey b k, l)
-      let chainJobs := keys.map fun (e, l) => (⟨circuits.chainRow parameter e l,
-        [prfPoint bottomLayer e l 0, prfPoint bottomLayer e l 1, prfPoint bottomLayer e l 2]⟩ : Job)
-      let commitmentJobs := (List.finRange (2 ^ layerHeight)).map fun k =>
-        (⟨circuits.commitment parameter (bottomKey b k), [randomizerPoint bottomLayer (bottomKey b k)]⟩ : Job)
-      let some outputs ← run 0 (chainJobs ++ commitmentJobs) | pure none
-      let cpk := fun (e : KeyIndex) (l : ChainIndex) =>
-        let bits := outputs.getD (keys.idxOf (e, l)) []
-        (digestAt bits 0, digestAt bits 1, digestAt bits 2)
-      let commitment := fun (e : KeyIndex) =>
-        digestAt (outputs.getD (keys.length + e.val % 2 ^ layerHeight) []) 0
-      let root ← merkleNode parameter bottomLayer (fun e l => (cpk e l).2.2) layerHeight b.val
-      let message := bytesLE 16 root
-      let some opened ← run 1 [⟨Circuit.identity digestBits, [randomizerPoint topLayer (topKey b)]⟩]
-        | pure none
-      let ρ := digestAt (opened.getD 0 []) 0
-      let base := truncateHash (← query (spec := HashSpec)
-        (randomizerInput parameter topLayer (topKey b) ρ message))
-      let some (randomness, encoding) ← grind parameter topLayer (topKey b) message base
-          randomizerAttemptLimit 0 | pure none
-      let some values ← run 2 ((List.finRange numChains).map fun l =>
-          ⟨circuits.chainValue parameter (topKey b) l (encoding l), [prfPoint topLayer (topKey b) l 0]⟩)
-        | pure none
-      let path ← merklePath parameter topLayer top.chainEnd (topKey b)
-      pure (some (.bottom ⟨cpk, commitment, root,
-        ⟨randomness, fun l => digestAt (values.getD l.val []) 0, path⟩⟩))
+/-- The jobs of the top tree, the chain ends of all top keys. -/
+def topJobs : List Job :=
+  (List.finRange (2 ^ layerHeight)).flatMap fun b => (List.finRange numChains).map fun l =>
+    ⟨.chainEnd (topKey b) l, [.chain topLayer (topKey b) l (digit 0)]⟩
 
-end Trees
+/-- The jobs of the first run of bottom tree `b`, namely `cpk` of each key, its commitment `c_e`,
+and the randomizer value of top key `b`. -/
+def bottomJobs (b : Fin (2 ^ layerHeight)) : List Job :=
+  ((List.finRange (2 ^ layerHeight)).flatMap fun k => (List.finRange numChains).map fun l =>
+    let e := bottomKey b k
+    ⟨.chainRow e l,
+      [.chain bottomLayer e l (digit 0), .chain bottomLayer e l (digit 1), .chain bottomLayer e l (digit 2)]⟩) ++
+  ((List.finRange (2 ^ layerHeight)).map fun k =>
+    ⟨.commitment (bottomKey b k), [.randomizer bottomLayer (bottomKey b k)]⟩) ++
+  [⟨.randomizer, [.randomizer topLayer (topKey b)]⟩]
 
-/-- `F(X) = ⊕_T H16(seed_T ‖ X)`, the threshold PRF of PRAWNS, Section 5, on all seeds. -/
-def prfValue {m : Type → Type} [Monad m] [HasQuery HashSpec m] (seed : C.Term → HashOutput)
-    (point : HashInput) : m Digest := do
-  let terms ← C.terms.mapM fun T => query (spec := HashSpec) (prfInput (seed T) point)
-  pure ((terms.map truncateHash).foldl (· ^^^ ·) 0)
-
-/-- A job in the clear on all seeds. -/
-def evalJob {m : Type → Type} [Monad m] [HasQuery HashSpec m] (seed : C.Term → HashOutput) (job : Job) :
-    m (List Bit) := do
-  let values ← job.points.mapM (prfValue seed)
-  pure (job.circuit.eval (values.flatMap bitsOfDigest))
+/-- The jobs of the second run of bottom tree `b`. They give the chain values at the positions of
+`encoding` for the signature of its root by top key `b`. -/
+def signJobs (b : Fin (2 ^ layerHeight)) (encoding : Encoding) : List Job :=
+  (List.finRange numChains).map fun l => ⟨.chainValue (topKey b) l (encoding l), [.chain topLayer (topKey b) l (digit 0)]⟩
 
 /-- Split a list in chunks of `size`. -/
 def chunks {α : Type} (size : ℕ) (items : List α) : List (List α) :=
   (List.range ((items.length + size - 1) / size)).map fun k => (items.drop (size * k)).take size
 
-/-- More rounds than any program of the protocol runs. -/
-def roundLimit : ℕ := 2 ^ 64
+/-- A run as its batches of `size` jobs. `run` evaluates one batch. -/
+def batched {m : Type → Type} [Monad m] (size : ℕ) (run : List Job → m (Option (List (List Bit))))
+    (jobs : List Job) : m (Option (List (List Bit))) := do
+  let outputs ← (chunks size jobs).mapM run
+  pure (outputs.foldlM (fun acc batch => batch.map (acc ++ ·)) [])
+
+variable {m : Type → Type} [Monad m] (lift : ∀ {α : Type}, OracleComp HashSpec α → m α)
+
+/-- The public outputs of a ceremony. `run` evaluates the jobs of a run, by MPC for the operators or
+in the clear for the dealer. A bottom tree has two runs. The first gives `cpk`, the commitments and
+the randomizer value of its top key. The second gives the chain values of the top signature, which
+must lead to the root of the top tree (`src/dkg.rs`). -/
+def ceremonyOutput (parameter : PublicParameter) (run : List Job → m (Option (List (List Bit))))
+    (top : TopTree) : Tree → m (Option TreeOutput)
+  | .top => do
+      let keys := (List.finRange (2 ^ layerHeight)).flatMap fun b =>
+        (List.finRange numChains).map fun l => (topKey b, l)
+      let some outputs ← run topJobs | pure none
+      let chainEnd := fun (e : KeyIndex) (l : ChainIndex) => digestAt (outputs.getD (keys.idxOf (e, l)) []) 0
+      let root ← lift (merkleNode parameter topLayer chainEnd layerHeight 0)
+      pure (some (.top ⟨chainEnd, root⟩))
+  | .bottom b => do
+      let keys := (List.finRange (2 ^ layerHeight)).flatMap fun k =>
+        (List.finRange numChains).map fun l => (bottomKey b k, l)
+      let some outputs ← run (bottomJobs b) | pure none
+      let cpk := fun (e : KeyIndex) (l : ChainIndex) =>
+        let bits := outputs.getD (keys.idxOf (e, l)) []
+        (digestAt bits 0, digestAt bits 1, digestAt bits 2)
+      let commitment := fun (e : KeyIndex) => digestAt (outputs.getD (keys.length + e.val % 2 ^ layerHeight) []) 0
+      let ρ := digestAt (outputs.getD (keys.length + 2 ^ layerHeight) []) 0
+      let root ← lift (merkleNode parameter bottomLayer (fun e l => (cpk e l).2.2) layerHeight b.val)
+      let message := bytesLE 16 root
+      let base ← lift (truncateHash <$> Concrete.oracleHash (randomizerInput parameter topLayer (topKey b) ρ message))
+      let some (randomness, encoding) ← lift (grind parameter topLayer (topKey b) message base
+          randomizerAttemptLimit 0) | pure none
+      let some values ← run (signJobs b encoding) | pure none
+      let path ← lift (merklePath parameter topLayer top.chainEnd (topKey b))
+      let signature : LayerSignature := ⟨randomness, fun l => digestAt (values.getD l.val []) 0, path⟩
+      let topRoot ← lift (Concrete.layerRoot parameter topLayer (topKey b) message signature)
+      if topRoot ≠ some top.root then pure none else
+      pure (some (.bottom ⟨cpk, commitment, root, signature⟩))
+
+end Trees
+
+/-- `F(x) = ⊕_T H16(seed_T ‖ x)`, the threshold PRF of PRAWNS, Section 5, on all seeds. -/
+def prfValue (seed : C.Term → HashOutput) (x : Point) : OracleComp (RoSpec C) Digest := do
+  let terms ← C.terms.mapM fun T => prf (seed T) x
+  pure (terms.foldl (· ^^^ ·) 0)
+
+/-- A job in the clear on all seeds, by its circuit. -/
+def evalJob (circuits : Circuits) (parameter : PublicParameter) (seed : C.Term → HashOutput) (job : Job) :
+    OracleComp (RoSpec C) (List Bit) := do
+  let values ← job.points.mapM (prfValue seed)
+  pure ((circuits parameter job.kind).eval (values.flatMap bitsOfDigest))
+
+/-- A job in the clear by leanXMSS, with the PRF values from `F`. -/
+def referenceJob {m : Type → Type} [Monad m] (lift : ∀ {α : Type}, OracleComp HashSpec α → m α)
+    (F : Point → m Digest) (parameter : PublicParameter) (job : Job) : m (List Bit) := do
+  let values ← job.points.mapM F
+  let value := fun k => values.getD k 0
+  match job.kind with
+  | .chainEnd e l => bitsOfDigest <$> lift (Concrete.chainWalk parameter topLayer e l 0 3 (value 0))
+  | .chainRow e l => do
+      let y₁ ← lift (Concrete.chainWalk parameter bottomLayer e l 0 1 (value 0))
+      let y₂ ← lift (Concrete.chainWalk parameter bottomLayer e l 0 2 (value 0))
+      let y₃ ← lift (Concrete.chainWalk parameter bottomLayer e l 0 3 (value 0))
+      pure (bitsOfDigest (y₁ ^^^ value 1) ++ bitsOfDigest (y₂ ^^^ value 2) ++ bitsOfDigest y₃)
+  | .chainValue e l p => bitsOfDigest <$> lift (Concrete.chainWalk parameter topLayer e l 0 p.val (value 0))
+  | .commitment e => (bitsOfDigest ∘ truncateHash) <$> lift (Concrete.oracleHash (commitmentInput parameter e (value 0)))
+  | .randomizer => pure (bitsOfDigest (value 0))
 
 section Ceremony
 
 variable [Field E] [Algebra Bit E] (K : Constants C E)
 
-/-- The jobs of a run in batches of `batchSize`, each batch an MPC on its own channel. -/
-def runBatches (settings : Settings) (ctx : Context C) (call : ℕ) (jobs : List Job) :
-    PartyM C E (List (List Bit)) := do
-  let batches := chunks settings.batchSize jobs
-  let outputs ← parallel roundLimit (batches.mapIdx fun k jobs =>
-    ((batch K ctx settings.mode (2 ^ 32 * call + k) jobs).run' (fun _ => [])).run)
-  pure outputs.flatten
-
-/-- The ceremony of a tree at operator `i` runs `establish`, then the batches. -/
-def ceremony (circuits : Circuits) (settings : Settings) (i : C.Party) (keys : Keys C)
-    (top : TopTree) (tree : Tree) : PartyM C E TreeOutput := do
-  let session ← establish i settings
-  let ctx : Context C := ⟨i, keys, session⟩
-  let some output ← ceremonyOutput circuits keys.parameter
-      (fun call jobs => some <$> runBatches K settings ctx call jobs) top tree | failure
+/-- The ceremony of a tree at operator `i`. It runs the PRSS setup, then each batch of each run with
+the gadgets `gadgets ctx k jobs` of batch `k`. Each batch starts with empty running digests and
+continues the round labels. The real protocol uses `realRunGadgets`. -/
+def ceremonyWith (circuits : Circuits) (settings : Settings)
+    (gadgets : Context C → ℕ → List Job → RunGadgets C E G) (i : C.Party) (keys : Keys C) (top : TopTree)
+    (tree : Tree) : PartyM C E G TreeOutput := do
+  let prss ← prssSetup i
+  let ctx : Context C := ⟨i, keys, prss⟩
+  let some output ← (ceremonyOutput (m := StateT (ℕ × ℕ) (PartyM C E G))
+      (fun oa => StateT.lift (oracleStep (tweakable oa))) keys.parameter
+      (batched settings.batchSize fun jobs => do
+        let (label, k) ← get
+        let inputs ← StateT.lift (jobs.mapM (inputShares ctx))
+        let (outputs, state) ← StateT.lift ((runJobs K (gadgets ctx k jobs)
+          (jobs.map (circuits keys.parameter ·.kind)) inputs).run ⟨fun _ => [], label⟩)
+        set (state.label, k + 1)
+        pure (some outputs)) top tree).run' (0, 0) | failure
   pure output
+
+/-- The real ceremony. -/
+def ceremony (circuits : Circuits) (settings : Settings) (i : C.Party) (keys : Keys C) (top : TopTree)
+    (tree : Tree) : PartyM C E G TreeOutput :=
+  ceremonyWith K circuits settings (fun ctx _ _ => realRunGadgets K ctx settings.mode) i keys top tree
 
 end Ceremony
 
 /-! ## The trusted dealer -/
 
-/-- The keys of all operators from the contributions of all operators, as the setup derives them. -/
-def dealerKeys {m : Type → Type} [Monad m] [HasQuery HashSpec m] (c : C.Party → Contribution C) :
-    m (C.Party → Keys C) := do
-  let keys ← C.parties.mapM fun i => deriveKeys i c
-  pure fun i => keys.getD i.val ⟨0, fun _ => 0, fun _ => 0⟩
+/-- The keys of operator `i` from a parameter, the seeds and the pair keys. -/
+def dealtKeys (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairKeys : C.Pair → HashOutput)
+    (i : C.Party) : Keys C :=
+  ⟨parameter, fun T => if i ∈ C.holders T then seeds T else 0,
+    fun j => if h : j = i then 0 else pairKeys (C.pairOf i j (Ne.symm h))⟩
 
-/-- The outputs of a ceremony in the clear. -/
-def dealerTree {m : Type → Type} [Monad m] [HasQuery HashSpec m] (circuits : Circuits)
-    (parameter : PublicParameter) (seed : C.Term → HashOutput) (top : TopTree) (tree : Tree) :
-    m (Option TreeOutput) :=
-  ceremonyOutput circuits parameter (fun _ jobs => some <$> jobs.mapM (evalJob seed)) top tree
+/-- PRAWNS `KeyGen'` (Section 5.1) for leanXMSS. It samples a uniform parameter, uniform term seeds
+and uniform pair keys, and gives each operator the seeds of its held terms and its pair keys. -/
+def prawnsKeyGen : ProbComp (PublicParameter × (C.Term → HashOutput) × (C.Party → Keys C)) := do
+  let parameter ← $ᵗ PublicParameter
+  let seeds ← $ᵗ (C.Term → HashOutput)
+  let pairKeys ← $ᵗ (C.Pair → HashOutput)
+  pure (parameter, seeds, dealtKeys parameter seeds pairKeys)
+
+/-- The outputs of a ceremony in the clear by leanXMSS, with the PRF values from `F`. This is the
+key generation of PRAWNS, Section 3.1, for the trees of leanXMSS. -/
+def referenceTree {m : Type → Type} [Monad m] (lift : ∀ {α : Type}, OracleComp HashSpec α → m α)
+    (F : Point → m Digest) (parameter : PublicParameter) (top : TopTree) (tree : Tree) : m (Option TreeOutput) :=
+  ceremonyOutput lift parameter (fun jobs => some <$> jobs.mapM (referenceJob lift F parameter)) top tree
 
 /-! ## Signing -/
-
-/-- `J` as 4 bytes, the sum of `2 ^ j` over its operators. -/
-def quorumBytes (J : C.Quorum) : List UInt8 := bytesLE 4 (BitVec.ofNat 32 (∑ j ∈ J.1, 2 ^ j.val))
 
 /-- `L_i`, the terms whose first holder in `J` is operator `i` (PRAWNS, Section 5). -/
 def L (J : C.Quorum) (i : C.Party) : Finset C.Term :=
   Finset.univ.filter fun T => (J.1 \ T.1).min = i
 
-/-- `Eval_i(x, m, J)` gives the terms of `L_i` and one mask `H16(K_ij ‖ x ‖ m ‖ J)` for each other
-signer `j`. -/
-def eval {m : Type → Type} [Monad m] [HasQuery HashSpec m] (keys : Keys C) (i : C.Party)
-    (J : C.Quorum) (point : HashInput) (message : Message) : m Digest := do
-  let terms ← (C.terms.filter (· ∈ L J i)).mapM fun T =>
-    query (spec := HashSpec) (prfInput (keys.seed T) point)
+/-- `Eval'(sk'_i, J, x, ec)` of PRAWNS, Section 5.1, with the message as the evaluation context. It
+gives the terms of `L_i` and one mask `H16(K_ij ‖ x ‖ m ‖ J)` for each other signer `j`. -/
+def eval (keys : Keys C) (i : C.Party) (J : C.Quorum) (x : Point) (message : Message) :
+    OracleComp (RoSpec C) Digest := do
+  let terms ← (C.terms.filter (· ∈ L J i)).mapM fun T => prf (keys.seed T) x
   let masks ← (C.parties.filter fun j => j ∈ J.1 ∧ j ≠ i).mapM fun j =>
-    query (spec := HashSpec)
-      (bytesLE 32 (keys.pairKey j) ++ point ++ bytesLE 32 message ++ quorumBytes J)
-  pure (((terms ++ masks).map truncateHash).foldl (· ^^^ ·) 0)
+    truncateHash <$> hashQuery (.mask (keys.pairKey j) x message J)
+  pure ((terms ++ masks).foldl (· ^^^ ·) 0)
 
-/-- `Combine`, the sum of the parts of the quorum. -/
+/-- `Combine'`, the sum of the parts of the quorum. -/
 def combine (J : C.Quorum) (parts : C.Party → Digest) : Digest :=
   (C.parties.filter (· ∈ J.1)).foldl (fun acc j => acc ^^^ parts j) 0
 
 /-- Round 1 of signer `i` computes its part of `F(A_rnd(e))`. -/
-def signRound1 {m : Type → Type} [Monad m] [HasQuery HashSpec m] (keys : Keys C) (i : C.Party)
-    (J : C.Quorum) (e : KeyIndex) (message : Message) : m Digest :=
-  eval keys i J (randomizerPoint bottomLayer e) message
+def signRound1 (keys : Keys C) (i : C.Party) (J : C.Quorum) (e : KeyIndex) (message : Message) :
+    OracleComp (RoSpec C) Digest :=
+  eval keys i J (.randomizer bottomLayer e) message
 
 /-- The codeword of a signature at key `e` from the opened randomizer value, or `none` if it does
 not match the commitment `c_e` or the search fails. -/
-def signCodeword {m : Type → Type} [Monad m] [HasQuery HashSpec m] (parameter : PublicParameter)
-    (commitment : Digest) (e : KeyIndex) (message : Message) (ρ : Digest) :
-    m (Option (Randomness × Encoding)) := do
-  let opened := truncateHash (← query (spec := HashSpec) (commitmentInput parameter e ρ))
+def signCodeword (parameter : PublicParameter) (commitment : Digest) (e : KeyIndex) (message : Message)
+    (ρ : Digest) : OracleComp (RoSpec C) (Option (Randomness × Encoding)) := tweakable do
+  let opened := truncateHash (← Concrete.oracleHash (commitmentInput parameter e ρ))
   if opened ≠ commitment then pure none else
-  let base := truncateHash (← query (spec := HashSpec)
+  let base := truncateHash (← Concrete.oracleHash
     (randomizerInput parameter bottomLayer e ρ (bytesLE 32 message)))
   grind parameter bottomLayer e (bytesLE 32 message) base randomizerAttemptLimit 0
 
-/-- Round 2 of signer `i` checks `c_e` from the parts of round 1, finds the codeword, and sends its
-parts of `F(X_{l, p_l})` for each chain with `p_l < 3`. -/
-def signRound2 {m : Type → Type} [Monad m] [HasQuery HashSpec m] (keys : Keys C) (i : C.Party)
-    (J : C.Quorum) (commitment : Digest) (e : KeyIndex) (message : Message) (parts : C.Party → Digest) :
-    m (Option (ChainIndex → Option Digest)) := do
-  let some (_, encoding) ← signCodeword keys.parameter commitment e message (combine J parts)
+/-- Round 2 of a signer checks `c_e` from the parts of round 1 and finds the codeword. Then it sends
+its parts `part x` of `F(x_{l, p_l})` for each chain with `p_l < 3`. -/
+def signRound2With {m : Type → Type} [Monad m] (lift : ∀ {α : Type}, OracleComp (RoSpec C) α → m α)
+    (part : Point → m Digest) (parameter : PublicParameter) (J : C.Quorum) (commitment : Digest)
+    (e : KeyIndex) (message : Message) (parts : C.Party → Digest) : m (Option (ChainIndex → Option Digest)) := do
+  let some (_, encoding) ← lift (signCodeword parameter commitment e message (combine J parts))
     | pure none
   let values ← Concrete.sequenceFin fun l =>
-    if (encoding l).val < chainLength - 1 then
-      some <$> eval keys i J (prfPoint bottomLayer e l (encoding l).val) message
+    if (encoding l).val < chainLength - 1 then some <$> part (.chain bottomLayer e l (encoding l))
     else pure none
   pure (some values)
 
-/-- The leanXMSS signature of an honest quorum at bottom key `e`, from the parts of both rounds.
-Each signer checks that every chain value leads to its chain end. -/
-def assemble {m : Type → Type} [Monad m] [HasQuery HashSpec m] (parameter : PublicParameter)
-    (tree : BottomTree) (e : KeyIndex) (message : Message) (J : C.Quorum) (parts : C.Party → Digest)
-    (chainParts : C.Party → ChainIndex → Digest) : m (Option Signature) := do
+/-- Round 2 of signer `i` with its keys. -/
+def signRound2 (keys : Keys C) (i : C.Party) (J : C.Quorum) (commitment : Digest) (e : KeyIndex)
+    (message : Message) (parts : C.Party → Digest) : OracleComp (RoSpec C) (Option (ChainIndex → Option Digest)) :=
+  signRound2With (fun oa => oa) (fun x => eval keys i J x message) keys.parameter J commitment e message parts
+
+/-- The leanXMSS signature of a quorum at bottom key `e`, from the parts of both rounds. Each signer
+checks that every chain value leads to its chain end. -/
+def assemble (parameter : PublicParameter) (tree : BottomTree) (e : KeyIndex) (message : Message)
+    (J : C.Quorum) (parts : C.Party → Digest) (chainParts : C.Party → ChainIndex → Digest) :
+    OracleComp (RoSpec C) (Option Signature) := do
   let some (randomness, encoding) ← signCodeword parameter (tree.commitment e) e message
       (combine J parts) | pure none
+  tweakable do
   let value := fun l => match (encoding l).val with
     | 0 => combine J (chainParts · l)
     | 3 => (tree.cpk e l).2.2
@@ -1021,5 +1239,547 @@ def assemble {m : Type → Type} [Monad m] [HasQuery HashSpec m] (parameter : Pu
   if ∃ l, ends l ≠ (tree.cpk e l).2.2 then pure none else
   let path ← merklePath parameter bottomLayer (fun e l => (tree.cpk e l).2.2) e
   pure (some ⟨e, fun lay => if lay = bottomLayer then ⟨randomness, value, path⟩ else tree.topSignature⟩)
+
+/-! ## The oracle world -/
+
+attribute [local instance] Classical.propDecidable
+
+/-- The inputs of `Th` that the MPC evaluates as a circuit, namely a chain step and the commitment
+`c_e`. -/
+def MpcInput (input : HashInput) : Prop :=
+  (∃ parameter lay key step l value, input = tweakableHashInput parameter (.chain lay key step)
+    (Concrete.chainPayload l value)) ∨
+  ∃ parameter e ρ, input = commitmentInput parameter e ρ
+
+instance : SampleableType Bit := SampleableType.ofFintype Bit
+
+/-- AES-128 as a PRF from a 128-bit key and a stream position `(ρ, idx, position)` to one bit. -/
+abbrev Aes := PRFScheme Digest (ℕ × ℕ × ℕ) Bit
+
+/-- The fixed functions of the claims, namely `Th` on the inputs that the MPC evaluates and AES-128. -/
+structure Primitives where
+  Th : HashInput → HashOutput
+  aes : Aes
+
+/-- A programming query asks to set `H` at one input to one output. -/
+abbrev ProgramSpec (C : Committee) := (Query C × HashOutput) →ₒ Bool
+
+/-- The oracles of the explicit simulator, namely the local oracles and the programming of `H`. -/
+abbrev SimulatorSpec (C : Committee) := LocalSpec C + ProgramSpec C
+
+/-- The oracles of a run, namely a counted copy of the oracles of the simulator and a free copy of
+the local oracles. -/
+abbrev WorldSpec (C : Committee) := SimulatorSpec C + LocalSpec C
+
+/-- The cache of the random-oracle domains of `H`. -/
+abbrev HashCache (C : Committee) := (Query C →ₒ HashOutput).QueryCache
+
+/-- A computation on the counted copy. -/
+def counted {α : Type} (oa : OracleComp (SimulatorSpec C) α) : OracleComp (WorldSpec C) α :=
+  simulateQ (fun t => query (spec := WorldSpec C) (.inl t)) oa
+
+/-- A computation on the free copy. -/
+def free {α : Type} (oa : OracleComp (LocalSpec C) α) : OracleComp (WorldSpec C) α :=
+  simulateQ (fun t => query (spec := WorldSpec C) (.inr t)) oa
+
+variable (prims : Primitives)
+
+/-- `H` answers an input that the MPC evaluates with `Th`, and every other input as a lazy random
+oracle. -/
+def hashAnswer : QueryImpl (Query C →ₒ HashOutput) (StateT (HashCache C) ProbComp) := fun q =>
+  match q with
+  | .hash input => if MpcInput input then pure (prims.Th input) else (Query C →ₒ HashOutput).randomOracle q
+  | q => (Query C →ₒ HashOutput).randomOracle q
+
+/-- `PRG(key, ρ, idx)` at one position, AES-128 under the first 128 bits of `H(key)`. -/
+def prgAnswer : QueryImpl (PrgInput C →ₒ Bit) (StateT (HashCache C) ProbComp) := fun x => do
+  let derived ← hashAnswer prims (.streamKey x.2.1)
+  pure (prims.aes.eval (truncateHash derived) x.2.2)
+
+/-- Private sampling, `H` and `PRG`. -/
+def localAnswer : QueryImpl (LocalSpec C) (StateT (HashCache C) ProbComp) :=
+  unifFwdImpl (Query C →ₒ HashOutput) + (hashAnswer (C := C) prims + prgAnswer (C := C) prims)
+
+/-- The programmable random oracle sets `H` only at a random-oracle input that no one queried, and
+tells whether it did (CDG+18). -/
+def programAnswer (x : Query C × HashOutput) : StateT (HashCache C) ProbComp Bool := do
+  let cache ← get
+  if (∃ input, x.1 = .hash input ∧ MpcInput input) ∨ (cache x.1).isSome then pure false else do
+    set (cache.cacheQuery x.1 x.2)
+    pure true
+
+/-- The world. Both copies share one cache. Each call of a random-oracle domain of `H`, each call of
+`PRG` and each programming query on the counted copy costs one query. The fixed part of `Th` costs
+nothing. -/
+def world : QueryImpl (WorldSpec C) (AddWriterT ℕ (StateT (HashCache C) ProbComp)) :=
+  QueryImpl.withAddCost (localAnswer (C := C) prims + programAnswer (C := C) + localAnswer (C := C) prims :
+      QueryImpl (WorldSpec C) (StateT (HashCache C) ProbComp))
+    fun | .inl (.inl (.inl _)) => 0 | .inl (.inl (.inr (.inl (.hash input)))) => if MpcInput input then 0 else 1
+        | .inl _ => 1 | .inr _ => 0
+
+/-- The world that counts every call of `Th` on a leaf, a node or a message digest, on both copies. -/
+def treeWorld : QueryImpl (WorldSpec C) (AddWriterT ℕ (StateT (HashCache C) ProbComp)) :=
+  QueryImpl.withAddCost (localAnswer (C := C) prims + programAnswer (C := C) + localAnswer (C := C) prims :
+      QueryImpl (WorldSpec C) (StateT (HashCache C) ProbComp))
+    fun | .inl (.inl (.inr (.inl (.hash input)))) => if MpcInput input then 0 else 1
+        | .inr (.inr (.inl (.hash input))) => if MpcInput input then 0 else 1
+        | _ => 0
+
+/-- Run a computation in the world from an empty cache, with its number of counted queries. -/
+def runWorld {α : Type} (oa : OracleComp (WorldSpec C) α) : ProbComp (α × ℕ) :=
+  (simulateQ (world prims) oa).run.run' ∅
+
+/-- Every execution makes at most `q` counted queries. In an ideal run these are the calls of the
+simulator, which runs the adversary, its programming queries, and the calls of the distinguisher. -/
+def HasHashQueryBound {α : Type} (run : ProbComp (α × ℕ)) (q : ℕ) : Prop :=
+  ∀ r ∈ support run, r.2 ≤ q
+
+/-- Every execution makes at most `N` calls of `Th` on a leaf, a node or a message digest, by every
+party. -/
+def HasTreeCallBound {α : Type} (oa : OracleComp (WorldSpec C) α) (N : ℕ) : Prop :=
+  ∀ r ∈ support ((simulateQ (treeWorld prims) oa).run.run' ∅), r.2 ≤ N
+
+/-- The probability that a computation outputs `true`. -/
+def accepts (oa : OracleComp (WorldSpec C) Bool) : ℝ := (Pr[fun r => r.1 = true | runWorld prims oa]).toReal
+
+/-! ## The network -/
+
+/-- An ideal functionality. It knows the fixed coalition, reads the input of each honest operator,
+talks to the adversary by leak and reply, and gives each honest operator an output or an abort. The
+execution runs it only when every honest operator has an input. -/
+structure Functionality (C : Committee) (I O L R : Type) where
+  run : C.Coalition → (C.Party → Option I) → OracleComp (LocalSpec C + (L →ₒ R)) (C.Party → Option O)
+
+/-- A call to a functionality gives an output or an abort. -/
+abbrev CallSpec (I O : Type) := I →ₒ Option O
+
+/-- The real network has no functionality. -/
+abbrev RealSpec := CallSpec PEmpty PEmpty
+
+def noFunctionality : Functionality C PEmpty PEmpty PEmpty PEmpty := ⟨fun _ _ => pure fun _ => none⟩
+
+/-- The auxiliary input `z` of the adversary and of the simulator (Canetti 2000). -/
+abbrev Aux := List Bool
+
+/-- A rushing adversary. It starts from the inputs of the corrupt operators and the auxiliary input.
+Each round it reads the messages to the corrupt operators, then it sends the messages of the corrupt
+operators. It also answers the functionality of the hybrid model. -/
+structure Adversary (C : Committee) (E I L R : Type) where
+  State : Type
+  start : (C.Party → Option I) → Aux → OracleComp (LocalSpec C) State
+  round : State → (C.Party → C.Party → Option (Msg E)) →
+    OracleComp (LocalSpec C) (State × (C.Party → C.Party → Option (Msg E)))
+  answer : State → L → OracleComp (LocalSpec C) (State × R)
+
+/-- The inputs of the corrupt operators. -/
+def corruptInputs {I : Type} (D : C.Coalition) (x : C.Party → I) : C.Party → Option I :=
+  fun i => if i ∈ D.1 then some (x i) else none
+
+/-- Where the steps of the adversary and the local steps of the honest operators run. -/
+structure Roles (C : Committee) (m : Type → Type) where
+  adversary : ∀ {β : Type}, OracleComp (LocalSpec C) β → m β
+  honest : ∀ {β : Type}, OracleComp (LocalSpec C) β → m β
+
+/-- The adversary runs on the counted copy and the honest operators on the free copy. -/
+def worldRoles : Roles C (OracleComp (WorldSpec C)) := ⟨fun oa => counted (liftComp oa _), free⟩
+
+section Network
+
+variable {α : Type}
+
+def Step.outbox : Step C E G α → Mail C E
+  | .wait outbox _ => outbox
+  | _ => fun _ => none
+
+def Step.output : Step C E G α → Option α
+  | .done out => out
+  | _ => none
+
+def Step.isDone : Step C E G α → Prop
+  | .done _ => True
+  | _ => False
+
+def Step.callInput : Step C E G α → Option ι
+  | .call input _ => some input
+  | _ => none
+
+end Network
+
+section Execution
+
+variable {m : Type → Type} [Monad m] {I O L R α Ia : Type}
+
+/-- The functionality of the hybrid model on the inputs of the honest operators, with the adversary
+on its interface. If an honest operator has no input, because it aborted, every honest operator
+aborts and nothing leaks. -/
+def runFunctionality (Ro : Roles C m) (D : C.Coalition) (A : Adversary C E Ia L R) (F : Functionality C I O L R)
+    (state : A.State) (inputs : C.Party → Option I) : m (A.State × (C.Party → Option O)) := do
+  if ¬ ∀ i, i ∉ D.1 → (inputs i).isSome then return (state, fun _ => none)
+  let impl : QueryImpl (LocalSpec C + (L →ₒ R)) (StateT A.State m) :=
+    (fun t => StateT.lift (Ro.honest (OracleComp.lift (OracleSpec.query t)))) +
+    (fun (l : L) => (StateT.mk fun st => do
+      let (st, r) ← Ro.adversary (A.answer st l)
+      pure (r, st) : StateT A.State m R))
+  let (outputs, state) ← (simulateQ impl (F.run D inputs)).run state
+  pure (state, outputs)
+
+/-- One synchronous step. When every running honest operator calls the functionality, it runs.
+Otherwise one round runs, and an honest operator that calls out of turn aborts. -/
+def stepRound (Ro : Roles C m) (D : C.Coalition) (A : Adversary C E Ia L R) (F : Functionality C I O L R)
+    (state : A.State) (steps : C.Party → Step C E (CallSpec I O) α) :
+    m (A.State × (C.Party → Step C E (CallSpec I O) α) × (C.Party → C.Party → Option (Msg E))) := do
+  if (∃ i, i ∉ D.1 ∧ (steps i).callInput.isSome) ∧ ∀ i, i ∉ D.1 → (steps i).callInput.isSome ∨ (steps i).isDone then
+    let (state, outputs) ← runFunctionality Ro D A F state fun i => if i ∈ D.1 then none else (steps i).callInput
+    let steps' ← Concrete.sequenceFin fun j => match steps j with
+      | .call _ resume => if j ∈ D.1 then pure (Step.done none) else Ro.honest (advance (resume (outputs j)))
+      | step => pure step
+    pure (state, steps', fun _ _ => none)
+  else
+    let (state, sent) ← Ro.adversary (A.round state fun c i =>
+      if c ∈ D.1 ∧ i ∉ D.1 then (steps i).outbox c else none)
+    let steps' ← Concrete.sequenceFin fun j => match steps j with
+      | .done out => pure (Step.done out)
+      | .wait _ resume => if j ∈ D.1 then pure (Step.done none) else
+          Ro.honest (advance (resume fun k => if k ∈ D.1 then sent k j else (steps k).outbox j))
+      | .call _ _ => pure (Step.done none)
+    pure (state, steps', sent)
+
+/-- Run the honest programs for at most `fuel` steps. A program that is still running then aborts. -/
+def executeRounds (Ro : Roles C m) (D : C.Coalition) (A : Adversary C E Ia L R) (F : Functionality C I O L R) :
+    ℕ → A.State → (C.Party → Step C E (CallSpec I O) α) → m (A.State × (C.Party → Option α))
+  | 0, state, steps => pure (state, fun i => (steps i).output)
+  | fuel + 1, state, steps =>
+    if ∀ i, i ∉ D.1 → (steps i).isDone then pure (state, fun i => (steps i).output) else do
+    let (state, steps, _) ← stepRound Ro D A F state steps
+    executeRounds Ro D A F fuel state steps
+
+/-- The first steps of the honest programs. -/
+def startSteps (Ro : Roles C m) (D : C.Coalition) (program : C.Party → PartyM C E (CallSpec I O) α) :
+    m (C.Party → Step C E (CallSpec I O) α) :=
+  Concrete.sequenceFin fun i => if i ∈ D.1 then pure (Step.done none) else Ro.honest (advance (program i).run)
+
+/-- One phase of at most `fuel` steps. -/
+def executePhase (Ro : Roles C m) (D : C.Coalition) (A : Adversary C E Ia L R) (F : Functionality C I O L R)
+    (fuel : ℕ) (state : A.State) (program : C.Party → PartyM C E (CallSpec I O) α) :
+    m (A.State × (C.Party → Option α)) := do
+  executeRounds Ro D A F fuel state (← startSteps Ro D program)
+
+end Execution
+
+/-! ## Secure computation -/
+
+/-- A simulator with the oracles `S`. It starts from the inputs of the corrupt operators and the
+auxiliary input, answers the leaks of a functionality, and ends with an output of the type of the
+state of the adversary. -/
+structure Simulator {κ : Type} (S : OracleSpec κ) (I L R σ : Type) where
+  State : Type
+  start : (C.Party → Option I) → Aux → OracleComp S State
+  answer : State → L → OracleComp S (State × R)
+  output : State → OracleComp S σ
+
+/-- The calls of a local computation that the budget counts, namely the random-oracle inputs of `H`
+and `PRG`. -/
+def Counted : (LocalSpec C).Domain → Prop
+  | .inr (.inl (.hash input)) => ¬ MpcInput input
+  | .inr _ => True
+  | .inl _ => False
+
+/-- A distinguisher reads the joint output of the adversary and the honest operators, with oracle
+access (GL05 and Canetti 2000). -/
+abbrev Distinguisher (C : Committee) (σ O : Type) := σ × (C.Party → Option O) → OracleComp (LocalSpec C) Bool
+
+/-- A `q`-query adversary with its distinguisher, in the sense of BR93. For every answer of the
+oracles, the start makes at most `start` counted calls, each round and each reply at most `step`, and
+the distinguisher at most `final`, and a run of `fuel` steps stays within `q`. A step runs one round
+or one functionality, and each functionality of the model leaks once. -/
+def IsQueryBounded {I L R O : Type} (A : Adversary C E I L R) (Z : Distinguisher C A.State O) (fuel q : ℕ) : Prop :=
+  ∃ start step final : ℕ, start + fuel * step + final ≤ q ∧
+    (∀ x z, IsQueryBoundP (A.start x z) Counted start) ∧
+    (∀ state sent, IsQueryBoundP (A.round state sent) Counted step) ∧
+    (∀ state l, IsQueryBoundP (A.answer state l) Counted step) ∧
+    (∀ r, IsQueryBoundP (Z r) Counted final)
+
+/-- The real execution of a protocol in the hybrid model of `Fh`, on the inputs `x` and the auxiliary
+input `z`. -/
+def realExecution {I O Ih Oh Lh Rh : Type} (D : C.Coalition) (A : Adversary C E I Lh Rh)
+    (Fh : Functionality C Ih Oh Lh Rh) (fuel : ℕ) (program : C.Party → I → PartyM C E (CallSpec Ih Oh) O)
+    (x : C.Party → I) (z : Aux) : OracleComp (WorldSpec C) (A.State × (C.Party → Option O)) := do
+  let state ← worldRoles.adversary (A.start (corruptInputs D x) z)
+  executePhase worldRoles D A Fh fuel state fun i => program i (x i)
+
+/-- The ideal execution of `F` with the simulator `Sim`. The functionality runs on the free copy. -/
+def idealExecution {κ : Type} {S : OracleSpec κ} {I O L R σ : Type}
+    (lift : ∀ {β : Type}, OracleComp S β → OracleComp (WorldSpec C) β) (D : C.Coalition)
+    (F : Functionality C I O L R) (Sim : Simulator (C := C) S I L R σ) (x : C.Party → I) (z : Aux) :
+    OracleComp (WorldSpec C) (σ × (C.Party → Option O)) := do
+  let state ← lift (Sim.start (corruptInputs D x) z)
+  let impl : QueryImpl (LocalSpec C + (L →ₒ R)) (StateT Sim.State (OracleComp (WorldSpec C))) :=
+    (fun (t : (LocalSpec C).Domain) =>
+      (StateT.lift (free (C := C) (OracleComp.lift (OracleSpec.query t))) : StateT Sim.State _ _)) +
+    (fun (l : L) => (StateT.mk fun st => do
+      let (st, r) ← lift (Sim.answer st l)
+      pure (r, st) : StateT Sim.State (OracleComp (WorldSpec C)) R))
+  let (outputs, state) ← (simulateQ impl (F.run D fun i => if i ∈ D.1 then none else some (x i))).run state
+  pure (← lift (Sim.output state), outputs)
+
+/-- An execution followed by the distinguisher on the counted copy. -/
+def distinguish {σ O : Type} (oa : OracleComp (WorldSpec C) (σ × (C.Party → Option O)))
+    (Z : Distinguisher C σ O) : OracleComp (WorldSpec C) Bool :=
+  oa >>= fun r => worldRoles.adversary (Z r)
+
+/-- The protocol `program` in the `Fh`-hybrid model securely computes `F` on the valid inputs
+(Canetti 2000, GS20). For each coalition and adversary there is a simulator without programming, and
+all its calls are counted. It is fixed before the inputs, the auxiliary input, the distinguisher and
+the budget, and it sees only the corrupt inputs, the auxiliary input and the leaks of `F`. For a
+`q`-query adversary and distinguisher, the ideal run makes at most `q + overhead` counted queries,
+and the error is `ε q`. -/
+def SecurelyComputes {I O L R Ih Oh Lh Rh : Type} (program : C.Party → I → PartyM C E (CallSpec Ih Oh) O)
+    (fuel : ℕ) (Fh : Functionality C Ih Oh Lh Rh) (F : Functionality C I O L R)
+    (valid : C.Coalition → (C.Party → I) → Prop) (overhead : ℕ) (ε : ℕ → ℝ) : Prop :=
+  ∀ (D : C.Coalition) (A : Adversary C E I Lh Rh), ∃ S : Simulator (C := C) (LocalSpec C) I L R A.State,
+    ∀ (x : C.Party → I) (z : Aux) (Z : Distinguisher C A.State O) (q : ℕ), valid D x →
+      IsQueryBounded A Z fuel q →
+      HasHashQueryBound (runWorld prims (distinguish (idealExecution worldRoles.adversary D F S x z) Z))
+          (q + overhead) ∧
+        |accepts prims (distinguish (realExecution D A Fh fuel program x z) Z) -
+          accepts prims (distinguish (idealExecution worldRoles.adversary D F S x z) Z)| ≤ ε q
+
+/-- The protocol `program` on the real network securely computes `F` on the valid inputs with the
+explicit simulator `Sim D A`. It is fixed code that runs the adversary on the counted copy, emulates
+the honest operators on the free copy as the real operators do, and may program `H`. For a `q`-query adversary and distinguisher, the
+ideal run makes at most `q + overhead` counted queries, and the error is `ε D A x z Z q`. -/
+def SimulatedBy {I O L R : Type} (program : C.Party → I → PartyM C E RealSpec O) (fuel : ℕ)
+    (F : Functionality C I O L R) (valid : C.Coalition → (C.Party → I) → Prop)
+    (Sim : (D : C.Coalition) → (A : Adversary C E I PEmpty PEmpty) → Simulator (C := C) (WorldSpec C) I L R A.State)
+    (overhead : ℕ)
+    (ε : (D : C.Coalition) → (A : Adversary C E I PEmpty PEmpty) → (C.Party → I) → Aux →
+      Distinguisher C A.State O → ℕ → ℝ) : Prop :=
+  ∀ (D : C.Coalition) (A : Adversary C E I PEmpty PEmpty) (x : C.Party → I) (z : Aux)
+    (Z : Distinguisher C A.State O) (q : ℕ), valid D x →
+    IsQueryBounded A Z fuel q →
+    HasHashQueryBound (runWorld prims (distinguish (idealExecution (fun oa => oa) D F (Sim D A) x z) Z))
+        (q + overhead) ∧
+      |accepts prims (distinguish (realExecution D A noFunctionality fuel program x z) Z) -
+        accepts prims (distinguish (idealExecution (fun oa => oa) D F (Sim D A) x z) Z)| ≤ ε D A x z Z q
+
+def noCoalition : C.Coalition := ⟨∅, by simp⟩
+
+/-- The adversary of an honest run. It controls no operator and replies `reply` to each leak. -/
+def honestAdversary {I L R : Type} (reply : L → R) : Adversary C E I L R :=
+  ⟨Unit, fun _ _ => pure (), fun _ _ => pure ((), fun _ _ => none), fun _ l => pure ((), reply l)⟩
+
+/-- The simulator of an honest run, which replies `reply` to each leak. -/
+def honestSimulator {κ : Type} {S : OracleSpec κ} {I L R : Type} (reply : L → R) :
+    Simulator (C := C) S I L R Unit :=
+  ⟨Unit, fun _ _ => pure (), fun _ l => pure ((), reply l), fun _ => pure ()⟩
+
+/-- An honest run of `program` in the `Fh`-hybrid model gives the outputs of `F` on the valid inputs,
+up to `ε` in statistical distance. Each functionality gets the reply of an honest adversary. -/
+def Completes {I O L R Ih Oh Lh Rh : Type} (program : C.Party → I → PartyM C E (CallSpec Ih Oh) O)
+    (fuel : ℕ) (Fh : Functionality C Ih Oh Lh Rh) (replyH : Lh → Rh) (F : Functionality C I O L R)
+    (reply : L → R) (valid : C.Coalition → (C.Party → I) → Prop) (ε : ℝ) : Prop :=
+  ∀ x : C.Party → I, valid noCoalition x →
+    tvDist ((fun r => r.1.2) <$> runWorld prims
+        (realExecution noCoalition (honestAdversary replyH) Fh fuel program x []))
+      ((fun r => r.1.2) <$> runWorld prims
+        (idealExecution (fun oa => oa) noCoalition F (honestSimulator reply) x [])) ≤ ε
+
+/-! ## Programs in the hybrid models of GS20 -/
+
+section Hybrid
+
+variable [Field E] [Algebra Bit E] (K : Constants C E)
+
+def startRun : RunState C := ⟨fun _ => [], 0⟩
+
+/-- `Coin` in the `F_rand`-hybrid model (GS20, Protocol 6). -/
+def coinProtocol (i : C.Party) (count : ℕ) : PartyM C E (CallSpec ℕ (PrssOutput C E)) (List E) := do
+  let some randomness ← call count | failure
+  (coinWith K (localContext i) randomness count).run' startRun
+
+/-- `MulRep` and `Reshare` in `mode` in the `F_rand`-hybrid model (GS20, Protocol 8). -/
+def multProtocol (mode : ReshareMode) (i : C.Party) (input : Shares C Bit × Shares C Bit × ℕ) :
+    PartyM C E (CallSpec ℕ (PrssOutput C Bit)) (Shares C Bit) := do
+  let (x, y, count) := input
+  let some randomness ← call count | failure
+  (reshareWith K (localContext i) mode randomness (mulRep K (localContext i) x y) count).run' startRun
+
+/-- `MulRep` or `MulSh` and `Reshare` in the `F_rand`-hybrid model (GS20, Protocol 10). -/
+def extendMultProtocol (i : C.Party) (products : List (Product C E)) :
+    PartyM C E (CallSpec ℕ (PrssOutput C E)) (Shares C E) := do
+  let some randomness ← call products.length | failure
+  let ctx := localContext i
+  (reshare K ctx (elementCodec K) randomness
+    (fun g => match products[g]? with | some p => productShare K ctx p | none => 0)
+    products.length).run' startRun
+
+/-- The functionalities of the check, namely `F_coin`, `F_extendMult`, and `F_rand` over `E` and over
+bits. -/
+abbrev CheckSpec (C : Committee) (E : Type) :=
+  CallSpec ((ℕ ⊕ List (Product C E)) ⊕ (ℕ ⊕ ℕ)) ((List E ⊕ Shares C E) ⊕ (PrssOutput C E ⊕ PrssOutput C Bit))
+
+/-- The gadgets of the check as calls. -/
+def hybridCheckGadgets (i : C.Party) : CheckGadgets C E (CheckSpec C E) where
+  coin count := do
+    let some (.inl (.inl values)) ← StateT.lift (call (.inl (.inl count))) | StateT.lift failure
+    pure values
+  extendMult products := do
+    let some (.inl (.inr z)) ← StateT.lift (call (.inl (.inr products))) | StateT.lift failure
+    record K (localContext i) (elementCodec K) .peer z products.length
+    pure z
+  randElements count := do
+    let some (.inr (.inl randomness)) ← StateT.lift (call (.inr (.inl count))) | StateT.lift failure
+    pure randomness
+  randBits count := do
+    let some (.inr (.inr randomness)) ← StateT.lift (call (.inr (.inr count))) | StateT.lift failure
+    pure randomness
+
+/-- The values that the reshares of the tuples fill, which start the running values of the check. -/
+def filledHistory (i : C.Party) (tuples : List (Tuple C)) (T : C.Term) : List Bit :=
+  if i ∈ C.holders T then tuples.flatMap fun τ =>
+    ((List.range τ.count).filter fun g => (filler K τ.mode T g).isSome).map (τ.z T)
+  else []
+
+/-- The check in the `{F_coin, F_extendMult, F_rand}`-hybrid model (GS20, Protocol 17). -/
+def checkProtocol (i : C.Party) (tuples : List (Tuple C)) : PartyM C E (CheckSpec C E) Unit :=
+  (check K (localContext i) (hybridCheckGadgets K i) tuples).run' ⟨filledHistory K i tuples, 0⟩
+
+/-- The functionalities of a run, namely `F_mult` of the AND gates, `F_mult` in peer mode for
+`Rerand`, and `F_multVerify`. -/
+abbrev MainSpec (C : Committee) :=
+  CallSpec (((Shares C Bit × Shares C Bit × ℕ) ⊕ (Shares C Bit × Shares C Bit × ℕ)) ⊕ List (Tuple C))
+    ((Shares C Bit ⊕ Shares C Bit) ⊕ Unit)
+
+/-- The gadgets of a run as calls, with `Rerand` as a product with `[[1]]` (GS20, Protocol 19). -/
+def hybridRunGadgets (mode : ReshareMode) (i : C.Party) : RunGadgets C E (MainSpec C) where
+  mode := mode
+  mult x y count := do
+    let some (.inl (.inl z)) ← StateT.lift (call (.inl (.inl (x, y, count)))) | StateT.lift failure
+    pure z
+  rerand v count := do
+    let some (.inl (.inr z)) ← StateT.lift (call (.inl (.inr (v, one K, count)))) | StateT.lift failure
+    pure z
+  verify tuples := do
+    let some (.inr ()) ← StateT.lift (call (.inr tuples)) | StateT.lift failure
+  output v count := StateT.lift (openRep K (localContext i) v count)
+
+/-- A run in the `{F_mult, F_multVerify}`-hybrid model (GS20, Protocol 19). -/
+def mainProtocol (mode : ReshareMode) (jobs : List Circuit) (i : C.Party) (inputs : List (C.Term → List Bit)) :
+    PartyM C E (MainSpec C) (List (List Bit)) :=
+  (runJobs K (hybridRunGadgets K mode i) jobs inputs).run' startRun
+
+end Hybrid
+
+/-! ## Honest runs -/
+
+/-- The empty top tree, which the top ceremony takes. -/
+def emptyTop : TopTree := ⟨fun _ _ => 0, 0⟩
+
+/-- The tree of an output, if it is a top tree. -/
+def TreeOutput.topTree : Option TreeOutput → Option TopTree
+  | some (.top tree) => some tree
+  | _ => none
+
+/-- The batches of a ceremony, at most. -/
+def ceremonyBatches (settings : Settings) : ℕ :=
+  (chunks settings.batchSize topJobs).length ⊔
+    ((chunks settings.batchSize (bottomJobs 0)).length + (chunks settings.batchSize (signJobs 0 fun _ => digit 0)).length)
+
+/-- The circuits of the jobs of a run. -/
+def runCircuits (circuits : Circuits) (parameter : PublicParameter) (jobs : List Job) : List Circuit :=
+  jobs.map (circuits parameter ·.kind)
+
+/-- The most of a measure over all batches of all runs of all ceremonies. -/
+def maxBatch (circuits : Circuits) (settings : Settings) (measure : List Circuit → ℕ) : ℕ :=
+  Finset.univ.sup fun x : PublicParameter × Fin (2 ^ layerHeight) × Encoding =>
+    (([topJobs, bottomJobs x.2.1, signJobs x.2.1 x.2.2].flatMap (chunks settings.batchSize)).map
+      fun jobs => measure (runCircuits circuits x.1 jobs)).foldl max 0
+
+/-- A ceremony runs the PRSS setup and its batches. -/
+def ceremonyFuel (circuits : Circuits) (settings : Settings) : ℕ :=
+  setupRounds + ceremonyBatches settings * maxBatch circuits settings (runRounds settings.mode)
+
+
+/-- `KeyGen` of PRAWNS, Section 3.1, for leanXMSS, as the signing game needs it. `part` gives the
+part of operator `i` of `F(x)` for quorum `J` and message `m`, and `value` gives `F(x)`. -/
+structure Dealt (C : Committee) (m : Type → Type) where
+  keys : C.Party → Keys C
+  parameter : PublicParameter
+  top : TopTree
+  value : Point → m Digest
+  part : C.Party → C.Quorum → Point → Message → m Digest
+  bottom : Fin (2 ^ layerHeight) → m (Option BottomTree)
+
+/-- The bottom tree of a bottom key. -/
+def treeOf (e : KeyIndex) : Fin (2 ^ layerHeight) :=
+  ⟨e.val / 2 ^ layerHeight, by
+    have := e.isLt; simp only [lifetime, numLayers, layerHeight] at *; omega⟩
+
+section Dealer
+
+variable {m : Type → Type} [Monad m]
+
+/-- `KeyGen` of PRAWNS with `KeyGen'` and the trees of leanXMSS, with the PRF values from `value`. -/
+def dealtWith (lift : ∀ {β : Type}, OracleComp (RoSpec C) β → m β) (parameter : PublicParameter)
+    (keys : C.Party → Keys C) (top : TopTree) (value : Point → m Digest) : Dealt C m where
+  keys := keys
+  parameter := parameter
+  top := top
+  value := value
+  part i J x message := lift (eval (keys i) i J x message)
+  bottom b := (fun | some (.bottom tree) => some tree | _ => none) <$>
+    referenceTree (fun oa => lift (tweakable oa)) value parameter top (.bottom b)
+
+/-- `KeyGen` with the local oracles in `m`. It is `none` if a randomizer search of a top signature
+fails. -/
+def keyGenWith (sample : ∀ {β : Type}, ProbComp β → m β) (lift : ∀ {β : Type}, OracleComp (RoSpec C) β → m β) :
+    m (Option (Dealt C m)) := do
+  let (parameter, seeds, keys) ← sample prawnsKeyGen
+  let value := fun x => lift (prfValue seeds x)
+  let some (.top top) ← referenceTree (fun oa => lift (tweakable oa)) value parameter emptyTop .top | pure none
+  pure (some (dealtWith lift parameter keys top value))
+
+/-- The signature of `KeyGen` at bottom key `e` for `m`, which every honest quorum outputs. -/
+def honestSignature (lift : ∀ {β : Type}, OracleComp (RoSpec C) β → m β) (dealt : Dealt C m) (e : KeyIndex)
+    (message : Message) : m (Option Signature) := do
+  let some tree ← dealt.bottom (treeOf e) | pure none
+  let ρ ← dealt.value (.randomizer bottomLayer e)
+  let some (randomness, encoding) ← lift (signCodeword dealt.parameter (tree.commitment e) e message ρ)
+    | pure none
+  let values ← Concrete.sequenceFin fun l => match (encoding l).val with
+    | 0 => dealt.value (.chain bottomLayer e l (encoding l))
+    | 3 => pure (tree.cpk e l).2.2
+    | p => do
+        let f ← dealt.value (.chain bottomLayer e l (encoding l))
+        pure ((if p = 1 then (tree.cpk e l).1 else (tree.cpk e l).2.1) ^^^ f)
+  let path ← lift (tweakable (merklePath dealt.parameter bottomLayer (fun e l => (tree.cpk e l).2.2) e))
+  pure (some ⟨e, fun lay => if lay = bottomLayer then ⟨randomness, values, path⟩ else tree.topSignature⟩)
+
+end Dealer
+
+/-- `KeyGen` on the free copy. -/
+def keyGen : OracleComp (WorldSpec C) (Option (Dealt C (OracleComp (WorldSpec C)))) :=
+  keyGenWith (fun oa => free (liftComp oa _)) (fun oa => free (liftComp oa _))
+
+/-- `Combine'` of the parts of a quorum and `F(msk, x)` under `KeyGen'`. -/
+def tprfCorrectnessRun (J : C.Quorum) (x : Point) (ec : Message) : OracleComp (WorldSpec C) Bool := free do
+  let (_, seeds, keys) ← liftComp prawnsKeyGen _
+  let parts ← liftComp (Concrete.sequenceFin fun i => eval (keys i) i J x ec) _
+  let value ← liftComp (prfValue seeds x) _
+  pure (decide (combine J parts = value))
+
+/-- An honest quorum signs `m` at key `e` with `KeyGen`. The result is `none` if `KeyGen` or a
+randomizer search fails, and otherwise tells whether the signature verifies. -/
+def honestSigning (J : C.Quorum) (e : KeyIndex) (message : Message) : OracleComp (WorldSpec C) (Option Bool) := do
+  let some dealt ← keyGen | pure none
+  let lift : ∀ {β : Type}, OracleComp (RoSpec C) β → OracleComp (WorldSpec C) β := fun oa => free (liftComp oa _)
+  let some tree ← dealt.bottom (treeOf e) | pure none
+  let parts ← Concrete.sequenceFin fun i => if i ∈ J.1 then dealt.part i J (.randomizer bottomLayer e) message else pure 0
+  let some _ ← lift (signCodeword dealt.parameter (tree.commitment e) e message (combine J parts)) | pure none
+  let chainParts ← Concrete.sequenceFin fun i => do
+    let values ← signRound2With lift (fun x => dealt.part i J x message) dealt.parameter J (tree.commitment e) e message parts
+    pure fun l => ((values.bind (· l)).getD 0)
+  let some signature ← lift (assemble dealt.parameter tree e message J parts chainParts) | pure (some false)
+  some <$> lift (tweakable (Concrete.verify ⟨dealt.top.root, dealt.parameter⟩ message signature))
 
 end ThresholdLeanXmss
