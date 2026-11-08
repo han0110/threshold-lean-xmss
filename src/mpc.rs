@@ -27,6 +27,16 @@
 //!   - If `D = T_i`, then `u_i` goes only to honest holders, and the other honest values are
 //!     independent.
 //! - Each holder of a filled term adds its new values to the running hash `h_T` of the term.
+//! - `establish` derives fresh PRSS keys `prss_T` and `prss_ij` in each ceremony, with the
+//!   commit-reveal-echo of the keygen of the note.
+//!   - All streams of `rand` and of the zero sharing use only these keys, as the pseudorandom
+//!     sharings of Cramer, Damgard and Ishai.
+//!   - So no stream depends on the seeds `seed_T` or the pair keys `K_ij` that the ceremony outputs
+//!     to signing.
+//! - At the end of each ceremony, a production implementation erases its private ceremony state, as
+//!   `doc/dkg.md`, Section 3.3, states.
+//! - `rerand` reshares each output before it opens, and the check verifies the reshare.
+//!   - So `open` reveals only a fresh sharing of the output value.
 //! - A coin is a pseudorandom sharing that opens robustly in the round after the messages that it
 //!   checks.
 //!   - As in the paper and the prototype, this assumes synchronous rounds.
@@ -37,24 +47,24 @@
 //! - A gate covers one 64-bit lane of a circuit layer for all instances of the batch. A `Word`
 //!   holds this lane for four instances.
 //! - The pseudorandom streams use AES-128 in place of Keccak-256 with labeled tags.
-//!   - The AES key hashes the label `rss-prss`, a seed and the session value.
+//!   - The AES key hashes the label `rss-prss`, a PRSS key and the session value.
 //!   - A stream depends on the channel, its round and an index, and a coin key hashes only the
 //!     opened value.
-//!   - The label keeps the stream keys apart from the threshold PRF of `prawns`, which uses the
-//!     same term seeds.
+//! - The prototype derives its PRSS keys once, in its keygen. Here each ceremony derives fresh PRSS
+//!   keys in its first three rounds.
 //! - The prototype gives each pair to the least loaded holder in one pass and each term to its
 //!   first holder.
 //!   - Here `balance` adds a local search, so the loads of the operators differ by at most one in
 //!     both tables.
 //! - The prototype has only collector mode.
-//!   - The message of `establish` also carries the mode and the batch size, so operators with
+//!   - The first message of `establish` also carries the mode and the batch size, so operators with
 //!     different values abort before the first gate.
 //! - The prototype sends the digest of a term only to the other holders of the term.
 //!   - Here every operator receives the salted digest of every term, so a split copy stops every
 //!     honest operator.
 //! - The prototype opens an output through a king, a coin with digests, a random linear combination
 //!   and a vote, in 5 rounds.
-//!   - Here `open` takes 1 round.
+//!   - Here `rerand` takes 1 round before the check, and `open` takes 1 round after it.
 //! - The prototype ends each opening with a vote. Here each operator decides alone, as in Goyal and
 //!   Song.
 //! - The caller checks the tuples before it opens outputs, and it stops at the first error.
@@ -64,10 +74,10 @@
 
 use std::array::from_fn;
 use std::fmt::Debug;
-use std::mem;
 use std::ops::{BitAnd, BitXor, BitXorAssign, Range};
 use std::slice::{Chunks, ChunksMut};
 use std::sync::Arc;
+use std::{iter, mem};
 
 use aes::cipher::{Array, BlockCipherEncrypt, KeyInit};
 use aes::{Aes128, Block};
@@ -406,7 +416,7 @@ impl Tuples {
             x: copies(),
             y: copies(),
             z: copies(),
-            hashes: vec![Hasher::new(); party.held.len()],
+            hashes: vec![Hasher::new().update(b"thlxmss-history").clone(); party.held.len()],
         }
     }
 }
@@ -419,19 +429,43 @@ pub fn mul(pairs: &[(usize, usize)], x: impl Fn(usize) -> Word, y: impl Fn(usize
         .fold(Word::ZERO, |sum, &(a, b)| sum ^ (x(a) & y(b)))
 }
 
+/// The commitment `H(tag || u8(i) || u8(j) || reveal)` of operator `i` to its reveal to operator
+/// `j`. It names the sender and the receiver, so an operator cannot copy the commitment of another,
+/// as in [CF01](https://eprint.iacr.org/2001/055).
+pub fn commitment(tag: &[u8], i: usize, j: usize, reveal: &[u8]) -> Key {
+    tagged_hash(tag, &[&[i as u8, j as u8], reveal])
+}
+
+/// Commits to `outgoing[j]` for each operator `j` in one round and reveals in the next round.
 pub async fn commit_reveal(
     channel: &mut Channel,
     id: usize,
+    tag: &[u8],
     outgoing: Vec<Vec<u8>>,
 ) -> Result<Vec<Vec<u8>>, String> {
-    let commitments = outgoing
-        .iter()
-        .map(|bytes| hash::hash(bytes).to_vec())
+    let commitments: Vec<Vec<u8>> = (0..outgoing.len())
+        .map(|j| match j == id {
+            true => vec![],
+            false => commitment(tag, id, j, &outgoing[j]).to_vec(),
+        })
         .collect();
     let commitments = channel.exchange_bytes(commitments).await?;
+    reveal(channel, id, tag, &commitments, outgoing).await
+}
+
+/// Reveals `outgoing[j]` to each operator `j` in one round. It accepts the reveal `r` of `j` only
+/// if `r` has the length of `outgoing[j]` and `commitment(tag, j, id, r)` is the commitment of `j`.
+async fn reveal(
+    channel: &mut Channel,
+    id: usize,
+    tag: &[u8],
+    commitments: &[Vec<u8>],
+    outgoing: Vec<Vec<u8>>,
+) -> Result<Vec<Vec<u8>>, String> {
     let revealed = channel.exchange_bytes(outgoing.clone()).await?;
     let honest = |j: usize| {
-        revealed[j].len() == outgoing[j].len() && hash::hash(&revealed[j])[..] == commitments[j]
+        revealed[j].len() == outgoing[j].len()
+            && commitment(tag, j, id, &revealed[j])[..] == commitments[j]
     };
     match (0..outgoing.len()).find(|&j| j != id && !honest(j)) {
         Some(j) => Err(format!(
@@ -441,23 +475,144 @@ pub async fn commit_reveal(
     }
 }
 
-/// `establish` in one round. Each operator sends `[nonce || mode || batch_size]` to all, and the
-/// session value hashes the messages of all operators in operator order. An operator aborts unless
-/// every mode and batch size equals its own.
+/// The fresh parts that one operator deals in a setup, one for each term and one for each other
+/// operator.
+pub struct Parts {
+    terms: Vec<Key>,
+    pairs: Vec<Key>,
+}
+
+impl Parts {
+    pub fn random(group: &Group) -> Parts {
+        Parts {
+            terms: (0..group.terms.len()).map(|_| rand::random()).collect(),
+            pairs: (0..group.n).map(|_| rand::random()).collect(),
+        }
+    }
+
+    /// The reveal of operator `i` to operator `j`, the parts of the terms that both hold in term
+    /// order and then the pair part for `j`.
+    pub fn reveal(&self, group: &Group, i: usize, j: usize) -> Vec<u8> {
+        let shared = shared(group, i, j).into_iter().map(|k| &self.terms[k][..]);
+        shared
+            .chain([&self.pairs[j][..]])
+            .collect::<Vec<_>>()
+            .concat()
+    }
+
+    /// The term keys and the pair keys of operator `id` from its own parts and the reveal of each
+    /// other operator.
+    ///
+    /// - The key of a held term hashes `term_tag` and the parts of all its holders in operator
+    ///   order.
+    /// - The pair key with `j` hashes `pair_tag`, the part of the lower operator and then the part
+    ///   of the higher operator. It is zero at `j = id`.
+    pub fn keys(
+        &self,
+        group: &Group,
+        id: usize,
+        revealed: &[&[u8]],
+        [term_tag, pair_tag]: [&[u8]; 2],
+    ) -> (Vec<Key>, Vec<Key>) {
+        let term_part = |j: usize, k: usize| -> &[u8] {
+            match j == id {
+                true => &self.terms[k],
+                false => {
+                    let position = shared(group, id, j).iter().position(|&s| s == k).unwrap();
+                    &revealed[j][32 * position..][..32]
+                }
+            }
+        };
+        let terms = group
+            .held(id)
+            .into_iter()
+            .map(|k| {
+                let holders = (0..group.n).filter(|&j| group.holds(j, k));
+                tagged_hash(
+                    term_tag,
+                    &holders.map(|j| term_part(j, k)).collect::<Vec<_>>(),
+                )
+            })
+            .collect();
+        let pairs = (0..group.n)
+            .map(|j| match j == id {
+                true => [0; 32],
+                false => {
+                    let theirs = &revealed[j][revealed[j].len() - 32..];
+                    let (low, high) = match id < j {
+                        true => (&self.pairs[j][..], theirs),
+                        false => (theirs, &self.pairs[j][..]),
+                    };
+                    tagged_hash(pair_tag, &[low, high])
+                }
+            })
+            .collect();
+        (terms, pairs)
+    }
+}
+
+/// The terms that operators `i` and `j` both hold, in term order.
+fn shared(group: &Group, i: usize, j: usize) -> Vec<usize> {
+    let held = group.held(i).into_iter();
+    held.filter(|&k| group.holds(j, k)).collect()
+}
+
+/// The echo of operator `id` to operator `j`, the hash of `tag` and the keys of the terms that both
+/// hold. `keys` holds the keys of the held terms of `id`, in the order of `held`.
+pub fn shared_keys_hash(group: &Group, tag: &[u8], id: usize, j: usize, keys: &[Key]) -> Key {
+    let held = group.held(id).into_iter().zip(keys);
+    let shared: Vec<&[u8]> = held
+        .filter(|&(k, _)| group.holds(j, k))
+        .map(|(_, key)| &key[..])
+        .collect();
+    tagged_hash(tag, &shared)
+}
+
+/// The tag of the commitments of the PRSS setup.
+pub const PRSS_COMMIT: &[u8] = b"thlxmss-prss-commit";
+
+/// `establish` in three rounds, with the PRSS setup of the ceremony. It returns the session value,
+/// the PRSS keys of the held terms and the PRSS pair keys.
+///
+/// 1. Each operator sends `[nonce || mode || batch_size]` and its PRSS commitment to `j` to each
+///    operator `j`. The session value hashes the first part of the messages of all operators, in
+///    operator order.
+/// 2. Each operator reveals its fresh PRSS parts.
+/// 3. Each operator echoes the hash of the PRSS term keys that it shares with the receiver.
+///
+/// An operator aborts unless every mode and batch size equals its own, every reveal matches its
+/// commitment and every echo equals its own.
 async fn establish(
     network: &Arc<Network>,
+    group: &Group,
     nonce: [u8; 16],
     mode: Reshare,
     batch_size: usize,
-) -> Result<Key, String> {
+) -> Result<(Key, Vec<Key>, Vec<Key>), String> {
     let (id, n) = (network.id, network.n);
     let [low, high]: [u64; 2] = load_at(&nonce, 0);
-    let message = vec![low, high, mode as u64, batch_size as u64];
+    let parameters = [low, high, mode as u64, batch_size as u64];
+    let parts = Parts::random(group);
+    let reveals: Vec<Vec<u8>> = (0..n)
+        .map(|j| match j == id {
+            true => vec![],
+            false => parts.reveal(group, id, j),
+        })
+        .collect();
+    let message = |j: usize| -> Vec<u64> {
+        let committed: [u64; 4] = load_at(&commitment(PRSS_COMMIT, id, j, &reveals[j]), 0);
+        [parameters, committed].concat()
+    };
     let mut channel = network.channel();
-    let mut received = channel.exchange(vec![message.clone(); n]).await?;
-    received[id] = message;
+    let outgoing = (0..n).map(|j| match j == id {
+        true => vec![],
+        false => message(j),
+    });
+    let mut received = channel.exchange(outgoing.collect()).await?;
+    // No commitment goes to the operator itself, so zeros fill its place.
+    received[id] = [parameters, [0; 4]].concat();
     let parse = |words: &[u64]| -> Option<(Reshare, usize)> {
-        let [_, _, mode, size]: [u64; 4] = words.try_into().ok()?;
+        let [_, _, mode, size, ..]: [u64; 8] = words.try_into().ok()?;
         let variants = Reshare::value_variants().iter();
         let mode = variants.copied().find(|&variant| variant as u64 == mode)?;
         Some((mode, size as usize))
@@ -469,7 +624,27 @@ async fn establish(
         .collect::<Result<_, _>>()?;
     same("reshare modes", &modes)?;
     same("batch sizes", &batch_sizes)?;
-    Ok(hash::hash(cast_slice(&received.concat())))
+    let session_words: Vec<u64> = received
+        .iter()
+        .flat_map(|words| words[..4].to_vec())
+        .collect();
+    let commitments: Vec<Vec<u8>> = received
+        .iter()
+        .map(|words| cast_slice(&words[4..]).to_vec())
+        .collect();
+    let revealed = reveal(&mut channel, id, PRSS_COMMIT, &commitments, reveals).await?;
+    let revealed: Vec<&[u8]> = revealed.iter().map(Vec::as_slice).collect();
+    let tags: [&[u8]; 2] = [b"thlxmss-prss-term", b"thlxmss-prss-pair"];
+    let (terms, pairs) = parts.keys(group, id, &revealed, tags);
+    let echo = |j: usize| shared_keys_hash(group, b"thlxmss-prss-echo", id, j, &terms).to_vec();
+    let echoes = channel.exchange_bytes((0..n).map(echo).collect()).await?;
+    match (0..n).find(|&j| j != id && echoes[j] != echo(j)) {
+        Some(j) => Err(format!("operator {j} holds other PRSS keys")),
+        None => {
+            let session = tagged_hash(b"thlxmss-session", &[cast_slice(&session_words)]);
+            Ok((session, terms, pairs))
+        }
+    }
 }
 
 /// Fails unless all operators use the same value of the parameter `name`.
@@ -494,9 +669,8 @@ pub struct Party {
     pub group: Group,
     pub id: usize,
     pub held: Vec<usize>,
+    /// The PRF seeds `seed_T` of the held terms, which only `prawns::prf_inputs` uses.
     pub seeds: Vec<Key>,
-    /// The key that this operator shares with each other operator.
-    pub pairs: Vec<Key>,
     pub network: Arc<Network>,
     /// The reshare mode of the AND gates.
     pub mode: Reshare,
@@ -512,25 +686,29 @@ pub struct Party {
     pub ignores_digests: bool,
     /// The session value of `establish`, which keys all streams of the session.
     session: Key,
+    /// The PRSS keys `prss_T` of the held terms, which key the streams of `rand`.
+    prss_terms: Vec<Key>,
+    /// The PRSS key `prss_ij` with each operator `j`, which keys the streams of the pairwise zero
+    /// sharing.
+    prss_pairs: Vec<Key>,
 }
 
 impl Party {
     pub async fn new(
         group: Group,
         seeds: Vec<Key>,
-        pairs: Vec<Key>,
         network: Arc<Network>,
         nonce: [u8; 16],
         mode: Reshare,
         batch_size: usize,
     ) -> Result<Party, String> {
-        let session = establish(&network, nonce, mode, batch_size).await?;
+        let (session, prss_terms, prss_pairs) =
+            establish(&network, &group, nonce, mode, batch_size).await?;
         Ok(Party {
             held: group.held(network.id),
             group,
             id: network.id,
             seeds,
-            pairs,
             network,
             mode,
             batch_size,
@@ -539,6 +717,8 @@ impl Party {
             #[cfg(test)]
             ignores_digests: false,
             session,
+            prss_terms,
+            prss_pairs,
         })
     }
 
@@ -566,8 +746,8 @@ impl Party {
 
     /// `rand(index)` in this round, the term `r_T` of each held term in `length` words.
     pub fn rand(&self, channel: &Channel, index: u64, length: usize) -> Terms {
-        let seeds = self.seeds.iter();
-        let words = seeds.map(|seed| self.stream(seed, channel, index, length));
+        let keys = self.prss_terms.iter();
+        let words = keys.map(|key| self.stream(key, channel, index, length));
         Terms {
             words: words.collect(),
             length,
@@ -575,10 +755,12 @@ impl Party {
     }
 
     /// Adds the share `zeta_i` of a pairwise zero sharing to `words`. Each pair of operators adds
-    /// the stream of its pair key, so the shares of all operators add up to zero.
+    /// the stream of its PRSS pair key, so the shares of all operators add up to zero.
     fn zero_sharing(&self, channel: &Channel, words: &mut [u64]) {
         let others = (0..self.group.n).filter(|&j| j != self.id);
-        others.for_each(|j| xor_into(words, &self.stream(&self.pairs[j], channel, 0, words.len())));
+        let length = words.len();
+        let stream = |j: usize| self.stream(&self.prss_pairs[j], channel, 0, length);
+        others.for_each(|j| xor_into(words, &stream(j)));
     }
 
     /// `conv`, the Shamir share of a value from the held terms of its replicated sharing.
@@ -611,9 +793,9 @@ impl Party {
         additive: &Additive,
     ) -> Terms {
         let drawn = |k: usize| !filled.iter().all(|terms| terms.contains(&k));
-        let seeds = self.seeds.iter().enumerate();
-        let words = seeds.map(|(k, seed)| match drawn(k) {
-            true => self.stream(seed, channel, 0, additive.words.len()),
+        let keys = self.prss_terms.iter().enumerate();
+        let words = keys.map(|(k, key)| match drawn(k) {
+            true => self.stream(key, channel, 0, additive.words.len()),
             false => vec![],
         });
         Terms {
@@ -774,6 +956,56 @@ impl Party {
         Ok(())
     }
 
+    /// `Rerand` of the outputs `[[out]]`, one peer `reshare` of their additive form, as in
+    /// [BBY23](https://eprint.iacr.org/2020/1577) (Section 4.3).
+    ///
+    /// - Each operator reshares the sum of the held terms that it owns. The public part moves into
+    ///   term 0, so the owner of term 0 also adds it.
+    /// - The tuple `([[out]], [[1]], [[out']])` joins `tuples`, so the check verifies the reshare
+    ///   as a multiplication by the public constant 1, as in Protocol 19 of Goyal and Song.
+    /// - It returns `[[out']]`, which has no public part.
+    pub async fn rerand<const W: usize>(
+        &self,
+        channel: &mut Channel,
+        outputs: &Replicated<W>,
+        tuples: &mut Tuples,
+    ) -> Result<Replicated<W>, String> {
+        let length = outputs.blocks().len() * W * LANES;
+        let public = words(outputs.blocks().flat_map(|block| block[0]));
+        let x: Vec<Vec<u64>> = (1..=self.held.len())
+            .map(|part| {
+                let mut copy = words(outputs.blocks().flat_map(|block| block[part]));
+                if self.held[part - 1] == 0 {
+                    xor_into(&mut copy, &public);
+                }
+                copy
+            })
+            .collect();
+        let mut additive = Additive::new(1, length);
+        let owned = x.iter().zip(&self.held);
+        let owned = owned.filter(|&(_, &term)| self.group.owner[term] == self.id);
+        owned.for_each(|(copy, _)| xor_into(additive.column_mut(0), copy));
+        let filled = self.exchanged(Reshare::Peer, 0..1);
+        let masks = self.reshare_masks(channel, &filled, &additive);
+        let hashes = &mut tuples.hashes;
+        let terms = self.reshare(channel, Reshare::Peer, 0..1, additive, masks, hashes);
+        let terms = terms.await?;
+        let mut reshared = Replicated::new(self, outputs.blocks().len());
+        for (k, copy) in x.into_iter().enumerate() {
+            let column = terms.column(k, 0);
+            for (block, words) in reshared.blocks_mut().zip(column.chunks(W * LANES)) {
+                for (l, lane) in block[k + 1].iter_mut().enumerate() {
+                    *lane = Word::load(&words[l * LANES..]);
+                }
+            }
+            let one = if self.held[k] == 0 { !0 } else { 0 };
+            tuples.x[k].extend_from_slice(&copy);
+            tuples.y[k].extend(iter::repeat_n(one, length));
+            tuples.z[k].extend_from_slice(column);
+        }
+        Ok(reshared)
+    }
+
     /// `open` of a replicated sharing in one round, as in [MPClan](https://eprint.iacr.org/2022/675) (App. B).
     ///
     /// 1. For each term `T` and each operator `j` in `T`, `owner(T)` sends `v_T` to `j` and each
@@ -808,9 +1040,10 @@ impl Party {
             };
             sent.scan(0, next).collect()
         };
+        let copy_hash = |copy: &[u64]| digest(b"thlxmss-copy", &[cast_slice(copy)]);
         let hash = |(copy, &term): (&Vec<u64>, &usize)| match group.owner[term] == id {
             true => [0; HASH_WORDS],
-            false => digest(cast_slice(copy)),
+            false => copy_hash(copy),
         };
         let hashes: Vec<[u64; HASH_WORDS]> = copies.iter().zip(&self.held).map(hash).collect();
         let encode = |j: usize| -> Vec<u64> {
@@ -841,7 +1074,7 @@ impl Party {
             .filter(|&term| !group.holds(id, term))
             .collect();
         let consistent = |term: usize| {
-            let copy = digest(cast_slice(segment(group.owner[term], term)));
+            let copy = copy_hash(segment(group.owner[term], term));
             let mut others = (0..n).filter(|&i| i != group.owner[term] && group.holds(i, term));
             others.all(|i| segment(i, term) == &copy[..])
         };
@@ -909,14 +1142,17 @@ impl Party {
     ) -> Result<(Key, Vec<Vec<u64>>), String> {
         let share = self.conv(self.rand(channel, 1, 3).value(0));
         let (opened, payloads) = self.open_shamir(channel, &[share], payload).await?;
-        Ok((hash::hash(cast_slice(&opened)), payloads))
+        Ok((
+            tagged_hash(b"thlxmss-coin", &[cast_slice(&opened)]),
+            payloads,
+        ))
     }
 
     /// The digest `d_T = H(s_T || h_T)` of each held term, with the salt `s_T` of `rand(2)` in this round and the running hash `h_T`. The salt hides `h_T` from the operators that lack `T`, as in [GRW18](https://eprint.iacr.org/2018/216) (Section 5).
     pub fn digests(&self, channel: &Channel, hashes: &[Hasher]) -> Vec<u64> {
         let salts = self.rand(channel, 2, HASH_WORDS);
         let salted = |(salt, running): (&Vec<u64>, &Hasher)| {
-            digest(&[cast_slice(salt), &running.finalize()[..]].concat())
+            digest(b"thlxmss-digest", &[cast_slice(salt), &running.finalize()])
         };
         salts.words.iter().zip(hashes).flat_map(salted).collect()
     }
@@ -949,7 +1185,7 @@ impl Party {
 }
 
 fn prg(seed: &Key, session: &Key, stream: u64, target: &mut [u64]) {
-    let key = hash::hash(&[&b"rss-prss"[..], &seed[..], &session[..]].concat());
+    let key = tagged_hash(b"rss-prss", &[seed, session]);
     let cipher = Aes128::new(&Array(key[..16].try_into().unwrap()));
     for (counter, words) in target.chunks_mut(16).enumerate() {
         let mut blocks: [Block; 8] = from_fn(|block| {
@@ -965,8 +1201,14 @@ fn prg(seed: &Key, session: &Key, stream: u64, target: &mut [u64]) {
 /// The words of a hash.
 const HASH_WORDS: usize = hash::OUT_LEN / size_of::<u64>();
 
-fn digest(bytes: &[u8]) -> [u64; HASH_WORDS] {
-    load_at(&hash::hash(bytes), 0)
+fn digest(tag: &[u8], parts: &[&[u8]]) -> [u64; HASH_WORDS] {
+    load_at(&tagged_hash(tag, parts), 0)
+}
+
+/// `H(tag || parts)`. Each use of `H` in the protocol has its own tag, so no two uses share an
+/// input.
+pub fn tagged_hash(tag: &[u8], parts: &[&[u8]]) -> Key {
+    hash::hash(&[&[tag], parts].concat().concat())
 }
 
 fn words(values: impl IntoIterator<Item = Word>) -> Vec<u64> {
@@ -1027,8 +1269,26 @@ pub mod tests {
         parameters: &[(Reshare, usize)],
         run: impl AsyncFn(Result<Party, String>, Vec<Key>) -> T + Sync,
     ) -> Vec<T> {
+        local_networks(t, async |network, all_seeds| {
+            let group = Group::new(t);
+            let seeds = group
+                .held(network.id)
+                .iter()
+                .map(|&k| all_seeds[k])
+                .collect();
+            let (reshare, batch_size) = parameters[network.id];
+            let party = Party::new(group, seeds, network, rand::random(), reshare, batch_size);
+            run(party.await, all_seeds).await
+        })
+    }
+
+    /// Each operator runs `run` with its network and random seeds of all terms.
+    pub fn local_networks<T: Send>(
+        t: usize,
+        run: impl AsyncFn(Arc<Network>, Vec<Key>) -> T + Sync,
+    ) -> Vec<T> {
         let group = Group::new(t);
-        let (all_seeds, all_pairs) = random_keys(&group);
+        let (all_seeds, _) = random_keys(&group);
         let listeners: Vec<TcpListener> = (0..group.n)
             .map(|_| TcpListener::bind("127.0.0.1:0").unwrap())
             .collect();
@@ -1041,24 +1301,11 @@ pub mod tests {
                 .into_iter()
                 .enumerate()
                 .map(|(id, listener)| {
-                    let (addresses, all_seeds, all_pairs, run) =
-                        (&addresses, &all_seeds, &all_pairs, &run);
+                    let (addresses, all_seeds, run) = (&addresses, &all_seeds, &run);
                     s.spawn(move || {
                         Runtime::new().unwrap().block_on(async {
-                            let group = Group::new(t);
-                            let seeds = group.held(id).iter().map(|&k| all_seeds[k]).collect();
                             let network = crate::net::connect(id, listener, addresses.clone());
-                            let (reshare, batch_size) = parameters[id];
-                            let party = Party::new(
-                                group,
-                                seeds,
-                                all_pairs[id].clone(),
-                                network,
-                                rand::random(),
-                                reshare,
-                                batch_size,
-                            );
-                            run(party.await, all_seeds.clone()).await
+                            run(network, all_seeds.clone()).await
                         })
                     })
                 })

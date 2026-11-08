@@ -80,6 +80,7 @@ The table gives the cost of one bottom tree, which holds $2^{16}$ one-time keys.
 - The wall time is the MPC time of one full bottom tree, as operator 0 logs it.
 - The delay is a fixed $150$ ms one way on every link, with TCP buffers of $128$ MB.
 - The links have no bandwidth limit, jitter or loss, so a real network can take longer.
+- The runs predate the reshare of the outputs before the check. The code now takes $198$ (collector) or $126$ (peer) rounds per batch.
 
 ### Sign
 

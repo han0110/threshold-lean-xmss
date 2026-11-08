@@ -21,6 +21,7 @@ This note gives the MPC gadgets that the protocol uses, and a toy example for un
 | $\mathrm{GF}(2^8) = \mathbb F_2[x]/(x^8 + x^4 + x^3 + x + 1)$ | the field of the examples, elements written as integers ($x = 2$, $2^{-1} = 141$, $3^{-1} = 246$)            |
 | $\alpha_i = i + 1$                                            | the evaluation point of $P_i$                                                                                |
 | $H$                                                           | a collision-resistant hash                                                                                   |
+| $\mathrm{H16}$                                                | the first 16 bytes of $H$                                                                                    |
 
 #### 1.1.2 Terms and sharings
 
@@ -129,9 +130,29 @@ Each cell gives the operator $i$ with $`(A, B) \in \mathrm{pairs}_i`$, for row $
 | ------------------------------------------------ | ------------------------------------------------- |
 | $`\mathrm{seed}_T`$                              | a key known to $\mathrm{holders}(T)$              |
 | $K_{ij} = K_{ji}$                                | a key known to $P_i$ and $P_j$                    |
+| $`\mathrm{prss}_T`$                              | a PRSS key known to $\mathrm{holders}(T)$         |
+| $`\mathrm{prss}_{ij} = \mathrm{prss}_{ji}`$      | a PRSS key known to $P_i$ and $P_j$               |
 | $\mathsf{PRG}(\mathrm{key}, \rho, \mathrm{idx})$ | a pseudorandom stream for round $\rho$, used once |
 
+Only the PRF uses $`\mathrm{seed}_T`$, and only the signing masks use $K_{ij}$. Every stream of a ceremony uses the fresh PRSS keys of 3.1 [CDI05](https://doi.org/10.1007/978-3-540-30576-7_19).
+
 The index $\mathrm{idx}$ is $0$ for reshare masks, $1$ for coins and final masks, and $2$ for digest salts.
+
+The threshold PRF and the signing masks hash a secret key first and no tag, as in the note. Every other use of $H$ hashes its own tag first, so no two uses share an input.
+
+| tag                                                              | input after the tag                                                 | section |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------- | ------- |
+| $\texttt{"thlxmss-history"}$                                     | the values that 1.6 appends to $h_T$                                | 1.9     |
+| $\texttt{"thlxmss-copy"}$                                        | the copy $v_T$                                                      | 1.7     |
+| $\texttt{"thlxmss-coin"}$                                        | the opened value                                                    | 1.9     |
+| $\texttt{"thlxmss-digest"}$                                      | the salt $s_T$ and $h_T$                                            | 1.9     |
+| $\texttt{"rss-prss"}$                                            | a PRSS key and the session value, which give a PRG key              | 1.1.4   |
+| $\texttt{"thlxmss-keygen-parameter"}$                            | all parts of $P$, whose first 16 bytes give $P$                     | 3.1     |
+| $\texttt{"thlxmss-keygen-term"}$, $\texttt{"thlxmss-prss-term"}$ | the parts of $\mathrm{holders}(T)$ in increasing order              | 3.1     |
+| $\texttt{"thlxmss-keygen-pair"}$, $\texttt{"thlxmss-prss-pair"}$ | the part of the lower of $i, j$ for the higher, then the other part | 3.1     |
+| $\texttt{"thlxmss-keygen-echo"}$, $\texttt{"thlxmss-prss-echo"}$ | the term keys that the sender and the receiver share                | 3.1     |
+| $\texttt{"thlxmss-commit"}$, $\texttt{"thlxmss-prss-commit"}$    | the sender, the receiver and the reveal                             | 3.1     |
+| $\texttt{"thlxmss-session"}$                                     | the blocks of all operators in operator order                       | 3.1     |
 
 #### 1.1.5 Gadget table
 
@@ -142,6 +163,7 @@ The index $\mathrm{idx}$ is $0$ for reshare masks, $1$ for coins and final masks
 | $\mathsf{MulSh}$          | $`\langle x \rangle, \langle y \rangle \to \{xy\}`$                                 | 0                       | none                                                           | 1.4     |
 | $\mathsf{Conv}$           | $[\negthinspace[ v ]\negthinspace] \to \langle v \rangle$                           | 0                       | none                                                           | 1.5     |
 | $\mathsf{Reshare}$        | $`\{v\} \to [\negthinspace[ v ]\negthinspace]`$                                     | 1 (2 in collector mode) | $n(t-1)$                                                       | 1.6     |
+| $\mathsf{Rerand}$         | $[\negthinspace[ v ]\negthinspace] \to [\negthinspace[ v ]\negthinspace]$           | 1                       | $n(t-1)$                                                       | 1.6     |
 | $\mathsf{OpenRep}$        | $[\negthinspace[ v ]\negthinspace] \to v$                                           | 1                       | $n\binom{n-1}{t-2}$ copies and $n(t-1)\binom{n-1}{t-2}$ hashes | 1.7     |
 | $\mathsf{OpenSh}$         | $\langle v \rangle \to v$                                                           | 1                       | $n(n-1)$                                                       | 1.8     |
 | $\mathsf{Coin}$ (derived) | $\to r$ public                                                                      | 1                       | as $\mathsf{OpenSh}$                                           | 1.9     |
@@ -172,16 +194,16 @@ $\mathsf{Rand}(\rho, \mathrm{idx}) \to [\negthinspace[ r ]\negthinspace]$. Local
 
 Each holder of $T$ sets
 ```math
-r_T = \mathsf{PRG}(\mathrm{seed}_T, \rho, \mathrm{idx}).
+r_T = \mathsf{PRG}(\mathrm{prss}_T, \rho, \mathrm{idx}).
 ```
 
 #### Correctness
 
-The holders of $T$ share $`\mathrm{seed}_T`$.
+The holders of $T$ share $`\mathrm{prss}_T`$.
 
 #### Privacy
 
-A coalition lacks one seed, so one term of $r$ is pseudorandom to it.
+A coalition lacks one PRSS key, so one term of $r$ is pseudorandom to it.
 
 <details>
 <summary>Example 2-of-3</summary>
@@ -384,7 +406,7 @@ $`\mathsf{Reshare}(\{v\}) \to [\negthinspace[ v ]\negthinspace]`$. One round, $n
 
 #### Protocol, round $\rho$
 
-1. $[\negthinspace[ r ]\negthinspace] = \mathsf{Rand}(\rho, 0)$, $\zeta_i = \sum_{j \ne i} \mathsf{PRG}(K_{ij}, \rho, 0)$.
+1. $[\negthinspace[ r ]\negthinspace] = \mathsf{Rand}(\rho, 0)$, $`\zeta_i = \sum_{j \ne i} \mathsf{PRG}(\mathrm{prss}_{ij}, \rho, 0)`$.
 2. $P_i$ sends $`u_i = v_i + \zeta_i + \sum_{T \notin \mathcal C,\ \mathrm{owner}(T) = i} r_T`$ to $`\mathrm{holders}(T_i) \setminus \{i\}`$.
 3. $v_{T_i} = u_i$, and $v_T = r_T$ for $T \notin \mathcal C$. Each holder of $T \in \mathcal C$ appends $v_T$ to its digest $h_T$ (see 1.9).
 
@@ -400,7 +422,7 @@ $\sum_i \zeta_i = 0$ (each pair stream is added twice), and each $r_T$, $T \noti
 A coalition $D$ lacks only term $D$. The argument has two cases.
 
 - If $D \notin \mathcal C$, then $r_D$ is unknown to $D$ and masks $\sum_{i \text{ honest}} u_i$. A stream with another honest operator masks each honest $u_i$.
-- If $D = T_i$, then $u_i$ reaches honest operators only. Every other honest $u_j$ carries $\mathsf{PRG}(K_{ji}, \rho, 0)$, which is unknown to $D$.
+- If $D = T_i$, then $u_i$ reaches honest operators only. Every other honest $u_j$ carries $`\mathsf{PRG}(\mathrm{prss}_{ji}, \rho, 0)`$, which is unknown to $D$.
 
 #### Modes
 
@@ -408,7 +430,7 @@ A coalition $D$ lacks only term $D$. The argument has two cases.
 - Collector mode is the default of the AND gates.
   - $u_i$ goes to one collector of a rotating $T^\star$, which forwards $v_{T^\star} = \sum_i u_i$.
   - It takes two rounds and uses less bandwidth for $t \ge 3$.
-- Peer mode is the one-round form above for the AND gates. The check always uses it.
+- Peer mode is the one-round form above for the AND gates. The check and $\mathsf{Rerand}$ always use it.
 
 <details>
 <summary>Example 2-of-3</summary>
@@ -454,6 +476,12 @@ $[\negthinspace[ v ]\negthinspace] = (12, 3, 11, 1, 8, 15, 0, 9, 6, 0)$, sum $13
 
 </details>
 
+#### Rerand
+
+$`\mathsf{Rerand}([\negthinspace[ v ]\negthinspace]) = \mathsf{Reshare}(\{v\})`$ in peer mode, with $`v_i = \sum_{\mathrm{owner}(T) = i} v_T`$ and $c$ added by the owner of term $0$. Its output $[\negthinspace[ v' ]\negthinspace]$ has fresh terms before $\mathsf{OpenRep}$ [BBY23, §4.3](https://eprint.iacr.org/2020/1577).
+
+The check covers the tuple $`([\negthinspace[ v ]\negthinspace], [\negthinspace[ 1 ]\negthinspace], [\negthinspace[ v' ]\negthinspace])`$ [GS20, Prot. 19](https://eprint.iacr.org/2020/134), where term $0$ of $[\negthinspace[ 1 ]\negthinspace]$ is $1$ and every other term is $0$.
+
 ### 1.7 OpenRep
 
 #### Syntax
@@ -464,7 +492,7 @@ $\mathsf{OpenRep}([\negthinspace[ v ]\negthinspace]) \to v$ or abort. One round,
 
 The steps run for every term $T$ and every $P_j$, $j \in T$.
 
-1. $\mathrm{owner}(T)$ sends $v_T$ to $P_j$. Every other holder of $T$ sends $H(v_T)$ to $P_j$.
+1. $\mathrm{owner}(T)$ sends $v_T$ to $P_j$. Every other holder of $T$ sends $`H(\texttt{"thlxmss-copy"} \,\Vert\, v_T)`$ to $P_j$.
 2. $P_j$ aborts unless the hash of the copy equals every received hash.
 3. $P_j$ outputs $v = c + \sum_T v_T$.
 
@@ -474,7 +502,7 @@ At most $t - 1$ of the $t$ holders are corrupt, so an honest copy or an honest h
 
 #### Privacy
 
-Only the output is revealed.
+$\mathsf{OpenRep}$ opens only outputs of $\mathsf{Rerand}$, whose fresh terms reveal only $v$. Without it, an output linear in the PRF inputs has the terms $\mathrm{H16}(\mathrm{seed}_T \,\Vert\, x)$, which a later holder of the seeds recomputes.
 
 #### Use
 
@@ -571,7 +599,7 @@ $\mathsf{Coin}(\rho) \to r$ public. One round.
 #### Protocol
 
 ```math
-r = \mathrm{expand}\Big( H\big( \mathsf{OpenSh}( \mathsf{Conv}( \mathsf{Rand}(\rho, 1) ) ) \big) \Big).
+r = \mathrm{expand}\Big( H\big( \texttt{"thlxmss-coin"} \,\Vert\, \mathsf{OpenSh}( \mathsf{Conv}( \mathsf{Rand}(\rho, 1) ) ) \big) \Big).
 ```
 A challenge is the first expanded value outside $`\{0, 1\}`$.
 
@@ -587,7 +615,7 @@ $\mathsf{Coin}$ securely computes $F_{\mathrm{coin}}$ with abort [GS20, Lemma 3]
 
 The coin of the last check step carries, from every operator to every operator,
 ```math
-d_T = H(s_T \,\|\, h_T) \quad \text{for each held } T, \qquad s_T = \text{term } T \text{ of } \mathsf{Rand}(\rho, 2).
+d_T = H(\texttt{"thlxmss-digest"} \,\|\, s_T \,\|\, h_T) \quad \text{for each held } T, \qquad s_T = \text{term } T \text{ of } \mathsf{Rand}(\rho, 2).
 ```
 
 - An operator aborts unless all holders of each $T$ sent the same $d_T$, equal to its own when it holds $T$.
@@ -598,9 +626,9 @@ d_T = H(s_T \,\|\, h_T) \quad \text{for each held } T, \qquad s_T = \text{term }
 
 The inputs are $[\negthinspace[ b_0 ]\negthinspace], \dots, [\negthinspace[ b_7 ]\negthinspace]$, which are bits. The output is $b_0 \wedge \dots \wedge b_7$, which is public. The protocol runs three phases in order.
 
-1. Seven AND gates run in $L = 3$ layers.
-2. The check covers the seven gates.
-3. The output opens.
+1. Seven AND gates run in $L = 3$ layers, and $\mathsf{Rerand}$ re-randomizes the output.
+2. The check covers the seven gates and $\mathsf{Rerand}$.
+3. The re-randomized output opens.
 
 Every multiplication is a gadget, and every gadget is one of 1.2 to 1.9. Every message is sent by $\mathsf{Reshare}$, $\mathsf{OpenRep}$ or $\mathsf{OpenSh}$.
 
@@ -616,9 +644,14 @@ One round per layer. Each gate records its tuple
 ```
 $\mathsf{Reshare}$ admits an additive error, so $z_e = x_e y_e$ is not yet guaranteed.
 
+After the layers, $\mathsf{Rerand}$ takes one round. It records the tuple for $e = 7$.
+```math
+[\negthinspace[ z' ]\negthinspace] = \mathsf{Rerand}\big( [\negthinspace[ z^{(3)}_0 ]\negthinspace] \big), \qquad \big( [\negthinspace[ x_7 ]\negthinspace], [\negthinspace[ y_7 ]\negthinspace], [\negthinspace[ z_7 ]\negthinspace] \big) = \big( [\negthinspace[ z^{(3)}_0 ]\negthinspace], [\negthinspace[ 1 ]\negthinspace], [\negthinspace[ z' ]\negthinspace] \big)
+```
+
 ### 2.2 Check
 
-Pad with $([\negthinspace[ 0 ]\negthinspace], [\negthinspace[ 0 ]\negthinspace], [\negthinspace[ 0 ]\negthinspace])$ to $N = 2^m = 8$ tuples, $m = 3$.
+The seven gates and $\mathsf{Rerand}$ give $N = 2^m = 8$ tuples, $m = 3$. A batch with fewer tuples pads with $([\negthinspace[ 0 ]\negthinspace], [\negthinspace[ 0 ]\negthinspace], [\negthinspace[ 0 ]\negthinspace])$.
 
 #### Setup
 
@@ -689,7 +722,7 @@ The opened $u = (1 + r) w_a + r a$ is uniform, because $r \ne 1$. So $a$ and $b$
 ### 2.3 Open
 
 ```math
-b_0 \wedge \dots \wedge b_7 = \mathsf{OpenRep}\big( [\negthinspace[ z^{(3)}_0 ]\negthinspace] \big).
+b_0 \wedge \dots \wedge b_7 = \mathsf{OpenRep}\big( [\negthinspace[ z' ]\negthinspace] \big).
 ```
 
 ### 2.4 Rounds
@@ -697,11 +730,12 @@ b_0 \wedge \dots \wedge b_7 = \mathsf{OpenRep}\big( [\negthinspace[ z^{(3)}_0 ]\
 | phase       | gadgets                                            | rounds            |
 | ----------- | -------------------------------------------------- | ----------------- |
 | AND layers  | $L \times \mathsf{Reshare}$                        | $L = 3$           |
+| rerand      | $\mathsf{Rerand}$                                  | 1                 |
 | check setup | $\mathsf{Coin}$                                    | 1                 |
 | halving     | $m \times (\mathsf{Reshare}, \mathsf{Coin})$       | $2m = 6$          |
 | final step  | $\mathsf{Reshare}, \mathsf{Coin}, \mathsf{OpenSh}$ | 3                 |
 | open        | $\mathsf{OpenRep}$                                 | 1                 |
-| total       |                                                    | $L + 2m + 5 = 14$ |
+| total       |                                                    | $L + 2m + 6 = 15$ |
 
 ## 3. Threshold leanXMSS
 
@@ -709,7 +743,7 @@ b_0 \wedge \dots \wedge b_7 = \mathsf{OpenRep}\big( [\negthinspace[ z^{(3)}_0 ]\
 
 | toy              | Threshold leanXMSS                                                                                                                                                                        |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 8 random bits    | the chain start $`F(x) = \bigoplus_T H(\mathrm{seed}_T \,\Vert\, x)`$, the threshold PRF of [BBDLN26](https://eprint.iacr.org/2026/2142), a $\mathsf{Rand}$ with chosen input, no message |
+| 8 random bits    | the chain start $`F(x) = \bigoplus_T \mathrm{H16}(\mathrm{seed}_T \,\Vert\, x)`$, the threshold PRF of [BBDLN26](https://eprint.iacr.org/2026/2142), a $\mathsf{Rand}$ with chosen input, no message |
 | 3 AND layers     | 3 Keccak-f[1600] per chain, 24 layers each, with the 1600 AND gates of $\chi$ in each layer                                                                                               |
 | 1 gate per layer | the gates of one layer for all 128 chains of a batch, in one $\mathsf{Reshare}$ round                                                                                                     |
 | the AND          | the chain end $y_3$, for bottom trees also $y_1 \oplus F(x_1)$, $y_2 \oplus F(x_2)$ and a commitment to $F(A_{\mathrm{rnd}}(e))$                                                          |
@@ -720,9 +754,22 @@ These facts complete the table.
 - Gates with a public operand are linear.
 - With the extra outputs of a bottom tree, a quorum of $t$ signers unmasks $y_p$ with no MPC.
 
-A tree is a session of batches, each batch the AND layers, the check and the OpenRep of 2. Signing a bottom root with its top key is one more run of the same shape.
+A tree is a session of batches. Each batch runs the AND layers, $\mathsf{Rerand}$, the check and the $\mathsf{OpenRep}$ of 2. Signing a bottom root with its top key is one more run of the same shape.
 
-Keys and the public parameter $P$ are dealt once at keygen by commit-reveal.
+The randomizer value $F(A_{\mathrm{rnd}}(e))$ of the top key does not depend on the bottom root. So it opens as one more output of the last commitment batch, and its hash output does not open.
+
+#### Setup
+
+The keygen deals $P$, $`\mathrm{seed}_T`$ and $K_{ij}$ once by the commit-reveal-echo of [Wam26, Section 2.1](https://github.com/TomWambsgans/sphincs.art/blob/9a528527d2d0ea41d2b3b322d2548c0828569a6d/leanXMSS.tex). Each ceremony repeats it for fresh PRSS keys. Each key and $P$ hash their tag of 1.1.4 and the revealed parts.
+
+| round | keygen, from $P_i$ to $P_j$                                                                                                         | PRSS setup, from $P_i$ to $P_j$                                                     |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| 1     | $`\mathrm{com}_{i \to j} = H(\mathrm{tag} \,\Vert\, i \,\Vert\, j \,\Vert\, \mathrm{reveal}_{i \to j})`$, $i$ and $j$ one byte each | its block of the nonce, the mode and the batch size, and $`\mathrm{com}_{i \to j}`$ |
+| 2     | its part of $P$, its parts of the shared terms in term order, and its pair part for $j$                                             | the keygen reveal, with fresh parts and no part of $P$                              |
+| 3     | $H$ of all parts of $P$, and the echo hash                                                                                          | the echo hash                                                                       |
+
+- $P_j$ accepts a reveal only if it has the expected length and opens $`\mathrm{com}_{i \to j}`$. It aborts unless every echo equals its own.
+- A commitment names its sender and receiver against copying [CF01](https://eprint.iacr.org/2001/055). A simulator extracts corrupt reveals from hash queries with this prefix [CDG+18](https://eprint.iacr.org/2018/165).
 
 #### Outputs for signing
 
@@ -734,19 +781,23 @@ The commitment $c_e$ fixes the randomizer value $F(A_{\mathrm{rnd}}(e))$, which 
 
 ### 3.2 Rounds and bandwidth
 
-A batch of 128 chains has $L = 72$ AND layers, $N = 128 \cdot 3 \cdot 36{,}288 \approx 1.4 \cdot 10^7$ tuple bits and $m = 24$ halvings.
+A batch of 128 chains has $L = 72$ AND layers and $m = 24$ halvings. Its check covers $`N = N_{\mathrm{and}} + N_{\mathrm{out}} \approx 1.4 \cdot 10^7`$ tuple bits, $`N_{\mathrm{and}} = 128 \cdot 3 \cdot 36{,}288`$ from the AND gates and $`N_{\mathrm{out}} = 128 \cdot 6 \cdot 64`$ from the $\mathsf{Rerand}$ of the six outputs.
 
 | phase      | gadgets                                                                                                               | rounds                        |
 | ---------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
 | AND layers | $L \times \mathsf{Reshare}$                                                                                           | 72 (peer) or 144 (collector)  |
+| rerand     | $\mathsf{Rerand}$                                                                                                     | 1                             |
 | check      | $\mathsf{Coin}$, $m \times (\mathsf{Reshare}, \mathsf{Coin})$, $\mathsf{Reshare}$, $\mathsf{Coin}$, $\mathsf{OpenSh}$ | 52                            |
 | open       | $\mathsf{OpenRep}$                                                                                                    | 1                             |
-| total      |                                                                                                                       | 125 (peer) or 197 (collector) |
+| total      |                                                                                                                       | 126 (peer) or 198 (collector) |
+
+A commitment batch has 24 AND layers and 76 (peer) or 100 (collector) rounds, also with the top randomizer value. The PRSS setup adds 2 rounds and $32 (s + 3)$ bytes from $P_i$ to each $P_j$ per ceremony, for $s$ shared terms.
 
 The AND layers dominate the bandwidth.
 
-- Peer mode sends $(t-1) N$ bits per batch.
-- Collector mode sends $\frac{3t-3}{n} N$ bits per batch.
+- Peer mode sends $`(t-1) N_{\mathrm{and}}`$ bits per batch.
+- Collector mode sends $`\frac{3t-3}{n} N_{\mathrm{and}}`$ bits per batch.
+- $\mathsf{Rerand}$ sends $`(t - 1) N_{\mathrm{out}}`$ bits per batch in both modes.
 
 So peer wins on rounds at 2-of-3 and ties on bandwidth, and collector wins on bandwidth from 3-of-5 on.
 
@@ -775,17 +826,26 @@ The proof follows the steps of [GS20](https://eprint.iacr.org/2020/134).
 
 The check misses a wrong tuple with probability at most $(d + 2(m+1)) / (2^{192} - 2) < 2^{-185}$, for $d = 18$ coins and $m = 24$ halvings.
 
+Two PRSS keys give the same 128-bit AES key with probability at most $k^2 / 2^{129}$, for the $k$ PRSS keys of a ceremony.
+
 The protocol differs from [GS20](https://eprint.iacr.org/2020/134) in three points, and each point needs its own argument.
 
 - Replicated sharing [CDI05](https://doi.org/10.1007/978-3-540-30576-7_19) replaces Shamir sharing. So two honest holders of a term can hold different copies.
   - The salted digests of 1.9 abort before any output opens.
   - The same check is in [CGH+18, Prot. 3.3](https://eprint.iacr.org/2018/570) and in [KPPS23](https://eprint.iacr.org/2022/675) $\Pi_{\mathrm{agree}}$.
 - The outputs open with $\mathsf{OpenRep}$ [KPPS23, App. B](https://eprint.iacr.org/2022/675) in place of the Shamir reconstruction of [GS20](https://eprint.iacr.org/2020/134).
+  - $\mathsf{Rerand}$ of 1.6 reshares each output first, and the check covers it.
 - Each operator decides alone, as in [GS20, Prot. 15](https://eprint.iacr.org/2020/134), step 8.
   - So the protocol has security with selective abort [GL05](https://eprint.iacr.org/2002/040).
   - In the functionalities of [GS20](https://eprint.iacr.org/2020/134), all honest operators abort together.
 
+The fresh PRSS keys and the named commitments of 3.1 are not in the note [Wam26](https://github.com/TomWambsgans/sphincs.art/blob/9a528527d2d0ea41d2b3b322d2548c0828569a6d/leanXMSS.tex). The fresh keys make the random sharings independent of the outputs, as [GS20, Functionality 1](https://eprint.iacr.org/2020/134) and Hybrid 2 of [GS20, Lemma 4](https://eprint.iacr.org/2020/134) need.
+
 A failed session is rerun, because a tree is a function of the seeds.
+
+Each claim covers the static coalition of one ceremony, corrupted before it. At most $t - 1$ operators are corrupted over the lifetime of the key. These separate claims give no end-to-end claim, which needs a composition as in [Can00](https://eprint.iacr.org/1998/018).
+
+At the end of each ceremony, also on abort, an operator must erase its private ceremony state. It keeps only $P$, $`\mathrm{seed}_T`$, $K_{ij}$ and the public outputs. So a later corruption gives only the keys, as [`sign.md`](sign.md#4-security) assumes.
 
 ## References
 
@@ -793,7 +853,11 @@ A failed session is rerun, because a tree is a function of the seeds.
 | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [AFL+16](https://eprint.iacr.org/2016/768)                                                                      | T. Araki, J. Furukawa, Y. Lindell, A. Nof, K. Ohara. High-Throughput Semi-Honest Secure Three-Party Computation with an Honest Majority. CCS 2016. [ePrint 2016/768](https://eprint.iacr.org/2016/768)            |
 | [BBDLN26](https://eprint.iacr.org/2026/2142)                                                                    | D. Boneh, B. Bünz, J. D., Y. Litchev, K. Nazirkhanova. PRAWNS: Threshold Hash-Based Signatures from Threshold PRFs. [ePrint 2026/2142](https://eprint.iacr.org/2026/2142)                                         |
+| [BBY23](https://eprint.iacr.org/2020/1577)                                                                      | A. Baccarini, M. Blanton, C. Yuan. Multi-Party Replicated Secret Sharing over a Ring with Applications to Privacy-Preserving Machine Learning. PoPETs 2023. [ePrint 2020/1577](https://eprint.iacr.org/2020/1577) |
+| [Can00](https://eprint.iacr.org/1998/018)                                                                       | R. Canetti. Security and Composition of Multiparty Cryptographic Protocols. Journal of Cryptology 2000. [ePrint 1998/018](https://eprint.iacr.org/1998/018)                                                       |
 | [CDI05](https://doi.org/10.1007/978-3-540-30576-7_19)                                                           | R. Cramer, I. Damgård, Y. Ishai. Share Conversion, Pseudorandom Secret-Sharing and Applications to Secure Computation. TCC 2005. [doi:10.1007/978-3-540-30576-7_19](https://doi.org/10.1007/978-3-540-30576-7_19) |
+| [CDG+18](https://eprint.iacr.org/2018/165)                                                                      | J. Camenisch, M. Drijvers, T. Gagliardoni, A. Lehmann, G. Neven. The Wonderful World of Global Random Oracles. EUROCRYPT 2018. [ePrint 2018/165](https://eprint.iacr.org/2018/165)                                |
+| [CF01](https://eprint.iacr.org/2001/055)                                                                        | R. Canetti, M. Fischlin. Universally Composable Commitments. CRYPTO 2001. [ePrint 2001/055](https://eprint.iacr.org/2001/055)                                                                                     |
 | [CGH+18](https://eprint.iacr.org/2018/570)                                                                      | K. Chida, D. Genkin, K. Hamada, D. Ikarashi, R. Kikuchi, Y. Lindell, A. Nof. Fast Large-Scale Honest-Majority MPC for Malicious Adversaries. CRYPTO 2018. [ePrint 2018/570](https://eprint.iacr.org/2018/570)     |
 | [GL05](https://eprint.iacr.org/2002/040)                                                                        | S. Goldwasser, Y. Lindell. Secure Multi-Party Computation without Agreement. Journal of Cryptology 2005. [ePrint 2002/040](https://eprint.iacr.org/2002/040)                                                      |
 | [GRW18](https://eprint.iacr.org/2018/216)                                                                       | S. D. Gordon, S. Ranellucci, X. Wang. Secure Computation with Low Communication from Cross-Checking. ASIACRYPT 2018. [ePrint 2018/216](https://eprint.iacr.org/2018/216)                                          |

@@ -189,6 +189,10 @@ The game differs from [BBDLN26, Fig. 3](https://eprint.iacr.org/2026/2142) in th
 
 So signing the same $m$ again at key $e$ gives the same signature, and signing another message at $e$ breaks the one-time rule.
 
+A production implementation must enforce this one-message rule.
+
+The signing claim covers adaptive corruptions [BBDLN26, Def. 3.2](https://eprint.iacr.org/2026/2142) of at most $t - 1$ operators over the lifetime of the key. It is separate from the key generation claims of [`dkg.md`, Section 3.3](dkg.md#33-security). The adversary gets every public output of the key generation.
+
 ## References
 
 | key                                                                                                             | reference                                                                                                                                                                                    |

@@ -6,7 +6,10 @@
 //! - A ceremony splits the chains into chain batches of the batch size, and each batch runs on its
 //!   own channel.
 //! - A batch takes its inputs from the threshold PRF and hashes its chain steps in MPC.
-//! - Then `mult_verification` checks its AND tuples, and `open` opens its outputs.
+//! - Then `rerand` reshares its outputs, `mult_verification` checks its AND tuples and the reshare,
+//!   and `open` opens the reshared outputs.
+//! - Each ceremony starts with its own `Party`, which derives fresh PRSS keys and drops them at the
+//!   end.
 //! - Each operator starts the batches in batch order and runs at most `concurrency` of them at the
 //!   same time.
 //!   - So operators with different concurrencies do not deadlock.
@@ -17,8 +20,11 @@
 //! - A bottom tree also opens the commitment `c_e` of each key `e`, in commitment batches of the
 //!   batch size.
 //!   - The commitment hashes `F(A_rnd(e))` once, at `A_rnd(e)` with step 1.
-//!   - The commitment is an addition to the note. A top key needs none, because its MPC signature
-//!     opens `F(A_rnd(e))` robustly.
+//!   - The last commitment batch also opens the randomizer value `F(A_rnd)` of the top key, but not
+//!     its hash output.
+//!   - The input of this value does not depend on the root, so it needs no batch of its own.
+//!   - The commitment is an addition to the note. A top key needs none, because the last commitment
+//!     batch opens its `F(A_rnd(e))` after the check.
 
 use std::fs::{self, DirBuilder, File, OpenOptions};
 use std::io::Write;
@@ -34,7 +40,7 @@ use tracing::info;
 
 use crate::check;
 use crate::circuit::{self, HashPublic};
-use crate::mpc::{Group, LANES, Party, Replicated, Reshare, Tuples};
+use crate::mpc::{Group, LANES, Party, Replicated, Reshare, Tuples, Word};
 use crate::net::{Channel, Network};
 use crate::prawns::{self, ChainRow, Operator, digest_lanes};
 use crate::xmss::{
@@ -68,7 +74,7 @@ async fn open_chains(
 ) -> Result<(Vec<Digest>, u64), String> {
     let words = x_0.len().div_ceil(LANES);
     let last = (0..x_0.len()).map(&position).max().unwrap();
-    let mut tuples = Tuples::new(party, padded_words(x_0.len(), last));
+    let mut tuples = Tuples::new(party, padded_words(x_0.len(), last, 2));
     let mut state = Replicated::new(party, words);
     prawns::prf_inputs(party, x_0, &mut state, [0, 1]);
     let mut selected = Replicated::<2>::new(party, words);
@@ -94,9 +100,7 @@ async fn open_chains(
             .await?;
         }
     }
-    check::mult_verification(party, channel, tuples).await?;
-    let values = party
-        .open(channel, &selected)
+    let values = checked_open(party, channel, &selected, tuples)
         .await?
         .iter()
         .flat_map(|opened| {
@@ -105,6 +109,19 @@ async fn open_chains(
         .take(x_0.len())
         .collect();
     Ok((values, ands))
+}
+
+/// Reshares the outputs with `rerand`, checks the AND tuples of the batch and opens the reshared
+/// outputs.
+async fn checked_open<const W: usize>(
+    party: &Party,
+    channel: &mut Channel,
+    outputs: &Replicated<W>,
+    mut tuples: Tuples,
+) -> Result<Vec<[Word; W]>, String> {
+    let reshared = party.rerand(channel, outputs, &mut tuples).await?;
+    check::mult_verification(party, channel, tuples).await?;
+    party.open(channel, &reshared).await
 }
 
 /// Hashes three chain steps in MPC and opens the row of each chain. The six lanes of `published`
@@ -116,7 +133,7 @@ async fn masked_batch(
     public: impl Fn(usize, usize) -> Option<HashPublic>,
 ) -> Result<(Vec<ChainRow>, u64), String> {
     let x_0 = addresses(0);
-    let mut tuples = Tuples::new(party, padded_words(x_0.len(), 3));
+    let mut tuples = Tuples::new(party, padded_words(x_0.len(), 3, 6));
     let words = x_0.len().div_ceil(LANES);
     let mut state = Replicated::new(party, words);
     prawns::prf_inputs(party, &x_0, &mut state, [0, 1]);
@@ -145,9 +162,7 @@ async fn masked_batch(
             );
         }
     }
-    check::mult_verification(party, channel, tuples).await?;
-    let cpk = party
-        .open(channel, &published)
+    let cpk = checked_open(party, channel, &published, tuples)
         .await?
         .iter()
         .flat_map(|opened| {
@@ -161,36 +176,37 @@ async fn masked_batch(
     Ok((cpk, ands))
 }
 
-/// Hashes `F(A_rnd(e))` of each bottom key `e` once in MPC and opens its commitment `c_e`.
+/// Hashes `F(A_rnd(e))` of each bottom key `e` once in MPC and opens its commitment `c_e`. With
+/// `top_key`, it also opens `F(A_rnd)` of that top key as the last value.
 async fn commitment_batch(
     party: &Party,
     channel: &mut Channel,
     public_parameter: &Digest,
     keys: &[u32],
+    top_key: Option<u32>,
 ) -> Result<(Vec<Digest>, u64), String> {
     let address = |e, step| layer_address(TWEAK_RANDOMIZER, Layer::Bottom, 0, e, step);
-    let x_0: Vec<Digest> = keys.iter().map(|&e| address(e, 0)).collect();
+    let top = top_key.map(|e| layer_address(TWEAK_RANDOMIZER, Layer::Top, 0, e, 0));
+    let x_0: Vec<Digest> = keys.iter().map(|&e| address(e, 0)).chain(top).collect();
     let [p0, p1] = digest_lanes(public_parameter);
     let public = |_, instance: usize| {
         let [a0, a1] = digest_lanes(&address(*keys.get(instance)?, 1));
         Some(([p0, p1, a0, a1], [0, 0]))
     };
-    open_chains(party, channel, &x_0, public, |_| 1).await
+    let position = |instance| usize::from(instance < keys.len());
+    open_chains(party, channel, &x_0, public, position).await
 }
 
-/// Signs the root of a bottom tree with its top key, in MPC.
+/// Signs the root of a bottom tree with its top key, in MPC, from the opened randomizer value
+/// `secret` of the key.
 async fn top_signature(
     party: &Party,
     public_parameter: Digest,
     bottom: u32,
     root: Digest,
+    secret: Digest,
 ) -> Result<Vec<u8>, String> {
     let mut channel = party.network.channel();
-    let mut secret = Replicated::<2>::new(party, 1);
-    let address = layer_address(TWEAK_RANDOMIZER, Layer::Top, 0, bottom, 0);
-    prawns::prf_inputs(party, &[address], &mut secret, [0, 1]);
-    let secret = party.open(&mut channel, &secret).await?[0];
-    let secret = prawns::lanes_digest(secret[0].0[0], secret[1].0[0]);
     let reveal = async |digits: &[usize; V]| {
         let x_0: Vec<Digest> = (0..V)
             .map(|chain| prf_address(Layer::Top, bottom, chain, 0))
@@ -212,19 +228,25 @@ async fn top_signature(
     .await
 }
 
-/// The tuple words of each held term in a batch of `instances` instances that hash `hashes` times,
-/// with the padding of the check.
-fn padded_words(instances: usize, hashes: usize) -> usize {
-    let words = instances.next_multiple_of(LANES) * hashes * circuit::gates();
+/// The tuple words of each held term in a batch of `instances` instances that hash `hashes` times
+/// and reshare `outputs` lanes in `rerand`.
+fn tuple_words(instances: usize, hashes: usize, outputs: usize) -> usize {
+    instances * (hashes * circuit::gates() + outputs)
+}
+
+/// The tuple words of `tuple_words` for full words of `LANES` instances, with the padding of the
+/// check.
+fn padded_words(instances: usize, hashes: usize, outputs: usize) -> usize {
+    let words = tuple_words(instances.next_multiple_of(LANES), hashes, outputs);
     check::SLICES * check::slice_length(words)
 }
 
-/// The estimated bytes of a full chain batch and the padding of its check. A chain hashes 3 times,
-/// and the tuples of all held terms coexist with the check vectors `x` and `y` in
-/// `Slices::materialize`.
+/// The estimated bytes of a full chain batch and the padding of its check. A chain hashes 3 times
+/// and reshares 6 output lanes, and the tuples of all held terms coexist with the check vectors `x`
+/// and `y` in `Slices::materialize`.
 fn chain_batch_estimate(party: &Party) -> (usize, f64) {
-    let words = party.batch_size * 3 * circuit::gates();
-    let padded = padded_words(party.batch_size, 3);
+    let words = tuple_words(party.batch_size, 3, 6);
+    let padded = padded_words(party.batch_size, 3, 6);
     // `lift` gives `x` and `y` one element for each bit of a slice word.
     let vector = 64 * (padded / check::SLICES);
     let bytes = padded * 3 * party.held.len() * size_of::<u64>() + 2 * vector * size_of::<F192>();
@@ -241,7 +263,8 @@ fn peak_rss() -> u64 {
 
 /// Runs the MPC for all chains of `keys`, with at most `concurrency` batches in flight.
 ///
-/// - A bottom tree also opens the commitments of its keys.
+/// - A bottom tree also opens the commitments of its keys and then the randomizer value of its top
+///   key.
 /// - The rounds are the most rounds of a chain batch and of a commitment batch.
 async fn ceremony(
     party: &Arc<Party>,
@@ -249,10 +272,21 @@ async fn ceremony(
     layer: Layer,
     keys: &[u32],
     concurrency: usize,
-) -> Result<(Vec<Digest>, Vec<ChainRow>, Vec<Digest>, u64, [u64; 2]), String> {
-    let tree = match (layer, keys) {
-        (Layer::Top, _) => "top".to_string(),
-        _ => format!("bottom {}", keys[0] >> LAYER_HEIGHT),
+) -> Result<
+    (
+        Vec<Digest>,
+        Vec<ChainRow>,
+        Vec<Digest>,
+        Option<Digest>,
+        u64,
+        [u64; 2],
+    ),
+    String,
+> {
+    let bottom = keys[0] >> LAYER_HEIGHT;
+    let tree = match layer {
+        Layer::Top => "top".to_string(),
+        Layer::Bottom => format!("bottom {bottom}"),
     };
     let chains: Arc<Vec<(u32, usize)>> = Arc::new(
         keys.iter()
@@ -284,8 +318,10 @@ async fn ceremony(
                 if let Some(k) = b.checked_sub(chain_batches) {
                     let keys =
                         &committed[k * batch_size..committed.len().min((k + 1) * batch_size)];
+                    let top_key = ((k + 1) * batch_size >= committed.len()).then_some(bottom);
                     let (commitments, ands) =
-                        commitment_batch(&party, &mut channel, &public_parameter, keys).await?;
+                        commitment_batch(&party, &mut channel, &public_parameter, keys, top_key)
+                            .await?;
                     return Ok((b, commitments, vec![], ands, channel.rounds));
                 }
                 let chains = &chains[b * batch_size..chains.len().min((b + 1) * batch_size)];
@@ -336,10 +372,11 @@ async fn ceremony(
         .flat_map(|batch| batch.1.iter().copied())
         .collect();
     let cpk: Vec<ChainRow> = batches.into_iter().flat_map(|batch| batch.2).collect();
-    let commitments: Vec<Digest> = commitment_batches
+    let mut commitments: Vec<Digest> = commitment_batches
         .into_iter()
         .flat_map(|batch| batch.1)
         .collect();
+    let randomizer = (layer == Layer::Bottom).then(|| commitments.pop().unwrap());
     let leaves = ends
         .chunks(V)
         .zip(keys)
@@ -352,7 +389,7 @@ async fn ceremony(
             )
         })
         .collect();
-    Ok((leaves, cpk, commitments, ands, rounds))
+    Ok((leaves, cpk, commitments, randomizer, ands, rounds))
 }
 
 async fn party(
@@ -362,11 +399,9 @@ async fn party(
     reshare: Reshare,
     batch_size: usize,
 ) -> Result<Arc<Party>, String> {
-    let (seeds, pairs) = (operator.sk.clone(), operator.k_ij.clone());
     let party = Party::new(
         group,
-        seeds,
-        pairs,
+        operator.sk.clone(),
         network.clone(),
         rand::random(),
         reshare,
@@ -431,7 +466,7 @@ pub async fn new_bottom_tree(
     let keys: Vec<u32> = (0..KEYS as u32)
         .map(|k| bottom << LAYER_HEIGHT | k)
         .collect();
-    let (leaves, cpk, commitments, ..) =
+    let (leaves, cpk, commitments, randomizer, ..) =
         ceremony(&party, public_parameter, Layer::Bottom, &keys, concurrency).await?;
     let levels = xmss::levels(&public_parameter, Layer::Bottom, bottom, leaves);
     let root = levels[LAYER_HEIGHT][0];
@@ -441,7 +476,8 @@ pub async fn new_bottom_tree(
         0,
         digests(&fs::read(dir.join("top")).unwrap()),
     );
-    let top_signature = top_signature(&party, public_parameter, bottom, root).await?;
+    let top_signature =
+        top_signature(&party, public_parameter, bottom, root, randomizer.unwrap()).await?;
     let top_signature = [top_signature, xmss::path(&top, bottom as usize)].concat();
     if xmss::layer_root(&public_parameter, Layer::Top, bottom, &root, &top_signature)
         != Some(top[LAYER_HEIGHT][0])
@@ -531,22 +567,27 @@ mod tests {
 
     use crate::dkg::*;
     use crate::mpc::Key;
-    use crate::mpc::tests::{local_operators, local_parties};
+    use crate::mpc::tests::{local_operators, local_parties, random_keys};
     use crate::net::pack;
     use crate::xmss::{truncated_hash, xor};
 
+    /// The threshold PRF `F(x)` from the seeds of all terms.
+    fn prf(all_seeds: &[Key], x: Digest) -> Digest {
+        all_seeds
+            .iter()
+            .map(|seed| truncated_hash(&[seed, &x]))
+            .fold([0; 16], xor)
+    }
+
+    /// The leaves, the rows, the opened commitments and the randomizer value of a ceremony. Only a
+    /// bottom tree has a randomizer value, the one of its top key.
     fn trusted_dealer(
         all_seeds: &[Key],
         public_parameter: Digest,
         layer: Layer,
         keys: &[u32],
-    ) -> (Vec<Digest>, Vec<ChainRow>, Vec<Digest>) {
-        let f = |x: Digest| {
-            all_seeds
-                .iter()
-                .map(|seed| truncated_hash(&[seed, &x]))
-                .fold([0; 16], xor)
-        };
+    ) -> (Vec<Digest>, Vec<ChainRow>, Vec<Digest>, Option<Digest>) {
+        let f = |x: Digest| prf(all_seeds, x);
         let cpk: Vec<ChainRow> = keys
             .iter()
             .flat_map(|&e| (0..V).map(move |chain| (e, chain)))
@@ -588,7 +629,11 @@ mod tests {
                 })
                 .collect(),
         };
-        (leaves, cpk, commitments)
+        let randomizer = (layer == Layer::Bottom).then(|| {
+            let top_key = keys[0] >> LAYER_HEIGHT;
+            f(layer_address(TWEAK_RANDOMIZER, Layer::Top, 0, top_key, 0))
+        });
+        (leaves, cpk, commitments, randomizer)
     }
 
     /// Runs a ceremony of the keys 5 and 9000 with `P = [9; 16]` at the reshare mode, batch size
@@ -611,26 +656,27 @@ mod tests {
         });
         outcomes
             .into_iter()
-            .map(|((leaves, cpk, commitments, ands, rounds), all_seeds)| {
-                let (dealt_leaves, dealt_cpk, dealt_commitments) =
-                    trusted_dealer(&all_seeds, public_parameter, layer, &keys);
-                assert_eq!(leaves, dealt_leaves);
-                assert!(layer == Layer::Top || cpk == dealt_cpk);
-                assert_eq!(commitments, dealt_commitments);
-                (ands, rounds)
-            })
+            .map(
+                |((leaves, cpk, commitments, randomizer, ands, rounds), all_seeds)| {
+                    let dealt = trusted_dealer(&all_seeds, public_parameter, layer, &keys);
+                    assert_eq!(leaves, dealt.0);
+                    assert!(layer == Layer::Top || cpk == dealt.1);
+                    assert_eq!((commitments, randomizer), (dealt.2, dealt.3));
+                    (ands, rounds)
+                },
+            )
             .collect()
     }
 
     #[test]
     fn a_ceremony_matches_the_trusted_dealer_at_each_batch_size_with_36288_ands_per_hash() {
         // The rounds of a chain batch and of a commitment batch. The commitment batch holds one
-        // word of keys, and a full commitment batch of 128 keys takes 99 or 75 rounds.
+        // word of keys, and a full commitment batch of 128 keys takes 100 or 76 rounds.
         let expected_rounds = |reshare, batch_size| match (reshare, batch_size) {
-            (Reshare::Collector, 128) => Some([197, 89]),
-            (Reshare::Peer, 128) => Some([125, 65]),
-            (Reshare::Collector, 4) => Some([187, 89]),
-            (Reshare::Peer, 4) => Some([115, 65]),
+            (Reshare::Collector, 128) => Some([198, 90]),
+            (Reshare::Peer, 128) => Some([126, 66]),
+            (Reshare::Collector, 4) => Some([188, 90]),
+            (Reshare::Peer, 4) => Some([116, 66]),
             _ => None,
         };
         let modes = [Reshare::Collector, Reshare::Peer];
@@ -663,15 +709,16 @@ mod tests {
     }
 
     #[test]
-    fn the_check_and_the_opening_of_a_bottom_chain_batch_send_the_same_bytes_in_both_modes() {
-        // The bytes that each operator sends in the check of 128 chains, and in the opening of
-        // their six lanes and of two lanes.
-        for (t, expected) in [(2, (2_720, 6_176, 2_080)), (3, (5_952, 24_832, 8_448))] {
+    fn the_rerand_the_check_and_the_opening_of_a_bottom_chain_batch_send_the_same_bytes_in_both_modes()
+     {
+        // The bytes that each operator sends in the rerand of the six lanes of 128 chains, in the
+        // check and in the opening.
+        for (t, expected) in [(2, (6_144, 2_720, 6_176)), (3, (12_288, 5_952, 24_832))] {
             for reshare in [Reshare::Collector, Reshare::Peer] {
                 let sent = local_parties(t, reshare, async |party, _| {
                     let (words, mut channel) = (BATCH_SIZE / LANES, party.network.channel());
                     let mut state = Replicated::new(&party, words);
-                    let mut tuples = Tuples::new(&party, padded_words(BATCH_SIZE, 3));
+                    let mut tuples = Tuples::new(&party, padded_words(BATCH_SIZE, 3, 6));
                     for _ in 0..3 {
                         let hash =
                             circuit::hash(&party, &mut channel, &mut state, |_| None, &mut tuples);
@@ -679,16 +726,22 @@ mod tests {
                     }
                     let sent = || party.network.sent.load(Ordering::Relaxed);
                     let start = sent();
+                    let rows = Replicated::<6>::new(&party, words);
+                    let reshared = party
+                        .rerand(&mut channel, &rows, &mut tuples)
+                        .await
+                        .unwrap();
+                    let rerandomized = sent();
                     check::mult_verification(&party, &mut channel, tuples)
                         .await
                         .unwrap();
                     let checked = sent();
-                    let rows = Replicated::<6>::new(&party, words);
-                    party.open(&mut channel, &rows).await.unwrap();
-                    let opened = sent();
-                    let ends = Replicated::<2>::new(&party, words);
-                    party.open(&mut channel, &ends).await.unwrap();
-                    (checked - start, opened - checked, sent() - opened)
+                    party.open(&mut channel, &reshared).await.unwrap();
+                    (
+                        rerandomized - start,
+                        checked - rerandomized,
+                        sent() - checked,
+                    )
                 });
                 assert_eq!(sent, vec![expected; 2 * t - 1], "t = {t}, {reshare:?}");
             }
@@ -696,28 +749,39 @@ mod tests {
     }
 
     #[test]
-    fn a_tampered_contribution_in_batch_3_fails_the_check_at_every_operator() {
-        // `establish` in `Party::new` takes channel 1, so batch `b` has the tag `2 + b`.
-        let flip_in_batch_3 = |channel: &Channel, mut outgoing: Vec<Vec<u64>>| {
-            if channel.tag == 2 + 3 && channel.rounds == 0 {
-                let messages = outgoing.iter_mut().filter(|words| !words.is_empty());
-                messages.for_each(|words| words[0] ^= 1);
-            }
-            outgoing
-        };
-        let outcomes = local_operators(2, &[(Reshare::Collector, 4); 3], async |party, _| {
-            let mut party = party.unwrap();
-            if party.id == 0 {
-                party.tamper = flip_in_batch_3;
-            }
-            let party = Arc::new(party);
-            let outcome = ceremony(&party, [9; 16], Layer::Bottom, &[5, 9_000], 1).await;
-            outcome.err()
-        });
-        // Each collector forwards the same wrong sum to all other holders of its term, so only the
-        // multiplication check catches it.
-        let failed = Some("the AND tuples fail the check".to_string());
-        assert_eq!(outcomes, vec![failed; 3]);
+    fn a_tampered_contribution_to_an_and_gate_or_to_the_rerand_in_batch_3_fails_the_check_at_every_operator()
+     {
+        // `establish` in `Party::new` takes channel 1, so batch `b` has the tag `2 + b`. Round 0 is
+        // the first AND layer, and round 144 is the rerand after the 72 AND layers of 2 rounds.
+        // Operator 0 flips every message of the round and the copy that it keeps, so the holders
+        // of each term agree and only the multiplication check catches it.
+        for round in [0, 144] {
+            let outcomes = local_operators(2, &[(Reshare::Collector, 4); 3], async |party, _| {
+                let mut party = party.unwrap();
+                if party.id == 0 {
+                    party.tamper = match round {
+                        0 => flip_in_batch_3::<0>,
+                        _ => flip_in_batch_3::<144>,
+                    };
+                }
+                let party = Arc::new(party);
+                let outcome = ceremony(&party, [9; 16], Layer::Bottom, &[5, 9_000], 1).await;
+                outcome.err()
+            });
+            let failed = Some("the AND tuples fail the check".to_string());
+            assert_eq!(outcomes, vec![failed; 3], "round {round}");
+        }
+    }
+
+    fn flip_in_batch_3<const ROUND: u64>(
+        channel: &Channel,
+        mut outgoing: Vec<Vec<u64>>,
+    ) -> Vec<Vec<u64>> {
+        if channel.tag == 2 + 3 && channel.rounds == ROUND {
+            let messages = outgoing.iter_mut().filter(|words| !words.is_empty());
+            messages.for_each(|words| words[0] ^= 1);
+        }
+        outgoing
     }
 
     #[test]
@@ -733,11 +797,16 @@ mod tests {
                 Some(xmss::tests::fold(&public_parameter, layer, 9, leaf, &path))
             );
         };
+        let (_, all_pairs) = random_keys(&Group::new(2));
         local_parties(2, Reshare::Collector, async |party, all_seeds| {
-            let (leaves, cpk, commitments) =
+            let (leaves, cpk, commitments, _) =
                 trusted_dealer(&all_seeds, public_parameter, Layer::Bottom, &[9]);
             let (top_leaves, ..) = trusted_dealer(&all_seeds, public_parameter, Layer::Top, &[9]);
-            let signature = top_signature(&party, public_parameter, 9, leaves[0]).await;
+            let secret = prf(
+                &all_seeds,
+                layer_address(TWEAK_RANDOMIZER, Layer::Top, 0, 9, 0),
+            );
+            let signature = top_signature(&party, public_parameter, 9, leaves[0], secret).await;
             leads_to_root(Layer::Top, &leaves[0], signature.unwrap(), top_leaves[0]);
             let quorum = [1, 2];
             if !quorum.contains(&party.id) {
@@ -747,7 +816,7 @@ mod tests {
                 id: party.id,
                 public_parameter,
                 sk: party.seeds.clone(),
-                k_ij: party.pairs.clone(),
+                k_ij: all_pairs[party.id].clone(),
             };
             let sign = async |cpk: &[ChainRow], c_e: &Digest| {
                 let sent = party.network.sent.load(Ordering::Relaxed);

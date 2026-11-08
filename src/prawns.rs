@@ -6,9 +6,14 @@
 //!   - It derives each term seed from the parts of all its holders.
 //!   - It derives each pair key from the parts of both operators.
 //! - One commit-reveal carries all contributions and parts, as Section 2.1 of the note asks.
+//!   - A commitment hashes the tag `thlxmss-commit`, the sender, the receiver and the reveal.
+//!   - Naming both operators is an addition to the note, so a corrupt operator cannot copy a
+//!     commitment.
 //!   - An echo then carries the hash of all contributions and a hash of the shared seeds.
 //!   - An operator aborts on a mismatch.
 //!   - The keygen of the prototype sends the parts in one round with no commitments.
+//! - `seed_T` keys only the PRF, and `k_ij` keys only the signing masks. The ceremonies use fresh
+//!   PRSS keys of their own.
 //! - A quorum of `t` operators holds every term, because a term contains only `t - 1` operators.
 //!   Each term goes to its first holder in the quorum.
 //! - A signer masks its part with `H16(k_ij || x || m || J)` for each co-signer `j`.
@@ -28,7 +33,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
-use primitives::{hash, load_at};
+use primitives::load_at;
 use tracing::{Instrument, info_span};
 
 use crate::mpc::{self, Group, Key, LANES, Party, Replicated};
@@ -83,67 +88,38 @@ impl Operator {
     }
 }
 
+/// The tag of the commitments of `keygen`.
+pub const KEYGEN_COMMIT: &[u8] = b"thlxmss-commit";
+
+/// The tag of the hash of all contributions, which gives `P`.
+pub const PARAMETER: &[u8] = b"thlxmss-keygen-parameter";
+
 /// `keygen` in three rounds. Each operator commits to and reveals `[contribution to P || seed parts
 /// of the terms shared with j || pair part for j]` for each `j`. Then it echoes `[H(all P
 /// contributions) || hash of the seeds shared with j]`, and it aborts on a mismatch.
 pub async fn keygen(group: &Group, network: &Arc<Network>) -> Result<Operator, String> {
     let id = network.id;
-    let shared = |j: usize| -> Vec<usize> {
-        group
-            .held(id)
-            .into_iter()
-            .filter(|&k| group.holds(j, k))
-            .collect()
-    };
     let contribution: Key = rand::random();
-    let seed_parts: Vec<Key> = (0..group.terms.len()).map(|_| rand::random()).collect();
-    let pair_parts: Vec<Key> = (0..group.n).map(|_| rand::random()).collect();
+    let parts = mpc::Parts::random(group);
     let outgoing = (0..group.n)
-        .map(|j| {
-            [
-                contribution.to_vec(),
-                shared(j).iter().flat_map(|&k| seed_parts[k]).collect(),
-                pair_parts[j].to_vec(),
-            ]
-            .concat()
-        })
+        .map(|j| [&contribution[..], &parts.reveal(group, id, j)].concat())
         .collect();
     let mut channel = network.channel();
-    let received = mpc::commit_reveal(&mut channel, id, outgoing).await?;
+    let received = mpc::commit_reveal(&mut channel, id, KEYGEN_COMMIT, outgoing).await?;
     let contributions: Vec<u8> = (0..group.n)
         .flat_map(|j| match j == id {
             true => contribution.to_vec(),
             false => received[j][..32].to_vec(),
         })
         .collect();
-    let contributions_hash = hash::hash(&contributions);
-    let part = |j: usize, k: usize| -> Vec<u8> {
-        if j == id {
-            seed_parts[k].to_vec()
-        } else {
-            let position = shared(j).iter().position(|&s| s == k).unwrap();
-            received[j][32 + 32 * position..64 + 32 * position].to_vec()
-        }
-    };
-    let sk: Vec<Key> = group
-        .held(id)
-        .into_iter()
-        .map(|k| {
-            let parts: Vec<u8> = (0..group.n)
-                .filter(|&j| group.holds(j, k))
-                .flat_map(|j| part(j, k))
-                .collect();
-            hash::hash(&parts)
-        })
+    let contributions_hash = mpc::tagged_hash(PARAMETER, &[&contributions]);
+    let revealed: Vec<&[u8]> = received
+        .iter()
+        .map(|bytes| &bytes[32.min(bytes.len())..])
         .collect();
-    let seed_digest = |j: usize| -> Vec<u8> {
-        let sk = group.held(id).into_iter().zip(&sk);
-        let shared: Vec<u8> = sk
-            .filter(|&(k, _)| group.holds(j, k))
-            .flat_map(|(_, seed)| *seed)
-            .collect();
-        hash::hash(&shared).to_vec()
-    };
+    let tags: [&[u8]; 2] = [b"thlxmss-keygen-term", b"thlxmss-keygen-pair"];
+    let (sk, k_ij) = parts.keys(group, id, &revealed, tags);
+    let seed_digest = |j: usize| mpc::shared_keys_hash(group, b"thlxmss-keygen-echo", id, j, &sk);
     let echo = |j: usize| [&contributions_hash[..], &seed_digest(j)].concat();
     let echoes = channel
         .exchange_bytes((0..group.n).map(echo).collect())
@@ -155,21 +131,6 @@ pub async fn keygen(group: &Group, network: &Arc<Network>) -> Result<Operator, S
     if let Some(j) = others().find(|&j| echoes[j][32..] != seed_digest(j)) {
         return Err(format!("operator {j} holds other seeds"));
     }
-    let k_ij = (0..group.n)
-        .map(|j| {
-            if j == id {
-                [0; 32]
-            } else {
-                let theirs = &received[j][received[j].len() - 32..];
-                let (low, high) = if id < j {
-                    (&pair_parts[j][..], theirs)
-                } else {
-                    (theirs, &pair_parts[j][..])
-                };
-                hash::hash(&[low, high].concat())
-            }
-        })
-        .collect();
     Ok(Operator {
         id,
         public_parameter: contributions_hash[..16].try_into().unwrap(),
@@ -324,40 +285,63 @@ pub async fn sign(
 mod tests {
     use std::env;
 
-    use crate::mpc::Reshare;
-    use crate::mpc::tests::{local_parties, random_keys};
+    use crate::dkg::BATCH_SIZE;
+    use crate::mpc::tests::{local_networks, random_keys};
+    use crate::mpc::{PRSS_COMMIT, Reshare, commitment};
     use crate::prawns::*;
     use crate::xmss::{address, tweak};
 
-    /// The committed and the revealed message, the echo and the error of one fault of operator 2 in
-    /// `keygen`.
-    type Fault = (
-        fn(Vec<u8>) -> [Vec<u8>; 2],
-        fn(Key) -> Vec<u8>,
-        &'static str,
-    );
+    #[derive(Clone, Copy, Debug)]
+    enum Setup {
+        Keygen,
+        Prss,
+    }
 
-    /// Operator 2 runs the rounds of `keygen` by hand. `reveal` gives the message that it commits
-    /// to and the message that it reveals. `echo` gives its echo from the hash of all `P`
-    /// contributions.
-    async fn corrupt_keygen(
-        party: &Party,
-        reveal: fn(Vec<u8>) -> [Vec<u8>; 2],
-        echo: fn(Key) -> Vec<u8>,
+    /// The commitment and the reveal of operator 2 to operator `j`, from the tag, `j` and the
+    /// reveal of an honest operator.
+    type Commit = fn(&[u8], usize, Vec<u8>) -> (Key, Vec<u8>);
+
+    /// The echo of operator 2, from the hash of all `P` contributions in `keygen`.
+    type Echo = fn(Key) -> Vec<u8>;
+
+    /// Operator 2 runs the rounds of a setup by hand. All its parts are 7.
+    async fn corrupt_setup(
+        network: &Arc<Network>,
+        t: usize,
+        setup: Setup,
+        commit: Commit,
+        echo: Echo,
     ) {
-        let (group, n) = (&party.group, party.group.n);
+        let group = Group::new(t);
+        let n = group.n;
+        let (tag, prefix) = match setup {
+            Setup::Keygen => (KEYGEN_COMMIT, 32),
+            Setup::Prss => (PRSS_COMMIT, 0),
+        };
         let shared = |j: usize| {
             let terms = 0..group.terms.len();
             terms
                 .filter(|&k| group.holds(2, k) && group.holds(j, k))
                 .count()
         };
-        let messages = (0..n).map(|j| reveal(vec![7; 32 * (shared(j) + 2)]));
-        let (committed, reveals): (Vec<Vec<u8>>, Vec<Vec<u8>>) =
-            messages.map(|[c, r]| (c, r)).unzip();
-        let mut channel = party.network.channel();
-        let commitments = committed.iter().map(|message| hash::hash(message).to_vec());
-        channel.exchange_bytes(commitments.collect()).await.unwrap();
+        let (commitments, reveals): (Vec<Key>, Vec<Vec<u8>>) = (0..n)
+            .map(|j| commit(tag, j, vec![7; prefix + 32 * (shared(j) + 1)]))
+            .unzip();
+        let mut channel = network.channel();
+        match setup {
+            Setup::Keygen => {
+                let commitments = commitments.iter().map(|c| c.to_vec()).collect();
+                channel.exchange_bytes(commitments).await.unwrap();
+            }
+            Setup::Prss => {
+                let parameters = [0, 0, Reshare::Peer as u64, BATCH_SIZE as u64];
+                let message = |c: &Key| [parameters, load_at(c, 0)].concat();
+                channel
+                    .exchange(commitments.iter().map(message).collect())
+                    .await
+                    .unwrap();
+            }
+        }
         let revealed = channel.exchange_bytes(reveals).await.unwrap();
         let contributions: Vec<u8> = (0..n)
             .flat_map(|j| match j {
@@ -365,16 +349,15 @@ mod tests {
                 _ => revealed[j][..32].to_vec(),
             })
             .collect();
-        let echo = echo(hash::hash(&contributions));
+        let echo = echo(mpc::tagged_hash(PARAMETER, &[&contributions]));
         channel.exchange_bytes(vec![echo; n]).await.ok();
     }
 
     #[test]
-    fn keygen_gives_each_key_to_its_holders_in_a_file_that_loads_back_and_a_wrong_reveal_p_hash_or_seed_digest_aborts()
-     {
+    fn keygen_gives_each_key_to_its_holders_in_a_file_that_loads_back() {
         let group = Group::new(2);
-        let operators = local_parties(2, Reshare::Peer, async |party, _| {
-            keygen(&party.group, &party.network).await.unwrap()
+        let operators = local_networks(2, async |network, _| {
+            keygen(&Group::new(2), &network).await.unwrap()
         });
         let seed = |i: usize, term: usize| {
             let local = group.held(i).iter().position(|&k| k == term).unwrap();
@@ -406,52 +389,86 @@ mod tests {
             assert_eq!((loaded_group.t, fields(&loaded)), (2, fields(operator)));
         }
         fs::remove_dir_all(&dir).unwrap();
-        let wrong_reveal = "operator 2 reveals a value that differs from its commitment";
-        // The third fault commits to a short message, so only the length check of `commit_reveal`
-        // stops it.
-        let faults: [Fault; 5] = [
+    }
+
+    #[test]
+    fn a_wrong_reveal_a_copied_commitment_or_a_wrong_echo_aborts_keygen_and_the_prss_setup() {
+        let honest: Commit = |tag, j, message| (commitment(tag, 2, j, &message), message);
+        let no_echo: Echo = |_| vec![];
+        // The third fault commits to a short message, so only the length check stops it. The fourth
+        // fault copies a commitment, which names the receiver as its sender.
+        let reveal_faults: [Commit; 4] = [
+            |tag, j, message| {
+                let mut reveal = message.clone();
+                reveal[0] ^= 1;
+                (commitment(tag, 2, j, &message), reveal)
+            },
+            |tag, j, message| (commitment(tag, 2, j, &message), message[..32].to_vec()),
+            |tag, j, message| (commitment(tag, 2, j, &message[..8]), message[..8].to_vec()),
+            |tag, j, message| (commitment(tag, j, 2, &message), message),
+        ];
+        let aborts = |error: &str| vec![Some(error.to_string()), Some(error.to_string()), None];
+        let wrong_reveal = aborts("operator 2 reveals a value that differs from its commitment");
+        let echo_faults: [(Setup, Echo, &str); 3] = [
             (
-                |message| {
-                    let mut reveal = message.clone();
-                    reveal[0] ^= 1;
-                    [message, reveal]
-                },
-                |_| vec![],
-                wrong_reveal,
-            ),
-            (
-                |message| [message.clone(), message[..32].to_vec()],
-                |_| vec![],
-                wrong_reveal,
-            ),
-            (
-                |message| [message[..8].to_vec(), message[..8].to_vec()],
-                |_| vec![],
-                wrong_reveal,
-            ),
-            (
-                |message| [message.clone(), message],
+                Setup::Keygen,
                 |_| vec![0; 64],
                 "operator 2 received other contributions",
             ),
             (
-                |message| [message.clone(), message],
+                Setup::Keygen,
                 |p| [&p[..], &[0; 32]].concat(),
                 "operator 2 holds other seeds",
             ),
+            (
+                Setup::Prss,
+                |_| vec![0; 32],
+                "operator 2 holds other PRSS keys",
+            ),
         ];
-        for (reveal, echo, error) in faults {
-            let outcomes = local_parties(2, Reshare::Peer, async |party, _| match party.id {
-                2 => {
-                    corrupt_keygen(&party, reveal, echo).await;
+        // At t = 3, operator 2 gives each receiver other term parts with a matching commitment.
+        // So the holders of a term with operator 2 derive different keys, and only the echo
+        // between two honest operators stops them.
+        let split: Commit = |tag, j, message| {
+            let reveal = vec![j as u8; message.len()];
+            (commitment(tag, 2, j, &reveal), reveal)
+        };
+        let other_keys = |j: usize| Some(format!("operator {j} holds other PRSS keys"));
+        let split_outcomes = vec![
+            other_keys(1),
+            other_keys(0),
+            None,
+            other_keys(0),
+            other_keys(0),
+        ];
+        let faults = [Setup::Keygen, Setup::Prss]
+            .into_iter()
+            .flat_map(|setup| {
+                let wrong_reveal = wrong_reveal.clone();
+                reveal_faults.map(|commit| (2, setup, commit, no_echo, wrong_reveal.clone()))
+            })
+            .chain(echo_faults.map(|(setup, echo, error)| (2, setup, honest, echo, aborts(error))))
+            .chain([(3, Setup::Prss, split, no_echo, split_outcomes)]);
+        for (t, setup, commit, echo, expected) in faults {
+            let outcomes = local_networks(t, async |network, _| match (network.id, setup) {
+                (2, _) => {
+                    corrupt_setup(&network, t, setup, commit, echo).await;
                     None
                 }
-                _ => keygen(&party.group, &party.network).await.err(),
+                (_, Setup::Keygen) => keygen(&Group::new(t), &network).await.err(),
+                (_, Setup::Prss) => {
+                    let party = Party::new(
+                        Group::new(t),
+                        vec![],
+                        network,
+                        rand::random(),
+                        Reshare::Peer,
+                        BATCH_SIZE,
+                    );
+                    party.await.err()
+                }
             });
-            assert_eq!(
-                outcomes,
-                [Some(error.to_string()), Some(error.to_string()), None]
-            );
+            assert_eq!(outcomes, expected, "{setup:?} at t = {t}");
         }
     }
 

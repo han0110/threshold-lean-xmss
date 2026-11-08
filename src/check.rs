@@ -2,8 +2,8 @@
 //!
 //! - The semi-honest gate is secure up to an additive attack. The check rejects a wrong tuple,
 //!   except with a negligible probability, before any output opens.
-//! - A coin is a random sharing from the seeds. Each operator converts it to a Shamir share, and
-//!   the shares open robustly.
+//! - A coin is a random sharing from the PRSS keys. Each operator converts it to a Shamir share,
+//!   and the shares open robustly.
 //! - `de_linearization` is Protocol 13 of the paper. A coin gives the coins `tau`, and their tensor
 //!   `beta` weights the tuples.
 //! - The claim is the inner-product tuple `(x, y, z)` with `x = beta x^(i)`, `y = y^(i)` and `z =
