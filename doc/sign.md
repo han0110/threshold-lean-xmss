@@ -174,7 +174,9 @@ Let $k$ be the number of chains with $p_l < 3$. Then $23 \le k \le 58$, and $k \
 
 The signing targets the unforgeability of a threshold one-time signature, the game of [BBDLN26, Def. 3.2, Fig. 3](https://eprint.iacr.org/2026/2142). No complete proof exists.
 
-The reduction of [BBDLN26, Thm. 3.1](https://eprint.iacr.org/2026/2142) uses two properties.
+The formal claim models $\mathrm{Th}$ as a random oracle and states the bound $q / 2^{127}$ plus the terms of a call on a hidden key or seed. The budget $q$ counts every hash call of every party. The key generation claims keep $\mathrm{Th}$ as one fixed function.
+
+The formal claim replaces the threshold PRF property below by the terms of a call on a hidden key. The reduction of [BBDLN26, Thm. 3.1](https://eprint.iacr.org/2026/2142) uses two properties.
 
 - The threshold PRF is secure [BBDLN26, Def. 2.2](https://eprint.iacr.org/2026/2142). Its replicated construction with masks is secure in the random-oracle model [BBDLN26, Thm. 5.1](https://eprint.iacr.org/2026/2142).
 - The one-time signature is secure. Here it is leanXMSS [Wam26](#references), in place of the Winternitz scheme of [BBDLN26, Sec. 3.1](https://eprint.iacr.org/2026/2142).

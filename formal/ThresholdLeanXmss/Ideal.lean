@@ -4,8 +4,9 @@ import LeanXmss.Statement
 /-!
 # The functionalities and the games
 
-The functionalities of GS20 for replicated sharing, the trusted dealer `F_KeyGen`, and the games of
-PRAWNS and of the primitives, which the claims of `Statement.lean` use.
+The functionalities of GS20 for replicated sharing, the trusted dealer `F_keygen`, the oracles of the
+games of PRAWNS, and the adversaries of the games of the primitives. `Statement.lean` holds the games
+and the claims.
 -/
 
 open OracleComp OracleSpec LeanXmss
@@ -391,18 +392,6 @@ def tprfOracles (keys : C.Party → Keys C) (seeds : C.Term → HashOutput) (b :
         set { st with challenged := insert x st.challenged, random := Function.update st.random x (some y) }
         pure (some y)
 
-/-- The game `G^tprf` of PRAWNS, Figure 1, with `KeyGen'` of PRAWNS, Section 5.1. -/
-def tprfGame (A : TprfAdversary C) (b : Bool) : OracleComp (WorldSpec C) Bool := do
-  let (_, seeds, keys) ← free (liftComp (prawnsKeyGen (C := C)) _)
-  let forward : QueryImpl (LocalSpec C) (StateT (TprfState C) (OracleComp (WorldSpec C))) :=
-    fun t => StateT.lift (worldRoles.adversary (OracleComp.lift (OracleSpec.query t)))
-  (simulateQ (forward + tprfOracles keys seeds b) A : StateT (TprfState C) (OracleComp (WorldSpec C)) Bool).run'
-    ⟨∅, fun _ _ => ∅, ∅, fun _ => none⟩
-
-/-- `Adv^tprf`, PRAWNS, Definition 2.2. -/
-def tprfAdvantage (A : TprfAdversary C) : ℝ :=
-  |accepts prims (tprfGame A false) - accepts prims (tprfGame A true)|
-
 /-! ## The signing game -/
 
 /-- The oracles of PRAWNS, Figure 3, namely `OCorrupt`, the public outputs of a bottom tree, and the
@@ -428,23 +417,24 @@ structure TsigState (C : Committee) where
   bound : KeyIndex → Option Message
   /-- The honest operators that sent chain parts at a key for a message. -/
   released : List (KeyIndex × Message × C.Party)
-  /-- The randomizer values that honest signers accepted. -/
-  opened : List (KeyIndex × Digest)
 
 /-- The operators that can give a chain part at key `e` for `message`, namely the corrupt operators
 and the honest operators that released one. -/
 def signersAt (st : TsigState C) (e : KeyIndex) (message : Message) : Finset C.Party :=
   st.corrupt ∪ ((st.released.filter fun r => r.1 = e ∧ r.2.1 = message).map (·.2.2)).toFinset
 
-/-- The message at key `e` whose chain parts reached `t` operators, the `m'` of PRAWNS, Theorem 3.1,
-Game 2. -/
-def exposedMessage (st : TsigState C) (e : KeyIndex) : Option Message :=
-  ((st.released.filter (·.1 = e)).map (·.2.1)).find? fun m => C.t ≤ (signersAt st e m).card
+/-- The one-message assumption of the signing claim. Honest operators sign at most one message at each
+key, over all quorums and aborts. A request for `message` at key `e` breaks it when the honest
+operators already sign another message there. The game enforces it, the PoC does not, and production
+must. -/
+abbrev breaksOneMessagePerKey (st : TsigState C) (e : KeyIndex) (message : Message) : Bool :=
+  (st.bound e).any (· ≠ message)
 
 variable {m : Type → Type} [Monad m]
 
 /-- The signing oracles. Corruption is adaptive and stops at `t - 1` operators. At each key, honest
-operators sign one message only (`doc/sign.md`, Section 4, in place of line 8 of Figure 3). -/
+operators sign one message only, by `breaksOneMessagePerKey` (`doc/sign.md`, Section 4, in place of
+line 8 of Figure 3). -/
 def tsigOracles (lift : ∀ {β : Type}, OracleComp (RoSpec C) β → m β) (dealt : Dealt C m) :
     QueryImpl (TsigSpec C) (StateT (TsigState C) m) := fun q =>
   match q with
@@ -458,7 +448,7 @@ def tsigOracles (lift : ∀ {β : Type}, OracleComp (RoSpec C) β → m β) (dea
       pure (some (tree, ← liftM (dealt.value (.randomizer topLayer (topKey b)))))
   | .round1 i J e message => do
       let st ← get
-      if i ∈ st.corrupt ∨ i ∉ J.1 ∨ (st.bound e).any (· ≠ message) then pure none else do
+      if i ∈ st.corrupt ∨ i ∉ J.1 ∨ breaksOneMessagePerKey st e message then pure none else do
         set { st with bound := Function.update st.bound e (some message) }
         some <$> liftM (dealt.part i J (.randomizer bottomLayer e) message)
   | .round2 i J e message parts => do
@@ -469,72 +459,22 @@ def tsigOracles (lift : ∀ {β : Type}, OracleComp (RoSpec C) β → m β) (dea
         let parts := Function.update parts i own
         let some values ← liftM (signRound2With lift (fun x => dealt.part i J x message) dealt.parameter J
             (tree.commitment e) e message parts) | pure none
-        set { st with released := st.released ++ [(e, message, i)], opened := st.opened ++ [(e, combine J parts)] }
+        set { st with released := st.released ++ [(e, message, i)] }
         pure (some values)
 
 /-- The game of PRAWNS, Figure 3, for strong unforgeability. A verified forgery wins if fewer than
 `t` operators can give chain parts at its key for its message. It also wins if it differs from the
-signature of `KeyGen` there. Strong unforgeability goes beyond PRAWNS and matches leanVM. -/
+signature of `KeyGen` there. Strong unforgeability goes beyond PRAWNS. -/
 def tsigGameWith (Ro : Roles C m) (dealt : Dealt C m) (A : TsigAdversary C) :
     m (Bool × TsigState C × Forgery) := do
   let lift : ∀ {β : Type}, OracleComp (RoSpec C) β → m β := fun oa => Ro.honest (liftComp oa _)
   let forger : QueryImpl (LocalSpec C) (StateT (TsigState C) m) := fun t => liftM (Ro.adversary (OracleComp.lift (OracleSpec.query t)))
   let (forgery, st) ← (simulateQ (forger + tsigOracles lift dealt) (A ⟨dealt.top.root, dealt.parameter⟩ dealt.top)).run
-    ⟨∅, fun _ => none, [], []⟩
+    ⟨∅, fun _ => none, []⟩
   let verified ← lift (tweakable (Concrete.verify ⟨dealt.top.root, dealt.parameter⟩ forgery.message forgery.signature))
   let fresh ← if (signersAt st forgery.signature.leafIndex forgery.message).card < C.t then pure true else do
     let honest ← honestSignature lift dealt forgery.signature.leafIndex forgery.message
     pure (decide (honest ≠ some forgery.signature))
   pure (verified && fresh, st, forgery)
-
-/-- The game `G^tsig` of PRAWNS, Figure 3. -/
-def tsigGame (A : TsigAdversary C) : OracleComp (WorldSpec C) Bool := do
-  let some dealt ← keyGen | pure false
-  (·.1) <$> tsigGameWith worldRoles dealt A
-
-/-- `Adv^tsig`, PRAWNS, Definition 3.2. -/
-def tsigAdvantage (A : TsigAdversary C) : ℝ := accepts prims (tsigGame A)
-
-/-! ## The games of the primitives -/
-
-/-- The guesses of Game 2 of Theorem 3.1, namely a layer, a key, a chain and a position. -/
-def guessCount : ℕ := numLayers * lifetime * numChains * (chainLength - 1)
-
-/-- The position `j` of the target of Game 2, from `1` to `3`. -/
-abbrev Guess := Layer × KeyIndex × ChainIndex × Fin (chainLength - 1)
-
-instance : Nonempty Guess :=
-  ⟨(⟨0, by decide⟩, ⟨0, by unfold lifetime; exact Nat.two_pow_pos _⟩, ⟨0, by decide⟩, ⟨0, by decide⟩)⟩
-
-instance : SampleableType Guess := SampleableType.ofFintype Guess
-
-/-- `Adv^spr`, PRAWNS, Definition 3.3, for the chains of leanXMSS. The task is to find `x'` at
-position `j - 1` whose chain reaches `f^3(x)`, given `y = f^j(x)` on a uniform chain under a uniform
-parameter. The tweak of the chain plays the key of the keyed hash of PRAWNS, Remark 1. -/
-abbrev SprAdversary (C : Committee) := PublicParameter → Guess → Digest → OracleComp (LocalSpec C) Digest
-
-def sprGame (B : SprAdversary C) : OracleComp (WorldSpec C) Bool := do
-  let parameter ← free (liftComp ($ᵗ PublicParameter) _)
-  let guess ← free (liftComp ($ᵗ Guess) _)
-  let (lay, e, l, j) := guess
-  let x ← free (liftComp ($ᵗ Digest) _)
-  let walk := fun start steps value => free (liftComp (tweakable (C := C) (Concrete.chainWalk parameter lay e l start steps value)) _)
-  let y ← walk 0 (j.val + 1) x
-  let x' ← worldRoles.adversary (B parameter guess y)
-  pure (decide ((← walk j.val (chainLength - 1 - j.val) x') = (← walk 0 (chainLength - 1) x)))
-
-def sprAdvantage (B : SprAdversary C) : ℝ := accepts prims (sprGame B)
-
-/-- `Adv` of collision resistance of the fixed `Th`, which gives two different inputs that the MPC
-evaluates, namely chain steps or commitments, with one truncated output. -/
-abbrev CollisionAdversary (C : Committee) := OracleComp (LocalSpec C) (HashInput × HashInput)
-
-def collisionGame (B : CollisionAdversary C) : OracleComp (WorldSpec C) Bool := do
-  let (a, b) ← worldRoles.adversary B
-  let ha ← free (liftComp (hashQuery (C := C) (.hash a)) _)
-  let hb ← free (liftComp (hashQuery (C := C) (.hash b)) _)
-  pure (decide (a ≠ b ∧ MpcInput a ∧ MpcInput b ∧ truncateHash ha = truncateHash hb))
-
-def collisionAdvantage (B : CollisionAdversary C) : ℝ := accepts prims (collisionGame B)
 
 end ThresholdLeanXmss

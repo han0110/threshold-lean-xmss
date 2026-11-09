@@ -1,28 +1,30 @@
 # The Threshold leanXMSS proof
 
-The target is `ThresholdLeanXmssSecurityStatement` in `ThresholdLeanXmss/Statement.lean`. It gives sixteen claims about the protocol of `ThresholdLeanXmss/Scheme.lean`, for every setting whose circuits compute `Th`.
+The target is `ThresholdLeanXmssSecurityStatement` in `ThresholdLeanXmss/Statement.lean`. It gives eighteen claims about the protocol of `ThresholdLeanXmss/Scheme.lean`, for every setting.
 
 No proof is written yet. Every step of the plan below is open, and every proof in `formal/` is a `sorry`.
 
 ## Reading order
 
-1. Read `ThresholdLeanXmss/Statement.lean` first. It is the only file that a human reviews.
-2. Read `ThresholdLeanXmss/Ideal.lean` for the functionalities and the games that the claims use.
-3. Read `ThresholdLeanXmss/Reductions.lean` for the simulators and the reductions that the claims name.
-4. Read `ThresholdLeanXmss/Scheme.lean` for the protocol and the execution model.
+1. Read `ThresholdLeanXmss/Statement.lean` first. It holds the counted world, the notions of secure computation, the games and the claims.
+2. Read `ThresholdLeanXmss/Reductions.lean` for the simulators and the reductions that the claims name.
+3. Read `ThresholdLeanXmss/Ideal.lean` for the functionalities and the oracles of the games.
+4. Read `ThresholdLeanXmss/Scheme.lean` for the protocol, the oracles of the world and the network.
+
+The review boundary is `Statement.lean` and the definitions that it names in the other three files. The simulators and the reductions use the network and the oracles of the games, so these stay before `Reductions.lean` in the import chain. A bound with the advantage of a reduction is only as strong as that reduction, so `Reductions.lean` is in the boundary.
 
 ## Files
 
 Each file in this list imports the file before it.
 
-* `ThresholdLeanXmss/Scheme.lean` holds the operator programs, the oracle world with its counted calls, and the execution model.
-* `ThresholdLeanXmss/Ideal.lean` holds the functionalities of GS20, the trusted dealer, and the games of PRAWNS and of the primitives.
-* `ThresholdLeanXmss/Reductions.lean` holds `keygenSimulator`, `treeSimulator`, `prgReduction` and the three reductions of PRAWNS, Theorem 3.1.
-* `ThresholdLeanXmss/Statement.lean` holds the error terms, the valid inputs and the claims as named `Prop` definitions.
+* `ThresholdLeanXmss/Scheme.lean` holds the operator programs, the oracles of the world, the network and the honest runs.
+* `ThresholdLeanXmss/Ideal.lean` holds the functionalities of GS20, the trusted dealer, the oracles of the games of PRAWNS and the adversaries of the games of the primitives.
+* `ThresholdLeanXmss/Reductions.lean` holds `keygenSimulator`, `treeSimulator`, and `prgReduction`.
+* `ThresholdLeanXmss/Statement.lean` holds the counted world, the notions of secure computation, the games, the error terms, the valid inputs and the claims as named `Prop` definitions.
 * `ThresholdLeanXmssSecurity/Proof/Lemmas.lean` holds the intermediate results of the papers, each named after its source.
-* `ThresholdLeanXmssSecurity.lean` states the main theorem `thresholdLeanXmss_security`.
+* `ThresholdLeanXmssSecurity.lean` states the main theorem `thresholdLeanXmss_security` and its axiom guard.
 
-The execution model defines `SecurelyComputes`, `SimulatedBy` and `Completes`. Every claim except the four signing claims uses one of them.
+`Statement.lean` defines `SecurelyComputes`, `SimulatedBy` and `Completes`. Every claim of the keygen, the ceremonies and the gadgets except `DealerTreeStatement` and `TreeSuccessStatement` uses one of them.
 
 ## Claims
 
@@ -34,6 +36,8 @@ The table of `Statement.lean` gives each statement in one sentence.
 | `KeygenSecurityStatement` | GL05 and CDG+18 |
 | `TreeCompletenessStatement` | GS20, Theorem 2, honest run |
 | `TreeSecurityStatement` | GS20, Theorem 2, and GL05 |
+| `DealerTreeStatement` | PRAWNS, Section 3.1, and `doc/dkg.md` 3.1 |
+| `TreeSuccessStatement` | PRAWNS, Section 3.1, honest run |
 | `CoinStatement` | GS20, Lemma 3 |
 | `CoinCompletenessStatement` | GS20, Protocol 6, honest run |
 | `MultStatement` | GS20, Lemma 4 |
@@ -45,7 +49,7 @@ The table of `Statement.lean` gives each statement in one sentence.
 | `TprfCorrectnessStatement` | PRAWNS, Definition 2.1 |
 | `TprfSecurityStatement` | PRAWNS, Definition 2.2 and Theorem 5.1 |
 | `SigningCorrectnessStatement` | PRAWNS, Section 3.1, honest run |
-| `SigningSecurityStatement` | PRAWNS, Definition 3.2 and Theorem 3.1 |
+| `SigningSecurityStatement` | PRAWNS, Definition 3.2, in the random-oracle model |
 
 ## Proof plan
 
@@ -95,12 +99,16 @@ Every plan in this section is open. The lemmas that a plan names are in `Thresho
 
 `MainCompletenessStatement` follows from the honest run of a batch, with `cdi05_mulRep_correct` for each AND gate.
 
-`TreeCompletenessStatement` follows from the honest run of a ceremony with the real gadgets, batch by batch, in the steps of `MainCompletenessStatement` and `MultVerifyCompletenessStatement`. `CircuitsCompute` makes the outputs those of `Th`. `treeAbortError` bounds the aborts, with one birthday term over the coin keys of all batches.
+`TreeCompletenessStatement` follows from the honest run of a ceremony with the real gadgets, batch by batch, in the steps of `MainCompletenessStatement` and `MultVerifyCompletenessStatement`. `treeAbortError` bounds the aborts, with one birthday term over the coin keys of all batches.
+
+`DealerTreeStatement` follows job by job. `CircuitsCompute` makes each circuit give `referenceJob`. The chain steps and the commitments of `referenceJob` are inputs of the fixed `Th`, so they leave the cache unchanged. The two runs make the same PRF calls in the same order when `batchSize > 0`.
+
+`TreeSuccessStatement` follows from `DealerTreeStatement` and the honest run of `KeyGen`. The check of the top root passes, because the chain values of the top signature walk to the chain ends of the top tree. The randomizer search fails with probability `searchFailure`, as in `SigningCorrectnessStatement`.
 
 `TreeSecurityStatement` follows from a sequence of hybrids from the real ceremony to the run of `treeSimulator`.
 
 1. The PRSS outputs of one round play `F_rand` (CDI05).
-2. `prgReduction` replaces the streams under hidden keys with ideal streams, at the cost of the AES term.
+2. `prgReduction` replaces the streams under hidden keys with ideal streams, at the cost of its multi-key PRF advantage against `hiddenStreams`.
 3. `streamKeyError` bounds a collision of two 128-bit AES keys.
 4. `MultVerifyStatement` for each batch gives the term `treeCheckError`.
 5. `MainStatement` for each batch replaces the batch with `F_main`.
@@ -120,17 +128,18 @@ Every plan in this section is open. The lemmas that a plan names are in `Thresho
 
 `SigningCorrectnessStatement` follows from the honest run of `KeyGen` and of the signing. Each of the two randomizer searches fails with probability `searchFailure`, and `TprfCorrectnessStatement` makes every output verify.
 
-`SigningSecurityStatement` follows PRAWNS, Theorem 3.1, through its games.
+`SigningSecurityStatement` follows the proof of leanVM (`formal/lean_xmss/PROOF.md`). The hidden keys play the seed of leanVM. The game does not reduce to `LeanXmssSecurityStatement` itself, because the forger also sees the top chain ends, the bottom trees, `c_e`, `ρ_e` before round 2 and the parts below the threshold.
 
-1. Game 1 removes a collision `E_1`, with `collisionReduction` for `Th` and `treeCollisionError` for the random oracle.
-2. Game 2 guesses the target layer, key, chain and position, at the cost of the factor `guessCount`.
-3. `prawns_cover_free` gives a chain whose forged position lies below the signed position.
-4. `tprfReduction` bounds the step to Game 3, which answers the positions below the target from `OChallenge`.
-5. `sprReduction` turns the forged chain value into an iterated SPR break.
+1. Hidden keys. At most `t - 1` corrupt operators leave one term seed and the keys of the honest pairs hidden. A call on a hidden key costs `seedHitError`, and two equal keys cost `seedCollisionError`. Without these events, each `F(x)` is a fresh uniform value until `signersAt` reaches `t`, by the lazy-sampling argument of the proof of PRAWNS, Theorem 5.1. This covers `ρ_e` before round 1, the chain starts, the masks and the parts below the threshold.
+2. Positions. Every input of `Th` has a position, by `hashDomainFields_injective` of leanVM. A leaf or a node position has one honest input. A digest position has one selected honest input, by `breaksOneMessagePerKey`, and the other trials of its search give no codeword.
+3. Opened randomizer. An honest signer that accepts `ρ' ≠ ρ_e` with `Th(P, A_rnd(e, 1), ρ' ‖ 0) = c_e` is a hit on the output `c_e`. Otherwise every honest signer of key `e` uses `ρ_e` and one codeword. This is a proof obligation.
+4. Bad events. A win implies a bad event at a call of the forger or of the verification, by the descent of leanVM over two layers. A hit gives an honest output from another input. A guess queries a hidden honest input, namely a chain value below the opened position. A partner meets the output that a later search selects.
+5. Costs. A hit and a guess cost `2^-128` for each call. A partner costs `2^-128` for each digest call, as the codeword probability `p` of the earlier output times `1 / #C` for the selected output. A bound of `2^-128` for each pair alone is false, which a counterexample in the scratch proofs (`selectTwo_digest_gt_single`) shows. Round 1 opens `ρ_e` before the search, so the lemma of leanVM with a hidden `R_0` does not apply as it is.
+6. Sum. Two units for each call give `signingHashError q`. The calls of `KeyGen` count in `q` and are never bad, so they pay the lower-order terms.
 
 ## The axiom guard
 
-The main theorem still depends on `sorryAx`, so the root file has no axiom guard yet. When no `sorry` remains, `ThresholdLeanXmssSecurity.lean` gets the guard of leanVM.
+`ThresholdLeanXmssSecurity.lean` has the axiom guard, with the current footprint. The main theorem still depends on `sorryAx`, so the footprint is `propext`, `sorryAx`, `Classical.choice` and `Quot.sound`. When no `sorry` remains, the guard changes to this form.
 
 ```lean
 /-- info: 'ThresholdLeanXmssSecurity.thresholdLeanXmss_security' depends on axioms: [propext, Classical.choice, Quot.sound] -/

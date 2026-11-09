@@ -14,7 +14,7 @@ proofs of `ThresholdLeanXmss/Statement.lean` combine them as follows.
   `E \ {0, 1}`, so a step with at most two bad challenges fails with probability at most
   `2 / (|E| - 2)`.
 * The outputs open as in MPClan, App. B. The keygen adds the extraction and programming of CDG+18.
-* The signing follows PRAWNS, Theorem 3.1, with Theorem 5.1 and Lemma 5.2 for the threshold PRF.
+* The signing follows the proof of leanVM, with the hidden keys in place of its seed (`PROOF.md`).
 -/
 
 open OracleComp OracleSpec LeanXmss ENNReal Finset

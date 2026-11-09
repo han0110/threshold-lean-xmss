@@ -11,17 +11,20 @@ import VCVio.EvalDist.TVDist
 # Threshold leanXMSS
 
 The key generation of `doc/dkg.md` and the signing of `doc/sign.md`, as programs of one operator, at
-the level of GS20 and PRAWNS. The end of the file holds the execution model, the programs in the
-hybrid models of GS20, and the honest runs that the claims compare.
+the level of GS20 and PRAWNS. The end of the file holds the oracles of the world, the execution
+model, the programs in the hybrid models of GS20, and the honest runs that the claims compare.
+`Statement.lean` holds the counted world and the notions of secure computation.
 
 * An operator program is an `OracleComp` with private sampling, the oracle `H` and one query
   `exchange` for each synchronous round. A program that returns `none` aborts.
 * A program in a hybrid model also has a query `call` to the functionality (GS20, Section 3.1).
 * Each use of `H` has its own domain. The implementation separates the uses by tags and lengths, so
   its inputs map to these domains one to one (BR93).
-* The domain `hash` is the tweakable hash `Th` of leanXMSS. On the inputs that the MPC evaluates,
-  namely a chain step and the commitment `c_e`, it is one fixed function. Every other input of `Th`,
-  namely a leaf, a node and a message digest, and every other domain are a random oracle.
+* The domain `hash` is the tweakable hash `Th` of leanXMSS. In the claims of the key generation, it
+  is one fixed function on the inputs that the MPC evaluates, namely a chain step and the commitment
+  `c_e`. Every other input of `Th`, namely a leaf, a node and a message digest, and every other
+  domain are a random oracle. In the signing claim, every input of `H` is a random oracle
+  (`signingLocalAnswer`).
 * `PRG(key, ρ, idx)` is AES-128 under `H(key)` truncated to 128 bits, as in the implementation.
 * Messages carry values, not bytes. Every encoding of the implementation is injective, so it does
   not change a view.
@@ -117,7 +120,8 @@ structure Constants (C : Committee) (E : Type) [Field E] [Algebra Bit E] where
   owner_held : ∀ T, owner T ∈ C.holders T
   /-- The term that holds the public part `c` of a replicated sharing. -/
   publicTerm : C.Term
-  /-- `x^q`, the weight of bit `q` of a word in the check. -/
+  /-- The weight of bit `q` of a word in the check. The implementation uses `x^q`, and the claims
+  need only linear independence over `F_2`. -/
   weight : Fin (2 ^ wordBits) → E
   weight_independent : LinearIndependent Bit weight
   /-- The bits of an element of `E`. -/
@@ -1316,47 +1320,18 @@ def prgAnswer : QueryImpl (PrgInput C →ₒ Bit) (StateT (HashCache C) ProbComp
 def localAnswer : QueryImpl (LocalSpec C) (StateT (HashCache C) ProbComp) :=
   unifFwdImpl (Query C →ₒ HashOutput) + (hashAnswer (C := C) prims + prgAnswer (C := C) prims)
 
-/-- The programmable random oracle sets `H` only at a random-oracle input that no one queried, and
-tells whether it did (CDG+18). -/
+/-- Private sampling, `H` and `PRG` in the signing claim. Every input of `H`, `Th` included, is a lazy
+random oracle. -/
+def signingLocalAnswer : QueryImpl (LocalSpec C) (StateT (HashCache C) ProbComp) :=
+  unifFwdImpl (Query C →ₒ HashOutput) + ((Query C →ₒ HashOutput).randomOracle + prgAnswer (C := C) prims)
+
+/-- The local programmable random oracle sets `H` only at a random-oracle input that no one queried,
+and tells whether it did (CDG+18). -/
 def programAnswer (x : Query C × HashOutput) : StateT (HashCache C) ProbComp Bool := do
   let cache ← get
   if (∃ input, x.1 = .hash input ∧ MpcInput input) ∨ (cache x.1).isSome then pure false else do
     set (cache.cacheQuery x.1 x.2)
     pure true
-
-/-- The world. Both copies share one cache. Each call of a random-oracle domain of `H`, each call of
-`PRG` and each programming query on the counted copy costs one query. The fixed part of `Th` costs
-nothing. -/
-def world : QueryImpl (WorldSpec C) (AddWriterT ℕ (StateT (HashCache C) ProbComp)) :=
-  QueryImpl.withAddCost (localAnswer (C := C) prims + programAnswer (C := C) + localAnswer (C := C) prims :
-      QueryImpl (WorldSpec C) (StateT (HashCache C) ProbComp))
-    fun | .inl (.inl (.inl _)) => 0 | .inl (.inl (.inr (.inl (.hash input)))) => if MpcInput input then 0 else 1
-        | .inl _ => 1 | .inr _ => 0
-
-/-- The world that counts every call of `Th` on a leaf, a node or a message digest, on both copies. -/
-def treeWorld : QueryImpl (WorldSpec C) (AddWriterT ℕ (StateT (HashCache C) ProbComp)) :=
-  QueryImpl.withAddCost (localAnswer (C := C) prims + programAnswer (C := C) + localAnswer (C := C) prims :
-      QueryImpl (WorldSpec C) (StateT (HashCache C) ProbComp))
-    fun | .inl (.inl (.inr (.inl (.hash input)))) => if MpcInput input then 0 else 1
-        | .inr (.inr (.inl (.hash input))) => if MpcInput input then 0 else 1
-        | _ => 0
-
-/-- Run a computation in the world from an empty cache, with its number of counted queries. -/
-def runWorld {α : Type} (oa : OracleComp (WorldSpec C) α) : ProbComp (α × ℕ) :=
-  (simulateQ (world prims) oa).run.run' ∅
-
-/-- Every execution makes at most `q` counted queries. In an ideal run these are the calls of the
-simulator, which runs the adversary, its programming queries, and the calls of the distinguisher. -/
-def HasHashQueryBound {α : Type} (run : ProbComp (α × ℕ)) (q : ℕ) : Prop :=
-  ∀ r ∈ support run, r.2 ≤ q
-
-/-- Every execution makes at most `N` calls of `Th` on a leaf, a node or a message digest, by every
-party. -/
-def HasTreeCallBound {α : Type} (oa : OracleComp (WorldSpec C) α) (N : ℕ) : Prop :=
-  ∀ r ∈ support ((simulateQ (treeWorld prims) oa).run.run' ∅), r.2 ≤ N
-
-/-- The probability that a computation outputs `true`. -/
-def accepts (oa : OracleComp (WorldSpec C) Bool) : ℝ := (Pr[fun r => r.1 = true | runWorld prims oa]).toReal
 
 /-! ## The network -/
 
@@ -1499,113 +1474,6 @@ structure Simulator {κ : Type} (S : OracleSpec κ) (I L R σ : Type) where
   answer : State → L → OracleComp S (State × R)
   output : State → OracleComp S σ
 
-/-- The calls of a local computation that the budget counts, namely the random-oracle inputs of `H`
-and `PRG`. -/
-def Counted : (LocalSpec C).Domain → Prop
-  | .inr (.inl (.hash input)) => ¬ MpcInput input
-  | .inr _ => True
-  | .inl _ => False
-
-/-- A distinguisher reads the joint output of the adversary and the honest operators, with oracle
-access (GL05 and Canetti 2000). -/
-abbrev Distinguisher (C : Committee) (σ O : Type) := σ × (C.Party → Option O) → OracleComp (LocalSpec C) Bool
-
-/-- A `q`-query adversary with its distinguisher, in the sense of BR93. For every answer of the
-oracles, the start makes at most `start` counted calls, each round and each reply at most `step`, and
-the distinguisher at most `final`, and a run of `fuel` steps stays within `q`. A step runs one round
-or one functionality, and each functionality of the model leaks once. -/
-def IsQueryBounded {I L R O : Type} (A : Adversary C E I L R) (Z : Distinguisher C A.State O) (fuel q : ℕ) : Prop :=
-  ∃ start step final : ℕ, start + fuel * step + final ≤ q ∧
-    (∀ x z, IsQueryBoundP (A.start x z) Counted start) ∧
-    (∀ state sent, IsQueryBoundP (A.round state sent) Counted step) ∧
-    (∀ state l, IsQueryBoundP (A.answer state l) Counted step) ∧
-    (∀ r, IsQueryBoundP (Z r) Counted final)
-
-/-- The real execution of a protocol in the hybrid model of `Fh`, on the inputs `x` and the auxiliary
-input `z`. -/
-def realExecution {I O Ih Oh Lh Rh : Type} (D : C.Coalition) (A : Adversary C E I Lh Rh)
-    (Fh : Functionality C Ih Oh Lh Rh) (fuel : ℕ) (program : C.Party → I → PartyM C E (CallSpec Ih Oh) O)
-    (x : C.Party → I) (z : Aux) : OracleComp (WorldSpec C) (A.State × (C.Party → Option O)) := do
-  let state ← worldRoles.adversary (A.start (corruptInputs D x) z)
-  executePhase worldRoles D A Fh fuel state fun i => program i (x i)
-
-/-- The ideal execution of `F` with the simulator `Sim`. The functionality runs on the free copy. -/
-def idealExecution {κ : Type} {S : OracleSpec κ} {I O L R σ : Type}
-    (lift : ∀ {β : Type}, OracleComp S β → OracleComp (WorldSpec C) β) (D : C.Coalition)
-    (F : Functionality C I O L R) (Sim : Simulator (C := C) S I L R σ) (x : C.Party → I) (z : Aux) :
-    OracleComp (WorldSpec C) (σ × (C.Party → Option O)) := do
-  let state ← lift (Sim.start (corruptInputs D x) z)
-  let impl : QueryImpl (LocalSpec C + (L →ₒ R)) (StateT Sim.State (OracleComp (WorldSpec C))) :=
-    (fun (t : (LocalSpec C).Domain) =>
-      (StateT.lift (free (C := C) (OracleComp.lift (OracleSpec.query t))) : StateT Sim.State _ _)) +
-    (fun (l : L) => (StateT.mk fun st => do
-      let (st, r) ← lift (Sim.answer st l)
-      pure (r, st) : StateT Sim.State (OracleComp (WorldSpec C)) R))
-  let (outputs, state) ← (simulateQ impl (F.run D fun i => if i ∈ D.1 then none else some (x i))).run state
-  pure (← lift (Sim.output state), outputs)
-
-/-- An execution followed by the distinguisher on the counted copy. -/
-def distinguish {σ O : Type} (oa : OracleComp (WorldSpec C) (σ × (C.Party → Option O)))
-    (Z : Distinguisher C σ O) : OracleComp (WorldSpec C) Bool :=
-  oa >>= fun r => worldRoles.adversary (Z r)
-
-/-- The protocol `program` in the `Fh`-hybrid model securely computes `F` on the valid inputs
-(Canetti 2000, GS20). For each coalition and adversary there is a simulator without programming, and
-all its calls are counted. It is fixed before the inputs, the auxiliary input, the distinguisher and
-the budget, and it sees only the corrupt inputs, the auxiliary input and the leaks of `F`. For a
-`q`-query adversary and distinguisher, the ideal run makes at most `q + overhead` counted queries,
-and the error is `ε q`. -/
-def SecurelyComputes {I O L R Ih Oh Lh Rh : Type} (program : C.Party → I → PartyM C E (CallSpec Ih Oh) O)
-    (fuel : ℕ) (Fh : Functionality C Ih Oh Lh Rh) (F : Functionality C I O L R)
-    (valid : C.Coalition → (C.Party → I) → Prop) (overhead : ℕ) (ε : ℕ → ℝ) : Prop :=
-  ∀ (D : C.Coalition) (A : Adversary C E I Lh Rh), ∃ S : Simulator (C := C) (LocalSpec C) I L R A.State,
-    ∀ (x : C.Party → I) (z : Aux) (Z : Distinguisher C A.State O) (q : ℕ), valid D x →
-      IsQueryBounded A Z fuel q →
-      HasHashQueryBound (runWorld prims (distinguish (idealExecution worldRoles.adversary D F S x z) Z))
-          (q + overhead) ∧
-        |accepts prims (distinguish (realExecution D A Fh fuel program x z) Z) -
-          accepts prims (distinguish (idealExecution worldRoles.adversary D F S x z) Z)| ≤ ε q
-
-/-- The protocol `program` on the real network securely computes `F` on the valid inputs with the
-explicit simulator `Sim D A`. It is fixed code that runs the adversary on the counted copy, emulates
-the honest operators on the free copy as the real operators do, and may program `H`. For a `q`-query adversary and distinguisher, the
-ideal run makes at most `q + overhead` counted queries, and the error is `ε D A x z Z q`. -/
-def SimulatedBy {I O L R : Type} (program : C.Party → I → PartyM C E RealSpec O) (fuel : ℕ)
-    (F : Functionality C I O L R) (valid : C.Coalition → (C.Party → I) → Prop)
-    (Sim : (D : C.Coalition) → (A : Adversary C E I PEmpty PEmpty) → Simulator (C := C) (WorldSpec C) I L R A.State)
-    (overhead : ℕ)
-    (ε : (D : C.Coalition) → (A : Adversary C E I PEmpty PEmpty) → (C.Party → I) → Aux →
-      Distinguisher C A.State O → ℕ → ℝ) : Prop :=
-  ∀ (D : C.Coalition) (A : Adversary C E I PEmpty PEmpty) (x : C.Party → I) (z : Aux)
-    (Z : Distinguisher C A.State O) (q : ℕ), valid D x →
-    IsQueryBounded A Z fuel q →
-    HasHashQueryBound (runWorld prims (distinguish (idealExecution (fun oa => oa) D F (Sim D A) x z) Z))
-        (q + overhead) ∧
-      |accepts prims (distinguish (realExecution D A noFunctionality fuel program x z) Z) -
-        accepts prims (distinguish (idealExecution (fun oa => oa) D F (Sim D A) x z) Z)| ≤ ε D A x z Z q
-
-def noCoalition : C.Coalition := ⟨∅, by simp⟩
-
-/-- The adversary of an honest run. It controls no operator and replies `reply` to each leak. -/
-def honestAdversary {I L R : Type} (reply : L → R) : Adversary C E I L R :=
-  ⟨Unit, fun _ _ => pure (), fun _ _ => pure ((), fun _ _ => none), fun _ l => pure ((), reply l)⟩
-
-/-- The simulator of an honest run, which replies `reply` to each leak. -/
-def honestSimulator {κ : Type} {S : OracleSpec κ} {I L R : Type} (reply : L → R) :
-    Simulator (C := C) S I L R Unit :=
-  ⟨Unit, fun _ _ => pure (), fun _ l => pure ((), reply l), fun _ => pure ()⟩
-
-/-- An honest run of `program` in the `Fh`-hybrid model gives the outputs of `F` on the valid inputs,
-up to `ε` in statistical distance. Each functionality gets the reply of an honest adversary. -/
-def Completes {I O L R Ih Oh Lh Rh : Type} (program : C.Party → I → PartyM C E (CallSpec Ih Oh) O)
-    (fuel : ℕ) (Fh : Functionality C Ih Oh Lh Rh) (replyH : Lh → Rh) (F : Functionality C I O L R)
-    (reply : L → R) (valid : C.Coalition → (C.Party → I) → Prop) (ε : ℝ) : Prop :=
-  ∀ x : C.Party → I, valid noCoalition x →
-    tvDist ((fun r => r.1.2) <$> runWorld prims
-        (realExecution noCoalition (honestAdversary replyH) Fh fuel program x []))
-      ((fun r => r.1.2) <$> runWorld prims
-        (idealExecution (fun oa => oa) noCoalition F (honestSimulator reply) x [])) ≤ ε
-
 /-! ## Programs in the hybrid models of GS20 -/
 
 section Hybrid
@@ -1619,12 +1487,19 @@ def coinProtocol (i : C.Party) (count : ℕ) : PartyM C E (CallSpec ℕ (PrssOut
   let some randomness ← call count | failure
   (coinWith K (localContext i) randomness count).run' startRun
 
+/-- The steps of `Coin`, one call of `F_rand` and one round. -/
+def coinRounds : ℕ := 2
+
 /-- `MulRep` and `Reshare` in `mode` in the `F_rand`-hybrid model (GS20, Protocol 8). -/
 def multProtocol (mode : ReshareMode) (i : C.Party) (input : Shares C Bit × Shares C Bit × ℕ) :
     PartyM C E (CallSpec ℕ (PrssOutput C Bit)) (Shares C Bit) := do
   let (x, y, count) := input
   let some randomness ← call count | failure
   (reshareWith K (localContext i) mode randomness (mulRep K (localContext i) x y) count).run' startRun
+
+/-- The steps of `MulRep` and `Reshare` in `mode`, one call of `F_rand` and the rounds of the
+reshare. -/
+def multRounds (mode : ReshareMode) : ℕ := 1 + mode.rounds
 
 /-- `MulRep` or `MulSh` and `Reshare` in the `F_rand`-hybrid model (GS20, Protocol 10). -/
 def extendMultProtocol (i : C.Party) (products : List (Product C E)) :
@@ -1634,6 +1509,9 @@ def extendMultProtocol (i : C.Party) (products : List (Product C E)) :
   (reshare K ctx (elementCodec K) randomness
     (fun g => match products[g]? with | some p => productShare K ctx p | none => 0)
     products.length).run' startRun
+
+/-- The steps of `MulRep` or `MulSh` and `Reshare`, one call of `F_rand` and one round. -/
+def extendMultRounds : ℕ := 2
 
 /-- The functionalities of the check, namely `F_coin`, `F_extendMult`, and `F_rand` over `E` and over
 bits. -/
@@ -1670,6 +1548,9 @@ def filledHistory (i : C.Party) (tuples : List (Tuple C)) (T : C.Term) : List Bi
 def checkProtocol (i : C.Party) (tuples : List (Tuple C)) : PartyM C E (CheckSpec C E) Unit :=
   (check K (localContext i) (hybridCheckGadgets K i) tuples).run' ⟨filledHistory K i tuples, 0, 0⟩
 
+/-- The steps of the check of `count` tuple bits. -/
+def checkRounds (count : ℕ) : ℕ := 2 * halvings count + 8
+
 /-- The functionalities of a run, namely `F_mult` of the AND gates, `F_mult` in peer mode for
 `Rerand`, and `F_multVerify`. -/
 abbrev MainSpec (C : Committee) :=
@@ -1693,6 +1574,10 @@ def hybridRunGadgets (mode : ReshareMode) (i : C.Party) : RunGadgets C E (MainSp
 def mainProtocol (mode : ReshareMode) (jobs : List Circuit) (i : C.Party) (inputs : List (C.Term → List Bit)) :
     PartyM C E (MainSpec C) (List (List Bit)) :=
   (runJobs K (hybridRunGadgets K mode i) jobs inputs).run' startRun
+
+/-- The steps of a run of `jobs`, one call of `F_mult` for each AND layer and for `Rerand`, one call
+of `F_multVerify` and one round for `OpenRep`. -/
+def mainRounds (jobs : List Circuit) : ℕ := depth jobs + 3
 
 end Hybrid
 
@@ -1758,7 +1643,7 @@ def dealtWith (lift : ∀ {β : Type}, OracleComp (RoSpec C) β → m β) (param
 
 /-- `KeyGen` with the local oracles in `m`. It is `none` if a randomizer search of a top signature
 fails. -/
-def keyGenWith (sample : ∀ {β : Type}, ProbComp β → m β) (lift : ∀ {β : Type}, OracleComp (RoSpec C) β → m β) :
+def dealerKeyGenWith (sample : ∀ {β : Type}, ProbComp β → m β) (lift : ∀ {β : Type}, OracleComp (RoSpec C) β → m β) :
     m (Option (Dealt C m)) := do
   let (parameter, seeds, keys) ← sample prawnsKeyGen
   let value := fun x => lift (prfValue seeds x)
@@ -1784,8 +1669,8 @@ def honestSignature (lift : ∀ {β : Type}, OracleComp (RoSpec C) β → m β) 
 end Dealer
 
 /-- `KeyGen` on the free copy. -/
-def keyGen : OracleComp (WorldSpec C) (Option (Dealt C (OracleComp (WorldSpec C)))) :=
-  keyGenWith (fun oa => free (liftComp oa _)) (fun oa => free (liftComp oa _))
+def dealerKeyGen : OracleComp (WorldSpec C) (Option (Dealt C (OracleComp (WorldSpec C)))) :=
+  dealerKeyGenWith (fun oa => free (liftComp oa _)) (fun oa => free (liftComp oa _))
 
 /-- `Combine'` of the parts of a quorum and `F(msk, x)` under `KeyGen'`. -/
 def tprfCorrectnessRun (J : C.Quorum) (x : Point) (ec : Message) : OracleComp (WorldSpec C) Bool := free do
@@ -1797,7 +1682,7 @@ def tprfCorrectnessRun (J : C.Quorum) (x : Point) (ec : Message) : OracleComp (W
 /-- An honest quorum signs `m` at key `e` with `KeyGen`. The result is `none` if `KeyGen` or a
 randomizer search fails, and otherwise tells whether the signature verifies. -/
 def honestSigning (J : C.Quorum) (e : KeyIndex) (message : Message) : OracleComp (WorldSpec C) (Option Bool) := do
-  let some dealt ← keyGen | pure none
+  let some dealt ← dealerKeyGen | pure none
   let lift : ∀ {β : Type}, OracleComp (RoSpec C) β → OracleComp (WorldSpec C) β := fun oa => free (liftComp oa _)
   let some tree ← dealt.bottom (treeOf e) | pure none
   let parts ← Concrete.sequenceFin fun i => if i ∈ J.1 then dealt.part i J (.randomizer bottomLayer e) message else pure 0
