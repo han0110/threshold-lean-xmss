@@ -95,7 +95,7 @@ Every plan in this section is open. The lemmas that a plan names are in `Thresho
 
 `MainCompletenessStatement` follows from the honest run of a batch, with `cdi05_mulRep_correct` for each AND gate.
 
-`TreeCompletenessStatement` composes `MainCompletenessStatement` and `MultVerifyCompletenessStatement` over the batches of a ceremony. `CircuitsCompute` makes the outputs those of `Th`, and `treeAbortError` bounds the aborts.
+`TreeCompletenessStatement` follows from the honest run of a ceremony with the real gadgets, batch by batch, in the steps of `MainCompletenessStatement` and `MultVerifyCompletenessStatement`. `CircuitsCompute` makes the outputs those of `Th`. `treeAbortError` bounds the aborts, with one birthday term over the coin keys of all batches.
 
 `TreeSecurityStatement` follows from a sequence of hybrids from the real ceremony to the run of `treeSimulator`.
 

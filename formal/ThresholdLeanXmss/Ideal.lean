@@ -95,23 +95,24 @@ additive shares `share i` of the honest operators from their own views, plus the
 `d`, which also absorbs the shares of the corrupt operators (KPPS23, CGH+18). The adversary chooses
 the terms that a corrupt operator holds. A corrupt operator that fills a term at a position gives
 each honest holder its own copy by `offset`. Each honest operator gets only its held terms at the
-`count` positions, and zero elsewhere. -/
+`count` positions, and zero elsewhere. The adversary names the honest receivers, and the others abort
+(GL05). -/
 def Fmult {In Lk : Type} [Inhabited In] [Field R] [SampleableType R] (count : In → ℕ)
     (filled : In → C.Term → ℕ → Option C.Party) (share : C.Party → In → ℕ → R)
     (view : Finset C.Party → (C.Party → Option In) → Lk) :
-    Functionality C In (Shares C R) Lk ((ℕ → R) × Shares C R × (C.Party → Shares C R)) where
+    Functionality C In (Shares C R) Lk ((ℕ → R) × Shares C R × (C.Party → Shares C R) × Finset C.Party) where
   run coalition inputs := do
     let D := coalition.1
     let input := firstInput inputs
     let width := count input
-    let (d, known, offset) ← leak (view D inputs)
+    let (d, known, offset, receivers) ← leak (view D inputs)
     let fresh ← sample (C.Term → Fin width → R)
     let base : Shares C R := fun T g =>
       if KnownTo D T then known T g else if h : g < width then fresh T ⟨g, h⟩ else 0
     let product := fun g => ∑ i ∈ Finset.univ.filter (· ∉ D), ((inputs i).map fun x => share i x g).getD 0
     let z : Shares C R := fun T g => if lackedTerm D = some T then
       product g + d g - ∑ T' ∈ Finset.univ.erase T, base T' g else base T g
-    pure fun i => if i ∈ D then none else
+    pure fun i => if i ∈ D ∨ i ∉ receivers then none else
       some fun T g => if i ∈ C.holders T ∧ g < width then
         z T g + (if ∃ j ∈ D, filled input T g = some j then offset i T g else 0) else 0
 
@@ -120,7 +121,7 @@ lengths of the real messages show, and the view of each honest operator of the t
 corrupt operators know. -/
 def FmultBit (K : Constants C E) (mode : ReshareMode) :
     Functionality C (Shares C Bit × Shares C Bit × ℕ) (Shares C Bit)
-      (ℕ × (C.Party → Option (Shares C Bit × Shares C Bit))) ((ℕ → Bit) × Shares C Bit × (C.Party → Shares C Bit)) :=
+      (ℕ × (C.Party → Option (Shares C Bit × Shares C Bit))) ((ℕ → Bit) × Shares C Bit × (C.Party → Shares C Bit) × Finset C.Party) :=
   Fmult (·.2.2) (fun _ => filler K mode) (fun i x => mulRep K (localContext i) x.1 x.2.1)
     (fun D inputs => ((firstInput inputs).2.2, fun i => if i ∈ D then none else
       (inputs i).map fun x => (knownView D x.2.2 x.1, knownView D x.2.2 x.2.1)))
@@ -150,7 +151,7 @@ def interpolate (K : Constants C E) (D : Finset C.Party) (share : C.Party → E)
 /-- `F_extendMult` (GS20, Functionality 9) for inner products. It leaks to each corrupt operator only
 its own shares, namely its Shamir shares and its known terms. -/
 def FextendMult [SampleableType E] (K : Constants C E) : Functionality C (List (Product C E)) (Shares C E)
-    (C.Party → List (Product C E)) ((ℕ → E) × Shares C E × (C.Party → Shares C E)) :=
+    (C.Party → List (Product C E)) ((ℕ → E) × Shares C E × (C.Party → Shares C E) × Finset C.Party) :=
   Fmult List.length (fun _ => filler K .peer)
     (fun i products g => match products[g]? with | some p => productShare K (localContext i) p | none => 0)
     (fun D inputs c =>
@@ -290,16 +291,16 @@ def randReply (R : Type) [Zero R] : Unit → Shares C R × (C.Party → C.Party 
 def checkFunctionalities [SampleableType E] (K : Constants C E) :
     Functionality C ((ℕ ⊕ List (Product C E)) ⊕ (ℕ ⊕ ℕ)) ((List E ⊕ Shares C E) ⊕ (PrssOutput C E ⊕ PrssOutput C Bit))
       ((List E ⊕ (C.Party → List (Product C E))) ⊕ (Unit ⊕ Unit))
-      ((Finset C.Party ⊕ ((ℕ → E) × Shares C E × (C.Party → Shares C E))) ⊕
+      ((Finset C.Party ⊕ ((ℕ → E) × Shares C E × (C.Party → Shares C E) × Finset C.Party)) ⊕
         ((Shares C E × (C.Party → C.Party → ℕ → E)) ⊕ (Shares C Bit × (C.Party → C.Party → ℕ → Bit)))) :=
   ((Fcoin (E := E)).sum (FextendMult K)).sum ((Frand E).sum (Frand Bit))
 
 /-- The reply of an honest adversary to the functionalities of the check. -/
 def checkReply : (List E ⊕ (C.Party → List (Product C E))) ⊕ (Unit ⊕ Unit) →
-    (Finset C.Party ⊕ ((ℕ → E) × Shares C E × (C.Party → Shares C E))) ⊕
+    (Finset C.Party ⊕ ((ℕ → E) × Shares C E × (C.Party → Shares C E) × Finset C.Party)) ⊕
       ((Shares C E × (C.Party → C.Party → ℕ → E)) ⊕ (Shares C Bit × (C.Party → C.Party → ℕ → Bit)))
   | .inl (.inl _) => .inl (.inl Finset.univ)
-  | .inl (.inr _) => .inl (.inr (0, 0, 0))
+  | .inl (.inr _) => .inl (.inr (0, 0, 0, Finset.univ))
   | .inr (.inl _) => .inr (.inl (0, 0))
   | .inr (.inr _) => .inr (.inr (0, 0))
 
@@ -312,10 +313,10 @@ def mainFunctionalities (K : Constants C E) (mode : ReshareMode) :=
 def mainReply : ((ℕ × (C.Party → Option (Shares C Bit × Shares C Bit))) ⊕
       (ℕ × (C.Party → Option (Shares C Bit × Shares C Bit)))) ⊕
       ((C.Party → Option (List (Tuple C))) × List (ℕ → Bit) × Bool) →
-    (((ℕ → Bit) × Shares C Bit × (C.Party → Shares C Bit)) ⊕ ((ℕ → Bit) × Shares C Bit × (C.Party → Shares C Bit))) ⊕
+    (((ℕ → Bit) × Shares C Bit × (C.Party → Shares C Bit) × Finset C.Party) ⊕ ((ℕ → Bit) × Shares C Bit × (C.Party → Shares C Bit) × Finset C.Party)) ⊕
       Finset C.Party
-  | .inl (.inl _) => .inl (.inl (0, 0, 0))
-  | .inl (.inr _) => .inl (.inr (0, 0, 0))
+  | .inl (.inl _) => .inl (.inl (0, 0, 0, Finset.univ))
+  | .inl (.inr _) => .inl (.inr (0, 0, 0, Finset.univ))
   | .inr _ => .inr Finset.univ
 
 /-! ## The PRF game of the streams -/

@@ -16,8 +16,8 @@ reductions that the claims name.
 | `TreeSecurityStatement` | Each ceremony securely computes `F_tree` with selective abort, with the simulator `treeSimulator`. | GS20, Theorem 2, and GL05 |
 | `CoinStatement` | `Coin` securely computes `F_coin` with selective abort in the `F_rand`-hybrid model. | GS20, Lemma 3 |
 | `CoinCompletenessStatement` | An honest `Coin` gives the output of `F_coin`. | GS20, Protocol 6, honest run |
-| `MultStatement` | `MulRep` and `Reshare` in each mode securely compute `F_mult` up to an additive attack. | GS20, Lemma 4 |
-| `ExtendMultStatement` | `MulRep` or `MulSh` and `Reshare` securely compute `F_extendMult` up to an additive attack. | GS20, Lemma 5 |
+| `MultStatement` | `MulRep` and `Reshare` in each mode securely compute `F_mult` up to an additive attack, with selective abort. | GS20, Lemma 4 |
+| `ExtendMultStatement` | `MulRep` or `MulSh` and `Reshare` securely compute `F_extendMult` up to an additive attack, with selective abort. | GS20, Lemma 5 |
 | `MultVerifyStatement` | The check with its digests securely computes `F_multVerify` with selective abort. | GS20, Lemmas 8 to 11, and CGH+18 |
 | `MultVerifyCompletenessStatement` | An honest check accepts correct tuples. | GS20, Protocol 17, honest run |
 | `MainStatement` | A batch securely computes `F_main` in the `{F_mult, F_multVerify}`-hybrid model. | GS20, Theorem 2, for public outputs and pre-shared inputs |
@@ -79,8 +79,9 @@ so each completeness claim is the honest run of the protocol of its row.
   copies. On other inputs of the gadget claims, the leak is larger than in GS20.
 * `F_main` also leaks these views. Its inputs agree at every holder, the corrupt holders included,
   as the keygen echo makes them, so it leaks only what GS20, Functionality 18, leaks.
-* Each operator aborts alone, so every functionality has selective abort. GS20 aborts all honest
-  operators together.
+* Each operator aborts alone, so every functionality except `F_rand` has selective abort, `F_mult`
+  and `F_extendMult` included. GS20 aborts all honest operators together.
+* `F_rand` has no abort, because the PRSS of CDI05 that realizes it sends no message.
 * The de-linearization weighs tuple `k` by a product of `d` coins in place of the powers of one coin
   of GS20, Protocol 13. The multilinear weights follow the prototype (`crates/rss/src/verify.rs`).
 * Bit `q` of a word of tuples has the public weight `x^q` in place of a coin (`src/check.rs`). This
@@ -142,13 +143,20 @@ def treeCheckError (tree : Tree) (q : ℕ) : ℝ :=
     (maxBatch circuits settings fun jobs => halvings (tupleCount jobs)) q
 
 /-- The probability that an honest check with `R` halving steps aborts. A slice coin is `0`, or one
-of the `R + 1` challenges finds no value outside `{0, 1}` within `challengeTries` values. -/
+of the `R + 1` challenges finds no value outside `{0, 1}` within `challengeTries` values, or two of
+the `R + 2` coin keys collide, which `(R + 2)² / 2` pairs bound. -/
 def abortErrorOf (R : ℕ) : ℝ :=
-  (sliceBits : ℝ) / Fintype.card E + (R + 1 : ℕ) * (2 / Fintype.card E : ℝ) ^ challengeTries
+  (sliceBits : ℝ) / Fintype.card E + (R + 1 : ℕ) * (2 / Fintype.card E : ℝ) ^ challengeTries +
+    ((R + 2) ^ 2 : ℕ) / 2 ^ 257
 
-/-- The probability that an honest check of some batch of a ceremony aborts. -/
+/-- The probability that an honest check of some batch of a ceremony aborts. Two of the `B (R + 2)`
+coin keys of all `B` batches can collide, because a later check reads the cached coins of an earlier
+batch. -/
 def treeAbortError (tree : Tree) : ℝ :=
-  treeBatches settings tree * abortErrorOf (E := E) (maxBatch circuits settings fun jobs => halvings (tupleCount jobs))
+  let batches := treeBatches settings tree
+  let halvingCount := maxBatch circuits settings fun jobs => halvings (tupleCount jobs)
+  batches * ((sliceBits : ℝ) / Fintype.card E + (halvingCount + 1 : ℕ) * (2 / Fintype.card E : ℝ) ^ challengeTries) +
+    ((batches * (halvingCount + 2)) ^ 2 : ℕ) / 2 ^ 257
 
 /-- The honest points of `H` in the keygen that a counted call must not hit, namely the parts of each
 operator, the derived keys, and the inputs of the hashes of the shared seeds. -/
@@ -166,16 +174,18 @@ def keygenOverhead (C : Committee) : ℕ := 1 + C.n.choose (C.t - 1) + C.n ^ 2
 /-- The honest points of `H` in a ceremony that a counted call must not hit. The PRSS setup has the
 parts of each operator, the derived keys and the inputs of the hashes of the shared keys. Each PRSS
 key has a stream-key input. Each batch has the history, the digest and the copy hash of each term,
-and the copies that a corrupt owner sends to each honest operator, which it hashes for free. -/
+the copies that a corrupt owner sends to each honest operator, which it hashes for free, and the
+`R + 2` coin keys of its check. -/
 def treeSecrets (C : Committee) (tree : Tree) : ℕ :=
   let terms := C.n.choose (C.t - 1)
   let pairs := C.n.choose 2
   C.n * (terms + C.n) + terms + pairs + C.n ^ 2 + (terms + pairs) +
-    treeBatches settings tree * (3 * terms + C.n * terms)
+    treeBatches settings tree * (3 * terms + C.n * terms +
+      maxBatch circuits settings (fun jobs => halvings (tupleCount jobs)) + 2)
 
 /-- The birthday bound of the counted calls and the honest points of a ceremony. -/
 def treeHashError (C : Committee) (tree : Tree) (q : ℕ) : ℝ :=
-  ((q + treeSecrets settings C tree) ^ 2 : ℕ) / 2 ^ 256
+  ((q + treeSecrets circuits settings C tree) ^ 2 : ℕ) / 2 ^ 256
 
 /-- The birthday bound `k² / 2^129` of the 128-bit AES keys of the `k` PRSS keys of a ceremony
 (`doc/dkg.md` 3.3). -/
@@ -288,7 +298,7 @@ def TreeSecurityStatement : Prop :=
     SimulatedBy prims (fun i keys => (ceremony K circuits settings i keys top tree : PartyM C E RealSpec TreeOutput))
       (ceremonyFuel circuits settings) (Ftree circuits settings top tree) DealtInputs
       (treeSimulator K circuits settings top tree) 0 fun D A x z Z q =>
-        treeCheckError (E := E) circuits settings tree q + treeHashError settings C tree q + streamKeyError C +
+        treeCheckError (E := E) circuits settings tree q + treeHashError circuits settings C tree q + streamKeyError C +
           PRFScheme.prfAdvantage (hiddenStreams prims.aes) (prgReduction prims D
             (distinguish (realExecution D A noFunctionality (ceremonyFuel circuits settings)
               (fun i keys => (ceremony K circuits settings i keys top tree : PartyM C E RealSpec TreeOutput)) x z) Z))
@@ -316,13 +326,14 @@ def ExtendMultStatement [SampleableType E] : Prop :=
 
 /-- The check with its salted digests securely computes `F_multVerify` with selective abort in the
 `{F_coin, F_extendMult, F_rand}`-hybrid model (GS20, Lemmas 8 to 11, and CGH+18, Protocol 3.3). The
-error is the soundness of the check and the birthday bound of the histories and the digests. -/
+error is the soundness of the check and the birthday bound of the counted calls and the honest
+points, namely the history and the digest of each term at each operator and the `R + 2` coin keys. -/
 def MultVerifyStatement [SampleableType E] : Prop :=
   ∀ counts : List ℕ,
     SecurelyComputes prims (checkProtocol K) (2 * halvings counts.sum + 8) (checkFunctionalities K) FmultVerify
       (TupleInputs K counts) (checkOverhead C counts.sum)
       fun q => checkErrorOf (E := E) (coins counts.sum) (halvings counts.sum) q +
-        ((q + 2 * C.n * C.n.choose (C.t - 1)) ^ 2 : ℕ) / 2 ^ 256
+        ((q + 2 * C.n * C.n.choose (C.t - 1) + halvings counts.sum + 2) ^ 2 : ℕ) / 2 ^ 256
 
 /-- An honest check accepts correct tuples, except when it aborts on a coin. -/
 def MultVerifyCompletenessStatement [SampleableType E] : Prop :=
@@ -335,15 +346,15 @@ def MultVerifyCompletenessStatement [SampleableType E] : Prop :=
 model. This is GS20, Theorem 2, for public outputs and inputs that the operators already share.
 
 * The overhead is the emulation of the copy hashes of `OpenRep`, two for each term and operator.
-* The error `(q + n) C(n, t - 1) / 2^256` covers another copy with the hash of an honest copy. After
-  `F_multVerify` accepts, the honest copies of each term agree, so each term has one target hash. A
-  counted call tries one copy against each target. A corrupt owner also sends one copy of each term
-  to each honest operator that lacks it, and that operator hashes it for free. -/
+* The error `(q + 2 n C(n, t - 1))² / 2^256` is the birthday bound of the copy hashes. The
+  adversary chooses the honest copy of each term that it holds at the `Rerand` leak, so a collision
+  of two copies passes the hash check of `OpenRep`. The `q` counted calls and the `2 n C(n, t - 1)`
+  copy hashes of the honest operators can collide. -/
 def MainStatement : Prop :=
   ∀ (mode : ReshareMode) (jobs : List Circuit),
     SecurelyComputes prims (mainProtocol K mode jobs) (depth jobs + 3) (mainFunctionalities K mode) (Fmain jobs)
       (MainInputs jobs) (2 * C.n * C.n.choose (C.t - 1))
-      fun q => ((q + C.n) * C.n.choose (C.t - 1) : ℕ) / 2 ^ 256
+      fun q => ((q + 2 * C.n * C.n.choose (C.t - 1)) ^ 2 : ℕ) / 2 ^ 256
 
 /-- An honest batch gives the outputs of `F_main`. -/
 def MainCompletenessStatement : Prop :=
@@ -372,6 +383,7 @@ def SigningCorrectnessStatement (C : Committee) : Prop :=
 /-- The signing is strongly unforgeable with adaptive corruption (PRAWNS, Definition 3.2 and
 Theorem 3.1), in the reduction form of Theorem 3.1.
 
+* A guess of Game 2 counts only on the highest layer where the forgery differs from `KeyGen`.
 * The guess of Game 2 costs `guessCount`. PRAWNS, equation (6), prints `ℓd ε_F + ε_f`. Its
   equations (2) to (4) give `ℓd (ε_F + ε_f)`, which this bound uses.
 * The random-oracle events of the threshold PRF enter through `TprfSecurityStatement`, whose bound

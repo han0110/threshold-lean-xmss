@@ -48,8 +48,8 @@
 //!   holds this lane for four instances.
 //! - The pseudorandom streams use AES-128 in place of Keccak-256 with labeled tags.
 //!   - The AES key hashes the label `rss-prss`, a PRSS key and the session value.
-//!   - A stream depends on the channel, its round and an index, and a coin key hashes only the
-//!     opened value.
+//!   - A stream depends on the channel, its round and an index, and a coin key hashes the channel
+//!     tag, the round and the opened value.
 //! - The prototype derives its PRSS keys once, in its keygen. Here each ceremony derives fresh PRSS
 //!   keys in its first three rounds.
 //! - The prototype gives each pair to the least loaded holder in one pass and each term to its
@@ -1133,19 +1133,21 @@ impl Party {
         Ok((opened, payloads.collect()))
     }
 
-    /// `coin(payload)`, the hash of `open_shamir(conv(rand(1)), payload)`. It also returns the
-    /// payload of each operator.
+    /// `coin(payload)`, the hash of the channel tag, the round and `open_shamir(conv(rand(1)),
+    /// payload)`. It also returns the payload of each operator.
     pub async fn coin(
         &self,
         channel: &mut Channel,
         payload: &[u64],
     ) -> Result<(Key, Vec<Vec<u64>>), String> {
+        let position = [channel.tag, channel.rounds];
         let share = self.conv(self.rand(channel, 1, 3).value(0));
         let (opened, payloads) = self.open_shamir(channel, &[share], payload).await?;
-        Ok((
-            tagged_hash(b"thlxmss-coin", &[cast_slice(&opened)]),
-            payloads,
-        ))
+        let key = tagged_hash(
+            b"thlxmss-coin",
+            &[cast_slice(&position), cast_slice(&opened)],
+        );
+        Ok((key, payloads))
     }
 
     /// The digest `d_T = H(s_T || h_T)` of each held term, with the salt `s_T` of `rand(2)` in this round and the running hash `h_T`. The salt hides `h_T` from the operators that lack `T`, as in [GRW18](https://eprint.iacr.org/2018/216) (Section 5).

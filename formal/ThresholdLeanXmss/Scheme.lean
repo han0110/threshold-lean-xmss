@@ -196,8 +196,9 @@ inductive Query (C : Committee)
   | digest (salt : List Bit) (history : HashOutput)
   /-- `H(key)`, whose first 128 bits key the AES-128 of a stream, with the label `rss-prss`. -/
   | streamKey (key : HashOutput)
-  /-- `H` of an opened coin, the key of its expansion, with the tag `thlxmss-coin`. -/
-  | coinKey (value : List Bit)
+  /-- `H` of the tag of the batch, the round label `ρ` of the `Rand(ρ, 1)` of a coin, and its opened
+  value, the key of its expansion, with the tag `thlxmss-coin`. -/
+  | coinKey (tag ρ : ℕ) (value : List Bit)
   /-- Value `index` of the expansion of a coin key. -/
   | expand (key : HashOutput) (index : ℕ)
 deriving DecidableEq
@@ -233,12 +234,14 @@ def prf (seed : HashOutput) (x : Point) : OracleComp (RoSpec C) Digest :=
 
 /-! ## Messages and programs -/
 
-/-- A message of one round from one operator to another. -/
+/-- A message of one round from one operator to another. An operator that aborts sends `abort` to
+every operator in each later round (`src/net.rs`). -/
 inductive Msg (E : Type) where
   | bits (values : List Bit)
   | elements (values : List E)
   | hashes (values : List HashOutput)
   | bundle (parts : List (Msg E))
+  | abort
 
 namespace Msg
 
@@ -259,6 +262,10 @@ def hashesOf : Option (Msg E) → List HashOutput
 def part : Option (Msg E) → ℕ → Option (Msg E)
   | some (.bundle parts), k => parts[k]?
   | _, _ => none
+
+def isAbort : Option (Msg E) → Bool
+  | some .abort => true
+  | _ => false
 
 end Msg
 
@@ -293,8 +300,11 @@ def advance {α : Type} : OracleComp (PartySpec C E G) (Option α) → OracleCom
   | .roll (Sum.inl (Sum.inr outbox)) k => pure (.wait outbox k)
   | .roll (Sum.inr input) k => pure (.call input k)
 
-def exchange (outbox : Mail C E) : PartyM C E G (Mail C E) :=
-  OptionT.lift (OracleComp.lift (OracleSpec.query (spec := PartySpec C E G) (Sum.inl (Sum.inr outbox))))
+/-- One round. The operator aborts if it receives an abort frame from any operator. A missing message
+from an operator that sends nothing by design reads as empty. -/
+def exchange (outbox : Mail C E) : PartyM C E G (Mail C E) := do
+  let inbox : Mail C E ← OptionT.lift (OracleComp.lift (OracleSpec.query (spec := PartySpec C E G) (Sum.inl (Sum.inr outbox))))
+  if C.parties.any fun j => Msg.isAbort (inbox j) then failure else pure inbox
 
 /-- A call to the functionality of the hybrid model. -/
 def call (input : ι) : PartyM C E G (G input) :=
@@ -340,10 +350,12 @@ def localContext (i : C.Party) : Context C := ⟨i, ⟨0, fun _ => 0, fun _ => 0
 public part joins the term `publicTerm`. -/
 abbrev Shares (C : Committee) (R : Type) := C.Term → ℕ → R
 
-/-- The state of a run, namely the running value `h_T` of each term and the next round label. -/
+/-- The state of a run, namely the running value `h_T` of each term, the next round label, and the
+tag of the batch. -/
 structure RunState (C : Committee) where
   history : C.Term → List Bit
   label : ℕ
+  tag : ℕ
 
 /-- A program of one run. -/
 abbrev RunM (C : Committee) (E : Type) {ι : Type} (G : OracleSpec ι) := StateT (RunState C) (PartyM C E G)
@@ -456,7 +468,7 @@ def record {R : Type} (codec : Codec C E R) (mode : ReshareMode) (z : Shares C R
     RunM C E G Unit :=
   modify fun s => ⟨fun T => if ctx.self ∈ C.holders T then
     s.history T ++ ((List.range count).filter fun g => (filler K mode T g).isSome).flatMap
-      (codec.toBits ∘ z T) else s.history T, s.label⟩
+      (codec.toBits ∘ z T) else s.history T, s.label, s.tag⟩
 
 /-- `Reshare` of an additive sharing in one round, with the PRSS outputs `randomness`. Operator `i`
 sends `u_i` to the other holders of `T_i`, and each holder of a filled term records it in `h_T`. The
@@ -635,10 +647,14 @@ def coinProduct (τ : List E) (offset width a : ℕ) : E :=
 /-- An element of `E` from the first bits of a hash output. -/
 def elementOfHash (h : HashOutput) : E := K.encode.symm fun b => if h.getLsbD b.val then 1 else 0
 
-/-- The key of a coin, `H` of its opened value (`doc/dkg.md` 1.9). -/
+/-- The key of a coin, `H` of the tag of the batch, the label `ρ` of its `Rand(ρ, 1)`, which is the
+label before the coin, and its opened value (`doc/dkg.md` 1.9). The model counts the labels over a
+ceremony, and the implementation counts the rounds of each batch. -/
 def coinKey : RunM C E G HashOutput := do
+  let state ← get
   let values ← gadgets.coin 1
-  StateT.lift (oracleStep (hashQuery (.coinKey (values.flatMap fun v => List.ofFn (K.encode v)))))
+  StateT.lift (oracleStep (hashQuery (.coinKey state.tag state.label
+    (values.flatMap fun v => List.ofFn (K.encode v)))))
 
 /-- `count` expanded values of a coin key. -/
 def expand (key : HashOutput) (count : ℕ) : RunM C E G (List E) :=
@@ -1138,7 +1154,7 @@ def ceremonyWith (circuits : Circuits) (settings : Settings)
         let (label, k) ← get
         let inputs ← StateT.lift (jobs.mapM (inputShares ctx))
         let (outputs, state) ← StateT.lift ((runJobs K (gadgets ctx k jobs)
-          (jobs.map (circuits keys.parameter ·.kind)) inputs).run ⟨fun _ => [], label⟩)
+          (jobs.map (circuits keys.parameter ·.kind)) inputs).run ⟨fun _ => [], label, k⟩)
         set (state.label, k + 1)
         pure (some outputs)) top tree).run' (0, 0) | failure
   pure output
@@ -1391,6 +1407,12 @@ def Step.outbox : Step C E G α → Mail C E
   | .wait outbox _ => outbox
   | _ => fun _ => none
 
+/-- The message to `j` in a round, with the abort frame of an operator that aborted. -/
+def Step.delivered : Step C E G α → Mail C E
+  | .wait outbox _ => outbox
+  | .done none => fun _ => some .abort
+  | _ => fun _ => none
+
 def Step.output : Step C E G α → Option α
   | .done out => out
   | _ => none
@@ -1440,7 +1462,7 @@ def stepRound (Ro : Roles C m) (D : C.Coalition) (A : Adversary C E Ia L R) (F :
     let steps' ← Concrete.sequenceFin fun j => match steps j with
       | .done out => pure (Step.done out)
       | .wait _ resume => if j ∈ D.1 then pure (Step.done none) else
-          Ro.honest (advance (resume fun k => if k ∈ D.1 then sent k j else (steps k).outbox j))
+          Ro.honest (advance (resume fun k => if k ∈ D.1 then sent k j else (steps k).delivered j))
       | .call _ _ => pure (Step.done none)
     pure (state, steps', sent)
 
@@ -1590,7 +1612,7 @@ section Hybrid
 
 variable [Field E] [Algebra Bit E] (K : Constants C E)
 
-def startRun : RunState C := ⟨fun _ => [], 0⟩
+def startRun : RunState C := ⟨fun _ => [], 0, 0⟩
 
 /-- `Coin` in the `F_rand`-hybrid model (GS20, Protocol 6). -/
 def coinProtocol (i : C.Party) (count : ℕ) : PartyM C E (CallSpec ℕ (PrssOutput C E)) (List E) := do
@@ -1618,19 +1640,23 @@ bits. -/
 abbrev CheckSpec (C : Committee) (E : Type) :=
   CallSpec ((ℕ ⊕ List (Product C E)) ⊕ (ℕ ⊕ ℕ)) ((List E ⊕ Shares C E) ⊕ (PrssOutput C E ⊕ PrssOutput C Bit))
 
-/-- The gadgets of the check as calls. -/
+/-- The gadgets of the check as calls. Each call takes one round label, as each real gadget does. -/
 def hybridCheckGadgets (i : C.Party) : CheckGadgets C E (CheckSpec C E) where
   coin count := do
+    let _ ← freshLabel
     let some (.inl (.inl values)) ← StateT.lift (call (.inl (.inl count))) | StateT.lift failure
     pure values
   extendMult products := do
+    let _ ← freshLabel
     let some (.inl (.inr z)) ← StateT.lift (call (.inl (.inr products))) | StateT.lift failure
     record K (localContext i) (elementCodec K) .peer z products.length
     pure z
   randElements count := do
+    let _ ← freshLabel
     let some (.inr (.inl randomness)) ← StateT.lift (call (.inr (.inl count))) | StateT.lift failure
     pure randomness
   randBits count := do
+    let _ ← freshLabel
     let some (.inr (.inr randomness)) ← StateT.lift (call (.inr (.inr count))) | StateT.lift failure
     pure randomness
 
@@ -1642,7 +1668,7 @@ def filledHistory (i : C.Party) (tuples : List (Tuple C)) (T : C.Term) : List Bi
 
 /-- The check in the `{F_coin, F_extendMult, F_rand}`-hybrid model (GS20, Protocol 17). -/
 def checkProtocol (i : C.Party) (tuples : List (Tuple C)) : PartyM C E (CheckSpec C E) Unit :=
-  (check K (localContext i) (hybridCheckGadgets K i) tuples).run' ⟨filledHistory K i tuples, 0⟩
+  (check K (localContext i) (hybridCheckGadgets K i) tuples).run' ⟨filledHistory K i tuples, 0, 0⟩
 
 /-- The functionalities of a run, namely `F_mult` of the AND gates, `F_mult` in peer mode for
 `Rerand`, and `F_multVerify`. -/

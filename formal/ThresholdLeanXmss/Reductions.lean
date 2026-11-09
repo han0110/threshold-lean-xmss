@@ -316,11 +316,19 @@ def Guess.point (guess : Guess) (p : ℕ) (h : p < chainLength := by decide) : P
   .chain guess.1 guess.2.1 guess.2.2.1 ⟨p, h⟩
 
 /-- `E_2` of Theorem 3.1, Game 2. On the target chain, position `j` lies above the forgery and at or
-below the reference of `KeyGen` at its key. -/
+below the reference of `KeyGen` at its key. A guess counts only on the highest layer where the
+forgery differs from `KeyGen`, so a bottom guess needs the real bottom root (XMSS hypertree). -/
 def coveredAt (lift : ∀ {β : Type}, OracleComp (RoSpec C) β → m β) (dealt : Dealt C m) (st : TsigState C)
     (guess : Guess) (forgery : Forgery) : m Bool := do
   let (lay, e, l, j) := guess
   if keyAt forgery.signature.leafIndex lay ≠ e then pure false else do
+  let index := forgery.signature.leafIndex
+  let forgedRoot ← lift (tweakable (Concrete.layerRoot dealt.parameter bottomLayer index
+    (bytesLE 32 forgery.message) (forgery.signature.layers bottomLayer)))
+  let tree ← dealt.bottom (treeOf index)
+  let sameRoot := decide (forgedRoot = tree.map (·.root))
+  let topDiffers := !sameRoot || decide (tree.map (·.topSignature) ≠ some (forgery.signature.layers topLayer))
+  if (lay = bottomLayer ∧ sameRoot = false) ∨ (lay = topLayer ∧ topDiffers = false) then pure false else do
   let some (message, part, reference) ← layerViews lift dealt st forgery lay | pure false
   let some forged ← lift (tweakable
     (Codeword.decode <$> Concrete.messageDigest dealt.parameter lay e message part.randomness)) | pure false

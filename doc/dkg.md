@@ -144,7 +144,7 @@ The threshold PRF and the signing masks hash a secret key first and no tag, as i
 | ---------------------------------------------------------------- | ------------------------------------------------------------------- | ------- |
 | $\texttt{"thlxmss-history"}$                                     | the values that 1.6 appends to $h_T$                                | 1.9     |
 | $\texttt{"thlxmss-copy"}$                                        | the copy $v_T$                                                      | 1.7     |
-| $\texttt{"thlxmss-coin"}$                                        | the opened value                                                    | 1.9     |
+| $\texttt{"thlxmss-coin"}$                                        | the channel tag, the round and the opened value                     | 1.9     |
 | $\texttt{"thlxmss-digest"}$                                      | the salt $s_T$ and $h_T$                                            | 1.9     |
 | $\texttt{"rss-prss"}$                                            | a PRSS key and the session value, which give a PRG key              | 1.1.4   |
 | $\texttt{"thlxmss-keygen-parameter"}$                            | all parts of $P$, whose first 16 bytes give $P$                     | 3.1     |
@@ -599,9 +599,11 @@ $\mathsf{Coin}(\rho) \to r$ public. One round.
 #### Protocol
 
 ```math
-r = \mathrm{expand}\Big( H\big( \texttt{"thlxmss-coin"} \,\Vert\, \mathsf{OpenSh}( \mathsf{Conv}( \mathsf{Rand}(\rho, 1) ) ) \big) \Big).
+r = \mathrm{expand}\Big( H\big( \texttt{"thlxmss-coin"} \,\Vert\, \rho \,\Vert\, \mathsf{OpenSh}( \mathsf{Conv}( \mathsf{Rand}(\rho, 1) ) ) \big) \Big).
 ```
 A challenge is the first expanded value outside $`\{0, 1\}`$.
+
+The key hashes $\rho$ as the channel tag and the round. No two coins of a ceremony share $\rho$, so each coin is an independent call to $F_{\mathrm{coin}}$.
 
 #### Security
 
