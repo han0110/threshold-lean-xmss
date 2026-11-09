@@ -84,14 +84,13 @@ so each completeness claim is the honest run of the protocol of its row.
 * `F_rand` has no abort, because the PRSS of CDI05 that realizes it sends no message.
 * The de-linearization weighs tuple `k` by a product of `d` coins in place of the powers of one coin
   of GS20, Protocol 13. The multilinear weights follow the prototype (`crates/rss/src/verify.rs`).
-* Bit `q` of a word of tuples has the public weight `x^q` in place of a coin (`src/check.rs`). This
-  owner-approved deviation has no published source. The weights are linearly independent over
+* Bit `q` of a word of tuples has the public weight `x^q` in place of a coin (`src/check.rs`), so the
+  six bit coins of the tensor are fixed to `x, x^2, ..., x^32`. This is the partially deterministic
+  challenge of Dao and Thaler 2024 (Claim 1), with the geometric weights of Flock (Bünz, Rothblum and
+  Wang 2026, Section 4.3). The errors are bits and `1, x, ..., x^63` are linearly independent over
   `F_2`, so a wrong word stays a nonzero weight, and the Schwartz-Zippel count of Lemma 8 holds.
 * The first seven halving steps fold the slices with the coin kept out of `x` (Gruen 2024) and the
   small-value table of BDDT25. Each step is still a degree-2 claim in its challenge.
-* A challenge is the first value outside `{0, 1}` of the expansion of a coin key `H(coin)`. The
-  implementation expands with AES-128 under that public key. The model takes the expansion as a
-  domain of `H`, which deviates from the implementation.
 * The explicit simulators program `H` as the programmable random oracle of CDG+18. The world has no
   `IsProgrammed` query of CDG+18, because no party can test whether a point is programmed.
 * GS20 assumes exactly `(n - 1) / 2` corrupt parties, which is `t - 1` here (GS20, Theorem 1, writes

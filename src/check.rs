@@ -39,6 +39,7 @@
 //!
 //! - The field is the leanVM field `F192` in place of GF(2^128).
 //! - Bit `q` of a tuple word has the weight `x^q` in place of a coin.
+//!   - This fixes the six bit coins to `x, x^2, ..., x^32`, the partially deterministic challenge of [Dao and Thaler](https://eprint.iacr.org/2024/1038) (Claim 1) with the geometric weights of [Flock](https://eprint.iacr.org/2026/1329) (Section 4.3).
 //!   - The lift of a word to `F64` is injective, so a wrong tuple still gives a nonzero multilinear
 //!     polynomial in the coins.
 //! - The first seven halving steps fold the 128 slices of the tuple words with the small-value optimization of [Bagad, Dao, Domb and Thaler](https://eprint.iacr.org/2025/1117).

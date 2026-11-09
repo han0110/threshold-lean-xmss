@@ -777,10 +777,13 @@ impl Party {
         Additive::values(products.iter().map(|&product| lambda * product))
     }
 
+    /// Values `index` to `index + count - 1` of the expansion of a coin key. Value `k` is the first 192 bits of `H("thlxmss-expand" || key || k)`.
     pub fn expand(&self, key: &Key, index: u64, count: usize) -> Vec<F192> {
-        let mut words = vec![0; 3 * count];
-        prg(key, &self.session, index, &mut words);
-        cast_slice(&words).to_vec()
+        let value =
+            |k: u64| cast_slice(&digest(b"thlxmss-expand", &[key, &k.to_le_bytes()])[..3])[0];
+        (0..count as u64)
+            .map(|offset| value(index + offset))
+            .collect()
     }
 
     /// The masks `rand(0)` of a reshare of `additive` that fills the held terms of `filled` at each

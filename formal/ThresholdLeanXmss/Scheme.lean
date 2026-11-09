@@ -199,7 +199,7 @@ inductive Query (C : Committee)
   /-- `H` of the tag of the batch, the round label `ρ` of the `Rand(ρ, 1)` of a coin, and its opened
   value, the key of its expansion, with the tag `thlxmss-coin`. -/
   | coinKey (tag ρ : ℕ) (value : List Bit)
-  /-- Value `index` of the expansion of a coin key. -/
+  /-- Value `index` of the expansion of a coin key, with the tag `thlxmss-expand`. -/
   | expand (key : HashOutput) (index : ℕ)
 deriving DecidableEq
 

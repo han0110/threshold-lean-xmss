@@ -145,6 +145,7 @@ The threshold PRF and the signing masks hash a secret key first and no tag, as i
 | $\texttt{"thlxmss-history"}$                                     | the values that 1.6 appends to $h_T$                                | 1.9     |
 | $\texttt{"thlxmss-copy"}$                                        | the copy $v_T$                                                      | 1.7     |
 | $\texttt{"thlxmss-coin"}$                                        | the channel tag, the round and the opened value                     | 1.9     |
+| $\texttt{"thlxmss-expand"}$                                      | a coin key and the 64-bit index of a value                          | 1.9     |
 | $\texttt{"thlxmss-digest"}$                                      | the salt $s_T$ and $h_T$                                            | 1.9     |
 | $\texttt{"rss-prss"}$                                            | a PRSS key and the session value, which give a PRG key              | 1.1.4   |
 | $\texttt{"thlxmss-keygen-parameter"}$                            | all parts of $P$, whose first 16 bytes give $P$                     | 3.1     |
@@ -601,7 +602,7 @@ $\mathsf{Coin}(\rho) \to r$ public. One round.
 ```math
 r = \mathrm{expand}\Big( H\big( \texttt{"thlxmss-coin"} \,\Vert\, \rho \,\Vert\, \mathsf{OpenSh}( \mathsf{Conv}( \mathsf{Rand}(\rho, 1) ) ) \big) \Big).
 ```
-A challenge is the first expanded value outside $`\{0, 1\}`$.
+Value $k$ of $\mathrm{expand}(\mathrm{key})$ is the first 192 bits of $H(\texttt{"thlxmss-expand"} \,\Vert\, \mathrm{key} \,\Vert\, k)$. A challenge is the first expanded value outside $`\{0, 1\}`$.
 
 The key hashes $\rho$ as the channel tag and the round. No two coins of a ceremony share $\rho$, so each coin is an independent call to $F_{\mathrm{coin}}$.
 
@@ -846,6 +847,8 @@ The fresh PRSS keys and the named commitments of 3.1 are not in the note [Wam26]
 A failed session is rerun, because a tree is a function of the seeds.
 
 Each claim covers the static coalition of one ceremony, corrupted before it. At most $t - 1$ operators are corrupted over the lifetime of the key. These separate claims give no end-to-end claim, which needs a composition as in [Can00](https://eprint.iacr.org/1998/018).
+
+The claims cover ceremonies that run one at a time. A ceremony that runs during another ceremony or during a signing session is outside the claims. Production stays inside the claims if it builds each bottom tree with no other ceremony and no open signing session.
 
 At the end of each ceremony, also on abort, an operator must erase its private ceremony state. It keeps only $P$, $`\mathrm{seed}_T`$, $K_{ij}$ and the public outputs. So a later corruption gives only the keys, as [`sign.md`](sign.md#4-security) assumes.
 
