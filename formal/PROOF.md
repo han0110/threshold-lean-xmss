@@ -2,7 +2,7 @@
 
 The target is `ThresholdLeanXmssSecurityStatement` in `ThresholdLeanXmss/Statement.lean`. It gives eighteen claims about the protocol of `ThresholdLeanXmss/Scheme.lean`, for every setting.
 
-No proof is written yet. Every step of the plan below is open, and every proof in `formal/` is a `sorry`.
+Eleven claims are proved. Seven claims are open, and each open claim ends in one `sorry` at a named goal.
 
 ## Reading order
 
@@ -15,14 +15,18 @@ The review boundary is `Statement.lean` and the definitions that it names in the
 
 ## Files
 
-Each file in this list imports the file before it.
+Each file of `ThresholdLeanXmss/` imports the file before it. Each module of `Proof/` imports `Execution.lean` and
+`Lemmas.lean`. `Check.lean` imports `Gadgets.lean`, and `Tree.lean` imports `Main.lean`, `Keygen.lean` and `Check.lean`.
 
 * `ThresholdLeanXmss/Scheme.lean` holds the operator programs, the oracles of the world, the network and the honest runs.
 * `ThresholdLeanXmss/Ideal.lean` holds the functionalities of GS20, the trusted dealer, the oracles of the games of PRAWNS and the adversaries of the games of the primitives.
 * `ThresholdLeanXmss/Reductions.lean` holds `keygenSimulator`, `treeSimulator`, and `prgReduction`.
 * `ThresholdLeanXmss/Statement.lean` holds the counted world, the notions of secure computation, the games, the error terms, the valid inputs and the claims as named `Prop` definitions.
 * `ThresholdLeanXmssSecurity/Proof/Lemmas.lean` holds the intermediate results of the papers, each named after its source.
-* `ThresholdLeanXmssSecurity.lean` states the main theorem `thresholdLeanXmss_security` and its axiom guard.
+* `ThresholdLeanXmssSecurity/Proof/Execution.lean` holds the lemmas of the execution model that the claim proofs share.
+* `Proof/Gadgets.lean`, `Proof/Tprf.lean`, `Proof/Signing.lean`, `Proof/Main.lean`, `Proof/Keygen.lean`,
+  `Proof/Check.lean` and `Proof/Tree.lean` hold the claims of their area, with the partial steps of the open claims.
+* `ThresholdLeanXmssSecurity.lean` states the main theorem `thresholdLeanXmss_security` and the axiom guards.
 
 `Statement.lean` defines `SecurelyComputes`, `SimulatedBy` and `Completes`. Every claim of the keygen, the ceremonies and the gadgets except `DealerTreeStatement` and `TreeSuccessStatement` uses one of them.
 
@@ -30,30 +34,30 @@ Each file in this list imports the file before it.
 
 The table of `Statement.lean` gives each statement in one sentence.
 
-| claim | source |
-| --- | --- |
-| `KeygenCompletenessStatement` | the note, Section 2.1, honest run |
-| `KeygenSecurityStatement` | GL05 and CDG+18 |
-| `TreeCompletenessStatement` | GS20, Theorem 2, honest run |
-| `TreeSecurityStatement` | GS20, Theorem 2, and GL05 |
-| `DealerTreeStatement` | PRAWNS, Section 3.1, and `doc/dkg.md` 3.1 |
-| `TreeSuccessStatement` | PRAWNS, Section 3.1, honest run |
-| `CoinStatement` | GS20, Lemma 3 |
-| `CoinCompletenessStatement` | GS20, Protocol 6, honest run |
-| `MultStatement` | GS20, Lemma 4 |
-| `ExtendMultStatement` | GS20, Lemma 5 |
-| `MultVerifyStatement` | GS20, Lemmas 8 to 11, and CGH+18 |
-| `MultVerifyCompletenessStatement` | GS20, Protocol 17, honest run |
-| `MainStatement` | GS20, Theorem 2, for public outputs and pre-shared inputs |
-| `MainCompletenessStatement` | GS20, Protocol 19, honest run |
-| `TprfCorrectnessStatement` | PRAWNS, Definition 2.1 |
-| `TprfSecurityStatement` | PRAWNS, Definition 2.2 and Theorem 5.1 |
-| `SigningCorrectnessStatement` | PRAWNS, Section 3.1, honest run |
-| `SigningSecurityStatement` | PRAWNS, Definition 3.2, in the random-oracle model |
+| claim | source | status |
+| --- | --- | --- |
+| `KeygenCompletenessStatement` | the note, Section 2.1, honest run | proved, `keygenCompleteness` in `Keygen` |
+| `KeygenSecurityStatement` | GL05 and CDG+18 | open at `KeygenCoupling` in `Keygen` |
+| `TreeCompletenessStatement` | GS20, Theorem 2, honest run | proved, `treeCompleteness` in `Tree` |
+| `TreeSecurityStatement` | GS20, Theorem 2, and GL05 | open at `TreeSecurityDistance` in `Tree` |
+| `DealerTreeStatement` | PRAWNS, Section 3.1, and `doc/dkg.md` 3.1 | open, `dealerTree` in `Tree` |
+| `TreeSuccessStatement` | PRAWNS, Section 3.1, honest run | open, `treeSuccess` in `Tree` |
+| `CoinStatement` | GS20, Lemma 3 | proved, `coinSecurity` in `Gadgets` |
+| `CoinCompletenessStatement` | GS20, Protocol 6, honest run | proved, `coinCompleteness` in `Gadgets` |
+| `MultStatement` | GS20, Lemma 4 | proved, `multStatement` in `Gadgets` |
+| `ExtendMultStatement` | GS20, Lemma 5 | proved, `extendMultSecurity` in `Gadgets` |
+| `MultVerifyStatement` | GS20, Lemmas 8 to 11, and CGH+18 | open at `MultVerifyDistance` in `Check` |
+| `MultVerifyCompletenessStatement` | GS20, Protocol 17, honest run | proved, `multVerifyCompleteness` in `Check` |
+| `MainStatement` | GS20, Theorem 2, for public outputs and pre-shared inputs | open at `MainSecurityDistance` in `Main` |
+| `MainCompletenessStatement` | GS20, Protocol 19, honest run | proved, `mainCompleteness` in `Main` |
+| `TprfCorrectnessStatement` | PRAWNS, Definition 2.1 | proved, `tprfCorrectness` in `Tprf` |
+| `TprfSecurityStatement` | PRAWNS, Definition 2.2 and Theorem 5.1 | proved, `tprfSecurity` in `Tprf` |
+| `SigningCorrectnessStatement` | PRAWNS, Section 3.1, honest run | proved, `signingCorrectness` in `Signing` |
+| `SigningSecurityStatement` | PRAWNS, Definition 3.2, in the random-oracle model | open, `signingSecurity` in `Signing` |
 
 ## Proof plan
 
-Every plan in this section is open. The lemmas that a plan names are in `ThresholdLeanXmssSecurity/Proof/Lemmas.lean`, with no proof yet.
+The lemmas that a plan names are in `ThresholdLeanXmssSecurity/Proof/Lemmas.lean`, all proved. An open claim reduces to its named goal in the table above, and the plan of this section gives the rest of its proof.
 
 ### Key generation
 
@@ -134,12 +138,12 @@ Every plan in this section is open. The lemmas that a plan names are in `Thresho
 2. Positions. Every input of `Th` has a position, by `hashDomainFields_injective` of leanVM. A leaf or a node position has one honest input. A digest position has one selected honest input, by `breaksOneMessagePerKey`, and the other trials of its search give no codeword.
 3. Opened randomizer. An honest signer that accepts `ρ' ≠ ρ_e` with `Th(P, A_rnd(e, 1), ρ' ‖ 0) = c_e` is a hit on the output `c_e`. Otherwise every honest signer of key `e` uses `ρ_e` and one codeword. This is a proof obligation.
 4. Bad events. A win implies a bad event at a call of the forger or of the verification, by the descent of leanVM over two layers. A hit gives an honest output from another input. A guess queries a hidden honest input, namely a chain value below the opened position. A partner meets the output that a later search selects.
-5. Costs. A hit and a guess cost `2^-128` for each call. A partner costs `2^-128` for each digest call, as the codeword probability `p` of the earlier output times `1 / #C` for the selected output. A bound of `2^-128` for each pair alone is false, which a counterexample in the scratch proofs (`selectTwo_digest_gt_single`) shows. Round 1 opens `ρ_e` before the search, so the lemma of leanVM with a hidden `R_0` does not apply as it is.
+5. Costs. A hit and a guess cost `2^-128` for each call. A partner costs `2^-128` for each digest call, as the codeword probability `p` of the earlier output times `1 / #C` for the selected output. A bound of `2^-128` for each pair alone is false, because the search selects one output from several trials. Round 1 opens `ρ_e` before the search, so the lemma of leanVM with a hidden `R_0` does not apply as it is.
 6. Sum. Two units for each call give `signingHashError q`. The calls of `KeyGen` count in `q` and are never bad, so they pay the lower-order terms.
 
 ## The axiom guard
 
-`ThresholdLeanXmssSecurity.lean` has the axiom guard, with the current footprint. The main theorem still depends on `sorryAx`, so the footprint is `propext`, `sorryAx`, `Classical.choice` and `Quot.sound`. When no `sorry` remains, the guard changes to this form.
+`ThresholdLeanXmssSecurity.lean` has the axiom guard, with the current footprint. The open claims hold `sorryAx`, so the footprint of the main theorem is `propext`, `sorryAx`, `Classical.choice` and `Quot.sound`. A guard for each proved claim holds its footprint at `propext`, `Classical.choice` and `Quot.sound`. When no `sorry` remains, the guard of the main theorem changes to this form.
 
 ```lean
 /-- info: 'ThresholdLeanXmssSecurity.thresholdLeanXmss_security' depends on axioms: [propext, Classical.choice, Quot.sound] -/
