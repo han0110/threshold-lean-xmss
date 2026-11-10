@@ -10459,8 +10459,4 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
 
 variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
 
-/-- `MultVerifyStatement`, open at `MultVerifyDistance`. -/
-theorem multVerifyStatement (prims : Primitives) (K : Constants C E) : MultVerifyStatement prims K :=
-  multVerifyStatement_of_distance prims K (by sorry)
-
 end ThresholdLeanXmssSecurity

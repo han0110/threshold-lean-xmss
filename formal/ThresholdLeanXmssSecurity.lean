@@ -3,6 +3,12 @@ import ThresholdLeanXmssSecurity.Proof.Gadgets
 import ThresholdLeanXmssSecurity.Proof.Tprf
 import ThresholdLeanXmssSecurity.Proof.Signing
 import ThresholdLeanXmssSecurity.Proof.Tree
+import ThresholdLeanXmssSecurity.Proof.Dealer
+import ThresholdLeanXmssSecurity.Proof.MainStages
+import ThresholdLeanXmssSecurity.Proof.CheckFinish
+import ThresholdLeanXmssSecurity.Proof.KeygenFinish
+import ThresholdLeanXmssSecurity.Proof.TreeKey
+import ThresholdLeanXmssSecurity.Proof.HiddenCore
 
 namespace ThresholdLeanXmssSecurity
 
@@ -10,12 +16,13 @@ namespace ThresholdLeanXmssSecurity
 theorem thresholdLeanXmss_security : ThresholdLeanXmss.ThresholdLeanXmssSecurityStatement := by
   intro C E _ _ _ _ K prims circuits settings
   letI : SampleableType E := SampleableType.ofFintype E
-  exact ⟨keygenCompleteness prims, keygenSecurity prims, treeCompleteness prims K circuits settings,
-    treeSecurity prims K circuits settings, dealerTree prims circuits settings,
-    treeSuccess prims circuits settings, coinSecurity prims K, coinCompleteness prims K, multStatement prims K,
-    extendMultSecurity prims K, multVerifyStatement prims K, multVerifyCompleteness prims K,
-    mainStatement prims K, mainCompleteness prims K, tprfCorrectness prims C, tprfSecurity prims C,
-    signingCorrectness prims C, signingSecurity prims C⟩
+  exact ⟨keygenCompleteness prims, keygenSecurityComplete prims (by sorry), treeCompleteness prims K circuits settings,
+    treeSecurityOfSim prims K circuits settings (by sorry) (by sorry) (by sorry),
+    dealerTreeProof prims circuits settings C,
+    treeSuccessProof prims circuits settings C, coinSecurity prims K, coinCompleteness prims K, multStatement prims K,
+    extendMultSecurity prims K, multVerifyStatementFull prims K (by sorry) (by sorry), multVerifyCompleteness prims K,
+    mainStatementFull prims K, mainCompleteness prims K, tprfCorrectness prims C, tprfSecurity prims C,
+    signingCorrectness prims C, signingSecurityFull prims C (by sorry)⟩
 
 /-! The build fails if the axiom footprint changes. The open claims hold `sorryAx`. When no `sorry`
 remains, the footprint is `propext`, `Classical.choice` and `Quot.sound`. -/
@@ -25,6 +32,18 @@ remains, the footprint is `propext`, `Classical.choice` and `Quot.sound`. -/
 #print axioms thresholdLeanXmss_security
 
 /-! The proved claims depend only on `propext`, `Classical.choice` and `Quot.sound`. -/
+
+/-- info: 'ThresholdLeanXmssSecurity.dealerTreeProof' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms dealerTreeProof
+
+/-- info: 'ThresholdLeanXmssSecurity.treeSuccessProof' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms treeSuccessProof
+
+/-- info: 'ThresholdLeanXmssSecurity.mainStatementFull' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms mainStatementFull
 
 /-- info: 'ThresholdLeanXmssSecurity.keygenCompleteness' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

@@ -2537,8 +2537,4 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
 
 variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
 
-/-- `MainStatement`, open at `MainSecurityDistance`. -/
-theorem mainStatement (prims : Primitives) (K : Constants C E) : MainStatement prims K :=
-  mainStatement_of_simulator_distance prims K (by sorry)
-
 end ThresholdLeanXmssSecurity

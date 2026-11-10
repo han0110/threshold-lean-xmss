@@ -7811,8 +7811,4 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
 
 variable {C : Committee} {E : Type} (prims : Primitives)
 
-/-- `KeygenSecurityStatement`, open at `KeygenCoupling`. -/
-theorem keygenSecurity : KeygenSecurityStatement (C := C) (E := E) prims :=
-  keygenSecurity_of_coupling prims (by sorry)
-
 end ThresholdLeanXmssSecurity

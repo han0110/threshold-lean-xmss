@@ -2,7 +2,7 @@
 
 The target is `ThresholdLeanXmssSecurityStatement` in `ThresholdLeanXmss/Statement.lean`. It gives eighteen claims about the protocol of `ThresholdLeanXmss/Scheme.lean`, for every setting.
 
-Eleven claims are proved. Seven claims are open, and each open claim ends in one `sorry` at a named goal.
+Fourteen claims are proved. Four claims are open. The root theorem passes each open gap as one `sorry` argument for a named `Prop`.
 
 ## Reading order
 
@@ -26,6 +26,10 @@ Each file of `ThresholdLeanXmss/` imports the file before it. Each module of `Pr
 * `ThresholdLeanXmssSecurity/Proof/Execution.lean` holds the lemmas of the execution model that the claim proofs share.
 * `Proof/Gadgets.lean`, `Proof/Tprf.lean`, `Proof/Signing.lean`, `Proof/Main.lean`, `Proof/Keygen.lean`,
   `Proof/Check.lean` and `Proof/Tree.lean` hold the claims of their area, with the partial steps of the open claims.
+* `Proof/Coupling.lean` holds the round-by-round coupling of two executions, the shift of a uniform mask and the
+  bound on a call that hits a secret point. The later modules of each area (`Dealer`, `MainSecurity`, `MainStages`,
+  `CheckSecurity` to `CheckFinish`, `KeygenSecurity` to `KeygenFinish`, `TreeSecurity` to `TreeKey`,
+  `SigningSecurity` to `HiddenCore`) build on it and end in the theorem that the root uses.
 * `ThresholdLeanXmssSecurity.lean` states the main theorem `thresholdLeanXmss_security` and the axiom guards.
 
 `Statement.lean` defines `SecurelyComputes`, `SimulatedBy` and `Completes`. Every claim of the keygen, the ceremonies and the gadgets except `DealerTreeStatement` and `TreeSuccessStatement` uses one of them.
@@ -37,23 +41,23 @@ The table of `Statement.lean` gives each statement in one sentence.
 | claim | source | status |
 | --- | --- | --- |
 | `KeygenCompletenessStatement` | the note, Section 2.1, honest run | proved, `keygenCompleteness` in `Keygen` |
-| `KeygenSecurityStatement` | GL05 and CDG+18 | open at `KeygenCoupling` in `Keygen` |
+| `KeygenSecurityStatement` | GL05 and CDG+18 | open at `KeygenKnownMismatch`, `keygenSecurityComplete` in `KeygenFinish` |
 | `TreeCompletenessStatement` | GS20, Theorem 2, honest run | proved, `treeCompleteness` in `Tree` |
-| `TreeSecurityStatement` | GS20, Theorem 2, and GL05 | open at `TreeSecurityDistance` in `Tree` |
-| `DealerTreeStatement` | PRAWNS, Section 3.1, and `doc/dkg.md` 3.1 | open, `dealerTree` in `Tree` |
-| `TreeSuccessStatement` | PRAWNS, Section 3.1, honest run | open, `treeSuccess` in `Tree` |
+| `TreeSecurityStatement` | GS20, Theorem 2, and GL05 | open at `TreeKeysApartBound`, `TreeKeyHitBound` and `TreeSimulationHop`, `treeSecurityOfSim` in `TreeKey` |
+| `DealerTreeStatement` | PRAWNS, Section 3.1, and `doc/dkg.md` 3.1 | proved, `dealerTreeProof` in `Dealer` |
+| `TreeSuccessStatement` | PRAWNS, Section 3.1, honest run | proved, `treeSuccessProof` in `Dealer` |
 | `CoinStatement` | GS20, Lemma 3 | proved, `coinSecurity` in `Gadgets` |
 | `CoinCompletenessStatement` | GS20, Protocol 6, honest run | proved, `coinCompleteness` in `Gadgets` |
 | `MultStatement` | GS20, Lemma 4 | proved, `multStatement` in `Gadgets` |
 | `ExtendMultStatement` | GS20, Lemma 5 | proved, `extendMultSecurity` in `Gadgets` |
-| `MultVerifyStatement` | GS20, Lemmas 8 to 11, and CGH+18 | open at `MultVerifyDistance` in `Check` |
+| `MultVerifyStatement` | GS20, Lemmas 8 to 11, and CGH+18 | open at `CheckSoundStage` and `CheckSplitStage`, `multVerifyStatementFull` in `CheckFinish` |
 | `MultVerifyCompletenessStatement` | GS20, Protocol 17, honest run | proved, `multVerifyCompleteness` in `Check` |
-| `MainStatement` | GS20, Theorem 2, for public outputs and pre-shared inputs | open at `MainSecurityDistance` in `Main` |
+| `MainStatement` | GS20, Theorem 2, for public outputs and pre-shared inputs | proved, `mainStatementFull` in `MainStages` |
 | `MainCompletenessStatement` | GS20, Protocol 19, honest run | proved, `mainCompleteness` in `Main` |
 | `TprfCorrectnessStatement` | PRAWNS, Definition 2.1 | proved, `tprfCorrectness` in `Tprf` |
 | `TprfSecurityStatement` | PRAWNS, Definition 2.2 and Theorem 5.1 | proved, `tprfSecurity` in `Tprf` |
 | `SigningCorrectnessStatement` | PRAWNS, Section 3.1, honest run | proved, `signingCorrectness` in `Signing` |
-| `SigningSecurityStatement` | PRAWNS, Definition 3.2, in the random-oracle model | open, `signingSecurity` in `Signing` |
+| `SigningSecurityStatement` | PRAWNS, Definition 3.2, in the random-oracle model | open at `HiddenCoreAt`, `signingSecurityFull` in `HiddenCore` |
 
 ## Proof plan
 

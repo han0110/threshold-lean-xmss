@@ -11773,16 +11773,4 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
 variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] (prims : Primitives) (K : Constants C E) (circuits : Circuits)
   (settings : Settings)
 
-/-- `TreeSecurityStatement`, open at `TreeSecurityDistance`. -/
-theorem treeSecurity : TreeSecurityStatement prims K circuits settings :=
-  treeSecurity_of_distance prims K circuits settings (by sorry)
-
-/-- `DealerTreeStatement` is open. -/
-theorem dealerTree : DealerTreeStatement prims circuits settings C := by
-  sorry
-
-/-- `TreeSuccessStatement` is open. -/
-theorem treeSuccess : TreeSuccessStatement prims circuits settings C := by
-  sorry
-
 end ThresholdLeanXmssSecurity

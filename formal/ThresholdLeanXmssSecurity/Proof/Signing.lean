@@ -1785,8 +1785,4 @@ namespace ThresholdLeanXmssSecurity
 
 open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
 
-/-- `SigningSecurityStatement` is open. -/
-theorem signingSecurity (prims : Primitives) (C : Committee) : SigningSecurityStatement prims C := by
-  sorry
-
 end ThresholdLeanXmssSecurity
