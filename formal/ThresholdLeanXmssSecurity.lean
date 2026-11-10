@@ -9,6 +9,9 @@ import ThresholdLeanXmssSecurity.Proof.CheckFinish
 import ThresholdLeanXmssSecurity.Proof.KeygenFinish
 import ThresholdLeanXmssSecurity.Proof.TreeKey
 import ThresholdLeanXmssSecurity.Proof.HiddenCore
+import ThresholdLeanXmssSecurity.Proof.KeygenKnown
+import ThresholdLeanXmssSecurity.Proof.TreeKeyAfter
+import ThresholdLeanXmssSecurity.Proof.CheckLast
 
 namespace ThresholdLeanXmssSecurity
 
@@ -16,11 +19,11 @@ namespace ThresholdLeanXmssSecurity
 theorem thresholdLeanXmss_security : ThresholdLeanXmss.ThresholdLeanXmssSecurityStatement := by
   intro C E _ _ _ _ K prims circuits settings
   letI : SampleableType E := SampleableType.ofFintype E
-  exact ⟨keygenCompleteness prims, keygenSecurityComplete prims (by sorry), treeCompleteness prims K circuits settings,
-    treeSecurityOfSim prims K circuits settings (by sorry) (by sorry) (by sorry),
+  exact ⟨keygenCompleteness prims, keygenSecurityDone_of_programAlias prims (by sorry), treeCompleteness prims K circuits settings,
+    treeSecurityOfSimAimed prims K circuits settings (by sorry) (by sorry),
     dealerTreeProof prims circuits settings C,
     treeSuccessProof prims circuits settings C, coinSecurity prims K, coinCompleteness prims K, multStatement prims K,
-    extendMultSecurity prims K, multVerifyStatementFull prims K (by sorry) (by sorry), multVerifyCompleteness prims K,
+    extendMultSecurity prims K, multVerifyOfSplitRoute prims K (by sorry) (by sorry), multVerifyCompleteness prims K,
     mainStatementFull prims K, mainCompleteness prims K, tprfCorrectness prims C, tprfSecurity prims C,
     signingCorrectness prims C, signingSecurityFull prims C (by sorry)⟩
 
