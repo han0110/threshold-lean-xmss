@@ -2,7 +2,7 @@
 
 The target is `ThresholdLeanXmssSecurityStatement` in `ThresholdLeanXmss/Statement.lean`. It gives eighteen claims about the protocol of `ThresholdLeanXmss/Scheme.lean`, for every setting.
 
-Fourteen claims are proved. Four claims are open. The root theorem passes each open gap as one `sorry` argument for a named `Prop`.
+Sixteen claims are proved. Two claims are open. The root theorem passes each open gap as one `sorry` argument for a named `Prop`.
 
 ## Reading order
 
@@ -45,7 +45,7 @@ The table of `Statement.lean` gives each statement in one sentence.
 | claim | source | status |
 | --- | --- | --- |
 | `KeygenCompletenessStatement` | the note, Section 2.1, honest run | proved, `keygenCompleteness` in `Keygen` |
-| `KeygenSecurityStatement` | GL05 and CDG+18 | open at `KeygenProgramAliasBound`, `keygenSecurityDone_of_programAlias` in `KeygenKnown` |
+| `KeygenSecurityStatement` | GL05 and CDG+18 | proved, `keygenSecurityClosed` in `KeygenAlias` |
 | `TreeCompletenessStatement` | GS20, Theorem 2, honest run | proved, `treeCompleteness` in `Tree` |
 | `TreeSecurityStatement` | GS20, Theorem 2, and GL05 | open at `TreeKeyAimedBound` and `TreeSimulationHop`, `treeSecurityOfSimAimed` in `TreeKeyAfter` |
 | `DealerTreeStatement` | PRAWNS, Section 3.1, and `doc/dkg.md` 3.1 | proved, `dealerTreeProof` in `Dealer` |
@@ -54,7 +54,7 @@ The table of `Statement.lean` gives each statement in one sentence.
 | `CoinCompletenessStatement` | GS20, Protocol 6, honest run | proved, `coinCompleteness` in `Gadgets` |
 | `MultStatement` | GS20, Lemma 4 | proved, `multStatement` in `Gadgets` |
 | `ExtendMultStatement` | GS20, Lemma 5 | proved, `extendMultSecurity` in `Gadgets` |
-| `MultVerifyStatement` | GS20, Lemmas 8 to 11, and CGH+18 | open at `CheckSoundStage` and `CheckSplitDistance`, `multVerifyOfSplitRoute` in `CheckLast` |
+| `MultVerifyStatement` | GS20, Lemmas 8 to 11, and CGH+18 | proved, `multVerifyClosed` in `CheckSplit` |
 | `MultVerifyCompletenessStatement` | GS20, Protocol 17, honest run | proved, `multVerifyCompleteness` in `Check` |
 | `MainStatement` | GS20, Theorem 2, for public outputs and pre-shared inputs | proved, `mainStatementFull` in `MainStages` |
 | `MainCompletenessStatement` | GS20, Protocol 19, honest run | proved, `mainCompleteness` in `Main` |
