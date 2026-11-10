@@ -12,6 +12,9 @@ import ThresholdLeanXmssSecurity.Proof.HiddenCore
 import ThresholdLeanXmssSecurity.Proof.KeygenKnown
 import ThresholdLeanXmssSecurity.Proof.TreeKeyAfter
 import ThresholdLeanXmssSecurity.Proof.CheckLast
+import ThresholdLeanXmssSecurity.Proof.SigningCache
+import ThresholdLeanXmssSecurity.Proof.SigningHitLane
+import ThresholdLeanXmssSecurity.Proof.SigningGuessLane
 
 namespace ThresholdLeanXmssSecurity
 

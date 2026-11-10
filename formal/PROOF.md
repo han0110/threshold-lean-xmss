@@ -30,6 +30,10 @@ Each file of `ThresholdLeanXmss/` imports the file before it. Each module of `Pr
   bound on a call that hits a secret point. The later modules of each area (`Dealer`, `MainSecurity`, `MainStages`,
   `CheckSecurity` to `CheckLast`, `KeygenSecurity` to `KeygenKnown`, `TreeSecurity` to `TreeKeyAfter`,
   `SigningSecurity` to `HiddenCore`) build on it and end in the theorem that the root uses.
+* `Proof/SigningDescent.lean` and `Proof/SigningCache.lean` prove that a winning forgery with no hidden-key hit
+  forces a hit, a guess or a digest partner in the cache, with the lemmas of leanVM `XmssSecurity`. `SigningCost`,
+  `SigningHitLane` and `SigningGuessLane` split the cost of these events into lanes. Their lane `Prop`s are a
+  proposed route, not consequences of the statement, so the root keeps `HiddenCoreAt` as the open gap.
 * `ThresholdLeanXmssSecurity.lean` states the main theorem `thresholdLeanXmss_security` and the axiom guards.
 
 `Statement.lean` defines `SecurelyComputes`, `SimulatedBy` and `Completes`. Every claim of the keygen, the ceremonies and the gadgets except `DealerTreeStatement` and `TreeSuccessStatement` uses one of them.
@@ -57,7 +61,7 @@ The table of `Statement.lean` gives each statement in one sentence.
 | `TprfCorrectnessStatement` | PRAWNS, Definition 2.1 | proved, `tprfCorrectness` in `Tprf` |
 | `TprfSecurityStatement` | PRAWNS, Definition 2.2 and Theorem 5.1 | proved, `tprfSecurity` in `Tprf` |
 | `SigningCorrectnessStatement` | PRAWNS, Section 3.1, honest run | proved, `signingCorrectness` in `Signing` |
-| `SigningSecurityStatement` | PRAWNS, Definition 3.2, in the random-oracle model | open at `HiddenCoreAt`, `signingSecurityFull` in `HiddenCore` |
+| `SigningSecurityStatement` | PRAWNS, Definition 3.2, in the random-oracle model | open at `HiddenCoreAt`, `signingSecurityFull` in `HiddenCore`; the descent is proved in `SigningDescent` and `SigningCache` |
 
 ## Proof plan
 
