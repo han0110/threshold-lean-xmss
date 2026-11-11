@@ -34,13 +34,50 @@ Each file of `ThresholdLeanXmss/` imports the file before it. Each module of `Pr
   forces a hit, a guess or a digest partner in the cache, with the lemmas of leanVM `XmssSecurity`. `SigningCost`,
   `SigningHitLane` and `SigningGuessLane` split the cost of these events into lanes. `SigningHitProof` proves
   `HitLaneBound`. `GuessPartnerLaneBound` is false, because one commitment call has two targets. A comment in
-  `SigningGuessProof` gives the trace. `SigningGuessProof` proves `HiddenCoreAt` from the open
-  `UnchargedLaneBound`, so the root keeps `HiddenCoreAt` as the open gap.
+  `SigningGuessProof` gives the trace.
+* The signing gap runs on the log of the run. The root keeps `HiddenCoreAt` as the open gap.
+  * `SigningPartnerBound` proves `HiddenCoreAt` from `UnchargedLaneBoundLogged` (`hiddenCoreAt_of_logged`).
+  * `SigningSelection` proves `SelectionClassification`. `SigningGuardedFlag` proves `HiddenCoreAt` from the open
+    `GuardedFlagCoupling` (`hiddenCoreAt_of_guardedCoupling`). Its flag is guarded by the win, and its chain target
+    is partial on PRF entries that the run never computed.
+  * Two earlier forms of this coupling are false. `UnchargedFlagCoupling` charges the commitment counterexample
+    twice (`SigningHybrid`), and `UnchargedFlagSoundCoupling` holds with probability one for an unguarded flag
+    (`SigningGuardedFlag`). A flag decided at one call cannot pay for the cached selection or for the window after
+    round 1 (`SigningLanes`). The lane bound itself is not refuted.
+  * `SigningFlat`, `SigningFlatEager`, `SigningCappedExpect`, `SigningLane2` and `SigningLane2Bridge` hold the flat
+    run, its eager law, the expectation form of the capped bound, and the leanVM lane-2 potential with its bridges.
+  * `SigningOpening`, `SigningPartnerLink`, `SigningGuessLink`, `SigningSupport` and `SigningReleased` hold the
+    events and the lemmas of this route. `SigningUncharged` holds an earlier reduction to a leanVM monitor.
 * `Proof/TreeSim.lean` reduces `TreeSimulationHop` to three independent `Prop`s. `TreeSimStages`, `TreeSimCheck`
-  and `TreeSimHash` hold the partial proofs of these `Prop`s.
+  and `TreeSimHash` hold the partial proofs of these `Prop`s, and their `Finish` modules continue them.
+* `TreeCompose` shows that the events `treeSimEvents` miss a reuse of a hidden digest salt. `TreeEvents` adds
+  this case in `treeSimEvents2`. `treeSimulationHop_of_events2` proves `TreeSimulationHop` from
+  `TreeSimStagesGoal2`, `TreeSimHashHonestBudget`, `TreeSimHashRawSaltEstimate`, `TreeSimSaltReuseEstimate` and
+  `TreeSimCheckBoundGoal`.
 * `ThresholdLeanXmssSecurity.lean` states the main theorem `thresholdLeanXmss_security` and the axiom guards.
 
 `Statement.lean` defines `SecurelyComputes`, `SimulatedBy` and `Completes`. Every claim of the keygen, the ceremonies and the gadgets except `DealerTreeStatement` and `TreeSuccessStatement` uses one of them.
+
+## Model
+
+This is the model of every claim. The header of `Statement.lean` gives it in full.
+
+* Every claim is for a classical adversary. No claim covers quantum queries.
+* `Committee` has `n = 2t - 1` operators. The trusted-dealer committees `n = 3f + 1` of the note are out of scope.
+* The rounds are synchronous, and the links are private and authenticated (GS20, Section 3.1).
+* The keygen and the ceremonies have security with selective abort (GL05). Each operator aborts alone.
+* The keygen and each ceremony are separate claims. Each has its own static coalition of at most `t - 1`
+  operators, corrupted before it starts, and a rushing malicious adversary.
+* The signing adversary corrupts adaptively, at most `t - 1` operators over the lifetime. A corruption gives
+  only the keys, because an operator erases its ceremony state at the end of each ceremony.
+* The claims cover no concurrent runs. A ceremony runs with no other ceremony and no open signing session.
+* The signing game holds the authorization resource `F_auth`, the map `bound` of `tsigOracles`. It fixes one
+  message for each key over all honest operators (`doc/sign.md`, Section 4.1).
+* `Th` is one fixed function in the keygen and ceremony claims. All of `H` is a random oracle in the signing
+  claim. The gap between the two is the random-oracle heuristic for Keccak.
+* The signing budget `q` counts the calls of every party (`HasSigningQueryBound`). The other budgets count the
+  calls of the adversary and of the distinguisher. No budget is a time bound.
+* The claims give no composed end-to-end claim.
 
 ## Claims
 

@@ -174,8 +174,6 @@ Let $k$ be the number of chains with $p_l < 3$. Then $23 \le k \le 58$, and $k \
 
 The signing targets the unforgeability of a threshold one-time signature, the game of [BBDLN26, Def. 3.2, Fig. 3](https://eprint.iacr.org/2026/2142). No complete proof exists.
 
-The formal claim models $\mathrm{Th}$ as a random oracle and states the bound $q / 2^{127}$ plus the terms of a call on a hidden key or seed. The budget $q$ counts every hash call of every party. The key generation claims keep $\mathrm{Th}$ as one fixed function.
-
 The formal claim replaces the threshold PRF property below by the terms of a call on a hidden key. The reduction of [BBDLN26, Thm. 3.1](https://eprint.iacr.org/2026/2142) uses two properties.
 
 - The threshold PRF is secure [BBDLN26, Def. 2.2](https://eprint.iacr.org/2026/2142). Its replicated construction with masks is secure in the random-oracle model [BBDLN26, Thm. 5.1](https://eprint.iacr.org/2026/2142).
@@ -186,14 +184,20 @@ The game differs from [BBDLN26, Fig. 3](https://eprint.iacr.org/2026/2142) in th
 - $\mathsf{Eval}$ and the signing oracle take the quorum $J$, as [BBDLN26, Sec. 4](https://eprint.iacr.org/2026/2142) allows.
 - Line 8 of the game requires $t > (n + \lvert D \rvert)/2$, which fails for $n = 2t - 1$, $\lvert D \rvert = t - 1$ and $t \ge 2$.
   - So the game drops line 8.
-  - In its place, honest operators sign at most one message for each key, over all quorums and also after an abort, as [Wam26](#references) assumes.
+  - In its place, the honest operators agree on one message for each key, as 4.1 describes.
 - [BBDLN26, Sec. 3.4](https://eprint.iacr.org/2026/2142) samples the randomizer key by a commit-reveal in the quorum. Here $c_e$ from the key generation fixes the randomizer value $F(A_{\mathrm{rnd}}(e))$.
 
-So signing the same $m$ again at key $e$ gives the same signature, and signing another message at $e$ breaks the one-time rule.
-
-A production implementation must enforce this one-message rule.
+So signing the same $m$ again at key $e$ gives the same signature.
 
 The signing claim covers adaptive corruptions [BBDLN26, Def. 3.2](https://eprint.iacr.org/2026/2142) of at most $t - 1$ operators over the lifetime of the key. It is separate from the key generation claims of [`dkg.md`, Section 3.3](dkg.md#33-security). The adversary gets every public output of the key generation.
+
+### 4.1 Authorization
+
+Each honest operator signs at most one message, but two quorums can have different honest operators. For example, with $`D = \{0\}`$ in a 2-of-3 committee, the quorums $`\{0, 1\}`$ and $`\{0, 2\}`$ can sign two messages at one key. So the honest operators must agree on $(e, m)$ before any of them sends a part. The formal game models this agreement as the map `bound` of `tsigOracles`. The PoC does not enforce it.
+
+### 4.2 The formal claim
+
+The formal claim models $\mathrm{Th}$ as a random oracle and states the bound $q / 2^{127}$ plus the terms of a call on a hidden key or seed. The budget $q$ counts the calls of every party, not only of the adversary. A forgery wins if it differs from the canonical honest signature at its key. [`formal/PROOF.md`](../formal/PROOF.md#model) gives the full model.
 
 ## References
 
