@@ -18,6 +18,8 @@ import ThresholdLeanXmssSecurity.Proof.CheckSplit
 import ThresholdLeanXmssSecurity.Proof.SigningCache
 import ThresholdLeanXmssSecurity.Proof.SigningHitLane
 import ThresholdLeanXmssSecurity.Proof.SigningGuessLane
+import ThresholdLeanXmssSecurity.Proof.TreeKeyAimed
+import ThresholdLeanXmssSecurity.Proof.SigningHitProof
 
 namespace ThresholdLeanXmssSecurity
 
@@ -26,7 +28,7 @@ theorem thresholdLeanXmss_security : ThresholdLeanXmss.ThresholdLeanXmssSecurity
   intro C E _ _ _ _ K prims circuits settings
   letI : SampleableType E := SampleableType.ofFintype E
   exact ⟨keygenCompleteness prims, keygenSecurityClosed prims, treeCompleteness prims K circuits settings,
-    treeSecurityOfSimAimed prims K circuits settings (by sorry) (by sorry),
+    treeSecurityOfSimAimed prims K circuits settings (treeKeyAimedBound prims K circuits settings) (by sorry),
     dealerTreeProof prims circuits settings C,
     treeSuccessProof prims circuits settings C, coinSecurity prims K, coinCompleteness prims K, multStatement prims K,
     extendMultSecurity prims K, multVerifyClosed prims K, multVerifyCompleteness prims K,

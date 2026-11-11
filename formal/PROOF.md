@@ -28,12 +28,16 @@ Each file of `ThresholdLeanXmss/` imports the file before it. Each module of `Pr
   `Proof/Check.lean` and `Proof/Tree.lean` hold the claims of their area, with the partial steps of the open claims.
 * `Proof/Coupling.lean` holds the round-by-round coupling of two executions, the shift of a uniform mask and the
   bound on a call that hits a secret point. The later modules of each area (`Dealer`, `MainSecurity`, `MainStages`,
-  `CheckSecurity` to `CheckLast`, `KeygenSecurity` to `KeygenKnown`, `TreeSecurity` to `TreeKeyAfter`,
+  `CheckSecurity` to `CheckLast`, `KeygenSecurity` to `KeygenKnown`, `TreeSecurity` to `TreeKeyAimed`,
   `SigningSecurity` to `HiddenCore`) build on it and end in the theorem that the root uses.
 * `Proof/SigningDescent.lean` and `Proof/SigningCache.lean` prove that a winning forgery with no hidden-key hit
   forces a hit, a guess or a digest partner in the cache, with the lemmas of leanVM `XmssSecurity`. `SigningCost`,
-  `SigningHitLane` and `SigningGuessLane` split the cost of these events into lanes. Their lane `Prop`s are a
-  proposed route, not consequences of the statement, so the root keeps `HiddenCoreAt` as the open gap.
+  `SigningHitLane` and `SigningGuessLane` split the cost of these events into lanes. `SigningHitProof` proves
+  `HitLaneBound`. `GuessPartnerLaneBound` is false, because one commitment call has two targets. A comment in
+  `SigningGuessProof` gives the trace. `SigningGuessProof` proves `HiddenCoreAt` from the open
+  `UnchargedLaneBound`, so the root keeps `HiddenCoreAt` as the open gap.
+* `Proof/TreeSim.lean` reduces `TreeSimulationHop` to three independent `Prop`s. `TreeSimStages`, `TreeSimCheck`
+  and `TreeSimHash` hold the partial proofs of these `Prop`s.
 * `ThresholdLeanXmssSecurity.lean` states the main theorem `thresholdLeanXmss_security` and the axiom guards.
 
 `Statement.lean` defines `SecurelyComputes`, `SimulatedBy` and `Completes`. Every claim of the keygen, the ceremonies and the gadgets except `DealerTreeStatement` and `TreeSuccessStatement` uses one of them.
@@ -47,7 +51,7 @@ The table of `Statement.lean` gives each statement in one sentence.
 | `KeygenCompletenessStatement` | the note, Section 2.1, honest run | proved, `keygenCompleteness` in `Keygen` |
 | `KeygenSecurityStatement` | GL05 and CDG+18 | proved, `keygenSecurityClosed` in `KeygenAlias` |
 | `TreeCompletenessStatement` | GS20, Theorem 2, honest run | proved, `treeCompleteness` in `Tree` |
-| `TreeSecurityStatement` | GS20, Theorem 2, and GL05 | open at `TreeKeyAimedBound` and `TreeSimulationHop`, `treeSecurityOfSimAimed` in `TreeKeyAfter` |
+| `TreeSecurityStatement` | GS20, Theorem 2, and GL05 | open at `TreeSimulationHop`, `treeSecurityOfSimClosed` in `TreeKeyAimed` |
 | `DealerTreeStatement` | PRAWNS, Section 3.1, and `doc/dkg.md` 3.1 | proved, `dealerTreeProof` in `Dealer` |
 | `TreeSuccessStatement` | PRAWNS, Section 3.1, honest run | proved, `treeSuccessProof` in `Dealer` |
 | `CoinStatement` | GS20, Lemma 3 | proved, `coinSecurity` in `Gadgets` |
