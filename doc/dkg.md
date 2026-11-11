@@ -744,12 +744,12 @@ b_0 \wedge \dots \wedge b_7 = \mathsf{OpenRep}\big( [\negthinspace[ z' ]\negthin
 
 ### 3.1 From the toy to the key generation
 
-| toy              | Threshold leanXMSS                                                                                                                                                                        |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| toy              | Threshold leanXMSS                                                                                                                                                                                   |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 8 random bits    | the chain start $`F(x) = \bigoplus_T \mathrm{H16}(\mathrm{seed}_T \,\Vert\, x)`$, the threshold PRF of [BBDLN26](https://eprint.iacr.org/2026/2142), a $\mathsf{Rand}$ with chosen input, no message |
-| 3 AND layers     | 3 Keccak-f[1600] per chain, 24 layers each, with the 1600 AND gates of $\chi$ in each layer                                                                                               |
-| 1 gate per layer | the gates of one layer for all 128 chains of a batch, in one $\mathsf{Reshare}$ round                                                                                                     |
-| the AND          | the chain end $y_3$, for bottom trees also $y_1 \oplus F(x_1)$, $y_2 \oplus F(x_2)$ and a commitment to $F(A_{\mathrm{rnd}}(e))$                                                          |
+| 3 AND layers     | 3 Keccak-f[1600] per chain, 24 layers each, with the 1600 AND gates of $\chi$ in each layer                                                                                                          |
+| 1 gate per layer | the gates of one layer for all 128 chains of a batch, in one $\mathsf{Reshare}$ round                                                                                                                |
+| the AND          | the chain end $y_3$, for bottom trees also $y_1 \oplus F(x_1)$, $y_2 \oplus F(x_2)$ and a commitment to $F(A_{\mathrm{rnd}}(e))$                                                                     |
 
 These facts complete the table.
 
@@ -818,6 +818,8 @@ A bottom tree is $2^{16} \cdot 58$ chains, 29,696 chain batches. Signing takes 2
 
 The key generation targets the property of [GS20, Thm. 2](https://eprint.iacr.org/2020/134). It securely computes the trusted dealer of $\mathsf{KeyGen}$ [BBDLN26](https://eprint.iacr.org/2026/2142) with abort, against a malicious adversary that statically corrupts up to $t - 1$ of the $n = 2t - 1$ operators. No complete proof exists.
 
+The claims cover only $n = 2t - 1$ and a classical adversary. [`formal/PROOF.md`](../formal/PROOF.md#model) gives the full model.
+
 The proof follows the steps of [GS20](https://eprint.iacr.org/2020/134).
 
 | step      | statement                                                                                                               | source                                             |
@@ -830,6 +832,10 @@ The proof follows the steps of [GS20](https://eprint.iacr.org/2020/134).
 The check misses a wrong tuple with probability at most $(d + 2(m+1)) / (2^{192} - 2) < 2^{-185}$, for $d = 18$ coins and $m = 24$ halvings.
 
 Two PRSS keys give the same 128-bit AES key with probability at most $k^2 / 2^{129}$, for the $k$ PRSS keys of a ceremony.
+
+The ceremony claim assumes that AES-128 is a multi-key PRF on the hidden PRSS keys, and its advantage is a term of the bound. The budget $q$ counts oracle calls, not time.
+
+The gadget claims are internal lemmas. Their functionalities leak more than those of [GS20](https://eprint.iacr.org/2020/134) on some inputs, and `TupleInputs`, `MainInputs` and `ShamirInputs` restrict their inputs. The keygen and ceremony claims run the real network, so they do not depend on these interfaces.
 
 The protocol differs from [GS20](https://eprint.iacr.org/2020/134) in three points, and each point needs its own argument.
 
