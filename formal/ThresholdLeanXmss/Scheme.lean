@@ -1,5 +1,6 @@
 import LeanXmss.Scheme
 import Mathlib.Algebra.Field.ZMod
+import Mathlib.FieldTheory.Finite.GaloisField
 import Mathlib.LinearAlgebra.LinearIndependent.Defs
 import VCVio.CryptoFoundations.PRF
 import VCVio.OracleComp.QueryTracking.WriterCost
@@ -18,16 +19,16 @@ model, the programs in the hybrid models of GS20, and the honest runs that the c
 * An operator program is an `OracleComp` with private sampling, the oracle `H` and one query
   `exchange` for each synchronous round. A program that returns `none` aborts.
 * A program in a hybrid model also has a query `call` to the functionality (GS20, Section 3.1).
-* Each use of `H` has its own domain. The implementation separates the uses by tags and lengths, so
-  its inputs map to these domains one to one (BR93).
+* Each constructor of `Query` is its own domain of `H`. The current byte encoding of the
+  implementation does not separate all these domains yet (`Statement.lean`, model).
 * The domain `hash` is the tweakable hash `Th` of leanXMSS. In the claims of the key generation, it
   is one fixed function on the inputs that the MPC evaluates, namely a chain step and the commitment
   `c_e`. Every other input of `Th`, namely a leaf, a node and a message digest, and every other
   domain are a random oracle. In the signing claim, every input of `H` is a random oracle
   (`signingLocalAnswer`).
 * `PRG(key, ρ, idx)` is AES-128 under `H(key)` truncated to 128 bits, as in the implementation.
-* Messages carry values, not bytes. Every encoding of the implementation is injective, so it does
-  not change a view.
+* Messages carry values, not bytes. The model assumes that every encoding of the implementation is
+  injective, so that it does not change a view.
 * A run splits its jobs into batches of `batchSize` jobs. Each batch is one run of the protocol of
   GS20, Protocol 19, with its own check and fresh running digests.
 * The AND gates reshare in peer mode or in collector mode. `Rerand` and the check use peer mode.
@@ -127,6 +128,46 @@ structure Constants (C : Committee) (E : Type) [Field E] [Algebra Bit E] where
   /-- The bits of an element of `E`. -/
   encode : E ≃ (Fin elementBits → Bit)
 
+/-- The committee of one operator. -/
+def soloCommittee : Committee := ⟨1, le_rfl⟩
+
+/-- The basis of `GF(2^192)` over `F_2` that the witness of `Constants` uses. -/
+def galoisBasis : Module.Basis (Fin elementBits) Bit (GaloisField 2 elementBits) :=
+  Module.finBasisOfFinrankEq Bit (GaloisField 2 elementBits) (GaloisField.finrank 2 (by decide))
+
+/-- `Constants` has a value for the committee of one operator over `GF(2^192)`. -/
+theorem constants_nonempty : Nonempty (Constants soloCommittee (GaloisField 2 elementBits)) := by
+  have held : ∀ (i : soloCommittee.Party) (T : soloCommittee.Term), i ∈ soloCommittee.holders T := by
+    intro i T
+    have : T.1 = ∅ := Finset.card_eq_zero.mp T.2
+    simp [Committee.holders, this]
+  have single : ∀ i j : soloCommittee.Party, i = j := fun i j => Fin.ext (by
+    have := i.2; have := j.2; simp only [soloCommittee, Committee.n] at *; omega)
+  let zero : soloCommittee.Party := ⟨0, by decide⟩
+  let empty : soloCommittee.Term := ⟨∅, rfl⟩
+  exact ⟨{
+    point := ⟨fun _ => 1, fun _ _ _ => single _ _⟩
+    point_ne_zero := fun _ => one_ne_zero
+    pairs := fun _ => Finset.univ
+    pairs_unique := fun _ => ⟨zero, Finset.mem_univ _, fun _ _ => single _ _⟩
+    pairs_held := fun i AB _ => ⟨held i AB.1, held i AB.2⟩
+    filled := ⟨fun _ => empty, fun _ _ _ => single _ _⟩
+    filled_held := fun i => held i _
+    collector := fun _ => (empty, zero)
+    collector_held := fun _ => held _ _
+    owner := fun _ => zero
+    owner_held := fun _ => held _ _
+    publicTerm := empty
+    weight := fun q => galoisBasis (Fin.castLE (by decide) q)
+    weight_independent := galoisBasis.linearIndependent.comp _ (Fin.castLE_injective (by decide))
+    encode := galoisBasis.equivFun.toEquiv }⟩
+
+/-- A field with a value of `Constants` has `2 ^ 192` elements. -/
+theorem Constants.card {C : Committee} {E : Type} [Field E] [Algebra Bit E] (K : Constants C E) :
+    Nat.card E = 2 ^ elementBits := by
+  rw [Nat.card_congr K.encode, Nat.card_fun]
+  simp
+
 /-- The reshare of the AND gates. -/
 inductive ReshareMode
   | peer
@@ -174,8 +215,8 @@ inductive KeyName (C : Committee)
   | pair (p : C.Pair)
 deriving DecidableEq
 
-/-- An input of `H`. Each constructor is one use of `H`, and the tag of the implementation separates
-it (`doc/dkg.md` 1.1.4). -/
+/-- An input of `H`. Each constructor is one domain of `H`. The tags of the implementation
+(`doc/dkg.md` 1.1.4) do not separate all of them yet (`Statement.lean`, model). -/
 inductive Query (C : Committee)
   /-- The tweakable hash `Th` of leanXMSS, on the bytes of leanVM. -/
   | hash (input : HashInput)

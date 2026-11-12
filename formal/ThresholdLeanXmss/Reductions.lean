@@ -171,4 +171,32 @@ def prgReduction (prims : Primitives) (D : C.Coalition) (game : OracleComp (Worl
     fun x => lift (programAnswer x)
   (simulateQ ((real + programming) + honest) game).run' ∅
 
+/-! ## The reductions of the lifetime claim -/
+
+section Lifetime
+
+variable (attempts : ℕ)
+
+/-- The roles of the hybrid of run `n`. The runs before run `n` use ideal streams under the hidden
+keys, as `emulatedRoles`. The honest operators of run `n`, the keygen and the signing run on the free
+copy. The honest operators of the later runs run on the counted copy. -/
+def lifetimeHybridRoles (D : C.Coalition) (n : ℕ) : ℕ → Roles C (EmulationM C) := fun r =>
+  if r < n then emulatedRoles D
+  else if r = n then ⟨(emulatedRoles D).adversary, fun oa => StateT.lift (liftM (free oa))⟩
+  else ⟨(emulatedRoles D).adversary, (emulatedRoles D).adversary⟩
+
+/-- The reduction of run `n` of the lifetime to `hiddenStreams`. It samples `Th` and runs
+`prgReduction` on the lifetime with `lifetimeHybridRoles D n`. Only the honest streams of run `n`
+reach the PRF oracle, because the keygen and the signing call no `PRG`. -/
+def lifetimeRunReduction (aes : Aes) (circuitsOf : (HashInput → HashOutput) → Circuits) (D : C.Coalition)
+    (A : LifetimeAdversary C E) (n : ℕ) : PRFScheme.PRFAdversary ((KeyName C × HashOutput) × ℕ × ℕ × ℕ) Bit :=
+  (do
+    let values ← liftComp ($ᵗ (MpcDomain → HashOutput)) (StreamSpec C)
+    prgReduction ⟨thOf values, aes⟩ D ((fun r => r.1.1) <$>
+      ((lifetimeGameWith K (circuitsOf (thOf values)) settings attempts (lifetimeHybridRoles D n)
+        (lifetimeHybridRoles D n n) D A).run ∅).run) :
+    OracleComp (StreamSpec C) Bool)
+
+end Lifetime
+
 end ThresholdLeanXmss

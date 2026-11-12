@@ -138,7 +138,7 @@ Only the PRF uses $`\mathrm{seed}_T`$, and only the signing masks use $K_{ij}$. 
 
 The index $\mathrm{idx}$ is $0$ for reshare masks, $1$ for coins and final masks, and $2$ for digest salts.
 
-The threshold PRF and the signing masks hash a secret key first and no tag, as in the note. Every other use of $H$ hashes its own tag first, so no two uses share an input.
+The threshold PRF and the signing masks hash a secret key first and no tag, as in the note. Every other use of $H$ hashes its own tag first. The untagged inputs can equal the input of another use, so the uses do not yet have separate domains. The formal model separates the domains that the constructors of `Query` represent, and the implementation must add this separation.
 
 | tag                                                              | input after the tag                                                 | section |
 | ---------------------------------------------------------------- | ------------------------------------------------------------------- | ------- |
