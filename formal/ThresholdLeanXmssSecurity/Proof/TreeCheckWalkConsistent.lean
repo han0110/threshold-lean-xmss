@@ -52,7 +52,8 @@ It has no premise on the tuples, and it states nothing about `x` and `y`.
 
 ## Truth of the transcript clause
 
-The argument below is on paper. It is not checked in Lean.
+`TreeCheckWalkTranscript.walkTranscript` proves the transcript clause in Lean,
+along this argument.
 
 * Each honest holder of `T` queries `prf (seed T)` on the same public points.
   The seeds agree by `DealtInputs`. `streamWorld` answers a query from its
@@ -70,12 +71,11 @@ The argument below is on paper. It is not checked in Lean.
 * `treeAgreementSetupKeys` needs `setup i = some _`. By `initial_program`, an
   honest operator with no setup row has the program `failure` at the start of
   the walk. An aborted program stays aborted along the walk, and by `Fits` its
-  canonical first local pass aborts. So it has no checkpoint row. This file
-  does not prove this abort invariant.
+  canonical first local pass aborts. So it has no checkpoint row.
 
 `TreeCheckMaskExtraction.layers_replay` gives a joint replay of the layers only
-for the empty coalition. This file gives no joint replay for a nonempty
-coalition.
+for the empty coalition. `TreeCheckWalkTranscript` gives the replay for a
+nonempty coalition.
 -/
 
 open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
