@@ -9,8 +9,8 @@ handler for a plain lazy random oracle.
 
 The check fails for the lane split as it is (`FreshSelection`, `bottomPartnerLogged_bound`,
 `SigningOpeningProof.probEvent_le_of_capped`). The traces are below. The bottom rows pass only with
-three changes R1, R2 and R3 of the split, and the owner must decide on them. The row of the
-unresolved top partner stays open with or without them.
+three changes R1, R2 and R3 of the split. The top-partner bound is a separate
+hypothesis with or without them.
 
 ## The candidate
 
@@ -59,14 +59,14 @@ Each row gives the unit of one counted call in each lane. "Spare" is a unit that
 | bottom encoding at `e` after the base call, fresh selection | meets the selected digest | none |
 | bottom encoding at `e` after the base call, cached selection | none | `f4` of leanVM (`PostBad`) |
 | encoding call on a cached trial | as a fresh call of the lazy run | as a fresh call of the lazy run |
-| top encoding at `b` | `rawDomainCost anyTopDigestInput` | open, see below |
+| top encoding at `b` | `rawDomainCost anyTopDigestInput` | requires a top-partner estimate, see below |
 | chain `(e, l, p, v)` or `(b, l, p, v)` | output chain target | input hidden value below the opened position |
 | honest grind trial in round 2 | none, it reads the cache | none |
 
 With R3 the base call is the only sign step of a key, so `leafIndices.Nodup` of
 `Ghost.collision_le` holds.
 
-## The unresolved top partner
+## The top-partner bound
 
 The third disjunct of `UnchargedFlag` is not covered by the table.
 
@@ -83,7 +83,7 @@ The third disjunct of `UnchargedFlag` is not covered by the table.
   the row is over by a term of order `q / N^2`.
 * One fix extends the input-side flag to the digit of the canonical top encoding at a top key that
   no query opened. Then the forged value is an input hit of the chain row. This changes
-  `HiddenInputHit` and needs a decision of the owner.
+  `HiddenInputHit`.
 
 ## The regression cases
 

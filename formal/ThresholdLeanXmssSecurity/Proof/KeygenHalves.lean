@@ -4,26 +4,26 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 /-!
 # Keygen security: the two hybrid halves
 
-This module works on the two open halves of `keygenSecurityProof`:
+This module relates the two halves of `keygenSecurityProof`:
 `KeygenHiddenFreshSwapped` (the hidden half on the relabeled reference runs) and
 `KeygenKnownMismatch` (the known half on the simulator's emulation).
 
 The hidden half is reduced to one echo-collision bound, `KeygenEchoFresh`.
 
-1. Stage A (`keygenStageA`, proved). The relabeled oracle answers the canonical hidden inputs with
+1. Stage A (`keygenStageA`). The relabeled oracle answers the canonical hidden inputs with
    the dealer's table. Replace it by the independent oracle. The two runs agree unless the parts
    clash (`KeygenClash`, at most `keygenClashCount / 2^256`) or a call of the adversary or the
    distinguisher hits a canonical hidden input (at most `q (|terms| + |pairs|) / 2^256`). Without a
    clash, no honest derivation of an exposed key reads a canonical hidden input.
-2. Stage B (`keygenIndepEcho_of_acceptGap`, proved). On the independent run, the table enters only
+2. Stage B (`keygenIndepEcho_of_acceptGap`). On the independent run, the table enters only
    the hidden coordinates of the outputs and the receivers. The run splits into a table-free
    transcript and the outputs of the table. The fresh keys of `keygenHiddenZ` and the table are two
    independent fresh tables, so the gap is at most the probability that their receivers differ.
 3. The receivers of two tables agree unless one of them makes an echo collision on two honest
-   operators that share a hidden term (`keygenReferenceData_receivers_hidden`, proved).
-4. Open: `KeygenEchoFresh`, the probability of such a collision on the independent run.
+   operators that share a hidden term (`keygenReferenceData_receivers_hidden`).
+4. The echo interface: `KeygenEchoFresh`, the probability of such a collision on the independent run.
 
-The known half `KeygenKnownMismatch` stays open.
+`KeygenKnownMismatch` states the known-half estimate.
 -/
 
 set_option pp.deepTerms false
@@ -1107,8 +1107,8 @@ end Receivers
 /-! ## Stage B: the independent dealer table against fresh keys
 
 On the independent reference run, the dealer's table enters only the hidden coordinates of the
-outputs and the honest echo comparisons. The open stage is the echo-collision bound, stated with what
-remains of half the error after stage A on both distinguishers. -/
+outputs and the honest echo comparisons. The stage hypothesis is the echo-collision bound, stated with
+the unused portion of half the error after stage A on both distinguishers. -/
 
 section StageB
 

@@ -28,7 +28,7 @@ run.
 * `freshPartnerLink_of_classification` gives `BottomPartnerLogged` or `AlternativeCommitment` on
   the joint run. It uses the agreement of the log with the cache (`LogConsistent`), `Covered`, and
   the decoding of the forged digest of a win.
-* `SelectionClassification` is the open claim about the honest calls at the key.
+* `SelectionClassification` states the required property of the honest calls at the key.
 
 ## The flag
 
@@ -65,6 +65,62 @@ each world call with its answer. -/
 def jointRun (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) : ProbComp (JointOutcome C) :=
   (simulateQ (loggedImpl prims) (SigningGuessLinkProof.verifyFinal A x)).run loggedInit
 
+set_option maxRecDepth 100000 in
+/-- A run with final metadata splits into the top-tree run, the adversary run and the
+verification with its freshness check. The same decomposition applies to either counted or
+logged world handlers. -/
+theorem verifyFinal_support {σ : Type}
+    (impl : QueryImpl (WorldSpec C) (StateT σ ProbComp)) (initial : σ)
+    (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
+    (r : (((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) ×
+      List (SigningOpeningProof.HiddenKey × Digest)) × σ)
+    (hr : r ∈ support ((simulateQ impl (SigningGuessLinkProof.verifyFinal A x)).run initial))
+    (top : TopTree) (state : TsigState C) (forgery : Forgery)
+    (hm : r.1.1.2 = some (top, state, forgery)) :
+    ∃ (p : Option TreeOutput × σ)
+      (q : (Forgery × (TsigState C × Bool) × Finset (Fin (2 ^ layerHeight)) ×
+        List (SigningOpeningProof.HiddenKey × Digest)) × σ)
+      (v : ((Bool × TsigState C × Forgery) × List (SigningOpeningProof.HiddenKey × Digest)) × σ),
+      p ∈ support ((simulateQ impl (SigningSecurityProof.liftFree
+        (referenceTree tweakable (prfValue x.2.1) x.1 emptyTop .top))).run initial) ∧
+      p.1 = some (.top top) ∧
+      q ∈ support ((simulateQ impl ((simulateQ (SigningOpeningProof.openingOracles x
+        (SigningGuessProof.receiptDealt x top)) (A ⟨top.root, x.1⟩ top)).run
+          ((SigningCoreProof.tsigInit, false), ∅, []))).run p.2) ∧
+      v ∈ support ((simulateQ impl (SigningGuessLinkProof.tsigFinishLogged
+        (SigningGuessProof.receiptDealt x top) q.1.2.2.1 (q.1.1, q.1.2.1.1))).run q.2) ∧
+      r = ((((v.1.1.1, q.1.2.1.2), some (top, v.1.1.2.1, v.1.1.2.2)),
+        q.1.2.2.2 ++ v.1.2), v.2) := by
+  unfold SigningGuessLinkProof.verifyFinal at hr
+  dsimp only at hr
+  rw [show referenceTree (fun oa => SigningSecurityProof.liftFree (tweakable oa))
+      (fun p => SigningSecurityProof.liftFree (prfValue x.2.1 p)) x.1 emptyTop .top =
+      SigningSecurityProof.liftFree (referenceTree tweakable (prfValue x.2.1) x.1 emptyTop .top) from
+    referenceTree_φ _ _ _ _] at hr
+  rw [simulateQ_bind, StateT.run_bind, mem_support_bind_iff] at hr
+  obtain ⟨p, hp, hr⟩ := hr
+  rcases hp1 : p.1 with _ | (top' | tree)
+  · rw [hp1] at hr
+    simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hr
+    rw [hr] at hm
+    cases hm
+  swap
+  · rw [hp1] at hr
+    simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hr
+    rw [hr] at hm
+    cases hm
+  rw [hp1] at hr
+  dsimp only at hr
+  rw [simulateQ_bind, StateT.run_bind, mem_support_bind_iff] at hr
+  obtain ⟨q, hq, hr⟩ := hr
+  rw [simulateQ_map, StateT.run_map, support_map] at hr
+  obtain ⟨v, hv, rfl⟩ := hr
+  simp only [Option.some.injEq, Prod.mk.injEq] at hm
+  obtain ⟨rfl, -, -⟩ := hm
+  with_reducible refine ⟨p, q, v, hp, hp1, ?_, ?_, rfl⟩
+  · simpa only [SigningGuessProof.receiptDealt, dealtWith] using hq
+  · simpa only [SigningGuessProof.receiptDealt] using hv
+
 /-- The joint run without the candidates is `loggedRun`. -/
 theorem jointRun_logged (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
     (fun z => (z.1.1, z.2)) <$> jointRun prims A x = loggedRun prims A x := by
@@ -83,15 +139,15 @@ set_option maxRecDepth 100000 in
 theorem mem_exposedRun_of_joint (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) (w : JointOutcome C)
     (hw : w ∈ support (jointRun prims A x)) :
     (w.1.1, w.2.1) ∈ support (SigningDescentProof.exposedRun prims A x) := by
-  rw [← SigningGuessLinkProof.verifyRun_forget, ← jointRun_verify, Functor.map_map, support_map]
-  exact ⟨w, hw, rfl⟩
+  rw [← SigningGuessLinkProof.verifyRun_forget, ← jointRun_verify, Functor.map_map, support_map, Set.mem_image]
+  with_reducible exact ⟨w, hw, rfl⟩
 
 set_option maxRecDepth 100000 in
 theorem mem_verifyRun_of_joint (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) (w : JointOutcome C)
     (hw : w ∈ support (jointRun prims A x)) :
     (w.1, w.2.1) ∈ support (SigningGuessLinkProof.verifyRun prims A x) := by
-  rw [← jointRun_verify, support_map]
-  exact ⟨w, hw, rfl⟩
+  rw [← jointRun_verify, support_map, Set.mem_image]
+  with_reducible exact ⟨w, hw, rfl⟩
 
 section MonitorList
 
@@ -379,8 +435,8 @@ theorem joint_covered (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) (
     (fun _ input h => (h rfl).elim) w hw
   refine hinv ?_
   have hz : (w.1.1, w.2) ∈ support (loggedRun prims A x) := by
-    rw [← jointRun_logged, support_map]
-    exact ⟨w, hw, rfl⟩
+    rw [← jointRun_logged, support_map, Set.mem_image]
+    with_reducible exact ⟨w, hw, rfl⟩
   exact noProgramQuery prims C A x _ hz
 
 set_option maxRecDepth 100000 in
@@ -649,3 +705,11 @@ info: 'ThresholdLeanXmssSecurity.SigningUnchargedLoggedProof.hiddenCoreAt_of_cou
 -/
 #guard_msgs in
 #print axioms ThresholdLeanXmssSecurity.SigningUnchargedLoggedProof.hiddenCoreAt_of_coupling
+
+/--
+info: 'ThresholdLeanXmssSecurity.SigningUnchargedLoggedProof.verifyFinal_support' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
+#guard_msgs in
+#print axioms ThresholdLeanXmssSecurity.SigningUnchargedLoggedProof.verifyFinal_support

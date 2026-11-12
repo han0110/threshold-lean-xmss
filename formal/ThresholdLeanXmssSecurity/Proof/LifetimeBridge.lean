@@ -16,7 +16,7 @@ over the selected tree, and one PRF reduction running the same complete prefix.
 The pinned and current leanVM bridge modules were searched first. Their
 `XmssSecurity.Bridge.evalDist_run_bind_of` expresses the same joint-cache principle for `HashSpec`;
 the transport here uses the existing threshold world/stream lemmas for `LocalSpec`.
-This module does not import or modify the B3 lifetime draft.
+The interface concerns a selected ceremony, rather than the complete lifetime scheduler.
 -/
 
 set_option linter.unusedSectionVars false

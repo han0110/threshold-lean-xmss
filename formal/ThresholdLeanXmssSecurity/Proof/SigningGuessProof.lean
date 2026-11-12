@@ -437,6 +437,19 @@ private theorem run_liftM_comp {ι σ α : Type} {spec : OracleSpec ι}
     (p : OracleComp spec α) (st : σ) :
     (liftM p : StateT σ (OracleComp spec) α).run st = (fun a => (a, st)) <$> p := rfl
 
+/-- Building a bottom tree changes only the stored trees. -/
+theorem bottomOnce_frame {C : Committee} {ι : Type} {spec : OracleSpec ι}
+    (dealt : Dealt C (OracleComp spec)) (b : Fin (2 ^ LeanXmss.layerHeight)) (st : TsigState C)
+    (r : Option BottomTree × TsigState C) (hr : r ∈ support ((bottomOnce dealt b).run st)) :
+    r.2.corrupt = st.corrupt ∧ r.2.bound = st.bound ∧ r.2.released = st.released := by
+  simp only [bottomOnce, StateT.run_bind, StateT.run_get, pure_bind] at hr
+  cases ht : st.trees b <;>
+    simp [ht, StateT.run_bind, run_liftM_comp, bind_map_left] at hr
+  · obtain ⟨tree, _, rfl⟩ := hr
+    simp
+  · subst r
+    simp
+
 theorem tsigOracles_boundExtends {C : Committee} {ι : Type} {spec : OracleSpec ι}
     (lift : ∀ {β : Type}, OracleComp (RoSpec C) β → OracleComp spec β)
     (dealt : Dealt C (OracleComp spec)) (t : (TsigSpec C).Domain) (st : TsigState C)
@@ -448,12 +461,12 @@ theorem tsigOracles_boundExtends {C : Committee} {ι : Type} {spec : OracleSpec 
     split at hr <;>
       simp_all [StateT.run_set, StateT.run_pure, BoundExtends]
   | tree b =>
-    simp only [tsigOracles, StateT.run_bind, run_liftM_comp, bind_map_left,
-      mem_support_bind_iff] at hr
-    obtain ⟨tree, _, hr⟩ := hr
+    simp only [tsigOracles, StateT.run_bind, mem_support_bind_iff] at hr
+    obtain ⟨⟨tree, st'⟩, ht, hr⟩ := hr
+    obtain ⟨_, hbound, hrel⟩ := bottomOnce_frame dealt b st _ ht
     cases tree <;> simp_all [BoundExtends]
     obtain ⟨value, _, rfl⟩ := hr
-    exact fun _ _ h => h
+    exact fun _ _ h => hbound ▸ h
   | round1 i J e message =>
     simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at hr
     split at hr
@@ -473,9 +486,9 @@ theorem tsigOracles_boundExtends {C : Committee} {ι : Type} {spec : OracleSpec 
     simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at hr
     split at hr
     · simp_all [StateT.run_pure, BoundExtends]
-    · simp only [StateT.run_bind, run_liftM_comp, bind_map_left,
-        mem_support_bind_iff] at hr
-      obtain ⟨tree, _, hr⟩ := hr
+    · simp only [StateT.run_bind, mem_support_bind_iff] at hr
+      obtain ⟨⟨tree, st'⟩, ht, hr⟩ := hr
+      obtain ⟨_, hbound, hrel⟩ := bottomOnce_frame dealt (treeOf e) st _ ht
       cases tree with
       | none => simp_all [StateT.run_pure, BoundExtends]
       | some tree =>
@@ -535,12 +548,12 @@ theorem tsigOracles_bindingStep {C : Committee} {ι : Type} {spec : OracleSpec �
     simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at hr
     split at hr <;> simp_all [StateT.run_set, StateT.run_pure, bindingStep]
   | tree b =>
-    simp only [tsigOracles, StateT.run_bind, run_liftM_comp, bind_map_left,
-      mem_support_bind_iff] at hr
-    obtain ⟨tree, _, hr⟩ := hr
+    simp only [tsigOracles, StateT.run_bind, mem_support_bind_iff] at hr
+    obtain ⟨⟨tree, st'⟩, ht, hr⟩ := hr
+    obtain ⟨_, hbound, hrel⟩ := bottomOnce_frame dealt b st _ ht
     cases tree <;> simp_all [bindingStep]
     obtain ⟨value, _, rfl⟩ := hr
-    rfl
+    exact hbound
   | round1 i J e message =>
     simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at hr
     split at hr
@@ -553,9 +566,9 @@ theorem tsigOracles_bindingStep {C : Committee} {ι : Type} {spec : OracleSpec �
     simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at hr
     split at hr
     · simp_all [StateT.run_pure, bindingStep]
-    · simp only [StateT.run_bind, run_liftM_comp, bind_map_left,
-        mem_support_bind_iff] at hr
-      obtain ⟨tree, _, hr⟩ := hr
+    · simp only [StateT.run_bind, mem_support_bind_iff] at hr
+      obtain ⟨⟨tree, st'⟩, ht, hr⟩ := hr
+      obtain ⟨_, hbound, hrel⟩ := bottomOnce_frame dealt (treeOf e) st _ ht
       cases tree with
       | none => simp_all [StateT.run_pure, bindingStep]
       | some tree =>
@@ -610,12 +623,12 @@ theorem tsigOracles_releaseStep {C : Committee} {ι : Type} {spec : OracleSpec �
     simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at hr
     split at hr <;> simp_all [StateT.run_set, StateT.run_pure, releaseStep]
   | tree b =>
-    simp only [tsigOracles, StateT.run_bind, run_liftM_comp, bind_map_left,
-      mem_support_bind_iff] at hr
-    obtain ⟨tree, _, hr⟩ := hr
+    simp only [tsigOracles, StateT.run_bind, mem_support_bind_iff] at hr
+    obtain ⟨⟨tree, st'⟩, ht, hr⟩ := hr
+    obtain ⟨_, hbound, hrel⟩ := bottomOnce_frame dealt b st _ ht
     cases tree <;> simp_all [releaseStep]
     obtain ⟨value, _, rfl⟩ := hr
-    rfl
+    exact hrel
   | round1 i J e message =>
     simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at hr
     split at hr
@@ -628,9 +641,9 @@ theorem tsigOracles_releaseStep {C : Committee} {ι : Type} {spec : OracleSpec �
     simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at hr
     split at hr
     · simp_all [StateT.run_pure, releaseStep]
-    · simp only [StateT.run_bind, run_liftM_comp, bind_map_left,
-        mem_support_bind_iff] at hr
-      obtain ⟨tree, _, hr⟩ := hr
+    · simp only [StateT.run_bind, mem_support_bind_iff] at hr
+      obtain ⟨⟨tree, st'⟩, ht, hr⟩ := hr
+      obtain ⟨_, hbound, hrel⟩ := bottomOnce_frame dealt (treeOf e) st _ ht
       cases tree with
       | none => simp_all [StateT.run_pure, releaseStep]
       | some tree =>
@@ -841,12 +854,12 @@ theorem tsigOracles_corrupt_mono {ι : Type} {spec : OracleSpec ι}
     simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at hr
     split at hr <;> simp_all [StateT.run_set, StateT.run_pure]
   | tree b =>
-    simp only [tsigOracles, StateT.run_bind, run_liftM_comp, bind_map_left,
-      mem_support_bind_iff] at hr
-    obtain ⟨tree, _, hr⟩ := hr
+    simp only [tsigOracles, StateT.run_bind, mem_support_bind_iff] at hr
+    obtain ⟨⟨tree, st'⟩, ht, hr⟩ := hr
+    obtain ⟨hcorrupt, _, _⟩ := bottomOnce_frame dealt b st _ ht
     cases tree <;> simp_all
     obtain ⟨value, _, rfl⟩ := hr
-    exact Finset.Subset.refl _
+    exact hcorrupt ▸ Finset.Subset.refl _
   | round1 i J e message =>
     simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at hr
     split at hr
@@ -859,8 +872,9 @@ theorem tsigOracles_corrupt_mono {ι : Type} {spec : OracleSpec ι}
     simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at hr
     split at hr
     · simp_all [StateT.run_pure]
-    · simp only [StateT.run_bind, run_liftM_comp, bind_map_left, mem_support_bind_iff] at hr
-      obtain ⟨tree, _, hr⟩ := hr
+    · simp only [StateT.run_bind, mem_support_bind_iff] at hr
+      obtain ⟨⟨tree, st'⟩, ht, hr⟩ := hr
+      obtain ⟨hcorrupt, _, _⟩ := bottomOnce_frame dealt (treeOf e) st _ ht
       cases tree with
       | none => simp_all [StateT.run_pure]
       | some tree =>
@@ -4312,7 +4326,7 @@ def Round2Receipt.records (receipt : Round2Receipt C) : List (EvalRecord C) :=
   round2ReplyRecords receipt.party receipt.quorum receipt.key receipt.message receipt.encoding receipt.values
 
 /-- The full handler records a receipt only after success. Failed attempts
-retain their original tree, own-share and search effects. -/
+keep their tree build, own-share and search effects. -/
 def round2WithReceipt
     (lift : ∀ {α : Type}, OracleComp (RoSpec C) α → m α) (dealt : Dealt C m)
     (st : TsigState C) (i : C.Party) (J : C.Quorum) (e : LeanXmss.KeyIndex)
@@ -4322,7 +4336,8 @@ def round2WithReceipt
   if i ∈ st.corrupt ∨ i ∉ J.1 ∨ st.bound e ≠ some message then
     pure ((none, st), none)
   else
-    let some tree ← dealt.bottom (treeOf e) | pure ((none, st), none)
+    let (found, st) ← (bottomOnce dealt (treeOf e)).run st
+    let some tree := found | pure ((none, st), none)
     let own ← dealt.part i J (.randomizer LeanXmss.bottomLayer e) message
     let some ((randomness, encoding), values) ← signRound2WithSelection lift
       (fun point => dealt.part i J point message) dealt.parameter J (tree.commitment e)
@@ -4345,13 +4360,12 @@ theorem round2WithReceipt_forget
   split_ifs with hguard
   · simp only [StateT.run_pure, map_pure]
     rfl
-  · simp only [map_bind, StateT.run_bind, hl, bind_map_left]
+  · simp only [map_bind, StateT.run_bind]
     congr 1
-    funext tree
-    cases tree with
-    | none => simp; rfl
-    | some tree =>
-      simp only [map_bind, StateT.run_bind, hl, bind_map_left]
+    funext found
+    rcases found with ⟨_ | tree, st⟩
+    · simp; rfl
+    · simp only [map_bind, StateT.run_bind, hl, bind_map_left]
       congr 1
       funext own
       rw [← signRound2WithSelection_forget]
@@ -4381,12 +4395,13 @@ theorem round2WithReceipt_released {ι : Type} {spec : OracleSpec ι}
     subst result
     simp
   · simp only [mem_support_bind_iff] at hr
-    obtain ⟨tree, _, hr⟩ := hr
-    cases tree with
+    obtain ⟨⟨found, st'⟩, ht, hr⟩ := hr
+    obtain ⟨_, _, hrel⟩ := bottomOnce_frame dealt (treeOf e) st _ ht
+    cases found with
     | none =>
       simp only [support_pure, Set.mem_singleton_iff] at hr
       subst result
-      simp
+      simpa using hrel
     | some tree =>
       simp only [mem_support_bind_iff] at hr
       obtain ⟨own, _, selected, _, hr⟩ := hr
@@ -4394,12 +4409,12 @@ theorem round2WithReceipt_released {ι : Type} {spec : OracleSpec ι}
       | none =>
         simp only [support_pure, Set.mem_singleton_iff] at hr
         subst result
-        simp
+        simpa using hrel
       | some selected =>
         obtain ⟨⟨randomness, encoding⟩, values⟩ := selected
         simp only [support_pure, Set.mem_singleton_iff] at hr
         subst result
-        rfl
+        simpa [Round2Receipt.release] using hrel
 
 /-- Receipt values are computed at the very selected trial, with the original
 codeword-search distribution and the exact subsequent share cost. -/
@@ -6665,6 +6680,70 @@ theorem receiptDealt_bottom (x : SigningSecurityProof.Keys3 C) (top : TopTree)
   simp only [receiptDealt, dealtWith, referenceTree_φ]
   rfl
 
+/-- Every successful stored tree retains a counted construction witness in the cache. -/
+def StoredTreeRuns (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
+    (top : TopTree) (cache : HashCache C) (st : TsigState C) : Prop :=
+  ∀ b tree, st.trees b = some (some tree) →
+    ∃ (start : HashCache C × ℕ) (result : Option TreeOutput × HashCache C × ℕ),
+      result ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
+        (SigningSecurityProof.liftFree (referenceTree tweakable (prfValue x.2.1) x.1
+          top (.bottom b)))).run start) ∧
+      result.1 = some (.bottom tree) ∧ result.2.1 ≤ cache
+
+theorem StoredTreeRuns.mono (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
+    (top : TopTree) {cache cache' : HashCache C} {st : TsigState C}
+    (hle : cache ≤ cache') (hr : StoredTreeRuns prims x top cache st) :
+    StoredTreeRuns prims x top cache' st := by
+  intro b tree ht
+  obtain ⟨start, result, hs, ho, hc⟩ := hr b tree ht
+  exact ⟨start, result, hs, ho, hc.trans hle⟩
+
+theorem receiptDealt_bottom_runs (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
+    (top : TopTree) (b : Fin (2 ^ LeanXmss.layerHeight)) (s : HashCache C × ℕ)
+    (r : Option BottomTree × HashCache C × ℕ)
+    (hr : r ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
+      ((receiptDealt x top).bottom b)).run s)) (tree : BottomTree) (ht : r.1 = some tree) :
+    ∃ result, result ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
+      (SigningSecurityProof.liftFree (referenceTree tweakable (prfValue x.2.1) x.1
+        top (.bottom b)))).run s) ∧
+      result.1 = some (.bottom tree) ∧ result.2.1 = r.2.1 := by
+  rw [receiptDealt_bottom] at hr
+  simp only [simulateQ_map, StateT.run_map, support_map, Set.mem_image] at hr
+  obtain ⟨result, hs, rfl⟩ := hr
+  refine ⟨result, hs, ?_, rfl⟩
+  cases hout : result.1 with
+  | none => simp [hout] at ht
+  | some value => cases value <;> simpa [hout] using ht
+
+theorem bottomOnce_storedTreeRuns (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
+    (top : TopTree) (b : Fin (2 ^ LeanXmss.layerHeight)) (st : TsigState C)
+    (s : HashCache C × ℕ) (hinv : StoredTreeRuns prims x top s.1 st)
+    (r : (Option BottomTree × TsigState C) × HashCache C × ℕ)
+    (hr : r ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
+      ((bottomOnce (receiptDealt x top) b).run st)).run s)) :
+    StoredTreeRuns prims x top r.2.1 r.1.2 := by
+  simp only [bottomOnce, StateT.run_bind, StateT.run_get, pure_bind] at hr
+  cases ht : st.trees b with
+  | some stored =>
+    simp only [ht, StateT.run_pure, simulateQ_pure, support_pure, Set.mem_singleton_iff] at hr
+    subst r
+    exact hinv
+  | none =>
+    simp only [ht, StateT.run_bind, run_liftM_comp, bind_map_left,
+      StateT.run_modify, StateT.run_pure, pure_bind] at hr
+    obtain ⟨built, hb, hr⟩ := SigningCacheProof.run_bind_support prims _ _ s r hr
+    simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hr
+    subst r
+    intro b' tree htree
+    by_cases he : b' = b
+    · subst b'
+      have ho : built.1 = some tree := by simpa using htree
+      obtain ⟨result, hs, ho, hc⟩ := receiptDealt_bottom_runs prims x top b s built hb tree ho
+      exact ⟨s, result, hs, ho, hc.le⟩
+    · have old : st.trees b' = some (some tree) := by simpa [Function.update_of_ne he] using htree
+      exact StoredTreeRuns.mono prims x top
+        (SigningCacheProof.countRun_grows prims _ s built hb) hinv b' tree old
+
 theorem round2WithReceipt_subruns (prims : Primitives)
     (dealt : Dealt C (OracleComp (WorldSpec C)))
     (st : TsigState C) (i : C.Party) (J : C.Quorum)
@@ -6676,12 +6755,12 @@ theorem round2WithReceipt_subruns (prims : Primitives)
       (round2WithReceipt (fun oa => SigningSecurityProof.liftFree oa)
         dealt st i J e message parts)).run s))
     (receipt : Round2Receipt C) (hs : r.1.2 = some receipt) :
-    ∃ (tree : BottomTree) (rTree : Option BottomTree × HashCache C × ℕ)
-      (sCode : HashCache C × ℕ)
+    ∃ (tree : BottomTree) (sCode : HashCache C × ℕ)
       (rCode : Option (LeanXmss.Randomness × LeanXmss.Encoding) × HashCache C × ℕ),
       receipt.key = e ∧
-      rTree ∈ support ((simulateQ (SigningCacheProof.countImpl prims) (dealt.bottom (treeOf e))).run s) ∧
-      rTree.1 = some tree ∧ rTree.2.1 ≤ r.2.1 ∧ receipt.commitment = tree.commitment e ∧
+      ((∃ rTree, rTree ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
+        (dealt.bottom (treeOf e))).run s) ∧ rTree.1 = some tree ∧ rTree.2.1 ≤ r.2.1) ∨
+        st.trees (treeOf e) = some (some tree)) ∧ receipt.commitment = tree.commitment e ∧
       rCode ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
         (SigningSecurityProof.liftFree (signCodeword dealt.parameter receipt.commitment receipt.key
           receipt.message receipt.candidate))).run sCode) ∧
@@ -6692,7 +6771,7 @@ theorem round2WithReceipt_subruns (prims : Primitives)
     rw [hr] at hs
     contradiction
   · obtain ⟨rTree, hTree, hr, hTreeLe⟩ := run_bind_support_grows prims _ _ s r hr
-    cases ht : rTree.1 with
+    cases ht : rTree.1.1 with
     | none =>
       simp only [ht, simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hr
       rw [hr] at hs
@@ -6714,8 +6793,22 @@ theorem round2WithReceipt_subruns (prims : Primitives)
         cases Option.some.inj heq
         obtain ⟨rCode, hCode, hCodeOut, hCodeLe⟩ := signRound2Selection_run_code prims _ _ _ _ _ _ _
           rOwn.2 rSelected (by exact hSelected) (randomness, encoding) values hsel
-        exact ⟨tree, rTree, rOwn.2, rCode, rfl, hTree, ht, hTreeLe, rfl,
+        refine ⟨tree, rOwn.2, rCode, rfl, ?_, rfl,
           hCode, hCodeOut, hCodeLe.trans hSelectedLe⟩
+        simp only [bottomOnce, StateT.run_bind, StateT.run_get, pure_bind] at hTree
+        cases hstored : st.trees (treeOf e) with
+        | some stored =>
+          simp only [hstored, StateT.run_pure, simulateQ_pure, support_pure,
+            Set.mem_singleton_iff] at hTree
+          rw [hTree] at ht
+          exact Or.inr (congrArg some ht)
+        | none =>
+          simp only [hstored, StateT.run_bind, run_liftM_comp, bind_map_left,
+            StateT.run_modify, StateT.run_pure, pure_bind] at hTree
+          obtain ⟨built, hb, heq⟩ := SigningCacheProof.run_bind_support prims _ _ s rTree hTree
+          simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at heq
+          subst rTree
+          exact Or.inl ⟨built, hb, ht, hTreeLe⟩
 
 theorem round2WithReceipt_runs (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (top : TopTree) (st : TsigState C) (i : C.Party) (J : C.Quorum)
@@ -6726,21 +6819,25 @@ theorem round2WithReceipt_runs (prims : Primitives) (x : SigningSecurityProof.Ke
     (hr : r ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
       (round2WithReceipt (fun oa => SigningSecurityProof.liftFree oa)
         (receiptDealt x top) st i J e message parts)).run s))
+    (hstored : StoredTreeRuns prims x top s.1 st)
     (receipt : Round2Receipt C) (hs : r.1.2 = some receipt) :
     ReceiptRuns prims x top r.2.1 receipt := by
-  obtain ⟨tree, rBottom, sCode, rCode, he, ht, hto, htl, hc, hcode, hco, hcl⟩ :=
+  obtain ⟨tree, sCode, rCode, he, ht, hc, hcode, hco, hcl⟩ :=
     round2WithReceipt_subruns prims _ st i J e message parts s r (by exact hr) receipt hs
-  rw [receiptDealt_bottom] at ht
-  simp only [simulateQ_map, StateT.run_map, support_map, Set.mem_image] at ht
-  obtain ⟨rTree, htree, rfl⟩ := ht
-  have hout : rTree.1 = some (.bottom tree) := by
-    cases hrTree : rTree.1 with
-    | none => simp [hrTree] at hto
-    | some result => cases result <;> simpa [hrTree] using hto
-  refine ⟨tree, s, rTree, sCode, rCode, ?_, hout, htl, ?_, ?_, hco, hcl⟩
-  · simpa only [he] using htree
+  have htree : ∃ start result,
+      result ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
+        (SigningSecurityProof.liftFree (referenceTree tweakable (prfValue x.2.1) x.1
+          top (.bottom (treeOf e))))).run start) ∧
+      result.1 = some (.bottom tree) ∧ result.2.1 ≤ r.2.1 := by
+    rcases ht with ⟨rBottom, ht, hto, htl⟩ | ht
+    · obtain ⟨result, hs, ho, hc⟩ := receiptDealt_bottom_runs prims x top _ s rBottom ht tree hto
+      exact ⟨s, result, hs, ho, hc.le.trans htl⟩
+    · exact StoredTreeRuns.mono prims x top
+        (SigningCacheProof.countRun_grows prims _ s r hr) hstored _ tree ht
+  obtain ⟨start, result, ht, ho, hl⟩ := htree
+  refine ⟨tree, start, result, sCode, rCode, ?_, ho, hl, ?_, hcode, hco, hcl⟩
+  · simpa only [he] using ht
   · simpa only [he] using hc
-  · exact hcode
 
 theorem signingWithReceipt_runs (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (top : TopTree) (st : TsigState C) (input : (LocalSpec C + TsigSpec C).Domain)
@@ -6749,6 +6846,7 @@ theorem signingWithReceipt_runs (prims : Primitives) (x : SigningSecurityProof.K
       Option (Round2Receipt C)) × HashCache C × ℕ)
     (hr : r ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
       (signingWithReceipt (receiptDealt x top) st input)).run s))
+    (hstored : StoredTreeRuns prims x top s.1 st)
     (receipt : Round2Receipt C) (hs : r.1.2 = some receipt) :
     ReceiptRuns prims x top r.2.1 receipt := by
   cases input with
@@ -6759,31 +6857,147 @@ theorem signingWithReceipt_runs (prims : Primitives) (x : SigningSecurityProof.K
   | inr input =>
     cases input with
     | round2 i J e message parts =>
-      exact round2WithReceipt_runs prims x top st i J e message parts s r (by exact hr) receipt hs
+      exact round2WithReceipt_runs prims x top st i J e message parts s r (by exact hr) hstored receipt hs
     | corrupt i | tree b | round1 i J e message =>
       simp only [signingWithReceipt, simulateQ_map, StateT.run_map, support_map, Set.mem_image] at hr
       obtain ⟨out, _, rfl⟩ := hr
       contradiction
 
+theorem round2WithReceipt_storedTreeRuns (prims : Primitives)
+    (x : SigningSecurityProof.Keys3 C) (top : TopTree) (st : TsigState C)
+    (i : C.Party) (J : C.Quorum) (e : LeanXmss.KeyIndex) (message : LeanXmss.Message)
+    (parts : C.Party → LeanXmss.Digest) (s : HashCache C × ℕ)
+    (hinv : StoredTreeRuns prims x top s.1 st)
+    (r : ((Option (LeanXmss.ChainIndex → Option LeanXmss.Digest) × TsigState C) ×
+      Option (Round2Receipt C)) × HashCache C × ℕ)
+    (hr : r ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
+      (round2WithReceipt (fun oa => SigningSecurityProof.liftFree oa)
+        (receiptDealt x top) st i J e message parts)).run s)) :
+    StoredTreeRuns prims x top r.2.1 r.1.1.2 := by
+  unfold round2WithReceipt at hr
+  split at hr
+  · simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hr
+    subst r
+    exact hinv
+  · obtain ⟨mid, hm, hr, hle⟩ := run_bind_support_grows prims _ _ s r hr
+    have hi := StoredTreeRuns.mono prims x top hle
+      (bottomOnce_storedTreeRuns prims x top (treeOf e) st s hinv mid hm)
+    cases ht : mid.1.1 with
+    | none =>
+      simp only [ht, simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hr
+      rw [hr]
+      simpa only [hr, StoredTreeRuns] using hi
+    | some tree =>
+      simp only [ht] at hr
+      obtain ⟨own, _, hr⟩ := SigningCacheProof.run_bind_support prims _ _ _ r hr
+      obtain ⟨selected, _, hr⟩ := SigningCacheProof.run_bind_support prims _ _ _ r hr
+      cases hs : selected.1 with
+      | none =>
+        simp only [hs, simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hr
+        rw [hr]
+        simpa only [hr, StoredTreeRuns] using hi
+      | some selection =>
+        rcases selection with ⟨⟨randomness, encoding⟩, values⟩
+        simp only [hs, simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hr
+        rw [hr]
+        simpa only [hr, StoredTreeRuns] using hi
+
+theorem signingWithReceipt_storedTreeRuns (prims : Primitives)
+    (x : SigningSecurityProof.Keys3 C) (top : TopTree) (st : TsigState C)
+    (input : (LocalSpec C + TsigSpec C).Domain) (s : HashCache C × ℕ)
+    (hinv : StoredTreeRuns prims x top s.1 st)
+    (r : (((LocalSpec C + TsigSpec C).Range input × TsigState C) ×
+      Option (Round2Receipt C)) × HashCache C × ℕ)
+    (hr : r ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
+      (signingWithReceipt (receiptDealt x top) st input)).run s)) :
+    StoredTreeRuns prims x top r.2.1 r.1.1.2 := by
+  cases input with
+  | inl input =>
+    simp only [signingWithReceipt, simulateQ_map, StateT.run_map, support_map, Set.mem_image] at hr
+    obtain ⟨out, ho, rfl⟩ := hr
+    change out ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
+      ((fun answer => (answer, st)) <$> worldRoles.adversary
+        (OracleComp.lift (OracleSpec.query input)))).run s) at ho
+    simp only [simulateQ_map, StateT.run_map, support_map, Set.mem_image] at ho
+    obtain ⟨answer, ha, rfl⟩ := ho
+    exact StoredTreeRuns.mono prims x top (SigningCacheProof.countRun_grows prims _ s answer ha) hinv
+  | inr input =>
+    cases input with
+    | round2 i J e message parts =>
+      exact round2WithReceipt_storedTreeRuns prims x top st i J e message parts s hinv r hr
+    | corrupt i =>
+      simp only [signingWithReceipt, simulateQ_map, StateT.run_map, support_map, Set.mem_image] at hr
+      obtain ⟨out, ho, rfl⟩ := hr
+      change out ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
+        ((tsigOracles (fun oa => SigningSecurityProof.liftFree oa) (receiptDealt x top) (.corrupt i)).run st)).run s) at ho
+      simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at ho
+      split at ho <;>
+        simp only [StateT.run_bind, StateT.run_set, StateT.run_pure, pure_bind, simulateQ_pure,
+          support_pure, Set.mem_singleton_iff] at ho <;> subst out <;> exact hinv
+    | round1 i J e message =>
+      simp only [signingWithReceipt, simulateQ_map, StateT.run_map, support_map, Set.mem_image] at hr
+      obtain ⟨out, ho, rfl⟩ := hr
+      change out ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
+        ((tsigOracles (fun oa => SigningSecurityProof.liftFree oa) (receiptDealt x top)
+          (.round1 i J e message)).run st)).run s) at ho
+      simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at ho
+      split at ho
+      · simp only [StateT.run_pure, simulateQ_pure, support_pure, Set.mem_singleton_iff] at ho
+        subst out
+        exact hinv
+      · simp only [StateT.run_bind, StateT.run_set, pure_bind, StateT.run_map,
+          run_liftM_comp, Functor.map_map, simulateQ_map, StateT.run_map, support_map, Set.mem_image] at ho
+        obtain ⟨answer, ha, rfl⟩ := ho
+        exact StoredTreeRuns.mono prims x top (SigningCacheProof.countRun_grows prims _ s answer ha) hinv
+    | tree b =>
+      simp only [signingWithReceipt, simulateQ_map, StateT.run_map, support_map, Set.mem_image] at hr
+      obtain ⟨out, ho, rfl⟩ := hr
+      change out ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
+        ((tsigOracles (fun oa => SigningSecurityProof.liftFree oa) (receiptDealt x top) (.tree b)).run st)).run s) at ho
+      simp only [tsigOracles, StateT.run_bind] at ho
+      obtain ⟨mid, hm, ho, hle⟩ := run_bind_support_grows prims _ _ s out ho
+      have hi := StoredTreeRuns.mono prims x top hle
+        (bottomOnce_storedTreeRuns prims x top b st s hinv mid hm)
+      cases ht : mid.1.1 with
+      | none =>
+        simp only [ht, StateT.run_pure, simulateQ_pure, support_pure, Set.mem_singleton_iff] at ho
+        subst out
+        exact hi
+      | some tree =>
+        simp only [ht, StateT.run_bind, run_liftM_comp, bind_map_left, StateT.run_pure] at ho
+        obtain ⟨answer, _, heq⟩ := SigningCacheProof.run_bind_support prims _ _ _ out ho
+        change out = ((some (tree, answer.1), mid.1.2), answer.2) at heq
+        subst out
+        exact hi
+
 theorem flaggedReceiptOracles_runs (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (top : TopTree) {α : Type} (source : OracleComp (LocalSpec C + TsigSpec C) α)
     (state : TsigState C × Bool) (receipts : List (Round2Receipt C)) (s : HashCache C × ℕ)
+    (hstored : StoredTreeRuns prims x top s.1 state.1)
     (hinit : ∀ receipt ∈ receipts, ReceiptRuns prims x top s.1 receipt) :
     ∀ r ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
       ((simulateQ (flaggedReceiptOracles x (receiptDealt x top)) source).run (state, receipts))).run s),
       ∀ receipt ∈ r.1.2.2, ReceiptRuns prims x top r.2.1 receipt := by
-  apply counted_simulateQ_inv prims (flaggedReceiptOracles x (receiptDealt x top))
-    (fun state cache => ∀ receipt ∈ state.2, ReceiptRuns prims x top cache receipt) _ source _ s hinit
-  intro input state cache hstate result hr
-  simp only [flaggedReceiptOracles, StateT.run_mk, simulateQ_map, StateT.run_map,
-    support_map, Set.mem_image] at hr
-  obtain ⟨out, hout, rfl⟩ := hr
-  intro receipt hmem
-  rcases List.mem_append.mp hmem with hold | hnew
-  · exact ReceiptRuns.mono prims x top
-      (SigningCacheProof.countRun_grows prims _ cache out hout) receipt (hstate receipt hold)
-  · apply signingWithReceipt_runs prims x top state.1.1 input cache out hout receipt
-    simpa only [Option.mem_toList, Option.mem_def] using hnew
+  intro r hr
+  have hboth : StoredTreeRuns prims x top r.2.1 r.1.2.1.1 ∧
+      ∀ receipt ∈ r.1.2.2, ReceiptRuns prims x top r.2.1 receipt := by
+    apply counted_simulateQ_inv prims (flaggedReceiptOracles x (receiptDealt x top))
+      (fun state cache => StoredTreeRuns prims x top cache state.1.1 ∧
+        ∀ receipt ∈ state.2, ReceiptRuns prims x top cache receipt) _ source _ s
+      ⟨hstored, hinit⟩ r hr
+    intro input state cache hstate result hr
+    simp only [flaggedReceiptOracles, StateT.run_mk, simulateQ_map, StateT.run_map,
+      support_map, Set.mem_image] at hr
+    obtain ⟨out, hout, rfl⟩ := hr
+    constructor
+    · exact signingWithReceipt_storedTreeRuns prims x top state.1.1 input cache hstate.1 out hout
+    · intro receipt hmem
+      rcases List.mem_append.mp hmem with hold | hnew
+      · exact ReceiptRuns.mono prims x top
+          (SigningCacheProof.countRun_grows prims _ cache out hout) receipt (hstate.2 receipt hold)
+      · apply signingWithReceipt_runs prims x top state.1.1 input cache out hout hstate.1 receipt
+        simpa only [Option.mem_toList, Option.mem_def] using hnew
+  exact hboth.2
 
 theorem flaggedReceiptOracles_forgetFlag (x : SigningSecurityProof.Keys3 C)
     (dealt : Dealt C (OracleComp (WorldSpec C))) {α : Type}
@@ -6851,12 +7065,12 @@ theorem tsigOracles_corrupt_le {ι : Type} {spec : OracleSpec ι}
     simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at hr
     split at hr <;> simp_all [StateT.run_set, StateT.run_pure]
   | tree b =>
-    simp only [tsigOracles, StateT.run_bind, run_liftM_comp, bind_map_left,
-      mem_support_bind_iff] at hr
-    obtain ⟨tree, _, hr⟩ := hr
+    simp only [tsigOracles, StateT.run_bind, mem_support_bind_iff] at hr
+    obtain ⟨⟨tree, st'⟩, ht, hr⟩ := hr
+    obtain ⟨hcorrupt, _, _⟩ := bottomOnce_frame dealt b st _ ht
     cases tree <;> simp_all
     obtain ⟨value, _, rfl⟩ := hr
-    exact hs
+    exact hcorrupt ▸ hs
   | round1 i J e message =>
     simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at hr
     split at hr
@@ -6869,8 +7083,9 @@ theorem tsigOracles_corrupt_le {ι : Type} {spec : OracleSpec ι}
     simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at hr
     split at hr
     · simp_all [StateT.run_pure]
-    · simp only [StateT.run_bind, run_liftM_comp, bind_map_left, mem_support_bind_iff] at hr
-      obtain ⟨tree, _, hr⟩ := hr
+    · simp only [StateT.run_bind, mem_support_bind_iff] at hr
+      obtain ⟨⟨tree, st'⟩, ht, hr⟩ := hr
+      obtain ⟨hcorrupt, _, _⟩ := bottomOnce_frame dealt (treeOf e) st _ ht
       cases tree with
       | none => simp_all [StateT.run_pure]
       | some tree =>
@@ -7011,7 +7226,7 @@ theorem receiptFinalRun_runs (prims : Primitives) (A : TsigAdversary C)
       obtain ⟨rForger, hForger, hr, hGrow⟩ := run_bind_support_grows prims _ _ _ r hr
       have hinv := flaggedReceiptOracles_runs prims x actualTop
         (A ⟨actualTop.root, x.1⟩ actualTop) (SigningCoreProof.tsigInit, false) [] rTop.2
-        (by simp) rForger (by exact hForger)
+        (by simp [StoredTreeRuns, SigningCoreProof.tsigInit]) (by simp) rForger (by exact hForger)
       simp only [simulateQ_map, StateT.run_map, support_map, Set.mem_image] at hr
       obtain ⟨rFinish, _, rfl⟩ := hr
       have htop : actualTop = top := congrArg Prod.fst (Option.some.inj hmeta)
@@ -10469,3 +10684,27 @@ info: 'ThresholdLeanXmssSecurity.SigningGuessProof.openingMatch_bound' depends o
 /-- info: 'ThresholdLeanXmssSecurity.SigningGuessProof.uncharged_public_probability' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningGuessProof.uncharged_public_probability
+
+/-- info: 'ThresholdLeanXmssSecurity.SigningGuessProof.StoredTreeRuns.mono' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.SigningGuessProof.StoredTreeRuns.mono
+
+/-- info: 'ThresholdLeanXmssSecurity.SigningGuessProof.bottomOnce_storedTreeRuns' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.SigningGuessProof.bottomOnce_storedTreeRuns
+
+/-- info: 'ThresholdLeanXmssSecurity.SigningGuessProof.round2WithReceipt_subruns' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.SigningGuessProof.round2WithReceipt_subruns
+
+/-- info: 'ThresholdLeanXmssSecurity.SigningGuessProof.round2WithReceipt_storedTreeRuns' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.SigningGuessProof.round2WithReceipt_storedTreeRuns
+
+/-- info: 'ThresholdLeanXmssSecurity.SigningGuessProof.signingWithReceipt_storedTreeRuns' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.SigningGuessProof.signingWithReceipt_storedTreeRuns
+
+/-- info: 'ThresholdLeanXmssSecurity.SigningGuessProof.flaggedReceiptOracles_runs' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.SigningGuessProof.flaggedReceiptOracles_runs

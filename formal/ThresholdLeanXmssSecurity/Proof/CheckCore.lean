@@ -8,7 +8,7 @@ import VCVio.EvalDist.Monad.Disagreement
 honest inputs.
 
 * `F_multVerify` accepts. Masking the real outputs with the accept bit changes nothing
-  (`checkMasked_eq_real_of_accept`), so only the coupling of step 4 remains.
+  (`checkMasked_eq_real_of_accept`), so step 4 compares the resulting runs.
 * The honest copies agree but a tuple is wrong. Masking costs the probability that an honest
   operator accepts (`checkReal_masked_le`), which the soundness of step 2 bounds. The coupling of
   step 4 bounds the rest.
@@ -20,7 +20,7 @@ The hash budget splits as `soundHashError + coupleHashError = checkHashError`
 `q + R + 2` cached expansion keys at each of the `R + 2` coins, and the coupling pays a guess or a
 collision of the `termHashes` honest history and digest points.
 
-`checkCoreDistance` proves `CheckCoreDistance` from three open stages, one for each case:
+`checkCoreDistance` proves `CheckCoreDistance` from three stages, one for each case:
 
 * `CheckSoundStage` (step 2): agreeing copies and a wrong tuple, the honest output probability of
   the real run.

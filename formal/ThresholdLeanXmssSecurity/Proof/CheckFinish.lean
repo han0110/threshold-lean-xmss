@@ -13,7 +13,7 @@ The target is `CheckCoreDistance` of `Proof/CheckSecurity.lean`, and from it `Mu
   uses that `F_multVerify` leaks `z - x y` of the agreeing copies, so the real and the
   `canonicalDummyTuples` claims differ by the difference of the inner products. The budget is
   `coupleBound_le_coupleHashError`.
-* `checkCoreDistanceFull` proves `CheckCoreDistance` from the two stages that are still open,
+* `checkCoreDistanceFull` proves `CheckCoreDistance` from the two hypotheses
   `CheckSoundStage` and `CheckSplitStage`.
 -/
 

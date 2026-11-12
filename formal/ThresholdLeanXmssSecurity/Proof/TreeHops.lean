@@ -6,9 +6,9 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 
 `TreeHopsRemaining` is the stream-key bound `TreeStreamKeyBound` and the simulation hop
 `TreeSimulationHop` with the split `keySplit`. `treeSecurityFull` gives `TreeSecurityStatement`
-from the two open stages below by `treeSecurityProof`.
+from the two stage hypotheses below by `treeSecurityProof`.
 
-## The key hop up to the derivation boundary (proved)
+## The key hop up to the derivation boundary
 
 1. `treeRealGame_eq_split`: the real game is `setupPrefix` (the start of the adversary, the first two
    setup rounds and the opening checks, derivations and echo hashes of the reveal round) followed by
@@ -18,7 +18,7 @@ from the two open stages below by `treeSecurityProof`.
 3. `probBad_streamKey_eq_afterDerivation`: the bad event of the whole game is the bad event of the
    ideal joint world started at the boundary from the cache of the world (`boundaryState`).
 
-## Open stage 1: `TreeStreamKeyAfterDerivation`
+## Stage 1: `TreeStreamKeyAfterDerivation`
 
 A plan, in the ideal joint world from the boundary.
 1. Discipline. Every honest free call after the boundary is a hash other than `.streamKey`, a
@@ -35,7 +35,7 @@ A plan, in the ideal joint world from the boundary.
    `evalDist_lazyKey_ceremony_swap` of `Tree.lean`, carried to `KeyJointState`), then
    `probEvent_hit_realExecution_le`. It costs `2 q m / 2 ^ 256` of `keySplit`.
 
-## Open stage 2: `TreeSimulationHop`
+## Stage 2: `TreeSimulationHop`
 
 GS20, Theorem 2, over the whole ceremony with the real gadgets, by `abs_accepts_lockstep_sub_le`
 with the uniform shift of the hidden streams at each reshare, `Rerand` and `openRep` (the `T₀`

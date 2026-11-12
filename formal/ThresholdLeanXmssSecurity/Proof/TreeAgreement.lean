@@ -4,7 +4,7 @@ import ThresholdLeanXmssSecurity.Proof.TreeCheckCut
 /-!
 # The agreement of the honest operators in the real tree run
 
-Three open tree statements need one fact about the real run. The honest operators that did not
+Three tree interfaces need one fact about the real run. The honest operators that did not
 abort agree on the term keys, the round labels, the tag and the jobs of each batch, unless a
 collision over `TreeSimHashBudgetDomain` occurs.
 
@@ -18,7 +18,7 @@ collision over `TreeSimHashBudgetDomain` occurs.
   `treeBatches * termCount` addresses.
 * `treeSimHashProgram_not_budgetCollision` gives the log guard from the cache guard of
   `TreeSimHashHonestBudget`.
-* `TreeAgreementSetupKeys` and `TreeAgreementSaltRun` are the open steps on the logged run.
+* `TreeAgreementSetupKeys` and `TreeAgreementSaltRun` state the conditions on the logged run.
 
 The address cover of `TreeSaltSetupAddresses` fixes the addresses at the end of the setup, for
 all runs after it. The block below shows that this statement is false for a bottom tree.

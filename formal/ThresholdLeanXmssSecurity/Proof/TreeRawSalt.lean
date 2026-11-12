@@ -11,11 +11,11 @@ hidden cache and call log. Repeated addresses retain the same block.
 3. Apply the existing adaptive address bound with the exact raw coefficient.
 4. Derive the original target from `TreeRawSaltCeremonyRepresentation`.
 
-That representation remains open: normalize the complete real ceremony into
+That representation requires normalization of the complete real ceremony into
 the opaque address program, preserving its full log distribution, the counted
 salt event, and both query budgets. No bound on probabilities is assumed by the
 representation. Addresses are discovered during the run and share one hash
-cache. No counterexample to the target has been established.
+cache.
 -/
 
 open OracleComp OracleSpec LeanXmss ThresholdLeanXmss

@@ -23,14 +23,14 @@ The three consumer links are deterministic.
 * `treeLockstepRecords_common` gives the common jobs, start label and tag at batch `k` for the
   check cut. The batch `k` must be in the first run, or the encodings must agree.
 
-The schedule of one operator is proved with no collision guard.
+The schedule of one operator holds with no collision guard.
 
 * `lockstepLabels_check` counts `checkLabels` labels in the check.
 * `lockstep_batchAudit` shows that one batch moves the label by `batchLabels`.
 * `treeLockstepRecords_audit` proves `TreeLockstepRecordsGoal`. The records of each complete
   audited ceremony follow the chunks of one encoding.
 
-The open goals are `TreeLockstepStagesGoal`, `TreeLockstepSaltRunGoal`,
+The interfaces are `TreeLockstepStagesGoal`, `TreeLockstepSaltRunGoal`,
 `TreeLockstepRecordsAgreeGoal` and `TreeTwinDigestDrawsGoal`. The parts of the first three are
 `TreeAgreementSetupKeys`, `TreeLockstepRecordsRunGoal` and `TreeLockstepOpenedGoal`, and the
 timing that the honest operators run the same batch in the same round. No round is stated here.

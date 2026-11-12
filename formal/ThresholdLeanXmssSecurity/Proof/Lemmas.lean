@@ -76,7 +76,8 @@ theorem cdi05_pair_has_holder (A B : C.Term) : ∃ i, i ∈ C.holders A ∧ i �
   exact ⟨i, by simp_all [Committee.holders]⟩
 
 omit [Fintype E] [DecidableEq E] in
-/-- The owner of a term is honest, or another holder is honest (MPClan, Appendix B). -/
+/-- The owner of a term is honest, or another holder is honest. This is a local ingredient of
+MPClan, Appendix B, and not its full theorem. -/
 theorem mpclan_honest_holder (K : Constants C E) (D : C.Coalition) (T : C.Term) :
     K.owner T ∉ D.1 ∨ ∃ h, h ∈ C.holders T ∧ h ∉ D.1 ∧ h ≠ K.owner T := by
   by_cases hown : K.owner T ∈ D.1
@@ -136,7 +137,8 @@ theorem sum_sum_pairs {R : Type} [AddCommMonoid R] (K : Constants C E)
   exact if_pos hi
 
 omit [Fintype E] [DecidableEq E] in
-/-- The shares of `MulRep` sum to the product (CDI05, Section 4). -/
+/-- The shares of `MulRep` sum to the product. This is a local ingredient of CDI05, Section 4, and
+not its full theorem. -/
 theorem cdi05_mulRep_correct {R : Type} [CommRing R] (K : Constants C E) (x y : C.Term → R) :
     ∑ i, mulRep K (localContext i) (fun T _ => x T) (fun T _ => y T) 0 = (∑ T, x T) * ∑ T, y T := by
   simp only [mulRep, localContext]
@@ -532,7 +534,8 @@ end Weights
 /-! ## Signing -/
 
 /-- A uniform guess of the `t - 1` corrupt operators is right with probability `1 / C(n, t - 1)`,
-independently of the game (PRAWNS, Lemma 5.2). -/
+independently of the game. This is the second fact of the proof of PRAWNS, Lemma 5.2, and not the
+full lemma. -/
 theorem prawns_lemma52_guess (game : ProbComp (Bool × C.Term)) [Nonempty C.Term] :
     letI := SampleableType.ofFintype C.Term
     Pr[fun r => r.1.1 = true ∧ r.2 = r.1.2 | do let g ← game; let T ← $ᵗ C.Term; pure (g, T)] *

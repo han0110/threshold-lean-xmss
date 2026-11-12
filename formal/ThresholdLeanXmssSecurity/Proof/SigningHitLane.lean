@@ -6,7 +6,7 @@ import XmssSecurity.Scan.Frame
 
 `HitLaneBound` of `Proof/SigningCost.lean` (step 5 of the signing plan of `formal/PROOF.md`).
 
-Proved stages.
+The component lemmas.
 
 * A win with a hit on `exposedRun` is the same event on `loggedRun` (`winHit_logged`).
 * A potential on the state of `loggedRun` bounds the lane by `q / 2^128` (`hitLane_of_potential`).
@@ -16,7 +16,7 @@ Proved stages.
 * The potential needs no step for a programming query. After such a query the run uses the
   potential `0` (`guarded`, `guarded_step`).
 
-Open stages, the hypotheses of `hitLaneBound`.
+The hypotheses of `hitLaneBound`.
 
 * `HitPotential`: such a potential exists for each run.
 * `NoProgramQuery`: `finalRun` asks no programming query.

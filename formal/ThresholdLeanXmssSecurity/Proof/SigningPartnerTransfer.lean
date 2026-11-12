@@ -6,15 +6,14 @@ The lazy partner row and the cache reconstructed from the joint call log.
 
 1. Prove tracked-cache congruence for the selected pair, the honest key, the
    bottom partner, and all three charged events.
-2. Reconstruct the entire lazy row from A1's `logCache` on `jointRun`.
+2. Reconstruct the entire lazy row from `logCache` of `SigningCacheLog` on `jointRun`.
 3. Move that event to `splitRunAt` with the exact eager observable law.
-4. Reduce A26 to `PartnerCacheComparison`, on one split execution.
+4. Reduce `PartnerTransfer` to `PartnerCacheComparison`, on one split execution.
 
-`PartnerCacheComparison` remains open and is equivalent to `PartnerTransfer`.
+`PartnerCacheComparison` is equivalent to `PartnerTransfer`.
 Its two events read different caches: `logCache` and the final eager cache.
 Cache extension alone does not prove equality of the replayed selection:
 an eager read may fill an earlier absent trial of the default-zero replay.
-No probability counterexample to `PartnerTransfer` has been established.
 
 The eager sampling law holds for every fixed randomizer function. None of these
 proofs uses the false fixed-randomizer `R1Link` or changes its trigger.

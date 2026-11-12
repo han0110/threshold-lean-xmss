@@ -59,7 +59,7 @@ This shows only that the swap route fails on these runs with the present
 `TreeSimHashBad`. It does not show that `TreeSimStagesGoal` is false.
 
 The extra term fits in the budget if the bound of the present events uses
-at most `S'` honest region points. `TreeSimHashBoundGoal` is open, so this is
+at most `S'` honest region points. The assembly takes `TreeSimHashBoundGoal` as a hypothesis, so this is
 an assumption. Let `N` be the number of honest salt draws.
 Each batch draws at most one salt for each term, so
 `N ≤ treeBatches * termCount ≤ S'`, where

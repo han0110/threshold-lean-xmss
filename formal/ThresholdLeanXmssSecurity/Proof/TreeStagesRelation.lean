@@ -15,7 +15,7 @@ transfer of one round from equal public caches to swapped public caches.
 * `treeStages_swap_transfer` composes this with an equal-cache round coupling of the twin, and
   `treeStages_round_swap` applies it to one round with `TreeSimBad2`. `treeCompose_swapRel` does
   not fit here. Its twin does not keep the real log, and its results must be equal.
-* `TreeStagesTwinRelation` is the remaining equal-cache relation `Req` on the twins.
+* `TreeStagesTwinRelation` is the equal-cache relation `Req` on the twins.
   `treeStages_relation_of_twin` builds the relation `R` of the stages from it, and
   `treeSimStagesGoal2_of_twinRelation` gives `TreeSimStagesGoal2`.
 -/

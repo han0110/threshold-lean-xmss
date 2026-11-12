@@ -5,14 +5,14 @@ import ThresholdLeanXmssSecurity.Proof.SigningCost
 
 `GuessPartnerLaneBound` of `Proof/SigningCost.lean` from two lanes on the logged run.
 
-Proved stages:
+The component lemmas:
 
 * The count of the logged run is the sum of the costs of the calls in its log
   (`loggedRun_count_eq`).
 * A call costs one unit as a digest call or as a guess call, and never both (`digestCost_add_guessCost`).
 * The two lanes share the budget `q` of the run (`guessPartnerLaneBound`).
 
-Open stages, the hypotheses of `guessPartnerLaneBound`:
+The hypotheses of `guessPartnerLaneBound`:
 
 * `GuessLaneBound`: a win with a guess costs `2^-128` for each guess call of the log, in expectation.
 * `PartnerLaneBound`: a win with a partner costs `2^-128` for each digest call of the log, in
@@ -121,7 +121,7 @@ abbrev forget (r : ((Bool × Bool) × Option (TopTree × TsigState C × Forgery)
     QueryLog (WorldSpec C)) : Outcome C :=
   (r.1, r.2.1)
 
-/-! ## The open lanes -/
+/-! ## The lane interfaces -/
 
 /-- The guess lane. A win with a guess costs `2^-128` for each guess call of the log, in
 expectation. -/

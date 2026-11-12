@@ -6,7 +6,7 @@ import Mathlib.Data.Nat.Bitwise
 # The signing
 
 `SigningCorrectnessStatement` follows from the honest run of `KeyGen` and of the signing (PRAWNS,
-Section 3.1). `SigningSecurityStatement` is open.
+Section 3.1). `SigningSecurityStatement` is the security target.
 -/
 
 open OracleComp OracleSpec LeanXmss ENNReal Finset

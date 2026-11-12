@@ -6,7 +6,7 @@ import VCVio.OracleComp.QueryTracking.Birthday
 # A batch
 
 `MainCompletenessStatement` follows from the honest run of a batch. `MainStatement` (GS20, Theorem 2)
-reduces to its distance half `MainSecurityDistance`, which is open. `mainSimulator_queryBound` gives
+reduces to its distance half `MainSecurityDistance`. `mainSimulator_queryBound` gives
 the query half.
 -/
 

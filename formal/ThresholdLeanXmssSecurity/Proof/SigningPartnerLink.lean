@@ -57,7 +57,7 @@ splits an encoding win into three cases of one signing entry.
 * `PostSigningFreshForgedEncodingCollision`. The selected input is fresh. A later query at the
   forged input has the same digest.
 * `CachedSelectionCollision`. The selected input is in the cache when the signing starts. Another
-  cached input has the same digest. This is the open case of `SigningGuessLink`.
+  cached input has the same digest. This is the bottom-partner case of `SigningGuessLink`.
 
 Lane 1 holds the two fresh cases. The encoding monitor `CappedEncodingMonitor.runObserved` fires on
 both orders (`runObserved_empty_eq_true_of_query_before_sign_of_valid`,

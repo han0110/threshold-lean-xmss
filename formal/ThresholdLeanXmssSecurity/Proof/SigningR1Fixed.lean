@@ -60,7 +60,7 @@ The argument is on the support, not a Lean proof.
 A variant leaves out step 2. Then a PRF entry of `e` that round 1 does not ask stays uncached,
 and `FinalState.selected` reads it as `0`.
 
-Two changes are open, and each needs a decision.
+Two trigger choices give different interfaces.
 
 * The trigger runs the grind at each world call after which the PRF entries, the bound message and
   the base answer of a key are all cached. This removes the counterexample with step 2. A later

@@ -712,9 +712,9 @@ theorem tsigOracles_free (x : SigningSecurityProof.Keys3 C) (top : TopTree)
 
 
 set_option maxRecDepth 100000 in
-/-- A tree-opening handler begins with the actual free bottom ceremony. -/
+/-- The first tree-opening request begins with the actual free bottom ceremony. -/
 theorem flagged_tree_prefix (x : SigningSecurityProof.Keys3 C) (top : TopTree)
-    (b : Fin (2 ^ layerHeight)) (s : TsigState C × Bool) :
+    (b : Fin (2 ^ layerHeight)) (s : TsigState C × Bool) (hmiss : s.1.trees b = none) :
     ∃ k, (SigningCoreProof.flaggedOracles x
       (dealtWith (fun oa => SigningSecurityProof.liftFree oa) x.1
         (dealtKeys x.1 x.2.1 x.2.2) top
@@ -722,13 +722,13 @@ theorem flagged_tree_prefix (x : SigningSecurityProof.Keys3 C) (top : TopTree)
       SigningSecurityProof.liftFree (referenceTree tweakable (prfValue x.2.1) x.1 top (.bottom b)) >>= k := by
   simp only [SigningCoreProof.flaggedOracles, StateT.run_mk]
   rw [tsigOracles_free]
-  simp [tsigOracles, dealtWith, liftM, SigningSecurityProof.liftFree, map_bind]
+  simp [tsigOracles, bottomOnce, hmiss, dealtWith, liftM, SigningSecurityProof.liftFree, map_bind]
 
 set_option maxRecDepth 100000 in
-/-- A permitted second-round handler starts with the selected bottom ceremony. -/
+/-- A permitted second-round handler builds the selected bottom tree on its first request. -/
 theorem flagged_round2_prefix (x : SigningSecurityProof.Keys3 C) (top : TopTree)
     (i : C.Party) (J : C.Quorum) (e : KeyIndex) (message : Message) (parts : C.Party → Digest)
-    (s : TsigState C × Bool)
+    (s : TsigState C × Bool) (hmiss : s.1.trees (treeOf e) = none)
     (hguard : ¬(i ∈ s.1.corrupt ∨ i ∉ J.1 ∨ s.1.bound e ≠ some message)) :
     ∃ k, (SigningCoreProof.flaggedOracles x
       (dealtWith (fun oa => SigningSecurityProof.liftFree oa) x.1
@@ -737,7 +737,7 @@ theorem flagged_round2_prefix (x : SigningSecurityProof.Keys3 C) (top : TopTree)
       SigningSecurityProof.liftFree (referenceTree tweakable (prfValue x.2.1) x.1 top (.bottom (treeOf e))) >>= k := by
   simp only [SigningCoreProof.flaggedOracles, StateT.run_mk]
   rw [tsigOracles_free]
-  simp [tsigOracles, dealtWith, liftM, SigningSecurityProof.liftFree, map_bind, hguard]
+  simp [tsigOracles, bottomOnce, hmiss, dealtWith, liftM, SigningSecurityProof.liftFree, map_bind, hguard]
 
 set_option maxRecDepth 100000 in
 /-- The freshness comparison's honest signature also begins with a bottom call. -/
@@ -1588,10 +1588,78 @@ def Opens (b : Fin (2 ^ layerHeight)) (s : TsigState C) : (LocalSpec C + TsigSpe
   | .inr (.round2 i J e message _) => treeOf e = b ∧ ¬(i ∈ s.corrupt ∨ i ∉ J.1 ∨ s.bound e ≠ some message)
   | _ => False
 
+private theorem run_liftM_trees {ι σ α : Type} {spec : OracleSpec ι}
+    (oa : OracleComp spec α) (st : σ) :
+    (liftM oa : StateT σ (OracleComp spec) α).run st = (fun a => (a, st)) <$> oa := rfl
+
+/-- Building one tree preserves the stored entry of every other tree. -/
+theorem bottomOnce_trees_other {ι : Type} {spec : OracleSpec ι}
+    (dealt : Dealt C (OracleComp spec)) (b b' : Fin (2 ^ layerHeight))
+    (hne : b' ≠ b) (st : TsigState C) (r : Option BottomTree × TsigState C)
+    (hr : r ∈ support ((bottomOnce dealt b').run st)) : r.2.trees b = st.trees b := by
+  simp only [bottomOnce, StateT.run_bind, StateT.run_get, pure_bind] at hr
+  cases ht : st.trees b' <;>
+    simp [ht, StateT.run_bind, run_liftM_trees, bind_map_left] at hr
+  · obtain ⟨tree, _, rfl⟩ := hr
+    simp [Ne.symm hne]
+  · subst r
+    rfl
+
+/-- Only an opening request can create the stored entry of its tree. -/
+theorem tsigOracles_trees_closed {ι : Type} {spec : OracleSpec ι}
+    (lift : ∀ {α : Type}, OracleComp (RoSpec C) α → OracleComp spec α)
+    (dealt : Dealt C (OracleComp spec)) (b : Fin (2 ^ layerHeight))
+    (q : (TsigSpec C).Domain) (st : TsigState C) (hclosed : ¬Opens b st (.inr q))
+    (r : (TsigSpec C).Range q × TsigState C)
+    (hr : r ∈ support ((tsigOracles lift dealt q).run st)) : r.2.trees b = st.trees b := by
+  cases q with
+  | corrupt i =>
+    simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at hr
+    split at hr <;> simp_all
+  | tree b' =>
+    simp only [tsigOracles, StateT.run_bind, mem_support_bind_iff] at hr
+    obtain ⟨⟨tree, st'⟩, ht, hr⟩ := hr
+    have hc := bottomOnce_trees_other dealt b b' hclosed st (tree, st') ht
+    cases tree with
+    | none =>
+        simp only [StateT.run_pure, mem_support_pure_iff] at hr
+        subst r
+        exact hc
+    | some tree =>
+      simp [StateT.run_bind, run_liftM_trees, bind_map_left] at hr
+      obtain ⟨value, _, rfl⟩ := hr
+      exact hc
+  | round1 i J e message =>
+    simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at hr
+    split at hr
+    · simp_all
+    · simp [StateT.run_bind, run_liftM_trees] at hr
+      obtain ⟨value, _, rfl⟩ := hr
+      rfl
+  | round2 i J e message parts =>
+    simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at hr
+    split at hr
+    · simp_all
+    · rename_i hguard
+      have hne : treeOf e ≠ b := fun he => hclosed ⟨he, hguard⟩
+      simp only [StateT.run_bind, mem_support_bind_iff] at hr
+      obtain ⟨⟨tree, st'⟩, ht, hr⟩ := hr
+      have hc := bottomOnce_trees_other dealt b (treeOf e) hne st (tree, st') ht
+      cases tree with
+      | none =>
+          simp only [StateT.run_pure, mem_support_pure_iff] at hr
+          subst r
+          exact hc
+      | some tree =>
+        simp only [StateT.run_bind, run_liftM_trees, bind_map_left, mem_support_bind_iff] at hr
+        obtain ⟨own, _, values, _, hr⟩ := hr
+        cases values <;> simp_all
+
 set_option maxRecDepth 100000 in
 theorem opens_prefix (x : SigningSecurityProof.Keys3 C) (top : TopTree)
     (b : Fin (2 ^ layerHeight)) (s : TsigState C × Bool)
-    (t : (LocalSpec C + TsigSpec C).Domain) (h : Opens b s.1 t) :
+    (t : (LocalSpec C + TsigSpec C).Domain) (h : Opens b s.1 t)
+    (hmiss : s.1.trees b = none) :
     ∃ k, (SigningCoreProof.flaggedOracles x (actualDealt x top) t).run s =
       SigningSecurityProof.liftFree (referenceTree tweakable (prfValue x.2.1) x.1 top (.bottom b)) >>= k := by
   rcases t with t | q
@@ -1601,10 +1669,10 @@ theorem opens_prefix (x : SigningSecurityProof.Keys3 C) (top : TopTree)
     | tree b' =>
       change b' = b at h
       subst b'
-      exact flagged_tree_prefix x top b s
+      exact flagged_tree_prefix x top b s hmiss
     | round2 i J e message parts =>
       obtain ⟨rfl, hguard⟩ := h
-      exact flagged_round2_prefix x top i J e message parts s hguard
+      exact flagged_round2_prefix x top i J e message parts s hmiss hguard
 
 /-- A ghost opening bit, separate from hiddenHit. All real calls are unchanged. -/
 def openedOracles (x : SigningSecurityProof.Keys3 C) (top : TopTree)
@@ -1614,6 +1682,35 @@ def openedOracles (x : SigningSecurityProof.Keys3 C) (top : TopTree)
   fun t => StateT.mk fun p =>
     (fun z => (z.1, (z.2, p.2 || decide (Opens b p.1.1 t)))) <$>
       (SigningCoreProof.flaggedOracles x (actualDealt x top) t).run p.1
+
+/-- A stored tree has already set its opening bit, even when its build failed. -/
+theorem openedOracles_trees (x : SigningSecurityProof.Keys3 C) (top : TopTree)
+    (b : Fin (2 ^ layerHeight)) (t : (LocalSpec C + TsigSpec C).Domain)
+    (p : (TsigState C × Bool) × Bool)
+    (htrees : p.1.1.trees b ≠ none → p.2 = true)
+    (r : (LocalSpec C + TsigSpec C).Range t × ((TsigState C × Bool) × Bool))
+    (hr : r ∈ support ((openedOracles x top b t).run p)) :
+    r.2.1.1.trees b ≠ none → r.2.2 = true := by
+  classical
+  simp only [openedOracles, StateT.run_mk, support_map, Set.mem_image] at hr
+  obtain ⟨v, hv, rfl⟩ := hr
+  intro hstored
+  simp only [Bool.or_eq_true, decide_eq_true_eq]
+  by_cases hopen : Opens b p.1.1 t
+  · exact Or.inr hopen
+  · apply Or.inl
+    apply htrees
+    have he : v.2.1.trees b = p.1.1.trees b := by
+      cases t with
+      | inl t =>
+        simp only [SigningCoreProof.flaggedOracles, StateT.run_mk, support_map, Set.mem_image] at hv
+        obtain ⟨w, _, rfl⟩ := hv
+        rfl
+      | inr q =>
+        simp only [SigningCoreProof.flaggedOracles, StateT.run_mk, support_map, Set.mem_image] at hv
+        obtain ⟨w, hw, rfl⟩ := hv
+        exact tsigOracles_trees_closed _ _ b q p.1.1 hopen w hw
+    rwa [← he]
 
 set_option maxRecDepth 100000 in
 /-- Forgetting the ghost bit gives exactly the original flagged computation. -/
@@ -1641,6 +1738,7 @@ theorem openedOracles_resolves (x : SigningSecurityProof.Keys3 C) (top : TopTree
     (b : Fin (2 ^ layerHeight)) (t : (LocalSpec C + TsigSpec C).Domain)
     (p : (TsigState C × Bool) × Bool) (initial : HashCache C × ℕ)
     (hp : p.2 = true → BottomResolved x top b initial.1)
+    (htrees : p.1.1.trees b ≠ none → p.2 = true)
     (r : ((LocalSpec C + TsigSpec C).Range t × ((TsigState C × Bool) × Bool)) × (HashCache C × ℕ))
     (hr : r ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
       ((openedOracles x top b t).run p)).run initial)) :
@@ -1651,7 +1749,11 @@ theorem openedOracles_resolves (x : SigningSecurityProof.Keys3 C) (top : TopTree
   simp only [Bool.or_eq_true, decide_eq_true_eq]
   rintro (hprevious | hopen)
   · exact bottomResolved_mono x top b (SigningCacheProof.countRun_grows prims _ _ v hv) (hp hprevious)
-  · obtain ⟨k, he⟩ := opens_prefix x top b p.1 t hopen
+  · by_cases hmiss : p.1.1.trees b = none
+    swap
+    · exact bottomResolved_mono x top b (SigningCacheProof.countRun_grows prims _ _ v hv)
+        (hp (htrees hmiss))
+    obtain ⟨k, he⟩ := opens_prefix x top b p.1 t hopen hmiss
     rw [he] at hv
     obtain ⟨call, hc, htail⟩ := SigningCacheProof.run_bind_support prims _ _ initial v hv
     rw [← hashEmbed_referenceTree] at hc
@@ -1665,22 +1767,28 @@ theorem openedRun_resolves {α : Type} (x : SigningSecurityProof.Keys3 C) (top :
     (b : Fin (2 ^ layerHeight)) (oa : OracleComp (LocalSpec C + TsigSpec C) α) :
     ∀ (p : (TsigState C × Bool) × Bool) (initial : HashCache C × ℕ),
       (p.2 = true → BottomResolved x top b initial.1) →
+      (p.1.1.trees b ≠ none → p.2 = true) →
       ∀ r ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
         ((simulateQ (openedOracles x top b) oa).run p)).run initial),
         r.1.2.2 = true → BottomResolved x top b r.2.1 := by
   induction oa using OracleComp.inductionOn with
   | pure a =>
-    intro p initial hp r hr
+    intro p initial hp htrees r hr
     simp only [simulateQ_pure, StateT.run_pure, mem_support_pure_iff] at hr
     subst r
     exact hp
   | query_bind t k ih =>
-    intro p initial hp r hr
+    intro p initial hp htrees r hr
     simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query,
       OracleQuery.cont_query, id_map, StateT.run_bind] at hr
     rw [mem_support_bind_iff] at hr
     obtain ⟨v, hv, hr⟩ := hr
-    exact ih v.1.1 v.1.2 v.2 (openedOracles_resolves prims x top b t p initial hp v hv) r hr
+    have hv' : v.1 ∈ support ((openedOracles x top b t).run p) := by
+      apply support_simulateQ_run'_subset (SigningCacheProof.countImpl prims) _ initial
+      rw [StateT.run'_eq, support_map]
+      exact ⟨v, hv, rfl⟩
+    exact ih v.1.1 v.1.2 v.2 (openedOracles_resolves prims x top b t p initial hp htrees v hv)
+      (openedOracles_trees x top b t p htrees v.1 hv') r hr
 
 /-- Stop before executing a semantic opening. The surviving branches execute
 exactly the original handlers, including all local queries and corruptions. -/
@@ -1966,7 +2074,7 @@ theorem openedFinalRun_resolves (A : TsigAdversary C) (x : SigningSecurityProof.
   rw [hp1] at hr
   obtain ⟨q, hq, hr⟩ := run_bind_support prims _ _ p.2 r hr
   have hresolved := openedRun_resolves prims x top b (A ⟨top.root, x.1⟩ top)
-    ((SigningCoreProof.tsigInit, false), false) p.2 (by simp) q hq
+    ((SigningCoreProof.tsigInit, false), false) p.2 (by simp) (by simp [SigningCoreProof.tsigInit]) q hq
   have hgrow := countRun_grows prims _ _ r hr
   simp only [simulateQ_map, StateT.run_map, support_map, Set.mem_image] at hr
   obtain ⟨w, hw, rfl⟩ := hr
@@ -8124,6 +8232,18 @@ private theorem apply_liftM_ro {σ α : Type} (oa : OracleComp (RoSpec C) α) (s
 private theorem apply_pure_ro {σ α : Type} (a : α) (st : σ) :
     (pure a : StateT σ (OracleComp (RoSpec C)) α) st = pure (a, st) := rfl
 
+theorem safe_bottomOnce (dealt : Dealt C (OracleComp (RoSpec C)))
+    (b' : Fin (2 ^ layerHeight)) (st : TsigState C)
+    (hbottom : SafeRo prims x b table D (topStarts b) (dealt.bottom b')) :
+    SafeRo prims x b table D (topStarts b) ((bottomOnce dealt b').run st) := by
+  simp only [bottomOnce, StateT.run_bind, StateT.run_get, pure_bind]
+  cases ht : st.trees b'
+  · simp only [StateT.run_bind, run_liftM_ro, bind_map_left]
+    apply safe_bind prims x b table D (topStarts b) _ _ hbottom
+    intro tree
+    exact safe_pure prims x b table D (topStarts b) _
+  · exact safe_pure prims x b table D (topStarts b) _
+
 set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 100000 in
 include hno in
@@ -8142,14 +8262,16 @@ theorem safe_tsigOracles_nonopening (top : TopTree) (q : (TsigSpec C).Domain)
          exact safe_pure prims x b table D (topStarts b) _)
   | tree b' =>
     have hne : b' ≠ b := hclosed
-    simp only [tsigOracles, StateT.run_bind, run_liftM_ro, apply_liftM_ro, bind_map_left,
-      Function.comp_def, StateT.run_pure, dealtWith, bind_assoc, pure_bind]
-    apply safe_bind prims x b table D (topStarts b) _ _
-      (safe_referenceBottom prims x b hno table D x.2.1 x.1 top b' hne)
-    rintro (_ | (otherTop | tree))
+    simp only [tsigOracles, StateT.run_bind]
+    refine safe_bind prims x b table D (topStarts b) _ _ ?_ ?_
+    · apply safe_bottomOnce
+      simp only [dealtWith]
+      apply safe_map
+      exact safe_referenceBottom prims x b hno table D x.2.1 x.1 top b' hne
+    rintro ⟨(_ | tree), st'⟩
     · exact safe_pure prims x b table D (topStarts b) _
-    · exact safe_pure prims x b table D (topStarts b) _
-    · simp only [StateT.run_bind, run_liftM_ro, apply_liftM_ro, bind_map_left, Function.comp_def, StateT.run_pure]
+    · simp only [StateT.run_bind, run_liftM_ro, apply_liftM_ro, bind_map_left,
+        Function.comp_def, StateT.run_pure, dealtWith]
       apply safe_bind prims x b table D (topStarts b) _ _
         (safe_prfValue prims x b hno table D (topStarts b) x.2.1 _ (topStarts_randomizer b _ _))
       intro value
@@ -8168,14 +8290,16 @@ theorem safe_tsigOracles_nonopening (top : TopTree) (q : (TsigSpec C).Domain)
     split_ifs with hguard
     · exact safe_pure prims x b table D (topStarts b) _
     · have hne : treeOf e ≠ b := fun he => hclosed ⟨he, hguard⟩
-      simp only [StateT.run_bind, run_liftM_ro, apply_liftM_ro, bind_map_left, Function.comp_def,
-        StateT.run_pure, dealtWith, bind_assoc, pure_bind]
-      apply safe_bind prims x b table D (topStarts b) _ _
-        (safe_referenceBottom prims x b hno table D x.2.1 x.1 top (treeOf e) hne)
-      rintro (_ | (otherTop | tree))
+      simp only [StateT.run_bind]
+      refine safe_bind prims x b table D (topStarts b) _ _ ?_ ?_
+      · apply safe_bottomOnce
+        simp only [dealtWith]
+        apply safe_map
+        exact safe_referenceBottom prims x b hno table D x.2.1 x.1 top (treeOf e) hne
+      rintro ⟨(_ | tree), st'⟩
       · exact safe_pure prims x b table D (topStarts b) _
-      · exact safe_pure prims x b table D (topStarts b) _
-      · simp only [StateT.run_bind, run_liftM_ro, apply_liftM_ro, bind_map_left, Function.comp_def, StateT.run_pure]
+      · simp only [StateT.run_bind, run_liftM_ro, apply_liftM_ro, bind_map_left,
+          Function.comp_def, StateT.run_pure, dealtWith]
         apply safe_bind prims x b table D (topStarts b) _ _
           (safe_eval prims x b hno table D (topStarts b) _ i J _ message (topStarts_randomizer b _ _))
         intro own
@@ -8183,8 +8307,20 @@ theorem safe_tsigOracles_nonopening (top : TopTree) (q : (TsigSpec C).Domain)
           (safe_signRound2 prims x b hno table D _ i J x.1 _ e message _)
         rintro (_ | values)
         · exact safe_pure prims x b table D (topStarts b) _
-        · simp only [StateT.run_set, pure_bind]
-          exact safe_pure prims x b table D (topStarts b) _
+        · exact safe_pure prims x b table D (topStarts b) _
+
+theorem bottomOnce_corrupt_general {σ : Type} (dealt : Dealt C (StateT σ ProbComp))
+    (b : Fin (2 ^ layerHeight)) (st : TsigState C) (c : σ)
+    (z : (Option BottomTree × TsigState C) × σ)
+    (hz : z ∈ support (((bottomOnce dealt b).run st).run c)) :
+    z.1.2.corrupt = st.corrupt := by
+  simp only [bottomOnce, StateT.run_bind, StateT.run_get, pure_bind] at hz
+  cases ht : st.trees b <;>
+    simp [ht, StateT.run_bind, StateT.run_monadLift, monadLift_self] at hz
+  · obtain ⟨value, cache, _, rfl⟩ := hz
+    rfl
+  · subst z
+    rfl
 
 /-- Corruption accounting is independent of the underlying oracle state. -/
 theorem tsigOracles_corrupt_cases_general {σ : Type} (lift : ∀ {α : Type}, OracleComp (RoSpec C) α → StateT σ ProbComp α)
@@ -8199,13 +8335,14 @@ theorem tsigOracles_corrupt_cases_general {σ : Type} (lift : ∀ {α : Type}, O
     · simp at hz; subst hz; exact Or.inr ⟨i, rfl, ‹_›, rfl⟩
   · simp only [tsigOracles, StateT.run_bind, StateT.run_monadLift, monadLift_self, bind_assoc, pure_bind,
       mem_support_bind_iff] at hz
-    obtain ⟨w, -, hz⟩ := hz
+    obtain ⟨w, hw, hz⟩ := hz
+    have hc := bottomOnce_corrupt_general dealt b st c w hw
     rcases w with ⟨_ | tree, c'⟩
-    · simp at hz; subst hz; exact Or.inl rfl
+    · simp at hz; subst hz; exact Or.inl hc
     · simp only [StateT.run_bind, StateT.run_monadLift, monadLift_self, bind_assoc, pure_bind,
         mem_support_bind_iff, StateT.run_pure] at hz
       obtain ⟨w, -, hz⟩ := hz
-      simp at hz; subst hz; exact Or.inl rfl
+      simp at hz; subst hz; exact Or.inl hc
   · simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at hz
     split_ifs at hz
     · simp at hz; subst hz; exact Or.inl rfl
@@ -8221,15 +8358,16 @@ theorem tsigOracles_corrupt_cases_general {σ : Type} (lift : ∀ {α : Type}, O
     · simp at hz; subst hz; exact Or.inl rfl
     · simp only [StateT.run_bind, StateT.run_monadLift, monadLift_self, bind_assoc, pure_bind,
         mem_support_bind_iff] at hz
-      obtain ⟨w, -, hz⟩ := hz
+      obtain ⟨w, hw, hz⟩ := hz
+      have hc := bottomOnce_corrupt_general dealt (treeOf e) st c w hw
       rcases w with ⟨_ | tree, c'⟩
-      · simp at hz; subst hz; exact Or.inl rfl
+      · simp at hz; subst hz; exact Or.inl hc
       · simp only [StateT.run_bind, StateT.run_monadLift, monadLift_self, bind_assoc, pure_bind,
           mem_support_bind_iff] at hz
         obtain ⟨w, -, w', -, hz⟩ := hz
         rcases w' with ⟨_ | values, c''⟩
-        · simp at hz; subst hz; exact Or.inl rfl
-        · simp at hz; subst hz; exact Or.inl rfl
+        · simp at hz; subst hz; exact Or.inl hc
+        · simp at hz; subst hz; exact Or.inl hc
 
 
 /-- Interpret the program-free world in the finite protected view. The
@@ -11153,7 +11291,7 @@ theorem openedTail_resolves (A : TsigAdversary C) (x : SigningSecurityProof.Keys
     cases hopen
   · obtain ⟨v, hv, hr⟩ := SigningCacheProof.run_bind_support prims _ _ initial r hr
     have hresolved := openedRun_resolves prims x top b (A ⟨top.root, x.1⟩ top)
-      ((SigningCoreProof.tsigInit, false), false) initial (by simp) v hv
+      ((SigningCoreProof.tsigInit, false), false) initial (by simp) (by simp [SigningCoreProof.tsigInit]) v hv
     have hgrow := SigningCacheProof.countRun_grows prims _ _ r hr
     simp only [simulateQ_map, StateT.run_map, support_map, Set.mem_image] at hr
     obtain ⟨w, hw, rfl⟩ := hr

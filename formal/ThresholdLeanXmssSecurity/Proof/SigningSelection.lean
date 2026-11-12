@@ -746,6 +746,46 @@ theorem bottom_noCall (x : SigningSecurityProof.Keys3 C) (top : TopTree) (e : Ke
   rw [SigningGuessProof.receiptDealt_bottom]
   exact noCall_map _ _ (noCall_liftFree _ _ (referenceTree_bound x.1 e x.2.1 top _))
 
+/-- Reusing a stored bottom tree makes no calls; a fresh build has the same bound. -/
+theorem bottomOnce_noCall (x : SigningSecurityProof.Keys3 C) (top : TopTree)
+    (e : KeyIndex) (b : Fin (2 ^ layerHeight)) (st : TsigState C) :
+    NoCall (FreeQ (AtKey x.1 e)) ((bottomOnce (SigningGuessProof.receiptDealt x top) b).run st) := by
+  simp only [bottomOnce, StateT.run_bind, StateT.run_get, pure_bind]
+  cases ht : st.trees b with
+  | some stored => exact noCall_pure _ _
+  | none =>
+    simp only [StateT.run_bind, run_liftM, bind_map_left, StateT.run_modify,
+      StateT.run_pure, pure_bind]
+    exact noCall_bind _ (bottom_noCall x top e b) fun _ => noCall_pure _ _
+
+set_option maxRecDepth 100000 in
+/-- A successful memoized response has the counted witness retained by the store. -/
+theorem bottomOnce_tree_runs (x : SigningSecurityProof.Keys3 C) (top : TopTree)
+    (b : Fin (2 ^ layerHeight)) (st : TsigState C) (s : HashCache C × ℕ)
+    (hinv : SigningGuessProof.StoredTreeRuns prims x top s.1 st)
+    (r : (Option BottomTree × TsigState C) × HashCache C × ℕ)
+    (hr : r ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
+      ((bottomOnce (SigningGuessProof.receiptDealt x top) b).run st)).run s))
+    (tree : BottomTree) (ho : r.1.1 = some tree) :
+    ∃ start result, result ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
+      (SigningSecurityProof.liftFree (referenceTree tweakable (prfValue x.2.1) x.1
+        top (.bottom b)))).run start) ∧ result.1 = some (.bottom tree) ∧ result.2.1 ≤ r.2.1 := by
+  simp only [bottomOnce, StateT.run_bind, StateT.run_get, pure_bind] at hr
+  cases ht : st.trees b with
+  | some stored =>
+    simp only [ht, StateT.run_pure, simulateQ_pure, support_pure, Set.mem_singleton_iff] at hr
+    subst r
+    exact hinv b tree (ht.trans (congrArg some ho))
+  | none =>
+    simp only [ht, StateT.run_bind, run_liftM, bind_map_left,
+      StateT.run_modify, StateT.run_pure, pure_bind] at hr
+    obtain ⟨built, hb, hr⟩ := SigningCacheProof.run_bind_support prims _ _ s r hr
+    simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hr
+    subst r
+    obtain ⟨result, hs, hout, hc⟩ := SigningGuessProof.receiptDealt_bottom_runs
+      prims x top b s built hb tree ho
+    exact ⟨s, result, hs, hout, hc.le⟩
+
 set_option maxHeartbeats 1000000 in
 set_option maxRecDepth 100000 in
 theorem adds_round2 (x : SigningSecurityProof.Keys3 C) (top : TopTree) (cache : HashCache C) (e : KeyIndex)
@@ -754,6 +794,7 @@ theorem adds_round2 (x : SigningSecurityProof.Keys3 C) (top : TopTree) (cache : 
     (l : LoggedState C) (z : ((TsigSpec C).Range (.round2 i J e' message' parts) × TsigState C) × LoggedState C)
     (hz : z ∈ support ((simulateQ (loggedImpl prims) ((tsigOracles (fun oa => SigningCoreProof.honestLift oa)
       (SigningGuessProof.receiptDealt x top) (.round2 i J e' message' parts)).run st)).run l))
+    (hstored : SigningGuessProof.StoredTreeRuns prims x top l.1.1 st)
     (hle : z.2.1.1 ≤ cache) (hb : ∀ message'', st.bound e = some message'' → message'' = message) :
     Adds (OnSel x.1 e (XmssSecurity.Concrete.CacheView.encodingInput x.1 e (message, randomness))) l z.2 := by
   simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at hz
@@ -765,10 +806,10 @@ theorem adds_round2 (x : SigningSecurityProof.Keys3 C) (top : TopTree) (cache : 
     have hm : e' = e → message' = message := fun he => by
       subst he
       exact hb _ (by simp only [not_or, not_not] at hguard; exact hguard.2.2)
-    simp only [StateT.run_bind, run_liftM, bind_map_left] at hz
+    simp only [StateT.run_bind] at hz
     obtain ⟨p1, hp1, hz⟩ := logged_bind prims _ _ l z hz
-    refine (adds_onSel_of_noCall prims x.1 e _ _ (bottom_noCall x top e _) l p1 hp1).trans ?_
-    rcases hp1t : p1.1 with _ | tree
+    refine (adds_onSel_of_noCall prims x.1 e _ _ (bottomOnce_noCall x top e _ st) l p1 hp1).trans ?_
+    rcases hp1t : p1.1.1 with _ | tree
     · rw [hp1t] at hz
       simp only [StateT.run_pure, simulateQ_pure, support_pure, Set.mem_singleton_iff] at hz
       subst hz
@@ -786,8 +827,7 @@ theorem adds_round2 (x : SigningSecurityProof.Keys3 C) (top : TopTree) (cache : 
         simp only [StateT.run_pure, simulateQ_pure, support_pure, Set.mem_singleton_iff] at hz
         rw [hz]
       · rw [hp3t] at hz
-        simp only [StateT.run_bind, StateT.run_set, StateT.run_pure, pure_bind, simulateQ_pure, support_pure,
-          Set.mem_singleton_iff] at hz
+        simp only [StateT.run_bind, StateT.run_pure] at hz
         rw [hz]
     rw [hz3]
     have hle3 : p3.2.1.1 ≤ cache := by rw [← hz3]; exact hle
@@ -800,22 +840,12 @@ theorem adds_round2 (x : SigningSecurityProof.Keys3 C) (top : TopTree) (cache : 
       obtain ⟨rfl, r, encoding, hr, hinput⟩ := hvalidCase hk hvalid
       obtain rfl := hm rfl
       rw [hinput]
-      obtain ⟨p0, hp0, hp1eq⟩ := logged_map prims _ _ l p1 (by
-        rw [SigningGuessProof.receiptDealt_bottom] at hp1; exact hp1)
-      have hout : p0.1 = some (.bottom tree) := by
-        rw [hp1eq] at hp1t
-        dsimp only at hp1t
-        revert hp1t
-        rcases p0.1 with _ | (_ | tree')
-        · intro h; exact absurd h (by simp)
-        · intro h; exact absurd h (by simp)
-        · intro h; simp only [Option.some.injEq] at h; rw [h]
-      have hTreeLe : p0.2.1.1 ≤ cache := by
-        have h1 : p0.2 = p1.2 := by rw [hp1eq]
-        rw [h1]
-        exact (logged_grows prims _ _ p2 hp2).trans ((logged_grows prims _ _ q hq).trans (hq3.trans hle3))
-      rw [hsel tree l.1 (p0.1, p0.2.1) p2.2.1 (q.1, q.2.1) _ r encoding
-        (logged_count prims _ l p0 hp0) hout hTreeLe (logged_count prims _ p2.2 q hq) hr (hq3.trans hle3)]
+      obtain ⟨sTree, rTree, hTree, hTreeOut, hTreeLe⟩ := bottomOnce_tree_runs prims x top
+        (treeOf e') st l.1 hstored (p1.1, p1.2.1) (logged_count prims _ l p1 hp1) tree hp1t
+      have h1 : p1.2.1.1 ≤ cache :=
+        (logged_grows prims _ _ p2 hp2).trans ((logged_grows prims _ _ q hq).trans (hq3.trans hle3))
+      rw [hsel tree sTree rTree p2.2.1 (q.1, q.2.1) _ r encoding
+        hTree hTreeOut (hTreeLe.trans h1) (logged_count prims _ p2.2 q hq) hr (hq3.trans hle3)]
       rfl
     refine adds_onSel_of_noCall prims x.1 e _ _ ?_ _ p3 hp3
     rcases q.1 with _ | ⟨r, encoding⟩
@@ -842,9 +872,9 @@ theorem tsigOracles_noCall (x : SigningSecurityProof.Keys3 C) (top : TopTree) (e
     · simp only [StateT.run_bind, StateT.run_set, pure_bind, StateT.run_pure]
       exact noCall_pure _ _
   | tree b =>
-    simp only [tsigOracles, StateT.run_bind, run_liftM, bind_map_left]
-    refine noCall_bind _ (bottom_noCall x top e b) fun tree => ?_
-    rcases tree with _ | tree
+    simp only [tsigOracles, StateT.run_bind]
+    refine noCall_bind _ (bottomOnce_noCall x top e b st) fun found => ?_
+    rcases found with ⟨_ | tree, st'⟩
     · exact noCall_pure _ _
     · simp only [StateT.run_bind, run_liftM, bind_map_left, StateT.run_pure]
       refine noCall_bind _ ?_ fun _ => noCall_pure _ _
@@ -877,6 +907,7 @@ theorem adds_opening_step (x : SigningSecurityProof.Keys3 C) (top : TopTree) (ca
       Finset (Fin (2 ^ layerHeight)) × List (SigningOpeningProof.HiddenKey × Digest)) × LoggedState C)
     (hz : z ∈ support ((simulateQ (loggedImpl prims)
       ((SigningOpeningProof.openingOracles x (SigningGuessProof.receiptDealt x top) t).run s)).run l))
+    (hstored : SigningGuessProof.StoredTreeRuns prims x top l.1.1 s.1.1)
     (hle : z.2.1.1 ≤ cache) (hb : ∀ message'', s.1.1.bound e = some message'' → message'' = message) :
     Adds (OnSel x.1 e (XmssSecurity.Concrete.CacheView.encodingInput x.1 e (message, randomness))) l z.2 := by
   rcases t with t | q
@@ -888,9 +919,44 @@ theorem adds_opening_step (x : SigningSecurityProof.Keys3 C) (top : TopTree) (ca
     obtain ⟨p, hp, rfl⟩ := logged_map prims _ _ l z hz
     by_cases hq : ∃ i J e' message' parts, q = .round2 i J e' message' parts
     · obtain ⟨i, J, e', message', parts, rfl⟩ := hq
-      exact adds_round2 prims x top cache e message randomness hsel s.1.1 i J e' message' parts l p hp hle hb
+      exact adds_round2 prims x top cache e message randomness hsel s.1.1 i J e' message' parts l p hp hstored hle hb
     · push Not at hq
       exact adds_onSel_of_noCall prims x.1 e _ _ (tsigOracles_noCall x top e q hq s.1.1) l p hp
+
+theorem gameOracles_storedTreeRuns (x : SigningSecurityProof.Keys3 C) (top : TopTree)
+    (t : (LocalSpec C + TsigSpec C).Domain) (st : TsigState C) (s : HashCache C × ℕ)
+    (hinv : SigningGuessProof.StoredTreeRuns prims x top s.1 st)
+    (r : ((LocalSpec C + TsigSpec C).Range t × TsigState C) × HashCache C × ℕ)
+    (hr : r ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
+      ((SigningCoreProof.gameOracles (SigningGuessProof.receiptDealt x top) t).run st)).run s)) :
+    SigningGuessProof.StoredTreeRuns prims x top r.2.1 r.1.2 := by
+  rw [← SigningGuessProof.signingWithReceipt_forget] at hr
+  simp only [simulateQ_map, StateT.run_map, support_map, Set.mem_image] at hr
+  obtain ⟨out, hout, rfl⟩ := hr
+  exact SigningGuessProof.signingWithReceipt_storedTreeRuns prims x top st t s hinv out hout
+
+theorem opening_step_storedTreeRuns (x : SigningSecurityProof.Keys3 C) (top : TopTree)
+    (t : (LocalSpec C + TsigSpec C).Domain)
+    (s : (TsigState C × Bool) × Finset (Fin (2 ^ layerHeight)) × List (SigningOpeningProof.HiddenKey × Digest))
+    (l : LoggedState C)
+    (hinv : SigningGuessProof.StoredTreeRuns prims x top l.1.1 s.1.1)
+    (z : ((LocalSpec C + TsigSpec C).Range t × (TsigState C × Bool) ×
+      Finset (Fin (2 ^ layerHeight)) × List (SigningOpeningProof.HiddenKey × Digest)) × LoggedState C)
+    (hz : z ∈ support ((simulateQ (loggedImpl prims)
+      ((SigningOpeningProof.openingOracles x (SigningGuessProof.receiptDealt x top) t).run s)).run l)) :
+    SigningGuessProof.StoredTreeRuns prims x top z.2.1.1 z.1.2.1.1 := by
+  cases t with
+  | inl t =>
+    simp only [SigningOpeningProof.openingOracles, StateT.run_mk, SigningCoreProof.flaggedOracles,
+      Functor.map_map] at hz
+    obtain ⟨p, hp, rfl⟩ := logged_map prims _ _ l z hz
+    exact SigningGuessProof.StoredTreeRuns.mono prims x top (logged_grows prims _ l p hp) hinv
+  | inr t =>
+    simp only [SigningOpeningProof.openingOracles, StateT.run_mk, SigningCoreProof.flaggedOracles,
+      Functor.map_map] at hz
+    obtain ⟨p, hp, rfl⟩ := logged_map prims _ _ l z hz
+    exact gameOracles_storedTreeRuns prims x top (.inr t) s.1.1 l.1 hinv
+      (p.1, p.2.1) (logged_count prims _ l p hp)
 
 /-- An invariant of each step of a stateful oracle, run under `loggedImpl`, holds after the run. -/
 theorem logged_simulateQ_inv {ι σ α : Type} {spec : OracleSpec ι}
@@ -1099,56 +1165,42 @@ theorem allowed_of_joint (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C
       (XmssSecurity.Concrete.CacheView.encodingInput x.1 forgery.signature.leafIndex selected)
       (XmssSecurity.Concrete.CacheView.encodingInput x.1 forgery.signature.leafIndex
         (forgery.message, (XmssSecurity.Bridge.toModelSig forgery.signature).randomness))) loggedInit w.2 := by
-    unfold jointRun SigningGuessLinkProof.verifyFinal at hw
-    dsimp only at hw
-    rw [show referenceTree (fun oa => SigningSecurityProof.liftFree (tweakable oa))
-        (fun p => SigningSecurityProof.liftFree (prfValue x.2.1 p)) x.1 emptyTop .top =
-        SigningSecurityProof.liftFree (referenceTree tweakable (prfValue x.2.1) x.1 emptyTop .top) from
-      referenceTree_φ _ _ _ _] at hw
-    obtain ⟨p, hp, hw⟩ := logged_bind prims _ _ _ w hw
+    obtain ⟨p, q, v, hp, hp1, hq, hv, rfl⟩ :=
+      verifyFinal_support (loggedImpl prims) loggedInit A x w hw top state forgery hm
     refine Adds.trans ((adds_world prims (AtKey x.1 forgery.signature.leafIndex) _
       (noCall_liftFree _ _ (referenceTree_bound x.1 _ x.2.1 emptyTop .top)) _ p hp).mono
         fun entry h hfree hk _ => (h hfree hk).elim) ?_
-    rcases hp1 : p.1 with _ | (top' | tree)
-    · rw [hp1] at hw
-      simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hw
-      subst hw
-      simp at hm
-    swap
-    · rw [hp1] at hw
-      simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hw
-      subst hw
-      simp at hm
-    rw [hp1] at hw
-    dsimp only at hw
-    obtain ⟨q, hq, hw⟩ := logged_bind prims _ _ _ w hw
-    obtain ⟨v, hv, rfl⟩ := logged_map prims _ _ _ w hw
     have hstate := tsigFinishLogged_state _ _ _ _ v.1 (logged_support prims _ _ v hv)
     simp only [Option.some.injEq, Prod.mk.injEq] at hm
-    obtain ⟨rfl, hst, hforgery⟩ := hm
+    obtain ⟨-, hst, hforgery⟩ := hm
     rw [hstate] at hst hforgery
     dsimp only at hst hforgery
     subst hst
     subst hforgery
     obtain ⟨hR, hc⟩ := openingOracles_inv x _ _ q.1 (logged_support prims _ _ q hq)
     have hqle : q.2.1.1 ≤ v.2.1.1 := logged_grows prims _ _ v hv
-    have hB : Adds (OnSel x.1 q.1.1.signature.leafIndex
-        (XmssSecurity.Concrete.CacheView.encodingInput x.1 q.1.1.signature.leafIndex selected)) p.2 q.2 := by
-      refine logged_simulateQ_inv prims (SigningOpeningProof.openingOracles x (SigningGuessProof.receiptDealt x top'))
-        (fun s l => l.1.1 ≤ v.2.1.1 → (∀ message'', s.1.1.bound q.1.1.signature.leafIndex = some message'' →
+    have hBoth : SigningGuessProof.StoredTreeRuns prims x top q.2.1.1 q.1.2.1.1 ∧
+        (q.2.1.1 ≤ v.2.1.1 → (∀ message'', q.1.2.1.1.bound q.1.1.signature.leafIndex = some message'' →
           message'' = selected.1) → Adds (OnSel x.1 q.1.1.signature.leafIndex
-            (XmssSecurity.Concrete.CacheView.encodingInput x.1 q.1.1.signature.leafIndex selected)) p.2 l)
-        ?_ _ _ p.2 (fun _ _ => adds_refl _ _) q hq hqle ?_
-      · intro t s l hinv r hr hle hb
-        have hgrow := SigningSupportProof.openingOracles_step_grows x _ t s r.1 (logged_support prims _ _ r hr)
-        have hb' : ∀ message'', s.1.1.bound q.1.1.signature.leafIndex = some message'' → message'' = selected.1 :=
-          fun m hm => hb m (hgrow.1.bound_eq hm)
-        exact (hinv ((logged_grows prims _ _ r hr).trans hle) hb').trans
-          (adds_opening_step prims x top' v.2.1.1 _ selected.1 selected.2 hS t s l r hr hle hb')
-      · intro m hm
-        exact Option.some.inj (hm.symm.trans hbF)
+            (XmssSecurity.Concrete.CacheView.encodingInput x.1 q.1.1.signature.leafIndex selected)) p.2 q.2) := by
+      refine logged_simulateQ_inv prims (SigningOpeningProof.openingOracles x (SigningGuessProof.receiptDealt x top))
+        (fun s l => SigningGuessProof.StoredTreeRuns prims x top l.1.1 s.1.1 ∧
+          (l.1.1 ≤ v.2.1.1 → (∀ message'', s.1.1.bound q.1.1.signature.leafIndex = some message'' →
+            message'' = selected.1) → Adds (OnSel x.1 q.1.1.signature.leafIndex
+              (XmssSecurity.Concrete.CacheView.encodingInput x.1 q.1.1.signature.leafIndex selected)) p.2 l))
+        ?_ _ _ p.2 ⟨by simp [SigningGuessProof.StoredTreeRuns, SigningCoreProof.tsigInit],
+          fun _ _ => adds_refl _ _⟩ q hq
+      intro t s l hinv r hr
+      refine ⟨opening_step_storedTreeRuns prims x top t s l hinv.1 r hr, ?_⟩
+      intro hle hb
+      have hgrow := SigningSupportProof.openingOracles_step_grows x _ t s r.1 (logged_support prims _ _ r hr)
+      have hb' : ∀ message'', s.1.1.bound q.1.1.signature.leafIndex = some message'' → message'' = selected.1 :=
+        fun m hm => hb m (hgrow.1.bound_eq hm)
+      exact (hinv.2 ((logged_grows prims _ _ r hr).trans hle) hb').trans
+        (adds_opening_step prims x top v.2.1.1 _ selected.1 selected.2 hS t s l r hr hinv.1 hle hb')
+    have hB := hBoth.2 hqle (fun m hm => Option.some.inj (hm.symm.trans hbF))
     refine (hB.mono fun entry h hfree hk hvalid => Or.inl (h hfree hk hvalid)).trans ?_
-    exact adds_finish prims x top' v.2.1.1 _ selected.1 selected.2 hS q.1.2.2.1 q.1.1 q.1.2.1.1 hR hc hbF rfl
+    exact adds_finish prims x top v.2.1.1 _ selected.1 selected.2 hS q.1.2.2.1 q.1.1 q.1.2.1.1 hR hc hbF rfl
       q.2 v hv le_rfl
   obtain ⟨new, hnew, hok⟩ := hfinal
   intro entry hentry

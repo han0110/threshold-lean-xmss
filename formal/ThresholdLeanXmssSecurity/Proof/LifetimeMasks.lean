@@ -17,10 +17,10 @@ The pinned and current leanVM hidden-value and finite-table modules were searche
 The reusable 256-bit coordinate estimate is `TprfSecurityProof.probEvent_update_le`, and the
 adaptive bound is `probEvent_flag_le` from `Coupling`; neither is duplicated here.
 
-`PrivateSigningTransport` is the remaining request-level equality. `PrivateMaskPrefixLaw` states
+`PrivateSigningTransport` is the request-level equality. `PrivateMaskPrefixLaw` states
 the independence condition consumed by the prefix bound; it is not a proof of that condition for
-the actual lifetime. The lifetime definitions are still a B3 draft, so its replay, independence
-and budget instantiation cannot yet be stated against the imported lifetime interface.
+the actual lifetime. Applying it to the lifetime scheduler requires replay, independence
+and budget certificates for that scheduler.
 -/
 
 open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
@@ -349,7 +349,7 @@ theorem pairKeyCollision_add_hit_bound {σ α : Type} (D : C.Coalition)
     exact pairKeyCollision_hit_arith D q hsetup
   exact toReal_le_div h
 
-/-! ## Remaining transport -/
+/-! ## Request transport -/
 
 /-- The exact request-level assembly still needed by D16. This generalizes `emulatedOracles_run`:
 only PRF terms must already be cached; honest-pair masks may be fresh. It compares the complete

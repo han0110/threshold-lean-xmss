@@ -7,8 +7,8 @@ import VCVio.OracleComp.QueryTracking.RandomOracle.EagerTable
 # The keygen
 
 `KeygenCompletenessStatement` follows from the honest run of `keygen`. `KeygenSecurityStatement`
-reduces to `KeygenCoupling`, which is open. `keygenSimulator_queryBound` gives the query half. The
-other lemmas are partial steps toward `KeygenCoupling` (CDG+18).
+reduces to `KeygenCoupling`. `keygenSimulator_queryBound` gives the query half. The
+supporting lemmas concern `KeygenCoupling` (CDG+18).
 -/
 
 open OracleComp OracleSpec LeanXmss ThresholdLeanXmss

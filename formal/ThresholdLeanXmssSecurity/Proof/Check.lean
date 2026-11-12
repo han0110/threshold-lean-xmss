@@ -7,9 +7,9 @@ import Mathlib.Algebra.CharP.Algebra
 # The check
 
 `MultVerifyCompletenessStatement` follows from the honest run of the check. `MultVerifyStatement`
-(GS20, Lemmas 8 to 11, and CGH+18) reduces to its distance half `MultVerifyDistance`, which is open.
-`canonicalCheckSimulator_queryBound` gives the query half. The other lemmas are partial steps toward
-`MultVerifyDistance`.
+(GS20, Lemmas 8 to 11, and CGH+18) reduces to its distance half `MultVerifyDistance`.
+`canonicalCheckSimulator_queryBound` gives the query half. The supporting lemmas concern
+the executions and estimates of `MultVerifyDistance`.
 -/
 
 open OracleComp OracleSpec LeanXmss ThresholdLeanXmss

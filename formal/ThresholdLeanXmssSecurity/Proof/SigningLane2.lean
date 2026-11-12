@@ -53,7 +53,7 @@ base call). `Ghost.impl` returns only the signature.
   `selection_uniform_eq`. In the threshold run the base is a fresh oracle answer at the first base
   call. A call before the release that meets `ρ_e` is an input-side hit of the capped flag.
 
-## The remaining goals
+## The potential interfaces
 
 `probEvent_ghost_lane2_le` is the bound on the leanVM event `ghostEvent`. The flat run
 (`SigningFlat`) must give a view to the leanVM cache and trace, and these facts for each call.

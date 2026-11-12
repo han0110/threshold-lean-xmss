@@ -14,7 +14,7 @@ one honest parameter coordinate, and a derivation query costs at most `K` honest
 query classes are disjoint, so each counted call costs at most `K / 2^256`. Distinct programming
 inputs collide with probability at most `2^-256` per pair. The union bound is `(q * K + K^2) / 2^256`.
 
-`keygenProgramAliasBound` closes the last hypothesis of `keygenSecurityDone_of_programAlias`.
+`keygenProgramAliasBound` supplies the programming-input hypothesis of `keygenSecurityDone_of_programAlias`.
 -/
 
 set_option pp.deepTerms false

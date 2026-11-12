@@ -15,87 +15,44 @@ variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algeb
 variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings)
 
 /-!
-The stages task for the fixed events in the frozen `TreeSim` module.
-`treeStages_firstCheck_padded_two_rounds` now composes the real first check
-Coin, expansion hashes, zero guard and first slice through its next challenge
-Coin. It handles selective aborts and uses concrete finite padding without
-resetting the shared dealer cache. The remaining check iterations, their
-algebraic invariant and the complete reachable ceremony core remain open.
-Actual field PRSS draws realize the GS20 masks for arbitrary encodings,
-including repeated holders, visible keys and optional earlier aborts.
-`treeStages_extendMult_real_start` constructs the frozen boundary data;
-`treeStages_extendMult_aborted` proves the complete selective-abort gadget.
-`TreeStagesExtendMultChallenge.coupling` proves the successful reduction
-transition through the next Coin entry, with the actual recorded outputs.
-`treeStages_extendMult_challenge_preserves` exposes it as a core preservation
-case. Challenge hashing and rejection preserve arbitrary private-cache
-invariants, including when the dealer has already populated the public cache.
-`treeStages_saltedDigest_challenge` proves the complete actual salt PRSS,
-history/digest queries, rushing comparison and following Coin entry when held
-histories agree. `treeStages_digest_challenge_preserves` supplies its exchange
-preservation case. Field ExtendMult preserves this history equality for an
-unfilled T₀. For unequal histories, `treeStages_hiddenDigest_fresh` introduces
-the standard salted-digest cache swap and proves the entire adaptive counted
-continuation up to the fixed salt-guess event. `treeStages_split_digest_round`
-closes the rejected check exchange from actual logged split-history evidence.
-`treeStages_split_digest_finish` continues that transported-cache branch through
-the final distinguisher. `treeStages_saltedDigest_split_finish` proves the entire
-split-history suffix from actual salt PRSS to final observation when held
-histories agree across the two runs, deriving every hash certificate from the
-actual log. Composing unequal-history digest entries and meeting the core's
-public-cache equality requirement remain open for hidden digests.
-`treeStagesCopyPadding` covers the finite copy-hash domain independently of
-private masks. `treeStages_finalMask_open_round` connects the GS20 final-mask
-bijection and bounded T₀ correction to the actual next OpenRep entry.
-`treeStages_finalMask_simBatch_finish` closes the final field check and the
-actual simulator output override, including clear PRF queries, unbounded T₀
-correction, batch decoding, selective aborts and any remaining fuel. Its mask
-compatibility follows from equal residuals. `treeStagesOutputPadding` proves
-both copy and PRF coverage while preserving the dealer cache. Reachability
-must still establish the residual, late translation and internal-share
-equations. `treeStages_simBatch_next_rounds` composes a nonterminal check,
-actual corrected opening, public hash computation, next input queries and
-PRSS entry in either mode. `treeStages_actualBatchData` obtains that entry
-directly from real and simulated `runJobs`, including zero-layer batches.
-`treeStages_openBatchPeer_boundary` supplies the frozen boundary interface.
-`treeStagesCeremonyPrfPadding` covers real and dummy PRF seeds for every
-later job, including adaptively selected points.
-`treeStages_batch_collector_first_round` constructs the GS20 collector masks
-from the actual batch inputs and couples the first rushing round through its
-forwarding boundary. `TreeStagesCollectorLayer.boundary_round` closes the
-collector-to-collector transition for the actual gadgets, including prior
-aborts, recorded histories, fresh next masks and the remaining layer schedule.
-`TreeStagesCollectorTail.execute_three` composes the entire final collector
-and peer Rerand into the check's actual first Coin, including the driver's
-stopping test, selective aborts, GS20 masks and fresh later cache labels.
-`TreeStagesCollectorSchedule.execute` inducts over all remaining AND layers,
-including both exchanges and every optional abort. `treeStages_collector_runJobs_check`
-starts from the actual real and simulated `runJobs` programs and their first
-PRSS draws, handles zero-depth batches, and reaches the first check Coin in
-`2 * depth + 1` driver rounds. `treeStages_collector_input_runJobs_check`
-includes the actual input PRF calls and their real logs before those layers.
-`treeStages_collector_ceremonyBatch_check` instantiates this composition with
-dealt keys, dummy hidden seeds, common PRSS keys and reset histories; finite
-padding supplies coverage for all later jobs without clearing dealer answers.
-`TreeStagesPeerSchedule.execute` proves the whole peer-layer fold, including
-abort propagation and Rerand. `treeStages_input_runJobs_check` and
-`treeStages_ceremonyBatch_check` compose actual inputs and all layers in either
-mode using `settings.mode.rounds * depth + 1` rounds. The peer theorem also
-covers empty outputs when an AND tuple makes the check nonempty; its schedule
-retains this tuple-count invariant. `TreeStagesRerandTail.execute_nonempty`
-uses the checked tuples rather than requiring nonempty outputs.
-`treeStagesCheckAfterCoin` retains the exact remaining check and caller.
-Zero-output collector batches, empty checks and the complete check invariant
-still need integration into the ceremony schedule.
-`TreeStagesReach` retains the real programs and exact log;
-its entry and step lemmas prove same-execution replay and empty corrupt outputs.
-`treeStages_core_of_reachable_relation` uses these facts to construct the frozen
-core from a bounded gadget relation, without a separate replay premise.
-Global reachability must instantiate the remaining relation and its progress.
-Already-bad prefixes have a complete round core. The remaining good-prefix
-ceremony invariant and successful continuation closures are the explicit
-`TreeSimStagesGoodCoreGoal` premise of the final assembly theorem.
-No hash-bound or check-bound premise is used here.
+# Local round couplings for tree simulation
+
+The round lemmas connect actual PRSS draws, recorded histories and saved
+continuations to `TreeSim`'s stage interface. They retain the shared dealer
+cache, the exact log and selective-abort branches. `treeStages_core_of_reachable_relation`
+constructs a round core from a bounded gadget relation; the final assembly
+has the explicit `TreeSimStagesGoodCoreGoal` hypothesis. It uses no hash-bound
+or check-bound premise.
+
+1. Collector and peer schedules compose input PRF calls, all AND layers and
+   Rerand through the first check Coin in `settings.mode.rounds * depth + 1`
+   driver rounds. Finite padding covers later adaptive jobs without clearing
+   dealer answers. Zero-depth batches are included; the peer theorem permits
+   empty outputs when the saved AND tuples make the check nonempty.
+2. Actual field PRSS draws realize GS20 masks for arbitrary encodings, repeated
+   holders and visible keys. ExtendMult preserves its saved outputs through
+   the next Coin, and challenge hashing preserves private-cache invariants.
+   The padded first-check composition reaches the next challenge Coin.
+3. With agreeing held histories, the salted-digest coupling covers actual salt
+   PRSS, history and digest queries, the rushing comparison and following Coin.
+   Unequal histories use a salted-digest cache swap through the adaptive counted
+   continuation, up to the salt-guess event. The rejected split-history branch
+   transports the actual log through the final distinguisher. These local laws do
+   not compose unequal-history digest entries for hidden digests into a whole-round
+   coupling. Equal public caches are an additional constraint of the original core
+   interface.
+4. The final-mask bijection and bounded hidden-term correction lead to the
+   actual OpenRep entry. `treeStages_finalMask_simBatch_finish` includes the
+   simulator output override, clear PRF calls, unbounded correction, decoding,
+   aborts and arbitrary suffix fuel. Its mask compatibility requires equal
+   residuals; reachable states must also supply translation and internal-share
+   equations. Copy and PRF padding preserves the dealer cache.
+5. Batch continuation lemmas compose the corrected opening, public hash
+   computation, next input queries and PRSS entry in either mode. The actual
+   programs and logs are retained by `TreeStagesReach`; its entry and step laws
+   give same-execution replay and empty corrupt outputs. A global relation must
+   account for zero-output collector batches, empty checks, the complete check
+   invariant and successful continuations on the same ceremony schedule.
 -/
 
 /-- Decode a finite array in the order used by `elementCodec`. No algebraic

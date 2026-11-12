@@ -7,22 +7,23 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 `HiddenCoreAt` of `Proof/SigningCore.lean` (steps 2 to 6 of the signing plan of `formal/PROOF.md`)
 and the full signing claim `signingSecurityFull`.
 
-Open stage, the hypothesis of `signingSecurityFull`:
+The hypothesis of `signingSecurityFull`:
 
 * `HiddenCoreAt`: for fixed distinct keys, a win without the flag costs `signingHashError q`.
 
-What it still needs, in the order of the plan:
+The accounting uses the following ingredients:
 
 1. A logged run of `runSigningWorld` (every call with its copy and its answer), equal to the run
    after the log is forgotten, as `simulateQ_run_forget`.
 2. The positions of the inputs of `Th` and the honest input of each position. A digest position has
    several honest trials of `grind`, and only the selected one is a target.
 3. The descent over two layers: a verified fresh forgery without the flag gives a hit, a guess or a
-   partner in the log. leanVM does this in `OutcomeClassification` and `ConcreteForgery`, which this
-   project does not build.
-4. The costs. The digest partner bound is one unit for each digest call, because `ρ_e` stays hidden
-   until round 1 binds the message, so `R_0` is fresh and the selected output is uniform over the
-   codewords. A bound of one unit for each pair is false.
+   partner in the log. leanVM does this in `OutcomeClassification` and `ConcreteForgery`
+   for its XMSS game.
+4. The costs. `SigningPartnerBound` uses a pending-risk monitor on the logged run
+   to charge a digest partner by digest calls. Round 1 reveals `ρ_e`, so leanVM's
+   hidden-`R_0` argument cannot be applied after that release. A bound of one unit
+   for each pair is false.
 -/
 
 set_option pp.deepTerms false

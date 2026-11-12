@@ -9,7 +9,7 @@ first run. This module fixes the salt addresses in two stages.
 
 * `TreeSaltStageSplit` writes the run after the PRSS setup as `first` and then `rest`. The stage
   point is the end of the first run. Each final log extends the log at the stage point.
-  `TreeSaltStageSplits` is one such split for each run. The two open Props and the hop take
+  `TreeSaltStageSplits` is one such split for each run. The two bound Props and the hop take
   this family as a parameter, so they claim nothing about a split that is not chosen.
 * `TreeSaltStagesAddresses` states the two covers. Stage 1 fixes a table from the end of the
   setup. It covers the log at the stage point. Stage 2 adds a table from the stage point. The two

@@ -7,11 +7,11 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 Stage 3 of `TreeKey.lean`, `TreeKeyHitBound`, in two parts. The prefix makes at most `start + 2 step`
 counted calls, and the rest of the run makes at most `(ceremonyFuel - 2) step + final`.
 
-1. `TreeKeyBoundaryHitBound` (proved, `treeKeyBoundaryHitBound`). The cache at the boundary holds the
+1. `TreeKeyBoundaryHitBound` (`treeKeyBoundaryHitBound`). The cache at the boundary holds the
    stream key of a hidden key of a row. Either a hidden canonical input is cached early
    (`prob_earlyCached_le`), or its fresh answer falls in the stream keys of the counted log
    (`prob_setupReveal_hit_le`).
-2. `TreeKeyAfterHitBound` (open). The cache at the boundary does not hold it, and the cache at the end
+2. `TreeKeyAfterHitBound`. The cache at the boundary does not hold it, and the cache at the end
    does. This needs the secrecy of the hidden keys after the boundary.
 
 `treeKeyHitBound_of_stages` sums the two parts.

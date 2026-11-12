@@ -4,7 +4,7 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 /-!
 # Keygen security: the known half
 
-This module reduces `KeygenKnownMismatch`, the last open stage of `keygenSecurityComplete`.
+This module reduces `KeygenKnownMismatch`, the known-half hypothesis of `keygenSecurityComplete`.
 
 1. `keygenKnownGame` is the common game in normal form, with its transcript
    (`simulateQ_keygenCommonGame_known`).
@@ -21,7 +21,7 @@ This module reduces `KeygenKnownMismatch`, the last open stage of `keygenSecurit
    or that two programming inputs are equal (`keygenProgramFailBound_of_alias`).
 6. The total fits in half of `keygenHashError` (`keygenKnown_arith`).
 
-`KeygenProgramAliasBound` stays open, as the hypothesis of `keygenSecurityDone_of_programAlias`. It
+`KeygenProgramAliasBound` is a hypothesis of `keygenSecurityDone_of_programAlias`. It
 needs the hiding of the honest parts by the commitments before the programming (CDG+18).
 
 * The prefix agrees with a prefix whose honest commitments are fresh uncached values, unless a logged

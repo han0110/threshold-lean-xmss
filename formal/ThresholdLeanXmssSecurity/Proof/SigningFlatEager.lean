@@ -22,7 +22,7 @@ This module gives step 1 of the plan in `SigningEagerGrind` on the flat run of `
 * `grindExtra P ρ` runs the honest grind of `signCodeword` at each canonical base call of a key `e`
   (`BaseCall`), on the answer of the base input. The trigger reads only the carried state, so a
   later base call runs the grind again. `baseCall_once` gives that its base input is cached. That
-  its trials are cached is not proved here.
+  its trials are cached requires a separate invariant.
 * `flatRun_eq_flatGame` writes `flatRun` as `flatGame` over `flatWorld`.
 * `evalDist_flatEagerRun` shows that the flat eager run has the law of `flatRun` for the result, the
   count, the log and the carried state. `evalDist_flatEagerRun_logged` gives the law of `loggedRun`
@@ -55,7 +55,7 @@ This module gives step 1 of the plan in `SigningEagerGrind` on the flat run of `
 * `splitRun` adds a write-only flag to the monitor. `cachedTrial` raises it at a trial on a seen
   input with a valid digest at an unsigned key. `CachedSelection` is the flag.
 * `split_r1Hit_bound` is `r1Hit_bound` on the split run.
-* `R1Link` is the open step 3. Its partner win reads the final cache of the eager run, which differs
+* `R1Link` is the step-3 hypothesis. Its partner win reads the final cache of the eager run, which differs
   from the final cache of `loggedRun`.
 * The link needs `P := x.1` and `ρ x` the honest openings. `SigningReleased.run_signCodeword_cached`
   shows that a trial calls `CacheView.encodingInput P e`, which `encodingInputLeafIndex? x.1` reads.

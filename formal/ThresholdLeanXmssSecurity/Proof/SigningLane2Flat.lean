@@ -3,10 +3,10 @@ import ThresholdLeanXmssSecurity.Proof.SigningAssembly
 /-!
 # The lane 2 potential on the flat run
 
-This module gives the facts of `SigningLane2Bridge` ("Open") on the split run of `SigningFlatEager`.
+This module gives the facts of `SigningLane2Bridge` ("Potential hypotheses") on the split run of `SigningFlatEager`.
 The view is `keptView IsMsg`.
 
-## Proved
+## Run and trace laws
 
 * `htop`. The lane 2 terms read only the parameter of the leanVM key and whether a top key signed.
   `laneKey P` signs every top key, so `htop` holds at every key (`topSignedAt_laneKey`).
@@ -20,13 +20,13 @@ The view is `keptView IsMsg`.
 * The base call. There the eager grind is `baseCall` (`eagerBase_eq_roRun`), and the view and the
   trace have the law of `signWithBaseStep` at `laneKey` (`splitWorld_baseLaw`).
 
-## Not proved
+## Potential hypotheses and their limitations
 
 * `hfresh` is not an invariant. A base call on a cached randomizer input appends no entry, and its
   grind writes trial entries with no sign step of leanVM. So the step facts fail there. `StaleBase`
-  names that state. The hybrid of item A6 must stop the potential there and pay the case with the
+  names that state. The capped hybrid must stop the potential there and pay the case with the
   input-side flag.
-* `BaseTrialsCachedInvariant`. A later base call of a key finds all its trials cached (item A1).
+* `BaseTrialsCachedInvariant`. A later base call of a key finds all its trials cached.
 * `MsgCallLaw`. A call of `H` at a message digest input is the world step of leanVM.
 * The step hypotheses of `probEvent_lane2_le` in the form `countImpl impl p t`, the start facts and
   the coupling of the lane run to the capped hybrid.
@@ -468,9 +468,9 @@ theorem splitWorld_baseLaw (keyOf : XmssSecurity.HashInput → Option XmssSecuri
   rw [evalDist_map]
   rfl
 
-/-! ## The open steps
+/-! ## The interface hypotheses
 
-These are the facts that the lane 2 potential still needs on the lane run. Each is a named `Prop` in
+These are the hypotheses of the lane 2 potential on the lane run. Each is a named `Prop` in
 its exact form. -/
 
 /-- The state of the lane run. -/

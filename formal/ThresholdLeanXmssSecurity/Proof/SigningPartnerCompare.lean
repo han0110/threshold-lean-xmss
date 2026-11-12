@@ -1,7 +1,7 @@
 import ThresholdLeanXmssSecurity.Proof.SigningPartnerTransfer
 
 /-!
-The cache comparison left by A26.
+The comparison of reconstructed and eager caches.
 
 The extra eager calls only query bottom message inputs. On actual split-run
 support, every logged answer survives in the eager cache, and every tracked
@@ -9,9 +9,8 @@ input outside that domain agrees exactly with the log cache. In particular,
 the PRF answers, cached randomizers and commitment-collision event agree.
 
 These structural facts do not assert that the selected pair is unchanged:
-an extra answer can make an earlier, previously absent trial decode. The full
-`PartnerCacheComparison` remains open; no counterexample to its probability
-inequality has been established.
+an extra answer can make an earlier, previously absent trial decode. `PartnerCacheComparison` requires a probability inequality between these
+two cache-dependent events; the structural facts alone do not give it.
 
 `splitRun_partner_of_selected_eq` transports the original lazy row to the
 original eager event under explicit equality of the two selected pairs.

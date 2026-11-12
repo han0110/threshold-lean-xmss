@@ -16,7 +16,7 @@ key of the forgery (`HonestKey`).
 * In a `Guess`, a forged chain value is the honest value at its digit, below the opened position.
 * In a `Partner`, the forged digest input gives the digest of the honest selected input.
 
-Proved stages.
+The component lemmas.
 
 * `fresh_layer` and `same_layer` do one layer. They use `classify_sameLeafIndex_forgery` of leanVM
   and a walk split (`walk_meets`), which turns a backward chain into a guess or a hit.
@@ -25,7 +25,7 @@ Proved stages.
 * `signing_win_badEvent` gives a bad event for a winning final state with no flag.
 * `runSigningWorld_flaggedAfter` exposes the final state and the cache of the run (`exposedRun`).
 
-Open stages, as named `Prop`s.
+The interfaces, as named `Prop`s.
 
 * `CacheConsistent` says that the trees of `KeyGen` replay from the cache, and that the cache holds
   the inputs that the verification evaluates.

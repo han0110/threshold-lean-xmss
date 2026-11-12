@@ -45,14 +45,14 @@ A Guess forges a hidden honest chain value below the opened position. The verifi
 The table of `SigningOpening` lists the top partner as uncharged. The docstring of
 `winResidual_guess_or_bottomPartner` says that it is charged. Both are right for their own split.
 
-* `WinResidual` belongs to the split `WinOutput`/`WinResidual`, whose `OutputLaneBound` holds every
-  `TopPartner` and stays an open hypothesis.
-* The live route is `hiddenCoreAt_of_uncharged`. There `ChargedOutput` holds only
+* `WinResidual` belongs to the split `WinOutput`/`WinResidual`. The separate hypothesis
+  `OutputLaneBound` bounds `WinOutput`, which includes every `TopPartner`.
+* In the split of `hiddenCoreAt_of_uncharged`, `ChargedOutput` holds only
   `ResolvedTopPartner`. `topPartner_resolved` and `uncharged_topPartner_no_successful_bottom` show
   that a top partner with a successful cached bottom ceremony is charged. A top partner without one
   stays in `UnchargedWin`.
 
-## Open problem of the bottom partner
+## The bottom-partner interface
 
 An adversary call of `encodingInput` may carry two uncharged targets. One is the selected
 randomness, the base plus `k` with a hidden base (the grind of `Scheme.lean`). The other is the

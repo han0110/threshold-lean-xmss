@@ -31,7 +31,7 @@ The guarded estimate conditions the run on the end of the PRSS setup.
   these addresses.
 * `treeSimSaltReuseGuarded_of_setup` averages over the setup and applies `treeSaltEager_bound`.
 
-The two named statements stay open. They need the same bridge from the ceremony to the salt
+The two named statements require the same bridge from the ceremony to the salt
 address program as `TreeSimHashRawSaltEstimate`.
 -/
 

@@ -6,12 +6,12 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 
 Part 2 of `TreeKeyHit.lean`, `TreeKeyAfterHitBound`, in two stages.
 
-1. The aimed calls (proved, `probEvent_afterHit_le_aimed`). With the keys apart, a free call after the
+1. The aimed calls (`probEvent_afterHit_le_aimed`). With the keys apart, a free call after the
    boundary never caches the stream key of a hidden row key (`afterDerivationAllowed`). So a new hit
    comes with a counted call that can cache it (`AimedCall`). The flagged run then moves to the lazy
    AES-key world with its cache (`probEvent_aimed_eq_lazy`). There a swap of two hidden keys of the
    honest streams keeps the law, the flag and the hash cache (`evalDist_lazyAimed_rename`).
-2. `TreeKeyAimedBound` (open). An aimed call needs the secrecy of the hidden keys after the boundary.
+2. `TreeKeyAimedBound`. An aimed call needs the secrecy of the hidden keys after the boundary.
    The prefix calls stay in its bound, because a prefix call can query a hidden canonical input.
 -/
 

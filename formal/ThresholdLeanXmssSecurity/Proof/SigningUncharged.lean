@@ -3,11 +3,11 @@ import ThresholdLeanXmssSecurity.Proof.SigningGuessProof
 /-!
 # The uncharged lane of the signing core
 
-`SigningGuessProof.UnchargedLaneBound` stays open. This module reduces it to one
+`SigningGuessProof.UnchargedLaneBound` reduces to one
 fixed-cap first-lane monitor of leanVM, `XmssSecurity.FirstLaneOracleSimulation`.
 
 The monitor obligation `UnchargedWorldMonitor` asks for one monitor computation
-for each adversary and each key. Its three parts are open.
+for each adversary and each key. It has three component hypotheses.
 
 * The uncharged win of the signing run is dominated by an event of the monitor run.
 * The monitor run makes at most `q` hazard queries.
