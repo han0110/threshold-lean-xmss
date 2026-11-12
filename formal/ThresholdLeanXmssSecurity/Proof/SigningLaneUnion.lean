@@ -9,7 +9,8 @@ import ThresholdLeanXmssSecurity.Proof.SigningTopRowsCap
 `Lane2TraceLink` and `LaneTraceCap`. The released partner row and the uncharged row move as one
 event to `traceRun`, which is `splitRunAt` with a write-only leanVM trace and a stale bit
 (`traceRun_forget`). There, one cap bounds the input-side hit, the stale base and the lane 2 event
-together by `q / 2^128`.
+together by `q / 2^128`, on runs where the hidden-key flag is down (`NoFlag`). Every row of the win
+cover has it, because `Win` holds the flag `false`.
 -/
 
 set_option pp.deepTerms false
@@ -146,15 +147,18 @@ def Lane2TraceLink : Prop :=
     z ∈ support (traceRun prims A x) → Lane2Row prims x (splitOf z) →
     StaleBaseAt z ∨ GhostAt x z
 
-/-- The one cap of the uncharged lane on the trace run. An input-side hit, a stale base or the
-lane 2 event of leanVM has probability at most `q / 2^128`. -/
+/-- The hidden-key flag of the result is down: no call read a hidden key. -/
+def NoFlag (r : JointResult C × ℕ × QueryLog (WorldSpec C)) : Prop := r.1.1.1.2 = false
+
+/-- The one cap of the uncharged lane on the trace run. With the hidden-key flag down, an
+input-side hit, a stale base or the lane 2 event of leanVM has probability at most `q / 2^128`. -/
 def LaneTraceCap : Prop :=
   ∀ (A : TsigAdversary C) (q : ℕ) (x : SigningSecurityProof.Keys3 C),
     x ∈ support (TprfSecurityProof.keyGen3 (C := C)) →
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
     (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) →
     q < 2 ^ 127 →
-    Pr[fun z => LoggedInputHit prims x (observed z) ∨ StaleBaseAt z ∨ GhostAt x z |
+    Pr[fun z => NoFlag (observed z) ∧ (LoggedInputHit prims x (observed z) ∨ StaleBaseAt z ∨ GhostAt x z) |
       traceRun prims A x] ≤ (q : ℝ≥0∞) / 2 ^ 128
 
 /-! ## The assembly -/
@@ -182,13 +186,20 @@ theorem hiddenCoreAt_of_laneUnion (hlink : ReleasedLink prims (C := C))
   rw [SigningCostProof.signingHashError_eq, probEvent_core_eq_win]
   have hcharged := chargedLane_bound_oneRun prims A q x hx hkeys hq hsmall
   let Ev : JointResult C × ℕ × QueryLog (WorldSpec C) → Prop := fun r =>
-    SigningReleasedTransferProof.LoggedReleasedRow prims x r ∨ LoggedInputHit prims x r
+    NoFlag r ∧ (SigningReleasedTransferProof.LoggedReleasedRow prims x r ∨ LoggedInputHit prims x r)
   have h1 : Pr[Win | jointRun prims A x] ≤ Pr[Charged prims x | jointRun prims A x] +
       Pr[fun w => ReleasedPartnerRow prims x w ∨ UnchargedRow prims x w | jointRun prims A x] :=
     (probEvent_mono fun w hw hwin => win_cover_released prims A x w hw hwin).trans (probEvent_or_le _ _ _)
   have h2 : Pr[fun w => ReleasedPartnerRow prims x w ∨ UnchargedRow prims x w | jointRun prims A x] ≤
       Pr[fun w => Ev (w.1, w.2.1.2, w.2.2) | jointRun prims A x] := by
     refine probEvent_mono fun w hw h => ?_
+    have hwin : Win w := by
+      rcases h with h | h | h | h
+      · exact h.1.1
+      · exact h.1
+      · exact h.1
+      · exact h.1
+    refine ⟨congrArg Prod.snd hwin, ?_⟩
     rcases h with h | h
     · left
       have hl : (w.1.1, w.2) ∈ support (SigningCostProof.loggedRun prims A x) := by
@@ -204,8 +215,10 @@ theorem hiddenCoreAt_of_laneUnion (hlink : ReleasedLink prims (C := C))
     rfl
   have h4 : Pr[fun z => Ev (observed z) | traceRun prims A x] ≤
       Pr[fun z => SigningOneRunProof.R1HitRow (splitOf z) ∨
-        (LoggedInputHit prims x (observed z) ∨ StaleBaseAt z ∨ GhostAt x z) | traceRun prims A x] := by
+        (NoFlag (observed z) ∧ (LoggedInputHit prims x (observed z) ∨ StaleBaseAt z ∨ GhostAt x z)) |
+        traceRun prims A x] := by
     refine probEvent_mono fun z hz h => ?_
+    obtain ⟨hnf, h⟩ := h
     have hs : splitOf z ∈ support (SigningOneRunProof.splitRunAt prims A x) := by
       rw [← traceRun_forget, support_map]
       exact ⟨z, hz, rfl⟩
@@ -213,13 +226,14 @@ theorem hiddenCoreAt_of_laneUnion (hlink : ReleasedLink prims (C := C))
     · obtain ⟨hwin, hpartner, hrel, halt⟩ :=
         SigningReleasedTransferProof.splitRun_released_partner prims A x (splitOf z) hs h
       by_cases hcached : SigningOneRunProof.CachedSelectionAt (splitOf z)
-      · exact Or.inr (Or.inr (hl2 A x z hz ⟨hwin, hpartner, hrel, hcached⟩))
+      · exact Or.inr ⟨hnf, Or.inr (hl2 A x z hz ⟨hwin, hpartner, hrel, hcached⟩)⟩
       · rcases hlink A x (splitOf z) hs hwin hpartner hrel hcached with hhit | hcommit
         · exact Or.inl hhit
         · exact (halt hcommit).elim
-    · exact Or.inr (Or.inl h)
+    · exact Or.inr ⟨hnf, Or.inl h⟩
   have h5 : Pr[fun z => SigningOneRunProof.R1HitRow (splitOf z) ∨
-        (LoggedInputHit prims x (observed z) ∨ StaleBaseAt z ∨ GhostAt x z) | traceRun prims A x] ≤
+        (NoFlag (observed z) ∧ (LoggedInputHit prims x (observed z) ∨ StaleBaseAt z ∨ GhostAt x z)) |
+        traceRun prims A x] ≤
       Pr[SigningOneRunProof.R1HitRow | SigningOneRunProof.splitRunAt prims A x] + (q : ℝ≥0∞) / 2 ^ 128 := by
     refine (probEvent_or_le _ _ _).trans (add_le_add (le_of_eq ?_) (hcap A q x hx hkeys hq hsmall))
     rw [← traceRun_forget, probEvent_map]
