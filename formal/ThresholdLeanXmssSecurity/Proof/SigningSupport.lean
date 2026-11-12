@@ -26,7 +26,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningGuessLink
   that a value below the opened position was unreleased, see step 6 of the trace.
 * `bottomOpened_cache_eq` shows that the read does not change when the selected digest input is
   already in the smaller cache (`SelectedCached`).
-* `ReleasedResolved` is the open fact at the start of the verification, outside `OpeningMatch`.
+* `ReleasedResolved` is the condition at the start of the verification, outside `OpeningMatch`.
   `verifyRun_bottomOpened_eq` gives the equal read from it.
 * The unconditional form "a released signature is resolved in the cache" is false. The trace
   below breaks it. Each step is a call of the game.

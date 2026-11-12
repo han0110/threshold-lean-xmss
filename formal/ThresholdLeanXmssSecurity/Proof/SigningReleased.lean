@@ -1,4 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.SigningSupport
+import ThresholdLeanXmssSecurity.Proof.SigningUnchargedLogged
 
 /-!
 # A released signature is resolved in the cache
@@ -110,7 +111,8 @@ theorem receiptRun_released (x : SigningSecurityProof.Keys3 C) (top : TopTree) {
       support_map]
     exact ⟨q.1, hin, rfl⟩
   have hruns := SigningGuessProof.flaggedReceiptOracles_runs prims x top source
-    (SigningCoreProof.tsigInit, false) [] s (by simp) q hq
+    (SigningCoreProof.tsigInit, false) [] s
+    (by simp [SigningGuessProof.StoredTreeRuns, SigningCoreProof.tsigInit]) (by simp) q hq
   have hhonest : (((q.1.2.1.1.released.filter fun r => r.1 = e ∧ r.2.1 = message).map
       (·.2.2)).toFinset).Nonempty := by
     rw [Finset.nonempty_iff_ne_empty]
@@ -137,30 +139,15 @@ set_option maxRecDepth 100000 in
 the cache when the verification starts. -/
 theorem releasedResolved : SigningSupportProof.ReleasedResolved prims (C := C) := by
   intro A x r hr top state forgery hm hn
-  unfold SigningGuessLinkProof.verifyRun SigningGuessLinkProof.verifyFinal at hr
-  dsimp only at hr
-  obtain ⟨p, hp, hr⟩ := SigningCacheProof.run_bind_support prims _ _ _ r hr
-  rcases hp1 : p.1 with _ | (top' | tree)
-  · rw [hp1] at hr
-    simp at hr
-    subst hr
-    simp at hm
-  swap
-  · rw [hp1] at hr
-    simp at hr
-    subst hr
-    simp at hm
-  rw [hp1] at hr
-  dsimp only at hr
-  obtain ⟨q, hq, hr⟩ := SigningCacheProof.run_bind_support prims _ _ _ r hr
-  rw [simulateQ_map, StateT.run_map, support_map] at hr
-  obtain ⟨w, hw, rfl⟩ := hr
+  obtain ⟨p, q, w, hp, hp1, hq, hw, rfl⟩ :=
+    SigningUnchargedLoggedProof.verifyFinal_support (SigningCacheProof.countImpl prims)
+      (∅, 0) A x r hr top state forgery hm
   rw [SigningGuessLinkProof.tsigFinishLogged_eq] at hw
   obtain ⟨v, hv, hw⟩ := SigningCacheProof.run_bind_support prims _ _ _ w hw
   rw [simulateQ_map, StateT.run_map, support_map] at hw
   obtain ⟨f, hf, rfl⟩ := hw
   simp only [Option.some.injEq, Prod.mk.injEq] at hm
-  obtain ⟨rfl, rfl, rfl⟩ := hm
+  obtain ⟨-, rfl, rfl⟩ := hm
   refine ⟨_, _, _, v, hv, rfl, SigningCacheProof.countRun_grows prims _ _ f hf, ?_⟩
   intro z hrel
   have hqv : q.2.1 ≤ f.2.1 := (SigningCacheProof.countRun_grows prims _ _ v hv).trans
@@ -180,26 +167,22 @@ theorem releasedResolved : SigningSupportProof.ReleasedResolved prims (C := C) :
   have ht := of_decide_eq_true hrel
   obtain ⟨q', hq', -, hstate, hcache⟩ := openingRun_receipts prims x _ _ SigningCoreProof.tsigInit false
     p.2 q hq
-  obtain ⟨receipt, -, hkey, hmessage, hruns⟩ := receiptRun_released prims x top' _ p.2 q' (by exact hq')
+  obtain ⟨receipt, -, hkey, hmessage, hruns⟩ := receiptRun_released prims x top _ p.2 q' (by exact hq')
     q.1.1.signature.leafIndex message (by rw [hstate]; exact ht)
   rw [hcache] at hruns
-  have htop : TopFacts prims (SigningCacheProof.answersOf f.2.1) x.2.1 x.1 top' := by
-    rw [show referenceTree (fun oa => SigningSecurityProof.liftFree (tweakable oa))
-        (fun p => SigningSecurityProof.liftFree (prfValue x.2.1 p)) x.1 emptyTop .top =
-        SigningSecurityProof.liftFree (referenceTree tweakable (prfValue x.2.1) x.1 emptyTop .top) from
-      referenceTree_φ _ _ _ _] at hp
+  have htop : TopFacts prims (SigningCacheProof.answersOf f.2.1) x.2.1 x.1 top := by
     have hval := SigningCacheProof.run_liftFree prims _ _ p hp (SigningCacheProof.answersOf f.2.1)
       (SigningCacheProof.agrees_answersOf ((SigningCacheProof.countRun_grows prims _ _ q hq).trans hqv))
     rw [hp1] at hval
     obtain ⟨generated, hgen, hchain, hroot⟩ :=
       D_refTop (prims := prims) (h := SigningCacheProof.answersOf f.2.1) x.1 x.2.1 emptyTop
-    have he : generated = top' := TreeOutput.top.inj (Option.some.inj (hgen.symm.trans hval.symm))
+    have he : generated = top := TreeOutput.top.inj (Option.some.inj (hgen.symm.trans hval.symm))
     subst generated
     exact ⟨hchain, hroot⟩
-  have hfinal := SigningGuessProof.ReceiptRuns.mono prims x top' hqv receipt hruns
+  have hfinal := SigningGuessProof.ReceiptRuns.mono prims x top hqv receipt hruns
   dsimp only at hn
   have hcanon := SigningGuessProof.ReceiptRuns.canonical prims x
-    (((v.1.1 && f.1, q.1.2.1.2), some (top', q.1.2.1.1, q.1.1)), f.2) top' q.1.2.1.1 q.1.1 rfl htop
+    (((v.1.1 && f.1, q.1.2.1.2), some (top, q.1.2.1.1, q.1.1)), f.2) top q.1.2.1.1 q.1.1 rfl htop
     receipt hfinal hkey hn
   have hselected := SigningGuessProof.ReceiptRuns.selected prims z receipt hfinal hkey
     (by rw [hkey, hmessage]; exact hb) hcanon.1

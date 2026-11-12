@@ -12,7 +12,7 @@ counted query of that point before the opening.
 * `treeSimCheckSetupBranches3_of_cut` gives `TreeSimCheckSetupBranches3` from these two and the
   uncounted branch `TreeCheckUncountedGuess`.
 
-The two Props stay open.
+The two Props are hypotheses of the assembly.
 
 * `TreeCheckUncountedGuess` needs the freshness of the first uncounted opening in the logged
   cache and the abort propagation of the PRSS echo exchange. Then one fresh answer of `H` meets a

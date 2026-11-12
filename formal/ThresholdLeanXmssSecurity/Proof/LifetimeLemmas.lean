@@ -4,7 +4,7 @@ import ThresholdLeanXmssSecurity.Proof.Signing
 /-!
 # Lemmas of the lifetime claim
 
-These are the lemmas of Stage A2 of `FIX.md` that need neither the Stage A1 draft nor an open gap.
+These are the lemmas of Stage A2 of `FIX.md` that are independent of the lifetime scheduler and the component gap hypotheses.
 They use only the definitions of `Scheme.lean`, `Ideal.lean` and `Statement.lean`.
 
 * A2 item 3, averaging over `Th`.

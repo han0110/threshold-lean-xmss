@@ -6,21 +6,21 @@ import ThresholdLeanXmssSecurity.Proof.Main
 `MainSecurityDistance` splits at a hybrid game. The hybrid runs `mainSimulator`, but each accepting
 honest operator outputs the copies that it opened, as in the real run.
 
-1. `mainHybridIdeal` (proved): the hybrid and the ideal run differ only when an opened copy differs
+1. `mainHybridIdeal`: the hybrid and the ideal run differ only when an opened copy differs
    from the rebuilt sharing. Outside a collision in the `.copy` domain, `main_openCopy_sound` rules
    this out (`mainOpenSound_holds`), and `main_copy_birthday` bounds the collision by `copyHashError`.
 2. `MainRealHybrid`: the real run and the hybrid accept with the same probability (GS20, Theorem 2).
-   It moves to one shared cache (`mainRealHybrid_of_core`, proved) and splits at `mainRealGame`, the
+   It moves to one shared cache (`mainRealHybrid_of_core`) and splits at `mainRealGame`, the
    real phase in the shape of the simulator:
-   * `MainEngineReal` (open): the network runs the real phase as `mainRealGame`. Proved pieces:
+   * `MainEngineReal`: the network runs the real phase as `mainRealGame`. Local laws:
      `main_startSteps`, `main_fmultBit_run`, `main_sum_run_left`, `main_sumLeft_leak`,
      `main_sumLeft_liftComp`, `main_callImpl_leak`.
-   * `MainRealSim` (open): `mainRealGame` and the simulator give the same run. The uniform terms of
+   * `MainRealSim`: `mainRealGame` and the simulator give the same run. The uniform terms of
      the layers stay hidden, the leaks are the known views, the differences are `mainDifference`
      (`mainDifference_correct`), and after acceptance the copies of `Rerand` are `mainRebuild` of the
      outputs.
 
-`mainSecurityDistance` and `mainStatementProof` take the two open stages as hypotheses.
+`mainSecurityDistance` and `mainStatementProof` take the two stages as hypotheses.
 -/
 
 set_option pp.deepTerms false

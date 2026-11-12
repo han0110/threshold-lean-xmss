@@ -6,7 +6,7 @@ import ThresholdLeanXmssSecurity.Proof.Check
 `MultVerifyStatement` (GS20, Lemmas 8 to 11, and CGH+18) through `MultVerifyDistance` of
 `Proof/Check.lean`.
 
-Proved stages:
+The component lemmas:
 
 * The real and the ideal execution run on one shared cache, without the counted and the free copy
   (`accepts_real_eq_local`, `accepts_ideal_eq_local`). `simulateQ_executePhase_mapRoles` moves an oracle
@@ -15,7 +15,7 @@ Proved stages:
   (`checkLocal_zero`).
 * For `q ≥ 2 ^ 128` the bound is at least `1` (`one_le_checkHashError`).
 
-Open stage: `CheckCoreDistance`, the two local runs for at least one tuple bit and `q < 2 ^ 128`.
+The distance interface: `CheckCoreDistance`, the two local runs for at least one tuple bit and `q < 2 ^ 128`.
 Its plan:
 
 1. Mask the outputs of the real run with the accept bit of `F_multVerify`. The runs differ only

@@ -3,7 +3,7 @@ import ThresholdLeanXmssSecurity.Proof.Keygen
 /-!
 # Keygen security: the coupling
 
-This module closes `KeygenCoupling` of `Proof/Keygen.lean`, and with it `KeygenSecurityStatement`.
+The coupling route relates `KeygenCoupling` of `Proof/Keygen.lean` to `KeygenSecurityStatement`.
 
 1. A coupling with a private coin as the bad flag turns any distance bound into an identical-until-bad
    pair. Every probability of a finite computation is rational, so the coin exists.
@@ -13,7 +13,7 @@ This module closes `KeygenCoupling` of `Proof/Keygen.lean`, and with it `KeygenS
    the real run whose distinguisher replaces the hidden keys by fresh ones (`keygenHiddenZ`). The real
    run is a mixture of fixed-table reference runs on a common covering domain. On distinct canonical
    inputs, the hidden oracle cells and an independent dealer table exchange (the relabeling), so the
-   open claim is `KeygenHiddenFreshSwapped`, on the relabeled reference runs.
+   hidden-half hypothesis is `KeygenHiddenFreshSwapped`, on the relabeled reference runs.
 -/
 
 open OracleComp OracleSpec LeanXmss ThresholdLeanXmss

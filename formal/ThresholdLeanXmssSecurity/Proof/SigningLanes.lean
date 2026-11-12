@@ -93,7 +93,7 @@ This check passes.
 ## What would close the gap
 
 Both lane totals hold in expectation. Each needs a weighted potential in place of a flag or a single
-install. These options need a decision of the owner.
+install. These options give different trigger and potential interfaces.
 
 * The uncharged lane can use the reach mass `XmssSecurity.W` of leanVM (`Scan/Potential.lean`).
   The potential is the sum of `W` over the cached valid positions of each message. A fresh call

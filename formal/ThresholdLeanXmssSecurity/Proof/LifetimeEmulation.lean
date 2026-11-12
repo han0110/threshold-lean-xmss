@@ -331,6 +331,18 @@ theorem signRound2With_run_eq (part₁ part₂ : Point → StateT (HashCache C) 
     rw [(steady_sequenceFin _ v fun l => (hv l).1).run_eq (steady_sequenceFin _ v fun l => (hv l).2)
       (s' := s') hle]
 
+/-- `bottomOnce` on a bottom tree that the dealer gives without a call. -/
+theorem bottomOnce_run_of_pure (D : Dealt C (StateT (HashCache C) ProbComp)) (b : Fin (2 ^ layerHeight))
+    (tree : Option BottomTree) (h : D.bottom b = pure tree) (st : TsigState C) :
+    (bottomOnce D b).run st = pure (match st.trees b with
+      | some stored => (stored, st)
+      | none => (tree, { st with trees := Function.update st.trees b (some tree) })) := by
+  unfold bottomOnce
+  simp only [StateT.run_bind, StateT.run_get, pure_bind]
+  cases st.trees b <;>
+    simp [h, liftM, monadLift, MonadLift.monadLift, StateT.run_bind, StateT.run_lift, StateT.run_modify,
+      StateT.run_pure]
+
 /-- The signing service on two `Dealt` that agree on the steps of a request gives the same run. -/
 theorem tsigOracles_run_eq (D₁ D₂ : Dealt C (StateT (HashCache C) ProbComp)) (hparameter : D₁.parameter = D₂.parameter)
     (htrees : ∀ b, ∃ tree, D₁.bottom b = pure tree ∧ D₂.bottom b = pure tree) (q : TsigQuery C)
@@ -342,11 +354,14 @@ theorem tsigOracles_run_eq (D₁ D₂ : Dealt C (StateT (HashCache C) ProbComp))
   | tree b =>
     obtain ⟨v, h₁, h₂⟩ := hq
     obtain ⟨tree, ht₁, ht₂⟩ := htrees b
-    simp only [tsigOracles, ht₁, ht₂]
-    cases tree with
-    | none => rfl
-    | some tree =>
-      simp only [liftM, monadLift, MonadLift.monadLift, StateT.run_bind, StateT.run_lift, StateT.run_pure,
+    simp only [tsigOracles, StateT.run_bind, bottomOnce_run_of_pure D₁ b tree ht₁,
+      bottomOnce_run_of_pure D₂ b tree ht₂, pure_bind]
+    generalize (match st.trees b with
+      | some stored => (stored, st)
+      | none => (tree, { st with trees := Function.update st.trees b (some tree) })) = found
+    rcases found with ⟨_ | tree, st'⟩
+    · rfl
+    · simp only [liftM, monadLift, MonadLift.monadLift, StateT.run_bind, StateT.run_lift, StateT.run_pure,
         bind_assoc, pure_bind]
       rw [h₁ s le_rfl, h₂ s le_rfl]
   | round1 i J e message =>
@@ -363,14 +378,18 @@ theorem tsigOracles_run_eq (D₁ D₂ : Dealt C (StateT (HashCache C) ProbComp))
     split_ifs
     · rfl
     · obtain ⟨tree, ht₁, ht₂⟩ := htrees (treeOf e)
-      simp only [ht₁, ht₂, hparameter, liftM, monadLift, MonadLift.monadLift, StateT.run_bind, StateT.run_lift,
-        pure_bind]
-      cases tree with
-      | none => rfl
-      | some tree =>
-        simp only [StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind]
-        rw [h₁ s le_rfl, h₂ s le_rfl, pure_bind, pure_bind,
-          signRound2With_run_eq prims (fun x => D₁.part i J x message) (fun x => D₂.part i J x message) _ _ _ _ _ _
+      simp only [StateT.run_bind, bottomOnce_run_of_pure D₁ _ tree ht₁, bottomOnce_run_of_pure D₂ _ tree ht₂,
+        hparameter, pure_bind]
+      generalize (match st.trees (treeOf e) with
+        | some stored => (stored, st)
+        | none => (tree, { st with trees := Function.update st.trees (treeOf e) (some tree) })) = found
+      rcases found with ⟨_ | tree, st'⟩
+      · rfl
+      · simp only [liftM, monadLift, MonadLift.monadLift, StateT.run_bind, StateT.run_lift]
+        simp only [bind_assoc, pure_bind]
+        rw [h₁ s le_rfl, h₂ s le_rfl, pure_bind, pure_bind]
+        simp only [StateT.run_pure, pure_bind]
+        rw [signRound2With_run_eq prims (fun x => D₁.part i J x message) (fun x => D₂.part i J x message) _ _ _ _ _ _
             s (fun l p hp => hq _ (.inr ⟨l, p, hp, rfl⟩))]
 
 /-- The cache already holds every hidden value that request `q` reads, and the tables hold them. -/

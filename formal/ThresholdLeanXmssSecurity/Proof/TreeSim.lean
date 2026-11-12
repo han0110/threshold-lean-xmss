@@ -19,86 +19,41 @@ variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algeb
 variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings)
 
 /-!
-The simulator is normalized to its actual dummy-seed ceremony and T₀ output
-shift. The dealer and the full three-round PRSS setup are common prefixes.
-Optional ghost hash-cache padding preserves both experiments and the real log.
-Fresh stream-table translations retain the exact caches and query log; local
-peer, collector and coin interactions also have proved relational couplings.
-Actual gadget entries retain their oracle draws and abort-aware continuations.
-Bit PRSS also couples mixed fresh/cached reads and visible AES keys. A complete
-peer gadget preserves the actual outputs, histories, aborts, shared caches and
-real log; unread blocks permit adaptive extensions of earlier mask translations.
-With `w = 0`, the peer output difference is confined to `T₀`, and its history
-translation is recorded exactly. The frozen peer multiplication and `Rerand`
-gadgets preserve these relations, including selective aborts. The real collector
-reshare and multiplication now preserve the same invariants through both rushing
-exchanges, including propagated aborts and the all-abort early return. The
-collector proof uses arbitrary base masks and needs no ideal randomness call.
-Its mask translation adapts the GS20 method to the note's collector mode.
-The collector case of the ceremony round induction is now derived from exact
-per-round transitions with general continuations; only reachable boundary
-identification and continuation closure remain contextual obligations. Collector
-exits also expose their absolute next labels. Partially active entries propagate
-an existing honest abort through the actual rushing round. The rushing calls
-preserve both hidden caches exactly, retaining entry freshness facts. Per-party
-collector multiplication entries thread the current shared cache inside earlier
-continuations. Actual vector resumption now constructs the next collector's
-mask equations and boundary, including selectively aborted parties. One global
-translation is chosen after the common reply and before any local resume. The
-concrete `TreeSimCollectorNext` certificate contains program equations and
-freshness facts, with its coupling proved here. Invariant closure retains the
-exact activity pattern, boundary parameters and both actual marginal supports.
-The named `reshareCollectorNext` case consumes this concrete certificate in the
-main round induction; other collector successors retain their contextual rule.
-Actual bit PRSS and selectively aborted vector entries preserve every private
-cache entry outside their current label. The concrete next-collector certificate
-uses future-cache emptiness and future-zero translations to derive its freshness
-conditions; the coupling exports both invariants at the following label.
-Field PRSS now couples mixed fresh/cached reads with identical decoded outputs
-when the accumulated translation is zero at its label, and preserves every
-other label. Actual Coin entries produce common masks through the shared cache.
-The Coin round case is derived from its real opening, agreement test and ordered
-continuations. Partial Coin entries propagate earlier honest aborts through the
-actual rushing round. Coin boundary identification and post-Coin continuations
-remain contextual obligations. The entire Coin round is no longer a hypothesis.
-Optional vector resumption constructs field masks common to both worlds,
-including prior aborts, and derives the zero translation at Coin's label from
-the preceding translated bit block. Coin entry frames also preserve future
-cache emptiness. Rerand's real peer exchange feeds this resumption in the main
-induction, following the `Rerand`-then-check order of `runJobs`. The empty-check
-branch instead enters the actual empty opening, retaining its copy hashes,
-exchange and abort checks. Empty-opening entries couple over any shared hash cache,
-including the dealer's earlier queries, and preserve both hidden caches.
-Partial Rerand entries propagate earlier aborts through the real rushing round.
-The empty opening's exchange, cached copy checks and abort decisions now form
-their own proved round stage. Each operator's checks precede its continuation
-in the actual driver order. The checks need agreement only at `.copy []` and
-preserve all other cache entries, allowing continuations to create different
-PRF entries. Entry populates this copy address without a freshness assumption.
-Rerand's successor coupling exports this fact whenever another honest round
-is possible. Public-cache growth then preserves the same value through the
-rushing call and all continuations, independently of the chosen local invariant.
-The full public caches still agree at the round boundary and rushing call.
-Mask balance, reachable programs, successful post-opening continuations and
-invariant closure remain contextual certificates. Nonempty opening now has a
-proved round transition. Its canonical waiting boundary, including T₀ alignment
-and all prefix hash-cache effects, remains a contextual obligation, as do its
-post-opening continuations and invariant closure.
-The peer case now uses its actual round, including partial prior aborts. Its
-GS20 block equation proves message balance; optional returns preserve the T₀
-sharing and history shifts and absolute label increments. Only continuations
-at these actual outputs are coupled, in driver order. Reachable peer boundaries,
-local continuation couplings and invariant closure remain explicit obligations.
-The event choice is now fixed in `treeSimEvents`: one collision/salt-guess
-union and accepted incorrect outputs outside that union. `TreeSimStagesGoal`,
-`TreeSimHashBoundGoal` and `TreeSimCheckBoundGoal` are independent proof tasks,
-assembled by `treeSimulationHopClosed`. For the stages task, sticky-event
-bookkeeping and final observation follow from replay, cache alignment and
-matching success bits. Digest comparison and the final checked Shamir opening
-now have proved round transitions, including partial prior aborts. Their
-entry alignment and local continuations remain boundary obligations. The
-post-setup invariant, ceremony transitions and the two probability bounds are
-still open. `treeSimulationHopClosed` has three Prop premises, not a closed proof.
+# The simulation hop of a ceremony
+
+This module couples the real ceremony on random hidden streams with `F_tree` and `treeSimulator`.
+
+## Statement
+
+`treeSimulationHopClosed` proves `TreeSimulationHop` with the split `keySplit C` from three premises.
+`TreeSimStagesGoal` couples the rounds, `TreeSimHashBoundGoal` bounds the hash event, and
+`TreeSimCheckBoundGoal` bounds an accepted wrong output. The assembly takes all three as hypotheses.
+The live route `treeSimulationHop_of_pairs3` in `TreeEvents3` uses the couplings of this module.
+
+## Invariants
+
+`TreeSimRoundCore` holds these facts outside the bad event.
+
+* The adversary state and the public hash cache are the same in both worlds.
+* All honest operators are done in one world exactly when they are all done in the other. Each
+  honest operator has an output in one world exactly when it has one in the other.
+* The real outputs have a witness that ties them to the computation of `F_tree`
+  (`TreeSimOutputWitness`).
+
+The simulator runs the ceremony on dummy seeds and ideal hidden streams. Its output shift changes
+only the shares of the term `T₀` that the coalition lacks (`treeSimShift`).
+
+## Proof steps
+
+1. The dealer and the three-round PRSS setup are a common prefix of both worlds. A rename of the
+   hidden stream keys does not change the setup (`treeSim_prssSetup`).
+2. Each round kind has a coupling, also after selective aborts. The kinds are the peer and collector
+   multiplications, `Rerand`, Coin, `ExtendMult`, the check, and the two openings.
+3. The round induction joins these couplings. It gives `TreeSimStagesGoal` only from a
+   `TreeSimRoundCore`, whose boundary and continuation fields are interface premises.
+4. `treeSimEvents` fixes the bad event as a hash collision or salt guess, or else an accepted wrong
+   output.
+5. `treeSimulationHop` bounds the distance of the two worlds by the probabilities of these events.
 -/
 
 /-- The output translation used verbatim by `treeSimulator`. -/
@@ -541,7 +496,7 @@ theorem treeSim_openRep (D : C.Coalition) (ctx : Context C) (v : Shares C Bit)
       openRep K ctx (mainMultSharing D v target) count := by
   rw [← hclear, treeSimShift_rebuild]
 
-/-! The round induction below separates the still-open contextual obligations.
+/-! The round induction below separates the contextual hypotheses.
 A concrete invariant must retain PRSS labels, translated caches, tuple histories,
 corrupt state, and the sticky union of bad events. In particular, the local view
 couplings above do not themselves prove the `check` or initialization stages. -/
@@ -7860,8 +7815,8 @@ theorem treeSim_peer_preserves (D : C.Coalition)
 /-! The actual field peer exchange used by ExtendMult. Its encoded history
 is retained exactly; no linearity of `Constants.encode` is assumed. The round
 induction below derives this stage from concrete boundaries and local saved
-continuations. Realizing the additive field masks from the actual PRSS draws,
-identifying reachable programs and closing the ceremony invariant remain open.
+continuations. The contextual hypotheses must realize the additive field masks from actual PRSS draws,
+identify reachable programs and supply a ceremony invariant.
 The existing equal-output field PRSS coupling does not establish the required
 shifted masks. -/
 
@@ -8740,7 +8695,7 @@ theorem treeSim_emptyOpen_preserves (D : C.Coalition)
   exact relTriple_pure_pure (finish u z hsu hsz hz.1 hz.2.1)
 
 /-! Nonempty replicated openings retain the real copy-hash calls and
-agreement checks. The checked-batch invariant must still align held copies and
+agreement checks. The checked-batch invariant must align held copies and
 outgoing bundles after the simulator's T₀ correction. Unheld local copies need
 not agree. Hash calls remain interleaved with continuations in driver order. -/
 

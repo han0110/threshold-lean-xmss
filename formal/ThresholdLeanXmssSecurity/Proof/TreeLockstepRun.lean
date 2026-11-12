@@ -9,10 +9,9 @@ no collision guard. Agreement between operators must additionally preserve
 their shared network execution and its opening checks.
 
 `treeLockstepRecordsRun_first_common` aligns the jobs and labels of every common
-first-run record. For a top tree this covers the whole ceremony. The exact
-remaining obligation is `TreeLockstepOpenedGoal`, defined in `TreeLockstep`:
+first-run record. For a top tree this covers the whole ceremony. The whole-run interface is `TreeLockstepOpenedGoal`, defined in `TreeLockstep`:
 under its budget-collision guard, two successful honest operators' records at
-the same index have equal outputs. Its proof still needs the common checked
+the same index have equal outputs. It requires the common checked
 sharing at the actual synchronized opening boundary. Per-party replay alone
 does not supply this joint fact. `treeLockstep_bottom_encoding` identifies the
 bottom-tree encoding from the first-run outputs and the shared hash answers.

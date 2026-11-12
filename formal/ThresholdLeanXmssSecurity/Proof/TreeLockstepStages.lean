@@ -19,12 +19,12 @@ round log.
 * `treeTwinDigestGoal3_of_lockstepStages` gives `TreeTwinDigestGoal3` from
   `TreeLockstepStagesGoal` alone.
 
-`TreeLockstepStagesGoal` stays open. It is not a fact of one operator. It needs the agreement of
+`TreeLockstepStagesGoal` is not a fact of one operator. It needs the agreement of
 the honest operators on the term keys of the PRSS setup (`TreeAgreementSetupKeys`) and on the
 encoding of the second run (`TreeLockstepOpenedGoal`), and the label schedule of one operator on
 partial runs, indexed by the round (`TreeLockstepRecordsRunGoal` gives it only on complete runs).
-These three Props are stated on `treeSaltSetup` and on the audited logged run, so a bridge to
-`TreeStagesReach` is also open. The budget domain holds `.sharedKeys`, `.copy`, `.history` and
+These three Props are stated on `treeSaltSetup` and on the audited logged run.
+A bridge to `TreeStagesReach` must carry a global reachability certificate. The budget domain holds `.sharedKeys`, `.copy`, `.history` and
 `.digest`, so the guard excludes the collisions that break these agreements.
 -/
 

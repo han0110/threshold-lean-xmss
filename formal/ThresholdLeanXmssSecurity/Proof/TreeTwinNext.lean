@@ -5,7 +5,7 @@ import ThresholdLeanXmssSecurity.Proof.TreeTwin3
 
 `TreeTwin3.lean` reduces `TreeSimStagesGoal3` to `TreeTwinStageCoreGoal3`. That goal asks for a
 stage relation `Stage` with the fields `entry` and `next`. This file builds the part of `Stage`
-that the proved equal-cache transitions cover, and it names the rest.
+covered by the equal-cache transitions, with other kinds as parameters.
 
 * `treeTwinStage Allowed Other` is the stage relation. It is the disjunction of three stages.
   * `TreeTwinDoneStage` holds when every operator stopped with no output on both sides.

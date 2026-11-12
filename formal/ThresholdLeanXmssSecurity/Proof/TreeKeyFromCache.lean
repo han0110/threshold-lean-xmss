@@ -15,7 +15,7 @@ of `TreeKeyHop` at `q0 + q`, as decision D14 of `FIX.md` gives for the simulatio
 * `treeSecurityDistanceFrom_of_hops` composes the two from-cache hops as
   `treeSecurityDistance_of_hops` (`Tree.lean:4472`) composes the two hops. The PRF reduction runs the
   prefix and then the ceremony.
-* `treeSecurityDistanceFrom` needs only the open `TreeSimulationHop`. The key hop follows from
+* `treeSecurityDistanceFrom` takes only `TreeSimulationHop` as a hop hypothesis. The key hop follows from
   `treeKeyAimedBound` (`TreeKeyAimed.lean`).
 -/
 

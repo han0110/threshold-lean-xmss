@@ -13,12 +13,11 @@ We reuse their `expectedFinal` and the threshold `expectedFinal_capped_le_aux`;
 the new step is retaining both summands when applying the potential bound.
 
 `input_cached_le_of_capped` transports the two original signing rows into that
-single hybrid. Its concrete transports and step invariant remain to be proved;
-`InputCachedLaneCap` states the exact unresolved cap. `uncharged_le_with_rows`
+single hybrid. The concrete transports and step invariant are separate hypotheses;
+`InputCachedLaneCap` states the joint cap. `uncharged_le_with_rows`
 retains the top and absent-start probabilities separately, and the original
-`UnchargedLaneCap` follows when both have zero mass. No D17 model change is made.
-The concurrent A3 audit also found that `CachedPartnerRow` uses a global cached-selection
-flag rather than the forged key's flag (A40). No transport from that row to the
+`UnchargedLaneCap` follows when both have zero mass. `CachedPartnerRow` uses a global cached-selection
+flag rather than the forged key's flag. No transport from that row to the
 leanVM event is asserted here.
 -/
 

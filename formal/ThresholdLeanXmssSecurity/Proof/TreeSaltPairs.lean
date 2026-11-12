@@ -20,7 +20,7 @@ pairs of the two-stage salt table.
   game. `treeSimSaltReuseGuarded_of_pairs` and `treeSimulationHop_of_pairs` give the guarded
   estimate and the hop from `TreeSaltStagesPairs`.
 
-`TreeSaltStagesPairs` stays open. It contains `TreeSaltStagesAddresses`, because its table is a
+`TreeSaltStagesPairs` contains `TreeSaltStagesAddresses`, because its table is a
 witness. On paper the potential pays for a pair when each position has an open side at the start
 of the pair, and the known salt of the pair is fixed there. The bridge to the split needs the
 state at the stage point and the agreement of the log with the hidden cache. A known salt is not a lazy bit. `streamWorld` answers it with `prims.aes` under the key

@@ -19,8 +19,8 @@ The pinned and current leanVM `Seeded/AdaptiveSeedGuessing.lean` and `Bridge/Pro
 searched first. Their log-first guessing and joint-cache principles apply here; the existing
 threshold lemmas also cover PRSS derivation and echo domains, so those are reused directly.
 
-The exact remaining target is `LifetimeBridge.JointKeyHopFrom ... (keySplit C)`. Its full
-post-selection setup and continuation estimate still requires an adaptive extension of the
+The whole-run interface is `LifetimeBridge.JointKeyHopFrom ... (keySplit C)`. Its
+post-selection setup and continuation estimate requires an adaptive extension of the
 fixed-tree `TreeKeyAimed` proof. The prefix bound below does not condition that theorem on the
 selector's output and does not claim the full key hop.
 -/

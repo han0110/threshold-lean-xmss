@@ -35,58 +35,65 @@ Each file of `ThresholdLeanXmss/` imports the file before it. Each module of `Pr
   `SigningHitLane` and `SigningGuessLane` split the cost of these events into lanes. `SigningHitProof` proves
   `HitLaneBound`. `GuessPartnerLaneBound` is false, because one commitment call has two targets. A comment in
   `SigningGuessProof` gives the trace.
-* The signing gap runs on the log of the run. The root keeps `HiddenCoreAt` as the open gap.
-  * `SigningPartnerBound` proves `HiddenCoreAt` from `UnchargedLaneBoundLogged` (`hiddenCoreAt_of_logged`).
-  * `SigningSelection` proves `SelectionClassification`. `SigningGuardedFlag` proves `HiddenCoreAt` from the open
-    `GuardedFlagCoupling` (`hiddenCoreAt_of_guardedCoupling`). Its flag is guarded by the win, and its chain target
-    is partial on PRF entries that the run never computed.
-  * Two earlier forms of this coupling are false. `UnchargedFlagCoupling` charges the commitment counterexample
-    twice (`SigningHybrid`), and the unguarded flag in `UnchargedFlagSoundCoupling` reaches probability one
-    (`SigningGuardedFlag`). A flag decided at one call cannot pay for the cached selection or for the window after
-    round 1 (`SigningLanes`). The lane bound itself is not refuted.
-  * `SigningFlat`, `SigningFlatEager`, `SigningCappedExpect`, `SigningLane2` and `SigningLane2Bridge` hold the flat
-    run, its eager law, the expectation form of the capped bound, and the leanVM lane-2 potential with its bridges.
-  * `SigningCacheLog` reconstructs the tracked cache from the call log. `SigningJointEager` proves the eager law
-    for the joint result, opening log, world log and count. The eager cache itself is not part of this equality.
-  * `SigningAssembly` combines the charged lane, `PartnerTransfer` and `UnchargedLaneCap` into `HiddenCoreAt`,
-    assuming `R1Link`. `SigningR1Fixed` proves the cache-derived trigger, eager law, R1 bound and signed-grind
-    invariant. Its module doc gives a counterexample to the remaining `R1Link`: a true-opening input hit before
-    release needs its own disjunct (A41). `SigningLane2Flat` proves the base-call law and trace transport, but
-    its global cached-selection flag does not identify the forged key's selection (A40).
-    `SigningPartnerTransfer` transports the lazy row exactly to the split run's reconstructed log cache;
-    `PartnerCacheComparison` still compares that event with the eager-cache event.
-    `SigningPartnerCompare` proves actual split-run cache growth, agreement at tracked inputs outside bottom-message trials,
-    and exact transport of `AlternativeCommitment`. Its bottom-partner transfer requires preservation of
-    the selected pair; that preservation is not assumed for every run.
-  * `SigningUnchargedCap` proves that the input-hit and lane-2 probabilities share one capped expectation,
-    even when the events overlap. Its concrete transports and `InputCachedLaneCap` remain open. `TopRow` and
-    `AbsentRow` remain separate D17 obligations. `SigningTopCache` proves top-opening stability at the actual
-    verification prefix from `PrefixBottomSuccess`; a recorded tree request alone does not imply success.
-  * `SigningOpening`, `SigningPartnerLink`, `SigningGuessLink`, `SigningSupport` and `SigningReleased` hold the
-    events and the lemmas of this route. `SigningUncharged` holds an earlier reduction to a leanVM monitor.
-* `Proof/TreeSim.lean` reduces `TreeSimulationHop` to three independent `Prop`s. `TreeSimStages`, `TreeSimCheck`
-  and `TreeSimHash` hold the partial proofs of these `Prop`s, and their `Finish` modules continue them.
-* `TreeCompose` identifies the missing reuse of a hidden digest salt; `TreeEvents` adds it in `treeSimEvents2`.
-  The current route is `treeSimulationHop_of_pairs3` in `TreeEvents3`: its bad event also contains the
-  budget-domain collision. `TreeTwin3` supplies the corresponding twin-relation assembly. `TreeTwinNext`
-  proves collector transitions and leaves `TreeTwinOtherGoal` for entry and the other rounds.
-* `TreeSetupKeys` proves `TreeAgreementSetupKeys`. `TreeLockstepRun` proves `TreeLockstepRecordsRunGoal` and
-  derives the common schedule from `TreeLockstepOpenedGoal`, using the encoding determined by first-run
-  outputs. Opening agreement remains open. `TreeLockstepStages` proves `TreeTwinDigestDrawsGoal` and reduces
-  the digest relation to `TreeLockstepStagesGoal`, whose reachable-round bridge remains open.
-  `TreeLockstepOpened` proves the synchronized digest and opening boundaries under the budget-collision
-  guard: a surviving digest continuation forces honest held histories to agree; given common held copies,
-  every accepted joint opening returns their value. Aligning those boundaries with each audited batch
-  and carrying the agreed copies through the check remain necessary for `TreeLockstepOpenedGoal`.
-* `TreeRawSalt` proves the hidden-block and continuation laws and reduces the raw-salt estimate to
-  `TreeRawSaltCeremonyRepresentation`. `TreeCheckBranches` combines the setup branches from the opening
-  agreement, `TreeCheckUncountedGuess` and `TreeCheckCountedCut`; it does not close those premises.
-* `TreeFromCache` and `TreeKeyFromCache` prove the component prefix bridges with fixed inputs and budgets
-  `q0 + q`. `LifetimeMasks` supplies the private mask service and hit bounds, with `PrivateSigningTransport`
-  still open. `LifetimeBridge` retains the joint distribution of dealer keys, adaptive selection and cache;
-  its adaptive key and simulation hops remain open. `LifetimeJointKey` bounds protected PRSS points in
-  the selecting prefix by `q0 * prssKeyCount C / 2^256` and proves the prefix-refresh comparison with a
-  common continuation. The adaptive setup and tail remain. These modules do not establish a lifetime statement.
+* The current signing route is `hiddenCoreAt_of_releasedLink` in `SigningLinkPaid`. It takes
+  `ReleasedLink`, `ReleasedTransfer` and `SharedLaneCap` with their original quantifiers.
+  `SigningReleasedLink` supplies a conditional link; actual occurrence-to-trigger alignment and
+  signed-cache separation still need whole-run invariants. `SigningReleasedTransfer`
+  supplies exact `ReleasedTransfer` without residual hypotheses. `SigningLaneHybrid` supplies
+  the message-call law and cached-trials invariant for the fixed-randomizer dependency,
+  but not the common
+  cached-randomizer capped hybrid required by `SharedLaneCap`.
+* `SigningCacheLog` reconstructs the tracked cache from the call log. `SigningJointEager` preserves
+  the joint law of result, opening log, world log and count; the eager cache is not an observable
+  of that equality. `SigningLane2Flat` carries the leanVM trace, while `SigningTopRowsCap` links the
+  top and absent-start rows to the input-side event. Input-side and lane-2 rows must share one
+  `q / 2^128` cap, including executions on which both occur.
+* Earlier signing interfaces retain their counterexamples. `UnchargedFlagCoupling` double-charges
+  the commitment trace; an unguarded `UnchargedFlagSoundCoupling` can have probability one.
+  `SigningR1Fixed` and `SigningOneRun` explain why release and the trigger must be aligned.
+  A global cached-selection flag does not identify the forged key's selection. These observations
+  do not refute the current `ReleasedLink` or `SharedLaneCap` targets. D17 memoizes each bottom
+  tree; the signing interfaces account for both fresh builds and stored trees.
+* The current tree route is `TreeAssembly.treeSimulationHop_of_pairs`, or its guarded-pair variant
+  `treeSimulationHop_of_guardedPairs`. Both feed the original `TreeSimulationHop`
+  at `keySplit C` through `treeSimulationHop_of_pairs3` / `treeSimulationHop_of_pairsGuarded`.
+  They retain `TreeTwinLinkedGoal`, `TreeCheckTailWalkSourceConstruction`,
+  `TreeRawSaltRepresentationProof.CeremonyOpaqueNormalization`, and one `TreeSaltStageSplits`
+  witness with its dependent `TreeSaltStagesPairs` or `TreeSaltStagesPairsGuarded` certificate.
+* `TreeLockstepLateBottom`, `TreeLockstepReach` and `TreeLockstepStages` supply the lockstep and
+  digest-draw links. `TreeLockstepOpenedFinal` supplies opening agreement, and `TreeCheckNoCommit`
+  supplies the uncounted branch. `treeSimHashHonestBudget` in `TreeHashBudgetRun` proves the exact
+  honest-point budget without residual premises, including retained aborted
+  prefixes. `TreeHashBudgetUse` wires it into seventeen downstream wrappers.
+* `TreeTwinBoundaries` gives local reached-boundary and saved-caller helpers, but the original
+  linked goal still needs one global witness. `TreeCheckWalkSource` gives actual opening
+  and prefix certificates, but not the complete common tail-source witness.
+  `TreeRawSaltNormalize` fixes the ceremony compiler and derives opaque normalization from
+  its local boundary laws and global certificates; those premises are not discharged.
+  The pair route still needs ordered address coverage and a reuse coupling on the same split.
+  None of these conditional assemblies closes the tree root gap.
+* `TreeFromCache` and `TreeKeyFromCache` give fixed-input prefix bridges with budgets `q0 + q`.
+  `LifetimePrivateTransport` supplies exact `PrivateSigningTransport` under its original
+  cached-request hypotheses. This exact per-request equality does not assume
+  `PrivateMaskPrefixLaw`. Applying the adaptive private-pair-key hit bound to a real
+  lifetime prefix separately needs that prefix law or a coupling supplying it.
+  `LifetimeJointHop` supplies exact `JointKeyHopFrom` with the selecting prefix, dealer keys
+  and cache kept joint.
+* `jointSimulationFromComponent_of_contextual` in `LifetimeJointSimStages` assembles the joint
+  simulation from the hash-flag identity, `ContextualStages`, `ContextualCheckBound`,
+  `JointSaltBounds` and the exact honest-point budget. `LifetimeContextual` reduces the first
+  three to the original linked goal and `IndexedCheckBounds` on one actual joint audit.
+  `LifetimeJointSalt` gives `JointSaltBounds` from `ContinuationSaltNormalization`, including
+  prefix replay and the unguarded pair coupling. These are conditional constructions, not a
+  proof of joint simulation. `LifetimeJointLink` supplies programming and budget
+  helpers, slot telescoping and counter laws; concrete lifetime
+  suspension, signing-segment bounds, unreached-slot handling, sampled-`Th` D19 equality and
+  chronological hybrid compatibility remain. The lifetime proof also needs capped
+  component adapters, adaptive-prefix transport, and transport of the private-pair-key
+  hit bound from the real prefix. Term-seed and pair-key hits must share one allocation
+  of `seedHitError`, without charging keygen collisions again. These requirements are
+  separate from exact per-request signing transport and are not supplied by the
+  conditional joint-simulation and lifetime-linkage helpers.
 * `ThresholdLeanXmssSecurity.lean` states the main theorem `thresholdLeanXmss_security` and the axiom guards.
 
 `Statement.lean` defines `SecurelyComputes`, `SimulatedBy` and `Completes`. Every claim of the keygen, the ceremonies and the gadgets except `DealerTreeStatement` and `TreeSuccessStatement` uses one of them.
@@ -103,14 +110,17 @@ This is the model of every claim. The header of `Statement.lean` gives it in ful
   operators, corrupted before it starts, and a rushing malicious adversary.
 * The signing adversary corrupts adaptively, at most `t - 1` operators over the lifetime. A corruption gives
   only the keys, because an operator erases its ceremony state at the end of each ceremony.
-* The claims cover no concurrent runs. A ceremony runs with no other ceremony and no open signing session.
+* The component ceremony claims cover isolated runs. The lifetime contract has one ceremony at a
+  time and permits signing on other trees between its rounds; it forbids a ceremony on a tree
+  after signing has begun on that tree. The lifetime coalition is static (D15).
 * The signing game holds the authorization resource `F_auth`, the map `bound` of `tsigOracles`. It fixes one
   message for each key over all honest operators (`doc/sign.md`, Section 4.1).
 * `Th` is one fixed function in the keygen and ceremony claims. All of `H` is a random oracle in the signing
   claim. The gap between the two is the random-oracle heuristic for Keccak.
 * The signing budget `q` counts the calls of every party (`HasSigningQueryBound`). The other budgets count the
   calls of the adversary and of the distinguisher. No budget is a time bound.
-* The claims give no composed end-to-end claim.
+* The eighteen component claims give no composed end-to-end guarantee. The separate
+  `LifetimeSecurityStatement` states that target under the lifetime contract; its proof is incomplete.
 
 ## Claims
 
@@ -121,7 +131,7 @@ The table of `Statement.lean` gives each statement in one sentence.
 | `KeygenCompletenessStatement` | the note, Section 2.1, honest run | proved, `keygenCompleteness` in `Keygen` |
 | `KeygenSecurityStatement` | GL05 and CDG+18 | proved, `keygenSecurityClosed` in `KeygenAlias` |
 | `TreeCompletenessStatement` | GS20, Theorem 2, honest run | proved, `treeCompleteness` in `Tree` |
-| `TreeSecurityStatement` | GS20, Theorem 2, and GL05 | open at `TreeSimulationHop`; current conditional route is `treeSimulationHop_of_pairs3` in `TreeEvents3`, feeding `treeSecurityOfSimClosed` in `TreeKeyAimed` |
+| `TreeSecurityStatement` | GS20, Theorem 2, and GL05 | open at `TreeSimulationHop`; current conditional route is `TreeAssembly.treeSimulationHop_of_pairs` (or its guarded-pair variant), feeding `treeSecurityOfSimClosed` in `TreeKeyAimed` |
 | `DealerTreeStatement` | PRAWNS, Section 3.1, and `doc/dkg.md` 3.1 | proved, `dealerTreeProof` in `Dealer` |
 | `TreeSuccessStatement` | PRAWNS, Section 3.1, honest run | proved, `treeSuccessProof` in `Dealer` |
 | `CoinStatement` | GS20, Lemma 3 | proved, `coinSecurity` in `Gadgets` |
@@ -135,11 +145,18 @@ The table of `Statement.lean` gives each statement in one sentence.
 | `TprfCorrectnessStatement` | PRAWNS, Definition 2.1 | proved, `tprfCorrectness` in `Tprf` |
 | `TprfSecurityStatement` | PRAWNS, Definition 2.2 and Theorem 5.1 | proved, `tprfSecurity` in `Tprf` |
 | `SigningCorrectnessStatement` | PRAWNS, Section 3.1, honest run | proved, `signingCorrectness` in `Signing` |
-| `SigningSecurityStatement` | PRAWNS, Definition 3.2, in the random-oracle model | open at `HiddenCoreAt`, feeding `signingSecurityFull` in `HiddenCore`; `SigningAssembly` supplies the conditional row assembly, with the R1 correction and row bounds still open |
+| `SigningSecurityStatement` | PRAWNS, Definition 3.2, in the random-oracle model | open at `HiddenCoreAt`, feeding `signingSecurityFull` in `HiddenCore`; `hiddenCoreAt_of_releasedLink` in `SigningLinkPaid` takes `ReleasedLink`, `ReleasedTransfer` and `SharedLaneCap` |
 
-The new proof modules marked `pending review` in `TODO.md` compile with their axiom guards, but do not close
-either root gap. `TODO.md` records their exact remaining obligations and review status. The lifetime statement
-draft still waits for B3 and is not one of the eighteen component claims above.
+`TODO.md` records the exact proof obligations. Conditional or partial results do not close
+either root gap. `LifetimeSecurityStatement` is a separate static-coalition target defined
+in `Statement.lean`, with the lifetime game and reductions in `Ideal.lean` and `Reductions.lean`.
+It is not one of the eighteen component claims above. Its proof still needs contextual
+simulation and lifetime linkage, capped component adapters and adaptive-prefix transport.
+The adaptive private-pair-key hit estimate also needs a real-prefix law or coupling;
+`PrivateMaskPrefixLaw` is not established for the real lifetime. Term-seed and pair-key hits
+must fit one shared `seedHitError` allocation without charging keygen collisions again.
+The exact per-request `PrivateSigningTransport` theorem neither assumes nor supplies this
+whole-lifetime prefix law.
 
 ## Proof plan
 
@@ -205,11 +222,21 @@ The lemmas that a plan names are in `ThresholdLeanXmssSecurity/Proof/Lemmas.lean
 6. `prawns_coalition_lacks_term` gives the lacked term that the opening shifts.
 7. `treeHashError` bounds a counted call that hits an honest point of the ceremony.
 
-The current assembly, `treeSimulationHop_of_pairs3`, requires `TreeSimStagesGoal3`,
-`TreeSimHashHonestBudget`, `TreeSimHashRawSaltEstimate`, a `TreeSaltStageSplits` value and its
-`TreeSaltStagesPairs` proof, and `TreeSimCheckSetupBranches3`. Setup-key agreement and each successful operator's record schedule are proved.
-The synchronized openings, reachable-round invariant, ceremony-to-block representation, and check cut
-remain obligations; the conditional assembly does not supply them.
+`TreeAssembly.treeSimulationHop_of_pairs` takes the following original premises:
+
+* `TreeTwinLinkedGoal`, for the global linked-stage witness.
+* `TreeCheckTailWalkSourceConstruction`, for one common counted tail-source walk.
+* `TreeRawSaltRepresentationProof.CeremonyOpaqueNormalization`, for the actual ceremony's
+  opaque-salt program, decoder, budgets and guarded event transport.
+* One `TreeSaltStageSplits` value and `TreeSaltStagesPairs` for that same value. The guarded
+  variant takes `TreeSaltStagesPairsGuarded` for that same split.
+
+Lockstep, digest draws, opening agreement, the uncounted check estimate and
+`TreeSimHashHonestBudget` are supplied by existing exact theorems. The honest-point estimate
+counts queries retained by aborted executions, not just successful output records. The assembly
+keeps the original budget-domain collision event and the original check and hash errors.
+The linked witness, common tail sources, opaque normalization and shared-split
+pair certificate are still required.
 
 ### Signing
 
@@ -233,13 +260,17 @@ remain obligations; the conditional assembly does not supply them.
 5. Costs. A hit and a guess cost `2^-128` for each call. A partner costs `2^-128` for each digest call, as the codeword probability `p` of the earlier output times `1 / #C` for the selected output. A bound of `2^-128` for each pair alone is false, because the search selects one output from several trials. Round 1 opens `ρ_e` before the search, so the lemma of leanVM with a hidden `R_0` does not apply as it is.
 6. Sum. Two units for each call give `signingHashError q`. The calls of `KeyGen` count in `q` and are never bad, so they pay the lower-order terms.
 
-`hiddenCoreAt_of_link` in `SigningAssembly` makes this accounting explicit. The charged lane is proved. For the
-uncharged lane, `probEvent_lane2_sum_le` in `SigningUnchargedCap` retains the sum of the input-hit and lane-2
-probabilities under one `q / 2^128` cap; transporting the actual signing rows to that hybrid remains open.
-The top-partner and absent-start rows have separate hypotheses and depend on D17. The partner transfer still
-requires `PartnerCacheComparison`. The cache-derived trigger and R1 estimate are proved, but the link needs
-the missing true-opening input-side disjunct (A41), and the lane-2 row needs the forged key's cached-selection
-flag (A40). Neither correction has been assumed by the row assembly.
+`hiddenCoreAt_of_releasedLink` in `SigningLinkPaid` makes the current accounting explicit.
+`ReleasedLink` classifies a released bottom-partner win into an R1 hit or
+`AlternativeCommitment` when the forged key has no cached selection. `ReleasedTransfer`
+moves that row to the eager cache. `SharedLaneCap` pays the input-side and lane-2 rows under
+one `q / 2^128` cap. Its two probabilities must be summed even when their events overlap.
+
+The exact transfer in `SigningReleasedTransfer` has no residual hypotheses.
+The live signing obligations are `ReleasedLink` and `SharedLaneCap`. The link still needs
+actual-run alignment and signed-cache separation. The message-call and cached-trials laws
+of `SigningLaneHybrid` do not supply the common opaque capped hybrid. The earlier global
+cached-selection flag and fixed-randomizer link are not assumptions of this current assembly.
 
 ## The axiom guard
 

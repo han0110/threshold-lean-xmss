@@ -6,12 +6,12 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 
 `TreeStreamKeyAfterDerivation` of `TreeHops.lean`, by the plan of its module doc, in three stages.
 
-1. `afterDerivationAllowed` (proved). After the boundary every free call is a sampling, a hash other
+1. `afterDerivationAllowed`. After the boundary every free call is a sampling, a hash other
    than `.streamKey`, or a stream under the key that a row gives its name (`Allowed`). This is a walk
    of `ceremonyAfterSetup` (`POk.ceremonyAfterSetup`) carried through the execution (`executeRounds_ok`).
-2. `TreeKeysApartBound` (open). At the boundary the key of a hidden name in a row differs from the
+2. `TreeKeysApartBound`. At the boundary the key of a hidden name in a row differs from the
    key of every other name (`KeysApart`), up to `streamKeyError` and one prequery term.
-3. `TreeKeyHitBound` (open). With the keys apart, the cache ends without the stream key of a hidden
+3. `TreeKeyHitBound`. With the keys apart, the cache ends without the stream key of a hidden
    key of a row (`KeyHit`), up to the rest of `keySplit`.
 
 With 1 and the keys apart, the ideal joint world keeps `JointInv` (`jointKeyWorld_run_inv`), so a raised

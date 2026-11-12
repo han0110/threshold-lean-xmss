@@ -11,8 +11,8 @@ the synchronized digest round forces all honest held histories to agree.
 Both preserve one common adversary reply, the ordered continuations, and the
 original budget-collision guard, from arbitrary incoming caches and logs.
 
-The exact target `TreeLockstepOpenedGoal` remains unchanged and unproved.
-The remaining work is to align these boundaries with each batch of the
+`TreeLockstepOpenedGoal` is the whole-ceremony opening-agreement interface.
+Its whole-run invariant must align these boundaries with each batch of the
 audited ceremony and transfer agreement of the recorded histories to the
 rerandomized copies passed to its output opening. These are joint-run
 obligations; unrestricted per-party replay does not retain them. No

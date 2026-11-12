@@ -6,7 +6,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningSecurity
 `SigningCoreBound` of `Proof/SigningSecurity.lean`, a win with distinct keys and `q < 2 ^ 127`
 (steps 1 to 6 of the signing plan of `formal/PROOF.md` without the collision of the keys).
 
-Proved stages:
+The component lemmas:
 
 * `flaggedRun` runs the game of `keyedRun` with a flag. The flag records a call of the forger on a
   key that the corrupt operators do not hold at the time of the call, namely `H16(seed_T ‖ x)` for a
@@ -18,7 +18,7 @@ Proved stages:
 * The first obligation of step 3 with a fixed `H`: an honest signer that accepts `ρ ≠ ρ_e` meets a
   hit on `c_e` (`opened_randomizer_hit`, with `commitmentInput_injective`).
 
-Open stages, the hypotheses of `signingCoreBound`:
+The hypotheses of `signingCoreBound`:
 
 * `SeedHitBound`: the flag costs `seedHitError` (step 1, the cost of the hop to the slots of the
   hidden keys, as `real_sym_hop` and the presampling of `Proof/Tprf.lean`).
@@ -73,7 +73,7 @@ def flaggedOracles (x : Keys3 C) (dealt : Dealt C (OracleComp (WorldSpec C))) :
       (tsigOracles (fun oa => honestLift oa) dealt q).run p.1
 
 /-- The initial state of the game. -/
-def tsigInit : TsigState C := ⟨∅, fun _ => none, []⟩
+def tsigInit : TsigState C := ⟨∅, fun _ => none, [], fun _ => none⟩
 
 /-- The verification and the freshness check of `tsigGameWith worldRoles`, after the forger. -/
 def tsigFinish (dealt : Dealt C (OracleComp (WorldSpec C))) :
@@ -89,7 +89,13 @@ def tsigFinish (dealt : Dealt C (OracleComp (WorldSpec C))) :
 theorem tsigGameWith_eq (dealt : Dealt C (OracleComp (WorldSpec C))) (A : TsigAdversary C) :
     tsigGameWith worldRoles dealt A =
       (simulateQ (gameOracles dealt) (A ⟨dealt.top.root, dealt.parameter⟩ dealt.top)).run tsigInit >>=
-        tsigFinish dealt := rfl
+        tsigFinish dealt := by
+  unfold tsigGameWith
+  refine bind_congr fun p => ?_
+  obtain ⟨forgery, st⟩ := p
+  simp only [forgeryWins, tsigFinish, bind_assoc, pure_bind]
+  refine bind_congr fun verified => ?_
+  split <;> simp <;> rfl
 
 /-- A run of the flagged oracles forgets the flag. -/
 theorem simulateQ_run_forget {ι : Type} {spec : OracleSpec ι} {σ τ α : Type} {m : Type → Type} [Monad m]
@@ -215,7 +221,7 @@ theorem opened_randomizer_hit {h : Query C → HashOutput} (P : PublicParameter)
   change E prims h _ = none
   rw [E_bind, E_oracleHash, if_pos (by rw [hc]; exact hne'), E_pure]
 
-/-! ## The open stages -/
+/-! ## The stage interfaces -/
 
 /-- Step 1 of the plan, the cost of the hidden keys. A call of the forger on a key that the corrupt
 operators do not hold at that time costs `seedHitError`. The proof follows `real_sym_hop` and the

@@ -2,13 +2,13 @@ import ThresholdLeanXmssSecurity.Proof.KeygenHalves
 import ThresholdLeanXmssSecurity.Proof.Coupling
 
 /-!
-# Keygen security: the two open stages
+# Keygen security: the two coupling stages
 
-`keygenSecurityFull` of `Proof/KeygenHalves.lean` leaves two stages open:
+`keygenSecurityFull` of `Proof/KeygenHalves.lean` takes two stage hypotheses:
 `KeygenEchoFresh` (the echo-collision core of the hidden half) and `KeygenKnownMismatch`
 (the known half on the simulator's emulation).
 
-The hidden half is closed (`keygenHiddenDistanceProof`).
+`keygenHiddenDistanceProof` gives the hidden-half estimate.
 
 1. `KeygenEchoFresh` holds for every covering domain `S`, but off `S` the finite oracle answers `0`.
    We choose the domain, so we add every echo input (`keygenSharedInputs`) and prove the bound there
@@ -22,7 +22,7 @@ The hidden half is closed (`keygenHiddenDistanceProof`).
 4. Otherwise an echo collision is a collision of two distinct cells of `a'`, `|pairs| / 2^256`.
 5. The total `(1 + q + n²) |pairs| / 2^256` fits in the budget (`keygenEcho_arith`).
 
-`KeygenKnownMismatch` stays open, as the hypothesis of `keygenSecurityComplete`.
+`KeygenKnownMismatch` is a hypothesis of `keygenSecurityComplete`.
 -/
 
 set_option pp.deepTerms false

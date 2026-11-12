@@ -5,7 +5,7 @@ import XmssSecurity.Proof.Deterministic.TrialSampling
 /-!
 # The threshold signing calls as leanVM steps
 
-`SigningLane2` needs the threshold calls in the terms of leanVM ("The remaining goals"). This module
+`SigningLane2` needs the threshold calls in the terms of leanVM ("The potential interfaces"). This module
 gives them for one call, with no reference to the flat run.
 
 * The input map is the identity on bytes. The bottom message digest input is `Partner.input`
@@ -19,7 +19,7 @@ gives them for one call, with no reference to the flat run.
   sign step of leanVM (`baseCall_stateLaw`).
 * The top grind is `topSignFrom` of leanVM (`grind_top_eq_topSignFrom`).
 
-## Open
+## Potential hypotheses
 
 `baseCall_stateLaw` takes `topSignedAt secretKey e = true`. The leanVM key of the flat run must set
 `topSigned b` to the result of the top grind of the ceremony of bottom tree `b`, and a signing at

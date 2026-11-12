@@ -8,7 +8,7 @@ import XmssSecurity.Proof.AdaptiveFreshTarget
 `HiddenCoreAt` of `Proof/SigningCore.lean` (steps 5 and 6 of the signing plan of `formal/PROOF.md`)
 and the full signing claim `signingSecurityComplete`.
 
-Proved stages:
+The component lemmas:
 
 * A win without the flag ends in a bad event on the final cache of `exposedRun` (`win_le_bad`, from
   `signing_run_badEvent_closed`).
@@ -18,7 +18,7 @@ Proved stages:
   (`free_fresh_truncate_le`, `counted_fresh_truncate_le`).
 * The logged run records each call with its answer and forgets to `exposedRun` (`loggedRun_forget`).
 
-Open stages, the hypotheses of `hiddenCoreAt`:
+The hypotheses of `hiddenCoreAt`:
 
 * `HitLaneBound`: a win with a hit costs one unit for each call. The output of a fresh call is a
   uniform truncation that equals a fixed honest output with probability `2^-128`.
@@ -71,7 +71,7 @@ def WinGuessPartner (x : SigningSecurityProof.Keys3 C) (r : Outcome C) : Prop :=
       Partner z.cache z.keys.1 z.key (z.honestKey prims) z.forgery.message
         (XmssSecurity.Bridge.toModelSig z.forgery.signature)
 
-/-! ## The open lanes -/
+/-! ## The lane interfaces -/
 
 /-- The hit lane (step 5 of the plan). A win with a hit costs `2^-128` for each call. -/
 def HitLaneBound (prims : Primitives) (C : Committee) : Prop :=

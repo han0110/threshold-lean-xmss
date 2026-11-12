@@ -12,8 +12,9 @@ This module bounds `TreeSimSaltReuseEstimate` of `TreeEvents.lean` with an eager
 * `treeSimSaltReuseEstimate_of_eager` gives the estimate from `TreeSimSaltReuseEager`, which
   moves the real run into the model with `n ≤ treeBatches * termCount`.
 
-`TreeSimSaltReuseEager` stays open. Its paper argument conditions the run on the end of the
-PRSS setup.
+Conditioning the run on the end of the PRSS setup does not establish
+`TreeSimSaltReuseEager`: it leaves the following address-selection and
+collision obstacles.
 
 * The setup fixes the PRSS key of each term. The only honest index-2 draw is `randBits 256` of
   the check, so the setup and the labels fix the address of each later salt.

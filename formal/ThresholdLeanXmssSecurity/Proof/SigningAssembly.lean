@@ -57,7 +57,7 @@ The sum is `2 q / N = signingHashError q` (`SigningCostProof.signingHashError_eq
   So no slack enters. `lane2_constants` checks the lane 2 constants at `N = 2^128`
   and `q < 2^127`.
 
-## The open steps
+## The interface hypotheses
 
 * `PartnerCrossing ρ`. `partnerCrossing_of_link` reduces it to `R1Link` of `SigningFlatEager` and
   `PartnerTransfer ρ`, the transfer of the lazy partner row to the eager cache.

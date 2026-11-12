@@ -26,7 +26,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningGuardedFlag
 * `SignedWitness` asks for such a first run at each signed key. `monitoredWorld_signed_grind`
   shows that at a base call of signed keys the grind leaves the monitor at the query step of the
   call. So the signed branch of `trialFresh` is never reached.
-* `SignedWitnessStep` is open. It says that each world call keeps `SignedWitness`.
+* `SignedWitnessStep` says that each world call keeps `SignedWitness`.
 
 ## `R1Link`
 

@@ -7,7 +7,7 @@ import ThresholdLeanXmssSecurity.Proof.Tprf
 `SigningSecurityStatement` (PRAWNS, Definition 3.2, in the random-oracle model), following the plan
 of `formal/PROOF.md`.
 
-Proved stages:
+The component lemmas:
 
 * `KeyGen'` samples first on the free copy, which costs nothing and leaves the cache, so the game is
   an average over the keys (`tsigGame_eq`, `tsigAdvantage_eq`), and the budget holds for each key
@@ -16,7 +16,7 @@ Proved stages:
   `probEvent_keyCollision` of the threshold PRF proof).
 * For `q ≥ 2 ^ 127` the bound is at least `1` (`signingSecurity_large`).
 
-Open stage: `SigningCoreBound`, a win with distinct keys and `q < 2 ^ 127`. It is steps 1 to 6 of
+The core interface: `SigningCoreBound`, a win with distinct keys and `q < 2 ^ 127`. It is steps 1 to 6 of
 `formal/PROOF.md` without the collision of the keys.
 
 1. The hop to slots of the hidden keys, as `real_sym_hop` of the threshold PRF proof, for the
@@ -182,7 +182,7 @@ theorem keyCollision_toReal_le :
   unfold seedCollisionError
   exact div_le_div_of_nonneg_right (by exact_mod_cast collisionCount_le C) (by positivity)
 
-/-! ## The remaining stage -/
+/-! ## The stage interface -/
 
 /-- Steps 1 to 6 of `formal/PROOF.md` for distinct keys and `q < 2 ^ 127`. A win with distinct keys
 costs `q / 2 ^ 127` for the hits, the guesses and the partners, and `seedHitError` for a call on a

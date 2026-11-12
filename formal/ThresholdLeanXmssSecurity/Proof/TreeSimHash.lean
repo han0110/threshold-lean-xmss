@@ -151,39 +151,36 @@ theorem treeSimHash_logged (prims : Primitives) (D : C.Coalition)
 
 /-!
 Target: `treeSimHashBoundClosed : TreeSimHashBoundGoal prims K circuits settings`.
-Still open: `TreeSimHashTerminalBudget` and `TreeSimHashRawSaltEstimate`.
-`treeSimHashBound_of_terminal` assembles these exact remaining obligations.
-The coarse region count is proved for the actual normalized ceremony, retaining
+The terminal route takes `TreeSimHashTerminalBudget` and `TreeSimHashRawSaltEstimate`.
+`treeSimHashBound_of_terminal` assembles these interface hypotheses.
+The coarse region count applies to the actual normalized ceremony, retaining
 both shared caches and excluding the already-paid PRSS points. It is at most
 N², where N is the target budget. When N < 2^128, every good prefix has a good
 completion; a final-cache bound therefore supplies the fresh-point certificate.
-The earlier `TreeSimHashCeremonyBudget` / `TreeSimHashSaltEstimate` route remains
-available. The unconditional large-budget case is closed.
+The earlier `TreeSimHashCeremonyBudget` / `TreeSimHashSaltEstimate` route is an alternative assembly. The large-budget estimate has no additional premise.
 
-For the remaining terminal-cache induction, `treeSimHash_coin_points` needs
+For terminal-cache induction, `treeSimHash_coin_points` needs
 no prior Shamir validity. `treeSimHash_open_all_outputs` needs consistency only
 on hidden terms, supplied locally by the final rerandomization in
-`treeSimHash_rerand_hidden`. Partial-abort prefixes and propagation of a common
-public batch shape still need to be connected to actual ceremony execution.
+`treeSimHash_rerand_hidden`. A whole-ceremony certificate must connect partial-abort prefixes and a common
+public batch shape to the actual execution.
 
 For salts, `treeSimHash_salt_table_bound` proves the union estimate for an
 arbitrary adaptive opaque-block program, including interleaved public queries,
 repeated blocks, and accidental salt collisions, with one shared hash cache.
 Its bound is H*n/2^256 for H independently sampled opaque blocks and at most n
 private or public digest queries. `treeSimHash_digest_column_rows_hit_bound`
-also normalizes an actual holder column without history agreement. What remains
-is the actual-ceremony representation by opaque blocks indexed by their shared
+also normalizes an actual holder column without history agreement. The salt interface requires the actual-ceremony representation by opaque blocks indexed by their shared
 PRSS address; assigning an independent salt to each holder would be incorrect.
-The local sampling connection is now exact: `treeSimHash_salt_block_randomOracle`
+The local sampling connection is exact: `treeSimHash_salt_block_randomOracle`
 identifies a completed real PRG block with a cached random-oracle salt read.
 `treeSimHash_prssBits_logged_complete` and `treeSimHash_prssElements_complete`
 preserve complete blocks through the real PRSS traversals. The combined salt
 and digest entry is exposed by `treeSimHash_salt_digest_entry`.
 `treeSimHash_lazy_address_bound` supplies the raw coefficient 2*H*n/2^256
 for an opaque address program, via finite allocation and deferred sampling.
-The remaining salt bridge must normalize the whole ceremony into that program,
+The whole-ceremony salt bridge must normalize the whole ceremony into that program,
 preserve the actual counted-query/hidden-salt event, and establish its bounds.
-No counterexample to the fixed target has been established.
 -/
 
 /-- A cache containing the logged answers also contains every logged region collision. -/

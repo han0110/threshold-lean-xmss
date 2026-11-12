@@ -8,9 +8,10 @@ import VCVio.OracleComp.SimSemantics.StateT.StateProjection
 # The ceremony
 
 `TreeCompletenessStatement` follows from the honest run of a ceremony, batch by batch.
-`TreeSecurityStatement` reduces to its distance half `TreeSecurityDistance`, which is open.
-`treeSimulator_queryBound` gives the query half. The other lemmas are partial steps toward
-`TreeSecurityDistance`. `DealerTreeStatement` and `TreeSuccessStatement` are open.
+`TreeSecurityStatement` reduces to its distance half `TreeSecurityDistance`.
+`treeSimulator_queryBound` gives the query half. The supporting lemmas concern
+`TreeSecurityDistance`. The dealer claims `DealerTreeStatement` and `TreeSuccessStatement`
+follow from `dealerTreeProof` and `treeSuccessProof` in `Dealer`.
 -/
 
 open OracleComp OracleSpec LeanXmss ThresholdLeanXmss

@@ -15,7 +15,7 @@ The distance splits into two hops at the PRF reduction `prgReduction` (`treeSecu
    It pays `treeCheckError` and the rest of `treeHashError`, which is at least the birthday bound
    of the other honest points (`keySplit_add_rest_le`).
 
-The remaining stage is `TreeHopsRemaining`, the stream-key bound and the simulation hop.
+The stage hypothesis is `TreeHopsRemaining`, the stream-key bound and the simulation hop.
 -/
 
 open OracleComp OracleSpec LeanXmss ThresholdLeanXmss

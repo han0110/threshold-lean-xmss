@@ -4,7 +4,7 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 /-!
 # The stages of the stream-key bound
 
-Stage 2 of `TreeKey.lean`, `TreeKeysApartBound`, is proved (`treeKeysApartBound`). Keys that are not
+Stage 2 of `TreeKey.lean`, `TreeKeysApartBound`, follows from `treeKeysApartBound`. Keys that are not
 apart come from one of three events.
 
 1. A hidden canonical derivation input is cached at the boundary (`EarlyCached`). This is

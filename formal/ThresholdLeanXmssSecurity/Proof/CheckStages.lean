@@ -5,9 +5,9 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 # The three stages of the check core distance
 
 The target is `CheckSoundStage`, `CheckCoupleStage` and `CheckSplitStage` of `Proof/CheckCore.lean`.
-The stages that are still open are named hypotheses of `checkCoreDistanceProof`.
+The stages are named hypotheses of `checkCoreDistanceProof`.
 
-Proved so far, for `CheckCoupleStage` (step 4 of the plan of `Proof/CheckSecurity.lean`):
+The local couplings for `CheckCoupleStage` (step 4 of the plan of `Proof/CheckSecurity.lean`):
 
 * `finalStep_tv`: the final segment of the check (randomization, salts, digests, last challenge and
   opening), against any rushing adversary with any selective abort. From two states related by
@@ -24,7 +24,7 @@ Proved so far, for `CheckCoupleStage` (step 4 of the plan of `Proof/CheckSecurit
   coin and the challenge are common (`executePhase_afterChallenge_common'`), and `halvRel_step` keeps
   the relation for every challenge.
 
-Open for `CheckCoupleStage`: the start (first coin, `expand`, `require`), the slice loop (Gruen's
+`CheckCoupleStage` additionally covers the start (first coin, `expand`, `require`), the slice loop (Gruen's
 step with replicated products) with its transition into `HalvRel`, the initial relation of the inputs
 and of `canonicalDummyTuples`, and the budget arithmetic of `coupleBound` against `coupleHashError`.
 -/

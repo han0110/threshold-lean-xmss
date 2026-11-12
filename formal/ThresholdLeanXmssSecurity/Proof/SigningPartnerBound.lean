@@ -61,7 +61,7 @@ the adversary. So no event at that type can tell a fresh selection from a cached
 
 So this module states the split on `loggedRun`. `chargedOutputLogged_bound` and
 `hiddenCoreAt_of_logged` follow `SigningPartnerLinkProof.chargedOutput2_bound` and
-`SigningPartnerLinkProof.hiddenCoreAt_of_split`. The open hypothesis is `UnchargedLaneBoundLogged`.
+`SigningPartnerLinkProof.hiddenCoreAt_of_split`. The hypothesis is `UnchargedLaneBoundLogged`.
 -/
 
 set_option pp.deepTerms false

@@ -21,7 +21,7 @@ raises the flag with probability one.
 `GuardedFlag` has one more part, `ForgedStartAbsent`. A chain start at the key of the forgery has an
 absent PRF entry. Nothing here excludes it in a win. If the bottom tree of the key is never built,
 the replay data of the bottom key are public zeros, and a forgery that wins at the top layer can
-still be a bottom `Guess`. This part is an open row of the hybrid.
+still be a bottom `Guess`. The hybrid must account for this row.
 
 The two counterexamples of the review fail on the guarded flag.
 

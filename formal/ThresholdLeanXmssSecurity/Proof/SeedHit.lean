@@ -628,6 +628,11 @@ def Dealt.hmap (dealt : Dealt C m) : Dealt C n :=
   ⟨dealt.keys, dealt.parameter, dealt.top, fun x => h (dealt.value x), fun i J x ec => h (dealt.part i J x ec),
     fun b => h (dealt.bottom b)⟩
 
+theorem hom_bottomOnce (dealt : Dealt C m) (b : Fin (2 ^ layerHeight)) (s : TsigState C) :
+    h ((bottomOnce dealt b).run s) = (bottomOnce (Dealt.hmap h dealt) b).run s := by
+  simp only [bottomOnce, StateT.run_bind, StateT.run_get, pure_bind]
+  cases s.trees b <;> simp [Dealt.hmap]
+
 theorem hom_tsigOracles (lift : ∀ {α : Type}, OracleComp (RoSpec C) α → m α) (dealt : Dealt C m)
     (q : (TsigSpec C).Domain) (s : TsigState C) :
     h ((tsigOracles lift dealt q).run s) = (tsigOracles (fun oa => h (lift oa)) (Dealt.hmap h dealt) q).run s := by
@@ -635,8 +640,8 @@ theorem hom_tsigOracles (lift : ∀ {α : Type}, OracleComp (RoSpec C) α → m 
   · simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind]
     split_ifs <;> simp [Dealt.hmap]
   · simp only [tsigOracles, StateT.run_bind, StateT.run_monadLift, monadLift_self, MonadHom.mmap_bind,
-      bind_assoc, pure_bind]
-    congr 1; funext o
+      bind_assoc, pure_bind, hom_bottomOnce]
+    congr 1; funext ⟨o, st⟩
     rcases o with _ | tree
     · simp
     · simp [Dealt.hmap]
@@ -646,12 +651,12 @@ theorem hom_tsigOracles (lift : ∀ {α : Type}, OracleComp (RoSpec C) α → m 
     split_ifs
     · simp
     · simp only [StateT.run_bind, StateT.run_monadLift, monadLift_self, MonadHom.mmap_bind,
-        bind_assoc, pure_bind]
-      congr 1; funext o
+        bind_assoc, pure_bind, hom_bottomOnce]
+      congr 1; funext ⟨o, st⟩
       rcases o with _ | tree
       · simp
       · simp only [StateT.run_bind, StateT.run_monadLift, monadLift_self, MonadHom.mmap_bind,
-          bind_assoc, pure_bind]
+          bind_assoc, pure_bind, hom_bottomOnce]
         congr 1; funext own
         have key := hom_signRound2With h lift (fun x => dealt.part i J x message) dealt.parameter J
           (tree.commitment e) e message (Function.update parts i own)
@@ -931,6 +936,20 @@ theorem withCount_mono {σ α : Type} (I : QueryImpl (WorldSpec C) (StateT σ Pr
     obtain ⟨w', -, rfl⟩ := hw
     exact (Nat.le_add_right _ _).trans (ih _ _ z hz)
 
+theorem bottomOnce_corrupt (dealt : Dealt C (StateT (WState C) ProbComp))
+    (b : Fin (2 ^ layerHeight)) (st : TsigState C) (c : WState C)
+    (z : (Option BottomTree × TsigState C) × WState C)
+    (hz : z ∈ support (((bottomOnce dealt b).run st).run c)) :
+    z.1.2.corrupt = st.corrupt := by
+  simp only [bottomOnce, StateT.run_bind, StateT.run_get, pure_bind] at hz
+  cases ht : st.trees b <;>
+    simp [ht, StateT.run_bind, StateT.run_monadLift, monadLift_self,
+      mem_support_bind_iff] at hz
+  · obtain ⟨value, cache, slots, count, _, rfl⟩ := hz
+    rfl
+  · subst z
+    rfl
+
 set_option maxRecDepth 10000 in
 theorem tsigOracles_corrupt_cases (lift : ∀ {α : Type}, OracleComp (RoSpec C) α → StateT (WState C) ProbComp α)
     (dealt : Dealt C (StateT (WState C) ProbComp)) (q : (TsigSpec C).Domain) (st : TsigState C) (c : WState C) :
@@ -944,13 +963,14 @@ theorem tsigOracles_corrupt_cases (lift : ∀ {α : Type}, OracleComp (RoSpec C)
     · simp at hz; subst hz; exact Or.inr ⟨i, rfl, ‹_›, rfl⟩
   · simp only [tsigOracles, StateT.run_bind, StateT.run_monadLift, monadLift_self, bind_assoc, pure_bind,
       mem_support_bind_iff] at hz
-    obtain ⟨w, -, hz⟩ := hz
+    obtain ⟨w, hw, hz⟩ := hz
+    have hc := bottomOnce_corrupt dealt b st c w hw
     rcases w with ⟨_ | tree, c'⟩
-    · simp at hz; subst hz; exact Or.inl rfl
+    · simp at hz; subst hz; exact Or.inl hc
     · simp only [StateT.run_bind, StateT.run_monadLift, monadLift_self, bind_assoc, pure_bind,
         mem_support_bind_iff, StateT.run_pure] at hz
       obtain ⟨w, -, hz⟩ := hz
-      simp at hz; subst hz; exact Or.inl rfl
+      simp at hz; subst hz; exact Or.inl hc
   · simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at hz
     split_ifs at hz
     · simp at hz; subst hz; exact Or.inl rfl
@@ -966,15 +986,16 @@ theorem tsigOracles_corrupt_cases (lift : ∀ {α : Type}, OracleComp (RoSpec C)
     · simp at hz; subst hz; exact Or.inl rfl
     · simp only [StateT.run_bind, StateT.run_monadLift, monadLift_self, bind_assoc, pure_bind,
         mem_support_bind_iff] at hz
-      obtain ⟨w, -, hz⟩ := hz
+      obtain ⟨w, hw, hz⟩ := hz
+      have hc := bottomOnce_corrupt dealt (treeOf e) st c w hw
       rcases w with ⟨_ | tree, c'⟩
-      · simp at hz; subst hz; exact Or.inl rfl
+      · simp at hz; subst hz; exact Or.inl hc
       · simp only [StateT.run_bind, StateT.run_monadLift, monadLift_self, bind_assoc, pure_bind,
           mem_support_bind_iff] at hz
         obtain ⟨w, -, w', -, hz⟩ := hz
         rcases w' with ⟨_ | values, c''⟩
-        · simp at hz; subst hz; exact Or.inl rfl
-        · simp at hz; subst hz; exact Or.inl rfl
+        · simp at hz; subst hz; exact Or.inl hc
+        · simp at hz; subst hz; exact Or.inl hc
 
 /-! ## The steps of the fused game -/
 

@@ -32,7 +32,7 @@ This module works on `TreeCheckUncountedGuess` (`TreeCheckBranches`). The bound 
   `round_noNewFree`, `executeRounds_noNewFree`). `treeCheckUncountedGuess_of_audit` combines the
   two steps.
 
-`TreeCheckAfterSetupAuditNoCommit` stays open. It says that `treeSimCheckAfterSetupAudit` makes no
+`TreeCheckAfterSetupAuditNoCommit` says that `treeSimCheckAfterSetupAudit` makes no
 `.commit` query. It is true, because only `commitRevealEcho` queries `.commit`. Its proof is a walk
 of the audited program with this predicate, as `TreeSimHashCount.ceremony_bound` does for `Region`.
 Each `Region` lemma with a zero bound transfers by `IsQueryBoundP.of_imp`, as in

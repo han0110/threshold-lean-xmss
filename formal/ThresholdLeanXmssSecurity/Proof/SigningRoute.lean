@@ -2,7 +2,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningSelection
 import ThresholdLeanXmssSecurity.Proof.SigningHybrid
 
 /-!
-# The open signing step
+# The signing coupling interface
 
 `HiddenCoreAt` follows from `UnchargedFlagSoundCoupling` alone. `SigningSelection` proves the selection
 classification, and `SigningHybrid` gives the route through the corrected flag.
