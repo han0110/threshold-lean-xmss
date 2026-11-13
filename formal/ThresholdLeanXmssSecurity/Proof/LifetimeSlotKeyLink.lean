@@ -777,13 +777,13 @@ theorem parts_update_agree {attempts : ℕ} {slot : Slot attempts} {st : Lifetim
 theorem settle_running_source (D : C.Coalition) (kind : Option (Option TreeOutput))
     (st : LifetimeState C E) (tree : ThresholdLeanXmss.Tree) (fuel : ℕ)
     (steps : C.Party → Step C E RealSpec TreeOutput)
-    (hr : (match kind with | none => st.settle D | some output => settleIdeal D output st).running =
+    (hr : (match kind with | none => st.settle D | some output => LifetimeSlots.settleIdeal D output st).running =
       some (tree, fuel, steps)) : st.running = some (tree, fuel, steps) := by
   cases kind with
   | none =>
     exact (LifetimeProof.settle_running D st (by rw [hr]; exact Option.some_ne_none _)).symm.trans hr
   | some output =>
-    unfold settleIdeal at hr
+    unfold LifetimeSlots.settleIdeal at hr
     cases hs : st.running with
     | none => simp [hs] at hr
     | some r =>

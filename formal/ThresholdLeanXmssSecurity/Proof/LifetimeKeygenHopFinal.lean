@@ -1,6 +1,7 @@
 import ThresholdLeanXmssSecurity.Proof.LifetimeKeygenPrograms
 import ThresholdLeanXmssSecurity.Proof.LifetimeKeygenCapQuiet
 import ThresholdLeanXmssSecurity.Proof.LifetimeEmulatedBudget
+import ThresholdLeanXmssSecurity.Proof.LifetimeLegacy
 
 /-!
 # The lifetime keygen hop
@@ -27,7 +28,7 @@ variable (D : C.Coalition) (A : LifetimeAdversary C E)
 
 /-- The original lifetime budget pays for the single keygen hop. -/
 theorem lifetimeKeygenHop_of_hasLifetimeQueryBound (Q : ℕ)
-    (hQ : HasLifetimeQueryBound K settings attempts circuitsOf D A Q) :
+    (hQ : HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q) :
     LifetimeHybridOrder.LifetimeKeygenHop K settings attempts aes circuitsOf D A Q := by
   have hcap := LifetimeKeygenCapQuiet.keygenCapQuiet K settings attempts D A Q aes circuitsOf hQ
   apply LifetimeKeygenHopProof.lifetimeKeygenHop_of_programs

@@ -1,5 +1,6 @@
 import ThresholdLeanXmssSecurity.Proof.LifetimeHybridOrder
 import ThresholdLeanXmssSecurity.Proof.KeygenAlias
+import ThresholdLeanXmssSecurity.Proof.LifetimeLegacy
 
 /-!
 # The lifetime keygen continuation
@@ -528,10 +529,10 @@ theorem endpoint_gap (prims : Primitives) (circuits : Circuits) (Q : ℕ)
 
 /-- The lifetime counter does not affect the sampled Boolean output. -/
 theorem lifetimeRun_output (game : (HashInput → HashOutput) → OracleComp (WorldSpec C) Bool) :
-    Prod.fst <$> lifetimeRun aes game = (do
+    Prod.fst <$> lifetimeRunSampled aes game = (do
       let values ← $ᵗ (MpcDomain → HashOutput)
       (simulateQ (worldAnswer ⟨thOf values, aes⟩) (game (thOf values))).run' ∅) := by
-  simp only [lifetimeRun, map_bind]
+  simp only [lifetimeRunSampled, map_bind]
   apply bind_congr
   intro values
   exact fst_map_run_withAddCost _ _ _ _

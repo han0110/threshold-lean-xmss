@@ -1,10 +1,11 @@
 import ThresholdLeanXmssSecurity.Proof.LifetimeKeygenHopProof
 import XmssSecurity.Proof.QueryBoundSupport
+import ThresholdLeanXmssSecurity.Proof.LifetimeLegacy
 
 /-!
 # The keygen cap is quiet
 
-The lifetime query bound `HasLifetimeQueryBound` holds for all answers of the oracles. Each
+The lifetime query bound `HasLifetimeQueryBoundAll` holds for all answers of the oracles. Each
 adversary segment that the real keygen prefix of `lifetimeGame` reaches is thus within `Q`
 counted calls, and `cap_eq` leaves it unchanged.
 
@@ -328,7 +329,7 @@ theorem realPrefixBound_of_lifetime (circuits : Circuits)
 
 /-- Capping the keygen adversary is quiet in both keygen phases, for every `Th` of the lifetime. -/
 theorem keygenCapQuiet (aes : Aes) (circuitsOf : (HashInput → HashOutput) → Circuits)
-    (h : HasLifetimeQueryBound K settings attempts circuitsOf D A Q)
+    (h : HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q)
     (values : MpcDomain → HashOutput) :
     KeygenCapQuiet D A ⟨thOf values, aes⟩ Q := by
   have hb := realPrefixBound_of_lifetime K settings attempts D A Q _ (h values)

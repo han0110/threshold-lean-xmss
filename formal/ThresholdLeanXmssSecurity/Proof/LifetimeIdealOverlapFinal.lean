@@ -1,6 +1,7 @@
 import ThresholdLeanXmssSecurity.Proof.LifetimeIdealKeyLink
 import ThresholdLeanXmssSecurity.Proof.LifetimeRunBoundary
 import ThresholdLeanXmssSecurity.Proof.TreeKeyStages
+import ThresholdLeanXmssSecurity.Proof.LifetimeLegacy
 
 /-!
 # The fresh-answer part of the key overlap in the left world
@@ -630,7 +631,7 @@ budget, the hash cache holds the run-`n` input of a hidden name right after run 
 parts with probability at most `Q / 2 ^ 256`. -/
 def RunEarlyCachedBound (Q : ℕ) : Prop :=
   let F := ceremonyFuel (circuitsOf fun _ => 0) settings
-  HasLifetimeQueryBound K settings attempts circuitsOf D A Q →
+  HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q →
   keySplit C (Q + lifetimeOverhead C attempts Q + (F + 2) * Q) < 2 →
   ∀ (n : Fin (lifetimeRuns attempts)) (values : MpcDomain → HashOutput)
       (name : {name : KeyName C // Hidden D name}),

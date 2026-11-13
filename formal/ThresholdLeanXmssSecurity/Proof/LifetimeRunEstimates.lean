@@ -1,4 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.LifetimeTailBudget
+import ThresholdLeanXmssSecurity.Proof.LifetimeLegacy
 
 /-!
 # Collision and hit estimates at a selected lifetime run
@@ -60,7 +61,7 @@ theorem boundary_bad_le_of_hybrid (Q : ℕ)
 
 /-- The original real-world lifetime budget implies the exact selected tail bound. -/
 theorem tail_flag_le (circuitsOf : (HashInput → HashOutput) → Circuits) (aes : Aes) (Q : ℕ)
-    (hQ : HasLifetimeQueryBound K settings attempts circuitsOf D A Q)
+    (hQ : HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q)
     (values : MpcDomain → HashOutput) :
     Pr[fun y => KeysApart D (rowsAt y.1.1) ∧ y.2.2.2 = true |
       LifetimeTailFlag.lazyRunBoundary K (circuitsOf (thOf values)) settings attempts D n A
@@ -71,7 +72,7 @@ theorem tail_flag_le (circuitsOf : (HashInput → HashOutput) → Circuits) (aes
 
 /-- The original source premise covers the complete selected boundary. -/
 theorem boundary_bad_le (circuitsOf : (HashInput → HashOutput) → Circuits) (aes : Aes) (Q : ℕ)
-    (hQ : HasLifetimeQueryBound K settings attempts circuitsOf D A Q)
+    (hQ : HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q)
     (values : MpcDomain → HashOutput) :
     Pr[fun y => y.2.2.bad = true |
       runBoundary K (circuitsOf (thOf values)) settings attempts D n A ⟨thOf values, aes⟩] ≤
@@ -81,7 +82,7 @@ theorem boundary_bad_le (circuitsOf : (HashInput → HashOutput) → Circuits) (
 
 /-- The same bound for the original reduction's stream-key bad event. -/
 theorem reduction_bad_le (circuitsOf : (HashInput → HashOutput) → Circuits) (aes : Aes) (Q : ℕ)
-    (hQ : HasLifetimeQueryBound K settings attempts circuitsOf D A Q)
+    (hQ : HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q)
     (values : MpcDomain → HashOutput) :
     probBad_streamKey ⟨thOf values, aes⟩ D (reductionGame K settings attempts circuitsOf D A values n) ≤
       (runCost C Q : ℝ) / 2 ^ 256 := by

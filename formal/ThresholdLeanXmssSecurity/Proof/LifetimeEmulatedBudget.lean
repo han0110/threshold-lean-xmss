@@ -1,4 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.LifetimeKeygenHopProof
+import ThresholdLeanXmssSecurity.Proof.LifetimeLegacy
 
 /-!
 # The all-emulated lifetime budget
@@ -12,7 +13,7 @@ ceremony runs use a third copy of the local oracles. Collapsing that copy into t
 copy gives the real `lifetimeGame`. Interpreting it by the emulated roles, with the log
 erased, gives the all-emulated lifetime of `realTailBound_of_sourceBound`. Each tagged
 query costs the emulation at most its real `LifetimeCounted` charge: a hidden stream is
-answered from the private table or by a free-copy uniform draw. `HasLifetimeQueryBound`
+answered from the private table or by a free-copy uniform draw. `HasLifetimeQueryBoundAll`
 bounds every answer path, so it bounds the tagged lifetime and then the emulation.
 No support restriction and no probability enters this transport.
 
@@ -555,9 +556,9 @@ variable (aes : Aes) (circuitsOf : (HashInput → HashOutput) → Circuits)
 variable (D : C.Coalition) (A : LifetimeAdversary C E)
 
 /-- The source budget of `realTailBound_of_sourceBound`, for every `values`, from the
-original `HasLifetimeQueryBound`. -/
+original `HasLifetimeQueryBoundAll`. -/
 theorem sourceBound_of_hasLifetimeQueryBound (Q : ℕ)
-    (hQ : HasLifetimeQueryBound K settings attempts circuitsOf D A Q)
+    (hQ : HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q)
     (values : MpcDomain → HashOutput) :
     IsQueryBoundP
       (emulationGame (lifetimeGameWith K (circuitsOf (thOf values)) settings attempts
@@ -589,7 +590,7 @@ theorem realTailBound_of_realCap (prims : Primitives) (circuits : Circuits) (Q :
 
 /-- With the real half of the keygen cap quiet, the original budget gives `RealTailBound`. -/
 theorem realTailBound_of_hasLifetimeQueryBound (Q : ℕ)
-    (hQ : HasLifetimeQueryBound K settings attempts circuitsOf D A Q)
+    (hQ : HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q)
     (hcap : ∀ values : MpcDomain → HashOutput, RealKeygenCapQuiet D A ⟨thOf values, aes⟩ Q)
     (values : MpcDomain → HashOutput) :
     RealTailBound K settings attempts D A ⟨thOf values, aes⟩ (circuitsOf (thOf values)) Q :=

@@ -1,5 +1,6 @@
 import ThresholdLeanXmssSecurity.Proof.LifetimeAllowance
 import ThresholdLeanXmssSecurity.Proof.LifetimeKeygenHopFinal
+import ThresholdLeanXmssSecurity.Proof.LifetimeLegacy
 
 /-!
 # The slot worlds of the lifetime simulation pass
@@ -29,7 +30,7 @@ form of `LifetimeAllowance.LifetimeAfterKeygen`, with one `streamKeyError` in ea
 * If `2 ^ 128 ≤ q₀ + q`, the slot hop is a difference of probabilities, so it is at most
   `1 ≤ treeHashError - keySplit`. The transport and the emulation link need only the case
   `q₀ + q < 2 ^ 128`, and the hash allowance is spent once.
-* `lifetimeSecurity_of_slots` gives the original `LifetimeSecurityStatement` from
+* `lifetimeSecurity_of_slots` gives the original `LifetimeSecurityStatementSampled` from
   `LifetimePrfTransportSmallSplit`, the joint hop for every `Th`, `SlotTransport`,
   `SlotEmulationHit` and `LifetimeForger`. The keygen hop is
   `lifetimeKeygenHop_of_hasLifetimeQueryBound`.
@@ -193,7 +194,7 @@ variable (K : Constants C E) (settings : Settings) (aes : Aes)
 variable (circuitsOf : (HashInput → HashOutput) → Circuits) (D : C.Coalition)
 
 /-- The real side of the joint hop, `reductionIdeal` of the joint game, with `Th` sampled as in
-`lifetimeRun`. -/
+`lifetimeRunSampled`. -/
 def jointReal (inst : Circuits → JointInstance C E) : ℝ :=
   (Pr[fun b => b = true | do
     let values ← $ᵗ (MpcDomain → HashOutput)
@@ -202,7 +203,7 @@ def jointReal (inst : Circuits → JointInstance C E) : ℝ :=
       (LifetimeBridge.jointGame K c settings false D (inst c).pre (inst c).A (inst c).Z))]).toReal
 
 /-- The ideal side of the joint hop, `accepts` of the joint game, with `Th` sampled as in
-`lifetimeRun`. -/
+`lifetimeRunSampled`. -/
 def jointIdeal (inst : Circuits → JointInstance C E) : ℝ :=
   (Pr[fun b => b = true | do
     let values ← $ᵗ (MpcDomain → HashOutput)
@@ -479,7 +480,7 @@ def slotGame (k : ℕ) (sep : Bool) (circuits : Circuits) : OracleComp (WorldSpe
       (worldMode attempts k sep) D A state outputs)
 
 def slotProbability (k : ℕ) (sep : Bool) : ℝ :=
-  (Pr[fun r => r.1 = true | lifetimeRun aes fun Th =>
+  (Pr[fun r => r.1 = true | lifetimeRunSampled aes fun Th =>
     slotGame K settings attempts D A k sep (circuitsOf Th)]).toReal
 
 theorem slotProbability_zero :
@@ -922,14 +923,14 @@ and the three slot contracts. The keygen hop is `lifetimeKeygenHop_of_hasLifetim
 theorem lifetimeSecurity_of_slots
     (hsource : (∀ Th, CircuitsCompute (circuitsOf Th) Th) → FixedShape circuitsOf →
       0 < settings.batchSize → ∀ (D : C.Coalition) (A : LifetimeAdversary C E) (Q : ℕ),
-        HasLifetimeQueryBound K settings attempts circuitsOf D A Q →
+        HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q →
         LifetimeAllowance.LifetimePrfTransportSmallSplit K settings attempts aes circuitsOf D A Q ∧
         (∀ values : MpcDomain → HashOutput, LifetimeBridge.JointSimulationHopFrom
           ⟨thOf values, aes⟩ K (circuitsOf (thOf values)) settings (keySplit C)) ∧
         SlotTransport K settings attempts aes circuitsOf D A Q ∧
         SlotEmulationHit K settings attempts aes circuitsOf D A Q ∧
         LifetimeForger K settings attempts aes circuitsOf D A Q) :
-    LifetimeSecurityStatement K settings attempts aes circuitsOf :=
+    LifetimeSecurityStatementSampled K settings attempts aes circuitsOf :=
   LifetimeAllowance.lifetimeSecurity_of_smallSplit K settings attempts aes circuitsOf
     fun hcompute hshape hbatch D A Q hQ =>
       let ⟨hp, hj, ht, he, hf⟩ := hsource hcompute hshape hbatch D A Q hQ

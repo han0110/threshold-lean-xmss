@@ -1,5 +1,6 @@
 import ThresholdLeanXmssSecurity.Proof.LifetimeRunEstimates
 import ThresholdLeanXmssSecurity.Proof.LifetimeIdealEarlyCache
+import ThresholdLeanXmssSecurity.Proof.LifetimeLegacy
 
 /-!
 # The real stream-key allowance of each lifetime run
@@ -92,7 +93,7 @@ theorem realBadBound (Q : ℕ) : RealBadBound K settings attempts aes circuitsOf
 
 /-- The checked real and ideal estimates give the small-split chronological transport. -/
 theorem lifetimePrfTransportSmallSplit (Q : ℕ)
-    (hQ : HasLifetimeQueryBound K settings attempts circuitsOf D A Q) :
+    (hQ : HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q) :
     LifetimeAllowance.LifetimePrfTransportSmallSplit K settings attempts aes circuitsOf D A Q :=
   smallSplit_of_bounds K settings attempts aes circuitsOf D A Q hQ
     (realBadBound K settings attempts aes circuitsOf D A Q)
@@ -100,7 +101,7 @@ theorem lifetimePrfTransportSmallSplit (Q : ℕ)
 
 /-- The chronological PRF transport with the original lifetime query budget. -/
 theorem lifetimePrfTransport (Q : ℕ)
-    (hQ : HasLifetimeQueryBound K settings attempts circuitsOf D A Q) :
+    (hQ : HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q) :
     LifetimeAllowance.LifetimePrfTransport K settings attempts aes circuitsOf D A Q :=
   LifetimeAllowance.lifetimePrfTransport_of_smallSplit K settings attempts aes circuitsOf D A Q
     (lifetimePrfTransportSmallSplit K settings attempts aes circuitsOf D A Q hQ)

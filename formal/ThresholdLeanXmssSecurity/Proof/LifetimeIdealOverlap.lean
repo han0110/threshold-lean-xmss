@@ -1,10 +1,11 @@
 import ThresholdLeanXmssSecurity.Proof.LifetimeIdealBad
 import ThresholdLeanXmssSecurity.Proof.LifetimeRealBad
+import ThresholdLeanXmssSecurity.Proof.LifetimeLegacy
 
 /-!
 # The lifetime budget on the four-copy program
 
-`HasLifetimeQueryBound` bounds every answer path of the real `lifetimeGame`. This module moves
+`HasLifetimeQueryBoundAll` bounds every answer path of the real `lifetimeGame`. This module moves
 that bound to `program4`, the program that `leftImpl` interprets in `HiddenKeyOverlapBound`.
 
 * `program5` is the lifetime with five copies of the local oracles. The first four copies are
@@ -16,7 +17,7 @@ that bound to `program4`, the program that `leftImpl` interprets in `HiddenKeyOv
   which is the `LifetimeCounted` charge of that query on either copy of the real lifetime. So
   every answer path of `program4` makes at most `Q` calls of `H` and `PRG`, for each `Th`.
 
-The transport keeps `HasLifetimeQueryBound` as its only premise. No support restriction and no
+The transport keeps `HasLifetimeQueryBoundAll` as its only premise. No support restriction and no
 probability enters it.
 
 ## The argument for `HiddenKeyOverlapBound` on paper
@@ -274,9 +275,9 @@ theorem program4Budget_of_real (Q n : ℕ)
 
 variable (circuitsOf : (HashInput → HashOutput) → Circuits)
 
-/-- `HasLifetimeQueryBound` bounds every answer path of `program4` by `Q`, for each `Th`. This is
+/-- `HasLifetimeQueryBoundAll` bounds every answer path of `program4` by `Q`, for each `Th`. This is
 the program that `leftImpl` interprets in `HiddenKeyOverlapBound`. -/
-theorem program4Budget (Q : ℕ) (hQ : HasLifetimeQueryBound K settings attempts circuitsOf D A Q)
+theorem program4Budget (Q : ℕ) (hQ : HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q)
     (n : ℕ) (values : MpcDomain → HashOutput) :
     IsQueryBoundP (program4 D K (circuitsOf (thOf values)) settings attempts A n) Counted4 Q :=
   program4Budget_of_real K (circuitsOf (thOf values)) settings attempts D A Q n (hQ values)

@@ -607,12 +607,6 @@ theorem lifetimeGame_roles_congr (K : Constants C E) (circuits : Circuits) (sett
 
 end Game
 
-/-- The complete lifetime security inequality, with its prescribed reductions and budgets. -/
-def LifetimeAssemblyGoal [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
-    (K : Constants C E) (settings : Settings) (attempts : ℕ)
-    (aes : Aes) (circuitsOf : (HashInput → HashOutput) → Circuits) : Prop :=
-  LifetimeSecurityStatement K settings attempts aes circuitsOf
-
 end LifetimeProof
 end ThresholdLeanXmssSecurity
 
