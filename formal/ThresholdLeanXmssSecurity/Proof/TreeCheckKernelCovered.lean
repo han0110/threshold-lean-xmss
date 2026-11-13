@@ -13,8 +13,7 @@ noncomputable section
 namespace ThresholdLeanXmssSecurity.TreeCheckKernelCovered
 open TreeCheckWalkRecipe TreeCheckWalkCoupling TreeCheckKernelCoupling
 open TreeCheckSeenCovered
-open LifetimeKeygenHopProof (Programming)
-open LifetimeKeygenPrograms (qb0_bind' free_quiet)
+open ProgramQuiet (Programming qb0_bind' free_quiet)
 attribute [local instance] Classical.propDecidable
 set_option maxRecDepth 4000
 set_option linter.unusedSectionVars false

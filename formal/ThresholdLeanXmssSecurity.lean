@@ -26,10 +26,10 @@ import ThresholdLeanXmssSecurity.Proof.SigningHitProof
 `thresholdLeanXmss_security` gives `ThresholdLeanXmssSecurityStatement` (`ThresholdLeanXmss/Statement.lean`).
 It is the conjunction of eighteen component claims about the protocol of `ThresholdLeanXmss/Scheme.lean`,
 for every committee `n = 2t - 1`, every check field `E` with `2^192` elements, every `Th`, every circuit
-family and every setting. Each claim covers one protocol or one gadget alone. `LifetimeSecurityStatement`
-is a separate `Prop`. It composes the real keygen, the real ceremonies with retries and the signing
-service, and it is not part of the conjunction. The module doc of `Statement.lean` holds the full model
-and the deviations from the papers. The proofs follow GS20 for the DKG and PRAWNS for the signing, and
+family and every setting. Each claim covers one protocol or one gadget alone. No claim composes the
+keygen, the ceremonies and the signing. `statement.tex` holds the deployment contract and the argument
+of that composition. The module doc of `Statement.lean` holds the full model and the deviations from
+the papers. The proofs follow GS20 for the DKG and PRAWNS for the signing, and
 they reuse leanVM `formal/lean_xmss` for the hash layer.
 
 ## Units and budgets
@@ -39,8 +39,8 @@ they reuse leanVM `formal/lean_xmss` for the hash layer.
 * The other hash terms are birthday bounds over `2^256` outputs, for example
   `keygenHashError C q = (q + keygenSecrets C)^2 / 2^256`. `streamKeyError C` is the birthday bound
   `k^2 / 2^129` of the 128-bit AES keys of the `k` PRSS keys.
-* The signing budget `q` (`HasSigningQueryBound`) and the lifetime budget `Q`
-  (`HasLifetimeQueryBound`) count every call of `H` and `PRG` by every party, cache hits included.
+* The signing budget `q` (`HasSigningQueryBound`) counts every call of `H` and `PRG` by every party,
+  cache hits included.
 * The simulation claims and `TprfSecurityStatement` count only the calls of the adversary and of the
   distinguisher (`IsQueryBounded`). No budget is a time bound.
 
@@ -48,7 +48,7 @@ they reuse leanVM `formal/lean_xmss` for the hash layer.
 
 * `H` is one lazy random oracle on `Query`. Its constructors are disjoint domains, so
   domain-separated hashing is the assumption.
-* In the keygen, ceremony and lifetime claims, `Th` is one fixed function on the inputs that the MPC
+* In the keygen and ceremony claims, `Th` is one fixed function on the inputs that the MPC
   evaluates, the chain steps and the commitment `c_e`. `CircuitsCompute` states that the circuits
   compute this `Th`. In the signing claim, all of `H` is a random oracle. The difference between the
   two models is the random-oracle heuristic for Keccak.
@@ -58,8 +58,6 @@ they reuse leanVM `formal/lean_xmss` for the hash layer.
   corruption gives only the keys, because an operator erases its ceremony state.
 * Honest operators sign at most one message for each key (`breaksOneMessagePerKey`). The map `bound`
   of `tsigOracles` enforces it in the game.
-* The lifetime coalition is static. One ceremony runs at a time, and no bottom ceremony runs after
-  the first signing request on its tree.
 
 ## Keygen
 
@@ -139,39 +137,15 @@ chain ends, the bottom trees, `c_e`, `ρ_e` before round 2 and the parts below t
 6. Sum. Two units for each call give `signingHashError q`. The calls of `KeyGen` count in `q` and pay
    the lower-order terms.
 
-## Lifetime
-
-`LifetimeSecurityStatement` assumes `CircuitsCompute` and `0 < batchSize`. Its bound is
-`keygenHashError` at `(setupRounds + 2) Q`, a run error for each run of each tree at `q₀ + q`, the PRF
-advantage of each `lifetimeRunReduction`, `2^layerHeight * searchFailure`, and the explicit term
-`lifetimeForgerAdvantage`. That term is the advantage of the fixed forger `lifetimeForger` in
-`tsigGame` in `lifetimeWorld`. No claim bounds it, because `SigningSecurityStatement` holds in
-`signingWorld`.
-
-1. `LifetimeO3Bridge` moves the hops to the fixed `prims`. `restrictTh` gives the same worlds, and
-   `fixedShape_const` and `hasLifetimeQueryBound_const` give the budget.
-2. The keygen hop (`LifetimeKeygenHop`, by `lifetimeKeygenHop_of_programs`) replaces the real keygen
-   with the dealer and pays `keygenHashError`.
-3. The chronological PRF pass (`LifetimeHybridOrder`, `LifetimeAllowance`) pays one PRF advantage for
-   each run. `real_transport` and `ideal_transport` bound its two sides, and
-   `LifetimeRealBadSum.lifetimePrfTransportSmallSplit` gives `LifetimePrfTransportSmallSplit`.
-4. The slot pass (`LifetimeSlots`) lists the top slots before the bottom slots. Each slot hop is
-   `SlotTransport` (`streamKeyError`), `SlotEmulationHit` (`seedHitError`) and
-   `JointSimulationHopFrom` (`treeCheckError + treeHashError - keySplit`). `joint_fixed_bound` gives
-   the joint hop at the fixed `Th`.
-5. `LifetimeForgerExplicit` (`LifetimeForgerReplay`) bounds the world with every slot ideal by
-   `2^layerHeight * searchFailure + lifetimeForgerAdvantage`. `lifetimeForgerExplicit_of_hops` gives
-   it from `FinalPrecompute`, `PrecomputeSearch` and `PrecomputeReplay` on the one world
-   `precomputeGame`.
-
 ## Modules
 
 The statement layer is `ThresholdLeanXmss/`. The proofs are in `ThresholdLeanXmssSecurity/Proof/`.
 
 * `Scheme`, `Ideal`, `Reductions` and `Statement` hold the protocol and the world, the
   functionalities and the games, the simulators and the reductions, and the claims.
-* `Lemmas`, `Execution` and `Coupling` hold the paper lemmas named after their source, the
-  execution model and the round-by-round coupling.
+* `Lemmas`, `Execution`, `Coupling` and `ProgramQuiet` hold the paper lemmas named after their
+  source, the execution model, the round-by-round coupling and the computations with no programming
+  query.
 * `Keygen*` holds keygen completeness and the keygen simulation.
 * `Gadgets`, `Check*` and `Main*` hold the gadgets, the check and the batch.
 * `Tree`, `TreeSecurity`, `TreeKey*` and `Dealer` hold the ceremony completeness, the key hop, the
@@ -187,7 +161,8 @@ The statement layer is `ThresholdLeanXmss/`. The proofs are in `ThresholdLeanXms
 * `SigningLaneUnion`, `SigningLaneFinal`, `SigningReleased*`, `SigningSignedSeparation`,
   `SigningLane2*`, `SigningLaneInputLogged`, `SigningLaneHybrid*` and `SigningCompiler*` hold the
   uncharged lane and its shared cap.
-* `Lifetime*` holds the lifetime hops, the slots and the fixed-`Th` bridge. -/
+* `Lifetime*` holds the forms of the simulation hop that start from a given cache. The salt route of
+  the simulation hop uses them. -/
 
 namespace ThresholdLeanXmssSecurity
 

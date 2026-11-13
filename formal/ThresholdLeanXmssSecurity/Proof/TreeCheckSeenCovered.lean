@@ -1,5 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.TreeCheckWalkRecipe
-import ThresholdLeanXmssSecurity.Proof.LifetimeKeygenPrograms
+import ThresholdLeanXmssSecurity.Proof.ProgramQuiet
 
 /-!
 Cache entries on any non-stream-key domain have a counted or free log answer.
@@ -134,8 +134,7 @@ theorem free_covered (D : C.Coalition)
       exact covered.mono (List.prefix_append _ _)
     · exact ordinary _ (by simp only [streamWorld, if_neg hh]) r hr
 
-open LifetimeKeygenHopProof (Programming)
-open LifetimeKeygenPrograms (qb0_bind' free_quiet counted_quiet)
+open ProgramQuiet (Programming qb0_bind' free_quiet counted_quiet)
 
 include exclude in
 /-- Programming must be absent: its cache writes have no hash-answer log entry. -/
