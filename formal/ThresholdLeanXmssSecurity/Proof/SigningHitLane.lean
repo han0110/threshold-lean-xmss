@@ -4,7 +4,8 @@ import XmssSecurity.Scan.Frame
 /-!
 # The hit lane of the signing core
 
-`HitLaneBound` of `Proof/SigningCost.lean` (step 5 of the signing plan of `formal/PROOF.md`).
+`HitLaneBound` of `Proof/SigningCost.lean` (step 5 of the signing plan in
+the module docstring of `ThresholdLeanXmssSecurity.lean`).
 
 The component lemmas.
 

@@ -6,8 +6,9 @@ import XmssSecurity.Proof.Bridge.Translate
 /-!
 # The descent of the signing core
 
-Step 4 of the signing plan of `formal/PROOF.md` on the final cache, with no probability. A verified
-fresh forgery forces a bad event, by the descent of leanVM over two layers.
+Step 4 of the signing plan in the module docstring of `ThresholdLeanXmssSecurity.lean`, on the final
+cache, with no probability. A verified fresh forgery forces a bad event, by the descent of leanVM
+over two layers.
 
 The bad events use the cache of `Th` inside the cache of `H` (`thView`) and the honest data of the
 key of the forgery (`HonestKey`).

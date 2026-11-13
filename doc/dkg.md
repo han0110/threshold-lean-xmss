@@ -818,7 +818,7 @@ A bottom tree is $2^{16} \cdot 58$ chains, 29,696 chain batches. Signing takes 2
 
 The key generation targets the property of [GS20, Thm. 2](https://eprint.iacr.org/2020/134). It securely computes the trusted dealer of $\mathsf{KeyGen}$ [BBDLN26](https://eprint.iacr.org/2026/2142) with abort, against a malicious adversary that statically corrupts up to $t - 1$ of the $n = 2t - 1$ operators. No complete proof exists.
 
-The claims cover only $n = 2t - 1$ and a classical adversary. [`formal/PROOF.md`](../formal/PROOF.md#model) gives the full model.
+The claims cover only $n = 2t - 1$ and a classical adversary. The "Model" section of [`formal/ThresholdLeanXmss/Statement.lean`](../formal/ThresholdLeanXmss/Statement.lean) gives the full model.
 
 The proof follows the steps of [GS20](https://eprint.iacr.org/2020/134).
 

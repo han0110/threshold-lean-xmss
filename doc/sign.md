@@ -197,7 +197,7 @@ Each honest operator signs at most one message, but two quorums can have differe
 
 ### 4.2 The formal claim
 
-The formal claim models $\mathrm{Th}$ as a random oracle and states the bound $q / 2^{127}$ plus the terms of a call on a hidden key or seed. The budget $q$ counts the calls of every party, not only of the adversary. A forgery wins if it differs from the canonical honest signature at its key. [`formal/PROOF.md`](../formal/PROOF.md#model) gives the full model.
+The formal claim models $\mathrm{Th}$ as a random oracle and states the bound $q / 2^{127}$ plus the terms of a call on a hidden key or seed. The budget $q$ counts the calls of every party, not only of the adversary. A forgery wins if it differs from the canonical honest signature at its key. The "Model" section of [`formal/ThresholdLeanXmss/Statement.lean`](../formal/ThresholdLeanXmss/Statement.lean) gives the full model.
 
 ## References
 
