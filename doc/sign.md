@@ -119,9 +119,24 @@ With the parts above, $`y_0 \oplus y_1 = H(\mathrm{seed}_0 \Vert x) \oplus H(\ma
 
 ## 3. Protocol
 
-The quorum $J$ signs $m$ at key $e$ in 2 rounds. Each signer runs the same steps, and each signer aborts alone.
+The quorum $J$ signs $m$ at key $e$ in 2 rounds, after all operators agree on $(e, m)$. The note [Wam26, Section 2.3] assumes this agreement by consensus, and it does not count it as a round. Section 3.1 gives the form of the agreement that the code has. Rounds 1 and 2 run in $J$. Each signer runs the same steps, and each signer aborts alone.
 
-### 3.1 Round 1, the randomizer value
+### 3.1 The agreement on the message
+
+Let $f = t - 1$ and $Q = \lfloor (n + f)/2 \rfloor + 1$, the least integer above $(n + f)/2$. For $n = 3$, $Q = 3$.
+
+1. $P_i$ acknowledges one message for each key. It saves $(e, m)$ to disk with an exclusive create before it sends anything. If it saved another message at $e$, it refuses.
+2. $P_i$ sends its acknowledgement of $(e, m)$ to each other operator. The acknowledgement is $e$ as 4 little-endian bytes and then $m$. A refusing operator sends an empty acknowledgement.
+3. $P_i$ saves a certificate of $(e, m)$ when $Q$ different operators, $P_i$ included, acknowledge exactly $(e, m)$.
+4. A signer aborts round 1 unless it holds a certificate of $(e, m)$.
+
+Two sets of $Q$ operators share at least $2Q - n > f$ operators, so they share an honest operator. So no two honest signers hold certificates of two messages at one key. A second request for the same $(e, m)$ uses the saved acknowledgement and certificate again.
+
+The note [Wam26, Section 2.3] has this step as "agree, by consensus, on (slot, m)". It names no protocol for it and does not count it as a round. The exchange of acknowledgements is one way to do that step with no other consensus layer. A deployment that has a consensus layer for the message can use it in place of the exchange.
+
+The exchange is not in [BBDLN26](https://eprint.iacr.org/2026/2142) or in the leanSPHINCS prototype. Its count follows the condition $t > (n + f)/2$ of [BBDLN26, Sec. 1](https://eprint.iacr.org/2026/2142), applied to the acknowledgements in place of the signature threshold.
+
+### 3.2 Round 1, the randomizer value
 
 1. $P_i$ computes $`y_i = \mathsf{Eval}_i(A_{\mathrm{rnd}}(e), m, J)`$ and sends it to each other signer.
 2. $P_i$ computes $`\rho_e = \mathsf{Combine}(\{y_j\}_{j \in J})`$, which is $F(A_{\mathrm{rnd}}(e))$.
@@ -130,7 +145,7 @@ The quorum $J$ signs $m$ at key $e$ in 2 rounds. Each signer runs the same steps
 \mathrm{Th}\big( P,\ A_{\mathrm{rnd}}(e, 1),\ \rho_e \,\Vert\, 0 \big) = c_e
 ```
 
-### 3.2 Grinding, with no message
+### 3.3 Grinding, with no message
 
 4. $P_i$ computes the start of the search.
 ```math
@@ -144,7 +159,7 @@ d = \mathrm{Th}\big( P,\ A_{\mathrm{msg}}(e),\ m \,\Vert\, R \big)
 
 All signers find the same $R$, because the search is a function of $\rho_e$ and $m$.
 
-### 3.3 Round 2, the chain values
+### 3.4 Round 2, the chain values
 
 7. For each chain $l$ with $p_l < 3$, $P_i$ computes $`y_{i,l} = \mathsf{Eval}_i(x_{l,p_l}, m, J)`$. It sends all $y_{i,l}$ to each other signer.
 8. $P_i$ computes $`F(x_{l,p_l}) = \mathsf{Combine}(\{y_{j,l}\}_{j \in J})`$ and the chain value $\sigma_l$.
@@ -156,19 +171,20 @@ All signers find the same $R$, because the search is a function of $\rho_e$ and 
 f_{l,2} \circ \dots \circ f_{l,p_l}(\sigma_l) = \mathrm{cpk}_e[l, 3] \quad \text{for each } l
 ```
 
-### 3.4 Output
+### 3.5 Output
 
 10. The bottom layer signature is $(R, \sigma_0, \dots, \sigma_{57})$ with the Merkle path of key $e$.
 11. The signature is $e$, the bottom layer signature and the stored top layer signature. It is a plain leanXMSS signature of 2,404 bytes.
 
-### 3.5 Cost
+### 3.6 Cost
 
 Let $k$ be the number of chains with $p_l < 3$. Then $23 \le k \le 58$, and $k \approx 37$ on average.
 
-| round | each signer sends to each other signer | bits    |
-| ----- | -------------------------------------- | ------- |
-| 1     | $y_i$ at $A_{\mathrm{rnd}}(e)$         | $128$   |
-| 2     | $y_{i,l}$ for $k$ chains               | $128 k$ |
+| round     | each signer sends to each other signer      | bits    |
+| --------- | ------------------------------------------- | ------- |
+| agreement | $(e, m)$, also to the operators outside $J$ | $288$   |
+| 1         | $y_i$ at $A_{\mathrm{rnd}}(e)$              | $128$   |
+| 2         | $y_{i,l}$ for $k$ chains                    | $128 k$ |
 
 ## 4. Security
 
@@ -193,7 +209,7 @@ The signing claim covers adaptive corruptions [BBDLN26, Def. 3.2](https://eprint
 
 ### 4.1 Authorization
 
-Each honest operator signs at most one message, but two quorums can have different honest operators. For example, with $`D = \{0\}`$ in a 2-of-3 committee, the quorums $`\{0, 1\}`$ and $`\{0, 2\}`$ can sign two messages at one key. So the honest operators must agree on $(e, m)$ before any of them sends a part. The formal game models this agreement as the map `bound` of `tsigOracles`. The PoC does not enforce it.
+Each honest operator signs at most one message, but two quorums can have different honest operators. For example, with $`D = \{0\}`$ in a 2-of-3 committee, the quorums $`\{0, 1\}`$ and $`\{0, 2\}`$ can sign two messages at one key. So the honest operators must agree on $(e, m)$ before any of them sends a part. The note assumes this agreement by consensus [Wam26, Section 2.3]. The formal game models it as the map `bound` of `tsigOracles`. The code does it with the exchange of acknowledgements of 3.1. The exchange gives no liveness. It waits for an answer from each operator. A refusing operator sends an empty acknowledgement, so the exchange tolerates $n - Q$ refusals. One silent operator stops it.
 
 ### 4.2 The formal claim
 
