@@ -82,8 +82,15 @@ theorem not_inputSide_msgCall (P : PublicParameter) (t : (WorldSpec C).Domain)
       not_false_eq_true]
   · simp [InputSide, worldCandidate]
 
+/-- The calls that the signing world counts, namely each call of `H` and of `PRG` and each
+programming query, on both copies. -/
+def SigningCounted : (WorldSpec C).Domain → Prop
+  | .inl (.inl (.inl _)) => False
+  | .inr (.inl _) => False
+  | _ => True
+
 theorem inputSide_counted (P : PublicParameter) (t : (WorldSpec C).Domain)
-    (h : InputSide P t) : LifetimeCounted t := by
+    (h : InputSide P t) : SigningCounted t := by
   rcases t with ((n | q | y) | p) | (n | q | y)
   all_goals trivial
 

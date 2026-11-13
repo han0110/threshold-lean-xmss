@@ -28,11 +28,9 @@ the claims.
 | `TprfSecurityStatement` | The threshold PRF is adaptively secure. | PRAWNS, Definition 2.2 and Theorem 5.1 |
 | `SigningCorrectnessStatement` | An honest quorum fails with probability at most `2 (1 - p)^L`, and its signature verifies. | PRAWNS, Section 3.1, honest run |
 | `SigningSecurityStatement` | The signing is strongly unforgeable with adaptive corruption in the random-oracle model, up to `q / 2^127` and the hidden keys. | PRAWNS, Definition 3.2, in the random-oracle model |
-| `LifetimeSecurityStatement` | Against a static coalition, the real keygen, the real ceremonies with retries and the signing service give a forgery only with the probability of the bound, which holds the advantage of the fixed forger `lifetimeForger`. | the composition of the claims above, with PRAWNS, Definition 3.2 |
 
-The first 18 claims are component claims. Each claim covers one protocol or one gadget alone.
-`LifetimeSecurityStatement` states the security of the real keygen, the real ceremonies and the
-signing service together.
+Each claim covers one protocol or one gadget alone. No claim composes the keygen, the ceremonies
+and the signing. `statement.tex` holds the deployment contract and the argument of that composition.
 
 GS20 states no completeness lemma. Security with abort alone allows a protocol that always aborts,
 so each completeness claim is the honest run of the protocol of its row.
@@ -69,7 +67,7 @@ them.
   models is the random-oracle heuristic for Keccak.
 * The signing budget `q` counts every call of `H` and `PRG` by every party, the key generation, the
   signers, the forger and the verification included, and cache hits included
-  (`HasSigningQueryBound`). The lifetime budget `Q` counts in the same way. The simulation claims
+  (`HasSigningQueryBound`). The simulation claims
   and `TprfSecurityStatement` count only the calls of the adversary and of the distinguisher.
 * `F_tree` runs the circuits of the ceremony, so the ceremony claims hold for every circuit family.
   `DealerTreeStatement` and `TreeSuccessStatement` assume that the circuits compute `Th`
@@ -110,33 +108,7 @@ them.
 * Honest operators sign at most one message at each key over all quorums
   (`breaksOneMessagePerKey`). The signing game enforces it, the PoC does not, and production must.
 * The keygen and ceremony claims cover their static coalitions, and the signing claim covers
-  adaptive corruptions. `LifetimeSecurityStatement` states their composition for one static
-  coalition of at most `t - 1` operators that is corrupt from the start. It is weaker than an
-  adaptive lifetime claim, which these claims do not give.
-* In the lifetime claim, the keygen runs once. If an honest operator has no keys, the lifetime
-  ends. The adversary gets the public parameter after the keygen. It gets the public key and the
-  top tree of the first honest operator `h` once `h` holds its top tree. If an honest operator has
-  no top tree at the end, the adversary loses.
-* The adversary runs one ceremony at a time and chooses each tree and the start of each run. Each
-  tree has at most `attempts` runs. A retry runs on the same keys with a fresh PRSS setup. A bottom
-  ceremony runs only when every honest operator has the top tree. It does not run after the first
-  signing request on its tree.
-* Signing requests can come between the rounds of a ceremony. A request on the tree of the running
-  ceremony is refused. An honest operator answers a signing request on a bottom tree, round 1
-  included, only when it holds its own ceremony output of that tree. It signs at most one message
-  for each key (`breaksOneMessagePerKey`).
-* The lifetime claim takes the fixed `Th` of `prims` on the inputs that the MPC evaluates, and the
-  fixed `circuits` compute it (`CircuitsCompute`), as in the ceremony claims.
-* The budget `Q` counts every call of `H` and `PRG` by every party, as in the signing claim. It
-  holds on every path of the lifetime game, for every answer of the oracles, and not only on the
-  runs of the real lifetime. Unlike `IsQueryBounded`, it does not bound an adversary state that no
-  answer reaches.
-* In the lifetime bound, the keygen term takes `(setupRounds + 2) Q`. Each ceremony run takes
-  `(fuel + 2) Q` for its own rounds and `Q + lifetimeOverhead` for the cache of the phases before
-  it. The last term is the advantage of `lifetimeForger` in the signing game, in the world of the
-  lifetime claim. It has no budget, and `SigningSecurityStatement` does not bound it.
-* The use of the lifetime claim for Keccak is the random-oracle heuristic for `Th`. The heuristic is
-  not a term of the bound.
+  adaptive corruptions. No claim covers a corruption between two ceremonies.
 
 ## Deviations from the papers
 
@@ -236,26 +208,6 @@ def HasSigningQueryBound {α : Type} (oa : OracleComp (WorldSpec C) α) (q : ℕ
 /-- The probability that a computation outputs `true` in the signing world. -/
 def signingAccepts (oa : OracleComp (WorldSpec C) Bool) : ℝ :=
   (Pr[fun r => r.1 = true | runSigningWorld prims oa]).toReal
-
-/-- The calls that the lifetime counts, namely each call of `H` and of `PRG` and each programming
-query, on both copies. Private sampling is free. -/
-def LifetimeCounted : (WorldSpec C).Domain → Prop
-  | .inl (.inl (.inl _)) => False
-  | .inr (.inl _) => False
-  | _ => True
-
-/-- The world of the lifetime claim. `H` answers the inputs that the MPC evaluates with `Th`, and
-every other input as a lazy random oracle. Each call in `LifetimeCounted` costs one query, so the
-calls of every party count, as in `signingWorld`. -/
-def lifetimeWorld : QueryImpl (WorldSpec C) (AddWriterT ℕ (StateT (HashCache C) ProbComp)) :=
-  QueryImpl.withAddCost (localAnswer (C := C) prims + programAnswer (C := C) + localAnswer (C := C) prims :
-      QueryImpl (WorldSpec C) (StateT (HashCache C) ProbComp))
-    fun t => if LifetimeCounted t then 1 else 0
-
-/-- Run a game in the lifetime world from an empty cache, with its number of calls of `H` and
-`PRG`. `Th` is the fixed function of `prims`. -/
-def lifetimeRun (game : OracleComp (WorldSpec C) Bool) : ProbComp (Bool × ℕ) :=
-  (simulateQ (lifetimeWorld prims) game).run.run' ∅
 
 end World
 
@@ -539,32 +491,6 @@ def codewordProbability : ℝ :=
 /-- The probability `(1 - p)^L` that a randomizer search of `L` trials fails. -/
 def searchFailure : ℝ := (1 - codewordProbability) ^ randomizerAttemptLimit
 
-/-- An upper bound on the calls of `H` that `referenceTree` makes for one tree, with `termCount C`
-calls for each PRF value. The terms pay the chain rows, the commitments, the Merkle tree, at most `L`
-randomizer trials, the top signature and its check. -/
-def bottomTreeCalls (C : Committee) : ℕ :=
-  let terms := termCount C
-  2 ^ layerHeight * numChains * (3 * terms + 6) + 2 ^ layerHeight * (terms + 1) + numChains * (terms + 6) +
-    terms + 2 ^ (layerHeight + 2) + randomizerAttemptLimit
-
-/-- The ceremony runs of a lifetime, at most `attempts` for the top tree and for each bottom tree. -/
-def lifetimeRuns (attempts : ℕ) : ℕ := attempts * (2 ^ layerHeight + 1)
-
-/-- The calls that a reduction adds to the `Q` calls of a lifetime. A reduction pays at most
-`bottomTreeCalls` for each tree that it computes in the clear.
-
-* The signing oracles build a bottom tree once. The oracle requests of the lifetime reduction build
-  only trees with a ceremony run. Each such tree costs at least one call of `Q`, so at most
-  `min Q (2^h)` trees are built.
-* `lifetimeRuns` pays one tree for each run. The signing reduction takes the trees of `F_tree` from
-  the signing game and pays the top tree of `KeyGen` from this term. A ceremony hop pays its runs of
-  `F_tree` from it. With no run, no top tree exists and the adversary cannot win.
-* At each of the `n` operators, the emulated `treeSimulator` of each run evaluates the openings.
-* `keygenSimulator` programs `H`. -/
-def lifetimeOverhead (C : Committee) (attempts Q : ℕ) : ℕ :=
-  (min Q (2 ^ layerHeight) + lifetimeRuns attempts) * bottomTreeCalls C +
-    lifetimeRuns attempts * C.n * bottomTreeCalls C + keygenOverhead C
-
 /-- The circuits compute the jobs of leanXMSS, namely chain steps and the commitment, with the fixed
 function `Th`, on every job with the number of points that its kind takes. -/
 def CircuitsCompute (Th : HashInput → HashOutput) : Prop :=
@@ -760,69 +686,6 @@ random-oracle model.
 def SigningSecurityStatement (C : Committee) : Prop :=
   ∀ (A : TsigAdversary C) (q : ℕ), HasSigningQueryBound prims (tsigGame A) q →
     tsigAdvantage prims A ≤ signingHashError q + seedHitError C q + seedCollisionError C
-
-section Lifetime
-
-variable (attempts : ℕ)
-
-/-- Every lifetime makes at most `Q` calls of `H` and `PRG`, by every party, cache hits included. The
-bound holds for every answer of the oracles (BR93, `IsQueryBoundP` of VCVio), so also on runs that
-the real lifetime never reaches. It bounds the paths of the lifetime game. Unlike `IsQueryBounded`,
-it does not bound an adversary state that no answer reaches. -/
-def HasLifetimeQueryBound (D : C.Coalition) (A : LifetimeAdversary C E) (Q : ℕ) : Prop :=
-  IsQueryBoundP (lifetimeGame K circuits settings attempts D A) LifetimeCounted Q
-
-/-- The probability that the lifetime adversary forges. -/
-def lifetimeAdvantage (D : C.Coalition) (A : LifetimeAdversary C E) : ℝ :=
-  (Pr[fun r => r.1 = true | lifetimeRun prims (lifetimeGame K circuits settings attempts D A)]).toReal
-
-/-- The probability that `lifetimeForger` wins the existing signing game `G^tsig` (`tsigGame`) in the
-lifetime world `lifetimeWorld`, not in `signingWorld`. In this world `H` answers the inputs that the
-MPC evaluates (`MpcInput`) with the fixed `Th`, and every other input as a lazy random oracle.
-
-`SigningSecurityStatement` does not bound this term, because that claim is for `signingWorld`, where
-all of `H` is a random oracle, and `lifetimeForger` uses the circuits of the fixed `Th`. -/
-def lifetimeForgerAdvantage (D : C.Coalition) (A : LifetimeAdversary C E) : ℝ :=
-  (Pr[fun r => r.1 = true | lifetimeRun prims (tsigGame (lifetimeForger K circuits settings attempts D A))]).toReal
-
-/-- The signing is strongly unforgeable over the lifetime of the key, against a static coalition of
-at most `t - 1` operators, up to the advantage of one fixed forger.
-
-* The keygen runs once on the real network. The adversary gets the public parameter. It gets the
-  public key and the top tree of the first honest operator once that operator holds them. It runs
-  each ceremony at most `attempts` times, one at a time, and sends signing requests between the
-  rounds. No ceremony of a bottom tree runs after the first signing request on it. An honest
-  operator answers a signing request only with its own ceremony output of the tree, and it signs at
-  most one message for each key.
-* `Th` is the fixed function of `prims` on the inputs that the MPC evaluates, and the fixed
-  `circuits` compute it, as in the ceremony claims. Every other input of `H` is a random oracle.
-* `Q` bounds the calls of `H` and `PRG` by every party, on every path of the lifetime game.
-* The keygen term and each ceremony term take the budget `(fuel + 2) Q` with the fuel of the phase.
-  One step of the phase adversary holds all that the lifetime adversary does between two rounds.
-* `keygenHashError` pays the keygen. Each run of each ceremony pays its check, its birthday bound
-  and its stream keys, after the `q₀ = Q + lifetimeOverhead` calls of the earlier phases.
-* Each run also pays `seedHitError` for a call on a hidden key of an honest term or pair. The
-  emulated signing keeps the masks of the honest pairs in its own table.
-* Each run pays the PRF advantage of its own reduction. Each bottom tree pays one failed search,
-  because each retry gives the same search.
-* The last term is `lifetimeForgerAdvantage`, the advantage of the fixed forger `lifetimeForger`
-  in the signing game. The claim does not bound it, and `SigningSecurityStatement` does not bound it. -/
-def LifetimeSecurityStatement : Prop :=
-  CircuitsCompute circuits prims.Th → 0 < settings.batchSize →
-    ∀ (D : C.Coalition) (A : LifetimeAdversary C E) (Q : ℕ),
-      HasLifetimeQueryBound K circuits settings attempts D A Q →
-      let q₀ := Q + lifetimeOverhead C attempts Q
-      let q := (ceremonyFuel circuits settings + 2) * Q
-      let runError := fun tree => (attempts : ℝ) * (treeCheckError (E := E) circuits settings tree (q₀ + q) +
-        treeHashError circuits settings C tree (q₀ + q) + streamKeyError C + seedHitError C (q₀ + q))
-      lifetimeAdvantage prims K circuits settings attempts D A ≤
-        keygenHashError C ((setupRounds + 2) * Q) +
-          (runError .top + ∑ b : Fin (2 ^ layerHeight), runError (.bottom b)) +
-          ∑ n : Fin (lifetimeRuns attempts),
-            PRFScheme.prfAdvantage (hiddenStreams prims.aes) (lifetimeRunReduction K circuits settings attempts prims D A n) +
-          2 ^ layerHeight * searchFailure + lifetimeForgerAdvantage prims K circuits settings attempts D A
-
-end Lifetime
 
 /-- The security claim, for every committee, every check field of characteristic `2` with its
 constants, every `Th` and AES-128, every circuit family, and every setting. -/

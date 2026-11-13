@@ -214,7 +214,7 @@ theorem run_quiet (limit : ℕ) (p : OracleComp (WorldSpec C) α)
 theorem counted_zero (p : OracleComp (LocalSpec C) α) :
     IsQueryBoundP (worldRoles.adversary p) FreeCheckQuery 0 := by
   change IsQueryBoundP (counted (liftComp p _)) FreeCheckQuery 0
-  apply LifetimeKeygenPrograms.qb0_simulateQ
+  apply ProgramQuiet.qb0_simulateQ
   intro t
   apply (isQueryBoundP_query_iff _ _ _).2
   simp [FreeCheckQuery]
@@ -297,8 +297,8 @@ theorem round_quiet (state : A.State) (steps : C.Party → Step C E RealSpec α)
     (hsteps : ∀ i, StepBudget CheckQuery (steps i) 0) :
     IsQueryBoundP (stepRound worldRoles D A noFunctionality state steps) FreeCheckQuery 0 := by
   rw [stepRound_real]
-  refine LifetimeKeygenPrograms.qb0_bind' (counted_zero _) fun reply => ?_
-  refine LifetimeKeygenPrograms.qb0_bind' (free_zero _ ?_) fun _ => isQueryBoundP_pure _ _ _
+  refine ProgramQuiet.qb0_bind' (counted_zero _) fun reply => ?_
+  refine ProgramQuiet.qb0_bind' (free_zero _ ?_) fun _ => isQueryBoundP_pure _ _ _
   apply isQueryBoundP_sequenceFin
   intro i
   unfold roundLocal
