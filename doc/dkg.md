@@ -855,6 +855,8 @@ Each claim covers the static coalition of one ceremony, corrupted before it. At 
 
 The claims cover ceremonies that run one at a time. A ceremony that runs during another ceremony or during a signing session is outside the claims. Production stays inside the claims if it builds each bottom tree with no other ceremony and no open signing session.
 
+The claims cover a ceremony that runs its batches one after another. The implementation runs several batches of one ceremony at the same time, to limit the memory and to use the waits of the network. No claim covers these concurrent batches. The claims have a distinguisher that sees the final output, and such claims compose in sequence only. The result of [KLR10](https://dblp.uni-trier.de/rec/journals/siamcomp/KushilevitzLR10.html) gives concurrent composition for perfect security with a straight-line simulator. The check has a statistical error and the PRG is computational, so that result does not apply.
+
 At the end of each ceremony, also on abort, an operator must erase its private ceremony state. It keeps only $P$, $`\mathrm{seed}_T`$, $K_{ij}$ and the public outputs. So a later corruption gives only the keys, as [`sign.md`](sign.md#4-security) assumes.
 
 ## References
