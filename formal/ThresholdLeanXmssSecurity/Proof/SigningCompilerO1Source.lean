@@ -52,7 +52,8 @@ def sourceTsigO1X (prims : Primitives) (x : Keys3 C) (top : TopTree) :
         modify fun (s : SourceStateO1 C) => { s with base := { s.base with signing := new } }
         let _ ← (crossedKeys st new).mapM (sourceReleaseKeyX x.1 x.2.1)
         pure (some (dealtKeys x.1 x.2.1 x.2.2 i))
-  | .tree b => liftBaseX (sourceTsigX prims x top (.tree b))
+  | .tree b =>
+      (Option.map fun r => (patchTree b r.1, r.2)) <$> liftBaseX (sourceTsigX prims x top (.tree b))
   | .round1 i J e message => liftBaseX (sourceTsigX prims x top (.round1 i J e message))
   | .round2 i J e message parts => do
       let st := (← get).base.signing
@@ -211,6 +212,7 @@ theorem mapXO1_simulateQ (seeds : C.Term → HashOutput) {ι α : Type} {spec : 
 @[simp] theorem mapXO1_sourceTsig (prims : Primitives) (x : Keys3 C) (top : TopTree)
     (q : (TsigSpec C).Domain) : mapXO1 x.2.1 (sourceTsigO1X prims x top q) = sourceTsigO1 prims x top q := by
   cases q <;> simp [sourceTsigO1X, sourceTsigO1, signRound2With]
+  case tree b => rw [mapX_sourceTsig]
   case round2 i J e message parts =>
     congr 1
     funext st
