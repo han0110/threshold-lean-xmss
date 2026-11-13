@@ -329,8 +329,7 @@ lifetime where the keygen is `F_keygen` and each ceremony is `F_tree`.
   pair key. The output of `.tree b` is enough to rebuild the openings for `treeSimulator`.
 * It outputs the forgery of `A`.
 
-It uses `circuits` in each emulated ceremony, and `circuits` compute the fixed `Th`. It makes at most
-`q₀ = Q + lifetimeOverhead C attempts Q` calls of `H` and `PRG` when `A` makes at most `Q`.
+It uses `circuits` in each emulated ceremony, and `circuits` compute the fixed `Th`.
 `SigningSecurityStatement` does not bound the advantage of this forger. That claim is for
 `signingWorld`, where all of `H` is a random oracle. -/
 def lifetimeForger (D : C.Coalition) (A : LifetimeAdversary C E) : TsigAdversary C := fun publicKey top =>
