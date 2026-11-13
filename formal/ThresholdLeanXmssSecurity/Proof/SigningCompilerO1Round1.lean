@@ -1,4 +1,6 @@
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Frame
+import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Part
+import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1SyncHandlers
 
 /-! # Round 1 of the O1 coupling
 
@@ -12,6 +14,8 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Frame
   the new bound message, unless the compiler stops. A key with no bound message has no revealed
   opening, so the base inputs at the new message are not visible. A stored tree has each of its
   commitment terms virtual, so the release runs at a key of a stored tree.
+- `step_round1` is the step contract of round 1, and `real_round1` and `comp_round1` split each
+  handler into the guard and its run.
 -/
 
 open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
@@ -361,6 +365,158 @@ theorem bind_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
     exact Or.inr ⟨hpost _ _ hcore1 hsig rfl rfl (fun _ _ => rfl) (fun _ hk h => absurd hk h)
       rfl rfl (fun ht => absurd (htreeReady ht) hready) hpads, hmark⟩
 
+/-- An honest run in the real world keeps the carried state. -/
+theorem realHonest_carried {α : Type} (oa : OracleComp (RoSpec C) α) (a : RealState C)
+    (r : α × RealState C) (hr : r ∈ support ((realHonest prims x s pads u rest oa).run a)) :
+    r.2.1.2 = a.1.2 := by
+  refine SeedHitProof.support_simulateQ_inv (realWorld prims x s pads u rest)
+    (fun st : RealState C => st.1.2 = a.1.2) (fun t st hst z hz => ?_) _ a rfl r hr
+  rw [← hst]
+  change z ∈ support ((_root_.ThresholdLeanXmssSecurity.fuse (rawTraceWorld prims x)
+    (realImpl x (gOf s pads u) rest) t).run st) at hz
+  simp only [_root_.ThresholdLeanXmssSecurity.fuse, StateT.run_mk, rawTraceWorld, rawKeyedSplitWorld,
+      rawCarriedLogged, simulateQ_map, simulateQ_bind, StateT.run_map, StateT.run_bind,
+      support_map, support_bind, Set.mem_image, Set.mem_iUnion] at hz
+  obtain ⟨_, ⟨_, ⟨_, ⟨_, -, rfl⟩, ⟨_, -, rfl⟩⟩, rfl⟩, rfl⟩ := hz
+  rfl
+
+/-- The real handler of round 1. A failed guard returns `none`. Else the part of the signer runs on
+the real state, and the carried state gets the new bound message. -/
+theorem real_round1 (top : TopTree) (i : C.Party) (J : C.Quorum) (e : KeyIndex) (message : Message)
+    (a : RealState C) :
+    (realOracles prims x s pads u rest top (.inr (.round1 i J e message))).run a =
+      if i ∈ (realSigning a).corrupt ∨ i ∉ J.1 ∨ breaksOneMessagePerKey (realSigning a) e message then
+        pure (none, a)
+      else (fun z => (some z.1, withCarried z.2
+          (({ realSigning a with bound := Function.update (realSigning a).bound e (some message) },
+            a.1.2.1.2), a.1.2.2))) <$>
+        (realHonest prims x s pads u rest
+          (eval (dealtKeys x.1 x.2.1 x.2.2 i) i J (.randomizer bottomLayer e) message)).run a := by
+  have ht : ∀ st : TsigState C, (tsigOracles (m := OracleComp (WorldSpec C))
+      (fun oa => SigningCoreProof.honestLift oa) (SigningJointEagerProof.dealtOf x top)
+        (.round1 i J e message)).run st =
+      (if i ∈ st.corrupt ∨ i ∉ J.1 ∨ breaksOneMessagePerKey st e message then pure (none, st) else
+        (fun v => (some v, { st with bound := Function.update st.bound e (some message) })) <$>
+          SigningSecurityProof.liftFree
+            (eval (dealtKeys x.1 x.2.1 x.2.2 i) i J (.randomizer bottomLayer e) message) :
+        OracleComp (WorldSpec C) (Option Digest × TsigState C)) := by
+    intro st
+    split_ifs with hg
+    · simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind]
+      rw [if_pos hg]
+      rfl
+    · simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind]
+      rw [if_neg hg]
+      simp only [StateT.run_bind, StateT.run_set, pure_bind, StateT.run_map, liftM, monadLift,
+        MonadLift.monadLift, StateT.run_lift, bind_pure_comp, Functor.map_map]
+      rfl
+  change (fun z => (z.1.1, (z.1.2, z.2))) <$> (simulateQ (realImpl x (gOf s pads u) rest)
+    ((rawTraceFlatWith prims x (openingOracles x (SigningJointEagerProof.dealtOf x top))
+      (.inr (.round1 i J e message))).run a.1)).run a.2 = _
+  simp only [rawTraceFlatWith, openingOracles, SigningCoreProof.flaggedOracles, StateT.run_mk, ht]
+  split_ifs
+  · rfl
+  · simp only [Functor.map_map, simulateQ_map, StateT.run_map]
+    have hfuse : ∀ {ι κ : Type} {spec : OracleSpec ι} {mid : OracleSpec κ} {σ₁ σ₂ α : Type}
+        (inner : QueryImpl spec (StateT σ₁ (OracleComp mid))) (outer : QueryImpl mid (StateT σ₂ ProbComp))
+        (oa : OracleComp spec α) (s : σ₁) (c : σ₂),
+        (simulateQ outer ((simulateQ inner oa).run s)).run c =
+          (fun w => ((w.1, w.2.1), w.2.2)) <$>
+            (simulateQ (SigningCompilerUntil.fuse inner outer) oa).run (s, c) := by
+      intro ι κ spec mid σ₁ σ₂ α inner outer oa s c
+      rw [← SigningCompilerUntil.simulateQ_fuse, Functor.map_map]
+      exact (id_map _).symm
+    rw [hfuse]
+    simp only [Functor.map_map]
+    erw [simulateQ_map, StateT.run_map, Functor.map_map]
+    rfl
+
+set_option backward.isDefEq.respectTransparency false in
+/-- The compiler handler of round 1 sets the mark and runs round 1 on the base source state. -/
+theorem comp_round1 (top : TopTree) (i : C.Party) (J : C.Quorum) (e : KeyIndex) (message : Message)
+    (b : SourceStateO1 C × CompState C) :
+    (compOracles prims x q s pads u rest noise top (.inr (.round1 i J e message))).run b =
+      (fun r => (r.1.1, (⟨r.1.2, b.1.starts⟩, r.2))) <$>
+        runX (compBackend x q s pads u rest noise) (sourceTsigX prims x top (.round1 i J e message))
+          b.1.base ((b.2.1.1, b.1.base.hiddenFlag), b.2.2) := by
+  change (fun z => (z.1.1, (z.1.2, z.2))) <$> runXO1 (compBackend x q s pads u rest noise)
+      (sourceOraclesO1X prims x top (.inr (.round1 i J e message))) b.1 b.2 = _
+  simp only [sourceOraclesO1X, sourceTsigO1X]
+  rw [SigningCompilerO1ChainRelease.runXO1_bind, SigningCompilerO1ChainRelease.runXO1_get, pure_bind,
+    SigningCompilerO1ChainRelease.runXO1_bind, SigningCompilerO1SyncHandlers.runXO1_mark, pure_bind,
+    SigningCompilerO1ChainRelease.runXO1_bind, runXO1_liftBaseX, bind_map_left]
+  simp only [SigningCompilerO1ChainRelease.runXO1_bind, SigningCompilerO1ChainRelease.runXO1_modify,
+    SigningCompilerO1ChainRelease.runXO1_pure, pure_bind, map_bind, map_pure]
+  rw [← bind_pure_comp]
+  rfl
+
+set_option backward.isDefEq.respectTransparency false in
+/-- Round 1, with the bind, the release and the part of the signer. -/
+theorem step_round1 (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)
+    (i : C.Party) (J : C.Quorum) (e : KeyIndex) (message : Message) :
+    StepO1' prims x q s pads u rest noise top (.inr (.round1 i J e message)) := by
+  intro a b hs ha hb
+  have hflag : b.1.base.hiddenFlag = false := by
+    have h1 : b.1.base.hiddenFlag = realFlag a := hs.1.1.1.1.1.flag
+    have h2 : realFlag a = false := by
+      unfold RealStop at ha
+      simpa using (not_or.mp ha).1
+    rw [h1, h2]
+  have hcorr : b.1.base.signing.corrupt = (realSigning a).corrupt := hs.1.1.1.1.1.corrupt
+  have hbound : b.1.base.signing.bound = (realSigning a).bound := hs.1.1.1.1.1.bound
+  have hguard : (i ∈ b.1.base.signing.corrupt ∨ i ∉ J.1 ∨
+      breaksOneMessagePerKey b.1.base.signing e message = true) ↔
+      (i ∈ (realSigning a).corrupt ∨ i ∉ J.1 ∨
+        breaksOneMessagePerKey (realSigning a) e message = true) := by
+    rw [hcorr, breaksOneMessagePerKey, breaksOneMessagePerKey, hbound]
+  have hmarked : SyncO1 prims x top s pads noise (gOf s pads u) rest a (b.1, (b.2.1.1, false), b.2.2) :=
+    SigningCompilerO1SyncHandlers.syncO1_mark prims x s pads u rest noise top a b hs.1 false
+  rw [real_round1, comp_round1, round1X_eq, hflag, runX_bind, runX_get, pure_bind]
+  by_cases hg : i ∈ (realSigning a).corrupt ∨ i ∉ J.1 ∨
+      breaksOneMessagePerKey (realSigning a) e message = true
+  · rw [if_pos hg, if_pos (hguard.2 hg), runX_pure, map_pure]
+    exact relTriple_pure_pure (Or.inr (Or.inr ⟨rfl, hmarked, hs.2⟩))
+  · rw [if_neg hg, if_neg (fun h => hg (hguard.1 h))]
+    have hfree : breaksOneMessagePerKey (realSigning a) e message = false := by
+      cases h : breaksOneMessagePerKey (realSigning a) e message
+      · rfl
+      · exact (hg (Or.inr (Or.inr h))).elim
+    apply TreeCheckKernelCoupling.relTriple_of_support
+    intro ra hra rb hrb
+    rw [support_map] at hra hrb
+    obtain ⟨z, hz, rfl⟩ := hra
+    obtain ⟨r, hr, rfl⟩ := hrb
+    obtain ⟨r1, hr1, hr2⟩ := SigningCompilerO1Programs.runX_bind_support x q s pads u rest noise _ _
+      b.1.base _ r hr
+    rw [map_eq_bind_pure_comp] at hr2
+    obtain ⟨rp, hrp, hr3⟩ := SigningCompilerO1Programs.runX_bind_support x q s pads u rest noise _ _
+      _ _ r hr2
+    rw [Function.comp_apply, runX_pure, mem_support_pure_iff] at hr3
+    subst hr3
+    rcases bind_sync prims x q s pads u rest noise hkeys top e message a (b.1, (b.2.1.1, false), b.2.2)
+        ⟨hmarked, hs.2⟩ hfree hb rfl r1 hr1 with hstop | ⟨hin, hm1⟩
+    · exact Or.inr (Or.inl (SigningCompilerO1Programs.runX_compStop x q s pads u rest noise _
+        r1.1.2 r1.2 hstop rp hrp))
+    by_cases hb1 : Stop r1.2
+    · exact Or.inr (Or.inl (SigningCompilerO1Programs.runX_compStop x q s pads u rest noise _
+        r1.1.2 r1.2 hb1 rp hrp))
+    rcases SigningCompilerO1Part.part_frame prims x q s pads u rest noise hkeys top _ _ i J
+        (.randomizer bottomLayer e) message a (⟨r1.1.2, b.1.starts⟩, r1.2) hin rfl
+        (constrained_bottom_randomizer e) (fun _ _ _ h => by cases h) ha hb1 hm1 z
+        (by with_reducible exact hz) rp hrp with h | h | ⟨hv, hsync, -⟩
+    · left
+      have hcar := realHonest_carried prims x s pads u rest _ a z (by with_reducible exact hz)
+      unfold RealStop at h ⊢
+      rcases h with h | h
+      · rw [hcar] at h
+        exact Or.inl h
+      · exact Or.inr h
+    · exact Or.inr (Or.inl h)
+    · obtain ⟨hcore, hx, htop, hpads⟩ := hsync
+      exact Or.inr (Or.inr ⟨congrArg some hv,
+        (syncO1_iff_syncIn prims x s pads u rest noise top _ (⟨rp.1.2, b.1.starts⟩, rp.2)).2
+          ⟨hcore, hx, ⟨htop.topRows, htop.topRun⟩, hpads⟩⟩)
+
 end Round1
 
 end ThresholdLeanXmssSecurity.SigningCompilerO1Round1
@@ -384,3 +540,19 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1Round1
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Round1.bind_sync' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Round1.bind_sync
+
+/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Round1.realHonest_carried' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Round1.realHonest_carried
+
+/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Round1.real_round1' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Round1.real_round1
+
+/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Round1.comp_round1' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Round1.comp_round1
+
+/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Round1.step_round1' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Round1.step_round1
