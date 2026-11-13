@@ -28,7 +28,7 @@ the claims.
 | `TprfSecurityStatement` | The threshold PRF is adaptively secure. | PRAWNS, Definition 2.2 and Theorem 5.1 |
 | `SigningCorrectnessStatement` | An honest quorum fails with probability at most `2 (1 - p)^L`, and its signature verifies. | PRAWNS, Section 3.1, honest run |
 | `SigningSecurityStatement` | The signing is strongly unforgeable with adaptive corruption in the random-oracle model, up to `q / 2^127` and the hidden keys. | PRAWNS, Definition 3.2, in the random-oracle model |
-| `LifetimeSecurityStatement` | Against a static coalition, the real keygen, the real ceremonies with retries and the signing service give a forgery only with the probability of the bound. | the composition of the claims above, with PRAWNS, Definition 3.2 |
+| `LifetimeSecurityStatement` | Against a static coalition, the real keygen, the real ceremonies with retries and the signing service give a forgery only with the probability of the bound, which holds the advantage of the fixed forger `lifetimeForger`. | the composition of the claims above, with PRAWNS, Definition 3.2 |
 
 The first 18 claims are component claims. Each claim covers one protocol or one gadget alone.
 `LifetimeSecurityStatement` states the security of the real keygen, the real ceremonies and the
@@ -125,17 +125,16 @@ them.
   ceremony is refused. An honest operator answers a signing request on a bottom tree, round 1
   included, only when it holds its own ceremony output of that tree. It signs at most one message
   for each key (`breaksOneMessagePerKey`).
-* The lifetime claim samples `Th` uniformly on the inputs that the MPC evaluates. The circuits
-  `circuitsOf Th` compute it, with AND layers of the same lengths and the same number of outputs
-  for every `Th`.
+* The lifetime claim takes the fixed `Th` of `prims` on the inputs that the MPC evaluates, and the
+  fixed `circuits` compute it (`CircuitsCompute`), as in the ceremony claims.
 * The budget `Q` counts every call of `H` and `PRG` by every party, as in the signing claim. It
   holds on every path of the lifetime game, for every answer of the oracles, and not only on the
   runs of the real lifetime. Unlike `IsQueryBounded`, it does not bound an adversary state that no
   answer reaches.
 * In the lifetime bound, the keygen term takes `(setupRounds + 2) Q`. Each ceremony run takes
   `(fuel + 2) Q` for its own rounds and `Q + lifetimeOverhead` for the cache of the phases before
-  it. The signing term takes `Q + lifetimeOverhead`, because the signing oracles build each
-  bottom tree once and the reduction computes the emulated phases in the clear.
+  it. The last term is the advantage of `lifetimeForger` in the signing game, in the world of the
+  lifetime claim. It has no budget, and `SigningSecurityStatement` does not bound it.
 * The use of the lifetime claim for Keccak is the random-oracle heuristic for `Th`. The heuristic is
   not a term of the bound.
 
@@ -253,12 +252,10 @@ def lifetimeWorld : QueryImpl (WorldSpec C) (AddWriterT ℕ (StateT (HashCache C
       QueryImpl (WorldSpec C) (StateT (HashCache C) ProbComp))
     fun t => if LifetimeCounted t then 1 else 0
 
-/-- A lifetime with a uniform `Th` on the inputs that the MPC evaluates, with its number of calls of
-`H` and `PRG`. -/
-def lifetimeRun (aes : Aes) (game : (HashInput → HashOutput) → OracleComp (WorldSpec C) Bool) :
-    ProbComp (Bool × ℕ) := do
-  let values ← $ᵗ (MpcDomain → HashOutput)
-  (simulateQ (lifetimeWorld ⟨thOf values, aes⟩) (game (thOf values))).run.run' ∅
+/-- Run a game in the lifetime world from an empty cache, with its number of calls of `H` and
+`PRG`. `Th` is the fixed function of `prims`. -/
+def lifetimeRun (game : OracleComp (WorldSpec C) Bool) : ProbComp (Bool × ℕ) :=
+  (simulateQ (lifetimeWorld prims) game).run.run' ∅
 
 end World
 
@@ -575,13 +572,6 @@ def CircuitsCompute (Th : HashInput → HashOutput) : Prop :=
     (circuits parameter job.kind).eval ((job.points.map F).flatMap bitsOfDigest) =
       referenceJob (m := Id) (fun oa => evalTh Th oa) F parameter job
 
-/-- The circuits of every `Th` have AND layers of the same lengths and the same number of outputs. So
-the rounds and the errors of a ceremony do not depend on `Th`. -/
-def FixedShape (circuitsOf : (HashInput → HashOutput) → Circuits) : Prop :=
-  ∀ Th Th' parameter kind,
-    (circuitsOf Th parameter kind).layers.map List.length = (circuitsOf Th' parameter kind).layers.map List.length ∧
-      (circuitsOf Th parameter kind).outputs.length = (circuitsOf Th' parameter kind).outputs.length
-
 /-! ## Valid inputs -/
 
 /-- The keys of all operators come from one dealing of a parameter, seeds and pair keys. -/
@@ -776,22 +766,27 @@ section Lifetime
 variable (attempts : ℕ)
 
 /-- Every lifetime makes at most `Q` calls of `H` and `PRG`, by every party, cache hits included. The
-bound holds for every `Th` of `lifetimeRun` and for every answer of the oracles (BR93,
-`IsQueryBoundP` of VCVio), so also on runs that the real lifetime never reaches. It bounds the paths
-of the lifetime game. Unlike `IsQueryBounded`, it does not bound an adversary state that no answer
-reaches. -/
-def HasLifetimeQueryBound (circuitsOf : (HashInput → HashOutput) → Circuits) (D : C.Coalition)
-    (A : LifetimeAdversary C E) (Q : ℕ) : Prop :=
-  ∀ values : MpcDomain → HashOutput,
-    IsQueryBoundP (lifetimeGame K (circuitsOf (thOf values)) settings attempts D A) LifetimeCounted Q
+bound holds for every answer of the oracles (BR93, `IsQueryBoundP` of VCVio), so also on runs that
+the real lifetime never reaches. It bounds the paths of the lifetime game. Unlike `IsQueryBounded`,
+it does not bound an adversary state that no answer reaches. -/
+def HasLifetimeQueryBound (D : C.Coalition) (A : LifetimeAdversary C E) (Q : ℕ) : Prop :=
+  IsQueryBoundP (lifetimeGame K circuits settings attempts D A) LifetimeCounted Q
 
 /-- The probability that the lifetime adversary forges. -/
-def lifetimeAdvantage (aes : Aes) (circuitsOf : (HashInput → HashOutput) → Circuits) (D : C.Coalition)
-    (A : LifetimeAdversary C E) : ℝ :=
-  (Pr[fun r => r.1 = true | lifetimeRun aes fun Th => lifetimeGame K (circuitsOf Th) settings attempts D A]).toReal
+def lifetimeAdvantage (D : C.Coalition) (A : LifetimeAdversary C E) : ℝ :=
+  (Pr[fun r => r.1 = true | lifetimeRun prims (lifetimeGame K circuits settings attempts D A)]).toReal
+
+/-- The probability that `lifetimeForger` wins the signing game `G^tsig` in the lifetime world. In
+this world `H` answers the inputs that the MPC evaluates with the fixed `Th`.
+
+`SigningSecurityStatement` does not bound this term. That claim is for the signing world, where all
+of `H` is a random oracle, and for a forger with a bounded number of calls. `lifetimeForger` uses the
+circuits of the fixed `Th`, and this term has no bound on its calls. -/
+def lifetimeForgerAdvantage (D : C.Coalition) (A : LifetimeAdversary C E) : ℝ :=
+  (Pr[fun r => r.1 = true | lifetimeRun prims (tsigGame (lifetimeForger K circuits settings attempts D A))]).toReal
 
 /-- The signing is strongly unforgeable over the lifetime of the key, against a static coalition of
-at most `t - 1` operators, in the random-oracle model.
+at most `t - 1` operators, up to the advantage of one fixed forger.
 
 * The keygen runs once on the real network. The adversary gets the public parameter. It gets the
   public key and the top tree of the first honest operator once that operator holds them. It runs
@@ -799,8 +794,8 @@ at most `t - 1` operators, in the random-oracle model.
   rounds. No ceremony of a bottom tree runs after the first signing request on it. An honest
   operator answers a signing request only with its own ceremony output of the tree, and it signs at
   most one message for each key.
-* `Th` is uniform on the inputs that the MPC evaluates. `circuitsOf Th` computes it, with AND layers
-  of the same lengths and the same number of outputs for every `Th`.
+* `Th` is the fixed function of `prims` on the inputs that the MPC evaluates, and the fixed
+  `circuits` compute it, as in the ceremony claims. Every other input of `H` is a random oracle.
 * `Q` bounds the calls of `H` and `PRG` by every party, on every path of the lifetime game.
 * The keygen term and each ceremony term take the budget `(fuel + 2) Q` with the fuel of the phase.
   One step of the phase adversary holds all that the lifetime adversary does between two rounds.
@@ -810,23 +805,22 @@ at most `t - 1` operators, in the random-oracle model.
   emulated signing keeps the masks of the honest pairs in its own table.
 * Each run pays the PRF advantage of its own reduction. Each bottom tree pays one failed search,
   because each retry gives the same search.
-* The last three terms are the bound of `SigningSecurityStatement` at `q₀`, for a forger that
-  emulates the lifetime in the signing game. -/
-def LifetimeSecurityStatement (aes : Aes) (circuitsOf : (HashInput → HashOutput) → Circuits) : Prop :=
-  (∀ Th, CircuitsCompute (circuitsOf Th) Th) → FixedShape circuitsOf → 0 < settings.batchSize →
+* The last term is `lifetimeForgerAdvantage`, the advantage of the fixed forger `lifetimeForger`
+  in the signing game. The claim does not bound it, and `SigningSecurityStatement` does not bound it. -/
+def LifetimeSecurityStatement : Prop :=
+  CircuitsCompute circuits prims.Th → 0 < settings.batchSize →
     ∀ (D : C.Coalition) (A : LifetimeAdversary C E) (Q : ℕ),
-      HasLifetimeQueryBound K settings attempts circuitsOf D A Q →
-      let circuits := circuitsOf fun _ => 0
+      HasLifetimeQueryBound K circuits settings attempts D A Q →
       let q₀ := Q + lifetimeOverhead C attempts Q
       let q := (ceremonyFuel circuits settings + 2) * Q
       let runError := fun tree => (attempts : ℝ) * (treeCheckError (E := E) circuits settings tree (q₀ + q) +
         treeHashError circuits settings C tree (q₀ + q) + streamKeyError C + seedHitError C (q₀ + q))
-      lifetimeAdvantage K settings attempts aes circuitsOf D A ≤
+      lifetimeAdvantage prims K circuits settings attempts D A ≤
         keygenHashError C ((setupRounds + 2) * Q) +
           (runError .top + ∑ b : Fin (2 ^ layerHeight), runError (.bottom b)) +
           ∑ n : Fin (lifetimeRuns attempts),
-            PRFScheme.prfAdvantage (hiddenStreams aes) (lifetimeRunReduction K settings attempts aes circuitsOf D A n) +
-          2 ^ layerHeight * searchFailure + signingHashError q₀ + seedHitError C q₀ + seedCollisionError C
+            PRFScheme.prfAdvantage (hiddenStreams prims.aes) (lifetimeRunReduction K circuits settings attempts prims D A n) +
+          2 ^ layerHeight * searchFailure + lifetimeForgerAdvantage prims K circuits settings attempts D A
 
 end Lifetime
 
