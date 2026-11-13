@@ -3,9 +3,8 @@ import ThresholdLeanXmssSecurity.Proof.SigningOwnWalkHandlers
 /-!
 # The walk of round 2 and of the honest signature tail over the ledger
 
-A round-2 request keeps `WalkInv` and makes no charged call (`charges_round2`). The honest
-signature tail does the same when its second build gives a tree whose top chain values are known
-values or top chain secrets (`charges_tail_of_shape`).
+A round-2 request and the honest signature tail keep `WalkInv` and make no charged call
+(`charges_round2`, `charges_tail`).
 
 * The check of `c_e` and the base call carry the opening of the key. The key is bound and its tree
   is stored, so `treeCommit`, `commitTerms` and `ready` give a revealed opening.
@@ -15,6 +14,8 @@ values or top chain secrets (`charges_tail_of_shape`).
   (`walk_resolvedHash`).
 * `WalkO` is the triple of `Walk` for O1 programs. Round 2 carries the signing state of the source
   through its steps with `KeepsSigning`, so the record of the signer meets `releasedBound`.
+* The tail reveals the top chain values of its second build. That build gives a tree of
+  `TopShape` (`walk_sourceBottomTree_shape`), so no reveal is a bottom opening.
 * The tail runs at a key with `t` signers. At most `t - 1` operators are corrupt, so the key has a
   release record, and `releasedBound` binds the key to the message (`bound_of_signers`).
 -/
@@ -408,13 +409,13 @@ theorem walk_sourceBottomOnce_at (top : TopTree) (e : KeyIndex) :
       Nat.mod_lt _ (by decide)⟩
     rw [hk] at hc hl
     exact ⟨c, hc, hl t (by rw [hr, ht])⟩
-  · refine Walk.conseq (c := 0 + (0 + 0)) (Walk.bind (Walk.conseq (walk_sourceBottomTree P seeds Q s
-      top (treeOf e)) (fun _ _ h => h.2) (fun _ _ _ h => h) le_rfl) fun tree =>
+  · refine Walk.conseq (c := 0 + (0 + 0)) (Walk.bind (Walk.conseq (walk_sourceBottomTree_shape P
+      seeds Q s top (treeOf e)) (fun _ _ h => h.2) (fun _ _ _ h => h) le_rfl) fun tree =>
       Walk.bind (Walk.modify (Post := fun _ src st => BaseInv P seeds none none src st ∧
-        TreeAt e tree st) _ fun src st h => ⟨baseInv_store P seeds h.1 (treeOf e) tree h.2,
+        TreeAt e tree st) _ fun src st h => ⟨baseInv_store P seeds h.1.1 (treeOf e) tree h.1.2 h.2,
           fun t ht => ?_⟩) fun _ => Walk.pure _ fun _ _ h => h)
       (fun _ _ h => h) (fun _ _ _ h => h) le_rfl
-    obtain ⟨c, hc, hl⟩ := h.2 ⟨e.val % 2 ^ layerHeight, Nat.mod_lt _ (by decide)⟩
+    obtain ⟨c, hc, hl⟩ := h.1.2 ⟨e.val % 2 ^ layerHeight, Nat.mod_lt _ (by decide)⟩
     rw [hk] at hc hl
     exact ⟨c, hc, hl t ht⟩
 
@@ -664,7 +665,7 @@ theorem walkInv_release {src : SourceStateO1 C} {st : LState C} (h : WalkInv P s
     WalkInv P seeds { src with base := { src.base with signing := { src.base.signing with
       released := src.base.signing.released ++ [(e, message, i)] } } } st := by
   refine ⟨h.reveal, h.bound, h.ready, h.commitTerms, h.treeCommit, h.revealedCached, ?_,
-    h.corruptBound, h.reachable, h.dirtySecond⟩
+    h.corruptBound, h.reachable, h.dirtySecond, h.storedTopShape⟩
   intro e' m' i' hm
   rcases List.mem_append.mp hm with hm | hm
   · exact h.releasedBound e' m' i' hm
@@ -809,23 +810,6 @@ theorem bound_of_signers (sig : TsigState C) (e : KeyIndex) (message : Message)
   obtain ⟨⟨e', m', i'⟩, ⟨hm, rfl, rfl⟩, -⟩ := hi
   exact hrel _ _ _ hm
 
-set_option backward.isDefEq.respectTransparency false in
-/-- The threshold PRF value at a point makes no charged call. -/
-theorem walk_prfValue (prims : Primitives) (seed : C.Term → HashOutput) (point : Point) :
-    Walk P seeds Q s (BaseInv P seeds none none) 0 (fun _ => BaseInv P seeds none none)
-      (sourceRoProgram prims P seeds (prfValue seed point)) := by
-  simp only [sourceRoProgram, prfValue, simulateQ_bind, simulateQ_list_mapM, simulateQ_pure]
-  simp only [prf, hashQuery, HasQuery.instOfMonadLift_query, simulateQ_map, simulateQ_query,
-    OracleQuery.input_query, OracleQuery.cont_query, id_map, sourceRo]
-  exact Walk.conseq (c := _ * 0 + 0) (Walk.bind (Walk.mapM _ _ _ fun T _ =>
-    walk_map P seeds Q s (walk_sourceHash P seeds Q s _ 0 fun _ h => by cases h) _) fun _ =>
-      Walk.pure _ fun _ _ h => h) (fun _ _ h => h) (fun _ _ _ h => h) (by simp)
-
-/-- Each chain value of the top signature of a tree is a known value or a secret that is no bottom
-opening. -/
-def TopShape (tree : DeferredBottomTree) : Prop :=
-  ∀ l k, tree.topSignature.chainValue l = .secret k → ∀ e, k ≠ .opening bottomLayer e
-
 /-- The reveals of the top chain values of a tree of `TopShape` make no charged call. -/
 theorem walk_topValues (tree : DeferredBottomTree) (hshape : TopShape tree) :
     Walk P seeds Q s (BaseInv P seeds none none) 0 (fun _ => BaseInv P seeds none none)
@@ -944,6 +928,18 @@ theorem charges_tail_of_shape (prims : Primitives) (x : Keys3 C) (Q : ℕ) (s : 
   obtain ⟨hl, -, hq⟩ := walk_honestSignature_of_shape prims x Q s top e message hshape src.base st
     ⟨hb, bound_of_signers _ e message hb.corruptBound hb.releasedBound hp⟩ r hr
   exact ⟨(walkInv_iff x.1 x.2.1 _ r.2).2 hq, hl⟩
+
+/-- The honest-signature tail at a key with `t` signers makes no charged call. The key has a release
+record, because at most `t - 1` operators are corrupt and `1 ≤ t`. So it is bound to the message,
+and the base call of the tail is canonical. -/
+theorem charges_tail (prims : Primitives) (x : Keys3 C) (Q : ℕ) (s : HiddenKey → Digest)
+    (top : TopTree) (e : KeyIndex) (message : Message) :
+    SourceCharges x.1 x.2.1 Q s
+      (fun src => C.t ≤ (signersAt src.base.signing e message).card) 0
+      (liftBase (sourceHonestSignature prims x top e message)) :=
+  charges_tail_of_shape prims x Q s top e message (Walk.conseq
+    (walk_sourceBottomTree_shape x.1 x.2.1 Q s top (treeOf e)) (fun _ _ h => h)
+    (fun _ _ _ h => h.2) le_rfl)
 
 end Tail
 
@@ -1113,9 +1109,6 @@ end ThresholdLeanXmssSecurity.SigningOwnWalkRound2
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningOwnWalkRound2.bound_of_signers
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkRound2.walk_prfValue' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningOwnWalkRound2.walk_prfValue
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkRound2.walk_topValues' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
@@ -1136,3 +1129,7 @@ end ThresholdLeanXmssSecurity.SigningOwnWalkRound2
 /-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkRound2.charges_tail_of_shape' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningOwnWalkRound2.charges_tail_of_shape
+
+/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkRound2.charges_tail' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.SigningOwnWalkRound2.charges_tail

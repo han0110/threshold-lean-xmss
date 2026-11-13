@@ -38,6 +38,11 @@ def runSourceL {α : Type} (P : PublicParameter) (seeds : C.Term → HashOutput)
     ProbComp ((α × SourceStateO1 C) × (CappedCompilerState C × OwnGhost)) :=
   (simulateQ (ownHybrid P seeds Q s) (oa.run src)).run st
 
+/-- Each chain value of the top signature of a tree is a known value or a secret that is no bottom
+opening. -/
+def TopShape (tree : DeferredBottomTree) : Prop :=
+  ∀ l k, tree.topSignature.chainValue l = .secret k → ∀ e, k ≠ .opening bottomLayer e
+
 /-- The joint invariant of the walk. Each clause holds on every run, with the hidden-key flag up
 or down. -/
 structure WalkInv (P : PublicParameter) (seeds : C.Term → HashOutput) (src : SourceStateO1 C)
@@ -69,6 +74,8 @@ structure WalkInv (P : PublicParameter) (seeds : C.Term → HashOutput) (src : S
   reachable : CompilerReachable P seeds st.1.1
   /-- A dirty state has a second opening. -/
   dirtySecond : st.2.dirty = true → SecondOpening P seeds st.1.1.1.data
+  /-- Each stored successful tree has `TopShape`. -/
+  storedTopShape : ∀ b tree, src.base.trees b = some (some tree) → TopShape tree
 
 /-- A source program keeps the invariant of the walk from each state of `Pre`, and it makes at most
 `c` charged calls on each run. -/

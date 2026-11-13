@@ -64,17 +64,19 @@ structure BaseInv (P : PublicParameter) (seeds : C.Term → HashOutput)
   corruptBound : src.signing.corrupt.card ≤ C.t - 1
   reachable : CompilerReachable P seeds st.1.1
   dirtySecond : st.2.dirty = true → SecondOpening P seeds st.1.1.1.data
+  storedTopShape : ∀ b tree, src.trees b = some (some tree) → TopShape tree
 
 theorem walkInv_iff (P : PublicParameter) (seeds : C.Term → HashOutput) (src : SourceStateO1 C)
     (st : LState C) : WalkInv P seeds src st ↔ BaseInv P seeds none none src.base st := by
   constructor
   · intro h
     exact ⟨h.reveal, h.bound, fun e _ => h.ready e, h.commitTerms, h.treeCommit,
-      fun e _ => h.revealedCached e, h.releasedBound, h.corruptBound, h.reachable, h.dirtySecond⟩
+      fun e _ => h.revealedCached e, h.releasedBound, h.corruptBound, h.reachable, h.dirtySecond,
+      h.storedTopShape⟩
   · intro h
     exact ⟨h.reveal, h.bound, fun e => h.ready e (by simp), h.commitTerms, h.treeCommit,
       fun e => h.revealedCached e (by simp), h.releasedBound, h.corruptBound, h.reachable,
-      h.dirtySecond⟩
+      h.dirtySecond, h.storedTopShape⟩
 
 /-- The backend of `st'` extends the backend of `st`. -/
 structure Grows (st st' : LState C) : Prop where
@@ -476,7 +478,7 @@ theorem baseInv_step {readyEx cachedEx : Option KeyIndex} {src : SourceState C} 
   have hcache := compilerImpl_cache_le P seeds t _ x hx
   have hkeep := fun p v hv => compilerImpl_pending_keep P seeds t _ x hx hrec p v hv
   have hvirt := SigningCompilerSyncRows.compilerImpl_virtual_mono P seeds t _ x hx
-  refine ⟨h.reveal, ?_, ?_, ?_, ?_, ?_, h.releasedBound, h.corruptBound, ?_, ?_⟩
+  refine ⟨h.reveal, ?_, ?_, ?_, ?_, ?_, h.releasedBound, h.corruptBound, ?_, ?_, h.storedTopShape⟩
   · exact (compilerImpl_bound_eq P seeds t _ x hx ht).trans h.bound
   · intro e hne hr
     rcases hready e hr with h1 | h1 | h1
@@ -1234,7 +1236,7 @@ theorem baseInv_reveal {readyEx cachedEx readyEx' cachedEx' : Option KeyIndex}
     BaseInv P seeds readyEx' cachedEx' { src with revealed := Function.update src.revealed k (some v) }
       ((st.1.1, Function.update st.1.2.1 k (some v), st.1.2.2), st.2) := by
   refine ⟨by simp only [h.reveal], h.bound, ?_, h.commitTerms, h.treeCommit, ?_, h.releasedBound,
-    h.corruptBound, h.reachable, h.dirtySecond⟩
+    h.corruptBound, h.reachable, h.dirtySecond, h.storedTopShape⟩
   · intro e hne hr
     by_cases hre : readyEx = some e
     · rw [hready e hne hre]
@@ -1257,7 +1259,7 @@ theorem baseInv_revealed {readyEx cachedEx readyEx' cachedEx' : Option KeyIndex}
     (hcx : ∀ e, cachedEx' ≠ some e → cachedEx ≠ some e) :
     BaseInv P seeds readyEx' cachedEx' src st := by
   refine ⟨h.reveal, h.bound, ?_, h.commitTerms, h.treeCommit, ?_, h.releasedBound,
-    h.corruptBound, h.reachable, h.dirtySecond⟩
+    h.corruptBound, h.reachable, h.dirtySecond, h.storedTopShape⟩
   · intro e hne hr
     by_cases hre : readyEx = some e
     · rw [← hready e hne hre]
@@ -1300,7 +1302,8 @@ theorem BaseInv.weaken_ready {cachedEx : Option KeyIndex} {src : SourceState C} 
     (h : BaseInv P seeds none cachedEx src st) (e : KeyIndex) :
     BaseInv P seeds (some e) cachedEx src st :=
   ⟨h.reveal, h.bound, fun e' _ hr => h.ready e' (by simp) hr, h.commitTerms, h.treeCommit,
-    h.revealedCached, h.releasedBound, h.corruptBound, h.reachable, h.dirtySecond⟩
+    h.revealedCached, h.releasedBound, h.corruptBound, h.reachable, h.dirtySecond,
+    h.storedTopShape⟩
 
 theorem BaseInv.close_ready {cachedEx : Option KeyIndex} {src : SourceState C} {st : LState C}
     {e : KeyIndex} (h : BaseInv P seeds (some e) cachedEx src st)
@@ -1308,7 +1311,8 @@ theorem BaseInv.close_ready {cachedEx : Option KeyIndex} {src : SourceState C} {
       src.revealed (.opening bottomLayer e) ≠ none) :
     BaseInv P seeds none cachedEx src st := by
   refine ⟨h.reveal, h.bound, fun e' _ hr' => ?_, h.commitTerms, h.treeCommit,
-    h.revealedCached, h.releasedBound, h.corruptBound, h.reachable, h.dirtySecond⟩
+    h.revealedCached, h.releasedBound, h.corruptBound, h.reachable, h.dirtySecond,
+    h.storedTopShape⟩
   by_cases he : e' = e
   · subst he
     exact hr hr'
@@ -1319,7 +1323,7 @@ theorem BaseInv.close_cached {readyEx : Option KeyIndex} {src : SourceState C} {
     (hc : ∀ T, st.1.1.1.data.cache (.prf (seeds T) (.randomizer bottomLayer e)) ≠ none) :
     BaseInv P seeds readyEx none src st := by
   refine ⟨h.reveal, h.bound, h.ready, h.commitTerms, h.treeCommit, fun e' _ hr => ?_,
-    h.releasedBound, h.corruptBound, h.reachable, h.dirtySecond⟩
+    h.releasedBound, h.corruptBound, h.reachable, h.dirtySecond, h.storedTopShape⟩
   by_cases he : e' = e
   · subst he
     exact fun T => Option.ne_none_iff_exists'.mp (hc T)
@@ -1735,16 +1739,50 @@ theorem walk_sourceBottomTree (top : TopTree) (b : XmssSecurity.TopIndex) :
           rw [hl]
           simp only [bottomKey_mod]
 
+/-- A run over the ledger is a run over the capped hybrid without the ledger. -/
+theorem runL_proj {α : Type} (oa : SourceM C α) (src : SourceState C) (st : LState C)
+    (r : (α × SourceState C) × LState C) (hr : r ∈ support (runL P seeds Q s oa src st)) :
+    (r.1, r.2.1) ∈ support (runSource P seeds Q s oa src st.1) := by
+  obtain ⟨st1, g⟩ := st
+  have h : Prod.map id Prod.fst <$> runL P seeds Q s oa src (st1, g) =
+      runSource P seeds Q s oa src st1 := OracleComp.extendState_run_proj_eq _ _ _ _ _
+  rw [← h, support_map]
+  exact ⟨r, hr, rfl⟩
+
+/-- `walk_sourceBottomTree`, which also states that a successful tree has `TopShape`. -/
+theorem walk_sourceBottomTree_shape (top : TopTree) (b : XmssSecurity.TopIndex) :
+    Walk P seeds Q s (BaseInv P seeds none none) 0
+      (fun r src st => (BaseInv P seeds none none src st ∧ ∀ k : Fin (2 ^ layerHeight),
+        ∃ c, st.1.1.1.data.pending (.commitment (bottomKey b k)) = some c ∧
+          ∀ tree, r = some tree → c.low = .known (tree.commitment (bottomKey b k))) ∧
+        ∀ tree, r = some tree → TopShape tree)
+      (sourceBottomTree P seeds top b) := by
+  intro src st hp r hr
+  obtain ⟨hl, hg, hq⟩ := walk_sourceBottomTree P seeds Q s top b src st hp r hr
+  refine ⟨hl, hg, hq, fun tree ht l k hk e he => ?_⟩
+  have hno := sourceBottomTree_noBottomOpening P seeds Q s top b src st.1
+    (CompilerReachable.pendingValid P seeds _ hp.reachable) (r.1, r.2.1)
+    (runL_proj P seeds Q s _ src st r hr) tree ht l e
+  exact hno (by rw [hk, he])
+
 /-- The store of a tree keeps `BaseInv` when each key of the tree has a commitment answer, and a
-successful tree holds its low half. -/
+successful tree holds its low half and has `TopShape`. -/
 theorem baseInv_store {src : SourceState C} {st : LState C} (h : BaseInv P seeds none none src st)
     (b : XmssSecurity.TopIndex) (r : Option DeferredBottomTree)
     (hr : ∀ k : Fin (2 ^ layerHeight), ∃ c,
       st.1.1.1.data.pending (.commitment (bottomKey b k)) = some c ∧
-        ∀ tree, r = some tree → c.low = .known (tree.commitment (bottomKey b k))) :
+        ∀ tree, r = some tree → c.low = .known (tree.commitment (bottomKey b k)))
+    (hshape : ∀ tree, r = some tree → TopShape tree) :
     BaseInv P seeds none none { src with trees := Function.update src.trees b (some r) } st := by
   refine ⟨h.reveal, h.bound, h.ready, h.commitTerms, fun b' hb k => ?_, h.revealedCached,
-    h.releasedBound, h.corruptBound, h.reachable, h.dirtySecond⟩
+    h.releasedBound, h.corruptBound, h.reachable, h.dirtySecond, fun b' tree ht => ?_⟩
+  swap
+  · by_cases he : b' = b
+    · subst he
+      simp only [Function.update_self, Option.some.injEq] at ht
+      exact hshape tree ht
+    · simp only [Function.update_of_ne he] at ht
+      exact h.storedTopShape b' tree ht
   by_cases he : b' = b
   · subst he
     obtain ⟨c, hc, hl⟩ := hr k
@@ -1763,10 +1801,10 @@ theorem walk_sourceBottomOnce (top : TopTree) (b : XmssSecurity.TopIndex) :
     (fun _ _ h => h) (fun _ _ _ h => h) le_rfl
   split
   · exact Walk.pure _ fun _ _ h => h.2
-  · refine Walk.conseq (c := 0 + (0 + 0)) (Walk.bind (Walk.conseq (walk_sourceBottomTree P seeds Q s
-      top b) (fun _ _ h => h.2) (fun _ _ _ h => h) le_rfl) fun tree =>
+  · refine Walk.conseq (c := 0 + (0 + 0)) (Walk.bind (Walk.conseq (walk_sourceBottomTree_shape P
+      seeds Q s top b) (fun _ _ h => h.2) (fun _ _ _ h => h) le_rfl) fun tree =>
       Walk.bind (Walk.modify (Post := fun _ => BaseInv P seeds none none) _ fun src st h =>
-        baseInv_store P seeds h.1 b tree h.2) fun _ => Walk.pure _ fun _ _ h => h)
+        baseInv_store P seeds h.1.1 b tree h.1.2 h.2) fun _ => Walk.pure _ fun _ _ h => h)
       (fun _ _ h => h) (fun _ _ _ h => h) le_rfl
 
 end Units
@@ -2129,3 +2167,11 @@ end ThresholdLeanXmssSecurity.SigningOwnWalkBuild
 /-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkBuild.charges_setup' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningOwnWalkBuild.charges_setup
+
+/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkBuild.runL_proj' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.SigningOwnWalkBuild.runL_proj
+
+/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkBuild.walk_sourceBottomTree_shape' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.SigningOwnWalkBuild.walk_sourceBottomTree_shape

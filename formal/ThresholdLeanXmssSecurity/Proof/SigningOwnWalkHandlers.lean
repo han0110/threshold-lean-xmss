@@ -4,12 +4,15 @@ import ThresholdLeanXmssSecurity.Proof.SigningOwnForger
 /-!
 # The walk of the oracle handlers over the ledger
 
-A local call, a corruption, round 1 and a call of the verification keep `WalkInv`. Each makes at
-most the charged calls that the own budget counts at its query.
+A local call, a corruption, a tree request, round 1 and a call of the verification keep `WalkInv`.
+Each makes at most the charged calls that the own budget counts at its query.
 
 * A local call makes one backend `.hash` call, and its charge is at most one (`charges_local`).
 * A corruption and round 1 use the units of the base source. Their PRF and mask calls are no
   `.hash (.hash _)` call, so they make no charged call (`charges_corrupt`, `charges_round1`).
+* A tree request reveals the chain values of a stored top signature. The clause
+  `storedTopShape` states that none of them is a bottom opening, so the reveals keep the invariant
+  (`charges_tree`).
 * Round 1 binds the key before it releases a ready opening. `baseInv_bind` treats the binding with
   an exception of `ready` at the key, and the release or the test of readiness closes it.
 * A call of the verification makes one backend `.hash` call, and its charge is at most one
@@ -240,7 +243,7 @@ theorem baseInv_bind {src : SourceState C} {st : LState C} (h : BaseInv P seeds 
   simp only [compilerImpl, StateT.run] at hx
   subst hx
   refine ⟨h.reveal, ?_, fun e' hne hr => ?_, h.commitTerms, h.treeCommit, h.revealedCached, ?_,
-    h.corruptBound, hreach, ?_⟩
+    h.corruptBound, hreach, ?_, h.storedTopShape⟩
   · change (if st.1.1.1.bound e = none then Function.update st.1.1.1.bound e (some message)
       else st.1.1.1.bound) = _
     rw [h.bound]
@@ -347,7 +350,7 @@ theorem baseInv_corrupt {src : SourceState C} {st : LState C} (h : BaseInv P see
     BaseInv P seeds none none
       { src with signing := { src.signing with corrupt := insert i src.signing.corrupt } } st :=
   ⟨h.reveal, h.bound, h.ready, h.commitTerms, h.treeCommit, h.revealedCached, h.releasedBound,
-    Nat.le_of_not_lt hcard, h.reachable, h.dirtySecond⟩
+    Nat.le_of_not_lt hcard, h.reachable, h.dirtySecond, h.storedTopShape⟩
 
 /-- A read of the source state, with the read state in the precondition of the rest. -/
 theorem charges_get_bind {α : Type} {Pre : SourceStateO1 C → Prop} {c : ℕ}
@@ -370,6 +373,147 @@ theorem charges_sourceReleaseKey (e : KeyIndex) :
   · exact SourceCharges.mono (charges_of_walk (walk_sourceReleaseBottomSuffix P seeds Q s e l _))
       (fun _ _ => trivial) le_rfl
   · exact SourceCharges.pure ()
+
+set_option backward.isDefEq.respectTransparency false in
+/-- The threshold PRF value at a point makes no charged call. -/
+theorem walk_prfValue (prims : Primitives) (seed : C.Term → HashOutput) (point : Point) :
+    Walk P seeds Q s (BaseInv P seeds none none) 0 (fun _ => BaseInv P seeds none none)
+      (sourceRoProgram prims P seeds (prfValue seed point)) := by
+  simp only [sourceRoProgram, prfValue, simulateQ_bind, simulateQ_list_mapM, simulateQ_pure]
+  simp only [prf, hashQuery, HasQuery.instOfMonadLift_query, simulateQ_map, simulateQ_query,
+    OracleQuery.input_query, OracleQuery.cont_query, id_map, sourceRo]
+  exact Walk.conseq (c := _ * 0 + 0) (Walk.bind (Walk.mapM _ _ _ fun T _ =>
+    walk_map P seeds Q s (walk_sourceHash P seeds Q s _ 0 fun _ h => by cases h) _) fun _ =>
+      Walk.pure _ fun _ _ h => h) (fun _ _ h => h) (fun _ _ _ h => h) (by simp)
+
+/-- `walk_sourceBottomOnce`, which also states that a successful tree has `TopShape`. -/
+theorem walk_sourceBottomOnce_shape (top : TopTree) (b : XmssSecurity.TopIndex) :
+    Walk P seeds Q s (BaseInv P seeds none none) 0
+      (fun r src st => BaseInv P seeds none none src st ∧ ∀ tree, r = some tree → TopShape tree)
+      (sourceBottomOnce P seeds top b) := by
+  unfold sourceBottomOnce
+  refine Walk.conseq (c := 0 + 0) (Walk.bind Walk.get fun src0 => ?_)
+    (fun _ _ h => h) (fun _ _ _ h => h) le_rfl
+  split
+  · rename_i r hr
+    refine Walk.pure _ fun src st h => ⟨h.2, fun tree ht => ?_⟩
+    obtain ⟨rfl, h⟩ := h
+    exact h.storedTopShape b tree (by rw [hr, ht])
+  · refine Walk.conseq (c := 0 + (0 + 0)) (Walk.bind (Walk.conseq (walk_sourceBottomTree_shape P
+      seeds Q s top b) (fun _ _ h => h.2) (fun _ _ _ h => h) le_rfl) fun tree =>
+      Walk.bind (Walk.modify (Post := fun _ src st => BaseInv P seeds none none src st ∧
+        ∀ t, tree = some t → TopShape t) _ fun src st h =>
+        ⟨baseInv_store P seeds h.1.1 b tree h.1.2 h.2, h.2⟩) fun _ => Walk.pure _ fun _ _ h => h)
+      (fun _ _ h => h) (fun _ _ _ h => h) le_rfl
+
+/-- The return of a stored tree of `TopShape` keeps `BaseInv` and makes no charged call. -/
+theorem walk_sourceReturnTree (b : XmssSecurity.TopIndex) (tree : DeferredBottomTree)
+    (hshape : TopShape tree) :
+    Walk P seeds Q s (BaseInv P seeds none none) 0 (fun _ => BaseInv P seeds none none)
+      (sourceReturnTree P seeds b tree) := by
+  let K : HiddenKey := .opening topLayer (topKey b)
+  let R : SourceState C → LState C → Prop := fun src _ => src.revealed K ≠ none
+  have hupdate : ∀ (k : HiddenKey) (src : SourceState C) (v : Digest),
+      src.revealed K ≠ none → Function.update src.revealed k (some v) K ≠ none := by
+    intro k src v h
+    by_cases he : K = k
+    · rw [he]
+      simp
+    · simpa only [Function.update_of_ne he] using h
+  have hK : ∀ e, K ≠ .opening bottomLayer e := fun e h => by
+    simp only [K, HiddenKey.opening.injEq] at h
+    exact absurd h.1 (by simp [topLayer, bottomLayer])
+  have reveal : ∀ k : HiddenKey, (∀ e, k ≠ .opening bottomLayer e) →
+      Walk P seeds Q s (fun src st => BaseInv P seeds none none src st ∧ R src st) 0
+        (fun _ src st => BaseInv P seeds none none src st ∧ R src st) (sourceReveal k) :=
+    fun k hk => Walk.conseq (walk_sourceReveal P seeds Q s (readyEx := none) (cachedEx := none)
+      (readyEx' := none) (cachedEx' := none) k (fun _ _ h => by cases h) (fun e _ => hk e)
+      (fun _ h => h) R (fun src _ v h => hupdate k src v h)) (fun _ _ h => h)
+      (fun _ _ _ h => ⟨h.1, h.2.1⟩) le_rfl
+  have plant : ∀ p : PendingInput, (∀ e, p.key ≠ .opening bottomLayer e) →
+      Walk P seeds Q s (fun src st => BaseInv P seeds none none src st ∧ R src st) 0
+        (fun _ src st => BaseInv P seeds none none src st ∧ R src st) (sourcePlant P p) :=
+    fun p hp => Walk.conseq (walk_sourcePlant P seeds Q s p K)
+      (fun _ _ h => ⟨h.1, fun e he => absurd he (hp e), h.2⟩) (fun _ _ _ h => ⟨h.1, h.2.2⟩) le_rfl
+  have complete : ∀ (point : Point), (∀ e, point ≠ .randomizer bottomLayer e) → ∀ target,
+      Walk P seeds Q s (fun src st => BaseInv P seeds none none src st ∧ R src st) 0
+        (fun _ src st => BaseInv P seeds none none src st ∧ R src st)
+        (liftM (completePrf seeds point target)) :=
+    fun point hpt target => Walk.conseq (walk_completePrf P seeds Q s
+      (readyEx := none) (cachedEx := none) point target R (fun _ _ _ _ h => h)
+      (fun _ _ _ e he => absurd he (hpt e))) (fun _ _ h => h) (fun _ _ _ h => ⟨h.1, h.2.1⟩) le_rfl
+  have consistent : ∀ ok : Bool,
+      Walk P seeds Q s (fun src st => BaseInv P seeds none none src st ∧ R src st) 0
+        (fun _ src st => BaseInv P seeds none none src st ∧ R src st)
+        (modify fun (st : SourceState C) => { st with consistent := st.consistent && ok }) :=
+    fun _ => Walk.modify _ fun src st h => ⟨BaseInv.of_source P seeds (src := src) h.1 rfl rfl rfl,
+      h.2⟩
+  have chain : ∀ l : ChainIndex, Walk P seeds Q s
+      (fun src st => BaseInv P seeds none none src st ∧ R src st) 0
+      (fun _ src st => BaseInv P seeds none none src st ∧ R src st) (do
+        let start := tree.topSignature.encoding l
+        let keys := (List.finRange 3).filter fun p => start.val ≤ p.val
+        let _ ← keys.mapM fun p => sourceReveal (.topChain b l p)
+        if start.val = 0 then
+          let value ← sourceReveal (.topChain b l ⟨0, by decide⟩)
+          let ok ← liftM (completePrf seeds (.chain topLayer (topKey b) l (digit 0)) value)
+          modify fun (st : SourceState C) => { st with consistent := st.consistent && ok }
+        let _ ← keys.mapM fun p => sourcePlant P (.top b l p)
+        sourceRevealDigest (tree.topSignature.chainValue l)) := by
+    intro l
+    dsimp only
+    have hreveals := Walk.mapM (c := 0) ((List.finRange 3).filter fun p =>
+      (tree.topSignature.encoding l).val ≤ p.val) (fun p => sourceReveal (.topChain b l p)) _
+      fun p _ => reveal _ fun _ h => by cases h
+    have hplants := Walk.mapM (c := 0) ((List.finRange 3).filter fun p =>
+      (tree.topSignature.encoding l).val ≤ p.val) (fun p => sourcePlant P (.top b l p)) _
+      fun p _ => plant _ fun _ h => by cases h
+    have hdigest : Walk P seeds Q s (fun src st => BaseInv P seeds none none src st ∧ R src st) 0
+        (fun _ src st => BaseInv P seeds none none src st ∧ R src st)
+        (sourceRevealDigest (tree.topSignature.chainValue l)) := by
+      cases hv : tree.topSignature.chainValue l with
+      | known value => exact Walk.pure _ fun _ _ h => h
+      | secret k => exact reveal k (hshape l k hv)
+    refine Walk.conseq (c := _ * 0 + 0) (Walk.bind hreveals fun _ => ?_) (fun _ _ h => h)
+      (fun _ _ _ h => h) (by simp)
+    split
+    · exact Walk.conseq (c := 0 + (0 + (0 + (_ * 0 + 0)))) (Walk.bind
+        (reveal _ fun _ h => by cases h) fun value => Walk.bind (complete _ (fun _ h => by cases h)
+        _) fun ok => Walk.bind (consistent ok) fun _ => Walk.bind hplants fun _ => hdigest)
+        (fun _ _ h => h) (fun _ _ _ h => h) (by simp)
+    · exact Walk.conseq (c := 0 + (_ * 0 + 0)) (Walk.bind (Walk.pure _ fun _ _ h => h) fun _ =>
+        Walk.bind hplants fun _ => hdigest) (fun _ _ h => h) (fun _ _ _ h => h) (by simp)
+  unfold sourceReturnTree
+  refine Walk.conseq (c := 0 + (0 + (0 + (0 + (0 + (0 + 0)))))) (Walk.bind (Walk.conseq
+    (walk_sourceReveal P seeds Q s (readyEx := none) (cachedEx := none) (readyEx' := none)
+      (cachedEx' := none) K (fun _ _ h => by cases h) (fun e _ => hK e) (fun _ h => h)
+      (fun _ _ => True) (fun _ _ _ _ => trivial))
+    (fun _ _ h => ⟨h, trivial⟩) (fun _ _ _ h => ⟨h.1, h.2.2⟩) le_rfl) fun opening =>
+    Walk.bind (complete _ (fun _ h => by cases h) opening) fun ok =>
+    Walk.bind (consistent ok) fun _ =>
+    Walk.bind Walk.get fun src1 =>
+    Walk.bind (Walk.conseq (Walk.mapM (c := 0) _ (sourcePlant P) _ fun p hp => plant p
+      fun e he => hK e (by rw [← he]; exact (of_decide_eq_true (List.mem_filter.mp hp).2).symm))
+      (fun _ _ h => h.2) (fun _ _ _ h => h) (by simp)) fun _ =>
+    Walk.bind (Walk.conseq (Walk.sequenceFin _ _ _ chain) (fun _ _ h => h) (fun _ _ _ h => h)
+      (by simp)) fun _ => Walk.pure _ fun _ _ h => h.1)
+    (fun _ _ h => h) (fun _ _ _ h => h) le_rfl
+
+/-- A tree request of the base source keeps `BaseInv` and makes no charged call. -/
+theorem walk_tree (prims : Primitives) (x : Keys3 C) (top : TopTree)
+    (b : Fin (2 ^ layerHeight)) :
+    Walk x.1 x.2.1 Q s (BaseInv x.1 x.2.1 none none) 0 (fun _ => BaseInv x.1 x.2.1 none none)
+      (sourceTsig prims x top (.tree b)) := by
+  simp only [sourceTsig]
+  refine Walk.conseq (c := 0 + 0) (Walk.bind (walk_sourceBottomOnce_shape x.1 x.2.1 Q s top b)
+    fun r => ?_) (fun _ _ h => h) (fun _ _ _ h => h) le_rfl
+  rcases r with _ | tree
+  · exact Walk.pure _ fun _ _ h => h.1
+  · refine Walk.assume x.1 x.2.1 Q s (TopShape tree) (fun _ _ h => h.2 tree rfl) fun hts => ?_
+    exact Walk.conseq (c := 0 + (0 + 0)) (Walk.bind (Walk.conseq (walk_sourceReturnTree x.1 x.2.1 Q
+      s b tree hts) (fun _ _ h => h.1) (fun _ _ _ h => h) le_rfl) fun _ =>
+      Walk.bind (walk_prfValue x.1 x.2.1 Q s prims x.2.1 _) fun _ => Walk.pure _ fun _ _ h => h)
+      (fun _ _ h => h) (fun _ _ _ h => h) le_rfl
 
 end Hash
 
@@ -493,6 +637,19 @@ theorem charges_round1 (prims : Primitives) (x : Keys3 C) (Q : ℕ) (s : HiddenK
       SourceCharges.bind (SourceCharges.modify _ fun _ _ h _ => walkInv_of_source h rfl rfl rfl) _
         fun _ => SourceCharges.pure value) (fun _ h => h) (Nat.zero_le _)
 
+/-- A tree request makes no charged call. -/
+theorem charges_tree (prims : Primitives) (x : Keys3 C) (Q : ℕ) (s : HiddenKey → Digest)
+    (top : TopTree) (b : Fin (2 ^ layerHeight)) :
+    SourceCharges x.1 x.2.1 Q s (fun _ => True)
+      (if SigningOwnCounted (.inr (.tree b) : (LocalSpec C + TsigSpec C).Domain) then 1 else 0)
+      (sourceOraclesO1 prims x top (.inr (.tree b))) := by
+  simp only [sourceOraclesO1, sourceTsigO1]
+  refine SourceCharges.mono (c := 0 + (0 + 0)) (SourceCharges.bind (SourceCharges.map
+    (charges_of_walk (walk_tree Q s prims x top b)) _) _ fun value =>
+      SourceCharges.bind (SourceCharges.modify _ ?_) _
+        fun _ => SourceCharges.pure value) (fun _ h => h) (Nat.zero_le _)
+  exact fun _ _ h _ => walkInv_of_source h rfl rfl rfl
+
 /-- One call of the verification makes at most one charged call. -/
 theorem charges_verify (x : Keys3 C) (Q : ℕ) (s : HiddenKey → Digest) (st : SourceState C)
     (input : HashInput) :
@@ -585,3 +742,23 @@ end ThresholdLeanXmssSecurity.SigningOwnWalkHandlers
 /-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkHandlers.charges_verify' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningOwnWalkHandlers.charges_verify
+
+/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkHandlers.walk_prfValue' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.SigningOwnWalkHandlers.walk_prfValue
+
+/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkHandlers.walk_sourceBottomOnce_shape' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.SigningOwnWalkHandlers.walk_sourceBottomOnce_shape
+
+/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkHandlers.walk_sourceReturnTree' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.SigningOwnWalkHandlers.walk_sourceReturnTree
+
+/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkHandlers.walk_tree' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.SigningOwnWalkHandlers.walk_tree
+
+/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkHandlers.charges_tree' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.SigningOwnWalkHandlers.charges_tree
