@@ -20,6 +20,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningHitLane
 import ThresholdLeanXmssSecurity.Proof.SigningGuessLane
 import ThresholdLeanXmssSecurity.Proof.TreeKeyAimed
 import ThresholdLeanXmssSecurity.Proof.SigningHitProof
+import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Coupling
 
 /-! # The end theorem of threshold leanXMSS
 
@@ -176,7 +177,7 @@ theorem thresholdLeanXmss_security : ThresholdLeanXmss.ThresholdLeanXmssSecurity
     treeSuccessProof prims circuits settings C, coinSecurity prims K, coinCompleteness prims K, multStatement prims K,
     extendMultSecurity prims K, multVerifyClosed prims K, multVerifyCompleteness prims K,
     mainStatementFull prims K, mainCompleteness prims K, tprfCorrectness prims C, tprfSecurity prims C,
-    signingCorrectness prims C, signingSecurityFull prims C (by sorry)⟩
+    signingCorrectness prims C, signingSecurityClosed prims C⟩
 
 /-! The build fails if the axiom footprint of the end theorem changes. -/
 
@@ -194,6 +195,10 @@ and `Quot.sound`. -/
 /-- info: 'ThresholdLeanXmssSecurity.keygenSecurityClosed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms keygenSecurityClosed
+
+/-- info: 'ThresholdLeanXmssSecurity.signingSecurityClosed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms signingSecurityClosed
 
 /-- info: 'ThresholdLeanXmssSecurity.dealerTreeProof' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
