@@ -66,6 +66,17 @@ def sourceReleaseKey (P : PublicParameter) (seeds : C.Term → HashOutput)
   let _ ← (List.finRange numChains).mapM fun l => sourceReleaseCovered P seeds e l
   pure ()
 
+/-- The `cpk` values of the real ceremony output of tree `bi`, which read the first commitment job
+at a key outside the tree. -/
+def patchCpk (bi : Fin (2 ^ layerHeight)) (commitment : KeyIndex → Digest)
+    (cpk : KeyIndex → ChainIndex → Digest × Digest × Digest) :
+    KeyIndex → ChainIndex → Digest × Digest × Digest :=
+  fun e l => if treeOf e = bi then cpk e l else (commitment (bottomKey bi ⟨0, by decide⟩), 0, 0)
+
+/-- A real tree with the `cpk` values of the real ceremony output outside the tree. -/
+def patchTree (bi : Fin (2 ^ layerHeight)) (tree : BottomTree) : BottomTree :=
+  { tree with cpk := patchCpk bi tree.commitment tree.cpk }
+
 def sourceTsigO1 (prims : Primitives) (x : Keys3 C) (top : TopTree) :
     QueryImpl (TsigSpec C) (SourceMO1 C)
   | .corrupt i => do
@@ -75,7 +86,8 @@ def sourceTsigO1 (prims : Primitives) (x : Keys3 C) (top : TopTree) :
         modify fun (s : SourceStateO1 C) => { s with base := { s.base with signing := new } }
         let _ ← (crossedKeys st new).mapM (sourceReleaseKey x.1 x.2.1)
         pure (some (dealtKeys x.1 x.2.1 x.2.2 i))
-  | .tree b => liftBase (sourceTsig prims x top (.tree b))
+  | .tree b =>
+      (Option.map fun r => (patchTree b r.1, r.2)) <$> liftBase (sourceTsig prims x top (.tree b))
   | .round1 i J e message => liftBase (sourceTsig prims x top (.round1 i J e message))
   | .round2 i J e message parts => do
       let st := (← get).base.signing
