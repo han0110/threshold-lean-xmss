@@ -811,7 +811,7 @@ The formulas give the bandwidth of the AND layers that one operator sends for th
 | 3-of-5 | collector | 62.1 GB            |
 | 4-of-7 | collector | 66.5 GB            |
 
-A bottom tree is $2^{16} \cdot 58$ chains, 29,696 chain batches. Signing takes 2 rounds among $t$ signers and needs no MPC.
+A bottom tree is $2^{16} \cdot 58$ chains, 29,696 chain batches. Signing takes 2 rounds among $t$ signers, after the agreement of all operators on the message, and needs no MPC.
 
 ### 3.3 Security
 

@@ -577,6 +577,7 @@ mod tests {
     use crate::mpc::Key;
     use crate::mpc::tests::{local_networks, local_operators, local_parties, random_keys};
     use crate::net::pack;
+    use crate::serve;
     use crate::xmss::{truncated_hash, xor};
 
     /// The threshold PRF `F(x)` from the seeds of all terms.
@@ -898,5 +899,66 @@ mod tests {
                 )
             );
         });
+    }
+
+    #[test]
+    fn a_quorum_signs_a_certified_message_and_signs_it_again_on_a_second_request() {
+        let (public_parameter, message, quorum) = ([9; 16], [3; 32], [1, 2]);
+        let path: Vec<u8> = (0..LAYER_HEIGHT * 16).map(|byte| byte as u8).collect();
+        let group = Group::new(2);
+        let (_, all_pairs) = random_keys(&group);
+        let run = rand::random::<u64>();
+        let outcomes = local_networks(2, async |network, all_seeds| {
+            let dir = env::temp_dir().join(format!("threshold-lean-xmss-{run}-{}", network.id));
+            fs::create_dir(&dir).unwrap();
+            let (leaves, cpk, commitments, _) =
+                trusted_dealer(&all_seeds, public_parameter, Layer::Bottom, &[9]);
+            let operator = Operator {
+                id: network.id,
+                public_parameter,
+                sk: group
+                    .held(network.id)
+                    .iter()
+                    .map(|&k| all_seeds[k])
+                    .collect(),
+                k_ij: all_pairs[network.id].clone(),
+            };
+            // Each request runs its two sessions on their own networks, as an operator does.
+            let request = async |session: u32| {
+                serve::acknowledge(&dir, &network.session(session), 9, &message).await?;
+                if !quorum.contains(&network.id) {
+                    return Ok(None);
+                }
+                serve::certified(&dir, 9, &message)?;
+                let cpk = (&cpk[..], &commitments[0]);
+                let network = network.session(session + 1);
+                let signature =
+                    prawns::sign(&network, &group, &operator, &quorum, 9, &message, cpk).await?;
+                let root = xmss::layer_root(
+                    &public_parameter,
+                    Layer::Bottom,
+                    9,
+                    &message,
+                    &[signature.clone(), path.clone()].concat(),
+                );
+                let leads_to_root = root
+                    == Some(xmss::tests::fold(
+                        &public_parameter,
+                        Layer::Bottom,
+                        9,
+                        leaves[0],
+                        &path,
+                    ));
+                Ok::<_, String>(Some((signature, leads_to_root)))
+            };
+            let outcome = (request(1).await, request(3).await);
+            fs::remove_dir_all(&dir).unwrap();
+            outcome
+        });
+        assert_eq!(outcomes[0], (Ok(None), Ok(None)));
+        for (first, second) in &outcomes[1..] {
+            assert!(first.as_ref().unwrap().as_ref().unwrap().1);
+            assert_eq!(first, second);
+        }
     }
 }
