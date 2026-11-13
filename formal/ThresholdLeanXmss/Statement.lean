@@ -776,12 +776,14 @@ def HasLifetimeQueryBound (D : C.Coalition) (A : LifetimeAdversary C E) (Q : ℕ
 def lifetimeAdvantage (D : C.Coalition) (A : LifetimeAdversary C E) : ℝ :=
   (Pr[fun r => r.1 = true | lifetimeRun prims (lifetimeGame K circuits settings attempts D A)]).toReal
 
-/-- The probability that `lifetimeForger` wins the signing game `G^tsig` in the lifetime world. In
-this world `H` answers the inputs that the MPC evaluates with the fixed `Th`.
+/-- The probability that `lifetimeForger` wins the existing signing game `G^tsig` (`tsigGame`) in the
+lifetime world `lifetimeWorld`, not in `signingWorld`. In this world `H` answers the inputs that the
+MPC evaluates (`MpcInput`) with the fixed `Th`, and every other input as a lazy random oracle.
 
-`SigningSecurityStatement` does not bound this term. That claim is for the signing world, where all
-of `H` is a random oracle, and for a forger with a bounded number of calls. `lifetimeForger` uses the
-circuits of the fixed `Th`, and this term has no bound on its calls. -/
+`lifetimeForger` makes at most `q₀ = Q + lifetimeOverhead C attempts Q` calls of `H` and `PRG` when
+the lifetime adversary makes at most `Q`. `SigningSecurityStatement` does not bound this term,
+because that claim is for `signingWorld`, where all of `H` is a random oracle, and `lifetimeForger`
+uses the circuits of the fixed `Th`. -/
 def lifetimeForgerAdvantage (D : C.Coalition) (A : LifetimeAdversary C E) : ℝ :=
   (Pr[fun r => r.1 = true | lifetimeRun prims (tsigGame (lifetimeForger K circuits settings attempts D A))]).toReal
 

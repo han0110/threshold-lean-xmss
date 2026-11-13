@@ -321,14 +321,18 @@ def forgerOracles (D : C.Coalition) (parameter : PublicParameter) (corrupt : C.P
 /-- The forger of the lifetime claim. It runs the lifetime adversary `A` in the signing game, in a
 lifetime where the keygen is `F_keygen` and each ceremony is `F_tree`.
 
-* It corrupts the coalition `D` and gets its keys.
-* It emulates the keygen with `keygenSimulator`, with the public parameter of the game.
-* It answers the lifetime queries with `forgerOracles`.
+* It corrupts the coalition `D` and gets its keys. It asks no other corruption.
+* It emulates the keygen with `keygenSimulator`, with the public parameter of the game. It keeps
+  the programmed keygen points in its own table, because it cannot program `H`.
+* It answers the lifetime queries with `forgerOracles`. From the game it uses only the keys of `D`,
+  `.tree b` for each bottom tree that it holds, and the signing rounds. It gets no honest seed and no
+  pair key. The output of `.tree b` is enough to rebuild the openings for `treeSimulator`.
 * It outputs the forgery of `A`.
 
-It uses `circuits` in each emulated ceremony, and `circuits` compute the fixed `Th`.
-`SigningSecurityStatement` does not bound the advantage of this forger. That claim is for a world
-where all of `H` is a random oracle, and for a forger with a bounded number of calls. -/
+It uses `circuits` in each emulated ceremony, and `circuits` compute the fixed `Th`. It makes at most
+`q₀ = Q + lifetimeOverhead C attempts Q` calls of `H` and `PRG` when `A` makes at most `Q`.
+`SigningSecurityStatement` does not bound the advantage of this forger. That claim is for
+`signingWorld`, where all of `H` is a random oracle. -/
 def lifetimeForger (D : C.Coalition) (A : LifetimeAdversary C E) : TsigAdversary C := fun publicKey top =>
   let replay : OracleComp (ReplaySpec C) Forgery := do
     let corrupt ← Concrete.sequenceFin fun (i : C.Party) =>
