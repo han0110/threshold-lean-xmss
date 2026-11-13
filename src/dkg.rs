@@ -10,6 +10,8 @@
 //!   and `open` opens the reshared outputs.
 //! - Each ceremony starts with its own `Party`, which derives fresh PRSS keys and drops them at the
 //!   end.
+//! - A retry of the top ceremony reuses the `operator` file. The operators delete that file
+//!   together only when the key generation itself failed at an operator.
 //! - Each operator starts the batches in batch order and runs at most `concurrency` of them at the
 //!   same time.
 //!   - So operators with different concurrencies do not deadlock.
@@ -416,21 +418,27 @@ pub async fn new_top_tree(
     batch_size: usize,
     concurrency: usize,
 ) -> Result<Vec<u8>, String> {
-    let group = Group::new(network.n.div_ceil(2));
-    let operator = prawns::keygen(&group, network).await?;
-    DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(dir)
-        .unwrap();
-    OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(dir.join("operator"))
-        .and_then(|mut file| file.write_all(&operator.bytes(group.t)))
-        .unwrap();
+    let (group, operator) = match dir.join("operator").exists() {
+        true => Operator::load(dir),
+        false => {
+            let group = Group::new(network.n.div_ceil(2));
+            let operator = prawns::keygen(&group, network).await?;
+            DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(dir)
+                .unwrap();
+            OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(dir.join("operator"))
+                .and_then(|mut file| file.write_all(&operator.bytes(group.t)))
+                .unwrap();
+            (group, operator)
+        }
+    };
     let party = party(group, &operator, network, reshare, batch_size).await?;
     let keys: Vec<u32> = (0..KEYS as u32).collect();
     let (leaves, ..) = ceremony(
@@ -561,12 +569,13 @@ fn digests(bytes: &[u8]) -> Vec<Digest> {
 #[cfg(test)]
 mod tests {
     use std::array::from_fn;
+    use std::env;
 
     use signatures::lean_xmss::{codeword, message_digest};
 
     use crate::dkg::*;
     use crate::mpc::Key;
-    use crate::mpc::tests::{local_operators, local_parties, random_keys};
+    use crate::mpc::tests::{local_networks, local_operators, local_parties, random_keys};
     use crate::net::pack;
     use crate::xmss::{truncated_hash, xor};
 
@@ -770,6 +779,27 @@ mod tests {
             let failed = Some("the AND tuples fail the check".to_string());
             assert_eq!(outcomes, vec![failed; 3], "round {round}");
         }
+    }
+
+    #[test]
+    fn a_retry_of_a_failed_top_ceremony_keeps_the_operator_files() {
+        // Operator 2 uses another batch size, so each top ceremony fails after the keygen.
+        let run = rand::random::<u64>();
+        let dirs: Vec<PathBuf> = (0..3)
+            .map(|id| env::temp_dir().join(format!("threshold-lean-xmss-{run}-{id}")))
+            .collect();
+        let top_tree = || {
+            local_networks(2, async |network, _| {
+                let (dir, batch_size) = (&dirs[network.id], [128, 128, 64][network.id]);
+                let outcome = new_top_tree(dir, &network, Reshare::Peer, batch_size, 1).await;
+                (outcome.err(), fs::read(dir.join("operator")).unwrap())
+            })
+        };
+        let first = top_tree();
+        let failed = Some("the operators use the batch sizes [128, 128, 64]".to_string());
+        assert!(first.iter().all(|(error, _)| *error == failed));
+        assert_eq!(top_tree(), first);
+        dirs.iter().for_each(|dir| fs::remove_dir_all(dir).unwrap());
     }
 
     fn flip_in_batch_3<const ROUND: u64>(
