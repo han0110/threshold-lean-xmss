@@ -1,5 +1,6 @@
 import ThresholdLeanXmssSecurity.Proof.LifetimeRunBoundary
 import ThresholdLeanXmssSecurity.Proof.LifetimeKeysApartPath
+import ThresholdLeanXmssSecurity.Proof.LifetimeLegacy
 
 /-!
 # The setup boundary of a lifetime run
@@ -1509,7 +1510,7 @@ open LifetimeRunBoundary
 variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
 variable (K : Constants C E) (settings : Settings) (attempts : ℕ)
 variable (circuitsOf : (HashInput → HashOutput) → Circuits) (D : C.Coalition) (A : LifetimeAdversary C E)
-variable (Q : ℕ) (hQ : HasLifetimeQueryBound K settings attempts circuitsOf D A Q)
+variable (Q : ℕ) (hQ : HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q)
 include hQ
 
 /-- The concrete setup bridge's complete counted budget, from the original lifetime premise. -/
@@ -1520,7 +1521,7 @@ theorem boundary_setupEarly_bound (n : ℕ) (values : MpcDomain → HashOutput)
   boundary_setupEarly_bound_of_hybrid K _ settings attempts D n A Q
     (LifetimeRealBad.hybridBudget K settings attempts circuitsOf D A Q hQ n values) x z
 
-/-- S1 for the exact selected lifetime boundary under `HasLifetimeQueryBound`. -/
+/-- S1 for the exact selected lifetime boundary under `HasLifetimeQueryBoundAll`. -/
 theorem setup_keysApart_le (aes : Aes) (n : ℕ) (values : MpcDomain → HashOutput) :
     Pr[fun r => ¬ KeysApart D (rowsAt r.1) |
       worldRun ⟨thOf values, aes⟩ (worldSetup K (circuitsOf (thOf values)) settings attempts D n A)] ≤
@@ -1531,7 +1532,7 @@ theorem setup_keysApart_le (aes : Aes) (n : ℕ) (values : MpcDomain → HashOut
   setup_keysApart_le_of_hybrid K _ settings attempts D n A ⟨thOf values, aes⟩ Q
     (LifetimeRealBad.hybridBudget K settings attempts circuitsOf D A Q hQ n values)
 
-/-- S2 for the exact selected lifetime boundary under `HasLifetimeQueryBound`. -/
+/-- S2 for the exact selected lifetime boundary under `HasLifetimeQueryBoundAll`. -/
 theorem setup_keyHit_le (aes : Aes) (n : ℕ) (values : MpcDomain → HashOutput) :
     Pr[fun r => KeyHit D (rowsAt r.1) r.2 |
       worldRun ⟨thOf values, aes⟩ (worldSetup K (circuitsOf (thOf values)) settings attempts D n A)] ≤

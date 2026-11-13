@@ -1,4 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.LifetimePrfTransportProof
+import ThresholdLeanXmssSecurity.Proof.LifetimeLegacy
 
 /-!
 # The ideal lifetime stream tables
@@ -884,7 +885,7 @@ The allowance counts input equality and output equality with earlier runs,
 plus the original all-answer query budget. -/
 def HiddenKeyOverlapBound (Q : ℕ) : Prop :=
   let F := ceremonyFuel (circuitsOf fun _ => 0) settings
-  HasLifetimeQueryBound K settings attempts circuitsOf D A Q →
+  HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q →
   keySplit C (Q + lifetimeOverhead C attempts Q + (F + 2) * Q) < 2 →
   ∀ (n : Fin (lifetimeRuns attempts)) (values : MpcDomain → HashOutput)
       (name : {name : KeyName C // Hidden D name}),

@@ -1,4 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.LifetimePrfTransportProof
+import ThresholdLeanXmssSecurity.Proof.LifetimeLegacy
 
 /-!
 # The real bad event of each chronological hybrid
@@ -13,7 +14,7 @@ This module moves the `Q` budget of `lifetimeGame` to hybrid `n`.
   `emulatedRoles` and the second one by the counted copy. This gives the world game of hybrid `n`
   (`reductionGame`), after the stream table and the log are erased.
 * `hybridBudget` follows. Each call of hybrid `n` costs at most its charge in `lifetimeGame`, so
-  `HasLifetimeQueryBound` bounds every answer path of hybrid `n` by `Q`. This counts the calls of
+  `HasLifetimeQueryBoundAll` bounds every answer path of hybrid `n` by `Q`. This counts the calls of
   every party, the keygen, the signing and the honest operators of every run included.
 * `HybridRealBadBound` bounds the stream-key bad event of hybrid `n` by `realShare / 2^256`, for
   each `Th`, when every answer path of hybrid `n` makes at most `Q` calls. `realBadBound_of_hybrid`
@@ -270,8 +271,8 @@ variable (K : Constants C E) (settings : Settings) (attempts : ℕ)
 variable (aes : Aes) (circuitsOf : (HashInput → HashOutput) → Circuits)
 variable (D : C.Coalition) (A : LifetimeAdversary C E)
 
-/-- `HasLifetimeQueryBound` bounds every answer path of hybrid `n` by `Q`, for each `Th`. -/
-theorem hybridBudget (Q : ℕ) (hQ : HasLifetimeQueryBound K settings attempts circuitsOf D A Q)
+/-- `HasLifetimeQueryBoundAll` bounds every answer path of hybrid `n` by `Q`, for each `Th`. -/
+theorem hybridBudget (Q : ℕ) (hQ : HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q)
     (n : ℕ) (values : MpcDomain → HashOutput) :
     IsQueryBoundP (reductionGame K settings attempts circuitsOf D A values n) LifetimeCounted Q :=
   hybridBudget_of_real K (circuitsOf (thOf values)) settings attempts D A Q n (hQ values)

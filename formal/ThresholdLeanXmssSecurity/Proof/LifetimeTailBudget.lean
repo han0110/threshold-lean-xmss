@@ -1,4 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.LifetimeTailBridge
+import ThresholdLeanXmssSecurity.Proof.LifetimeLegacy
 
 /-!
 # The exact path budget of the selected lifetime tail
@@ -544,7 +545,7 @@ theorem driver_bound_of_hybrid (A : LifetimeAdversary C E) (Q : ℕ)
 setup and lifetime driver at exactly Q, for every values, x and z. -/
 theorem lifetime_tail_budget (circuitsOf : (HashInput → HashOutput) → Circuits)
     (A : LifetimeAdversary C E) (Q : ℕ)
-    (hQ : HasLifetimeQueryBound K settings attempts circuitsOf D A Q)
+    (hQ : HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q)
     (values : MpcDomain → HashOutput) (x : C.Party → Keys C) (z : Aux) :
     IsQueryBoundP
       (setupPrefix D (boundaryAdv K (circuitsOf (thOf values)) settings attempts D n A) x z >>=

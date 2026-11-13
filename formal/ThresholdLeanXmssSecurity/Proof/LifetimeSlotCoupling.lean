@@ -828,9 +828,9 @@ theorem settle_runsAt (D : C.Coalition) (kind : Option (Option TreeOutput))
     (st : LifetimeState C E) (tree : ThresholdLeanXmss.Tree) :
     LifetimeProof.runsAt (match kind with
       | none => st.settle D
-      | some output => settleIdeal D output st) tree = LifetimeProof.runsAt st tree := by
+      | some output => LifetimeSlots.settleIdeal D output st) tree = LifetimeProof.runsAt st tree := by
   cases kind <;> cases hr : st.running
-  all_goals simp only [LifetimeState.settle, settleIdeal, hr]
+  all_goals simp only [LifetimeState.settle, LifetimeSlots.settleIdeal, hr]
   all_goals split <;> try rfl
   all_goals split <;> cases tree <;> rfl
 
@@ -857,7 +857,7 @@ def roundLife (D : C.Coalition) (kind : Option (Option TreeOutput))
     (steps : C.Party → Step C E RealSpec TreeOutput) : LifetimeState C E :=
   match kind with
   | none => LifetimeState.settle D { st with running := some (tree, fuel - 1, steps) }
-  | some output => settleIdeal D output { st with running := some (tree, fuel - 1, steps) }
+  | some output => LifetimeSlots.settleIdeal D output { st with running := some (tree, fuel - 1, steps) }
 
 theorem roundLife_counts (D : C.Coalition) (kind : Option (Option TreeOutput))
     (st : LifetimeState C E) (tree : ThresholdLeanXmss.Tree) (fuel : ℕ)
@@ -1328,7 +1328,7 @@ def startLife (D : C.Coalition) (st : LifetimeState C E) (tree : ThresholdLeanXm
     (r : (C.Party → Step C E RealSpec TreeOutput) × Option (Option TreeOutput)) : LifetimeState C E :=
   match r.2 with
   | none => LifetimeState.settle D { countStart st tree with running := some (tree, fuel, r.1) }
-  | some output => settleIdeal D output { countStart st tree with running := some (tree, fuel, r.1) }
+  | some output => LifetimeSlots.settleIdeal D output { countStart st tree with running := some (tree, fuel, r.1) }
 
 /-- Only the shared mode leaves the auxiliary own-table field absent. -/
 def startAux (mode : RunMode) (kind : Option (Option TreeOutput)) :

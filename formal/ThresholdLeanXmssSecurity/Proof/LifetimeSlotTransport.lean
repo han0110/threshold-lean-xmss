@@ -1,5 +1,6 @@
 import ThresholdLeanXmssSecurity.Proof.LifetimeSlots
 import ThresholdLeanXmssSecurity.Proof.LifetimePrfTransportProof
+import ThresholdLeanXmssSecurity.Proof.LifetimeLegacy
 
 /-!
 # Transport of the fixed lifetime slot worlds
@@ -786,7 +787,7 @@ The observer retains the selected table through every later shared run. The orig
 circuit assumptions and all-answer lifetime budget remain premises of this estimate. -/
 def SelectedKeyOverlapBound (Q : ℕ) : Prop :=
   (∀ Th, CircuitsCompute (circuitsOf Th) Th) → FixedShape circuitsOf →
-  0 < settings.batchSize → HasLifetimeQueryBound K settings attempts circuitsOf D A Q →
+  0 < settings.batchSize → HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q →
   Q + lifetimeOverhead C attempts Q + (ceremonyFuel (circuitsOf fun _ => 0) settings + 2) * Q < 2 ^ 128 →
   ∀ (k : Fin (lifetimeRuns attempts)) (values : MpcDomain → HashOutput)
       (name : {name : KeyName C // Hidden D name}),
@@ -797,7 +798,7 @@ def SelectedKeyOverlapBound (Q : ℕ) : Prop :=
 /-- The concrete local coupling and recorded-name estimates imply the unchanged slot contract. -/
 theorem slotTransport_of_kernel_overlap (Q : ℕ)
     (hcompute : ∀ Th, CircuitsCompute (circuitsOf Th) Th) (hshape : FixedShape circuitsOf)
-    (hbatch : 0 < settings.batchSize) (hQ : HasLifetimeQueryBound K settings attempts circuitsOf D A Q)
+    (hbatch : 0 < settings.batchSize) (hQ : HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q)
     (coupled : ∀ (values : MpcDomain → HashOutput) (k : Fin (lifetimeRuns attempts)),
       KernelCoupling K (circuitsOf (thOf values)) settings attempts D k)
     (bounded : SelectedKeyOverlapBound K settings attempts aes circuitsOf D A Q) :
@@ -1015,7 +1016,7 @@ variable (D : C.Coalition) (A : LifetimeAdversary C E)
 /-- The unchanged slot transport, from fixed local scheduler couplings and actual U4 name counts. -/
 theorem slotTransport_of_scheduler_overlap (Q : ℕ)
     (hcompute : ∀ Th, CircuitsCompute (circuitsOf Th) Th) (hshape : FixedShape circuitsOf)
-    (hbatch : 0 < settings.batchSize) (hQ : HasLifetimeQueryBound K settings attempts circuitsOf D A Q)
+    (hbatch : 0 < settings.batchSize) (hQ : HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q)
     (coupled : ∀ (values : MpcDomain → HashOutput) (k : Fin (lifetimeRuns attempts)),
       SchedulerKernelCoupling K (circuitsOf (thOf values)) settings attempts D k)
     (bounded : SelectedKeyOverlapBound K settings attempts aes circuitsOf D A Q) :

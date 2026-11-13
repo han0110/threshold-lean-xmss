@@ -1,5 +1,6 @@
 import ThresholdLeanXmssSecurity.Proof.LifetimeAllowance
 import ThresholdLeanXmssSecurity.Proof.LifetimeKeygenPrograms
+import ThresholdLeanXmssSecurity.Proof.LifetimeLegacy
 
 
 /-!
@@ -9,7 +10,7 @@ This module bounds the two transports of `LifetimeAllowance.LifetimePrfTransport
 Each transport is identical until a bad event.
 
 * `real_transport` bounds the real side. Hybrid `n` against the real PRF experiment of
-  `lifetimeRunReduction n` costs the stream-key bad event `probBad_streamKey` of hybrid `n`
+  `lifetimeRunReductionSampled n` costs the stream-key bad event `probBad_streamKey` of hybrid `n`
   (`keyWorld_coupling`). For `n = 0`, `accepts_reductionGame_zero` shows that hybrid `0` and the
   lifetime game accept with the same probability.
 * `ideal_transport` bounds the ideal side. The ideal PRF experiment of run `n` and world `n + 1`
@@ -24,7 +25,7 @@ Each transport is identical until a bad event.
   `keySplit (q₀ + q) < 2`.
 * `RealBadBound` and `IdealBadBound` bound the two bad events by the two shares, for each `Th`.
   `smallSplit_of_bounds` gives `LifetimePrfTransportSmallSplit` from them under
-  `HasLifetimeQueryBound`, and `lifetimeSecurity_of_bounds` gives `LifetimeSecurityStatement`.
+  `HasLifetimeQueryBoundAll`, and `lifetimeSecurity_of_bounds` gives `LifetimeSecurityStatementSampled`.
 -/
 
 open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
@@ -235,7 +236,7 @@ variable (K : Constants C E) (settings : Settings) (attempts : ℕ)
 variable (aes : Aes) (circuitsOf : (HashInput → HashOutput) → Circuits)
 variable (D : C.Coalition) (A : LifetimeAdversary C E)
 
-/-- The world game of hybrid `n` for one `Th`. It is the game inside `lifetimeRunReduction n`. -/
+/-- The world game of hybrid `n` for one `Th`. It is the game inside `lifetimeRunReductionSampled n`. -/
 def reductionGame (values : MpcDomain → HashOutput) (n : ℕ) : OracleComp (WorldSpec C) Bool :=
   emulationGame (lifetimeGameWith K (circuitsOf (thOf values)) settings attempts
     (lifetimeHybridRoles D n) (lifetimeHybridRoles D n n) D A)
@@ -346,7 +347,7 @@ theorem accepts_chronological (values : MpcDomain → HashOutput) (n : ℕ) :
   · rw [chronologicalGame, if_neg hn]
     rfl
 
-/-- The real PRF experiment of `lifetimeRunReduction n` is the keyed world of hybrid `n`, with the
+/-- The real PRF experiment of `lifetimeRunReductionSampled n` is the keyed world of hybrid `n`, with the
 `Th` sample first. -/
 theorem reductionProbability_real (n : ℕ) :
     reductionProbability K settings attempts aes circuitsOf D A true n =
@@ -355,18 +356,18 @@ theorem reductionProbability_real (n : ℕ) :
           (simulateQ (keyWorld ⟨thOf values, aes⟩ D keys)
             (reductionGame K settings attempts circuitsOf D A values n)).run' ∅]).toReal := by
   have h : (hiddenStreams aes).prfRealExp
-      (lifetimeRunReduction K settings attempts aes circuitsOf D A n) =
+      (lifetimeRunReductionSampled K settings attempts aes circuitsOf D A n) =
       ($ᵗ (KeyName C × HashOutput → Digest)) >>= fun keys =>
         ($ᵗ (MpcDomain → HashOutput)) >>= fun values =>
           simulateQ ((hiddenStreams aes).prfRealQueryImpl keys)
             (prgReduction ⟨thOf values, aes⟩ D
               (reductionGame K settings attempts circuitsOf D A values n)) := by
-    unfold PRFScheme.prfRealExp lifetimeRunReduction
+    unfold PRFScheme.prfRealExp lifetimeRunReductionSampled
     refine bind_congr fun keys => ?_
     rw [simulateQ_bind, PRFScheme.simulateQ_prfRealQueryImpl_liftComp]
     rfl
   change (Pr[= true | (hiddenStreams aes).prfRealExp
-    (lifetimeRunReduction K settings attempts aes circuitsOf D A n)]).toReal = _
+    (lifetimeRunReductionSampled K settings attempts aes circuitsOf D A n)]).toReal = _
   rw [h, probOutput_bind_bind_swap]
   congr 1
   refine probOutput_bind_congr' _ true fun values => ?_
@@ -1296,7 +1297,7 @@ variable (K : Constants C E) (settings : Settings) (attempts : ℕ)
 variable (aes : Aes) (circuitsOf : (HashInput → HashOutput) → Circuits)
 variable (D : C.Coalition) (A : LifetimeAdversary C E)
 
-/-- The ideal PRF experiment of `lifetimeRunReduction n` is the stream world of hybrid `n`. -/
+/-- The ideal PRF experiment of `lifetimeRunReductionSampled n` is the stream world of hybrid `n`. -/
 theorem reductionProbability_ideal (n : ℕ) :
     reductionProbability K settings attempts aes circuitsOf D A false n =
       (Pr[= true | ($ᵗ (MpcDomain → HashOutput)) >>= fun values =>
@@ -1305,7 +1306,7 @@ theorem reductionProbability_ideal (n : ℕ) :
   unfold reductionProbability
   simp only [Bool.false_eq_true, if_false]
   congr 1
-  unfold PRFScheme.prfIdealExp lifetimeRunReduction
+  unfold PRFScheme.prfIdealExp lifetimeRunReductionSampled
   rw [simulateQ_bind, PRFScheme.simulateQ_prfIdealQueryImpl_liftComp]
   simp only [StateT.run'_eq, StateT.run_bind, liftM, StateT.run_monadLift, monadLift_self,
     bind_pure_comp, map_bind, bind_map_left]
@@ -1360,7 +1361,7 @@ variable (D : C.Coalition) (A : LifetimeAdversary C E)
 /-- The stream-key bad event of each hybrid, for each `Th`, fits the real share. -/
 def RealBadBound (Q : ℕ) : Prop :=
   let F := ceremonyFuel (circuitsOf fun _ => 0) settings
-  HasLifetimeQueryBound K settings attempts circuitsOf D A Q →
+  HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q →
   keySplit C (Q + lifetimeOverhead C attempts Q + (F + 2) * Q) < 2 →
   ∀ (n : Fin (lifetimeRuns attempts)) (values : MpcDomain → HashOutput),
     probBad_streamKey ⟨thOf values, aes⟩ D (reductionGame K settings attempts circuitsOf D A values n) ≤
@@ -1369,7 +1370,7 @@ def RealBadBound (Q : ℕ) : Prop :=
 /-- The bad event of the ideal side of each hop, for each `Th`, fits the ideal share. -/
 def IdealBadBound (Q : ℕ) : Prop :=
   let F := ceremonyFuel (circuitsOf fun _ => 0) settings
-  HasLifetimeQueryBound K settings attempts circuitsOf D A Q →
+  HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q →
   keySplit C (Q + lifetimeOverhead C attempts Q + (F + 2) * Q) < 2 →
   ∀ (n : Fin (lifetimeRuns attempts)) (values : MpcDomain → HashOutput),
     (Pr[IdealBad ∘ Prod.snd | (simulateQ (leftImpl ⟨thOf values, aes⟩ D)
@@ -1386,7 +1387,7 @@ theorem realBad_le (n : ℕ) {ε : ℝ} (hε : 0 ≤ ε)
 /-- The transport of `LifetimeAllowance` in the case `keySplit (q₀ + q) < 2`, from the two
 shares. -/
 theorem smallSplit_of_bounds (Q : ℕ)
-    (hQ : HasLifetimeQueryBound K settings attempts circuitsOf D A Q)
+    (hQ : HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q)
     (hreal : RealBadBound K settings attempts aes circuitsOf D A Q)
     (hideal : IdealBadBound K settings attempts aes circuitsOf D A Q) :
     LifetimeAllowance.LifetimePrfTransportSmallSplit K settings attempts aes circuitsOf D A Q := by
@@ -1404,12 +1405,12 @@ contract. -/
 theorem lifetimeSecurity_of_bounds
     (hsource : (∀ Th, CircuitsCompute (circuitsOf Th) Th) → FixedShape circuitsOf →
       0 < settings.batchSize → ∀ (D : C.Coalition) (A : LifetimeAdversary C E) (Q : ℕ),
-        HasLifetimeQueryBound K settings attempts circuitsOf D A Q →
+        HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q →
         RealBadBound K settings attempts aes circuitsOf D A Q ∧
         IdealBadBound K settings attempts aes circuitsOf D A Q ∧
         LifetimeHybridOrder.LifetimeKeygenHop K settings attempts aes circuitsOf D A Q ∧
         LifetimeAllowance.LifetimeAfterKeygen K settings attempts aes circuitsOf D A Q) :
-    LifetimeSecurityStatement K settings attempts aes circuitsOf :=
+    LifetimeSecurityStatementSampled K settings attempts aes circuitsOf :=
   LifetimeAllowance.lifetimeSecurity_of_smallSplit K settings attempts aes circuitsOf
     fun hcompute hshape hbatch D A Q hQ =>
       let ⟨hr, hi, hk, ha⟩ := hsource hcompute hshape hbatch D A Q hQ

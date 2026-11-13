@@ -1,9 +1,10 @@
 import ThresholdLeanXmssSecurity.Proof.LifetimeHybridOrder
+import ThresholdLeanXmssSecurity.Proof.LifetimeLegacy
 
 /-!
 # Lifetime allowance with the stream-key error in the slot pass
 
-This module gives a second split of the error of `LifetimeSecurityStatement`. It uses the
+This module gives a second split of the error of `LifetimeSecurityStatementSampled`. It uses the
 worlds, the reductions and `LifetimeKeygenHop` of `LifetimeHybridOrder` without change.
 
 * `LifetimePrfTransport` bounds the two transports of each chronological PRF hop by
@@ -109,7 +110,7 @@ def LifetimePrfHop (Q : ℕ) : Prop :=
       LifetimeHybridOrder.chronologicalProbability K settings attempts aes circuitsOf D A
         (n + 1)| ≤
       PRFScheme.prfAdvantage (hiddenStreams aes)
-        (lifetimeRunReduction K settings attempts aes circuitsOf D A n) + keySplit C (q₀ + q)
+        (lifetimeRunReductionSampled K settings attempts aes circuitsOf D A n) + keySplit C (q₀ + q)
 
 theorem lifetimePrfHop_of_transport (Q : ℕ)
     (h : LifetimePrfTransport K settings attempts aes circuitsOf D A Q) :
@@ -130,15 +131,15 @@ theorem lifetimePrfHop_of_transport (Q : ℕ)
 /-- The entire PRF pass in time order, with one `keySplit` for each run. -/
 theorem lifetimePrfPass (Q : ℕ)
     (h : LifetimePrfHop K settings attempts aes circuitsOf D A Q) :
-    |lifetimeAdvantage K settings attempts aes circuitsOf D A -
+    |lifetimeAdvantageSampled K settings attempts aes circuitsOf D A -
       LifetimeHybridOrder.chronologicalProbability K settings attempts aes circuitsOf D A
         (lifetimeRuns attempts)| ≤
       (∑ n : Fin (lifetimeRuns attempts), PRFScheme.prfAdvantage (hiddenStreams aes)
-        (lifetimeRunReduction K settings attempts aes circuitsOf D A n)) +
+        (lifetimeRunReductionSampled K settings attempts aes circuitsOf D A n)) +
       (lifetimeRuns attempts : ℝ) * keySplit C (Q + lifetimeOverhead C attempts Q +
         (ceremonyFuel (circuitsOf fun _ => 0) settings + 2) * Q) := by
   let e : ℕ → ℝ := fun n => PRFScheme.prfAdvantage (hiddenStreams aes)
-    (lifetimeRunReduction K settings attempts aes circuitsOf D A n) +
+    (lifetimeRunReductionSampled K settings attempts aes circuitsOf D A n) +
     keySplit C (Q + lifetimeOverhead C attempts Q +
       (ceremonyFuel (circuitsOf fun _ => 0) settings + 2) * Q)
   have ht := abs_sub_le_sum_of_hybrid
@@ -147,7 +148,7 @@ theorem lifetimePrfPass (Q : ℕ)
   rw [LifetimeHybridOrder.chronologicalProbability_zero] at ht
   have he : (∑ n ∈ Finset.range (lifetimeRuns attempts), e n) =
       (∑ n : Fin (lifetimeRuns attempts), PRFScheme.prfAdvantage (hiddenStreams aes)
-        (lifetimeRunReduction K settings attempts aes circuitsOf D A n)) +
+        (lifetimeRunReductionSampled K settings attempts aes circuitsOf D A n)) +
       (lifetimeRuns attempts : ℝ) * keySplit C (Q + lifetimeOverhead C attempts Q +
         (ceremonyFuel (circuitsOf fun _ => 0) settings + 2) * Q) := by
     rw [← Fin.sum_univ_eq_sum_range]
@@ -203,12 +204,12 @@ theorem lifetime_bound_of_hops (Q : ℕ)
       (treeCheckError (E := E) circuits settings tree (q₀ + q) +
         treeHashError circuits settings C tree (q₀ + q) + streamKeyError C +
         seedHitError C (q₀ + q))
-    lifetimeAdvantage K settings attempts aes circuitsOf D A ≤
+    lifetimeAdvantageSampled K settings attempts aes circuitsOf D A ≤
       keygenHashError C ((setupRounds + 2) * Q) +
         (runError .top + ∑ b : Fin (2 ^ layerHeight), runError (.bottom b)) +
         ∑ n : Fin (lifetimeRuns attempts),
           PRFScheme.prfAdvantage (hiddenStreams aes)
-            (lifetimeRunReduction K settings attempts aes circuitsOf D A n) +
+            (lifetimeRunReductionSampled K settings attempts aes circuitsOf D A n) +
         2 ^ layerHeight * searchFailure + signingHashError q₀ +
         seedHitError C q₀ + seedCollisionError C := by
   dsimp only
@@ -225,11 +226,11 @@ keygen hop and the dealer-world contract with `streamKeyError` in each slot. -/
 theorem lifetimeSecurity_of_sources
     (hsource : (∀ Th, CircuitsCompute (circuitsOf Th) Th) → FixedShape circuitsOf →
       0 < settings.batchSize → ∀ (D : C.Coalition) (A : LifetimeAdversary C E) (Q : ℕ),
-        HasLifetimeQueryBound K settings attempts circuitsOf D A Q →
+        HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q →
         LifetimePrfTransport K settings attempts aes circuitsOf D A Q ∧
         LifetimeHybridOrder.LifetimeKeygenHop K settings attempts aes circuitsOf D A Q ∧
         LifetimeAfterKeygen K settings attempts aes circuitsOf D A Q) :
-    LifetimeSecurityStatement K settings attempts aes circuitsOf := by
+    LifetimeSecurityStatementSampled K settings attempts aes circuitsOf := by
   intro hcompute hshape hbatch D A Q hQ
   obtain ⟨hp, hk, hr⟩ := hsource hcompute hshape hbatch D A Q hQ
   exact lifetime_bound_of_hops K settings attempts aes circuitsOf D A Q
@@ -240,11 +241,11 @@ and the dealer-world contract. -/
 theorem lifetimeSecurity_of_smallSplit
     (hsource : (∀ Th, CircuitsCompute (circuitsOf Th) Th) → FixedShape circuitsOf →
       0 < settings.batchSize → ∀ (D : C.Coalition) (A : LifetimeAdversary C E) (Q : ℕ),
-        HasLifetimeQueryBound K settings attempts circuitsOf D A Q →
+        HasLifetimeQueryBoundAll K settings attempts circuitsOf D A Q →
         LifetimePrfTransportSmallSplit K settings attempts aes circuitsOf D A Q ∧
         LifetimeHybridOrder.LifetimeKeygenHop K settings attempts aes circuitsOf D A Q ∧
         LifetimeAfterKeygen K settings attempts aes circuitsOf D A Q) :
-    LifetimeSecurityStatement K settings attempts aes circuitsOf :=
+    LifetimeSecurityStatementSampled K settings attempts aes circuitsOf :=
   lifetimeSecurity_of_sources K settings attempts aes circuitsOf
     fun hcompute hshape hbatch D A Q hQ =>
       let ⟨hp, hk, hr⟩ := hsource hcompute hshape hbatch D A Q hQ
