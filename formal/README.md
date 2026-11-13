@@ -1,8 +1,8 @@
 # formal
 
-Lean 4 proofs of the security claims of threshold leanXMSS. The claims are those of [Statement.lean](./ThresholdLeanXmss/Statement.lean). The DKG and each tree ceremony are secure with selective abort against a static coalition, and the signing is strongly unforgeable against an adaptive coalition. They hold in the paper model of the protocol, in the random-oracle model. The keygen, ceremony and lifetime claims fix `Th` to the function that the MPC circuits compute. `Statement.lean` is the one file a reviewer reads.
+Lean 4 statements and proofs of the security claims of threshold leanXMSS: the DKG and each tree ceremony are secure with selective abort against a static coalition, the threshold PRF and the signing are secure against an adaptive coalition, and the signing is strongly unforgeable. The claims are stated in the paper model of the protocol, in the random-oracle model, and the keygen, ceremony and lifetime claims fix `Th` to the function that the MPC circuits compute. What is claimed, and what is not, is [statement.tex](./statement.tex). A claim counts as proved when the axiom guard of the root theorem lists only `propext`, `Classical.choice` and `Quot.sound`.
 
-Key file: [ThresholdLeanXmssSecurity.lean](./ThresholdLeanXmssSecurity.lean)
+Key files: [Statement.lean](./ThresholdLeanXmss/Statement.lean) (the claims, the one Lean file a reviewer reads) and [ThresholdLeanXmssSecurity.lean](./ThresholdLeanXmssSecurity.lean) (the root theorem and the route of its proof).
 
 ```sh
 cd formal

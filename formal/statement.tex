@@ -1,0 +1,697 @@
+\documentclass[11pt]{article}
+\usepackage[margin=2.3cm]{geometry}
+\usepackage{amsmath,amssymb,booktabs}
+\usepackage[hidelinks]{hyperref}
+\usepackage{microtype}
+\usepackage{url}
+\DeclareUrlCommand\lean{\urlstyle{tt}\def\UrlBreaks{\do\.\do\_\do\/}}
+% the counts of a committee
+\newcommand{\NT}{N_{\mathcal T}}
+\newcommand{\NP}{N_{\mathrm{pair}}}
+\newcommand{\Th}{\mathrm{Th}}
+\newcommand{\Fn}[1]{\mathcal F_{\mathrm{#1}}}
+\emergencystretch=3em
+\setlength{\parskip}{0.35em}
+\title{The claims of Threshold leanXMSS}
+\author{}
+\date{November 2026}
+\begin{document}
+\maketitle
+
+\noindent This document states, in plain mathematics, every end claim about Threshold leanXMSS in
+the repository. Each claim is a statement. This document does not say which claims have a proof. The
+claims are these.
+\begin{itemize}\itemsep0pt
+\item The key generation (the keygen) of the $n = 2t - 1$ operators securely computes the trusted
+dealer of PRAWNS with selective abort.
+\item Each tree ceremony securely computes the dealer of its tree with selective abort. That dealer
+gives the trees of leanXMSS when the circuits compute the tweakable hash.
+\item The MPC gadgets of Goyal and Song (coins, multiplications, the check and one batch) each
+securely compute their functionality. Each honest run gives the output of its functionality.
+\item The threshold PRF is correct and adaptively secure.
+\item The two-round signing is correct. It is strongly unforgeable under adaptive corruption in the
+random-oracle model.
+\item A last claim composes the real keygen, the real ceremonies with retries and the signing
+service over the lifetime of the key. It is stated against a static coalition, up to the advantage of
+one fixed forger.
+\end{itemize}
+
+Each claim is a Lean~4 proposition. The proposition \lean{ThresholdLeanXmssSecurityStatement} in
+\lean{Statement.lean} bundles the eighteen component claims. The theorem
+\lean{thresholdLeanXmss_security} in \lean{ThresholdLeanXmssSecurity.lean} has the bundle as its
+type. Its \texttt{\#guard\_msgs} axiom guard is the test of the proof. The component claims count as
+proved only when the axiom guard of \lean{thresholdLeanXmss_security} lists only \lean{propext},
+\lean{Classical.choice} and \lean{Quot.sound}, with no \lean{sorryAx} and no added axiom. A guard
+that lists \lean{sorryAx} certifies no proof. The lifetime claim \lean{LifetimeSecurityStatement} is a
+separate proposition and is not in the bundle. The entry file states no theorem of it, so the guard of
+\lean{thresholdLeanXmss_security} does not test it. A proof of the lifetime claim needs its own
+theorem and its own guard.
+
+\subsection*{Where to read it}
+
+The statement layer is the folder \lean{formal/ThresholdLeanXmss/}. It imports Mathlib, VCVio and
+the leanXMSS statement of leanVM (\lean{formal/lean_xmss} at the pin of \lean{lakefile.toml}), and
+nothing of the proofs.
+\begin{enumerate}\itemsep0pt
+\item \lean{Scheme.lean} holds the protocol as programs of one operator. These are the keygen of
+\lean{doc/dkg.md}, the gadgets, the ceremony, the threshold PRF and the signing of
+\lean{doc/sign.md}. The end of the file holds the oracles of the world and the execution model.
+\item \lean{Ideal.lean} holds the functionalities, the trusted dealer \lean{Fkeygen}, the tree
+dealer \lean{Ftree}, and the oracles of the PRAWNS games and of the lifetime game.
+\item \lean{Reductions.lean} holds the explicit simulators \lean{keygenSimulator} and
+\lean{treeSimulator}, the reductions \lean{prgReduction} and \lean{lifetimeRunReduction} to the AES
+term, and the fixed forger \lean{lifetimeForger}. A bound that holds the advantage of a reduction is
+only as strong as that reduction, so a review reads this file too.
+\item \lean{Statement.lean} holds the counted worlds, the notions of secure computation, the games,
+the error terms and the claims. Its module doc has the claims table, the model and the deviations
+from the papers. It is the file that a human reviews.
+\end{enumerate}
+The entry file is \lean{formal/ThresholdLeanXmssSecurity.lean}. Its theorem
+\lean{thresholdLeanXmss_security} has the type \lean{ThresholdLeanXmssSecurityStatement}. That type
+quantifies over every committee, every check field with its constants, every pair of primitives
+$(\Th, \mathrm{AES})$, every circuit family and every setting.
+\begin{center}\footnotesize
+\begin{tabular}{lll}
+\toprule
+Claim & In words & Section\\\midrule
+\lean{KeygenCompletenessStatement} & an honest keygen gives the keys of $\Fn{keygen}$ & \ref{sec:keygen}\\
+\lean{KeygenSecurityStatement} & the keygen securely computes $\Fn{keygen}$ & \ref{sec:keygen}\\
+\lean{TreeCompletenessStatement} & an honest ceremony gives the tree of $\Fn{tree}$ & \ref{sec:tree}\\
+\lean{TreeSecurityStatement} & each ceremony securely computes $\Fn{tree}$ & \ref{sec:tree}\\
+\lean{DealerTreeStatement} & $\Fn{tree}$ gives the trees of $\mathsf{KeyGen}$ & \ref{sec:tree}\\
+\lean{TreeSuccessStatement} & $\Fn{tree}$ fails only on a failed search & \ref{sec:tree}\\
+\lean{CoinStatement}, \lean{CoinCompletenessStatement} & $\mathsf{Coin}$ and $\Fn{coin}$ & \ref{sec:gadgets}\\
+\lean{MultStatement} & $\mathsf{MulRep}$ and $\mathsf{Reshare}$ and $\Fn{mult}$ & \ref{sec:gadgets}\\
+\lean{ExtendMultStatement} & $\mathsf{MulSh}$ and $\Fn{extendMult}$ & \ref{sec:gadgets}\\
+\lean{MultVerifyStatement}, \lean{MultVerifyCompletenessStatement} & the check and $\Fn{multVerify}$ & \ref{sec:gadgets}\\
+\lean{MainStatement}, \lean{MainCompletenessStatement} & one batch and $\Fn{main}$ & \ref{sec:gadgets}\\
+\lean{TprfCorrectnessStatement}, \lean{TprfSecurityStatement} & the threshold PRF & \ref{sec:sign}\\
+\lean{SigningCorrectnessStatement} & an honest quorum signs & \ref{sec:sign}\\
+\lean{SigningSecurityStatement} & strong unforgeability, adaptive corruption & \ref{sec:sign}\\
+\lean{LifetimeSecurityStatement} & the composed lifetime, not in the bundle & \ref{sec:lifetime}\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection*{The literature}
+
+The DKG follows Goyal and Song (GS20, ePrint 2020/134) and the note \lean{doc/leanXMSS.pdf}. The
+threshold PRF and the signing follow PRAWNS (Boneh, B\"unz, D., Litchev and Nazirkhanova, ePrint
+2026/2142). The DKG claims use the simulation framework of Canetti (2000) and of Goldwasser and
+Lindell (GL05). They have selective abort and static corruption, as GS20 proves. The signing claims
+follow PRAWNS, Definitions 2.2 and 3.2, with adaptive corruption, and leanVM for strong
+unforgeability. The other keys below are these.
+\begin{itemize}\itemsep0pt
+\item CDI05 (Cramer, Damg\aa rd and Ishai) gives replicated sharing and the PRSS.
+\item CDG+18 gives the local programmable random oracle, and CGH+18 gives the agreement check.
+\item KPPS23 is MPClan.
+\item BR93 gives the random-oracle model and its query bounds.
+\item BDG20 (Bellare, Davis and G\"unther) gives domain separation.
+\end{itemize}
+
+\section{The setting}
+
+\subsection*{The committee}
+
+There are $n = 2t - 1$ operators $P_0, \dots, P_{n-1}$ (\lean{Committee}). Any $t$ of them form a
+quorum and sign together. At most $t - 1$ are corrupt (\lean{Coalition}). A \emph{term} $T$ is a set
+of $t - 1$ operators, and its $t$ \emph{holders} are the operators outside it. There are
+$\NT = \binom{n}{t-1}$ terms and $\NP = \binom{n}{2}$ pairs of operators. A coalition of $t - 1$
+operators holds every term except one, the term equal to itself. So at least one term stays hidden
+from every coalition, and every term has an honest holder. The rounds are synchronous, and the links
+are private and authenticated (GS20, Section 3.1).
+
+\subsection*{Replicated sharing and the PRSS}
+
+A wire value $v$ is a replicated sharing $v = c + \sum_T v_T$ (CDI05). The part $c$ is public, and
+the holders of $T$ hold $v_T$. A Shamir sharing over the check field is used only inside the check.
+Fresh random sharings come from the PRSS of CDI05. Each term key and each pair key of a ceremony
+gives a stream $\mathsf{PRG}(\mathrm{key}, \rho, \mathrm{idx})$, so a random sharing costs no
+message. The PRSS outputs of one round realize $\Fn{rand}$, which has no abort, because the PRSS
+sends no message. Each ceremony runs its own setup for fresh PRSS keys.
+
+\subsection*{leanXMSS and the keys}
+
+The signature is leanXMSS at the parameters of leanVM. It has $58$ Winternitz chains of length $4$,
+a $128$-bit message digest and a target sum of $106$. Its two layers of trees of height $h = 16$ give
+$2^{32}$ one-time keys. One signature makes at most $L = 2^{32}$ randomizer trials. The keygen
+deals three kinds of keys by commit, reveal and echo.
+\begin{itemize}\itemsep0pt
+\item The public parameter $P$.
+\item A seed $\mathrm{seed}_T$ for each term, which the holders of $T$ know.
+\item A pair key $K_{ij} = K_{ji}$ for each pair of operators.
+\end{itemize}
+The threshold PRF is $F(x) = \bigoplus_T H_{16}(\mathrm{seed}_T \Vert x)$, the first $16$ bytes of
+$H$. Its inputs $x$ are the chain positions $A_{\mathrm{prf}}(e, l, p)$ and the randomizer values
+$A_{\mathrm{rnd}}(e)$ of each key $e$ (\lean{Point}).
+
+\subsection*{The ceremonies}
+
+The trees are built in $1 + 2^{16}$ ceremonies (\lean{ceremony}), one for the top tree and one for
+each bottom tree $b$ (\lean{Tree}). A ceremony computes the chains of its keys in MPC from the
+PRF values, as boolean circuits of Keccak-f[1600]. A bottom ceremony also opens, for each key $e$,
+the masked chain values $\mathrm{cpk}_e$ and the commitment
+$c_e = \Th(P, A_{\mathrm{rnd}}(e, 1), F(A_{\mathrm{rnd}}(e)) \Vert 0)$. It also signs its bottom
+root with its top key. A ceremony splits its jobs into batches of \lean{batchSize} jobs. Each batch is one
+run of GS20, Protocol 19. It runs the AND layers with $\mathsf{Reshare}$ and rerandomizes its
+outputs. Then it runs the GS20 check over the field of $2^{192}$ elements and opens its outputs with
+$\mathsf{OpenRep}$, as in MPClan. Each operator aborts alone. The tree dealer $\Fn{tree}$
+(\lean{Ftree}) computes the tree in the clear with the same circuits on the seeds of the honest
+holders. It leaks $P$ and the openings of each batch.
+
+\subsection*{The signing}
+
+The signing needs no MPC (\lean{doc/sign.md}). A quorum $J$ signs a message $m$ at key $e$ in two
+rounds. Each signer $i$ sends the part $y_i = \mathsf{Eval}_i(x, m, J)$. This part is the XOR of the
+PRF terms that go to $i$ and one mask $H_{16}(K_{ij} \Vert x \Vert m \Vert J)$ for each co-signer
+$j$. $\mathsf{Combine}$ XORs the parts, so the masks cancel in pairs and the result is $F(x)$.
+\begin{enumerate}\itemsep0pt
+\item Round 1 opens the randomizer value $\rho_e = F(A_{\mathrm{rnd}}(e))$. Each signer aborts unless
+it matches $c_e$.
+\item Each signer finds the first randomizer $R$ from $\Th(P, A_{\mathrm{rnd}}(e), \rho_e \Vert m)$
+whose digest is a codeword. This search has no message.
+\item The codeword gives a position $p_l < 4$ on each chain $l$. Round 2 reconstructs
+$F(A_{\mathrm{prf}}(e, l, p_l))$ from the parts for each chain with $p_l < 3$. The chain value is this
+PRF value at position $0$. At positions $1$ and $2$ it is the public entry $\mathrm{cpk}_e[l, p_l]$ XOR
+the PRF value. At position $3$ it is the public chain end $\mathrm{cpk}_e[l, 3]$, with no PRF part.
+Each signer aborts unless each chain value leads to its chain end.
+\end{enumerate}
+The output is a plain leanXMSS signature. Honest operators sign at most one message at each key, over
+all quorums (\lean{breaksOneMessagePerKey}). The signing game enforces this rule. The PoC does not
+enforce it, and production must enforce it.
+
+\subsection*{The oracles}
+
+$H$ is one oracle on the type \lean{Query}. Each constructor of \lean{Query} is its own domain of
+$H$, and a repeated query gets the same answer. The domains are these.
+\begin{itemize}\itemsep0pt
+\item The tweakable hash $\Th$ (\lean{hash}), the PRF terms (\lean{prf}) and the masks (\lean{mask}).
+\item The commitments, the key derivations and the echo hashes of a setup.
+\item The copy hashes of $\mathsf{OpenRep}$, and the running histories and salted digests of the check.
+\item The stream keys, the coin keys and their expansions.
+\end{itemize}
+This models domain-separated hashing (BDG20). The model has three worlds, and each world answers
+$\Th$ in its own way.
+\begin{center}\small
+\begin{tabular}{lll}
+\toprule
+World & $\Th$ on the MPC inputs & Used by\\\midrule
+\lean{world} & the fixed $\Th$ of \lean{prims}, free & all claims except the two below\\
+\lean{signingWorld} & a lazy random oracle & \lean{SigningSecurityStatement}\\
+\lean{lifetimeWorld} & the fixed $\Th$ of \lean{prims}, counted & the lifetime claim\\
+\bottomrule
+\end{tabular}
+\end{center}
+The MPC inputs (\lean{MpcInput}) are the chain steps and the commitment $c_e$, the only inputs of
+$\Th$ that the circuits evaluate. Each world answers every other input of $\Th$ with a lazy random
+oracle, the leaves, the nodes and the message digests included. It answers every other domain in the
+same way. The fixed function
+$\Th$ is a field of \lean{Primitives}, and the claims quantify over every such function.
+
+\subsection*{The circuits, AES-128 and the check field}
+
+The circuits are a parameter (\lean{Circuits}). The ceremony claims quantify over every circuit family,
+because $\Fn{tree}$ runs the same circuits. The hypothesis \lean{CircuitsCompute} states that the
+circuits compute the jobs of leanXMSS with the fixed $\Th$. Only \lean{DealerTreeStatement},
+\lean{TreeSuccessStatement} and the lifetime claim assume it.
+
+$\mathsf{PRG}(\mathrm{key}, \rho, \mathrm{idx})$ is AES-128 under the first $128$ bits of
+$H(\mathrm{key})$, as in the implementation. The model takes AES-128 as any PRF scheme with a
+$128$-bit key (\lean{Aes}). The scheme \lean{hiddenStreams} has one independent AES key for each
+PRSS key that the coalition does not know. The multi-key PRF advantage against it is a term of each
+bound that needs it.
+
+The check field $E$ is any field of characteristic $2$ with a value of \lean{Constants}. The field
+\lean{encode} of \lean{Constants} gives $E$ exactly $2^{192}$ elements (\lean{Constants.card}), so $E$
+is isomorphic to $\mathrm{GF}(2^{192})$. The weights of the bits of a word are any family that is
+linearly independent over $\mathbb F_2$, and the implementation uses the powers $x^q$. No claim fixes
+the basis or the bit encoding.
+
+\subsection*{The paper model}
+
+The protocol is modeled at the level at which GS20 and PRAWNS state it. Messages carry values, not
+bytes, and the model assumes that every encoding of the implementation is injective. Framing, padding
+and the byte layout of messages are not modeled. The digests of the check travel in their own round,
+and the implementation sends them with the last coin. The session nonces and the commitment of the
+PRSS setup in the nonce round are not modeled, and fresh PRSS parts separate the sessions. A run
+has a fixed number of steps (its fuel). The model splits each run into batches of one size, and the
+implementation sizes chain batches and commitment batches apart.
+
+\subsection*{Secure computation}
+
+An adversary is rushing and malicious. It gets the inputs of the corrupt operators and an auxiliary
+input $z$. A distinguisher with oracle access reads the joint output of the adversary and the honest
+operators. With selective abort, the adversary names the honest operators that receive each output
+(GL05). The claims use three notions.
+\begin{itemize}
+\item \lean{SecurelyComputes}, in a hybrid model. For each coalition $D$ and adversary
+$\mathcal A$ there is a simulator $S$. It is fixed before the inputs, $z$, the distinguisher and the
+budget. It sees only the corrupt inputs, $z$ and the leaks of the functionality, and it cannot program
+$H$. Take every valid input and every $q$-query adversary and distinguisher. Then the ideal run makes
+at most $q + \mathit{overhead}$ counted calls, and the two runs differ by at most $\varepsilon(q)$.
+\item \lean{SimulatedBy}, on the real network. The simulator is the named code $\mathit{Sim}(D,
+\mathcal A)$. It runs $\mathcal A$ on the counted copy. It emulates the honest operators on the free
+copy as the real operators do. It can program $H$ as the local programmable random oracle of CDG+18. The
+same budget and distance conditions hold.
+\item \lean{Completes}. An honest run, with no corruption, gives the outputs of the functionality, up
+to $\varepsilon$ in statistical distance. GS20 states no completeness lemma, and security with abort
+alone allows a protocol that always aborts. So each completeness claim is the honest run of its
+protocol.
+\end{itemize}
+
+\subsection*{The budgets}
+
+The bounds count oracle calls, not time. There are three budgets.
+\begin{itemize}
+\item In the simulation claims and in \lean{TprfSecurityStatement}, $q$ bounds the counted calls of
+the adversary and of the distinguisher (\lean{IsQueryBounded}, BR93). The bound holds for every
+answer of the oracles and every state. The honest operators and the functionalities call $H$ for free.
+\item In the signing claim, $q$ bounds every call of $H$ and $\mathsf{PRG}$ by every party, cache hits
+included (\lean{HasSigningQueryBound}). The key generation, the signers, the forger and the final
+verification all count.
+\item In the lifetime claim, $Q$ counts in the same way on every path of the lifetime game, for every
+answer of the oracles (\lean{HasLifetimeQueryBound}). It does not bound an adversary state that no
+answer reaches.
+\end{itemize}
+
+\section{The keygen}\label{sec:keygen}
+
+The keygen (\lean{keygen}) runs $3$ rounds (\lean{setupRounds}). In round 1, each operator sends a
+commitment $\mathrm{com}_{i \to j}$ that names its sender and its receiver. In round 2 it sends its
+reveal. In round 3 it sends the hash of all parts of $P$ and an echo hash. An operator aborts unless each reveal opens its commitment and each
+echo equals its own. Each key hashes its tag and the revealed parts. The functionality $\Fn{keygen}$
+(\lean{Fkeygen}) is the trusted dealer of PRAWNS $\mathsf{KeyGen}'$ with selective abort. It samples a
+uniform $P$, uniform seeds and uniform pair keys. It leaks $P$ and the corrupt keys, and gives the
+keys to the honest receivers that the adversary names.
+
+\paragraph{Completeness} (\lean{KeygenCompletenessStatement}). An honest keygen gives the keys of
+$\Fn{keygen}$ up to the statistical distance
+\[
+\boxed{\ (\NT^2 + \NP^2)\cdot 2^{-256}\ }
+\]
+(\lean{derivedKeyCollision}). A derivation hashes only its tag and its parts. The bad event is two
+terms, or two pairs, with equal derivation inputs. Equal inputs force equal keys, while the dealer
+samples the keys independently. Distinct inputs give independent uniform keys. These keys can
+collide, as the keys of the dealer can.
+
+\paragraph{Security} (\lean{KeygenSecurityStatement}). Against every static coalition of at most
+$t - 1$ operators, the keygen on the real network securely computes $\Fn{keygen}$ with selective
+abort, with the explicit simulator \lean{keygenSimulator}. The simulator observes every call of the
+adversary. After round 1, it extracts the corrupt reveals from the calls with the commitment prefix.
+Then it programs $H$ so that $P$ and the corrupt keys are those of $\Fn{keygen}$. Its overhead is
+$1 + \NT + n^2$ programming queries (\lean{keygenOverhead}). The distance is at most
+\[
+\boxed{\ (q + s_K)^2\cdot 2^{-256}, \qquad s_K = n(1 + \NT + n) + 1 + \NT + \NP + n^2\ }
+\]
+(\lean{keygenHashError}, \lean{keygenSecrets}). The $s_K$ honest points are the parts of each
+operator, the derived keys and the inputs of the echo hashes. The birthday bound of the $q$ calls and
+these points pays a guessed secret, a collision of two secrets, a failed programming and a failed
+extraction.
+
+\section{The ceremonies}\label{sec:tree}
+
+Each ceremony claim fixes a top tree and a tree, and assumes \lean{batchSize} $> 0$. Its inputs are
+the keys of one dealing (\lean{DealtInputs}), because the operators build the bottom trees on demand
+while they sign. The coalition of a ceremony is the set of operators corrupted before it, and no
+operator is corrupted during it. Let $B$ be the number of checked batches of the tree
+(\lean{treeBatches}). Let $d$ and $R$ be the largest numbers of coins and of halving steps of the
+check of one batch, over all runs (\lean{maxBatch}).
+
+\paragraph{The check error.} One check with $d$ coins and $R$ halving steps misses a wrong tuple with
+probability at most
+\[
+\mathrm{checkErr}(d, R, q) = \frac{d + 2(R + 1)}{|E| - 2} + \frac{(R + 2)\,q}{|E|}
+\]
+(\lean{checkErrorOf}, GS20, Lemmas 8 to 10). The first term is the Schwartz--Zippel count. The second
+term pays a counted call that hits the key input of one of the $R + 2$ coins before the coin opens.
+The ceremony pays $B \cdot \mathrm{checkErr}(d, R, q)$ (\lean{treeCheckError}).
+
+\paragraph{Completeness} (\lean{TreeCompletenessStatement}). An honest ceremony gives the output of
+$\Fn{tree}$ up to the statistical distance
+\[
+\boxed{\ B\left(\frac{7}{|E|} + (R + 1)\left(\frac{2}{|E|}\right)^{2^{64}}\right)
++ \frac{(B(R + 2))^2}{2^{257}}\ }
+\]
+(\lean{treeAbortError}). The first term is a slice coin equal to $0$, or a challenge that finds no
+value outside $\{0, 1\}$ within $2^{64}$ tries (\lean{coinFailure}). The second term is a collision of
+two of the $B(R + 2)$ coin keys, because a later check reads the cached coins of an earlier batch.
+
+\paragraph{Security} (\lean{TreeSecurityStatement}). Against every static coalition of at most
+$t - 1$ operators, each ceremony on the real network securely computes $\Fn{tree}$ with selective
+abort, with the explicit simulator \lean{treeSimulator} and no overhead. The simulator runs the
+adversary with emulated honest operators. They use $P$, the corrupt seeds for the terms that a corrupt
+operator holds, zero seeds elsewhere, and ideal streams under the hidden PRSS keys. The opening of
+each batch shifts the first lacked term $T_0$, so that it opens the output of $\Fn{tree}$ (GS20,
+Theorem 2, output phase, and MPClan, Appendix B). $\mathsf{Rerand}$ first makes $T_0$ uniform. For an
+adversary $\mathcal A$, inputs $x$, auxiliary input $z$ and distinguisher $Z$, the distance is at most
+\[
+\boxed{\ \begin{aligned}&B\cdot\mathrm{checkErr}(d, R, q) + \frac{(q + s_T)^2}{2^{256}} + \frac{(\NT + \NP)^2}{2^{129}}\\
+&+ \mathrm{Adv}^{\mathrm{prf}}_{\mathtt{hiddenStreams}(\mathrm{AES})}\big(\mathtt{prgReduction}(D,
+\mathrm{Real}_{\mathcal A, x, z, Z})\big)\end{aligned}\ }
+\]
+with the honest points (\lean{treeSecrets})
+\[
+s_T = n(\NT + n) + \NT + \NP + n^2 + (\NT + \NP) + B\,(3\NT + n\NT + R + 2).
+\]
+\begin{itemize}
+\item The first term is the soundness of the checks of all batches.
+\item The second term (\lean{treeHashError}) is the birthday bound of the counted calls and the honest
+points. The PRSS setup has the parts, the derived keys and the echo inputs. Each PRSS key has a
+stream-key input. Each batch has the history, the digest and the copy hash of each term, the copies
+that a corrupt owner sends to each honest operator, and the $R + 2$ coin keys.
+\item The third term (\lean{streamKeyError}) is a collision of the $128$-bit AES keys of the
+$\NT + \NP$ PRSS keys.
+\item The last term is the multi-key PRF advantage of the reduction \lean{prgReduction} on the real
+run. The reduction answers each honest stream under a hidden key from the PRF oracle (CDI05, the PRSS
+of the lacked term). The term is on the real run because \lean{treeSimulator} already uses ideal
+streams.
+\end{itemize}
+
+\paragraph{The dealer gives the trees} (\lean{DealerTreeStatement}). Assume that the circuits
+compute $\Th$ (\lean{CircuitsCompute}) and that \lean{batchSize} $> 0$. Fix a parameter, seeds, a top
+tree, a tree and a cache of $H$. Then the dealer of $\Fn{tree}$ and \lean{referenceTree} with the PRF
+values of the seeds give the same distribution of the tree and of the next cache. \lean{referenceTree} is the key
+generation of PRAWNS, Section 3.1, for the trees of leanXMSS. So $\Fn{tree}$ gives the trees of the
+signing claims.
+
+\paragraph{The dealer rarely fails} (\lean{TreeSuccessStatement}). Under the same hypotheses, the
+dealer that builds the top tree and then bottom tree $b$ on it fails with probability at most
+\[
+\boxed{\ (1 - p)^{L}, \qquad L = 2^{32}\ }
+\]
+(\lean{searchFailure}). Here $p$ (\lean{codewordProbability}) is the probability that one trial of
+the randomizer search hits a codeword, the share of $128$-bit digests whose digits sum to $106$. The
+search is that of the top signature of the bottom root.
+
+\section{The gadgets}\label{sec:gadgets}
+
+The gadget claims are the lemmas of GS20 for replicated sharing. They are internal steps, and the
+keygen and ceremony claims do not depend on their interfaces. Each is in a hybrid model, and the
+PRSS realizes $\Fn{rand}$. Their functionalities leak the view of each honest operator of the terms
+that the corrupt operators know, more than GS20 on some inputs. Every simulator of this section
+exists by the claim, sees only the leaks, and has all its calls counted.
+
+\paragraph{The valid inputs.} Each gadget claim is stated only on valid inputs. Below, $i$ and $j$ are
+honest operators, and $x_i$ is the input of $i$.
+\begin{itemize}
+\item \lean{SameCount} (the coin and the multiplications) states $x_i = x_j$ for the count of values.
+\item \lean{ShamirInputs} (\lean{ExtendMultStatement}) states that $i$ and $j$ agree on the kind and the
+length of each entry. For each Shamir entry $g$ and position $k$ there are polynomials $V, W$ of
+degree at most $t - 1$ with $a_i(k) = V(\alpha_i)$ and $b_i(k) = W(\alpha_i)$ at every honest $i$.
+\item \lean{TupleInputs} (the check) states that the honest lists of tuples have the given lengths and
+one mode for each tuple. Fix a term $T$. If the honest holders of $T$ agree on the values $z_T(g)$ that
+a corrupt operator fills ($\mathrm{filler}(T, g) \in D$), then they agree on all of $x_T$, $y_T$ and
+$z_T$. So a term with no corrupt holder always agrees, and a split copy needs a split value that a
+corrupt operator filled.
+\item \lean{MainInputs} (one batch) states that there are widths $w_k$, one for each job $k$. The view
+of $i$ of term $T$ in job $k$ has length $w_k$ if $i$ holds $T$ and length $0$ otherwise. Every holder
+of each term agrees on it, the corrupt holders included.
+\end{itemize}
+
+\paragraph{The leaks of the check.} $\Fn{multVerify}$ (\lean{FmultVerify}) takes each term of each
+tuple from its first honest holder. Let $\mathit{agree}$ be the event that every two honest holders
+of each term have the same $(x_T, y_T, z_T)$ for every tuple. Let $\mathit{accept}$ be the event
+$\mathit{agree}$ and $z(g) = x(g)\,y(g)$ for every reconstructed tuple and position. The functionality
+leaks three things.
+\begin{itemize}\itemsep0pt
+\item The view of each honest operator of the terms that the corrupt operators know.
+\item The differences $z(g) - x(g)\,y(g)$ of the reconstructed tuples, only when $\mathit{agree}$
+holds. Reconstructed values of split copies can depend on secrets.
+\item The bit $\mathit{accept}$.
+\end{itemize}
+An honest receiver gets an output only when $\mathit{accept}$ holds.
+\begin{center}\footnotesize
+\begin{tabular}{llll}
+\toprule
+Claim & Protocol and model & Overhead & Error\\\midrule
+\lean{CoinStatement} & $\mathsf{Coin}$, $\Fn{rand}$-hybrid (GS20, Lemma 3) & $0$ & $0$\\
+\lean{MultStatement} & $\mathsf{MulRep}$, $\mathsf{Reshare}$, each mode (Lemma 4) & $0$ & $0$\\
+\lean{ExtendMultStatement} & $\mathsf{MulRep}$ or $\mathsf{MulSh}$, $\mathsf{Reshare}$ (Lemma 5) & $0$ & $0$\\
+\lean{MultVerifyStatement} & the check, $\{\Fn{coin}, \Fn{extendMult}, \Fn{rand}\}$ (Lemmas 8 to 11) & $c_V$ & $\varepsilon_V(q)$\\
+\lean{MainStatement} & one batch, $\{\Fn{mult}, \Fn{multVerify}\}$ (Theorem 2) & $2n\NT$ & $\varepsilon_M(q)$\\
+\bottomrule
+\end{tabular}
+\end{center}
+The multiplications are secure up to an additive attack, as in GS20. For the check of $k$ tuples with
+$d$ coins and $R$ halving steps,
+\[
+c_V = n\big(R + 2 + d + (R + 1)\,2^{64} + 2\NT\big), \qquad
+\varepsilon_V(q) = \mathrm{checkErr}(d, R, q) + \frac{(q + 2n\NT + R + 2)^2}{2^{256}}
+\]
+(\lean{checkOverhead}, \lean{checkHashError}). The overhead is the emulation of the coin keys, the
+expanded coins, the challenge tries and the two hashes of each term at each operator. The second term
+of $\varepsilon_V$ is the birthday bound of the counted calls, the histories and digests of the terms,
+and the coin keys. For one batch,
+\[
+\varepsilon_M(q) = (q + 2n\NT)^2\cdot 2^{-256}
+\]
+(\lean{copyHashError}). The adversary chooses the honest copy of each term that it holds at the
+$\mathsf{Rerand}$ leak, so a collision of two copies passes the hash check of $\mathsf{OpenRep}$.
+\lean{MainStatement} is GS20, Theorem 2, for public outputs and for inputs that the operators already
+share. Its inputs agree at every holder, as the keygen echo makes them.
+
+\begin{sloppypar}\noindent The completeness claims are the honest runs. \lean{CoinCompletenessStatement} and
+\lean{MainCompletenessStatement} hold with distance $0$. \lean{MultVerifyCompletenessStatement}
+states that an honest check accepts correct tuples (\lean{CorrectTuples}) up to the distance
+$\mathrm{coinFailure}(R) + (R + 2)^2/2^{257}$ (\lean{abortErrorOf}).\end{sloppypar}
+
+\paragraph{The deviations from GS20.} \lean{Statement.lean} lists them, and each has its own argument.
+\begin{itemize}\itemsep0pt
+\item Replicated sharing replaces Shamir sharing. A corrupt filler can give each honest holder its own
+copy, so the salted digests compare the copies (KPPS23, $\Pi_{\mathrm{agree}}$, and CGH+18, Protocol
+3.3).
+\item Each operator aborts alone, so every functionality except $\Fn{rand}$ has selective abort.
+\item The de-linearization weighs tuple $k$ by a product of $d$ coins, as the prototype does, in
+place of the powers of one coin of GS20, Protocol 13.
+\item Bit $q$ of a word has the public weight $x^q$. This is the partially deterministic challenge of
+Dao and Thaler (2024), with the geometric weights of Flock (B\"unz, Rothblum and Wang, 2026).
+\item The first seven halving steps fold slices with the coin kept out (Gruen, 2024) and a table of
+small values (BDDT25). Each step is still a degree-$2$ claim in its challenge.
+\item GS20 assumes exactly $(n-1)/2$ corrupt parties. \lean{treeSimulator} handles every coalition
+size, because it shifts one lacked term at the opening.
+\end{itemize}
+
+\section{The threshold PRF and the signing}\label{sec:sign}
+
+Only \lean{SigningSecurityStatement} runs in \lean{signingWorld}, where all of $H$ is a lazy random
+oracle, $\Th$ included. The two PRF claims and \lean{SigningCorrectnessStatement} run in
+\lean{world}. There the PRF terms and the masks are random-oracle domains, and $\Th$ is fixed on the
+MPC inputs. The committee is a parameter of each claim, and PRAWNS lets the adversary choose it.
+$\mathsf{Eval}'$ of PRAWNS, Section 5.1, adds two masks under $k_{ij}$ and $k_{ji}$. The note adds one
+mask under the common key $K_{ij}$, and the masks still cancel in pairs.
+
+\paragraph{PRF correctness} (\lean{TprfCorrectnessStatement}). For every quorum $J$, input $x$ and
+context $m$, $\mathsf{Combine}'$ of the parts of $J$ gives $F(x)$ with probability $1$ (PRAWNS,
+Definition 2.1).
+
+\paragraph{PRF security} (\lean{TprfSecurityStatement}). The game $G^{\mathrm{tprf}}$ of PRAWNS,
+Figure 1 (\lean{tprfGame}), deals the keys with $\mathsf{KeyGen}'$ of PRAWNS, Section 5.1. The
+adversary has the oracles $\mathsf{OCorrupt}$, $\mathsf{OEval}$ with the quorum and the context, and
+$\mathsf{OChallenge}$. A challenge on $x$ gives $F(x)$ or a random value. The game refuses a query
+that brings the corrupt operators and the parts of one $(x, m)$ to $t$ on a challenged point. For
+every adversary with at most $q$ counted calls,
+\[
+\boxed{\ \mathrm{Adv}^{\mathrm{tprf}} \le \frac{(2\NT + n^2)\,q + (\NT + n^2)^2}{2^{256}}\ }
+\]
+(\lean{tprfError}). This is PRAWNS, Theorem 5.1, with $F(k, x) = H_{16}(k \Vert x)$ in the
+random-oracle model. PRAWNS bounds it by $2\NT\,\varepsilon_F$. The masks add $n^2 q/2^{256}$ for the
+guess of a hidden pair key. Honest calls are free, so two of the $\NT + n^2$ keys can collide.
+
+\paragraph{Signing correctness} (\lean{SigningCorrectnessStatement}). For every quorum, key and
+message, every signature that an honest quorum outputs verifies. The quorum fails with probability at
+most
+\[
+\boxed{\ 2\,(1 - p)^{L}\ }
+\]
+for the search of the top signature in $\mathsf{KeyGen}$ and the search of the signature.
+
+\paragraph{The signing game} (\lean{tsigGame}). The game $G^{\mathrm{tsig}}$ of PRAWNS, Figure 3,
+deals the keys with the dealer $\mathsf{KeyGen}$ (\lean{dealerKeyGen}) and gives the forger the
+public key and the top tree. The forger has $H$ and the oracles \lean{tsigOracles}.
+\begin{itemize}\itemsep0pt
+\item $\mathsf{OCorrupt}$ is adaptive and stops at $t - 1$ operators. A corruption gives only the keys
+of an operator, because an operator erases its ceremony state.
+\item The tree oracle gives the public outputs of a bottom tree and the opened randomizer value of its
+top key. The game builds each bottom tree once.
+\item $\mathsf{OSign}$ has two rounds and takes the quorum. An honest operator answers only for one
+message at each key (\lean{breaksOneMessagePerKey}). This rule replaces line 8 of PRAWNS, Figure 3,
+which fails for $n = 2t - 1$.
+\end{itemize}
+A forgery wins (\lean{forgeryWins}) if it verifies and is fresh. It is fresh in two cases. In the
+first case, fewer than $t$ operators can give chain parts at its key for its message. In the second
+case, it differs from the signature of $\mathsf{KeyGen}$ at its key. The second case is strong unforgeability, which goes beyond PRAWNS. The
+commitment $c_e$ fixes the randomizer value, so the same message at the same key gives the same
+signature.
+
+\paragraph{Signing security} (\lean{SigningSecurityStatement}). For every forger and every $q$ that
+bounds every call of $H$ and $\mathsf{PRG}$ in the game,
+\[
+\boxed{\ \mathrm{Adv}^{\mathrm{tsig}} \le \frac{q}{2^{127}} + \frac{(\NT + n^2)\,q}{2^{256}} +
+\frac{(\NT + n^2)^2}{2^{256}}\ }
+\]
+(\lean{signingHashError}, \lean{seedHitError}, \lean{seedCollisionError}).
+\begin{itemize}
+\item The first term gives each call two units of $2^{-128}$. One unit pays a call whose output hits an
+honest output at its tweak. The other pays a call that meets a hidden honest input. Such an input is a
+chain value below an opened position, $\rho_e$ before round 1, or the output of a digest that a later
+search selects.
+\item At most $t - 1$ corrupt operators leave the seed of at least one term and the pair keys of the
+honest pairs hidden. The second term pays a call on such a key. Each call names one key, which is
+uniform on $256$ bits.
+\item The third term pays two equal keys. Equal term seeds cancel in $F$, and a hidden key equal to a
+corrupt key is known.
+\end{itemize}
+Without these events, each unopened $F(x)$ is a fresh uniform value. This covers $\rho_e$ before
+round 1, the chain starts and the masks.
+
+\paragraph{What the signing claims do not give.} The claim is in the random-oracle model for all of
+$H$, $\Th$ included, while the ceremonies evaluate a fixed $\Th$ in MPC. The step from one model to
+the other is the random-oracle heuristic for Keccak. The claim also takes the trees of the dealer
+$\mathsf{KeyGen}$, not the trees of the real ceremonies. Section~\ref{sec:lifetime} composes the two.
+The one-message rule is a named coordination assumption, and the PoC does not meet it.
+
+\section{The lifetime claim}\label{sec:lifetime}
+
+\lean{LifetimeSecurityStatement} states the security of the real keygen, the real ceremonies with
+retries and the signing service together. It fixes one $\Th$ (the field of \lean{prims}) and one
+circuit family, and it assumes \lean{CircuitsCompute} and \lean{batchSize} $> 0$.
+
+\paragraph{The lifetime game} (\lean{lifetimeGame}). The coalition $D$ of at most $t - 1$ operators is
+static and is corrupt from the start.
+\begin{itemize}
+\item The keygen runs once on the real network. If an honest operator has no keys, the lifetime ends.
+The adversary then gets the public parameter.
+\item The adversary gets the public key and the top tree of the first honest operator $h$ once $h$
+holds its top tree.
+\item The adversary runs one ceremony at a time and chooses each tree and the start of each run. Each
+tree has at most \lean{attempts} runs. A run of a tree starts only while some honest operator lacks
+that tree. A retry runs on the same keys with a fresh PRSS setup. Each operator keeps its first output
+of each tree, and a later run does not replace it.
+\item A bottom ceremony runs only when every honest operator has the top tree, and not after the first
+signing request on its tree.
+\item Signing requests can come between the rounds of a ceremony. A request on the tree of the running
+ceremony is refused. An honest operator answers a request, round 1 included, only when it holds its own
+ceremony output of that tree. It signs at most one message at each key.
+\item The adversary loses if an honest operator has no top tree at the end. The win test is
+\lean{forgeryWins}, with $\mathsf{KeyGen}$ on the seeds of the honest operators.
+\end{itemize}
+The game runs in \lean{lifetimeWorld}. $H$ answers the MPC inputs with the fixed $\Th$ and every other
+input as a lazy random oracle.
+
+\paragraph{The bound.} Let $Q$ bound every call of $H$ and $\mathsf{PRG}$ on every path of the game.
+Let $q = (\mathit{fuel} + 2)\,Q$ with the fuel of a ceremony (\lean{ceremonyFuel}),
+$q_0 = Q + \mathit{ov}(Q)$, and
+\[
+\mathrm{run}(\mathit{tree}) = \mathit{attempts}\cdot\Big(B\cdot\mathrm{checkErr}(d, R, q_0 + q) +
+\frac{(q_0 + q + s_T)^2}{2^{256}} + \frac{(\NT + \NP)^2}{2^{129}} +
+\frac{(\NT + n^2)(q_0 + q)}{2^{256}}\Big)
+\]
+with $B$ and $s_T$ of the tree. Then
+\[
+\boxed{\ \begin{aligned}
+\Pr[\text{the lifetime adversary forges}] \le{}& \frac{(5Q + s_K)^2}{2^{256}}
++ \mathrm{run}(\mathrm{top}) + \sum_{b < 2^{16}} \mathrm{run}(b)\\
+&+ \sum_{r < N_{\mathrm{run}}} \mathrm{Adv}^{\mathrm{prf}}_{\mathtt{hiddenStreams}(\mathrm{AES})}
+\big(\mathtt{lifetimeRunReduction}(r)\big)\\
+&+ 2^{16}\,(1 - p)^{L} + \mathtt{lifetimeForgerAdvantage}
+\end{aligned}\ }
+\]
+with $N_{\mathrm{run}} = \mathit{attempts}\,(2^{16} + 1)$ runs (\lean{lifetimeAdvantage}, \lean{lifetimeRuns},
+\lean{lifetimeOverhead}).
+\begin{itemize}
+\item The first term is \lean{keygenHashError} at the budget $(\mathit{setupRounds} + 2)\,Q = 5Q$. One step
+of a phase adversary holds all that the lifetime adversary does between two rounds. So a phase of
+$f$ rounds takes the budget $(f + 2)\,Q$.
+\item Each run of each ceremony pays its check, its birthday bound and its stream keys, after the
+$q_0$ calls of the earlier phases. It also pays \lean{seedHitError} for a call on a hidden key of an
+honest term or pair. The emulated signing keeps the masks of the honest pairs in its own table.
+\item Each run pays the PRF advantage of its own reduction \lean{lifetimeRunReduction}. That reduction
+runs \lean{prgReduction} on a hybrid in which the earlier runs use ideal streams and the later runs
+use real streams. The keygen and the signing call no $\mathsf{PRG}$.
+\item Each bottom tree pays one failed search, because each retry gives the same search.
+\item The overhead $\mathit{ov}(Q)$ is the cost of the trees that a reduction computes in the clear.
+\[
+\mathit{ov}(Q) = \big(\min(Q, 2^{16}) + N_{\mathrm{run}}\big)\,b + N_{\mathrm{run}}\,n\,b + 1 + \NT + n^2
+\]
+Here $b$ (\lean{bottomTreeCalls}) bounds the calls of \lean{referenceTree} for one tree, with $\NT$
+calls for each PRF value.
+\[
+b = 2^{16}\cdot 58\,(3\NT + 6) + 2^{16}(\NT + 1) + 58\,(\NT + 6) + \NT + 2^{18} + 2^{32}
+\]
+Its terms pay the chain rows, the commitments, the Merkle tree, at most $2^{32}$ randomizer trials,
+the top signature and its check. The
+signing oracles build a tree only after a ceremony run, and each such tree costs at least one call of
+$Q$. Each run pays one more tree. The emulated \lean{treeSimulator} of each run evaluates the
+openings at each of the $n$ operators. \lean{keygenSimulator} adds its programming queries.
+\end{itemize}
+
+\paragraph{The last term.} \lean{lifetimeForgerAdvantage} is the probability that the fixed forger
+\lean{lifetimeForger} wins the signing game \lean{tsigGame}, run in \lean{lifetimeWorld} and not in
+\lean{signingWorld}. That forger runs the lifetime adversary in a lifetime where the keygen is
+$\Fn{keygen}$ and each ceremony is $\Fn{tree}$.
+\begin{itemize}\itemsep0pt
+\item It corrupts the coalition $D$ and asks no other corruption.
+\item It emulates the keygen with \lean{keygenSimulator} on the public parameter of the game. It keeps
+the programmed keygen points in its own table, because it cannot program $H$.
+\item It emulates each ceremony with the operators of \lean{treeSimulator} and the fixed circuits. It
+takes the output of $\Fn{tree}$ from the top tree of the game and from its tree oracle.
+\item It gets the keys of the coalition, its pair keys with honest operators included. It gets no
+hidden term seed and no key that only honest operators share.
+\item It sends the admitted signing requests to the signing oracles of the game, and outputs the
+forgery of the lifetime adversary.
+\end{itemize}
+The forger is fixed code, so the prover does not choose this term. The term has no budget, and no
+claim bounds it. \lean{SigningSecurityStatement} does not bound it, because that claim is stated in
+\lean{signingWorld}. There all of $H$ is a random oracle, while this forger runs circuits of the fixed
+$\Th$. The step from this term to a concrete bound is the random-oracle heuristic for $\Th$. Under
+that heuristic, \lean{SigningSecurityStatement} applies to \lean{lifetimeForger} at its own number of
+calls. No claim states that number or this step. The heuristic is not a term of the bound.
+
+\paragraph{What the lifetime claim does not give.} The coalition is static. An adaptive lifetime claim
+does not follow from these claims, although the threshold PRF and signing claims are adaptive. Ceremonies that run
+at the same time as another ceremony are outside the game. The claim does not bound its last term.
+
+\section{What is not proved}
+
+\begin{itemize}
+\item The claims are stated for the paper model, not for bytes. Messages carry values, and every byte
+encoding is assumed injective. The model has no framing, padding, byte layout or tags on the wire. It
+uses one batch size, and the implementation sizes chain batches and commitment batches apart. The
+session nonces and the commitment of the nonce round are not modeled. Each run has a fixed fuel. The
+implementation sends the digests with the last coin, and the model sends them in their own round.
+\item The claims assume private authenticated channels ($\Fn{auth}$). The PoC uses plain TCP with no
+transport authentication.
+\item The model separates the constructors of \lean{Query}, and the implementation does not yet do
+so. The threshold PRF and the masks hash a key first with no tag. To match the model, the
+implementation needs injective encodings with a distinct tag for each domain and fields of fixed
+width or with a length prefix.
+\item The keygen, each ceremony and the lifetime claim have a static coalition. Only the threshold PRF
+and signing claims cover adaptive corruption, and no adaptive lifetime claim follows.
+\item No claim gives liveness or resistance to denial of service. Security with selective abort
+allows a protocol that aborts, and the completeness claims cover only honest runs. Frame-length
+attacks are out of scope.
+\item The random-oracle heuristic for $\Th$ and for Keccak is not proved. The signing claim takes all
+of $H$ as a random oracle. The ceremony and lifetime claims take a fixed $\Th$ on the MPC inputs and a
+random oracle elsewhere. No claim treats Keccak-256 or Keccak-f[1600] as the deployed functions.
+\item No claim bounds \lean{lifetimeForgerAdvantage}. The lifetime bound holds the advantage of
+\lean{lifetimeForger} as an explicit term with no budget.
+\item The one-message rule is an assumption on coordination. The signing and lifetime games enforce
+\lean{breaksOneMessagePerKey}. The PoC does not enforce it, and production must.
+\item \lean{CircuitsCompute} is a hypothesis. No claim shows it for the circuits of the
+implementation.
+\item AES-128 is not shown secure. The model takes any PRF scheme, and its multi-key PRF advantage is
+a term of the bounds.
+\item No claim fixes the constants of the implementation. The claims take every value of
+\lean{Constants}, and \lean{constants_nonempty} gives a value only for the committee of one operator.
+\item Each operator is assumed to erase its ceremony state at the end of each ceremony, also on
+abort. Only this erasure makes a corruption give only the keys.
+\item A ceremony that runs during another ceremony is outside the claims. In the separate ceremony
+claims, a ceremony during an open signing session is outside them too.
+\item The gadget functionalities leak more than GS20 on some inputs, and their claims restrict the
+inputs. These claims are internal steps.
+\item The budgets count oracle calls, not running time. The adversary is classical, and no claim
+covers quantum adversaries.
+\item No test links the Rust implementation to \lean{Scheme.lean}.
+\end{itemize}
+
+\end{document}
