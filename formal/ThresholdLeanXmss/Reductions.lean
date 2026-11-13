@@ -171,6 +171,183 @@ def prgReduction (prims : Primitives) (D : C.Coalition) (game : OracleComp (Worl
     fun x => lift (programAnswer x)
   (simulateQ ((real + programming) + honest) game).run' ∅
 
+/-! ## The forger of the lifetime claim -/
+
+section Forger
+
+/-- The oracles of the forger, namely the local oracles and the signing oracles of the game. -/
+abbrev ForgerSpec (C : Committee) := LocalSpec C + TsigSpec C
+
+/-- The oracles of the emulated lifetime, namely the world and the signing oracles of the game. -/
+abbrev ReplaySpec (C : Committee) := WorldSpec C + TsigSpec C
+
+/-- The points that `keygenSimulator` programs. -/
+def KeygenPoint : Query C → Prop
+  | .derive .keygen _ _ => True
+  | _ => False
+
+/-- The world of the emulated lifetime, as the forger answers it. The forger cannot program `H`. So
+it keeps the points of `KeygenPoint` in its own table, as a lazy random oracle that
+`keygenSimulator` programs. Every other call goes to the oracles of the forger. -/
+def forgerWorld : QueryImpl (ReplaySpec C) (StateT (HashCache C) (OracleComp (ForgerSpec C))) :=
+  let table := fun {α : Type} (step : StateT (HashCache C) ProbComp α) =>
+    (StateT.mk fun s => liftComp (step.run s) (ForgerSpec C) : StateT (HashCache C) (OracleComp (ForgerSpec C)) α)
+  let localPart : QueryImpl (LocalSpec C) (StateT (HashCache C) (OracleComp (ForgerSpec C))) := fun t =>
+    match t with
+    | .inr (.inl q) => if KeygenPoint q then table ((Query C →ₒ HashOutput).randomOracle q) else
+        StateT.lift (OracleComp.lift (OracleSpec.query (spec := ForgerSpec C) (.inl (.inr (.inl q)))))
+    | t => StateT.lift (OracleComp.lift (OracleSpec.query (spec := ForgerSpec C) (.inl t)))
+  let signing : QueryImpl (TsigSpec C) (StateT (HashCache C) (OracleComp (ForgerSpec C))) :=
+    fun q => StateT.lift (OracleComp.lift (OracleSpec.query (spec := ForgerSpec C) (.inr q)))
+  (localPart + (fun x => table (programAnswer (C := C) x)) + localPart) + signing
+
+/-- A computation of the world in the emulated lifetime. -/
+def inWorld {α : Type} (oa : OracleComp (WorldSpec C) α) : OracleComp (ReplaySpec C) α :=
+  simulateQ (fun t => query (spec := ReplaySpec C) (.inl t)) oa
+
+/-- The roles of an emulated run of `F_tree`. The run keeps its own table of ideal streams, as
+`treeSimulator` does. -/
+def replayRoles (D : C.Coalition) : Roles C (StateT (StreamCache C) (OracleComp (ReplaySpec C))) where
+  adversary oa := StateT.lift (inWorld (worldRoles.adversary oa))
+  honest oa := StateT.mk fun streams =>
+    inWorld (Prod.fst <$> (((emulatedRoles D).honest oa).run streams).run)
+
+/-- The openings of each batch of a ceremony, from its public output. `ρ` is the opened randomizer
+value of the top key of a bottom tree. The job order and the batching of `signJobs` do not depend on
+the positions, so the positions here are zero. The chain values themselves come from the signature. -/
+def treeOpenings (settings : Settings) (ρ : Digest) : Tree → TreeOutput → List (List (List Bit))
+  | .top, .top tree => (chunks settings.batchSize topJobs).map fun jobs => jobs.map fun job =>
+      match job.kind with
+      | .chainEnd e l => bitsOfDigest (tree.chainEnd e l)
+      | _ => []
+  | .bottom b, .bottom tree =>
+      ((chunks settings.batchSize (bottomJobs b)) ++ chunks settings.batchSize (signJobs b fun _ => digit 0)).map
+        fun jobs => jobs.map fun job =>
+          match job.kind with
+          | .chainRow e l => bitsOfDigest (tree.cpk e l).1 ++ bitsOfDigest (tree.cpk e l).2.1 ++ bitsOfDigest (tree.cpk e l).2.2
+          | .chainValue _ l _ => bitsOfDigest (tree.topSignature.chainValues l)
+          | .commitment e => bitsOfDigest (tree.commitment e)
+          | .randomizer => bitsOfDigest ρ
+          | _ => []
+  | _, _ => []
+
+/-- `LifetimeState.settle` for a run of `F_tree`. An emulated operator that ends with an output is a
+receiver of `F_tree` and keeps `output` (GL05). -/
+def settleIdeal (D : C.Coalition) (output : Option TreeOutput) (st : LifetimeState C E) : LifetimeState C E :=
+  match st.running with
+  | some (tree, fuel, steps) =>
+      let out := fun i => if ((steps i).output).isSome then output else none
+      if fuel = 0 ∨ ∀ i, i ∉ D.1 → (steps i).isDone then
+        match tree with
+        | .top => { st with running := none, top := fun i => (st.top i).or (TreeOutput.topTree (out i)) }
+        | .bottom b =>
+            let bottom := fun i => Function.update (st.bottom i) b ((st.bottom i b).or
+              (match out i with | some (.bottom tree) => some tree | _ => none))
+            { st with running := none, bottom := bottom }
+      else st
+  | none => st
+
+variable (attempts : ℕ)
+
+/-- The lifetime oracles of the forger. They are `lifetimeOraclesWith` with two changes.
+
+* A signing request that the lifetime admits goes to the signing oracles of the game.
+* Each ceremony is a run of `F_tree` with the emulated operators of `treeSimulator`. The output of
+  `F_tree` is the top tree of the game or the answer of its tree oracle.
+
+`corrupt` holds the keys of the coalition, `top` the top tree of the game and `h` the first honest
+operator. The state holds the stream table and the output of `F_tree` of the running ceremony. -/
+def forgerOracles (D : C.Coalition) (parameter : PublicParameter) (corrupt : C.Party → Option (Keys C))
+    (top : TopTree) (h : C.Party) :
+    QueryImpl (LifetimeSpec C E)
+      (StateT (LifetimeState C E × Option (StreamCache C × Option TreeOutput)) (OracleComp (ReplaySpec C))) := fun q =>
+  let ask := fun (q : TsigQuery C) =>
+    (StateT.lift (OracleComp.lift (OracleSpec.query (spec := ReplaySpec C) (.inr q))) :
+      StateT (LifetimeState C E × Option (StreamCache C × Option TreeOutput)) (OracleComp (ReplaySpec C)) (TsigSpec C q))
+  let admit := fun (i : C.Party) (e : KeyIndex) => (do
+    let (st, run) ← get
+    if st.running.map (·.1) = some (.bottom (treeOf e)) ∨ st.bottom i (treeOf e) = none then pure false else do
+      set ({ st with signed := insert (treeOf e) st.signed }, run)
+      pure true :
+    StateT (LifetimeState C E × Option (StreamCache C × Option TreeOutput)) (OracleComp (ReplaySpec C)) Bool)
+  let seeds : C.Term → HashOutput := fun T => (C.parties.findSome? fun j =>
+    if j ∈ C.holders T then (corrupt j).map (·.seed T) else none).getD 0
+  match q with
+  | .sign (.corrupt _) => pure none
+  | .sign (.tree b) => do
+      if ((← get).1.bottom h b).isSome then ask (.tree b) else pure none
+  | .sign (.round1 i J e message) => do
+      if ← admit i e then ask (.round1 i J e message) else pure none
+  | .sign (.round2 i J e message parts) => do
+      if ← admit i e then ask (.round2 i J e message parts) else pure none
+  | .publicKey => do pure ((← get).1.publicKey parameter h)
+  | .start tree => do
+      let (st, _) ← get
+      let open_ := st.running = none ∧ match tree with
+        | .top => st.topRuns < attempts ∧ ∃ i, i ∉ D.1 ∧ st.top i = none
+        | .bottom b => st.bottomRuns b < attempts ∧ b ∉ st.signed ∧ (∀ i, i ∉ D.1 → (st.top i).isSome) ∧
+            ∃ i, i ∉ D.1 ∧ st.bottom i b = none
+      if ¬ open_ then pure none else do
+        let (output, ρ) ← (match tree with
+          | .top => pure (some (.top top), 0)
+          | .bottom b => (fun r => (r.map (.bottom ·.1), (r.map (·.2)).getD 0)) <$> ask (.tree b) :
+          StateT (LifetimeState C E × Option (StreamCache C × Option TreeOutput)) (OracleComp (ReplaySpec C))
+            (Option TreeOutput × Digest))
+        let openings := (output.map (treeOpenings settings ρ tree)).getD []
+        let gadgets := fun (ctx : Context C) (k : ℕ) (jobs : List Job) =>
+          { realRunGadgets K ctx settings.mode with
+            output := fun v count => do
+              let clear ← StateT.lift (oracleStep (jobs.mapM (evalJob circuits parameter seeds)))
+              let shift := fun g => ((openings.getD k []).flatten.getD g 0) + (clear.flatten.getD g 0)
+              StateT.lift (openRep K ctx (fun T g => if lackedTerm D.1 = some T then v T g + shift g else v T g) count) }
+        let (steps, streams) ← StateT.lift ((startSteps (replayRoles D) D fun i =>
+          (ceremonyWith K circuits settings gadgets i ⟨parameter, seeds, fun _ => 0⟩ ((st.top h).getD emptyTop) tree :
+            PartyM C E RealSpec TreeOutput)).run ∅)
+        let st := match tree with
+          | .top => { st with topRuns := st.topRuns + 1 }
+          | .bottom b => { st with bottomRuns := Function.update st.bottomRuns b (st.bottomRuns b + 1) }
+        set (settleIdeal D output { st with running := some (tree, ceremonyFuel circuits settings, steps) },
+          some (streams, output))
+        pure (some (toCoalition D steps))
+  | .round sent => do
+      let (st, run) ← get
+      let some (tree, fuel, steps) := st.running | pure none
+      let some (streams, output) := run | pure none
+      let ((_, steps, _), streams) ← StateT.lift ((stepRound (replayRoles D) D (roundAdversary (I := PEmpty) sent)
+        noFunctionality () steps).run streams)
+      set (settleIdeal D output { st with running := some (tree, fuel - 1, steps) }, some (streams, output))
+      pure (some (toCoalition D steps))
+
+/-- The forger of the lifetime claim. It runs the lifetime adversary `A` in the signing game, in a
+lifetime where the keygen is `F_keygen` and each ceremony is `F_tree`.
+
+* It corrupts the coalition `D` and gets its keys.
+* It emulates the keygen with `keygenSimulator`, with the public parameter of the game.
+* It answers the lifetime queries with `forgerOracles`.
+* It outputs the forgery of `A`.
+
+It uses `circuits` in each emulated ceremony, and `circuits` compute the fixed `Th`.
+`SigningSecurityStatement` does not bound the advantage of this forger. That claim is for a world
+where all of `H` is a random oracle, and for a forger with a bounded number of calls. -/
+def lifetimeForger (D : C.Coalition) (A : LifetimeAdversary C E) : TsigAdversary C := fun publicKey top =>
+  let replay : OracleComp (ReplaySpec C) Forgery := do
+    let corrupt ← Concrete.sequenceFin fun (i : C.Party) =>
+      if i ∈ D.1 then OracleComp.lift (OracleSpec.query (spec := ReplaySpec C) (.inr (.corrupt i))) else pure none
+    let Sim := keygenSimulator D A.keygen
+    let st ← inWorld (Sim.start (corruptInputs D fun _ => ()) [])
+    let (st, _) ← inWorld (Sim.answer st (publicKey.parameter, corrupt))
+    let state ← inWorld (Sim.output st)
+    let h := (C.parties.find? (· ∉ D.1)).getD (firstParty C)
+    let adversary : QueryImpl (LocalSpec C)
+        (StateT (LifetimeState C E × Option (StreamCache C × Option TreeOutput)) (OracleComp (ReplaySpec C))) :=
+      fun t => StateT.lift (inWorld (worldRoles.adversary (OracleComp.lift (OracleSpec.query t))))
+    (simulateQ (adversary + forgerOracles K circuits settings attempts D publicKey.parameter corrupt top h)
+      (A.run state publicKey.parameter)).run'
+      (⟨⟨D.1, fun _ => none, [], fun _ => none⟩, fun _ => none, fun _ _ => none, 0, fun _ => 0, ∅, none⟩, none)
+  (simulateQ forgerWorld replay).run' ∅
+
+end Forger
+
 /-! ## The reductions of the lifetime claim -/
 
 section Lifetime
@@ -185,17 +362,13 @@ def lifetimeHybridRoles (D : C.Coalition) (n : ℕ) : ℕ → Roles C (Emulation
   else if r = n then ⟨(emulatedRoles D).adversary, fun oa => StateT.lift (liftM (free oa))⟩
   else ⟨(emulatedRoles D).adversary, (emulatedRoles D).adversary⟩
 
-/-- The reduction of run `n` of the lifetime to `hiddenStreams`. It samples `Th` and runs
-`prgReduction` on the lifetime with `lifetimeHybridRoles D n`. Only the honest streams of run `n`
-reach the PRF oracle, because the keygen and the signing call no `PRG`. -/
-def lifetimeRunReduction (aes : Aes) (circuitsOf : (HashInput → HashOutput) → Circuits) (D : C.Coalition)
-    (A : LifetimeAdversary C E) (n : ℕ) : PRFScheme.PRFAdversary ((KeyName C × HashOutput) × ℕ × ℕ × ℕ) Bit :=
-  (do
-    let values ← liftComp ($ᵗ (MpcDomain → HashOutput)) (StreamSpec C)
-    prgReduction ⟨thOf values, aes⟩ D ((fun r => r.1.1) <$>
-      ((lifetimeGameWith K (circuitsOf (thOf values)) settings attempts (lifetimeHybridRoles D n)
-        (lifetimeHybridRoles D n n) D A).run ∅).run) :
-    OracleComp (StreamSpec C) Bool)
+/-- The reduction of run `n` of the lifetime to `hiddenStreams`. It runs `prgReduction` on the
+lifetime with `lifetimeHybridRoles D n`. Only the honest streams of run `n` reach the PRF oracle,
+because the keygen and the signing call no `PRG`. -/
+def lifetimeRunReduction (prims : Primitives) (D : C.Coalition) (A : LifetimeAdversary C E) (n : ℕ) :
+    PRFScheme.PRFAdversary ((KeyName C × HashOutput) × ℕ × ℕ × ℕ) Bit :=
+  prgReduction prims D ((fun r => r.1.1) <$>
+    ((lifetimeGameWith K circuits settings attempts (lifetimeHybridRoles D n) (lifetimeHybridRoles D n n) D A).run ∅).run)
 
 end Lifetime
 
