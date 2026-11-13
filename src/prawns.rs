@@ -334,8 +334,8 @@ mod tests {
                 channel.exchange_bytes(commitments).await.unwrap();
             }
             Setup::Prss => {
-                let parameters = [0, 0, Reshare::Peer as u64, BATCH_SIZE as u64];
-                let message = |c: &Key| [parameters, load_at(c, 0)].concat();
+                let parameters = [Reshare::Peer as u64, BATCH_SIZE as u64];
+                let message = |c: &Key| [&parameters[..], &load_at::<_, [u64; 4]>(c, 0)].concat();
                 channel
                     .exchange(commitments.iter().map(message).collect())
                     .await
@@ -457,14 +457,8 @@ mod tests {
                 }
                 (_, Setup::Keygen) => keygen(&Group::new(t), &network).await.err(),
                 (_, Setup::Prss) => {
-                    let party = Party::new(
-                        Group::new(t),
-                        vec![],
-                        network,
-                        rand::random(),
-                        Reshare::Peer,
-                        BATCH_SIZE,
-                    );
+                    let party =
+                        Party::new(Group::new(t), vec![], network, Reshare::Peer, BATCH_SIZE);
                     party.await.err()
                 }
             });

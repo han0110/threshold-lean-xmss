@@ -47,7 +47,7 @@
 //! - A gate covers one 64-bit lane of a circuit layer for all instances of the batch. A `Word`
 //!   holds this lane for four instances.
 //! - The pseudorandom streams use AES-128 in place of Keccak-256 with labeled tags.
-//!   - The AES key hashes the label `rss-prss`, a PRSS key and the session value.
+//!   - The AES key hashes the label `rss-prss` and a PRSS key.
 //!   - A stream depends on the channel, its round and an index, and a coin key hashes the channel
 //!     tag, the round and the opened value.
 //! - The prototype derives its PRSS keys once, in its keygen. Here each ceremony derives fresh PRSS
@@ -571,12 +571,11 @@ pub fn shared_keys_hash(group: &Group, tag: &[u8], id: usize, j: usize, keys: &[
 /// The tag of the commitments of the PRSS setup.
 pub const PRSS_COMMIT: &[u8] = b"thlxmss-prss-commit";
 
-/// `establish` in three rounds, with the PRSS setup of the ceremony. It returns the session value,
-/// the PRSS keys of the held terms and the PRSS pair keys.
+/// `establish` in three rounds, with the PRSS setup of the ceremony. It returns the PRSS keys of
+/// the held terms and the PRSS pair keys.
 ///
-/// 1. Each operator sends `[nonce || mode || batch_size]` and its PRSS commitment to `j` to each
-///    operator `j`. The session value hashes the first part of the messages of all operators, in
-///    operator order.
+/// 1. Each operator sends `[mode || batch_size]` and its PRSS commitment to `j` to each operator
+///    `j`.
 /// 2. Each operator reveals its fresh PRSS parts.
 /// 3. Each operator echoes the hash of the PRSS term keys that it shares with the receiver.
 ///
@@ -585,13 +584,11 @@ pub const PRSS_COMMIT: &[u8] = b"thlxmss-prss-commit";
 async fn establish(
     network: &Arc<Network>,
     group: &Group,
-    nonce: [u8; 16],
     mode: Reshare,
     batch_size: usize,
-) -> Result<(Key, Vec<Key>, Vec<Key>), String> {
+) -> Result<(Vec<Key>, Vec<Key>), String> {
     let (id, n) = (network.id, network.n);
-    let [low, high]: [u64; 2] = load_at(&nonce, 0);
-    let parameters = [low, high, mode as u64, batch_size as u64];
+    let parameters = [mode as u64, batch_size as u64];
     let parts = Parts::random(group);
     let reveals: Vec<Vec<u8>> = (0..n)
         .map(|j| match j == id {
@@ -601,7 +598,7 @@ async fn establish(
         .collect();
     let message = |j: usize| -> Vec<u64> {
         let committed: [u64; 4] = load_at(&commitment(PRSS_COMMIT, id, j, &reveals[j]), 0);
-        [parameters, committed].concat()
+        [&parameters[..], &committed].concat()
     };
     let mut channel = network.channel();
     let outgoing = (0..n).map(|j| match j == id {
@@ -610,9 +607,9 @@ async fn establish(
     });
     let mut received = channel.exchange(outgoing.collect()).await?;
     // No commitment goes to the operator itself, so zeros fill its place.
-    received[id] = [parameters, [0; 4]].concat();
+    received[id] = [&parameters[..], &[0; 4]].concat();
     let parse = |words: &[u64]| -> Option<(Reshare, usize)> {
-        let [_, _, mode, size, ..]: [u64; 8] = words.try_into().ok()?;
+        let [mode, size, ..]: [u64; 6] = words.try_into().ok()?;
         let variants = Reshare::value_variants().iter();
         let mode = variants.copied().find(|&variant| variant as u64 == mode)?;
         Some((mode, size as usize))
@@ -624,13 +621,9 @@ async fn establish(
         .collect::<Result<_, _>>()?;
     same("reshare modes", &modes)?;
     same("batch sizes", &batch_sizes)?;
-    let session_words: Vec<u64> = received
-        .iter()
-        .flat_map(|words| words[..4].to_vec())
-        .collect();
     let commitments: Vec<Vec<u8>> = received
         .iter()
-        .map(|words| cast_slice(&words[4..]).to_vec())
+        .map(|words| cast_slice(&words[2..]).to_vec())
         .collect();
     let revealed = reveal(&mut channel, id, PRSS_COMMIT, &commitments, reveals).await?;
     let revealed: Vec<&[u8]> = revealed.iter().map(Vec::as_slice).collect();
@@ -640,10 +633,7 @@ async fn establish(
     let echoes = channel.exchange_bytes((0..n).map(echo).collect()).await?;
     match (0..n).find(|&j| j != id && echoes[j] != echo(j)) {
         Some(j) => Err(format!("operator {j} holds other PRSS keys")),
-        None => {
-            let session = tagged_hash(b"thlxmss-session", &[cast_slice(&session_words)]);
-            Ok((session, terms, pairs))
-        }
+        None => Ok((terms, pairs)),
     }
 }
 
@@ -684,8 +674,6 @@ pub struct Party {
     /// A test makes a corrupt operator accept all digests with this flag.
     #[cfg(test)]
     pub ignores_digests: bool,
-    /// The session value of `establish`, which keys all streams of the session.
-    session: Key,
     /// The PRSS keys `prss_T` of the held terms, which key the streams of `rand`.
     prss_terms: Vec<Key>,
     /// The PRSS key `prss_ij` with each operator `j`, which keys the streams of the pairwise zero
@@ -698,12 +686,10 @@ impl Party {
         group: Group,
         seeds: Vec<Key>,
         network: Arc<Network>,
-        nonce: [u8; 16],
         mode: Reshare,
         batch_size: usize,
     ) -> Result<Party, String> {
-        let (session, prss_terms, prss_pairs) =
-            establish(&network, &group, nonce, mode, batch_size).await?;
+        let (prss_terms, prss_pairs) = establish(&network, &group, mode, batch_size).await?;
         Ok(Party {
             held: group.held(network.id),
             group,
@@ -716,7 +702,6 @@ impl Party {
             tamper: |_, outgoing| outgoing,
             #[cfg(test)]
             ignores_digests: false,
-            session,
             prss_terms,
             prss_pairs,
         })
@@ -737,10 +722,10 @@ impl Party {
     fn stream(&self, key: &Key, channel: &Channel, index: u64, length: usize) -> Vec<u64> {
         assert!(channel.rounds < 1 << 24);
         let mut words = vec![0; length];
-        // The stream number holds the channel number, the round and an 8-bit index. The session
-        // value keys every stream, so the number leaves out the session part of the tag.
+        // The stream number holds the channel number, the round and an 8-bit index. Each party has
+        // fresh PRSS keys, so the number leaves out the session part of the tag.
         let stream = (channel.tag as u32 as u64) << 32 | channel.rounds << 8 | index;
-        prg(key, &self.session, stream, &mut words);
+        prg(key, stream, &mut words);
         words
     }
 
@@ -1189,8 +1174,8 @@ impl Party {
     }
 }
 
-fn prg(seed: &Key, session: &Key, stream: u64, target: &mut [u64]) {
-    let key = tagged_hash(b"rss-prss", &[seed, session]);
+fn prg(seed: &Key, stream: u64, target: &mut [u64]) {
+    let key = tagged_hash(b"rss-prss", &[seed]);
     let cipher = Aes128::new(&Array(key[..16].try_into().unwrap()));
     for (counter, words) in target.chunks_mut(16).enumerate() {
         let mut blocks: [Block; 8] = from_fn(|block| {
@@ -1282,7 +1267,7 @@ pub mod tests {
                 .map(|&k| all_seeds[k])
                 .collect();
             let (reshare, batch_size) = parameters[network.id];
-            let party = Party::new(group, seeds, network, rand::random(), reshare, batch_size);
+            let party = Party::new(group, seeds, network, reshare, batch_size);
             run(party.await, all_seeds).await
         })
     }
@@ -1320,20 +1305,19 @@ pub mod tests {
     }
 
     #[test]
-    fn prg_streams_extend_and_depend_on_seed_session_and_stream() {
-        let words = |seed: u8, halves: [u8; 2], stream: u64, length: usize| {
-            let session: Key = from_fn(|byte| halves[byte / 16]);
+    fn prg_streams_extend_and_depend_on_seed_and_stream() {
+        let words = |halves: [u8; 2], stream: u64, length: usize| {
+            let seed: Key = from_fn(|byte| halves[byte / 16]);
             let mut words = vec![0; length];
-            prg(&[seed; 32], &session, stream, &mut words);
+            prg(&seed, stream, &mut words);
             words
         };
-        let whole = words(1, [2, 3], 4, 40);
-        assert_eq!(words(1, [2, 3], 4, 17), whole[..17]);
+        let whole = words([2, 3], 4, 40);
+        assert_eq!(words([2, 3], 4, 17), whole[..17]);
         for other in [
-            words(9, [2, 3], 4, 40),
-            words(1, [5, 3], 4, 40),
-            words(1, [2, 5], 4, 40),
-            words(1, [2, 3], 5, 40),
+            words([5, 3], 4, 40),
+            words([2, 5], 4, 40),
+            words([2, 3], 5, 40),
         ] {
             assert!(other.iter().zip(&whole).all(|(a, b)| a != b));
         }
@@ -1391,9 +1375,8 @@ pub mod tests {
     }
 
     #[test]
-    fn an_operator_with_another_session_value_or_a_short_share_aborts_the_others_at_the_first_coin()
-    {
-        // With another session value, the coin shares of operator 1 come from other streams.
+    fn an_operator_with_another_prss_key_or_a_short_share_aborts_the_others_at_the_first_coin() {
+        // With another PRSS key, the coin shares of operator 1 come from other streams.
         // So the shares of the first coin after the 24 layers lie off one polynomial.
         // A short share has 2 of the 3 words of an element.
         for (short, error) in [
@@ -1404,7 +1387,7 @@ pub mod tests {
                 let outcomes = local_parties(t, Reshare::Peer, async |mut party, _| {
                     let corrupt = party.id == 1;
                     if corrupt && !short {
-                        party.session[0] ^= 1;
+                        party.prss_terms[0][0] ^= 1;
                     }
                     let mut channel = party.network.channel();
                     let (mut blocks, mut tuples) =
@@ -1444,8 +1427,7 @@ pub mod tests {
     }
 
     #[test]
-    fn the_salted_digests_agree_in_one_session_and_differ_at_an_operator_with_another_session_value()
-     {
+    fn the_salted_digests_agree_in_one_session_and_differ_at_an_operator_with_another_prss_key() {
         for t in [2, 3] {
             // Operator 1 and another holder of its first held term draw different salts for it.
             let other = Err(format!(
@@ -1455,7 +1437,7 @@ pub mod tests {
             for flipped in [false, true] {
                 let outcomes = local_parties(t, Reshare::Peer, async |mut party, _| {
                     if flipped && party.id == 1 {
-                        party.session[0] ^= 1;
+                        party.prss_terms[0][0] ^= 1;
                     }
                     let mut channel = party.network.channel();
                     let own = party.digests(&channel, &vec![Hasher::new(); party.held.len()]);

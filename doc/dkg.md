@@ -147,13 +147,12 @@ The threshold PRF and the signing masks hash a secret key first and no tag, as i
 | $\texttt{"thlxmss-coin"}$                                        | the channel tag, the round and the opened value                     | 1.9     |
 | $\texttt{"thlxmss-expand"}$                                      | a coin key and the 64-bit index of a value                          | 1.9     |
 | $\texttt{"thlxmss-digest"}$                                      | the salt $s_T$ and $h_T$                                            | 1.9     |
-| $\texttt{"rss-prss"}$                                            | a PRSS key and the session value, which give a PRG key              | 1.1.4   |
+| $\texttt{"rss-prss"}$                                            | a PRSS key, which gives a PRG key                                   | 1.1.4   |
 | $\texttt{"thlxmss-keygen-parameter"}$                            | all parts of $P$, whose first 16 bytes give $P$                     | 3.1     |
 | $\texttt{"thlxmss-keygen-term"}$, $\texttt{"thlxmss-prss-term"}$ | the parts of $\mathrm{holders}(T)$ in increasing order              | 3.1     |
 | $\texttt{"thlxmss-keygen-pair"}$, $\texttt{"thlxmss-prss-pair"}$ | the part of the lower of $i, j$ for the higher, then the other part | 3.1     |
 | $\texttt{"thlxmss-keygen-echo"}$, $\texttt{"thlxmss-prss-echo"}$ | the term keys that the sender and the receiver share                | 3.1     |
 | $\texttt{"thlxmss-commit"}$, $\texttt{"thlxmss-prss-commit"}$    | the sender, the receiver and the reveal                             | 3.1     |
-| $\texttt{"thlxmss-session"}$                                     | the blocks of all operators in operator order                       | 3.1     |
 
 #### 1.1.5 Gadget table
 
@@ -765,11 +764,11 @@ The randomizer value $F(A_{\mathrm{rnd}}(e))$ of the top key does not depend on 
 
 The keygen deals $P$, $`\mathrm{seed}_T`$ and $K_{ij}$ once by the commit-reveal-echo of [Wam26, Section 2.1](https://github.com/TomWambsgans/sphincs.art/blob/9a528527d2d0ea41d2b3b322d2548c0828569a6d/leanXMSS.tex). Each ceremony repeats it for fresh PRSS keys. Each key and $P$ hash their tag of 1.1.4 and the revealed parts.
 
-| round | keygen, from $P_i$ to $P_j$                                                                                                         | PRSS setup, from $P_i$ to $P_j$                                                     |
-| ----- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| 1     | $`\mathrm{com}_{i \to j} = H(\mathrm{tag} \,\Vert\, i \,\Vert\, j \,\Vert\, \mathrm{reveal}_{i \to j})`$, $i$ and $j$ one byte each | its block of the nonce, the mode and the batch size, and $`\mathrm{com}_{i \to j}`$ |
-| 2     | its part of $P$, its parts of the shared terms in term order, and its pair part for $j$                                             | the keygen reveal, with fresh parts and no part of $P$                              |
-| 3     | $H$ of all parts of $P$, and the echo hash                                                                                          | the echo hash                                                                       |
+| round | keygen, from $P_i$ to $P_j$                                                                                                         | PRSS setup, from $P_i$ to $P_j$                                          |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| 1     | $`\mathrm{com}_{i \to j} = H(\mathrm{tag} \,\Vert\, i \,\Vert\, j \,\Vert\, \mathrm{reveal}_{i \to j})`$, $i$ and $j$ one byte each | its block of the mode and the batch size, and $`\mathrm{com}_{i \to j}`$ |
+| 2     | its part of $P$, its parts of the shared terms in term order, and its pair part for $j$                                             | the keygen reveal, with fresh parts and no part of $P$                   |
+| 3     | $H$ of all parts of $P$, and the echo hash                                                                                          | the echo hash                                                            |
 
 - $P_j$ accepts a reveal only if it has the expected length and opens $`\mathrm{com}_{i \to j}`$. It aborts unless every echo equals its own.
 - A commitment names its sender and receiver against copying [CF01](https://eprint.iacr.org/2001/055). A simulator extracts corrupt reveals from hash queries with this prefix [CDG+18](https://eprint.iacr.org/2018/165).
@@ -794,7 +793,7 @@ A batch of 128 chains has $L = 72$ AND layers and $m = 24$ halvings. Its check c
 | open       | $\mathsf{OpenRep}$                                                                                                    | 1                             |
 | total      |                                                                                                                       | 126 (peer) or 198 (collector) |
 
-A commitment batch has 24 AND layers and 76 (peer) or 100 (collector) rounds, also with the top randomizer value. The PRSS setup adds 2 rounds and $32 (s + 3)$ bytes from $P_i$ to each $P_j$ per ceremony, for $s$ shared terms.
+A commitment batch has 24 AND layers and 76 (peer) or 100 (collector) rounds, also with the top randomizer value. The PRSS setup adds 3 rounds and $32 (s + 3) + 16$ bytes from $P_i$ to each $P_j$ per ceremony, for $s$ shared terms.
 
 The AND layers dominate the bandwidth.
 

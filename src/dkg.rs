@@ -403,7 +403,6 @@ async fn party(
         group,
         operator.sk.clone(),
         network.clone(),
-        rand::random(),
         reshare,
         batch_size,
     );
