@@ -325,8 +325,9 @@ lifetime where the keygen is `F_keygen` and each ceremony is `F_tree`.
 * It emulates the keygen with `keygenSimulator`, with the public parameter of the game. It keeps
   the programmed keygen points in its own table, because it cannot program `H`.
 * It answers the lifetime queries with `forgerOracles`. From the game it uses only the keys of `D`,
-  `.tree b` for each bottom tree that it holds, and the signing rounds. It gets no honest seed and no
-  pair key. The output of `.tree b` is enough to rebuild the openings for `treeSimulator`.
+  `.tree b` for each bottom tree that it holds, and the signing rounds. The keys of `D` include its
+  pair keys with honest operators, but it gets no hidden term seed and no key that only honest
+  operators share. The output of `.tree b` is enough to rebuild the openings for `treeSimulator`.
 * It outputs the forgery of `A`.
 
 It uses `circuits` in each emulated ceremony, and `circuits` compute the fixed `Th`.
