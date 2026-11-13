@@ -780,10 +780,8 @@ def lifetimeAdvantage (D : C.Coalition) (A : LifetimeAdversary C E) : ℝ :=
 lifetime world `lifetimeWorld`, not in `signingWorld`. In this world `H` answers the inputs that the
 MPC evaluates (`MpcInput`) with the fixed `Th`, and every other input as a lazy random oracle.
 
-`lifetimeForger` makes at most `q₀ = Q + lifetimeOverhead C attempts Q` calls of `H` and `PRG` when
-the lifetime adversary makes at most `Q`. `SigningSecurityStatement` does not bound this term,
-because that claim is for `signingWorld`, where all of `H` is a random oracle, and `lifetimeForger`
-uses the circuits of the fixed `Th`. -/
+`SigningSecurityStatement` does not bound this term, because that claim is for `signingWorld`, where
+all of `H` is a random oracle, and `lifetimeForger` uses the circuits of the fixed `Th`. -/
 def lifetimeForgerAdvantage (D : C.Coalition) (A : LifetimeAdversary C E) : ℝ :=
   (Pr[fun r => r.1 = true | lifetimeRun prims (tsigGame (lifetimeForger K circuits settings attempts D A))]).toReal
 
