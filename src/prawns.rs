@@ -167,8 +167,10 @@ pub fn prf_inputs<const W: usize>(
 }
 
 /// `Eval` of PRAWNS. It gives the part of this operator for `F(x)` in the quorum `J`, with the
-/// masks of the evaluation context `ec`. The context is the signed message.
+/// masks of the evaluation context `ec`. The context is the signed message of 32 bytes, so the mask
+/// input has one layout.
 pub fn eval(group: &Group, operator: &Operator, quorum: &[usize], x: &Digest, ec: &[u8]) -> Digest {
+    assert_eq!(ec.len(), 32);
     let quorum_bits = quorum.iter().map(|&j| 1u32 << j).sum::<u32>().to_le_bytes();
     let terms = group
         .held(operator.id)
@@ -488,7 +490,7 @@ mod tests {
                 let quorum: Vec<usize> = (0..group.n).filter(|id| set >> id & 1 == 1).collect();
                 let combined = quorum
                     .iter()
-                    .map(|&id| eval(&group, &operators[id], &quorum, &x, b"m"))
+                    .map(|&id| eval(&group, &operators[id], &quorum, &x, &[0; 32]))
                     .fold([0; 16], xor);
                 assert_eq!(combined, expected);
             }
