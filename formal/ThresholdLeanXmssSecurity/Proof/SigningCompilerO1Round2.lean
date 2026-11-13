@@ -2,6 +2,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Round1
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Codeword
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1RealLog
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1BuildOnce
+import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Slack
 
 /-! # Round 2 of the O1 coupling
 
@@ -39,34 +40,6 @@ set_option linter.constructorNameAsVariable false
 set_option backward.isDefEq.respectTransparency false
 set_option maxRecDepth 100000
 attribute [local irreducible] grind SigningFlatEagerProof.baseGrind Queries
--- Port of SigningCompilerO1Slack.withRecord, which this import closure lacks.
-/-- The signing state after the release record of signer `i` at key `e`. -/
-abbrev withRecord (sig : TsigState C) (e : KeyIndex) (message : Message) (i : C.Party) :
-    TsigState C :=
-  { sig with released := sig.released ++ [(e, message, i)] }
-
--- Port of SigningCompilerO1Slack.signersAt_withRecord_subset, which this import closure lacks.
-theorem signersAt_withRecord_subset (st : TsigState C) (e : KeyIndex) (message : Message)
-    (i : C.Party) (f : KeyIndex) (m : Message) :
-    signersAt st f m ⊆ signersAt (withRecord st e message i) f m := by
-  intro j hj
-  simp only [signersAt, Finset.mem_union, List.mem_toFinset, List.mem_map, List.mem_filter,
-    List.mem_append] at hj ⊢
-  rcases hj with hj | ⟨r, ⟨hr, hc⟩, rfl⟩
-  · exact Or.inl hj
-  · exact Or.inr ⟨r, ⟨Or.inl hr, hc⟩, rfl⟩
-
--- Port of SigningCompilerO1Slack.releasedBound_withRecord, which this import closure lacks.
-theorem releasedBound_withRecord (st : TsigState C) (e : KeyIndex) (message : Message)
-    (i : C.Party) (h : SigningGuessProof.ReleasedBound st) (hb : st.bound e = some message) :
-    SigningGuessProof.ReleasedBound (withRecord st e message i) := by
-  intro f m j hm
-  rcases List.mem_append.mp hm with hold | hnew
-  · exact h f m j hold
-  · have ht : (f, m, j) = (e, message, i) := List.mem_singleton.mp hnew
-    obtain ⟨rfl, hrest⟩ := Prod.mk.inj ht
-    obtain ⟨rfl, _⟩ := Prod.mk.inj hrest
-    exact hb
 
 /-- The signer sets read only the corrupt set and the release records. -/
 theorem signersAt_congr (st st' : TsigState C) (hcorrupt : st.corrupt = st'.corrupt)
@@ -78,7 +51,7 @@ theorem signersAt_congr (st st' : TsigState C) (hcorrupt : st.corrupt = st'.corr
 def recordOn {α : Type} (sig : TsigState C) (e : KeyIndex) (message : Message) (i : C.Party) :
     Option α → TsigState C
   | none => sig
-  | some _ => withRecord sig e message i
+  | some _ => SigningCompilerO1Slack.withRecord sig e message i
 
 /-- The real handler of round 2 after the tree step. -/
 def realAfter (dealt : Dealt C (OracleComp (WorldSpec C))) (i : C.Party) (J : C.Quorum)
@@ -224,37 +197,15 @@ theorem comp_round2 (top : TopTree) (i : C.Party) (J : C.Quorum) (e : KeyIndex) 
   rw [← bind_pure_comp]
   rfl
 
-/-- A real run keeps the carried state. -/
-theorem realWorld_carried {α : Type} (oa : OracleComp (WorldSpec C) α) (a : RealState C)
-    (r : α × RealState C)
-    (hr : r ∈ support ((simulateQ (realWorld prims x s pads u rest) oa).run a)) :
-    r.2.1.2 = a.1.2 := by
-  refine SeedHitProof.support_simulateQ_inv (realWorld prims x s pads u rest)
-    (fun st : RealState C => st.1.2 = a.1.2) (fun t st hst z hz => ?_) _ a rfl r hr
-  rw [← hst]
-  change z ∈ support ((_root_.ThresholdLeanXmssSecurity.fuse (rawTraceWorld prims x)
-    (realImpl x (gOf s pads u) rest) t).run st) at hz
-  simp only [_root_.ThresholdLeanXmssSecurity.fuse, StateT.run_mk, rawTraceWorld, rawKeyedSplitWorld,
-      rawCarriedLogged, simulateQ_map, simulateQ_bind, StateT.run_map, StateT.run_bind,
-      support_map, support_bind, Set.mem_image, Set.mem_iUnion] at hz
-  obtain ⟨_, ⟨_, ⟨_, ⟨_, -, rfl⟩, ⟨_, -, rfl⟩⟩, rfl⟩, rfl⟩ := hz
-  rfl
-
-/-- The stop of the real side persists over a real run. -/
-theorem realWorld_stop {α : Type} (oa : OracleComp (WorldSpec C) α) (a : RealState C)
-    (h : RealStop q a) (r : α × RealState C)
-    (hr : r ∈ support ((simulateQ (realWorld prims x s pads u rest) oa).run a)) :
-    RealStop q r.2 :=
-  simulateQ_sticky _ (RealStop q) (fun t st hst r hr => realStop_world prims x (gOf s pads u) rest q
-    t st hst r hr) _ a h r hr
-
 /-- The release record on both sides moves the core of the relation inside the handler to the
 record state. No other clause reads the release records of the source. -/
 theorem record_mid (top : TopTree) (sig : TsigState C) (e : KeyIndex) (message : Message)
     (i : C.Party) (a : RealState C) (b : SourceStateO1 C × CompState C)
-    (hs : SyncMid prims x top s pads noise (gOf s pads u) rest sig (withRecord sig e message i) a b) :
-    SyncMid prims x top s pads noise (gOf s pads u) rest (withRecord sig e message i)
-      (withRecord sig e message i) a
+    (hs : SyncMid prims x top s pads noise (gOf s pads u) rest sig
+      (SigningCompilerO1Slack.withRecord sig e message i) a b) :
+    SyncMid prims x top s pads noise (gOf s pads u) rest
+      (SigningCompilerO1Slack.withRecord sig e message i)
+      (SigningCompilerO1Slack.withRecord sig e message i) a
       ({ b.1 with base := { b.1.base with signing := { b.1.base.signing with
         released := b.1.base.signing.released ++ [(e, message, i)] } } }, b.2) := by
   obtain ⟨⟨⟨hf, hc⟩, hcount⟩, hx, htop⟩ := hs
@@ -441,11 +392,13 @@ theorem chains_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
         subst hra1 hrb1
         exact Or.inr (Or.inr ⟨rfl, hs, rfl, hmark, rfl, rfl, le_rfl⟩)
     rcases hhead with h | h | ⟨hv1, hs1, hcar1, hm1, hsg1, htr1, hlog1⟩
-    · exact Or.inl (realWorld_stop prims x q s pads u rest _ _ h ra2 hra2)
+    · exact Or.inl
+        (SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ _ h ra2 hra2)
     · exact Or.inr (Or.inl (SigningCompilerO1ChainRelease.runXO1_stop x q s pads u rest noise _ _ _ h
         rb2 hrb2))
     by_cases ha1 : RealStop q ra1.2
-    · exact Or.inl (realWorld_stop prims x q s pads u rest _ _ ha1 ra2 hra2)
+    · exact Or.inl
+        (SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ _ ha1 ra2 hra2)
     by_cases hb1 : Stop rb1.2
     · exact Or.inr (Or.inl (SigningCompilerO1ChainRelease.runXO1_stop x q s pads u rest noise _ _ _
         hb1 rb2 hrb2))
@@ -495,7 +448,9 @@ theorem tail_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
     RealStop q ra.2 ∨ Stop rb.2 ∨
       (some ra.1 = rb.1.1 ∧
         SyncO1 prims x top s pads noise (gOf s pads u) rest
-          (withCarried ra.2 ((withRecord sig e message i, a.1.2.1.2), a.1.2.2)) (rb.1.2, rb.2) ∧
+          (withCarried ra.2
+            ((SigningCompilerO1Slack.withRecord sig e message i, a.1.2.1.2), a.1.2.2))
+          (rb.1.2, rb.2) ∧
         PadsFixed x pads rb.2) := by
   obtain ⟨hmid, hpads⟩ := syncMid_of_syncIn prims x s pads u rest noise top sig sig a b hs
   have hst : sig.trees (treeOf e) = some (some (interpretTree s (treeOf e) dtree)) := by
@@ -513,19 +468,21 @@ theorem tail_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
     exact ⟨_, start, result, (realLog a, 0), (some (randomness, encoding), (realLog a, m)), hsupp,
       hout, hle, rfl, hm, rfl, le_rfl⟩
   have hwide := SigningCompilerO1ChainRelease.syncMid_widen prims x s pads u rest noise top sig sig
-    (withRecord sig e message i) a b hmid rfl rfl rfl
-    (fun f m => signersAt_withRecord_subset sig e message i f m)
-    (releasedBound_withRecord sig e message i hmid.2.1.releasedBound hbound)
-  have hin := syncIn_of_syncMid prims x s pads u rest noise top sig (withRecord sig e message i) a b
-    hwide hpads
-  have hcov : roundTwoReleased st0 e message i = true → ∃ m, (withRecord sig e message i).bound e =
-      some m ∧ C.t ≤ (signersAt (withRecord sig e message i) e m).card := by
+    (SigningCompilerO1Slack.withRecord sig e message i) a b hmid rfl rfl rfl
+    (fun f m => SigningCompilerO1Slack.signersAt_withRecord_subset sig e message i f m)
+    (SigningCompilerO1Slack.releasedBound_withRecord sig e message i hmid.2.1.releasedBound hbound)
+  have hin := syncIn_of_syncMid prims x s pads u rest noise top sig
+    (SigningCompilerO1Slack.withRecord sig e message i) a b hwide hpads
+  have hcov : roundTwoReleased st0 e message i = true →
+      ∃ m, (SigningCompilerO1Slack.withRecord sig e message i).bound e = some m ∧
+        C.t ≤ (signersAt (SigningCompilerO1Slack.withRecord sig e message i) e m).card := by
     intro h
     refine ⟨message, hbound, ?_⟩
     have h' := of_decide_eq_true h
     rwa [signersAt_congr { st0 with released := st0.released ++ [(e, message, i)] }
-      (withRecord sig e message i) hcorrupt (by simp only [hreleased])] at h'
-  rcases chains_sync prims x q s pads u rest noise hkeys top sig (withRecord sig e message i) a.1.2
+      (SigningCompilerO1Slack.withRecord sig e message i) hcorrupt (by simp only [hreleased])] at h'
+  rcases chains_sync prims x q s pads u rest noise hkeys top sig
+      (SigningCompilerO1Slack.withRecord sig e message i) a.1.2
       (roundTwoReleased st0 e message i) i J e message encoding dtree receipt rfl hbound rfl rfl hcov
       _ (fun l => l) a b hin rfl hmark ha hb htree hrun ra hra rb1 hrb1
     with h | h | ⟨hv, hs1, hcar1, hm1, hsg1, htr1, -⟩
@@ -534,12 +491,12 @@ theorem tail_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
       rb hrb))
   rw [← hcar1] at hs1
   obtain ⟨hmid1, hpads1⟩ := syncMid_of_syncIn prims x s pads u rest noise top sig
-    (withRecord sig e message i) ra.2 (rb1.1.2, rb1.2) hs1
+    (SigningCompilerO1Slack.withRecord sig e message i) ra.2 (rb1.1.2, rb1.2) hs1
   unfold compTail at hrb
   rw [SigningCompilerO1ChainRelease.runXO1_bind, mem_support_bind_iff] at hrb
   obtain ⟨bm, hbm, hrb⟩ := hrb
   have hpre : (Stop bm.2 ∨ (SyncMid prims x top s pads noise (gOf s pads u) rest sig
-      (withRecord sig e message i) ra.2 (bm.1.2, bm.2) ∧ bm.2.1.2 = false)) ∧
+      (SigningCompilerO1Slack.withRecord sig e message i) ra.2 (bm.1.2, bm.2) ∧ bm.2.1.2 = false)) ∧
       PadsFixed x pads bm.2 := by
     refine ⟨?_, backend_padsFixed x q s pads u rest noise _ rb1.2 hpads1 bm hbm⟩
     cases hT : roundTwoReleased st0 e message i
@@ -549,7 +506,8 @@ theorem tail_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
       exact Or.inr ⟨hmid1, hm1⟩
     · rw [hT, if_pos rfl] at hbm
       rcases SigningCompilerO1ChainRelease.releaseKey_mid prims x q s pads u rest noise hkeys top sig
-          (withRecord sig e message i) e ra.2 _ hmid1 hm1 (hcov hT) bm hbm with h | ⟨h, -, -, -, hm⟩
+          (SigningCompilerO1Slack.withRecord sig e message i) e ra.2 _ hmid1 hm1 (hcov hT) bm hbm
+        with h | ⟨h, -, -, -, hm⟩
       · exact Or.inl h
       · exact Or.inr ⟨h, hm⟩
   obtain ⟨hbm' | ⟨hmidm, hmm⟩, hpm⟩ := hpre
@@ -559,8 +517,9 @@ theorem tail_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
     pure_bind, SigningCompilerO1ChainRelease.runXO1_pure, mem_support_pure_iff] at hrb
   subst hrb
   have hrec := record_mid prims x s pads u rest noise top sig e message i ra.2 (bm.1.2, bm.2) hmidm
-  have hfin := syncIn_of_syncMid prims x s pads u rest noise top (withRecord sig e message i)
-    (withRecord sig e message i) ra.2 _ hrec hpm
+  have hfin := syncIn_of_syncMid prims x s pads u rest noise top
+    (SigningCompilerO1Slack.withRecord sig e message i)
+    (SigningCompilerO1Slack.withRecord sig e message i) ra.2 _ hrec hpm
   rw [hcar1] at hfin
   refine Or.inr (Or.inr ⟨congrArg some hv,
     (syncO1_iff_syncIn prims x s pads u rest noise top _ _).2 ?_⟩)
@@ -611,7 +570,8 @@ theorem after_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top :
   rcases hpw with h | h | ⟨hv, hsync, hsg, htr, -, -, hm, hcar, -⟩
   · apply TreeCheckKernelCoupling.relTriple_of_support
     intro ra hra rb hrb
-    exact Or.inl (realWorld_stop prims x q s pads u rest _ p.2 h ra (by with_reducible exact hra))
+    exact Or.inl (SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ p.2 h ra
+      (by with_reducible exact hra))
   · apply TreeCheckKernelCoupling.relTriple_of_support
     intro ra hra rb hrb
     rw [mem_support_bind_iff] at hrb
@@ -626,8 +586,9 @@ theorem after_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top :
     intro ra hra rb hrb
     rw [mem_support_bind_iff] at hra
     obtain ⟨r1, hr1, hra⟩ := hra
-    exact Or.inl (realWorld_stop prims x q s pads u rest _ _
-      (realWorld_stop prims x q s pads u rest _ p.2 ha1 r1 (by with_reducible exact hr1)) ra
+    exact Or.inl (SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ _
+      (SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ p.2 ha1 r1
+        (by with_reducible exact hr1)) ra
       (by with_reducible exact hra))
   by_cases hb1 : Stop w.2
   · apply TreeCheckKernelCoupling.relTriple_of_support
@@ -661,7 +622,8 @@ theorem after_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top :
   rw [mem_support_bind_iff] at hrb
   obtain ⟨r, hr, hrb⟩ := hrb
   rcases hcd with h | h | ⟨⟨hv2, hbase, hres⟩, hsync2, -, -, -, -, hm2, hcar2, -⟩
-  · exact Or.inl (realWorld_stop prims x q s pads u rest _ c.2 h ra (by with_reducible exact hra))
+  · exact Or.inl (SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ c.2 h ra
+      (by with_reducible exact hra))
   · exact Or.inr (Or.inl (SigningCompilerO1ChainRelease.runXO1_stop x q s pads u rest noise _ _ _
       (SigningCompilerO1ChainRelease.runXO1_stop x q s pads u rest noise _ _ _ h r hr) rb hrb))
   rcases c with ⟨_ | ⟨rnd, enc⟩, a2⟩ <;> rcases d with ⟨⟨v, src2⟩, st2⟩ <;>
@@ -691,7 +653,8 @@ theorem after_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top :
         simpa only [compTail, Bool.false_eq_true, if_false, if_true, pure_bind] using hrb
     have hcar' : a2.1.2 = a.1.2 := hcar2.trans hcar
     by_cases ha2 : RealStop q a2
-    · exact Or.inl (realWorld_stop prims x q s pads u rest _ a2 ha2 rv (by with_reducible exact hrv))
+    · exact Or.inl (SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ a2 ha2 rv
+        (by with_reducible exact hrv))
     by_cases hb2 : Stop st2
     · exact Or.inr (Or.inl (SigningCompilerO1ChainRelease.runXO1_stop x q s pads u rest noise _ _ _
         (SigningCompilerO1ChainRelease.runXO1_stop x q s pads u rest noise _ _ _ hb2 rb1 hrb1) rb
@@ -748,7 +711,8 @@ theorem step_round2 (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
       (b.1, (b.2.1.1, false), b.2.2) hin ha hb rfl)) ?_
   rintro z y ⟨hzy, hz, -⟩
   have hcz : z.2.1.2 = a.1.2 :=
-    realWorld_carried prims x s pads u rest _ a z (by with_reducible exact hz)
+    SigningCompilerO1Lemmas.realWorld_run_carried prims x s pads u rest _ a z
+      (by with_reducible exact hz)
   rcases hzy with h | h | ⟨hval, hsyn, hm, hsg, -, -, htr, -, hbd, -, -, -, -⟩
   · apply TreeCheckKernelCoupling.relTriple_of_support
     intro ra hra rb hrb
@@ -760,9 +724,11 @@ theorem step_round2 (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
     · rw [support_map] at hra
       obtain ⟨v, hv, rfl⟩ := hra
       have hcv : v.2.1.2 = a.1.2 :=
-        (realWorld_carried prims x s pads u rest _ z.2 v (by with_reducible exact hv)).trans hcz
+        (SigningCompilerO1Lemmas.realWorld_run_carried prims x s pads u rest _ z.2 v
+          (by with_reducible exact hv)).trans hcz
       exact realStop_withCarried q _ _ (by rw [hcv])
-        (realWorld_stop prims x q s pads u rest _ z.2 h v (by with_reducible exact hv))
+        (SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ z.2 h v
+          (by with_reducible exact hv))
   · apply TreeCheckKernelCoupling.relTriple_of_support
     intro ra hra rb hrb
     rw [support_map] at hrb
@@ -785,9 +751,11 @@ theorem step_round2 (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
       rw [support_map] at hra
       obtain ⟨v, hv, rfl⟩ := hra
       have hcv : v.2.1.2 = a.1.2 :=
-        (realWorld_carried prims x s pads u rest _ za v (by with_reducible exact hv)).trans hcz
+        (SigningCompilerO1Lemmas.realWorld_run_carried prims x s pads u rest _ za v
+          (by with_reducible exact hv)).trans hcz
       exact Or.inl (realStop_withCarried q _ _ (by rw [hcv])
-        (realWorld_stop prims x q s pads u rest _ za ha2 v (by with_reducible exact hv)))
+        (SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ za ha2 v
+          (by with_reducible exact hv)))
     by_cases hb2 : Stop y.2
     · apply TreeCheckKernelCoupling.relTriple_of_support
       intro ra hra rb hrb
@@ -805,7 +773,8 @@ theorem step_round2 (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
         hsg.symm)) ?_
     rintro v r ⟨hpost, hv, -⟩
     have hcv : v.2.1.2 = a.1.2 :=
-      (realWorld_carried prims x s pads u rest _ za v (by with_reducible exact hv)).trans hcz
+      (SigningCompilerO1Lemmas.realWorld_run_carried prims x s pads u rest _ za v
+        (by with_reducible exact hv)).trans hcz
     apply relTriple_pure_pure
     rw [hcz] at hpost
     rcases hpost with h | h | h
@@ -816,14 +785,6 @@ theorem step_round2 (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
 end Round2
 
 end ThresholdLeanXmssSecurity.SigningCompilerO1Round2
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Round2.signersAt_withRecord_subset' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Round2.signersAt_withRecord_subset
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Round2.releasedBound_withRecord' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Round2.releasedBound_withRecord
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Round2.signersAt_congr' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
@@ -840,14 +801,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1Round2
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Round2.comp_round2' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Round2.comp_round2
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Round2.realWorld_carried' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Round2.realWorld_carried
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Round2.realWorld_stop' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Round2.realWorld_stop
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Round2.record_mid' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

@@ -174,7 +174,7 @@ theorem hash_step (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
         b.1 b.2 := rfl
   rw [hro] at hread
   rw [hfuse]
-  apply relTriple_map_right
+  apply SigningCompilerO1Lemmas.relTriple_map_right
   refine relTriple_post_mono hread ?_
   rintro ra rb ⟨h | h | ⟨⟨hval, hrest⟩, hcore', hframe, hmark'⟩, -, hrb⟩
   · exact Or.inl h
@@ -237,7 +237,7 @@ theorem hashProgram_core (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) 
   have hpriv : RealPrivate x s pads noise (gOf s pads u) rest a.2 (visibleOf a) :=
     hs.1.1.1.realPrivate
   rw [realHonest_tweakable, runX_sourceHashProgramX]
-  apply relTriple_map_right
+  apply SigningCompilerO1Lemmas.relTriple_map_right
   refine relTriple_post_mono (relTriple_supported hrun) ?_
   rintro ra rb ⟨h | h | ⟨hval, hsrc, hpre, hm, hpend⟩, hra, -⟩
   · exact Or.inl h

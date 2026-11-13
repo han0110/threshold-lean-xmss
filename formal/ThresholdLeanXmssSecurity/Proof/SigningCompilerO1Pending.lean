@@ -93,34 +93,6 @@ theorem backendT_record (p : PendingInput) (value : HashOutput) (st : CompState 
     erase_merge_of_restFree _ _ _ hf, pendingOutput]
   rfl
 
-/-- A mapped source update runs with no backend call. -/
-theorem runX_map_modify {α : Type} (backend : QueryImpl (SpecX C) (StateT (CompState C) ProbComp))
-    (f : Unit → α) (g : SourceState C → SourceState C) (src : SourceState C) (st : CompState C) :
-    runX backend (f <$> modify g) src st = pure ((f (), g src), st) := by
-  rw [map_eq_bind_pure_comp, runX_bind, runX_modify, pure_bind, Function.comp_apply, runX_pure]
-
-/-- The source side of a pending call with a stored answer. -/
-theorem runX_sourcePendingX_some (p : PendingInput) (answer : DeferredOutput) (src : SourceState C)
-    (st : CompState C) (hf : RestFree x.2.1 st.1.1.1.1.data.cache)
-    (hprior : st.1.1.1.1.data.pending p = some answer) :
-    runX (compBackend x q s pads u rest noise) (sourcePendingX x.1 p) src st =
-      (fun r => ((r.1, src), r.2)) <$>
-        (compBackend x q s pads u rest noise (.inl (.inl (.inl (.pending p))))).run st := by
-  simp [sourcePendingX, runX_bind, runX_deferred, runX_get,
-    backendT_inspect capTag x q s pads (tauOf s pads) (gOf s pads u) noise rest p st hf, hprior]
-  exact runX_deferred _ _ _ _
-
-/-- The source side of a fresh pending call with an unrevealed key. -/
-theorem runX_sourcePendingX_fresh (p : PendingInput) (src : SourceState C) (st : CompState C)
-    (hf : RestFree x.2.1 st.1.1.1.1.data.cache)
-    (hprior : st.1.1.1.1.data.pending p = none) (hrev : src.revealed p.key = none) :
-    runX (compBackend x q s pads u rest noise) (sourcePendingX x.1 p) src st =
-      (fun r => ((r.1, { src with allocated := src.allocated ++ [p] }), r.2)) <$>
-        (compBackend x q s pads u rest noise (.inl (.inl (.inl (.pending p))))).run st := by
-  simp [sourcePendingX, runX_bind, runX_deferred, runX_get,
-    backendT_inspect capTag x q s pads (tauOf s pads) (gOf s pads u) noise rest p st hf, hprior,
-    hrev, runX_map_modify]
-
 /-- The source side of a fresh pending call with a revealed key and no next secret. -/
 theorem runX_sourcePendingX_hash (p : PendingInput) (hnext : p.next = none) (input : Digest)
     (src : SourceState C) (st : CompState C) (hf : RestFree x.2.1 st.1.1.1.1.data.cache)
@@ -132,7 +104,7 @@ theorem runX_sourcePendingX_hash (p : PendingInput) (hnext : p.next = none) (inp
             r.2 := by
   simp [sourcePendingX, runX_bind, runX_deferred, runX_get,
     backendT_inspect capTag x q s pads (tauOf s pads) (gOf s pads u) noise rest p st hf, hprior,
-    hrev, hnext, pendingOutput, runX_map_modify]
+    hrev, hnext, pendingOutput, SigningCompilerO1Lemmas.runX_map_modify]
 
 /-- A real call that adds one visible entry at an input that is no slot keeps the fields of the
 relation. -/
@@ -401,7 +373,8 @@ theorem openingPending_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.
   | some answer =>
     have hcomp : runX (compBackend x q s pads u rest noise) (sourcePendingX x.1 p) src st =
         pure ((answer, src), ((((st.1.1.1.1, st.1.1.1.2 + 1), st.1.1.2), st.1.2), st.2)) := by
-      rw [runX_sourcePendingX_some x q s pads u rest noise p answer src st hsf.restFree hprior,
+      rw [SigningCompilerO1Lemmas.runX_sourcePendingX_some x q s pads u rest noise p answer src st
+          hsf.restFree hprior,
         backendT_openPending x q s pads u rest noise p hp st hsf.restFree, hprior]
       simp only [map_pure]
     rw [hcomp]
@@ -472,7 +445,8 @@ theorem openingPending_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.
       have hcomp : runX (compBackend x q s pads u rest noise) (sourcePendingX x.1 p) src st =
           (fun value : HashOutput => ((pendingOutput p value, src'),
             withPending st p (pendingOutput p value) (st.1.1.1.2 + 1))) <$> ($ᵗ HashOutput) := by
-        rw [runX_sourcePendingX_fresh x q s pads u rest noise p src st hsf.restFree hprior hrev,
+        rw [SigningCompilerO1Lemmas.runX_sourcePendingX_fresh x q s pads u rest noise p src st
+            hsf.restFree hprior hrev,
           backendT_openPending x q s pads u rest noise p hp st hsf.restFree, hprior]
         simp only [Functor.map_map]
         rfl
@@ -621,18 +595,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1Pending
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Pending.backendT_record' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Pending.backendT_record
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Pending.runX_map_modify' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Pending.runX_map_modify
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Pending.runX_sourcePendingX_some' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Pending.runX_sourcePendingX_some
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Pending.runX_sourcePendingX_fresh' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Pending.runX_sourcePendingX_fresh
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Pending.runX_sourcePendingX_hash' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

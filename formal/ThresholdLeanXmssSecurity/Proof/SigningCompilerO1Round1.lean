@@ -365,21 +365,6 @@ theorem bind_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
     exact Or.inr ⟨hpost _ _ hcore1 hsig rfl rfl (fun _ _ => rfl) (fun _ hk h => absurd hk h)
       rfl rfl (fun ht => absurd (htreeReady ht) hready) hpads, hmark⟩
 
-/-- An honest run in the real world keeps the carried state. -/
-theorem realHonest_carried {α : Type} (oa : OracleComp (RoSpec C) α) (a : RealState C)
-    (r : α × RealState C) (hr : r ∈ support ((realHonest prims x s pads u rest oa).run a)) :
-    r.2.1.2 = a.1.2 := by
-  refine SeedHitProof.support_simulateQ_inv (realWorld prims x s pads u rest)
-    (fun st : RealState C => st.1.2 = a.1.2) (fun t st hst z hz => ?_) _ a rfl r hr
-  rw [← hst]
-  change z ∈ support ((_root_.ThresholdLeanXmssSecurity.fuse (rawTraceWorld prims x)
-    (realImpl x (gOf s pads u) rest) t).run st) at hz
-  simp only [_root_.ThresholdLeanXmssSecurity.fuse, StateT.run_mk, rawTraceWorld, rawKeyedSplitWorld,
-      rawCarriedLogged, simulateQ_map, simulateQ_bind, StateT.run_map, StateT.run_bind,
-      support_map, support_bind, Set.mem_image, Set.mem_iUnion] at hz
-  obtain ⟨_, ⟨_, ⟨_, ⟨_, -, rfl⟩, ⟨_, -, rfl⟩⟩, rfl⟩, rfl⟩ := hz
-  rfl
-
 /-- The real handler of round 1. A failed guard returns `none`. Else the part of the signer runs on
 the real state, and the carried state gets the new bound message. -/
 theorem real_round1 (top : TopTree) (i : C.Party) (J : C.Quorum) (e : KeyIndex) (message : Message)
@@ -505,7 +490,8 @@ theorem step_round1 (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
         (constrained_bottom_randomizer e) (fun _ _ _ h => by cases h) ha hb1 hm1 z
         (by with_reducible exact hz) rp hrp with h | h | ⟨hv, hsync, -⟩
     · left
-      have hcar := realHonest_carried prims x s pads u rest _ a z (by with_reducible exact hz)
+      have hcar := SigningCompilerO1Lemmas.realWorld_run_carried prims x s pads u rest _ a z
+        (by with_reducible exact hz)
       unfold RealStop at h ⊢
       rcases h with h | h
       · rw [hcar] at h
@@ -540,10 +526,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1Round1
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Round1.bind_sync' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Round1.bind_sync
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Round1.realHonest_carried' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Round1.realHonest_carried
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Round1.real_round1' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

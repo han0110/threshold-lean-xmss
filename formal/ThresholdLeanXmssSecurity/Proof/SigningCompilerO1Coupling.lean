@@ -63,16 +63,6 @@ private theorem probEvent_bind_le_bind {α β γ : Type} (oa : ProbComp α) (f :
   rw [probEvent_bind_eq_tsum, probEvent_bind_eq_tsum]
   exact ENNReal.tsum_le_tsum fun a => mul_le_mul' le_rfl (h a)
 
-/-- Disjoint events add exactly. This lemma is a port of the private
-`SigningCompilerShareCap.probEvent_or_eq`. -/
-private theorem probEvent_or_eq {α : Type} (oa : ProbComp α) (P Q : α → Prop)
-    (disjoint : ∀ z, P z → Q z → False) :
-    Pr[fun z => P z ∨ Q z | oa] = Pr[P | oa] + Pr[Q | oa] := by
-  simp only [probEvent_eq_tsum_ite, ← ENNReal.tsum_add]
-  apply tsum_congr
-  intro z
-  by_cases hp : P z <;> by_cases hq : Q z <;> simp_all
-
 /-- For fixed hidden labels and pads, the right event of `real_le_table` over the table run costs at
 most the guarded event of the pad run. -/
 theorem tableRunCO1_le_guarded (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) (q : ℕ)
@@ -92,7 +82,7 @@ theorem tableRunCO1_le_guarded (prims : Primitives) (A : TsigAdversary C) (x : K
   have hguard : Pr[GuardedCompilerEvent x q | p] =
       Pr[fun o => E o ∧ o.1.2.base.hiddenFlag = false | p] +
         Pr[fun o => o.1.2.base.hiddenFlag = true ∧ o.2.2.2 = true | p] := by
-    rw [← probEvent_or_eq]
+    rw [← SigningCompilerO1Cap.probEvent_or_eq]
     · exact probEvent_ext fun o _ => by
         simp only [GuardedCompilerEvent, E, and_comm]
     · intro o h1 h2

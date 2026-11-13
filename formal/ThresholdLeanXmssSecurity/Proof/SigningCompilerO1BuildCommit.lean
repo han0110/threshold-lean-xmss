@@ -33,11 +33,6 @@ set_option linter.constructorNameAsVariable false
 set_option backward.isDefEq.respectTransparency false
 set_option maxRecDepth 100000
 
-/-- The truncation of an answer is the reading of its low half. -/
-theorem truncateHash_interpret (s : HiddenKey → Digest) (v : DeferredOutput) :
-    truncateHash (v.interpret s) = v.low.interpret s :=
-  congrArg Prod.snd (XmssSecurity.Rom.hashOutputEquivDigestPair.apply_symm_apply _)
-
 section Build
 variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
   (u : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput) (noise : ChainNoiseIndex → HashOutput)
@@ -182,7 +177,7 @@ theorem commitment_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (
     ⟨hcore2, hx, TopO1.frame prims x top _ a ra2.2 b (⟨rb2.1.2, b.1.starts⟩, rb2.2) hs.2.2.1 hf,
       hpads2⟩, hf.signing, hf.trees, hf.exposed, hf.candidates, hm2, hf.carried, hf.log⟩)
   · change truncateHash ra2.1 = match rb2.1.1.low with | .known d => d | .secret _ => 0
-    rw [hval, truncateHash_interpret, hd]
+    rw [hval, SigningCompilerO1Lemmas.truncateHash_interpret, hd]
     rfl
   · have h0 := hrev e rfl hbd
     rw [hf2.revealed _ h0]
@@ -191,10 +186,6 @@ theorem commitment_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (
 end Build
 
 end ThresholdLeanXmssSecurity.SigningCompilerO1BuildCommit
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1BuildCommit.truncateHash_interpret' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1BuildCommit.truncateHash_interpret
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1BuildCommit.realCommitment_run' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

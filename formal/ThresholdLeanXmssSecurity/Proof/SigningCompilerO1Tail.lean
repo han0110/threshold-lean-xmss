@@ -242,20 +242,13 @@ theorem revealDigests_run (values : ChainIndex → DeferredDigest) (src : Source
     · rw [h3, hsrc']
     · rw [h4, hst']
 
-/-- The stop of the real side persists over a run in the real world. -/
-theorem realWorld_stop {α : Type} (oa : OracleComp (WorldSpec C) α) (a : RealState C)
-    (h : RealStop q a) (r : α × RealState C)
-    (hr : r ∈ support ((simulateQ (realWorld prims x s pads u rest) oa).run a)) : RealStop q r.2 :=
-  simulateQ_sticky _ (RealStop q) (fun t st hst r hr => realStop_world prims x (gOf s pads u) rest q
-    t st hst r hr) _ a h r hr
-
 /-- A coupling from a stopped real state holds each post that a real stop gives. -/
 theorem relTriple_realStop {α β : Type} (oa : OracleComp (WorldSpec C) α) (ob : ProbComp β)
     (a : RealState C) (h : RealStop q a) {R : α × RealState C → β → Prop}
     (hR : ∀ r : α × RealState C, RealStop q r.2 → ∀ c, R r c) :
     RelTriple ((simulateQ (realWorld prims x s pads u rest) oa).run a) ob R :=
   relTriple_of_support_left fun r hr c =>
-    hR r (realWorld_stop prims x q s pads u rest oa a h r hr) c
+    hR r (SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest oa a h r hr) c
 
 /-- A coupling from a stopped compiler state holds each post that a compiler stop gives. -/
 theorem relTriple_compStop {α β : Type} (oa : ProbComp α) (ob : SourceMX C β)
@@ -482,7 +475,7 @@ theorem tail_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
     have h := (syncO1_iff_syncIn prims x s pads u rest noise top _ b).1 ⟨hsync, hpads⟩
     exact ⟨h.1, h.2.1, ⟨h.2.2.1.topRows, h.2.2.1.topRun⟩, h.2.2.2⟩
   rw [runXO1_liftBaseX]
-  refine SigningCompilerO1Reads.relTriple_map_right _ ?_
+  refine SigningCompilerO1Lemmas.relTriple_map_right ?_
   unfold honestSignature sourceHonestSignatureX
   rw [simulateQ_bind, StateT.run_bind, runX_bind]
   refine relTriple_bind (SigningCompilerSyncLocalRead.relTriple_supported
@@ -672,10 +665,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1Tail
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Tail.revealDigests_run' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Tail.revealDigests_run
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Tail.realWorld_stop' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Tail.realWorld_stop
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Tail.relTriple_realStop' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

@@ -32,22 +32,6 @@ section TreeRequest
 variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
   (u : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput) (noise : ChainNoiseIndex → HashOutput)
 
-/-- A world run keeps the carried state. -/
-theorem realWorld_run_carried {α : Type} (oa : OracleComp (WorldSpec C) α) (a : RealState C)
-    (r : α × RealState C)
-    (hr : r ∈ support ((simulateQ (realWorld prims x s pads u rest) oa).run a)) :
-    r.2.1.2 = a.1.2 := by
-  refine SeedHitProof.support_simulateQ_inv (realWorld prims x s pads u rest)
-    (fun st : RealState C => st.1.2 = a.1.2) (fun t st hst z hz => ?_) _ a rfl r hr
-  rw [← hst]
-  change z ∈ support ((_root_.ThresholdLeanXmssSecurity.fuse (rawTraceWorld prims x)
-    (realImpl x (gOf s pads u) rest) t).run st) at hz
-  simp only [_root_.ThresholdLeanXmssSecurity.fuse, StateT.run_mk, rawTraceWorld, rawKeyedSplitWorld,
-      rawCarriedLogged, simulateQ_map, simulateQ_bind, StateT.run_map, StateT.run_bind,
-      support_map, support_bind, Set.mem_image, Set.mem_iUnion] at hz
-  obtain ⟨_, ⟨_, ⟨_, ⟨_, -, rfl⟩, ⟨_, -, rfl⟩⟩, rfl⟩, rfl⟩ := hz
-  rfl
-
 /-- The real handler of a tree request runs the signing oracle on the world and then names the
 tree. -/
 theorem real_tree (top : TopTree) (bi : Fin (2 ^ layerHeight)) (a : RealState C) :
@@ -202,7 +186,8 @@ theorem step_tree (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
     (SigningCompilerO1BuildOnce.bottomOnce_sync prims x q s pads u rest noise hkeys top (realSigning a) bi a
       (b.1, (b.2.1.1, false), b.2.2) hin ha hb rfl)) ?_
   rintro ra rb ⟨hpost, hra, hrb⟩
-  have hcarA : ra.2.1.2 = a.1.2 := realWorld_run_carried prims x s pads u rest _ a ra hra
+  have hcarA : ra.2.1.2 = a.1.2 :=
+    SigningCompilerO1Lemmas.realWorld_run_carried prims x s pads u rest _ a ra hra
   apply TreeCheckKernelCoupling.relTriple_of_support
   intro za hza zb hzb
   obtain ⟨⟨oa, sig1⟩, a1⟩ := ra
@@ -220,7 +205,8 @@ theorem step_tree (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
     | some tree =>
       obtain ⟨z, hz, rfl⟩ := exists_of_mem_support_map hza
       obtain ⟨y, hy, rfl⟩ := exists_of_mem_support_map hz
-      have hcar := realWorld_run_carried prims x s pads u rest _ a1 y (by with_reducible exact hy)
+      have hcar := SigningCompilerO1Lemmas.realWorld_run_carried prims x s pads u rest _ a1 y
+        (by with_reducible exact hy)
       exact realStop_withCarried q y.2 _
         (SigningCompilerO1Programs.realHonest_stop prims x q s pads u rest _ a1 hA y
           (by with_reducible exact hy))
@@ -261,7 +247,8 @@ theorem step_tree (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
     obtain ⟨r2, hr2, hw⟩ := (mem_support_bind_iff _ _ _).1 hw
     obtain ⟨r3, hr3, rfl⟩ := exists_of_mem_support_map hw
     have hcarY : y.2.1.2 = a1.1.2 :=
-      realWorld_run_carried prims x s pads u rest _ a1 y (by with_reducible exact hy)
+      SigningCompilerO1Lemmas.realWorld_run_carried prims x s pads u rest _ a1 y
+        (by with_reducible exact hy)
     rcases returnTree_sync prims x q s pads u rest noise hkeys top _ _ bi tree a1
         (⟨src1, b.1.starts⟩, st1) hwide htree1 (Finset.mem_insert_self _ _) hmark1 r2 hr2
       with hstop | ⟨hv, hs2, -, -, -, -, hmark2⟩
@@ -303,10 +290,6 @@ theorem step_tree (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
 end TreeRequest
 
 end ThresholdLeanXmssSecurity.SigningCompilerO1TreeStep
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1TreeStep.realWorld_run_carried' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1TreeStep.realWorld_run_carried
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1TreeStep.real_tree' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

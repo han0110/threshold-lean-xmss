@@ -1,5 +1,6 @@
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Frame
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerSyncHonestRead
+import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Lemmas
 
 /-! # Reads that are no slot
 
@@ -235,20 +236,6 @@ variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest)
   (u : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput) (noise : ChainNoiseIndex → HashOutput)
 set_option backward.isDefEq.respectTransparency false
 
-/-- The cache relation reads only the cache, the pending answers and the virtual terms. -/
-theorem cacheRelation_congr (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (d d' : DeferredState C) (actual : HashCache C) (hc : d'.cache = d.cache)
-    (hp : d'.pending = d.pending) (hv : d'.virtual = d.virtual)
-    (h : CacheRelation P seeds s d actual) : CacheRelation P seeds s d' actual := by
-  refine ⟨fun query hq => ?_, fun p value hpv => h.pending p value (hp ▸ hpv)⟩
-  rw [hc]
-  apply h.agree query
-  intro hs
-  apply hq
-  unfold SuspendedQuery at hs ⊢
-  rw [hc, hp, hv]
-  exact hs
-
 /-- A cache that agrees on the PRF cells of a bottom randomizer has the same opening value. -/
 theorem randomizer_agree (seeds : C.Term → HashOutput) (cache cache' : HashCache C) (e : KeyIndex)
     (h : ∀ T, cache' (.prf (seeds T) (.randomizer bottomLayer e)) =
@@ -420,8 +407,8 @@ theorem read_call (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (forger
     · exact realWorld_preserves prims (.inl (.inl (.inr rq))) a hsf.realPrivate ra hra
   obtain ⟨hle, -, hother⟩ := randomOracle_support _ _ w hw
   have hcache : CacheRelation x.1 x.2.1 s (dataOf x r.2) (visibleOf ra.2) :=
-    cacheRelation_congr s x.1 x.2.1 { dataOf x st with cache := (dataOf x r.2).cache } (dataOf x r.2)
-      _ rfl hpend hvirt hrel
+    SigningCompilerO1Lemmas.cacheRelation_congr s x.1 x.2.1
+      { dataOf x st with cache := (dataOf x r.2).cache } (dataOf x r.2) _ rfl hpend hvirt hrel
   have hagree (e : KeyIndex) := randomizer_agree x.2.1 (visibleOf a) (visibleOf ra.2) e (by
     intro T
     rw [hvis]
@@ -479,13 +466,6 @@ theorem read_call (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (forger
       change (T, p) ∈ (dataOf x r.2).virtual
       rw [hvirt]
       exact hp
-
-/-- A map on the right of a coupling moves into the post. -/
-theorem relTriple_map_right {α β γ : Type} {oa : ProbComp α} {ob : ProbComp β} (h : β → γ)
-    {R : α → γ → Prop} (hr : RelTriple oa ob (fun a b => R a (h b))) :
-    RelTriple oa (h <$> ob) R := by
-  have hm := relTriple_map (f := id) (g := h) (R := R) hr
-  rwa [id_map] at hm
 
 /-- A real read counts once. -/
 theorem readCall_count (forger : Bool) (rq : (RoSpec C).Domain) (a : RealState C)
@@ -551,7 +531,7 @@ theorem ordinaryRead_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
       rcases hd with ⟨k, hk, hrk⟩ | ⟨hns, hread⟩
       · exact (hno k hk hrk).elim
       rw [← hi] at hns hread
-      apply relTriple_map_right
+      apply SigningCompilerO1Lemmas.relTriple_map_right
       refine relTriple_post_mono (read_call prims x q s pads u rest noise hkeys forger cCore rq
         hslot hbase a src st hs hread hns) ?_
       rintro ra r ⟨hval, hsync, hframe, hmk⟩
@@ -576,7 +556,7 @@ theorem ordinaryRead_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
       simp only [support_map, Set.mem_image] at hrb
       obtain ⟨r, hr, rfl⟩ := hrb
       exact Or.inr (Or.inl (backendT_stop x.1 x.2.1 x.2.2 q s pads _ _ noise rest _ p.2 hstop r hr))
-    apply relTriple_map_right
+    apply SigningCompilerO1Lemmas.relTriple_map_right
     refine relTriple_post_mono (read_call prims x q s pads u rest noise hkeys forger cCore rq
       hslot hbase a p.1.2 p.2 hs1 (Or.inr (ordinary_nonhash_quiet x s pads noise _ hslot hh'))
       (ordinary_not_suspended x s (dataOf x p.2) _ hslot hh')) ?_
@@ -622,10 +602,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1Reads
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Reads.readCall_support
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Reads.cacheRelation_congr' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Reads.cacheRelation_congr
-
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Reads.randomizer_agree' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Reads.randomizer_agree
@@ -645,10 +621,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1Reads
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Reads.read_call' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Reads.read_call
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Reads.relTriple_map_right' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Reads.relTriple_map_right
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Reads.readCall_count' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

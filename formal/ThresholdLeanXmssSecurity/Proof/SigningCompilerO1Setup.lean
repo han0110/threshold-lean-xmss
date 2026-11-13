@@ -39,27 +39,6 @@ attribute [local irreducible] Queries
 
 /-! ## The programs of one chain end -/
 
-/-- The truncation of an answer is the reading of its low half. -/
-theorem truncateHash_interpret (s : HiddenKey → Digest) (v : DeferredOutput) :
-    truncateHash (v.interpret s) = v.low.interpret s :=
-  congrArg Prod.snd (XmssSecurity.Rom.hashOutputEquivDigestPair.apply_symm_apply _)
-
-/-- A walk of `n + 1` steps is the walk of `n` steps and one more step. -/
-theorem chainWalk_step {m : Type → Type} [Monad m] [HasQuery HashSpec m] (P : PublicParameter)
-    (lay : Layer) (key : KeyIndex) (l : ChainIndex) (start n : ℕ) (v : Digest)
-    (h : start + n < chainLength - 1) :
-    Concrete.chainWalk (m := m) P lay key l start (n + 1) v =
-      Concrete.chainWalk P lay key l start n v >>= fun previous =>
-        Concrete.tweakableHash P (.chain lay key ⟨start + n, h⟩) (Concrete.chainPayload l previous) := by
-  simp only [Concrete.chainWalk, dif_pos h]
-
-/-- One step of `Th` on the domain of `H` is the truncated answer of one query. -/
-theorem tweakable_tweakableHash (P : PublicParameter) (domain : HashDomain) (payload : HashInput) :
-    tweakable (C := C) (Concrete.tweakableHash P domain payload : OracleComp HashSpec Digest) =
-      truncateHash <$> hashQuery (.hash (tweakableHashInput P domain payload)) := by
-  simp [Concrete.tweakableHash, tweakable_bind, tweakable_oracleHash, tweakable_pure,
-    map_eq_bind_pure_comp]
-
 /-- A walk of three steps from position 0 is three reads of truncated hashes. -/
 theorem tweakable_walkThree (P : PublicParameter) (lay : Layer) (key : KeyIndex) (l : ChainIndex)
     (v : Digest) :
@@ -70,11 +49,11 @@ theorem tweakable_walkThree (P : PublicParameter) (lay : Layer) (key : KeyIndex)
         (Concrete.chainPayload l v₁)))
       truncateHash <$> hashQuery (.hash (tweakableHashInput P (.chain lay key ⟨2, by decide⟩)
         (Concrete.chainPayload l v₂)))) := by
-  rw [chainWalk_step _ _ _ _ _ _ _ (by decide : 0 + 2 < chainLength - 1),
-    chainWalk_step _ _ _ _ _ _ _ (by decide : 0 + 1 < chainLength - 1),
-    chainWalk_step _ _ _ _ _ _ _ (by decide : 0 + 0 < chainLength - 1),
+  rw [SigningCompilerO1Lemmas.chainWalk_step _ _ _ _ _ _ _ (by decide : 0 + 2 < chainLength - 1),
+    SigningCompilerO1Lemmas.chainWalk_step _ _ _ _ _ _ _ (by decide : 0 + 1 < chainLength - 1),
+    SigningCompilerO1Lemmas.chainWalk_step _ _ _ _ _ _ _ (by decide : 0 + 0 < chainLength - 1),
     show (Concrete.chainWalk P lay key l 0 0 v : OracleComp HashSpec Digest) = pure v from rfl]
-  simp only [tweakable_bind, tweakable_tweakableHash, pure_bind]
+  simp only [tweakable_bind, SigningCompilerO1Lemmas.tweakable_tweakableHash, pure_bind]
   rfl
 
 /-- The input of a top chain edge is the input of its pending call. -/
@@ -97,53 +76,17 @@ theorem sourceTopEnd_eq (P : PublicParameter) (seeds : C.Term → HashOutput)
     simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query, id_map, sourceBackendX]
   rfl
 
-/-- A virtual call at a chain point keeps the reveal map of the source. -/
-theorem keepsRevealed_virtual (P : PublicParameter) (seeds : C.Term → HashOutput) (T : C.Term)
-    (lay : Layer) (e : KeyIndex) (l : ChainIndex) (d : Digit) :
-    SourceKeepsX (fun src : SourceState C => src.revealed)
-      (sourceVirtualX P seeds T (.chain lay e l d)) := by
-  unfold sourceVirtualX
-  exact (SourceKeepsX.lift _).bind _ fun _ => SourceKeepsX.pure ()
-
-/-- A pending call keeps the reveal map of the source. -/
-theorem keepsRevealed_pending (P : PublicParameter) (p : PendingInput) :
-    SourceKeepsX (fun src : SourceState C => src.revealed) (sourcePendingX P p) := by
-  have tail (prior : Option DeferredOutput) : SourceKeepsX (fun src : SourceState C => src.revealed)
-      (do
-        let value ← liftM (deferredQueryX (C := C) (.pending p))
-        if prior.isNone then
-          modify fun (source : SourceState C) => { source with allocated := source.allocated ++ [p] }
-        pure value : SourceMX C DeferredOutput) := by
-    refine (SourceKeepsX.lift (deferredQueryX (.pending p))).bind _ fun value => ?_
-    split
-    · exact (SourceKeepsX.modify (fun st => { st with allocated := st.allocated ++ [p] })
-        (fun _ => rfl)).bind _ (fun _ => SourceKeepsX.pure value)
-    · exact SourceKeepsX.pure value
-  unfold sourcePendingX
-  refine (SourceKeepsX.lift (deferredQueryX (.inspect p))).bind _ fun prior => ?_
-  refine SourceKeepsX.get.bind _ fun source => ?_
-  dsimp only
-  split
-  · refine (SourceKeepsX.lift (deferredQueryX (.hash (.hash _)))).bind _ fun value => ?_
-    refine (SourceKeepsX.lift (deferredQueryX (.record p value))).bind _ fun _ => ?_
-    exact (SourceKeepsX.modify (fun st => { st with allocated := st.allocated ++ [p] })
-      (fun _ => rfl)).bind _ (fun _ => SourceKeepsX.pure _)
-  · rename_i original priorCopy known next hmiss
-    split
-    · exact (SourceKeepsX.modify (fun st => { st with consistent := false }) (fun _ => rfl)).bind _
-        (fun _ => tail original)
-    · simpa only [pure_bind] using tail original
-
 /-- The compiler program of one chain end keeps the reveal map of the source. -/
 theorem keepsRevealed_topEnd (P : PublicParameter) (seeds : C.Term → HashOutput)
     (bi : XmssSecurity.TopIndex) (l : ChainIndex) :
     SourceKeepsX (fun src : SourceState C => src.revealed)
       (simulateQ (sourceBackendX P seeds) (deferredTopEnd bi l)) := by
   rw [sourceTopEnd_eq]
-  refine (SourceKeepsX.mapM _ _ fun T _ => keepsRevealed_virtual P seeds T _ _ _ _).bind _ fun _ => ?_
-  refine (keepsRevealed_pending P _).bind _ fun _ => ?_
-  refine (keepsRevealed_pending P _).bind _ fun _ => ?_
-  exact (keepsRevealed_pending P _).bind _ fun _ => SourceKeepsX.pure _
+  refine (SourceKeepsX.mapM _ _ fun T _ =>
+    SigningCompilerO1Lemmas.keepsRevealed_virtual P seeds T _ _ _ _).bind _ fun _ => ?_
+  refine (SigningCompilerO1Lemmas.keepsRevealed_pending P _).bind _ fun _ => ?_
+  refine (SigningCompilerO1Lemmas.keepsRevealed_pending P _).bind _ fun _ => ?_
+  exact (SigningCompilerO1Lemmas.keepsRevealed_pending P _).bind _ fun _ => SourceKeepsX.pure _
 
 /-- An inner top chain edge has the secret of the next position as the low half of its answer. -/
 theorem top_low_secret (st : DeferredState C) (h : PendingValid st) (bi : XmssSecurity.TopIndex)
@@ -243,7 +186,7 @@ theorem topStep_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (cCo
       with_reducible exact h1) rb hrb
   refine callPost_map x q s pads u rest noise cCore _ a src st _ _ r1 rb _ rb h rfl rfl rfl ?_
   rintro ⟨hv, hp⟩
-  exact ⟨by rw [hv]; exact truncateHash_interpret s _, hp⟩
+  exact ⟨by rw [hv]; exact SigningCompilerO1Lemmas.truncateHash_interpret s _, hp⟩
 
 /-- One chain end of the setup. Both sides give the same end, and the chain has its pending
 answers. -/
@@ -330,13 +273,6 @@ theorem topEnd_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (cCor
     · exact Or.inr ⟨_, h⟩
     · exact Or.inr ⟨_, h⟩
 
-/-- The stop of the real side persists over a run in the real world. -/
-theorem realWorld_stop {α : Type} (oa : OracleComp (WorldSpec C) α) (a : RealState C)
-    (h : RealStop q a) (r : α × RealState C)
-    (hr : r ∈ support ((simulateQ (realWorld prims x s pads u rest) oa).run a)) : RealStop q r.2 :=
-  simulateQ_sticky _ (RealStop q) (fun t st hst r hr => realStop_world prims x (gOf s pads u) rest q
-    t st hst r hr) _ a h r hr
-
 /-- The queries of one chain end keep the clauses of `ExtraOpen`. -/
 theorem topEnd_extraOpen (top : TopTree) (rev : HiddenKey → Option Digest) (cTime : Carried C)
     (bi : XmssSecurity.TopIndex) (l : ChainIndex) (a a' : RealState C)
@@ -413,7 +349,8 @@ theorem topEnds_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top
     have E := topEnd_sync prims x q s pads u rest noise hkeys c bl.1 bl.2 a b.1.base b.2 hs.1 ha hb hm
       r1 h1 rb1 hb1
     rcases E with h | h | ⟨⟨hv, hrev1, hrows1⟩, hcore1, hf1, hm1⟩
-    · exact Or.inl (realWorld_stop prims x q s pads u rest _ r1.2 h r2 h2)
+    · exact Or.inl
+        (SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ r1.2 h r2 h2)
     · exact Or.inr (Or.inl (runX_compStop x q s pads u rest noise _ _ _ h rb2 hb2))
     have hpads1 : PadsFixed x pads rb1.2 :=
       backend_padsFixed x q s pads u rest noise _ b.2 hs.2.2 rb1 hb1
@@ -422,7 +359,8 @@ theorem topEnds_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top
       ⟨hcore1, topEnd_extraOpen prims x s top rev c bl.1 bl.2 a r1.2 b (⟨rb1.1.2, b.1.starts⟩, rb1.2)
         hs.2.1 hf1 rfl hrows1, hpads1⟩
     by_cases ha1 : RealStop q r1.2
-    · exact Or.inl (realWorld_stop prims x q s pads u rest _ r1.2 ha1 r2 h2)
+    · exact Or.inl
+        (SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ r1.2 ha1 r2 h2)
     by_cases hb1' : Stop rb1.2
     · exact Or.inr (Or.inl (runX_compStop x q s pads u rest noise _ _ _ hb1' rb2 hb2))
     rcases ih r1.2 (⟨rb1.1.2, b.1.starts⟩, rb1.2) hs1 ha1 hb1' hm1 r2 h2 rb2 hb2 with
@@ -490,8 +428,9 @@ theorem setup_core (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) :
   · refine relTriple_of_support_left fun c hc _ => Or.inl ?_
     rw [mem_support_bind_iff] at hc
     obtain ⟨c1, hc1, hc2⟩ := hc
-    exact realWorld_stop prims x q s pads u rest _ _
-      (realWorld_stop prims x q s pads u rest _ _ h1 c1 (by with_reducible exact hc1)) c
+    exact SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ _
+      (SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ _ h1 c1
+        (by with_reducible exact hc1)) c
         (by with_reducible exact hc2)
   · refine SigningOpeningProof.relTriple_of_support_right fun c hc _ => Or.inr (Or.inl ?_)
     rw [mem_support_bind_iff] at hc
@@ -503,8 +442,9 @@ theorem setup_core (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) :
   · refine relTriple_of_support_left fun c hc _ => Or.inl ?_
     rw [mem_support_bind_iff] at hc
     obtain ⟨c1, hc1, hc2⟩ := hc
-    exact realWorld_stop prims x q s pads u rest _ _
-      (realWorld_stop prims x q s pads u rest _ _ ha1 c1 (by with_reducible exact hc1)) c
+    exact SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ _
+      (SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ _ ha1 c1
+        (by with_reducible exact hc1)) c
         (by with_reducible exact hc2)
   by_cases hb1 : Stop r1b.2
   · refine SigningOpeningProof.relTriple_of_support_right fun c hc _ => Or.inr (Or.inl ?_)
@@ -595,18 +535,6 @@ end Setup
 
 end ThresholdLeanXmssSecurity.SigningCompilerO1Setup
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Setup.truncateHash_interpret' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Setup.truncateHash_interpret
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Setup.chainWalk_step' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Setup.chainWalk_step
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Setup.tweakable_tweakableHash' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Setup.tweakable_tweakableHash
-
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Setup.tweakable_walkThree' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Setup.tweakable_walkThree
@@ -618,14 +546,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1Setup
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Setup.sourceTopEnd_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Setup.sourceTopEnd_eq
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Setup.keepsRevealed_virtual' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Setup.keepsRevealed_virtual
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Setup.keepsRevealed_pending' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Setup.keepsRevealed_pending
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Setup.keepsRevealed_topEnd' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
@@ -658,10 +578,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1Setup
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Setup.topEnd_sync' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Setup.topEnd_sync
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Setup.realWorld_stop' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Setup.realWorld_stop
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Setup.topEnd_extraOpen' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

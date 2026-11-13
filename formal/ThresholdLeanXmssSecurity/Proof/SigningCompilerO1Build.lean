@@ -219,13 +219,6 @@ section Build
 variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
   (u : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput) (noise : ChainNoiseIndex → HashOutput)
 
-/-- The stop of the real side persists over a run of the real world. -/
-theorem realWorld_stop {α : Type} (m : OracleComp (WorldSpec C) α) (a : RealState C)
-    (h : RealStop q a) (r : α × RealState C)
-    (hr : r ∈ support ((simulateQ (realWorld prims x s pads u rest) m).run a)) : RealStop q r.2 :=
-  simulateQ_sticky _ (RealStop q) (fun t st hst r hr => realStop_world prims x (gOf s pads u) rest q
-    t st hst r (by with_reducible exact hr)) m a h r hr
-
 /-- A post inside a handler holds for a weaker value relation. -/
 theorem inPost_mono (top : TopTree) (cCore cTime : Carried C) (a : RealState C)
     (b : SourceStateO1 C × CompState C) {α β : Type} (value value' : α → β → Prop)
@@ -269,7 +262,7 @@ theorem inPost_bind (top : TopTree) (cCore cTime : Carried C) (a : RealState C)
   rintro r1 rb1 ⟨hp, -, hrb1⟩
   by_cases ha1 : RealStop q r1.2
   · exact relTriple_of_support_left fun c hc _ =>
-      Or.inl (realWorld_stop prims x q s pads u rest _ _ ha1 c hc)
+      Or.inl (SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ _ ha1 c hc)
   by_cases hb1 : Stop rb1.2
   · exact SigningOpeningProof.relTriple_of_support_right fun c hc _ =>
       Or.inr (Or.inl (runX_compStop x q s pads u rest noise _ _ _ hb1 c hc))
@@ -509,8 +502,8 @@ theorem base_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
   refine relTriple_map (relTriple_post_mono (relTriple_supported hO) ?_)
   rintro ra rb ⟨hC, -, hrb⟩
   have hpads := backend_padsFixed x q s pads u rest noise _ b.2 hs.2.2.2 rb hrb
-  have hrev := SourceKeepsX.run (keepsRevealed_pending x.1 p) (compBackend x q s pads u rest noise)
-    b.1.base b.2 rb hrb
+  have hrev := SourceKeepsX.run (SigningCompilerO1Lemmas.keepsRevealed_pending x.1 p)
+    (compBackend x q s pads u rest noise) b.1.base b.2 rb hrb
   rcases hC with h | h | ⟨⟨hval, ⟨d, hd⟩, hp⟩, hrest⟩
   · exact Or.inl h
   · exact Or.inr (Or.inl h)
@@ -535,7 +528,7 @@ theorem base_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
   refine Or.inr (Or.inr ⟨⟨?_, fun k hk => by change rb.1.2.revealed k ≠ none; rw [hrev]; exact hk⟩,
     hrest'⟩)
   change truncateHash ra.1 = match rb.1.1.low with | .known value => value | .secret _ => 0
-  rw [hval, truncateHash_interpret, hd]
+  rw [hval, SigningCompilerO1Lemmas.truncateHash_interpret, hd]
   rfl
 
 /-- The chain values of the top signature of a build. Each real value is the reading of the
@@ -934,10 +927,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1Build
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Build.topDigit_of_resolves' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Build.topDigit_of_resolves
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Build.realWorld_stop' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Build.realWorld_stop
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Build.inPost_mono' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

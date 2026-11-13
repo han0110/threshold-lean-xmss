@@ -47,101 +47,6 @@ theorem chainInput_ne_randomizer (P : PublicParameter) (edge : ChainNoiseIndex) 
 
 /-! ## The real side of one read -/
 
-/-- The effect of one real read of `input` with the answer `v`. The read observes the answer in the
-visible cache, counts once, logs the answer and keeps the private cache, the carried state and the
-trace. -/
-structure ReadStep (input : Query C) (v : HashOutput) (a a' : RealState C) : Prop where
-  visible : visibleOf a' = (visibleOf a).cacheQuery input v
-  seen : ∀ w, visibleOf a input = some w → w = v
-  priv : a'.2 = a.2
-  carried : a'.1.2 = a.1.2
-  trace : a'.1.1.2 = a.1.1.2
-  count : a'.1.1.1.1.1.1.2 = a.1.1.1.1.1.1.2 + 1
-  log : ∃ t value, a'.1.1.1.1.1.2 = a.1.1.1.1.1.2.logQuery t value ∧
-    SigningCacheLogProof.hashCall ⟨t, value⟩ = some (input, v)
-
-/-- A cache that holds `v` at `input` or nothing there grows when it observes `v`. -/
-theorem le_cacheQuery_of_seen (vis : HashCache C) (input : Query C) (v : HashOutput)
-    (h : ∀ w, vis input = some w → w = v) : vis ≤ vis.cacheQuery input v := by
-  cases hv : vis input with
-  | none => exact QueryCache.le_cacheQuery vis hv
-  | some w =>
-    rw [h w hv] at hv
-    rw [observe_same vis input v hv]
-
-/-- The observed cache is a result of the lazy read. -/
-theorem observe_mem_support (vis : HashCache C) (input : Query C) (v : HashOutput)
-    (h : ∀ w, vis input = some w → w = v) :
-    (v, vis.cacheQuery input v) ∈ support (((Query C →ₒ HashOutput).randomOracle input).run vis) := by
-  cases hv : vis input with
-  | none =>
-    rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ hv]
-    simp [uniformSampleImpl]
-  | some w =>
-    rw [h w hv] at hv
-    rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_some _ hv, observe_same vis input v hv]
-    simp
-
-theorem ReadStep.realLog_le {input : Query C} {v : HashOutput} {a a' : RealState C}
-    (h : ReadStep input v a a') : realLog a ≤ realLog a' := by
-  obtain ⟨t, value, hl, -⟩ := h.log
-  intro query w hq
-  change SigningCacheLogProof.logCache a'.1.1.1.1.1.2 query = some w
-  rw [hl, SigningCacheLogProof.logCache_logQuery]
-  rw [show SigningCacheLogProof.logCache a.1.1.1.1.1.2 query = some w from hq]
-  rfl
-
-theorem ReadStep.logAgreement (P : PublicParameter) {input : Query C} {v : HashOutput}
-    {a a' : RealState C} (h : ReadStep input v a a')
-    (hl : SigningPartnerCompareProof.LogAgreement P a.1.1.1.1.1) :
-    SigningPartnerCompareProof.LogAgreement P a'.1.1.1.1.1 := by
-  obtain ⟨t, value, hlog, hcall⟩ := h.log
-  have hw := observe_mem_support (visibleOf a) input v h.seen
-  have hagree := SigningPartnerCompareProof.logAgreement_hash P input a.1.1.1.1.1 hl _ hw
-    a'.1.1.1.1.1.2 (fun q' => by
-      rw [hlog, SigningCacheLogProof.logCache_logQuery, hcall]
-      by_cases he : input = q' <;> simp [he]) a'.1.1.1.1.1.1.2
-  have hv : a'.1.1.1.1.1.1.1 = (visibleOf a).cacheQuery input v := h.visible
-  rw [← hv] at hagree
-  exact hagree
-
-theorem ReadStep.fresh {input : Query C} {v : HashOutput} {a a' : RealState C}
-    (h : ReadStep input v a a') (query : Query C) (hq : visibleOf a' query ≠ none) :
-    visibleOf a query ≠ none ∨ query = input := by
-  by_cases he : query = input
-  · exact Or.inr he
-  · rw [h.visible, QueryCache.cacheQuery_of_ne _ _ he] at hq
-    exact Or.inl hq
-
-theorem ne_none_of_le {c c' : HashCache C} (hle : c ≤ c') {query : Query C}
-    (h : c query ≠ none) : c' query ≠ none := by
-  obtain ⟨w, hw⟩ := Option.ne_none_iff_exists'.1 h
-  rw [hle hw]
-  exact Option.some_ne_none _
-
-/-- The synchronization fields pass to a real state with a larger visible cache, the same carried
-state and the same trace. -/
-theorem syncFields_observe (x : Keys3 C) (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
-    (s : HiddenKey → Digest) (pads : Point → Digest) (u : C.Term × CPoint → HashOutput)
-    (rest : RestSlot C → HashOutput) (noise : ChainNoiseIndex → HashOutput)
-    (a a' : RealState C) (b : SourceState C × CompState C)
-    (hs : SyncFields x s pads noise (gOf s pads u) rest a b)
-    (hr : RealPrivate x s pads noise (gOf s pads u) rest a'.2 (visibleOf a'))
-    (hle : visibleOf a ≤ visibleOf a') (hc : a'.1.2 = a.1.2) (ht : a'.1.1.2 = a.1.1.2) :
-    SyncFields x s pads noise (gOf s pads u) rest a' b :=
-  { hs with
-    corrupt := by rw [hc]; exact hs.corrupt
-    bound := by rw [hc]; exact hs.bound
-    released := by rw [hc]; exact hs.released
-    exposed := by rw [hc]; exact hs.exposed
-    candidates := by rw [hc]; exact hs.candidates
-    flag := by rw [hc]; exact hs.flag
-    opening := ⟨fun e he => realPrivate_actualValue x hkeys s pads noise u rest _ _ hr e he,
-      hs.opening.released⟩
-    virtualSeen := fun T p hp => ne_none_of_le hle (hs.virtualSeen T p hp)
-    trace := ht.trans hs.trace
-    realPrivate := hr }
-
 /-- A new pending answer at a chain edge keeps the cache relation when the visible cache observes
 its value at the input. -/
 theorem cacheRelation_chainPending (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -184,7 +89,7 @@ theorem cacheRelation_chainPending (P : PublicParameter) (seeds : C.Term → Has
       subst value
       rw [QueryCache.cacheQuery_self]
     · rw [Function.update_of_ne hpp] at hp'
-      exact le_cacheQuery_of_seen vis _ _ hseen (h.pending p' value hp')
+      exact SigningCompilerO1Lemmas.le_cacheQuery_of_seen vis _ _ hseen (h.pending p' value hp')
 
 /-- The data of the compiler state does not read the count. -/
 theorem dataOf_count (x : Keys3 C) (st : CompState C) (count : ℕ) :
@@ -290,34 +195,6 @@ theorem backendT_chainPending (edge : ChainNoiseIndex) (st : CompState C)
     simp [incrementCompilerCount, splitRest, withCache, erase_merge_of_restFree _ _ _ hf,
       resolvePrivateTable]
 
-/-- A mapped source update runs with no backend call. -/
-theorem runX_map_modify {α : Type} (backend : QueryImpl (SpecX C) (StateT (CompState C) ProbComp))
-    (f : Unit → α) (g : SourceState C → SourceState C) (src : SourceState C) (st : CompState C) :
-    runX backend (f <$> modify g) src st = pure ((f (), g src), st) := by
-  rw [map_eq_bind_pure_comp, runX_bind, runX_modify, pure_bind, Function.comp_apply, runX_pure]
-
-/-- The source side of a pending call with a stored answer. -/
-theorem runX_sourcePendingX_some (p : PendingInput) (answer : DeferredOutput) (src : SourceState C)
-    (st : CompState C) (hf : RestFree x.2.1 st.1.1.1.1.data.cache)
-    (hprior : st.1.1.1.1.data.pending p = some answer) :
-    runX (compBackend x q s pads u rest noise) (sourcePendingX x.1 p) src st =
-      (fun r => ((r.1, src), r.2)) <$>
-        (compBackend x q s pads u rest noise (.inl (.inl (.inl (.pending p))))).run st := by
-  simp [sourcePendingX, runX_bind, runX_deferred, runX_get,
-    backendT_inspect capTag x q s pads (tauOf s pads) (gOf s pads u) noise rest p st hf, hprior]
-  exact runX_deferred _ _ _ _
-
-/-- The source side of a fresh pending call with an unrevealed key. -/
-theorem runX_sourcePendingX_fresh (p : PendingInput) (src : SourceState C) (st : CompState C)
-    (hf : RestFree x.2.1 st.1.1.1.1.data.cache)
-    (hprior : st.1.1.1.1.data.pending p = none) (hrev : src.revealed p.key = none) :
-    runX (compBackend x q s pads u rest noise) (sourcePendingX x.1 p) src st =
-      (fun r => ((r.1, { src with allocated := src.allocated ++ [p] }), r.2)) <$>
-        (compBackend x q s pads u rest noise (.inl (.inl (.inl (.pending p))))).run st := by
-  simp [sourcePendingX, runX_bind, runX_deferred, runX_get,
-    backendT_inspect capTag x q s pads (tauOf s pads) (gOf s pads u) noise rest p st hf, hprior,
-    hrev, runX_map_modify]
-
 /-- A real honest call at a chain input returns the answer of the private cache and observes it.
 It runs no grind. -/
 theorem chainCall_readStep (edge : ChainNoiseIndex) (a : RealState C)
@@ -326,7 +203,8 @@ theorem chainCall_readStep (edge : ChainNoiseIndex) (a : RealState C)
     (hra : ra ∈ support ((realCall prims x s pads u rest
       (.hash ((chainPending edge).input x.1 (s (chainPending edge).key)))).run a)) :
     ra.1 = (pendingOutput (chainPending edge) (noise edge)).interpret s ∧
-      ReadStep (.hash ((chainPending edge).input x.1 (s (chainPending edge).key)))
+      SigningCompilerO1Lemmas.ReadStep
+        (.hash ((chainPending edge).input x.1 (s (chainPending edge).key)))
         ((pendingOutput (chainPending edge) (noise edge)).interpret s) a ra.2 := by
   have hpre := hpriv.preload (noise_interpret x s pads noise edge)
   have hseen : ∀ w, visibleOf a (.hash ((chainPending edge).input x.1 (s (chainPending edge).key))) =
@@ -379,7 +257,7 @@ theorem chainPending_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (no_implicit_lambda% hf.realPrivate) ra (no_implicit_lambda% hra)
   have hle : visibleOf a ≤ visibleOf ra.2 := by
     rw [hstep.visible]
-    exact le_cacheQuery_of_seen _ _ _ hstep.seen
+    exact SigningCompilerO1Lemmas.le_cacheQuery_of_seen _ _ _ hstep.seen
   have hpriv1 : RealPrivate x s pads noise (gOf s pads u) rest ra.2.2 (visibleOf ra.2) := by
     have hz : ((pendingOutput (chainPending edge) (noise edge)).interpret s, a.2) ∈
         support (((Query C →ₒ HashOutput).randomOracle
@@ -391,8 +269,8 @@ theorem chainPending_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     rw [hstep.priv, hstep.visible]
     exact ho
   have hf1 : SyncFields x s pads noise (gOf s pads u) rest (withCarried ra.2 cCore) (src, st) :=
-    syncFields_observe x hkeys s pads u rest noise (withCarried a cCore) (withCarried ra.2 cCore)
-      (src, st) hf hpriv1 hle rfl hstep.trace
+    SigningCompilerO1Lemmas.syncFields_observe x hkeys s pads u rest noise (withCarried a cCore)
+      (withCarried ra.2 cCore) (src, st) hf hpriv1 hle rfl hstep.trace
   have hcount : (withCarried ra.2 cCore).1.1.1.1.1.1.2 = st.1.1.1.2 + 1 := by
     change ra.2.1.1.1.1.1.1.2 = st.1.1.1.2 + 1
     rw [hstep.count]
@@ -433,8 +311,8 @@ theorem chainPending_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
       rw [hrun]
       simp
     have h0 := hframe _ hr0
-    rw [runX_sourcePendingX_some x q s pads u rest noise _ answer src st hf.restFree hp, hrun]
-      at hrb
+    rw [SigningCompilerO1Lemmas.runX_sourcePendingX_some x q s pads u rest noise _ answer src st
+      hf.restFree hp, hrun] at hrb
     simp only [map_pure, mem_support_pure_iff] at hrb
     clear hrun hr0
     subst hrb
@@ -466,8 +344,8 @@ theorem chainPending_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
       rw [hrun]
       simp
     have h0 := hframe _ hr0
-    rw [runX_sourcePendingX_fresh x q s pads u rest noise _ src st hf.restFree hp hrev, hrun]
-      at hrb
+    rw [SigningCompilerO1Lemmas.runX_sourcePendingX_fresh x q s pads u rest noise _ src st
+      hf.restFree hp hrev, hrun] at hrb
     simp only [map_pure, mem_support_pure_iff] at hrb
     clear hrun hr0
     subst hrb
@@ -500,34 +378,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.chainInput_ne_randomizer
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.le_cacheQuery_of_seen' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.le_cacheQuery_of_seen
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.observe_mem_support' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.observe_mem_support
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.ReadStep.realLog_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.ReadStep.realLog_le
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.ReadStep.logAgreement' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.ReadStep.logAgreement
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.ReadStep.fresh' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.ReadStep.fresh
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.ne_none_of_le' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.ne_none_of_le
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.syncFields_observe' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.syncFields_observe
-
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.cacheRelation_chainPending' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.cacheRelation_chainPending
@@ -551,18 +401,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.backendT_chainPending' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.backendT_chainPending
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.runX_map_modify' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.runX_map_modify
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.runX_sourcePendingX_some' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.runX_sourcePendingX_some
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.runX_sourcePendingX_fresh' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.runX_sourcePendingX_fresh
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.chainCall_readStep' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

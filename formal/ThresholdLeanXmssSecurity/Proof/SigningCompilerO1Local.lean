@@ -256,8 +256,8 @@ theorem local_uniform (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (to
     (fun _ _ _ _ h => h.elim) (fun _ _ h => h)
   have ht := TopO1.frame prims x top _ a (uniformAfter x n a v) b b ⟨htop.topRows, htop.topRun⟩ hf
   have hcore' : SyncCore x s pads noise (gOf s pads u) rest (uniformAfter x n a v) (b.1.base, b.2) :=
-    ⟨⟨syncFields_observe x hkeys s pads u rest noise a (uniformAfter x n a v) (b.1.base, b.2)
-      hcore.1.1 hcore.1.1.realPrivate (le_refl _) rfl rfl, hcore.1.2⟩, hcore.2⟩
+    ⟨⟨SigningCompilerO1Lemmas.syncFields_observe x hkeys s pads u rest noise a (uniformAfter x n a v)
+      (b.1.base, b.2) hcore.1.1 hcore.1.1.realPrivate (le_refl _) rfl rfl, hcore.1.2⟩, hcore.2⟩
   have hsync := (syncO1_iff_syncIn prims x s pads u rest noise top (uniformAfter x n a v) b).2
     ⟨hcore', hx', ⟨ht.topRows, ht.topRun⟩, hp⟩
   have hnil : unreleasedCandidates x.1 a.1.2.1.1 a.1.2.2.1 (.inl n : (LocalSpec C).Domain) = [] := rfl

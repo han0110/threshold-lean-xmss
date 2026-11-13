@@ -138,8 +138,7 @@ theorem runX_read_support (input : Query C) (src : SourceState C) (st : CompStat
 theorem realHonest_stop {α : Type} (oa : OracleComp (RoSpec C) α) (a : RealState C)
     (h : RealStop q a) (r : α × RealState C)
     (hr : r ∈ support ((realHonest prims x s pads u rest oa).run a)) : RealStop q r.2 :=
-  simulateQ_sticky _ (RealStop q) (fun t st hst r hr => realStop_world prims x (gOf s pads u) rest q
-    t st hst r hr) _ a h r hr
+  SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ a h r hr
 
 /-- The stop of the compiler side persists over a run. -/
 theorem runX_compStop {α : Type} (oa : SourceMX C α) (src : SourceState C) (st : CompState C)

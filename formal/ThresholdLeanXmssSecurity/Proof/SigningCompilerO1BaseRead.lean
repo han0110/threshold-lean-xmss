@@ -1,5 +1,6 @@
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Frame
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerSyncHonestRead
+import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Lemmas
 
 /-! # A hash call at a bottom base input
 
@@ -216,25 +217,6 @@ section Post
 variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
   (u : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput) (noise : ChainNoiseIndex → HashOutput)
 
-/-- The cache relation reads the cache, the pending answers and the virtual terms only. -/
-private theorem cacheRelation_congr {P : PublicParameter} {seeds : C.Term → HashOutput}
-    {data data' : DeferredState C} {actual : HashCache C}
-    (hc : data'.cache = data.cache) (hp : data'.pending = data.pending)
-    (hv : data'.virtual = data.virtual) (h : CacheRelation P seeds s data actual) :
-    CacheRelation P seeds s data' actual := by
-  obtain ⟨c, p, v, d⟩ := data
-  obtain ⟨c', p', v', d'⟩ := data'
-  simp only at hc hp hv
-  subst hc hp hv
-  exact ⟨h.agree, h.pending⟩
-
-/-- A larger cache keeps each entry. -/
-private theorem ne_none_of_le {cache cache' : HashCache C} (hle : cache ≤ cache') (query : Query C)
-    (h : cache query ≠ none) : cache' query ≠ none := by
-  obtain ⟨v, hv⟩ := Option.ne_none_iff_exists'.mp h
-  rw [hle hv]
-  exact Option.some_ne_none v
-
 set_option maxHeartbeats 1600000 in
 /-- One ordinary hash call of the compiler keeps the share state, the mark, the reveal map, the
 bound map, the pending answers and the virtual terms. It counts once and grows the cache. It keeps
@@ -311,7 +293,8 @@ private theorem core_post (cCore : Carried C) (a a' : RealState C) (src : Source
           (hf.opening.released e he)⟩
       pendingValid := fun p v hp => hf.pendingValid p v (hpend ▸ hp)
       allocated := fun p hp => hf.allocated p (hpend ▸ hp)
-      virtualSeen := fun T p hp => ne_none_of_le hle _ (hf.virtualSeen T p (hvirt ▸ hp))
+      virtualSeen := fun T p hp =>
+        SigningCompilerO1Lemmas.ne_none_of_le hle (hf.virtualSeen T p (hvirt ▸ hp))
       compilerBound := hbound.trans hf.compilerBound
       trace := htr
       bad := hshare ▸ hf.bad
@@ -326,7 +309,8 @@ private theorem core_post (cCore : Carried C) (a a' : RealState C) (src : Source
   · change CacheRelation x.1 x.2.1 s (dataOf x st') (visibleOf a')
     generalize dataOf x st' = D' at hpend hvirt hc ⊢
     generalize dataOf x st = D at hpend hvirt hc
-    exact cacheRelation_congr s (data := { D with cache := D'.cache }) (data' := D') rfl hpend hvirt hc
+    exact SigningCompilerO1Lemmas.cacheRelation_congr s _ _ { D with cache := D'.cache } D' _ rfl hpend
+      hvirt hc
   · change a'.1.1.1.1.1.1.2 = st'.1.1.1.2
     rw [hcount, hcount']
     exact congrArg (· + 1) hcnt
@@ -413,14 +397,9 @@ variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest)
   (u : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput) (noise : ChainNoiseIndex → HashOutput)
 
 /-- A map on the left side of a coupling moves into its post. -/
-private theorem relTriple_map_left {α β γ : Type} {oa : ProbComp α} {ob : ProbComp β} {f : α → γ}
+theorem relTriple_map_left {α β γ : Type} {oa : ProbComp α} {ob : ProbComp β} {f : α → γ}
     {R : γ → β → Prop} (h : RelTriple oa ob (fun a b => R (f a) b)) : RelTriple (f <$> oa) ob R := by
   simpa only [id_map] using relTriple_map (f := f) (g := id) (R := R) h
-
-/-- A map on the right side of a coupling moves into its post. -/
-private theorem relTriple_map_right {α β δ : Type} {oa : ProbComp α} {ob : ProbComp β} {g : β → δ}
-    {R : α → δ → Prop} (h : RelTriple oa ob (fun a b => R a (g b))) : RelTriple oa (g <$> ob) R := by
-  simpa only [id_map] using relTriple_map (f := id) (g := g) (R := R) h
 
 set_option maxHeartbeats 1600000 in
 /-- A hash call with no hidden hit. The real read and the compiler read are lazy reads of their
@@ -606,14 +585,14 @@ theorem baseRead_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (fo
   cases forger
   · have h := baseRead_world prims x q s pads u rest noise hkeys top rev cCore cTime e ρ message a b
       hs hsig htime ha _ (Or.inr rfl)
-    refine relTriple_map_right (relTriple_post_mono h ?_)
+    refine SigningCompilerO1Lemmas.relTriple_map_right (relTriple_post_mono h ?_)
     rintro ra rb (h1 | h1 | ⟨h1, h2, h3, h4, h5, h6⟩)
     · exact Or.inl h1
     · exact Or.inr (Or.inl h1)
     · exact Or.inr (Or.inr ⟨h1, h2, rfl, h3.trans hmark, h4, h5, h6⟩)
   · have h := baseRead_world prims x q s pads u rest noise hkeys top rev cCore cTime e ρ message a b
       hs hsig htime ha _ (Or.inl rfl)
-    refine relTriple_map_right (relTriple_post_mono h ?_)
+    refine SigningCompilerO1Lemmas.relTriple_map_right (relTriple_post_mono h ?_)
     rintro ra rb (h1 | h1 | ⟨h1, h2, h3, h4, h5, h6⟩)
     · exact Or.inl h1
     · exact Or.inr (Or.inl h1)
@@ -650,3 +629,7 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1BaseRead
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1BaseRead.baseRead_sync' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1BaseRead.baseRead_sync
+
+/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1BaseRead.relTriple_map_left' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1BaseRead.relTriple_map_left

@@ -1,5 +1,6 @@
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Frame
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerSyncHonestRead
+import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Lemmas
 
 /-! # Coupled slot reads and virtual reads of the O1 coupling
 
@@ -7,8 +8,9 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerSyncHonestRead
   `sourceHashX` at the slot input. Both sides return the table value.
 - `virtualRead_sync` couples a real honest read of a term at a constrained point with
   `sourceVirtualX`. The term becomes virtual, and a ready bound key has a revealed opening.
-- Both posts are `CallPost`. `ReadStep` holds the effect of one real read, and `syncFields_observe`
-  and `syncFields_step` carry the synchronization fields over the two sides of a call.
+- Both posts are `CallPost`. `SigningCompilerO1Lemmas.ReadStep` holds the effect of one real read,
+  and `SigningCompilerO1Lemmas.syncFields_observe` and `syncFields_step` carry the synchronization
+  fields over the two sides of a call.
 - A support hypothesis passes to a lemma through `no_implicit_lambda%`. Without it the elaborator
   reduces the run of the real call.
 -/
@@ -36,105 +38,6 @@ set_option maxRecDepth 100000
 set_option maxHeartbeats 1600000
 
 /-! ## The real side of one read -/
-
-/-- The effect of one real read of `input` with the answer `v`. The read observes the answer in the
-visible cache, counts once, logs the answer and keeps the private cache, the carried state and the
-trace. -/
-structure ReadStep (input : Query C) (v : HashOutput) (a a' : RealState C) : Prop where
-  visible : visibleOf a' = (visibleOf a).cacheQuery input v
-  seen : ∀ w, visibleOf a input = some w → w = v
-  priv : a'.2 = a.2
-  carried : a'.1.2 = a.1.2
-  trace : a'.1.1.2 = a.1.1.2
-  count : a'.1.1.1.1.1.1.2 = a.1.1.1.1.1.1.2 + 1
-  log : ∃ t value, a'.1.1.1.1.1.2 = a.1.1.1.1.1.2.logQuery t value ∧
-    SigningCacheLogProof.hashCall ⟨t, value⟩ = some (input, v)
-
-/-- A cache that holds `v` at `input` or nothing there grows when it observes `v`. -/
-theorem le_cacheQuery_of_seen (vis : HashCache C) (input : Query C) (v : HashOutput)
-    (h : ∀ w, vis input = some w → w = v) : vis ≤ vis.cacheQuery input v := by
-  cases hv : vis input with
-  | none => exact QueryCache.le_cacheQuery vis hv
-  | some w =>
-    rw [h w hv] at hv
-    rw [observe_same vis input v hv]
-
-/-- The observed cache is a result of the lazy read. -/
-theorem observe_mem_support (vis : HashCache C) (input : Query C) (v : HashOutput)
-    (h : ∀ w, vis input = some w → w = v) :
-    (v, vis.cacheQuery input v) ∈ support (((Query C →ₒ HashOutput).randomOracle input).run vis) := by
-  cases hv : vis input with
-  | none =>
-    rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ hv]
-    simp [uniformSampleImpl]
-  | some w =>
-    rw [h w hv] at hv
-    rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_some _ hv, observe_same vis input v hv]
-    simp
-
-/-- One real read grows the log cache. -/
-theorem ReadStep.realLog_le {input : Query C} {v : HashOutput} {a a' : RealState C}
-    (h : ReadStep input v a a') : realLog a ≤ realLog a' := by
-  obtain ⟨t, value, hl, -⟩ := h.log
-  intro query w hq
-  change SigningCacheLogProof.logCache a'.1.1.1.1.1.2 query = some w
-  rw [hl, SigningCacheLogProof.logCache_logQuery]
-  rw [show SigningCacheLogProof.logCache a.1.1.1.1.1.2 query = some w from hq]
-  rfl
-
-/-- One real read keeps the log agreement. -/
-theorem ReadStep.logAgreement (P : PublicParameter) {input : Query C} {v : HashOutput}
-    {a a' : RealState C} (h : ReadStep input v a a')
-    (hl : SigningPartnerCompareProof.LogAgreement P a.1.1.1.1.1) :
-    SigningPartnerCompareProof.LogAgreement P a'.1.1.1.1.1 := by
-  obtain ⟨t, value, hlog, hcall⟩ := h.log
-  have hw := observe_mem_support (visibleOf a) input v h.seen
-  have hagree := SigningPartnerCompareProof.logAgreement_hash P input a.1.1.1.1.1 hl _ hw
-    a'.1.1.1.1.1.2 (fun q' => by
-      rw [hlog, SigningCacheLogProof.logCache_logQuery, hcall]
-      by_cases he : input = q' <;> simp [he]) a'.1.1.1.1.1.1.2
-  have hv : a'.1.1.1.1.1.1.1 = (visibleOf a).cacheQuery input v := h.visible
-  rw [← hv] at hagree
-  exact hagree
-
-/-- A new visible entry after one real read is at the read input. -/
-theorem ReadStep.fresh {input : Query C} {v : HashOutput} {a a' : RealState C}
-    (h : ReadStep input v a a') (query : Query C) (hq : visibleOf a' query ≠ none) :
-    visibleOf a query ≠ none ∨ query = input := by
-  by_cases he : query = input
-  · exact Or.inr he
-  · rw [h.visible, QueryCache.cacheQuery_of_ne _ _ he] at hq
-    exact Or.inl hq
-
-/-- A larger cache holds each entry of a smaller cache. -/
-theorem ne_none_of_le {c c' : HashCache C} (hle : c ≤ c') {query : Query C}
-    (h : c query ≠ none) : c' query ≠ none := by
-  obtain ⟨w, hw⟩ := Option.ne_none_iff_exists'.1 h
-  rw [hle hw]
-  exact Option.some_ne_none _
-
-/-- The synchronization fields pass to a real state with a larger visible cache, the same carried
-state and the same trace. -/
-theorem syncFields_observe (x : Keys3 C) (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
-    (s : HiddenKey → Digest) (pads : Point → Digest) (u : C.Term × CPoint → HashOutput)
-    (rest : RestSlot C → HashOutput) (noise : ChainNoiseIndex → HashOutput)
-    (a a' : RealState C) (b : SourceState C × CompState C)
-    (hs : SyncFields x s pads noise (gOf s pads u) rest a b)
-    (hr : RealPrivate x s pads noise (gOf s pads u) rest a'.2 (visibleOf a'))
-    (hle : visibleOf a ≤ visibleOf a') (hc : a'.1.2 = a.1.2) (ht : a'.1.1.2 = a.1.1.2) :
-    SyncFields x s pads noise (gOf s pads u) rest a' b :=
-  { hs with
-    corrupt := by rw [hc]; exact hs.corrupt
-    bound := by rw [hc]; exact hs.bound
-    released := by rw [hc]; exact hs.released
-    exposed := by rw [hc]; exact hs.exposed
-    candidates := by rw [hc]; exact hs.candidates
-    flag := by rw [hc]; exact hs.flag
-    opening := ⟨fun e he => realPrivate_actualValue x hkeys s pads noise u rest _ _ hr e he,
-      hs.opening.released⟩
-    virtualSeen := fun T p hp => ne_none_of_le hle (hs.virtualSeen T p hp)
-    trace := ht.trans hs.trace
-    realPrivate := hr }
 
 /-- The synchronization fields pass to a compiler step that keeps the reveal map, the bound map,
 the trace and the pending map, grows the data cache and adds only seen virtual terms. -/
@@ -197,7 +100,8 @@ theorem slot_readStep (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (fo
     (hra : ra ∈ support ((readCall prims x s pads u rest forger
       (.inl (TprfSecurityProof.slotInput x.2.1 x.2.2 z))).run a)) :
     ra.1 = realTable (gOf s pads u) rest z ∧
-      ReadStep (TprfSecurityProof.slotInput x.2.1 x.2.2 z) (realTable (gOf s pads u) rest z) a ra.2 := by
+      SigningCompilerO1Lemmas.ReadStep (TprfSecurityProof.slotInput x.2.1 x.2.2 z)
+        (realTable (gOf s pads u) rest z) a ra.2 := by
   have hi := TprfSecurityProof.slotInput_injective (not_not.mp (not_or.mp hkeys).1)
     (not_not.mp (not_or.mp hkeys).2)
   have hsl : IsSlot x (TprfSecurityProof.slotInput x.2.1 x.2.2 z) := ⟨z, rfl⟩
@@ -315,7 +219,7 @@ theorem cacheRelation_observeVirtual {P : PublicParameter} {seeds : C.Term → H
     (hcache : data'.cache = data.cache) (hpend : data'.pending = data.pending)
     (hvirt : data'.virtual = insert (T, p) data.virtual) :
     CacheRelation P seeds s data' (actual.cacheQuery (.prf (seeds T) p) v) := by
-  have hle := le_cacheQuery_of_seen actual _ v hseen
+  have hle := SigningCompilerO1Lemmas.le_cacheQuery_of_seen actual _ v hseen
   refine ⟨fun query hn => ?_, fun p' value hp => hle (h.pending p' value (hpend ▸ hp))⟩
   by_cases he : query = .prf (seeds T) p
   · subst query
@@ -404,15 +308,15 @@ theorem slotRead_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (fo
     hf.realPrivate ra hra
   have hle : visibleOf a ≤ visibleOf ra.2 := by
     rw [hstep.visible]
-    exact le_cacheQuery_of_seen _ _ _ hstep.seen
+    exact SigningCompilerO1Lemmas.le_cacheQuery_of_seen _ _ _ hstep.seen
   have hpriv1 : RealPrivate x s pads noise (gOf s pads u) rest ra.2.2 (visibleOf ra.2) := by
     have ho := hf.realPrivate.observe_slot _ hsl
     rw [hz] at ho
     rw [hstep.priv, hstep.visible]
     exact ho
   have hf1 : SyncFields x s pads noise (gOf s pads u) rest (withCarried ra.2 cCore) (src, st) :=
-    syncFields_observe x hkeys s pads u rest noise (withCarried a cCore) (withCarried ra.2 cCore)
-      (src, st) hf hpriv1 hle rfl hstep.trace
+    SigningCompilerO1Lemmas.syncFields_observe x hkeys s pads u rest noise (withCarried a cCore)
+      (withCarried ra.2 cCore) (src, st) hf hpriv1 hle rfl hstep.trace
   have hvis1 : visibleOf ra.2 (TprfSecurityProof.slotInput x.2.1 x.2.2 z) =
       some (realTable (gOf s pads u) rest z) := by
     rw [hstep.visible, QueryCache.cacheQuery_self]
@@ -479,7 +383,7 @@ theorem slotRead_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (fo
   rw [hval] at hdata
   have hcache : (dataOf x r1.2).cache ≤ (dataOf x r.2).cache := by
     rw [hdata]
-    apply le_cacheQuery_of_seen
+    apply SigningCompilerO1Lemmas.le_cacheQuery_of_seen
     intro w hw
     have h1 := hold (hc2.cache_le hw)
     rw [← hold', QueryCache.cacheQuery_self] at h1
@@ -517,7 +421,8 @@ theorem honestSlot_readStep (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.
     (hpriv : RealPrivate x s pads noise (gOf s pads u) rest a.2 (visibleOf a))
     (ra : HashOutput × RealState C)
     (hra : ra ∈ support ((realCall prims x s pads u rest (.prf (x.2.1 T) p.val)).run a)) :
-    ra.1 = gOf s pads u (T, p) ∧ ReadStep (.prf (x.2.1 T) p.val) (gOf s pads u (T, p)) a ra.2 := by
+    ra.1 = gOf s pads u (T, p) ∧
+      SigningCompilerO1Lemmas.ReadStep (.prf (x.2.1 T) p.val) (gOf s pads u (T, p)) a ra.2 := by
   have hi := TprfSecurityProof.slotInput_injective (not_not.mp (not_or.mp hkeys).1)
     (not_not.mp (not_or.mp hkeys).2)
   have hsl : IsSlot x (.prf (x.2.1 T) p.val) := ⟨.inl (T, p.val), rfl⟩
@@ -564,15 +469,15 @@ theorem virtualRead_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) 
     hf.realPrivate ra (no_implicit_lambda% hra)
   have hle : visibleOf a ≤ visibleOf ra.2 := by
     rw [hstep.visible]
-    exact le_cacheQuery_of_seen _ _ _ hstep.seen
+    exact SigningCompilerO1Lemmas.le_cacheQuery_of_seen _ _ _ hstep.seen
   have hpriv1 : RealPrivate x s pads noise (gOf s pads u) rest ra.2.2 (visibleOf ra.2) := by
     have ho := hf.realPrivate.observe_slot _ hsl
     rw [hz, hval] at ho
     rw [hstep.priv, hstep.visible]
     exact ho
   have hf1 : SyncFields x s pads noise (gOf s pads u) rest (withCarried ra.2 cCore) (src, st) :=
-    syncFields_observe x hkeys s pads u rest noise (withCarried a cCore) (withCarried ra.2 cCore)
-      (src, st) hf hpriv1 hle rfl hstep.trace
+    SigningCompilerO1Lemmas.syncFields_observe x hkeys s pads u rest noise (withCarried a cCore)
+      (withCarried ra.2 cCore) (src, st) hf hpriv1 hle rfl hstep.trace
   have hvis1 : visibleOf ra.2 (.prf (x.2.1 T) p.val) = some (gOf s pads u (T, p)) := by
     rw [hstep.visible, QueryCache.cacheQuery_self]
   have hrb0 := hrb
@@ -662,34 +567,6 @@ theorem virtualRead_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) 
 end Calls
 
 end ThresholdLeanXmssSecurity.SigningCompilerO1Calls
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Calls.le_cacheQuery_of_seen' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Calls.le_cacheQuery_of_seen
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Calls.observe_mem_support' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Calls.observe_mem_support
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Calls.ReadStep.realLog_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Calls.ReadStep.realLog_le
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Calls.ReadStep.logAgreement' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Calls.ReadStep.logAgreement
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Calls.ReadStep.fresh' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Calls.ReadStep.fresh
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Calls.ne_none_of_le' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Calls.ne_none_of_le
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Calls.syncFields_observe' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Calls.syncFields_observe
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Calls.syncFields_step' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

@@ -7,8 +7,6 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Tail
 
 - `callCandidates_congr` states that the candidates of a call read only the bound map of the
   signing state.
-- `realWorld_run_carried` states that a run of the real world keeps the carried state, and
-  `realWorld_run_stop` states that the stop of the real side persists over it.
 - `finish_sync` couples the verification and the freshness check of both sides, after the forger.
 -/
 
@@ -44,22 +42,6 @@ theorem callCandidates_congr (P : PublicParameter) (st st' : TsigState C)
   funext c
   congr 1
   exact propext (by rw [SigningCompilerSyncTrigger.released_congr st st' trees hb])
-
-/-- A run of the real world keeps the carried state. -/
-theorem realWorld_run_carried {α : Type} (oa : OracleComp (WorldSpec C) α) (a : RealState C)
-    (r : α × RealState C) (hr : r ∈ support ((simulateQ (realWorld prims x s pads u rest) oa).run a)) :
-    r.2.1.2 = a.1.2 :=
-  SeedHitProof.support_simulateQ_inv (realWorld prims x s pads u rest)
-    (fun st : RealState C => st.1.2 = a.1.2)
-    (fun t st hst z hz => (SigningCompilerO1Local.realWorld_carried prims x s pads u rest t st z hz).trans hst)
-    oa a rfl r hr
-
-/-- The stop of the real side persists over a run of the real world. -/
-theorem realWorld_run_stop {α : Type} (oa : OracleComp (WorldSpec C) α) (a : RealState C)
-    (h : RealStop q a) (r : α × RealState C)
-    (hr : r ∈ support ((simulateQ (realWorld prims x s pads u rest) oa).run a)) : RealStop q r.2 :=
-  simulateQ_sticky _ (RealStop q) (fun t st hst r hr => realStop_world prims x (gOf s pads u) rest q
-    t st hst r (by with_reducible exact hr)) oa a h r hr
 
 /-- The verification and the freshness check of both sides, after the forger. The real side returns
 the candidates of the verification calls. -/
@@ -121,7 +103,8 @@ theorem finish_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
   by_cases hsa : RealStop q ra.2
   · apply TreeCheckKernelCoupling.relTriple_of_support
     intro za hza zb _
-    exact Or.inl (realWorld_run_stop prims x q s pads u rest _ ra.2 hsa za hza)
+    exact Or.inl
+      (SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ ra.2 hsa za hza)
   by_cases hsb : Stop rb.2
   · apply TreeCheckKernelCoupling.relTriple_of_support
     intro za _ zb hzb
@@ -130,7 +113,8 @@ theorem finish_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
   rcases hpost with h | h | ⟨hval, ⟨hsync', hpads'⟩, hmark'⟩
   · exact absurd h hsa
   · exact absurd h hsb
-  have hc : ra.2.1.2 = a.1.2 := realWorld_run_carried prims x s pads u rest _ a ra hra
+  have hc : ra.2.1.2 = a.1.2 :=
+    SigningCompilerO1Lemmas.realWorld_run_carried prims x s pads u rest _ a ra hra
   have hsig' : realSigning ra.2 = realSigning a := congrArg (fun c => c.1.1) hc
   change RelTriple _ (runXO1 (compBackend x q s pads u rest noise)
     (if (signersAt b.1.base.signing forgery.signature.leafIndex forgery.message).card < C.t then
@@ -166,14 +150,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1Finish
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Finish.callCandidates_congr' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Finish.callCandidates_congr
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Finish.realWorld_run_carried' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Finish.realWorld_run_carried
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Finish.realWorld_run_stop' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Finish.realWorld_run_stop
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Finish.finish_sync' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

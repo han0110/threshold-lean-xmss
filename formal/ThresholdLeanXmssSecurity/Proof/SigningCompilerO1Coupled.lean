@@ -76,13 +76,6 @@ theorem sourceGameO1X_eq (A : TsigAdversary C) :
   simp only [sourceGameO1X, finishO1X, bind_assoc, pure_bind, hite]
   rfl
 
-/-- A coupling of a run with a map on the left. -/
-theorem relTriple_map_left {α β γ : Type} {oa : ProbComp α} {ob : ProbComp β} (f : α → γ)
-    {R : γ → β → Prop} (h : RelTriple oa ob (fun a b => R (f a) b)) :
-    RelTriple (f <$> oa) ob R := by
-  have hm := relTriple_map (f := f) (g := id) (R := R) h
-  rwa [id_map] at hm
-
 /-- The stop of the real side persists over the forger phase. -/
 theorem realOracles_stop (top : TopTree) {α : Type} (oa : OracleComp (LocalSpec C + TsigSpec C) α)
     (a : RealState C) (h : RealStop q a) (r : α × RealState C)
@@ -114,7 +107,7 @@ theorem run_coupled (A : TsigAdversary C) (hkeys : ¬TprfSecurityProof.KeyCollis
   unfold SigningJointEagerProof.jointGameWith
   simp only [StateT.run_bind]
   rw [sourceGameO1X_eq, SigningCompilerO1ChainRelease.runXO1_bind]
-  refine relTriple_map_left _ (relTriple_bind
+  refine SigningCompilerO1BaseRead.relTriple_map_left (relTriple_bind
     (SigningCompilerO1Setup.setup_sync prims x q s pads u rest noise hkeys) ?_)
   rintro ⟨r, st⟩ ⟨⟨top, b1⟩, b2⟩ hpost
   rcases hpost with hra | hrb | ⟨hres, hsync, hpads, -⟩
@@ -125,7 +118,7 @@ theorem run_coupled (A : TsigAdversary C) (hkeys : ¬TprfSecurityProof.KeyCollis
         support_pure, Set.mem_iUnion, Set.mem_singleton_iff, exists_prop] at hz <;>
       try (subst hz; exact hra)
     obtain ⟨i, hi, w, hw, rfl⟩ := hz
-    exact SigningCompilerO1Tail.realWorld_stop prims x q s pads u rest _ i.2
+    exact SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ i.2
       (realOracles_stop prims x q s pads u rest top' _ st hra i hi) w hw
   · refine relTriple_of_support_right fun c hc z => Or.inr (Or.inl ?_)
     exact SigningCompilerO1ChainRelease.runXO1_stop x q s pads u rest noise _ _ _ hrb c hc
@@ -156,7 +149,7 @@ theorem run_coupled (A : TsigAdversary C) (hkeys : ¬TprfSecurityProof.KeyCollis
       simp only [StateT.run_pure, support_bind, support_pure, Set.mem_iUnion,
         Set.mem_singleton_iff, exists_prop] at hz
       obtain ⟨w, hw, rfl⟩ := hz
-      exact SigningCompilerO1Tail.realWorld_stop prims x q s pads u rest _ a ha w hw
+      exact SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ a ha w hw
     have hcompStop : Stop b2' → RelTriple
         ((simulateQ (realWorld prims x s pads u rest)
           (SigningGuessLinkProof.tsigFinishLogged (SigningJointEagerProof.dealtOf x top)
@@ -198,10 +191,6 @@ end Finish
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Coupled.sourceGameO1X_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms sourceGameO1X_eq
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Coupled.relTriple_map_left' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms relTriple_map_left
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Coupled.realOracles_stop' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

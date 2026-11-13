@@ -39,7 +39,7 @@ theorem badCap_iffO1 (z : CompilerOutcomeO1 C × ShareStateT C (Bool × Bool)) :
 
 /-- Disjoint events add exactly. This lemma is a port of the private
 `SigningCompilerShareCap.probEvent_or_eq`. -/
-private theorem probEvent_or_eq {α : Type} (oa : ProbComp α) (P Q : α → Prop)
+theorem probEvent_or_eq {α : Type} (oa : ProbComp α) (P Q : α → Prop)
     (disjoint : ∀ z, P z → Q z → False) :
     Pr[fun z => P z ∨ Q z | oa] = Pr[P | oa] + Pr[Q | oa] := by
   simp only [probEvent_eq_tsum_ite, ← ENNReal.tsum_add]
@@ -187,3 +187,7 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1Cap
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Cap.tableRunCO1_capEarly_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Cap.tableRunCO1_capEarly_le
+
+/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Cap.probEvent_or_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Cap.probEvent_or_eq
