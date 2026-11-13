@@ -4,8 +4,8 @@ import ThresholdLeanXmssSecurity.Proof.Tprf
 /-!
 # The signing security
 
-`SigningSecurityStatement` (PRAWNS, Definition 3.2, in the random-oracle model), following the plan
-of `formal/PROOF.md`.
+`SigningSecurityStatement` (PRAWNS, Definition 3.2, in the random-oracle model), following the
+signing plan in the module docstring of `ThresholdLeanXmssSecurity.lean`.
 
 The component lemmas:
 
@@ -17,13 +17,15 @@ The component lemmas:
 * For `q ≥ 2 ^ 127` the bound is at least `1` (`signingSecurity_large`).
 
 The core interface: `SigningCoreBound`, a win with distinct keys and `q < 2 ^ 127`. It is steps 1 to 6 of
-`formal/PROOF.md` without the collision of the keys.
+the signing plan in the module docstring of `ThresholdLeanXmssSecurity.lean`, without the collision
+of the keys.
 
 1. The hop to slots of the hidden keys, as `real_sym_hop` of the threshold PRF proof, for the
    oracles of `tsigOracles`, at `seedHitError`.
 2. The positions of the inputs of `Th` and the descent of leanVM over two layers.
-3. The two proof obligations of `formal/PROOF.md`: a `ρ' ≠ ρ_e` that opens `c_e` is a hit on
-   `c_e`, and the partner bound of a digest call when round 1 opens `ρ_e` before the search.
+3. The two proof obligations of steps 3 and 5 of the signing plan: a `ρ' ≠ ρ_e` that opens
+   `c_e` is a hit on `c_e`, and the partner bound of a digest call when round 1 opens `ρ_e` before
+   the search.
 4. The two lanes of leanVM, two units for each call, with the calls of `KeyGen` as the slack.
 -/
 
@@ -184,9 +186,9 @@ theorem keyCollision_toReal_le :
 
 /-! ## The stage interface -/
 
-/-- Steps 1 to 6 of `formal/PROOF.md` for distinct keys and `q < 2 ^ 127`. A win with distinct keys
-costs `q / 2 ^ 127` for the hits, the guesses and the partners, and `seedHitError` for a call on a
-hidden key. -/
+/-- Steps 1 to 6 of the signing plan in the module docstring of `ThresholdLeanXmssSecurity.lean`, for
+distinct keys and `q < 2 ^ 127`. A win with distinct keys costs `q / 2 ^ 127` for the hits, the
+guesses and the partners, and `seedHitError` for a call on a hidden key. -/
 def SigningCoreBound (prims : Primitives) (C : Committee) : Prop :=
   ∀ (A : TsigAdversary C) (q : ℕ), HasSigningQueryBound prims (tsigGame A) q → q < 2 ^ 127 →
     (Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true | keyedRun prims A]).toReal ≤

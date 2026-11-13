@@ -5,8 +5,9 @@ import XmssSecurity.Proof.AdaptiveFreshTarget
 /-!
 # The costs of the signing core
 
-`HiddenCoreAt` of `Proof/SigningCore.lean` (steps 5 and 6 of the signing plan of `formal/PROOF.md`)
-and the full signing claim `signingSecurityComplete`.
+`HiddenCoreAt` of `Proof/SigningCore.lean` (steps 5 and 6 of the signing plan in
+the module docstring of `ThresholdLeanXmssSecurity.lean`) and the full signing claim
+`signingSecurityComplete`.
 
 The component lemmas:
 

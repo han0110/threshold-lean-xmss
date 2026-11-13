@@ -4,7 +4,8 @@ import ThresholdLeanXmssSecurity.Proof.SigningSecurity
 # The core of the signing security
 
 `SigningCoreBound` of `Proof/SigningSecurity.lean`, a win with distinct keys and `q < 2 ^ 127`
-(steps 1 to 6 of the signing plan of `formal/PROOF.md` without the collision of the keys).
+(steps 1 to 6 of the signing plan in the module docstring of `ThresholdLeanXmssSecurity.lean`,
+without the collision of the keys).
 
 The component lemmas:
 

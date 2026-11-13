@@ -4,8 +4,9 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 /-!
 # The hidden core of the signing security
 
-`HiddenCoreAt` of `Proof/SigningCore.lean` (steps 2 to 6 of the signing plan of `formal/PROOF.md`)
-and the full signing claim `signingSecurityFull`.
+`HiddenCoreAt` of `Proof/SigningCore.lean` (steps 2 to 6 of the signing plan in
+the module docstring of `ThresholdLeanXmssSecurity.lean`) and the full signing claim
+`signingSecurityFull`.
 
 The hypothesis of `signingSecurityFull`:
 

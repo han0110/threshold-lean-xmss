@@ -3,8 +3,9 @@ import ThresholdLeanXmssSecurity.Proof.SigningCore
 /-!
 # The cost of a call on a hidden key
 
-`SeedHitBound` of `Proof/SigningCore.lean` (`seedHitBound`), step 1 of the signing plan of
-`formal/PROOF.md`, with the slots and the resampling of one key of `Proof/Tprf.lean`.
+`SeedHitBound` of `Proof/SigningCore.lean` (`seedHitBound`), step 1 of the signing plan in
+the module docstring of `ThresholdLeanXmssSecurity.lean`, with the slots and the resampling of one
+key of `Proof/Tprf.lean`.
 
 * Two equal keys cost `(C(n, t - 1) choose 2 + C(n, 2) choose 2) / 2^256` (`probEvent_keyCollision`).
   The dealer makes the `C(n, t - 1)` calls of its first PRF value before the forger runs
