@@ -11,6 +11,8 @@ This repository implements threshold t-of-(2t-1) leanXMSS (EIP-8450) base on the
 
 See [`doc/dkg.md`](doc/dkg.md) for the DKG and [`doc/sign.md`](doc/sign.md) for signing.
 
+[`formal/`](formal) holds Lean 4 proofs of security claims of the protocol. One important claim has no proof there, the claim that each tree ceremony of the DKG is secure. See [`formal/README.md`](formal/README.md).
+
 The code uses leanVM at revision `f5f3672f`. leanVM does not make some leanXMSS items public at this revision, so [`src/lean_xmss.rs`](src/lean_xmss.rs) holds verbatim copies of them.
 
 ## Usage
