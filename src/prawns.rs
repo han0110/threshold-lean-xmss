@@ -2,7 +2,7 @@
 //!
 //! - `F(x)` is the XOR of `H16(k_T || x)` over all terms `T`, so the holders of the terms share
 //!   `F(x)` with no messages.
-//! - `keygen` derives `P` from a contribution of each operator.
+//! - `seed_gen` derives `P` from a contribution of each operator.
 //!   - It derives each term seed from the parts of all its holders.
 //!   - It derives each pair key from the parts of both operators.
 //! - One commit-reveal carries all contributions and parts, as Section 2.1 of the note asks.
@@ -88,16 +88,16 @@ impl Operator {
     }
 }
 
-/// The tag of the commitments of `keygen`.
-pub const KEYGEN_COMMIT: &[u8] = b"thlxmss-commit";
+/// The tag of the commitments of `seed_gen`.
+pub const SEED_GEN_COMMIT: &[u8] = b"thlxmss-commit";
 
 /// The tag of the hash of all contributions, which gives `P`.
 pub const PARAMETER: &[u8] = b"thlxmss-keygen-parameter";
 
-/// `keygen` in three rounds. Each operator commits to and reveals `[contribution to P || seed parts
+/// `seed_gen` in three rounds. Each operator commits to and reveals `[contribution to P || seed parts
 /// of the terms shared with j || pair part for j]` for each `j`. Then it echoes `[H(all P
 /// contributions) || hash of the seeds shared with j]`, and it aborts on a mismatch.
-pub async fn keygen(group: &Group, network: &Arc<Network>) -> Result<Operator, String> {
+pub async fn seed_gen(group: &Group, network: &Arc<Network>) -> Result<Operator, String> {
     let id = network.id;
     let contribution: Key = rand::random();
     let parts = mpc::Parts::random(group);
@@ -105,7 +105,7 @@ pub async fn keygen(group: &Group, network: &Arc<Network>) -> Result<Operator, S
         .map(|j| [&contribution[..], &parts.reveal(group, id, j)].concat())
         .collect();
     let mut channel = network.channel();
-    let received = mpc::commit_reveal(&mut channel, id, KEYGEN_COMMIT, outgoing).await?;
+    let received = mpc::commit_reveal(&mut channel, id, SEED_GEN_COMMIT, outgoing).await?;
     let contributions: Vec<u8> = (0..group.n)
         .flat_map(|j| match j == id {
             true => contribution.to_vec(),
@@ -295,7 +295,7 @@ mod tests {
 
     #[derive(Clone, Copy, Debug)]
     enum Setup {
-        Keygen,
+        SeedGen,
         Prss,
     }
 
@@ -303,7 +303,7 @@ mod tests {
     /// reveal of an honest operator.
     type Commit = fn(&[u8], usize, Vec<u8>) -> (Key, Vec<u8>);
 
-    /// The echo of operator 2, from the hash of all `P` contributions in `keygen`.
+    /// The echo of operator 2, from the hash of all `P` contributions in `seed_gen`.
     type Echo = fn(Key) -> Vec<u8>;
 
     /// Operator 2 runs the rounds of a setup by hand. All its parts are 7.
@@ -317,7 +317,7 @@ mod tests {
         let group = Group::new(t);
         let n = group.n;
         let (tag, prefix) = match setup {
-            Setup::Keygen => (KEYGEN_COMMIT, 32),
+            Setup::SeedGen => (SEED_GEN_COMMIT, 32),
             Setup::Prss => (PRSS_COMMIT, 0),
         };
         let shared = |j: usize| {
@@ -331,7 +331,7 @@ mod tests {
             .unzip();
         let mut channel = network.channel();
         match setup {
-            Setup::Keygen => {
+            Setup::SeedGen => {
                 let commitments = commitments.iter().map(|c| c.to_vec()).collect();
                 channel.exchange_bytes(commitments).await.unwrap();
             }
@@ -356,10 +356,10 @@ mod tests {
     }
 
     #[test]
-    fn keygen_gives_each_key_to_its_holders_in_a_file_that_loads_back() {
+    fn seed_gen_gives_each_key_to_its_holders_in_a_file_that_loads_back() {
         let group = Group::new(2);
         let operators = local_networks(2, async |network, _| {
-            keygen(&Group::new(2), &network).await.unwrap()
+            seed_gen(&Group::new(2), &network).await.unwrap()
         });
         let seed = |i: usize, term: usize| {
             let local = group.held(i).iter().position(|&k| k == term).unwrap();
@@ -394,7 +394,7 @@ mod tests {
     }
 
     #[test]
-    fn a_wrong_reveal_a_copied_commitment_or_a_wrong_echo_aborts_keygen_and_the_prss_setup() {
+    fn a_wrong_reveal_a_copied_commitment_or_a_wrong_echo_aborts_seed_gen_and_the_prss_setup() {
         let honest: Commit = |tag, j, message| (commitment(tag, 2, j, &message), message);
         let no_echo: Echo = |_| vec![];
         // The third fault commits to a short message, so only the length check stops it. The fourth
@@ -413,12 +413,12 @@ mod tests {
         let wrong_reveal = aborts("operator 2 reveals a value that differs from its commitment");
         let echo_faults: [(Setup, Echo, &str); 3] = [
             (
-                Setup::Keygen,
+                Setup::SeedGen,
                 |_| vec![0; 64],
                 "operator 2 received other contributions",
             ),
             (
-                Setup::Keygen,
+                Setup::SeedGen,
                 |p| [&p[..], &[0; 32]].concat(),
                 "operator 2 holds other seeds",
             ),
@@ -443,7 +443,7 @@ mod tests {
             other_keys(0),
             other_keys(0),
         ];
-        let faults = [Setup::Keygen, Setup::Prss]
+        let faults = [Setup::SeedGen, Setup::Prss]
             .into_iter()
             .flat_map(|setup| {
                 let wrong_reveal = wrong_reveal.clone();
@@ -457,7 +457,7 @@ mod tests {
                     corrupt_setup(&network, t, setup, commit, echo).await;
                     None
                 }
-                (_, Setup::Keygen) => keygen(&Group::new(t), &network).await.err(),
+                (_, Setup::SeedGen) => seed_gen(&Group::new(t), &network).await.err(),
                 (_, Setup::Prss) => {
                     let party =
                         Party::new(Group::new(t), vec![], network, Reshare::Peer, BATCH_SIZE);

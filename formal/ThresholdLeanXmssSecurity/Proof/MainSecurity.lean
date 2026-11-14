@@ -38,7 +38,7 @@ variable {C : Committee} {E : Type} [Field E] [Algebra Bit E]
 
 /-! ## Runs in the world
 
-The local copies of `probEvent_runWorld_fst` and `abs_accepts_bind_sub_le` of `KeygenSecurity`. -/
+The local copies of `probEvent_runWorld_fst` and `abs_accepts_bind_sub_le` of `SeedGenSecurity`. -/
 
 theorem main_probEvent_runWorld_fst (prims : Primitives) {β : Type} (oa : OracleComp (WorldSpec C) β)
     (Q : β → Prop) :

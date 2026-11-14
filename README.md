@@ -11,7 +11,7 @@ This repository implements threshold t-of-(2t-1) leanXMSS (EIP-8450) base on the
 
 See [`doc/dkg.md`](doc/dkg.md) for the DKG and [`doc/sign.md`](doc/sign.md) for signing.
 
-[`formal/`](formal) holds Lean 4 proofs of security claims of the protocol, for two main claims. The signing with a trusted dealer is correct and strongly unforgeable, and this is proved. The DKG acts as that trusted dealer, and this is proved for the keygen and not for a tree ceremony. See [`formal/README.md`](formal/README.md).
+[`formal/`](formal) holds Lean 4 proofs of security claims of the protocol, for two main claims. The signing with a trusted dealer is correct and strongly unforgeable, and this is proved. The DKG acts as that trusted dealer, and this is proved for the seed generation, its first step, and not for a tree ceremony. See [`formal/README.md`](formal/README.md).
 
 The code uses leanVM at revision `f5f3672f`. leanVM does not make some leanXMSS items public at this revision, so [`src/lean_xmss.rs`](src/lean_xmss.rs) holds verbatim copies of them.
 

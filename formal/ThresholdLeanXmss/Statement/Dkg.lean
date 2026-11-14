@@ -3,7 +3,7 @@ import Mathlib.Algebra.Polynomial.Eval.Defs
 import VCVio.EvalDist.EvalDistEq
 
 /-!
-# The keygen, the ceremonies and the gadgets
+# The seed generation, the ceremonies and the gadgets
 
 The claims about the key generation of `doc/dkg.md`, at the level at which GS20 states them. This
 file holds the error terms, the valid inputs and the claims. `Theorems.lean` holds the model.
@@ -19,7 +19,7 @@ file holds the error terms, the valid inputs and the claims. `Theorems.lean` hol
   circuits, a corrupt filler chooses each split copy, so the adversary already knows the leaked
   copies. On other inputs of the gadget claims, the leak is larger than in GS20.
 * `F_main` also leaks these views. Its inputs agree at every holder, the corrupt holders included,
-  as the keygen echo makes them, so it leaks only what GS20, Functionality 18, leaks.
+  as the seed generation echo makes them, so it leaks only what GS20, Functionality 18, leaks.
 * Each operator aborts alone, so every functionality except `F_rand` has selective abort, `F_mult`
   and `F_extendMult` included. GS20 aborts all honest operators together.
 * `F_rand` has no abort, because the PRSS of CDI05 that realizes it sends no message.
@@ -102,18 +102,18 @@ def treeAbortError (tree : Tree) : ℝ :=
   let halvingCount := maxBatch circuits settings fun jobs => halvings (tupleCount jobs)
   batches * coinFailure (E := E) halvingCount + coinKeyCollision (batches * (halvingCount + 2))
 
-/-- The honest points of `H` in the keygen that a counted call must not hit, namely the parts of each
+/-- The honest points of `H` in the seed generation that a counted call must not hit, namely the parts of each
 operator, the derived keys, and the inputs of the hashes of the shared seeds. -/
-def keygenSecrets (C : Committee) : ℕ :=
+def seedGenSecrets (C : Committee) : ℕ :=
   C.n * (1 + termCount C + C.n) + 1 + termCount C + C.n.choose 2 + C.n ^ 2
 
-/-- The birthday bound of the counted calls and the honest points of the keygen. It covers a guessed
+/-- The birthday bound of the counted calls and the honest points of the seed generation. It covers a guessed
 secret, a collision of two secrets, a failed programming and a failed extraction. -/
-def keygenHashError (C : Committee) (q : ℕ) : ℝ := ((q + keygenSecrets C) ^ 2 : ℕ) / 2 ^ 256
+def seedGenHashError (C : Committee) (q : ℕ) : ℝ := ((q + seedGenSecrets C) ^ 2 : ℕ) / 2 ^ 256
 
-/-- The programming queries of `keygenSimulator`, one for `P`, at most one for each term and one for
+/-- The programming queries of `seedGenSimulator`, one for `P`, at most one for each term and one for
 each pair of a corrupt and an honest operator. -/
-def keygenOverhead (C : Committee) : ℕ := 1 + termCount C + C.n ^ 2
+def seedGenOverhead (C : Committee) : ℕ := 1 + termCount C + C.n ^ 2
 
 /-- The honest points of `H` in a ceremony that a counted call must not hit. The PRSS setup has the
 parts of each operator, the derived keys and the inputs of the hashes of the shared keys. Each PRSS
@@ -204,7 +204,7 @@ def CorrectTuples (x : C.Party → List (Tuple C)) : Prop :=
 
 /-- The inputs of a batch have one sharing for each job. The terms of a job have one width at each
 honest holder and are empty elsewhere. Every holder of each term agrees on it, the corrupt holders
-included, as the inputs of a ceremony come from the seeds that the keygen echo compares. -/
+included, as the inputs of a ceremony come from the seeds that the seed generation echo compares. -/
 def MainInputs (jobs : List Circuit) (D : C.Coalition) (x : C.Party → List (C.Term → List Bit)) : Prop :=
   ∃ widths : List ℕ, widths.length = jobs.length ∧
     (∀ i, i ∉ D.1 → (x i).length = jobs.length ∧ ∀ k < jobs.length, ∀ T,
@@ -213,16 +213,16 @@ def MainInputs (jobs : List Circuit) (D : C.Coalition) (x : C.Party → List (C.
 
 /-! ## The claims -/
 
-/-- An honest keygen gives the keys of `F_keygen`, except when two derived keys collide. -/
-def KeygenCompletenessStatement (C : Committee) (E : Type) : Prop :=
-  Completes prims (fun i (_ : Unit) => (keygen i : PartyM C E RealSpec (Keys C))) setupRounds noFunctionality
-    (fun l => l.elim) Fkeygen (fun _ => Finset.univ) (fun _ _ => True) (derivedKeyCollision C)
+/-- An honest seed generation gives the keys of `F_seedGen`, except when two derived keys collide. -/
+def SeedGenCompletenessStatement (C : Committee) (E : Type) : Prop :=
+  Completes prims (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) setupRounds noFunctionality
+    (fun l => l.elim) FseedGen (fun _ => Finset.univ) (fun _ _ => True) (derivedKeyCollision C)
 
-/-- The keygen securely computes `F_keygen` with selective abort against a static coalition, with the
-simulator `keygenSimulator` (GL05 and CDG+18). -/
-def KeygenSecurityStatement (C : Committee) (E : Type) : Prop :=
-  SimulatedBy prims (fun i (_ : Unit) => (keygen i : PartyM C E RealSpec (Keys C))) setupRounds Fkeygen
-    (fun _ _ => True) keygenSimulator (keygenOverhead C) fun _ _ _ _ _ q => keygenHashError C q
+/-- The seed generation securely computes `F_seedGen` with selective abort against a static coalition, with the
+simulator `seedGenSimulator` (GL05 and CDG+18). -/
+def SeedGenSecurityStatement (C : Committee) (E : Type) : Prop :=
+  SimulatedBy prims (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) setupRounds FseedGen
+    (fun _ _ => True) seedGenSimulator (seedGenOverhead C) fun _ _ _ _ _ q => seedGenHashError C q
 
 /-- An honest ceremony gives the tree of `F_tree`, except when an honest check aborts. -/
 def TreeCompletenessStatement : Prop :=

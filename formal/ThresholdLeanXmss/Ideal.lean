@@ -4,7 +4,7 @@ import LeanXmss.Statement
 /-!
 # The functionalities and the games
 
-The functionalities of GS20 for replicated sharing, the trusted dealer `F_keygen`, the oracles of the
+The functionalities of GS20 for replicated sharing, the trusted dealer `F_seedGen`, the oracles of the
 games of PRAWNS, and the adversaries of the games of the primitives. The files of `Statement/` hold the
 games and the claims.
 -/
@@ -248,9 +248,9 @@ end Functionalities
 
 instance : Inhabited (Keys C) := ⟨⟨0, fun _ => 0, fun _ => 0⟩⟩
 
-/-- `F_keygen`, the trusted dealer of PRAWNS `KeyGen'` with selective abort. It leaks `P` and the
+/-- `F_seedGen`, the trusted dealer of PRAWNS `KeyGen'` with selective abort. It leaks `P` and the
 corrupt keys, and the adversary names the honest receivers. -/
-def Fkeygen : Functionality C Unit (Keys C) (PublicParameter × (C.Party → Option (Keys C))) (Finset C.Party) where
+def FseedGen : Functionality C Unit (Keys C) (PublicParameter × (C.Party → Option (Keys C))) (Finset C.Party) where
   run coalition _ := do
     let D := coalition.1
     let (parameter, _, keys) ← liftComp prawnsKeyGen _

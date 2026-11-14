@@ -638,16 +638,16 @@ end ExecutionHom
 /-- Erase only the simulator's call log, retaining its hidden-stream cache. -/
 def treeSimErase {α : Type} (p : EmulationM C α) :
     StateT (StreamCache C) (OracleComp (WorldSpec C)) α :=
-  StateT.mk fun cache => keygenEraseLog (p.run cache)
+  StateT.mk fun cache => seedGenEraseLog (p.run cache)
 
 theorem treeSimErase_pure {α : Type} (a : α) : treeSimErase (C := C) (pure a) = pure a := by
   funext cache
-  exact keygenEraseLog_pure _
+  exact seedGenEraseLog_pure _
 
 theorem treeSimErase_bind {α β : Type} (p : EmulationM C α) (k : α → EmulationM C β) :
     treeSimErase (p >>= k) = treeSimErase p >>= fun a => treeSimErase (k a) := by
   funext cache
-  simp only [treeSimErase, StateT.run_bind, keygenEraseLog_bind]
+  simp only [treeSimErase, StateT.run_bind, seedGenEraseLog_bind]
   rfl
 
 /-- The actual emulated roles after erasing their unused call log. -/
@@ -731,14 +731,14 @@ theorem treeSimErase_lift {α : Type} (p : OracleComp (WorldSpec C) α) :
     treeSimErase (StateT.lift (liftM p)) = StateT.lift p := by
   apply StateT.ext
   intro cache
-  simp [treeSimErase, StateT.run_lift, keygenEraseLog, WriterT.run_liftM, Functor.map_map]
+  simp [treeSimErase, StateT.run_lift, seedGenEraseLog, WriterT.run_liftM, Functor.map_map]
 
 theorem treeSimErase_adversary {α : Type} (D : C.Coalition) (p : OracleComp (LocalSpec C) α) :
     (treeSimErasedRoles D).adversary p = StateT.lift (worldRoles.adversary p) := by
   apply StateT.ext
   intro cache
   simp only [treeSimErasedRoles, treeSimErase, emulatedRoles, StateT.run_mk,
-    StateT.run_lift, keygenEraseLog]
+    StateT.run_lift, seedGenEraseLog]
   rw [← fst_observe]
   simp [bind_pure_comp, Functor.map_map]
 
@@ -816,7 +816,7 @@ theorem treeSimEvaluate_honest {α : Type} (D : C.Coalition) (p : OracleComp (Lo
           StateT.mk fun cache => free (liftComp (((PrgInput C →ₒ Bit).randomOracle x).run cache) (LocalSpec C)) := by
         apply StateT.ext
         intro cache
-        exact keygenEraseLog_lift _
+        exact seedGenEraseLog_lift _
       rw [he]
       exact treeSimEvaluate_hidden prims D x hx
     · simp only [if_neg hx]
@@ -998,7 +998,7 @@ theorem treeSim_answer (top : TopTree) (tree : Tree) (D : C.Coalition)
   simp only [treeSimulator, bind_pure_comp, Functor.map_map]
   unfold treeSimPhase
   rw [← treeSimErase_phase]
-  simp only [treeSimErase, StateT.run'_eq, StateT.run_mk, keygenEraseLog,
+  simp only [treeSimErase, StateT.run'_eq, StateT.run_mk, seedGenEraseLog,
     Functor.map_map, bind_pure_comp]
   rfl
 
@@ -2100,7 +2100,7 @@ theorem treeSim_prgBits_table (name : KeyName C) (key : HashOutput) (ρ idx coun
       (fun vals g => (List.ofFn vals).getD g 0) <$>
         hiddenDraws (fun g : Fin count => ((name, key), ρ, idx, g.val)) := by
   unfold prgBits
-  simp only [liftComp_bind, liftComp_pure, free_bind, free_pure, keygen_liftComp_mapM]
+  simp only [liftComp_bind, liftComp_pure, free_bind, free_pure, seedGen_liftComp_mapM]
   have hm : free ((List.range count).mapM fun g =>
       liftComp (query (spec := RoSpec C) (.inr (name, key, ρ, idx, g)) :
         OracleComp (RoSpec C) Bit) (LocalSpec C)) =
@@ -2182,7 +2182,7 @@ private theorem treeSim_mapM_ro {m : Type → Type} [Monad m] [LawfulMonad m] {�
     (impl : QueryImpl (WorldSpec C) m) (xs : List α) (f : α → OracleComp (RoSpec C) β) :
     simulateQ impl (free (liftComp (xs.mapM f) (LocalSpec C))) =
       xs.mapM (fun x => simulateQ impl (free (liftComp (f x) (LocalSpec C)))) := by
-  rw [keygen_liftComp_mapM]
+  rw [seedGen_liftComp_mapM]
   unfold free
   erw [simulateQ_list_mapM, simulateQ_list_mapM]
 
@@ -3071,7 +3071,7 @@ private theorem treeSim_prgBits_replay (D : C.Coalition) (name : KeyName C)
       pure ((fun g => ((List.range count).map values).getD g 0), (h, cache)) := by
   unfold prgBits
   simp only [liftComp_bind, liftComp_pure, free_bind, free_pure, simulateQ_bind,
-    simulateQ_pure, StateT.run_bind, StateT.run_pure, keygen_liftComp_mapM]
+    simulateQ_pure, StateT.run_bind, StateT.run_pure, seedGen_liftComp_mapM]
   have hm : (simulateQ (streamWorld prims D)
       (free ((List.range count).mapM fun g =>
         liftComp (query (spec := RoSpec C) (.inr (name, key, ρ, idx, g)) :
@@ -3141,7 +3141,7 @@ theorem treeSim_prssDraw_replay {R : Type} [Zero R] (D : C.Coalition)
       (free (liftComp (termDraws ctx codec ρ idx count) (LocalSpec C)))).run cache =
       pure (C.terms.map (fun T => if ctx.self ∈ C.holders T then r T else fun _ => 0), cache) := by
     unfold termDraws
-    rw [keygen_liftComp_mapM]
+    rw [seedGen_liftComp_mapM]
     unfold free
     erw [simulateQ_list_mapM, simulateQ_list_mapM]
     apply treeSim_mapM_cached
@@ -3155,7 +3155,7 @@ theorem treeSim_prssDraw_replay {R : Type} [Zero R] (D : C.Coalition)
       (free (liftComp (pairDraws ctx codec ρ idx count) (LocalSpec C)))).run cache =
       pure (C.parties.map (fun j => if j = ctx.self then fun _ => 0 else Z j), cache) := by
     unfold pairDraws
-    rw [keygen_liftComp_mapM]
+    rw [seedGen_liftComp_mapM]
     unfold free
     erw [simulateQ_list_mapM, simulateQ_list_mapM]
     apply treeSim_mapM_cached

@@ -28,7 +28,7 @@ type. A claim counts as proved only when the axiom guard of that theorem lists
 
 There are $n = 2t - 1$ operators, and at most $t - 1$ are corrupt. The protocol has three parts.
 \begin{itemize}\itemsep0pt
-\item The keygen deals a public parameter $P$, one seed for each term of a replicated sharing, and
+\item The seed generation deals a public parameter $P$, one seed for each term of a replicated sharing, and
 one key for each pair of operators. It is a commit, reveal and echo protocol.
 \item A ceremony builds one tree of leanXMSS by MPC. The MPC is the protocol of Goyal and Song
 (GS20) on replicated shares. The top ceremony gives the public key. A bottom ceremony gives one
@@ -39,7 +39,7 @@ parts of $t$ signers give one signature of leanXMSS.
 
 \section{The claims}
 
-The bundle has two main claims. The keygen is indistinguishable from a trusted dealer, within the
+The bundle has two main claims. The seed generation is indistinguishable from a trusted dealer, within the
 error below. Signing with a trusted dealer is strongly unforgeable. The same claim for a ceremony,
 \lean{TreeSecurityStatement}, is stated and not proved, and it is no claim of the bundle.
 
@@ -48,7 +48,7 @@ error below. Signing with a trusted dealer is strongly unforgeable. The same cla
 \toprule
 Lean claim & Statement \\
 \midrule
-\lean{KeygenSecurityStatement} & The keygen securely computes the dealer $\Fn{keygen}$ with
+\lean{SeedGenSecurityStatement} & The seed generation securely computes the dealer $\Fn{seedGen}$ with
 selective abort. The error is $(q + s_{\mathrm{kg}})^2 / 2^{256}$. \\
 \lean{TreeSecurityStatement} & Each ceremony securely computes the dealer $\Fn{tree}$ of its tree
 with selective abort. The error is the check error, $(q + s_{\mathrm{tree}})^2 / 2^{256}$,
@@ -97,14 +97,14 @@ Topic & Model in Lean & Source \\
 Network & Synchronous rounds and private authenticated links. & GS20, Section 3.1 \\
 Adversary & Malicious and rushing, with at most $t - 1$ corrupt operators. & GS20 \\
 Notion & Simulation with a distinguisher on the joint output, with selective abort. & Canetti 2000, GL05 \\
-Corruption & Static in the keygen and in each ceremony. Adaptive in the signing. & GS20, PRAWNS \\
-Erasure & An operator erases its keygen state and its ceremony state. A corruption gives only its
+Corruption & Static in the seed generation and in each ceremony. Adaptive in the signing. & GS20, PRAWNS \\
+Erasure & An operator erases its seed generation state and its ceremony state. A corruption gives only its
 keys. & assumption \\
 Hash & $H$ is one lazy random oracle with one domain for each use. & BR93, BDG20 \\
-$\Th$ & A fixed function in the keygen and ceremony claims, on the inputs that the MPC
+$\Th$ & A fixed function in the seed generation and ceremony claims, on the inputs that the MPC
 evaluates. A random oracle in the signing claim. & leanXMSS \\
 PRG & AES-128 is a PRF. Its advantage is a term of the bound. & CDI05 \\
-Simulators & The keygen simulator programs $H$. The ceremony simulator does not. & CDG+18 \\
+Simulators & The seed generation simulator programs $H$. The ceremony simulator does not. & CDG+18 \\
 Budget & The simulation claims count the calls of the adversary and of the distinguisher. The
 first signing claim counts the calls of every party on the runs of the game. The second signing
 claim counts the own calls of the forger and its round-2 requests, on every path of its program.
@@ -204,7 +204,7 @@ of the protocol.
 
 \section{The deployment contract}
 
-No Lean claim composes the keygen, the ceremonies and the signing. A deployment must follow these
+No Lean claim composes the seed generation, the ceremonies and the signing. A deployment must follow these
 rules, and the argument of Section~\ref{sec:composition} uses them.
 \begin{enumerate}\itemsep0pt
 \item Honest operators sign at most one message for each key, over all quorums. They agree on the
@@ -219,7 +219,7 @@ top signature. Thus a top key signs one root only.
 \item An operator keeps its first valid output of each tree.
 \item Each tree has a fixed limit of runs.
 \item One ceremony runs at a time.
-\item An operator erases its keygen state after the keygen, and the PRSS keys and the ceremony state
+\item An operator erases its seed generation state after the seed generation, and the PRSS keys and the ceremony state
 after each run. It keeps only its keys and its tree outputs.
 \end{enumerate}
 
@@ -235,8 +235,8 @@ the sequential composition of Canetti 2000 and uses four facts of the scheme.
 \end{itemize}
 The sketch has four steps.
 \begin{enumerate}\itemsep0pt
-\item Replace the keygen by $\Fn{keygen}$ with its simulator. The cost is the error of
-\lean{KeygenSecurityStatement}.
+\item Replace the seed generation by $\Fn{seedGen}$ with its simulator. The cost is the error of
+\lean{SeedGenSecurityStatement}.
 \item Replace each run of each ceremony by $\Fn{tree}$ with its simulator, in the order of the
 runs. Each run costs the error of \lean{TreeSecurityStatement}. No theorem proves that claim, so
 this step is open in Lean. For one run, the adversary of the
@@ -282,7 +282,7 @@ Circuits and constants & \lean{CircuitsCompute} and \lean{Constants} are hypothe
 connects the circuits, the constants and the wire layout of the code to them. \\
 One message for each key & The signing game enforces it for all honest operators together. & The
 note assumes an agreement by consensus. The code has one exchange of acknowledgements in its place. \\
-Erasure & An operator erases its keygen state and its ceremony state. & The code drops the memory
+Erasure & An operator erases its seed generation state and its ceremony state. & The code drops the memory
 and does not clear it. \\
 Batches & An operator completes one batch before the next, for every batch size. One batch with
 all jobs is a special case. & An operator runs several batches at the same time, to limit the memory
@@ -317,7 +317,7 @@ does not apply. A proof for concurrent batches needs a notion with an interactiv
 
 \begin{itemize}\itemsep0pt
 \item A Lean theorem for the composition of Section~\ref{sec:composition}.
-\item Adaptive corruption during the keygen or a ceremony, or between two ceremonies.
+\item Adaptive corruption during the seed generation or a ceremony, or between two ceremonies.
 \item Liveness. A corrupt operator can stop each ceremony and each signature.
 \item Two ceremonies at the same time, and two batches of one ceremony at the same time.
 \item Agreement of the Rust code with \lean{Scheme.lean}, and the byte encoding of the hash domains.

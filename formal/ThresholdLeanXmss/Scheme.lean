@@ -196,9 +196,9 @@ inductive Point
   | randomizer (lay : Layer) (e : KeyIndex)
 deriving DecidableEq
 
-/-- A setup with commit, reveal and echo, namely the keygen or the PRSS setup of a ceremony. -/
+/-- A setup with commit, reveal and echo, namely the seed generation or the PRSS setup of a ceremony. -/
 inductive Phase
-  | keygen
+  | seedGen
   | prss
 deriving DecidableEq
 
@@ -228,7 +228,7 @@ inductive Query (C : Committee)
   /-- `H16(K_ij ‖ x ‖ m ‖ J)`, a mask of `Eval`, which the note defines with no tag. -/
   | mask (key : HashOutput) (x : Point) (message : Message) (J : C.Quorum)
   /-- `com_{i → j}`, which names its sender and its receiver. The tag is `thlxmss-commit` in the
-  keygen and `thlxmss-prss-commit` in the PRSS setup. -/
+  seed generation and `thlxmss-prss-commit` in the PRSS setup. -/
   | commit (phase : Phase) (sender receiver : C.Party) (reveal : List HashOutput)
   /-- A key from its parts. The tags are `thlxmss-keygen-parameter`, `thlxmss-keygen-term`,
   `thlxmss-keygen-pair`, `thlxmss-prss-term` and `thlxmss-prss-pair`. -/
@@ -369,7 +369,7 @@ def require (condition : Prop) : PartyM C E G Unit :=
 
 /-! ## Keys -/
 
-/-- The keys of one operator after the keygen. -/
+/-- The keys of one operator after the seed generation. -/
 structure Keys (C : Committee) where
   parameter : PublicParameter
   /-- `seed_T` for each held term. -/
@@ -943,23 +943,23 @@ def sampleParts : ProbComp (Parts C) := do
 /-- The terms that operators `i` and `j` both hold. -/
 def sharedTerms (i j : C.Party) : List C.Term := C.terms.filter fun T => i ∈ C.holders T ∧ j ∈ C.holders T
 
-/-- The reveal from `i` to `j`, namely the part of `P` in the keygen, the parts of the shared terms
+/-- The reveal from `i` to `j`, namely the part of `P` in the seed generation, the parts of the shared terms
 and the part for `j`. -/
 def revealTo (phase : Phase) (c : Parts C) (i j : C.Party) : List HashOutput :=
-  (if phase = .keygen then [c.parameter] else []) ++ (sharedTerms i j).map c.term ++ [c.pair j]
+  (if phase = .seedGen then [c.parameter] else []) ++ (sharedTerms i j).map c.term ++ [c.pair j]
 
 /-- The parts that `j` revealed to `i`. -/
 def readReveal (phase : Phase) (reveal : List HashOutput) (i j : C.Party) : Parts C :=
-  let offset := if phase = .keygen then 1 else 0
+  let offset := if phase = .seedGen then 1 else 0
   { parameter := reveal.getD 0 0
     term := fun T => reveal.getD (offset + (sharedTerms j i).idxOf T) 0
     pair := fun _ => reveal.getD (offset + (sharedTerms j i).length) 0 }
 
 /-- The keys that operator `i` derives from the parts `view j` of each operator `j`. Holders and
-pair members are in increasing order. Only the keygen derives `P`. -/
+pair members are in increasing order. Only the seed generation derives `P`. -/
 def deriveKeys (phase : Phase) (i : C.Party) (view : C.Party → Parts C) :
     OracleComp (RoSpec C) (HashOutput × (C.Term → HashOutput) × (C.Party → HashOutput)) := do
-  let parameter ← if phase = .keygen then
+  let parameter ← if phase = .seedGen then
     hashQuery (.derive phase .parameter (C.parties.map fun j => (view j).parameter)) else pure 0
   let term ← C.terms.mapM fun T => if i ∈ C.holders T then
     hashQuery (.derive phase .term ((C.parties.filter (· ∈ C.holders T)).map fun j => (view j).term T))
@@ -970,7 +970,7 @@ def deriveKeys (phase : Phase) (i : C.Party) (view : C.Party → Parts C) :
   pure (parameter, fun T => term.getD (C.terms.idxOf T) 0, fun j => pair.getD j.val 0)
 
 /-- A setup with commit, reveal and echo (the note, Section 2.1). Operator `i` commits to each reveal
-with a commitment that names its sender and its receiver (CF01). The keygen echo carries the hash of
+with a commitment that names its sender and its receiver (CF01). The seed generation echo carries the hash of
 all parts of `P`, which is `P` before truncation, and the hash of the shared seeds. The PRSS echo
 carries only the hash of the shared keys. Each operator aborts unless each reveal opens its
 commitment and each hash of each echo matches. -/
@@ -985,18 +985,18 @@ def commitRevealEcho (phase : Phase) (i : C.Party) (own : Parts C) :
   let view := fun j => if j = i then own else readReveal phase (Msg.hashesOf (revealed j)) i j
   let keys ← oracleStep (deriveKeys phase i view)
   let shared ← oracleStep (C.parties.mapM fun j => hashQuery (.sharedKeys phase ((sharedTerms i j).map keys.2.1)))
-  let echo := fun j => (if phase = .keygen then [keys.1] else []) ++ [shared.getD j.val 0]
+  let echo := fun j => (if phase = .seedGen then [keys.1] else []) ++ [shared.getD j.val 0]
   let received ← exchange fun j => if j = i then none else some (.hashes (echo j))
   require (∀ j, j ≠ i → Msg.hashesOf (received j) = echo j)
   pure keys
 
-/-- The keygen of operator `i` gives `P`, its seeds and its pair keys. -/
-def keygenWith (i : C.Party) (own : Parts C) : PartyM C E G (Keys C) := do
-  let (parameter, seed, pairKey) ← commitRevealEcho .keygen i own
+/-- The seed generation of operator `i` gives `P`, its seeds and its pair keys. -/
+def seedGenWith (i : C.Party) (own : Parts C) : PartyM C E G (Keys C) := do
+  let (parameter, seed, pairKey) ← commitRevealEcho .seedGen i own
   pure ⟨truncateHash parameter, seed, pairKey⟩
 
-def keygen (i : C.Party) : PartyM C E G (Keys C) := do
-  keygenWith i (← localStep (liftComp sampleParts _))
+def seedGen (i : C.Party) : PartyM C E G (Keys C) := do
+  seedGenWith i (← localStep (liftComp sampleParts _))
 
 /-- The PRSS setup of a ceremony gives fresh PRSS keys (`doc/dkg.md` 3.1). -/
 def prssSetup (i : C.Party) : PartyM C E G (PrssKeys C) := do

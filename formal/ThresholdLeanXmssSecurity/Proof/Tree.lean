@@ -1,5 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.Main
-import ThresholdLeanXmssSecurity.Proof.Keygen
+import ThresholdLeanXmssSecurity.Proof.SeedGen
 import ThresholdLeanXmssSecurity.Proof.Check
 import VCVio.ProgramLogic.Relational.Basic
 import VCVio.OracleComp.SimSemantics.StateT.StateProjection
@@ -10312,18 +10312,18 @@ attribute [local instance] Classical.propDecidable
 abbrev PrssFiniteSpec (Ω : Type) := unifSpec + (Ω →ₒ HashOutput)
 
 def prssFiniteEager {Ω : Type} [DecidableEq Ω] (h : Ω → HashOutput) :
-    QueryImpl (PrssFiniteSpec Ω) (StateT (KeygenFiniteCache Ω) ProbComp) :=
+    QueryImpl (PrssFiniteSpec Ω) (StateT (SeedGenFiniteCache Ω) ProbComp) :=
   unifFwdImpl (Ω →ₒ HashOutput) + QueryImpl.withCaching (fun q => pure (h q) : QueryImpl (Ω →ₒ HashOutput) ProbComp)
 
 def prssFiniteLazy {Ω : Type} [DecidableEq Ω] :
-    QueryImpl (PrssFiniteSpec Ω) (StateT (KeygenFiniteCache Ω) ProbComp) :=
+    QueryImpl (PrssFiniteSpec Ω) (StateT (SeedGenFiniteCache Ω) ProbComp) :=
   unifFwdImpl (Ω →ₒ HashOutput) + (Ω →ₒ HashOutput).randomOracle
 
 /-- Once a cell is cached, its unused eager-table value cannot affect any future computation,
 including private sampling. -/
 theorem prssFiniteEager_congr {Ω α : Type} [DecidableEq Ω]
     (oa : OracleComp (PrssFiniteSpec Ω) α) (h g : Ω → HashOutput) :
-    ∀ cache : KeygenFiniteCache Ω, (∀ q, cache q = none → h q = g q) →
+    ∀ cache : SeedGenFiniteCache Ω, (∀ q, cache q = none → h q = g q) →
       (simulateQ (prssFiniteEager h) oa).run cache =
         (simulateQ (prssFiniteEager g) oa).run cache := by
   induction oa using OracleComp.inductionOn with
@@ -10333,9 +10333,9 @@ theorem prssFiniteEager_congr {Ω α : Type} [DecidableEq Ω]
     simp only [simulateQ_bind, simulateQ_spec_query, StateT.run_bind]
     rcases t with n | q
     · change (((fun y => (y, cache)) <$> (query (spec := unifSpec) n : ProbComp _)) >>=
-        fun p : unifSpec.Range n × KeygenFiniteCache Ω => (simulateQ (prssFiniteEager h) (k p.1)).run p.2) =
+        fun p : unifSpec.Range n × SeedGenFiniteCache Ω => (simulateQ (prssFiniteEager h) (k p.1)).run p.2) =
         (((fun y => (y, cache)) <$> (query (spec := unifSpec) n : ProbComp _)) >>=
-        fun p : unifSpec.Range n × KeygenFiniteCache Ω => (simulateQ (prssFiniteEager g) (k p.1)).run p.2)
+        fun p : unifSpec.Range n × SeedGenFiniteCache Ω => (simulateQ (prssFiniteEager g) (k p.1)).run p.2)
       simp only [bind_map_left]
       exact bind_congr fun y => ih y cache he
     · change (QueryImpl.withCaching (fun q => pure (h q) : QueryImpl (Ω →ₒ HashOutput) ProbComp) q).run cache >>= _ =
@@ -10356,7 +10356,7 @@ theorem prssFiniteEager_congr {Ω α : Type} [DecidableEq Ω]
 /-- Finite lazy and eager hash oracles have the same joint result/cache distribution. -/
 theorem evalDist_prssFiniteEager {Ω α : Type} [Finite Ω] [DecidableEq Ω]
     [SampleableType (Ω → HashOutput)] (oa : OracleComp (PrssFiniteSpec Ω) α) :
-    ∀ cache : KeygenFiniteCache Ω,
+    ∀ cache : SeedGenFiniteCache Ω,
       (simulateQ prssFiniteLazy oa).run cache =ᵈ
         (do let h ← $ᵗ (Ω → HashOutput); (simulateQ (prssFiniteEager h) oa).run cache) := by
   induction oa using OracleComp.inductionOn with
@@ -10369,10 +10369,10 @@ theorem evalDist_prssFiniteEager {Ω α : Type} [Finite Ω] [DecidableEq Ω]
     simp only [simulateQ_bind, simulateQ_spec_query, StateT.run_bind]
     rcases t with n | q
     · change (((fun y => (y, cache)) <$> (query (spec := unifSpec) n : ProbComp _)) >>=
-        fun p : unifSpec.Range n × KeygenFiniteCache Ω => (simulateQ prssFiniteLazy (k p.1)).run p.2) =ᵈ
+        fun p : unifSpec.Range n × SeedGenFiniteCache Ω => (simulateQ prssFiniteLazy (k p.1)).run p.2) =ᵈ
         (do let h ← $ᵗ (Ω → HashOutput);
               ((fun y => (y, cache)) <$> (query (spec := unifSpec) n : ProbComp _)) >>=
-                fun p : unifSpec.Range n × KeygenFiniteCache Ω => (simulateQ (prssFiniteEager h) (k p.1)).run p.2)
+                fun p : unifSpec.Range n × SeedGenFiniteCache Ω => (simulateQ (prssFiniteEager h) (k p.1)).run p.2)
       simp only [bind_map_left]
       refine (EvalDistEq.bind_right _ fun y => ih y cache).trans ?_
       exact OracleComp.EvalDistEq.bind_bind_swap _ _ _
@@ -10400,7 +10400,7 @@ theorem evalDist_prssFiniteEager {Ω α : Type} [Finite Ω] [DecidableEq Ω]
           · subst q'; simp at hq'
           · simp [Function.update_of_ne hn]
         simp_rw [he, Function.update_eq_self]
-        exact keygenUniform_update_bind q cont
+        exact seedGenUniform_update_bind q cont
 
 variable {C : Committee}
 
@@ -10471,36 +10471,36 @@ def prssFiniteLocal (prims : Primitives) (S : Finset (Query C)) :
 /-- A hash call's exact joint answer/cache law survives restriction to its finite domain. -/
 theorem prssFiniteHash_run (prims : Primitives) (S : Finset (Query C))
     (q : Query C) (hq : q ∈ S) (cache : HashCache C) :
-    (fun r : HashOutput × HashCache C => (r.1, keygenRestrictCache S r.2)) <$>
+    (fun r : HashOutput × HashCache C => (r.1, seedGenRestrictCache S r.2)) <$>
         (hashAnswer prims q).run cache =
-      (simulateQ prssFiniteLazy (prssFiniteHash prims S q)).run (keygenRestrictCache S cache) := by
+      (simulateQ prssFiniteLazy (prssFiniteHash prims S q)).run (seedGenRestrictCache S cache) := by
   by_cases hf : IsFixed q
   · obtain ⟨input, rfl, hi⟩ := hf
     rw [prssHashAnswer_fixed prims hi]
-    simp [prssFiniteHash, hi, keygenRestrictCache]
+    simp [prssFiniteHash, hi, seedGenRestrictCache]
   · have ht : prssFiniteHash prims S q = OracleComp.lift ((PrssFiniteSpec S).query (.inr ⟨q, hq⟩)) := by
       cases q <;> simp_all [prssFiniteHash, IsFixed]
     rw [ht, prssHashAnswer_not_fixed prims hf]
     erw [simulateQ_spec_query]
     change _ <$> ((Query C →ₒ HashOutput).randomOracle q).run cache =
-      ((S →ₒ HashOutput).randomOracle ⟨q, hq⟩).run (keygenRestrictCache S cache)
+      ((S →ₒ HashOutput).randomOracle ⟨q, hq⟩).run (seedGenRestrictCache S cache)
     cases hc : cache q with
     | none =>
       rw [randomOracle, QueryImpl.withCaching_run_none _ hc,
-        QueryImpl.withCaching_run_none _ (show keygenRestrictCache S cache ⟨q, hq⟩ = none from hc)]
-      simp only [Functor.map_map, keygenRestrictCache_update S cache q hq]
+        QueryImpl.withCaching_run_none _ (show seedGenRestrictCache S cache ⟨q, hq⟩ = none from hc)]
+      simp only [Functor.map_map, seedGenRestrictCache_update S cache q hq]
       rfl
     | some y =>
       rw [randomOracle, QueryImpl.withCaching_run_some _ hc,
-        QueryImpl.withCaching_run_some _ (show keygenRestrictCache S cache ⟨q, hq⟩ = some y from hc)]
+        QueryImpl.withCaching_run_some _ (show seedGenRestrictCache S cache ⟨q, hq⟩ = some y from hc)]
       rfl
 
 /-- The finite translation also preserves private sampling and internal PRG hashes. -/
 theorem prssFiniteLocal_run (prims : Primitives) (S : Finset (Query C))
     (t : (LocalSpec C).Domain) (ht : prssLocalHashInputs t ⊆ S) (cache : HashCache C) :
-    (fun r : (LocalSpec C).Range t × HashCache C => (r.1, keygenRestrictCache S r.2)) <$>
+    (fun r : (LocalSpec C).Range t × HashCache C => (r.1, seedGenRestrictCache S r.2)) <$>
         (localAnswer prims t).run cache =
-      (simulateQ prssFiniteLazy (prssFiniteLocal prims S t)).run (keygenRestrictCache S cache) := by
+      (simulateQ prssFiniteLazy (prssFiniteLocal prims S t)).run (seedGenRestrictCache S cache) := by
   rcases t with n | q | x
   · change _ <$> (fun y => (y, cache)) <$> (query (spec := unifSpec) n : ProbComp _) = _
     simp only [Functor.map_map]
@@ -10518,10 +10518,10 @@ theorem prssFiniteLocal_run (prims : Primitives) (S : Finset (Query C))
 theorem prssFiniteLocal_simulate_run (prims : Primitives) (S : Finset (Query C))
     {α : Type} (oa : OracleComp (LocalSpec C) α) (hc : PrssLocalCovered S oa) :
     ∀ cache : HashCache C,
-      (fun r : α × HashCache C => (r.1, keygenRestrictCache S r.2)) <$>
+      (fun r : α × HashCache C => (r.1, seedGenRestrictCache S r.2)) <$>
           (simulateQ (localAnswer prims) oa).run cache =
         (simulateQ prssFiniteLazy (simulateQ (prssFiniteLocal prims S) oa)).run
-          (keygenRestrictCache S cache) := by
+          (seedGenRestrictCache S cache) := by
   induction hc with
   | pure a => intro cache; rfl
   | query_bind t k ht hk ih =>
@@ -10537,12 +10537,12 @@ theorem evalDist_prssLocal_eager (prims : Primitives) (S : Finset (Query C))
     (simulateQ (localAnswer prims) oa).run' cache =ᵈ
       (do let h ← $ᵗ (S → HashOutput);
             (simulateQ (prssFiniteEager h) (simulateQ (prssFiniteLocal prims S) oa)).run'
-              (keygenRestrictCache S cache)) := by
+              (seedGenRestrictCache S cache)) := by
   have he := congrArg (Functor.map Prod.fst) (prssFiniteLocal_simulate_run prims S oa hc cache)
   simp only [Functor.map_map] at he
   change (simulateQ (localAnswer prims) oa).run' cache =
     (simulateQ prssFiniteLazy (simulateQ (prssFiniteLocal prims S) oa)).run'
-      (keygenRestrictCache S cache) at he
+      (seedGenRestrictCache S cache) at he
   rw [he, StateT.run'_eq]
   refine ((evalDist_prssFiniteEager _ _).map _).trans ?_
   simp only [StateT.run'_eq]
@@ -10556,7 +10556,7 @@ theorem prssLocal_eager_exists (prims : Primitives) {α : Type}
       (simulateQ (localAnswer prims) oa).run' cache =ᵈ
         (do let h ← $ᵗ (S → HashOutput);
               (simulateQ (prssFiniteEager h) (simulateQ (prssFiniteLocal prims S) oa)).run'
-                (keygenRestrictCache S cache)) := by
+                (seedGenRestrictCache S cache)) := by
   obtain ⟨S, hS⟩ := prssLocalCovered_exists oa
   exact ⟨S, evalDist_prssLocal_eager prims S oa hS⟩
 
@@ -10569,7 +10569,7 @@ def prssFiniteAt {Ω : Type} (h : Ω → HashOutput) : QueryImpl (PrssFiniteSpec
 adaptive computation. No programming occurs in the local oracle. -/
 theorem prssFiniteEager_run'_eq {Ω α : Type} [DecidableEq Ω]
     (h : Ω → HashOutput) (oa : OracleComp (PrssFiniteSpec Ω) α) :
-    ∀ cache : KeygenFiniteCache Ω, (∀ q y, cache q = some y → y = h q) →
+    ∀ cache : SeedGenFiniteCache Ω, (∀ q y, cache q = some y → y = h q) →
       (simulateQ (prssFiniteEager h) oa).run' cache = simulateQ (prssFiniteAt h) oa := by
   induction oa using OracleComp.inductionOn with
   | pure a => intros; rfl
@@ -10578,7 +10578,7 @@ theorem prssFiniteEager_run'_eq {Ω α : Type} [DecidableEq Ω]
     simp only [simulateQ_bind, simulateQ_spec_query, StateT.run'_eq, StateT.run_bind, map_bind]
     rcases t with n | q
     · change (((fun y => (y, cache)) <$> (query (spec := unifSpec) n : ProbComp _)) >>=
-        fun p : unifSpec.Range n × KeygenFiniteCache Ω =>
+        fun p : unifSpec.Range n × SeedGenFiniteCache Ω =>
           (simulateQ (prssFiniteEager h) (k p.1)).run' p.2) =
         ((query (spec := unifSpec) n : ProbComp _) >>= fun y => simulateQ (prssFiniteAt h) (k y))
       rw [bind_map_left]

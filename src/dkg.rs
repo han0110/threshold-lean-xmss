@@ -422,7 +422,7 @@ pub async fn new_top_tree(
         true => Operator::load(dir),
         false => {
             let group = Group::new(network.n.div_ceil(2));
-            let operator = prawns::keygen(&group, network).await?;
+            let operator = prawns::seed_gen(&group, network).await?;
             DirBuilder::new()
                 .recursive(true)
                 .mode(0o700)
@@ -784,7 +784,7 @@ mod tests {
 
     #[test]
     fn a_retry_of_a_failed_top_ceremony_keeps_the_operator_files() {
-        // Operator 2 uses another batch size, so each top ceremony fails after the keygen.
+        // Operator 2 uses another batch size, so each top ceremony fails after the seed generation.
         let run = rand::random::<u64>();
         let dirs: Vec<PathBuf> = (0..3)
             .map(|id| env::temp_dir().join(format!("threshold-lean-xmss-{run}-{id}")))

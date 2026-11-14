@@ -17,7 +17,7 @@ The intermediate results of the cited papers, each named after its source. The p
   weights of `src/check.rs`, and the slice steps (Gruen 2024). The challenges come from
   `E \ {0, 1}`, so a step with at most two bad challenges fails with probability at most
   `2 / (|E| - 2)`.
-* The outputs open as in MPClan, App. B. The keygen adds the extraction and programming of CDG+18.
+* The outputs open as in MPClan, App. B. The seed generation adds the extraction and programming of CDG+18.
 * The signing follows the proof of leanVM, with the hidden keys in place of its seed (the signing
   plan in the module docstring of `ThresholdLeanXmssSecurity.lean`).
 -/

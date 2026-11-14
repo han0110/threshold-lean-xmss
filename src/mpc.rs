@@ -1234,7 +1234,7 @@ pub mod tests {
     }
 
     /// Random seeds of all terms and the pair keys of each operator, with `pairs[i][j] =
-    /// pairs[j][i]` and a zero key at `i = j` as `keygen` gives.
+    /// pairs[j][i]` and a zero key at `i = j` as `seed_gen` gives.
     pub fn random_keys(group: &Group) -> (Vec<Key>, Vec<Vec<Key>>) {
         let all_seeds = (0..group.terms.len()).map(|_| rand::random()).collect();
         let upper: Vec<Vec<Key>> = (0..group.n)

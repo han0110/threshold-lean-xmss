@@ -6,11 +6,11 @@ import ThresholdLeanXmssSecurity.Proof.Tree
 import ThresholdLeanXmssSecurity.Proof.Dealer
 import ThresholdLeanXmssSecurity.Proof.MainStages
 import ThresholdLeanXmssSecurity.Proof.CheckFinish
-import ThresholdLeanXmssSecurity.Proof.KeygenFinish
+import ThresholdLeanXmssSecurity.Proof.SeedGenFinish
 import ThresholdLeanXmssSecurity.Proof.HiddenCore
-import ThresholdLeanXmssSecurity.Proof.KeygenKnown
+import ThresholdLeanXmssSecurity.Proof.SeedGenKnown
 import ThresholdLeanXmssSecurity.Proof.CheckLast
-import ThresholdLeanXmssSecurity.Proof.KeygenAlias
+import ThresholdLeanXmssSecurity.Proof.SeedGenAlias
 import ThresholdLeanXmssSecurity.Proof.CheckSound
 import ThresholdLeanXmssSecurity.Proof.CheckSplit
 import ThresholdLeanXmssSecurity.Proof.SigningCache
@@ -28,7 +28,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningStronglyUnforgeable
 seventeen claims about the protocol of `ThresholdLeanXmss/Scheme.lean`. The theorem holds for every
 committee `n = 2t - 1`, every check field `E` with `2^128` elements, every `Th`, every circuit family
 and every setting. Each claim covers one protocol or one gadget alone. No claim composes the
-keygen, the ceremonies and the signing. `statement.tex` holds the deployment contract and the argument
+seed generation, the ceremonies and the signing. `statement.tex` holds the deployment contract and the argument
 of that composition. The module doc of `Statement/Theorems.lean` holds the full model. The module docs
 of `Statement/Dkg.lean` and `Statement/Signing.lean` hold the deviations from the papers. The proofs
 follow GS20 for the DKG and PRAWNS for the signing, and
@@ -42,7 +42,7 @@ claim with the budget of every party. That claim is no field of the bundle.
 * The signing claim counts in units of `2^-128`. `signingHashError q = q / 2^127` is two units for
   each counted call.
 * The other hash terms are birthday bounds over `2^256` outputs, for example
-  `keygenHashError C q = (q + keygenSecrets C)^2 / 2^256`. `streamKeyError C` is the birthday bound
+  `seedGenHashError C q = (q + seedGenSecrets C)^2 / 2^256`. `streamKeyError C` is the birthday bound
   `k^2 / 2^129` of the 128-bit AES keys of the `k` PRSS keys.
 * The budget `q` of `SigningSecurityStatement` (`HasSigningQueryBound`) counts every call of `H` and
   `PRG` by every party, cache hits included.
@@ -56,27 +56,27 @@ claim with the budget of every party. That claim is no field of the bundle.
 
 * `H` is one lazy random oracle on `Query`. Its constructors are disjoint domains, so
   domain-separated hashing is the assumption.
-* In the keygen and ceremony claims, `Th` is one fixed function on the inputs that the MPC
+* In the seed generation and ceremony claims, `Th` is one fixed function on the inputs that the MPC
   evaluates, the chain steps and the commitment `c_e`. `CircuitsCompute` states that the circuits
   compute this `Th`. In the signing claim, all of `H` is a random oracle. The difference between the
   two models is the random-oracle heuristic for Keccak.
-* The keygen and each ceremony have their own static coalition of at most `t - 1` operators and a
+* The seed generation and each ceremony have their own static coalition of at most `t - 1` operators and a
   rushing malicious adversary. The notion is security with selective abort (GL05), in which each
-  operator aborts alone. The bundle has this claim for the keygen. For a ceremony the claim is
+  operator aborts alone. The bundle has this claim for the seed generation. For a ceremony the claim is
   `TreeSecurityStatement`, which no theorem proves.
 * The signing adversary corrupts adaptively, at most `t - 1` operators over the lifetime. A
   corruption gives only the keys, because an operator erases its ceremony state.
 * Honest operators sign at most one message for each key (`breaksOneMessagePerKey`). The map `bound`
   of `tsigOracles` enforces it in the game.
 
-## Keygen
+## Seed generation
 
-1. `keygenCompleteness` (`Proof/Keygen`) gives `KeygenCompletenessStatement`. The honest run differs
-   from `F_keygen` only when two derived keys collide, at `derivedKeyCollision`.
-2. `keygenSecurityClosed` (`Proof/KeygenAlias`) gives `KeygenSecurityStatement` with
-   `keygenSimulator`. The simulator extracts the corrupt reveals from the observed calls and programs
+1. `seedGenCompleteness` (`Proof/SeedGen`) gives `SeedGenCompletenessStatement`. The honest run differs
+   from `F_seedGen` only when two derived keys collide, at `derivedKeyCollision`.
+2. `seedGenSecurityClosed` (`Proof/SeedGenAlias`) gives `SeedGenSecurityStatement` with
+   `seedGenSimulator`. The simulator extracts the corrupt reveals from the observed calls and programs
    `H` (CDG+18). Honest commitments become fresh values until a call hits a commitment input.
-   `keygenProgramAliasBound` pays the programming collisions. The bad events fit `keygenHashError`.
+   `seedGenProgramAliasBound` pays the programming collisions. The bad events fit `seedGenHashError`.
 
 ## Gadgets, check and batch
 
@@ -156,7 +156,7 @@ The statement layer is `ThresholdLeanXmss/`. The proofs are in `ThresholdLeanXms
   functionalities and the games, the simulators and the reductions, and the claims.
 * `Lemmas`, `Execution` and `Coupling` hold the paper lemmas named after their source, the
   execution model and the round-by-round coupling.
-* `Keygen*` holds keygen completeness and the keygen simulation.
+* `SeedGen*` holds seed generation completeness and the seed generation simulation.
 * `Gadgets`, `Check*` and `Main*` hold the gadgets, the check and the batch.
 * `Tree` and `Dealer` hold the ceremony completeness, the dealer and the tree success. `TreeSim` and
   `TreeCheckKernelCoupling` hold lemmas on the runs of a ceremony that the signing proof uses.
@@ -182,8 +182,8 @@ theorem thresholdLeanXmss_security : ThresholdLeanXmss.ThresholdLeanXmssSecurity
   intro C E _ _ _ _ K prims circuits settings
   letI : SampleableType E := SampleableType.ofFintype E
   exact {
-    keygenCompleteness := keygenCompleteness prims
-    keygenSecurity := keygenSecurityClosed prims
+    seedGenCompleteness := seedGenCompleteness prims
+    seedGenSecurity := seedGenSecurityClosed prims
     treeCompleteness := treeCompleteness prims K circuits settings
     dealerTree := dealerTreeProof prims circuits settings C
     treeSuccess := treeSuccessProof prims circuits settings C
@@ -213,9 +213,9 @@ and `Quot.sound`. -/
 #guard_msgs (whitespace := lax) in
 #print axioms multVerifyClosed
 
-/-- info: 'ThresholdLeanXmssSecurity.keygenSecurityClosed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.seedGenSecurityClosed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms keygenSecurityClosed
+#print axioms seedGenSecurityClosed
 
 /-- info: 'ThresholdLeanXmssSecurity.signingSecurityClosed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
@@ -241,9 +241,9 @@ and `Quot.sound`. -/
 #guard_msgs (whitespace := lax) in
 #print axioms mainStatementFull
 
-/-- info: 'ThresholdLeanXmssSecurity.keygenCompleteness' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.seedGenCompleteness' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms keygenCompleteness
+#print axioms seedGenCompleteness
 
 /-- info: 'ThresholdLeanXmssSecurity.treeCompleteness' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

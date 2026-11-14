@@ -26,7 +26,7 @@ attribute [local instance] Classical.propDecidable
 
 variable {C : Committee} (prims : Primitives)
 
-/-! ## The world of the keygen and ceremony claims -/
+/-! ## The world of the seed generation and ceremony claims -/
 
 /-- The world. Both copies share one cache. Each call of a random-oracle domain of `H`, each call of
 `PRG` and each programming query on the counted copy costs one query. The fixed part of `Th` costs

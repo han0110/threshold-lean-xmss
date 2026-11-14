@@ -10,9 +10,11 @@ theorem of `ThresholdLeanXmssSecurityStatement` and the axiom guards.
 
 The two main claims are these.
 
-* No adversary with a bounded budget distinguishes the keygen from a trusted dealer with selective
-  abort, up to the error that the claim names (`keygenSecurity`). `dealerTree` states that the dealer
-  of a ceremony gives the trees of the signing game.
+* The DKG acts as a trusted dealer of the keys and the trees. Its first step is the seed
+  generation. No adversary with a bounded budget distinguishes the seed generation from a trusted
+  dealer with selective abort, up to the error that the claim names (`seedGenSecurity`).
+  `dealerTree` states that the dealer of a ceremony gives the trees of the signing game. No field
+  states the security of a tree ceremony.
 * Signing with a trusted dealer is strongly unforgeable with adaptive corruption
   (`stronglyUnforgeable`).
 
@@ -24,9 +26,9 @@ each completeness field is the honest run of its protocol.
 
 * There are `n = 2t - 1` operators, synchronous rounds and private authenticated links (GS20,
   Section 3.1). At most `t - 1` operators are corrupt over the lifetime of the key.
-* The keygen and each ceremony are separate claims. Each has a rushing malicious adversary with its
+* The seed generation and each ceremony are separate claims. Each has a rushing malicious adversary with its
   own static coalition. The gadget claims are in the `F_rand`-hybrid model, and the PRSS outputs of
-  one round realize `F_rand` (CDI05). The keygen and ceremony claims run the real network with the
+  one round realize `F_rand` (CDI05). The seed generation and ceremony claims run the real network with the
   real PRSS.
 * The signing adversary corrupts adaptively, and a corruption gives only the keys of an operator.
   After a ceremony, an operator erases its ceremony state.
@@ -35,7 +37,7 @@ each completeness field is the honest run of its protocol.
   acknowledgements of `doc/sign.md` 4.1 for it, and a deployment must enforce it too.
 * `H` is one lazy random oracle on `Query`, with one domain for each constructor. `PRG` is AES-128
   under a hash of the key, and the ceremony claim pays its multi-key PRF advantage.
-* In the keygen and ceremony claims, `Th` is one fixed function on the inputs that the MPC
+* In the seed generation and ceremony claims, `Th` is one fixed function on the inputs that the MPC
   evaluates, namely the chain steps and the commitment `c_e`. In the signing claim, all of `H` is a
   lazy random oracle, `Th` included. The gap between the two models is the random-oracle heuristic
   for Keccak.
@@ -61,10 +63,10 @@ the advantage of a reduction is only as strong as that reduction.
   `TreeSecurityStatement`, with the simulator `treeSimulator`, and no theorem proves it. The fields
   on a ceremony are its honest run (`treeCompleteness`) and the two facts on its dealer
   (`dealerTree` and `treeSuccess`).
-* No field composes the keygen, the ceremonies and the signing. Each field covers one protocol or
+* No field composes the seed generation, the ceremonies and the signing. Each field covers one protocol or
   one gadget alone. `statement.tex` holds the deployment contract and the argument of that
   composition.
-* No field covers a corruption between two ceremonies. The keygen and ceremony claims cover their
+* No field covers a corruption between two ceremonies. The seed generation and ceremony claims cover their
   static coalitions, and the signing claim covers adaptive corruptions.
 * No field fixes the basis or the bit encoding of the check field. The claims take every value of
   `Constants`. Its field `encode` gives `E` exactly `2 ^ 128` elements (`Constants.card`), so `E` is
@@ -92,12 +94,12 @@ variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algeb
 circuit family and one setting. -/
 structure Theorems (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) :
     Prop where
-  /-- An honest keygen gives the keys of `F_keygen`, except when two derived keys collide (the note,
+  /-- An honest seed generation gives the keys of `F_seedGen`, except when two derived keys collide (the note,
   Section 2.1, honest run). -/
-  keygenCompleteness : KeygenCompletenessStatement prims C E
-  /-- The keygen securely computes `F_keygen` with selective abort, with the simulator
-  `keygenSimulator` and the error `(q + keygenSecrets C)² / 2^256` (GL05 and CDG+18). -/
-  keygenSecurity : KeygenSecurityStatement prims C E
+  seedGenCompleteness : SeedGenCompletenessStatement prims C E
+  /-- The seed generation securely computes `F_seedGen` with selective abort, with the simulator
+  `seedGenSimulator` and the error `(q + seedGenSecrets C)² / 2^256` (GL05 and CDG+18). -/
+  seedGenSecurity : SeedGenSecurityStatement prims C E
 
   /-- An honest ceremony gives the tree of `F_tree`, except when an honest check aborts
   (`treeAbortError`) (GS20, Theorem 2, honest run). -/

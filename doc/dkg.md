@@ -766,12 +766,12 @@ The randomizer value $F(A_{\mathrm{rnd}}(e))$ of the top key does not depend on 
 
 #### Setup
 
-The keygen deals $P$, $`\mathrm{seed}_T`$ and $K_{ij}$ once by the commit-reveal-echo of [Wam26, Section 2.1](https://github.com/TomWambsgans/sphincs.art/blob/9a528527d2d0ea41d2b3b322d2548c0828569a6d/leanXMSS.tex). Each ceremony repeats it for fresh PRSS keys. Each key and $P$ hash their tag of 1.1.4 and the revealed parts.
+The seed generation deals $P$, $`\mathrm{seed}_T`$ and $K_{ij}$ once by the commit-reveal-echo of [Wam26, Section 2.1](https://github.com/TomWambsgans/sphincs.art/blob/9a528527d2d0ea41d2b3b322d2548c0828569a6d/leanXMSS.tex). Each ceremony repeats it for fresh PRSS keys. Each key and $P$ hash their tag of 1.1.4 and the revealed parts.
 
-| round | keygen, from $P_i$ to $P_j$                                                                                                         | PRSS setup, from $P_i$ to $P_j$                                          |
+| round | seed generation, from $P_i$ to $P_j$                                                                                                | PRSS setup, from $P_i$ to $P_j$                                          |
 | ----- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | 1     | $`\mathrm{com}_{i \to j} = H(\mathrm{tag} \,\Vert\, i \,\Vert\, j \,\Vert\, \mathrm{reveal}_{i \to j})`$, $i$ and $j$ one byte each | its block of the mode and the batch size, and $`\mathrm{com}_{i \to j}`$ |
-| 2     | its part of $P$, its parts of the shared terms in term order, and its pair part for $j$                                             | the keygen reveal, with fresh parts and no part of $P$                   |
+| 2     | its part of $P$, its parts of the shared terms in term order, and its pair part for $j$                                             | the seed generation reveal, with fresh parts and no part of $P$          |
 | 3     | $H$ of all parts of $P$, and the echo hash                                                                                          | the echo hash                                                            |
 
 - $P_j$ accepts a reveal only if it has the expected length and opens $`\mathrm{com}_{i \to j}`$. It aborts unless every echo equals its own.
@@ -819,7 +819,7 @@ A bottom tree is $2^{16} \cdot 58$ chains, 29,696 chain batches. Signing takes 2
 
 ### 3.3 Security
 
-The key generation targets the property of [GS20, Thm. 2](https://eprint.iacr.org/2020/134). The target is that it securely computes the trusted dealer of $\mathsf{KeyGen}$ [BBDLN26](https://eprint.iacr.org/2026/2142) with abort, against a malicious adversary that statically corrupts up to $t - 1$ of the $n = 2t - 1$ operators. The Lean proof in `formal/` proves this for the keygen. It proves each gadget secure for its own functionality, in the hybrid model of that gadget. It does not prove it for a tree ceremony. That claim is stated as `TreeSecurityStatement`, and no theorem proves it. No Lean theorem composes the keygen, the ceremonies and the signing.
+The key generation targets the property of [GS20, Thm. 2](https://eprint.iacr.org/2020/134). The target is that it securely computes the trusted dealer of $\mathsf{KeyGen}$ [BBDLN26](https://eprint.iacr.org/2026/2142) with abort, against a malicious adversary that statically corrupts up to $t - 1$ of the $n = 2t - 1$ operators. The Lean proof in `formal/` proves this for the seed generation. It proves each gadget secure for its own functionality, in the hybrid model of that gadget. It does not prove it for a tree ceremony. That claim is stated as `TreeSecurityStatement`, and no theorem proves it. No Lean theorem composes the seed generation, the ceremonies and the signing.
 
 The claims cover only $n = 2t - 1$ and a classical adversary. The "Model" section of [`formal/ThresholdLeanXmss/Statement/Theorems.lean`](../formal/ThresholdLeanXmss/Statement/Theorems.lean) gives the full model.
 
@@ -838,7 +838,7 @@ Two PRSS keys give the same 128-bit AES key with probability at most $k^2 / 2^{1
 
 The ceremony claim assumes that AES-128 is a multi-key PRF on the hidden PRSS keys, and its advantage is a term of the bound. The budget $q$ counts oracle calls, not time.
 
-The gadget claims are internal lemmas. Their functionalities leak more than those of [GS20](https://eprint.iacr.org/2020/134) on some inputs, and `TupleInputs`, `MainInputs` and `ShamirInputs` restrict their inputs. The keygen and ceremony claims run the real network, so they do not depend on these interfaces.
+The gadget claims are internal lemmas. Their functionalities leak more than those of [GS20](https://eprint.iacr.org/2020/134) on some inputs, and `TupleInputs`, `MainInputs` and `ShamirInputs` restrict their inputs. The seed generation and ceremony claims run the real network, so they do not depend on these interfaces.
 
 The protocol differs from [GS20](https://eprint.iacr.org/2020/134) in three points, and each point needs its own argument.
 

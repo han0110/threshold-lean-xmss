@@ -3,7 +3,7 @@ import ThresholdLeanXmss.Ideal
 /-!
 # The simulators and the reductions
 
-The explicit simulators of the keygen and of a ceremony, and the reduction to the AES term.
+The explicit simulators of the seed generation and of a ceremony, and the reduction to the AES term.
 -/
 
 set_option autoImplicit false
@@ -47,7 +47,7 @@ that `j` sent to `i` (CDG+18, extraction). -/
 def extractReveal (calls : CallLog C) (sent : C.Party → C.Party → Option (Msg E)) (j i : C.Party) :
     List HashOutput :=
   (calls.findSome? fun (q, out) => match q with
-    | .commit .keygen j' i' reveal => if j' = j ∧ i' = i ∧ [out] = Msg.hashesOf (sent j i) then some reveal else none
+    | .commit .seedGen j' i' reveal => if j' = j ∧ i' = i ∧ [out] = Msg.hashesOf (sent j i) then some reveal else none
     | _ => none).getD []
 
 /-- A party, which exists because `n ≥ 1`. -/
@@ -80,11 +80,11 @@ structure SimulatorState (C : Committee) (I σ : Type) where
   log : CallLog C
   corrupt : C.Party → Option I
 
-/-- The simulator of the keygen (CDG+18). It runs `A` with emulated honest operators on the free copy
+/-- The simulator of the seed generation (CDG+18). It runs `A` with emulated honest operators on the free copy
 and observes every `H` call of `A`. After the commit round, it extracts the corrupt reveals from all
 observed calls. Then it programs `H` so that `P`, the corrupt seeds and the corrupt pair keys are
-those of `F_keygen`. The receivers are the emulated honest operators that do not abort (GL05). -/
-def keygenSimulator (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) :
+those of `F_seedGen`. The receivers are the emulated honest operators that do not abort (GL05). -/
+def seedGenSimulator (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) :
     Simulator (C := C) (WorldSpec C) Unit (PublicParameter × (C.Party → Option (Keys C))) (Finset C.Party) A.State where
   State := SimulatorState C Unit A.State
   start corrupt z := do
@@ -92,26 +92,26 @@ def keygenSimulator (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) :
     pure ⟨state, log, corrupt⟩
   answer st := fun (parameter, corrupt) => do
     let parts ← free (liftComp (OverPermutation.sequenceFin fun (_ : C.Party) => (sampleParts : ProbComp (Parts C))) _)
-    let steps ← startSteps worldRoles D fun i => (keygenWith i (parts i) : PartyM C E RealSpec (Keys C))
+    let steps ← startSteps worldRoles D fun i => (seedGenWith i (parts i) : PartyM C E RealSpec (Keys C))
     let ((state, steps, sent), calls) ← (stepRound observedRoles D A noFunctionality st.adversary steps).run
     let log := st.log ++ calls
     let firstHonest := fun (S : Finset C.Party) => (C.parties.find? fun i => i ∈ S ∧ i ∉ D.1).getD (firstParty C)
     let view := fun (i j : C.Party) =>
-      if j ∈ D.1 then readReveal .keygen (extractReveal log sent j i) i j else parts j
+      if j ∈ D.1 then readReveal .seedGen (extractReveal log sent j i) i j else parts j
     let h₀ := firstHonest Finset.univ
     let high ← free (liftComp ($ᵗ HashOutput) _)
-    let _ ← program (.derive .keygen .parameter (C.parties.map fun j => (view h₀ j).parameter))
+    let _ ← program (.derive .seedGen .parameter (C.parties.map fun j => (view h₀ j).parameter))
       (high >>> digestBits <<< digestBits ||| parameter.setWidth 256)
     let _ ← C.terms.mapM fun T => match (C.parties.find? fun j => j ∈ D.1 ∧ j ∈ C.holders T) with
       | some j =>
         let i := firstHonest (C.holders T)
-        program (.derive .keygen .term ((C.parties.filter (· ∈ C.holders T)).map fun k => (view i k).term T))
+        program (.derive .seedGen .term ((C.parties.filter (· ∈ C.holders T)).map fun k => (view i k).term T))
           (((corrupt j).map (·.seed T)).getD 0)
       | none => pure true
     let _ ← C.parties.mapM fun j => C.parties.mapM fun i =>
       if h : j ∈ D.1 ∧ i ∉ D.1 then
         let p := C.pairOf i j (fun e => h.2 (e ▸ h.1))
-        program (.derive .keygen .pair [(view i p.1.1).pair p.1.2, (view i p.1.2).pair p.1.1])
+        program (.derive .seedGen .pair [(view i p.1.1).pair p.1.2, (view i p.1.2).pair p.1.1])
           (((corrupt j).map (·.pairKey i)).getD 0)
       else pure true
     let ((state, keys), rest) ← (executeRounds observedRoles D A noFunctionality (setupRounds - 1) state steps).run
