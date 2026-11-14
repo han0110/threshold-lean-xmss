@@ -31,7 +31,8 @@ each completeness field is the honest run of its protocol.
 * The signing adversary corrupts adaptively, and a corruption gives only the keys of an operator.
   After a ceremony, an operator erases its ceremony state.
 * Honest operators sign at most one message at each key over all quorums
-  (`breaksOneMessagePerKey`). The signing game enforces it, the PoC does not, and production must.
+  (`breaksOneMessagePerKey`). The signing game enforces it. The PoC has the exchange of
+  acknowledgements of `doc/sign.md` 4.1 for it, and a deployment must enforce it too.
 * `H` is one lazy random oracle on `Query`, with one domain for each constructor. `PRG` is AES-128
   under a hash of the key, and the ceremony claim pays its multi-key PRF advantage.
 * In the keygen and ceremony claims, `Th` is one fixed function on the inputs that the MPC
@@ -70,8 +71,8 @@ the advantage of a reduction is only as strong as that reduction.
   isomorphic to `GF(2^128)`. `constants_nonempty` gives a value only for the committee of one
   operator, so it does not instantiate the implementation.
 * No field connects the model to the Rust code.
-* No field is in the random-permutation model. leanXMSS is in that model at the revision `64f80302`
-  of leanVM.
+* No field is in the random-permutation model. The end statement of leanXMSS is in that model at the
+  pinned revision of leanVM.
 * The signing claim with the budget of every party, `SigningSecurityStatement`, is no field.
   `SigningBudgets.lean` states it, and `signingSecurityClosed` proves it.
 -/

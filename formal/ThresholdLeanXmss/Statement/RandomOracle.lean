@@ -70,7 +70,7 @@ def signingAccepts (oa : OracleComp (WorldSpec C) Bool) : ℝ :=
 
 /-! ## A query cost on every path -/
 
--- Ported from https://github.com/leanEthereum/leanVM/blob/64f80302521d8d51a2de03c7f257855b084f57bd/formal/Statement/RandomPermutation.lean
+-- Ported from https://github.com/leanEthereum/leanVM/blob/f5f3672f2b72d3f89dbbaeff18a53a73c975d620/formal/Statement/RandomPermutation.lean
 /-- `oa` makes queries of total cost at most `Q` on every path. Whatever the oracles answer, the
 costs of the queries of `oa` add up to at most `Q`, where a query `t` costs `cost t`. The count is a
 worst case and not an expected value. -/

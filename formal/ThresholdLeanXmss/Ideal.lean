@@ -429,8 +429,8 @@ def signersAt (st : TsigState C) (e : KeyIndex) (message : Message) : Finset C.P
 
 /-- The one-message assumption of the signing claim. Honest operators sign at most one message at each
 key, over all quorums and aborts. A request for `message` at key `e` breaks it when the honest
-operators already sign another message there. The game enforces it, the PoC does not, and production
-must. -/
+operators already sign another message there. The game enforces it. The PoC has the
+exchange of acknowledgements of `doc/sign.md` 4.1 for it, and a deployment must enforce it too. -/
 abbrev breaksOneMessagePerKey (st : TsigState C) (e : KeyIndex) (message : Message) : Bool :=
   (st.bound e).any (· ≠ message)
 

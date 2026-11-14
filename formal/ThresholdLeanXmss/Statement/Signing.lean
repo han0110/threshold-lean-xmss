@@ -6,9 +6,9 @@ import ThresholdLeanXmss.Statement.Dkg
 The claims about the signing of `doc/sign.md`, at the level at which PRAWNS states them.
 `Theorems.lean` holds the model.
 
-The signing claim is strong unforgeability for the game of PRAWNS, Figure 3, in the form of leanXMSS
-(`StronglyUnforgeable` of leanVM, `formal/Statement/SufCma.lean` at revision `64f80302`). The game
-is not the generic game of leanXMSS, which has one signer with no state. It has adaptive corruption,
+The signing claim is strong unforgeability for the game of PRAWNS, Figure 3, in the form of leanXMSS.
+That form is `StronglyUnforgeable` of leanVM, in `formal/Statement/SufCma.lean` at the pinned
+revision `f5f3672f`. The game is not the generic game of leanXMSS, which has one signer with no state. It has adaptive corruption,
 tree requests, two signing rounds of a quorum, and `breaksOneMessagePerKey`. The model and the bound
 differ from leanXMSS in three points.
 
@@ -125,8 +125,8 @@ answer (`QueryCostAtMost`), wins `tsigGame` with probability at most
   keys. Otherwise each unopened `F(x)` is a fresh uniform value, which covers `ρ_e` before round 1
   and the chain starts. Each mask under a hidden pair key is fresh too.
 * The game has one coordination assumption, `breaksOneMessagePerKey`. Honest operators sign at most
-  one message for each key over all quorums. The game enforces it, the PoC does not, and production
-  must. -/
+  one message for each key over all quorums. The game enforces it. The PoC has the exchange
+  of acknowledgements of `doc/sign.md` 4.1 for it, and a deployment must enforce it too. -/
 def StronglyUnforgeable (C : Committee) (slack securityBits : ℕ) : Prop :=
   ∀ q, ∀ A : TsigAdversary C, (∀ pk top, QueryCostAtMost (A pk top) adversaryCost q) →
     tsigAdvantage prims A ≤ (q + slack) / 2 ^ securityBits + seedHitError C q + seedCollisionError C

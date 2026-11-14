@@ -9,7 +9,7 @@ The forms of the signing claim that the proofs use. No field of `Theorems` is in
 * `SigningOwnBudgetStatement` is `ThresholdLeanXmssStronglyUnforgeable` with the count as a predicate
   (`IsQueryBoundP` of VCVio). `SigningOwnBudget.signingOwnBudget` proves it, and
   `SigningStronglyUnforgeable.stronglyUnforgeable_iff` proves that the two are equivalent.
-* `SigningSecurityStatement` is the same game with the budget of every party, as leanXMSS has it at
+* `SigningSecurityStatement` is the same game with the budget of every party, as leanXMSS stated it at
   the revision `1acdff19` of leanVM. `signingSecurityClosed`
   (`Proof/SigningCompilerO1Coupling.lean`) proves it, with a proof of its own.
 * For a fixed `q`, the two budgets give different classes of forgers. A forger with a small count on
