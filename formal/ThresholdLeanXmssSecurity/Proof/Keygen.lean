@@ -2694,7 +2694,7 @@ theorem simulateQ_stateT_free_sampling {σ L R α : Type}
     simp only [bind_map_left, ih, liftComp_bind, free_bind, map_bind]
     rfl
 
-theorem idealExecution_Fkeygen (D : C.Coalition)
+theorem idealExecution_Fkeygen {σ : Type} (D : C.Coalition)
     (S : Simulator (C := C) (WorldSpec C) Unit
       (PublicParameter × (C.Party → Option (Keys C))) (Finset C.Party) σ)
     (x : C.Party → Unit) (z : Aux) :
@@ -2790,7 +2790,7 @@ def keygenCommonGame (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     if i ∈ D.1 then some (keys i) else none
   pure (st.adversary, emulated, keys)
 
-def keygenIdealProjection (D : C.Coalition)
+def keygenIdealProjection {σ : Type*} (D : C.Coalition)
     (r : σ × (C.Party → Option (Keys C)) × (C.Party → Keys C)) :
     σ × (C.Party → Option (Keys C)) :=
   (r.1, fun i => if i ∉ D.1 ∧ (r.2.1 i).isSome then some (r.2.2 i) else none)
@@ -3614,7 +3614,7 @@ def keygenDealerSamples : ProbComp (PublicParameter × (C.Term → HashOutput) �
   let pairs ← $ᵗ (C.Pair → HashOutput)
   pure (parameter, seeds, pairs)
 
-def keygenEmulatedProjection (r : σ × (C.Party → Option (Keys C)) × (C.Party → Keys C)) := (r.1, r.2.1)
+def keygenEmulatedProjection {σ : Type*} (r : σ × (C.Party → Option (Keys C)) × (C.Party → Keys C)) := (r.1, r.2.1)
 
 def keygenCommonEmulatedGame (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) : OracleComp (WorldSpec C) Bool :=
@@ -7803,3 +7803,7 @@ open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 variable {C : Committee} {E : Type} (prims : Primitives)
 
 end ThresholdLeanXmssSecurity
+
+/-- info: 'ThresholdLeanXmssSecurity.keygenCompleteness' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.keygenCompleteness

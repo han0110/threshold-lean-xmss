@@ -1337,7 +1337,7 @@ theorem cost_counted (prims : Primitives) {α : Type} (oa : OracleComp (LocalSpe
     · have := h.1.resolve_left (not_not.mpr hc); omega
     · omega
 
-variable (prims : Primitives)
+variable (prims : Primitives) {E : Type}
 
 /-- Every run from every cache makes at most `n` counted queries. -/
 def CostLe {α : Type} (oa : OracleComp (WorldSpec C) α) (n : ℕ) : Prop :=
@@ -1642,3 +1642,23 @@ namespace ThresholdLeanXmssSecurity
 def localRoles {C : Committee} : Roles C (OracleComp (LocalSpec C)) := ⟨fun oa => oa, fun oa => oa⟩
 
 end ThresholdLeanXmssSecurity
+
+/-- info: 'ThresholdLeanXmssSecurity.simulateQ_sequenceFin' depends on axioms: [propext, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.simulateQ_sequenceFin
+
+/-- info: 'ThresholdLeanXmssSecurity.free_pure' depends on axioms: [propext, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.free_pure
+
+/-- info: 'ThresholdLeanXmssSecurity.free_bind' depends on axioms: [propext, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.free_bind
+
+/-- info: 'ThresholdLeanXmssSecurity.SameRun.trans' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.SameRun.trans
+
+/-- info: 'ThresholdLeanXmssSecurity.randomOracle_support' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.randomOracle_support

@@ -74,7 +74,7 @@ end UpToBad
 
 section Lockstep
 
-variable {E : Type}
+variable {E : Type} {C : Committee}
 
 /-- Every honest operator of a step vector has stopped. -/
 def AllDone {ι α : Type} {G : OracleSpec ι} (D : C.Coalition) (steps : C.Party → Step C E G α) : Prop :=
@@ -89,7 +89,7 @@ theorem executeRounds_succ {m : Type → Type} [Monad m] {Ia I O L R α : Type} 
         stepRound Ro D A F state steps >>= fun p => executeRounds Ro D A F fuel p.1 p.2.1 := by
   simp only [executeRounds, AllDone]; congr
 
-variable {σ₁ σ₂ Ia₁ Ia₂ I₁ I₂ O₁ O₂ L₁ L₂ R₁ R₂ α₁ α₂ : Type}
+variable {C : Committee} {E : Type} {σ₁ σ₂ Ia₁ Ia₂ I₁ I₂ O₁ O₂ L₁ L₂ R₁ R₂ α₁ α₂ : Type}
   (Ro₁ : Roles C (StateT σ₁ ProbComp)) (Ro₂ : Roles C (StateT σ₂ ProbComp))
   (D₁ D₂ : C.Coalition) (A₁ : Adversary C E Ia₁ L₁ R₁) (A₂ : Adversary C E Ia₂ L₂ R₂)
   (F₁ : Functionality C I₁ O₁ L₁ R₁) (F₂ : Functionality C I₂ O₂ L₂ R₂)
@@ -357,7 +357,7 @@ variable {E : Type} {κ : Type} {spec : OracleSpec κ} {n : Type → Type} [Mona
   (impl : QueryImpl spec n)
 
 /-- The roles that run each step through the handler `impl`. -/
-def simRoles (Ro : Roles C (OracleComp spec)) : Roles C n :=
+def simRoles {C : Committee} (Ro : Roles C (OracleComp spec)) : Roles C n :=
   ⟨fun oa => simulateQ impl (Ro.adversary oa), fun oa => simulateQ impl (Ro.honest oa)⟩
 
 /-- A handler commutes with the run of a state-passing simulation. -/
@@ -372,7 +372,7 @@ theorem simulateQ_run_simulateQ {κ' τ β : Type} {spec' : OracleSpec κ'}
       StateT.run_bind, ih]
     rfl
 
-variable {Ia I O L R α : Type}
+variable {Ia I O L R α : Type} {C : Committee}
 
 /-- A handler applied to a functionality run runs each of its steps through it. -/
 theorem simulateQ_runFunctionality (Ro : Roles C (OracleComp spec)) (D : C.Coalition)
@@ -444,7 +444,7 @@ end Transport
 
 section World
 
-variable (prims : Primitives)
+variable (prims : Primitives) {C : Committee}
 
 /-- The run of a world computation on the cache-only handler, from the empty cache. -/
 abbrev worldRun {β : Type} (oa : OracleComp (WorldSpec C) β) : ProbComp (β × HashCache C) :=
@@ -549,7 +549,7 @@ theorem isQueryBoundP_sequenceFin {κ β : Type} {spec : OracleSpec κ} {p : κ 
     exact isQueryBoundP_bind (h 0) fun _ _ => isQueryBoundP_bind
       (m := 0) (isQueryBoundP_sequenceFin (fun i : Fin N => f i.succ) fun i => h i.succ) fun _ _ => isQueryBoundP_pure _ _ 0
 
-variable {E Ia I O L R α : Type}
+variable {E Ia I O L R α : Type} {C : Committee}
 
 /-- A step of the world execution costs at most one round of the adversary or one functionality. -/
 theorem isQueryBoundP_stepRound (D : C.Coalition) (A : Adversary C E Ia L R) (F : Functionality C I O L R)
