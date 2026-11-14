@@ -1,0 +1,57 @@
+name: Lean
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push cancels the run of a pull request and never the run of `main`, because the runs of `main` save the caches.
+concurrency:
+  group: lean-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  formalization:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # No option of the lakefile skips the kernel.
+      - name: Forbid kernel-skipping options in the lakefile
+        run: |
+          ! grep -nE 'skipKernelTC|debug\.' formal/lakefile.toml
+      # The statement layer imports nothing of the proofs.
+      - name: Keep the statement apart from the proofs
+        run: |
+          ! grep -rnE '^(public )?(meta )?import ThresholdLeanXmssSecurity' formal/ThresholdLeanXmss formal/ThresholdLeanXmss.lean
+      # The action installs the toolchain of `formal/lean-toolchain`, fetches the Mathlib cache and runs `lake build`
+      # on the default targets. The build elaborates each module and the `#guard_msgs` checks of the root module.
+      # It uses the manifest of the repository and does not run `lake update`.
+      - uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: formal
+      # The scan is the one of leanVM, from the package that Lake fetched at the pinned revision. It finds a `sorry`,
+      # an `axiom` or a `native_decide` in each file, also in a file that the root theorem does not reach.
+      - name: Forbid proof escapes
+        run: |
+          python3 -I formal/.lake/packages/lean-xmss-security/formal/tools/escape-scan.py formal/ThresholdLeanXmss formal/ThresholdLeanXmssSecurity
+      # The root module guards its own axiom list with `#guard_msgs`. This step asks again from outside, against the
+      # list of this file.
+      - name: Check the axiom footprint
+        working-directory: formal
+        run: |
+          theorems="thresholdLeanXmss_security"
+          { echo 'import ThresholdLeanXmssSecurity'; for t in $theorems; do echo "#print axioms ThresholdLeanXmssSecurity.$t"; done; } \
+            > "$RUNNER_TEMP/axioms.lean"
+          lake env lean "$RUNNER_TEMP/axioms.lean" | tee "$RUNNER_TEMP/axioms.txt"
+          for t in $theorems; do
+            grep -qF "'ThresholdLeanXmssSecurity.$t' depends on axioms: [propext, Classical.choice, Quot.sound]" \
+              "$RUNNER_TEMP/axioms.txt"
+          done
+      - uses: actions/upload-artifact@v7
+        with:
+          name: threshold-lean-xmss-axioms
+          path: ${{ runner.temp }}/axioms.txt
