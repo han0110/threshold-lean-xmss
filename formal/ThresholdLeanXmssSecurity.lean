@@ -173,13 +173,7 @@ The statement layer is `ThresholdLeanXmss/`. The proofs are in `ThresholdLeanXms
   claim with the budget of the forger alone.
 * `VendoredExcerpt` holds five declarations of leanVM `1acdff19` that leanVM removed later.
 
-The library does not hold the modules of the key hop and of the simulation hop of a ceremony.
-
-`ThresholdLeanXmssSecurity/Bridge/` holds four files that are not a part of the proof. They state in
-elementary terms what the definitions of VCVio and of leanVM that the statement layer reads are at
-the pinned revisions. Commit `fddaa63` holds the same statements at the same paths for the revisions
-before the move to Lean 4.35, and `tools/bridge_compare.py` compares the two sides. This file does
-not import these files. -/
+The library does not hold the modules of the key hop and of the simulation hop of a ceremony. -/
 
 namespace ThresholdLeanXmssSecurity
 
