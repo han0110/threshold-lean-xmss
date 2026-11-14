@@ -7,10 +7,8 @@ import ThresholdLeanXmssSecurity.Proof.Dealer
 import ThresholdLeanXmssSecurity.Proof.MainStages
 import ThresholdLeanXmssSecurity.Proof.CheckFinish
 import ThresholdLeanXmssSecurity.Proof.KeygenFinish
-import ThresholdLeanXmssSecurity.Proof.TreeKey
 import ThresholdLeanXmssSecurity.Proof.HiddenCore
 import ThresholdLeanXmssSecurity.Proof.KeygenKnown
-import ThresholdLeanXmssSecurity.Proof.TreeKeyAfter
 import ThresholdLeanXmssSecurity.Proof.CheckLast
 import ThresholdLeanXmssSecurity.Proof.KeygenAlias
 import ThresholdLeanXmssSecurity.Proof.CheckSound
@@ -18,7 +16,6 @@ import ThresholdLeanXmssSecurity.Proof.CheckSplit
 import ThresholdLeanXmssSecurity.Proof.SigningCache
 import ThresholdLeanXmssSecurity.Proof.SigningHitLane
 import ThresholdLeanXmssSecurity.Proof.SigningGuessLane
-import ThresholdLeanXmssSecurity.Proof.TreeKeyAimed
 import ThresholdLeanXmssSecurity.Proof.SigningHitProof
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Coupling
 import ThresholdLeanXmssSecurity.Proof.SigningOwnBudget
@@ -28,9 +25,9 @@ import ThresholdLeanXmssSecurity.Proof.SigningStronglyUnforgeable
 
 `thresholdLeanXmss_security` gives `ThresholdLeanXmssSecurityStatement`
 (`ThresholdLeanXmss/Statement/Theorems.lean`). It is the bundle `Theorems`, with one field for each of
-eighteen claims about the protocol of `ThresholdLeanXmss/Scheme.lean`,
-for every committee `n = 2t - 1`, every check field `E` with `2^192` elements, every `Th`, every circuit
-family and every setting. Each claim covers one protocol or one gadget alone. No claim composes the
+seventeen claims about the protocol of `ThresholdLeanXmss/Scheme.lean`. The theorem holds for every
+committee `n = 2t - 1`, every check field `E` with `2^192` elements, every `Th`, every circuit family
+and every setting. Each claim covers one protocol or one gadget alone. No claim composes the
 keygen, the ceremonies and the signing. `statement.tex` holds the deployment contract and the argument
 of that composition. The module doc of `Statement/Theorems.lean` holds the full model. The module docs
 of `Statement/Dkg.lean` and `Statement/Signing.lean` hold the deviations from the papers. The proofs
@@ -64,7 +61,9 @@ claim with the budget of every party. That claim is no field of the bundle.
   compute this `Th`. In the signing claim, all of `H` is a random oracle. The difference between the
   two models is the random-oracle heuristic for Keccak.
 * The keygen and each ceremony have their own static coalition of at most `t - 1` operators and a
-  rushing malicious adversary, with security with selective abort (GL05). Each operator aborts alone.
+  rushing malicious adversary. The notion is security with selective abort (GL05), in which each
+  operator aborts alone. The bundle has this claim for the keygen. For a ceremony the claim is
+  `TreeSecurityStatement`, which no theorem proves.
 * The signing adversary corrupts adaptively, at most `t - 1` operators over the lifetime. A
   corruption gives only the keys, because an operator erases its ceremony state.
 * Honest operators sign at most one message for each key (`breaksOneMessagePerKey`). The map `bound`
@@ -99,20 +98,8 @@ claim with the budget of every party. That claim is no field of the bundle.
 2. `dealerTreeProof` and `treeSuccessProof` (`Proof/Dealer`) assume `CircuitsCompute`. Each circuit
    gives `referenceJob`, so `F_tree` gives the trees of `KeyGen`. The search fails with
    `searchFailure`.
-3. `treeSecurityDistance_of_hops` (`Proof/Tree`) splits the distance of `TreeSecurityStatement` at
-   `prgReduction` into two hops. `TreeSecurity` gives the share `keySplit` of `treeHashError`.
-4. The key hop (`TreeKeyHop`) replaces the hidden streams with independent AES keys.
-   `keyWorld_coupling` pays `streamKeyError + keySplit`. `treeKeyAimedBound` (`Proof/TreeKeyAimed`)
-   bounds a counted call that aims at a hidden key after the key boundary.
-5. The simulation hop (`TreeSimulationHop` at `keySplit C`) moves the real run with random streams to
-   `treeSimulator`. It pays `treeCheckError` and `treeHashError - keySplit`.
-   `prawns_coalition_lacks_term` gives the lacked term that the opening shifts.
-6. `TreeAssembly.treeSimulationHop_of_pairs` gives `TreeSimulationHop` from `TreeTwinLinkedGoal`,
-   `TreeCheckTailWalkSourceConstruction`, `CeremonyOpaqueNormalization`, and one
-   `TreeSaltStageSplits` with its `TreeSaltStagesPairs`. `treeSimulationHop_of_pairs3`
-   (`Proof/TreeEvents3`) is the same hop with the events `treeSimEvents3`. The lockstep, the digest
-   draws, the opening agreement and `treeSimHashHonestBudget` come from their own modules.
-7. `treeSecurityOfSimAimed` (`Proof/TreeKeyAfter`) gives `TreeSecurityStatement` from the two hops.
+3. `TreeSecurityStatement`, the claim that a ceremony securely computes `F_tree`, is no field of the
+   bundle. No theorem proves it.
 
 ## Signing plan
 
@@ -190,6 +177,9 @@ The statement layer is `ThresholdLeanXmss/`. The proofs are in `ThresholdLeanXms
 * `Lifetime*` holds the forms of the simulation hop that start from a given cache. The salt route of
   the simulation hop uses them.
 
+This file does not import the modules of the key hop and of the simulation hop of a ceremony. They
+are `TreeSecurity`, `TreeHops`, the `TreeKey*` files and the files that only these use.
+
 `ThresholdLeanXmssSecurity/Bridge/` holds four files that are not a part of the proof. They state in
 elementary terms what the definitions of VCVio and of leanVM that the statement layer reads are at
 the pinned revisions. The branch that moves the proof to Lean 4.35 proves the same statements for
@@ -206,8 +196,6 @@ theorem thresholdLeanXmss_security : ThresholdLeanXmss.ThresholdLeanXmssSecurity
     keygenCompleteness := keygenCompleteness prims
     keygenSecurity := keygenSecurityClosed prims
     treeCompleteness := treeCompleteness prims K circuits settings
-    treeSecurity :=
-      treeSecurityOfSimAimed prims K circuits settings (treeKeyAimedBound prims K circuits settings) (by sorry)
     dealerTree := dealerTreeProof prims circuits settings C
     treeSuccess := treeSuccessProof prims circuits settings C
     coin := coinSecurity prims K
@@ -225,7 +213,7 @@ theorem thresholdLeanXmss_security : ThresholdLeanXmss.ThresholdLeanXmssSecurity
 
 /-! The build fails if the axiom footprint of the end theorem changes. -/
 
-/-- info: 'ThresholdLeanXmssSecurity.thresholdLeanXmss_security' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.thresholdLeanXmss_security' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms thresholdLeanXmss_security
 

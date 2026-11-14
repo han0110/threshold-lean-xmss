@@ -32,8 +32,8 @@ file holds the error terms, the valid inputs and the claims. `Theorems.lean` hol
 * The first seven halving steps fold the slices with the coin kept out of `x` (Gruen 2024) and the
   small-value table of BDDT25. Each step is still a degree-2 claim in its challenge.
 * GS20 assumes exactly `(n - 1) / 2` corrupt parties, which is `t - 1` here (GS20, Theorem 1, writes
-  `n = 2t + 1`). `treeSimulator` handles every coalition size, because it shifts one lacked term at
-  the opening.
+  `n = 2t + 1`). `treeSimulator` is defined for every coalition size, because it shifts one lacked
+  term at the opening.
 * The model splits each run into batches of `batchSize` jobs. The implementation sizes chain batches
   and commitment batches apart, and it puts the top randomizer value in the last commitment batch.
 -/
@@ -232,7 +232,7 @@ def TreeCompletenessStatement : Prop :=
 /-- Each ceremony securely computes `F_tree` with selective abort against its own static coalition,
 with the simulator `treeSimulator` (GS20, Theorem 2, and GL05). The bound adds the multi-key PRF
 advantage of `prgReduction` against `hiddenStreams` on the real run, because `treeSimulator` already
-uses ideal streams. -/
+uses ideal streams. This claim is no field of the bundle `Theorems`, and no theorem proves it. -/
 def TreeSecurityStatement : Prop :=
   0 < settings.batchSize → ∀ (top : TopTree) (tree : Tree),
     SimulatedBy prims (fun i keys => (ceremony K circuits settings i keys top tree : PartyM C E RealSpec TreeOutput))

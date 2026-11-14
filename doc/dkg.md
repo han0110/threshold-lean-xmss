@@ -819,7 +819,7 @@ A bottom tree is $2^{16} \cdot 58$ chains, 29,696 chain batches. Signing takes 2
 
 ### 3.3 Security
 
-The key generation targets the property of [GS20, Thm. 2](https://eprint.iacr.org/2020/134). It securely computes the trusted dealer of $\mathsf{KeyGen}$ [BBDLN26](https://eprint.iacr.org/2026/2142) with abort, against a malicious adversary that statically corrupts up to $t - 1$ of the $n = 2t - 1$ operators. No complete proof exists.
+The key generation targets the property of [GS20, Thm. 2](https://eprint.iacr.org/2020/134). The target is that it securely computes the trusted dealer of $\mathsf{KeyGen}$ [BBDLN26](https://eprint.iacr.org/2026/2142) with abort, against a malicious adversary that statically corrupts up to $t - 1$ of the $n = 2t - 1$ operators. The Lean proof in `formal/` proves this for the keygen and for each gadget. It does not prove it for a tree ceremony. That claim is stated as `TreeSecurityStatement`, and no theorem proves it. No Lean theorem composes the keygen, the ceremonies and the signing.
 
 The claims cover only $n = 2t - 1$ and a classical adversary. The "Model" section of [`formal/ThresholdLeanXmss/Statement/Theorems.lean`](../formal/ThresholdLeanXmss/Statement/Theorems.lean) gives the full model.
 
@@ -848,7 +848,7 @@ The protocol differs from [GS20](https://eprint.iacr.org/2020/134) in three poin
 - The outputs open with $\mathsf{OpenRep}$ [KPPS23, App. B](https://eprint.iacr.org/2022/675) in place of the Shamir reconstruction of [GS20](https://eprint.iacr.org/2020/134).
   - $\mathsf{Rerand}$ of 1.6 reshares each output first, and the check covers it.
 - Each operator decides alone, as in [GS20, Prot. 15](https://eprint.iacr.org/2020/134), step 8.
-  - So the protocol has security with selective abort [GL05](https://eprint.iacr.org/2002/040).
+  - So the notion of security of the protocol is security with selective abort [GL05](https://eprint.iacr.org/2002/040).
   - In the functionalities of [GS20](https://eprint.iacr.org/2020/134), all honest operators abort together.
 
 The fresh PRSS keys and the named commitments of 3.1 are not in the note [Wam26](https://github.com/TomWambsgans/sphincs.art/blob/9a528527d2d0ea41d2b3b322d2548c0828569a6d/leanXMSS.tex). The fresh keys make the random sharings independent of the outputs, as [GS20, Functionality 1](https://eprint.iacr.org/2020/134) and Hybrid 2 of [GS20, Lemma 4](https://eprint.iacr.org/2020/134) need.

@@ -39,8 +39,9 @@ parts of $t$ signers give one signature of leanXMSS.
 
 \section{The claims}
 
-The end result is two facts. The keygen and each ceremony are indistinguishable from a trusted
-dealer, within the errors below. Signing with a trusted dealer is unforgeable.
+The bundle has two main claims. The keygen is indistinguishable from a trusted dealer, within the
+error below. Signing with a trusted dealer is strongly unforgeable. The same claim for a ceremony,
+\lean{TreeSecurityStatement}, is stated and not proved, and it is no claim of the bundle.
 
 \begin{center}\small
 \begin{tabularx}{\textwidth}{@{}lX@{}}
@@ -52,7 +53,7 @@ selective abort. The error is $(q + s_{\mathrm{kg}})^2 / 2^{256}$. \\
 \lean{TreeSecurityStatement} & Each ceremony securely computes the dealer $\Fn{tree}$ of its tree
 with selective abort. The error is the check error, $(q + s_{\mathrm{tree}})^2 / 2^{256}$,
 $k^2 / 2^{129}$ for the $k$ AES keys, and the PRF advantage of one fixed reduction against
-AES-128. \\
+AES-128. This claim is stated, and no theorem proves it. It is no field of the bundle. \\
 \lean{DealerTreeStatement} & When the circuits compute $\Th$, the dealer $\Fn{tree}$ gives the
 trees of the key generation of the signing game. \\
 \lean{ThresholdLeanXmssStronglyUnforgeable} & The signing is strongly unforgeable under adaptive
@@ -71,7 +72,7 @@ The numbers $s_{\mathrm{kg}}$ and $s_{\mathrm{tree}}$ count the honest secret in
 One check with $d$ coins and $R$ halving steps has the error
 $(d + 2(R + 1)) / (2^{192} - 2) + (R + 2)\, q / 2^{192}$, and a ceremony pays it for each batch.
 
-The bundle \lean{Theorems} has eighteen claims, one field for each. The other claims are the honest
+The bundle \lean{Theorems} has seventeen claims, one field for each. The other claims are the honest
 runs (completeness), the failure
 probability of the randomizer search, and the gadgets of GS20, namely \lean{CoinStatement},
 \lean{MultStatement}, \lean{ExtendMultStatement}, \lean{MultVerifyStatement} and
@@ -232,7 +233,8 @@ The sketch has four steps.
 \item Replace the keygen by $\Fn{keygen}$ with its simulator. The cost is the error of
 \lean{KeygenSecurityStatement}.
 \item Replace each run of each ceremony by $\Fn{tree}$ with its simulator, in the order of the
-runs. Each run costs the error of \lean{TreeSecurityStatement}. For one run, the adversary of the
+runs. Each run costs the error of \lean{TreeSecurityStatement}. No theorem proves that claim, so
+this step is open in Lean. For one run, the adversary of the
 ceremony claim does all other work of the system by itself. It takes the keys of every operator as
 its auxiliary input, and the ceremony claim holds for every auxiliary input. So it can answer the
 signing requests on the other trees and repeat the earlier phases.

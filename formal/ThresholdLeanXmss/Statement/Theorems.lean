@@ -10,9 +10,9 @@ theorem of `ThresholdLeanXmssSecurityStatement` and the axiom guards.
 
 The two main claims are these.
 
-* No adversary with a bounded budget distinguishes the keygen or a ceremony from a trusted dealer
-  with selective abort, up to the error that the claim names (`keygenSecurity`, `treeSecurity` and
-  `dealerTree`).
+* No adversary with a bounded budget distinguishes the keygen from a trusted dealer with selective
+  abort, up to the error that the claim names (`keygenSecurity`). `dealerTree` states that the dealer
+  of a ceremony gives the trees of the signing game.
 * Signing with a trusted dealer is strongly unforgeable with adaptive corruption
   (`stronglyUnforgeable`).
 
@@ -38,7 +38,8 @@ each completeness field is the honest run of its protocol.
   evaluates, namely the chain steps and the commitment `c_e`. In the signing claim, all of `H` is a
   lazy random oracle, `Th` included. The gap between the two models is the random-oracle heuristic
   for Keccak.
-* `F_tree` runs the circuits of the ceremony, so the ceremony claims hold for every circuit family.
+* `F_tree` runs the circuits of the ceremony, so the ceremony claims are stated for every circuit
+  family.
   `dealerTree` and `treeSuccess` assume that the circuits compute `Th` (`CircuitsCompute`), and they
   link `F_tree` to the trees of the signing claims.
 * A budget `q` counts calls of `H` and `PRG` on every path of a program, for every answer of the
@@ -55,6 +56,10 @@ the advantage of a reduction is only as strong as that reduction.
 
 ## What no field states
 
+* No field states that a ceremony securely computes `F_tree`. `Dkg.lean` states this claim as
+  `TreeSecurityStatement`, with the simulator `treeSimulator`, and no theorem proves it. The fields
+  on a ceremony are its honest run (`treeCompleteness`) and the two facts on its dealer
+  (`dealerTree` and `treeSuccess`).
 * No field composes the keygen, the ceremonies and the signing. Each field covers one protocol or
   one gadget alone. `statement.tex` holds the deployment contract and the argument of that
   composition.
@@ -96,10 +101,6 @@ structure Theorems (prims : Primitives) (K : Constants C E) (circuits : Circuits
   /-- An honest ceremony gives the tree of `F_tree`, except when an honest check aborts
   (`treeAbortError`) (GS20, Theorem 2, honest run). -/
   treeCompleteness : TreeCompletenessStatement prims K circuits settings
-  /-- Each ceremony securely computes `F_tree` with selective abort, with the simulator
-  `treeSimulator`. The error is the check error, a birthday term of the hash, `k² / 2^129` for the
-  `k` AES keys, and the PRF advantage of `prgReduction` against AES-128 (GS20, Theorem 2, and GL05). -/
-  treeSecurity : TreeSecurityStatement prims K circuits settings
   /-- When the circuits compute `Th`, the dealer of `F_tree` gives the trees of `KeyGen` of the
   signing game (PRAWNS, Section 3.1, and `doc/dkg.md` 3.1). -/
   dealerTree : DealerTreeStatement prims circuits settings C

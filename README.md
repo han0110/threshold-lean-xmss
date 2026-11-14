@@ -6,7 +6,7 @@
 This repository implements threshold t-of-(2t-1) leanXMSS (EIP-8450) base on the [leanXMSS note](https://github.com/TomWambsgans/sphincs.art/blob/9a528527d2d0ea41d2b3b322d2548c0828569a6d/leanXMSS.tex).
 
 - Key generation is an honest-majority MPC over the replicated secret sharing of [Cramer, Damgard and Ishai](https://doi.org/10.1007/978-3-540-30576-7_19).
-- The batch check of [Goyal and Song](https://eprint.iacr.org/2020/134) makes the MPC secure against malicious operators, with abort.
+- The batch check of [Goyal and Song](https://eprint.iacr.org/2020/134) is the defense of the MPC against malicious operators, with abort.
 - Signing uses the threshold PRF of [PRAWNS](https://eprint.iacr.org/2026/2142) and needs no MPC.
 
 See [`doc/dkg.md`](doc/dkg.md) for the DKG and [`doc/sign.md`](doc/sign.md) for signing.
