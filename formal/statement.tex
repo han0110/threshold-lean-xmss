@@ -18,7 +18,8 @@
 
 \noindent This document says what the Lean~4 development in \lean{formal/} claims and how it models
 the system. It also compares each claim with its source, and it lists the rules that a deployment
-must follow. The claims are in \lean{ThresholdLeanXmss/Statement.lean}. The theorem
+must follow. The claims are in \lean{ThresholdLeanXmss/Statement/}, and \lean{Theorems.lean} is
+the entry file. The theorem
 \lean{thresholdLeanXmss_security} in \lean{ThresholdLeanXmssSecurity.lean} has their bundle as its
 type. A claim counts as proved only when the axiom guard of that theorem lists
 \texttt{propext}, \texttt{Classical.choice} and \texttt{Quot.sound} and no other axiom.
@@ -54,13 +55,12 @@ $k^2 / 2^{129}$ for the $k$ AES keys, and the PRF advantage of one fixed reducti
 AES-128. \\
 \lean{DealerTreeStatement} & When the circuits compute $\Th$, the dealer $\Fn{tree}$ gives the
 trees of the key generation of the signing game. \\
-\lean{SigningSecurityStatement} & The signing is strongly unforgeable under adaptive corruption.
-The bound is $q / 2^{127} + N q / 2^{256} + N^2 / 2^{256}$, where
-$N = \binom{n}{t-1} + n^2$ bounds the number of keys. \\
-\lean{SigningOwnBudgetStatement} & The same game with a second budget. Here $q$ counts only the own
+\lean{ThresholdLeanXmssStronglyUnforgeable} & The signing is strongly unforgeable under adaptive
+corruption. Here $q$ counts only the own
 calls of the forger to $H$ and to the PRG and its round-2 requests. The count holds on every path
 of its program and for every answer.
-The bound is $(q + 2^{15} + 384) / 2^{127} + N q / 2^{256} + N^2 / 2^{256}$. \\
+The bound is $(q + 2^{15} + 384) / 2^{127} + N q / 2^{256} + N^2 / 2^{256}$, where
+$N = \binom{n}{t-1} + n^2$ bounds the number of keys. \\
 \lean{TprfSecurityStatement} & The threshold PRF is adaptively secure. The bound is
 $\bigl((2\binom{n}{t-1} + n^2)\, q + N^2\bigr) / 2^{256}$. \\
 \bottomrule
@@ -71,10 +71,16 @@ The numbers $s_{\mathrm{kg}}$ and $s_{\mathrm{tree}}$ count the honest secret in
 One check with $d$ coins and $R$ halving steps has the error
 $(d + 2(R + 1)) / (2^{192} - 2) + (R + 2)\, q / 2^{192}$, and a ceremony pays it for each batch.
 
-The bundle has nineteen claims. The other claims are the honest runs (completeness), the failure
+The bundle \lean{Theorems} has eighteen claims, one field for each. The other claims are the honest
+runs (completeness), the failure
 probability of the randomizer search, and the gadgets of GS20, namely \lean{CoinStatement},
 \lean{MultStatement}, \lean{ExtendMultStatement}, \lean{MultVerifyStatement} and
 \lean{MainStatement}.
+
+The library also proves \lean{SigningSecurityStatement}, the signing claim with the budget of every
+party. It is not in the bundle. The separate theorem \lean{signingSecurityClosed} proves it and has
+its own axiom guard. The budget $q$ of this claim counts the calls of $H$ and of the PRG by every
+party, and the bound is $q / 2^{127} + N q / 2^{256} + N^2 / 2^{256}$.
 
 \section{The model}
 
@@ -100,10 +106,35 @@ Budget & The simulation claims count the calls of the adversary and of the disti
 first signing claim counts the calls of every party on the runs of the game. The second signing
 claim counts the own calls of the forger and its round-2 requests, on every path of its program.
 A fixed slack pays the security loss from the other calls. It does not bound their number. For a
-fixed $q$ the two budgets give different classes of forgers, so the bundle has both claims. & BR93, leanXMSS \\
+fixed $q$ the two budgets give different classes of forgers, so the library proves both claims and
+the bundle has the second one. & BR93, leanXMSS \\
 \bottomrule
 \end{tabularx}
 \end{center}
+
+The table leaves out four points of the model.
+\begin{itemize}\itemsep0pt
+\item A ceremony takes the keys as its input, because the operators build bottom trees on demand
+while they sign. The coalition of a ceremony is the set of operators corrupted before it, and no
+operator is corrupted during a ceremony.
+\item The oracles have a counted copy and a free copy on one cache, and the honest operators and
+the functionalities run on the free copy. Each simulation claim bounds the counted calls of the
+ideal run by $q$ plus a fixed overhead (Canetti 2000, efficient simulators). An explicit simulator
+emulates the honest operators on the free copy as the real operators do, and its overhead counts
+only its programming queries. A simulator that a claim only asserts to exist has all its calls
+counted, and its overhead counts its emulation of the honest operators.
+\item To match the model of the hash, the implementation needs injective encodings with a distinct
+tag for each domain, the tweakable hash, the PRF and the masks included, and fields of fixed width
+or with a length prefix. The byte encoding of the code does not meet this requirement
+(Section~\ref{sec:code}). The requirement is for all claims together. The signing game calls only
+three domains, namely the tweakable hash, the PRF and the masks. In the code, an input of the PRF
+has 48 bytes and an input of a mask has 84 bytes. Each input of $\Th$ in the signing game has 64,
+80 or 960 bytes. So the lengths separate the present encodings of these three domains. This
+separation is a reading of the code and of the model. No Lean theorem states it.
+\item The check gives bit $j$ of a word of tuples the public weight $x^j$ in place of a coin. The
+errors are bits and $1, x, \ldots, x^{63}$ are linearly independent over $\mathbb{F}_2$, so a wrong
+word stays a nonzero weight, and the Schwartz-Zippel count of GS20, Lemma 8, holds.
+\end{itemize}
 
 Three points limit the model.
 \begin{itemize}\itemsep0pt
@@ -135,10 +166,11 @@ PRAWNS, Theorem 5.1 & Adaptive security of the threshold PRF, with the loss
 $2\binom{n}{t-1}$. & The same loss, as a concrete bound in the random-oracle model. \\
 PRAWNS, Definition 3.2 & Adaptive unforgeability of a one-time threshold signature. & Adaptive
 strong unforgeability of the signing of leanXMSS. \\
-leanXMSS & Strong unforgeability with the bound $q / 2^{127}$. The budget $q$ counts the hash
-calls of every party. & The same bound and the same budget, and the two terms of the hidden
-keys. The second signing claim has the budget of the forger alone and the fixed slack
-$2^{15} + 384$. \\
+leanXMSS & Strong unforgeability with the bound $(q + 2^{10}) / 2^{127}$ in the random-permutation
+model. The budget $q$ counts the permutation calls of the adversary alone, and a second number
+limits the signing requests. & The bound $(q + 2^{15} + 384) / 2^{127}$ and the two terms of the
+hidden keys, in the random-oracle model. One budget $q$ counts the own calls of the forger and its
+round-2 requests. \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -151,12 +183,17 @@ GS20 aborts all honest operators together. Rule 3 of the contract covers the dif
 of the copies of each term, and the bound has birthday terms.
 \item The game of PRAWNS, Figure 3, has the condition $t > (n + |D|)/2$ on its line 8. It fails for
 $n = 2t - 1$ when one operator is corrupt. The signing game drops it and takes rule 1 of the contract in its place.
-\item The comparison with leanXMSS is for the revision that \lean{lakefile.toml} pins. A newer
-statement of leanXMSS counts only the calls of the adversary, in the random-permutation model. The
-signing claim does not have that form.
+\item The comparison with leanXMSS is for the revision \lean{64f80302} of leanVM. That statement
+counts only the calls of the adversary, in the random-permutation model. The signing claim has
+that form. Its game is not the generic game of leanXMSS, which has one signer with no state. The
+model and the bound differ in three points. $H$ is a random oracle, one budget counts the own calls
+of the forger and its round-2 requests, and the bound has two more terms. The separate claim
+\lean{SigningSecurityStatement} has the bound $q / 2^{127}$ and the budget of every party, as
+leanXMSS has them at the revision that \lean{lakefile.toml} pins.
 \item The check field is any field with $2^{192}$ elements. No claim fixes its basis.
 \end{itemize}
-The module doc of \lean{Statement.lean} lists the deviations of the protocol.
+The module docs of \lean{Statement/Dkg.lean} and \lean{Statement/Signing.lean} list the deviations
+of the protocol.
 
 \section{The deployment contract}
 
@@ -200,7 +237,8 @@ its auxiliary input, and the ceremony claim holds for every auxiliary input. So 
 signing requests on the other trees and repeat the earlier phases.
 \item The system is now the trusted dealer with the signing oracles. By
 \lean{DealerTreeStatement}, the dealer gives the trees of the signing game.
-\item Apply \lean{SigningSecurityStatement}. This step uses the random-oracle heuristic for $\Th$.
+\item Apply \lean{ThresholdLeanXmssStronglyUnforgeable}. This step uses the random-oracle heuristic
+for $\Th$.
 \end{enumerate}
 The sketch does not settle three points of step 2.
 \begin{itemize}\itemsep0pt
@@ -216,7 +254,7 @@ An earlier Lean proof of this composition is in the archive. It stopped at the f
 Rules 2 to 7 give the order of the runs in step 2. Rule 1 gives the game of step 4. Rule 8 gives
 the corruption model of the signing game.
 
-\section{The model and the code}
+\section{The model and the code}\label{sec:code}
 
 The Rust proof of concept does not instantiate the Lean model, and no theorem connects them. Two
 readings of \lean{Scheme.lean} and \lean{src/} side by side, in November 2026, gave the list of this
@@ -284,7 +322,8 @@ does not apply. A proof for concurrent batches needs a notion with an interactiv
 2020/134.
 \item[PRAWNS] The threshold PRF and the one-time threshold signature of ePrint 2026/2142.
 \item[leanXMSS] The Lean proof of leanXMSS in \lean{leanEthereum/leanVM}, \lean{formal/lean_xmss},
-at the revision of \lean{lakefile.toml}.
+at the revision of \lean{lakefile.toml}. The comparison of the signing claim is with
+\lean{formal/Statement/SufCma.lean} at the revision \lean{64f80302}.
 \item[CDI05] R. Cramer, I. Damg\aa rd and Y. Ishai. Share Conversion, Pseudorandom Secret-Sharing
 and Applications to Secure Computation. TCC 2005.
 \item[Canetti 2000] R. Canetti. Security and Composition of Multiparty Cryptographic Protocols.

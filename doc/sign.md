@@ -213,7 +213,7 @@ Each honest operator signs at most one message, but two quorums can have differe
 
 ### 4.2 The formal claim
 
-The formal claim models $\mathrm{Th}$ as a random oracle and states the bound $q / 2^{127}$ plus the terms of a call on a hidden key or seed. The budget $q$ counts the calls of every party, not only of the adversary. A second claim on the same game counts only the own calls of the forger and its round-2 requests. This count holds on every path of the forger program and for every answer. Its bound is $(q + 2^{15} + 384) / 2^{127}$ plus the same terms. A forgery wins if it differs from the canonical honest signature at its key. The "Model" section of [`formal/ThresholdLeanXmss/Statement.lean`](../formal/ThresholdLeanXmss/Statement.lean) gives the full model.
+The formal claim `ThresholdLeanXmssStronglyUnforgeable` models $\mathrm{Th}$ as a random oracle. Its budget $q$ counts only the own calls of the forger and its round-2 requests. This count holds on every path of the forger program and for every answer. The bound is $(q + 2^{15} + 384) / 2^{127}$ plus the terms of a call on a hidden key or seed. A separate theorem proves the claim `SigningSecurityStatement` on the same game. Its budget $q$ counts the calls of every party, not only of the adversary, and its bound is $q / 2^{127}$ plus the same terms. That claim is not in the bundle of the root theorem. A forgery wins if it differs from the canonical honest signature at its key. The "Model" section of [`formal/ThresholdLeanXmss/Statement/Theorems.lean`](../formal/ThresholdLeanXmss/Statement/Theorems.lean) gives the full model.
 
 ## References
 

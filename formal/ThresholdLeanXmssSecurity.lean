@@ -22,17 +22,23 @@ import ThresholdLeanXmssSecurity.Proof.TreeKeyAimed
 import ThresholdLeanXmssSecurity.Proof.SigningHitProof
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Coupling
 import ThresholdLeanXmssSecurity.Proof.SigningOwnBudget
+import ThresholdLeanXmssSecurity.Proof.SigningStronglyUnforgeable
 
 /-! # The end theorem of threshold leanXMSS
 
-`thresholdLeanXmss_security` gives `ThresholdLeanXmssSecurityStatement` (`ThresholdLeanXmss/Statement.lean`).
-It is the conjunction of eighteen component claims about the protocol of `ThresholdLeanXmss/Scheme.lean`,
+`thresholdLeanXmss_security` gives `ThresholdLeanXmssSecurityStatement`
+(`ThresholdLeanXmss/Statement/Theorems.lean`). It is the bundle `Theorems`, with one field for each of
+eighteen claims about the protocol of `ThresholdLeanXmss/Scheme.lean`,
 for every committee `n = 2t - 1`, every check field `E` with `2^192` elements, every `Th`, every circuit
 family and every setting. Each claim covers one protocol or one gadget alone. No claim composes the
 keygen, the ceremonies and the signing. `statement.tex` holds the deployment contract and the argument
-of that composition. The module doc of `Statement.lean` holds the full model and the deviations from
-the papers. The proofs follow GS20 for the DKG and PRAWNS for the signing, and
+of that composition. The module doc of `Statement/Theorems.lean` holds the full model. The module docs
+of `Statement/Dkg.lean` and `Statement/Signing.lean` hold the deviations from the papers. The proofs
+follow GS20 for the DKG and PRAWNS for the signing, and
 they reuse leanVM `formal/lean_xmss` for the hash layer.
+
+`signingSecurityClosed` gives `SigningSecurityStatement` (`Statement/SigningBudgets.lean`), the signing
+claim with the budget of every party. That claim is no field of the bundle.
 
 ## Units and budgets
 
@@ -41,10 +47,11 @@ they reuse leanVM `formal/lean_xmss` for the hash layer.
 * The other hash terms are birthday bounds over `2^256` outputs, for example
   `keygenHashError C q = (q + keygenSecrets C)^2 / 2^256`. `streamKeyError C` is the birthday bound
   `k^2 / 2^129` of the 128-bit AES keys of the `k` PRSS keys.
-* The signing budget `q` (`HasSigningQueryBound`) counts every call of `H` and `PRG` by every party,
-  cache hits included.
-* The second signing budget (`HasSigningOwnBound`) counts only the own calls of the forger to `H` and
-  `PRG` and its round-2 requests, on every path of its program.
+* The budget `q` of `SigningSecurityStatement` (`HasSigningQueryBound`) counts every call of `H` and
+  `PRG` by every party, cache hits included.
+* The budget of the signing claim of the bundle (`adversaryCost`) counts only the own calls of the
+  forger to `H` and `PRG` and its round-2 requests, on every path of its program.
+  `HasSigningOwnBound` is the same budget as a predicate.
 * The simulation claims and `TprfSecurityStatement` count only the calls of the adversary and of the
   distinguisher (`IsQueryBounded`). No budget is a time bound.
 
@@ -113,7 +120,8 @@ they reuse leanVM `formal/lean_xmss` for the hash layer.
 `Proof/Tprf`) follow PRAWNS, Theorem 5.1, with `prawns_quorum_holds_term`, `prawns_L_partition`,
 `prawns_lemma52_guess` and `tprfError`. `signingCorrectness` (`Proof/Signing`) pays two searches.
 
-`signingSecurityFull` (`Proof/HiddenCore`) gives `SigningSecurityStatement` through
+`signingSecurityFull` (`Proof/HiddenCore`) gives `SigningSecurityStatement`, the claim with the budget
+of every party, through
 `signingSecurityProof` and `signingCoreBound`. The game is an average over the keys. Equal keys pay
 `seedCollisionError`, and `signingSecurity_large` covers `q ≥ 2^127`. The hidden keys play the seed of
 leanVM. The game does not reduce to `LeanXmssSecurityStatement`, because the forger also sees the top
@@ -148,11 +156,16 @@ hidden keys. The charged lane is the sum of four bounds, `hitOwn_of_gate`, `altO
 `ownCapClean` with `compilerCouplingClean`. The fixed slack `signingSlack` pays the first read of
 each top key and the verification.
 
+`SigningStronglyUnforgeable.stronglyUnforgeable` (`Proof/SigningStronglyUnforgeable`) gives the field
+`stronglyUnforgeable` of the bundle, `ThresholdLeanXmssStronglyUnforgeable`, from
+`SigningOwnBudgetStatement`. `stronglyUnforgeable_iff` states that the two claims are equivalent. The
+budget is a cost function in the one and a predicate in the other.
+
 ## Modules
 
 The statement layer is `ThresholdLeanXmss/`. The proofs are in `ThresholdLeanXmssSecurity/Proof/`.
 
-* `Scheme`, `Ideal`, `Reductions` and `Statement` hold the protocol and the world, the
+* `Scheme`, `Ideal`, `Reductions` and the files of `Statement/` hold the protocol and the world, the
   functionalities and the games, the simulators and the reductions, and the claims.
 * `Lemmas`, `Execution`, `Coupling` and `ProgramQuiet` hold the paper lemmas named after their
   source, the execution model, the round-by-round coupling and the computations with no programming
@@ -172,8 +185,8 @@ The statement layer is `ThresholdLeanXmss/`. The proofs are in `ThresholdLeanXms
 * `SigningLaneUnion`, `SigningLaneFinal`, `SigningReleased*`, `SigningSignedSeparation`,
   `SigningLane2*`, `SigningLaneInputLogged`, `SigningLaneHybrid*` and `SigningCompiler*` hold the
   uncharged lane and its shared cap.
-* `SigningOwn*`, `SeedHitOwn` and `SigningLedgerExpect` hold the signing claim with the budget of the
-  forger alone.
+* `SigningOwn*`, `SeedHitOwn`, `SigningLedgerExpect` and `SigningStronglyUnforgeable` hold the signing
+  claim with the budget of the forger alone.
 * `Lifetime*` holds the forms of the simulation hop that start from a given cache. The salt route of
   the simulation hop uses them. -/
 
@@ -183,14 +196,26 @@ namespace ThresholdLeanXmssSecurity
 theorem thresholdLeanXmss_security : ThresholdLeanXmss.ThresholdLeanXmssSecurityStatement := by
   intro C E _ _ _ _ K prims circuits settings
   letI : SampleableType E := SampleableType.ofFintype E
-  exact ⟨keygenCompleteness prims, keygenSecurityClosed prims, treeCompleteness prims K circuits settings,
-    treeSecurityOfSimAimed prims K circuits settings (treeKeyAimedBound prims K circuits settings) (by sorry),
-    dealerTreeProof prims circuits settings C,
-    treeSuccessProof prims circuits settings C, coinSecurity prims K, coinCompleteness prims K, multStatement prims K,
-    extendMultSecurity prims K, multVerifyClosed prims K, multVerifyCompleteness prims K,
-    mainStatementFull prims K, mainCompleteness prims K, tprfCorrectness prims C, tprfSecurity prims C,
-    signingCorrectness prims C, signingSecurityClosed prims C,
-    SigningOwnBudget.signingOwnBudget prims C⟩
+  exact {
+    keygenCompleteness := keygenCompleteness prims
+    keygenSecurity := keygenSecurityClosed prims
+    treeCompleteness := treeCompleteness prims K circuits settings
+    treeSecurity :=
+      treeSecurityOfSimAimed prims K circuits settings (treeKeyAimedBound prims K circuits settings) (by sorry)
+    dealerTree := dealerTreeProof prims circuits settings C
+    treeSuccess := treeSuccessProof prims circuits settings C
+    coin := coinSecurity prims K
+    coinCompleteness := coinCompleteness prims K
+    mult := multStatement prims K
+    extendMult := extendMultSecurity prims K
+    multVerify := multVerifyClosed prims K
+    multVerifyCompleteness := multVerifyCompleteness prims K
+    main := mainStatementFull prims K
+    mainCompleteness := mainCompleteness prims K
+    tprfCorrectness := tprfCorrectness prims C
+    tprfSecurity := tprfSecurity prims C
+    signingCorrectness := signingCorrectness prims C
+    stronglyUnforgeable := SigningStronglyUnforgeable.stronglyUnforgeable prims C }
 
 /-! The build fails if the axiom footprint of the end theorem changes. -/
 
@@ -216,6 +241,10 @@ and `Quot.sound`. -/
 /-- info: 'ThresholdLeanXmssSecurity.SigningOwnBudget.signingOwnBudget' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningOwnBudget.signingOwnBudget
+
+/-- info: 'ThresholdLeanXmssSecurity.SigningStronglyUnforgeable.stronglyUnforgeable' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms SigningStronglyUnforgeable.stronglyUnforgeable
 
 /-- info: 'ThresholdLeanXmssSecurity.dealerTreeProof' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

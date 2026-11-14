@@ -6,6 +6,8 @@ import ThresholdLeanXmss.Ideal
 The explicit simulators of the keygen and of a ceremony, and the reduction to the AES term.
 -/
 
+set_option autoImplicit false
+
 open OracleComp OracleSpec LeanXmss
 
 noncomputable section

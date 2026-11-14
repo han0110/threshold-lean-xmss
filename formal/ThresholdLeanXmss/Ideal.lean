@@ -5,9 +5,11 @@ import LeanXmss.Statement
 # The functionalities and the games
 
 The functionalities of GS20 for replicated sharing, the trusted dealer `F_keygen`, the oracles of the
-games of PRAWNS, and the adversaries of the games of the primitives. `Statement.lean` holds the games
-and the claims.
+games of PRAWNS, and the adversaries of the games of the primitives. The files of `Statement/` hold the
+games and the claims.
 -/
+
+set_option autoImplicit false
 
 open OracleComp OracleSpec LeanXmss
 

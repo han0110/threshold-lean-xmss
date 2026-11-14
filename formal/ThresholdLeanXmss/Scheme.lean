@@ -14,13 +14,14 @@ import VCVio.EvalDist.TVDist
 The key generation of `doc/dkg.md` and the signing of `doc/sign.md`, as programs of one operator, at
 the level of GS20 and PRAWNS. The end of the file holds the oracles of the world, the execution
 model, the programs in the hybrid models of GS20, and the honest runs that the claims compare.
-`Statement.lean` holds the counted world and the notions of secure computation.
+`Statement/RandomOracle.lean` holds the counted world, and `Statement/SecureComputation.lean` holds
+the notions of secure computation.
 
 * An operator program is an `OracleComp` with private sampling, the oracle `H` and one query
   `exchange` for each synchronous round. A program that returns `none` aborts.
 * A program in a hybrid model also has a query `call` to the functionality (GS20, Section 3.1).
 * Each constructor of `Query` is its own domain of `H`. The current byte encoding of the
-  implementation does not separate all these domains yet (`Statement.lean`, model).
+  implementation does not separate all these domains yet (`statement.tex`, the model).
 * The domain `hash` is the tweakable hash `Th` of leanXMSS. In the claims of the key generation, it
   is one fixed function on the inputs that the MPC evaluates, namely a chain step and the commitment
   `c_e`. Every other input of `Th`, namely a leaf, a node and a message digest, and every other
@@ -37,6 +38,8 @@ model, the programs in the hybrid models of GS20, and the honest runs that the c
 * The session nonces and the commitment of the PRSS setup in the nonce round are not modeled. Fresh
   PRSS parts in each ceremony separate the sessions.
 -/
+
+set_option autoImplicit false
 
 open OracleComp OracleSpec LeanXmss
 
@@ -216,7 +219,7 @@ inductive KeyName (C : Committee)
 deriving DecidableEq
 
 /-- An input of `H`. Each constructor is one domain of `H`. The tags of the implementation
-(`doc/dkg.md` 1.1.4) do not separate all of them yet (`Statement.lean`, model). -/
+(`doc/dkg.md` 1.1.4) do not separate all of them yet (`statement.tex`, the model). -/
 inductive Query (C : Committee)
   /-- The tweakable hash `Th` of leanXMSS, on the bytes of leanVM. -/
   | hash (input : HashInput)
