@@ -1,6 +1,7 @@
 import ThresholdLeanXmssSecurity.Proof.TreeCheckKernelChecked
 import ThresholdLeanXmssSecurity.Proof.TreeCheckKernelCovered
 import ThresholdLeanXmssSecurity.Proof.TreeCheckPrgSigningFresh
+import ThresholdLeanXmssSecurity.Proof.TreeCheckKernelCoupled
 
 /-! # The check-kernel coupling
 
@@ -14,6 +15,38 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 
 noncomputable section
+
+namespace ThresholdLeanXmssSecurity.TreeCheckKernelCoupling
+
+/-! ## The fuel of the hybrid adapter
+
+The declaration of this part is in the namespace `TreeCheckKernelCoupling`, and the module doc of
+`TreeCheckKernelCoupling` describes it. -/
+
+open TreeCheckWalkCoupling
+
+attribute [local instance] Classical.propDecidable
+variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
+
+/-- On the same tuple count, the hybrid adapter's fuel `checkRounds` is the real
+kernel's `2 * halvings + 5` rounds plus three. -/
+theorem hybrid_rounds (prims : Primitives) (K : Constants C E) (circuits : Circuits)
+    (settings : Settings) :
+    TreeCheckWalkRecipe.AtWalk prims K circuits settings fun _ _ _ _ _ _ _ _ _ _ _ W =>
+      ∀ c o, let b := (W.boundary c).batch
+        checkRounds (W.hybrid c o).counts.sum =
+          (2 * halvings (tupleCount (b.jobs.map (circuits b.parameter ·.kind))) + 5) + 3 := by
+  intro _ top tree D A x z Z q _ bounded _ j p _ c o
+  let W := TreeCheckWalkRecipe.family prims K circuits settings top tree D A x Z q bounded j p
+  have sum := TreeCheckBatchWalk.counts_sum (circuits := circuits) (W.boundary c).batch
+  change 2 * halvings (((W.boundary c).batch.counts circuits).sum) + 8 = _
+  rw [sum]
+
+end ThresholdLeanXmssSecurity.TreeCheckKernelCoupling
+
+/-- info: 'ThresholdLeanXmssSecurity.TreeCheckKernelCoupling.hybrid_rounds' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.TreeCheckKernelCoupling.hybrid_rounds
 
 namespace ThresholdLeanXmssSecurity.TreeCheckKernelClosure
 

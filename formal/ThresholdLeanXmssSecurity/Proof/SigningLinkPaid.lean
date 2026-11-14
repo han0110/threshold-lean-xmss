@@ -4,7 +4,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningTopRows
 /-!
 # The partner link with a paid flag
 
-Three forms of `R1Link` are false (`SigningR1Fixed`, `SigningOneRun`, `SigningOneRunFinal`). This
+The forms of `R1Link` of `SigningR1Fixed` and of `SigningOneRun` are false. This
 module splits the bottom partner row by the release at the forged key. An unreleased partner is paid
 by the input-side flag, and a released partner keeps the R1 split.
 

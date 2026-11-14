@@ -1,4 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.TreeSimHash
+import ThresholdLeanXmssSecurity.Proof.TreeSimHop
 
 /-!
 # The hash bound of the tree simulation hop

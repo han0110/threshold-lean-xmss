@@ -42,7 +42,7 @@ random step. So the induction here averages over `s` at each step. It reuses
 
 Let `N = |T| = 2 ^ 128`.
 
-* In the stopped scan of `SigningUncharged.trueOpening_charge_gap`, the adversary calls
+* In the stopped scan of a true opening, the adversary calls
   `commitmentInput` with trials `ρ'` until a match, and then makes encoding calls. In the hybrid the
   commitment `c_e` is a fresh pending answer, so the scan does not see `ρ_e` and its length `T_h`
   does not depend on `s e`. Each scan call is input side with the unrevealed key `e`, and it costs

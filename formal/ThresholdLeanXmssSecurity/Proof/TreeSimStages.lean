@@ -1,4 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.TreeSim
+import ThresholdLeanXmssSecurity.Proof.CheckSplit
 
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000

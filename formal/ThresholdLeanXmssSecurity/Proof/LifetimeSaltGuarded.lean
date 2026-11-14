@@ -2,6 +2,7 @@ import ThresholdLeanXmssSecurity.Proof.TreeSaltPairsFinal
 import ThresholdLeanXmssSecurity.Proof.TreeSaltPairsProof
 import ThresholdLeanXmssSecurity.Proof.LifetimeContextual
 import ThresholdLeanXmssSecurity.Proof.TreeAssembly
+import ThresholdLeanXmssSecurity.Proof.TreeSimHop
 
 /-!
 # The guess-guarded salt route after a counted prefix

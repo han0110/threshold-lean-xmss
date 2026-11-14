@@ -1,5 +1,6 @@
 import ThresholdLeanXmssSecurity.Proof.TreeCheckKernelCoupling
 import ThresholdLeanXmssSecurity.Proof.Check
+import ThresholdLeanXmssSecurity.Proof.TreeCheckWalkTransport
 
 /-! # Named random rows and the exact gadget observations
 Uniform term and pair tables come from one named table. The field-row

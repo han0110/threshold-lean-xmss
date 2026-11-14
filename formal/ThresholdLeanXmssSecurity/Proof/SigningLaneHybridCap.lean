@@ -1,6 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.SigningLaneUnion
 import ThresholdLeanXmssSecurity.Proof.SigningLane2TraceLink
-import ThresholdLeanXmssSecurity.Proof.Dealer
 import Mathlib.Tactic.DeriveFintype
 import XmssSecurity.Proof.ExactQueryCount
 
@@ -620,29 +619,6 @@ theorem bottom_walks_of_edges (P : PublicParameter) (H : HashInput → HashOutpu
     step 2 (step 1 (step 0 s₀)) = endpoint
   rw [he₀, he₁, he₂]
   exact ⟨rfl, rfl, rfl⟩
-
-set_option backward.isDefEq.respectTransparency false in
-/-- The real `referenceJob` row evaluates to the public pads and endpoint when the
-PRF targets are the corresponding masked symbolic chain values. -/
-theorem referenceJob_row_of_walks (P : PublicParameter) (H : HashInput → HashOutput)
-    (F : Point → Digest) (e : KeyIndex) (l : ChainIndex)
-    (s₀ s₁ s₂ cpk₁ cpk₂ endpoint : Digest)
-    (hF₀ : F (.chain bottomLayer e l (digit 0)) = s₀)
-    (hF₁ : F (.chain bottomLayer e l (digit 1)) = s₁ ^^^ cpk₁)
-    (hF₂ : F (.chain bottomLayer e l (digit 2)) = s₂ ^^^ cpk₂)
-    (hwalk : evalTh H (Concrete.chainWalk P bottomLayer e l 0 1 s₀) = s₁ ∧
-      evalTh H (Concrete.chainWalk P bottomLayer e l 0 2 s₀) = s₂ ∧
-      evalTh H (Concrete.chainWalk P bottomLayer e l 0 3 s₀) = endpoint) :
-    referenceJob (m := Id) (fun oa => evalTh H oa) F P
-      ⟨.chainRow e l, [.chain bottomLayer e l (digit 0),
-        .chain bottomLayer e l (digit 1), .chain bottomLayer e l (digit 2)]⟩ =
-      bitsOfDigest cpk₁ ++ bitsOfDigest cpk₂ ++ bitsOfDigest endpoint := by
-  rw [referenceJob_id]
-  simp [refCore, hF₀, hF₁, hF₂, hwalk.1, hwalk.2.1, hwalk.2.2,
-    ← BitVec.xor_assoc]
-  change bitsOfDigest (s₁ ^^^ s₁ ^^^ cpk₁) ++
-    (bitsOfDigest (s₂ ^^^ s₂ ^^^ cpk₂) ++ bitsOfDigest endpoint) = _
-  simp
 
 open scoped BigOperators
 
@@ -1813,9 +1789,6 @@ end SigningLaneHybridCapProof
 /-- info: 'ThresholdLeanXmssSecurity.SigningLaneHybridCapProof.bottom_walks_of_edges' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningLaneHybridCapProof.bottom_walks_of_edges
-/-- info: 'ThresholdLeanXmssSecurity.SigningLaneHybridCapProof.referenceJob_row_of_walks' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningLaneHybridCapProof.referenceJob_row_of_walks
 /-- info: 'ThresholdLeanXmssSecurity.SigningLaneHybridCapProof.termSum_program' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningLaneHybridCapProof.termSum_program

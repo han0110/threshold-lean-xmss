@@ -1,6 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.SigningJointEager
 import ThresholdLeanXmssSecurity.Proof.SigningR1Fixed
-import ThresholdLeanXmssSecurity.Proof.SigningUnchargedCap
 
 /-!
 # The signing assembly on one run
@@ -47,14 +46,14 @@ The guess costs `2^-128` per call, but no row of the current table logs it. Two 
 * The first trigger choice in `SigningR1Fixed`. The trigger runs the grind at each world call after
   which the PRF entries, the bound message and the base answer of a key are all cached. After
   step 3 the grind meets the seen trials of step 2, so the flag of `e` rises. This keeps
-  `TrueOpeningHit` and the input-side event of `SigningUnchargedCap`.
+  `TrueOpeningHit` and the input-side event of the uncharged lane.
 * A candidate at each call that carries the opening of a key whose PRF entries are not all cached,
   read from the call log. This changes the input-side event of the uncharged lane, so the cap of
-  `SigningUnchargedCap` changes with it.
+  that lane changes with it.
 
 ## The interface hypotheses
 
-* `R1Link` is stated in its exact form and is false. The cap of `SigningUnchargedCap` on this run and the assembly
+* `R1Link` is stated in its exact form and is false. The cap of the uncharged lane on this run and the assembly
   of `HiddenCoreAt` from `TopRow` and `AbsentRow` depend on its fix and are not stated here.
 -/
 

@@ -1,6 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.SigningReleasedTransfer
 import ThresholdLeanXmssSecurity.Proof.SigningLane2Flat
-import ThresholdLeanXmssSecurity.Proof.SigningTopRowsCap
 
 /-!
 # The uncharged lane as one union on one run

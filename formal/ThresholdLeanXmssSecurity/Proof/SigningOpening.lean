@@ -1,4 +1,4 @@
-import ThresholdLeanXmssSecurity.Proof.SigningUncharged
+import ThresholdLeanXmssSecurity.Proof.SigningGuessProof
 import ThresholdLeanXmssSecurity.Proof.Coupling
 
 /-!

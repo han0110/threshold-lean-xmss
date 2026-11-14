@@ -1,4 +1,3 @@
-import ThresholdLeanXmssSecurity.Proof.SigningTopRowsCap
 import ThresholdLeanXmssSecurity.Proof.SigningLane2Flat
 import ThresholdLeanXmssSecurity.Proof.SigningLinkPaid
 import XmssSecurity.Proof.Deterministic.Replay

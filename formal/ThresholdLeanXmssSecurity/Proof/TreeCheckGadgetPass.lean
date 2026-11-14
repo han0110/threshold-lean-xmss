@@ -1,5 +1,6 @@
 import ThresholdLeanXmssSecurity.Proof.TreeCheckKernelCoupling
 import ThresholdLeanXmssSecurity.Proof.Check
+import ThresholdLeanXmssSecurity.Proof.TreeCheckKernelCoupled
 
 /-! # Substitution of ready draws in a stream-world local pass
 Local substitutions preserve both caches and all subsequent rounds. Hash prefixes
@@ -11,6 +12,90 @@ predicate vacuous, independently of the hybrid execution.
 open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
+
+namespace ThresholdLeanXmssSecurity.TreeCheckKernelCoupling
+
+/-! ## A stopped real execution
+
+The declaration of this part is in the namespace `TreeCheckKernelCoupling`, and the module doc of
+`TreeCheckKernelCoupling` describes it. -/
+
+open TreeCheckWalkCoupling
+
+attribute [local instance] Classical.propDecidable
+variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
+
+section Kernel
+
+variable (prims : Primitives) (K : Constants C E) (D : C.Coalition)
+  (A : Adversary C E (Keys C) PEmpty PEmpty)
+
+/-- After a round in which an honest operator has stopped, every honest operator
+has stopped when each program respects abort frames. -/
+theorem realRun_doomed {β : Type} (n : ℕ) (stA : A.State) (P : C.Party → PartyM C E RealSpec β)
+    (w : HashCache C × HiddenCache C)
+    (exchange : ∀ i, i ∉ D.1 → TreeSimCheckExchange (P i))
+    (dead : ∃ j, j ∉ D.1 ∧ P j = failure) :
+    ∀ x ∈ support (realRun prims D A (n + 1) stA P w), ∀ i, i ∉ D.1 → x.1.2 i = .done none := by
+  intro x hx
+  unfold realRun at hx
+  rw [support_map] at hx
+  obtain ⟨r, hr, rfl⟩ := hx
+  have raw : r.1 ∈ support (startSteps worldRoles D P >>= fun steps =>
+      executeSteps worldRoles D A noFunctionality (n + 1) stA steps) := by
+    apply OracleComp.support_simulateQ_run'_subset (streamWorld prims D)
+    rw [StateT.run'_eq, support_map]
+    exact ⟨r, hr, rfl⟩
+  rw [mem_support_bind_iff] at raw
+  obtain ⟨steps, started, rounds⟩ := raw
+  have each : ∀ i, TreeSimCheckExchangeStep (steps i) := by
+    intro i
+    have h := mem_support_sequenceFin_oc _ steps started i
+    by_cases hi : i ∈ D.1
+    · simp only [if_pos hi, support_pure, Set.mem_singleton_iff] at h
+      rw [h]
+      rfl
+    · simp only [if_neg hi] at h
+      exact exchange i hi _ (treeSimCheck_support_free _ h)
+  obtain ⟨j, hj, hjP⟩ := dead
+  have stopped : steps j = .done none := by
+    have h := mem_support_sequenceFin_oc _ steps started j
+    simp only [if_neg hj, hjP] at h
+    simpa [advance_pure, free_pure] using h
+  rw [executeSteps] at rounds
+  split_ifs at rounds with hd
+  · simp only [support_pure, Set.mem_singleton_iff] at rounds
+    intro i hi
+    rw [rounds]
+    have hstep := each i
+    cases he : steps i with
+    | done out =>
+      rw [he] at hstep
+      show steps i = _
+      rw [he]
+      exact congrArg Step.done hstep
+    | wait out resume =>
+      have := hd i hi
+      rw [he] at this
+      exact this.elim
+    | call input resume => exact input.elim
+  · rw [treeSimCheck_exchange_round_abort D A stA steps each ⟨j, hj, stopped⟩] at rounds
+    simp only [bind_assoc, pure_bind, support_bind, Set.mem_iUnion] at rounds
+    obtain ⟨b, _, rounds⟩ := rounds
+    rw [executeSteps_done worldRoles D A noFunctionality n _ (fun _ => Step.done none)
+      (fun i _ => (trivial : True))] at rounds
+    simp only [support_pure, Set.mem_singleton_iff] at rounds
+    intro i _
+    rw [rounds]
+
+end Kernel
+
+end ThresholdLeanXmssSecurity.TreeCheckKernelCoupling
+
+/-- info: 'ThresholdLeanXmssSecurity.TreeCheckKernelCoupling.realRun_doomed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.TreeCheckKernelCoupling.realRun_doomed
+
 namespace ThresholdLeanXmssSecurity.TreeCheckGadgetPass
 attribute [local instance] Classical.propDecidable
 set_option linter.unusedSectionVars false

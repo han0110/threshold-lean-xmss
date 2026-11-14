@@ -1,5 +1,6 @@
 import ThresholdLeanXmssSecurity.Proof.LifetimeFreshBudget
 import ThresholdLeanXmssSecurity.Proof.TreeEvents3
+import ThresholdLeanXmssSecurity.Proof.TreeSimHop
 
 /-!
 # Contextual events after adaptive ceremony selection

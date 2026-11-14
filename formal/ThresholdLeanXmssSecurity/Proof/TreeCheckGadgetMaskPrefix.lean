@@ -1,4 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.TreeCheckGadgetExtend
+import ThresholdLeanXmssSecurity.Proof.TreeCheckKernelCoupled
 
 /-! # The final mask after a shared hash prefix
 

@@ -1,6 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.SigningLinkPaid
 import ThresholdLeanXmssSecurity.Proof.SigningPartnerCompare
-import ThresholdLeanXmssSecurity.Proof.SigningPrefixBottom
 
 /-!
 # Transport of released signing selections

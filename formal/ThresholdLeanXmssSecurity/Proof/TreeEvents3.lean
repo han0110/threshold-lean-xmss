@@ -1,6 +1,7 @@
 import ThresholdLeanXmssSecurity.Proof.TreeLockstep
 import ThresholdLeanXmssSecurity.Proof.TreeSaltPairs
 import ThresholdLeanXmssSecurity.Proof.TreeCheckCut
+import ThresholdLeanXmssSecurity.Proof.TreeSimHop
 
 /-!
 # The tree simulation events with the budget collision

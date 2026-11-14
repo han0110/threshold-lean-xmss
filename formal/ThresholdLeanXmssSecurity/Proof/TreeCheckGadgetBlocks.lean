@@ -1,4 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.TreeCheckRandRows
+import ThresholdLeanXmssSecurity.Proof.TreeCheckWalkCoupling
 
 /-! # Installed random blocks for the check gadgets
 

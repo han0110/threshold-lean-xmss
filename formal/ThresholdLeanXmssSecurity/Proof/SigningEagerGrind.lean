@@ -1,4 +1,4 @@
-import ThresholdLeanXmssSecurity.Proof.SigningLanes
+import ThresholdLeanXmssSecurity.Proof.SigningUnchargedLogged
 import XmssSecurity.Proof.RandomOraclePresampling
 
 /-!
@@ -96,10 +96,10 @@ The third disjunct of `UnchargedFlag` is not covered by the table.
 * Pre-queries then sign (leanVM lane 1) passes. `Q1` encoding calls at `e` give the pending set `P`.
   The fresh selection is uniform on the valid digests at the base call, so it meets `P` with
   probability `E|P| / K = Q1 / N`.
-* Trace 1 of `SigningLanes` passes only with R1. The base call fixes the selection. The calls
+* A first trace passes only with R1. The base call fixes the selection. The calls
   `b + 2i` in decreasing order read cached trials below the selection and meet the fixed digest
   above it, `1 / N` each. The hit of `P` is charged at the base call.
-* Trace 2 of `SigningLanes` passes only with R3 and a port of the lane 2 proof. The `L = 2^23`
+* A second trace passes only with R3 and a port of the lane 2 proof. The `L = 2^23`
   cached invalid positions and `(m0, R)` are cached before the base call. The base is a fresh
   oracle answer, so it is uniform and independent of the cache
   (`XmssSecurity.evalDist_truncate_uniformHashOutput`). `Scan.selection_uniform_eq` gives the
@@ -110,7 +110,7 @@ The third disjunct of `UnchargedFlag` is not covered by the table.
 
 ## The traces that fail without the changes
 
-* Without R1, take Trace 2 of `SigningHybrid`. The adversary calls the base after round 1, and the
+* Without R1, take this trace. The adversary calls the base after round 1, and the
   eager grind selects a fresh `S`. Then the adversary calls `S` before round 2. On the log
   `FreshSelection` is false, so the hit of `P` is in lane U. A bottom encoding call at `e` before
   the base call then has three units. Lane C has its pending risk (`bottomPartnerLogged_bound`), and

@@ -1,5 +1,6 @@
 import ThresholdLeanXmssSecurity.Proof.TreeCheckGadgetBlocks
 import ThresholdLeanXmssSecurity.Proof.TreeCheckGadgetPass
+import ThresholdLeanXmssSecurity.Proof.TreeCheckKernelCoupled
 
 /-! # Coin and random-bit segments with retained PRSS blocks
 The real sampled table is retained through a projection coupling. The common

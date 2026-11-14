@@ -1,4 +1,4 @@
-import ThresholdLeanXmssSecurity.Proof.SigningRoute
+import ThresholdLeanXmssSecurity.Proof.SigningSelection
 import ThresholdLeanXmssSecurity.Proof.SigningReleased
 
 /-!

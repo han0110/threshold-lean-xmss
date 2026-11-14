@@ -1,5 +1,6 @@
 import ThresholdLeanXmssSecurity.Proof.TreeTwinLinked2
 import ThresholdLeanXmssSecurity.Proof.TreeAssembly
+import ThresholdLeanXmssSecurity.Proof.TreeSimHop
 
 /-! Segment coupling of the actual ceremony runs. Reachability and fuel are retained
 through the segment induction; observation uses the existing swap-cache relation. -/

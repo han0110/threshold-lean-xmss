@@ -1,5 +1,6 @@
 import ThresholdLeanXmssSecurity.Proof.TreeCheckGadgetBlocks
 import ThresholdLeanXmssSecurity.Proof.TreeCheckGadgetPass
+import ThresholdLeanXmssSecurity.Proof.TreeCheckKernelCoupled
 
 /-! # The check's two-product peer transitions
 

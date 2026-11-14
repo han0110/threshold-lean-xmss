@@ -2,6 +2,7 @@ import ThresholdLeanXmssSecurity.Proof.TreeTwinSegments
 import ThresholdLeanXmssSecurity.Proof.TreeRawSaltFinal
 import ThresholdLeanXmssSecurity.Proof.TreeSaltLiteralTransport
 import ThresholdLeanXmssSecurity.Proof.LifetimeSaltGuarded
+import ThresholdLeanXmssSecurity.Proof.TreeSimHop
 
 /-!
 # The tree simulation events with a general check flag
