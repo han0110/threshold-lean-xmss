@@ -580,3 +580,63 @@ theorem prawns_cover_free (d d' : Digest) (hd : Codeword.Valid d) (hd' : Codewor
   exact Fin.ext ((Finset.sum_eq_sum_iff_of_le hle).mp hsum l (Finset.mem_univ l))
 
 end ThresholdLeanXmssSecurity
+
+/-- info: 'ThresholdLeanXmssSecurity.prawns_quorum_holds_term' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.prawns_quorum_holds_term
+
+/-- info: 'ThresholdLeanXmssSecurity.prawns_L_partition' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.prawns_L_partition
+
+/-- info: 'ThresholdLeanXmssSecurity.prawns_coalition_lacks_term' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.prawns_coalition_lacks_term
+
+/-- info: 'ThresholdLeanXmssSecurity.cdi05_pair_has_holder' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.cdi05_pair_has_holder
+
+/-- info: 'ThresholdLeanXmssSecurity.mpclan_honest_holder' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.mpclan_honest_holder
+
+/-- info: 'ThresholdLeanXmssSecurity.cdi05_conv_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.cdi05_conv_correct
+
+/-- info: 'ThresholdLeanXmssSecurity.cdi05_mulRep_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.cdi05_mulRep_correct
+
+/-- info: 'ThresholdLeanXmssSecurity.gs20_mulSh_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.gs20_mulSh_correct
+
+/-- info: 'ThresholdLeanXmssSecurity.check_word_weight_ne_zero' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.check_word_weight_ne_zero
+
+/-- info: 'ThresholdLeanXmssSecurity.gs20_lemma9_halving_step' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.gs20_lemma9_halving_step
+
+/-- info: 'ThresholdLeanXmssSecurity.gruen_slice_step' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.gruen_slice_step
+
+/-- info: 'ThresholdLeanXmssSecurity.gs20_lemma10_final_step' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.gs20_lemma10_final_step
+
+/-- info: 'ThresholdLeanXmssSecurity.gs20_lemma11_final_hides' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.gs20_lemma11_final_hides
+
+/-- info: 'ThresholdLeanXmssSecurity.gs20_lemma8_delinearization' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.gs20_lemma8_delinearization
+
+/-- info: 'ThresholdLeanXmssSecurity.prawns_lemma52_guess' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.prawns_lemma52_guess

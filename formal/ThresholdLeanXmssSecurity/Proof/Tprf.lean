@@ -3038,3 +3038,15 @@ theorem tprfSecurity (prims : Primitives) (C : Committee) : TprfSecurityStatemen
     exact div_le_div_of_nonneg_right (by exact_mod_cast error_le (C := C) q) (by positivity)
 
 end ThresholdLeanXmssSecurity
+
+/-- info: 'ThresholdLeanXmssSecurity.tprfCorrectness' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.tprfCorrectness
+
+/-- info: 'ThresholdLeanXmssSecurity.TprfSecurityProof.real_sym_hop' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.TprfSecurityProof.real_sym_hop
+
+/-- info: 'ThresholdLeanXmssSecurity.tprfSecurity' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.tprfSecurity

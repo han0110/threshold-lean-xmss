@@ -1784,3 +1784,7 @@ namespace ThresholdLeanXmssSecurity
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 
 end ThresholdLeanXmssSecurity
+
+/-- info: 'ThresholdLeanXmssSecurity.signingCorrectness' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.signingCorrectness
