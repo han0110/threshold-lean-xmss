@@ -29,7 +29,7 @@ of the keys.
 4. The two lanes of leanVM, two units for each call, with the calls of `KeyGen` as the slack.
 -/
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -116,16 +116,15 @@ def keyedRun (A : TsigAdversary C) : ProbComp (Keys3 C × (Bool × ℕ)) :=
   keyGen3 >>= fun x => (fun r => (x, r)) <$> runSigningWorld prims (gameAfter A x)
 
 theorem tsigAdvantage_eq (A : TsigAdversary C) :
-    tsigAdvantage prims A = (Pr[fun z => z.2.1 = true | keyedRun prims A]).toReal := by
+    tsigAdvantage prims A = (Pr{let z ← keyedRun prims A}[z.2.1 = true]).toReal := by
   unfold tsigAdvantage signingAccepts
   rw [tsigGame_eq]
   rw [runSigningWorld_free_bind]
   unfold keyedRun
   refine congrArg ENNReal.toReal ?_
-  rw [probEvent_bind_eq_tsum, probEvent_bind_eq_tsum]
+  rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_bind_eq_tsum]
   refine tsum_congr fun x => ?_
-  rw [probEvent_map]
-  simp only [Function.comp_def]
+  rw [prEvent_map]
 
 set_option maxRecDepth 100000 in
 set_option linter.constructorNameAsVariable false in
@@ -141,25 +140,24 @@ theorem queryBound_gameAfter (A : TsigAdversary C) (q : ℕ) (hq : HasSigningQue
 
 /-- A win either has a collision of the keys or wins with distinct keys. -/
 theorem probEvent_win_split (A : TsigAdversary C) :
-    Pr[fun z => z.2.1 = true | keyedRun prims A] ≤
-      Pr[fun x : Keys3 C => KeyCollision x.2.1 x.2.2 | keyGen3] +
-        Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true | keyedRun prims A] := by
+    Pr{let z ← keyedRun prims A}[z.2.1 = true] ≤
+      Pr{let x : Keys3 C ← keyGen3}[KeyCollision x.2.1 x.2.2] +
+        Pr{let z ← keyedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true] := by
   classical
-  calc Pr[fun z => z.2.1 = true | keyedRun prims A]
-      ≤ Pr[fun z => KeyCollision z.1.2.1 z.1.2.2 ∨ (¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true) |
-          keyedRun prims A] :=
-        probEvent_mono fun z _ h => by
+  calc Pr{let z ← keyedRun prims A}[z.2.1 = true]
+      ≤ Pr{let z ← keyedRun prims A}[KeyCollision z.1.2.1 z.1.2.2 ∨ (¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true)] :=
+        prEvent_mono _ _ _ fun z h => by
           by_cases hc : KeyCollision z.1.2.1 z.1.2.2
           · exact Or.inl hc
           · exact Or.inr ⟨hc, h⟩
-    _ ≤ Pr[fun z => KeyCollision z.1.2.1 z.1.2.2 | keyedRun prims A] +
-          Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true | keyedRun prims A] :=
-        probEvent_or_le _ _ _
+    _ ≤ Pr{let z ← keyedRun prims A}[KeyCollision z.1.2.1 z.1.2.2] +
+          Pr{let z ← keyedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true] :=
+        prEvent_or_le _ _ _
     _ ≤ _ := by
         refine add_le_add ?_ le_rfl
         refine probEvent_bind_le_of_ite _ _ (fun x : Keys3 C => KeyCollision x.2.1 x.2.2) _ fun x hx => ?_
-        rw [probEvent_map]
-        simp [Function.comp_def, hx]
+        rw [prEvent_map]
+        simp [hx]
 
 theorem collisionCount_le (C : Committee) :
     (C.n.choose (C.t - 1)).choose 2 + (C.n.choose 2).choose 2 ≤ (C.n.choose (C.t - 1) + C.n ^ 2) ^ 2 := by
@@ -174,9 +172,9 @@ theorem collisionCount_le (C : Committee) :
 
 /-- Two equal seeds or two equal pair keys cost `seedCollisionError`. -/
 theorem keyCollision_toReal_le :
-    (Pr[fun x : Keys3 C => KeyCollision x.2.1 x.2.2 | keyGen3]).toReal ≤ seedCollisionError C := by
+    (Pr{let x : Keys3 C ← keyGen3}[KeyCollision x.2.1 x.2.2]).toReal ≤ seedCollisionError C := by
   have h := probEvent_keyCollision (C := C)
-  have h' : Pr[fun x : Keys3 C => KeyCollision x.2.1 x.2.2 | keyGen3] ≤
+  have h' : Pr{let x : Keys3 C ← keyGen3}[KeyCollision x.2.1 x.2.2] ≤
       (((C.n.choose (C.t - 1)).choose 2 + (C.n.choose 2).choose 2 : ℕ) : ℝ≥0∞) / 2 ^ 256 := by
     rw [ENNReal.div_eq_inv_mul, mul_comm]
     exact h
@@ -191,7 +189,7 @@ distinct keys and `q < 2 ^ 127`. A win with distinct keys costs `q / 2 ^ 127` fo
 guesses and the partners, and `seedHitError` for a call on a hidden key. -/
 def SigningCoreBound (prims : Primitives) (C : Committee) : Prop :=
   ∀ (A : TsigAdversary C) (q : ℕ), HasSigningQueryBound prims (tsigGame A) q → q < 2 ^ 127 →
-    (Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true | keyedRun prims A]).toReal ≤
+    (Pr{let z ← keyedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true]).toReal ≤
       signingHashError q + seedHitError C q
 
 /-- For `q ≥ 2 ^ 127` the bound is at least `1`. -/
@@ -201,7 +199,7 @@ theorem signingSecurity_large (A : TsigAdversary C) (q : ℕ) (hq : 2 ^ 127 ≤ 
   have hcoll : 0 ≤ seedCollisionError C := by unfold seedCollisionError; positivity
   have h1 : tsigAdvantage prims A ≤ 1 := by
     unfold tsigAdvantage signingAccepts
-    exact ENNReal.toReal_le_of_le_ofReal zero_le_one (by rw [ENNReal.ofReal_one]; exact probEvent_le_one)
+    exact ENNReal.toReal_le_of_le_ofReal zero_le_one (by rw [ENNReal.ofReal_one]; exact prEvent_le_one _)
   have h2 : (1 : ℝ) ≤ signingHashError q := by
     unfold signingHashError
     rw [le_div_iff₀ (by positivity), one_mul]
@@ -220,13 +218,13 @@ theorem signingSecurityProof (prims : Primitives) (C : Committee) (core : Signin
   · have hsmall : q < 2 ^ 127 := Nat.lt_of_not_le hlarge
     rw [tsigAdvantage_eq]
     have hs := probEvent_win_split prims A
-    calc (Pr[fun z => z.2.1 = true | keyedRun prims A]).toReal
-        ≤ (Pr[fun x : Keys3 C => KeyCollision x.2.1 x.2.2 | keyGen3] +
-            Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true | keyedRun prims A]).toReal :=
-          ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨probEvent_ne_top, probEvent_ne_top⟩) hs
-      _ = (Pr[fun x : Keys3 C => KeyCollision x.2.1 x.2.2 | keyGen3]).toReal +
-            (Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true | keyedRun prims A]).toReal :=
-          ENNReal.toReal_add probEvent_ne_top probEvent_ne_top
+    calc (Pr{let z ← keyedRun prims A}[z.2.1 = true]).toReal
+        ≤ (Pr{let x : Keys3 C ← keyGen3}[KeyCollision x.2.1 x.2.2] +
+            Pr{let z ← keyedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true]).toReal :=
+          ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨prEvent_ne_top _, prEvent_ne_top _⟩) hs
+      _ = (Pr{let x : Keys3 C ← keyGen3}[KeyCollision x.2.1 x.2.2]).toReal +
+            (Pr{let z ← keyedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true]).toReal :=
+          ENNReal.toReal_add (prEvent_ne_top _) (prEvent_ne_top _)
       _ ≤ seedCollisionError C + (signingHashError q + seedHitError C q) :=
           add_le_add keyCollision_toReal_le (core A q hq hsmall)
       _ = _ := by ring

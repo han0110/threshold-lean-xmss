@@ -1,5 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.Gadgets
-import VCVio.OracleComp.QueryTracking.LoggingOracle
+import VCVio.OracleComp.QueryTracking.LoggingOracle.Core
 import Mathlib.Tactic.ComputeDegree
 import Mathlib.Algebra.CharP.Algebra
 
@@ -12,7 +12,7 @@ import Mathlib.Algebra.CharP.Algebra
 the executions and estimates of `MultVerifyDistance`.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 
 noncomputable section
 
@@ -96,14 +96,15 @@ theorem fmultVerify_honest (K : Constants C E) (counts : List ℕ) (x : C.Party 
 
 /-- A distribution is within its probability of missing `a` of the point `a`. -/
 theorem tvDist_pure_le {α : Type} (mx : ProbComp α) (a : α) :
-    tvDist mx (pure a) ≤ Pr[(· ≠ a) | mx].toReal := by
-  have h2 : 𝒟[(mx >>= fun _ => pure a)] = 𝒟[(pure a : ProbComp α)] :=
-    evalDist_ext fun y => by rw [probOutput_bind_const, probFailure_eq_zero, tsub_zero, one_mul]
-  have hR : tvDist mx (pure a) = tvDist (mx >>= pure) (mx >>= fun _ => pure a) := by
-    unfold tvDist
-    rw [h2, bind_pure]
+    letI : MeasurableSpace α := ⊤
+    measureTVDist mx (pure a) ≤ Pr{let z ← mx}[z ≠ a].toReal := by
+  let : MeasurableSpace α := ⊤
+  have h2 : (mx >>= fun _ => pure a) =ᵈ (pure a : ProbComp α) := OracleComp.EvalDistEq.bind_const _ _
+  have hR : measureTVDist mx (pure a) = measureTVDist (mx >>= pure) (mx >>= fun _ => pure a) := by
+    unfold measureTVDist
+    rw [h2.evalDist_eq, bind_pure]
   rw [hR]
-  exact tvDist_bind_left_event_le mx pure (fun _ => pure a) (· ≠ a) fun b hb => by
+  exact measureTVDist_bind_left_le_prEvent_of_evalDistEq mx pure (fun _ => pure a) (· ≠ a) fun b hb => by
     rw [not_not] at hb
     rw [hb]
 
@@ -113,9 +114,9 @@ theorem multVerifyCompleteness_of_abort_bound (prims : Primitives) (K : Constant
     [SampleableType E]
     (h : ∀ (counts : List ℕ) (x : C.Party → List (Tuple C)),
       TupleInputs K counts noCoalition x ∧ CorrectTuples x →
-      Pr[(· ≠ fun _ => some ()) | (simulateQ (localAnswer prims)
+      Pr{let z ← (simulateQ (localAnswer prims)
           (honestStart (fun i => checkProtocol K i (x i)) >>=
-            honestRounds (checkFunctionalities K) checkReply (checkRounds counts.sum))).run' ∅].toReal ≤
+            honestRounds (checkFunctionalities K) checkReply (checkRounds counts.sum))).run' ∅}[z ≠ fun _ => some ()].toReal ≤
         abortErrorOf (E := E) (halvings counts.sum)) :
     MultVerifyCompletenessStatement prims K := by
   intro counts
@@ -221,7 +222,7 @@ def boolBit : Bool ≃ Bit where
   toFun b := if b then 1 else 0
   invFun x := x = 1
   left_inv b := by cases b <;> decide
-  right_inv x := by fin_cases x <;> decide
+  right_inv x := by fin_cases x <;> rfl
 
 variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] [Fintype E]
 
@@ -239,17 +240,17 @@ theorem card_field (K : Constants C E) : Fintype.card E = 2 ^ elementBits := by
 
 /-- The element of a uniform hash output is uniform. -/
 theorem probEvent_elementOfHash (K : Constants C E) (p : E → Prop) [DecidablePred p] :
-    Pr[p | elementOfHash K <$> ($ᵗ HashOutput)] = (Finset.univ.filter p).card / Fintype.card E := by
+    Pr{let z ← elementOfHash K <$> ($ᵗ HashOutput)}[p z] = (Finset.univ.filter p).card / Fintype.card E := by
   classical
-  rw [probEvent_map, probEvent_uniformSample]
-  have hcard : (Finset.univ.filter (p ∘ elementOfHash K)).card = (Finset.univ.filter p).card * 2 ^ 64 := by
+  rw [prEvent_map, SampleableType.prEvent_uniformSample]
+  have hcard : (Finset.univ.filter fun h => p (elementOfHash K h)).card = (Finset.univ.filter p).card * 2 ^ 64 := by
     rw [← Fintype.card_subtype, ← Fintype.card_subtype,
-      Fintype.card_congr ((hashSplit K).subtypeEquiv (p := fun h => (p ∘ elementOfHash K) h)
+      Fintype.card_congr ((hashSplit K).subtypeEquiv (p := fun h => p (elementOfHash K h))
         (q := fun z => p z.1) fun h => by simp [Function.comp, hashSplit_fst]),
       Fintype.card_congr (Equiv.prodSubtypeFstEquivSubtypeProd (p := p))]
     simp
   have hH : Fintype.card HashOutput = Fintype.card E * 2 ^ 64 := by
-    rw [card_field K, Fintype.card_congr (bitsEquiv hashOutputBits), Fintype.card_fun, Fintype.card_bool, Fintype.card_fin]; norm_num [elementBits, hashOutputBits]
+    rw [card_field K, Fintype.card_congr (bitsEquiv 256), Fintype.card_fun, Fintype.card_bool, Fintype.card_fin]; norm_num [elementBits]
   rw [hcard, hH]
   push_cast
   rw [ENNReal.mul_div_mul_right _ _ (by simp) (by simp)]
@@ -265,8 +266,8 @@ theorem card_zero_one [DecidableEq E] :
 /-- A challenge search on a key with no cached expansion fails with probability `(2 / |E|) ^ tries`. -/
 theorem probEvent_findChallenge_none [DecidableEq E] (K : Constants C E) (key : HashOutput) :
     ∀ (tries index : ℕ) (s : HashCache C), (∀ i ≥ index, s (.expand key i) = none) →
-      Pr[fun z => z.1 = none | (simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims)
-        (findChallenge K key tries index)).run s] ≤ (2 / Fintype.card E) ^ tries := by
+      Pr{let z ← (simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims)
+        (findChallenge K key tries index)).run s}[z.1 = none] ≤ (2 / Fintype.card E) ^ tries := by
   classical
   intro tries
   induction tries with
@@ -283,11 +284,11 @@ theorem probEvent_findChallenge_none [DecidableEq E] (K : Constants C E) (key : 
       rw [h1, hashAnswer_of_not_isFixed prims hq, OracleSpec.randomOracle,
         QueryImpl.withCaching_run_none _ (hs index le_rfl)]
       rfl
-    have h2 : (2 : ℝ≥0∞) / Fintype.card E = Pr[fun e => ¬ (e ≠ 0 ∧ e ≠ 1) | elementOfHash K <$> ($ᵗ HashOutput)] := by
+    have h2 : (2 : ℝ≥0∞) / Fintype.card E = Pr{let e ← elementOfHash K <$> ($ᵗ HashOutput)}[¬ (e ≠ 0 ∧ e ≠ 1)] := by
       rw [probEvent_elementOfHash, card_zero_one]; norm_cast
     rw [findChallenge, simulateQ_bind, StateT.run_bind, hrun, bind_map_left, pow_succ']
     nth_rewrite 1 [h2]
-    rw [probEvent_map]
+    rw [prEvent_map]
     refine probEvent_bind_le_mul fun u _ => ?_
     dsimp only
     split
@@ -295,7 +296,7 @@ theorem probEvent_findChallenge_none [DecidableEq E] (K : Constants C E) (key : 
     · rename_i h _
       rw [if_pos (by simpa using h)]
       refine ih (index + 1) _ fun i hi => ?_
-      rw [QueryCache.cacheQuery, Function.update_of_ne (by simp; omega)]
+      rw [QueryCache.cacheQuery_of_ne _ _ (by simp; omega)]
       exact hs i (by omega)
 
 theorem simulateQ_hashQuery_run_fresh {q : Query C} (hq : ¬ IsFixed q) {s : HashCache C} (hs : s q = none) :
@@ -310,8 +311,8 @@ theorem simulateQ_hashQuery_run_fresh {q : Query C} (hq : ¬ IsFixed q) {s : Has
 probability `m / |E|`. -/
 theorem probEvent_expand_zero [DecidableEq E] (K : Constants C E) (key : HashOutput) :
     ∀ (count index m : ℕ) (s : HashCache C), m ≤ count → (∀ i ≥ index, s (.expand key i) = none) →
-      Pr[fun z => ¬ ∀ b < m, z.1.getD b 0 ≠ 0 | (simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims)
-        ((List.range' index count).mapM fun k => elementOfHash K <$> hashQuery (.expand key k))).run s] ≤
+      Pr{let z ← (simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims)
+        ((List.range' index count).mapM fun k => elementOfHash K <$> hashQuery (.expand key k))).run s}[¬ ∀ b < m, z.1.getD b 0 ≠ 0] ≤
         m / Fintype.card E := by
   intro count
   induction count with
@@ -327,33 +328,34 @@ theorem probEvent_expand_zero [DecidableEq E] (K : Constants C E) (key : HashOut
     have hsplit : (m : ℝ≥0∞) / Fintype.card E = 1 / Fintype.card E + ((m - 1 : ℕ) : ℝ≥0∞) / Fintype.card E := by
       rw [ENNReal.div_add_div_same]; congr 1; norm_cast; omega
     rw [hsplit]
-    refine probEvent_bind_le_add (p := fun u => elementOfHash K u ≠ 0) ?_ fun u _ hu => ?_
+    refine (prEvent_bind_le_prEvent_add_of_support _ _ (fun u => ¬ elementOfHash K u ≠ 0) _ fun u _ hu => ?_).trans
+      (add_le_add ?_ le_rfl)
+    rotate_left
     · have := probEvent_elementOfHash K (fun e => e = 0)
-      rw [probEvent_map] at this
+      rw [prEvent_map] at this
       simp only [not_not]
       convert this.le using 2
       all_goals try rfl
       · have : (Finset.univ.filter fun e : E => e = 0) = {0} := by ext; simp
         rw [this]; simp
-    · simp only [simulateQ_pure, StateT.run_pure, bind_pure_comp, probEvent_map]
-      refine le_trans (probEvent_mono fun z _ hz => ?_) (ih (index + 1) (m - 1) _ (by omega) fun i hi => ?_)
-      · simp only [Function.comp_apply] at hz
-        refine fun hall => hz fun b hb => ?_
+    · simp only [simulateQ_pure, StateT.run_pure, bind_pure_comp, prEvent_map]
+      refine le_trans (prEvent_mono_of_support _ _ _ fun z _ hz => ?_) (ih (index + 1) (m - 1) _ (by omega) fun i hi => ?_)
+      · refine fun hall => hz fun b hb => ?_
         rcases b with _ | b
         · simpa using hu
         · simpa using hall b (by omega)
-      · rw [QueryCache.cacheQuery, Function.update_of_ne (by simp; omega)]
+      · rw [QueryCache.cacheQuery_of_ne _ _ (by simp; omega)]
         exact hs i (by omega)
 
 /-- A fresh query of `H` lands in a set of `S` hash outputs with probability `|S| / 2 ^ 256`. -/
 theorem probEvent_hash_fresh_mem {q : Query C} (hq : ¬ IsFixed q) {s : HashCache C} (hs : s q = none)
     (S : Finset HashOutput) :
-    Pr[fun z => z.1 ∈ S | (simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims) (hashQuery q)).run s] ≤
+    Pr{let z ← (simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims) (hashQuery q)).run s}[z.1 ∈ S] ≤
       S.card / 2 ^ 256 := by
   classical
-  rw [simulateQ_hashQuery_run_fresh prims hq hs, probEvent_map, probEvent_uniformSample]
+  rw [simulateQ_hashQuery_run_fresh prims hq hs, prEvent_map, SampleableType.prEvent_uniformSample]
   have hH : Fintype.card HashOutput = 2 ^ 256 := by
-    rw [Fintype.card_congr (bitsEquiv hashOutputBits), Fintype.card_fun, Fintype.card_bool, Fintype.card_fin]; rfl
+    rw [Fintype.card_congr (bitsEquiv 256), Fintype.card_fun, Fintype.card_bool, Fintype.card_fin]
   rw [hH, Nat.cast_pow, Nat.cast_ofNat]
   refine ENNReal.div_le_div_right ?_ _
   exact_mod_cast Finset.card_le_card fun u hu => by simpa using hu
@@ -406,16 +408,16 @@ theorem sameRun_ro_dup {α γ : Type} (oa : OracleComp (RoSpec C) α) (k : α �
 
 /-- Every operator runs the same computation of `H` and `PRG`, which runs once. -/
 theorem sameRun_sequenceFin_const {β : Type} (oa : OracleComp (RoSpec C) β) :
-    ∀ n : ℕ, SameRun prims (Concrete.sequenceFin fun _ : Fin (n + 1) => liftComp oa (LocalSpec C))
+    ∀ n : ℕ, SameRun prims (OverPermutation.sequenceFin fun _ : Fin (n + 1) => liftComp oa (LocalSpec C))
       (liftComp oa (LocalSpec C) >>= fun b => pure fun _ => b)
   | 0 => by
-    simp only [Concrete.sequenceFin, bind_assoc, pure_bind]
+    simp only [OverPermutation.sequenceFin, bind_assoc, pure_bind]
     refine SameRun.bind_right _ fun b => SameRun.of_eq ?_
     congr 1; funext i; cases i using Fin.cases with
     | zero => rfl
     | succ i => exact i.elim0
   | n + 1 => by
-    rw [Concrete.sequenceFin]
+    rw [OverPermutation.sequenceFin]
     refine (SameRun.bind_right _ fun b => (sameRun_sequenceFin_const oa n).bind fun _ => SameRun.refl _ _).trans ?_
     simp only [bind_assoc, pure_bind]
     have hd := sameRun_ro_dup prims oa fun a b =>
@@ -429,8 +431,8 @@ theorem sameRun_sequenceFin_const {β : Type} (oa : OracleComp (RoSpec C) β) :
 computation runs once. -/
 theorem sameRun_sequenceFin_common {β γ : Type} {n : ℕ} (oa : OracleComp (RoSpec C) β)
     (B : Fin (n + 1) → β → OracleComp (LocalSpec C) γ) :
-    SameRun prims (Concrete.sequenceFin fun j => liftComp oa (LocalSpec C) >>= B j)
-      (liftComp oa (LocalSpec C) >>= fun b => Concrete.sequenceFin fun j => B j b) := by
+    SameRun prims (OverPermutation.sequenceFin fun j => liftComp oa (LocalSpec C) >>= B j)
+      (liftComp oa (LocalSpec C) >>= fun b => OverPermutation.sequenceFin fun j => B j b) := by
   have h := sameRun_sequenceFin_dep prims (fun _ : Fin (n + 1) => liftComp oa (LocalSpec C)) B (fun _ _ v => v)
   simp only [bind_pure] at h
   refine h.trans ?_
@@ -446,17 +448,20 @@ theorem probEvent_challenge_none [DecidableEq E] (K : Constants C E) {q : Query 
     (hq' : ∀ k i, q ≠ .expand k i)
     {s : HashCache C} (hs : s q = none) (Ks : Finset HashOutput)
     (hexpand : ∀ k i, s (.expand k i) ≠ none → k ∈ Ks) :
-    Pr[fun z => z.1 = none | (simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims)
-      (hashQuery q >>= fun key => findChallenge K key challengeTries 0)).run s] ≤
+    Pr{let z ← (simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims)
+      (hashQuery q >>= fun key => findChallenge K key challengeTries 0)).run s}[z.1 = none] ≤
       Ks.card / 2 ^ 256 + (2 / Fintype.card E) ^ challengeTries := by
   rw [simulateQ_bind, StateT.run_bind]
   have hev : ∀ mx : ProbComp (Option E × HashCache C),
-      Pr[fun z => z.1 = none | mx] = Pr[fun z => ¬ (z.1 ≠ none) | mx] := fun mx => by simp
+      Pr{let z ← mx}[z.1 = none] = Pr{let z ← mx}[¬ (z.1 ≠ none)] := fun mx => by simp
   rw [hev]
-  refine probEvent_bind_le_add (p := fun z : HashOutput × HashCache C => z.1 ∉ Ks) ?_ fun z hz hkey => ?_
+  refine (prEvent_bind_le_prEvent_add_of_support _ _ (fun z : HashOutput × HashCache C => ¬ z.1 ∉ Ks) _
+    fun z hz hkey => ?_).trans (add_le_add ?_ le_rfl)
+  rotate_left
   · simp only [not_not]
     exact probEvent_hash_fresh_mem prims hq hs Ks
-  · rw [← hev]
+  · rw [not_not] at hkey
+    rw [← hev]
     refine probEvent_findChallenge_none prims K z.1 challengeTries 0 z.2 fun i _ => ?_
     by_contra hne
     have hz' := simulateQ_hashQuery_run_fresh prims hq hs ▸ hz
@@ -465,7 +470,7 @@ theorem probEvent_challenge_none [DecidableEq E] (K : Constants C E) {q : Query 
     by_cases hqi : (Query.expand u i : Query C) = q
     · exact (hq' u i hqi.symm).elim
     · dsimp only at hne hkey
-      unfold QueryCache.cacheQuery at hne; rw [Function.update_of_ne hqi] at hne
+      rw [QueryCache.cacheQuery_of_ne _ _ hqi] at hne
       exact hkey (hexpand u i hne)
 
 end
@@ -484,8 +489,8 @@ variable {C : Committee} {E : Type} {I O L R α : Type} (prims : Primitives)
 
 theorem sameRun_sequenceFin_common_pos {β γ : Type} : ∀ {n : ℕ} (_ : 0 < n) (oa : OracleComp (RoSpec C) β)
     (B : Fin n → β → OracleComp (LocalSpec C) γ),
-    SameRun prims (Concrete.sequenceFin fun j => liftComp oa (LocalSpec C) >>= B j)
-      (liftComp oa (LocalSpec C) >>= fun b => Concrete.sequenceFin fun j => B j b)
+    SameRun prims (OverPermutation.sequenceFin fun j => liftComp oa (LocalSpec C) >>= B j)
+      (liftComp oa (LocalSpec C) >>= fun b => OverPermutation.sequenceFin fun j => B j b)
   | _ + 1, _, oa, B => sameRun_sequenceFin_common prims oa B
 
 /-- The honest network after a call of all operators meets an event with probability at most `ε`
@@ -494,12 +499,12 @@ theorem probEvent_honest_call [Nonempty C.Party] (F : Functionality C I O L R) (
     (input : C.Party → I) (f : (i : C.Party) → Option O → PartyM C E (CallSpec I O) α)
     (event : (C.Party → Option α) → Prop) (s : HashCache C) (ε : ℝ≥0∞)
     (h : ∀ z ∈ support ((simulateQ (localAnswer prims) (honestFunctionality F reply fun i => some (input i))).run s),
-      Pr[event | (simulateQ (localAnswer prims)
-        (honestStart (fun i => f i (z.1 i)) >>= honestRounds F reply fuel)).run' z.2] ≤ ε) :
-    Pr[event | (simulateQ (localAnswer prims)
-      (honestStart (fun i => call (input i) >>= f i) >>= honestRounds F reply (fuel + 1))).run' s] ≤ ε := by
+      Pr{let y ← (simulateQ (localAnswer prims)
+        (honestStart (fun i => f i (z.1 i)) >>= honestRounds F reply fuel)).run' z.2}[event y] ≤ ε) :
+    Pr{let z ← (simulateQ (localAnswer prims)
+      (honestStart (fun i => call (input i) >>= f i) >>= honestRounds F reply (fuel + 1))).run' s}[event z] ≤ ε := by
   rw [honestRounds_call, simulateQ_bind, StateT.run'_eq, StateT.run_bind, map_bind]
-  exact probEvent_bind_le_of_forall_le fun z hz => by
+  exact prEvent_bind_le_of_forall_le_of_support _ _ _ fun z hz => by
     have := h z hz
     rwa [StateT.run'_eq] at this
 
@@ -509,11 +514,11 @@ theorem probEvent_honest_common [Nonempty C.Party] {β : Type} (F : Functionalit
     (fuel : ℕ) (oa : OracleComp (RoSpec C) β) (g : C.Party → β → PartyM C E (CallSpec I O) α)
     (event : (C.Party → Option α) → Prop) (bad : β × HashCache C → Prop) (s : HashCache C) (ε : ℝ≥0∞)
     (h : ∀ z ∈ support ((simulateQ (localAnswer prims) (liftComp oa (LocalSpec C))).run s), ¬ bad z →
-      Pr[event | (simulateQ (localAnswer prims)
-        (honestStart (fun i => g i z.1) >>= honestRounds F reply fuel)).run' z.2] ≤ ε) :
-    Pr[event | (simulateQ (localAnswer prims)
-      (honestStart (fun i => oracleStep oa >>= g i) >>= honestRounds F reply fuel)).run' s] ≤
-      Pr[bad | (simulateQ (localAnswer prims) (liftComp oa (LocalSpec C))).run s] + ε := by
+      Pr{let y ← (simulateQ (localAnswer prims)
+        (honestStart (fun i => g i z.1) >>= honestRounds F reply fuel)).run' z.2}[event y] ≤ ε) :
+    Pr{let z ← (simulateQ (localAnswer prims)
+      (honestStart (fun i => oracleStep oa >>= g i) >>= honestRounds F reply fuel)).run' s}[event z] ≤
+      Pr{let z ← (simulateQ (localAnswer prims) (liftComp oa (LocalSpec C))).run s}[bad z] + ε := by
   have hsame : SameRun prims (honestStart (fun i => oracleStep oa >>= g i) >>= honestRounds F reply fuel)
       (liftComp oa (LocalSpec C) >>= fun b => honestStart (fun i => g i b) >>= honestRounds F reply fuel) := by
     have hstart : SameRun prims (honestStart fun i => oracleStep oa >>= g i)
@@ -523,13 +528,14 @@ theorem probEvent_honest_common [Nonempty C.Party] {β : Type} (F : Functionalit
       exact sameRun_sequenceFin_common_pos prims (Fin.pos (Classical.arbitrary C.Party)) oa _
     refine (hstart.bind fun _ => SameRun.refl _ _).trans (SameRun.of_eq ?_)
     rw [bind_assoc]
-  have hrun : Pr[event | (simulateQ (localAnswer prims)
-      (honestStart (fun i => oracleStep oa >>= g i) >>= honestRounds F reply fuel)).run' s] =
-      Pr[event | (simulateQ (localAnswer prims) (liftComp oa (LocalSpec C) >>= fun b =>
-        honestStart (fun i => g i b) >>= honestRounds F reply fuel)).run' s] := by
-    simp only [StateT.run'_eq, probEvent_def, evalDist_map, hsame s]
+  have hrun : Pr{let z ← (simulateQ (localAnswer prims)
+      (honestStart (fun i => oracleStep oa >>= g i) >>= honestRounds F reply fuel)).run' s}[event z] =
+      Pr{let z ← (simulateQ (localAnswer prims) (liftComp oa (LocalSpec C) >>= fun b =>
+        honestStart (fun i => g i b) >>= honestRounds F reply fuel)).run' s}[event z] := by
+    simp only [StateT.run'_eq]
+    exact ((hsame s).map _).prEvent_eq _
   rw [hrun, simulateQ_bind, StateT.run'_eq, StateT.run_bind, map_bind]
-  refine probEvent_bind_le_probEvent_add fun z hz hbad => ?_
+  refine prEvent_bind_le_prEvent_add_of_support _ _ _ _ fun z hz hbad => ?_
   have := h z hz hbad
   rwa [StateT.run'_eq] at this
 
@@ -798,8 +804,8 @@ theorem support_extendMult [Nonempty C.Party] (K : Constants C E) (products : C.
   erw [QueryImpl.add_apply_inr] at hz
   simp only [OracleQuery.cont_query, id_map, pure_bind, simulateQ_pure, support_map, Set.mem_image,
     support_bind, support_pure, Set.mem_iUnion, Set.mem_singleton_iff, exists_prop] at hz
-  obtain ⟨x, ⟨x1, ⟨r, ⟨y, hy, rfl⟩, fresh, -, rfl⟩, rfl⟩, rfl⟩ := hz
-  subst hy
+  obtain ⟨x, ⟨x1, ⟨r, hr, fresh, -, rfl⟩, rfl⟩, rfl⟩ := hz
+  obtain rfl : r = (0, 0, 0, Finset.univ) := by simpa using hr
   obtain ⟨T₀, hT₀⟩ := lackedTerm_empty (C := C)
   let base : Shares C E := fun T g =>
     if h : g < (firstInput fun i => some (products i)).length then fresh T ⟨g, h⟩ else 0
@@ -833,8 +839,8 @@ theorem support_frand [Nonempty C.Party] {R : Type} [AddCommGroup R] [Sampleable
   erw [QueryImpl.add_apply_inr] at hz
   simp only [OracleQuery.cont_query, id_map, pure_bind, simulateQ_pure, support_map, Set.mem_image,
     support_bind, support_pure, Set.mem_iUnion, Set.mem_singleton_iff, exists_prop] at hz
-  obtain ⟨x, ⟨y, hy, rfl⟩, fresh, -, freshPair, -, rfl⟩ := hz
-  subst hy
+  obtain ⟨x, hx, fresh, -, freshPair, -, rfl⟩ := hz
+  obtain rfl : x = (0, 0) := by simpa using hx
   refine ⟨fun T g => if h : g < firstInput (C := C) (fun _ => some count) then fresh T ⟨g, h⟩ else 0,
     fun i j => if h : i = j then fun _ => 0 else fun g =>
       if h' : g < firstInput (C := C) (fun _ => some count) then freshPair (C.pairOf i j h) ⟨g, h'⟩ else 0,
@@ -1079,16 +1085,16 @@ theorem probEvent_honest_local {β : Type} (F : Functionality C I O L R) (reply 
     (oa : C.Party → OracleComp (RoSpec C) β) (g : C.Party → β → PartyM C E (CallSpec I O) α)
     (event : (C.Party → Option α) → Prop) (s : HashCache C) (ε : ℝ≥0∞)
     (h : ∀ z ∈ support ((simulateQ (localAnswer prims)
-        (Concrete.sequenceFin fun i => liftComp (oa i) (LocalSpec C))).run s),
-      Pr[event | (simulateQ (localAnswer prims)
-        (honestStart (fun i => g i (z.1 i)) >>= honestRounds F reply fuel)).run' z.2] ≤ ε) :
-    Pr[event | (simulateQ (localAnswer prims)
-      (honestStart (fun i => oracleStep (oa i) >>= g i) >>= honestRounds F reply fuel)).run' s] ≤ ε := by
+        (OverPermutation.sequenceFin fun i => liftComp (oa i) (LocalSpec C))).run s),
+      Pr{let y ← (simulateQ (localAnswer prims)
+        (honestStart (fun i => g i (z.1 i)) >>= honestRounds F reply fuel)).run' z.2}[event y] ≤ ε) :
+    Pr{let z ← (simulateQ (localAnswer prims)
+      (honestStart (fun i => oracleStep (oa i) >>= g i) >>= honestRounds F reply fuel)).run' s}[event z] ≤ ε := by
   have hsame : SameRun prims (honestStart (fun i => oracleStep (oa i) >>= g i) >>= honestRounds F reply fuel)
-      ((Concrete.sequenceFin fun i => liftComp (oa i) (LocalSpec C)) >>= fun b =>
+      ((OverPermutation.sequenceFin fun i => liftComp (oa i) (LocalSpec C)) >>= fun b =>
         honestStart (fun i => g i (b i)) >>= honestRounds F reply fuel) := by
     have hstart : SameRun prims (honestStart fun i => oracleStep (oa i) >>= g i)
-        ((Concrete.sequenceFin fun i => liftComp (oa i) (LocalSpec C)) >>= fun b => honestStart fun i => g i (b i)) := by
+        ((OverPermutation.sequenceFin fun i => liftComp (oa i) (LocalSpec C)) >>= fun b => honestStart fun i => g i (b i)) := by
       unfold honestStart
       simp only [advance_oracleStep_bind]
       have h := sameRun_sequenceFin_dep prims (fun i => liftComp (oa i) (LocalSpec C))
@@ -1097,13 +1103,14 @@ theorem probEvent_honest_local {β : Type} (F : Functionality C I O L R) (reply 
       simp only [bind_pure]
     refine (hstart.bind fun _ => SameRun.refl _ _).trans (SameRun.of_eq ?_)
     rw [bind_assoc]
-  have hrun : Pr[event | (simulateQ (localAnswer prims)
-      (honestStart (fun i => oracleStep (oa i) >>= g i) >>= honestRounds F reply fuel)).run' s] =
-      Pr[event | (simulateQ (localAnswer prims) ((Concrete.sequenceFin fun i => liftComp (oa i) (LocalSpec C)) >>= fun b =>
-        honestStart (fun i => g i (b i)) >>= honestRounds F reply fuel)).run' s] := by
-    simp only [StateT.run'_eq, probEvent_def, evalDist_map, hsame s]
+  have hrun : Pr{let z ← (simulateQ (localAnswer prims)
+      (honestStart (fun i => oracleStep (oa i) >>= g i) >>= honestRounds F reply fuel)).run' s}[event z] =
+      Pr{let z ← (simulateQ (localAnswer prims) ((OverPermutation.sequenceFin fun i => liftComp (oa i) (LocalSpec C)) >>= fun b =>
+        honestStart (fun i => g i (b i)) >>= honestRounds F reply fuel)).run' s}[event z] := by
+    simp only [StateT.run'_eq]
+    exact ((hsame s).map _).prEvent_eq _
   rw [hrun, simulateQ_bind, StateT.run'_eq, StateT.run_bind, map_bind]
-  refine probEvent_bind_le_of_forall_le fun z hz => ?_
+  refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun z hz => ?_
   have := h z hz
   rwa [StateT.run'_eq] at this
 
@@ -1321,7 +1328,7 @@ theorem conv_congr (i : C.Party) (xv X : Shares C E) (k : ℕ) (h : ∀ T, i ∈
     conv K (localContext i) xv k = conv K (localContext i) X k := by
   unfold conv
   refine Finset.sum_congr rfl fun T hT => ?_
-  rw [h T (by simpa [localContext] using hT)]
+  rw [h T (Finset.mem_filter.mp hT).2]
 
 theorem isShamir_conv [CharP E 2] (X : Shares C E) (k : ℕ) :
     IsShamir K (fun i => conv K (localContext i) X k) (∑ T, X T k) := by
@@ -1370,7 +1377,7 @@ theorem support_hashQuery_entries {q : Query C} (hq : ¬ IsFixed q) (s : HashCac
     by_cases h : q' = q
     · exact Or.inr h
     · left
-      simpa [QueryCache.cacheQuery, Function.update_of_ne h] using hq'
+      simpa [QueryCache.cacheQuery_of_ne _ _ h] using hq'
   · have h1 : simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims) (hashQuery q) = hashAnswer prims q :=
       (simulateQ_query _ _).trans (id_map _)
     rw [h1, hashAnswer_run_cached prims hq hs, support_pure, Set.mem_singleton_iff] at hz
@@ -1449,7 +1456,7 @@ theorem coinKey_fresh {Ks : Finset HashOutput} {L ρ : ℕ} (hρ : L ≤ ρ) {s 
 /-- A challenge fails with probability at most `|Ks| / 2^256 + (2 / |E|)^tries`. -/
 theorem challengeQuery_none_le (tag ρ : ℕ) (v : List E) (Ks : Finset HashOutput) (L : ℕ) (hρ : L ≤ ρ)
     (s : HashCache C) (hs : CacheOK Ks L s) :
-    Pr[fun z => z.1 = none | (simulateQ (localAnswer prims) (liftComp (challengeQuery K tag ρ v) (LocalSpec C))).run s] ≤
+    Pr{let z ← (simulateQ (localAnswer prims) (liftComp (challengeQuery K tag ρ v) (LocalSpec C))).run s}[z.1 = none] ≤
       Ks.card / 2 ^ 256 + (2 / Fintype.card E) ^ challengeTries := by
   rw [simulateQ_localAnswer_liftComp]
   exact probEvent_challenge_none prims K (by rintro ⟨_, h, _⟩; cases h) (fun k i h => by cases h)
@@ -1478,13 +1485,13 @@ theorem challengeQuery_cache (tag ρ : ℕ) (v : List E) (Ks : Finset HashOutput
 /-- The coins `τ` of a fresh key start with `m` nonzero values, except with probability `m / |E|`. -/
 theorem tauQuery_zero_le (tag ρ : ℕ) (v : List E) (count m : ℕ) (hm : m ≤ count) (L : ℕ) (hρ : L ≤ ρ)
     (s : HashCache C) (hs : CacheOK ∅ L s) :
-    Pr[fun z => ¬ ∀ b < m, z.1.getD b 0 ≠ 0 |
-      (simulateQ (localAnswer prims) (liftComp (tauQuery K tag ρ v count) (LocalSpec C))).run s] ≤
+    Pr{let z ←
+      (simulateQ (localAnswer prims) (liftComp (tauQuery K tag ρ v count) (LocalSpec C))).run s}[¬ ∀ b < m, z.1.getD b 0 ≠ 0] ≤
       m / Fintype.card E := by
   rw [simulateQ_localAnswer_liftComp, tauQuery, simulateQ_bind, StateT.run_bind]
   have hq : ¬ IsFixed (C := C) (.coinKey tag ρ (v.flatMap fun v => List.ofFn (K.encode v))) := by
     rintro ⟨_, h, _⟩; cases h
-  refine probEvent_bind_le_of_forall_le fun z hz => ?_
+  refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun z hz => ?_
   rw [List.range_eq_range']
   refine probEvent_expand_zero prims K z.1 count 0 m z.2 hm fun i _ => ?_
   by_contra hne
@@ -1589,15 +1596,15 @@ theorem support_sequenceFin_inv [Preorder σ] (Q : σ → Prop) :
     ∀ {n : ℕ} (f : Fin n → StateT σ ProbComp α) (P : Fin n → α → σ → Prop)
       (hf : ∀ i s, Q s → ∀ z ∈ support ((f i).run s), s ≤ z.2 ∧ Q z.2 ∧ P i z.1 z.2)
       (hP : ∀ i a s s', P i a s → s ≤ s' → P i a s') (s : σ), Q s →
-      ∀ z ∈ support ((Concrete.sequenceFin f).run s), s ≤ z.2 ∧ Q z.2 ∧ ∀ i, P i (z.1 i) z.2
+      ∀ z ∈ support ((OverPermutation.sequenceFin f).run s), s ≤ z.2 ∧ Q z.2 ∧ ∀ i, P i (z.1 i) z.2
   | 0, f, P, hf, hP, s, hs => by
     intro z hz
-    simp [Concrete.sequenceFin] at hz
+    simp [OverPermutation.sequenceFin] at hz
     subst hz
     exact ⟨le_rfl, hs, fun i => i.elim0⟩
   | n + 1, f, P, hf, hP, s, hs => by
     intro z hz
-    simp only [Concrete.sequenceFin, StateT.run_bind, mem_support_bind_iff] at hz
+    simp only [OverPermutation.sequenceFin, StateT.run_bind, mem_support_bind_iff] at hz
     obtain ⟨⟨a, s₁⟩, h₁, hz⟩ := hz
     obtain ⟨⟨as, s₂⟩, h₂, hz⟩ := hz
     simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
@@ -1684,7 +1691,7 @@ cache keeps its expansions and coin keys. -/
 theorem digests_agree (salts : C.Party → Shares C Bit) (S : Shares C Bit)
     (hS : ∀ i T, i ∈ C.holders T → salts i T = S T) (h : C.Party → C.Term → List Bit) (hh : HistAgree h)
     (Ks : Finset HashOutput) (L : ℕ) (s : HashCache C) (hs : CacheOK Ks L s) z
-    (hz : z ∈ support ((simulateQ (localAnswer prims) (Concrete.sequenceFin fun i =>
+    (hz : z ∈ support ((simulateQ (localAnswer prims) (OverPermutation.sequenceFin fun i =>
       liftComp (digestQuery i (salts i) (h i)) (LocalSpec C))).run s)) :
     CacheOK Ks L z.2 ∧ (∀ i, (z.1 i).length = C.terms.length) ∧
       ∀ T, ∀ j ∈ C.holders T, ∀ j' ∈ C.holders T, (z.1 j)[C.terms.idxOf T]? = (z.1 j')[C.terms.idxOf T]? := by
@@ -1835,10 +1842,10 @@ theorem final_identity [CharP E 2] (α β a b r : E) :
 theorem open_step_zero [Nonempty C.Party] (v : C.Party → ℕ → E) (vals : ℕ → E)
     (hv : ∀ g < 3, IsShamir K (fun i => v i g) (vals g)) (hfinal : vals 0 * vals 1 = vals 2)
     (st : C.Party → RunState C) (fuel : ℕ) (s : HashCache C) :
-    Pr[(· ≠ fun _ => some ()) | (simulateQ (localAnswer prims)
+    Pr{let z ← (simulateQ (localAnswer prims)
       (honestStart (fun j => (StateT.lift (openSh K (localContext j) (v j) 3) >>= fun opened =>
         (StateT.lift (require (opened 0 * opened 1 = opened 2)) : RunM C E (CheckSpec C E) Unit)).run' (st j)) >>=
-        honestRounds (checkFunctionalities K) checkReply (fuel + 1))).run' s] = 0 := by
+        honestRounds (checkFunctionalities K) checkReply (fuel + 1))).run' s}[z ≠ fun _ => some ()] = 0 := by
   simp only [openSh_run']
   rw [honestRounds_exchange]
   swap
@@ -1857,9 +1864,9 @@ theorem final_bound [Nonempty C.Party] (A B : C.Party → ℕ → E) (D : C.Part
     (hA : IsShamir K (fun i => A i 0) a) (hB : IsShamir K (fun i => B i 0) b) (hD : IsShamir K D (a * b))
     (h : C.Party → C.Term → List Bit) (hh : HistAgree h) (L : ℕ) (Ks : Finset HashOutput) (s : HashCache C)
     (hs : CacheOK Ks L s) (fuel : ℕ) :
-    Pr[(· ≠ fun _ => some ()) | (simulateQ (localAnswer prims)
+    Pr{let z ← (simulateQ (localAnswer prims)
       (honestStart (fun i => (finalStep K (localContext i) (hybridCheckGadgets K i) (A i, B i, D i)).run'
-        ⟨h i, L, 0⟩) >>= honestRounds (checkFunctionalities K) checkReply (fuel + 6))).run' s] ≤
+        ⟨h i, L, 0⟩) >>= honestRounds (checkFunctionalities K) checkReply (fuel + 6))).run' s}[z ≠ fun _ => some ()] ≤
       Ks.card / 2 ^ 256 + (2 / Fintype.card E) ^ challengeTries := by
   simp only [finalStep, randElements_run']
   refine probEvent_honest_call prims _ _ (fuel + 5) (fun _ => Sum.inr (Sum.inl 2)) _ _ s _ ?_
@@ -2000,10 +2007,10 @@ theorem halving_bound [Nonempty C.Party] (width : ℕ) (hwidth : 1 ≤ width) :
       IsShamir K D (∑ k ∈ range (halvedLength^[j₀] width), Av k * Bv k) →
       ∀ (h : C.Party → C.Term → List Bit), HistAgree h → ∀ (L c : ℕ) (Ks : Finset HashOutput), Ks.card ≤ c →
       ∀ (s : HashCache C), CacheOK Ks L s → ∀ fuel : ℕ,
-      Pr[(· ≠ fun _ => some ()) | (simulateQ (localAnswer prims)
+      Pr{let z ← (simulateQ (localAnswer prims)
         (honestStart (fun i => ((List.range' j₀ n).foldlM (halvingStep K (localContext i) (hybridCheckGadgets K i) width)
           (A i, B i, D i) >>= finalStep K (localContext i) (hybridCheckGadgets K i)).run' ⟨h i, L, 0⟩) >>=
-          honestRounds (checkFunctionalities K) checkReply (fuel + 2 * n + 6))).run' s] ≤ chalErr E c (n + 1) := by
+          honestRounds (checkFunctionalities K) checkReply (fuel + 2 * n + 6))).run' s}[z ≠ fun _ => some ()] ≤ chalErr E c (n + 1) := by
   intro n
   induction n with
   | zero =>
@@ -2171,7 +2178,7 @@ theorem slice_bound [Nonempty C.Party] (τ : List E) (count : ℕ) (hτ : ∀ b 
         coinProduct τ 0 (sliceBits - j₀) (k / sliceWidth count) * (∑ T, XS T k) * ∑ T, YS T k) →
       ∀ (h : C.Party → C.Term → List Bit), HistAgree h → ∀ (L c : ℕ) (Ks : Finset HashOutput), Ks.card ≤ c →
       ∀ (s : HashCache C), CacheOK Ks L s → ∀ fuel : ℕ,
-      Pr[(· ≠ fun _ => some ()) | (simulateQ (localAnswer prims)
+      Pr{let z ← (simulateQ (localAnswer prims)
         (honestStart (fun i => ((List.range' j₀ n).foldlM (sliceStep K (localContext i) (hybridCheckGadgets K i) τ count)
           (xs i, ys i, D i) >>= fun p =>
             (List.range (halvingSteps (sliceWidth count))).foldlM
@@ -2179,7 +2186,7 @@ theorem slice_bound [Nonempty C.Party] (τ : List E) (count : ℕ) (hτ : ∀ b 
               (conv K (localContext i) p.1, conv K (localContext i) p.2.1, p.2.2) >>=
             finalStep K (localContext i) (hybridCheckGadgets K i)).run' ⟨h i, L, 0⟩) >>=
           honestRounds (checkFunctionalities K) checkReply
-            (fuel + 2 * n + 2 * halvingSteps (sliceWidth count) + 6))).run' s] ≤
+            (fuel + 2 * n + 2 * halvingSteps (sliceWidth count) + 6))).run' s}[z ≠ fun _ => some ()] ≤
         chalErr E c (n + halvingSteps (sliceWidth count) + 1) := by
   haveI := charP_two (E := E)
   intro n
@@ -2527,9 +2534,9 @@ attribute [local instance] inhabitedField
 
 theorem check_honest_bound [Nonempty C.Party] (counts : List ℕ) (x : C.Party → List (Tuple C))
     (hx : TupleInputs K counts noCoalition x ∧ CorrectTuples x) (hpos : counts.sum ≠ 0) :
-    Pr[(· ≠ fun _ => some ()) | (simulateQ (localAnswer prims)
+    Pr{let z ← (simulateQ (localAnswer prims)
       (honestStart (fun i => checkProtocol K i (x i)) >>=
-        honestRounds (checkFunctionalities K) checkReply (checkRounds counts.sum))).run' ∅] ≤
+        honestRounds (checkFunctionalities K) checkReply (checkRounds counts.sum))).run' ∅}[z ≠ fun _ => some ()] ≤
       sliceBits / Fintype.card E + chalErr E 1 (halvings counts.sum + 1) := by
   haveI := charP_two (E := E)
   have hcnt : ∀ i, ((x i).map (·.count)).sum = counts.sum := fun i => by rw [tupleInputs_count hx.1 i]
@@ -2644,7 +2651,7 @@ theorem multVerifyCompleteness [SampleableType E] (prims : Primitives) (K : Cons
     have hprog : ∀ i, checkProtocol K i (x i) = pure () := fun i => by
       simp [checkProtocol, check, hcnt i, StateT.run'_eq]
     simp only [hprog, honestRounds_pure, simulateQ_pure, StateT.run'_eq, StateT.run_pure, map_pure,
-      probEvent_pure, ne_eq, not_true_eq_false, if_false, ENNReal.toReal_zero]
+      prEvent_pure_prop, ne_eq, not_true_eq_false, if_false, ENNReal.toReal_zero]
     unfold abortErrorOf coinFailure coinKeyCollision
     positivity
   · refine (ENNReal.toReal_mono ?_ (check_honest_bound prims K counts x hx hpos)).trans (chalErr_toReal_le _)
@@ -2676,15 +2683,15 @@ variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] [Fintype E] [Decid
 continuation meets `q` with probability at most `1` on `p₁` and at most `B` on `p₂`. -/
 theorem probEvent_bind_le_split {α β : Type} {mx : ProbComp α} {my : α → ProbComp β} {q : β → Prop}
     (p₁ p₂ : α → Prop) [DecidablePred p₁] [DecidablePred p₂] (B : ℝ≥0∞)
-    (h : ∀ x ∈ support mx, Pr[q | my x] ≤ (if p₁ x then 1 else 0) + (if p₂ x then B else 0)) :
-    Pr[q | mx >>= my] ≤ Pr[p₁ | mx] + Pr[p₂ | mx] * B := by
-  rw [probEvent_bind_eq_tsum, probEvent_eq_tsum_ite, probEvent_eq_tsum_ite, ← ENNReal.tsum_mul_right,
+    (h : ∀ x ∈ support mx, Pr{let z ← my x}[q z] ≤ (if p₁ x then 1 else 0) + (if p₂ x then B else 0)) :
+    Pr{let z ← mx >>= my}[q z] ≤ Pr{let z ← mx}[p₁ z] + Pr{let z ← mx}[p₂ z] * B := by
+  rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_eq_tsum_ite, OracleComp.prEvent_eq_tsum_ite, ← ENNReal.tsum_mul_right,
     ← ENNReal.tsum_add]
   refine ENNReal.tsum_le_tsum fun x => ?_
   by_cases hx : x ∈ support mx
   · refine (mul_le_mul' le_rfl (h x hx)).trans (le_of_eq ?_)
     split_ifs <;> simp [mul_add]
-  · simp [probOutput_eq_zero_of_not_mem_support hx]
+  · simp [prEvent_eq_zero_of_not_mem_support _ hx]
 
 theorem card_add_ratio (a M : ℕ) (hM : M ≠ 0) :
     (a : ℝ≥0∞) / (M + 2 : ℕ) + 2 / (M + 2 : ℕ) * (a / M) = a / M := by
@@ -2700,8 +2707,8 @@ theorem card_add_ratio (a M : ℕ) (hM : M ≠ 0) :
 most `|S| / (|E| - 2)`. -/
 theorem probEvent_findChallenge_mem (K : Constants C E) (key : HashOutput) (S : Finset E) :
     ∀ (tries index : ℕ) (s : HashCache C), (∀ i ≥ index, s (.expand key i) = none) →
-      Pr[fun z => ∃ e ∈ S, z.1 = some e | (simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims)
-        (findChallenge K key tries index)).run s] ≤ S.card / (Fintype.card E - 2 : ℕ) := by
+      Pr{let z ← (simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims)
+        (findChallenge K key tries index)).run s}[∃ e ∈ S, z.1 = some e] ≤ S.card / (Fintype.card E - 2 : ℕ) := by
   have hcard : 2 < Fintype.card E := by rw [card_field K]; simp [elementBits]
   intro tries
   induction tries with
@@ -2716,22 +2723,19 @@ theorem probEvent_findChallenge_mem (K : Constants C E) (key : HashOutput) (S : 
     · dsimp only
       split
       · rename_i hne _
-        simp only [simulateQ_pure, StateT.run_pure, probEvent_pure, Option.some.injEq, exists_eq_right']
+        simp only [simulateQ_pure, StateT.run_pure, prEvent_pure, Option.some.injEq, exists_eq_right']
         exact le_self_add
       · rename_i h01 _
         refine (ih (index + 1) _ fun i hi => ?_).trans ?_
         swap
         · rw [if_pos (show ¬(elementOfHash K u ≠ 0 ∧ elementOfHash K u ≠ 1) from h01)]
           exact le_add_self
-        rw [QueryCache.cacheQuery, Function.update_of_ne (by simp; omega)]
+        rw [QueryCache.cacheQuery_of_ne _ _ (by simp; omega)]
         exact hs i (by omega)
     · have hS := probEvent_elementOfHash K (· ∈ S)
       have h01 := probEvent_elementOfHash K (fun e => ¬ (e ≠ 0 ∧ e ≠ 1))
-      rw [probEvent_map] at hS h01
-      rw [show (fun u => elementOfHash K u ∈ S) = (· ∈ S) ∘ elementOfHash K from rfl, hS,
-        show (fun u => ¬ (elementOfHash K u ≠ 0 ∧ elementOfHash K u ≠ 1)) =
-          (fun e => ¬ (e ≠ 0 ∧ e ≠ 1)) ∘ elementOfHash K from rfl, h01, card_zero_one,
-        show (Finset.univ.filter (· ∈ S)) = S by ext; simp]
+      rw [prEvent_map] at hS h01
+      rw [hS, h01, card_zero_one, show (Finset.univ.filter (· ∈ S)) = S by ext; simp]
       obtain ⟨M, hM⟩ : ∃ M, Fintype.card E = M + 2 := ⟨Fintype.card E - 2, by omega⟩
       rw [hM, Nat.add_sub_cancel]
       simpa using (card_add_ratio S.card M (by omega)).le
@@ -2741,20 +2745,23 @@ theorem probEvent_findChallenge_mem (K : Constants C E) (key : HashOutput) (S : 
 is a key that collides with an earlier key. -/
 theorem challengeQuery_mem_le (K : Constants C E) (tag ρ : ℕ) (v : List E) (Ks : Finset HashOutput) (L : ℕ)
     (hρ : L ≤ ρ) (s : HashCache C) (hs : CacheOK Ks L s) (S : Finset E) :
-    Pr[fun z => ∃ e ∈ S, z.1 = some e |
-      (simulateQ (localAnswer prims) (liftComp (challengeQuery K tag ρ v) (LocalSpec C))).run s] ≤
+    Pr{let z ←
+      (simulateQ (localAnswer prims) (liftComp (challengeQuery K tag ρ v) (LocalSpec C))).run s}[∃ e ∈ S, z.1 = some e] ≤
       Ks.card / 2 ^ 256 + S.card / (Fintype.card E - 2 : ℕ) := by
   have hq : ¬ IsFixed (C := C) (.coinKey tag ρ (v.flatMap fun v => List.ofFn (K.encode v))) := by
     rintro ⟨_, h, _⟩; cases h
   have hfresh := coinKey_fresh hρ hs tag (v.flatMap fun v => List.ofFn (K.encode v))
   rw [simulateQ_localAnswer_liftComp, challengeQuery, simulateQ_bind, StateT.run_bind]
   have hev : ∀ mx : ProbComp (Option E × HashCache C),
-      Pr[fun z => ∃ e ∈ S, z.1 = some e | mx] = Pr[fun z => ¬ ¬ ∃ e ∈ S, z.1 = some e | mx] := fun mx => by simp
+      Pr{let z ← mx}[∃ e ∈ S, z.1 = some e] = Pr{let z ← mx}[¬ ¬ ∃ e ∈ S, z.1 = some e] := fun mx => by simp
   rw [hev]
-  refine probEvent_bind_le_add (p := fun z : HashOutput × HashCache C => z.1 ∉ Ks) ?_ fun z hz hkey => ?_
+  refine (prEvent_bind_le_prEvent_add_of_support _ _ (fun z : HashOutput × HashCache C => ¬ z.1 ∉ Ks) _
+    fun z hz hkey => ?_).trans (add_le_add ?_ le_rfl)
+  rotate_left
   · simp only [not_not]
     exact probEvent_hash_fresh_mem prims hq hfresh Ks
-  · rw [← hev]
+  · rw [not_not] at hkey
+    rw [← hev]
     refine probEvent_findChallenge_mem prims K z.1 S challengeTries 0 z.2 fun i _ => ?_
     by_contra hne
     rcases support_hashQuery_entries prims hq s z hz _ hne with h | h
@@ -2983,8 +2990,8 @@ lemma RunBound.foldlM {γ : Type} (f : α → γ → RunM C E G α) (n : ℕ)
 lemma oracleStep_queryBound {oa : OracleComp (RoSpec C) α} {n : ℕ}
     (h : IsQueryBoundP oa (fun _ => True) n) : PartyBound (oracleStep oa : PartyM C E G α) n := by
   unfold PartyBound oracleStep localStep
-  change IsQueryBoundP (some <$> liftComp (liftComp oa (LocalSpec C)) (PartySpec C E G)) _ n
-  rw [isQueryBoundP_map_iff]
+  change IsQueryBoundP (liftComp (liftComp oa (LocalSpec C)) (PartySpec C E G) >>= pure ∘ some) (PartyCounted (G := G)) n
+  rw [← map_eq_bind_pure_comp, isQueryBoundP_map_iff]
   induction oa using OracleComp.inductionOn generalizing n with
   | pure a => simp
   | query_bind t k ih =>
@@ -3219,13 +3226,13 @@ theorem sequenceFin_advance_bind_queryBound : ∀ {N : ℕ}
     (k : (Fin N → Step C E G α) → OracleComp (LocalSpec C) β) (extra : ℕ),
     (∀ st (b : Fin N → ℕ), (∀ i, b i ≤ budget i) → (∀ i, StepBound (st i) (b i)) →
       IsQueryBoundP (k st) Counted (extra + ∑ i, b i)) →
-    IsQueryBoundP ((Concrete.sequenceFin fun i => advance (oa i)) >>= k) Counted
+    IsQueryBoundP ((OverPermutation.sequenceFin fun i => advance (oa i)) >>= k) Counted
       (extra + ∑ i, budget i)
   | 0, oa, budget, h, k, extra, hk => by
-    simp only [Concrete.sequenceFin, pure_bind, Fin.sum_univ_zero, Nat.add_zero]
+    simp only [OverPermutation.sequenceFin, pure_bind, Fin.sum_univ_zero, Nat.add_zero]
     simpa using hk Fin.elim0 Fin.elim0 (fun i => Fin.elim0 i) (fun i => Fin.elim0 i)
   | N + 1, oa, budget, h, k, extra, hk => by
-    simp only [Concrete.sequenceFin, bind_assoc, pure_bind]
+    simp only [OverPermutation.sequenceFin, bind_assoc, pure_bind]
     rw [Fin.sum_univ_succ]
     have he : extra + (budget 0 + ∑ i : Fin N, budget i.succ) =
         (extra + ∑ i : Fin N, budget i.succ) + budget 0 := by omega
@@ -3323,7 +3330,7 @@ lemma stepRound_bind_queryBound (step : ℕ)
       (fun st => k (result.1, st, fun _ _ => none)) extra
       (fun st b hb hs => hk (result.1, st, fun _ _ => none) b hb hs)
     convert (congrArg (fun f : C.Party → OracleComp (LocalSpec C) (Step C E (CallSpec I O) α) =>
-      IsQueryBoundP (Concrete.sequenceFin f >>= fun st => k (result.1, st, fun _ _ => none))
+      IsQueryBoundP (OverPermutation.sequenceFin f >>= fun st => k (result.1, st, fun _ _ => none))
         Counted (extra + ∑ j, budget j)) he).mpr hseq using 1
     congr 2
     funext j
@@ -3345,7 +3352,7 @@ lemma stepRound_bind_queryBound (step : ℕ)
       (fun st => k (result.1, st, result.2)) extra
       (fun st b hb hs => hk (result.1, st, result.2) b hb hs)
     convert (congrArg (fun f : C.Party → OracleComp (LocalSpec C) (Step C E (CallSpec I O) α) =>
-      IsQueryBoundP (Concrete.sequenceFin f >>= fun st => k (result.1, st, result.2))
+      IsQueryBoundP (OverPermutation.sequenceFin f >>= fun st => k (result.1, st, result.2))
         Counted (extra + ∑ j, budget j)) he).mpr hseq using 1
     congr 2
     funext j
@@ -3379,7 +3386,7 @@ lemma executePhase_queryBound (step : ℕ)
       fun i => advance (if i ∈ D.1 then pure none else (program i).run) := by
     funext i
     split_ifs <;> rfl
-  change IsQueryBoundP ((Concrete.sequenceFin _) >>= _) _ _
+  change IsQueryBoundP ((OverPermutation.sequenceFin _) >>= _) _ _
   rw [he]
   apply sequenceFin_advance_bind_queryBound _ budget
   · intro j
@@ -3572,7 +3579,7 @@ lemma runFunctionality_queryBound {Ia : Type} (D : C.Coalition) (A : Adversary C
   have hrun := WeightedBound.simulateQ_state impl hi (hF inputs) st
   have hswap := isQueryBoundP_bind hrun (fun out _ => isQueryBoundP_pure Counted (out.2, out.1) 0)
   unfold runFunctionality
-  split_ifs <;> dsimp only <;> try simp only [pure_bind]
+  split_ifs <;> (try dsimp only) <;> try simp only [pure_bind]
   all_goals first
     | exact isQueryBoundP_pure Counted _ step
     | simpa only [Nat.add_zero, impl, localRoles] using hswap
@@ -3652,10 +3659,8 @@ lemma finalMaskEquiv_apply {ι : Type} (r : E) (Δ w : ι → E) (T : ι) :
 
 /-- The fixed-challenge bijection preserves a uniform table of mask terms. -/
 theorem finalMaskEquiv_uniform {ι : Type} [Fintype ι] (r : E) (Δ : ι → E) :
-    𝒟[finalMaskEquiv r Δ <$> ($ᵗ (ι → E))] = 𝒟[$ᵗ (ι → E)] := by
-  apply evalDist_ext
-  intro w
-  exact probOutput_map_bijective_uniformSample _ (finalMaskEquiv r Δ).bijective w
+    finalMaskEquiv r Δ <$> ($ᵗ (ι → E)) =ᵈ $ᵗ (ι → E) :=
+  SampleableType.map_uniformSample_evalDistEq_of_bijective (finalMaskEquiv r Δ).bijective
 
 def canonicalCheckSimulator (K : Constants C E) (fuel : ℕ) (D : C.Coalition)
     (A : Adversary C E (List (Tuple C)) ((List E ⊕ (C.Party → List (Product C E))) ⊕ (Unit ⊕ Unit))
@@ -3789,11 +3794,14 @@ def checkIdealImpl {σ : Type}
       ((C.Party → Option (List (Tuple C))) × List (ℕ → Bit) × Bool) (Finset C.Party) σ) :
     QueryImpl (LocalSpec C + (((C.Party → Option (List (Tuple C))) × List (ℕ → Bit) × Bool) →ₒ Finset C.Party))
       (StateT S.State (OracleComp (WorldSpec C))) :=
-  (fun (t : (LocalSpec C).Domain) =>
-    (StateT.lift (free (OracleComp.lift (OracleSpec.query t))) : StateT S.State (OracleComp (WorldSpec C)) _)) +
-  (fun l => StateT.mk fun st => do
+  QueryImpl.add ((fun (t : (LocalSpec C).Domain) =>
+    (StateT.lift (free (OracleComp.lift (OracleSpec.query t))) : StateT S.State (OracleComp (WorldSpec C)) _)) :
+      QueryImpl (LocalSpec C) (StateT S.State (OracleComp (WorldSpec C))))
+  ((fun l => StateT.mk fun st => do
     let (st, r) ← worldRoles.adversary (S.answer st l)
-    pure (r, st))
+    pure (r, st)) :
+      QueryImpl (((C.Party → Option (List (Tuple C))) × List (ℕ → Bit) × Bool) →ₒ Finset C.Party)
+        (StateT S.State (OracleComp (WorldSpec C))))
 
 lemma checkIdealImpl_leak_run {σ : Type}
     (S : Simulator (C := C) (LocalSpec C) (List (Tuple C))
@@ -3815,11 +3823,6 @@ lemma idealExecution_multVerify_local {σ : Type} (D : C.Coalition)
     pure (out, r.1)) = _
   rw [FmultVerify_run_eq]
   simp only [simulateQ_leak_bind_run, checkIdealImpl_leak_run, bind_assoc, pure_bind]
-  change (do
-    let st ← worldRoles.adversary (S.start (corruptInputs D x) z)
-    let r ← (do let ans ← worldRoles.adversary (S.answer st (multVerifyLeak D (fun i => if i ∈ D.1 then none else some (x i)))); pure (ans.2, ans.1))
-    let out ← worldRoles.adversary (S.output r.2)
-    pure (out, fun i => if i ∉ D.1 ∧ (multVerifyLeak D (fun i => if i ∈ D.1 then none else some (x i))).2.2 ∧ i ∈ r.1 then some () else none)) = _
   simp only [idealMultVerifyLocal, adversary_bind, adversary_pure, bind_assoc, pure_bind]
 
 lemma distinguish_adversary {σ O : Type} (oa : OracleComp (LocalSpec C) (σ × (C.Party → Option O)))
@@ -3872,18 +3875,19 @@ variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algeb
 /-- An independent challenge may be sampled after the masks even when it selects their bijection. -/
 theorem finalMaskEquiv_late_uniform {ι β : Type} [Fintype ι]
     (challenge : ProbComp E) (Δ : E → ι → E) (f : E → (ι → E) → ProbComp β) :
-    𝒟[do let w ← $ᵗ (ι → E); let r ← challenge; f r (finalMaskEquiv r (Δ r) w)] =
-      𝒟[do let w ← $ᵗ (ι → E); let r ← challenge; f r w] := by
-  calc
-    _ = 𝒟[do let r ← challenge; let w ← $ᵗ (ι → E); f r (finalMaskEquiv r (Δ r) w)] :=
-      DeferredSampling.evalDist_bind_comm _ _ _
-    _ = 𝒟[do let r ← challenge; let w ← $ᵗ (ι → E); f r w] := by
-      apply evalDist_bind_congr'
-      intro r
+    (do let w ← $ᵗ (ι → E); let r ← challenge; f r (finalMaskEquiv r (Δ r) w)) =ᵈ
+      (do let w ← $ᵗ (ι → E); let r ← challenge; f r w) := by
+  calc (do let w ← $ᵗ (ι → E); let r ← challenge; f r (finalMaskEquiv r (Δ r) w) : ProbComp β)
+    _ =ᵈ (do let r ← challenge; let w ← $ᵗ (ι → E); f r (finalMaskEquiv r (Δ r) w) : ProbComp β) :=
+      OracleComp.EvalDistEq.bind_bind_swap _ _ _
+    _ =ᵈ (do let r ← challenge; let w ← $ᵗ (ι → E); f r w : ProbComp β) := by
+      refine EvalDistEq.bind_right _ fun r => ?_
       have he : (($ᵗ (ι → E)) >>= fun w => f r (finalMaskEquiv r (Δ r) w)) =
           (finalMaskEquiv r (Δ r) <$> ($ᵗ (ι → E))) >>= f r := by simp
-      rw [he, evalDist_bind, finalMaskEquiv_uniform, ← evalDist_bind]
-    _ = _ := (DeferredSampling.evalDist_bind_comm _ _ _).symm
+      rw [he]
+      exact (finalMaskEquiv_uniform r (Δ r)).bind_left _
+    _ =ᵈ (do let w ← $ᵗ (ι → E); let r ← challenge; f r w : ProbComp β) :=
+      (OracleComp.EvalDistEq.bind_bind_swap _ _ _).symm
 
 /-- The coordinate shift fixes every known mask coordinate. -/
 lemma finalMaskEquiv_known {ι : Type} (r : E) (Δ w : ι → E) (T : ι) (hT : Δ T = 0) :
@@ -3926,8 +3930,8 @@ theorem challengeQuery_pred_card_le (prims : Primitives) (K : Constants C E)
     (tag label : ℕ) (v : List E) (Ks : Finset HashOutput) (L m : ℕ)
     (hL : L ≤ label) (s : HashCache C) (hs : CacheOK Ks L s) (P : E → Prop) [DecidablePred P]
     (hP : (univ.filter P).card ≤ m) :
-    Pr[fun z => ∃ r, P r ∧ z.1 = some r |
-      (simulateQ (localAnswer prims) (liftComp (challengeQuery K tag label v) (LocalSpec C))).run s] ≤
+    Pr{let z ←
+      (simulateQ (localAnswer prims) (liftComp (challengeQuery K tag label v) (LocalSpec C))).run s}[∃ r, P r ∧ z.1 = some r] ≤
         Ks.card / 2 ^ 256 + m / (Fintype.card E - 2 : ℕ) := by
   have h := challengeQuery_mem_le prims K tag label v Ks L hL s hs (univ.filter P)
   simp only [Finset.mem_filter, Finset.mem_univ, true_and] at h
@@ -3939,11 +3943,11 @@ theorem finalChallenge_soundness (prims : Primitives) (K : Constants C E)
     (tag label : ℕ) (v : List E) (Ks : Finset HashOutput) (L : ℕ)
     (hL : L ≤ label) (s : HashCache C) (hs : CacheOK Ks L s)
     (a b a0 b0 D e0 e2 : E) (hwrong : D ≠ a * b) :
-    Pr[fun z => ∃ r,
+    Pr{let z ←
+      (simulateQ (localAnswer prims) (liftComp (challengeQuery K tag label v) (LocalSpec C))).run s}[∃ r,
       ((a0 + r * (a0 + a)) * (b0 + r * (b0 + b)) =
         (a0 * b0 + e0) + (D + (a0 * b0 + e0) + ((a0 + a) * (b0 + b) + e2)) * r +
-          ((a0 + a) * (b0 + b) + e2) * r ^ 2) ∧ z.1 = some r |
-      (simulateQ (localAnswer prims) (liftComp (challengeQuery K tag label v) (LocalSpec C))).run s] ≤
+          ((a0 + a) * (b0 + b) + e2) * r ^ 2) ∧ z.1 = some r] ≤
         Ks.card / 2 ^ 256 + 2 / (Fintype.card E - 2 : ℕ) := by
   letI : CharP E 2 := charP_two
   exact challengeQuery_pred_card_le prims K tag label v Ks L 2 hL s hs _
@@ -3954,10 +3958,10 @@ theorem sliceChallenge_soundness (prims : Primitives) (K : Constants C E)
     (tag label : ℕ) (v : List E) (Ks : Finset HashOutput) (L : ℕ)
     (hL : L ≤ label) (s : HashCache C) (hs : CacheOK Ks L s)
     (c D t0 t1 t2 e0 eInf : E) (hc : c ≠ 0) (hwrong : D ≠ t0 + c * (t0 + t1 + t2)) :
-    Pr[fun z => ∃ r,
+    Pr{let z ←
+      (simulateQ (localAnswer prims) (liftComp (challengeQuery K tag label v) (LocalSpec C))).run s}[∃ r,
       ((1 + r) * (t0 + e0) + r * ((D + (t0 + e0)) / c) + r * (1 + r) * (t2 + eInf) =
-        t0 + t1 * r + t2 * r ^ 2) ∧ z.1 = some r |
-      (simulateQ (localAnswer prims) (liftComp (challengeQuery K tag label v) (LocalSpec C))).run s] ≤
+        t0 + t1 * r + t2 * r ^ 2) ∧ z.1 = some r] ≤
         Ks.card / 2 ^ 256 + 2 / (Fintype.card E - 2 : ℕ) := by
   letI : CharP E 2 := charP_two
   exact challengeQuery_pred_card_le prims K tag label v Ks L 2 hL s hs _
@@ -3970,13 +3974,13 @@ theorem halvingChallenge_soundness (prims : Primitives) (K : Constants C E)
     (lo hi lo' hi' : List E) (claim e0 e2 : E)
     (hwrong : claim ≠ (List.zipWith (· * ·) lo lo').sum + (List.zipWith (· * ·) hi hi').sum)
     (hlen : lo.length = hi.length ∧ lo'.length = hi'.length ∧ lo.length = lo'.length) :
-    Pr[fun z => ∃ r,
+    Pr{let z ←
+      (simulateQ (localAnswer prims) (liftComp (challengeQuery K tag label v) (LocalSpec C))).run s}[∃ r,
       ((List.zipWith (· * ·) lo lo').sum + e0 +
           (claim + (List.zipWith (· * ·) (List.zipWith (· + ·) lo hi) (List.zipWith (· + ·) lo' hi')).sum + e2) * r +
           ((List.zipWith (· * ·) (List.zipWith (· + ·) lo hi) (List.zipWith (· + ·) lo' hi')).sum + e2) * r ^ 2 =
         (List.zipWith (· * ·) (List.zipWith (fun a b => a + r * (a + b)) lo hi)
-          (List.zipWith (fun a b => a + r * (a + b)) lo' hi')).sum) ∧ z.1 = some r |
-      (simulateQ (localAnswer prims) (liftComp (challengeQuery K tag label v) (LocalSpec C))).run s] ≤
+          (List.zipWith (fun a b => a + r * (a + b)) lo' hi')).sum) ∧ z.1 = some r] ≤
         Ks.card / 2 ^ 256 + 2 / (Fintype.card E - 2 : ℕ) := by
   letI : CharP E 2 := charP_two
   exact challengeQuery_pred_card_le prims K tag label v Ks L 2 hL s hs _
@@ -4029,19 +4033,22 @@ theorem challengeQuery_mem_le_of_fresh (prims : Primitives) (K : Constants C E)
     (tag label : ℕ) (v : List E) (Ks : Finset HashOutput) (s : HashCache C)
     (hfresh : s (.coinKey tag label (v.flatMap fun v => List.ofFn (K.encode v))) = none)
     (hexp : ∀ k idx, s (.expand k idx) ≠ none → k ∈ Ks) (S : Finset E) :
-    Pr[fun z => ∃ e ∈ S, z.1 = some e |
-      (simulateQ (localAnswer prims) (liftComp (challengeQuery K tag label v) (LocalSpec C))).run s] ≤
+    Pr{let z ←
+      (simulateQ (localAnswer prims) (liftComp (challengeQuery K tag label v) (LocalSpec C))).run s}[∃ e ∈ S, z.1 = some e] ≤
       Ks.card / 2 ^ 256 + S.card / (Fintype.card E - 2 : ℕ) := by
   have hq : ¬ IsFixed (C := C) (.coinKey tag label (v.flatMap fun v => List.ofFn (K.encode v))) := by
     rintro ⟨_, h, _⟩; cases h
   rw [simulateQ_localAnswer_liftComp, challengeQuery, simulateQ_bind, StateT.run_bind]
   have hev : ∀ mx : ProbComp (Option E × HashCache C),
-      Pr[fun z => ∃ e ∈ S, z.1 = some e | mx] = Pr[fun z => ¬ ¬ ∃ e ∈ S, z.1 = some e | mx] := fun mx => by simp
+      Pr{let z ← mx}[∃ e ∈ S, z.1 = some e] = Pr{let z ← mx}[¬ ¬ ∃ e ∈ S, z.1 = some e] := fun mx => by simp
   rw [hev]
-  refine probEvent_bind_le_add (p := fun z : HashOutput × HashCache C => z.1 ∉ Ks) ?_ fun z hz hkey => ?_
+  refine (prEvent_bind_le_prEvent_add_of_support _ _ (fun z : HashOutput × HashCache C => ¬ z.1 ∉ Ks) _
+    fun z hz hkey => ?_).trans (add_le_add ?_ le_rfl)
+  rotate_left
   · simp only [not_not]
     exact probEvent_hash_fresh_mem prims hq hfresh Ks
-  · rw [← hev]
+  · rw [not_not] at hkey
+    rw [← hev]
     refine probEvent_findChallenge_mem prims K z.1 S challengeTries 0 z.2 fun i _ => ?_
     by_contra hne
     rcases support_hashQuery_entries prims hq s z hz _ hne with h | h
@@ -4051,8 +4058,8 @@ theorem challengeQuery_mem_le_of_fresh (prims : Primitives) (K : Constants C E)
 /-- An injectively encoded fresh sample hits at most one value per earlier query. -/
 theorem probEvent_uniform_injective_mem {α β : Type} [Fintype α] [Nonempty α] [SampleableType α]
     (f : α → β) (hf : Function.Injective f) (Q : Finset β) :
-    Pr[fun a => f a ∈ Q | $ᵗ α] ≤ Q.card / (Fintype.card α : ℕ) := by
-  rw [probEvent_uniformSample]
+    Pr{let a ← $ᵗ α}[f a ∈ Q] ≤ Q.card / (Fintype.card α : ℕ) := by
+  rw [SampleableType.prEvent_uniformSample]
   have hc : (univ.filter fun a => f a ∈ Q).card ≤ Q.card := by
     exact Finset.card_le_card_of_injOn f (fun a ha => (Finset.mem_filter.mp ha).2) (fun a _ b _ h => hf h)
   gcongr
@@ -4064,7 +4071,7 @@ lemma coin_input_injective (K : Constants C E) (tag label : ℕ) :
   exact K.encode.injective (List.ofFn_injective h.2.2)
 
 theorem coin_input_guess_bound (K : Constants C E) (tag label : ℕ) (Q : Finset (Query C)) :
-    Pr[fun r : E => Query.coinKey tag label (List.ofFn (K.encode r)) ∈ Q | $ᵗ E] ≤
+    Pr{let r : E ← $ᵗ E}[Query.coinKey tag label (List.ofFn (K.encode r)) ∈ Q] ≤
       Q.card / (Fintype.card E : ℕ) :=
   probEvent_uniform_injective_mem _ (coin_input_injective K tag label) Q
 
@@ -4075,7 +4082,7 @@ lemma digest_input_injective (history : (Fin 256 → Bit) → HashOutput) :
 
 /-- This event involves salted digest inputs, never history inputs. -/
 theorem digest_input_guess_bound (history : (Fin 256 → Bit) → HashOutput) (Q : Finset (Query C)) :
-    Pr[fun salt : Fin 256 → Bit => Query.digest (List.ofFn salt) (history salt) ∈ Q | $ᵗ (Fin 256 → Bit)] ≤
+    Pr{let salt : Fin 256 → Bit ← $ᵗ (Fin 256 → Bit)}[Query.digest (List.ofFn salt) (history salt) ∈ Q] ≤
       Q.card / 2 ^ 256 := by
   have h := probEvent_uniform_injective_mem _ (digest_input_injective (C := C) history) Q
   simpa only [Fintype.card_fun, Fintype.card_fin, ZMod.card, Nat.cast_pow, Nat.cast_ofNat] using h
@@ -4095,19 +4102,19 @@ variable {C : Committee}
 lemma relabelHashCache_apply (e : Query C ≃ Query C) (s : HashCache C) (q : Query C) :
     relabelHashCache e s (e q) = s q := by
   unfold relabelHashCache
-  change Query C → Option HashOutput at s
-  exact congrArg s (e.symm_apply_apply q)
+  change s (e.symm (e q)) = s q
+  rw [e.symm_apply_apply]
 
 lemma relabelHashCache_insert (e : Query C ≃ Query C) (s : HashCache C)
     (q : Query C) (u : HashOutput) :
     relabelHashCache e (s.cacheQuery q u) = (relabelHashCache e s).cacheQuery (e q) u := by
-  funext q'
+  refine QueryCache.ext fun q' => ?_
   by_cases h : q' = e q
   · subst q'
     exact (relabelHashCache_apply e (s.cacheQuery q u) q).trans
       ((QueryCache.cacheQuery_self s q u).trans (QueryCache.cacheQuery_self (relabelHashCache e s) (e q) u).symm)
   · have h' : e.symm q' ≠ q := by intro he; apply h; simpa using congrArg e he
-    simp [relabelHashCache, QueryCache.cacheQuery, Function.update_of_ne h, Function.update_of_ne h']
+    simp [relabelHashCache, QueryCache.cacheQuery_of_ne _ _ h, QueryCache.cacheQuery_of_ne _ _ h']
 
 /-- Lazy random-oracle answers commute with an input bijection at random-oracle inputs. -/
 theorem hashAnswer_reindex (prims : Primitives) (e : Query C ≃ Query C) (s : HashCache C)
@@ -5141,18 +5148,17 @@ set_option linter.unusedSectionVars false
 variable {C : Committee}
 
 lemma sameRun_liftComp_of_evalDist (prims : Primitives) {α : Type} (p q : ProbComp α)
-    (h : 𝒟[p] = 𝒟[q]) :
+    (h : p =ᵈ q) :
     SameRun (C := C) prims (liftComp p (LocalSpec C)) (liftComp q (LocalSpec C)) := by
   intro s
-  rw [run_liftComp_prob,run_liftComp_prob,evalDist_map,evalDist_map,h]
+  rw [run_liftComp_prob,run_liftComp_prob]
+  exact h.map _
 
 theorem sameRun_uniform_equiv (prims : Primitives) {α : Type} [Fintype α] [SampleableType α]
     (e : α ≃ α) :
     SameRun (C := C) prims (e <$> liftComp ($ᵗ α) (LocalSpec C)) (liftComp ($ᵗ α) (LocalSpec C)) := by
-  have he : 𝒟[e <$> ($ᵗ α)] = 𝒟[$ᵗ α] := by
-    apply evalDist_ext
-    intro a
-    exact probOutput_map_bijective_uniformSample _ e.bijective a
+  have he : e <$> ($ᵗ α) =ᵈ $ᵗ α :=
+    SampleableType.map_uniformSample_evalDistEq_of_bijective e.bijective
   simpa only [liftComp_map] using sameRun_liftComp_of_evalDist (C := C) prims _ _ he
 
 /-- A later transcript may choose the mask bijection; arbitrary hash and PRG queries are retained. -/
@@ -5273,17 +5279,15 @@ theorem multFinish_translate (D : C.Coalition) (width : ℕ) (filled : C.Term �
 
 /-- The fresh-table translation is measure preserving. -/
 theorem multFresh_translate_uniform (width : ℕ) (delta : Shares C E) :
-    𝒟[(fun fresh : C.Term → Fin width → E => fun T k => fresh T k-delta T k) <$>
-      ($ᵗ (C.Term → Fin width → E))] = 𝒟[$ᵗ (C.Term → Fin width → E)] := by
+    (fun fresh : C.Term → Fin width → E => fun T k => fresh T k-delta T k) <$>
+      ($ᵗ (C.Term → Fin width → E)) =ᵈ $ᵗ (C.Term → Fin width → E) := by
   let e : (C.Term → Fin width → E) ≃ (C.Term → Fin width → E) :=
     Equiv.addRight (fun T k => -delta T k)
   have he : (fun fresh : C.Term → Fin width → E => fun T k => fresh T k-delta T k) = e := by
     funext fresh T k
     simp [e,sub_eq_add_neg]
   rw [he]
-  apply evalDist_ext
-  intro fresh
-  exact probOutput_map_bijective_uniformSample _ e.bijective fresh
+  exact SampleableType.map_uniformSample_evalDistEq_of_bijective e.bijective
 
 end ThresholdLeanXmssSecurity
 end
@@ -5493,7 +5497,7 @@ lemma startSteps_call (D : C.Coalition) (input : C.Party → I)
   unfold startSteps
   simp only [localRoles,advance_call_bind]
   calc
-    _ = Concrete.sequenceFin (fun i => pure (callSteps D input f i)) := by
+    _ = OverPermutation.sequenceFin (fun i => pure (callSteps D input f i)) := by
       congr 1
       funext i
       by_cases hi : i ∈ D.1 <;> simp only [hi,if_true,if_false,callSteps]
@@ -5839,7 +5843,7 @@ lemma startSteps_optionalCall (D : C.Coalition) (input : C.Party → Option I)
     startSteps localRoles D (fun i => optionalCall (input i) (f i)) = pure (optionalCallSteps D input f) := by
   unfold startSteps
   calc
-    _ = Concrete.sequenceFin (fun i => pure (optionalCallSteps D input f i)) := by
+    _ = OverPermutation.sequenceFin (fun i => pure (optionalCallSteps D input f i)) := by
       congr 1
       funext i
       by_cases hi : i ∈ D.1
@@ -6111,7 +6115,7 @@ lemma startSteps_optionalExchange (D : C.Coalition) (outbox : C.Party → Option
       pure (optionalExchangeSteps D outbox f) := by
   unfold startSteps
   calc
-    _ = Concrete.sequenceFin (fun i => pure (optionalExchangeSteps D outbox f i)) := by
+    _ = OverPermutation.sequenceFin (fun i => pure (optionalExchangeSteps D outbox f i)) := by
       congr 1
       funext i
       by_cases hi : i ∈ D.1
@@ -6196,23 +6200,18 @@ variable {C : Committee}
 /-- An unobserved local computation can be prefetched, even when it changes the oracle cache. -/
 theorem local_prefetch_output (prims : Primitives) {α β : Type}
     (probe : OracleComp (LocalSpec C) β) (oa : OracleComp (LocalSpec C) α) (s : HashCache C) :
-    𝒟[(simulateQ (localAnswer prims) (probe >>= fun _ => oa)).run' s] =
-      𝒟[(simulateQ (localAnswer prims) oa).run' s] := by
+    (simulateQ (localAnswer prims) (probe >>= fun _ => oa)).run' s =ᵈ
+      (simulateQ (localAnswer prims) oa).run' s := by
   have h := sameRun_swap prims probe oa (fun _ a => pure a) s
   simp only [bind_pure] at h
-  have hp := congrArg (fun d => Prod.fst <$> d) h
-  simp only [← evalDist_map] at hp
+  have hp := h.map Prod.fst
   rw [StateT.run'_eq]
   refine hp.trans ?_
   simp only [simulateQ_bind,simulateQ_pure,StateT.run_bind,StateT.run_pure,map_bind,map_pure]
   rw [StateT.run'_eq,map_eq_bind_pure_comp]
-  simp only [evalDist_bind,Function.comp_def]
-  congr 1
-  funext p
-  rw [← evalDist_bind]
-  apply evalDist_ext
-  intro a
-  rw [probOutput_bind_const,probFailure_eq_zero,tsub_zero,one_mul]
+  simp only [Function.comp_def]
+  refine EvalDistEq.bind_right _ fun p => ?_
+  exact OracleComp.EvalDistEq.bind_const _ _
 
 end ThresholdLeanXmssSecurity
 end
@@ -6256,7 +6255,8 @@ lemma localHybridImpl_leak (A : Adversary C E Ia L R) (l : L) :
   erw [simulateQ_query]
   change (fun r : R => r) <$> localHybridImpl A (.inr l) = _
   rw [id_map']
-  rfl
+  refine congrArg StateT.mk (funext fun st => ?_)
+  exact (map_eq_bind_pure_comp (OracleComp (LocalSpec C)) _ _).symm
 
 lemma runFunctionality_local (D : C.Coalition) (A : Adversary C E Ia L R)
     (F : Functionality C I O L R) (st : A.State) (inputs : C.Party → Option I)
@@ -6266,7 +6266,7 @@ lemma runFunctionality_local (D : C.Coalition) (A : Adversary C E Ia L R)
   unfold runFunctionality
   rw [if_neg (not_not.mpr h)]
   simp only [pure_bind]
-  rfl
+  exact (map_eq_bind_pure_comp _ _ _).symm
 
 variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
 
@@ -6490,17 +6490,15 @@ variable {C : Committee}
 lemma relabelHashCache_digestSwap_fresh (salt : List Bit) (h h' : HashOutput) (s : HashCache C)
     (hf : s (.digest salt h) = none) (hf' : s (.digest salt h') = none) :
     relabelHashCache (digestSwap salt h h') s = s := by
-  funext q
-  change Query C → Option HashOutput at s
-  change Query C at q
+  refine QueryCache.ext fun q => ?_
   change s ((Equiv.swap (Query.digest salt h) (Query.digest salt h')) q) = s q
   by_cases hq : q = .digest salt h
   · subst q
-    simp [Equiv.swap_apply_def,hf,hf']
+    rw [Equiv.swap_apply_left,hf,hf']
   · by_cases hq' : q = .digest salt h'
     · subst q
-      simp [Equiv.swap_apply_def,hf,hf']
-    · simp [Equiv.swap_apply_def,hq,hq']
+      rw [Equiv.swap_apply_right,hf,hf']
+    · rw [Equiv.swap_apply_of_ne_of_ne hq hq']
 
 /-- From a cache with fresh outer names, changing the committed history exactly renames only those names. -/
 theorem saltedDigest_fresh_couple (prims : Primitives) (salt history history' : List Bit)
@@ -6530,7 +6528,7 @@ set_option linter.unusedSectionVars false
 
 /-- A query budget bounds every projected trace, including traces chosen adaptively from answers. -/
 theorem projected_log_length_le {ι β α : Type} {S : OracleSpec ι}
-    [S.DecidableEq] [IsUniformSpec S] (charged : ι → Prop) [DecidablePred charged]
+    [PFunctor.DecidableEq S.toPFunctor] [UniformAnswerMeasure S] (charged : ι → Prop) [DecidablePred charged]
     (project : ι → Option β) (hproject : ∀ t,(project t).isSome → charged t)
     {oa : OracleComp S α} {q : ℕ} (hq : IsQueryBoundP oa charged q)
     {z : α × QueryLog S} (hz : z ∈ support ((simulateQ loggingOracle oa).run)) :
@@ -6563,16 +6561,16 @@ theorem projected_log_length_le {ι β α : Type} {S : OracleSpec ι}
 theorem independent_trace_guess_bound {α β : Type} [Fintype α] [Nonempty α] [SampleableType α]
     (encode : α → β) (hinj : Function.Injective encode) (trace : ProbComp (List β)) (q : ℕ)
     (htrace : ∀ l ∈ support trace,l.length ≤ q) :
-    Pr[fun p : List β × α => encode p.2 ∈ p.1 | (do
+    Pr{let p : List β × α ← (do
       let l ← trace
       let a ← $ᵗ α
-      pure (l,a))] ≤ (q : ℝ≥0∞) / Fintype.card α := by
+      pure (l,a))}[encode p.2 ∈ p.1] ≤ (q : ℝ≥0∞) / Fintype.card α := by
   classical
   letI : DecidableEq β := Classical.typeDecidableEq β
-  refine probEvent_bind_le_of_forall_le fun l hl => ?_
+  refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun l hl => ?_
   have he : (do let a ← $ᵗ α; pure (l,a)) = (fun a => (l,a)) <$> ($ᵗ α) :=
     (map_eq_bind_pure_comp (m := ProbComp) _ _).symm
-  rw [he,probEvent_map]
+  rw [he,prEvent_map]
   have h := probEvent_uniform_injective_mem encode hinj l.toFinset
   simp only [List.mem_toFinset] at h
   refine h.trans ?_
@@ -6583,10 +6581,10 @@ theorem independent_trace_guess_bound {α β : Type} [Fintype α] [Nonempty α] 
 there is no restriction at all on history inputs. -/
 theorem independent_salt_trace_bound (trace : ProbComp (List (List Bit))) (q : ℕ)
     (htrace : ∀ l ∈ support trace,l.length ≤ q) :
-    Pr[fun p : List (List Bit) × (Fin 256 → Bit) => List.ofFn p.2 ∈ p.1 | (do
+    Pr{let p : List (List Bit) × (Fin 256 → Bit) ← (do
       let l ← trace
       let salt ← $ᵗ (Fin 256 → Bit)
-      pure (l,salt))] ≤ (q : ℝ≥0∞) / 2^256 := by
+      pure (l,salt))}[List.ofFn p.2 ∈ p.1] ≤ (q : ℝ≥0∞) / 2^256 := by
   have h := independent_trace_guess_bound (fun s : Fin 256 → Bit => List.ofFn s)
     List.ofFn_injective trace q htrace
   simpa only [Fintype.card_fun,Fintype.card_fin,ZMod.card,Nat.cast_pow,Nat.cast_ofNat] using h
@@ -6778,18 +6776,16 @@ theorem finalChallenge_adaptive_soundness {β : Type} (prims : Primitives) (K : 
     (cont : Option E × HashCache C → ProbComp β) (accept : β → Prop)
     (hroot : ∀ p x,x ∈ support (cont p) → accept x →
       ∃ r,p.1=some r ∧ r*(d-a*b)+(1+r)*e0+r*(1+r)*e2=0) :
-    Pr[accept | (simulateQ (localAnswer prims)
-      (liftComp (challengeQuery K tag label coin) (LocalSpec C))).run cache >>= cont] ≤
+    Pr{let z ← (simulateQ (localAnswer prims)
+      (liftComp (challengeQuery K tag label coin) (LocalSpec C))).run cache >>= cont}[accept z] ≤
         Ks.card / 2^256 + 2/(Fintype.card E-2 : ℕ) := by
   let roots := univ.filter fun r : E => r*(d-a*b)+(1+r)*e0+r*(1+r)*e2=0
-  have hp : Pr[accept | (simulateQ (localAnswer prims)
-      (liftComp (challengeQuery K tag label coin) (LocalSpec C))).run cache >>= cont] ≤
-    Pr[fun p => ∃ r ∈ roots,p.1=some r | (simulateQ (localAnswer prims)
-      (liftComp (challengeQuery K tag label coin) (LocalSpec C))).run cache] := by
-    apply probEvent_bind_le_probEvent
-    intro p hp hn
-    apply probEvent_eq_zero
-    intro x hx ha
+  have hp : Pr{let z ← (simulateQ (localAnswer prims)
+      (liftComp (challengeQuery K tag label coin) (LocalSpec C))).run cache >>= cont}[accept z] ≤
+    Pr{let p ← (simulateQ (localAnswer prims)
+      (liftComp (challengeQuery K tag label coin) (LocalSpec C))).run cache}[∃ r ∈ roots,p.1=some r] := by
+    refine prEvent_bind_le_prEvent_of_support _ _ _ _ fun p hp hn => ?_
+    refine prEvent_eq_zero_of_forall_mem_support _ _ fun x hx ha => ?_
     obtain ⟨r,hr,he⟩ := hroot p x hx ha
     exact hn ⟨r,by simp [roots,he],hr⟩
   refine hp.trans ((challengeQuery_mem_le_of_fresh prims K tag label coin Ks cache hfresh hexpand roots).trans ?_)
@@ -6819,7 +6815,7 @@ lemma executePhase_terminal (D : C.Coalition) (A : Adversary C E Ia L R)
       pure (fun i => Step.done (if i ∈ D.1 then none else out i)) := by
     unfold startSteps
     calc
-      _ = Concrete.sequenceFin (fun i => pure (Step.done (if i ∈ D.1 then none else out i))) := by
+      _ = OverPermutation.sequenceFin (fun i => pure (Step.done (if i ∈ D.1 then none else out i))) := by
         congr 1
         funext i
         by_cases hi : i ∈ D.1
@@ -6966,21 +6962,21 @@ set_option linter.unusedSectionVars false
 variable {C : Committee} {α β γ : Type}
 
 def SameLocalOutput (prims : Primitives) (a b : OracleComp (LocalSpec C) α) : Prop :=
-  ∀ s : HashCache C,𝒟[(simulateQ (localAnswer prims) a).run' s] =
-    𝒟[(simulateQ (localAnswer prims) b).run' s]
+  ∀ s : HashCache C,(simulateQ (localAnswer prims) a).run' s =ᵈ
+    (simulateQ (localAnswer prims) b).run' s
 
 lemma SameLocalOutput.of_sameRun (prims : Primitives) {a b : OracleComp (LocalSpec C) α}
     (h : SameRun prims a b) : SameLocalOutput prims a b := by
   intro s
-  simp only [StateT.run'_eq,evalDist_map,h s]
+  simp only [StateT.run'_eq]
+  exact (h s).map _
 
 lemma SameLocalOutput.bind_right (prims : Primitives) (oa : OracleComp (LocalSpec C) α)
     {f g : α → OracleComp (LocalSpec C) β} (h : ∀ a,SameLocalOutput prims (f a) (g a)) :
     SameLocalOutput prims (oa >>= f) (oa >>= g) := by
   intro s
-  simp only [simulateQ_bind,StateT.run'_eq,StateT.run_bind,map_bind,evalDist_bind]
-  apply congrArg
-  funext p
+  simp only [simulateQ_bind,StateT.run'_eq,StateT.run_bind,map_bind]
+  refine EvalDistEq.bind_right _ fun p => ?_
   exact h p.1 p.2
 
 /-- A challenge query can be made before a selective-abort decision. The result is ignored
@@ -6998,7 +6994,7 @@ theorem challenge_before_selective_reply (prims : Primitives)
     apply SameLocalOutput.bind_right
     intro p s
     by_cases hg : go p
-    · simp only [if_pos hg]
+    · simp only [if_pos hg, EvalDistEq.refl]
     · simp only [if_neg hg]
       exact (local_prefetch_output prims challenge (abort p) s).symm
   intro s
@@ -7052,69 +7048,39 @@ theorem localHandler_until_query
     (impl₁ impl₂ : QueryImpl S (StateT σ ProbComp)) (bad : ι → Bool)
     (heq : ∀ t s,bad t=false → (impl₁ t).run s=(impl₂ t).run s)
     (oa : OracleComp S α) (s : σ) :
-    tvDist ((simulateQ impl₁ oa).run s) ((simulateQ impl₂ oa).run s) ≤
-      Pr[fun z : α × σ × Bool => z.2.2=true |
-        (simulateQ (flagQueries impl₁ bad) oa).run (s,false)].toReal := by
-  have hag : ∀ t s u s',
-      Pr[= (u,(s',false)) | (flagQueries impl₁ bad t).run (s,false)] =
-      Pr[= (u,(s',false)) | (flagQueries impl₂ bad t).run (s,false)] := by
-    intro t s u s'
+    letI : MeasurableSpace (α × σ) := ⊤
+    measureTVDist ((simulateQ impl₁ oa).run s) ((simulateQ impl₂ oa).run s) ≤
+      Pr{let z : α × σ × Bool ←
+        (simulateQ (flagQueries impl₁ bad) oa).run (s,false)}[z.2.2=true].toReal := by
+  let : MeasurableSpace (α × σ) := ⊤
+  have hag : ∀ t (p : σ × Bool),¬ p.2=true → ∀ q : S.Range t × σ × Bool → Prop,
+      Pr{let z ← (flagQueries impl₁ bad t).run p}[q z ∧ ¬ z.2.2=true] =
+      Pr{let z ← (flagQueries impl₂ bad t).run p}[q z ∧ ¬ z.2.2=true] := by
+    intro t p _ q
     cases hb : bad t with
-    | false => simp only [flagQueries_run,heq t s hb]
+    | false => simp only [flagQueries_run,heq t p.1 hb]
     | true =>
       have hz : ∀ (impl : QueryImpl S (StateT σ ProbComp)),
-          Pr[= (u,(s',false)) | (flagQueries impl bad t).run (s,false)] = 0 := by
+          Pr{let z ← (flagQueries impl bad t).run p}[q z ∧ ¬ z.2.2=true] = 0 := by
         intro impl
-        apply probOutput_eq_zero_of_not_mem_support
-        simp [flagQueries_run,hb]
+        refine prEvent_eq_zero_of_forall_mem_support _ _ fun z hz hq => ?_
+        simp only [flagQueries_run,support_map,Set.mem_image] at hz
+        obtain ⟨x,_,rfl⟩ := hz
+        simp [hb] at hq
       rw [hz impl₁,hz impl₂]
-  have hzero (impl : QueryImpl S (StateT σ ProbComp)) (oa : OracleComp S α)
-      (s s' : σ) (a : α) :
-      Pr[= (a,(s',false)) | (simulateQ (flagQueries impl bad) oa).run (s,true)] = 0 :=
-    probOutput_simulateQ_run_eq_zero_of_bad (flagQueries impl bad) (fun p => p.2=true)
-      (flagQueries_mono impl bad) oa (s,true) rfl a (s',false) Bool.false_ne_true
-  have hgood : ∀ (oa : OracleComp S α) s a s',
-      Pr[= (a,(s',false)) | (simulateQ (flagQueries impl₁ bad) oa).run (s,false)] =
-      Pr[= (a,(s',false)) | (simulateQ (flagQueries impl₂ bad) oa).run (s,false)] := by
-    intro oa
-    induction oa using OracleComp.inductionOn with
-    | pure a => intros; rfl
-    | query_bind t k ih =>
-      intro s a s'
-      simp only [simulateQ_bind,simulateQ_spec_query,StateT.run_bind]
-      rw [probOutput_bind_eq_tsum,probOutput_bind_eq_tsum]
-      apply tsum_congr
-      rintro ⟨u,s'',b⟩
-      cases b with
-      | false => rw [hag t s u s'',ih u s'' a s']
-      | true => rw [hzero impl₁,hzero impl₂,mul_zero,mul_zero]
-  let sim₁ := (simulateQ (flagQueries impl₁ bad) oa).run (s,false)
-  let sim₂ := (simulateQ (flagQueries impl₂ bad) oa).run (s,false)
-  have hnot : Pr[fun z : α × σ × Bool => ¬z.2.2=true | sim₁] =
-      Pr[fun z : α × σ × Bool => ¬z.2.2=true | sim₂] := by
-    rw [probEvent_eq_tsum_ite,probEvent_eq_tsum_ite]
-    apply tsum_congr
-    rintro ⟨a,s',b⟩
-    cases b <;> simp only [Bool.false_eq_true,not_false_eq_true,ite_true,not_true_eq_false,ite_false]
-    exact hgood oa s a s'
-  have hbad : Pr[fun z : α × σ × Bool => z.2.2=true | sim₁] =
-      Pr[fun z : α × σ × Bool => z.2.2=true | sim₂] := by
-    have h₁ := probEvent_compl sim₁ (fun z : α × σ × Bool => z.2.2=true)
-    have h₂ := probEvent_compl sim₂ (fun z : α × σ × Bool => z.2.2=true)
-    simp only [probFailure_eq_zero,tsub_zero] at h₁ h₂
-    rw [hnot] at h₁
-    exact (ENNReal.add_left_inj probEvent_ne_top).mp (h₁.trans h₂.symm)
-  have h : tvDist sim₁ sim₂ ≤ Pr[fun z : α × σ × Bool => z.2.2=true | sim₁].toReal := by
-    apply tvDist_le_probEvent_of_probOutput_eq_of_not _ _ hbad
-    rintro ⟨a,s',b⟩ hb
-    cases b with
-    | false => exact hgood oa s a s'
-    | true => exact False.elim (hb rfl)
-  have hp := tvDist_map_le (fun z : α × σ × Bool => (z.1,z.2.1))
+  have hgood := ProgramLogic.Relational.prEvent_simulateQ_run_and_not_bad_eq (flagQueries impl₁ bad)
+    (flagQueries impl₂ bad) (fun p => p.2=true) hag (flagQueries_mono impl₁ bad) (flagQueries_mono impl₂ bad)
+    oa (s,false)
+  have hbad := ProgramLogic.Relational.prEvent_simulateQ_run_bad_eq (flagQueries impl₁ bad)
+    (flagQueries impl₂ bad) (fun p => p.2=true) hag (flagQueries_mono impl₁ bad) (flagQueries_mono impl₂ bad)
+    oa (s,false)
+  have h := measureETVDist_map_le_prEvent_of_agree
     ((simulateQ (flagQueries impl₁ bad) oa).run (s,false))
     ((simulateQ (flagQueries impl₂ bad) oa).run (s,false))
-  rw [flagQueries_forget,flagQueries_forget] at hp
-  exact hp.trans h
+    (fun z : α × σ × Bool => (z.1,z.2.1)) (fun z => z.2.2=true) hgood hbad.ge
+  rw [flagQueries_forget,flagQueries_forget] at h
+  rw [measureTVDist_eq_toReal_measureETVDist]
+  exact ENNReal.toReal_mono (prEvent_ne_top _) h
 
 variable {C : Committee}
 
@@ -7138,10 +7104,11 @@ lemma localDigestAnswer_eq_of_no_salt (prims : Primitives) (salt : List Bit)
 /-- Digest renaming is coupled against the actual local oracle until a query at the hidden salt. -/
 theorem digestSwap_until_salt (prims : Primitives) (salt : List Bit) (h h' : HashOutput)
     (oa : OracleComp (LocalSpec C) α) (s : HashCache C) :
-    tvDist ((simulateQ (localAnswer prims) oa).run s)
+    letI : MeasurableSpace (α × HashCache C) := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) oa).run s)
       ((simulateQ (localDigestAnswer prims salt h h') oa).run s) ≤
-        Pr[fun z : α × HashCache C × Bool => z.2.2=true |
-          (simulateQ (flagQueries (localAnswer prims) (digestSaltHit salt)) oa).run (s,false)].toReal := by
+        Pr{let z : α × HashCache C × Bool ←
+          (simulateQ (flagQueries (localAnswer prims) (digestSaltHit salt)) oa).run (s,false)}[z.2.2=true].toReal := by
   exact localHandler_until_query (localAnswer prims) (localDigestAnswer prims salt h h')
     (digestSaltHit salt) (fun t s ht => localDigestAnswer_eq_of_no_salt prims salt h h' t s ht) oa s
 
@@ -7212,8 +7179,7 @@ lemma projectQueries_flag (impl : QueryImpl S (StateT σ ProbComp)) (project : �
     intro p
     rw [ih]
     congr 1
-    cases hp : project t <;> simp [List.mem_cons,eq_comm,Bool.or_comm]
-    congr 1
+    cases hp : project t <;> simp [List.mem_cons,eq_comm,Bool.or_comm] <;> rfl
 
 variable {C : Committee}
 
@@ -7239,9 +7205,9 @@ lemma digestSaltHit_projection (salt : List Bit) : digestSaltHit (C := C) salt =
 /-- The adaptive query trace is independent of a freshly chosen hidden salt. -/
 theorem digestSaltFlag_bound (prims : Primitives) (oa : OracleComp (LocalSpec C) α)
     (s : HashCache C) (q : ℕ) (hq : IsQueryBoundP oa Counted q) :
-    Pr[fun z : α × HashCache C × Bool => z.2.2=true | (do
+    Pr{let z : α × HashCache C × Bool ← (do
       let salt ← $ᵗ (Fin 256 → Bit)
-      (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (s,false))] ≤
+      (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (s,false))}[z.2.2=true] ≤
       (q : ℝ≥0∞)/2^256 := by
   let raw := (simulateQ (projectQueries (localAnswer prims) digestSaltProjection) oa).run (s,[])
   let trace := (fun z : α × HashCache C × List (List Bit) => z.2.2) <$> raw
@@ -7253,9 +7219,9 @@ theorem digestSaltFlag_bound (prims : Primitives) (oa : OracleComp (LocalSpec C)
       digestSaltProjection_counted hq s [] hz
   have hb := independent_salt_trace_bound trace q ht
   have hp : ∀ salt : Fin 256 → Bit,
-      Pr[fun z : α × HashCache C × Bool => z.2.2=true |
-        (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (s,false)] =
-      Pr[fun l => List.ofFn salt ∈ l | trace] := by
+      Pr{let z : α × HashCache C × Bool ←
+        (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (s,false)}[z.2.2=true] =
+      Pr{let l ← trace}[List.ofFn salt ∈ l] := by
     intro salt
     rw [digestSaltHit_projection]
     have he := projectQueries_flag (localAnswer prims) digestSaltProjection (List.ofFn salt) oa s []
@@ -7268,22 +7234,24 @@ theorem digestSaltFlag_bound (prims : Primitives) (oa : OracleComp (LocalSpec C)
         by_cases h : digestSaltProjection t=some (List.ofFn salt) <;> simp only [h,decide_true,decide_false]
       · funext z
         by_cases h : List.ofFn salt ∈ z.2.2 <;> simp only [h,decide_true,decide_false]
-    rw [he',probEvent_map]
-    simp only [trace,probEvent_map,Function.comp_def,decide_eq_true_eq]
-  have he : Pr[fun z : α × HashCache C × Bool => z.2.2=true | (do
+    rw [he',prEvent_map]
+    simp only [trace,prEvent_map,Function.comp_def,decide_eq_true_eq]
+  have he : Pr{let z : α × HashCache C × Bool ← (do
       let salt ← $ᵗ (Fin 256 → Bit)
-      (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (s,false))] =
-      Pr[fun p : List (List Bit) × (Fin 256 → Bit) => List.ofFn p.2 ∈ p.1 | (do
-        let l ← trace; let salt ← $ᵗ (Fin 256 → Bit); pure (l,salt))] := by
-    simp only [probEvent_bind_eq_tsum,hp,probEvent_pure]
-    simp only [probEvent_eq_tsum_ite]
-    simp_rw [← ENNReal.tsum_mul_left]
-    rw [ENNReal.tsum_comm]
-    apply tsum_congr
-    intro l
-    apply tsum_congr
-    intro salt
-    split_ifs <;> simp [mul_comm]
+      (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (s,false))}[z.2.2=true] =
+      Pr{let p : List (List Bit) × (Fin 256 → Bit) ← (do
+        let l ← trace; let salt ← $ᵗ (Fin 256 → Bit); pure (l,salt))}[List.ofFn p.2 ∈ p.1] := by
+    have hswap : (do let l ← trace; let salt ← $ᵗ (Fin 256 → Bit); pure (l,salt) :
+        ProbComp (List (List Bit) × (Fin 256 → Bit))) =ᵈ
+        (do let salt ← $ᵗ (Fin 256 → Bit); let l ← trace; pure (l,salt)) :=
+      OracleComp.EvalDistEq.bind_bind_swap _ _ _
+    rw [hswap.prEvent_eq]
+    refine prEvent_bind_congr _ _ _ _ _ fun salt => ?_
+    have hm : (do let l ← trace; pure (l,salt) : ProbComp (List (List Bit) × (Fin 256 → Bit))) =
+        (fun l => (l,salt)) <$> trace := (map_eq_bind_pure_comp ProbComp _ _).symm
+    rw [hp salt]
+    exact ((congrArg (fun m : ProbComp (List (List Bit) × (Fin 256 → Bit)) =>
+      Pr{let p ← m}[List.ofFn p.2 ∈ p.1]) hm).trans (prEvent_map _ _ _)).symm
 
   rw [he]
   exact hb
@@ -7318,7 +7286,7 @@ lemma hashAnswer_cacheQuery_other (prims : Primitives) (s : HashCache C)
       congr 1
       funext u
       congr 1
-      exact Function.update_comm (Ne.symm hne) _ _ _
+      exact QueryCache.cacheQuery_comm s (Ne.symm hne) _ _
     | some u =>
       rw [OracleSpec.randomOracle,QueryImpl.withCaching_run_some _ hs,
         QueryImpl.withCaching_run_some _ (ht.trans hs)]
@@ -7377,10 +7345,13 @@ theorem localProgram_digest_programmed (prims : Primitives) (s : HashCache C)
 /-- Programming one hidden digest changes observable behavior only if its salt is queried. -/
 theorem digest_programming_until_salt (prims : Primitives) (s : HashCache C)
     (salt : List Bit) (h d : HashOutput) (oa : OracleComp (LocalSpec C) α) :
-    tvDist ((simulateQ (localAnswer prims) oa).run' s)
+    letI : MeasurableSpace α := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) oa).run' s)
       ((simulateQ (localAnswer prims) oa).run' (s.cacheQuery (.digest salt h) d)) ≤
-      Pr[fun z : α × HashCache C × Bool => z.2.2=true |
-        (simulateQ (flagQueries (localAnswer prims) (digestSaltHit salt)) oa).run (s,false)].toReal := by
+      Pr{let z : α × HashCache C × Bool ←
+        (simulateQ (flagQueries (localAnswer prims) (digestSaltHit salt)) oa).run (s,false)}[z.2.2=true].toReal := by
+  let : MeasurableSpace α := ⊤
+  let : MeasurableSpace (α × HashCache C) := ⊤
   have he : ∀ (t : (LocalSpec C).Domain) (s : HashCache C),digestSaltHit salt t=false →
       (localAnswer prims t).run s=(patchedDigestLocal prims salt h d t).run s := by
     intro t s ht
@@ -7393,7 +7364,7 @@ theorem digest_programming_until_salt (prims : Primitives) (s : HashCache C)
   have hb := localHandler_until_query (localAnswer prims) (patchedDigestLocal prims salt h d)
     (digestSaltHit salt) he oa s
   simp only [StateT.run'_eq,localProgram_digest_programmed,Functor.map_map]
-  exact (tvDist_map_le Prod.fst _ _).trans hb
+  exact (measureTVDist_map_le _ _ Prod.fst measurable_from_top).trans hb
 
 end ThresholdLeanXmssSecurity
 end
@@ -7412,7 +7383,8 @@ even if its inner hash and programmed value depend on that salt. -/
 theorem hidden_digest_programming_bound (prims : Primitives) (cache : HashCache C)
     (h d : (Fin 256 → Bit) → HashOutput) (oa : OracleComp (LocalSpec C) α)
     (q : ℕ) (hq : IsQueryBoundP oa Counted q) :
-    tvDist (do
+    letI : MeasurableSpace α := ⊤
+    measureTVDist (do
         let _salt ← $ᵗ (Fin 256 → Bit)
         (simulateQ (localAnswer prims) oa).run' cache)
       (do
@@ -7420,24 +7392,25 @@ theorem hidden_digest_programming_bound (prims : Primitives) (cache : HashCache 
         (simulateQ (localAnswer prims) oa).run'
           (cache.cacheQuery (.digest (List.ofFn salt) (h salt)) (d salt))) ≤
       (q : ℝ)/2^256 := by
+  let : MeasurableSpace α := ⊤
   let prob := fun salt : Fin 256 → Bit =>
-    Pr[fun z : α × HashCache C × Bool => z.2.2=true |
-      (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (cache,false)]
-  have hb := tvDist_bind_left_le ($ᵗ (Fin 256 → Bit))
+    Pr{let z : α × HashCache C × Bool ←
+      (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (cache,false)}[z.2.2=true]
+  have hb := measureTVDist_bind_left_le_tsum ($ᵗ (Fin 256 → Bit))
     (fun _ => (simulateQ (localAnswer prims) oa).run' cache)
     (fun salt => (simulateQ (localAnswer prims) oa).run'
       (cache.cacheQuery (.digest (List.ofFn salt) (h salt)) (d salt)))
   simp only [tsum_fintype] at hb
-  have hsum : (∑ salt : Fin 256 → Bit,Pr[= salt | $ᵗ (Fin 256 → Bit)].toReal * (prob salt).toReal) =
-      Pr[fun z : α × HashCache C × Bool => z.2.2=true | (do
+  have hsum : (∑ salt : Fin 256 → Bit,Pr{let z ← $ᵗ (Fin 256 → Bit)}[z = salt].toReal * (prob salt).toReal) =
+      Pr{let z : α × HashCache C × Bool ← (do
         let salt ← $ᵗ (Fin 256 → Bit)
-        (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (cache,false))].toReal := by
-    rw [probEvent_bind_eq_tsum,tsum_fintype,ENNReal.toReal_sum]
+        (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (cache,false))}[z.2.2=true].toReal := by
+    rw [OracleComp.prEvent_bind_eq_tsum,tsum_fintype,ENNReal.toReal_sum]
     · simp only [ENNReal.toReal_mul,prob]
     · intro salt _
-      exact ENNReal.mul_ne_top probOutput_ne_top probEvent_ne_top
+      exact ENNReal.mul_ne_top (prEvent_ne_top _) (prEvent_ne_top _)
   calc
-    _ ≤ ∑ salt : Fin 256 → Bit,Pr[= salt | $ᵗ (Fin 256 → Bit)].toReal * (prob salt).toReal := by
+    _ ≤ ∑ salt : Fin 256 → Bit,Pr{let z ← $ᵗ (Fin 256 → Bit)}[z = salt].toReal * (prob salt).toReal := by
       refine hb.trans (Finset.sum_le_sum fun salt _ => ?_)
       exact mul_le_mul_of_nonneg_left
         (digest_programming_until_salt prims cache (List.ofFn salt) (h salt) (d salt) oa)
@@ -7480,12 +7453,14 @@ theorem saltedDigest_hide_fresh (prims : Primitives) (cache : HashCache C)
     (hf : ∀ salt : Fin 256 → Bit,cache (.digest (List.ofFn salt) h)=none)
     (k : HashOutput → OracleComp (LocalSpec C) α) (q : ℕ)
     (hq : ∀ d,IsQueryBoundP (k d) Counted q) :
-    tvDist
+    letI : MeasurableSpace α := ⊤
+    measureTVDist
       (do let salt ← $ᵗ (Fin 256 → Bit)
           (saltedDigestAnswer prims (List.ofFn salt) history >>= fun d =>
             simulateQ (localAnswer prims) (k d)).run' cache)
       (do let d ← $ᵗ HashOutput
           (simulateQ (localAnswer prims) (k d)).run' cache) ≤ (q : ℝ)/2^256 := by
+  let : MeasurableSpace α := ⊤
   let real : ProbComp α := do
     let salt ← $ᵗ (Fin 256 → Bit)
     (saltedDigestAnswer prims (List.ofFn salt) history >>= fun d =>
@@ -7499,7 +7474,7 @@ theorem saltedDigest_hide_fresh (prims : Primitives) (cache : HashCache C)
     let d ← $ᵗ HashOutput
     let _salt ← $ᵗ (Fin 256 → Bit)
     (simulateQ (localAnswer prims) (k d)).run' cache
-  have hr : 𝒟[real]=𝒟[programmed] := by
+  have hr : real =ᵈ programmed := by
     have he : real = (do
         let salt ← $ᵗ (Fin 256 → Bit)
         let d ← $ᵗ HashOutput
@@ -7512,22 +7487,19 @@ theorem saltedDigest_hide_fresh (prims : Primitives) (cache : HashCache C)
       rw [saltedDigestAnswer_fresh prims cache (List.ofFn salt) history h hh (hf salt)]
       simp only [bind_map_left,map_bind]
     rw [he]
-    exact DeferredSampling.evalDist_bind_comm _ _ _
-  have hg : 𝒟[ghost]=𝒟[(do
+    exact OracleComp.EvalDistEq.bind_bind_swap _ _ _
+  have hg : ghost =ᵈ (do
       let d ← $ᵗ HashOutput
-      (simulateQ (localAnswer prims) (k d)).run' cache)] := by
-    unfold ghost
-    simp only [evalDist_bind]
-    congr 1
-    funext d
-    simpa only [evalDist_bind] using DeferredSampling.evalDist_bind_const_neverFails
-      ($ᵗ (Fin 256 → Bit)) (by simp) ((simulateQ (localAnswer prims) (k d)).run' cache)
-  have hb : tvDist ghost programmed ≤ (q : ℝ)/2^256 := by
-    apply tvDist_bind_left_le_const'
-    intro d
+      (simulateQ (localAnswer prims) (k d)).run' cache) :=
+    EvalDistEq.bind_right _ fun d => OracleComp.EvalDistEq.bind_const _ _
+  have hb : measureTVDist ghost programmed ≤ (q : ℝ)/2^256 := by
+    refine measureTVDist_bind_left_le_of_forall_le _ _ _ (by positivity) fun d => ?_
     exact hidden_digest_programming_bound prims cache (fun _ => h) (fun _ => d) (k d) q (hq d)
-  change tvDist real _ ≤ _
-  simpa only [tvDist,hr,← hg,SPMF.tvDist_comm] using hb
+  change measureTVDist real _ ≤ _
+  rw [measureTVDist_comm] at hb
+  unfold measureTVDist at hb ⊢
+  rw [hr.evalDist_eq,← hg.evalDist_eq]
+  exact hb
 
 end ThresholdLeanXmssSecurity
 end
@@ -7554,7 +7526,9 @@ def digestGhostGame (prims : Primitives) (cache : HashCache C)
 
 lemma digestProgrammedGame_bound (prims : Primitives) (cache : HashCache C) (h : HashOutput)
     (k : HashOutput → OracleComp (LocalSpec C) α) (q : ℕ) (hq : ∀ d,IsQueryBoundP (k d) Counted q) :
-    tvDist (digestProgrammedGame prims cache h k) (digestGhostGame prims cache k) ≤ (q : ℝ)/2^256 := by
+    letI : MeasurableSpace α := ⊤
+    measureTVDist (digestProgrammedGame prims cache h k) (digestGhostGame prims cache k) ≤ (q : ℝ)/2^256 := by
+  let : MeasurableSpace α := ⊤
   let programmed : ProbComp α := do
     let d ← $ᵗ HashOutput
     let salt ← $ᵗ (Fin 256 → Bit)
@@ -7563,20 +7537,18 @@ lemma digestProgrammedGame_bound (prims : Primitives) (cache : HashCache C) (h :
     let d ← $ᵗ HashOutput
     let _salt ← $ᵗ (Fin 256 → Bit)
     (simulateQ (localAnswer prims) (k d)).run' cache
-  have hr : 𝒟[digestProgrammedGame prims cache h k]=𝒟[programmed] :=
-    DeferredSampling.evalDist_bind_comm _ _ _
-  have hg : 𝒟[ghost]=𝒟[digestGhostGame prims cache k] := by
-    unfold ghost digestGhostGame
-    simp only [evalDist_bind]
-    congr 1
-    funext d
-    simpa only [evalDist_bind] using DeferredSampling.evalDist_bind_const_neverFails
-      ($ᵗ (Fin 256 → Bit)) (by simp) ((simulateQ (localAnswer prims) (k d)).run' cache)
-  have hb : tvDist ghost programmed ≤ (q : ℝ)/2^256 := by
-    apply tvDist_bind_left_le_const'
-    intro d
+  have hr : digestProgrammedGame prims cache h k =ᵈ programmed :=
+    OracleComp.EvalDistEq.bind_bind_swap _ _ _
+  have hg : ghost =ᵈ digestGhostGame prims cache k :=
+    EvalDistEq.bind_right _ fun d => OracleComp.EvalDistEq.bind_const _ _
+  have hb : measureTVDist ghost programmed ≤ (q : ℝ)/2^256 := by
+    refine measureTVDist_bind_left_le_of_forall_le _ _ _ (by positivity) fun d => ?_
     exact hidden_digest_programming_bound prims cache (fun _ => h) (fun _ => d) (k d) q (hq d)
-  simpa only [tvDist,hr,← hg,SPMF.tvDist_comm] using hb
+  change measureTVDist (digestProgrammedGame prims cache h k) (digestGhostGame prims cache k) ≤ _
+  rw [measureTVDist_comm] at hb
+  unfold measureTVDist at hb ⊢
+  rw [hr.evalDist_eq,← hg.evalDist_eq]
+  exact hb
 
 /-- A two-level commitment hides its history even after earlier oracle queries. Only their
 outer digest salts are charged; the inner history may already be completely known. -/
@@ -7586,27 +7558,29 @@ theorem saltedDigest_hide (prims : Primitives) (cache : HashCache C)
     (hf : ∀ salt : Fin 256 → Bit,List.ofFn salt ∉ seen → cache (.digest (List.ofFn salt) h)=none)
     (k : HashOutput → OracleComp (LocalSpec C) α) (q : ℕ)
     (hq : ∀ d,IsQueryBoundP (k d) Counted q) :
-    tvDist
+    letI : MeasurableSpace α := ⊤
+    measureTVDist
       (do let salt ← $ᵗ (Fin 256 → Bit)
           (saltedDigestAnswer prims (List.ofFn salt) history >>= fun d =>
             simulateQ (localAnswer prims) (k d)).run' cache)
       (digestGhostGame prims cache k) ≤ ((seen.card+q : ℕ) : ℝ)/2^256 := by
+  let : MeasurableSpace α := ⊤
   let actual : (Fin 256 → Bit) → ProbComp α := fun salt =>
     (saltedDigestAnswer prims (List.ofFn salt) history >>= fun d =>
       simulateQ (localAnswer prims) (k d)).run' cache
   let overwrite : (Fin 256 → Bit) → ProbComp α := fun salt => do
     let d ← $ᵗ HashOutput
     (simulateQ (localAnswer prims) (k d)).run' (cache.cacheQuery (.digest (List.ofFn salt) h) d)
-  have hstep : ∀ salt,List.ofFn salt ∉ seen → 𝒟[actual salt]=𝒟[overwrite salt] := by
+  have hstep : ∀ salt,List.ofFn salt ∉ seen → actual salt =ᵈ overwrite salt := by
     intro salt hs
     have he : actual salt=overwrite salt := by
       simp only [actual,overwrite,StateT.run'_eq,StateT.run_bind]
       rw [saltedDigestAnswer_fresh prims cache (List.ofFn salt) history h hh (hf salt hs)]
       simp only [bind_map_left,map_bind]
     rw [he]
-  have hb := tvDist_bind_left_event_le ($ᵗ (Fin 256 → Bit)) actual overwrite
+  have hb := measureTVDist_bind_left_le_prEvent_of_evalDistEq ($ᵗ (Fin 256 → Bit)) actual overwrite
     (fun salt => List.ofFn salt ∈ seen) hstep
-  have hguess : Pr[fun salt : Fin 256 → Bit => List.ofFn salt ∈ seen | $ᵗ (Fin 256 → Bit)].toReal ≤
+  have hguess : Pr{let salt : Fin 256 → Bit ← $ᵗ (Fin 256 → Bit)}[List.ofFn salt ∈ seen].toReal ≤
       (seen.card : ℝ)/2^256 := by
     have hg := probEvent_uniform_injective_mem (fun salt : Fin 256 → Bit => List.ofFn salt)
       List.ofFn_injective seen
@@ -7614,7 +7588,7 @@ theorem saltedDigest_hide (prims : Primitives) (cache : HashCache C)
     simpa only [Fintype.card_fun,Fintype.card_fin,ZMod.card,Nat.cast_pow,Nat.cast_ofNat,
       ENNReal.toReal_div,ENNReal.toReal_natCast,ENNReal.toReal_pow,ENNReal.toReal_ofNat] using hgr
   have hc := digestProgrammedGame_bound prims cache h k q hq
-  have ht := tvDist_triangle (($ᵗ (Fin 256 → Bit)) >>= actual)
+  have ht := measureTVDist_triangle (($ᵗ (Fin 256 → Bit)) >>= actual)
     (digestProgrammedGame prims cache h k) (digestGhostGame prims cache k)
   refine ht.trans ?_
   calc
@@ -7638,9 +7612,9 @@ theorem digestSaltFlag_boundP (prims : Primitives) (oa : OracleComp (LocalSpec C
     (s : HashCache C) (charged : (LocalSpec C).Domain → Prop) [DecidablePred charged]
     (hproject : ∀ t,(digestSaltProjection t).isSome → charged t)
     (q : ℕ) (hq : IsQueryBoundP oa charged q) :
-    Pr[fun z : α × HashCache C × Bool => z.2.2=true | (do
+    Pr{let z : α × HashCache C × Bool ← (do
       let salt ← $ᵗ (Fin 256 → Bit)
-      (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (s,false))] ≤
+      (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (s,false))}[z.2.2=true] ≤
       (q : ℝ≥0∞)/2^256 := by
   let raw := (simulateQ (projectQueries (localAnswer prims) digestSaltProjection) oa).run (s,[])
   let trace := (fun z : α × HashCache C × List (List Bit) => z.2.2) <$> raw
@@ -7652,9 +7626,9 @@ theorem digestSaltFlag_boundP (prims : Primitives) (oa : OracleComp (LocalSpec C
       hproject hq s [] hz
   have hb := independent_salt_trace_bound trace q ht
   have hp : ∀ salt : Fin 256 → Bit,
-      Pr[fun z : α × HashCache C × Bool => z.2.2=true |
-        (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (s,false)] =
-      Pr[fun l => List.ofFn salt ∈ l | trace] := by
+      Pr{let z : α × HashCache C × Bool ←
+        (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (s,false)}[z.2.2=true] =
+      Pr{let l ← trace}[List.ofFn salt ∈ l] := by
     intro salt
     rw [digestSaltHit_projection]
     have he := projectQueries_flag (localAnswer prims) digestSaltProjection (List.ofFn salt) oa s []
@@ -7667,22 +7641,24 @@ theorem digestSaltFlag_boundP (prims : Primitives) (oa : OracleComp (LocalSpec C
         by_cases h : digestSaltProjection t=some (List.ofFn salt) <;> simp only [h,decide_true,decide_false]
       · funext z
         by_cases h : List.ofFn salt ∈ z.2.2 <;> simp only [h,decide_true,decide_false]
-    rw [he',probEvent_map]
-    simp only [trace,probEvent_map,Function.comp_def,decide_eq_true_eq]
-  have he : Pr[fun z : α × HashCache C × Bool => z.2.2=true | (do
+    rw [he',prEvent_map]
+    simp only [trace,prEvent_map,Function.comp_def,decide_eq_true_eq]
+  have he : Pr{let z : α × HashCache C × Bool ← (do
       let salt ← $ᵗ (Fin 256 → Bit)
-      (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (s,false))] =
-      Pr[fun p : List (List Bit) × (Fin 256 → Bit) => List.ofFn p.2 ∈ p.1 | (do
-        let l ← trace; let salt ← $ᵗ (Fin 256 → Bit); pure (l,salt))] := by
-    simp only [probEvent_bind_eq_tsum,hp,probEvent_pure]
-    simp only [probEvent_eq_tsum_ite]
-    simp_rw [← ENNReal.tsum_mul_left]
-    rw [ENNReal.tsum_comm]
-    apply tsum_congr
-    intro l
-    apply tsum_congr
-    intro salt
-    split_ifs <;> simp [mul_comm]
+      (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (s,false))}[z.2.2=true] =
+      Pr{let p : List (List Bit) × (Fin 256 → Bit) ← (do
+        let l ← trace; let salt ← $ᵗ (Fin 256 → Bit); pure (l,salt))}[List.ofFn p.2 ∈ p.1] := by
+    have hswap : (do let l ← trace; let salt ← $ᵗ (Fin 256 → Bit); pure (l,salt) :
+        ProbComp (List (List Bit) × (Fin 256 → Bit))) =ᵈ
+        (do let salt ← $ᵗ (Fin 256 → Bit); let l ← trace; pure (l,salt)) :=
+      OracleComp.EvalDistEq.bind_bind_swap _ _ _
+    rw [hswap.prEvent_eq]
+    refine prEvent_bind_congr _ _ _ _ _ fun salt => ?_
+    have hm : (do let l ← trace; pure (l,salt) : ProbComp (List (List Bit) × (Fin 256 → Bit))) =
+        (fun l => (l,salt)) <$> trace := (map_eq_bind_pure_comp ProbComp _ _).symm
+    rw [hp salt]
+    exact ((congrArg (fun m : ProbComp (List (List Bit) × (Fin 256 → Bit)) =>
+      Pr{let p ← m}[List.ofFn p.2 ∈ p.1]) hm).trans (prEvent_map _ _ _)).symm
 
   rw [he]
   exact hb
@@ -7706,7 +7682,8 @@ theorem hidden_digest_programming_boundP (prims : Primitives) (cache : HashCache
     (charged : (LocalSpec C).Domain → Prop) [DecidablePred charged]
     (hproject : ∀ t,(digestSaltProjection t).isSome → charged t)
     (q : ℕ) (hq : IsQueryBoundP oa charged q) :
-    tvDist (do
+    letI : MeasurableSpace α := ⊤
+    measureTVDist (do
         let _salt ← $ᵗ (Fin 256 → Bit)
         (simulateQ (localAnswer prims) oa).run' cache)
       (do
@@ -7714,24 +7691,25 @@ theorem hidden_digest_programming_boundP (prims : Primitives) (cache : HashCache
         (simulateQ (localAnswer prims) oa).run'
           (cache.cacheQuery (.digest (List.ofFn salt) (h salt)) (d salt))) ≤
       (q : ℝ)/2^256 := by
+  let : MeasurableSpace α := ⊤
   let prob := fun salt : Fin 256 → Bit =>
-    Pr[fun z : α × HashCache C × Bool => z.2.2=true |
-      (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (cache,false)]
-  have hb := tvDist_bind_left_le ($ᵗ (Fin 256 → Bit))
+    Pr{let z : α × HashCache C × Bool ←
+      (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (cache,false)}[z.2.2=true]
+  have hb := measureTVDist_bind_left_le_tsum ($ᵗ (Fin 256 → Bit))
     (fun _ => (simulateQ (localAnswer prims) oa).run' cache)
     (fun salt => (simulateQ (localAnswer prims) oa).run'
       (cache.cacheQuery (.digest (List.ofFn salt) (h salt)) (d salt)))
   simp only [tsum_fintype] at hb
-  have hsum : (∑ salt : Fin 256 → Bit,Pr[= salt | $ᵗ (Fin 256 → Bit)].toReal * (prob salt).toReal) =
-      Pr[fun z : α × HashCache C × Bool => z.2.2=true | (do
+  have hsum : (∑ salt : Fin 256 → Bit,Pr{let z ← $ᵗ (Fin 256 → Bit)}[z = salt].toReal * (prob salt).toReal) =
+      Pr{let z : α × HashCache C × Bool ← (do
         let salt ← $ᵗ (Fin 256 → Bit)
-        (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (cache,false))].toReal := by
-    rw [probEvent_bind_eq_tsum,tsum_fintype,ENNReal.toReal_sum]
+        (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (cache,false))}[z.2.2=true].toReal := by
+    rw [OracleComp.prEvent_bind_eq_tsum,tsum_fintype,ENNReal.toReal_sum]
     · simp only [ENNReal.toReal_mul,prob]
     · intro salt _
-      exact ENNReal.mul_ne_top probOutput_ne_top probEvent_ne_top
+      exact ENNReal.mul_ne_top (prEvent_ne_top _) (prEvent_ne_top _)
   calc
-    _ ≤ ∑ salt : Fin 256 → Bit,Pr[= salt | $ᵗ (Fin 256 → Bit)].toReal * (prob salt).toReal := by
+    _ ≤ ∑ salt : Fin 256 → Bit,Pr{let z ← $ᵗ (Fin 256 → Bit)}[z = salt].toReal * (prob salt).toReal := by
       refine hb.trans (Finset.sum_le_sum fun salt _ => ?_)
       exact mul_le_mul_of_nonneg_left
         (digest_programming_until_salt prims cache (List.ofFn salt) (h salt) (d salt) oa)
@@ -7747,7 +7725,9 @@ lemma digestProgrammedGame_boundP (prims : Primitives) (cache : HashCache C) (h 
     (k : HashOutput → OracleComp (LocalSpec C) α) (charged : (LocalSpec C).Domain → Prop) [DecidablePred charged]
     (hproject : ∀ t,(digestSaltProjection t).isSome → charged t)
     (q : ℕ) (hq : ∀ d,IsQueryBoundP (k d) charged q) :
-    tvDist (digestProgrammedGame prims cache h k) (digestGhostGame prims cache k) ≤ (q : ℝ)/2^256 := by
+    letI : MeasurableSpace α := ⊤
+    measureTVDist (digestProgrammedGame prims cache h k) (digestGhostGame prims cache k) ≤ (q : ℝ)/2^256 := by
+  let : MeasurableSpace α := ⊤
   let programmed : ProbComp α := do
     let d ← $ᵗ HashOutput
     let salt ← $ᵗ (Fin 256 → Bit)
@@ -7756,20 +7736,18 @@ lemma digestProgrammedGame_boundP (prims : Primitives) (cache : HashCache C) (h 
     let d ← $ᵗ HashOutput
     let _salt ← $ᵗ (Fin 256 → Bit)
     (simulateQ (localAnswer prims) (k d)).run' cache
-  have hr : 𝒟[digestProgrammedGame prims cache h k]=𝒟[programmed] :=
-    DeferredSampling.evalDist_bind_comm _ _ _
-  have hg : 𝒟[ghost]=𝒟[digestGhostGame prims cache k] := by
-    unfold ghost digestGhostGame
-    simp only [evalDist_bind]
-    congr 1
-    funext d
-    simpa only [evalDist_bind] using DeferredSampling.evalDist_bind_const_neverFails
-      ($ᵗ (Fin 256 → Bit)) (by simp) ((simulateQ (localAnswer prims) (k d)).run' cache)
-  have hb : tvDist ghost programmed ≤ (q : ℝ)/2^256 := by
-    apply tvDist_bind_left_le_const'
-    intro d
+  have hr : digestProgrammedGame prims cache h k =ᵈ programmed :=
+    OracleComp.EvalDistEq.bind_bind_swap _ _ _
+  have hg : ghost =ᵈ digestGhostGame prims cache k :=
+    EvalDistEq.bind_right _ fun d => OracleComp.EvalDistEq.bind_const _ _
+  have hb : measureTVDist ghost programmed ≤ (q : ℝ)/2^256 := by
+    refine measureTVDist_bind_left_le_of_forall_le _ _ _ (by positivity) fun d => ?_
     exact hidden_digest_programming_boundP prims cache (fun _ => h) (fun _ => d) (k d) charged hproject q (hq d)
-  simpa only [tvDist,hr,← hg,SPMF.tvDist_comm] using hb
+  change measureTVDist (digestProgrammedGame prims cache h k) (digestGhostGame prims cache k) ≤ _
+  rw [measureTVDist_comm] at hb
+  unfold measureTVDist at hb ⊢
+  rw [hr.evalDist_eq,← hg.evalDist_eq]
+  exact hb
 
 /-- A two-level commitment hides its history even after earlier oracle queries. Only their
 outer digest salts are charged; the inner history may already be completely known. -/
@@ -7781,27 +7759,29 @@ theorem saltedDigest_hideP (prims : Primitives) (cache : HashCache C)
     (charged : (LocalSpec C).Domain → Prop) [DecidablePred charged]
     (hproject : ∀ t,(digestSaltProjection t).isSome → charged t)
     (q : ℕ) (hq : ∀ d,IsQueryBoundP (k d) charged q) :
-    tvDist
+    letI : MeasurableSpace α := ⊤
+    measureTVDist
       (do let salt ← $ᵗ (Fin 256 → Bit)
           (saltedDigestAnswer prims (List.ofFn salt) history >>= fun d =>
             simulateQ (localAnswer prims) (k d)).run' cache)
       (digestGhostGame prims cache k) ≤ ((seen.card+q : ℕ) : ℝ)/2^256 := by
+  let : MeasurableSpace α := ⊤
   let actual : (Fin 256 → Bit) → ProbComp α := fun salt =>
     (saltedDigestAnswer prims (List.ofFn salt) history >>= fun d =>
       simulateQ (localAnswer prims) (k d)).run' cache
   let overwrite : (Fin 256 → Bit) → ProbComp α := fun salt => do
     let d ← $ᵗ HashOutput
     (simulateQ (localAnswer prims) (k d)).run' (cache.cacheQuery (.digest (List.ofFn salt) h) d)
-  have hstep : ∀ salt,List.ofFn salt ∉ seen → 𝒟[actual salt]=𝒟[overwrite salt] := by
+  have hstep : ∀ salt,List.ofFn salt ∉ seen → actual salt =ᵈ overwrite salt := by
     intro salt hs
     have he : actual salt=overwrite salt := by
       simp only [actual,overwrite,StateT.run'_eq,StateT.run_bind]
       rw [saltedDigestAnswer_fresh prims cache (List.ofFn salt) history h hh (hf salt hs)]
       simp only [bind_map_left,map_bind]
     rw [he]
-  have hb := tvDist_bind_left_event_le ($ᵗ (Fin 256 → Bit)) actual overwrite
+  have hb := measureTVDist_bind_left_le_prEvent_of_evalDistEq ($ᵗ (Fin 256 → Bit)) actual overwrite
     (fun salt => List.ofFn salt ∈ seen) hstep
-  have hguess : Pr[fun salt : Fin 256 → Bit => List.ofFn salt ∈ seen | $ᵗ (Fin 256 → Bit)].toReal ≤
+  have hguess : Pr{let salt : Fin 256 → Bit ← $ᵗ (Fin 256 → Bit)}[List.ofFn salt ∈ seen].toReal ≤
       (seen.card : ℝ)/2^256 := by
     have hg := probEvent_uniform_injective_mem (fun salt : Fin 256 → Bit => List.ofFn salt)
       List.ofFn_injective seen
@@ -7809,7 +7789,7 @@ theorem saltedDigest_hideP (prims : Primitives) (cache : HashCache C)
     simpa only [Fintype.card_fun,Fintype.card_fin,ZMod.card,Nat.cast_pow,Nat.cast_ofNat,
       ENNReal.toReal_div,ENNReal.toReal_natCast,ENNReal.toReal_pow,ENNReal.toReal_ofNat] using hgr
   have hc := digestProgrammedGame_boundP prims cache h k charged hproject q hq
-  have ht := tvDist_triangle (($ᵗ (Fin 256 → Bit)) >>= actual)
+  have ht := measureTVDist_triangle (($ᵗ (Fin 256 → Bit)) >>= actual)
     (digestProgrammedGame prims cache h k) (digestGhostGame prims cache k)
   refine ht.trans ?_
   calc
@@ -7900,8 +7880,7 @@ lemma sameRun_discard_sample (prims : Primitives) {β γ : Type} [SampleableType
     SameRun prims (liftComp ($ᵗ β) (LocalSpec C) >>= fun _ => oa) oa := by
   intro s
   simp only [simulateQ_bind,StateT.run_bind,run_liftComp_prob,bind_map_left]
-  change 𝒟[(do let b ← $ᵗ β; (simulateQ (localAnswer prims) oa).run s)] = _
-  exact DeferredSampling.evalDist_bind_const_neverFails ($ᵗ β) (by simp) _
+  exact OracleComp.EvalDistEq.bind_const ($ᵗ β) _
 
 /-- The actual final mask phase reduces to the chosen known terms and one fresh hidden table;
 the unused PRSS pair table has no effect on the entire adaptive continuation. -/
@@ -8115,13 +8094,13 @@ theorem startSteps_local (prims : Primitives) (D : C.Coalition)
     (f : C.Party → β → PartyM C E (CallSpec I O) α) :
     SameRun prims (startSteps localRoles D (fun i => localStep (oa i) >>= f i))
       (do
-        let v ← Concrete.sequenceFin (fun i => if i ∈ D.1 then pure default else oa i)
+        let v ← OverPermutation.sequenceFin (fun i => if i ∈ D.1 then pure default else oa i)
         startSteps localRoles D (fun i => f i (v i))) := by
   let queries : C.Party → OracleComp (LocalSpec C) β := fun i => if i ∈ D.1 then pure default else oa i
   let next : C.Party → β → OracleComp (LocalSpec C) (Step C E (CallSpec I O) α) :=
     fun i b => if i ∈ D.1 then pure (.done none) else advance (f i b).run
   have hn : startSteps localRoles D (fun i => localStep (oa i) >>= f i) =
-      Concrete.sequenceFin (fun i => do let b ← queries i; let v ← next i b; pure v) := by
+      OverPermutation.sequenceFin (fun i => queries i >>= fun b => next i b >>= fun v => pure v) := by
     unfold startSteps
     congr 1
     funext i
@@ -8132,7 +8111,7 @@ theorem startSteps_local (prims : Primitives) (D : C.Coalition)
   refine hh.trans (SameRun.of_eq ?_)
   apply bind_congr
   intro v
-  change (Concrete.sequenceFin (fun i => next i (v i)) >>= pure) = _
+  change (OverPermutation.sequenceFin (fun i => next i (v i)) >>= pure) = _
   rw [bind_pure]
   rfl
 
@@ -8143,7 +8122,7 @@ theorem executePhase_local (prims : Primitives) (D : C.Coalition) (A : Adversary
     (f : C.Party → β → PartyM C E (CallSpec I O) α) :
     SameRun prims (executePhase localRoles D A F fuel st (fun i => localStep (oa i) >>= f i))
       (do
-        let v ← Concrete.sequenceFin (fun i => if i ∈ D.1 then pure default else oa i)
+        let v ← OverPermutation.sequenceFin (fun i => if i ∈ D.1 then pure default else oa i)
         executePhase localRoles D A F fuel st (fun i => f i (v i))) := by
   unfold executePhase
   have h := (startSteps_local prims D oa f).bind (fun steps =>
@@ -8164,7 +8143,7 @@ variable {C : Committee} {β : Type}
 
 lemma sequenceFin_select_none {n : ℕ} (oa : OracleComp (LocalSpec C) β) (pick : Fin n → Prop)
     (fallback : β) (hn : ¬∃ i,pick i) :
-    Concrete.sequenceFin (fun i => if pick i then oa else pure fallback) = pure (fun _ => fallback) := by
+    OverPermutation.sequenceFin (fun i => if pick i then oa else pure fallback) = pure (fun _ => fallback) := by
   have hp : (fun i => if pick i then oa else pure fallback) = fun _ => pure fallback := by
     funext i
     exact if_neg (fun hi => hn ⟨i,hi⟩)
@@ -8174,11 +8153,11 @@ lemma sequenceFin_select_none {n : ℕ} (oa : OracleComp (LocalSpec C) β) (pick
 This also covers nonholders and corrupt slots, whose entries are fixed fallbacks. -/
 theorem sameRun_sequenceFin_selected (prims : Primitives) (oa : OracleComp (RoSpec C) β)
     (fallback : β) : ∀ {n : ℕ} (pick : Fin n → Prop), (∃ i,pick i) →
-    SameRun prims (Concrete.sequenceFin (fun i => if pick i then liftComp oa (LocalSpec C) else pure fallback))
+    SameRun prims (OverPermutation.sequenceFin (fun i => if pick i then liftComp oa (LocalSpec C) else pure fallback))
       (do let v ← liftComp oa (LocalSpec C); pure (fun i => if pick i then v else fallback))
   | 0,pick,h => by obtain ⟨i,_⟩ := h; exact i.elim0
   | n+1,pick,h => by
-    rw [Concrete.sequenceFin]
+    rw [OverPermutation.sequenceFin]
     by_cases hrest : ∃ i : Fin n,pick i.succ
     · have hi := sameRun_sequenceFin_selected prims oa fallback (fun i : Fin n => pick i.succ) hrest
       refine (SameRun.bind_right _ fun v => hi.bind (fun rest => SameRun.refl prims (pure (Fin.cases (motive := fun _ => β) v rest)))).trans ?_
@@ -8231,14 +8210,14 @@ def queryColumns (f : Fin n → α → OracleComp (LocalSpec C) β) :
     List α → OracleComp (LocalSpec C) (Fin n → List β)
   | [] => pure (fun _ => [])
   | a::as => do
-    let head ← Concrete.sequenceFin (fun i => f i a)
+    let head ← OverPermutation.sequenceFin (fun i => f i a)
     let tail ← queryColumns f as
     pure (fun i => head i::tail i)
 
 /-- Independent local query rows can be evaluated by columns without changing their answers or cache. -/
 theorem sameRun_queryColumns (prims : Primitives)
     (f : Fin n → α → OracleComp (LocalSpec C) β) (as : List α) :
-    SameRun prims (Concrete.sequenceFin (fun i => as.mapM (f i))) (queryColumns f as) := by
+    SameRun prims (OverPermutation.sequenceFin (fun i => as.mapM (f i))) (queryColumns f as) := by
   induction as with
   | nil => simp only [List.mapM_nil,sequenceFin_pure,queryColumns]; exact SameRun.refl prims _
   | cons a as ih =>
@@ -8268,7 +8247,7 @@ theorem honestDigestColumn_common (prims : Primitives) (T : C.Term)
     (salt hist : List Bit)
     (hs : ∀ i,i ∉ D.1 → i ∈ C.holders T → vector 256 (salts i T)=salt)
     (hh : ∀ i,i ∉ D.1 → i ∈ C.holders T → history i T=hist) :
-    SameRun prims (Concrete.sequenceFin (honestDigestColumn D T salts history))
+    SameRun prims (OverPermutation.sequenceFin (honestDigestColumn D T salts history))
       (do
         let d ← liftComp (oneDigestQuery (C := C) salt hist) (LocalSpec C)
         pure (fun i => if i ∉ D.1 ∧ i ∈ C.holders T then d else 0)) := by
@@ -8312,13 +8291,13 @@ theorem startSteps_local_fallback (prims : Primitives) (D : C.Coalition)
     (f : C.Party → β → PartyM C E (CallSpec I O) α) :
     SameRun prims (startSteps localRoles D (fun i => localStep (oa i) >>= f i))
       (do
-        let v ← Concrete.sequenceFin (fun i => if i ∈ D.1 then pure (fallback i) else oa i)
+        let v ← OverPermutation.sequenceFin (fun i => if i ∈ D.1 then pure (fallback i) else oa i)
         startSteps localRoles D (fun i => f i (v i))) := by
   let queries : C.Party → OracleComp (LocalSpec C) β := fun i => if i ∈ D.1 then pure (fallback i) else oa i
   let next : C.Party → β → OracleComp (LocalSpec C) (Step C E (CallSpec I O) α) :=
     fun i b => if i ∈ D.1 then pure (.done none) else advance (f i b).run
   have hn : startSteps localRoles D (fun i => localStep (oa i) >>= f i) =
-      Concrete.sequenceFin (fun i => do let b ← queries i; let v ← next i b; pure v) := by
+      OverPermutation.sequenceFin (fun i => queries i >>= fun b => next i b >>= fun v => pure v) := by
     unfold startSteps
     congr 1
     funext i
@@ -8329,7 +8308,7 @@ theorem startSteps_local_fallback (prims : Primitives) (D : C.Coalition)
   refine hh.trans (SameRun.of_eq ?_)
   apply bind_congr
   intro v
-  change (Concrete.sequenceFin (fun i => next i (v i)) >>= pure) = _
+  change (OverPermutation.sequenceFin (fun i => next i (v i)) >>= pure) = _
   rw [bind_pure]
   rfl
 
@@ -8340,7 +8319,7 @@ theorem executePhase_local_fallback (prims : Primitives) (D : C.Coalition) (A : 
     (f : C.Party → β → PartyM C E (CallSpec I O) α) :
     SameRun prims (executePhase localRoles D A F fuel st (fun i => localStep (oa i) >>= f i))
       (do
-        let v ← Concrete.sequenceFin (fun i => if i ∈ D.1 then pure (fallback i) else oa i)
+        let v ← OverPermutation.sequenceFin (fun i => if i ∈ D.1 then pure (fallback i) else oa i)
         executePhase localRoles D A F fuel st (fun i => f i (v i))) := by
   unfold executePhase
   have h := (startSteps_local_fallback prims D oa fallback f).bind (fun steps =>
@@ -8441,7 +8420,7 @@ def digestColumnValues (D : C.Coalition) (T : C.Term) (d : HashOutput) : C.Party
 def commonDigestColumn (D : C.Coalition) (salts : C.Party → Shares C Bit)
     (history : C.Party → C.Term → List Bit) (salt hist : C.Term → List Bit) (T : C.Term) :
     OracleComp (LocalSpec C) (C.Party → HashOutput) :=
-  if KnownTo D.1 T then Concrete.sequenceFin (honestDigestColumn D T salts history) else do
+  if KnownTo D.1 T then OverPermutation.sequenceFin (honestDigestColumn D T salts history) else do
     let d ← liftComp (oneDigestQuery (C := C) (salt T) (hist T)) (LocalSpec C)
     pure (digestColumnValues D T d)
 
@@ -8466,7 +8445,7 @@ theorem digestColumns_common (prims : Primitives) (D : C.Coalition)
   | nil => exact SameRun.refl prims _
   | cons T ts ih =>
     simp only [queryColumns,digestColumnsRun]
-    have hc : SameRun prims (Concrete.sequenceFin (honestDigestColumn D T salts history))
+    have hc : SameRun prims (OverPermutation.sequenceFin (honestDigestColumn D T salts history))
         (commonDigestColumn D salts history salt hist T) := by
       unfold commonDigestColumn
       by_cases ht : KnownTo D.1 T
@@ -8529,8 +8508,13 @@ theorem sameRun_uniform_coordinate (prims : Primitives) (i : I)
         let table ← liftComp ($ᵗ (I → R)) (LocalSpec C)
         pure (Function.update table i value))
       (liftComp ($ᵗ (I → R)) (LocalSpec C)) := by
-    simpa only [liftComp_bind,liftComp_pure] using sameRun_liftComp_of_evalDist (C := C) prims _ _
-      (evalDist_uniformSample_bind_update (R := R) i)
+    have hu : (do let value ← $ᵗ R; let table ← $ᵗ (I → R); pure (Function.update table i value) :
+        ProbComp (I → R)) =ᵈ $ᵗ (I → R) := by
+      let : MeasurableSpace R := ⊤
+      have hu := EvalDistEq.of_evalDist_eq (evalDist_bind_bind_update ($ᵗ R) ($ᵗ (I → R))
+        SampleableType.evalDist_uniformSample SampleableType.evalDist_uniformSample i pure)
+      rwa [bind_pure] at hu
+    simpa only [liftComp_bind,liftComp_pure] using sameRun_liftComp_of_evalDist (C := C) prims _ _ hu
   have hb := h.bind (fun table => SameRun.refl prims (k table))
   simpa only [bind_assoc,pure_bind] using hb
 
@@ -9068,32 +9052,36 @@ theorem saltedDigestProgram_hide (prims : Primitives) (cache : HashCache C)
     (charged : (LocalSpec C).Domain → Prop) [DecidablePred charged]
     (hproject : ∀ t,(digestSaltProjection t).isSome → charged t)
     (q : ℕ) (hq : ∀ d,IsQueryBoundP (k d) charged q) :
-    tvDist ((simulateQ (localAnswer prims) (saltedDigestProgram history k)).run' cache)
+    letI : MeasurableSpace α := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) (saltedDigestProgram history k)).run' cache)
       ((simulateQ (localAnswer prims) (liftComp ($ᵗ HashOutput) (LocalSpec C) >>= k)).run' cache) ≤
       ((seen.card+q : ℕ) : ℝ)/2^256 := by
+  let : MeasurableSpace α := ⊤
   let probe : OracleComp (LocalSpec C) HashOutput := liftComp (hashQuery (Query.history (C := C) history)) (LocalSpec C)
   let real := saltedDigestProgram history k
   let ghost := liftComp ($ᵗ HashOutput) (LocalSpec C) >>= k
   have hr := local_prefetch_output prims probe real cache
   have hg := local_prefetch_output prims probe ghost cache
-  change tvDist ((simulateQ (localAnswer prims) real).run' cache)
+  change measureTVDist ((simulateQ (localAnswer prims) real).run' cache)
     ((simulateQ (localAnswer prims) ghost).run' cache) ≤ _
-  rw [tvDist,← hr,← hg]
-  change tvDist ((simulateQ (localAnswer prims) (probe >>= fun _ => real)).run' cache)
+  rw [measureTVDist,← hr.evalDist_eq,← hg.evalDist_eq]
+  change measureTVDist ((simulateQ (localAnswer prims) (probe >>= fun _ => real)).run' cache)
     ((simulateQ (localAnswer prims) (probe >>= fun _ => ghost)).run' cache) ≤ _
   simp only [simulateQ_bind,StateT.run'_eq,StateT.run_bind,map_bind]
   dsimp only [probe]
   rw [simulateQ_localAnswer_hash]
-  change tvDist (((hashAnswer prims (.history history)).run cache) >>= fun p =>
+  change measureTVDist (((hashAnswer prims (.history history)).run cache) >>= fun p =>
       (simulateQ (localAnswer prims) real).run' p.2)
     (((hashAnswer prims (.history history)).run cache) >>= fun p =>
       (simulateQ (localAnswer prims) ghost).run' p.2) ≤ _
-  apply tvDist_bind_left_le_const
-  intro p hp
+  refine le_of_eq_of_le (congrArg₂ measureTVDist (bind_eq_attach_bind _ _) (bind_eq_attach_bind _ _))
+    (measureTVDist_bind_left_le_of_forall_le _ _ _ (by positivity) fun p => ?_)
+  obtain ⟨p,hp⟩ := p
+  replace hp := MonadAttach.mem_support.2 hp
   have hn : ¬ IsFixed (Query.history (C := C) history) := by rintro ⟨_,he,_⟩; cases he
   have hh := hashAnswer_cached prims hn cache p hp
   have hc := history_preserves_digestSalts prims cache seen hs history p hp
-  change tvDist ((simulateQ (localAnswer prims) (saltedDigestProgram history k)).run' p.2)
+  change measureTVDist ((simulateQ (localAnswer prims) (saltedDigestProgram history k)).run' p.2)
     ((simulateQ (localAnswer prims) (liftComp ($ᵗ HashOutput) (LocalSpec C) >>= k)).run' p.2) ≤ _
   rw [saltedDigestProgram_run',digestGhostGame_run']
   apply saltedDigest_hideP prims p.2 history p.1 hh seen _ k charged hproject q hq
@@ -9142,9 +9130,9 @@ lemma localAnswer_digest_covered (prims : Primitives) (cache : HashCache C)
     · subst q
       simp [digestSaltProjection]
   · simp [localAnswer,prgAnswer] at hp
-    obtain ⟨p,hp,rfl⟩ := hp
+    obtain ⟨p,c,hp,rfl⟩ := hp
     intro salt h hd
-    rcases hashAnswer_digest_entries prims (.streamKey x.2.1) cache p hp salt h hd with hs|he
+    rcases hashAnswer_digest_entries prims (.streamKey x.2.1) cache (p,c) hp salt h hd with hs|he
     · exact List.mem_append_right _ (hc salt h hs)
     · cases he
 
@@ -9219,13 +9207,17 @@ theorem saltedDigestProgram_hide_after (prims : Primitives) (cache : HashCache C
     (charged : (LocalSpec C).Domain → Prop) [DecidablePred charged]
     (hproject : ∀ t,(digestSaltProjection t).isSome → charged t)
     (p q : ℕ) (hp : IsQueryBoundP before charged p) (hq : ∀ b d,IsQueryBoundP (k b d) charged q) :
-    tvDist ((simulateQ (localAnswer prims) (before >>= fun b => saltedDigestProgram (history b) (k b))).run' cache)
+    letI : MeasurableSpace α := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) (before >>= fun b => saltedDigestProgram (history b) (k b))).run' cache)
       ((simulateQ (localAnswer prims) (before >>= fun b =>
         liftComp ($ᵗ HashOutput) (LocalSpec C) >>= k b)).run' cache) ≤
       ((seen.card+p+q : ℕ) : ℝ)/2^256 := by
+  let : MeasurableSpace α := ⊤
   simp only [simulateQ_bind,StateT.run'_eq,StateT.run_bind,map_bind]
-  apply tvDist_bind_left_le_const
-  intro z hz
+  refine le_of_eq_of_le (congrArg₂ measureTVDist (bind_eq_attach_bind _ _) (bind_eq_attach_bind _ _))
+    (measureTVDist_bind_left_le_of_forall_le _ _ _ (by positivity) fun z => ?_)
+  obtain ⟨z,hz⟩ := z
+  replace hz := MonadAttach.mem_support.2 hz
   obtain ⟨seen',hc,hcard⟩ := localProgram_digest_covered prims before charged hproject p hp cache seen hs z hz
   have hb := saltedDigestProgram_hide prims z.2 seen' hc (history z.1) (k z.1) charged hproject q (hq z.1)
   refine hb.trans ?_
@@ -9307,9 +9299,11 @@ theorem saltedDigestList_hide (prims : Primitives) (histories : List (List Bit))
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen)
     (k : List HashOutput → OracleComp (LocalSpec C) α) (q : ℕ)
     (hq : ∀ ds,IsQueryBoundP (k ds) DigestQuery q) :
-    tvDist ((simulateQ (localAnswer prims) (saltedDigestList histories k)).run' cache)
+    letI : MeasurableSpace α := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) (saltedDigestList histories k)).run' cache)
       ((simulateQ (localAnswer prims) (ghostDigestList histories k)).run' cache) ≤
       ((histories.length*(seen.card+q+histories.length) : ℕ) : ℝ)/2^256 := by
+  let : MeasurableSpace α := ⊤
   induction histories generalizing k with
   | nil => simp [saltedDigestList,ghostDigestList]
   | cons h hs ih =>
@@ -9318,15 +9312,14 @@ theorem saltedDigestList_hide (prims : Primitives) (histories : List (List Bit))
     have hb := saltedDigestProgram_hide prims cache seen hc h next DigestQuery
       (fun _ ht => ht) (hs.length+q)
       (fun d => saltedDigestList_digestBound hs (fun ds => k (d::ds)) q (fun ds => hq (d::ds)))
-    have ht : tvDist ((simulateQ (localAnswer prims) ghost).run' cache)
+    have ht : measureTVDist ((simulateQ (localAnswer prims) ghost).run' cache)
         ((simulateQ (localAnswer prims) (ghostDigestList (h::hs) k)).run' cache) ≤
         ((hs.length*(seen.card+q+hs.length) : ℕ) : ℝ)/2^256 := by
       simp only [ghost,ghostDigestList,simulateQ_bind,StateT.run'_eq,StateT.run_bind,
         run_liftComp_prob,bind_map_left,map_bind]
-      apply tvDist_bind_left_le_const'
-      intro d
+      refine measureTVDist_bind_left_le_of_forall_le _ _ _ (by positivity) fun d => ?_
       exact ih (fun ds => k (d::ds)) (fun ds => hq (d::ds))
-    have htri := tvDist_triangle
+    have htri := measureTVDist_triangle
       ((simulateQ (localAnswer prims) (saltedDigestProgram h next)).run' cache)
       ((simulateQ (localAnswer prims) ghost).run' cache)
       ((simulateQ (localAnswer prims) (ghostDigestList (h::hs) k)).run' cache)
@@ -9418,16 +9411,18 @@ theorem tableDigests_hide (prims : Primitives) (hist : C.Term → List Bit)
     (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen)
     (k : List HashOutput → OracleComp (LocalSpec C) α) (q : ℕ)
     (hq : ∀ ds,IsQueryBoundP (k ds) DigestQuery q) :
-    tvDist ((simulateQ (localAnswer prims) (do
+    letI : MeasurableSpace α := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) (do
         let table ← liftComp ($ᵗ (C.Term → Fin 256 → Bit)) (LocalSpec C)
         tableDigests hist table Ts k)).run' cache)
       ((simulateQ (localAnswer prims) (ghostDigestList (Ts.map hist) k)).run' cache) ≤
       ((Ts.length*(seen.card+q+Ts.length) : ℕ) : ℝ)/2^256 := by
+  let : MeasurableSpace α := ⊤
   have he := tableDigests_fresh prims hist Ts hTs k cache
-  have he' := congrArg (fun d => Prod.fst <$> d) he
-  simp only [← evalDist_map,← StateT.run'_eq] at he'
-  rw [tvDist,he']
-  simpa only [tvDist,List.length_map] using saltedDigestList_hide prims (Ts.map hist) cache seen hc k q hq
+  have he' := he.map Prod.fst
+  simp only [← StateT.run'_eq] at he'
+  rw [measureTVDist,he'.evalDist_eq]
+  simpa only [measureTVDist,List.length_map] using saltedDigestList_hide prims (Ts.map hist) cache seen hc k q hq
 
 end ThresholdLeanXmssSecurity
 end
@@ -9485,9 +9480,11 @@ theorem mixedDigests_hide (prims : Primitives) (D : C.Coalition)
     (Ts : List C.Term) (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen)
     (k : List (DigestColumn C) → OracleComp (LocalSpec C) α)
     (q : ℕ) (hq : ∀ cs,IsQueryBoundP (k cs) DigestQuery q) :
-    tvDist ((simulateQ (localAnswer prims) (mixedDigests D known hist Ts k)).run' cache)
+    letI : MeasurableSpace α := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) (mixedDigests D known hist Ts k)).run' cache)
       ((simulateQ (localAnswer prims) (mixedGhostDigests D known Ts k)).run' cache) ≤
       ((Ts.length*(seen.card+q+(p+1)*Ts.length) : ℕ) : ℝ)/2^256 := by
+  let : MeasurableSpace α := ⊤
   induction Ts generalizing cache seen k with
   | nil => simp [mixedDigests,mixedGhostDigests]
   | cons T Ts ih =>
@@ -9495,8 +9492,10 @@ theorem mixedDigests_hide (prims : Primitives) (D : C.Coalition)
     by_cases hT : KnownTo D.1 T
     · rw [if_pos hT,if_pos hT]
       simp only [simulateQ_bind,StateT.run'_eq,StateT.run_bind,map_bind]
-      apply tvDist_bind_left_le_const
-      intro z hz
+      refine le_of_eq_of_le (congrArg₂ measureTVDist (bind_eq_attach_bind _ _) (bind_eq_attach_bind _ _))
+        (measureTVDist_bind_left_le_of_forall_le _ _ _ (by positivity) fun z => ?_)
+      obtain ⟨z,hz⟩ := z
+      replace hz := MonadAttach.mem_support.2 hz
       obtain ⟨seen',hc',hcard⟩ := localProgram_digest_covered prims (known T) DigestQuery
         (fun _ ht => ht) p (hknown T hT) cache seen hc z hz
       refine (ih z.2 seen' hc' (fun cs => k (z.1::cs)) (fun cs => hq _)).trans ?_
@@ -9511,15 +9510,14 @@ theorem mixedDigests_hide (prims : Primitives) (D : C.Coalition)
       have hb := saltedDigestProgram_hide prims cache seen hc (hist T) next DigestQuery
         (fun _ ht => ht) ((p+1)*Ts.length+q)
         (fun d => mixedDigests_digestBound D known hist p hknown Ts _ q (fun cs => hq _))
-      have ht : tvDist ((simulateQ (localAnswer prims) ghost).run' cache)
+      have ht : measureTVDist ((simulateQ (localAnswer prims) ghost).run' cache)
           ((simulateQ (localAnswer prims) (liftComp ($ᵗ HashOutput) (LocalSpec C) >>= fun d =>
             mixedGhostDigests D known Ts fun cs => k (digestColumnValues D T d::cs))).run' cache) ≤
           ((Ts.length*(seen.card+q+(p+1)*Ts.length) : ℕ) : ℝ)/2^256 := by
         simp only [ghost,simulateQ_bind,StateT.run'_eq,StateT.run_bind,run_liftComp_prob,bind_map_left,map_bind]
-        apply tvDist_bind_left_le_const'
-        intro d
+        refine measureTVDist_bind_left_le_of_forall_le _ _ _ (by positivity) fun d => ?_
         exact ih cache seen hc _ (fun cs => hq _)
-      have htri := tvDist_triangle
+      have htri := measureTVDist_triangle
         ((simulateQ (localAnswer prims) (saltedDigestProgram (hist T) next)).run' cache)
         ((simulateQ (localAnswer prims) ghost).run' cache)
         ((simulateQ (localAnswer prims) (liftComp ($ᵗ HashOutput) (LocalSpec C) >>= fun d =>
@@ -9626,15 +9624,17 @@ theorem mixedTableDigests_hide (prims : Primitives) (D : C.Coalition)
     (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen)
     (k : List (DigestColumn C) → OracleComp (LocalSpec C) α)
     (q : ℕ) (hq : ∀ cs,IsQueryBoundP (k cs) DigestQuery q) :
-    tvDist ((simulateQ (localAnswer prims) (do
+    letI : MeasurableSpace α := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) (do
         let table ← liftComp ($ᵗ (C.Term → Fin 256 → Bit)) (LocalSpec C)
         mixedTableDigests D known hist table Ts k)).run' cache)
       ((simulateQ (localAnswer prims) (mixedGhostDigests D known Ts k)).run' cache) ≤
       ((Ts.length*(seen.card+q+(p+1)*Ts.length) : ℕ) : ℝ)/2^256 := by
+  let : MeasurableSpace α := ⊤
   have he := mixedTableDigests_fresh prims D known hist Ts hTs k cache
-  have he' := congrArg (fun d => Prod.fst <$> d) he
-  simp only [← evalDist_map,← StateT.run'_eq] at he'
-  rw [tvDist,he']
+  have he' := he.map Prod.fst
+  simp only [← StateT.run'_eq] at he'
+  rw [measureTVDist,he'.evalDist_eq]
   exact mixedDigests_hide prims D known hist p hknown Ts cache seen hc k q hq
 
 end ThresholdLeanXmssSecurity
@@ -9656,7 +9656,7 @@ lemma digestColumnsRun_mixedTable (D : C.Coalition)
     (salts : C.Party → Shares C Bit) (history : C.Party → C.Term → List Bit)
     (hist : C.Term → List Bit) (table : C.Term → Fin 256 → Bit)
     (known : C.Term → OracleComp (LocalSpec C) (DigestColumn C))
-    (hknown : ∀ T,KnownTo D.1 T → Concrete.sequenceFin (honestDigestColumn D T salts history)=known T)
+    (hknown : ∀ T,KnownTo D.1 T → OverPermutation.sequenceFin (honestDigestColumn D T salts history)=known T)
     (Ts : List C.Term) (k : (C.Party → List HashOutput) → OracleComp (LocalSpec C) α) :
     (digestColumnsRun (commonDigestColumn D salts history (fun T => List.ofFn (table T)) hist) Ts >>= k)=
       mixedTableDigests D known hist table Ts (fun cols => k (digestRows cols)) := by
@@ -9708,7 +9708,7 @@ theorem executePhase_digestTables (prims : Primitives) (K : Constants C E) (D : 
       vector 256 (salts table i T)=List.ofFn (table T))
     (hhist : ∀ T,¬KnownTo D.1 T → ∀ i,i ∉ D.1 → i ∈ C.holders T → (hs i).history T=hist T)
     (hknown : ∀ table T,KnownTo D.1 T →
-      Concrete.sequenceFin (honestDigestColumn D T (salts table) (fun j => (hs j).history))=known T) :
+      OverPermutation.sequenceFin (honestDigestColumn D T (salts table) (fun j => (hs j).history))=known T) :
     SameRun prims
       (do let table ← liftComp ($ᵗ (C.Term → Fin 256 → Bit)) (LocalSpec C)
           executePhase localRoles D A (checkFunctionalities K) fuel st
@@ -9735,14 +9735,15 @@ theorem executePhase_digestHide (prims : Primitives) (K : Constants C E) (D : C.
       vector 256 (salts table i T)=List.ofFn (table T))
     (hhist : ∀ T,¬KnownTo D.1 T → ∀ i,i ∉ D.1 → i ∈ C.holders T → (hs i).history T=hist T)
     (hknown : ∀ table T,KnownTo D.1 T →
-      Concrete.sequenceFin (honestDigestColumn D T (salts table) (fun j => (hs j).history))=known T)
+      OverPermutation.sequenceFin (honestDigestColumn D T (salts table) (fun j => (hs j).history))=known T)
     (p : ℕ) (hbound : ∀ T,KnownTo D.1 T → IsQueryBoundP (known T) DigestQuery p)
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen)
     {β : Type} (tail : (A.State × (C.Party → Option α)) → OracleComp (LocalSpec C) β)
     (q : ℕ) (hq : ∀ cols,IsQueryBoundP
       (executePhase localRoles D A (checkFunctionalities K) fuel st
         (fun i => afterDigests i (digestRows cols i) ((f i ()).run' (hs i))) >>= tail) DigestQuery q) :
-    tvDist ((simulateQ (localAnswer prims) (do
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) (do
         let table ← liftComp ($ᵗ (C.Term → Fin 256 → Bit)) (LocalSpec C)
         let out ← executePhase localRoles D A (checkFunctionalities K) fuel st
           (fun i => (compareDigests (localContext i) (salts table i) >>= f i).run' (hs i))
@@ -9751,12 +9752,13 @@ theorem executePhase_digestHide (prims : Primitives) (K : Constants C E) (D : C.
         executePhase localRoles D A (checkFunctionalities K) fuel st
           (fun i => afterDigests i (digestRows cols i) ((f i ()).run' (hs i))) >>= tail)).run' cache) ≤
       ((C.terms.length*(seen.card+q+(p+1)*C.terms.length) : ℕ) : ℝ)/2^256 := by
+  let : MeasurableSpace β := ⊤
   have he := (executePhase_digestTables prims K D A fuel st salts hs f hist known hsalt hhist hknown).bind
     (fun out => SameRun.refl prims (tail out)) cache
   simp only [bind_assoc,mixedTableDigests_bind] at he
-  have he' := congrArg (fun d => Prod.fst <$> d) he
-  simp only [← evalDist_map,← StateT.run'_eq] at he'
-  rw [tvDist,he']
+  have he' := he.map Prod.fst
+  simp only [← StateT.run'_eq] at he'
+  rw [measureTVDist,he'.evalDist_eq]
   have hnodup : C.terms.Nodup := Finset.nodup_toList _
   exact mixedTableDigests_hide prims D known hist p hbound C.terms hnodup cache seen hc _ q hq
 
@@ -9839,13 +9841,13 @@ theorem sequenceFin_advance_bind_digestBound : ∀ {N : ℕ}
     (k : (Fin N → Step C E G α) → OracleComp (LocalSpec C) β) (extra : ℕ),
     (∀ st (b : Fin N → ℕ), (∀ i, b i ≤ budget i) → (∀ i, DigestStepBound (st i) (b i)) →
       IsQueryBoundP (k st) DigestQuery (extra + ∑ i, b i)) →
-    IsQueryBoundP ((Concrete.sequenceFin fun i => advance (oa i)) >>= k) DigestQuery
+    IsQueryBoundP ((OverPermutation.sequenceFin fun i => advance (oa i)) >>= k) DigestQuery
       (extra + ∑ i, budget i)
   | 0, oa, budget, h, k, extra, hk => by
-    simp only [Concrete.sequenceFin, pure_bind, Fin.sum_univ_zero, Nat.add_zero]
+    simp only [OverPermutation.sequenceFin, pure_bind, Fin.sum_univ_zero, Nat.add_zero]
     simpa using hk Fin.elim0 Fin.elim0 (fun i => Fin.elim0 i) (fun i => Fin.elim0 i)
   | N + 1, oa, budget, h, k, extra, hk => by
-    simp only [Concrete.sequenceFin, bind_assoc, pure_bind]
+    simp only [OverPermutation.sequenceFin, bind_assoc, pure_bind]
     rw [Fin.sum_univ_succ]
     have he : extra + (budget 0 + ∑ i : Fin N, budget i.succ) =
         (extra + ∑ i : Fin N, budget i.succ) + budget 0 := by omega
@@ -9925,7 +9927,7 @@ lemma stepRound_bind_digestBound (step : ℕ)
       (fun st => k (result.1, st, fun _ _ => none)) extra
       (fun st b hb hs => hk (result.1, st, fun _ _ => none) b hb hs)
     convert (congrArg (fun f : C.Party → OracleComp (LocalSpec C) (Step C E (CallSpec I O) α) =>
-      IsQueryBoundP (Concrete.sequenceFin f >>= fun st => k (result.1, st, fun _ _ => none))
+      IsQueryBoundP (OverPermutation.sequenceFin f >>= fun st => k (result.1, st, fun _ _ => none))
         DigestQuery (extra + ∑ j, budget j)) he).mpr hseq using 1
     congr 2
     funext j
@@ -9947,7 +9949,7 @@ lemma stepRound_bind_digestBound (step : ℕ)
       (fun st => k (result.1, st, result.2)) extra
       (fun st b hb hs => hk (result.1, st, result.2) b hb hs)
     convert (congrArg (fun f : C.Party → OracleComp (LocalSpec C) (Step C E (CallSpec I O) α) =>
-      IsQueryBoundP (Concrete.sequenceFin f >>= fun st => k (result.1, st, result.2))
+      IsQueryBoundP (OverPermutation.sequenceFin f >>= fun st => k (result.1, st, result.2))
         DigestQuery (extra + ∑ j, budget j)) he).mpr hseq using 1
     congr 2
     funext j
@@ -9981,7 +9983,7 @@ lemma executePhase_digestBound (step : ℕ)
       fun i => advance (if i ∈ D.1 then pure none else (program i).run) := by
     funext i
     split_ifs <;> rfl
-  change IsQueryBoundP ((Concrete.sequenceFin _) >>= _) _ _
+  change IsQueryBoundP ((OverPermutation.sequenceFin _) >>= _) _ _
   rw [he]
   apply sequenceFin_advance_bind_digestBound _ budget
   · intro j
@@ -10050,10 +10052,10 @@ variable {C : Committee} {α : Type}
 
 lemma sequenceFin_digestBound : ∀ {n : ℕ} (oa : Fin n → OracleComp (LocalSpec C) α) (p : ℕ),
     (∀ i,IsQueryBoundP (oa i) DigestQuery p) →
-      IsQueryBoundP (Concrete.sequenceFin oa) DigestQuery (n*p)
+      IsQueryBoundP (OverPermutation.sequenceFin oa) DigestQuery (n*p)
   | 0,oa,p,h => isQueryBoundP_pure _ _ _
   | n+1,oa,p,h => by
-    simp only [Concrete.sequenceFin]
+    simp only [OverPermutation.sequenceFin]
     have hb := isQueryBoundP_bind (h 0) (fun a _ =>
       isQueryBoundP_bind (sequenceFin_digestBound (fun i : Fin n => oa i.succ) p (fun i => h i.succ))
         (fun b _ => isQueryBoundP_pure DigestQuery (Fin.cases (motive := fun _ => α) a b) 0))
@@ -10061,7 +10063,7 @@ lemma sequenceFin_digestBound : ∀ {n : ℕ} (oa : Fin n → OracleComp (LocalS
 
 lemma honestDigestColumn_digestBound (D : C.Coalition) (T : C.Term)
     (salts : C.Party → Shares C Bit) (history : C.Party → C.Term → List Bit) :
-    IsQueryBoundP (Concrete.sequenceFin (honestDigestColumn D T salts history)) DigestQuery C.n := by
+    IsQueryBoundP (OverPermutation.sequenceFin (honestDigestColumn D T salts history)) DigestQuery C.n := by
   simpa only [Nat.mul_one] using sequenceFin_digestBound (honestDigestColumn D T salts history) 1 (by
     intro i
     unfold honestDigestColumn
@@ -10111,19 +10113,20 @@ theorem executePhase_digestHide_randShares (prims : Primitives) (K : Constants C
     (q : ℕ) (hq : ∀ cols,IsQueryBoundP
       (executePhase localRoles D A (checkFunctionalities K) fuel st
         (fun i => afterDigests i (digestRows cols i) ((f i ()).run' (hs i))) >>= tail) DigestQuery q) :
-    tvDist ((simulateQ (localAnswer prims) (do
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) (do
         let table ← liftComp ($ᵗ (C.Term → Fin 256 → Bit)) (LocalSpec C)
         let out ← executePhase localRoles D A (checkFunctionalities K) fuel st
           (fun i => (compareDigests (localContext i) (randShares D 256 knownSalt table i) >>= f i).run' (hs i))
         tail out)).run' cache)
       ((simulateQ (localAnswer prims) (mixedGhostDigests D
-        (fun T => Concrete.sequenceFin (honestDigestColumn D T (randShares D 256 knownSalt 0) (fun j => (hs j).history)))
+        (fun T => OverPermutation.sequenceFin (honestDigestColumn D T (randShares D 256 knownSalt 0) (fun j => (hs j).history)))
         C.terms fun cols => executePhase localRoles D A (checkFunctionalities K) fuel st
           (fun i => afterDigests i (digestRows cols i) ((f i ()).run' (hs i))) >>= tail)).run' cache) ≤
       ((C.terms.length*(seen.card+q+(C.n+1)*C.terms.length) : ℕ) : ℝ)/2^256 := by
   apply executePhase_digestHide prims K D A fuel st (fun table => randShares D 256 knownSalt table) hs f hist _
     (fun table T hT i _ hi => randShares_salt_vector D knownSalt table T hT i hi) hhist
-    (fun table T hT => congrArg Concrete.sequenceFin (honestDigestColumn_randShares_known D T hT knownSalt table 0 _))
+    (fun table T hT => congrArg OverPermutation.sequenceFin (honestDigestColumn_randShares_known D T hT knownSalt table 0 _))
     C.n (fun T _ => honestDigestColumn_digestBound D T _ _) cache seen hc tail q hq
 
 end ThresholdLeanXmssSecurity
@@ -10188,8 +10191,8 @@ lemma DigestRunBound.run' {p : RunM C E G α} (h : DigestRunBound p) (hs : RunSt
 lemma localStep_digestBound {oa : OracleComp (LocalSpec C) α} {n : ℕ}
     (h : IsQueryBoundP oa DigestQuery n) : DigestPartyBound (localStep oa : PartyM C E G α) n := by
   unfold DigestPartyBound localStep
-  change IsQueryBoundP (some <$> liftComp oa (PartySpec C E G)) _ n
-  rw [isQueryBoundP_map_iff]
+  change IsQueryBoundP (liftComp oa (PartySpec C E G) >>= pure ∘ some) (PartyDigest (E := E) (G := G)) n
+  rw [← map_eq_bind_pure_comp,isQueryBoundP_map_iff]
   induction oa using OracleComp.inductionOn generalizing n with
   | pure a => simp
   | query_bind t k ih =>
@@ -10316,7 +10319,7 @@ def saltGhostContinuation (K : Constants C E) (D : C.Coalition) (A : CheckAdvers
     (tail : A.State × (C.Party → Option α) → OracleComp (LocalSpec C) β)
     (p : SaltReply A) : OracleComp (LocalSpec C) β :=
   mixedGhostDigests D
-    (fun T => Concrete.sequenceFin (honestDigestColumn D T (randShares D 256 p.2.1 0) (fun j => (hs j).history)))
+    (fun T => OverPermutation.sequenceFin (honestDigestColumn D T (randShares D 256 p.2.1 0) (fun j => (hs j).history)))
     C.terms fun cols => executePhase localRoles D A (checkFunctionalities K) fuel p.1
       (fun i => afterDigests i (digestRows cols i) ((f i ()).run' (afterSalt (hs i)))) >>= tail
 
@@ -10349,12 +10352,14 @@ theorem saltDigestPhase_hide (prims : Primitives) (K : Constants C E) (D : C.Coa
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen)
     (tail : A.State × (C.Party → Option α) → OracleComp (LocalSpec C) β)
     (final : ℕ) (hq : ∀ out,IsQueryBoundP (tail out) Counted final) :
-    tvDist ((simulateQ (localAnswer prims)
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims)
       (executePhase localRoles D A (checkFunctionalities K) (fuel+1) st
         (fun i => ((hybridCheckGadgets K i).randBits 256 >>= fun salts =>
           compareDigests (localContext i) salts.1 >>= f i).run' (hs i)) >>= tail)).run' cache)
       ((simulateQ (localAnswer prims) (saltGhostPhase K D A fuel st hs f tail)).run' cache) ≤
       ((C.terms.length*(seen.card+(fuel+1)*step+final+(C.n+1)*C.terms.length) : ℕ) : ℝ)/2^256 := by
+  let : MeasurableSpace β := ⊤
   have hsame : SameRun prims
       (executePhase localRoles D A (checkFunctionalities K) (fuel+1) st
         (fun i => ((hybridCheckGadgets K i).randBits 256 >>= fun salts =>
@@ -10365,16 +10370,18 @@ theorem saltDigestPhase_hide (prims : Primitives) (K : Constants C E) (D : C.Coa
         (fun out => SameRun.refl prims (tail out))
     simpa only [saltActualContinuation,afterSalt,bind_assoc,pure_bind] using hh
   have he := hsame cache
-  have he' := congrArg (fun d => Prod.fst <$> d) he
-  simp only [← evalDist_map,← StateT.run'_eq] at he'
-  rw [tvDist,he']
-  change tvDist ((simulateQ (localAnswer prims)
+  have he' := he.map Prod.fst
+  simp only [← StateT.run'_eq] at he'
+  rw [measureTVDist,he'.evalDist_eq]
+  change measureTVDist ((simulateQ (localAnswer prims)
       ((rightAdversary (rightAdversary A)).answer st () >>= saltActualContinuation K D A fuel hs f tail)).run' cache)
     ((simulateQ (localAnswer prims)
       ((rightAdversary (rightAdversary A)).answer st () >>= saltGhostContinuation K D A fuel hs f tail)).run' cache) ≤ _
   simp only [simulateQ_bind,StateT.run'_eq,StateT.run_bind,map_bind]
-  apply tvDist_bind_left_le_const
-  intro z hz
+  refine le_of_eq_of_le (congrArg₂ measureTVDist (bind_eq_attach_bind _ _) (bind_eq_attach_bind _ _))
+    (measureTVDist_bind_left_le_of_forall_le _ _ _ (by positivity) fun z => ?_)
+  obtain ⟨z,hz⟩ := z
+  replace hz := MonadAttach.mem_support.2 hz
   have hz' : z ∈ support ((simulateQ (localAnswer prims)
       ((rightAdversary (rightAdversary A)).answer st ())).run cache) := by
     simpa only [rightAdversary,simulateQ_bind,StateT.run_bind] using hz

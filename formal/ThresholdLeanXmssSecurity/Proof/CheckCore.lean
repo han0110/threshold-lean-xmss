@@ -1,5 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.CheckSecurity
-import VCVio.EvalDist.Monad.Disagreement
+import VCVio.EvalDist.Monad.Disagreement.Measure
 
 /-!
 # The core distance of the check
@@ -29,7 +29,7 @@ collision of the `termHashes` honest history and digest points.
   (`SharedBad`) for the real, the masked and the ideal run, bounded by `checkHashError` alone.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss Finset
 
 noncomputable section
 
@@ -46,11 +46,11 @@ section CorruptNone
 variable {C : Committee} {E : Type}
 
 theorem mem_support_sequenceFin_oc {ι : Type} {spec : OracleSpec ι} {α : Type} :
-    ∀ {n : ℕ} (f : Fin n → OracleComp spec α) (x : Fin n → α), x ∈ support (Concrete.sequenceFin f) →
+    ∀ {n : ℕ} (f : Fin n → OracleComp spec α) (x : Fin n → α), x ∈ support (OverPermutation.sequenceFin f) →
       ∀ i, x i ∈ support (f i)
   | 0, f, x, _ => fun i => i.elim0
   | n + 1, f, x, hx => by
-    simp only [Concrete.sequenceFin, support_bind, Set.mem_iUnion, support_pure,
+    simp only [OverPermutation.sequenceFin, support_bind, Set.mem_iUnion, support_pure,
       Set.mem_singleton_iff] at hx
     obtain ⟨a, ha, t, ht, rfl⟩ := hx
     intro i
@@ -128,38 +128,37 @@ theorem localAccepts_bind_sub_le (prims : Primitives) {β : Type} (oa : OracleCo
     (f g : β → OracleComp (LocalSpec C) Bool) (bad : β → Prop)
     (h : ∀ b ∈ support oa, ¬ bad b → f b = g b) :
     |localAccepts prims (oa >>= f) - localAccepts prims (oa >>= g)| ≤
-      (Pr[bad | (simulateQ (localAnswer prims) oa).run' ∅]).toReal := by
+      (Pr{let z ← (simulateQ (localAnswer prims) oa).run' ∅}[bad z]).toReal := by
   have hrun : ∀ k : β → OracleComp (LocalSpec C) Bool,
-      Pr[fun b => b = true | (simulateQ (localAnswer prims) (oa >>= k)).run' ∅] =
-        Pr[fun b => b = true | (simulateQ (localAnswer prims) oa).run ∅ >>= fun p =>
-          (simulateQ (localAnswer prims) (k p.1)).run' p.2] := by
+      Pr{let b ← (simulateQ (localAnswer prims) (oa >>= k)).run' ∅}[b = true] =
+        Pr{let b ← (simulateQ (localAnswer prims) oa).run ∅ >>= fun p =>
+          (simulateQ (localAnswer prims) (k p.1)).run' p.2}[b = true] := by
     intro k
     simp only [simulateQ_bind, StateT.run'_eq, StateT.run_bind, map_bind]
-  have hbad : Pr[bad | (simulateQ (localAnswer prims) oa).run' ∅] =
-      Pr[fun p => bad p.1 | (simulateQ (localAnswer prims) oa).run ∅] := by
-    rw [StateT.run'_eq, probEvent_map]
-    rfl
+  have hbad : Pr{let z ← (simulateQ (localAnswer prims) oa).run' ∅}[bad z] =
+      Pr{let p ← (simulateQ (localAnswer prims) oa).run ∅}[bad p.1] := by
+    rw [StateT.run'_eq, prEvent_map]
   have hsupp : ∀ p ∈ support ((simulateQ (localAnswer prims) oa).run ∅), p.1 ∈ support oa := by
     intro p hp
     apply support_simulateQ_run'_subset (localAnswer prims) oa ∅
     rw [StateT.run'_eq, support_map]
     exact ⟨p, hp, rfl⟩
-  have h1 := probEvent_bind_le_add_of_disagree (ε₂ := 0) (q := fun b : Bool => b = true)
+  have h1 := prEvent_bind_le_add_of_disagree (ε₂ := 0) (q := fun b : Bool => b = true)
     (my := fun p => (simulateQ (localAnswer prims) (f p.1)).run' p.2)
     (oc := fun p => (simulateQ (localAnswer prims) (g p.1)).run' p.2) (le_of_eq hbad.symm)
     (fun p hp hn => by rw [h p.1 (hsupp p hp) hn, add_zero])
-  have h2 := probEvent_bind_le_add_of_disagree (ε₂ := 0) (q := fun b : Bool => b = true)
+  have h2 := prEvent_bind_le_add_of_disagree (ε₂ := 0) (q := fun b : Bool => b = true)
     (my := fun p => (simulateQ (localAnswer prims) (g p.1)).run' p.2)
     (oc := fun p => (simulateQ (localAnswer prims) (f p.1)).run' p.2) (le_of_eq hbad.symm)
     (fun p hp hn => by rw [h p.1 (hsupp p hp) hn, add_zero])
   rw [add_zero, ← hrun, ← hrun] at h1 h2
   unfold localAccepts
-  have hf : Pr[fun b => b = true | (simulateQ (localAnswer prims) (oa >>= f)).run' ∅] ≠ ⊤ :=
-    ne_top_of_le_ne_top ENNReal.one_ne_top probEvent_le_one
-  have hg : Pr[fun b => b = true | (simulateQ (localAnswer prims) (oa >>= g)).run' ∅] ≠ ⊤ :=
-    ne_top_of_le_ne_top ENNReal.one_ne_top probEvent_le_one
-  have he : Pr[bad | (simulateQ (localAnswer prims) oa).run' ∅] ≠ ⊤ :=
-    ne_top_of_le_ne_top ENNReal.one_ne_top probEvent_le_one
+  have hf : Pr{let b ← (simulateQ (localAnswer prims) (oa >>= f)).run' ∅}[b = true] ≠ ⊤ :=
+    ne_top_of_le_ne_top ENNReal.one_ne_top (prEvent_le_one _)
+  have hg : Pr{let b ← (simulateQ (localAnswer prims) (oa >>= g)).run' ∅}[b = true] ≠ ⊤ :=
+    ne_top_of_le_ne_top ENNReal.one_ne_top (prEvent_le_one _)
+  have he : Pr{let z ← (simulateQ (localAnswer prims) oa).run' ∅}[bad z] ≠ ⊤ :=
+    ne_top_of_le_ne_top ENNReal.one_ne_top (prEvent_le_one _)
   have h1' := (ENNReal.toReal_le_toReal hf (ENNReal.add_ne_top.mpr ⟨hg, he⟩)).mpr h1
   have h2' := (ENNReal.toReal_le_toReal hg (ENNReal.add_ne_top.mpr ⟨hf, he⟩)).mpr h2
   rw [ENNReal.toReal_add hg he] at h1'
@@ -252,8 +251,8 @@ theorem checkMasked_eq_real_of_accept (prims : Primitives) (K : Constants C E) (
     (fun r hr _ => by
       rw [mask_eq_self D _ r.2 (checkRealRun_corrupt_none K fuel D A x z r hr) (Or.inl h)])
   rw [checkMaskedLocal_eq, checkRealLocal_eq]
-  have h0 : Pr[fun (_ : A.State × (C.Party → Option Unit)) => False |
-      (simulateQ (localAnswer prims) (checkRealRun K fuel D A x z)).run' ∅] = 0 := by simp
+  have h0 : Pr{let _ : A.State × (C.Party → Option Unit) ←
+      (simulateQ (localAnswer prims) (checkRealRun K fuel D A x z)).run' ∅}[False] = 0 := by simp
   rw [h0, ENNReal.toReal_zero] at hd
   linarith [abs_nonneg (localAccepts prims (checkRealRun K fuel D A x z >>= fun r =>
       Z (r.1, fun i => if i ∉ D.1 ∧ (multVerifyLeak D (fun i => if i ∈ D.1 then none else some (x i))).2.2 ∧
@@ -269,8 +268,8 @@ theorem checkReal_masked_le (prims : Primitives) (K : Constants C E) (fuel : ℕ
     (A : CheckAdversary C E (List (Tuple C))) (x : C.Party → List (Tuple C)) (z : Aux)
     (Z : Distinguisher C A.State Unit) :
     |localAccepts prims (checkRealLocal K fuel D A x z Z) - localAccepts prims (checkMaskedLocal K fuel D A x z Z)| ≤
-      (Pr[fun r => ∃ i, i ∉ D.1 ∧ r.2 i = some () |
-        (simulateQ (localAnswer prims) (checkRealRun K fuel D A x z)).run' ∅]).toReal := by
+      (Pr{let r ←
+        (simulateQ (localAnswer prims) (checkRealRun K fuel D A x z)).run' ∅}[∃ i, i ∉ D.1 ∧ r.2 i = some ()]).toReal := by
   by_cases hacc : (multVerifyLeak D (fun i => if i ∈ D.1 then none else some (x i))).2.2 = true
   · rw [checkMasked_eq_real_of_accept prims K fuel D A x z Z hacc, sub_self, abs_zero]
     exact ENNReal.toReal_nonneg
@@ -336,11 +335,11 @@ components have the laws of the outputs of the three games, and off the flag the
 the second and the second with the third. Steps 3 and 4 of the plan share this one flag. -/
 def SharedBad (prims : Primitives) (g₁ g₂ g₃ : OracleComp (LocalSpec C) Bool) (ε : ℝ) : Prop :=
   ∃ J : ProbComp (Bool × Bool × Bool × Bool),
-    Pr[fun ω => ω.1 = true | J] = Pr[fun b => b = true | (simulateQ (localAnswer prims) g₁).run' ∅] ∧
-    Pr[fun ω => ω.2.1 = true | J] = Pr[fun b => b = true | (simulateQ (localAnswer prims) g₂).run' ∅] ∧
-    Pr[fun ω => ω.2.2.1 = true | J] = Pr[fun b => b = true | (simulateQ (localAnswer prims) g₃).run' ∅] ∧
+    Pr{let ω ← J}[ω.1 = true] = Pr{let b ← (simulateQ (localAnswer prims) g₁).run' ∅}[b = true] ∧
+    Pr{let ω ← J}[ω.2.1 = true] = Pr{let b ← (simulateQ (localAnswer prims) g₂).run' ∅}[b = true] ∧
+    Pr{let ω ← J}[ω.2.2.1 = true] = Pr{let b ← (simulateQ (localAnswer prims) g₃).run' ∅}[b = true] ∧
     (∀ ω ∈ support J, ω.2.2.2 = false → ω.1 = ω.2.1 ∧ ω.2.1 = ω.2.2.1) ∧
-    (Pr[fun ω => ω.2.2.2 = true | J]).toReal ≤ ε
+    (Pr{let ω ← J}[ω.2.2.2 = true]).toReal ≤ ε
 
 lemma abs_toReal_sub_le {a b e : ENNReal} (ha : a ≤ 1) (hb : b ≤ 1) (he : e ≤ 1)
     (h₁ : a ≤ b + e) (h₂ : b ≤ a + e) : |a.toReal - b.toReal| ≤ e.toReal := by
@@ -361,13 +360,13 @@ theorem SharedBad.abs_sub_le {prims : Primitives} {g₁ g₂ g₃ : OracleComp (
   refine le_trans ?_ hbad
   unfold localAccepts
   rw [← h₁, ← h₃]
-  refine abs_toReal_sub_le probEvent_le_one probEvent_le_one probEvent_le_one ?_ ?_
-  · refine (probEvent_mono fun ω hω h => ?_).trans (probEvent_or_le J _ _)
+  refine abs_toReal_sub_le (prEvent_le_one _) (prEvent_le_one _) (prEvent_le_one _) ?_ ?_
+  · refine (prEvent_mono_of_support _ _ _ fun ω hω h => ?_).trans (prEvent_or_le J _ _)
     by_cases hb : ω.2.2.2 = true
     · exact Or.inr hb
     · obtain ⟨e₁, e₂⟩ := hagree ω hω (by simpa using hb)
       exact Or.inl (by rw [← e₂, ← e₁]; exact h)
-  · refine (probEvent_mono fun ω hω h => ?_).trans (probEvent_or_le J _ _)
+  · refine (prEvent_mono_of_support _ _ _ fun ω hω h => ?_).trans (prEvent_or_le J _ _)
     by_cases hb : ω.2.2.2 = true
     · exact Or.inr hb
     · obtain ⟨e₁, e₂⟩ := hagree ω hω (by simpa using hb)
@@ -392,8 +391,8 @@ def CheckSoundStage (prims : Primitives) (K : Constants C E) : Prop :=
     counts.sum ≠ 0 → q < 2 ^ 128 →
     MultVerifyAgree D (fun i => if i ∈ D.1 then none else some (x i)) →
     (multVerifyLeak D (fun i => if i ∈ D.1 then none else some (x i))).2.2 = false →
-    (Pr[fun r => ∃ i, i ∉ D.1 ∧ r.2 i = some () |
-      (simulateQ (localAnswer prims) (checkRealRun K (checkRounds counts.sum) D A x z)).run' ∅]).toReal ≤
+    (Pr{let r ←
+      (simulateQ (localAnswer prims) (checkRealRun K (checkRounds counts.sum) D A x z)).run' ∅}[∃ i, i ∉ D.1 ∧ r.2 i = some ()]).toReal ≤
       checkErrorOf (E := E) (coins counts.sum) (halvings counts.sum) q + soundHashError counts.sum q
 
 /-- Step 4: when the honest copies agree, the masked real run and the ideal run on

@@ -23,7 +23,7 @@ Generic tools for game hops over `executeRounds` against an arbitrary rushing ad
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss OracleComp.ProgramLogic.Relational
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss OracleComp.ProgramLogic.Relational
 
 noncomputable section
 
@@ -41,35 +41,32 @@ variable {α β : Type}
 events by the bad probability. -/
 theorem abs_probEvent_sub_le_of_relTriple {oa : ProbComp α} {ob : ProbComp β} (Bad P : α → Prop)
     (Q : β → Prop) (h : RelTriple oa ob fun a b => Bad a ∨ (P a ↔ Q b)) :
-    |Pr[P | oa].toReal - Pr[Q | ob].toReal| ≤ Pr[Bad | oa].toReal := by
-  have h1 : Pr[fun a => P a ∧ ¬ Bad a | oa] ≤ Pr[Q | ob] :=
-    probEvent_le_of_relTriple h fun a b hab hp => (hab.resolve_left hp.2).1 hp.1
-  have h2 : Pr[Q | ob] ≤ Pr[fun a => P a ∨ Bad a | oa] :=
-    probEvent_le_of_relTriple (relTriple_symm h) fun b a hab hq => by
+    |Pr{let z ← oa}[P z].toReal - Pr{let z ← ob}[Q z].toReal| ≤ Pr{let z ← oa}[Bad z].toReal := by
+  have h1 : Pr{let a ← oa}[P a ∧ ¬ Bad a] ≤ Pr{let z ← ob}[Q z] :=
+    prEvent_le_of_relTriple h fun a b hab hp => (hab.resolve_left hp.2).1 hp.1
+  have h2 : Pr{let z ← ob}[Q z] ≤ Pr{let a ← oa}[P a ∨ Bad a] :=
+    prEvent_le_of_relTriple (relTriple_symm h) fun b a hab hq => by
       rcases hab with hb | hb
       · exact Or.inr hb
       · exact Or.inl (hb.2 hq)
-  have h3 : Pr[P | oa] ≤ Pr[fun a => P a ∧ ¬ Bad a | oa] + Pr[Bad | oa] :=
-    le_trans (probEvent_mono fun a _ ha => by
+  have h3 : Pr{let z ← oa}[P z] ≤ Pr{let a ← oa}[P a ∧ ¬ Bad a] + Pr{let z ← oa}[Bad z] :=
+    le_trans (prEvent_mono _ _ _ fun a ha => by
       by_cases hb : Bad a
       · exact Or.inr hb
-      · exact Or.inl ⟨ha, hb⟩) (probEvent_or_le oa _ Bad)
-  have h4 : Pr[fun a => P a ∨ Bad a | oa] ≤ Pr[P | oa] + Pr[Bad | oa] := probEvent_or_le oa _ _
-  have t1 := ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨probEvent_ne_top, probEvent_ne_top⟩)
+      · exact Or.inl ⟨ha, hb⟩) (prEvent_or_le oa _ Bad)
+  have h4 : Pr{let a ← oa}[P a ∨ Bad a] ≤ Pr{let z ← oa}[P z] + Pr{let z ← oa}[Bad z] := prEvent_or_le oa _ _
+  have t1 := ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨prEvent_ne_top _, prEvent_ne_top _⟩)
     (h3.trans (add_le_add h1 le_rfl))
-  have t2 := ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨probEvent_ne_top, probEvent_ne_top⟩) (h2.trans h4)
-  rw [ENNReal.toReal_add probEvent_ne_top probEvent_ne_top] at t1 t2
+  have t2 := ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨prEvent_ne_top _, prEvent_ne_top _⟩) (h2.trans h4)
+  rw [ENNReal.toReal_add (prEvent_ne_top _) (prEvent_ne_top _)] at t1 t2
   rw [abs_le]
   constructor <;> linarith
 
 /-- A postcondition that holds for every left output and every right value holds on a coupling. -/
 theorem relTriple_of_support_left {oa : ProbComp α} {ob : ProbComp β} {R : α → β → Prop}
-    (h : ∀ a ∈ support oa, ∀ b, R a b) : RelTriple oa ob R := by
-  obtain ⟨c, -⟩ := relTriple_iff_relWP.1 (relTriple_true oa ob)
-  refine relTriple_iff_relWP.2 ⟨c, fun z hz => h z.1 ?_ z.2⟩
-  have hz' : z.1 ∈ support (Prod.fst <$> c.1) := by rw [support_map]; exact ⟨z, hz, rfl⟩
-  rw [c.2.map_fst] at hz'
-  exact (mem_support_evalDist_iff _ _).1 hz'
+    (h : ∀ a ∈ support oa, ∀ b, R a b) : RelTriple oa ob R :=
+  relTriple_post_mono (relTriple_prod (P := fun a => ∀ b, R a b) (Q := fun _ => True) h fun _ _ => trivial)
+    fun _ b hab => hab.1 b
 
 end UpToBad
 
@@ -176,9 +173,9 @@ theorem evalDist_executeRounds_eq {V : Type}
         ((stepRound Ro₂ D₂ A₂ F₂ c₂.1.1 c₂.1.2).run c₂.2)
         fun x y => R ((x.1.1, x.1.2.1), x.2) ((y.1.1, y.1.2.1), y.2))
     (fuel : ℕ) (c₁ c₂) (hc : R c₁ c₂) :
-    𝒟[view₁ <$> (executeRounds Ro₁ D₁ A₁ F₁ fuel c₁.1.1 c₁.1.2).run c₁.2] =
-      𝒟[view₂ <$> (executeRounds Ro₂ D₂ A₂ F₂ fuel c₂.1.1 c₂.1.2).run c₂.2] := by
-  refine evalDist_map_eq_of_relTriple (relTriple_post_mono (relTriple_executeRounds Ro₁ Ro₂ D₁ D₂ A₁ A₂ F₁ F₂
+    view₁ <$> (executeRounds Ro₁ D₁ A₁ F₁ fuel c₁.1.1 c₁.1.2).run c₁.2 =ᵈ
+      view₂ <$> (executeRounds Ro₂ D₂ A₂ F₂ fuel c₂.1.1 c₂.1.2).run c₂.2 := by
+  refine evalDistEq_map_of_relTriple (relTriple_post_mono (relTriple_executeRounds Ro₁ Ro₂ D₁ D₂ A₁ A₂ F₁ F₂
     (fun _ => False) R (fun a b => view₁ a = view₂ b) (fun _ _ _ h => h.elim) (fun c₁ c₂ h _ => hdone c₁ c₂ h)
     (fun c₁ c₂ h _ => hout c₁ c₂ h) (fun c₁ c₂ h _ hd => relTriple_post_mono (hstep c₁ c₂ h hd) fun _ _ => Or.inr)
     fuel c₁ c₂ (Or.inr hc)) fun _ _ h => h.resolve_left id)
@@ -199,8 +196,8 @@ theorem relTriple_uniform_shift (v : M) {f : M → ProbComp γ} {g : M → ProbC
 
 /-- A uniform mask shifted by a value fixed before it is drawn has the distribution of the mask. -/
 theorem evalDist_uniform_shift (v : M) (k : M → ProbComp γ) :
-    𝒟[$ᵗ M >>= fun r => k (r + v)] = 𝒟[$ᵗ M >>= k] :=
-  evalDist_eq_of_relTriple_eqRel (relTriple_uniform_shift v fun r => relTriple_refl (k (r + v)))
+    ($ᵗ M >>= fun r => k (r + v)) =ᵈ ($ᵗ M >>= k) :=
+  evalDistEq_of_relTriple_eqRel (relTriple_uniform_shift v fun r => relTriple_refl (k (r + v)))
 
 /-- The shift on a handler state: after a uniform mask drawn by `StateT`, continuations related at
 the mask and the mask shifted by `v` give related runs. -/
@@ -240,52 +237,55 @@ the handler never reads, is hit by a computation with at most `n` counted calls 
 most `n * ε`. -/
 theorem probEvent_flag_le (impl : QueryImpl spec (StateT σ ProbComp)) (hit : κ → S → Prop)
     (sd : ProbComp S) (p : κ → Prop) [DecidablePred p] (ε : ℝ≥0∞) (hp : ∀ t s, hit t s → p t)
-    (hε : ∀ t, p t → Pr[hit t | sd] ≤ ε) (oa : OracleComp spec β) :
+    (hε : ∀ t, p t → Pr{let z ← sd}[hit t z] ≤ ε) (oa : OracleComp spec β) :
     ∀ (n : ℕ) (σ₀ : σ), IsQueryBoundP oa p n →
-      Pr[fun r => r.2.2 = true | sd >>= fun s => (simulateQ (flagImpl impl hit s) oa).run (σ₀, false)] ≤
+      Pr{let r ← sd >>= fun s => (simulateQ (flagImpl impl hit s) oa).run (σ₀, false)}[r.2.2 = true] ≤
         n * ε := by
   induction oa using OracleComp.inductionOn with
   | pure a =>
     intro n σ₀ _
-    simp [Function.comp_def]
+    simp
   | query_bind t k ih =>
     intro n σ₀ hq
     rw [isQueryBoundP_query_bind_iff] at hq
     set g : S → spec t × σ → ℝ≥0∞ := fun s x =>
-      Pr[fun r => r.2.2 = true | (simulateQ (flagImpl impl hit s) (k x.1)).run (x.2, false)] with hg
-    have key : ∀ s, Pr[fun r => r.2.2 = true |
-        (simulateQ (flagImpl impl hit s) (liftM (spec.query t) >>= k)).run (σ₀, false)] ≤
-        (if hit t s then 1 else 0) + ∑' x, Pr[= x | (impl t).run σ₀] * g s x := by
+      Pr{let r ← (simulateQ (flagImpl impl hit s) (k x.1)).run (x.2, false)}[r.2.2 = true] with hg
+    have key : ∀ s, Pr{let r ←
+        (simulateQ (flagImpl impl hit s) (liftM (spec.query t) >>= k)).run (σ₀, false)}[r.2.2 = true] ≤
+        (if hit t s then 1 else 0) + ∑' x, Pr{let z ← (impl t).run σ₀}[z = x] * g s x := by
       intro s
-      rw [flagImpl_query_bind_run, probEvent_bind_eq_tsum]
+      rw [flagImpl_query_bind_run, OracleComp.prEvent_bind_eq_tsum]
       by_cases hs : hit t s
       · rw [if_pos hs]
         refine le_trans ?_ le_self_add
-        calc _ ≤ ∑' x, Pr[= x | (impl t).run σ₀] * 1 :=
-              ENNReal.tsum_le_tsum fun x => by gcongr; exact probEvent_le_one
+        calc _ ≤ ∑' x, Pr{let z ← (impl t).run σ₀}[z = x] * 1 :=
+              ENNReal.tsum_le_tsum fun x => by gcongr; exact prEvent_le_one _
           _ ≤ 1 := by simp
       · simp [hs, hg]
-    have hsum : ∑' x, Pr[= x | (impl t).run σ₀] * (∑' s, Pr[= s | sd] * g s x) ≤
+    have hsum : ∑' x, Pr{let z ← (impl t).run σ₀}[z = x] * (∑' s, Pr{let z ← sd}[z = s] * g s x) ≤
         (if p t then n - 1 else n : ℕ) * ε := by
-      calc _ ≤ ∑' x, Pr[= x | (impl t).run σ₀] * ((if p t then n - 1 else n : ℕ) * ε) := by
+      calc _ ≤ ∑' x, Pr{let z ← (impl t).run σ₀}[z = x] * ((if p t then n - 1 else n : ℕ) * ε) := by
             refine ENNReal.tsum_le_tsum fun x => ?_
             gcongr
             have := ih x.1 _ x.2 (hq.2 x.1)
-            rwa [probEvent_bind_eq_tsum] at this
-        _ ≤ _ := by rw [ENNReal.tsum_mul_right]; exact mul_le_of_le_one_left' tsum_probOutput_le_one
-    have hhit : ∑' s, Pr[= s | sd] * (if hit t s then 1 else 0) ≤ if p t then ε else 0 := by
+            rwa [OracleComp.prEvent_bind_eq_tsum] at this
+        _ ≤ _ := by
+            rw [ENNReal.tsum_mul_right]
+            exact mul_le_of_le_one_left' (OracleComp.tsum_prEvent_le_one _)
+    have hhit : ∑' s, Pr{let z ← sd}[z = s] * (if hit t s then 1 else 0) ≤ if p t then ε else 0 := by
       simp only [mul_ite, mul_one, mul_zero]
-      rw [← probEvent_eq_tsum_ite]
+      rw [← OracleComp.prEvent_eq_tsum_ite]
       split_ifs with hpt
       · exact hε t hpt
-      · exact le_of_eq (probEvent_eq_zero fun s _ hs => hpt (hp t s hs))
-    calc _ = ∑' s, Pr[= s | sd] * Pr[fun r => r.2.2 = true |
-          (simulateQ (flagImpl impl hit s) (liftM (spec.query t) >>= k)).run (σ₀, false)] :=
-          probEvent_bind_eq_tsum _ _ _
-      _ ≤ ∑' s, Pr[= s | sd] * ((if hit t s then 1 else 0) + ∑' x, Pr[= x | (impl t).run σ₀] * g s x) :=
+      · exact le_of_eq (prEvent_eq_zero_of_forall_mem_support _ _ fun s _ hs => hpt (hp t s hs))
+    calc _ = ∑' s, Pr{let z ← sd}[z = s] * Pr{let r ←
+          (simulateQ (flagImpl impl hit s) (liftM (spec.query t) >>= k)).run (σ₀, false)}[r.2.2 = true] :=
+          OracleComp.prEvent_bind_eq_tsum _ _ _
+      _ ≤ ∑' s, Pr{let z ← sd}[z = s] *
+            ((if hit t s then 1 else 0) + ∑' x, Pr{let z ← (impl t).run σ₀}[z = x] * g s x) :=
           ENNReal.tsum_le_tsum fun s => by gcongr; exact key s
-      _ = ∑' s, Pr[= s | sd] * (if hit t s then 1 else 0) +
-          ∑' x, Pr[= x | (impl t).run σ₀] * (∑' s, Pr[= s | sd] * g s x) := by
+      _ = ∑' s, Pr{let z ← sd}[z = s] * (if hit t s then 1 else 0) +
+          ∑' x, Pr{let z ← (impl t).run σ₀}[z = x] * (∑' s, Pr{let z ← sd}[z = s] * g s x) := by
           simp only [mul_add, ENNReal.tsum_add, ← ENNReal.tsum_mul_left]
           rw [ENNReal.tsum_comm]
           simp only [mul_left_comm]
@@ -302,8 +302,8 @@ variable {P : Type} [Fintype P] [DecidableEq P] [SampleableType P]
 
 /-- One coordinate of `k` uniform secret points equals a fixed point with probability `1 / |P|`. -/
 theorem probEvent_uniform_coord_eq {k : ℕ} (j : Fin k) (x : P) :
-    Pr[fun s => s j = x | $ᵗ (Fin k → P)] = (Fintype.card P : ℝ≥0∞)⁻¹ := by
-  rw [probEvent_uniformSample]
+    Pr{let s ← $ᵗ (Fin k → P)}[s j = x] = (Fintype.card P : ℝ≥0∞)⁻¹ := by
+  rw [SampleableType.prEvent_uniformSample]
   have hfil : (Finset.univ.filter fun s : Fin k → P => s j = x).card = Fintype.card P ^ (k - 1) := by
     have := Fintype.card_filter_piFinset_const_eq_of_mem (Finset.univ : Finset P) j (Finset.mem_univ x)
     simpa using this
@@ -319,9 +319,9 @@ theorem probEvent_uniform_coord_eq {k : ℕ} (j : Fin k) (x : P) :
 
 /-- Some of `k` uniform secret points equals a fixed point with probability at most `k / |P|`. -/
 theorem probEvent_uniform_exists_eq_le (k : ℕ) (x : P) :
-    Pr[fun s => ∃ j, s j = x | $ᵗ (Fin k → P)] ≤ k * (Fintype.card P : ℝ≥0∞)⁻¹ := by
-  calc _ = Pr[fun s => ∃ j ∈ (Finset.univ : Finset (Fin k)), s j = x | $ᵗ (Fin k → P)] := by simp
-    _ ≤ ∑ j : Fin k, Pr[fun s => s j = x | $ᵗ (Fin k → P)] := probEvent_exists_finset_le_sum _ _ _
+    Pr{let s ← $ᵗ (Fin k → P)}[∃ j, s j = x] ≤ k * (Fintype.card P : ℝ≥0∞)⁻¹ := by
+  calc _ = Pr{let s ← $ᵗ (Fin k → P)}[∃ j ∈ (Finset.univ : Finset (Fin k)), s j = x] := by simp
+    _ ≤ ∑ j : Fin k, Pr{let s ← $ᵗ (Fin k → P)}[s j = x] := prEvent_exists_finset_le _ _ _
     _ = k * (Fintype.card P : ℝ≥0∞)⁻¹ := by
       simp only [probEvent_uniform_coord_eq, Finset.sum_const, Finset.card_univ, Fintype.card_fin, nsmul_eq_mul]
 
@@ -329,21 +329,21 @@ theorem probEvent_uniform_exists_eq_le (k : ℕ) (x : P) :
 never reads the `k` uniform secret points, hits one of them with probability at most `q * k / |P|`. -/
 theorem probEvent_hit_uniform_le (impl : QueryImpl spec (StateT σ ProbComp)) (p : κ → Prop) [DecidablePred p]
     (point : κ → P) (k : ℕ) (oa : OracleComp spec β) (q : ℕ) (hq : IsQueryBoundP oa p q) (σ₀ : σ) :
-    Pr[fun r => r.2.2 = true | $ᵗ (Fin k → P) >>= fun s =>
-      (simulateQ (flagImpl impl (fun t s => p t ∧ ∃ j, s j = point t) s) oa).run (σ₀, false)] ≤
+    Pr{let r ← $ᵗ (Fin k → P) >>= fun s =>
+      (simulateQ (flagImpl impl (fun t s => p t ∧ ∃ j, s j = point t) s) oa).run (σ₀, false)}[r.2.2 = true] ≤
         q * (k * (Fintype.card P : ℝ≥0∞)⁻¹) :=
   probEvent_flag_le impl _ _ p _ (fun _ _ h => h.1)
-    (fun t _ => le_trans (probEvent_mono fun _ _ h => h.2) (probEvent_uniform_exists_eq_le k (point t))) oa q σ₀ hq
+    (fun t _ => le_trans (prEvent_mono _ _ _ fun _ h => h.2) (probEvent_uniform_exists_eq_le k (point t))) oa q σ₀ hq
 
 /-- The 256-bit case: `q` counted calls hit one of `k` secret uniform hash outputs with probability at
 most `q * k / 2 ^ 256`. -/
 theorem probEvent_hit_hashOutput_le (impl : QueryImpl spec (StateT σ ProbComp)) (p : κ → Prop) [DecidablePred p]
     (point : κ → HashOutput) (k : ℕ) (oa : OracleComp spec β) (q : ℕ) (hq : IsQueryBoundP oa p q) (σ₀ : σ) :
-    Pr[fun r => r.2.2 = true | $ᵗ (Fin k → HashOutput) >>= fun s =>
-      (simulateQ (flagImpl impl (fun t s => p t ∧ ∃ j, s j = point t) s) oa).run (σ₀, false)] ≤
+    Pr{let r ← $ᵗ (Fin k → HashOutput) >>= fun s =>
+      (simulateQ (flagImpl impl (fun t s => p t ∧ ∃ j, s j = point t) s) oa).run (σ₀, false)}[r.2.2 = true] ≤
         q * k / 2 ^ 256 := by
   refine (probEvent_hit_uniform_le impl p point k oa q hq σ₀).trans (le_of_eq ?_)
-  have hcard : Fintype.card HashOutput = 2 ^ 256 := by unfold HashOutput hashOutputBits; exact card_bitVec 256
+  have hcard : Fintype.card HashOutput = 2 ^ 256 := by unfold HashOutput; exact Fintype.card_bitVec 256
   rw [hcard, ← mul_assoc, div_eq_mul_inv]
   norm_num
 
@@ -381,7 +381,7 @@ theorem simulateQ_runFunctionality (Ro : Roles C (OracleComp spec)) (D : C.Coali
       runFunctionality (simRoles impl Ro) D A F state inputs := by
   unfold runFunctionality
   split_ifs
-  · simp only [simulateQ_bind, simulateQ_pure, simulateQ_run_simulateQ, pure_bind]
+  · simp only [simulateQ_bind, simulateQ_pure, simulateQ_run_simulateQ]
     refine congrArg (fun J : QueryImpl (LocalSpec C + (L →ₒ R)) (StateT A.State n) =>
       (StateT.run (simulateQ J (F.run D inputs)) state) >>=
         fun x => (pure (x.2, x.1) : n (A.State × (C.Party → Option O)))) ?_
@@ -452,13 +452,11 @@ abbrev worldRun {β : Type} (oa : OracleComp (WorldSpec C) β) : ProbComp (β ×
 
 /-- Acceptance reads the cache-only run of the world. -/
 theorem accepts_eq_worldRun (oa : OracleComp (WorldSpec C) Bool) :
-    accepts prims oa = Pr[fun r => r.1 = true | worldRun prims oa].toReal := by
+    accepts prims oa = Pr{let r ← worldRun prims oa}[r.1 = true].toReal := by
   unfold accepts
-  have h := congrArg (fun m => Pr[fun b => b = true | m]) (fst_map_runWorld prims oa)
-  simp only [probEvent_map] at h
-  rw [show (fun r : Bool × ℕ => r.1 = true) = (fun b => b = true) ∘ (fun r => r.1) from rfl, h,
-    StateT.run'_eq, probEvent_map]
-  rfl
+  have h := congrArg (fun m => Pr{let b ← m}[b = true]) (fst_map_runWorld prims oa)
+  simp only [prEvent_map] at h
+  rw [h, StateT.run'_eq, prEvent_map]
 
 /-- The run of a computation followed by a continuation, paired with the run of the first part. -/
 theorem worldRun_bind {β : Type} (oa : OracleComp (WorldSpec C) β) (k : β → OracleComp (WorldSpec C) Bool) :
@@ -477,14 +475,14 @@ theorem abs_accepts_bind_sub_le {β γ : Type} (oa : OracleComp (WorldSpec C) β
     (hk : ∀ x y, Q x y → RelTriple ((simulateQ (worldAnswer (C := C) prims) (ka x.1)).run x.2)
       ((simulateQ (worldAnswer (C := C) prims) (kb y.1)).run y.2) fun a b => a.1 = b.1) :
     |accepts prims (oa >>= ka) - accepts prims (ob >>= kb)| ≤
-      Pr[fun x => Bad x.2 | worldRun prims oa].toReal := by
-  rw [accepts_eq_worldRun, accepts_eq_worldRun, worldRun_bind, worldRun_bind, probEvent_map, probEvent_map]
-  have hbad : Pr[fun x => Bad x.2 | worldRun prims oa] =
-      Pr[fun r => Bad r.1.2 | worldRun prims oa >>= fun x =>
-        (fun r => (x, r)) <$> (simulateQ (worldAnswer (C := C) prims) (ka x.1)).run x.2] := by
-    rw [probEvent_bind_eq_tsum, probEvent_eq_tsum_ite]
+      Pr{let x ← worldRun prims oa}[Bad x.2].toReal := by
+  rw [accepts_eq_worldRun, accepts_eq_worldRun, worldRun_bind, worldRun_bind, prEvent_map, prEvent_map]
+  have hbad : Pr{let x ← worldRun prims oa}[Bad x.2] =
+      Pr{let r ← worldRun prims oa >>= fun x =>
+        (fun r => (x, r)) <$> (simulateQ (worldAnswer (C := C) prims) (ka x.1)).run x.2}[Bad r.1.2] := by
+    rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_eq_tsum_ite]
     refine tsum_congr fun x => ?_
-    simp only [probEvent_map, Function.comp_def]
+    simp only [prEvent_map]
     split_ifs with hx <;> simp [hx]
   rw [hbad]
   refine abs_probEvent_sub_le_of_relTriple _ _ _ (relTriple_bind h fun x y hxy => ?_)
@@ -502,7 +500,7 @@ theorem abs_accepts_distinguish_sub_le {σ O : Type} (oa ob : OracleComp (WorldS
     (Z : Distinguisher C σ O) (Bad : HashCache C → Prop)
     (h : RelTriple (worldRun prims oa) (worldRun prims ob) fun x y => Bad x.2 ∨ x = y) :
     |accepts prims (distinguish oa Z) - accepts prims (distinguish ob Z)| ≤
-      Pr[fun x => Bad x.2 | worldRun prims oa].toReal := by
+      Pr{let x ← worldRun prims oa}[Bad x.2].toReal := by
   refine abs_accepts_bind_sub_le prims oa ob _ _ Bad Eq h fun x y hxy => ?_
   subst hxy
   exact relTriple_post_mono (relTriple_refl _) fun a b hab => by rw [show a = b from hab]
@@ -544,10 +542,10 @@ theorem isQueryBoundP_free {β : Type} (oa : OracleComp (LocalSpec C) β) (n : �
 /-- A sequence of computations without counted calls makes no counted call. -/
 theorem isQueryBoundP_sequenceFin {κ β : Type} {spec : OracleSpec κ} {p : κ → Prop} [DecidablePred p] :
     ∀ {N : ℕ} (f : Fin N → OracleComp spec β), (∀ i, IsQueryBoundP (f i) p 0) →
-      IsQueryBoundP (Concrete.sequenceFin f) p 0
-  | 0, f, _ => by simp [Concrete.sequenceFin]
+      IsQueryBoundP (OverPermutation.sequenceFin f) p 0
+  | 0, f, _ => by simp [OverPermutation.sequenceFin]
   | N + 1, f, h => by
-    simp only [Concrete.sequenceFin]
+    simp only [OverPermutation.sequenceFin]
     exact isQueryBoundP_bind (h 0) fun _ _ => isQueryBoundP_bind
       (m := 0) (isQueryBoundP_sequenceFin (fun i : Fin N => f i.succ) fun i => h i.succ) fun _ _ => isQueryBoundP_pure _ _ 0
 
@@ -636,9 +634,9 @@ theorem probEvent_hit_realExecution_le {σ Ih Oh : Type} (impl : QueryImpl (Worl
     (hF : ∀ step, (∀ state l, IsQueryBoundP (A.answer state l) Counted step) →
       ∀ state inputs, IsQueryBoundP (runFunctionality worldRoles D A Fh state inputs) WorldCounted step)
     (σ₀ : σ) :
-    Pr[fun r => r.2.2 = true | $ᵗ (Fin k → HashOutput) >>= fun s =>
+    Pr{let r ← $ᵗ (Fin k → HashOutput) >>= fun s =>
       (simulateQ (flagImpl impl (fun t s => WorldCounted t ∧ ∃ j, s j = point t) s)
-        (distinguish (realExecution D A Fh fuel program x z) Z)).run (σ₀, false)] ≤ q * k / 2 ^ 256 :=
+        (distinguish (realExecution D A Fh fuel program x z) Z)).run (σ₀, false)}[r.2.2 = true] ≤ q * k / 2 ^ 256 :=
   probEvent_hit_hashOutput_le impl WorldCounted point k _ q
     (isQueryBoundP_distinguish_realExecution D A Fh fuel program x z Z q hq hF) σ₀
 
@@ -667,7 +665,7 @@ theorem abs_accepts_lockstep_sub_le {E Ia I₁ I₂ O₁ O₂ L R α : Type}
         fun x y => Bad x.2 ∨ Rel ((x.1.1, x.1.2.1), x.2) ((y.1.1, y.1.2.1), y.2)) :
     |accepts prims (distinguish (pa >>= fun c => executeRounds Ro₁ D₁ A F₁ fuel c.1 c.2) Z) -
         accepts prims (distinguish (pb >>= fun c => executeRounds Ro₂ D₂ A F₂ fuel c.1 c.2) Z)| ≤
-      Pr[fun x => Bad x.2 | worldRun prims (pa >>= fun c => executeRounds Ro₁ D₁ A F₁ fuel c.1 c.2)].toReal := by
+      Pr{let x ← worldRun prims (pa >>= fun c => executeRounds Ro₁ D₁ A F₁ fuel c.1 c.2)}[Bad x.2].toReal := by
   refine abs_accepts_distinguish_sub_le prims _ _ Z Bad ?_
   simp only [worldRun, simulateQ_bind, StateT.run_bind, simulateQ_executeRounds]
   exact relTriple_bind hpre fun x y hxy =>

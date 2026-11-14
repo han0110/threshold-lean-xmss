@@ -188,7 +188,7 @@ theorem simulateQ_world_adversary' (prims : Primitives) {α : Type} (oa : Oracle
 
 /-- The probability that a local game accepts from the empty cache. -/
 def localAccepts (prims : Primitives) (oa : OracleComp (LocalSpec C) Bool) : ℝ :=
-  (Pr[fun b => b = true | (simulateQ (localAnswer prims) oa).run' ∅]).toReal
+  (Pr{let b ← (simulateQ (localAnswer prims) oa).run' ∅}[b = true]).toReal
 
 lemma localAccepts_nonneg (prims : Primitives) (oa : OracleComp (LocalSpec C) Bool) :
     0 ≤ localAccepts prims oa :=
@@ -196,7 +196,7 @@ lemma localAccepts_nonneg (prims : Primitives) (oa : OracleComp (LocalSpec C) Bo
 
 lemma localAccepts_le_one (prims : Primitives) (oa : OracleComp (LocalSpec C) Bool) :
     localAccepts prims oa ≤ 1 :=
-  ENNReal.toReal_le_of_le_ofReal zero_le_one (by rw [ENNReal.ofReal_one]; exact probEvent_le_one)
+  ENNReal.toReal_le_of_le_ofReal zero_le_one (by rw [ENNReal.ofReal_one]; exact prEvent_le_one _)
 
 theorem accepts_eq_local (prims : Primitives) (oa : OracleComp (WorldSpec C) Bool)
     (ob : OracleComp (LocalSpec C) Bool)
@@ -204,8 +204,7 @@ theorem accepts_eq_local (prims : Primitives) (oa : OracleComp (WorldSpec C) Boo
     accepts prims oa = localAccepts prims ob := by
   unfold accepts localAccepts
   congr 1
-  rw [← h, ← fst_map_runWorld, probEvent_map]
-  rfl
+  rw [← h, ← fst_map_runWorld, prEvent_map]
 
 variable {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
 attribute [local instance] inhabitedField

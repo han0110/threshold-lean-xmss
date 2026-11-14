@@ -19,7 +19,9 @@ The security proof follows PRAWNS, Theorem 5.1, without the guess of Lemma 5.2.
 * A collision of two seeds or two pair keys counts once.
 -/
 
-open OracleComp OracleSpec LeanXmss ENNReal Finset
+open OracleComp OracleSpec HashSig LeanXmss ENNReal Finset
+
+set_option backward.isDefEq.respectTransparency false
 
 noncomputable section
 
@@ -79,11 +81,11 @@ def tableAnswer (prims : Primitives) (f : Query C → HashOutput) : QueryImpl (R
 
 theorem simulateQ_sequenceFin {ι : Type} {spec : OracleSpec ι} {α : Type} (impl : QueryImpl spec Id) {k : ℕ}
     (g : Fin k → OracleComp spec α) :
-    simulateQ impl (Concrete.sequenceFin g) = fun i => simulateQ impl (g i) := by
+    simulateQ impl (OverPermutation.sequenceFin g) = fun i => simulateQ impl (g i) := by
   induction k with
   | zero => funext i; exact i.elim0
   | succ k ih =>
-    rw [Concrete.sequenceFin]
+    rw [OverPermutation.sequenceFin]
     simp only [simulateQ_bind, ih, simulateQ_pure]
     funext i
     cases i using Fin.cases <;> rfl
@@ -298,7 +300,7 @@ variable {C : Committee}
 /-! ## Basic facts -/
 
 instance : Fintype Point :=
-  Fintype.ofEquiv ((Layer × KeyIndex × ChainIndex × Digit) ⊕ (Layer × KeyIndex))
+  Fintype.ofEquiv ((Layer × KeyIndex × ChainIndex × WinternitzDigit) ⊕ (Layer × KeyIndex))
     ⟨fun | .inl (lay, e, l, p) => .chain lay e l p | .inr (lay, e) => .randomizer lay e,
      fun | .chain lay e l p => .inl (lay, e, l, p) | .randomizer lay e => .inr (lay, e),
      fun x => by rcases x with ⟨_, _, _, _⟩ | ⟨_, _⟩ <;> rfl, fun x => by cases x <;> rfl⟩
@@ -393,7 +395,7 @@ def gameOracles (b : Bool) (seeds : C.Term → HashOutput) (keys : C.Party → K
     QueryImpl (LocalSpec C + TprfSpec C) (StateT (TprfState C) (OracleComp (WorldSpec C))) :=
   let forward : QueryImpl (LocalSpec C) (StateT (TprfState C) (OracleComp (WorldSpec C))) :=
     fun t => StateT.lift (worldRoles.adversary (OracleComp.lift (OracleSpec.query t)))
-  forward + tprfOracles keys seeds b
+  (forward + tprfOracles keys seeds b : QueryImpl _ _)
 
 theorem gameOracles_step (b : Bool) (seeds : C.Term → HashOutput) (keys : C.Party → Keys C)
     (t : (LocalSpec C + TprfSpec C).Domain) (s : TprfState C) (c : HashCache C) :
@@ -537,7 +539,8 @@ def routedAnswer : QueryImpl (LocalSpec C) (StateT (HashCache C × SlotCache C) 
 open Classical in
 /-- The cache of `H` as the cache off the slots and the cache of the slots. -/
 def splitCache (g : HashCache C) : HashCache C × SlotCache C :=
-  (fun u => if ∃ s, slotInput seeds pairKeys s = u then none else g u, fun s => g (slotInput seeds pairKeys s))
+  (QueryCache.ofFn fun u => if ∃ s, slotInput seeds pairKeys s = u then none else g u,
+    QueryCache.ofFn fun s => g (slotInput seeds pairKeys s))
 
 open Classical in
 /-- The adversary of the symbolic game. It reads the slots of the revealed keys, and every other input
@@ -649,26 +652,26 @@ theorem slotInput_ne_hash (s : Slot C) (input : HashInput) : slotInput seeds pai
 
 theorem splitCache_fst_of_not_slot {u : Query C} (hu : ∀ s, slotInput seeds pairKeys s ≠ u) (g : HashCache C) :
     (splitCache seeds pairKeys g).1 u = g u := by
-  simp only [splitCache]
+  simp only [splitCache, QueryCache.ofFn_apply]
   rw [if_neg (fun ⟨s, h⟩ => hu s h)]
 
 theorem splitCache_cacheQuery_of_not_slot {u : Query C} (hu : ∀ s, slotInput seeds pairKeys s ≠ u) (g : HashCache C)
     (v : HashOutput) : splitCache seeds pairKeys (g.cacheQuery u v) =
       ((splitCache seeds pairKeys g).1.cacheQuery u v, (splitCache seeds pairKeys g).2) := by
-  refine Prod.ext (funext fun w => ?_) (funext fun s => ?_)
-  · simp only [splitCache]
+  refine Prod.ext (QueryCache.ext fun w => ?_) (QueryCache.ext fun s => ?_)
+  · simp only [splitCache, QueryCache.ofFn_apply]
     by_cases hw : w = u
     · subst hw
       rw [if_neg (fun ⟨s, h⟩ => hu s h), QueryCache.cacheQuery_self, QueryCache.cacheQuery_self]
-    · rw [QueryCache.cacheQuery_of_ne _ _ hw, QueryCache.cacheQuery_of_ne _ _ hw]
-  · simp only [splitCache]
+    · rw [QueryCache.cacheQuery_of_ne _ _ hw, QueryCache.cacheQuery_of_ne _ _ hw, QueryCache.ofFn_apply]
+  · simp only [splitCache, QueryCache.ofFn_apply]
     rw [QueryCache.cacheQuery_of_ne _ _ (hu s)]
 
 theorem splitCache_cacheQuery_slot (hinj : Function.Injective (slotInput seeds pairKeys)) (s₀ : Slot C)
     (g : HashCache C) (v : HashOutput) : splitCache seeds pairKeys (g.cacheQuery (slotInput seeds pairKeys s₀) v) =
       ((splitCache seeds pairKeys g).1, (splitCache seeds pairKeys g).2.cacheQuery s₀ v) := by
-  refine Prod.ext (funext fun w => ?_) (funext fun s => ?_)
-  · simp only [splitCache]
+  refine Prod.ext (QueryCache.ext fun w => ?_) (QueryCache.ext fun s => ?_)
+  · simp only [splitCache, QueryCache.ofFn_apply]
     by_cases h : ∃ s, slotInput seeds pairKeys s = w
     · rw [if_pos h, if_pos h]
     · have hw : w ≠ slotInput seeds pairKeys s₀ := fun hw => h ⟨s₀, hw.symm⟩
@@ -734,12 +737,10 @@ theorem stateMap_routedAnswer (hinj : Function.Injective (slotInput seeds pairKe
       have e : routedAnswer prims seeds pairKeys (.inr (.inl (slotInput seeds pairKeys s₀))) =
           onTable (slotOracle s₀) := by
         simp only [routedAnswer, dif_pos (⟨s₀, rfl⟩ : ∃ s, slotInput seeds pairKeys s = slotInput seeds pairKeys s₀), hc]
-        rfl
       rw [e]
       exact stateMap_hash_slot prims seeds pairKeys hinj s₀
     · have e : routedAnswer prims seeds pairKeys (.inr (.inl u)) = onCache (hashAnswer prims u) := by
         simp only [routedAnswer, dif_neg h]
-        rfl
       rw [e]
       exact stateMap_hash_of_not_slot prims seeds pairKeys fun s hs => h ⟨s, hs⟩
   · change StateMap _ (prgAnswer prims x) (onCache (prgAnswer prims x))
@@ -798,7 +799,6 @@ theorem routedAnswer_slot (hinj : Function.Injective (slotInput seeds pairKeys))
   have hc : (⟨s₀, rfl⟩ : ∃ s, slotInput seeds pairKeys s = slotInput seeds pairKeys s₀).choose = s₀ :=
     hinj (Exists.choose_spec (⟨s₀, rfl⟩ : ∃ s, slotInput seeds pairKeys s = slotInput seeds pairKeys s₀))
   simp only [routedAnswer, dif_pos (⟨s₀, rfl⟩ : ∃ s, slotInput seeds pairKeys s = slotInput seeds pairKeys s₀), hc]
-  rfl
 
 theorem onTable_map {α β : Type} (f : α → β) (m : StateT (SlotCache C) ProbComp α) :
     onTable (f <$> m) = f <$> onTable m := by
@@ -879,8 +879,8 @@ theorem withFired_forget (I : QueryImpl (LocalSpec C + TprfSpec C) (StateT (Tprf
     exact bind_congr fun z => ih _ _ _ _
 
 theorem splitCache_empty : splitCache seeds pairKeys (∅ : HashCache C) = (∅, ∅) := by
-  refine Prod.ext (funext fun u => ?_) (funext fun s => rfl)
-  simp only [splitCache]
+  refine Prod.ext (QueryCache.ext fun u => ?_) (QueryCache.ext fun s => rfl)
+  simp only [splitCache, QueryCache.ofFn_apply]
   split_ifs <;> rfl
 
 /-- The initial state of the hop. -/
@@ -923,7 +923,6 @@ theorem symAdversary_eq_routed (hinj : Function.Injective (slotInput seeds pairK
       have hc : hex.choose = s₀ := hinj hex.choose_spec.2
       rw [routedAnswer_slot prims seeds pairKeys hinj]
       simp only [symAdversary, dif_pos hex, hc]
-      rfl
     · have h' : ¬∃ s, Revealed D (slotKey s) ∧ slotInput seeds pairKeys s = u := fun ⟨s, _, hs⟩ => h ⟨s, hs⟩
       simp only [symAdversary, routedAnswer, dif_neg h, dif_neg h']
   · rfl
@@ -960,14 +959,14 @@ theorem withFired_mono (I : QueryImpl (LocalSpec C + TprfSpec C) (StateT (TprfSt
 theorem real_sym_agree (hinj : Function.Injective (slotInput seeds pairKeys)) (b : Bool) (parameter : PublicParameter)
     (t : (LocalSpec C + TprfSpec C).Domain) (s : SymState C) (u : (LocalSpec C + TprfSpec C).Range t)
     (s' : SymState C) :
-    Pr[= (u, (s', false)) | (symImpl prims seeds pairKeys b parameter t).run (s, false)] =
-      Pr[= (u, (s', false)) | (realImpl prims seeds pairKeys b parameter t).run (s, false)] := by
+    Pr{let z ← (symImpl prims seeds pairKeys b parameter t).run (s, false)}[z = (u, (s', false))] =
+      Pr{let z ← (realImpl prims seeds pairKeys b parameter t).run (s, false)}[z = (u, (s', false))] := by
   by_cases hF : firedBy seeds pairKeys s.1.1.corrupt t = ∅
   · simp only [symImpl, realImpl, withFired, StateT.run_mk]
     rw [← realCore_eq_symCore prims seeds pairKeys hinj b parameter t s.1 hF]
   · have hz : ∀ I : QueryImpl (LocalSpec C + TprfSpec C) (StateT (TprfState C × HashCache C × SlotCache C) ProbComp),
-        Pr[= (u, (s', false)) | (withFired seeds pairKeys I t).run (s, false)] = 0 := fun I => by
-      refine probOutput_eq_zero_of_not_mem_support fun h => ?_
+        Pr{let z ← (withFired seeds pairKeys I t).run (s, false)}[z = (u, (s', false))] = 0 := fun I => by
+      refine prEvent_eq_zero_of_not_mem_support _ fun h => ?_
       simp only [withFired, StateT.run_mk, support_map, Set.mem_image] at h
       obtain ⟨w, -, hw⟩ := h
       have := congrArg (fun z => z.2.2) hw
@@ -977,15 +976,24 @@ theorem real_sym_agree (hinj : Function.Injective (slotInput seeds pairKeys)) (b
 /-- The hop from the real game to the symbolic game, for keys without a collision. -/
 theorem real_sym_hop (hinj : Function.Injective (slotInput seeds pairKeys)) (b : Bool) (parameter : PublicParameter)
     (A : TprfAdversary C) :
-    |(Pr[= true | Prod.fst <$> (simulateQ (realImpl prims seeds pairKeys b parameter) A).run symInit]).toReal -
-      (Pr[= true | Prod.fst <$> (simulateQ (symImpl prims seeds pairKeys b parameter) A).run symInit]).toReal| ≤
-      (Pr[fun z => z.2.2 = true | (simulateQ (symImpl prims seeds pairKeys b parameter) A).run symInit]).toReal := by
-  have h := OracleComp.ProgramLogic.Relational.tvDist_simulateQ_run_le_probEvent_output_bad
-    (symImpl prims seeds pairKeys b parameter) (realImpl prims seeds pairKeys b parameter) A symInit.1
-    (real_sym_agree prims seeds pairKeys hinj b parameter)
-    (withFired_mono seeds pairKeys _) (withFired_mono seeds pairKeys _)
+    |(Pr{let z ← Prod.fst <$> (simulateQ (realImpl prims seeds pairKeys b parameter) A).run symInit}[z = true]).toReal -
+      (Pr{let z ← Prod.fst <$> (simulateQ (symImpl prims seeds pairKeys b parameter) A).run symInit}[z = true]).toReal| ≤
+      (Pr{let z ← (simulateQ (symImpl prims seeds pairKeys b parameter) A).run symInit}[z.2.2 = true]).toReal := by
+  let : MeasurableSpace (Bool × SymState C × Bool) := ⊤
+  have h := OracleComp.ProgramLogic.Relational.measureETVDist_simulateQ_run_le_prEvent_bad
+    (symImpl prims seeds pairKeys b parameter) (realImpl prims seeds pairKeys b parameter) (fun p => p.2 = true)
+    (fun t s hs q => by
+      obtain ⟨s, flag⟩ := s
+      have hflag : flag = false := by simpa using hs
+      subst hflag
+      exact OracleComp.ProgramLogic.Relational.prEvent_and_not_flag_eq_of_forall_prEvent_eq
+        (real_sym_agree prims seeds pairKeys hinj b parameter t s) q)
+    (withFired_mono seeds pairKeys _) (withFired_mono seeds pairKeys _) A symInit
   rw [abs_sub_comm]
-  exact (abs_probOutput_toReal_sub_le_tvDist _ _).trans ((tvDist_map_le _ _ _).trans h)
+  refine (abs_prEvent_toReal_sub_le_measureTVDist _ _ (· = true) Measurable.of_discrete).trans ?_
+  refine (measureTVDist_map_le _ _ Prod.fst measurable_from_top).trans ?_
+  rw [measureTVDist_eq_toReal_measureETVDist]
+  exact ENNReal.toReal_mono (prEvent_ne_top _) h
 
 /-! ## Presampling the slots -/
 
@@ -998,8 +1006,8 @@ continuation must have the same property. -/
 def Presampled (x : Slot C) {α : Type} (m : StateT σ ProbComp α) : Prop :=
   ∀ p, getC p x = none → ∀ {β : Type} (k : α × σ → ProbComp β),
     (∀ a p', getC p' x = none →
-      𝒟[($ᵗ HashOutput) >>= fun v => k (a, setC p' ((getC p').cacheQuery x v))] = 𝒟[k (a, p')]) →
-    𝒟[($ᵗ HashOutput) >>= fun v => m.run (setC p ((getC p).cacheQuery x v)) >>= k] = 𝒟[m.run p >>= k]
+      (($ᵗ HashOutput) >>= fun v => k (a, setC p' ((getC p').cacheQuery x v))) =ᵈ k (a, p')) →
+    (($ᵗ HashOutput) >>= fun v => m.run (setC p ((getC p).cacheQuery x v)) >>= k) =ᵈ (m.run p >>= k)
 
 variable {getC setC}
 
@@ -1062,7 +1070,7 @@ end Presample
 
 theorem slotCache_cacheQuery_comm (c : SlotCache C) {s x : Slot C} (h : s ≠ x) (u v : HashOutput) :
     (c.cacheQuery x v).cacheQuery s u = (c.cacheQuery s u).cacheQuery x v :=
-  (Function.update_comm h _ _ _).symm
+  QueryCache.cacheQuery_comm c (Ne.symm h) v u
 
 theorem presampled_slotOracle (x s : Slot C) : Presampled id (fun _ c => c) x (slotOracle s) := by
   intro c hc β k hk
@@ -1084,11 +1092,9 @@ theorem presampled_slotOracle (x s : Slot C) : Presampled id (fun _ c => c) x (s
         rw [QueryCache.cacheQuery_of_ne _ _ hsx]; exact hcs
       simp only [QueryImpl.withCaching_run_none _ (hcs' _),
         QueryImpl.withCaching_run_none _ hcs, bind_map_left]
-      rw [evalDist_bind_bind_swap]
-      refine evalDist_bind_congr' _ fun w => ?_
-      rw [← hk w (c.cacheQuery s w) (by rw [QueryCache.cacheQuery_of_ne _ _ (Ne.symm hsx)]; exact hc)]
-      refine congrArg _ (bind_congr fun v => ?_)
-      rw [slotCache_cacheQuery_comm c hsx]
+      refine (OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans (EvalDistEq.bind_right _ fun w => ?_)
+      simp only [slotCache_cacheQuery_comm c hsx]
+      exact hk w (c.cacheQuery s w) (by rw [QueryCache.cacheQuery_of_ne _ _ (Ne.symm hsx)]; exact hc)
 
 /-- `Presampled` on the two caches. -/
 abbrev Presampled₁ (x : Slot C) {α : Type} (m : StateT (HashCache C × SlotCache C) ProbComp α) : Prop :=
@@ -1103,8 +1109,7 @@ theorem presampled_onCache (x : Slot C) {α : Type} (m : StateT (HashCache C) Pr
     Presampled₁ x (onCache m) := by
   intro p hp β k hk
   simp only [onCache, StateT.run_mk, bind_map_left]
-  rw [evalDist_bind_bind_swap]
-  exact evalDist_bind_congr' _ fun z => hk z.1 (z.2, p.2) hp
+  exact (OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans (EvalDistEq.bind_right _ fun z => hk z.1 (z.2, p.2) hp)
 
 theorem presampled_routedAnswer (x : Slot C) (t : (LocalSpec C).Domain) :
     Presampled₁ x (routedAnswer prims seeds pairKeys t) := by
@@ -1278,28 +1283,31 @@ theorem fillSlots_update (ω : Slot C → HashOutput) (l : List (Slot C)) (c : S
       Function.update_of_ne (by rintro rfl; exact hx (List.mem_cons_self ..))]
 
 theorem evalDist_uniform_bind_const {α : Type} [SampleableType α] {β : Type} (my : ProbComp β) :
-    𝒟[($ᵗ α) >>= fun _ => my] = 𝒟[my] :=
-  evalDist_ext fun y => by simp
+    (($ᵗ α) >>= fun _ => my) =ᵈ my :=
+  OracleComp.EvalDistEq.bind_const _ my
 
 /-- Sampling the slots `l`, fresh in the state, before a run of the symbolic game leaves the result
 unchanged. -/
 theorem presample_symImpl (b : Bool) (parameter : PublicParameter) {α : Type}
     (oa : OracleComp (LocalSpec C + TprfSpec C) α) (l : List (Slot C)) (hl : l.Nodup) (p : SymState C × Bool)
     (hp : ∀ s ∈ l, getTable p s = none) :
-    𝒟[($ᵗ (Slot C → HashOutput)) >>= fun ω =>
-        (simulateQ (symImpl prims seeds pairKeys b parameter) oa).run' (setTable p (fillSlots ω l (getTable p)))] =
-      𝒟[(simulateQ (symImpl prims seeds pairKeys b parameter) oa).run' p] := by
+    (($ᵗ (Slot C → HashOutput)) >>= fun ω =>
+        (simulateQ (symImpl prims seeds pairKeys b parameter) oa).run' (setTable p (fillSlots ω l (getTable p)))) =ᵈ
+      (simulateQ (symImpl prims seeds pairKeys b parameter) oa).run' p := by
   induction l with
   | nil =>
     simp only [fillSlots, setTable_getTable]
     exact evalDist_uniform_bind_const (α := Slot C → HashOutput) _
   | cons s l ih =>
     have hs : s ∉ l := (List.nodup_cons.mp hl).1
-    rw [evalDist_bind, ← evalDist_uniformSample_bind_update (D := Slot C) (R := HashOutput) s, ← evalDist_bind]
-    simp only [bind_assoc, pure_bind, fillSlots, fillSlots_update _ l _ hs, Function.update_self]
-    rw [evalDist_bind_bind_swap]
-    rw [← ih (List.nodup_cons.mp hl).2 (fun a ha => hp a (List.mem_cons_of_mem _ ha))]
-    refine evalDist_bind_congr' _ fun g => ?_
+    let : MeasurableSpace HashOutput := ⊤
+    let : MeasurableSpace α := ⊤
+    refine (EvalDistEq.of_evalDist_eq (evalDist_bind_bind_update ($ᵗ HashOutput) ($ᵗ (Slot C → HashOutput))
+      SampleableType.evalDist_uniformSample SampleableType.evalDist_uniformSample s _)).symm.trans ?_
+    simp only [fillSlots, fillSlots_update _ l _ hs, Function.update_self]
+    refine (OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans ?_
+    refine EvalDistEq.trans (EvalDistEq.bind_right _ fun g => ?_)
+      (ih (List.nodup_cons.mp hl).2 (fun a ha => hp a (List.mem_cons_of_mem _ ha)))
     have hfresh : getTable (setTable p (fillSlots g l (getTable p))) s = none := by
       show fillSlots g l (getTable p) s = none
       rw [fillSlots_of_not_mem g l _ hs]
@@ -1346,11 +1354,11 @@ def recordQueriers (records : List (EvalRecord C)) (x : Point) (ec : Message) : 
   ((records.filter fun e => e.x = x ∧ e.ec = ec).map (·.i)).toFinset
 
 theorem truncateHash_xor_setWidth (v : HashOutput) (d : Digest) :
-    truncateHash (v ^^^ d.setWidth hashOutputBits) = truncateHash v ^^^ d := by
+    truncateHash (v ^^^ d.setWidth 256) = truncateHash v ^^^ d := by
   apply BitVec.eq_of_getLsbD_eq
   intro k hk
   simp only [truncateHash, BitVec.getLsbD_extractLsb', BitVec.getLsbD_xor, BitVec.getLsbD_setWidth]
-  have : k < hashOutputBits := by simp [hashOutputBits, digestBits] at hk ⊢; omega
+  have : k < 256 := by simp [digestBits] at hk ⊢; omega
   simp [hk, this]
 
 theorem pairOf_eq_iff {i j i' j' : C.Party} (h : i ≠ j) (h' : i' ≠ j') :
@@ -1414,7 +1422,7 @@ variable (records D challenged Tstar) in
 /-- The bijection of the tables. -/
 def shiftTable (δ : Point → XorDigest) (ω : Slot C → HashOutput) : Slot C → HashOutput :=
   fun s => ω s ^^^ (shiftOf (records := records) (D := D) (challenged := challenged) (Tstar := Tstar) δ s).setWidth
-    hashOutputBits
+    256
 
 theorem shiftTable_shiftTable (δ : Point → XorDigest) (ω : Slot C → HashOutput) :
     shiftTable records D challenged Tstar δ (shiftTable records D challenged Tstar δ ω) = ω := by
@@ -1614,11 +1622,12 @@ open Classical
 variable (parameter : PublicParameter)
 
 /-- The state `v` with the full table `ω`. -/
-def conc (v : SymState C × Bool) (ω : Slot C → HashOutput) : SymState C × Bool := setTable v fun s => some (ω s)
+def conc (v : SymState C × Bool) (ω : Slot C → HashOutput) : SymState C × Bool :=
+  setTable v (QueryCache.ofFn fun s => some (ω s))
 
 /-- The probability that the symbolic game outputs `true` from the state `p`. -/
 def symP (b : Bool) (oa : OracleComp (LocalSpec C + TprfSpec C) Bool) (p : SymState C × Bool) : ℝ≥0∞ :=
-  Pr[fun z => z.1 = true | (simulateQ (symImpl prims seeds pairKeys b parameter) oa).run p]
+  Pr{let z ← (simulateQ (symImpl prims seeds pairKeys b parameter) oa).run p}[z.1 = true]
 
 /-- The challenged points. -/
 def chalSet (v : SymState C × Bool) : Finset Point := v.1.1.1.challenged
@@ -1663,8 +1672,8 @@ theorem consistent_empty_iff (records : List (EvalRecord C)) (reads : List (Slot
 /-- A step that reads no slot and keeps the view. -/
 theorem balancedAt_indep {R : Type} {oa : OracleComp (LocalSpec C + TprfSpec C) Bool}
     {step : Bool → StateT (SymState C × Bool) ProbComp R} {cont : R → OracleComp (LocalSpec C + TprfSpec C) Bool}
-    (hoa : ∀ b p, symP prims seeds pairKeys parameter b oa p = Pr[fun z => z.1 = true | (step b).run p >>= fun z =>
-      (simulateQ (symImpl prims seeds pairKeys b parameter) (cont z.1)).run z.2])
+    (hoa : ∀ b p, symP prims seeds pairKeys parameter b oa p = Pr{let z ← (step b).run p >>= fun z =>
+      (simulateQ (symImpl prims seeds pairKeys b parameter) (cont z.1)).run z.2}[z.1 = true])
     (IH : ∀ u, Balanced prims seeds pairKeys parameter (cont u)) {v : SymState C × Bool} {records reads}
     (m : ProbComp (R × SymState C × Bool))
     (hstep : ∀ b ω, (step b).run (conc v ω) = (fun w => (w.1, conc w.2 ω)) <$> m)
@@ -1672,8 +1681,8 @@ theorem balancedAt_indep {R : Type} {oa : OracleComp (LocalSpec C + TprfSpec C) 
       chalValue w.2 = chalValue v) :
     BalancedAt prims seeds pairKeys parameter oa v records reads := by
   have hP : ∀ b ω, symP prims seeds pairKeys parameter b oa (conc v ω) =
-      ∑' w, Pr[= w | m] * symP prims seeds pairKeys parameter b (cont w.1) (conc w.2 ω) := fun b ω => by
-    rw [hoa, hstep, bind_map_left, probEvent_bind_eq_tsum]
+      ∑' w, Pr{let z ← m}[z = w] * symP prims seeds pairKeys parameter b (cont w.1) (conc w.2 ω) := fun b ω => by
+    rw [hoa, hstep, bind_map_left, OracleComp.prEvent_bind_eq_tsum]
     rfl
   unfold BalancedAt
   simp only [hP, sum_tsum_mul, ← ENNReal.tsum_mul_right, mul_assoc]
@@ -1684,13 +1693,13 @@ theorem balancedAt_indep {R : Type} {oa : OracleComp (LocalSpec C + TprfSpec C) 
     unfold BalancedAt at h
     rw [hs, hc] at h
     rw [h]
-  · simp [probOutput_eq_zero_of_not_mem_support hw]
+  · simp [prEvent_eq_zero_of_not_mem_support _ hw]
 
 /-- A step that reads one deterministic value `g ω` of the table and logs it in the view. -/
 theorem balancedAt_observe {R A : Type} [Fintype A] [DecidableEq A] {oa : OracleComp (LocalSpec C + TprfSpec C) Bool}
     {step : Bool → StateT (SymState C × Bool) ProbComp R} {cont : R → OracleComp (LocalSpec C + TprfSpec C) Bool}
-    (hoa : ∀ b p, symP prims seeds pairKeys parameter b oa p = Pr[fun z => z.1 = true | (step b).run p >>= fun z =>
-      (simulateQ (symImpl prims seeds pairKeys b parameter) (cont z.1)).run z.2])
+    (hoa : ∀ b p, symP prims seeds pairKeys parameter b oa p = Pr{let z ← (step b).run p >>= fun z =>
+      (simulateQ (symImpl prims seeds pairKeys b parameter) (cont z.1)).run z.2}[z.1 = true])
     (IH : ∀ u, Balanced prims seeds pairKeys parameter (cont u)) {v : SymState C × Bool} {records reads}
     (g : (Slot C → HashOutput) → A) (u : A → R) (v' : A → SymState C × Bool)
     (records' : A → List (EvalRecord C)) (reads' : A → List (Slot C × HashOutput))
@@ -1725,12 +1734,12 @@ set_option maxHeartbeats 1000000 in
 samples a uniform value. Each answer adds the point to the challenged points. -/
 theorem balancedAt_challenge_new {R : Type} {oa : OracleComp (LocalSpec C + TprfSpec C) Bool}
     {step : Bool → StateT (SymState C × Bool) ProbComp R} {cont : R → OracleComp (LocalSpec C + TprfSpec C) Bool}
-    (hoa : ∀ b p, symP prims seeds pairKeys parameter b oa p = Pr[fun z => z.1 = true | (step b).run p >>= fun z =>
-      (simulateQ (symImpl prims seeds pairKeys b parameter) (cont z.1)).run z.2])
+    (hoa : ∀ b p, symP prims seeds pairKeys parameter b oa p = Pr{let z ← (step b).run p >>= fun z =>
+      (simulateQ (symImpl prims seeds pairKeys b parameter) (cont z.1)).run z.2}[z.1 = true])
     (IH : ∀ u, Balanced prims seeds pairKeys parameter (cont u)) {v : SymState C × Bool} {records reads}
     (x : Point) (hx : x ∉ chalSet v) (u : Digest → R) (v' : Digest → SymState C × Bool)
     (hstepF : ∀ ω, (step false).run (conc v ω) = pure (u (prfDigest ω x), conc (v' (prfDigest ω x)) ω))
-    (mq : ProbComp Digest) (hmq : ∀ d, Pr[= d | mq] = ((2 : ℝ≥0∞) ^ digestBits)⁻¹)
+    (mq : ProbComp Digest) (hmq : ∀ d, Pr{let z ← mq}[z = d] = ((2 : ℝ≥0∞) ^ digestBits)⁻¹)
     (hstepT : ∀ ω, (step true).run (conc v ω) = (fun d => (u d, conc (v' d) ω)) <$> mq)
     (hinv : ∀ d, ViewInv (v' d) records reads)
     (hchal : ∀ d, chalSet (v' d) = insert x (chalSet v) ∧
@@ -1744,7 +1753,7 @@ theorem balancedAt_challenge_new {R : Type} {oa : OracleComp (LocalSpec C + Tprf
     rfl
   have hPT : ∀ ω, symP prims seeds pairKeys parameter true oa (conc v ω) =
       ∑ d : Digest, ((2 : ℝ≥0∞) ^ digestBits)⁻¹ * symP prims seeds pairKeys parameter true (cont (u d)) (conc (v' d) ω) := fun ω => by
-    rw [hoa, hstepT, bind_map_left, probEvent_bind_eq_tsum, tsum_fintype]
+    rw [hoa, hstepT, bind_map_left, OracleComp.prEvent_bind_eq_tsum, tsum_fintype]
     exact Finset.sum_congr rfl fun d _ => by rw [hmq]; rfl
   have hcons : ∀ (d : Digest) ω, Consistent records reads (chalSet (v' d)) (chalValue (v' d)) ω ↔
       Consistent records reads (chalSet v) (chalValue v) ω ∧ prfDigest ω x = d := fun d ω => by
@@ -1788,8 +1797,8 @@ theorem balancedAt_challenge_new {R : Type} {oa : OracleComp (LocalSpec C + Tprf
 /-- A challenge at a point that is already challenged repeats the answer. -/
 theorem balancedAt_challenge_old {R : Type} {oa : OracleComp (LocalSpec C + TprfSpec C) Bool}
     {step : Bool → StateT (SymState C × Bool) ProbComp R} {cont : R → OracleComp (LocalSpec C + TprfSpec C) Bool}
-    (hoa : ∀ b p, symP prims seeds pairKeys parameter b oa p = Pr[fun z => z.1 = true | (step b).run p >>= fun z =>
-      (simulateQ (symImpl prims seeds pairKeys b parameter) (cont z.1)).run z.2])
+    (hoa : ∀ b p, symP prims seeds pairKeys parameter b oa p = Pr{let z ← (step b).run p >>= fun z =>
+      (simulateQ (symImpl prims seeds pairKeys b parameter) (cont z.1)).run z.2}[z.1 = true])
     (IH : ∀ u, Balanced prims seeds pairKeys parameter (cont u)) {v : SymState C × Bool} {records reads}
     (x : Point) (hx : x ∈ chalSet v) (u : Digest → R) (v' : Digest → SymState C × Bool)
     (hstepF : ∀ ω, (step false).run (conc v ω) = pure (u (prfDigest ω x), conc (v' (prfDigest ω x)) ω))
@@ -1834,7 +1843,7 @@ theorem balanced_pure (a : Bool) : Balanced prims seeds pairKeys parameter (pure
   ring
 
 /-- The full slot cache of the table `ω`. -/
-def fullTable (ω : Slot C → HashOutput) : SlotCache C := fun s => some (ω s)
+def fullTable (ω : Slot C → HashOutput) : SlotCache C := QueryCache.ofFn fun s => some (ω s)
 
 theorem toXor_foldl_id (a : Digest) (l : List Digest) :
     toXor (l.foldl (· ^^^ ·) a) = toXor a + (l.map toXor).sum :=
@@ -1975,7 +1984,6 @@ theorem symCore_challenge_run (b : Bool) (x : Point) (p : TprfState C × HashCac
               StateT (HashCache C × SlotCache C) ProbComp Digest).run p.2
           else (prfSlots x).run p.2) := by
   simp only [gameImplWith, StateT.run_mk]
-  split_ifs <;> rfl
 
 theorem viewInv_afterStep {v : SymState C × Bool} {records reads} (hv : ViewInv v records reads)
     (t : (LocalSpec C + TprfSpec C).Domain) (c : HashCache C) :
@@ -1991,8 +1999,8 @@ theorem balanced_simulateQ (oa : OracleComp (LocalSpec C + TprfSpec C) Bool) :
     intro v records reads hv
     have hoa : ∀ b p, symP prims seeds pairKeys parameter b
         ((liftM ((LocalSpec C + TprfSpec C).query t) : OracleComp (LocalSpec C + TprfSpec C) _) >>= cont) p =
-        Pr[fun z => z.1 = true | (symImpl prims seeds pairKeys b parameter t).run p >>= fun z =>
-          (simulateQ (symImpl prims seeds pairKeys b parameter) (cont z.1)).run z.2] := fun b p => by
+        Pr{let z ← (symImpl prims seeds pairKeys b parameter t).run p >>= fun z =>
+          (simulateQ (symImpl prims seeds pairKeys b parameter) (cont z.1)).run z.2}[z.1 = true] := fun b p => by
       rw [symP, simulateQ_bind, simulateQ_spec_query, StateT.run_bind]
     rcases t with (n | u | y) | (i | ⟨i, J, x, ec⟩ | x)
     · refine balancedAt_indep prims seeds pairKeys parameter hoa ih
@@ -2011,7 +2019,6 @@ theorem balanced_simulateQ (oa : OracleComp (LocalSpec C + TprfSpec C) Bool) :
       · have hadv : symAdversary prims seeds pairKeys v.1.1.1.corrupt (.inr (.inl u)) =
             onTable (slotOracle hrev.choose) := by
           simp only [symAdversary, dif_pos hrev]
-          rfl
         refine balancedAt_observe prims seeds pairKeys parameter hoa ih (A := HashOutput) (fun ω => ω hrev.choose) id
           (fun _ => afterStep seeds pairKeys v (.inl (.inr (.inl u))) v.1.1.1 v.1.1.2.1) (fun _ => records)
           (fun a => reads ++ [(hrev.choose, a)]) (fun b ω => ?_) (fun a => ?_) (fun a => ⟨rfl, rfl⟩)
@@ -2032,7 +2039,6 @@ theorem balanced_simulateQ (oa : OracleComp (LocalSpec C + TprfSpec C) Bool) :
       · have hadv : symAdversary prims seeds pairKeys v.1.1.1.corrupt (.inr (.inl u)) =
             onCache (hashAnswer prims u) := by
           simp only [symAdversary, dif_neg hrev]
-          rfl
         refine balancedAt_indep prims seeds pairKeys parameter hoa ih
           ((fun z => (z.1, afterStep seeds pairKeys v (.inl (.inr (.inl u))) v.1.1.1 z.2)) <$>
             (hashAnswer prims u).run v.1.1.2.1) (fun b ω => ?_) fun w hw => ?_
@@ -2135,9 +2141,7 @@ theorem balanced_simulateQ (oa : OracleComp (LocalSpec C + TprfSpec C) Bool) :
     · by_cases hc : ∃ ec, C.t ≤ (v.1.1.1.corrupt ∪ v.1.1.1.queried x ec).card
       · refine balancedAt_indep prims seeds pairKeys parameter hoa ih
           (pure (none, afterStep seeds pairKeys v (.inr (.challenge x)) v.1.1.1 v.1.1.2.1)) (fun b ω => ?_) fun w hw => ?_
-        · rw [symImpl_run_eq]
-          show (fun z => _) <$> (if ∃ ec, C.t ≤ (v.1.1.1.corrupt ∪ v.1.1.1.queried x ec).card then _ else _) = _
-          rw [if_pos hc]
+        · rw [symImpl_run_eq, symCore_challenge_run, if_pos hc]
           rfl
         · obtain rfl := (mem_support_pure_iff _ _).mp hw
           exact ⟨hv, rfl, rfl⟩
@@ -2159,9 +2163,7 @@ theorem balanced_simulateQ (oa : OracleComp (LocalSpec C + TprfSpec C) Bool) :
       have hstepF : ∀ ω, (symImpl prims seeds pairKeys false parameter (.inr (.challenge x))).run (conc v ω) =
           pure (some (prfDigest ω x), conc (afterStep seeds pairKeys v (.inr (.challenge x))
             (addChallenge v.1.1.1 x (prfDigest ω x)) v.1.1.2.1) ω) := fun ω => by
-        rw [symImpl_run_eq]
-        show (fun z => _) <$> (if ∃ ec, C.t ≤ (v.1.1.1.corrupt ∪ v.1.1.1.queried x ec).card then _ else _) = _
-        rw [if_neg hc]
+        rw [symImpl_run_eq, symCore_challenge_run, if_neg hc]
         erw [prfSlots_run_full]
         rfl
       by_cases hx : x ∈ chalSet v
@@ -2186,7 +2188,7 @@ theorem balanced_simulateQ (oa : OracleComp (LocalSpec C + TprfSpec C) Bool) :
         refine balancedAt_challenge_new prims seeds pairKeys parameter hoa ih x hx some
           (fun d => afterStep seeds pairKeys v (.inr (.challenge x)) (addChallenge v.1.1.1 x d) v.1.1.2.1) hstepF
           ($ᵗ Digest) (fun d => ?_) (fun ω => ?_) hinv fun d => ⟨rfl, ?_⟩
-        · rw [probOutput_uniformSample]
+        · rw [SampleableType.prEvent_uniformSample_eq_singleton]
           simp
         · rw [symImpl_run_eq, symCore_challenge_run]
           simp only [if_neg hc, if_true, hnone]
@@ -2211,7 +2213,7 @@ theorem fillSlots_of_mem (ω : Slot C → HashOutput) (l : List (Slot C)) (c : S
 
 /-- The symbolic game is the average of the symbolic game on a full table. -/
 theorem symbolic_eq_average (b : Bool) (A : OracleComp (LocalSpec C + TprfSpec C) Bool) :
-    Pr[fun z => z.1 = true | (simulateQ (symImpl prims seeds pairKeys b parameter) A).run symInit] =
+    Pr{let z ← (simulateQ (symImpl prims seeds pairKeys b parameter) A).run symInit}[z.1 = true] =
       ∑ ω : Slot C → HashOutput, (Fintype.card (Slot C → HashOutput) : ℝ≥0∞)⁻¹ *
         symP prims seeds pairKeys parameter b A (conc symInit ω) := by
   have h := presample_symImpl prims seeds pairKeys b parameter A (Finset.univ : Finset (Slot C)).toList
@@ -2220,16 +2222,15 @@ theorem symbolic_eq_average (b : Bool) (A : OracleComp (LocalSpec C + TprfSpec C
       conc symInit ω := fun ω => by
     simp only [conc]
     congr 1
-    funext s
+    refine QueryCache.ext fun s => ?_
     exact fillSlots_of_mem ω _ _ (Finset.mem_toList.mpr (Finset.mem_univ s))
   simp only [hfill] at h
-  have e1 : ∀ p, Pr[fun z => z.1 = true | (simulateQ (symImpl prims seeds pairKeys b parameter) A).run p] =
-      Pr[= true | (simulateQ (symImpl prims seeds pairKeys b parameter) A).run' p] := fun p => by
-    rw [StateT.run'_eq, ← probEvent_eq_eq_probOutput, probEvent_map]
-    rfl
-  rw [e1, ← evalDist_ext_iff.mp h true, probOutput_bind_eq_tsum, tsum_fintype]
+  have e1 : ∀ p, Pr{let z ← (simulateQ (symImpl prims seeds pairKeys b parameter) A).run p}[z.1 = true] =
+      Pr{let z ← (simulateQ (symImpl prims seeds pairKeys b parameter) A).run' p}[z = true] := fun p => by
+    rw [StateT.run'_eq, prEvent_map]
+  rw [e1, ← h.prEvent_eq (· = true), prEvent_bind_eq_sum_fintype]
   refine Finset.sum_congr rfl fun ω _ => ?_
-  rw [probOutput_uniformSample, symP, e1]
+  rw [SampleableType.prEvent_uniformSample_eq_singleton, symP, e1]
 
 theorem viewInv_init : ViewInv (C := C) symInit [] [] :=
   ⟨fun x hx => by simp [symInit, tprfInit] at hx, fun x ec => rfl, by simp, fun x => by simp [symInit, tprfInit]⟩
@@ -2237,8 +2238,8 @@ theorem viewInv_init : ViewInv (C := C) symInit [] [] :=
 set_option maxRecDepth 10000 in
 /-- `hsymbolic`. The symbolic game does not depend on `b`. -/
 theorem symbolic_balanced (A : OracleComp (LocalSpec C + TprfSpec C) Bool) :
-    Pr[fun z => z.1 = true | (simulateQ (symImpl prims seeds pairKeys true parameter) A).run symInit] =
-      Pr[fun z => z.1 = true | (simulateQ (symImpl prims seeds pairKeys false parameter) A).run symInit] := by
+    Pr{let z ← (simulateQ (symImpl prims seeds pairKeys true parameter) A).run symInit}[z.1 = true] =
+      Pr{let z ← (simulateQ (symImpl prims seeds pairKeys false parameter) A).run symInit}[z.1 = true] := by
   rw [symbolic_eq_average, symbolic_eq_average, ← Finset.mul_sum, ← Finset.mul_sum]
   refine congrArg _ ?_
   have h : BalancedAt prims seeds pairKeys parameter A symInit [] [] :=
@@ -2358,18 +2359,18 @@ theorem symImpl_revealed_stays (b : Bool) (parameter : PublicParameter) (σ : Ke
 
 theorem probEvent_revealed_stays (b : Bool) (parameter : PublicParameter) (σ : KeySlot C) {α : Type}
     (oa : OracleComp (LocalSpec C + TprfSpec C) α) (p : SymState C × Bool) (hr : Revealed p.1.1.1.corrupt σ)
-    (hσ : σ ∉ p.1.2) : Pr[fun z => σ ∈ z.2.1.2 | (simulateQ (symImpl prims seeds pairKeys b parameter) oa).run p] = 0 := by
+    (hσ : σ ∉ p.1.2) : Pr{let z ← (simulateQ (symImpl prims seeds pairKeys b parameter) oa).run p}[σ ∈ z.2.1.2] = 0 := by
   induction oa using OracleComp.inductionOn generalizing p with
   | pure a => simp [hσ]
   | query_bind t k ih =>
     simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query, id_map,
       StateT.run_bind]
-    rw [probEvent_bind_eq_tsum]
+    rw [OracleComp.prEvent_bind_eq_tsum]
     refine ENNReal.tsum_eq_zero.mpr fun z => ?_
     by_cases hz : z ∈ support ((symImpl prims seeds pairKeys b parameter t).run p)
     · obtain ⟨h1, h2⟩ := symImpl_revealed_stays prims seeds pairKeys b parameter σ t p hr hσ z hz
       rw [ih z.1 z.2 h1 h2, mul_zero]
-    · rw [probOutput_eq_zero_of_not_mem_support hz, zero_mul]
+    · rw [prEvent_eq_zero_of_not_mem_support _ hz, zero_mul]
 
 theorem choose_congr {α : Type} {P Q : α → Prop} (h : P = Q) (h₁ : ∃ a, P a) (h₂ : ∃ a, Q a) :
     h₁.choose = h₂.choose := by
@@ -2563,50 +2564,53 @@ theorem sum_hit_le (σ : KeySlot C) (b : Bool) (parameter : PublicParameter) {α
     (oa : OracleComp (LocalSpec C + TprfSpec C) α) (n : ℕ)
     (hq : IsQueryBoundP oa (fun t => Sum.elim Counted (fun _ => False) t) n) (p : SymState C × Bool)
     (hD : ¬Revealed p.1.1.1.corrupt σ) (hσ : σ ∉ p.1.2) :
-    ∑ k : HashOutput, Pr[fun z => σ ∈ z.2.1.2 |
-      (simulateQ (symImpl prims (updSeeds σ k seeds) (updPairs σ k pairKeys) b parameter) oa).run p] ≤ n := by
+    ∑ k : HashOutput,
+      Pr{let z ← (simulateQ (symImpl prims (updSeeds σ k seeds) (updPairs σ k pairKeys) b parameter) oa).run p}[σ ∈ z.2.1.2] ≤
+        n := by
   induction oa using OracleComp.inductionOn generalizing n p with
   | pure a => simp [hσ]
   | query_bind t cont ih =>
     rw [isQueryBoundP_query_bind_iff] at hq
     simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query, id_map,
-      StateT.run_bind, probEvent_bind_eq_tsum]
+      StateT.run_bind, OracleComp.prEvent_bind_eq_tsum]
     by_cases hrev : RevealsAt σ p.1.1.1 t
     · refine le_of_eq_of_le (Finset.sum_eq_zero fun k _ => ENNReal.tsum_eq_zero.mpr fun z => ?_) bot_le
       by_cases hz : z ∈ support ((symImpl prims (updSeeds σ k seeds) (updPairs σ k pairKeys) b parameter t).run p)
       · obtain ⟨h1, h2⟩ := symImpl_reveals prims seeds pairKeys σ b parameter t p hσ hrev k z hz
         rw [probEvent_revealed_stays _ _ _ b parameter σ _ z.2 h1 h2, mul_zero]
-      · rw [probOutput_eq_zero_of_not_mem_support hz, zero_mul]
+      · rw [prEvent_eq_zero_of_not_mem_support _ hz, zero_mul]
     obtain ⟨k₁, hk₁⟩ := exists_not_hit σ t
     set M := (symImpl prims (updSeeds σ k₁ seeds) (updPairs σ k₁ pairKeys) b parameter t).run p
     set n' := if Sum.elim Counted (fun _ => False) t then n - 1 else n
     have hstep : ∀ k, ¬Hit σ t k →
         (symImpl prims (updSeeds σ k seeds) (updPairs σ k pairKeys) b parameter t).run p = M :=
       fun k hk => symImpl_upd_eq prims seeds pairKeys σ b parameter t p hD hrev hk hk₁
-    have hk : ∀ k, (∑' z, Pr[= z | (symImpl prims (updSeeds σ k seeds) (updPairs σ k pairKeys) b parameter t).run p] *
-        Pr[fun z' => σ ∈ z'.2.1.2 | (simulateQ (symImpl prims (updSeeds σ k seeds) (updPairs σ k pairKeys) b parameter)
-          (cont z.1)).run z.2]) ≤ (if Hit σ t k then 1 else 0) + ∑' z, Pr[= z | M] *
-        Pr[fun z' => σ ∈ z'.2.1.2 | (simulateQ (symImpl prims (updSeeds σ k seeds) (updPairs σ k pairKeys) b parameter)
-          (cont z.1)).run z.2] := fun k => by
+    have hk : ∀ k, (∑' z, Pr{let y ← (symImpl prims (updSeeds σ k seeds) (updPairs σ k pairKeys) b parameter t).run p}[y = z] *
+        Pr{let z' ← (simulateQ (symImpl prims (updSeeds σ k seeds) (updPairs σ k pairKeys) b parameter)
+          (cont z.1)).run z.2}[σ ∈ z'.2.1.2]) ≤ (if Hit σ t k then 1 else 0) + ∑' z, Pr{let y ← M}[y = z] *
+        Pr{let z' ← (simulateQ (symImpl prims (updSeeds σ k seeds) (updPairs σ k pairKeys) b parameter)
+          (cont z.1)).run z.2}[σ ∈ z'.2.1.2] := fun k => by
       split_ifs with h
       · refine le_add_right ?_
-        rw [← probEvent_bind_eq_tsum]
-        exact probEvent_le_one
+        rw [← OracleComp.prEvent_bind_eq_tsum]
+        exact prEvent_le_one _
       · rw [hstep k h, zero_add]
     refine (Finset.sum_le_sum fun k _ => hk k).trans ?_
     rw [Finset.sum_add_distrib, ← Summable.tsum_finsetSum fun _ _ => ENNReal.summable]
-    have hM : ∀ z, Pr[= z | M] * ∑ k : HashOutput, Pr[fun z' => σ ∈ z'.2.1.2 |
-        (simulateQ (symImpl prims (updSeeds σ k seeds) (updPairs σ k pairKeys) b parameter) (cont z.1)).run z.2] ≤
-          Pr[= z | M] * n' := fun z => by
+    have hM : ∀ z, Pr{let y ← M}[y = z] * ∑ k : HashOutput,
+        Pr{let z' ← (simulateQ (symImpl prims (updSeeds σ k seeds) (updPairs σ k pairKeys) b parameter)
+          (cont z.1)).run z.2}[σ ∈ z'.2.1.2] ≤
+          Pr{let y ← M}[y = z] * n' := fun z => by
       by_cases hz : z ∈ support M
       · obtain ⟨h1, h2⟩ := symImpl_miss prims seeds pairKeys σ b parameter t p hD hσ hrev hk₁ z hz
         exact mul_le_mul_right (ih z.1 n' (hq.2 z.1) z.2 h1 h2) _
-      · simp [probOutput_eq_zero_of_not_mem_support hz]
-    have hsum : ∑' z, ∑ k : HashOutput, Pr[= z | M] * Pr[fun z' => σ ∈ z'.2.1.2 |
-        (simulateQ (symImpl prims (updSeeds σ k seeds) (updPairs σ k pairKeys) b parameter) (cont z.1)).run z.2] ≤ n' := by
+      · simp [prEvent_eq_zero_of_not_mem_support _ hz]
+    have hsum : ∑' z, ∑ k : HashOutput, Pr{let y ← M}[y = z] *
+        Pr{let z' ← (simulateQ (symImpl prims (updSeeds σ k seeds) (updPairs σ k pairKeys) b parameter)
+          (cont z.1)).run z.2}[σ ∈ z'.2.1.2] ≤ n' := by
       refine (ENNReal.tsum_le_tsum fun z => (Finset.mul_sum _ _ _).symm.le.trans (hM z)).trans ?_
       rw [ENNReal.tsum_mul_right]
-      exact mul_le_of_le_one_left' tsum_probOutput_le_one
+      exact mul_le_of_le_one_left' (OracleComp.tsum_prEvent_le_one _)
     by_cases hh : ∃ k₀, Hit σ t k₀
     · obtain ⟨k₀, u, rfl, hu⟩ := hh
       have hc : Sum.elim Counted (fun _ => False) (Sum.inl (Sum.inr (Sum.inl u)) : (LocalSpec C + TprfSpec C).Domain) := by
@@ -2655,17 +2659,20 @@ theorem flag_fired (b : Bool) (parameter : PublicParameter) {α : Type} (oa : Or
 
 theorem probEvent_resample {D R β : Type} [Fintype D] [DecidableEq D] [Fintype R] [Nonempty R] [SampleableType R]
     [SampleableType (D → R)] (d : D) (X : (D → R) → ProbComp β) (E : β → Prop) (c : ℝ≥0∞)
-    (h : ∀ g, ∑ u : R, Pr[E | X (Function.update g d u)] ≤ c) :
-    Pr[E | $ᵗ (D → R) >>= X] ≤ c / Fintype.card R := by
-  have he : Pr[E | $ᵗ (D → R) >>= X] =
-      Pr[E | ($ᵗ (D → R)) >>= fun g => ($ᵗ R) >>= fun u => X (Function.update g d u)] := by
-    rw [probEvent_def, probEvent_def, evalDist_bind, ← evalDist_uniformSample_bind_update (D := D) (R := R) d,
-      ← evalDist_bind, evalDist_bind_bind_swap]
-    simp only [bind_assoc, pure_bind]
+    (h : ∀ g, ∑ u : R, Pr{let z ← X (Function.update g d u)}[E z] ≤ c) :
+    Pr{let z ← $ᵗ (D → R) >>= X}[E z] ≤ c / Fintype.card R := by
+  have he : Pr{let z ← $ᵗ (D → R) >>= X}[E z] =
+      Pr{let z ← ($ᵗ (D → R)) >>= fun g => ($ᵗ R) >>= fun u => X (Function.update g d u)}[E z] := by
+    let : MeasurableSpace R := ⊤
+    let : MeasurableSpace β := ⊤
+    have hupd : (($ᵗ R) >>= fun u => ($ᵗ (D → R)) >>= fun g => X (Function.update g d u)) =ᵈ ($ᵗ (D → R) >>= X) :=
+      EvalDistEq.of_evalDist_eq (evalDist_bind_bind_update ($ᵗ R) ($ᵗ (D → R))
+        SampleableType.evalDist_uniformSample SampleableType.evalDist_uniformSample d X)
+    exact ((OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans hupd).symm.prEvent_eq E
   rw [he]
-  refine probEvent_bind_le_of_forall_le fun g _ => ?_
-  rw [probEvent_bind_eq_tsum, tsum_fintype]
-  simp only [probOutput_uniformSample]
+  refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun g _ => ?_
+  rw [prEvent_bind_eq_sum_fintype]
+  simp only [SampleableType.prEvent_uniformSample_eq_singleton]
   rw [← Finset.mul_sum, div_eq_mul_inv, mul_comm]
   exact mul_le_mul_left (h g) _
 
@@ -2673,32 +2680,32 @@ theorem symInit_unrevealed (σ : KeySlot C) : ¬Revealed (symInit (C := C)).1.1.
   rcases σ with T | p <;> simp [Revealed, symInit, tprfInit]
 
 theorem sum_tsum_bind_le {β γ : Type} [SampleableType γ] (F : HashOutput → γ → ProbComp β) (E : β → Prop) (c : ℝ≥0∞)
-    (h : ∀ y, ∑ u : HashOutput, Pr[E | F u y] ≤ c) : ∑ u : HashOutput, Pr[E | $ᵗ γ >>= F u] ≤ c := by
-  simp only [probEvent_bind_eq_tsum]
+    (h : ∀ y, ∑ u : HashOutput, Pr{let z ← F u y}[E z] ≤ c) : ∑ u : HashOutput, Pr{let z ← $ᵗ γ >>= F u}[E z] ≤ c := by
+  simp only [OracleComp.prEvent_bind_eq_tsum]
   rw [← Summable.tsum_finsetSum fun _ _ => ENNReal.summable]
-  calc ∑' y, ∑ u : HashOutput, Pr[= y | $ᵗ γ] * Pr[E | F u y]
-      = ∑' y, Pr[= y | $ᵗ γ] * ∑ u : HashOutput, Pr[E | F u y] := tsum_congr fun y => (Finset.mul_sum _ _ _).symm
-    _ ≤ ∑' y, Pr[= y | $ᵗ γ] * c := ENNReal.tsum_le_tsum fun y => mul_le_mul_right (h y) _
-    _ ≤ c := by rw [ENNReal.tsum_mul_right]; exact mul_le_of_le_one_left' tsum_probOutput_le_one
+  calc ∑' y, ∑ u : HashOutput, Pr{let z ← $ᵗ γ}[z = y] * Pr{let z ← F u y}[E z]
+      = ∑' y, Pr{let z ← $ᵗ γ}[z = y] * ∑ u : HashOutput, Pr{let z ← F u y}[E z] := tsum_congr fun y => (Finset.mul_sum _ _ _).symm
+    _ ≤ ∑' y, Pr{let z ← $ᵗ γ}[z = y] * c := ENNReal.tsum_le_tsum fun y => mul_le_mul_right (h y) _
+    _ ≤ c := by rw [ENNReal.tsum_mul_right]; exact mul_le_of_le_one_left' (OracleComp.tsum_prEvent_le_one _)
 
 open Classical in
 /-- The key `σ` is hit with probability at most `q / 2^256`. -/
 theorem symbolic_hit_le (b : Bool) (A : TprfAdversary C) (q : ℕ)
     (hq : IsQueryBoundP A (fun t => Sum.elim Counted (fun _ => False) t) q) (σ : KeySlot C) :
-    Pr[fun z => σ ∈ z.2.1.2 | do
+    Pr{let z ← (do
       let parameter ← $ᵗ PublicParameter
       let seeds ← $ᵗ (C.Term → HashOutput)
       let pairKeys ← $ᵗ (C.Pair → HashOutput)
-      (simulateQ (symImpl prims seeds pairKeys b parameter) A).run symInit] ≤ (q : ℝ≥0∞) / 2 ^ 256 := by
+      (simulateQ (symImpl prims seeds pairKeys b parameter) A).run symInit)}[σ ∈ z.2.1.2] ≤ (q : ℝ≥0∞) / 2 ^ 256 := by
   have hcard : (Fintype.card HashOutput : ℝ≥0∞) = 2 ^ 256 := by
-    simp [hashOutputBits]
+    simp
     norm_num
-  refine probEvent_bind_le_of_forall_le fun parameter _ => ?_
+  refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun parameter _ => ?_
   rcases σ with T | p
   · rw [← hcard]
     refine probEvent_resample T _ _ q fun g => sum_tsum_bind_le _ _ _ fun pairKeys => ?_
     exact sum_hit_le prims g pairKeys (.inl T) b parameter A q hq symInit (symInit_unrevealed _) (by simp [symInit])
-  · refine probEvent_bind_le_of_forall_le fun seeds _ => ?_
+  · refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun seeds _ => ?_
     rw [← hcard]
     refine probEvent_resample p _ _ q fun g => ?_
     exact sum_hit_le prims seeds g (.inr p) b parameter A q hq symInit (symInit_unrevealed _) (by simp [symInit])
@@ -2707,13 +2714,13 @@ open Classical in
 /-- `hbad`. The symbolic game hits a key with probability at most `(C(n, t - 1) + C(n, 2)) q / 2^256`. -/
 theorem symbolic_bad (b : Bool) (A : TprfAdversary C) (q : ℕ)
     (hq : IsQueryBoundP A (fun t => Sum.elim Counted (fun _ => False) t) q) :
-    Pr[fun z => z.2.2 = true | do
+    Pr{let z ← (do
       let parameter ← $ᵗ PublicParameter
       let seeds ← $ᵗ (C.Term → HashOutput)
       let pairKeys ← $ᵗ (C.Pair → HashOutput)
-      (simulateQ (symImpl prims seeds pairKeys b parameter) A).run symInit] ≤
+      (simulateQ (symImpl prims seeds pairKeys b parameter) A).run symInit)}[z.2.2 = true] ≤
       (Fintype.card (KeySlot C) * q : ℝ≥0∞) / 2 ^ 256 := by
-  refine (probEvent_mono fun z hz hf => ?_).trans ((probEvent_exists_finset_le_sum Finset.univ _
+  refine (prEvent_mono_of_support _ _ _ fun z hz hf => ?_).trans ((prEvent_exists_finset_le Finset.univ _
     (fun σ z => σ ∈ z.2.1.2)).trans ?_)
   · simp only [mem_support_bind_iff] at hz
     obtain ⟨parameter, -, seeds, -, pairKeys, -, hz⟩ := hz
@@ -2729,7 +2736,7 @@ end Bad
 section Collision
 
 theorem card_hashOutput : (Fintype.card HashOutput : ℝ≥0∞) = 2 ^ 256 := by
-  simp [hashOutputBits]
+  simp
   norm_num
 
 /-- The pairs are the 2-subsets of the operators. -/
@@ -2765,23 +2772,28 @@ theorem card_term : Fintype.card C.Term = C.n.choose (C.t - 1) := by
   simp [Committee.Term, Fintype.card_finset_len]
 
 theorem probEvent_bind_le_of_ite {α β : Type} (mx : ProbComp α) (f : α → ProbComp β) (p : α → Prop)
-    (q : β → Prop) (h : ∀ a, ¬p a → Pr[q | f a] = 0) : Pr[q | mx >>= f] ≤ Pr[p | mx] := by
+    (q : β → Prop) (h : ∀ a, ¬p a → Pr{let z ← f a}[q z] = 0) : Pr{let z ← mx >>= f}[q z] ≤ Pr{let z ← mx}[p z] := by
   classical
-  rw [probEvent_bind_eq_tsum, probEvent_eq_tsum_ite]
+  rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_eq_tsum_ite]
   refine ENNReal.tsum_le_tsum fun a => ?_
   by_cases ha : p a
-  · rw [if_pos ha]; exact mul_le_of_le_one_right' probEvent_le_one
+  · rw [if_pos ha]; exact mul_le_of_le_one_right' (prEvent_le_one _)
   · rw [if_neg ha, h a ha, mul_zero]
 
 theorem probEvent_update_le {Ω : Type} [Fintype Ω] [DecidableEq Ω] [SampleableType (Ω → HashOutput)]
     (E : (Ω → HashOutput) → Prop) (d : Ω)
     (h : ∀ g x y, E (Function.update g d x) → E (Function.update g d y) → x = y) :
-    Pr[E | $ᵗ (Ω → HashOutput)] ≤ (2 ^ 256 : ℝ≥0∞)⁻¹ := by
+    Pr{let z ← $ᵗ (Ω → HashOutput)}[E z] ≤ (2 ^ 256 : ℝ≥0∞)⁻¹ := by
   classical
-  rw [probEvent_def, ← evalDist_uniformSample_bind_update (D := Ω) (R := HashOutput) d,
-    ← probEvent_def, probEvent_bind_bind_swap]
-  refine probEvent_bind_le_of_forall_le fun g _ => ?_
-  rw [bind_pure_comp, probEvent_map, probEvent_uniformSample, card_hashOutput]
+  let : MeasurableSpace HashOutput := ⊤
+  have hupd : (($ᵗ HashOutput) >>= fun u => ($ᵗ (Ω → HashOutput)) >>= fun g =>
+      (pure (Function.update g d u) : ProbComp (Ω → HashOutput))) =ᵈ ($ᵗ (Ω → HashOutput) >>= pure) :=
+    EvalDistEq.of_evalDist_eq (evalDist_bind_bind_update ($ᵗ HashOutput) ($ᵗ (Ω → HashOutput))
+      SampleableType.evalDist_uniformSample SampleableType.evalDist_uniformSample d pure)
+  rw [bind_pure] at hupd
+  rw [← ((OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans hupd).prEvent_eq E]
+  refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun g _ => ?_
+  rw [bind_pure_comp, prEvent_map, SampleableType.prEvent_uniformSample, card_hashOutput]
   have hcard : (Finset.univ.filter (E ∘ Function.update g d)).card ≤ 1 :=
     Finset.card_le_one.mpr fun x hx y hy => h g x y (Finset.mem_filter.mp hx).2 (Finset.mem_filter.mp hy).2
   rw [ENNReal.div_eq_inv_mul]
@@ -2791,21 +2803,21 @@ theorem probEvent_update_le {Ω : Type} [Fintype Ω] [DecidableEq Ω] [Sampleabl
 
 /-- A uniform table has a collision with probability at most `C(|Ω|, 2) / 2 ^ 256`. -/
 theorem probEvent_not_injective {Ω : Type} [Fintype Ω] [DecidableEq Ω] [SampleableType (Ω → HashOutput)] :
-    Pr[fun g => ¬Function.Injective g | $ᵗ (Ω → HashOutput)] ≤
+    Pr{let g ← $ᵗ (Ω → HashOutput)}[¬Function.Injective g] ≤
       (Fintype.card Ω).choose 2 * (2 ^ 256 : ℝ≥0∞)⁻¹ := by
   let E : Finset Ω → (Ω → HashOutput) → Prop := fun s g => ∃ a ∈ s, ∃ b ∈ s, a ≠ b ∧ g a = g b
-  calc Pr[fun g => ¬Function.Injective g | $ᵗ (Ω → HashOutput)]
-      ≤ Pr[fun g => ∃ s ∈ powersetCard 2 (univ : Finset Ω), E s g | $ᵗ (Ω → HashOutput)] := by
-        refine probEvent_mono fun g _ hg => ?_
+  calc Pr{let g ← $ᵗ (Ω → HashOutput)}[¬Function.Injective g]
+      ≤ Pr{let g ← $ᵗ (Ω → HashOutput)}[∃ s ∈ powersetCard 2 (univ : Finset Ω), E s g] := by
+        refine prEvent_mono_of_support _ _ _ fun g _ hg => ?_
         simp only [Function.Injective, not_forall] at hg
         obtain ⟨a, b, hab, hne⟩ := hg
         exact ⟨{a, b}, by simp [mem_powersetCard, Finset.card_pair hne], a, by simp, b, by simp, hne, hab⟩
-    _ ≤ ∑ s ∈ powersetCard 2 (univ : Finset Ω), Pr[E s | $ᵗ (Ω → HashOutput)] :=
-        probEvent_exists_finset_le_sum _ _ _
+    _ ≤ ∑ s ∈ powersetCard 2 (univ : Finset Ω), Pr{let z ← $ᵗ (Ω → HashOutput)}[E s z] :=
+        prEvent_exists_finset_le _ _ _
     _ ≤ ∑ _s ∈ powersetCard 2 (univ : Finset Ω), (2 ^ 256 : ℝ≥0∞)⁻¹ := by
         refine sum_le_sum fun s hs => ?_
         obtain ⟨a, b, hab, rfl⟩ := card_eq_two.mp (mem_powersetCard.mp hs).2
-        refine (probEvent_mono fun g _ (hg : E {a, b} g) => (?_ : g a = g b)).trans
+        refine (prEvent_mono_of_support _ _ _ fun g _ (hg : E {a, b} g) => (?_ : g a = g b)).trans
           (probEvent_update_le (fun g => g a = g b) a fun g x y hx hy => ?_)
         · obtain ⟨c, hc, d, hd, hcd, h⟩ := hg
           simp only [mem_insert, mem_singleton] at hc hd
@@ -2831,21 +2843,22 @@ def KeyCollision (seeds : C.Term → HashOutput) (pairKeys : C.Pair → HashOutp
   ¬Function.Injective seeds ∨ ¬Function.Injective pairKeys
 
 theorem probEvent_keyCollision :
-    Pr[fun k => KeyCollision k.2.1 k.2.2 | do
+    Pr{let k ← (do
       let parameter ← $ᵗ PublicParameter
       let seeds ← $ᵗ (C.Term → HashOutput)
       let pairKeys ← $ᵗ (C.Pair → HashOutput)
-      pure (parameter, seeds, pairKeys)] ≤
+      pure (parameter, seeds, pairKeys))}[KeyCollision k.2.1 k.2.2] ≤
       ((C.n.choose (C.t - 1)).choose 2 + (C.n.choose 2).choose 2 : ℕ) * (2 ^ 256 : ℝ≥0∞)⁻¹ := by
-  refine (probEvent_or_le _ _ _).trans ?_
+  refine (prEvent_or_le _ _ _).trans ?_
   rw [Nat.cast_add, add_mul]
   refine add_le_add ?_ ?_
-  · refine probEvent_bind_le_of_forall_le fun _ _ => ?_
+  · refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun _ _ => ?_
     refine (probEvent_bind_le_of_ite _ _ (fun g => ¬Function.Injective g) _ fun g hg => ?_).trans ?_
     · simp [hg]
     · have h := probEvent_not_injective (Ω := C.Term)
       rwa [card_term] at h
-  · refine probEvent_bind_le_of_forall_le fun _ _ => probEvent_bind_le_of_forall_le fun _ _ => ?_
+  · refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun _ _ =>
+      prEvent_bind_le_of_forall_le_of_support _ _ _ fun _ _ => ?_
     refine (probEvent_bind_le_of_ite _ _ (fun g => ¬Function.Injective g) _ fun g hg => ?_).trans ?_
     · simp [hg]
     · have h := probEvent_not_injective (Ω := C.Pair)
@@ -2880,7 +2893,7 @@ theorem le_add_of_abs_toReal {a b c : ℝ≥0∞} (ha : a ≠ ⊤) (hb : b ≠ �
 /-- The game for the keys `x`. -/
 abbrev gameP (A : TprfAdversary C) (b : Bool) (x : PublicParameter × (C.Term → HashOutput) × (C.Pair → HashOutput)) :
     ℝ≥0∞ :=
-  Pr[= true | (simulateQ (gameImpl (localAnswer prims) b x.2.1 (dealtKeys x.1 x.2.1 x.2.2)) A).run' (tprfInit, ∅)]
+  Pr{let z ← (simulateQ (gameImpl (localAnswer prims) b x.2.1 (dealtKeys x.1 x.2.1 x.2.2)) A).run' (tprfInit, ∅)}[z = true]
 
 /-- The symbolic game for the keys `x`. -/
 abbrev symRun (A : TprfAdversary C) (b : Bool) (x : PublicParameter × (C.Term → HashOutput) × (C.Pair → HashOutput)) :=
@@ -2888,33 +2901,32 @@ abbrev symRun (A : TprfAdversary C) (b : Bool) (x : PublicParameter × (C.Term �
 
 open Classical in
 theorem gameP_le (A : TprfAdversary C) (b : Bool) (x : PublicParameter × (C.Term → HashOutput) × (C.Pair → HashOutput)) :
-    gameP prims A b x ≤ gameP prims A (!b) x + (Pr[fun z => z.2.2 = true | symRun prims A b x] +
-      Pr[fun z => z.2.2 = true | symRun prims A (!b) x] + if KeyCollision x.2.1 x.2.2 then 1 else 0) := by
+    gameP prims A b x ≤ gameP prims A (!b) x + (Pr{let z ← symRun prims A b x}[z.2.2 = true] +
+      Pr{let z ← symRun prims A (!b) x}[z.2.2 = true] + if KeyCollision x.2.1 x.2.2 then 1 else 0) := by
   obtain ⟨parameter, seeds, pairKeys⟩ := x
   split_ifs with hc
-  · exact le_add_left (le_add_left probOutput_le_one)
+  · exact le_add_left (le_add_left (prEvent_le_one _))
   · simp only [KeyCollision, not_or, not_not] at hc
     have hinj := slotInput_injective hc.1 hc.2
     have hreal : ∀ b, gameP prims A b (parameter, seeds, pairKeys) =
-        Pr[= true | Prod.fst <$> (simulateQ (realImpl prims seeds pairKeys b parameter) A).run symInit] := fun b => by
+        Pr{let z ← Prod.fst <$> (simulateQ (realImpl prims seeds pairKeys b parameter) A).run symInit}[z = true] := fun b => by
       rw [gameP, StateT.run'_eq, game_eq_real prims seeds pairKeys hinj]
-    have hsym : ∀ b, Pr[= true | Prod.fst <$> symRun prims A b (parameter, seeds, pairKeys)] =
-        Pr[fun z => z.1 = true | symRun prims A b (parameter, seeds, pairKeys)] := fun b => by
-      rw [← probEvent_eq_eq_probOutput, probEvent_map]
-      rfl
-    have hbal : Pr[fun z => z.1 = true | symRun prims A b (parameter, seeds, pairKeys)] =
-        Pr[fun z => z.1 = true | symRun prims A (!b) (parameter, seeds, pairKeys)] := by
+    have hsym : ∀ b, Pr{let z ← Prod.fst <$> symRun prims A b (parameter, seeds, pairKeys)}[z = true] =
+        Pr{let z ← symRun prims A b (parameter, seeds, pairKeys)}[z.1 = true] := fun b => by
+      rw [prEvent_map]
+    have hbal : Pr{let z ← symRun prims A b (parameter, seeds, pairKeys)}[z.1 = true] =
+        Pr{let z ← symRun prims A (!b) (parameter, seeds, pairKeys)}[z.1 = true] := by
       cases b
       · exact (symbolic_balanced prims seeds pairKeys parameter A).symm
       · exact symbolic_balanced prims seeds pairKeys parameter A
-    have h1 := le_add_of_abs_toReal (probOutput_ne_top) (probOutput_ne_top) (probEvent_ne_top)
+    have h1 := le_add_of_abs_toReal (prEvent_ne_top _) (prEvent_ne_top _) (prEvent_ne_top _)
       (real_sym_hop prims seeds pairKeys hinj b parameter A)
-    have h2 := le_add_of_abs_toReal (probOutput_ne_top) (probOutput_ne_top) (probEvent_ne_top)
+    have h2 := le_add_of_abs_toReal (prEvent_ne_top _) (prEvent_ne_top _) (prEvent_ne_top _)
       ((abs_sub_comm _ _).trans_le (real_sym_hop prims seeds pairKeys hinj (!b) parameter A))
     rw [hreal, hreal, add_zero]
     calc _ ≤ _ := h1
-      _ = Pr[= true | Prod.fst <$> symRun prims A (!b) (parameter, seeds, pairKeys)] +
-          Pr[fun z => z.2.2 = true | symRun prims A b (parameter, seeds, pairKeys)] := by
+      _ = Pr{let z ← Prod.fst <$> symRun prims A (!b) (parameter, seeds, pairKeys)}[z = true] +
+          Pr{let z ← symRun prims A b (parameter, seeds, pairKeys)}[z.2.2 = true] := by
         rw [hsym, hsym, hbal]
       _ ≤ _ := by
         refine (add_le_add h2 le_rfl).trans (le_of_eq ?_)
@@ -2954,12 +2966,11 @@ theorem toReal_le_div {e : ℝ≥0∞} {x : ℕ} (h : e ≤ (x : ℝ≥0∞) / 2
 
 open Classical in
 theorem accepts_tprfGame (A : TprfAdversary C) (b : Bool) :
-    accepts prims (tprfGame A b) = (Pr[= true | keyGen3 >>= fun x =>
-      (simulateQ (gameImpl (localAnswer prims) b x.2.1 (dealtKeys x.1 x.2.1 x.2.2)) A).run' (tprfInit, ∅)]).toReal := by
-  have h1 : Pr[fun r => r.1 = true | runWorld prims (tprfGame A b)] =
-      Pr[= true | (simulateQ (worldAnswer prims) (tprfGame A b)).run' ∅] := by
-    rw [← fst_map_runWorld, ← probEvent_eq_eq_probOutput, probEvent_map]
-    rfl
+    accepts prims (tprfGame A b) = (Pr{let z ← keyGen3 >>= fun x =>
+      (simulateQ (gameImpl (localAnswer prims) b x.2.1 (dealtKeys x.1 x.2.1 x.2.2)) A).run' (tprfInit, ∅)}[z = true]).toReal := by
+  have h1 : Pr{let r ← runWorld prims (tprfGame A b)}[r.1 = true] =
+      Pr{let z ← (simulateQ (worldAnswer prims) (tprfGame A b)).run' ∅}[z = true] := by
+    rw [← fst_map_runWorld, prEvent_map]
   rw [accepts, h1, runWorld_tprfGame, bind_keyGen3]
 
 end Final
@@ -2971,15 +2982,15 @@ open TprfSecurityProof in
 theorem tprfSecurity (prims : Primitives) (C : Committee) : TprfSecurityStatement prims C := by
   classical
   intro A q hq
-  set w := fun x => Pr[= x | keyGen3 (C := C)]
+  set w := fun x => Pr{let z ← keyGen3 (C := C)}[z = x]
   set c : PublicParameter × (C.Term → HashOutput) × (C.Pair → HashOutput) → ℝ≥0∞ := fun x =>
-    Pr[fun z => z.2.2 = true | symRun prims A false x] + Pr[fun z => z.2.2 = true | symRun prims A true x] +
+    Pr{let z ← symRun prims A false x}[z.2.2 = true] + Pr{let z ← symRun prims A true x}[z.2.2 = true] +
       if KeyCollision x.2.1 x.2.2 then 1 else 0
-  have hstep : ∀ b, Pr[= true | keyGen3 >>= fun x => (simulateQ (gameImpl (localAnswer prims) b x.2.1
-      (dealtKeys x.1 x.2.1 x.2.2)) A).run' (tprfInit, ∅)] ≤
-      Pr[= true | keyGen3 >>= fun x => (simulateQ (gameImpl (localAnswer prims) (!b) x.2.1
-        (dealtKeys x.1 x.2.1 x.2.2)) A).run' (tprfInit, ∅)] + ∑' x, w x * c x := fun b => by
-    rw [probOutput_bind_eq_tsum, probOutput_bind_eq_tsum, ← ENNReal.tsum_add]
+  have hstep : ∀ b, Pr{let z ← keyGen3 >>= fun x => (simulateQ (gameImpl (localAnswer prims) b x.2.1
+      (dealtKeys x.1 x.2.1 x.2.2)) A).run' (tprfInit, ∅)}[z = true] ≤
+      Pr{let z ← keyGen3 >>= fun x => (simulateQ (gameImpl (localAnswer prims) (!b) x.2.1
+        (dealtKeys x.1 x.2.1 x.2.2)) A).run' (tprfInit, ∅)}[z = true] + ∑' x, w x * c x := fun b => by
+    rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_bind_eq_tsum, ← ENNReal.tsum_add]
     refine ENNReal.tsum_le_tsum fun x => ?_
     rw [← mul_add]
     refine mul_le_mul_right ((gameP_le prims A b x).trans (le_of_eq ?_)) _
@@ -2990,16 +3001,16 @@ theorem tprfSecurity (prims : Primitives) (C : Committee) : TprfSecurityStatemen
   have hc : ∑' x, w x * c x ≤ ((2 * (C.n.choose (C.t - 1) + C.n.choose 2) * q +
       ((C.n.choose (C.t - 1)).choose 2 + (C.n.choose 2).choose 2) : ℕ) : ℝ≥0∞) / 2 ^ 256 := by
     simp only [c, mul_add, ENNReal.tsum_add]
-    have hbad : ∀ b, ∑' x, w x * Pr[fun z => z.2.2 = true | symRun prims A b x] ≤
+    have hbad : ∀ b, ∑' x, w x * Pr{let z ← symRun prims A b x}[z.2.2 = true] ≤
         (Fintype.card (KeySlot C) * q : ℝ≥0∞) / 2 ^ 256 := fun b => by
       have h := symbolic_bad prims b A q hq
       rw [bind_keyGen3 (fun parameter seeds pairKeys => (simulateQ (symImpl prims seeds pairKeys b parameter) A).run symInit),
-        probEvent_bind_eq_tsum] at h
+        OracleComp.prEvent_bind_eq_tsum] at h
       exact h
     have hcoll : ∑' x, w x * (if KeyCollision x.2.1 x.2.2 then 1 else 0) ≤
         ((C.n.choose (C.t - 1)).choose 2 + (C.n.choose 2).choose 2 : ℕ) * (2 ^ 256 : ℝ≥0∞)⁻¹ := by
       have h := probEvent_keyCollision (C := C)
-      rw [probEvent_eq_tsum_ite] at h
+      rw [OracleComp.prEvent_eq_tsum_ite] at h
       refine le_of_eq_of_le (tsum_congr fun x => ?_) h
       split_ifs <;> simp [w, keyGen3]
     have hcard : (Fintype.card (KeySlot C) : ℝ≥0∞) = C.n.choose (C.t - 1) + C.n.choose 2 := by
@@ -3017,11 +3028,11 @@ theorem tprfSecurity (prims : Primitives) (C : Committee) : TprfSecurityStatemen
   refine le_trans ?_ ((toReal_le_div hc).trans ?_)
   · rw [abs_le]
     constructor
-    · have := ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨probOutput_ne_top, hfin⟩) h1
-      rw [ENNReal.toReal_add probOutput_ne_top hfin] at this
+    · have := ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨prEvent_ne_top _, hfin⟩) h1
+      rw [ENNReal.toReal_add (prEvent_ne_top _) hfin] at this
       linarith
-    · have := ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨probOutput_ne_top, hfin⟩) h0
-      rw [ENNReal.toReal_add probOutput_ne_top hfin] at this
+    · have := ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨prEvent_ne_top _, hfin⟩) h0
+      rw [ENNReal.toReal_add (prEvent_ne_top _) hfin] at this
       linarith
   · rw [tprfError]
     exact div_le_div_of_nonneg_right (by exact_mod_cast error_le (C := C) q) (by positivity)

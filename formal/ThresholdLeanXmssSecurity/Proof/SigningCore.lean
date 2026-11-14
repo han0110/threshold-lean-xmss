@@ -33,7 +33,7 @@ flag on purpose, see the answers of the symbolic game disagree after a corruptio
 more calls than the budget of the real game allows. So `HiddenCoreAt` keeps the flag.
 -/
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -61,9 +61,9 @@ abbrev honestLift {β : Type} (oa : OracleComp (RoSpec C) β) : OracleComp (Worl
 /-- The oracles of `tsigGameWith worldRoles`. -/
 def gameOracles (dealt : Dealt C (OracleComp (WorldSpec C))) :
     QueryImpl (LocalSpec C + TsigSpec C) (StateT (TsigState C) (OracleComp (WorldSpec C))) :=
-  (fun t => StateT.lift (worldRoles.adversary (OracleComp.lift (OracleSpec.query t))) :
+  ((fun t => StateT.lift (worldRoles.adversary (OracleComp.lift (OracleSpec.query t))) :
       QueryImpl (LocalSpec C) (StateT (TsigState C) (OracleComp (WorldSpec C)))) +
-    tsigOracles (fun oa => honestLift oa) dealt
+    tsigOracles (fun oa => honestLift oa) dealt : QueryImpl _ _)
 
 /-- The oracles of `tsigGameWith worldRoles` with the flag of `hiddenHit`. -/
 def flaggedOracles (x : Keys3 C) (dealt : Dealt C (OracleComp (WorldSpec C))) :
@@ -80,7 +80,7 @@ def tsigInit : TsigState C := ⟨∅, fun _ => none, [], fun _ => none⟩
 def tsigFinish (dealt : Dealt C (OracleComp (WorldSpec C))) :
     Forgery × TsigState C → OracleComp (WorldSpec C) (Bool × TsigState C × Forgery)
   | (forgery, st) => do
-    let verified ← honestLift (tweakable (Concrete.verify ⟨dealt.top.root, dealt.parameter⟩ forgery.message
+    let verified ← honestLift (tweakable (Verification.verifyWithHash ⟨dealt.top.root, dealt.parameter⟩ forgery.message
       forgery.signature))
     let fresh ← if (signersAt st forgery.signature.leafIndex forgery.message).card < C.t then pure true else do
       let honest ← honestSignature (fun oa => honestLift oa) dealt forgery.signature.leafIndex forgery.message
@@ -166,11 +166,11 @@ theorem keyedRun_eq_flaggedRun (A : TsigAdversary C) :
 
 /-- A win with distinct keys sets the flag or wins without it. -/
 theorem core_split (A : TsigAdversary C) :
-    Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true | keyedRun prims A] ≤
-      Pr[fun z => z.2.1.2 = true | flaggedRun prims A] +
-        Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = false ∧ z.2.1.1 = true | flaggedRun prims A] := by
-  rw [keyedRun_eq_flaggedRun, probEvent_map]
-  refine le_trans (probEvent_mono fun z _ h => ?_) (probEvent_or_le _ _ _)
+    Pr{let z ← keyedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true] ≤
+      Pr{let z ← flaggedRun prims A}[z.2.1.2 = true] +
+        Pr{let z ← flaggedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = false ∧ z.2.1.1 = true] := by
+  rw [keyedRun_eq_flaggedRun, prEvent_map]
+  refine le_trans (prEvent_mono _ _ _ fun z h => ?_) (prEvent_or_le _ _ _)
   by_cases hz : z.2.1.2 = true
   · exact Or.inl hz
   · exact Or.inr ⟨h.1, by simpa using hz, h.2⟩
@@ -179,7 +179,7 @@ theorem core_split (A : TsigAdversary C) :
 
 /-- `bytesLE_injective` of leanVM (`LeanXmss/Bytes.lean`). The package builds only `LeanXmss.Scheme`
 and `LeanXmss.Statement`, so the lemma is repeated here. -/
-theorem bytesLE_inj {n : Nat} {x y : BitVec (8 * n)} (h : bytesLE n x = bytesLE n y) : x = y := by
+theorem bytesLE_inj {n : Nat} {x y : BitVec (8 * n)} (h : littleEndianBytes n x = littleEndianBytes n y) : x = y := by
   have hfun := List.ofFn_inj.mp h
   apply BitVec.eq_of_getLsbD_eq
   intro i hi
@@ -193,8 +193,8 @@ theorem bytesLE_inj {n : Nat} {x y : BitVec (8 * n)} (h : bytesLE n x = bytesLE 
   have hsum : 8 * (i / 8) + i % 8 = i := by omega
   simpa [hmod, hsum] using hlsb
 
-theorem bytesLE_len (n : Nat) (x : BitVec (8 * n)) : (bytesLE n x).length = n := by
-  simp [bytesLE]
+theorem bytesLE_len (n : Nat) (x : BitVec (8 * n)) : (littleEndianBytes n x).length = n := by
+  simp [littleEndianBytes]
 
 /-- `c_e` determines its opening: the input of `c_e` determines `ρ`, by the byte layout of leanVM. -/
 theorem commitmentInput_injective (P : PublicParameter) (e : KeyIndex) :
@@ -231,7 +231,7 @@ view only through their slots, so each call names a hidden key with probability 
 `(C(n, t - 1) + n²) / 2^256`. -/
 def SeedHitBound (prims : Primitives) (C : Committee) : Prop :=
   ∀ (A : TsigAdversary C) (q : ℕ), HasSigningQueryBound prims (tsigGame A) q →
-    (Pr[fun z => z.2.1.2 = true | flaggedRun prims A]).toReal ≤ seedHitError C q
+    (Pr{let z ← flaggedRun prims A}[z.2.1.2 = true]).toReal ≤ seedHitError C q
 
 /-- Steps 2 to 6 of the plan. A win with distinct keys and no call on a hidden key costs
 `signingHashError q`: the hop to the slots of the hidden keys (free without the flag), the positions
@@ -240,7 +240,7 @@ opens `c_e` is a hit on `c_e`, and the partner of a digest call with `ρ_e` open
 two lanes of leanVM with the calls of `KeyGen` as the slack. -/
 def HiddenCoreBound (prims : Primitives) (C : Committee) : Prop :=
   ∀ (A : TsigAdversary C) (q : ℕ), HasSigningQueryBound prims (tsigGame A) q → q < 2 ^ 127 →
-    (Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = false ∧ z.2.1.1 = true | flaggedRun prims A]).toReal ≤
+    (Pr{let z ← flaggedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = false ∧ z.2.1.1 = true]).toReal ≤
       signingHashError q
 
 /-! ## The core for fixed keys -/
@@ -252,7 +252,7 @@ def HiddenCoreAt (prims : Primitives) (C : Committee) : Prop :=
   ∀ (A : TsigAdversary C) (q : ℕ) (x : Keys3 C), x ∈ support (keyGen3 (C := C)) →
     ¬KeyCollision x.2.1 x.2.2 → (∀ r ∈ support (runSigningWorld prims (gameAfter A x)), r.2 ≤ q) →
     q < 2 ^ 127 →
-    Pr[fun r => r.1.2 = false ∧ r.1.1 = true | runSigningWorld prims (flaggedAfter A x)] ≤
+    Pr{let r ← runSigningWorld prims (flaggedAfter A x)}[r.1.2 = false ∧ r.1.1 = true] ≤
       ENNReal.ofReal (signingHashError q)
 
 /-- The core over the keys of `KeyGen'` from the core for each key. -/
@@ -261,11 +261,11 @@ theorem hiddenCoreBound_of_at (h : HiddenCoreAt prims C) : HiddenCoreBound prims
   have hε : 0 ≤ signingHashError q := by unfold signingHashError; positivity
   refine ENNReal.toReal_le_of_le_ofReal hε ?_
   unfold flaggedRun
-  refine probEvent_bind_le_of_forall_le fun x hx => ?_
-  rw [probEvent_map]
+  refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun x hx => ?_
+  rw [prEvent_map]
   by_cases hc : KeyCollision x.2.1 x.2.2
-  · simp [Function.comp_def, hc]
-  · simp only [Function.comp_def, hc, not_false_eq_true, true_and]
+  · simp [hc]
+  · simp only [hc, not_false_eq_true, true_and]
     exact h A q x hx hc (queryBound_gameAfter prims A q hq x hx) hsmall
 
 end SigningCoreProof
@@ -276,15 +276,13 @@ theorem signingCoreBound (prims : Primitives) (C : Committee) (seedHit : SeedHit
     (hiddenCoreAt : HiddenCoreAt prims C) : SigningCoreBound prims C := by
   intro A q hq hsmall
   have hiddenCore := hiddenCoreBound_of_at prims hiddenCoreAt
-  calc (Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true | keyedRun prims A]).toReal
-      ≤ (Pr[fun z => z.2.1.2 = true | flaggedRun prims A] +
-          Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = false ∧ z.2.1.1 = true |
-            flaggedRun prims A]).toReal :=
-        ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨probEvent_ne_top, probEvent_ne_top⟩) (core_split prims A)
-    _ = (Pr[fun z => z.2.1.2 = true | flaggedRun prims A]).toReal +
-          (Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = false ∧ z.2.1.1 = true |
-            flaggedRun prims A]).toReal :=
-        ENNReal.toReal_add probEvent_ne_top probEvent_ne_top
+  calc (Pr{let z ← keyedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true]).toReal
+      ≤ (Pr{let z ← flaggedRun prims A}[z.2.1.2 = true] +
+          Pr{let z ← flaggedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = false ∧ z.2.1.1 = true]).toReal :=
+        ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨prEvent_ne_top _, prEvent_ne_top _⟩) (core_split prims A)
+    _ = (Pr{let z ← flaggedRun prims A}[z.2.1.2 = true]).toReal +
+          (Pr{let z ← flaggedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = false ∧ z.2.1.1 = true]).toReal :=
+        ENNReal.toReal_add (prEvent_ne_top _) (prEvent_ne_top _)
     _ ≤ seedHitError C q + signingHashError q := add_le_add (seedHit A q hq) (hiddenCore A q hq hsmall)
     _ = _ := by ring
 

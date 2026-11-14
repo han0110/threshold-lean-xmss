@@ -16,7 +16,7 @@ computation of the run gives its value again on the final cache.
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-open OracleComp OracleSpec LeanXmss
+open OracleComp OracleSpec HashSig LeanXmss
 
 noncomputable section
 
@@ -376,6 +376,7 @@ theorem countRun_grows {α : Type} (oa : OracleComp (WorldSpec C) α) :
     obtain ⟨p, hp, hz⟩ := hz
     exact (countImpl_grows prims t s p hp).trans (ih p.1 p.2 z hz)
 
+set_option backward.isDefEq.respectTransparency false in
 /-- A random-oracle computation on the free copy gives its value with `H` fixed to any function that
 agrees with the final cache. -/
 theorem run_liftFree {α : Type} (oa : OracleComp (RoSpec C) α) :
@@ -412,6 +413,7 @@ theorem run_bind_support {α β : Type} (oa : OracleComp (WorldSpec C) α) (f : 
   obtain ⟨p, hp, hz⟩ := hz
   exact ⟨p, hp, hz⟩
 
+set_option backward.isDefEq.respectTransparency false in
 /-- A query of `H` on the free copy leaves its answer in the cache. -/
 theorem run_hashQuery (q : Query C) (s : HashCache C × ℕ) (p : HashOutput × HashCache C × ℕ)
     (hp : p ∈ support ((simulateQ (countImpl prims) (SigningSecurityProof.liftFree (hashQuery q))).run s)) :
@@ -731,6 +733,7 @@ end Resolved
 /-! ## The run of the game -/
 
 set_option maxRecDepth 100000 in
+set_option backward.isDefEq.respectTransparency false in
 theorem exposedRun_facts (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
     (r : ((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) × HashCache C × ℕ)
     (hr : r ∈ support (exposedRun prims A x)) (hwin : r.1.1 = (true, false)) :
@@ -806,10 +809,11 @@ theorem leafKey_top (j : ℕ) (hj : j < 2 ^ 16) :
     (⟨j % lifetime, Nat.mod_lt _ (by decide)⟩ : KeyIndex) =
       XmssSecurity.Bridge.topKey (XmssSecurity.Concrete.topNodeOfNat j) := by
   apply Fin.ext
-  simp only [XmssSecurity.Bridge.topKey, XmssSecurity.Concrete.topNodeOfNat, lifetime, numLayers, layerHeight,
+  simp only [XmssSecurity.Bridge.topKey, XmssSecurity.Concrete.topNodeOfNat, lifetime, layerCount, layerHeight,
     XmssSecurity.topLifetime, XmssSecurity.treeHeight]
   omega
 
+set_option backward.isDefEq.respectTransparency false in
 theorem eval_merkleNode_top (K : QueryCache XmssSecurity.HashSpec) (P : PublicParameter)
     (chainEnd : KeyIndex → ChainIndex → Digest) (S : XmssSecurity.TopIndex → XmssSecurity.ChainIndex → XmssSecurity.Digest)
     (hS : ∀ b l, chainEnd (XmssSecurity.Bridge.topKey b) l =
@@ -849,7 +853,7 @@ theorem eval_merkleNode_top (K : QueryCache XmssSecurity.HashSpec) (P : PublicPa
       simp [XmssSecurity.Concrete.topChildNode, XmssSecurity.Concrete.topNodeOfNat, XmssSecurity.topLifetime,
         XmssSecurity.treeHeight, Nat.mod_eq_of_lt hjlt]
     have hnode : ∀ left right : Digest,
-        (Concrete.tweakableHash P (.node topLayer (level + 1) j) (Concrete.nodePayload left right) :
+        (Verification.tweakableHashWithHash P (.node topLayer (level + 1) j) (OverPermutation.nodePayload left right) :
           OracleComp HashSpec Digest) =
         (XmssSecurity.Concrete.topNodeHash P ⟨level, hlt⟩ (XmssSecurity.Concrete.topNodeOfNat j) left right :
           OracleComp XmssSecurity.HashSpec _) := by
@@ -868,9 +872,10 @@ theorem eval_merkleNode_top (K : QueryCache XmssSecurity.HashSpec) (P : PublicPa
 theorem leafKey_bottom (j : ℕ) :
     (⟨j % lifetime, Nat.mod_lt _ (by decide)⟩ : KeyIndex) = XmssSecurity.Concrete.merkleNodeOfNat j := by
   apply Fin.ext
-  simp [XmssSecurity.Concrete.merkleNodeOfNat, lifetime, XmssSecurity.lifetime, numLayers, layerHeight,
+  simp [XmssSecurity.Concrete.merkleNodeOfNat, lifetime, XmssSecurity.lifetime, layerCount, layerHeight,
     XmssSecurity.treeHeight]
 
+set_option backward.isDefEq.respectTransparency false in
 theorem eval_merkleNode_bottom (K : QueryCache XmssSecurity.HashSpec) (P : PublicParameter)
     (chainEnd : KeyIndex → ChainIndex → Digest) (secret : XmssSecurity.LeafIndex → XmssSecurity.ChainIndex → XmssSecurity.Digest) :
     ∀ level ≤ 16, ∀ j < 2 ^ (32 - level),
@@ -915,7 +920,7 @@ theorem eval_merkleNode_bottom (K : QueryCache XmssSecurity.HashSpec) (P : Publi
       simp [XmssSecurity.Concrete.childNode, XmssSecurity.Concrete.merkleNodeOfNat, XmssSecurity.lifetime,
         XmssSecurity.treeHeight, Nat.mod_eq_of_lt hjlt]
     have hnode : ∀ left right : Digest,
-        (Concrete.tweakableHash P (.node bottomLayer (level + 1) j) (Concrete.nodePayload left right) :
+        (Verification.tweakableHashWithHash P (.node bottomLayer (level + 1) j) (OverPermutation.nodePayload left right) :
           OracleComp HashSpec Digest) =
         (XmssSecurity.Concrete.nodeHash P ⟨level, hlt⟩ (XmssSecurity.Concrete.merkleNodeOfNat j) left right :
           OracleComp XmssSecurity.HashSpec _) := by
@@ -938,15 +943,15 @@ theorem eval_merkleNode_bottom (K : QueryCache XmssSecurity.HashSpec) (P : Publi
 /-- `D_refBottom` with the top signature of the bottom tree in the clear. -/
 theorem D_refBottom_topSignature (h : Query C → HashOutput) (P : PublicParameter) (seeds : C.Term → HashOutput)
     (top : TopTree)
-    (htopChain : ∀ b l, top.chainEnd (topKey b) l = E prims h (Concrete.chainWalk P topLayer (topKey b) l 0 3
+    (htopChain : ∀ b l, top.chainEnd (topKey b) l = E prims h (Verification.chainWalkWithHash P topLayer (topKey b) l 0 3
         (D prims h (prfValue seeds (.chain topLayer (topKey b) l (digit 0))))))
     (htopRoot : top.root = E prims h (merkleNode P topLayer top.chainEnd layerHeight 0))
     (b : Fin (2 ^ layerHeight)) :
     D prims h (referenceTree tweakable (prfValue seeds) P top (.bottom b)) = none ∨
       ∃ tree, D prims h (referenceTree tweakable (prfValue seeds) P top (.bottom b)) = some (.bottom tree) ∧
-        ∃ encoding, Codeword.decode (E prims h (Concrete.messageDigest P topLayer (topKey b)
-            (bytesLE 16 tree.root) tree.topSignature.randomness)) = some encoding ∧
-          tree.topSignature = ⟨tree.topSignature.randomness, fun l => digestAt
+        ∃ encoding, Codeword.decode (E prims h (Verification.messageDigestWithHash P topLayer (topKey b)
+            (littleEndianBytes 16 tree.root) tree.topSignature.randomizer)) = some encoding ∧
+          tree.topSignature = ⟨tree.topSignature.randomizer, fun l => digestAt
             (((signJobs b encoding).map fun job => D prims h (referenceJob tweakable (prfValue seeds) P job)).getD
               l.val []) 0, E prims h (merklePath P topLayer top.chainEnd (topKey b))⟩ := by
   unfold referenceTree ceremonyOutput
@@ -972,17 +977,17 @@ set_option maxRecDepth 100000 in
 /-- The signature of `KeyGen` with `H` fixed, when the bottom tree and the codeword exist. -/
 theorem D_honestSignature_some (h : Query C → HashOutput) (P : PublicParameter) (keys : C.Party → Keys C)
     (top : TopTree) (seeds : C.Term → HashOutput) (e : KeyIndex) (message : Message) (tree : BottomTree)
-    (randomness : Randomness) (encoding : Encoding)
+    (randomness : Randomizer) (encoding : Encoding)
     (htree : D prims h (referenceTree tweakable (prfValue seeds) P top (.bottom (treeOf e))) = some (.bottom tree))
     (hsc : D prims h (signCodeword P (tree.commitment e) e message
       (D prims h (prfValue seeds (.randomizer bottomLayer e)))) = some (randomness, encoding))
     (hcpk : ∀ l, let value := fun p => D prims h (prfValue seeds (.chain bottomLayer e l p))
       tree.cpk e l =
-        (E prims h (Concrete.chainWalk P bottomLayer e l 0 1 (value (digit 0))) ^^^ value (digit 1),
-          E prims h (Concrete.chainWalk P bottomLayer e l 0 2 (value (digit 0))) ^^^ value (digit 2),
-          E prims h (Concrete.chainWalk P bottomLayer e l 0 3 (value (digit 0))))) :
+        (E prims h (Verification.chainWalkWithHash P bottomLayer e l 0 1 (value (digit 0))) ^^^ value (digit 1),
+          E prims h (Verification.chainWalkWithHash P bottomLayer e l 0 2 (value (digit 0))) ^^^ value (digit 2),
+          E prims h (Verification.chainWalkWithHash P bottomLayer e l 0 3 (value (digit 0))))) :
     D prims h (honestSignature (fun oa => oa) (dealtWith (fun oa => oa) P keys top (prfValue seeds)) e message) =
-      some ⟨e, fun lay => if lay = bottomLayer then ⟨randomness, fun l => E prims h (Concrete.chainWalk P bottomLayer
+      some ⟨e, fun lay => if lay = bottomLayer then ⟨randomness, fun l => E prims h (Verification.chainWalkWithHash P bottomLayer
         e l 0 (encoding l).val (D prims h (prfValue seeds (.chain bottomLayer e l (digit 0))))),
         E prims h (merklePath P bottomLayer (fun e l => (tree.cpk e l).2.2) e)⟩ else tree.topSignature⟩ := by
   simp only [honestSignature, dealtWith, D_bind, D_map, htree]
@@ -1004,13 +1009,13 @@ theorem D_honestSignature_some (h : Query C → HashOutput) (P : PublicParameter
           let f ← prfValue seeds (.chain bottomLayer e l ⟨1, hv⟩)
           pure ((if 1 = 1 then (tree.cpk e l).1 else (tree.cpk e l).2.1) ^^^ f)) = _
       rw [D_bind, D_pure, if_pos rfl, hl]
-      rw [BitVec.xor_assoc, show (⟨1, hv⟩ : Digit) = digit 1 from rfl, BitVec.xor_self, BitVec.xor_zero]
+      rw [BitVec.xor_assoc, show (⟨1, hv⟩ : WinternitzDigit) = digit 1 from rfl, BitVec.xor_self, BitVec.xor_zero]
       rfl
     · show D prims h (do
           let f ← prfValue seeds (.chain bottomLayer e l ⟨2, hv⟩)
           pure ((if 2 = 1 then (tree.cpk e l).1 else (tree.cpk e l).2.1) ^^^ f)) = _
       rw [D_bind, D_pure, if_neg (by decide), hl]
-      rw [BitVec.xor_assoc, show (⟨2, hv⟩ : Digit) = digit 2 from rfl, BitVec.xor_self, BitVec.xor_zero]
+      rw [BitVec.xor_assoc, show (⟨2, hv⟩ : WinternitzDigit) = digit 2 from rfl, BitVec.xor_self, BitVec.xor_zero]
       rfl
     · show D prims h (pure (tree.cpk e l).2.2) = _
       rw [D_pure, hl]
@@ -1023,7 +1028,7 @@ theorem E_eval (h : Query C → HashOutput) {α : Type} (oa : OracleComp HashSpe
 
 theorem E_chainWalk_bottom (c : HashCache C) (P : PublicParameter) (e : KeyIndex) (l : ChainIndex) (start n : ℕ)
     (v : Digest) :
-    E prims (answersOf c) (Concrete.chainWalk P bottomLayer e l start n v) =
+    E prims (answersOf c) (Verification.chainWalkWithHash P bottomLayer e l start n v) =
       XmssSecurity.Wots.walk (XmssSecurity.Concrete.CacheView.chainStep (thView c) P e l) start n v := by
   rw [E_eval]
   erw [XmssSecurity.Bridge.chainWalk_bottom]
@@ -1031,7 +1036,7 @@ theorem E_chainWalk_bottom (c : HashCache C) (P : PublicParameter) (e : KeyIndex
 
 theorem E_chainWalk_top (c : HashCache C) (P : PublicParameter) (b : XmssSecurity.TopIndex) (l : ChainIndex)
     (start n : ℕ) (v : Digest) :
-    E prims (answersOf c) (Concrete.chainWalk P topLayer (XmssSecurity.Bridge.topKey b) l start n v) =
+    E prims (answersOf c) (Verification.chainWalkWithHash P topLayer (XmssSecurity.Bridge.topKey b) l start n v) =
       XmssSecurity.Wots.walk (XmssSecurity.Concrete.CacheView.topChainStep (thView c) P b l) start n v := by
   rw [E_eval]
   erw [XmssSecurity.Bridge.chainWalk_top]
@@ -1176,6 +1181,7 @@ theorem dealt_bottom (z : FinalState C) (b : Fin (2 ^ layerHeight)) (o : Option 
   rcases o with _ | (_ | _) <;> rfl
 
 set_option maxRecDepth 100000 in
+set_option backward.isDefEq.respectTransparency false in
 theorem honestSignatureReplay : HonestSignatureReplay prims C := by
   intro z hdealt message hbound
   obtain ⟨top, href, hchain, hroot⟩ := D_refTop (prims := prims) (h := z.answers) z.keys.1 z.keys.2.1 emptyTop
@@ -1190,7 +1196,6 @@ theorem honestSignatureReplay : HonestSignatureReplay prims C := by
   · have hbottom := dealt_bottom prims z (treeOf z.key) _ hnone
     have hsel : (z.honestKey prims).selected = none := by
       simp [FinalState.honestKey, FinalState.selected, FinalState.bottomTree, hbottom, bottomOf, hbound]
-      rfl
     have hlhs : honestSignature (m := Id) (fun oa => D prims z.answers oa) (z.dealt prims) z.key message = none := by
       simp only [honestSignature, hbottom, bottomOf]
       rfl
@@ -1208,9 +1213,9 @@ theorem honestSignatureReplay : HonestSignatureReplay prims C := by
   have hek := bottomKey_treeOf z.key
   have hcpk : ∀ l, let value := fun p => D prims z.answers (prfValue z.keys.2.1 (.chain bottomLayer z.key l p))
       tree.cpk z.key l =
-        (E prims z.answers (Concrete.chainWalk z.keys.1 bottomLayer z.key l 0 1 (value (digit 0))) ^^^ value (digit 1),
-          E prims z.answers (Concrete.chainWalk z.keys.1 bottomLayer z.key l 0 2 (value (digit 0))) ^^^ value (digit 2),
-          E prims z.answers (Concrete.chainWalk z.keys.1 bottomLayer z.key l 0 3 (value (digit 0)))) := by
+        (E prims z.answers (Verification.chainWalkWithHash z.keys.1 bottomLayer z.key l 0 1 (value (digit 0))) ^^^ value (digit 1),
+          E prims z.answers (Verification.chainWalkWithHash z.keys.1 bottomLayer z.key l 0 2 (value (digit 0))) ^^^ value (digit 2),
+          E prims z.answers (Verification.chainWalkWithHash z.keys.1 bottomLayer z.key l 0 3 (value (digit 0)))) := by
     intro l
     have h := hspec.cpk ⟨z.key.val % 2 ^ layerHeight, Nat.mod_lt _ (by decide)⟩ l
     rw [hek] at h
@@ -1224,7 +1229,6 @@ theorem honestSignatureReplay : HonestSignatureReplay prims C := by
       (D prims z.answers (prfValue z.keys.2.1 (.randomizer bottomLayer z.key)))) with _ | ⟨randomness, encoding⟩
   · have hsel : (z.honestKey prims).selected = none := by
       simp [FinalState.honestKey, FinalState.selected, FinalState.bottomTree, hbottom, hbound, hsc]
-      rfl
     have hlhs : honestSignature (m := Id) (fun oa => D prims z.answers oa) (z.dealt prims) z.key message = none := by
       rw [FinalState.dealt, D_honestSignature]
       simp only [honestSignature, dealtWith, D_bind, D_map, htree]
@@ -1238,7 +1242,7 @@ theorem honestSignatureReplay : HonestSignatureReplay prims C := by
   rw [show honestSignature (m := Id) (fun oa => D prims z.answers oa) (z.dealt prims) z.key message = _ from hlhs]
   have hsel : (z.honestKey prims).selected = some (message, randomness) := by
     simp [FinalState.honestKey, FinalState.selected, FinalState.bottomTree, hbottom, hbound, hsc]
-  have htopRandomness : (z.honestKey prims).topRandomness = tree.topSignature.randomness := by
+  have htopRandomness : (z.honestKey prims).topRandomness = tree.topSignature.randomizer := by
     simp [FinalState.honestKey, FinalState.bottomTree, hbottom]
   have hgrind := hsc
   rw [D_signCodeword (prims := prims) _ _ _ _ _ hcomm] at hgrind
@@ -1246,8 +1250,8 @@ theorem honestSignatureReplay : HonestSignatureReplay prims C := by
   have hencB : XmssSecurity.TargetSum.decodeDigest (XmssSecurity.Concrete.CacheView.encodingHash (thView z.cache)
       z.keys.1 z.key (message, randomness)) = some encoding := by
     rw [E_eval] at hdecB
-    erw [XmssSecurity.Bridge.messageDigest_bottom, XmssSecurity.Concrete.CacheReplay.eval_encodingHash,
-      XmssSecurity.Bridge.decode_eq] at hdecB
+    erw [XmssSecurity.Bridge.messageDigest_bottom,
+      XmssSecurity.Concrete.CacheReplay.eval_encodingHash (thView z.cache), XmssSecurity.Bridge.decode_eq] at hdecB
     exact hdecB
   have hbottomEnds : ∀ i : XmssSecurity.LeafIndex, i.val / 2 ^ 16 = (treeOf z.key).val → ∀ l,
       (tree.cpk i l).2.2 = XmssSecurity.Wots.walk
@@ -1289,7 +1293,7 @@ theorem honestSignatureReplay : HonestSignatureReplay prims C := by
         fun i => (z.honestKey prims).topPath i⟩⟩ := by
     simp only [honestSig, hsel, hse, htopEnc]
     rfl
-  have hv : (fun l => E prims z.answers (Concrete.chainWalk z.keys.1 bottomLayer z.key l 0 (encoding l).val
+  have hv : (fun l => E prims z.answers (Verification.chainWalkWithHash z.keys.1 bottomLayer z.key l 0 (encoding l).val
       (D prims z.answers (prfValue z.keys.2.1 (.chain bottomLayer z.key l (digit 0)))))) =
       signedValues (bottomStep z.cache z.keys.1 z.key) (z.honestKey prims).secret encoding := by
     funext l

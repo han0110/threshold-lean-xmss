@@ -1,5 +1,6 @@
 import ThresholdLeanXmss.Statement
 import VCVio.OracleComp.QueryTracking.RandomOracle.DeferredSampling
+import VCVio.ProgramLogic.Relational.SimulateQ.UntilBad
 
 /-!
 # The execution model
@@ -8,7 +9,7 @@ Lemmas that unfold the execution model of `ThresholdLeanXmss/Scheme.lean`. The m
 runs with a fixed `H`, the query counting and the facts that several claim proofs share.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 
 noncomputable section
 
@@ -158,24 +159,24 @@ section World
 
 theorem sequenceFin_bind_pure {m : Type → Type} [Monad m] [LawfulMonad m] {α β : Type} :
     ∀ {n : ℕ} (X : Fin n → m α) (h : Fin n → α → β),
-    Concrete.sequenceFin (fun i => X i >>= fun r => pure (h i r)) =
-      Concrete.sequenceFin X >>= fun rs => pure fun i => h i (rs i)
+    OverPermutation.sequenceFin (fun i => X i >>= fun r => pure (h i r)) =
+      OverPermutation.sequenceFin X >>= fun rs => pure fun i => h i (rs i)
   | 0, X, h => by
-    simp only [Concrete.sequenceFin, pure_bind]
+    simp only [OverPermutation.sequenceFin, pure_bind]
     congr 1; funext i; exact i.elim0
   | n + 1, X, h => by
-    simp only [Concrete.sequenceFin, bind_assoc, pure_bind]
+    simp only [OverPermutation.sequenceFin, bind_assoc, pure_bind]
     rw [sequenceFin_bind_pure (fun i : Fin n => X i.succ) (fun i => h i.succ)]
     simp only [bind_assoc, pure_bind]
     refine bind_congr fun a => bind_congr fun rs => ?_
     congr 1; funext i; cases i using Fin.cases <;> rfl
 
 theorem sequenceFin_pure {m : Type → Type} [Monad m] [LawfulMonad m] {α : Type} :
-    ∀ {n : ℕ} (f : Fin n → α), Concrete.sequenceFin (fun i => (pure (f i) : m α)) = pure f
+    ∀ {n : ℕ} (f : Fin n → α), OverPermutation.sequenceFin (fun i => (pure (f i) : m α)) = pure f
   | 0, f => by
-    simp only [Concrete.sequenceFin]; congr 1; funext i; exact i.elim0
+    simp only [OverPermutation.sequenceFin]; congr 1; funext i; exact i.elim0
   | n + 1, f => by
-    simp only [Concrete.sequenceFin, pure_bind]
+    simp only [OverPermutation.sequenceFin, pure_bind]
     rw [sequenceFin_pure (fun i : Fin n => f i.succ)]
     simp only [pure_bind]
     congr 1; funext i; cases i using Fin.cases <;> rfl
@@ -183,19 +184,19 @@ theorem sequenceFin_pure {m : Type → Type} [Monad m] [LawfulMonad m] {α : Typ
 theorem simulateQ_sequenceFin {κ : Type} {spec : OracleSpec κ} {m : Type → Type} [Monad m] [LawfulMonad m]
     (impl : QueryImpl spec m) {α : Type} :
     ∀ {n : ℕ} (f : Fin n → OracleComp spec α),
-    simulateQ impl (Concrete.sequenceFin f) = Concrete.sequenceFin fun i => simulateQ impl (f i)
-  | 0, f => by simp [Concrete.sequenceFin]
+    simulateQ impl (OverPermutation.sequenceFin f) = OverPermutation.sequenceFin fun i => simulateQ impl (f i)
+  | 0, f => by simp [OverPermutation.sequenceFin]
   | n + 1, f => by
-    simp only [Concrete.sequenceFin, simulateQ_bind, simulateQ_pure]
+    simp only [OverPermutation.sequenceFin, simulateQ_bind, simulateQ_pure]
     refine bind_congr fun a => ?_
     rw [simulateQ_sequenceFin impl (fun i : Fin n => f i.succ)]
 
 theorem mem_support_sequenceFin {α : Type} :
-    ∀ {n : ℕ} (f : Fin n → ProbComp α) (x : Fin n → α), x ∈ support (Concrete.sequenceFin f) →
+    ∀ {n : ℕ} (f : Fin n → ProbComp α) (x : Fin n → α), x ∈ support (OverPermutation.sequenceFin f) →
       ∀ i, x i ∈ support (f i)
   | 0, f, x, _ => fun i => i.elim0
   | n + 1, f, x, hx => by
-    simp only [Concrete.sequenceFin, support_bind, Set.mem_iUnion, support_pure,
+    simp only [OverPermutation.sequenceFin, support_bind, Set.mem_iUnion, support_pure,
       Set.mem_singleton_iff] at hx
     obtain ⟨a, ha, t, ht, rfl⟩ := hx
     intro i
@@ -209,7 +210,7 @@ theorem mem_support_sequenceFin {α : Type} :
     free (oa >>= f) = free oa >>= fun a => free (f a) := simulateQ_bind _ _ _
 
 theorem free_sequenceFin {α : Type} {n : ℕ} (f : Fin n → OracleComp (LocalSpec C) α) :
-    free (Concrete.sequenceFin f) = Concrete.sequenceFin fun i => free (f i) :=
+    free (OverPermutation.sequenceFin f) = OverPermutation.sequenceFin fun i => free (f i) :=
   simulateQ_sequenceFin _ f
 
 variable (prims : Primitives)
@@ -310,24 +311,23 @@ local notation "CacheM" => StateT σ ProbComp
 /-- Two computations commute when, from every cache, the two orders give the same distribution of
 the pair of results and the final cache. -/
 def Commutes {α β : Type} (x : CacheM α) (y : CacheM β) : Prop :=
-  ∀ s, 𝒟[(do let a ← x; let b ← y; pure (a, b)).run s] = 𝒟[(do let b ← y; let a ← x; pure (a, b)).run s]
+  ∀ s, (do let a ← x; let b ← y; pure (a, b)).run s =ᵈ (do let b ← y; let a ← x; pure (a, b)).run s
 
 theorem evalDist_run_bind_congr {α β : Type} (m : CacheM α) {f g : α → CacheM β}
-    (h : ∀ a s, 𝒟[(f a).run s] = 𝒟[(g a).run s]) (s : σ) :
-    𝒟[(m >>= f).run s] = 𝒟[(m >>= g).run s] := by
-  simp only [StateT.run_bind, evalDist_bind]
-  congr 1
-  funext p
-  exact h p.1 p.2
+    (h : ∀ a s, (f a).run s =ᵈ (g a).run s) (s : σ) :
+    (m >>= f).run s =ᵈ (m >>= g).run s := by
+  simp only [StateT.run_bind]
+  exact EvalDistEq.bind_right _ fun p => h p.1 p.2
 
 theorem evalDist_run_bind_of_eq {α β : Type} {m₁ m₂ : CacheM α} (f : α → CacheM β)
-    (s : σ) (h : 𝒟[m₁.run s] = 𝒟[m₂.run s]) :
-    𝒟[(m₁ >>= f).run s] = 𝒟[(m₂ >>= f).run s] := by
-  rw [StateT.run_bind, StateT.run_bind, evalDist_bind, evalDist_bind, h]
+    (s : σ) (h : m₁.run s =ᵈ m₂.run s) :
+    (m₁ >>= f).run s =ᵈ (m₂ >>= f).run s := by
+  rw [StateT.run_bind, StateT.run_bind]
+  exact h.bind_left _
 
 theorem Commutes.bind {α β γ : Type} {x : CacheM α} {y : CacheM β} (h : Commutes x y)
     (k : α → β → CacheM γ) (s : σ) :
-    𝒟[(do let a ← x; let b ← y; k a b).run s] = 𝒟[(do let b ← y; let a ← x; k a b).run s] := by
+    (do let a ← x; let b ← y; k a b).run s =ᵈ (do let b ← y; let a ← x; k a b).run s := by
   have e1 : (do let a ← x; let b ← y; k a b) =
       ((do let a ← x; let b ← y; pure (a, b)) >>= fun p => k p.1 p.2) := by simp [bind_assoc]
   have e2 : (do let b ← y; let a ← x; k a b) =
@@ -363,8 +363,9 @@ theorem Commutes.bind_right {α β γ : Type} {x : CacheM α} {y : CacheM β} {g
       (do let a ← x; let b ← y; (g b >>= fun c => pure (a, c))) := by simp only [bind_assoc]
   have e2 : (do let c ← y >>= g; let a ← x; pure (a, c)) =
       (do let b ← y; (do let c ← g b; let a ← x; pure (a, c))) := by simp only [bind_assoc]
-  rw [e1, e2, h.bind (fun a b => g b >>= fun c => pure (a, c)) s]
-  exact evalDist_run_bind_congr y (fun b s' => hg b s') s
+  rw [e1, e2]
+  exact (h.bind (fun a b => g b >>= fun c => pure (a, c)) s).trans
+    (evalDist_run_bind_congr y (fun b s' => hg b s') s)
 
 theorem Commutes.bind_left {α β γ : Type} {x : CacheM α} {f : α → CacheM β} {y : CacheM γ}
     (h : Commutes x y) (hf : ∀ a, Commutes (f a) y) : Commutes (x >>= f) y :=
@@ -396,7 +397,7 @@ theorem run_liftM_stateT {α : Type} (p : ProbComp α) (s : σ) :
 theorem commutes_lift_lift {α β : Type} (p : ProbComp α) (q : ProbComp β) :
     Commutes (StateT.lift p : StateT σ ProbComp α) (StateT.lift q) := fun s => by
   simp only [StateT.run_bind, StateT.run_lift, StateT.run_pure, bind_assoc, pure_bind]
-  exact DeferredSampling.evalDist_bind_comm _ _ _
+  exact OracleComp.EvalDistEq.bind_bind_swap _ _ _
 
 theorem commutes_lift_randomOracle {α : Type} (p : ProbComp α) (x : Dom) :
     Commutes (StateT.lift p : StateT (Dom →ₒ R).QueryCache ProbComp α) ((Dom →ₒ R).randomOracle x) :=
@@ -405,8 +406,8 @@ theorem commutes_lift_randomOracle {α : Type} (p : ProbComp α) (x : Dom) :
     pure_bind, StateT.run_get]
   rcases hs : s x with _ | u
   · simp only [StateT.run_bind, StateT.run_modifyGet, bind_assoc, pure_bind]
-    exact DeferredSampling.evalDist_bind_comm _ _ _
-  · simp only [StateT.run_pure, pure_bind]
+    exact OracleComp.EvalDistEq.bind_bind_swap _ _ _
+  · simp only [StateT.run_pure, pure_bind, EvalDistEq.refl]
 
 theorem commutes_randomOracle_randomOracle (x y : Dom) :
     Commutes ((Dom →ₒ R).randomOracle x) ((Dom →ₒ R).randomOracle y) := fun s => by
@@ -416,15 +417,14 @@ theorem commutes_randomOracle_randomOracle (x y : Dom) :
   · subst hxy
     rcases hs : s x with _ | u
     · simp only [StateT.run_bind, StateT.run_modifyGet, bind_assoc, pure_bind,
-        QueryCache.cacheQuery_self, StateT.run_pure]
-    · simp only [StateT.run_pure, pure_bind, hs]
+        QueryCache.cacheQuery_self, StateT.run_pure, EvalDistEq.refl]
+    · simp only [StateT.run_pure, pure_bind, hs, EvalDistEq.refl]
   · rcases hs : s x with _ | u <;> rcases ht : s y with _ | v <;>
       simp only [StateT.run_bind, StateT.run_modifyGet, bind_assoc, pure_bind, StateT.run_pure,
         run_liftM_stateT, QueryCache.cacheQuery_of_ne _ _ hxy,
-        QueryCache.cacheQuery_of_ne _ _ (Ne.symm hxy), hs, ht]
-    rw [DeferredSampling.evalDist_bind_comm]
-    simp only [show ∀ u v, (s.cacheQuery x u).cacheQuery y v = (s.cacheQuery y v).cacheQuery x u from
-      fun u v => Function.update_comm hxy _ _ _]
+        QueryCache.cacheQuery_of_ne _ _ (Ne.symm hxy), hs, ht, EvalDistEq.refl]
+    refine (OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans ?_
+    simp only [QueryCache.cacheQuery_comm s hxy, EvalDistEq.refl]
 
 end RandomOracle
 
@@ -491,7 +491,7 @@ theorem isAtom_localAnswer (t : (LocalSpec C).Domain) : IsAtom (localAnswer (C :
 /-- Two computations are the same in the world when, from every cache, they give the same
 distribution of the result and the final cache. -/
 def SameRun {α : Type} (oa ob : OracleComp (LocalSpec C) α) : Prop :=
-  ∀ s, 𝒟[(simulateQ (localAnswer prims) oa).run s] = 𝒟[(simulateQ (localAnswer prims) ob).run s]
+  ∀ s, (simulateQ (localAnswer prims) oa).run s =ᵈ (simulateQ (localAnswer prims) ob).run s
 
 /-- Lazy sampling. Two computations in the local oracles commute in distribution. -/
 theorem sameRun_swap {α β γ : Type} (oa : OracleComp (LocalSpec C) α) (ob : OracleComp (LocalSpec C) β)
@@ -502,7 +502,7 @@ theorem sameRun_swap {α β γ : Type} (oa : OracleComp (LocalSpec C) α) (ob : 
   exact (commutes_simulateQ _ (fun t t' => commutes_of_isAtom (isAtom_localAnswer prims t)
     (isAtom_localAnswer prims t')) oa ob).bind _ s
 
-theorem SameRun.refl {α : Type} (oa : OracleComp (LocalSpec C) α) : SameRun prims oa oa := fun _ => rfl
+theorem SameRun.refl {α : Type} (oa : OracleComp (LocalSpec C) α) : SameRun prims oa oa := fun _ => .rfl
 
 variable {prims}
 
@@ -515,11 +515,8 @@ theorem SameRun.trans {α : Type} {oa ob oc : OracleComp (LocalSpec C) α} (h : 
 theorem SameRun.bind {α β : Type} {oa ob : OracleComp (LocalSpec C) α} {f g : α → OracleComp (LocalSpec C) β}
     (h : SameRun prims oa ob) (hfg : ∀ a, SameRun prims (f a) (g a)) : SameRun prims (oa >>= f) (ob >>= g) :=
   fun s => by
-  simp only [simulateQ_bind, StateT.run_bind, evalDist_bind]
-  rw [h s]
-  congr 1
-  funext p
-  exact hfg p.1 p.2
+  simp only [simulateQ_bind, StateT.run_bind]
+  exact (h s).bind fun p => hfg p.1 p.2
 
 theorem SameRun.of_eq {α : Type} {oa ob : OracleComp (LocalSpec C) α} (h : oa = ob) : SameRun prims oa ob :=
   h ▸ SameRun.refl prims oa
@@ -535,8 +532,9 @@ theorem SameRun.map {α β : Type} {oa ob : OracleComp (LocalSpec C) α} (h : Sa
 
 /-- Equal runs from the empty cache give equal outputs. -/
 theorem SameRun.run'_eq {α : Type} {oa ob : OracleComp (LocalSpec C) α} (h : SameRun prims oa ob) :
-    𝒟[(simulateQ (localAnswer prims) oa).run' ∅] = 𝒟[(simulateQ (localAnswer prims) ob).run' ∅] := by
-  simp only [StateT.run'_eq, evalDist_map, h ∅]
+    (simulateQ (localAnswer prims) oa).run' ∅ =ᵈ (simulateQ (localAnswer prims) ob).run' ∅ := by
+  simp only [StateT.run'_eq]
+  exact (h ∅).map Prod.fst
 
 variable (prims)
 
@@ -544,24 +542,24 @@ variable (prims)
 theorem sameRun_sequenceFin_dep {β₁ β₂ γ : Type} :
     ∀ {n : ℕ} (A : Fin n → OracleComp (LocalSpec C) β₁) (B : Fin n → β₁ → OracleComp (LocalSpec C) β₂)
       (m : Fin n → β₁ → β₂ → γ),
-    SameRun prims (Concrete.sequenceFin fun j => do let u ← A j; let v ← B j u; pure (m j u v))
+    SameRun prims (OverPermutation.sequenceFin fun j => do let u ← A j; let v ← B j u; pure (m j u v))
       (do
-        let x ← Concrete.sequenceFin A
-        let y ← Concrete.sequenceFin fun j => B j (x j)
+        let x ← OverPermutation.sequenceFin A
+        let y ← OverPermutation.sequenceFin fun j => B j (x j)
         pure fun j => m j (x j) (y j))
   | 0, A, B, m => by
-      simp only [Concrete.sequenceFin, pure_bind]
+      simp only [OverPermutation.sequenceFin, pure_bind]
       have : (fun j : Fin 0 => m j (Fin.elim0 j) (Fin.elim0 j)) = Fin.elim0 := funext fun j => j.elim0
       rw [this]
       exact SameRun.refl _ _
   | n + 1, A, B, m => by
-      simp only [Concrete.sequenceFin, bind_assoc, pure_bind]
+      simp only [OverPermutation.sequenceFin, bind_assoc, pure_bind]
       refine SameRun.bind_right (A 0) fun u => ?_
       refine (SameRun.bind_right (B 0 u) fun v =>
         (sameRun_sequenceFin_dep (fun i : Fin n => A i.succ) (fun i => B i.succ)
           (fun i => m i.succ)).bind fun t => SameRun.refl _ _).trans ?_
       simp only [bind_assoc, pure_bind]
-      refine (sameRun_swap prims (B 0 u) (Concrete.sequenceFin fun i : Fin n => A i.succ) _).trans ?_
+      refine (sameRun_swap prims (B 0 u) (OverPermutation.sequenceFin fun i : Fin n => A i.succ) _).trans ?_
       refine SameRun.bind_right _ fun x => ?_
       simp only [Fin.cases_zero, Fin.cases_succ]
       refine SameRun.bind_right _ fun v => SameRun.bind_right _ fun y => ?_
@@ -691,8 +689,8 @@ theorem grows_localAnswer : Grows (localAnswer (C := C) prims) := by
     exact le_rfl
   · exact grows_hashAnswer prims q s z hz
   · simp [localAnswer, prgAnswer] at hz
-    obtain ⟨p, hp, rfl⟩ := hz
-    exact grows_hashAnswer prims _ s p hp
+    obtain ⟨p, cache, hp, rfl⟩ := hz
+    exact grows_hashAnswer prims _ s (p, cache) hp
 
 theorem grows_programAnswer : Grows (programAnswer (C := C)) := by
   intro x s z hz
@@ -741,11 +739,11 @@ def honestStep (F : Functionality C I O L R) (reply : L → R) (steps : C.Party 
     OracleComp (LocalSpec C) (C.Party → Step C E (CallSpec I O) α) :=
   if (∃ i, (steps i).callInput.isSome) ∧ ∀ i, (steps i).callInput.isSome ∨ (steps i).isDone then do
     let outputs ← honestFunctionality F reply fun i => (steps i).callInput
-    Concrete.sequenceFin fun j => match steps j with
+    OverPermutation.sequenceFin fun j => match steps j with
       | .call _ resume => advance (resume (outputs j))
       | step => pure step
   else
-    Concrete.sequenceFin fun j => match steps j with
+    OverPermutation.sequenceFin fun j => match steps j with
       | .done out => pure (Step.done out)
       | .wait _ resume => advance (resume fun k => (steps k).delivered j)
       | .call _ _ => pure (Step.done none)
@@ -761,7 +759,7 @@ def honestRounds (F : Functionality C I O L R) (reply : L → R) :
 /-- The first steps of the honest programs. -/
 def honestStart (program : C.Party → PartyM C E (CallSpec I O) α) :
     OracleComp (LocalSpec C) (C.Party → Step C E (CallSpec I O) α) :=
-  Concrete.sequenceFin fun i => advance (program i).run
+  OverPermutation.sequenceFin fun i => advance (program i).run
 
 /-- A stateful implementation that answers each query on the free copy and each leak with `reply`,
 and keeps its state, runs `replyImpl reply` on the free copy. -/
@@ -791,9 +789,9 @@ theorem runFunctionality_honest {Ia : Type} (F : Functionality C I O L R) (reply
   by_cases h : ∀ i, (inputs i).isSome
   · simp only [noCoalition_val, Finset.notMem_empty, not_false_eq_true, forall_const, h, implies_true,
       not_true_eq_false, if_false]
-    rw [simulateQ_run_of_reply _ _ _ ?_ ?_]
-    · simp only [map_bind, Functor.map_map, bind_map_left]
-      rfl
+    rw [simulateQ_run_of_reply reply _ _ ?_ ?_]
+    · simp only [bind_map_left]
+      exact (map_eq_bind_pure_comp _ _ _).symm
     · intro t
       exact (map_eq_bind_pure_comp (m := OracleComp (WorldSpec C)) _ _).symm
     · intro l
@@ -877,7 +875,7 @@ theorem idealExecution_honest (F : Functionality C I O L R) (reply : L → R) (x
   unfold idealExecution
   simp only [noCoalition_val, Finset.notMem_empty, if_false]
   erw [pure_bind]
-  rw [simulateQ_run_of_reply reply _ _ ?_ ?_]
+  erw [simulateQ_run_of_reply reply _ _ ?_ ?_]
   · simp only [map_eq_bind_pure_comp, bind_assoc, Function.comp, pure_bind]
     exact bind_congr fun o => pure_bind _ _
   · intro t
@@ -903,7 +901,8 @@ theorem completes_iff {Ih Oh Lh Rh : Type} (prims : Primitives)
     (valid : C.Coalition → (C.Party → I) → Prop) (ε : ℝ) :
     Completes prims program fuel Fh replyH F reply valid ε ↔
       ∀ x : C.Party → I, valid noCoalition x →
-        tvDist ((simulateQ (localAnswer prims)
+        letI : MeasurableSpace (C.Party → Option O) := ⊤
+        measureTVDist ((simulateQ (localAnswer prims)
             (honestStart (fun i => program i (x i)) >>= honestRounds Fh replyH fuel)).run' ∅)
           ((simulateQ (localAnswer prims)
             (simulateQ (replyImpl reply) (F.run noCoalition fun i => some (x i)))).run' ∅) ≤ ε := by
@@ -917,7 +916,7 @@ theorem completes_iff {Ih Oh Lh Rh : Type} (prims : Primitives)
 deliver. -/
 theorem honestStep_of_no_call (F : Functionality C I O L R) (reply : L → R)
     (steps : C.Party → Step C E (CallSpec I O) α) (h : ∀ i, (steps i).callInput = none) :
-    honestStep F reply steps = Concrete.sequenceFin fun j => match steps j with
+    honestStep F reply steps = OverPermutation.sequenceFin fun j => match steps j with
       | .done out => pure (Step.done out)
       | .wait _ resume => advance (resume fun k => (steps k).delivered j)
       | .call _ _ => pure (Step.done none) := by
@@ -962,7 +961,7 @@ theorem exchangeResume_of_no_abort (f : Mail C E → PartyM C E G α) (inbox : M
 theorem honestStep_exchange (F : Functionality C I O L R) (reply : L → R) (outbox : C.Party → Mail C E)
     (f : C.Party → Mail C E → PartyM C E (CallSpec I O) α) :
     honestStep F reply (fun i => .wait (outbox i) (exchangeResume (f i))) =
-      Concrete.sequenceFin fun j => advance (exchangeResume (f j) fun k => outbox k j) :=
+      OverPermutation.sequenceFin fun j => advance (exchangeResume (f j) fun k => outbox k j) :=
   honestStep_of_no_call F reply _ fun _ => rfl
 
 end Honest
@@ -979,94 +978,64 @@ variable {κ : Type} {spec : OracleSpec κ} {σ α : Type}
 theorem probOutput_simulateQ_run_eq_zero_of_bad (impl : QueryImpl spec (StateT σ ProbComp)) (bad : σ → Prop)
     (h_mono : ∀ t s, bad s → ∀ x ∈ support ((impl t).run s), bad x.2)
     (oa : OracleComp spec α) (s₀ : σ) (h_bad : bad s₀) (x : α) (s : σ) (hs : ¬ bad s) :
-    Pr[= (x, s) | (simulateQ impl oa).run s₀] = 0 := by
-  induction oa using OracleComp.inductionOn generalizing s₀ with
-  | pure a =>
-    simp only [simulateQ_pure, StateT.run_pure, probOutput_eq_zero_iff, support_pure, Set.mem_singleton_iff,
-      Prod.ext_iff, not_and]
-    rintro rfl rfl
-    exact hs h_bad
-  | query_bind t oa ih =>
-    simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query,
-      id_map, StateT.run_bind, probOutput_eq_zero_iff, support_bind, Set.mem_iUnion, exists_prop,
-      Prod.exists, not_exists, not_and]
-    intro u s' h_mem
-    rw [← probOutput_eq_zero_iff]
-    exact ih u s' (h_mono t s₀ h_bad (u, s') h_mem)
+    Pr{let z ← (simulateQ impl oa).run s₀}[z = (x, s)] = 0 :=
+  prEvent_eq_zero_of_forall_mem_support _ _ fun z hz hzeq => by
+    subst hzeq
+    exact hs (ProgramLogic.Relational.forall_mem_support_simulateQ_run_of_bad impl bad h_mono oa h_bad _ hz)
 
 theorem probOutput_simulateQ_run_eq_of_not_bad (impl₁ impl₂ : QueryImpl spec (StateT σ ProbComp))
-    (bad : σ → Prop) (h_agree : ∀ t s, ¬ bad s → 𝒟[(impl₁ t).run s] = 𝒟[(impl₂ t).run s])
+    (bad : σ → Prop) (h_agree : ∀ t s, ¬ bad s → (impl₁ t).run s =ᵈ (impl₂ t).run s)
     (h_mono₁ : ∀ t s, bad s → ∀ x ∈ support ((impl₁ t).run s), bad x.2)
     (h_mono₂ : ∀ t s, bad s → ∀ x ∈ support ((impl₂ t).run s), bad x.2)
     (oa : OracleComp spec α) (s₀ : σ) (x : α) (s : σ) (hs : ¬ bad s) :
-    Pr[= (x, s) | (simulateQ impl₁ oa).run s₀] = Pr[= (x, s) | (simulateQ impl₂ oa).run s₀] := by
-  induction oa using OracleComp.inductionOn generalizing s₀ with
-  | pure a => rfl
-  | query_bind t oa ih =>
-    by_cases h_bad : bad s₀
-    · rw [probOutput_simulateQ_run_eq_zero_of_bad impl₁ bad h_mono₁ _ s₀ h_bad x s hs,
-        probOutput_simulateQ_run_eq_zero_of_bad impl₂ bad h_mono₂ _ s₀ h_bad x s hs]
-    · simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query,
-        id_map, StateT.run_bind]
-      rw [probOutput_bind_eq_tsum, probOutput_bind_eq_tsum]
-      refine tsum_congr fun p => ?_
-      rw [ih p.1 p.2]
-      congr 1
-      simp only [probOutput_def, h_agree t s₀ h_bad]
+    Pr{let z ← (simulateQ impl₁ oa).run s₀}[z = (x, s)] = Pr{let z ← (simulateQ impl₂ oa).run s₀}[z = (x, s)] := by
+  have hiff : ∀ z : α × σ, z = (x, s) ↔ (z = (x, s) ∧ ¬ bad z.2) := fun z =>
+    ⟨fun hz => ⟨hz, hz ▸ hs⟩, And.left⟩
+  exact (prEvent_congr _ _ _ hiff).trans ((ProgramLogic.Relational.prEvent_simulateQ_run_and_not_bad_eq
+    impl₁ impl₂ bad (fun t s hs _ => (h_agree t s hs).prEvent_eq _) h_mono₁ h_mono₂ oa s₀
+    (· = (x, s))).trans (prEvent_congr _ _ _ hiff).symm)
 
 theorem probEvent_simulateQ_run_bad_eq (impl₁ impl₂ : QueryImpl spec (StateT σ ProbComp))
-    (bad : σ → Prop) (h_agree : ∀ t s, ¬ bad s → 𝒟[(impl₁ t).run s] = 𝒟[(impl₂ t).run s])
+    (bad : σ → Prop) (h_agree : ∀ t s, ¬ bad s → (impl₁ t).run s =ᵈ (impl₂ t).run s)
     (h_mono₁ : ∀ t s, bad s → ∀ x ∈ support ((impl₁ t).run s), bad x.2)
     (h_mono₂ : ∀ t s, bad s → ∀ x ∈ support ((impl₂ t).run s), bad x.2)
     (oa : OracleComp spec α) (s₀ : σ) :
-    Pr[bad ∘ Prod.snd | (simulateQ impl₁ oa).run s₀] = Pr[bad ∘ Prod.snd | (simulateQ impl₂ oa).run s₀] := by
-  classical
-  have hnot : Pr[fun x => ¬ (bad ∘ Prod.snd) x | (simulateQ impl₁ oa).run s₀] =
-      Pr[fun x => ¬ (bad ∘ Prod.snd) x | (simulateQ impl₂ oa).run s₀] := by
-    rw [probEvent_eq_tsum_ite, probEvent_eq_tsum_ite]
-    refine tsum_congr fun p => ?_
-    split_ifs with h
-    · rfl
-    · exact probOutput_simulateQ_run_eq_of_not_bad impl₁ impl₂ bad h_agree h_mono₁ h_mono₂ oa s₀ p.1 p.2 h
-  have h1 := probEvent_compl ((simulateQ impl₁ oa).run s₀) (bad ∘ Prod.snd)
-  have h2 := probEvent_compl ((simulateQ impl₂ oa).run s₀) (bad ∘ Prod.snd)
-  simp only [probFailure_eq_zero, tsub_zero] at h1 h2
-  have hne : Pr[fun x => ¬ (bad ∘ Prod.snd) x | (simulateQ impl₂ oa).run s₀] ≠ ⊤ :=
-    ne_top_of_le_ne_top ENNReal.one_ne_top probEvent_le_one
-  rw [hnot] at h1
-  exact (ENNReal.add_left_inj hne).mp (h1.trans h2.symm)
+    Pr{let z ← (simulateQ impl₁ oa).run s₀}[(bad ∘ Prod.snd) z] = Pr{let z ← (simulateQ impl₂ oa).run s₀}[(bad ∘ Prod.snd) z] :=
+  ProgramLogic.Relational.prEvent_simulateQ_run_bad_eq impl₁ impl₂ bad
+    (fun t s hs _ => (h_agree t s hs).prEvent_eq _) h_mono₁ h_mono₂ oa s₀
 
 /-- The fundamental lemma of game playing for implementations into `StateT σ ProbComp`. Outside the
 bad set, the two implementations give the same distribution at each step. -/
 theorem tvDist_simulateQ_le_probEvent_bad (impl₁ impl₂ : QueryImpl spec (StateT σ ProbComp))
     (bad : σ → Prop) (oa : OracleComp spec α) (s₀ : σ)
-    (h_agree : ∀ t s, ¬ bad s → 𝒟[(impl₁ t).run s] = 𝒟[(impl₂ t).run s])
+    (h_agree : ∀ t s, ¬ bad s → (impl₁ t).run s =ᵈ (impl₂ t).run s)
     (h_mono₁ : ∀ t s, bad s → ∀ x ∈ support ((impl₁ t).run s), bad x.2)
     (h_mono₂ : ∀ t s, bad s → ∀ x ∈ support ((impl₂ t).run s), bad x.2) :
-    tvDist ((simulateQ impl₁ oa).run' s₀) ((simulateQ impl₂ oa).run' s₀) ≤
-      Pr[bad ∘ Prod.snd | (simulateQ impl₁ oa).run s₀].toReal := by
-  refine le_trans ?_ (tvDist_le_probEvent_of_probOutput_eq_of_not (bad ∘ Prod.snd)
-    (fun p hp => probOutput_simulateQ_run_eq_of_not_bad impl₁ impl₂ bad h_agree h_mono₁ h_mono₂ oa s₀
-      p.1 p.2 hp)
-    (probEvent_simulateQ_run_bad_eq impl₁ impl₂ bad h_agree h_mono₁ h_mono₂ oa s₀))
-  rw [StateT.run'_eq, StateT.run'_eq]
-  exact tvDist_map_le Prod.fst _ _
+    letI : MeasurableSpace α := ⊤
+    measureTVDist ((simulateQ impl₁ oa).run' s₀) ((simulateQ impl₂ oa).run' s₀) ≤
+      Pr{let z ← (simulateQ impl₁ oa).run s₀}[(bad ∘ Prod.snd) z].toReal := by
+  let : MeasurableSpace α := ⊤
+  rw [measureTVDist_eq_toReal_measureETVDist]
+  exact ENNReal.toReal_mono (prEvent_ne_top _)
+    (ProgramLogic.Relational.measureETVDist_simulateQ_run'_le_prEvent_bad_of_evalDistEq impl₁ impl₂ bad
+      h_agree h_mono₁ h_mono₂ oa s₀)
 
 /-- Two games whose good parts accept with the same probability differ by at most the larger
 probability of their bad events. -/
 theorem abs_probEvent_sub_le_of_eq_until_bad {β γ : Type} (mx : ProbComp β) (my : ProbComp γ)
     (A bad₁ : β → Prop) (B bad₂ : γ → Prop)
-    (h : Pr[fun a => A a ∧ ¬ bad₁ a | mx] = Pr[fun b => B b ∧ ¬ bad₂ b | my]) :
-    |Pr[A | mx].toReal - Pr[B | my].toReal| ≤ max Pr[bad₁ | mx].toReal Pr[bad₂ | my].toReal := by
+    (h : Pr{let a ← mx}[A a ∧ ¬ bad₁ a] = Pr{let b ← my}[B b ∧ ¬ bad₂ b]) :
+    |Pr{let z ← mx}[A z].toReal - Pr{let z ← my}[B z].toReal| ≤
+      max Pr{let z ← mx}[bad₁ z].toReal Pr{let z ← my}[bad₂ z].toReal := by
   have split : ∀ {δ : Type} (mz : ProbComp δ) (P bad : δ → Prop),
-      Pr[fun a => P a ∧ ¬ bad a | mz].toReal ≤ Pr[P | mz].toReal ∧
-        Pr[P | mz].toReal ≤ Pr[fun a => P a ∧ ¬ bad a | mz].toReal + Pr[bad | mz].toReal := by
+      Pr{let a ← mz}[P a ∧ ¬ bad a].toReal ≤ Pr{let z ← mz}[P z].toReal ∧
+        Pr{let z ← mz}[P z].toReal ≤ Pr{let a ← mz}[P a ∧ ¬ bad a].toReal + Pr{let z ← mz}[bad z].toReal := by
     intro δ mz P bad
     constructor
-    · exact ENNReal.toReal_mono probEvent_ne_top (probEvent_mono fun a _ ha => ha.1)
-    · rw [← ENNReal.toReal_add probEvent_ne_top probEvent_ne_top]
-      refine ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨probEvent_ne_top, probEvent_ne_top⟩) ?_
-      refine le_trans (probEvent_mono fun a _ ha => ?_) (probEvent_or_le mz _ bad)
+    · exact ENNReal.toReal_mono (prEvent_ne_top _) (prEvent_mono _ _ _ fun a ha => ha.1)
+    · rw [← ENNReal.toReal_add (prEvent_ne_top _) (prEvent_ne_top _)]
+      refine ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨prEvent_ne_top _, prEvent_ne_top _⟩) ?_
+      refine le_trans (prEvent_mono _ _ _ fun a ha => ?_) (prEvent_or_le mz _ bad)
       by_cases hb : bad a
       · exact Or.inr hb
       · exact Or.inl ⟨ha, hb⟩
@@ -1074,8 +1043,8 @@ theorem abs_probEvent_sub_le_of_eq_until_bad {β γ : Type} (mx : ProbComp β) (
   obtain ⟨hB₁, hB₂⟩ := split my B bad₂
   rw [h] at hA₁ hA₂
   rw [abs_le]
-  constructor <;> linarith [le_max_left Pr[bad₁ | mx].toReal Pr[bad₂ | my].toReal,
-    le_max_right Pr[bad₁ | mx].toReal Pr[bad₂ | my].toReal]
+  constructor <;> linarith [le_max_left Pr{let z ← mx}[bad₁ z].toReal Pr{let z ← my}[bad₂ z].toReal,
+    le_max_right Pr{let z ← mx}[bad₁ z].toReal Pr{let z ← my}[bad₂ z].toReal]
 
 theorem runWorld_map {β γ : Type} (prims : Primitives) (f : β → γ) (oa : OracleComp (WorldSpec C) β) :
     runWorld prims (f <$> oa) = (fun r => (f r.1, r.2)) <$> runWorld prims oa := by
@@ -1087,13 +1056,13 @@ theorem runWorld_map {β γ : Type} (prims : Primitives) (f : β → γ) (oa : O
 games output `true` with no bad flag with the same probability, their acceptance differs by at most
 the larger probability of the bad flag. -/
 theorem abs_accepts_sub_le_of_eq_until_bad (prims : Primitives) (oa ob : OracleComp (WorldSpec C) (Bool × Bool))
-    (h : Pr[fun r => r.1 = (true, false) | runWorld prims oa] = Pr[fun r => r.1 = (true, false) | runWorld prims ob]) :
+    (h : Pr{let r ← runWorld prims oa}[r.1 = (true, false)] = Pr{let r ← runWorld prims ob}[r.1 = (true, false)]) :
     |accepts prims (Prod.fst <$> oa) - accepts prims (Prod.fst <$> ob)| ≤
-      max Pr[fun r => r.1.2 = true | runWorld prims oa].toReal Pr[fun r => r.1.2 = true | runWorld prims ob].toReal := by
+      max Pr{let r ← runWorld prims oa}[r.1.2 = true].toReal Pr{let r ← runWorld prims ob}[r.1.2 = true].toReal := by
   unfold accepts
-  rw [runWorld_map, runWorld_map, probEvent_map, probEvent_map]
+  rw [runWorld_map, runWorld_map, prEvent_map, prEvent_map]
   refine abs_probEvent_sub_le_of_eq_until_bad _ _ _ _ _ _ ?_
-  convert h using 2 <;> funext r <;> simp [Prod.ext_iff]
+  convert h using 3 <;> funext r <;> simp [Prod.ext_iff]
 
 end Coupling
 
@@ -1192,7 +1161,7 @@ theorem localAnswer_support (h : Query C → HashOutput) (t : (LocalSpec C).Doma
   · change p ∈ support ((unifFwdImpl (Query C →ₒ HashOutput) n).run s) at hp
     simp [unifFwdImpl] at hp
     obtain ⟨a, rfl⟩ := hp
-    exact ⟨le_rfl, id, fun _ _ => by simp [fixedLocal]; exact Set.mem_univ _⟩
+    exact ⟨le_rfl, id, fun _ _ => by simp [fixedLocal]⟩
   · obtain ⟨hle, hn, hd⟩ := hashAnswer_support q s p hp
     refine ⟨hle, hn, fun hg ha => ?_⟩
     change p.1 ∈ support (pure (h q) : ProbComp _)
@@ -1321,11 +1290,12 @@ theorem world_inl_cost (prims : Primitives) (t : (LocalSpec C).Domain) (s : Hash
   simp only [OracleQuery.cont_query, id_map, OracleQuery.input_query] at hr
   simp only [world, QueryImpl.withAddCost_apply, WriterT.run_bind, AddWriterT.run_addTell] at hr
   simp at hr
-  obtain ⟨p, -, rfl⟩ := hr
+  obtain ⟨p, cache, -, rfl⟩ := hr
   simp only [toAdd_ofAdd]
   rcases t with t | (q | x)
   · simp [Counted]
   · cases q <;> simp [Counted]
+    split_ifs <;> simp [*]
   · simp [Counted]
 
 theorem counted_bind {α β : Type} (oa : OracleComp (SimulatorSpec C) α) (f : α → OracleComp (SimulatorSpec C) β) :
@@ -1422,10 +1392,10 @@ theorem CostLe.program (q : Query C) (value : HashOutput) :
     CostLe prims (ThresholdLeanXmss.program q value) 1 := fun s r hr => by
   unfold ThresholdLeanXmss.program counted at hr
   erw [simulateQ_query] at hr
-  simp only [OracleQuery.cont_query, id_map, OracleQuery.input_query] at hr
-  simp only [world, QueryImpl.withAddCost_apply, WriterT.run_bind, AddWriterT.run_addTell] at hr
+  simp only [world, QueryImpl.withAddCost_apply] at hr
   simp at hr
-  rcases hr with ⟨_, _, rfl⟩ | ⟨_, _, rfl⟩ <;> simp
+  obtain ⟨a, b, -, rfl⟩ := hr
+  exact le_rfl
 
 theorem CostLe.mapM {α β : Type} (f : α → OracleComp (WorldSpec C) β) (k : ℕ) :
     ∀ l : List α, (∀ a ∈ l, CostLe prims (f a) k) → CostLe prims (l.mapM f) (l.length * k)
@@ -1437,10 +1407,10 @@ theorem CostLe.mapM {α β : Type} (f : α → OracleComp (WorldSpec C) β) (k :
     simp [Nat.succ_mul, Nat.add_comm]
 
 theorem CostLe.sequenceFin {α : Type} : ∀ {n : ℕ} (f : Fin n → OracleComp (WorldSpec C) α),
-    (∀ i, CostLe prims (f i) 0) → CostLe prims (Concrete.sequenceFin f) 0
-  | 0, f, _ => by simpa [Concrete.sequenceFin] using CostLe.pure prims (Fin.elim0 : Fin 0 → α)
+    (∀ i, CostLe prims (f i) 0) → CostLe prims (OverPermutation.sequenceFin f) 0
+  | 0, f, _ => by simpa [OverPermutation.sequenceFin] using CostLe.pure prims (Fin.elim0 : Fin 0 → α)
   | n + 1, f, h => by
-    simp only [Concrete.sequenceFin]
+    simp only [OverPermutation.sequenceFin]
     exact ((h 0).bind prims fun a => ((CostLe.sequenceFin (fun i : Fin n => f i.succ) fun i => h i.succ).bind
       prims fun rest => CostLe.pure prims _)).mono prims (by simp)
 
@@ -1510,10 +1480,10 @@ theorem CostLe.observe {α : Type} (oa : OracleComp (LocalSpec C) α) (n : ℕ) 
     exact CostLe.query_inl prims _
 
 theorem CostLe.writer_sequenceFin {α : Type} : ∀ {n : ℕ} (f : Fin n → WriterT (CallLog C) (OracleComp (WorldSpec C)) α),
-    (∀ i, CostLe prims (f i).run 0) → CostLe prims (Concrete.sequenceFin f).run 0
+    (∀ i, CostLe prims (f i).run 0) → CostLe prims (OverPermutation.sequenceFin f).run 0
   | 0, f, _ => CostLe.writer_pure prims _
   | n + 1, f, h => by
-    simp only [Concrete.sequenceFin]
+    simp only [OverPermutation.sequenceFin]
     exact (CostLe.writer_bind prims _ _ (h 0) fun a => (CostLe.writer_bind prims _ _
       (CostLe.writer_sequenceFin (fun i : Fin n => f i.succ) fun i => h i.succ) fun rest =>
         CostLe.writer_pure prims _)).mono prims (by simp)
@@ -1556,7 +1526,7 @@ end ThresholdLeanXmssSecurity
 
 namespace ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 
 attribute [local instance] Classical.propDecidable
 
@@ -1567,13 +1537,11 @@ variable {C : Committee} {E : Type} {ι : Type} {G : OracleSpec ι} {L R : Type}
 section Shared
 
 theorem evalDist_eq_pure_of_support {α : Type} (mx : ProbComp α) (a : α) (h : ∀ y ∈ support mx, y = a) :
-    𝒟[mx] = 𝒟[(pure a : ProbComp α)] := by
-  refine evalDist_ext fun y => ?_
-  rcases eq_or_ne y a with hy | hy
-  · subst hy
-    rw [probOutput_eq_one_of_support_subset_singleton (by simp) h, probOutput_pure_self]
-  · rw [probOutput_eq_zero_of_not_mem_support fun hm => hy (h y hm),
-      probOutput_eq_zero_of_not_mem_support (mx := (pure a : ProbComp α)) (by simpa using hy)]
+    mx =ᵈ (pure a : ProbComp α) := by
+  have hbind : mx >>= pure =ᵈ mx >>= fun _ => (pure a : ProbComp α) :=
+    OracleComp.EvalDistEq.bind_congr_of_support mx fun y hy => by rw [h y hy]
+  rw [bind_pure] at hbind
+  exact hbind.trans (OracleComp.EvalDistEq.bind_const mx (pure a))
 
 theorem firstInput_some {α : Type} [Inhabited α] (x : C.Party → α) :
     firstInput (fun i => some (x i)) = default ∨ ∃ p, firstInput (fun i => some (x i)) = x p := by
@@ -1585,15 +1553,15 @@ theorem firstInput_some {α : Type} [Inhabited α] (x : C.Party → α) :
 
 /-- A bind meets `q` only after a prefix that meets `p`, and then with probability at most `ε`. -/
 theorem probEvent_bind_le_mul {α β : Type} {mx : ProbComp α} {my : α → ProbComp β} {p : α → Prop}
-    {q : β → Prop} [DecidablePred p] {ε : ℝ≥0∞} (h : ∀ x ∈ support mx, Pr[q | my x] ≤ if p x then ε else 0) :
-    Pr[q | mx >>= my] ≤ Pr[p | mx] * ε := by
+    {q : β → Prop} [DecidablePred p] {ε : ℝ≥0∞} (h : ∀ x ∈ support mx, Pr{let z ← my x}[q z] ≤ if p x then ε else 0) :
+    Pr{let z ← mx >>= my}[q z] ≤ Pr{let z ← mx}[p z] * ε := by
   classical
-  rw [probEvent_bind_eq_tsum, probEvent_eq_tsum_ite, ← ENNReal.tsum_mul_right]
+  rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_eq_tsum_ite, ← ENNReal.tsum_mul_right]
   refine ENNReal.tsum_le_tsum fun x => ?_
   by_cases hx : x ∈ support mx
   · refine (mul_le_mul' le_rfl (h x hx)).trans ?_
     split_ifs <;> simp
-  · simp [probOutput_eq_zero_of_not_mem_support hx]
+  · simp [prEvent_eq_zero_of_not_mem_support _ hx]
 
 theorem simulateQ_replyImpl_liftComp {L R α : Type} (reply : L → R) (oa : OracleComp (LocalSpec C) α) :
     simulateQ (replyImpl reply) (liftComp oa (LocalSpec C + (L →ₒ R))) = oa := by
@@ -1654,7 +1622,7 @@ theorem pairOf_comm (i j : C.Party) (h : i ≠ j) : C.pairOf i j h = C.pairOf j 
 
 /-- The keys of the chain rows of bottom tree `b`, in job order. -/
 abbrev bottomKeys (b : Fin (2 ^ layerHeight)) : List (KeyIndex × ChainIndex) :=
-  (List.finRange (2 ^ layerHeight)).flatMap fun k => (List.finRange numChains).map fun l => (bottomKey b k, l)
+  (List.finRange (2 ^ layerHeight)).flatMap fun k => (List.finRange chainCount).map fun l => (bottomKey b k, l)
 
 theorem run'_lift_bind {α β : Type} (c : PartyM C E G α) (f : α → RunM C E G β) (st : RunState C) :
     (StateT.lift c >>= f).run' st = c >>= fun r => (f r).run' st := by
@@ -1662,7 +1630,7 @@ theorem run'_lift_bind {α β : Type} (c : PartyM C E G α) (f : α → RunM C E
 
 /-- Relabeling oracle inputs also relabels the private cache. -/
 def relabelHashCache (e : Query C ≃ Query C) (s : HashCache C) : HashCache C :=
-  fun q => s (e.symm q)
+  QueryCache.ofFn fun q => s (e.symm q)
 
 end Shared
 

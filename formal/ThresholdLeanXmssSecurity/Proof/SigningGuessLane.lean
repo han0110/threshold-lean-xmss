@@ -24,7 +24,7 @@ The proof plan of the lanes is in the notes of `Proof/SigningCost.lean` and `Pro
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -129,8 +129,8 @@ def GuessLaneBound (prims : Primitives) (C : Committee) : Prop :=
   ∀ (A : TsigAdversary C) (q : ℕ) (x : SigningSecurityProof.Keys3 C), x ∈ support (TprfSecurityProof.keyGen3 (C := C)) →
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
     (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) → q < 2 ^ 127 →
-    Pr[fun r => WinGuess prims x (forget r) | loggedRun prims A x] ≤
-      ∑' r, Pr[= r | loggedRun prims A x] * ((logCost guessCost r.2.2 : ℝ≥0∞) / 2 ^ 128)
+    Pr{let r ← loggedRun prims A x}[WinGuess prims x (forget r)] ≤
+      ∑' r, Pr{let z ← loggedRun prims A x}[z = r] * ((logCost guessCost r.2.2 : ℝ≥0∞) / 2 ^ 128)
 
 /-- The partner lane. A win with a partner costs `2^-128` for each digest call of the log, in
 expectation. -/
@@ -138,8 +138,8 @@ def PartnerLaneBound (prims : Primitives) (C : Committee) : Prop :=
   ∀ (A : TsigAdversary C) (q : ℕ) (x : SigningSecurityProof.Keys3 C), x ∈ support (TprfSecurityProof.keyGen3 (C := C)) →
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
     (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) → q < 2 ^ 127 →
-    Pr[fun r => WinPartner prims x (forget r) | loggedRun prims A x] ≤
-      ∑' r, Pr[= r | loggedRun prims A x] * ((logCost digestCost r.2.2 : ℝ≥0∞) / 2 ^ 128)
+    Pr{let r ← loggedRun prims A x}[WinPartner prims x (forget r)] ≤
+      ∑' r, Pr{let z ← loggedRun prims A x}[z = r] * ((logCost digestCost r.2.2 : ℝ≥0∞) / 2 ^ 128)
 
 end SigningGuessLaneProof
 
@@ -149,18 +149,18 @@ open SigningCostProof SigningGuessLaneProof in
 theorem guessPartnerLaneBound (prims : Primitives) (C : Committee) (guessLane : GuessLaneBound prims C)
     (partnerLane : PartnerLaneBound prims C) : GuessPartnerLaneBound prims C := by
   intro A q x hx hc hq hsmall
-  rw [← loggedRun_forget, probEvent_map]
-  calc Pr[WinGuessPartner prims x ∘ fun z => (z.1, z.2.1) | loggedRun prims A x]
-      ≤ Pr[fun r => WinGuess prims x (forget r) | loggedRun prims A x] +
-          Pr[fun r => WinPartner prims x (forget r) | loggedRun prims A x] := by
-        refine le_trans (probEvent_mono fun r _ hr => ?_) (probEvent_or_le _ _ _)
+  rw [← loggedRun_forget, prEvent_map]
+  calc Pr{let z ← loggedRun prims A x}[WinGuessPartner prims x (z.1, z.2.1)]
+      ≤ Pr{let r ← loggedRun prims A x}[WinGuess prims x (forget r)] +
+          Pr{let r ← loggedRun prims A x}[WinPartner prims x (forget r)] := by
+        refine le_trans (prEvent_mono _ _ _ fun r hr => ?_) (prEvent_or_le _ _ _)
         obtain ⟨hwin, top, state, forgery, hsome, h | h⟩ := hr
         · exact Or.inl ⟨hwin, top, state, forgery, hsome, h⟩
         · exact Or.inr ⟨hwin, top, state, forgery, hsome, h⟩
-    _ ≤ ∑' r, Pr[= r | loggedRun prims A x] * ((logCost guessCost r.2.2 : ℝ≥0∞) / 2 ^ 128) +
-          ∑' r, Pr[= r | loggedRun prims A x] * ((logCost digestCost r.2.2 : ℝ≥0∞) / 2 ^ 128) :=
+    _ ≤ ∑' r, Pr{let z ← loggedRun prims A x}[z = r] * ((logCost guessCost r.2.2 : ℝ≥0∞) / 2 ^ 128) +
+          ∑' r, Pr{let z ← loggedRun prims A x}[z = r] * ((logCost digestCost r.2.2 : ℝ≥0∞) / 2 ^ 128) :=
         add_le_add (guessLane A q x hx hc hq hsmall) (partnerLane A q x hx hc hq hsmall)
-    _ ≤ ∑' r, Pr[= r | loggedRun prims A x] * ((q : ℝ≥0∞) / 2 ^ 128) := by
+    _ ≤ ∑' r, Pr{let z ← loggedRun prims A x}[z = r] * ((q : ℝ≥0∞) / 2 ^ 128) := by
         rw [← ENNReal.tsum_add]
         refine ENNReal.tsum_le_tsum fun r => ?_
         rw [← mul_add, ← ENNReal.add_div]
@@ -168,9 +168,9 @@ theorem guessPartnerLaneBound (prims : Primitives) (C : Committee) (guessLane : 
         · refine mul_le_mul_right (ENNReal.div_le_div_right ?_ _) _
           rw [← Nat.cast_add, add_comm, logCost_add, ← loggedRun_count_eq prims A x r hr]
           exact_mod_cast loggedRun_count_le prims A x q hq r hr
-        · simp [probOutput_eq_zero_of_not_mem_support hr]
-    _ = (∑' r, Pr[= r | loggedRun prims A x]) * ((q : ℝ≥0∞) / 2 ^ 128) := ENNReal.tsum_mul_right
-    _ ≤ (q : ℝ≥0∞) / 2 ^ 128 := mul_le_of_le_one_left bot_le tsum_probOutput_le_one
+        · simp [prEvent_eq_zero_of_not_mem_support _ hr]
+    _ = (∑' r, Pr{let z ← loggedRun prims A x}[z = r]) * ((q : ℝ≥0∞) / 2 ^ 128) := ENNReal.tsum_mul_right
+    _ ≤ (q : ℝ≥0∞) / 2 ^ 128 := mul_le_of_le_one_left bot_le (OracleComp.tsum_prEvent_le_one _)
 
 end ThresholdLeanXmssSecurity
 

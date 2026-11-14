@@ -33,7 +33,7 @@ needs the hiding of the honest parts by the commitments before the programming (
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open scoped ENNReal
 
 noncomputable section
@@ -132,7 +132,7 @@ def keygenKnownGame (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x 
     OracleComp (WorldSpec C) (KeygenKnownTrace C E A.State) := do
   let (state, log) ← observe (A.start (corruptInputs D x) z)
   let (parameter, seeds, pairs) ← free (liftComp (keygenDealerSamples (C := C)) (LocalSpec C))
-  let parts ← free (liftComp (Concrete.sequenceFin fun (_ : C.Party) => (sampleParts : ProbComp (Parts C)))
+  let parts ← free (liftComp (OverPermutation.sequenceFin fun (_ : C.Party) => (sampleParts : ProbComp (Parts C)))
     (LocalSpec C))
   let commitments ← free (keygenInitialCommitments D parts)
   let ((st, sent), calls) ← observe (A.round state fun c i => if c ∈ D.1 ∧ i ∉ D.1 then
@@ -343,19 +343,19 @@ theorem keygenObserve_log_cached {α : Type} (oa : OracleComp (LocalSpec C) α) 
     · have hle := grows_worldAnswer prims |>.simulateQ _ p.2 w hw
       rcases t with t | (q' | x)
       · simp at hp
-        obtain ⟨p', _, rfl⟩ := hp
+        obtain ⟨a, b, _, rfl⟩ := hp
         cases hq
       · simp [simulateQ_world_adversary] at hp
-        obtain ⟨p', hp', rfl⟩ := hp
+        obtain ⟨a, b, hp', rfl⟩ := hp
         simp only [List.mem_singleton, Prod.mk.injEq] at hq
         obtain ⟨rfl, rfl⟩ := hq
         have he : (simulateQ (localAnswer prims) (liftM (hashQuery q) : OracleComp (LocalSpec C) _)).run s =
             (hashAnswer prims q).run s := by
           exact congrArg (fun m => StateT.run m s) (simulateQ_localAnswer_hash prims q)
         rw [he, hashAnswer_of_not_isFixed prims hfix] at hp'
-        exact hle (randomOracle_support q s p' hp').2.1
+        exact hle (randomOracle_support q s (y, b) hp').2.1
       · simp at hp
-        obtain ⟨p', _, rfl⟩ := hp
+        obtain ⟨a, b, _, rfl⟩ := hp
         cases hq
     · exact ih _ _ w hw q y hq hfix
 
@@ -835,7 +835,7 @@ theorem keygenComparedCollision_insert {D : C.Coalition} {s : HashCache C}
 /-- A fresh answer collides with one of `k` compared cells with probability at most `k / 2^256`. -/
 theorem probEvent_keygenComparedCollision_fresh {D : C.Coalition} {s : HashCache C} {k : ℕ}
     (hs : ¬ KeygenComparedCollision D s) (hk : KeygenComparedCount D s k) (q : Query C) :
-    Pr[fun u => KeygenComparedCollision D (s.cacheQuery q u) | $ᵗ HashOutput] ≤
+    Pr{let u ← $ᵗ HashOutput}[KeygenComparedCollision D (s.cacheQuery q u)] ≤
       (k : ℝ≥0∞) / Fintype.card HashOutput := by
   obtain ⟨S, hS, hm⟩ := hk
   have hbad : (Finset.univ.filter fun u : HashOutput =>
@@ -855,7 +855,7 @@ theorem probEvent_keygenComparedCollision_fresh {D : C.Coalition} {s : HashCache
       have h₂ := (keygenComparedCollision_insert hs q v hd).2.choose_spec.2.2
       rw [heq, h₂] at h₁
       exact (Option.some.inj h₁).symm
-  rw [probEvent_uniformSample]
+  rw [SampleableType.prEvent_uniformSample]
   exact ENNReal.div_le_div_right (by exact_mod_cast hbad.trans hS) _
 
 /-- The birthday cost of `m` compared samples after `k` filled compared cells. -/
@@ -893,11 +893,11 @@ theorem keygenCompared_hash_step {D : C.Coalition} {β : Type} (q : Query C) (s 
     (hs : ¬ KeygenComparedCollision D s) (hk : KeygenComparedCount D s k)
     (g : HashOutput → HashCache C → ProbComp (β × HashCache C))
     (hg : ∀ u s', ¬ KeygenComparedCollision D s' → KeygenComparedCount D s' k →
-      Pr[fun z => KeygenComparedCollision D z.2 | g u s'] ≤ keygenBirthdayCost k m)
+      Pr{let z ← g u s'}[KeygenComparedCollision D z.2] ≤ keygenBirthdayCost k m)
     (hg' : KeygenComparedCell D q → 0 < m ∧ ∀ u s', ¬ KeygenComparedCollision D s' →
       KeygenComparedCount D s' (k + 1) →
-      Pr[fun z => KeygenComparedCollision D z.2 | g u s'] ≤ keygenBirthdayCost (k + 1) (m - 1)) :
-    Pr[fun z => KeygenComparedCollision D z.2 | (hashAnswer prims q).run s >>= fun p => g p.1 p.2] ≤
+      Pr{let z ← g u s'}[KeygenComparedCollision D z.2] ≤ keygenBirthdayCost (k + 1) (m - 1)) :
+    Pr{let z ← (hashAnswer prims q).run s >>= fun p => g p.1 p.2}[KeygenComparedCollision D z.2] ≤
       keygenBirthdayCost k m := by
   by_cases hfix : IsFixed q
   · obtain ⟨input, rfl, hi⟩ := hfix
@@ -916,16 +916,15 @@ theorem keygenCompared_hash_step {D : C.Coalition} {β : Type} (q : Query C) (s 
       rw [heq, bind_map_left]
       by_cases hc : KeygenComparedCell D q
       · obtain ⟨hm, hg''⟩ := hg' hc
-        have h := probEvent_bind_le_add
-          (mx := ($ᵗ HashOutput)) (my := fun u => g u (s.cacheQuery q u))
-          (p := fun u => ¬ KeygenComparedCollision D (s.cacheQuery q u))
-          (q := fun z => ¬ KeygenComparedCollision D z.2)
-          (ε₁ := (k : ℝ≥0∞) / Fintype.card HashOutput) (ε₂ := keygenBirthdayCost (k + 1) (m - 1))
-          (by simpa only [not_not] using probEvent_keygenComparedCollision_fresh hs hk q)
-          (by intro u _ hu; simpa only [not_not] using hg'' u _ hu (keygenComparedCount_insert hk q u))
-        simp only [not_not] at h
-        exact h.trans (keygenBirthdayCost_step k m hm)
-      · refine probEvent_bind_le_of_forall_le fun u _ => hg u _ ?_ (keygenComparedCount_insert_other hk q hc u)
+        have h := prEvent_bind_le_prEvent_add_of_support ($ᵗ HashOutput)
+          (fun u => g u (s.cacheQuery q u))
+          (fun u => KeygenComparedCollision D (s.cacheQuery q u))
+          (fun z => KeygenComparedCollision D z.2)
+          (ε := keygenBirthdayCost (k + 1) (m - 1))
+          (fun u _ hu => hg'' u _ hu (keygenComparedCount_insert hk q u))
+        exact (h.trans (add_le_add (probEvent_keygenComparedCollision_fresh hs hk q) le_rfl)).trans
+          (keygenBirthdayCost_step k m hm)
+      · refine prEvent_bind_le_of_forall_le _ _ _ fun u => hg u _ ?_ (keygenComparedCount_insert_other hk q hc u)
         intro hcol
         exact hc (keygenComparedCollision_insert hs q u hcol).1
 
@@ -933,11 +932,11 @@ theorem keygenCompared_local_step {D : C.Coalition} {β : Type} (t : (LocalSpec 
     (k m : ℕ) (hs : ¬ KeygenComparedCollision D s) (hk : KeygenComparedCount D s k)
     (g : (LocalSpec C).Range t → HashCache C → ProbComp (β × HashCache C))
     (hg : ∀ u s', ¬ KeygenComparedCollision D s' → KeygenComparedCount D s' k →
-      Pr[fun z => KeygenComparedCollision D z.2 | g u s'] ≤ keygenBirthdayCost k m)
+      Pr{let z ← g u s'}[KeygenComparedCollision D z.2] ≤ keygenBirthdayCost k m)
     (hg' : keygenComparedCall D t → 0 < m ∧ ∀ u s', ¬ KeygenComparedCollision D s' →
       KeygenComparedCount D s' (k + 1) →
-      Pr[fun z => KeygenComparedCollision D z.2 | g u s'] ≤ keygenBirthdayCost (k + 1) (m - 1)) :
-    Pr[fun z => KeygenComparedCollision D z.2 | (localAnswer prims t).run s >>= fun p => g p.1 p.2] ≤
+      Pr{let z ← g u s'}[KeygenComparedCollision D z.2] ≤ keygenBirthdayCost (k + 1) (m - 1)) :
+    Pr{let z ← (localAnswer prims t).run s >>= fun p => g p.1 p.2}[KeygenComparedCollision D z.2] ≤
       keygenBirthdayCost k m := by
   rcases t with n | q | x
   · have heq : (localAnswer (C := C) prims (.inl n)).run s =
@@ -945,10 +944,10 @@ theorem keygenCompared_local_step {D : C.Coalition} {β : Type} (t : (LocalSpec 
       simp [localAnswer, unifFwdImpl]
     rw [heq]
     erw [bind_map_left]
-    exact probEvent_bind_le_of_forall_le fun u _ => hg u s hs hk
+    exact prEvent_bind_le_of_forall_le _ _ _ fun u => hg u s hs hk
   · exact keygenCompared_hash_step prims q s k m hs hk g hg hg'
-  · change Pr[fun z => KeygenComparedCollision D z.2 |
-      (prgAnswer prims x).run s >>= fun p => g p.1 p.2] ≤ _
+  · change Pr{let z ← (prgAnswer prims x).run s >>= fun p => g p.1 p.2}[
+      KeygenComparedCollision D z.2] ≤ _
     simp only [prgAnswer, StateT.run_bind, StateT.run_pure, bind_assoc, pure_bind]
     exact keygenCompared_hash_step prims (.streamKey x.2.1) s k m hs hk
       (fun u s' => g (prims.aes.eval (truncateHash u) x.2.2) s') (fun u s' h₁ h₂ => hg _ s' h₁ h₂)
@@ -958,7 +957,7 @@ theorem keygenCompared_local_step {D : C.Coalition} {β : Type} (t : (LocalSpec 
 theorem keygenCompared_birthday {D : C.Coalition} {α : Type} (oa : OracleComp (WorldSpec C) α) :
     ∀ m s k, IsQueryBoundP oa (keygenComparedWorldCall D) m → IsQueryBoundP oa (keygenComparedProgram D) 0 →
       ¬ KeygenComparedCollision D s → KeygenComparedCount D s k →
-      Pr[fun z => KeygenComparedCollision D z.2 | (simulateQ (worldAnswer prims) oa).run s] ≤
+      Pr{let z ← (simulateQ (worldAnswer prims) oa).run s}[KeygenComparedCollision D z.2] ≤
         keygenBirthdayCost k m := by
   induction oa using OracleComp.inductionOn with
   | pure a =>
@@ -970,33 +969,37 @@ theorem keygenCompared_birthday {D : C.Coalition} {α : Type} (oa : OracleComp (
     simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query, id_map,
       StateT.run_bind]
     rcases t with (t | x) | t
-    · change Pr[fun z => KeygenComparedCollision D z.2 |
-        (localAnswer prims t).run s >>= fun p => (simulateQ (worldAnswer prims) (f p.1)).run p.2] ≤ _
+    · change Pr{let z ← (localAnswer prims t).run s >>= fun p => (simulateQ (worldAnswer prims) (f p.1)).run p.2}[
+        KeygenComparedCollision D z.2] ≤ _
       refine keygenCompared_local_step prims t s k m hs hk
         (fun u s' => (simulateQ (worldAnswer prims) (f u)).run s') (fun u s' h₁ h₂ => ?_) (fun hc => ?_)
       · have hu := hm.2 u
         have hpu := hp.2 u
         simp only [keygenComparedWorldCall, keygenComparedProgram, ↓reduceIte] at hu hpu
-        split_ifs at hu with hct
-        · exact (ih u (m - 1) s' k hu hpu h₁ h₂).trans (by
+        by_cases hct : keygenComparedCall D t
+        · erw [if_pos hct] at hu
+          exact (ih u (m - 1) s' k hu hpu h₁ h₂).trans (by
             unfold keygenBirthdayCost
             exact ENNReal.div_le_div_right (by gcongr <;> omega) _)
-        · exact ih u m s' k hu hpu h₁ h₂
+        · erw [if_neg hct] at hu
+          exact ih u m s' k hu hpu h₁ h₂
       · have hm' := hm.1.resolve_left (by simpa [keygenComparedWorldCall] using hc)
         refine ⟨hm', fun u s' h₁ h₂ => ?_⟩
         have hu := hm.2 u
         have hpu := hp.2 u
-        simp only [keygenComparedWorldCall, keygenComparedProgram, if_pos hc, ↓reduceIte] at hu hpu
+        simp only [keygenComparedWorldCall, keygenComparedProgram, ↓reduceIte] at hu hpu
+        erw [if_pos hc] at hu
         exact ih u (m - 1) s' (k + 1) hu hpu h₁ h₂
     · have hx : ¬ KeygenComparedCell D x.1 := by
         simpa [keygenComparedProgram] using hp.1
-      change Pr[fun z => KeygenComparedCollision D z.2 |
-        (programAnswer x).run s >>= fun p => (simulateQ (worldAnswer prims) (f p.1)).run p.2] ≤ _
-      refine probEvent_bind_le_of_forall_le fun p hpr => ?_
+      change Pr{let z ← (programAnswer x).run s >>= fun p => (simulateQ (worldAnswer prims) (f p.1)).run p.2}[
+        KeygenComparedCollision D z.2] ≤ _
+      refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun p hpr => ?_
       have hu := hm.2 p.1
       have hpu := hp.2 p.1
-      simp only [keygenComparedWorldCall, keygenComparedProgram, if_neg hx] at hu hpu
-      simp only [if_false] at hu
+      simp only [keygenComparedWorldCall, keygenComparedProgram] at hu hpu
+      erw [if_neg not_false] at hu
+      erw [if_neg hx] at hpu
       refine ih p.1 m p.2 k hu hpu ?_ ?_
       · simp only [programAnswer, StateT.run_bind, StateT.run_get, pure_bind] at hpr
         split_ifs at hpr
@@ -1017,23 +1020,26 @@ theorem keygenCompared_birthday {D : C.Coalition} {α : Type} (oa : OracleComp (
             Set.mem_singleton_iff] at hpr
           subst hpr
           exact keygenComparedCount_insert_other hk x.1 hx x.2
-    · change Pr[fun z => KeygenComparedCollision D z.2 |
-        (localAnswer prims t).run s >>= fun p => (simulateQ (worldAnswer prims) (f p.1)).run p.2] ≤ _
+    · change Pr{let z ← (localAnswer prims t).run s >>= fun p => (simulateQ (worldAnswer prims) (f p.1)).run p.2}[
+        KeygenComparedCollision D z.2] ≤ _
       refine keygenCompared_local_step prims t s k m hs hk
         (fun u s' => (simulateQ (worldAnswer prims) (f u)).run s') (fun u s' h₁ h₂ => ?_) (fun hc => ?_)
       · have hu := hm.2 u
         have hpu := hp.2 u
         simp only [keygenComparedWorldCall, keygenComparedProgram, ↓reduceIte] at hu hpu
-        split_ifs at hu with hct
-        · exact (ih u (m - 1) s' k hu hpu h₁ h₂).trans (by
+        by_cases hct : keygenComparedCall D t
+        · erw [if_pos hct] at hu
+          exact (ih u (m - 1) s' k hu hpu h₁ h₂).trans (by
             unfold keygenBirthdayCost
             exact ENNReal.div_le_div_right (by gcongr <;> omega) _)
-        · exact ih u m s' k hu hpu h₁ h₂
+        · erw [if_neg hct] at hu
+          exact ih u m s' k hu hpu h₁ h₂
       · have hm' := hm.1.resolve_left (by simpa [keygenComparedWorldCall] using hc)
         refine ⟨hm', fun u s' h₁ h₂ => ?_⟩
         have hu := hm.2 u
         have hpu := hp.2 u
-        simp only [keygenComparedWorldCall, keygenComparedProgram, if_pos hc, ↓reduceIte] at hu hpu
+        simp only [keygenComparedWorldCall, keygenComparedProgram, ↓reduceIte] at hu hpu
+        erw [if_pos hc] at hu
         exact ih u (m - 1) s' (k + 1) hu hpu h₁ h₂
 
 theorem isQueryBoundP_free_compared (D : C.Coalition) {β : Type} (oa : OracleComp (LocalSpec C) β) (n : ℕ)
@@ -1134,10 +1140,10 @@ theorem isQueryBoundP_compared_hash (D : C.Coalition) (q : Query C) :
 
 theorem keygenIsQueryBoundP_sequenceFin_sum {κ β : Type} {spec : OracleSpec κ} {p : κ → Prop} [DecidablePred p] :
     ∀ {N : ℕ} (f : Fin N → OracleComp spec β) (b : Fin N → ℕ), (∀ i, IsQueryBoundP (f i) p (b i)) →
-      IsQueryBoundP (Concrete.sequenceFin f) p (∑ i, b i)
-  | 0, f, b, _ => by simp [Concrete.sequenceFin]
+      IsQueryBoundP (OverPermutation.sequenceFin f) p (∑ i, b i)
+  | 0, f, b, _ => by simp [OverPermutation.sequenceFin]
   | N + 1, f, b, h => by
-    simp only [Concrete.sequenceFin]
+    simp only [OverPermutation.sequenceFin]
     rw [Fin.sum_univ_succ, ← Nat.add_zero (∑ i : Fin N, b i.succ)]
     exact isQueryBoundP_bind (h 0) fun _ _ => isQueryBoundP_bind
       (keygenIsQueryBoundP_sequenceFin_sum (fun i : Fin N => f i.succ) (fun i => b i.succ) fun i => h i.succ)
@@ -1220,22 +1226,19 @@ theorem isQueryBoundP_compared_revealCompute (D : C.Coalition) (i : C.Party) (ow
     (committed revealed : Mail C E) :
     IsQueryBoundP (keygenRevealCompute i own committed revealed) (keygenComparedCall D) (D.1.card + C.n) := by
   unfold keygenRevealCompute
-  dsimp only
   split
   · trivial
-  · rw [pure_bind]
-    refine isQueryBoundP_bind (isQueryBoundP_compared_hashes D _ D.1.card ?_) fun _ _ => ?_
+  · refine isQueryBoundP_bind (isQueryBoundP_compared_hashes D _ D.1.card ?_) fun _ _ => ?_
     · rw [← keygenParties_sum_corrupt D]
       apply le_of_eq
       congr 1
       apply List.map_congr_left
       intro j _
-      simp [KeygenComparedCell]
+      by_cases hj : j ∈ D.1 <;> simp [KeygenComparedCell, hj]
     · rw [← Nat.zero_add C.n]
       split
       · trivial
-      · rw [pure_bind]
-        exact isQueryBoundP_bind (isQueryBoundP_compared_derive D _ _ _) fun _ _ => by
+      · exact isQueryBoundP_bind (isQueryBoundP_compared_derive D _ _ _) fun _ _ => by
           rw [← Nat.add_zero C.n]
           refine isQueryBoundP_bind ?_ fun _ _ => trivial
           unfold sharedQueries
@@ -1373,10 +1376,10 @@ theorem keygenTarget_hash_step {D : C.Coalition} {β : Type} (target : Query C �
     (s : HashCache C) (m : ℕ) (hs : ¬ KeygenTargetHit target b s)
     (g : HashOutput → HashCache C → ProbComp (β × HashCache C))
     (hg : ∀ u s', ¬ KeygenTargetHit target b s' →
-      Pr[fun z => KeygenTargetHit target b z.2 | g u s'] ≤ (m : ℝ≥0∞) / Fintype.card HashOutput)
+      Pr{let z ← g u s'}[KeygenTargetHit target b z.2] ≤ (m : ℝ≥0∞) / Fintype.card HashOutput)
     (hg' : KeygenComparedCell D q → 0 < m ∧ ∀ u s', ¬ KeygenTargetHit target b s' →
-      Pr[fun z => KeygenTargetHit target b z.2 | g u s'] ≤ ((m - 1 : ℕ) : ℝ≥0∞) / Fintype.card HashOutput) :
-    Pr[fun z => KeygenTargetHit target b z.2 | (hashAnswer prims q).run s >>= fun p => g p.1 p.2] ≤
+      Pr{let z ← g u s'}[KeygenTargetHit target b z.2] ≤ ((m - 1 : ℕ) : ℝ≥0∞) / Fintype.card HashOutput) :
+    Pr{let z ← (hashAnswer prims q).run s >>= fun p => g p.1 p.2}[KeygenTargetHit target b z.2] ≤
       (m : ℝ≥0∞) / Fintype.card HashOutput := by
   have hnew (u : HashOutput) (hsq : s q = none) (hh : KeygenTargetHit target b (s.cacheQuery q u)) :
       target q = some u := by
@@ -1404,31 +1407,30 @@ theorem keygenTarget_hash_step {D : C.Coalition} {β : Type} (target : Query C �
       rw [heq, bind_map_left]
       by_cases hc : KeygenComparedCell D q
       · obtain ⟨hm, hg''⟩ := hg' hc
-        have h := probEvent_bind_le_add
-          (mx := ($ᵗ HashOutput)) (my := fun u => g u (s.cacheQuery q u))
-          (p := fun u => ¬ KeygenTargetHit target b (s.cacheQuery q u))
-          (q := fun z => ¬ KeygenTargetHit target b z.2)
-          (ε₁ := (1 : ℝ≥0∞) / Fintype.card HashOutput) (ε₂ := ((m - 1 : ℕ) : ℝ≥0∞) / Fintype.card HashOutput)
-          (by
-            simp only [not_not]
-            refine (probEvent_mono fun u _ hu => hnew u hsq hu).trans ?_
-            cases ht : target q with
-            | none => simp
-            | some c =>
-              simp only [Option.some.injEq]
-              rw [probEvent_uniformSample]
-              apply ENNReal.div_le_div_right
-              exact_mod_cast (Finset.card_le_one.mpr fun a ha b hb => by
-                simp only [Finset.mem_filter] at ha hb
-                exact ha.2.symm.trans hb.2))
-          (by intro u _ hu; simpa only [not_not] using hg'' u _ hu)
-        simp only [not_not] at h
-        refine h.trans (le_of_eq ?_)
+        have h := prEvent_bind_le_prEvent_add_of_support ($ᵗ HashOutput)
+          (fun u => g u (s.cacheQuery q u))
+          (fun u => KeygenTargetHit target b (s.cacheQuery q u))
+          (fun z => KeygenTargetHit target b z.2)
+          (ε := ((m - 1 : ℕ) : ℝ≥0∞) / Fintype.card HashOutput)
+          (fun u _ hu => hg'' u _ hu)
+        have hfresh : Pr{let u ← $ᵗ HashOutput}[KeygenTargetHit target b (s.cacheQuery q u)] ≤
+            (1 : ℝ≥0∞) / Fintype.card HashOutput := by
+          refine (prEvent_mono _ _ (fun u => target q = some u) fun u hu => hnew u hsq hu).trans ?_
+          cases ht : target q with
+          | none => simp
+          | some c =>
+            simp only [Option.some.injEq]
+            rw [SampleableType.prEvent_uniformSample]
+            apply ENNReal.div_le_div_right
+            exact_mod_cast (Finset.card_le_one.mpr fun a ha b hb => by
+              simp only [Finset.mem_filter] at ha hb
+              exact ha.2.symm.trans hb.2)
+        refine (h.trans (add_le_add hfresh le_rfl)).trans (le_of_eq ?_)
         rw [← ENNReal.add_div]
         congr 1
         norm_cast
         omega
-      · refine probEvent_bind_le_of_forall_le fun u _ => hg u _ ?_
+      · refine prEvent_bind_le_of_forall_le _ _ _ fun u => hg u _ ?_
         intro hh
         exact hc (htarget q (by rw [hnew u hsq hh]; simp))
 
@@ -1438,7 +1440,7 @@ theorem keygenTarget_local {D : C.Coalition} (target : Query C → Option HashOu
     (htarget : ∀ x, target x ≠ none → KeygenComparedCell D x) (b : HashCache C) {α : Type}
     (oa : OracleComp (LocalSpec C) α) :
     ∀ m s, IsQueryBoundP oa (keygenComparedCall D) m → ¬ KeygenTargetHit target b s →
-      Pr[fun z => KeygenTargetHit target b z.2 | (simulateQ (localAnswer prims) oa).run s] ≤
+      Pr{let z ← (simulateQ (localAnswer prims) oa).run s}[KeygenTargetHit target b z.2] ≤
         (m : ℝ≥0∞) / Fintype.card HashOutput := by
   induction oa using OracleComp.inductionOn with
   | pure a =>
@@ -1453,28 +1455,31 @@ theorem keygenTarget_local {D : C.Coalition} (target : Query C → Option HashOu
     · have heq : (localAnswer (C := C) prims (.inl n)).run s =
           (fun u => (u, s)) <$> (OracleComp.lift (OracleSpec.query (spec := unifSpec) n)) := by
         simp [localAnswer, unifFwdImpl]
-      change Pr[fun z => KeygenTargetHit target b z.2 |
-        (localAnswer prims (.inl n)).run s >>= fun p => (simulateQ (localAnswer prims) (f p.1)).run p.2] ≤ _
+      change Pr{let z ← (localAnswer prims (.inl n)).run s >>= fun p => (simulateQ (localAnswer prims) (f p.1)).run p.2}[
+        KeygenTargetHit target b z.2] ≤ _
       rw [heq]
       erw [bind_map_left]
-      refine probEvent_bind_le_of_forall_le fun u _ => ih u m s ?_ hs
+      refine prEvent_bind_le_of_forall_le _ _ _ fun u => ih u m s ?_ hs
       simpa [keygenComparedCall] using hm.2 u
-    · change Pr[fun z => KeygenTargetHit target b z.2 |
-        (hashAnswer prims q).run s >>= fun p => (simulateQ (localAnswer prims) (f p.1)).run p.2] ≤ _
+    · change Pr{let z ← (hashAnswer prims q).run s >>= fun p => (simulateQ (localAnswer prims) (f p.1)).run p.2}[
+        KeygenTargetHit target b z.2] ≤ _
       refine keygenTarget_hash_step prims target htarget b q s m hs
         (fun u s' => (simulateQ (localAnswer prims) (f u)).run s') (fun u s' h => ?_) (fun hc => ?_)
       · have hu := hm.2 u
         simp only [keygenComparedCall] at hu
-        split_ifs at hu
-        · exact (ih u (m - 1) s' hu h).trans (ENNReal.div_le_div_right (by exact_mod_cast Nat.sub_le m 1) _)
-        · exact ih u m s' hu h
+        by_cases hct : KeygenComparedCell D q
+        · erw [if_pos hct] at hu
+          exact (ih u (m - 1) s' hu h).trans (ENNReal.div_le_div_right (by exact_mod_cast Nat.sub_le m 1) _)
+        · erw [if_neg hct] at hu
+          exact ih u m s' hu h
       · have hm' := hm.1.resolve_left (by simpa [keygenComparedCall] using hc)
         refine ⟨hm', fun u s' h => ?_⟩
         have hu := hm.2 u
-        simp only [keygenComparedCall, if_pos hc] at hu
+        simp only [keygenComparedCall] at hu
+        erw [if_pos hc] at hu
         exact ih u (m - 1) s' hu h
-    · change Pr[fun z => KeygenTargetHit target b z.2 |
-        (prgAnswer prims x).run s >>= fun p => (simulateQ (localAnswer prims) (f p.1)).run p.2] ≤ _
+    · change Pr{let z ← (prgAnswer prims x).run s >>= fun p => (simulateQ (localAnswer prims) (f p.1)).run p.2}[
+        KeygenTargetHit target b z.2] ≤ _
       simp only [prgAnswer, StateT.run_bind, StateT.run_pure, bind_assoc, pure_bind]
       refine keygenTarget_hash_step prims target htarget b (.streamKey x.2.1) s m hs
         (fun u s' => (simulateQ (localAnswer prims) (f (prims.aes.eval (truncateHash u) x.2.2))).run s')
@@ -1507,7 +1512,7 @@ theorem keygenObserve_new_logged {α : Type} (oa : OracleComp (LocalSpec C) α) 
     | some v =>
       rcases t with t | (q' | x)
       · simp at hp
-        obtain ⟨p', hp', rfl⟩ := hp
+        obtain ⟨a, b, hp', rfl⟩ := hp
         rw [simulateQ_world_adversary] at hp'
         simp [localAnswer, unifFwdImpl] at hp'
         obtain ⟨u, rfl⟩ := hp'
@@ -1515,37 +1520,38 @@ theorem keygenObserve_new_logged {α : Type} (oa : OracleComp (LocalSpec C) α) 
         rw [hq] at hpq
         cases hpq
       · simp [simulateQ_world_adversary] at hp
-        obtain ⟨p', hp', rfl⟩ := hp
+        obtain ⟨a, b, hp', rfl⟩ := hp
         have he : (simulateQ (localAnswer prims) (liftM (hashQuery q') : OracleComp (LocalSpec C) _)).run s =
             (hashAnswer prims q').run s :=
           congrArg (fun m => StateT.run m s) (simulateQ_localAnswer_hash prims q')
         rw [he] at hp'
         by_cases hqq : q = q'
         · subst hqq
-          exact Or.inl ⟨p'.1, List.mem_append_left _ (by simp)⟩
+          exact Or.inl ⟨a, List.mem_append_left _ (by simp)⟩
         · by_cases hfix : IsFixed q'
           · obtain ⟨input, rfl, hi⟩ := hfix
             rw [hashAnswer_of_isFixed prims hi] at hp'
             simp at hp'
-            rw [hp'] at hpq
+            obtain ⟨-, rfl⟩ := hp'
             simp only at hpq
             rw [hq] at hpq
             cases hpq
           · rw [hashAnswer_of_not_isFixed prims hfix] at hp'
-            have := (randomOracle_support q' s p' hp').2.2 q hqq
+            have := (randomOracle_support q' s (a, b) hp').2.2 q hqq
             simp only at hpq
             rw [this, hq] at hpq
             cases hpq
       · simp at hp
-        obtain ⟨p', hp', rfl⟩ := hp
+        obtain ⟨a, b, hp', rfl⟩ := hp
         rw [simulateQ_world_adversary] at hp'
         simp only [OracleComp.lift, simulateQ_query, OracleQuery.cont_query, OracleQuery.input_query] at hp'
         erw [id_map] at hp'
-        change p' ∈ support ((prgAnswer prims x).run s) at hp'
+        change (a, b) ∈ support ((prgAnswer prims x).run s) at hp'
         unfold prgAnswer at hp'
         simp only [StateT.run_bind, StateT.run_pure, support_bind, Set.mem_iUnion, support_pure,
           Set.mem_singleton_iff] at hp'
-        obtain ⟨p'', hp'', rfl⟩ := hp'
+        obtain ⟨p'', hp'', he⟩ := hp'
+        obtain ⟨rfl, rfl⟩ := Prod.mk.inj he
         by_cases hqq : q = .streamKey x.2.1
         · exact Or.inr ⟨_, hqq⟩
         · have hfix : ¬ IsFixed (Query.streamKey (C := C) x.2.1) := by simp [IsFixed]
@@ -1639,7 +1645,7 @@ def keygenKnownPrefix (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (
     OracleComp (WorldSpec C) (KeygenKnownPre C E A.State) := do
   let (state, log) ← observe (A.start (corruptInputs D x) z)
   let (parameter, seeds, pairs) ← free (liftComp (keygenDealerSamples (C := C)) (LocalSpec C))
-  let parts ← free (liftComp (Concrete.sequenceFin fun (_ : C.Party) => (sampleParts : ProbComp (Parts C)))
+  let parts ← free (liftComp (OverPermutation.sequenceFin fun (_ : C.Party) => (sampleParts : ProbComp (Parts C)))
     (LocalSpec C))
   let commitments ← free (keygenInitialCommitments D parts)
   let ((st, sent), calls) ← observe (A.round state fun c i => if c ∈ D.1 ∧ i ∉ D.1 then
@@ -1835,7 +1841,7 @@ or if two programming inputs coincide (CDG+18). -/
 def KeygenProgramFailBound : Prop :=
   ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
-    (Pr[fun r => KeygenProgramFail r.1 | runWorld prims (keygenKnownGame D A x z)]).toReal ≤
+    (Pr{let r ← runWorld prims (keygenKnownGame D A x z)}[KeygenProgramFail r.1]).toReal ≤
       ((q * keygenProgrammingCount D + keygenProgrammingCount D ^ 2 : ℕ) : ℝ) / 2 ^ 256
 
 /-- A missed extraction or an echo collision needs a collision of two compared answers or a fresh
@@ -1843,8 +1849,8 @@ opening that hits its earlier commitment. -/
 def KeygenExtractEchoBound : Prop :=
   ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
-    (Pr[fun r => KeygenExtractFail D r.1 ∨ KeygenEchoCollision D r.1 |
-      runWorld prims (keygenKnownGame D A x z)]).toReal ≤
+    (Pr{let r ← runWorld prims (keygenKnownGame D A x z)}[
+      KeygenExtractFail D r.1 ∨ KeygenEchoCollision D r.1]).toReal ≤
       (((q + C.n ^ 2) ^ 2 + 2 * (q + C.n ^ 2) : ℕ) : ℝ) / 2 ^ 257
 
 /-- The birthday bound on the compared cells. At most `q` counted calls and `n²` honest shared-key
@@ -1852,8 +1858,8 @@ hashes and corrupt openings sample them. -/
 def KeygenComparedCollisionBound : Prop :=
   ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
-    (Pr[fun w => KeygenComparedCollision D w.2 |
-      (simulateQ (worldAnswer prims) (keygenKnownGame D A x z)).run ∅]).toReal ≤
+    (Pr{let w ← (simulateQ (worldAnswer prims) (keygenKnownGame D A x z)).run ∅}[
+      KeygenComparedCollision D w.2]).toReal ≤
       (((q + C.n ^ 2) ^ 2 : ℕ) : ℝ) / 2 ^ 257
 
 /-- Each of at most `q + n²` openings that are sampled after the commit round hits its commitment
@@ -1861,25 +1867,25 @@ with probability `2^-256`. -/
 def KeygenFreshOpeningBound : Prop :=
   ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
-    (Pr[fun w => KeygenFreshOpening D w.1 w.2 |
-      (simulateQ (worldAnswer prims) (keygenKnownGame D A x z)).run ∅]).toReal ≤
+    (Pr{let w ← (simulateQ (worldAnswer prims) (keygenKnownGame D A x z)).run ∅}[
+      KeygenFreshOpening D w.1 w.2]).toReal ≤
       ((q + C.n ^ 2 : ℕ) : ℝ) / 2 ^ 256
 
 theorem keygenExtractEchoBound_of_cache (hC : KeygenComparedCollisionBound (C := C) (E := E) prims)
     (hF : KeygenFreshOpeningBound (C := C) (E := E) prims) : KeygenExtractEchoBound (C := C) (E := E) prims := by
   intro D A x z Z q hq
-  have hmono : Pr[fun r => KeygenExtractFail D r.1 ∨ KeygenEchoCollision D r.1 |
-      runWorld prims (keygenKnownGame D A x z)] ≤
-      Pr[fun w => KeygenComparedCollision D w.2 | (simulateQ (worldAnswer prims) (keygenKnownGame D A x z)).run ∅] +
-      Pr[fun w => KeygenFreshOpening D w.1 w.2 |
-        (simulateQ (worldAnswer prims) (keygenKnownGame D A x z)).run ∅] := by
+  have hmono : Pr{let r ← runWorld prims (keygenKnownGame D A x z)}[
+      KeygenExtractFail D r.1 ∨ KeygenEchoCollision D r.1] ≤
+      Pr{let w ← (simulateQ (worldAnswer prims) (keygenKnownGame D A x z)).run ∅}[KeygenComparedCollision D w.2] +
+      Pr{let w ← (simulateQ (worldAnswer prims) (keygenKnownGame D A x z)).run ∅}[
+        KeygenFreshOpening D w.1 w.2] := by
     rw [probEvent_runWorld_fst prims (keygenKnownGame D A x z)
-      (fun r => KeygenExtractFail D r ∨ KeygenEchoCollision D r), StateT.run'_eq, probEvent_map]
-    refine le_trans (probEvent_mono fun w hw hb => ?_) (probEvent_or_le _ _ _)
+      (fun r => KeygenExtractFail D r ∨ KeygenEchoCollision D r), StateT.run'_eq, prEvent_map]
+    refine le_trans (prEvent_mono_of_support _ _ _ fun w hw hb => ?_) (prEvent_or_le _ _ _)
     obtain ⟨hn, hdata, hlog⟩ := keygenKnownGame_support prims D A x z w hw
     exact keygenKnown_cacheEvent_of_bad prims D w.1 w.2 hn hdata hlog hb
-  refine (ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨probEvent_ne_top, probEvent_ne_top⟩) hmono).trans ?_
-  rw [ENNReal.toReal_add probEvent_ne_top probEvent_ne_top]
+  refine (ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨(prEvent_ne_top _), (prEvent_ne_top _)⟩) hmono).trans ?_
+  rw [ENNReal.toReal_add (prEvent_ne_top _) (prEvent_ne_top _)]
   refine (add_le_add (hC D A x z Z q hq) (hF D A x z Z q hq)).trans (le_of_eq ?_)
   have h256 : (2 : ℝ) ^ 257 = 2 * 2 ^ 256 := pow_succ' 2 256
   rw [h256]
@@ -1933,15 +1939,15 @@ theorem keygenOpeningTarget_compared (D : C.Coalition) (sent : C.Party → Mail 
 theorem keygenFreshOpeningBound_proof : KeygenFreshOpeningBound (C := C) (E := E) prims := by
   intro D A x z Z q hq
   obtain ⟨start, step, final, hsum, hs, hr, _, _⟩ := hq
-  have hkey : Pr[fun w => KeygenFreshOpening D w.1 w.2 |
-      (simulateQ (worldAnswer prims) (keygenKnownGame D A x z)).run ∅] ≤
+  have hkey : Pr{let w ← (simulateQ (worldAnswer prims) (keygenKnownGame D A x z)).run ∅}[
+      KeygenFreshOpening D w.1 w.2] ≤
       ((step + (C.n * C.n + step) : ℕ) : ℝ≥0∞) / Fintype.card HashOutput := by
     rw [keygenKnownGame_eq_prefix, simulateQ_bind, StateT.run_bind]
-    refine probEvent_bind_le_of_forall_le fun w hw => ?_
+    refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun w hw => ?_
     rw [simulateQ_bind, simulateQ_free, StateT.run_bind]
     simp only [simulateQ_pure, StateT.run_pure]
-    rw [bind_pure_comp, probEvent_map]
-    refine (probEvent_mono fun r _ hf => ?_).trans
+    rw [bind_pure_comp, prEvent_map]
+    refine (prEvent_mono _ _ _ fun r hf => ?_).trans
       (keygenTarget_local prims (keygenOpeningTarget D w.1.sent) (keygenOpeningTarget_compared D w.1.sent) w.2 _
         _ w.2 (isQueryBoundP_compared_post D A step hr _ _ _) ?_)
     · obtain ⟨j, i, rv, c, hj, hi, hc, hsent, hlog⟩ := hf
@@ -1965,18 +1971,18 @@ theorem keygenFreshOpeningBound_proof : KeygenFreshOpeningBound (C := C) (E := E
 theorem keygenKnownMismatch_of_bounds (hP : KeygenProgramFailBound (C := C) (E := E) prims)
     (hX : KeygenExtractEchoBound (C := C) (E := E) prims) : KeygenKnownMismatch (C := C) (E := E) prims := by
   intro D A x z Z q hq
-  have hmono : Pr[fun r => keygenMixedProjection D r.1 ≠ keygenIdealProjection D r.1 |
-      runWorld prims (keygenCommonGame D A x z)] ≤
-      Pr[fun r => KeygenProgramFail r.1 | runWorld prims (keygenKnownGame D A x z)] +
-      Pr[fun r => KeygenExtractFail D r.1 ∨ KeygenEchoCollision D r.1 | runWorld prims (keygenKnownGame D A x z)] := by
+  have hmono : Pr{let r ← runWorld prims (keygenCommonGame D A x z)}[
+      keygenMixedProjection D r.1 ≠ keygenIdealProjection D r.1] ≤
+      Pr{let r ← runWorld prims (keygenKnownGame D A x z)}[KeygenProgramFail r.1] +
+      Pr{let r ← runWorld prims (keygenKnownGame D A x z)}[KeygenExtractFail D r.1 ∨ KeygenEchoCollision D r.1] := by
     rw [probEvent_runWorld_fst prims (keygenCommonGame D A x z)
         (fun r => keygenMixedProjection D r ≠ keygenIdealProjection D r),
       probEvent_runWorld_fst prims (keygenKnownGame D A x z) KeygenProgramFail,
       probEvent_runWorld_fst prims (keygenKnownGame D A x z) (fun r => KeygenExtractFail D r ∨ KeygenEchoCollision D r),
       simulateQ_keygenCommonGame_known, simulateQ_map, StateT.run'_eq, StateT.run_map, Functor.map_map,
-      probEvent_map]
-    simp only [StateT.run'_eq, probEvent_map]
-    refine le_trans (probEvent_mono fun p hp hm => ?_) (probEvent_or_le _ _ _)
+      prEvent_map]
+    simp only [StateT.run'_eq, prEvent_map]
+    refine le_trans (prEvent_mono_of_support _ _ _ fun p hp hm => ?_) (prEvent_or_le _ _ _)
     have hr : p.1 ∈ support ((simulateQ (worldAnswer prims) (keygenKnownGame D A x z)).run' ∅) := by
       rw [StateT.run'_eq, support_map]
       exact ⟨p, hp, rfl⟩
@@ -1984,8 +1990,8 @@ theorem keygenKnownMismatch_of_bounds (hP : KeygenProgramFailBound (C := C) (E :
     · exact Or.inl h
     · exact Or.inr (Or.inl h)
     · exact Or.inr (Or.inr h)
-  refine (ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨probEvent_ne_top, probEvent_ne_top⟩) hmono).trans ?_
-  rw [ENNReal.toReal_add probEvent_ne_top probEvent_ne_top]
+  refine (ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨(prEvent_ne_top _), (prEvent_ne_top _)⟩) hmono).trans ?_
+  rw [ENNReal.toReal_add (prEvent_ne_top _) (prEvent_ne_top _)]
   refine (add_le_add (hP D A x z Z q hq) (hX D A x z Z q hq)).trans ?_
   have ha := keygenKnown_arith (C := C) q (keygenProgrammingCount D) (keygenProgrammingCount_le D)
   have ha' : (2 * (q * keygenProgrammingCount D + keygenProgrammingCount D ^ 2) +
@@ -2004,29 +2010,26 @@ before the programming hits an honest part of a programming input with probabili
 def KeygenProgramAliasBound : Prop :=
   ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
-    (Pr[fun w => KeygenProgramAlias D w.1 |
-      (simulateQ (worldAnswer prims) (keygenKnownPrefix D A x z)).run ∅]).toReal ≤
+    (Pr{let w ← (simulateQ (worldAnswer prims) (keygenKnownPrefix D A x z)).run ∅}[
+      KeygenProgramAlias D w.1]).toReal ≤
       ((q * keygenProgrammingCount D + keygenProgrammingCount D ^ 2 : ℕ) : ℝ) / 2 ^ 256
 
 theorem keygenProgramFailBound_of_alias (h : KeygenProgramAliasBound (C := C) (E := E) prims) :
     KeygenProgramFailBound (C := C) (E := E) prims := by
   intro D A x z Z q hq
-  refine le_trans (ENNReal.toReal_mono probEvent_ne_top ?_) (h D A x z Z q hq)
-  rw [probEvent_runWorld_fst prims (keygenKnownGame D A x z) KeygenProgramFail, StateT.run'_eq, probEvent_map,
+  refine le_trans (ENNReal.toReal_mono (prEvent_ne_top _) ?_) (h D A x z Z q hq)
+  rw [probEvent_runWorld_fst prims (keygenKnownGame D A x z) KeygenProgramFail, StateT.run'_eq, prEvent_map,
     keygenKnownGame_eq_prefix, simulateQ_bind, StateT.run_bind]
-  have he : (KeygenProgramFail ∘ Prod.fst : KeygenKnownTrace C E A.State × HashCache C → Prop) =
-      fun w => ¬ (w.1.ok = true) := by
-    funext w
-    simp [KeygenProgramFail]
-  rw [he]
-  refine (probEvent_bind_le_add
-    (p := fun w : KeygenKnownPre C E A.State × HashCache C => w.1.ok = true) (ε₂ := 0)
-    (probEvent_mono fun w hw hf => keygenKnownPrefix_alias_of_fail prims D A x z w hw (by simpa using hf))
-    (fun w _ hok => le_of_eq (probEvent_eq_zero_iff.2 fun r hr => by
+  refine (prEvent_bind_le_prEvent_add_of_support _ _
+    (fun w : KeygenKnownPre C E A.State × HashCache C => ¬ w.1.ok = true) _ (ε := 0)
+    (fun w _ hok => le_of_eq (prEvent_eq_zero_of_forall_mem_support _ _ fun r hr hf => by
       simp only [simulateQ_bind, simulateQ_pure, StateT.run_bind, StateT.run_pure, support_bind,
         Set.mem_iUnion, support_pure, Set.mem_singleton_iff] at hr
       obtain ⟨_, _, rfl⟩ := hr
-      simpa using hok))).trans (le_of_eq (add_zero _))
+      exact hok (by simpa [KeygenProgramFail] using hf)))).trans ?_
+  rw [add_zero]
+  exact prEvent_mono_of_support _ _ _ fun w hw hf =>
+    keygenKnownPrefix_alias_of_fail prims D A x z w hw (by simpa using hf)
 
 /-- The known half from the programming bound. -/
 theorem keygenKnownMismatch_of_programFail (hP : KeygenProgramFailBound (C := C) (E := E) prims) :

@@ -14,7 +14,7 @@ set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 set_option linter.unusedSectionVars false
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss Finset
 open scoped ENNReal
 
 noncomputable section
@@ -182,19 +182,19 @@ lemma splitHistories_cacheCollision (cache : HashCache C)
 
 section BirthdayPure
 
-local instance : (Query C →ₒ HashOutput).IsUniformSpec :=
-  OracleSpec.IsUniformSpec.ofFintypeInhabited _
+local instance : (Query C →ₒ HashOutput).UniformAnswerMeasure :=
+  OracleSpec.UniformAnswerMeasure.ofFiniteNonempty _
 
 /-- The birthday estimate for an entire adaptive hash computation, from the empty cache. -/
 theorem splitHash_birthday {α : Type} (oa : OracleComp (Query C →ₒ HashOutput) α)
     (n : ℕ) (hn : IsTotalQueryBound oa n) :
-    Pr[fun z => CacheHasCollision z.2 | (simulateQ cachingOracle oa).run ∅] ≤
+    Pr{let z ← (simulateQ cachingOracle oa).run ∅}[CacheHasCollision z.2] ≤
       (n ^ 2 : ℝ≥0∞) / (2 * 2 ^ 256) := by
   letI : Inhabited (Query C) := ⟨.history []⟩
   have hcard : Fintype.card HashOutput = 2 ^ 256 := by
-    unfold HashOutput hashOutputBits
-    exact card_bitVec 256
-  have h := probEvent_cacheCollision_le_birthday_total oa n hn (fun _ => le_rfl)
+    unfold HashOutput
+    exact Fintype.card_bitVec 256
+  have h := prEvent_cacheCollision_le_birthday_total oa n hn (fun _ => le_rfl)
   simpa only [hcard, Nat.cast_pow, Nat.cast_ofNat] using h
 
 end BirthdayPure
@@ -502,16 +502,16 @@ lemma splitHash_insert_collision (cache : HashCache C) (q : Query C) (u : HashOu
 
 lemma splitHash_insert_birthday (cache : HashCache C) (q : Query C) (k : ℕ)
     (hno : ¬ CacheHasCollision cache) (hk : SplitCacheBound cache k) :
-    Pr[fun u => CacheHasCollision (cache.cacheQuery q u) | $ᵗ HashOutput] ≤
+    Pr{let u ← $ᵗ HashOutput}[CacheHasCollision (cache.cacheQuery q u)] ≤
       (k : ℝ≥0∞) / 2 ^ 256 := by
   obtain ⟨S, hs, hc⟩ := hk
   let V := S.image (fun t => (cache t).getD 0)
   have hcard : Fintype.card HashOutput = 2 ^ 256 := by
-    unfold HashOutput hashOutputBits
-    exact card_bitVec 256
+    unfold HashOutput
+    exact Fintype.card_bitVec 256
   calc
-    _ ≤ Pr[fun u : HashOutput => u ∈ V | $ᵗ HashOutput] := by
-      apply probEvent_mono
+    _ ≤ Pr{let u : HashOutput ← $ᵗ HashOutput}[u ∈ V] := by
+      apply prEvent_mono_of_support
       intro u _ hu
       obtain ⟨t, ht⟩ := splitHash_insert_collision cache q u hno hu
       exact Finset.mem_image.mpr ⟨t, hc t (by rw [ht]; exact Option.some_ne_none u),
@@ -532,9 +532,9 @@ lemma splitHash_random_bind {α : Type} (q : Query C)
     (f : HashOutput → StateT (HashCache C) ProbComp α) (cache : HashCache C) (k : ℕ)
     (hno : ¬ CacheHasCollision cache) (hk : SplitCacheBound cache k) (ε : ℝ≥0∞)
     (hf : ∀ u s, ¬ CacheHasCollision s → SplitCacheBound s (k + 1) →
-      Pr[fun z => CacheHasCollision z.2 | (f u).run s] ≤ ε) :
-    Pr[fun z => CacheHasCollision z.2 |
-      (((Query C →ₒ HashOutput).randomOracle q) >>= f).run cache] ≤
+      Pr{let z ← (f u).run s}[CacheHasCollision z.2] ≤ ε) :
+    Pr{let z ←
+      (((Query C →ₒ HashOutput).randomOracle q) >>= f).run cache}[CacheHasCollision z.2] ≤
       (k : ℝ≥0∞) / 2 ^ 256 + ε := by
   rw [StateT.run_bind]
   cases he : cache q with
@@ -543,14 +543,12 @@ lemma splitHash_random_bind {α : Type} (q : Query C)
     exact (hf u cache hno (hk.mono (by omega))).trans le_add_self
   | none =>
     rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ he, bind_map_left]
-    have h := probEvent_bind_le_add
-      (mx := ($ᵗ HashOutput)) (my := fun u => (f u).run (cache.cacheQuery q u))
-      (p := fun u => ¬ CacheHasCollision (cache.cacheQuery q u))
-      (q := fun z => ¬ CacheHasCollision z.2)
-      (ε₁ := (k : ℝ≥0∞) / 2 ^ 256) (ε₂ := ε)
-      (by simpa only [not_not] using splitHash_insert_birthday cache q k hno hk)
-      (by intro u _ hu; simpa only [not_not] using hf u _ hu (hk.insert q u))
-    simpa only [not_not, uniformSampleImpl] using h
+    have h := (prEvent_bind_le_prEvent_add_of_support ($ᵗ HashOutput)
+      (fun u => (f u).run (cache.cacheQuery q u))
+      (fun u => CacheHasCollision (cache.cacheQuery q u)) (fun z => CacheHasCollision z.2)
+      fun u _ hu => hf u _ hu (hk.insert q u)).trans
+      (add_le_add (splitHash_insert_birthday cache q k hno hk) le_rfl)
+    simpa only [uniformSampleImpl] using h
 
 lemma splitLocal_uncounted (prims : Primitives) (t : (LocalSpec C).Domain)
     (h : ¬ Counted t) : ∃ p, localAnswer prims t = StateT.lift p := by
@@ -570,26 +568,26 @@ lemma splitLocal_uncounted (prims : Primitives) (t : (LocalSpec C).Domain)
 theorem splitLocal_birthday_aux (prims : Primitives) {α : Type}
     (oa : OracleComp (LocalSpec C) α) : ∀ (n k : ℕ), IsQueryBoundP oa Counted n →
     ∀ cache : HashCache C, ¬ CacheHasCollision cache → SplitCacheBound cache k →
-    Pr[fun z => CacheHasCollision z.2 | (simulateQ (localAnswer prims) oa).run cache] ≤
+    Pr{let z ← (simulateQ (localAnswer prims) oa).run cache}[CacheHasCollision z.2] ≤
       ∑ j ∈ Finset.range n, ((k + j : ℕ) : ℝ≥0∞) / 2 ^ 256 := by
   induction oa using OracleComp.inductionOn with
   | pure a =>
     intro n k _ cache hno hk
-    simp only [simulateQ_pure, StateT.run_pure, probEvent_pure, hno, if_false]
+    simp only [simulateQ_pure, StateT.run_pure, map_pure, prEvent_pure_prop, hno, if_false]
     exact zero_le
   | query_bind t f ih =>
     intro n k hn cache hno hk
     rw [isQueryBoundP_query_bind_iff] at hn
     have hlift : ∀ p, localAnswer prims t = StateT.lift p →
-        Pr[fun z => CacheHasCollision z.2 |
-          (simulateQ (localAnswer prims) (liftM ((LocalSpec C).query t) >>= f)).run cache] ≤
+        Pr{let z ←
+          (simulateQ (localAnswer prims) (liftM ((LocalSpec C).query t) >>= f)).run cache}[CacheHasCollision z.2] ≤
           ∑ j ∈ Finset.range n, ((k + j : ℕ) : ℝ≥0∞) / 2 ^ 256 := by
       intro p hp
-      change Pr[fun z => CacheHasCollision z.2 |
-        (localAnswer prims t >>= fun u => simulateQ (localAnswer prims) (f u)).run cache] ≤ _
+      change Pr{let z ←
+        (localAnswer prims t >>= fun u => simulateQ (localAnswer prims) (f u)).run cache}[CacheHasCollision z.2] ≤ _
       rw [hp]
       simp only [StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind]
-      apply probEvent_bind_le_of_forall_le
+      apply prEvent_bind_le_of_forall_le_of_support
       intro u _
       exact (ih u _ k (hn.2 u) cache hno hk).trans
         (Finset.sum_le_sum_of_subset (Finset.range_mono (by split_ifs <;> omega)))
@@ -612,8 +610,8 @@ theorem splitLocal_birthday_aux (prims : Primitives) {α : Type}
       intro j _
       rw [show k + 1 + j = k + (j + 1) by omega]
     rw [← he]
-    change Pr[fun z => CacheHasCollision z.2 |
-      (localAnswer prims t >>= fun u => simulateQ (localAnswer prims) (f u)).run cache] ≤ _
+    change Pr{let z ←
+      (localAnswer prims t >>= fun u => simulateQ (localAnswer prims) (f u)).run cache}[CacheHasCollision z.2] ≤ _
     rw [hq, bind_map_left]
     apply splitHash_random_bind q _ cache k hno hk
     intro u s hs hsk
@@ -623,7 +621,7 @@ theorem splitLocal_birthday_aux (prims : Primitives) {α : Type}
 /-- The full local oracle, including private sampling and PRG calls, satisfies the tight birthday bound. -/
 theorem splitLocal_birthday (prims : Primitives) {α : Type}
     (oa : OracleComp (LocalSpec C) α) (n : ℕ) (hn : IsQueryBoundP oa Counted n) :
-    Pr[fun z => CacheHasCollision z.2 | (simulateQ (localAnswer prims) oa).run ∅] ≤
+    Pr{let z ← (simulateQ (localAnswer prims) oa).run ∅}[CacheHasCollision z.2] ≤
       ((n * (n - 1) : ℕ) : ℝ≥0∞) / (2 * 2 ^ 256) := by
   have h := splitLocal_birthday_aux prims oa n 0 hn ∅
     (by rintro ⟨a, b, u, v, _, ha, _, _⟩; simp at ha)
@@ -679,25 +677,25 @@ lemma splitMaskedView (K : Constants C E) (D : C.Coalition) (known : Shares C E)
 
 /-- Keep only the oracle domain whose output collisions are being charged. -/
 def splitRegionCache (P : Query C → Prop) (cache : HashCache C) : HashCache C :=
-  fun q => if P q then cache q else none
+  QueryCache.ofFn fun q => if P q then cache q else none
 
 lemma splitRegionCache_insert (P : Query C → Prop) (cache : HashCache C)
     (q : Query C) (u : HashOutput) (hq : P q) :
     splitRegionCache P (cache.cacheQuery q u) = (splitRegionCache P cache).cacheQuery q u := by
-  funext t
+  refine QueryCache.ext fun t => ?_
   by_cases ht : t = q
   · subst t
     simp [splitRegionCache, hq]
-  · simp only [splitRegionCache, QueryCache.cacheQuery_of_ne _ _ ht]
+  · simp only [splitRegionCache, QueryCache.ofFn_apply, QueryCache.cacheQuery_of_ne _ _ ht]
 
 lemma splitRegionCache_insert_irrelevant (P : Query C → Prop) (cache : HashCache C)
     (q : Query C) (u : HashOutput) (hq : ¬ P q) :
     splitRegionCache P (cache.cacheQuery q u) = splitRegionCache P cache := by
-  funext t
+  refine QueryCache.ext fun t => ?_
   by_cases ht : t = q
   · subst t
     simp [splitRegionCache, hq]
-  · simp only [splitRegionCache, QueryCache.cacheQuery_of_ne _ _ ht]
+  · simp only [splitRegionCache, QueryCache.ofFn_apply, QueryCache.cacheQuery_of_ne _ _ ht]
 
 def splitLocalHashInput : (LocalSpec C).Domain → Option (Query C)
   | .inl _ => none
@@ -746,9 +744,9 @@ lemma splitRegion_random_bind {α : Type} (P : Query C → Prop) (q : Query C)
     (hk : SplitCacheBound (splitRegionCache P cache) k) (ε : ℝ≥0∞)
     (hf : ∀ u s, ¬ CacheHasCollision (splitRegionCache P s) →
       SplitCacheBound (splitRegionCache P s) (k + if P q then 1 else 0) →
-      Pr[fun z => CacheHasCollision (splitRegionCache P z.2) | (f u).run s] ≤ ε) :
-    Pr[fun z => CacheHasCollision (splitRegionCache P z.2) |
-      (((Query C →ₒ HashOutput).randomOracle q) >>= f).run cache] ≤
+      Pr{let z ← (f u).run s}[CacheHasCollision (splitRegionCache P z.2)] ≤ ε) :
+    Pr{let z ←
+      (((Query C →ₒ HashOutput).randomOracle q) >>= f).run cache}[CacheHasCollision (splitRegionCache P z.2)] ≤
       (if P q then (k : ℝ≥0∞) / 2 ^ 256 else 0) + ε := by
   rw [StateT.run_bind]
   cases he : cache q with
@@ -759,23 +757,21 @@ lemma splitRegion_random_bind {α : Type} (P : Query C → Prop) (q : Query C)
     rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ he, bind_map_left]
     by_cases hq : P q
     · simp only [if_pos hq] at hf ⊢
-      have h := probEvent_bind_le_add
-        (mx := ($ᵗ HashOutput)) (my := fun u => (f u).run (cache.cacheQuery q u))
-        (p := fun u => ¬ CacheHasCollision (splitRegionCache P (cache.cacheQuery q u)))
-        (q := fun z => ¬ CacheHasCollision (splitRegionCache P z.2))
-        (ε₁ := (k : ℝ≥0∞) / 2 ^ 256) (ε₂ := ε)
-        (by simpa only [not_not, splitRegionCache_insert P cache q _ hq]
-            using splitHash_insert_birthday (splitRegionCache P cache) q k hno hk)
+      have h := (prEvent_bind_le_prEvent_add_of_support ($ᵗ HashOutput)
+        (fun u => (f u).run (cache.cacheQuery q u))
+        (fun u => CacheHasCollision (splitRegionCache P (cache.cacheQuery q u)))
+        (fun z => CacheHasCollision (splitRegionCache P z.2))
         (by
           intro u _ hu
-          simp only [not_not]
           apply hf u _ hu
           rw [splitRegionCache_insert P cache q u hq]
-          exact hk.insert q u)
-      simpa only [not_not, uniformSampleImpl] using h
+          exact hk.insert q u)).trans
+        (add_le_add (by simpa only [splitRegionCache_insert P cache q _ hq]
+            using splitHash_insert_birthday (splitRegionCache P cache) q k hno hk) le_rfl)
+      simpa only [uniformSampleImpl] using h
     · simp only [if_neg hq, Nat.add_zero] at hf ⊢
       rw [zero_add]
-      apply probEvent_bind_le_of_forall_le
+      apply prEvent_bind_le_of_forall_le_of_support
       intro u _
       apply hf u _
       · simpa only [splitRegionCache_insert_irrelevant P cache q u hq] using hno
@@ -785,26 +781,26 @@ theorem splitRegion_birthday_aux (prims : Primitives) (P : Query C → Prop) {α
     (oa : OracleComp (LocalSpec C) α) : ∀ (n k : ℕ), IsQueryBoundP oa (SplitRegionCounted P) n →
     ∀ cache : HashCache C, ¬ CacheHasCollision (splitRegionCache P cache) →
     SplitCacheBound (splitRegionCache P cache) k →
-    Pr[fun z => CacheHasCollision (splitRegionCache P z.2) |
-      (simulateQ (localAnswer prims) oa).run cache] ≤
+    Pr{let z ←
+      (simulateQ (localAnswer prims) oa).run cache}[CacheHasCollision (splitRegionCache P z.2)] ≤
       ∑ j ∈ Finset.range n, ((k + j : ℕ) : ℝ≥0∞) / 2 ^ 256 := by
   induction oa using OracleComp.inductionOn with
   | pure a =>
     intro n k _ cache hno hk
-    simp only [simulateQ_pure, StateT.run_pure, probEvent_pure, hno, if_false]
+    simp only [simulateQ_pure, StateT.run_pure, map_pure, prEvent_pure_prop, hno, if_false]
     exact zero_le
   | query_bind t f ih =>
     intro n k hn cache hno hk
     rw [isQueryBoundP_query_bind_iff] at hn
-    change Pr[fun z => CacheHasCollision (splitRegionCache P z.2) |
-      (localAnswer prims t >>= fun u => simulateQ (localAnswer prims) (f u)).run cache] ≤ _
+    change Pr{let z ←
+      (localAnswer prims t >>= fun u => simulateQ (localAnswer prims) (f u)).run cache}[CacheHasCollision (splitRegionCache P z.2)] ≤ _
     cases he : splitLocalHashInput t with
     | none =>
       obtain ⟨p, hp⟩ := splitLocalHashInput_none prims t he
       have ht : ¬ SplitRegionCounted P t := by simp [SplitRegionCounted, he]
       rw [hp]
       simp only [StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind]
-      apply probEvent_bind_le_of_forall_le
+      apply prEvent_bind_le_of_forall_le_of_support
       intro u _
       apply ih u n k _ cache hno hk
       simpa only [if_neg ht] using hn.2 u
@@ -845,11 +841,11 @@ theorem splitRegion_birthday_aux (prims : Primitives) (P : Query C → Prop) {α
 /-- Queries outside the selected hash domains need no charge in their collision bound. -/
 theorem splitRegion_birthday (prims : Primitives) (P : Query C → Prop) {α : Type}
     (oa : OracleComp (LocalSpec C) α) (n : ℕ) (hn : IsQueryBoundP oa (SplitRegionCounted P) n) :
-    Pr[fun z => CacheHasCollision (splitRegionCache P z.2) |
-      (simulateQ (localAnswer prims) oa).run ∅] ≤
+    Pr{let z ←
+      (simulateQ (localAnswer prims) oa).run ∅}[CacheHasCollision (splitRegionCache P z.2)] ≤
       ((n * (n - 1) : ℕ) : ℝ≥0∞) / (2 * 2 ^ 256) := by
   have hempty : splitRegionCache P (∅ : HashCache C) = ∅ := by
-    funext q
+    refine QueryCache.ext fun q => ?_
     simp [splitRegionCache]
   have h := splitRegion_birthday_aux prims P oa n 0 hn ∅
     (by rw [hempty]; rintro ⟨a, b, u, v, _, ha, _, _⟩; simp at ha)
@@ -885,15 +881,15 @@ lemma splitHistories_abort_region (D : C.Coalition) (h : C.Party → C.Term → 
     (sent : C.Party → Mail C E) (i : C.Party) : ¬ digestLive D ds sent i := by
   apply splitHistories_abort D h hsplit (splitRegionCache SplitHashDomain cache) hno ds _ sent i
   intro j hj T hT hjT
-  simpa only [splitRegionCache, SplitHashDomain, if_true] using hds j hj T hT hjT
+  simpa [splitRegionCache, SplitHashDomain] using hds j hj T hT hjT
 
 /-- A selected-domain call budget fits half of the hash-error allowance. -/
 theorem splitRegion_birthday_le_checkHashError (prims : Primitives) (P : Query C → Prop)
     {α : Type} (oa : OracleComp (LocalSpec C) α) (count q n : ℕ)
     (hn : IsQueryBoundP oa (SplitRegionCounted P) n)
     (hbudget : n ≤ q + termHashes C + halvings count + 2) :
-    (Pr[fun z => CacheHasCollision (splitRegionCache P z.2) |
-      (simulateQ (localAnswer prims) oa).run ∅]).toReal ≤ checkHashError C count q / 2 := by
+    (Pr{let z ←
+      (simulateQ (localAnswer prims) oa).run ∅}[CacheHasCollision (splitRegionCache P z.2)]).toReal ≤ checkHashError C count q / 2 := by
   have h := ENNReal.toReal_mono (by finiteness) (splitRegion_birthday prims P oa n hn)
   have hnum : n * (n - 1) ≤ (q + termHashes C + halvings count + 2) ^ 2 := by
     calc
@@ -941,13 +937,13 @@ lemma splitRegion_step_bound (prims : Primitives) (P : Query C → Prop)
       · exact hrq ▸ Finset.mem_insert_self _ _
       · apply Finset.mem_insert_of_mem
         apply hc r
-        simpa only [splitRegionCache, hu'.2.2 r hrq] using hr
+        simpa only [splitRegionCache, QueryCache.ofFn_apply, hu'.2.2 r hrq] using hr
     · rw [if_neg hq, Nat.add_zero]
       have hcache : splitRegionCache P cache' = splitRegionCache P cache := by
-        funext r
+        refine QueryCache.ext fun r => ?_
         by_cases hrq : r = q
         · subst r; simp [splitRegionCache, hq]
-        · simp only [splitRegionCache, hu'.2.2 r hrq]
+        · simp only [splitRegionCache, QueryCache.ofFn_apply, hu'.2.2 r hrq]
       rwa [hcache]
 
 lemma splitRegion_support_bound (prims : Primitives) (P : Query C → Prop) {α : Type}
@@ -1007,7 +1003,7 @@ lemma split_column_support (prims : Primitives) (D : C.Coalition) (T : C.Term)
     (salts : C.Party → Shares C Bit) (hist : C.Party → C.Term → List Bit)
     (cache : HashCache C) (z : DigestColumn C × HashCache C)
     (hz : z ∈ support ((simulateQ (localAnswer prims)
-      (Concrete.sequenceFin (honestDigestColumn D T salts hist))).run cache)) :
+      (OverPermutation.sequenceFin (honestDigestColumn D T salts hist))).run cache)) :
     cache ≤ z.2 ∧ SplitDigestEvidence D hist salts T z.1 z.2 := by
   rw [simulateQ_sequenceFin] at hz
   have hh := support_sequenceFin_inv (fun _ : HashCache C => True)
@@ -1035,7 +1031,7 @@ lemma split_ghost_support (prims : Primitives) (D : C.Coalition)
     (salts : C.Party → Shares C Bit) (hist : C.Party → C.Term → List Bit) :
     ∀ (Ts : List C.Term) (cache : HashCache C) z,
     z ∈ support ((simulateQ (localAnswer prims) (mixedGhostDigests D
-      (fun T => Concrete.sequenceFin (honestDigestColumn D T salts hist)) Ts pure)).run cache) →
+      (fun T => OverPermutation.sequenceFin (honestDigestColumn D T salts hist)) Ts pure)).run cache) →
     cache ≤ z.2 ∧ List.Forall₂ (fun T col => KnownTo D.1 T →
       SplitDigestEvidence D hist salts T col z.2) Ts z.1 := by
   intro Ts
@@ -1074,7 +1070,7 @@ lemma split_ghost_abort (prims : Primitives) (D : C.Coalition)
     (salts : C.Party → Shares C Bit) (hist : C.Party → C.Term → List Bit)
     (hsplit : SplitHistories D hist) (cache : HashCache C) z
     (hz : z ∈ support ((simulateQ (localAnswer prims) (mixedGhostDigests D
-      (fun T => Concrete.sequenceFin (honestDigestColumn D T salts hist)) C.terms pure)).run cache))
+      (fun T => OverPermutation.sequenceFin (honestDigestColumn D T salts hist)) C.terms pure)).run cache))
     (hno : ¬ CacheHasCollision (splitRegionCache SplitHashDomain z.2))
     (sent : C.Party → Mail C E) (i : C.Party) :
     ¬ digestLive D (digestRows z.1) sent i := by
@@ -1116,8 +1112,8 @@ lemma splitRegion_birthday_real (prims : Primitives) {α : Type}
     (hn : IsQueryBoundP oa (SplitRegionCounted SplitHashDomain) n)
     (cache : HashCache C) (hno : ¬ CacheHasCollision (splitRegionCache SplitHashDomain cache))
     (hk : SplitCacheBound (splitRegionCache SplitHashDomain cache) k) :
-    (Pr[fun z => CacheHasCollision (splitRegionCache SplitHashDomain z.2) |
-      (simulateQ (localAnswer prims) oa).run cache]).toReal ≤ splitRisk k n := by
+    (Pr{let z ←
+      (simulateQ (localAnswer prims) oa).run cache}[CacheHasCollision (splitRegionCache SplitHashDomain z.2)]).toReal ≤ splitRisk k n := by
   have hfin : ∀ j ∈ Finset.range n, ((k + j : ℕ) : ℝ≥0∞) / 2 ^ 256 ≠ ⊤ := by
     intros; finiteness
   have h := ENNReal.toReal_mono (ENNReal.sum_ne_top.mpr hfin)
@@ -1154,14 +1150,21 @@ lemma split_digestQuery_region (t : (LocalSpec C).Domain) (h : DigestQuery t) :
 /-- Convexity with a support-sensitive bad event. -/
 lemma split_tvDist_bind {α β : Type} (oa : ProbComp α) (f g : α → ProbComp β)
     (bad : α → Prop) (c : ℝ) (hc : 0 ≤ c)
-    (h : ∀ a, a ∈ support oa → ¬ bad a → tvDist (f a) (g a) ≤ c) :
-    tvDist (oa >>= f) (oa >>= g) ≤ (Pr[bad | oa]).toReal + c := by
+    (h : ∀ a, a ∈ support oa → ¬ bad a →
+      letI : MeasurableSpace β := ⊤
+      measureTVDist (f a) (g a) ≤ c) :
+    letI : MeasurableSpace β := ⊤
+    measureTVDist (oa >>= f) (oa >>= g) ≤ (Pr{let z ← oa}[bad z]).toReal + c := by
+  let : MeasurableSpace β := ⊤
   let f' : α → ProbComp β := fun a => if bad a then g a else f a
-  apply (tvDist_triangle _ (oa >>= f') _).trans
+  apply (measureTVDist_triangle _ (oa >>= f') _).trans
   apply add_le_add
-  · exact tvDist_bind_left_event_le oa f f' bad (by intro a ha; simp [f', ha])
-  · apply tvDist_bind_left_le_const
-    intro a ha
+  · exact measureTVDist_bind_left_le_prEvent_of_evalDistEq oa f f' bad
+      (by intro a ha; simp [f', ha, EvalDistEq.refl])
+  · refine le_of_eq_of_le (congrArg₂ measureTVDist (bind_eq_attach_bind _ _) (bind_eq_attach_bind _ _))
+      (measureTVDist_bind_left_le_of_forall_le _ _ _ hc fun a => ?_)
+    obtain ⟨a, ha⟩ := a
+    replace ha := MonadAttach.mem_support.2 ha
     by_cases hb : bad a
     · simpa [f', hb] using hc
     · simpa [f', hb] using h a ha hb
@@ -1177,9 +1180,11 @@ lemma split_tvDist_prefix (prims : Primitives) {α β : Type} (oa : OracleComp (
     (h : ∀ a (cache' : HashCache C) (seen' : Finset (List Bit)), DigestSaltsCovered cache' seen' →
       seen'.card ≤ k + n → SplitCacheBound (splitRegionCache SplitHashDomain cache') (k + n) →
       ¬ CacheHasCollision (splitRegionCache SplitHashDomain cache') →
-      tvDist ((simulateQ (localAnswer prims) (f a)).run' cache')
+      letI : MeasurableSpace β := ⊤
+      measureTVDist ((simulateQ (localAnswer prims) (f a)).run' cache')
         ((simulateQ (localAnswer prims) (g a)).run' cache') ≤ c) :
-    tvDist ((simulateQ (localAnswer prims) (oa >>= f)).run' cache)
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) (oa >>= f)).run' cache)
       ((simulateQ (localAnswer prims) (oa >>= g)).run' cache) ≤ splitRisk k n + c := by
   simp only [simulateQ_bind, StateT.run'_eq, StateT.run_bind, map_bind]
   refine (split_tvDist_bind _ _ _ (fun z : α × HashCache C => CacheHasCollision (splitRegionCache SplitHashDomain z.2))
@@ -1321,10 +1326,10 @@ lemma split_rl_answer_bound (Ad : CheckAdversary C E Ia) (step : ℕ)
 
 lemma split_sequenceFin_digestBound : ∀ {n : ℕ} (oa : Fin n → OracleComp (LocalSpec C) α) (p : ℕ),
     (∀ i,IsQueryBoundP (oa i) (SplitRegionCounted SplitHashDomain) p) →
-      IsQueryBoundP (Concrete.sequenceFin oa) (SplitRegionCounted SplitHashDomain) (n*p)
+      IsQueryBoundP (OverPermutation.sequenceFin oa) (SplitRegionCounted SplitHashDomain) (n*p)
   | 0,oa,p,h => isQueryBoundP_pure _ _ _
   | n+1,oa,p,h => by
-    simp only [Concrete.sequenceFin]
+    simp only [OverPermutation.sequenceFin]
     have hb := isQueryBoundP_bind (h 0) (fun a _ =>
       isQueryBoundP_bind (split_sequenceFin_digestBound (fun i : Fin n => oa i.succ) p (fun i => h i.succ))
         (fun b _ => isQueryBoundP_pure (SplitRegionCounted SplitHashDomain) (Fin.cases (motive := fun _ => α) a b) 0))
@@ -1346,7 +1351,7 @@ lemma split_oneDigest_bound (salt hist : List Bit) :
 
 lemma split_column_bound (D : C.Coalition) (T : C.Term)
     (salts : C.Party → Shares C Bit) (hist : C.Party → C.Term → List Bit) :
-    IsQueryBoundP (Concrete.sequenceFin (honestDigestColumn D T salts hist))
+    IsQueryBoundP (OverPermutation.sequenceFin (honestDigestColumn D T salts hist))
       (SplitRegionCounted SplitHashDomain) (C.n * 2) := by
   apply split_sequenceFin_digestBound
   intro i
@@ -1358,7 +1363,7 @@ lemma split_column_bound (D : C.Coalition) (T : C.Term)
 lemma split_ghost_bound (D : C.Coalition) (salts : C.Party → Shares C Bit)
     (hist : C.Party → C.Term → List Bit) (Ts : List C.Term) :
     IsQueryBoundP (mixedGhostDigests D
-      (fun T => Concrete.sequenceFin (honestDigestColumn D T salts hist)) Ts pure)
+      (fun T => OverPermutation.sequenceFin (honestDigestColumn D T salts hist)) Ts pure)
       (SplitRegionCounted SplitHashDomain) (Ts.length * (C.n * 2)) := by
   induction Ts with
   | nil => simp [mixedGhostDigests]
@@ -1377,7 +1382,7 @@ lemma split_ghost_bound (D : C.Coalition) (salts : C.Party → Shares C Bit)
 lemma split_ghost_terms_bound (D : C.Coalition) (salts : C.Party → Shares C Bit)
     (hist : C.Party → C.Term → List Bit) :
     IsQueryBoundP (mixedGhostDigests D
-      (fun T => Concrete.sequenceFin (honestDigestColumn D T salts hist)) C.terms pure)
+      (fun T => OverPermutation.sequenceFin (honestDigestColumn D T salts hist)) C.terms pure)
       (SplitRegionCounted SplitHashDomain) (termHashes C) := by
   convert split_ghost_bound D salts hist C.terms using 1
   rw [check_terms_length]
@@ -1398,7 +1403,8 @@ theorem splitGhostSalt_tv (prims : Primitives) (K : Constants C E) (D : C.Coalit
     (step k : ℕ) (ha : ∀ st l, IsQueryBoundP (Ad.answer st l) Counted step)
     (cache : HashCache C) (hk : SplitCacheBound (splitRegionCache SplitHashDomain cache) k)
     (hno : ¬ CacheHasCollision (splitRegionCache SplitHashDomain cache)) :
-    tvDist ((simulateQ (localAnswer prims) (do
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) (do
         let w ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
         let q ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
         saltGhostPhase K D Ad (fuel + 2) p0
@@ -1414,11 +1420,11 @@ theorem splitGhostSalt_tv (prims : Primitives) (K : Constants C E) (D : C.Coalit
   let hist0 : C.Party → C.Term → List Bit := fun j =>
     (finalHs K hsR (finalOut K D AR BR known attack knownQ offset receivers 0 0) j).history
   let known0 : SaltReply Ad → C.Term → OracleComp (LocalSpec C) (DigestColumn C) := fun p T =>
-    Concrete.sequenceFin (honestDigestColumn D T (randShares D 256 p.2.1 0) hist0)
+    OverPermutation.sequenceFin (honestDigestColumn D T (randShares D 256 p.2.1 0) hist0)
   have hcol : ∀ (A B : C.Party → E) (hs : C.Party → RunState C)
       (hh : ∀ T, KnownTo D.1 T → ∀ i, i ∉ D.1 → i ∈ C.holders T → (hs i).history T = (hsR i).history T)
       (w q : MaskTable C E) (p : SaltReply Ad) (T : C.Term), KnownTo D.1 T →
-      Concrete.sequenceFin (honestDigestColumn D T (randShares D 256 p.2.1 0)
+      OverPermutation.sequenceFin (honestDigestColumn D T (randShares D 256 p.2.1 0)
         (fun j => (finalHs K hs (finalOut K D A B known attack knownQ offset receivers w q) j).history)) =
         known0 p T := by
     intro A B hs hh w q p T hT
@@ -1518,7 +1524,7 @@ theorem splitGhostSalt_tv (prims : Primitives) (K : Constants C E) (D : C.Coalit
     simp only [← StateT.run'_eq, ← map_bind, ← StateT.run_bind, ← simulateQ_bind]
     simp only [heq]
     simp only [simulateQ_bind, StateT.run_bind, simulateQ_pure, StateT.run_pure,
-      pure_bind, bind_assoc, StateT.run'_eq, map_bind, map_pure, htail, tvDist_self, le_refl]
+      pure_bind, bind_assoc, StateT.run'_eq, map_bind, map_pure, htail, measureTVDist_self, le_refl]
   · simpa only [add_zero] using splitRegion_birthday_real prims OB (step + termHashes C) k hOB cache hno hk
 
 theorem splitFinalMasked_tv (prims : Primitives) (K : Constants C E) (D : C.Coalition) (Ad : CheckAdversary C E Ia)
@@ -1542,7 +1548,8 @@ theorem splitFinalMasked_tv (prims : Primitives) (K : Constants C E) (D : C.Coal
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen)
     (k : ℕ) (hcard : seen.card ≤ k) (hk : SplitCacheBound (splitRegionCache SplitHashDomain cache) k)
     (hno : ¬ CacheHasCollision (splitRegionCache SplitHashDomain cache)) :
-    tvDist ((simulateQ (localAnswer prims) (do
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) (do
         let w ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
         let q ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
         executePhase localRoles D Ad (checkFunctionalities K) (fuel + 3) st1
@@ -1553,6 +1560,7 @@ theorem splitFinalMasked_tv (prims : Primitives) (K : Constants C E) (D : C.Coal
         executePhase localRoles D Ad (checkFunctionalities K) (fuel + 3) st1
           (finalMaskedProgram K D AD BD VD hsD known attack knownQ offset receivers w q) >>= tailD)).run' cache) ≤
       splitBound C step final k (fuel + 3) := by
+  let : MeasurableSpace β := ⊤
   have hB : (0 : ℝ) ≤ ((C.terms.length * (seen.card + (fuel + 2 + 1) * step + final +
       (C.n + 1) * C.terms.length) : ℕ) : ℝ) / 2 ^ 256 := by positivity
   by_cases hall : ∀ i, i ∉ D.1 → i ∈ receivers
@@ -1575,9 +1583,9 @@ theorem splitFinalMasked_tv (prims : Primitives) (K : Constants C E) (D : C.Coal
     have hrisk := splitRisk_mono (k := k) le_rfl
       (n := step + termHashes C) (n' := (fuel + 3) * step + termHashes C)
       (by nlinarith)
-    have h3' : tvDist _ _ ≤ _ := (tvDist_comm _ _).le.trans h3
-    have ht := (tvDist_triangle _ _ _).trans (add_le_add h1
-      ((tvDist_triangle _ _ _).trans (add_le_add h2 h3')))
+    have h3' : measureTVDist _ _ ≤ _ := (measureTVDist_comm _ _).le.trans h3
+    have ht := (measureTVDist_triangle _ _ _).trans (add_le_add h1
+      ((measureTVDist_triangle _ _ _).trans (add_le_add h2 h3')))
     unfold splitBound
     linarith
   · push Not at hall
@@ -1595,7 +1603,7 @@ theorem splitFinalMasked_tv (prims : Primitives) (K : Constants C E) (D : C.Coal
       intro A B V hs tail
       refine bind_congr fun w => bind_congr fun q => ?_
       rw [finalMasked_missing K D Ad (fuel + 2) st1 A B V hs known attack knownQ offset receivers w q hall, pure_bind]
-    simp only [hmiss, htail, tvDist_self]
+    simp only [hmiss, htail, measureTVDist_self]
     exact splitBound_nonneg _ _ _ _
 
 lemma split_tvDist_rounds (prims : Primitives) {α β : Type} (oa : OracleComp (LocalSpec C) α)
@@ -1607,9 +1615,11 @@ lemma split_tvDist_rounds (prims : Primitives) {α β : Type} (oa : OracleComp (
     (h : ∀ a (cache' : HashCache C) (seen' : Finset (List Bit)), DigestSaltsCovered cache' seen' →
       seen'.card ≤ k + rounds * step → SplitCacheBound (splitRegionCache SplitHashDomain cache') (k + rounds * step) →
       ¬ CacheHasCollision (splitRegionCache SplitHashDomain cache') →
-      tvDist ((simulateQ (localAnswer prims) (f a)).run' cache')
+      letI : MeasurableSpace β := ⊤
+      measureTVDist ((simulateQ (localAnswer prims) (f a)).run' cache')
         ((simulateQ (localAnswer prims) (g a)).run' cache') ≤ splitBound C step final (k + rounds * step) fuel) :
-    tvDist ((simulateQ (localAnswer prims) (oa >>= f)).run' cache)
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) (oa >>= f)).run' cache)
       ((simulateQ (localAnswer prims) (oa >>= g)).run' cache) ≤ splitBound C step final k (fuel + rounds) := by
   rw [← splitBound_prefix]
   exact split_tvDist_prefix prims oa f g _ k hq cache seen hc hcard hk hno _ (splitBound_nonneg ..) h
@@ -1623,9 +1633,11 @@ lemma split_tvDist_zero (prims : Primitives) {α β : Type} (oa : OracleComp (Lo
     (h : ∀ a (cache' : HashCache C) (seen' : Finset (List Bit)), DigestSaltsCovered cache' seen' →
       seen'.card ≤ k → SplitCacheBound (splitRegionCache SplitHashDomain cache') k →
       ¬ CacheHasCollision (splitRegionCache SplitHashDomain cache') →
-      tvDist ((simulateQ (localAnswer prims) (f a)).run' cache')
+      letI : MeasurableSpace β := ⊤
+      measureTVDist ((simulateQ (localAnswer prims) (f a)).run' cache')
         ((simulateQ (localAnswer prims) (g a)).run' cache') ≤ c) :
-    tvDist ((simulateQ (localAnswer prims) (oa >>= f)).run' cache)
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) (oa >>= f)).run' cache)
       ((simulateQ (localAnswer prims) (oa >>= g)).run' cache) ≤ c := by
   simpa only [splitRisk, Nat.add_zero, sub_self, zero_div, zero_add] using
     split_tvDist_prefix prims oa f g 0 k hq cache seen hc hcard hk hno c hc0 h
@@ -1651,7 +1663,8 @@ theorem splitFinalStep_tv (prims : Primitives) (K : Constants C E) (D : C.Coalit
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen)
     (k : ℕ) (hcard : seen.card ≤ k) (hk : SplitCacheBound (splitRegionCache SplitHashDomain cache) k)
     (hno : ¬ CacheHasCollision (splitRegionCache SplitHashDomain cache)) :
-    tvDist ((simulateQ (localAnswer prims)
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims)
         (executePhase localRoles D Ad (checkFunctionalities K) (fuel + 3 + 2) st
           (fun i => (finalStep K (localContext i) (hybridCheckGadgets K i) (AvR i, BvR i, VR i)).run' (hsR i)) >>=
           tailR)).run' cache)
@@ -1714,7 +1727,8 @@ theorem splitFinalStep_live_tv (prims : Primitives) (K : Constants C E) (D : C.C
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen)
     (k : ℕ) (hcard : seen.card ≤ k) (hk : SplitCacheBound (splitRegionCache SplitHashDomain cache) k)
     (hno : ¬ CacheHasCollision (splitRegionCache SplitHashDomain cache)) :
-    tvDist ((simulateQ (localAnswer prims)
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims)
         (executePhase localRoles D Ad (checkFunctionalities K) (fuel + 5) st
           (fun i => if live i then
             (finalStep K (localContext i) (hybridCheckGadgets K i) (AvR i, BvR i, VR i)).run' (hsR i)
@@ -1734,7 +1748,7 @@ theorem splitFinalStep_live_tv (prims : Primitives) (K : Constants C E) (D : C.C
   · push Not at hall
     rw [finalStep_missing K D Ad (fuel + 4) st live hsR AvR BvR VR hall,
       finalStep_missing K D Ad (fuel + 4) st live hsD AvD BvD VD hall]
-    simp only [pure_bind, htail, tvDist_self]
+    simp only [pure_bind, htail, measureTVDist_self]
     exact splitBound_nonneg _ _ _ _
 
 def SplitHalvRest (prims : Primitives) (K : Constants C E) (D : C.Coalition) (Ad : CheckAdversary C E Ia)
@@ -1747,7 +1761,8 @@ def SplitHalvRest (prims : Primitives) (K : Constants C E) (D : C.Coalition) (Ad
     DigestSaltsCovered cache seen → seen.card ≤ k →
     SplitCacheBound (splitRegionCache SplitHashDomain cache) k →
     ¬ CacheHasCollision (splitRegionCache SplitHashDomain cache) →
-    tvDist ((simulateQ (localAnswer prims)
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims)
         (executePhase localRoles D Ad (checkFunctionalities K) F st
           (fun i => if i ∈ live then (halvProg K width n j (AR i) (BR i) (DR i) i).run' (hsR i) else failure) >>=
           tailR)).run' cache)
@@ -1786,7 +1801,8 @@ theorem splitHalvCoin_tv (prims : Primitives) (K : Constants C E) (D : C.Coaliti
     (hsplit : SplitHistories D (fun i => (hsR i).history))
     (k : ℕ) (hcard : seen.card ≤ k) (hk : SplitCacheBound (splitRegionCache SplitHashDomain cache) k)
     (hno : ¬ CacheHasCollision (splitRegionCache SplitHashDomain cache)) :
-    tvDist ((simulateQ (localAnswer prims) (halvCoinNext K D Ad F
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) (halvCoinNext K D Ad F
         (fun i => ⟨recordHistory K i (hsR i).history (halvOut K D (halvedLength^[j] width) AR BR pa fresh i) 2,
           (hsR i).label + 1, (hsR i).tag⟩)
         (halvCont K width n j AR BR DR (halvOut K D (halvedLength^[j] width) AR BR pa fresh)) tailR y)).run' cache)
@@ -1795,6 +1811,7 @@ theorem splitHalvCoin_tv (prims : Primitives) (K : Constants C E) (D : C.Coaliti
           (hsD i).label + 1, (hsD i).tag⟩)
         (halvCont K width n j AD BD DD (halvOut K D (halvedLength^[j] width) AD BD pa fresh)) tailD y)).run' cache) ≤
       splitBound C step final k F := by
+  let : MeasurableSpace β := ⊤
   have hrel' := splitHalv_after K D (halvedLength^[j] width) hrel pa fresh hrec
   have hh' := splitHalv_hist K D (halvedLength^[j] width) tg L AR BR AD BD hsR hsD hh pa fresh hrec
   have hsplit' := hsplit.record K D (halvOut K D (halvedLength^[j] width) AR BR pa fresh) 2
@@ -1812,7 +1829,7 @@ theorem splitHalvCoin_tv (prims : Primitives) (K : Constants C E) (D : C.Coaliti
       cache seen hc hcard hk hno _ (splitBound_nonneg ..) ?_
     intro r cache' seen' hc' hcard' hk' hno'
     rcases r with _ | r
-    · simp only [executePhase_failure, pure_bind, htail, tvDist_self]
+    · simp only [executePhase_failure, pure_bind, htail, measureTVDist_self]
       exact splitBound_nonneg _ _ _ _
     · exact hIH y.2.1 y.2.2 tg (L + 1 + 1) _ _ _ _ _ _ _ _ cache' seen' k
         (hrel' r) hh' hsplit' hc' hcard' hk' hno'
@@ -1826,7 +1843,7 @@ theorem splitHalvCoin_tv (prims : Primitives) (K : Constants C E) (D : C.Coaliti
       intro i hi
       have hn : ¬ (i ∉ D.1 ∧ i ∈ y.2.2) := fun h => hy i h.1 h.2
       simp only [hn, if_false, afterChallenge]
-    rw [hfail, hfail, htail, tvDist_self]
+    rw [hfail, hfail, htail, measureTVDist_self]
     exact splitBound_nonneg _ _ _ _
 
 lemma split_tvDist_rounds_tail (prims : Primitives) {α γ β : Type} (oa : OracleComp (LocalSpec C) α)
@@ -1838,9 +1855,11 @@ lemma split_tvDist_rounds_tail (prims : Primitives) {α γ β : Type} (oa : Orac
     (h : ∀ a (cache' : HashCache C) (seen' : Finset (List Bit)), DigestSaltsCovered cache' seen' →
       seen'.card ≤ k + rounds * step → SplitCacheBound (splitRegionCache SplitHashDomain cache') (k + rounds * step) →
       ¬ CacheHasCollision (splitRegionCache SplitHashDomain cache') →
-      tvDist ((simulateQ (localAnswer prims) (f a >>= tailR)).run' cache')
+      letI : MeasurableSpace β := ⊤
+      measureTVDist ((simulateQ (localAnswer prims) (f a >>= tailR)).run' cache')
         ((simulateQ (localAnswer prims) (g a >>= tailD)).run' cache') ≤ splitBound C step final (k + rounds * step) fuel) :
-    tvDist ((simulateQ (localAnswer prims) ((oa >>= f) >>= tailR)).run' cache)
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) ((oa >>= f) >>= tailR)).run' cache)
       ((simulateQ (localAnswer prims) ((oa >>= g) >>= tailD)).run' cache) ≤ splitBound C step final k (fuel + rounds) := by
   rw [bind_assoc, bind_assoc]
   exact split_tvDist_rounds prims oa _ _ step final fuel rounds k hq cache seen hc hcard hk hno h
@@ -1854,9 +1873,11 @@ lemma split_tvDist_zero_tail (prims : Primitives) {α γ β : Type} (oa : Oracle
     (h : ∀ a (cache' : HashCache C) (seen' : Finset (List Bit)), DigestSaltsCovered cache' seen' →
       seen'.card ≤ k → SplitCacheBound (splitRegionCache SplitHashDomain cache') k →
       ¬ CacheHasCollision (splitRegionCache SplitHashDomain cache') →
-      tvDist ((simulateQ (localAnswer prims) (f a >>= tailR)).run' cache')
+      letI : MeasurableSpace β := ⊤
+      measureTVDist ((simulateQ (localAnswer prims) (f a >>= tailR)).run' cache')
         ((simulateQ (localAnswer prims) (g a >>= tailD)).run' cache') ≤ c) :
-    tvDist ((simulateQ (localAnswer prims) ((oa >>= f) >>= tailR)).run' cache)
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) ((oa >>= f) >>= tailR)).run' cache)
       ((simulateQ (localAnswer prims) ((oa >>= g) >>= tailD)).run' cache) ≤ c := by
   rw [bind_assoc, bind_assoc]
   exact split_tvDist_zero prims oa _ _ k hq cache seen hc hcard hk hno c hc0 h
@@ -1872,7 +1893,7 @@ theorem splitHalvRest_succ (prims : Primitives) (K : Constants C E) (D : C.Coali
   swap
   · rw [halvExtend_missing K D Ad (F + 1) st (· ∈ live) hall hsR width n j AR BR DR,
       halvExtend_missing K D Ad (F + 1) st (· ∈ live) hall hsD width n j AD BD DD]
-    simp only [pure_bind, htail, tvDist_self]
+    simp only [pure_bind, htail, measureTVDist_self]
     exact splitBound_nonneg _ _ _ _
   rw [halvExtend_local K D Ad (F + 1) st (· ∈ live) hall hsR width n j AR BR DR,
     halvExtend_local K D Ad (F + 1) st (· ∈ live) hall hsD width n j AD BD DD,
@@ -1897,7 +1918,7 @@ theorem splitHalvRest_succ (prims : Primitives) (K : Constants C E) (D : C.Coali
       hrel pa fresh hrec y cache3 seen3 hc3 hsplit (k + step + 1 * step) hcard3 hk3 hno3
   · rw [executePhase_challenge_live K D Ad F pa.1 (fun i => i ∈ pa.2.2.2.2) _ _, if_neg hrec,
       executePhase_challenge_live K D Ad F pa.1 (fun i => i ∈ pa.2.2.2.2) _ _, if_neg hrec]
-    simp only [pure_bind, htail, tvDist_self]
+    simp only [pure_bind, htail, measureTVDist_self]
     exact splitBound_nonneg _ _ _ _
 
 theorem splitHalvRest_all (prims : Primitives) (K : Constants C E) (D : C.Coalition) (Ad : CheckAdversary C E Ia)
@@ -1930,7 +1951,8 @@ def SplitSliceRest (prims : Primitives) (K : Constants C E) (D : C.Coalition) (A
     DigestSaltsCovered cache seen → seen.card ≤ k →
     SplitCacheBound (splitRegionCache SplitHashDomain cache) k →
     ¬ CacheHasCollision (splitRegionCache SplitHashDomain cache) →
-    tvDist ((simulateQ (localAnswer prims)
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims)
         (executePhase localRoles D Ad (checkFunctionalities K) F st
           (fun i => if i ∈ live then (sliceProg K τ count n j (xsR i) (ysR i) (DR i) i).run' (hsR i) else failure) >>=
           tailR)).run' cache)
@@ -1956,7 +1978,8 @@ theorem splitSliceCoin_tv (prims : Primitives) (K : Constants C E) (D : C.Coalit
     (hsplit : SplitHistories D (fun i => (hsR i).history))
     (k : ℕ) (hcard : seen.card ≤ k) (hk : SplitCacheBound (splitRegionCache SplitHashDomain cache) k)
     (hno : ¬ CacheHasCollision (splitRegionCache SplitHashDomain cache)) :
-    tvDist ((simulateQ (localAnswer prims) (halvCoinNext K D Ad F
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) (halvCoinNext K D Ad F
         (fun i => ⟨recordHistory K i (hsR i).history (sliceOut K D τ count j xsR ysR pa fresh i) 2,
           (hsR i).label + 1, (hsR i).tag⟩)
         (sliceCont K τ count n j xsR ysR DR (sliceOut K D τ count j xsR ysR pa fresh)) tailR y)).run' cache)
@@ -1965,6 +1988,7 @@ theorem splitSliceCoin_tv (prims : Primitives) (K : Constants C E) (D : C.Coalit
           (hsD i).label + 1, (hsD i).tag⟩)
         (sliceCont K τ count n j xsD ysD DD (sliceOut K D τ count j xsD ysD pa fresh)) tailD y)).run' cache) ≤
       splitBound C step final k F := by
+  let : MeasurableSpace β := ⊤
   have hrel' := fun r => splitSliceRel_fold D count j r xsR ysR xsD ysD hrel
   have hdiff' := splitSlice_claim K D τ count j xsR ysR xsD ysD hdiff pa fresh hrec
   have hh' := splitSlice_hist K D τ count j xsR ysR xsD ysD tg L hsR hsD hh pa fresh hrec
@@ -1983,7 +2007,7 @@ theorem splitSliceCoin_tv (prims : Primitives) (K : Constants C E) (D : C.Coalit
       cache seen hcov hcard hk hno _ (splitBound_nonneg ..) ?_
     intro r cache' seen' hc' hcard' hk' hno'
     rcases r with _ | r
-    · simp only [executePhase_failure, pure_bind, htail, tvDist_self]
+    · simp only [executePhase_failure, pure_bind, htail, measureTVDist_self]
       exact splitBound_nonneg _ _ _ _
     · exact hIH y.2.1 y.2.2 tg (L + 1 + 1) _ _ _ _ _ _ _ _ cache' seen' k
         (hrel' r) (hdiff' r) hh' hsplit' hc' hcard' hk' hno'
@@ -1997,7 +2021,7 @@ theorem splitSliceCoin_tv (prims : Primitives) (K : Constants C E) (D : C.Coalit
       intro i hi
       have hn : ¬ (i ∉ D.1 ∧ i ∈ y.2.2) := fun h => hy i h.1 h.2
       simp only [hn, if_false, afterChallenge]
-    rw [hfail, hfail, htail, tvDist_self]
+    rw [hfail, hfail, htail, measureTVDist_self]
     exact splitBound_nonneg _ _ _ _
 
 
@@ -2013,7 +2037,7 @@ theorem splitSliceRest_succ (prims : Primitives) (K : Constants C E) (D : C.Coal
   swap
   · rw [sliceExtend_missing K D Ad (F + 1) st (· ∈ live) hall hsR τ count n j xsR ysR DR,
       sliceExtend_missing K D Ad (F + 1) st (· ∈ live) hall hsD τ count n j xsD ysD DD]
-    simp only [pure_bind, htail, tvDist_self]
+    simp only [pure_bind, htail, measureTVDist_self]
     exact splitBound_nonneg _ _ _ _
   rw [sliceExtend_local K D Ad (F + 1) st (· ∈ live) hall hsR τ count n j xsR ysR DR,
     sliceExtend_local K D Ad (F + 1) st (· ∈ live) hall hsD τ count n j xsD ysD DD,
@@ -2038,7 +2062,7 @@ theorem splitSliceRest_succ (prims : Primitives) (K : Constants C E) (D : C.Coal
       hrel hdiff pa fresh hrec y cache3 seen3 hc3 hsplit (k + step + 1 * step) hcard3 hk3 hno3
   · rw [executePhase_challenge_live K D Ad F pa.1 (fun i => i ∈ pa.2.2.2.2) _ _, if_neg hrec,
       executePhase_challenge_live K D Ad F pa.1 (fun i => i ∈ pa.2.2.2.2) _ _, if_neg hrec]
-    simp only [pure_bind, htail, tvDist_self]
+    simp only [pure_bind, htail, measureTVDist_self]
     exact splitBound_nonneg _ _ _ _
 
 theorem splitSliceRest_zero (prims : Primitives) (K : Constants C E) (D : C.Coalition) (Ad : CheckAdversary C E Ia)
@@ -2112,7 +2136,8 @@ theorem splitStart_tv (prims : Primitives) (K : Constants C E) (D : C.Coalition)
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen)
     (k : ℕ) (hcard : seen.card ≤ k) (hk : SplitCacheBound (splitRegionCache SplitHashDomain cache) k)
     (hno : ¬ CacheHasCollision (splitRegionCache SplitHashDomain cache)) :
-    tvDist ((simulateQ (localAnswer prims)
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims)
         (executePhase localRoles D Ad (checkFunctionalities K)
           (fuel + 2 * sliceBits + 2 * halvingSteps (sliceWidth count) + 5 + 1) st
           (fun i => (startProg K count (XR i) (YR i) (ZR i) i).run' (hsR i)) >>= tailR)).run' cache)
@@ -2121,6 +2146,7 @@ theorem splitStart_tv (prims : Primitives) (K : Constants C E) (D : C.Coalition)
           (fuel + 2 * sliceBits + 2 * halvingSteps (sliceWidth count) + 5 + 1) st
           (fun i => (startProg K count (XD i) (YD i) (ZD i) i).run' (hsD i)) >>= tailD)).run' cache) ≤
       splitBound C step final k (fuel + 2 * sliceBits + 2 * halvingSteps (sliceWidth count) + 5 + 1) := by
+  let : MeasurableSpace β := ⊤
   set F := fuel + 2 * sliceBits + 2 * halvingSteps (sliceWidth count) + 5 with hFdef
   unfold startProg
   rw [start_eq K D Ad F (coins count) st hsR _ tailR, start_eq K D Ad F (coins count) st hsD _ tailD]
@@ -2147,7 +2173,7 @@ theorem splitStart_tv (prims : Primitives) (K : Constants C E) (D : C.Coalition)
       exact splitSliceRest_all prims K D Ad τ count step final hP hr ha hw tailR tailD htail hqR hqD
         sliceBits 0 fuel (by simp) y.2.1 y.2.2 tg (L + 1) _ _ _ _ _ _ _ _ cache2 seen2 (k + step)
         (hrel τ) (hdiff τ) (histRel_label D tg L hsR hsD hh) hsplit hc2 hcard2 hk2 hno2
-    · simp only [eq_false hP, if_false, ite_self, executePhase_failure, pure_bind, htail, tvDist_self]
+    · simp only [eq_false hP, if_false, ite_self, executePhase_failure, pure_bind, htail, measureTVDist_self]
       exact splitBound_nonneg _ _ _ _
   · push Not at hy
     have hfail : ∀ (hs : C.Party → RunState C) (g : C.Party → List E → RunM C E (CheckSpec C E) Unit)
@@ -2159,7 +2185,7 @@ theorem splitStart_tv (prims : Primitives) (K : Constants C E) (D : C.Coalition)
       intro i hi
       have hn : ¬ (i ∉ D.1 ∧ i ∈ y.2.2) := fun h => hy i h.1 h.2
       simp only [hn, if_false, afterStart]
-    rw [hfail, hfail, htail, tvDist_self]
+    rw [hfail, hfail, htail, measureTVDist_self]
     exact splitBound_nonneg _ _ _ _
 
 
@@ -2259,8 +2285,8 @@ theorem checkSplitDistance (prims : Primitives) (K : Constants C E) :
         (canonicalDummyTuples_leak_counts K counts D x hx i hi) hpos]
   rw [hreal, hideal]
   unfold localAccepts
-  simp only [probEvent_eq_eq_probOutput]
-  refine (abs_probOutput_toReal_sub_le_tvDist _ _).trans ?_
+  let : MeasurableSpace Bool := ⊤
+  refine (abs_prEvent_toReal_sub_le_measureTVDist _ _ (· = true) Measurable.of_discrete).trans ?_
   have hc0 : DigestSaltsCovered (C := C) ∅ ∅ := fun _ _ hd => absurd rfl hd
   have hk0 : SplitCacheBound (splitRegionCache SplitHashDomain (∅ : HashCache C)) 0 :=
     ⟨∅, by simp, by intro t ht; exact (ht (by simp [splitRegionCache])).elim⟩

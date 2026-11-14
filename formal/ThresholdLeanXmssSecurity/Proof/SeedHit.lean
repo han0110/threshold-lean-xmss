@@ -22,7 +22,7 @@ set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 set_option linter.constructorNameAsVariable false
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -65,46 +65,46 @@ theorem seedHit_arith (C : Committee) (q : ℕ) (hq : C.n.choose (C.t - 1) ≤ q
 /-- The dealer makes the `C(n, t - 1)` calls of its first PRF value before the forger runs. -/
 def DealerBudget (prims : Primitives) (C : Committee) : Prop :=
   ∀ (A : TsigAdversary C) (q : ℕ), HasSigningQueryBound prims (tsigGame A) q →
-    Pr[fun z => z.2.1.2 = true | flaggedRun prims A] ≠ 0 → C.n.choose (C.t - 1) ≤ q
+    Pr{let z ← flaggedRun prims A}[z.2.1.2 = true] ≠ 0 → C.n.choose (C.t - 1) ≤ q
 
 /-- For distinct keys, each key is hit by at most `q - C(n, t - 1)` calls over all its values. -/
 def DistinctFlagBound (prims : Primitives) (C : Committee) : Prop :=
   ∀ (A : TsigAdversary C) (q : ℕ), HasSigningQueryBound prims (tsigGame A) q →
-    Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = true | flaggedRun prims A] ≤
+    Pr{let z ← flaggedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = true] ≤
       ((Fintype.card (KeySlot C) * (q - C.n.choose (C.t - 1)) : ℕ) : ℝ≥0∞) / 2 ^ 256
 
 theorem probEvent_flaggedRun_keys (A : TsigAdversary C) (P : Keys3 C → Prop) :
-    Pr[fun z => P z.1 | flaggedRun prims A] = Pr[P | keyGen3 (C := C)] := by
+    Pr{let z ← flaggedRun prims A}[P z.1] = Pr{let z ← keyGen3 (C := C)}[P z] := by
   classical
   unfold flaggedRun
-  rw [probEvent_bind_eq_tsum, probEvent_eq_tsum_ite]
+  rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_eq_tsum_ite]
   refine tsum_congr fun x => ?_
-  rw [probEvent_map]
+  rw [prEvent_map]
   by_cases hx : P x
-  · simp [Function.comp_def, hx]
-  · simp [Function.comp_def, hx]
+  · simp [hx]
+  · simp [hx]
 
 theorem seedHitBound_of_stages (hD : DealerBudget prims C) (hF : DistinctFlagBound prims C) :
     SeedHitBound prims C := by
   intro A q hq
-  rcases eq_or_ne (Pr[fun z => z.2.1.2 = true | flaggedRun prims A]) 0 with h0 | h0
+  rcases eq_or_ne (Pr{let z ← flaggedRun prims A}[z.2.1.2 = true]) 0 with h0 | h0
   · rw [h0]; unfold seedHitError; simp only [ENNReal.toReal_zero]; positivity
   have hTq := hD A q hq h0
-  have hsplit : Pr[fun z => z.2.1.2 = true | flaggedRun prims A] ≤
-      Pr[fun x : Keys3 C => KeyCollision x.2.1 x.2.2 | keyGen3] +
-        Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = true | flaggedRun prims A] := by
+  have hsplit : Pr{let z ← flaggedRun prims A}[z.2.1.2 = true] ≤
+      Pr{let x : Keys3 C ← keyGen3}[KeyCollision x.2.1 x.2.2] +
+        Pr{let z ← flaggedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = true] := by
     rw [← probEvent_flaggedRun_keys prims A (fun x => KeyCollision x.2.1 x.2.2)]
-    refine le_trans (probEvent_mono fun z _ h => ?_) (probEvent_or_le _ _ _)
+    refine le_trans (prEvent_mono _ _ _ fun z h => ?_) (prEvent_or_le _ _ _)
     by_cases hc : KeyCollision z.1.2.1 z.1.2.2
     · exact Or.inl hc
     · exact Or.inr ⟨hc, h⟩
-  have hcoll : Pr[fun x : Keys3 C => KeyCollision x.2.1 x.2.2 | keyGen3] ≤
+  have hcoll : Pr{let x : Keys3 C ← keyGen3}[KeyCollision x.2.1 x.2.2] ≤
       (((C.n.choose (C.t - 1)).choose 2 + (C.n.choose 2).choose 2 : ℕ) : ℝ≥0∞) / 2 ^ 256 := by
     rw [ENNReal.div_eq_inv_mul, mul_comm]
     exact probEvent_keyCollision
   have hcard : Fintype.card (KeySlot C) = C.n.choose (C.t - 1) + C.n.choose 2 := by
     rw [Fintype.card_sum, card_term, card_pair]
-  have htot : Pr[fun z => z.2.1.2 = true | flaggedRun prims A] ≤
+  have htot : Pr{let z ← flaggedRun prims A}[z.2.1.2 = true] ≤
       (((C.n.choose (C.t - 1) + C.n ^ 2) * q : ℕ) : ℝ≥0∞) / 2 ^ 256 := by
     refine hsplit.trans ((add_le_add hcoll (hF A q hq)).trans ?_)
     rw [← ENNReal.add_div, ← Nat.cast_add, hcard]
@@ -162,16 +162,17 @@ def routedLocal : QueryImpl (LocalSpec C) (StateT (HashCache C × SlotCache C) P
 
 open Classical in
 /-- The cache of `H` from the cache off the slots and the cache of the slots. -/
-def mergeCache (p : HashCache C × SlotCache C) : HashCache C := fun u =>
-  if h : ∃ s, slotInput seeds pairKeys s = u then p.2 h.choose else p.1 u
+def mergeCache (p : HashCache C × SlotCache C) : HashCache C := QueryCache.ofFn fun u =>
+  if h : ∃ s, slotInput seeds pairKeys s = u then p.2.toFn h.choose else p.1.toFn u
 
 theorem mergeCache_splitCache (g : HashCache C) : mergeCache seeds pairKeys (splitCache seeds pairKeys g) = g := by
-  funext u
+  refine QueryCache.ext fun u => ?_
   unfold mergeCache
+  rw [QueryCache.ofFn_apply]
   split_ifs with h
   · show g (slotInput seeds pairKeys h.choose) = g u
     rw [h.choose_spec]
-  · simp only [splitCache, if_neg h]
+  · simp only [splitCache, QueryCache.toFn_ofFn, if_neg h]
 
 /-- Programming on the merged cache. The game never programs. -/
 def routedProgram : QueryImpl (ProgramSpec C) (StateT (HashCache C × SlotCache C) ProbComp) := fun x =>
@@ -208,14 +209,12 @@ theorem stateMap_routedLocal (hinj : Function.Injective (slotInput seeds pairKey
       have e : routedLocal prims seeds pairKeys (.inr (.inl (slotInput seeds pairKeys s₀))) =
           onTable (slotOracle s₀) := by
         simp only [routedLocal, dif_pos (⟨s₀, rfl⟩ : ∃ s, slotInput seeds pairKeys s = slotInput seeds pairKeys s₀), hc]
-        rfl
       rw [e]
       have h2 := stateMap_hash_slot prims seeds pairKeys hinj s₀
       rwa [hashAnswer_eq_randomOracle prims fun input h => absurd h (slotInput_ne_hash seeds pairKeys s₀ input)] at h2
     · have e : routedLocal prims seeds pairKeys (.inr (.inl u)) =
           onCache ((Query C →ₒ HashOutput).randomOracle u) := by
         simp only [routedLocal, dif_neg h]
-        rfl
       rw [e]
       exact stateMap_ro_of_not_slot seeds pairKeys fun s hs => h ⟨s, hs⟩
   · exact stateMap_routedAnswer prims seeds pairKeys hinj (.inr (.inr x))
@@ -386,14 +385,14 @@ theorem flaggedRun_eq_ffRun (A : TsigAdversary C) :
 distinct. -/
 def KeyHitBound (prims : Primitives) (C : Committee) : Prop :=
   ∀ (A : TsigAdversary C) (q : ℕ), HasSigningQueryBound prims (tsigGame A) q → ∀ σ : KeySlot C,
-    Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ σ ∈ z.2.1.2 | ffRun prims A] ≤
+    Pr{let z ← ffRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ σ ∈ z.2.1.2] ≤
       ((q - C.n.choose (C.t - 1) : ℕ) : ℝ≥0∞) / 2 ^ 256
 
 set_option maxRecDepth 100000 in
 theorem distinctFlagBound_of_keyHit (h : KeyHitBound prims C) : DistinctFlagBound prims C := by
   intro A q hq
-  rw [flaggedRun_eq_ffRun, probEvent_map]
-  refine (probEvent_mono fun z hz hf => ?_).trans ((probEvent_exists_finset_le_sum Finset.univ _
+  rw [flaggedRun_eq_ffRun, prEvent_map]
+  refine (prEvent_mono_of_support _ _ _ fun z hz hf => ?_).trans ((prEvent_exists_finset_le Finset.univ _
     (fun σ z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ σ ∈ z.2.1.2)).trans ?_)
   · simp only [Function.comp_apply] at hf
     unfold ffRun at hz
@@ -459,7 +458,6 @@ theorem freeRo_hash (input : HashInput) :
   have e : routedLocal prims seeds pairKeys (.inr (.inl (.hash input))) =
       onCache ((Query C →ₒ HashOutput).randomOracle (.hash input)) := by
     simp only [routedLocal, dif_neg h]
-    rfl
   rw [freeRo_eq, e]
   rfl
 
@@ -470,7 +468,6 @@ theorem freeRo_slot (hinj : Function.Injective (slotInput seeds pairKeys)) (s₀
   have e : routedLocal prims seeds pairKeys (.inr (.inl (slotInput seeds pairKeys s₀))) =
       onTable (slotOracle s₀) := by
     simp only [routedLocal, dif_pos hex, hc]
-    rfl
   rw [freeRo_eq, e]
   rfl
 
@@ -540,10 +537,10 @@ theorem hom_mapM {α β : Type} (f : α → m β) (xs : List α) :
 
 omit [LawfulMonad m] [LawfulMonad n] in
 theorem hom_sequenceFin {α : Type} : ∀ {k : ℕ} (f : Fin k → m α),
-    h (Concrete.sequenceFin f) = Concrete.sequenceFin fun i => h (f i)
-  | 0, f => by simp [Concrete.sequenceFin]
+    h (OverPermutation.sequenceFin f) = OverPermutation.sequenceFin fun i => h (f i)
+  | 0, f => by simp [OverPermutation.sequenceFin]
   | k + 1, f => by
-    simp only [Concrete.sequenceFin, MonadHom.mmap_bind, MonadHom.mmap_pure]
+    simp only [OverPermutation.sequenceFin, MonadHom.mmap_bind, MonadHom.mmap_pure]
     congr 1; funext a
     exact congrArg (· >>= _) (hom_sequenceFin (k := k) _)
 
@@ -634,6 +631,7 @@ theorem hom_bottomOnce (dealt : Dealt C m) (b : Fin (2 ^ layerHeight)) (s : Tsig
   simp only [bottomOnce, StateT.run_bind, StateT.run_get, pure_bind]
   cases s.trees b <;> simp [Dealt.hmap]
 
+set_option backward.isDefEq.respectTransparency false in
 theorem hom_tsigOracles (lift : ∀ {α : Type}, OracleComp (RoSpec C) α → m α) (dealt : Dealt C m)
     (q : (TsigSpec C).Domain) (s : TsigState C) :
     h ((tsigOracles lift dealt q).run s) = (tsigOracles (fun oa => h (lift oa)) (Dealt.hmap h dealt) q).run s := by
@@ -861,6 +859,7 @@ theorem slot_iff_upd (seeds : C.Term → HashOutput) (pairKeys : C.Pair → Hash
   rw [slotInput_upd_of_ne seeds pairKeys hne] at hs ⊢
   exact hs
 
+set_option backward.isDefEq.respectTransparency false in
 theorem routedLocal_upd (x : Keys3 C) (σ : KeySlot C) {k k' : HashOutput}
     (hinj : Function.Injective (slotInput (xk x σ k).2.1 (xk x σ k).2.2))
     (hinj' : Function.Injective (slotInput (xk x σ k').2.1 (xk x σ k').2.2))
@@ -952,6 +951,7 @@ theorem bottomOnce_corrupt (dealt : Dealt C (StateT (WState C) ProbComp))
     rfl
 
 set_option maxRecDepth 10000 in
+set_option backward.isDefEq.respectTransparency false in
 theorem tsigOracles_corrupt_cases (lift : ∀ {α : Type}, OracleComp (RoSpec C) α → StateT (WState C) ProbComp α)
     (dealt : Dealt C (StateT (WState C) ProbComp)) (q : (TsigSpec C).Domain) (st : TsigState C) (c : WState C) :
     ∀ z ∈ support (((tsigOracles lift dealt q).run st).run c), z.1.2.corrupt = st.corrupt ∨ ∃ i, q = .corrupt i ∧ ¬(C.t - 1 < (insert i st.corrupt).card) ∧
@@ -1131,10 +1131,8 @@ theorem fused_hit (σ : KeySlot C) (u : Query C) (p : GState C) (hD : ¬Revealed
     true_and]
   exact Or.inr ⟨hD, hs⟩
 
-theorem probComp_support_nonempty {α : Type} (mx : ProbComp α) : (support mx).Nonempty := by
-  by_contra h
-  have h1 := (probFailure_eq_one_iff_not_nonempty mx).mpr h
-  simp at h1
+theorem probComp_support_nonempty {α : Type} (mx : ProbComp α) : (support mx).Nonempty :=
+  OracleComp.support_nonempty mx
 
 /-- The count does not drop over a run. -/
 theorem fused_sim_count_mono (hinj : Function.Injective (slotInput x.2.1 x.2.2)) {α : Type}
@@ -1146,8 +1144,8 @@ theorem fused_sim_count_mono (hinj : Function.Injective (slotInput x.2.1 x.2.2))
 /-- A revealed key or a raised flag keeps `σ` out of the first hit keys. -/
 theorem fused_ff_zero (σ : KeySlot C) {α : Type} (oa : OracleComp (LocalSpec C + TsigSpec C) α) (p : GState C)
     (h : Revealed p.1.1.1.corrupt σ ∨ p.1.1.2 = true) (hσ : σ ∉ p.1.2) :
-    Pr[fun z => σ ∈ z.2.1.2 | (simulateQ (fusedImpl prims x top) oa).run p] = 0 := by
-  refine probEvent_eq_zero fun z hz => ?_
+    Pr{let z ← (simulateQ (fusedImpl prims x top) oa).run p}[σ ∈ z.2.1.2] = 0 := by
+  refine prEvent_eq_zero_of_forall_mem_support _ _ fun z hz => ?_
   have := support_simulateQ_inv _ (fun s : GState C => (Revealed s.1.1.1.corrupt σ ∨ s.1.1.2 = true) ∧ σ ∉ s.1.2)
     (fun t s hs w hw => ?_) oa p ⟨h, hσ⟩ z hz
   · exact this.2
@@ -1186,7 +1184,7 @@ theorem sum_ff_le (x : Keys3 C) (σ : KeySlot C) (top : TopTree) (q : ℕ) {α :
     (∀ k ∉ V, Function.Injective (slotInput (xk x σ k).2.1 (xk x σ k).2.2)) →
     ¬Revealed p.1.1.1.corrupt σ → σ ∉ p.1.2 →
     (∀ k ∉ V, ∀ z ∈ support ((simulateQ (fusedImpl prims (xk x σ k) top) oa).run p), z.2.2.2 ≤ q) →
-    ∑ k ∈ Finset.univ \ V, Pr[fun z => σ ∈ z.2.1.2 | (simulateQ (fusedImpl prims (xk x σ k) top) oa).run p] ≤
+    ∑ k ∈ Finset.univ \ V, Pr{let z ← (simulateQ (fusedImpl prims (xk x σ k) top) oa).run p}[σ ∈ z.2.1.2] ≤
       ((q - p.2.2 : ℕ) : ℝ≥0∞) := by
   induction oa using OracleComp.inductionOn with
   | pure a =>
@@ -1196,20 +1194,20 @@ theorem sum_ff_le (x : Keys3 C) (σ : KeySlot C) (top : TopTree) (q : ℕ) {α :
   | query_bind t cont ih =>
     intro V p hinj hD hσ hq
     simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query, id_map,
-      StateT.run_bind, probEvent_bind_eq_tsum] at hq ⊢
+      StateT.run_bind, OracleComp.prEvent_bind_eq_tsum] at hq ⊢
     by_cases hf : p.1.1.2 = true
     · refine le_of_eq_of_le (Finset.sum_eq_zero fun k _ => ENNReal.tsum_eq_zero.mpr fun z => ?_) bot_le
       by_cases hz : z ∈ support ((fusedImpl prims (xk x σ k) top t).run p)
       · obtain ⟨h1, h2⟩ := fused_frozen prims _ top t p hf z hz
         rw [fused_ff_zero prims _ top σ _ z.2 (Or.inr h1) (h2 ▸ hσ), mul_zero]
-      · rw [probOutput_eq_zero_of_not_mem_support hz, zero_mul]
+      · rw [prEvent_eq_zero_of_not_mem_support _ hz, zero_mul]
     have hf' : p.1.1.2 = false := by simpa using hf
     by_cases hrev : RevealsT σ p.1.1.1 t
     · refine le_of_eq_of_le (Finset.sum_eq_zero fun k _ => ENNReal.tsum_eq_zero.mpr fun z => ?_) bot_le
       by_cases hz : z ∈ support ((fusedImpl prims (xk x σ k) top t).run p)
       · obtain ⟨h1, h2⟩ := fused_reveals prims _ top σ t p hrev hσ z hz
         rw [fused_ff_zero prims _ top σ _ z.2 (Or.inl h1) h2, mul_zero]
-      · rw [probOutput_eq_zero_of_not_mem_support hz, zero_mul]
+      · rw [prEvent_eq_zero_of_not_mem_support _ hz, zero_mul]
     -- the values of `σ` that the call hits
     obtain ⟨H, hHdef⟩ : ∃ H : Finset HashOutput, H = Finset.univ.filter fun k => HitT σ t k := ⟨_, rfl⟩
     have hmemH : ∀ k, k ∈ H ↔ HitT σ t k := fun k => by simp [hHdef]
@@ -1244,23 +1242,23 @@ theorem sum_ff_le (x : Keys3 C) (σ : KeySlot C) (top : TopTree) (q : ℕ) {α :
       have h3 := hcount k hk z hz
       omega
     -- the hit part
-    have hhit : ∑ k ∈ H \ V, (∑' z, Pr[= z | (fusedImpl prims (xk x σ k) top t).run p] *
-        Pr[fun z' => σ ∈ z'.2.1.2 | (simulateQ (fusedImpl prims (xk x σ k) top) (cont z.1)).run z.2]) ≤ ct := by
+    have hhit : ∑ k ∈ H \ V, (∑' z, Pr{let y ← (fusedImpl prims (xk x σ k) top t).run p}[y = z] *
+        Pr{let z' ← (simulateQ (fusedImpl prims (xk x σ k) top) (cont z.1)).run z.2}[σ ∈ z'.2.1.2]) ≤ ct := by
       rcases (H \ V).eq_empty_or_nonempty with he | ⟨k₀, hk₀⟩
       · rw [he, Finset.sum_empty]; exact zero_le
       have hct1 : ct = 1 := by
         obtain ⟨u, hu, -⟩ := (hmemH k₀).mp (Finset.mem_sdiff.mp hk₀).1
         rw [hct, hu]; rfl
       rw [hct1, Nat.cast_one]
-      calc ∑ k ∈ H \ V, (∑' z, Pr[= z | (fusedImpl prims (xk x σ k) top t).run p] *
-            Pr[fun z' => σ ∈ z'.2.1.2 | (simulateQ (fusedImpl prims (xk x σ k) top) (cont z.1)).run z.2])
+      calc ∑ k ∈ H \ V, (∑' z, Pr{let y ← (fusedImpl prims (xk x σ k) top t).run p}[y = z] *
+            Pr{let z' ← (simulateQ (fusedImpl prims (xk x σ k) top) (cont z.1)).run z.2}[σ ∈ z'.2.1.2])
           ≤ ∑ k ∈ H \ V, (1 : ℝ≥0∞) := Finset.sum_le_sum fun k _ => by
-            rw [← probEvent_bind_eq_tsum]; exact probEvent_le_one
+            rw [← OracleComp.prEvent_bind_eq_tsum]; exact prEvent_le_one _
         _ = ((H \ V).card : ℝ≥0∞) := by simp
         _ ≤ 1 := by exact_mod_cast (Finset.card_le_card Finset.sdiff_subset).trans hH
     -- the other values
-    have hrest : ∑ k ∈ Finset.univ \ V', (∑' z, Pr[= z | (fusedImpl prims (xk x σ k) top t).run p] *
-        Pr[fun z' => σ ∈ z'.2.1.2 | (simulateQ (fusedImpl prims (xk x σ k) top) (cont z.1)).run z.2]) ≤
+    have hrest : ∑ k ∈ Finset.univ \ V', (∑' z, Pr{let y ← (fusedImpl prims (xk x σ k) top t).run p}[y = z] *
+        Pr{let z' ← (simulateQ (fusedImpl prims (xk x σ k) top) (cont z.1)).run z.2}[σ ∈ z'.2.1.2]) ≤
           ((q - (p.2.2 + ct) : ℕ) : ℝ≥0∞) := by
       rcases (Finset.univ \ V').eq_empty_or_nonempty with he | ⟨k₁, hk₁⟩
       · rw [he, Finset.sum_empty]; exact zero_le
@@ -1273,7 +1271,7 @@ theorem sum_ff_le (x : Keys3 C) (σ : KeySlot C) (top : TopTree) (q : ℕ) {α :
       have hstep : ∀ k ∈ Finset.univ \ V', (fusedImpl prims (xk x σ k) top t).run p = M := fun k hk =>
         fusedImpl_upd_eq prims x σ top (hinj k (hnot k hk).1) (hinj k₁ hk₁V) t p hrev (hnot k hk).2 hk₁H
       have hz : ∀ z ∈ support M, ∑ k ∈ Finset.univ \ V',
-          Pr[fun z' => σ ∈ z'.2.1.2 | (simulateQ (fusedImpl prims (xk x σ k) top) (cont z.1)).run z.2] ≤
+          Pr{let z' ← (simulateQ (fusedImpl prims (xk x σ k) top) (cont z.1)).run z.2}[σ ∈ z'.2.1.2] ≤
             ((q - (p.2.2 + ct) : ℕ) : ℝ≥0∞) := by
         intro z hzM
         obtain ⟨hzD, hzσ⟩ := fused_miss prims (xk x σ k₁) top σ t p hD hσ hrev
@@ -1286,21 +1284,21 @@ theorem sum_ff_le (x : Keys3 C) (σ : KeySlot C) (top : TopTree) (q : ℕ) {α :
           exact hzM
         · have := hcount k₁ hk₁V z hzM
           exact_mod_cast (by omega : q - z.2.2.2 ≤ q - (p.2.2 + ct))
-      calc ∑ k ∈ Finset.univ \ V', (∑' z, Pr[= z | (fusedImpl prims (xk x σ k) top t).run p] *
-            Pr[fun z' => σ ∈ z'.2.1.2 | (simulateQ (fusedImpl prims (xk x σ k) top) (cont z.1)).run z.2])
-          = ∑ k ∈ Finset.univ \ V', (∑' z, Pr[= z | M] *
-            Pr[fun z' => σ ∈ z'.2.1.2 | (simulateQ (fusedImpl prims (xk x σ k) top) (cont z.1)).run z.2]) :=
+      calc ∑ k ∈ Finset.univ \ V', (∑' z, Pr{let y ← (fusedImpl prims (xk x σ k) top t).run p}[y = z] *
+            Pr{let z' ← (simulateQ (fusedImpl prims (xk x σ k) top) (cont z.1)).run z.2}[σ ∈ z'.2.1.2])
+          = ∑ k ∈ Finset.univ \ V', (∑' z, Pr{let y ← M}[y = z] *
+            Pr{let z' ← (simulateQ (fusedImpl prims (xk x σ k) top) (cont z.1)).run z.2}[σ ∈ z'.2.1.2]) :=
             Finset.sum_congr rfl fun k hk => by rw [hstep k hk]
-        _ = ∑' z, Pr[= z | M] * ∑ k ∈ Finset.univ \ V',
-            Pr[fun z' => σ ∈ z'.2.1.2 | (simulateQ (fusedImpl prims (xk x σ k) top) (cont z.1)).run z.2] := by
+        _ = ∑' z, Pr{let y ← M}[y = z] * ∑ k ∈ Finset.univ \ V',
+            Pr{let z' ← (simulateQ (fusedImpl prims (xk x σ k) top) (cont z.1)).run z.2}[σ ∈ z'.2.1.2] := by
             rw [← Summable.tsum_finsetSum fun _ _ => ENNReal.summable]
             exact tsum_congr fun z => (Finset.mul_sum _ _ _).symm
-        _ ≤ ∑' z, Pr[= z | M] * ((q - (p.2.2 + ct) : ℕ) : ℝ≥0∞) := ENNReal.tsum_le_tsum fun z => by
+        _ ≤ ∑' z, Pr{let y ← M}[y = z] * ((q - (p.2.2 + ct) : ℕ) : ℝ≥0∞) := ENNReal.tsum_le_tsum fun z => by
             by_cases hzM : z ∈ support M
             · exact mul_le_mul_right (hz z hzM) _
-            · simp [probOutput_eq_zero_of_not_mem_support hzM]
+            · simp [prEvent_eq_zero_of_not_mem_support _ hzM]
         _ ≤ ((q - (p.2.2 + ct) : ℕ) : ℝ≥0∞) := by
-            rw [ENNReal.tsum_mul_right]; exact mul_le_of_le_one_left' tsum_probOutput_le_one
+            rw [ENNReal.tsum_mul_right]; exact mul_le_of_le_one_left' (OracleComp.tsum_prEvent_le_one _)
     by_cases hne : (Finset.univ \ V).Nonempty
     · refine (add_le_add hhit hrest).trans ?_
       obtain ⟨k, hk⟩ := hne
@@ -1441,16 +1439,16 @@ theorem split_ffAfter (A : TsigAdversary C) (x : Keys3 C) (hinj : Function.Injec
   · rfl
 
 theorem probEvent_bind_le_of_imp {α β : Type} (m : ProbComp α) (g : α → ProbComp β) (E : β → Prop) (E' : α → Prop)
-    (h : ∀ a ∈ support m, ∀ b ∈ support (g a), E b → E' a) : Pr[E | m >>= g] ≤ Pr[E' | m] := by
+    (h : ∀ a ∈ support m, ∀ b ∈ support (g a), E b → E' a) : Pr{let z ← m >>= g}[E z] ≤ Pr{let z ← m}[E' z] := by
   classical
-  rw [probEvent_bind_eq_tsum, probEvent_eq_tsum_ite]
+  rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_eq_tsum_ite]
   refine ENNReal.tsum_le_tsum fun a => ?_
   by_cases ha : a ∈ support m
   · by_cases hE : E' a
     · rw [if_pos hE]
-      exact mul_le_of_le_one_right' probEvent_le_one
-    · rw [if_neg hE, probEvent_eq_zero fun b hb hb' => hE (h a ha b hb hb'), mul_zero]
-  · rw [probOutput_eq_zero_of_not_mem_support ha, zero_mul]
+      exact mul_le_of_le_one_right' (prEvent_le_one _)
+    · rw [if_neg hE, prEvent_eq_zero_of_forall_mem_support _ _ fun b hb hb' => hE (h a ha b hb hb'), mul_zero]
+  · rw [prEvent_eq_zero_of_not_mem_support _ ha, zero_mul]
     exact zero_le
 
 theorem mem_support_keyGen3 (x : Keys3 C) : x ∈ support (keyGen3 (C := C)) := by
@@ -1479,7 +1477,7 @@ set_option maxRecDepth 100000 in
 theorem rest_sum_le (A : TsigAdversary C) (q : ℕ) (hq : HasSigningQueryBound prims (tsigGame A) q) (x : Keys3 C)
     (σ : KeySlot C) (V : Finset HashOutput) (hV : ∀ u ∉ V, Function.Injective (slotInput (xk x σ u).2.1 (xk x σ u).2.2))
     (u₀ : HashOutput) (hu₀ : u₀ ∉ V) (os : Option TreeOutput × WState C) (hos : os ∈ support (dealerSlot (C := C) x.1)) :
-    ∑ u ∈ Finset.univ \ V, Pr[fun w => σ ∈ w.1.2 | restOf prims A (xk x σ u) os] ≤
+    ∑ u ∈ Finset.univ \ V, Pr{let w ← restOf prims A (xk x σ u) os}[σ ∈ w.1.2] ≤
       ((q - C.n.choose (C.t - 1) : ℕ) : ℝ≥0∞) := by
   rcases os with ⟨_ | (top | tree), s⟩
   · refine le_of_eq_of_le (Finset.sum_eq_zero fun u _ => ?_) zero_le
@@ -1493,14 +1491,14 @@ theorem rest_sum_le (A : TsigAdversary C) (q : ℕ) (hq : HasSigningQueryBound p
       intro u hu z hz
       obtain ⟨v, hv⟩ := probComp_support_nonempty ((simulateQ (splitWorld prims (xk x σ u).2.1 (xk x σ u).2.2)
         (tsigFinish (dealtOf (xk x σ u) top) (z.1, z.2.1.1.1))).run z.2.2)
-      have h1 := withCount_mono _ _ z.2.2 v hv
+      have h1 : z.2.2.2 ≤ v.2.2 := by with_reducible exact withCount_mono _ _ z.2.2 v hv
       have h2 := split_budget prims A q hq (xk x σ u) (hV u hu) (((v.1.1, z.2.1.1.2), z.2.1.2), v.2)
         ((mem_support_bind_iff _ _ _).mpr ⟨(some (.top top), s), hos, (mem_support_bind_iff _ _ _).mpr
-          ⟨z, hz, by rw [support_map]; exact ⟨v, hv, rfl⟩⟩⟩)
+          ⟨z, hz, by rw [support_map]; with_reducible exact Set.mem_image_of_mem _ hv⟩⟩)
       exact h1.trans h2
-    calc ∑ u ∈ Finset.univ \ V, Pr[fun w => σ ∈ w.1.2 | restOf prims A (xk x σ u) (some (.top top), s)]
-        ≤ ∑ u ∈ Finset.univ \ V, Pr[fun z => σ ∈ z.2.1.2 |
-            (simulateQ (fusedImpl prims (xk x σ u) top) (A ⟨top.root, x.1⟩ top)).run (((tsigInit, false), ∅), s)] :=
+    calc ∑ u ∈ Finset.univ \ V, Pr{let w ← restOf prims A (xk x σ u) (some (.top top), s)}[σ ∈ w.1.2]
+        ≤ ∑ u ∈ Finset.univ \ V, Pr{let z ← (simulateQ (fusedImpl prims (xk x σ u) top)
+            (A ⟨top.root, x.1⟩ top)).run (((tsigInit, false), ∅), s)}[σ ∈ z.2.1.2] :=
           Finset.sum_le_sum fun u _ => probEvent_bind_le_of_imp _ _ _ _ fun z _ w hw hσ => by
             rw [support_map] at hw
             obtain ⟨v, -, rfl⟩ := hw
@@ -1515,8 +1513,8 @@ set_option maxRecDepth 100000 in
 /-- Over all values of the key `σ`, its first hits with distinct keys cost at most `q - C(n, t - 1)`. -/
 theorem core_sum (A : TsigAdversary C) (q : ℕ) (hq : HasSigningQueryBound prims (tsigGame A) q) (x : Keys3 C)
     (σ : KeySlot C) :
-    ∑ u : HashOutput, Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ σ ∈ z.2.1.2 |
-      (fun r => (xk x σ u, r)) <$> runSigningWorld prims (ffAfter A (xk x σ u))] ≤
+    ∑ u : HashOutput, Pr{let z ← (fun r => (xk x σ u, r)) <$> runSigningWorld prims (ffAfter A (xk x σ u))}[
+      ¬KeyCollision z.1.2.1 z.1.2.2 ∧ σ ∈ z.2.1.2] ≤
         ((q - C.n.choose (C.t - 1) : ℕ) : ℝ≥0∞) := by
   classical
   obtain ⟨V, hVdef⟩ : ∃ V : Finset HashOutput, V = Finset.univ.filter fun u =>
@@ -1525,38 +1523,38 @@ theorem core_sum (A : TsigAdversary C) (q : ℕ) (hq : HasSigningQueryBound prim
     have h : ¬KeyCollision (xk x σ u).2.1 (xk x σ u).2.2 := fun h => hu (by rw [hVdef]; simpa using h)
     simp only [KeyCollision, not_or, not_not] at h
     exact slotInput_injective h.1 h.2
-  have hterm : ∀ u, Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ σ ∈ z.2.1.2 |
-      (fun r => (xk x σ u, r)) <$> runSigningWorld prims (ffAfter A (xk x σ u))] =
-        if u ∈ V then 0 else Pr[fun w => σ ∈ w.1.2 | dealerSlot (C := C) x.1 >>= restOf prims A (xk x σ u)] := by
+  have hterm : ∀ u, Pr{let z ← (fun r => (xk x σ u, r)) <$> runSigningWorld prims (ffAfter A (xk x σ u))}[
+      ¬KeyCollision z.1.2.1 z.1.2.2 ∧ σ ∈ z.2.1.2] =
+        if u ∈ V then 0 else Pr{let w ← dealerSlot (C := C) x.1 >>= restOf prims A (xk x σ u)}[σ ∈ w.1.2] := by
     intro u
-    rw [probEvent_map]
+    rw [prEvent_map]
     split_ifs with hu
-    · refine probEvent_eq_zero fun r _ h => h.1 ?_
+    · refine prEvent_eq_zero_of_forall_mem_support _ _ fun r _ h => h.1 ?_
       rw [hVdef] at hu
       simpa using hu
     · have hc : ¬KeyCollision (xk x σ u).2.1 (xk x σ u).2.2 := fun h => hu (by rw [hVdef]; simpa using h)
-      simp only [Function.comp_def, hc, not_false_eq_true, true_and]
-      rw [runSigningWorld_eq_split prims _ _ (hV u hu), probEvent_map, split_ffAfter prims A _ (hV u hu)]
+      simp only [hc, not_false_eq_true, true_and]
+      rw [runSigningWorld_eq_split prims _ _ (hV u hu), prEvent_map, split_ffAfter prims A _ (hV u hu)]
       rfl
   simp only [hterm]
   rw [Finset.sum_ite, Finset.sum_const_zero, zero_add, ← Finset.sdiff_eq_filter]
   rcases (Finset.univ \ V).eq_empty_or_nonempty with he | ⟨u₀, hu₀⟩
   · rw [he, Finset.sum_empty]; exact zero_le
   have hu₀' : u₀ ∉ V := (Finset.mem_sdiff.mp hu₀).2
-  simp only [probEvent_bind_eq_tsum]
+  simp only [OracleComp.prEvent_bind_eq_tsum]
   rw [← Summable.tsum_finsetSum fun _ _ => ENNReal.summable]
-  calc ∑' os, ∑ u ∈ Finset.univ \ V, Pr[= os | dealerSlot (C := C) x.1] *
-        Pr[fun w => σ ∈ w.1.2 | restOf prims A (xk x σ u) os]
-      = ∑' os, Pr[= os | dealerSlot (C := C) x.1] *
-          ∑ u ∈ Finset.univ \ V, Pr[fun w => σ ∈ w.1.2 | restOf prims A (xk x σ u) os] :=
+  calc ∑' os, ∑ u ∈ Finset.univ \ V, Pr{let z ← dealerSlot (C := C) x.1}[z = os] *
+        Pr{let w ← restOf prims A (xk x σ u) os}[σ ∈ w.1.2]
+      = ∑' os, Pr{let z ← dealerSlot (C := C) x.1}[z = os] *
+          ∑ u ∈ Finset.univ \ V, Pr{let w ← restOf prims A (xk x σ u) os}[σ ∈ w.1.2] :=
         tsum_congr fun os => (Finset.mul_sum _ _ _).symm
-    _ ≤ ∑' os, Pr[= os | dealerSlot (C := C) x.1] * ((q - C.n.choose (C.t - 1) : ℕ) : ℝ≥0∞) :=
+    _ ≤ ∑' os, Pr{let z ← dealerSlot (C := C) x.1}[z = os] * ((q - C.n.choose (C.t - 1) : ℕ) : ℝ≥0∞) :=
         ENNReal.tsum_le_tsum fun os => by
           by_cases hos : os ∈ support (dealerSlot (C := C) x.1)
           · exact mul_le_mul_right (rest_sum_le prims A q hq x σ V hV u₀ hu₀' os hos) _
-          · simp [probOutput_eq_zero_of_not_mem_support hos]
+          · simp [prEvent_eq_zero_of_not_mem_support _ hos]
     _ ≤ ((q - C.n.choose (C.t - 1) : ℕ) : ℝ≥0∞) := by
-        rw [ENNReal.tsum_mul_right]; exact mul_le_of_le_one_left' tsum_probOutput_le_one
+        rw [ENNReal.tsum_mul_right]; exact mul_le_of_le_one_left' (OracleComp.tsum_prEvent_le_one _)
 
 theorem keyHitBound : KeyHitBound prims C := by
   intro A q hq σ
@@ -1569,10 +1567,11 @@ theorem keyHitBound : KeyHitBound prims C := by
     rfl
   rw [e, ← card_hashOutput]
   rcases σ with T | p
-  · refine probEvent_bind_le_of_forall_le fun P _ => ?_
+  · refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun P _ => ?_
     refine probEvent_resample T _ _ _ fun g => sum_tsum_bind_le _ _ _ fun pk => ?_
     exact core_sum prims A q hq (P, g, pk) (.inl T)
-  · refine probEvent_bind_le_of_forall_le fun P _ => probEvent_bind_le_of_forall_le fun seeds _ => ?_
+  · refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun P _ =>
+      prEvent_bind_le_of_forall_le_of_support _ _ _ fun seeds _ => ?_
     refine probEvent_resample p _ _ _ fun g => ?_
     exact core_sum prims A q hq (P, seeds, g) (.inr p)
 

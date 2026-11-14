@@ -9,7 +9,7 @@ import Mathlib.Algebra.CharP.Algebra
 Lemma 4, in both reshare modes. `ExtendMultStatement` follows GS20, Lemma 5.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 
 noncomputable section
 namespace ThresholdLeanXmssSecurity
@@ -105,7 +105,7 @@ theorem exists_honest (D : C.Coalition) : ∃ i, i ∉ D.1 := by
   simp [Committee.n] at h2; omega
 
 theorem sequenceFin_congr_pure {m : Type → Type} [Monad m] [LawfulMonad m] {α : Type} {n : ℕ}
-    (g : Fin n → m α) (f : Fin n → α) (h : ∀ i, g i = pure (f i)) : Concrete.sequenceFin g = pure f := by
+    (g : Fin n → m α) (f : Fin n → α) (h : ∀ i, g i = pure (f i)) : OverPermutation.sequenceFin g = pure f := by
   rw [show g = fun i => pure (f i) from funext h, sequenceFin_pure]
 
 /-- The PRSS output of `F_rand` at an honest operator. -/
@@ -132,7 +132,7 @@ theorem executeRounds_wait {Ih Oh Lh Rh α : Type} (D : C.Coalition) (A : Advers
       (do
         let b ← counted (liftComp (A.round st fun c' i => if c' ∈ D.1 ∧ i ∉ D.1 then o i c' else none)
           (SimulatorSpec C))
-        let steps ← Concrete.sequenceFin fun j => if j ∈ D.1 then pure (Step.done none) else
+        let steps ← OverPermutation.sequenceFin fun j => if j ∈ D.1 then pure (Step.done none) else
           free (advance (k j fun k' => if k' ∈ D.1 then b.2 k' j else o k' j))
         executeRounds worldRoles D A F n b.1 steps) := by
   obtain ⟨i0, hi0⟩ := exists_honest D
@@ -150,7 +150,7 @@ theorem executeRounds_wait {Ih Oh Lh Rh α : Type} (D : C.Coalition) (A : Advers
     funext c' i; split_ifs <;> simp_all
   rw [hm]
   refine bind_congr' _ fun b => ?_
-  refine congrArg (· >>= _) (congrArg Concrete.sequenceFin (funext fun j => ?_))
+  refine congrArg (· >>= _) (congrArg OverPermutation.sequenceFin (funext fun j => ?_))
   by_cases hj : j ∈ D.1
   · simp only [hj, if_true]
   · simp only [hj, if_false, worldRoles]
@@ -183,7 +183,7 @@ theorem realExecution_frand2 (D : C.Coalition) (A : Adversary C E I Unit (Shares
   obtain ⟨i0, hi0⟩ := exists_honest D
   simp only [realExecution, executePhase, startSteps]
   rw [sequenceFin_congr_pure _ (fun i => if i ∈ D.1 then Step.done none else Step.call (callIn i (x i)) (resume i (x i)))
-    (fun i => by split_ifs <;> simp [worldRoles, h1, free]; rfl)]
+    (fun i => by split_ifs <;> simp [worldRoles, h1, free])]
   simp only [pure_bind]
   show counted _ >>= _ = counted _ >>= _
   congr 1; funext st
@@ -239,27 +239,27 @@ theorem advance_exchange {ι : Type} {G : OracleSpec ι} {α : Type} (outbox : M
 
 theorem evalDist_sum_uniform {D R : Type} [Fintype D] [DecidableEq D] [AddCommGroup R]
     [SampleableType R] [SampleableType (D → R)] (T0 : D) :
-    𝒟[((fun f => ∑ T, f T) <$> ($ᵗ (D → R)) : ProbComp R)] = 𝒟[$ᵗ R] := by
-  have hu := evalDist_uniformSample_bind_update (D := D) (R := R) T0
-  rw [evalDist_map, ← hu, ← evalDist_map]
-  simp only [map_bind, map_pure]
+    ((fun f => ∑ T, f T) <$> ($ᵗ (D → R)) : ProbComp R) =ᵈ $ᵗ R := by
+  have hu : (do let u ← $ᵗ R; let g ← $ᵗ (D → R); pure (∑ T, Function.update g T0 u T) : ProbComp R) =ᵈ
+      ($ᵗ (D → R) >>= fun g => pure (∑ T, g T)) := by
+    let : MeasurableSpace R := ⊤
+    exact EvalDistEq.of_evalDist_eq (evalDist_bind_bind_update ($ᵗ R) ($ᵗ (D → R))
+      SampleableType.evalDist_uniformSample SampleableType.evalDist_uniformSample T0 fun g => pure (∑ T, g T))
+  rw [map_eq_bind_pure_comp]
+  refine hu.symm.trans ?_
   have hs : ∀ (u : R) (g : D → R), ∑ T, Function.update g T0 u T = u + ∑ T ∈ Finset.univ.erase T0, g T := by
     intro u g
     rw [← Finset.add_sum_erase _ _ (Finset.mem_univ T0), Function.update_self]
     congr 1
     exact Finset.sum_congr rfl fun T hT => Function.update_of_ne (Finset.ne_of_mem_erase hT) _ _
   simp only [hs]
-  rw [evalDist_bind_bind_swap]
-  have : ∀ g : D → R, 𝒟[(do let u ← $ᵗ R; pure (u + ∑ T ∈ Finset.univ.erase T0, g T) : ProbComp R)] = 𝒟[$ᵗ R] := by
+  refine (OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans ?_
+  have : ∀ g : D → R, (do let u ← $ᵗ R; pure (u + ∑ T ∈ Finset.univ.erase T0, g T) : ProbComp R) =ᵈ $ᵗ R := by
     intro g
     rw [show (do let u ← $ᵗ R; pure (u + ∑ T ∈ Finset.univ.erase T0, g T) : ProbComp R) =
       ((· + ∑ T ∈ Finset.univ.erase T0, g T) <$> ($ᵗ R)) from by simp [map_eq_bind_pure_comp]]
-    exact evalDist_add_right_uniform R _
-  rw [evalDist_bind]
-  simp only [this]
-  rw [← evalDist_bind]
-  refine evalDist_ext fun y => ?_
-  rw [probOutput_bind_const, probFailure_uniformSample, tsub_zero, one_mul]
+    exact SampleableType.map_uniformSample_evalDistEq_of_bijective (AddGroup.addRight_bijective _)
+  exact (EvalDistEq.bind_right _ this).trans (OracleComp.EvalDistEq.bind_const _ _)
 section Field
 variable [Field E] [Algebra Bit E]
 open Polynomial
@@ -327,7 +327,9 @@ theorem openSh_eq {ι : Type} {G : OracleSpec ι} (K : Constants C E) (ctx : Con
   unfold openSh openRes require
   refine congrArg (_ >>= ·) (funext fun inbox => ?_)
   dsimp only [openShare]
-  split <;> rfl
+  split <;> rename_i h
+  · erw [if_pos h]; rfl
+  · erw [if_neg h]; rfl
 
 theorem coinWith_run' {ι : Type} {G : OracleSpec ι} (K : Constants C E) (ctx : Context C) (o : PrssOutput C E) (c : ℕ) :
     (coinWith (G := G) K ctx o c).run' startRun = exchange (openOut ctx.self (conv K ctx o.1) c) >>= fun inbox =>
@@ -380,9 +382,9 @@ variable (prims : Primitives)
 
 /-- Two computations with the same distribution in the world from every cache. -/
 def WEq {α : Type} (oa ob : OracleComp (WorldSpec C) α) : Prop :=
-  ∀ s, 𝒟[(simulateQ (world prims) oa).run.run s] = 𝒟[(simulateQ (world prims) ob).run.run s]
+  ∀ s, (simulateQ (world prims) oa).run.run s =ᵈ (simulateQ (world prims) ob).run.run s
 
-theorem WEq.refl {α : Type} (oa : OracleComp (WorldSpec C) α) : WEq prims oa oa := fun _ => rfl
+theorem WEq.refl {α : Type} (oa : OracleComp (WorldSpec C) α) : WEq prims oa oa := fun _ => .rfl
 
 theorem WEq.trans {α : Type} {oa ob oc : OracleComp (WorldSpec C) α} (h1 : WEq prims oa ob) (h2 : WEq prims ob oc) :
     WEq prims oa oc := fun s => (h1 s).trans (h2 s)
@@ -400,13 +402,13 @@ theorem world_run_bind {α β : Type} (oa : OracleComp (WorldSpec C) α) (k : α
 
 theorem WEq.bind_left {α β : Type} {oa ob : OracleComp (WorldSpec C) α} (h : WEq prims oa ob)
     (k : α → OracleComp (WorldSpec C) β) : WEq prims (oa >>= k) (ob >>= k) := fun s => by
-  rw [world_run_bind, world_run_bind, evalDist_bind, evalDist_bind, h s]
+  rw [world_run_bind, world_run_bind]
+  exact (h s).bind_left _
 
 theorem WEq.bind_right {α β : Type} (oa : OracleComp (WorldSpec C) α) {k k' : α → OracleComp (WorldSpec C) β}
     (h : ∀ a, WEq prims (k a) (k' a)) : WEq prims (oa >>= k) (oa >>= k') := fun s => by
-  rw [world_run_bind, world_run_bind, evalDist_bind, evalDist_bind]
-  congr 1; funext p
-  rw [evalDist_map, evalDist_map, h p.1.1 p.2]
+  rw [world_run_bind, world_run_bind]
+  exact EvalDistEq.bind_right _ fun p => (h p.1.1 p.2).map _
 
 theorem WEq.of_eq {α : Type} {oa ob : OracleComp (WorldSpec C) α} (h : oa = ob) : WEq prims oa ob := h ▸ WEq.refl _ _
 
@@ -425,7 +427,7 @@ theorem WEq.free_swap {α β γ : Type} (p : ProbComp α) (ob : OracleComp (Worl
       (ob >>= fun b => free (liftComp p (LocalSpec C)) >>= fun a => k a b) := fun s => by
   rw [world_run_free_bind, world_run_bind]
   simp only [world_run_bind, world_free_liftComp, bind_map_left, one_mul, Functor.map_map, map_bind]
-  rw [evalDist_bind_bind_swap]
+  exact OracleComp.EvalDistEq.bind_bind_swap _ _ _
 
 /-- A sample on the counted copy is a free sample. -/
 theorem WEq.counted_sample {α : Type} (p : ProbComp α) :
@@ -433,9 +435,10 @@ theorem WEq.counted_sample {α : Type} (p : ProbComp α) :
   fun s => by rw [world_counted_liftComp, world_free_liftComp]
 
 /-- Free samples with the same distribution. -/
-theorem WEq.free_dist {α β : Type} (p p' : ProbComp α) (h : 𝒟[p] = 𝒟[p']) (k : α → OracleComp (WorldSpec C) β) :
+theorem WEq.free_dist {α β : Type} (p p' : ProbComp α) (h : p =ᵈ p') (k : α → OracleComp (WorldSpec C) β) :
     WEq prims (free (liftComp p (LocalSpec C)) >>= k) (free (liftComp p' (LocalSpec C)) >>= k) := fun s => by
-  rw [world_run_free_bind, world_run_free_bind, evalDist_bind, evalDist_bind, h]
+  rw [world_run_free_bind, world_run_free_bind]
+  exact h.bind_left _
 
 theorem free_liftComp_merge {α β γ : Type} (p : ProbComp α) (q : ProbComp β) (k : α → β → OracleComp (WorldSpec C) γ) :
     (free (liftComp p (LocalSpec C)) >>= fun a => free (liftComp q (LocalSpec C)) >>= k a) =
@@ -447,7 +450,7 @@ theorem accepts_eq_of_WEq {oa ob : OracleComp (WorldSpec C) Bool} (h : WEq prims
     accepts prims oa = accepts prims ob := by
   unfold accepts runWorld
   rw [StateT.run'_eq, StateT.run'_eq]
-  erw [probEvent_map, probEvent_map, probEvent_def, probEvent_def, h ∅]
+  exact congrArg ENNReal.toReal (((h ∅).map _).prEvent_eq _)
 
 theorem CostLe.counted_sample {α : Type} (p : ProbComp α) :
     CostLe prims (counted (C := C) (liftComp (liftComp p (LocalSpec C)) (SimulatorSpec C))) 0 := fun s r hr => by
@@ -510,7 +513,7 @@ theorem idealExecution_Fcoin {κ σ : Type} {S : OracleSpec κ}
       pure (out, fun i => if i ∉ D.1 ∧ i ∈ a.2 then some (List.ofFn values) else none)) := by
   intro c
   unfold idealExecution
-  simp only [Fcoin, sample, simulateQ_bind, simulateQ_leak_add]
+  simp only [Fcoin, sample, simulateQ_bind, QueryImpl.add_eq_hAdd, simulateQ_leak_add]
   rw [simulateQ_liftComp_prob _ (fun _ => rfl) ($ᵗ _)]
   simp [StateT.run_bind]
   rfl
@@ -609,9 +612,8 @@ def someTerm (C : Committee) : C.Term :=
     rw [Fin.card_filter_val_lt]; simp only [Committee.n]; omega⟩
 
 theorem evalDist_uniform_bind_const {α β : Type} [SampleableType α] (mx : ProbComp β) :
-    𝒟[($ᵗ α >>= fun _ => mx : ProbComp β)] = 𝒟[mx] := by
-  refine evalDist_ext fun y => ?_
-  rw [probOutput_bind_const, probFailure_uniformSample, tsub_zero, one_mul]
+    ($ᵗ α >>= fun _ => mx : ProbComp β) =ᵈ mx :=
+  OracleComp.EvalDistEq.bind_const _ _
 
 theorem counted_pure {α : Type} (a : α) : counted (C := C) (pure a) = pure a := rfl
 
@@ -639,7 +641,7 @@ theorem eval_interpolate_first (K : Constants C E) (share : C.Party → E) (x : 
   exact Finset.sum_congr rfl fun l _ => mul_comm _ _
 
 theorem card_honest_ge (D : C.Coalition) : C.t ≤ (Finset.univ.filter fun j : C.Party => j ∉ D.1).card := by
-  have h := Finset.filter_card_add_filter_neg_card_eq_card (s := Finset.univ) (fun j : C.Party => j ∈ D.1)
+  have h := Finset.card_filter_add_card_filter_not (s := Finset.univ) (fun j : C.Party => j ∈ D.1)
   have hD : (Finset.univ.filter fun j : C.Party => j ∈ D.1).card = D.1.card := by
     congr 1; ext j; simp
   have := D.2; have := C.one_le_t
@@ -770,25 +772,25 @@ theorem adjust_eq_update (D : C.Coalition) {n : ℕ} (known : Shares C E) (fresh
 /-- The simulated fresh terms are uniform. -/
 theorem dist_adjust [SampleableType E] (D : C.Coalition) (known : Shares C E) {n : ℕ} {γ : Type}
     (f : (C.Term → Fin n → E) → ProbComp γ) :
-    𝒟[do let v ← $ᵗ (Fin n → E); let fresh' ← $ᵗ (C.Term → Fin n → E); f (adjust D known fresh' v)] =
-      𝒟[$ᵗ (C.Term → Fin n → E) >>= f] := by
+    (do let v ← $ᵗ (Fin n → E); let fresh' ← $ᵗ (C.Term → Fin n → E); f (adjust D known fresh' v)) =ᵈ
+      ($ᵗ (C.Term → Fin n → E) >>= f) := by
   obtain ⟨T0, hT0, -⟩ := lackedTerm_spec D
   simp only [adjust_eq_update D known _ _ T0 hT0]
-  rw [evalDist_bind_bind_swap]
+  refine (OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans ?_
   have hshift : ∀ fresh' : C.Term → Fin n → E,
-      𝒟[do let v ← $ᵗ (Fin n → E); f (Function.update fresh' T0 (v - fun g : Fin n => ∑ T' ∈ Finset.univ.erase T0,
-        (if KnownTo D.1 T' then known T' g else fresh' T' g)))] =
-      𝒟[do let u ← $ᵗ (Fin n → E); f (Function.update fresh' T0 u)] := fun fresh' => by
-    refine evalDist_ext fun z => ?_
+      (do let v ← $ᵗ (Fin n → E); f (Function.update fresh' T0 (v - fun g : Fin n => ∑ T' ∈ Finset.univ.erase T0,
+        (if KnownTo D.1 T' then known T' g else fresh' T' g)))) =ᵈ
+      (do let u ← $ᵗ (Fin n → E); f (Function.update fresh' T0 u)) := fun fresh' => by
     simp only [sub_eq_add_neg]
-    exact probOutput_bind_add_right_uniform (Fin n → E) _ (fun u => f (Function.update fresh' T0 u)) z
-  rw [evalDist_bind]; simp only [hshift]; rw [← evalDist_bind]
-  rw [evalDist_bind_bind_swap]
-  have hu := evalDist_uniformSample_bind_update (D := C.Term) (R := Fin n → E) T0
-  rw [show (do let u ← $ᵗ (Fin n → E); let fresh' ← $ᵗ (C.Term → Fin n → E); f (Function.update fresh' T0 u)) =
-      (do let u ← $ᵗ (Fin n → E); let fresh' ← $ᵗ (C.Term → Fin n → E); pure (Function.update fresh' T0 u)) >>= f by
-    simp [bind_assoc]]
-  rw [evalDist_bind, hu, ← evalDist_bind]
+    have h := (SampleableType.map_uniformSample_evalDistEq_of_bijective (AddGroup.addRight_bijective
+      (-fun g : Fin n => ∑ T' ∈ Finset.univ.erase T0, (if KnownTo D.1 T' then known T' g else fresh' T' g)))).bind_left
+      fun u : Fin n → E => f (Function.update fresh' T0 u)
+    rwa [bind_map_left] at h
+  refine (EvalDistEq.bind_right _ hshift).trans ((OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans ?_)
+  let : MeasurableSpace (Fin n → E) := ⊤
+  let : MeasurableSpace γ := ⊤
+  exact EvalDistEq.of_evalDist_eq (evalDist_bind_bind_update ($ᵗ (Fin n → E)) ($ᵗ (C.Term → Fin n → E))
+    SampleableType.evalDist_uniformSample SampleableType.evalDist_uniformSample T0 f)
 
 end CoinSim
 
@@ -809,18 +811,17 @@ theorem coinCompleteness (prims : Primitives) (K : Constants C E) [SampleableTyp
   have hD : ∀ k : C.Party, k ∉ (noCoalition : C.Coalition).1 := fun k => by simp [noCoalition]
   simp only [runWorld_free_bind, runWorld_pure, hD, if_false, not_false_eq_true, true_and,
     Finset.mem_univ, map_bind, map_pure, coinRes_honest', if_true]
-  refine le_of_eq ((tvDist_eq_zero_iff _ _).2 ?_)
+  let : MeasurableSpace (C.Party → Option (List E)) := ⊤
+  refine le_of_eq ((measureTVDist_eq_zero_iff _ _).2 (EvalDistEq.evalDist_eq ?_))
   have hsum : ∀ a : C.Term → Fin c' → E, (List.ofFn fun g => ∑ T, a T g) = List.ofFn (∑ T, a T) := fun a => by
     congr 1; funext g; rw [Finset.sum_apply]
   simp only [hsum]
-  rw [evalDist_bind]
-  simp only [evalDist_uniform_bind_const]
-  rw [← evalDist_bind]
+  refine (EvalDistEq.bind_right _ fun a => evalDist_uniform_bind_const _).trans ?_
   rw [show ($ᵗ (C.Term → Fin c' → E) >>= fun a => pure fun _ => some (List.ofFn (∑ T, a T)) :
       ProbComp (C.Party → Option (List E))) =
       (fun v => fun _ => some (List.ofFn v)) <$> ((fun f => ∑ T, f T) <$> ($ᵗ (C.Term → Fin c' → E))) by
     simp [map_eq_bind_pure_comp]]
-  rw [evalDist_map, evalDist_sum_uniform (someTerm C), ← evalDist_map]
+  refine ((evalDist_sum_uniform (someTerm C)).map _).trans ?_
   simp [map_eq_bind_pure_comp]
 
 end CoinClaims
@@ -1002,14 +1003,14 @@ theorem accepts_const {α : Type} (prims : Primitives) (oa : OracleComp (WorldSp
     accepts prims (oa >>= fun _ => pure b) = if b then 1 else 0 := by
   unfold accepts runWorld
   rw [StateT.run'_eq]
-  erw [probEvent_map]
+  erw [prEvent_map]
   cases b
   · simp only [Bool.false_eq_true, if_false]
-    rw [probEvent_eq_zero fun r hr => by
+    rw [prEvent_eq_zero_of_forall_mem_support _ _ fun r hr => by
       simp [world_support_const prims oa false ∅ r hr]]
     rfl
   · simp only [if_true]
-    rw [(probEvent_eq_one_iff).2 ⟨by simp, fun r hr => by simp [world_support_const prims oa true ∅ r hr]⟩]
+    rw [(OracleComp.prEvent_eq_one_iff _ _).2 fun r hr => by simp [world_support_const prims oa true ∅ r hr]]
     rfl
 
 section MultPeer
@@ -1162,7 +1163,8 @@ theorem multPeer_of_coupling (prims : Primitives) (K : Constants C E) (h : MultP
   · obtain ⟨start, step, final, hsum, hs, hr, ha, hz⟩ := hq
     apply hasHashQueryBound_of_costLe
     unfold distinguish idealExecution
-    simp only [FmultBit, Fmult, sample, simulateQ_bind, simulateQ_leak_add, simulateQ_pure, bind_assoc]
+    simp only [FmultBit, Fmult, sample, simulateQ_bind, QueryImpl.add_eq_hAdd, simulateQ_leak_add, simulateQ_pure,
+      bind_assoc]
     rw [simulateQ_liftComp_prob _ (fun _ => rfl) ($ᵗ _)]
     simp only [StateT.run_bind, StateT.run_pure, StateT.run_lift, StateT.run_mk, bind_assoc, pure_bind, worldRoles,
       liftComp_pure, counted_pure, map_bind, bind_map_left]
@@ -1203,7 +1205,8 @@ theorem extendMult_of_coupling (prims : Primitives) (K : Constants C E) (h : Ext
     simp only [coinRounds, extendMultRounds, multRounds] at hsum
     apply hasHashQueryBound_of_costLe
     unfold distinguish idealExecution
-    simp only [FextendMult, Fmult, sample, simulateQ_bind, simulateQ_leak_add, simulateQ_pure, bind_assoc]
+    simp only [FextendMult, Fmult, sample, simulateQ_bind, QueryImpl.add_eq_hAdd, simulateQ_leak_add, simulateQ_pure,
+      bind_assoc]
     rw [simulateQ_liftComp_prob _ (fun _ => rfl) ($ᵗ _)]
     simp only [StateT.run_bind, StateT.run_pure, StateT.run_lift, StateT.run_mk, bind_assoc, pure_bind, worldRoles,
       liftComp_pure, counted_pure, map_bind, bind_map_left]
@@ -1223,31 +1226,33 @@ end ExtendMultClaim
 section ShiftDist
 
 theorem evalDist_bind_add_uniform {α β : Type} [AddGroup α] [SampleableType α] (m : α) (f : α → ProbComp β) :
-    𝒟[(do let y ← $ᵗ α; f (y + m))] = 𝒟[(do let y ← $ᵗ α; f y)] :=
-  evalDist_ext fun z => probOutput_bind_add_right_uniform α m f z
+    (do let y ← $ᵗ α; f (y + m)) =ᵈ (do let y ← $ᵗ α; f y) := by
+  have h := (SampleableType.map_uniformSample_evalDistEq_of_bijective (AddGroup.addRight_bijective m)).bind_left f
+  rwa [bind_map_left] at h
 
-theorem evalDist_bind_congr_all {α β : Type} (mx : ProbComp α) {f g : α → ProbComp β} (h : ∀ a, 𝒟[f a] = 𝒟[g a]) :
-    𝒟[mx >>= f] = 𝒟[mx >>= g] := by
-  rw [evalDist_bind, evalDist_bind]; congr 1; funext a; exact h a
+theorem evalDist_bind_congr_all {α β : Type} (mx : ProbComp α) {f g : α → ProbComp β} (h : ∀ a, f a =ᵈ g a) :
+    (mx >>= f) =ᵈ (mx >>= g) :=
+  EvalDistEq.bind_right mx h
 
 /-- A translation `τ w` of two uniform samples, averaged over a uniform `w`, moves a third sample by `W0`. -/
 theorem evalDist_shift {α β γ δ : Type} [AddGroup α] [AddGroup β] [AddGroup γ]
     [SampleableType α] [SampleableType β] [SampleableType γ]
     (F : α → β → ProbComp δ) (G : α → β → γ → ProbComp δ) (τ : γ → α × β) (W0 : α → β → γ)
     (h : ∀ w x y, F (x + (τ w).1) (y + (τ w).2) = G x y (w + W0 x y)) :
-    𝒟[do let x ← $ᵗ α; let y ← $ᵗ β; F x y] = 𝒟[do let x ← $ᵗ α; let y ← $ᵗ β; let w ← $ᵗ γ; G x y w] := by
-  have h1 : ∀ w, 𝒟[do let x ← $ᵗ α; let y ← $ᵗ β; F x y] =
-      𝒟[do let x ← $ᵗ α; let y ← $ᵗ β; G x y (w + W0 x y)] := fun w => by
+    (do let x ← $ᵗ α; let y ← $ᵗ β; F x y) =ᵈ (do let x ← $ᵗ α; let y ← $ᵗ β; let w ← $ᵗ γ; G x y w) := by
+  have h1 : ∀ w, (do let x ← $ᵗ α; let y ← $ᵗ β; F x y) =ᵈ
+      (do let x ← $ᵗ α; let y ← $ᵗ β; G x y (w + W0 x y)) := fun w => by
     simp only [← h w]
-    rw [evalDist_bind_add_uniform (τ w).1 (fun x => do let y ← $ᵗ β; F x (y + (τ w).2))]
-    exact evalDist_bind_congr_all _ fun x => (evalDist_bind_add_uniform (τ w).2 (F x)).symm
-  calc 𝒟[do let x ← $ᵗ α; let y ← $ᵗ β; F x y]
-      = 𝒟[do let w ← $ᵗ γ; let x ← $ᵗ α; let y ← $ᵗ β; F x y] := (evalDist_uniform_bind_const _).symm
-    _ = 𝒟[do let w ← $ᵗ γ; let x ← $ᵗ α; let y ← $ᵗ β; G x y (w + W0 x y)] := evalDist_bind_congr_all _ h1
-    _ = 𝒟[do let x ← $ᵗ α; let y ← $ᵗ β; let w ← $ᵗ γ; G x y (w + W0 x y)] := by
-        rw [evalDist_bind_bind_swap]
-        exact evalDist_bind_congr_all _ fun x => evalDist_bind_bind_swap _ _ _
-    _ = 𝒟[do let x ← $ᵗ α; let y ← $ᵗ β; let w ← $ᵗ γ; G x y w] :=
+    exact (evalDist_bind_congr_all _ fun x => (evalDist_bind_add_uniform (τ w).2 (F x)).symm).trans
+      (evalDist_bind_add_uniform (τ w).1 (fun x => do let y ← $ᵗ β; F x (y + (τ w).2))).symm
+  calc (do let x ← $ᵗ α; let y ← $ᵗ β; F x y : ProbComp δ)
+      =ᵈ (do let w ← $ᵗ γ; let x ← $ᵗ α; let y ← $ᵗ β; F x y : ProbComp δ) := (evalDist_uniform_bind_const _).symm
+    _ =ᵈ (do let w ← $ᵗ γ; let x ← $ᵗ α; let y ← $ᵗ β; G x y (w + W0 x y) : ProbComp δ) :=
+        evalDist_bind_congr_all _ h1
+    _ =ᵈ (do let x ← $ᵗ α; let y ← $ᵗ β; let w ← $ᵗ γ; G x y (w + W0 x y) : ProbComp δ) :=
+        (OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans
+          (evalDist_bind_congr_all _ fun x => OracleComp.EvalDistEq.bind_bind_swap _ _ _)
+    _ =ᵈ (do let x ← $ᵗ α; let y ← $ᵗ β; let w ← $ᵗ γ; G x y w : ProbComp δ) :=
         evalDist_bind_congr_all _ fun x => evalDist_bind_congr_all _ fun y => evalDist_bind_add_uniform (W0 x y) (G x y)
 
 end ShiftDist
@@ -1324,9 +1329,12 @@ theorem reshareZ_frandShare (K : Constants C E) (D : C.Coalition) {c : ℕ} (cod
   intro rnd
   unfold reshareZ termVal
   simp only [localContext]
-  split_ifs with h1 h2
-  · rfl
-  · push Not at h1
+  by_cases h1 : i ∉ C.holders T ∨ c ≤ g
+  · erw [if_pos h1, if_pos h1]
+  erw [if_neg h1, if_neg h1]
+  by_cases h2 : T ∈ filledTerms K
+  · erw [if_pos h2, if_pos h2]
+    push Not at h1
     refine Finset.sum_congr rfl fun j hj => ?_
     have hjT := (Finset.mem_filter.mp hj).2
     by_cases hji : j = i
@@ -1337,7 +1345,8 @@ theorem reshareZ_frandShare (K : Constants C E) (D : C.Coalition) {c : ℕ} (cod
       · simp only [hjD, if_false, reshareOut, localContext]
         rw [if_pos ⟨Ne.symm hji, hjT ▸ h1.1⟩, (hcodec _ g).1, vector_getD _ _ g h1.2]
         exact reshareU_frandShare K D known knownPairs fresh freshPair v j g
-  · push Not at h1
+  · erw [if_neg h2, if_neg h2]
+    push Not at h1
     exact frandShare_fst D known knownPairs fresh freshPair i T g h1.1
 
 /-- An honest inbox of a peer reshare aborts only on an abort frame of a corrupt operator. -/
@@ -1556,7 +1565,7 @@ theorem idealExecution_Fmult {In Lk σ : Type} [Inhabited In] (D : C.Coalition) 
       pure (out, fmultOut D count filled share inputs ans.2 fresh)) := by
   intro inputs
   unfold idealExecution
-  simp only [Fmult, sample, simulateQ_bind, simulateQ_leak_add]
+  simp only [Fmult, sample, simulateQ_bind, QueryImpl.add_eq_hAdd, simulateQ_leak_add]
   rw [simulateQ_liftComp_prob _ (fun _ => rfl) ($ᵗ _)]
   simp only [StateT.run_bind, StateT.run_pure, StateT.run_lift, StateT.run_mk, bind_assoc, pure_bind, worldRoles,
     map_bind, bind_map_left]
@@ -2372,7 +2381,7 @@ theorem executeRounds_round {Ih Oh Lh Rh α : Type} (D : C.Coalition) (A : Adver
       (do
         let b ← counted (liftComp (A.round st fun c' i => if c' ∈ D.1 ∧ i ∉ D.1 ∧ ¬ ab i then o i c' else none)
           (SimulatorSpec C))
-        let steps ← Concrete.sequenceFin fun j => if j ∈ D.1 ∨ ab j then pure (Step.done none) else
+        let steps ← OverPermutation.sequenceFin fun j => if j ∈ D.1 ∨ ab j then pure (Step.done none) else
           free (advance (k j fun k' => if k' ∈ D.1 then b.2 k' j else if ab k' then some .abort else o k' j))
         executeRounds worldRoles D A F n b.1 steps) := by
   obtain ⟨i0, hi0, hab0⟩ := h
@@ -2386,7 +2395,7 @@ theorem executeRounds_round {Ih Oh Lh Rh α : Type} (D : C.Coalition) (A : Adver
     by_cases h1 : c' ∈ D.1 <;> by_cases h2 : i ∈ D.1 <;> by_cases h3 : ab i <;> simp [h1, h2, h3, Step.outbox]
   rw [hm]
   refine bind_congr' _ fun b => ?_
-  refine congrArg (· >>= _) (congrArg Concrete.sequenceFin (funext fun j => ?_))
+  refine congrArg (· >>= _) (congrArg OverPermutation.sequenceFin (funext fun j => ?_))
   by_cases hj : j ∈ D.1
   · simp only [hj, true_or, if_true]
   by_cases hab : ab j
@@ -2436,7 +2445,7 @@ theorem realExecution_frand3 (D : C.Coalition) (A : Adversary C E I Unit (Shares
   obtain ⟨i0, hi0⟩ := exists_honest D
   simp only [realExecution, executePhase, startSteps]
   rw [sequenceFin_congr_pure _ (fun i => if i ∈ D.1 then Step.done none else Step.call (callIn i (x i)) (resume i (x i)))
-    (fun i => by split_ifs <;> simp [worldRoles, h1, free]; rfl)]
+    (fun i => by split_ifs <;> simp [worldRoles, h1, free])]
   simp only [pure_bind]
   show counted _ >>= _ = counted _ >>= _
   congr 1; funext st
@@ -3338,19 +3347,19 @@ theorem evalDist_shift2 {α β γ δ : Type} [AddGroup α] [AddGroup β] [AddGro
     [SampleableType α] [SampleableType β] [SampleableType γ]
     (F : α → β → ProbComp δ) (G H : α → β → γ → ProbComp δ) (τ : γ → α × β)
     (h : ∀ w x y, F (x + (τ w).1) (y + (τ w).2) = H x y w)
-    (h' : ∀ x y, 𝒟[do let w ← $ᵗ γ; H x y w] = 𝒟[do let w ← $ᵗ γ; G x y w]) :
-    𝒟[do let x ← $ᵗ α; let y ← $ᵗ β; F x y] = 𝒟[do let x ← $ᵗ α; let y ← $ᵗ β; let w ← $ᵗ γ; G x y w] := by
-  have h1 : ∀ w, 𝒟[do let x ← $ᵗ α; let y ← $ᵗ β; F x y] = 𝒟[do let x ← $ᵗ α; let y ← $ᵗ β; H x y w] := fun w => by
+    (h' : ∀ x y, (do let w ← $ᵗ γ; H x y w) =ᵈ (do let w ← $ᵗ γ; G x y w)) :
+    (do let x ← $ᵗ α; let y ← $ᵗ β; F x y) =ᵈ (do let x ← $ᵗ α; let y ← $ᵗ β; let w ← $ᵗ γ; G x y w) := by
+  have h1 : ∀ w, (do let x ← $ᵗ α; let y ← $ᵗ β; F x y) =ᵈ (do let x ← $ᵗ α; let y ← $ᵗ β; H x y w) := fun w => by
     simp only [← h w]
-    rw [evalDist_bind_add_uniform (τ w).1 (fun x => do let y ← $ᵗ β; F x (y + (τ w).2))]
-    exact evalDist_bind_congr_all _ fun x => (evalDist_bind_add_uniform (τ w).2 (F x)).symm
-  calc 𝒟[do let x ← $ᵗ α; let y ← $ᵗ β; F x y]
-      = 𝒟[do let w ← $ᵗ γ; let x ← $ᵗ α; let y ← $ᵗ β; F x y] := (evalDist_uniform_bind_const _).symm
-    _ = 𝒟[do let w ← $ᵗ γ; let x ← $ᵗ α; let y ← $ᵗ β; H x y w] := evalDist_bind_congr_all _ h1
-    _ = 𝒟[do let x ← $ᵗ α; let y ← $ᵗ β; let w ← $ᵗ γ; H x y w] := by
-        rw [evalDist_bind_bind_swap]
-        exact evalDist_bind_congr_all _ fun x => evalDist_bind_bind_swap _ _ _
-    _ = _ := evalDist_bind_congr_all _ fun x => evalDist_bind_congr_all _ fun y => h' x y
+    exact (evalDist_bind_congr_all _ fun x => (evalDist_bind_add_uniform (τ w).2 (F x)).symm).trans
+      (evalDist_bind_add_uniform (τ w).1 (fun x => do let y ← $ᵗ β; F x (y + (τ w).2))).symm
+  calc (do let x ← $ᵗ α; let y ← $ᵗ β; F x y : ProbComp δ)
+      =ᵈ (do let w ← $ᵗ γ; let x ← $ᵗ α; let y ← $ᵗ β; F x y : ProbComp δ) := (evalDist_uniform_bind_const _).symm
+    _ =ᵈ (do let w ← $ᵗ γ; let x ← $ᵗ α; let y ← $ᵗ β; H x y w : ProbComp δ) := evalDist_bind_congr_all _ h1
+    _ =ᵈ (do let x ← $ᵗ α; let y ← $ᵗ β; let w ← $ᵗ γ; H x y w : ProbComp δ) :=
+        (OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans
+          (evalDist_bind_congr_all _ fun x => OracleComp.EvalDistEq.bind_bind_swap _ _ _)
+    _ =ᵈ _ := evalDist_bind_congr_all _ fun x => evalDist_bind_congr_all _ fun y => h' x y
 
 /-- A translation of a free sample by a value that a later step fixes keeps the distribution. -/
 theorem WEq.shift_after (prims : Primitives) {β γ δ : Type} [AddGroup γ] [SampleableType γ]

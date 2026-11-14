@@ -34,7 +34,7 @@ The calls of `KeyGen` count in `q` and are never bad, so they pay the lower-orde
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -79,7 +79,7 @@ def HitLaneBound (prims : Primitives) (C : Committee) : Prop :=
   ∀ (A : TsigAdversary C) (q : ℕ) (x : SigningSecurityProof.Keys3 C), x ∈ support (TprfSecurityProof.keyGen3 (C := C)) →
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
     (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) → q < 2 ^ 127 →
-    Pr[WinHit prims x | exposedRun prims A x] ≤ (q : ℝ≥0∞) / 2 ^ 128
+    Pr{let z ← exposedRun prims A x}[WinHit prims x z] ≤ (q : ℝ≥0∞) / 2 ^ 128
 
 /-- The guess and partner lane (step 5 of the plan). A win with a guess or a partner costs
 `2^-128` for each call. -/
@@ -87,32 +87,32 @@ def GuessPartnerLaneBound (prims : Primitives) (C : Committee) : Prop :=
   ∀ (A : TsigAdversary C) (q : ℕ) (x : SigningSecurityProof.Keys3 C), x ∈ support (TprfSecurityProof.keyGen3 (C := C)) →
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
     (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) → q < 2 ^ 127 →
-    Pr[WinGuessPartner prims x | exposedRun prims A x] ≤ (q : ℝ≥0∞) / 2 ^ 128
+    Pr{let z ← exposedRun prims A x}[WinGuessPartner prims x z] ≤ (q : ℝ≥0∞) / 2 ^ 128
 
 /-! ## The unit of a call -/
 
 /-- A fresh call of `H` truncates to a fixed digest with probability `2^-128`, as
 `XmssSecurity.Rom.uniform_truncate_probability`. -/
 theorem fresh_truncate_le (q : Query C) (s : HashCache C) (hs : s q = none) (d : Digest) :
-    Pr[fun p => truncateHash p.1 = d | ((Query C →ₒ HashOutput).randomOracle q).run s] ≤
+    Pr{let p ← ((Query C →ₒ HashOutput).randomOracle q).run s}[truncateHash p.1 = d] ≤
       ((2 ^ XmssSecurity.digestBits : ℕ) : ℝ≥0∞)⁻¹ := by
-  rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ hs, probEvent_map]
+  rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ hs, prEvent_map]
   exact (XmssSecurity.Rom.uniform_truncate_probability d).le
 
 /-- A fresh call of `H` on the free copy of the signing world costs `2^-128` for a fixed digest. -/
 theorem free_fresh_truncate_le (q : Query C) (s : HashCache C × ℕ) (hs : s.1 q = none) (d : Digest) :
-    Pr[fun z => truncateHash z.1 = d | (countImpl prims (.inr (.inr (.inl q)))).run s] ≤
+    Pr{let z ← (countImpl prims (.inr (.inr (.inl q)))).run s}[truncateHash z.1 = d] ≤
       ((2 ^ XmssSecurity.digestBits : ℕ) : ℝ≥0∞)⁻¹ := by
   simp only [countImpl, SeedHitProof.withCount, StateT.run_mk]
-  rw [probEvent_map]
+  rw [prEvent_map]
   exact fresh_truncate_le q s.1 hs d
 
 /-- A fresh call of `H` on the counted copy of the signing world costs `2^-128` for a fixed digest. -/
 theorem counted_fresh_truncate_le (q : Query C) (s : HashCache C × ℕ) (hs : s.1 q = none) (d : Digest) :
-    Pr[fun z => truncateHash z.1 = d | (countImpl prims (.inl (.inl (.inr (.inl q))))).run s] ≤
+    Pr{let z ← (countImpl prims (.inl (.inl (.inr (.inl q))))).run s}[truncateHash z.1 = d] ≤
       ((2 ^ XmssSecurity.digestBits : ℕ) : ℝ≥0∞)⁻¹ := by
   simp only [countImpl, SeedHitProof.withCount, StateT.run_mk]
-  rw [probEvent_map]
+  rw [prEvent_map]
   exact fresh_truncate_le q s.1 hs d
 
 /-! ## The logged run -/
@@ -137,10 +137,10 @@ theorem loggedRun_forget (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C
 set_option maxRecDepth 100000 in
 /-- A win without the flag ends in a bad event on the final cache, by `signing_run_badEvent_closed`. -/
 theorem win_le_bad (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr[fun r => r.1.2 = false ∧ r.1.1 = true | runSigningWorld prims (SigningCoreProof.flaggedAfter A x)] ≤
-      Pr[WinHit prims x | exposedRun prims A x] + Pr[WinGuessPartner prims x | exposedRun prims A x] := by
-  rw [runSigningWorld_flaggedAfter, probEvent_map]
-  refine le_trans (probEvent_mono fun r hr hwin => ?_) (probEvent_or_le _ _ _)
+    Pr{let r ← runSigningWorld prims (SigningCoreProof.flaggedAfter A x)}[r.1.2 = false ∧ r.1.1 = true] ≤
+      Pr{let z ← exposedRun prims A x}[WinHit prims x z] + Pr{let z ← exposedRun prims A x}[WinGuessPartner prims x z] := by
+  rw [runSigningWorld_flaggedAfter, prEvent_map]
+  refine le_trans (prEvent_mono_of_support _ _ _ fun r hr hwin => ?_) (prEvent_or_le _ _ _)
   have hwin' : r.1.1 = (true, false) := Prod.ext hwin.2 hwin.1
   obtain ⟨top, state, forgery, hsome, hbad⟩ := signing_run_badEvent_closed prims A x r hr hwin'
   rcases hbad with h | h

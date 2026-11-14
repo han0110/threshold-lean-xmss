@@ -11,7 +11,7 @@ evaluates are fixed and never cached. The batches keep the order of the jobs. So
 randomizer search of the bottom tree.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 
 noncomputable section
 
@@ -110,7 +110,7 @@ theorem FixedR.map {α β : Type} {ob : OracleComp (RoSpec C) α} {a : α} (g : 
   exact h.bind (FixedR.pure _)
 
 theorem FixedR.oracleHash {x : HashInput} (hx : MpcInput x) :
-    FixedR prims (tweakable (C := C) (Concrete.oracleHash x)) (prims.Th x) := fun s => by
+    FixedR prims (tweakable (C := C) (Verification.oracleHashWithHash x)) (prims.Th x) := fun s => by
   rw [tweakable_oracleHash, roRun_hashQuery]
   simp [hashAnswer, hx]
 
@@ -141,27 +141,27 @@ theorem FixedTh.bind {α β : Type} {oa : OracleComp HashSpec α} {f : α → Or
   exact FixedR.bind h1 (h2 _)
 
 theorem FixedTh.oracleHash {x : HashInput} (hx : MpcInput x) :
-    FixedTh (C := C) prims (Concrete.oracleHash x : OracleComp HashSpec HashOutput) := by
+    FixedTh (C := C) prims (Verification.oracleHashWithHash x : OracleComp HashSpec HashOutput) := by
   unfold FixedTh
-  have : evalTh prims.Th (Concrete.oracleHash x : OracleComp HashSpec HashOutput) = prims.Th x := by
-    simp [evalTh, Concrete.oracleHash]
+  have : evalTh prims.Th (Verification.oracleHashWithHash x : OracleComp HashSpec HashOutput) = prims.Th x := by
+    simp [evalTh, Verification.oracleHashWithHash]
     rfl
   rw [this]
   exact FixedR.oracleHash hx
 
 theorem FixedTh.chainWalk (P : PublicParameter) (lay : Layer) (key : KeyIndex) (l : ChainIndex) (s : ℕ) :
-    ∀ n v, FixedTh (C := C) prims (Concrete.chainWalk P lay key l s n v : OracleComp HashSpec Digest)
-  | 0, v => by rw [Concrete.chainWalk]; exact FixedTh.pure v
+    ∀ n v, FixedTh (C := C) prims (Verification.chainWalkWithHash P lay key l s n v : OracleComp HashSpec Digest)
+  | 0, v => by rw [Verification.chainWalkWithHash]; exact FixedTh.pure v
   | n + 1, v => by
-    rw [Concrete.chainWalk]
+    rw [Verification.chainWalkWithHash]
     refine FixedTh.bind (FixedTh.chainWalk P lay key l s n v) fun w => ?_
     split
-    · unfold Concrete.tweakableHash
+    · unfold Verification.tweakableHashWithHash
       exact FixedTh.bind (FixedTh.oracleHash (Or.inl ⟨_, _, _, _, _, _, rfl⟩)) fun _ => FixedTh.pure _
     · exact FixedTh.pure _
 
 theorem FixedTh.commitment (P : PublicParameter) (e : KeyIndex) (ρ : Digest) :
-    FixedTh (C := C) prims (Concrete.oracleHash (commitmentInput P e ρ) : OracleComp HashSpec HashOutput) :=
+    FixedTh (C := C) prims (Verification.oracleHashWithHash (commitmentInput P e ρ) : OracleComp HashSpec HashOutput) :=
   FixedTh.oracleHash (Or.inr ⟨_, _, _, rfl⟩)
 
 /-! ## One job -/
@@ -171,14 +171,14 @@ def refCore {m : Type → Type} [Monad m] (lift : ∀ {α : Type}, OracleComp Ha
     (parameter : PublicParameter) (kind : JobKind) (values : List Digest) : m (List Bit) :=
   let value := fun k => values.getD k 0
   match kind with
-  | .chainEnd e l => bitsOfDigest <$> lift (Concrete.chainWalk parameter topLayer e l 0 3 (value 0))
+  | .chainEnd e l => bitsOfDigest <$> lift (Verification.chainWalkWithHash parameter topLayer e l 0 3 (value 0))
   | .chainRow e l => do
-      let y₁ ← lift (Concrete.chainWalk parameter bottomLayer e l 0 1 (value 0))
-      let y₂ ← lift (Concrete.chainWalk parameter bottomLayer e l 0 2 (value 0))
-      let y₃ ← lift (Concrete.chainWalk parameter bottomLayer e l 0 3 (value 0))
+      let y₁ ← lift (Verification.chainWalkWithHash parameter bottomLayer e l 0 1 (value 0))
+      let y₂ ← lift (Verification.chainWalkWithHash parameter bottomLayer e l 0 2 (value 0))
+      let y₃ ← lift (Verification.chainWalkWithHash parameter bottomLayer e l 0 3 (value 0))
       pure (bitsOfDigest (y₁ ^^^ value 1) ++ bitsOfDigest (y₂ ^^^ value 2) ++ bitsOfDigest y₃)
-  | .chainValue e l p => bitsOfDigest <$> lift (Concrete.chainWalk parameter topLayer e l 0 p.val (value 0))
-  | .commitment e => (bitsOfDigest ∘ truncateHash) <$> lift (Concrete.oracleHash (commitmentInput parameter e (value 0)))
+  | .chainValue e l p => bitsOfDigest <$> lift (Verification.chainWalkWithHash parameter topLayer e l 0 p.val (value 0))
+  | .commitment e => (bitsOfDigest ∘ truncateHash) <$> lift (Verification.oracleHashWithHash (commitmentInput parameter e (value 0)))
   | .randomizer => pure (bitsOfDigest (value 0))
 
 theorem referenceJob_eq {m : Type → Type} [Monad m] (lift : ∀ {α : Type}, OracleComp HashSpec α → m α)
@@ -371,7 +371,7 @@ def refSuccessRun (parameter : PublicParameter) (seeds : C.Term → HashOutput) 
 
 /-- The top tree never fails, and bottom tree `b` fails only when its randomizer search fails. -/
 theorem refSuccess_fail (parameter : PublicParameter) (seeds : C.Term → HashOutput) (b : Fin (2 ^ layerHeight)) :
-    Pr[fun z => z.1 = none | roRun prims (refSuccessRun parameter seeds b) ∅] ≤
+    Pr{let z ← roRun prims (refSuccessRun parameter seeds b) ∅}[z.1 = none] ≤
       (1 - codewordP) ^ randomizerAttemptLimit := by
   unfold refSuccessRun
   refine step prims _ _ _ ∅ _ noMpc_empty fun r1 s1 hle1 hn1 hd1 hp1 => ?_
@@ -413,10 +413,9 @@ theorem roRun_dealerSuccess (hc : CircuitsCompute circuits prims.Th) (hsize : 0 
   | some top => exact roRun_dealer prims circuits settings hc hsize _ _ _ _ _
 
 theorem pr_runWorld_free {α : Type} (oa : OracleComp (RoSpec C) α) (p : α → Prop) :
-    Pr[fun r => p r.1 | runWorld prims (free (liftComp oa (LocalSpec C)))] = Pr[fun z => p z.1 | roRun prims oa ∅] := by
+    Pr{let r ← runWorld prims (free (liftComp oa (LocalSpec C)))}[p r.1] = Pr{let z ← roRun prims oa ∅}[p z.1] := by
   rw [runWorld, StateT.run'_eq, world_lift_run, Functor.map_map]
-  erw [probEvent_map]
-  rfl
+  erw [prEvent_map]
 
 end Success
 

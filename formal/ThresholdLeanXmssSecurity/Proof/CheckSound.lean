@@ -5,7 +5,7 @@ set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 set_option linter.unusedSectionVars false
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss Finset
 open scoped ENNReal
 
 noncomputable section
@@ -131,7 +131,7 @@ theorem finalChallenge_effective_soundness (prims : Primitives) (K : Constants C
     (wa wb a b d q0 q2 : C.Party → E)
     (hwrong : interpolate K D.1 d 0 ≠ interpolate K D.1 a 0 * interpolate K D.1 b 0)
     (reply : E → HashCache C → ProbComp ((C.Party → Prop) × (C.Party → Mail C E))) :
-    Pr[fun out : C.Party → Option Unit => ∃ i, out i = some () |
+    Pr{let out : C.Party → Option Unit ←
       (simulateQ (localAnswer prims)
         (liftComp (challengeQuery K tag label coin) (LocalSpec C))).run cache >>= fun p =>
       match p.1 with
@@ -139,7 +139,7 @@ theorem finalChallenge_effective_soundness (prims : Primitives) (K : Constants C
       | some r => do
         let ans ← reply r p.2
         pure (finalRoundOutputs K D ans.1
-          (fun j => finalOpenVector (wa j) (wb j) (a j) (b j) (d j) (q0 j) (q2 j) r) ans.2)] ≤
+          (fun j => finalOpenVector (wa j) (wb j) (a j) (b j) (d j) (q0 j) (q2 j) r) ans.2)}[∃ i, out i = some ()] ≤
       Ks.card / 2 ^ 256 + 2 / (Fintype.card E - 2 : ℕ) := by
   apply finalChallenge_adaptive_soundness prims K tag label coin Ks cache hfresh hexpand
     (interpolate K D.1 a 0) (interpolate K D.1 b 0) (interpolate K D.1 d 0)
@@ -192,9 +192,10 @@ theorem slice_effective_card_le_two (K : Constants C E) (D : C.Coalition)
         t0 + t1 * r + t2 * r ^ 2).card ≤ 2 := by
   letI : CharP E 2 := charP_two
   simp_rw [interpolate_sliceClaim]
-  simpa only [sliceClaim, add_sub_cancel] using
-    gruen_slice_step (τ.getD (sliceBits - 1 - j) 0) (interpolate K D.1 V 0)
-      t0 t1 t2 (interpolate K D.1 q0 0 - t0) (interpolate K D.1 qInf 0 - t2) hc hwrong
+  have h := gruen_slice_step (τ.getD (sliceBits - 1 - j) 0) (interpolate K D.1 V 0)
+    t0 t1 t2 (interpolate K D.1 q0 0 - t0) (interpolate K D.1 qInf 0 - t2) hc hwrong
+  simp only [sliceClaim, add_sub_cancel] at h ⊢
+  exact h
 
 /-- GS20 Lemma 9 applies after reducing the two multiplication outputs to effective scalars. -/
 theorem halving_effective_card_le_two (K : Constants C E) (D : C.Coalition)
@@ -224,24 +225,20 @@ theorem challengeQuery_step_soundness {β : Type} (prims : Primitives) (K : Cons
     (cont : Option E × HashCache C → ProbComp β) (accept : β → Prop) (ε : ℝ≥0∞)
     (hnext : ∀ p, p ∈ support ((simulateQ (localAnswer prims)
       (liftComp (challengeQuery K tag label coin) (LocalSpec C))).run cache) →
-      (∀ r, p.1 = some r → ¬ bad r) → Pr[accept | cont p] ≤ ε) :
-    Pr[accept | (simulateQ (localAnswer prims)
-      (liftComp (challengeQuery K tag label coin) (LocalSpec C))).run cache >>= cont] ≤
+      (∀ r, p.1 = some r → ¬ bad r) → Pr{let z ← cont p}[accept z] ≤ ε) :
+    Pr{let z ← (simulateQ (localAnswer prims)
+      (liftComp (challengeQuery K tag label coin) (LocalSpec C))).run cache >>= cont}[accept z] ≤
       (Ks.card / 2 ^ 256 + m / (Fintype.card E - 2 : ℕ)) + ε := by
   have hbad := challengeQuery_mem_le_of_fresh prims K tag label coin Ks cache hfresh hexpand (univ.filter bad)
   simp only [Finset.mem_filter, Finset.mem_univ, true_and] at hbad
-  have hbad' : Pr[fun p => ∃ r, bad r ∧ p.1 = some r |
+  have hbad' : Pr{let p ←
       (simulateQ (localAnswer prims)
-        (liftComp (challengeQuery K tag label coin) (LocalSpec C))).run cache] ≤
+        (liftComp (challengeQuery K tag label coin) (LocalSpec C))).run cache}[∃ r, bad r ∧ p.1 = some r] ≤
       Ks.card / 2 ^ 256 + m / (Fintype.card E - 2 : ℕ) := by
     refine hbad.trans ?_
     gcongr
-  have h := probEvent_bind_le_add (mx := (simulateQ (localAnswer prims)
-      (liftComp (challengeQuery K tag label coin) (LocalSpec C))).run cache)
-    (my := cont) (p := fun p => ¬ ∃ r, bad r ∧ p.1 = some r) (q := fun out => ¬ accept out)
-    (by simpa using hbad') (fun p hs hp => by
-      simpa using hnext p hs (fun r hr hb => hp ⟨r, hb, hr⟩))
-  simpa using h
+  exact (prEvent_bind_le_prEvent_add_of_support _ cont (fun p => ∃ r, bad r ∧ p.1 = some r) accept
+    fun p hs hp => hnext p hs fun r hr hb => hp ⟨r, hb, hr⟩).trans (add_le_add hbad' le_rfl)
 
 /-- Agreement and a rejecting ideal leak give an actual nonzero tuple error. -/
 theorem multVerify_reject_wrong_tuple (D : C.Coalition)
@@ -266,8 +263,8 @@ theorem multVerify_reject_wrong_tuple (D : C.Coalition)
 theorem independent_coin_trace_bound (K : Constants C E) (tag label : ℕ)
     (trace : ProbComp (List (Query C))) (q : ℕ)
     (htrace : ∀ l ∈ support trace, l.length ≤ q) :
-    Pr[fun p : List (Query C) × E => Query.coinKey tag label (List.ofFn (K.encode p.2)) ∈ p.1 |
-      (do let l ← trace; let r ← $ᵗ E; pure (l, r))] ≤ (q : ℝ≥0∞) / Fintype.card E :=
+    Pr{let p : List (Query C) × E ←
+      (do let l ← trace; let r ← $ᵗ E; pure (l, r))}[Query.coinKey tag label (List.ofFn (K.encode p.2)) ∈ p.1] ≤ (q : ℝ≥0∞) / Fintype.card E :=
   independent_trace_guess_bound _ (coin_input_injective K tag label) trace q htrace
 
 /-- The concrete final network execution can accept only at an effective error root. -/
@@ -301,7 +298,7 @@ theorem finalOpen_challenge_soundness {Ia : Type} (prims : Primitives)
     (hexpand : ∀ key idx, cache (.expand key idx) ≠ none → key ∈ Ks)
     (wa wb a b d q0 q2 : C.Party → E)
     (hwrong : interpolate K D.1 d 0 ≠ interpolate K D.1 a 0 * interpolate K D.1 b 0) :
-    Pr[fun out : A.State × (C.Party → Option Unit) => ∃ i, out.2 i = some () |
+    Pr{let out : A.State × (C.Party → Option Unit) ←
       (simulateQ (localAnswer prims)
         (liftComp (challengeQuery K tag label coin) (LocalSpec C))).run cache >>= fun p =>
       match p.1 with
@@ -310,7 +307,7 @@ theorem finalOpen_challenge_soundness {Ia : Type} (prims : Primitives)
           (executePhase localRoles D A (checkFunctionalities K) (fuel + 1) st
             (fun i => if live i then finalOpenProgram K i
               (finalOpenVector (wa i) (wb i) (a i) (b i) (d i) (q0 i) (q2 i) r)
-              else failure))).run' p.2] ≤
+              else failure))).run' p.2}[∃ i, out.2 i = some ()] ≤
       Ks.card / 2 ^ 256 + 2 / (Fintype.card E - 2 : ℕ) := by
   apply finalChallenge_adaptive_soundness prims K tag label coin Ks cache hfresh hexpand
     (interpolate K D.1 a 0) (interpolate K D.1 b 0) (interpolate K D.1 d 0)
@@ -365,9 +362,9 @@ lemma localAnswer_sound_covered (prims : Primitives) (cache : HashCache C)
     · exact List.mem_append_right _ (hc q' hs)
     · simp [soundQueryProjection, hq]
   · simp [localAnswer, prgAnswer] at hp
-    obtain ⟨p, hp, rfl⟩ := hp
+    obtain ⟨p, c, hp, rfl⟩ := hp
     intro q' hq'
-    rcases hashAnswer_sound_entries prims (.streamKey x.2.1) cache p hp q' hq' with hs | ⟨rfl, _⟩
+    rcases hashAnswer_sound_entries prims (.streamKey x.2.1) cache (p, c) hp q' hq' with hs | ⟨rfl, _⟩
     · exact List.mem_append_right _ (hc q' hs)
     · simp [soundQueryProjection]
 
@@ -482,9 +479,9 @@ lemma localAnswer_sound_entries (prims : Primitives) (cache : HashCache C)
     · exact Or.inl hs
     · exact Or.inr (by simp [soundQueryProjection, hq])
   · simp [localAnswer, prgAnswer] at hp
-    obtain ⟨p, hp, rfl⟩ := hp
+    obtain ⟨p, c, hp, rfl⟩ := hp
     intro q' hq'
-    rcases hashAnswer_sound_entries prims (.streamKey x.2.1) cache p hp q' hq' with hs | ⟨rfl, _⟩
+    rcases hashAnswer_sound_entries prims (.streamKey x.2.1) cache (p, c) hp q' hq' with hs | ⟨rfl, _⟩
     · exact Or.inl hs
     · exact Or.inr (by simp [soundQueryProjection])
 
@@ -555,11 +552,11 @@ theorem sound_coin_challenge {β : Type} (prims : Primitives) (K : Constants C E
     (accept : β → Prop) (ε : ℝ≥0∞)
     (hnext : ∀ v p, p ∈ support ((simulateQ (localAnswer prims)
       (liftComp (challengeQuery K tag L (List.ofFn v)) (LocalSpec C))).run cache) →
-      (∀ r, p.1 = some r → ¬ bad r) → Pr[accept | cont v p] ≤ ε) :
-    Pr[accept | (do
+      (∀ r, p.1 = some r → ¬ bad r) → Pr{let z ← cont v p}[accept z] ≤ ε) :
+    Pr{let z ← (do
       let v ← $ᵗ (Fin n → E)
       (simulateQ (localAnswer prims)
-        (liftComp (challengeQuery K tag L (List.ofFn v)) (LocalSpec C))).run cache >>= cont v)] ≤
+        (liftComp (challengeQuery K tag L (List.ofFn v)) (LocalSpec C))).run cache >>= cont v)}[accept z] ≤
       seen.card / Fintype.card E +
         ((keys.card + seen.card) / 2 ^ 256 + m / (Fintype.card E - 2 : ℕ) + ε) := by
   let fresh := fun v : Fin n → E => Query.coinKey tag L
@@ -568,23 +565,20 @@ theorem sound_coin_challenge {β : Type} (prims : Primitives) (K : Constants C E
       ((List.ofFn v).flatMap fun v => List.ofFn (K.encode v))) := by
     subst n
     exact coinInput_one_injective K tag L
-  have hguess : Pr[fun v => ¬ fresh v | $ᵗ (Fin n → E)] ≤
+  have hguess : Pr{let v ← $ᵗ (Fin n → E)}[¬ fresh v] ≤
       seen.card / (Fintype.card E : ℝ≥0∞) := by
     simpa only [fresh, not_not, Fintype.card_fun, Fintype.card_fin, hn, pow_one] using
       probEvent_uniform_injective_mem _ hinj seen
-  have h := probEvent_bind_le_add (p := fresh) (q := fun b => ¬ accept b)
-    (my := fun v => (simulateQ (localAnswer prims)
-      (liftComp (challengeQuery K tag L (List.ofFn v)) (LocalSpec C))).run cache >>= cont v)
-    (ε₂ := (keys.card + seen.card) / 2 ^ 256 + m / (Fintype.card E - 2 : ℕ) + ε)
-    hguess (fun v _ hv => ?_)
-  · simpa using h
-  · have hb := challengeQuery_step_soundness prims K tag L (List.ofFn v)
-      (keys ∪ seen.image soundExpansionKey) cache (hc.fresh _ _ _ le_rfl hv) hc.expansions
-      bad m hcard (cont v) accept ε (hnext v)
-    simp only [not_not]
-    refine hb.trans ?_
-    gcongr
-    exact_mod_cast soundExpansionKeys_card seen keys
+  refine (prEvent_bind_le_prEvent_add_of_support _ _ (fun v => ¬ fresh v) accept
+    (ε := (keys.card + seen.card) / 2 ^ 256 + m / (Fintype.card E - 2 : ℕ) + ε)
+    fun v _ hv => ?_).trans (add_le_add hguess le_rfl)
+  rw [not_not] at hv
+  have hb := challengeQuery_step_soundness prims K tag L (List.ofFn v)
+    (keys ∪ seen.image soundExpansionKey) cache (hc.fresh _ _ _ le_rfl hv) hc.expansions
+    bad m hcard (cont v) accept ε (hnext v)
+  refine hb.trans ?_
+  gcongr
+  exact_mod_cast soundExpansionKeys_card seen keys
 
 def soundChallengeNext {Ia : Type} (K : Constants C E) (D : C.Coalition)
     (A : CheckAdversary C E Ia) (fuel : ℕ) (hs : C.Party → RunState C)
@@ -690,22 +684,23 @@ theorem sound_challenge_phase {Ia : Type} (prims : Primitives) (K : Constants C 
     (hcard : (univ.filter bad).card ≤ m) (ε : ℝ≥0∞)
     (hnext : ∀ p r key cache' seen', SoundCache (L + 1) cache' seen' (insert key keys) →
       seen'.card ≤ seen.card + step → ¬ bad r →
-      Pr[fun out => ∃ i, i ∉ D.1 ∧ out.2 i = some () |
-        (simulateQ (localAnswer prims) (soundChallengeNext K D A fuel hs g p (some r))).run' cache'] ≤ ε) :
-    Pr[fun out => ∃ i, i ∉ D.1 ∧ out.2 i = some () |
+      Pr{let out ←
+        (simulateQ (localAnswer prims) (soundChallengeNext K D A fuel hs g p (some r))).run' cache'}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤ ε) :
+    Pr{let out ←
       (simulateQ (localAnswer prims)
         (executePhase localRoles D A (checkFunctionalities K) (fuel + 1) st
           (fun i => if live i then (challenge K (hybridCheckGadgets K i) >>= g i).run' (hs i)
-            else failure))).run' cache] ≤
+            else failure))).run' cache}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤
       seen.card / Fintype.card E +
         ((keys.card + seen.card) / 2 ^ 256 + m / (Fintype.card E - 2 : ℕ) + ε) := by
-  rw [probEvent_def, sound_challenge_normalize prims K D A fuel st live hall hs tag L htag g cache,
-    ← probEvent_def]
-  simp only [simulateQ_bind, StateT.run'_eq, StateT.run_bind, map_bind, run_liftComp_prob, bind_map_left]
+  rw [(sound_challenge_normalize prims K D A fuel st live hall hs tag L htag g cache).prEvent_eq]
+  conv_lhs =>
+    arg 1; arg 2
+    simp only [simulateQ_bind, StateT.run'_eq, StateT.run_bind, map_bind, run_liftComp_prob, bind_map_left]
   apply sound_coin_challenge prims K _ (firstInput_honest_const D 1) tag L cache seen keys hc bad m hcard
   intro v p hp hgood
   obtain ⟨key, hcache⟩ := hc.challenge prims K tag L (List.ofFn v) le_rfl p hp
-  apply probEvent_bind_le_of_forall_le
+  apply prEvent_bind_le_of_forall_le_of_support
   intro ans hans
   have hans' : ans ∈ support ((simulateQ (localAnswer prims)
       ((leftAdversary (leftAdversary A)).answer st (List.ofFn v))).run p.2) := by
@@ -764,24 +759,24 @@ theorem sound_finalChallenge_phase {Ia : Type} (prims : Primitives) (K : Constan
     (hwrong : interpolate K D.1 d 0 ≠ interpolate K D.1 a 0 * interpolate K D.1 b 0)
     (cache : HashCache C) (seen : Finset (Query C)) (keys : Finset HashOutput)
     (hc : SoundCache L cache seen keys) :
-    Pr[fun out => ∃ i, i ∉ D.1 ∧ out.2 i = some () |
+    Pr{let out ←
       (simulateQ (localAnswer prims)
         (executePhase localRoles D A (checkFunctionalities K) (fuel + 2) st
           (fun i => if live i then
             (finalAfterDigests K i (wa i) (wb i) (a i) (b i) (d i) (q0 i) (q2 i)).run' (hs i)
-            else failure))).run' cache] ≤
+            else failure))).run' cache}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤
       seen.card / Fintype.card E +
         ((keys.card + seen.card) / 2 ^ 256 + 2 / (Fintype.card E - 2 : ℕ)) := by
   classical
   let I := fun f : C.Party → E => interpolate K D.1 f 0
   let bad := fun r => r * (I d - I a * I b) + (1 + r) * (I q0 - I wa * I wb) +
     r * (1 + r) * (I q2 - (I wa + I a) * (I wb + I b)) = 0
-  change Pr[_ | (simulateQ (localAnswer prims)
+  change Pr{let out ← (simulateQ (localAnswer prims)
     (executePhase localRoles D A (checkFunctionalities K) ((fuel + 1) + 1) st
       (fun i => if live i then (challenge K (hybridCheckGadgets K i) >>= fun r =>
         StateT.lift (finalOpenProgram K i
           (finalOpenVector (wa i) (wb i) (a i) (b i) (d i) (q0 i) (q2 i) r))).run' (hs i)
-        else failure))).run' cache] ≤ _
+        else failure))).run' cache}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤ _
   by_cases hall : ∀ i, i ∉ D.1 → live i
   · have hcard : (univ.filter bad).card ≤ 2 :=
       final_residual_card_le_two (I a) (I b) (I d) (I q0 - I wa * I wb)
@@ -791,7 +786,7 @@ theorem sound_finalChallenge_phase {Ia : Type} (prims : Primitives) (K : Constan
         intro p r key cache' seen' hc' hs' hgood
         by_cases hlive : ∃ i, i ∉ D.1 ∧ i ∈ p.2
         · apply le_of_eq
-          apply probEvent_eq_zero
+          apply prEvent_eq_zero_of_forall_mem_support
           intro out hout hout'
           apply hgood
           apply finalOpen_support_effective_root prims K D A fuel p.1 (· ∈ p.2) hlive
@@ -861,7 +856,7 @@ lemma sound_preserves_pure {α : Type} (prims : Primitives) (P : HashCache C →
 lemma sound_preserves_sequenceFin {α : Type} (prims : Primitives) (P : HashCache C → Prop) :
     ∀ {n : ℕ} (f : Fin n → OracleComp (LocalSpec C) α),
     (∀ i cache, P cache → ∀ p ∈ support ((simulateQ (localAnswer prims) (f i)).run cache), P p.2) →
-    ∀ cache, P cache → ∀ p ∈ support ((simulateQ (localAnswer prims) (Concrete.sequenceFin f)).run cache), P p.2
+    ∀ cache, P cache → ∀ p ∈ support ((simulateQ (localAnswer prims) (OverPermutation.sequenceFin f)).run cache), P p.2
   | 0, _, _ => sound_preserves_pure prims P _
   | n + 1, f, hf => sound_preserves_bind prims P _ _ (hf 0)
       (fun _ => sound_preserves_bind prims P _ _
@@ -899,20 +894,24 @@ theorem sound_prefix {α β : Type} (prims : Primitives)
     (L : ℕ) (cache : HashCache C) (seen : Finset (Query C)) (keys : Finset HashOutput)
     (hc : SoundCache L cache seen keys) (accept : β → Prop) (ε : ℝ≥0∞)
     (h : ∀ a cache' seen', SoundCache L cache' seen' keys → seen'.card ≤ seen.card + step →
-      Pr[accept | (simulateQ (localAnswer prims) (f a)).run' cache'] ≤ ε) :
-    Pr[accept | (simulateQ (localAnswer prims) (oa >>= f)).run' cache] ≤ ε := by
-  simp only [simulateQ_bind, StateT.run'_eq, StateT.run_bind, map_bind]
-  apply probEvent_bind_le_of_forall_le
+      Pr{let z ← (simulateQ (localAnswer prims) (f a)).run' cache'}[accept z] ≤ ε) :
+    Pr{let z ← (simulateQ (localAnswer prims) (oa >>= f)).run' cache}[accept z] ≤ ε := by
+  conv_lhs =>
+    arg 1; arg 2
+    simp only [simulateQ_bind, StateT.run'_eq, StateT.run_bind, map_bind]
+  apply prEvent_bind_le_of_forall_le_of_support
   intro p hp
   obtain ⟨seen', hc', hn⟩ := hc.local prims oa step hq p hp
   exact h p.1 p.2 seen' hc' hn
 
 lemma sound_sample {α β : Type} [SampleableType α] (prims : Primitives)
     (f : α → OracleComp (LocalSpec C) β) (cache : HashCache C) (accept : β → Prop) (ε : ℝ≥0∞)
-    (h : ∀ a, Pr[accept | (simulateQ (localAnswer prims) (f a)).run' cache] ≤ ε) :
-    Pr[accept | (simulateQ (localAnswer prims) (liftComp ($ᵗ α) (LocalSpec C) >>= f)).run' cache] ≤ ε := by
-  simp only [simulateQ_bind, StateT.run'_eq, StateT.run_bind, map_bind, run_liftComp_prob, bind_map_left]
-  exact probEvent_bind_le_of_forall_le (fun a _ => h a)
+    (h : ∀ a, Pr{let z ← (simulateQ (localAnswer prims) (f a)).run' cache}[accept z] ≤ ε) :
+    Pr{let z ← (simulateQ (localAnswer prims) (liftComp ($ᵗ α) (LocalSpec C) >>= f)).run' cache}[accept z] ≤ ε := by
+  conv_lhs =>
+    arg 1; arg 2
+    simp only [simulateQ_bind, StateT.run'_eq, StateT.run_bind, map_bind, run_liftComp_prob, bind_map_left]
+  exact prEvent_bind_le_of_forall_le_of_support _ _ _ (fun a _ => h a)
 
 /-- The common per-challenge error, with global query and key bounds. -/
 def soundError (E : Type) [Fintype E] (q H m : ℕ) : ℝ≥0∞ :=
@@ -939,21 +938,23 @@ theorem sound_digest_phase {Ia : Type} (prims : Primitives) (K : Constants C E)
     (hwrong : interpolate K D.1 d 0 ≠ interpolate K D.1 a 0 * interpolate K D.1 b 0)
     (cache : HashCache C) (seen : Finset (Query C)) (keys : Finset HashOutput)
     (hc : SoundCache L cache seen keys) (hq : seen.card + step ≤ q) (hk : keys.card ≤ H) :
-    Pr[fun out => ∃ i, i ∉ D.1 ∧ out.2 i = some () |
+    Pr{let out ←
       (simulateQ (localAnswer prims)
         (executePhase localRoles D A (checkFunctionalities K) (fuel + 3) st
           (fun i => (compareDigests (localContext i) (salts i) >>= fun _ =>
-            finalAfterDigests K i (wa i) (wb i) (a i) (b i) (d i) (q0 i) (q2 i)).run' (hs i)))).run' cache] ≤
+            finalAfterDigests K i (wa i) (wb i) (a i) (b i) (d i) (q0 i) (q2 i)).run' (hs i)))).run' cache}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤
       soundError E q H 2 := by
   have he := SameLocalOutput.of_sameRun prims (executePhase_digestColumns prims K D A (fuel + 3)
     st salts hs (fun i _ => finalAfterDigests K i (wa i) (wb i) (a i) (b i) (d i) (q0 i) (q2 i)))
-  rw [probEvent_def, he cache, ← probEvent_def]
-  simp only [simulateQ_bind, StateT.run'_eq, StateT.run_bind, map_bind]
-  apply probEvent_bind_le_of_forall_le
+  rw [(he cache).prEvent_eq]
+  conv_lhs =>
+    arg 1; arg 2
+    simp only [simulateQ_bind, StateT.run'_eq, StateT.run_bind, map_bind]
+  apply prEvent_bind_le_of_forall_le_of_support
   intro ds hds
   have hc' := hc.digestColumns prims D salts (fun i => (hs i).history) ds hds
-  change Pr[_ | (simulateQ (localAnswer prims)
-    (executePhase localRoles D A (checkFunctionalities K) ((fuel + 2) + 1) st _)).run' ds.2] ≤ _
+  change Pr{let out ← (simulateQ (localAnswer prims)
+    (executePhase localRoles D A (checkFunctionalities K) ((fuel + 2) + 1) st _)).run' ds.2}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤ _
   rw [executePhase_afterDigests_round]
   apply sound_prefix prims _ _ step (hr st _) L ds.2 seen keys hc'
   intro p cache' seen' hc'' hseen
@@ -972,17 +973,17 @@ theorem sound_salt_phase {Ia : Type} (prims : Primitives) (K : Constants C E)
     (hwrong : interpolate K D.1 d 0 ≠ interpolate K D.1 a 0 * interpolate K D.1 b 0)
     (cache : HashCache C) (seen : Finset (Query C)) (keys : Finset HashOutput)
     (hc : SoundCache L cache seen keys) (hq : seen.card + 2 * step ≤ q) (hk : keys.card ≤ H) :
-    Pr[fun out => ∃ i, i ∉ D.1 ∧ out.2 i = some () |
+    Pr{let out ←
       (simulateQ (localAnswer prims)
         (executePhase localRoles D A (checkFunctionalities K) (fuel + 4) st
           (fun i => ((hybridCheckGadgets K i).randBits 256 >>= fun salts =>
             compareDigests (localContext i) salts.1 >>= fun _ =>
-            finalAfterDigests K i (wa i) (wb i) (a i) (b i) (d i) (q0 i) (q2 i)).run' (hs i)))).run' cache] ≤
+            finalAfterDigests K i (wa i) (wb i) (a i) (b i) (d i) (q0 i) (q2 i)).run' (hs i)))).run' cache}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤
       soundError E q H 2 := by
   have he := SameLocalOutput.of_sameRun prims (executePhase_randBits_first prims K D A (fuel + 3)
     st 256 hs (fun i salts => compareDigests (localContext i) salts >>= fun _ =>
       finalAfterDigests K i (wa i) (wb i) (a i) (b i) (d i) (q0 i) (q2 i)))
-  rw [probEvent_def, he cache, ← probEvent_def]
+  rw [(he cache).prEvent_eq]
   apply sound_prefix prims _ _ step (saltReply_queryBound A st step ha) L cache seen keys hc
   intro p cache' seen' hc' hseen
   apply sound_sample prims
@@ -1019,18 +1020,18 @@ theorem sound_finalStep {Ia : Type} (prims : Primitives) (K : Constants C E)
       interpolate K D.1 (fun i => Av i 0) 0 * interpolate K D.1 (fun i => Bv i 0) 0)
     (cache : HashCache C) (seen : Finset (Query C)) (keys : Finset HashOutput)
     (hc : SoundCache L cache seen keys) (hq : seen.card + 4 * step ≤ q) (hk : keys.card ≤ H) :
-    Pr[fun out => ∃ i, i ∉ D.1 ∧ out.2 i = some () |
+    Pr{let out ←
       (simulateQ (localAnswer prims)
         (executePhase localRoles D A (checkFunctionalities K) (fuel + 6) st
           (fun i => if live i then
             (finalStep K (localContext i) (hybridCheckGadgets K i) (Av i, Bv i, V i)).run' (hs i)
-            else failure))).run' cache] ≤ soundError E q H 2 := by
+            else failure))).run' cache}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤ soundError E q H 2 := by
   by_cases hall : ∀ i, i ∉ D.1 → live i
   · rw [executePhase_congr_honest D A _ _ st _
       (fun i => (finalStep K (localContext i) (hybridCheckGadgets K i) (Av i, Bv i, V i)).run' (hs i))
       (fun i hi => if_pos (hall i hi))]
     have he := SameLocalOutput.of_sameRun prims (finalStep_masks prims K D A (fuel + 4) st Av Bv V hs)
-    rw [probEvent_def, he cache, ← probEvent_def]
+    rw [(he cache).prEvent_eq]
     apply sound_prefix prims _ _ step (sound_maskReply_bound A step ha st) L cache seen keys hc
     intro p cache1 seen1 hc1 hn1
     apply sound_prefix prims _ _ step (sound_extendReply_bound A step ha _ _) L cache1 seen1 keys hc1
@@ -1061,11 +1062,11 @@ def SoundHalvRest {Ia : Type} (prims : Primitives) (K : Constants C E)
       interpolate K D.1 (fun i => A i k) 0 * interpolate K D.1 (fun i => B i k) 0 →
     ∀ (cache : HashCache C) (seen : Finset (Query C)) (keys : Finset HashOutput),
     SoundCache L cache seen keys → seen.card + (2 * n + 4) * step ≤ q → keys.card + n ≤ H →
-    Pr[fun out => ∃ i, i ∉ D.1 ∧ out.2 i = some () |
+    Pr{let out ←
       (simulateQ (localAnswer prims)
         (executePhase localRoles D Ad (checkFunctionalities K) F st
           (fun i => if live i then (halvProg K width n j (A i) (B i) (V i) i).run' (hs i)
-            else failure))).run' cache] ≤ (n + 1 : ℕ) * soundError E q H 2
+            else failure))).run' cache}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤ (n + 1 : ℕ) * soundError E q H 2
 
 set_option maxHeartbeats 500000 in
 theorem sound_halvRest_zero {Ia : Type} (prims : Primitives) (K : Constants C E)
@@ -1223,11 +1224,11 @@ def SoundSliceRest {Ia : Type} (prims : Primitives) (K : Constants C E)
     SoundCache L cache seen keys →
     seen.card + (2 * (n + halvingSteps (sliceWidth count)) + 4) * step ≤ q →
     keys.card + n + halvingSteps (sliceWidth count) ≤ H →
-    Pr[fun out => ∃ i, i ∉ D.1 ∧ out.2 i = some () |
+    Pr{let out ←
       (simulateQ (localAnswer prims)
         (executePhase localRoles D Ad (checkFunctionalities K) F st
           (fun i => if live i then (sliceProg K τ count n j (xs i) (ys i) (V i) i).run' (hs i)
-            else failure))).run' cache] ≤ (n + halvingSteps (sliceWidth count) + 1 : ℕ) * soundError E q H 2
+            else failure))).run' cache}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤ (n + halvingSteps (sliceWidth count) + 1 : ℕ) * soundError E q H 2
 
 set_option maxHeartbeats 500000 in
 theorem sound_sliceRest_zero {Ia : Type} (prims : Primitives) (K : Constants C E)
@@ -1326,62 +1327,57 @@ theorem sound_sliceRest_all {Ia : Type} (prims : Primitives) (K : Constants C E)
       (sound_sliceRest_all prims K D Ad τ step q H count hr ha hw hτ n (j + 1) fuel (by omega))
 
 lemma sound_element_uniform (K : Constants C E) :
-    𝒟[elementOfHash K <$> ($ᵗ HashOutput)] = 𝒟[$ᵗ E] := by
-  apply evalDist_ext
+    (elementOfHash K <$> ($ᵗ HashOutput)) =ᵈ $ᵗ E := by
+  apply OracleComp.evalDistEq_of_forall_prEvent_eq_output
   intro x
-  rw [← probEvent_eq_eq_probOutput, probEvent_elementOfHash, ← probEvent_uniformSample,
-    probEvent_eq_eq_probOutput]
+  rw [probEvent_elementOfHash, ← SampleableType.prEvent_uniformSample]
 
 lemma sound_uniform_list_succ (n : ℕ) :
-    𝒟[List.ofFn <$> ($ᵗ (Fin (n + 1) → E))] =
-      𝒟[do let a ← $ᵗ E; let t ← $ᵗ (Fin n → E); pure (a :: List.ofFn t)] := by
+    (List.ofFn <$> ($ᵗ (Fin (n + 1) → E))) =ᵈ
+      (do let a ← $ᵗ E; let t ← $ᵗ (Fin n → E); pure (a :: List.ofFn t)) := by
   let e : (E × (Fin n → E)) ≃ (Fin (n + 1) → E) :=
     ⟨fun p => Fin.cases p.1 p.2, fun f => (f 0, fun i => f i.succ),
       (by intro p; rfl), (by intro f; funext i; cases i using Fin.cases <;> rfl)⟩
-  have h := evalDist_map_bijective_uniform_cross (E × (Fin n → E)) e e.bijective
-  rw [evalDist_map, ← h, ← evalDist_map]
-  simp only [Functor.map_map, List.ofFn_succ]
-  change 𝒟[(fun a : E × (Fin n → E) => a.1 :: List.ofFn a.2) <$>
-    (Prod.mk <$> ($ᵗ E) <*> ($ᵗ (Fin n → E)))] = _
-  simp only [seq_eq_bind_map, bind_map_left, map_bind, Functor.map_map, bind_pure_comp]
+  have h := SampleableType.map_uniformSample_evalDistEq_of_bijective e.bijective
+  refine ((h.map List.ofFn).symm).trans ?_
+  rw [SampleableType.uniformSample_prod_eq_bind]
+  simp only [List.ofFn_succ, map_bind, map_pure]
+  rfl
 
 /-- Unused expansion positions give independent uniform field elements. -/
 theorem sound_expand_uniform (prims : Primitives) (K : Constants C E) (key : HashOutput) :
     ∀ n index (cache : HashCache C), (∀ i ≥ index, cache (.expand key i) = none) →
-    𝒟[(simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims)
-      ((List.range' index n).mapM fun k => elementOfHash K <$> hashQuery (.expand key k))).run' cache] =
-      𝒟[List.ofFn <$> ($ᵗ (Fin n → E))]
+    (simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims)
+      ((List.range' index n).mapM fun k => elementOfHash K <$> hashQuery (.expand key k))).run' cache =ᵈ
+      (List.ofFn <$> ($ᵗ (Fin n → E)))
   | 0, index, cache, hfresh => by
     simp only [List.range'_zero, List.mapM_nil, simulateQ_pure, StateT.run'_eq, StateT.run_pure, map_pure]
-    apply evalDist_ext
-    intro xs
-    rw [show List.ofFn = (fun _ : Fin 0 → E => ([] : List E)) by funext f; simp]
-    simp [probOutput_map_const]
+    rw [show List.ofFn = (fun _ : Fin 0 → E => ([] : List E)) by funext f; simp, map_eq_bind_pure_comp]
+    exact (OracleComp.EvalDistEq.bind_const _ _).symm
   | n + 1, index, cache, hfresh => by
-    rw [sound_uniform_list_succ]
+    refine EvalDistEq.trans ?_ (sound_uniform_list_succ n).symm
     simp only [List.range'_succ, List.mapM_cons, simulateQ_bind, simulateQ_map, StateT.run'_eq,
       StateT.run_bind, StateT.run_map, map_bind]
     rw [simulateQ_hashQuery_run_fresh prims (by rintro ⟨_, h, _⟩; cases h) (hfresh index le_rfl)]
     simp only [bind_map_left]
     have htail : ∀ u : HashOutput,
-        𝒟[(simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims)
+        ((simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims)
           ((List.range' (index + 1) n).mapM fun k => elementOfHash K <$> hashQuery (.expand key k))).run'
-            (cache.cacheQuery (.expand key index) u)] = 𝒟[List.ofFn <$> ($ᵗ (Fin n → E))] := by
+            (cache.cacheQuery (.expand key index) u)) =ᵈ (List.ofFn <$> ($ᵗ (Fin n → E))) := by
       intro u
       apply sound_expand_uniform prims K key n (index + 1)
       intro i hi
-      rw [QueryCache.cacheQuery, Function.update_of_ne (by simp; omega)]
+      rw [QueryCache.cacheQuery_of_ne _ _ (by simp; omega)]
       exact hfresh i (by omega)
-    calc
-      _ = 𝒟[do let u ← $ᵗ HashOutput; let t ← $ᵗ (Fin n → E); pure (elementOfHash K u :: List.ofFn t)] := by
-        apply evalDist_bind_congr'
-        intro u
-        simp only [simulateQ_pure, StateT.run_pure, map_pure, bind_pure_comp]
-        rw [← Functor.map_map, ← StateT.run'_eq, evalDist_map, htail, ← evalDist_map, Functor.map_map]
-      _ = _ := by
-        have hh := congrArg (fun d : SPMF E => d >>= fun a =>
-          𝒟[do let t ← $ᵗ (Fin n → E); pure (a :: List.ofFn t)]) (sound_element_uniform K)
-        simpa only [evalDist_map, evalDist_bind, bind_map_left] using hh
+    refine EvalDistEq.trans
+      (my := (do let u ← $ᵗ HashOutput; let t ← $ᵗ (Fin n → E); pure (elementOfHash K u :: List.ofFn t))) ?_ ?_
+    · refine EvalDistEq.bind_right _ fun u => ?_
+      simp only [simulateQ_pure, StateT.run_pure, map_pure, bind_pure_comp]
+      rw [← Functor.map_map, ← StateT.run'_eq]
+      exact ((htail u).map _).trans (by rw [Functor.map_map])
+    · have hh := (sound_element_uniform K).bind_left fun a =>
+        (do let t ← $ᵗ (Fin n → E); pure (a :: List.ofFn t) : ProbComp (List E))
+      simpa only [bind_map_left] using hh
 
 theorem SoundCache.start (prims : Primitives) (K : Constants C E)
     {L : ℕ} {cache : HashCache C} {seen : Finset (Query C)} {keys : Finset HashOutput}
@@ -1419,49 +1415,44 @@ theorem sound_startQuery_bad (prims : Primitives) (K : Constants C E)
     (hfresh : cache (.coinKey tag label (coin.flatMap fun v => List.ofFn (K.encode v))) = none)
     (hexpand : ∀ key idx, cache (.expand key idx) ≠ none → key ∈ Ks)
     (bad : List E → Prop) (δ : ℝ≥0∞)
-    (hbad : Pr[fun v : Fin d → E => bad (List.ofFn v) | $ᵗ (Fin d → E)] ≤ δ) :
-    Pr[fun p => bad p.1 | (simulateQ (localAnswer prims)
-      (liftComp (startQuery K tag label coin d) (LocalSpec C))).run cache] ≤ Ks.card / 2 ^ 256 + δ := by
+    (hbad : Pr{let v : Fin d → E ← $ᵗ (Fin d → E)}[bad (List.ofFn v)] ≤ δ) :
+    Pr{let p ← (simulateQ (localAnswer prims)
+      (liftComp (startQuery K tag label coin d) (LocalSpec C))).run cache}[bad p.1] ≤ Ks.card / 2 ^ 256 + δ := by
   have hq : ¬ IsFixed (C := C) (.coinKey tag label (coin.flatMap fun v => List.ofFn (K.encode v))) := by
     rintro ⟨_, h, _⟩; cases h
   rw [simulateQ_localAnswer_liftComp, startQuery, simulateQ_bind, StateT.run_bind]
-  have h := probEvent_bind_le_add (p := fun p : HashOutput × HashCache C => p.1 ∉ Ks)
-    (q := fun p : List E × HashCache C => ¬ bad p.1)
-    (ε₁ := Ks.card / 2 ^ 256) (ε₂ := δ)
-    (my := fun p => (simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims)
-      ((List.range d).mapM fun k => elementOfHash K <$> hashQuery (.expand p.1 k))).run p.2)
-    (by simpa using probEvent_hash_fresh_mem prims hq hfresh Ks) (fun p hp hk => ?_)
-  · simpa using h
-  · simp only [not_not]
-    have hf : ∀ i ≥ 0, p.2 (.expand p.1 i) = none := by
-      intro i _
-      by_contra hn
-      rcases support_hashQuery_entries prims hq cache p hp _ hn with h | h
-      · exact hk (hexpand _ _ h)
-      · cases h
-    have he := sound_expand_uniform prims K p.1 d 0 p.2 hf
-    rw [← List.range_eq_range'] at he
-    have he' : Pr[bad | (simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims)
-        ((List.range d).mapM fun k => elementOfHash K <$> hashQuery (.expand p.1 k))).run' p.2] ≤ δ := by
-      rw [probEvent_def, he, ← probEvent_def, probEvent_map]
-      exact hbad
-    simpa only [StateT.run'_eq, probEvent_map, Function.comp_def] using he'
+  refine (prEvent_bind_le_prEvent_add_of_support _ _ (fun p : HashOutput × HashCache C => p.1 ∈ Ks)
+    (fun p : List E × HashCache C => bad p.1) (ε := δ) fun p hp hk => ?_).trans
+    (add_le_add (probEvent_hash_fresh_mem prims hq hfresh Ks) le_rfl)
+  have hf : ∀ i ≥ 0, p.2 (.expand p.1 i) = none := by
+    intro i _
+    by_contra hn
+    rcases support_hashQuery_entries prims hq cache p hp _ hn with h | h
+    · exact hk (hexpand _ _ h)
+    · cases h
+  have he := sound_expand_uniform prims K p.1 d 0 p.2 hf
+  rw [← List.range_eq_range'] at he
+  have he' : Pr{let z ← (simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims)
+      ((List.range d).mapM fun k => elementOfHash K <$> hashQuery (.expand p.1 k))).run' p.2}[bad z] ≤ δ := by
+    rw [he.prEvent_eq, prEvent_map]
+    exact hbad
+  simpa only [StateT.run'_eq, prEvent_map, Function.comp_def] using he'
 
 /-- The initial sampled coin and expansion followed by any adaptive continuation. -/
 theorem sound_coin_start {β : Type} (prims : Primitives) (K : Constants C E)
     (n : ℕ) (hn : n = 1) (tag L d : ℕ) (cache : HashCache C)
     (seen : Finset (Query C)) (keys : Finset HashOutput) (hc : SoundCache L cache seen keys)
     (bad : List E → Prop) (δ : ℝ≥0∞)
-    (hbad : Pr[fun v : Fin d → E => bad (List.ofFn v) | $ᵗ (Fin d → E)] ≤ δ)
+    (hbad : Pr{let v : Fin d → E ← $ᵗ (Fin d → E)}[bad (List.ofFn v)] ≤ δ)
     (cont : (Fin n → E) → List E × HashCache C → ProbComp β)
     (accept : β → Prop) (ε : ℝ≥0∞)
     (hnext : ∀ v p, p ∈ support ((simulateQ (localAnswer prims)
       (liftComp (startQuery K tag L (List.ofFn v) d) (LocalSpec C))).run cache) →
-      ¬ bad p.1 → Pr[accept | cont v p] ≤ ε) :
-    Pr[accept | (do
+      ¬ bad p.1 → Pr{let z ← cont v p}[accept z] ≤ ε) :
+    Pr{let z ← (do
       let v ← $ᵗ (Fin n → E)
       (simulateQ (localAnswer prims)
-        (liftComp (startQuery K tag L (List.ofFn v) d) (LocalSpec C))).run cache >>= cont v)] ≤
+        (liftComp (startQuery K tag L (List.ofFn v) d) (LocalSpec C))).run cache >>= cont v)}[accept z] ≤
       seen.card / Fintype.card E + ((keys.card + seen.card) / 2 ^ 256 + δ + ε) := by
   let fresh := fun v : Fin n → E => Query.coinKey tag L
     ((List.ofFn v).flatMap fun v => List.ofFn (K.encode v)) ∉ seen
@@ -1469,25 +1460,23 @@ theorem sound_coin_start {β : Type} (prims : Primitives) (K : Constants C E)
       ((List.ofFn v).flatMap fun v => List.ofFn (K.encode v))) := by
     subst n
     exact coinInput_one_injective K tag L
-  have hguess : Pr[fun v => ¬ fresh v | $ᵗ (Fin n → E)] ≤
+  have hguess : Pr{let v ← $ᵗ (Fin n → E)}[¬ fresh v] ≤
       seen.card / (Fintype.card E : ℝ≥0∞) := by
     simpa only [fresh, not_not, Fintype.card_fun, Fintype.card_fin, hn, pow_one] using
       probEvent_uniform_injective_mem _ hinj seen
-  have h := probEvent_bind_le_add (p := fresh) (q := fun b => ¬ accept b)
-    (my := fun v => (simulateQ (localAnswer prims)
-      (liftComp (startQuery K tag L (List.ofFn v) d) (LocalSpec C))).run cache >>= cont v)
-    (ε₂ := (keys.card + seen.card) / 2 ^ 256 + δ + ε) hguess (fun v _ hv => ?_)
-  · simpa using h
-  · have hb := sound_startQuery_bad prims K tag L d (List.ofFn v)
-      (keys ∪ seen.image soundExpansionKey) cache (hc.fresh _ _ _ le_rfl hv) hc.expansions bad δ hbad
-    have hb' : Pr[fun p => bad p.1 | (simulateQ (localAnswer prims)
-        (liftComp (startQuery K tag L (List.ofFn v) d) (LocalSpec C))).run cache] ≤
-        (keys.card + seen.card) / 2 ^ 256 + δ := by
-      refine hb.trans ?_
-      gcongr
-      exact_mod_cast soundExpansionKeys_card seen keys
-    simpa using probEvent_bind_le_add (p := fun p => ¬ bad p.1) (q := fun b => ¬ accept b)
-      (my := cont v) (by simpa using hb') (fun p hp hg => by simpa using hnext v p hp hg)
+  refine (prEvent_bind_le_prEvent_add_of_support _ _ (fun v => ¬ fresh v) accept
+    (ε := (keys.card + seen.card) / 2 ^ 256 + δ + ε) fun v _ hv => ?_).trans (add_le_add hguess le_rfl)
+  rw [not_not] at hv
+  have hb := sound_startQuery_bad prims K tag L d (List.ofFn v)
+    (keys ∪ seen.image soundExpansionKey) cache (hc.fresh _ _ _ le_rfl hv) hc.expansions bad δ hbad
+  have hb' : Pr{let p ← (simulateQ (localAnswer prims)
+      (liftComp (startQuery K tag L (List.ofFn v) d) (LocalSpec C))).run cache}[bad p.1] ≤
+      (keys.card + seen.card) / 2 ^ 256 + δ := by
+    refine hb.trans ?_
+    gcongr
+    exact_mod_cast soundExpansionKeys_card seen keys
+  exact (prEvent_bind_le_prEvent_add_of_support _ (cont v) (fun p => bad p.1) accept
+    fun p hp hg => hnext v p hp hg).trans (add_le_add hb' le_rfl)
 
 def soundStartNext {Ia : Type} (K : Constants C E) (D : C.Coalition)
     (A : CheckAdversary C E Ia) (fuel : ℕ) (hs : C.Party → RunState C)
@@ -1574,23 +1563,24 @@ theorem sound_start_phase {Ia : Type} (prims : Primitives) (K : Constants C E) (
     (g : C.Party → List E → RunM C E (CheckSpec C E) Unit)
     (cache : HashCache C) (seen : Finset (Query C)) (keys : Finset HashOutput)
     (hc : SoundCache L cache seen keys) (bad : List E → Prop) (δ : ℝ≥0∞)
-    (hbad : Pr[fun v : Fin d → E => bad (List.ofFn v) | $ᵗ (Fin d → E)] ≤ δ) (ε : ℝ≥0∞)
+    (hbad : Pr{let v : Fin d → E ← $ᵗ (Fin d → E)}[bad (List.ofFn v)] ≤ δ) (ε : ℝ≥0∞)
     (hnext : ∀ p τ key cache' seen', SoundCache (L + 1) cache' seen' (insert key keys) →
       seen'.card ≤ seen.card + step → ¬ bad τ →
-      Pr[fun out => ∃ i, i ∉ D.1 ∧ out.2 i = some () |
-        (simulateQ (localAnswer prims) (soundStartNext K D A fuel hs g p τ)).run' cache'] ≤ ε) :
-    Pr[fun out => ∃ i, i ∉ D.1 ∧ out.2 i = some () |
+      Pr{let out ←
+        (simulateQ (localAnswer prims) (soundStartNext K D A fuel hs g p τ)).run' cache'}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤ ε) :
+    Pr{let out ←
       (simulateQ (localAnswer prims)
         (executePhase localRoles D A (checkFunctionalities K) (fuel + 1) st
-          (fun i => ((coinKey K (hybridCheckGadgets K i) >>= fun key => expand K key d) >>= g i).run' (hs i)))).run' cache] ≤
+          (fun i => ((coinKey K (hybridCheckGadgets K i) >>= fun key => expand K key d) >>= g i).run' (hs i)))).run' cache}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤
       seen.card / Fintype.card E + ((keys.card + seen.card) / 2 ^ 256 + δ + ε) := by
-  rw [probEvent_def, sound_start_normalize prims K D A fuel d st hs tag L htag g cache,
-    ← probEvent_def]
-  simp only [simulateQ_bind, StateT.run'_eq, StateT.run_bind, map_bind, run_liftComp_prob, bind_map_left]
+  rw [(sound_start_normalize prims K D A fuel d st hs tag L htag g cache).prEvent_eq]
+  conv_lhs =>
+    arg 1; arg 2
+    simp only [simulateQ_bind, StateT.run'_eq, StateT.run_bind, map_bind, run_liftComp_prob, bind_map_left]
   apply sound_coin_start prims K _ (firstInput_honest_const D 1) tag L d cache seen keys hc bad δ hbad
   intro v p hp hgood
   obtain ⟨key, hcache⟩ := hc.start prims K tag L d (List.ofFn v) le_rfl p hp
-  apply probEvent_bind_le_of_forall_le
+  apply prEvent_bind_le_of_forall_le_of_support
   intro ans hans
   have hans' : ans ∈ support ((simulateQ (localAnswer prims)
       ((leftAdversary (leftAdversary A)).answer st (List.ofFn v))).run p.2) := by
@@ -1744,8 +1734,8 @@ theorem soundWeightError_sum (K : Constants C E) (count : ℕ) (hcount : count �
 /-- GS20 Lemma 8 for an unrestricted uniform expansion; rejection of zero slice coins only helps. -/
 theorem sound_delinearization (K : Constants C E) (d : ℕ) (δ : ℕ → E)
     (hδ : ∃ a < 2 ^ d, δ a ≠ 0) :
-    Pr[fun v : Fin d → E => ∑ a ∈ range (2 ^ d), coinProduct (List.ofFn v) 0 d a * δ a = 0 |
-      $ᵗ (Fin d → E)] ≤ (d : ℝ≥0∞) / (Fintype.card E - 2 : ℕ) := by
+    Pr{let v : Fin d → E ←
+      $ᵗ (Fin d → E)}[∑ a ∈ range (2 ^ d), coinProduct (List.ofFn v) 0 d a * δ a = 0] ≤ (d : ℝ≥0∞) / (Fintype.card E - 2 : ℕ) := by
   let P := fun v : Fin d → E => ∑ a ∈ range (2 ^ d), coinProduct (List.ofFn v) 0 d a * δ a = 0
   let e : {τ : (Fin 0 → {c : E // c ≠ 0}) × (Fin d → E) // P τ.2} ≃ {v : Fin d → E // P v} :=
     ⟨fun τ => ⟨τ.1.2, τ.2⟩, fun v => ⟨(Fin.elim0, v.1), v.2⟩,
@@ -1761,9 +1751,9 @@ theorem sound_delinearization (K : Constants C E) (d : ℕ) (δ : ℕ → E)
   rw [hcard] at hb
   have hE : 2 < Fintype.card E := by rw [card_field K]; norm_num [elementBits]
   have hden : (Fintype.card E - 2 : ℕ) ≠ 0 := by omega
-  apply (ENNReal.toReal_le_toReal (by exact probEvent_ne_top)
+  apply (ENNReal.toReal_le_toReal (by exact prEvent_ne_top _)
     (ENNReal.div_ne_top (by simp) (by exact_mod_cast hden))).mp
-  simpa only [probEvent_uniformSample, ENNReal.toReal_div, ENNReal.toReal_natCast,
+  simpa only [SampleableType.prEvent_uniformSample, ENNReal.toReal_div, ENNReal.toReal_natCast,
     Fintype.card_fun, Fintype.card_fin, Nat.cast_pow, ENNReal.toReal_pow, Nat.cast_sub (by omega : 2 ≤ Fintype.card E),
     Nat.cast_ofNat, P] using hb
 
@@ -1871,9 +1861,9 @@ theorem sound_initial_weights (K : Constants C E) (counts : List ℕ) (D : C.Coa
         shareValue (tupleAt (fun i => if i ∈ D.1 then none else some (x i)) m).z g -
           shareValue (tupleAt (fun i => if i ∈ D.1 then none else some (x i)) m).x g *
             shareValue (tupleAt (fun i => if i ∈ D.1 then none else some (x i)) m).y g ≠ 0) :
-    Pr[fun v : Fin (coins counts.sum) → E => soundInitialBad K D counts.sum
+    Pr{let v : Fin (coins counts.sum) → E ← $ᵗ (Fin (coins counts.sum) → E)}[soundInitialBad K D counts.sum
       (fun i => liftedPart (x i) (·.x)) (fun i => liftedPart (x i) (·.y))
-      (fun i => liftedPart (x i) (·.z)) (List.ofFn v) | $ᵗ (Fin (coins counts.sum) → E)] ≤
+      (fun i => liftedPart (x i) (·.z)) (List.ofFn v)] ≤
         (coins counts.sum : ℝ≥0∞) / (Fintype.card E - 2 : ℕ) := by
   let X := soundFlatShare D counts x (·.x)
   let Y := soundFlatShare D counts x (·.y)
@@ -1888,7 +1878,7 @@ theorem sound_initial_weights (K : Constants C E) (counts : List ℕ) (D : C.Coa
     simpa only [e, X, Y, Z, shareValue, soundFlatShare, hflat] using hn
   have hb := sound_delinearization K (coins counts.sum) (soundWeightError K counts.sum e)
     (soundWeightError_nonzero K counts.sum e he)
-  refine le_trans (probEvent_mono (mx := $ᵗ (Fin (coins counts.sum) → E)) fun v hv hbad => ?_) hb
+  refine le_trans (prEvent_mono_of_support ($ᵗ (Fin (coins counts.sum) → E)) _ _ fun v hv hbad => ?_) hb
   have hid := sound_initial_identity K D counts.sum hpos X Y Z
     (fun i => liftedPart (x i) (·.x)) (fun i => liftedPart (x i) (·.y)) (fun i => liftedPart (x i) (·.z))
     (soundFlatShare_held K hx hagree _ (Or.inl rfl))
@@ -1947,11 +1937,11 @@ def CheckSoundRoundInduction (prims : Primitives) (K : Constants C E) : Prop :=
         shareValue (tupleAt (fun i => if i ∈ D.1 then none else some (x i)) m).z g -
           shareValue (tupleAt (fun i => if i ∈ D.1 then none else some (x i)) m).x g *
             shareValue (tupleAt (fun i => if i ∈ D.1 then none else some (x i)) m).y g ≠ 0) →
-    Pr[fun out => ∃ i, i ∉ D.1 ∧ out.2 i = some () |
+    Pr{let out ←
       (simulateQ (localAnswer prims)
         (executePhase localRoles D A (checkFunctionalities K) (checkRounds counts.sum) st
           (fun i => (startProg K counts.sum (liftedPart (x i) (·.x)) (liftedPart (x i) (·.y))
-            (liftedPart (x i) (·.z)) i).run' ⟨filledHistory K i (x i), 0, 0⟩))).run' cache] ≤
+            (liftedPart (x i) (·.z)) i).run' ⟨filledHistory K i (x i), 0, 0⟩))).run' cache}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤
       ENNReal.ofReal (checkErrorOf (E := E) (coins counts.sum) (halvings counts.sum) q +
         soundHashError counts.sum q)
 
@@ -1970,10 +1960,10 @@ theorem checkSoundRoundInduction (prims : Primitives) (K : Constants C E) : Chec
     (fun i => liftedPart (x i) (·.y)) (fun i => liftedPart (x i) (·.z))
   have hF : checkRounds counts.sum = F + 1 := by unfold F checkRounds halvings; omega
   rw [hF]
-  change Pr[_ | (simulateQ (localAnswer prims)
+  change Pr{let out ← (simulateQ (localAnswer prims)
     (executePhase localRoles D A (checkFunctionalities K) (F + 1) st
       (fun i => ((coinKey K (hybridCheckGadgets K i) >>= fun key => expand K key (coins counts.sum)) >>= g i).run'
-        (hs i)))).run' cache] ≤ _
+        (hs i)))).run' cache}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤ _
   apply le_trans (sound_start_phase prims K D A F step (coins counts.sum) ha st hs 0 0
     (fun i hi => ⟨rfl, rfl⟩) g cache seen ∅ (SoundCache.of_covered 0 cache seen hc) bad
     ((coins counts.sum : ℝ≥0∞) / (Fintype.card E - 2 : ℕ))
@@ -2011,13 +2001,15 @@ theorem checkSoundStage (prims : Primitives) (K : Constants C E)
   intro counts D A x z Z q hx hq hpos _ hagree hreject
   obtain ⟨start, step, final, hbudget, hstart, hr, ha, _⟩ := hq
   have hwrong := multVerify_reject_wrong_tuple D _ hagree hreject
-  have hbound : Pr[fun out => ∃ i, i ∉ D.1 ∧ out.2 i = some () |
-      (simulateQ (localAnswer prims) (checkRealRun K (checkRounds counts.sum) D A x z)).run' ∅] ≤
+  have hbound : Pr{let out ←
+      (simulateQ (localAnswer prims) (checkRealRun K (checkRounds counts.sum) D A x z)).run' ∅}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤
       ENNReal.ofReal (checkErrorOf (E := E) (coins counts.sum) (halvings counts.sum) q +
         soundHashError counts.sum q) := by
     unfold checkRealRun
-    simp only [simulateQ_bind, StateT.run'_eq, StateT.run_bind, map_bind]
-    apply probEvent_bind_le_of_forall_le
+    conv_lhs =>
+      arg 1; arg 2
+      simp only [simulateQ_bind, StateT.run'_eq, StateT.run_bind, map_bind]
+    apply prEvent_bind_le_of_forall_le_of_support
     intro p hp
     obtain ⟨seen, hseen, hcard⟩ := localProgram_sound_covered prims
       (A.start (corruptInputs D x) z) start (hstart _ _) ∅ ∅ (by simp) p hp
@@ -2030,7 +2022,7 @@ theorem checkSoundStage (prims : Primitives) (K : Constants C E)
     exact h
   have hnonneg := add_nonneg (checkErrorOf_nonneg K (coins counts.sum) (halvings counts.sum) q)
     (soundHashError_nonneg counts.sum q)
-  exact (ENNReal.toReal_le_toReal probEvent_ne_top ENNReal.ofReal_ne_top).mpr hbound |>.trans_eq
+  exact (ENNReal.toReal_le_toReal (prEvent_ne_top _) ENNReal.ofReal_ne_top).mpr hbound |>.trans_eq
     (ENNReal.toReal_ofReal hnonneg)
 
 /-- info: 'ThresholdLeanXmssSecurity.openValue_eq_interpolate' depends on axioms: [propext, Classical.choice, Quot.sound] -/

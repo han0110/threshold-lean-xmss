@@ -1,6 +1,8 @@
 import XmssSecurity.Proof.RandomOracle
 import VCVio.OracleComp.QueryTracking.RandomOracle.EagerTable
 import VCVio.ProgramLogic.Relational.SimulateQ
+import VCVio.OracleComp.Constructions.SampleableType.Measure
+import VCVio.OracleComp.EvalDist.Sum
 
 /-!
 # Constrained share tables
@@ -238,7 +240,8 @@ def slackMove (target rest : Digest) : (HashOutput × HashOutput) ≃
 theorem evalDist_slackMove (target rest : Digest) :
     𝒟[slackMove target rest <$> ($ᵗ (HashOutput × HashOutput))] =
       𝒟[$ᵗ (HashOutput × HashOutput)] :=
-  evalDist_map_bijective_uniform_cross (HashOutput × HashOutput) _ (slackMove target rest).bijective
+  (SampleableType.map_uniformSample_evalDistEq_of_bijective
+    (slackMove target rest).bijective).evalDist_eq
 
 section UntilBad
 
@@ -274,11 +277,11 @@ private theorem sticky_run
 
 private theorem map_const_of_support {A D : Type} (oa : ProbComp A)
     (f : A → D) (d : D) (h : ∀ a ∈ support oa, f a = d) :
-    𝒟[f <$> oa] = 𝒟[(pure d : ProbComp D)] := by
+    f <$> oa =ᵈ (pure d : ProbComp D) := by
   rw [map_eq_bind_pure_comp]
-  trans 𝒟[oa >>= fun _ => pure d]
-  · exact evalDist_bind_congr fun a ha => by simp [Function.comp, h a ha]
-  · exact DeferredSampling.evalDist_bind_const_neverFails oa (by simp) _
+  refine EvalDistEq.trans (my := oa >>= fun _ => (pure d : ProbComp D)) ?_ ?_
+  · exact EvalDistEq.bind_congr_of_support oa fun a ha => by simp [Function.comp, h a ha]
+  · exact EvalDistEq.bind_const oa _
 
 private theorem observe_sticky_run
     (I : QueryImpl spec (StateT σ₁ ProbComp)) (proj : σ₁ → σ₂)
@@ -286,8 +289,8 @@ private theorem observe_sticky_run
     (sticky : ∀ q s r, bad (proj s) = some r →
       ∀ z ∈ support ((I q).run s), bad (proj z.2) = some r)
     (oa : OracleComp spec α) (s : σ₁) (r : R) (h : bad (proj s) = some r) :
-    𝒟[observe proj bad <$> (simulateQ I oa).run s] =
-      𝒟[(pure (.inr r) : ProbComp ((α × σ₂) ⊕ R))] := by
+    observe proj bad <$> (simulateQ I oa).run s =ᵈ
+      (pure (.inr r) : ProbComp ((α × σ₂) ⊕ R)) := by
   apply map_const_of_support
   intro z hz
   have hz' : bad (proj z.2) = some r :=
@@ -302,22 +305,22 @@ theorem untilBad_proj
     (I₂ : QueryImpl spec (StateT σ₂ ProbComp))
     (proj : σ₁ → σ₂) (bad : σ₂ → Option R)
     (step : ∀ q s, bad (proj s) = none →
-      𝒟[observe proj bad <$> (I₁ q).run s] =
-        𝒟[observe id bad <$> (I₂ q).run (proj s)])
+      observe proj bad <$> (I₁ q).run s =ᵈ
+        observe id bad <$> (I₂ q).run (proj s))
     (sticky₁ : ∀ q s r, bad (proj s) = some r →
       ∀ z ∈ support ((I₁ q).run s), bad (proj z.2) = some r)
     (sticky₂ : ∀ q s r, bad s = some r →
       ∀ z ∈ support ((I₂ q).run s), bad z.2 = some r)
     (oa : OracleComp spec α) (s : σ₁) :
-    𝒟[observe proj bad <$> (simulateQ I₁ oa).run s] =
-      𝒟[observe id bad <$> (simulateQ I₂ oa).run (proj s)] := by
+    observe proj bad <$> (simulateQ I₁ oa).run s =ᵈ
+      observe id bad <$> (simulateQ I₂ oa).run (proj s) := by
   induction oa using OracleComp.inductionOn generalizing s with
   | pure a => simp [observe]
   | query_bind q k ih =>
       cases hb : bad (proj s) with
       | some r =>
-          rw [observe_sticky_run I₁ proj bad sticky₁ _ s r hb,
-            observe_sticky_run I₂ id bad sticky₂ _ (proj s) r hb]
+          exact (observe_sticky_run I₁ proj bad sticky₁ _ s r hb).trans
+            (observe_sticky_run I₂ id bad sticky₂ _ (proj s) r hb).symm
       | none =>
           simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query,
             OracleQuery.cont_query, id_map, StateT.run_bind, map_bind]
@@ -326,27 +329,28 @@ theorem untilBad_proj
             | .inl (a, s') => observe id bad <$> (simulateQ I₂ (k a)).run s'
             | .inr r => pure (.inr r)
           have h₁ : ∀ z : spec.Range q × σ₁,
-              𝒟[observe proj bad <$> (simulateQ I₁ (k z.1)).run z.2] =
-                𝒟[cont (observe proj bad z)] := by
+              observe proj bad <$> (simulateQ I₁ (k z.1)).run z.2 =ᵈ
+                cont (observe proj bad z) := by
             intro z
             cases hz : bad (proj z.2) with
             | none => simpa [observe, hz, cont] using ih z.1 z.2
             | some r => simpa [observe, hz, cont] using
                 observe_sticky_run I₁ proj bad sticky₁ (k z.1) z.2 r hz
           have h₂ : ∀ z : spec.Range q × σ₂,
-              𝒟[observe id bad <$> (simulateQ I₂ (k z.1)).run z.2] =
-                𝒟[cont (observe id bad z)] := by
+              observe id bad <$> (simulateQ I₂ (k z.1)).run z.2 =ᵈ
+                cont (observe id bad z) := by
             intro z
             cases hz : bad z.2 with
             | none => simp [observe, hz, cont]
             | some r => simpa [observe, hz, cont] using
                 observe_sticky_run I₂ id bad sticky₂ (k z.1) z.2 r hz
-          rw [evalDist_bind_congr' _ h₁, evalDist_bind_congr' _ h₂]
+          refine (EvalDistEq.bind_right _ h₁).trans ((?_ : _ =ᵈ _).trans
+            (EvalDistEq.bind_right _ h₂).symm)
           calc
-            _ = 𝒟[(observe proj bad <$> (I₁ q).run s) >>= cont] := by
+            _ = (observe proj bad <$> (I₁ q).run s) >>= cont := by
               simp only [bind_map_left]
-            _ = 𝒟[(observe id bad <$> (I₂ q).run (proj s)) >>= cont] := by
-              rw [evalDist_bind, evalDist_bind, step q s hb]
+            _ =ᵈ (observe id bad <$> (I₂ q).run (proj s)) >>= cont :=
+              EvalDistEq.bind_left (step q s hb) cont
             _ = _ := by simp only [bind_map_left]
 
 
@@ -432,9 +436,9 @@ private theorem impl_frozen_step (order : List κ) (τ : ι → Digest)
     (finish : κ → ι → Digest → ShareState κ ι (ImplBad Tag) → ProbComp HashOutput)
     (q : ShareQuery κ ι Tag) (st : ShareState κ ι (ImplBad Tag))
     (h : (erase st).bad = none) :
-    𝒟[observe erase ShareState.bad <$> (impl order τ draw finish q).run st] =
-      𝒟[observe id ShareState.bad <$>
-        (frozen order τ (impl order τ draw finish) q).run (erase st)] := by
+    observe erase ShareState.bad <$> (impl order τ draw finish q).run st =ᵈ
+      observe id ShareState.bad <$>
+        (frozen order τ (impl order τ draw finish) q).run (erase st) := by
   have hb := (erase_bad_none st).mp h
   cases hs : setsBad order τ q st with
   | none =>
@@ -442,15 +446,15 @@ private theorem impl_frozen_step (order : List κ) (τ : ι → Digest)
         unerase_erase st hb, Functor.map_map]
       rfl
   | some r =>
-      have hl : 𝒟[observe erase ShareState.bad <$> (impl order τ draw finish q).run st] =
-          𝒟[(pure (.inr r) : ProbComp (((ShareSpec κ ι Tag).Range q ×
-            ShareState κ ι (FrozenBad Tag)) ⊕ FrozenBad Tag))] := by
+      have hl : observe erase ShareState.bad <$> (impl order τ draw finish q).run st =ᵈ
+          (pure (.inr r) : ProbComp (((ShareSpec κ ι Tag).Range q ×
+            ShareState κ ι (FrozenBad Tag)) ⊕ FrozenBad Tag)) := by
         apply map_const_of_support
         intro z hz
         have hz' := impl_bad_next order τ draw finish q st z hz
         simp only [h, hs, Option.orElse] at hz'
         simp [observe, hz']
-      rw [hl]
+      refine hl.trans ?_
       cases q <;> simp [frozen, StateT.run, h, setsBad_erase, hs, observe]
 
 /-- Full stopped-observation equality for the original and frozen handlers. -/
@@ -459,9 +463,9 @@ theorem impl_frozen_observe (order : List κ) (τ : ι → Digest)
     (finish : κ → ι → Digest → ShareState κ ι (ImplBad Tag) → ProbComp HashOutput)
     {α : Type} (oa : OracleComp (ShareSpec κ ι Tag) α)
     (st : ShareState κ ι (ImplBad Tag)) :
-    𝒟[observe erase ShareState.bad <$> (simulateQ (impl order τ draw finish) oa).run st] =
-      𝒟[observe id ShareState.bad <$>
-        (simulateQ (frozen order τ (impl order τ draw finish)) oa).run (erase st)] := by
+    observe erase ShareState.bad <$> (simulateQ (impl order τ draw finish) oa).run st =ᵈ
+      observe id ShareState.bad <$>
+        (simulateQ (frozen order τ (impl order τ draw finish)) oa).run (erase st) := by
   apply untilBad_proj _ _ erase ShareState.bad
   · exact impl_frozen_step order τ draw finish
   · intro q s r hr z hz
@@ -480,10 +484,10 @@ theorem impl_frozen_observe_uniform (order : List κ) (τ : ι → Digest)
     (finish : κ → ι → Digest → ShareState κ ι (ImplBad Tag) → ProbComp HashOutput)
     {α : Type} (oa : OracleComp (unifSpec + ShareSpec κ ι Tag) α)
     (st : ShareState κ ι (ImplBad Tag)) :
-    𝒟[observe erase ShareState.bad <$>
-      (simulateQ (unifImpl (ShareState κ ι (ImplBad Tag)) + impl order τ draw finish) oa).run st] =
-      𝒟[observe id ShareState.bad <$>
-        (simulateQ (unifImpl (ShareState κ ι (FrozenBad Tag)) + frozen order τ (impl order τ draw finish)) oa).run (erase st)] := by
+    observe erase ShareState.bad <$>
+      (simulateQ (unifImpl (ShareState κ ι (ImplBad Tag)) + impl order τ draw finish) oa).run st =ᵈ
+      observe id ShareState.bad <$>
+        (simulateQ (unifImpl (ShareState κ ι (FrozenBad Tag)) + frozen order τ (impl order τ draw finish)) oa).run (erase st) := by
   apply untilBad_proj _ _ erase ShareState.bad
   · intro q s hs
     cases q with
@@ -509,10 +513,10 @@ theorem impl_frozen_observe_uniform (order : List κ) (τ : ι → Digest)
 private theorem probEvent_of_observe_eq {σ₁ σ₂ R α : Type}
     (proj : σ₁ → σ₂) (bad : σ₂ → Option R)
     (oa : ProbComp (α × σ₁)) (ob : ProbComp (α × σ₂))
-    (h : 𝒟[observe proj bad <$> oa] = 𝒟[observe id bad <$> ob])
+    (h : observe proj bad <$> oa =ᵈ observe id bad <$> ob)
     (P : ((α × σ₂) ⊕ R) → Prop) :
-    Pr[P ∘ observe proj bad | oa] = Pr[P ∘ observe id bad | ob] := by
-  rw [← probEvent_map, ← probEvent_map, probEvent_def, probEvent_def, h]
+    Pr{let z ← oa}[(P ∘ observe proj bad) z] = Pr{let z ← ob}[(P ∘ observe id bad) z] := by
+  exact (prEvent_map oa _ P).symm.trans ((h.prEvent_eq P).trans (prEvent_map ob _ P))
 
 /-- Nonbad observations retain the complete result and projected final state. -/
 theorem impl_frozen_nonbad (order : List κ) (τ : ι → Digest)
@@ -520,10 +524,10 @@ theorem impl_frozen_nonbad (order : List κ) (τ : ι → Digest)
     (finish : κ → ι → Digest → ShareState κ ι (ImplBad Tag) → ProbComp HashOutput)
     {α : Type} (oa : OracleComp (unifSpec + ShareSpec κ ι Tag) α)
     (st : ShareState κ ι (ImplBad Tag)) (G : α × ShareState κ ι (FrozenBad Tag) → Prop) :
-    Pr[fun z => G (z.1, erase z.2) ∧ z.2.bad = none |
-      (simulateQ (unifImpl (ShareState κ ι (ImplBad Tag)) + impl order τ draw finish) oa).run st] =
-      Pr[fun z => G z ∧ z.2.bad = none |
-        (simulateQ (unifImpl (ShareState κ ι (FrozenBad Tag)) + frozen order τ (impl order τ draw finish)) oa).run (erase st)] := by
+    Pr{let z ←
+      (simulateQ (unifImpl (ShareState κ ι (ImplBad Tag)) + impl order τ draw finish) oa).run st}[G (z.1, erase z.2) ∧ z.2.bad = none] =
+      Pr{let z ←
+        (simulateQ (unifImpl (ShareState κ ι (FrozenBad Tag)) + frozen order τ (impl order τ draw finish)) oa).run (erase st)}[G z ∧ z.2.bad = none] := by
   let P : ((α × ShareState κ ι (FrozenBad Tag)) ⊕ FrozenBad Tag) → Prop :=
     fun z => match z with | .inl y => G y | .inr _ => False
   have h := probEvent_of_observe_eq erase ShareState.bad _ _
@@ -544,10 +548,10 @@ theorem impl_frozen_firstbad (order : List κ) (τ : ι → Digest)
     (finish : κ → ι → Digest → ShareState κ ι (ImplBad Tag) → ProbComp HashOutput)
     {α : Type} (oa : OracleComp (unifSpec + ShareSpec κ ι Tag) α)
     (st : ShareState κ ι (ImplBad Tag)) (r : FrozenBad Tag) :
-    Pr[fun z => (erase z.2).bad = some r |
-      (simulateQ (unifImpl (ShareState κ ι (ImplBad Tag)) + impl order τ draw finish) oa).run st] =
-      Pr[fun z => z.2.bad = some r |
-        (simulateQ (unifImpl (ShareState κ ι (FrozenBad Tag)) + frozen order τ (impl order τ draw finish)) oa).run (erase st)] := by
+    Pr{let z ←
+      (simulateQ (unifImpl (ShareState κ ι (ImplBad Tag)) + impl order τ draw finish) oa).run st}[(erase z.2).bad = some r] =
+      Pr{let z ←
+        (simulateQ (unifImpl (ShareState κ ι (FrozenBad Tag)) + frozen order τ (impl order τ draw finish)) oa).run (erase st)}[z.2.bad = some r] := by
   let P : ((α × ShareState κ ι (FrozenBad Tag)) ⊕ FrozenBad Tag) → Prop :=
     fun z => match z with | .inl _ => False | .inr r' => r' = r
   have h := probEvent_of_observe_eq erase ShareState.bad _ _
@@ -625,11 +629,10 @@ theorem evalDist_sum_put (order : List κ) (hn : order.Nodup) (b : κ) (hb : b �
   calc
     _ = 𝒟[(fun d => d ^^^ others order st p b) <$> (lowHash <$> ($ᵗ HashOutput))] := by
       rw [Functor.map_map]
-    _ = 𝒟[(fun d => d ^^^ others order st p b) <$> ($ᵗ Digest)] := by
-      rw [evalDist_map, XmssSecurity.Rom.evalDist_truncate_uniformHashOutput, ← evalDist_map]
+    _ = 𝒟[(fun d => d ^^^ others order st p b) <$> ($ᵗ Digest)] :=
+      (EvalDistEq.map_congr _ XmssSecurity.Rom.evalDist_truncate_uniformHashOutput).evalDist_eq
     _ = _ := by
-
-      apply evalDist_map_bijective_uniform_cross Digest
+      refine (SampleableType.map_uniformSample_evalDistEq_of_bijective ?_).evalDist_eq
       refine ⟨fun a b h => (BitVec.xor_left_inj _).mp h, fun a => ?_⟩
       exact ⟨a ^^^ others order st p b, by simp [BitVec.xor_assoc]⟩
 
@@ -688,17 +691,17 @@ private theorem sticky_prob
     (I : QueryImpl spec (StateT σ ProbComp)) (bad : σ → Option R)
     (sticky : ∀ q s r, bad s = some r → ∀ z ∈ support ((I q).run s), bad z.2 = some r)
     (oa : OracleComp spec α) (s : σ) (r r' : R) (h : bad s = some r') :
-    Pr[fun z => bad z.2 = some r | (simulateQ I oa).run s] =
+    Pr{let z ← (simulateQ I oa).run s}[bad z.2 = some r] =
       if r' = r then 1 else 0 := by
   classical
-  have hm : 𝒟[(fun z => bad z.2) <$> (simulateQ I oa).run s] =
-      𝒟[(pure (some r') : ProbComp (Option R))] :=
+  have hm : (fun z => bad z.2) <$> (simulateQ I oa).run s =ᵈ
+      (pure (some r') : ProbComp (Option R)) :=
     map_const_of_support _ _ _ (sticky_run I bad sticky oa s r' h)
   calc
-    _ = Pr[fun x => x = some r | (fun z => bad z.2) <$> (simulateQ I oa).run s] := by
-      rw [probEvent_map]; rfl
-    _ = Pr[fun x => x = some r | (pure (some r') : ProbComp (Option R))] := by
-      rw [probEvent_def, probEvent_def, hm]
+    _ = Pr{let x ← (fun z => bad z.2) <$> (simulateQ I oa).run s}[x = some r] := by
+      rw [prEvent_map]
+    _ = Pr{let x ← (pure (some r') : ProbComp (Option R))}[x = some r] :=
+      hm.prEvent_eq _
     _ = _ := by simp [eq_comm]
 
 /-- Splitting the next step into its first-bad mass and its nonbad continuation mass. -/
@@ -706,21 +709,21 @@ private theorem sticky_split
     (I : QueryImpl spec (StateT σ ProbComp)) (bad : σ → Option R)
     (sticky : ∀ q s r, bad s = some r → ∀ z ∈ support ((I q).run s), bad z.2 = some r)
     (q : spec.Domain) (k : spec.Range q → OracleComp spec α) (s : σ) (r : R) :
-    Pr[fun z => bad z.2 = some r |
-      (I q).run s >>= fun y => (simulateQ I (k y.1)).run y.2] =
-      Pr[fun z => bad z.2 = some r | (I q).run s] +
-      ∑' y, Pr[= y | (I q).run s] *
+    Pr{let z ←
+      (I q).run s >>= fun y => (simulateQ I (k y.1)).run y.2}[bad z.2 = some r] =
+      Pr{let z ← (I q).run s}[bad z.2 = some r] +
+      ∑' y, Pr{let z ← (I q).run s}[z = y] *
         (if bad y.2 = none then
-          Pr[fun z => bad z.2 = some r | (simulateQ I (k y.1)).run y.2] else 0) := by
+          Pr{let z ← (simulateQ I (k y.1)).run y.2}[bad z.2 = some r] else 0) := by
   classical
   letI : DecidableEq R := Classical.decEq R
-  rw [probEvent_bind_eq_tsum, probEvent_eq_tsum_ite, ← ENNReal.tsum_add]
+  rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_eq_tsum_ite, ← ENNReal.tsum_add]
   apply tsum_congr
   intro y
   cases hb : bad y.2 with
   | none => simp [hb]
   | some r' =>
-      rw [sticky_prob (ι := Unit) I bad sticky (k y.1) y.2 r r' hb]
+      rw [sticky_prob I bad sticky (k y.1) y.2 r r' hb]
       simp only [hb, Option.some.injEq, Option.some_ne_none, ↓reduceIte,
         mul_zero, add_zero]
       split <;> simp_all only [mul_one, mul_zero, ↓reduceIte]
@@ -731,11 +734,11 @@ theorem sticky_ratio
     (sticky : ∀ q s r, bad s = some r → ∀ z ∈ support ((I q).run s), bad z.2 = some r)
     (r₀ r₁ : R) (c : ENNReal)
     (step : ∀ q s, bad s = none →
-      Pr[fun z => bad z.2 = some r₀ | (I q).run s] =
-        c * Pr[fun z => bad z.2 = some r₁ | (I q).run s])
+      Pr{let z ← (I q).run s}[bad z.2 = some r₀] =
+        c * Pr{let z ← (I q).run s}[bad z.2 = some r₁])
     (oa : OracleComp spec α) (s : σ) (hs : bad s = none) :
-    Pr[fun z => bad z.2 = some r₀ | (simulateQ I oa).run s] =
-      c * Pr[fun z => bad z.2 = some r₁ | (simulateQ I oa).run s] := by
+    Pr{let z ← (simulateQ I oa).run s}[bad z.2 = some r₀] =
+      c * Pr{let z ← (simulateQ I oa).run s}[bad z.2 = some r₁] := by
   classical
   induction oa using OracleComp.inductionOn generalizing s with
   | pure a => simp [hs]
@@ -756,18 +759,18 @@ end Ratio
 
 
 private theorem uniform_digest_ratio (target : Digest) :
-    Pr[fun d => d ≠ target | $ᵗ Digest] =
-      (Fintype.card Digest - 1 : ℕ) * Pr[fun d => d = target | $ᵗ Digest] := by
-  rw [probEvent_uniformSample, Finset.filter_ne', Finset.card_erase_of_mem (Finset.mem_univ _),
-    Finset.card_univ, probEvent_eq_eq_probOutput, probOutput_uniformSample, div_eq_mul_inv]
+    Pr{let d ← $ᵗ Digest}[d ≠ target] =
+      (Fintype.card Digest - 1 : ℕ) * Pr{let d ← $ᵗ Digest}[d = target] := by
+  rw [SampleableType.prEvent_uniformSample, Finset.filter_ne', Finset.card_erase_of_mem (Finset.mem_univ _),
+    Finset.card_univ, SampleableType.prEvent_uniformSample_eq_singleton, div_eq_mul_inv]
 
 private theorem lazy_step_ratio (order : List κ) (hn : order.Nodup)
     (hcover : ∀ b, b ∈ order) (τ : ι → Digest)
     (q : ShareQuery κ ι Tag) (st : ShareState κ ι (ImplBad Tag))
     (hs : st.bad = none) (t : Tag) :
-    Pr[fun z => z.2.bad = some (t, Kind.read, false) | (lazyImpl order τ q).run st] =
+    Pr{let z ← (lazyImpl order τ q).run st}[z.2.bad = some (t, Kind.read, false)] =
       (Fintype.card Digest - 1 : ℕ) *
-        Pr[fun z => z.2.bad = some (t, Kind.read, true) | (lazyImpl order τ q).run st] := by
+        Pr{let z ← (lazyImpl order τ q).run st}[z.2.bad = some (t, Kind.read, true)] := by
   classical
   cases q with
   | read b p tag =>
@@ -779,19 +782,20 @@ private theorem lazy_step_ratio (order : List κ) (hn : order.Nodup)
             · subst tag
               simp only [lazyImpl, impl, StateT.run, hc, setsBad, hbad.1, hbad.2,
                 true_and, and_true, not_false_eq_true, ↓reduceIte, Option.map_some,
-                hs, Option.orElse_eq_orElse, Option.orElse, probEvent_bind_eq_tsum,
-                probEvent_pure, Option.some.injEq, Prod.mk.injEq, true_and,
+                hs, Option.orElse_eq_orElse, Option.orElse, OracleComp.prEvent_bind_eq_tsum,
+                prEvent_pure, Option.some.injEq, Prod.mk.injEq, true_and,
                 decide_eq_false_iff_not, decide_eq_true_eq]
               simp only [if_pos hbad.2, Option.map_some, Option.some.injEq,
                 Prod.mk.injEq, true_and, decide_eq_false_iff_not, decide_eq_true_eq]
               have he := evalDist_sum_put order hn b (hcover b) st p
               have hp (P : Digest → Prop) :
-                  Pr[P ∘ (fun v => sum order (put st b p v) p) | $ᵗ HashOutput] =
-                    Pr[P | $ᵗ Digest] := by
-                rw [← probEvent_map, probEvent_def, probEvent_def, he]
+                  Pr{let z ← $ᵗ HashOutput}[(P ∘ (fun v => sum order (put st b p v) p)) z] =
+                    Pr{let z ← $ᵗ Digest}[P z] := by
+                rw [← prEvent_map]
+                exact (EvalDistEq.of_evalDist_eq he).prEvent_eq P
               have hf := hp (fun d => d ≠ τ p)
               have ht := hp (fun d => d = τ p)
-              rw [probEvent_eq_tsum_ite] at hf ht
+              rw [OracleComp.prEvent_eq_tsum_ite] at hf ht
               simpa only [Function.comp_def, mul_ite, mul_one, mul_zero, ne_eq] using
                 hf.trans ((uniform_digest_ratio (τ p)).trans (congrArg _ ht.symm))
             · simp [lazyImpl, impl, StateT.run, hc, setsBad, hs, hbad, htag]
@@ -800,9 +804,9 @@ private theorem lazy_step_ratio (order : List κ) (hn : order.Nodup)
             simp [lazyImpl, impl, StateT.run, hc, hs, htest]
   | complete p target tag =>
       have hzero (luck : Bool) :
-          Pr[fun z => z.2.bad = some (t, Kind.read, luck) |
-            (lazyImpl order τ (.complete p target tag)).run st] = 0 := by
-        apply probEvent_eq_zero_iff.mpr
+          Pr{let z ←
+            (lazyImpl order τ (.complete p target tag)).run st}[z.2.bad = some (t, Kind.read, luck)] = 0 := by
+        apply (OracleComp.prEvent_eq_zero_iff _ _).mpr
         intro z hz he
         have hz' := impl_bad_next order τ (fun _ => $ᵗ HashOutput)
           (fun b p target st =>
@@ -820,11 +824,11 @@ theorem lazy_lucky_ratio (order : List κ) (hn : order.Nodup)
     (hcover : ∀ b, b ∈ order) (τ : ι → Digest)
     {α : Type} (oa : OracleComp (unifSpec + ShareSpec κ ι Tag) α)
     (st : ShareState κ ι (ImplBad Tag)) (hs : st.bad = none) (t : Tag) :
-    Pr[fun z => z.2.bad = some (t, Kind.read, false) |
-      (simulateQ (unifImpl (ShareState κ ι (ImplBad Tag)) + lazyImpl (Tag := Tag) order τ) oa).run st] =
+    Pr{let z ←
+      (simulateQ (unifImpl (ShareState κ ι (ImplBad Tag)) + lazyImpl (Tag := Tag) order τ) oa).run st}[z.2.bad = some (t, Kind.read, false)] =
       (Fintype.card Digest - 1 : ℕ) *
-        Pr[fun z => z.2.bad = some (t, Kind.read, true) |
-          (simulateQ (unifImpl (ShareState κ ι (ImplBad Tag)) + lazyImpl (Tag := Tag) order τ) oa).run st] := by
+        Pr{let z ←
+          (simulateQ (unifImpl (ShareState κ ι (ImplBad Tag)) + lazyImpl (Tag := Tag) order τ) oa).run st}[z.2.bad = some (t, Kind.read, true)] := by
   apply sticky_ratio _ ShareState.bad _ _ _ _ _ oa st hs
   · intro q s r hr z hz
     cases q with
@@ -838,7 +842,7 @@ theorem lazy_lucky_ratio (order : List κ) (hn : order.Nodup)
           q s r hr z hz
   · intro q s hs
     cases q with
-    | inl n => simp [unifImpl, StateT.run, probEvent_map, Function.comp_def, hs]
+    | inl n => simp [unifImpl, StateT.run, prEvent_map, Function.comp_def, hs]
     | inr q => exact lazy_step_ratio order hn hcover τ q s hs t
 
 
@@ -1017,7 +1021,8 @@ private theorem read_table_ne [Finite κ] [Finite ι] [SampleableType (κ × ι 
            pure (fiberTable order τ st u (a, p), fiberTable order τ st u)] := by
   let ψ : (κ × ι → HashOutput) → HashOutput × (κ × ι → HashOutput) :=
     fun u => (u (a, p), fiberTable order τ st u)
-  have hm := evalDist_uniformSample_bind_update_map (a, p) ψ
+  have hm := evalDist_uniformSample_bind_update_map SampleableType.evalDist_uniformSample
+    SampleableType.evalDist_uniformSample (a, p) ψ
   simpa only [ψ, Function.update_self, fiberTable_put_ne order τ st _ a b p _ hc hab hs,
     fiberTable_fresh_ne order τ st _ a b p hc hab hs] using hm
 
@@ -1235,32 +1240,30 @@ private theorem slack_read_tables (order : List κ) (hn : order.Nodup)
 
 private theorem evalDist_pair_equiv {A R : Type} [Finite R] [SampleableType R]
     (e : (R × R) ≃ (R × R)) (K : R × R → A) :
-    𝒟[do let v ← $ᵗ R; let w ← $ᵗ R; pure (K (e (v, w)))] =
-      𝒟[do let v ← $ᵗ R; let w ← $ᵗ R; pure (K (v, w))] := by
-  have hpair : ($ᵗ (R × R)) = (do let v ← $ᵗ R; let w ← $ᵗ R; pure (v, w)) := by
-    change (Prod.mk <$> ($ᵗ R) <*> ($ᵗ R)) = _
-    simp [seq_eq_bind_map, map_eq_bind_pure_comp, bind_assoc]
+    (do let v ← $ᵗ R; let w ← $ᵗ R; pure (K (e (v, w)))) =ᵈ
+      (do let v ← $ᵗ R; let w ← $ᵗ R; pure (K (v, w))) := by
+  have hpair : ($ᵗ (R × R)) = (do let v ← $ᵗ R; let w ← $ᵗ R; pure (v, w)) :=
+    SampleableType.uniformSample_prod_eq_bind R R
   have hmap (f : R × R → A) : f <$> ($ᵗ (R × R)) =
       (do let v ← $ᵗ R; let w ← $ᵗ R; pure (f (v, w))) := by
     rw [hpair]
     simp [map_bind]
   rw [← hmap (fun z => K (e z)), ← hmap K]
   calc
-    _ = 𝒟[K <$> (e <$> ($ᵗ (R × R)))] := by rw [Functor.map_map]
-    _ = _ := by
-      rw [evalDist_map, evalDist_map_bijective_uniform_cross (R × R) e e.bijective,
-        ← evalDist_map]
+    _ = K <$> (e <$> ($ᵗ (R × R))) := by rw [Functor.map_map]
+    _ =ᵈ _ := EvalDistEq.map_congr K
+      (SampleableType.map_uniformSample_evalDistEq_of_bijective e.bijective)
 
 private theorem evalDist_two_draws_comm {R U A : Type} (dr : ProbComp R) (du : ProbComp U)
     (K : R → R → U → ProbComp A) :
-    𝒟[do let v ← dr; let w ← dr; let u ← du; K v w u] =
-      𝒟[do let u ← du; let v ← dr; let w ← dr; K v w u] := by
+    (do let v ← dr; let w ← dr; let u ← du; K v w u) =ᵈ
+      (do let u ← du; let v ← dr; let w ← dr; K v w u) := by
   calc
-    _ = 𝒟[do let v ← dr; let u ← du; let w ← dr; K v w u] := by
-      apply evalDist_bind_congr'
+    _ =ᵈ (do let v ← dr; let u ← du; let w ← dr; K v w u : ProbComp A) := by
+      apply EvalDistEq.bind_right
       intro v
-      exact DeferredSampling.evalDist_bind_comm dr du (fun w u => K v w u)
-    _ = _ := DeferredSampling.evalDist_bind_comm dr du (fun v u => do let w ← dr; K v w u)
+      exact EvalDistEq.bind_bind_swap dr du (fun w u => K v w u)
+    _ =ᵈ _ := EvalDistEq.bind_bind_swap dr du (fun v u => do let w ← dr; K v w u)
 
 /-- The adaptive-slack read is absorbed by the invertible two-cell shift. -/
 private theorem read_table_slack [Finite κ] [Finite ι] [SampleableType (κ × ι → HashOutput)]
@@ -1300,31 +1303,38 @@ private theorem read_table_slack [Finite κ] [Finite ι] [SampleableType (κ × 
         hc hcb hp hs v w).symm
     · exact slack_read_tables order hn hcover τ st hg u a b p (Ne.symm hba)
         hc hcb hp hs v w (hgood v) (hb' v)
+  refine EvalDistEq.evalDist_eq ?_
   calc
-    _ = 𝒟[do let v ← $ᵗ HashOutput; let w ← $ᵗ HashOutput
-             let u ← $ᵗ (κ × ι → HashOutput); pure (L v (Function.update u (b, p) w))] := by
-      apply evalDist_bind_congr'
+    _ =ᵈ (do let v ← $ᵗ HashOutput; let w ← $ᵗ HashOutput
+             let u ← $ᵗ (κ × ι → HashOutput)
+             pure (L v (Function.update u (b, p) w)) : ProbComp _) := by
+      apply EvalDistEq.bind_right
       intro v
-      exact (evalDist_uniformSample_bind_update_map (b, p) (L v)).symm
-    _ = 𝒟[do let v ← $ᵗ HashOutput; let w ← $ᵗ HashOutput
-             let u ← $ᵗ (κ × ι → HashOutput); pure (L v (rawTwo u a b p v w))] := by
+      exact (EvalDistEq.of_evalDist_eq (evalDist_uniformSample_bind_update_map
+        SampleableType.evalDist_uniformSample SampleableType.evalDist_uniformSample
+        (b, p) (L v))).symm
+    _ = (do let v ← $ᵗ HashOutput; let w ← $ᵗ HashOutput
+            let u ← $ᵗ (κ × ι → HashOutput); pure (L v (rawTwo u a b p v w))) := by
       simp_rw [hraw]
-    _ = 𝒟[do let u ← $ᵗ (κ × ι → HashOutput)
+    _ =ᵈ (do let u ← $ᵗ (κ × ι → HashOutput)
              let v ← $ᵗ HashOutput; let w ← $ᵗ HashOutput
-             pure (L v (rawTwo u a b p v w))] :=
+             pure (L v (rawTwo u a b p v w)) : ProbComp _) :=
       evalDist_two_draws_comm _ _ _
-    _ = 𝒟[do let u ← $ᵗ (κ × ι → HashOutput)
+    _ =ᵈ (do let u ← $ᵗ (κ × ι → HashOutput)
              let v ← $ᵗ HashOutput; let w ← $ᵗ HashOutput
-             pure (K (rawTwo u a b p v w))] := by
-      apply evalDist_bind_congr'
+             pure (K (rawTwo u a b p v w)) : ProbComp _) := by
+      apply EvalDistEq.bind_right
       intro u
       simp_rw [hshift]
       exact evalDist_pair_equiv (slackMove (τ p) (rowRest order st u a b p)).symm
         (fun z => K (rawTwo u a b p z.1 z.2))
-    _ = 𝒟[do let v ← $ᵗ HashOutput; let w ← $ᵗ HashOutput
-             let u ← $ᵗ (κ × ι → HashOutput); pure (K (rawTwo u a b p v w))] :=
+    _ =ᵈ (do let v ← $ᵗ HashOutput; let w ← $ᵗ HashOutput
+             let u ← $ᵗ (κ × ι → HashOutput)
+             pure (K (rawTwo u a b p v w)) : ProbComp _) :=
       (evalDist_two_draws_comm _ _ _).symm
-    _ = _ := evalDist_uniformSample_bind_update_two_map (by simp [Ne.symm hba]) K
+    _ =ᵈ _ := EvalDistEq.of_evalDist_eq (evalDist_uniformSample_bind_update_two_map
+      SampleableType.evalDist_uniformSample SampleableType.evalDist_uniformSample
+      (by simp [Ne.symm hba]) K)
 
 
 private theorem read_cont_ne [Finite κ] [Finite ι] [SampleableType (κ × ι → HashOutput)]
@@ -1332,14 +1342,15 @@ private theorem read_cont_ne [Finite κ] [Finite ι] [SampleableType (κ × ι �
     (a b : κ) (p : ι) (hc : st.cache (a, p) = none)
     (hab : a ≠ b) (hs : slack order st p = some b)
     (Φ : ShareState κ ι B → (κ × ι → HashOutput) → ProbComp A) :
-    𝒟[do let v ← $ᵗ HashOutput; let u ← $ᵗ (κ × ι → HashOutput)
-         Φ (put st a p v) (fiberTable order τ (put st a p v) u)] =
-      𝒟[do let u ← $ᵗ (κ × ι → HashOutput)
-           let g := fiberTable order τ st u
-           Φ (put st a p (g (a, p))) g] := by
+    (do let v ← $ᵗ HashOutput; let u ← $ᵗ (κ × ι → HashOutput)
+        Φ (put st a p v) (fiberTable order τ (put st a p v) u)) =ᵈ
+      (do let u ← $ᵗ (κ × ι → HashOutput)
+          let g := fiberTable order τ st u
+          Φ (put st a p (g (a, p))) g) := by
   have h := read_table_ne order τ st a b p hc hab hs
-  have h' := congrArg (fun d => d >>= fun z => 𝒟[Φ (put st a p z.1) z.2]) h
-  simpa only [← evalDist_bind, bind_assoc, pure_bind] using h'
+  have h' := EvalDistEq.bind_left (EvalDistEq.of_evalDist_eq h)
+    (fun z => Φ (put st a p z.1) z.2)
+  simpa only [bind_assoc, pure_bind] using h'
 
 /-- Non-slack completion draws are absorbed one cell at a time. -/
 private theorem fill_table [Finite κ] [Finite ι] [SampleableType (κ × ι → HashOutput)]
@@ -1347,13 +1358,13 @@ private theorem fill_table [Finite κ] [Finite ι] [SampleableType (κ × ι →
     (todo : List κ) (hlist : ∀ a ∈ todo, a ≠ b) (st : ShareState κ ι B)
     (hs : slack order st p = some b)
     (Φ : ShareState κ ι B → (κ × ι → HashOutput) → ProbComp A) :
-    𝒟[do let st' ← fillTerms (fun _ => $ᵗ HashOutput) p todo st
-         let u ← $ᵗ (κ × ι → HashOutput)
-         Φ st' (fiberTable order τ st' u)] =
-      𝒟[do let u ← $ᵗ (κ × ι → HashOutput)
-           let g := fiberTable order τ st u
-           let st' ← fillTerms (fun x => pure (g x)) p todo st
-           Φ st' g] := by
+    (do let st' ← fillTerms (fun _ => $ᵗ HashOutput) p todo st
+        let u ← $ᵗ (κ × ι → HashOutput)
+        Φ st' (fiberTable order τ st' u)) =ᵈ
+      (do let u ← $ᵗ (κ × ι → HashOutput)
+          let g := fiberTable order τ st u
+          let st' ← fillTerms (fun x => pure (g x)) p todo st
+          Φ st' g) := by
   induction todo generalizing st with
   | nil => simp [fillTerms]
   | cons a todo ih =>
@@ -1366,19 +1377,19 @@ private theorem fill_table [Finite κ] [Finite ι] [SampleableType (κ × ι →
       | none =>
           simp only [fillTerms, List.foldlM_cons, fillTerm, hc, map_bind, bind_assoc,
             map_pure, pure_bind]
-          change 𝒟[do let v ← $ᵗ HashOutput
-                      let st' ← fillTerms (fun _ => $ᵗ HashOutput) p todo (put st a p v)
-                      let u ← $ᵗ (κ × ι → HashOutput)
-                      Φ st' (fiberTable order τ st' u)] = _
+          change (do let v ← $ᵗ HashOutput
+                     let st' ← fillTerms (fun _ => $ᵗ HashOutput) p todo (put st a p v)
+                     let u ← $ᵗ (κ × ι → HashOutput)
+                     Φ st' (fiberTable order τ st' u)) =ᵈ _
           calc
-            _ = 𝒟[do let v ← $ᵗ HashOutput; let u ← $ᵗ (κ × ι → HashOutput)
+            _ =ᵈ (do let v ← $ᵗ HashOutput; let u ← $ᵗ (κ × ι → HashOutput)
                      let g := fiberTable order τ (put st a p v) u
                      let st' ← fillTerms (fun x => pure (g x)) p todo (put st a p v)
-                     Φ st' g] := by
-              apply evalDist_bind_congr'
+                     Φ st' g : ProbComp A) := by
+              apply EvalDistEq.bind_right
               intro v
               exact ih htail (put st a p v) (slack_put_ne order st a b p v hab hs)
-            _ = _ := read_cont_ne order τ st a b p hc hab hs
+            _ =ᵈ _ := read_cont_ne order τ st a b p hc hab hs
               (fun s g => do let st' ← fillTerms (fun x => pure (g x)) p todo s; Φ st' g)
 
 /-- Every completion fill preserves prior cache entries and the two non-cache fields. -/
@@ -1651,10 +1662,15 @@ private theorem evalDist_high_uniform :
     𝒟[(fun v : HashOutput => (pair v).1) <$> ($ᵗ HashOutput)] = 𝒟[$ᵗ Digest] := by
   calc
     _ = 𝒟[Prod.fst <$> (pair <$> ($ᵗ HashOutput))] := by rw [Functor.map_map]
-    _ = 𝒟[Prod.fst <$> ($ᵗ (Digest × Digest))] := by
-      rw [evalDist_map, evalDist_map_bijective_uniform_cross HashOutput pair pair.bijective,
-        ← evalDist_map]
-    _ = _ := evalDist_map_fst_uniformSample_prod
+    _ = 𝒟[Prod.fst <$> ($ᵗ (Digest × Digest))] :=
+      (EvalDistEq.map_congr Prod.fst
+        (SampleableType.map_uniformSample_evalDistEq_of_bijective pair.bijective)).evalDist_eq
+    _ = _ := by
+      refine EvalDistEq.evalDist_eq ?_
+      rw [SampleableType.uniformSample_prod_eq_bind]
+      simp only [map_bind, map_pure]
+      exact (EvalDistEq.bind_right _ fun a => EvalDistEq.bind_const _ _).trans
+        (by rw [bind_pure])
 
 /-- The final low half is constrained, while its high half remains a fresh uniform digest. -/
 private theorem finish_table [Finite κ] [Finite ι] [SampleableType (κ × ι → HashOutput)]
@@ -1663,35 +1679,41 @@ private theorem finish_table [Finite κ] [Finite ι] [SampleableType (κ × ι �
     (hp : p ∉ st.done) (hs : slack order st p = some b)
     (hall : ∀ a, a ≠ b → st.cache (a, p) ≠ none)
     (Φ : ShareState κ ι B → (κ × ι → HashOutput) → ProbComp A) :
-    𝒟[do let h ← $ᵗ HashOutput
-         let st' := finishState st p b (pair.symm (lowHash h, τ p ^^^ others order st p b))
-         let u ← $ᵗ (κ × ι → HashOutput)
-         Φ st' (fiberTable order τ st' u)] =
-      𝒟[do let u ← $ᵗ (κ × ι → HashOutput)
-           let g := fiberTable order τ st u
-           Φ (finishState st p b (g (b, p))) g] := by
+    (do let h ← $ᵗ HashOutput
+        let st' := finishState st p b (pair.symm (lowHash h, τ p ^^^ others order st p b))
+        let u ← $ᵗ (κ × ι → HashOutput)
+        Φ st' (fiberTable order τ st' u)) =ᵈ
+      (do let u ← $ᵗ (κ × ι → HashOutput)
+          let g := fiberTable order τ st u
+          Φ (finishState st p b (g (b, p))) g) := by
   let K : Digest → ProbComp A := fun hi => do
     let st' := finishState st p b (pair.symm (hi, τ p ^^^ others order st p b))
     let u ← $ᵗ (κ × ι → HashOutput)
     Φ st' (fiberTable order τ st' u)
-  have hhigh : 𝒟[do let h ← $ᵗ HashOutput; K (lowHash h)] =
-      𝒟[do let h ← $ᵗ HashOutput; K (pair h).1] := by
+  have hhigh : (do let h ← $ᵗ HashOutput; K (lowHash h)) =ᵈ
+      (do let h ← $ᵗ HashOutput; K (pair h).1) := by
     calc
-      _ = 𝒟[(lowHash <$> ($ᵗ HashOutput)) >>= K] := by simp only [bind_map_left]
-      _ = 𝒟[((fun h : HashOutput => (pair h).1) <$> ($ᵗ HashOutput)) >>= K] := by
-        rw [evalDist_bind, evalDist_bind, XmssSecurity.Rom.evalDist_truncate_uniformHashOutput,
-          evalDist_high_uniform]
+      _ = (lowHash <$> ($ᵗ HashOutput)) >>= K := by simp only [bind_map_left]
+      _ =ᵈ ((fun h : HashOutput => (pair h).1) <$> ($ᵗ HashOutput)) >>= K :=
+        EvalDistEq.bind_left (XmssSecurity.Rom.evalDist_truncate_uniformHashOutput.trans
+          (EvalDistEq.of_evalDist_eq evalDist_high_uniform).symm) K
       _ = _ := by simp only [bind_map_left]
   rw [show (do let h ← $ᵗ HashOutput
                let st' := finishState st p b (pair.symm (lowHash h, τ p ^^^ others order st p b))
                let u ← $ᵗ (κ × ι → HashOutput)
                Φ st' (fiberTable order τ st' u)) =
-      ($ᵗ HashOutput >>= fun h => K (lowHash h)) from rfl, hhigh]
+      ($ᵗ HashOutput >>= fun h => K (lowHash h)) from rfl]
+  refine hhigh.trans ?_
   let ψ : (κ × ι → HashOutput) → ShareState κ ι B × (κ × ι → HashOutput) :=
     fun u => (finishState st p b (fiberTable order τ st u (b, p)), fiberTable order τ st u)
-  have hm := evalDist_uniformSample_bind_update_map (b, p) ψ
-  have hm' := congrArg (fun d => d >>= fun z => 𝒟[Φ z.1 z.2]) hm
-  simp only [← evalDist_bind, bind_assoc, pure_bind] at hm'
+  have hm : (do let v ← $ᵗ HashOutput; let u ← $ᵗ (κ × ι → HashOutput)
+                pure (ψ (Function.update u (b, p) v))) =ᵈ
+      (do let u ← $ᵗ (κ × ι → HashOutput); pure (ψ u)) := by
+    let : MeasurableSpace (ShareState κ ι B × (κ × ι → HashOutput)) := ⊤
+    exact EvalDistEq.of_evalDist_eq (evalDist_uniformSample_bind_update_map
+      SampleableType.evalDist_uniformSample SampleableType.evalDist_uniformSample (b, p) ψ)
+  have hm' := EvalDistEq.bind_left hm (fun z => Φ z.1 z.2)
+  simp only [bind_assoc, pure_bind] at hm'
   have hid (v : HashOutput) (u : κ × ι → HashOutput) :
       ψ (Function.update u (b, p) v) =
         let st' := finishState st p b (pair.symm ((pair v).1, τ p ^^^ others order st p b))
@@ -1727,23 +1749,23 @@ private theorem completion_table [Finite κ] [Finite ι] [SampleableType (κ × 
     (τ : ι → Digest) (st : ShareState κ ι B) (hg : Good order τ st) (p : ι) (b : κ)
     (hp : p ∉ st.done) (hs : slack order st p = some b)
     (Φ : ShareState κ ι B → (κ × ι → HashOutput) → ProbComp A) :
-    𝒟[do let st' ← completeLazy order τ st p b
-         let u ← $ᵗ (κ × ι → HashOutput)
-         Φ st' (fiberTable order τ st' u)] =
-      𝒟[do let u ← $ᵗ (κ × ι → HashOutput)
-           let g := fiberTable order τ st u
-           let st' ← completeEager order g st p b
-           Φ st' g] := by
+    (do let st' ← completeLazy order τ st p b
+        let u ← $ᵗ (κ × ι → HashOutput)
+        Φ st' (fiberTable order τ st' u)) =ᵈ
+      (do let u ← $ᵗ (κ × ι → HashOutput)
+          let g := fiberTable order τ st u
+          let st' ← completeEager order g st p b
+          Φ st' g) := by
   have hbn : b ∉ order.filter (· ≠ b) := by simp
   have hc := (slack_some order st p b hs).2
   unfold completeLazy completeEager
   simp only [bind_assoc, pure_bind]
   calc
-    _ = 𝒟[do let st' ← fillTerms (fun _ => $ᵗ HashOutput) p (order.filter (· ≠ b)) st
+    _ =ᵈ (do let st' ← fillTerms (fun _ => $ᵗ HashOutput) p (order.filter (· ≠ b)) st
              let u ← $ᵗ (κ × ι → HashOutput)
              let g := fiberTable order τ st' u
-             Φ (finishState st' p b (g (b, p))) g] := by
-      apply evalDist_bind_congr
+             Φ (finishState st' p b (g (b, p))) g : ProbComp A) := by
+      apply EvalDistEq.bind_congr_of_support
       intro st' hz
       obtain ⟨hd, _, _, _, hfill⟩ := fillTerms_frame (fun _ => $ᵗ HashOutput) p
         (order.filter (· ≠ b)) st st' hz
@@ -1751,7 +1773,7 @@ private theorem completion_table [Finite κ] [Finite ι] [SampleableType (κ × 
         (fillTerms_good order τ _ p b _ hbn st hg hc st' hz) p b (by rwa [hd])
         (fillTerms_slack order _ p b _ hbn st hs st' hz)
         (fun a ha => hfill a (by simp [hcover a, ha])) Φ
-    _ = _ := fill_table order τ p b (order.filter (· ≠ b))
+    _ =ᵈ _ := fill_table order τ p b (order.filter (· ≠ b))
       (fun a ha => by simpa using (List.mem_filter.mp ha).2) st hs
       (fun st' g => Φ (finishState st' p b (g (b, p))) g)
 
@@ -1839,10 +1861,10 @@ private theorem frozen_complete_map (order : List κ) (τ : ι → Digest)
     (hf : ∀ b p target s, finish b p target s = finish' b p target (erase s))
     (st : ShareState κ ι (FrozenBad Tag)) (hbad : st.bad = none)
     (p : ι) (b : κ) (tag : Tag) (hp : p ∉ st.done) (hs : slack order st p = some b) :
-    𝒟[(frozen order τ (impl order τ draw finish) (.complete p (τ p) tag)).run st] =
-      𝒟[do let mid ← fillTerms draw p (order.filter (· ≠ b)) st
-           let v ← finish' b p (τ p) mid
-           pure (true, finishState mid p b v)] := by
+    (frozen order τ (impl order τ draw finish) (.complete p (τ p) tag)).run st =ᵈ
+      (do let mid ← fillTerms draw p (order.filter (· ≠ b)) st
+          let v ← finish' b p (τ p) mid
+          pure (true, finishState mid p b v)) := by
   have hset : setsBad order τ (.complete p (τ p) tag) st = none := by simp [setsBad, hp, hs]
   have hp0 : p ∉ (unerase st).done := hp
   have hs0 : slack order (unerase st) p = some b := hs
@@ -1850,16 +1872,16 @@ private theorem frozen_complete_map (order : List κ) (τ : ι → Digest)
   simp only [frozen, StateT.run, hbad, hset, Option.orElse_eq_orElse, Option.orElse,
     impl, hp0, ↓reduceIte, hs0, hb0, map_bind, map_pure]
   calc
-    _ = 𝒟[do let mid ← fillTerms draw p (order.filter (· ≠ b)) (unerase st)
+    _ =ᵈ (do let mid ← fillTerms draw p (order.filter (· ≠ b)) (unerase st)
              let v ← finish' b p (τ p) (erase mid)
-             pure (true, finishState (erase mid) p b v)] := by
-      apply evalDist_bind_congr
+             pure (true, finishState (erase mid) p b v) : ProbComp _) := by
+      apply EvalDistEq.bind_congr_of_support
       intro mid hm
       have hb := (fillTerms_frame draw p (order.filter (· ≠ b)) (unerase st) mid hm).2.1
       rw [hf]
-      apply evalDist_bind_congr'
+      apply EvalDistEq.bind_right
       intro v
-      congr 1
+      refine EvalDistEq.of_eq (congrArg pure ?_)
       simp [finishState, erase, put, hb, hb0]
     _ = _ := by
       rw [show (do let mid ← fillTerms draw p (order.filter (· ≠ b)) (unerase st)
@@ -1873,8 +1895,8 @@ private theorem frozen_complete_map (order : List κ) (τ : ι → Digest)
 private theorem lazyFrozen_complete (order : List κ) (τ : ι → Digest)
     (st : ShareState κ ι (FrozenBad Tag)) (hbad : st.bad = none)
     (p : ι) (b : κ) (tag : Tag) (hp : p ∉ st.done) (hs : slack order st p = some b) :
-    𝒟[(lazyFrozen order τ (.complete p (τ p) tag)).run st] =
-      𝒟[(fun st' => (true, st')) <$> completeLazy order τ st p b] := by
+    (lazyFrozen order τ (.complete p (τ p) tag)).run st =ᵈ
+      (fun st' => (true, st')) <$> completeLazy order τ st p b := by
   simpa only [lazyFrozen, lazyImpl, completeLazy, map_bind, map_pure, bind_map_left] using
     frozen_complete_map order τ (fun _ => $ᵗ HashOutput)
       (fun b p target s => (fun h => pair.symm (lowHash h, target ^^^ others order s p b)) <$>
@@ -1886,8 +1908,8 @@ private theorem lazyFrozen_complete (order : List κ) (τ : ι → Digest)
 private theorem eagerFrozen_complete (order : List κ) (τ : ι → Digest)
     (g : κ × ι → HashOutput) (st : ShareState κ ι (FrozenBad Tag)) (hbad : st.bad = none)
     (p : ι) (b : κ) (tag : Tag) (hp : p ∉ st.done) (hs : slack order st p = some b) :
-    𝒟[(eagerFrozen order τ g (.complete p (τ p) tag)).run st] =
-      𝒟[(fun st' => (true, st')) <$> completeEager order g st p b] := by
+    (eagerFrozen order τ g (.complete p (τ p) tag)).run st =ᵈ
+      (fun st' => (true, st')) <$> completeEager order g st p b := by
   simpa only [eagerFrozen, eagerImpl, completeEager, map_bind, map_pure, pure_bind] using
     frozen_complete_map order τ (fun y => pure (g y))
       (fun b p _ _ => pure (g (b, p))) (fun b p _ _ => pure (g (b, p)))
@@ -1919,28 +1941,31 @@ private theorem pure_table_step [SampleableType (κ × ι → HashOutput)] {X A 
     (E : (κ × ι → HashOutput) → ProbComp (X × ShareState κ ι B))
     (y : X × ShareState κ ι B) (hy : Good order τ y.2)
     (hF : ∀ u, fiberTable order τ y.2 u = fiberTable order τ st u)
-    (hl : 𝒟[L] = 𝒟[(pure y : ProbComp _)])
-    (he : ∀ u, 𝒟[E (fiberTable order τ st u)] = 𝒟[(pure y : ProbComp _)])
+    (hl : L =ᵈ (pure y : ProbComp _))
+    (he : ∀ u, E (fiberTable order τ st u) =ᵈ (pure y : ProbComp _))
     (Φ : (X × ShareState κ ι B) → (κ × ι → HashOutput) → ProbComp A) :
     (∀ z ∈ support L, Good order τ z.2) ∧
     (∀ u, ∀ z ∈ support (E (fiberTable order τ st u)),
       Good order τ z.2 ∧ fiberTable order τ z.2 u = fiberTable order τ st u) ∧
-    𝒟[do let z ← L; let u ← $ᵗ (κ × ι → HashOutput); Φ z (fiberTable order τ z.2 u)] =
-      𝒟[do let u ← $ᵗ (κ × ι → HashOutput)
-           let z ← E (fiberTable order τ st u); Φ z (fiberTable order τ st u)] := by
+    (do let z ← L; let u ← $ᵗ (κ × ι → HashOutput); Φ z (fiberTable order τ z.2 u)) =ᵈ
+      (do let u ← $ᵗ (κ × ι → HashOutput)
+          let z ← E (fiberTable order τ st u); Φ z (fiberTable order τ st u)) := by
   refine ⟨?_, ?_, ?_⟩
   · intro z hz
-    have heq := eq_of_mem_support_pure y ((mem_support_iff_of_evalDist_eq hl z).mp hz)
+    have heq := eq_of_mem_support_pure y ((Set.ext_iff.mp (support_eq_of_evalDistEq hl) z).mp hz)
     subst z
     exact hy
   · intro u z hz
-    have heq := eq_of_mem_support_pure y ((mem_support_iff_of_evalDist_eq (he u) z).mp hz)
+    have heq := eq_of_mem_support_pure y
+      ((Set.ext_iff.mp (support_eq_of_evalDistEq (he u)) z).mp hz)
     subst z
     exact ⟨hy, hF u⟩
-  · rw [evalDist_bind, hl, evalDist_pure, pure_bind]
-    apply evalDist_bind_congr'
+  · refine (EvalDistEq.bind_left hl _).trans ?_
+    rw [pure_bind]
+    apply EvalDistEq.bind_right
     intro u
-    rw [evalDist_bind, he u, evalDist_pure, pure_bind, hF u]
+    refine ((EvalDistEq.bind_left (he u) _).trans ?_).symm
+    rw [pure_bind, hF u]
 
 /-- Per-query reconstruction and coupling for the frozen oracle. -/
 private theorem frozen_step [Finite κ] [Finite ι] [SampleableType (κ × ι → HashOutput)]
@@ -1952,11 +1977,11 @@ private theorem frozen_step [Finite κ] [Finite ι] [SampleableType (κ × ι �
     (∀ z ∈ support ((lazyFrozen order τ q).run st), Good order τ z.2) ∧
     (∀ u, ∀ z ∈ support ((eagerFrozen order τ (fiberTable order τ st u) q).run st),
       Good order τ z.2 ∧ fiberTable order τ z.2 u = fiberTable order τ st u) ∧
-    𝒟[do let z ← (lazyFrozen order τ q).run st
-         let u ← $ᵗ (κ × ι → HashOutput); Φ z (fiberTable order τ z.2 u)] =
-      𝒟[do let u ← $ᵗ (κ × ι → HashOutput)
-           let z ← (eagerFrozen order τ (fiberTable order τ st u) q).run st
-           Φ z (fiberTable order τ st u)] := by
+    (do let z ← (lazyFrozen order τ q).run st
+        let u ← $ᵗ (κ × ι → HashOutput); Φ z (fiberTable order τ z.2 u)) =ᵈ
+      (do let u ← $ᵗ (κ × ι → HashOutput)
+          let z ← (eagerFrozen order τ (fiberTable order τ st u) q).run st
+          Φ z (fiberTable order τ st u)) := by
   cases hb : st.bad with
   | some r =>
       have hreset : { st with bad := some r } = st := by rw [← hb]
@@ -2029,8 +2054,9 @@ private theorem frozen_step [Finite κ] [Finite ι] [SampleableType (κ × ι �
                       by_cases hab : a = b
                       · subst b; exact read_table_slack order hn hcover τ st hg a p hc hsb tag hs
                       · exact read_table_ne order τ st a b p hc hab hsb
-                    have hr' := congrArg (fun d => d >>= fun z => 𝒟[Φ (z.1, put st a p z.1) z.2]) hr
-                    simpa only [← evalDist_bind, bind_assoc, pure_bind] using hr'
+                    have hr' := EvalDistEq.bind_left (EvalDistEq.of_evalDist_eq hr)
+                      (fun z => Φ (z.1, put st a p z.1) z.2)
+                    simpa only [bind_assoc, pure_bind] using hr'
           | complete p target tag =>
               by_cases hp : p ∈ st.done
               · apply pure_table_step order τ st ((lazyFrozen order τ (.complete p target tag)).run st)
@@ -2048,25 +2074,27 @@ private theorem frozen_step [Finite κ] [Finite ι] [SampleableType (κ × ι �
                   (fiberTable order τ st u) st hb p b tag hp hsb
                 refine ⟨?_, ?_, ?_⟩
                 · intro z hz
-                  have hz' := (mem_support_iff_of_evalDist_eq hl z).mp hz
+                  have hz' := (Set.ext_iff.mp (support_eq_of_evalDistEq hl) z).mp hz
                   obtain ⟨s, hs', rfl⟩ := mem_support_map_peel _ _ hz'
                   exact completeLazy_good order hn hcover τ st hg p b hsb s hs'
                 · intro u z hz
-                  have hz' := (mem_support_iff_of_evalDist_eq (he u) z).mp hz
+                  have hz' := (Set.ext_iff.mp (support_eq_of_evalDistEq (he u)) z).mp hz
                   obtain ⟨s, hs', rfl⟩ := mem_support_map_peel _ _ hz'
                   exact completeEager_good_table order hn hcover τ st hg p b hp hsb u s hs'
-                · rw [evalDist_bind, hl, ← evalDist_bind, bind_map_left]
+                · refine (EvalDistEq.bind_left hl _).trans ?_
+                  rw [bind_map_left]
                   calc
-                    _ = 𝒟[do let u ← $ᵗ (κ × ι → HashOutput)
+                    _ =ᵈ (do let u ← $ᵗ (κ × ι → HashOutput)
                              let g := fiberTable order τ st u
                              let s ← completeEager order g st p b
-                             Φ (true, s) g] :=
+                             Φ (true, s) g : ProbComp A) :=
                       completion_table order hn hcover τ st hg p b hp hsb (fun s g => Φ (true, s) g)
-                    _ = _ := by
-                      apply evalDist_bind_congr'
+                    _ =ᵈ _ := by
+                      apply EvalDistEq.bind_right
                       intro u
                       symm
-                      rw [evalDist_bind, he u, ← evalDist_bind, bind_map_left]
+                      refine (EvalDistEq.bind_left (he u) _).trans ?_
+                      rw [bind_map_left]
 
 
 /-- Full frozen lazy/eager law from every Good state, including states already carrying bad. -/
@@ -2075,14 +2103,14 @@ theorem lazyFrozen_eq_eagerFrozen [Fintype κ] [Fintype ι]
     (order : List κ) (hn : order.Nodup) (hcover : ∀ b, b ∈ order) (τ : ι → Digest)
     {α : Type} (oa : OracleComp (unifSpec + ShareSpec κ ι Tag) α)
     (st : ShareState κ ι (FrozenBad Tag)) (hg : Good order τ st) :
-    𝒟[(simulateQ (unifImpl (ShareState κ ι (FrozenBad Tag)) + lazyFrozen (Tag := Tag) order τ) oa).run st] =
-      𝒟[do let u ← $ᵗ (κ × ι → HashOutput)
-           (simulateQ (unifImpl (ShareState κ ι (FrozenBad Tag)) +
-             eagerFrozen (Tag := Tag) order τ (fiberTable order τ st u)) oa).run st] := by
+    (simulateQ (unifImpl (ShareState κ ι (FrozenBad Tag)) + lazyFrozen (Tag := Tag) order τ) oa).run st =ᵈ
+      (do let u ← $ᵗ (κ × ι → HashOutput)
+          (simulateQ (unifImpl (ShareState κ ι (FrozenBad Tag)) +
+            eagerFrozen (Tag := Tag) order τ (fiberTable order τ st u)) oa).run st) := by
   induction oa using OracleComp.inductionOn generalizing st with
   | pure a =>
       simp only [simulateQ_pure, StateT.run_pure]
-      exact (DeferredSampling.evalDist_bind_const_neverFails _ (by simp) _).symm
+      exact (EvalDistEq.bind_const _ _).symm
   | query_bind q k ih =>
       simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query,
         OracleQuery.cont_query, id_map, StateT.run_bind]
@@ -2090,13 +2118,14 @@ theorem lazyFrozen_eq_eagerFrozen [Fintype κ] [Fintype ι]
       | inl n =>
           simp only [QueryImpl.add_apply_inl, unifImpl, StateT.run, bind_map_left]
           calc
-            _ = 𝒟[do let a ← $[0..n]; let u ← $ᵗ (κ × ι → HashOutput)
+            _ =ᵈ (do let a ← $[0..n]; let u ← $ᵗ (κ × ι → HashOutput)
                      (simulateQ (unifImpl (ShareState κ ι (FrozenBad Tag)) +
-                       eagerFrozen (Tag := Tag) order τ (fiberTable order τ st u)) (k a)).run st] := by
-              apply evalDist_bind_congr'
+                       eagerFrozen (Tag := Tag) order τ (fiberTable order τ st u)) (k a)).run st :
+                     ProbComp _) := by
+              apply EvalDistEq.bind_right
               intro a
               exact ih a st hg
-            _ = _ := DeferredSampling.evalDist_bind_comm _ _ _
+            _ =ᵈ _ := EvalDistEq.bind_bind_swap _ _ _
       | inr q =>
           simp only [QueryImpl.add_apply_inr]
           let Φ := fun (z : (ShareSpec κ ι Tag).Range q × ShareState κ ι (FrozenBad Tag))
@@ -2105,57 +2134,57 @@ theorem lazyFrozen_eq_eagerFrozen [Fintype κ] [Fintype ι]
               eagerFrozen (Tag := Tag) order τ g) (k z.1)).run z.2
           have hstep := frozen_step order hn hcover τ q st hg Φ
           calc
-            _ = 𝒟[do let z ← (lazyFrozen order τ q).run st
+            _ =ᵈ (do let z ← (lazyFrozen order τ q).run st
                      let u ← $ᵗ (κ × ι → HashOutput)
-                     Φ z (fiberTable order τ z.2 u)] := by
-              apply evalDist_bind_congr
+                     Φ z (fiberTable order τ z.2 u) : ProbComp _) := by
+              apply EvalDistEq.bind_congr_of_support
               intro z hz
               exact ih z.1 z.2 (hstep.1 z hz)
-            _ = _ := hstep.2.2
+            _ =ᵈ _ := hstep.2.2
 
 /-- T2(a), specialized to the original lazy implementation. -/
 theorem lazyImpl_frozen_nonbad (order : List κ) (τ : ι → Digest)
     {α : Type} (oa : OracleComp (unifSpec + ShareSpec κ ι Tag) α)
     (st : ShareState κ ι (ImplBad Tag)) (G : α × ShareState κ ι (FrozenBad Tag) → Prop) :
-    Pr[fun z => G (z.1, erase z.2) ∧ z.2.bad = none |
-      (simulateQ (unifImpl (ShareState κ ι (ImplBad Tag)) + lazyImpl (Tag := Tag) order τ) oa).run st] =
-      Pr[fun z => G z ∧ z.2.bad = none |
-        (simulateQ (unifImpl (ShareState κ ι (FrozenBad Tag)) + lazyFrozen (Tag := Tag) order τ) oa).run (erase st)] :=
+    Pr{let z ←
+      (simulateQ (unifImpl (ShareState κ ι (ImplBad Tag)) + lazyImpl (Tag := Tag) order τ) oa).run st}[G (z.1, erase z.2) ∧ z.2.bad = none] =
+      Pr{let z ←
+        (simulateQ (unifImpl (ShareState κ ι (FrozenBad Tag)) + lazyFrozen (Tag := Tag) order τ) oa).run (erase st)}[G z ∧ z.2.bad = none] :=
   impl_frozen_nonbad order τ _ _ oa st G
 
 /-- T2(b), retaining the lazy first-bad tag and kind through erasure. -/
 theorem lazyImpl_frozen_firstbad (order : List κ) (τ : ι → Digest)
     {α : Type} (oa : OracleComp (unifSpec + ShareSpec κ ι Tag) α)
     (st : ShareState κ ι (ImplBad Tag)) (r : FrozenBad Tag) :
-    Pr[fun z => (erase z.2).bad = some r |
-      (simulateQ (unifImpl (ShareState κ ι (ImplBad Tag)) + lazyImpl (Tag := Tag) order τ) oa).run st] =
-      Pr[fun z => z.2.bad = some r |
-        (simulateQ (unifImpl (ShareState κ ι (FrozenBad Tag)) + lazyFrozen (Tag := Tag) order τ) oa).run (erase st)] :=
+    Pr{let z ←
+      (simulateQ (unifImpl (ShareState κ ι (ImplBad Tag)) + lazyImpl (Tag := Tag) order τ) oa).run st}[(erase z.2).bad = some r] =
+      Pr{let z ←
+        (simulateQ (unifImpl (ShareState κ ι (FrozenBad Tag)) + lazyFrozen (Tag := Tag) order τ) oa).run (erase st)}[z.2.bad = some r] :=
   impl_frozen_firstbad order τ _ _ oa st r
 
 /-- T2(a) holds for every eager answer table, without a fiber assumption. -/
 theorem eagerImpl_frozen_nonbad (order : List κ) (τ : ι → Digest) (g : κ × ι → HashOutput)
     {α : Type} (oa : OracleComp (unifSpec + ShareSpec κ ι Tag) α)
     (st : ShareState κ ι (ImplBad Tag)) (G : α × ShareState κ ι (FrozenBad Tag) → Prop) :
-    Pr[fun z => G (z.1, erase z.2) ∧ z.2.bad = none |
-      (simulateQ (unifImpl (ShareState κ ι (ImplBad Tag)) + eagerImpl (Tag := Tag) order τ g) oa).run st] =
-      Pr[fun z => G z ∧ z.2.bad = none |
-        (simulateQ (unifImpl (ShareState κ ι (FrozenBad Tag)) + eagerFrozen (Tag := Tag) order τ g) oa).run (erase st)] :=
+    Pr{let z ←
+      (simulateQ (unifImpl (ShareState κ ι (ImplBad Tag)) + eagerImpl (Tag := Tag) order τ g) oa).run st}[G (z.1, erase z.2) ∧ z.2.bad = none] =
+      Pr{let z ←
+        (simulateQ (unifImpl (ShareState κ ι (FrozenBad Tag)) + eagerFrozen (Tag := Tag) order τ g) oa).run (erase st)}[G z ∧ z.2.bad = none] :=
   impl_frozen_nonbad order τ _ _ oa st G
 
 /-- T2(b) holds for every eager answer table and transports no lucky bit. -/
 theorem eagerImpl_frozen_firstbad (order : List κ) (τ : ι → Digest) (g : κ × ι → HashOutput)
     {α : Type} (oa : OracleComp (unifSpec + ShareSpec κ ι Tag) α)
     (st : ShareState κ ι (ImplBad Tag)) (r : FrozenBad Tag) :
-    Pr[fun z => (erase z.2).bad = some r |
-      (simulateQ (unifImpl (ShareState κ ι (ImplBad Tag)) + eagerImpl (Tag := Tag) order τ g) oa).run st] =
-      Pr[fun z => z.2.bad = some r |
-        (simulateQ (unifImpl (ShareState κ ι (FrozenBad Tag)) + eagerFrozen (Tag := Tag) order τ g) oa).run (erase st)] :=
+    Pr{let z ←
+      (simulateQ (unifImpl (ShareState κ ι (ImplBad Tag)) + eagerImpl (Tag := Tag) order τ g) oa).run st}[(erase z.2).bad = some r] =
+      Pr{let z ←
+        (simulateQ (unifImpl (ShareState κ ι (FrozenBad Tag)) + eagerFrozen (Tag := Tag) order τ g) oa).run (erase st)}[z.2.bad = some r] :=
   impl_frozen_firstbad order τ _ _ oa st r
 
 end ThresholdLeanXmssSecurity.SigningShareLazy
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningShareLazy.good_init' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.SigningShareLazy.good_init' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms ThresholdLeanXmssSecurity.SigningShareLazy.good_init
 
@@ -2197,11 +2226,13 @@ end ThresholdLeanXmssSecurity.SigningShareLazy
 #guard_msgs in
 #print axioms ThresholdLeanXmssSecurity.SigningShareLazy.lazy_lucky_ratio
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningShareLazy.fiberTable_init_cons' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.SigningShareLazy.fiberTable_init_cons' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound] -/
 #guard_msgs in
 #print axioms ThresholdLeanXmssSecurity.SigningShareLazy.fiberTable_init_cons
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningShareLazy.fiberTable_nil' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.SigningShareLazy.fiberTable_nil' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms ThresholdLeanXmssSecurity.SigningShareLazy.fiberTable_nil
 

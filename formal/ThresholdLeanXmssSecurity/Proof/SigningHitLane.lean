@@ -26,7 +26,7 @@ The hypotheses of `hitLaneBound`.
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -60,7 +60,7 @@ def IsHitPotential (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) (Inv
     (f : LoggedState C → ℝ≥0∞) : Prop :=
   Inv loggedInit ∧ f loggedInit = 0 ∧
     (∀ t s, Inv s → ¬IsProgram t → ∀ r ∈ support ((loggedImpl prims t).run s), Inv r.2) ∧
-    (∀ t s, Inv s → ¬Programmed s.2 → ¬IsProgram t → ∑' r, Pr[= r | (loggedImpl prims t).run s] * f r.2 ≤
+    (∀ t s, Inv s → ¬Programmed s.2 → ¬IsProgram t → ∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] * f r.2 ≤
       f s + (SeedHitProof.signCost t : ℝ≥0∞) * (2 ^ 128 : ℝ≥0∞)⁻¹) ∧
     ∀ z ∈ support (loggedRun prims A x), WinHit prims x (z.1, z.2.1) → 1 ≤ f z.2
 
@@ -79,9 +79,8 @@ def NoProgramQuery (prims : Primitives) (C : Committee) : Prop :=
 
 /-- A win with a hit on `exposedRun` is the same event on `loggedRun`. -/
 theorem winHit_logged (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr[WinHit prims x | exposedRun prims A x] = Pr[fun z => WinHit prims x (z.1, z.2.1) | loggedRun prims A x] := by
-  rw [← loggedRun_forget, probEvent_map]
-  rfl
+    Pr{let z ← exposedRun prims A x}[WinHit prims x z] = Pr{let z ← loggedRun prims A x}[WinHit prims x (z.1, z.2.1)] := by
+  rw [← loggedRun_forget, prEvent_map]
 
 /-- A call of `loggedImpl` adds its cost to the count. -/
 theorem loggedImpl_count (t : (WorldSpec C).Domain) (s : LoggedState C)
@@ -109,14 +108,14 @@ def guarded (f : LoggedState C → ℝ≥0∞) (s : LoggedState C) : ℝ≥0∞ 
 
 /-- A guarded potential pays every call. -/
 theorem guarded_step (Inv : LoggedState C → Prop) (f : LoggedState C → ℝ≥0∞)
-    (hstep : ∀ t s, Inv s → ¬Programmed s.2 → ¬IsProgram t → ∑' r, Pr[= r | (loggedImpl prims t).run s] * f r.2 ≤
+    (hstep : ∀ t s, Inv s → ¬Programmed s.2 → ¬IsProgram t → ∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] * f r.2 ≤
       f s + (SeedHitProof.signCost t : ℝ≥0∞) * (2 ^ 128 : ℝ≥0∞)⁻¹)
     (t : (WorldSpec C).Domain) (s : LoggedState C) (hs : ¬Programmed s.2 → Inv s) :
-    ∑' r, Pr[= r | (loggedImpl prims t).run s] * guarded f r.2 ≤
+    ∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] * guarded f r.2 ≤
       guarded f s + (SeedHitProof.signCost t : ℝ≥0∞) * (2 ^ 128 : ℝ≥0∞)⁻¹ := by
   classical
   by_cases hbad : Programmed s.2 ∨ IsProgram t
-  · refine le_trans (le_of_eq (tsum_probOutput_mul_of_const_on_support _ (c := 0) (fun r hr => ?_) (by simp)))
+  · refine le_trans (le_of_eq (OracleComp.tsum_prEvent_mul_of_const_on_support _ (c := 0) (fun r hr => ?_)))
       zero_le
     rw [guarded, if_pos (by rw [loggedImpl_log prims t s r hr, programmed_logQuery]; exact hbad)]
   · push Not at hbad
@@ -133,10 +132,10 @@ theorem count_ge_expectedCost {α : Type} (c : ℝ≥0∞) (oa : OracleComp (Wor
     (s.1.2 : ℝ≥0∞) * c +
         XmssSecurity.expectedSimulatedCost (loggedImpl prims) (fun t _ => (SeedHitProof.signCost t : ℝ≥0∞) * c) oa s ≤
       XmssSecurity.expectedFinal (loggedImpl prims) (fun s => (s.1.2 : ℝ≥0∞) * c) oa s := by
-  refine XmssSecurity.expectedFinal_ge (loggedImpl prims) (Inv := fun _ => True) (fun _ _ _ _ _ => trivial) _ _
-    (fun t s _ => ?_) oa s trivial
-  rw [tsum_probOutput_mul_of_const_on_support _ (c := ((s.1.2 + SeedHitProof.signCost t : ℕ) : ℝ≥0∞) * c)
-    (fun r hr => by rw [loggedImpl_count prims t s r hr]) (by simp)]
+  refine XmssSecurity.expectedFinal_ge (loggedImpl prims) (Inv := fun _ => True) (fun _ _ _ _ _ => trivial)
+    (fun s => (s.1.2 : ℝ≥0∞) * c) (fun t _ => (SeedHitProof.signCost t : ℝ≥0∞) * c) (fun t s _ => ?_) oa s trivial
+  rw [OracleComp.tsum_prEvent_mul_of_const_on_support _ (c := ((s.1.2 + SeedHitProof.signCost t : ℕ) : ℝ≥0∞) * c)
+    (fun r hr => by rw [loggedImpl_count prims t s r hr])]
   push_cast
   rw [add_mul]
 
@@ -146,7 +145,7 @@ theorem hitLane_of_potential (A : TsigAdversary C) (q : ℕ) (x : SigningSecurit
     (hcount : ∀ z ∈ support (loggedRun prims A x), z.2.1.2 ≤ q)
     (hprogram : ∀ z ∈ support (loggedRun prims A x), ¬Programmed z.2.2) (Inv : LoggedState C → Prop)
     (f : LoggedState C → ℝ≥0∞) (hf : IsHitPotential prims A x Inv f) :
-    Pr[WinHit prims x | exposedRun prims A x] ≤ (q : ℝ≥0∞) / 2 ^ 128 := by
+    Pr{let z ← exposedRun prims A x}[WinHit prims x z] ≤ (q : ℝ≥0∞) / 2 ^ 128 := by
   classical
   obtain ⟨hinit, hzero, hinv, hstep, hwin⟩ := hf
   let c : ℝ≥0∞ := (2 ^ 128 : ℝ≥0∞)⁻¹
@@ -155,18 +154,18 @@ theorem hitLane_of_potential (A : TsigAdversary C) (q : ℕ) (x : SigningSecurit
   rw [hrun] at hwin hcount hprogram
   have hguardedInit : guarded f loggedInit = 0 := by
     rw [guarded, if_neg (by simp [loggedInit, Programmed]), hzero]
-  calc Pr[fun z => WinHit prims x (z.1, z.2.1) | (simulateQ (loggedImpl prims) (finalRun A x)).run loggedInit]
+  calc Pr{let z ← (simulateQ (loggedImpl prims) (finalRun A x)).run loggedInit}[WinHit prims x (z.1, z.2.1)]
       ≤ XmssSecurity.expectedFinal (loggedImpl prims) (guarded f) (finalRun A x) loggedInit := by
-        rw [probEvent_eq_tsum_ite]
+        rw [OracleComp.prEvent_eq_tsum_ite]
         refine ENNReal.tsum_le_tsum fun z => ?_
         split_ifs with hz
         · by_cases hs : z ∈ support ((simulateQ (loggedImpl prims) (finalRun A x)).run loggedInit)
-          · calc _ = Pr[= z | (simulateQ (loggedImpl prims) (finalRun A x)).run loggedInit] * 1 := (mul_one _).symm
+          · calc _ = Pr{let y ← (simulateQ (loggedImpl prims) (finalRun A x)).run loggedInit}[y = z] * 1 := (mul_one _).symm
               _ ≤ _ := by
                 gcongr
                 rw [guarded, if_neg (hprogram z hs)]
                 exact hwin z hs hz
-          · rw [probOutput_eq_zero_of_not_mem_support hs, zero_mul]
+          · rw [prEvent_eq_zero_of_not_mem_support _ hs, zero_mul]
         · exact zero_le
     _ ≤ guarded f loggedInit + XmssSecurity.expectedSimulatedCost (loggedImpl prims)
           (fun t _ => (SeedHitProof.signCost t : ℝ≥0∞) * c) (finalRun A x) loggedInit := by
@@ -181,16 +180,16 @@ theorem hitLane_of_potential (A : TsigAdversary C) (q : ℕ) (x : SigningSecurit
         simpa [loggedInit] using count_ge_expectedCost prims c (finalRun A x) loggedInit
     _ ≤ (q : ℝ≥0∞) * c := by
         unfold XmssSecurity.expectedFinal
-        calc _ ≤ ∑' z, Pr[= z | (simulateQ (loggedImpl prims) (finalRun A x)).run loggedInit] * ((q : ℝ≥0∞) * c) := by
+        calc _ ≤ ∑' z, Pr{let y ← (simulateQ (loggedImpl prims) (finalRun A x)).run loggedInit}[y = z] * ((q : ℝ≥0∞) * c) := by
               refine ENNReal.tsum_le_tsum fun z => ?_
               by_cases hs : z ∈ support ((simulateQ (loggedImpl prims) (finalRun A x)).run loggedInit)
               · show _ * ((z.2.1.2 : ℝ≥0∞) * c) ≤ _
                 gcongr
                 exact_mod_cast hcount z hs
-              · rw [probOutput_eq_zero_of_not_mem_support hs, zero_mul, zero_mul]
+              · rw [prEvent_eq_zero_of_not_mem_support _ hs, zero_mul, zero_mul]
           _ ≤ (q : ℝ≥0∞) * c := by
               rw [ENNReal.tsum_mul_right]
-              calc _ ≤ 1 * ((q : ℝ≥0∞) * c) := by gcongr; exact tsum_probOutput_le_one
+              calc _ ≤ 1 * ((q : ℝ≥0∞) * c) := by gcongr; exact OracleComp.tsum_prEvent_le_one _
                 _ = _ := one_mul _
     _ = (q : ℝ≥0∞) / 2 ^ 128 := (div_eq_mul_inv _ _).symm
 

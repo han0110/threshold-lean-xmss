@@ -16,7 +16,7 @@ The coupling route relates `KeygenCoupling` of `Proof/Keygen.lean` to `KeygenSec
    hidden-half hypothesis is `KeygenHiddenFreshSwapped`, on the relabeled reference runs.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open scoped ENNReal
 
 noncomputable section
@@ -30,7 +30,7 @@ set_option pp.maxSteps 2000
 
 /-- The probability of every event of a finite computation is a nonnegative rational. -/
 theorem probEvent_rational {α : Type} (oa : ProbComp α) (p : α → Prop) :
-    ∃ r : ℚ, 0 ≤ r ∧ Pr[p | oa] = ENNReal.ofReal r := by
+    ∃ r : ℚ, 0 ≤ r ∧ Pr{let z ← oa}[p z] = ENNReal.ofReal r := by
   classical
   induction oa using ProbComp.inductionOn with
   | pure a =>
@@ -40,12 +40,14 @@ theorem probEvent_rational {α : Type} (oa : ProbComp α) (p : α → Prop) :
   | query_bind n mx ih =>
     choose r hr hpr using ih
     refine ⟨∑ m, r m / (n + 1), Finset.sum_nonneg fun m _ => div_nonneg (hr m) (by positivity), ?_⟩
-    rw [probEvent_bind_eq_tsum, tsum_fintype]
+    rw [prEvent_bind_eq_sum_fintype]
     push_cast
     rw [ENNReal.ofReal_sum_of_nonneg (fun m _ => div_nonneg (by exact_mod_cast hr m) (by positivity))]
     apply Finset.sum_congr rfl
     intro m _
-    rw [ProbComp.probOutput_uniformFin, hpr m, div_eq_mul_inv, ENNReal.ofReal_mul (by exact_mod_cast hr m)]
+    rw [ProbComp.prEvent_uniformFin, hpr m, Finset.filter_eq', if_pos (Finset.mem_univ m),
+      Finset.card_singleton, Nat.cast_one, one_div, div_eq_mul_inv (r m : ℝ),
+      ENNReal.ofReal_mul (by exact_mod_cast hr m)]
     rw [mul_comm]
     congr 1
     rw [ENNReal.ofReal_inv_of_pos (by positivity)]
@@ -57,26 +59,18 @@ theorem probEvent_rational {α : Type} (oa : ProbComp α) (p : α → Prop) :
 def ratCoin (a m : ℕ) : ProbComp Bool := (fun u : Fin (m + 1) => decide (u.val < a)) <$> $[0..m]
 
 theorem probOutput_ratCoin_true (a m : ℕ) (ha : a ≤ m + 1) :
-    Pr[= true | ratCoin a m] = (a : ℝ≥0∞) / (m + 1) := by
+    Pr{let z ← ratCoin a m}[z = true] = (a : ℝ≥0∞) / (m + 1) := by
   unfold ratCoin
-  rw [← probEvent_eq_eq_probOutput, probEvent_map]
-  have hf : ((fun b => b = true) ∘ fun u : Fin (m + 1) => decide (u.val < a)) = fun u => u.val < a := by
-    funext u; simp
-  rw [hf, ProbComp.probEvent_uniformFin]
-  have hc : Fin.countP (fun i : Fin (m + 1) => decide (i.val < a)) = a := by
-    have h1 := Fin.card_eq_countP_mem ({i : Fin (m + 1) | i.val < a} : Finset (Fin (m + 1)))
-    rw [Fin.card_filter_val_lt] at h1
-    simp only [Finset.mem_filter, Finset.mem_univ, true_and] at h1
-    rw [← h1]
-    omega
-  rw [hc]
-  push_cast
-  rfl
+  rw [prEvent_map]
+  simp only [decide_eq_true_eq]
+  rw [ProbComp.prEvent_uniformFin, Fin.card_filter_val_lt]
+  congr 2
+  omega
 
 /-- A coin with each rational probability in `[0, 1]`. -/
 theorem exists_coin (α : ℚ) (h0 : 0 ≤ α) (h1 : α ≤ 1) :
-    ∃ coin : ProbComp Bool, Pr[= true | coin] = ENNReal.ofReal α ∧
-      Pr[= false | coin] = ENNReal.ofReal (1 - α) := by
+    ∃ coin : ProbComp Bool, Pr{let z ← coin}[z = true] = ENNReal.ofReal α ∧
+      Pr{let z ← coin}[z = false] = ENNReal.ofReal (1 - α) := by
   obtain ⟨a, ha⟩ : ∃ a : ℕ, (a : ℤ) = α.num := ⟨α.num.toNat, Int.toNat_of_nonneg (Rat.num_nonneg.mpr h0)⟩
   have hden := α.den_pos
   have hα : (α : ℝ) = (a : ℝ) / α.den := by
@@ -88,15 +82,17 @@ theorem exists_coin (α : ℚ) (h0 : 0 ≤ α) (h1 : α ≤ 1) :
     rw [div_le_one (by exact_mod_cast hden)] at this
     exact_mod_cast this
   have hm : α.den - 1 + 1 = α.den := by omega
-  have ht : Pr[= true | ratCoin a (α.den - 1)] = ENNReal.ofReal α := by
+  have ht : Pr{let z ← ratCoin a (α.den - 1)}[z = true] = ENNReal.ofReal α := by
     rw [probOutput_ratCoin_true a _ (by omega), hα, ENNReal.ofReal_div_of_pos (by exact_mod_cast hden)]
     have hcast : ((α.den - 1 : ℕ) : ℝ≥0∞) + 1 = (α.den : ℝ≥0∞) := by exact_mod_cast hm
     rw [hcast]
     simp
   refine ⟨ratCoin a (α.den - 1), ht, ?_⟩
-  have hs := probOutput_false_eq_sub (ratCoin a (α.den - 1))
-  rw [hs, ht, probFailure_eq_zero, tsub_zero, ← ENNReal.ofReal_one,
-    ← ENNReal.ofReal_sub _ (by exact_mod_cast h0)]
+  have hs : Pr{let z ← ratCoin a (α.den - 1)}[z = false] =
+      1 - Pr{let z ← ratCoin a (α.den - 1)}[z = true] := by
+    rw [← OracleComp.prEvent_not_eq_one_sub]
+    exact prEvent_congr _ _ _ (by simp)
+  rw [hs, ht, ← ENNReal.ofReal_one, ← ENNReal.ofReal_sub _ (by exact_mod_cast h0)]
 
 variable {C : Committee}
 
@@ -115,41 +111,39 @@ theorem run_coinFlagged (prims : Primitives) (g : OracleComp (WorldSpec C) Bool)
 
 theorem probEvent_runWorld_fst (prims : Primitives) {β : Type} (oa : OracleComp (WorldSpec C) β)
     (Q : β → Prop) :
-    Pr[fun r => Q r.1 | runWorld prims oa] = Pr[Q | (simulateQ (worldAnswer prims) oa).run' ∅] := by
-  rw [← fst_map_runWorld, probEvent_map]
-  rfl
+    Pr{let r ← runWorld prims oa}[Q r.1] = Pr{let z ← (simulateQ (worldAnswer prims) oa).run' ∅}[Q z] := by
+  rw [← fst_map_runWorld, prEvent_map]
 
 
 theorem probEvent_flag (P coin : ProbComp Bool) (Q : Bool × Bool → Prop) :
-    Pr[Q | P >>= fun b => (fun c => (b, b && c)) <$> coin] =
-      Pr[= true | P] * Pr[fun c => Q (true, c) | coin] +
-        Pr[= false | P] * (if Q (false, false) then 1 else 0) := by
+    Pr{let z ← P >>= fun b => (fun c => (b, b && c)) <$> coin}[Q z] =
+      Pr{let z ← P}[z = true] * Pr{let c ← coin}[Q (true, c)] +
+        Pr{let z ← P}[z = false] * (if Q (false, false) then 1 else 0) := by
   classical
-  rw [probEvent_bind_eq_tsum, tsum_fintype, Fintype.sum_bool, probEvent_map, probEvent_map]
+  rw [prEvent_bind_eq_sum_fintype, Fintype.sum_bool, prEvent_map, prEvent_map]
   congr 1
   by_cases hq : Q (false, false)
-  · simp [Function.comp_def, hq]
-  · simp [Function.comp_def, hq]
+  · simp [hq]
+  · simp [hq]
 
 theorem accepts_eq_probOutput (prims : Primitives) (g : OracleComp (WorldSpec C) Bool) :
-    accepts prims g = (Pr[= true | (simulateQ (worldAnswer prims) g).run' ∅]).toReal := by
+    accepts prims g = (Pr{let z ← (simulateQ (worldAnswer prims) g).run' ∅}[z = true]).toReal := by
   unfold accepts
-  rw [probEvent_runWorld_fst prims g (fun b => b = true), probEvent_eq_eq_probOutput]
+  rw [probEvent_runWorld_fst prims g (fun b => b = true)]
 
 /-- The coin-flagged game keeps the acceptance of its game, and its flag is the coin on acceptance. -/
 theorem coinFlagged_spec (prims : Primitives) (g : OracleComp (WorldSpec C) Bool) (coin : ProbComp Bool) :
     accepts prims (Prod.fst <$> coinFlagged g coin) = accepts prims g ∧
-      Pr[fun r => r.1 = (true, false) | runWorld prims (coinFlagged g coin)] =
-        Pr[= true | (simulateQ (worldAnswer prims) g).run' ∅] * Pr[= false | coin] ∧
-      Pr[fun r => r.1.2 = true | runWorld prims (coinFlagged g coin)] =
-        Pr[= true | (simulateQ (worldAnswer prims) g).run' ∅] * Pr[= true | coin] := by
+      Pr{let r ← runWorld prims (coinFlagged g coin)}[r.1 = (true, false)] =
+        Pr{let z ← (simulateQ (worldAnswer prims) g).run' ∅}[z = true] * Pr{let z ← coin}[z = false] ∧
+      Pr{let r ← runWorld prims (coinFlagged g coin)}[r.1.2 = true] =
+        Pr{let z ← (simulateQ (worldAnswer prims) g).run' ∅}[z = true] * Pr{let z ← coin}[z = true] := by
   refine ⟨?_, ?_, ?_⟩
   · rw [accepts_eq_probOutput prims g]
     unfold accepts
-    rw [runWorld_map, probEvent_map]
+    rw [runWorld_map, prEvent_map]
     congr 1
     have h := probEvent_runWorld_fst prims (coinFlagged g coin) (fun p => p.1 = true)
-    simp only [Function.comp_def]
     rw [h, run_coinFlagged, probEvent_flag]
     simp
   · rw [probEvent_runWorld_fst prims (coinFlagged g coin) (fun p => p = (true, false)), run_coinFlagged,
@@ -162,8 +156,8 @@ theorem coinFlagged_spec (prims : Primitives) (g : OracleComp (WorldSpec C) Bool
 /-- The coin of one side: it flags the excess acceptance of this side over the other. -/
 theorem exists_excess_coin (ra rb : ℚ) (ha : 0 ≤ ra) (hb : 0 ≤ rb) :
     ∃ coin : ProbComp Bool,
-      ENNReal.ofReal ra * Pr[= false | coin] = ENNReal.ofReal ((min ra rb : ℚ) : ℝ) ∧
-      ENNReal.ofReal ra * Pr[= true | coin] = ENNReal.ofReal ((ra - min ra rb : ℚ) : ℝ) := by
+      ENNReal.ofReal ra * Pr{let z ← coin}[z = false] = ENNReal.ofReal ((min ra rb : ℚ) : ℝ) ∧
+      ENNReal.ofReal ra * Pr{let z ← coin}[z = true] = ENNReal.ofReal ((ra - min ra rb : ℚ) : ℝ) := by
   by_cases h0 : ra = 0
   · obtain ⟨coin, ht, hf⟩ := exists_coin 0 le_rfl zero_le_one
     refine ⟨coin, ?_, ?_⟩ <;> simp [h0, min_eq_left hb]
@@ -196,13 +190,12 @@ theorem coupling_of_abs_accepts_le (prims : Primitives) (ga gb : OracleComp (Wor
     ∃ oa ob : OracleComp (WorldSpec C) (Bool × Bool),
       accepts prims (Prod.fst <$> oa) = accepts prims ga ∧
       accepts prims (Prod.fst <$> ob) = accepts prims gb ∧
-      Pr[fun r => r.1 = (true, false) | runWorld prims oa] =
-        Pr[fun r => r.1 = (true, false) | runWorld prims ob] ∧
-      Pr[fun r => r.1.2 = true | runWorld prims oa].toReal ≤ ε ∧
-      Pr[fun r => r.1.2 = true | runWorld prims ob].toReal ≤ ε := by
+      Pr{let r ← runWorld prims oa}[r.1 = (true, false)] =
+        Pr{let r ← runWorld prims ob}[r.1 = (true, false)] ∧
+      Pr{let r ← runWorld prims oa}[r.1.2 = true].toReal ≤ ε ∧
+      Pr{let r ← runWorld prims ob}[r.1.2 = true].toReal ≤ ε := by
   obtain ⟨ra, ha, hra⟩ := probEvent_rational ((simulateQ (worldAnswer prims) ga).run' ∅) (· = true)
   obtain ⟨rb, hb, hrb⟩ := probEvent_rational ((simulateQ (worldAnswer prims) gb).run' ∅) (· = true)
-  rw [probEvent_eq_eq_probOutput] at hra hrb
   have hacc_a : accepts prims ga = ra := by
     rw [accepts_eq_probOutput, hra, ENNReal.toReal_ofReal (by exact_mod_cast ha)]
   have hacc_b : accepts prims gb = rb := by
@@ -248,36 +241,36 @@ theorem run'_bind_world (prims : Primitives) {R β : Type} (g : OracleComp (Worl
 theorem abs_accepts_bind_sub_le_keygen (prims : Primitives) {R : Type} (g : OracleComp (WorldSpec C) R)
     (k₁ k₂ : R → OracleComp (WorldSpec C) Bool) :
     |accepts prims (g >>= k₁) - accepts prims (g >>= k₂)| ≤
-      (Pr[fun r => k₁ r.1 ≠ k₂ r.1 | runWorld prims g]).toReal := by
+      (Pr{let r ← runWorld prims g}[k₁ r.1 ≠ k₂ r.1]).toReal := by
   let flag (k : R → OracleComp (WorldSpec C) Bool) : OracleComp (WorldSpec C) (Bool × Bool) :=
     g >>= fun r => (fun b => (b, decide (k₁ r ≠ k₂ r))) <$> k r
   have hfst (k : R → OracleComp (WorldSpec C) Bool) : Prod.fst <$> flag k = g >>= k := by
     simp only [flag, map_bind, Functor.map_map, id_map']
   have hbad (k : R → OracleComp (WorldSpec C) Bool) :
-      Pr[fun r => r.1.2 = true | runWorld prims (flag k)] =
-        Pr[fun r => k₁ r.1 ≠ k₂ r.1 | runWorld prims g] := by
+      Pr{let r ← runWorld prims (flag k)}[r.1.2 = true] =
+        Pr{let r ← runWorld prims g}[k₁ r.1 ≠ k₂ r.1] := by
     rw [probEvent_runWorld_fst prims (flag k) (fun p => p.2 = true),
       probEvent_runWorld_fst prims g (fun r => k₁ r ≠ k₂ r), run'_bind_world]
-    rw [StateT.run'_eq, probEvent_map, probEvent_bind_eq_tsum, probEvent_eq_tsum_ite]
+    rw [StateT.run'_eq, prEvent_map, OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_eq_tsum_ite]
     apply tsum_congr
     intro p
-    rw [simulateQ_map, StateT.run'_eq, StateT.run_map, Functor.map_map, probEvent_map]
+    rw [simulateQ_map, StateT.run'_eq, StateT.run_map, Functor.map_map, prEvent_map]
     by_cases hp : k₁ p.1 ≠ k₂ p.1
-    · simp [Function.comp_def, hp]
-    · simp [Function.comp_def, hp]
-  have heq : Pr[fun r => r.1 = (true, false) | runWorld prims (flag k₁)] =
-      Pr[fun r => r.1 = (true, false) | runWorld prims (flag k₂)] := by
+    · simp [hp]
+    · simp [hp]
+  have heq : Pr{let r ← runWorld prims (flag k₁)}[r.1 = (true, false)] =
+      Pr{let r ← runWorld prims (flag k₂)}[r.1 = (true, false)] := by
     rw [probEvent_runWorld_fst prims (flag k₁) (fun p => p = (true, false)),
       probEvent_runWorld_fst prims (flag k₂) (fun p => p = (true, false)), run'_bind_world, run'_bind_world,
-      probEvent_bind_eq_tsum, probEvent_bind_eq_tsum]
+      OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_bind_eq_tsum]
     apply tsum_congr
     intro p
     congr 1
     by_cases hp : k₁ p.1 = k₂ p.1
     · rw [hp]
     · rw [simulateQ_map, simulateQ_map, StateT.run'_eq, StateT.run'_eq, StateT.run_map, StateT.run_map,
-        probEvent_map, probEvent_map, probEvent_map, probEvent_map]
-      simp [Function.comp_def, hp]
+        prEvent_map, prEvent_map, prEvent_map, prEvent_map]
+      simp [hp]
   have h := abs_accepts_sub_le_of_eq_until_bad prims (flag k₁) (flag k₂) heq
   rw [hfst, hfst, hbad, hbad, max_self] at h
   exact h
@@ -314,22 +307,22 @@ def KeygenHiddenDistance (prims : Primitives) : Prop :=
 def KeygenKnownMismatch (prims : Primitives) : Prop :=
   ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
-    (Pr[fun r => keygenMixedProjection D r.1 ≠ keygenIdealProjection D r.1 |
-      runWorld prims (keygenCommonGame D A x z)]).toReal ≤ keygenHashError C q / 2
+    (Pr{let r ← runWorld prims (keygenCommonGame D A x z)}[
+      keygenMixedProjection D r.1 ≠ keygenIdealProjection D r.1]).toReal ≤ keygenHashError C q / 2
 
 theorem abs_accepts_mixed_ideal_le (prims : Primitives) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) :
     |accepts prims (keygenMixedGame D A x z Z) -
         accepts prims (distinguish (idealExecution (fun oa => oa) D Fkeygen (keygenSimulator D A) x z) Z)| ≤
-      (Pr[fun r => keygenMixedProjection D r.1 ≠ keygenIdealProjection D r.1 |
-        runWorld prims (keygenCommonGame D A x z)]).toReal := by
+      (Pr{let r ← runWorld prims (keygenCommonGame D A x z)}[
+        keygenMixedProjection D r.1 ≠ keygenIdealProjection D r.1]).toReal := by
   rw [← keygenCommonGame_ideal]
   unfold keygenMixedGame distinguish
   simp only [bind_map_left]
   refine (abs_accepts_bind_sub_le_keygen prims _ _ _).trans ?_
-  apply ENNReal.toReal_mono probEvent_ne_top
-  apply probEvent_mono
-  intro r _ hr he
+  apply ENNReal.toReal_mono (prEvent_ne_top _)
+  apply prEvent_mono
+  intro r hr he
   exact hr (by rw [he])
 
 /-- The distance half of the keygen claim from its two hybrid halves. -/
@@ -369,7 +362,7 @@ theorem simulateQ_local_sample_keygensecurity (prims : Primitives) {α : Type} (
     QueryImpl.simulateQ_add_liftComp_left (unifFwdImpl (Query C →ₒ HashOutput)) _ p]
   funext s
   change (simulateQ (unifFwdImpl (Query C →ₒ HashOutput)) p).run s = p >>= fun a => pure (a, s)
-  rw [unifFwdImpl.simulateQ_run]
+  rw [unifFwdImpl.simulateQ_run, map_eq_bind_pure_comp]
   rfl
 
 /-- The dealer's corrupt keys, as the simulator receives them. -/
@@ -403,8 +396,8 @@ theorem keygenCommonEmulatedGame_expand' (D : C.Coalition) (A : Adversary C E Un
 theorem evalDist_piecewise_uniform {ι H β : Type} [Fintype ι] [DecidableEq ι] [Fintype H] [Nonempty H]
     [SampleableType H] [SampleableType (ι → H)] (P : ι → Prop) [DecidablePred P]
     (k : (ι → H) → ProbComp β) :
-    𝒟[do let f ← $ᵗ (ι → H); let g ← $ᵗ (ι → H); k (fun i => if P i then g i else f i)] =
-      𝒟[do let f ← $ᵗ (ι → H); k f] := by
+    (do let f ← $ᵗ (ι → H); let g ← $ᵗ (ι → H); k (fun i => if P i then g i else f i)) =ᵈ
+      (do let f ← $ᵗ (ι → H); k f) := by
   let Ψ : (ι → H) × (ι → H) → (ι → H) × (ι → H) := fun p =>
     (fun i => if P i then p.2 i else p.1 i, fun i => if P i then p.1 i else p.2 i)
   have hΨ : Function.Involutive Ψ := by
@@ -414,16 +407,23 @@ theorem evalDist_piecewise_uniform {ι H β : Type} [Fintype ι] [DecidableEq ι
       ($ᵗ ((ι → H) × (ι → H))) >>= fun p => k (Ψ p).1 := by
     change _ = ((·, ·) <$> ($ᵗ (ι → H)) <*> ($ᵗ (ι → H))) >>= _
     simp [seq_eq_bind_map, map_eq_bind_pure_comp, bind_assoc, Ψ]
-  have e2 : 𝒟[($ᵗ ((ι → H) × (ι → H))) >>= fun p => k (Ψ p).1] =
-      𝒟[($ᵗ ((ι → H) × (ι → H))) >>= fun p => k p.1] := by
+  have e2 : (($ᵗ ((ι → H) × (ι → H))) >>= fun p => k (Ψ p).1) =ᵈ
+      (($ᵗ ((ι → H) × (ι → H))) >>= fun p => k p.1) := by
     have h : (($ᵗ ((ι → H) × (ι → H))) >>= fun p => k (Ψ p).1) =
         (Ψ <$> ($ᵗ ((ι → H) × (ι → H)))) >>= fun p => k p.1 := by rw [bind_map_left]
-    rw [h, evalDist_bind, evalDist_map_bijective_uniform_cross _ _ hΨ.bijective, ← evalDist_bind]
-  have e3 : 𝒟[($ᵗ ((ι → H) × (ι → H))) >>= fun p => k p.1] = 𝒟[($ᵗ (ι → H)) >>= k] := by
+    rw [h]
+    exact (SampleableType.map_uniformSample_evalDistEq_of_bijective hΨ.bijective).bind_left _
+  have e3 : (($ᵗ ((ι → H) × (ι → H))) >>= fun p => k p.1) =ᵈ (($ᵗ (ι → H)) >>= k) := by
     have h : (($ᵗ ((ι → H) × (ι → H))) >>= fun p => k p.1) =
         (Prod.fst <$> ($ᵗ ((ι → H) × (ι → H)))) >>= k := by rw [bind_map_left]
-    rw [h, evalDist_bind, evalDist_map_fst_uniformSample_prod, ← evalDist_bind]
-  rw [e1, e2, e3]
+    rw [h]
+    refine EvalDistEq.bind_left ?_ _
+    rw [SampleableType.uniformSample_prod_eq_bind]
+    simp only [map_bind, map_pure]
+    exact (EvalDistEq.bind_right _ fun a => OracleComp.EvalDistEq.bind_const _ _).trans
+      (by rw [bind_pure])
+  rw [e1]
+  exact e2.trans e3
 
 /-- A hidden name of the dealer's tables. -/
 def KeygenHiddenTerm (D : C.Coalition) (T : C.Term) : Prop := ¬ KnownTo D.1 T
@@ -484,63 +484,60 @@ theorem keygenHiddenOverlay_piecewise (D : C.Coalition) (i : C.Party) (k : Keys 
 /-- The dealer's hidden coordinates can be replaced by those of an independent second dealer. -/
 theorem evalDist_dealer_piecewise (D : C.Coalition) {β : Type}
     (k : PublicParameter × (C.Term → HashOutput) × (C.Pair → HashOutput) → ProbComp β) :
-    𝒟[do
+    (do
       let d ← keygenDealerSamples (C := C)
       let seeds' ← $ᵗ (C.Term → HashOutput)
       let pairs' ← $ᵗ (C.Pair → HashOutput)
       k (d.1, (fun T => if KeygenHiddenTerm D T then seeds' T else d.2.1 T),
-        (fun p => if KeygenHiddenPair D p then pairs' p else d.2.2 p))] =
-      𝒟[keygenDealerSamples (C := C) >>= k] := by
+        (fun p => if KeygenHiddenPair D p then pairs' p else d.2.2 p))) =ᵈ
+      (keygenDealerSamples (C := C) >>= k) := by
   unfold keygenDealerSamples
   simp only [bind_assoc, pure_bind]
-  apply evalDist_bind_congr'
-  intro parameter
-  have hswap : 𝒟[do
+  refine EvalDistEq.bind_right _ fun parameter => ?_
+  have hswap : (do
       let seeds ← $ᵗ (C.Term → HashOutput)
       let pairs ← $ᵗ (C.Pair → HashOutput)
       let seeds' ← $ᵗ (C.Term → HashOutput)
       let pairs' ← $ᵗ (C.Pair → HashOutput)
       k (parameter, (fun T => if KeygenHiddenTerm D T then seeds' T else seeds T),
-        (fun p => if KeygenHiddenPair D p then pairs' p else pairs p))] =
-      𝒟[do
+        (fun p => if KeygenHiddenPair D p then pairs' p else pairs p))) =ᵈ
+      (do
       let seeds ← $ᵗ (C.Term → HashOutput)
       let seeds' ← $ᵗ (C.Term → HashOutput)
       let pairs ← $ᵗ (C.Pair → HashOutput)
       let pairs' ← $ᵗ (C.Pair → HashOutput)
       k (parameter, (fun T => if KeygenHiddenTerm D T then seeds' T else seeds T),
-        (fun p => if KeygenHiddenPair D p then pairs' p else pairs p))] := by
-    apply evalDist_bind_congr'
-    intro seeds
-    exact DeferredSampling.evalDist_bind_comm _ _ _
-  rw [hswap]
+        (fun p => if KeygenHiddenPair D p then pairs' p else pairs p))) := by
+    refine EvalDistEq.bind_right _ fun seeds => ?_
+    exact OracleComp.EvalDistEq.bind_bind_swap _ _ _
+  refine hswap.trans ?_
   refine (evalDist_piecewise_uniform (KeygenHiddenTerm D) (fun s => do
       let pairs ← $ᵗ (C.Pair → HashOutput)
       let pairs' ← $ᵗ (C.Pair → HashOutput)
       k (parameter, s, (fun p => if KeygenHiddenPair D p then pairs' p else pairs p)))).trans ?_
-  apply evalDist_bind_congr'
-  intro seeds
+  refine EvalDistEq.bind_right _ fun seeds => ?_
   exact evalDist_piecewise_uniform (KeygenHiddenPair D) (fun p => k (parameter, seeds, p))
 
 theorem evalDist_run'_of_run {σ α : Type} {X Y : StateT σ ProbComp α} (s : σ)
-    (h : 𝒟[X.run s] = 𝒟[Y.run s]) : 𝒟[X.run' s] = 𝒟[Y.run' s] := by
-  simp only [StateT.run'_eq, evalDist_map, h]
+    (h : X.run s =ᵈ Y.run s) : X.run' s =ᵈ Y.run' s := by
+  simp only [StateT.run'_eq]
+  exact h.map _
 
 /-- Two independent samples move before a computation. -/
 theorem evalDist_bind_two_comm {α β γ δ : Type} (m : ProbComp α) (p₁ : ProbComp β)
     (p₂ : ProbComp γ) (k : α → β → γ → ProbComp δ) :
-    𝒟[m >>= fun r => p₁ >>= fun a => p₂ >>= fun b => k r a b] =
-      𝒟[p₁ >>= fun a => p₂ >>= fun b => m >>= fun r => k r a b] := by
-  rw [DeferredSampling.evalDist_bind_comm]
-  apply evalDist_bind_congr'
-  intro a
-  exact DeferredSampling.evalDist_bind_comm _ _ _
+    (m >>= fun r => p₁ >>= fun a => p₂ >>= fun b => k r a b) =ᵈ
+      (p₁ >>= fun a => p₂ >>= fun b => m >>= fun r => k r a b) := by
+  refine (OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans ?_
+  refine EvalDistEq.bind_right _ fun a => ?_
+  exact OracleComp.EvalDistEq.bind_bind_swap _ _ _
 
 /-- The mixed game is the emulated game whose distinguisher replaces the hidden keys by fresh ones. -/
 theorem evalDist_keygenMixedGame_hiddenZ (prims : Primitives) (D : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) :
-    𝒟[(simulateQ (worldAnswer prims) (keygenMixedGame D A x z Z)).run' ∅] =
-      𝒟[(simulateQ (worldAnswer prims) (keygenCommonEmulatedGame D A x z (keygenHiddenZ D Z))).run' ∅] := by
+    (simulateQ (worldAnswer prims) (keygenMixedGame D A x z Z)).run' ∅ =ᵈ
+      (simulateQ (worldAnswer prims) (keygenCommonEmulatedGame D A x z (keygenHiddenZ D Z))).run' ∅ := by
   rw [keygenMixedGame_expand, keygenCommonEmulatedGame_expand']
   unfold keygenHiddenZ
   simp only [simulateQ_bind, simulateQ_world_sample, simulateQ_world_adversary, simulateQ_local_sample_keygensecurity]
@@ -548,17 +545,15 @@ theorem evalDist_keygenMixedGame_hiddenZ (prims : Primitives) (D : C.Coalition)
   intro st s
   apply evalDist_run'_of_run
   simp only [StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind]
-  symm
-  refine (evalDist_bind_congr' _ fun d => evalDist_bind_two_comm _ _ _ _).trans ?_
-  conv_rhs => rw [← evalDist_dealer_piecewise D]
-  apply evalDist_bind_congr'
-  intro d
-  apply evalDist_bind_congr'
-  intro a
-  apply evalDist_bind_congr'
-  intro b
+  refine EvalDistEq.symm ?_
+  refine (EvalDistEq.bind_right _ fun d => evalDist_bind_two_comm _ _ _ _).trans ?_
+  refine EvalDistEq.trans ?_ (evalDist_dealer_piecewise D _)
+  refine EvalDistEq.bind_right _ fun d => ?_
+  refine EvalDistEq.bind_right _ fun a => ?_
+  refine EvalDistEq.bind_right _ fun b => ?_
   rw [keygenCorruptLeak_piecewise]
   simp only [keygenMixedProjection, keygenHiddenOverlay_piecewise]
+  rfl
 
 theorem keygenMixedGame_accepts (prims : Primitives) (D : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
@@ -566,8 +561,8 @@ theorem keygenMixedGame_accepts (prims : Primitives) (D : C.Coalition)
     accepts prims (keygenMixedGame D A x z Z) =
       accepts prims (distinguish (realExecution D A noFunctionality setupRounds
         (fun i (_ : Unit) => (keygen i : PartyM C E RealSpec (Keys C))) x z) (keygenHiddenZ D Z)) := by
-  rw [← keygenCommonGame_real_accepts, accepts_eq_probOutput, accepts_eq_probOutput, probOutput_def,
-    probOutput_def, evalDist_keygenMixedGame_hiddenZ]
+  rw [← keygenCommonGame_real_accepts, accepts_eq_probOutput, accepts_eq_probOutput,
+    (evalDist_keygenMixedGame_hiddenZ prims D A x z Z).prEvent_eq (· = true)]
 
 /-- Hidden half on the real run: the hidden keys of the honest outputs are indistinguishable from
 fresh uniform keys. -/
@@ -591,7 +586,7 @@ def keygenReferenceMixture (prims : Primitives) (D : C.Coalition) (A : Adversary
     (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) (S : Finset (Query C)) :
     ProbComp Bool := do
   let ht ← $ᵗ (S → HashOutput)
-  let parts ← Concrete.sequenceFin fun _ : C.Party => sampleParts (C := C)
+  let parts ← OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)
   let h := keygenFiniteTotal prims S ht
   simulateQ (fixedLocal prims h)
     (keygenReferenceLocalGame prims D h (fun name => h (keygenNamedInput parts name)) A x z Z parts)
@@ -600,18 +595,18 @@ theorem evalDist_keygenReal_referenceMixture (prims : Primitives) (D : C.Coaliti
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (S : Finset (Query C))
     (hS : KeygenWorldCovered S (free (keygenNormalizedLocalGame D A x z Z))) :
-    𝒟[(simulateQ (worldAnswer prims)
+    (simulateQ (worldAnswer prims)
         (distinguish (realExecution D A noFunctionality setupRounds
-          (fun i (_ : Unit) => (keygen i : PartyM C E RealSpec (Keys C))) x z) Z)).run' ∅] =
-      𝒟[keygenReferenceMixture prims D A x z Z S] := by
+          (fun i (_ : Unit) => (keygen i : PartyM C E RealSpec (Keys C))) x z) Z)).run' ∅ =ᵈ
+      keygenReferenceMixture prims D A x z Z S := by
   have he := evalDist_keygenWorld_eager prims S (free (keygenNormalizedLocalGame D A x z Z)) hS ∅
   simp only [worldAnswer, keygenFiniteWorld, simulateQ_free] at he
   have hc : keygenRestrictCache S (∅ : HashCache C) = ∅ := rfl
   simp only [hc, keygenFiniteLocal_eager_fixed, tableExtending_empty] at he
-  rw [simulateQ_keygenReal_eq_local, (sameRun_keygenLocal_normalized prims D A x z Z).run'_eq, he]
+  rw [simulateQ_keygenReal_eq_local]
+  refine ((sameRun_keygenLocal_normalized prims D A x z Z).run'_eq).trans (he.trans ?_)
   unfold keygenReferenceMixture
-  apply evalDist_bind_congr'
-  intro ht
+  refine EvalDistEq.bind_right _ fun ht => ?_
   exact evalDist_keygenNormalized_fixed_reference prims D (keygenFiniteTotal prims S ht) A x z Z
 
 /-- Hidden half on fixed-table reference runs: for every oracle domain that covers both runs and
@@ -623,8 +618,8 @@ def KeygenHiddenFreshReference (prims : Primitives) : Prop :=
     ∀ S : Finset (Query C), (∀ parts name, keygenNamedInput parts name ∈ S) →
       KeygenWorldCovered S (free (keygenNormalizedLocalGame D A x z Z)) →
       KeygenWorldCovered S (free (keygenNormalizedLocalGame D A x z (keygenHiddenZ D Z))) →
-      |(Pr[= true | keygenReferenceMixture prims D A x z Z S]).toReal -
-        (Pr[= true | keygenReferenceMixture prims D A x z (keygenHiddenZ D Z) S]).toReal| ≤
+      |(Pr{let y ← keygenReferenceMixture prims D A x z Z S}[y = true]).toReal -
+        (Pr{let y ← keygenReferenceMixture prims D A x z (keygenHiddenZ D Z) S}[y = true]).toReal| ≤
         keygenHashError C q / 2
 
 theorem keygenHiddenFresh_of_reference (prims : Primitives)
@@ -640,10 +635,9 @@ theorem keygenHiddenFresh_of_reference (prims : Primitives)
     h₂.mono (fun _ hq => Finset.mem_union_left _ (Finset.mem_union_right _ hq))
   have hmem : ∀ parts name, keygenNamedInput parts name ∈ S :=
     fun parts name => Finset.mem_union_right _ (keygenAllNamedInputs_mem parts name)
-  rw [accepts_eq_probOutput, accepts_eq_probOutput, probOutput_def, probOutput_def,
-    evalDist_keygenReal_referenceMixture prims D A x z Z S hS₁,
-    evalDist_keygenReal_referenceMixture prims D A x z (keygenHiddenZ D Z) S hS₂,
-    ← probOutput_def, ← probOutput_def]
+  rw [accepts_eq_probOutput, accepts_eq_probOutput,
+    (evalDist_keygenReal_referenceMixture prims D A x z Z S hS₁).prEvent_eq (· = true),
+    (evalDist_keygenReal_referenceMixture prims D A x z (keygenHiddenZ D Z) S hS₂).prEvent_eq (· = true)]
   exact h D A x z Z q hq S hmem hS₁ hS₂
 
 /-! ### The relabeling of the hidden keys -/
@@ -690,7 +684,7 @@ independent dealer table, and the oracle answers the hidden canonical inputs wit
 def keygenSwappedMixture (prims : Primitives) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) (S : Finset (Query C))
     (hmem : ∀ parts name, keygenNamedInput parts name ∈ S) : ProbComp Bool := do
-  let parts ← Concrete.sequenceFin fun _ : C.Party => sampleParts (C := C)
+  let parts ← OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)
   let p ← $ᵗ ((S → HashOutput) × (KeyName C → HashOutput))
   let ht := if Function.Injective (keygenNamedInput parts) then
     (keygenFiniteHiddenSwap D S parts (hmem parts) p).1 else p.1
@@ -703,39 +697,43 @@ theorem evalDist_keygenReferenceMixture_swap (prims : Primitives) (D : C.Coaliti
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (S : Finset (Query C))
     (hmem : ∀ parts name, keygenNamedInput parts name ∈ S) :
-    𝒟[keygenReferenceMixture prims D A x z Z S] = 𝒟[keygenSwappedMixture prims D A x z Z S hmem] := by
+    keygenReferenceMixture prims D A x z Z S =ᵈ keygenSwappedMixture prims D A x z Z S hmem := by
   unfold keygenReferenceMixture keygenSwappedMixture
-  rw [DeferredSampling.evalDist_bind_comm]
-  apply evalDist_bind_congr'
-  intro parts
+  refine (OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans ?_
+  refine EvalDistEq.bind_right _ fun parts => ?_
   let F : (S → HashOutput) → ProbComp Bool := fun ht =>
     simulateQ (fixedLocal prims (keygenFiniteTotal prims S ht))
       (keygenReferenceLocalGame prims D (keygenFiniteTotal prims S ht)
         (fun name => keygenFiniteTotal prims S ht (keygenNamedInput parts name)) A x z Z parts)
-  have hfst : 𝒟[($ᵗ ((S → HashOutput) × (KeyName C → HashOutput))) >>= fun p => F p.1] =
-      𝒟[($ᵗ (S → HashOutput)) >>= F] := by
-    rw [← bind_map_left Prod.fst, evalDist_bind, evalDist_map_fst_uniformSample_prod, ← evalDist_bind]
-  change 𝒟[($ᵗ (S → HashOutput)) >>= F] = _
-  rw [← hfst]
+  have hfst : (($ᵗ ((S → HashOutput) × (KeyName C → HashOutput))) >>= fun p => F p.1) =ᵈ
+      (($ᵗ (S → HashOutput)) >>= F) := by
+    rw [← bind_map_left Prod.fst]
+    refine EvalDistEq.bind_left ?_ _
+    rw [SampleableType.uniformSample_prod_eq_bind]
+    simp only [map_bind, map_pure]
+    exact (EvalDistEq.bind_right _ fun a => OracleComp.EvalDistEq.bind_const _ _).trans
+      (by rw [bind_pure])
+  change (($ᵗ (S → HashOutput)) >>= F) =ᵈ _
+  refine hfst.symm.trans ?_
   by_cases hinj : Function.Injective (keygenNamedInput parts)
   · simp only [if_pos hinj]
-    have hswap : 𝒟[($ᵗ ((S → HashOutput) × (KeyName C → HashOutput))) >>= fun p => F p.1] =
-        𝒟[($ᵗ ((S → HashOutput) × (KeyName C → HashOutput))) >>= fun p =>
-          F (keygenFiniteHiddenSwap D S parts (hmem parts) p).1] := by
-      have he := congrArg (fun d => d >>= fun p => 𝒟[F p.1])
-        (evalDist_keygenFiniteHiddenSwap D S parts (hmem parts) hinj)
-      rw [← evalDist_bind, ← evalDist_bind, bind_map_left] at he
+    have hswap : (($ᵗ ((S → HashOutput) × (KeyName C → HashOutput))) >>= fun p => F p.1) =ᵈ
+        (($ᵗ ((S → HashOutput) × (KeyName C → HashOutput))) >>= fun p =>
+          F (keygenFiniteHiddenSwap D S parts (hmem parts) p).1) := by
+      have he := (evalDist_keygenFiniteHiddenSwap D S parts (hmem parts) hinj).bind_left
+        (fun p => F p.1)
+      rw [bind_map_left] at he
       exact he.symm
-    rw [hswap]
-    apply evalDist_bind_congr'
-    intro p
+    refine hswap.trans ?_
+    refine EvalDistEq.bind_right _ fun p => ?_
     dsimp only [F]
-    apply congrArg
-    apply congrArg
-    apply keygenReferenceLocalGame_table_congr
-    intro name hh
-    rw [keygenFiniteTotal_named prims S _ parts name (hmem parts name),
-      keygenFiniteHiddenSwap_cell D S parts (hmem parts) hinj p name hh]
+    have htable : ∀ name, Hidden D name →
+        keygenFiniteTotal prims S (keygenFiniteHiddenSwap D S parts (hmem parts) p).1
+          (keygenNamedInput parts name) = p.2 name := by
+      intro name hh
+      rw [keygenFiniteTotal_named prims S _ parts name (hmem parts name),
+        keygenFiniteHiddenSwap_cell D S parts (hmem parts) hinj p name hh]
+    rw [keygenReferenceLocalGame_table_congr prims D _ _ _ htable]
   · simp only [if_neg hinj]
     rfl
 
@@ -746,17 +744,16 @@ def KeygenHiddenFreshSwapped (prims : Primitives) : Prop :=
     ∀ (S : Finset (Query C)) (hmem : ∀ parts name, keygenNamedInput parts name ∈ S),
       KeygenWorldCovered S (free (keygenNormalizedLocalGame D A x z Z)) →
       KeygenWorldCovered S (free (keygenNormalizedLocalGame D A x z (keygenHiddenZ D Z))) →
-      |(Pr[= true | keygenSwappedMixture prims D A x z Z S hmem]).toReal -
-        (Pr[= true | keygenSwappedMixture prims D A x z (keygenHiddenZ D Z) S hmem]).toReal| ≤
+      |(Pr{let y ← keygenSwappedMixture prims D A x z Z S hmem}[y = true]).toReal -
+        (Pr{let y ← keygenSwappedMixture prims D A x z (keygenHiddenZ D Z) S hmem}[y = true]).toReal| ≤
         keygenHashError C q / 2
 
 theorem keygenHiddenFreshReference_of_swapped (prims : Primitives)
     (h : KeygenHiddenFreshSwapped (C := C) (E := E) prims) :
     KeygenHiddenFreshReference (C := C) (E := E) prims := by
   intro D A x z Z q hq S hmem h₁ h₂
-  rw [probOutput_def, probOutput_def, evalDist_keygenReferenceMixture_swap prims D A x z Z S hmem,
-    evalDist_keygenReferenceMixture_swap prims D A x z (keygenHiddenZ D Z) S hmem,
-    ← probOutput_def, ← probOutput_def]
+  rw [(evalDist_keygenReferenceMixture_swap prims D A x z Z S hmem).prEvent_eq (· = true),
+    (evalDist_keygenReferenceMixture_swap prims D A x z (keygenHiddenZ D Z) S hmem).prEvent_eq (· = true)]
   exact h D A x z Z q hq S hmem h₁ h₂
 
 end RealHidden

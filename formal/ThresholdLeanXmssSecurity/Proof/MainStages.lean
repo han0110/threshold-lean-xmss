@@ -20,7 +20,7 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 
 noncomputable section
 
@@ -47,7 +47,7 @@ theorem stages_private_unused (prims : Primitives) {α β : Type} (p : ProbComp 
     QueryImpl.simulateQ_add_liftComp_left (unifFwdImpl (Query C →ₒ HashOutput)) _ p
   simp only [simulateQ_bind, simulateQ_pure, StateT.run_bind, StateT.run_pure, hl,
     unifFwdImpl.simulateQ_run, bind_map_left]
-  exact DeferredSampling.evalDist_bind_const_neverFails p (by simp) _
+  exact OracleComp.EvalDistEq.bind_const p _
 
 /-! ## The functionalities of a batch -/
 
@@ -274,7 +274,7 @@ theorem stages_run_verify (K : Constants C E) (D : C.Coalition) (A : MainAdversa
 /-! ## Aborts in the network -/
 
 theorem stages_sequenceFin_eq_pure {m : Type → Type} [Monad m] [LawfulMonad m] {β : Type} {n : ℕ}
-    (f : Fin n → m β) (g : Fin n → β) (h : ∀ i, f i = pure (g i)) : Concrete.sequenceFin f = pure g := by
+    (f : Fin n → m β) (g : Fin n → β) (h : ∀ i, f i = pure (g i)) : OverPermutation.sequenceFin f = pure g := by
   rw [show f = fun i => pure (g i) from funext h]
   exact sequenceFin_pure g
 
@@ -467,7 +467,7 @@ theorem stages_stepRound_verify (st : A.State) (p : C.Party → MainInput C × L
         (fun i => if i ∈ D.1 then .done none else stagesVerifyStep K jobs i (p i) (v i)) =
       A.answer st (.inr (mainVerifyLeak D fun i => if i ∈ D.1 then none else
         some (stagesTuples K jobs (p i) (v i)))) >>= fun b =>
-      Concrete.sequenceFin (fun j => if j ∉ D.1 ∧ (mainVerifyLeak D fun i => if i ∈ D.1 then none else
+      OverPermutation.sequenceFin (fun j => if j ∉ D.1 ∧ (mainVerifyLeak D fun i => if i ∈ D.1 then none else
           some (stagesTuples K jobs (p i) (v i))).2.2 = true ∧ j ∈ stagesReplyV b.2 then
         mainCopyHashes (v j) (outputsOf jobs).length >>= fun ds => pure (stagesOpenStep K jobs j (v j) ds)
         else pure (.done none)) >>= fun steps' => pure (b.1, steps', fun _ _ => none) := by
@@ -503,7 +503,7 @@ theorem stages_stepRound_open (st : A.State) (R : Finset C.Party) (v : C.Party �
         (fun j => if j ∉ D.1 ∧ j ∈ R then stagesOpenStep K jobs j (v j) (ds j) else .done none) =
       A.round st (fun c i => if c ∈ D.1 ∧ i ∉ D.1 ∧ i ∈ R then
         repOutbox K i (v i) (outputsOf jobs).length (ds i) c else none) >>= fun q =>
-      Concrete.sequenceFin (fun j => (fun o => (Step.done (o.map (assemble jobs)) :
+      OverPermutation.sequenceFin (fun j => (fun o => (Step.done (o.map (assemble jobs)) :
           Step C E (MainSpec C) (List (List Bit)))) <$>
         mainOpenOne K D R (outputsOf jobs).length v ds q.2 j) >>= fun steps' =>
       pure (q.1, steps', q.2) := by
@@ -1222,7 +1222,7 @@ theorem stages_verifyLeak (D : C.Coalition) (views sviews : C.Party → List (Tu
     · simp only [if_pos hag, if_pos (hR.1 hag), hL hag]
     · simp only [if_neg hag, if_neg (mt hR.2 hag)]
   · simp only
-    rw [decide_eq_decide]
+    refine decide_eq_decide.2 ?_
     constructor
     · rintro ⟨hag, hp⟩
       refine ⟨hR.1 hag, fun d hd g => ?_⟩
@@ -1293,7 +1293,7 @@ theorem stages_simLayers_cons (l : ℕ) (ls : List ℕ) (st : A.State) (data : M
   refine bind_congr fun a => ?_
   rcases a with ⟨st', (r | r) | r⟩ <;>
   · dsimp only [stagesReplyL]
-    split_ifs <;> rfl
+    split_ifs with h <;> simp [h, stagesSimNext]
 
 theorem stages_multLeak_eq (x : C.Party → MainInput C) (l : ℕ) (p : C.Party → MainInput C × List (Tuple C))
     (data : MainSimData C) {l' : ℕ} (hinv : StagesInv D jobs x l' p data) :

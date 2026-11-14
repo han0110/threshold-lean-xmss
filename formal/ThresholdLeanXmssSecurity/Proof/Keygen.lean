@@ -2,6 +2,8 @@ import ThresholdLeanXmssSecurity.Proof.Execution
 import ThresholdLeanXmssSecurity.Proof.Lemmas
 import VCVio.EvalDist.List
 import VCVio.OracleComp.QueryTracking.RandomOracle.EagerTable
+import Common.CostCombinators
+import XmssSecurity.Proof.EvalDistEq
 
 /-!
 # The keygen
@@ -11,7 +13,7 @@ reduces to `KeygenCoupling`. `keygenSimulator_queryBound` gives the query half. 
 supporting lemmas concern `KeygenCoupling` (CDG+18).
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 
 noncomputable section
 
@@ -361,14 +363,14 @@ theorem advance_keygen (i : C.Party) :
 
 /-- The keygen after the parts, from the commitments on. -/
 def keygenRest (parts : C.Party → Parts C) : OracleComp (LocalSpec C) (C.Party → Option (Keys C)) := do
-  let commitments ← Concrete.sequenceFin fun j => liftComp (commitQueries .keygen j (parts j)) (LocalSpec C)
+  let commitments ← OverPermutation.sequenceFin fun j => liftComp (commitQueries .keygen j (parts j)) (LocalSpec C)
   honestRounds noFunctionality (fun l => l.elim) setupRounds fun j => keygenStart (E := E) j (parts j) (commitments j)
 
 /-- The honest keygen samples all parts first. -/
 theorem sameRun_keygen :
     SameRun prims (honestStart (fun i => (keygen i : PartyM C E RealSpec (Keys C))) >>=
         honestRounds noFunctionality (fun l => l.elim) setupRounds)
-      (Concrete.sequenceFin (fun _ => liftComp sampleParts (LocalSpec C)) >>= keygenRest (E := E)) := by
+      (OverPermutation.sequenceFin (fun _ => liftComp sampleParts (LocalSpec C)) >>= keygenRest (E := E)) := by
   unfold honestStart keygenRest
   simp only [advance_keygen]
   refine (sameRun_sequenceFin_dep prims _ _ (fun j own commitments => keygenStart (E := E) j own commitments)).bind
@@ -384,7 +386,7 @@ def honestKeys (h : Query C → HashOutput) (parts : C.Party → Parts C) (i : C
 theorem honestRounds_wait {I O L R α : Type} (F : Functionality C I O L R) (reply : L → R) (fuel : ℕ)
     (outbox : C.Party → Mail C E) (f : C.Party → Mail C E → PartyM C E (CallSpec I O) α) :
     honestRounds F reply (fuel + 1) (fun i => .wait (outbox i) (exchangeResume (f i))) =
-      Concrete.sequenceFin (fun j => advance (exchangeResume (f j) fun k => outbox k j)) >>=
+      OverPermutation.sequenceFin (fun j => advance (exchangeResume (f j) fun k => outbox k j)) >>=
         honestRounds F reply fuel := by
   rw [honestRounds_succ, honestStep_exchange]
   exact fun h => (h (firstParty C) : False)
@@ -447,13 +449,14 @@ theorem simulateQ_fixedLocal_keygenRest (h : Query C → HashOutput) (parts : C.
 one (lazy sampling). -/
 theorem evalDist_run'_prepend {α β : Type} (W : OracleComp (LocalSpec C) β) (X : OracleComp (LocalSpec C) α)
     (s : HashCache C) :
-    𝒟[(simulateQ (localAnswer prims) (W >>= fun _ => X)).run' s] = 𝒟[(simulateQ (localAnswer prims) X).run' s] := by
+    (simulateQ (localAnswer prims) (W >>= fun _ => X)).run' s =ᵈ (simulateQ (localAnswer prims) X).run' s := by
   have hswap := sameRun_swap prims W X (fun _ x => pure x) s
   simp only [bind_pure] at hswap
-  rw [StateT.run'_eq, StateT.run'_eq, evalDist_map, hswap, ← evalDist_map]
+  rw [StateT.run'_eq, StateT.run'_eq]
+  refine (hswap.map _).trans ?_
   simp only [simulateQ_bind, simulateQ_pure, StateT.run_bind, StateT.run_pure, map_bind, map_pure]
   rw [← StateT.run'_eq, StateT.run'_eq, map_eq_bind_pure_comp]
-  refine evalDist_bind_congr fun p _ => ?_
+  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun p _ => ?_
   exact evalDist_eq_pure_of_support _ _ fun y hy => by
     simp at hy
     exact hy.2.symm
@@ -463,10 +466,10 @@ reachable result and cache. -/
 theorem evalDist_run'_bind_congr {α β : Type} (m : OracleComp (LocalSpec C) β) (f g : β → OracleComp (LocalSpec C) α)
     (s : HashCache C)
     (h : ∀ p ∈ support ((simulateQ (localAnswer prims) m).run s),
-      𝒟[(simulateQ (localAnswer prims) (f p.1)).run' p.2] = 𝒟[(simulateQ (localAnswer prims) (g p.1)).run' p.2]) :
-    𝒟[(simulateQ (localAnswer prims) (m >>= f)).run' s] = 𝒟[(simulateQ (localAnswer prims) (m >>= g)).run' s] := by
+      (simulateQ (localAnswer prims) (f p.1)).run' p.2 =ᵈ (simulateQ (localAnswer prims) (g p.1)).run' p.2) :
+    (simulateQ (localAnswer prims) (m >>= f)).run' s =ᵈ (simulateQ (localAnswer prims) (m >>= g)).run' s := by
   simp only [simulateQ_bind, StateT.run'_eq, StateT.run_bind, map_bind]
-  exact evalDist_bind_congr fun p hp => by simpa [StateT.run'_eq] using h p hp
+  exact OracleComp.EvalDistEq.bind_congr_of_support _ fun p hp => by simpa [StateT.run'_eq] using h p hp
 
 /-- All pairs, in one fixed order. -/
 def pairList (C : Committee) : List C.Pair := (Finset.univ : Finset C.Pair).toList
@@ -526,10 +529,10 @@ theorem simulateQ_fixedLocal_keygenDerivations (h : Query C → HashOutput) (par
 
 /-- The honest keygen gives the keys from fresh derivations. -/
 theorem evalDist_keygen_derivations :
-    𝒟[(simulateQ (localAnswer prims) (Concrete.sequenceFin (fun _ => liftComp sampleParts (LocalSpec C)) >>=
-        keygenRest (E := E))).run' ∅] =
-      𝒟[(simulateQ (localAnswer prims) (Concrete.sequenceFin (fun _ => liftComp sampleParts (LocalSpec C)) >>=
-        fun parts => keygenDerivations parts >>= fun values => pure fun i => some (keysFromValues values i))).run' ∅] := by
+    (simulateQ (localAnswer prims) (OverPermutation.sequenceFin (fun _ => liftComp sampleParts (LocalSpec C)) >>=
+        keygenRest (E := E))).run' ∅ =ᵈ
+      (simulateQ (localAnswer prims) (OverPermutation.sequenceFin (fun _ => liftComp sampleParts (LocalSpec C)) >>=
+        fun parts => keygenDerivations parts >>= fun values => pure fun i => some (keysFromValues values i))).run' ∅ := by
   refine (evalDist_run'_bind_congr prims _ (keygenRest (E := E))
     (fun parts => keygenDerivations parts >>= fun _ => keygenRest (E := E) parts) ∅
     fun p _ => (evalDist_run'_prepend prims (keygenDerivations p.1) _ _).symm).trans ?_
@@ -560,8 +563,8 @@ theorem evalDist_keygen_derivations :
 /-- Distinct fresh inputs of `H` give independent uniform outputs. -/
 theorem evalDist_fresh_mapM (qs : List (Query C)) :
     ∀ (s : HashCache C), qs.Nodup → (∀ q ∈ qs, s q = none) → (∀ q ∈ qs, ¬ IsFixed q) →
-      𝒟[(simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims) (qs.mapM hashQuery)).run' s] =
-        𝒟[qs.mapM fun _ => $ᵗ HashOutput] := by
+      (simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims) (qs.mapM hashQuery)).run' s =ᵈ
+        (qs.mapM fun _ => $ᵗ HashOutput) := by
   induction qs with
   | nil => intro s _ _ _; simp
   | cons q qs ih =>
@@ -572,14 +575,14 @@ theorem evalDist_fresh_mapM (qs : List (Query C)) :
     simp only [List.mapM_cons, simulateQ_bind, simulateQ_pure, hq, StateT.run'_eq, StateT.run_bind, map_bind]
     rw [hashAnswer_of_not_isFixed prims (hfix q (List.mem_cons_self ..)), OracleSpec.randomOracle,
       QueryImpl.withCaching_run_none _ (hfresh q (List.mem_cons_self ..)), bind_map_left]
-    refine evalDist_bind_congr' _ fun u => ?_
+    refine EvalDistEq.bind_right _ fun u => ?_
     simp only [StateT.run_bind, map_bind, StateT.run_pure, map_pure]
     have hne : ∀ q' ∈ qs, q' ≠ q := fun q' hq' e => hnd.1 (e ▸ hq')
     have := ih (s.cacheQuery q u) hnd.2 (fun q' hq' => by
         rw [QueryCache.cacheQuery_of_ne _ _ (hne q' hq')]
         exact hfresh q' (List.mem_cons_of_mem _ hq'))
       fun q' hq' => hfix q' (List.mem_cons_of_mem _ hq')
-    rw [StateT.run'_eq, evalDist_map] at this
+    rw [StateT.run'_eq] at this
     have e1 : ((simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims) (qs.mapM hashQuery)).run
         (s.cacheQuery q u) >>= fun p => pure (u :: p.1)) = (fun l => u :: l) <$> ((fun p => p.1) <$>
           (simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims) (qs.mapM hashQuery)).run
@@ -588,7 +591,8 @@ theorem evalDist_fresh_mapM (qs : List (Query C)) :
     have e2 : (qs.mapM (fun _ => $ᵗ HashOutput) >>= fun l => pure (u :: l)) =
         (fun l => u :: l) <$> qs.mapM (fun _ => $ᵗ HashOutput) := by
       rw [map_eq_bind_pure_comp]; rfl
-    rw [e1, e2, evalDist_map, evalDist_map, evalDist_map, this]
+    rw [e1, e2]
+    exact this.map _
 
 theorem run'_localAnswer_liftComp {α : Type} (p : ProbComp α) (s : HashCache C) :
     (simulateQ (localAnswer prims) (liftComp p (LocalSpec C))).run' s = p := by
@@ -618,7 +622,7 @@ theorem keygen_ideal :
   rw [this, run'_localAnswer_liftComp]
 
 theorem liftComp_sequenceFin {α : Type} {n : ℕ} (f : Fin n → ProbComp α) :
-    liftComp (Concrete.sequenceFin f) (LocalSpec C) = Concrete.sequenceFin fun i => liftComp (f i) (LocalSpec C) :=
+    liftComp (OverPermutation.sequenceFin f) (LocalSpec C) = OverPermutation.sequenceFin fun i => liftComp (f i) (LocalSpec C) :=
   simulateQ_sequenceFin _ f
 
 theorem run'_localAnswer_liftComp_bind {α β : Type} (p : ProbComp α) (k : α → OracleComp (LocalSpec C) β)
@@ -634,9 +638,9 @@ theorem run'_localAnswer_liftComp_bind {α β : Type} (p : ProbComp α) (k : α 
 
 /-- The real keygen as a computation that samples the parts and then queries the derivations. -/
 theorem keygen_real :
-    (simulateQ (localAnswer prims) (Concrete.sequenceFin (fun _ => liftComp sampleParts (LocalSpec C)) >>=
+    (simulateQ (localAnswer prims) (OverPermutation.sequenceFin (fun _ => liftComp sampleParts (LocalSpec C)) >>=
         fun parts => keygenDerivations parts >>= fun values => pure fun i => some (keysFromValues values i))).run' ∅ =
-      Concrete.sequenceFin (fun _ => sampleParts (C := C)) >>= fun parts =>
+      OverPermutation.sequenceFin (fun _ => sampleParts (C := C)) >>= fun parts =>
         (fun values (i : C.Party) => some (keysFromValues (C := C) values i)) <$>
           (simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims) ((keygenInputs parts).mapM hashQuery)).run' ∅ := by
   rw [← liftComp_sequenceFin, run'_localAnswer_liftComp_bind]
@@ -657,35 +661,36 @@ section Uniform
 
 /-- A computation whose outputs all have one probability is uniform. -/
 theorem evalDist_eq_uniform_of_probOutput_eq {β : Type} [Fintype β] [SampleableType β] (mx : ProbComp β)
-    (h : ∀ x y, Pr[= x | mx] = Pr[= y | mx]) : 𝒟[mx] = 𝒟[$ᵗ β] := by
-  refine evalDist_ext fun x => ?_
-  rw [probOutput_uniformSample]
-  have hsum := sum_probOutput_eq_one (mx := mx) (by simp)
-  rw [Finset.sum_congr rfl (fun y _ => h y x), Finset.sum_const, Finset.card_univ, nsmul_eq_mul] at hsum
+    (h : ∀ x y, Pr{let z ← mx}[z = x] = Pr{let z ← mx}[z = y]) : mx =ᵈ $ᵗ β := by
+  refine OracleComp.evalDistEq_of_forall_prEvent_eq_output fun x => ?_
+  rw [SampleableType.prEvent_uniformSample_eq_singleton]
+  have hsum := OracleComp.tsum_prEvent_eq_one mx
+  rw [tsum_fintype, Finset.sum_congr rfl (fun y _ => h y x), Finset.sum_const, Finset.card_univ,
+    nsmul_eq_mul] at hsum
   exact ENNReal.eq_inv_of_mul_eq_one_left (by rw [mul_comm]; exact hsum)
 
 theorem xor_bijective {n : ℕ} (c : BitVec n) : Function.Bijective fun y : BitVec n => y ^^^ c :=
   Function.Involutive.bijective (fun y => by simp [BitVec.xor_assoc])
 
 theorem truncateHash_xor (y : HashOutput) (c : Digest) :
-    truncateHash (y ^^^ c.setWidth hashOutputBits) = truncateHash y ^^^ c := by
+    truncateHash (y ^^^ c.setWidth 256) = truncateHash y ^^^ c := by
   unfold truncateHash
   apply BitVec.eq_of_getLsbD_eq
   intro i hi
   simp only [BitVec.getLsbD_extractLsb', BitVec.getLsbD_xor, BitVec.getLsbD_setWidth]
-  simp [hi, show i < hashOutputBits by unfold hashOutputBits; unfold digestBits at hi; omega]
+  simp [hi, show i < 256 by unfold digestBits at hi; omega]
 
 /-- The first 128 bits of a uniform hash output are uniform. -/
 theorem evalDist_truncateHash :
-    𝒟[(truncateHash <$> ($ᵗ HashOutput) : ProbComp Digest)] = 𝒟[$ᵗ Digest] := by
+    (truncateHash <$> ($ᵗ HashOutput) : ProbComp Digest) =ᵈ $ᵗ Digest := by
   refine evalDist_eq_uniform_of_probOutput_eq _ fun x y => ?_
-  have hU : 𝒟[(fun z => z ^^^ (x ^^^ y).setWidth hashOutputBits) <$> ($ᵗ HashOutput)] = 𝒟[$ᵗ HashOutput] :=
-    evalDist_map_bijective_uniform_cross HashOutput _ (xor_bijective _)
-  have hshift : 𝒟[(truncateHash <$> ($ᵗ HashOutput) : ProbComp Digest)] =
-      𝒟[(fun d => d ^^^ (x ^^^ y)) <$> (truncateHash <$> ($ᵗ HashOutput) : ProbComp Digest)] :=
-    calc 𝒟[(truncateHash <$> ($ᵗ HashOutput) : ProbComp Digest)]
-        = 𝒟[truncateHash <$> ((fun z => z ^^^ (x ^^^ y).setWidth hashOutputBits) <$> ($ᵗ HashOutput))] := by
-          rw [evalDist_map, evalDist_map, hU]
+  have hU : ((fun z => z ^^^ (x ^^^ y).setWidth 256) <$> ($ᵗ HashOutput)) =ᵈ $ᵗ HashOutput :=
+    SampleableType.map_uniformSample_evalDistEq_of_bijective (xor_bijective _)
+  have hshift : (truncateHash <$> ($ᵗ HashOutput) : ProbComp Digest) =ᵈ
+      ((fun d => d ^^^ (x ^^^ y)) <$> (truncateHash <$> ($ᵗ HashOutput) : ProbComp Digest)) :=
+    calc (truncateHash <$> ($ᵗ HashOutput) : ProbComp Digest)
+        =ᵈ (truncateHash <$> ((fun z => z ^^^ (x ^^^ y).setWidth 256) <$> ($ᵗ HashOutput)) : ProbComp Digest) :=
+          (hU.map _).symm
       _ = _ := by
           rw [Functor.map_map, Functor.map_map]
           congr 2
@@ -693,36 +698,44 @@ theorem evalDist_truncateHash :
           exact truncateHash_xor z _
   have hx : x = y ^^^ (x ^^^ y) := by
     rw [BitVec.xor_comm x y, ← BitVec.xor_assoc, BitVec.xor_self, BitVec.zero_xor]
-  have key := probOutput_map_injective (truncateHash <$> ($ᵗ HashOutput) : ProbComp Digest)
+  have key := prEvent_map_injective (truncateHash <$> ($ᵗ HashOutput) : ProbComp Digest)
     (xor_bijective (x ^^^ y)).1 y
   rw [← hx] at key
-  rw [probOutput_def, hshift, ← probOutput_def]
-  exact key
+  exact (hshift.prEvent_eq _).trans key
 
 /-- A list of uniform values, read as a function through an index, is a uniform function. -/
 theorem evalDist_listFunction {α β : Type} [Fintype α] [DecidableEq α] [Fintype β] [SampleableType β] [SampleableType (α → β)]
     (L : List α) (idx : α → ℕ) (d : β) (hlen : L.length = Fintype.card α)
     (h1 : ∀ f : α → β, (fun a => (L.map f).getD (idx a) d) = f)
     (h2 : ∀ l : List β, l.length = L.length → L.map (fun a => l.getD (idx a) d) = l) :
-    𝒟[(fun l a => l.getD (idx a) d) <$> L.mapM (fun _ => $ᵗ β)] = 𝒟[$ᵗ (α → β)] := by
-  refine evalDist_ext fun f => ?_
-  rw [probOutput_map, probOutput_uniformSample, Fintype.card_fun, ← hlen]
-  have hlen' : ∀ l ∈ support (L.mapM fun _ => $ᵗ β), l.length = L.length := by
-    intro l hl
-    by_contra hne
-    exact probOutput_ne_zero_of_mem_support hl (by rw [probOutput_list_mapM, if_neg hne])
-  rw [show Pr[fun l => (fun a => l.getD (idx a) d) = f | L.mapM fun _ => $ᵗ β] =
-      Pr[fun l => l = L.map f | L.mapM fun _ => $ᵗ β] from probEvent_ext fun l hl => ⟨fun e => by
-        rw [← h2 l (hlen' l hl), e], fun e => by rw [e, h1]⟩, probEvent_eq_eq_probOutput,
-    probOutput_list_mapM, if_pos (by simp)]
+    ((fun l a => l.getD (idx a) d) <$> L.mapM (fun _ => $ᵗ β)) =ᵈ $ᵗ (α → β) := by
+  refine OracleComp.evalDistEq_of_forall_prEvent_eq_output fun f => ?_
+  rw [prEvent_map, SampleableType.prEvent_uniformSample_eq_singleton, Fintype.card_fun, ← hlen]
+  have hlen' : ∀ l ∈ support (L.mapM fun _ => $ᵗ β), l.length = L.length :=
+    Common.length_of_mem_support_mapM _ L
+  have hpoint : ∀ ys : List β, ys.length = L.length →
+      Pr{let l ← L.mapM fun _ => $ᵗ β}[l = ys] = (Fintype.card β : ENNReal)⁻¹ ^ L.length := by
+    clear hlen hlen' h1 h2
+    induction L with
+    | nil =>
+      intro ys hys
+      rw [List.length_nil, List.length_eq_zero_iff] at hys
+      subst hys
+      simp
+    | cons a L ih =>
+      intro ys hys
+      rcases ys with _ | ⟨y, ys⟩
+      · simp at hys
+      rw [List.mapM_cons, OracleComp.prEvent_bind_eq_mul_of_unique _ _ y _ fun x' _ hx' => by
+          simp only [support_bind, support_pure, Set.mem_iUnion, Set.mem_singleton_iff, exists_prop] at hx'
+          obtain ⟨xs, -, hxs⟩ := hx'
+          exact (List.cons.inj hxs).1.symm,
+        SampleableType.prEvent_uniformSample_eq_singleton, bind_pure_comp,
+        prEvent_map_injective _ (List.cons_injective) ys, ih ys (by simpa using hys), List.length_cons,
+        pow_succ, mul_comm]
+  rw [prEvent_congr_of_support _ _ (fun l => l = L.map f) fun l hl => ⟨fun e => by
+        rw [← h2 l (hlen' l hl), e], fun e => by rw [e, h1]⟩, hpoint _ (by simp)]
   rw [Nat.cast_pow, ENNReal.inv_pow]
-  clear hlen hlen' h1 h2
-  simp only [probOutput_uniformSample]
-  induction L with
-  | nil => simp
-  | cons a L ih =>
-    simp only [List.map_cons, List.zipWith_cons_cons, List.prod_cons, ih, List.length_cons, pow_succ]
-    rw [mul_comm]
 
 end Uniform
 
@@ -739,15 +752,12 @@ open scoped ENNReal
 variable {C : Committee}
 
 theorem evalDist_sequenceFin_congr {α : Type} :
-    ∀ {n : ℕ} (f g : Fin n → ProbComp α), (∀ i, 𝒟[f i] = 𝒟[g i]) →
-      𝒟[Concrete.sequenceFin f] = 𝒟[Concrete.sequenceFin g]
-  | 0, f, g, _ => by simp only [Concrete.sequenceFin]
+    ∀ {n : ℕ} (f g : Fin n → ProbComp α), (∀ i, f i =ᵈ g i) →
+      OverPermutation.sequenceFin f =ᵈ OverPermutation.sequenceFin g
+  | 0, f, g, _ => by simp only [OverPermutation.sequenceFin, EvalDistEq.refl]
   | n + 1, f, g, h => by
-    simp only [Concrete.sequenceFin, evalDist_bind, h 0]
-    congr 1
-    funext a
-    rw [← evalDist_bind, ← evalDist_bind, bind_pure_comp, bind_pure_comp, evalDist_map, evalDist_map,
-      evalDist_sequenceFin_congr _ _ fun i => h i.succ]
+    simp only [OverPermutation.sequenceFin]
+    exact (h 0).bind fun a => (evalDist_sequenceFin_congr _ _ fun i => h i.succ).bind_left _
 
 /-- The parts of one operator with one coordinate shifted. -/
 def shiftParts (own : Parts C) (term : Option C.Term) (pair : Option C.Party) (c : HashOutput) : Parts C :=
@@ -755,14 +765,14 @@ def shiftParts (own : Parts C) (term : Option C.Term) (pair : Option C.Party) (c
     fun j => if pair = some j then own.pair j ^^^ c else own.pair j⟩
 
 theorem evalDist_shift_sampleParts (term : Option C.Term) (pair : Option C.Party) (c : HashOutput) :
-    𝒟[(fun own => shiftParts own term pair c) <$> sampleParts (C := C)] = 𝒟[sampleParts (C := C)] := by
-  have hterm : 𝒟[(fun t (T : C.Term) => if term = some T then t T ^^^ c else t T) <$> ($ᵗ (C.Term → HashOutput))] =
-      𝒟[$ᵗ (C.Term → HashOutput)] :=
-    evalDist_map_bijective_uniform_cross _ _ (Function.Involutive.bijective fun t => by
+    ((fun own => shiftParts own term pair c) <$> sampleParts (C := C)) =ᵈ sampleParts (C := C) := by
+  have hterm : ((fun t (T : C.Term) => if term = some T then t T ^^^ c else t T) <$> ($ᵗ (C.Term → HashOutput))) =ᵈ
+      $ᵗ (C.Term → HashOutput) :=
+    SampleableType.map_uniformSample_evalDistEq_of_bijective (Function.Involutive.bijective fun t => by
       funext T; by_cases hT : term = some T <;> simp [hT, BitVec.xor_assoc])
-  have hpair : 𝒟[(fun p (j : C.Party) => if pair = some j then p j ^^^ c else p j) <$> ($ᵗ (C.Party → HashOutput))] =
-      𝒟[$ᵗ (C.Party → HashOutput)] :=
-    evalDist_map_bijective_uniform_cross _ _ (Function.Involutive.bijective fun p => by
+  have hpair : ((fun p (j : C.Party) => if pair = some j then p j ^^^ c else p j) <$> ($ᵗ (C.Party → HashOutput))) =ᵈ
+      $ᵗ (C.Party → HashOutput) :=
+    SampleableType.map_uniformSample_evalDistEq_of_bijective (Function.Involutive.bijective fun p => by
       funext j; by_cases hj : pair = some j <;> simp [hj, BitVec.xor_assoc])
   have e : (fun own => shiftParts own term pair c) <$> sampleParts (C := C) = (do
       let parameter ← $ᵗ HashOutput
@@ -773,10 +783,7 @@ theorem evalDist_shift_sampleParts (term : Option C.Term) (pair : Option C.Party
     rfl
   rw [e]
   unfold sampleParts
-  refine evalDist_bind_congr' _ fun parameter => ?_
-  rw [evalDist_bind, hterm, ← evalDist_bind]
-  refine evalDist_bind_congr' _ fun t => ?_
-  rw [evalDist_bind, hpair, ← evalDist_bind]
+  exact EvalDistEq.bind_right _ fun parameter => hterm.bind fun t => hpair.bind_left _
 
 /-- The parts of all operators with one coordinate of operator `a` shifted. -/
 def shiftAt (a : C.Party) (term : Option C.Term) (pair : Option C.Party) (c : HashOutput)
@@ -784,8 +791,8 @@ def shiftAt (a : C.Party) (term : Option C.Term) (pair : Option C.Party) (c : Ha
   fun i => if i = a then shiftParts (parts i) term pair c else parts i
 
 theorem evalDist_shiftAt (a : C.Party) (term : Option C.Term) (pair : Option C.Party) (c : HashOutput) :
-    𝒟[shiftAt a term pair c <$> Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] =
-      𝒟[Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] := by
+    (shiftAt a term pair c <$> OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))) =ᵈ
+      OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C)) := by
   have h := sequenceFin_bind_pure (m := ProbComp) (fun _ : C.Party => sampleParts (C := C))
     (fun i own => if i = a then shiftParts own term pair c else own)
   rw [map_eq_bind_pure_comp]
@@ -795,25 +802,28 @@ theorem evalDist_shiftAt (a : C.Party) (term : Option C.Term) (pair : Option C.P
   refine evalDist_sequenceFin_congr _ _ fun i => ?_
   by_cases hi : i = a
   · simp only [hi, if_true]
-    rw [bind_pure_comp, evalDist_shift_sampleParts]
-  · simp only [hi, if_false, bind_pure]
+    rw [bind_pure_comp]
+    exact evalDist_shift_sampleParts _ _ _
+  · simp only [hi, if_false, bind_pure, EvalDistEq.refl]
 
 /-- Two different coordinates of the parts collide with probability `2^-256`. -/
 theorem probEvent_parts_collision (X Y : (C.Party → Parts C) → HashOutput) (a : C.Party) (term : Option C.Term)
     (pair : Option C.Party) (hX : ∀ c parts, X (shiftAt a term pair c parts) = X parts ^^^ c)
     (hY : ∀ c parts, Y (shiftAt a term pair c parts) = Y parts) :
-    Pr[fun parts => X parts = Y parts | Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] =
+    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[X parts = Y parts] =
       (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-  have huniform : 𝒟[(fun parts => X parts ^^^ Y parts) <$>
-      Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] = 𝒟[$ᵗ HashOutput] := by
+  have huniform : ((fun parts => X parts ^^^ Y parts) <$>
+      OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))) =ᵈ $ᵗ HashOutput := by
     refine evalDist_eq_uniform_of_probOutput_eq _ fun u v => ?_
-    have hshift : 𝒟[(fun parts => X parts ^^^ Y parts) <$>
-          Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] =
-        𝒟[(fun d => d ^^^ (u ^^^ v)) <$> ((fun parts => X parts ^^^ Y parts) <$>
-          Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C)))] :=
-      calc _ = 𝒟[(fun parts => X parts ^^^ Y parts) <$> (shiftAt a term pair (u ^^^ v) <$>
-              Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C)))] := by
-            rw [evalDist_map, evalDist_map, evalDist_shiftAt]
+    have hshift : ((fun parts => X parts ^^^ Y parts) <$>
+          OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))) =ᵈ
+        ((fun d => d ^^^ (u ^^^ v)) <$> ((fun parts => X parts ^^^ Y parts) <$>
+          OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C)))) :=
+      calc ((fun parts => X parts ^^^ Y parts) <$>
+            OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C)) : ProbComp HashOutput)
+          =ᵈ ((fun parts => X parts ^^^ Y parts) <$> (shiftAt a term pair (u ^^^ v) <$>
+              OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))) : ProbComp HashOutput) :=
+            ((evalDist_shiftAt a term pair (u ^^^ v)).map _).symm
         _ = _ := by
             rw [Functor.map_map, Functor.map_map]
             congr 2
@@ -821,16 +831,15 @@ theorem probEvent_parts_collision (X Y : (C.Party → Parts C) → HashOutput) (
             simp only [hX, hY, BitVec.xor_assoc, BitVec.xor_comm (u ^^^ v) (Y parts)]
     have hu : u = v ^^^ (u ^^^ v) := by
       rw [BitVec.xor_comm u v, ← BitVec.xor_assoc, BitVec.xor_self, BitVec.zero_xor]
-    have key := probOutput_map_injective ((fun parts => X parts ^^^ Y parts) <$>
-      Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))) (xor_bijective (u ^^^ v)).1 v
+    have key := prEvent_map_injective ((fun parts => X parts ^^^ Y parts) <$>
+      OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))) (xor_bijective (u ^^^ v)).1 v
     rw [← hu] at key
-    rw [probOutput_def, hshift, ← probOutput_def]
-    exact key
-  have : Pr[fun parts => X parts = Y parts | Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] =
-      Pr[= 0 | (fun parts => X parts ^^^ Y parts) <$> Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] := by
-    rw [probOutput_map]
-    exact probEvent_ext fun parts _ => BitVec.xor_eq_zero_iff.symm
-  rw [this, probOutput_def, huniform, ← probOutput_def, probOutput_uniformSample]
+    exact (hshift.prEvent_eq _).trans key
+  have : Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[X parts = Y parts] =
+      Pr{let z ← (fun parts => X parts ^^^ Y parts) <$> OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[z = 0] := by
+    rw [prEvent_map]
+    exact prEvent_congr _ _ _ fun parts => BitVec.xor_eq_zero_iff.symm
+  rw [this, huniform.prEvent_eq, SampleableType.prEvent_uniformSample_eq_singleton]
 
 theorem card_term (C : Committee) : Fintype.card C.Term = C.n.choose (C.t - 1) := by
   convert Fintype.card_finset_len (α := C.Party) (C.t - 1)
@@ -883,15 +892,15 @@ theorem exists_first_holder (T : C.Term) : ∃ a rest, C.parties.filter (· ∈ 
   · exact ⟨a, rest, rfl⟩
 
 theorem probEvent_termInput_eq (T T' : C.Term) :
-    Pr[fun parts => T ≠ T' ∧ termInput .keygen parts T = termInput .keygen parts T' |
-      Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] ≤ (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
+    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+      T ≠ T' ∧ termInput .keygen parts T = termInput .keygen parts T'] ≤ (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   by_cases hTT : T = T'
   · simp [hTT]
   obtain ⟨a, rest, ha⟩ := exists_first_holder T
   obtain ⟨b, rest', hb⟩ := exists_first_holder T'
-  calc _ ≤ Pr[fun parts => (parts a).term T = (parts b).term T' |
-        Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] := by
-        refine probEvent_mono fun parts _ h => ?_
+  calc _ ≤ Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+        (parts a).term T = (parts b).term T'] := by
+        refine prEvent_mono _ _ _ fun parts h => ?_
         have := h.2
         simp only [termInput, ha, hb, List.map_cons, Query.derive.injEq, true_and, List.cons.injEq] at this
         exact this.1
@@ -900,13 +909,13 @@ theorem probEvent_termInput_eq (T T' : C.Term) :
           by_cases hba : b = a <;> simp [shiftAt, shiftParts, hba, hTT])
 
 theorem probEvent_pairInput_eq (p p' : C.Pair) :
-    Pr[fun parts => p ≠ p' ∧ pairInput .keygen parts p = pairInput .keygen parts p' |
-      Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] ≤ (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
+    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+      p ≠ p' ∧ pairInput .keygen parts p = pairInput .keygen parts p'] ≤ (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   by_cases hpp : p = p'
   · simp [hpp]
-  calc _ ≤ Pr[fun parts => (parts p.1.1).pair p.1.2 = (parts p'.1.1).pair p'.1.2 |
-        Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] := by
-        refine probEvent_mono fun parts _ h => ?_
+  calc _ ≤ Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+        (parts p.1.1).pair p.1.2 = (parts p'.1.1).pair p'.1.2] := by
+        refine prEvent_mono _ _ _ fun parts h => ?_
         have := h.2
         simp only [pairInput, Query.derive.injEq, true_and, List.cons.injEq] at this
         exact this.1
@@ -922,25 +931,25 @@ theorem probEvent_pairInput_eq (p p' : C.Pair) :
 
 /-- Two derivations of one kind collide with probability at most `derivedKeyCollision`. -/
 theorem probEvent_keygen_collision :
-    Pr[fun parts => ¬ (keygenInputs parts).Nodup | Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] ≤
+    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[¬ (keygenInputs parts).Nodup] ≤
       ((Fintype.card C.Term ^ 2 + Fintype.card C.Pair ^ 2 : ℕ) : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-  calc _ ≤ Pr[fun parts => (∃ T ∈ Finset.univ, ∃ T' ∈ Finset.univ,
+  calc _ ≤ Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+        (∃ T ∈ Finset.univ, ∃ T' ∈ Finset.univ,
           T ≠ T' ∧ termInput .keygen parts T = termInput .keygen parts T') ∨
-        (∃ p ∈ Finset.univ, ∃ p' ∈ Finset.univ, p ≠ p' ∧ pairInput .keygen parts p = pairInput .keygen parts p') |
-        Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] := by
-        refine probEvent_mono fun parts _ hbad => ?_
+        (∃ p ∈ Finset.univ, ∃ p' ∈ Finset.univ, p ≠ p' ∧ pairInput .keygen parts p = pairInput .keygen parts p')] := by
+        refine prEvent_mono _ _ _ fun parts hbad => ?_
         by_contra hgood
         push_neg at hgood
         exact hbad (nodup_keygenInputs parts (fun T T' h => by_contra fun hne => hgood.1 T (by simp) T' (by simp) hne h)
           fun p p' h => by_contra fun hne => hgood.2 p (by simp) p' (by simp) hne h)
-    _ ≤ _ := probEvent_or_le _ _ _
+    _ ≤ _ := prEvent_or_le _ _ _
     _ ≤ (∑ T : C.Term, ∑ T' : C.Term, (Fintype.card HashOutput : ℝ≥0∞)⁻¹) +
         ∑ p : C.Pair, ∑ p' : C.Pair, (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
         gcongr
-        · refine (probEvent_exists_finset_le_sum _ _ _).trans (Finset.sum_le_sum fun T _ => ?_)
-          exact (probEvent_exists_finset_le_sum _ _ _).trans (Finset.sum_le_sum fun T' _ => probEvent_termInput_eq T T')
-        · refine (probEvent_exists_finset_le_sum _ _ _).trans (Finset.sum_le_sum fun p _ => ?_)
-          exact (probEvent_exists_finset_le_sum _ _ _).trans (Finset.sum_le_sum fun p' _ => probEvent_pairInput_eq p p')
+        · refine (prEvent_exists_finset_le _ _ _).trans (Finset.sum_le_sum fun T _ => ?_)
+          exact (prEvent_exists_finset_le _ _ _).trans (Finset.sum_le_sum fun T' _ => probEvent_termInput_eq T T')
+        · refine (prEvent_exists_finset_le _ _ _).trans (Finset.sum_le_sum fun p _ => ?_)
+          exact (prEvent_exists_finset_le _ _ _).trans (Finset.sum_le_sum fun p' _ => probEvent_pairInput_eq p p')
     _ = _ := by
         simp only [Finset.sum_const, Finset.card_univ, nsmul_eq_mul]
         push_cast
@@ -969,24 +978,21 @@ theorem map_getD_idxOf {α : Type} [BEq α] [LawfulBEq α] (L : List α) (hL : L
 
 /-- Uniform values of the derivations give the keys of `KeyGen'`. -/
 theorem evalDist_keysFromValues (parts : C.Party → Parts C) :
-    𝒟[(fun values (i : C.Party) => some (keysFromValues values i)) <$>
-        (keygenInputs parts).mapM (fun _ => $ᵗ HashOutput)] =
-      𝒟[(fun r (i : C.Party) => some (r.2.2 i)) <$> prawnsKeyGen (C := C)] := by
-  have hterms : 𝒟[(fun (l : List HashOutput) (T : C.Term) => l.getD (C.terms.idxOf T) 0) <$>
-      C.terms.mapM (fun _ => $ᵗ HashOutput)] = 𝒟[$ᵗ (C.Term → HashOutput)] :=
+    ((fun values (i : C.Party) => some (keysFromValues values i)) <$>
+        (keygenInputs parts).mapM (fun _ => $ᵗ HashOutput)) =ᵈ
+      ((fun r (i : C.Party) => some (r.2.2 i)) <$> prawnsKeyGen (C := C)) := by
+  have hterms : ((fun (l : List HashOutput) (T : C.Term) => l.getD (C.terms.idxOf T) 0) <$>
+      C.terms.mapM (fun _ => $ᵗ HashOutput)) =ᵈ $ᵗ (C.Term → HashOutput) :=
     evalDist_listFunction C.terms (C.terms.idxOf ·) 0 (by simp [Committee.terms])
       (fun f => funext fun T => getD_terms_idxOf f 0 T) (map_getD_idxOf C.terms (Finset.nodup_toList _))
-  have hpairs : 𝒟[(fun (l : List HashOutput) (p : C.Pair) => l.getD ((pairList C).idxOf p) 0) <$>
-      (pairList C).mapM (fun _ => $ᵗ HashOutput)] = 𝒟[$ᵗ (C.Pair → HashOutput)] :=
+  have hpairs : ((fun (l : List HashOutput) (p : C.Pair) => l.getD ((pairList C).idxOf p) 0) <$>
+      (pairList C).mapM (fun _ => $ᵗ HashOutput)) =ᵈ $ᵗ (C.Pair → HashOutput) :=
     evalDist_listFunction (pairList C) ((pairList C).idxOf ·) 0 (by simp [pairList])
       (fun f => funext fun p => getD_pairList_idxOf f 0 p) (map_getD_idxOf (pairList C) (Finset.nodup_toList _))
-  have hlen1 : ∀ l ∈ support (C.terms.mapM fun _ => $ᵗ HashOutput), l.length = C.terms.length := fun l hl => by
-    by_contra hne
-    exact probOutput_ne_zero_of_mem_support hl (by rw [probOutput_list_mapM, if_neg hne])
+  have hlen1 : ∀ l ∈ support (C.terms.mapM fun _ => $ᵗ HashOutput), l.length = C.terms.length :=
+    Common.length_of_mem_support_mapM _ _
   have hlen2 : ∀ l ∈ support ((pairList C).mapM fun _ => $ᵗ HashOutput), l.length = (pairList C).length :=
-    fun l hl => by
-      by_contra hne
-      exact probOutput_ne_zero_of_mem_support hl (by rw [probOutput_list_mapM, if_neg hne])
+    Common.length_of_mem_support_mapM _ _
   have hmapM : (keygenInputs parts).mapM (fun _ => $ᵗ HashOutput) = (do
       let a ← $ᵗ HashOutput
       let l₁ ← C.terms.mapM (fun _ => $ᵗ HashOutput)
@@ -994,7 +1000,7 @@ theorem evalDist_keysFromValues (parts : C.Party → Parts C) :
       pure (a :: (l₁ ++ l₂))) := by
     simp only [keygenInputs, List.mapM_cons, List.mapM_append, List.mapM_map, bind_assoc, pure_bind]
     rfl
-  have htrunc : 𝒟[(truncateHash <$> ($ᵗ HashOutput) : ProbComp PublicParameter)] = 𝒟[$ᵗ PublicParameter] :=
+  have htrunc : (truncateHash <$> ($ᵗ HashOutput) : ProbComp PublicParameter) =ᵈ $ᵗ PublicParameter :=
     evalDist_truncateHash
   have hkeys : ∀ a (l₁ l₂ : List HashOutput), l₁.length = C.terms.length → ∀ i,
       keysFromValues (a :: (l₁ ++ l₂)) i = dealtKeys (truncateHash a) (fun T => l₁.getD (C.terms.idxOf T) 0)
@@ -1018,28 +1024,25 @@ theorem evalDist_keysFromValues (parts : C.Party → Parts C) :
   simp only [map_bind, map_pure]
   unfold prawnsKeyGen
   simp only [map_bind, map_pure]
-  calc _ = 𝒟[do
+  calc _ =ᵈ (do
         let a ← $ᵗ HashOutput
         let l₁ ← C.terms.mapM (fun _ => $ᵗ HashOutput)
         let l₂ ← (pairList C).mapM (fun _ => $ᵗ HashOutput)
         pure fun i => some (dealtKeys (truncateHash a) (fun T => l₁.getD (C.terms.idxOf T) 0)
-          (fun p => l₂.getD ((pairList C).idxOf p) 0) i)] := by
-        refine evalDist_bind_congr' _ fun a => evalDist_bind_congr fun l₁ hl₁ => evalDist_bind_congr' _ fun l₂ => ?_
-        simp only [hkeys a l₁ l₂ (hlen1 l₁ hl₁)]
-    _ = 𝒟[do
+          (fun p => l₂.getD ((pairList C).idxOf p) 0) i) : ProbComp (C.Party → Option (Keys C))) := by
+        refine EvalDistEq.bind_right _ fun a => OracleComp.EvalDistEq.bind_congr_of_support _ fun l₁ hl₁ =>
+          EvalDistEq.bind_right _ fun l₂ => ?_
+        simp only [hkeys a l₁ l₂ (hlen1 l₁ hl₁), EvalDistEq.refl]
+    _ = (do
         let parameter ← (truncateHash <$> ($ᵗ HashOutput) : ProbComp PublicParameter)
         let seeds ← (fun (l : List HashOutput) (T : C.Term) => l.getD (C.terms.idxOf T) 0) <$>
           C.terms.mapM (fun _ => $ᵗ HashOutput)
         let pairKeys ← (fun (l : List HashOutput) (p : C.Pair) => l.getD ((pairList C).idxOf p) 0) <$>
           (pairList C).mapM (fun _ => $ᵗ HashOutput)
-        pure fun i => some (dealtKeys parameter seeds pairKeys i)] := by
+        pure fun i => some (dealtKeys parameter seeds pairKeys i)) := by
         simp only [bind_map_left]
-    _ = _ := by
-        rw [evalDist_bind, htrunc, ← evalDist_bind]
-        refine evalDist_bind_congr' _ fun parameter => ?_
-        rw [evalDist_bind, hterms, ← evalDist_bind]
-        refine evalDist_bind_congr' _ fun seeds => ?_
-        rw [evalDist_bind, hpairs, ← evalDist_bind]
+        rfl
+    _ =ᵈ _ := htrunc.bind fun parameter => hterms.bind fun seeds => hpairs.bind_left _
 
 /-- `KeygenCompletenessStatement`. An honest keygen gives the keys of `F_keygen`, except when two
 derived keys of one kind have the same parts. -/
@@ -1047,42 +1050,42 @@ theorem keygenCompleteness (prims : Primitives) : KeygenCompletenessStatement (C
   unfold KeygenCompletenessStatement
   rw [completes_iff]
   intro x _
-  set P := Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))
+  set P := OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))
   set F := fun parts => (fun values (i : C.Party) => some (keysFromValues values i)) <$>
     (simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims) ((keygenInputs parts).mapM hashQuery)).run' ∅
   set G := (fun r (i : C.Party) => some (r.2.2 i)) <$> prawnsKeyGen (C := C)
-  have hreal : 𝒟[(simulateQ (localAnswer prims) (honestStart (fun i => (fun i (_ : Unit) =>
+  have hreal : (simulateQ (localAnswer prims) (honestStart (fun i => (fun i (_ : Unit) =>
       (keygen i : PartyM C E RealSpec (Keys C))) i (x i)) >>=
-        honestRounds noFunctionality (fun l => l.elim) setupRounds)).run' ∅] = 𝒟[P >>= F] := by
-    rw [(sameRun_keygen (E := E) prims).run'_eq, evalDist_keygen_derivations, keygen_real]
-  have hideal : 𝒟[(simulateQ (localAnswer prims) (simulateQ (replyImpl (fun _ => (Finset.univ : Finset C.Party)))
-      ((Fkeygen (C := C)).run noCoalition fun i => some (x i)))).run' ∅] = 𝒟[P >>= fun _ => G] := by
+        honestRounds noFunctionality (fun l => l.elim) setupRounds)).run' ∅ =ᵈ (P >>= F) := by
+    refine ((sameRun_keygen (E := E) prims).run'_eq).trans ((evalDist_keygen_derivations prims).trans ?_)
+    rw [keygen_real]
+  have hideal : (simulateQ (localAnswer prims) (simulateQ (replyImpl (fun _ => (Finset.univ : Finset C.Party)))
+      ((Fkeygen (C := C)).run noCoalition fun i => some (x i)))).run' ∅ =ᵈ (P >>= fun _ => G) := by
     rw [keygen_ideal]
-    refine evalDist_ext fun y => ?_
-    rw [probOutput_bind_const]
-    simp [G]
-  have hgood : ∀ parts, ¬ ¬ (keygenInputs parts).Nodup → 𝒟[F parts] = 𝒟[G] := by
+    exact (OracleComp.EvalDistEq.bind_const P G).symm
+  have hgood : ∀ parts, ¬ ¬ (keygenInputs parts).Nodup → F parts =ᵈ G := by
     intro parts hnd
     rw [not_not] at hnd
     simp only [F, G]
-    rw [evalDist_map, evalDist_fresh_mapM prims _ ∅ hnd (fun _ _ => rfl)
+    exact ((evalDist_fresh_mapM prims _ ∅ hnd (fun _ _ => rfl)
       (fun q hq => by
         simp only [keygenInputs, List.mem_cons, List.mem_append, List.mem_map] at hq
-        rcases hq with rfl | ⟨T, -, rfl⟩ | ⟨p, -, rfl⟩ <;> rintro ⟨_, h, _⟩ <;> cases h),
-      ← evalDist_map, evalDist_keysFromValues]
+        rcases hq with rfl | ⟨T, -, rfl⟩ | ⟨p, -, rfl⟩ <;> rintro ⟨_, h, _⟩ <;> cases h)).map _).trans
+      (evalDist_keysFromValues parts)
   have hbound := probEvent_keygen_collision (C := C)
-  rw [card_bitVec] at hbound
-  calc tvDist _ _ = tvDist (P >>= F) (P >>= fun _ => G) := by
-        unfold tvDist
-        rw [hreal, hideal]
-    _ ≤ (Pr[fun parts => ¬ (keygenInputs parts).Nodup | P]).toReal :=
-        tvDist_bind_left_event_le P F (fun _ => G) _ hgood
+  rw [Fintype.card_bitVec] at hbound
+  let : MeasurableSpace (C.Party → Option (Keys C)) := ⊤
+  calc measureTVDist _ _ = measureTVDist (P >>= F) (P >>= fun _ => G) := by
+        unfold measureTVDist
+        rw [hreal.evalDist_eq, hideal.evalDist_eq]
+    _ ≤ (Pr{let parts ← P}[¬ (keygenInputs parts).Nodup]).toReal :=
+        measureTVDist_bind_left_le_prEvent_of_evalDistEq P F (fun _ => G) _ hgood
     _ ≤ ((((Fintype.card C.Term ^ 2 + Fintype.card C.Pair ^ 2 : ℕ) : ℝ≥0∞) *
-          ((2 ^ hashOutputBits : ℕ) : ℝ≥0∞)⁻¹)).toReal :=
+          ((2 ^ 256 : ℕ) : ℝ≥0∞)⁻¹)).toReal :=
         ENNReal.toReal_mono (ENNReal.mul_ne_top (by simp) (by simp)) hbound
     _ = ((Fintype.card C.Term ^ 2 + Fintype.card C.Pair ^ 2 : ℕ) : ℝ) / 2 ^ 256 := by
         rw [ENNReal.toReal_mul, ENNReal.toReal_inv, ENNReal.toReal_natCast, ENNReal.toReal_natCast, div_eq_mul_inv]
-        norm_num [hashOutputBits]
+        norm_num
     _ ≤ derivedKeyCollision C := by
         unfold derivedKeyCollision termCount
         gcongr
@@ -1219,9 +1222,9 @@ def KeygenCoupling : Prop :=
         (fun i (_ : Unit) => (keygen i : PartyM C E RealSpec (Keys C))) x z) Z) ∧
       accepts prims (Prod.fst <$> ob) =
         accepts prims (distinguish (idealExecution (fun oa => oa) D Fkeygen (keygenSimulator D A) x z) Z) ∧
-      Pr[fun r => r.1 = (true, false) | runWorld prims oa] = Pr[fun r => r.1 = (true, false) | runWorld prims ob] ∧
-      Pr[fun r => r.1.2 = true | runWorld prims oa].toReal ≤ keygenHashError C q ∧
-      Pr[fun r => r.1.2 = true | runWorld prims ob].toReal ≤ keygenHashError C q
+      Pr{let r ← runWorld prims oa}[r.1 = (true, false)] = Pr{let r ← runWorld prims ob}[r.1 = (true, false)] ∧
+      Pr{let r ← runWorld prims oa}[r.1.2 = true].toReal ≤ keygenHashError C q ∧
+      Pr{let r ← runWorld prims ob}[r.1.2 = true].toReal ≤ keygenHashError C q
 
 /-- `KeygenSecurityDistance` from the coupling. -/
 theorem keygenDistance_of_coupling (h : KeygenCoupling (C := C) (E := E) prims) :
@@ -1257,7 +1260,7 @@ end KeygenSecurity
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -1352,7 +1355,7 @@ theorem keygenFlaggedReal_accepts (prims : Primitives) (bad : KeygenRealTrace C 
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -1418,7 +1421,7 @@ theorem sample_program_bind_eq_hashAnswer (prims : Primitives) {α : Type} {q : 
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -1637,7 +1640,7 @@ theorem keygen_openInput_covered (D : C.Coalition) (parts : C.Party → Parts C)
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -1646,12 +1649,12 @@ variable {C : Committee}
 theorem relabelHashCache_query (e : Query C ≃ Query C) (s : HashCache C)
     (q : Query C) (y : HashOutput) :
     relabelHashCache e (s.cacheQuery q y) = (relabelHashCache e s).cacheQuery (e q) y := by
-  funext q'
-  simp only [relabelHashCache, QueryCache.cacheQuery]
+  refine QueryCache.ext fun q' => ?_
+  simp only [relabelHashCache, QueryCache.cacheQuery, QueryCache.toFn_ofFn]
   by_cases h : q' = e q
   · subst q'; rw [Equiv.symm_apply_apply]; simp
   · have h' : e.symm q' ≠ q := fun heq => h (by rw [← e.apply_symm_apply q', heq])
-    simp [h, h', relabelHashCache]
+    simp [h, h']
 
 /-- A lazy random-oracle answer is invariant under a bijective renaming of its input,
 with the same renaming applied to the final cache. -/
@@ -1674,7 +1677,7 @@ theorem hashAnswer_relabel (prims : Primitives) (e : Query C ≃ Query C) (q : Q
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -1732,7 +1735,7 @@ theorem keygen_echoCheck_agreement (prims : Primitives) (h : Query C → HashOut
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -2003,7 +2006,7 @@ theorem stepRound_keygenEchoStep (prims : Primitives) (coalition : C.Coalition)
   refine bind_congr fun r => ?_
   rcases r with ⟨st, sent⟩
   dsimp only
-  trans (Concrete.sequenceFin (fun i =>
+  trans (OverPermutation.sequenceFin (fun i =>
     (pure (Step.done (keygenEchoOutput prims coalition active sent h keys i)) :
       OracleComp (WorldSpec C) (Step C E RealSpec (Keys C)))) >>= fun steps => pure (st, steps, sent))
   · congr 1
@@ -2110,7 +2113,7 @@ theorem executeRounds_keygenEchoStep_receivers_congr (prims : Primitives) (coali
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -2131,8 +2134,8 @@ def uniformProgram (q : Query C) : StateT (HashCache C) ProbComp Unit := do
 as an unused ordinary hash query. Freshness is needed only when the sampled value is retained. -/
 theorem evalDist_uniformProgram (prims : Primitives) (q : Query C) (hq : ¬ IsFixed q)
     (s : HashCache C) :
-    𝒟[(uniformProgram q).run s] =
-      𝒟[(hashAnswer prims q >>= fun _ => pure ()).run s] := by
+    (uniformProgram q).run s =ᵈ
+      (hashAnswer prims q >>= fun _ => pure ()).run s := by
   cases hs : s q with
   | none =>
     simp only [uniformProgram, StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind,
@@ -2144,13 +2147,13 @@ theorem evalDist_uniformProgram (prims : Primitives) (q : Query C) (hq : ¬ IsFi
     simp only [uniformProgram, StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind,
       programAnswer_run_cached q s _ v hs, StateT.run_pure,
       hashAnswer_run_cached prims hq hs]
-    exact DeferredSampling.evalDist_bind_const_neverFails ($ᵗ HashOutput) (by simp) _
+    exact OracleComp.EvalDistEq.bind_const ($ᵗ HashOutput) _
 
 /-- The discarded programming swap is valid before every cache-dependent continuation. -/
 theorem evalDist_uniformProgram_bind (prims : Primitives) (q : Query C) (hq : ¬ IsFixed q)
     {α : Type} (k : StateT (HashCache C) ProbComp α) (s : HashCache C) :
-    𝒟[(uniformProgram q >>= fun _ => k).run s] =
-      𝒟[(hashAnswer prims q >>= fun _ => k).run s] := by
+    (uniformProgram q >>= fun _ => k).run s =ᵈ
+      (hashAnswer prims q >>= fun _ => k).run s := by
   have h := evalDist_run_bind_of_eq (fun _ : Unit => k) s (evalDist_uniformProgram prims q hq s)
   simpa only [bind_assoc, pure_bind] using h
 
@@ -2164,8 +2167,8 @@ ordinary queries, including the cache and every continuation. Inputs need not be
 theorem evalDist_uniformPrograms_bind (prims : Primitives) (qs : List (Query C))
     (hq : ∀ q ∈ qs, ¬ IsFixed q) {α : Type} (k : StateT (HashCache C) ProbComp α)
     (s : HashCache C) :
-    𝒟[(uniformPrograms qs >>= fun _ => k).run s] =
-      𝒟[((qs.mapM (hashAnswer prims)) >>= fun _ => k).run s] := by
+    (uniformPrograms qs >>= fun _ => k).run s =ᵈ
+      ((qs.mapM (hashAnswer prims)) >>= fun _ => k).run s := by
   induction qs generalizing s with
   | nil => simp [uniformPrograms]
   | cons q qs ih =>
@@ -2191,11 +2194,11 @@ once their counted/free wrappers have been erased. -/
 theorem evalDist_uniformPrograms_prepend (prims : Primitives) (qs : List (Query C))
     (hq : ∀ q ∈ qs, ¬ IsFixed q) {α : Type} (k : OracleComp (LocalSpec C) α)
     (s : HashCache C) :
-    𝒟[(uniformPrograms qs >>= fun _ => simulateQ (localAnswer prims) k).run' s] =
-      𝒟[(simulateQ (localAnswer prims) k).run' s] := by
+    (uniformPrograms qs >>= fun _ => simulateQ (localAnswer prims) k).run' s =ᵈ
+      (simulateQ (localAnswer prims) k).run' s := by
   have h := evalDist_uniformPrograms_bind prims qs hq (simulateQ (localAnswer prims) k) s
-  have hm := congrArg (fun d : SPMF (α × HashCache C) => Prod.fst <$> d) h
-  simp only [← evalDist_map, ← StateT.run'_eq] at hm
+  have hm := h.map Prod.fst
+  simp only [← StateT.run'_eq] at hm
   refine hm.trans ?_
   rw [← simulateQ_localAnswer_hashes]
   rw [← simulateQ_bind]
@@ -2203,15 +2206,15 @@ theorem evalDist_uniformPrograms_prepend (prims : Primitives) (qs : List (Query 
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 
 def keygenFullParameter (high : HashOutput) (parameter : PublicParameter) : HashOutput :=
-  high >>> digestBits <<< digestBits ||| parameter.setWidth hashOutputBits
+  high >>> digestBits <<< digestBits ||| parameter.setWidth 256
 
 theorem keygenFullParameter_getLsbD (high : HashOutput) (parameter : PublicParameter)
-    (i : ℕ) (hi : i < hashOutputBits) :
+    (i : ℕ) (hi : i < 256) :
     (keygenFullParameter high parameter).getLsbD i =
       if i < digestBits then parameter.getLsbD i else high.getLsbD i := by
   simp only [keygenFullParameter, BitVec.getLsbD_or, BitVec.getLsbD_shiftLeft,
@@ -2227,7 +2230,7 @@ theorem truncate_keygenFullParameter (high : HashOutput) (parameter : PublicPara
   intro i hi
   simp only [truncateHash, BitVec.getLsbD_extractLsb', Nat.zero_add]
   rw [keygenFullParameter_getLsbD high parameter i (by
-    unfold hashOutputBits; unfold digestBits at hi; omega)]
+    unfold digestBits at hi; omega)]
   simp only [hi, if_pos, decide_true, Bool.true_and]
   rfl
 
@@ -2235,7 +2238,7 @@ theorem keygenFullParameter_restore (high : HashOutput) (parameter : PublicParam
     keygenFullParameter (keygenFullParameter high parameter) (truncateHash high) = high := by
   apply BitVec.eq_of_getLsbD_eq
   intro i hi
-  rw [keygenFullParameter_getLsbD _ _ i hi]
+  refine (keygenFullParameter_getLsbD _ _ i hi).trans ?_
   by_cases hl : i < digestBits
   · rw [if_pos hl]
     change (BitVec.extractLsb' 0 digestBits high).getLsbD i = high.getLsbD i
@@ -2251,26 +2254,30 @@ theorem keygenParameterSwap_involutive : Function.Involutive keygenParameterSwap
   exact Prod.ext (keygenFullParameter_restore p.1 p.2) (truncate_keygenFullParameter p.1 p.2)
 
 theorem evalDist_keygenFullParameter_pair :
-    𝒟[(fun p : HashOutput × PublicParameter => keygenFullParameter p.1 p.2) <$>
-        ($ᵗ (HashOutput × PublicParameter))] = 𝒟[$ᵗ HashOutput] := by
-  have h := evalDist_map_bijective_uniform_cross (HashOutput × PublicParameter)
-    keygenParameterSwap keygenParameterSwap_involutive.bijective
-  calc
-    _ = 𝒟[Prod.fst <$> (keygenParameterSwap <$> ($ᵗ (HashOutput × PublicParameter)))] := by
+    ((fun p : HashOutput × PublicParameter => keygenFullParameter p.1 p.2) <$>
+        ($ᵗ (HashOutput × PublicParameter))) =ᵈ $ᵗ HashOutput := by
+  have h := SampleableType.map_uniformSample_evalDistEq_of_bijective
+    keygenParameterSwap_involutive.bijective
+  calc ((fun p : HashOutput × PublicParameter => keygenFullParameter p.1 p.2) <$>
+        ($ᵗ (HashOutput × PublicParameter)) : ProbComp HashOutput)
+    _ = Prod.fst <$> (keygenParameterSwap <$> ($ᵗ (HashOutput × PublicParameter))) := by
       rw [Functor.map_map]; rfl
-    _ = 𝒟[Prod.fst <$> ($ᵗ (HashOutput × PublicParameter))] := by
-      rw [evalDist_map, h, ← evalDist_map]
-    _ = _ := evalDist_map_fst_uniformSample_prod
+    _ =ᵈ Prod.fst <$> ($ᵗ (HashOutput × PublicParameter)) := h.map _
+    _ =ᵈ _ := by
+      rw [SampleableType.uniformSample_prod_eq_bind]
+      simp only [map_bind, map_pure]
+      exact (EvalDistEq.bind_right _ fun a => OracleComp.EvalDistEq.bind_const _ _).trans
+        (by rw [bind_pure])
 
 /-- The exact full-width parameter programmed by `keygenSimulator` is uniform. -/
 theorem evalDist_keygenFullParameter :
-    𝒟[(do
+    (do
       let parameter ← $ᵗ PublicParameter
       let high ← $ᵗ HashOutput
-      pure (high >>> digestBits <<< digestBits ||| parameter.setWidth hashOutputBits) : ProbComp HashOutput)] =
-      𝒟[$ᵗ HashOutput] := by
-  change 𝒟[($ᵗ PublicParameter) >>= fun p => ($ᵗ HashOutput) >>= fun h => pure (keygenFullParameter h p)] = _
-  rw [DeferredSampling.evalDist_bind_comm]
+      pure (high >>> digestBits <<< digestBits ||| parameter.setWidth 256) : ProbComp HashOutput) =ᵈ
+      $ᵗ HashOutput := by
+  change (($ᵗ PublicParameter) >>= fun p => ($ᵗ HashOutput) >>= fun h => pure (keygenFullParameter h p)) =ᵈ _
+  refine (OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans ?_
   have he : ((fun p : HashOutput × PublicParameter => keygenFullParameter p.1 p.2) <$>
       ($ᵗ (HashOutput × PublicParameter))) =
       (($ᵗ HashOutput) >>= fun h => ($ᵗ PublicParameter) >>= fun p => pure (keygenFullParameter h p)) := by
@@ -2283,7 +2290,7 @@ theorem evalDist_keygenFullParameter :
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -2292,16 +2299,16 @@ attribute [local instance] Classical.propDecidable
 theorem evalDist_uniform_table_list {ι R : Type} [Finite ι] [DecidableEq ι]
     [Finite R] [Nonempty R] [SampleableType R] [SampleableType (ι → R)]
     (indices : List ι) (hnd : indices.Nodup) :
-    𝒟[(fun f : ι → R => indices.map f) <$> ($ᵗ (ι → R))] =
-      𝒟[indices.mapM fun _ => $ᵗ R] := by
+    ((fun f : ι → R => indices.map f) <$> ($ᵗ (ι → R))) =ᵈ
+      (indices.mapM fun _ => $ᵗ R) := by
   induction indices with
   | nil =>
     simp only [List.map_nil, List.mapM_nil, map_eq_bind_pure_comp]
-    exact DeferredSampling.evalDist_bind_const_neverFails _ (by simp) _
+    exact OracleComp.EvalDistEq.bind_const _ _
   | cons i indices ih =>
     have hn := List.nodup_cons.mp hnd
-    have hs := evalDist_uniformSample_bind_update_map (R := R) i
-      (fun f : ι → R => (i :: indices).map f)
+    have hs := evalDistEq_uniformSample_bind_update (R := R) i
+      (fun f : ι → R => (pure ((i :: indices).map f) : ProbComp (List R)))
     have hmap : ∀ (f : ι → R) (r : R), indices.map (Function.update f i r) = indices.map f := by
       intro f r
       apply List.map_congr_left
@@ -2310,21 +2317,15 @@ theorem evalDist_uniform_table_list {ι R : Type} [Finite ι] [DecidableEq ι]
       simp [hji]
     simp only [List.map_cons, Function.update_self, hmap] at hs
     simp only [List.map_cons, map_eq_bind_pure_comp, Function.comp_def]
-    rw [← hs]
+    refine hs.symm.trans ?_
     simp only [List.mapM_cons]
-    apply DeferredSampling.evalDist_bind_congr_left
-    intro r
-    change 𝒟[(fun f : ι → R => r :: indices.map f) <$> ($ᵗ (ι → R))] = _
-    calc
-      _ = 𝒟[List.cons r <$> ((fun f : ι → R => indices.map f) <$> ($ᵗ (ι → R)))] := by
-        rw [Functor.map_map]
-      _ = 𝒟[List.cons r <$> (indices.mapM fun _ => $ᵗ R)] := by
-        rw [evalDist_map, ih hn.2, ← evalDist_map]
-      _ = _ := by simp only [map_eq_bind_pure_comp, Function.comp_def]
+    refine EvalDistEq.bind_right _ fun r => ?_
+    have hr := (ih hn.2).map (List.cons r)
+    simpa only [map_eq_bind_pure_comp, Function.comp_def, bind_assoc, pure_bind] using hr
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -2440,11 +2441,11 @@ theorem simulateQ_keygenReal_eq_local (prims : Primitives) (coalition : C.Coalit
 theorem keygenLocalGame_accepts (prims : Primitives) (coalition : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) :
-    (Pr[= true | (simulateQ (localAnswer prims) (keygenLocalGame coalition A x z Z)).run' ∅]).toReal =
+    (Pr{let y ← (simulateQ (localAnswer prims) (keygenLocalGame coalition A x z Z)).run' ∅}[y = true]).toReal =
       accepts prims (distinguish (realExecution coalition A noFunctionality setupRounds
         (fun i (_ : Unit) => (keygen i : PartyM C E RealSpec (Keys C))) x z) Z) := by
   unfold accepts
-  rw [← simulateQ_keygenReal_eq_local, ← fst_map_runWorld, probOutput_map]
+  rw [← simulateQ_keygenReal_eq_local, ← fst_map_runWorld, prEvent_map]
 
 /-- An unused private draw changes neither an output nor the cache. -/
 theorem sameRun_private_unused (prims : Primitives) {α β : Type} (p : ProbComp α) (b : β) :
@@ -2455,15 +2456,15 @@ theorem sameRun_private_unused (prims : Primitives) {α β : Type} (p : ProbComp
     QueryImpl.simulateQ_add_liftComp_left (unifFwdImpl (Query C →ₒ HashOutput)) _ p
   simp only [simulateQ_bind, simulateQ_pure, StateT.run_bind, StateT.run_pure, hl,
     unifFwdImpl.simulateQ_run, bind_map_left]
-  exact DeferredSampling.evalDist_bind_const_neverFails p (by simp) _
+  exact OracleComp.EvalDistEq.bind_const p _
 
 theorem SameRun.sequenceFin (prims : Primitives) {α : Type} {n : ℕ}
     (f g : Fin n → OracleComp (LocalSpec C) α) (h : ∀ i, SameRun prims (f i) (g i)) :
-    SameRun prims (Concrete.sequenceFin f) (Concrete.sequenceFin g) := by
+    SameRun prims (OverPermutation.sequenceFin f) (OverPermutation.sequenceFin g) := by
   induction n with
   | zero => exact SameRun.refl prims _
   | succ n ih =>
-    simp only [Concrete.sequenceFin]
+    simp only [OverPermutation.sequenceFin]
     apply (h 0).bind
     intro a
     apply (ih (fun i => f i.succ) (fun i => g i.succ) (fun i => h i.succ)).bind
@@ -2482,7 +2483,7 @@ theorem sameRun_startSteps_keygen_parts (prims : Primitives) (coalition : C.Coal
     SameRun prims
       (startSteps localRoles coalition fun i => (keygen i : PartyM C E RealSpec (Keys C)))
       (do
-        let parts ← Concrete.sequenceFin fun (_ : C.Party) => liftComp (sampleParts (C := C)) (LocalSpec C)
+        let parts ← OverPermutation.sequenceFin fun (_ : C.Party) => liftComp (sampleParts (C := C)) (LocalSpec C)
         startSteps localRoles coalition fun i => (keygenWith i (parts i) : PartyM C E RealSpec (Keys C))) := by
   let draws : C.Party → OracleComp (LocalSpec C) (Parts C) := fun _ => liftComp sampleParts (LocalSpec C)
   let next : C.Party → Parts C → OracleComp (LocalSpec C) (Step C E RealSpec (Keys C)) := fun i parts =>
@@ -2497,18 +2498,18 @@ theorem sameRun_startSteps_keygen_parts (prims : Primitives) (coalition : C.Coal
     · simp only [draws, next, if_neg hi, advance_keygen_sampling]
       exact SameRun.refl prims _
   have hseq := SameRun.sequenceFin prims _ _ hlocal
-  change SameRun prims (Concrete.sequenceFin _) _
+  change SameRun prims (OverPermutation.sequenceFin _) _
   refine hseq.trans ?_
   have hmove := sameRun_sequenceFin_dep prims draws next (fun _ _ step => step)
   simp only [bind_pure] at hmove
-  change SameRun prims (Concrete.sequenceFin fun i => draws i >>= next i)
-    (Concrete.sequenceFin draws >>= fun parts =>
-      (Concrete.sequenceFin fun i => next i (parts i)) >>= pure) at hmove
+  change SameRun prims (OverPermutation.sequenceFin fun i => draws i >>= next i)
+    (OverPermutation.sequenceFin draws >>= fun parts =>
+      (OverPermutation.sequenceFin fun i => next i (parts i)) >>= pure) at hmove
   simpa only [bind_pure, draws, next, startSteps, localRoles] using hmove
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -2517,7 +2518,7 @@ variable {C : Committee} {E : Type}
 /-- The commitment computation of the honest operators, with an empty entry for each corrupt one. -/
 def keygenInitialCommitments (coalition : C.Coalition) (parts : C.Party → Parts C) :
     OracleComp (LocalSpec C) (C.Party → List HashOutput) :=
-  Concrete.sequenceFin fun i => if i ∈ coalition.1 then pure [] else
+  OverPermutation.sequenceFin fun i => if i ∈ coalition.1 then pure [] else
     liftComp (commitQueries .keygen i (parts i)) (LocalSpec C)
 
 def keygenInitialSteps (coalition : C.Coalition) (parts : C.Party → Parts C)
@@ -2585,7 +2586,7 @@ def keygenLocalCommitPrefix (coalition : C.Coalition) (A : Adversary C E Unit PE
     OracleComp (LocalSpec C)
       ((C.Party → Parts C) × A.State × (C.Party → Step C E RealSpec (Keys C)) × (C.Party → Mail C E)) := do
   let state ← A.start (corruptInputs coalition x) z
-  let parts ← Concrete.sequenceFin fun (_ : C.Party) => liftComp (sampleParts (C := C)) (LocalSpec C)
+  let parts ← OverPermutation.sequenceFin fun (_ : C.Party) => liftComp (sampleParts (C := C)) (LocalSpec C)
   let commitments ← keygenInitialCommitments coalition parts
   let (state, steps, sent) ← stepRound localRoles coalition A noFunctionality state
     (keygenInitialSteps coalition parts commitments)
@@ -2640,12 +2641,12 @@ theorem evalDist_keygenProgrammedReal (prims : Primitives) (coalition : C.Coalit
     (inputs : ((C.Party → Parts C) × A.State × (C.Party → Step C E RealSpec (Keys C)) ×
       (C.Party → Mail C E)) → List (Query C))
     (hinputs : ∀ r q, q ∈ inputs r → ¬ IsFixed q) :
-    𝒟[keygenProgrammedReal prims coalition A x z Z inputs] =
-      𝒟[(simulateQ (localAnswer prims)
-        (keygenLocalCommitPrefix coalition A x z >>= keygenLocalPostCommit coalition A Z)).run' ∅] := by
+    keygenProgrammedReal prims coalition A x z Z inputs =ᵈ
+      (simulateQ (localAnswer prims)
+        (keygenLocalCommitPrefix coalition A x z >>= keygenLocalPostCommit coalition A Z)).run' ∅ := by
   unfold keygenProgrammedReal
   rw [simulateQ_bind, StateT.run'_eq, StateT.run_bind, map_bind]
-  apply DeferredSampling.evalDist_bind_congr_left
+  refine EvalDistEq.bind_right _ ?_
   rintro ⟨r, cache⟩
   exact evalDist_uniformPrograms_prepend prims (inputs r) (hinputs r)
     (keygenLocalPostCommit coalition A Z r) cache
@@ -2657,17 +2658,17 @@ theorem keygenProgrammedReal_accepts (prims : Primitives) (coalition : C.Coaliti
     (inputs : ((C.Party → Parts C) × A.State × (C.Party → Step C E RealSpec (Keys C)) ×
       (C.Party → Mail C E)) → List (Query C))
     (hinputs : ∀ r q, q ∈ inputs r → ¬ IsFixed q) :
-    (Pr[= true | keygenProgrammedReal prims coalition A x z Z inputs]).toReal =
+    (Pr{let y ← keygenProgrammedReal prims coalition A x z Z inputs}[y = true]).toReal =
       accepts prims (distinguish (realExecution coalition A noFunctionality setupRounds
         (fun i (_ : Unit) => (keygen i : PartyM C E RealSpec (Keys C))) x z) Z) := by
   have heq := (evalDist_keygenProgrammedReal prims coalition A x z Z inputs hinputs).trans
     (sameRun_keygenLocal_split prims coalition A x z Z).run'_eq.symm
-  exact (congrArg ENNReal.toReal (probOutput_congr rfl heq)).trans
+  exact (congrArg ENNReal.toReal (heq.prEvent_eq _)).trans
     (keygenLocalGame_accepts prims coalition A x z Z)
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -2758,7 +2759,7 @@ def keygenEmulation (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (st : SimulatorState C Unit A.State) (parameter : PublicParameter)
     (corrupt : C.Party → Option (Keys C)) :
     OracleComp (WorldSpec C) (SimulatorState C Unit A.State × (C.Party → Option (Keys C))) := do
-  let parts ← free (liftComp (Concrete.sequenceFin fun (_ : C.Party) =>
+  let parts ← free (liftComp (OverPermutation.sequenceFin fun (_ : C.Party) =>
     (sampleParts : ProbComp (Parts C))) _)
   let steps ← startSteps worldRoles D fun i => (keygenWith i (parts i) : PartyM C E RealSpec (Keys C))
   let ((state, steps, sent), calls) ← (stepRound observedRoles D A noFunctionality st.adversary steps).run
@@ -2801,12 +2802,12 @@ theorem keygenCommonGame_ideal (D : C.Coalition) (A : Adversary C E Unit PEmpty 
       idealExecution (fun oa => oa) D Fkeygen (keygenSimulator D A) x z := by
   rw [idealExecution_Fkeygen]
   unfold keygenCommonGame
-  simp only [map_bind, map_pure, keygenSimulator_answer_emulation, bind_map_left]
+  simp only [map_bind, map_pure]
   apply bind_congr
   intro st
   apply bind_congr
   rintro ⟨parameter, seeds, keys⟩
-  erw [bind_map_left]
+  erw [keygenSimulator_answer_emulation, bind_map_left]
   apply bind_congr
   rintro ⟨st, emulated⟩
   change pure (keygenIdealProjection D (st.adversary, emulated, keys)) =
@@ -2817,7 +2818,7 @@ theorem keygenCommonGame_ideal (D : C.Coalition) (A : Adversary C E Unit PEmpty 
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -2904,7 +2905,7 @@ theorem keygenDealer_cross_value (D : C.Coalition) (parameter : PublicParameter)
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -2949,15 +2950,15 @@ No condition is placed on the target inputs: they may repeat or already be cache
 theorem evalDist_table_programValues {ι : Type} [Finite ι] [DecidableEq ι]
     [SampleableType (ι → HashOutput)] (indices : List ι) (hnd : indices.Nodup)
     (inputs : ι → Query C) (s : HashCache C) :
-    𝒟[do let table ← $ᵗ (ι → HashOutput)
-         (programValues (indices.map inputs) (indices.map table)).run s] =
-      𝒟[(uniformPrograms (indices.map inputs)).run s] := by
+    (do let table ← $ᵗ (ι → HashOutput)
+        (programValues (indices.map inputs) (indices.map table)).run s) =ᵈ
+      (uniformPrograms (indices.map inputs)).run s := by
   have h := evalDist_uniform_table_list (R := HashOutput) indices hnd
   calc
-    _ = 𝒟[((fun table : ι → HashOutput => indices.map table) <$> ($ᵗ (ι → HashOutput))) >>=
-      fun ys => (programValues (indices.map inputs) ys).run s] := by rw [bind_map_left]
-    _ = 𝒟[(indices.mapM fun _ => $ᵗ HashOutput) >>= fun ys =>
-      (programValues (indices.map inputs) ys).run s] := by rw [evalDist_bind, h, ← evalDist_bind]
+    _ = (((fun table : ι → HashOutput => indices.map table) <$> ($ᵗ (ι → HashOutput))) >>=
+      fun ys => (programValues (indices.map inputs) ys).run s) := by rw [bind_map_left]
+    _ =ᵈ ((indices.mapM fun _ => $ᵗ HashOutput) >>= fun ys =>
+      (programValues (indices.map inputs) ys).run s) := h.bind_left _
     _ = _ := by
       have hm : (indices.map inputs).mapM (fun _ => ($ᵗ HashOutput : ProbComp HashOutput)) =
           indices.mapM (fun _ => ($ᵗ HashOutput : ProbComp HashOutput)) := by
@@ -2972,8 +2973,8 @@ def tablePrograms {ι : Type} [SampleableType (ι → HashOutput)] (indices : Li
 theorem evalDist_tablePrograms {ι : Type} [Finite ι] [DecidableEq ι]
     [SampleableType (ι → HashOutput)] (indices : List ι) (hnd : indices.Nodup)
     (inputs : ι → Query C) (s : HashCache C) :
-    𝒟[(tablePrograms indices inputs).run s] =
-      𝒟[(uniformPrograms (indices.map inputs)).run s] := by
+    (tablePrograms indices inputs).run s =ᵈ
+      (uniformPrograms (indices.map inputs)).run s := by
   simp only [tablePrograms, StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind]
   exact evalDist_table_programValues indices hnd inputs s
 
@@ -2983,14 +2984,14 @@ theorem evalDist_tablePrograms_prepend (prims : Primitives) {ι : Type} [Finite 
     [SampleableType (ι → HashOutput)] (indices : List ι) (hnd : indices.Nodup)
     (inputs : ι → Query C) (hinputs : ∀ i ∈ indices, ¬ IsFixed (inputs i))
     {α : Type} (k : OracleComp (LocalSpec C) α) (s : HashCache C) :
-    𝒟[(tablePrograms indices inputs >>= fun _ => simulateQ (localAnswer prims) k).run' s] =
-      𝒟[(simulateQ (localAnswer prims) k).run' s] := by
+    (tablePrograms indices inputs >>= fun _ => simulateQ (localAnswer prims) k).run' s =ᵈ
+      (simulateQ (localAnswer prims) k).run' s := by
   have he := evalDist_run_bind_of_eq (fun _ : Unit => simulateQ (localAnswer prims) k)
     s (evalDist_tablePrograms indices hnd inputs s)
-  have hm := congrArg (fun d : SPMF (α × HashCache C) => Prod.fst <$> d) he
-  simp only [StateT.run'_eq, evalDist_map]
-  rw [hm]
-  simpa only [StateT.run'_eq, evalDist_map] using
+  have hm := he.map Prod.fst
+  simp only [StateT.run'_eq]
+  refine hm.trans ?_
+  simpa only [StateT.run'_eq] using
     evalDist_uniformPrograms_prepend prims (indices.map inputs)
     (by
       intro q hq
@@ -2999,7 +3000,7 @@ theorem evalDist_tablePrograms_prepend (prims : Primitives) {ι : Type} [Finite 
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -3023,10 +3024,10 @@ theorem keygenEraseLog_lift {α : Type} (p : OracleComp (WorldSpec C) α) :
 
 theorem keygenEraseLog_sequenceFin {α : Type} : ∀ {n : ℕ}
     (p : Fin n → WriterT (CallLog C) (OracleComp (WorldSpec C)) α),
-    keygenEraseLog (Concrete.sequenceFin p) = Concrete.sequenceFin fun i => keygenEraseLog (p i)
-  | 0, p => by simp [Concrete.sequenceFin, keygenEraseLog_pure]
+    keygenEraseLog (OverPermutation.sequenceFin p) = OverPermutation.sequenceFin fun i => keygenEraseLog (p i)
+  | 0, p => by simp [OverPermutation.sequenceFin, keygenEraseLog_pure]
   | n + 1, p => by
-    simp only [Concrete.sequenceFin, keygenEraseLog_bind, keygenEraseLog_pure,
+    simp only [OverPermutation.sequenceFin, keygenEraseLog_bind, keygenEraseLog_pure,
       keygenEraseLog_sequenceFin]
 
 theorem fst_observe {α : Type} (p : OracleComp (LocalSpec C) α) :
@@ -3092,7 +3093,7 @@ theorem keygenEraseLog_executeRounds (D : C.Coalition) (A : Adversary C E Unit P
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -3276,7 +3277,7 @@ theorem keygenProgramBlock_dealt (D : C.Coalition) (parts : C.Party → Parts C)
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -3287,7 +3288,7 @@ theorem commutes_private_stateT {σ α β : Type} (p : ProbComp α) (m : StateT 
     Commutes (StateT.lift p) m := by
   intro s
   simp only [StateT.run_bind, StateT.run_lift, StateT.run_pure, bind_assoc, pure_bind]
-  exact DeferredSampling.evalDist_bind_comm _ _ _
+  exact OracleComp.EvalDistEq.bind_bind_swap _ _ _
 
 theorem simulateQ_world_program (prims : Primitives) (q : Query C) (y : HashOutput) :
     simulateQ (worldAnswer prims) (program q y) = programAnswer (q, y) := by
@@ -3308,21 +3309,21 @@ theorem simulateQ_programValues (prims : Primitives) {ι : Type}
 
 /-- The simulator's high/low parameter encoding is a uniform programming value, with its cache. -/
 theorem evalDist_parameterProgramming (q : Query C) (s : HashCache C) :
-    𝒟[((do
+    ((do
       let parameter ← StateT.lift ($ᵗ PublicParameter)
       let high ← StateT.lift ($ᵗ HashOutput)
       let _ ← programAnswer (q, keygenFullParameter high parameter)
-      pure () : StateT (HashCache C) ProbComp Unit)).run s] =
-      𝒟[(uniformProgram q).run s] := by
+      pure () : StateT (HashCache C) ProbComp Unit)).run s =ᵈ
+      (uniformProgram q).run s := by
   let p : ProbComp HashOutput := do
     let parameter ← $ᵗ PublicParameter
     let high ← $ᵗ HashOutput
     pure (keygenFullParameter high parameter)
-  have hp : 𝒟[p] = 𝒟[$ᵗ HashOutput] := evalDist_keygenFullParameter
+  have hp : p =ᵈ $ᵗ HashOutput := evalDist_keygenFullParameter
   simp only [StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind,
     uniformProgram, StateT.run_pure]
-  change 𝒟[(p >>= fun y => (programAnswer (q, y)).run s >>= fun r => pure ((), r.2))] = _
-  rw [evalDist_bind, hp, ← evalDist_bind]
+  change (p >>= fun y => (programAnswer (q, y)).run s >>= fun r => pure ((), r.2)) =ᵈ _
+  exact hp.bind_left _
 
 /-- The actual independent dealer samples followed by the simulator's programming block. -/
 def keygenDealerPrograms (prims : Primitives) (D : C.Coalition)
@@ -3376,14 +3377,14 @@ theorem keygenDealerPrograms_expand (prims : Primitives) (D : C.Coalition)
 /-- The dealer tables can be delayed until their own programming blocks. -/
 theorem evalDist_keygenDealerPrograms_reorder (prims : Primitives) (D : C.Coalition)
     (parts : C.Party → Parts C) (log : CallLog C) (sent : C.Party → Mail C E) (s : HashCache C) :
-    𝒟[(keygenDealerPrograms prims D parts log sent).run s] =
-    𝒟[((do
+    (keygenDealerPrograms prims D parts log sent).run s =ᵈ
+    ((do
       let parameter ← StateT.lift ($ᵗ PublicParameter)
       let view := keygenProgramView D parts log sent
       parameterProgram (keygenParameterProgrammingInput D view) parameter
       tablePrograms (keygenKnownCoordinates D) (keygenTermProgrammingInput D view)
       tablePrograms (keygenCrossCoordinates D) (keygenPairProgrammingInput D view)
-      : StateT (HashCache C) ProbComp Unit)).run s] := by
+      : StateT (HashCache C) ProbComp Unit)).run s := by
   rw [keygenDealerPrograms_expand]
   apply evalDist_run_bind_congr
   intro parameter s'
@@ -3393,18 +3394,18 @@ theorem evalDist_keygenDealerPrograms_reorder (prims : Primitives) (D : C.Coalit
   let kp := (keygenCrossCoordinates D).map (keygenPairProgrammingInput D view)
   let ts (seeds : C.Term → HashOutput) := programValues kt ((keygenKnownCoordinates D).map seeds)
   let ps (pairs : C.Pair → HashOutput) := programValues kp ((keygenCrossCoordinates D).map pairs)
-  change 𝒟[((do
+  change ((do
     let seeds ← StateT.lift ($ᵗ (C.Term → HashOutput))
     let pairs ← StateT.lift ($ᵗ (C.Pair → HashOutput))
     pp
     ts seeds
-    ps pairs) : StateT (HashCache C) ProbComp Unit).run s'] = _
-  trans 𝒟[((do
+    ps pairs) : StateT (HashCache C) ProbComp Unit).run s' =ᵈ _
+  refine EvalDistEq.trans (my := ((do
     let seeds ← StateT.lift ($ᵗ (C.Term → HashOutput))
     pp
     ts seeds
     let pairs ← StateT.lift ($ᵗ (C.Pair → HashOutput))
-    ps pairs) : StateT (HashCache C) ProbComp Unit).run s']
+    ps pairs) : StateT (HashCache C) ProbComp Unit).run s') ?_ ?_
   · apply evalDist_run_bind_congr
     intro seeds s''
     simpa only [bind_assoc] using
@@ -3435,17 +3436,17 @@ theorem keygenProgrammingInputs_not_fixed (D : C.Coalition) (view : C.Party → 
 of independent uniform programming at its actual inputs. -/
 theorem evalDist_keygenDealerPrograms (prims : Primitives) (D : C.Coalition)
     (parts : C.Party → Parts C) (log : CallLog C) (sent : C.Party → Mail C E) (s : HashCache C) :
-    𝒟[(keygenDealerPrograms prims D parts log sent).run s] =
-      𝒟[(uniformPrograms (keygenProgrammingInputs D (keygenProgramView D parts log sent))).run s] := by
-  rw [evalDist_keygenDealerPrograms_reorder]
+    (keygenDealerPrograms prims D parts log sent).run s =ᵈ
+      (uniformPrograms (keygenProgrammingInputs D (keygenProgramView D parts log sent))).run s := by
+  refine (evalDist_keygenDealerPrograms_reorder prims D parts log sent s).trans ?_
   let view := keygenProgramView D parts log sent
   let kt := (keygenKnownCoordinates D).map (keygenTermProgrammingInput D view)
   let kp := (keygenCrossCoordinates D).map (keygenPairProgrammingInput D view)
-  trans 𝒟[((do
+  refine EvalDistEq.trans (my := ((do
     let parameter ← StateT.lift ($ᵗ PublicParameter)
     parameterProgram (keygenParameterProgrammingInput D view) parameter
     uniformPrograms kt
-    uniformPrograms kp) : StateT (HashCache C) ProbComp Unit).run s]
+    uniformPrograms kp) : StateT (HashCache C) ProbComp Unit).run s) ?_ ?_
   · apply evalDist_run_bind_congr
     intro parameter s'
     apply evalDist_run_bind_congr
@@ -3469,21 +3470,21 @@ It is valid for every cache and extracted view, including failed extraction or p
 theorem evalDist_keygenDealerPrograms_prepend (prims : Primitives) (D : C.Coalition)
     (parts : C.Party → Parts C) (log : CallLog C) (sent : C.Party → Mail C E)
     {α : Type} (k : OracleComp (LocalSpec C) α) (s : HashCache C) :
-    𝒟[(keygenDealerPrograms prims D parts log sent >>= fun _ =>
-      simulateQ (localAnswer prims) k).run' s] =
-      𝒟[(simulateQ (localAnswer prims) k).run' s] := by
+    (keygenDealerPrograms prims D parts log sent >>= fun _ =>
+      simulateQ (localAnswer prims) k).run' s =ᵈ
+      (simulateQ (localAnswer prims) k).run' s := by
   have he := evalDist_run_bind_of_eq (fun _ : Unit => simulateQ (localAnswer prims) k) s
     (evalDist_keygenDealerPrograms prims D parts log sent s)
-  have hm := congrArg (fun d : SPMF (α × HashCache C) => Prod.fst <$> d) he
-  simp only [StateT.run'_eq, evalDist_map]
-  rw [hm]
-  simpa only [StateT.run'_eq, evalDist_map] using evalDist_uniformPrograms_prepend prims
+  have hm := he.map Prod.fst
+  simp only [StateT.run'_eq]
+  refine hm.trans ?_
+  simpa only [StateT.run'_eq] using evalDist_uniformPrograms_prepend prims
     (keygenProgrammingInputs D (keygenProgramView D parts log sent))
     (keygenProgrammingInputs_not_fixed D _) k s
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -3498,14 +3499,14 @@ theorem simulateQ_world_sample (prims : Primitives) {α : Type} (p : ProbComp α
   change (simulateQ (unifFwdImpl (Query C →ₒ HashOutput)) p).run s =
     p >>= fun a => pure (a, s)
   rw [unifFwdImpl.simulateQ_run]
-  rfl
+  exact map_eq_bind_pure_comp (m := ProbComp) _ _
 
 /-- The unobserved real execution with all private parts sampled before the commits. -/
 def keygenPartsWorldGame (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) :
     OracleComp (WorldSpec C) Bool := do
   let state ← worldRoles.adversary (A.start (corruptInputs D x) z)
-  let parts ← free (liftComp (Concrete.sequenceFin fun (_ : C.Party) =>
+  let parts ← free (liftComp (OverPermutation.sequenceFin fun (_ : C.Party) =>
     (sampleParts : ProbComp (Parts C))) (LocalSpec C))
   let steps ← startSteps worldRoles D fun i => (keygenWith i (parts i) : PartyM C E RealSpec (Keys C))
   let (state, steps, _) ← stepRound worldRoles D A noFunctionality state steps
@@ -3540,21 +3541,20 @@ theorem keygenPartsWorldGame_accepts (prims : Primitives) (D : C.Coalition)
       accepts prims (distinguish (realExecution D A noFunctionality setupRounds
         (fun i (_ : Unit) => (keygen i : PartyM C E RealSpec (Keys C))) x z) Z) := by
   have hp : accepts prims (keygenPartsWorldGame D A x z Z) =
-      (Pr[= true | (simulateQ (worldAnswer prims) (keygenPartsWorldGame D A x z Z)).run' ∅]).toReal := by
+      (Pr{let y ← (simulateQ (worldAnswer prims) (keygenPartsWorldGame D A x z Z)).run' ∅}[y = true]).toReal := by
     rw [← fst_map_runWorld]
     unfold accepts
-    rw [probOutput_map]
+    rw [prEvent_map]
   rw [hp, simulateQ_keygenPartsWorldGame]
   have he := (sameRun_keygenLocal_split prims D A x z Z).run'_eq
-  rw [probOutput_congr rfl he.symm]
-  exact keygenLocalGame_accepts prims D A x z Z
+  exact (congrArg ENNReal.toReal (he.symm.prEvent_eq _)).trans (keygenLocalGame_accepts prims D A x z Z)
 
 abbrev KeygenObservedCommitData (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) :=
   (C.Party → Parts C) × A.State × (C.Party → Step C E RealSpec (Keys C)) × (C.Party → Mail C E) × CallLog C
 
 def keygenObservedCommit (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (state : A.State) :
     OracleComp (WorldSpec C) (KeygenObservedCommitData D A) := do
-  let parts ← free (liftComp (Concrete.sequenceFin fun (_ : C.Party) =>
+  let parts ← free (liftComp (OverPermutation.sequenceFin fun (_ : C.Party) =>
     (sampleParts : ProbComp (Parts C))) _)
   let steps ← startSteps worldRoles D fun i => (keygenWith i (parts i) : PartyM C E RealSpec (Keys C))
   let (r, calls) ← (stepRound observedRoles D A noFunctionality state steps).run
@@ -3640,11 +3640,10 @@ theorem keygenCommonEmulatedGame_expand (D : C.Coalition) (A : Adversary C E Uni
 /-- Congruence for output distributions under an arbitrary cache-state prefix. -/
 theorem evalDist_stateT_run'_bind_congr {σ α β : Type} (p : StateT σ ProbComp α)
     (f g : α → StateT σ ProbComp β)
-    (h : ∀ a s, 𝒟[(f a).run' s] = 𝒟[(g a).run' s]) (s : σ) :
-    𝒟[(p >>= f).run' s] = 𝒟[(p >>= g).run' s] := by
+    (h : ∀ a s, (f a).run' s =ᵈ (g a).run' s) (s : σ) :
+    (p >>= f).run' s =ᵈ (p >>= g).run' s := by
   simp only [StateT.run'_eq, StateT.run_bind, map_bind]
-  apply DeferredSampling.evalDist_bind_congr_left
-  intro r
+  refine EvalDistEq.bind_right _ fun r => ?_
   exact h r.1 r.2
 
 /-- The common game's emulated-output marginal is exactly the real game, including the final
@@ -3652,8 +3651,8 @@ oracle-aided distinguisher. This statement does not require a good-event assumpt
 theorem evalDist_keygenCommonEmulatedGame (prims : Primitives) (D : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (s : HashCache C) :
-    𝒟[(simulateQ (worldAnswer prims) (keygenCommonEmulatedGame D A x z Z)).run' s] =
-      𝒟[(simulateQ (worldAnswer prims) (keygenPartsWorldGame D A x z Z)).run' s] := by
+    (simulateQ (worldAnswer prims) (keygenCommonEmulatedGame D A x z Z)).run' s =ᵈ
+      (simulateQ (worldAnswer prims) (keygenPartsWorldGame D A x z Z)).run' s := by
   rw [keygenCommonEmulatedGame_expand, ← keygenObservedPartsGame_eq]
   unfold keygenObservedPartsGame
   simp only [simulateQ_bind, simulateQ_world_sample]
@@ -3667,8 +3666,8 @@ theorem evalDist_keygenCommonEmulatedGame (prims : Primitives) (D : C.Coalition)
       (fun j => if j ∈ D.1 then some (dealtKeys dealer.1 dealer.2.1 dealer.2.2 j) else none) high)
     simulateQ (worldAnswer prims) (keygenObservedPost D A Z r.2.1 r.2.2.1))
   have hs := (commutes_private_stateT (keygenDealerSamples (C := C)) stageRun).bind afterProgram s₁
-  have hs' := congrArg (fun d : SPMF (Bool × HashCache C) => Prod.fst <$> d) hs
-  rw [← evalDist_map, ← StateT.run'_eq, ← evalDist_map, ← StateT.run'_eq] at hs'
+  have hs' := hs.map Prod.fst
+  rw [← StateT.run'_eq, ← StateT.run'_eq] at hs'
   refine hs'.trans ?_
   apply evalDist_stateT_run'_bind_congr
   intro r s₂
@@ -3689,13 +3688,13 @@ theorem keygenCommonGame_real_accepts (prims : Primitives) (D : C.Coalition)
       accepts prims (distinguish (realExecution D A noFunctionality setupRounds
         (fun i (_ : Unit) => (keygen i : PartyM C E RealSpec (Keys C))) x z) Z) := by
   rw [← keygenPartsWorldGame_accepts prims D A x z Z]
-  have he := congrArg (fun d : SPMF Bool => (d true).toReal)
-    (evalDist_keygenCommonEmulatedGame prims D A x z Z ∅)
-  simpa only [← probOutput_def, ← fst_map_runWorld, probOutput_map, accepts] using he
+  have he := congrArg ENNReal.toReal
+    ((evalDist_keygenCommonEmulatedGame prims D A x z Z ∅).prEvent_eq (· = true))
+  simpa only [← fst_map_runWorld, prEvent_map, accepts] using he
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -3959,7 +3958,7 @@ theorem keygen_output_eq_hybrid_dealing (prims : Primitives) (coalition : C.Coal
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open scoped ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity
@@ -4008,9 +4007,9 @@ theorem keygenTableKeyExchange_involutive {ι Ω R : Type} (points : ι → Ω)
 theorem evalDist_keygenTableKeyExchange {ι Ω R : Type} [Finite ι] [Finite Ω] [Finite R] [Nonempty R]
     [SampleableType (Ω → R)] [SampleableType (ι → R)]
     (points : ι → Ω) (hinj : Function.Injective points) :
-    𝒟[keygenTableKeyExchange (R := R) points <$> ($ᵗ ((Ω → R) × (ι → R)))] =
-      𝒟[$ᵗ ((Ω → R) × (ι → R))] :=
-  evalDist_map_bijective_uniform_cross _ _ (keygenTableKeyExchange_involutive points hinj).bijective
+    (keygenTableKeyExchange (R := R) points <$> ($ᵗ ((Ω → R) × (ι → R)))) =ᵈ
+      $ᵗ ((Ω → R) × (ι → R)) :=
+  SampleableType.map_uniformSample_evalDistEq_of_bijective (keygenTableKeyExchange_involutive points hinj).bijective
 
 /-- The exchange remains valid under every continuation using both tables. -/
 theorem evalDist_keygenTableKeyExchange_bind {ι Ω R α : Type}
@@ -4018,24 +4017,24 @@ theorem evalDist_keygenTableKeyExchange_bind {ι Ω R α : Type}
     [SampleableType (Ω → R)] [SampleableType (ι → R)]
     (points : ι → Ω) (hinj : Function.Injective points)
     (k : (Ω → R) → (ι → R) → ProbComp α) :
-    𝒟[do
+    (do
       let table ← $ᵗ (Ω → R)
       let keys ← $ᵗ (ι → R)
       let p := keygenTableKeyExchange points (table, keys)
-      k p.1 p.2] =
-    𝒟[do
+      k p.1 p.2) =ᵈ
+    (do
       let table ← $ᵗ (Ω → R)
       let keys ← $ᵗ (ι → R)
-      k table keys] := by
+      k table keys) := by
   classical
   have he := evalDist_keygenTableKeyExchange (R := R) points hinj
-  have hb : 𝒟[(keygenTableKeyExchange (R := R) points <$> ($ᵗ ((Ω → R) × (ι → R)))) >>= fun p => k p.1 p.2] =
-      𝒟[($ᵗ ((Ω → R) × (ι → R))) >>= fun p => k p.1 p.2] := by
-    rw [evalDist_bind, he, ← evalDist_bind]
+  have hb : ((keygenTableKeyExchange (R := R) points <$> ($ᵗ ((Ω → R) × (ι → R)))) >>= fun p => k p.1 p.2) =ᵈ
+      (($ᵗ ((Ω → R) × (ι → R))) >>= fun p => k p.1 p.2) :=
+    he.bind_left _
   rw [bind_map_left] at hb
-  change 𝒟[((Prod.mk <$> ($ᵗ (Ω → R)) <*> ($ᵗ (ι → R))) >>= fun p =>
-    k (keygenTableKeyExchange points p).1 (keygenTableKeyExchange points p).2)] =
-    𝒟[((Prod.mk <$> ($ᵗ (Ω → R)) <*> ($ᵗ (ι → R))) >>= fun p => k p.1 p.2)] at hb
+  change ((Prod.mk <$> ($ᵗ (Ω → R)) <*> ($ᵗ (ι → R))) >>= fun p =>
+    k (keygenTableKeyExchange points p).1 (keygenTableKeyExchange points p).2) =ᵈ
+    ((Prod.mk <$> ($ᵗ (Ω → R)) <*> ($ᵗ (ι → R))) >>= fun p => k p.1 p.2) at hb
   simpa only [seq_eq_bind_map, bind_map_left, bind_assoc] using hb
 
 /-- Cached cells outside the selected fresh positions remain unchanged. -/
@@ -4072,9 +4071,9 @@ theorem keygenNamedInput_not_fixed (parts : C.Party → Parts C) (name : KeyName
 Its insertion before the local continuation preserves that continuation's output distribution. -/
 theorem evalDist_keygenNamedTable_prepend (prims : Primitives) (parts : C.Party → Parts C)
     {α : Type} (k : OracleComp (LocalSpec C) α) (s : HashCache C) :
-    𝒟[(tablePrograms (keygenNames C) (keygenNamedInput parts) >>= fun _ =>
-      simulateQ (localAnswer prims) k).run' s] =
-      𝒟[(simulateQ (localAnswer prims) k).run' s] :=
+    (tablePrograms (keygenNames C) (keygenNamedInput parts) >>= fun _ =>
+      simulateQ (localAnswer prims) k).run' s =ᵈ
+      (simulateQ (localAnswer prims) k).run' s :=
   evalDist_tablePrograms_prepend prims _ (Finset.nodup_toList _) _
     (fun name _ => keygenNamedInput_not_fixed parts name) k s
 
@@ -4100,10 +4099,10 @@ theorem keygenHiddenNamedSwap_known (coalition : C.Coalition)
   simp [keygenHiddenNamedSwap, hknown]
 
 theorem evalDist_keygenHiddenNamedSwap (coalition : C.Coalition) :
-    𝒟[keygenHiddenNamedSwap coalition <$>
-      ($ᵗ ((KeyName C → HashOutput) × (KeyName C → HashOutput)))] =
-    𝒟[$ᵗ ((KeyName C → HashOutput) × (KeyName C → HashOutput))] :=
-  evalDist_map_bijective_uniform_cross _ _ (keygenHiddenNamedSwap_involutive coalition).bijective
+    (keygenHiddenNamedSwap coalition <$>
+      ($ᵗ ((KeyName C → HashOutput) × (KeyName C → HashOutput)))) =ᵈ
+    $ᵗ ((KeyName C → HashOutput) × (KeyName C → HashOutput)) :=
+  SampleableType.map_uniformSample_evalDistEq_of_bijective (keygenHiddenNamedSwap_involutive coalition).bijective
 
 theorem keygenNamedInput_injective (parts : C.Party → Parts C) (hnd : (keygenInputs parts).Nodup) :
     Function.Injective (keygenNamedInput parts) := by
@@ -4123,16 +4122,16 @@ theorem keygenNamedInput_injective (parts : C.Party → Parts C) (hnd : (keygenI
 
 /-- Noninjective raw derivation positions are already covered by the proved input-collision bound. -/
 theorem probEvent_keygenNamedInput_collision :
-    Pr[fun parts => ¬ Function.Injective (keygenNamedInput parts) |
-      Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] ≤
+    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+      ¬ Function.Injective (keygenNamedInput parts)] ≤
       ((Fintype.card C.Term ^ 2 + Fintype.card C.Pair ^ 2 : ℕ) : ℝ≥0∞) *
         (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-  refine (probEvent_mono (fun parts _ hn hnd => hn (keygenNamedInput_injective parts hnd))).trans ?_
+  refine (prEvent_mono _ _ _ (fun parts hn hnd => hn (keygenNamedInput_injective parts hnd))).trans ?_
   exact probEvent_keygen_collision
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -4184,7 +4183,7 @@ theorem stepRound_keygenInitialSteps (coalition : C.Coalition)
   refine bind_congr fun r => ?_
   rcases r with ⟨st, sent⟩
   dsimp only [localRoles]
-  trans (Concrete.sequenceFin (fun j =>
+  trans (OverPermutation.sequenceFin (fun j =>
     (pure (keygenRevealSteps coalition parts (keygenCommitInbox coalition parts commitments sent) j) :
       OracleComp (LocalSpec C) _)) >>= fun steps => pure (st, steps, sent))
   · congr 1
@@ -4277,7 +4276,7 @@ theorem advance_keygenRevealResume (i : C.Party) (own : Parts C) (committed reve
 /-- All honest computations between the reveal and echo boundaries. -/
 def keygenRevealComputations (coalition : C.Coalition) (parts : C.Party → Parts C)
     (committed sent : C.Party → Mail C E) : OracleComp (LocalSpec C) (C.Party → Option (KeygenEchoData C)) :=
-  Concrete.sequenceFin fun i =>
+  OverPermutation.sequenceFin fun i =>
     if i ∈ coalition.1 ∨ C.parties.any (fun j => Msg.isAbort (committed i j)) then pure none else
       keygenRevealCompute i (parts i) (committed i) (keygenRevealInbox coalition parts committed sent i)
 
@@ -4297,7 +4296,7 @@ theorem stepRound_keygenRevealSteps (coalition : C.Coalition)
   refine bind_congr fun r => ?_
   rcases r with ⟨st, sent⟩
   dsimp only [localRoles]
-  trans (Concrete.sequenceFin (fun i =>
+  trans (OverPermutation.sequenceFin (fun i =>
     (if i ∈ coalition.1 ∨ C.parties.any (fun j => Msg.isAbort (committed i j)) then pure none else
       keygenRevealCompute i (parts i) (committed i) (keygenRevealInbox coalition parts committed sent i)) >>=
       fun v => pure (keygenEchoDataStep i v)) >>= fun steps => pure (st, steps, sent))
@@ -4335,7 +4334,7 @@ theorem stepRound_keygenEchoDataSteps (coalition : C.Coalition)
   refine bind_congr fun r => ?_
   rcases r with ⟨st, sent⟩
   dsimp only [localRoles]
-  trans (Concrete.sequenceFin (fun i => (pure (Step.done (match data i with
+  trans (OverPermutation.sequenceFin (fun i => (pure (Step.done (match data i with
         | none => none
         | some (keys, shared) => if i ∈ coalition.1 then none else
           let inbox := roundInbox coalition sent (fun j => keygenEchoDataStep j (data j)) i
@@ -4436,7 +4435,7 @@ theorem executeRounds_keygenRevealSteps_two (coalition : C.Coalition)
 def keygenNormalizedLocalGame (coalition : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) : OracleComp (LocalSpec C) Bool := do
   let state ← A.start (corruptInputs coalition x) z
-  let parts ← Concrete.sequenceFin fun (_ : C.Party) => liftComp (sampleParts (C := C)) (LocalSpec C)
+  let parts ← OverPermutation.sequenceFin fun (_ : C.Party) => liftComp (sampleParts (C := C)) (LocalSpec C)
   let commitments ← keygenInitialCommitments coalition parts
   let (st, sent) ← A.round state fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then
     commitOutbox i (commitments i) c else none
@@ -4456,7 +4455,7 @@ theorem sameRun_keygenLocal_normalized (prims : Primitives) (coalition : C.Coali
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -4543,7 +4542,7 @@ theorem KeygenUsesOnly.list_mapM {α β : Type} {Q : Query C → Prop} (l : List
   | cons a l ih =>
     simp only [List.mapM_cons]
     exact (hf a (by simp)).bind fun x =>
-      ((ih (fun b hb => hf b (by simp [hb]))).map (List.cons x))
+      ((ih (fun b hb => hf b (by simp [hb]))).bind fun xs => KeygenUsesOnly.pure Q (x :: xs))
 
 theorem keygen_liftComp_mapM {α β : Type} (f : α → OracleComp (RoSpec C) β) (l : List α) :
     liftComp (l.mapM f) (LocalSpec C) = l.mapM (fun a => liftComp (f a) (LocalSpec C)) := by
@@ -4635,8 +4634,7 @@ theorem keygenRevealCompute_hash_inputs (i : C.Party) (parts : C.Party → Parts
   · simp only [keygenHashLog_pure, support_pure, Set.mem_singleton_iff] at hr
     subst hr
     simp
-  · simp only [pure_bind] at hr
-    rw [keygenHashLog_bind] at hr
+  · rw [keygenHashLog_bind] at hr
     simp only [support_bind, Set.mem_iUnion, support_pure, Set.mem_singleton_iff] at hr
     obtain ⟨⟨opens, lo⟩, hlo, ⟨out, lt⟩, hlt, rfl⟩ := hr
     by_cases ho : openCheck .keygen i (parts i) committed (revealed i) opens
@@ -4697,7 +4695,7 @@ theorem keygenRevealInput_mem_cover (coalition : C.Coalition) (parts : C.Party �
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -4706,15 +4704,15 @@ variable {C : Committee} {E : Type}
 /-- Every logged query of a sequence belongs to one actual component run with the returned value. -/
 theorem keygenHashLog_sequenceFin_support {α : Type} :
     ∀ {n : ℕ} (f : Fin n → OracleComp (LocalSpec C) α)
-      (r : (Fin n → α) × List (Query C)), r ∈ support (keygenHashLog (Concrete.sequenceFin f)) →
+      (r : (Fin n → α) × List (Query C)), r ∈ support (keygenHashLog (OverPermutation.sequenceFin f)) →
       ∀ q ∈ r.2, ∃ i, ∃ s : α × List (Query C),
         s ∈ support (keygenHashLog (f i)) ∧ s.1 = r.1 i ∧ q ∈ s.2
   | 0, f, r, hr => by
-      simp only [Concrete.sequenceFin, keygenHashLog_pure, support_pure, Set.mem_singleton_iff] at hr
+      simp only [OverPermutation.sequenceFin, keygenHashLog_pure, support_pure, Set.mem_singleton_iff] at hr
       subst hr
       simp
   | n + 1, f, r, hr => by
-      simp only [Concrete.sequenceFin, keygenHashLog_bind, keygenHashLog_pure,
+      simp only [OverPermutation.sequenceFin, keygenHashLog_bind, keygenHashLog_pure,
         support_bind, Set.mem_iUnion, support_pure, Set.mem_singleton_iff] at hr
       obtain ⟨⟨a, la⟩, ha, ⟨out, lb⟩, hb, rfl⟩ := hr
       obtain ⟨⟨tail, lt⟩, ht, ⟨v, lv⟩, hv, he⟩ := hb
@@ -4837,7 +4835,7 @@ def keygenFreeTraceLocalGame (coalition : C.Coalition) (A : Adversary C E Unit P
     (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) :
     OracleComp (LocalSpec C) (Bool × List (Query C)) := do
   let state ← A.start (corruptInputs coalition x) z
-  let parts ← Concrete.sequenceFin fun (_ : C.Party) => liftComp (sampleParts (C := C)) (LocalSpec C)
+  let parts ← OverPermutation.sequenceFin fun (_ : C.Party) => liftComp (sampleParts (C := C)) (LocalSpec C)
   let (commitments, initial) ← keygenHashLog (keygenInitialCommitments coalition parts)
   let (st, sent) ← A.round state fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then
     commitOutbox i (commitments i) c else none
@@ -4910,17 +4908,18 @@ theorem keygenFreeTraceLocalGame_run_card_le (prims : Primitives) (coalition : C
 theorem evalDist_keygenFreeTraceLocalGame (prims : Primitives) (coalition : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (cache : HashCache C) :
-    evalDist (Prod.fst <$> (simulateQ (localAnswer prims) (keygenFreeTraceLocalGame coalition A x z Z)).run' cache) =
-      evalDist ((simulateQ (localAnswer prims) (keygenLocalGame coalition A x z Z)).run' cache) := by
+    Prod.fst <$> (simulateQ (localAnswer prims) (keygenFreeTraceLocalGame coalition A x z Z)).run' cache =ᵈ
+      (simulateQ (localAnswer prims) (keygenLocalGame coalition A x z Z)).run' cache := by
   have he : Prod.fst <$> (simulateQ (localAnswer prims) (keygenFreeTraceLocalGame coalition A x z Z)).run' cache =
       (simulateQ (localAnswer prims) (Prod.fst <$> keygenFreeTraceLocalGame coalition A x z Z)).run' cache := by
     simp [simulateQ_map, StateT.run'_eq, StateT.run_map, Functor.map_map]
   rw [he, fst_keygenFreeTraceLocalGame]
-  simp only [StateT.run'_eq, evalDist_map, sameRun_keygenLocal_normalized prims coalition A x z Z cache]
+  simp only [StateT.run'_eq]
+  exact ((sameRun_keygenLocal_normalized prims coalition A x z Z cache).map _).symm
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -4928,12 +4927,12 @@ variable {C : Committee}
 
 /-- Erase only the points cells; all other random-oracle cells are retained. -/
 def keygenStripCache (points : Query C → Prop) (cache : HashCache C) : HashCache C :=
-  fun q => if points q then none else cache q
+  QueryCache.ofFn fun q => if points q then none else cache q
 
 theorem keygenStripCache_query (points : Query C → Prop) (q : Query C)
     (hq : ¬ points q) (y : HashOutput) (cache : HashCache C) :
     keygenStripCache points (cache.cacheQuery q y) = (keygenStripCache points cache).cacheQuery q y := by
-  funext q'
+  refine QueryCache.ext fun q' => ?_
   by_cases hp : points q'
   · have hne : q' ≠ q := fun he => hq (he ▸ hp)
     simp [keygenStripCache, hp, QueryCache.cacheQuery, hne]
@@ -4975,7 +4974,6 @@ theorem localAnswer_keygenStripCache (prims : Primitives) (points : Query C → 
   · change _ <$> (fun y => (y, cache)) <$> (query (spec := unifSpec) n : ProbComp _) =
       (fun y => (y, keygenStripCache points cache)) <$> (query (spec := unifSpec) n : ProbComp _)
     simp only [Functor.map_map]
-    rfl
   · exact hashAnswer_keygenStripCache prims points q
       (fun hq => ht ⟨q, by simp [keygenLocalHashInputs], hq⟩) cache
   · have hp : ¬ points (.streamKey x.2.1) :=
@@ -4984,7 +4982,6 @@ theorem localAnswer_keygenStripCache (prims : Primitives) (points : Query C → 
     simp only [prgAnswer, StateT.run_bind, StateT.run_pure, map_bind, map_pure]
     conv_rhs => rw [← hashAnswer_keygenStripCache prims points (.streamKey x.2.1) hp cache,
       bind_map_left]
-    rfl
 
 /-- Stop a local computation immediately before its first points query. -/
 def keygenAvoid (points : Query C → Prop) {α : Type} (oa : OracleComp (LocalSpec C) α) :
@@ -5002,7 +4999,7 @@ theorem keygenAvoid_query_bind (points : Query C → Prop) {α : Type} (t : (Loc
         OracleComp.lift (OracleSpec.query t) >>= fun a => keygenAvoid points (k a) := by
   unfold keygenAvoid
   simp only [simulateQ_bind, simulateQ_query, OracleQuery.cont_query, OracleQuery.input_query, id_map]
-  split_ifs <;> simp [OptionT.run_bind, OptionT.run_lift]
+  split_ifs with h <;> simp [OptionT.run_bind, OptionT.run_lift, h]
 
 /-- An adaptive computation stopped before a points query cannot distinguish the points
 cache contents. The equality preserves its result and the entire unprotected final cache. -/
@@ -5031,8 +5028,8 @@ theorem keygenAvoid_run'_eq (prims : Primitives) (points : Query C → Prop) {α
     (simulateQ (localAnswer prims) (keygenAvoid points oa)).run' s =
       (simulateQ (localAnswer prims) (keygenAvoid points oa)).run' t := by
   have he : keygenStripCache points s = keygenStripCache points t := by
-    funext q
-    unfold keygenStripCache
+    refine QueryCache.ext fun q => ?_
+    simp only [keygenStripCache, QueryCache.ofFn_apply]
     split_ifs with hq
     · rfl
     · exact hst q hq
@@ -5045,7 +5042,7 @@ theorem keygenAvoid_run'_eq (prims : Primitives) (points : Query C → Prop) {α
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -5093,34 +5090,34 @@ theorem keygenHashLog_run_query_bind (prims : Primitives) {α : Type} (t : (Loca
 theorem probEvent_keygenHashLog_good_eq_avoid (prims : Primitives) (points : Query C → Prop)
     {α : Type} (oa : OracleComp (LocalSpec C) α) :
     ∀ (cache : HashCache C) (a : α),
-      Pr[fun r => r.1.1 = a ∧ KeygenGoodLog points r.1.2 |
-        (simulateQ (localAnswer prims) (keygenHashLog oa)).run cache] =
-      Pr[fun r => r.1 = some a | (simulateQ (localAnswer prims) (keygenAvoid points oa)).run cache] := by
+      Pr{let r ← (simulateQ (localAnswer prims) (keygenHashLog oa)).run cache}[
+        r.1.1 = a ∧ KeygenGoodLog points r.1.2] =
+      Pr{let r ← (simulateQ (localAnswer prims) (keygenAvoid points oa)).run cache}[r.1 = some a] := by
   induction oa using OracleComp.inductionOn with
   | pure b =>
     intro cache a
     letI : DecidableEq α := Classical.decEq α
     have hg : KeygenGoodLog points [] := by simp [KeygenGoodLog]
     simp only [keygenHashLog_pure, keygenAvoid_pure, simulateQ_pure, StateT.run_pure,
-      probEvent_pure, hg, and_true, Option.some.injEq]
+      prEvent_pure, hg, and_true, Option.some.injEq]
   | query_bind t k ih =>
     intro cache a
     rw [keygenHashLog_run_query_bind, keygenAvoid_query_bind]
     by_cases ht : KeygenTouches points t
     · rw [if_pos ht]
       have hn : (none : Option α) ≠ some a := by intro h; cases h
-      simp only [simulateQ_pure, StateT.run_pure, probEvent_pure, if_neg hn]
-      rw [probEvent_bind_eq_tsum]
-      simp only [probEvent_map, Function.comp_def, keygenGoodLog_append, keygenGoodLog_local,
-        ht, not_true_eq_false, false_and, and_false, probEvent_False, mul_zero, tsum_zero]
+      simp only [simulateQ_pure, StateT.run_pure, prEvent_pure, if_neg hn]
+      rw [OracleComp.prEvent_bind_eq_tsum]
+      simp only [prEvent_map, keygenGoodLog_append, keygenGoodLog_local,
+        ht, not_true_eq_false, false_and, and_false, prEvent_false, mul_zero, tsum_zero]
     · rw [if_neg ht]
       simp only [simulateQ_bind, simulateQ_query, OracleQuery.cont_query, OracleQuery.input_query,
         id_map, StateT.run_bind]
-      rw [probEvent_bind_eq_tsum, probEvent_bind_eq_tsum]
+      rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_bind_eq_tsum]
       apply tsum_congr
       intro p
       congr 1
-      simp only [probEvent_map, Function.comp_def, keygenGoodLog_append, keygenGoodLog_local,
+      simp only [prEvent_map, keygenGoodLog_append, keygenGoodLog_local,
         ht, not_false_eq_true, true_and]
       exact ih p.1 p.2 a
 
@@ -5129,18 +5126,18 @@ The local computation is arbitrary and adaptive; legitimate queries outside `poi
 theorem probEvent_keygenHashLog_good_eq (prims : Primitives) (points : Query C → Prop)
     {α : Type} (oa : OracleComp (LocalSpec C) α) (s t : HashCache C)
     (hst : ∀ q, ¬ points q → s q = t q) (a : α) :
-    Pr[fun r => r.1.1 = a ∧ KeygenGoodLog points r.1.2 |
-      (simulateQ (localAnswer prims) (keygenHashLog oa)).run s] =
-    Pr[fun r => r.1.1 = a ∧ KeygenGoodLog points r.1.2 |
-      (simulateQ (localAnswer prims) (keygenHashLog oa)).run t] := by
+    Pr{let r ← (simulateQ (localAnswer prims) (keygenHashLog oa)).run s}[
+      r.1.1 = a ∧ KeygenGoodLog points r.1.2] =
+    Pr{let r ← (simulateQ (localAnswer prims) (keygenHashLog oa)).run t}[
+      r.1.1 = a ∧ KeygenGoodLog points r.1.2] := by
   rw [probEvent_keygenHashLog_good_eq_avoid, probEvent_keygenHashLog_good_eq_avoid]
   have he := keygenAvoid_run'_eq prims points oa s t hst
-  have hp := congrArg (fun m : ProbComp (Option α) => Pr[= some a | m]) he
-  simpa only [StateT.run'_eq, probOutput_map, Function.comp_def] using hp
+  have hp := congrArg (fun m : ProbComp (Option α) => Pr{let z ← m}[z = some a]) he
+  simpa only [StateT.run'_eq, prEvent_map] using hp
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -5234,8 +5231,8 @@ theorem evalDist_keygenHiddenExport (prims : Primitives) (coalition : C.Coalitio
     (parts : C.Party → Parts C) (base : (KeyName C → HashOutput) → HashCache C)
     (hbase : KeygenBaseKnown coalition base) {α : Type}
     (k : (KeyName C → HashOutput) → OracleComp (LocalSpec C) α) :
-    𝒟[keygenHiddenExport prims coalition parts base k true] =
-      𝒟[keygenHiddenExport prims coalition parts base k false] := by
+    keygenHiddenExport prims coalition parts base k true =ᵈ
+      keygenHiddenExport prims coalition parts base k false := by
   let finish := fun p : (KeyName C → HashOutput) × (KeyName C → HashOutput) =>
     (simulateQ (localAnswer prims) (keygenAvoid (KeygenHiddenInput coalition parts) (k p.2))).run'
       (keygenNamedInstall parts p.1 (base p.2))
@@ -5249,11 +5246,12 @@ theorem evalDist_keygenHiddenExport (prims : Primitives) (coalition : C.Coalitio
       hbase _ _ (fun name hn => (keygenHiddenNamedSwap_known coalition p name hn).2.symm)
     intro q _
     rw [hb]
-  change 𝒟[($ᵗ ((KeyName C → HashOutput) × (KeyName C → HashOutput))) >>= _] =
-    𝒟[($ᵗ ((KeyName C → HashOutput) × (KeyName C → HashOutput))) >>= finish]
+  change (($ᵗ ((KeyName C → HashOutput) × (KeyName C → HashOutput))) >>= _) =ᵈ
+    (($ᵗ ((KeyName C → HashOutput) × (KeyName C → HashOutput))) >>= finish)
   simp only [Bool.true_eq, Bool.false_eq, if_true, if_false]
-  conv_lhs => arg 1; arg 2; ext p; rw [hpoint p]
-  rw [← bind_map_left, evalDist_bind, evalDist_keygenHiddenNamedSwap coalition, ← evalDist_bind]
+  conv_lhs => arg 2; ext p; rw [hpoint p]
+  have h := (evalDist_keygenHiddenNamedSwap coalition).bind_left finish
+  rwa [bind_map_left] at h
 
 /-- The complete continuation, retaining its query log and never stopping early. -/
 def keygenHiddenExportLogged (prims : Primitives) (coalition : C.Coalition) (parts : C.Party → Parts C)
@@ -5269,15 +5267,15 @@ theorem probEvent_keygenHiddenExportLogged_good (prims : Primitives) (coalition 
     (parts : C.Party → Parts C) (base : (KeyName C → HashOutput) → HashCache C)
     {α : Type} (k : (KeyName C → HashOutput) → OracleComp (LocalSpec C) α)
     (useOracle : Bool) (a : α) :
-    Pr[fun r => r.1 = a ∧ KeygenGoodLog (KeygenHiddenInput coalition parts) r.2 |
-      keygenHiddenExportLogged prims coalition parts base k useOracle] =
-    Pr[= some a | keygenHiddenExport prims coalition parts base k useOracle] := by
+    Pr{let r ← keygenHiddenExportLogged prims coalition parts base k useOracle}[
+      r.1 = a ∧ KeygenGoodLog (KeygenHiddenInput coalition parts) r.2] =
+    Pr{let z ← keygenHiddenExport prims coalition parts base k useOracle}[z = some a] := by
   unfold keygenHiddenExportLogged keygenHiddenExport
-  rw [probEvent_bind_eq_tsum, probOutput_bind_eq_tsum]
+  rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_bind_eq_tsum]
   apply tsum_congr
   intro p
   congr 1
-  simp only [StateT.run'_eq, probEvent_map, probOutput_map, Function.comp_def]
+  simp only [StateT.run'_eq, prEvent_map]
   exact probEvent_keygenHashLog_good_eq_avoid prims (KeygenHiddenInput coalition parts) _ _ a
 
 /-- Equal accepting-and-not-bad probabilities for the two actual, nonstopping hidden export games. -/
@@ -5285,16 +5283,16 @@ theorem keygenHiddenExport_accept_and_not_bad (prims : Primitives) (coalition : 
     (parts : C.Party → Parts C) (base : (KeyName C → HashOutput) → HashCache C)
     (hbase : KeygenBaseKnown coalition base)
     (k : (KeyName C → HashOutput) → OracleComp (LocalSpec C) Bool) :
-    Pr[fun r => r.1 = true ∧ KeygenGoodLog (KeygenHiddenInput coalition parts) r.2 |
-      keygenHiddenExportLogged prims coalition parts base k true] =
-    Pr[fun r => r.1 = true ∧ KeygenGoodLog (KeygenHiddenInput coalition parts) r.2 |
-      keygenHiddenExportLogged prims coalition parts base k false] := by
+    Pr{let r ← keygenHiddenExportLogged prims coalition parts base k true}[
+      r.1 = true ∧ KeygenGoodLog (KeygenHiddenInput coalition parts) r.2] =
+    Pr{let r ← keygenHiddenExportLogged prims coalition parts base k false}[
+      r.1 = true ∧ KeygenGoodLog (KeygenHiddenInput coalition parts) r.2] := by
   rw [probEvent_keygenHiddenExportLogged_good, probEvent_keygenHiddenExportLogged_good]
-  simp only [probOutput_def, evalDist_keygenHiddenExport prims coalition parts base hbase k]
+  exact (evalDist_keygenHiddenExport prims coalition parts base hbase k).prEvent_eq _
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -5333,7 +5331,7 @@ theorem simulateQ_fixedLocal_keygenRevealComputations (prims : Primitives) (coal
     simulateQ (fixedLocal prims h) (keygenRevealComputations coalition parts committed sent) =
       pure (keygenRevealAllFixed prims coalition h parts committed sent) := by
   rw [keygenRevealComputations, simulateQ_sequenceFin]
-  trans Concrete.sequenceFin (fun i => (pure (keygenRevealAllFixed prims coalition h parts committed sent i) : ProbComp _))
+  trans OverPermutation.sequenceFin (fun i => (pure (keygenRevealAllFixed prims coalition h parts committed sent i) : ProbComp _))
   · congr 1
     funext i
     unfold keygenRevealAllFixed
@@ -5475,7 +5473,7 @@ theorem keygenRevealEcho_output_eq_hybrid (prims : Primitives) (coalition : C.Co
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open scoped ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity
@@ -5498,15 +5496,14 @@ even when the proposed input depends on all the other private coordinates. -/
 theorem probEvent_keygenHiddenTerm_guess (coalition : C.Coalition)
     (target : (C.Party → Parts C) → Query C) (hinv : KeygenPrivateInvariant coalition target)
     (T : C.Term) (hh : ¬ KnownTo coalition.1 T) :
-    Pr[fun parts => termInput .keygen parts T = target parts |
-      Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] ≤
+    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+      termInput .keygen parts T = target parts] ≤
       (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   obtain ⟨a, rest, ha⟩ := exists_first_holder T
   calc
-    _ ≤ Pr[fun parts => (parts a).term T = keygenDeriveHead (target parts) |
-        Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] := by
-      apply probEvent_mono
-      intro parts _ he
+    _ ≤ Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+        (parts a).term T = keygenDeriveHead (target parts)] := by
+      refine prEvent_mono _ _ _ fun parts he => ?_
       rw [← he]
       simp [termInput, ha, keygenDeriveHead]
     _ = _ := probEvent_parts_collision (fun parts => (parts a).term T)
@@ -5518,14 +5515,13 @@ theorem probEvent_keygenHiddenTerm_guess (coalition : C.Coalition)
 theorem probEvent_keygenHiddenPair_guess (coalition : C.Coalition)
     (target : (C.Party → Parts C) → Query C) (hinv : KeygenPrivateInvariant coalition target)
     (p : C.Pair) (hp : p.1.1 ∉ coalition.1 ∧ p.1.2 ∉ coalition.1) :
-    Pr[fun parts => pairInput .keygen parts p = target parts |
-      Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] ≤
+    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+      pairInput .keygen parts p = target parts] ≤
       (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   calc
-    _ ≤ Pr[fun parts => (parts p.1.1).pair p.1.2 = keygenDeriveHead (target parts) |
-        Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] := by
-      apply probEvent_mono
-      intro parts _ he
+    _ ≤ Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+        (parts p.1.1).pair p.1.2 = keygenDeriveHead (target parts)] := by
+      refine prEvent_mono _ _ _ fun parts he => ?_
       rw [← he]
       simp [pairInput, keygenDeriveHead]
     _ = _ := probEvent_parts_collision (fun parts => (parts p.1.1).pair p.1.2)
@@ -5536,8 +5532,8 @@ theorem probEvent_keygenHiddenPair_guess (coalition : C.Coalition)
 /-- Union bound for one private-invariant query at any hidden raw derivation input. -/
 theorem probEvent_keygenHiddenInput_guess (coalition : C.Coalition)
     (target : (C.Party → Parts C) → Query C) (hinv : KeygenPrivateInvariant coalition target) :
-    Pr[fun parts => KeygenHiddenInput coalition parts (target parts) |
-      Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] ≤
+    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+      KeygenHiddenInput coalition parts (target parts)] ≤
       ((Fintype.card C.Term + Fintype.card C.Pair : ℕ) : ℝ≥0∞) *
         (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   have hm : ∀ parts, KeygenHiddenInput coalition parts (target parts) →
@@ -5549,36 +5545,36 @@ theorem probEvent_keygenHiddenInput_guess (coalition : C.Coalition)
     | parameter => exact hn.elim
     | term T => exact Or.inl ⟨T, Finset.mem_univ _, hn, he⟩
     | pair p => exact Or.inr ⟨p, Finset.mem_univ _, hn.1, hn.2, he⟩
-  refine (probEvent_mono (fun parts _ => hm parts)).trans ((probEvent_or_le _ _ _).trans ?_)
+  refine (prEvent_mono _ _ _ (fun parts => hm parts)).trans ((prEvent_or_le _ _ _).trans ?_)
   have ht : ∀ T : C.Term,
-      Pr[fun parts => ¬ KnownTo coalition.1 T ∧ termInput .keygen parts T = target parts |
-        Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] ≤ (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
+      Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+        ¬ KnownTo coalition.1 T ∧ termInput .keygen parts T = target parts] ≤ (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
     intro T
     by_cases hh : ¬ KnownTo coalition.1 T
     · simpa only [hh, not_false_eq_true, true_and] using probEvent_keygenHiddenTerm_guess coalition target hinv T hh
     · simp [hh]
   have hp : ∀ p : C.Pair,
-      Pr[fun parts => p.1.1 ∉ coalition.1 ∧ p.1.2 ∉ coalition.1 ∧ pairInput .keygen parts p = target parts |
-        Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] ≤ (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
+      Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+        p.1.1 ∉ coalition.1 ∧ p.1.2 ∉ coalition.1 ∧ pairInput .keygen parts p = target parts] ≤ (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
     intro p
     by_cases hh : p.1.1 ∉ coalition.1 ∧ p.1.2 ∉ coalition.1
     · simpa only [hh.1, hh.2, not_false_eq_true, true_and] using probEvent_keygenHiddenPair_guess coalition target hinv p hh
     · have he : ∀ parts, ¬ (p.1.1 ∉ coalition.1 ∧ p.1.2 ∉ coalition.1 ∧ pairInput .keygen parts p = target parts) :=
         fun _ h => hh ⟨h.1, h.2.1⟩
-      simp only [he, probEvent_False, zero_le]
+      simp only [he, prEvent_false, zero_le]
   calc
     _ ≤ (∑ T : C.Term, (Fintype.card HashOutput : ℝ≥0∞)⁻¹) +
         (∑ p : C.Pair, (Fintype.card HashOutput : ℝ≥0∞)⁻¹) :=
-      add_le_add ((probEvent_exists_finset_le_sum _ _ _).trans (Finset.sum_le_sum fun T _ => ht T))
-        ((probEvent_exists_finset_le_sum _ _ _).trans (Finset.sum_le_sum fun p _ => hp p))
+      add_le_add ((prEvent_exists_finset_le _ _ _).trans (Finset.sum_le_sum fun T _ => ht T))
+        ((prEvent_exists_finset_le _ _ _).trans (Finset.sum_le_sum fun p _ => hp p))
     _ = _ := by simp [add_mul]
 
 /-- All proposed queries may depend on the other coordinates; only invariance of hidden
 coordinates is required. This is the guessing bound consumed after the trace normalization. -/
 theorem probEvent_keygenHiddenInput_queries (coalition : C.Coalition) (m : ℕ)
     (queries : (C.Party → Parts C) → Fin m → Query C) (hinv : KeygenPrivateInvariant coalition queries) :
-    Pr[fun parts => ∃ i : Fin m, KeygenHiddenInput coalition parts (queries parts i) |
-      Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] ≤
+    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+      ∃ i : Fin m, KeygenHiddenInput coalition parts (queries parts i)] ≤
       ((m * keygenSecrets C : ℕ) : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   have hi (i : Fin m) : KeygenPrivateInvariant coalition (fun parts => queries parts i) := by
     constructor
@@ -5591,19 +5587,19 @@ theorem probEvent_keygenHiddenInput_queries (coalition : C.Coalition) (m : ℕ)
     rw [card_term]
     unfold keygenSecrets termCount
     omega
-  calc _ = Pr[fun parts => ∃ i ∈ (Finset.univ : Finset (Fin m)),
-        KeygenHiddenInput coalition parts (queries parts i) |
-        Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] := by simp
-    _ ≤ ∑ i : Fin m, Pr[fun parts => KeygenHiddenInput coalition parts (queries parts i) |
-        Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] := probEvent_exists_finset_le_sum _ _ _
+  calc _ = Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+        ∃ i ∈ (Finset.univ : Finset (Fin m)),
+        KeygenHiddenInput coalition parts (queries parts i)] := by simp
+    _ ≤ ∑ i : Fin m, Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+        KeygenHiddenInput coalition parts (queries parts i)] := prEvent_exists_finset_le _ _ _
     _ ≤ ∑ _i : Fin m, ((Fintype.card C.Term + Fintype.card C.Pair : ℕ) : ℝ≥0∞) *
         (Fintype.card HashOutput : ℝ≥0∞)⁻¹ :=
       Finset.sum_le_sum fun i _ => probEvent_keygenHiddenInput_guess coalition _ (hi i)
     _ ≤ _ := by
       simp only [Finset.sum_const, Finset.card_univ, Fintype.card_fin, nsmul_eq_mul, Nat.cast_mul]
       rw [← mul_assoc]
-      apply mul_le_mul_right'
-      apply mul_le_mul_left'
+      apply mul_le_mul_left
+      apply mul_le_mul_right
       exact_mod_cast hc
 
 /-- Hidden term coordinates never occur in an honest reveal addressed to a corrupt operator. -/
@@ -5635,7 +5631,7 @@ theorem keygen_reveal_hiddenPair_shift (coalition : C.Coalition) (p : C.Pair)
 /-- Sample the private parts and then an arbitrary randomized transcript. -/
 def keygenPartsKernel {α : Type} (K : (C.Party → Parts C) → ProbComp α) :
     ProbComp ((C.Party → Parts C) × α) := do
-  let parts ← Concrete.sequenceFin fun _ : C.Party => sampleParts (C := C)
+  let parts ← OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)
   let out ← K parts
   pure (parts, out)
 
@@ -5643,14 +5639,14 @@ def keygenPartsKernel {α : Type} (K : (C.Party → Parts C) → ProbComp α) :
 theorem evalDist_keygenPartsKernel_shift {α : Type} (K : (C.Party → Parts C) → ProbComp α)
     (a : C.Party) (term : Option C.Term) (pair : Option C.Party) (c : HashOutput)
     (hK : ∀ parts, K (shiftAt a term pair c parts) = K parts) :
-    𝒟[(fun p => (shiftAt a term pair c p.1, p.2)) <$> keygenPartsKernel K] = 𝒟[keygenPartsKernel K] := by
+    ((fun p => (shiftAt a term pair c p.1, p.2)) <$> keygenPartsKernel K) =ᵈ keygenPartsKernel K := by
   have he : (fun p => (shiftAt a term pair c p.1, p.2)) <$> keygenPartsKernel K =
-      (do let parts ← shiftAt a term pair c <$> Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))
+      (do let parts ← shiftAt a term pair c <$> OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))
           let out ← K parts
           pure (parts, out)) := by
     simp only [keygenPartsKernel, map_bind, map_pure, bind_map_left, hK]
-  rw [he, evalDist_bind, evalDist_shiftAt, ← evalDist_bind]
-  rfl
+  rw [he]
+  exact (evalDist_shiftAt a term pair c).bind_left _
 
 /-- A transcript that is invariant under one hidden coordinate has exactly the uniform guessing
 probability at that coordinate. This includes arbitrarily adaptive randomized computations. -/
@@ -5659,16 +5655,16 @@ theorem probEvent_keygenPartsKernel_coordinate {α : Type}
     (Y : α → HashOutput) (a : C.Party) (term : Option C.Term) (pair : Option C.Party)
     (hX : ∀ c parts, X (shiftAt a term pair c parts) = X parts ^^^ c)
     (hK : ∀ c parts, K (shiftAt a term pair c parts) = K parts) :
-    Pr[fun p => X p.1 = Y p.2 | keygenPartsKernel K] = (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-  have huniform : 𝒟[(fun p => X p.1 ^^^ Y p.2) <$> keygenPartsKernel K] = 𝒟[$ᵗ HashOutput] := by
+    Pr{let p ← keygenPartsKernel K}[X p.1 = Y p.2] = (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
+  have huniform : ((fun p => X p.1 ^^^ Y p.2) <$> keygenPartsKernel K) =ᵈ $ᵗ HashOutput := by
     apply evalDist_eq_uniform_of_probOutput_eq
     intro u v
-    have hshift : 𝒟[(fun p => X p.1 ^^^ Y p.2) <$> keygenPartsKernel K] =
-        𝒟[(fun d => d ^^^ (u ^^^ v)) <$> ((fun p => X p.1 ^^^ Y p.2) <$> keygenPartsKernel K)] := by
-      calc
-        _ = 𝒟[(fun p => X p.1 ^^^ Y p.2) <$>
-          ((fun p => (shiftAt a term pair (u ^^^ v) p.1, p.2)) <$> keygenPartsKernel K)] := by
-            rw [evalDist_map, evalDist_map, evalDist_keygenPartsKernel_shift K a term pair (u ^^^ v) (hK _)]
+    have hshift : ((fun p => X p.1 ^^^ Y p.2) <$> keygenPartsKernel K) =ᵈ
+        ((fun d => d ^^^ (u ^^^ v)) <$> ((fun p => X p.1 ^^^ Y p.2) <$> keygenPartsKernel K)) := by
+      calc ((fun p => X p.1 ^^^ Y p.2) <$> keygenPartsKernel K : ProbComp HashOutput)
+        _ =ᵈ ((fun p => X p.1 ^^^ Y p.2) <$>
+          ((fun p => (shiftAt a term pair (u ^^^ v) p.1, p.2)) <$> keygenPartsKernel K) : ProbComp HashOutput) :=
+            ((evalDist_keygenPartsKernel_shift K a term pair (u ^^^ v) (hK _)).map _).symm
         _ = _ := by
           rw [Functor.map_map, Functor.map_map]
           congr 2
@@ -5676,32 +5672,30 @@ theorem probEvent_keygenPartsKernel_coordinate {α : Type}
           simp only [hX, BitVec.xor_assoc, BitVec.xor_comm (u ^^^ v) (Y p.2)]
     have hu : u = v ^^^ (u ^^^ v) := by
       rw [BitVec.xor_comm u v, ← BitVec.xor_assoc, BitVec.xor_self, BitVec.zero_xor]
-    have he := probOutput_map_injective ((fun p => X p.1 ^^^ Y p.2) <$> keygenPartsKernel K)
+    have he := prEvent_map_injective ((fun p => X p.1 ^^^ Y p.2) <$> keygenPartsKernel K)
       (xor_bijective (u ^^^ v)).1 v
     rw [← hu] at he
-    rw [probOutput_def, hshift, ← probOutput_def]
-    exact he
-  have he : Pr[fun p => X p.1 = Y p.2 | keygenPartsKernel K] =
-      Pr[= 0 | (fun p => X p.1 ^^^ Y p.2) <$> keygenPartsKernel K] := by
-    rw [probOutput_map]
-    exact probEvent_ext fun _ _ => BitVec.xor_eq_zero_iff.symm
-  rw [he, probOutput_def, huniform, ← probOutput_def, probOutput_uniformSample]
+    exact (hshift.prEvent_eq _).trans he
+  have he : Pr{let p ← keygenPartsKernel K}[X p.1 = Y p.2] =
+      Pr{let z ← (fun p => X p.1 ^^^ Y p.2) <$> keygenPartsKernel K}[z = 0] := by
+    rw [prEvent_map]
+    exact prEvent_congr _ _ _ fun _ => BitVec.xor_eq_zero_iff.symm
+  rw [he, huniform.prEvent_eq, SampleableType.prEvent_uniformSample_eq_singleton]
 
 /-- The one-point bound for a transcript sampled adaptively, rather than a fixed proposed query. -/
 theorem probEvent_keygenHiddenInput_kernel_one {α : Type} (coalition : C.Coalition)
     (K : (C.Party → Parts C) → ProbComp α) (hinv : KeygenPrivateInvariant coalition K)
     (target : α → Query C) :
-    Pr[fun p => KeygenHiddenInput coalition p.1 (target p.2) | keygenPartsKernel K] ≤
+    Pr{let p ← keygenPartsKernel K}[KeygenHiddenInput coalition p.1 (target p.2)] ≤
       ((Fintype.card C.Term + Fintype.card C.Pair : ℕ) : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   have ht (T : C.Term) :
-      Pr[fun p => ¬ KnownTo coalition.1 T ∧ termInput .keygen p.1 T = target p.2 | keygenPartsKernel K] ≤
+      Pr{let p ← keygenPartsKernel K}[¬ KnownTo coalition.1 T ∧ termInput .keygen p.1 T = target p.2] ≤
         (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
     by_cases hh : ¬ KnownTo coalition.1 T
     · obtain ⟨a, rest, ha⟩ := exists_first_holder T
       calc
-        _ ≤ Pr[fun p => (p.1 a).term T = keygenDeriveHead (target p.2) | keygenPartsKernel K] := by
-          apply probEvent_mono
-          intro p _ hp
+        _ ≤ Pr{let p ← keygenPartsKernel K}[(p.1 a).term T = keygenDeriveHead (target p.2)] := by
+          refine prEvent_mono _ _ _ fun p hp => ?_
           rw [← hp.2]
           simp [termInput, ha, keygenDeriveHead]
         _ = _ := probEvent_keygenPartsKernel_coordinate K (fun parts => (parts a).term T)
@@ -5709,13 +5703,12 @@ theorem probEvent_keygenHiddenInput_kernel_one {α : Type} (coalition : C.Coalit
           (fun c parts => by simp [shiftAt, shiftParts]) (hinv.1 a T hh)
     · simp [hh]
   have hp (pair : C.Pair) :
-      Pr[fun p => pair.1.1 ∉ coalition.1 ∧ pair.1.2 ∉ coalition.1 ∧
-        pairInput .keygen p.1 pair = target p.2 | keygenPartsKernel K] ≤ (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
+      Pr{let p ← keygenPartsKernel K}[pair.1.1 ∉ coalition.1 ∧ pair.1.2 ∉ coalition.1 ∧
+        pairInput .keygen p.1 pair = target p.2] ≤ (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
     by_cases hh : pair.1.1 ∉ coalition.1 ∧ pair.1.2 ∉ coalition.1
     · calc
-        _ ≤ Pr[fun p => (p.1 pair.1.1).pair pair.1.2 = keygenDeriveHead (target p.2) | keygenPartsKernel K] := by
-          apply probEvent_mono
-          intro p _ hp
+        _ ≤ Pr{let p ← keygenPartsKernel K}[(p.1 pair.1.1).pair pair.1.2 = keygenDeriveHead (target p.2)] := by
+          refine prEvent_mono _ _ _ fun p hp => ?_
           rw [← hp.2.2]
           simp [pairInput, keygenDeriveHead]
         _ = _ := probEvent_keygenPartsKernel_coordinate K (fun parts => (parts pair.1.1).pair pair.1.2)
@@ -5723,7 +5716,7 @@ theorem probEvent_keygenHiddenInput_kernel_one {α : Type} (coalition : C.Coalit
           (fun c parts => by simp [shiftAt, shiftParts]) (hinv.2 pair hh.1 hh.2)
     · have he : ∀ p : (C.Party → Parts C) × α, ¬ (pair.1.1 ∉ coalition.1 ∧ pair.1.2 ∉ coalition.1 ∧ pairInput .keygen p.1 pair = target p.2) :=
         fun _ h => hh ⟨h.1, h.2.1⟩
-      simp only [he, probEvent_False, zero_le]
+      simp only [he, prEvent_false, zero_le]
   have hm : ∀ p : (C.Party → Parts C) × α, KeygenHiddenInput coalition p.1 (target p.2) →
       (∃ T ∈ (Finset.univ : Finset C.Term), ¬ KnownTo coalition.1 T ∧ termInput .keygen p.1 T = target p.2) ∨
       (∃ pair ∈ (Finset.univ : Finset C.Pair), pair.1.1 ∉ coalition.1 ∧ pair.1.2 ∉ coalition.1 ∧
@@ -5733,18 +5726,18 @@ theorem probEvent_keygenHiddenInput_kernel_one {α : Type} (coalition : C.Coalit
     | parameter => exact hn.elim
     | term T => exact Or.inl ⟨T, Finset.mem_univ _, hn, he⟩
     | pair pair => exact Or.inr ⟨pair, Finset.mem_univ _, hn.1, hn.2, he⟩
-  refine (probEvent_mono (fun p _ => hm p)).trans ((probEvent_or_le _ _ _).trans ?_)
+  refine (prEvent_mono _ _ _ (fun p => hm p)).trans ((prEvent_or_le _ _ _).trans ?_)
   calc
     _ ≤ (∑ _T : C.Term, (Fintype.card HashOutput : ℝ≥0∞)⁻¹) +
         (∑ _p : C.Pair, (Fintype.card HashOutput : ℝ≥0∞)⁻¹) :=
-      add_le_add ((probEvent_exists_finset_le_sum _ _ _).trans (Finset.sum_le_sum fun T _ => ht T))
-        ((probEvent_exists_finset_le_sum _ _ _).trans (Finset.sum_le_sum fun p _ => hp p))
+      add_le_add ((prEvent_exists_finset_le _ _ _).trans (Finset.sum_le_sum fun T _ => ht T))
+        ((prEvent_exists_finset_le _ _ _).trans (Finset.sum_le_sum fun p _ => hp p))
     _ = _ := by simp [add_mul]
 
 /-- The complete guessing bound for an adaptive randomized private-invariant transcript. -/
 theorem probEvent_keygenHiddenInput_kernel (coalition : C.Coalition) (m : ℕ)
     (K : (C.Party → Parts C) → ProbComp (Fin m → Query C)) (hinv : KeygenPrivateInvariant coalition K) :
-    Pr[fun p => ∃ i : Fin m, KeygenHiddenInput coalition p.1 (p.2 i) | keygenPartsKernel K] ≤
+    Pr{let p ← keygenPartsKernel K}[∃ i : Fin m, KeygenHiddenInput coalition p.1 (p.2 i)] ≤
       ((m * keygenSecrets C : ℕ) : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   have hc : Fintype.card C.Term + Fintype.card C.Pair ≤ keygenSecrets C := by
     have hp := card_pair_le C
@@ -5752,23 +5745,23 @@ theorem probEvent_keygenHiddenInput_kernel (coalition : C.Coalition) (m : ℕ)
     unfold keygenSecrets termCount
     omega
   calc
-    _ = Pr[fun p => ∃ i ∈ (Finset.univ : Finset (Fin m)), KeygenHiddenInput coalition p.1 (p.2 i) |
-        keygenPartsKernel K] := by simp
-    _ ≤ ∑ i : Fin m, Pr[fun p => KeygenHiddenInput coalition p.1 (p.2 i) | keygenPartsKernel K] :=
-      probEvent_exists_finset_le_sum _ _ _
+    _ = Pr{let p ← keygenPartsKernel K}[
+        ∃ i ∈ (Finset.univ : Finset (Fin m)), KeygenHiddenInput coalition p.1 (p.2 i)] := by simp
+    _ ≤ ∑ i : Fin m, Pr{let p ← keygenPartsKernel K}[KeygenHiddenInput coalition p.1 (p.2 i)] :=
+      prEvent_exists_finset_le _ _ _
     _ ≤ ∑ _i : Fin m, ((Fintype.card C.Term + Fintype.card C.Pair : ℕ) : ℝ≥0∞) *
         (Fintype.card HashOutput : ℝ≥0∞)⁻¹ :=
       Finset.sum_le_sum fun i _ => probEvent_keygenHiddenInput_kernel_one coalition K hinv (fun r => r i)
     _ ≤ _ := by
       simp only [Finset.sum_const, Finset.card_univ, Fintype.card_fin, nsmul_eq_mul, Nat.cast_mul]
       rw [← mul_assoc]
-      apply mul_le_mul_right'
-      apply mul_le_mul_left'
+      apply mul_le_mul_left
+      apply mul_le_mul_right
       exact_mod_cast hc
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -5836,48 +5829,45 @@ theorem keygenFiniteEager_congr {Ω α : Type} [DecidableEq Ω]
 /-- Marginalization remains valid for a randomized continuation, not just a deterministic map. -/
 theorem keygenUniform_update_bind {Ω α : Type} [Finite Ω] [DecidableEq Ω]
     [SampleableType (Ω → HashOutput)] (q : Ω) (k : (Ω → HashOutput) → ProbComp α) :
-    𝒟[do let y ← $ᵗ HashOutput; let h ← $ᵗ (Ω → HashOutput); k (Function.update h q y)] =
-      𝒟[do let h ← $ᵗ (Ω → HashOutput); k h] := by
-  have he := evalDist_uniformSample_bind_update (R := HashOutput) q
-  have hb : 𝒟[(do let y ← $ᵗ HashOutput; let h ← $ᵗ (Ω → HashOutput); pure (Function.update h q y)) >>= k] =
-      𝒟[($ᵗ (Ω → HashOutput)) >>= k] := by
-    rw [evalDist_bind, he, ← evalDist_bind]
-  simpa only [bind_assoc, pure_bind] using hb
+    (do let y ← $ᵗ HashOutput; let h ← $ᵗ (Ω → HashOutput); k (Function.update h q y)) =ᵈ
+      (do let h ← $ᵗ (Ω → HashOutput); k h) := by
+  exact evalDistEq_uniformSample_bind_update (R := HashOutput) q k
 
 /-- The eager and lazy programmable worlds have exactly the same joint result/cache law.
 The occupancy cache is kept separately, so eager sampling does not make programming fail. -/
 theorem evalDist_keygenFiniteEager {Ω α : Type} [Finite Ω] [DecidableEq Ω]
     [SampleableType (Ω → HashOutput)] (oa : OracleComp (KeygenFiniteSpec Ω) α) :
     ∀ cache : KeygenFiniteCache Ω,
-      𝒟[(simulateQ keygenFiniteLazy oa).run cache] =
-        𝒟[do let h ← $ᵗ (Ω → HashOutput); (simulateQ (keygenFiniteEager h) oa).run cache] := by
+      (simulateQ keygenFiniteLazy oa).run cache =ᵈ
+        (do let h ← $ᵗ (Ω → HashOutput); (simulateQ (keygenFiniteEager h) oa).run cache) := by
   induction oa using OracleComp.inductionOn with
-  | pure a => intro cache; apply evalDist_ext; intro x; simp
+  | pure a =>
+    intro cache
+    simp only [simulateQ_pure, StateT.run_pure]
+    exact (OracleComp.EvalDistEq.bind_const _ _).symm
   | query_bind t k ih =>
     intro cache
     simp only [simulateQ_bind, simulateQ_spec_query, StateT.run_bind]
     rcases t with n | q | x
-    · change 𝒟[((fun y => (y, cache)) <$> (query (spec := unifSpec) n : ProbComp _)) >>=
-        fun p : unifSpec.Range n × KeygenFiniteCache Ω => (simulateQ keygenFiniteLazy (k p.1)).run p.2] =
-        𝒟[do let h ← $ᵗ (Ω → HashOutput);
+    · change (((fun y => (y, cache)) <$> (query (spec := unifSpec) n : ProbComp _)) >>=
+        fun p : unifSpec.Range n × KeygenFiniteCache Ω => (simulateQ keygenFiniteLazy (k p.1)).run p.2) =ᵈ
+        (do let h ← $ᵗ (Ω → HashOutput);
               ((fun y => (y, cache)) <$> (query (spec := unifSpec) n : ProbComp _)) >>=
-                fun p : unifSpec.Range n × KeygenFiniteCache Ω => (simulateQ (keygenFiniteEager h) (k p.1)).run p.2]
+                fun p : unifSpec.Range n × KeygenFiniteCache Ω => (simulateQ (keygenFiniteEager h) (k p.1)).run p.2)
       simp only [bind_map_left]
-      conv_lhs => rw [evalDist_bind]; arg 2; ext y; rw [ih y cache]
-      rw [← evalDist_bind]
-      exact OracleComp.DeferredSampling.evalDist_bind_comm _ _ _
-    · change 𝒟[((Ω →ₒ HashOutput).randomOracle q).run cache >>= _] =
-        𝒟[do let h ← $ᵗ (Ω → HashOutput);
-              (QueryImpl.withCaching (fun q => pure (h q) : QueryImpl (Ω →ₒ HashOutput) ProbComp) q).run cache >>= _]
+      refine (EvalDistEq.bind_right _ fun y => ih y cache).trans ?_
+      exact OracleComp.EvalDistEq.bind_bind_swap _ _ _
+    · change (((Ω →ₒ HashOutput).randomOracle q).run cache >>= _) =ᵈ
+        (do let h ← $ᵗ (Ω → HashOutput);
+              (QueryImpl.withCaching (fun q => pure (h q) : QueryImpl (Ω →ₒ HashOutput) ProbComp) q).run cache >>= _)
       cases hc : cache q with
       | some y =>
         simp only [randomOracle, QueryImpl.withCaching_run_some _ hc, pure_bind]
         exact ih y cache
       | none =>
         simp only [randomOracle, QueryImpl.withCaching_run_none _ hc, bind_map_left, map_pure, pure_bind]
-        change 𝒟[($ᵗ HashOutput) >>= fun y => (simulateQ keygenFiniteLazy (k y)).run (cache.cacheQuery q y)] = _
-        conv_lhs => rw [evalDist_bind]; arg 2; ext y; rw [ih y (cache.cacheQuery q y)]
-        rw [← evalDist_bind]
+        change (($ᵗ HashOutput) >>= fun y => (simulateQ keygenFiniteLazy (k y)).run (cache.cacheQuery q y)) =ᵈ _
+        refine (EvalDistEq.bind_right _ fun y => ih y (cache.cacheQuery q y)).trans ?_
         let cont := fun h : Ω → HashOutput =>
           (simulateQ (keygenFiniteEager h) (k (h q))).run (cache.cacheQuery q (h q))
         have he (y : HashOutput) (h : Ω → HashOutput) :
@@ -5892,8 +5882,8 @@ theorem evalDist_keygenFiniteEager {Ω α : Type} [Finite Ω] [DecidableEq Ω]
           · simp [Function.update_of_ne hn]
         simp_rw [he, Function.update_eq_self]
         exact keygenUniform_update_bind q cont
-    · change 𝒟[keygenFiniteProgram x cache >>= _] =
-        𝒟[do let h ← $ᵗ (Ω → HashOutput); keygenFiniteProgram x cache >>= _]
+    · change (keygenFiniteProgram x cache >>= _) =ᵈ
+        (do let h ← $ᵗ (Ω → HashOutput); keygenFiniteProgram x cache >>= _)
       unfold keygenFiniteProgram
       split_ifs
       · simp only [pure_bind]; exact ih false cache
@@ -5901,7 +5891,7 @@ theorem evalDist_keygenFiniteEager {Ω α : Type} [Finite Ω] [DecidableEq Ω]
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -5945,13 +5935,13 @@ theorem keygenWorldCovered_exists {α : Type} (oa : OracleComp (WorldSpec C) α)
       exact Finset.mem_union_right _ (Finset.mem_biUnion.mpr ⟨y, Finset.mem_univ _, hq⟩)
 
 def keygenRestrictCache (S : Finset (Query C)) (cache : HashCache C) : KeygenFiniteCache S :=
-  fun q => cache q.1
+  QueryCache.ofFn fun q => cache q.1
 
 theorem keygenRestrictCache_update (S : Finset (Query C)) (cache : HashCache C)
     (q : Query C) (hq : q ∈ S) (y : HashOutput) :
     keygenRestrictCache S (cache.cacheQuery q y) =
       (keygenRestrictCache S cache).cacheQuery ⟨q, hq⟩ y := by
-  funext q'
+  refine QueryCache.ext fun q' => ?_
   by_cases he : q'.1 = q
   · have he' : q' = ⟨q, hq⟩ := Subtype.ext he
     subst q'
@@ -6028,7 +6018,6 @@ theorem keygenFiniteLocal_run (prims : Primitives) (S : Finset (Query C))
       simulateQ_bind, simulateQ_pure]
     rw [← keygenFiniteHash_run prims S (.streamKey x.2.1)
       (ht _ (by simp [keygenLocalHashInputs])) cache, bind_map_left]
-    rfl
 
 /-- Fresh-only programming, including its returned success bit, is preserved. -/
 theorem keygenFiniteProgramming_run (S : Finset (Query C))
@@ -6046,7 +6035,8 @@ theorem keygenFiniteProgramming_run (S : Finset (Query C))
     unfold keygenFiniteProgram
     by_cases hc : (cache x.1).isSome
     · simp [keygenRestrictCache, hc]
-    · simp [keygenRestrictCache, hc, keygenRestrictCache_update S cache x.1 hx]
+    · simp [keygenRestrictCache, hc]
+      exact keygenRestrictCache_update S cache x.1 hx x.2
 
 /-- Both oracle copies and programming use the same restricted cache. -/
 theorem keygenFiniteWorld_run (prims : Primitives) (S : Finset (Query C))
@@ -6080,34 +6070,35 @@ theorem keygenFiniteWorld_simulate_run (prims : Primitives) (S : Finset (Query C
 theorem evalDist_keygenWorld_eager (prims : Primitives) (S : Finset (Query C))
     {α : Type} (oa : OracleComp (WorldSpec C) α) (hc : KeygenWorldCovered S oa)
     (cache : HashCache C) :
-    𝒟[(simulateQ (worldAnswer prims) oa).run' cache] =
-      𝒟[do let h ← $ᵗ (S → HashOutput);
+    (simulateQ (worldAnswer prims) oa).run' cache =ᵈ
+      (do let h ← $ᵗ (S → HashOutput);
             (simulateQ (keygenFiniteEager h) (simulateQ (keygenFiniteWorld prims S) oa)).run'
-              (keygenRestrictCache S cache)] := by
+              (keygenRestrictCache S cache)) := by
   have he := congrArg (Functor.map Prod.fst) (keygenFiniteWorld_simulate_run prims S oa hc cache)
   simp only [Functor.map_map] at he
   change (simulateQ (worldAnswer prims) oa).run' cache =
     (simulateQ keygenFiniteLazy (simulateQ (keygenFiniteWorld prims S) oa)).run'
       (keygenRestrictCache S cache) at he
-  rw [he, StateT.run'_eq, evalDist_map, evalDist_keygenFiniteEager]
+  rw [he, StateT.run'_eq]
+  refine ((evalDist_keygenFiniteEager _ _).map _).trans ?_
   simp only [StateT.run'_eq]
-  rw [← evalDist_map, map_bind]
+  rw [map_bind]
 
 /-- Every complete world program has a finite eager representation. This applies without any
 query-budget or freshness hypothesis to the real and ideal keygen experiments alike. -/
 theorem keygenWorld_eager_exists (prims : Primitives) {α : Type}
     (oa : OracleComp (WorldSpec C) α) :
     ∃ S : Finset (Query C), ∀ cache : HashCache C,
-      𝒟[(simulateQ (worldAnswer prims) oa).run' cache] =
-        𝒟[do let h ← $ᵗ (S → HashOutput);
+      (simulateQ (worldAnswer prims) oa).run' cache =ᵈ
+        (do let h ← $ᵗ (S → HashOutput);
               (simulateQ (keygenFiniteEager h) (simulateQ (keygenFiniteWorld prims S) oa)).run'
-                (keygenRestrictCache S cache)] := by
+                (keygenRestrictCache S cache)) := by
   obtain ⟨S, hS⟩ := keygenWorldCovered_exists oa
   exact ⟨S, evalDist_keygenWorld_eager prims S oa hS⟩
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -6207,7 +6198,7 @@ theorem keygenFiniteLocal_eager_fixed (prims : Primitives) (S : Finset (Query C)
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open scoped ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity
@@ -6341,8 +6332,8 @@ for an invariant pre-programming transcript. -/
 theorem probEvent_keygenProgramming_hidden_alias (coalition : C.Coalition)
     (K : (C.Party → Parts C) → ProbComp (CallLog C × (C.Party → Mail C E)))
     (hK : KeygenPrivateInvariant coalition K) :
-    Pr[fun p => ∃ q ∈ keygenProgrammingInputs coalition (keygenProgramView coalition p.1 p.2.1 p.2.2),
-        KeygenHiddenInput coalition p.1 q | keygenPartsKernel K] ≤
+    Pr{let p ← keygenPartsKernel K}[∃ q ∈ keygenProgrammingInputs coalition (keygenProgramView coalition p.1 p.2.1 p.2.2),
+        KeygenHiddenInput coalition p.1 q] ≤
       ((keygenProgrammingCount coalition * keygenSecrets C : ℕ) : ℝ≥0∞) *
         (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   let queries := fun (parts : C.Party → Parts C) (r : CallLog C × (C.Party → Mail C E))
@@ -6363,14 +6354,15 @@ theorem probEvent_keygenProgramming_hidden_alias (coalition : C.Coalition)
         (hi.2 p ha hb c parts)
   have hb := probEvent_keygenHiddenInput_kernel coalition (keygenProgrammingCount coalition)
     (fun parts => queries parts <$> K parts) (hK.map_kernel coalition K queries hqi)
-  have he : Pr[fun p => ∃ i : Fin (keygenProgrammingCount coalition),
-        KeygenHiddenInput coalition p.1 (queries p.1 p.2 i) | keygenPartsKernel K] =
-      Pr[fun p => ∃ i : Fin (keygenProgrammingCount coalition), KeygenHiddenInput coalition p.1 (p.2 i) |
-        keygenPartsKernel (fun parts => queries parts <$> K parts)] := by
-    simp only [keygenPartsKernel, bind_map_left, probEvent_bind_eq_tsum, probEvent_pure, probEvent_map,
-      Function.comp_def]
+  have he : Pr{let p ← keygenPartsKernel K}[∃ i : Fin (keygenProgrammingCount coalition),
+        KeygenHiddenInput coalition p.1 (queries p.1 p.2 i)] =
+      Pr{let p ← keygenPartsKernel (fun parts => queries parts <$> K parts)}[
+        ∃ i : Fin (keygenProgrammingCount coalition), KeygenHiddenInput coalition p.1 (p.2 i)] := by
+    rw [show keygenPartsKernel (fun parts => queries parts <$> K parts) =
+        (fun p => (p.1, queries p.1 p.2)) <$> keygenPartsKernel K by
+      simp only [keygenPartsKernel, bind_map_left, map_bind, map_pure], prEvent_map]
   rw [← he] at hb
-  apply le_trans (probEvent_mono (fun p _ hp => ?_)) hb
+  apply le_trans (prEvent_mono _ _ _ (fun p hp => ?_)) hb
   obtain ⟨q, hq, hh⟩ := hp
   obtain ⟨i, hi, heq⟩ := List.mem_iff_getElem.mp hq
   have hi' : i < keygenProgrammingCount coalition := by
@@ -6382,7 +6374,7 @@ theorem probEvent_keygenProgramming_hidden_alias (coalition : C.Coalition)
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open scoped ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity
@@ -6868,7 +6860,7 @@ theorem simulateQ_keygenPostCommit_reference (prims : Primitives) (coalition : C
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open scoped ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity
@@ -7055,7 +7047,7 @@ theorem probEvent_keygenHiddenInput_kernel_list {α : Type} (coalition : C.Coali
     (K : (C.Party → Parts C) → ProbComp α) (hinv : KeygenPrivateInvariant coalition K)
     (queries : α → List (Query C)) (m : ℕ)
     (hbound : ∀ parts r, r ∈ support (K parts) → (queries r).length ≤ m) :
-    Pr[fun p => ∃ v ∈ queries p.2, KeygenHiddenInput coalition p.1 v | keygenPartsKernel K] ≤
+    Pr{let p ← keygenPartsKernel K}[∃ v ∈ queries p.2, KeygenHiddenInput coalition p.1 v] ≤
       ((m * keygenSecrets C : ℕ) : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   let targets (r : α) (i : Fin m) := (queries r).getD i.val (.streamKey 0)
   let K' (parts : C.Party → Parts C) := targets <$> K parts
@@ -7071,8 +7063,8 @@ theorem probEvent_keygenHiddenInput_kernel_list {α : Type} (coalition : C.Coali
       (fun p : (C.Party → Parts C) × α => (p.1, targets p.2)) <$> keygenPartsKernel K := by
     simp only [keygenPartsKernel, K', map_bind, bind_map_left, map_pure]
   have hb := probEvent_keygenHiddenInput_kernel coalition m K' hinv'
-  rw [he, probEvent_map] at hb
-  apply le_trans (probEvent_mono (fun p hp hh => ?_)) hb
+  rw [he, prEvent_map] at hb
+  apply le_trans (prEvent_mono_of_support _ _ _ (fun p hp hh => ?_)) hb
   rcases p with ⟨parts, r⟩
   have hr : r ∈ support (K parts) := by
     simp only [keygenPartsKernel, support_bind, Set.mem_iUnion, support_pure,
@@ -7092,15 +7084,15 @@ theorem probEvent_keygenReference_hidden_guess (prims : Primitives) (coalition :
     (h : Query C → HashOutput) (table : KeyName C → HashOutput)
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ) (hq : IsQueryBounded A Z setupRounds q) :
-    Pr[fun p => ∃ v ∈ p.2.2, KeygenHiddenInput coalition p.1 v |
-      keygenPartsKernel (keygenReferenceKernel prims coalition h table A x z Z)] ≤
+    Pr{let p ← keygenPartsKernel (keygenReferenceKernel prims coalition h table A x z Z)}[
+      ∃ v ∈ p.2.2, KeygenHiddenInput coalition p.1 v] ≤
       ((q * keygenSecrets C : ℕ) : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   have hb := probEvent_keygenHiddenInput_kernel_list coalition
     (keygenReferenceKernel prims coalition h table A x z Z)
     (keygenReferenceKernel_privateInvariant prims coalition h table A x z Z)
     (fun r => r.2.filter fun v => ¬ IsFixed v) q
     (keygenReferenceKernel_random_length_le prims coalition h table A x z Z q hq)
-  apply le_trans (probEvent_mono (fun p _ hh => ?_)) hb
+  apply le_trans (prEvent_mono _ _ _ (fun p hh => ?_)) hb
   obtain ⟨v, hv, name, hn, he⟩ := hh
   refine ⟨v, List.mem_filter.mpr ⟨hv, ?_⟩, name, hn, he⟩
   apply decide_eq_true
@@ -7109,7 +7101,7 @@ theorem probEvent_keygenReference_hidden_guess (prims : Primitives) (coalition :
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open scoped ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity
@@ -7337,7 +7329,7 @@ theorem keygenReferenceStoppedPostCommit_eq (prims : Primitives) (coalition : C.
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open scoped ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity
@@ -7367,7 +7359,7 @@ theorem stepRound_keygenInitialSteps_observed (coalition : C.Coalition)
   refine bind_congr fun r => ?_
   rcases r with ⟨st, sent⟩
   dsimp only [observedRoles]
-  trans (Concrete.sequenceFin (fun j =>
+  trans (OverPermutation.sequenceFin (fun j =>
     (pure (keygenRevealSteps coalition parts (keygenCommitInbox coalition parts commitments sent) j) :
       WriterT (CallLog C) (OracleComp (WorldSpec C)) _)) >>= fun steps => pure (st, steps, sent))
   · congr 1
@@ -7415,9 +7407,9 @@ theorem keygenFixedCommitKernel_privateInvariant (prims : Primitives) (coalition
 theorem probEvent_keygenFixedCommit_programming_alias (prims : Primitives) (coalition : C.Coalition)
     (h : Query C → HashOutput) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) :
-    Pr[fun p => ∃ v ∈ keygenProgrammingInputs coalition
-        (keygenProgramView coalition p.1 p.2.1 p.2.2), KeygenHiddenInput coalition p.1 v |
-      keygenPartsKernel (keygenFixedCommitKernel prims coalition h A x z)] ≤
+    Pr{let p ← keygenPartsKernel (keygenFixedCommitKernel prims coalition h A x z)}[
+      ∃ v ∈ keygenProgrammingInputs coalition
+        (keygenProgramView coalition p.1 p.2.1 p.2.2), KeygenHiddenInput coalition p.1 v] ≤
       ((keygenProgrammingCount coalition * keygenSecrets C : ℕ) : ℝ≥0∞) *
         (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   exact probEvent_keygenProgramming_hidden_alias coalition _
@@ -7477,8 +7469,8 @@ theorem probEvent_keygenFixedCommit_hidden_guess (prims : Primitives) (coalition
     (h : Query C → HashOutput) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C))
     (q : ℕ) (hq : IsQueryBounded A Z setupRounds q) :
-    Pr[fun p => ∃ v ∈ p.2.2, KeygenHiddenInput coalition p.1 v |
-      keygenPartsKernel (keygenFixedCommitQueryKernel prims coalition h A x z)] ≤
+    Pr{let p ← keygenPartsKernel (keygenFixedCommitQueryKernel prims coalition h A x z)}[
+      ∃ v ∈ p.2.2, KeygenHiddenInput coalition p.1 v] ≤
       ((q * keygenSecrets C : ℕ) : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   have hbound (parts : C.Party → Parts C) :
       IsQueryBoundP (keygenFixedCommitLocal prims coalition h A x z parts) Counted q := by
@@ -7492,7 +7484,7 @@ theorem probEvent_keygenFixedCommit_hidden_guess (prims : Primitives) (coalition
     (fun r => r.2.filter fun v => ¬ IsFixed v) q
     (fun parts r hr => keygenHashLog_random_length_le _ q (hbound parts) r
       (keygenFixedLocal_support_subset prims h _ hr))
-  apply le_trans (probEvent_mono (fun p _ hh => ?_)) hb
+  apply le_trans (prEvent_mono _ _ _ (fun p hh => ?_)) hb
   obtain ⟨v, hv, name, hn, he⟩ := hh
   refine ⟨v, List.mem_filter.mpr ⟨hv, ?_⟩, name, hn, he⟩
   apply decide_eq_true
@@ -7501,7 +7493,7 @@ theorem probEvent_keygenFixedCommit_hidden_guess (prims : Primitives) (coalition
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open scoped ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity
@@ -7523,7 +7515,7 @@ theorem simulateQ_fixedLocal_keygenInitialCommitments (prims : Primitives) (coal
     simulateQ (fixedLocal prims h) (keygenInitialCommitments coalition parts) =
       pure (keygenFixedInitialCommitments prims coalition h parts) := by
   rw [keygenInitialCommitments, simulateQ_sequenceFin]
-  trans Concrete.sequenceFin (fun i => (pure (keygenFixedInitialCommitments prims coalition h parts i) : ProbComp _))
+  trans OverPermutation.sequenceFin (fun i => (pure (keygenFixedInitialCommitments prims coalition h parts i) : ProbComp _))
   · congr 1
     funext i
     unfold keygenFixedInitialCommitments
@@ -7558,21 +7550,19 @@ values. The sampling order of `A.start` and honest parts is exchanged only at th
 theorem evalDist_keygenNormalized_fixed_reference (prims : Primitives) (coalition : C.Coalition)
     (h : Query C → HashOutput) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) :
-    𝒟[simulateQ (fixedLocal prims h) (keygenNormalizedLocalGame coalition A x z Z)] =
-      𝒟[(do
-        let parts ← Concrete.sequenceFin fun _ : C.Party => sampleParts (C := C)
+    simulateQ (fixedLocal prims h) (keygenNormalizedLocalGame coalition A x z Z) =ᵈ
+      (do
+        let parts ← OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)
         simulateQ (fixedLocal prims h)
-          (keygenReferenceLocalGame prims coalition h (fun name => h (keygenNamedInput parts name)) A x z Z parts))] := by
+          (keygenReferenceLocalGame prims coalition h (fun name => h (keygenNamedInput parts name)) A x z Z parts)) := by
   simp only [keygenNormalizedLocalGame, simulateQ_bind, simulateQ_sequenceFin,
     simulateQ_fixedLocal_private, simulateQ_fixedLocal_keygenInitialCommitments, pure_bind]
-  rw [OracleComp.DeferredSampling.evalDist_bind_comm]
-  apply evalDist_bind_congr'
-  intro parts
+  refine (OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans ?_
+  refine EvalDistEq.bind_right _ fun parts => ?_
   simp only [keygenReferenceLocalGame, simulateQ_bind]
-  apply evalDist_bind_congr'
-  intro state
+  refine EvalDistEq.bind_right _ fun state => ?_
   rw [keygenFixedInitialCommitments_view]
-  apply evalDist_bind_congr'
+  refine EvalDistEq.bind_right _ ?_
   rintro ⟨st, sent⟩
   dsimp only
   rw [keygenFixedInitialCommitments_inbox,
@@ -7584,9 +7574,9 @@ The envelope is a semantic device; its size is not used as a query bound. -/
 theorem keygenLocal_eager_fixed_exists (prims : Primitives) {α : Type}
     (oa : OracleComp (LocalSpec C) α) :
     ∃ S : Finset (Query C),
-      𝒟[(simulateQ (localAnswer prims) oa).run' ∅] =
-        𝒟[do let h ← $ᵗ (S → HashOutput);
-              simulateQ (fixedLocal prims (keygenFiniteTotal prims S h)) oa] := by
+      (simulateQ (localAnswer prims) oa).run' ∅ =ᵈ
+        (do let h ← $ᵗ (S → HashOutput);
+              simulateQ (fixedLocal prims (keygenFiniteTotal prims S h)) oa) := by
   obtain ⟨S, hS⟩ := keygenWorld_eager_exists prims (free oa)
   refine ⟨S, ?_⟩
   have he := hS ∅
@@ -7601,25 +7591,25 @@ theorem keygenReal_reference_exists (prims : Primitives) (coalition : C.Coalitio
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) :
     ∃ S : Finset (Query C),
-      𝒟[(simulateQ (worldAnswer prims)
+      (simulateQ (worldAnswer prims)
         (distinguish (realExecution coalition A noFunctionality setupRounds
-          (fun i (_ : Unit) => (keygen i : PartyM C E RealSpec (Keys C))) x z) Z)).run' ∅] =
-        𝒟[do
+          (fun i (_ : Unit) => (keygen i : PartyM C E RealSpec (Keys C))) x z) Z)).run' ∅ =ᵈ
+        (do
           let ht ← $ᵗ (S → HashOutput);
-          let parts ← Concrete.sequenceFin fun _ : C.Party => sampleParts (C := C)
+          let parts ← OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)
           let h := keygenFiniteTotal prims S ht
           simulateQ (fixedLocal prims h)
-            (keygenReferenceLocalGame prims coalition h (fun name => h (keygenNamedInput parts name)) A x z Z parts)] := by
+            (keygenReferenceLocalGame prims coalition h (fun name => h (keygenNamedInput parts name)) A x z Z parts)) := by
   obtain ⟨S, hS⟩ := keygenLocal_eager_fixed_exists prims (keygenNormalizedLocalGame coalition A x z Z)
   refine ⟨S, ?_⟩
-  rw [simulateQ_keygenReal_eq_local, (sameRun_keygenLocal_normalized prims coalition A x z Z).run'_eq, hS]
-  apply evalDist_bind_congr'
-  intro ht
+  rw [simulateQ_keygenReal_eq_local]
+  refine ((sameRun_keygenLocal_normalized prims coalition A x z Z).run'_eq.trans hS).trans ?_
+  refine EvalDistEq.bind_right _ fun ht => ?_
   exact evalDist_keygenNormalized_fixed_reference prims coalition (keygenFiniteTotal prims S ht) A x z Z
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open scoped ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity
@@ -7655,9 +7645,9 @@ theorem keygenAllNamedInputs_mem (parts : C.Party → Parts C) (name : KeyName C
 theorem keygenLocal_eager_fixed_exists_cover (prims : Primitives) (R : Finset (Query C))
     {α : Type} (oa : OracleComp (LocalSpec C) α) :
     ∃ S : Finset (Query C), R ⊆ S ∧
-      𝒟[(simulateQ (localAnswer prims) oa).run' ∅] =
-        𝒟[do let h ← $ᵗ (S → HashOutput);
-              simulateQ (fixedLocal prims (keygenFiniteTotal prims S h)) oa] := by
+      (simulateQ (localAnswer prims) oa).run' ∅ =ᵈ
+        (do let h ← $ᵗ (S → HashOutput);
+              simulateQ (fixedLocal prims (keygenFiniteTotal prims S h)) oa) := by
   obtain ⟨S₀, hS₀⟩ := keygenWorldCovered_exists (free oa)
   let S := S₀ ∪ R
   have hS : KeygenWorldCovered S (free oa) := hS₀.mono (by intro q hq; exact Finset.mem_union_left R hq)
@@ -7674,21 +7664,21 @@ theorem keygenReal_reference_exists_cover (prims : Primitives) (coalition : C.Co
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) :
     ∃ S : Finset (Query C), (∀ parts name, keygenNamedInput parts name ∈ S) ∧
-      𝒟[(simulateQ (worldAnswer prims)
+      (simulateQ (worldAnswer prims)
         (distinguish (realExecution coalition A noFunctionality setupRounds
-          (fun i (_ : Unit) => (keygen i : PartyM C E RealSpec (Keys C))) x z) Z)).run' ∅] =
-        𝒟[do
+          (fun i (_ : Unit) => (keygen i : PartyM C E RealSpec (Keys C))) x z) Z)).run' ∅ =ᵈ
+        (do
           let ht ← $ᵗ (S → HashOutput);
-          let parts ← Concrete.sequenceFin fun _ : C.Party => sampleParts (C := C)
+          let parts ← OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)
           let h := keygenFiniteTotal prims S ht
           simulateQ (fixedLocal prims h)
-            (keygenReferenceLocalGame prims coalition h (fun name => h (keygenNamedInput parts name)) A x z Z parts)] := by
+            (keygenReferenceLocalGame prims coalition h (fun name => h (keygenNamedInput parts name)) A x z Z parts)) := by
   obtain ⟨S, hmem, hS⟩ := keygenLocal_eager_fixed_exists_cover prims (keygenAllNamedInputs C)
     (keygenNormalizedLocalGame coalition A x z Z)
   refine ⟨S, (fun parts name => hmem (keygenAllNamedInputs_mem parts name)), ?_⟩
-  rw [simulateQ_keygenReal_eq_local, (sameRun_keygenLocal_normalized prims coalition A x z Z).run'_eq, hS]
-  apply evalDist_bind_congr'
-  intro ht
+  rw [simulateQ_keygenReal_eq_local]
+  refine ((sameRun_keygenLocal_normalized prims coalition A x z Z).run'_eq.trans hS).trans ?_
+  refine EvalDistEq.bind_right _ fun ht => ?_
   exact evalDist_keygenNormalized_fixed_reference prims coalition (keygenFiniteTotal prims S ht) A x z Z
 
 /-- A canonical input in the enlarged domain reads an actual sampled cell, never the fallback. -/
@@ -7705,20 +7695,20 @@ named table. This marginal statement does not assert independence from an adapti
 theorem evalDist_keygenFiniteNamed_uniform (prims : Primitives) (S : Finset (Query C))
     (parts : C.Party → Parts C) (hmem : ∀ name, keygenNamedInput parts name ∈ S)
     (hinj : Function.Injective (keygenNamedInput parts)) :
-    𝒟[(fun h name => keygenFiniteTotal prims S h (keygenNamedInput parts name)) <$>
-      ($ᵗ (S → HashOutput))] = 𝒟[$ᵗ (KeyName C → HashOutput)] := by
+    ((fun h name => keygenFiniteTotal prims S h (keygenNamedInput parts name)) <$>
+      ($ᵗ (S → HashOutput))) =ᵈ $ᵗ (KeyName C → HashOutput) := by
   let e : KeyName C → S := fun name => ⟨keygenNamedInput parts name, hmem name⟩
   have he : Function.Injective e := fun a b hab => hinj (congrArg Subtype.val hab)
   have ht : (fun (h : S → HashOutput) name => keygenFiniteTotal prims S h (keygenNamedInput parts name)) =
       (fun h : S → HashOutput => h ∘ e) := by
     funext h name
     exact keygenFiniteTotal_named prims S h parts name (hmem name)
-  rw [ht, map_eq_bind_pure_comp]
-  exact evalDist_uniformSample_map_comp_injective he
+  rw [ht]
+  exact evalDistEq_uniformSample_map_comp_injective he
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open scoped ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity
@@ -7785,10 +7775,11 @@ theorem keygenFiniteHiddenSwap_involutive (coalition : C.Coalition) (S : Finset 
 theorem evalDist_keygenFiniteHiddenSwap (coalition : C.Coalition) (S : Finset (Query C))
     (parts : C.Party → Parts C) (hmem : ∀ name, keygenNamedInput parts name ∈ S)
     (hinj : Function.Injective (keygenNamedInput parts)) :
-    𝒟[keygenFiniteHiddenSwap coalition S parts hmem <$>
-      ($ᵗ ((S → HashOutput) × (KeyName C → HashOutput)))] =
-      𝒟[$ᵗ ((S → HashOutput) × (KeyName C → HashOutput))] :=
-  evalDist_map_bijective_uniform_cross _ _ (keygenFiniteHiddenSwap_involutive coalition S parts hmem hinj).bijective
+    (keygenFiniteHiddenSwap coalition S parts hmem <$>
+      ($ᵗ ((S → HashOutput) × (KeyName C → HashOutput)))) =ᵈ
+      $ᵗ ((S → HashOutput) × (KeyName C → HashOutput)) :=
+  SampleableType.map_uniformSample_evalDistEq_of_bijective
+    (keygenFiniteHiddenSwap_involutive coalition S parts hmem hinj).bijective
 
 /-- The total oracles agree away from canonical hidden inputs, including all fixed Th calls. -/
 theorem keygenFiniteHiddenSwap_total_off (prims : Primitives) (coalition : C.Coalition)
@@ -7807,7 +7798,7 @@ end ThresholdLeanXmssSecurity
 
 namespace ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 
 variable {C : Committee} {E : Type} (prims : Primitives)
 

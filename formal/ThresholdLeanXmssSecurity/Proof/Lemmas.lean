@@ -1,6 +1,8 @@
 import ThresholdLeanXmss.Statement
 import Mathlib.Algebra.MvPolynomial.SchwartzZippel
 import Mathlib.LinearAlgebra.Lagrange
+import VCVio.OracleComp.Constructions.SampleableType.Measure
+import VCVio.OracleComp.EvalDist.Sum
 
 /-!
 # The steps of the proofs
@@ -20,7 +22,7 @@ The intermediate results of the cited papers, each named after its source. The p
   plan in the module docstring of `ThresholdLeanXmssSecurity.lean`).
 -/
 
-open OracleComp OracleSpec LeanXmss ENNReal Finset
+open OracleComp OracleSpec HashSig LeanXmss ENNReal Finset
 
 noncomputable section
 
@@ -117,7 +119,7 @@ theorem cdi05_conv_correct [CharP E 2] (K : Constants C E) (x : C.Term → E) :
   · simp [eval_finsetSum, eval_prod, K.point_ne_zero]
   · simp only [conv, psi, localContext, eval_finsetSum, eval_mul, eval_C, eval_prod, eval_add,
       eval_X, ← div_eq_mul_inv]
-    rw [Finset.sum_filter]
+    refine (Finset.sum_filter (fun T : C.Term => i ∈ C.holders T) _).trans ?_
     refine Finset.sum_congr rfl fun T _ => ?_
     split_ifs with hi
     · ring
@@ -335,9 +337,9 @@ omit [DecidableEq E] [Algebra Bit E] in
 /-- With a uniform mask and `ρ ≠ 1`, the opened `a^(0) + ρ (a^(0) + a)` is uniform, so it hides `a`
 (GS20, Lemma 11, Hybrid 2). -/
 theorem gs20_lemma11_final_hides [CharP E 2] (a a' ρ : E) (hρ : ρ ≠ 1) :
-    𝒟[(fun a0 : E => a0 + ρ * (a0 + a)) <$> ($ᵗ E)] = 𝒟[(fun a0 : E => a0 + ρ * (a0 + a')) <$> ($ᵗ E)] := by
-  rw [evalDist_map_bijective_uniform_cross E _ (final_opening_bijective a ρ hρ),
-    evalDist_map_bijective_uniform_cross E _ (final_opening_bijective a' ρ hρ)]
+    (fun a0 : E => a0 + ρ * (a0 + a)) <$> ($ᵗ E) =ᵈ (fun a0 : E => a0 + ρ * (a0 + a')) <$> ($ᵗ E) :=
+  (SampleableType.map_uniformSample_evalDistEq_of_bijective (final_opening_bijective a ρ hρ)).trans
+    (SampleableType.map_uniformSample_evalDistEq_of_bijective (final_opening_bijective a' ρ hρ)).symm
 
 section Weights
 
@@ -438,8 +440,8 @@ theorem gs20_lemma8_delinearization (s d : ℕ) (hs : s ≤ d) (δ : ℕ → E) 
   have hnonzero : P ≠ 0 := by
     obtain ⟨a₀, ha₀, hne⟩ := hδ
     intro hP
-    have h := congrArg (coeff (e a₀)) hP
-    simp only [P, coeff_sum, coeff_monomial, coeff_zero] at h
+    have h := congrArg (fun q => q.coeff (e a₀)) hP
+    simp only [P, coeff_sum, coeff_monomial, AddMonoidAlgebra.coeff_zero, Finsupp.coe_zero, Pi.zero_apply] at h
     rw [Finset.sum_eq_single_of_mem a₀ (by simpa using ha₀), if_pos rfl] at h
     · exact hne h
     · intro a ha hne'
@@ -539,25 +541,25 @@ independently of the game. This is the second fact of the proof of PRAWNS, Lemma
 full lemma. -/
 theorem prawns_lemma52_guess (game : ProbComp (Bool × C.Term)) [Nonempty C.Term] :
     letI := SampleableType.ofFintype C.Term
-    Pr[fun r => r.1.1 = true ∧ r.2 = r.1.2 | do let g ← game; let T ← $ᵗ C.Term; pure (g, T)] *
-        (C.n.choose (C.t - 1) : ℝ≥0∞) = Pr[fun g => g.1 = true | game] := by
+    Pr{let r ← (do let g ← game; let T ← $ᵗ C.Term; pure (g, T))}[r.1.1 = true ∧ r.2 = r.1.2] *
+        (C.n.choose (C.t - 1) : ℝ≥0∞) = Pr{let g ← game}[g.1 = true] := by
   letI := SampleableType.ofFintype C.Term
   have hcard : (Fintype.card C.Term : ℝ≥0∞) = C.n.choose (C.t - 1) := by
     simp [Committee.Term, Fintype.card_finset_len]
   have hpos : (C.n.choose (C.t - 1) : ℝ≥0∞) ≠ 0 := by
     rw [← hcard]; exact_mod_cast Fintype.card_ne_zero
   have hguess : ∀ g : Bool × C.Term,
-      Pr[fun r => r.1.1 = true ∧ r.2 = r.1.2 | (fun T => (g, T)) <$> ($ᵗ C.Term)] *
+      Pr{let r ← (fun T => (g, T)) <$> ($ᵗ C.Term)}[r.1.1 = true ∧ r.2 = r.1.2] *
         (C.n.choose (C.t - 1) : ℝ≥0∞) = if g.1 = true then 1 else 0 := by
     intro g
-    rw [probEvent_map]
+    rw [prEvent_map]
     by_cases hg : g.1 = true
-    · simp only [Function.comp_def, hg, true_and, if_true]
-      rw [probEvent_eq_eq_probOutput, probOutput_uniformSample, hcard]
+    · simp only [hg, true_and, if_true]
+      rw [SampleableType.prEvent_uniformSample_eq_singleton, hcard]
       exact ENNReal.inv_mul_cancel hpos (ENNReal.natCast_ne_top _)
-    · simp [Function.comp_def, hg]
+    · simp [hg]
   simp only [bind_pure_comp]
-  rw [probEvent_bind_eq_tsum, ← ENNReal.tsum_mul_right, probEvent_eq_tsum_ite]
+  rw [OracleComp.prEvent_bind_eq_tsum, ← ENNReal.tsum_mul_right, OracleComp.prEvent_eq_tsum_ite]
   refine tsum_congr fun g => ?_
   rw [mul_assoc, hguess]
   split_ifs <;> simp
@@ -565,14 +567,14 @@ theorem prawns_lemma52_guess (game : ProbComp (Bool × C.Term)) [Nonempty C.Term
 /-- A codeword covers another only if they are equal, since all codewords have the same digit sum
 (PRAWNS, Definition 3.1, for the codewords of leanXMSS). -/
 theorem prawns_cover_free (d d' : Digest) (hd : Codeword.Valid d) (hd' : Codeword.Valid d')
-    (hcover : ∀ l, Codeword.encoding d l ≤ Codeword.encoding d' l) :
-    Codeword.encoding d = Codeword.encoding d' := by
-  have hsum : ∑ l, (Codeword.encoding d l).val = ∑ l, (Codeword.encoding d' l).val := by
+    (hcover : ∀ l, (digestDigits d : Encoding) l ≤ (digestDigits d' : Encoding) l) :
+    (digestDigits d : Encoding) = (digestDigits d' : Encoding) := by
+  have hsum : ∑ l, ((digestDigits d : Encoding) l).val = ∑ l, ((digestDigits d' : Encoding) l).val := by
     have h1 := hd.2
     have h2 := hd'.2
     simp only [Codeword.sum] at h1 h2
     rw [h1, h2]
-  have hle : ∀ l ∈ Finset.univ, (Codeword.encoding d l).val ≤ (Codeword.encoding d' l).val :=
+  have hle : ∀ l ∈ Finset.univ, ((digestDigits d : Encoding) l).val ≤ ((digestDigits d' : Encoding) l).val :=
     fun l _ => hcover l
   funext l
   exact Fin.ext ((Finset.sum_eq_sum_iff_of_le hle).mp hsum l (Finset.mem_univ l))

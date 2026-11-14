@@ -26,7 +26,7 @@ honest operator outputs the copies that it opened, as in the real run.
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 
 noncomputable section
 
@@ -42,9 +42,8 @@ The local copies of `probEvent_runWorld_fst` and `abs_accepts_bind_sub_le` of `K
 
 theorem main_probEvent_runWorld_fst (prims : Primitives) {β : Type} (oa : OracleComp (WorldSpec C) β)
     (Q : β → Prop) :
-    Pr[fun r => Q r.1 | runWorld prims oa] = Pr[Q | (simulateQ (worldAnswer prims) oa).run' ∅] := by
-  rw [← fst_map_runWorld, probEvent_map]
-  rfl
+    Pr{let r ← runWorld prims oa}[Q r.1] = Pr{let z ← (simulateQ (worldAnswer prims) oa).run' ∅}[Q z] := by
+  rw [← fst_map_runWorld, prEvent_map]
 
 theorem main_simulateQ_liftComp_local {α : Type}
     (impl : QueryImpl (LocalSpec C) (StateT (HashCache C) ProbComp))
@@ -75,36 +74,36 @@ theorem main_run'_bind_world (prims : Primitives) {R β : Type} (g : OracleComp 
 theorem main_abs_accepts_bind_sub_le (prims : Primitives) {R : Type} (g : OracleComp (WorldSpec C) R)
     (k₁ k₂ : R → OracleComp (WorldSpec C) Bool) :
     |accepts prims (g >>= k₁) - accepts prims (g >>= k₂)| ≤
-      (Pr[fun r => k₁ r.1 ≠ k₂ r.1 | runWorld prims g]).toReal := by
+      (Pr{let r ← runWorld prims g}[k₁ r.1 ≠ k₂ r.1]).toReal := by
   let flag (k : R → OracleComp (WorldSpec C) Bool) : OracleComp (WorldSpec C) (Bool × Bool) :=
     g >>= fun r => (fun b => (b, decide (k₁ r ≠ k₂ r))) <$> k r
   have hfst (k : R → OracleComp (WorldSpec C) Bool) : Prod.fst <$> flag k = g >>= k := by
     simp only [flag, map_bind, Functor.map_map, id_map']
   have hbad (k : R → OracleComp (WorldSpec C) Bool) :
-      Pr[fun r => r.1.2 = true | runWorld prims (flag k)] =
-        Pr[fun r => k₁ r.1 ≠ k₂ r.1 | runWorld prims g] := by
+      Pr{let r ← runWorld prims (flag k)}[r.1.2 = true] =
+        Pr{let r ← runWorld prims g}[k₁ r.1 ≠ k₂ r.1] := by
     rw [main_probEvent_runWorld_fst prims (flag k) (fun p => p.2 = true),
       main_probEvent_runWorld_fst prims g (fun r => k₁ r ≠ k₂ r), main_run'_bind_world]
-    rw [StateT.run'_eq, probEvent_map, probEvent_bind_eq_tsum, probEvent_eq_tsum_ite]
+    rw [StateT.run'_eq, prEvent_map, OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_eq_tsum_ite]
     apply tsum_congr
     intro p
-    rw [simulateQ_map, StateT.run'_eq, StateT.run_map, Functor.map_map, probEvent_map]
+    rw [simulateQ_map, StateT.run'_eq, StateT.run_map, Functor.map_map, prEvent_map]
     by_cases hp : k₁ p.1 ≠ k₂ p.1
-    · simp [Function.comp_def, hp]
-    · simp [Function.comp_def, hp]
-  have heq : Pr[fun r => r.1 = (true, false) | runWorld prims (flag k₁)] =
-      Pr[fun r => r.1 = (true, false) | runWorld prims (flag k₂)] := by
+    · simp [hp]
+    · simp [hp]
+  have heq : Pr{let r ← runWorld prims (flag k₁)}[r.1 = (true, false)] =
+      Pr{let r ← runWorld prims (flag k₂)}[r.1 = (true, false)] := by
     rw [main_probEvent_runWorld_fst prims (flag k₁) (fun p => p = (true, false)),
       main_probEvent_runWorld_fst prims (flag k₂) (fun p => p = (true, false)), main_run'_bind_world,
-      main_run'_bind_world, probEvent_bind_eq_tsum, probEvent_bind_eq_tsum]
+      main_run'_bind_world, OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_bind_eq_tsum]
     apply tsum_congr
     intro p
     congr 1
     by_cases hp : k₁ p.1 = k₂ p.1
     · rw [hp]
     · rw [simulateQ_map, simulateQ_map, StateT.run'_eq, StateT.run'_eq, StateT.run_map, StateT.run_map,
-        probEvent_map, probEvent_map, probEvent_map, probEvent_map]
-      simp [Function.comp_def, hp]
+        prEvent_map, prEvent_map, prEvent_map, prEvent_map]
+      simp [hp]
   have h := abs_accepts_sub_le_of_eq_until_bad prims (flag k₁) (flag k₂) heq
   rw [hfst, hfst, hbad, hbad, max_self] at h
   exact h
@@ -115,7 +114,7 @@ theorem main_seq_isSome {m : Type → Type} [Monad m] [LawfulMonad m] {α β : T
     (f : Fin n → m (Option α)) (g : Fin n → m Bool) (h : ∀ i, g i = f i >>= fun o => pure o.isSome)
     (k : (Fin n → Bool) → m β) (k' : (Fin n → Option α) → m β)
     (hk : ∀ v, k (fun i => (v i).isSome) = k' v) :
-    Concrete.sequenceFin g >>= k = Concrete.sequenceFin f >>= k' := by
+    OverPermutation.sequenceFin g >>= k = OverPermutation.sequenceFin f >>= k' := by
   rw [show g = fun i => f i >>= fun o => pure ((fun _ o => o.isSome) i o) from funext h,
     sequenceFin_bind_pure, bind_assoc]
   simp only [pure_bind, hk]
@@ -149,7 +148,7 @@ def mainSimOpenX (K : Constants C E) (D : C.Coalition) (A : MainAdversary C E)
     (known : C.Party → Shares C Bit) (outputs : List (List Bit)) :
     OracleComp (LocalSpec C) (A.State × (C.Party → Option (ℕ → Bit))) :=
   liftComp ($ᵗ (C.Term → Fin (outputsOf jobs).length → Bit)) (LocalSpec C) >>= fun fresh =>
-  Concrete.sequenceFin (fun i => if i ∉ D.1 ∧ i ∈ receivers then
+  OverPermutation.sequenceFin (fun i => if i ∉ D.1 ∧ i ∈ receivers then
     mainCopyHashes (mainOpenVr (outputsOf jobs).length
       (mainRebuild D (outputsOf jobs).length known outputs fresh) i) (outputsOf jobs).length
     else pure []) >>= fun ds =>
@@ -158,7 +157,7 @@ def mainSimOpenX (K : Constants C E) (D : C.Coalition) (A : MainAdversary C E)
     repOutbox K i (mainOpenVr (outputsOf jobs).length
       (mainRebuild D (outputsOf jobs).length known outputs fresh) i) (outputsOf jobs).length (ds i) c
     else none) >>= fun p =>
-  Concrete.sequenceFin (mainOpenOne K D receivers (outputsOf jobs).length
+  OverPermutation.sequenceFin (mainOpenOne K D receivers (outputsOf jobs).length
     (mainOpenVr (outputsOf jobs).length (mainRebuild D (outputsOf jobs).length known outputs fresh))
     ds p.2) >>= fun opened =>
   pure (p.1, opened)
@@ -331,15 +330,15 @@ theorem mainHybridIdeal (prims : Primitives) (K : Constants C E) (hsound : MainO
         worldRoles.adversary (Z (mainIdealOut D jobs x r)))| ≤ copyHashError C q := by
   refine (main_abs_accepts_bind_sub_le prims _ _ _).trans ?_
   set oa := mainCommon K D A mode jobs x z
-  have h1 : Pr[fun r => (worldRoles.adversary (Z (mainHybridOut D jobs r.1)) : OracleComp (WorldSpec C) Bool) ≠
-        worldRoles.adversary (Z (mainIdealOut D jobs x r.1)) | runWorld prims (worldRoles.adversary oa)] ≤
-      Pr[fun z => MainCopyCollision z.2 | (simulateQ (localAnswer prims) oa).run ∅] := by
+  have h1 : Pr{let r ← runWorld prims (worldRoles.adversary oa)}[(worldRoles.adversary (Z (mainHybridOut D jobs r.1)) : OracleComp (WorldSpec C) Bool) ≠
+        worldRoles.adversary (Z (mainIdealOut D jobs x r.1))] ≤
+      Pr{let z ← (simulateQ (localAnswer prims) oa).run ∅}[MainCopyCollision z.2] := by
     rw [main_probEvent_runWorld_fst prims _ (fun r => (worldRoles.adversary (Z (mainHybridOut D jobs r)) :
         OracleComp (WorldSpec C) Bool) ≠ worldRoles.adversary (Z (mainIdealOut D jobs x r))),
-      main_simulateQ_adversary, StateT.run'_eq, probEvent_map]
-    refine probEvent_mono fun p hp hne => hsound mode jobs D A x z p hp fun heq => hne ?_
+      main_simulateQ_adversary, StateT.run'_eq, prEvent_map]
+    refine prEvent_mono_of_support _ _ _ fun p hp hne => hsound mode jobs D A x z p hp fun heq => hne ?_
     simp only [heq]
-  refine (ENNReal.toReal_mono probEvent_ne_top h1).trans ?_
+  refine (ENNReal.toReal_mono (prEvent_ne_top _) h1).trans ?_
   refine (main_copy_birthday prims oa _ (mainCommon_bound K D A mode jobs x z Z q hq)).trans ?_
   simp [copyHashError]
 
@@ -570,12 +569,9 @@ theorem mainSimTailX_inv (prims : Primitives) (K : Constants C E) (D : C.Coaliti
   rcases p with ⟨st₁, (r | r) | rs⟩ <;> dsimp only
   all_goals
     refine MainRunInv.ite _ (fun _ => MainRunInv.pure _ fun _ _ => mainOpenedGood_none _ _ _) fun _ => ?_
-    refine MainRunInv.bind fun _ => MainRunInv.bind fun p' => ?_
-    rcases p' with ⟨st₂, _ | rs'⟩ <;> dsimp only
-    all_goals
-      refine MainRunInv.ite _ (fun _ => MainRunInv.pure _ fun _ _ => mainOpenedGood_none _ _ _) fun _ => ?_
-      refine MainRunInv.bind fun _ => ?_
-      exact mainSimOpenX_inv prims K D A jobs _ _ _ _
+    refine MainRunInv.bind fun p' => ?_
+    refine MainRunInv.ite _ (fun _ => MainRunInv.pure _ fun _ _ => mainOpenedGood_none _ _ _) fun _ => ?_
+    exact mainSimOpenX_inv prims K D A jobs _ _ _ _
 
 theorem mainSimAnswerX_inv (prims : Primitives) (K : Constants C E) (D : C.Coalition) (A : MainAdversary C E)
     (mode : ReshareMode) (jobs : List Circuit) (st : A.State) (l : MainIdealLeak C) :
@@ -803,11 +799,10 @@ def mainRealLocal (K : Constants C E) (D : C.Coalition) (A : MainAdversary C E)
 theorem main_accepts_eq_local (prims : Primitives) (oa : OracleComp (WorldSpec C) Bool)
     (ob : OracleComp (LocalSpec C) Bool)
     (h : simulateQ (worldAnswer prims) oa = simulateQ (localAnswer prims) ob) :
-    accepts prims oa = (Pr[fun b => b = true | (simulateQ (localAnswer prims) ob).run' ∅]).toReal := by
+    accepts prims oa = (Pr{let b ← (simulateQ (localAnswer prims) ob).run' ∅}[b = true]).toReal := by
   unfold accepts
   congr 1
-  rw [← h, ← fst_map_runWorld, probEvent_map]
-  rfl
+  rw [← h, ← fst_map_runWorld, prEvent_map]
 
 /-- GS20, Theorem 2, on the shared cache: from each state of the adversary after its start, the
 real phase and the simulator with the opened values give the same run. -/
@@ -838,8 +833,8 @@ theorem mainRealHybrid_of_core (prims : Primitives) (K : Constants C E)
     unfold mainRealLocal mainCommon
     rw [map_bind]
     exact SameRun.bind_right _ fun st => h mode jobs D A x hx st
-  rw [hreal, hhyb, probEvent_eq_tsum_ite, probEvent_eq_tsum_ite]
-  simp only [probOutput_def, SameRun.run'_eq hsame]
+  rw [hreal, hhyb]
+  exact congrArg ENNReal.toReal ((SameRun.run'_eq hsame).prEvent_eq _)
 
 /-! ## The real phase as a game
 
@@ -899,11 +894,11 @@ def mainVerifyLeak (D : C.Coalition) (inputs : C.Party → Option (List (Tuple C
 def mainOpenWith (K : Constants C E) (D : C.Coalition) (A : MainAdversary C E) (st : A.State)
     (receivers : Finset C.Party) (n : ℕ) (vr : C.Party → Shares C Bit) :
     OracleComp (LocalSpec C) (A.State × (C.Party → Option (ℕ → Bit))) :=
-  Concrete.sequenceFin (fun i => if i ∉ D.1 ∧ i ∈ receivers then mainCopyHashes (vr i) n else pure []) >>= fun ds =>
+  OverPermutation.sequenceFin (fun i => if i ∉ D.1 ∧ i ∈ receivers then mainCopyHashes (vr i) n else pure []) >>= fun ds =>
   if ¬ ∃ i, i ∉ D.1 ∧ i ∈ receivers then pure (st, fun _ => none) else
   A.round st (fun c i => if c ∈ D.1 ∧ i ∉ D.1 ∧ i ∈ receivers then repOutbox K i (vr i) n (ds i) c
     else none) >>= fun p =>
-  Concrete.sequenceFin (mainOpenOne K D receivers n vr ds p.2) >>= fun opened =>
+  OverPermutation.sequenceFin (mainOpenOne K D receivers n vr ds p.2) >>= fun opened =>
   pure (p.1, opened)
 
 theorem mainSimOpenX_eq_with (K : Constants C E) (D : C.Coalition) (A : MainAdversary C E)

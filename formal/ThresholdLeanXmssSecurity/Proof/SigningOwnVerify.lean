@@ -4,18 +4,18 @@ import VCVio.OracleComp.QueryTracking.QueryBound
 /-!
 # The hash calls of the verification
 
-`verify_bound` states that `Concrete.verify` makes at most `capSlack` hash calls on each path. Each
-layer makes one message digest call, at most `chainLength - 1` calls on each of the `numChains`
+`verify_bound` states that `Verification.verifyWithHash` makes at most `capSlack` hash calls on each path. Each
+layer makes one message digest call, at most `chainLength - 1` calls on each of the `chainCount`
 chains, one leaf call and `layerHeight` node calls. So the two layers make at most
 `2 (1 + 58 · 3 + 1 + 16) = 384` calls.
 
 The proof follows `total_verify` of the newer leanXMSS,
-`leanVM/formal/lean_xmss/XmssSecurity/Proof/OwnBudget.lean`, for the pinned `Concrete.verify`. It
+`leanVM/formal/lean_xmss/XmssSecurity/Proof/OwnBudget.lean`, for the pinned `Verification.verifyWithHash`. It
 states each bound as `IsQueryBoundP` with the predicate `fun _ => True`, so the lift of
 `isQueryBoundP_liftM_of_total` is not necessary.
 -/
 
-open OracleComp OracleSpec LeanXmss
+open OracleComp OracleSpec HashSig LeanXmss
 
 namespace ThresholdLeanXmssSecurity
 
@@ -36,27 +36,27 @@ theorem calls_bind_le {α β : Type} {oa : OracleComp HashSpec α} {ob : α → 
   (isQueryBoundP_bind h1 fun x _ => h2 x).mono h
 
 theorem calls_tweakableHash (P : PublicParameter) (domain : HashDomain) (payload : HashInput) :
-    Calls (Concrete.tweakableHash P domain payload : OracleComp HashSpec Digest) 1 := by
-  unfold Concrete.tweakableHash Concrete.oracleHash
+    Calls (Verification.tweakableHashWithHash P domain payload : OracleComp HashSpec Digest) 1 := by
+  unfold Verification.tweakableHashWithHash Verification.thWithHash Verification.oracleHashWithHash
   simp [Calls]
 
 theorem calls_sequenceFin {α : Type} {n b : ℕ} (f : Fin n → OracleComp HashSpec α)
-    (h : ∀ i, Calls (f i) b) : Calls (Concrete.sequenceFin f) (n * b) := by
+    (h : ∀ i, Calls (f i) b) : Calls (OverPermutation.sequenceFin f) (n * b) := by
   induction n with
   | zero => exact isQueryBoundP_pure _ _ _
   | succ n ih =>
-      unfold Concrete.sequenceFin
+      unfold OverPermutation.sequenceFin
       exact calls_bind_le (h 0) (fun _ => calls_bind_le (ih _ fun i => h i.succ)
         (fun _ => isQueryBoundP_pure _ _ 0) (Nat.add_zero _).le) (by rw [Nat.succ_mul]; omega)
 
 theorem calls_chainWalk (P : PublicParameter) (lay : Layer) (key : KeyIndex)
     (chainIdx : ChainIndex) (start steps : ℕ) (value : Digest) :
-    Calls (Concrete.chainWalk P lay key chainIdx start steps value : OracleComp HashSpec Digest)
+    Calls (Verification.chainWalkWithHash P lay key chainIdx start steps value : OracleComp HashSpec Digest)
       steps := by
   induction steps with
   | zero => exact isQueryBoundP_pure _ _ _
   | succ steps ih =>
-      unfold Concrete.chainWalk
+      rw [Verification.chainWalk_eq_succ]
       refine calls_bind_le ih (b := 1) (fun _ => ?_) le_rfl
       split
       · exact calls_tweakableHash _ _ _
@@ -64,21 +64,21 @@ theorem calls_chainWalk (P : PublicParameter) (lay : Layer) (key : KeyIndex)
 
 theorem calls_treeFold (P : PublicParameter) (lay : Layer) (key : KeyIndex)
     (path : Fin layerHeight → Digest) (levels : ℕ) (value : Digest) :
-    Calls (Concrete.treeFold P lay key path levels value : OracleComp HashSpec Digest) levels := by
+    Calls (Verification.treeFoldWithHash P lay key path levels value : OracleComp HashSpec Digest) levels := by
   induction levels with
   | zero => exact isQueryBoundP_pure _ _ _
   | succ levels ih =>
-      unfold Concrete.treeFold
+      rw [Verification.treeFold_eq_succ]
       refine calls_bind_le ih (b := 1) (fun _ => ?_) le_rfl
       dsimp only
       split <;> exact calls_tweakableHash _ _ _
 
-attribute [local irreducible] layerHeight numChains in
+attribute [local irreducible] layerHeight chainCount in
 /-- One layer makes at most `1 + 58 · 3 + 1 + 16 = 192` calls. -/
 theorem calls_layerRoot (P : PublicParameter) (lay : Layer) (key : KeyIndex)
     (message : HashInput) (part : LayerSignature) :
-    Calls (Concrete.layerRoot P lay key message part : OracleComp HashSpec (Option Digest)) 192 := by
-  unfold Concrete.layerRoot Concrete.otsLeaf
+    Calls (Verification.layerRootWithHash P lay key message part : OracleComp HashSpec (Option Digest)) 192 := by
+  unfold Verification.layerRootWithHash Verification.otsLeafWithHash
   refine calls_bind_le (a := 176) (b := 16) (calls_bind_le (calls_tweakableHash _ _ _) (b := 175)
     (fun digest => ?_) le_rfl) (fun leaf => ?_) le_rfl
   · cases Codeword.decode digest with
@@ -88,20 +88,20 @@ theorem calls_layerRoot (P : PublicParameter) (lay : Layer) (key : KeyIndex)
         refine calls_bind_le (calls_sequenceFin (b := 3) _ fun chainIdx =>
           (calls_chainWalk _ _ _ _ _ _ _).mono ?_) (b := 1)
           (fun _ => calls_bind_le (calls_tweakableHash _ _ _) (b := 0)
-            (fun _ => isQueryBoundP_pure _ _ _) le_rfl) (by unfold numChains; omega)
+            (fun _ => isQueryBoundP_pure _ _ _) le_rfl) (by unfold chainCount; omega)
         unfold chainLength winternitzBits
         omega
   · cases leaf with
     | none => exact (isQueryBoundP_pure _ _ _)
     | some leaf =>
-        exact calls_bind_le (calls_treeFold P lay key part.path layerHeight leaf) (b := 0)
+        exact calls_bind_le (calls_treeFold P lay key part.authenticationPath layerHeight leaf) (b := 0)
           (fun _ => isQueryBoundP_pure _ _ _) (by unfold layerHeight; omega)
 
 /-- The verification makes at most `capSlack` hash calls on each path. -/
 theorem verify_bound (publicKey : PublicKey) (message : Message) (signature : Signature) :
-    IsQueryBoundP (Concrete.verify publicKey message signature : OracleComp HashSpec Bool)
+    IsQueryBoundP (Verification.verifyWithHash publicKey message signature : OracleComp HashSpec Bool)
       (fun _ => True) capSlack := by
-  unfold Concrete.verify
+  unfold Verification.verifyWithHash
   refine calls_bind_le (calls_layerRoot _ _ _ _ _) (b := 192) (fun bottomRoot => ?_) le_rfl
   cases bottomRoot with
   | none => exact isQueryBoundP_pure _ _ _

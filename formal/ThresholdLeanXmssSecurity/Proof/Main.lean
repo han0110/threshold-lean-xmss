@@ -10,7 +10,7 @@ reduces to its distance half `MainSecurityDistance`. `mainSimulator_queryBound` 
 the query half.
 -/
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -67,7 +67,8 @@ theorem mainCompleteness_of_real (prims : Primitives) (K : Constants C E)
       ∀ r ∈ support (mainHonestRun prims K mode jobs x), r.1.2 = fun _ => some (mainOutputs jobs x)) :
     MainCompletenessStatement prims K := by
   intro mode jobs x hx
-  refine le_of_eq ((tvDist_eq_zero_iff _ _).2 ?_)
+  let : MeasurableSpace (C.Party → Option (List (List Bit))) := ⊤
+  refine le_of_eq ((measureTVDist_eq_zero_iff _ _).2 (EvalDistEq.evalDist_eq ?_))
   refine (evalDist_eq_pure_of_support _ (fun _ => some (mainOutputs jobs x)) ?_).trans
     (evalDist_eq_pure_of_support _ (fun _ => some (mainOutputs jobs x)) ?_).symm
   · intro y hy
@@ -575,7 +576,6 @@ theorem getElem?_flatIdx (L : List (List β)) (s k j : ℕ) (hk : k < L.length) 
       rw [show xs.length + (List.map List.length (List.take k L)).sum + j - xs.length =
         (List.map List.length (List.take k L)).sum + j by omega, this]
       simp [Nat.add_assoc, Nat.add_comm 1 k]
-      rfl
 
 theorem filter_zipIdx_flatIdx (L : List (List β)) (s t k : ℕ) :
     ((flatIdx L s).zipIdx t).filter (fun p => decide (p.1.1 = k)) =
@@ -713,15 +713,15 @@ theorem support_sequenceFin_state [Preorder σ] (s₀ : σ) :
     ∀ {n : ℕ} (f : Fin n → StateT σ ProbComp α) (P : Fin n → α → σ → Prop)
       (hf : ∀ i s, s₀ ≤ s → ∀ z ∈ support ((f i).run s), s ≤ z.2 ∧ P i z.1 z.2)
       (hP : ∀ i a s s', P i a s → s ≤ s' → P i a s') (s : σ), s₀ ≤ s →
-      ∀ z ∈ support ((Concrete.sequenceFin f).run s), s ≤ z.2 ∧ ∀ i, P i (z.1 i) z.2
+      ∀ z ∈ support ((OverPermutation.sequenceFin f).run s), s ≤ z.2 ∧ ∀ i, P i (z.1 i) z.2
   | 0, f, P, hf, hP, s, _ => by
     intro z hz
-    simp [Concrete.sequenceFin] at hz
+    simp [OverPermutation.sequenceFin] at hz
     subst hz
     exact ⟨le_rfl, fun i => i.elim0⟩
   | n + 1, f, P, hf, hP, s, hs => by
     intro z hz
-    simp only [Concrete.sequenceFin, StateT.run_bind, mem_support_bind_iff] at hz
+    simp only [OverPermutation.sequenceFin, StateT.run_bind, mem_support_bind_iff] at hz
     obtain ⟨⟨a, s₁⟩, h₁, hz⟩ := hz
     obtain ⟨⟨as, s₂⟩, h₂, hz⟩ := hz
     simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
@@ -1342,8 +1342,7 @@ theorem honest_verify_support (views : C.Party → List (Tuple C)) (Ts : List (T
   rw [← ho]
   funext i
   rw [if_pos]
-  refine ⟨by simp, ?_, by simp⟩
-  simp only [decide_eq_true_eq]
+  refine (fun p (inst : Decidable p) (hp : p) => @decide_eq_true p inst hp) _ _ ?_
   refine ⟨fun k hk T i hi j hj _ _ g _ => ?_, fun τ hτ => ?_⟩
   · rw [hL] at hk
     rw [List.getElem?_eq_getElem (by rw [hlen]; exact hk), List.getElem?_eq_getElem (by rw [hlen]; exact hk)]
@@ -1604,7 +1603,7 @@ theorem mainCompleteness {C : Committee} {E : Type} [Field E] [Fintype E] [Decid
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -1650,7 +1649,7 @@ theorem main_mulRep_difference (K : Constants C E) (D : C.Coalition)
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -1739,7 +1738,7 @@ theorem main_openCopy_sound (K : Constants C E) (D : C.Coalition)
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -1842,7 +1841,7 @@ theorem main_appendLayer_known (D : C.Coalition) (jobs : List Circuit) (l : ℕ)
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -1946,12 +1945,12 @@ def mainSimOpen (K : Constants C E) (D : C.Coalition) (A : MainAdversary C E)
   let fresh ← liftComp ($ᵗ (C.Term → Fin n → Bit)) (LocalSpec C)
   let V := mainRebuild D n known outputs fresh
   let vr := fun i T g => if i ∈ C.holders T ∧ g < n then V T g else 0
-  let ds ← Concrete.sequenceFin fun i =>
+  let ds ← OverPermutation.sequenceFin fun i =>
     if i ∉ D.1 ∧ i ∈ receivers then mainCopyHashes (vr i) n else pure []
   if ¬ ∃ i, i ∉ D.1 ∧ i ∈ receivers then return (st, ∅)
   let (st, sent) ← A.round st fun c i =>
     if c ∈ D.1 ∧ i ∉ D.1 ∧ i ∈ receivers then repOutbox K i (vr i) n (ds i) c else none
-  let accepts ← Concrete.sequenceFin fun i => do
+  let accepts ← OverPermutation.sequenceFin fun i => do
     if ¬ (i ∉ D.1 ∧ i ∈ receivers) then return false
     let inbox := fun k => if k ∈ D.1 then sent k i else
       if k ∈ receivers then repOutbox K k (vr k) n (ds k) i else some .abort
@@ -1997,7 +1996,7 @@ def mainSimulator (K : Constants C E) (D : C.Coalition) (A : MainAdversary C E)
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -2037,10 +2036,10 @@ theorem main_bound_mapM (f : α → OracleComp (LocalSpec C) β) (n : ℕ)
         (fun bs => isQueryBoundP_pure Counted (b :: bs) 0))
 
 theorem main_bound_sequenceFin (k : ℕ) : ∀ {n : ℕ} (f : Fin n → OracleComp (LocalSpec C) α),
-    (∀ i, IsQueryBoundP (f i) Counted k) → IsQueryBoundP (Concrete.sequenceFin f) Counted (n * k)
-  | 0, f, _ => by simp [Concrete.sequenceFin]
+    (∀ i, IsQueryBoundP (f i) Counted k) → IsQueryBoundP (OverPermutation.sequenceFin f) Counted (n * k)
+  | 0, f, _ => by simp [OverPermutation.sequenceFin]
   | n + 1, f, h => by
-    simp only [Concrete.sequenceFin]
+    simp only [OverPermutation.sequenceFin]
     apply IsQueryBoundP.mono (n := k + (n * k + 0)) _ (by simp [Nat.succ_mul, Nat.add_comm])
     refine main_bound_bind (h 0) fun a => ?_
     refine main_bound_bind
@@ -2148,7 +2147,7 @@ theorem mainSimulator_answer_bound (mode : ReshareMode) (jobs : List Circuit)
 end Bounds
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -2198,15 +2197,8 @@ theorem mainIdealLocal_eq (K : Constants C E) (D : C.Coalition) (A : MainAdversa
   dsimp only [HAdd.hAdd, QueryImpl.add]
   simp only [StateT.run_map, StateT.run_bind, StateT.run_pure, StateT.run_mk,
     bind_assoc, pure_bind, hs, ho, main_worldRoles_pure, id_map]
-  simp only [StateT.run, StateT.mk, bind_map_left, bind_assoc, pure_bind, main_worldRoles_pure]
-  refine bind_congr fun st => ?_
-  change ((worldRoles.adversary ((mainSimulator K D A mode jobs).answer st (mainIdealLeak D jobs x)) >>=
-      fun a => pure (a.2, a.1)) >>= fun a => (do
-        let b ← worldRoles.adversary (pure a.2 : OracleComp (LocalSpec C) A.State)
-        pure (b, fun i => if i ∉ D.1 ∧ i ∈ a.1 then some (mainIdealLeak D jobs x).2 else none))) = _
-  rw [bind_assoc]
-  refine bind_congr fun a => ?_
-  simp only [pure_bind, main_worldRoles_pure]
+  refine bind_congr fun st => bind_congr fun a => ?_
+  rfl
 
 /-- The concrete simulator meets the exact overhead in `MainStatement`. -/
 theorem mainSimulator_queryBound (prims : Primitives) (K : Constants C E)
@@ -2233,7 +2225,7 @@ theorem mainSimulator_queryBound (prims : Primitives) (K : Constants C E)
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -2323,7 +2315,7 @@ theorem mainDifference_correct (K : Constants C E) (D : C.Coalition) (mode : Res
 
 end ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -2377,7 +2369,7 @@ theorem main_cache_collision_insert (s : HashCache C) (hs : ¬ CacheHasCollision
 /-- The standard per-query birthday charge, specialized to the model's 256-bit cache. -/
 theorem main_cache_fresh_collision_bound (s : HashCache C) (hs : ¬ CacheHasCollision s)
     (k : ℕ) (hb : MainCacheBound s k) (q : Query C) :
-    Pr[fun u => CacheHasCollision (s.cacheQuery q u) | $ᵗ HashOutput] ≤
+    Pr{let u ← $ᵗ HashOutput}[CacheHasCollision (s.cacheQuery q u)] ≤
       (k : ℝ≥0∞) / Fintype.card HashOutput := by
   obtain ⟨S, hS, hm⟩ := hb
   have hbad : (Finset.univ.filter fun u : HashOutput => CacheHasCollision (s.cacheQuery q u)).card ≤ S.card := by
@@ -2396,7 +2388,7 @@ theorem main_cache_fresh_collision_bound (s : HashCache C) (hs : ¬ CacheHasColl
       have h₂ := (main_cache_collision_insert s hs q v hd).choose_spec.2
       rw [heq, h₂] at h₁
       exact (Option.some.inj h₁).symm
-  rw [probEvent_uniformSample]
+  rw [SampleableType.prEvent_uniformSample]
   exact ENNReal.div_le_div_right (by exact_mod_cast hbad.trans hS) _
 
 /-- One ROM lookup followed by a continuation; cached lookups are harmless. -/
@@ -2404,9 +2396,9 @@ theorem main_birthday_hash_step {α : Type} (s : HashCache C) (hs : ¬ CacheHasC
     (k : ℕ) (hb : MainCacheBound s k) (q : Query C)
     (f : HashOutput → HashCache C → ProbComp (α × HashCache C)) (ε : ℝ≥0∞)
     (hf : ∀ u s', ¬ CacheHasCollision s' → MainCacheBound s' (k + 1) →
-      Pr[fun z => CacheHasCollision z.2 | f u s'] ≤ ε) :
-    Pr[fun z => CacheHasCollision z.2 |
-      ((Query C →ₒ HashOutput).randomOracle q).run s >>= fun r => f r.1 r.2] ≤
+      Pr{let z ← f u s'}[CacheHasCollision z.2] ≤ ε) :
+    Pr{let z ←
+      ((Query C →ₒ HashOutput).randomOracle q).run s >>= fun r => f r.1 r.2}[CacheHasCollision z.2] ≤
         (k : ℝ≥0∞) / Fintype.card HashOutput + ε := by
   cases hsq : s q with
   | some u =>
@@ -2418,13 +2410,10 @@ theorem main_birthday_hash_step {α : Type} (s : HashCache C) (hs : ¬ CacheHasC
       rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ hsq]
       rfl
     rw [heq, bind_map_left]
-    have h := probEvent_bind_le_add
-      (mx := ($ᵗ HashOutput)) (my := fun u => f u (s.cacheQuery q u))
-      (p := fun u => ¬ CacheHasCollision (s.cacheQuery q u)) (q := fun z => ¬ CacheHasCollision z.2)
-      (ε₁ := (k : ℝ≥0∞) / Fintype.card HashOutput) (ε₂ := ε)
-      (by simpa only [not_not] using main_cache_fresh_collision_bound s hs k hb q)
-      (by intro u _ hu; simpa only [not_not] using hf u _ hu (mainCacheBound_insert hb q u))
-    simpa only [not_not] using h
+    exact (prEvent_bind_le_prEvent_add_of_support ($ᵗ HashOutput) (fun u => f u (s.cacheQuery q u))
+      (fun u => CacheHasCollision (s.cacheQuery q u)) (fun z => CacheHasCollision z.2)
+      fun u _ hu => hf u _ hu (mainCacheBound_insert hb q u)).trans
+      (add_le_add (main_cache_fresh_collision_bound s hs k hb q) le_rfl)
 
 private theorem main_birthday_arith (n k : ℕ) (hn : 0 < n) (M : ℝ≥0∞) :
     (k : ℝ≥0∞) / M + (((n - 1) * (k + 1 + (n - 1)) : ℕ) : ℝ≥0∞) / M ≤
@@ -2441,7 +2430,7 @@ private theorem main_birthday_arith (n k : ℕ) (hn : 0 < n) (M : ℝ≥0∞) :
 theorem main_local_birthday (prims : Primitives) {α : Type}
     (oa : OracleComp (LocalSpec C) α) (n k : ℕ) (h : IsQueryBoundP oa Counted n)
     (s : HashCache C) (hs : ¬ CacheHasCollision s) (hb : MainCacheBound s k) :
-    Pr[fun z => CacheHasCollision z.2 | (simulateQ (localAnswer prims) oa).run s] ≤
+    Pr{let z ← (simulateQ (localAnswer prims) oa).run s}[CacheHasCollision z.2] ≤
       ((n * (k + n) : ℕ) : ℝ≥0∞) / Fintype.card HashOutput := by
   induction oa using OracleComp.inductionOn generalizing n k s with
   | pure a => simp [hs]
@@ -2453,14 +2442,14 @@ theorem main_local_birthday (prims : Primitives) {α : Type}
     · have heq : (localAnswer (C := C) prims (.inl t)).run s =
           (fun u => (u, s)) <$> (OracleComp.lift (OracleSpec.query (spec := unifSpec) t)) := by
         simp [localAnswer, unifFwdImpl]
-      change Pr[fun z => CacheHasCollision z.2 |
-        (localAnswer prims (.inl t)).run s >>= fun r => (simulateQ (localAnswer prims) (f r.1)).run r.2] ≤ _
+      change Pr{let z ←
+        (localAnswer prims (.inl t)).run s >>= fun r => (simulateQ (localAnswer prims) (f r.1)).run r.2}[CacheHasCollision z.2] ≤ _
       rw [heq]
       erw [bind_map_left]
-      refine probEvent_bind_le_of_forall_le fun u _ => ?_
+      refine prEvent_bind_le_of_forall_le _ _ _ fun u => ?_
       exact ih u n k (by simpa [Counted] using h.2 u) s hs hb
-    · change Pr[fun z => CacheHasCollision z.2 |
-        (hashAnswer prims q).run s >>= fun r => (simulateQ (localAnswer prims) (f r.1)).run r.2] ≤ _
+    · change Pr{let z ←
+        (hashAnswer prims q).run s >>= fun r => (simulateQ (localAnswer prims) (f r.1)).run r.2}[CacheHasCollision z.2] ≤ _
       by_cases hfixed : IsFixed q
       · obtain ⟨input, rfl, hinput⟩ := hfixed
         rw [hashAnswer_of_isFixed prims hinput, StateT.run_pure, pure_bind]
@@ -2472,8 +2461,8 @@ theorem main_local_birthday (prims : Primitives) {α : Type}
         refine (main_birthday_hash_step s hs k hb q _ _ (fun u s' hs' hb' =>
           ih u (n - 1) (k + 1) (by simpa only [if_pos hc] using h.2 u) s' hs' hb')).trans ?_
         exact main_birthday_arith n k hn _
-    · change Pr[fun z => CacheHasCollision z.2 |
-        (prgAnswer prims x).run s >>= fun r => (simulateQ (localAnswer prims) (f r.1)).run r.2] ≤ _
+    · change Pr{let z ←
+        (prgAnswer prims x).run s >>= fun r => (simulateQ (localAnswer prims) (f r.1)).run r.2}[CacheHasCollision z.2] ≤ _
       simp only [prgAnswer, StateT.run_bind, StateT.run_pure, bind_assoc, pure_bind, hashAnswer]
       have hc : Counted (C := C) (.inr (.inr x)) := trivial
       have hn : 0 < n := h.1.resolve_left (not_not.mpr hc)
@@ -2486,16 +2475,16 @@ theorem main_local_birthday (prims : Primitives) {α : Type}
 /-- The exact copy-collision error used in `MainStatement`. -/
 theorem main_copy_birthday (prims : Primitives) {α : Type}
     (oa : OracleComp (LocalSpec C) α) (n : ℕ) (h : IsQueryBoundP oa Counted n) :
-    (Pr[fun z => MainCopyCollision z.2 | (simulateQ (localAnswer prims) oa).run ∅]).toReal ≤
+    (Pr{let z ← (simulateQ (localAnswer prims) oa).run ∅}[MainCopyCollision z.2]).toReal ≤
       ((n ^ 2 : ℕ) : ℝ) / 2 ^ 256 := by
   have h0 : ¬ CacheHasCollision (∅ : HashCache C) := by
     rintro ⟨q₁, q₂, u₁, u₂, hne, h₁, h₂, heq⟩
     simpa using h₁
   have hb : MainCacheBound (∅ : HashCache C) 0 := ⟨∅, by simp, by simp⟩
-  have hh := (probEvent_mono (fun z _ hz => mainCopyCollision_implies_cacheCollision z.2 hz)).trans
+  have hh := (prEvent_mono _ _ _ (fun z hz => mainCopyCollision_implies_cacheCollision z.2 hz)).trans
     (main_local_birthday prims oa n 0 h ∅ h0 hb)
   have hcard : Fintype.card HashOutput = 2 ^ 256 := by
-    exact card_bitVec 256
+    exact Fintype.card_bitVec 256
   simp only [zero_add, ← pow_two, hcard] at hh
   have ht : (((n ^ 2 : ℕ) : ℝ≥0∞) / ((2 ^ 256 : ℕ) : ℝ≥0∞)) ≠ ⊤ := by
     exact ENNReal.div_ne_top (by simp) (by
@@ -2507,7 +2496,7 @@ theorem main_copy_birthday (prims : Primitives) {α : Type}
 end ThresholdLeanXmssSecurity
 
 namespace ThresholdLeanXmssSecurity
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
 
 /-- The distance half of `MainStatement` for `mainSimulator`. -/
@@ -2533,7 +2522,7 @@ end ThresholdLeanXmssSecurity
 
 namespace ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 
 variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
 

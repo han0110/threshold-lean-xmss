@@ -40,7 +40,7 @@ does not hold.
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-open OracleComp OracleSpec LeanXmss
+open OracleComp OracleSpec HashSig LeanXmss
 
 noncomputable section
 
@@ -53,7 +53,7 @@ namespace SigningDescentProof
 variable {C : Committee}
 
 /-- The cache of `Th` inside the cache of `H`, as a cache of leanVM. -/
-def thView (c : HashCache C) : XmssSecurity.HashSpec.QueryCache := fun x => c (.hash x)
+def thView (c : HashCache C) : XmssSecurity.HashSpec.QueryCache := QueryCache.ofFn fun x => c.toFn (.hash x)
 
 /-- A computation of leanVM under `tweakable` with `H` fixed is its value with the answers of `Th`. -/
 theorem D_tweakable (prims : Primitives) (h : Query C → HashOutput) {α : Type}
@@ -67,10 +67,11 @@ theorem D_tweakable (prims : Primitives) (h : Query C → HashOutput) {α : Type
     simp only [evalWithAnswerFn, simulateQ_bind, simulateQ_query] at ih ⊢
     exact ih _
 
+set_option backward.isDefEq.respectTransparency false in
 /-- The verification of the game with `H` fixed to the cache is `verifyFromCache` of leanVM. -/
 theorem D_verify (prims : Primitives) (c : HashCache C) (pk : PublicKey) (message : Message)
     (signature : Signature) :
-    D prims (fun q => (c q).getD 0) (tweakable (Concrete.verify pk message signature)) =
+    D prims (fun q => (c q).getD 0) (tweakable (Verification.verifyWithHash pk message signature)) =
       XmssSecurity.Concrete.verifyFromCache (thView c) (XmssSecurity.Bridge.toModelPk pk)
         signature.leafIndex message (XmssSecurity.Bridge.toModelSig signature) := by
   rw [D_tweakable, XmssSecurity.Bridge.verify_real, ← XmssSecurity.Concrete.CacheReplay.eval_verify]
@@ -609,7 +610,7 @@ abbrev key : KeyIndex := z.forgery.signature.leafIndex
 /-- The win of `tsigFinish` with `H` fixed to the cache. The forgery verifies, and fewer than `t`
 operators can give its chain parts or it differs from the signature of `KeyGen`. -/
 def Wins : Prop :=
-  D prims z.answers (tweakable (Concrete.verify ⟨z.top.root, z.keys.1⟩ z.forgery.message z.forgery.signature)) =
+  D prims z.answers (tweakable (Verification.verifyWithHash ⟨z.top.root, z.keys.1⟩ z.forgery.message z.forgery.signature)) =
       true ∧
     ((signersAt z.state z.key z.forgery.message).card < C.t ∨
       honestSignature (m := Id) (fun oa => D prims z.answers oa) (z.dealt prims) z.key z.forgery.message ≠
@@ -624,7 +625,7 @@ def bottomTree : Option BottomTree := (z.dealt prims).bottom (treeOf z.key)
 
 /-- The selected digest input of the honest signers at the key of the forgery, for the bound
 message, with `ρ_e` and `c_e`. -/
-def selected : Option (Message × Randomness) := do
+def selected : Option (Message × Randomizer) := do
   let message ← z.state.bound z.key
   let tree ← z.bottomTree prims
   let ρ := D prims z.answers (prfValue z.keys.2.1 (.randomizer bottomLayer z.key))
@@ -642,7 +643,7 @@ def honestKey : HonestKey where
     XmssSecurity.Concrete.CacheReplay.topTreeNode (thView z.cache) z.keys.1
       (fun b => z.chainStarts prims topLayer (topKey b)) level
       (XmssSecurity.Concrete.topPathNode (XmssSecurity.topKeyOf z.key) ⟨level, hlevel⟩) else 0
-  topRandomness := ((z.bottomTree prims).map fun tree => tree.topSignature.randomness).getD 0
+  topRandomness := ((z.bottomTree prims).map fun tree => tree.topSignature.randomizer).getD 0
   selected := z.selected prims
   released := match z.state.bound z.key with
     | some message => decide (C.t ≤ (signersAt z.state z.key message).card)
@@ -669,6 +670,7 @@ def CacheConsistent (prims : Primitives) (z : FinalState C) : Prop :=
       honestSignature (m := Id) (fun oa => D prims z.answers oa) (z.dealt prims) z.key message =
         (honestSig z.cache P z.key hk).map (XmssSecurity.Bridge.toRealSig z.key)
 
+set_option backward.isDefEq.respectTransparency false in
 /-- Step 4 of the signing plan on the final cache. A final state in which the forgery wins and the
 flag of a call on a hidden key is not set holds a hit, a guess or a digest partner, given
 `CacheConsistent`. The descent does not use the flag. The flag matters only for the costs of step 5. -/
@@ -689,10 +691,9 @@ theorem signing_win_badEvent (prims : Primitives) (z : FinalState C) (hconsisten
     | none => simp [FinalState.honestKey, FinalState.selected, hb] at hbound
     | some message =>
       simp [FinalState.honestKey, FinalState.selected, hb] at hbound
-      obtain ⟨_, hx⟩ := hbound
+      obtain ⟨_, -, hx⟩ := Option.bind_eq_some_iff.mp hbound
       obtain ⟨_, -, hx⟩ := Option.bind_eq_some_iff.mp hx
-      obtain ⟨_, -, hx⟩ := Option.bind_eq_some_iff.mp hx
-      exact congrArg some (Prod.mk.inj (Option.some.inj hx)).1
+      exact hx
   have hsigners : C.t ≤ (signersAt z.state z.key z.forgery.message).card := by
     simpa [FinalState.honestKey, hb] using hreleased
   apply hfresh.resolve_left (not_lt.mpr hsigners)

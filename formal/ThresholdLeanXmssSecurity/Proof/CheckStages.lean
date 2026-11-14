@@ -32,7 +32,7 @@ and of `canonicalDummyTuples`, and the budget arithmetic of `coupleBound` agains
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss Finset
 
 noncomputable section
 
@@ -280,7 +280,7 @@ theorem executePhase_afterChallenge_common (prims : Primitives) (K : Constants C
     · simp only [hi, if_false, afterChallenge, oa, f, localStep_pure', pure_bind]
   rw [hp]
   refine (executePhase_local_fallback prims D Ad _ fuel st oa (fun _ => none) f).trans ?_
-  have hsel : SameRun prims (Concrete.sequenceFin (fun i => if i ∈ D.1 then pure none else oa i))
+  have hsel : SameRun prims (OverPermutation.sequenceFin (fun i => if i ∈ D.1 then pure none else oa i))
       (do let r ← liftComp (challengeQuery K tg L v) (LocalSpec C)
           pure (fun i => if i ∉ D.1 ∧ i ∈ rec then r else none)) := by
     convert sameRun_sequenceFin_selected prims (challengeQuery K tg L v) none
@@ -663,11 +663,11 @@ theorem ghostSalt (prims : Primitives) (K : Constants C E) (D : C.Coalition) (Ad
   let hist0 : C.Party → C.Term → List Bit := fun j =>
     (finalHs K hsR (finalOut K D AR BR known attack knownQ offset receivers 0 0) j).history
   let known0 : SaltReply Ad → C.Term → OracleComp (LocalSpec C) (DigestColumn C) := fun p T =>
-    Concrete.sequenceFin (honestDigestColumn D T (randShares D 256 p.2.1 0) hist0)
+    OverPermutation.sequenceFin (honestDigestColumn D T (randShares D 256 p.2.1 0) hist0)
   have hcol : ∀ (A B : C.Party → E) (hs : C.Party → RunState C)
       (hh : ∀ T, KnownTo D.1 T → ∀ i, i ∉ D.1 → i ∈ C.holders T → (hs i).history T = (hsR i).history T)
       (w q : MaskTable C E) (p : SaltReply Ad) (T : C.Term), KnownTo D.1 T →
-      Concrete.sequenceFin (honestDigestColumn D T (randShares D 256 p.2.1 0)
+      OverPermutation.sequenceFin (honestDigestColumn D T (randShares D 256 p.2.1 0)
         (fun j => (finalHs K hs (finalOut K D A B known attack knownQ offset receivers w q) j).history)) =
         known0 p T := by
     intro A B hs hh w q p T hT
@@ -807,24 +807,29 @@ lemma finalHs_common (K : Constants C E) (D : C.Coalition) (A B : C.Party → E)
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E] in
 lemma evalDist_run'_of_sameRun (prims : Primitives) {α : Type} {a b : OracleComp (LocalSpec C) α}
     (h : SameRun prims a b) (s : HashCache C) :
-    𝒟[(simulateQ (localAnswer prims) a).run' s] = 𝒟[(simulateQ (localAnswer prims) b).run' s] := by
-  simp only [StateT.run'_eq, evalDist_map, h s]
+    (simulateQ (localAnswer prims) a).run' s =ᵈ (simulateQ (localAnswer prims) b).run' s := by
+  simp only [StateT.run'_eq]
+  exact (h s).map Prod.fst
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E] in
 lemma tvDist_sameRun_congr (prims : Primitives) {α : Type} {a a' b b' : OracleComp (LocalSpec C) α}
     (ha : SameRun prims a a') (hb : SameRun prims b b') (s : HashCache C) :
-    tvDist ((simulateQ (localAnswer prims) a).run' s) ((simulateQ (localAnswer prims) b).run' s) =
-      tvDist ((simulateQ (localAnswer prims) a').run' s) ((simulateQ (localAnswer prims) b').run' s) := by
-  unfold tvDist
-  rw [evalDist_run'_of_sameRun prims ha, evalDist_run'_of_sameRun prims hb]
+    letI : MeasurableSpace α := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) a).run' s) ((simulateQ (localAnswer prims) b).run' s) =
+      measureTVDist ((simulateQ (localAnswer prims) a').run' s) ((simulateQ (localAnswer prims) b').run' s) := by
+  let : MeasurableSpace α := ⊤
+  unfold measureTVDist
+  rw [(evalDist_run'_of_sameRun prims ha s).evalDist_eq, (evalDist_run'_of_sameRun prims hb s).evalDist_eq]
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E] in
 lemma tvDist_of_sameRun (prims : Primitives) {α : Type} {a b : OracleComp (LocalSpec C) α}
     (h : SameRun prims a b) (s : HashCache C) :
-    tvDist ((simulateQ (localAnswer prims) a).run' s) ((simulateQ (localAnswer prims) b).run' s) = 0 := by
-  unfold tvDist
-  rw [evalDist_run'_of_sameRun prims h]
-  exact SPMF.tvDist_self _
+    letI : MeasurableSpace α := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) a).run' s) ((simulateQ (localAnswer prims) b).run' s) = 0 := by
+  let : MeasurableSpace α := ⊤
+  unfold measureTVDist
+  rw [(evalDist_run'_of_sameRun prims h s).evalDist_eq]
+  exact MeasureTheory.Measure.tvDist_self _
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E] in
 /-- A common prefix with at most `n` outer-digest calls: the distance is bounded by any bound that holds
@@ -834,13 +839,23 @@ lemma tvDist_prefix (prims : Primitives) {α β : Type} (oa : OracleComp (LocalS
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen) (c : ℝ)
     (h : ∀ a (cache' : HashCache C) (seen' : Finset (List Bit)), DigestSaltsCovered cache' seen' →
       seen'.card ≤ seen.card + n →
-      tvDist ((simulateQ (localAnswer prims) (f a)).run' cache')
+      letI : MeasurableSpace β := ⊤
+      measureTVDist ((simulateQ (localAnswer prims) (f a)).run' cache')
         ((simulateQ (localAnswer prims) (g a)).run' cache') ≤ c) :
-    tvDist ((simulateQ (localAnswer prims) (oa >>= f)).run' cache)
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) (oa >>= f)).run' cache)
       ((simulateQ (localAnswer prims) (oa >>= g)).run' cache) ≤ c := by
+  let : MeasurableSpace β := ⊤
+  have hc0 : 0 ≤ c := by
+    obtain ⟨z, hz⟩ := OracleComp.support_nonempty ((simulateQ (localAnswer prims) oa).run cache)
+    obtain ⟨seen', hc', hcard⟩ := localProgram_digest_covered prims oa DigestQuery (fun _ ht => ht) n hq
+      cache seen hc z hz
+    exact (measureTVDist_nonneg _ _).trans (h z.1 z.2 seen' hc' hcard)
   simp only [simulateQ_bind, StateT.run'_eq, StateT.run_bind, map_bind]
-  apply tvDist_bind_left_le_const
-  intro z hz
+  refine le_of_eq_of_le (congrArg₂ measureTVDist (bind_eq_attach_bind _ _) (bind_eq_attach_bind _ _))
+    (measureTVDist_bind_left_le_of_forall_le _ _ _ hc0 fun z => ?_)
+  obtain ⟨z, hz⟩ := z
+  replace hz := MonadAttach.mem_support.2 hz
   obtain ⟨seen', hc', hcard⟩ := localProgram_digest_covered prims oa DigestQuery (fun _ ht => ht) n hq
     cache seen hc z hz
   simpa only [StateT.run'_eq] using h z.1 z.2 seen' hc' hcard
@@ -852,9 +867,11 @@ lemma tvDist_samples (prims : Primitives) {α β : Type} [SampleableType α]
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen) (c : ℝ)
     (h : ∀ w q (cache' : HashCache C) (seen' : Finset (List Bit)), DigestSaltsCovered cache' seen' →
       seen'.card ≤ seen.card →
-      tvDist ((simulateQ (localAnswer prims) (f w q)).run' cache')
+      letI : MeasurableSpace β := ⊤
+      measureTVDist ((simulateQ (localAnswer prims) (f w q)).run' cache')
         ((simulateQ (localAnswer prims) (g w q)).run' cache') ≤ c) :
-    tvDist ((simulateQ (localAnswer prims) (do
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) (do
         let w ← liftComp ($ᵗ α) (LocalSpec C); let q ← liftComp ($ᵗ α) (LocalSpec C); f w q)).run' cache)
       ((simulateQ (localAnswer prims) (do
         let w ← liftComp ($ᵗ α) (LocalSpec C); let q ← liftComp ($ᵗ α) (LocalSpec C); g w q)).run' cache) ≤ c := by
@@ -885,7 +902,8 @@ theorem finalSalt_hide (prims : Primitives) (K : Constants C E) (D : C.Coalition
     (A B V : C.Party → E) {β : Type} (tail : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
     (hq : ∀ out, IsQueryBoundP (tail out) Counted final)
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen) :
-    tvDist ((simulateQ (localAnswer prims) (do
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) (do
         let w ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
         let q ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
         executePhase localRoles D Ad (checkFunctionalities K) (fuel + 3) st1
@@ -926,7 +944,8 @@ theorem finalMasked_tv (prims : Primitives) (K : Constants C E) (D : C.Coalition
     {β : Type} (tail : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
     (hq : ∀ out, IsQueryBoundP (tail out) Counted final)
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen) :
-    tvDist ((simulateQ (localAnswer prims) (do
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) (do
         let w ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
         let q ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
         executePhase localRoles D Ad (checkFunctionalities K) (fuel + 3) st1
@@ -938,6 +957,7 @@ theorem finalMasked_tv (prims : Primitives) (K : Constants C E) (D : C.Coalition
           (finalMaskedProgram K D AD BD VD hsD known attack knownQ offset receivers w q) >>= tail)).run' cache) ≤
       2 * (((C.terms.length * (seen.card + (fuel + 2 + 1) * step + final + (C.n + 1) * C.terms.length) : ℕ) : ℝ) /
         2 ^ 256) := by
+  let : MeasurableSpace β := ⊤
   have hB : (0 : ℝ) ≤ ((C.terms.length * (seen.card + (fuel + 2 + 1) * step + final +
       (C.n + 1) * C.terms.length) : ℕ) : ℝ) / 2 ^ 256 := by positivity
   by_cases hall : ∀ i, i ∉ D.1 → i ∈ receivers
@@ -947,8 +967,8 @@ theorem finalMasked_tv (prims : Primitives) (K : Constants C E) (D : C.Coalition
       hsD hcommonD AD BD VD tail hq cache seen hc
     have h2 := tvDist_of_sameRun prims (ghostSalt prims K D Ad fuel st1 known knownQ attack offset receivers hall
       tg L hsR hsD htagR htagD hknownHist AR BR VR AD BD VD hrel tail) cache
-    refine (tvDist_triangle _ _ _).trans
-      ((add_le_add h1 ((tvDist_triangle _ _ _).trans (add_le_add h2.le (le_of_eq (tvDist_comm _ _))))).trans ?_)
+    refine (measureTVDist_triangle _ _ _).trans
+      ((add_le_add h1 ((measureTVDist_triangle _ _ _).trans (add_le_add h2.le (le_of_eq (measureTVDist_comm _ _))))).trans ?_)
     linarith
   · push Not at hall
     have hmiss : ∀ (A B V : C.Party → E) (hs : C.Party → RunState C),
@@ -964,7 +984,7 @@ theorem finalMasked_tv (prims : Primitives) (K : Constants C E) (D : C.Coalition
       intro A B V hs
       refine bind_congr fun w => bind_congr fun q => ?_
       rw [finalMasked_missing K D Ad (fuel + 2) st1 A B V hs known attack knownQ offset receivers w q hall, pure_bind]
-    rw [hmiss, hmiss, tvDist_self]
+    rw [hmiss, hmiss, measureTVDist_self]
     linarith
 
 /-- The two replies of the randomization make at most `2 * step` outer-digest calls. -/
@@ -1008,7 +1028,8 @@ theorem finalStep_tv (prims : Primitives) (K : Constants C E) (D : C.Coalition) 
     {β : Type} (tail : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
     (hq : ∀ out, IsQueryBoundP (tail out) Counted final)
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen) :
-    tvDist ((simulateQ (localAnswer prims)
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims)
         (executePhase localRoles D Ad (checkFunctionalities K) (fuel + 3 + 2) st
           (fun i => (finalStep K (localContext i) (hybridCheckGadgets K i) (AvR i, BvR i, VR i)).run' (hsR i)) >>=
           tail)).run' cache)
@@ -1089,7 +1110,7 @@ theorem executePhase_afterChallenge_common' {α : Type} (prims : Primitives) (K 
     · simp only [hi, if_false, afterChallenge, oa, f, localStep_pure', pure_bind]
   rw [hp]
   refine (executePhase_local_fallback prims D Ad _ fuel st oa (fun _ => none) f).trans ?_
-  have hsel : SameRun prims (Concrete.sequenceFin (fun i => if i ∈ D.1 then pure none else oa i))
+  have hsel : SameRun prims (OverPermutation.sequenceFin (fun i => if i ∈ D.1 then pure none else oa i))
       (do let r ← liftComp (challengeQuery K tg L v) (LocalSpec C)
           pure (fun i => if i ∉ D.1 ∧ i ∈ rec then r else none)) := by
     convert sameRun_sequenceFin_selected prims (challengeQuery K tg L v) none
@@ -1470,7 +1491,8 @@ theorem finalStep_live_tv (prims : Primitives) (K : Constants C E) (D : C.Coalit
     {β : Type} (tail : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
     (hq : ∀ out, IsQueryBoundP (tail out) Counted final)
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen) :
-    tvDist ((simulateQ (localAnswer prims)
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims)
         (executePhase localRoles D Ad (checkFunctionalities K) (fuel + 5) st
           (fun i => if live i then
             (finalStep K (localContext i) (hybridCheckGadgets K i) (AvR i, BvR i, VR i)).run' (hsR i)
@@ -1481,6 +1503,7 @@ theorem finalStep_live_tv (prims : Primitives) (K : Constants C E) (D : C.Coalit
             (finalStep K (localContext i) (hybridCheckGadgets K i) (AvD i, BvD i, VD i)).run' (hsD i)
             else failure) >>= tail)).run' cache) ≤
       coupleBound C step final seen.card (fuel + 5) := by
+  let : MeasurableSpace β := ⊤
   obtain ⟨htagR, htagD, hknownHist, hcommonR, hcommonD⟩ := hh
   by_cases hall : ∀ i, i ∉ D.1 → live i
   · rw [executePhase_congr_honest D Ad _ _ st _ _ (fun i hi => if_pos (hall i hi)),
@@ -1492,7 +1515,7 @@ theorem finalStep_live_tv (prims : Primitives) (K : Constants C E) (D : C.Coalit
     ring
   · push Not at hall
     rw [finalStep_missing K D Ad (fuel + 4) st live hsR AvR BvR VR hall,
-      finalStep_missing K D Ad (fuel + 4) st live hsD AvD BvD VD hall, tvDist_self]
+      finalStep_missing K D Ad (fuel + 4) st live hsD AvD BvD VD hall, measureTVDist_self]
     exact coupleBound_nonneg _ _ _ _
 
 /-- The rest of the check from halving step `j`, with `n` steps left. -/
@@ -1589,7 +1612,8 @@ def HalvRest (prims : Primitives) (K : Constants C E) (D : C.Coalition) (Ad : Ch
     (AR BR AD BD : C.Party → ℕ → E) (DR DD : C.Party → E) (cache : HashCache C) (seen : Finset (List Bit)),
     HalvRel K D (halvedLength^[j] width) AR BR AD BD DR DD → HistRel D tg L hsR hsD →
     DigestSaltsCovered cache seen →
-    tvDist ((simulateQ (localAnswer prims)
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims)
         (executePhase localRoles D Ad (checkFunctionalities K) F st
           (fun i => if i ∈ live then (halvProg K width n j (AR i) (BR i) (DR i) i).run' (hsR i) else failure) >>=
           tail)).run' cache)
@@ -1864,7 +1888,8 @@ theorem halvCoin_tv (prims : Primitives) (K : Constants C E) (D : C.Coalition) (
     (y : (Fin (firstInput fun i : C.Party => if i ∈ D.1 then (none : Option ℕ) else some 1) → E) ×
       (Ad.State × Finset C.Party))
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen) :
-    tvDist ((simulateQ (localAnswer prims) (halvCoinNext K D Ad F
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) (halvCoinNext K D Ad F
         (fun i => ⟨recordHistory K i (hsR i).history (halvOut K D (halvedLength^[j] width) AR BR pa fresh i) 2,
           (hsR i).label + 1, (hsR i).tag⟩)
         (halvCont K width n j AR BR DR (halvOut K D (halvedLength^[j] width) AR BR pa fresh)) tail y)).run' cache)
@@ -1873,6 +1898,7 @@ theorem halvCoin_tv (prims : Primitives) (K : Constants C E) (D : C.Coalition) (
           (hsD i).label + 1, (hsD i).tag⟩)
         (halvCont K width n j AD BD DD (halvOut K D (halvedLength^[j] width) AD BD pa fresh)) tail y)).run' cache) ≤
       coupleBound C step final seen.card F := by
+  let : MeasurableSpace β := ⊤
   have hafter := halv_after K D (halvedLength^[j] width) AR BR AD BD DR DD hrel tg L hsR hsD hh pa fresh hrec
   have hrel' := fun r => (hafter r).1
   have hh' := (hafter 0).2
@@ -1889,7 +1915,7 @@ theorem halvCoin_tv (prims : Primitives) (K : Constants C E) (D : C.Coalition) (
     refine tvDist_prefix prims _ _ _ 0 (challengeQuery_no_digest K tg (L + 1) (List.ofFn y.1)) cache seen hc _ ?_
     intro r cache' seen' hc' hcard
     rcases r with _ | r
-    · simp only [executePhase_failure, tvDist_self]
+    · simp only [executePhase_failure, measureTVDist_self]
       exact coupleBound_nonneg _ _ _ _
     · refine le_trans ?_ (coupleBound_mono (s := seen'.card) (f := F) (by omega))
       have hrelr := hrel' r
@@ -1904,7 +1930,7 @@ theorem halvCoin_tv (prims : Primitives) (K : Constants C E) (D : C.Coalition) (
       intro i hi
       have hn : ¬ (i ∉ D.1 ∧ i ∈ y.2.2) := fun h => hy i h.1 h.2
       simp only [hn, if_false, afterChallenge]
-    rw [hfail, hfail, tvDist_self]
+    rw [hfail, hfail, measureTVDist_self]
     exact coupleBound_nonneg _ _ _ _
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E] in
@@ -1914,9 +1940,11 @@ lemma tvDist_sample1 (prims : Primitives) {α β : Type} [SampleableType α]
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen) (c : ℝ)
     (h : ∀ w (cache' : HashCache C) (seen' : Finset (List Bit)), DigestSaltsCovered cache' seen' →
       seen'.card ≤ seen.card →
-      tvDist ((simulateQ (localAnswer prims) (f w)).run' cache')
+      letI : MeasurableSpace β := ⊤
+      measureTVDist ((simulateQ (localAnswer prims) (f w)).run' cache')
         ((simulateQ (localAnswer prims) (g w)).run' cache') ≤ c) :
-    tvDist ((simulateQ (localAnswer prims) (liftComp ($ᵗ α) (LocalSpec C) >>= f)).run' cache)
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) (liftComp ($ᵗ α) (LocalSpec C) >>= f)).run' cache)
       ((simulateQ (localAnswer prims) (liftComp ($ᵗ α) (LocalSpec C) >>= g)).run' cache) ≤ c :=
   tvDist_prefix prims _ _ _ 0 (prob_lift_no_digest _) cache seen hc c fun w cache' seen' hc' hcard =>
     h w cache' seen' hc' (by omega)
@@ -1928,9 +1956,11 @@ lemma tvDist_prefix_tail (prims : Primitives) {α γ β : Type} (oa : OracleComp
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen) (c : ℝ)
     (h : ∀ a (cache' : HashCache C) (seen' : Finset (List Bit)), DigestSaltsCovered cache' seen' →
       seen'.card ≤ seen.card + n →
-      tvDist ((simulateQ (localAnswer prims) (f a >>= tail)).run' cache')
+      letI : MeasurableSpace β := ⊤
+      measureTVDist ((simulateQ (localAnswer prims) (f a >>= tail)).run' cache')
         ((simulateQ (localAnswer prims) (g a >>= tail)).run' cache') ≤ c) :
-    tvDist ((simulateQ (localAnswer prims) ((oa >>= f) >>= tail)).run' cache)
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) ((oa >>= f) >>= tail)).run' cache)
       ((simulateQ (localAnswer prims) ((oa >>= g) >>= tail)).run' cache) ≤ c := by
   rw [bind_assoc, bind_assoc]
   exact tvDist_prefix prims oa _ _ n hq cache seen hc c h
@@ -1941,9 +1971,11 @@ lemma tvDist_sample1_tail (prims : Primitives) {α γ β : Type} [SampleableType
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen) (c : ℝ)
     (h : ∀ w (cache' : HashCache C) (seen' : Finset (List Bit)), DigestSaltsCovered cache' seen' →
       seen'.card ≤ seen.card →
-      tvDist ((simulateQ (localAnswer prims) (f w >>= tail)).run' cache')
+      letI : MeasurableSpace β := ⊤
+      measureTVDist ((simulateQ (localAnswer prims) (f w >>= tail)).run' cache')
         ((simulateQ (localAnswer prims) (g w >>= tail)).run' cache') ≤ c) :
-    tvDist ((simulateQ (localAnswer prims) ((liftComp ($ᵗ α) (LocalSpec C) >>= f) >>= tail)).run' cache)
+    letI : MeasurableSpace β := ⊤
+    measureTVDist ((simulateQ (localAnswer prims) ((liftComp ($ᵗ α) (LocalSpec C) >>= f) >>= tail)).run' cache)
       ((simulateQ (localAnswer prims) ((liftComp ($ᵗ α) (LocalSpec C) >>= g) >>= tail)).run' cache) ≤ c := by
   rw [bind_assoc, bind_assoc]
   exact tvDist_sample1 prims _ _ cache seen hc c h
@@ -1954,11 +1986,12 @@ theorem halvRest_succ (prims : Primitives) (K : Constants C E) (D : C.Coalition)
     {β : Type} (tail : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
     (hIH : HalvRest prims K D Ad step final width n (j + 1) F tail) :
     HalvRest prims K D Ad step final width (n + 1) j (F + 1 + 1) tail := by
+  let : MeasurableSpace β := ⊤
   intro st live tg L hsR hsD AR BR AD BD DR DD cache seen hrel hh hc
   by_cases hall : ∀ i, i ∉ D.1 → i ∈ live
   swap
   · rw [halvExtend_missing K D Ad (F + 1) st (· ∈ live) hall hsR width n j AR BR DR,
-      halvExtend_missing K D Ad (F + 1) st (· ∈ live) hall hsD width n j AD BD DD, tvDist_self]
+      halvExtend_missing K D Ad (F + 1) st (· ∈ live) hall hsD width n j AD BD DD, measureTVDist_self]
     exact coupleBound_nonneg _ _ _ _
   rw [halvExtend_local K D Ad (F + 1) st (· ∈ live) hall hsR width n j AR BR DR,
     halvExtend_local K D Ad (F + 1) st (· ∈ live) hall hsD width n j AD BD DD,
@@ -1979,7 +2012,7 @@ theorem halvRest_succ (prims : Primitives) (K : Constants C E) (D : C.Coalition)
     exact le_trans (halvCoin_tv prims K D Ad step final width n j F tail hIH tg L hsR hsD hh AR BR AD BD DR DD hrel pa
       fresh hrec y cache3 seen3 hc3) (coupleBound_mono (by omega))
   · rw [executePhase_challenge_live K D Ad F pa.1 (fun i => i ∈ pa.2.2.2.2) _ _, if_neg hrec,
-      executePhase_challenge_live K D Ad F pa.1 (fun i => i ∈ pa.2.2.2.2) _ _, if_neg hrec, tvDist_self]
+      executePhase_challenge_live K D Ad F pa.1 (fun i => i ∈ pa.2.2.2.2) _ _, if_neg hrec, measureTVDist_self]
     exact coupleBound_nonneg _ _ _ _
 
 /-- The halving loop and the final segment keep the coupling (GS20, Protocols 14 and 15). -/

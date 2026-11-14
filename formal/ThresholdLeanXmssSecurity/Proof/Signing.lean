@@ -9,7 +9,7 @@ import Mathlib.Data.Nat.Bitwise
 Section 3.1). `SigningSecurityStatement` is the security target.
 -/
 
-open OracleComp OracleSpec LeanXmss ENNReal Finset
+open OracleComp OracleSpec HashSig LeanXmss ENNReal Finset
 
 noncomputable section
 
@@ -73,10 +73,10 @@ section Fixed
 variable {prims} {h : Query C → HashOutput}
 
 theorem D_sequenceFin {α : Type} : ∀ {n : ℕ} (f : Fin n → OracleComp (RoSpec C) α),
-    D prims h (Concrete.sequenceFin f) = fun i => D prims h (f i)
+    D prims h (OverPermutation.sequenceFin f) = fun i => D prims h (f i)
   | 0, f => by funext i; exact i.elim0
   | n + 1, f => by
-    rw [Concrete.sequenceFin, D_bind, D_bind, D_sequenceFin, D_pure]
+    rw [OverPermutation.sequenceFin, D_bind, D_bind, D_sequenceFin, D_pure]
     funext i
     cases i using Fin.cases <;> rfl
 
@@ -92,14 +92,14 @@ theorem tweakable_map {α β : Type} (f : α → β) (oa : OracleComp HashSpec �
   simp [tweakable]
 
 theorem tweakable_oracleHash (x : HashInput) :
-    tweakable (C := C) (Concrete.oracleHash x : OracleComp HashSpec HashOutput) = hashQuery (.hash x) := by
-  simp [tweakable, Concrete.oracleHash, hashQuery]
+    tweakable (C := C) (Verification.oracleHashWithHash x : OracleComp HashSpec HashOutput) = hashQuery (.hash x) := by
+  simp [tweakable, Verification.oracleHashWithHash, hashQuery]
 
 theorem tweakable_sequenceFin {α : Type} : ∀ {n : ℕ} (f : Fin n → OracleComp HashSpec α),
-    tweakable (C := C) (Concrete.sequenceFin f) = Concrete.sequenceFin fun i => tweakable (f i)
-  | 0, f => by simp [Concrete.sequenceFin, tweakable_pure]
+    tweakable (C := C) (OverPermutation.sequenceFin f) = OverPermutation.sequenceFin fun i => tweakable (f i)
+  | 0, f => by simp [OverPermutation.sequenceFin, tweakable_pure]
   | n + 1, f => by
-    simp only [Concrete.sequenceFin, tweakable_bind, tweakable_pure, tweakable_sequenceFin]
+    simp only [OverPermutation.sequenceFin, tweakable_bind, tweakable_pure, tweakable_sequenceFin]
 
 /-- A leanVM computation with `H` fixed to `h`. -/
 abbrev E (prims : Primitives) (h : Query C → HashOutput) {α : Type} (oa : OracleComp HashSpec α) : α :=
@@ -112,51 +112,51 @@ theorem E_bind {α β : Type} (oa : OracleComp HashSpec α) (f : α → OracleCo
 theorem E_pure {α : Type} (a : α) : E prims h (pure a : OracleComp HashSpec α) = a := by
   rw [E, tweakable_pure, D_pure]
 
-theorem E_oracleHash (x : HashInput) : E prims h (Concrete.oracleHash x : OracleComp HashSpec HashOutput) = h (.hash x) := by
+theorem E_oracleHash (x : HashInput) : E prims h (Verification.oracleHashWithHash x : OracleComp HashSpec HashOutput) = h (.hash x) := by
   rw [E, tweakable_oracleHash, D_hashQuery]
 
 theorem E_tweakableHash (P : PublicParameter) (dom : HashDomain) (payload : HashInput) :
-    E prims h (Concrete.tweakableHash P dom payload : OracleComp HashSpec Digest) =
+    E prims h (Verification.tweakableHashWithHash P dom payload : OracleComp HashSpec Digest) =
       truncateHash (h (.hash (tweakableHashInput P dom payload))) := by
-  unfold Concrete.tweakableHash
-  rw [E_bind, E_oracleHash, E_pure]
+  unfold Verification.tweakableHashWithHash Verification.thWithHash
+  rw [E_bind, E_oracleHash, E_pure, thInput_hashDomainFields]
 
 theorem E_sequenceFin {α : Type} {n : ℕ} (f : Fin n → OracleComp HashSpec α) :
-    E prims h (Concrete.sequenceFin f) = fun i => E prims h (f i) := by
+    E prims h (OverPermutation.sequenceFin f) = fun i => E prims h (f i) := by
   rw [E, tweakable_sequenceFin, D_sequenceFin]
 
 theorem E_chainWalk_zero (P : PublicParameter) (lay : Layer) (key : KeyIndex) (l : ChainIndex) (s : ℕ)
-    (v : Digest) : E prims h (Concrete.chainWalk P lay key l s 0 v) = v := by
-  rw [Concrete.chainWalk, E_pure]
+    (v : Digest) : E prims h (Verification.chainWalkWithHash P lay key l s 0 v) = v := by
+  rw [Verification.chainWalk_eq_zero, E_pure]
 
 theorem E_chainWalk_succ (P : PublicParameter) (lay : Layer) (key : KeyIndex) (l : ChainIndex) (s n : ℕ)
-    (v : Digest) : E prims h (Concrete.chainWalk P lay key l s (n + 1) v) =
+    (v : Digest) : E prims h (Verification.chainWalkWithHash P lay key l s (n + 1) v) =
       if hs : s + n < chainLength - 1 then
         truncateHash (h (.hash (tweakableHashInput P (.chain lay key ⟨s + n, hs⟩)
-          (Concrete.chainPayload l (E prims h (Concrete.chainWalk P lay key l s n v))))))
+          (Verification.chainPayload l (E prims h (Verification.chainWalkWithHash P lay key l s n v))))))
       else 0 := by
-  rw [Concrete.chainWalk, E_bind]
+  rw [Verification.chainWalk_eq_succ, E_bind]
   split_ifs
   · rw [E_tweakableHash]
   · rw [E_pure]
 
 theorem E_chainWalk_add (P : PublicParameter) (lay : Layer) (key : KeyIndex) (l : ChainIndex) (s a : ℕ)
-    (v : Digest) : ∀ b, E prims h (Concrete.chainWalk P lay key l s (a + b) v) =
-      E prims h (Concrete.chainWalk P lay key l (s + a) b (E prims h (Concrete.chainWalk P lay key l s a v)))
+    (v : Digest) : ∀ b, E prims h (Verification.chainWalkWithHash P lay key l s (a + b) v) =
+      E prims h (Verification.chainWalkWithHash P lay key l (s + a) b (E prims h (Verification.chainWalkWithHash P lay key l s a v)))
   | 0 => by rw [E_chainWalk_zero, Nat.add_zero]
   | b + 1 => by
     rw [← Nat.add_assoc, E_chainWalk_succ, E_chainWalk_succ, E_chainWalk_add P lay key l s a v b]
     simp only [Nat.add_assoc]
 
-theorem E_grind_spec (P : PublicParameter) (lay : Layer) (key : KeyIndex) (message : HashInput) (base : Randomness) :
+theorem E_grind_spec (P : PublicParameter) (lay : Layer) (key : KeyIndex) (message : HashInput) (base : Randomizer) :
     ∀ attempts trial randomness encoding,
     E prims h (grind P lay key message base attempts trial) = some (randomness, encoding) →
-      Codeword.decode (E prims h (Concrete.messageDigest P lay key message randomness)) = some encoding
+      Codeword.decode (E prims h (Verification.messageDigestWithHash P lay key message randomness)) = some encoding
   | 0, trial, randomness, encoding, hg => by rw [grind, E_pure] at hg; cases hg
   | attempts + 1, trial, randomness, encoding, hg => by
     rw [grind, E_bind] at hg
     revert hg
-    rcases hd : Codeword.decode (E prims h (Concrete.messageDigest P lay key message
+    rcases hd : Codeword.decode (E prims h (Verification.messageDigestWithHash P lay key message
       (base + BitVec.ofNat digestBits trial))) with _ | enc
     · intro hg
       exact E_grind_spec P lay key message base attempts (trial + 1) randomness encoding hg
@@ -167,28 +167,28 @@ theorem E_grind_spec (P : PublicParameter) (lay : Layer) (key : KeyIndex) (messa
 
 theorem E_merkleNode_succ (P : PublicParameter) (lay : Layer) (f : KeyIndex → ChainIndex → Digest) (n idx : ℕ) :
     E prims h (merkleNode P lay f (n + 1) idx) =
-      truncateHash (h (.hash (tweakableHashInput P (.node lay (n + 1) idx) (Concrete.nodePayload
+      truncateHash (h (.hash (tweakableHashInput P (.node lay (n + 1) idx) (OverPermutation.nodePayload
         (E prims h (merkleNode P lay f n (2 * idx))) (E prims h (merkleNode P lay f n (2 * idx + 1))))))) := by
   rw [merkleNode, E_bind, E_bind, E_tweakableHash]
 
 theorem E_treeFold_succ (P : PublicParameter) (lay : Layer) (key : KeyIndex) (path : Fin layerHeight → Digest)
     (n : ℕ) (v : Digest) :
-    E prims h (Concrete.treeFold P lay key path (n + 1) v) =
+    E prims h (Verification.treeFoldWithHash P lay key path (n + 1) v) =
       if key.val.testBit n then
-        truncateHash (h (.hash (tweakableHashInput P (.node lay (n + 1) (key.val / 2 ^ (n + 1))) (Concrete.nodePayload
-          (if hn : n < layerHeight then path ⟨n, hn⟩ else 0) (E prims h (Concrete.treeFold P lay key path n v))))))
+        truncateHash (h (.hash (tweakableHashInput P (.node lay (n + 1) (key.val / 2 ^ (n + 1))) (OverPermutation.nodePayload
+          (if hn : n < layerHeight then path ⟨n, hn⟩ else 0) (E prims h (Verification.treeFoldWithHash P lay key path n v))))))
       else
-        truncateHash (h (.hash (tweakableHashInput P (.node lay (n + 1) (key.val / 2 ^ (n + 1))) (Concrete.nodePayload
-          (E prims h (Concrete.treeFold P lay key path n v)) (if hn : n < layerHeight then path ⟨n, hn⟩ else 0))))) := by
-  rw [Concrete.treeFold, E_bind]
+        truncateHash (h (.hash (tweakableHashInput P (.node lay (n + 1) (key.val / 2 ^ (n + 1))) (OverPermutation.nodePayload
+          (E prims h (Verification.treeFoldWithHash P lay key path n v)) (if hn : n < layerHeight then path ⟨n, hn⟩ else 0))))) := by
+  rw [Verification.treeFold_eq_succ, E_bind]
   split_ifs <;> rw [E_tweakableHash]
 
 theorem E_merkle_ascent (P : PublicParameter) (lay : Layer) (f : KeyIndex → ChainIndex → Digest) (key : KeyIndex) :
-    ∀ n ≤ layerHeight, E prims h (Concrete.treeFold P lay key
+    ∀ n ≤ layerHeight, E prims h (Verification.treeFoldWithHash P lay key
         (fun level => E prims h (merkleNode P lay f level.val (Nat.xor (key.val / 2 ^ level.val) 1))) n
         (E prims h (merkleNode P lay f 0 key.val))) =
       E prims h (merkleNode P lay f n (key.val / 2 ^ n))
-  | 0, _ => by rw [Concrete.treeFold, E_pure, pow_zero, Nat.div_one]
+  | 0, _ => by rw [Verification.treeFold_eq_zero, E_pure, pow_zero, Nat.div_one]
   | n + 1, hn => by
     rw [E_treeFold_succ, E_merkle_ascent P lay f key n (by omega), E_merkleNode_succ, dif_pos (by omega)]
     have hdiv : key.val / 2 ^ (n + 1) = key.val / 2 ^ n / 2 := by
@@ -210,24 +210,24 @@ theorem E_merkle_ascent (P : PublicParameter) (lay : Layer) (f : KeyIndex → Ch
       rw [h1, if_pos rfl, hx, show 2 * (q / 2) + 1 = q by have := Nat.odd_iff.mp hq; omega]
 
 theorem E_merkleNode_zero (P : PublicParameter) (lay : Layer) (f : KeyIndex → ChainIndex → Digest) (key : KeyIndex) :
-    E prims h (merkleNode P lay f 0 key.val) = E prims h (Concrete.leafHash P lay key (f key)) := by
+    E prims h (merkleNode P lay f 0 key.val) = E prims h (Verification.leafHashWithHash P lay key (f key)) := by
   have : (⟨key.val % lifetime, Nat.mod_lt _ (by decide)⟩ : KeyIndex) = key := Fin.ext (Nat.mod_eq_of_lt key.isLt)
   rw [merkleNode, this]
 
 theorem E_layerRoot (P : PublicParameter) (lay : Layer) (f : KeyIndex → ChainIndex → Digest) (key : KeyIndex)
     (message : HashInput) (part : LayerSignature) (encoding : Encoding)
-    (hdec : Codeword.decode (E prims h (Concrete.messageDigest P lay key message part.randomness)) = some encoding)
-    (hends : ∀ l, E prims h (Concrete.recoverChain P lay key l (encoding l) (part.chainValues l)) = f key l)
-    (hpath : part.path = E prims h (merklePath P lay f key)) :
-    E prims h (Concrete.layerRoot P lay key message part) =
+    (hdec : Codeword.decode (E prims h (Verification.messageDigestWithHash P lay key message part.randomizer)) = some encoding)
+    (hends : ∀ l, E prims h (Verification.recoverChainWithHash P lay key l (encoding l) (part.chainValues l)) = f key l)
+    (hpath : part.authenticationPath = E prims h (merklePath P lay f key)) :
+    E prims h (Verification.layerRootWithHash P lay key message part) =
       some (E prims h (merkleNode P lay f layerHeight (key.val / 2 ^ layerHeight))) := by
-  unfold Concrete.layerRoot Concrete.otsLeaf
+  unfold Verification.layerRootWithHash Verification.otsLeafWithHash
   rw [E_bind, E_bind, hdec]
   dsimp only
   rw [E_bind, E_sequenceFin, E_bind, E_pure]
   dsimp only
   rw [E_bind, E_pure]
-  have hf : (fun l => E prims h (Concrete.recoverChain P lay key l (encoding l) (part.chainValues l))) = f key :=
+  have hf : (fun l => E prims h (Verification.recoverChainWithHash P lay key l (encoding l) (part.chainValues l))) = f key :=
     funext hends
   rw [hf, ← E_merkleNode_zero, hpath, merklePath, E_sequenceFin, E_merkle_ascent P lay f key _ le_rfl]
 
@@ -292,11 +292,11 @@ theorem bottomKey_treeOf (e : KeyIndex) :
   simp only [bottomKey, treeOf]
   exact Nat.div_add_mod _ _
 
-theorem keyAt_bottom (e : KeyIndex) : keyAt e bottomLayer = e := by
-  apply Fin.ext; simp [keyAt, bottomLayer]
+theorem keyAt_bottom (e : KeyIndex) : keyIndexOnLayer e bottomLayer = e := by
+  apply Fin.ext; simp [keyIndexOnLayer, bottomLayer]
 
-theorem keyAt_top (e : KeyIndex) : keyAt e topLayer = topKey (treeOf e) := by
-  apply Fin.ext; simp [keyAt, topKey, treeOf, topLayer]
+theorem keyAt_top (e : KeyIndex) : keyIndexOnLayer e topLayer = topKey (treeOf e) := by
+  apply Fin.ext; simp [keyIndexOnLayer, topKey, treeOf, topLayer]
 
 /-! ## The threshold PRF combines -/
 
@@ -438,12 +438,12 @@ theorem D_referenceJob (seeds : C.Term → HashOutput) (P : PublicParameter) (jo
     D prims h (referenceJob tweakable (prfValue seeds) P job) =
       let value := fun k => (job.points.map fun x => D prims h (prfValue seeds x)).getD k 0
       match job.kind with
-      | .chainEnd e l => bitsOfDigest (E prims h (Concrete.chainWalk P topLayer e l 0 3 (value 0)))
+      | .chainEnd e l => bitsOfDigest (E prims h (Verification.chainWalkWithHash P topLayer e l 0 3 (value 0)))
       | .chainRow e l =>
-          bitsOfDigest (E prims h (Concrete.chainWalk P bottomLayer e l 0 1 (value 0)) ^^^ value 1) ++
-          bitsOfDigest (E prims h (Concrete.chainWalk P bottomLayer e l 0 2 (value 0)) ^^^ value 2) ++
-          bitsOfDigest (E prims h (Concrete.chainWalk P bottomLayer e l 0 3 (value 0)))
-      | .chainValue e l p => bitsOfDigest (E prims h (Concrete.chainWalk P topLayer e l 0 p.val (value 0)))
+          bitsOfDigest (E prims h (Verification.chainWalkWithHash P bottomLayer e l 0 1 (value 0)) ^^^ value 1) ++
+          bitsOfDigest (E prims h (Verification.chainWalkWithHash P bottomLayer e l 0 2 (value 0)) ^^^ value 2) ++
+          bitsOfDigest (E prims h (Verification.chainWalkWithHash P bottomLayer e l 0 3 (value 0)))
+      | .chainValue e l p => bitsOfDigest (E prims h (Verification.chainWalkWithHash P topLayer e l 0 p.val (value 0)))
       | .commitment e => bitsOfDigest (truncateHash (h (.hash (commitmentInput P e (value 0)))))
       | .randomizer => bitsOfDigest (value 0) := by
   obtain ⟨kind, points⟩ := job
@@ -459,7 +459,7 @@ theorem D_referenceJob (seeds : C.Term → HashOutput) (P : PublicParameter) (jo
 
 theorem D_refTop (P : PublicParameter) (seeds : C.Term → HashOutput) (top0 : TopTree) :
     ∃ top : TopTree, D prims h (referenceTree tweakable (prfValue seeds) P top0 .top) = some (.top top) ∧
-      (∀ b l, top.chainEnd (topKey b) l = E prims h (Concrete.chainWalk P topLayer (topKey b) l 0 3
+      (∀ b l, top.chainEnd (topKey b) l = E prims h (Verification.chainWalkWithHash P topLayer (topKey b) l 0 3
         (D prims h (prfValue seeds (.chain topLayer (topKey b) l (digit 0)))))) ∧
       top.root = E prims h (merkleNode P topLayer top.chainEnd layerHeight 0) := by
   unfold referenceTree ceremonyOutput
@@ -471,7 +471,7 @@ theorem D_refTop (P : PublicParameter) (seeds : C.Term → HashOutput) (top0 : T
   · dsimp only
   dsimp only
   have htop : topJobs = ((List.finRange (2 ^ layerHeight)).flatMap fun b =>
-      (List.finRange numChains).map fun l => (topKey b, l)).map
+      (List.finRange chainCount).map fun l => (topKey b, l)).map
         fun el => (⟨.chainEnd el.1 el.2, [.chain topLayer el.1 el.2 (digit 0)]⟩ : Job) := by
     simp only [topJobs, List.map_flatMap, List.map_map]
     rfl
@@ -496,11 +496,11 @@ theorem bottomOutputs_cpk (seeds : C.Term → HashOutput) (P : PublicParameter) 
     (l : ChainIndex) :
     let bits := (bottomOutputs prims h seeds P b).getD ((bottomKeys b).idxOf (bottomKey b k, l)) []
     let value := fun p => D prims h (prfValue seeds (.chain bottomLayer (bottomKey b k) l p))
-    digestAt bits 0 = E prims h (Concrete.chainWalk P bottomLayer (bottomKey b k) l 0 1 (value (digit 0))) ^^^
+    digestAt bits 0 = E prims h (Verification.chainWalkWithHash P bottomLayer (bottomKey b k) l 0 1 (value (digit 0))) ^^^
         value (digit 1) ∧
-      digestAt bits 1 = E prims h (Concrete.chainWalk P bottomLayer (bottomKey b k) l 0 2 (value (digit 0))) ^^^
+      digestAt bits 1 = E prims h (Verification.chainWalkWithHash P bottomLayer (bottomKey b k) l 0 2 (value (digit 0))) ^^^
         value (digit 2) ∧
-      digestAt bits 2 = E prims h (Concrete.chainWalk P bottomLayer (bottomKey b k) l 0 3 (value (digit 0))) := by
+      digestAt bits 2 = E prims h (Verification.chainWalkWithHash P bottomLayer (bottomKey b k) l 0 3 (value (digit 0))) := by
   have hmem : (bottomKey b k, l) ∈ bottomKeys b := by simp [List.mem_flatMap]
   simp only [bottomOutputs, bottomJobs_eq, List.append_assoc, List.map_append]
   rw [List.getD_append _ _ _ _ (by simpa using List.idxOf_lt_length_iff.mpr hmem), List.map_map,
@@ -525,7 +525,7 @@ theorem bottomOutputs_commitment (seeds : C.Term → HashOutput) (P : PublicPara
 theorem signOutputs_value (seeds : C.Term → HashOutput) (P : PublicParameter) (b : Fin (2 ^ layerHeight))
     (encoding : Encoding) (l : ChainIndex) :
     digestAt (((signJobs b encoding).map fun job => D prims h (referenceJob tweakable (prfValue seeds) P job)).getD l.val [])
-      0 = E prims h (Concrete.chainWalk P topLayer (topKey b) l 0 (encoding l).val
+      0 = E prims h (Verification.chainWalkWithHash P topLayer (topKey b) l 0 (encoding l).val
         (D prims h (prfValue seeds (.chain topLayer (topKey b) l (digit 0))))) := by
   simp only [signJobs, List.map_map]
   rw [getD_map_finRange]
@@ -533,16 +533,16 @@ theorem signOutputs_value (seeds : C.Term → HashOutput) (P : PublicParameter) 
 
 /-- The top signature of a bottom tree leads to the root of the top tree. -/
 theorem topRoot_eq (seeds : C.Term → HashOutput) (P : PublicParameter) (top : TopTree)
-    (htopChain : ∀ b l, top.chainEnd (topKey b) l = E prims h (Concrete.chainWalk P topLayer (topKey b) l 0 3
+    (htopChain : ∀ b l, top.chainEnd (topKey b) l = E prims h (Verification.chainWalkWithHash P topLayer (topKey b) l 0 3
         (D prims h (prfValue seeds (.chain topLayer (topKey b) l (digit 0))))))
     (htopRoot : top.root = E prims h (merkleNode P topLayer top.chainEnd layerHeight 0))
-    (b : Fin (2 ^ layerHeight)) (message : HashInput) (randomness : Randomness) (encoding : Encoding)
-    (hdec : Codeword.decode (E prims h (Concrete.messageDigest P topLayer (topKey b) message randomness)) =
+    (b : Fin (2 ^ layerHeight)) (message : HashInput) (randomness : Randomizer) (encoding : Encoding)
+    (hdec : Codeword.decode (E prims h (Verification.messageDigestWithHash P topLayer (topKey b) message randomness)) =
       some encoding) :
-    E prims h (Concrete.layerRoot P topLayer (topKey b) message ⟨randomness, fun l => digestAt
+    E prims h (Verification.layerRootWithHash P topLayer (topKey b) message ⟨randomness, fun l => digestAt
       (((signJobs b encoding).map fun job => D prims h (referenceJob tweakable (prfValue seeds) P job)).getD l.val [])
       0, E prims h (merklePath P topLayer top.chainEnd (topKey b))⟩) = some top.root := by
-  have hends : ∀ l, E prims h (Concrete.recoverChain P topLayer (topKey b) l (encoding l) (digestAt
+  have hends : ∀ l, E prims h (Verification.recoverChainWithHash P topLayer (topKey b) l (encoding l) (digestAt
       (((signJobs b encoding).map fun job => D prims h (referenceJob tweakable (prfValue seeds) P job)).getD l.val [])
       0)) = top.chainEnd (topKey b) l := by
     intro l
@@ -551,7 +551,7 @@ theorem topRoot_eq (seeds : C.Term → HashOutput) (P : PublicParameter) (top : 
       (D prims h (prfValue seeds (.chain topLayer (topKey b) l (digit 0)))) (chainLength - 1 - (encoding l).val)
     rw [Nat.zero_add, show (encoding l).val + (chainLength - 1 - (encoding l).val) = 3 by
       simp only [chainLength, winternitzBits] at hp ⊢; omega] at hadd
-    unfold Concrete.recoverChain
+    unfold Verification.recoverChainWithHash
     rw [signOutputs_value, htopChain, hadd]
   have key := E_layerRoot (prims := prims) (h := h) P topLayer top.chainEnd (topKey b) message ⟨randomness,
       fun l => digestAt
@@ -567,14 +567,14 @@ def honestRo (P : PublicParameter) (seeds : C.Term → HashOutput) (keys : C.Par
   let some (.top top) ← referenceTree tweakable (prfValue seeds) P emptyTop .top | pure none
   let some tree ← (fun | some (.bottom tree) => some tree | _ => none) <$>
       referenceTree tweakable (prfValue seeds) P top (.bottom (treeOf e)) | pure none
-  let parts ← Concrete.sequenceFin fun i =>
+  let parts ← OverPermutation.sequenceFin fun i =>
     if i ∈ J.1 then eval (keys i) i J (.randomizer bottomLayer e) m else pure 0
   let some _ ← signCodeword P (tree.commitment e) e m (combine J parts) | pure none
-  let chainParts ← Concrete.sequenceFin fun i => do
+  let chainParts ← OverPermutation.sequenceFin fun i => do
     let values ← signRound2With (fun oa => oa) (fun x => eval (keys i) i J x m) P J (tree.commitment e) e m parts
     pure fun l => ((values.bind (· l)).getD 0)
   let some signature ← assemble P tree e m J parts chainParts | pure (some false)
-  some <$> tweakable (Concrete.verify ⟨top.root, P⟩ m signature)
+  some <$> tweakable (Verification.verifyWithHash ⟨top.root, P⟩ m signature)
 
 section Fixed
 
@@ -585,17 +585,17 @@ structure BottomSpec (prims : Primitives) (h : Query C → HashOutput) (seeds : 
     (P : PublicParameter) (top : TopTree) (b : Fin (2 ^ layerHeight)) (tree : BottomTree) : Prop where
   cpk : ∀ k l, let value := fun p => D prims h (prfValue seeds (.chain bottomLayer (bottomKey b k) l p))
     tree.cpk (bottomKey b k) l =
-      (E prims h (Concrete.chainWalk P bottomLayer (bottomKey b k) l 0 1 (value (digit 0))) ^^^ value (digit 1),
-        E prims h (Concrete.chainWalk P bottomLayer (bottomKey b k) l 0 2 (value (digit 0))) ^^^ value (digit 2),
-        E prims h (Concrete.chainWalk P bottomLayer (bottomKey b k) l 0 3 (value (digit 0))))
+      (E prims h (Verification.chainWalkWithHash P bottomLayer (bottomKey b k) l 0 1 (value (digit 0))) ^^^ value (digit 1),
+        E prims h (Verification.chainWalkWithHash P bottomLayer (bottomKey b k) l 0 2 (value (digit 0))) ^^^ value (digit 2),
+        E prims h (Verification.chainWalkWithHash P bottomLayer (bottomKey b k) l 0 3 (value (digit 0))))
   commitment : ∀ k, tree.commitment (bottomKey b k) = truncateHash (h (.hash (commitmentInput P (bottomKey b k)
     (D prims h (prfValue seeds (.randomizer bottomLayer (bottomKey b k)))))))
   root : tree.root = E prims h (merkleNode P bottomLayer (fun e l => (tree.cpk e l).2.2) layerHeight b.val)
-  topSignature : E prims h (Concrete.layerRoot P topLayer (topKey b) (bytesLE 16 tree.root) tree.topSignature) =
+  topSignature : E prims h (Verification.layerRootWithHash P topLayer (topKey b) (littleEndianBytes 16 tree.root) tree.topSignature) =
     some top.root
 
 theorem D_refBottom (P : PublicParameter) (seeds : C.Term → HashOutput) (top : TopTree)
-    (htopChain : ∀ b l, top.chainEnd (topKey b) l = E prims h (Concrete.chainWalk P topLayer (topKey b) l 0 3
+    (htopChain : ∀ b l, top.chainEnd (topKey b) l = E prims h (Verification.chainWalkWithHash P topLayer (topKey b) l 0 3
         (D prims h (prfValue seeds (.chain topLayer (topKey b) l (digit 0))))))
     (htopRoot : top.root = E prims h (merkleNode P topLayer top.chainEnd layerHeight 0))
     (b : Fin (2 ^ layerHeight)) :
@@ -625,14 +625,14 @@ theorem D_refBottom (P : PublicParameter) (seeds : C.Term → HashOutput) (top :
 theorem D_signCodeword (P : PublicParameter) (commitment : Digest) (e : KeyIndex) (message : Message) (ρ : Digest)
     (hc : commitment = truncateHash (h (.hash (commitmentInput P e ρ)))) :
     D prims h (signCodeword P commitment e message ρ) =
-      E prims h (grind P bottomLayer e (bytesLE 32 message)
-        (truncateHash (h (.hash (randomizerInput P bottomLayer e ρ (bytesLE 32 message))))) randomizerAttemptLimit 0) := by
+      E prims h (grind P bottomLayer e (littleEndianBytes 32 message)
+        (truncateHash (h (.hash (randomizerInput P bottomLayer e ρ (littleEndianBytes 32 message))))) randomizerAttemptLimit 0) := by
   unfold signCodeword
   change E prims h _ = _
   rw [E_bind, E_oracleHash, if_neg (by rw [hc]; exact not_not.mpr rfl), E_bind, E_oracleHash]
 
 theorem D_signRound2With (part : Point → OracleComp (RoSpec C) Digest) (P : PublicParameter) (J : C.Quorum)
-    (commitment : Digest) (e : KeyIndex) (message : Message) (parts : C.Party → Digest) (randomness : Randomness)
+    (commitment : Digest) (e : KeyIndex) (message : Message) (parts : C.Party → Digest) (randomness : Randomizer)
     (encoding : Encoding)
     (hsc : D prims h (signCodeword P commitment e message (combine J parts)) = some (randomness, encoding)) :
     D prims h (signRound2With (fun oa => oa) part P J commitment e message parts) =
@@ -657,10 +657,10 @@ def assembledValue (tree : BottomTree) (e : KeyIndex) (J : C.Quorum) (chainParts
   | p => (if p = 1 then (tree.cpk e l).1 else (tree.cpk e l).2.1) ^^^ combine J (chainParts · l)
 
 theorem D_assemble (P : PublicParameter) (tree : BottomTree) (e : KeyIndex) (message : Message) (J : C.Quorum)
-    (parts : C.Party → Digest) (chainParts : C.Party → ChainIndex → Digest) (randomness : Randomness)
+    (parts : C.Party → Digest) (chainParts : C.Party → ChainIndex → Digest) (randomness : Randomizer)
     (encoding : Encoding)
     (hsc : D prims h (signCodeword P (tree.commitment e) e message (combine J parts)) = some (randomness, encoding))
-    (hends : ∀ l, E prims h (Concrete.recoverChain P bottomLayer e l (encoding l)
+    (hends : ∀ l, E prims h (Verification.recoverChainWithHash P bottomLayer e l (encoding l)
       (assembledValue tree e J chainParts encoding l)) = (tree.cpk e l).2.2) :
     D prims h (assemble P tree e message J parts chainParts) =
       some ⟨e, fun lay => if lay = bottomLayer then
@@ -677,17 +677,17 @@ theorem D_assemble (P : PublicParameter) (tree : BottomTree) (e : KeyIndex) (mes
   rfl
 
 theorem assembled_ends (P : PublicParameter) (tree : BottomTree) (e : KeyIndex) (J : C.Quorum)
-    (chainParts : C.Party → ChainIndex → Digest) (encoding : Encoding) (l : ChainIndex) (value : Digit → Digest)
+    (chainParts : C.Party → ChainIndex → Digest) (encoding : Encoding) (l : ChainIndex) (value : WinternitzDigit → Digest)
     (hcpk : tree.cpk e l =
-      (E prims h (Concrete.chainWalk P bottomLayer e l 0 1 (value (digit 0))) ^^^ value (digit 1),
-        E prims h (Concrete.chainWalk P bottomLayer e l 0 2 (value (digit 0))) ^^^ value (digit 2),
-        E prims h (Concrete.chainWalk P bottomLayer e l 0 3 (value (digit 0)))))
+      (E prims h (Verification.chainWalkWithHash P bottomLayer e l 0 1 (value (digit 0))) ^^^ value (digit 1),
+        E prims h (Verification.chainWalkWithHash P bottomLayer e l 0 2 (value (digit 0))) ^^^ value (digit 2),
+        E prims h (Verification.chainWalkWithHash P bottomLayer e l 0 3 (value (digit 0)))))
     (hcomb : ∀ p, p < chainLength - 1 → (encoding l).val = p → combine J (chainParts · l) = value (encoding l)) :
-    E prims h (Concrete.recoverChain P bottomLayer e l (encoding l) (assembledValue tree e J chainParts encoding l)) =
+    E prims h (Verification.recoverChainWithHash P bottomLayer e l (encoding l) (assembledValue tree e J chainParts encoding l)) =
       (tree.cpk e l).2.2 := by
   have hlt : (encoding l).val < chainLength := (encoding l).isLt
   simp only [chainLength, winternitzBits] at hlt
-  unfold Concrete.recoverChain assembledValue
+  unfold Verification.recoverChainWithHash assembledValue
   rw [hcpk]
   dsimp only
   obtain h0 | h1 | h2 | h3 : (encoding l).val = 0 ∨ (encoding l).val = 1 ∨ (encoding l).val = 2 ∨
@@ -697,13 +697,13 @@ theorem assembled_ends (P : PublicParameter) (tree : BottomTree) (e : KeyIndex) 
     rfl
   · have he : encoding l = digit 1 := Fin.ext h1
     rw [hcomb 1 (by decide) h1, he]
-    show E prims h (Concrete.chainWalk P bottomLayer e l 1 2 ((E prims h (Concrete.chainWalk P bottomLayer e l 0 1
+    show E prims h (Verification.chainWalkWithHash P bottomLayer e l 1 2 ((E prims h (Verification.chainWalkWithHash P bottomLayer e l 0 1
       (value (digit 0))) ^^^ value (digit 1)) ^^^ value (digit 1))) = _
     rw [BitVec.xor_assoc, BitVec.xor_self, BitVec.xor_zero]
     exact (E_chainWalk_add _ _ _ _ 0 1 _ 2).symm
   · have he : encoding l = digit 2 := Fin.ext h2
     rw [hcomb 2 (by decide) h2, he]
-    show E prims h (Concrete.chainWalk P bottomLayer e l 2 1 ((E prims h (Concrete.chainWalk P bottomLayer e l 0 2
+    show E prims h (Verification.chainWalkWithHash P bottomLayer e l 2 1 ((E prims h (Verification.chainWalkWithHash P bottomLayer e l 0 2
       (value (digit 0))) ^^^ value (digit 2)) ^^^ value (digit 2))) = _
     rw [BitVec.xor_assoc, BitVec.xor_self, BitVec.xor_zero]
     exact (E_chainWalk_add _ _ _ _ 0 2 _ 1).symm
@@ -732,8 +732,8 @@ theorem D_honestRo (P : PublicParameter) (seeds : C.Term → HashOutput) (pairKe
     rw [bottomKey_treeOf] at this
     rw [this, hρ]
   rw [D_bind, D_signCodeword _ _ _ _ _ hc]
-  rcases hG : E prims h (grind P bottomLayer e (bytesLE 32 m)
-    (truncateHash (h (.hash (randomizerInput P bottomLayer e (combine J parts) (bytesLE 32 m)))))
+  rcases hG : E prims h (grind P bottomLayer e (littleEndianBytes 32 m)
+    (truncateHash (h (.hash (randomizerInput P bottomLayer e (combine J parts) (littleEndianBytes 32 m)))))
     randomizerAttemptLimit 0) with _ | ⟨randB, encB⟩
   · dsimp only; rw [D_pure]; simp
   have hsc := (D_signCodeword (prims := prims) (h := h) _ _ _ m _ hc).trans hG
@@ -744,7 +744,7 @@ theorem D_honestRo (P : PublicParameter) (seeds : C.Term → HashOutput) (pairKe
     (if (encB l).val < chainLength - 1 then
       some (D prims h (eval (dealtKeys P seeds pairKeys i) i J (.chain bottomLayer e l (encB l)) m)) else none).getD 0
     with hchainParts
-  have hends : ∀ l, E prims h (Concrete.recoverChain P bottomLayer e l (encB l)
+  have hends : ∀ l, E prims h (Verification.recoverChainWithHash P bottomLayer e l (encB l)
       (assembledValue tree e J chainParts encB l)) = (tree.cpk e l).2.2 := by
     intro l
     have hcpk' := hspec.cpk ⟨e.val % 2 ^ layerHeight, Nat.mod_lt _ (by decide)⟩ l
@@ -757,14 +757,14 @@ theorem D_honestRo (P : PublicParameter) (seeds : C.Term → HashOutput) (pairKe
   rw [D_assemble _ _ _ _ _ _ _ randB encB hsc hends]
   dsimp only
   rw [D_map]
-  change some (E prims h (Concrete.verify _ m _)) ≠ some false
-  unfold Concrete.verify
+  change some (E prims h (Verification.verifyWithHash _ m _)) ≠ some false
+  unfold Verification.verifyWithHash
   dsimp only
   rw [if_pos rfl, if_neg (by decide), keyAt_bottom, keyAt_top, E_bind]
   have hroot' : tree.root = E prims h (merkleNode P bottomLayer
       (fun e l => (tree.cpk e l).2.2) layerHeight (e.val / 2 ^ layerHeight)) := by
     rw [hspec.root, show ((treeOf e) : ℕ) = e.val / 2 ^ layerHeight from rfl]
-  rw [E_layerRoot (prims := prims) (h := h) P bottomLayer (fun e l => (tree.cpk e l).2.2) e (bytesLE 32 m)
+  rw [E_layerRoot (prims := prims) (h := h) P bottomLayer (fun e l => (tree.cpk e l).2.2) e (littleEndianBytes 32 m)
     ⟨randB, assembledValue tree e J chainParts encB,
       E prims h (merklePath P bottomLayer (fun e l => (tree.cpk e l).2.2) e)⟩ encB hdecB hends (by simp only)]
   dsimp only
@@ -823,10 +823,10 @@ theorem φ_map {α β : Type} (f : α → β) (oa : OracleComp (RoSpec C) α) : 
   simp only [Function.comp_def, φ_pure]
 
 theorem φ_sequenceFin {α : Type} : ∀ {n : ℕ} (f : Fin n → OracleComp (RoSpec C) α),
-    φ (Concrete.sequenceFin f) = Concrete.sequenceFin fun i => φ (f i)
-  | 0, f => by simp [Concrete.sequenceFin, φ_pure]
+    φ (OverPermutation.sequenceFin f) = OverPermutation.sequenceFin fun i => φ (f i)
+  | 0, f => by simp [OverPermutation.sequenceFin, φ_pure]
   | n + 1, f => by
-    simp only [Concrete.sequenceFin, φ_bind, φ_pure]
+    simp only [OverPermutation.sequenceFin, φ_bind, φ_pure]
     congr 1; funext a; rw [φ_sequenceFin]
 
 theorem φ_mapM {α β : Type} (f : α → OracleComp (RoSpec C) β) :
@@ -977,7 +977,7 @@ theorem honestSigning_verifies (J : C.Quorum) (e : KeyIndex) (m : Message) :
 
 /-! ## Bytes and codewords -/
 
-theorem bytesLE_injective' {n : Nat} {x y : BitVec (8 * n)} (h : bytesLE n x = bytesLE n y) : x = y := by
+theorem bytesLE_injective' {n : Nat} {x y : BitVec (8 * n)} (h : littleEndianBytes n x = littleEndianBytes n y) : x = y := by
   have hfun := List.ofFn_inj.mp h
   apply BitVec.eq_of_getLsbD_eq
   intro i hi
@@ -1046,7 +1046,7 @@ theorem sum_digits_eq (B : Nat) (hB : 0 < B) :
 
 /-- The value of digit `j` of a word, `0` past `v`. -/
 def wordDigit (x : Encoding) (j : Nat) : Nat :=
-  if h : j < numChains then (x ⟨j, h⟩).val else 0
+  if h : j < chainCount then (x ⟨j, h⟩).val else 0
 
 theorem wordDigit_lt (x : Encoding) (j : Nat) : wordDigit x j < 4 := by
   unfold wordDigit
@@ -1054,7 +1054,7 @@ theorem wordDigit_lt (x : Encoding) (j : Nat) : wordDigit x j < 4 := by
   · exact (x _).isLt
   · decide
 
-def packNat (x : Encoding) : Nat := ∑ j ∈ range numChains, wordDigit x j * 4 ^ j
+def packNat (x : Encoding) : Nat := ∑ j ∈ range chainCount, wordDigit x j * 4 ^ j
 
 theorem packNat_lt (x : Encoding) : packNat x < 2 ^ 116 := by
   have hlt : ∀ n, ∑ j ∈ range n, wordDigit x j * 4 ^ j < 4 ^ n := by
@@ -1066,8 +1066,8 @@ theorem packNat_lt (x : Encoding) : packNat x < 2 ^ 116 := by
         have h3 : wordDigit x n * 4 ^ n ≤ 3 * 4 ^ n :=
           Nat.mul_le_mul_right _ (by have := wordDigit_lt x n; omega)
         omega
-  have := hlt numChains
-  simpa [packNat, numChains, show (4 : Nat) ^ 58 = 2 ^ 116 by norm_num] using this
+  have := hlt chainCount
+  simpa [packNat, chainCount, show (4 : Nat) ^ 58 = 2 ^ 116 by norm_num] using this
 
 def pack (x : Encoding) : Digest := BitVec.ofNat digestBits (packNat x)
 
@@ -1075,38 +1075,39 @@ theorem toNat_pack (x : Encoding) : (pack x).toNat = packNat x := by
   rw [pack, BitVec.toNat_ofNat, digestBits,
     Nat.mod_eq_of_lt (lt_trans (packNat_lt x) (by norm_num))]
 
-theorem digit_val (d : Digest) (i : Nat) : (Codeword.digit d i).val = d.toNat / 4 ^ i % 4 := by
-  simp [Codeword.digit, BitVec.extractLsb', winternitzBits, Nat.shiftRight_eq_div_pow, pow_mul]
+theorem digit_val (d : Digest) (i : Nat) : (digestDigits d (Fin.last i)).val = d.toNat / 4 ^ i % 4 := by
+  simp [digestDigits, BitVec.extractLsb', winternitzBits, Nat.shiftRight_eq_div_pow, pow_mul]
 
-theorem encoding_pack (x : Encoding) : Codeword.encoding (pack x) = x := by
+theorem encoding_pack (x : Encoding) : (digestDigits (pack x) : Encoding) = x := by
   funext i
   apply Fin.ext
-  rw [Codeword.encoding, digit_val, toNat_pack, packNat,
-    digit_of_sum 4 (by decide) (wordDigit x) (wordDigit_lt x) numChains i.val i.isLt,
+  rw [show (digestDigits (pack x) i).val = _ from digit_val (pack x) i.val, toNat_pack, packNat,
+    digit_of_sum 4 (by decide) (wordDigit x) (wordDigit_lt x) chainCount i.val i.isLt,
     wordDigit, dif_pos i.isLt]
 
 theorem valid_pack {x : Encoding} (hx : Codeword.sum x = targetSum) : Codeword.Valid (pack x) := by
   refine ⟨?_, by rw [encoding_pack]; exact hx⟩
   rw [toNat_pack]
-  exact Nat.div_eq_of_lt (by simpa [winternitzBits, numChains] using packNat_lt x)
+  exact Nat.div_eq_of_lt (by simpa [winternitzBits, chainCount] using packNat_lt x)
 
-theorem pack_encoding {d : Digest} (hd : Codeword.Valid d) : pack (Codeword.encoding d) = d := by
+theorem pack_encoding {d : Digest} (hd : Codeword.Valid d) : pack (digestDigits d : Encoding) = d := by
   apply BitVec.eq_of_toNat_eq
   rw [toNat_pack]
-  have hlt : d.toNat < 4 ^ numChains := by
+  have hlt : d.toNat < 4 ^ chainCount := by
     have h0 := hd.1
-    simp only [winternitzBits, numChains] at h0
+    simp only [winternitzBits, chainCount] at h0
     have := (Nat.div_eq_zero_iff_lt (by positivity)).mp h0
-    simpa [numChains, show (4 : Nat) ^ 58 = 2 ^ 116 by norm_num] using this
-  rw [← sum_digits_eq 4 (by decide) numChains d.toNat hlt, packNat]
+    simpa [chainCount, show (4 : Nat) ^ 58 = 2 ^ 116 by norm_num] using this
+  rw [← sum_digits_eq 4 (by decide) chainCount d.toNat hlt, packNat]
   apply Finset.sum_congr rfl
   intro j hj
-  rw [wordDigit, dif_pos (Finset.mem_range.mp hj), Codeword.encoding, digit_val]
+  rw [wordDigit, dif_pos (Finset.mem_range.mp hj)]
+  exact congrArg (· * 4 ^ j) (digit_val d j)
 
 set_option maxRecDepth 100000 in
 theorem card_valid (p : Encoding → Prop) [DecidablePred p] (hp : ∀ x, p x ↔ Codeword.sum x = targetSum) :
     (Finset.univ.filter fun d : Digest => Codeword.Valid d).card = (Finset.univ.filter p).card := by
-  apply Finset.card_bij' (fun d _ => Codeword.encoding d) (fun x _ => pack x)
+  apply Finset.card_bij' (fun d _ => (digestDigits d : Encoding)) (fun x _ => pack x)
   · intro d hd; exact Finset.mem_filter.mpr ⟨Finset.mem_univ _, (hp _).mpr (Finset.mem_filter.mp hd).2.2⟩
   · intro x hx; exact Finset.mem_filter.mpr ⟨Finset.mem_univ _, valid_pack ((hp x).mp (Finset.mem_filter.mp hx).2)⟩
   · intro d hd; exact pack_encoding (Finset.mem_filter.mp hd).2
@@ -1127,28 +1128,25 @@ theorem card_valid_trunc :
       left_inv := fun u => Subtype.ext (BitVec.extractLsb'_append_extractLsb' (w := 128) (len := 128) (x := u.1))
       right_inv := fun p => Prod.ext (BitVec.extractLsb'_append_eq_left (w := 128) (w' := 128))
         (Subtype.ext (BitVec.extractLsb'_append_eq_right (w := 128) (w' := 128))) }
-  rw [Fintype.card_congr e, Fintype.card_prod]
-  simp
+  rw [Fintype.card_congr e, Fintype.card_prod, Fintype.card_bitVec]
 
 /-- The probability that a uniform digest is a codeword. -/
 def codewordP : ℝ≥0∞ := ((univ.filter fun d : Digest => Codeword.Valid d).card : ℝ≥0∞) / 2 ^ 128
 
 theorem probEvent_valid_trunc :
-    Pr[fun u : HashOutput => Codeword.Valid (truncateHash u) | $ᵗ HashOutput] = codewordP := by
-  rw [probEvent_uniformSample, card_valid_trunc, codewordP]
-  have hcard : Fintype.card HashOutput = 2 ^ 128 * 2 ^ 128 := by simp [hashOutputBits]
+    Pr{let u ← $ᵗ HashOutput}[Codeword.Valid (truncateHash u)] = codewordP := by
+  rw [SampleableType.prEvent_uniformSample, card_valid_trunc, codewordP]
+  have hcard : Fintype.card HashOutput = 2 ^ 128 * 2 ^ 128 := by simp
   rw [hcard]
   rw [Nat.cast_mul, Nat.cast_mul, Nat.cast_pow, Nat.cast_ofNat]
   exact ENNReal.mul_div_mul_left _ _ (pow_ne_zero _ two_ne_zero) (ENNReal.pow_ne_top ENNReal.ofNat_ne_top)
 
 theorem codewordP_le_one : codewordP ≤ 1 := by
-  rw [← probEvent_valid_trunc]; exact probEvent_le_one
+  rw [← probEvent_valid_trunc]; exact prEvent_le_one _
 
 theorem probEvent_invalid_trunc :
-    Pr[fun u : HashOutput => ¬Codeword.Valid (truncateHash u) | $ᵗ HashOutput] = 1 - codewordP := by
-  have h := probEvent_compl ($ᵗ HashOutput) fun u : HashOutput => Codeword.Valid (truncateHash u)
-  rw [probEvent_valid_trunc, probFailure_eq_zero, tsub_zero] at h
-  exact ENNReal.eq_sub_of_add_eq' ENNReal.one_ne_top ((add_comm _ _).trans h)
+    Pr{let u ← $ᵗ HashOutput}[¬Codeword.Valid (truncateHash u)] = 1 - codewordP := by
+  rw [OracleComp.prEvent_not_eq_one_sub, probEvent_valid_trunc]
 
 theorem roRun_bind {α β : Type} (oa : OracleComp (RoSpec C) α) (f : α → OracleComp (RoSpec C) β)
     (s : HashCache C) : roRun prims (oa >>= f) s = roRun prims oa s >>= fun p => roRun prims (f p.1) p.2 := by
@@ -1170,12 +1168,12 @@ theorem roRun_fresh (x : HashInput) (hx : ¬MpcInput x) (s : HashCache C) (hs : 
   rfl
 
 /-- The `t`-th trial input of a randomizer search. -/
-abbrev trialInput (P : PublicParameter) (lay : Layer) (key : KeyIndex) (message : HashInput) (base : Randomness)
+abbrev trialInput (P : PublicParameter) (lay : Layer) (key : KeyIndex) (message : HashInput) (base : Randomizer)
     (t : ℕ) : HashInput :=
-  tweakableHashInput P (.message lay key) (message ++ bytesLE 16 (base + BitVec.ofNat digestBits t))
+  tweakableHashInput P (.message lay key) (message ++ littleEndianBytes 16 (base + BitVec.ofNat digestBits t))
 
 theorem trialInput_inj {P : PublicParameter} {lay : Layer} {key : KeyIndex} {message : HashInput}
-    {base : Randomness} {t t' : ℕ} (ht : t < 2 ^ 128) (ht' : t' < 2 ^ 128)
+    {base : Randomizer} {t t' : ℕ} (ht : t < 2 ^ 128) (ht' : t' < 2 ^ 128)
     (h : trialInput P lay key message base t = trialInput P lay key message base t') : t = t' := by
   unfold trialInput tweakableHashInput at h
   have h1 := List.append_cancel_left (List.append_cancel_left h)
@@ -1183,31 +1181,31 @@ theorem trialInput_inj {P : PublicParameter} {lay : Layer} {key : KeyIndex} {mes
   exact ofNat_inj_of_lt' ht ht' ((BitVec.add_right_inj base).mp h2)
 
 theorem probEvent_bind_le_mul_of_cases {α β : Type} {mx : ProbComp α} {f : α → ProbComp β} {P : β → Prop}
-    {Q : α → Prop} {ε : ℝ≥0∞} (h1 : ∀ x ∈ support mx, Q x → Pr[P | f x] ≤ ε)
-    (h0 : ∀ x ∈ support mx, ¬Q x → Pr[P | f x] = 0) : Pr[P | mx >>= f] ≤ Pr[Q | mx] * ε := by
+    {Q : α → Prop} {ε : ℝ≥0∞} (h1 : ∀ x ∈ support mx, Q x → Pr{let z ← f x}[P z] ≤ ε)
+    (h0 : ∀ x ∈ support mx, ¬Q x → Pr{let z ← f x}[P z] = 0) : Pr{let z ← mx >>= f}[P z] ≤ Pr{let z ← mx}[Q z] * ε := by
   classical
-  rw [probEvent_bind_eq_tsum, probEvent_eq_tsum_ite, ← ENNReal.tsum_mul_right]
+  rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_eq_tsum_ite, ← ENNReal.tsum_mul_right]
   refine ENNReal.tsum_le_tsum fun x => ?_
   by_cases hx : x ∈ support mx
   · by_cases hq : Q x
     · rw [if_pos hq]; exact mul_le_mul' le_rfl (h1 x hx hq)
     · rw [if_neg hq, h0 x hx hq]; simp
-  · simp [probOutput_eq_zero_of_not_mem_support hx]
+  · simp [prEvent_eq_zero_of_not_mem_support _ hx]
 
 set_option maxRecDepth 100000 in
-theorem grind_fail (P : PublicParameter) (lay : Layer) (key : KeyIndex) (message : HashInput) (base : Randomness) :
+theorem grind_fail (P : PublicParameter) (lay : Layer) (key : KeyIndex) (message : HashInput) (base : Randomizer) :
     ∀ attempts trial (s : HashCache C), trial + attempts ≤ 2 ^ 128 →
       (∀ t, trial ≤ t → t < trial + attempts →
         ¬MpcInput (trialInput P lay key message base t) ∧ s (.hash (trialInput P lay key message base t)) = none) →
-      Pr[fun z => z.1 = none | roRun prims (tweakable (grind P lay key message base attempts trial)) s] ≤
+      Pr{let z ← roRun prims (tweakable (grind P lay key message base attempts trial)) s}[z.1 = none] ≤
         (1 - codewordP) ^ attempts
-  | 0, trial, s, _, _ => by rw [pow_zero]; exact probEvent_le_one
+  | 0, trial, s, _, _ => by rw [pow_zero]; exact prEvent_le_one _
   | attempts + 1, trial, s, hlen, hfresh => by
     obtain ⟨hmpc, hs⟩ := hfresh trial le_rfl (by omega)
     rw [grind, tweakable_bind, roRun_bind]
-    unfold Concrete.messageDigest Concrete.tweakableHash
-    rw [tweakable_bind, tweakable_oracleHash, roRun_bind, roRun_fresh prims _ hmpc s hs]
-    simp only [map_eq_bind_pure_comp, bind_assoc, Function.comp, pure_bind, tweakable_pure, roRun_pure]
+    unfold Verification.messageDigestWithHash Verification.tweakableHashWithHash Verification.thWithHash
+    rw [tweakable_bind, tweakable_oracleHash, thInput_hashDomainFields, roRun_bind, roRun_fresh prims _ hmpc s hs]
+    simp only [bind_map_left, bind_assoc, pure_bind, tweakable_pure, roRun_pure]
     rw [pow_succ']
     conv_rhs => arg 1; rw [← probEvent_invalid_trunc]
     refine probEvent_bind_le_mul_of_cases (fun u _ hu => ?_) (fun u _ hu => ?_)
@@ -1223,8 +1221,8 @@ theorem grind_fail (P : PublicParameter) (lay : Layer) (key : KeyIndex) (message
       simp
 
 theorem byte23 (P : PublicParameter) (f : TweakFields) (rest : HashInput) :
-    (bytesLE 16 P ++ fieldBytes f ++ rest)[23]? = (bytesLE 1 (f.step ++ f.tag))[0]? := by
-  simp [fieldBytes, List.getElem?_append, bytesLE]
+    (littleEndianBytes 16 P ++ addressBytes f ++ rest)[23]? = (littleEndianBytes 1 (f.step ++ f.tag))[0]? := by
+  simp [addressBytes, List.getElem?_append, littleEndianBytes]
 
 theorem byte23_msg (P : PublicParameter) (lay : Layer) (key : KeyIndex) (payload : HashInput) :
     (tweakableHashInput P (.message lay key) payload)[23]? = some 12 := by
@@ -1276,7 +1274,7 @@ theorem not_isMsg_of_mpc {x : HashInput} (hx : MpcInput x) : ¬IsMsg x := by
 
 theorem length_tweakableHashInput (P : PublicParameter) (dom : HashDomain) (payload : HashInput) :
     (tweakableHashInput P dom payload).length = 32 + payload.length := by
-  simp [tweakableHashInput, tweakBytes, fieldBytes, bytesLE]
+  simp [tweakableHashInput, tweakBytes, addressBytes, littleEndianBytes]
   omega
 
 /-! ## Fresh message digests -/
@@ -1342,10 +1340,10 @@ theorem Pres_mapM (B : HashInput → Prop) {α β : Type} (f : α → OracleComp
     exact Pres_bind prims B (hf a) fun _ => Pres_bind prims B (Pres_mapM B f hf l) fun _ => Pres_pure prims B _
 
 theorem Pres_sequenceFin (B : HashInput → Prop) {α : Type} : ∀ {n : ℕ} (f : Fin n → OracleComp (RoSpec C) α),
-    (∀ i, Pres prims B (f i)) → Pres prims B (Concrete.sequenceFin f)
-  | 0, f, _ => by rw [Concrete.sequenceFin]; exact Pres_pure prims B _
+    (∀ i, Pres prims B (f i)) → Pres prims B (OverPermutation.sequenceFin f)
+  | 0, f, _ => by rw [OverPermutation.sequenceFin]; exact Pres_pure prims B _
   | n + 1, f, hf => by
-    rw [Concrete.sequenceFin]
+    rw [OverPermutation.sequenceFin]
     exact Pres_bind prims B (hf 0) fun _ =>
       Pres_bind prims B (Pres_sequenceFin B _ fun i => hf i.succ) fun _ => Pres_pure prims B _
 
@@ -1356,23 +1354,23 @@ theorem Pres_ite (B : HashInput → Prop) {α : Type} (c : Prop) [Decidable c] {
   · exact hb
 
 theorem Pres_oracleHash (B : HashInput → Prop) (x : HashInput) (hx : B x → MpcInput x) :
-    Pres prims B (tweakable (C := C) (Concrete.oracleHash x)) := by
+    Pres prims B (tweakable (C := C) (Verification.oracleHashWithHash x)) := by
   rw [tweakable_oracleHash]
   exact Pres_hashQuery prims B _ fun y hy hb => by cases hy; exact hx hb
 
 theorem Pres_tweakableHash (B : HashInput → Prop) (P : PublicParameter) (dom : HashDomain) (payload : HashInput)
     (hx : B (tweakableHashInput P dom payload) → MpcInput (tweakableHashInput P dom payload)) :
-    Pres prims B (tweakable (C := C) (Concrete.tweakableHash P dom payload)) := by
-  unfold Concrete.tweakableHash
-  rw [tweakable_bind]
+    Pres prims B (tweakable (C := C) (Verification.tweakableHashWithHash P dom payload)) := by
+  unfold Verification.tweakableHashWithHash Verification.thWithHash
+  rw [tweakable_bind, thInput_hashDomainFields]
   exact Pres_bind prims B (Pres_oracleHash prims B _ hx) fun _ => by
     rw [tweakable_pure]; exact Pres_pure prims B _
 
 theorem Pres_chainWalk (B : HashInput → Prop) (P : PublicParameter) (lay : Layer) (key : KeyIndex) (l : ChainIndex)
-    (s : ℕ) : ∀ n v, Pres prims B (tweakable (C := C) (Concrete.chainWalk P lay key l s n v))
-  | 0, v => by rw [Concrete.chainWalk, tweakable_pure]; exact Pres_pure prims B _
+    (s : ℕ) : ∀ n v, Pres prims B (tweakable (C := C) (Verification.chainWalkWithHash P lay key l s n v))
+  | 0, v => by rw [Verification.chainWalk_eq_zero, tweakable_pure]; exact Pres_pure prims B _
   | n + 1, v => by
-    rw [Concrete.chainWalk, tweakable_bind]
+    rw [Verification.chainWalk_eq_succ, tweakable_bind]
     refine Pres_bind prims B (Pres_chainWalk B P lay key l s n v) fun w => ?_
     split
     · exact Pres_tweakableHash prims B _ _ _ fun _ => Or.inl ⟨_, _, _, _, _, _, rfl⟩
@@ -1403,10 +1401,10 @@ theorem Pres_merklePath (P : PublicParameter) (lay : Layer) (f : KeyIndex → Ch
   exact Pres_sequenceFin prims B _ fun _ => Pres_merkleNode prims B hB _ _ _ _ _
 
 theorem Pres_treeFold (P : PublicParameter) (lay : Layer) (key : KeyIndex) (path : Fin layerHeight → Digest) :
-    ∀ n v, Pres prims B (tweakable (C := C) (Concrete.treeFold P lay key path n v))
-  | 0, v => by rw [Concrete.treeFold, tweakable_pure]; exact Pres_pure prims B _
+    ∀ n v, Pres prims B (tweakable (C := C) (Verification.treeFoldWithHash P lay key path n v))
+  | 0, v => by rw [Verification.treeFold_eq_zero, tweakable_pure]; exact Pres_pure prims B _
   | n + 1, v => by
-    rw [Concrete.treeFold, tweakable_bind]
+    rw [Verification.treeFold_eq_succ, tweakable_bind]
     refine Pres_bind prims B (Pres_treeFold P lay key path n v) fun _ => ?_
     dsimp only
     by_cases hb : key.val.testBit n = true
@@ -1462,15 +1460,15 @@ theorem Pres_refTop (B : HashInput → Prop) (hB : ∀ x, B x → IsMsg x) (seed
   · exact Pres_bind prims B (Pres_merkleNode prims B hB _ _ _ _ _) fun _ => Pres_pure prims B _
 
 theorem Pres_messageDigest80 (P : PublicParameter) (lay : Layer) (key : KeyIndex) (message : HashInput)
-    (hm : message.length = 16) (r : Randomness) :
-    Pres prims IsMsg80 (tweakable (C := C) (Concrete.messageDigest P lay key message r)) := by
-  unfold Concrete.messageDigest
+    (hm : message.length = 16) (r : Randomizer) :
+    Pres prims IsMsg80 (tweakable (C := C) (Verification.messageDigestWithHash P lay key message r)) := by
+  unfold Verification.messageDigestWithHash
   refine Pres_tweakableHash prims _ _ _ _ fun h => absurd h.2 ?_
   rw [length_tweakableHashInput, List.length_append, hm]
-  simp [bytesLE]
+  simp [littleEndianBytes]
 
 theorem Pres_grind80 (P : PublicParameter) (lay : Layer) (key : KeyIndex) (message : HashInput)
-    (hm : message.length = 16) (base : Randomness) :
+    (hm : message.length = 16) (base : Randomizer) :
     ∀ attempts trial, Pres prims IsMsg80 (tweakable (C := C) (grind P lay key message base attempts trial))
   | 0, trial => by rw [grind, tweakable_pure]; exact Pres_pure prims _ _
   | attempts + 1, trial => by
@@ -1482,8 +1480,8 @@ theorem Pres_grind80 (P : PublicParameter) (lay : Layer) (key : KeyIndex) (messa
 
 theorem Pres_layerRoot80 (P : PublicParameter) (lay : Layer) (key : KeyIndex) (message : HashInput)
     (hm : message.length = 16) (part : LayerSignature) :
-    Pres prims IsMsg80 (tweakable (C := C) (Concrete.layerRoot P lay key message part)) := by
-  unfold Concrete.layerRoot Concrete.otsLeaf
+    Pres prims IsMsg80 (tweakable (C := C) (Verification.layerRootWithHash P lay key message part)) := by
+  unfold Verification.layerRootWithHash Verification.otsLeafWithHash
   rw [tweakable_bind, tweakable_bind]
   refine Pres_bind prims _ (Pres_bind prims _ (Pres_messageDigest80 prims P lay key message hm _) fun d => ?_)
     fun o => ?_
@@ -1493,7 +1491,7 @@ theorem Pres_layerRoot80 (P : PublicParameter) (lay : Layer) (key : KeyIndex) (m
         fun ends => ?_
       rw [tweakable_bind]
       refine Pres_bind prims _ (Pres_tweakableHash prims _ _ _ _ fun h =>
-        absurd (byte23_leaf P lay key (Concrete.leafPayload ends)) (by rw [h.1]; decide)) fun _ => ?_
+        absurd (byte23_leaf P lay key (digestsPayload ends)) (by rw [h.1]; decide)) fun _ => ?_
       rw [tweakable_pure]; exact Pres_pure prims _ _
     · rw [tweakable_pure]; exact Pres_pure prims _ _
   · rcases o with _ | leaf
@@ -1505,12 +1503,12 @@ theorem Pres_layerRoot80 (P : PublicParameter) (lay : Layer) (key : KeyIndex) (m
 /-! ## The honest quorum fails rarely -/
 
 theorem pr_bind_le {α β : Type} {mx : ProbComp α} {my : α → ProbComp β} {q : β → Prop} {ε : ℝ≥0∞}
-    (h : ∀ x ∈ support mx, Pr[q | my x] ≤ ε) : Pr[q | mx >>= my] ≤ ε :=
-  probEvent_bind_le_of_forall_le h
+    (h : ∀ x ∈ support mx, Pr{let z ← my x}[q z] ≤ ε) : Pr{let z ← mx >>= my}[q z] ≤ ε :=
+  prEvent_bind_le_of_forall_le_of_support _ _ _ h
 
 theorem pr_bind_le_add {α β : Type} {mx : ProbComp α} {my : α → ProbComp β} {q : β → Prop} {p : α → Prop}
-    {ε : ℝ≥0∞} (h : ∀ x ∈ support mx, ¬p x → Pr[q | my x] ≤ ε) : Pr[q | mx >>= my] ≤ Pr[p | mx] + ε :=
-  probEvent_bind_le_probEvent_add h
+    {ε : ℝ≥0∞} (h : ∀ x ∈ support mx, ¬p x → Pr{let z ← my x}[q z] ≤ ε) : Pr{let z ← mx >>= my}[q z] ≤ Pr{let z ← mx}[p z] + ε :=
+  prEvent_bind_le_prEvent_add_of_support _ _ _ _ h
 
 theorem exists_good (s : HashCache C) (hs : NoMpc s) : ∃ h, Good prims h ∧ Agrees h s :=
   ⟨hashOf prims s, good_hashOf prims s, agrees_hashOf prims hs⟩
@@ -1520,7 +1518,7 @@ theorem noB_empty (B : HashInput → Prop) : NoB B (∅ : HashCache C) := fun _ 
 /-- The facts about a top tree under `h`. -/
 def TopFacts (prims : Primitives) (h : Query C → HashOutput) (seeds : C.Term → HashOutput) (P : PublicParameter)
     (top : TopTree) : Prop :=
-  (∀ b l, top.chainEnd (topKey b) l = E prims h (Concrete.chainWalk P topLayer (topKey b) l 0 3
+  (∀ b l, top.chainEnd (topKey b) l = E prims h (Verification.chainWalkWithHash P topLayer (topKey b) l 0 3
     (D prims h (prfValue seeds (.chain topLayer (topKey b) l (digit 0)))))) ∧
   top.root = E prims h (merkleNode P topLayer top.chainEnd layerHeight 0)
 
@@ -1528,21 +1526,21 @@ def TopFacts (prims : Primitives) (h : Query C → HashOutput) (seeds : C.Term �
 def referenceBottomRest (seeds : C.Term → HashOutput) (P : PublicParameter) (top : TopTree) (b : Fin (2 ^ layerHeight))
     (outputs : List (List Bit)) : OracleComp (RoSpec C) (Option TreeOutput) := do
   let keys := (List.finRange (2 ^ layerHeight)).flatMap fun k =>
-    (List.finRange numChains).map fun l => (bottomKey b k, l)
+    (List.finRange chainCount).map fun l => (bottomKey b k, l)
   let cpk := fun (e : KeyIndex) (l : ChainIndex) =>
     let bits := outputs.getD (keys.idxOf (e, l)) []
     (digestAt bits 0, digestAt bits 1, digestAt bits 2)
   let commitment := fun (e : KeyIndex) => digestAt (outputs.getD (keys.length + e.val % 2 ^ layerHeight) []) 0
   let ρ := digestAt (outputs.getD (keys.length + 2 ^ layerHeight) []) 0
   let root ← tweakable (merkleNode P bottomLayer (fun e l => (cpk e l).2.2) layerHeight b.val)
-  let message := bytesLE 16 root
-  let base ← tweakable (truncateHash <$> Concrete.oracleHash (randomizerInput P topLayer (topKey b) ρ message))
+  let message := littleEndianBytes 16 root
+  let base ← tweakable (truncateHash <$> Verification.oracleHashWithHash (randomizerInput P topLayer (topKey b) ρ message))
   let some (randomness, encoding) ← tweakable (grind P topLayer (topKey b) message base
       randomizerAttemptLimit 0) | pure none
   let some values ← some <$> (signJobs b encoding).mapM (referenceJob tweakable (prfValue seeds) P) | pure none
   let path ← tweakable (merklePath P topLayer top.chainEnd (topKey b))
   let signature : LayerSignature := ⟨randomness, fun l => digestAt (values.getD l.val []) 0, path⟩
-  let topRoot ← tweakable (Concrete.layerRoot P topLayer (topKey b) message signature)
+  let topRoot ← tweakable (Verification.layerRootWithHash P topLayer (topKey b) message signature)
   if topRoot ≠ some top.root then pure none else
   pure (some (.bottom ⟨cpk, commitment, root, signature⟩))
 
@@ -1558,8 +1556,8 @@ theorem refBottom_eq (seeds : C.Term → HashOutput) (P : PublicParameter) (top 
 theorem step {α β : Type} (oa : OracleComp (RoSpec C) α) (k : α → OracleComp (RoSpec C) β) (P : β × HashCache C → Prop)
     (s : HashCache C) (ε : ℝ≥0∞) (hn : NoMpc s)
     (H : ∀ a s', s ≤ s' → NoMpc s' → (∀ h, Good prims h → Agrees h s' → a = D prims h oa) →
-      (∀ B, Pres prims B oa → NoB B s → NoB B s') → Pr[P | roRun prims (k a) s'] ≤ ε) :
-    Pr[P | roRun prims (oa >>= k) s] ≤ ε := by
+      (∀ B, Pres prims B oa → NoB B s → NoB B s') → Pr{let z ← roRun prims (k a) s'}[P z] ≤ ε) :
+    Pr{let z ← roRun prims (oa >>= k) s}[P z] ≤ ε := by
   rw [roRun_bind]
   refine pr_bind_le fun p hp => ?_
   obtain ⟨hle, hn', hd⟩ := roRun_support prims oa s p hp
@@ -1569,8 +1567,8 @@ theorem step {α β : Type} (oa : OracleComp (RoSpec C) α) (k : α → OracleCo
 theorem step_add {α β : Type} (oa : OracleComp (RoSpec C) α) (k : α → OracleComp (RoSpec C) β)
     (P : β × HashCache C → Prop) (Q : α → Prop) (s : HashCache C) (δ : ℝ≥0∞) (hn : NoMpc s)
     (H : ∀ a s', ¬Q a → s ≤ s' → NoMpc s' → (∀ h, Good prims h → Agrees h s' → a = D prims h oa) →
-      (∀ B, Pres prims B oa → NoB B s → NoB B s') → Pr[P | roRun prims (k a) s'] ≤ δ) :
-    Pr[P | roRun prims (oa >>= k) s] ≤ Pr[fun z => Q z.1 | roRun prims oa s] + δ := by
+      (∀ B, Pres prims B oa → NoB B s → NoB B s') → Pr{let z ← roRun prims (k a) s'}[P z] ≤ δ) :
+    Pr{let z ← roRun prims (oa >>= k) s}[P z] ≤ Pr{let z ← roRun prims oa s}[Q z.1] + δ := by
   rw [roRun_bind]
   refine pr_bind_le_add fun p hp hq => ?_
   obtain ⟨hle, hn', hd⟩ := roRun_support prims oa s p hp
@@ -1579,7 +1577,7 @@ theorem step_add {α β : Type} (oa : OracleComp (RoSpec C) α) (k : α → Orac
 theorem bottomRest_fail (seeds : C.Term → HashOutput) (P : PublicParameter) (top : TopTree)
     (b : Fin (2 ^ layerHeight)) (outputs : List (List Bit)) (s : HashCache C) (hn : NoMpc s) (hm : NoB IsMsg s)
     (htop : ∀ h, Good prims h → Agrees h s → TopFacts prims h seeds P top) :
-    Pr[fun z => z.1 = none | roRun prims (referenceBottomRest seeds P top b outputs) s] ≤
+    Pr{let z ← roRun prims (referenceBottomRest seeds P top b outputs) s}[z.1 = none] ≤
       (1 - codewordP) ^ randomizerAttemptLimit := by
   unfold referenceBottomRest
   dsimp only
@@ -1615,7 +1613,7 @@ theorem bottomRest_fail (seeds : C.Term → HashOutput) (P : PublicParameter) (t
   have ha4 := ha5.mono hle5
   have ha3 := ha4.mono hle4
   obtain ⟨hchain, hroot⟩ := htop h hg (((ha3.mono hle3)))
-  have hT := topRoot_eq (prims := prims) (h := h) seeds P top hchain hroot b (bytesLE 16 root) r1 e1
+  have hT := topRoot_eq (prims := prims) (h := h) seeds P top hchain hroot b (littleEndianBytes 16 root) r1 e1
     (E_grind_spec _ _ _ _ _ _ _ _ _ (hd5 h hg ha5).symm)
   have htr : topRoot = some top.root := by
     rw [hd8 h hg ha, hd7 h hg ha7, hvals h hg ha6]
@@ -1626,7 +1624,7 @@ theorem bottomRest_fail (seeds : C.Term → HashOutput) (P : PublicParameter) (t
 theorem refBottom_fail (seeds : C.Term → HashOutput) (P : PublicParameter) (top : TopTree)
     (b : Fin (2 ^ layerHeight)) (s : HashCache C) (hn : NoMpc s) (hm : NoB IsMsg s)
     (htop : ∀ h, Good prims h → Agrees h s → TopFacts prims h seeds P top) :
-    Pr[fun z => z.1 = none | roRun prims (referenceTree tweakable (prfValue seeds) P top (.bottom b)) s] ≤
+    Pr{let z ← roRun prims (referenceTree tweakable (prfValue seeds) P top (.bottom b)) s}[z.1 = none] ≤
       (1 - codewordP) ^ randomizerAttemptLimit := by
   rw [refBottom_eq]
   refine step prims _ _ _ _ _ hn fun outputs s2 hle2 hn2 _ hp2 => ?_
@@ -1634,15 +1632,15 @@ theorem refBottom_fail (seeds : C.Term → HashOutput) (P : PublicParameter) (to
     (hp2 IsMsg (Pres_mapM prims IsMsg _ (Pres_referenceJob prims IsMsg seeds P) _) hm)
     fun h hg ha => htop h hg (ha.mono hle2)
 
-theorem length_trial80 (P : PublicParameter) (lay : Layer) (key : KeyIndex) (m : Message) (base : Randomness) (t : ℕ) :
-    (trialInput P lay key (bytesLE 32 m) base t).length = 80 := by
+theorem length_trial80 (P : PublicParameter) (lay : Layer) (key : KeyIndex) (m : Message) (base : Randomizer) (t : ℕ) :
+    (trialInput P lay key (littleEndianBytes 32 m) base t).length = 80 := by
   rw [trialInput, length_tweakableHashInput]
-  simp [bytesLE]
+  simp [littleEndianBytes]
 
 theorem signCodeword_fail (P : PublicParameter) (commitment : Digest) (e : KeyIndex) (m : Message) (ρ : Digest)
     (s : HashCache C) (hn : NoMpc s) (hm : NoB IsMsg80 s)
     (hc : ∀ h, Good prims h → Agrees h s → commitment = truncateHash (h (.hash (commitmentInput P e ρ)))) :
-    Pr[fun z => z.1 = none | roRun prims (signCodeword P commitment e m ρ) s] ≤
+    Pr{let z ← roRun prims (signCodeword P commitment e m ρ) s}[z.1 = none] ≤
       (1 - codewordP) ^ randomizerAttemptLimit := by
   unfold signCodeword
   rw [tweakable_bind]
@@ -1659,7 +1657,7 @@ theorem signCodeword_fail (P : PublicParameter) (commitment : Digest) (e : KeyIn
   exact grind_fail prims _ _ _ _ _ _ 0 _ (by simp [randomizerAttemptLimit]) fun t _ _ =>
     ⟨fun hmpc => not_isMsg_of_mpc hmpc (byte23_msg _ _ _ _), hm2 _ ⟨byte23_msg _ _ _ _, length_trial80 _ _ _ _ _ _⟩⟩
 
-theorem length_bytesLE (n : ℕ) (x : BitVec (8 * n)) : (bytesLE n x).length = n := by simp [bytesLE]
+theorem length_bytesLE (n : ℕ) (x : BitVec (8 * n)) : (littleEndianBytes n x).length = n := by simp [littleEndianBytes]
 
 theorem Pres_refBottom80 (seeds : C.Term → HashOutput) (P : PublicParameter) (top : TopTree)
     (b : Fin (2 ^ layerHeight)) :
@@ -1684,7 +1682,7 @@ theorem Pres_refBottom80 (seeds : C.Term → HashOutput) (P : PublicParameter) (
 
 theorem honestRo_fail (P : PublicParameter) (seeds : C.Term → HashOutput) (pairKeys : C.Pair → HashOutput)
     (J : C.Quorum) (e : KeyIndex) (m : Message) :
-    Pr[fun z => z.1 = none | roRun prims (honestRo P seeds (dealtKeys P seeds pairKeys) J e m) ∅] ≤
+    Pr{let z ← roRun prims (honestRo P seeds (dealtKeys P seeds pairKeys) J e m) ∅}[z.1 = none] ≤
       (1 - codewordP) ^ randomizerAttemptLimit + (1 - codewordP) ^ randomizerAttemptLimit := by
   unfold honestRo
   refine step prims _ _ _ ∅ _ noMpc_empty fun r1 s1 hle1 hn1 hd1 hp1 => ?_
@@ -1740,21 +1738,21 @@ theorem honestRo_fail (P : PublicParameter) (seeds : C.Term → HashOutput) (pai
   rcases sig with _ | sig
   · rw [roRun_pure]; simp
   · dsimp only
-    rw [map_eq_bind_pure_comp, roRun_bind]
+    rw [map_eq_bind_pure_comp (m := OracleComp (RoSpec C)), roRun_bind]
     refine pr_bind_le fun p _ => ?_
     rw [Function.comp, roRun_pure]
     simp
 
 theorem honestSigning_fail (J : C.Quorum) (e : KeyIndex) (m : Message) :
-    Pr[fun r => r.1 = none | runWorld prims (honestSigning J e m)] ≤
+    Pr{let r ← runWorld prims (honestSigning J e m)}[r.1 = none] ≤
       (1 - codewordP) ^ randomizerAttemptLimit + (1 - codewordP) ^ randomizerAttemptLimit := by
-  have h1 : Pr[fun r => r.1 = none | runWorld prims (honestSigning J e m)] =
-      Pr[fun r => r = none | Prod.fst <$> runWorld prims (honestSigning J e m)] := by
-    rw [probEvent_map]; rfl
+  have h1 : Pr{let r ← runWorld prims (honestSigning J e m)}[r.1 = none] =
+      Pr{let r ← Prod.fst <$> runWorld prims (honestSigning J e m)}[r = none] := by
+    rw [prEvent_map]
   rw [h1, fst_runWorld_honest]
   refine pr_bind_le fun x hx => ?_
   obtain ⟨pairKeys, hkeys⟩ := prawnsKeyGen_support x hx
-  rw [probEvent_map, hkeys]
+  rw [prEvent_map, hkeys]
   exact honestRo_fail prims _ _ _ _ _ _
 
 theorem toReal_codewordP : codewordP.toReal = codewordProbability := by
@@ -1774,7 +1772,7 @@ theorem signingCorrectness (prims : Primitives) (C : Committee) : SigningCorrect
   refine ⟨honestSigning_verifies prims J e m, ?_⟩
   have hfin : (1 - codewordP) ^ randomizerAttemptLimit ≠ ⊤ :=
     ENNReal.pow_ne_top (ne_top_of_le_ne_top ENNReal.one_ne_top tsub_le_self)
-  calc (Pr[fun r => r.1 = none | runWorld prims (honestSigning J e m)]).toReal
+  calc (Pr{let r ← runWorld prims (honestSigning J e m)}[r.1 = none]).toReal
       ≤ ((1 - codewordP) ^ randomizerAttemptLimit + (1 - codewordP) ^ randomizerAttemptLimit).toReal :=
         ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨hfin, hfin⟩) (honestSigning_fail prims J e m)
     _ = 2 * searchFailure := by rw [ENNReal.toReal_add hfin hfin, toReal_failure]; ring
@@ -1783,6 +1781,6 @@ end ThresholdLeanXmssSecurity
 
 namespace ThresholdLeanXmssSecurity
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 
 end ThresholdLeanXmssSecurity

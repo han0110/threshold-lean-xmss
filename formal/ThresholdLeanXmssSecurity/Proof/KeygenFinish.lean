@@ -28,7 +28,7 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open scoped ENNReal
 
 noncomputable section
@@ -69,8 +69,8 @@ def KeygenEchoFreshExt (prims : Primitives) : Prop :=
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
     ∀ (S : Finset (Query C)), (∀ parts name, keygenNamedInput parts name ∈ S) →
       (∀ i j (f : C.Term → HashOutput), Query.sharedKeys .keygen ((sharedTerms i j).map f) ∈ S) →
-      (Pr[fun r => KeygenEchoIrregular prims D A S r r.2.2.2.1 |
-        keygenPartsKernel (keygenStageBSampler prims D A x z S)]).toReal ≤
+      (Pr{let r ← keygenPartsKernel (keygenStageBSampler prims D A x z S)}[
+        KeygenEchoIrregular prims D A S r r.2.2.2.1]).toReal ≤
         (keygenHashError C q / 2 - 2 * keygenStageAError C q) / 2
 
 theorem keygenAcceptGap_le_of_ext (hF : KeygenEchoFreshExt (C := C) (E := E) prims)
@@ -78,21 +78,21 @@ theorem keygenAcceptGap_le_of_ext (hF : KeygenEchoFreshExt (C := C) (E := E) pri
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ) (hq : IsQueryBounded A Z setupRounds q)
     (S : Finset (Query C)) (hmem : ∀ parts name, keygenNamedInput parts name ∈ S)
     (hsk : ∀ i j (f : C.Term → HashOutput), Query.sharedKeys .keygen ((sharedTerms i j).map f) ∈ S) :
-    (Pr[KeygenReceiversGap prims D A S | keygenPartsKernel (keygenStageBSampler prims D A x z S)]).toReal ≤
+    (Pr{let y ← keygenPartsKernel (keygenStageBSampler prims D A x z S)}[KeygenReceiversGap prims D A S y]).toReal ≤
       keygenHashError C q / 2 - 2 * keygenStageAError C q := by
   have hb := hF D A x z Z q hq S hmem hsk
-  have hle : Pr[KeygenReceiversGap prims D A S | keygenPartsKernel (keygenStageBSampler prims D A x z S)] ≤
-      Pr[fun r => KeygenEchoIrregular prims D A S r r.2.2.2.1 |
-        keygenPartsKernel (keygenStageBSampler prims D A x z S)] +
-      Pr[fun r => KeygenEchoIrregular prims D A S r r.2.2.2.1 |
-        keygenPartsKernel (keygenStageBSampler prims D A x z S)] :=
-    calc _ ≤ Pr[fun r => KeygenEchoIrregular prims D A S r r.2.2.2.1 ∨ KeygenEchoIrregular prims D A S r r.2.2.2.2 |
-          keygenPartsKernel (keygenStageBSampler prims D A x z S)] :=
-          probEvent_mono fun r _ hr => keygenReceiversGap_irregular prims D A S r hr
-      _ ≤ _ := probEvent_or_le _ _ _
+  have hle : Pr{let y ← keygenPartsKernel (keygenStageBSampler prims D A x z S)}[KeygenReceiversGap prims D A S y] ≤
+      Pr{let r ← keygenPartsKernel (keygenStageBSampler prims D A x z S)}[
+        KeygenEchoIrregular prims D A S r r.2.2.2.1] +
+      Pr{let r ← keygenPartsKernel (keygenStageBSampler prims D A x z S)}[
+        KeygenEchoIrregular prims D A S r r.2.2.2.1] :=
+    calc _ ≤ Pr{let r ← keygenPartsKernel (keygenStageBSampler prims D A x z S)}[
+          KeygenEchoIrregular prims D A S r r.2.2.2.1 ∨ KeygenEchoIrregular prims D A S r r.2.2.2.2] :=
+          prEvent_mono _ _ _ fun r hr => keygenReceiversGap_irregular prims D A S r hr
+      _ ≤ _ := prEvent_or_le _ _ _
       _ = _ := by rw [probEvent_keygenEchoIrregular_swap]
-  have ht := ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨probEvent_ne_top, probEvent_ne_top⟩) hle
-  rw [ENNReal.toReal_add probEvent_ne_top probEvent_ne_top] at ht
+  have ht := ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨(prEvent_ne_top _), (prEvent_ne_top _)⟩) hle
+  rw [ENNReal.toReal_add (prEvent_ne_top _) (prEvent_ne_top _)] at ht
   linarith
 
 theorem keygenIndepEcho_le_of_ext (hF : KeygenEchoFreshExt (C := C) (E := E) prims)
@@ -100,23 +100,22 @@ theorem keygenIndepEcho_le_of_ext (hF : KeygenEchoFreshExt (C := C) (E := E) pri
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ) (hq : IsQueryBounded A Z setupRounds q)
     (S : Finset (Query C)) (hmem : ∀ parts name, keygenNamedInput parts name ∈ S)
     (hsk : ∀ i j (f : C.Term → HashOutput), Query.sharedKeys .keygen ((sharedTerms i j).map f) ∈ S) :
-    |(Pr[= true | keygenIndepMixture prims D A x z Z S]).toReal -
-        (Pr[= true | keygenIndepMixture prims D A x z (keygenHiddenZ D Z) S]).toReal| ≤
+    |(Pr{let y ← keygenIndepMixture prims D A x z Z S}[y = true]).toReal -
+        (Pr{let y ← keygenIndepMixture prims D A x z (keygenHiddenZ D Z) S}[y = true]).toReal| ≤
       keygenHashError C q / 2 - 2 * keygenStageAError C q := by
   refine le_trans ?_ (keygenAcceptGap_le_of_ext prims hF D A x z Z q hq S hmem hsk)
-  have hZ : Pr[= true | keygenIndepMixture prims D A x z Z S] =
-      Pr[= true | (Concrete.sequenceFin fun _ : C.Party => sampleParts (C := C)) >>= fun parts =>
+  have hZ : Pr{let y ← keygenIndepMixture prims D A x z Z S}[y = true] =
+      Pr{let y ← (OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)) >>= fun parts =>
         keygenStageBSampler prims D A x z S parts >>= fun w =>
-          keygenStageBRun prims D A Z S parts w w.2.2.2 w.2.2.2] := by
-    rw [probOutput_def, probOutput_def]
-    exact congrArg (· true) (evalDist_bind_congr' _ fun parts => evalDist_keygenIndep_Z prims D A x z Z S parts)
-  have hH : Pr[= true | keygenIndepMixture prims D A x z (keygenHiddenZ D Z) S] =
-      Pr[= true | (Concrete.sequenceFin fun _ : C.Party => sampleParts (C := C)) >>= fun parts =>
+          keygenStageBRun prims D A Z S parts w w.2.2.2 w.2.2.2}[y = true] := by
+    exact (EvalDistEq.bind_right _ fun parts =>
+      evalDist_keygenIndep_Z prims D A x z Z S parts).prEvent_eq (· = true)
+  have hH : Pr{let y ← keygenIndepMixture prims D A x z (keygenHiddenZ D Z) S}[y = true] =
+      Pr{let y ← (OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)) >>= fun parts =>
         keygenStageBSampler prims D A x z S parts >>= fun w =>
-          keygenStageBRun prims D A Z S parts w w.2.2.1 w.2.2.2] := by
-    rw [probOutput_def, probOutput_def]
-    exact congrArg (· true) (evalDist_bind_congr' _ fun parts =>
-      evalDist_keygenIndep_hiddenZ prims D A x z Z S parts)
+          keygenStageBRun prims D A Z S parts w w.2.2.1 w.2.2.2}[y = true] := by
+    exact (EvalDistEq.bind_right _ fun parts =>
+      evalDist_keygenIndep_hiddenZ prims D A x z Z S parts).prEvent_eq (· = true)
   rw [hZ, hH, probEvent_keygenPartsKernel_eq_tsum (keygenStageBSampler prims D A x z S)
     (fun parts w => KeygenReceiversGap prims D A S (parts, w))]
   refine abs_probOutput_bind_sub_le _ _ _ _ (fun parts => ?_) (fun parts => ?_) ?_
@@ -124,31 +123,31 @@ theorem keygenIndepEcho_le_of_ext (hF : KeygenEchoFreshExt (C := C) (E := E) pri
   · exact keygenStageB_parts prims D A x z Z S parts (fun w => w.2.2.1) (fun w => w.2.2.2) fun w hw => hw
   · rw [← probEvent_keygenPartsKernel_eq_tsum (keygenStageBSampler prims D A x z S)
       (fun parts w => KeygenReceiversGap prims D A S (parts, w))]
-    exact probEvent_ne_top
+    exact (prEvent_ne_top _)
 
 theorem keygenSwapped_le_of_ext (hF : KeygenEchoFreshExt (C := C) (E := E) prims)
     (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ) (hq : IsQueryBounded A Z setupRounds q)
     (S : Finset (Query C)) (hmem : ∀ parts name, keygenNamedInput parts name ∈ S)
     (hsk : ∀ i j (f : C.Term → HashOutput), Query.sharedKeys .keygen ((sharedTerms i j).map f) ∈ S) :
-    |(Pr[= true | keygenSwappedMixture prims D A x z Z S hmem]).toReal -
-        (Pr[= true | keygenSwappedMixture prims D A x z (keygenHiddenZ D Z) S hmem]).toReal| ≤
+    |(Pr{let y ← keygenSwappedMixture prims D A x z Z S hmem}[y = true]).toReal -
+        (Pr{let y ← keygenSwappedMixture prims D A x z (keygenHiddenZ D Z) S hmem}[y = true]).toReal| ≤
       keygenHashError C q / 2 := by
   have hA₁ := keygenStageA prims D A x z Z S hmem q hq
   have hA₂ := keygenStageA prims D A x z (keygenHiddenZ D Z) S hmem q (isQueryBounded_keygenHiddenZ D A Z q hq)
   have hb := keygenIndepEcho_le_of_ext prims hF D A x z Z q hq S hmem hsk
   unfold keygenStageAError at hb
-  calc _ ≤ |(Pr[= true | keygenSwappedMixture prims D A x z Z S hmem]).toReal -
-          (Pr[= true | keygenIndepMixture prims D A x z Z S]).toReal| +
-        |(Pr[= true | keygenIndepMixture prims D A x z Z S]).toReal -
-          (Pr[= true | keygenIndepMixture prims D A x z (keygenHiddenZ D Z) S]).toReal| +
-        |(Pr[= true | keygenIndepMixture prims D A x z (keygenHiddenZ D Z) S]).toReal -
-          (Pr[= true | keygenSwappedMixture prims D A x z (keygenHiddenZ D Z) S hmem]).toReal| := by
-        refine (abs_sub_le _ (Pr[= true | keygenIndepMixture prims D A x z (keygenHiddenZ D Z) S]).toReal _).trans ?_
+  calc _ ≤ |(Pr{let y ← keygenSwappedMixture prims D A x z Z S hmem}[y = true]).toReal -
+          (Pr{let y ← keygenIndepMixture prims D A x z Z S}[y = true]).toReal| +
+        |(Pr{let y ← keygenIndepMixture prims D A x z Z S}[y = true]).toReal -
+          (Pr{let y ← keygenIndepMixture prims D A x z (keygenHiddenZ D Z) S}[y = true]).toReal| +
+        |(Pr{let y ← keygenIndepMixture prims D A x z (keygenHiddenZ D Z) S}[y = true]).toReal -
+          (Pr{let y ← keygenSwappedMixture prims D A x z (keygenHiddenZ D Z) S hmem}[y = true]).toReal| := by
+        refine (abs_sub_le _ (Pr{let y ← keygenIndepMixture prims D A x z (keygenHiddenZ D Z) S}[y = true]).toReal _).trans ?_
         gcongr
         exact abs_sub_le _ _ _
     _ ≤ _ := by
-        rw [abs_sub_comm ((Pr[= true | keygenIndepMixture prims D A x z (keygenHiddenZ D Z) S]).toReal)]
+        rw [abs_sub_comm ((Pr{let y ← keygenIndepMixture prims D A x z (keygenHiddenZ D Z) S}[y = true]).toReal)]
         linarith
 
 /-- The hidden half on the real run, from the echo-collision bound on the extended domain. -/
@@ -167,12 +166,11 @@ theorem keygenHiddenFresh_of_echoFreshExt (hF : KeygenEchoFreshExt (C := C) (E :
     simp only [S, Finset.mem_union]; tauto
   have hsk : ∀ i j (f : C.Term → HashOutput), Query.sharedKeys .keygen ((sharedTerms i j).map f) ∈ S :=
     fun i j f => Finset.mem_union_right _ (keygenSharedInputs_mem i j f)
-  rw [accepts_eq_probOutput, accepts_eq_probOutput, probOutput_def, probOutput_def,
-    evalDist_keygenReal_referenceMixture prims D A x z Z S hS₁,
-    evalDist_keygenReal_referenceMixture prims D A x z (keygenHiddenZ D Z) S hS₂,
-    evalDist_keygenReferenceMixture_swap prims D A x z Z S hmem,
-    evalDist_keygenReferenceMixture_swap prims D A x z (keygenHiddenZ D Z) S hmem,
-    ← probOutput_def, ← probOutput_def]
+  rw [accepts_eq_probOutput, accepts_eq_probOutput,
+    ((evalDist_keygenReal_referenceMixture prims D A x z Z S hS₁).trans
+      (evalDist_keygenReferenceMixture_swap prims D A x z Z S hmem)).prEvent_eq (· = true),
+    ((evalDist_keygenReal_referenceMixture prims D A x z (keygenHiddenZ D Z) S hS₂).trans
+      (evalDist_keygenReferenceMixture_swap prims D A x z (keygenHiddenZ D Z) S hmem)).prEvent_eq (· = true)]
   exact keygenSwapped_le_of_ext prims hF D A x z Z q hq S hmem hsk
 
 end Chain
@@ -200,12 +198,12 @@ theorem relTriple_log_bind (h₁ h₂ : Query C → HashOutput) (P : Query C →
   refine relTriple_bind hoa fun x y hxy => ?_
   rcases hxy with ⟨v, hv, hp⟩ | he
   · refine relTriple_of_support_left fun z hz _ => Or.inl ?_
-    simp only [simulateQ_bind, simulateQ_pure, support_bind, Set.mem_iUnion, support_pure,
+    simp only [simulateQ_pure, support_bind, Set.mem_iUnion, support_pure,
       Set.mem_singleton_iff] at hz
     obtain ⟨w, -, rfl⟩ := hz
     exact ⟨v, List.mem_append_left _ hv, hp⟩
   · subst he
-    simp only [simulateQ_bind, simulateQ_pure]
+    simp only [simulateQ_pure]
     rw [← bind_pure (simulateQ (fixedLocal prims h₁) (k₁ x.1))]
     refine relTriple_bind (hk x.1) fun w b hwb => relTriple_pure_pure ?_
     rcases hwb with ⟨v, hv, hp⟩ | hq | he
@@ -350,8 +348,8 @@ theorem keygenEchoCell_sharedKeys {D : C.Coalition} {u : KeygenFresh C} {v : Que
   exact ⟨l, hl⟩
 
 theorem probEvent_fun_apply_eq {ι : Type} [Fintype ι] [DecidableEq ι] (T : ι) (c : HashOutput) :
-    Pr[fun f : ι → HashOutput => f T = c | $ᵗ (ι → HashOutput)] = (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-  rw [probEvent_uniformSample]
+    Pr{let f : ι → HashOutput ← $ᵗ (ι → HashOutput)}[f T = c] = (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
+  rw [SampleableType.prEvent_uniformSample]
   have hfil : (Finset.univ.filter fun s : ι → HashOutput => s T = c).card =
       Fintype.card HashOutput ^ (Fintype.card ι - 1) := by
     have := Fintype.card_filter_piFinset_const_eq_of_mem (Finset.univ : Finset HashOutput) T (Finset.mem_univ c)
@@ -368,7 +366,7 @@ theorem probEvent_fun_apply_eq {ι : Type} [Fintype ι] [DecidableEq ι] (T : ι
 
 /-- Two distinct cells of a uniform function collide with probability `1 / 2^256`. -/
 theorem probEvent_fun_collide {ι : Type} [Fintype ι] [DecidableEq ι] {s₁ s₂ : ι} (hne : s₁ ≠ s₂) :
-    Pr[fun f : ι → HashOutput => f s₁ = f s₂ | $ᵗ (ι → HashOutput)] = (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
+    Pr{let f : ι → HashOutput ← $ᵗ (ι → HashOutput)}[f s₁ = f s₂] = (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   let φ : (ι → HashOutput) → (ι → HashOutput) := fun f => Function.update f s₁ (f s₁ + f s₂)
   have hφ : Function.Bijective φ := by
     refine Function.bijective_iff_has_inverse.mpr ⟨fun f => Function.update f s₁ (f s₁ - f s₂), ?_, ?_⟩ <;>
@@ -377,15 +375,13 @@ theorem probEvent_fun_collide {ι : Type} [Fintype ι] [DecidableEq ι] {s₁ s�
     · simp [φ, Function.update_of_ne hk]
     · subst hk; simp [φ, Function.update_of_ne hne.symm, BitVec.sub_add_cancel]
     · simp [φ, Function.update_of_ne hk]
-  have he : ∀ P : (ι → HashOutput) → Prop, Pr[P | $ᵗ (ι → HashOutput)] =
-      Pr[P | φ <$> ($ᵗ (ι → HashOutput))] := by
+  have he : ∀ P : (ι → HashOutput) → Prop, Pr{let z ← $ᵗ (ι → HashOutput)}[P z] =
+      Pr{let z ← φ <$> ($ᵗ (ι → HashOutput))}[P z] := by
     intro P
-    simp only [probEvent_eq_tsum_ite, probOutput_map_bijective_uniformSample _ hφ]
-  rw [he, probEvent_map, ← probEvent_fun_apply_eq s₁ 0]
-  congr 1
-  funext f
-  simp only [Function.comp_apply, φ, Function.update_self, Function.update_of_ne hne.symm]
-  apply propext
+    exact ((SampleableType.map_uniformSample_evalDistEq_of_bijective hφ).prEvent_eq P).symm
+  rw [he, prEvent_map, ← probEvent_fun_apply_eq s₁ 0]
+  refine prEvent_congr _ _ _ fun f => ?_
+  simp only [φ, Function.update_self, Function.update_of_ne hne.symm]
   constructor
   · intro h
     have := congrArg (· - f s₂) h
@@ -402,64 +398,61 @@ def keygenMix {ι : Type} (P : ι → Prop) (a a' : ι → HashOutput) : ι → 
 uniform. -/
 theorem evalDist_bind_keygenMix {ι β : Type} [Fintype ι] [DecidableEq ι] (P : ι → Prop)
     (k : (ι → HashOutput) → ProbComp β) :
-    𝒟[($ᵗ ((ι → HashOutput) × (ι → HashOutput))) >>= fun p => k (keygenMix P p.1 p.2)] =
-      𝒟[($ᵗ (ι → HashOutput)) >>= k] := by
+    (($ᵗ ((ι → HashOutput) × (ι → HashOutput))) >>= fun p => k (keygenMix P p.1 p.2)) =ᵈ
+      (($ᵗ (ι → HashOutput)) >>= k) := by
   let ψ : (ι → HashOutput) × (ι → HashOutput) → (ι → HashOutput) × (ι → HashOutput) :=
     fun p => (keygenMix P p.1 p.2, keygenMix P p.2 p.1)
   have hψ : Function.Bijective ψ := by
     refine Function.bijective_iff_has_inverse.mpr ⟨ψ, ?_, ?_⟩ <;> intro p <;>
       refine Prod.ext (funext fun s => ?_) (funext fun s => ?_) <;> by_cases hs : P s <;>
       simp [ψ, keygenMix, hs]
-  have hu : 𝒟[ψ <$> ($ᵗ ((ι → HashOutput) × (ι → HashOutput)))] =
-      𝒟[$ᵗ ((ι → HashOutput) × (ι → HashOutput))] :=
-    evalDist_ext fun y => probOutput_map_bijective_uniformSample _ hψ y
-  have hm : 𝒟[(fun p => keygenMix P p.1 p.2) <$> ($ᵗ ((ι → HashOutput) × (ι → HashOutput)))] =
-      𝒟[$ᵗ (ι → HashOutput)] := by
+  have hu : (ψ <$> ($ᵗ ((ι → HashOutput) × (ι → HashOutput)))) =ᵈ
+      $ᵗ ((ι → HashOutput) × (ι → HashOutput)) :=
+    SampleableType.map_uniformSample_evalDistEq_of_bijective hψ
+  have hm : ((fun p => keygenMix P p.1 p.2) <$> ($ᵗ ((ι → HashOutput) × (ι → HashOutput)))) =ᵈ
+      $ᵗ (ι → HashOutput) := by
     have he : (fun p : (ι → HashOutput) × (ι → HashOutput) => keygenMix P p.1 p.2) <$>
         ($ᵗ ((ι → HashOutput) × (ι → HashOutput))) =
         Prod.fst <$> (ψ <$> ($ᵗ ((ι → HashOutput) × (ι → HashOutput)))) := by
       rw [Functor.map_map]
-    rw [he, evalDist_map, hu, ← evalDist_map, evalDist_map_fst_uniformSample_prod]
-  rw [← bind_map_left (fun p : (ι → HashOutput) × (ι → HashOutput) => keygenMix P p.1 p.2), evalDist_bind, hm,
-    ← evalDist_bind]
+    rw [he]
+    refine (hu.map Prod.fst).trans ?_
+    rw [SampleableType.uniformSample_prod_eq_bind]
+    simp only [map_bind, map_pure]
+    exact (EvalDistEq.bind_right _ fun a => OracleComp.EvalDistEq.bind_const _ _).trans
+      (by rw [bind_pure])
+  rw [← bind_map_left (fun p : (ι → HashOutput) × (ι → HashOutput) => keygenMix P p.1 p.2)]
+  exact hm.bind_left k
 
 theorem probEvent_fresh_term_eq (T : C.Term) (c : HashOutput) :
-    Pr[fun u : KeygenFresh C => u.1 T = c | $ᵗ (KeygenFresh C)] = (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-  have h : Pr[fun u : KeygenFresh C => u.1 T = c | $ᵗ (KeygenFresh C)] =
-      Pr[fun f : C.Term → HashOutput => f T = c | Prod.fst <$> ($ᵗ (KeygenFresh C))] := by
-    rw [probEvent_map]
-    rfl
-  rw [h, probEvent_eq_tsum_ite, ← probEvent_fun_apply_eq T c, probEvent_eq_tsum_ite]
-  refine tsum_congr fun f => ?_
-  rw [probOutput_def, probOutput_def, evalDist_map_fst_uniformSample_prod]
-  split_ifs
-  · rw [← probOutput_def, ← probOutput_def, probOutput_uniformSample, probOutput_uniformSample]
-  · rfl
+    Pr{let u : KeygenFresh C ← $ᵗ (KeygenFresh C)}[u.1 T = c] = (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
+  rw [SampleableType.prEvent_uniformSample_fst (fun f : C.Term → HashOutput => f T = c),
+    ← probEvent_fun_apply_eq T c]
+  exact SampleableType.prEvent_uniformSample_inst_irrel _ _ _
 
 /-- A fixed query is an echo cell of a fresh table with probability at most `|pairs| / 2^256`. -/
 theorem probEvent_keygenEchoCell_le (D : C.Coalition) (v : Query C) :
-    Pr[fun u => KeygenEchoCell D u v | $ᵗ (KeygenFresh C)] ≤
+    Pr{let u ← $ᵗ (KeygenFresh C)}[KeygenEchoCell D u v] ≤
       (Fintype.card C.Pair : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-  calc _ = Pr[fun u => ∃ p ∈ (Finset.univ : Finset C.Pair), ∃ hs : KeygenShareHidden D p.1.1 p.1.2,
+  calc _ = Pr{let u ← $ᵗ (KeygenFresh C)}[
+        ∃ p ∈ (Finset.univ : Finset C.Pair), ∃ hs : KeygenShareHidden D p.1.1 p.1.2,
         p.1.1 ∉ D.1 ∧ p.1.2 ∉ D.1 ∧ ∃ l, v = Query.sharedKeys .keygen l ∧
-          l.getD ((sharedTerms p.1.1 p.1.2).idxOf (Classical.choose hs)) 0 = u.1 (Classical.choose hs) |
-        $ᵗ (KeygenFresh C)] := by simp [KeygenEchoCell]
-    _ ≤ ∑ p : C.Pair, Pr[fun u => ∃ hs : KeygenShareHidden D p.1.1 p.1.2,
+          l.getD ((sharedTerms p.1.1 p.1.2).idxOf (Classical.choose hs)) 0 = u.1 (Classical.choose hs)] := by simp [KeygenEchoCell]
+    _ ≤ ∑ p : C.Pair, Pr{let u ← $ᵗ (KeygenFresh C)}[
+        ∃ hs : KeygenShareHidden D p.1.1 p.1.2,
         p.1.1 ∉ D.1 ∧ p.1.2 ∉ D.1 ∧ ∃ l, v = Query.sharedKeys .keygen l ∧
-          l.getD ((sharedTerms p.1.1 p.1.2).idxOf (Classical.choose hs)) 0 = u.1 (Classical.choose hs) |
-        $ᵗ (KeygenFresh C)] := probEvent_exists_finset_le_sum _ _ _
+          l.getD ((sharedTerms p.1.1 p.1.2).idxOf (Classical.choose hs)) 0 = u.1 (Classical.choose hs)] := prEvent_exists_finset_le _ _ _
     _ ≤ ∑ _p : C.Pair, (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
         refine Finset.sum_le_sum fun p _ => ?_
         by_cases hs : KeygenShareHidden D p.1.1 p.1.2
         · rw [← probEvent_fresh_term_eq (Classical.choose hs)
             (keygenEchoAt v ((sharedTerms p.1.1 p.1.2).idxOf (Classical.choose hs)))]
-          refine probEvent_mono fun u _ hu => ?_
+          refine prEvent_mono _ _ _ fun u hu => ?_
           obtain ⟨hs', -, -, l, rfl, hl⟩ := hu
           rw [← hl]
           rfl
         · refine le_trans (le_of_eq ?_) (zero_le')
-          rw [probEvent_eq_zero_iff]
-          intro u _ hu
+          refine prEvent_eq_zero_of_forall_mem_support _ _ fun u _ hu => ?_
           exact hs hu.1
     _ = _ := by simp
 
@@ -593,24 +586,25 @@ theorem probEvent_keygenCollide_le (D : C.Coalition) (S : Finset (Query C))
     (hsk : ∀ i j (f : C.Term → HashOutput), Query.sharedKeys .keygen ((sharedTerms i j).map f) ∈ S)
     (h : Query C → HashOutput) (parts : C.Party → Parts C) {σ : Type}
     (π : σ × Option ((C.Party → Mail C E) × (C.Party → Mail C E) × (C.Party → Mail C E))) (u : KeygenFresh C) :
-    Pr[fun a' => KeygenCollide prims D S hsk h parts π u a' | $ᵗ (S → HashOutput)] ≤
+    Pr{let a' ← $ᵗ (S → HashOutput)}[KeygenCollide prims D S hsk h parts π u a'] ≤
       (Fintype.card C.Pair : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   rcases π with ⟨st, _ | ⟨s, rs, es⟩⟩
-  · simp [KeygenCollide]
+  · refine le_trans (le_of_eq (prEvent_eq_zero_of_forall_mem_support _ _ fun a' _ ha' => ?_)) zero_le
+    exact ha'
   let pt := keygenEchoPt prims D S hsk h parts rs u
-  calc _ = Pr[fun a' => ∃ p ∈ (Finset.univ : Finset C.Pair), pt p.1.1 p.1.2 ≠ pt p.1.2 p.1.1 ∧
-        a' (pt p.1.1 p.1.2) = a' (pt p.1.2 p.1.1) | $ᵗ (S → HashOutput)] := by simp [KeygenCollide, pt]
-    _ ≤ ∑ p : C.Pair, Pr[fun a' => pt p.1.1 p.1.2 ≠ pt p.1.2 p.1.1 ∧
-        a' (pt p.1.1 p.1.2) = a' (pt p.1.2 p.1.1) | $ᵗ (S → HashOutput)] := probEvent_exists_finset_le_sum _ _ _
+  calc _ = Pr{let a' ← $ᵗ (S → HashOutput)}[∃ p ∈ (Finset.univ : Finset C.Pair), pt p.1.1 p.1.2 ≠ pt p.1.2 p.1.1 ∧
+        a' (pt p.1.1 p.1.2) = a' (pt p.1.2 p.1.1)] :=
+        prEvent_congr _ _ _ fun a' => by simp [KeygenCollide, pt]
+    _ ≤ ∑ p : C.Pair, Pr{let a' ← $ᵗ (S → HashOutput)}[pt p.1.1 p.1.2 ≠ pt p.1.2 p.1.1 ∧
+        a' (pt p.1.1 p.1.2) = a' (pt p.1.2 p.1.1)] := prEvent_exists_finset_le _ _ _
     _ ≤ ∑ _p : C.Pair, (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
         refine Finset.sum_le_sum fun p _ => ?_
         by_cases hne : pt p.1.1 p.1.2 = pt p.1.2 p.1.1
         · refine le_trans (le_of_eq ?_) (zero_le')
-          rw [probEvent_eq_zero_iff]
-          intro a' _ ha'
+          refine prEvent_eq_zero_of_forall_mem_support _ _ fun a' _ ha' => ?_
           exact ha'.1 hne
         · rw [← probEvent_fun_collide hne]
-          exact probEvent_mono fun a' _ ha' => ha'.2
+          exact prEvent_mono _ _ _ fun a' ha' => ha'.2
     _ = _ := by simp
 
 /-- An honest echo input toward a corrupt operator is an echo cell. -/
@@ -643,26 +637,27 @@ theorem keygenHonestHit_of_viewDiff (D : C.Coalition) (S : Finset (Query C)) (pa
 
 theorem probEvent_keygenHonestHit_le (D : C.Coalition) (h : Query C → HashOutput) (parts : C.Party → Parts C)
     {σ : Type} (π : σ × Option ((C.Party → Mail C E) × (C.Party → Mail C E) × (C.Party → Mail C E))) :
-    Pr[fun u => KeygenHonestHit prims D h parts π u | $ᵗ (KeygenFresh C)] ≤
+    Pr{let u ← $ᵗ (KeygenFresh C)}[KeygenHonestHit prims D h parts π u] ≤
       ((C.n * C.n : ℕ) : ℝ≥0∞) * ((Fintype.card C.Pair : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹) := by
   rcases π with ⟨st, _ | ⟨s, rs, es⟩⟩
-  · simp [KeygenHonestHit]
-  calc _ = Pr[fun u => ∃ p ∈ (Finset.univ : Finset (C.Party × C.Party)),
-        KeygenEchoCell D u (keygenVisiblePoint prims D h parts rs p.1 p.2) | $ᵗ (KeygenFresh C)] := by
-        simp [KeygenHonestHit]
-    _ ≤ ∑ p : C.Party × C.Party, Pr[fun u => KeygenEchoCell D u (keygenVisiblePoint prims D h parts rs p.1 p.2) |
-        $ᵗ (KeygenFresh C)] := probEvent_exists_finset_le_sum _ _ _
+  · refine le_trans (le_of_eq (prEvent_eq_zero_of_forall_mem_support _ _ fun u _ hu => ?_)) zero_le
+    exact hu
+  calc _ = Pr{let u ← $ᵗ (KeygenFresh C)}[∃ p ∈ (Finset.univ : Finset (C.Party × C.Party)),
+        KeygenEchoCell D u (keygenVisiblePoint prims D h parts rs p.1 p.2)] :=
+        prEvent_congr _ _ _ fun u => by simp [KeygenHonestHit]
+    _ ≤ ∑ p : C.Party × C.Party, Pr{let u ← $ᵗ (KeygenFresh C)}[
+        KeygenEchoCell D u (keygenVisiblePoint prims D h parts rs p.1 p.2)] := prEvent_exists_finset_le _ _ _
     _ ≤ ∑ _p : C.Party × C.Party, (Fintype.card C.Pair : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ :=
         Finset.sum_le_sum fun p _ => probEvent_keygenEchoCell_le D _
     _ = _ := by simp [Finset.card_univ, Fintype.card_prod, Fintype.card_fin, Committee.Party]
 
 theorem probEvent_keygenLogHit_le (D : C.Coalition) (log : List (Query C)) (m : ℕ)
     (hm : (log.filter fun v => ¬ IsFixed v).length ≤ m) :
-    Pr[fun u => ∃ v ∈ log, KeygenEchoCell D u v | $ᵗ (KeygenFresh C)] ≤
+    Pr{let u ← $ᵗ (KeygenFresh C)}[∃ v ∈ log, KeygenEchoCell D u v] ≤
       (m : ℝ≥0∞) * ((Fintype.card C.Pair : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹) := by
   let L := (log.filter fun v => ¬ IsFixed v).toFinset
-  calc _ ≤ Pr[fun u => ∃ v ∈ L, KeygenEchoCell D u v | $ᵗ (KeygenFresh C)] := by
-        refine probEvent_mono fun u _ hu => ?_
+  calc _ ≤ Pr{let u ← $ᵗ (KeygenFresh C)}[∃ v ∈ L, KeygenEchoCell D u v] := by
+        refine prEvent_mono _ _ _ fun u hu => ?_
         obtain ⟨v, hv, hc⟩ := hu
         refine ⟨v, ?_, hc⟩
         simp only [L, List.mem_toFinset, List.mem_filter, decide_eq_true_eq]
@@ -670,7 +665,7 @@ theorem probEvent_keygenLogHit_le (D : C.Coalition) (log : List (Query C)) (m : 
         rintro ⟨input, rfl, -⟩
         obtain ⟨l, hl⟩ := keygenEchoCell_sharedKeys hc
         cases hl
-    _ ≤ ∑ v ∈ L, Pr[fun u => KeygenEchoCell D u v | $ᵗ (KeygenFresh C)] := probEvent_exists_finset_le_sum _ _ _
+    _ ≤ ∑ v ∈ L, Pr{let u ← $ᵗ (KeygenFresh C)}[KeygenEchoCell D u v] := prEvent_exists_finset_le _ _ _
     _ ≤ ∑ _v ∈ L, (Fintype.card C.Pair : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ :=
         Finset.sum_le_sum fun v _ => probEvent_keygenEchoCell_le D v
     _ ≤ _ := by
@@ -679,25 +674,18 @@ theorem probEvent_keygenLogHit_le (D : C.Coalition) (log : List (Query C)) (m : 
         exact_mod_cast (List.toFinset_card_le _).trans hm
 
 theorem probEvent_bind_le_const {α β : Type} (oa : ProbComp α) (ob : α → ProbComp β) (P : β → Prop)
-    (c : ℝ≥0∞) (h : ∀ a ∈ support oa, Pr[P | ob a] ≤ c) : Pr[P | oa >>= ob] ≤ c := by
-  rw [probEvent_bind_eq_tsum]
-  calc _ ≤ ∑' a, Pr[= a | oa] * c := ENNReal.tsum_le_tsum fun a => by
-        by_cases ha : a ∈ support oa
-        · exact mul_le_mul_left' (h a ha) _
-        · simp [probOutput_eq_zero_of_not_mem_support ha]
-    _ ≤ c := by
-        rw [ENNReal.tsum_mul_right]
-        exact mul_le_of_le_one_left' tsum_probOutput_le_one
+    (c : ℝ≥0∞) (h : ∀ a ∈ support oa, Pr{let z ← ob a}[P z] ≤ c) : Pr{let z ← oa >>= ob}[P z] ≤ c := by
+  exact prEvent_bind_le_of_forall_le_of_support _ _ _ h
 
 theorem probEvent_bind_mono_of {α β γ : Type} (oa : ProbComp α) (f : α → ProbComp β) (g : α → ProbComp γ)
-    (P : β → Prop) (Q : γ → Prop) (h : ∀ a, Pr[P | f a] ≤ Pr[Q | g a]) :
-    Pr[P | oa >>= f] ≤ Pr[Q | oa >>= g] := by
-  rw [probEvent_bind_eq_tsum, probEvent_bind_eq_tsum]
-  exact ENNReal.tsum_le_tsum fun a => mul_le_mul_left' (h a) _
+    (P : β → Prop) (Q : γ → Prop) (h : ∀ a, Pr{let z ← f a}[P z] ≤ Pr{let z ← g a}[Q z]) :
+    Pr{let z ← oa >>= f}[P z] ≤ Pr{let z ← oa >>= g}[Q z] := by
+  rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_bind_eq_tsum]
+  exact ENNReal.tsum_le_tsum fun a => mul_le_mul_right (h a) _
 
-theorem probEvent_congr_evalDist {α : Type} {oa ob : ProbComp α} (h : 𝒟[oa] = 𝒟[ob]) (P : α → Prop) :
-    Pr[P | oa] = Pr[P | ob] := by
-  simp only [probEvent_eq_tsum_ite, probOutput_def, h]
+theorem probEvent_congr_evalDist {α : Type} {oa ob : ProbComp α} (h : oa =ᵈ ob) (P : α → Prop) :
+    Pr{let z ← oa}[P z] = Pr{let z ← ob}[P z] :=
+  h.prEvent_eq P
 
 /-- The logged prefix of the reference run. -/
 def keygenPrefixLog (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
@@ -720,58 +708,59 @@ def keygenEchoJoint (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x 
 
 theorem evalDist_keygenEchoJoint_last (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (S : Finset (Query C)) (parts : C.Party → Parts C) :
-    𝒟[keygenEchoJoint prims D A x z S parts] =
-      𝒟[($ᵗ ((S → HashOutput) × (S → HashOutput))) >>= fun p => keygenPrefixLog prims D A x z S parts p.1 >>= fun r =>
-        ($ᵗ (KeygenFresh C)) >>= fun u => pure (u, p, r)] := by
+    keygenEchoJoint prims D A x z S parts =ᵈ
+      (($ᵗ ((S → HashOutput) × (S → HashOutput))) >>= fun p => keygenPrefixLog prims D A x z S parts p.1 >>= fun r =>
+        ($ᵗ (KeygenFresh C)) >>= fun u => pure (u, p, r)) := by
   unfold keygenEchoJoint
-  rw [DeferredSampling.evalDist_bind_comm]
-  refine evalDist_bind_congr' _ fun p => ?_
-  rw [DeferredSampling.evalDist_bind_comm]
+  refine (OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans ?_
+  refine EvalDistEq.bind_right _ fun p => ?_
+  exact OracleComp.EvalDistEq.bind_bind_swap _ _ _
 
 theorem evalDist_keygenEchoJoint_copy (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (S : Finset (Query C)) (parts : C.Party → Parts C) :
-    𝒟[keygenEchoJoint prims D A x z S parts] =
-      𝒟[($ᵗ (KeygenFresh C)) >>= fun u => ($ᵗ (S → HashOutput)) >>= fun a =>
+    keygenEchoJoint prims D A x z S parts =ᵈ
+      (($ᵗ (KeygenFresh C)) >>= fun u => ($ᵗ (S → HashOutput)) >>= fun a =>
         keygenPrefixLog prims D A x z S parts a >>= fun r =>
-        ($ᵗ (S → HashOutput)) >>= fun a' => pure (u, (a, a'), r)] := by
+        ($ᵗ (S → HashOutput)) >>= fun a' => pure (u, (a, a'), r)) := by
   unfold keygenEchoJoint
-  refine evalDist_bind_congr' _ fun u => ?_
+  refine EvalDistEq.bind_right _ fun u => ?_
   rw [uniformSample_prod_bind]
-  refine evalDist_bind_congr' _ fun a => ?_
-  rw [DeferredSampling.evalDist_bind_comm]
+  refine EvalDistEq.bind_right _ fun a => ?_
+  dsimp only
+  exact OracleComp.EvalDistEq.bind_bind_swap _ _ _
 
 theorem probEvent_keygenEchoJoint_collide_le (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (S : Finset (Query C))
     (hsk : ∀ i j (f : C.Term → HashOutput), Query.sharedKeys .keygen ((sharedTerms i j).map f) ∈ S)
     (parts : C.Party → Parts C) :
-    Pr[fun t => KeygenCollide prims D S hsk (keygenFiniteTotal prims S t.2.1.1) parts t.2.2.1 t.1 t.2.1.2 |
-      keygenEchoJoint prims D A x z S parts] ≤
+    Pr{let t ← keygenEchoJoint prims D A x z S parts}[
+      KeygenCollide prims D S hsk (keygenFiniteTotal prims S t.2.1.1) parts t.2.2.1 t.1 t.2.1.2] ≤
       (Fintype.card C.Pair : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   rw [probEvent_congr_evalDist (evalDist_keygenEchoJoint_copy prims D A x z S parts)]
   refine probEvent_bind_le_const _ _ _ _ fun u _ => probEvent_bind_le_const _ _ _ _ fun a _ =>
     probEvent_bind_le_const _ _ _ _ fun r _ => ?_
-  rw [bind_pure_comp, probEvent_map]
+  rw [bind_pure_comp, prEvent_map]
   have h := probEvent_keygenCollide_le prims D S hsk (keygenFiniteTotal prims S a) parts r.1 u
   exact h
 
 theorem probEvent_keygenEchoJoint_log_le (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (S : Finset (Query C)) (parts : C.Party → Parts C) (q : ℕ)
     (hq : ∀ a, ∀ r ∈ support (keygenPrefixLog prims D A x z S parts a), (r.2.filter fun v => ¬ IsFixed v).length ≤ q) :
-    Pr[fun t => ∃ v ∈ t.2.2.2, KeygenEchoCell D t.1 v | keygenEchoJoint prims D A x z S parts] ≤
+    Pr{let t ← keygenEchoJoint prims D A x z S parts}[∃ v ∈ t.2.2.2, KeygenEchoCell D t.1 v] ≤
       (q : ℝ≥0∞) * ((Fintype.card C.Pair : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹) := by
   rw [probEvent_congr_evalDist (evalDist_keygenEchoJoint_last prims D A x z S parts)]
   refine probEvent_bind_le_const _ _ _ _ fun p _ => probEvent_bind_le_const _ _ _ _ fun r hr => ?_
-  rw [bind_pure_comp, probEvent_map]
+  rw [bind_pure_comp, prEvent_map]
   exact probEvent_keygenLogHit_le D r.2 q (hq p.1 r hr)
 
 theorem probEvent_keygenEchoJoint_honest_le (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (S : Finset (Query C)) (parts : C.Party → Parts C) :
-    Pr[fun t => KeygenHonestHit prims D (keygenFiniteTotal prims S t.2.1.1) parts t.2.2.1 t.1 |
-      keygenEchoJoint prims D A x z S parts] ≤
+    Pr{let t ← keygenEchoJoint prims D A x z S parts}[
+      KeygenHonestHit prims D (keygenFiniteTotal prims S t.2.1.1) parts t.2.2.1 t.1] ≤
       ((C.n * C.n : ℕ) : ℝ≥0∞) * ((Fintype.card C.Pair : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹) := by
   rw [probEvent_congr_evalDist (evalDist_keygenEchoJoint_last prims D A x z S parts)]
   refine probEvent_bind_le_const _ _ _ _ fun p _ => probEvent_bind_le_const _ _ _ _ fun r _ => ?_
-  rw [bind_pure_comp, probEvent_map]
+  rw [bind_pure_comp, prEvent_map]
   have h := probEvent_keygenHonestHit_le prims D (keygenFiniteTotal prims S p.1) parts r.1
   exact h
 
@@ -782,15 +771,15 @@ theorem probEvent_keygenIrr_mix_le (D : C.Coalition) (A : Adversary C E Unit PEm
     (x : C.Party → Unit) (z : Aux) (S : Finset (Query C))
     (hsk : ∀ i j (f : C.Term → HashOutput), Query.sharedKeys .keygen ((sharedTerms i j).map f) ∈ S)
     (parts : C.Party → Parts C) (u : KeygenFresh C) (a a' : S → HashOutput) :
-    Pr[fun π => keygenIrr prims D (keygenFiniteTotal prims S (keygenMix (fun s : S => KeygenEchoCell D u s.1) a a'))
-        parts π u |
-      simulateQ (fixedLocal prims (keygenFiniteTotal prims S (keygenMix (fun s : S => KeygenEchoCell D u s.1) a a')))
+    Pr{let π ← simulateQ (fixedLocal prims (keygenFiniteTotal prims S (keygenMix (fun s : S => KeygenEchoCell D u s.1) a a')))
         (keygenRefPrefix prims D (keygenFiniteTotal prims S (keygenMix (fun s : S => KeygenEchoCell D u s.1) a a'))
-          A x z parts)] ≤
-    Pr[fun r => KeygenCollide prims D S hsk (keygenFiniteTotal prims S a) parts r.1 u a' ∨
-        (∃ v ∈ r.2, KeygenEchoCell D u v) ∨ KeygenHonestHit prims D (keygenFiniteTotal prims S a) parts r.1 u |
-      simulateQ (fixedLocal prims (keygenFiniteTotal prims S a))
-        (keygenHashLog (keygenRefPrefix prims D (keygenFiniteTotal prims S a) A x z parts))] := by
+          A x z parts)}[
+      keygenIrr prims D (keygenFiniteTotal prims S (keygenMix (fun s : S => KeygenEchoCell D u s.1) a a'))
+        parts π u] ≤
+    Pr{let r ← simulateQ (fixedLocal prims (keygenFiniteTotal prims S a))
+        (keygenHashLog (keygenRefPrefix prims D (keygenFiniteTotal prims S a) A x z parts))}[
+      KeygenCollide prims D S hsk (keygenFiniteTotal prims S a) parts r.1 u a' ∨
+        (∃ v ∈ r.2, KeygenEchoCell D u v) ∨ KeygenHonestHit prims D (keygenFiniteTotal prims S a) parts r.1 u] := by
   set hm := keygenFiniteTotal prims S (keygenMix (fun s : S => KeygenEchoCell D u s.1) a a') with hhm
   set ha := keygenFiniteTotal prims S a with hha
   have hoff : ∀ v, ¬ KeygenEchoCell D u v → hm v = ha v := keygenFiniteTotal_mix_off prims D S u a a'
@@ -799,7 +788,7 @@ theorem probEvent_keygenIrr_mix_le (D : C.Coalition) (A : Adversary C E Unit PEm
   rw [keygenRefPrefix_eq_V, keygenRefPrefixV_congr prims D hm ha hc, keygenRefPrefix_eq_V]
   have R := relTriple_keygenRefPrefixV prims D ha hm ha (KeygenEchoCell D u) hoff
     (keygenRefVisible prims D hm parts) (keygenRefVisible prims D ha parts) A x z parts
-  refine probEvent_le_of_relTriple (relTriple_symm R) fun y r hry hy => ?_
+  refine prEvent_le_of_relTriple (relTriple_symm R) fun y r hry hy => ?_
   rcases hry with hl | hv | he
   · exact Or.inr (Or.inl hl)
   · exact Or.inr (Or.inr (keygenHonestHit_of_viewDiff prims D S parts a a' r.1 u hv))
@@ -814,50 +803,49 @@ def keygenRefRun (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C
     (keygenRefPrefix prims D (keygenFiniteTotal prims S a) A x z parts)
 
 theorem probOutput_true_map_decide {α : Type} (oa : ProbComp α) (P : α → Prop) :
-    Pr[= true | (fun a => decide (P a)) <$> oa] = Pr[P | oa] := by
-  rw [← probEvent_eq_eq_probOutput, probEvent_map]
-  simp [Function.comp_def]
+    Pr{let z ← (fun a => decide (P a)) <$> oa}[z = true] = Pr{let z ← oa}[P z] := by
+  rw [prEvent_map]
+  simp
 
 /-- One fresh table: the echo collision on the prefix, through the mixed oracle. -/
 theorem probEvent_keygenIrr_le_u (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (S : Finset (Query C))
     (hsk : ∀ i j (f : C.Term → HashOutput), Query.sharedKeys .keygen ((sharedTerms i j).map f) ∈ S)
     (parts : C.Party → Parts C) (u : KeygenFresh C) :
-    Pr[fun s => keygenIrr prims D (keygenFiniteTotal prims S s.1) parts s.2 u |
-      ($ᵗ (S → HashOutput)) >>= fun a => (fun π => (a, π)) <$> keygenRefRun prims D A x z S parts a] ≤
-    Pr[fun s => KeygenCollide prims D S hsk (keygenFiniteTotal prims S s.1.1) parts s.2.1 u s.1.2 ∨
+    Pr{let s ← ($ᵗ (S → HashOutput)) >>= fun a => (fun π => (a, π)) <$> keygenRefRun prims D A x z S parts a}[
+      keygenIrr prims D (keygenFiniteTotal prims S s.1) parts s.2 u] ≤
+    Pr{let s ← ($ᵗ ((S → HashOutput) × (S → HashOutput))) >>= fun p =>
+        (fun r => (p, r)) <$> keygenPrefixLog prims D A x z S parts p.1}[
+      KeygenCollide prims D S hsk (keygenFiniteTotal prims S s.1.1) parts s.2.1 u s.1.2 ∨
         (∃ v ∈ s.2.2, KeygenEchoCell D u v) ∨
-        KeygenHonestHit prims D (keygenFiniteTotal prims S s.1.1) parts s.2.1 u |
-      ($ᵗ ((S → HashOutput) × (S → HashOutput))) >>= fun p =>
-        (fun r => (p, r)) <$> keygenPrefixLog prims D A x z S parts p.1] := by
+        KeygenHonestHit prims D (keygenFiniteTotal prims S s.1.1) parts s.2.1 u] := by
   let k : (S → HashOutput) → ProbComp Bool := fun b =>
     (fun π => decide (keygenIrr prims D (keygenFiniteTotal prims S b) parts π u)) <$> keygenRefRun prims D A x z S parts b
-  have hl : Pr[fun s => keygenIrr prims D (keygenFiniteTotal prims S s.1) parts s.2 u |
-      ($ᵗ (S → HashOutput)) >>= fun a => (fun π => (a, π)) <$> keygenRefRun prims D A x z S parts a] =
-      Pr[= true | ($ᵗ (S → HashOutput)) >>= k] := by
-    rw [probEvent_bind_eq_tsum, probOutput_bind_eq_tsum]
+  have hl : Pr{let s ← ($ᵗ (S → HashOutput)) >>= fun a => (fun π => (a, π)) <$> keygenRefRun prims D A x z S parts a}[
+      keygenIrr prims D (keygenFiniteTotal prims S s.1) parts s.2 u] =
+      Pr{let z ← ($ᵗ (S → HashOutput)) >>= k}[z = true] := by
+    rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_bind_eq_tsum]
     refine tsum_congr fun a => ?_
-    rw [probEvent_map, probOutput_true_map_decide]
-    rfl
-  rw [hl, probOutput_def, ← evalDist_bind_keygenMix (fun s : S => KeygenEchoCell D u s.1) k, ← probOutput_def,
-    probOutput_bind_eq_tsum, probEvent_bind_eq_tsum]
-  refine ENNReal.tsum_le_tsum fun p => mul_le_mul_left' ?_ _
-  rw [probOutput_true_map_decide, probEvent_map]
+    rw [prEvent_map, probOutput_true_map_decide]
+  rw [hl, ← (evalDist_bind_keygenMix (fun s : S => KeygenEchoCell D u s.1) k).prEvent_eq (· = true),
+    OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_bind_eq_tsum]
+  refine ENNReal.tsum_le_tsum fun p => mul_le_mul_right ?_ _
+  rw [probOutput_true_map_decide, prEvent_map]
   exact probEvent_keygenIrr_mix_le prims D A x z S hsk parts u p.1 p.2
 
 theorem evalDist_keygenStageBSampler_reorder (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (S : Finset (Query C)) (parts : C.Party → Parts C) :
-    𝒟[(fun w => (w.2.2.1, w.1, w.2.1)) <$> keygenStageBSampler prims D A x z S parts] =
-      𝒟[($ᵗ (KeygenFresh C)) >>= fun u => (fun s => (u, s)) <$>
-        (($ᵗ (S → HashOutput)) >>= fun a => (fun π => (a, π)) <$> keygenRefRun prims D A x z S parts a)] := by
+    ((fun w => (w.2.2.1, w.1, w.2.1)) <$> keygenStageBSampler prims D A x z S parts) =ᵈ
+      (($ᵗ (KeygenFresh C)) >>= fun u => (fun s => (u, s)) <$>
+        (($ᵗ (S → HashOutput)) >>= fun a => (fun π => (a, π)) <$> keygenRefRun prims D A x z S parts a)) := by
   unfold keygenStageBSampler keygenRefRun
-  simp only [map_bind, map_pure, bind_map_left]
-  rw [DeferredSampling.evalDist_bind_comm]
-  refine evalDist_bind_congr' _ fun a => ?_
-  rw [DeferredSampling.evalDist_bind_comm]
-  refine evalDist_bind_congr' _ fun u => ?_
+  simp only [map_bind, map_pure]
+  refine EvalDistEq.trans ?_ (OracleComp.EvalDistEq.bind_bind_swap _ _ _)
+  refine EvalDistEq.bind_right _ fun a => ?_
+  refine (OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans ?_
+  refine EvalDistEq.bind_right _ fun u => ?_
   rw [Functor.map_map, map_eq_bind_pure_comp]
-  refine evalDist_bind_congr' _ fun π => ?_
+  refine EvalDistEq.bind_right _ fun π => ?_
   exact evalDist_uniform_bind_const (α := KeygenFresh C) (pure _)
 
 theorem keygenEchoJoint_eq (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
@@ -875,21 +863,21 @@ theorem probEvent_keygenEchoIrregular_le_joint (D : C.Coalition) (A : Adversary 
     (x : C.Party → Unit) (z : Aux) (S : Finset (Query C))
     (hsk : ∀ i j (f : C.Term → HashOutput), Query.sharedKeys .keygen ((sharedTerms i j).map f) ∈ S)
     (parts : C.Party → Parts C) :
-    Pr[fun w => KeygenEchoIrregular prims D A S (parts, w) w.2.2.1 | keygenStageBSampler prims D A x z S parts] ≤
-    Pr[fun t => KeygenCollide prims D S hsk (keygenFiniteTotal prims S t.2.1.1) parts t.2.2.1 t.1 t.2.1.2 ∨
+    Pr{let w ← keygenStageBSampler prims D A x z S parts}[KeygenEchoIrregular prims D A S (parts, w) w.2.2.1] ≤
+    Pr{let t ← keygenEchoJoint prims D A x z S parts}[
+      KeygenCollide prims D S hsk (keygenFiniteTotal prims S t.2.1.1) parts t.2.2.1 t.1 t.2.1.2 ∨
         (∃ v ∈ t.2.2.2, KeygenEchoCell D t.1 v) ∨
-        KeygenHonestHit prims D (keygenFiniteTotal prims S t.2.1.1) parts t.2.2.1 t.1 |
-      keygenEchoJoint prims D A x z S parts] := by
-  have h1 : Pr[fun w => KeygenEchoIrregular prims D A S (parts, w) w.2.2.1 |
-      keygenStageBSampler prims D A x z S parts] =
-      Pr[fun t => keygenIrr prims D (keygenFiniteTotal prims S t.2.1) parts t.2.2 t.1 |
-        (fun w => (w.2.2.1, w.1, w.2.1)) <$> keygenStageBSampler prims D A x z S parts] := by
-    rw [probEvent_map]
+        KeygenHonestHit prims D (keygenFiniteTotal prims S t.2.1.1) parts t.2.2.1 t.1] := by
+  have h1 : Pr{let w ← keygenStageBSampler prims D A x z S parts}[
+      KeygenEchoIrregular prims D A S (parts, w) w.2.2.1] =
+      Pr{let t ← (fun w => (w.2.2.1, w.1, w.2.1)) <$> keygenStageBSampler prims D A x z S parts}[
+        keygenIrr prims D (keygenFiniteTotal prims S t.2.1) parts t.2.2 t.1] := by
+    rw [prEvent_map]
     rfl
   rw [h1, probEvent_congr_evalDist (evalDist_keygenStageBSampler_reorder prims D A x z S parts),
     keygenEchoJoint_eq]
   refine probEvent_bind_mono_of _ _ _ _ _ fun u => ?_
-  rw [probEvent_map, probEvent_map]
+  rw [prEvent_map, prEvent_map]
   have h := probEvent_keygenIrr_le_u prims D A x z S hsk parts u
   exact h
 
@@ -925,11 +913,11 @@ theorem probEvent_keygenEchoIrregular_parts_le (D : C.Coalition) (A : Adversary 
     (hq : IsQueryBounded A Z setupRounds q) (S : Finset (Query C))
     (hsk : ∀ i j (f : C.Term → HashOutput), Query.sharedKeys .keygen ((sharedTerms i j).map f) ∈ S)
     (parts : C.Party → Parts C) :
-    Pr[fun w => KeygenEchoIrregular prims D A S (parts, w) w.2.2.1 | keygenStageBSampler prims D A x z S parts] ≤
+    Pr{let w ← keygenStageBSampler prims D A x z S parts}[KeygenEchoIrregular prims D A S (parts, w) w.2.2.1] ≤
       ((1 + q + C.n * C.n : ℕ) : ℝ≥0∞) * ((Fintype.card C.Pair : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹) := by
   refine (probEvent_keygenEchoIrregular_le_joint prims D A x z S hsk parts).trans ?_
-  refine (probEvent_or_le _ _ _).trans ?_
-  refine (add_le_add le_rfl (probEvent_or_le (keygenEchoJoint prims D A x z S parts) _ _)).trans ?_
+  refine (prEvent_or_le _ _ _).trans ?_
+  refine (add_le_add le_rfl (prEvent_or_le (keygenEchoJoint prims D A x z S parts) _ _)).trans ?_
   have h1 := probEvent_keygenEchoJoint_collide_le prims D A x z S hsk parts
   have h2 := probEvent_keygenEchoJoint_log_le prims D A x z S parts q
     (fun a r hr => keygenPrefixLog_length_le prims D A x z Z q hq S parts a r hr)
@@ -1010,20 +998,20 @@ variable {C : Committee} {E : Type} (prims : Primitives)
 /-- The echo-collision bound on a domain with every echo input. -/
 theorem keygenEchoFreshExt : KeygenEchoFreshExt (C := C) (E := E) prims := by
   intro D A x z Z q hq S _ hsk
-  have hb : Pr[fun r => KeygenEchoIrregular prims D A S r r.2.2.2.1 |
-      keygenPartsKernel (keygenStageBSampler prims D A x z S)] ≤
+  have hb : Pr{let r ← keygenPartsKernel (keygenStageBSampler prims D A x z S)}[
+      KeygenEchoIrregular prims D A S r r.2.2.2.1] ≤
       ((1 + q + C.n * C.n : ℕ) : ℝ≥0∞) * ((Fintype.card C.Pair : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹) := by
     rw [probEvent_keygenPartsKernel_eq_tsum (keygenStageBSampler prims D A x z S)
       (fun parts w => KeygenEchoIrregular prims D A S (parts, w) w.2.2.1)]
-    calc _ ≤ ∑' parts, Pr[= parts | Concrete.sequenceFin fun _ : C.Party => sampleParts (C := C)] *
+    calc _ ≤ ∑' parts, Pr{let z ← OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)}[z = parts] *
           (((1 + q + C.n * C.n : ℕ) : ℝ≥0∞) *
             ((Fintype.card C.Pair : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹)) :=
-          ENNReal.tsum_le_tsum fun parts => mul_le_mul_left'
+          ENNReal.tsum_le_tsum fun parts => mul_le_mul_right
             (probEvent_keygenEchoIrregular_parts_le prims D A x z Z q hq S hsk parts) _
       _ ≤ _ := by
           rw [ENNReal.tsum_mul_right]
           refine mul_le_of_le_one_left' ?_
-          exact tsum_probOutput_le_one
+          exact OracleComp.tsum_prEvent_le_one _
   rw [← mul_assoc, ← Nat.cast_mul] at hb
   have ht := ENNReal.toReal_mono (ENNReal.mul_ne_top (ENNReal.natCast_ne_top _) (by simp)) hb
   rw [toReal_nat_mul_inv_card] at ht

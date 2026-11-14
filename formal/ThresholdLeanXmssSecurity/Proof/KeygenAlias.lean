@@ -20,7 +20,7 @@ inputs collide with probability at most `2^-256` per pair. The union bound is `(
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 open scoped ENNReal
 
@@ -49,16 +49,16 @@ theorem keygenAlias_term_coordinate (D : C.Coalition) (log : CallLog C)
 /-- For a fixed commit transcript, guessing a programmed term input costs one honest part. -/
 theorem probEvent_keygenAlias_term_guess (D : C.Coalition) (log : CallLog C)
     (sent : C.Party → Mail C E) (T : C.Term) (q : Query C) :
-    Pr[fun parts => keygenTermProgrammingInput D (keygenProgramView D parts log sent) T = q |
-      Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] ≤
+    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+      keygenTermProgrammingInput D (keygenProgramView D parts log sent) T = q] ≤
       (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   obtain ⟨a, ha, hD⟩ := keygen_honest_holder D T
   calc
-    _ ≤ Pr[fun parts => (parts a).term T =
-        keygenAliasValue q ((C.parties.filter (· ∈ C.holders T)).idxOf a) |
-        Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] := by
-      apply probEvent_mono
-      intro parts _ he
+    _ ≤ Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+        (parts a).term T =
+        keygenAliasValue q ((C.parties.filter (· ∈ C.holders T)).idxOf a)] := by
+      apply prEvent_mono
+      intro parts he
       rw [← he, keygenAlias_term_coordinate D log sent parts T a ha hD]
     _ = _ := probEvent_parts_collision (fun parts => (parts a).term T) (fun _ =>
         keygenAliasValue q ((C.parties.filter (· ∈ C.holders T)).idxOf a)) a (some T) none
@@ -67,25 +67,25 @@ theorem probEvent_keygenAlias_term_guess (D : C.Coalition) (log : CallLog C)
 theorem probEvent_keygenAlias_pair_guess (D : C.Coalition) (log : CallLog C)
     (sent : C.Party → Mail C E) (p : C.Pair)
     (hp : p.1.1 ∉ D.1 ∨ p.1.2 ∉ D.1) (q : Query C) :
-    Pr[fun parts => keygenPairProgrammingInput D (keygenProgramView D parts log sent) p = q |
-      Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] ≤
+    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+      keygenPairProgrammingInput D (keygenProgramView D parts log sent) p = q] ≤
       (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   rcases hp with ha | hb
   · calc
-      _ ≤ Pr[fun parts => (parts p.1.1).pair p.1.2 = keygenAliasValue q 0 |
-          Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] := by
-        apply probEvent_mono
-        intro parts _ he
+      _ ≤ Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+          (parts p.1.1).pair p.1.2 = keygenAliasValue q 0] := by
+        apply prEvent_mono
+        intro parts he
         rw [← he]
         simp [keygenAliasValue, keygenPairProgrammingInput, keygenProgramView, ha]
       _ = _ := probEvent_parts_collision (fun parts => (parts p.1.1).pair p.1.2)
         (fun _ => keygenAliasValue q 0) p.1.1 none (some p.1.2)
         (fun c parts => by simp [shiftAt, shiftParts]) (fun _ _ => rfl)
   · calc
-      _ ≤ Pr[fun parts => (parts p.1.2).pair p.1.1 = keygenAliasValue q 1 |
-          Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] := by
-        apply probEvent_mono
-        intro parts _ he
+      _ ≤ Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+          (parts p.1.2).pair p.1.1 = keygenAliasValue q 1] := by
+        apply prEvent_mono
+        intro parts he
         rw [← he]
         simp [keygenAliasValue, keygenPairProgrammingInput, keygenProgramView, hb]
       _ = _ := probEvent_parts_collision (fun parts => (parts p.1.2).pair p.1.1)
@@ -93,56 +93,55 @@ theorem probEvent_keygenAlias_pair_guess (D : C.Coalition) (log : CallLog C)
         (fun c parts => by simp [shiftAt, shiftParts]) (fun _ _ => rfl)
 
 theorem evalDist_keygenAlias_parameters :
-    𝒟[(fun parts : C.Party → Parts C => fun i => (parts i).parameter) <$>
-      Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] =
-      𝒟[$ᵗ (C.Party → HashOutput)] := by
+    ((fun parts : C.Party → Parts C => fun i => (parts i).parameter) <$>
+      OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))) =ᵈ
+      $ᵗ (C.Party → HashOutput) := by
   rw [map_eq_bind_pure_comp]
-  change 𝒟[(Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))) >>=
-    (fun parts => pure (fun i => (parts i).parameter))] = _
+  change ((OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))) >>=
+    (fun parts => pure (fun i => (parts i).parameter))) =ᵈ _
   rw [← sequenceFin_bind_pure]
-  trans 𝒟[Concrete.sequenceFin (fun _ : C.Party => ($ᵗ HashOutput : ProbComp HashOutput))]
+  refine EvalDistEq.trans
+    (my := OverPermutation.sequenceFin (fun _ : C.Party => ($ᵗ HashOutput : ProbComp HashOutput))) ?_ ?_
   · apply evalDist_sequenceFin_congr
     intro i
     unfold sampleParts
     simp only [bind_assoc, pure_bind]
-    apply evalDist_bind_congr'
-    intro parameter
-    rw [evalDist_uniform_bind_const, evalDist_uniform_bind_const]
-    rfl
-  · have he : ∀ n : ℕ, Concrete.sequenceFin (fun _ : Fin n => ($ᵗ HashOutput)) =
+    refine (EvalDistEq.bind_right _ fun parameter =>
+      (evalDist_uniform_bind_const _).trans (evalDist_uniform_bind_const _)).trans ?_
+    rw [bind_pure]
+  · have he : ∀ n : ℕ, OverPermutation.sequenceFin (fun _ : Fin n => ($ᵗ HashOutput)) =
         XmssSecurity.Concrete.sequenceFin (fun _ : Fin n => ($ᵗ HashOutput)) := by
       intro n
       induction n with
       | zero => rfl
-      | succ n ih => simp only [Concrete.sequenceFin, XmssSecurity.Concrete.sequenceFin, ih]
+      | succ n ih => simp only [OverPermutation.sequenceFin, XmssSecurity.Concrete.sequenceFin, ih]
     rw [he]
     exact XmssSecurity.Seeded.evalDist_sequenceFin_uniform _
 
 theorem probEvent_keygenAlias_parameter_coordinate (a : C.Party) (v : HashOutput) :
-    Pr[fun parts => (parts a).parameter = v |
-      Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] =
+    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+      (parts a).parameter = v] =
       (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   calc
-    _ = Pr[fun s : C.Party → HashOutput => s a = v |
-        (fun parts : C.Party → Parts C => fun i => (parts i).parameter) <$>
-          Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] := by
-      rw [probEvent_map]
-      rfl
-    _ = Pr[fun s : C.Party → HashOutput => s a = v | $ᵗ (C.Party → HashOutput)] := by
-      rw [probEvent_def, evalDist_keygenAlias_parameters, ← probEvent_def]
+    _ = Pr{let s : C.Party → HashOutput ← (fun parts : C.Party → Parts C => fun i => (parts i).parameter) <$>
+          OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+        s a = v] := by
+      rw [prEvent_map]
+    _ = Pr{let s : C.Party → HashOutput ← $ᵗ (C.Party → HashOutput)}[s a = v] :=
+      evalDist_keygenAlias_parameters.prEvent_eq _
     _ = _ := probEvent_uniform_coord_eq a v
 
 theorem probEvent_keygenAlias_parameter_guess (D : C.Coalition) (log : CallLog C)
     (sent : C.Party → Mail C E) (q : Query C) :
-    Pr[fun parts => keygenParameterProgrammingInput D (keygenProgramView D parts log sent) = q |
-      Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] ≤
+    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+      keygenParameterProgrammingInput D (keygenProgramView D parts log sent) = q] ≤
       (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   obtain ⟨a, ha⟩ := keygen_exists_honest D
   calc
-    _ ≤ Pr[fun parts => (parts a).parameter = keygenAliasValue q (C.parties.idxOf a) |
-        Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] := by
-      apply probEvent_mono
-      intro parts _ he
+    _ ≤ Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+        (parts a).parameter = keygenAliasValue q (C.parties.idxOf a)] := by
+      apply prEvent_mono
+      intro parts he
       rw [← he]
       simp [keygenParameterProgrammingInput, keygenAliasValue, Committee.parties,
         keygenProgramView, ha]
@@ -154,17 +153,17 @@ def KeygenAliasCommitHit (D : C.Coalition) (parts : C.Party → Parts C) : Query
   | _ => False
 
 theorem probEvent_keygenAlias_commit_guess (D : C.Coalition) (q : Query C) :
-    Pr[fun parts => KeygenAliasCommitHit D parts q |
-      Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] ≤
+    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+      KeygenAliasCommitHit D parts q] ≤
       (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   cases q <;> try (solve | simp [KeygenAliasCommitHit])
   case commit phase i j values =>
     cases phase <;> try (solve | simp [KeygenAliasCommitHit])
     calc
-      _ ≤ Pr[fun parts => (parts i).parameter = values.getD 0 0 |
-          Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] := by
-        apply probEvent_mono
-        intro parts _ he
+      _ ≤ Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+          (parts i).parameter = values.getD 0 0] := by
+        apply prEvent_mono
+        intro parts he
         rw [he.2]
         simp [revealTo]
       _ = _ := probEvent_keygenAlias_parameter_coordinate i _
@@ -177,15 +176,15 @@ theorem keygenAlias_cross_honest (D : C.Coalition) (p : C.Pair)
   split_ifs <;> simp_all
 
 private theorem alias_prob_exists_list {α β : Type} (xs : List α) (oa : ProbComp β)
-    (P : α → β → Prop) (ε : ℝ≥0∞) (h : ∀ a ∈ xs, Pr[P a | oa] ≤ ε) :
-    Pr[fun x => ∃ a ∈ xs, P a x | oa] ≤ xs.length * ε := by
+    (P : α → β → Prop) (ε : ℝ≥0∞) (h : ∀ a ∈ xs, Pr{let z ← oa}[P a z] ≤ ε) :
+    Pr{let x ← oa}[∃ a ∈ xs, P a x] ≤ xs.length * ε := by
   induction xs with
   | nil => simp
   | cons a xs ih =>
     have he : (fun x => ∃ b ∈ a :: xs, P b x) =
         (fun x => P a x ∨ ∃ b ∈ xs, P b x) := by funext x; simp
     rw [he]
-    refine (probEvent_or_le _ _ _).trans ?_
+    refine (prEvent_or_le _ _ _).trans ?_
     calc
       _ ≤ ε + xs.length * ε := add_le_add (h a (by simp))
         (ih (fun b hb => h b (by simp [hb])))
@@ -194,10 +193,10 @@ private theorem alias_prob_exists_list {α β : Type} (xs : List α) (oa : ProbC
 /-- Fixed transcripts give the exact per-query coefficient `K`. -/
 theorem probEvent_keygenAlias_program_guess (D : C.Coalition) (log : CallLog C)
     (sent : C.Party → Mail C E) (q : Query C) :
-    Pr[fun parts => q ∈ keygenProgrammingInputs D (keygenProgramView D parts log sent) |
-      Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] ≤
+    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+      q ∈ keygenProgrammingInputs D (keygenProgramView D parts log sent)] ≤
       keygenProgrammingCount D * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-  let sd := Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))
+  let sd := OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))
   have he : (fun parts => q ∈ keygenProgrammingInputs D (keygenProgramView D parts log sent)) =
       (fun parts => keygenParameterProgrammingInput D (keygenProgramView D parts log sent) = q ∨
         (∃ T ∈ keygenKnownCoordinates D,
@@ -207,9 +206,9 @@ theorem probEvent_keygenAlias_program_guess (D : C.Coalition) (log : CallLog C)
     funext parts
     simp [keygenProgrammingInputs, eq_comm]
   rw [he]
-  refine (probEvent_or_le _ _ _).trans ?_
+  refine (prEvent_or_le _ _ _).trans ?_
   refine le_trans (add_le_add (probEvent_keygenAlias_parameter_guess D log sent q)
-    ((probEvent_or_le _ _ _).trans (add_le_add
+    ((prEvent_or_le _ _ _).trans (add_le_add
       (alias_prob_exists_list (keygenKnownCoordinates D) sd _ _
         (fun T _ => probEvent_keygenAlias_term_guess D log sent T q))
       (alias_prob_exists_list (keygenCrossCoordinates D) sd _ _
@@ -230,21 +229,21 @@ theorem keygenAlias_term_shift_other (D : C.Coalition) (log : CallLog C)
 
 theorem probEvent_keygenAlias_term_collision (D : C.Coalition) (log : CallLog C)
     (sent : C.Party → Mail C E) (T U : C.Term) :
-    Pr[fun parts => T ≠ U ∧
+    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+      T ≠ U ∧
         keygenTermProgrammingInput D (keygenProgramView D parts log sent) T =
-          keygenTermProgrammingInput D (keygenProgramView D parts log sent) U |
-      Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] ≤
+          keygenTermProgrammingInput D (keygenProgramView D parts log sent) U] ≤
       (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   by_cases hTU : T = U
   · simp [hTU]
   obtain ⟨a, ha, hD⟩ := keygen_honest_holder D T
   calc
-    _ ≤ Pr[fun parts => (parts a).term T =
+    _ ≤ Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+        (parts a).term T =
         keygenAliasValue (keygenTermProgrammingInput D (keygenProgramView D parts log sent) U)
-          ((C.parties.filter (· ∈ C.holders T)).idxOf a) |
-        Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] := by
-      apply probEvent_mono
-      intro parts _ he
+          ((C.parties.filter (· ∈ C.holders T)).idxOf a)] := by
+      apply prEvent_mono
+      intro parts he
       rw [← he.2, keygenAlias_term_coordinate D log sent parts T a ha hD]
     _ = _ := probEvent_parts_collision (fun parts => (parts a).term T)
       (fun parts => keygenAliasValue (keygenTermProgrammingInput D (keygenProgramView D parts log sent) U)
@@ -277,20 +276,20 @@ theorem keygenAlias_pair_shift_other (D : C.Coalition) (log : CallLog C)
 
 theorem probEvent_keygenAlias_pair_collision (D : C.Coalition) (log : CallLog C)
     (sent : C.Party → Mail C E) (p r : C.Pair) (hp : p.1.1 ∉ D.1 ∨ p.1.2 ∉ D.1) :
-    Pr[fun parts => p ≠ r ∧
+    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+      p ≠ r ∧
         keygenPairProgrammingInput D (keygenProgramView D parts log sent) p =
-          keygenPairProgrammingInput D (keygenProgramView D parts log sent) r |
-      Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] ≤
+          keygenPairProgrammingInput D (keygenProgramView D parts log sent) r] ≤
       (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   by_cases hpr : p = r
   · simp [hpr]
   rcases hp with ha | hb
   · calc
-      _ ≤ Pr[fun parts => (parts p.1.1).pair p.1.2 = keygenAliasValue
-          (keygenPairProgrammingInput D (keygenProgramView D parts log sent) r) 0 |
-          Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] := by
-        apply probEvent_mono
-        intro parts _ he
+      _ ≤ Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+          (parts p.1.1).pair p.1.2 = keygenAliasValue
+          (keygenPairProgrammingInput D (keygenProgramView D parts log sent) r) 0] := by
+        apply prEvent_mono
+        intro parts he
         rw [← he.2]
         simp [keygenAliasValue, keygenPairProgrammingInput, keygenProgramView, ha]
       _ = _ := probEvent_parts_collision (fun parts => (parts p.1.1).pair p.1.2)
@@ -299,11 +298,11 @@ theorem probEvent_keygenAlias_pair_collision (D : C.Coalition) (log : CallLog C)
         p.1.1 none (some p.1.2) (fun c parts => by simp [shiftAt, shiftParts])
         (fun c parts => by rw [keygenAlias_pair_shift_other D log sent p r hpr _ _ (Or.inl ⟨rfl, rfl⟩)])
   · calc
-      _ ≤ Pr[fun parts => (parts p.1.2).pair p.1.1 = keygenAliasValue
-          (keygenPairProgrammingInput D (keygenProgramView D parts log sent) r) 1 |
-          Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] := by
-        apply probEvent_mono
-        intro parts _ he
+      _ ≤ Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+          (parts p.1.2).pair p.1.1 = keygenAliasValue
+          (keygenPairProgrammingInput D (keygenProgramView D parts log sent) r) 1] := by
+        apply prEvent_mono
+        intro parts he
         rw [← he.2]
         simp [keygenAliasValue, keygenPairProgrammingInput, keygenProgramView, hb]
       _ = _ := probEvent_parts_collision (fun parts => (parts p.1.2).pair p.1.1)
@@ -332,29 +331,28 @@ theorem keygenAlias_inputs_nodup (D : C.Coalition) (view : C.Party → C.Party �
 /-- For a fixed transcript, the birthday term only counts the actual programming coordinates. -/
 theorem probEvent_keygenAlias_inputs_collision (D : C.Coalition) (log : CallLog C)
     (sent : C.Party → Mail C E) :
-    Pr[fun parts => ¬ (keygenProgrammingInputs D (keygenProgramView D parts log sent)).Nodup |
-      Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] ≤
+    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+      ¬ (keygenProgrammingInputs D (keygenProgramView D parts log sent)).Nodup] ≤
       (keygenProgrammingCount D : ℝ≥0∞) ^ 2 * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-  let sd := Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))
+  let sd := OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))
   let ε : ℝ≥0∞ := (Fintype.card HashOutput : ℝ≥0∞)⁻¹
   let ts := keygenKnownCoordinates D
   let ps := keygenCrossCoordinates D
   calc
-    _ ≤ Pr[fun parts =>
-        (∃ T ∈ ts, ∃ U ∈ ts, T ≠ U ∧
+    _ ≤ Pr{let parts ← sd}[(∃ T ∈ ts, ∃ U ∈ ts, T ≠ U ∧
           keygenTermProgrammingInput D (keygenProgramView D parts log sent) T =
             keygenTermProgrammingInput D (keygenProgramView D parts log sent) U) ∨
         (∃ p ∈ ps, ∃ r ∈ ps, p ≠ r ∧
           keygenPairProgrammingInput D (keygenProgramView D parts log sent) p =
-            keygenPairProgrammingInput D (keygenProgramView D parts log sent) r) | sd] := by
-      apply probEvent_mono
-      intro parts _ hbad
+            keygenPairProgrammingInput D (keygenProgramView D parts log sent) r)] := by
+      apply prEvent_mono
+      intro parts hbad
       by_contra hn
       push Not at hn
       exact hbad (keygenAlias_inputs_nodup D _
         (fun T hT U hU he => by_contra fun hne => hn.1 T hT U hU hne he)
         (fun p hp r hr he => by_contra fun hne => hn.2 p hp r hr hne he))
-    _ ≤ _ := probEvent_or_le _ _ _
+    _ ≤ _ := prEvent_or_le _ _ _
     _ ≤ ts.length * (ts.length * ε) + ps.length * (ps.length * ε) := by
       apply add_le_add
       · exact alias_prob_exists_list ts sd _ _ fun T _ =>
@@ -380,9 +378,9 @@ def KeygenAliasHybridBad (D : C.Coalition) (parts : C.Party → Parts C)
 
 theorem probEvent_keygenAlias_hit_guess (D : C.Coalition) (log : CallLog C)
     (sent : C.Party → Mail C E) (q : Query C) :
-    Pr[fun parts => KeygenAliasCommitHit D parts q ∨
-        q ∈ keygenProgrammingInputs D (keygenProgramView D parts log sent) |
-      Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] ≤
+    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+      KeygenAliasCommitHit D parts q ∨
+        q ∈ keygenProgrammingInputs D (keygenProgramView D parts log sent)] ≤
       keygenProgrammingCount D * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   by_cases hd : ∃ kind values, q = .derive .keygen kind values
   · obtain ⟨kind, values, rfl⟩ := hd
@@ -410,8 +408,8 @@ theorem keygenAlias_hit_not_fixed (D : C.Coalition) (parts : C.Party → Parts C
 theorem probEvent_keygenAlias_hybrid_fixed (D : C.Coalition) (log : CallLog C)
     (sent : C.Party → Mail C E) (q : ℕ)
     (hq : (log.filter fun v => ¬ IsFixed v.1).length ≤ q) :
-    Pr[fun parts => KeygenAliasHybridBad D parts log sent |
-      Concrete.sequenceFin (fun _ : C.Party => sampleParts (C := C))] ≤
+    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
+      KeygenAliasHybridBad D parts log sent] ≤
       ((q * keygenProgrammingCount D + keygenProgrammingCount D ^ 2 : ℕ) : ℝ≥0∞) *
         (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   let L := log.filter fun v => ¬ IsFixed v.1
@@ -427,7 +425,7 @@ theorem probEvent_keygenAlias_hybrid_fixed (D : C.Coalition) (log : CallLog C)
       exact ⟨v, (List.mem_filter.mp hv).1, hh⟩
   unfold KeygenAliasHybridBad
   simp only [he]
-  refine (probEvent_or_le _ _ _).trans ?_
+  refine (prEvent_or_le _ _ _).trans ?_
   refine le_trans (add_le_add
     (alias_prob_exists_list L _ _ _ (fun v _ => probEvent_keygenAlias_hit_guess D log sent v.1))
     (probEvent_keygenAlias_inputs_collision D log sent)) ?_
@@ -440,15 +438,15 @@ theorem probEvent_keygenAlias_hybrid_fixed (D : C.Coalition) (log : CallLog C)
 theorem probEvent_keygenAlias_independent (D : C.Coalition)
     (transcript : ProbComp (CallLog C × (C.Party → Mail C E))) (q : ℕ)
     (hq : ∀ r ∈ support transcript, (r.1.filter fun v => ¬ IsFixed v.1).length ≤ q) :
-    Pr[fun p => KeygenAliasHybridBad D p.1 p.2.1 p.2.2 |
-      keygenPartsKernel (fun _ => transcript)] ≤
+    Pr{let p ← keygenPartsKernel (fun _ => transcript)}[
+      KeygenAliasHybridBad D p.1 p.2.1 p.2.2] ≤
       ((q * keygenProgrammingCount D + keygenProgrammingCount D ^ 2 : ℕ) : ℝ≥0∞) *
         (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   unfold keygenPartsKernel
-  rw [probEvent_congr_evalDist (DeferredSampling.evalDist_bind_comm _ _ _)]
+  rw [probEvent_congr_evalDist (OracleComp.EvalDistEq.bind_bind_swap _ _ _)]
   apply probEvent_bind_le_const
   intro r hr
-  rw [bind_pure_comp, probEvent_map]
+  rw [bind_pure_comp, prEvent_map]
   exact probEvent_keygenAlias_hybrid_fixed D r.1 r.2 q (hq r hr)
 
 def keygenAliasQueryLog (t : (LocalSpec C).Domain) (u : (LocalSpec C).Range t) : CallLog C :=
@@ -507,7 +505,7 @@ theorem keygenAlias_observe_length {α : Type} (oa : OracleComp (LocalSpec C) α
 def keygenAliasFreshTranscript (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) : OracleComp (WorldSpec C) (CallLog C × (C.Party → Mail C E)) := do
   let (state, log) ← observe (A.start (corruptInputs D x) z)
-  let commitments ← free (liftComp (Concrete.sequenceFin fun i : C.Party =>
+  let commitments ← free (liftComp (OverPermutation.sequenceFin fun i : C.Party =>
     if i ∈ D.1 then pure [] else C.parties.mapM fun _ => ($ᵗ HashOutput)) (LocalSpec C))
   let ((_, sent), calls) ← observe (A.round state fun c i => if c ∈ D.1 ∧ i ∉ D.1 then
     commitOutbox i (commitments i) c else none)
@@ -532,9 +530,9 @@ theorem keygenAliasFreshTranscript_length (D : C.Coalition) (A : Adversary C E U
 theorem probEvent_keygenAlias_fresh (prims : Primitives) (D : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ) (hq : IsQueryBounded A Z setupRounds q) :
-    Pr[fun p => KeygenAliasHybridBad D p.1 p.2.1 p.2.2 |
-      keygenPartsKernel (fun _ =>
-        (simulateQ (worldAnswer prims) (keygenAliasFreshTranscript D A x z)).run' ∅)] ≤
+    Pr{let p ← keygenPartsKernel (fun _ =>
+        (simulateQ (worldAnswer prims) (keygenAliasFreshTranscript D A x z)).run' ∅)}[
+      KeygenAliasHybridBad D p.1 p.2.1 p.2.2] ≤
       ((q * keygenProgrammingCount D + keygenProgrammingCount D ^ 2 : ℕ) : ℝ≥0∞) /
         2 ^ 256 := by
   have hb := probEvent_keygenAlias_independent D
@@ -542,8 +540,8 @@ theorem probEvent_keygenAlias_fresh (prims : Primitives) (D : C.Coalition)
     (fun r hr => keygenAliasFreshTranscript_length D A x z Z q hq r
       (support_simulateQ_run'_subset _ _ _ hr))
   have hc : Fintype.card HashOutput = 2 ^ 256 := by
-    unfold HashOutput hashOutputBits
-    exact card_bitVec 256
+    unfold HashOutput
+    exact Fintype.card_bitVec 256
   simpa only [hc, Nat.cast_pow, Nat.cast_ofNat, div_eq_mul_inv] using hb
 
 /-- Sender and receiver tags make the honest commitment cells distinct for every choice of parts. -/
@@ -714,8 +712,8 @@ theorem relTriple_keygenAlias_fresh_blocks (prims : Primitives) :
     ∀ (n : ℕ) (qs : Fin n → List (Query C)) (s : HashCache C),
       (∀ i, (qs i).Nodup) → (∀ i j, i ≠ j → (qs i).Disjoint (qs j)) →
       (∀ i q, q ∈ qs i → s q = none) → (∀ i q, q ∈ qs i → ¬ IsFixed q) →
-      RelTriple (Concrete.sequenceFin fun i => (qs i).mapM fun _ => ($ᵗ HashOutput))
-        ((Concrete.sequenceFin fun i => (qs i).mapM (hashAnswer prims)).run s)
+      RelTriple (OverPermutation.sequenceFin fun i => (qs i).mapM fun _ => ($ᵗ HashOutput))
+        ((OverPermutation.sequenceFin fun i => (qs i).mapM (hashAnswer prims)).run s)
         (fun a b => a = b.1 ∧ ∀ v, (∀ i, v ∉ qs i) → s v = b.2 v) := by
   intro n
   induction n with
@@ -724,7 +722,7 @@ theorem relTriple_keygenAlias_fresh_blocks (prims : Primitives) :
     exact relTriple_pure_pure ⟨rfl, fun _ _ => rfl⟩
   | succ n ih =>
     intro qs s hnd hdis hfresh hfix
-    simp only [Concrete.sequenceFin, StateT.run_bind, StateT.run_pure]
+    simp only [OverPermutation.sequenceFin, StateT.run_bind, StateT.run_pure]
     apply relTriple_bind (relTriple_keygenAlias_fresh_hashes prims (qs 0) s (hnd 0) (hfresh 0) (hfix 0))
     rintro a ⟨b, t⟩ ⟨he, ht⟩
     dsimp only at he ht ⊢
@@ -755,19 +753,19 @@ theorem keygenAliasCommitQueries_mem (D : C.Coalition) (parts : C.Party → Part
 theorem relTriple_keygenAlias_initial (prims : Primitives) (D : C.Coalition)
     (parts : C.Party → Parts C) (s : HashCache C)
     (hfresh : ∀ v, KeygenAliasCommitHit D parts v → s v = none) :
-    RelTriple (Concrete.sequenceFin fun i : C.Party =>
+    RelTriple (OverPermutation.sequenceFin fun i : C.Party =>
         if i ∈ D.1 then pure [] else C.parties.mapM fun _ => ($ᵗ HashOutput))
       ((simulateQ (localAnswer prims) (keygenInitialCommitments D parts)).run s)
       (fun a b => a = b.1 ∧ ∀ v, ¬ KeygenAliasCommitHit D parts v → s v = b.2 v) := by
-  have hl : (Concrete.sequenceFin fun i : C.Party =>
+  have hl : (OverPermutation.sequenceFin fun i : C.Party =>
       (keygenAliasCommitQueries D parts i).mapM fun _ => ($ᵗ HashOutput)) =
-      (Concrete.sequenceFin fun i : C.Party =>
+      (OverPermutation.sequenceFin fun i : C.Party =>
         if i ∈ D.1 then pure [] else C.parties.mapM fun _ => ($ᵗ HashOutput)) := by
     congr 1
     funext i
     by_cases hi : i ∈ D.1 <;> simp [keygenAliasCommitQueries, hi, List.mapM_map, Function.comp_def]
   have hr : simulateQ (localAnswer prims) (keygenInitialCommitments D parts) =
-      Concrete.sequenceFin fun i : C.Party => (keygenAliasCommitQueries D parts i).mapM (hashAnswer prims) := by
+      OverPermutation.sequenceFin fun i : C.Party => (keygenAliasCommitQueries D parts i).mapM (hashAnswer prims) := by
     rw [keygenInitialCommitments, simulateQ_sequenceFin]
     congr 1
     funext i
@@ -806,7 +804,7 @@ def keygenAliasFreshTail (prims : Primitives) (D : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (parts : C.Party → Parts C)
     (st : (A.State × CallLog C) × HashCache C) :
     ProbComp ((C.Party → Parts C) × CallLog C × (C.Party → Mail C E)) := do
-  let commitments ← Concrete.sequenceFin fun i : C.Party =>
+  let commitments ← OverPermutation.sequenceFin fun i : C.Party =>
     if i ∈ D.1 then pure [] else C.parties.mapM fun _ => ($ᵗ HashOutput)
   let r ← (simulateQ (worldAnswer prims) (observe (A.round st.1.1 fun c i =>
     if c ∈ D.1 ∧ i ∉ D.1 then commitOutbox i (commitments i) c else none))).run st.2
@@ -827,23 +825,23 @@ def keygenAliasKnownTail (prims : Primitives) (D : C.Coalition)
 
 theorem evalDist_keygenAlias_fresh_start (prims : Primitives) (D : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux) :
-    𝒟[keygenPartsKernel (fun _ =>
-      (simulateQ (worldAnswer prims) (keygenAliasFreshTranscript D A x z)).run' ∅)] =
-    𝒟[do
+    keygenPartsKernel (fun _ =>
+      (simulateQ (worldAnswer prims) (keygenAliasFreshTranscript D A x z)).run' ∅) =ᵈ
+    (do
       let st ← (simulateQ (worldAnswer prims) (observe (A.start (corruptInputs D x) z))).run ∅
-      let parts ← Concrete.sequenceFin fun _ : C.Party => sampleParts (C := C)
-      keygenAliasFreshTail prims D A parts st] := by
+      let parts ← OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)
+      keygenAliasFreshTail prims D A parts st) := by
   unfold keygenPartsKernel keygenAliasFreshTranscript keygenAliasFreshTail
   simp only [simulateQ_bind, simulateQ_pure, simulateQ_world_sample, StateT.run'_eq,
     StateT.run_bind, StateT.run_lift, StateT.run_pure, bind_assoc, pure_bind, map_bind, map_pure]
-  rw [DeferredSampling.evalDist_bind_comm]
+  exact OracleComp.EvalDistEq.bind_bind_swap _ _ _
 
 theorem keygenAlias_known_start (prims : Primitives) (D : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux) :
     (simulateQ (worldAnswer prims) (keygenKnownPrefix D A x z)).run ∅ = (do
       let st ← (simulateQ (worldAnswer prims) (observe (A.start (corruptInputs D x) z))).run ∅
       let dealer ← keygenDealerSamples (C := C)
-      let parts ← Concrete.sequenceFin fun _ : C.Party => sampleParts (C := C)
+      let parts ← OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)
       keygenAliasKnownTail prims D A parts st dealer.1 dealer.2.1 dealer.2.2) := by
   unfold keygenKnownPrefix keygenAliasKnownTail
   simp only [simulateQ_bind, simulateQ_pure, simulateQ_world_sample, StateT.run_bind,
@@ -853,13 +851,12 @@ theorem keygenAlias_known_start (prims : Primitives) (D : C.Coalition)
 theorem relTriple_keygenAlias_support {α β : Type} {oa : ProbComp α} {ob : ProbComp β}
     {R : α → β → Prop} (h : RelTriple oa ob R) :
     RelTriple oa ob (fun a b => a ∈ support oa ∧ b ∈ support ob ∧ R a b) := by
+  let : MeasurableSpace α := ⊤
+  let : MeasurableSpace β := ⊤
   obtain ⟨c, hc⟩ := relTriple_iff_relWP.1 h
-  refine relTriple_iff_relWP.2 ⟨c, fun z hz => ?_⟩
-  have hl : z.1 ∈ support (Prod.fst <$> c.1) := by rw [support_map]; exact ⟨z, hz, rfl⟩
-  have hr : z.2 ∈ support (Prod.snd <$> c.1) := by rw [support_map]; exact ⟨z, hz, rfl⟩
-  rw [c.2.map_fst] at hl
-  rw [c.2.map_snd] at hr
-  exact ⟨(mem_support_evalDist_iff _ _).1 hl, (mem_support_evalDist_iff _ _).1 hr, hc z hz⟩
+  refine relTriple_iff_relWP.2 ⟨c, ?_⟩
+  filter_upwards [ae_mem_support_prod c, hc] with z hz hR
+  exact ⟨hz.1, hz.2, hR⟩
 
 theorem relTriple_keygenAlias_tail (prims : Primitives) (D : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (parts : C.Party → Parts C)
@@ -911,14 +908,14 @@ def KeygenAliasPrefixCoupling (prims : Primitives) : Prop :=
 theorem keygenAliasPrefixCoupling (prims : Primitives) :
     KeygenAliasPrefixCoupling (C := C) (E := E) prims := by
   intro D A x z
-  apply relTriple_of_evalDist_eq_left (evalDist_keygenAlias_fresh_start prims D A x z)
+  apply relTriple_of_evalDistEq_left (evalDist_keygenAlias_fresh_start prims D A x z)
   rw [keygenAlias_known_start]
   apply relTriple_bind (relTriple_keygenAlias_support (relTriple_refl _))
   intro st st' hst
   rcases hst with ⟨hsupport, _, he⟩
   subst st'
   rw [← pure_bind () (fun _ =>
-    (Concrete.sequenceFin fun _ : C.Party => sampleParts (C := C)) >>=
+    (OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)) >>=
       fun parts => keygenAliasFreshTail prims D A parts st)]
   apply relTriple_bind (relTriple_true _ _)
   intro _ dealer _
@@ -932,12 +929,12 @@ theorem keygenAliasPrefixCoupling (prims : Primitives) :
 theorem keygenProgramAliasBound (prims : Primitives) :
     KeygenProgramAliasBound (C := C) (E := E) prims := by
   intro D A x z Z q hq
-  have hc : Pr[fun w => KeygenProgramAlias D w.1 |
-      (simulateQ (worldAnswer prims) (keygenKnownPrefix D A x z)).run ∅] ≤
-      Pr[fun p => KeygenAliasHybridBad D p.1 p.2.1 p.2.2 |
-        keygenPartsKernel (fun _ =>
-          (simulateQ (worldAnswer prims) (keygenAliasFreshTranscript D A x z)).run' ∅)] := by
-    apply probEvent_le_of_relTriple (relTriple_symm (keygenAliasPrefixCoupling prims D A x z))
+  have hc : Pr{let w ← (simulateQ (worldAnswer prims) (keygenKnownPrefix D A x z)).run ∅}[
+      KeygenProgramAlias D w.1] ≤
+      Pr{let p ← keygenPartsKernel (fun _ =>
+          (simulateQ (worldAnswer prims) (keygenAliasFreshTranscript D A x z)).run' ∅)}[
+        KeygenAliasHybridBad D p.1 p.2.1 p.2.2] := by
+    apply prEvent_le_of_relTriple (relTriple_symm (keygenAliasPrefixCoupling prims D A x z))
     intro w p hp hw
     rcases hp with ⟨v, hv, hh⟩ | ⟨hparts, hlog, hsent⟩
     · exact Or.inl ⟨v, hv, Or.inl hh⟩
