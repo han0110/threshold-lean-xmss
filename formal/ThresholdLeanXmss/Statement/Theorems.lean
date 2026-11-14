@@ -8,7 +8,7 @@ which GS20 and PRAWNS state them. The file of `Statement/` that defines a claim 
 error terms and its deviations from the papers. `ThresholdLeanXmssSecurity.lean` holds the root
 theorem of `ThresholdLeanXmssSecurityStatement` and the axiom guards.
 
-The end result is two facts.
+The two main claims are these.
 
 * No adversary with a bounded budget distinguishes the keygen or a ceremony from a trusted dealer
   with selective abort, up to the error that the claim names (`keygenSecurity`, `treeSecurity` and

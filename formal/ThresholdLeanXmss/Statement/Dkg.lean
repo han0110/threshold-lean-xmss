@@ -71,7 +71,7 @@ def treeBatches : Tree → ℕ
 
 /-- The soundness error of one check with `d` coins and `R` halving steps, `(d + 2 (R + 1)) / (|E| - 2)`
 (GS20, Lemmas 8 to 10). It adds `q / |E|` for each of the `R + 2` coins, for a counted call that hits
-the key input of a coin before the coin opens. -/
+the key input of a coin before `Fcoin` reveals the fresh value. -/
 def checkErrorOf (d R q : ℕ) : ℝ :=
   (d + 2 * (R + 1) : ℕ) / (Fintype.card E - 2 : ℝ) + ((R + 2) * q : ℕ) / (Fintype.card E : ℝ)
 

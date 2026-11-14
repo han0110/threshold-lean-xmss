@@ -126,10 +126,11 @@ counted, and its overhead counts its emulation of the honest operators.
 \item To match the model of the hash, the implementation needs injective encodings with a distinct
 tag for each domain, the tweakable hash, the PRF and the masks included, and fields of fixed width
 or with a length prefix. The byte encoding of the code does not meet this requirement
-(Section~\ref{sec:code}). The requirement is for all claims together. The signing game calls only
-three domains, namely the tweakable hash, the PRF and the masks. In the code, an input of the PRF
-has 48 bytes and an input of a mask has 84 bytes. Each input of $\Th$ in the signing game has 64,
-80 or 960 bytes. So the lengths separate the present encodings of these three domains. This
+(Section~\ref{sec:code}). The requirement is for all claims together. The honest parties of the
+signing game call only three domains, namely the tweakable hash, the PRF and the masks. In the
+code, an input of the PRF has 48 bytes and an input of a mask has 84 bytes. Each input of $\Th$
+that an honest party of the signing game hashes has 64, 80 or 960 bytes. The forger can call $H$
+on every input. So the lengths separate the present encodings of these three domains. This
 separation is a reading of the code and of the model. No Lean theorem states it.
 \item The check gives bit $j$ of a word of tuples the public weight $x^j$ in place of a coin. The
 errors are bits and $1, x, \ldots, x^{63}$ are linearly independent over $\mathbb{F}_2$, so a wrong
@@ -188,7 +189,7 @@ counts only the calls of the adversary, in the random-permutation model. The sig
 that form. Its game is not the generic game of leanXMSS, which has one signer with no state. The
 model and the bound differ in three points. $H$ is a random oracle, one budget counts the own calls
 of the forger and its round-2 requests, and the bound has two more terms. The separate claim
-\lean{SigningSecurityStatement} has the bound $q / 2^{127}$ and the budget of every party, as
+\lean{SigningSecurityStatement} has the hash term $q / 2^{127}$ and the budget of every party, as
 leanXMSS has them at the revision that \lean{lakefile.toml} pins.
 \item The check field is any field with $2^{192}$ elements. No claim fixes its basis.
 \end{itemize}
