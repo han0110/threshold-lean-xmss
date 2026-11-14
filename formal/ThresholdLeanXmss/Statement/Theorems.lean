@@ -10,26 +10,51 @@ theorem of `ThresholdLeanXmssSecurityStatement` and the axiom guards.
 
 The two main claims are these.
 
-* The DKG acts as a trusted dealer of the keys and the trees. Its first step is the seed
-  generation. No adversary with a bounded budget distinguishes the seed generation from a trusted
-  dealer with selective abort, up to the error that the claim names (`seedGenSecurity`).
-  `dealerTree` states that the dealer of a ceremony gives the trees of the signing game. No field
-  states the security of a tree ceremony.
+* The setup by DKG acts as a trusted dealer with selective abort. The fields state this claim for
+  the seed generation only. `dealerTree` states that the dealer of a ceremony gives the trees of
+  the signing game.
 * Signing with a trusted dealer is strongly unforgeable with adaptive corruption
   (`stronglyUnforgeable`).
 
-The other fields are the honest runs, the gadgets of GS20 and the threshold PRF of PRAWNS. GS20
-states no completeness lemma. Security with abort alone allows a protocol that always aborts, so
-each completeness field is the honest run of its protocol.
+## The order of the fields
+
+The fields are in four groups, in the order of the note of leanXMSS. Each field names its item of
+a source.
+
+* The threshold PRF `F` is the first group (the note, Section 2, and PRAWNS, Definitions 2.1 and
+  2.2). Its fields are `tprfCorrectness` and `tprfSecurity`.
+* The setup by DKG is the second group (the note, Section 2.1). Its target is the trusted dealer
+  `KeyGen` of PRAWNS. The note has two ceremonies.
+  * The keygen ceremony of the note is the seed generation and then the MPC for the top tree. No
+    adversary with a bounded budget distinguishes the seed generation from a trusted dealer with
+    selective abort, up to the error that the claim names (`seedGenSecurity`).
+    `seedGenCompleteness` is its honest run.
+  * The ceremony of a bottom tree is the MPC for that tree and for the signature of its root. The
+    fields `treeCompleteness` and `dealerTree` cover the top tree and each bottom tree.
+    `treeSuccess` covers a bottom tree on its top tree.
+* The MPC protocol of GS20 is the third group. Its fields are `coin`, `mult`, `extendMult`,
+  `multVerify` and `main`, and the honest runs `coinCompleteness`, `multVerifyCompleteness` and
+  `mainCompleteness`. The note has no section for this group. It names the MPC in Section 2.1.
+* The signing is the fourth group (the note, Section 2.3, and PRAWNS, Definition 3.2). Its fields
+  are `signingCorrectness` and `stronglyUnforgeable`.
+
+No group is for Section 2.2 of the note, the setup by a trusted dealer with `n = 3f + 1`. Each
+claim is for `n = 2t - 1`.
+
+GS20 states no completeness lemma. Security with abort alone allows a protocol that always aborts,
+so each completeness field is the honest run of its protocol.
 
 ## Model
 
 * There are `n = 2t - 1` operators, synchronous rounds and private authenticated links (GS20,
   Section 3.1). At most `t - 1` operators are corrupt over the lifetime of the key.
-* The seed generation and each ceremony are separate claims. Each has a rushing malicious adversary with its
-  own static coalition. The gadget claims are in the `F_rand`-hybrid model, and the PRSS outputs of
-  one round realize `F_rand` (CDI05). The seed generation and ceremony claims run the real network with the
-  real PRSS.
+* The seed generation and each ceremony are separate claims. Each has a rushing malicious adversary
+  with its own static coalition. The seed generation and ceremony claims run the real network with
+  the real PRSS.
+* Each gadget claim is in a hybrid model. `coin`, `mult` and `extendMult` are in the
+  `F_rand`-hybrid model. `multVerify` is in the `{F_coin, F_extendMult, F_rand}`-hybrid model, and
+  `main` is in the `{F_mult, F_multVerify}`-hybrid model. The PRSS outputs of one round realize
+  `F_rand` (CDI05).
 * The signing adversary corrupts adaptively, and a corruption gives only the keys of an operator.
   After a ceremony, an operator erases its ceremony state.
 * Honest operators sign at most one message at each key over all quorums
@@ -59,15 +84,17 @@ the advantage of a reduction is only as strong as that reduction.
 
 ## What no field states
 
-* No field states that a ceremony securely computes `F_tree`. `Dkg.lean` states this claim as
-  `TreeSecurityStatement`, with the simulator `treeSimulator`, and no theorem proves it. The fields
-  on a ceremony are its honest run (`treeCompleteness`) and the two facts on its dealer
+* No field states that a ceremony securely computes `F_tree`. `Dkg.lean` has this claim as
+  `TreeSecurityStatement`, with the simulator `treeSimulator`. It is stated and not proved. The
+  fields on a ceremony are its honest run (`treeCompleteness`) and the two facts on its dealer
   (`dealerTree` and `treeSuccess`).
-* No field composes the seed generation, the ceremonies and the signing. Each field covers one protocol or
-  one gadget alone. `statement.tex` holds the deployment contract and the argument of that
-  composition.
-* No field covers a corruption between two ceremonies. The seed generation and ceremony claims cover their
-  static coalitions, and the signing claim covers adaptive corruptions.
+* So no field states that the keygen ceremony of the note is secure as a whole. The fields state
+  it for the seed generation. `TreeSecurityStatement` is also the claim for the top tree.
+* No field composes the seed generation, the ceremonies and the signing. Each field covers one
+  protocol or one gadget alone. `statement.tex` holds the deployment contract and the argument of
+  that composition.
+* No field covers a corruption between two ceremonies. The seed generation and ceremony claims
+  cover their static coalitions, and the signing claim covers adaptive corruptions.
 * No field fixes the basis or the bit encoding of the check field. The claims take every value of
   `Constants`. Its field `encode` gives `E` exactly `2 ^ 128` elements (`Constants.card`), so `E` is
   isomorphic to `GF(2^128)`. `constants_nonempty` gives a value only for the committee of one
@@ -94,28 +121,34 @@ variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algeb
 circuit family and one setting. -/
 structure Theorems (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) :
     Prop where
-  /-- An honest seed generation gives the keys of `F_seedGen`, except when two derived keys collide (the note,
-  Section 2.1, honest run). -/
-  seedGenCompleteness : SeedGenCompletenessStatement prims C E
+  -- The threshold PRF `F` (the note, Section 2, and PRAWNS, Definitions 2.1 and 2.2).
+  /-- `Combine'` of the parts of a quorum gives `F(msk, x)` (PRAWNS, Definition 2.1). -/
+  tprfCorrectness : TprfCorrectnessStatement prims C
+  /-- The threshold PRF is adaptively secure, up to `tprfError C q` for `q` counted calls (PRAWNS,
+  Definition 2.2 and Theorem 5.1). -/
+  tprfSecurity : TprfSecurityStatement prims C
+
+  -- The setup by DKG, with the keygen ceremony and each bottom tree (the note, Section 2.1).
   /-- The seed generation securely computes `F_seedGen` with selective abort, with the simulator
   `seedGenSimulator` and the error `(q + seedGenSecrets C)² / 2^256` (GL05 and CDG+18). -/
   seedGenSecurity : SeedGenSecurityStatement prims C E
-
+  /-- An honest seed generation gives the keys of `F_seedGen`, except when two derived keys collide (the note,
+  Section 2.1, honest run). -/
+  seedGenCompleteness : SeedGenCompletenessStatement prims C E
   /-- An honest ceremony gives the tree of `F_tree`, except when an honest check aborts
-  (`treeAbortError`) (GS20, Theorem 2, honest run). -/
+  (`treeAbortError`) (the note, Section 2.1, honest run). -/
   treeCompleteness : TreeCompletenessStatement prims K circuits settings
   /-- When the circuits compute `Th`, the dealer of `F_tree` gives the trees of `KeyGen` of the
   signing game (PRAWNS, Section 3.1, and `doc/dkg.md` 3.1). -/
   dealerTree : DealerTreeStatement prims circuits settings C
   /-- When the circuits compute `Th`, `F_tree` gives a bottom tree `b` on the top tree of the same
-  seeds, except with probability `(1 - p)^L` (PRAWNS, Section 3.1, honest run). -/
+  seeds, except with probability `(1 - p)^L` (the note, Section 2.1, honest run). -/
   treeSuccess : TreeSuccessStatement prims circuits settings C
 
+  -- The MPC protocol of the setup (GS20).
   /-- `Coin` securely computes `F_coin` with selective abort in the `F_rand`-hybrid model, with the
   error `0` (GS20, Lemma 3). -/
   coin : CoinStatement prims K
-  /-- An honest `Coin` gives the output of `F_coin` (GS20, Protocol 6, honest run). -/
-  coinCompleteness : CoinCompletenessStatement prims K
   /-- `MulRep` and `Reshare` in each mode securely compute `F_mult` up to an additive attack, with
   selective abort and the error `0` (GS20, Lemma 4). -/
   mult : MultStatement prims K
@@ -125,23 +158,20 @@ structure Theorems (prims : Primitives) (K : Constants C E) (circuits : Circuits
   /-- The check with its digests securely computes `F_multVerify` with selective abort. The error is
   `checkErrorOf` and a birthday term of the hash (GS20, Lemmas 8 to 11, and CGH+18). -/
   multVerify : MultVerifyStatement prims K
-  /-- An honest check accepts correct tuples, except when it aborts on a coin (`abortErrorOf`) (GS20,
-  Protocol 17, honest run). -/
-  multVerifyCompleteness : MultVerifyCompletenessStatement prims K
   /-- A batch securely computes `F_main` in the `{F_mult, F_multVerify}`-hybrid model, up to a
   birthday term of the copy hashes (GS20, Theorem 2, for public outputs and pre-shared inputs). -/
   main : MainStatement prims K
+  /-- An honest `Coin` gives the output of `F_coin` (GS20, Protocol 6, honest run). -/
+  coinCompleteness : CoinCompletenessStatement prims K
+  /-- An honest check accepts correct tuples, except when it aborts on a coin (`abortErrorOf`) (GS20,
+  Protocol 17, honest run). -/
+  multVerifyCompleteness : MultVerifyCompletenessStatement prims K
   /-- An honest batch gives the outputs of `F_main` (GS20, Protocol 19, honest run). -/
   mainCompleteness : MainCompletenessStatement prims K
 
-  /-- `Combine'` of the parts of a quorum gives `F(msk, x)` (PRAWNS, Definition 2.1). -/
-  tprfCorrectness : TprfCorrectnessStatement prims C
-  /-- The threshold PRF is adaptively secure, up to `tprfError C q` for `q` counted calls (PRAWNS,
-  Definition 2.2 and Theorem 5.1). -/
-  tprfSecurity : TprfSecurityStatement prims C
-
+  -- The signing (the note, Section 2.3, and PRAWNS, Definition 3.2).
   /-- An honest quorum fails with probability at most `2 (1 - p)^L`, and its signature verifies
-  (PRAWNS, Section 3.1, honest run). -/
+  (the note, Section 2.3, honest run). -/
   signingCorrectness : SigningCorrectnessStatement prims C
   /-- Threshold leanXMSS is strongly unforgeable with adaptive corruption, in the random-oracle
   model. A forger that itself makes at most `q` calls of `H` and `PRG` and round-2 requests forges
