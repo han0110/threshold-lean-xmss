@@ -11,6 +11,8 @@ This repository implements threshold t-of-(2t-1) leanXMSS (EIP-8450) base on the
 
 See [`doc/dkg.md`](doc/dkg.md) for the DKG and [`doc/sign.md`](doc/sign.md) for signing.
 
+The code uses leanVM at revision `f5f3672f`. leanVM does not make some leanXMSS items public at this revision, so [`src/lean_xmss.rs`](src/lean_xmss.rs) holds verbatim copies of them.
+
 ## Usage
 
 Build the binary.
@@ -81,6 +83,7 @@ The table gives the cost of one bottom tree, which holds $2^{16}$ one-time keys.
 - The delay is a fixed $150$ ms one way on every link, with TCP buffers of $128$ MB.
 - The links have no bandwidth limit, jitter or loss, so a real network can take longer.
 - The runs predate the reshare of the outputs before the check. The code now takes $198$ (collector) or $126$ (peer) rounds per batch.
+- The runs also predate the change of the check field from $\mathbb F_{192}$ to $\mathbb F_{128}$ and the coin with two opened values.
 
 ### Sign
 

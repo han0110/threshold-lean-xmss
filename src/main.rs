@@ -1,6 +1,7 @@
 mod check;
 mod circuit;
 mod dkg;
+mod lean_xmss;
 mod mpc;
 mod net;
 mod prawns;

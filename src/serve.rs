@@ -345,7 +345,7 @@ async fn sign(
     let (group, operator) = Operator::load(dir);
     let pk = fs::read(dir.join("pk")).unwrap();
     let tree = BottomTree::open(dir, xmss::layer_index(leaf, 1));
-    let tree_leaf = xmss::tree_leaf(leaf) as usize;
+    let tree_leaf = leaf as usize % xmss::KEYS;
     let (cpk, commitment, path, top) = (
         tree.cpk(tree_leaf),
         tree.commitment(tree_leaf),

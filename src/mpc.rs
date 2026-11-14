@@ -43,13 +43,13 @@
 //!
 //! The module differs from the prototype in these points.
 //!
-//! - The Shamir shares use the leanVM field `F192` in place of GF(2^128).
+//! - The Shamir shares use GF(2^128) as the leanVM field `F128 = F64[y]/(y^2 + x y + 1)`.
 //! - A gate covers one 64-bit lane of a circuit layer for all instances of the batch. A `Word`
 //!   holds this lane for four instances.
 //! - The pseudorandom streams use AES-128 in place of Keccak-256 with labeled tags.
 //!   - The AES key hashes the label `rss-prss` and a PRSS key.
 //!   - A stream depends on the channel, its round and an index, and a coin key hashes the channel
-//!     tag, the round and the opened value.
+//!     tag, the round and two opened values.
 //! - The prototype derives its PRSS keys once, in its keygen. Here each ceremony derives fresh PRSS
 //!   keys in its first three rounds.
 //! - The prototype gives each pair to the least loaded holder in one pass and each term to its
@@ -82,7 +82,7 @@ use std::{iter, mem};
 use aes::cipher::{Array, BlockCipherEncrypt, KeyInit};
 use aes::{Aes128, Block};
 use clap::ValueEnum;
-use primitives::field::F192;
+use primitives::field::F128;
 use primitives::hash::{self, Hasher};
 use primitives::{cast_slice, load_at};
 
@@ -159,21 +159,21 @@ pub struct Group {
     /// `phi[i][k]` weights held term `k` of operator `i` in its Shamir share. It is the value at
     /// `alpha(i)` of the polynomial of degree `t - 1` that is one at zero and zero at the
     /// operators of the term.
-    pub phi: Vec<Vec<F192>>,
+    pub phi: Vec<Vec<F128>>,
     /// `lambda[i]` weights the share of operator `i`. The weighted shares of a polynomial of
     /// degree at most `2t - 2` add up to its value at zero.
-    pub lambda: Vec<F192>,
+    pub lambda: Vec<F128>,
     /// The rows that give the shares of operators `t` to `n - 1`, and last the secret, from the
     /// shares of operators 0 to `t - 1`.
-    interpolation: Vec<Vec<F192>>,
+    interpolation: Vec<Vec<F128>>,
 }
 
-fn alpha(i: usize) -> F192 {
-    F192::new(i as u64 + 1, 0, 0)
+fn alpha(i: usize) -> F128 {
+    F128::new(i as u64 + 1, 0)
 }
 
-fn lagrange(node: F192, others: impl Iterator<Item = F192>, at: F192) -> F192 {
-    others.fold(F192::ONE, |product, other| {
+fn lagrange(node: F128, others: impl Iterator<Item = F128>, at: F128) -> F128 {
+    others.fold(F128::ONE, |product, other| {
         product * (at + other) * (node + other).inv()
     })
 }
@@ -256,14 +256,14 @@ impl Group {
             .map(|i| {
                 let members = |k: usize| (0..n).filter(move |&j| !holds(j, k)).map(alpha);
                 let held = (0..terms.len()).filter(|&k| holds(i, k));
-                held.map(|k| lagrange(F192::ZERO, members(k), alpha(i)))
+                held.map(|k| lagrange(F128::ZERO, members(k), alpha(i)))
                     .collect()
             })
             .collect();
         let lambda = (0..n)
-            .map(|i| lagrange(alpha(i), others(n, i), F192::ZERO))
+            .map(|i| lagrange(alpha(i), others(n, i), F128::ZERO))
             .collect();
-        let basis = |at: F192| -> Vec<F192> {
+        let basis = |at: F128| -> Vec<F128> {
             (0..t)
                 .map(|k| lagrange(alpha(k), others(t, k), at))
                 .collect()
@@ -278,7 +278,7 @@ impl Group {
             peer_terms,
             phi,
             lambda,
-            interpolation: (t..n).map(alpha).chain([F192::ZERO]).map(basis).collect(),
+            interpolation: (t..n).map(alpha).chain([F128::ZERO]).map(basis).collect(),
         }
     }
 
@@ -293,12 +293,12 @@ impl Group {
     }
 
     /// The secret of the shares, if all shares lie on the polynomial of the first `t` shares.
-    fn reconstruct(&self, shares: &[F192]) -> Option<F192> {
-        let at = |basis: &[F192]| {
+    fn reconstruct(&self, shares: &[F128]) -> Option<F128> {
+        let at = |basis: &[F128]| {
             basis
                 .iter()
                 .zip(shares)
-                .fold(F192::ZERO, |sum, (&b, &s)| sum + b * s)
+                .fold(F128::ZERO, |sum, (&b, &s)| sum + b * s)
         };
         let (secret, others) = self.interpolation.split_last().unwrap();
         let consistent = others
@@ -353,9 +353,9 @@ impl Terms {
         &mut self.words[k][c * self.length..][..self.length]
     }
 
-    /// The element `v` of `F192` in each held term.
-    pub fn value(&self, v: usize) -> impl Iterator<Item = F192> + '_ {
-        self.words.iter().map(move |term| load_at(term, 3 * v))
+    /// The element `v` of `F128` in each held term.
+    pub fn value(&self, v: usize) -> impl Iterator<Item = F128> + '_ {
+        self.words.iter().map(move |term| load_at(term, 2 * v))
     }
 }
 
@@ -381,10 +381,10 @@ impl Additive {
         &mut self.words[c * self.length..][..self.length]
     }
 
-    /// The additive shares of elements of `F192`, in one column.
-    pub fn values(values: impl ExactSizeIterator<Item = F192>) -> Additive {
-        let length = 3 * values.len();
-        let words = values.flat_map(|value| load_at::<F192, [u64; 3]>(&[value], 0));
+    /// The additive shares of elements of `F128`, in one column.
+    pub fn values(values: impl ExactSizeIterator<Item = F128>) -> Additive {
+        let length = 2 * values.len();
+        let words = values.flat_map(|value| load_at::<F128, [u64; 2]>(&[value], 0));
         Additive {
             words: words.collect(),
             length,
@@ -393,7 +393,7 @@ impl Additive {
 }
 
 /// A Shamir share `<v>` of this operator.
-pub type Shamir = F192;
+pub type Shamir = F128;
 
 /// The AND tuples of a batch with one copy for each held term, and the running hash `h_T` of each
 /// held term.
@@ -749,23 +749,23 @@ impl Party {
     }
 
     /// `conv`, the Shamir share of a value from the held terms of its replicated sharing.
-    pub fn conv(&self, terms: impl IntoIterator<Item = F192>) -> Shamir {
+    pub fn conv(&self, terms: impl IntoIterator<Item = F128>) -> Shamir {
         let phi = &self.group.phi[self.id];
         let terms = terms.into_iter().zip(phi);
-        terms.fold(F192::ZERO, |share, (term, &phi)| share + phi * term)
+        terms.fold(F128::ZERO, |share, (term, &phi)| share + phi * term)
     }
 
     /// `mul` of Shamir shares, `lambda_i` times each local product `x_i y_i`. On vectors a local
     /// product is the inner product.
-    pub fn mul_shamir(&self, products: &[F192]) -> Additive {
+    pub fn mul_shamir(&self, products: &[F128]) -> Additive {
         let lambda = self.group.lambda[self.id];
         Additive::values(products.iter().map(|&product| lambda * product))
     }
 
-    /// Values `index` to `index + count - 1` of the expansion of a coin key. Value `k` is the first 192 bits of `H("thlxmss-expand" || key || k)`.
-    pub fn expand(&self, key: &Key, index: u64, count: usize) -> Vec<F192> {
+    /// Values `index` to `index + count - 1` of the expansion of a coin key. Value `k` is the first 128 bits of `H("thlxmss-expand" || key || k)`.
+    pub fn expand(&self, key: &Key, index: u64, count: usize) -> Vec<F128> {
         let value =
-            |k: u64| cast_slice(&digest(b"thlxmss-expand", &[key, &k.to_le_bytes()])[..3])[0];
+            |k: u64| cast_slice(&digest(b"thlxmss-expand", &[key, &k.to_le_bytes()])[..2])[0];
         (0..count as u64)
             .map(|offset| value(index + offset))
             .collect()
@@ -1094,26 +1094,26 @@ impl Party {
         channel: &mut Channel,
         shares: &[Shamir],
         payload: &[u64],
-    ) -> Result<(Vec<F192>, Vec<Vec<u64>>), String> {
-        let (n, id, length) = (self.group.n, self.id, 3 * shares.len());
+    ) -> Result<(Vec<F128>, Vec<Vec<u64>>), String> {
+        let (n, id, length) = (self.group.n, self.id, 2 * shares.len());
         let own: &[u64] = cast_slice(shares);
         let received = channel.exchange(vec![[own, payload].concat(); n]).await?;
         if let Some(j) = (0..n).find(|&j| j != id && received[j].len() < length) {
             return Err(format!("operator {j} sends a short share"));
         }
-        let column = |v: usize| -> Vec<F192> {
+        let column = |v: usize| -> Vec<F128> {
             let share = |j: usize| {
                 if j == id {
                     shares[v]
                 } else {
-                    load_at(&received[j], 3 * v)
+                    load_at(&received[j], 2 * v)
                 }
             };
             (0..n).map(share).collect()
         };
         let opened = (0..shares.len())
             .map(|v| self.group.reconstruct(&column(v)))
-            .collect::<Option<Vec<F192>>>()
+            .collect::<Option<Vec<F128>>>()
             .ok_or("an opened value has shares off one polynomial")?;
         let payloads = received
             .iter()
@@ -1122,15 +1122,16 @@ impl Party {
     }
 
     /// `coin(payload)`, the hash of the channel tag, the round and `open_shamir(conv(rand(1)),
-    /// payload)`. It also returns the payload of each operator.
+    /// payload)` of two values of `rand(1)`. It also returns the payload of each operator.
     pub async fn coin(
         &self,
         channel: &mut Channel,
         payload: &[u64],
     ) -> Result<(Key, Vec<Vec<u64>>), String> {
         let position = [channel.tag, channel.rounds];
-        let share = self.conv(self.rand(channel, 1, 3).value(0));
-        let (opened, payloads) = self.open_shamir(channel, &[share], payload).await?;
+        let random = self.rand(channel, 1, 4);
+        let shares = [0, 1].map(|v| self.conv(random.value(v)));
+        let (opened, payloads) = self.open_shamir(channel, &shares, payload).await?;
         let key = tagged_hash(
             b"thlxmss-coin",
             &[cast_slice(&position), cast_slice(&opened)],
@@ -1378,7 +1379,7 @@ pub mod tests {
     fn an_operator_with_another_prss_key_or_a_short_share_aborts_the_others_at_the_first_coin() {
         // With another PRSS key, the coin shares of operator 1 come from other streams.
         // So the shares of the first coin after the 24 layers lie off one polynomial.
-        // A short share has 2 of the 3 words of an element.
+        // A short share has 2 of the 4 words of the two elements.
         for (short, error) in [
             (false, "an opened value has shares off one polynomial"),
             (true, "operator 1 sends a short share"),

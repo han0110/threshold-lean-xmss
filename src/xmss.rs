@@ -1,4 +1,4 @@
-//! This module implements the leanXMSS signature of [EIP-8450](https://eips.ethereum.org/EIPS/eip-8450), from leanVM [`signatures::lean_xmss`](https://github.com/leanEthereum/leanVM/tree/1acdff19dffcaaf1642e88a9e9b522b415425168/crates/signatures/src/lean_xmss).
+//! This module implements the leanXMSS signature of [EIP-8450](https://eips.ethereum.org/EIPS/eip-8450), from leanVM [`signatures::lean_xmss`](https://github.com/leanEthereum/leanVM/tree/f5f3672f2b72d3f89dbbaeff18a53a73c975d620/crates/signatures/src/lean_xmss).
 //!
 //! - `pp` is the public parameter `P`, and `e` is the index of a one-time key in its layer.
 //! - `Layer::Bottom` signs messages and `Layer::Top` signs the roots of the bottom trees. Their
@@ -11,16 +11,20 @@ use std::array::from_fn;
 
 use primitives::hash;
 pub use signatures::lean_xmss::{
-    CHAIN_LEN, Digest, LAYER_HEIGHT, LAYER_SIG_SIZE, TWEAK_CHAIN, TWEAK_PRF, TWEAK_RANDOMIZER, V,
-    address, chain, layer_hi, layer_index, tree_leaf, tweak, wots_leaf_hash,
+    CHAIN_LEN, Digest, LAYER_HEIGHT, TWEAK_CHAIN, V, address, chain, layer_hi, layer_index, tweak,
 };
 use signatures::lean_xmss::{
-    LayerSignature, LeanXmssPublicKey, LeanXmssSignature, MAX_RANDOMIZER_TRIALS, PublicParam,
-    TWEAK_MSG, TWEAK_NODE, codeword, hasher, message_digest, th, th_digests,
+    LeafIndex, LeanXmssPublicKey, LeanXmssSignature, SIG_SIZE, TWEAK_MSG, codeword, hasher,
+    message_digest, th,
 };
 use tracing::info_span;
 
+use crate::lean_xmss::{MAX_RANDOMIZER_TRIALS, node, th_digests};
+pub(crate) use crate::lean_xmss::{TWEAK_PRF, TWEAK_RANDOMIZER, wots_leaf_hash};
+
 pub const KEYS: usize = 1 << LAYER_HEIGHT;
+/// One layer signature, the half of a leanXMSS signature after the leaf index.
+pub const LAYER_SIG_SIZE: usize = (SIG_SIZE - size_of::<LeafIndex>()) / 2;
 
 pub fn truncated_hash(parts: &[&[u8]]) -> Digest {
     hash::hash(&parts.concat())[..16].try_into().unwrap()
@@ -51,13 +55,6 @@ pub fn commitment(pp: &Digest, e: u32, value: Digest) -> Digest {
     th_digests(pp, &address, &[value, 0u128.to_le_bytes()])
 }
 
-// Vendored from https://github.com/leanEthereum/leanVM/blob/1acdff19dffcaaf1642e88a9e9b522b415425168/crates/signatures/src/lean_xmss/tree.rs
-/// The Merkle parent at `level` and index `j` of `layer`.
-#[rustfmt::skip]
-pub fn node(pp: &PublicParam, layer: usize, level: usize, j: u32, children: &[Digest; 2]) -> Digest {
-    th_digests(pp, &tweak(TWEAK_NODE, layer_hi(layer, level as u32), j), children)
-}
-
 pub fn layer_root(
     pp: &Digest,
     layer: Layer,
@@ -65,13 +62,12 @@ pub fn layer_root(
     message: &[u8],
     signature: &[u8],
 ) -> Option<Digest> {
-    let digest = |at: usize| -> Digest { signature[at..at + 16].try_into().unwrap() };
-    let signature = LayerSignature {
-        randomizer: digest(0),
-        chain_values: from_fn(|i| digest(16 + 16 * i)),
-        path: from_fn(|level| digest(16 + 16 * V + 16 * level)),
-    };
-    signatures::lean_xmss::layer_root(pp, layer as usize, e, message, &signature, |_| {})
+    // leanVM builds a `LayerSignature` only from the bytes of a full signature, so the layer
+    // signature takes the place of the bottom layer in a zero signature.
+    let mut bytes = [0; SIG_SIZE];
+    bytes[size_of::<LeafIndex>()..][..LAYER_SIG_SIZE].copy_from_slice(signature);
+    let signature = LeanXmssSignature::from_bytes(&bytes);
+    signatures::lean_xmss::layer_root(pp, layer as usize, e, message, signature.__bottom(), |_| {})
         .map(|(_, root)| root)
 }
 

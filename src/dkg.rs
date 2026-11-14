@@ -37,7 +37,7 @@ use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use futures::stream::{self, StreamExt, TryStreamExt};
-use primitives::field::F192;
+use primitives::field::F128;
 use tracing::info;
 
 use crate::check;
@@ -251,7 +251,7 @@ fn chain_batch_estimate(party: &Party) -> (usize, f64) {
     let padded = padded_words(party.batch_size, 3, 6);
     // `lift` gives `x` and `y` one element for each bit of a slice word.
     let vector = 64 * (padded / check::SLICES);
-    let bytes = padded * 3 * party.held.len() * size_of::<u64>() + 2 * vector * size_of::<F192>();
+    let bytes = padded * 3 * party.held.len() * size_of::<u64>() + 2 * vector * size_of::<F128>();
     (bytes, padded as f64 / words as f64)
 }
 
@@ -722,7 +722,7 @@ mod tests {
      {
         // The bytes that each operator sends in the rerand of the six lanes of 128 chains, in the
         // check and in the opening.
-        for (t, expected) in [(2, (6_144, 2_720, 6_176)), (3, (12_288, 5_952, 24_832))] {
+        for (t, expected) in [(2, (6_144, 2_688, 6_176)), (3, (12_288, 5_888, 24_832))] {
             for reshare in [Reshare::Collector, Reshare::Peer] {
                 let sent = local_parties(t, reshare, async |party, _| {
                     let (words, mut channel) = (BATCH_SIZE / LANES, party.network.channel());
@@ -899,6 +899,50 @@ mod tests {
                 )
             );
         });
+    }
+
+    #[test]
+    fn a_signature_of_the_mpc_top_layer_and_a_quorum_bottom_layer_verifies_with_leanvm() {
+        let (public_parameter, message, quorum) = ([9; 16], [3; 32], [1, 2]);
+        let path: Vec<u8> = (0..LAYER_HEIGHT * 16).map(|byte| byte as u8).collect();
+        let (_, all_pairs) = random_keys(&Group::new(2));
+        let outcomes = local_parties(2, Reshare::Collector, async |party, all_seeds| {
+            // Leaf 9 is key 9 of bottom tree 0, and top key 0 signs the root of that tree.
+            let (leaves, cpk, commitments, _) =
+                trusted_dealer(&all_seeds, public_parameter, Layer::Bottom, &[9]);
+            let (top_leaves, ..) = trusted_dealer(&all_seeds, public_parameter, Layer::Top, &[0]);
+            let fold = |layer, e, leaf| xmss::tests::fold(&public_parameter, layer, e, leaf, &path);
+            let secret = prf(
+                &all_seeds,
+                layer_address(TWEAK_RANDOMIZER, Layer::Top, 0, 0, 0),
+            );
+            let bottom_root = fold(Layer::Bottom, 9, leaves[0]);
+            let top = top_signature(&party, public_parameter, 0, bottom_root, secret).await;
+            if !quorum.contains(&party.id) {
+                return None;
+            }
+            let operator = Operator {
+                id: party.id,
+                public_parameter,
+                sk: party.seeds.clone(),
+                k_ij: all_pairs[party.id].clone(),
+            };
+            let bottom = prawns::sign(
+                &party.network,
+                &party.group,
+                &operator,
+                &quorum,
+                9,
+                &message,
+                (&cpk, &commitments[0]),
+            );
+            let bottom = bottom.await.unwrap();
+            let public_key = [fold(Layer::Top, 0, top_leaves[0]), public_parameter].concat();
+            let leaf = 9u32.to_le_bytes();
+            let signature = [&leaf[..], &bottom, &path, &top.unwrap(), &path].concat();
+            Some(xmss::verify(&public_key, &message, &signature))
+        });
+        assert_eq!(outcomes, vec![None, Some(true), Some(true)]);
     }
 
     #[test]

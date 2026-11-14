@@ -16,7 +16,7 @@ This note gives the MPC gadgets that the protocol uses, and a toy example for un
 | $n = 2t - 1$                                                  | operators $P_0, \dots, P_{n-1}$                                                                              |
 | $t - 1$                                                       | corrupt operators at most, malicious, security with selective abort [GL05](https://eprint.iacr.org/2002/040) |
 | $\mathbb F_2$                                                 | the field of the circuit                                                                                     |
-| $\mathbb F_{192}$                                             | the field of the check                                                                                       |
+| $\mathbb F_{128}$                                             | the field of the check, the leanVM field $\mathbb F_{64}[y]/(y^2 + xy + 1)$                                  |
 | $\mathbb F$                                                   | either of the two, in a gadget that works over both. Both have characteristic 2, so $+$ is XOR and $- = +$   |
 | $\mathrm{GF}(2^8) = \mathbb F_2[x]/(x^8 + x^4 + x^3 + x + 1)$ | the field of the examples, elements written as integers ($x = 2$, $2^{-1} = 141$, $3^{-1} = 246$)            |
 | $\alpha_i = i + 1$                                            | the evaluation point of $P_i$                                                                                |
@@ -37,7 +37,7 @@ This note gives the MPC gadgets that the protocol uses, and a toy example for un
 - A coalition of $t - 1$ operators lacks exactly one term, the term equal to itself.
 - The three sharings have these uses.
   - $[\negthinspace[ \cdot ]\negthinspace]$ is the sharing of every wire.
-  - $\langle \cdot \rangle$ needs $n$ distinct points, so it exists over $\mathbb F_{192}$ only and is used in the check only.
+  - $\langle \cdot \rangle$ needs $n$ distinct points, so it exists over $\mathbb F_{128}$ only and is used in the check only.
   - $`\{\cdot\}`$ is the output of a multiplication and is reshared in the next round.
 - For 2-of-3, a term is one operator, written $k$ for $`\{k\}`$, held by the two operators other than $P_k$.
 
@@ -144,7 +144,7 @@ The threshold PRF and the signing masks hash a secret key first and no tag, as i
 | ---------------------------------------------------------------- | ------------------------------------------------------------------- | ------- |
 | $\texttt{"thlxmss-history"}$                                     | the values that 1.6 appends to $h_T$                                | 1.9     |
 | $\texttt{"thlxmss-copy"}$                                        | the copy $v_T$                                                      | 1.7     |
-| $\texttt{"thlxmss-coin"}$                                        | the channel tag, the round and the opened value                     | 1.9     |
+| $\texttt{"thlxmss-coin"}$                                        | the channel tag, the round and the two opened values                | 1.9     |
 | $\texttt{"thlxmss-expand"}$                                      | a coin key and the 64-bit index of a value                          | 1.9     |
 | $\texttt{"thlxmss-digest"}$                                      | the salt $s_T$ and $h_T$                                            | 1.9     |
 | $\texttt{"rss-prss"}$                                            | a PRSS key, which gives a PRG key                                   | 1.1.4   |
@@ -601,7 +601,11 @@ $\mathsf{Coin}(\rho) \to r$ public. One round.
 ```math
 r = \mathrm{expand}\Big( H\big( \texttt{"thlxmss-coin"} \,\Vert\, \rho \,\Vert\, \mathsf{OpenSh}( \mathsf{Conv}( \mathsf{Rand}(\rho, 1) ) ) \big) \Big).
 ```
-Value $k$ of $\mathrm{expand}(\mathrm{key})$ is the first 192 bits of $H(\texttt{"thlxmss-expand"} \,\Vert\, \mathrm{key} \,\Vert\, k)$. A challenge is the first expanded value outside $`\{0, 1\}`$.
+Here $\mathsf{Rand}(\rho, 1)$ gives two elements of $\mathbb F_{128}$, and $\mathsf{OpenSh}$ opens both in the same round. These are two calls of $\mathsf{Coin}$ of [GS20, Prot. 6](https://eprint.iacr.org/2020/134), and each call gives one element, as $F_{\mathrm{coin}}$ of [GS20, Functionality 5](https://eprint.iacr.org/2020/134) does. The key hashes both opened values.
+
+The key has two values for this reason. Before the coin opens, a guess of the key input succeeds with probability $2^{-128}$ for each hash call with one value, and with probability $2^{-256}$ with two values.
+
+Value $k$ of $\mathrm{expand}(\mathrm{key})$ is the first 128 bits of $H(\texttt{"thlxmss-expand"} \,\Vert\, \mathrm{key} \,\Vert\, k)$. A challenge is the first expanded value outside $`\{0, 1\}`$.
 
 The key hashes $\rho$ as the channel tag and the round. No two coins of a ceremony share $\rho$, so each coin is an independent call to $F_{\mathrm{coin}}$.
 
@@ -828,7 +832,7 @@ The proof follows the steps of [GS20](https://eprint.iacr.org/2020/134).
 | check     | the check securely computes $F_{\mathrm{multVerify}}$ with abort                                                        | [GS20, Lemma 11](https://eprint.iacr.org/2020/134) |
 | one batch | a batch securely computes its outputs with abort in the $`\{F_{\mathrm{mult}}, F_{\mathrm{multVerify}}\}`$-hybrid model | [GS20, Thm. 2](https://eprint.iacr.org/2020/134)   |
 
-The check misses a wrong tuple with probability at most $(d + 2(m+1)) / (2^{192} - 2) < 2^{-185}$, for $d = 18$ coins and $m = 24$ halvings.
+The check misses a wrong tuple with probability at most $(d + 2(m+1)) / (2^{128} - 2) < 2^{-121}$, for $d = 18$ coins and $m = 24$ halvings.
 
 Two PRSS keys give the same 128-bit AES key with probability at most $k^2 / 2^{129}$, for the $k$ PRSS keys of a ceremony.
 

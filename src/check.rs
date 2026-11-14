@@ -26,18 +26,18 @@
 //!   - An operator aborts unless all holders of each term send the same digest.
 //!   - Then `a = a^(0) + r (a^(0) + a^(1))`, `b = b^(0) + r (b^(0) + b^(1))` and `c = c^(0) + (z +
 //!     c^(0) + q_2) r + q_2 r^2` open robustly, and each operator accepts if `a b = c`.
-//! - A wrong tuple passes with a probability of at most `(d + 2 (R + 1)) / (2^192 - 2)` for `d`
+//! - A wrong tuple passes with a probability of at most `(d + 2 (R + 1)) / (2^128 - 2)` for `d`
 //!   coins and `R` halving steps.
-//!   - A batch of 128 chains has `d = 18` and `R = 24`, so the bound is below `2^-185`.
+//!   - A batch of 128 chains has `d = 18` and `R = 24`, so the bound is below `2^-121`.
 //!   - The advantages against AES-128 and Keccak-256 add to the bound.
 //! - The code writes `a^(0)`, `a^(1)`, `b^(0)` and `b^(1)` of the paper as `a_0`, `a_1`, `b_0` and
 //!   `b_1`.
 //! - The code writes `c^(0)` and `c^(1)` of the paper as `c_0` and `c_1`.
-//! - `F64` and `F192` are binary fields, so `+` also subtracts.
+//! - `F64` and `F128` are binary fields, so `+` also subtracts.
 //!
 //! The module differs from the prototype in these points.
 //!
-//! - The field is the leanVM field `F192` in place of GF(2^128).
+//! - The field is GF(2^128) as the leanVM field `F128 = F64[y]/(y^2 + x y + 1)`.
 //! - Bit `q` of a tuple word has the weight `x^q` in place of a coin.
 //!   - This fixes the six bit coins to `x, x^2, ..., x^32`, the partially deterministic challenge of [Dao and Thaler](https://eprint.iacr.org/2024/1038) (Claim 1) with the geometric weights of [Flock](https://eprint.iacr.org/2026/1329) (Section 4.3).
 //!   - The lift of a word to `F64` is injective, so a wrong tuple still gives a nonzero multilinear
@@ -72,7 +72,7 @@ use primitives::bit_fold::BitFold;
 use primitives::bits::bit_transpose_64bytes;
 use primitives::cast_slice;
 use primitives::field::{
-    Acc8, F192, F192Unreduced, Weights8, dot_base, fold_pairs8_ext, msg_terms8_ext, mul_by_g_e,
+    Acc8, F64, F128, F128Unreduced, Weights8, dot_base, fold_pairs8_ext, msg_terms8_ext, mul_by_g,
     mul4,
 };
 use primitives::hash::Hasher;
@@ -92,18 +92,18 @@ pub fn slice_length(words: usize) -> usize {
 }
 
 /// The tensor product of the factors. Bit `k` of an index selects `high` of factor `k`.
-fn tensor(factors: impl IntoIterator<Item = [F192; 2]>) -> Vec<F192> {
+fn tensor(factors: impl IntoIterator<Item = [F128; 2]>) -> Vec<F128> {
     factors
         .into_iter()
-        .fold(vec![F192::ONE], |table, [low, high]| {
-            let scaled = |factor: F192| table.iter().map(move |&entry| entry * factor);
+        .fold(vec![F128::ONE], |table, [low, high]| {
+            let scaled = |factor: F128| table.iter().map(move |&entry| entry * factor);
             scaled(low).chain(scaled(high)).collect()
         })
 }
 
 /// The value at `r` of the quadratic polynomial with the given values at zero and one and the given
 /// leading coefficient.
-fn interpolate(at_zero: F192, at_one: F192, leading: F192, r: F192) -> F192 {
+fn interpolate(at_zero: F128, at_one: F128, leading: F128, r: F128) -> F128 {
     at_zero + (at_one + at_zero + leading) * r + leading * r * r
 }
 
@@ -121,10 +121,10 @@ async fn conv_reshare(
     Ok([0, 1].map(|v| party.conv(terms.value(v))))
 }
 
-fn challenge(party: &Party, key: &Key) -> F192 {
+fn challenge(party: &Party, key: &Key) -> F128 {
     let mut candidates = (0..).map(|index| party.expand(key, index, 1)[0]);
     candidates
-        .find(|&r| r != F192::ZERO && r != F192::ONE)
+        .find(|&r| r != F128::ZERO && r != F128::ONE)
         .unwrap()
 }
 
@@ -161,13 +161,13 @@ fn add_products(x: &[u64], y: &[u64], products: &mut [u64], scratch: &mut [u64])
 
 /// The additive shares of `t_j(0)` and `t_j(INF)` of slice step `j`, from the additive shares of
 /// `T`. The challenges are those of the steps before `j`.
-fn slice_round(table: &[F192], challenges: &[F192], slice_coins: &[F192]) -> [F192; 2] {
+fn slice_round(table: &[F128], challenges: &[F128], slice_coins: &[F128]) -> [F128; 2] {
     // Each sum removes the last coordinate of the points, with the weights of the nodes 0, 1 and
     // INF.
-    let sum_out = |table: Vec<F192>, weights: [F192; 3]| -> Vec<F192> {
-        let point = |values: &[F192]| {
+    let sum_out = |table: Vec<F128>, weights: [F128; 3]| -> Vec<F128> {
+        let point = |values: &[F128]| {
             let terms = values.iter().zip(weights);
-            terms.fold(F192::ZERO, |sum, (&value, weight)| sum + weight * value)
+            terms.fold(F128::ZERO, |sum, (&value, weight)| sum + weight * value)
         };
         table.chunks(3).map(point).collect()
     };
@@ -175,11 +175,11 @@ fn slice_round(table: &[F192], challenges: &[F192], slice_coins: &[F192]) -> [F1
     // k` of a slice number, so the last position takes the first coin.
     let later = &slice_coins[..slice_coins.len() - 1 - challenges.len()];
     let at_bits = later.iter().fold(table.to_vec(), |table, &coin| {
-        sum_out(table, [F192::ONE, coin, F192::ZERO])
+        sum_out(table, [F128::ONE, coin, F128::ZERO])
     });
     // The positions before `j` take the Lagrange weights `L_0(r) = 1 + r`, `L_1(r) = r` and
     // `L_INF(r) = r (1 + r)` of their challenges.
-    let lagrange = |r: F192| [F192::ONE + r, r, r * (F192::ONE + r)];
+    let lagrange = |r: F128| [F128::ONE + r, r, r * (F128::ONE + r)];
     [0, 2].map(|node| {
         let at_node = at_bits.iter().skip(node).step_by(3).copied().collect();
         let earlier = challenges.iter().rev();
@@ -187,16 +187,16 @@ fn slice_round(table: &[F192], challenges: &[F192], slice_coins: &[F192]) -> [F1
     })
 }
 
-fn eights(vector: &[F192]) -> &[[F192; 8]] {
+fn eights(vector: &[F128]) -> &[[F128; 8]] {
     vector.as_chunks().0
 }
 
 /// Pads `x` and `y`, and returns in one pass the two local inner products of a halving step, of
 /// `c^(1) = <a^(1), b^(1)>` and `p_2 = <a^(1) + a^(2), b^(1) + b^(2)>`.
-fn sums(x: &mut Vec<Shamir>, y: &mut Vec<Shamir>) -> [F192; 2] {
+fn sums(x: &mut Vec<Shamir>, y: &mut Vec<Shamir>) -> [F128; 2] {
     let length = x.len().next_multiple_of(if x.len() > 16 { 16 } else { 2 });
-    x.resize(length, F192::ZERO);
-    y.resize(length, F192::ZERO);
+    x.resize(length, F128::ZERO);
+    y.resize(length, F128::ZERO);
     let ((a_1, a_2), (b_1, b_2)) = (x.split_at(length / 2), y.split_at(length / 2));
     if a_1.len().is_multiple_of(8) {
         let (mut low, mut sum) = (Acc8::ZERO, Acc8::ZERO);
@@ -212,14 +212,14 @@ fn sums(x: &mut Vec<Shamir>, y: &mut Vec<Shamir>) -> [F192; 2] {
         }
         [low.reduce(), sum.reduce()]
     } else {
-        (0..a_1.len()).fold([F192::ZERO; 2], |[low, sum], i| {
+        (0..a_1.len()).fold([F128::ZERO; 2], |[low, sum], i| {
             let both = (a_1[i] + a_2[i]) * (b_1[i] + b_2[i]);
             [low + a_1[i] * b_1[i], sum + both]
         })
     }
 }
 
-fn fold(vector: &mut Vec<Shamir>, r: F192) {
+fn fold(vector: &mut Vec<Shamir>, r: F128) {
     let half = vector.len() / 2;
     let (low, high) = vector.split_at_mut(half);
     if half.is_multiple_of(8) {
@@ -236,14 +236,14 @@ fn fold(vector: &mut Vec<Shamir>, r: F192) {
 /// length + w`.
 struct Slices {
     length: usize,
-    slice_coins: Vec<F192>,
-    beta_slice: Vec<F192>,
-    beta_word: Vec<F192>,
+    slice_coins: Vec<F128>,
+    beta_slice: Vec<F128>,
+    beta_word: Vec<F128>,
     weights: Vec<Weights8>,
 }
 
 impl Slices {
-    fn new(tuples: &mut Tuples, length: usize, coins: &[F192]) -> Slices {
+    fn new(tuples: &mut Tuples, length: usize, coins: &[F128]) -> Slices {
         let copies = tuples
             .x
             .iter_mut()
@@ -251,7 +251,7 @@ impl Slices {
             .chain(&mut tuples.z);
         copies.for_each(|copy| copy.resize(SLICES * length, 0));
         let (slice_coins, word_coins) = coins.split_at(SLICES.trailing_zeros() as usize);
-        let beta = |coins: &[F192]| tensor(coins.iter().map(|&coin| [F192::ONE, coin]));
+        let beta = |coins: &[F128]| tensor(coins.iter().map(|&coin| [F128::ONE, coin]));
         let beta_word = beta(word_coins)[..length].to_vec();
         Slices {
             length,
@@ -265,7 +265,7 @@ impl Slices {
         }
     }
 
-    fn weighted(&self, words: &[u64]) -> F192 {
+    fn weighted(&self, words: &[u64]) -> F128 {
         dot_base(&self.weights, cast_slice(words)).reduce()
     }
 
@@ -273,7 +273,7 @@ impl Slices {
     fn claim(&self, party: &Party, tuples: &Tuples) -> Shamir {
         let length = self.length;
         party.conv(tuples.z.iter().map(|z| {
-            (0..SLICES).fold(F192::ZERO, |sum, s| {
+            (0..SLICES).fold(F128::ZERO, |sum, s| {
                 sum + self.beta_slice[s] * self.weighted(&z[s * length..(s + 1) * length])
             })
         }))
@@ -282,10 +282,10 @@ impl Slices {
     /// The additive share of this operator in `T`, from its pairs of terms as in the AND gate.
     /// Entry `z` is `sum_w beta_word[w] (x_z[w] AND y_z[w])` at the point `z` of `add_products`,
     /// and `m` is the number of slice coins.
-    fn accumulate(&self, pairs: &[(usize, usize)], tuples: &Tuples) -> Vec<F192> {
+    fn accumulate(&self, pairs: &[(usize, usize)], tuples: &Tuples) -> Vec<F128> {
         let (length, m) = (self.length, self.slice_coins.len());
         let (slices, points) = (1 << m, 3usize.pow(m as u32));
-        let mut sums = vec![F192Unreduced::ZERO; points];
+        let mut sums = vec![F128Unreduced::ZERO; points];
         let [mut x_rows, mut partner] = [(); 2].map(|_| vec![0; slices * ACCUMULATE_BLOCK]);
         let mut scratch = vec![0; 2 * slices * ACCUMULATE_BLOCK];
         let mut products = vec![0; points * ACCUMULATE_BLOCK];
@@ -326,7 +326,7 @@ impl Slices {
         &self,
         party: &Party,
         tuples: &Tuples,
-        challenges: &[F192],
+        challenges: &[F128],
     ) -> (Vec<Shamir>, Vec<Shamir>) {
         let fold_weights = eq_table(&challenges.iter().rev().copied().collect::<Vec<_>>());
         (
@@ -342,17 +342,17 @@ impl Slices {
         &self,
         party: &Party,
         copies: &[Vec<u64>],
-        slice_weights: &[F192],
+        slice_weights: &[F128],
         weighted: bool,
     ) -> Vec<Shamir> {
         let folds: Vec<BitFold> = party.group.phi[party.id]
             .iter()
             .map(|&phi| BitFold::new(&slice_weights.iter().map(|&w| w * phi).collect::<Vec<_>>()))
             .collect();
-        let mut lifted = [F192::ZERO; 64];
+        let mut lifted = [F128::ZERO; 64];
         let mut vector = Vec::with_capacity(64 * self.length);
         for w in 0..self.length {
-            let mut sum = [F192::ZERO; 64];
+            let mut sum = [F128::ZERO; 64];
             for (copy, fold) in copies.iter().zip(&folds) {
                 // The transposes give row `q` the bit `q` of word `w` from each of the 128 slices.
                 let columns: [[u8; 64]; SLICES / 8] = from_fn(|byte| {
@@ -374,7 +374,8 @@ impl Slices {
                 for group in sum.as_chunks_mut::<4>().0 {
                     let weights = from_fn(|_| {
                         let current = weight;
-                        weight = mul_by_g_e(weight);
+                        let [c0, c1] = weight.to_limbs().map(|c| mul_by_g(F64(c)).0);
+                        weight = F128::new(c0, c1);
                         current
                     });
                     *group = mul4(*group, weights);
@@ -412,7 +413,7 @@ async fn de_linearization(
     let length = slice_length(tuples.x[0].len());
     let coins = (SLICES * length).next_power_of_two().trailing_zeros() as usize;
     let slices = Slices::new(tuples, length, &party.expand(&key, 0, coins));
-    if slices.slice_coins.contains(&F192::ZERO) {
+    if slices.slice_coins.contains(&F128::ZERO) {
         return Err("a slice coin is zero".into());
     }
     let z = slices.claim(party, tuples);
@@ -470,7 +471,7 @@ async fn randomization(
     b_1: Shamir,
     mut hashes: Vec<Hasher>,
 ) -> Result<(), String> {
-    let random = party.rand(channel, 1, 6);
+    let random = party.rand(channel, 1, 4);
     let (a_0, b_0) = (party.conv(random.value(0)), party.conv(random.value(1)));
     let q = party.mul_shamir(&[a_0 * b_0, (a_0 + a_1) * (b_0 + b_1)]);
     let [c_0, q_2] = conv_reshare(party, channel, q, &mut hashes).await?;
@@ -484,7 +485,7 @@ async fn randomization(
         interpolate(c_0, z, q_2, r),
     ];
     let opened = party.open_shamir(channel, &shares, &[]).await?.0;
-    let [a, b, c]: [F192; 3] = opened.try_into().unwrap();
+    let [a, b, c]: [F128; 3] = opened.try_into().unwrap();
     match a * b == c {
         true => Ok(()),
         false => Err("the AND tuples fail the check".into()),
@@ -712,9 +713,9 @@ mod tests {
                 (outcome, sent() - start)
             });
             let differ = Err(format!("the holders of term {term} send different digests"));
-            // Every operator sends the same bytes until the coin of `r`. The final shares are 9
+            // Every operator sends the same bytes until the coin of `r`. The final shares are 6
             // words for each other operator.
-            let (honest, final_shares) = (outcomes[t - 1].1, 72 * (2 * t as u64 - 2));
+            let (honest, final_shares) = (outcomes[t - 1].1, 48 * (2 * t as u64 - 2));
             for (id, (outcome, sent)) in outcomes.into_iter().enumerate() {
                 match id + 1 < t {
                     true => assert_eq!(
@@ -732,8 +733,8 @@ mod tests {
         }
     }
 
-    fn elements(rng: &mut StdRng, count: usize) -> Vec<F192> {
-        let element = |_| F192::new(rng.random(), rng.random(), rng.random());
+    fn elements(rng: &mut StdRng, count: usize) -> Vec<F128> {
+        let element = |_| F128::new(rng.random(), rng.random());
         (0..count).map(element).collect()
     }
 
@@ -743,7 +744,7 @@ mod tests {
         let mut words = || -> Vec<u64> { (0..length << m).map(|_| rng.random()).collect() };
         let (x, y) = (words(), words());
         let z = x.iter().zip(&y).map(|(x, y)| x & y).collect();
-        let beta = |coins: &[F192]| tensor(coins.iter().map(|&coin| [F192::ONE, coin]));
+        let beta = |coins: &[F128]| tensor(coins.iter().map(|&coin| [F128::ONE, coin]));
         let (slice_coins, beta_word) = (elements(rng, m), beta(&elements(rng, 3)));
         let slices = Slices {
             length,
@@ -764,44 +765,44 @@ mod tests {
     /// `sum_w beta_word[w] sum_q x^q X(w, q) Y(w, q)`, where `X(w, q)` adds the weights of the
     /// slices with bit `q` set in word `w`. Slice `s` has the weight `prod_k weights[k][s_k]` for
     /// its bit `s_k` at position `k`.
-    fn naive(x: &[u64], y: &[u64], beta_word: &[F192], weights: &[[F192; 2]]) -> F192 {
+    fn naive(x: &[u64], y: &[u64], beta_word: &[F128], weights: &[[F128; 2]]) -> F128 {
         let (m, length) = (weights.len(), beta_word.len());
         let slice_weight = |s: usize| {
             let bit = |k: usize| s >> (m - 1 - k) & 1;
-            (0..m).fold(F192::ONE, |product, k| product * weights[k][bit(k)])
+            (0..m).fold(F128::ONE, |product, k| product * weights[k][bit(k)])
         };
-        let slice_weights: Vec<F192> = (0..1 << m).map(slice_weight).collect();
+        let slice_weights: Vec<F128> = (0..1 << m).map(slice_weight).collect();
         let folded = |copy: &[u64], w: usize, q: usize| {
             let set = slice_weights
                 .iter()
                 .enumerate()
                 .filter(|&(s, _)| copy[s * length + w] >> q & 1 == 1);
-            set.fold(F192::ZERO, |sum, (_, &weight)| sum + weight)
+            set.fold(F128::ZERO, |sum, (_, &weight)| sum + weight)
         };
         let bits = (0..length).flat_map(|w| (0..64).map(move |q| (w, q)));
-        bits.fold(F192::ZERO, |sum, (w, q)| {
+        bits.fold(F128::ZERO, |sum, (w, q)| {
             sum + beta_word[w].mul_base(F64(1 << q)) * folded(x, w, q) * folded(y, w, q)
         })
     }
 
     /// `t_j(0)` and `t_j(INF)` of slice step `j` from the folded words, without `T`. The challenges
     /// are those of the steps before `j`.
-    fn naive_round(x: &[u64], y: &[u64], slices: &Slices, challenges: &[F192]) -> [F192; 2] {
+    fn naive_round(x: &[u64], y: &[u64], slices: &Slices, challenges: &[F128]) -> [F128; 2] {
         let (m, j) = (slices.slice_coins.len(), challenges.len());
-        let earlier = challenges.iter().map(|&r| [F192::ONE + r, r]);
+        let earlier = challenges.iter().map(|&r| [F128::ONE + r, r]);
         let selected = |bit: usize| match bit {
-            0 => [F192::ONE, F192::ZERO],
-            _ => [F192::ZERO, F192::ONE],
+            0 => [F128::ONE, F128::ZERO],
+            _ => [F128::ZERO, F128::ONE],
         };
-        [[F192::ONE, F192::ZERO], [F192::ONE; 2]].map(|at_node| {
-            (0..1 << (m - 1 - j)).fold(F192::ZERO, |sum, later: usize| {
+        [[F128::ONE, F128::ZERO], [F128::ONE; 2]].map(|at_node| {
+            (0..1 << (m - 1 - j)).fold(F128::ZERO, |sum, later: usize| {
                 let bits: Vec<(usize, usize)> =
                     (j + 1..m).map(|k| (k, later >> (m - 1 - k) & 1)).collect();
                 let coins = bits.iter().filter(|&&(_, bit)| bit == 1);
-                let coin = coins.fold(F192::ONE, |product, &(k, _)| {
+                let coin = coins.fold(F128::ONE, |product, &(k, _)| {
                     product * slices.slice_coins[m - 1 - k]
                 });
-                let weights: Vec<[F192; 2]> = earlier
+                let weights: Vec<[F128; 2]> = earlier
                     .clone()
                     .chain([at_node])
                     .chain(bits.iter().map(|&(_, bit)| selected(bit)))
@@ -821,14 +822,14 @@ mod tests {
                 let word = rng.random_range(0..length << m);
                 tuples.z[0][word] ^= 1 << rng.random_range(0..64);
             }
-            let claim = (0..1 << m).fold(F192::ZERO, |sum, s: usize| {
+            let claim = (0..1 << m).fold(F128::ZERO, |sum, s: usize| {
                 let coins = (0..m).filter(|&k| s >> k & 1 == 1);
                 let beta_slice =
-                    coins.fold(F192::ONE, |product, k| product * slices.slice_coins[k]);
+                    coins.fold(F128::ONE, |product, k| product * slices.slice_coins[k]);
                 let words = tuples.z[0][s * length..(s + 1) * length].iter();
                 let weighted = words
                     .zip(&slices.beta_word)
-                    .fold(F192::ZERO, |sum, (&word, &beta)| {
+                    .fold(F128::ZERO, |sum, (&word, &beta)| {
                         sum + beta.mul_base(F64(word))
                     });
                 sum + beta_slice * weighted
@@ -842,7 +843,7 @@ mod tests {
                 let at_one = (claim + at_zero) * coin.inv();
                 interpolate(at_zero, at_one, at_infinity, challenges[j])
             });
-            let eq: Vec<[F192; 2]> = challenges.iter().map(|&r| [F192::ONE + r, r]).collect();
+            let eq: Vec<[F128; 2]> = challenges.iter().map(|&r| [F128::ONE + r, r]).collect();
             let direct = naive(&tuples.x[0], &tuples.y[0], &slices.beta_word, &eq);
             assert_eq!(claim == direct, !wrong, "m = {m}");
         }
@@ -878,7 +879,7 @@ mod tests {
                 let coins = elements(&mut StdRng::seed_from_u64(10), count);
                 let slices = Slices::new(&mut tuples, length, &coins);
                 let table = slices.accumulate(&party.product_pairs(), &tuples);
-                let shares: Vec<[F192; 2]> = (0..challenges.len())
+                let shares: Vec<[F128; 2]> = (0..challenges.len())
                     .map(|j| slice_round(&table, &challenges[..j], &slices.slice_coins))
                     .collect();
                 // Each term has one owner, so the owned copies of all operators add up to the
@@ -904,10 +905,10 @@ mod tests {
             let x = combine(outcomes.iter().map(|outcome| &outcome.1).collect());
             let y = combine(outcomes.iter().map(|outcome| &outcome.2).collect());
             for j in 0..challenges.len() {
-                let add = |[a, b]: [F192; 2], outcome: &(Vec<[F192; 2]>, _, _, _)| {
+                let add = |[a, b]: [F128; 2], outcome: &(Vec<[F128; 2]>, _, _, _)| {
                     [a + outcome.0[j][0], b + outcome.0[j][1]]
                 };
-                let summed = outcomes.iter().fold([F192::ZERO; 2], add);
+                let summed = outcomes.iter().fold([F128::ZERO; 2], add);
                 let naive = naive_round(&x, &y, &outcomes[0].3, &challenges[..j]);
                 assert_eq!(summed, naive, "t = {t}, j = {j}");
             }
