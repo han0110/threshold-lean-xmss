@@ -120,3 +120,19 @@ end ExactPredicateQueryCount
 
 end ExactQueryCount
 end XmssSecurity
+
+/-- info: 'XmssSecurity.OracleComp.IsQueryBoundP.bind_right_of_mem_support' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms XmssSecurity.OracleComp.IsQueryBoundP.bind_right_of_mem_support
+
+/-- info: 'OracleComp.IsQueryBoundP.of_bind_left' depends on axioms: [propext, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms OracleComp.IsQueryBoundP.of_bind_left
+
+/-- info: 'OracleComp.IsQueryBoundP.continuation_mono_of_mem_support' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms OracleComp.IsQueryBoundP.continuation_mono_of_mem_support
+
+/-- info: 'XmssSecurity.ExactQueryCount.ExactPredicateQueryCount.bind' depends on axioms: [propext, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms XmssSecurity.ExactQueryCount.ExactPredicateQueryCount.bind
