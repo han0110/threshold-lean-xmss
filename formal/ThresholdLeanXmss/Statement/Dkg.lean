@@ -1,5 +1,6 @@
 import ThresholdLeanXmss.Statement.SecureComputation
 import Mathlib.Algebra.Polynomial.Eval.Defs
+import VCVio.EvalDist.EvalDistEq
 
 /-!
 # The keygen, the ceremonies and the gadgets
@@ -40,7 +41,7 @@ file holds the error terms, the valid inputs and the claims. `Theorems.lean` hol
 
 set_option autoImplicit false
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -239,9 +240,9 @@ def TreeSecurityStatement : Prop :=
       (ceremonyFuel circuits settings) (Ftree circuits settings top tree) DealtInputs
       (treeSimulator K circuits settings top tree) 0 fun D A x z Z q =>
         treeCheckError (E := E) circuits settings tree q + treeHashError circuits settings C tree q + streamKeyError C +
-          PRFScheme.prfAdvantage (hiddenStreams prims.aes) (prgReduction prims D
+          (PRFScheme.prfAdvantage (hiddenStreams prims.aes) (prgReduction prims D
             (distinguish (realExecution D A noFunctionality (ceremonyFuel circuits settings)
-              (fun i keys => (ceremony K circuits settings i keys top tree : PartyM C E RealSpec TreeOutput)) x z) Z))
+              (fun i keys => (ceremony K circuits settings i keys top tree : PartyM C E RealSpec TreeOutput)) x z) Z))).toReal
 
 /-- When the circuits compute `Th`, the dealer of `F_tree` gives the trees of `KeyGen` of the signing
 claims, namely `referenceTree` with the PRF values of the seeds. The two runs have the same
@@ -250,10 +251,10 @@ def DealerTreeStatement (C : Committee) : Prop :=
   CircuitsCompute circuits prims.Th → 0 < settings.batchSize →
     ∀ (parameter : PublicParameter) (seeds : C.Term → HashOutput) (top : TopTree) (tree : Tree)
       (cache : HashCache C),
-      evalDist ((simulateQ (localAnswer prims)
-          (liftComp (Prod.fst <$> dealerCeremony circuits settings parameter seeds top tree) (LocalSpec C))).run cache) =
-        evalDist ((simulateQ (localAnswer prims)
-          (liftComp (referenceTree (fun oa => tweakable oa) (prfValue seeds) parameter top tree) (LocalSpec C))).run cache)
+      (simulateQ (localAnswer prims)
+          (liftComp (Prod.fst <$> dealerCeremony circuits settings parameter seeds top tree) (LocalSpec C))).run cache =ᵈ
+        (simulateQ (localAnswer prims)
+          (liftComp (referenceTree (fun oa => tweakable oa) (prfValue seeds) parameter top tree) (LocalSpec C))).run cache
 
 /-- When the circuits compute `Th`, the dealer of `F_tree` gives the top tree, and then a bottom
 tree `b` on that top tree, except with probability `(1 - p)^L` for the randomizer search of its top
@@ -262,10 +263,10 @@ claim bounds the abort of `F_tree` itself. -/
 def TreeSuccessStatement (C : Committee) : Prop :=
   CircuitsCompute circuits prims.Th → 0 < settings.batchSize →
     ∀ (parameter : PublicParameter) (seeds : C.Term → HashOutput) (b : Fin (2 ^ layerHeight)),
-      (Pr[fun r => r.1 = none | runWorld prims (free (C := C) (liftComp (do
+      (Pr{let r ← runWorld prims (free (C := C) (liftComp (do
         let (output, _) ← dealerCeremony circuits settings parameter seeds emptyTop .top
         let some top := TreeOutput.topTree output | pure none
-        Prod.fst <$> dealerCeremony circuits settings parameter seeds top (.bottom b)) _))]).toReal ≤ searchFailure
+        Prod.fst <$> dealerCeremony circuits settings parameter seeds top (.bottom b)) _))}[r.1 = none]).toReal ≤ searchFailure
 
 /-- `Coin` securely computes `F_coin` with selective abort in the `F_rand`-hybrid model, perfectly
 (GS20, Lemma 3). The simulator makes no oracle call of its own. -/

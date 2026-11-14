@@ -1,4 +1,5 @@
 import ThresholdLeanXmss.Statement.RandomOracle
+import VCVio.OracleComp.SimSemantics.Append.Core
 
 /-!
 # Secure computation
@@ -17,7 +18,7 @@ and the hybrid model of GS20.
 
 set_option autoImplicit false
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -64,11 +65,13 @@ def idealExecution {κ : Type} {S : OracleSpec κ} {I O L R σ : Type}
     OracleComp (WorldSpec C) (σ × (C.Party → Option O)) := do
   let state ← lift (Sim.start (corruptInputs D x) z)
   let impl : QueryImpl (LocalSpec C + (L →ₒ R)) (StateT Sim.State (OracleComp (WorldSpec C))) :=
-    (fun (t : (LocalSpec C).Domain) =>
-      (StateT.lift (free (C := C) (OracleComp.lift (OracleSpec.query t))) : StateT Sim.State _ _)) +
-    (fun (l : L) => (StateT.mk fun st => do
+    QueryImpl.add ((fun (t : (LocalSpec C).Domain) =>
+      (StateT.lift (free (C := C) (OracleComp.lift (OracleSpec.query t))) : StateT Sim.State _ _)) :
+        QueryImpl (LocalSpec C) (StateT Sim.State (OracleComp (WorldSpec C))))
+    ((fun (l : L) => (StateT.mk fun st => do
       let (st, r) ← lift (Sim.answer st l)
-      pure (r, st) : StateT Sim.State (OracleComp (WorldSpec C)) R))
+      pure (r, st) : StateT Sim.State (OracleComp (WorldSpec C)) R)) :
+        QueryImpl (L →ₒ R) (StateT Sim.State (OracleComp (WorldSpec C))))
   let (outputs, state) ← (simulateQ impl (F.run D fun i => if i ∈ D.1 then none else some (x i))).run state
   pure (← lift (Sim.output state), outputs)
 
@@ -129,7 +132,8 @@ def Completes {I O L R Ih Oh Lh Rh : Type} (program : C.Party → I → PartyM C
     (fuel : ℕ) (Fh : Functionality C Ih Oh Lh Rh) (replyH : Lh → Rh) (F : Functionality C I O L R)
     (reply : L → R) (valid : C.Coalition → (C.Party → I) → Prop) (ε : ℝ) : Prop :=
   ∀ x : C.Party → I, valid noCoalition x →
-    tvDist ((fun r => r.1.2) <$> runWorld prims
+    letI : MeasurableSpace (C.Party → Option O) := ⊤
+    measureTVDist ((fun r => r.1.2) <$> runWorld prims
         (realExecution noCoalition (honestAdversary replyH) Fh fuel program x []))
       ((fun r => r.1.2) <$> runWorld prims
         (idealExecution (fun oa => oa) noCoalition F (honestSimulator reply) x [])) ≤ ε

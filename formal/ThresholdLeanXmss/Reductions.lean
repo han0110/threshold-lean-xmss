@@ -8,7 +8,7 @@ The explicit simulators of the keygen and of a ceremony, and the reduction to th
 
 set_option autoImplicit false
 
-open OracleComp OracleSpec LeanXmss
+open OracleComp OracleSpec  HashSig LeanXmss
 
 noncomputable section
 
@@ -91,7 +91,7 @@ def keygenSimulator (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) :
     let (state, log) ← observe (A.start corrupt z)
     pure ⟨state, log, corrupt⟩
   answer st := fun (parameter, corrupt) => do
-    let parts ← free (liftComp (Concrete.sequenceFin fun (_ : C.Party) => (sampleParts : ProbComp (Parts C))) _)
+    let parts ← free (liftComp (OverPermutation.sequenceFin fun (_ : C.Party) => (sampleParts : ProbComp (Parts C))) _)
     let steps ← startSteps worldRoles D fun i => (keygenWith i (parts i) : PartyM C E RealSpec (Keys C))
     let ((state, steps, sent), calls) ← (stepRound observedRoles D A noFunctionality st.adversary steps).run
     let log := st.log ++ calls
@@ -101,7 +101,7 @@ def keygenSimulator (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) :
     let h₀ := firstHonest Finset.univ
     let high ← free (liftComp ($ᵗ HashOutput) _)
     let _ ← program (.derive .keygen .parameter (C.parties.map fun j => (view h₀ j).parameter))
-      (high >>> digestBits <<< digestBits ||| parameter.setWidth hashOutputBits)
+      (high >>> digestBits <<< digestBits ||| parameter.setWidth 256)
     let _ ← C.terms.mapM fun T => match (C.parties.find? fun j => j ∈ D.1 ∧ j ∈ C.holders T) with
       | some j =>
         let i := firstHonest (C.holders T)

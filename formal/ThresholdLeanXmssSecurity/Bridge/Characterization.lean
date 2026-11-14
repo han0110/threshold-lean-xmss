@@ -1,31 +1,21 @@
 import ThresholdLeanXmss.Statement
+import VCVio.OracleComp.EvalDist.Sum
+import VCVio.OracleComp.Constructions.SampleableType.Measure
+import ToMathlib.MeasureTheory.Measure.Coupling.Maximal
 
 /-!
-# The probability terms of the statement layer in elementary terms, for VCVio `cbd4144`
+# The probability terms of the statement layer in elementary terms
 
-VCVio at `cbd4144` gives a computation a mass function. VCVio at `5f9baf12` gives it a measure. This
-file fixes what each probability term of the statement layer is at `cbd4144`, on Lean 4.31. The
-terms are the probability of an output, of an event and of a failure, the support, the total
-variation distance, the equality of two distributions and the PRF advantage. Each statement uses
-only numbers of `ℝ≥0∞` and `ℝ` and sums over the outputs. The last part unfolds the claims of the
-statement layer that read these terms.
+VCVio at `5f9baf12` gives a computation a measure. VCVio at `cbd4144` gave it a mass function.
+This file states what each probability term of `ThresholdLeanXmss/Statement.lean` is, with numbers
+of `ℝ≥0∞` and `ℝ` and with sums over the outputs.
 
-The branch that moves the proof to VCVio `5f9baf12` and Lean 4.35 has a file at this same path.
-That file proves the same statements, with the same text, for the definitions of `5f9baf12`.
+The import lines and the part `Dictionary` are the only text that names a definition of one VCVio
+revision. Each theorem after the dictionary uses the names of the dictionary. The same theorem
+text, with the dictionary of the other revision, states the same fact about that revision.
 
-The part `Dictionary` gives one name to each definition that the two revisions write in different
-ways. It ends at the heading `The evaluation of a computation`. Outside the module doc, the
-proofs and the axiom checks, the import lines, the `open` line, the class of the uniform specs and
-the bodies of the dictionary are the only text that is different in the two files.
-
-The script `tools/bridge_compare.py` compares the two files. It prints the two dictionaries and
-each difference. Run it from the root of the repository.
-
-```sh
-python3 formal/tools/bridge_compare.py \
-  --old formal/ThresholdLeanXmssSecurity/Bridge \
-  --new <branch>/formal/ThresholdLeanXmssSecurity/Bridge
-```
+The three equations `outputProbability_pure`, `outputProbability_query` and `eventProbability_bind`
+fix the probability of each output of each computation. `outputProbability_unique` proves this.
 -/
 
 set_option autoImplicit false
@@ -36,64 +26,72 @@ noncomputable section
 
 /-! ## Dictionary -/
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
-variable {ι : Type} {spec : OracleSpec ι} [IsUniformSpec spec] {α β : Type}
+variable {ι : Type} {spec : OracleSpec ι} [OracleSpec.UniformAnswerMeasure spec] {α β : Type}
 
 /-- The probability that `mx` returns `a`. -/
-abbrev outputProbability (mx : OracleComp spec α) (a : α) : ℝ≥0∞ := Pr[= a | mx]
+abbrev outputProbability (mx : OracleComp spec α) (a : α) : ℝ≥0∞ := Pr{let x ← mx}[x = a]
 
 /-- The probability that the output of `mx` satisfies `p`. -/
-abbrev eventProbability (mx : OracleComp spec α) (p : α → Prop) : ℝ≥0∞ := Pr[p | mx]
+abbrev eventProbability (mx : OracleComp spec α) (p : α → Prop) : ℝ≥0∞ := Pr{let x ← mx}[p x]
 
 /-- The probability that `mx` returns no output. -/
-abbrev failureProbability (mx : OracleComp spec α) : ℝ≥0∞ := Pr[⊥ | mx]
+abbrev failureProbability (mx : OracleComp spec α) : ℝ≥0∞ := prFail mx
 
 /-- The total variation distance of `Completes`. -/
-abbrev totalVariation (mx my : OracleComp spec α) : ℝ := tvDist mx my
+abbrev totalVariation (mx my : OracleComp spec α) : ℝ :=
+  letI : MeasurableSpace α := ⊤
+  measureTVDist mx my
 
 /-- The equality of two distributions of `DealerTreeStatement`. -/
-abbrev SameDistribution (mx my : OracleComp spec α) : Prop := 𝒟[mx] = 𝒟[my]
+abbrev SameDistribution (mx my : OracleComp spec α) : Prop := mx =ᵈ my
 
 /-- The real experiment of the PRF game. -/
 abbrev prfRealRun {K D R : Type} (prf : PRFScheme K D R) (adversary : PRFScheme.PRFAdversary D R) :
     ProbComp Bool :=
-  prf.prfRealExp adversary
+  prf.prfRealExperiment adversary
 
 /-- The ideal experiment of the PRF game. -/
 abbrev prfIdealRun {D R : Type} [DecidableEq D] [SampleableType R]
     (adversary : PRFScheme.PRFAdversary D R) : ProbComp Bool :=
-  PRFScheme.prfIdealExp adversary
+  PRFScheme.prfIdealExperiment adversary
 
 /-- The PRF advantage as a real number, as `TreeSecurityStatement` reads it. -/
 abbrev prfAdvantageReal {K D R : Type} [DecidableEq D] [SampleableType R] (prf : PRFScheme K D R)
     (adversary : PRFScheme.PRFAdversary D R) : ℝ :=
-  prf.prfAdvantage adversary
+  (prf.prfAdvantage adversary).toReal
 
 /-! ## The evaluation of a computation -/
 
 /-- The computation `pure a` returns `a` with probability 1. -/
 theorem outputProbability_pure [DecidableEq α] (a b : α) :
-    outputProbability (pure a : OracleComp spec α) b = if b = a then 1 else 0 :=
-  probOutput_pure b a
+    outputProbability (pure a : OracleComp spec α) b = if b = a then 1 else 0 := by
+  simp [prEvent_pure, eq_comm]
 
 /-- One query returns each answer with the same probability. -/
 theorem outputProbability_query (t : spec.Domain) (u : spec.Range t) :
     outputProbability (query t : OracleComp spec (spec.Range t)) u =
       (Nat.card (spec.Range t) : ℝ≥0∞)⁻¹ := by
-  rw [Nat.card_eq_fintype_card]
-  exact probOutput_query t u
+  classical
+  have := OracleSpec.UniformAnswerMeasure.finite_range (spec := spec) t
+  let := Fintype.ofFinite (spec.Range t)
+  have hcard : (Finset.univ.filter fun x : spec.Range t => x = u).card = 1 :=
+    Finset.card_eq_one.mpr ⟨u, by ext x; simp⟩
+  rw [outputProbability, OracleComp.prEvent_query_eq_card_div, hcard, Nat.cast_one, one_div,
+    Nat.card_eq_fintype_card]
 
 /-- The probability of an event after `mx >>= f` is the sum over the outputs `a` of `mx` of the
 probability of `a` times the probability of the event after `f a`. -/
 theorem eventProbability_bind (mx : OracleComp spec α) (f : α → OracleComp spec β) (p : β → Prop) :
-    eventProbability (mx >>= f) p = ∑' a, outputProbability mx a * eventProbability (f a) p :=
-  probEvent_bind_eq_tsum mx f p
+    eventProbability (mx >>= f) p = ∑' a, outputProbability mx a * eventProbability (f a) p := by
+  have : ∀ t, Finite (spec.Range t) := OracleSpec.UniformAnswerMeasure.finite_range
+  exact OracleComp.prEvent_bind_eq_tsum mx f p
 
 /-- The probability of an output after `mx >>= f`, as a sum over the outputs of `mx`. -/
 theorem outputProbability_bind (mx : OracleComp spec α) (f : α → OracleComp spec β) (b : β) :
     outputProbability (mx >>= f) b = ∑' a, outputProbability mx a * outputProbability (f a) b :=
-  probOutput_bind_eq_tsum mx f b
+  eventProbability_bind mx f _
 
 /-- A function that satisfies the three equations is the probability of an output. -/
 theorem outputProbability_unique (P : {α : Type} → OracleComp spec α → α → ℝ≥0∞)
@@ -104,7 +102,7 @@ theorem outputProbability_unique (P : {α : Type} → OracleComp spec α → α 
     (bind_eq : ∀ {α β : Type} (mx : OracleComp spec α) (f : α → OracleComp spec β) (b : β),
       P (mx >>= f) b = ∑' a, P mx a * P (f a) b)
     (mx : OracleComp spec α) (a : α) : P mx a = outputProbability mx a := by
-  have : DecidableEq α := Classical.decEq α
+  classical
   induction mx using OracleComp.inductionOn with
   | pure x => rw [pure_eq, outputProbability_pure]
   | query_bind t oa ih =>
@@ -116,23 +114,25 @@ theorem outputProbability_unique (P : {α : Type} → OracleComp spec α → α 
 
 /-- The probability of an event is the sum of the probabilities of its outputs. -/
 theorem eventProbability_eq_tsum (mx : OracleComp spec α) (p : α → Prop) [DecidablePred p] :
-    eventProbability mx p = ∑' a, if p a then outputProbability mx a else 0 :=
-  probEvent_eq_tsum_ite mx p
+    eventProbability mx p = ∑' a, if p a then outputProbability mx a else 0 := by
+  have : ∀ t, Finite (spec.Range t) := OracleSpec.UniformAnswerMeasure.finite_range
+  exact OracleComp.prEvent_eq_tsum_ite mx p
 
 /-- The probabilities of the outputs have the sum 1. -/
-theorem tsum_outputProbability (mx : OracleComp spec α) : ∑' a, outputProbability mx a = 1 :=
-  tsum_probOutput_of_liftM_PMF mx
+theorem tsum_outputProbability (mx : OracleComp spec α) : ∑' a, outputProbability mx a = 1 := by
+  have : ∀ t, Finite (spec.Range t) := OracleSpec.UniformAnswerMeasure.finite_range
+  exact OracleComp.tsum_prEvent_eq_one mx
 
 /-- A computation always returns an output. -/
 theorem failureProbability_eq_zero (mx : OracleComp spec α) : failureProbability mx = 0 :=
-  probFailure_of_liftM_PMF mx
+  OracleComp.prFail_eq_zero mx
 
 /-! ## The terms of the statement layer -/
 
 /-- The support is the set of the outputs with a probability that is not 0. -/
 theorem mem_support_iff (mx : OracleComp spec α) (a : α) :
     a ∈ support mx ↔ outputProbability mx a ≠ 0 :=
-  _root_.mem_support_iff mx a
+  OracleComp.mem_support_iff_prEvent_ne_zero mx a
 
 /-- The total variation distance is the larger one of the two sums of the one-sided differences of
 the output probabilities. The two sums are equal, because each computation has the mass 1. -/
@@ -140,29 +140,31 @@ theorem totalVariation_eq (mx my : OracleComp spec α) :
     totalVariation mx my =
       (max (∑' a, (outputProbability mx a - outputProbability my a))
         (∑' a, (outputProbability my a - outputProbability mx a))).toReal := by
-  have hsum : ∀ oa ob : OracleComp spec α,
-      ∑' a, min (outputProbability oa a) (outputProbability ob a) +
-        ∑' a, (outputProbability oa a - outputProbability ob a) = 1 := by
-    intro oa ob
-    rw [← ENNReal.tsum_add, ← tsum_outputProbability oa]
-    exact tsum_congr fun a => by rw [add_comm, tsub_add_min]
-  have hmin : ∑' a, min (outputProbability mx a) (outputProbability my a) ≠ ⊤ :=
-    ne_top_of_le_ne_top one_ne_top
-      ((ENNReal.tsum_le_tsum fun a => min_le_left _ _).trans (tsum_outputProbability mx).le)
-  have heq : ∑' a, (outputProbability mx a - outputProbability my a) =
-      ∑' a, (outputProbability my a - outputProbability mx a) := by
-    have hyx := hsum my mx
-    simp only [min_comm (outputProbability my _)] at hyx
-    exact (ENNReal.add_right_inj hmin).mp ((hsum mx my).trans hyx.symm)
-  have hfailx : (𝒟[mx]).toPMF none = 0 := failureProbability_eq_zero mx
-  have hfaily : (𝒟[my]).toPMF none = 0 := failureProbability_eq_zero my
-  have habs : ∀ a, ENNReal.absDiff ((𝒟[mx]).toPMF (some a)) ((𝒟[my]).toPMF (some a)) =
-      (outputProbability mx a - outputProbability my a) +
-        (outputProbability my a - outputProbability mx a) := fun a => rfl
-  rw [heq, max_self, totalVariation, tvDist, SPMF.tvDist, PMF.tvDist, PMF.etvDist,
-    tsum_option _ ENNReal.summable, hfailx, hfaily, ENNReal.absDiff_self, zero_add,
-    tsum_congr habs, ENNReal.tsum_add, heq, ← two_mul, mul_div_assoc,
-    ENNReal.mul_div_cancel two_ne_zero ofNat_ne_top]
+  classical
+  have : ∀ t, Finite (spec.Range t) := OracleSpec.UniformAnswerMeasure.finite_range
+  let : MeasurableSpace α := ⊤
+  let F : Finset α :=
+    (OracleComp.support_finite mx).toFinset ∪ (OracleComp.support_finite my).toFinset
+  have hnull : ∀ oz : OracleComp spec α, support oz ⊆ ↑F → 𝒟[oz] (↑F)ᶜ = 0 := by
+    intro oz hsub
+    have hs := OracleComp.evalDist_ae_mem_support oz
+    rw [MeasureTheory.ae_iff] at hs
+    exact MeasureTheory.measure_mono_null (fun x hx hxs => hx (hsub hxs)) hs
+  have hμ : 𝒟[mx] (↑F)ᶜ = 0 := hnull mx fun a ha => by simp [F, ha]
+  have hν : 𝒟[my] (↑F)ᶜ = 0 := hnull my fun a ha => by simp [F, ha]
+  have : MeasureTheory.IsProbabilityMeasure 𝒟[mx] := ⟨OracleComp.evalDist_apply_univ_eq_one mx⟩
+  have : MeasureTheory.IsProbabilityMeasure 𝒟[my] := ⟨OracleComp.evalDist_apply_univ_eq_one my⟩
+  have hsum : ∀ oa ob : OracleComp spec α, 𝒟[oa] (↑F)ᶜ = 0 →
+      ∑' a, (outputProbability oa a - outputProbability ob a) =
+        ∑ a ∈ F, (𝒟[oa] {a} - 𝒟[ob] {a}) := by
+    intro oa ob hoa
+    simp only [outputProbability, prEvent_eq_evalDist_singleton]
+    refine tsum_eq_sum fun a ha => ?_
+    have hzero : 𝒟[oa] {a} = 0 := MeasureTheory.measure_mono_null (by simpa using ha) hoa
+    rw [hzero, zero_tsub]
+  rw [hsum mx my hμ, hsum my mx hν, MeasureTheory.Measure.sum_tsub_comm hμ hν, max_self,
+    ← MeasureTheory.Measure.etvDist_eq_sum_tsub hμ hν]
+  rfl
 
 /-- Two computations have the same distribution if and only if each output has the same
 probability in the two and the failure has the same probability in the two. -/
@@ -170,7 +172,9 @@ theorem sameDistribution_iff (mx my : OracleComp spec α) :
     SameDistribution mx my ↔
       (∀ a, outputProbability mx a = outputProbability my a) ∧
         failureProbability mx = failureProbability my := by
-  refine ⟨fun h => ⟨fun a => congrFun (congrArg DFunLike.coe h) a, ?_⟩, fun h => evalDist_ext h.1⟩
+  have : ∀ t, Finite (spec.Range t) := OracleSpec.UniformAnswerMeasure.finite_range
+  refine ⟨fun h => ⟨fun a => h (· = a), ?_⟩,
+    fun h => OracleComp.evalDistEq_of_forall_prEvent_eq_output h.1⟩
   rw [failureProbability_eq_zero, failureProbability_eq_zero]
 
 /-- The PRF advantage is the absolute difference of the probabilities that the two experiments
@@ -179,13 +183,15 @@ theorem prfAdvantageReal_eq {K D R : Type} [DecidableEq D] [SampleableType R]
     (prf : PRFScheme K D R) (adversary : PRFScheme.PRFAdversary D R) :
     prfAdvantageReal prf adversary =
       |(outputProbability (prfRealRun prf adversary) true).toReal -
-        (outputProbability (prfIdealRun adversary) true).toReal| :=
-  rfl
+        (outputProbability (prfIdealRun adversary) true).toReal| := by
+  rw [outputProbability, outputProbability, prEvent_eq_evalDist_singleton,
+    prEvent_eq_evalDist_singleton]
+  exact MeasureTheory.Measure.toReal_boolDist _ _
 
 /-- A uniform sample returns each element of a finite type with the same probability. -/
 theorem outputProbability_uniformSample (β : Type) [SampleableType β] [Fintype β] (b : β) :
     outputProbability ($ᵗ β) b = (Fintype.card β : ℝ≥0∞)⁻¹ :=
-  probOutput_uniformSample β b
+  SampleableType.prEvent_uniformSample_eq_singleton b
 
 /-! ## The same facts for `ProbComp`
 
@@ -308,14 +314,15 @@ theorem treeSecurityStatement_iff (K : Constants C E) (circuits : Circuits) (set
                   (distinguish (realExecution D A noFunctionality (ceremonyFuel circuits settings)
                     (fun i keys =>
                       (ceremony K circuits settings i keys top tree : PartyM C E RealSpec TreeOutput))
-                    x z) Z))) true).toReal|) :=
-  Iff.rfl
+                    x z) Z))) true).toReal|) := by
+  simp only [← prfAdvantageReal_eq]
+  rfl
 
 end Statements
 
 end
 
-/-! The check fails if the axioms of a theorem of this file change. -/
+/-! The build fails if the axioms of a theorem of this file change. -/
 
 /-- info: 'ThresholdLeanXmss.Characterization.outputProbability_pure' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

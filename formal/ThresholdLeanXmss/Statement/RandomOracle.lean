@@ -16,7 +16,7 @@ game.
 
 set_option autoImplicit false
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -47,7 +47,7 @@ def HasHashQueryBound {α : Type} (run : ProbComp (α × ℕ)) (q : ℕ) : Prop 
   ∀ r ∈ support run, r.2 ≤ q
 
 /-- The probability that a computation outputs `true`. -/
-def accepts (oa : OracleComp (WorldSpec C) Bool) : ℝ := (Pr[fun r => r.1 = true | runWorld prims oa]).toReal
+def accepts (oa : OracleComp (WorldSpec C) Bool) : ℝ := (Pr{let r ← runWorld prims oa}[r.1 = true]).toReal
 
 /-! ## The world of the signing claim -/
 
@@ -66,7 +66,7 @@ def runSigningWorld {α : Type} (oa : OracleComp (WorldSpec C) α) : ProbComp (�
 
 /-- The probability that a computation outputs `true` in the signing world. -/
 def signingAccepts (oa : OracleComp (WorldSpec C) Bool) : ℝ :=
-  (Pr[fun r => r.1 = true | runSigningWorld prims oa]).toReal
+  (Pr{let r ← runSigningWorld prims oa}[r.1 = true]).toReal
 
 /-! ## A query cost on every path -/
 

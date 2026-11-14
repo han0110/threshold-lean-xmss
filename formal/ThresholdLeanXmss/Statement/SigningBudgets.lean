@@ -18,7 +18,7 @@ The forms of the signing claim that the proofs use. No field of `Theorems` is in
 
 set_option autoImplicit false
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 

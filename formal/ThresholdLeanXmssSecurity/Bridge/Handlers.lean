@@ -1,36 +1,24 @@
 import ThresholdLeanXmss.Statement
 
 /-!
-# The handlers, the transformers and the budgets of the statement layer, for VCVio `cbd4144`
+# The handlers, the transformers and the budgets of the statement layer in elementary terms
 
 `ThresholdLeanXmssSecurity/Bridge/Characterization.lean` fixes the probability of each output of a
-computation. This file fixes how the statement layer makes that computation at VCVio `cbd4144`, on
-Lean 4.31. It states how `simulateQ` gives each query to a handler, how `liftComp` moves a query
-into a larger oracle spec, how a program in `StateT`, in `WriterT` or in `OptionT` becomes a
-computation, how a cache answers, what the structural budget `IsQueryBoundP` permits, and what the
-two experiments of the PRF game are. The last part unfolds the runs and the claims of the statement
-layer that read these terms.
+computation. This file fixes how the statement layer makes that computation. It states how
+`simulateQ` gives each query to a handler, how `liftComp` moves a query into a larger oracle spec,
+how a program in `StateT`, in `WriterT` or in `OptionT` becomes a computation, how a cache answers,
+what the structural budget `IsQueryBoundP` permits, and what the two experiments of the PRF game
+are. The last part unfolds the runs and the claims of `ThresholdLeanXmss/Statement.lean` that read
+these terms.
 
-The branch that moves the proof to VCVio `5f9baf12` and Lean 4.35 has a file at this same path.
-That file proves the same statements, with the same text, for the definitions of `5f9baf12`.
+The import lines and the part `Dictionary` are the only text that names a definition of one VCVio
+revision. Each theorem after the dictionary uses the names of the dictionary, or a name that the
+two revisions share. The same theorem text, with the dictionary of the other revision, states the
+same fact about that revision.
 
-The part `Dictionary` gives one name to each definition that the two revisions write in different
-ways. It ends at the heading `The simulation of a computation`. Outside the module doc, the proofs
-and the axiom checks, the `open` line and the bodies of the dictionary are the only text that is
-different in the two files.
-
-At `cbd4144` a cache is a function from the inputs to the optional answers. At `5f9baf12` a cache
-is a structure with this function as its one field. The statements read a cache only through its
-lookup, through `∅` and through `cacheQuery`.
-
-The script `tools/bridge_compare.py` compares the two files. It prints the two dictionaries and
-each difference. Run it from the root of the repository.
-
-```sh
-python3 formal/tools/bridge_compare.py \
-  --old formal/ThresholdLeanXmssSecurity/Bridge \
-  --new <branch>/formal/ThresholdLeanXmssSecurity/Bridge
-```
+The three equations `simulateQ_pure`, `simulateQ_query` and `simulateQ_bind` fix the simulation of
+each computation. `simulateQ_unique` proves this. The two equations `isQueryBoundP_pure` and
+`isQueryBoundP_query_bind` fix the structural budget. `isQueryBoundP_unique` proves this.
 -/
 
 set_option autoImplicit false
@@ -41,28 +29,28 @@ noncomputable section
 
 /-! ## Dictionary -/
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 /-- The probability that `mx` returns `a`. -/
-abbrev outputProbability {α : Type} (mx : ProbComp α) (a : α) : ℝ≥0∞ := Pr[= a | mx]
+abbrev outputProbability {α : Type} (mx : ProbComp α) (a : α) : ℝ≥0∞ := Pr{let x ← mx}[x = a]
 
 /-- The probability that the output of `mx` satisfies `p`. -/
-abbrev eventProbability {α : Type} (mx : ProbComp α) (p : α → Prop) : ℝ≥0∞ := Pr[p | mx]
+abbrev eventProbability {α : Type} (mx : ProbComp α) (p : α → Prop) : ℝ≥0∞ := Pr{let x ← mx}[p x]
 
 /-- The real experiment of the PRF game. -/
 abbrev prfRealRun {K D R : Type} (prf : PRFScheme K D R) (adversary : PRFScheme.PRFAdversary D R) :
     ProbComp Bool :=
-  prf.prfRealExp adversary
+  prf.prfRealExperiment adversary
 
 /-- The ideal experiment of the PRF game. -/
 abbrev prfIdealRun {D R : Type} [DecidableEq D] [SampleableType R]
     (adversary : PRFScheme.PRFAdversary D R) : ProbComp Bool :=
-  PRFScheme.prfIdealExp adversary
+  PRFScheme.prfIdealExperiment adversary
 
 /-- The computation that starts with the query `t` and continues with `k`, as `advance` reads it. -/
 abbrev queryBind {ι : Type} {spec : OracleSpec ι} {α : Type} (t : spec.Domain)
     (k : spec.Range t → OracleComp spec α) : OracleComp spec α :=
-  .roll t k
+  .liftBind t k
 
 /-! ## The simulation of a computation -/
 
@@ -161,16 +149,14 @@ theorem liftComp_bind {ι τ : Type} {spec : OracleSpec ι} (superSpec : OracleS
 theorem liftComp_query_left (t : spec₁.Domain) :
     liftComp (query t : OracleComp spec₁ (spec₁.Range t)) (spec₁ + spec₂) =
       query (spec := spec₁ + spec₂) (Sum.inl t) := by
-  simp only [HasQuery.instOfMonadLift_query, OracleComp.liftComp_query, OracleQuery.cont_query,
-    OracleQuery.input_query, id_map]
+  simp only [HasQuery.instOfMonadLift_query, OracleComp.liftComp_liftM_query]
   rfl
 
 /-- A lifted query of the right spec is the same query on the right side of the sum. -/
 theorem liftComp_query_right (t : spec₂.Domain) :
     liftComp (query t : OracleComp spec₂ (spec₂.Range t)) (spec₁ + spec₂) =
       query (spec := spec₁ + spec₂) (Sum.inr t) := by
-  simp only [HasQuery.instOfMonadLift_query, OracleComp.liftComp_query, OracleQuery.cont_query,
-    OracleQuery.input_query, id_map]
+  simp only [HasQuery.instOfMonadLift_query, OracleComp.liftComp_liftM_query]
   rfl
 
 end Sum
@@ -343,7 +329,7 @@ theorem cache_ext (cache₁ cache₂ : spec.QueryCache) (h : ∀ t, cache₁ t =
 /-- Each function from the inputs to the optional answers is the lookup of a cache. -/
 theorem cache_exists (f : (t : spec.Domain) → Option (spec.Range t)) :
     ∃ cache : spec.QueryCache, ∀ t, cache t = f t :=
-  ⟨f, fun _ => rfl⟩
+  ⟨QueryCache.ofFn f, fun _ => rfl⟩
 
 end Cache
 
@@ -360,12 +346,8 @@ theorem randomOracle_run [DecidableEq ι] [∀ t : spec.Domain, SampleableType (
     (spec.randomOracle t).run cache =
       match cache t with
       | some u => pure (u, cache)
-      | none => ($ᵗ spec.Range t) >>= fun u => pure (u, cache.cacheQuery t u) := by
-  cases h : cache t with
-  | none =>
-    rw [QueryImpl.withCaching_run_none uniformSampleImpl h, map_eq_bind_pure_comp]
-    rfl
-  | some u => exact QueryImpl.withCaching_run_some uniformSampleImpl h
+      | none => ($ᵗ spec.Range t) >>= fun u => pure (u, cache.cacheQuery t u) :=
+  randomOracle.run_eq t cache
 
 /-- The handler of the private sampling makes the same sampling query and keeps the cache. -/
 theorem unifFwdImpl_run (n : ℕ) (cache : spec.QueryCache) :
@@ -456,9 +438,11 @@ theorem prfRealRun_eq (prf : PRFScheme K D R) (adversary : PRFScheme.PRFAdversar
     intro k
     funext t
     cases t with
-    | inl n => rfl
-    | inr d => rfl
-  simp only [prfRealRun, PRFScheme.prfRealExp, h]
+    | inl n =>
+      rw [PRFScheme.prfRealQueryImpl, QueryImpl.passthrough_add, QueryImpl.add_apply_inl]
+      rfl
+    | inr d => exact PRFScheme.prfRealQueryImpl_apply_inr prf k d
+  simp only [prfRealRun, PRFScheme.prfRealExperiment, h]
 
 /-- The ideal experiment answers each query of the adversary with the lazy random function, from
 the empty cache. -/
@@ -471,12 +455,12 @@ theorem prfIdealRun_eq [DecidableEq D] [SampleableType R]
     | inl n => exact StateT.ext fun cache => unifFwdImpl_run n cache
     | inr d =>
       refine StateT.ext fun cache => ?_
-      refine (randomOracle_run d cache).trans ?_
+      rw [PRFScheme.prfIdealQueryImpl_apply_inr, randomOracle_run]
       change _ = match cache d with
         | some u => pure (u, cache)
         | none => ($ᵗ R) >>= fun u => pure (u, cache.cacheQuery d u)
       cases cache d <;> rfl
-  simp only [prfIdealRun, PRFScheme.prfIdealExp, h]
+  simp only [prfIdealRun, PRFScheme.prfIdealExperiment, h]
 
 /-- The private sampling of the adversary is the same sampling in the real experiment. -/
 theorem simulateQ_prfRealAnswer_liftComp (prf : PRFScheme K D R) (k : K) (oa : ProbComp α) :
@@ -487,10 +471,7 @@ theorem simulateQ_prfRealAnswer_liftComp (prf : PRFScheme K D R) (k : K) (oa : P
     rw [liftComp_bind, simulateQ_bind]
     have hquery := liftComp_query_left (spec₂ := D →ₒ R) (spec₁ := unifSpec) n
     rw [HasQuery.instOfMonadLift_query] at hquery
-    rw [hquery]
-    change simulateQ (prfRealAnswer prf k)
-      (query (spec := PRFScheme.PRFOracleSpec D R) (Sum.inl n)) >>= _ = _
-    rw [simulateQ_query]
+    rw [hquery, simulateQ_query]
     exact bind_congr ih
 
 /-- The private sampling of the adversary is the same sampling in the ideal experiment, and it
@@ -505,12 +486,9 @@ theorem simulateQ_prfIdealAnswer_liftComp [DecidableEq D] [SampleableType R] (oa
     rw [liftComp_bind, simulateQ_bind]
     have hquery := liftComp_query_left (spec₂ := D →ₒ R) (spec₁ := unifSpec) n
     rw [HasQuery.instOfMonadLift_query] at hquery
-    rw [hquery]
-    change (simulateQ prfIdealAnswer
-      (query (spec := PRFScheme.PRFOracleSpec D R) (Sum.inl n)) >>= _).run cache = _
-    rw [simulateQ_query, stateT_run_bind]
-    refine (bind_map_left (fun u => (u, cache)) ($[0..n]) _).trans ?_
-    rw [map_bind]
+    rw [hquery, simulateQ_query, stateT_run_bind]
+    change ((fun u => (u, cache)) <$> ($[0..n])) >>= _ = _
+    rw [bind_map_left, map_bind]
     exact bind_congr fun u => ih u cache
 
 end Prf
@@ -622,7 +600,7 @@ theorem signingAccepts_eq (oa : OracleComp (WorldSpec C) Bool) :
 /-- `HasHashQueryBound` bounds the count of each output that has a probability that is not 0. -/
 theorem hasHashQueryBound_iff (run : ProbComp (α × ℕ)) (q : ℕ) :
     HasHashQueryBound run q ↔ ∀ r, outputProbability run r ≠ 0 → r.2 ≤ q :=
-  forall_congr' fun r => imp_congr_left (_root_.mem_support_iff run r)
+  forall_congr' fun r => imp_congr_left (OracleComp.mem_support_iff_prEvent_ne_zero run r)
 
 /-- `HasSigningQueryBound` bounds the count of each output of the run in the signing world that has
 a probability that is not 0. -/
@@ -630,7 +608,7 @@ theorem hasSigningQueryBound_iff (oa : OracleComp (WorldSpec C) α) (q : ℕ) :
     HasSigningQueryBound prims oa q ↔
       ∀ r, outputProbability (runSigningWorld prims oa) r ≠ 0 → r.2 ≤ q :=
   forall_congr' fun r =>
-    imp_congr_left (_root_.mem_support_iff (runSigningWorld prims oa) r)
+    imp_congr_left (OracleComp.mem_support_iff_prEvent_ne_zero (runSigningWorld prims oa) r)
 
 /-- The real experiment that `TreeSecurityStatement` reads samples one key of `hiddenStreams`. Then
 it answers each query of `prgReduction` with the handler under this key. -/
@@ -672,20 +650,20 @@ theorem signingCorrectnessStatement_iff :
         (∀ r, outputProbability (runWorld prims (honestSigning J e m)) r ≠ 0 → r.1 ≠ some false) ∧
           (eventProbability (runWorld prims (honestSigning J e m)) fun r => r.1 = none).toReal ≤
             2 * searchFailure :=
-  forall₃_congr fun J e m => and_congr_left' (forall_congr' fun r =>
-    imp_congr_left (_root_.mem_support_iff (runWorld prims (honestSigning J e m)) r))
+  forall₃_congr fun J e m => and_congr_left' (forall_congr' fun r => imp_congr_left
+    (OracleComp.mem_support_iff_prEvent_ne_zero (runWorld prims (honestSigning J e m)) r))
 
 end Statements
 
 end
 
-/-! The check fails if the axioms of a theorem of this file change. -/
+/-! The build fails if the axioms of a theorem of this file change. -/
 
 /-- info: 'ThresholdLeanXmss.Handlers.simulateQ_pure' does not depend on any axioms -/
 #guard_msgs (whitespace := lax) in
 #print axioms simulateQ_pure
 
-/-- info: 'ThresholdLeanXmss.Handlers.simulateQ_query' depends on axioms: [propext] -/
+/-- info: 'ThresholdLeanXmss.Handlers.simulateQ_query' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms simulateQ_query
 

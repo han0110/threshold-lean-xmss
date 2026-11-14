@@ -11,7 +11,7 @@ games and the claims.
 
 set_option autoImplicit false
 
-open OracleComp OracleSpec LeanXmss
+open OracleComp OracleSpec  HashSig LeanXmss
 
 noncomputable section
 
@@ -480,7 +480,7 @@ chain parts at its key for its message. It also wins if it differs from the sign
 there. -/
 def forgeryWins (lift : ∀ {β : Type}, OracleComp (RoSpec C) β → m β) (dealt : Dealt C m) (st : TsigState C)
     (forgery : Forgery) : m Bool := do
-  let verified ← lift (tweakable (Concrete.verify ⟨dealt.top.root, dealt.parameter⟩ forgery.message forgery.signature))
+  let verified ← lift (tweakable (Verification.verifyWithHash ⟨dealt.top.root, dealt.parameter⟩ forgery.message forgery.signature))
   let fresh ← if (signersAt st forgery.signature.leafIndex forgery.message).card < C.t then pure true else do
     let honest ← honestSignature lift dealt forgery.signature.leafIndex forgery.message
     pure (decide (honest ≠ some forgery.signature))

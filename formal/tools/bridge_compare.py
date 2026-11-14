@@ -4,9 +4,14 @@ The bridge is the folder `ThresholdLeanXmssSecurity/Bridge` with four Lean files
 for VCVio `cbd4144` and leanVM `1acdff19`. The new side is for VCVio `5f9baf12` and leanVM
 `f5f3672f`. The two sides prove the same statements. This script compares the text of the two
 sides, and it compares the copies of `LeanXmss.lean` with the pinned source of leanVM `1acdff19`.
-It reads the pinned source from the folder `.lake` of the project that holds the old side.
+
+The old side is a folder or a commit of this repository. With a folder, the script reads the
+pinned source from the folder `.lake` of the project that holds the old side. With a commit, it
+reads the four files from that commit, and it reads the pinned source from the git history of
+the leanVM package in the folder `.lake` of the new side.
 
     python3 formal/tools/bridge_compare.py --old <Bridge folder> --new <Bridge folder>
+    python3 formal/tools/bridge_compare.py --old-commit <commit> --new <Bridge folder>
 
 The script reads each file with a lexer for the comments, the strings and the character literals
 of Lean. It removes the module doc, each proof, each body of the dictionary and the axiom checks.
@@ -28,7 +33,7 @@ The script compares text. It does not elaborate a term, and it does not read an 
 A person must read LINE_PAIRS, UPSTREAM, COMPOSED and the printed dictionaries. The script prints
 each difference and one count line for each check. The exit code is 1 if a difference exists.
 """
-import argparse, bisect, collections, difflib, os, re, sys
+import argparse, bisect, collections, difflib, os, re, subprocess, sys
 
 DICTIONARY = "/-! ## Dictionary -/"
 AXIOM_CHECKS = re.compile(r"/-! The \w+ fails if the axioms")
@@ -146,8 +151,12 @@ assert set(COMPOSED) == {name for name, (_, new_name) in UPSTREAM.items() if new
 NAMED_KEYWORDS = {"Codeword.Valid": ("def", "abbrev")}
 # The instances and the attributes of the pinned source. They have no copy.
 NAMED_OMISSIONS = ["instance : DecidablePred Valid :=", "attribute [irreducible] verify"]
-# The path of the pinned source from the folder of the old side.
-PINNED = "../../.lake/packages/lean-xmss-security/formal/lean_xmss/LeanXmss/Scheme.lean"
+# The leanVM package from a folder `Bridge`, the pinned source in it, and the pinned commit.
+PACKAGE = "../../.lake/packages/lean-xmss-security"
+PINNED = "formal/lean_xmss/LeanXmss/Scheme.lean"
+PINNED_COMMIT = "1acdff19dffcaaf1642e88a9e9b522b415425168"
+# The folder `Bridge` in this repository.
+BRIDGE = "formal/ThresholdLeanXmssSecurity/Bridge"
 
 TOKEN = re.compile(r"""
     (?P<comment> --[^\n]* | /- )
@@ -174,6 +183,12 @@ PATTERN_OWNERS = {"match", "fun", "λ"}
 def read(path):
     with open(path, encoding="utf-8") as file:
         return file.read()
+
+
+def show(repository, commit, path):
+    """The text of a file at a commit of a git repository."""
+    return subprocess.run(["git", "-C", repository, "show", f"{commit}:{path}"],
+                          check=True, capture_output=True, encoding="utf-8").stdout
 
 
 def tokens(text):
@@ -530,12 +545,17 @@ def compare(old, new, pinned):
 def sides():
     """The text of each file of the old side and of the new side, and the pinned source."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--old", required=True, help="the folder Bridge of the old side")
+    old = parser.add_mutually_exclusive_group(required=True)
+    old.add_argument("--old", help="the folder Bridge of the old side")
+    old.add_argument("--old-commit", help="the commit of this repository that holds the old side")
     parser.add_argument("--new", required=True, help="the folder Bridge of the new side")
     arguments = parser.parse_args()
-    return ({name: read(os.path.join(arguments.old, name)) for name in FILES},
-            {name: read(os.path.join(arguments.new, name)) for name in FILES},
-            read(os.path.join(arguments.old, PINNED)))
+    new = {name: read(os.path.join(arguments.new, name)) for name in FILES}
+    if arguments.old:
+        return ({name: read(os.path.join(arguments.old, name)) for name in FILES}, new,
+                read(os.path.join(arguments.old, PACKAGE, PINNED)))
+    return ({name: show(arguments.new, arguments.old_commit, f"{BRIDGE}/{name}") for name in FILES}, new,
+            show(os.path.join(arguments.new, PACKAGE), PINNED_COMMIT, PINNED))
 
 
 if __name__ == "__main__":

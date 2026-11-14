@@ -1,32 +1,20 @@
-import LeanXmss.Scheme
+import ThresholdLeanXmss.Scheme
 
 /-!
-# The leanVM names that the copies of the leanXMSS functions read, for leanVM `1acdff19`
+# The leanVM names that the copies of the leanXMSS functions read
 
 The copies of `ThresholdLeanXmssSecurity/Bridge/LeanXmss.lean` read constants, types, functions and
-structures of leanVM that have no copy. This file fixes what each of these names is at leanVM
-`1acdff19`, on Lean 4.31. Each statement uses only numbers, types of Lean and of Mathlib, products
-and sums. `HashDomain` has an equivalence with a sum of four products. Each of the four structures
-has an equivalence with the product of the types of its fields, in the order of the fields.
+structures of leanVM that have no copy. This file states what each of these names is, with numbers,
+with types of Lean and of Mathlib, and with products and sums.
 
-The branch that moves the proof to leanVM `f5f3672f` and Lean 4.35 has a file at this same path.
-That file proves the same statements, with the same text, for the definitions of `f5f3672f`.
+The import lines and the part `Dictionary` are the only text that names a definition of one leanVM
+revision. Each theorem after the dictionary uses the names of the dictionary, or a name that the
+two revisions share. The same theorem text, with the dictionary of the other revision, states the
+same fact about that revision.
 
-The part `Dictionary` gives one name to each definition that the two revisions write in different
-ways. It ends at the heading `The numeric constants`. The fields `randomness` and `path` of
-`LayerSignature` have the names `randomizer` and `authenticationPath` at `f5f3672f`, and the
-dictionary gives each of them one name. Outside the module doc, the proofs and the axiom checks,
-the import line, the `open` line and the bodies of the dictionary are the only text that is
-different in the two files.
-
-The script `tools/bridge_compare.py` compares the two files. It prints the two dictionaries and
-each difference. Run it from the root of the repository.
-
-```sh
-python3 formal/tools/bridge_compare.py \
-  --old formal/ThresholdLeanXmssSecurity/Bridge \
-  --new <branch>/formal/ThresholdLeanXmssSecurity/Bridge
-```
+`HashDomain` is an inductive type with four constructors. Its fact is an equivalence with a sum of
+four products. Each of the four structures has an equivalence with the product of the types of its
+fields, in the order of the fields.
 -/
 
 set_option autoImplicit false
@@ -35,13 +23,13 @@ namespace ThresholdLeanXmss.Ambient
 
 /-! ## Dictionary -/
 
-open OracleComp OracleSpec LeanXmss
+open OracleComp OracleSpec HashSig LeanXmss
 
 /-- The randomizer of the signature of one layer. -/
-abbrev layerRandomizer (part : LayerSignature) : Digest := part.randomness
+abbrev layerRandomizer (part : LayerSignature) : Digest := part.randomizer
 
 /-- The authentication path of the signature of one layer. -/
-abbrev layerPath (part : LayerSignature) : Fin layerHeight → Digest := part.path
+abbrev layerPath (part : LayerSignature) : Fin layerHeight → Digest := part.authenticationPath
 
 /-! ## The numeric constants -/
 
@@ -146,7 +134,7 @@ theorem signature_equiv :
       fun _ => rfl⟩,
     fun _ => rfl, fun _ _ => rfl⟩
 
-/-! The check fails if the axioms of a theorem of this file change. -/
+/-! The build fails if the axioms of a theorem of this file change. -/
 
 /-- info: 'ThresholdLeanXmss.Ambient.digestBits_eq' does not depend on any axioms -/
 #guard_msgs (whitespace := lax) in

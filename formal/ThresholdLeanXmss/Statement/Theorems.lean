@@ -78,7 +78,7 @@ the advantage of a reduction is only as strong as that reduction.
 
 set_option autoImplicit false
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 

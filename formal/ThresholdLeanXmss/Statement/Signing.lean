@@ -31,7 +31,7 @@ differ from leanXMSS in three points.
 
 set_option autoImplicit false
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -98,7 +98,7 @@ signature in `KeyGen` and the search of the signature. Every signature that it o
 def SigningCorrectnessStatement (C : Committee) : Prop :=
   ∀ (J : C.Quorum) (e : KeyIndex) (m : Message),
     (∀ r ∈ support (runWorld prims (honestSigning J e m)), r.1 ≠ some false) ∧
-      (Pr[fun r => r.1 = none | runWorld prims (honestSigning J e m)]).toReal ≤ 2 * searchFailure
+      (Pr{let r ← runWorld prims (honestSigning J e m)}[r.1 = none]).toReal ≤ 2 * searchFailure
 
 /-- The probability that one of `q` calls hits the input of a hidden key, namely a term seed or a
 pair key, of the `C(n, t - 1) + n²` keys. Each call names one key, which is uniform on 256 bits. -/

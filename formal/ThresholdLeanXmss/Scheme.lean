@@ -6,7 +6,7 @@ import VCVio.CryptoFoundations.PRF
 import VCVio.OracleComp.QueryTracking.WriterCost
 import VCVio.OracleComp.QueryTracking.QueryBound
 import VCVio.OracleComp.QueryTracking.RandomOracle.Simulation
-import VCVio.EvalDist.TVDist
+import VCVio.EvalDist.MeasureTVDist.Basic
 
 /-!
 # Threshold leanXMSS
@@ -41,7 +41,7 @@ the notions of secure computation.
 
 set_option autoImplicit false
 
-open OracleComp OracleSpec LeanXmss
+open OracleComp OracleSpec HashSig LeanXmss
 
 noncomputable section
 
@@ -192,7 +192,7 @@ structure Settings where
 /-- A PRF point of PRAWNS, Section 3.1, as `doc/sign.md` adapts it. `A_prf(e, l, p)` is position `p`
 on chain `l` of key `e`, and `A_rnd(e)` is the randomizer value of key `e`. -/
 inductive Point
-  | chain (lay : Layer) (e : KeyIndex) (l : ChainIndex) (p : Digit)
+  | chain (lay : Layer) (e : KeyIndex) (l : ChainIndex) (p : WinternitzDigit)
   | randomizer (lay : Layer) (e : KeyIndex)
 deriving DecidableEq
 
@@ -342,11 +342,11 @@ variable {E : Type} {ι : Type} {G : OracleSpec ι}
 /-- Run the local steps of a program up to its output, its next round or its next call. -/
 def advance {α : Type} : OracleComp (PartySpec C E G) (Option α) → OracleComp (LocalSpec C) (Step C E G α)
   | .pure out => pure (.done out)
-  | .roll (Sum.inl (Sum.inl q)) k => do
+  | .liftBind (Sum.inl (Sum.inl q)) k => do
       let r ← OracleComp.lift (OracleSpec.query (spec := LocalSpec C) q)
       advance (k r)
-  | .roll (Sum.inl (Sum.inr outbox)) k => pure (.wait outbox k)
-  | .roll (Sum.inr input) k => pure (.call input k)
+  | .liftBind (Sum.inl (Sum.inr outbox)) k => pure (.wait outbox k)
+  | .liftBind (Sum.inr input) k => pure (.call input k)
 
 /-- One round. The operator aborts if it receives an abort frame from any operator. A missing message
 from an operator that sends nothing by design reads as empty. -/
@@ -825,7 +825,7 @@ inductive JobKind
   /-- `y_1 ⊕ F(x_1)`, `y_2 ⊕ F(x_2)` and `y_3` from `F(x_0), F(x_1), F(x_2)` on bottom key `e`. -/
   | chainRow (e : KeyIndex) (l : ChainIndex)
   /-- `y_p` from `F(x_0)` on chain `l` of top key `e`. -/
-  | chainValue (e : KeyIndex) (l : ChainIndex) (p : Digit)
+  | chainValue (e : KeyIndex) (l : ChainIndex) (p : WinternitzDigit)
   /-- `c_e` from `F(A_rnd(e))` on bottom key `e`. -/
   | commitment (e : KeyIndex)
   /-- `F(A_rnd(e))` itself. -/
@@ -1008,16 +1008,16 @@ def setupRounds : ℕ := 3
 
 /-- `Th(P, A_rnd(e) at step 1, ρ ‖ 0)`, the input of the commitment `c_e`. -/
 def commitmentInput (parameter : PublicParameter) (e : KeyIndex) (ρ : Digest) : HashInput :=
-  bytesLE 16 parameter ++ fieldBytes (tweakFields 7 1 (layerHi bottomLayer 0) e.val) ++
-    bytesLE 16 ρ ++ bytesLE 16 0
+  littleEndianBytes 16 parameter ++ addressBytes (tweakFields 7 1 (layerHi bottomLayer 0) e.val) ++
+    littleEndianBytes 16 ρ ++ littleEndianBytes 16 0
 
 /-- `Th(P, A_rnd(e), ρ ‖ M)`, the input of the start `R_0` of the randomizer search. -/
 def randomizerInput (parameter : PublicParameter) (lay : Layer) (e : KeyIndex) (ρ : Digest)
     (message : HashInput) : HashInput :=
-  bytesLE 16 parameter ++ fieldBytes (tweakFields 7 0 (layerHi lay 0) e.val) ++ bytesLE 16 ρ ++ message
+  littleEndianBytes 16 parameter ++ addressBytes (tweakFields 7 0 (layerHi lay 0) e.val) ++ littleEndianBytes 16 ρ ++ message
 
 /-- Position `p < 4` of a chain. -/
-def digit (p : ℕ) (h : p < chainLength := by decide) : Digit := ⟨p, h⟩
+def digit (p : ℕ) (h : p < chainLength := by decide) : WinternitzDigit := ⟨p, h⟩
 
 /-- A top key `b < 2 ^ 16` as a key index. -/
 def topKey (b : Fin (2 ^ layerHeight)) : KeyIndex :=
@@ -1027,8 +1027,8 @@ def topKey (b : Fin (2 ^ layerHeight)) : KeyIndex :=
 def bottomKey (b k : Fin (2 ^ layerHeight)) : KeyIndex :=
   ⟨2 ^ layerHeight * b.val + k.val, by
     have hb := b.isLt; have hk := k.isLt
-    show _ < 2 ^ (numLayers * layerHeight)
-    simp only [numLayers, layerHeight] at *
+    show _ < 2 ^ (layerCount * layerHeight)
+    simp only [layerCount, layerHeight] at *
     omega⟩
 
 /-- The public outputs of the top tree ceremony. -/
@@ -1062,25 +1062,25 @@ def merkleNode (parameter : PublicParameter) (lay : Layer) (chainEnd : KeyIndex 
     ℕ → ℕ → OracleComp HashSpec Digest
   | 0, idx => do
       let key : KeyIndex := ⟨idx % lifetime, Nat.mod_lt _ (by decide)⟩
-      Concrete.leafHash parameter lay key (chainEnd key)
+      Verification.leafHashWithHash parameter lay key (chainEnd key)
   | level + 1, idx => do
       let left ← merkleNode parameter lay chainEnd level (2 * idx)
       let right ← merkleNode parameter lay chainEnd level (2 * idx + 1)
-      Concrete.tweakableHash parameter (.node lay (level + 1) idx) (Concrete.nodePayload left right)
+      Verification.tweakableHashWithHash parameter (.node lay (level + 1) idx) (OverPermutation.nodePayload left right)
 
 /-- The authentication path of a key. -/
 def merklePath (parameter : PublicParameter) (lay : Layer) (chainEnd : KeyIndex → ChainIndex → Digest)
     (key : KeyIndex) : OracleComp HashSpec (Fin layerHeight → Digest) :=
-  Concrete.sequenceFin fun level =>
+  OverPermutation.sequenceFin fun level =>
     merkleNode parameter lay chainEnd level.val (Nat.xor (key.val / 2 ^ level.val) 1)
 
 /-- The leanXMSS randomizer search from `R_0` finds the first trial whose digest is a codeword. -/
 def grind (parameter : PublicParameter) (lay : Layer) (key : KeyIndex) (message : HashInput)
-    (base : Randomness) : ℕ → ℕ → OracleComp HashSpec (Option (Randomness × Encoding))
+    (base : Randomizer) : ℕ → ℕ → OracleComp HashSpec (Option (Randomizer × Encoding))
   | 0, _ => pure none
   | attempts + 1, trial => do
       let randomness := base + BitVec.ofNat digestBits trial
-      let digest ← Concrete.messageDigest parameter lay key message randomness
+      let digest ← Verification.messageDigestWithHash parameter lay key message randomness
       match Codeword.decode digest with
       | some encoding => pure (some (randomness, encoding))
       | none => grind parameter lay key message base attempts (trial + 1)
@@ -1090,13 +1090,13 @@ def digestAt (bits : List Bit) (k : ℕ) : Digest := digestOfBits (bits.drop (di
 
 /-- The jobs of the top tree, the chain ends of all top keys. -/
 def topJobs : List Job :=
-  (List.finRange (2 ^ layerHeight)).flatMap fun b => (List.finRange numChains).map fun l =>
+  (List.finRange (2 ^ layerHeight)).flatMap fun b => (List.finRange chainCount).map fun l =>
     ⟨.chainEnd (topKey b) l, [.chain topLayer (topKey b) l (digit 0)]⟩
 
 /-- The jobs of the first run of bottom tree `b`, namely `cpk` of each key, its commitment `c_e`,
 and the randomizer value of top key `b`. -/
 def bottomJobs (b : Fin (2 ^ layerHeight)) : List Job :=
-  ((List.finRange (2 ^ layerHeight)).flatMap fun k => (List.finRange numChains).map fun l =>
+  ((List.finRange (2 ^ layerHeight)).flatMap fun k => (List.finRange chainCount).map fun l =>
     let e := bottomKey b k
     ⟨.chainRow e l,
       [.chain bottomLayer e l (digit 0), .chain bottomLayer e l (digit 1), .chain bottomLayer e l (digit 2)]⟩) ++
@@ -1107,7 +1107,7 @@ def bottomJobs (b : Fin (2 ^ layerHeight)) : List Job :=
 /-- The jobs of the second run of bottom tree `b`. They give the chain values at the positions of
 `encoding` for the signature of its root by top key `b`. -/
 def signJobs (b : Fin (2 ^ layerHeight)) (encoding : Encoding) : List Job :=
-  (List.finRange numChains).map fun l => ⟨.chainValue (topKey b) l (encoding l), [.chain topLayer (topKey b) l (digit 0)]⟩
+  (List.finRange chainCount).map fun l => ⟨.chainValue (topKey b) l (encoding l), [.chain topLayer (topKey b) l (digit 0)]⟩
 
 /-- Split a list in chunks of `size`. -/
 def chunks {α : Type} (size : ℕ) (items : List α) : List (List α) :=
@@ -1129,14 +1129,14 @@ def ceremonyOutput (parameter : PublicParameter) (run : List Job → m (Option (
     (top : TopTree) : Tree → m (Option TreeOutput)
   | .top => do
       let keys := (List.finRange (2 ^ layerHeight)).flatMap fun b =>
-        (List.finRange numChains).map fun l => (topKey b, l)
+        (List.finRange chainCount).map fun l => (topKey b, l)
       let some outputs ← run topJobs | pure none
       let chainEnd := fun (e : KeyIndex) (l : ChainIndex) => digestAt (outputs.getD (keys.idxOf (e, l)) []) 0
       let root ← lift (merkleNode parameter topLayer chainEnd layerHeight 0)
       pure (some (.top ⟨chainEnd, root⟩))
   | .bottom b => do
       let keys := (List.finRange (2 ^ layerHeight)).flatMap fun k =>
-        (List.finRange numChains).map fun l => (bottomKey b k, l)
+        (List.finRange chainCount).map fun l => (bottomKey b k, l)
       let some outputs ← run (bottomJobs b) | pure none
       let cpk := fun (e : KeyIndex) (l : ChainIndex) =>
         let bits := outputs.getD (keys.idxOf (e, l)) []
@@ -1144,14 +1144,14 @@ def ceremonyOutput (parameter : PublicParameter) (run : List Job → m (Option (
       let commitment := fun (e : KeyIndex) => digestAt (outputs.getD (keys.length + e.val % 2 ^ layerHeight) []) 0
       let ρ := digestAt (outputs.getD (keys.length + 2 ^ layerHeight) []) 0
       let root ← lift (merkleNode parameter bottomLayer (fun e l => (cpk e l).2.2) layerHeight b.val)
-      let message := bytesLE 16 root
-      let base ← lift (truncateHash <$> Concrete.oracleHash (randomizerInput parameter topLayer (topKey b) ρ message))
+      let message := littleEndianBytes 16 root
+      let base ← lift (truncateHash <$> Verification.oracleHashWithHash (randomizerInput parameter topLayer (topKey b) ρ message))
       let some (randomness, encoding) ← lift (grind parameter topLayer (topKey b) message base
           randomizerAttemptLimit 0) | pure none
       let some values ← run (signJobs b encoding) | pure none
       let path ← lift (merklePath parameter topLayer top.chainEnd (topKey b))
       let signature : LayerSignature := ⟨randomness, fun l => digestAt (values.getD l.val []) 0, path⟩
-      let topRoot ← lift (Concrete.layerRoot parameter topLayer (topKey b) message signature)
+      let topRoot ← lift (Verification.layerRootWithHash parameter topLayer (topKey b) message signature)
       if topRoot ≠ some top.root then pure none else
       pure (some (.bottom ⟨cpk, commitment, root, signature⟩))
 
@@ -1174,14 +1174,14 @@ def referenceJob {m : Type → Type} [Monad m] (lift : ∀ {α : Type}, OracleCo
   let values ← job.points.mapM F
   let value := fun k => values.getD k 0
   match job.kind with
-  | .chainEnd e l => bitsOfDigest <$> lift (Concrete.chainWalk parameter topLayer e l 0 3 (value 0))
+  | .chainEnd e l => bitsOfDigest <$> lift (Verification.chainWalkWithHash parameter topLayer e l 0 3 (value 0))
   | .chainRow e l => do
-      let y₁ ← lift (Concrete.chainWalk parameter bottomLayer e l 0 1 (value 0))
-      let y₂ ← lift (Concrete.chainWalk parameter bottomLayer e l 0 2 (value 0))
-      let y₃ ← lift (Concrete.chainWalk parameter bottomLayer e l 0 3 (value 0))
+      let y₁ ← lift (Verification.chainWalkWithHash parameter bottomLayer e l 0 1 (value 0))
+      let y₂ ← lift (Verification.chainWalkWithHash parameter bottomLayer e l 0 2 (value 0))
+      let y₃ ← lift (Verification.chainWalkWithHash parameter bottomLayer e l 0 3 (value 0))
       pure (bitsOfDigest (y₁ ^^^ value 1) ++ bitsOfDigest (y₂ ^^^ value 2) ++ bitsOfDigest y₃)
-  | .chainValue e l p => bitsOfDigest <$> lift (Concrete.chainWalk parameter topLayer e l 0 p.val (value 0))
-  | .commitment e => (bitsOfDigest ∘ truncateHash) <$> lift (Concrete.oracleHash (commitmentInput parameter e (value 0)))
+  | .chainValue e l p => bitsOfDigest <$> lift (Verification.chainWalkWithHash parameter topLayer e l 0 p.val (value 0))
+  | .commitment e => (bitsOfDigest ∘ truncateHash) <$> lift (Verification.oracleHashWithHash (commitmentInput parameter e (value 0)))
   | .randomizer => pure (bitsOfDigest (value 0))
 
 section Ceremony
@@ -1263,12 +1263,12 @@ def signRound1 (keys : Keys C) (i : C.Party) (J : C.Quorum) (e : KeyIndex) (mess
 /-- The codeword of a signature at key `e` from the opened randomizer value, or `none` if it does
 not match the commitment `c_e` or the search fails. -/
 def signCodeword (parameter : PublicParameter) (commitment : Digest) (e : KeyIndex) (message : Message)
-    (ρ : Digest) : OracleComp (RoSpec C) (Option (Randomness × Encoding)) := tweakable do
-  let opened := truncateHash (← Concrete.oracleHash (commitmentInput parameter e ρ))
+    (ρ : Digest) : OracleComp (RoSpec C) (Option (Randomizer × Encoding)) := tweakable do
+  let opened := truncateHash (← Verification.oracleHashWithHash (commitmentInput parameter e ρ))
   if opened ≠ commitment then pure none else
-  let base := truncateHash (← Concrete.oracleHash
-    (randomizerInput parameter bottomLayer e ρ (bytesLE 32 message)))
-  grind parameter bottomLayer e (bytesLE 32 message) base randomizerAttemptLimit 0
+  let base := truncateHash (← Verification.oracleHashWithHash
+    (randomizerInput parameter bottomLayer e ρ (littleEndianBytes 32 message)))
+  grind parameter bottomLayer e (littleEndianBytes 32 message) base randomizerAttemptLimit 0
 
 /-- Round 2 of a signer checks `c_e` from the parts of round 1 and finds the codeword. Then it sends
 its parts `part x` of `F(x_{l, p_l})` for each chain with `p_l < 3`. -/
@@ -1277,7 +1277,7 @@ def signRound2With {m : Type → Type} [Monad m] (lift : ∀ {α : Type}, Oracle
     (e : KeyIndex) (message : Message) (parts : C.Party → Digest) : m (Option (ChainIndex → Option Digest)) := do
   let some (_, encoding) ← lift (signCodeword parameter commitment e message (combine J parts))
     | pure none
-  let values ← Concrete.sequenceFin fun l =>
+  let values ← OverPermutation.sequenceFin fun l =>
     if (encoding l).val < chainLength - 1 then some <$> part (.chain bottomLayer e l (encoding l))
     else pure none
   pure (some values)
@@ -1299,7 +1299,7 @@ def assemble (parameter : PublicParameter) (tree : BottomTree) (e : KeyIndex) (m
     | 0 => combine J (chainParts · l)
     | 3 => (tree.cpk e l).2.2
     | p => (if p = 1 then (tree.cpk e l).1 else (tree.cpk e l).2.1) ^^^ combine J (chainParts · l)
-  let ends ← Concrete.sequenceFin fun l => Concrete.recoverChain parameter bottomLayer e l (encoding l) (value l)
+  let ends ← OverPermutation.sequenceFin fun l => Verification.recoverChainWithHash parameter bottomLayer e l (encoding l) (value l)
   if ∃ l, ends l ≠ (tree.cpk e l).2.2 then pure none else
   let path ← merklePath parameter bottomLayer (fun e l => (tree.cpk e l).2.2) e
   pure (some ⟨e, fun lay => if lay = bottomLayer then ⟨randomness, value, path⟩ else tree.topSignature⟩)
@@ -1312,7 +1312,7 @@ attribute [local instance] Classical.propDecidable
 `c_e`. -/
 def MpcInput (input : HashInput) : Prop :=
   (∃ parameter lay key step l value, input = tweakableHashInput parameter (.chain lay key step)
-    (Concrete.chainPayload l value)) ∨
+    (Verification.chainPayload l value)) ∨
   ∃ parameter e ρ, input = commitmentInput parameter e ρ
 
 instance : SampleableType Bit := SampleableType.ofFintype Bit
@@ -1471,14 +1471,14 @@ def stepRound (Ro : Roles C m) (D : C.Coalition) (A : Adversary C E Ia L R) (F :
     m (A.State × (C.Party → Step C E (CallSpec I O) α) × (C.Party → C.Party → Option (Msg E))) := do
   if (∃ i, i ∉ D.1 ∧ (steps i).callInput.isSome) ∧ ∀ i, i ∉ D.1 → (steps i).callInput.isSome ∨ (steps i).isDone then
     let (state, outputs) ← runFunctionality Ro D A F state fun i => if i ∈ D.1 then none else (steps i).callInput
-    let steps' ← Concrete.sequenceFin fun j => match steps j with
+    let steps' ← OverPermutation.sequenceFin fun j => match steps j with
       | .call _ resume => if j ∈ D.1 then pure (Step.done none) else Ro.honest (advance (resume (outputs j)))
       | step => pure step
     pure (state, steps', fun _ _ => none)
   else
     let (state, sent) ← Ro.adversary (A.round state fun c i =>
       if c ∈ D.1 ∧ i ∉ D.1 then (steps i).outbox c else none)
-    let steps' ← Concrete.sequenceFin fun j => match steps j with
+    let steps' ← OverPermutation.sequenceFin fun j => match steps j with
       | .done out => pure (Step.done out)
       | .wait _ resume => if j ∈ D.1 then pure (Step.done none) else
           Ro.honest (advance (resume fun k => if k ∈ D.1 then sent k j else (steps k).delivered j))
@@ -1497,7 +1497,7 @@ def executeRounds (Ro : Roles C m) (D : C.Coalition) (A : Adversary C E Ia L R) 
 /-- The first steps of the honest programs. -/
 def startSteps (Ro : Roles C m) (D : C.Coalition) (program : C.Party → PartyM C E (CallSpec I O) α) :
     m (C.Party → Step C E (CallSpec I O) α) :=
-  Concrete.sequenceFin fun i => if i ∈ D.1 then pure (Step.done none) else Ro.honest (advance (program i).run)
+  OverPermutation.sequenceFin fun i => if i ∈ D.1 then pure (Step.done none) else Ro.honest (advance (program i).run)
 
 /-- One phase of at most `fuel` steps. -/
 def executePhase (Ro : Roles C m) (D : C.Coalition) (A : Adversary C E Ia L R) (F : Functionality C I O L R)
@@ -1668,7 +1668,7 @@ structure Dealt (C : Committee) (m : Type → Type) where
 /-- The bottom tree of a bottom key. -/
 def treeOf (e : KeyIndex) : Fin (2 ^ layerHeight) :=
   ⟨e.val / 2 ^ layerHeight, by
-    have := e.isLt; simp only [lifetime, numLayers, layerHeight] at *; omega⟩
+    have := e.isLt; simp only [lifetime, layerCount, layerHeight] at *; omega⟩
 
 section Dealer
 
@@ -1701,7 +1701,7 @@ def honestSignature (lift : ∀ {β : Type}, OracleComp (RoSpec C) β → m β) 
   let ρ ← dealt.value (.randomizer bottomLayer e)
   let some (randomness, encoding) ← lift (signCodeword dealt.parameter (tree.commitment e) e message ρ)
     | pure none
-  let values ← Concrete.sequenceFin fun l => match (encoding l).val with
+  let values ← OverPermutation.sequenceFin fun l => match (encoding l).val with
     | 0 => dealt.value (.chain bottomLayer e l (encoding l))
     | 3 => pure (tree.cpk e l).2.2
     | p => do
@@ -1719,7 +1719,7 @@ def dealerKeyGen : OracleComp (WorldSpec C) (Option (Dealt C (OracleComp (WorldS
 /-- `Combine'` of the parts of a quorum and `F(msk, x)` under `KeyGen'`. -/
 def tprfCorrectnessRun (J : C.Quorum) (x : Point) (ec : Message) : OracleComp (WorldSpec C) Bool := free do
   let (_, seeds, keys) ← liftComp prawnsKeyGen _
-  let parts ← liftComp (Concrete.sequenceFin fun i => eval (keys i) i J x ec) _
+  let parts ← liftComp (OverPermutation.sequenceFin fun i => eval (keys i) i J x ec) _
   let value ← liftComp (prfValue seeds x) _
   pure (decide (combine J parts = value))
 
@@ -1729,12 +1729,12 @@ def honestSigning (J : C.Quorum) (e : KeyIndex) (message : Message) : OracleComp
   let some dealt ← dealerKeyGen | pure none
   let lift : ∀ {β : Type}, OracleComp (RoSpec C) β → OracleComp (WorldSpec C) β := fun oa => free (liftComp oa _)
   let some tree ← dealt.bottom (treeOf e) | pure none
-  let parts ← Concrete.sequenceFin fun i => if i ∈ J.1 then dealt.part i J (.randomizer bottomLayer e) message else pure 0
+  let parts ← OverPermutation.sequenceFin fun i => if i ∈ J.1 then dealt.part i J (.randomizer bottomLayer e) message else pure 0
   let some _ ← lift (signCodeword dealt.parameter (tree.commitment e) e message (combine J parts)) | pure none
-  let chainParts ← Concrete.sequenceFin fun i => do
+  let chainParts ← OverPermutation.sequenceFin fun i => do
     let values ← signRound2With lift (fun x => dealt.part i J x message) dealt.parameter J (tree.commitment e) e message parts
     pure fun l => ((values.bind (· l)).getD 0)
   let some signature ← lift (assemble dealt.parameter tree e message J parts chainParts) | pure (some false)
-  some <$> lift (tweakable (Concrete.verify ⟨dealt.top.root, dealt.parameter⟩ message signature))
+  some <$> lift (tweakable (Verification.verifyWithHash ⟨dealt.top.root, dealt.parameter⟩ message signature))
 
 end ThresholdLeanXmss

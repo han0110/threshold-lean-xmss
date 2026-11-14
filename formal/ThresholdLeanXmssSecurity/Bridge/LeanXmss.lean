@@ -1,46 +1,28 @@
-import LeanXmss.Scheme
+import ThresholdLeanXmss.Scheme
 
 /-!
-# The copies of the leanXMSS functions of leanVM `1acdff19` and the pinned functions
+# The leanXMSS functions of leanVM `1acdff19` and their form at `f5f3672f`
 
-The namespace `OldLeanXmss` holds a copy of each leanXMSS function that
-`ThresholdLeanXmss/Scheme.lean` reads and that has a new form at leanVM `f5f3672f`. The text of
-each copy is the text of
-https://github.com/leanEthereum/leanVM/blob/1acdff19/formal/lean_xmss/LeanXmss/Scheme.lean, and a
-comment gives its lines in that file. This file is for leanVM `1acdff19`, the pinned leanVM, on
-Lean 4.31. For each copy, one theorem with the suffix `_old` proves that the copy is equal to the
-pinned definition.
+The namespace `OldLeanXmss` holds the definitions of
+https://github.com/leanEthereum/leanVM/blob/1acdff19/formal/lean_xmss/LeanXmss/Scheme.lean
+that `ThresholdLeanXmss/Scheme.lean` reads and that have a new form at `f5f3672f`. Each definition
+is the old text on the types of `f5f3672f`. A comment gives its lines in the old file. After each
+definition, one theorem proves that it is equal to the new form.
 
-The branch that moves the proof to leanVM `f5f3672f` and Lean 4.35 has a file at this same path.
-That file holds the same copies. For each copy, it proves an equation with the definitions of
-`f5f3672f`.
+The old text has these three changes.
 
-The text of the copies has one difference from the text in that file. `layerRoot` reads the fields
-`randomness` and `path` of `LayerSignature`. The names of these fields at `f5f3672f` are
-`randomizer` and `authenticationPath`.
-
-The text of the copies has two differences from the pinned text. The theorems `Codeword.valid_old`,
-`Codeword.decode_old` and `Concrete.verify_old` prove that these differences keep the values.
-
-* `Codeword.Valid` is an `abbrev`. The pinned text has a `def` and a `DecidablePred` instance.
+* `LayerSignature` has the fields `randomizer` and `authenticationPath`. Their old names are
+  `randomness` and `path`.
+* `Codeword.Valid` is an `abbrev`. The old text has a `def` and a `DecidablePred` instance.
 * `verify` has no `irreducible` attribute.
 
-A copy reads each name that has no copy, for example `Digest` and `tweakFields`, from the pinned
-leanVM. `ThresholdLeanXmssSecurity/Bridge/Ambient.lean` fixes these names.
-
-The script `tools/bridge_compare.py` compares the copies of the two files, the equations of the two
-files, and the copies with the pinned text. Run it from the root of the repository.
-
-```sh
-python3 formal/tools/bridge_compare.py \
-  --old formal/ThresholdLeanXmssSecurity/Bridge \
-  --new <branch>/formal/ThresholdLeanXmssSecurity/Bridge
-```
+The types `HashDomain`, `LayerSignature`, `Signature`, `PublicKey` and `TweakFields` are the types
+of `f5f3672f`. This file does not compare a type with its old text.
 -/
 
 set_option autoImplicit false
 
-open OracleComp OracleSpec LeanXmss
+open OracleComp OracleSpec HashSig LeanXmss
 
 namespace ThresholdLeanXmss.OldLeanXmss
 
@@ -51,24 +33,24 @@ def hashOutputBits : Nat := 256
 def messageBits : Nat := 256
 def publicParameterBits : Nat := 128
 
-theorem hashOutputBits_old : hashOutputBits = LeanXmss.hashOutputBits := rfl
-theorem messageBits_old : messageBits = LeanXmss.messageBits := rfl
-theorem publicParameterBits_old : publicParameterBits = LeanXmss.publicParameterBits := rfl
+theorem hashOutputBits_eq : BitVec hashOutputBits = HashOutput := rfl
+theorem messageBits_eq : BitVec messageBits = Message := rfl
+theorem publicParameterBits_eq : BitVec publicParameterBits = PublicParameter := rfl
 
 -- Lines 38 and 43.
 /-- `v`, the chains of a one-time key. -/
 def numChains : Nat := 58
 def numLayers : Nat := 2
 
-theorem numChains_old : numChains = LeanXmss.numChains := rfl
-theorem numLayers_old : numLayers = LeanXmss.numLayers := rfl
+theorem numChains_eq : numChains = chainCount := rfl
+theorem numLayers_eq : numLayers = layerCount := rfl
 
 -- Lines 56 and 66.
 abbrev Randomness := Digest
 abbrev Digit := Fin chainLength
 
-theorem randomness_old : Randomness = LeanXmss.Randomness := rfl
-theorem digit_old : Digit = LeanXmss.Digit := rfl
+theorem randomness_eq : Randomness = Randomizer := rfl
+theorem digit_eq : Digit = WinternitzDigit := rfl
 
 -- Lines 74 to 77.
 /-- The key of layer `l` a leaf index signs with: `idx` at the bottom, `idx / 2^16` at the top. -/
@@ -76,7 +58,8 @@ def keyAt (index : LeafIndex) (lay : Layer) : KeyIndex :=
   ⟨index.val / 2 ^ (layerHeight * lay.val),
     Nat.lt_of_le_of_lt (Nat.div_le_self _ _) index.isLt⟩
 
-theorem keyAt_old : keyAt = LeanXmss.keyAt := rfl
+theorem keyAt_eq (index : LeafIndex) (lay : Layer) : keyAt index lay = keyIndexOnLayer index lay :=
+  rfl
 
 -- Lines 110 to 113.
 /-- Serialize a bit vector into a fixed number of bytes, least significant byte first. -/
@@ -84,20 +67,23 @@ def bytesLE (byteCount : Nat) (value : BitVec (8 * byteCount)) : List UInt8 :=
   List.ofFn fun index : Fin byteCount =>
     UInt8.ofBitVec (value.extractLsb' (8 * index.val) 8)
 
-theorem bytesLE_old : bytesLE = LeanXmss.bytesLE := rfl
+theorem bytesLE_eq (byteCount : Nat) (value : BitVec (8 * byteCount)) :
+    bytesLE byteCount value = littleEndianBytes byteCount value :=
+  rfl
 
 -- Lines 124 to 126.
 /-- The 16 address bytes `lo || hi || (tag + 32 * step) || 0^8`. -/
 def fieldBytes (fields : TweakFields) : HashInput :=
   bytesLE 4 fields.lo ++ bytesLE 3 fields.hi ++ bytesLE 1 (fields.step ++ fields.tag) ++ bytesLE 8 0
 
-theorem fieldBytes_old : fieldBytes = LeanXmss.fieldBytes := rfl
+theorem fieldBytes_eq (fields : TweakFields) : fieldBytes fields = addressBytes fields := rfl
 
 -- Lines 132 and 133.
 /-- `hi` on layer `l`: the top layer sets bit 23 (`layer_hi`). -/
 def layerHi (lay : Layer) (field : Nat) : Nat := field + 2 ^ 23 * lay.val
 
-theorem layerHi_old : layerHi = LeanXmss.layerHi := rfl
+theorem layerHi_eq (lay : Layer) (field : Nat) : layerHi lay field = LeanXmss.layerHi lay field :=
+  rfl
 
 -- Lines 144 to 149.
 /-- Types `TWEAK_CHAIN = 1`, `TWEAK_LEAF = 2`, `TWEAK_NODE = 3`, `TWEAK_MSG = 12`. -/
@@ -107,7 +93,9 @@ def hashDomainFields : HashDomain → TweakFields
   | .node lay level nodeIdx => tweakFields 3 0 (layerHi lay level) nodeIdx
   | .message lay key => tweakFields 12 0 (layerHi lay 0) key
 
-theorem hashDomainFields_old : hashDomainFields = LeanXmss.hashDomainFields := rfl
+theorem hashDomainFields_eq (domain : HashDomain) :
+    hashDomainFields domain = LeanXmss.hashDomainFields domain := by
+  cases domain <;> rfl
 
 -- Lines 151 to 158.
 /-- The exact 16 address bytes of a hash domain. -/
@@ -119,9 +107,16 @@ def tweakableHashInput (parameter : PublicParameter) (domain : HashDomain)
     (payload : HashInput) : HashInput :=
   bytesLE 16 parameter ++ tweakBytes domain ++ payload
 
-theorem tweakBytes_old : tweakBytes = LeanXmss.tweakBytes := rfl
+theorem tweakBytes_eq (domain : HashDomain) : tweakBytes domain = LeanXmss.tweakBytes domain := by
+  rw [LeanXmss.tweakBytes, ← hashDomainFields_eq]
+  rfl
 
-theorem tweakableHashInput_old : tweakableHashInput = LeanXmss.tweakableHashInput := rfl
+theorem tweakableHashInput_eq (parameter : PublicParameter) (domain : HashDomain)
+    (payload : HashInput) :
+    tweakableHashInput parameter domain payload =
+      LeanXmss.tweakableHashInput parameter domain payload := by
+  rw [LeanXmss.tweakableHashInput, ← tweakBytes_eq]
+  rfl
 
 /-! ## The codeword -/
 
@@ -146,15 +141,17 @@ abbrev Valid (digest : Digest) : Prop :=
 def decode (digest : Digest) : Option Encoding :=
   if Valid digest then some (encoding digest) else none
 
-theorem digit_old : digit = LeanXmss.Codeword.digit := rfl
+theorem digit_eq {n : Nat} (digest : Digest) (i : Fin n) :
+    digit digest i.val = digestDigits digest i :=
+  rfl
 
-theorem encoding_old : encoding = LeanXmss.Codeword.encoding := rfl
+theorem encoding_eq (digest : Digest) : encoding digest = digestDigits digest := rfl
 
-theorem sum_old : sum = LeanXmss.Codeword.sum := rfl
+theorem sum_eq (x : Encoding) : sum x = LeanXmss.Codeword.sum x := rfl
 
-theorem valid_old : Valid = LeanXmss.Codeword.Valid := rfl
+theorem valid_eq (digest : Digest) : Valid digest = LeanXmss.Codeword.Valid digest := rfl
 
-theorem decode_old : decode = LeanXmss.Codeword.decode := rfl
+theorem decode_eq (digest : Digest) : decode digest = LeanXmss.Codeword.decode digest := rfl
 
 end Codeword
 
@@ -173,11 +170,13 @@ def sequenceFin {m : Type → Type} [Monad m] {α : Type} {n : Nat}
       let tail ← sequenceFin fun index : Fin n => computation index.succ
       return Fin.cases head tail
 
-theorem sequenceFin_old : @sequenceFin = @LeanXmss.Concrete.sequenceFin := by
-  funext m _ α n computation
+theorem sequenceFin_eq {m : Type → Type} [Monad m] {α : Type} {n : Nat}
+    (computation : Fin n → m α) :
+    sequenceFin computation = OverPermutation.sequenceFin computation := by
   induction n with
   | zero => rfl
-  | succ n ih => simp only [sequenceFin, LeanXmss.Concrete.sequenceFin, ih]
+  | succ n ih =>
+    simp only [sequenceFin, OverPermutation.sequenceFin, ih]
 
 variable {m : Type → Type} [Monad m] [HasQuery HashSpec m]
 
@@ -193,9 +192,15 @@ def tweakableHash (parameter : PublicParameter) (domain : HashDomain) (payload :
   return truncateHash output
 
 omit [Monad m] in
-theorem oracleHash_old : oracleHash (m := m) = LeanXmss.Concrete.oracleHash := rfl
+theorem oracleHash_eq (input : HashInput) :
+    oracleHash (m := m) input = Verification.oracleHashWithHash input :=
+  rfl
 
-theorem tweakableHash_old : tweakableHash (m := m) = LeanXmss.Concrete.tweakableHash := rfl
+theorem tweakableHash_eq (parameter : PublicParameter) (domain : HashDomain) (payload : HashInput) :
+    tweakableHash (m := m) parameter domain payload =
+      Verification.tweakableHashWithHash parameter domain payload := by
+  rw [tweakableHash, tweakableHashInput_eq]
+  rfl
 
 -- Lines 258 to 271.
 /-- `value || LE_16(i)`, the payload of a chain step of chain `i`. -/
@@ -213,14 +218,19 @@ def chainWalk (parameter : PublicParameter) (lay : Layer) (key : KeyIndex)
       else
         pure 0
 
-theorem chainPayload_old : chainPayload = LeanXmss.Concrete.chainPayload := rfl
+theorem chainPayload_eq (chainIdx : ChainIndex) (value : Digest) :
+    chainPayload chainIdx value = Verification.chainPayload chainIdx value :=
+  rfl
 
-theorem chainWalk_old : chainWalk (m := m) = LeanXmss.Concrete.chainWalk := by
-  funext parameter lay key chainIdx start steps value
+theorem chainWalk_eq (parameter : PublicParameter) (lay : Layer) (key : KeyIndex)
+    (chainIdx : ChainIndex) (start steps : Nat) (value : Digest) :
+    chainWalk (m := m) parameter lay key chainIdx start steps value =
+      Verification.chainWalkWithHash parameter lay key chainIdx start steps value := by
   induction steps with
   | zero => rfl
   | succ steps ih =>
-    simp only [chainWalk, LeanXmss.Concrete.chainWalk, ih, tweakableHash_old, chainPayload_old]
+    simp only [chainWalk, Verification.chainWalkWithHash, OverPermutation.walkChain, ih,
+      tweakableHash_eq, chainPayload_eq]
 
 -- Lines 273 to 301.
 /-- The verifier's half of a chain: walk the remaining `3 - x_i` steps. -/
@@ -253,20 +263,34 @@ def otsLeaf (parameter : PublicParameter) (lay : Layer) (key : KeyIndex) (messag
   let value ← leafHash parameter lay key endpoints
   return some value
 
-theorem recoverChain_old : recoverChain (m := m) = LeanXmss.Concrete.recoverChain := by
-  funext parameter lay key chainIdx digit value
-  simp only [recoverChain, LeanXmss.Concrete.recoverChain, chainWalk_old]
+theorem recoverChain_eq (parameter : PublicParameter) (lay : Layer) (key : KeyIndex)
+    (chainIdx : ChainIndex) (digit : Digit) (value : Digest) :
+    recoverChain (m := m) parameter lay key chainIdx digit value =
+      Verification.recoverChainWithHash parameter lay key chainIdx digit value :=
+  chainWalk_eq ..
 
-theorem leafPayload_old : leafPayload = LeanXmss.Concrete.leafPayload := rfl
+theorem leafPayload_eq (endpoints : ChainIndex → Digest) :
+    leafPayload endpoints = digestsPayload endpoints :=
+  rfl
 
-theorem leafHash_old : leafHash (m := m) = LeanXmss.Concrete.leafHash := rfl
+theorem leafHash_eq (parameter : PublicParameter) (lay : Layer) (key : KeyIndex)
+    (endpoints : ChainIndex → Digest) :
+    leafHash (m := m) parameter lay key endpoints =
+      Verification.leafHashWithHash parameter lay key endpoints :=
+  tweakableHash_eq ..
 
-theorem messageDigest_old : messageDigest (m := m) = LeanXmss.Concrete.messageDigest := rfl
+theorem messageDigest_eq (parameter : PublicParameter) (lay : Layer) (key : KeyIndex)
+    (message : HashInput) (randomness : Randomness) :
+    messageDigest (m := m) parameter lay key message randomness =
+      Verification.messageDigestWithHash parameter lay key message randomness :=
+  tweakableHash_eq ..
 
-theorem otsLeaf_old : otsLeaf (m := m) = LeanXmss.Concrete.otsLeaf := by
-  funext parameter lay key message randomness values
-  simp only [otsLeaf, LeanXmss.Concrete.otsLeaf, messageDigest_old, Codeword.decode_old,
-    sequenceFin_old, recoverChain_old, leafHash_old]
+theorem otsLeaf_eq (parameter : PublicParameter) (lay : Layer) (key : KeyIndex)
+    (message : HashInput) (randomness : Randomness) (values : ChainIndex → Digest) :
+    otsLeaf (m := m) parameter lay key message randomness values =
+      Verification.otsLeafWithHash parameter lay key message randomness values := by
+  simp only [otsLeaf, Verification.otsLeafWithHash, messageDigest_eq, Codeword.decode_eq,
+    sequenceFin_eq, recoverChain_eq, leafHash_eq]
   rfl
 
 -- Lines 305 to 327.
@@ -290,22 +314,31 @@ def treeFold (parameter : PublicParameter) (lay : Layer) (key : KeyIndex)
 /-- The root a layer's signature by key `e` reaches from `message`, or nothing (`layer_root`). -/
 def layerRoot (parameter : PublicParameter) (lay : Layer) (key : KeyIndex) (message : HashInput)
     (part : LayerSignature) : m (Option Digest) := do
-  let some leaf ← otsLeaf parameter lay key message part.randomness part.chainValues | return none
-  let root ← treeFold parameter lay key part.path layerHeight leaf
+  let some leaf ← otsLeaf parameter lay key message part.randomizer part.chainValues | return none
+  let root ← treeFold parameter lay key part.authenticationPath layerHeight leaf
   return some root
 
-theorem nodePayload_old : nodePayload = LeanXmss.Concrete.nodePayload := rfl
+theorem nodePayload_eq (left right : Digest) :
+    nodePayload left right = OverPermutation.nodePayload left right :=
+  rfl
 
-theorem treeFold_old : treeFold (m := m) = LeanXmss.Concrete.treeFold := by
-  funext parameter lay key path levels value
+theorem treeFold_eq (parameter : PublicParameter) (lay : Layer) (key : KeyIndex)
+    (path : Fin layerHeight → Digest) (levels : Nat) (value : Digest) :
+    treeFold (m := m) parameter lay key path levels value =
+      Verification.treeFoldWithHash parameter lay key path levels value := by
   induction levels with
   | zero => rfl
   | succ levels ih =>
-    simp only [treeFold, LeanXmss.Concrete.treeFold, ih, tweakableHash_old, nodePayload_old]
+    simp only [treeFold, Verification.treeFoldWithHash, OverPermutation.foldPath, ih,
+      tweakableHash_eq, nodePayload_eq]
+    refine congrArg _ (funext fun current => ?_)
+    split <;> rfl
 
-theorem layerRoot_old : layerRoot (m := m) = LeanXmss.Concrete.layerRoot := by
-  funext parameter lay key message part
-  simp only [layerRoot, LeanXmss.Concrete.layerRoot, otsLeaf_old, treeFold_old]
+theorem layerRoot_eq (parameter : PublicParameter) (lay : Layer) (key : KeyIndex)
+    (message : HashInput) (part : LayerSignature) :
+    layerRoot (m := m) parameter lay key message part =
+      Verification.layerRootWithHash parameter lay key message part := by
+  simp only [layerRoot, Verification.layerRootWithHash, otsLeaf_eq, treeFold_eq]
   rfl
 
 -- Lines 333 to 339.
@@ -319,145 +352,146 @@ def verify (publicKey : PublicKey) (message : Message) (signature : Signature) :
       (bytesLE 16 bottomRoot) (signature.layers topLayer) | return false
   return decide (root = publicKey.root)
 
-theorem verify_old : verify (m := m) = LeanXmss.Concrete.verify := by
-  funext publicKey message signature
-  simp only [verify, LeanXmss.Concrete.verify, layerRoot_old, keyAt_old, bytesLE_old]
+theorem verify_eq (publicKey : PublicKey) (message : Message) (signature : Signature) :
+    verify (m := m) publicKey message signature =
+      Verification.verifyWithHash publicKey message signature := by
+  simp only [verify, Verification.verifyWithHash, layerRoot_eq, keyAt_eq, bytesLE_eq]
   rfl
 
 end Concrete
 
-/-! The check fails if the axioms of a theorem of this file change. -/
+/-! The build fails if the axioms of a theorem of this file change. -/
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.hashOutputBits_old' does not depend on any axioms -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.hashOutputBits_eq' does not depend on any axioms -/
 #guard_msgs (whitespace := lax) in
-#print axioms hashOutputBits_old
+#print axioms hashOutputBits_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.messageBits_old' does not depend on any axioms -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.messageBits_eq' does not depend on any axioms -/
 #guard_msgs (whitespace := lax) in
-#print axioms messageBits_old
+#print axioms messageBits_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.publicParameterBits_old' does not depend on any axioms -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.publicParameterBits_eq' does not depend on any axioms -/
 #guard_msgs (whitespace := lax) in
-#print axioms publicParameterBits_old
+#print axioms publicParameterBits_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.numChains_old' does not depend on any axioms -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.numChains_eq' does not depend on any axioms -/
 #guard_msgs (whitespace := lax) in
-#print axioms numChains_old
+#print axioms numChains_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.numLayers_old' does not depend on any axioms -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.numLayers_eq' does not depend on any axioms -/
 #guard_msgs (whitespace := lax) in
-#print axioms numLayers_old
+#print axioms numLayers_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.randomness_old' does not depend on any axioms -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.randomness_eq' does not depend on any axioms -/
 #guard_msgs (whitespace := lax) in
-#print axioms randomness_old
+#print axioms randomness_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.digit_old' depends on axioms: [propext] -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.digit_eq' depends on axioms: [propext] -/
 #guard_msgs (whitespace := lax) in
-#print axioms digit_old
+#print axioms digit_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.keyAt_old' depends on axioms: [propext] -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.keyAt_eq' depends on axioms: [propext] -/
 #guard_msgs (whitespace := lax) in
-#print axioms keyAt_old
+#print axioms keyAt_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.bytesLE_old' does not depend on any axioms -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.bytesLE_eq' does not depend on any axioms -/
 #guard_msgs (whitespace := lax) in
-#print axioms bytesLE_old
+#print axioms bytesLE_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.fieldBytes_old' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.fieldBytes_eq' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms fieldBytes_old
+#print axioms fieldBytes_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.layerHi_old' depends on axioms: [propext] -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.layerHi_eq' depends on axioms: [propext] -/
 #guard_msgs (whitespace := lax) in
-#print axioms layerHi_old
+#print axioms layerHi_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.hashDomainFields_old' depends on axioms: [propext] -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.hashDomainFields_eq' depends on axioms: [propext] -/
 #guard_msgs (whitespace := lax) in
-#print axioms hashDomainFields_old
+#print axioms hashDomainFields_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.tweakBytes_old' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.tweakBytes_eq' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms tweakBytes_old
+#print axioms tweakBytes_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.tweakableHashInput_old' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.tweakableHashInput_eq' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms tweakableHashInput_old
+#print axioms tweakableHashInput_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.Codeword.digit_old' depends on axioms: [propext] -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.Codeword.digit_eq' depends on axioms: [propext] -/
 #guard_msgs (whitespace := lax) in
-#print axioms Codeword.digit_old
+#print axioms Codeword.digit_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.Codeword.encoding_old' depends on axioms: [propext] -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.Codeword.encoding_eq' depends on axioms: [propext] -/
 #guard_msgs (whitespace := lax) in
-#print axioms Codeword.encoding_old
+#print axioms Codeword.encoding_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.Codeword.sum_old' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.Codeword.sum_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms Codeword.sum_old
+#print axioms Codeword.sum_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.Codeword.valid_old' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.Codeword.valid_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms Codeword.valid_old
+#print axioms Codeword.valid_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.Codeword.decode_old' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.Codeword.decode_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms Codeword.decode_old
+#print axioms Codeword.decode_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.sequenceFin_old' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.sequenceFin_eq' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms Concrete.sequenceFin_old
+#print axioms Concrete.sequenceFin_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.oracleHash_old' does not depend on any axioms -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.oracleHash_eq' does not depend on any axioms -/
 #guard_msgs (whitespace := lax) in
-#print axioms Concrete.oracleHash_old
+#print axioms Concrete.oracleHash_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.tweakableHash_old' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.tweakableHash_eq' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms Concrete.tweakableHash_old
+#print axioms Concrete.tweakableHash_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.chainPayload_old' does not depend on any axioms -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.chainPayload_eq' does not depend on any axioms -/
 #guard_msgs (whitespace := lax) in
-#print axioms Concrete.chainPayload_old
+#print axioms Concrete.chainPayload_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.chainWalk_old' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.chainWalk_eq' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms Concrete.chainWalk_old
+#print axioms Concrete.chainWalk_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.recoverChain_old' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.recoverChain_eq' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms Concrete.recoverChain_old
+#print axioms Concrete.recoverChain_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.leafPayload_old' does not depend on any axioms -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.leafPayload_eq' does not depend on any axioms -/
 #guard_msgs (whitespace := lax) in
-#print axioms Concrete.leafPayload_old
+#print axioms Concrete.leafPayload_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.leafHash_old' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.leafHash_eq' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms Concrete.leafHash_old
+#print axioms Concrete.leafHash_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.messageDigest_old' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.messageDigest_eq' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms Concrete.messageDigest_old
+#print axioms Concrete.messageDigest_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.otsLeaf_old' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.otsLeaf_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms Concrete.otsLeaf_old
+#print axioms Concrete.otsLeaf_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.nodePayload_old' does not depend on any axioms -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.nodePayload_eq' does not depend on any axioms -/
 #guard_msgs (whitespace := lax) in
-#print axioms Concrete.nodePayload_old
+#print axioms Concrete.nodePayload_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.treeFold_old' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.treeFold_eq' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms Concrete.treeFold_old
+#print axioms Concrete.treeFold_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.layerRoot_old' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.layerRoot_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms Concrete.layerRoot_old
+#print axioms Concrete.layerRoot_eq
 
-/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.verify_old' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmss.OldLeanXmss.Concrete.verify_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms Concrete.verify_old
+#print axioms Concrete.verify_eq
 
 end ThresholdLeanXmss.OldLeanXmss
