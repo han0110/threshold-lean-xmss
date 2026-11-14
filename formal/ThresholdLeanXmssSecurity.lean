@@ -188,7 +188,13 @@ The statement layer is `ThresholdLeanXmss/`. The proofs are in `ThresholdLeanXms
 * `SigningOwn*`, `SeedHitOwn`, `SigningLedgerExpect` and `SigningStronglyUnforgeable` hold the signing
   claim with the budget of the forger alone.
 * `Lifetime*` holds the forms of the simulation hop that start from a given cache. The salt route of
-  the simulation hop uses them. -/
+  the simulation hop uses them.
+
+`ThresholdLeanXmssSecurity/Bridge/` holds four files that are not a part of the proof. They state in
+elementary terms what the definitions of VCVio and of leanVM that the statement layer reads are at
+the pinned revisions. The branch that moves the proof to Lean 4.35 proves the same statements for
+its revisions at the same paths, and `tools/bridge_compare.py` compares the two sides. This file
+does not import these files. -/
 
 namespace ThresholdLeanXmssSecurity
 
