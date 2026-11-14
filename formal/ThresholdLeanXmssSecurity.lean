@@ -21,6 +21,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningGuessLane
 import ThresholdLeanXmssSecurity.Proof.TreeKeyAimed
 import ThresholdLeanXmssSecurity.Proof.SigningHitProof
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Coupling
+import ThresholdLeanXmssSecurity.Proof.SigningOwnBudget
 
 /-! # The end theorem of threshold leanXMSS
 
@@ -42,6 +43,8 @@ they reuse leanVM `formal/lean_xmss` for the hash layer.
   `k^2 / 2^129` of the 128-bit AES keys of the `k` PRSS keys.
 * The signing budget `q` (`HasSigningQueryBound`) counts every call of `H` and `PRG` by every party,
   cache hits included.
+* The second signing budget (`HasSigningOwnBound`) counts only the own calls of the forger to `H` and
+  `PRG` and its round-2 requests, on every path of its program.
 * The simulation claims and `TprfSecurityStatement` count only the calls of the adversary and of the
   distinguisher (`IsQueryBounded`). No budget is a time bound.
 
@@ -138,6 +141,13 @@ chain ends, the bottom trees, `c_e`, `ρ_e` before round 2 and the parts below t
 6. Sum. Two units for each call give `signingHashError q`. The calls of `KeyGen` count in `q` and pay
    the lower-order terms.
 
+`SigningOwnBudget.signingOwnBudget` (`Proof/SigningOwnBudget`) gives `SigningOwnBudgetStatement`. It
+runs the same two stages with the count of the forger alone. `SeedHitOwn.distinctFlagOwn` pays the
+hidden keys. The charged lane is the sum of four bounds, `hitOwn_of_gate`, `altOwn`, `topOwn` and
+`r1OwnSource`, and it stops at the first second opening of a commitment `c_e`. The capped lane is
+`ownCapClean` with `compilerCouplingClean`. The fixed slack `signingSlack` pays the first read of
+each top key and the verification.
+
 ## Modules
 
 The statement layer is `ThresholdLeanXmss/`. The proofs are in `ThresholdLeanXmssSecurity/Proof/`.
@@ -162,6 +172,8 @@ The statement layer is `ThresholdLeanXmss/`. The proofs are in `ThresholdLeanXms
 * `SigningLaneUnion`, `SigningLaneFinal`, `SigningReleased*`, `SigningSignedSeparation`,
   `SigningLane2*`, `SigningLaneInputLogged`, `SigningLaneHybrid*` and `SigningCompiler*` hold the
   uncharged lane and its shared cap.
+* `SigningOwn*`, `SeedHitOwn` and `SigningLedgerExpect` hold the signing claim with the budget of the
+  forger alone.
 * `Lifetime*` holds the forms of the simulation hop that start from a given cache. The salt route of
   the simulation hop uses them. -/
 
@@ -177,7 +189,8 @@ theorem thresholdLeanXmss_security : ThresholdLeanXmss.ThresholdLeanXmssSecurity
     treeSuccessProof prims circuits settings C, coinSecurity prims K, coinCompleteness prims K, multStatement prims K,
     extendMultSecurity prims K, multVerifyClosed prims K, multVerifyCompleteness prims K,
     mainStatementFull prims K, mainCompleteness prims K, tprfCorrectness prims C, tprfSecurity prims C,
-    signingCorrectness prims C, signingSecurityClosed prims C⟩
+    signingCorrectness prims C, signingSecurityClosed prims C,
+    SigningOwnBudget.signingOwnBudget prims C⟩
 
 /-! The build fails if the axiom footprint of the end theorem changes. -/
 
@@ -199,6 +212,10 @@ and `Quot.sound`. -/
 /-- info: 'ThresholdLeanXmssSecurity.signingSecurityClosed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms signingSecurityClosed
+
+/-- info: 'ThresholdLeanXmssSecurity.SigningOwnBudget.signingOwnBudget' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms SigningOwnBudget.signingOwnBudget
 
 /-- info: 'ThresholdLeanXmssSecurity.dealerTreeProof' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

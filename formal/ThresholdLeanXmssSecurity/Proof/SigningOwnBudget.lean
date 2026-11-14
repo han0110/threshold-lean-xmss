@@ -12,9 +12,9 @@ import ThresholdLeanXmssSecurity.Proof.SeedHitOwn
   a second opening of a commitment, the top partner bound and the R1 bound.
 - `laneTraceCapOwn` is the capped lane with the own budget.
 - `hiddenCoreOwnAt` is the second stage `SigningOwnClaim.HiddenCoreOwnAt` from the two lanes.
-- `signingOwnBudget_of_flag` is `SigningOwnClaim.SigningOwnBudgetStatement` from the first stage
+- `signingOwnBudget_of_flag` is `SigningOwnBudgetStatement` from the first stage
   `SigningOwnClaim.DistinctFlagOwn`.
-- `signingOwnBudget` is `SigningOwnClaim.SigningOwnBudgetStatement` with no premise.
+- `signingOwnBudget` is `SigningOwnBudgetStatement` with no premise.
 -/
 
 set_option pp.deepTerms false

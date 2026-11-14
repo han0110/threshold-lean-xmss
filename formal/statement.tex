@@ -57,6 +57,10 @@ trees of the key generation of the signing game. \\
 \lean{SigningSecurityStatement} & The signing is strongly unforgeable under adaptive corruption.
 The bound is $q / 2^{127} + N q / 2^{256} + N^2 / 2^{256}$, where
 $N = \binom{n}{t-1} + n^2$ bounds the number of keys. \\
+\lean{SigningOwnBudgetStatement} & The same game with a second budget. Here $q$ counts only the own
+calls of the forger to $H$ and to the PRG and its round-2 requests. The count holds on every path
+of its program and for every answer.
+The bound is $(q + 2^{15} + 384) / 2^{127} + N q / 2^{256} + N^2 / 2^{256}$. \\
 \lean{TprfSecurityStatement} & The threshold PRF is adaptively secure. The bound is
 $\bigl((2\binom{n}{t-1} + n^2)\, q + N^2\bigr) / 2^{256}$. \\
 \bottomrule
@@ -67,7 +71,7 @@ The numbers $s_{\mathrm{kg}}$ and $s_{\mathrm{tree}}$ count the honest secret in
 One check with $d$ coins and $R$ halving steps has the error
 $(d + 2(R + 1)) / (2^{192} - 2) + (R + 2)\, q / 2^{192}$, and a ceremony pays it for each batch.
 
-The bundle has eighteen claims. The other claims are the honest runs (completeness), the failure
+The bundle has nineteen claims. The other claims are the honest runs (completeness), the failure
 probability of the randomizer search, and the gadgets of GS20, namely \lean{CoinStatement},
 \lean{MultStatement}, \lean{ExtendMultStatement}, \lean{MultVerifyStatement} and
 \lean{MainStatement}.
@@ -93,7 +97,10 @@ evaluates. A random oracle in the signing claim. & leanXMSS \\
 PRG & AES-128 is a PRF. Its advantage is a term of the bound. & CDI05 \\
 Simulators & The keygen simulator programs $H$. The ceremony simulator does not. & CDG+18 \\
 Budget & The simulation claims count the calls of the adversary and of the distinguisher. The
-signing claim counts the calls of every party. & BR93, leanXMSS \\
+first signing claim counts the calls of every party on the runs of the game. The second signing
+claim counts the own calls of the forger and its round-2 requests, on every path of its program.
+A fixed slack pays the security loss from the other calls. It does not bound their number. For a
+fixed $q$ the two budgets give different classes of forgers, so the bundle has both claims. & BR93, leanXMSS \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -130,7 +137,8 @@ PRAWNS, Definition 3.2 & Adaptive unforgeability of a one-time threshold signatu
 strong unforgeability of the signing of leanXMSS. \\
 leanXMSS & Strong unforgeability with the bound $q / 2^{127}$. The budget $q$ counts the hash
 calls of every party. & The same bound and the same budget, and the two terms of the hidden
-keys. \\
+keys. The second signing claim has the budget of the forger alone and the fixed slack
+$2^{15} + 384$. \\
 \bottomrule
 \end{tabularx}
 \end{center}

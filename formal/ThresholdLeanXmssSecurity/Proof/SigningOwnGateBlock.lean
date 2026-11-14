@@ -30,8 +30,6 @@ variable {C : Committee} (prims : Primitives)
 
 open Classical
 
-def signingSlack : ℕ := 2 ^ 15 + 384
-
 theorem size_emptyRows {State : Type} [Fintype State] {Index : Type} [Fintype Index] :
     LayeredGraph.size (LayeredGraph.emptyRows : Index → List (State → Option State)) = 0 := by
   simp [LayeredGraph.size, LayeredGraph.emptyRows, SigningHitProof.LayeredGraph.edge]

@@ -4,8 +4,8 @@ import ThresholdLeanXmssSecurity.Proof.SeedHit
 /-!
 # The cost of the forger with the own budget
 
-- `HasSigningOwnBound A q` states that the forger makes at most `q` own calls of `H` or `PRG` and
-  round-2 requests on each path.
+- `HasSigningOwnBound A q` (`ThresholdLeanXmss/Statement.lean`) states that the forger makes at most
+  `q` own calls of `H` or `PRG` and round-2 requests on each path.
 - `forgerCost prims A x c` is the expected cost of the queries of the forger on the flat run, for a
   cost `c` of each query. The honest work of a handler costs nothing.
 - `forgerCost_le` bounds it by `q` when `c` is at most `ownUnit`. `forgerCost_add` shows that it is
@@ -33,14 +33,6 @@ open SigningHitLaneProof SigningCostProof SigningFlatProof
 attribute [local instance] Classical.propDecidable
 
 variable {C : Committee} (prims : Primitives)
-
-def SigningOwnCounted : (LocalSpec C + TsigSpec C).Domain → Prop
-  | .inl (.inr _) => True
-  | .inr (.round2 ..) => True
-  | _ => False
-
-def HasSigningOwnBound (A : TsigAdversary C) (q : ℕ) : Prop :=
-  ∀ pk top, IsQueryBoundP (A pk top) SigningOwnCounted q
 
 /-- The unit of one query of the forger, one for each own call of `H` or `PRG` and for each round-2
 request. -/

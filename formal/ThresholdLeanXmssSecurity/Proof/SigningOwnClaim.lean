@@ -4,15 +4,13 @@ import ThresholdLeanXmssSecurity.Proof.SigningOwnForger
 import ThresholdLeanXmssSecurity.Proof.SigningOwnGateBlock
 import ThresholdLeanXmssSecurity.Proof.SigningOwnVerify
 
-/-! # The signing claim with the budget of the forger alone
+/-! # The stages of the signing claim with the budget of the forger alone
 
-- `SigningOwnBudgetStatement` is the signing claim whose budget counts the own calls of the forger to
-  `H` and to the PRG and its round-2 requests (`SigningOwnForger.SigningOwnCounted`). The calls of
-  the honest operators are not in the budget. The fixed slack `signingSlack` pays the security loss
-  from them. It does not bound their number.
-- `DistinctFlagOwn` and `HiddenCoreOwnAt` are the two stages of the claim, as `DistinctFlagBound`
-  and `HiddenCoreAt` are for the claim with the budget of every party.
+- `DistinctFlagOwn` and `HiddenCoreOwnAt` are the two stages of `SigningOwnBudgetStatement`
+  (`ThresholdLeanXmss/Statement.lean`), as `DistinctFlagBound` and `HiddenCoreAt` are for the claim
+  with the budget of every party.
 - `chargedSlack` and `SigningOwnVerify.capSlack` are the slacks of the two lanes of the second stage.
+  `slack_split` states that their sum is two times `signingSlack`.
 -/
 
 open OracleComp OracleSpec LeanXmss ENNReal
@@ -30,24 +28,6 @@ open SigningOwnForger SigningOwnGateBlock SigningOwnVerify
 attribute [local instance] Classical.propDecidable
 
 variable {C : Committee} (prims : Primitives)
-
-/-- The signing is strongly unforgeable with adaptive corruption (PRAWNS, Definition 3.2), in the
-random-oracle model, with the budget of the forger alone. The game and the advantage are those of
-`SigningSecurityStatement`.
-
-* `q` bounds the own calls of the forger to `H` and to `PRG` and its round-2 requests, on every path
-  of its program and for every answer. A rejected round-2 request counts too. The calls of the
-  dealer, of the honest operators and of the verification do not count.
-* `signingSlack` is a fixed part of the bound. It pays the security loss from the calls that do not
-  count. It does not bound the number of those calls.
-* The claim has the coordination assumption of `SigningSecurityStatement`, `breaksOneMessagePerKey`.
-  Honest operators sign at most one message for each key over all quorums.
-* For a fixed `q`, this budget and the budget of `SigningSecurityStatement` give different classes
-  of forgers. A forger with a small count on the support of the game can have a large count on
-  every path. So this claim does not replace `SigningSecurityStatement`. -/
-def SigningOwnBudgetStatement (C : Committee) : Prop :=
-  ∀ (A : TsigAdversary C) (q : ℕ), HasSigningOwnBound A q →
-    tsigAdvantage prims A ≤ signingHashError (q + signingSlack) + seedHitError C q + seedCollisionError C
 
 /-- The slack of the charged lane in units of `2^-128`. One unit for each top key and the calls of
 the verification. -/

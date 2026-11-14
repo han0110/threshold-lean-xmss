@@ -833,7 +833,7 @@ theorem tsig_step_zero (top : TopTree) (q : (TsigSpec C).Domain) (st : TsigState
         · simp
 
 theorem topChainCall_counted (t : (LocalSpec C).Domain) (h : TopChainCall x b t) :
-    SigningOwnForger.SigningOwnCounted (C := C) (.inl t) := by
+    SigningOwnCounted (C := C) (.inl t) := by
   rcases t with t | t | t
   · exact h.elim
   · trivial
@@ -843,7 +843,7 @@ set_option maxRecDepth 100000 in
 theorem flagged_step (top : TopTree) (t : (LocalSpec C + TsigSpec C).Domain) (p : TsigState C × Bool)
     (hclosed : ¬Opens b p.1 t) :
     ((SigningCoreProof.flaggedOracles x (actualDealt x top) t).run p).IsQueryBoundP (WorldTop x b)
-      (if SigningOwnForger.SigningOwnCounted t then 1 else 0) := by
+      (if SigningOwnCounted t then 1 else 0) := by
   rcases t with t | q
   · simp only [SigningCoreProof.flaggedOracles, StateT.run_mk]
     rw [isQueryBoundP_map_iff]
@@ -858,7 +858,7 @@ theorem flagged_step (top : TopTree) (t : (LocalSpec C + TsigSpec C).Domain) (p 
 set_option maxRecDepth 100000 in
 /-- The forger in the stopped run makes no more chain calls at top key `b` than own calls. -/
 theorem unopened_bound (top : TopTree) {α : Type} (oa : OracleComp (LocalSpec C + TsigSpec C) α) :
-    ∀ (n : ℕ) (p : TsigState C × Bool), oa.IsQueryBoundP SigningOwnForger.SigningOwnCounted n →
+    ∀ (n : ℕ) (p : TsigState C × Bool), oa.IsQueryBoundP SigningOwnCounted n →
       (unopenedRun x top b oa p).IsQueryBoundP (WorldTop x b) n := by
   induction oa using OracleComp.inductionOn with
   | pure a =>
@@ -873,7 +873,7 @@ theorem unopened_bound (top : TopTree) {α : Type} (oa : OracleComp (LocalSpec C
     split_ifs with ho
     · exact isQueryBoundP_pure _ _ _
     · refine (isQueryBoundP_bind (flagged_step x b top t p ho) fun r _ => ih r.1 _ r.2 (h.2 r.1)).mono ?_
-      by_cases hc : SigningOwnForger.SigningOwnCounted t
+      by_cases hc : SigningOwnCounted t
       · have hn := h.1.resolve_left (not_not.mpr hc)
         simp only [hc, if_true]
         omega
@@ -922,7 +922,7 @@ theorem freshness_bound (output : PublicVerification.Output C) :
         (le_of_eq (Nat.add_zero _))
 
 set_option maxRecDepth 100000 in
-theorem tail_bound (A : TsigAdversary C) (q : ℕ) (hown : SigningOwnForger.HasSigningOwnBound A q)
+theorem tail_bound (A : TsigAdversary C) (q : ℕ) (hown : HasSigningOwnBound A q)
     (output : Option TreeOutput) :
     (PublicVerification.tail A x b output).IsQueryBoundP (WorldTop x b) (q + 174) := by
   rcases output with _ | top | bottom
@@ -962,7 +962,7 @@ open Classical in
 at a chain position of top key `b`, on every path. -/
 theorem afterSelected_topChainBound (A : TsigAdversary C) (q : ℕ) (x : SigningSecurityProof.Keys3 C)
     (b : XmssSecurity.TopIndex) (after : List XmssSecurity.TopIndex) (hb : b ∉ after)
-    (left : List (List Bit)) (target : ChainIndex → Digest) (hown : SigningOwnForger.HasSigningOwnBound A q) :
+    (left : List (List Bit)) (target : ChainIndex → Digest) (hown : HasSigningOwnBound A q) :
     (PublicVerification.afterSelected A x b after left target).IsQueryBoundP (TopChainCall x b)
       (q + topChainSlack) := by
   unfold PublicVerification.afterSelected

@@ -28,6 +28,7 @@ the claims.
 | `TprfSecurityStatement` | The threshold PRF is adaptively secure. | PRAWNS, Definition 2.2 and Theorem 5.1 |
 | `SigningCorrectnessStatement` | An honest quorum fails with probability at most `2 (1 - p)^L`, and its signature verifies. | PRAWNS, Section 3.1, honest run |
 | `SigningSecurityStatement` | The signing is strongly unforgeable with adaptive corruption in the random-oracle model, up to `q / 2^127` and the hidden keys. | PRAWNS, Definition 3.2, in the random-oracle model |
+| `SigningOwnBudgetStatement` | The same game with the budget of the forger alone, up to `(q + 2^15 + 384) / 2^127` and the hidden keys. | PRAWNS, Definition 3.2, in the random-oracle model |
 
 Each claim covers one protocol or one gadget alone. No claim composes the keygen, the ceremonies
 and the signing. `statement.tex` holds the deployment contract and the argument of that composition.
@@ -69,6 +70,9 @@ them.
   signers, the forger and the verification included, and cache hits included
   (`HasSigningQueryBound`). The simulation claims
   and `TprfSecurityStatement` count only the calls of the adversary and of the distinguisher.
+* `SigningOwnBudgetStatement` has a second budget. It counts only the own calls of the forger to `H`
+  and `PRG` and its round-2 requests, on every path of its program (`HasSigningOwnBound`). The
+  fixed slack `signingSlack` pays the security loss from every other call.
 * `F_tree` runs the circuits of the ceremony, so the ceremony claims hold for every circuit family.
   `DealerTreeStatement` and `TreeSuccessStatement` assume that the circuits compute `Th`
   (`CircuitsCompute`), and they link `F_tree` to the trees of the signing claims.
@@ -352,6 +356,19 @@ def tsigGame (A : TsigAdversary C) : OracleComp (WorldSpec C) Bool := do
 /-- `Adv^tsig`, PRAWNS, Definition 3.2, in the signing world. -/
 def tsigAdvantage (A : TsigAdversary C) : ℝ := signingAccepts prims (tsigGame A)
 
+/-- The work of the forger that the own budget counts, namely each own call of `H` or of `PRG` and
+each round-2 request. Private sampling, a corruption, a tree request and a round-1 request cost
+nothing. -/
+def SigningOwnCounted : (LocalSpec C + TsigSpec C).Domain → Prop
+  | .inl (.inr _) => True
+  | .inr (.round2 ..) => True
+  | _ => False
+
+/-- The forger makes at most `q` own calls of `H` and `PRG` and round-2 requests together, on every
+path of its program and for every answer. A rejected round-2 request counts too. -/
+def HasSigningOwnBound (A : TsigAdversary C) (q : ℕ) : Prop :=
+  ∀ pk top, IsQueryBoundP (A pk top) SigningOwnCounted q
+
 end Games
 
 variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
@@ -451,6 +468,14 @@ pays a call whose output hits an honest output at its tweak. The other pays a ca
 hidden honest input, namely a chain value below an opened position or `ρ_e` before round 1, or the
 output of a digest that a later search selects. -/
 def signingHashError (q : ℕ) : ℝ := q / 2 ^ 127
+
+/-- The fixed slack of `SigningOwnBudgetStatement`, in calls. A call costs two units of `2^-128`, as
+in `signingHashError`, so the slack is `2 ^ 16 + 2 * 384` units.
+
+* `2 ^ 16` units pay the first read of each of the `2 ^ 16` top keys.
+* `384` units for each of the two units of a call pay the verification of the forgery. One
+  verification makes at most `2 (1 + 58 * 3 + 1 + 16) = 384` calls of `H`. -/
+def signingSlack : ℕ := 2 ^ 15 + 384
 
 /-- The probability that one of `q` calls hits the input of a hidden key, namely a term seed or a
 pair key, of the `C(n, t - 1) + n²` keys. Each call names one key, which is uniform on 256 bits. -/
@@ -687,6 +712,24 @@ def SigningSecurityStatement (C : Committee) : Prop :=
   ∀ (A : TsigAdversary C) (q : ℕ), HasSigningQueryBound prims (tsigGame A) q →
     tsigAdvantage prims A ≤ signingHashError q + seedHitError C q + seedCollisionError C
 
+/-- The signing is strongly unforgeable with adaptive corruption (PRAWNS, Definition 3.2), in the
+random-oracle model, with the budget of the forger alone. The game and the advantage are those of
+`SigningSecurityStatement`.
+
+* `q` bounds the own calls of the forger to `H` and to `PRG` and its round-2 requests, on every path
+  of its program and for every answer. A rejected round-2 request counts too. The calls of the
+  dealer, of the honest operators and of the verification do not count.
+* `signingSlack` is a fixed part of the bound. It pays the security loss from the calls that do not
+  count. It does not bound the number of those calls.
+* The claim has the coordination assumption of `SigningSecurityStatement`, `breaksOneMessagePerKey`.
+  Honest operators sign at most one message for each key over all quorums.
+* For a fixed `q`, this budget and the budget of `SigningSecurityStatement` give different classes
+  of forgers. A forger with a small count on the support of the game can have a large count on
+  every path. So this claim does not replace `SigningSecurityStatement`. -/
+def SigningOwnBudgetStatement (C : Committee) : Prop :=
+  ∀ (A : TsigAdversary C) (q : ℕ), HasSigningOwnBound A q →
+    tsigAdvantage prims A ≤ signingHashError (q + signingSlack) + seedHitError C q + seedCollisionError C
+
 /-- The security claim, for every committee, every check field of characteristic `2` with its
 constants, every `Th` and AES-128, every circuit family, and every setting. -/
 abbrev ThresholdLeanXmssSecurityStatement : Prop :=
@@ -700,6 +743,7 @@ abbrev ThresholdLeanXmssSecurityStatement : Prop :=
       ExtendMultStatement prims K ∧ MultVerifyStatement prims K ∧ MultVerifyCompletenessStatement prims K ∧
       MainStatement prims K ∧ MainCompletenessStatement prims K ∧
       TprfCorrectnessStatement prims C ∧ TprfSecurityStatement prims C ∧
-      SigningCorrectnessStatement prims C ∧ SigningSecurityStatement prims C
+      SigningCorrectnessStatement prims C ∧ SigningSecurityStatement prims C ∧
+      SigningOwnBudgetStatement prims C
 
 end ThresholdLeanXmss
