@@ -79,7 +79,7 @@ echo-round lemmas of `TreeSetupKeys` are copied with their proofs.
 
 ## Modules
 
-This module holds the gluing of two couplings, `pairQuery`, the echo-round lemmas, `realRun`, `hybRun`,
+This module holds the transfer of a coupling along a map of the left run, `pairQuery`, the echo-round lemmas, `realRun`, `hybRun`,
 `Final` and the lemmas on the phases of a real execution. Other modules hold the other declarations
 of the namespace `TreeCheckKernelCoupling`.
 
@@ -91,7 +91,7 @@ of the namespace `TreeCheckKernelCoupling`.
 * `TreeCheckKernelClosure` holds `hybrid_rounds`.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.TreeCheckKernelCoupling
@@ -105,204 +105,115 @@ set_option linter.unusedSectionVars false
 
 variable {α β γ : Type} [DecidableEq α] [DecidableEq β] [DecidableEq γ]
 
-theorem spmf_map_apply (g : α → γ) (s : SPMF α) (x : γ) :
-    (g <$> s) x = ∑' z, if g z = x then s z else 0 := by
-  rw [map_eq_bind_pure_comp, SPMF.bind_apply_eq_tsum]
-  congr 1
-  funext z
-  simp only [Function.comp_apply, SPMF.pure_apply]
-  split_ifs with h1 h2 h2 <;> simp_all [eq_comm]
-
-/-- The cells of a coupling above `y`. -/
-def cells (y : γ) : Set (Option (γ × β)) := {o | ∃ z, o = some z ∧ z.1 = y}
-
-theorem cells_mass (c : SPMF (γ × β)) (y : γ) :
-    ∑' o, (cells (β := β) y).indicator c.toPMF o = (Prod.fst <$> c) y := by
-  rw [spmf_map_apply, tsum_option _ ENNReal.summable]
-  have hnone : (cells (β := β) y).indicator c.toPMF none = 0 := by
-    apply Set.indicator_of_notMem
-    rintro ⟨z, h, _⟩
-    cases h
-  rw [hnone, zero_add]
-  congr 1
-  funext z
-  by_cases hz : z.1 = y
-  · rw [Set.indicator_of_mem (show some z ∈ cells (β := β) y from ⟨z, rfl, hz⟩), if_pos hz]
-    rfl
-  · rw [Set.indicator_of_notMem (by rintro ⟨w, hw, hy⟩; cases hw; exact hz hy), if_neg hz]
-
-
-
-/-- The normalized fibre of a coupling above `y`; `q` is an unused default. -/
-def fibre (c : SPMF (γ × β)) (q : SPMF β) (y : γ) : SPMF β :=
-  if h : ∃ o ∈ cells (β := β) y, o ∈ c.toPMF.support then
-    Prod.snd <$> SPMF.mk (c.toPMF.filter (cells y) h)
-  else q
-
-theorem fst_mass (c : SPMF (γ × β)) (y : γ) :
-    (Prod.fst <$> c) y = ∑' b, c (y, b) := by
-  rw [spmf_map_apply]
-  refine (ENNReal.tsum_prod (f := fun (y' : γ) (b : β) => if y' = y then c (y', b) else 0)).trans ?_
-  rw [tsum_eq_single y]
-  · simp
-  · intro y' hy
-    simp [hy]
-
-theorem fibre_apply (c : SPMF (γ × β)) (q : SPMF β) (y : γ) (b : β)
-    (hw : (Prod.fst <$> c) y ≠ 0) :
-    fibre c q y b = c (y, b) * ((Prod.fst <$> c) y)⁻¹ := by
-  have h : ∃ o ∈ cells (β := β) y, o ∈ c.toPMF.support := by
-    rw [fst_mass] at hw
-    obtain ⟨b', hb'⟩ := not_forall.mp (fun h => hw (ENNReal.tsum_eq_zero.mpr h))
-    exact ⟨some (y, b'), ⟨(y, b'), rfl, rfl⟩, (PMF.mem_support_iff _ _).mpr hb'⟩
-  rw [fibre, dif_pos h, spmf_map_apply]
-  simp only [show ∀ z, (SPMF.mk (c.toPMF.filter (cells y) h)) z =
-    c.toPMF.filter (cells y) h (some z) from fun _ => rfl, PMF.filter_apply, cells_mass]
-  rw [show c (y, b) = c.toPMF (some (y, b)) from rfl]
-  rw [show (fun z : γ × β => if z.2 = b then (cells (β := β) y).indicator c.toPMF (some z) *
-      ((Prod.fst <$> c) y)⁻¹ else 0) =
-      fun z => if z = (y, b) then c.toPMF (some (y, b)) * ((Prod.fst <$> c) y)⁻¹ else 0 from ?_]
-  · rw [tsum_ite_eq]
-  · funext z
-    by_cases hz : z = (y, b)
-    · subst hz
-      rw [if_pos rfl, if_pos rfl, Set.indicator_of_mem (show some (y, b) ∈ cells (β := β) y from ⟨_, rfl, rfl⟩)]
-    · rw [if_neg hz]
-      by_cases hb : z.2 = b
-      · rw [if_pos hb, Set.indicator_of_notMem, zero_mul]
-        rintro ⟨w, hw, hy⟩
-        cases hw
-        exact hz (Prod.ext hy hb)
-      · rw [if_neg hb]
-
-/-- The coupling glued along `f`. -/
-def glue (p : SPMF α) (q : SPMF β) (f : α → γ) (c : SPMF (γ × β)) : SPMF (α × β) :=
-  p >>= fun a => (fun b => (a, b)) <$> fibre c q (f a)
-
-theorem glue_apply (p : SPMF α) (q : SPMF β) (f : α → γ) (c : SPMF (γ × β)) (a : α) (b : β) :
-    glue p q f c (a, b) = p a * fibre c q (f a) b := by
-  rw [glue, SPMF.bind_apply_eq_tsum, tsum_eq_single a]
-  · rw [spmf_map_apply, tsum_eq_single b]
-    · simp
-    · intro b' hb
-      simp [hb]
-  · intro a' ha
-    rw [spmf_map_apply]
-    simp only [Prod.mk.injEq, ENNReal.tsum_eq_zero, mul_eq_zero]
-    right
-    intro b'
-    simp [ha]
-
-theorem fibre_mass (c : SPMF (γ × β)) (q : SPMF β) (y : γ)
-    (hw : (Prod.fst <$> c) y ≠ 0) : ∑' b, fibre c q y b = 1 := by
-  simp only [fibre_apply c q y _ hw]
-  rw [ENNReal.tsum_mul_right, ← fst_mass]
-  exact ENNReal.mul_inv_cancel hw (SPMF.apply_ne_top _ _)
-
-theorem mass_le (c : SPMF (γ × β)) (y : γ) (b : β) : c (y, b) ≤ (Prod.fst <$> c) y := by
-  rw [fst_mass]
-  exact ENNReal.le_tsum b
-
-theorem glue_coupling (p : SPMF α) (q : SPMF β) (f : α → γ) (c : SPMF (γ × β))
-    (hc : SPMF.IsCoupling c (f <$> p) q) : SPMF.IsCoupling (glue p q f c) p q := by
-  have wmass : ∀ a, p a ≠ 0 → (Prod.fst <$> c) (f a) ≠ 0 := by
-    intro a ha
-    rw [hc.map_fst, spmf_map_apply]
-    exact fun h => ha (le_antisymm ((ENNReal.le_tsum a).trans_eq' (by simp) |>.trans h.le) bot_le)
-  constructor
-  · ext a
-    rw [spmf_map_apply]
-    rw [show (fun z : α × β => if z.1 = a then glue p q f c z else 0) =
-      fun z => (fun (a' : α) (b : β) => if a' = a then glue p q f c (a', b) else 0) z.1 z.2 from rfl]
-    refine (ENNReal.tsum_prod (f := fun (a' : α) (b : β) =>
-      if a' = a then glue p q f c (a', b) else 0)).trans ?_
-    rw [tsum_eq_single a (fun a' ha => by simp [ha])]
-    simp only [if_true, glue_apply]
-    rw [ENNReal.tsum_mul_left]
-    by_cases ha : p a = 0
-    · rw [ha, zero_mul]
-    · rw [fibre_mass c q (f a) (wmass a ha), mul_one]
-  · ext b
-    rw [show q b = (Prod.snd <$> c) b by rw [hc.map_snd], spmf_map_apply, spmf_map_apply]
-    rw [show (fun z : α × β => if z.2 = b then glue p q f c z else 0) =
-      fun z => (fun (a : α) (b' : β) => if b' = b then glue p q f c (a, b') else 0) z.1 z.2 from rfl]
-    refine (ENNReal.tsum_prod (f := fun (a : α) (b' : β) =>
-      if b' = b then glue p q f c (a, b') else 0)).trans ?_
-    simp only [tsum_ite_eq, glue_apply]
-    rw [show (fun z : γ × β => if z.2 = b then c z else 0) =
-      fun z => (fun (y : γ) (b' : β) => if b' = b then c (y, b') else 0) z.1 z.2 from rfl]
-    refine Eq.trans ?_ (ENNReal.tsum_prod (f := fun (y : γ) (b' : β) =>
-      if b' = b then c (y, b') else 0)).symm
-    simp only [tsum_ite_eq]
-    -- regroup the left sum by `f`
-    have regroup : ∑' a, p a * fibre c q (f a) b =
-        ∑' y, ∑' a, (if f a = y then p a * fibre c q (f a) b else 0) := by
-      rw [ENNReal.tsum_comm]
-      congr 1
-      funext a
-      rw [tsum_eq_single (f a) (fun y hy => by simp [Ne.symm hy])]
-      simp
-    rw [regroup]
-    congr 1
-    funext y
-    have inner : ∑' a, (if f a = y then p a * fibre c q (f a) b else 0) =
-        (∑' a, if f a = y then p a else 0) * fibre c q y b := by
-      rw [← ENNReal.tsum_mul_right]
-      congr 1
-      funext a
-      by_cases h : f a = y
-      · simp [h]
-      · simp [h]
-    rw [inner, ← spmf_map_apply, ← hc.map_fst]
-    by_cases hw : (Prod.fst <$> c) y = 0
-    · rw [hw, zero_mul]
-      exact (le_antisymm ((mass_le c y b).trans_eq hw) bot_le).symm
-    · rw [fibre_apply c q y b hw, mul_comm, mul_assoc, ENNReal.inv_mul_cancel hw (SPMF.apply_ne_top _ _),
-        mul_one]
-
-theorem glue_support (p : SPMF α) (q : SPMF β) (f : α → γ) (c : SPMF (γ × β))
-    (hc : SPMF.IsCoupling c (f <$> p) q) (z : α × β) (hz : glue p q f c z ≠ 0) :
-    c (f z.1, z.2) ≠ 0 := by
-  obtain ⟨a, b⟩ := z
-  rw [glue_apply] at hz
-  have ha : p a ≠ 0 := fun h => hz (by rw [h, zero_mul])
-  have hw : (Prod.fst <$> c) (f a) ≠ 0 := by
-    rw [hc.map_fst, spmf_map_apply]
-    exact fun h => ha (le_antisymm ((ENNReal.le_tsum a).trans_eq' (by simp) |>.trans h.le) bot_le)
-  rw [fibre_apply c q (f a) b hw] at hz
-  exact fun h => hz (by rw [h, zero_mul, mul_zero])
-
 omit [DecidableEq α] [DecidableEq β] [DecidableEq γ] in
 theorem relTriple_of_map_left {f : α → γ} {oa : ProbComp α} {ob : ProbComp β} {R : γ → β → Prop}
     (h : RelTriple (f <$> oa) ob R) : RelTriple oa ob (fun a b => R (f a) b) := by
-  letI : DecidableEq α := Classical.decEq α
-  letI : DecidableEq β := Classical.decEq β
-  letI : DecidableEq γ := Classical.decEq γ
-  obtain ⟨c, hc⟩ := relTriple_iff_relWP.1 h
-  have hcpl : SPMF.IsCoupling c.1 (f <$> 𝒟[oa]) 𝒟[ob] :=
-    ⟨by rw [c.2.map_fst, evalDist_map], c.2.map_snd⟩
-  refine relTriple_iff_relWP.2 ⟨⟨glue 𝒟[oa] 𝒟[ob] f c.1, glue_coupling _ _ f c.1 hcpl⟩, ?_⟩
-  intro z hz
-  apply hc (f z.1, z.2)
-  have hz' : glue 𝒟[oa] 𝒟[ob] f c.1 z ≠ 0 := (SPMF.mem_support_iff _ _).mp hz
-  exact (SPMF.mem_support_iff _ _).mpr (glue_support _ _ f c.1 hcpl z hz')
+  let : MeasurableSpace α := ⊤
+  let : MeasurableSpace β := ⊤
+  let : MeasurableSpace γ := ⊤
+  have hprob : MeasureTheory.IsProbabilityMeasure 𝒟[oa] := ⟨evalDist_apply_univ_eq_one oa⟩
+  have hsupp : ∀ᵐ a ∂𝒟[oa], a ∈ support oa := ae_mem_support oa
+  have hfin : (support oa).Finite := PFunctor.FreeM.support_finite oa
+  -- The conditional law of `oa` on the fibre of `f` above `y`.
+  let k : γ → MeasureTheory.Measure α := fun y => ProbabilityTheory.cond 𝒟[oa] (f ⁻¹' {y})
+  let s : Set γ := {y | y ∈ f '' support oa ∧ 𝒟[oa] (f ⁻¹' {y}) ≠ 0}
+  have hinit : ExpectationWP.CouplingPost (𝒟[oa].map f) 𝒟[ob] R := by
+    rw [← evalDist_map_of_discrete oa f]
+    exact relTriple_iff_relWP.1 h
+  have hsc : s.Countable := (hfin.countable.image f).mono fun y hy => hy.1
+  have hμs : ∀ᵐ y ∂(𝒟[oa].map f), y ∈ s := by
+    have hT : ∀ᵐ y ∂(𝒟[oa].map f), y ∈ f '' support oa :=
+      (MeasureTheory.ae_map_iff measurable_from_top.aemeasurable MeasurableSet.of_discrete).2
+        (hsupp.mono fun a ha => ⟨a, ha, rfl⟩)
+    have hN : (𝒟[oa].map f) {y | y ∈ f '' support oa ∧ 𝒟[oa] (f ⁻¹' {y}) = 0} = 0 := by
+      have hc : {y | y ∈ f '' support oa ∧ 𝒟[oa] (f ⁻¹' {y}) = 0}.Countable :=
+        (hfin.countable.image f).mono fun y hy => hy.1
+      rw [← Set.biUnion_of_singleton {y | y ∈ f '' support oa ∧ 𝒟[oa] (f ⁻¹' {y}) = 0},
+        MeasureTheory.measure_biUnion_null_iff hc]
+      intro y hy
+      rw [MeasureTheory.Measure.map_apply measurable_from_top MeasurableSet.of_discrete]
+      exact hy.2
+    filter_upwards [hT, MeasureTheory.measure_eq_zero_iff_ae_notMem.1 hN] with y hy hny
+    exact ⟨hy, fun h0 => hny ⟨hy, h0⟩⟩
+  have hkp : ∀ y ∈ s, ∀ᵐ x ∂k y, x ∈ support oa := fun y _ =>
+    hsupp.filter_mono ProbabilityTheory.cond_absolutelyContinuous.ae_le
+  have hlq : ∀ b ∈ support ob, ∀ᵐ y ∂MeasureTheory.Measure.dirac b, y ∈ support ob := fun b hb =>
+    (MeasureTheory.ae_dirac_iff MeasurableSet.of_discrete).2 hb
+  have hstep : ∀ y ∈ s, ∀ b ∈ support ob, R y b →
+      ExpectationWP.CouplingPost (k y) (MeasureTheory.Measure.dirac b) (fun a b' => R (f a) b') := by
+    intro y hy b _ hR
+    have : MeasureTheory.IsProbabilityMeasure (k y) := ProbabilityTheory.cond_isProbabilityMeasure hy.2
+    refine ⟨MeasureTheory.Measure.Coupling.prod (k y) (MeasureTheory.Measure.dirac b), ?_⟩
+    have hmem := (MeasureTheory.Measure.Coupling.prod (k y) (MeasureTheory.Measure.dirac b)).isCoupling.ae_mem_prod
+      (s := f ⁻¹' {y}) (t := {b}) MeasurableSet.of_discrete MeasurableSet.of_discrete
+      (ProbabilityTheory.ae_cond_mem MeasurableSet.of_discrete)
+      ((MeasureTheory.ae_dirac_iff MeasurableSet.of_discrete).2 rfl)
+    filter_upwards [hmem] with z hz
+    have h1 : f z.1 = y := hz.1
+    have h2 : z.2 = b := hz.2
+    show R (f z.1) z.2
+    rw [h1, h2]
+    exact hR
+  -- The law of `oa` is the mixture of its conditional laws on the fibres of `f`.
+  have hdis : (𝒟[oa].map f).bind k = 𝒟[oa] := by
+    have hpoint : ∀ m : MeasureTheory.Measure α, (∀ᵐ a ∂m, a ∈ support oa) → ∀ A : Set α,
+        m A = ∑ a ∈ hfin.toFinset, A.indicator 1 a * m {a} := by
+      intro m hm A
+      have hr : m.restrict (↑hfin.toFinset : Set α) = m :=
+        MeasureTheory.Measure.restrict_eq_self_of_ae_mem (by simpa using hm)
+      calc m A = MeasureTheory.lintegral m (fun a => A.indicator 1 a) :=
+            (MeasureTheory.lintegral_indicator_one MeasurableSet.of_discrete).symm
+        _ = MeasureTheory.lintegral (m.restrict (↑hfin.toFinset : Set α)) (fun a => A.indicator 1 a) := by
+            rw [hr]
+        _ = _ := MeasureTheory.lintegral_finset _ _
+    have hconc : ∀ᵐ a ∂((𝒟[oa].map f).bind k), a ∈ support oa :=
+      MeasureTheory.Measure.ae_bind_of_ae measurable_from_top MeasurableSet.of_discrete
+        (Filter.Eventually.of_forall fun y =>
+          hsupp.filter_mono ProbabilityTheory.cond_absolutelyContinuous.ae_le)
+    have hsing : ∀ a₀, ((𝒟[oa].map f).bind k) {a₀} = 𝒟[oa] {a₀} := by
+      intro a₀
+      have hk : ∀ a, k (f a) {a₀} = (f ⁻¹' {f a₀}).indicator
+          (fun _ => (𝒟[oa] (f ⁻¹' {f a₀}))⁻¹ * 𝒟[oa] {a₀}) a := by
+        intro a
+        show ProbabilityTheory.cond 𝒟[oa] (f ⁻¹' {f a}) {a₀} = _
+        rw [ProbabilityTheory.cond_apply MeasurableSet.of_discrete]
+        by_cases hfa : f a = f a₀
+        · rw [Set.indicator_of_mem (show a ∈ f ⁻¹' {f a₀} from hfa), hfa,
+            Set.inter_eq_right.2 (Set.singleton_subset_iff.2 (show a₀ ∈ f ⁻¹' {f a₀} from rfl))]
+        · have he : f ⁻¹' {f a} ∩ {a₀} = ∅ := Set.eq_empty_of_forall_notMem fun x hx =>
+            hfa ((show f x = f a from hx.1).symm.trans (congrArg f (show x = a₀ from hx.2)))
+          rw [Set.indicator_of_notMem (show a ∉ f ⁻¹' {f a₀} from hfa), he,
+            MeasureTheory.measure_empty, mul_zero]
+      rw [MeasureTheory.Measure.bind_apply MeasurableSet.of_discrete measurable_from_top.aemeasurable,
+        MeasureTheory.lintegral_map measurable_from_top measurable_from_top]
+      simp only [hk]
+      rw [MeasureTheory.lintegral_indicator_const MeasurableSet.of_discrete]
+      by_cases h0 : 𝒟[oa] (f ⁻¹' {f a₀}) = 0
+      · have hz : 𝒟[oa] {a₀} = 0 :=
+          MeasureTheory.measure_mono_null (Set.singleton_subset_iff.2 (show a₀ ∈ f ⁻¹' {f a₀} from rfl)) h0
+        rw [hz, h0, mul_zero]
+      · rw [mul_comm _ (𝒟[oa] {a₀}), mul_assoc,
+          ENNReal.inv_mul_cancel h0 (MeasureTheory.measure_ne_top _ _), mul_one]
+    ext A -
+    rw [hpoint _ hconc A, hpoint _ hsupp A]
+    simp only [hsing]
+  have hbind := hinit.bind_of_countable_of_ae_mem (s := s) (t := support ob) (p := support oa)
+    (q := support ob) hsc (PFunctor.FreeM.support_finite ob).countable hfin.countable
+    (PFunctor.FreeM.support_finite ob).countable hμs (ae_mem_support ob) (k := k)
+    (l := MeasureTheory.Measure.dirac) measurable_from_top measurable_from_top hkp hlq hstep
+  rw [hdis, MeasureTheory.Measure.bind_dirac] at hbind
+  exact relTriple_iff_relWP.2 hbind
 
 omit [DecidableEq α] [DecidableEq β] [DecidableEq γ] in
 theorem relTriple_support_left {oa : ProbComp α} {ob : ProbComp β} {R : α → β → Prop}
     {P : α → Prop} (h : RelTriple oa ob R) (hp : ∀ a ∈ support oa, P a) :
     RelTriple oa ob (fun a b => R a b ∧ P a) := by
-  classical
+  let : MeasurableSpace α := ⊤
+  let : MeasurableSpace β := ⊤
   obtain ⟨c, hc⟩ := relTriple_iff_relWP.1 h
-  refine relTriple_iff_relWP.2 ⟨c, fun z hz => ⟨hc z hz, hp z.1 ?_⟩⟩
-  have hz' : c.1 z ≠ 0 := (SPMF.mem_support_iff _ _).mp hz
-  rw [mem_support_iff_evalDist_apply_ne_zero, ← c.2.map_fst]
-  intro h0
-  apply hz'
-  letI : DecidableEq α := Classical.decEq α
-  letI : DecidableEq β := Classical.decEq β
-  have := (spmf_map_apply (α := α × β) (γ := α) Prod.fst c.1 z.1)
-  rw [h0] at this
-  exact (ENNReal.tsum_eq_zero.mp this.symm z).symm ▸ (by simp)
+  refine relTriple_iff_relWP.2 ⟨c, ?_⟩
+  filter_upwards [hc, ae_mem_support_prod c] with z hz hmem
+  exact ⟨hz, hp z.1 hmem.1⟩
 
 omit [DecidableEq α] [DecidableEq β] [DecidableEq γ] in
 theorem relTriple_of_support {oa : ProbComp α} {ob : ProbComp β} {R : α → β → Prop}
@@ -501,6 +412,7 @@ theorem adversary_run {α : Type} (p : OracleComp (LocalSpec C) α) (h : HashCac
         (fun r => (r.1, (r.2, c))) <$> (localAnswer prims t).run h := by
       erw [simulateQ_spec_query]
       rfl
+    erw [simulateQ_spec_query] at hq
     erw [hq]
     rw [bind_map_left, map_bind]
     exact bind_congr fun r => ih r.1 r.2
@@ -513,7 +425,7 @@ theorem startSteps_world_optionalExchange {β : Type} (outbox : C.Party → Opti
       pure (optionalExchangeSteps D outbox f) := by
   unfold startSteps
   calc
-    _ = Concrete.sequenceFin (fun i => pure (optionalExchangeSteps D outbox f i)) := by
+    _ = OverPermutation.sequenceFin (fun i => pure (optionalExchangeSteps D outbox f i)) := by
       congr 1
       funext i
       by_cases hi : i ∈ D.1
@@ -527,7 +439,7 @@ omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
 /-- The real local pass after an exchange starts the `afterExchange` programs. -/
 theorem roundLocal_optionalExchange {β : Type} (outbox : C.Party → Option (Mail C E))
     (f : C.Party → Mail C E → PartyM C E RealSpec β) (sent : C.Party → Mail C E) :
-    free (Concrete.sequenceFin (roundLocal D (optionalExchangeSteps D outbox f) sent)) =
+    free (OverPermutation.sequenceFin (roundLocal D (optionalExchangeSteps D outbox f) sent)) =
       startSteps worldRoles D (fun i => afterExchange D outbox sent i (f i)) := by
   have hin (j : C.Party) :
       (fun k => if k ∈ D.1 then sent k j else (optionalExchangeSteps D outbox f k).delivered j) =
@@ -592,11 +504,11 @@ theorem sequence_run {α : Type} : ∀ {n : ℕ} (F : Fin n → OracleComp (Worl
     (G : Fin n → OracleComp (LocalSpec C) α) (c : HiddenCache C)
     (same : ∀ i h, (simulateQ (streamWorld prims D) (F i)).run (h, c) =
       (fun r => (r.1, (r.2, c))) <$> (simulateQ (localAnswer prims) (G i)).run h) (h : HashCache C),
-    (simulateQ (streamWorld prims D) (Concrete.sequenceFin F)).run (h, c) =
-      (fun r => (r.1, (r.2, c))) <$> (simulateQ (localAnswer prims) (Concrete.sequenceFin G)).run h
-  | 0, F, G, c, same, h => by simp [Concrete.sequenceFin]
+    (simulateQ (streamWorld prims D) (OverPermutation.sequenceFin F)).run (h, c) =
+      (fun r => (r.1, (r.2, c))) <$> (simulateQ (localAnswer prims) (OverPermutation.sequenceFin G)).run h
+  | 0, F, G, c, same, h => by simp [OverPermutation.sequenceFin]
   | n + 1, F, G, c, same, h => by
-    simp only [Concrete.sequenceFin, simulateQ_bind, simulateQ_pure, StateT.run_bind,
+    simp only [OverPermutation.sequenceFin, simulateQ_bind, simulateQ_pure, StateT.run_bind,
       StateT.run_pure, map_bind, same 0 h, bind_map_left]
     refine bind_congr fun r => ?_
     rw [sequence_run (fun i => F i.succ) (fun i => G i.succ) c (fun i => same i.succ) r.2]
@@ -605,14 +517,14 @@ theorem sequence_run {α : Type} : ∀ {n : ℕ} (F : Fin n → OracleComp (Worl
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
 theorem sequenceFin_map {m : Type → Type} [Monad m] [LawfulMonad m] {α γ : Type} :
     ∀ {n : ℕ} (f : Fin n → m α) (g : Fin n → α → γ),
-      Concrete.sequenceFin (fun i => g i <$> f i) = (fun xs i => g i (xs i)) <$> Concrete.sequenceFin f
+      OverPermutation.sequenceFin (fun i => g i <$> f i) = (fun xs i => g i (xs i)) <$> OverPermutation.sequenceFin f
   | 0, f, g => by
-    simp only [Concrete.sequenceFin, map_pure]
+    simp only [OverPermutation.sequenceFin, map_pure]
     congr 1
     funext i
     exact i.elim0
   | n + 1, f, g => by
-    simp only [Concrete.sequenceFin, map_bind, bind_map_left]
+    simp only [OverPermutation.sequenceFin, map_bind, bind_map_left]
     refine bind_congr fun a => ?_
     rw [sequenceFin_map (fun i => f i.succ) (fun i => g i.succ), bind_map_left]
     refine bind_congr fun xs => ?_
@@ -624,7 +536,7 @@ theorem sequenceFin_map {m : Type → Type} [Monad m] [LawfulMonad m] {α γ : T
 /-- The honest hash prefixes of one local pass, in party order. -/
 def hashPrefix {X : Type} (W : C.Party → OracleComp (Query C →ₒ HashOutput) X) :
     OracleComp (LocalSpec C) (C.Party → Option X) :=
-  Concrete.sequenceFin fun i => if i ∈ D.1 then pure none else
+  OverPermutation.sequenceFin fun i => if i ∈ D.1 then pure none else
     some <$> liftComp (liftComp (W i) (RoSpec C)) (LocalSpec C)
 
 /-- The steps after the hash prefixes, when the rest of the local pass is pure. -/

@@ -5,7 +5,7 @@ set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 set_option linter.unusedSectionVars false
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 
 noncomputable section
@@ -261,7 +261,7 @@ theorem treeSim_peer_round {R σ : Type} [Field R] [CharP R 2] [SampleableType R
             (fun g => ∑ j ∈ Finset.univ.filter (· ∉ D.1), v j g)
             (peerReply K D codec known pairs r p b.2) w)) Eq := by
   obtain ⟨T₀, j, hp⟩ := exists_pivot K D
-  apply relTriple_eqRel_of_evalDist_eq
+  apply relTriple_eqRel_of_evalDistEq
   refine evalDist_shift _ _ (fun w =>
     (termShift K D T₀ j v w, pairShift j (pairDelta K D T₀ j v w)))
     (fun r p T g => termVal K D codec known pairs r p (fun _ _ => 0)
@@ -278,10 +278,10 @@ theorem treeSim_peer_round {R σ : Type} [Field R] [CharP R 2] [SampleableType R
 reply, without changing the reply or its state. -/
 theorem treeSim_shift_after {α β G : Type} [AddGroup G] [SampleableType G]
     (first : ProbComp α) (rest : α → G → ProbComp β) (shift : α → G) :
-    𝒟[do let w ← $ᵗ G; let a ← first; rest a (w + shift a)] =
-      𝒟[do let w ← $ᵗ G; let a ← first; rest a w] := by
-  rw [evalDist_bind_bind_swap ($ᵗ G) first]
-  rw [evalDist_bind_bind_swap ($ᵗ G) first]
+    (do let w ← $ᵗ G; let a ← first; rest a (w + shift a)) =ᵈ
+      (do let w ← $ᵗ G; let a ← first; rest a w) := by
+  refine (OracleComp.EvalDistEq.bind_bind_swap ($ᵗ G) first _).trans ?_
+  refine EvalDistEq.trans ?_ (OracleComp.EvalDistEq.bind_bind_swap first ($ᵗ G) _)
   exact evalDist_bind_congr_all first fun a => evalDist_bind_add_uniform (shift a) (rest a)
 
 /-- Both collector rounds, including the branch where every honest operator
@@ -316,7 +316,7 @@ theorem treeSim_collector_rounds {σ : Type} (D : C.Coalition) {c : ℕ}
               (colReply K D c rnd (colInbox K D c rnd (fun _ _ => 0) b.2) b'.2) w)) Eq := by
   obtain ⟨T₀, hT, hidden⟩ := lackedTerm_spec D
   have honest : K.owner T₀ ∉ D.1 := fun hi => hidden ⟨_, hi, K.owner_held T₀⟩
-  apply relTriple_eqRel_of_evalDist_eq
+  apply relTriple_eqRel_of_evalDistEq
   refine evalDist_shift2 _ _ (fun r p w => do
     let rnd := frandShare D c known pairs r p
     let b ← answer state (colMsgs1 K D c rnd (fun _ _ => 0))
@@ -384,7 +384,7 @@ theorem treeSim_coin [SampleableType E] (D : C.Coalition) (known : Shares C E)
           let r ← $ᵗ (C.Term → Fin n → E)
           k (adjust D known r v))
       ($ᵗ (C.Term → Fin n → E) >>= k) Eq := by
-  exact relTriple_eqRel_of_evalDist_eq (dist_adjust D known k)
+  exact relTriple_eqRel_of_evalDistEq (dist_adjust D known k)
 
 def treeSimCoinView (D : C.Coalition) (c : ℕ) (rnd : C.Party → PrssOutput C E) :
     C.Party → C.Party → Option (Msg E) :=
@@ -428,14 +428,14 @@ theorem treeSim_coin_round [SampleableType E] {σ : Type} (D : C.Coalition) {c :
           let rnd := frandShare D c known pairs (adjust D known r vals) p
           let b ← answer (treeSimCoinView K D c rnd)
           pure (b.1, fun i => (treeSimCoinOutput K D c rnd b.2 i).map (fun _ => List.ofFn vals))) Eq := by
-  apply relTriple_eqRel_of_evalDist_eq
+  apply relTriple_eqRel_of_evalDistEq
   symm
   have h := dist_adjust D known (fun r => do
     let p ← $ᵗ (C.Pair → Fin c → E)
     let rnd := frandShare D c known pairs r p
     let b ← answer (treeSimCoinView K D c rnd)
     pure (b.1, treeSimCoinOutput K D c rnd b.2))
-  rw [← h]
+  refine EvalDistEq.trans ?_ h
   apply evalDist_bind_congr_all
   intro vals
   apply evalDist_bind_congr_all
@@ -563,10 +563,10 @@ variable (hbind : ∀ {α β : Type} (p : m α) (k : α → m β), φ (p >>= k) 
 
 include hpure hbind in
 private theorem treeSim_hom_sequence {α : Type} : ∀ {k : ℕ} (p : Fin k → m α),
-    φ (Concrete.sequenceFin p) = Concrete.sequenceFin (fun i => φ (p i))
-  | 0, p => by simp [Concrete.sequenceFin, hpure]
+    φ (OverPermutation.sequenceFin p) = OverPermutation.sequenceFin (fun i => φ (p i))
+  | 0, p => by simp [OverPermutation.sequenceFin, hpure]
   | k + 1, p => by
-    simp only [Concrete.sequenceFin, hbind, hpure, treeSim_hom_sequence]
+    simp only [OverPermutation.sequenceFin, hbind, hpure, treeSim_hom_sequence]
 
 include hpure hbind in
 private theorem treeSim_hom_simulate {ι α : Type} {spec : OracleSpec ι}
@@ -668,10 +668,10 @@ theorem treeSimErase_phase {I α : Type} (D : C.Coalition)
 /-- The emulator and the stream world use the same address, parenthesized
 differently. This conversion preserves every cached bit. -/
 def treeSimCache (cache : StreamCache C) : HiddenCache C :=
-  fun x => cache (x.1.1, x.1.2, x.2)
+  QueryCache.ofFn fun x => cache.toFn (x.1.1, x.1.2, x.2)
 
 def treeSimCacheInv (cache : HiddenCache C) : StreamCache C :=
-  fun x => cache ((x.1, x.2.1), x.2.2)
+  QueryCache.ofFn fun x => cache.toFn ((x.1, x.2.1), x.2.2)
 
 @[simp] theorem treeSimCache_inverse (cache : HiddenCache C) :
     treeSimCache (treeSimCacheInv cache) = cache := rfl
@@ -682,16 +682,16 @@ def treeSimCacheInv (cache : HiddenCache C) : StreamCache C :=
 private theorem treeSimCache_update (cache : StreamCache C) (x : PrgInput C) (b : Bit) :
     treeSimCache (cache.cacheQuery x b) =
       (treeSimCache cache).cacheQuery ((x.1, x.2.1), x.2.2) b := by
-  funext y
+  refine QueryCache.ext fun y => ?_
   have he : y = ((x.1, x.2.1), x.2.2) ↔ (y.1.1, y.1.2, y.2) = x := by
     rcases x with ⟨a, b, c⟩
     rcases y with ⟨⟨a', b'⟩, c'⟩
     simp only [Prod.mk.injEq, and_assoc]
   by_cases hy : y = ((x.1, x.2.1), x.2.2)
   · subst y
-    simp [treeSimCache, QueryCache.cacheQuery]
+    simp [treeSimCache]
   · have hx := mt he.mpr hy
-    simp [treeSimCache, QueryCache.cacheQuery, Function.update_of_ne hy, Function.update_of_ne hx]
+    simp [treeSimCache, QueryCache.cacheQuery_of_ne _ _ hy, QueryCache.cacheQuery_of_ne _ _ hx]
 
 /-- Exact lazy-cache conversion, including both fresh and repeated draws. -/
 theorem treeSimCache_query (cache : StreamCache C) (x : PrgInput C) :
@@ -699,8 +699,9 @@ theorem treeSimCache_query (cache : StreamCache C) (x : PrgInput C) :
       (((((KeyName C × HashOutput) × ℕ × ℕ × ℕ) →ₒ Bit).randomOracle
         ((x.1, x.2.1), x.2.2)).run (treeSimCache cache)) := by
   simp only [randomOracle.apply_eq, StateT.run_bind, StateT.run_get, pure_bind]
-  cases hc : cache x <;> simp [treeSimCache, hc, StateT.run_modifyGet,
-    StateT.run_pure, bind_pure_comp, treeSimCache_update]
+  have hq : (treeSimCache cache).toFn ((x.1, x.2.1), x.2.2) = cache.toFn x := rfl
+  rw [hq]
+  cases hc : cache.toFn x <;> simp [StateT.run_modifyGet, StateT.run_pure, bind_pure_comp, treeSimCache_update]
 
 /-- Evaluate the actual log-free emulator in the world while preserving both
 caches, in the layout used by `streamWorld`. -/
@@ -1043,14 +1044,16 @@ theorem treeSim_idealGame (top : TopTree) (tree : Tree) (D : C.Coalition)
       treeSimIdealRun K circuits settings top tree D A parameter seeds pairs z Z := by
   unfold treeIdealGame distinguish idealExecution
   rw [treeSim_Ftree circuits settings D parameter seeds pairs top tree]
-  simp only [simulateQ_bind, treeSim_dealer_lift, simulateQ_leak_add, simulateQ_pure,
+  simp only [QueryImpl.add_eq_hAdd, simulateQ_bind, treeSim_dealer_lift, simulateQ_leak_add, simulateQ_pure,
     StateT.run_bind, StateT.run_lift, StateT.run_pure, StateT.run_mk,
     bind_assoc, pure_bind]
   have hs : (treeSimulator K circuits settings top tree D A).start
       (corruptInputs D (dealtKeys parameter seeds pairs)) z =
       (fun r => (⟨r.1, r.2, corruptInputs D (dealtKeys parameter seeds pairs)⟩ :
         SimulatorState C (Keys C) A.State)) <$>
-        observe (A.start (corruptInputs D (dealtKeys parameter seeds pairs)) z) := rfl
+        observe (A.start (corruptInputs D (dealtKeys parameter seeds pairs)) z) := by
+    rw [map_eq_bind_pure_comp]
+    rfl
   have ho : ∀ st, (treeSimulator K circuits settings top tree D A).output st = pure st.adversary :=
     fun _ => rfl
   rw [hs]
@@ -1104,7 +1107,7 @@ theorem treeSimPhase_run (top : TopTree) (tree : Tree) (D : C.Coalition)
   simp only [bind_pure_comp, simulateQ_map, StateT.run_map]
   rw [treeSimEvaluate_run, treeSimEvaluate_phase]
   simp only [Functor.map_map]
-  rfl
+  rw [show treeSimCache (∅ : StreamCache C) = ∅ from rfl]
 
 /-- Both actual phases can now be compared in the same cache monad. The
 honest dealer still runs before the simulator and shares its hash cache. -/
@@ -1181,16 +1184,16 @@ theorem treeSim_ideal_prefix_swap (top : TopTree) (tree : Tree) (D : C.Coalition
     (A : Adversary C E (Keys C) PEmpty PEmpty) (parameter : PublicParameter)
     (seeds : C.Term → HashOutput) (pairs : C.Pair → HashOutput) (z : Aux)
     (Z : Distinguisher C A.State TreeOutput) :
-    𝒟[treeSimStreamIdealRun prims K circuits settings top tree D A parameter seeds pairs z Z] =
-      𝒟[treeSimDealerFirstIdeal prims K circuits settings top tree D A parameter seeds pairs z Z] := by
+    treeSimStreamIdealRun prims K circuits settings top tree D A parameter seeds pairs z Z =ᵈ
+      treeSimDealerFirstIdeal prims K circuits settings top tree D A parameter seeds pairs z Z := by
   have h := (commutes_simulateQ (localAnswer prims)
     (fun t u => commutes_of_isAtom (isAtom_localAnswer prims t) (isAtom_localAnswer prims u))
     (A.start (corruptInputs D (dealtKeys parameter seeds pairs)) z)
     (liftComp (dealerCeremony circuits settings parameter seeds top tree) (LocalSpec C))).bind
       (treeSimIdealFinish prims K circuits settings top tree D A parameter seeds Z) ∅
-  have e := congrArg (fun d => Prod.fst <$> d) h
+  have e := h.map Prod.fst
   simpa only [treeSimStreamIdealRun, treeSimDealerFirstIdeal, treeSimIdealFinish,
-    ← evalDist_map, StateT.run'_eq, StateT.run_bind, StateT.run_mk, map_bind] using e
+    StateT.run'_eq, StateT.run_bind, StateT.run_mk, map_bind] using e
 
 /-! The dealer's queries may be moved across a computation which cannot
 program the hash oracle. This is equality of joint distributions, including
@@ -1200,9 +1203,9 @@ private theorem treeSim_onHash_commutes {α β : Type}
     {p : StateT (HashCache C) ProbComp α} {q : StateT (HashCache C) ProbComp β}
     (h : Commutes p q) : Commutes (onHash p) (onHash q) := by
   intro s
-  have e := congrArg (fun d => (fun r => (r.1, r.2, s.2)) <$> d) (h s.1)
+  have e := (h s.1).map (fun r => (r.1, r.2, s.2))
   simpa only [onHash, StateT.run_bind, StateT.run_mk, StateT.run_pure,
-    map_bind, bind_map_left, Functor.map_map, evalDist_map, evalDist_bind, evalDist_pure, map_pure, Function.comp_def] using e
+    map_bind, bind_map_left, Functor.map_map, map_pure, Function.comp_def] using e
 
 private theorem treeSim_hash_hidden_commutes {α β : Type}
     (p : StateT (HashCache C) ProbComp α) (q : StateT (HiddenCache C) ProbComp β) :
@@ -1210,15 +1213,15 @@ private theorem treeSim_hash_hidden_commutes {α β : Type}
   intro s
   simp only [onHash, StateT.run_bind, StateT.run_mk, StateT.run_pure,
     bind_map_left]
-  exact DeferredSampling.evalDist_bind_comm _ _ _
+  exact OracleComp.EvalDistEq.bind_bind_swap _ _ _
 
 /-- The two local interfaces used by the real protocol. Unlike the simulator
 interface, neither side has a programming query. -/
 def treeSimLocalWorld : QueryImpl (LocalSpec C + LocalSpec C) (OracleComp (WorldSpec C)) :=
-  ((fun t => OracleComp.lift (OracleSpec.query (spec := WorldSpec C) (.inl (.inl t)))) :
+  (((fun t => OracleComp.lift (OracleSpec.query (spec := WorldSpec C) (.inl (.inl t)))) :
     QueryImpl (LocalSpec C) (OracleComp (WorldSpec C))) +
   ((fun t => OracleComp.lift (OracleSpec.query (spec := WorldSpec C) (.inr t))) :
-    QueryImpl (LocalSpec C) (OracleComp (WorldSpec C)))
+    QueryImpl (LocalSpec C) (OracleComp (WorldSpec C))) : QueryImpl _ _)
 
 set_option backward.isDefEq.respectTransparency false in
 private theorem treeSim_local_query_commutes (D : C.Coalition)
@@ -1330,18 +1333,18 @@ computation, including one that returns its complete query history. -/
 theorem treeSim_dealer_prefix {α β : Type} (D : C.Coalition)
     (dealer : OracleComp (LocalSpec C) α) (p : OracleComp (LocalSpec C + LocalSpec C) β)
     (cache : HashCache C × HiddenCache C) :
-    𝒟[(do
+    (do
       let _ ← onHash (simulateQ (localAnswer prims) dealer)
-      simulateQ (streamWorld prims D) (simulateQ treeSimLocalWorld p)).run' cache] =
-      𝒟[(simulateQ (streamWorld prims D) (simulateQ treeSimLocalWorld p)).run' cache] := by
+      simulateQ (streamWorld prims D) (simulateQ treeSimLocalWorld p)).run' cache =ᵈ
+      (simulateQ (streamWorld prims D) (simulateQ treeSimLocalWorld p)).run' cache := by
   have h := treeSim_dealer_commutes prims D dealer p
-  have e := congrArg (fun d => Prod.fst <$> d) (h.bind (fun _ b => pure b) cache)
-  simp only [bind_pure, ← evalDist_map, ← StateT.run'_eq] at e
-  rw [e]
+  have e := (h.bind (fun _ b => pure b) cache).map Prod.fst
+  simp only [bind_pure, ← StateT.run'_eq] at e
+  refine e.trans ?_
   simp only [StateT.run'_eq, StateT.run_bind, StateT.run_pure, map_bind, map_pure]
-  apply DeferredSampling.evalDist_bind_congr_left
-  intro r
-  exact DeferredSampling.evalDist_bind_const_neverFails _ (by simp) _
+  rw [map_eq_bind_pure_comp]
+  refine EvalDistEq.bind_right _ fun r => ?_
+  exact OracleComp.EvalDistEq.bind_const _ _
 
 /-- A shared-cache dealer prefix can be inserted without changing the real
 acceptance distribution. Its value may then be retained as a ghost for the
@@ -1350,12 +1353,12 @@ theorem treeSim_real_dealer_prefix (top : TopTree) (tree : Tree) (D : C.Coalitio
     (A : Adversary C E (Keys C) PEmpty PEmpty) (x : C.Party → Keys C) (z : Aux)
     (Z : Distinguisher C A.State TreeOutput) {α : Type}
     (dealer : OracleComp (LocalSpec C) α) (cache : HashCache C × HiddenCache C) :
-    𝒟[(do
+    (do
       let _ ← onHash (simulateQ (localAnswer prims) dealer)
       simulateQ (streamWorld prims D)
-        (treeRealGame K circuits settings top tree D A x z Z)).run' cache] =
-      𝒟[(simulateQ (streamWorld prims D)
-        (treeRealGame K circuits settings top tree D A x z Z)).run' cache] := by
+        (treeRealGame K circuits settings top tree D A x z Z)).run' cache =ᵈ
+      (simulateQ (streamWorld prims D)
+        (treeRealGame K circuits settings top tree D A x z Z)).run' cache := by
   simpa only [treeSim_localReal_eq] using treeSim_dealer_prefix prims D dealer
     (treeSimLocalRealGame K circuits settings top tree D A x z Z) cache
 
@@ -1434,9 +1437,9 @@ theorem treeSim_ghost_log (top : TopTree) (tree : Tree) (D : C.Coalition)
     (A : Adversary C E (Keys C) PEmpty PEmpty) (x : C.Party → Keys C) (z : Aux)
     (Z : Distinguisher C A.State TreeOutput) {α : Type}
     (dealer : OracleComp (LocalSpec C) α) :
-    𝒟[Prod.snd <$> treeSimGhostRun prims D dealer
-      (treeRealGame K circuits settings top tree D A x z Z)] =
-      𝒟[treeSimLoggedRun prims D (treeRealGame K circuits settings top tree D A x z Z)] := by
+    (Prod.snd <$> treeSimGhostRun prims D dealer
+      (treeRealGame K circuits settings top tree D A x z Z)) =ᵈ
+      treeSimLoggedRun prims D (treeRealGame K circuits settings top tree D A x z Z) := by
   have h := treeSim_dealer_prefix prims D dealer
     (treeSimLocalLogged (treeSimLocalRealGame K circuits settings top tree D A x z Z)) (∅, ∅)
   rw [← treeSimLocalLogged_run, treeSim_localReal_eq] at h
@@ -1569,21 +1572,21 @@ theorem treeSim_ghost_trace (events : TreeSimEvents C E) (top : TopTree) (tree :
     (D : C.Coalition) (A : Adversary C E (Keys C) PEmpty PEmpty)
     (x : C.Party → Keys C) (z : Aux) (Z : Distinguisher C A.State TreeOutput)
     {α : Type} (dealer : OracleComp (LocalSpec C) α) :
-    𝒟[(fun r => (r.2.1, events top tree D A x z Z r.2.2)) <$>
-      treeSimGhostRun prims D dealer (treeRealGame K circuits settings top tree D A x z Z)] =
-      𝒟[treeSimTrace prims K circuits settings events top tree D A x z Z] := by
-  have h := congrArg (fun d => (fun r => (r.1, events top tree D A x z Z r.2)) <$> d)
-    (treeSim_ghost_log prims K circuits settings top tree D A x z Z dealer)
-  simpa only [treeSimTrace, evalDist_map, Functor.map_map, Function.comp_def] using h
+    ((fun r => (r.2.1, events top tree D A x z Z r.2.2)) <$>
+      treeSimGhostRun prims D dealer (treeRealGame K circuits settings top tree D A x z Z)) =ᵈ
+      treeSimTrace prims K circuits settings events top tree D A x z Z := by
+  have h := (treeSim_ghost_log prims K circuits settings top tree D A x z Z dealer).map
+    (fun r => (r.1, events top tree D A x z Z r.2))
+  simpa only [treeSimTrace, Functor.map_map, Function.comp_def] using h
 
 /-- Instrumentation must preserve the actual stream-world acceptance marginal. -/
 def TreeSimMarginal (trace : TreeSimTrace C E) : Prop :=
   ∀ (top : TopTree) (tree : Tree) (D : C.Coalition)
     (A : Adversary C E (Keys C) PEmpty PEmpty) (x : C.Party → Keys C) (z : Aux)
     (Z : Distinguisher C A.State TreeOutput),
-    𝒟[Prod.fst <$> trace top tree D A x z Z] =
-      𝒟[(simulateQ (streamWorld prims D)
-        (treeRealGame K circuits settings top tree D A x z Z)).run' (∅, ∅)]
+    (Prod.fst <$> trace top tree D A x z Z) =ᵈ
+      (simulateQ (streamWorld prims D)
+        (treeRealGame K circuits settings top tree D A x z Z)).run' (∅, ∅)
 
 /-- No instrumentation hypothesis is needed for the concrete trace. -/
 theorem treeSim_trace_marginal (events : TreeSimEvents C E) :
@@ -1664,10 +1667,10 @@ theorem treeSim_hiddenDraws_log (D : C.Coalition) {n : ℕ} (addr : Fin n → Hi
     erw [simulateQ_spec_query, simulateQ_spec_query]
     rfl
   induction n generalizing cache log with
-  | zero => simp [hiddenDraws, Concrete.sequenceFin, StateT.run_pure, treeSimHiddenLog]
+  | zero => simp [hiddenDraws, OverPermutation.sequenceFin, StateT.run_pure, treeSimHiddenLog]
   | succ n ih =>
     simp only [hiddenDraws] at ih ⊢
-    simp only [Concrete.sequenceFin, simulateQ_bind, simulateQ_pure, StateT.run_bind,
+    simp only [OverPermutation.sequenceFin, simulateQ_bind, simulateQ_pure, StateT.run_bind,
       StateT.run_pure, query, bind_map_left, map_bind, ih]
     simp [treeSimHiddenLog, List.ofFn_succ, List.append_assoc]
 
@@ -1877,10 +1880,7 @@ theorem treeSimDealerFirstIdeal_prefix (top : TopTree) (tree : Tree) (D : C.Coal
 /-- Equality coupling retaining reachability of the shared prefix. -/
 private theorem treeSim_refl_support {α : Type} (p : ProbComp α) :
     RelTriple p p (fun a b => a ∈ support p ∧ a = b) := by
-  refine relTriple_iff_relWP.2 ⟨_root_.SPMF.Coupling.refl (𝒟[p]), fun z hz => ?_⟩
-  obtain ⟨a, ha, rfl⟩ : ∃ a ∈ support (𝒟[p]), (a, a) = z := by
-    simpa [_root_.SPMF.Coupling.refl, support_pure] using hz
-  exact ⟨(mem_support_evalDist_iff _ _).1 ha, rfl⟩
+  exact relTriple_refl_of_mem_support p fun a ha => ⟨ha, rfl⟩
 
 /-- A local adversarial computation cannot change the private stream cache,
 even when its sampling and hash calls are recorded in the real log. -/
@@ -1999,11 +1999,11 @@ theorem treeSim_draws_mixed (D : C.Coalition) (δ : HiddenAddress C → Bit)
       (fun u v => v.1 = u.1 + (fun i => δ (addr i)) ∧ TreeSimStreamRel δ u.2 v.2) := by
   induction n generalizing a b with
   | zero =>
-    simp only [hiddenDraws, Concrete.sequenceFin, simulateQ_pure, StateT.run_pure]
+    simp only [hiddenDraws, OverPermutation.sequenceFin, simulateQ_pure, StateT.run_pure]
     exact relTriple_pure_pure ⟨Subsingleton.elim _ _, hs⟩
   | succ n ih =>
     simp only [hiddenDraws] at ih ⊢
-    simp only [Concrete.sequenceFin, simulateQ_bind, simulateQ_pure, StateT.run_bind, StateT.run_pure]
+    simp only [OverPermutation.sequenceFin, simulateQ_bind, simulateQ_pure, StateT.run_bind, StateT.run_pure]
     apply relTriple_bind (treeSim_prgQuery_mixed prims D δ hδ (addr 0) a b hs)
     intro u v huv
     apply relTriple_bind (ih (fun i => addr i.succ) u.2 v.2 huv.2)
@@ -2047,11 +2047,11 @@ theorem treeSim_hiddenTable_rushing {V α : Type} (D : C.Coalition) {n : ℕ}
 /-- `sequenceFin` and the protocol's list traversal use the same draw order. -/
 theorem treeSim_sequenceFin_mapM {m : Type → Type} [Monad m] [LawfulMonad m] {α : Type}
     {n : ℕ} (f : Fin n → m α) :
-    List.ofFn <$> Concrete.sequenceFin f = (List.finRange n).mapM f := by
+    List.ofFn <$> OverPermutation.sequenceFin f = (List.finRange n).mapM f := by
   induction n with
-  | zero => simp [Concrete.sequenceFin, List.finRange]
+  | zero => simp [OverPermutation.sequenceFin, List.finRange]
   | succ n ih =>
-    simp only [Concrete.sequenceFin, List.finRange_succ, List.mapM_cons, List.mapM_map,
+    simp only [OverPermutation.sequenceFin, List.finRange_succ, List.mapM_cons, List.mapM_map,
       map_bind, map_pure, List.ofFn_succ]
     rw [← ih]
     simp only [bind_map_left, pure_bind]
@@ -2060,7 +2060,7 @@ theorem treeSim_sequenceFin_mapM {m : Type → Type} [Monad m] [LawfulMonad m] {
 /-- The actual `List.range` traversal of a PRG block is the same finite table. -/
 theorem treeSim_range_mapM {m : Type → Type} [Monad m] [LawfulMonad m] {α : Type}
     (n : ℕ) (f : ℕ → m α) :
-    (List.range n).mapM f = List.ofFn <$> Concrete.sequenceFin (fun g : Fin n => f g.val) := by
+    (List.range n).mapM f = List.ofFn <$> OverPermutation.sequenceFin (fun g : Fin n => f g.val) := by
   rw [treeSim_sequenceFin_mapM]
   have hr : (List.finRange n).map Fin.val = List.range n := by
     apply List.ext_getElem
@@ -2091,6 +2091,7 @@ theorem treeSim_prgBit_query (name : KeyName C) (key : HashOutput) (ρ idx g : �
   erw [simulateQ_spec_query]
   rfl
 
+set_option backward.isDefEq.respectTransparency false in
 /-- The protocol's actual bit block is a finite family of the same stream queries. -/
 theorem treeSim_prgBits_table (name : KeyName C) (key : HashOutput) (ρ idx count : ℕ) :
     free (liftComp (prgBits name key ρ idx count) (LocalSpec C)) =
@@ -2108,6 +2109,7 @@ theorem treeSim_prgBits_table (name : KeyName C) (key : HashOutput) (ρ idx coun
   erw [hm]
   rw [treeSim_range_mapM]
   erw [bind_map_left]
+  rw [map_eq_bind_pure_comp]
   rfl
 
 /-- The mask on a real bit block is zero beyond its requested length. -/
@@ -2401,7 +2403,7 @@ theorem treeSim_peer_value_shift (D : C.Coalition) (ctx₁ ctx₂ : C.Party → 
     simp only [reshareU, self₁ j hj, self₂ j hj, localContext, Prod.fst_add, Prod.snd_add,
       Pi.add_apply, Pi.sub_apply, Finset.sum_add_distrib] at he ⊢
     have htwo := bit_add_self (v₁ j g - v₂ j g)
-    linear_combination he - htwo
+    set_option backward.isDefEq.respectTransparency false in linear_combination he - htwo
   unfold treeSimPeerValue termVal
   by_cases hf : T ∈ filledTerms K
   · simp only [if_pos hf, ← Finset.sum_add_distrib]
@@ -2713,14 +2715,14 @@ private theorem treeSim_state_sequenceFin_preserves {α σ β : Type} {n : ℕ}
     (q : σ → β) (f : Fin n → StateT σ ProbComp α)
     (step : ∀ i s r, r ∈ support ((f i).run s) → q r.2 = q s)
     (s : σ) (r : (Fin n → α) × σ)
-    (hr : r ∈ support ((Concrete.sequenceFin f).run s)) : q r.2 = q s := by
+    (hr : r ∈ support ((OverPermutation.sequenceFin f).run s)) : q r.2 = q s := by
   induction n generalizing s with
   | zero =>
-    have heq : r = (Fin.elim0, s) := by simpa [Concrete.sequenceFin] using hr
+    have heq : r = (Fin.elim0, s) := by simpa [OverPermutation.sequenceFin] using hr
     subst r
     rfl
   | succ n ih =>
-    simp only [Concrete.sequenceFin, StateT.run_bind, StateT.run_pure, support_bind,
+    simp only [OverPermutation.sequenceFin, StateT.run_bind, StateT.run_pure, support_bind,
       Set.mem_iUnion, support_pure, Set.mem_singleton_iff] at hr
     obtain ⟨u, hu, v, hv, rfl⟩ := hr
     exact (ih (fun i => f i.succ) (fun i => step i.succ) u.2 v hv).trans (step 0 s u hu)
@@ -2982,11 +2984,11 @@ theorem treeSim_hiddenDraws_cached (D : C.Coalition) {n : ℕ}
     (simulateQ (streamWorld prims D) (hiddenDraws addr)).run (h, cache) = pure (vals, (h, cache)) := by
   induction n with
   | zero =>
-    simp only [hiddenDraws, Concrete.sequenceFin, simulateQ_pure, StateT.run_pure]
+    simp only [hiddenDraws, OverPermutation.sequenceFin, simulateQ_pure, StateT.run_pure]
     congr 2
     exact Subsingleton.elim _ _
   | succ n ih =>
-    simp only [hiddenDraws, Concrete.sequenceFin, simulateQ_bind, simulateQ_pure,
+    simp only [hiddenDraws, OverPermutation.sequenceFin, simulateQ_bind, simulateQ_pure,
       StateT.run_bind, StateT.run_pure]
     rw [streamWorld_hidden_cached prims D (addr 0) (hidden 0) h cache (vals 0) (hc 0), pure_bind]
     simp only [hiddenDraws] at ih
@@ -3051,10 +3053,10 @@ theorem treeSim_visibleBit_cached (D : C.Coalition) (name : KeyName C)
   erw [simulateQ_spec_query]
   simp only [streamWorld, visible, if_false, onHash, localAnswer, QueryImpl.add_apply_inr,
     prgAnswer, StateT.run_mk, StateT.run_bind, StateT.run_pure]
-  erw [StateT.run_mk, StateT.run_bind,
-    hashAnswer_run_cached prims (by rintro ⟨_, heq, _⟩; cases heq) hk]
+  erw [hashAnswer_run_cached prims (by rintro ⟨_, heq, _⟩; cases heq) hk]
   simp
 
+set_option backward.isDefEq.respectTransparency false in
 /-- The actual PRG traversal replays any already-determined stream block. -/
 private theorem treeSim_prgBits_replay (D : C.Coalition) (name : KeyName C)
     (key : HashOutput) (ρ idx count : ℕ) (values : ℕ → Bit)
@@ -3081,7 +3083,6 @@ private theorem treeSim_prgBits_replay (D : C.Coalition) (name : KeyName C)
     rw [← treeSim_prgBit_query] at e
     exact e
   erw [hm, pure_bind]
-  rfl
 
 /-- Replay a hidden block without changing either cache, including unrelated entries. -/
 theorem treeSim_prgBits_cached (D : C.Coalition) (name : KeyName C) (hidden : Hidden D name)
@@ -3487,14 +3488,14 @@ private theorem treeSim_sequenceFin_rel {α β σ₁ σ₂ : Type} {n : ℕ}
     (step : ∀ i s₁ s₂, I s₁ s₂ →
       RelTriple ((f₁ i).run s₁) ((f₂ i).run s₂) (fun u v => R i u.1 v.1 ∧ I u.2 v.2))
     (s₁ : σ₁) (s₂ : σ₂) (hs : I s₁ s₂) :
-    RelTriple ((Concrete.sequenceFin f₁).run s₁) ((Concrete.sequenceFin f₂).run s₂)
+    RelTriple ((OverPermutation.sequenceFin f₁).run s₁) ((OverPermutation.sequenceFin f₂).run s₂)
       (fun u v => (∀ i, R i (u.1 i) (v.1 i)) ∧ I u.2 v.2) := by
   induction n generalizing s₁ s₂ with
   | zero =>
-    simp only [Concrete.sequenceFin, StateT.run_pure]
+    simp only [OverPermutation.sequenceFin, StateT.run_pure]
     exact relTriple_pure_pure ⟨fun i => Fin.elim0 i, hs⟩
   | succ n ih =>
-    simp only [Concrete.sequenceFin, StateT.run_bind, StateT.run_pure]
+    simp only [OverPermutation.sequenceFin, StateT.run_bind, StateT.run_pure]
     apply relTriple_bind (step 0 s₁ s₂ hs)
     intro u v huv
     apply relTriple_bind (ih (fun i => f₁ i.succ) (fun i => f₂ i.succ)
@@ -3792,8 +3793,8 @@ theorem treeSim_peer_finish (D : C.Coalition) (δ : HiddenAddress C → Bit)
     (sent : C.Party → Mail C E) (a : TreeSimState C) (b : HashCache C × HiddenCache C)
     (hs : TreeSimStreamRel δ a b) :
     RelTriple
-      ((simulateQ (treeSimLoggedWorld prims D) (free (Concrete.sequenceFin (roundLocal D s₁ sent)))).run a)
-      ((simulateQ (streamWorld prims D) (free (Concrete.sequenceFin (roundLocal D s₂ sent)))).run b)
+      ((simulateQ (treeSimLoggedWorld prims D) (free (OverPermutation.sequenceFin (roundLocal D s₁ sent)))).run a)
+      ((simulateQ (streamWorld prims D) (free (OverPermutation.sequenceFin (roundLocal D s₂ sent)))).run b)
       (fun u z => TreeSimPeerAfterRel K D δ ctx₁ ctx₂ idx count v₁ v₂ st₁ st₂ s₁ s₂ sent u.1 z.1 ∧
         TreeSimStreamRel δ u.2 z.2) := by
   rw [free_sequenceFin, free_sequenceFin, simulateQ_sequenceFin, simulateQ_sequenceFin]
@@ -4000,7 +4001,7 @@ private theorem treeSim_peer_round_factor (D : C.Coalition)
     (ctx : C.Party → Context C) (idx count : ℕ) (v : C.Party → ℕ → Bit) (st : C.Party → RunState C) :
     treeSimPeerRound K D A state ctx idx count v st = (do
       let r ← treeSimPeerRushing K D A state ctx idx count v st (fun _ => pure)
-      let next ← free (Concrete.sequenceFin (roundLocal D r.1 r.2.2))
+      let next ← free (OverPermutation.sequenceFin (roundLocal D r.1 r.2.2))
       pure (r.2.1, next, r.2.2)) := by
   unfold treeSimPeerRound treeSimPeerRushing
   simp only [bind_assoc, pure_bind]
@@ -4377,8 +4378,10 @@ theorem treeSim_collector_exchange_eq (D : C.Coalition)
       dsimp only [ab]
       unfold exchangeResume anyAbort
       split_ifs with hab
-      · rfl
+      · erw [if_pos hab]
+        rfl
       · rw [advance_exchange_bind]
+        erw [if_neg hab]
         rfl)]
   simp only [pure_bind]
   by_cases hall : ∀ i, i ∉ D.1 → ab i = true
@@ -4463,7 +4466,7 @@ theorem treeSim_collector_exchange_mixed (D : C.Coalition)
 def treeSimCollectorDraws (D : C.Coalition) (ctx : C.Party → Context C)
     (idx count : ℕ) (st : C.Party → RunState C) :
     OracleComp (WorldSpec C) (C.Party → PrssOutput C Bit) :=
-  Concrete.sequenceFin fun i => if i ∈ D.1 then pure 0 else
+  OverPermutation.sequenceFin fun i => if i ∈ D.1 then pure 0 else
     free (liftComp (prssDraw (ctx i) (bitCodec (E := E)) (st i).label idx count) (LocalSpec C))
 
 /-- Actual collector program before its PRSS draw. -/
@@ -5121,7 +5124,7 @@ theorem treeSim_collector_first_factor {α : Type} (D : C.Coalition)
   change (do
     let b ← worldRoles.adversary (A.round state
       (treeSimRoundView D (treeSimCollectorWaiting K D count rnd v st k)))
-    let next ← free (Concrete.sequenceFin (roundLocal D (treeSimCollectorWaiting K D count rnd v st k) b.2))
+    let next ← free (OverPermutation.sequenceFin (roundLocal D (treeSimCollectorWaiting K D count rnd v st k) b.2))
     pure (b.1, next, b.2)) = _
   rw [treeSim_collector_waiting_view]
   apply bind_congr
@@ -5167,7 +5170,7 @@ def treeSimResumeAll {α β : Type}
     (k : C.Party → β → PartyM C E RealSpec α)
     (out : C.Party → Option β) :
     OracleComp (WorldSpec C) (C.Party → Step C E RealSpec α) :=
-  free (Concrete.sequenceFin fun i => treeSimResume (k i) (out i))
+  free (OverPermutation.sequenceFin fun i => treeSimResume (k i) (out i))
 
 /-- A successful vector resumes exactly the actual programs, without an
 extra adversarial call or a reset of either cache. -/
@@ -5252,14 +5255,14 @@ theorem treeSim_collector_second_factor {α : Type} (D : C.Coalition)
     (sent : C.Party → Mail C E) :
     stepRound worldRoles D A noFunctionality state (treeSimCollectorAfterFirst K D count rnd v st k sent) = (do
       let b ← worldRoles.adversary (A.round state (colMsgs2 K D count rnd v sent))
-      let next ← free (Concrete.sequenceFin fun i => treeSimResume (k i)
+      let next ← free (OverPermutation.sequenceFin fun i => treeSimResume (k i)
         (treeSimCollectorRecorded K count st i (colOuts K D count rnd v sent b.2 i)))
       pure (b.1, next, b.2)) := by
   rw [stepRound_real]
   change (do
     let b ← worldRoles.adversary (A.round state
       (treeSimRoundView D (treeSimCollectorAfterFirst K D count rnd v st k sent)))
-    let next ← free (Concrete.sequenceFin (roundLocal D (treeSimCollectorAfterFirst K D count rnd v st k sent) b.2))
+    let next ← free (OverPermutation.sequenceFin (roundLocal D (treeSimCollectorAfterFirst K D count rnd v st k sent) b.2))
     pure (b.1, next, b.2)) = _
   rw [treeSim_collector_afterFirst_view]
   apply bind_congr
@@ -5353,7 +5356,7 @@ theorem treeSim_collector_partial_factor {α : Type} (D : C.Coalition)
   change (do
     let b ← worldRoles.adversary (A.round state
       (treeSimRoundView D (treeSimCollectorPartial K D live count rnd v st k)))
-    let next ← free (Concrete.sequenceFin (roundLocal D (treeSimCollectorPartial K D live count rnd v st k) b.2))
+    let next ← free (OverPermutation.sequenceFin (roundLocal D (treeSimCollectorPartial K D live count rnd v st k) b.2))
     pure (b.1, next, b.2)) = _
   rw [treeSim_collector_partial_view]
   apply bind_congr
@@ -5929,18 +5932,12 @@ use unary execution facts rather than quantify over arbitrary final caches. -/
 theorem treeSim_relTriple_support {α β : Type} {oa : ProbComp α} {ob : ProbComp β}
     {R : α → β → Prop} (h : RelTriple oa ob R) :
     RelTriple oa ob (fun x y => R x y ∧ x ∈ support oa ∧ y ∈ support ob) := by
+  let : MeasurableSpace α := ⊤
+  let : MeasurableSpace β := ⊤
   obtain ⟨c, hc⟩ := relTriple_iff_relWP.1 h
-  refine relTriple_iff_relWP.2 ⟨c, fun z hz => ⟨hc z hz, ?_, ?_⟩⟩
-  · have hp : z.1 ∈ support (Prod.fst <$> c.1) := by
-      rw [support_map]
-      exact ⟨z, hz, rfl⟩
-    rw [c.2.map_fst] at hp
-    exact (mem_support_evalDist_iff _ _).1 hp
-  · have hp : z.2 ∈ support (Prod.snd <$> c.1) := by
-      rw [support_map]
-      exact ⟨z, hz, rfl⟩
-    rw [c.2.map_snd] at hp
-    exact (mem_support_evalDist_iff _ _).1 hp
+  refine relTriple_iff_relWP.2 ⟨c, ?_⟩
+  filter_upwards [hc, ae_mem_support_prod c] with z hz hmem
+  exact ⟨hz, hmem.1, hmem.2⟩
 
 /-- Concrete next-collector parameters for fixed optional outputs. These
 are program equations, state relations and freshness facts, not a coupling. -/
@@ -6381,7 +6378,7 @@ theorem treeSim_coin_round_factor {α : Type} (D : C.Coalition)
   change (do
     let b ← worldRoles.adversary (A.round state
       (treeSimRoundView D (treeSimCoinWaiting K D count rnd st k)))
-    let next ← free (Concrete.sequenceFin (roundLocal D (treeSimCoinWaiting K D count rnd st k) b.2))
+    let next ← free (OverPermutation.sequenceFin (roundLocal D (treeSimCoinWaiting K D count rnd st k) b.2))
     pure (b.1, next, b.2)) = _
   rw [treeSim_coin_waiting_view]
   apply bind_congr
@@ -6456,7 +6453,7 @@ theorem treeSim_coin_partial_factor {α : Type} (D : C.Coalition)
   change (do
     let b ← worldRoles.adversary (A.round state
       (treeSimRoundView D (treeSimCoinPartial K D live count rnd st k)))
-    let next ← free (Concrete.sequenceFin (roundLocal D (treeSimCoinPartial K D live count rnd st k) b.2))
+    let next ← free (OverPermutation.sequenceFin (roundLocal D (treeSimCoinPartial K D live count rnd st k) b.2))
     pure (b.1, next, b.2)) = _
   rw [treeSim_coin_partial_view]
   apply bind_congr
@@ -6781,7 +6778,7 @@ theorem treeSim_peer_resume_factor {α : Type} (D : C.Coalition)
   rw [stepRound_real]
   change (do
     let b ← worldRoles.adversary (A.round state (treeSimRoundView D (treeSimPeerWaiting K D ctx count rnd v st k)))
-    let next ← free (Concrete.sequenceFin (roundLocal D (treeSimPeerWaiting K D ctx count rnd v st k) b.2))
+    let next ← free (OverPermutation.sequenceFin (roundLocal D (treeSimPeerWaiting K D ctx count rnd v st k) b.2))
     pure (b.1, next, b.2)) = _
   apply bind_congr
   intro b
@@ -7177,14 +7174,14 @@ private theorem treeSim_sequenceFin_preserves_prop {α σ : Type} {n : ℕ}
     (P : σ → Prop) (f : Fin n → StateT σ ProbComp α)
     (preserve : ∀ i s r, P s → r ∈ support ((f i).run s) → P r.2)
     (s : σ) (hs : P s) (r : (Fin n → α) × σ)
-    (hr : r ∈ support ((Concrete.sequenceFin f).run s)) : P r.2 := by
+    (hr : r ∈ support ((OverPermutation.sequenceFin f).run s)) : P r.2 := by
   induction n generalizing s with
   | zero =>
-    have heq : r = (Fin.elim0, s) := by simpa [Concrete.sequenceFin] using hr
+    have heq : r = (Fin.elim0, s) := by simpa [OverPermutation.sequenceFin] using hr
     subst r
     exact hs
   | succ n ih =>
-    simp only [Concrete.sequenceFin, StateT.run_bind, StateT.run_pure, support_bind,
+    simp only [OverPermutation.sequenceFin, StateT.run_bind, StateT.run_pure, support_bind,
       Set.mem_iUnion, support_pure, Set.mem_singleton_iff] at hr
     obtain ⟨u, hu, v, hv, rfl⟩ := hr
     exact ih (fun i => f i.succ) (fun i => preserve i.succ) u.2 (preserve 0 s u hs hu) v hv
@@ -7196,11 +7193,11 @@ private theorem treeSim_sequenceFin_establishes {α σ : Type} {n : ℕ}
     (preserve : ∀ i s r, P s → r ∈ support ((f i).run s) → P r.2)
     (i : Fin n) (establish : ∀ s r, r ∈ support ((f i).run s) → P r.2)
     (s : σ) (r : (Fin n → α) × σ)
-    (hr : r ∈ support ((Concrete.sequenceFin f).run s)) : P r.2 := by
+    (hr : r ∈ support ((OverPermutation.sequenceFin f).run s)) : P r.2 := by
   induction n generalizing s with
   | zero => exact Fin.elim0 i
   | succ n ih =>
-    simp only [Concrete.sequenceFin, StateT.run_bind, StateT.run_pure, support_bind,
+    simp only [OverPermutation.sequenceFin, StateT.run_bind, StateT.run_pure, support_bind,
       Set.mem_iUnion, support_pure, Set.mem_singleton_iff] at hr
     obtain ⟨u, hu, v, hv, rfl⟩ := hr
     cases i using Fin.cases with
@@ -7315,7 +7312,7 @@ theorem treeSim_peer_partial_factor {α : Type} (D : C.Coalition)
   change (do
     let b ← worldRoles.adversary (A.round state
       (treeSimRoundView D (treeSimPeerPartial K D ctx live count rnd v st k)))
-    let next ← free (Concrete.sequenceFin (roundLocal D (treeSimPeerPartial K D ctx live count rnd v st k) b.2))
+    let next ← free (OverPermutation.sequenceFin (roundLocal D (treeSimPeerPartial K D ctx live count rnd v st k) b.2))
     pure (b.1, next, b.2)) = _
   apply bind_congr
   intro b
@@ -7897,7 +7894,7 @@ theorem treeSim_fieldPeer_value_shift (D : C.Coalition) (ctx₁ ctx₂ : C.Party
     simp only [reshareU, self₁ j hj, self₂ j hj, localContext, Prod.fst_add, Prod.snd_add,
       Pi.add_apply, Pi.sub_apply, Finset.sum_add_distrib] at he ⊢
     have htwo := CharTwo.add_self_eq_zero (v₁ j g - v₂ j g)
-    linear_combination he - htwo
+    set_option backward.isDefEq.respectTransparency false in linear_combination he - htwo
   unfold treeSimFieldPeerValue termVal
   by_cases hf : T ∈ filledTerms K
   · simp only [if_pos hf, ← Finset.sum_add_distrib]
@@ -8000,7 +7997,7 @@ theorem treeSim_extendMult_resume_factor {α : Type} (D : C.Coalition)
   rw [stepRound_real]
   change (do
     let b ← worldRoles.adversary (A.round state (treeSimRoundView D (treeSimExtendMultWaiting K D ctx count rnd v st k)))
-    let next ← free (Concrete.sequenceFin (roundLocal D (treeSimExtendMultWaiting K D ctx count rnd v st k) b.2))
+    let next ← free (OverPermutation.sequenceFin (roundLocal D (treeSimExtendMultWaiting K D ctx count rnd v st k) b.2))
     pure (b.1, next, b.2)) = _
   apply bind_congr
   intro b
@@ -8069,7 +8066,7 @@ theorem treeSim_extendMult_partial_factor {α : Type} (D : C.Coalition)
   change (do
     let b ← worldRoles.adversary (A.round state
       (treeSimRoundView D (treeSimExtendMultPartial K D ctx live count rnd v st k)))
-    let next ← free (Concrete.sequenceFin (roundLocal D (treeSimExtendMultPartial K D ctx live count rnd v st k) b.2))
+    let next ← free (OverPermutation.sequenceFin (roundLocal D (treeSimExtendMultPartial K D ctx live count rnd v st k) b.2))
     pure (b.1, next, b.2)) = _
   apply bind_congr
   intro b
@@ -8124,7 +8121,7 @@ theorem TreeSimExtendMultData.visible (D : C.Coalition) (d : TreeSimExtendMultDa
   simp only [reshareU, d.self₁ i hi, d.self₂ i hi, localContext, Prod.fst_add, Prod.snd_add,
     Pi.add_apply, Pi.sub_apply, Finset.sum_add_distrib] at he ⊢
   have htwo := CharTwo.add_self_eq_zero (d.v₁ i g - d.v₂ i g)
-  linear_combination he - htwo
+  set_option backward.isDefEq.respectTransparency false in linear_combination he - htwo
 
 theorem TreeSimExtendMultData.view (D : C.Coalition) (d : TreeSimExtendMultData K D) :
     treeSimRoundView D (treeSimExtendMultWaiting K D d.ctx₁ d.count d.rnd₁ d.v₁ d.st₁ d.k₁) =
@@ -8538,9 +8535,9 @@ theorem TreeSimEmptyOpenLocalClosure.all (D : C.Coalition) (live : C.Party → B
     (a : TreeSimState C) (b : HashCache C × HiddenCache C) (h : close.J a b)
     (digest : HashOutput) (h₁ : a.1.1 (.copy []) = some digest) (h₂ : b.1 (.copy []) = some digest) :
     RelTriple ((simulateQ (treeSimLoggedWorld prims D)
-      (free (Concrete.sequenceFin (roundLocal D (treeSimEmptyOpenPartial K D live ds k₁) sent)))).run a)
+      (free (OverPermutation.sequenceFin (roundLocal D (treeSimEmptyOpenPartial K D live ds k₁) sent)))).run a)
       ((simulateQ (streamWorld prims D)
-      (free (Concrete.sequenceFin (roundLocal D (treeSimEmptyOpenPartial K D live ds k₂) sent)))).run b)
+      (free (OverPermutation.sequenceFin (roundLocal D (treeSimEmptyOpenPartial K D live ds k₂) sent)))).run b)
       (fun u z => (∀ i, close.Q i (u.1 i) (z.1 i)) ∧ close.J u.2 z.2 ∧
         u.2.1.1 (.copy []) = some digest ∧ z.2.1 (.copy []) = some digest) := by
   rw [free_sequenceFin, free_sequenceFin, simulateQ_sequenceFin, simulateQ_sequenceFin]
@@ -8580,10 +8577,10 @@ theorem treeSim_emptyOpen_terminal (D : C.Coalition) (live : C.Party → Bool)
     (a : TreeSimState C) (b : HashCache C × HiddenCache C)
     (h₁ : a.1.1 (.copy []) = some digest) (h₂ : b.1 (.copy []) = some digest) :
     RelTriple ((simulateQ (treeSimLoggedWorld prims D)
-      (free (Concrete.sequenceFin (roundLocal D
+      (free (OverPermutation.sequenceFin (roundLocal D
         (treeSimEmptyOpenPartial K D live ds (fun i => pure (out₁ i))) sent)))).run a)
       ((simulateQ (streamWorld prims D)
-      (free (Concrete.sequenceFin (roundLocal D
+      (free (OverPermutation.sequenceFin (roundLocal D
         (treeSimEmptyOpenPartial K D live ds (fun i => pure (out₂ i))) sent)))).run b)
       (fun u z => (∀ i, (u.1 i = .done none ∧ z.1 i = .done none) ∨
         (u.1 i = .done (some (out₁ i)) ∧ z.1 i = .done (some (out₂ i)))) ∧
@@ -8610,9 +8607,9 @@ structure TreeSimEmptyOpenClosure (D : C.Coalition)
       ∀ (u : (C.Party → Step C E RealSpec TreeOutput) × TreeSimState C)
         (z : (C.Party → Step C E RealSpec TreeOutput) × (HashCache C × HiddenCache C)),
         u ∈ support ((simulateQ (treeSimLoggedWorld prims D)
-          (free (Concrete.sequenceFin (roundLocal D (treeSimEmptyOpenPartial K D live ds k₁) sent)))).run a) →
+          (free (OverPermutation.sequenceFin (roundLocal D (treeSimEmptyOpenPartial K D live ds k₁) sent)))).run a) →
         z ∈ support ((simulateQ (streamWorld prims D)
-          (free (Concrete.sequenceFin (roundLocal D (treeSimEmptyOpenPartial K D live ds k₂) sent)))).run b) →
+          (free (OverPermutation.sequenceFin (roundLocal D (treeSimEmptyOpenPartial K D live ds k₂) sent)))).run b) →
         (∀ i, close.Q i (u.1 i) (z.1 i)) → close.J u.2 z.2 →
         Bad u.2 ∨ Inv ((state, u.1), u.2) ((state, z.1), z.2)
 
@@ -8644,11 +8641,11 @@ theorem treeSim_emptyOpen_preserves (D : C.Coalition)
   change RelTriple
     ((simulateQ (treeSimLoggedWorld prims D) (do
       let r ← worldRoles.adversary (A.round a.1.1 (treeSimRoundView D (treeSimEmptyOpenPartial K D live ds k₁)))
-      let next ← free (Concrete.sequenceFin (roundLocal D (treeSimEmptyOpenPartial K D live ds k₁) r.2))
+      let next ← free (OverPermutation.sequenceFin (roundLocal D (treeSimEmptyOpenPartial K D live ds k₁) r.2))
       pure (r.1, next, r.2))).run a.2)
     ((simulateQ (streamWorld prims D) (do
       let r ← worldRoles.adversary (A.round a.1.1 (treeSimRoundView D (treeSimEmptyOpenPartial K D live ds k₂)))
-      let next ← free (Concrete.sequenceFin (roundLocal D (treeSimEmptyOpenPartial K D live ds k₂) r.2))
+      let next ← free (OverPermutation.sequenceFin (roundLocal D (treeSimEmptyOpenPartial K D live ds k₂) r.2))
       pure (r.1, next, r.2))).run b.2) _
   rw [treeSim_emptyOpen_view K D live ds k₁ k₂]
   simp only [simulateQ_bind, StateT.run_bind]
@@ -8968,9 +8965,9 @@ theorem TreeSimOpenLocalClosure.all (D : C.Coalition) (live : C.Party → Bool) 
     (close : TreeSimOpenLocalClosure prims K D live count v ds sent k₁ k₂)
     (a : TreeSimState C) (b : HashCache C × HiddenCache C) (h : close.J a b) :
     RelTriple ((simulateQ (treeSimLoggedWorld prims D)
-      (free (Concrete.sequenceFin (roundLocal D (treeSimOpenPartial K D live count v ds k₁) sent)))).run a)
+      (free (OverPermutation.sequenceFin (roundLocal D (treeSimOpenPartial K D live count v ds k₁) sent)))).run a)
       ((simulateQ (streamWorld prims D)
-      (free (Concrete.sequenceFin (roundLocal D (treeSimOpenPartial K D live count v ds k₂) sent)))).run b)
+      (free (OverPermutation.sequenceFin (roundLocal D (treeSimOpenPartial K D live count v ds k₂) sent)))).run b)
       (fun u z => (∀ i, close.Q i (u.1 i) (z.1 i)) ∧ close.J u.2 z.2) := by
   rw [free_sequenceFin, free_sequenceFin, simulateQ_sequenceFin, simulateQ_sequenceFin]
   exact treeSim_sequenceFin_rel _ _ close.J close.Q
@@ -9015,9 +9012,9 @@ structure TreeSimOpenClosure (D : C.Coalition)
       ∀ (u : (C.Party → Step C E RealSpec TreeOutput) × TreeSimState C)
         (z : (C.Party → Step C E RealSpec TreeOutput) × (HashCache C × HiddenCache C)),
         u ∈ support ((simulateQ (treeSimLoggedWorld prims D)
-          (free (Concrete.sequenceFin (roundLocal D (treeSimOpenPartial K D live count v ds k₁) sent)))).run a) →
+          (free (OverPermutation.sequenceFin (roundLocal D (treeSimOpenPartial K D live count v ds k₁) sent)))).run a) →
         z ∈ support ((simulateQ (streamWorld prims D)
-          (free (Concrete.sequenceFin (roundLocal D (treeSimOpenPartial K D live count v ds k₂) sent)))).run b) →
+          (free (OverPermutation.sequenceFin (roundLocal D (treeSimOpenPartial K D live count v ds k₂) sent)))).run b) →
         (∀ i, close.Q i (u.1 i) (z.1 i)) → close.J u.2 z.2 →
         Bad u.2 ∨ Inv ((state, u.1), u.2) ((state, z.1), z.2)
 
@@ -9051,11 +9048,11 @@ theorem treeSim_open_preserves (D : C.Coalition)
   change RelTriple
     ((simulateQ (treeSimLoggedWorld prims D) (do
       let r ← worldRoles.adversary (A.round a.1.1 (treeSimRoundView D (treeSimOpenPartial K D live count v ds k₁)))
-      let next ← free (Concrete.sequenceFin (roundLocal D (treeSimOpenPartial K D live count v ds k₁) r.2))
+      let next ← free (OverPermutation.sequenceFin (roundLocal D (treeSimOpenPartial K D live count v ds k₁) r.2))
       pure (r.1, next, r.2))).run a.2)
     ((simulateQ (streamWorld prims D) (do
       let r ← worldRoles.adversary (A.round a.1.1 (treeSimRoundView D (treeSimOpenPartial K D live count v ds k₂)))
-      let next ← free (Concrete.sequenceFin (roundLocal D (treeSimOpenPartial K D live count v ds k₂) r.2))
+      let next ← free (OverPermutation.sequenceFin (roundLocal D (treeSimOpenPartial K D live count v ds k₂) r.2))
       pure (r.1, next, r.2))).run b.2) _
   rw [treeSim_open_view K D live count v ds k₁ k₂]
   simp only [simulateQ_bind, StateT.run_bind]
@@ -9194,18 +9191,18 @@ and its real log. The padding queries themselves are ghost queries. -/
 theorem treeSim_logged_padding {α β : Type} (D : C.Coalition)
     (padding : OracleComp (LocalSpec C) α) (p : OracleComp (LocalSpec C + LocalSpec C) β)
     (s : TreeSimState C) :
-    𝒟[do
+    (do
         let r ← (simulateQ (localAnswer prims) padding).run s.1.1
         (fun out : β × TreeSimState C => (out.1, out.2.2)) <$>
-            (simulateQ (treeSimLoggedWorld prims D) (simulateQ treeSimLocalWorld p)).run ((r.2, s.1.2), s.2)] =
-      𝒟[(fun out : β × TreeSimState C => (out.1, out.2.2)) <$>
-        (simulateQ (treeSimLoggedWorld prims D) (simulateQ treeSimLocalWorld p)).run s] := by
+            (simulateQ (treeSimLoggedWorld prims D) (simulateQ treeSimLocalWorld p)).run ((r.2, s.1.2), s.2)) =ᵈ
+      ((fun out : β × TreeSimState C => (out.1, out.2.2)) <$>
+        (simulateQ (treeSimLoggedWorld prims D) (simulateQ treeSimLocalWorld p)).run s) := by
   rcases s with ⟨⟨hcache, c⟩, log⟩
   have h := treeSim_dealer_prefix prims D padding (treeSimLocalLogged p) (hcache, c)
-  have e := congrArg (fun d => (fun r => (r.1, log ++ r.2)) <$> d) h
+  have e := h.map (fun r => (r.1, log ++ r.2))
   simp only [onHash, StateT.run'_eq, StateT.run_bind, StateT.run_mk, bind_map_left,
     map_bind] at e
-  simp only [← evalDist_map, map_bind, Functor.map_map] at e
+  simp only [map_bind, Functor.map_map] at e
   simpa only [treeSimLoggedWorld_run, treeSimLocalLogged_run, Functor.map_map] using e
 
 /-- The same ghost padding may be inserted before the actual real suffix,
@@ -9214,10 +9211,10 @@ theorem treeSimRealFinish_padding (top : TopTree) (tree : Tree) (D : C.Coalition
     (A : Adversary C E (Keys C) PEmpty PEmpty) (x : C.Party → Keys C)
     (Z : Distinguisher C A.State TreeOutput) (state : A.State) (s : TreeSimState C)
     (padding : OracleComp (LocalSpec C) Unit) :
-    𝒟[do
+    (do
         let r ← (simulateQ (localAnswer prims) padding).run s.1.1
-        treeSimRealFinish prims K circuits settings top tree D A x Z state ((r.2, s.1.2), s.2)] =
-      𝒟[treeSimRealFinish prims K circuits settings top tree D A x Z state s] := by
+        treeSimRealFinish prims K circuits settings top tree D A x Z state ((r.2, s.1.2), s.2)) =ᵈ
+      treeSimRealFinish prims K circuits settings top tree D A x Z state s := by
   simpa only [treeSimLocalFinish_eq, treeSimRealFinish] using treeSim_logged_padding prims D padding
     (treeSimLocalFinish D A (ceremonyFuel circuits settings) state
       (fun i => ceremony K circuits settings i (x i) top tree) Z) s
@@ -9248,10 +9245,10 @@ theorem treeSimIdealFinish_padding (top : TopTree) (tree : Tree) (D : C.Coalitio
     (Z : Distinguisher C A.State TreeOutput) (state : A.State)
     (dealt : Option TreeOutput × List (List (List Bit))) (h : HashCache C)
     (padding : OracleComp (LocalSpec C) Unit) :
-    𝒟[do
+    (do
         let r ← (simulateQ (localAnswer prims) padding).run h
-        (treeSimIdealFinish prims K circuits settings top tree D A parameter seeds Z state dealt).run' r.2] =
-      𝒟[(treeSimIdealFinish prims K circuits settings top tree D A parameter seeds Z state dealt).run' h] := by
+        (treeSimIdealFinish prims K circuits settings top tree D A parameter seeds Z state dealt).run' r.2) =ᵈ
+      (treeSimIdealFinish prims K circuits settings top tree D A parameter seeds Z state dealt).run' h := by
   simp only [treeSimIdealFinish_local]
   have e := treeSim_dealer_prefix prims D padding
     (treeSimLocalFinish D A (ceremonyFuel circuits settings) state
@@ -9307,7 +9304,7 @@ theorem treeSim_startSetup (D : C.Coalition)
       treeSimSetupSteps D k <$> free (prssInitialData D) := by
   unfold startSteps prssInitialData
   rw [free_sequenceFin, map_eq_bind_pure_comp]
-  change _ = Concrete.sequenceFin _ >>= fun rows => pure (treeSimSetupSteps D k rows)
+  change _ = OverPermutation.sequenceFin _ >>= fun rows => pure (treeSimSetupSteps D k rows)
   unfold treeSimSetupSteps
   rw [← sequenceFin_bind_pure _ (fun i (row : Parts C × List HashOutput) =>
     if i ∈ D.1 then Step.done (E := E) (G := RealSpec) (α := TreeOutput) none
@@ -9383,7 +9380,7 @@ theorem treeSim_startSetup_coupling (D : C.Coalition)
 /-- Start the next local computation only for operators that completed setup. -/
 def treeSimContinue (k : C.Party → PrssKeys C → PartyM C E RealSpec TreeOutput)
     (keys : C.Party → Option (PrssKeys C)) : OracleComp (WorldSpec C) (C.Party → Step C E RealSpec TreeOutput) :=
-  free (Concrete.sequenceFin fun i => continueStep (k i) (.done (keys i)))
+  free (OverPermutation.sequenceFin fun i => continueStep (k i) (.done (keys i)))
 
 /-- The same three setup rounds precede both continuations, under any handler. -/
 theorem treeSim_prssSetup_split {σ : Type} (impl : QueryImpl (WorldSpec C) (StateT σ ProbComp))
@@ -9580,7 +9577,7 @@ theorem treeSim_check_round_factor {α : Type} (D : C.Coalition)
   rw [stepRound_real]
   change (do
     let b ← worldRoles.adversary (A.round state (treeSimRoundView D (treeSimCheckWaiting K D live kind k)))
-    let next ← free (Concrete.sequenceFin (roundLocal D (treeSimCheckWaiting K D live kind k) b.2))
+    let next ← free (OverPermutation.sequenceFin (roundLocal D (treeSimCheckWaiting K D live kind k) b.2))
     pure (b.1, next, b.2)) = _
   rw [treeSim_check_waiting_view]
   apply bind_congr
@@ -9984,10 +9981,10 @@ theorem treeSim_stages_coupling (events : TreeSimEvents C E)
     TreeSimCeremonyCoupling prims K circuits settings events := by
   intro hb top tree D A parameter seeds pairs z Z q hq hsmall p hp
   obtain ⟨padding, hstages⟩ := h hb top tree D A parameter seeds pairs z Z q hq hsmall p hp
-  apply relTriple_of_evalDist_eq_left
+  apply relTriple_of_evalDistEq_left
     (treeSimRealFinish_padding prims K circuits settings top tree D A
       (dealtKeys parameter seeds pairs) Z p.2.1 p.2.2 padding).symm
-  apply relTriple_of_evalDist_eq_right
+  apply relTriple_of_evalDistEq_right
     (treeSimIdealFinish_padding prims K circuits settings top tree D A parameter seeds Z p.2.1 p.1 p.2.2.1.1 padding)
   apply relTriple_bind (treeSim_refl_support _)
   rintro r _ ⟨hr, rfl⟩
@@ -10042,9 +10039,9 @@ theorem treeSim_ghost_coupling (events : TreeSimEvents C E)
       (r.2.1, events top tree D A (dealtKeys parameter seeds pairs) z Z r.2.2))
     (g := id) (h hb top tree D A parameter seeds pairs z Z q hq hsmall)
   simp only [id_map] at hc
-  apply relTriple_of_evalDist_eq_right
+  apply relTriple_of_evalDistEq_right
     (treeSim_ideal_prefix_swap prims K circuits settings top tree D A parameter seeds pairs z Z).symm
-  exact relTriple_of_evalDist_eq_left
+  exact relTriple_of_evalDistEq_left
     (treeSim_ghost_trace prims K circuits settings events top tree D A
       (dealtKeys parameter seeds pairs) z Z _).symm hc
 
@@ -10067,20 +10064,20 @@ def TreeSimCheckBound (trace : TreeSimTrace C E) : Prop :=
     (A : Adversary C E (Keys C) PEmpty PEmpty) (x : C.Party → Keys C) (z : Aux)
     (Z : Distinguisher C A.State TreeOutput) (q : ℕ), DealtInputs D x →
     IsQueryBounded A Z (ceremonyFuel circuits settings) q → q < 2 ^ 128 →
-    Pr[fun r => r.2.2 = true | trace top tree D A x z Z].toReal ≤
+    Pr{let r ← trace top tree D A x z Z}[r.2.2 = true].toReal ≤
       treeCheckError (E := E) circuits settings tree q
 
 /-- Coupling up to the single union of hash and check failures. -/
 theorem treeSim_badUnion {α β : Type} (oa : ProbComp α) (ob : ProbComp β)
     (hashBad checkBad P : α → Prop) (Q : β → Prop)
     (h : RelTriple oa ob (fun a b => (hashBad a ∨ checkBad a) ∨ (P a ↔ Q b))) :
-    |Pr[P | oa].toReal - Pr[Q | ob].toReal| ≤
-      Pr[hashBad | oa].toReal + Pr[checkBad | oa].toReal := by
+    |Pr{let z ← oa}[P z].toReal - Pr{let z ← ob}[Q z].toReal| ≤
+      Pr{let z ← oa}[hashBad z].toReal + Pr{let z ← oa}[checkBad z].toReal := by
   apply (abs_probEvent_sub_le_of_relTriple (fun a => hashBad a ∨ checkBad a) P Q h).trans
-  have hu : Pr[fun a => hashBad a ∨ checkBad a | oa] ≤ Pr[hashBad | oa] + Pr[checkBad | oa] :=
-    probEvent_or_le _ _ _
-  exact (ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨probEvent_ne_top, probEvent_ne_top⟩) hu).trans_eq
-    (ENNReal.toReal_add probEvent_ne_top probEvent_ne_top)
+  have hu : Pr{let a ← oa}[hashBad a ∨ checkBad a] ≤ Pr{let z ← oa}[hashBad z] + Pr{let z ← oa}[checkBad z] :=
+    prEvent_or_le _ _ _
+  exact (ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨prEvent_ne_top _, prEvent_ne_top _⟩) hu).trans_eq
+    (ENNReal.toReal_add (prEvent_ne_top _) (prEvent_ne_top _))
 
 /-- Off the fixed bad event, every successful honest output in a replay
 certificate equals the dealer's output. No probability bound is used here. -/
