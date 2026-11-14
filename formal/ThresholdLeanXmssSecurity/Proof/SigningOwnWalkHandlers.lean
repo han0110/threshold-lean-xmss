@@ -19,7 +19,7 @@ Each makes at most the charged calls that the own budget counts at its query.
   (`charges_verify`).
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 
 noncomputable section
 
@@ -197,8 +197,7 @@ theorem walk_sourceHash (q : Query C) (c : ℕ) (hc : ∀ input, q = .hash input
       have hlay : lay ≠ bottomLayer := fun h => hq ⟨seed, e, by rw [h]⟩
       simp only [hlay, ↓reduceIte, pure_bind]
       exact hjp
-    · simp only [pure_bind]
-      exact hjp
+    · exact hjp
 
 /-- A map of a program that keeps an invariant. -/
 theorem walk_map {α β : Type} {oa : SourceM C α} {I : SourceState C → LState C → Prop} {c : ℕ}
@@ -289,7 +288,7 @@ theorem walk_pad_source (point : Point) (B : SourceState C → Prop) :
   exact ⟨hl, hg, hq, hp.2⟩
 
 /-- The release of a bottom chain suffix keeps `BaseInv` and makes no charged call. -/
-theorem walk_sourceReleaseBottomSuffix (e : KeyIndex) (l : ChainIndex) (start : Digit) :
+theorem walk_sourceReleaseBottomSuffix (e : KeyIndex) (l : ChainIndex) (start : WinternitzDigit) :
     Walk P seeds Q s (BaseInv P seeds none none) 0 (fun _ => BaseInv P seeds none none)
       (sourceReleaseBottomSuffix P seeds e l start) := by
   unfold sourceReleaseBottomSuffix
@@ -341,7 +340,7 @@ theorem walk_sourceReleaseBottomSuffix (e : KeyIndex) (l : ChainIndex) (start : 
   · intro src st hp r hr
     have hK := fun (K : HiddenKey) (hK : src.revealed K ≠ none) =>
       walk_sourcePlant P seeds Q s (.bottom e l a) K src st ⟨hp.1, (fun _ he => by cases he), hK⟩ r hr
-    obtain ⟨hl, hg, hinv, -⟩ := hK _ (hp.2 a (by simpa using ha))
+    obtain ⟨hl, hg, hinv, -⟩ := hK _ (hp.2 a ha)
     exact ⟨hl, hg, hinv, fun p hp' => (hK _ (hp.2 p hp')).2.2.2.2⟩
 
 /-- A corruption within the bound keeps `BaseInv`. -/
@@ -481,8 +480,8 @@ theorem walk_sourceReturnTree (b : XmssSecurity.TopIndex) (tree : DeferredBottom
         (reveal _ fun _ h => by cases h) fun value => Walk.bind (complete _ (fun _ h => by cases h)
         _) fun ok => Walk.bind (consistent ok) fun _ => Walk.bind hplants fun _ => hdigest)
         (fun _ _ h => h) (fun _ _ _ h => h) (by simp)
-    · exact Walk.conseq (c := 0 + (_ * 0 + 0)) (Walk.bind (Walk.pure _ fun _ _ h => h) fun _ =>
-        Walk.bind hplants fun _ => hdigest) (fun _ _ h => h) (fun _ _ _ h => h) (by simp)
+    · exact Walk.conseq (c := _ * 0 + 0) (Walk.bind hplants fun _ => hdigest)
+        (fun _ _ h => h) (fun _ _ _ h => h) (by simp)
   unfold sourceReturnTree
   refine Walk.conseq (c := 0 + (0 + (0 + (0 + (0 + (0 + 0)))))) (Walk.bind (Walk.conseq
     (walk_sourceReveal P seeds Q s (readyEx := none) (cachedEx := none) (readyEx' := none)

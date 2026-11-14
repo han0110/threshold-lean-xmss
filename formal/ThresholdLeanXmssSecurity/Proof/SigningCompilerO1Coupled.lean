@@ -21,7 +21,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Round2
   (`finish_sync`). After a stop each later phase keeps the stop.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Coupled
@@ -55,7 +55,7 @@ def finishO1X (top : TopTree) (forgery : Forgery) : SourceMXO1 C Bool := do
   let st := (← get).base
   let _ ← liftM (markQ (C := C) st.hiddenFlag)
   let verified ← simulateQ (verifyImplO1 x st)
-    (Concrete.verify ⟨top.root, x.1⟩ forgery.message forgery.signature)
+    (Verification.verifyWithHash ⟨top.root, x.1⟩ forgery.message forgery.signature)
   let fresh ← if (signersAt st.signing forgery.signature.leafIndex forgery.message).card < C.t
     then pure true else do
       let honest ← liftBaseX (sourceHonestSignatureX prims x top
@@ -118,8 +118,9 @@ theorem run_coupled (A : TsigAdversary C) (hkeys : ¬TprfSecurityProof.KeyCollis
         support_pure, Set.mem_iUnion, Set.mem_singleton_iff, exists_prop] at hz <;>
       try (subst hz; exact hra)
     obtain ⟨i, hi, w, hw, rfl⟩ := hz
-    exact SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ i.2
-      (realOracles_stop prims x q s pads u rest top' _ st hra i hi) w hw
+    with_reducible
+      exact SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ i.2
+        (realOracles_stop prims x q s pads u rest top' _ st hra i hi) w hw
   · refine relTriple_of_support_right fun c hc z => Or.inr (Or.inl ?_)
     exact SigningCompilerO1ChainRelease.runXO1_stop x q s pads u rest noise _ _ _ hrb c hc
   · dsimp only at hres hsync hpads
@@ -149,7 +150,7 @@ theorem run_coupled (A : TsigAdversary C) (hkeys : ¬TprfSecurityProof.KeyCollis
       simp only [StateT.run_pure, support_bind, support_pure, Set.mem_iUnion,
         Set.mem_singleton_iff, exists_prop] at hz
       obtain ⟨w, hw, rfl⟩ := hz
-      exact SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ a ha w hw
+      with_reducible exact SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ a ha w hw
     have hcompStop : Stop b2' → RelTriple
         ((simulateQ (realWorld prims x s pads u rest)
           (SigningGuessLinkProof.tsigFinishLogged (SigningJointEagerProof.dealtOf x top)

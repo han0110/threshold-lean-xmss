@@ -17,7 +17,7 @@ position of the key is complete.
 round 2 with this callback by name.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Slack
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -41,7 +41,7 @@ def GuardedReleaseInvariantS (seeds : C.Term → HashOutput) (s : HiddenKey → 
 /-- The release invariant at the coalition state `sig`, for a base source state that has the bound
 map of `sig`. -/
 def LinkedInvariant (seeds : C.Term → HashOutput) (s : HiddenKey → Digest) (sig : TsigState C)
-    (starts : KeyIndex → ChainIndex → Finset Digit) (source : SourceState C)
+    (starts : KeyIndex → ChainIndex → Finset WinternitzDigit) (source : SourceState C)
     (backend : CappedCompilerState C) : Prop :=
   source.signing.bound = sig.bound ∧ BaseInvariant seeds s sig starts source backend
 
@@ -49,7 +49,7 @@ def LinkedInvariant (seeds : C.Term → HashOutput) (s : HiddenKey → Digest) (
 operator, or its cell is cached, or the point is a bound bottom randomizer, or the point is a
 recorded bottom chain point and a signer of its key holds the term. -/
 def ReadAllowedO1 (seeds : C.Term → HashOutput) (sig : TsigState C)
-    (starts : KeyIndex → ChainIndex → Finset Digit) (data : DeferredState C) (query : Query C) :
+    (starts : KeyIndex → ChainIndex → Finset WinternitzDigit) (data : DeferredState C) (query : Query C) :
     Prop :=
   ∀ T point, query = .prf (seeds T) point →
     TprfSecurityProof.Revealed sig.corrupt (.inl T) ∨
@@ -61,7 +61,7 @@ def ReadAllowedO1 (seeds : C.Term → HashOutput) (sig : TsigState C)
           TprfSecurityProof.Revealed (signersAt sig e m) (.inl T)
 
 /-- The point is a recorded bottom chain point at a key where operator `i` is a signer. -/
-def HeldReadable (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset Digit)
+def HeldReadable (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset WinternitzDigit)
     (i : C.Party) (point : Point) : Prop :=
   ∃ (e : KeyIndex) (l : ChainIndex) (pos : XmssSecurity.ChainStep) (m : Message),
     point = .chain bottomLayer e l (chainStepDigit pos) ∧
@@ -69,7 +69,7 @@ def HeldReadable (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finse
 
 /-- The joint invariant of an honest computation that reads PRF cells at one point only. -/
 def ReadInvariantO1 (seeds : C.Term → HashOutput) (s : HiddenKey → Digest) (sig : TsigState C)
-    (starts : KeyIndex → ChainIndex → Finset Digit) (point : Point) (source : SourceState C)
+    (starts : KeyIndex → ChainIndex → Finset WinternitzDigit) (point : Point) (source : SourceState C)
     (backend : CappedCompilerState C) : Prop :=
   LinkedInvariant seeds s sig starts source backend ∧
     PointReadable seeds source backend.1.1.data point
@@ -168,7 +168,7 @@ end SigningState
 
 section Pure
 variable {seeds : C.Term → HashOutput} {s : HiddenKey → Digest} {sig : TsigState C}
-  {starts : KeyIndex → ChainIndex → Finset Digit}
+  {starts : KeyIndex → ChainIndex → Finset WinternitzDigit}
 
 theorem revealed_mono {D E : Finset C.Party} {T : C.Term} (hDE : D ⊆ E)
     (h : TprfSecurityProof.Revealed D (.inl T)) : TprfSecurityProof.Revealed E (.inl T) := by
@@ -274,7 +274,7 @@ theorem ReleaseSlackO1.read {source : SourceState C} {data data' : DeferredState
     · exact Or.inl (hd.mono hc)
     · refine Or.inr (hu _ (fun e he => by cases he) ?_ hl)
       intro e l' pos
-      simp [topLayer, bottomLayer]
+      intro he; cases he
   · intro e m hb hn l pos hcov
     exact hdone e l pos (h.crossed_done e m hb hn l pos hcov)
 
@@ -373,7 +373,7 @@ theorem ReleaseSlackO1.bind {source : SourceState C} {data : DeferredState C}
 /-- A new digit at a key below the threshold keeps the slack. -/
 theorem ReleaseSlackO1.record_below {source : SourceState C} {data : DeferredState C}
     (h : ReleaseSlackO1 seeds s sig ⟨source, starts⟩ data) (e : KeyIndex) (l : ChainIndex)
-    (d : Digit) (m : Message) (hb : sig.bound e = some m)
+    (d : WinternitzDigit) (m : Message) (hb : sig.bound e = some m)
     (hlt : (signersAt sig e m).card < C.t) :
     ReleaseSlackO1 seeds s sig
       ⟨source, Function.update starts e (Function.update (starts e) l (insert d (starts e l)))⟩
@@ -484,14 +484,14 @@ theorem sourceRound2O1_eq (top : TopTree) (i : C.Party) (J : C.Quorum)
         pure (some values)) := rfl
 
 theorem round2Callback_below (i : C.Party) (J : C.Quorum) (message : Message) (e : KeyIndex)
-    (l : ChainIndex) (d : Digit) :
+    (l : ChainIndex) (d : WinternitzDigit) :
     round2Callback prims x i J message false (.chain bottomLayer e l d) = (do
       recordStart e l d
       liftBase (sourcePart prims x i J (.chain bottomLayer e l d) message)) := by
   simp [round2Callback]
 
 theorem round2Callback_at (i : C.Party) (J : C.Quorum) (message : Message) (e : KeyIndex)
-    (l : ChainIndex) (d : Digit) :
+    (l : ChainIndex) (d : WinternitzDigit) :
     round2Callback prims x i J message true (.chain bottomLayer e l d) = (do
       recordStart e l d
       sourceReleaseCovered x.1 x.2.1 e l

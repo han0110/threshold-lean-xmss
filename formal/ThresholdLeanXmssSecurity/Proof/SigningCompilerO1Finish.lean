@@ -10,7 +10,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Tail
 - `finish_sync` couples the verification and the freshness check of both sides, after the forger.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Finish
@@ -57,7 +57,7 @@ theorem finish_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
         let st := (← get).base
         let _ ← liftM (markQ (C := C) st.hiddenFlag)
         let verified ← simulateQ (verifyImplO1 x st)
-          (Concrete.verify ⟨top.root, x.1⟩ forgery.message forgery.signature)
+          (Verification.verifyWithHash ⟨top.root, x.1⟩ forgery.message forgery.signature)
         let fresh ← if (signersAt st.signing forgery.signature.leafIndex forgery.message).card < C.t
           then pure true else do
             let honest ← liftBaseX (sourceHonestSignatureX prims x top
@@ -83,8 +83,9 @@ theorem finish_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
   have hsf := hsync.1.1.1.1
   have hst : verifyImplO1 x b.1.base = verifyImplO1 x { b.1.base with signing := realSigning a } := by
     funext input
-    simp only [verifyImplO1,
-      callCandidates_congr x.1 b.1.base.signing (realSigning a) _ hsf.bound]
+    have hcc := callCandidates_congr x.1 b.1.base.signing (realSigning a) b.1.base.exposed
+      hsf.bound input
+    simp only [verifyImplO1, hcc]
   have hm : SyncO1 prims x top s pads noise (gOf s pads u) rest
       (withCandidates a (a.1.2.2.2 ++ [])) (b.1, (b.2.1.1, false), b.2.2) := by
     rw [List.append_nil]
@@ -113,8 +114,8 @@ theorem finish_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
   rcases hpost with h | h | ⟨hval, ⟨hsync', hpads'⟩, hmark'⟩
   · exact absurd h hsa
   · exact absurd h hsb
-  have hc : ra.2.1.2 = a.1.2 :=
-    SigningCompilerO1Lemmas.realWorld_run_carried prims x s pads u rest _ a ra hra
+  have hc : ra.2.1.2 = a.1.2 := by
+    with_reducible exact SigningCompilerO1Lemmas.realWorld_run_carried prims x s pads u rest _ a ra hra
   have hsig' : realSigning ra.2 = realSigning a := congrArg (fun c => c.1.1) hc
   change RelTriple _ (runXO1 (compBackend x q s pads u rest noise)
     (if (signersAt b.1.base.signing forgery.signature.leafIndex forgery.message).card < C.t then

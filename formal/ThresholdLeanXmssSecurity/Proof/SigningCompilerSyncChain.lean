@@ -2,7 +2,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerSyncRelease
 
 /-! # Chain completion against an already sampled real table -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerSyncChain
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -40,7 +40,7 @@ theorem completion_cache_sync_at (x : Keys3 C)
     intro query value hvalue
     change merge x.2.1 cs.1.1.data.cache r.2.cache query = some value
     change merge x.2.1 cs.1.1.data.cache sh.cache query = some value at hvalue
-    cases hrout : route x.2.1 query <;> simp only [merge, hrout] at hvalue ⊢
+    cases hrout : route x.2.1 query <;> simp only [merge, QueryCache.ofFn_apply, hrout] at hvalue ⊢
     · exact hvalue
     · exact hfilled.2 _ _ hvalue
   refine ⟨hc.grow le_rfl grow rfl rfl ?_ ?_, grow⟩
@@ -49,12 +49,12 @@ theorem completion_cache_sync_at (x : Keys3 C)
     change merge x.2.1 cs.1.1.data.cache r.2.cache other = some value at hn
     cases hrout : route x.2.1 other with
     | none =>
-      simp only [merge, hrout] at hn ho
+      simp only [merge, QueryCache.ofFn_apply, hrout] at hn ho
       rw [ho] at hn
       cases hn
     | some z =>
       have he := (route_spec x.2.1 hinj other z).mp hrout
-      simp only [merge, hrout] at ho hn
+      simp only [merge, QueryCache.ofFn_apply, hrout] at ho hn
       have hp : z.2 = p := by
         by_contra hp
         rw [hout z hp, ho] at hn
@@ -77,7 +77,7 @@ theorem backendT_pad (tagOf : CappedCompilerState C × Bool → Tag) (x : Keys3 
     (shareBackendTagT tagOf x.1 x.2.1 x.2.2 q s pads τ g noise rest
       (.inl (.inl (.inl (.pad p))))).run st =
       pure ((padStep pads p st.1.1).1, ((padStep pads p st.1.1).2, st.1.2), st.2) := by
-  simp only [shareBackendTagT, backendRaw, ordinaryFullRaw, ordinaryRaw,
+  simp only [shareBackendTagT, backendRaw, ordinaryFullRaw, ordinaryRaw.eq_def,
     simulateQ_bind, resolvePrivateTable_lift, simulateQ_pure, StateT.run, ordinary]
   cases hp : st.1.1.1.1.data.pads p
   · simp [padStep, merged, withCache, hp, splitRest, erase_merge_of_restFree _ _ _ hf]

@@ -31,7 +31,7 @@ noncomputable section
 namespace ThresholdLeanXmssSecurity
 namespace SigningPartnerCompareProof
 
-open LeanXmss ThresholdLeanXmss SigningCacheLogProof SigningFlatProof
+open HashSig LeanXmss ThresholdLeanXmss SigningCacheLogProof SigningFlatProof
 open SigningFlatEagerProof SigningHitLaneProof SigningAssemblyProof
 
 variable {C : Committee} (prims : Primitives)
@@ -130,36 +130,36 @@ theorem logAgreement_step (P : PublicParameter) (t : (WorldSpec C).Domain)
     constructor
     · simpa only [hl] using hs.1.trans hle
     · intro q' hq'
-      exact (heq q' hq'.1).trans ((hs.2 q' hq').trans (congrFun hl q').symm)
+      exact (heq q' hq'.1).trans ((hs.2 q' hq').trans (congrArg (fun c : HashCache C => c q') hl).symm)
   rcases t with ((n | (q | p)) | prog) | (n | (q | p))
   · have hw' := hunif n w hw
     apply hkeep _ _ _ (by simp [hw']) (by simp [hw'])
-    funext q'
+    refine QueryCache.ext fun q' => ?_
     simp [logCache_logQuery, hashCall]
   · exact logAgreement_hash P q s hs w hw _ (fun _ => by rw [logCache_logQuery]; rfl) _
   · have hw' := hprg p w hw
     apply hkeep _ _ _ hw'.1 hw'.2
-    funext q'
+    refine QueryCache.ext fun q' => ?_
     simp [logCache_logQuery, hashCall]
   · exact (ht trivial).elim
   · have hw' := hunif n w hw
     apply hkeep _ _ _ (by simp [hw']) (by simp [hw'])
-    funext q'
+    refine QueryCache.ext fun q' => ?_
     simp [logCache_logQuery, hashCall]
   · exact logAgreement_hash P q s hs w hw _ (fun _ => by rw [logCache_logQuery]; rfl) _
   · have hw' := hprg p w hw
     apply hkeep _ _ _ hw'.1 hw'.2
-    funext q'
+    refine QueryCache.ext fun q' => ?_
     simp [logCache_logQuery, hashCall]
 
 /-- The random-oracle run of a grind grows the cache and preserves every
 tracked input outside bottom message inputs. The cache growth is the generic
 leanVM `DeterministicSigning.cache_le_of_run`; the frame follows its query induction. -/
 theorem grind_cache_frame (P : PublicParameter) (e : KeyIndex) (message : Message)
-    (base : Randomness) : ∀ attempts trial (cache : HashCache C) z,
+    (base : Randomizer) : ∀ attempts trial (cache : HashCache C) z,
     z ∈ support ((simulateQ (randomOracle (spec := Query C →ₒ HashOutput))
       (simulateQ (fun input => query (spec := Query C →ₒ HashOutput) (.hash input))
-        (grind P bottomLayer e (bytesLE 32 message) base attempts trial))).run cache) →
+        (grind P bottomLayer e (littleEndianBytes 32 message) base attempts trial))).run cache) →
     cache ≤ z.2 ∧ ∀ q, OutsideTrials P q → z.2 q = cache q := by
   intro attempts
   induction attempts with
@@ -170,7 +170,8 @@ theorem grind_cache_frame (P : PublicParameter) (e : KeyIndex) (message : Messag
     exact ⟨le_rfl, fun _ _ => rfl⟩
   | succ n ih =>
     intro trial cache z hz
-    simp [grind, Concrete.messageDigest, Concrete.tweakableHash, Concrete.oracleHash] at hz
+    simp [grind, Verification.messageDigestWithHash, Verification.tweakableHashWithHash, Verification.thWithHash,
+      Verification.oracleHashWithHash] at hz
     obtain ⟨answer, middle, hquery, hz⟩ := hz
     have h := randomOracle_support _ cache (answer, middle) hquery
     have heq : ∀ q, OutsideTrials P q → middle q = cache q :=
@@ -377,7 +378,7 @@ open SigningDescentProof SigningCacheProof
 
 /-- A replayed selected pair has a valid encoding, hence its input is cached
 by leanVM's `encodingInput_cached_of_decode_some`. -/
-theorem selected_decode (z : FinalState C) (pair : Message × Randomness)
+theorem selected_decode (z : FinalState C) (pair : Message × Randomizer)
     (hsel : z.selected prims = some pair) :
     ∃ encoding, XmssSecurity.TargetSum.decodeDigest
       (XmssSecurity.Concrete.CacheView.encodingHash (thView z.cache) z.keys.1 z.key pair) = some encoding := by
@@ -400,12 +401,13 @@ theorem selected_decode (z : FinalState C) (pair : Message × Randomness)
         rw [D_signCodeword (prims := prims) _ _ _ _ _ hc.symm] at hsc
         have hdec := E_grind_spec (prims := prims) (h := z.answers) _ _ _ _ _ _ _ _ _ hsc
         rw [E_eval] at hdec
-        erw [XmssSecurity.Bridge.messageDigest_bottom, XmssSecurity.Concrete.CacheReplay.eval_encodingHash,
+        erw [XmssSecurity.Bridge.messageDigest_bottom,
+          XmssSecurity.Concrete.CacheReplay.eval_encodingHash (thView z.cache),
           XmssSecurity.Bridge.decode_eq] at hdec
         exact ⟨encoding, hdec⟩
 
 theorem encodingHash_mono_of_decode {a b : HashCache C} (hle : a ≤ b)
-    (P : PublicParameter) (e : KeyIndex) (pair : Message × Randomness)
+    (P : PublicParameter) (e : KeyIndex) (pair : Message × Randomizer)
     (hvalid : ∃ encoding, XmssSecurity.TargetSum.decodeDigest
       (XmssSecurity.Concrete.CacheView.encodingHash (thView a) P e pair) = some encoding) :
     XmssSecurity.Concrete.CacheView.encodingHash (thView a) P e pair =

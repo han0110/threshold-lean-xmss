@@ -7,7 +7,7 @@ Threshold crossings occur among the recorded keys. The first stored digit is
 minimal. The base-state lens preserves monadic sequencing and the complete X
 runner outcome. Eager private pads preserve the complete O1 run distribution.
 -/
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Basics
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -37,7 +37,7 @@ theorem crossed_mem (old new : TsigState C) (e : KeyIndex) (m : Message)
     omega
   simpa [crossedKeys, hbound, hold, hnew] using he
 
-theorem firstStart_spec (S : Finset Digit) (d : Digit) (h : firstStart S = some d) :
+theorem firstStart_spec (S : Finset WinternitzDigit) (d : WinternitzDigit) (h : firstStart S = some d) :
     d ∈ S ∧ ∀ d' ∈ S, d.val ≤ d'.val := by
   have hh := List.find?_eq_some_iff_getElem.mp h
   rcases hh with ⟨hd, i, hi, hid, hbefore⟩
@@ -54,7 +54,7 @@ theorem firstStart_spec (S : Finset Digit) (d : Digit) (h : firstStart S = some 
   have hb' : d' ∉ S := by simpa using hb
   exact hb' hd'
 
-theorem firstStart_none_iff (S : Finset Digit) : firstStart S = none ↔ S = ∅ := by
+theorem firstStart_none_iff (S : Finset WinternitzDigit) : firstStart S = none ↔ S = ∅ := by
   simp [firstStart, List.find?_eq_none, Finset.eq_empty_iff_forall_notMem]
 
 theorem liftBase_pure {α : Type} (a : α) :
@@ -70,14 +70,13 @@ theorem liftBase_bind {α β : Type} (oa : SourceM C α) (f : α → SourceM C �
 
 theorem compilerRunO1_eq_padTable (prims : Primitives) (A : TsigAdversary C)
     (x : Keys3 C) (q : ℕ) :
-    𝒟[compilerRunO1 prims A x q] = 𝒟[do
+    compilerRunO1 prims A x q =ᵈ (do
       let s ← $ᵗ (HiddenKey → Digest)
       let pads ← $ᵗ (Point → Digest)
       compilerProgramPads x.1 x.2.1 q s pads (sourceProgramO1 prims A x)
-        ((compilerInit, 0), fun _ => none, false)] := by
+        ((compilerInit, 0), fun _ => none, false)) := by
   unfold compilerRunO1
-  apply evalDist_bind_congr
-  intro s _
+  refine EvalDistEq.bind_right _ fun s => ?_
   exact cappedCompiler_eq_padTable x.1 x.2.1 q s (sourceProgramO1 prims A x)
     ((compilerInit, 0), fun _ => none, false)
 
@@ -102,7 +101,11 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1Basics
 #guard_msgs in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Basics.crossed_mem
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Basics.firstStart_spec' depends on axioms: [propext, Quot.sound] -/
+/--
+info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Basics.firstStart_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
 #guard_msgs in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Basics.firstStart_spec
 

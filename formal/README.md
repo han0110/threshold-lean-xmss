@@ -11,17 +11,12 @@ lake build   # build every module and check the axiom guards of the root file
 
 ## The bridge
 
-The proof moves from Lean 4.31, VCVio `cbd4144` and leanVM `1acdff19` to Lean 4.35, VCVio `5f9baf12` and leanVM `f5f3672f`. The bridge shows that each claim of the statement layer keeps its meaning in this move. The folder [ThresholdLeanXmssSecurity/Bridge](./ThresholdLeanXmssSecurity/Bridge) holds four files. They state in elementary terms what the probability terms, the handlers, the leanVM names and the leanXMSS functions of the statement layer are. This folder is the old side, for the old revisions. The branch of the move has the new side at the same paths, with the same statements proved for the new revisions. The root file does not import the bridge, so build its four modules by name.
+The proof moved from Lean 4.31, VCVio `cbd4144` and leanVM `1acdff19` to Lean 4.35, VCVio `5f9baf12` and leanVM `f5f3672f`. The bridge shows that each claim of the statement layer kept its meaning in this move. The folder [ThresholdLeanXmssSecurity/Bridge](./ThresholdLeanXmssSecurity/Bridge) holds four files. They state in elementary terms what the probability terms, the handlers, the leanVM names and the leanXMSS functions of the statement layer are. This folder is the new side, for the present revisions. The old side is at the same paths at commit `fddaa63`, with the same statements proved for the old revisions. The root file does not import the bridge. `lake build` builds its four modules, because the project builds every module.
+
+The script [tools/bridge_compare.py](./tools/bridge_compare.py) compares the text of the two sides. It prints each difference, and its exit code is 1 if a difference exists. The two sides differ by design only in the rows of the three tables in the script and in the bodies of the dictionaries that the script prints. A person must read these parts. The script also compares the copies of `LeanXmss.lean` of the old side with the source of leanVM `1acdff19`. With the option `--old-commit`, it reads the old side from that commit of this repository, and it reads the old source of leanVM from the git history of the package in the folder `.lake`. The second command runs the tests of the script.
 
 ```sh
 cd formal
-lake build ThresholdLeanXmssSecurity.Bridge.Characterization ThresholdLeanXmssSecurity.Bridge.Handlers \
-  ThresholdLeanXmssSecurity.Bridge.Ambient ThresholdLeanXmssSecurity.Bridge.LeanXmss
-```
-
-The script [tools/bridge_compare.py](./tools/bridge_compare.py) compares the text of the two sides. It prints each difference, and its exit code is 1 if a difference exists. The two sides differ by design only in the rows of the three tables in the script and in the bodies of the dictionaries that the script prints. A person must read these parts. The script also compares the copies of `LeanXmss.lean` with the source of leanVM `1acdff19`, and it reads that source from the folder `.lake` of the project that holds the old side. The second command runs the tests of the script.
-
-```sh
-python3 formal/tools/bridge_compare.py --old formal/ThresholdLeanXmssSecurity/Bridge --new <branch>/formal/ThresholdLeanXmssSecurity/Bridge
-python3 formal/tools/bridge_compare_test.py --old formal/ThresholdLeanXmssSecurity/Bridge --new <branch>/formal/ThresholdLeanXmssSecurity/Bridge
+python3 tools/bridge_compare.py --old-commit fddaa63 --new ThresholdLeanXmssSecurity/Bridge
+python3 tools/bridge_compare_test.py --old-commit fddaa63 --new ThresholdLeanXmssSecurity/Bridge
 ```

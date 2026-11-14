@@ -12,7 +12,7 @@ honest-signature tail are such steps. Each oracle call and the complete O1 game 
 `GuardedReleaseInvariantS`.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1SlackGuarded
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof

@@ -18,7 +18,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Clean
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 

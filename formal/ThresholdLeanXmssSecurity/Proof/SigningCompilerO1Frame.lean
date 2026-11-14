@@ -14,7 +14,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Sync
 - `step_pads` adds the fixed pads to a step contract of `SyncO1`.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Frame
@@ -196,12 +196,12 @@ theorem ordinaryT_padsFixed (t : DeferredQuery C ⊕ HiddenKey) (st : CappedComp
       exact h
   cases t with
   | inr k =>
-    simp only [ordinaryT, ordinaryRaw, resolvePrivateTable_lift] at hr
+    unfold ordinaryT ordinaryRaw at hr; simp only [resolvePrivateTable_lift] at hr
     exact ordinary_padsFixed q s pads x.1 x.2.1 _ st h r hr
   | inl t =>
     cases t with
     | hash input =>
-      simp only [ordinaryT, ordinaryRaw] at hr
+      unfold ordinaryT ordinaryRaw at hr
       cases hz : restRoute x.2.1 x.2.2 input with
       | some z =>
         simp only [hz] at hr
@@ -214,10 +214,10 @@ theorem ordinaryT_padsFixed (t : DeferredQuery C ⊕ HiddenKey) (st : CappedComp
       | bottom e l p => exact pend _ r hr
       | top b l p => exact pend _ r hr
       | _ =>
-        simp only [ordinaryT, ordinaryRaw, resolvePrivateTable_lift] at hr
+        unfold ordinaryT ordinaryRaw at hr; simp only [resolvePrivateTable_lift] at hr
         exact ordinary_padsFixed q s pads x.1 x.2.1 _ st h r hr
     | _ =>
-      simp only [ordinaryT, ordinaryRaw, resolvePrivateTable_lift] at hr
+      unfold ordinaryT ordinaryRaw at hr; simp only [resolvePrivateTable_lift] at hr
       exact ordinary_padsFixed q s pads x.1 x.2.1 _ st h r hr
 
 /-- Each backend query keeps the fixed pads. -/
@@ -611,16 +611,12 @@ def CallPost (cCore : Carried C) (seen : Query C → Prop) (a : RealState C) (sr
 private theorem relTriple_supported {α β : Type} {oa : ProbComp α} {ob : ProbComp β}
     {R : α → β → Prop} (h : RelTriple oa ob R) :
     RelTriple oa ob (fun a b => R a b ∧ a ∈ support oa ∧ b ∈ support ob) := by
+  let : MeasurableSpace α := ⊤
+  let : MeasurableSpace β := ⊤
   obtain ⟨c, hc⟩ := relTriple_iff_relWP.1 h
-  refine relTriple_iff_relWP.2 ⟨c, fun z hz => ⟨hc z hz, ?_, ?_⟩⟩
-  · have hp : z.1 ∈ support (Prod.fst <$> c.1) := by
-      rw [support_map]; exact ⟨z, hz, rfl⟩
-    rw [c.2.map_fst] at hp
-    exact (mem_support_evalDist_iff _ _).1 hp
-  · have hp : z.2 ∈ support (Prod.snd <$> c.1) := by
-      rw [support_map]; exact ⟨z, hz, rfl⟩
-    rw [c.2.map_snd] at hp
-    exact (mem_support_evalDist_iff _ _).1 hp
+  refine relTriple_iff_relWP.2 ⟨c, ?_⟩
+  filter_upwards [hc, ae_mem_support_prod c] with z hz hmem
+  exact ⟨hz, hmem.1, hmem.2⟩
 
 /-- The contract of one oracle call of the forger for the boundary relation with the fixed pads. -/
 def StepO1' (top : TopTree) (t : (LocalSpec C + TsigSpec C).Domain) : Prop :=

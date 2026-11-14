@@ -10,7 +10,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Programs
   timing clauses.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1TailChain
@@ -36,7 +36,7 @@ variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest)
 
 /-- A suffix release keeps `ExtraOpen` at a fixed reveal map of the timing clauses. -/
 theorem extraOpen_suffix (top : TopTree) (rev : HiddenKey → Option Digest)
-    (openRow : KeyIndex → ChainIndex → Prop) (e : KeyIndex) (l : ChainIndex) (start : Digit)
+    (openRow : KeyIndex → ChainIndex → Prop) (e : KeyIndex) (l : ChainIndex) (start : WinternitzDigit)
     (a : RealState C) (b : SourceStateO1 C × CompState C) (src' : SourceState C) (st' : CompState C)
     (hx : ExtraOpen prims x top s rev openRow a b)
     (hfr : SuffixFrame x s e l start (b.1.base, b.2) (src', st')) :
@@ -140,7 +140,7 @@ theorem extraOpen_suffix (top : TopTree) (rev : HiddenKey → Option Digest)
 /-- One chain of the honest signature below digit 3. The compiler releases the suffix of the chain
 and both sides read the PRF value. The reveal map of the timing clauses stays. -/
 theorem tailChain_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)
-    (rev : HiddenKey → Option Digest) (c : Carried C) (e : KeyIndex) (l : ChainIndex) (d : Digit)
+    (rev : HiddenKey → Option Digest) (c : Carried C) (e : KeyIndex) (l : ChainIndex) (d : WinternitzDigit)
     (hd : d.val < 3) (a : RealState C) (b : SourceStateO1 C × CompState C)
     (hs : SyncAt prims x s pads u rest noise top rev (fun _ _ => False) c c a b)
     (hrows : ∀ d' : XmssSecurity.ChainStep,

@@ -11,7 +11,7 @@ and `0` after it. A world call raises it by `2^-128` only at a keyed input that 
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -70,7 +70,7 @@ theorem logged_query_stopRisk_le (x : Keys3 C)
     (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) (t : (WorldSpec C).Domain)
     (l : LoggedState C) (m : SigningPartnerBoundProof.Monitor)
     (hcov : SigningFlatEagerProof.CacheSeen l.1.1 m) (ht : ¬IsProgram t) :
-    ∑' z, Pr[= z | (loggedImpl prims t).run l] * stopRisk x z.2.1.1
+    ∑' z, Pr{let y ← (loggedImpl prims t).run l}[y = z] * stopRisk x z.2.1.1
         (SigningFlatEagerProof.queryEntryStep keyOf m (SigningPartnerBoundProof.hashEntry ⟨t, z.1⟩)) ≤
       stopRisk x l.1.1 m + (2 ^ 128 : ℝ≥0∞)⁻¹ * (freshKeyedCost keyOf l.1.1 t : ℝ≥0∞) := by
   by_cases halt : SigningGuessProof.AlternativeCommitment x.2.1 x.1 l.1.1

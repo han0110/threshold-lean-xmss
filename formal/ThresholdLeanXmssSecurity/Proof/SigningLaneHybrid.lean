@@ -22,7 +22,7 @@ noncomputable section
 
 namespace ThresholdLeanXmssSecurity.SigningLaneHybridProof
 
-open LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof
+open HashSig LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof
   SigningLane2BridgeProof SigningLane2FlatProof
 
 attribute [local instance] Classical.propDecidable
@@ -33,7 +33,7 @@ variable {C : Committee} (prims : Primitives)
 with its bound message. This is the replay form of `BaseTrialsCached`. -/
 def BaseTrialsResolved (P : PublicParameter) (ρ : KeyIndex → Digest) (s : LaneState C) : Prop :=
   ∀ e message, s.2.1.bound e = some message → e ∈ s.1.2.leafIndices →
-    ∃ u, s.1.1.1.1.1.1 (.hash (randomizerInput P bottomLayer e (ρ e) (bytesLE 32 message))) = some u ∧
+    ∃ u, s.1.1.1.1.1.1 (.hash (randomizerInput P bottomLayer e (ρ e) (littleEndianBytes 32 message))) = some u ∧
       DeterministicSigning.Resolves s.1.1.1.1.1.1 (baseGrind P e message u) ()
 
 /-- The support-wise cached-trials condition is exactly a deterministic replay
@@ -51,7 +51,17 @@ theorem baseTrialsCached_iff_resolved (P : PublicParameter) (ρ : KeyIndex → D
   · intro h e message hb he
     obtain ⟨u, hu, hres⟩ := h e message hb he
     refine ⟨u, hu, fun z hz => ?_⟩
-    rw [hres.run_eq_pure, mem_support_pure_iff] at hz
+    have hpure : ∀ {α : Type} {cache : QueryCache (Query C →ₒ HashOutput)}
+        {computation : OracleComp (Query C →ₒ HashOutput) α} {value : α},
+        DeterministicSigning.Resolves cache computation value →
+        (simulateQ randomOracle computation).run cache = pure (value, cache) := by
+      intro α cache computation value h
+      induction h with
+      | pure value => rfl
+      | query input answer hanswer next value _ ih =>
+        rw [simulateQ_bind, simulateQ_spec_query, StateT.run_bind,
+          QueryImpl.withCaching_run_some _ hanswer, pure_bind, ih]
+    rw [hpure hres, mem_support_pure_iff] at hz
     exact congrArg Prod.snd hz
 
 /-- Removing the two monitors from an eager grind leaves the same lazy-oracle
@@ -85,9 +95,9 @@ theorem not_baseCall_of_isMsg (P : PublicParameter) (ρ : KeyIndex → Digest)
   | none => simp [baseInput, hb] at haddress
   | some message =>
     simp only [baseInput, hb] at haddress
-    have haddress : randomizerInput P bottomLayer e (ρ e) (bytesLE 32 message) = input :=
+    have haddress : randomizerInput P bottomLayer e (ρ e) (littleEndianBytes 32 message) = input :=
       Option.some.inj haddress
-    exact not_isMsg_randomizerInput P bottomLayer e (ρ e) (bytesLE 32 message)
+    exact not_isMsg_randomizerInput P bottomLayer e (ρ e) (littleEndianBytes 32 message)
       (haddress.symm ▸ hmsg)
 
 /-- At a non-base query, the flat lane's cache and trace are those of the
@@ -160,11 +170,11 @@ theorem laneWorld_baseTrialsResolved
   change w.2.2.1.bound e = some message at hb
   rw [hstate] at hb
   have hold (heold : e ∈ s.1.2.leafIndices) :
-      ∃ u, v.2.1.1 (.hash (randomizerInput P bottomLayer e (ρ e) (bytesLE 32 message))) = some u ∧
+      ∃ u, v.2.1.1 (.hash (randomizerInput P bottomLayer e (ρ e) (littleEndianBytes 32 message))) = some u ∧
         DeterministicSigning.Resolves v.2.1.1 (baseGrind P e message u) () := by
     obtain ⟨u, hu, hres⟩ := hinv e message hb heold
     exact ⟨u, hgrow hu, hres.mono hgrow⟩
-  change ∃ u, v.2.1.1 (.hash (randomizerInput P bottomLayer e (ρ e) (bytesLE 32 message))) = some u ∧
+  change ∃ u, v.2.1.1 (.hash (randomizerInput P bottomLayer e (ρ e) (littleEndianBytes 32 message))) = some u ∧
     DeterministicSigning.Resolves v.2.1.1 (baseGrind P e message u) ()
   unfold traceStep at he
   split at he
@@ -188,7 +198,7 @@ theorem laneWorld_baseTrialsResolved
           obtain ⟨u, hu⟩ := countImpl_hash_cached prims _ t
             (hashCallAt_of_baseCall hbase.choose_spec hb') _ step hstep
           have hu' : w.2.1.1.1 (.hash
-              (randomizerInput P bottomLayer hbase.choose (ρ hbase.choose) (bytesLE 32 message))) = some u := by
+              (randomizerInput P bottomLayer hbase.choose (ρ hbase.choose) (littleEndianBytes 32 message))) = some u := by
             rw [hcache]
             exact hu
           rw [grindExtra_base P ρ t (s.1.1.1.1, s.2) hbase hb' w.2 u hu'] at hv'
@@ -234,13 +244,23 @@ theorem laneWorld_traced_base_view
     exact countImpl_hash_hit prims _ t (hashCallAt_of_baseCall hbase.choose_spec hb)
       s.1.1.1.1.1 u hu step hstep
   have hu' : w.2.1.1.1 (.hash
-      (randomizerInput P bottomLayer hbase.choose (ρ hbase.choose) (bytesLE 32 message))) = some u := by
+      (randomizerInput P bottomLayer hbase.choose (ρ hbase.choose) (littleEndianBytes 32 message))) = some u := by
     rw [hc]
     exact hu
   rw [← hoa, grindExtra_base P ρ t (s.1.1.1.1, s.2) hbase hb w.2 u hu'] at hv'
   change (v.1, v.2.1.1) ∈ support
     ((simulateQ (Query C →ₒ HashOutput).randomOracle (baseGrind P hbase.choose message u)).run w.2.1.1.1) at hv'
-  rw [hc, hres.run_eq_pure, mem_support_pure_iff] at hv'
+  have hpure : ∀ {α : Type} {cache : QueryCache (Query C →ₒ HashOutput)}
+      {computation : OracleComp (Query C →ₒ HashOutput) α} {value : α},
+      DeterministicSigning.Resolves cache computation value →
+      (simulateQ randomOracle computation).run cache = pure (value, cache) := by
+    intro α cache computation value h
+    induction h with
+    | pure value => rfl
+    | query input answer hanswer next value _ ih =>
+      rw [simulateQ_bind, simulateQ_spec_query, StateT.run_bind,
+        QueryImpl.withCaching_run_some _ hanswer, pure_bind, ih]
+  rw [hc, hpure hres, mem_support_pure_iff] at hv'
   have hvCache : v.2.1.1 = s.1.1.1.1.1.1 := congrArg Prod.snd hv'
   apply Prod.ext
   · exact congrArg (keptView IsMsg) hvCache
@@ -248,7 +268,7 @@ theorem laneWorld_traced_base_view
     rw [traceStep, dif_pos hbase]
     simp only [hb]
     have hnot : SplitState.cache (s.1.1, s.2) (.hash
-        (randomizerInput P bottomLayer hbase.choose (ρ hbase.choose) (bytesLE 32 message))) ≠ none := by
+        (randomizerInput P bottomLayer hbase.choose (ρ hbase.choose) (littleEndianBytes 32 message))) ≠ none := by
       exact fun h => Option.some_ne_none u (hu.symm.trans h)
     exact if_neg hnot
 
@@ -285,10 +305,10 @@ and a key already represented in the signing trace. -/
 theorem fresh_or_traced_of_not_stale (P : PublicParameter) (ρ : KeyIndex → Digest)
     (s : LaneState C) (hstale : ¬StaleBase P ρ s) (e : KeyIndex) (message : Message)
     (hb : s.2.1.bound e = some message) :
-    s.1.1.1.1.1.1 (.hash (randomizerInput P bottomLayer e (ρ e) (bytesLE 32 message))) = none ∨
+    s.1.1.1.1.1.1 (.hash (randomizerInput P bottomLayer e (ρ e) (littleEndianBytes 32 message))) = none ∨
       e ∈ s.1.2.leafIndices := by
   by_cases hfresh : s.1.1.1.1.1.1
-      (.hash (randomizerInput P bottomLayer e (ρ e) (bytesLE 32 message))) = none
+      (.hash (randomizerInput P bottomLayer e (ρ e) (littleEndianBytes 32 message))) = none
   · exact Or.inl hfresh
   · exact Or.inr (by_contra fun he => hstale ⟨e, message, hb, hfresh, he⟩)
 
@@ -297,7 +317,7 @@ logical content of the cached-trials invariant; it asserts no reachability. -/
 def staleState (P : PublicParameter) (ρ : KeyIndex → Digest) (e : KeyIndex)
     (message : Message) : LaneState C :=
   let cache : HashCache C := (∅ : HashCache C).cacheQuery
-    (.hash (randomizerInput P bottomLayer e (ρ e) (bytesLE 32 message))) 0
+    (.hash (randomizerInput P bottomLayer e (ρ e) (littleEndianBytes 32 message))) 0
   let logged : SigningHitLaneProof.LoggedState C := ((cache, 0), [])
   let state : TsigState C :=
     { SigningCoreProof.tsigInit with bound := Function.update (fun _ => none) e (some message) }

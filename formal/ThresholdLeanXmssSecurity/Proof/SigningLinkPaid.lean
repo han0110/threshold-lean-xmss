@@ -77,7 +77,7 @@ namespace ThresholdLeanXmssSecurity
 
 namespace SigningLinkPaidProof
 
-open LeanXmss ThresholdLeanXmss SigningOpeningProof SigningUnchargedLoggedProof SigningAssemblyProof
+open HashSig LeanXmss ThresholdLeanXmss SigningOpeningProof SigningUnchargedLoggedProof SigningAssemblyProof
   SigningTopRowsProof
 
 attribute [local instance] Classical.propDecidable
@@ -127,8 +127,9 @@ theorem unreleased_badEvent (A : TsigAdversary C) (x : SigningSecurityProof.Keys
   let hk' : SigningDescentProof.HonestKey := { hk with selected := none }
   have hopened : SigningDescentProof.bottomOpened z.cache x.1 z.key hk' =
       SigningDescentProof.bottomOpened z.cache x.1 z.key hk := by
-    rw [SigningDescentProof.bottomOpened_of_none _ _ _ _ (by simp [hk', SigningDescentProof.selectedEncoding]),
-      SigningDescentProof.bottomOpened_of_not_released _ _ _ _ hreleased]
+    exact (SigningDescentProof.bottomOpened_of_none _ _ _ _
+      (by simp [hk', SigningDescentProof.selectedEncoding])).trans
+      (SigningDescentProof.bottomOpened_of_not_released _ _ _ _ hreleased).symm
   rcases SigningDescentProof.descent z.cache z.key hk' (XmssSecurity.Bridge.toModelPk ⟨top.root, x.1⟩)
       forgery.message _ hverify htopRoot hcached (fun _ h => by simp [hk'] at h) with h | h | h | h
   · exact Or.inl h
@@ -172,13 +173,13 @@ theorem win_cover_released (A : TsigAdversary C) (x : SigningSecurityProof.Keys3
 set_option maxRecDepth 100000 in
 /-- The win is at most the charged event, the released partner row and the uncharged rows. -/
 theorem probEvent_win_le_released (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr[Win | jointRun prims A x] ≤
-      Pr[Charged prims x | jointRun prims A x] + Pr[ReleasedPartnerRow prims x | jointRun prims A x] +
-        Pr[UnchargedRow prims x | jointRun prims A x] := by
-  refine (probEvent_mono fun w hw hwin => win_cover_released prims A x w hw hwin).trans
-    ((probEvent_or_le _ _ _).trans ?_)
+    Pr{let z ← jointRun prims A x}[Win z] ≤
+      Pr{let z ← jointRun prims A x}[Charged prims x z] + Pr{let z ← jointRun prims A x}[ReleasedPartnerRow prims x z] +
+        Pr{let z ← jointRun prims A x}[UnchargedRow prims x z] := by
+  refine (prEvent_mono_of_support _ _ _ fun w hw hwin => win_cover_released prims A x w hw hwin).trans
+    ((prEvent_or_le _ _ _).trans ?_)
   rw [add_assoc]
-  exact add_le_add le_rfl (probEvent_or_le _ _ _)
+  exact add_le_add le_rfl (prEvent_or_le _ _ _)
 
 /-! ## The input-side row -/
 
@@ -223,11 +224,11 @@ def ReleasedTransfer : Prop :=
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
     (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) →
     q < 2 ^ 127 →
-    Pr[ReleasedPartnerRow prims x | jointRun prims A x] ≤
-      Pr[fun z => z.1.1.1 = (true, false) ∧
+    Pr{let z ← jointRun prims A x}[ReleasedPartnerRow prims x z] ≤
+      Pr{let z ←
+        SigningOneRunProof.splitRunAt prims A x}[z.1.1.1 = (true, false) ∧
           SigningPartnerLinkProof.BottomPartnerCase prims x (z.1.1, z.2.1.1.1.1) ∧ ReleasedAt z.1.1.2 ∧
-          ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1 |
-        SigningOneRunProof.splitRunAt prims A x]
+          ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1]
 
 set_option maxRecDepth 100000 in
 /-- The crossing of the released partner row into the R1 hit and the lane 2 row. -/
@@ -236,11 +237,11 @@ theorem releasedCrossing (hlink : ReleasedLink prims (C := C)) (htransfer : Rele
     (hx : x ∈ support (TprfSecurityProof.keyGen3 (C := C))) (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (hq : ∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q)
     (hsmall : q < 2 ^ 127) :
-    Pr[ReleasedPartnerRow prims x | jointRun prims A x] ≤
-      Pr[SigningOneRunProof.R1HitRow | SigningOneRunProof.splitRunAt prims A x] +
-        Pr[Lane2Row prims x | SigningOneRunProof.splitRunAt prims A x] := by
-  refine (htransfer A q x hx hkeys hq hsmall).trans ((probEvent_mono fun z hz h => ?_).trans
-    (probEvent_or_le _ _ _))
+    Pr{let z ← jointRun prims A x}[ReleasedPartnerRow prims x z] ≤
+      Pr{let z ← SigningOneRunProof.splitRunAt prims A x}[SigningOneRunProof.R1HitRow z] +
+        Pr{let z ← SigningOneRunProof.splitRunAt prims A x}[Lane2Row prims x z] := by
+  refine (htransfer A q x hx hkeys hq hsmall).trans ((prEvent_mono_of_support _ _ _ fun z hz h => ?_).trans
+    (prEvent_or_le _ _ _))
   obtain ⟨hwin, hpartner, hrel, halt⟩ := h
   by_cases hcached : SigningOneRunProof.CachedSelectionAt z
   · exact Or.inr ⟨hwin, hpartner, hrel, hcached⟩
@@ -258,10 +259,10 @@ theorem chargedLane_bound_oneRun (A : TsigAdversary C) (q : ℕ) (x : SigningSec
     (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (hq : ∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q)
     (hsmall : q < 2 ^ 127) :
-    Pr[Charged prims x | jointRun prims A x] +
-        Pr[SigningOneRunProof.R1HitRow | SigningOneRunProof.splitRunAt prims A x] ≤ (q : ℝ≥0∞) / 2 ^ 128 := by
+    Pr{let z ← jointRun prims A x}[Charged prims x z] +
+        Pr{let z ← SigningOneRunProof.splitRunAt prims A x}[SigningOneRunProof.R1HitRow z] ≤ (q : ℝ≥0∞) / 2 ^ 128 := by
   obtain ⟨T, hhit⟩ := SigningGuessProof.hit_bound_structural_cost prims A q x hx hkeys hq hsmall
-  replace hhit : Pr[SigningCostProof.WinHit prims x | SigningDescentProof.exposedRun prims A x] ≤
+  replace hhit : Pr{let z ← SigningDescentProof.exposedRun prims A x}[SigningCostProof.WinHit prims x z] ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ * SigningGuessProof.sourceExpectedCost prims A x
         (SigningGuessProof.structuralHitCost x T) := hhit
   have hcost := SigningGuessProof.source_output_costs_le prims A x T q hq
@@ -274,14 +275,14 @@ theorem chargedLane_bound_oneRun (A : TsigAdversary C) (q : ℕ) (x : SigningSec
     funext t
     exact (SigningPartnerLinkProof.topDigest_add_bottomDigestCost x t).symm
   let run := SigningDescentProof.exposedRun prims A x
-  have h1 : Pr[Charged prims x | jointRun prims A x] = Pr[SigningGuessProof.ChargedOutput prims x | run] := by
-    change _ = Pr[_ | SigningDescentProof.exposedRun prims A x]
-    rw [← SigningGuessLinkProof.verifyRun_forget, ← jointRun_verify, Functor.map_map, probEvent_map]
+  have h1 : Pr{let z ← jointRun prims A x}[Charged prims x z] = Pr{let z ← run}[SigningGuessProof.ChargedOutput prims x z] := by
+    change _ = Pr{let z ← SigningDescentProof.exposedRun prims A x}[SigningGuessProof.ChargedOutput prims x z]
+    rw [← SigningGuessLinkProof.verifyRun_forget, ← jointRun_verify, Functor.map_map, prEvent_map]
     rfl
-  have h2 := probEvent_or_le run (SigningCostProof.WinHit prims x)
+  have h2 := prEvent_or_le run (SigningCostProof.WinHit prims x)
     (fun r => SigningGuessProof.AlternativeCommitment x.2.1 x.1 r.2.1 ∨
       ∃ key, SigningGuessProof.ResolvedTopPartner x key r.2.1)
-  have h3 := probEvent_or_le run (fun r => SigningGuessProof.AlternativeCommitment x.2.1 x.1 r.2.1)
+  have h3 := prEvent_or_le run (fun r => SigningGuessProof.AlternativeCommitment x.2.1 x.1 r.2.1)
     (fun r => ∃ key, SigningGuessProof.ResolvedTopPartner x key r.2.1)
   have hsum := add_le_add (h2.trans (add_le_add hhit (h3.trans (add_le_add
     (SigningGuessProof.alternativeCommitment_bound_source prims A x)
@@ -304,7 +305,7 @@ def SharedLaneCap : Prop :=
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
     (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) →
     q < 2 ^ 127 →
-    Pr[LaneInputRow prims x | jointRun prims A x] + Pr[Lane2Row prims x | SigningOneRunProof.splitRunAt prims A x] ≤
+    Pr{let z ← jointRun prims A x}[LaneInputRow prims x z] + Pr{let z ← SigningOneRunProof.splitRunAt prims A x}[Lane2Row prims x z] ≤
       (q : ℝ≥0∞) / 2 ^ 128
 
 set_option maxRecDepth 100000 in
@@ -317,7 +318,7 @@ theorem hiddenCoreAt_of_releasedLink (hlink : ReleasedLink prims (C := C))
   rw [SigningCostProof.signingHashError_eq, probEvent_core_eq_win]
   have hcharged := chargedLane_bound_oneRun prims A q x hx hkeys hq hsmall
   have huncharged := (add_le_add
-    (probEvent_mono fun w hw h => laneInputRow_of_unchargedRow prims A x w hw h) le_rfl).trans
+    (prEvent_mono_of_support _ _ _ fun w hw h => laneInputRow_of_unchargedRow prims A x w hw h) le_rfl).trans
     (hcap A q x hx hkeys hq hsmall)
   refine (probEvent_win_le_released prims A x).trans ?_
   refine (add_le_add (add_le_add le_rfl (releasedCrossing prims hlink htransfer A q x hx hkeys hq hsmall))

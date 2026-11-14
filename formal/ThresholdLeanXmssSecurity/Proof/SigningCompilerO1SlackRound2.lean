@@ -13,7 +13,7 @@ reads the complete point at `st`. The key sweep completes each covered position 
 the coalition state moves to `withRecord st e message i`.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1SlackRound2
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -29,7 +29,7 @@ set_option backward.isDefEq.respectTransparency false
 set_option maxRecDepth 10000
 set_option maxHeartbeats 800000
 
-theorem chainStepDigit_mk (d : Digit) (hd : d.val < 3) : chainStepDigit ⟨d.val, hd⟩ = d :=
+theorem chainStepDigit_mk (d : WinternitzDigit) (hd : d.val < 3) : chainStepDigit ⟨d.val, hd⟩ = d :=
   Fin.ext rfl
 
 /-- A lifted step that keeps the linked invariant at `sig` and the signing state keeps the
@@ -73,7 +73,7 @@ variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest)
 After them, the point of the digit is complete. -/
 theorem recordThenCover_point (P : PublicParameter) (seeds : C.Term → HashOutput)
     (hinj : Function.Injective seeds) (sig : TsigState C) (e : KeyIndex) (l : ChainIndex)
-    (d : Digit) (hd : d.val < 3) (src : SourceStateO1 C) (backend : CappedCompilerState C)
+    (d : WinternitzDigit) (hd : d.val < 3) (src : SourceStateO1 C) (backend : CappedCompilerState C)
     (h : ReleaseInvariantO1 seeds s sig src backend)
     (r : (Unit × SourceStateO1 C) × CappedCompilerState C)
     (hr : r ∈ support (runSourceO1 P seeds q s
@@ -93,7 +93,7 @@ theorem recordThenCover_point (P : PublicParameter) (seeds : C.Term → HashOutp
 signer, and the base state holds the signing state from before the call. -/
 theorem round2_callback_below (hinj : Function.Injective x.2.1) (st : TsigState C)
     (i : C.Party) (J : C.Quorum) (e : KeyIndex) (message : Message) (l : ChainIndex)
-    (d : Digit) (hd : d.val < 3) (hb : st.bound e = some message)
+    (d : WinternitzDigit) (hd : d.val < 3) (hb : st.bound e = some message)
     (hlt : (signersAt (withRecord st e message i) e message).card < C.t)
     (src : SourceStateO1 C) (backend : CappedCompilerState C)
     (h : ReleaseInvariantO1 x.2.1 s (withRecord st e message i) src backend)
@@ -127,7 +127,7 @@ theorem round2_callback_below (hinj : Function.Injective x.2.1) (st : TsigState 
 the call. -/
 theorem round2_callback_at (hinj : Function.Injective x.2.1) (st : TsigState C)
     (i : C.Party) (J : C.Quorum) (e : KeyIndex) (message : Message) (l : ChainIndex)
-    (d : Digit) (hd : d.val < 3)
+    (d : WinternitzDigit) (hd : d.val < 3)
     (src : SourceStateO1 C) (backend : CappedCompilerState C)
     (h : ReleaseInvariantO1 x.2.1 s st src backend) (hst : src.base.signing = st)
     (r : (Digest × SourceStateO1 C) × CappedCompilerState C)
@@ -189,7 +189,7 @@ theorem round2_values_below (hinj : Function.Injective x.2.1) (st : TsigState C)
     have loop : SourcePreservesO1 x.1 x.2.1 q s
         (fun src backend => ReleaseInvariantO1 x.2.1 s (withRecord st e message i) src backend ∧
           src.base.signing = st)
-        (Concrete.sequenceFin fun l =>
+        (OverPermutation.sequenceFin fun l =>
           if (encoding l).val < chainLength - 1 then
             some <$> round2Callback prims x i J message false (.chain bottomLayer e l (encoding l))
           else pure none) := by

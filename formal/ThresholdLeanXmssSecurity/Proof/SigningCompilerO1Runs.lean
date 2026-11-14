@@ -15,7 +15,7 @@ The proofs follow `SigningCompilerShare.Table` and `SigningCompilerShareCap`. Th
 run as an opaque program.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Runs
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -83,14 +83,15 @@ private theorem initial_goodC (τ : CPoint → Digest) :
 of the private `SigningCompilerShare.Table.frozen_law`. -/
 private theorem frozen_law (τ : CPoint → Digest) {α : Type}
     (oa : OracleComp (RunSpec C) α) :
-    𝒟[(simulateQ (SigningShareLazy.unifImpl (Table.FrozenState C) +
-      SigningShareLazy.lazyFrozen (Tag := Bool) C.terms τ) oa).run SigningShareLazy.init] =
-    𝒟[do let u ← $ᵗ (C.Term × CPoint → HashOutput)
+    (simulateQ (SigningShareLazy.unifImpl (Table.FrozenState C) +
+      SigningShareLazy.lazyFrozen (Tag := Bool) C.terms τ) oa).run SigningShareLazy.init =ᵈ
+    (do
+         let u ← $ᵗ (C.Term × CPoint → HashOutput)
          (simulateQ (SigningShareLazy.unifImpl (Table.FrozenState C) +
            SigningShareLazy.eagerFrozen (Tag := Bool) C.terms τ
              (SigningShareLazy.fiberTable C.terms τ
                (SigningShareLazy.init : Table.FrozenState C) u))
-           oa).run SigningShareLazy.init] :=
+           oa).run SigningShareLazy.init) :=
   SigningShareLazy.lazyFrozen_eq_eagerFrozen C.terms terms_nodup mem_terms τ oa
     SigningShareLazy.init (initial_good τ)
 
@@ -98,13 +99,14 @@ private theorem frozen_law (τ : CPoint → Digest) {α : Type}
 of the private `SigningCompilerShareCap.frozen_law`. -/
 private theorem frozen_lawC (τ : CPoint → Digest) {α : Type}
     (oa : OracleComp (RunSpecT C (Bool × Bool)) α) :
-    𝒟[(simulateQ (SigningShareLazy.unifImpl (FrozenStateC C) +
-      SigningShareLazy.lazyFrozen (Tag := Bool × Bool) C.terms τ) oa).run SigningShareLazy.init] =
-    𝒟[do let u ← $ᵗ (C.Term × CPoint → HashOutput)
+    (simulateQ (SigningShareLazy.unifImpl (FrozenStateC C) +
+      SigningShareLazy.lazyFrozen (Tag := Bool × Bool) C.terms τ) oa).run SigningShareLazy.init =ᵈ
+    (do
+         let u ← $ᵗ (C.Term × CPoint → HashOutput)
          (simulateQ (SigningShareLazy.unifImpl (FrozenStateC C) +
            SigningShareLazy.eagerFrozen (Tag := Bool × Bool) C.terms τ
              (SigningShareLazy.fiberTable C.terms τ (SigningShareLazy.init : FrozenStateC C) u))
-           oa).run SigningShareLazy.init] :=
+           oa).run SigningShareLazy.init) :=
   SigningShareLazy.lazyFrozen_eq_eagerFrozen C.terms terms_nodup mem_terms τ oa
     SigningShareLazy.init (initial_goodC τ)
 
@@ -154,48 +156,42 @@ theorem compilerRunPadsO1_eq_lazyO1 (hinj : Function.Injective x.2.1) (τ : CPoi
 full outcome before the first share failure has the same probability. -/
 theorem nonbad_lawO1 (τ : CPoint → Digest)
     (G : CompilerOutcomeO1 C × Table.FrozenState C → Prop) :
-    Pr[fun z => G (z.1, SigningShareLazy.erase z.2) ∧ z.2.bad = none |
-      lazyRunO1 prims A x q s pads τ] =
-    Pr[fun z => G (z.1, SigningShareLazy.erase z.2) ∧ z.2.bad = none |
-      tableRunO1 prims A x q s pads τ] := by
+    Pr{let z ←
+      lazyRunO1 prims A x q s pads τ}[G (z.1, SigningShareLazy.erase z.2) ∧ z.2.bad = none] =
+    Pr{let z ←
+      tableRunO1 prims A x q s pads τ}[G (z.1, SigningShareLazy.erase z.2) ∧ z.2.bad = none] := by
   unfold lazyRunO1 lazyHandler
   rw [SigningShareLazy.lazyImpl_frozen_nonbad, Table.erase_init]
-  trans Pr[fun z => G z ∧ z.2.bad = none | do
+  trans Pr{let z ← (do
     let u ← $ᵗ (C.Term × CPoint → HashOutput)
     (simulateQ (SigningShareLazy.unifImpl (Table.FrozenState C) +
       SigningShareLazy.eagerFrozen (Tag := Bool) C.terms τ
         (SigningShareLazy.fiberTable C.terms τ (SigningShareLazy.init : Table.FrozenState C) u))
-      (shareRunTagO1 prims A x q s pads Prod.snd)).run SigningShareLazy.init]
-  · exact probEvent_congr' (fun _ _ => Iff.rfl) (frozen_law τ _)
+      (shareRunTagO1 prims A x q s pads Prod.snd)).run SigningShareLazy.init)}[G z ∧ z.2.bad = none]
+  · exact (frozen_law τ _).prEvent_eq _
   · unfold tableRunO1
-    simp only [probEvent_bind_eq_tsum]
-    apply tsum_congr
-    intro u
-    apply congrArg (fun v => Pr[= u | $ᵗ (C.Term × CPoint → HashOutput)] * v)
+    refine prEvent_bind_congr _ _ _ _ _ fun u => ?_
     exact (SigningShareLazy.eagerImpl_frozen_nonbad C.terms τ _
       (shareRunTagO1 prims A x q s pads Prod.snd) SigningShareLazy.init G).symm
 
 /-- This lemma compares the lazy run with the table run, both with the flag tag. The tag and the
 kind of the first share failure have the same probability. -/
 theorem firstbad_lawO1 (τ : CPoint → Digest) (r : SigningShareLazy.FrozenBad Bool) :
-    Pr[fun z => (SigningShareLazy.erase z.2).bad = some r |
-      lazyRunO1 prims A x q s pads τ] =
-    Pr[fun z => (SigningShareLazy.erase z.2).bad = some r |
-      tableRunO1 prims A x q s pads τ] := by
+    Pr{let z ←
+      lazyRunO1 prims A x q s pads τ}[(SigningShareLazy.erase z.2).bad = some r] =
+    Pr{let z ←
+      tableRunO1 prims A x q s pads τ}[(SigningShareLazy.erase z.2).bad = some r] := by
   unfold lazyRunO1 lazyHandler
   rw [SigningShareLazy.lazyImpl_frozen_firstbad, Table.erase_init]
-  trans Pr[fun z => z.2.bad = some r | do
+  trans Pr{let z ← (do
     let u ← $ᵗ (C.Term × CPoint → HashOutput)
     (simulateQ (SigningShareLazy.unifImpl (Table.FrozenState C) +
       SigningShareLazy.eagerFrozen (Tag := Bool) C.terms τ
         (SigningShareLazy.fiberTable C.terms τ (SigningShareLazy.init : Table.FrozenState C) u))
-      (shareRunTagO1 prims A x q s pads Prod.snd)).run SigningShareLazy.init]
-  · exact probEvent_congr' (fun _ _ => Iff.rfl) (frozen_law τ _)
+      (shareRunTagO1 prims A x q s pads Prod.snd)).run SigningShareLazy.init)}[z.2.bad = some r]
+  · exact (frozen_law τ _).prEvent_eq _
   · unfold tableRunO1
-    simp only [probEvent_bind_eq_tsum]
-    apply tsum_congr
-    intro u
-    apply congrArg (fun v => Pr[= u | $ᵗ (C.Term × CPoint → HashOutput)] * v)
+    refine prEvent_bind_congr _ _ _ _ _ fun u => ?_
     exact (SigningShareLazy.eagerImpl_frozen_firstbad C.terms τ _
       (shareRunTagO1 prims A x q s pads Prod.snd) SigningShareLazy.init r).symm
 
@@ -209,59 +205,52 @@ variable (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) (q : ℕ) (s :
 full outcome before the first share failure has the same probability. -/
 theorem nonbad_lawCO1 (τ : CPoint → Digest)
     (G : CompilerOutcomeO1 C × FrozenStateC C → Prop) :
-    Pr[fun z => G (z.1, SigningShareLazy.erase z.2) ∧ z.2.bad = none |
-      lazyRunCO1 prims A x q s pads τ] =
-    Pr[fun z => G (z.1, SigningShareLazy.erase z.2) ∧ z.2.bad = none |
-      tableRunCO1 prims A x q s pads τ] := by
+    Pr{let z ←
+      lazyRunCO1 prims A x q s pads τ}[G (z.1, SigningShareLazy.erase z.2) ∧ z.2.bad = none] =
+    Pr{let z ←
+      tableRunCO1 prims A x q s pads τ}[G (z.1, SigningShareLazy.erase z.2) ∧ z.2.bad = none] := by
   unfold lazyRunCO1 lazyHandlerTag
   rw [SigningShareLazy.lazyImpl_frozen_nonbad, erase_init]
-  trans Pr[fun z => G z ∧ z.2.bad = none | do
+  trans Pr{let z ← (do
     let u ← $ᵗ (C.Term × CPoint → HashOutput)
     (simulateQ (SigningShareLazy.unifImpl (FrozenStateC C) +
       SigningShareLazy.eagerFrozen (Tag := Bool × Bool) C.terms τ
         (SigningShareLazy.fiberTable C.terms τ (SigningShareLazy.init : FrozenStateC C) u))
-      (shareRunTagO1 prims A x q s pads capTag)).run SigningShareLazy.init]
-  · exact probEvent_congr' (fun _ _ => Iff.rfl) (frozen_lawC τ _)
+      (shareRunTagO1 prims A x q s pads capTag)).run SigningShareLazy.init)}[G z ∧ z.2.bad = none]
+  · exact (frozen_lawC τ _).prEvent_eq _
   · unfold tableRunCO1
-    simp only [probEvent_bind_eq_tsum]
-    apply tsum_congr
-    intro u
-    apply congrArg (fun v => Pr[= u | $ᵗ (C.Term × CPoint → HashOutput)] * v)
+    refine prEvent_bind_congr _ _ _ _ _ fun u => ?_
     exact (SigningShareLazy.eagerImpl_frozen_nonbad C.terms τ _
       (shareRunTagO1 prims A x q s pads capTag) SigningShareLazy.init G).symm
 
 /-- This lemma compares the lazy run with the table run, both with the cap tag. The tag and the
 kind of the first share failure have the same probability. -/
 theorem firstbad_lawCO1 (τ : CPoint → Digest) (r : SigningShareLazy.FrozenBad (Bool × Bool)) :
-    Pr[fun z => (SigningShareLazy.erase z.2).bad = some r |
-      lazyRunCO1 prims A x q s pads τ] =
-    Pr[fun z => (SigningShareLazy.erase z.2).bad = some r |
-      tableRunCO1 prims A x q s pads τ] := by
+    Pr{let z ←
+      lazyRunCO1 prims A x q s pads τ}[(SigningShareLazy.erase z.2).bad = some r] =
+    Pr{let z ←
+      tableRunCO1 prims A x q s pads τ}[(SigningShareLazy.erase z.2).bad = some r] := by
   unfold lazyRunCO1 lazyHandlerTag
   rw [SigningShareLazy.lazyImpl_frozen_firstbad, erase_init]
-  trans Pr[fun z => z.2.bad = some r | do
+  trans Pr{let z ← (do
     let u ← $ᵗ (C.Term × CPoint → HashOutput)
     (simulateQ (SigningShareLazy.unifImpl (FrozenStateC C) +
       SigningShareLazy.eagerFrozen (Tag := Bool × Bool) C.terms τ
         (SigningShareLazy.fiberTable C.terms τ (SigningShareLazy.init : FrozenStateC C) u))
-      (shareRunTagO1 prims A x q s pads capTag)).run SigningShareLazy.init]
-  · exact probEvent_congr' (fun _ _ => Iff.rfl) (frozen_lawC τ _)
+      (shareRunTagO1 prims A x q s pads capTag)).run SigningShareLazy.init)}[z.2.bad = some r]
+  · exact (frozen_lawC τ _).prEvent_eq _
   · unfold tableRunCO1
-    simp only [probEvent_bind_eq_tsum]
-    apply tsum_congr
-    intro u
-    apply congrArg (fun v => Pr[= u | $ᵗ (C.Term × CPoint → HashOutput)] * v)
+    refine prEvent_bind_congr _ _ _ _ _ fun u => ?_
     exact (SigningShareLazy.eagerImpl_frozen_firstbad C.terms τ _
       (shareRunTagO1 prims A x q s pads capTag) SigningShareLazy.init r).symm
 
 /-- The erased first share failure has the same law in the lazy run and in the table run with the
 cap tag. -/
 theorem erased_bad_lawCO1 (τ : CPoint → Digest) :
-    𝒟[(fun z => (SigningShareLazy.erase z.2).bad) <$> lazyRunCO1 prims A x q s pads τ] =
-      𝒟[(fun z => (SigningShareLazy.erase z.2).bad) <$> tableRunCO1 prims A x q s pads τ] := by
-  apply evalDist_ext
-  intro bad
-  rw [← probEvent_eq_eq_probOutput, ← probEvent_eq_eq_probOutput, probEvent_map, probEvent_map]
+    ((fun z => (SigningShareLazy.erase z.2).bad) <$> lazyRunCO1 prims A x q s pads τ) =ᵈ
+      ((fun z => (SigningShareLazy.erase z.2).bad) <$> tableRunCO1 prims A x q s pads τ) := by
+  refine OracleComp.evalDistEq_of_forall_prEvent_eq_output fun bad => ?_
+  rw [prEvent_map, prEvent_map]
   cases bad with
   | none =>
     simpa [SigningShareLazy.erase, Function.comp_def] using

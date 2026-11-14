@@ -64,7 +64,7 @@ namespace ThresholdLeanXmssSecurity
 
 namespace SigningFlatProof
 
-open LeanXmss ThresholdLeanXmss
+open HashSig LeanXmss ThresholdLeanXmss
 
 section Compose
 
@@ -217,7 +217,7 @@ def HashCallAt (input : HashInput) (t : (WorldSpec C).Domain) : Prop :=
 
 /-- The canonical base input of key `e` at the state `st`. It carries the bound message. -/
 def baseInput (P : PublicParameter) (e : KeyIndex) (ρ : Digest) (st : TsigState C) : Option HashInput :=
-  (st.bound e).map fun message => randomizerInput P bottomLayer e ρ (bytesLE 32 message)
+  (st.bound e).map fun message => randomizerInput P bottomLayer e ρ (littleEndianBytes 32 message)
 
 /-- A canonical base call of key `e` at the state `st`. -/
 def BaseCall (P : PublicParameter) (e : KeyIndex) (ρ : Digest) (st : TsigState C) (t : (WorldSpec C).Domain) :
@@ -419,10 +419,10 @@ theorem evalDist_mixed_run_eq_presample_of_cached {α : Type} (computation : Ora
     (cache : (D →ₒ R).QueryCache) (target : D) (habsent : cache target = none)
     (hcached : ∀ result ∈ support ((simulateQ mixedOracle computation).run cache),
       ∃ output, result.2 target = some output) :
-    𝒟[(simulateQ mixedOracle computation).run cache] =
-      𝒟[do
+    (simulateQ mixedOracle computation).run cache =ᵈ
+      (do
         let value ← $ᵗ R
-        (simulateQ mixedOracle computation).run (cache.cacheQuery target value)] := by
+        (simulateQ mixedOracle computation).run (cache.cacheQuery target value)) := by
   induction computation using OracleComp.inductionOn generalizing cache with
   | pure value =>
       exfalso
@@ -439,15 +439,14 @@ theorem evalDist_mixed_run_eq_presample_of_cached {α : Type} (computation : Ora
         apply hcached result
         rw [mem_support_bind_iff]
         exact ⟨u, by simp, hresult⟩
-      rw [OracleComp.DeferredSampling.evalDist_bind_comm]
-      exact OracleComp.DeferredSampling.evalDist_bind_congr_left _ _ _ fun u => ih u cache habsent (hnextCached u)
+      refine EvalDistEq.trans ?_ (OracleComp.EvalDistEq.bind_bind_swap _ _ _)
+      exact EvalDistEq.bind_right _ fun u => ih u cache habsent (hnextCached u)
     · have hrun := fun initialCache => mixed_run_inr (D := D) (R := R) input next initialCache
       by_cases htarget : input = target
       · subst input
         rw [hrun, QueryImpl.withCaching_run_none _ habsent, map_eq_bind_pure_comp]
         simp only [Function.comp_apply, bind_assoc, pure_bind]
-        apply OracleComp.DeferredSampling.evalDist_bind_congr_left
-        intro sampled
+        refine EvalDistEq.bind_right _ fun sampled => ?_
         rw [hrun, QueryImpl.withCaching_run_some _ (QueryCache.cacheQuery_self cache target sampled), pure_bind]
       · cases hinput : cache input with
         | some answer =>
@@ -460,24 +459,12 @@ theorem evalDist_mixed_run_eq_presample_of_cached {α : Type} (computation : Ora
               refine ⟨(answer, cache), ?_, hresult⟩
               rw [QueryImpl.withCaching_run_some _ hinput]
               simp
-            calc
-              𝒟[(simulateQ mixedOracle (next answer)).run cache] =
-                  𝒟[do
-                    let sampled ← $ᵗ R
-                    (simulateQ mixedOracle (next answer)).run (cache.cacheQuery target sampled)] :=
-                ih answer cache habsent hnextCached
-              _ = 𝒟[do
-                    let sampled ← $ᵗ R
-                    (simulateQ mixedOracle
-                      (liftM ((unifSpec + (D →ₒ R)).query (.inr input)) >>= next)).run
-                        (cache.cacheQuery target sampled)] := by
-                apply OracleComp.DeferredSampling.evalDist_bind_congr_left
-                intro sampled
-                have hcachedInput : (cache.cacheQuery target sampled) input = some answer := by
-                  rw [QueryCache.cacheQuery_of_ne cache sampled htarget]
-                  exact hinput
-                rw [hrun, QueryImpl.withCaching_run_some _ hcachedInput, pure_bind]
-            rfl
+            refine (ih answer cache habsent hnextCached).trans ?_
+            refine EvalDistEq.bind_right _ fun sampled => ?_
+            have hcachedInput : (cache.cacheQuery target sampled) input = some answer := by
+              rw [QueryCache.cacheQuery_of_ne cache sampled htarget]
+              exact hinput
+            rw [hrun, QueryImpl.withCaching_run_some _ hcachedInput, pure_bind]
         | none =>
             have htargetAfterInput : ∀ answer : R, (cache.cacheQuery input answer) target = none := by
               intro answer
@@ -493,50 +480,26 @@ theorem evalDist_mixed_run_eq_presample_of_cached {α : Type} (computation : Ora
               refine ⟨(answer, cache.cacheQuery input answer), ?_, hresult⟩
               rw [QueryImpl.withCaching_run_none _ hinput, support_map]
               exact ⟨answer, mem_support_uniformSample R, rfl⟩
-            calc
-              𝒟[$ᵗ R >>= fun answer =>
-                  (simulateQ mixedOracle (next answer)).run (cache.cacheQuery input answer)] =
-                  𝒟[$ᵗ R >>= fun answer => $ᵗ R >>= fun sampled =>
-                      (simulateQ mixedOracle (next answer)).run
-                        ((cache.cacheQuery input answer).cacheQuery target sampled)] := by
-                apply OracleComp.DeferredSampling.evalDist_bind_congr_left
-                intro answer
-                exact ih answer (cache.cacheQuery input answer) (htargetAfterInput answer) (hnextCached answer)
-              _ = 𝒟[$ᵗ R >>= fun sampled => $ᵗ R >>= fun answer =>
-                      (simulateQ mixedOracle (next answer)).run
-                        ((cache.cacheQuery input answer).cacheQuery target sampled)] :=
-                OracleComp.DeferredSampling.evalDist_bind_comm _ _ _
-              _ = 𝒟[$ᵗ R >>= fun sampled => $ᵗ R >>= fun answer =>
-                      (simulateQ mixedOracle (next answer)).run
-                        ((cache.cacheQuery target sampled).cacheQuery input answer)] := by
-                apply OracleComp.DeferredSampling.evalDist_bind_congr_left
-                intro sampled
-                apply OracleComp.DeferredSampling.evalDist_bind_congr_left
-                intro answer
-                rw [QueryCache.cacheQuery_comm_of_ne cache htarget]
-              _ = 𝒟[do
-                    let sampled ← $ᵗ R
-                    (simulateQ mixedOracle
-                      (liftM ((unifSpec + (D →ₒ R)).query (.inr input)) >>= next)).run
-                        (cache.cacheQuery target sampled)] := by
-                apply OracleComp.DeferredSampling.evalDist_bind_congr_left
-                intro sampled
-                have hnone : (cache.cacheQuery target sampled) input = none := by
-                  rw [QueryCache.cacheQuery_of_ne cache sampled htarget]
-                  exact hinput
-                rw [hrun, QueryImpl.withCaching_run_none _ hnone, map_eq_bind_pure_comp]
-                simp only [Function.comp_apply, bind_assoc, pure_bind]
-                rfl
-            rfl
+            refine (EvalDistEq.bind_right _ fun answer =>
+              ih answer (cache.cacheQuery input answer) (htargetAfterInput answer) (hnextCached answer)).trans ?_
+            refine (OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans ?_
+            refine EvalDistEq.bind_right _ fun sampled => ?_
+            have hnone : (cache.cacheQuery target sampled) input = none := by
+              rw [QueryCache.cacheQuery_of_ne cache sampled htarget]
+              exact hinput
+            rw [hrun, QueryImpl.withCaching_run_none _ hnone, map_eq_bind_pure_comp]
+            simp only [Function.comp_apply, bind_assoc, pure_bind]
+            refine EvalDistEq.bind_right _ fun answer => ?_
+            rw [QueryCache.cacheQuery_comm_of_ne cache htarget]
 
 /-- `OracleComp.evalDist_randomOracle_run_eq_query_then_of_cached` of leanVM with private sampling. -/
 theorem evalDist_mixed_run_eq_query_then_of_cached {α : Type} (computation : OracleComp (unifSpec + (D →ₒ R)) α)
     (cache : (D →ₒ R).QueryCache) (target : D)
     (hcached : ∀ result ∈ support ((simulateQ mixedOracle computation).run cache),
       ∃ output, result.2 target = some output) :
-    𝒟[(simulateQ mixedOracle computation).run cache] =
-      𝒟[(randomOracle (spec := D →ₒ R) target).run cache >>= fun queryResult =>
-        (simulateQ mixedOracle computation).run queryResult.2] := by
+    (simulateQ mixedOracle computation).run cache =ᵈ
+      ((randomOracle (spec := D →ₒ R) target).run cache >>= fun queryResult =>
+        (simulateQ mixedOracle computation).run queryResult.2) := by
   cases htarget : cache target with
   | none =>
       rw [QueryImpl.withCaching_run_none _ htarget, map_eq_bind_pure_comp]
@@ -548,8 +511,8 @@ theorem evalDist_mixed_run_eq_query_then_of_cached {α : Type} (computation : Or
 /-- `SigningEagerGrindProof.evalDist_run'_query_bind_const` with private sampling. -/
 theorem evalDist_mixed_run'_query_bind_const {α : Type} (target : D) (oa : OracleComp (unifSpec + (D →ₒ R)) α)
     (cache : (D →ₒ R).QueryCache) :
-    𝒟[(randomOracle (spec := D →ₒ R) target).run cache >>= fun q => (simulateQ mixedOracle oa).run' q.2] =
-      𝒟[(simulateQ mixedOracle oa).run' cache] := by
+    ((randomOracle (spec := D →ₒ R) target).run cache >>= fun q => (simulateQ mixedOracle oa).run' q.2) =ᵈ
+      (simulateQ mixedOracle oa).run' cache := by
   set oa' : OracleComp (unifSpec + (D →ₒ R)) α :=
     oa >>= fun a => liftM ((unifSpec + (D →ₒ R)).query (.inr target)) >>= fun _ => pure a
   have hrun : ∀ c, (simulateQ mixedOracle oa').run c = (simulateQ mixedOracle oa).run c >>= fun r =>
@@ -570,38 +533,38 @@ theorem evalDist_mixed_run'_query_bind_const {α : Type} (target : D) (oa : Orac
     simp only [support_pure, Set.mem_singleton_iff] at hres
     subst hres
     exact SigningEagerGrindProof.randomOracle_run_cached target r.2 q hq
-  have hforget : ∀ c, 𝒟[(simulateQ mixedOracle oa').run' c] = 𝒟[(simulateQ mixedOracle oa).run' c] := by
+  have hforget : ∀ c, (simulateQ mixedOracle oa').run' c =ᵈ (simulateQ mixedOracle oa).run' c := by
     intro c
     have hconst : ∀ x : α × (D →ₒ R).QueryCache,
-        𝒟[(fun x => x.1) <$> ((randomOracle (spec := D →ₒ R) target).run x.2 >>= fun q => pure (x.1, q.2))] =
-          𝒟[(pure x.1 : ProbComp α)] := by
+        ((fun x => x.1) <$> ((randomOracle (spec := D →ₒ R) target).run x.2 >>= fun q => pure (x.1, q.2))) =ᵈ
+          (pure x.1 : ProbComp α) := by
       intro x
       rw [map_bind]
       simp only [map_pure]
-      exact OracleComp.DeferredSampling.evalDist_bind_const_neverFails _ (by simp) _
-    rw [StateT.run'_eq, StateT.run'_eq, hrun, map_bind, evalDist_bind, evalDist_map]
-    simp_rw [hconst]
+      exact OracleComp.EvalDistEq.bind_const _ _
+    rw [StateT.run'_eq, StateT.run'_eq, hrun, map_bind]
+    refine (EvalDistEq.bind_right _ hconst).trans (EvalDistEq.of_eq ?_)
     simp [map_eq_bind_pure_comp]
   have hpre := evalDist_mixed_run_eq_query_then_of_cached oa' cache target (hcached cache)
-  calc _ = 𝒟[(randomOracle (spec := D →ₒ R) target).run cache >>= fun q =>
-          (simulateQ mixedOracle oa').run' q.2] :=
-        OracleComp.DeferredSampling.evalDist_bind_congr_left _ _ _ fun q => (hforget q.2).symm
-    _ = 𝒟[(simulateQ mixedOracle oa').run' cache] := by
-        rw [StateT.run'_eq, evalDist_map, hpre, ← evalDist_map, map_bind]
-        rfl
-    _ = _ := hforget cache
+  refine (EvalDistEq.bind_right ((randomOracle (spec := D →ₒ R) target).run cache)
+    fun q => (hforget q.2).symm).trans ?_
+  refine EvalDistEq.trans ?_ (hforget cache)
+  rw [StateT.run'_eq]
+  refine EvalDistEq.trans (EvalDistEq.of_eq ?_) (hpre.map Prod.fst).symm
+  rw [map_bind]
+  rfl
 
 /-- `SigningEagerGrindProof.evalDist_run'_bind_const` with private sampling in the rest. -/
 theorem evalDist_mixed_run'_bind_const {α β : Type} (ob : OracleComp (D →ₒ R) β)
     (oa : OracleComp (unifSpec + (D →ₒ R)) α) (cache : (D →ₒ R).QueryCache) :
-    𝒟[(simulateQ randomOracle ob).run cache >>= fun r => (simulateQ mixedOracle oa).run' r.2] =
-      𝒟[(simulateQ mixedOracle oa).run' cache] := by
+    ((simulateQ randomOracle ob).run cache >>= fun r => (simulateQ mixedOracle oa).run' r.2) =ᵈ
+      (simulateQ mixedOracle oa).run' cache := by
   induction ob using OracleComp.inductionOn generalizing cache with
   | pure b => simp
   | query_bind t next ih =>
-    rw [simulateQ_bind, simulateQ_spec_query, StateT.run_bind, bind_assoc,
-      ← evalDist_mixed_run'_query_bind_const t oa cache]
-    exact OracleComp.DeferredSampling.evalDist_bind_congr_left _ _ _ fun q => ih q.1 q.2
+    rw [simulateQ_bind, simulateQ_spec_query, StateT.run_bind, bind_assoc]
+    refine EvalDistEq.trans ?_ (evalDist_mixed_run'_query_bind_const t oa cache)
+    exact EvalDistEq.bind_right _ fun q => ih q.1 q.2
 
 /-- The eager grind with private sampling. -/
 def eagerMixed (extra : D → R → OracleComp (D →ₒ R) Unit) :
@@ -611,7 +574,7 @@ def eagerMixed (extra : D → R → OracleComp (D →ₒ R) Unit) :
 /-- The eager run with private sampling has the law of the lazy run. -/
 theorem evalDist_eagerMixed_run' {α : Type} (extra : D → R → OracleComp (D →ₒ R) Unit)
     (oa : OracleComp (unifSpec + (D →ₒ R)) α) (cache : (D →ₒ R).QueryCache) :
-    𝒟[(simulateQ (eagerMixed extra) oa).run' cache] = 𝒟[(simulateQ mixedOracle oa).run' cache] := by
+    (simulateQ (eagerMixed extra) oa).run' cache =ᵈ (simulateQ mixedOracle oa).run' cache := by
   induction oa using OracleComp.inductionOn generalizing cache with
   | pure a => simp
   | query_bind t next ih =>
@@ -623,10 +586,10 @@ theorem evalDist_eagerMixed_run' {α : Type} (extra : D → R → OracleComp (D 
       rfl
     rw [hstep, hstep]
     rcases t with n | t
-    · change 𝒟[(unifFwdImpl (D →ₒ R) n).run cache >>= _] = 𝒟[(unifFwdImpl (D →ₒ R) n).run cache >>= _]
-      exact OracleComp.DeferredSampling.evalDist_bind_congr_left _ _ _ fun q => ih q.1 q.2
-    · change 𝒟[(SigningEagerGrindProof.eagerOracle extra t).run cache >>= _] =
-        𝒟[(randomOracle (spec := D →ₒ R) t).run cache >>= _]
+    · change ((unifFwdImpl (D →ₒ R) n).run cache >>= _) =ᵈ ((unifFwdImpl (D →ₒ R) n).run cache >>= _)
+      exact EvalDistEq.bind_right _ fun q => ih q.1 q.2
+    · change ((SigningEagerGrindProof.eagerOracle extra t).run cache >>= _) =ᵈ
+        ((randomOracle (spec := D →ₒ R) t).run cache >>= _)
       cases hc : cache t with
       | some u =>
         have he : (SigningEagerGrindProof.eagerOracle extra t).run cache = pure (u, cache) := by
@@ -639,10 +602,10 @@ theorem evalDist_eagerMixed_run' {α : Type} (extra : D → R → OracleComp (D 
               (simulateQ randomOracle (extra t q.1)).run q.2 >>= fun r => pure (q.1, r.2) := by
           simp only [SigningEagerGrindProof.eagerOracle, StateT.run_mk, hc]
         rw [he, bind_assoc]
-        refine OracleComp.DeferredSampling.evalDist_bind_congr_left _ _ _ fun q => ?_
+        refine EvalDistEq.bind_right _ fun q => ?_
         simp only [bind_assoc, pure_bind]
-        rw [← evalDist_mixed_run'_bind_const (extra t q.1) (next q.1) q.2, evalDist_bind, evalDist_bind]
-        exact congrArg _ (funext fun r => ih q.1 r.2)
+        refine EvalDistEq.trans ?_ (evalDist_mixed_run'_bind_const (extra t q.1) (next q.1) q.2)
+        exact EvalDistEq.bind_right _ fun r => ih q.1 r.2
 
 end MixedEager
 
@@ -682,8 +645,8 @@ theorem signImpl_simulateQ {α : Type} (oa : OracleComp (WorldSpec C) α) (h : S
 /-- The eager grind on a run of the signing world with no programming query has the law of the run. -/
 theorem evalDist_eager_signImpl {α : Type} (extra : Query C → HashOutput → OracleComp (Query C →ₒ HashOutput) Unit)
     (oa : OracleComp (WorldSpec C) α) (h : SigningHitProof.ProgramFree oa) (cache : HashCache C) :
-    𝒟[(simulateQ (eagerMixed extra) (simulateQ (localQuery prims) (simulateQ SigningHitProof.worldLocalize oa))).run'
-        cache] = 𝒟[(simulateQ (SeedHitProof.signImpl prims) oa).run' cache] := by
+    ((simulateQ (eagerMixed extra) (simulateQ (localQuery prims) (simulateQ SigningHitProof.worldLocalize oa))).run'
+        cache) =ᵈ (simulateQ (SeedHitProof.signImpl prims) oa).run' cache := by
   rw [signImpl_simulateQ prims oa h]
   exact evalDist_eagerMixed_run' extra _ cache
 
@@ -691,9 +654,9 @@ set_option maxRecDepth 100000 in
 /-- The eager grind on `finalRun` has the law of the run of the signing world. -/
 theorem evalDist_eager_finalRun (extra : Query C → HashOutput → OracleComp (Query C →ₒ HashOutput) Unit)
     (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) (cache : HashCache C) :
-    𝒟[(simulateQ (eagerMixed extra) (simulateQ (localQuery prims)
-        (simulateQ SigningHitProof.worldLocalize (SigningDescentProof.finalRun A x)))).run' cache] =
-      𝒟[(simulateQ (SeedHitProof.signImpl prims) (SigningDescentProof.finalRun A x)).run' cache] :=
+    (simulateQ (eagerMixed extra) (simulateQ (localQuery prims)
+        (simulateQ SigningHitProof.worldLocalize (SigningDescentProof.finalRun A x)))).run' cache =ᵈ
+      (simulateQ (SeedHitProof.signImpl prims) (SigningDescentProof.finalRun A x)).run' cache :=
   evalDist_eager_signImpl prims extra _ (SigningHitProof.programFree_finalRun A x) cache
 
 /-- The count of the local calls as a state of the computation. -/
@@ -712,20 +675,21 @@ the result and the count of the run. -/
 theorem evalDist_eager_countImpl {α : Type}
     (extra : Query C → HashOutput → OracleComp (Query C →ₒ HashOutput) Unit)
     (oa : OracleComp (WorldSpec C) α) (h : SigningHitProof.ProgramFree oa) (cache : HashCache C) (n : ℕ) :
-    𝒟[(simulateQ (eagerMixed extra) (simulateQ (localQuery prims)
-        ((simulateQ localCounter (simulateQ SigningHitProof.worldLocalize oa)).run n))).run' cache] =
-      𝒟[(fun z => (z.1, z.2.2)) <$> (simulateQ (SigningCacheProof.countImpl prims) oa).run (cache, n)] := by
-  rw [evalDist_eagerMixed_run', SigningHitProof.programFree_count_local prims oa h, withLocalCount_eq_flat,
+    (simulateQ (eagerMixed extra) (simulateQ (localQuery prims)
+        ((simulateQ localCounter (simulateQ SigningHitProof.worldLocalize oa)).run n))).run' cache =ᵈ
+      ((fun z => (z.1, z.2.2)) <$> (simulateQ (SigningCacheProof.countImpl prims) oa).run (cache, n)) := by
+  refine (evalDist_eagerMixed_run' extra _ cache).trans (EvalDistEq.of_eq ?_)
+  rw [SigningHitProof.programFree_count_local prims oa h, withLocalCount_eq_flat,
     signingLocalAnswer_eq, ← QueryImpl.simulateQ_compose, StateT.run'_eq, ← flat_run, Functor.map_map]
 
 set_option maxRecDepth 100000 in
 /-- The eager grind on `finalRun` has the law of the result and the count of `exposedRun`. -/
 theorem evalDist_eager_exposedRun (extra : Query C → HashOutput → OracleComp (Query C →ₒ HashOutput) Unit)
     (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    𝒟[(simulateQ (eagerMixed extra) (simulateQ (localQuery prims)
+    (simulateQ (eagerMixed extra) (simulateQ (localQuery prims)
         ((simulateQ localCounter (simulateQ SigningHitProof.worldLocalize (SigningDescentProof.finalRun A x))).run
-          0))).run' ∅] =
-      𝒟[(fun z => (z.1, z.2.2)) <$> SigningDescentProof.exposedRun prims A x] :=
+          0))).run' ∅ =ᵈ
+      ((fun z => (z.1, z.2.2)) <$> SigningDescentProof.exposedRun prims A x) :=
   evalDist_eager_countImpl prims extra _ (SigningHitProof.programFree_finalRun A x) ∅ 0
 
 end HashForm

@@ -8,7 +8,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Frame
 - `InPost` is the post of a coupled step inside a handler, on the base source state.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Pre
@@ -43,7 +43,7 @@ theorem ExtraOpen.retop (top top' : TopTree) (openRow : KeyIndex → ChainIndex 
     cases ht
   · intro e l d hd
     obtain ⟨tree, ht⟩ := h.rest.startsTreed e l (Finset.ne_empty_of_mem hd)
-    rw [hnone] at ht
+    rw [hnone (treeOf e)] at ht
     cases ht
 
 end Open

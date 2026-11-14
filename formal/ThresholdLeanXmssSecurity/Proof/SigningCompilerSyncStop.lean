@@ -3,7 +3,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerShareCap
 
 /-! # Persistent stopping events for the fixed signing tables -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerSyncStop
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -192,9 +192,9 @@ theorem ordinaryRaw_cap (P : PublicParameter) (seeds : C.Term → HashOutput)
           | _ => exact ho _ _ hr
       | hash input =>
           cases hz : restRoute seeds pairs input with
-          | none => exact ho _ _ (by simpa only [ordinaryRaw, hz] using hr)
+          | none => exact ho _ _ (by unfold ordinaryRaw at hr; simpa only [hz] using hr)
           | some z => exact le_of_eq (freshRest_cap P seeds pairs z st r
-              (by simpa only [ordinaryRaw, hz] using hr)).symm
+              (by unfold ordinaryRaw at hr; simpa only [hz] using hr)).symm
       | _ => exact ho _ _ hr
 
 attribute [local irreducible] ordinaryStepTag readStepTag eagerHandlerTag SigningShareLazy.eagerImpl ordinary
@@ -361,16 +361,16 @@ theorem fuse_stop {ι κ σ : Type} {spec : OracleSpec ι} {mid : OracleSpec κ}
 theorem tableRunC_eq_tables (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
     (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest) (τ : CPoint → Digest) :
-    𝒟[tableRunC prims A x q s pads τ] =
-      𝒟[do let u ← $ᵗ (C.Term × CPoint → HashOutput)
+    tableRunC prims A x q s pads τ =ᵈ
+      (do
+           let u ← $ᵗ (C.Term × CPoint → HashOutput)
            let noise ← $ᵗ (ChainNoiseIndex → HashOutput)
            let rest ← $ᵗ (RestSlot C → HashOutput)
            eagerRunTagT capTag prims A x q s pads τ
              (SigningShareLazy.fiberTable C.terms τ (SigningShareLazy.init : FrozenStateC C) u)
-             noise rest] := by
+             noise rest) := by
   unfold tableRunC
-  apply evalDist_bind_congr
-  intro u _
+  refine EvalDistEq.bind_right _ fun u => ?_
   rw [← eagerRunTag_capTag]
   exact eagerRunTag_eq_tables capTag prims A x hkeys q s pads τ _
 
@@ -381,15 +381,14 @@ theorem realRun_count_restrict (prims : Primitives) (A : TsigAdversary C) (x : K
     (s : HiddenKey → Digest) (pads : Point → Digest) (u : C.Term × CPoint → HashOutput)
     (rest : RestSlot C → HashOutput) (noise : ChainNoiseIndex → HashOutput)
     (E : SigningLaneUnionProof.TraceOutcome C → Prop) :
-    Pr[E | realRun prims A x s pads
+    Pr{let z ← (realRun prims A x s pads
       (SigningShareLazy.fiberTable C.terms (NoFalse.tau s pads)
-        (SigningShareLazy.init : Table.FrozenState C) u) rest noise] =
-    Pr[fun r => E r ∧ (SigningLaneUnionProof.observed r).2.1 ≤ q |
-      realRun prims A x s pads
+        (SigningShareLazy.init : Table.FrozenState C) u) rest noise)}[E z] =
+    Pr{let r ←
+      (realRun prims A x s pads
         (SigningShareLazy.fiberTable C.terms (NoFalse.tau s pads)
-          (SigningShareLazy.init : Table.FrozenState C) u) rest noise] := by
-  apply probEvent_congr' ?_ rfl
-  intro r hr
+          (SigningShareLazy.init : Table.FrozenState C) u) rest noise)}[E r ∧ (SigningLaneUnionProof.observed r).2.1 ≤ q] := by
+  refine prEvent_congr_of_support _ _ _ fun r hr => ?_
   exact ⟨fun he => ⟨he, realRun_count_le prims A x hkeys q hq s pads u rest noise r hr⟩,
     And.left⟩
 
@@ -498,7 +497,7 @@ end ThresholdLeanXmssSecurity.SigningCompilerSyncStop
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncStop.backendT_stop
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncStop.fuse_stop' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncStop.fuse_stop' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncStop.fuse_stop
 

@@ -75,7 +75,7 @@ namespace ThresholdLeanXmssSecurity
 
 namespace SigningPartnerBoundProof
 
-open LeanXmss ThresholdLeanXmss SigningHitLaneProof SigningCostProof
+open HashSig LeanXmss ThresholdLeanXmss SigningHitLaneProof SigningCostProof
 
 attribute [local instance] Classical.propDecidable
 
@@ -203,8 +203,8 @@ def Monitor.risk (m : Monitor) : ℝ≥0∞ :=
   if m.hit = true then 1 else XmssSecurity.CappedEncodingMonitor.State.pendingRisk m.state
 
 theorem uniformDigest_sum_const (c : ℝ≥0∞) :
-    ∑ digest : XmssSecurity.Digest, Pr[= digest | ($ᵗ XmssSecurity.Digest : ProbComp XmssSecurity.Digest)] * c = c := by
-  simp only [probOutput_uniformSample, Finset.sum_const, Finset.card_univ, nsmul_eq_mul]
+    ∑ digest : XmssSecurity.Digest, Pr{let z ← ($ᵗ XmssSecurity.Digest : ProbComp XmssSecurity.Digest)}[z = digest] * c = c := by
+  simp only [SampleableType.prEvent_uniformSample_eq_singleton, Finset.sum_const, Finset.card_univ, nsmul_eq_mul]
   rw [← mul_assoc, ENNReal.mul_inv_cancel (by simp) (by simp), one_mul]
 
 theorem pendingRisk_install_eq (state : XmssSecurity.EncodingMonitor.State) (e : XmssSecurity.LeafIndex)
@@ -220,7 +220,7 @@ the potential form of `CappedEncodingMonitor.applyUniformQueryMonitor_true_proba
 `CappedEncodingMonitor.applyUniformSignAttemptMonitor_true_probability_le`. -/
 theorem fresh_risk_sum_le (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) (m : Monitor)
     (hm : m.hit = false) (input : XmssSecurity.HashInput) (honest : Bool) :
-    ∑ digest : XmssSecurity.Digest, Pr[= digest | ($ᵗ XmssSecurity.Digest : ProbComp XmssSecurity.Digest)] *
+    ∑ digest : XmssSecurity.Digest, Pr{let z ← ($ᵗ XmssSecurity.Digest : ProbComp XmssSecurity.Digest)}[z = digest] *
         (m.fresh keyOf input digest honest).risk ≤
       m.risk + if (keyOf input).isSome then (Fintype.card XmssSecurity.Digest : ℝ≥0∞)⁻¹ else 0 := by
   have hrisk : m.risk = XmssSecurity.CappedEncodingMonitor.State.pendingRisk m.state := by
@@ -238,7 +238,7 @@ theorem fresh_risk_sum_le (keyOf : XmssSecurity.HashInput → Option XmssSecurit
     | some target =>
       simp only [Monitor.fresh_signed keyOf m input _ honest e hk target hs, Monitor.risk, hm,
         Bool.false_or, decide_eq_true_eq]
-      calc _ ≤ ∑ digest : XmssSecurity.Digest, Pr[= digest | ($ᵗ XmssSecurity.Digest : ProbComp XmssSecurity.Digest)] *
+      calc _ ≤ ∑ digest : XmssSecurity.Digest, Pr{let z ← ($ᵗ XmssSecurity.Digest : ProbComp XmssSecurity.Digest)}[z = digest] *
             ((if digest ∈ ({target} : Finset XmssSecurity.Digest) then 1 else 0) + R) := by
             gcongr with digest
             by_cases hd : digest = target <;> simp [hd, hR]
@@ -251,7 +251,7 @@ theorem fresh_risk_sum_le (keyOf : XmssSecurity.HashInput → Option XmssSecurit
       cases honest with
       | false =>
         simp only [Monitor.fresh_unsigned keyOf m input _ false e hk hs, Bool.false_eq_true, if_false]
-        calc _ ≤ ∑ digest : XmssSecurity.Digest, Pr[= digest | ($ᵗ XmssSecurity.Digest : ProbComp XmssSecurity.Digest)] *
+        calc _ ≤ ∑ digest : XmssSecurity.Digest, Pr{let z ← ($ᵗ XmssSecurity.Digest : ProbComp XmssSecurity.Digest)}[z = digest] *
               (R + if XmssSecurity.TargetSum.ValidDigest digest then
                 (XmssSecurity.TargetSum.validDigests.card : ℝ≥0∞)⁻¹ else 0) := by
               gcongr with digest
@@ -268,7 +268,7 @@ theorem fresh_risk_sum_le (keyOf : XmssSecurity.HashInput → Option XmssSecurit
         have hsplit : R0 + ((m.state.pending e).card : ℝ≥0∞) *
             (XmssSecurity.TargetSum.validDigests.card : ℝ≥0∞)⁻¹ = R :=
           XmssSecurity.CappedEncodingMonitor.State.pendingRisk_install_add m.state e 0
-        calc _ ≤ ∑ digest : XmssSecurity.Digest, Pr[= digest | ($ᵗ XmssSecurity.Digest : ProbComp XmssSecurity.Digest)] *
+        calc _ ≤ ∑ digest : XmssSecurity.Digest, Pr{let z ← ($ᵗ XmssSecurity.Digest : ProbComp XmssSecurity.Digest)}[z = digest] *
               (R0 + if XmssSecurity.TargetSum.ValidDigest digest then
                 (if digest ∈ m.state.pending e then 1 else 0)
               else ((m.state.pending e).card : ℝ≥0∞) *
@@ -300,31 +300,32 @@ def keyedCost (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
   | _ => 0
 
 theorem tsum_probOutput_mul_le_of_const {α : Type} (mx : ProbComp α) (F : α → ℝ≥0∞) (c : ℝ≥0∞)
-    (h : ∀ z ∈ support mx, F z ≤ c) : ∑' z, Pr[= z | mx] * F z ≤ c := by
-  calc ∑' z, Pr[= z | mx] * F z ≤ ∑' z, Pr[= z | mx] * c := by
+    (h : ∀ z ∈ support mx, F z ≤ c) : ∑' z, Pr{let y ← mx}[y = z] * F z ≤ c := by
+  calc ∑' z, Pr{let y ← mx}[y = z] * F z ≤ ∑' z, Pr{let y ← mx}[y = z] * c := by
         refine ENNReal.tsum_le_tsum fun z => ?_
         by_cases hz : z ∈ support mx
         · gcongr
           exact h z hz
-        · rw [probOutput_eq_zero_of_not_mem_support hz, zero_mul, zero_mul]
+        · rw [prEvent_eq_zero_of_not_mem_support _ hz, zero_mul, zero_mul]
     _ ≤ c := by
         rw [ENNReal.tsum_mul_right]
-        calc (∑' z, Pr[= z | mx]) * c ≤ 1 * c := by gcongr; exact tsum_probOutput_le_one
+        calc (∑' z, Pr{let y ← mx}[y = z]) * c ≤ 1 * c := by gcongr; exact (OracleComp.tsum_prEvent_le_one _)
           _ = c := one_mul c
 
 /-- A uniform answer of `H` truncates to a uniform digest. -/
 theorem hashOutput_sum_truncate (g : XmssSecurity.Digest → ℝ≥0∞) :
-    ∑' output, Pr[= output | ($ᵗ HashOutput : ProbComp HashOutput)] * g (XmssSecurity.truncateHash output) =
-      ∑ digest : XmssSecurity.Digest, Pr[= digest | ($ᵗ XmssSecurity.Digest : ProbComp XmssSecurity.Digest)] *
+    ∑' output, Pr{let z ← ($ᵗ HashOutput : ProbComp HashOutput)}[z = output] * g (XmssSecurity.truncateHash output) =
+      ∑ digest : XmssSecurity.Digest, Pr{let z ← ($ᵗ XmssSecurity.Digest : ProbComp XmssSecurity.Digest)}[z = digest] *
         g digest := by
-  rw [← tsum_probOutput_map_mul, tsum_fintype]
+  refine (OracleComp.tsum_prEvent_map_mul _ XmssSecurity.truncateHash g).symm.trans ?_
+  rw [tsum_fintype]
   refine Finset.sum_congr rfl fun digest _ => ?_
   congr 1
-  rw [← probEvent_eq_eq_probOutput, probEvent_map, probOutput_uniformSample]
+  erw [prEvent_map, SampleableType.prEvent_uniformSample_eq_singleton]
   have h := XmssSecurity.Rom.uniform_truncate_probability digest
   refine (Eq.trans ?_ h).trans ?_
   · rfl
-  · rw [card_bitVec]
+  · rw [Fintype.card_bitVec]
 
 /-- The monitor entry of a call of `H` on `q`. -/
 def queryEntry (q : Query C) (output : HashOutput) (honest : Bool) :
@@ -345,7 +346,7 @@ def queryCost (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
   | _ => 0
 
 theorem card_digest_inv : (Fintype.card XmssSecurity.Digest : ℝ≥0∞)⁻¹ = (2 ^ 128 : ℝ≥0∞)⁻¹ := by
-  rw [card_bitVec]
+  rw [Fintype.card_bitVec]
   norm_num [XmssSecurity.digestBits]
 
 /-- A call of the lazy `H` raises the risk by at most `2^-128` at an encoding input, and not at
@@ -353,7 +354,7 @@ all elsewhere, if every cached input is seen. -/
 theorem randomOracle_risk_le (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
     (q : Query C) (honest : Bool) (cache : HashCache C) (m : Monitor)
     (hcov : ∀ input, cache (.hash input) ≠ none → input ∈ m.seen) :
-    ∑' w, Pr[= w | ((Query C →ₒ HashOutput).randomOracle q).run cache] *
+    ∑' w, Pr{let z ← ((Query C →ₒ HashOutput).randomOracle q).run cache}[z = w] *
         (m.after keyOf (queryEntry q w.1 honest)).risk ≤
       m.risk + (2 ^ 128 : ℝ≥0∞)⁻¹ * (queryCost keyOf q : ℝ≥0∞) := by
   cases q with
@@ -365,7 +366,7 @@ theorem randomOracle_risk_le (keyOf : XmssSecurity.HashInput → Option XmssSecu
     have hnone : cache (.hash input) = none := by
       by_contra h
       exact hseen (hcov input h)
-    rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ hnone, tsum_probOutput_map_mul]
+    rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ hnone, OracleComp.tsum_prEvent_map_mul]
     have hfresh : ∀ output : HashOutput,
         (m.after keyOf (queryEntry (C := C) (.hash input) output honest)).risk =
           (m.fresh keyOf input (XmssSecurity.truncateHash output) honest).risk := fun output => by
@@ -392,13 +393,13 @@ def Covered (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) (
 for each hash call at an encoding input. -/
 theorem logged_risk_le (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
     (t : (WorldSpec C).Domain) (s : LoggedState C) (hs : Covered keyOf s) (ht : ¬IsProgram t) :
-    ∑' r, Pr[= r | (loggedImpl prims t).run s] * (monitorOf keyOf r.2.2).risk ≤
+    ∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] * (monitorOf keyOf r.2.2).risk ≤
       (monitorOf keyOf s.2).risk + (2 ^ 128 : ℝ≥0∞)⁻¹ * (keyedCost keyOf t : ℝ≥0∞) := by
   simp only [loggedImpl, SigningCacheProof.countImpl, SeedHitProof.withCount, StateT.run_mk,
-    tsum_probOutput_map_mul, monitorOf_logQuery]
+    OracleComp.tsum_prEvent_map_mul, monitorOf_logQuery]
   have hconst : ∀ {α : Type} (mx : ProbComp α) (F : α → ℝ≥0∞),
       (∀ w, F w = (monitorOf keyOf s.2).risk) →
-      ∑' w, Pr[= w | mx] * F w ≤ (monitorOf keyOf s.2).risk + (2 ^ 128 : ℝ≥0∞)⁻¹ * (keyedCost keyOf t : ℝ≥0∞) :=
+      ∑' w, Pr{let z ← mx}[z = w] * F w ≤ (monitorOf keyOf s.2).risk + (2 ^ 128 : ℝ≥0∞)⁻¹ * (keyedCost keyOf t : ℝ≥0∞) :=
     fun mx F hF => (tsum_probOutput_mul_le_of_const mx F _ fun w _ => (hF w).le).trans le_self_add
   rcases t with ((n | (q | p)) | prog) | (n | (q | p))
   · exact hconst _ _ fun w => rfl
@@ -495,7 +496,7 @@ set_option maxRecDepth 100000 in
 /-- A hit of the monitor on `loggedRun` costs `2^-128` for each hash call at an encoding input. -/
 theorem probEvent_hit_le (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
     (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr[fun z => (monitorOf keyOf z.2.2).hit = true | loggedRun prims A x] ≤
+    Pr{let z ← loggedRun prims A x}[(monitorOf keyOf z.2.2).hit = true] ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ * XmssSecurity.expectedSimulatedCost (loggedImpl prims)
         (fun t _ => (keyedCost keyOf t : ℝ≥0∞)) (SigningDescentProof.finalRun A x) loggedInit := by
   let potential : LoggedState C → ℝ≥0∞ := fun s => (monitorOf keyOf s.2).risk
@@ -505,7 +506,7 @@ theorem probEvent_hit_le (keyOf : XmssSecurity.HashInput → Option XmssSecurity
     intro s hs
     rw [guarded, if_neg hs.2]
     simp [potential, Monitor.risk, hs.1]
-  have hstep : ∀ t s, Inv s → ∑' r, Pr[= r | (loggedImpl prims t).run s] * guarded potential r.2 ≤
+  have hstep : ∀ t s, Inv s → ∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] * guarded potential r.2 ≤
       guarded potential s + (2 ^ 128 : ℝ≥0∞)⁻¹ * (keyedCost keyOf t : ℝ≥0∞) := by
     intro t s hs
     exact SigningGuessProof.guarded_domain_step prims (Covered keyOf) potential
@@ -521,7 +522,7 @@ theorem probEvent_hit_le (keyOf : XmssSecurity.HashInput → Option XmssSecurity
     (fun t _ => (keyedCost keyOf t : ℝ≥0∞)) (2 ^ 128 : ℝ≥0∞)⁻¹ hstep
     (SigningDescentProof.finalRun A x) loggedInit hinit hz
   refine le_trans ?_ hb
-  apply probEvent_mono
+  apply prEvent_mono_of_support _ _ _
   intro z hz hhit
   exact ⟨hhit, noProgramQuery prims C A x z hz⟩
 
@@ -638,7 +639,7 @@ def BottomPartnerLogged (x : SigningSecurityProof.Keys3 C) (z : LoggedOutcome C)
 
 /-- The bottom partner costs `2^-128` for each bottom digest call. -/
 theorem bottomPartnerLogged_bound (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr[BottomPartnerLogged x | loggedRun prims A x] ≤
+    Pr{let z ← loggedRun prims A x}[BottomPartnerLogged x z] ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ * SigningGuessProof.sourceExpectedCost prims A x
         (SigningPartnerLinkProof.bottomDigestCost x) := by
   refine (probEvent_hit_le prims _ A x).trans ?_
@@ -662,7 +663,7 @@ def UnchargedLaneBoundLogged : Prop :=
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
     (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) →
     q < 2 ^ 127 →
-    Pr[UnchargedWinLogged prims x | loggedRun prims A x] ≤ (q : ℝ≥0∞) / 2 ^ 128
+    Pr{let z ← loggedRun prims A x}[UnchargedWinLogged prims x z] ≤ (q : ℝ≥0∞) / 2 ^ 128
 
 set_option maxRecDepth 100000 in
 /-- `SigningPartnerLinkProof.chargedOutput2_bound` with the bottom partner on the log. -/
@@ -671,9 +672,9 @@ theorem chargedOutputLogged_bound (A : TsigAdversary C) (q : ℕ) (x : SigningSe
     (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (hq : ∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q)
     (hsmall : q < 2 ^ 127) :
-    Pr[ChargedOutputLogged prims x | loggedRun prims A x] ≤ (q : ℝ≥0∞) / 2 ^ 128 := by
+    Pr{let z ← loggedRun prims A x}[ChargedOutputLogged prims x z] ≤ (q : ℝ≥0∞) / 2 ^ 128 := by
   obtain ⟨T, hhit⟩ := SigningGuessProof.hit_bound_structural_cost prims A q x hx hkeys hq hsmall
-  replace hhit : Pr[SigningCostProof.WinHit prims x | SigningDescentProof.exposedRun prims A x] ≤
+  replace hhit : Pr{let z ← SigningDescentProof.exposedRun prims A x}[SigningCostProof.WinHit prims x z] ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ * SigningGuessProof.sourceExpectedCost prims A x
         (SigningGuessProof.structuralHitCost x T) := hhit
   have hcost := SigningGuessProof.source_output_costs_le prims A x T q hq
@@ -686,17 +687,17 @@ theorem chargedOutputLogged_bound (A : TsigAdversary C) (q : ℕ) (x : SigningSe
     funext t
     exact (SigningPartnerLinkProof.topDigest_add_bottomDigestCost x t).symm
   let run := SigningDescentProof.exposedRun prims A x
-  have h1 : Pr[ChargedOutputLogged prims x | loggedRun prims A x] ≤
-      Pr[SigningGuessProof.ChargedOutput prims x | run] + Pr[BottomPartnerLogged x | loggedRun prims A x] := by
-    refine (probEvent_or_le _ _ _).trans (le_of_eq ?_)
-    congr 1
-    change _ = Pr[SigningGuessProof.ChargedOutput prims x | SigningDescentProof.exposedRun prims A x]
-    rw [← loggedRun_forget, probEvent_map]
-    rfl
-  have h2 := probEvent_or_le run (SigningCostProof.WinHit prims x)
+  have h1 : Pr{let z ← loggedRun prims A x}[ChargedOutputLogged prims x z] ≤
+      Pr{let z ← run}[SigningGuessProof.ChargedOutput prims x z] + Pr{let z ← loggedRun prims A x}[BottomPartnerLogged x z] := by
+    refine (prEvent_or_le (loggedRun prims A x)
+      (fun z => SigningGuessProof.ChargedOutput prims x (z.1, z.2.1)) (BottomPartnerLogged x)).trans (le_of_eq ?_)
+    refine congrArg₂ (· + ·) ?_ rfl
+    change _ = Pr{let z ← SigningDescentProof.exposedRun prims A x}[SigningGuessProof.ChargedOutput prims x z]
+    rw [← loggedRun_forget, prEvent_map]
+  have h2 := prEvent_or_le run (SigningCostProof.WinHit prims x)
     (fun r => SigningGuessProof.AlternativeCommitment x.2.1 x.1 r.2.1 ∨
       ∃ key, SigningGuessProof.ResolvedTopPartner x key r.2.1)
-  have h3 := probEvent_or_le run (fun r => SigningGuessProof.AlternativeCommitment x.2.1 x.1 r.2.1)
+  have h3 := prEvent_or_le run (fun r => SigningGuessProof.AlternativeCommitment x.2.1 x.1 r.2.1)
     (fun r => ∃ key, SigningGuessProof.ResolvedTopPartner x key r.2.1)
   have hsum := h1.trans (add_le_add (h2.trans (add_le_add hhit (h3.trans (add_le_add
     (SigningGuessProof.alternativeCommitment_bound_source prims A x)
@@ -710,12 +711,12 @@ theorem chargedOutputLogged_bound (A : TsigAdversary C) (q : ℕ) (x : SigningSe
 
 set_option maxRecDepth 100000 in
 theorem win_le_chargedLogged_unchargedLogged (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr[fun r => r.1.2 = false ∧ r.1.1 = true |
-      runSigningWorld prims (SigningCoreProof.flaggedAfter A x)] ≤
-    Pr[ChargedOutputLogged prims x | loggedRun prims A x] +
-      Pr[UnchargedWinLogged prims x | loggedRun prims A x] := by
-  rw [SigningDescentProof.runSigningWorld_flaggedAfter, ← loggedRun_forget, Functor.map_map, probEvent_map]
-  refine (probEvent_mono fun r _ hw => ?_).trans (probEvent_or_le _ _ _)
+    Pr{let r ←
+      runSigningWorld prims (SigningCoreProof.flaggedAfter A x)}[r.1.2 = false ∧ r.1.1 = true] ≤
+    Pr{let z ← loggedRun prims A x}[ChargedOutputLogged prims x z] +
+      Pr{let z ← loggedRun prims A x}[UnchargedWinLogged prims x z] := by
+  rw [SigningDescentProof.runSigningWorld_flaggedAfter, ← loggedRun_forget, Functor.map_map, prEvent_map]
+  refine (prEvent_mono_of_support _ _ _ fun r _ hw => ?_).trans (prEvent_or_le _ _ _)
   by_cases hc : ChargedOutputLogged prims x r
   · exact Or.inl hc
   · exact Or.inr ⟨Prod.ext hw.2 hw.1, hc⟩

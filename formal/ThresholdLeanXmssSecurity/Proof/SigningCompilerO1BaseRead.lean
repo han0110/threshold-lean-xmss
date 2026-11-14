@@ -14,7 +14,7 @@ relation `SyncAt` holds after the call, for each reveal map that the source hold
 - `baseRead_couple` couples a call with no hidden hit. `baseRead_hit` gives a stop at a hidden hit.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1BaseRead
@@ -149,7 +149,7 @@ theorem trace_clauses (input : HashInput) (t : (WorldSpec C).Domain)
     (hstale : aux.2 = false)
     (htraced : ∀ e message, bound e = some message →
       cache (.hash (randomizerInput x.1 bottomLayer e (s (.opening bottomLayer e))
-        (bytesLE 32 message))) ≠ none → e ∈ aux.1.leafIndices)
+        (littleEndianBytes 32 message))) ≠ none → e ∈ aux.1.leafIndices)
     (hvalue : ∀ e, SigningGuessProof.RandomizerCached x.2.1 cache e →
       SigningGuessProof.cachedRandomizer x.2.1 cache e = s (.opening bottomLayer e))
     (hcanon : ∀ e message, input = randomizerInput x.1 bottomLayer e (s (.opening bottomLayer e))
@@ -158,16 +158,16 @@ theorem trace_clauses (input : HashInput) (t : (WorldSpec C).Domain)
     (SigningLaneUnionProof.traceStepAt x.2.1 x.1 cache signing t cache' aux).2 = false ∧
       ∀ e message, bound e = some message →
         cache' (.hash (randomizerInput x.1 bottomLayer e (s (.opening bottomLayer e))
-          (bytesLE 32 message))) ≠ none →
+          (littleEndianBytes 32 message))) ≠ none →
         e ∈ (SigningLaneUnionProof.traceStepAt x.2.1 x.1 cache signing t cache' aux).1.leafIndices := by
   have hnew : ∀ e message, cache' (.hash (randomizerInput x.1 bottomLayer e
-      (s (.opening bottomLayer e)) (bytesLE 32 message))) ≠ none →
+      (s (.opening bottomLayer e)) (littleEndianBytes 32 message))) ≠ none →
       cache (.hash (randomizerInput x.1 bottomLayer e (s (.opening bottomLayer e))
-        (bytesLE 32 message))) ≠ none ∨
-      randomizerInput x.1 bottomLayer e (s (.opening bottomLayer e)) (bytesLE 32 message) = input := by
+        (littleEndianBytes 32 message))) ≠ none ∨
+      randomizerInput x.1 bottomLayer e (s (.opening bottomLayer e)) (littleEndianBytes 32 message) = input := by
     intro e message h
     by_cases he : randomizerInput x.1 bottomLayer e (s (.opening bottomLayer e))
-      (bytesLE 32 message) = input
+      (littleEndianBytes 32 message) = input
     · exact Or.inr he
     · left
       rwa [← hframe _ he (SigningLane2BridgeProof.not_isMsg_randomizerInput _ _ _ _ _)]
@@ -203,7 +203,7 @@ theorem trace_clauses (input : HashInput) (t : (WorldSpec C).Domain)
     rcases hnew e message h' with h1 | h1
     · exact htraced e message hm h1
     · exfalso
-      have hc := hcanon e (bytesLE 32 message) h1.symm
+      have hc := hcanon e (littleEndianBytes 32 message) h1.symm
       apply h
       refine ⟨e, hc, ?_⟩
       rw [baseCall_hashAt_iff x.1 e _ signing input t hcall]
@@ -287,7 +287,9 @@ private theorem core_post (cCore : Carried C) (a a' : RealState C) (src : Source
       candidates := hf.candidates
       flag := hf.flag
       reveal := hf.reveal.frame rfl hreveal
-      releasedPending := fun p v hp hk => hcle (hf.releasedPending p v (hpend ▸ hp) hk)
+      releasedPending := fun p v hp hk => by
+        have h' := hf.releasedPending p v (hpend ▸ hp) hk
+        with_reducible_and_instances exact hcle h'
       opening := ⟨fun e he => (hcr e).trans (hf.opening.actualValue e ((hrc e).mp he)),
         fun e he => SigningGuessProof.randomizerCached_mono _ _ _ hcle e
           (hf.opening.released e he)⟩
@@ -333,7 +335,7 @@ theorem extra_post (top : TopTree) (rev : HiddenKey → Option Digest) (cTime : 
     (hstale : a'.1.1.2.2 = false)
     (htraced : ∀ e message, cTime.1.1.bound e = some message →
       visibleOf a' (.hash (randomizerInput x.1 bottomLayer e (s (.opening bottomLayer e))
-        (bytesLE 32 message))) ≠ none → e ∈ a'.1.1.2.1.leafIndices) :
+        (littleEndianBytes 32 message))) ≠ none → e ∈ a'.1.1.2.1.leafIndices) :
     ExtraOpen prims x top s rev (fun _ _ => False) (withCarried a' cTime)
       (⟨b.1.base, b.1.starts⟩, st') := by
   have hr := hx.rest

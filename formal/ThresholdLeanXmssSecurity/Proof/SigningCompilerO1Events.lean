@@ -8,7 +8,7 @@ event of the compiler outcome. No logged input hits its target, the stale bit is
 lane 2 event passes to the compiler state.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Events
@@ -41,12 +41,12 @@ theorem outsideTrials_chain (P : PublicParameter) (e : XmssSecurity.LeafIndex)
     ⟨SigningCacheLogProof.tracked_hash _, fun e' payload' h => ?_⟩⟩
   · have h' := Query.hash.inj h
     rw [SigningGuessLinkProof.chainInput_eq_bridge] at h'
-    have hb := byte23_chain P bottomLayer e p (Concrete.chainPayload l v)
+    have hb := byte23_chain P bottomLayer e p (Verification.chainPayload l v)
     rw [h', byte23_msg] at hb
     exact hb rfl
   · have h' := Query.hash.inj h
     rw [SigningGuessLinkProof.topChainInput_eq_bridge] at h'
-    have hb := byte23_chain P topLayer (topKey bi) p (Concrete.chainPayload l v)
+    have hb := byte23_chain P topLayer (topKey bi) p (Verification.chainPayload l v)
     rw [h', byte23_msg] at hb
     exact hb rfl
   · have h' := Query.hash.inj h
@@ -286,7 +286,7 @@ theorem final_ghost (z : RealFinal C) (c : CompFinal C)
     unfold SigningLane2Proof.ghostEvent
     rw [hv]
     exact hghost
-  · change c.2.1.1.1.2 ≤ q
+  · simp only [finish, merged, withCache]
     rw [← hcount]
     exact hq
 
@@ -501,7 +501,7 @@ theorem final_no_bottom_hit (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.
         constrained_bottom_chain e l _ (by decide)⟩ hsc
     refine h0.trans ?_
     change SigningCompilerShare.NoFalse.tau s pads _ = _
-    rw [SigningCompilerShare.NoFalse.tau_bottom_chain]
+    erw [SigningCompilerShare.NoFalse.tau_bottom_chain]
     simp
   have hvs : cand.2 = s cand.1 := by
     rw [hval, hk]

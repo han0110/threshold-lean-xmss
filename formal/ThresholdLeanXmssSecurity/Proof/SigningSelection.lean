@@ -45,7 +45,7 @@ namespace ThresholdLeanXmssSecurity
 
 namespace SigningSelectionProof
 
-open LeanXmss ThresholdLeanXmss SigningUnchargedLoggedProof SigningPartnerBoundProof SigningHitLaneProof
+open HashSig LeanXmss ThresholdLeanXmss SigningUnchargedLoggedProof SigningPartnerBoundProof SigningHitLaneProof
   SigningCostProof
 
 attribute [local instance] Classical.propDecidable
@@ -108,7 +108,8 @@ theorem adds_hashQuery (input : XmssSecurity.HashInput) (l : LoggedState C) (z :
     rw [SigningSecurityProof.liftFree, hashQuery, free] at hz
     erw [liftComp_query, simulateQ_query] at hz
     simp at hz
-    exact hz
+    obtain ⟨a, a1, b, b1, hmem, rfl⟩ := hz
+    exact hmem
   simp only [loggedImpl, StateT.run_mk, support_map] at hz'
   obtain ⟨q, -, rfl⟩ := hz'
   refine ⟨QueryLog.singleton _ q.1, rfl, fun entry hentry => ?_⟩
@@ -125,13 +126,12 @@ theorem logged_liftFree_tweakable_pure {α : Type} (a : α) (l : LoggedState C) 
     support ((simulateQ (loggedImpl prims) (SigningSecurityProof.liftFree (tweakable (C := C)
       (pure a : OracleComp HashSpec α)))).run l) = {(a, l)} := by
   simp [tweakable, SigningSecurityProof.liftFree, free]
-  rfl
 
 /-- A grind trial at key `e` with a valid digest is the trial that the grind returns. -/
-theorem adds_grind (P : PublicParameter) (e : KeyIndex) (message : Message) (base : Randomness) :
+theorem adds_grind (P : PublicParameter) (e : KeyIndex) (message : Message) (base : Randomizer) :
     ∀ attempts trial (l : LoggedState C) z,
       z ∈ support ((simulateQ (loggedImpl prims) (SigningSecurityProof.liftFree (tweakable (C := C)
-        (grind P bottomLayer e (bytesLE 32 message) base attempts trial)))).run l) →
+        (grind P bottomLayer e (littleEndianBytes 32 message) base attempts trial)))).run l) →
       Adds (fun entry => entry.2.2 = true ∧ ∃ randomness,
         entry.1 = XmssSecurity.Concrete.CacheView.encodingInput P e (message, randomness) ∧
         (XmssSecurity.TargetSum.ValidDigest entry.2.1 → ∃ encoding, z.1 = some (randomness, encoding))) l z.2 := by
@@ -146,14 +146,14 @@ theorem adds_grind (P : PublicParameter) (e : KeyIndex) (message : Message) (bas
     intro trial l z hz
     rw [grind, liftFree_tweakable_bind] at hz
     obtain ⟨p, hp, hz⟩ := logged_bind prims _ _ l z hz
-    rw [Concrete.messageDigest, Concrete.tweakableHash, liftFree_tweakable_bind] at hp
+    rw [Verification.messageDigestWithHash, Verification.tweakableHashWithHash, Verification.thWithHash, liftFree_tweakable_bind] at hp
     obtain ⟨q, hq, hp⟩ := logged_bind prims _ _ l p hp
     rw [logged_liftFree_tweakable_pure] at hp
     rw [tweakable_oracleHash] at hq
     have hfirst := adds_hashQuery prims _ l q hq
     subst hp
     have hinput : tweakableHashInput P (HashDomain.message bottomLayer e)
-        (bytesLE 32 message ++ bytesLE 16 (base + BitVec.ofNat digestBits trial)) =
+        (littleEndianBytes 32 message ++ littleEndianBytes 16 (base + BitVec.ofNat digestBits trial)) =
         XmssSecurity.Concrete.CacheView.encodingInput P e (message, base + BitVec.ofNat digestBits trial) :=
       XmssSecurity.Bridge.message_input P e message _
     cases hd : Codeword.decode (truncateHash q.1) with
@@ -191,7 +191,7 @@ theorem not_atKey_randomizer (P : PublicParameter) (e e' : KeyIndex) (lay : Laye
 
 /-- A free call of `signCodeword` at key `e` with a valid digest is on its selected input. -/
 theorem adds_signCodeword (P : PublicParameter) (commitment : Digest) (e' : KeyIndex) (message : Message)
-    (ρ : Digest) (e : KeyIndex) (l : LoggedState C) (z : Option (Randomness × Encoding) × LoggedState C)
+    (ρ : Digest) (e : KeyIndex) (l : LoggedState C) (z : Option (Randomizer × Encoding) × LoggedState C)
     (hz : z ∈ support ((simulateQ (loggedImpl prims)
       (SigningSecurityProof.liftFree (signCodeword P commitment e' message ρ))).run l)) :
     Adds (fun entry => entry.2.2 = true ∧ (AtKey P e entry.1 → XmssSecurity.TargetSum.ValidDigest entry.2.1 →
@@ -218,7 +218,8 @@ theorem adds_signCodeword (P : PublicParameter) (commitment : Digest) (e' : KeyI
   refine (adds_grind prims P e' message _ _ _ _ z hz).mono fun entry hentry => ?_
   obtain ⟨hfree, randomness, hinput, hresult⟩ := hentry
   refine ⟨hfree, fun hk hvalid => ?_⟩
-  rw [hinput, AtKey, XmssSecurity.encodingInputLeafIndex?_encodingInput] at hk
+  rw [hinput, AtKey] at hk
+  erw [XmssSecurity.encodingInputLeafIndex?_encodingInput] at hk
   obtain rfl := Option.some.inj hk
   obtain ⟨encoding, henc⟩ := hresult hvalid
   exact ⟨rfl, randomness, encoding, henc, hinput⟩
@@ -229,14 +230,14 @@ section Domains
 
 theorem not_atKey_fields (P : PublicParameter) (e : KeyIndex) (fields : TweakFields) (payload : HashInput)
     (h : fields.tag = BitVec.ofNat 5 12 → fields.hi = BitVec.ofNat 24 0 → False) :
-    ¬AtKey P e (bytesLE 16 P ++ fieldBytes fields ++ payload) := by
+    ¬AtKey P e (littleEndianBytes 16 P ++ addressBytes fields ++ payload) := by
   intro hk
   obtain ⟨y, hy⟩ := XmssSecurity.exists_encodingInput_of_encodingInputLeafIndex?_eq_some P _ e hk
   have heq : XmssSecurity.bytesLE 16 P ++ XmssSecurity.fieldBytes (XmssSecurity.hashDomainFields (.encoding e)) ++
       (XmssSecurity.Concrete.encodingPayload y.1 y.2 ++ XmssSecurity.domainSuffix (.encoding e)) =
       XmssSecurity.bytesLE 16 P ++ XmssSecurity.fieldBytes ⟨fields.tag, fields.step, fields.hi, fields.lo⟩ ++
         payload := by
-    rw [← XmssSecurity.Bridge.tweakableHashInput_eq]
+    erw [← XmssSecurity.Bridge.tweakableHashInput_eq]
     exact hy
   have hf := (XmssSecurity.Bridge.prefix_inj heq).2.1
   exact h (congrArg XmssSecurity.TweakFields.tag hf).symm (congrArg XmssSecurity.TweakFields.hi hf).symm
@@ -257,7 +258,7 @@ theorem not_atKey_tweakable (P : PublicParameter) (e : KeyIndex) (domain : HashD
     simp only [hashDomainFields, tweakFields, layerHi] at hhi
     have h2 := congrArg BitVec.toNat hhi
     simp only [BitVec.toNat_ofNat] at h2
-    simp only [numLayers] at hl
+    simp only [layerCount] at hl
     congr 1
     apply Fin.ext
     simp only [bottomLayer]
@@ -317,13 +318,13 @@ theorem noCall_mapM {α β : Type} (xs : List α) (f : α → OracleComp spec β
     exact noCall_bind p (hf a) fun _ => noCall_bind p ih fun _ => noCall_pure p _
 
 theorem noCall_sequenceFin {α : Type} :
-    ∀ {n : ℕ} (f : Fin n → OracleComp spec α), (∀ i, NoCall p (f i)) → NoCall p (Concrete.sequenceFin f) := by
+    ∀ {n : ℕ} (f : Fin n → OracleComp spec α), (∀ i, NoCall p (f i)) → NoCall p (OverPermutation.sequenceFin f) := by
   intro n
   induction n with
   | zero => intro f _; exact noCall_pure p _
   | succ n ih =>
     intro f hf
-    rw [Concrete.sequenceFin]
+    rw [OverPermutation.sequenceFin]
     exact noCall_bind p (hf 0) fun _ => noCall_bind p (ih _ fun i => hf i.succ) fun _ => noCall_pure p _
 
 end NoCall
@@ -334,17 +335,17 @@ variable (P : PublicParameter) (e : KeyIndex)
 
 theorem tweakableHash_bound (domain : HashDomain) (payload : HashInput)
     (hd : ∀ key, domain ≠ .message bottomLayer key) :
-    NoCall (AtKey P e) (Concrete.tweakableHash P domain payload : OracleComp HashSpec Digest) := by
-  unfold Concrete.tweakableHash
+    NoCall (AtKey P e) (Verification.tweakableHashWithHash P domain payload : OracleComp HashSpec Digest) := by
+  unfold Verification.tweakableHashWithHash
   refine noCall_bind _ ?_ fun _ => noCall_pure _ _
   exact noCall_query _ _ (not_atKey_tweakable P e domain payload hd)
 
 theorem chainWalk_bound (lay : Layer) (key : KeyIndex) (chain : ChainIndex) (start steps : ℕ) (value : Digest) :
-    NoCall (AtKey P e) (Concrete.chainWalk P lay key chain start steps value : OracleComp HashSpec Digest) := by
+    NoCall (AtKey P e) (Verification.chainWalkWithHash P lay key chain start steps value : OracleComp HashSpec Digest) := by
   induction steps with
   | zero => exact noCall_pure _ _
   | succ steps ih =>
-    rw [Concrete.chainWalk]
+    rw [Verification.chainWalkWithHash]
     refine noCall_bind _ ih fun previous => ?_
     split_ifs
     · exact tweakableHash_bound P e _ _ (fun _ h => by cases h)
@@ -369,38 +370,38 @@ theorem merklePath_bound (lay : Layer) (ends : KeyIndex → ChainIndex → Diges
 
 theorem treeFold_bound (lay : Layer) (key : KeyIndex) (path : Fin layerHeight → Digest) :
     ∀ levels value,
-      NoCall (AtKey P e) (Concrete.treeFold P lay key path levels value : OracleComp HashSpec Digest) := by
+      NoCall (AtKey P e) (Verification.treeFoldWithHash P lay key path levels value : OracleComp HashSpec Digest) := by
   intro levels
   induction levels with
   | zero => intro value; exact noCall_pure _ _
   | succ levels ih =>
     intro value
-    rw [Concrete.treeFold]
+    rw [Verification.treeFoldWithHash]
     refine noCall_bind _ (ih _) fun _ => ?_
     split_ifs <;> exact tweakableHash_bound P e _ _ (fun _ h => by cases h)
 
-theorem otsLeaf_top_bound (key : KeyIndex) (message : HashInput) (randomness : Randomness)
+theorem otsLeaf_top_bound (key : KeyIndex) (message : HashInput) (randomness : Randomizer)
     (values : ChainIndex → Digest) :
-    NoCall (AtKey P e) (Concrete.otsLeaf P topLayer key message randomness values : OracleComp HashSpec _) := by
-  unfold Concrete.otsLeaf
+    NoCall (AtKey P e) (Verification.otsLeafWithHash P topLayer key message randomness values : OracleComp HashSpec _) := by
+  unfold Verification.otsLeafWithHash
   refine noCall_bind _
     (tweakableHash_bound P e _ _ (fun _ h => XmssSecurity.Bridge.topLayer_ne_bottom (HashDomain.message.inj h).1))
     fun digest => ?_
   split
   · refine noCall_bind _ (noCall_sequenceFin _ _ fun _ => ?_) fun _ => ?_
-    · unfold Concrete.recoverChain; exact chainWalk_bound P e _ _ _ _ _ _
+    · unfold Verification.recoverChainWithHash; exact chainWalk_bound P e _ _ _ _ _ _
     · exact noCall_map _ _ (tweakableHash_bound P e _ _ (fun _ h => by cases h))
   · exact noCall_pure _ _
 
 theorem layerRoot_top_bound (key : KeyIndex) (message : HashInput) (part : LayerSignature) :
-    NoCall (AtKey P e) (Concrete.layerRoot P topLayer key message part : OracleComp HashSpec _) := by
-  unfold Concrete.layerRoot
+    NoCall (AtKey P e) (Verification.layerRootWithHash P topLayer key message part : OracleComp HashSpec _) := by
+  unfold Verification.layerRootWithHash
   refine noCall_bind _ (otsLeaf_top_bound P e _ _ _ _) fun leaf => ?_
   rcases leaf with _ | leaf
   · exact noCall_pure _ _
   · exact noCall_bind _ (treeFold_bound P e _ _ _ _ _) fun _ => noCall_pure _ _
 
-theorem grind_top_bound (key : KeyIndex) (message : HashInput) (base : Randomness) :
+theorem grind_top_bound (key : KeyIndex) (message : HashInput) (base : Randomizer) :
     ∀ attempts trial, NoCall (AtKey P e) (grind P topLayer key message base attempts trial) := by
   intro attempts
   induction attempts with
@@ -437,7 +438,7 @@ theorem tweakable_bound {α : Type} (Q : HashInput → Prop) (oa : OracleComp Ha
     rw [isQueryBoundP_query_bind_iff] at h
     have ht : ¬Q t := h.1.resolve_right (by omega)
     have hk : ∀ u, (k u).IsQueryBoundP Q 0 := fun u => by simpa [ht] using h.2 u
-    change NoCall (HashQ Q) (tweakable (C := C) (Concrete.oracleHash t >>= k))
+    change NoCall (HashQ Q) (tweakable (C := C) (Verification.oracleHashWithHash t >>= k))
     rw [tweakable_bind, tweakable_oracleHash]
     exact noCall_bind _ (hashQuery_bound Q _ (fun input h => by cases h; exact ht)) fun u => ih u (hk u)
 
@@ -476,7 +477,7 @@ theorem referenceJob_bound (seeds : C.Term → HashOutput) (job : Job) :
   | chainValue key l p => exact noCall_map _ _ (tweakable_bound _ _ (chainWalk_bound P e _ _ _ _ _ _))
   | commitment key =>
     refine noCall_map _ _ ?_
-    change NoCall _ (tweakable (C := C) (Concrete.oracleHash _))
+    change NoCall _ (tweakable (C := C) (Verification.oracleHashWithHash _))
     rw [tweakable_oracleHash]
     exact hashQuery_bound _ _ (fun _ h => by cases h; exact not_atKey_commitment P e key _)
   | randomizer => exact noCall_pure _ _
@@ -525,19 +526,19 @@ variable (P : PublicParameter) (e : KeyIndex)
 /-- The verification calls at key `e` only the digest input of the forgery. -/
 theorem verify_bound (root : Digest) (message : Message) (signature : Signature) :
     NoCall (fun input => AtKey P e input ∧ input ≠ XmssSecurity.Concrete.CacheView.encodingInput P
-        signature.leafIndex (message, (signature.layers bottomLayer).randomness))
-      (Concrete.verify ⟨root, P⟩ message signature : OracleComp HashSpec Bool) := by
-  unfold Concrete.verify Concrete.layerRoot Concrete.otsLeaf
+        signature.leafIndex (message, (signature.layers bottomLayer).randomizer))
+      (Verification.verifyWithHash ⟨root, P⟩ message signature : OracleComp HashSpec Bool) := by
+  unfold Verification.verifyWithHash Verification.layerRootWithHash Verification.otsLeafWithHash
   dsimp only
-  simp only [XmssSecurity.Bridge.keyAt_bottom]
+  simp only [XmssSecurity.Bridge.keyAt_bottom signature.leafIndex]
   refine noCall_bind _ (noCall_bind _ (noCall_bind _ ?_ fun digest => ?_) fun leaf => ?_) fun bottomRoot => ?_
-  · unfold Concrete.messageDigest Concrete.tweakableHash
+  · unfold Verification.messageDigestWithHash Verification.tweakableHashWithHash
     refine noCall_bind _ (noCall_query _ _ ?_) fun _ => noCall_pure _ _
     rintro ⟨-, hne⟩
     exact hne (XmssSecurity.Bridge.message_input P _ message _)
   · split
     · refine noCall_bind _ (noCall_sequenceFin _ _ fun _ => ?_) fun _ => ?_
-      · unfold Concrete.recoverChain
+      · unfold Verification.recoverChainWithHash
         exact noCall_mono _ (fun _ h => h.1) (chainWalk_bound P e _ _ _ _ _ _)
       · exact noCall_map _ _ (noCall_mono _ (fun _ h => h.1) (tweakableHash_bound P e _ _ (fun _ h => by cases h)))
     · exact noCall_pure _ _
@@ -579,7 +580,7 @@ theorem noCall_liftFree (Q : HashInput → Prop) {α : Type} (oa : OracleComp (R
   induction oa using OracleComp.inductionOn with
   | pure a =>
     have h : (SigningSecurityProof.liftFree (pure a : OracleComp (RoSpec C) α)) = pure a := by
-      simp [SigningSecurityProof.liftFree, free]; rfl
+      simp [SigningSecurityProof.liftFree, free]
     rw [noCall_iff, ← noCall_iff, h]
     exact noCall_pure _ _
   | query_bind t k ih =>
@@ -601,13 +602,13 @@ theorem noCall_counted (Q : HashInput → Prop) {α : Type} (oa : OracleComp (Si
   induction oa using OracleComp.inductionOn with
   | pure a =>
     have h : counted (C := C) (pure a : OracleComp (SimulatorSpec C) α) = pure a := by
-      simp [counted]; rfl
+      simp [counted]
     rw [h]
     exact noCall_pure _ _
   | query_bind t k ih =>
     have h : counted (C := C) (liftM (OracleSpec.query t) >>= k) =
         OracleComp.lift (OracleSpec.query (spec := WorldSpec C) (.inl t)) >>= fun u => counted (k u) := by
-      simp [counted]; rfl
+      simp [counted]
     rw [h]
     refine noCall_bind _ (noCall_query _ _ ?_) fun u => ih u
     rintro ⟨input, hinput, -⟩
@@ -650,10 +651,10 @@ section Selects
 /-- Each accepted search at key `e` for `message` from a tree of the run, with caches below
 `cache`, selects `randomness`. -/
 def Selects (x : SigningSecurityProof.Keys3 C) (top : TopTree) (cache : HashCache C) (e : KeyIndex)
-    (message : Message) (randomness : Randomness) : Prop :=
+    (message : Message) (randomness : Randomizer) : Prop :=
   ∀ (tree : BottomTree) (sTree : HashCache C × ℕ) (rTree : Option TreeOutput × HashCache C × ℕ)
-    (sCode : HashCache C × ℕ) (rCode : Option (Randomness × Encoding) × HashCache C × ℕ)
-    (candidate : Digest) (r : Randomness) (encoding : Encoding),
+    (sCode : HashCache C × ℕ) (rCode : Option (Randomizer × Encoding) × HashCache C × ℕ)
+    (candidate : Digest) (r : Randomizer) (encoding : Encoding),
     rTree ∈ support ((simulateQ (SigningCacheProof.countImpl prims) (SigningSecurityProof.liftFree
       (referenceTree tweakable (prfValue x.2.1) x.1 top (.bottom (treeOf e))))).run sTree) →
     rTree.1 = some (.bottom tree) → rTree.2.1 ≤ cache →
@@ -661,7 +662,7 @@ def Selects (x : SigningSecurityProof.Keys3 C) (top : TopTree) (cache : HashCach
       (signCodeword x.1 (tree.commitment e) e message candidate))).run sCode) →
     rCode.1 = some (r, encoding) → rCode.2.1 ≤ cache → r = randomness
 
-theorem bound_of_selected (z : SigningDescentProof.FinalState C) (selected : Message × Randomness)
+theorem bound_of_selected (z : SigningDescentProof.FinalState C) (selected : Message × Randomizer)
     (h : z.selected prims = some selected) : z.state.bound z.key = some selected.1 := by
   unfold SigningDescentProof.FinalState.selected at h
   cases hb : z.state.bound z.key with
@@ -680,7 +681,7 @@ theorem selects_of_final (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C
     (hw : w ∈ support (jointRun prims A x)) (hwin : w.1.1.1 = (true, false))
     (hnalt : ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 w.2.1.1)
     (top : TopTree) (state : TsigState C) (forgery : Forgery) (hm : w.1.1.2 = some (top, state, forgery))
-    (selected : Message × Randomness)
+    (selected : Message × Randomizer)
     (hsel : (finalOf x (w.1.1, w.2.1) top state forgery).selected prims = some selected) :
     Selects prims x top w.2.1.1 forgery.signature.leafIndex selected.1 selected.2 := by
   intro tree sTree rTree sCode rCode candidate r encoding hTree hTreeOut hTreeLe hCode hCodeOut hCodeLe
@@ -731,7 +732,8 @@ theorem adds_onSel_of_noCall (P : PublicParameter) (e : KeyIndex) (selected : Ha
   (adds_world prims _ oa hb l z hz).mono fun _ h hfree hk => (h hfree hk).elim
 
 theorem run_liftM {ι σ α : Type} {spec : OracleSpec ι} (p : OracleComp spec α) (st : σ) :
-    (liftM p : StateT σ (OracleComp spec) α).run st = (fun a => (a, st)) <$> p := rfl
+    (liftM p : StateT σ (OracleComp spec) α).run st = (fun a => (a, st)) <$> p := by
+  rw [map_eq_bind_pure_comp]; rfl
 
 theorem receiptDealt_value (x : SigningSecurityProof.Keys3 C) (top : TopTree) (point : Point) :
     (SigningGuessProof.receiptDealt x top).value point = SigningSecurityProof.liftFree (prfValue x.2.1 point) := rfl
@@ -786,10 +788,11 @@ theorem bottomOnce_tree_runs (x : SigningSecurityProof.Keys3 C) (top : TopTree)
       prims x top b s built hb tree ho
     exact ⟨s, result, hs, hout, hc.le⟩
 
+set_option backward.isDefEq.respectTransparency false in
 set_option maxHeartbeats 1000000 in
 set_option maxRecDepth 100000 in
 theorem adds_round2 (x : SigningSecurityProof.Keys3 C) (top : TopTree) (cache : HashCache C) (e : KeyIndex)
-    (message : Message) (randomness : Randomness) (hsel : Selects prims x top cache e message randomness)
+    (message : Message) (randomness : Randomizer) (hsel : Selects prims x top cache e message randomness)
     (st : TsigState C) (i : C.Party) (J : C.Quorum) (e' : KeyIndex) (message' : Message) (parts : C.Party → Digest)
     (l : LoggedState C) (z : ((TsigSpec C).Range (.round2 i J e' message' parts) × TsigState C) × LoggedState C)
     (hz : z ∈ support ((simulateQ (loggedImpl prims) ((tsigOracles (fun oa => SigningCoreProof.honestLift oa)
@@ -885,6 +888,8 @@ theorem tsigOracles_noCall (x : SigningSecurityProof.Keys3 C) (top : TopTree) (e
     split
     · exact noCall_pure _ _
     · simp only [StateT.run_bind, StateT.run_set, pure_bind, StateT.run_map, run_liftM, Functor.map_map]
+      erw [StateT.run_map]
+      simp only [run_liftM, Functor.map_map]
       refine noCall_map _ _ ?_
       rw [receiptDealt_part]
       exact noCall_liftFree _ _ (eval_bound _ _ _ _ _ _)
@@ -900,7 +905,7 @@ set_option maxHeartbeats 1000000 in
 set_option maxRecDepth 100000 in
 /-- One call of `openingOracles` adds only calls at key `e` on the selected input. -/
 theorem adds_opening_step (x : SigningSecurityProof.Keys3 C) (top : TopTree) (cache : HashCache C) (e : KeyIndex)
-    (message : Message) (randomness : Randomness) (hsel : Selects prims x top cache e message randomness)
+    (message : Message) (randomness : Randomizer) (hsel : Selects prims x top cache e message randomness)
     (t : (LocalSpec C + TsigSpec C).Domain)
     (s : (TsigState C × Bool) × Finset (Fin (2 ^ layerHeight)) × List (SigningOpeningProof.HiddenKey × Digest))
     (l : LoggedState C) (z : ((LocalSpec C + TsigSpec C).Range t × (TsigState C × Bool) ×
@@ -989,7 +994,7 @@ set_option maxHeartbeats 1000000 in
 set_option maxRecDepth 100000 in
 /-- The honest signature at key `e` for the bound message calls at `e` only the selected input. -/
 theorem adds_honestSignature (x : SigningSecurityProof.Keys3 C) (top : TopTree) (cache : HashCache C)
-    (e : KeyIndex) (message : Message) (randomness : Randomness) (hsel : Selects prims x top cache e message randomness)
+    (e : KeyIndex) (message : Message) (randomness : Randomizer) (hsel : Selects prims x top cache e message randomness)
     (l : LoggedState C) (z : Option Signature × LoggedState C)
     (hz : z ∈ support ((simulateQ (loggedImpl prims) (honestSignature (fun oa => SigningCoreProof.honestLift oa)
       (SigningGuessProof.receiptDealt x top) e message)).run l))
@@ -1071,7 +1076,7 @@ set_option maxHeartbeats 1000000 in
 set_option maxRecDepth 100000 in
 /-- The verification and the freshness check call at key `e` only the selected and the forged input. -/
 theorem adds_finish (x : SigningSecurityProof.Keys3 C) (top : TopTree) (cache : HashCache C)
-    (e : KeyIndex) (message : Message) (randomness : Randomness) (hsel : Selects prims x top cache e message randomness)
+    (e : KeyIndex) (message : Message) (randomness : Randomizer) (hsel : Selects prims x top cache e message randomness)
     (trees : Finset (Fin (2 ^ layerHeight))) (forgery : Forgery) (st : TsigState C)
     (hR : SigningGuessProof.ReleasedBound st) (hc : st.corrupt.card ≤ C.t - 1) (hbound : st.bound e = some message)
     (he : forgery.signature.leafIndex = e) (l : LoggedState C)
@@ -1087,7 +1092,7 @@ theorem adds_finish (x : SigningSecurityProof.Keys3 C) (top : TopTree) (cache : 
   obtain ⟨v, hv, hz⟩ := logged_bind prims _ _ l z hz
   refine Adds.trans ((adds_world prims (fun input => AtKey x.1 forgery.signature.leafIndex input ∧
       input ≠ XmssSecurity.Concrete.CacheView.encodingInput x.1 forgery.signature.leafIndex
-        (forgery.message, (forgery.signature.layers bottomLayer).randomness)) _ ?_ l v hv).mono
+        (forgery.message, (forgery.signature.layers bottomLayer).randomizer)) _ ?_ l v hv).mono
       fun entry hentry hfree hk _ =>
     Or.inr (not_not.1 fun hne => hentry hfree ⟨hk, hne⟩)) ?_
   · exact noCall_liftFree _ _ (loggedTweakable_bound x.1 _ _ _ _ (verify_bound x.1 _ _ _ _))
@@ -1152,7 +1157,7 @@ theorem allowed_of_joint (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C
     (hw : w ∈ support (jointRun prims A x)) (hwin : w.1.1.1 = (true, false))
     (hnalt : ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 w.2.1.1)
     (top : TopTree) (state : TsigState C) (forgery : Forgery) (hm : w.1.1.2 = some (top, state, forgery))
-    (selected : Message × Randomness)
+    (selected : Message × Randomizer)
     (hsel : (finalOf x (w.1.1, w.2.1) top state forgery).selected prims = some selected) :
     ∀ entry ∈ w.2.2.filterMap hashEntry, Allowed x.1 forgery.signature.leafIndex
       (XmssSecurity.Concrete.CacheView.encodingInput x.1 forgery.signature.leafIndex selected)

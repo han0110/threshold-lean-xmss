@@ -72,7 +72,7 @@ namespace ThresholdLeanXmssSecurity
 
 namespace SigningFlatEagerProof
 
-open LeanXmss ThresholdLeanXmss SigningFlatProof
+open HashSig LeanXmss ThresholdLeanXmss SigningFlatProof
 
 section HashLaw
 
@@ -92,8 +92,8 @@ reads the rest of the state, and it runs on the cache of the state. -/
 def HashLaw {α : Type} (m : StateT (SigningHitLaneProof.LoggedState C × σ) ProbComp α)
     (M : Rest C σ → OracleComp (HashSpec C) (α × Rest C σ)) : Prop :=
   ∀ (c : HashCache C) (r : Rest C σ) {β : Type} (K : α → Rest C σ → OracleComp (HashSpec C) β),
-    𝒟[m.run (ofRest c r) >>= fun z => (simulateQ mixedOracle (K z.1 (restOf z.2))).run' z.2.1.1.1] =
-      𝒟[(simulateQ mixedOracle (M r >>= fun z => K z.1 z.2)).run' c]
+    (m.run (ofRest c r) >>= fun z => (simulateQ mixedOracle (K z.1 (restOf z.2))).run' z.2.1.1.1) =ᵈ
+      (simulateQ mixedOracle (M r >>= fun z => K z.1 z.2)).run' c
 
 theorem hashLaw_pure {α : Type} (a : α) :
     HashLaw (pure a : StateT (SigningHitLaneProof.LoggedState C × σ) ProbComp α) (fun r => pure (a, r)) := by
@@ -108,11 +108,9 @@ theorem hashLaw_bind {α γ : Type} {m : StateT (SigningHitLaneProof.LoggedState
     (hk : ∀ a, HashLaw (k a) (Kf a)) : HashLaw (m >>= k) (fun r => M r >>= fun z => Kf z.1 z.2) := by
   intro c r β K
   rw [StateT.run_bind, bind_assoc]
-  calc _ = 𝒟[m.run (ofRest c r) >>= fun z =>
-          (simulateQ mixedOracle (Kf z.1 (restOf z.2) >>= fun y => K y.1 y.2)).run' z.2.1.1.1] :=
-        OracleComp.DeferredSampling.evalDist_bind_congr_left _ _ _ fun z => hk z.1 z.2.1.1.1 (restOf z.2) K
-    _ = _ := by
-        rw [hm c r (fun a r' => Kf a r' >>= fun y => K y.1 y.2), bind_assoc]
+  refine EvalDistEq.trans (EvalDistEq.bind_right _ fun z => hk z.1 z.2.1.1.1 (restOf z.2) K) ?_
+  refine (hm c r (fun a r' => Kf a r' >>= fun y => K y.1 y.2)).trans (EvalDistEq.of_eq ?_)
+  rw [bind_assoc]
 
 /-- `hashLaw_bind` with the hash form as a `StateT` computation. -/
 theorem hashLaw_bindT {α γ : Type} {m : StateT (SigningHitLaneProof.LoggedState C × σ) ProbComp α}
@@ -164,11 +162,9 @@ theorem hashLaw_eagerWorld (extra : SigningHitLaneProof.LoggedState C × σ → 
     HashLaw (eagerWorld prims extra t) (worldHash prims t) := by
   intro c r β K
   simp only [eagerWorld, StateT.run_mk, bind_assoc, bind_map_left]
-  calc _ = 𝒟[(carry (SigningCostProof.loggedImpl prims) t).run (ofRest c r) >>= fun z =>
-          (simulateQ mixedOracle (K z.1 (restOf z.2))).run' z.2.1.1.1] :=
-        OracleComp.DeferredSampling.evalDist_bind_congr_left _ _ _ fun z =>
-          evalDist_mixed_run'_bind_const _ _ _
-    _ = _ := hashLaw_carry_logged prims t ht c r K
+  refine EvalDistEq.trans (EvalDistEq.bind_right _ fun z =>
+    evalDist_mixed_run'_bind_const (extra (ofRest c r) t z.2) (K z.1 (restOf z.2)) z.2.1.1.1) ?_
+  exact hashLaw_carry_logged prims t ht c r K
 
 /-- The world calls in hash form, with the rest as state. -/
 def worldTracker : QueryImpl (WorldSpec C) (StateT (Rest C σ) (OracleComp (HashSpec C))) :=
@@ -323,7 +319,7 @@ theorem hashLaw_flatGame (W : QueryImpl (WorldSpec C) (StateT (FlatState C) Prob
 theorem evalDist_map_restOf {σ α : Type} {m : StateT (SigningHitLaneProof.LoggedState C × σ) ProbComp α}
     {M : Rest C σ → OracleComp (HashSpec C) (α × Rest C σ)} (hm : HashLaw m M) (c : HashCache C)
     (r : Rest C σ) :
-    𝒟[(fun z => (z.1, restOf z.2)) <$> m.run (ofRest c r)] = 𝒟[(simulateQ mixedOracle (M r)).run' c] := by
+    ((fun z => (z.1, restOf z.2)) <$> m.run (ofRest c r)) =ᵈ (simulateQ mixedOracle (M r)).run' c := by
   have h := hm c r (fun a r' => pure (a, r'))
   simp only [simulateQ_pure, StateT.run'_eq, StateT.run_pure, map_pure, Prod.mk.eta, bind_pure] at h
   rw [map_eq_bind_pure_comp, StateT.run'_eq]
@@ -335,8 +331,8 @@ theorem evalDist_flatGame_eq (W W' : QueryImpl (WorldSpec C) (StateT (FlatState 
     (hW : ∀ t, ¬SigningHitLaneProof.IsProgram t → HashLaw (W t) (worldHash prims t))
     (hW' : ∀ t, ¬SigningHitLaneProof.IsProgram t → HashLaw (W' t) (worldHash prims t)) (A : TsigAdversary C)
     (x : SigningSecurityProof.Keys3 C) :
-    𝒟[(fun z => (z.1, restOf z.2)) <$> (flatGame W A x).run flatInit] =
-      𝒟[(fun z => (z.1, restOf z.2)) <$> (flatGame W' A x).run flatInit] :=
+    ((fun z => (z.1, restOf z.2)) <$> (flatGame W A x).run flatInit) =ᵈ
+      ((fun z => (z.1, restOf z.2)) <$> (flatGame W' A x).run flatInit) :=
   (evalDist_map_restOf (hashLaw_flatGame prims W hW A x) ∅ ((0, []), (SigningCoreProof.tsigInit, false))).trans
     (evalDist_map_restOf (hashLaw_flatGame prims W' hW' A x) ∅ ((0, []), (SigningCoreProof.tsigInit, false))).symm
 
@@ -350,7 +346,7 @@ variable {C : Committee} (prims : Primitives)
 def baseGrind (P : PublicParameter) (e : KeyIndex) (message : Message) (answer : HashOutput) :
     OracleComp (Query C →ₒ HashOutput) Unit :=
   (fun _ => ()) <$> simulateQ (fun input => query (spec := Query C →ₒ HashOutput) (.hash input))
-    (grind P bottomLayer e (bytesLE 32 message) (truncateHash answer) randomizerAttemptLimit 0)
+    (grind P bottomLayer e (littleEndianBytes 32 message) (truncateHash answer) randomizerAttemptLimit 0)
 
 open Classical in
 /-- At a canonical base call of a key `e`, the grind at `e` on the answer of the call. `ρ e` is the
@@ -361,7 +357,7 @@ def grindExtra (P : PublicParameter) (ρ : KeyIndex → Digest) (p : FlatState C
   if h : ∃ e, BaseCall P e (ρ e) p.2.1 t then
     match p.2.1.bound h.choose with
     | some message =>
-      match p'.1.1.1 (.hash (randomizerInput P bottomLayer h.choose (ρ h.choose) (bytesLE 32 message))) with
+      match p'.1.1.1 (.hash (randomizerInput P bottomLayer h.choose (ρ h.choose) (littleEndianBytes 32 message))) with
       | some answer => baseGrind P h.choose message answer
       | none => pure ()
     | none => pure ()
@@ -376,19 +372,19 @@ def flatEagerRun (P : PublicParameter) (ρ : KeyIndex → Digest) (A : TsigAdver
 state. The final cache differs. -/
 theorem evalDist_flatEagerRun (P : PublicParameter) (ρ : KeyIndex → Digest) (A : TsigAdversary C)
     (x : SigningSecurityProof.Keys3 C) :
-    𝒟[(fun z => (z.1, restOf z.2)) <$> flatEagerRun prims P ρ A x] =
-      𝒟[(fun z => (z.1, restOf z.2)) <$> flatRun prims A x] := by
+    ((fun z => (z.1, restOf z.2)) <$> flatEagerRun prims P ρ A x) =ᵈ
+      ((fun z => (z.1, restOf z.2)) <$> flatRun prims A x) := by
   rw [flatRun_eq_flatGame]
   exact evalDist_flatGame_eq prims _ _ (hashLaw_eagerWorld prims _) (hashLaw_carry_logged prims) A x
 
 /-- The flat eager run has the law of `loggedRun` for the result, the count and the log. -/
 theorem evalDist_flatEagerRun_logged (P : PublicParameter) (ρ : KeyIndex → Digest) (A : TsigAdversary C)
     (x : SigningSecurityProof.Keys3 C) :
-    𝒟[(fun z => (z.1, z.2.1.1.2, z.2.1.2)) <$> flatEagerRun prims P ρ A x] =
-      𝒟[(fun z => (z.1, z.2.1.2, z.2.2)) <$> SigningCostProof.loggedRun prims A x] := by
-  have h := congrArg (fun d => (fun z : Result C × Rest C (TsigState C × Bool) => (z.1, z.2.1.1, z.2.1.2)) <$> d)
-    (evalDist_flatEagerRun prims P ρ A x)
-  simp only [← evalDist_map, Functor.map_map] at h
+    ((fun z => (z.1, z.2.1.1.2, z.2.1.2)) <$> flatEagerRun prims P ρ A x) =ᵈ
+      ((fun z => (z.1, z.2.1.2, z.2.2)) <$> SigningCostProof.loggedRun prims A x) := by
+  have h := (evalDist_flatEagerRun prims P ρ A x).map
+    (fun z : Result C × Rest C (TsigState C × Bool) => (z.1, z.2.1.1, z.2.1.2))
+  simp only [Functor.map_map] at h
   rw [← flatRun_logged, Functor.map_map]
   exact h
 
@@ -437,7 +433,7 @@ theorem trialFresh_seen (keyOf : XmssSecurity.HashInput → Option XmssSecurity.
 sign branch of `fresh_risk_sum_le`, with `CappedEncodingMonitor.uniformDigest_sign_bonus_sum_le`. -/
 theorem trialFresh_risk_sum_le (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) (m : Monitor)
     (input : XmssSecurity.HashInput) :
-    ∑ digest : XmssSecurity.Digest, Pr[= digest | ($ᵗ XmssSecurity.Digest : ProbComp XmssSecurity.Digest)] *
+    ∑ digest : XmssSecurity.Digest, Pr{let z ← ($ᵗ XmssSecurity.Digest : ProbComp XmssSecurity.Digest)}[z = digest] *
         (trialFresh keyOf m input digest).risk ≤ m.risk := by
   by_cases hm : m.hit = true
   · have hone : ∀ digest, (trialFresh keyOf m input digest).risk = m.risk := fun digest => by
@@ -445,7 +441,7 @@ theorem trialFresh_risk_sum_le (keyOf : XmssSecurity.HashInput → Option XmssSe
     simp only [hone, uniformDigest_sum_const, le_refl]
   rw [Bool.not_eq_true] at hm
   have hconst : ∀ (f : XmssSecurity.Digest → Monitor), (∀ digest, (f digest).risk = m.risk) →
-      ∑ digest : XmssSecurity.Digest, Pr[= digest | ($ᵗ XmssSecurity.Digest : ProbComp XmssSecurity.Digest)] *
+      ∑ digest : XmssSecurity.Digest, Pr{let z ← ($ᵗ XmssSecurity.Digest : ProbComp XmssSecurity.Digest)}[z = digest] *
         (f digest).risk ≤ m.risk := fun f hf => by
     simp only [hf, uniformDigest_sum_const, le_refl]
   cases hk : keyOf input with
@@ -471,7 +467,7 @@ theorem trialFresh_risk_sum_le (keyOf : XmssSecurity.HashInput → Option XmssSe
       have hsplit : R0 + ((m.state.pending e).card : ℝ≥0∞) *
           (XmssSecurity.TargetSum.validDigests.card : ℝ≥0∞)⁻¹ = R :=
         XmssSecurity.CappedEncodingMonitor.State.pendingRisk_install_add m.state e 0
-      calc _ ≤ ∑ digest : XmssSecurity.Digest, Pr[= digest | ($ᵗ XmssSecurity.Digest : ProbComp XmssSecurity.Digest)] *
+      calc _ ≤ ∑ digest : XmssSecurity.Digest, Pr{let z ← ($ᵗ XmssSecurity.Digest : ProbComp XmssSecurity.Digest)}[z = digest] *
             (R0 + if XmssSecurity.TargetSum.ValidDigest digest then
               (if digest ∈ m.state.pending e then 1 else 0)
             else ((m.state.pending e).card : ℝ≥0∞) *
@@ -516,8 +512,8 @@ theorem trialStep_seen (keyOf : XmssSecurity.HashInput → Option XmssSecurity.L
 /-- One trial costs nothing if every cached input is seen. -/
 theorem monitoredOracle_risk_le (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) (q : Query C)
     (s : HashCache C × Monitor) (hcov : CacheSeen s.1 s.2) :
-    ∑' r, Pr[= r | (monitoredOracle keyOf q).run s] * r.2.2.risk ≤ s.2.risk := by
-  simp only [monitoredOracle, StateT.run_mk, tsum_probOutput_map_mul]
+    ∑' r, Pr{let z ← (monitoredOracle keyOf q).run s}[z = r] * r.2.2.risk ≤ s.2.risk := by
+  simp only [monitoredOracle, StateT.run_mk, OracleComp.tsum_prEvent_map_mul]
   cases q with
   | hash input =>
     by_cases hseen : input ∈ s.2.seen
@@ -526,7 +522,7 @@ theorem monitoredOracle_risk_le (keyOf : XmssSecurity.HashInput → Option XmssS
     have hnone : s.1 (.hash input) = none := by
       by_contra h
       exact hseen (hcov input h)
-    rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ hnone, tsum_probOutput_map_mul]
+    rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ hnone, OracleComp.tsum_prEvent_map_mul]
     simp only [trialStep, if_neg hseen]
     exact (le_of_eq (hashOutput_sum_truncate fun digest => (trialFresh keyOf s.2 input digest).risk)).trans
       (trialFresh_risk_sum_le keyOf s.2 input)
@@ -551,7 +547,7 @@ theorem monitoredOracle_cacheSeen (keyOf : XmssSecurity.HashInput → Option Xms
 /-- A grind at the base call costs nothing. This is `XmssSecurity.expectedFinal_le` with no cost. -/
 theorem monitoredOracle_run_risk_le (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) {β : Type}
     (ob : OracleComp (Query C →ₒ HashOutput) β) (s : HashCache C × Monitor) (hcov : CacheSeen s.1 s.2) :
-    ∑' r, Pr[= r | (simulateQ (monitoredOracle keyOf) ob).run s] * r.2.2.risk ≤ s.2.risk := by
+    ∑' r, Pr{let z ← (simulateQ (monitoredOracle keyOf) ob).run s}[z = r] * r.2.2.risk ≤ s.2.risk := by
   have h := XmssSecurity.expectedFinal_le (monitoredOracle keyOf) (Inv := fun s => CacheSeen s.1 s.2)
     (fun q s hs r hr => monitoredOracle_cacheSeen keyOf q s hs r hr) (fun s => s.2.risk)
     (fun _ _ => 0 * 0) (fun q s hs => by simpa using monitoredOracle_risk_le keyOf q s hs) ob s hcov
@@ -679,21 +675,21 @@ open SigningPartnerBoundProof ENNReal
 variable {C : Committee} (prims : Primitives) {σ : Type}
 
 theorem tsum_le_of_support {α : Type} (mx : ProbComp α) (f g : α → ℝ≥0∞) (h : ∀ z ∈ support mx, f z ≤ g z) :
-    ∑' z, Pr[= z | mx] * f z ≤ ∑' z, Pr[= z | mx] * g z := by
+    ∑' z, Pr{let y ← mx}[y = z] * f z ≤ ∑' z, Pr{let y ← mx}[y = z] * g z := by
   refine ENNReal.tsum_le_tsum fun z => ?_
   by_cases hz : z ∈ support mx
-  · exact mul_le_mul_left' (h z hz) _
-  · simp [probOutput_eq_zero_of_not_mem_support hz]
+  · exact mul_le_mul_right (h z hz) _
+  · simp [prEvent_eq_zero_of_not_mem_support _ hz]
 
 theorem tsum_eq_of_support {α : Type} (mx : ProbComp α) (f g : α → ℝ≥0∞) (h : ∀ z ∈ support mx, f z = g z) :
-    ∑' z, Pr[= z | mx] * f z = ∑' z, Pr[= z | mx] * g z :=
+    ∑' z, Pr{let y ← mx}[y = z] * f z = ∑' z, Pr{let y ← mx}[y = z] * g z :=
   le_antisymm (tsum_le_of_support mx f g fun z hz => (h z hz).le)
     (tsum_le_of_support mx g f fun z hz => (h z hz).ge)
 
 theorem tsum_probOutput_mul_const_add {α : Type} (mx : ProbComp α) (c : ℝ≥0∞) (f : α → ℝ≥0∞) :
-    ∑' z, Pr[= z | mx] * (c + f z) = c + ∑' z, Pr[= z | mx] * f z := by
+    ∑' z, Pr{let y ← mx}[y = z] * (c + f z) = c + ∑' z, Pr{let y ← mx}[y = z] * f z := by
   simp only [mul_add]
-  rw [ENNReal.tsum_add, ENNReal.tsum_mul_right, tsum_probOutput_eq_one' (probFailure_eq_zero (mx := mx)), one_mul]
+  rw [ENNReal.tsum_add, ENNReal.tsum_mul_right, OracleComp.tsum_prEvent_eq_one, one_mul]
 
 /-- The keyed calls of a log. -/
 def logKeyed (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) (log : QueryLog (WorldSpec C)) : ℕ :=
@@ -711,9 +707,9 @@ def PotStep (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) {
   ∀ p : (SigningHitLaneProof.LoggedState C × Monitor) × σ, CacheSeen p.1.1.1.1 p.1.2 →
     (∀ z ∈ support (m.run p), CacheSeen z.2.1.1.1.1 z.2.1.2 ∧
       logKeyed keyOf p.1.1.2 ≤ logKeyed keyOf z.2.1.1.2) ∧
-    ∑' z, Pr[= z | m.run p] * z.2.1.2.risk ≤
+    ∑' z, Pr{let y ← m.run p}[y = z] * z.2.1.2.risk ≤
       p.1.2.risk + (2 ^ 128 : ℝ≥0∞)⁻¹ *
-        ∑' z, Pr[= z | m.run p] * ((logKeyed keyOf z.2.1.1.2 - logKeyed keyOf p.1.1.2 : ℕ) : ℝ≥0∞)
+        ∑' z, Pr{let y ← m.run p}[y = z] * ((logKeyed keyOf z.2.1.1.2 - logKeyed keyOf p.1.1.2 : ℕ) : ℝ≥0∞)
 
 theorem potStep_pure (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) {α : Type} (x : α) :
     PotStep (σ := σ) keyOf (pure x : StateT ((SigningHitLaneProof.LoggedState C × Monitor) × σ) ProbComp α) := by
@@ -722,7 +718,7 @@ theorem potStep_pure (keyOf : XmssSecurity.HashInput → Option XmssSecurity.Lea
   · simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
     subst hz
     exact ⟨hp, le_rfl⟩
-  · simp only [StateT.run_pure, tsum_probOutput_pure_mul]
+  · simp only [StateT.run_pure, OracleComp.tsum_prEvent_pure_mul]
     exact le_self_add
 
 theorem potStep_bind (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) {α β : Type}
@@ -739,21 +735,21 @@ theorem potStep_bind (keyOf : XmssSecurity.HashInput → Option XmssSecurity.Lea
     exact ⟨hz1, hy2.trans hz2⟩
   · set c : ℝ≥0∞ := (2 ^ 128 : ℝ≥0∞)⁻¹
     set κ := fun q : (SigningHitLaneProof.LoggedState C × Monitor) × σ => logKeyed keyOf q.1.1.2
-    simp only [StateT.run_bind, tsum_probOutput_bind_mul]
-    calc _ ≤ ∑' y, Pr[= y | m.run p] * (y.2.1.2.risk + c * ∑' z, Pr[= z | (k y.1).run y.2] *
+    simp only [StateT.run_bind, OracleComp.tsum_prEvent_bind_mul]
+    calc _ ≤ ∑' y, Pr{let z ← m.run p}[z = y] * (y.2.1.2.risk + c * ∑' z, Pr{let w ← (k y.1).run y.2}[w = z] *
             ((κ z.2 - κ y.2 : ℕ) : ℝ≥0∞)) :=
           tsum_le_of_support _ _ _ fun y hy => (hk y.1 y.2 (hms y hy).1).2
-      _ = ∑' y, Pr[= y | m.run p] * y.2.1.2.risk + c * ∑' y, Pr[= y | m.run p] *
-            ∑' z, Pr[= z | (k y.1).run y.2] * ((κ z.2 - κ y.2 : ℕ) : ℝ≥0∞) := by
+      _ = ∑' y, Pr{let z ← m.run p}[z = y] * y.2.1.2.risk + c * ∑' y, Pr{let z ← m.run p}[z = y] *
+            ∑' z, Pr{let w ← (k y.1).run y.2}[w = z] * ((κ z.2 - κ y.2 : ℕ) : ℝ≥0∞) := by
           simp only [mul_add, ENNReal.tsum_add]
           congr 1
           rw [← ENNReal.tsum_mul_left]
           exact tsum_congr fun y => by ring
-      _ ≤ p.1.2.risk + c * ∑' y, Pr[= y | m.run p] * ((κ y.2 - κ p : ℕ) : ℝ≥0∞) + c * ∑' y, Pr[= y | m.run p] *
-            ∑' z, Pr[= z | (k y.1).run y.2] * ((κ z.2 - κ y.2 : ℕ) : ℝ≥0∞) := by
+      _ ≤ p.1.2.risk + c * ∑' y, Pr{let z ← m.run p}[z = y] * ((κ y.2 - κ p : ℕ) : ℝ≥0∞) + c * ∑' y, Pr{let z ← m.run p}[z = y] *
+            ∑' z, Pr{let w ← (k y.1).run y.2}[w = z] * ((κ z.2 - κ y.2 : ℕ) : ℝ≥0∞) := by
           gcongr
-      _ = p.1.2.risk + c * ∑' y, Pr[= y | m.run p] * (((κ y.2 - κ p : ℕ) : ℝ≥0∞) +
-            ∑' z, Pr[= z | (k y.1).run y.2] * ((κ z.2 - κ y.2 : ℕ) : ℝ≥0∞)) := by
+      _ = p.1.2.risk + c * ∑' y, Pr{let z ← m.run p}[z = y] * (((κ y.2 - κ p : ℕ) : ℝ≥0∞) +
+            ∑' z, Pr{let w ← (k y.1).run y.2}[w = z] * ((κ z.2 - κ y.2 : ℕ) : ℝ≥0∞)) := by
           rw [add_assoc, ← mul_add, ← ENNReal.tsum_add]
           simp only [mul_add]
       _ = _ := by
@@ -775,12 +771,12 @@ theorem potStep_bind (keyOf : XmssSecurity.HashInput → Option XmssSecurity.Lea
 theorem logged_query_risk_le (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
     (t : (WorldSpec C).Domain) (l : SigningHitLaneProof.LoggedState C) (m : Monitor) (hcov : CacheSeen l.1.1 m)
     (ht : ¬SigningHitLaneProof.IsProgram t) :
-    ∑' z, Pr[= z | (SigningCostProof.loggedImpl prims t).run l] * (queryEntryStep keyOf m (hashEntry ⟨t, z.1⟩)).risk ≤
+    ∑' z, Pr{let y ← (SigningCostProof.loggedImpl prims t).run l}[y = z] * (queryEntryStep keyOf m (hashEntry ⟨t, z.1⟩)).risk ≤
       m.risk + (2 ^ 128 : ℝ≥0∞)⁻¹ * (keyedCost keyOf t : ℝ≥0∞) := by
   simp only [SigningCostProof.loggedImpl, SigningCacheProof.countImpl, SeedHitProof.withCount, StateT.run_mk,
-    tsum_probOutput_map_mul]
+    OracleComp.tsum_prEvent_map_mul]
   have hconst : ∀ {α : Type} (mx : ProbComp α) (F : α → ℝ≥0∞), (∀ w, F w = m.risk) →
-      ∑' w, Pr[= w | mx] * F w ≤ m.risk + (2 ^ 128 : ℝ≥0∞)⁻¹ * (keyedCost keyOf t : ℝ≥0∞) :=
+      ∑' w, Pr{let z ← mx}[z = w] * F w ≤ m.risk + (2 ^ 128 : ℝ≥0∞)⁻¹ * (keyedCost keyOf t : ℝ≥0∞) :=
     fun mx F hF => (tsum_probOutput_mul_le_of_const mx F _ fun w _ => (hF w).le).trans le_self_add
   rcases t with ((n | (q | p)) | prog) | (n | (q | p))
   · exact hconst _ _ fun w => rfl
@@ -873,22 +869,22 @@ theorem potStep_monitoredWorld (keyOf : XmssSecurity.HashInput → Option XmssSe
     change logKeyed keyOf r.2.2 = _
     rw [SigningHitLaneProof.loggedImpl_log prims t p.1.1 r hr, logKeyed_logQuery]
   refine ⟨fun z hz => ⟨(hfinal z hz).1, (hfinal z hz).2 ▸ Nat.le_add_right _ _⟩, ?_⟩
-  have hcost : ∑' z, Pr[= z | (monitoredWorld prims keyOf extra t).run p] *
+  have hcost : ∑' z, Pr{let y ← (monitoredWorld prims keyOf extra t).run p}[y = z] *
       ((logKeyed keyOf z.2.1.1.2 - logKeyed keyOf p.1.1.2 : ℕ) : ℝ≥0∞) = (keyedCost keyOf t : ℝ≥0∞) := by
     rw [tsum_eq_of_support _ _ (fun _ => (keyedCost keyOf t : ℝ≥0∞) + 0) fun z hz => by
         rw [(hfinal z hz).2, Nat.add_sub_cancel_left, add_zero],
       tsum_probOutput_mul_const_add]
     simp
   rw [hcost]
-  simp only [monitoredWorld, StateT.run_mk, tsum_probOutput_bind_mul, tsum_probOutput_map_mul]
-  calc _ ≤ ∑' y, Pr[= y | (carry (SigningCostProof.loggedImpl prims) t).run (p.1.1, p.2)] *
+  simp only [monitoredWorld, StateT.run_mk, OracleComp.tsum_prEvent_bind_mul, OracleComp.tsum_prEvent_map_mul]
+  calc _ ≤ ∑' y, Pr{let z ← (carry (SigningCostProof.loggedImpl prims) t).run (p.1.1, p.2)}[z = y] *
           (queryEntryStep keyOf p.1.2 (hashEntry ⟨t, y.1⟩)).risk := by
         refine tsum_le_of_support _ _ _ fun y hy => ?_
         obtain ⟨r, hr, rfl⟩ := hcarry y hy
         exact monitoredOracle_run_risk_le keyOf _ _
           (logged_query_cacheSeen prims keyOf t p.1.1 p.1.2 hp ht r hr)
     _ ≤ _ := by
-        simp only [carry, StateT.run_mk, tsum_probOutput_map_mul]
+        simp only [carry, StateT.run_mk, OracleComp.tsum_prEvent_map_mul]
         exact logged_query_risk_le prims keyOf t p.1.1 p.1.2 hp ht
 
 theorem potStep_simulateQ_world (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
@@ -924,7 +920,7 @@ theorem potStep_flatWith (keyOf : XmssSecurity.HashInput → Option XmssSecurity
     PotStep keyOf (flatWith outer W t) := by
   intro p hp
   obtain ⟨hs, hr⟩ := potStep_simulateQ_world keyOf W hW _ (hfree t p.2) p hp
-  simp only [flatWith, StateT.run_mk, support_map, Set.mem_image, tsum_probOutput_map_mul]
+  simp only [flatWith, StateT.run_mk, support_map, Set.mem_image, OracleComp.tsum_prEvent_map_mul]
   refine ⟨?_, hr⟩
   rintro _ ⟨z, hz, rfl⟩
   exact hs z hz
@@ -993,8 +989,8 @@ theorem monitoredRun_forget (keyOf : XmssSecurity.HashInput → Option XmssSecur
 /-- The hit costs `2^-128` for each keyed call of the log in expectation. -/
 theorem probEvent_r1Hit_le_logKeyed (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
     (P : PublicParameter) (ρ : KeyIndex → Digest) (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr[R1Hit | monitoredRun prims keyOf P ρ A x] ≤
-      (2 ^ 128 : ℝ≥0∞)⁻¹ * ∑' z, Pr[= z | monitoredRun prims keyOf P ρ A x] *
+    Pr{let z ← monitoredRun prims keyOf P ρ A x}[R1Hit z] ≤
+      (2 ^ 128 : ℝ≥0∞)⁻¹ * ∑' z, Pr{let y ← monitoredRun prims keyOf P ρ A x}[y = z] *
         (logKeyed keyOf z.2.1.1.2 : ℝ≥0∞) := by
   classical
   have hinit : CacheSeen (monitoredInit (C := C)).1.1.1.1 (monitoredInit (C := C)).1.2 :=
@@ -1006,7 +1002,7 @@ theorem probEvent_r1Hit_le_logKeyed (keyOf : XmssSecurity.HashInput → Option X
   rw [hrisk, zero_add, hlog] at h
   simp only [Nat.sub_zero] at h
   refine le_trans ?_ h
-  rw [probEvent_eq_tsum_ite]
+  rw [OracleComp.prEvent_eq_tsum_ite]
   refine ENNReal.tsum_le_tsum fun z => ?_
   split_ifs with hz
   · have hone : z.2.1.2.risk = 1 := by simp [Monitor.risk, show z.2.1.2.hit = true from hz]
@@ -1017,23 +1013,23 @@ theorem probEvent_r1Hit_le_logKeyed (keyOf : XmssSecurity.HashInput → Option X
 /-- The keyed calls of the log of the flat eager run have the law of those of `loggedRun`. -/
 theorem expected_logKeyed_eq (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
     (P : PublicParameter) (ρ : KeyIndex → Digest) (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    ∑' z, Pr[= z | monitoredRun prims keyOf P ρ A x] * (logKeyed keyOf z.2.1.1.2 : ℝ≥0∞) =
-      ∑' z, Pr[= z | SigningCostProof.loggedRun prims A x] * (logKeyed keyOf z.2.2 : ℝ≥0∞) := by
-  have h1 := tsum_probOutput_map_mul (monitoredRun prims keyOf P ρ A x) (fun z => (z.1, (z.2.1.1, z.2.2)))
+    ∑' z, Pr{let y ← monitoredRun prims keyOf P ρ A x}[y = z] * (logKeyed keyOf z.2.1.1.2 : ℝ≥0∞) =
+      ∑' z, Pr{let y ← SigningCostProof.loggedRun prims A x}[y = z] * (logKeyed keyOf z.2.2 : ℝ≥0∞) := by
+  have h1 := OracleComp.tsum_prEvent_map_mul (monitoredRun prims keyOf P ρ A x) (fun z => (z.1, (z.2.1.1, z.2.2)))
     (fun y => (logKeyed keyOf y.2.1.2 : ℝ≥0∞))
   rw [monitoredRun_forget] at h1
-  have h2 := tsum_probOutput_map_mul (flatEagerRun prims P ρ A x) (fun z => (z.1, z.2.1.1.2, z.2.1.2))
+  have h2 := OracleComp.tsum_prEvent_map_mul (flatEagerRun prims P ρ A x) (fun z => (z.1, z.2.1.1.2, z.2.1.2))
     (fun y => (logKeyed keyOf y.2.2 : ℝ≥0∞))
-  have h3 := tsum_probOutput_map_mul (SigningCostProof.loggedRun prims A x) (fun z => (z.1, z.2.1.2, z.2.2))
+  have h3 := OracleComp.tsum_prEvent_map_mul (SigningCostProof.loggedRun prims A x) (fun z => (z.1, z.2.1.2, z.2.2))
     (fun y => (logKeyed keyOf y.2.2 : ℝ≥0∞))
   have hlaw := evalDist_flatEagerRun_logged prims P ρ A x
   rw [← h1, ← h3, ← h2]
-  exact tsum_congr fun y => by rw [probOutput_congr rfl hlaw]
+  exact tsum_congr fun y => by rw [hlaw.prEvent_eq (· = y)]
 
 /-- The keyed calls of the log of `loggedRun` in expectation are the expected keyed cost. -/
 theorem expected_logKeyed_le (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
     (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    ∑' z, Pr[= z | SigningCostProof.loggedRun prims A x] * (logKeyed keyOf z.2.2 : ℝ≥0∞) ≤
+    ∑' z, Pr{let y ← SigningCostProof.loggedRun prims A x}[y = z] * (logKeyed keyOf z.2.2 : ℝ≥0∞) ≤
       SigningGuessProof.sourceExpectedCost prims A x (keyedCost keyOf) := by
   have h := XmssSecurity.expectedFinal_le (SigningCostProof.loggedImpl prims) (Inv := fun _ => True)
     (fun _ _ _ _ _ => trivial) (fun s => (logKeyed keyOf s.2 : ℝ≥0∞)) (fun t _ => (keyedCost keyOf t : ℝ≥0∞))
@@ -1051,7 +1047,7 @@ theorem expected_logKeyed_le (keyOf : XmssSecurity.HashInput → Option XmssSecu
 digest call, as `bottomPartnerLogged_bound`. -/
 theorem r1Hit_bound (P : PublicParameter) (ρ : KeyIndex → Digest) (A : TsigAdversary C)
     (x : SigningSecurityProof.Keys3 C) :
-    Pr[R1Hit | monitoredRun prims (XmssSecurity.encodingInputLeafIndex? x.1) P ρ A x] ≤
+    Pr{let z ← monitoredRun prims (XmssSecurity.encodingInputLeafIndex? x.1) P ρ A x}[R1Hit z] ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ * SigningGuessProof.sourceExpectedCost prims A x
         (SigningPartnerLinkProof.bottomDigestCost x) := by
   refine (probEvent_r1Hit_le_logKeyed prims _ P ρ A x).trans ?_
@@ -1165,11 +1161,11 @@ def R1Link (ρ : SigningSecurityProof.Keys3 C → KeyIndex → Digest) : Prop :=
 /-- The bound of R1 on the split run. -/
 theorem split_r1Hit_bound (P : PublicParameter) (ρ : KeyIndex → Digest) (A : TsigAdversary C)
     (x : SigningSecurityProof.Keys3 C) :
-    Pr[fun z => z.2.1.1.2.hit = true | splitRun prims (XmssSecurity.encodingInputLeafIndex? x.1) P ρ A x] ≤
+    Pr{let z ← splitRun prims (XmssSecurity.encodingInputLeafIndex? x.1) P ρ A x}[z.2.1.1.2.hit = true] ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ * SigningGuessProof.sourceExpectedCost prims A x
         (SigningPartnerLinkProof.bottomDigestCost x) := by
   refine le_trans (le_of_eq ?_) (r1Hit_bound prims P ρ A x)
-  rw [← splitRun_forget, probEvent_map]
+  rw [← splitRun_forget, prEvent_map]
   rfl
 
 end Split

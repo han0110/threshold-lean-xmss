@@ -9,7 +9,7 @@ share failure. The cap event before that failure transfers from the eager
 fiber table to the fixed-pad compiler.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerShareCap
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -62,13 +62,14 @@ private theorem initial_good (τ : CPoint → Digest) :
 
 private theorem frozen_law (τ : CPoint → Digest) {α : Type}
     (oa : OracleComp (RunSpecT C (Bool × Bool)) α) :
-    𝒟[(simulateQ (SigningShareLazy.unifImpl (FrozenStateC C) +
-      SigningShareLazy.lazyFrozen (Tag := Bool × Bool) C.terms τ) oa).run SigningShareLazy.init] =
-    𝒟[do let u ← $ᵗ (C.Term × CPoint → HashOutput)
+    (simulateQ (SigningShareLazy.unifImpl (FrozenStateC C) +
+      SigningShareLazy.lazyFrozen (Tag := Bool × Bool) C.terms τ) oa).run SigningShareLazy.init =ᵈ
+    (do
+         let u ← $ᵗ (C.Term × CPoint → HashOutput)
          (simulateQ (SigningShareLazy.unifImpl (FrozenStateC C) +
            SigningShareLazy.eagerFrozen (Tag := Bool × Bool) C.terms τ
              (SigningShareLazy.fiberTable C.terms τ (SigningShareLazy.init : FrozenStateC C) u))
-           oa).run SigningShareLazy.init] :=
+           oa).run SigningShareLazy.init) :=
   SigningShareLazy.lazyFrozen_eq_eagerFrozen C.terms terms_nodup mem_terms τ oa
     SigningShareLazy.init (initial_good τ)
 
@@ -76,24 +77,24 @@ private theorem frozen_law (τ : CPoint → Digest) {α : Type}
 theorem nonbad_law (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest) (τ : CPoint → Digest)
     (G : CompilerOutcome C × FrozenStateC C → Prop) :
-    Pr[fun z => G (z.1, SigningShareLazy.erase z.2) ∧ z.2.bad = none |
-      lazyRunC prims A x q s pads τ] =
-    Pr[fun z => G (z.1, SigningShareLazy.erase z.2) ∧ z.2.bad = none |
-      tableRunC prims A x q s pads τ] := by
+    Pr{let z ←
+      lazyRunC prims A x q s pads τ}[G (z.1, SigningShareLazy.erase z.2) ∧ z.2.bad = none] =
+    Pr{let z ←
+      tableRunC prims A x q s pads τ}[G (z.1, SigningShareLazy.erase z.2) ∧ z.2.bad = none] := by
   unfold lazyRunC lazyHandlerTag
   rw [SigningShareLazy.lazyImpl_frozen_nonbad, erase_init]
-  trans Pr[fun z => G z ∧ z.2.bad = none | do
+  trans Pr{let z ← (do
     let u ← $ᵗ (C.Term × CPoint → HashOutput)
     (simulateQ (SigningShareLazy.unifImpl (FrozenStateC C) +
       SigningShareLazy.eagerFrozen (Tag := Bool × Bool) C.terms τ
         (SigningShareLazy.fiberTable C.terms τ (SigningShareLazy.init : FrozenStateC C) u))
-      (shareRunTag capTag prims A x q s pads)).run SigningShareLazy.init]
-  · exact probEvent_congr' (fun _ _ => Iff.rfl) (frozen_law τ _)
+      (shareRunTag capTag prims A x q s pads)).run SigningShareLazy.init)}[G z ∧ z.2.bad = none]
+  · exact (frozen_law τ _).prEvent_eq _
   · unfold tableRunC
-    simp only [probEvent_bind_eq_tsum]
+    simp only [OracleComp.prEvent_bind_eq_tsum]
     apply tsum_congr
     intro u
-    apply congrArg (fun v => Pr[= u | $ᵗ (C.Term × CPoint → HashOutput)] * v)
+    apply congrArg (fun v => Pr{let z ← $ᵗ (C.Term × CPoint → HashOutput)}[z = u] * v)
     exact (SigningShareLazy.eagerImpl_frozen_nonbad C.terms τ _
       (shareRunTag capTag prims A x q s pads) SigningShareLazy.init G).symm
 
@@ -101,24 +102,24 @@ theorem nonbad_law (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
 theorem firstbad_law (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest) (τ : CPoint → Digest)
     (r : SigningShareLazy.FrozenBad (Bool × Bool)) :
-    Pr[fun z => (SigningShareLazy.erase z.2).bad = some r |
-      lazyRunC prims A x q s pads τ] =
-    Pr[fun z => (SigningShareLazy.erase z.2).bad = some r |
-      tableRunC prims A x q s pads τ] := by
+    Pr{let z ←
+      lazyRunC prims A x q s pads τ}[(SigningShareLazy.erase z.2).bad = some r] =
+    Pr{let z ←
+      tableRunC prims A x q s pads τ}[(SigningShareLazy.erase z.2).bad = some r] := by
   unfold lazyRunC lazyHandlerTag
   rw [SigningShareLazy.lazyImpl_frozen_firstbad, erase_init]
-  trans Pr[fun z => z.2.bad = some r | do
+  trans Pr{let z ← (do
     let u ← $ᵗ (C.Term × CPoint → HashOutput)
     (simulateQ (SigningShareLazy.unifImpl (FrozenStateC C) +
       SigningShareLazy.eagerFrozen (Tag := Bool × Bool) C.terms τ
         (SigningShareLazy.fiberTable C.terms τ (SigningShareLazy.init : FrozenStateC C) u))
-      (shareRunTag capTag prims A x q s pads)).run SigningShareLazy.init]
-  · exact probEvent_congr' (fun _ _ => Iff.rfl) (frozen_law τ _)
+      (shareRunTag capTag prims A x q s pads)).run SigningShareLazy.init)}[z.2.bad = some r]
+  · exact (frozen_law τ _).prEvent_eq _
   · unfold tableRunC
-    simp only [probEvent_bind_eq_tsum]
+    simp only [OracleComp.prEvent_bind_eq_tsum]
     apply tsum_congr
     intro u
-    apply congrArg (fun v => Pr[= u | $ᵗ (C.Term × CPoint → HashOutput)] * v)
+    apply congrArg (fun v => Pr{let z ← $ᵗ (C.Term × CPoint → HashOutput)}[z = u] * v)
     exact (SigningShareLazy.eagerImpl_frozen_firstbad C.terms τ _
       (shareRunTag capTag prims A x q s pads) SigningShareLazy.init r).symm
 
@@ -320,11 +321,10 @@ end CapSupport
 /-- The entire erased first-bad record has the same law. -/
 theorem erased_bad_law (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest) (τ : CPoint → Digest) :
-    𝒟[(fun z => (SigningShareLazy.erase z.2).bad) <$> lazyRunC prims A x q s pads τ] =
-      𝒟[(fun z => (SigningShareLazy.erase z.2).bad) <$> tableRunC prims A x q s pads τ] := by
-  apply evalDist_ext
-  intro bad
-  rw [← probEvent_eq_eq_probOutput, ← probEvent_eq_eq_probOutput, probEvent_map, probEvent_map]
+    ((fun z => (SigningShareLazy.erase z.2).bad) <$> lazyRunC prims A x q s pads τ) =ᵈ
+      ((fun z => (SigningShareLazy.erase z.2).bad) <$> tableRunC prims A x q s pads τ) := by
+  refine OracleComp.evalDistEq_of_forall_prEvent_eq_output fun bad => ?_
+  rw [prEvent_map, prEvent_map]
   cases bad with
   | none =>
     simpa [SigningShareLazy.erase, Function.comp_def] using
@@ -363,7 +363,7 @@ theorem lazyRunC_bad_hidden (prims : Primitives) (A : TsigAdversary C) (x : Keys
     exact Set.mem_image_of_mem _ hz
   cases m with
   | false =>
-    have hn := (probEvent_eq_zero_iff.mp
+    have hn := ((OracleComp.prEvent_eq_zero_iff _ _).mp
       (NoFalse.lazyRun_falseBad_zero prims A x hinj q s pads k)) (project z) hz'
     exact (hn (by simp [project, mapBad, SigningShareLazy.erase, hb])).elim
   | true =>
@@ -390,8 +390,10 @@ theorem badCap_iff (z : CompilerOutcome C × ShareStateT C (Bool × Bool)) :
 /-- Disjoint events add exactly; port of VCVio's probEvent_or_le proof. -/
 private theorem probEvent_or_eq {α : Type} (oa : ProbComp α) (P Q : α → Prop)
     (disjoint : ∀ z, P z → Q z → False) :
-    Pr[fun z => P z ∨ Q z | oa] = Pr[P | oa] + Pr[Q | oa] := by
-  simp only [probEvent_eq_tsum_ite, ← ENNReal.tsum_add]
+    Pr{let z ← oa}[P z ∨ Q z] = Pr{let z ← oa}[P z] + Pr{let z ← oa}[Q z] := by
+  classical
+  rw [OracleComp.prEvent_eq_tsum_ite oa (fun z => P z ∨ Q z), OracleComp.prEvent_eq_tsum_ite oa P,
+    OracleComp.prEvent_eq_tsum_ite oa Q, ← ENNReal.tsum_add]
   apply tsum_congr
   intro z
   by_cases hp : P z <;> by_cases hq : Q z <;> simp_all
@@ -401,10 +403,10 @@ private theorem probEvent_or_eq {α : Type} (oa : ProbComp α) (P Q : α → Pro
 hidden flag to remain false after the two runs diverge. -/
 theorem tableRunC_capEarly_le (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
     (hinj : Function.Injective x.2.1) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest) :
-    Pr[fun z => z.1.1.2.hiddenFlag = true ∧ CapEarly z |
-      tableRunC prims A x q s pads (NoFalse.tau s pads)] ≤
-    Pr[fun z => z.1.2.hiddenFlag = true ∧ z.2.2.2 = true |
-      compilerRunPads prims A x q s pads] := by
+    Pr{let z ←
+      tableRunC prims A x q s pads (NoFalse.tau s pads)}[z.1.1.2.hiddenFlag = true ∧ CapEarly z] ≤
+    Pr{let z ←
+      compilerRunPads prims A x q s pads}[z.1.2.hiddenFlag = true ∧ z.2.2.2 = true] := by
   let N : CompilerOutcome C × ShareStateT C (Bool × Bool) → Prop :=
     fun z => (z.1.1.2.hiddenFlag = true ∧ z.1.2.2.2 = true) ∧ z.2.bad = none
   let B : CompilerOutcome C × ShareStateT C (Bool × Bool) → Prop :=
@@ -414,48 +416,44 @@ theorem tableRunC_capEarly_le (prims : Primitives) (A : TsigAdversary C) (x : Ke
     obtain ⟨m, k, l, h⟩ := (badCap_iff z).mp hb
     rw [hn.2] at h
     cases h
-  have hn : Pr[N | lazyRunC prims A x q s pads (NoFalse.tau s pads)] =
-      Pr[N | tableRunC prims A x q s pads (NoFalse.tau s pads)] :=
+  have hn : Pr{let z ← lazyRunC prims A x q s pads (NoFalse.tau s pads)}[N z] =
+      Pr{let z ← tableRunC prims A x q s pads (NoFalse.tau s pads)}[N z] :=
     nonbad_law prims A x q s pads (NoFalse.tau s pads)
       (fun z => z.1.1.2.hiddenFlag = true ∧ z.1.2.2.2 = true)
-  have hb : Pr[B | lazyRunC prims A x q s pads (NoFalse.tau s pads)] =
-      Pr[B | tableRunC prims A x q s pads (NoFalse.tau s pads)] := by
-    have h : Pr[BadCap | (fun z => (SigningShareLazy.erase z.2).bad) <$>
-        lazyRunC prims A x q s pads (NoFalse.tau s pads)] =
-        Pr[BadCap | (fun z => (SigningShareLazy.erase z.2).bad) <$>
-          tableRunC prims A x q s pads (NoFalse.tau s pads)] :=
-      probEvent_congr' (fun _ _ => Iff.rfl)
-        (erased_bad_law prims A x q s pads (NoFalse.tau s pads))
-    simpa only [probEvent_map, Function.comp_def, B] using h
+  have hb : Pr{let z ← lazyRunC prims A x q s pads (NoFalse.tau s pads)}[B z] =
+      Pr{let z ← tableRunC prims A x q s pads (NoFalse.tau s pads)}[B z] := by
+    have h : Pr{let y ← ((fun z => (SigningShareLazy.erase z.2).bad) <$>
+        lazyRunC prims A x q s pads (NoFalse.tau s pads))}[BadCap y] =
+        Pr{let y ← ((fun z => (SigningShareLazy.erase z.2).bad) <$>
+          tableRunC prims A x q s pads (NoFalse.tau s pads))}[BadCap y] :=
+      (erased_bad_law prims A x q s pads (NoFalse.tau s pads)).prEvent_eq _
+    simpa only [prEvent_map, Function.comp_def, B] using h
   calc
-    _ ≤ Pr[fun z => N z ∨ B z | tableRunC prims A x q s pads (NoFalse.tau s pads)] := by
-      apply probEvent_mono
-      intro z _ h
+    _ ≤ Pr{let z ← tableRunC prims A x q s pads (NoFalse.tau s pads)}[N z ∨ B z] := by
+      refine prEvent_mono_of_support _ _ _ fun z _ h => ?_
       rcases h.2 with noBad | bad
       · exact Or.inl ⟨⟨h.1, noBad.2⟩, noBad.1⟩
       · exact Or.inr ((badCap_iff z).mpr bad)
-    _ = Pr[N | tableRunC prims A x q s pads (NoFalse.tau s pads)] +
-        Pr[B | tableRunC prims A x q s pads (NoFalse.tau s pads)] := probEvent_or_eq _ N B disjoint
-    _ = Pr[N | lazyRunC prims A x q s pads (NoFalse.tau s pads)] +
-        Pr[B | lazyRunC prims A x q s pads (NoFalse.tau s pads)] := by rw [hn, hb]
-    _ = Pr[fun z => N z ∨ B z | lazyRunC prims A x q s pads (NoFalse.tau s pads)] :=
+    _ = Pr{let z ← tableRunC prims A x q s pads (NoFalse.tau s pads)}[N z] +
+        Pr{let z ← tableRunC prims A x q s pads (NoFalse.tau s pads)}[B z] := probEvent_or_eq _ N B disjoint
+    _ = Pr{let z ← lazyRunC prims A x q s pads (NoFalse.tau s pads)}[N z] +
+        Pr{let z ← lazyRunC prims A x q s pads (NoFalse.tau s pads)}[B z] := by rw [hn, hb]
+    _ = Pr{let z ← lazyRunC prims A x q s pads (NoFalse.tau s pads)}[N z ∨ B z] :=
       (probEvent_or_eq _ N B disjoint).symm
-    _ ≤ Pr[fun z => z.1.1.2.hiddenFlag = true ∧ z.1.2.2.2 = true |
-        lazyRunC prims A x q s pads (NoFalse.tau s pads)] := by
-      apply probEvent_mono
-      intro z hz h
+    _ ≤ Pr{let z ←
+        lazyRunC prims A x q s pads (NoFalse.tau s pads)}[z.1.1.2.hiddenFlag = true ∧ z.1.2.2.2 = true] := by
+      refine prEvent_mono_of_support _ _ _ fun z hz h => ?_
       rcases h with hn | hb
       · exact hn.1
       · obtain ⟨m, k, l, hb⟩ := (badCap_iff z).mp hb
         exact ⟨lazyRunC_bad_hidden prims A x hinj q s pads z hz m true k l hb,
           lazyRunC_capTrue prims A x q s pads (NoFalse.tau s pads) z hz m k l hb⟩
     _ = _ := by
-      rw [compilerRunPads_eq_shareRun prims A x hinj q s pads (NoFalse.tau s pads), probEvent_map]
+      rw [compilerRunPads_eq_shareRun prims A x hinj q s pads (NoFalse.tau s pads), prEvent_map]
       have h := congrArg (fun oa =>
-        Pr[fun z : CompilerOutcome C × ShareState C =>
-          z.1.1.2.hiddenFlag = true ∧ z.1.2.2.2 = true | oa])
+        Pr{let z : CompilerOutcome C × ShareState C ← oa}[z.1.1.2.hiddenFlag = true ∧ z.1.2.2.2 = true])
         (lazyRunC_project prims A x q s pads (NoFalse.tau s pads))
-      simpa only [probEvent_map, project, Prod.map, Function.comp_def, id_eq, Table.lazyRun] using h
+      simpa only [prEvent_map, project, Prod.map, Function.comp_def, id_eq, Table.lazyRun] using h
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerShareCap.capJoint_tagLe' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

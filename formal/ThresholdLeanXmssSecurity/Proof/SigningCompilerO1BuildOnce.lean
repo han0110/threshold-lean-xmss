@@ -12,7 +12,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Build
   request builds the tree with `bottomTree_sync` and stores the result.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1BuildOnce

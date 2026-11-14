@@ -8,7 +8,7 @@ Opening pendings have public low halves. Completing their PRF row and planting
 their allocated inputs preserves the compiler's visible-cache relation.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerSyncRelease
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -251,7 +251,7 @@ theorem readyAfter_covers (x : Keys3 C)
 theorem erase_merge_of_restFree (seeds : C.Term → HashOutput) (cache : HashCache C)
     (share : ShareCache C) (h : RestFree seeds cache) :
     erase seeds (merge seeds cache share) = cache := by
-  funext query
+  refine QueryCache.ext fun query => ?_
   cases hr : route seeds query with
   | none => simp [erase, merge, hr]
   | some z => simp [erase, hr, h query z hr]
@@ -273,7 +273,8 @@ theorem backendT_reveal (tagOf : CappedCompilerState C × Bool → Tag) (x : Key
       pure ((st.1.1.2.1 k).getD (s k),
         (((st.1.1.1, Function.update st.1.1.2.1 k
           (some ((st.1.1.2.1 k).getD (s k))), st.1.1.2.2), st.1.2), st.2)) := by
-  simp [shareBackendTagT, backendRaw, ordinaryFullRaw, ordinaryRaw,
+  unfold shareBackendTagT backendRaw ordinaryFullRaw ordinaryRaw
+  simp [
     ordinary, SigningCappedExpectProof.cappedHybrid,
     revealImpl, StateT.run, StateT.mk, splitRest, merged, withCache,
     erase_merge_of_restFree x.2.1 _ st.2.cache h]
@@ -330,7 +331,7 @@ theorem erase_cacheQuery_hash (seeds : C.Term → HashOutput) (cache : HashCache
     (input : HashInput) (value : HashOutput) :
     erase seeds (cache.cacheQuery (.hash input) value) =
       (erase seeds cache).cacheQuery (.hash input) value := by
-  funext query
+  refine QueryCache.ext fun query => ?_
   by_cases he : query = .hash input
   · subst query; simp [erase]
   · simp [erase, QueryCache.cacheQuery_of_ne _ _ he]
@@ -339,7 +340,7 @@ theorem merge_cacheQuery_hash (seeds : C.Term → HashOutput) (cache : HashCache
     (share : ShareCache C) (input : HashInput) (value : HashOutput) :
     merge seeds (cache.cacheQuery (.hash input) value) share =
       (merge seeds cache share).cacheQuery (.hash input) value := by
-  funext query
+  refine QueryCache.ext fun query => ?_
   by_cases he : query = .hash input
   · subst query; simp
   · simp [merge, QueryCache.cacheQuery_of_ne _ _ he]
@@ -370,7 +371,8 @@ theorem backendT_inspect (tagOf : CappedCompilerState C × Bool → Tag) (x : Ke
     (shareBackendTagT tagOf x.1 x.2.1 x.2.2 q s pads τ g noise rest
       (.inl (.inl (.inl (.inspect p))))).run st =
       pure (st.1.1.1.1.data.pending p, st) := by
-  simp only [shareBackendTagT, backendRaw, ordinaryFullRaw, ordinaryRaw,
+  unfold shareBackendTagT backendRaw ordinaryFullRaw ordinaryRaw
+  simp only [
     simulateQ_bind, resolvePrivateTable_lift, simulateQ_pure, StateT.run]
   rw [ordinary_uncounted x.1 x.2.1 q s pads (.inspect p)
     (by exact not_false) (by intro p; simp)]
@@ -389,7 +391,8 @@ theorem backendT_plant (tagOf : CappedCompilerState C × Bool → Tag) (x : Keys
       | some prior => pure (decide (prior = value), st)
       | none => pure (true, ((withCache st.1.1
           (st.1.1.1.1.data.cache.cacheQuery (.hash (p.input x.1 input)) value), st.1.2), st.2)) := by
-  simp only [shareBackendTagT, backendRaw, ordinaryFullRaw, ordinaryRaw,
+  unfold shareBackendTagT backendRaw ordinaryFullRaw ordinaryRaw
+  simp only [
     simulateQ_bind, resolvePrivateTable_lift, simulateQ_pure, StateT.run, ordinary_plant]
   simp only [merged, withCache, PlantInput.query, merge_hash]
   cases hc : st.1.1.1.1.data.cache (.hash (p.input x.1 input)) <;>
@@ -449,7 +452,7 @@ theorem completion_cache_sync (x : Keys3 C)
     intro query value hvalue
     change merge x.2.1 cs.1.1.data.cache r.2.cache query = some value
     change merge x.2.1 cs.1.1.data.cache sh.cache query = some value at hvalue
-    cases hrout : route x.2.1 query <;> simp only [merge, hrout] at hvalue ⊢
+    cases hrout : route x.2.1 query <;> simp only [merge, QueryCache.ofFn_apply, hrout] at hvalue ⊢
     · exact hvalue
     · exact hfilled.2 _ _ hvalue
   have row (T : C.Term) : (merged x.2.1 cs r.2.cache).1.1.data.cache
@@ -465,12 +468,12 @@ theorem completion_cache_sync (x : Keys3 C)
     change merge x.2.1 cs.1.1.data.cache r.2.cache other = some value at hn
     cases hrout : route x.2.1 other with
     | none =>
-      simp only [merge, hrout] at hn ho
+      simp only [merge, QueryCache.ofFn_apply, hrout] at hn ho
       rw [ho] at hn
       cases hn
     | some z =>
       have he := (route_spec x.2.1 hinj other z).mp hrout
-      simp only [merge, hrout] at ho hn
+      simp only [merge, QueryCache.ofFn_apply, hrout] at ho hn
       have hp : z.2 = p := by
         by_contra hp
         rw [hout z hp, ho] at hn

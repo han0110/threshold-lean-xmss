@@ -20,7 +20,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningOwnGateBlock
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-open OracleComp OracleSpec LeanXmss ENNReal ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ENNReal ThresholdLeanXmss
 
 noncomputable section
 
@@ -44,11 +44,11 @@ def LaneTraceCapOwn (prims : Primitives) : Prop :=
     x ∈ support (TprfSecurityProof.keyGen3 (C := C)) →
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 → HasSigningOwnBound A q →
     q + signingSlack < 2 ^ 127 →
-    Pr[fun z => SigningLaneUnionProof.NoFlag (SigningLaneUnionProof.observed z) ∧
+    Pr{let z ←
+      SigningLaneUnionProof.traceRun prims A x}[SigningLaneUnionProof.NoFlag (SigningLaneUnionProof.observed z) ∧
         SigningLaneUnionProof.NotChargedLogged prims x (SigningLaneUnionProof.observed z) ∧
         (SigningLaneUnionProof.LoggedInputHit prims x (SigningLaneUnionProof.observed z) ∨
-          SigningLaneUnionProof.StaleBaseAt z ∨ SigningLaneUnionProof.GhostAt x z) |
-      SigningLaneUnionProof.traceRun prims A x] ≤ ((q + capSlack : ℕ) : ℝ≥0∞) / 2 ^ 128
+          SigningLaneUnionProof.StaleBaseAt z ∨ SigningLaneUnionProof.GhostAt x z)] ≤ ((q + capSlack : ℕ) : ℝ≥0∞) / 2 ^ 128
 
 /-- Leaf L3c. The clean event of the compiler run of a forger with the own budget `q`, at each cap
 `Q`. -/
@@ -57,7 +57,7 @@ def OwnCapClean (prims : Primitives) : Prop :=
     x ∈ support (TprfSecurityProof.keyGen3 (C := C)) →
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 → HasSigningOwnBound A q →
     q + signingSlack < 2 ^ 127 →
-    Pr[CleanCompilerEvent x Q | compilerRunO1 prims A x Q] ≤
+    Pr{let z ← compilerRunO1 prims A x Q}[CleanCompilerEvent x Q z] ≤
       ((q + capSlack : ℕ) : ℝ≥0∞) / 2 ^ 128
 
 /-- Each run of the signing world has a finite count. -/
@@ -74,7 +74,7 @@ theorem laneTraceCapOwn_of_clean (prims : Primitives)
     LaneTraceCapOwn (C := C) prims := by
   intro A q x hx hkeys hq hsmall
   obtain ⟨Q, hQ⟩ := worldBounded prims (gameAfter A x)
-  refine le_trans (probEvent_mono fun z hz hE => ?_)
+  refine le_trans (prEvent_mono_of_support _ _ _ fun z hz hE => ?_)
     ((hcouple A Q x hx hkeys).trans (hown A q Q x hx hkeys hq hsmall))
   exact ⟨hE, SigningLaneUnionProof.traceRun_count_le prims A Q x hQ z hz⟩
 
@@ -114,7 +114,7 @@ theorem walk_verify (x : Keys3 C) (Q : ℕ) (s : HiddenKey → Digest) (st0 : So
         modify fun (s : SourceState C) => { s with candidates :=
           s.candidates ++ SigningGuessLinkProof.callCandidates x.1 st0.signing st0.exposed input }
         pure value : SourceM C HashOutput) : QueryImpl HashSpec (SourceMO1 C))
-        (Concrete.verify publicKey message signature)) := by
+        (Verification.verifyWithHash publicKey message signature)) := by
   refine WalkO.keeps st0.signing ?_ (WalkO.of_charges ?_)
   · apply keepsSigning_simulateQ
     intro input
@@ -193,12 +193,11 @@ theorem ownCapClean (prims : Primitives) : OwnCapClean (C := C) prims := by
     omega
   have hsupp := ownRun_support prims A q Q x hown
   generalize q + capSlack = B at hB hsupp ⊢
-  have hproj : Pr[CleanCompilerEvent x Q | compilerRunO1 prims A x Q] =
-      Pr[fun r => CleanCompilerEvent x Q r.1 | ownRun prims A x Q] := by
-    rw [← ownRun_proj prims A x Q, probEvent_map]
-    rfl
+  have hproj : Pr{let z ← compilerRunO1 prims A x Q}[CleanCompilerEvent x Q z] =
+      Pr{let r ← ownRun prims A x Q}[CleanCompilerEvent x Q r.1] := by
+    rw [← ownRun_proj prims A x Q, prEvent_map]
   rw [hproj]
-  refine le_trans (probEvent_mono fun r hr h => ?_) (ownRun_cap prims A x Q B hB)
+  refine le_trans (prEvent_mono_of_support _ _ _ fun r hr h => ?_) (ownRun_cap prims A x Q B hB)
   obtain ⟨hledger, hdirty⟩ := hsupp r hr
   refine ⟨?_, hledger⟩
   rcases h with ⟨-, h | ⟨hev, hclean⟩⟩ | ⟨-, h⟩

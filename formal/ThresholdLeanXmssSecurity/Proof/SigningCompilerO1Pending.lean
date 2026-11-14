@@ -14,7 +14,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Reads
   over the real read, the new pending answer and the count.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Pending
@@ -70,8 +70,9 @@ theorem backendT_openPending (p : PendingInput)
           (deferredInputSide x.1) deferredCounted (deferredKey x.1) (deferredPoint x.1) q s
           (.inl (.pending p))).run (merged x.2.1 st.1.1 st.2.cache) := by
     rcases hp with ⟨e, rfl⟩ | ⟨e, message, rfl⟩ <;>
-      simp only [shareBackendTagT, backendRaw, ordinaryFullRaw, ordinaryRaw, StateT.run,
-        bind_pure_comp, simulateQ_map, resolvePrivateTable_lift, ordinary]
+      (unfold compBackend shareBackendTagT backendRaw ordinaryFullRaw ordinaryRaw
+       simp only [StateT.run,
+        bind_pure_comp, simulateQ_map, resolvePrivateTable_lift, ordinary])
   rw [hraw, cappedCompiler_pending_run]
   simp only [merged, withCache]
   cases hpend : st.1.1.1.1.data.pending p with
@@ -85,7 +86,8 @@ theorem backendT_record (p : PendingInput) (value : HashOutput) (st : CompState 
     (hf : RestFree x.2.1 st.1.1.1.1.data.cache) :
     (compBackend x q s pads u rest noise (.inl (.inl (.inl (.record p value))))).run st =
       pure ((), withPending st p (pendingOutput p value) st.1.1.1.2) := by
-  simp only [shareBackendTagT, backendRaw, ordinaryFullRaw, ordinaryRaw,
+  unfold compBackend shareBackendTagT backendRaw ordinaryFullRaw ordinaryRaw
+  simp only [
     simulateQ_bind, resolvePrivateTable_lift, simulateQ_pure, StateT.run]
   rw [ordinary_uncounted x.1 x.2.1 q s pads (.record p value)
     (by exact not_false) (by intro p; simp)]
@@ -158,9 +160,12 @@ theorem syncFields_pending (a : RealState C) (src : SourceState C) (st : CompSta
         · subst p'
           rw [Function.update_self] at hp'
           cases hp'
+          rw [show (dataOf x (withPending st p answer count)).cache = (dataOf x st).cache from rfl]
           exact hrel hk
         · rw [Function.update_of_ne he] at hp'
-          exact h.releasedPending p' value hp' hk
+          have h2 := h.releasedPending p' value hp' hk
+          rw [show (dataOf x (withPending st p answer count)).cache = (dataOf x st).cache from rfl]
+          with_reducible_and_instances exact h2
       opening := ⟨h.opening.actualValue, h.opening.released⟩
       pendingValid := fun p' value hp' => by
         rw [hpend] at hp'
@@ -416,7 +421,7 @@ theorem openingPending_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.
     · exact syncFields_count x s pads u rest noise _ src st _
         (syncFields_real x s pads u rest noise (withCarried a cCore) (withCarried ra.2 cCore)
           (src, st) _ hslot hsf rfl htrace (le_of_eq hvis'.symm)
-          (fun query _ => congrFun hvis' query) hpriv)
+          (fun query _ => congrArg (fun c : HashCache C => c.toFn query) hvis') hpriv)
     · change CacheRelation x.1 x.2.1 s (dataOf x st) (visibleOf ra.2)
       rw [hvis']
       exact hs.1.2
@@ -612,7 +617,11 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1Pending
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Pending.syncFields_count
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Pending.cacheRelation_record' depends on axioms: [propext, Quot.sound] -/
+/--
+info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Pending.cacheRelation_record' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Pending.cacheRelation_record
 

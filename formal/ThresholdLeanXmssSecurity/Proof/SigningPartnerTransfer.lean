@@ -30,7 +30,7 @@ noncomputable section
 namespace ThresholdLeanXmssSecurity
 namespace SigningPartnerTransferProof
 
-open LeanXmss ThresholdLeanXmss SigningAssemblyProof SigningCacheLogProof
+open HashSig LeanXmss ThresholdLeanXmss SigningAssemblyProof SigningCacheLogProof
 open SigningFlatProof SigningFlatEagerProof SigningDescentProof SigningCacheProof
 
 variable {C : Committee} (prims : Primitives)
@@ -40,7 +40,7 @@ attribute [local instance] Classical.propDecidable
 /-- The tracked agreement of A1 includes every tweakable-hash cache entry. -/
 theorem thView_eq {a b : HashCache C}
     (h : ∀ q, Tracked q → a q = b q) : thView a = thView b := by
-  funext input
+  refine QueryCache.ext fun input => ?_
   exact h _ (tracked_hash input)
 
 theorem tweakable_eq {a b : HashCache C}
@@ -272,10 +272,10 @@ def LoggedPartnerRow (x : SigningSecurityProof.Keys3 C)
 
 /-- A1 supplies the exact cache reconstruction on the original joint run. -/
 theorem jointRun_lazyPartner_eq (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr[LazyPartnerRow prims x | SigningUnchargedLoggedProof.jointRun prims A x] =
-      Pr[fun z => LoggedPartnerRow prims x (z.1.1, z.2.1.2, z.2.2) |
-        SigningUnchargedLoggedProof.jointRun prims A x] := by
-  apply probEvent_ext
+    Pr{let z ← SigningUnchargedLoggedProof.jointRun prims A x}[LazyPartnerRow prims x z] =
+      Pr{let z ←
+        SigningUnchargedLoggedProof.jointRun prims A x}[LoggedPartnerRow prims x (z.1.1, z.2.1.2, z.2.2)] := by
+  apply prEvent_congr_of_support _ _ _
   intro z hz
   have hl : (z.1.1, z.2) ∈ support (SigningCostProof.loggedRun prims A x) := by
     rw [← SigningUnchargedLoggedProof.jointRun_logged, support_map]
@@ -287,25 +287,21 @@ theorem jointRun_lazyPartner_eq (A : TsigAdversary C) (x : SigningSecurityProof.
 where it still reads the cache reconstructed from the original call log. -/
 theorem lazyPartner_eq_split_log (ρ : SigningSecurityProof.Keys3 C → KeyIndex → Digest)
     (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr[LazyPartnerRow prims x | SigningUnchargedLoggedProof.jointRun prims A x] =
-      Pr[fun z => LoggedPartnerRow prims x (z.1, z.2.1.1.1.1.2, z.2.1.1.1.2) |
-        splitRunAt prims ρ A x] := by
+    Pr{let z ← SigningUnchargedLoggedProof.jointRun prims A x}[LazyPartnerRow prims x z] =
+      Pr{let z ←
+        splitRunAt prims ρ A x}[LoggedPartnerRow prims x (z.1, z.2.1.1.1.1.2, z.2.1.1.1.2)] := by
   rw [jointRun_lazyPartner_eq]
-  have hj : Pr[fun z => LoggedPartnerRow prims x (z.1.1, z.2.1.2, z.2.2) |
-        SigningUnchargedLoggedProof.jointRun prims A x] =
-      Pr[fun z => LoggedPartnerRow prims x (z.1, z.2.1.2, z.2.2) |
-        SigningCostProof.loggedRun prims A x] := by
-    rw [← SigningUnchargedLoggedProof.jointRun_logged, probEvent_map]
-    rfl
+  have hj : Pr{let z ←
+        SigningUnchargedLoggedProof.jointRun prims A x}[LoggedPartnerRow prims x (z.1.1, z.2.1.2, z.2.2)] =
+      Pr{let z ←
+        SigningCostProof.loggedRun prims A x}[LoggedPartnerRow prims x (z.1, z.2.1.2, z.2.2)] := by
+    rw [← SigningUnchargedLoggedProof.jointRun_logged, prEvent_map]
   rw [hj]
-  have he := probEvent_congr'
-    (p := LoggedPartnerRow prims x) (q := LoggedPartnerRow prims x)
-    (fun _ _ => Iff.rfl) (evalDist_flatEagerRun_logged prims x.1 (ρ x) A x)
-  simp only [probEvent_map, Function.comp_def] at he
+  have he := (evalDist_flatEagerRun_logged prims x.1 (ρ x) A x).prEvent_eq (LoggedPartnerRow prims x)
+  simp only [prEvent_map] at he
   rw [← he]
-  rw [splitRunAt, ← monitoredRun_forget, probEvent_map,
-    ← splitRun_forget, probEvent_map]
-  rfl
+  rw [splitRunAt, ← monitoredRun_forget, prEvent_map,
+    ← splitRun_forget, prEvent_map]
 
 /-- Exact remaining A26 comparison, now on one split execution. The left event
 uses the logged cache; the right uses the eager cache. The selected pair must
@@ -316,11 +312,11 @@ def PartnerCacheComparison (ρ : SigningSecurityProof.Keys3 C → KeyIndex → D
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
     (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) →
     q < 2 ^ 127 →
-    Pr[fun z => LoggedPartnerRow prims x (z.1, z.2.1.1.1.1.2, z.2.1.1.1.2) |
-      splitRunAt prims ρ A x] ≤
-    Pr[fun z => EagerPartner prims x z ∧
-      ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1 |
-      splitRunAt prims ρ A x]
+    Pr{let z ←
+      splitRunAt prims ρ A x}[LoggedPartnerRow prims x (z.1, z.2.1.1.1.1.2, z.2.1.1.1.2)] ≤
+    Pr{let z ←
+      splitRunAt prims ρ A x}[EagerPartner prims x z ∧
+      ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1]
 
 /-- The remaining comparison is equivalent to the original target, with no
 additional hypotheses and no change to either event. -/

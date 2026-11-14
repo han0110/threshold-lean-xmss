@@ -18,7 +18,7 @@ the dealer, and the compiler build is `sourceBottomTreeX`.
 - `bottomTree_sync` adds the rows of the compiler run and the counted run of the real run.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Build
@@ -117,16 +117,16 @@ theorem getD_third (rows : List (Digest × Digest × Digest)) (i : ℕ) (c : Dig
 theorem patchCpk_rows (bi : Fin (2 ^ layerHeight)) (rows : List (Digest × Digest × Digest))
     (commitments : List Digest)
     (hrows : rows.length = ((List.finRange (2 ^ layerHeight)).flatMap fun k =>
-      (List.finRange numChains).map fun l => (bottomKey bi k, l)).length) :
+      (List.finRange chainCount).map fun l => (bottomKey bi k, l)).length) :
     patchCpk bi (fun e => commitments.getD (e.val % 2 ^ layerHeight) 0)
       (fun e l => rows.getD (((List.finRange (2 ^ layerHeight)).flatMap fun k =>
-        (List.finRange numChains).map fun l => (bottomKey bi k, l)).idxOf (e, l)) (0, 0, 0)) =
+        (List.finRange chainCount).map fun l => (bottomKey bi k, l)).idxOf (e, l)) (0, 0, 0)) =
     fun e l => rows.getD (((List.finRange (2 ^ layerHeight)).flatMap fun k =>
-      (List.finRange numChains).map fun l => (bottomKey bi k, l)).idxOf (e, l))
+      (List.finRange chainCount).map fun l => (bottomKey bi k, l)).idxOf (e, l))
         (commitments.getD 0 0, 0, 0) := by
   funext e l
   have hmem : (e, l) ∈ ((List.finRange (2 ^ layerHeight)).flatMap fun k =>
-      (List.finRange numChains).map fun l => (bottomKey bi k, l)) ↔ treeOf e = bi := by
+      (List.finRange chainCount).map fun l => (bottomKey bi k, l)) ↔ treeOf e = bi := by
     simp only [List.mem_flatMap, List.mem_map, List.mem_finRange, true_and, Prod.mk.injEq]
     constructor
     · rintro ⟨k, l', hk, -⟩
@@ -161,12 +161,12 @@ theorem eval_topEncodingHash (cache : QueryCache XmssSecurity.HashSpec)
 
 /-- A search and a digest that resolve on one cache give the codeword of the search. -/
 theorem decode_of_resolves (prims : Primitives) (cache : HashCache C) (P : PublicParameter)
-    (lay : Layer) (key : KeyIndex) (message : HashInput) (base randomness : Randomness)
+    (lay : Layer) (key : KeyIndex) (message : HashInput) (base randomness : Randomizer)
     (encoding : Encoding) (digest : Digest)
     (hsearch : DeterministicSigning.Resolves cache (SigningHitProof.forestHash
       (grind P lay key message base randomizerAttemptLimit 0)) (some (randomness, encoding)))
     (hdigest : DeterministicSigning.Resolves cache (SigningHitProof.forestHash
-      (Concrete.messageDigest P lay key message randomness)) digest) :
+      (Verification.messageDigestWithHash P lay key message randomness)) digest) :
     Codeword.decode digest = some encoding := by
   have hs' := SigningHitProof.resolves_forestHash cache _ _ hsearch
   have hd' := SigningHitProof.resolves_forestHash cache _ _ hdigest
@@ -188,10 +188,10 @@ theorem decode_of_resolves (prims : Primitives) (cache : HashCache C) (P : Publi
 
 /-- A top digest that resolves on the log cache gives the top digit fact. -/
 theorem topDigit_of_resolves (cache : HashCache C) (P : PublicParameter)
-    (bi : Fin (2 ^ layerHeight)) (root : Digest) (randomness : Randomness) (digest : Digest)
+    (bi : Fin (2 ^ layerHeight)) (root : Digest) (randomness : Randomizer) (digest : Digest)
     (encoding : Encoding)
     (hdigest : DeterministicSigning.Resolves cache (SigningHitProof.forestHash
-      (Concrete.messageDigest P topLayer (topKey bi) (bytesLE 16 root) randomness)) digest)
+      (Verification.messageDigestWithHash P topLayer (topKey bi) (littleEndianBytes 16 root) randomness)) digest)
     (hdecode : Codeword.decode digest = some encoding) :
     (SigningDescentProof.thView cache (XmssSecurity.Concrete.CacheView.topEncodingInput P bi
       (root, randomness))).isSome ∧
@@ -471,7 +471,7 @@ theorem base_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
     (hs : SyncIn prims x s pads u rest noise top cCore cTime a b)
     (ha : ¬RealStop q a) (hb : ¬Stop b.2) (hmark : b.2.1.2 = false) :
     RelTriple ((simulateQ (realWorld prims x s pads u rest) (liftFree (tweakable
-        (truncateHash <$> Concrete.oracleHash (randomizerInput x.1 topLayer (topKey bi)
+        (truncateHash <$> Verification.oracleHashWithHash (randomizerInput x.1 topLayer (topKey bi)
           (s (.opening topLayer (topKey bi))) message))))).run a)
       (runX (compBackend x q s pads u rest noise) (sourcePendingX x.1 (.base topLayer (topKey bi) message))
         b.1.base b.2)
@@ -481,16 +481,16 @@ theorem base_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
           ∀ k, b.1.base.revealed k ≠ none → rb.1.2.revealed k ≠ none) ra rb) := by
   let p : PendingInput := .base topLayer (topKey bi) message
   have hreal : (simulateQ (realWorld prims x s pads u rest) (liftFree (tweakable
-      (truncateHash <$> Concrete.oracleHash (randomizerInput x.1 topLayer (topKey bi)
+      (truncateHash <$> Verification.oracleHashWithHash (randomizerInput x.1 topLayer (topKey bi)
         (s (.opening topLayer (topKey bi))) message))))).run a =
       (fun r => (truncateHash r.1, r.2)) <$>
         (realWorld prims x s pads u rest (.inr (.inr (.inl (.hash (p.input x.1 (s p.key))))))).run a := by
     have h := SigningCompilerO1HashProgram.realHonest_tweakable prims x s pads u rest
-      (truncateHash <$> Concrete.oracleHash (randomizerInput x.1 topLayer (topKey bi)
+      (truncateHash <$> Verification.oracleHashWithHash (randomizerInput x.1 topLayer (topKey bi)
         (s (.opening topLayer (topKey bi))) message))
     change (realHonest prims x s pads u rest _).run a = _
     rw [h]
-    simp [Concrete.oracleHash, SigningCompilerO1Pending.readCall_false]
+    simp [Verification.oracleHashWithHash, SigningCompilerO1Pending.readCall_false]
     rfl
   rw [hreal]
   have hfree : b.1.base.revealed p.key = none → (dataOf x b.2).pending p = none →
@@ -536,14 +536,14 @@ symbolic value, and no key is revealed. -/
 theorem values_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)
     (cCore cTime : Carried C) (htime : cTime.1.1.bound = cCore.1.1.bound)
     (bi : Fin (2 ^ layerHeight)) :
-    ∀ (n : ℕ) (σ : Fin n → ChainIndex) (p : Fin n → Digit) (a : RealState C)
+    ∀ (n : ℕ) (σ : Fin n → ChainIndex) (p : Fin n → WinternitzDigit) (a : RealState C)
       (b : SourceStateO1 C × CompState C),
       SyncIn prims x s pads u rest noise top cCore cTime a b →
       ¬RealStop q a → ¬Stop b.2 → b.2.1.2 = false →
       RelTriple ((simulateQ (realWorld prims x s pads u rest)
-          (Concrete.sequenceFin fun i => realTopValue x.1 x.2.1 bi (σ i) (p i))).run a)
+          (OverPermutation.sequenceFin fun i => realTopValue x.1 x.2.1 bi (σ i) (p i))).run a)
         (runX (compBackend x q s pads u rest noise)
-          (Concrete.sequenceFin fun i => sourceTopValueX x.1 x.2.1 bi (σ i) (p i)) b.1.base b.2)
+          (OverPermutation.sequenceFin fun i => sourceTopValueX x.1 x.2.1 bi (σ i) (p i)) b.1.base b.2)
         (fun ra rb => InPost prims x q s pads u rest noise top cCore cTime a b
           (fun rb => rb.1.2.revealed)
           (fun _ _ => rb.1.2.revealed = b.1.base.revealed ∧ ∀ i,
@@ -556,12 +556,12 @@ theorem values_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
   induction n with
   | zero =>
     intro σ p a b hs ha hb hmark
-    rw [Concrete.sequenceFin.eq_1, Concrete.sequenceFin.eq_1]
+    rw [OverPermutation.sequenceFin.eq_1, OverPermutation.sequenceFin.eq_1]
     exact inPost_pure prims x q s pads u rest noise top cCore cTime a b _ _ _ hs hmark
       ⟨rfl, fun i => i.elim0⟩
   | succ n ih =>
     intro σ p a b hs ha hb hmark
-    rw [Concrete.sequenceFin.eq_2, Concrete.sequenceFin.eq_2]
+    rw [OverPermutation.sequenceFin.eq_2, OverPermutation.sequenceFin.eq_2]
     refine inPost_bind prims x q s pads u rest noise top cCore cTime a b _ _ _ _
       (fun ra rb => ra.1 = rb.1.1.interpret s ∧ rb.1.2.revealed = b.1.base.revealed ∧
         (∀ h : (p 0).val < 3, rb.1.1 = .secret (.topChain bi (σ 0) ⟨(p 0).val, h⟩)) ∧
@@ -595,7 +595,7 @@ and no key is revealed. -/
 theorem recover_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)
     (cCore cTime : Carried C) (htime : cTime.1.1.bound = cCore.1.1.bound)
     (bi : Fin (2 ^ layerHeight)) :
-    ∀ (n : ℕ) (σ : Fin n → ChainIndex) (p : Fin n → Digit) (v : Fin n → Digest)
+    ∀ (n : ℕ) (σ : Fin n → ChainIndex) (p : Fin n → WinternitzDigit) (v : Fin n → Digest)
       (dv : Fin n → DeferredDigest), (∀ i, v i = (dv i).interpret s) →
       (∀ i, ∀ h : (p i).val < 3, dv i = .secret (.topChain bi (σ i) ⟨(p i).val, h⟩)) →
       (∀ i, (p i).val = 3 → ∃ w, dv i = .known w) →
@@ -603,10 +603,10 @@ theorem recover_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top
       SyncIn prims x s pads u rest noise top cCore cTime a b →
       ¬RealStop q a → ¬Stop b.2 → b.2.1.2 = false →
       RelTriple ((simulateQ (realWorld prims x s pads u rest)
-          (Concrete.sequenceFin fun i => liftFree (tweakable
-            (Concrete.recoverChain x.1 topLayer (topKey bi) (σ i) (p i) (v i))))).run a)
+          (OverPermutation.sequenceFin fun i => liftFree (tweakable
+            (Verification.recoverChainWithHash x.1 topLayer (topKey bi) (σ i) (p i) (v i))))).run a)
         (runX (compBackend x q s pads u rest noise)
-          (Concrete.sequenceFin fun i => sourceTopRecoverX x.1 bi (σ i) (p i) (dv i)) b.1.base b.2)
+          (OverPermutation.sequenceFin fun i => sourceTopRecoverX x.1 bi (σ i) (p i) (dv i)) b.1.base b.2)
         (fun ra rb => InPost prims x q s pads u rest noise top cCore cTime a b
           (fun rb => rb.1.2.revealed)
           (fun _ _ => ra.1 = rb.1.1 ∧ rb.1.2.revealed = b.1.base.revealed) ra rb) := by
@@ -614,12 +614,12 @@ theorem recover_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top
   induction n with
   | zero =>
     intro σ p v dv hv hlow hend a b hs ha hb hmark
-    rw [Concrete.sequenceFin.eq_1, Concrete.sequenceFin.eq_1]
+    rw [OverPermutation.sequenceFin.eq_1, OverPermutation.sequenceFin.eq_1]
     exact inPost_pure prims x q s pads u rest noise top cCore cTime a b _ _ _ hs hmark
       ⟨funext fun i => i.elim0, rfl⟩
   | succ n ih =>
     intro σ p v dv hv hlow hend a b hs ha hb hmark
-    rw [Concrete.sequenceFin.eq_2, Concrete.sequenceFin.eq_2]
+    rw [OverPermutation.sequenceFin.eq_2, OverPermutation.sequenceFin.eq_2]
     refine inPost_bind prims x q s pads u rest noise top cCore cTime a b _ _ _ _
       (fun ra rb => ra.1 = rb.1.1 ∧ rb.1.2.revealed = b.1.base.revealed) _ ?_ ?_
     · refine relTriple_post_mono (relTriple_supported (relTriple_true _ _)) ?_
@@ -662,7 +662,7 @@ theorem core_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
   refine inPost_bind prims x q s pads u rest noise top cCore cTime a b _ _ _ _
     (fun ra rb => ra.1 = rb.1.1 ∧ rb.1.2.revealed = b.1.base.revealed ∧
       ra.1.length = ((List.finRange (2 ^ layerHeight)).flatMap fun k =>
-        (List.finRange numChains).map fun l => (bottomKey bi k, l)).length) _
+        (List.finRange chainCount).map fun l => (bottomKey bi k, l)).length) _
     (rows_sync prims x q s pads u rest noise hkeys top cCore cTime htime _ a b hs ha hb hmark) ?_
   rintro r1 rb1 hrb1 hp1 ha1 hb1
   rcases hp1 with h | h | ⟨⟨hv1, hrev1, hlen1⟩, hs1, hsig1, -, -, -, hm1, -, hl1⟩

@@ -7,7 +7,7 @@ events where the original source hidden flag is false. The full compiler
 outcome, including the source state, backend, trace and query count, is retained.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerShare.Guarded
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -32,8 +32,8 @@ theorem eagerHandler_eq_handler (τ : CPoint → SigningShareLazy.Digest)
 theorem tableRun_falseBad_zero (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
     (hinj : Function.Injective x.2.1) (q : ℕ) (s : HiddenKey → Digest)
     (pads : Point → Digest) (k : SigningShareLazy.Kind) :
-    Pr[fun z => (SigningShareLazy.erase z.2).bad = some (false, k) |
-      Table.tableRun prims A x q s pads (NoFalse.tau s pads)] = 0 := by
+    Pr{let z ←
+      Table.tableRun prims A x q s pads (NoFalse.tau s pads)}[(SigningShareLazy.erase z.2).bad = some (false, k)] = 0 := by
   rw [← Table.firstbad_law]
   exact NoFalse.lazyRun_falseBad_zero prims A x hinj q s pads k
 
@@ -57,7 +57,7 @@ theorem lazyRun_hidden_nonbad (prims : Primitives) (A : TsigAdversary C) (x : Ke
     (hf : z.1.1.2.hiddenFlag = false) : z.2.bad = none := by
   apply noBad_of_tags z ?_ ?_ hf
   · intro k
-    exact (probEvent_eq_zero_iff.mp
+    exact ((OracleComp.prEvent_eq_zero_iff _ _).mp
       (NoFalse.lazyRun_falseBad_zero prims A x hinj q s pads k)) z hz
   · intro k l hb
     exact Marks.shareRun_tagTrue prims A x q s pads (NoFalse.tau s pads)
@@ -85,43 +85,43 @@ theorem tableRun_hidden_nonbad (prims : Primitives) (A : TsigAdversary C) (x : K
     (hf : z.1.1.2.hiddenFlag = false) : z.2.bad = none := by
   apply noBad_of_tags z ?_ ?_ hf
   · intro k
-    exact (probEvent_eq_zero_iff.mp (tableRun_falseBad_zero prims A x hinj q s pads k)) z hz
+    exact ((OracleComp.prEvent_eq_zero_iff _ _).mp (tableRun_falseBad_zero prims A x hinj q s pads k)) z hz
   · exact tableRun_tagTrue prims A x q s pads (NoFalse.tau s pads) z hz
 
 /-- The exact guarded joint law of the original fixed-pad compiler and its fiber table. -/
 theorem compilerRunPads_hidden_eq_table (prims : Primitives) (A : TsigAdversary C)
     (x : Keys3 C) (hinj : Function.Injective x.2.1) (q : ℕ)
     (s : HiddenKey → Digest) (pads : Point → Digest) (E : CompilerOutcome C → Prop) :
-    Pr[fun o => E o ∧ o.1.2.hiddenFlag = false | compilerRunPads prims A x q s pads] =
-    Pr[fun o => E o ∧ o.1.2.hiddenFlag = false | do
+    Pr{let o ← compilerRunPads prims A x q s pads}[E o ∧ o.1.2.hiddenFlag = false] =
+    Pr{let o ← (do
       let u ← $ᵗ (C.Term × CPoint → HashOutput)
       compilerRunTable prims A x q s pads
         (SigningShareLazy.fiberTable C.terms (NoFalse.tau s pads)
-          (SigningShareLazy.init : Table.FrozenState C) u)] := by
+          (SigningShareLazy.init : Table.FrozenState C) u))}[E o ∧ o.1.2.hiddenFlag = false] := by
   let G : CompilerOutcome C × Table.FrozenState C → Prop :=
     fun w => E w.1 ∧ w.1.1.2.hiddenFlag = false
   have hl :
-      Pr[fun z => E z.1 ∧ z.1.1.2.hiddenFlag = false |
-        Table.lazyRun prims A x q s pads (NoFalse.tau s pads)] =
-      Pr[fun z => G (z.1, SigningShareLazy.erase z.2) ∧ z.2.bad = none |
-        Table.lazyRun prims A x q s pads (NoFalse.tau s pads)] := by
-    apply probEvent_congr' ?_ rfl
+      Pr{let z ←
+        Table.lazyRun prims A x q s pads (NoFalse.tau s pads)}[E z.1 ∧ z.1.1.2.hiddenFlag = false] =
+      Pr{let z ←
+        Table.lazyRun prims A x q s pads (NoFalse.tau s pads)}[G (z.1, SigningShareLazy.erase z.2) ∧ z.2.bad = none] := by
+    refine prEvent_congr_of_support _ _ _ ?_
     intro z hz
     exact ⟨fun h => ⟨h, lazyRun_hidden_nonbad prims A x hinj q s pads z hz h.2⟩, And.left⟩
   have ht :
-      Pr[fun z => G (z.1, SigningShareLazy.erase z.2) ∧ z.2.bad = none |
-        Table.tableRun prims A x q s pads (NoFalse.tau s pads)] =
-      Pr[fun z => E z.1 ∧ z.1.1.2.hiddenFlag = false |
-        Table.tableRun prims A x q s pads (NoFalse.tau s pads)] := by
-    apply probEvent_congr' ?_ rfl
+      Pr{let z ←
+        Table.tableRun prims A x q s pads (NoFalse.tau s pads)}[G (z.1, SigningShareLazy.erase z.2) ∧ z.2.bad = none] =
+      Pr{let z ←
+        Table.tableRun prims A x q s pads (NoFalse.tau s pads)}[E z.1 ∧ z.1.1.2.hiddenFlag = false] := by
+    refine prEvent_congr_of_support _ _ _ ?_
     intro z hz
     exact ⟨And.left, fun h => ⟨h, tableRun_hidden_nonbad prims A x hinj q s pads z hz h.2⟩⟩
   rw [compilerRunPads_eq_shareRun prims A x hinj q s pads (NoFalse.tau s pads),
-    probEvent_map]
-  change Pr[fun z => E z.1 ∧ z.1.1.2.hiddenFlag = false |
-    Table.lazyRun prims A x q s pads (NoFalse.tau s pads)] = _
+    prEvent_map]
+  change Pr{let z ←
+    Table.lazyRun prims A x q s pads (NoFalse.tau s pads)}[E z.1 ∧ z.1.1.2.hiddenFlag = false] = _
   rw [hl, Table.nonbad_law, ht]
-  simp only [Table.tableRun, compilerRunTable, probEvent_bind_eq_tsum, probEvent_map, Function.comp_def]
+  simp only [Table.tableRun, compilerRunTable, OracleComp.prEvent_bind_eq_tsum, prEvent_map, Function.comp_def]
 
 end ThresholdLeanXmssSecurity.SigningCompilerShare.Guarded
 

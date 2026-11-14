@@ -17,7 +17,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Lemmas
   `q`.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Reads
@@ -212,7 +212,7 @@ theorem readCall_support (forger : Bool) (rq : (RoSpec C).Domain) (a : RealState
       rfl
     | inr input =>
       refine logAgreement_untracked x.1 _ (fun h => h _ rfl) L hL w hw _ ?_ n
-      funext q'
+      refine QueryCache.ext fun q' => ?_
       rw [SigningCacheLogProof.logCache_logQuery]
       simp [SigningCacheLogProof.hashCall]
   · refine route (.inl (.inl (.inr rq))) (Or.inl rfl) ?_ ra hra
@@ -225,7 +225,7 @@ theorem readCall_support (forger : Bool) (rq : (RoSpec C).Domain) (a : RealState
       rfl
     | inr input =>
       refine logAgreement_untracked x.1 _ (fun h => h _ rfl) L hL w hw _ ?_ n
-      funext q'
+      refine QueryCache.ext fun q' => ?_
       rw [SigningCacheLogProof.logCache_logQuery]
       simp [SigningCacheLogProof.hashCall]
 
@@ -398,9 +398,10 @@ theorem read_call (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (forger
     readCall_support prims x s pads u rest noise forger rq a hsf.realPrivate hhit hbase ra hra
   obtain ⟨hshare, hreveal, hbound, hcnt, hpend, hvirt, hgrow⟩ :=
     compilerRead_fields x hinj q s pads (tauOf s pads) (gOf s pads u) noise rest (readInput rq)
-      hslot st r hr
+      hslot st r (by with_reducible exact hr)
   have hframe := backendT_frame capTag x hi q s pads (tauOf s pads) (gOf s pads u) noise rest
-    (.inl (.inl (.inl (.hash (readInput rq))))) (by exact trivial) st ⟨hsf.restAgree, hsf.restFree, hsf.pendingValid⟩ r hr
+    (.inl (.inl (.inl (.hash (readInput rq))))) (by exact trivial) st ⟨hsf.restAgree, hsf.restFree, hsf.pendingValid⟩ r
+    (by simp only [StateT.run] at hr; with_reducible exact hr)
   have hpriv : RealPrivate x s pads noise (gOf s pads u) rest ra.2.2 (visibleOf ra.2) := by
     cases forger
     · exact realWorld_preserves prims (.inr (.inr rq)) a hsf.realPrivate ra hra
@@ -417,17 +418,20 @@ theorem read_call (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (forger
     exact hslot ⟨.inl (T, (⟨.randomizer bottomLayer e, constrained_bottom_randomizer e⟩ : CPoint)),
       he⟩)
   have hgrowV : visibleOf a ≤ visibleOf ra.2 := hvis ▸ hle
-  refine ⟨hval, ⟨⟨?_, hcache⟩, ?_⟩, ?_, ordinaryHash_mark x q s pads u rest noise _ hslot st r hr⟩
+  refine ⟨hval, ⟨⟨?_, hcache⟩, ?_⟩, ?_, ordinaryHash_mark x q s pads u rest noise _ hslot st r
+    (by with_reducible exact hr)⟩
   · exact
       { corrupt := hsf.corrupt, bound := hsf.bound, released := hsf.released
         exposed := hsf.exposed, candidates := hsf.candidates, flag := hsf.flag
         reveal := ⟨hsf.reveal.1.trans hreveal.symm, hsf.reveal.2⟩
-        releasedPending := fun p value hp hk => hgrow (hsf.releasedPending p value (hpend ▸ hp) hk)
+        releasedPending := fun p value hp hk => by
+          have h1 := hsf.releasedPending p value (hpend ▸ hp) hk
+          with_reducible_and_instances exact hgrow h1
         opening := ⟨fun e he =>
             (hagree e).2.trans (hsf.opening.actualValue e ((hagree e).1.mp he)),
           fun e he T => by
             obtain ⟨value, hv⟩ := hsf.opening.released e he T
-            exact ⟨value, hgrow hv⟩⟩
+            with_reducible_and_instances exact ⟨value, hgrow hv⟩⟩
         pendingValid := hframe.2.2
         allocated := fun p hp => hsf.allocated p (hpend ▸ hp)
         virtualSeen := fun T p hp => by

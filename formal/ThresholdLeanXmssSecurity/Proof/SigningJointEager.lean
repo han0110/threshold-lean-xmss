@@ -24,7 +24,7 @@ noncomputable section
 namespace ThresholdLeanXmssSecurity
 namespace SigningJointEagerProof
 
-open LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof
+open HashSig LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof
 
 variable {C : Committee}
 
@@ -159,8 +159,8 @@ theorem evalDist_jointGame_eq (prims : Primitives)
     (hW : ∀ t, ¬SigningHitLaneProof.IsProgram t → HashLaw (W t) (worldHash prims t))
     (hW' : ∀ t, ¬SigningHitLaneProof.IsProgram t → HashLaw (W' t) (worldHash prims t))
     (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    𝒟[(fun z => (z.1, restOf z.2)) <$> (jointGame W A x).run jointInit] =
-      𝒟[(fun z => (z.1, restOf z.2)) <$> (jointGame W' A x).run jointInit] :=
+    ((fun z => (z.1, restOf z.2)) <$> (jointGame W A x).run jointInit) =ᵈ
+      ((fun z => (z.1, restOf z.2)) <$> (jointGame W' A x).run jointInit) :=
   (evalDist_map_restOf (hashLaw_jointGame prims W hW A x) ∅
     ((0, []), ((SigningCoreProof.tsigInit, false), ∅, []))).trans
   (evalDist_map_restOf (hashLaw_jointGame prims W' hW' A x) ∅
@@ -181,9 +181,9 @@ def jointEagerRun (prims : Primitives) (P : PublicParameter) (ρ : KeyIndex → 
 /-- The eager joint run preserves the result, count, both logs and the carried state. -/
 theorem evalDist_jointEagerRun_rest (prims : Primitives) (P : PublicParameter)
     (ρ : KeyIndex → Digest) (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    𝒟[(fun z => (z.1, restOf z.2)) <$> jointEagerRun prims P ρ A x] =
-      𝒟[(fun z => (z.1, restOf z.2)) <$>
-        (jointGame (carry (SigningCostProof.loggedImpl prims)) A x).run jointInit] :=
+    ((fun z => (z.1, restOf z.2)) <$> jointEagerRun prims P ρ A x) =ᵈ
+      ((fun z => (z.1, restOf z.2)) <$>
+        (jointGame (carry (SigningCostProof.loggedImpl prims)) A x).run jointInit) :=
   evalDist_jointGame_eq prims _ _ (hashLaw_eagerWorld prims _)
     (hashLaw_carry_logged prims) A x
 
@@ -191,12 +191,11 @@ theorem evalDist_jointEagerRun_rest (prims : Primitives) (P : PublicParameter)
 exactly the original joint distribution. -/
 theorem evalDist_jointEagerRun (prims : Primitives) (P : PublicParameter)
     (ρ : KeyIndex → Digest) (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    𝒟[(fun z => (z.1, z.2.1.1.2, z.2.1.2)) <$> jointEagerRun prims P ρ A x] =
-      𝒟[(fun z => (z.1, z.2.1.2, z.2.2)) <$> SigningUnchargedLoggedProof.jointRun prims A x] := by
-  have h := congrArg
-    (fun d => (fun z : JointResult C × Rest C (OpeningState C) => (z.1, z.2.1)) <$> d)
-    (evalDist_jointEagerRun_rest prims P ρ A x)
-  simp only [← evalDist_map, Functor.map_map] at h
+    ((fun z => (z.1, z.2.1.1.2, z.2.1.2)) <$> jointEagerRun prims P ρ A x) =ᵈ
+      ((fun z => (z.1, z.2.1.2, z.2.2)) <$> SigningUnchargedLoggedProof.jointRun prims A x) := by
+  have h := (evalDist_jointEagerRun_rest prims P ρ A x).map
+    (fun z : JointResult C × Rest C (OpeningState C) => (z.1, z.2.1))
+  simp only [Functor.map_map] at h
   rw [← jointGame_eq_jointRun, Functor.map_map]
   exact h
 
@@ -204,14 +203,14 @@ theorem evalDist_jointEagerRun (prims : Primitives) (P : PublicParameter)
 theorem probEvent_jointEagerRun (prims : Primitives) (P : PublicParameter)
     (ρ : KeyIndex → Digest) (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
     (event : JointResult C × (ℕ × QueryLog (WorldSpec C)) → Prop) :
-    Pr[fun z => event (z.1, z.2.1.1.2, z.2.1.2) | jointEagerRun prims P ρ A x] =
-      Pr[fun z => event (z.1, z.2.1.2, z.2.2) | SigningUnchargedLoggedProof.jointRun prims A x] := by
+    Pr{let z ← jointEagerRun prims P ρ A x}[event (z.1, z.2.1.1.2, z.2.1.2)] =
+      Pr{let z ← SigningUnchargedLoggedProof.jointRun prims A x}[event (z.1, z.2.1.2, z.2.2)] := by
   have h := evalDist_jointEagerRun prims P ρ A x
-  have hp : Pr[event | (fun z => (z.1, z.2.1.1.2, z.2.1.2)) <$> jointEagerRun prims P ρ A x] =
-      Pr[event | (fun z => (z.1, z.2.1.2, z.2.2)) <$>
-        SigningUnchargedLoggedProof.jointRun prims A x] := by
-    simp only [probEvent_eq_tsum_indicator, probOutput_def, h]
-  simpa only [probEvent_map, Function.comp_def] using hp
+  have hp : Pr{let y ← (fun z => (z.1, z.2.1.1.2, z.2.1.2)) <$> jointEagerRun prims P ρ A x}[event y] =
+      Pr{let y ← ((fun z => (z.1, z.2.1.2, z.2.2)) <$>
+        SigningUnchargedLoggedProof.jointRun prims A x)}[event y] := by
+    exact h.prEvent_eq event
+  simpa only [prEvent_map, Function.comp_def] using hp
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningJointEagerProof.programFree_openingOracles' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

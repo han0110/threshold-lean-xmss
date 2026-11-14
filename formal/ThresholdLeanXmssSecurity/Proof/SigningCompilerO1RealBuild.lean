@@ -9,7 +9,7 @@ import ThresholdLeanXmssSecurity.Proof.TreeSim
   that the top ceremony of the dealer never fails and is this build.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 
 noncomputable section
 
@@ -27,22 +27,22 @@ def realRow (P : PublicParameter) (seeds : C.Term → HashOutput) (e : KeyIndex)
   let v₀ ← liftFree (prfValue seeds (.chain bottomLayer e l (digit 0)))
   let v₁ ← liftFree (prfValue seeds (.chain bottomLayer e l (digit 1)))
   let v₂ ← liftFree (prfValue seeds (.chain bottomLayer e l (digit 2)))
-  let y₁ ← liftFree (tweakable (Concrete.chainWalk P bottomLayer e l 0 1 v₀))
-  let y₂ ← liftFree (tweakable (Concrete.chainWalk P bottomLayer e l 0 2 v₀))
-  let y₃ ← liftFree (tweakable (Concrete.chainWalk P bottomLayer e l 0 3 v₀))
+  let y₁ ← liftFree (tweakable (Verification.chainWalkWithHash P bottomLayer e l 0 1 v₀))
+  let y₂ ← liftFree (tweakable (Verification.chainWalkWithHash P bottomLayer e l 0 2 v₀))
+  let y₃ ← liftFree (tweakable (Verification.chainWalkWithHash P bottomLayer e l 0 3 v₀))
   pure (y₁ ^^^ v₁, y₂ ^^^ v₂, y₃)
 
 /-- One commitment of the real first run. -/
 def realCommitment (P : PublicParameter) (seeds : C.Term → HashOutput) (e : KeyIndex) :
     OracleComp (WorldSpec C) Digest := do
   let ρ ← liftFree (prfValue seeds (.randomizer bottomLayer e))
-  truncateHash <$> liftFree (tweakable (Concrete.oracleHash (commitmentInput P e ρ)))
+  truncateHash <$> liftFree (tweakable (Verification.oracleHashWithHash (commitmentInput P e ρ)))
 
 /-- One chain value of the real second run. -/
 def realTopValue (P : PublicParameter) (seeds : C.Term → HashOutput) (b : Fin (2 ^ layerHeight))
-    (l : ChainIndex) (p : Digit) : OracleComp (WorldSpec C) Digest := do
+    (l : ChainIndex) (p : WinternitzDigit) : OracleComp (WorldSpec C) Digest := do
   let v₀ ← liftFree (prfValue seeds (.chain topLayer (topKey b) l (digit 0)))
-  liftFree (tweakable (Concrete.chainWalk P topLayer (topKey b) l 0 p.val v₀))
+  liftFree (tweakable (Verification.chainWalkWithHash P topLayer (topKey b) l 0 p.val v₀))
 
 /-- The real bottom ceremony of the dealer in the order of `sourceBottomTreeX`. The `cpk` default
 is the first commitment, as `ceremonyOutput` gives it. The real ceremony has no branch for a second
@@ -50,7 +50,7 @@ decode that differs from the codeword of the search. -/
 def realBottomBuild (P : PublicParameter) (seeds : C.Term → HashOutput) (top : TopTree)
     (b : Fin (2 ^ layerHeight)) : OracleComp (WorldSpec C) (Option BottomTree) := do
   let indices := (List.finRange (2 ^ layerHeight)).flatMap fun k =>
-    (List.finRange numChains).map fun l => (bottomKey b k, l)
+    (List.finRange chainCount).map fun l => (bottomKey b k, l)
   let rows ← indices.mapM fun el => realRow P seeds el.1 el.2
   let commitments ← (List.finRange (2 ^ layerHeight)).mapM fun k =>
     realCommitment P seeds (bottomKey b k)
@@ -59,21 +59,21 @@ def realBottomBuild (P : PublicParameter) (seeds : C.Term → HashOutput) (top :
   let commitment := fun (e : KeyIndex) => commitments.getD (e.val % 2 ^ layerHeight) 0
   let root ← liftFree (tweakable
     (merkleNode P bottomLayer (fun e l => (cpk e l).2.2) layerHeight b.val))
-  let message := bytesLE 16 root
+  let message := littleEndianBytes 16 root
   let base ← liftFree (tweakable
-    (truncateHash <$> Concrete.oracleHash (randomizerInput P topLayer (topKey b) ρ message)))
+    (truncateHash <$> Verification.oracleHashWithHash (randomizerInput P topLayer (topKey b) ρ message)))
   let some (randomness, encoding) ← liftFree (tweakable
     (grind P topLayer (topKey b) message base randomizerAttemptLimit 0)) | pure none
-  let values ← Concrete.sequenceFin fun l => realTopValue P seeds b l (encoding l)
+  let values ← OverPermutation.sequenceFin fun l => realTopValue P seeds b l (encoding l)
   let path ← liftFree (tweakable (merklePath P topLayer top.chainEnd (topKey b)))
   let digest ← liftFree (tweakable
-    (Concrete.messageDigest P topLayer (topKey b) message randomness))
+    (Verification.messageDigestWithHash P topLayer (topKey b) message randomness))
   let some checked := Codeword.decode digest | pure none
-  let ends ← Concrete.sequenceFin fun l => liftFree (tweakable
-    (Concrete.recoverChain P topLayer (topKey b) l (checked l) (values l)))
-  let leaf ← liftFree (tweakable (Concrete.leafHash P topLayer (topKey b) ends))
+  let ends ← OverPermutation.sequenceFin fun l => liftFree (tweakable
+    (Verification.recoverChainWithHash P topLayer (topKey b) l (checked l) (values l)))
+  let leaf ← liftFree (tweakable (Verification.leafHashWithHash P topLayer (topKey b) ends))
   let topRoot ← liftFree (tweakable
-    (Concrete.treeFold P topLayer (topKey b) path layerHeight leaf))
+    (Verification.treeFoldWithHash P topLayer (topKey b) path layerHeight leaf))
   if topRoot ≠ top.root then pure none else
     pure (some ⟨cpk, commitment, root, ⟨randomness, values, path⟩⟩)
 
@@ -81,13 +81,13 @@ def realBottomBuild (P : PublicParameter) (seeds : C.Term → HashOutput) (top :
 def realTopEnd (P : PublicParameter) (seeds : C.Term → HashOutput) (b : Fin (2 ^ layerHeight))
     (l : ChainIndex) : OracleComp (WorldSpec C) Digest := do
   let v₀ ← liftFree (prfValue seeds (.chain topLayer (topKey b) l (digit 0)))
-  liftFree (tweakable (Concrete.chainWalk P topLayer (topKey b) l 0 3 v₀))
+  liftFree (tweakable (Verification.chainWalkWithHash P topLayer (topKey b) l 0 3 v₀))
 
 /-- The real top ceremony of the dealer in the order of `deferredTopTree`. -/
 def realTopBuild (P : PublicParameter) (seeds : C.Term → HashOutput) :
     OracleComp (WorldSpec C) TopTree := do
   let indices := (List.finRange (2 ^ layerHeight)).flatMap fun b =>
-    (List.finRange numChains).map fun l => (b, l)
+    (List.finRange chainCount).map fun l => (b, l)
   let ends ← indices.mapM fun bl => realTopEnd P seeds bl.1 bl.2
   let keys := indices.map fun bl => (topKey bl.1, bl.2)
   let chainEnd := fun e l => ends.getD (keys.idxOf (e, l)) 0
@@ -109,17 +109,17 @@ theorem mapM_bind_congr_length {m : Type → Type} [Monad m] [LawfulMonad m] {α
 theorem layerRoot_unfold {m : Type → Type} [Monad m] [LawfulMonad m] [HasQuery HashSpec m]
     (P : PublicParameter) (lay : Layer) (key : KeyIndex) (message : HashInput)
     (part : LayerSignature) :
-    Concrete.layerRoot (m := m) P lay key message part = (do
-      let digest ← Concrete.messageDigest P lay key message part.randomness
+    Verification.layerRootWithHash (m := m) P lay key message part = (do
+      let digest ← Verification.messageDigestWithHash P lay key message part.randomizer
       match Codeword.decode digest with
       | none => pure none
       | some encoding => do
-        let ends ← Concrete.sequenceFin fun l =>
-          Concrete.recoverChain P lay key l (encoding l) (part.chainValues l)
-        let leaf ← Concrete.leafHash P lay key ends
-        let root ← Concrete.treeFold P lay key part.path layerHeight leaf
+        let ends ← OverPermutation.sequenceFin fun l =>
+          Verification.recoverChainWithHash P lay key l (encoding l) (part.chainValues l)
+        let leaf ← Verification.leafHashWithHash P lay key ends
+        let root ← Verification.treeFoldWithHash P lay key part.authenticationPath layerHeight leaf
         pure (some root)) := by
-  simp only [Concrete.layerRoot, Concrete.otsLeaf, bind_assoc]
+  simp only [Verification.layerRootWithHash, Verification.otsLeafWithHash, bind_assoc]
   refine bind_congr fun digest => ?_
   cases Codeword.decode digest <;> simp
 
@@ -191,7 +191,7 @@ theorem realTop_eq (x : Keys3 C) :
       (fun p => SigningSecurityProof.liftFree (prfValue x.2.1 p)) x.1 emptyTop .top =
       (fun top => some (.top top)) <$> realTopBuild x.1 x.2.1 := by
   have htop : topJobs = ((List.finRange (2 ^ layerHeight)).flatMap fun b =>
-      (List.finRange numChains).map fun l => (b, l)).map
+      (List.finRange chainCount).map fun l => (b, l)).map
         fun bl => (⟨.chainEnd (topKey bl.1) bl.2, [.chain topLayer (topKey bl.1) bl.2 (digit 0)]⟩ : Job) := by
     simp only [topJobs, List.map_flatMap, List.map_map]
     rfl

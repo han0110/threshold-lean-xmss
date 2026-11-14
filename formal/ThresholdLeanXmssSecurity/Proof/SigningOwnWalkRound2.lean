@@ -20,7 +20,7 @@ A round-2 request and the honest signature tail keep `WalkInv` and make no charg
   release record, and `releasedBound` binds the key to the message (`bound_of_signers`).
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 
 noncomputable section
 
@@ -58,13 +58,13 @@ theorem base_step_trials (P : PublicParameter) (seeds : C.Term → HashOutput)
     (hprf : SigningGuessProof.RandomizerCached seeds st.1.data.cache e)
     (r : HashOutput × CompilerBackend C)
     (hr : r ∈ support ((compilerImpl P seeds (.hash (.hash (randomizerInput P bottomLayer e
-      (SigningGuessProof.cachedRandomizer seeds st.1.data.cache e) (bytesLE 32 message))))).run
+      (SigningGuessProof.cachedRandomizer seeds st.1.data.cache e) (littleEndianBytes 32 message))))).run
         st.1)) :
     r.2.trace.2 = true ∨
       DeterministicSigning.Resolves r.2.data.cache
         (SigningFlatEagerProof.baseGrind P e message r.1) () := by
   generalize hq : (Query.hash (randomizerInput P bottomLayer e
-    (SigningGuessProof.cachedRandomizer seeds st.1.data.cache e) (bytesLE 32 message)) : Query C) = q
+    (SigningGuessProof.cachedRandomizer seeds st.1.data.cache e) (littleEndianBytes 32 message)) : Query C) = q
     at hr
   by_cases hstale : r.2.trace.2 = true
   · exact Or.inl hstale
@@ -85,7 +85,7 @@ theorem base_step_trials (P : PublicParameter) (seeds : C.Term → HashOutput)
     have htrace := congrArg (fun r => r.2.trace) hra
     simp only at htrace
     cases hc : st.1.data.cache (.hash (randomizerInput P bottomLayer e
-        (SigningGuessProof.cachedRandomizer seeds st.1.data.cache e) (bytesLE 32 message))) with
+        (SigningGuessProof.cachedRandomizer seeds st.1.data.cache e) (littleEndianBytes 32 message))) with
     | none =>
         rw [htrace, ← hq, traceStepAt_fresh_base P seeds _ _ _ _ e message hprf hsig hc]
         simp [XmssSecurity.SigningCacheTrace.leafIndices]
@@ -202,7 +202,7 @@ theorem walk_resolvedHash {α : Type} (oa : OracleComp HashSpec α)
         le_rfl
 
 /-- The bottom search queries message digest inputs only, which carry no candidate. -/
-theorem candidateFree_grind (e : KeyIndex) (message : HashInput) (base : Randomness)
+theorem candidateFree_grind (e : KeyIndex) (message : HashInput) (base : Randomizer)
     (attempts trial : ℕ) :
     XmssSecurity.Bridge.OnlyQueries (fun input => hiddenCandidate P input = none)
       (grind P bottomLayer e message base attempts trial) := by
@@ -210,7 +210,7 @@ theorem candidateFree_grind (e : KeyIndex) (message : HashInput) (base : Randomn
   | zero => exact .pure _
   | succ attempts ih =>
       have hfree := hiddenCandidate_none_of_isMsg P _
-        (byte23_msg P bottomLayer e (message ++ bytesLE 16 (base + BitVec.ofNat digestBits trial)))
+        (byte23_msg P bottomLayer e (message ++ littleEndianBytes 16 (base + BitVec.ofNat digestBits trial)))
       refine ((XmssSecurity.Bridge.onlyQueries_query hfree).bind fun _ => .pure _).bind
         fun digest => ?_
       cases Codeword.decode digest with
@@ -290,9 +290,9 @@ theorem walk_signCodeword (prims : Primitives) (commitment : Digest) (e : KeyInd
       (fun _ => BaseInv P seeds none none)
       (sourceRoProgram prims P seeds (signCodeword P commitment e message ρ)) := by
   have horacle : ∀ input, simulateQ (fun input => sourceHash P seeds (.hash input))
-      (Concrete.oracleHash (m := OracleComp HashSpec) input) = sourceHash P seeds (.hash input) := by
+      (Verification.oracleHashWithHash (m := OracleComp HashSpec) input) = sourceHash P seeds (.hash input) := by
     intro input
-    simp [Concrete.oracleHash, HasQuery.instOfMonadLift_query]
+    simp [Verification.oracleHashWithHash, HasQuery.instOfMonadLift_query]
   have hopen : ∀ src (st : LState C), BaseInv P seeds none none src st →
       Opened commitment e message src st → st.1.2.1 (.opening bottomLayer e) ≠ none := by
     rintro src st h ⟨hb, c, hc, -⟩
@@ -316,9 +316,9 @@ theorem walk_signCodeword (prims : Primitives) (commitment : Digest) (e : KeyInd
     let A : SourceState C → LState C → Prop := fun src st => BaseInv P seeds none none src st ∧
       Opened commitment e message src st ∧ st.1.1.1.data.cache (.hash (commitmentInput P e ρ)) = some v
     refine Walk.conseq (c := 0 + 0) (Walk.bind (Walk.conseq (walk_inputCall P seeds Q s
-      (randomizerInput P bottomLayer e ρ (bytesLE 32 message)) A ?_) (fun _ _ h => ⟨h.1, h⟩)
+      (randomizerInput P bottomLayer e ρ (littleEndianBytes 32 message)) A ?_) (fun _ _ h => ⟨h.1, h⟩)
       (Post' := fun y src st => BaseInv P seeds none none src st ∧
-        SearchFree P seeds (grind P bottomLayer e (bytesLE 32 message) (truncateHash y)
+        SearchFree P seeds (grind P bottomLayer e (littleEndianBytes 32 message) (truncateHash y)
           randomizerAttemptLimit 0) st) ?_ le_rfl) fun y =>
       walk_resolvedHash P seeds Q s _ (candidateFree_grind P e _ _ _ _)) ?_
       (fun _ _ _ h => h) le_rfl
@@ -342,7 +342,8 @@ theorem walk_signCodeword (prims : Primitives) (commitment : Digest) (e : KeyInd
           exact hs
         · right; right
           rw [SigningFlatEagerProof.baseGrind] at hres
-          obtain ⟨w, hw, -⟩ := hres.of_map
+          rw [map_eq_bind_pure_comp] at hres
+          obtain ⟨w, hw, -⟩ := hres.of_bind
           rw [hst]
           exact ⟨w, hw⟩
       · right; left
@@ -583,10 +584,10 @@ theorem map {α β : Type} {oa : SourceMO1 C α} (h : KeepsSigning oa) (f : α �
   exact h.bind _ fun _ => KeepsSigning.pure _
 
 theorem sequenceFin {α : Type} : ∀ (n : ℕ) (oa : Fin n → SourceMO1 C α),
-    (∀ i, KeepsSigning (oa i)) → KeepsSigning (Concrete.sequenceFin oa)
-  | 0, _, _ => by simpa only [Concrete.sequenceFin] using KeepsSigning.pure _
+    (∀ i, KeepsSigning (oa i)) → KeepsSigning (OverPermutation.sequenceFin oa)
+  | 0, _, _ => by simpa only [OverPermutation.sequenceFin] using KeepsSigning.pure _
   | n + 1, oa, h => by
-      simp only [Concrete.sequenceFin]
+      simp only [OverPermutation.sequenceFin]
       exact (h 0).bind _ fun _ => (sequenceFin n _ fun i => h i.succ).bind _ fun _ =>
         KeepsSigning.pure _
 
@@ -631,8 +632,8 @@ theorem keepsSigning_round2Callback (prims : Primitives) (x : Keys3 C) (i : C.Pa
         rfl
       split
       · exact (keepsSigning_sourceReleaseCovered x.1 x.2.1 _ _).bind _ fun _ => hpart
-      · exact (KeepsSigning.pure _).bind _ fun _ => hpart
-  | _ => exact (KeepsSigning.pure _).bind _ fun _ => hpart
+      · exact hpart
+  | _ => exact hpart
 
 theorem charges_round2Callback (prims : Primitives) (x : Keys3 C) (Q : ℕ) (s : HiddenKey → Digest)
     (i : C.Party) (J : C.Quorum) (message : Message) (atThreshold : Bool) (p : Point) :
@@ -653,10 +654,8 @@ theorem charges_round2Callback (prims : Primitives) (x : Keys3 C) (Q : ℕ) (s :
       split
       · exact SourceCharges.mono (c := 0 + 0) (SourceCharges.bind
           (charges_sourceReleaseCovered x.1 x.2.1 Q s _ _) _ fun _ => hpart) (fun _ h => h) le_rfl
-      · exact SourceCharges.mono (c := 0 + 0) (SourceCharges.bind (SourceCharges.pure _) _
-          fun _ => hpart) (fun _ h => h) le_rfl
-  | _ => exact SourceCharges.mono (c := 0 + 0) (SourceCharges.bind (SourceCharges.pure _) _
-      fun _ => hpart) (fun _ h => h) le_rfl
+      · exact hpart
+  | _ => exact hpart
 
 /-- The record of a signer at a key that is bound to the message keeps `WalkInv`. -/
 theorem walkInv_release {src : SourceStateO1 C} {st : LState C} (h : WalkInv P seeds src st)
@@ -763,8 +762,7 @@ theorem walk_round2 (prims : Primitives) (x : Keys3 C) (Q : ℕ) (s : HiddenKey 
               (WalkO.of_charges (charges_sourceReleaseKey x.1 x.2.1 Q s e))) fun _ => WalkO.bind
               (WalkO.modify (Post := fun _ src st => WalkInv x.1 x.2.1 src st) _ hmod) fun _ =>
               WalkO.pure _ fun _ _ h => h) (fun _ _ h => h) (fun _ _ _ h => h) le_rfl
-          · exact WalkO.conseq (c := 0 + (0 + 0)) (WalkO.bind (WalkO.pure _ fun _ _ h => h)
-              fun _ => WalkO.bind
+          · exact WalkO.conseq (c := 0 + 0) (WalkO.bind
               (WalkO.modify (Post := fun _ src st => WalkInv x.1 x.2.1 src st) _ hmod) fun _ =>
               WalkO.pure _ fun _ _ h => h) (fun _ _ h => h) (fun _ _ _ h => h) le_rfl
     · rintro src st ⟨rfl, hw, -⟩
@@ -813,7 +811,7 @@ theorem bound_of_signers (sig : TsigState C) (e : KeyIndex) (message : Message)
 /-- The reveals of the top chain values of a tree of `TopShape` make no charged call. -/
 theorem walk_topValues (tree : DeferredBottomTree) (hshape : TopShape tree) :
     Walk P seeds Q s (BaseInv P seeds none none) 0 (fun _ => BaseInv P seeds none none)
-      (Concrete.sequenceFin fun l => sourceRevealDigest (tree.topSignature.chainValue l)) := by
+      (OverPermutation.sequenceFin fun l => sourceRevealDigest (tree.topSignature.chainValue l)) := by
   refine Walk.conseq (Walk.sequenceFin (c := 0) _ _ _ fun l => ?_) (fun _ _ h => h)
     (fun _ _ _ h => h) (by simp)
   cases hv : tree.topSignature.chainValue l with
@@ -894,8 +892,8 @@ theorem walk_honestSignature_of_shape (prims : Primitives) (x : Keys3 C) (Q : �
           ⟨h.1.1, h.2⟩) (fun _ _ _ h => h) le_rfl
     rcases r with _ | ⟨randomness, encoding⟩
     · exact Walk.pure _ fun _ _ h => h
-    · have hvalues : Walk x.1 x.2.1 Q s (BaseInv x.1 x.2.1 none none) (numChains * 0)
-          (fun _ => BaseInv x.1 x.2.1 none none) (Concrete.sequenceFin fun l =>
+    · have hvalues : Walk x.1 x.2.1 Q s (BaseInv x.1 x.2.1 none none) (chainCount * 0)
+          (fun _ => BaseInv x.1 x.2.1 none none) (OverPermutation.sequenceFin fun l =>
             if (encoding l).val = 3 then Pure.pure (tree.cpk e l).2.2 else do
               sourceReleaseBottomSuffix x.1 x.2.1 e l (encoding l)
               let value ← sourceRoProgram prims x.1 x.2.1
@@ -909,7 +907,7 @@ theorem walk_honestSignature_of_shape (prims : Primitives) (x : Keys3 C) (Q : �
               (walk_sourceReleaseBottomSuffix x.1 x.2.1 Q s e l _) fun _ => Walk.bind
               (walk_prfValue x.1 x.2.1 Q s prims x.2.1 _) fun _ => Walk.pure _ fun _ _ h => h)
               (fun _ _ h => h) (fun _ _ _ h => h) le_rfl
-      exact Walk.conseq (c := numChains * 0 + (0 + (0 + 0))) (Walk.bind hvalues fun _ =>
+      exact Walk.conseq (c := chainCount * 0 + (0 + (0 + 0))) (Walk.bind hvalues fun _ =>
         Walk.bind (walk_hashProgram x.1 x.2.1 Q s _ (free_merklePath x.1 _ _ _)) fun _ =>
         Walk.bind (walk_topValues x.1 x.2.1 Q s tree hts) fun _ => Walk.pure _ fun _ _ h => h)
         (fun _ _ h => h) (fun _ _ _ h => h) (by simp)
@@ -993,7 +991,7 @@ end ThresholdLeanXmssSecurity.SigningOwnWalkRound2
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningOwnWalkRound2.walk_keeps
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkRound2.TreeAt.grows' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkRound2.TreeAt.grows' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningOwnWalkRound2.TreeAt.grows
 
@@ -1049,11 +1047,11 @@ end ThresholdLeanXmssSecurity.SigningOwnWalkRound2
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningOwnWalkRound2.KeepsSigning.modify
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkRound2.KeepsSigning.bind' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkRound2.KeepsSigning.bind' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningOwnWalkRound2.KeepsSigning.bind
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkRound2.KeepsSigning.liftBase' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkRound2.KeepsSigning.liftBase' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningOwnWalkRound2.KeepsSigning.liftBase
 

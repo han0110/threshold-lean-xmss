@@ -8,7 +8,7 @@ key, absence of a hit identifies one cached input for the target digest. These
 properties track the actual digest cache, including queries preceding installation.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningSignedSeparationProof
@@ -344,7 +344,8 @@ theorem invariant_query_hash {C : Committee}
   | none =>
     have hn : digestCache cache input = none := (digestCache_none_iff cache input).2 hc
     have hseen : input ∉ monitor.seen := fun hs => (h.seen input).1 hs hn
-    rw [Monitor.step, if_neg hseen, digestCache_query input cache r hr]
+    unfold Monitor.step
+    rw [if_neg hseen, digestCache_query input cache r hr]
     exact invariant_fresh h input _ hn false
 
 /-- An unsigned-key trial preserves the invariant, including its possible installation. -/
@@ -391,12 +392,12 @@ theorem trial_unsigned_invalid {C : Committee}
 /-- A grind starting unsigned stops at its first installation, so all of its trials preserve
 cache separation. -/
 theorem invariant_grind_unsigned {C : Committee} (P : PublicParameter) (e : KeyIndex)
-    (message : Message) (base : Randomness) : ∀ attempts trial (s : HashCache C × Monitor),
+    (message : Message) (base : Randomizer) : ∀ attempts trial (s : HashCache C × Monitor),
     CacheInvariant (XmssSecurity.encodingInputLeafIndex? P) (digestCache s.1) s.2 →
     s.2.state.signed e = none → ∀ r,
     r ∈ support ((simulateQ (monitoredOracle (XmssSecurity.encodingInputLeafIndex? P))
       (simulateQ (fun input => query (spec := Query C →ₒ HashOutput) (.hash input))
-        (grind P bottomLayer e (bytesLE 32 message) base attempts trial))).run s) →
+        (grind P bottomLayer e (littleEndianBytes 32 message) base attempts trial))).run s) →
     CacheInvariant (XmssSecurity.encodingInputLeafIndex? P) (digestCache r.2.1) r.2.2 := by
   intro attempts
   induction attempts with
@@ -407,7 +408,8 @@ theorem invariant_grind_unsigned {C : Committee} (P : PublicParameter) (e : KeyI
     exact h
   | succ n ih =>
     intro trial s h hs r hr
-    simp [grind, Concrete.messageDigest, Concrete.tweakableHash, Concrete.oracleHash] at hr
+    simp [grind, Verification.messageDigestWithHash, Verification.tweakableHashWithHash, Verification.thWithHash,
+      Verification.oracleHashWithHash] at hr
     obtain ⟨answer, cache, monitor, hquery, hr⟩ := hr
     have hk := SigningLane2BridgeProof.encodingInputLeafIndex?_messageInput P e message (base + BitVec.ofNat digestBits trial)
     have hnext := invariant_trial_unsigned _ e hk s h hs (answer, cache, monitor) hquery
@@ -421,8 +423,8 @@ theorem invariant_grind_unsigned {C : Committee} (P : PublicParameter) (e : KeyI
       have hv : ¬XmssSecurity.TargetSum.ValidDigest (XmssSecurity.truncateHash answer) := by
         have heq : XmssSecurity.TargetSum.ValidDigest (XmssSecurity.truncateHash answer) ↔
             ∃ encoding, Codeword.decode (truncateHash answer) = some encoding := by
-          simp only [XmssSecurity.TargetSum.ValidDigest, XmssSecurity.Bridge.decode_eq]
-          rfl
+          simp only [XmssSecurity.TargetSum.ValidDigest]
+          exact (congrArg (fun d => ∃ encoding, d = some encoding) (XmssSecurity.Bridge.decode_eq _)).symm.to_iff
         rw [heq]
         simp [hdec]
       have hn := trial_unsigned_invalid _ e hk s hs (answer, cache, monitor) hquery hv
@@ -517,7 +519,7 @@ theorem witness_base_rerun {C : Committee} (x : SigningSecurityProof.Keys3 C)
     (h : SelectionWitness x cache state e target) (hle : cache ≤ cache')
     (message : Message) (hb : state.bound e = some message) (answer : HashOutput)
     (ha : cache' (.hash (randomizerInput x.1 bottomLayer e
-      (SigningGuessProof.cachedRandomizer x.2.1 cache e) (bytesLE 32 message))) = some answer)
+      (SigningGuessProof.cachedRandomizer x.2.1 cache e) (littleEndianBytes 32 message))) = some answer)
     (monitor : Monitor) (hc : CacheSeen cache' monitor) :
     (simulateQ (monitoredOracle (XmssSecurity.encodingInputLeafIndex? x.1))
       (baseGrind x.1 e message answer)).run (cache', monitor) = pure ((), (cache', monitor)) := by
@@ -559,7 +561,7 @@ theorem invariant_extra {C : Committee} (x : SigningSecurityProof.Keys3 C)
       | none => simp only [hb] at hr; exact hpure hr
       | some message =>
         cases ha : p'.1.1.1 (.hash (randomizerInput x.1 bottomLayer hbase.choose
-            (SigningGuessProof.cachedRandomizer x.2.1 p.1.1.1 hbase.choose) (bytesLE 32 message))) with
+            (SigningGuessProof.cachedRandomizer x.2.1 p.1.1.1 hbase.choose) (littleEndianBytes 32 message))) with
         | none => simp only [hb, ha] at hr; exact hpure hr
         | some answer =>
           simp only [hb, ha] at hr

@@ -9,7 +9,7 @@ optional opening release and counted read. The relation retains the source,
 private cache, share table and both stopping events.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerSyncLocalSlot
@@ -118,7 +118,7 @@ theorem merge_cacheQuery_other (seeds : C.Term → HashOutput)
     (hr : route seeds input = none) (v : HashOutput) :
     merge seeds (cache.cacheQuery input v) share =
       (merge seeds cache share).cacheQuery input v := by
-  funext other
+  refine QueryCache.ext fun other => ?_
   by_cases he : other = input
   · subst other; simp [merge, hr]
   · rw [QueryCache.cacheQuery_of_ne _ _ he]
@@ -126,7 +126,7 @@ theorem merge_cacheQuery_other (seeds : C.Term → HashOutput)
 
 theorem merge_merge (seeds : C.Term → HashOutput) (rest : HashCache C)
     (share : ShareCache C) : merge seeds (merge seeds rest share) share = merge seeds rest share := by
-  funext query
+  refine QueryCache.ext fun query => ?_
   cases h : route seeds query <;> simp [merge, h]
 
 /-- State facts of the counted backend read, before its caller's control update. -/
@@ -184,7 +184,7 @@ theorem backend_slot_read (x : Keys3 C)
         merge_update x.2.1 hinj, hvalue]
       rw [he]
       congr 1
-      funext other
+      refine QueryCache.ext fun other => ?_
       by_cases ho : other = key x.2.1 (T, p)
       · subst ho; simp only [QueryCache.cacheQuery_self]
       · rw [QueryCache.cacheQuery_of_ne _ _ ho, QueryCache.cacheQuery_of_ne _ _ ho]

@@ -34,7 +34,7 @@ namespace ThresholdLeanXmssSecurity
 
 namespace SigningOwnStop
 
-open LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof SigningJointEagerProof
+open HashSig LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof SigningJointEagerProof
   SigningPartnerBoundProof SigningReleasedLinkProof SigningReleasedAlignProof SigningOwnForger
 
 attribute [local instance] Classical.propDecidable
@@ -136,9 +136,9 @@ def LedgerStep (x : SigningSecurityProof.Keys3 C) {α : Type}
     (m : StateT (LedgerState C) ProbComp α) : Prop :=
   ∀ p : LedgerState C, CacheSeen p.1.1.1.1.1.1 p.1.1.1.2 →
     (∀ z ∈ support (m.run p), CacheSeen z.2.1.1.1.1.1.1 z.2.1.1.1.2 ∧ p.1.2 ≤ z.2.1.2) ∧
-    ∑' z, Pr[= z | m.run p] * SigningOwnR1.stopRisk x z.2.1.1.1.1.1.1 z.2.1.1.1.2 ≤
+    ∑' z, Pr{let y ← m.run p}[y = z] * SigningOwnR1.stopRisk x z.2.1.1.1.1.1.1 z.2.1.1.1.2 ≤
       SigningOwnR1.stopRisk x p.1.1.1.1.1.1 p.1.1.1.2 + (2 ^ 128 : ℝ≥0∞)⁻¹ *
-        ∑' z, Pr[= z | m.run p] * ((z.2.1.2 - p.1.2 : ℕ) : ℝ≥0∞)
+        ∑' z, Pr{let y ← m.run p}[y = z] * ((z.2.1.2 - p.1.2 : ℕ) : ℝ≥0∞)
 
 theorem ledgerStep_pure (x : SigningSecurityProof.Keys3 C) {α : Type} (a : α) :
     LedgerStep x (pure a : StateT (LedgerState C) ProbComp α) := by
@@ -147,7 +147,7 @@ theorem ledgerStep_pure (x : SigningSecurityProof.Keys3 C) {α : Type} (a : α) 
   · simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
     subst hz
     exact ⟨hp, le_rfl⟩
-  · simp only [StateT.run_pure, tsum_probOutput_pure_mul]
+  · simp only [StateT.run_pure, OracleComp.tsum_prEvent_pure_mul]
     exact le_self_add
 
 theorem ledgerStep_bind (x : SigningSecurityProof.Keys3 C) {α β : Type}
@@ -164,21 +164,21 @@ theorem ledgerStep_bind (x : SigningSecurityProof.Keys3 C) {α β : Type}
   · set c : ℝ≥0∞ := (2 ^ 128 : ℝ≥0∞)⁻¹
     set κ := fun q : LedgerState C => q.1.2
     set f := fun q : LedgerState C => SigningOwnR1.stopRisk x q.1.1.1.1.1.1 q.1.1.1.2
-    simp only [StateT.run_bind, tsum_probOutput_bind_mul]
-    calc _ ≤ ∑' y, Pr[= y | m.run p] * (f y.2 + c * ∑' z, Pr[= z | (k y.1).run y.2] *
+    simp only [StateT.run_bind, OracleComp.tsum_prEvent_bind_mul]
+    calc _ ≤ ∑' y, Pr{let z ← m.run p}[z = y] * (f y.2 + c * ∑' z, Pr{let w ← (k y.1).run y.2}[w = z] *
             ((κ z.2 - κ y.2 : ℕ) : ℝ≥0∞)) :=
           tsum_le_of_support _ _ _ fun y hy => (hk y.1 y.2 (hms y hy).1).2
-      _ = ∑' y, Pr[= y | m.run p] * f y.2 + c * ∑' y, Pr[= y | m.run p] *
-            ∑' z, Pr[= z | (k y.1).run y.2] * ((κ z.2 - κ y.2 : ℕ) : ℝ≥0∞) := by
+      _ = ∑' y, Pr{let z ← m.run p}[z = y] * f y.2 + c * ∑' y, Pr{let z ← m.run p}[z = y] *
+            ∑' z, Pr{let w ← (k y.1).run y.2}[w = z] * ((κ z.2 - κ y.2 : ℕ) : ℝ≥0∞) := by
           simp only [mul_add, ENNReal.tsum_add]
           congr 1
           rw [← ENNReal.tsum_mul_left]
           exact tsum_congr fun y => by ring
-      _ ≤ f p + c * ∑' y, Pr[= y | m.run p] * ((κ y.2 - κ p : ℕ) : ℝ≥0∞) + c * ∑' y, Pr[= y | m.run p] *
-            ∑' z, Pr[= z | (k y.1).run y.2] * ((κ z.2 - κ y.2 : ℕ) : ℝ≥0∞) := by
+      _ ≤ f p + c * ∑' y, Pr{let z ← m.run p}[z = y] * ((κ y.2 - κ p : ℕ) : ℝ≥0∞) + c * ∑' y, Pr{let z ← m.run p}[z = y] *
+            ∑' z, Pr{let w ← (k y.1).run y.2}[w = z] * ((κ z.2 - κ y.2 : ℕ) : ℝ≥0∞) := by
           gcongr
-      _ = f p + c * ∑' y, Pr[= y | m.run p] * (((κ y.2 - κ p : ℕ) : ℝ≥0∞) +
-            ∑' z, Pr[= z | (k y.1).run y.2] * ((κ z.2 - κ y.2 : ℕ) : ℝ≥0∞)) := by
+      _ = f p + c * ∑' y, Pr{let z ← m.run p}[z = y] * (((κ y.2 - κ p : ℕ) : ℝ≥0∞) +
+            ∑' z, Pr{let w ← (k y.1).run y.2}[w = z] * ((κ z.2 - κ y.2 : ℕ) : ℝ≥0∞)) := by
           rw [add_assoc, ← mul_add, ← ENNReal.tsum_add]
           simp only [mul_add]
       _ = _ := by
@@ -201,7 +201,7 @@ theorem keyedSplitOracle_run_stopRisk_le (x : SigningSecurityProof.Keys3 C)
     (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) {β : Type}
     (ob : OracleComp (Query C →ₒ HashOutput) β)
     (s : (HashCache C × Monitor) × (XmssSecurity.LeafIndex → Bool)) (hcov : CacheSeen s.1.1 s.1.2) :
-    ∑' r, Pr[= r | (simulateQ (SigningOneRunProof.keyedSplitOracle keyOf) ob).run s] *
+    ∑' r, Pr{let z ← (simulateQ (SigningOneRunProof.keyedSplitOracle keyOf) ob).run s}[z = r] *
         SigningOwnR1.stopRisk x r.2.1.1 r.2.1.2 ≤ SigningOwnR1.stopRisk x s.1.1 s.1.2 := by
   by_cases halt : SigningGuessProof.AlternativeCommitment x.2.1 x.1 s.1.1
   · refine (SigningPartnerBoundProof.tsum_probOutput_mul_le_of_const _ _ 0 fun r hr => ?_).trans zero_le
@@ -217,7 +217,7 @@ theorem keyedSplitOracle_run_stopRisk_le (x : SigningSecurityProof.Keys3 C)
     · exact le_rfl
   refine (ENNReal.tsum_le_tsum fun r => mul_le_mul_right (hpt _ _) _).trans ?_
   have h := monitoredOracle_run_risk_le keyOf ob s.1 hcov
-  rw [← SigningOneRunProof.keyedSplitOracle_run_forget keyOf ob s.1 s.2, tsum_probOutput_map_mul] at h
+  rw [← SigningOneRunProof.keyedSplitOracle_run_forget keyOf ob s.1 s.2, OracleComp.tsum_prEvent_map_mul] at h
   exact h
 
 /-- A run of the trial oracle of the split world keeps each cached input seen by the monitor. -/
@@ -255,7 +255,7 @@ theorem ledgerStep_world (x : SigningSecurityProof.Keys3 C) (t : (WorldSpec C).D
   refine ⟨fun z hz => ?_, ?_⟩
   · obtain ⟨hw, hledger⟩ := ledgerWorld_support prims x t p z hz
     exact ⟨hseen _ hw, hledger ▸ Nat.le_add_right _ _⟩
-  have hcost : ∑' z, Pr[= z | (ledgerWorld prims x t).run p] * ((z.2.1.2 - p.1.2 : ℕ) : ℝ≥0∞) =
+  have hcost : ∑' z, Pr{let y ← (ledgerWorld prims x t).run p}[y = z] * ((z.2.1.2 - p.1.2 : ℕ) : ℝ≥0∞) =
       (stopCharge x p.1.1.1.1.1.1 t : ℝ≥0∞) := by
     rw [tsum_eq_of_support _ _ (fun _ => (stopCharge x p.1.1.1.1.1.1 t : ℝ≥0∞) + 0) fun z hz => by
         rw [(ledgerWorld_support prims x t p z hz).2, Nat.add_sub_cancel_left, add_zero],
@@ -268,18 +268,18 @@ theorem ledgerStep_world (x : SigningSecurityProof.Keys3 C) (t : (WorldSpec C).D
     simp only [SigningOwnR1.stopRisk, if_pos (SigningGuessProof.alternativeCommitment_mono _ _ _ _ hle halt),
       le_refl]
   rw [stopCharge, if_neg halt]
-  simp only [ledgerWorld, StateT.run_mk, tsum_probOutput_map_mul]
+  simp only [ledgerWorld, StateT.run_mk, OracleComp.tsum_prEvent_map_mul]
   simp only [SigningReleasedLinkProof.world, SigningOneRunProof.keyedSplitWorld, StateT.run_mk,
-    tsum_probOutput_bind_mul,
-    tsum_probOutput_map_mul]
-  calc _ ≤ ∑' y, Pr[= y | (carry (SigningCostProof.loggedImpl prims) t).run (p.1.1.1.1, p.2)] *
+    OracleComp.tsum_prEvent_bind_mul,
+    OracleComp.tsum_prEvent_map_mul]
+  calc _ ≤ ∑' y, Pr{let z ← (carry (SigningCostProof.loggedImpl prims) t).run (p.1.1.1.1, p.2)}[z = y] *
           SigningOwnR1.stopRisk x y.2.1.1.1 (queryEntryStep keyOf p.1.1.1.2 (hashEntry ⟨t, y.1⟩)) := by
         refine tsum_le_of_support _ _ _ fun y hy => ?_
         obtain ⟨l, hl, rfl⟩ := hcarry y hy
         exact keyedSplitOracle_run_stopRisk_le x keyOf _ _
           (logged_query_cacheSeen prims keyOf t p.1.1.1.1 p.1.1.1.2 hp ht l hl)
     _ ≤ _ := by
-        simp only [carry, StateT.run_mk, tsum_probOutput_map_mul]
+        simp only [carry, StateT.run_mk, OracleComp.tsum_prEvent_map_mul]
         exact SigningOwnR1.logged_query_stopRisk_le prims x keyOf t p.1.1.1.1 p.1.1.1.2 hp ht
 
 theorem ledgerStep_simulateQ_world (x : SigningSecurityProof.Keys3 C) {α : Type}
@@ -311,7 +311,7 @@ theorem ledgerStep_flatWith (x : SigningSecurityProof.Keys3 C) {ι : Type} {spec
     LedgerStep x (flatWith outer (ledgerWorld prims x) t) := by
   intro p hp
   obtain ⟨hs, hr⟩ := ledgerStep_simulateQ_world prims x _ (hfree t p.2) p hp
-  simp only [flatWith, StateT.run_mk, support_map, Set.mem_image, tsum_probOutput_map_mul]
+  simp only [flatWith, StateT.run_mk, support_map, Set.mem_image, OracleComp.tsum_prEvent_map_mul]
   refine ⟨?_, hr⟩
   rintro _ ⟨z, hz, rfl⟩
   exact hs z hz
@@ -347,8 +347,8 @@ theorem ledgerStep_game (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
 /-- The stopped potential at the end of the ledger run costs `2^-128` for each unit of the
 ledger. -/
 theorem ledgerRun_stopRisk_le (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    ∑' z, Pr[= z | ledgerRun prims A x] * SigningOwnR1.stopRisk x z.2.1.1.1.1.1.1 z.2.1.1.1.2 ≤
-      (2 ^ 128 : ℝ≥0∞)⁻¹ * ∑' z, Pr[= z | ledgerRun prims A x] * (z.2.1.2 : ℝ≥0∞) := by
+    ∑' z, Pr{let y ← ledgerRun prims A x}[y = z] * SigningOwnR1.stopRisk x z.2.1.1.1.1.1.1 z.2.1.1.1.2 ≤
+      (2 ^ 128 : ℝ≥0∞)⁻¹ * ∑' z, Pr{let y ← ledgerRun prims A x}[y = z] * (z.2.1.2 : ℝ≥0∞) := by
   have hinit : CacheSeen (ledgerInit (C := C)).1.1.1.1.1.1 (ledgerInit (C := C)).1.1.1.2 :=
     fun input h => (h rfl).elim
   have h := (ledgerStep_game prims A x ledgerInit hinit).2

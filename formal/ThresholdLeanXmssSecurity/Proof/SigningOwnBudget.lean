@@ -20,7 +20,7 @@ import ThresholdLeanXmssSecurity.Proof.SeedHitOwn
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -41,9 +41,9 @@ variable {C : Committee} (prims : Primitives)
 unit pays the bottom digest call of the verification. -/
 def R1Own : Prop :=
   ∀ (A : TsigAdversary C) (x : Keys3 C),
-    Pr[fun z => SigningOneRunProof.R1HitRow z ∧
-        ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1 |
-        SigningOneRunProof.splitRunAt prims A x] ≤
+    Pr{let z ←
+        SigningOneRunProof.splitRunAt prims A x}[SigningOneRunProof.R1HitRow z ∧
+        ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1] ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ * (forgerCost prims A x (ownDomainUnit (BottomDigestInput x)) + (1 : ℕ))
 
 /-- `R1Own` from the bound on the source run. -/
@@ -60,10 +60,10 @@ def ChargedLaneOwnStop : Prop :=
     x ∈ support (TprfSecurityProof.keyGen3 (C := C)) →
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 → HasSigningOwnBound A q →
     q + signingSlack < 2 ^ 127 →
-    Pr[Charged prims x | jointRun prims A x] +
-        Pr[fun z => SigningOneRunProof.R1HitRow z ∧
-            ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1 |
-          SigningOneRunProof.splitRunAt prims A x] ≤
+    Pr{let z ← jointRun prims A x}[Charged prims x z] +
+        Pr{let z ←
+          SigningOneRunProof.splitRunAt prims A x}[SigningOneRunProof.R1HitRow z ∧
+            ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1] ≤
       ((q + chargedSlack : ℕ) : ℝ≥0∞) / 2 ^ 128
 
 set_option maxRecDepth 100000 in
@@ -77,14 +77,14 @@ theorem chargedLaneOwnStop_of_parts (hhit : SigningOwnHitBound.HitOwn prims (C :
   have htop := htop A x
   have hr1 := hr1 A x
   let run := SigningDescentProof.exposedRun prims A x
-  have h1 : Pr[Charged prims x | jointRun prims A x] = Pr[SigningGuessProof.ChargedOutput prims x | run] := by
-    change _ = Pr[_ | SigningDescentProof.exposedRun prims A x]
-    rw [← SigningGuessLinkProof.verifyRun_forget, ← jointRun_verify, Functor.map_map, probEvent_map]
+  have h1 : Pr{let z ← jointRun prims A x}[Charged prims x z] = Pr{let z ← run}[SigningGuessProof.ChargedOutput prims x z] := by
+    change _ = Pr{let z ← SigningDescentProof.exposedRun prims A x}[SigningGuessProof.ChargedOutput prims x z]
+    rw [← SigningGuessLinkProof.verifyRun_forget, ← jointRun_verify, Functor.map_map, prEvent_map]
     rfl
-  have h2 := probEvent_or_le run (SigningCostProof.WinHit prims x)
+  have h2 := prEvent_or_le run (SigningCostProof.WinHit prims x)
     (fun r => SigningGuessProof.AlternativeCommitment x.2.1 x.1 r.2.1 ∨
       ∃ key, SigningGuessProof.ResolvedTopPartner x key r.2.1)
-  have h3 := probEvent_or_le run (fun r => SigningGuessProof.AlternativeCommitment x.2.1 x.1 r.2.1)
+  have h3 := prEvent_or_le run (fun r => SigningGuessProof.AlternativeCommitment x.2.1 x.1 r.2.1)
     (fun r => ∃ key, SigningGuessProof.ResolvedTopPartner x key r.2.1)
   have hsum := add_le_add (h2.trans (add_le_add hhit (h3.trans (add_le_add halt htop)))) hr1
   rw [h1]
@@ -142,12 +142,12 @@ theorem hiddenCoreOwnAt_of_lanes_stop (hcharged : ChargedLaneOwnStop prims (C :=
   have hcharged := hcharged A q x hx hkeys hown hsmall
   let Ev : JointResult C × ℕ × QueryLog (WorldSpec C) → Prop := fun r =>
     NoFlag r ∧ NotChargedLogged prims x r ∧ (SigningReleasedTransferProof.LoggedReleasedRow prims x r ∨ LoggedInputHit prims x r)
-  have h1 : Pr[Win | jointRun prims A x] ≤ Pr[Charged prims x | jointRun prims A x] +
-      Pr[fun w => ReleasedPartnerRow prims x w ∨ UnchargedRow prims x w | jointRun prims A x] :=
-    (probEvent_mono fun w hw hwin => win_cover_released prims A x w hw hwin).trans (probEvent_or_le _ _ _)
-  have h2 : Pr[fun w => ReleasedPartnerRow prims x w ∨ UnchargedRow prims x w | jointRun prims A x] ≤
-      Pr[fun w => Ev (w.1, w.2.1.2, w.2.2) | jointRun prims A x] := by
-    refine probEvent_mono fun w hw h => ?_
+  have h1 : Pr{let z ← jointRun prims A x}[Win z] ≤ Pr{let z ← jointRun prims A x}[Charged prims x z] +
+      Pr{let w ← jointRun prims A x}[ReleasedPartnerRow prims x w ∨ UnchargedRow prims x w] :=
+    (prEvent_mono_of_support _ _ _ fun w hw hwin => win_cover_released prims A x w hw hwin).trans (prEvent_or_le _ _ _)
+  have h2 : Pr{let w ← jointRun prims A x}[ReleasedPartnerRow prims x w ∨ UnchargedRow prims x w] ≤
+      Pr{let w ← jointRun prims A x}[Ev (w.1, w.2.1.2, w.2.2)] := by
+    refine prEvent_mono_of_support _ _ _ fun w hw h => ?_
     have hl : (w.1.1, w.2) ∈ support (SigningCostProof.loggedRun prims A x) := by
       rw [← jointRun_logged, support_map]
       exact ⟨w, hw, rfl⟩
@@ -166,16 +166,16 @@ theorem hiddenCoreOwnAt_of_lanes_stop (hcharged : ChargedLaneOwnStop prims (C :=
         w.2.1.2 w.2.2 (loggedRun_cacheFromLog prims A x (w.1.1, w.2) hl)) Iff.rfl).mp h
     · right
       exact hin A x w hw (laneInputRow_of_unchargedRow prims A x w hw h)
-  have h3 : Pr[fun w => Ev (w.1, w.2.1.2, w.2.2) | jointRun prims A x] =
-      Pr[fun z => Ev (observed z) | traceRun prims A x] := by
-    rw [← probEvent_oneRun prims A x Ev, ← splitRunAt_oneRun, probEvent_map, ← traceRun_forget, probEvent_map]
+  have h3 : Pr{let w ← jointRun prims A x}[Ev (w.1, w.2.1.2, w.2.2)] =
+      Pr{let z ← traceRun prims A x}[Ev (observed z)] := by
+    rw [← probEvent_oneRun prims A x Ev, ← splitRunAt_oneRun, prEvent_map, ← traceRun_forget, prEvent_map]
     rfl
-  have h4 : Pr[fun z => Ev (observed z) | traceRun prims A x] ≤
-      Pr[fun z => (SigningOneRunProof.R1HitRow (splitOf z) ∧
+  have h4 : Pr{let z ← traceRun prims A x}[Ev (observed z)] ≤
+      Pr{let z ←
+        traceRun prims A x}[(SigningOneRunProof.R1HitRow (splitOf z) ∧
           ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 (splitOf z).2.1.1.1.1.1) ∨
-        (NoFlag (observed z) ∧ NotChargedLogged prims x (observed z) ∧ (LoggedInputHit prims x (observed z) ∨ StaleBaseAt z ∨ GhostAt x z)) |
-        traceRun prims A x] := by
-    refine probEvent_mono fun z hz h => ?_
+        (NoFlag (observed z) ∧ NotChargedLogged prims x (observed z) ∧ (LoggedInputHit prims x (observed z) ∨ StaleBaseAt z ∨ GhostAt x z))] := by
+    refine prEvent_mono_of_support _ _ _ fun z hz h => ?_
     obtain ⟨hnf, hnc, h⟩ := h
     have hs : splitOf z ∈ support (SigningOneRunProof.splitRunAt prims A x) := by
       rw [← traceRun_forget, support_map]
@@ -189,17 +189,16 @@ theorem hiddenCoreOwnAt_of_lanes_stop (hcharged : ChargedLaneOwnStop prims (C :=
         · exact Or.inl ⟨hhit, halt⟩
         · exact (halt hcommit).elim
     · exact Or.inr ⟨hnf, hnc, Or.inl h⟩
-  have h5 : Pr[fun z => (SigningOneRunProof.R1HitRow (splitOf z) ∧
+  have h5 : Pr{let z ←
+        traceRun prims A x}[(SigningOneRunProof.R1HitRow (splitOf z) ∧
           ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 (splitOf z).2.1.1.1.1.1) ∨
-        (NoFlag (observed z) ∧ NotChargedLogged prims x (observed z) ∧ (LoggedInputHit prims x (observed z) ∨ StaleBaseAt z ∨ GhostAt x z)) |
-        traceRun prims A x] ≤
-      Pr[fun z => SigningOneRunProof.R1HitRow z ∧
-            ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1 |
-          SigningOneRunProof.splitRunAt prims A x] +
+        (NoFlag (observed z) ∧ NotChargedLogged prims x (observed z) ∧ (LoggedInputHit prims x (observed z) ∨ StaleBaseAt z ∨ GhostAt x z))] ≤
+      Pr{let z ←
+          SigningOneRunProof.splitRunAt prims A x}[SigningOneRunProof.R1HitRow z ∧
+            ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1] +
         ((q + capSlack : ℕ) : ℝ≥0∞) / 2 ^ 128 := by
-    refine (probEvent_or_le _ _ _).trans (add_le_add (le_of_eq ?_) (hcap A q x hx hkeys hown hsmall))
-    rw [← traceRun_forget, probEvent_map]
-    rfl
+    refine (prEvent_or_le _ _ _).trans (add_le_add (le_of_eq ?_) (hcap A q x hx hkeys hown hsmall))
+    rw [← traceRun_forget, prEvent_map]
   refine h1.trans ((add_le_add le_rfl (h2.trans ((le_of_eq h3).trans (h4.trans h5)))).trans ?_)
   refine le_trans (le_of_eq ?_) (add_le_add hcharged le_rfl)
   ring
@@ -218,7 +217,7 @@ theorem signingOwnBudget_of_core (hflag : DistinctFlagOwn prims C) (hcore : Hidd
   by_cases hlarge : 2 ^ 127 ≤ q + signingSlack
   · have h1 : tsigAdvantage prims A ≤ 1 := by
       unfold tsigAdvantage signingAccepts
-      exact ENNReal.toReal_le_of_le_ofReal zero_le_one (by rw [ENNReal.ofReal_one]; exact probEvent_le_one)
+      exact ENNReal.toReal_le_of_le_ofReal zero_le_one (by rw [ENNReal.ofReal_one]; exact (prEvent_le_one _))
     have h2 : (1 : ℝ) ≤ signingHashError (q + signingSlack) := by
       unfold signingHashError
       rw [le_div_iff₀ (by positivity), one_mul]
@@ -228,16 +227,16 @@ theorem signingOwnBudget_of_core (hflag : DistinctFlagOwn prims C) (hcore : Hidd
     have hε : 0 ≤ signingHashError (q + signingSlack) := by unfold signingHashError; positivity
     rw [tsigAdvantage_eq]
     have hs := probEvent_win_split prims A
-    have hsplit : Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true | keyedRun prims A] ≤
-        Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = true | flaggedRun prims A] +
-          Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = false ∧ z.2.1.1 = true |
-            flaggedRun prims A] := by
-      rw [keyedRun_eq_flaggedRun, probEvent_map]
-      refine le_trans (probEvent_mono fun z _ h => ?_) (probEvent_or_le _ _ _)
+    have hsplit : Pr{let z ← keyedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true] ≤
+        Pr{let z ← flaggedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = true] +
+          Pr{let z ←
+            flaggedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = false ∧ z.2.1.1 = true] := by
+      rw [keyedRun_eq_flaggedRun, prEvent_map]
+      refine le_trans (prEvent_mono_of_support _ _ _ fun z _ h => ?_) (prEvent_or_le _ _ _)
       by_cases hz : z.2.1.2 = true
       · exact Or.inl ⟨h.1, hz⟩
       · exact Or.inr ⟨h.1, by simpa using hz, h.2⟩
-    have hF : (Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = true | flaggedRun prims A]).toReal ≤
+    have hF : (Pr{let z ← flaggedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = true]).toReal ≤
         seedHitError C q := by
       refine (toReal_le_div (hflag A q hown)).trans ?_
       unfold seedHitError
@@ -246,34 +245,34 @@ theorem signingOwnBudget_of_core (hflag : DistinctFlagOwn prims C) (hcore : Hidd
       have hle : Fintype.card (KeySlot C) * q ≤ (C.n.choose (C.t - 1) + C.n ^ 2) * q :=
         Nat.mul_le_mul_right q (by rw [hcard]; exact Nat.add_le_add_left (choose_two_le_sq _) _)
       exact div_le_div_of_nonneg_right (by exact_mod_cast hle) (by positivity)
-    have hH : (Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = false ∧ z.2.1.1 = true |
-        flaggedRun prims A]).toReal ≤ signingHashError (q + signingSlack) := by
+    have hH : (Pr{let z ←
+        flaggedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = false ∧ z.2.1.1 = true]).toReal ≤ signingHashError (q + signingSlack) := by
       refine ENNReal.toReal_le_of_le_ofReal hε ?_
       unfold flaggedRun
-      refine probEvent_bind_le_of_forall_le fun x hx => ?_
-      rw [probEvent_map]
+      refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun x hx => ?_
+      rw [prEvent_map]
       by_cases hc : KeyCollision x.2.1 x.2.2
-      · simp [Function.comp_def, hc]
-      · simp only [Function.comp_def, hc, not_false_eq_true, true_and]
+      · simp [hc]
+      · simp only [hc, not_false_eq_true, true_and]
         exact hcore A q x hx hc hown hsmall
-    calc (Pr[fun z => z.2.1 = true | keyedRun prims A]).toReal
-        ≤ (Pr[fun x : Keys3 C => KeyCollision x.2.1 x.2.2 | keyGen3] +
-            Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true | keyedRun prims A]).toReal :=
-          ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨probEvent_ne_top, probEvent_ne_top⟩) hs
-      _ = (Pr[fun x : Keys3 C => KeyCollision x.2.1 x.2.2 | keyGen3]).toReal +
-            (Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true | keyedRun prims A]).toReal :=
-          ENNReal.toReal_add probEvent_ne_top probEvent_ne_top
+    calc (Pr{let z ← keyedRun prims A}[z.2.1 = true]).toReal
+        ≤ (Pr{let x : Keys3 C ← keyGen3}[KeyCollision x.2.1 x.2.2] +
+            Pr{let z ← keyedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true]).toReal :=
+          ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨(prEvent_ne_top _), (prEvent_ne_top _)⟩) hs
+      _ = (Pr{let x : Keys3 C ← keyGen3}[KeyCollision x.2.1 x.2.2]).toReal +
+            (Pr{let z ← keyedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1 = true]).toReal :=
+          ENNReal.toReal_add (prEvent_ne_top _) (prEvent_ne_top _)
       _ ≤ seedCollisionError C +
-            (Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = true | flaggedRun prims A] +
-              Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = false ∧ z.2.1.1 = true |
-                flaggedRun prims A]).toReal :=
+            (Pr{let z ← flaggedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = true] +
+              Pr{let z ←
+                flaggedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = false ∧ z.2.1.1 = true]).toReal :=
           add_le_add keyCollision_toReal_le
-            (ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨probEvent_ne_top, probEvent_ne_top⟩) hsplit)
+            (ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨(prEvent_ne_top _), (prEvent_ne_top _)⟩) hsplit)
       _ = seedCollisionError C +
-            ((Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = true | flaggedRun prims A]).toReal +
-              (Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = false ∧ z.2.1.1 = true |
-                flaggedRun prims A]).toReal) := by
-          rw [ENNReal.toReal_add probEvent_ne_top probEvent_ne_top]
+            ((Pr{let z ← flaggedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = true]).toReal +
+              (Pr{let z ←
+                flaggedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = false ∧ z.2.1.1 = true]).toReal) := by
+          rw [ENNReal.toReal_add (prEvent_ne_top _) (prEvent_ne_top _)]
       _ ≤ seedCollisionError C + (seedHitError C q + signingHashError (q + signingSlack)) :=
           add_le_add le_rfl (add_le_add hF hH)
       _ = _ := by ring

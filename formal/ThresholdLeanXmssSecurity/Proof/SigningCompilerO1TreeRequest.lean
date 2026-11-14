@@ -9,7 +9,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Frame
 - `returnTree_sync` states that the full release keeps the relation and returns the real stored tree.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1TreeRequest
@@ -56,7 +56,7 @@ theorem sourceReturnTreeX_eq (P : PublicParameter) (seeds : C.Term → HashOutpu
     (bi : XmssSecurity.TopIndex) (tree : DeferredBottomTree) :
     sourceReturnTreeX P seeds bi tree = (do
       let opening ← returnOpeningX P bi
-      let values ← Concrete.sequenceFin fun l => returnChainX P bi tree l
+      let values ← OverPermutation.sequenceFin fun l => returnChainX P bi tree l
       pure (⟨tree.cpk, tree.commitment, tree.root,
         ⟨tree.topSignature.randomness, values, tree.topSignature.path⟩⟩, opening)) := by
   simp only [sourceReturnTreeX, returnOpeningX, returnChainX, bind_assoc, pure_bind]
@@ -187,7 +187,7 @@ theorem syncIn_of_treeFrame (top : TopTree) (cCore cTime : Carried C) (bi : Fin 
   have hcand : src'.candidates = b.1.base.candidates := h.candidates
   have hpend : (dataOf x st').pending = (dataOf x b.2).pending := h.pending
   have hvirt : (dataOf x st').virtual = (dataOf x b.2).virtual := h.virtual
-  have hcache : (dataOf x b.2).cache ≤ (dataOf x st').cache := h.cache
+  have hcache : (dataOf x b.2).cache ≤ (dataOf x st').cache := by with_reducible exact h.cache
   have heq : ∀ k, ¬TreeKey bi tree k → src'.revealed k = b.1.base.revealed k := h.revealed_eq
   have hnone : ∀ k, src'.revealed k = none → b.1.base.revealed k = none := h.revealed_none
   have hkept : ∀ k, b.1.base.revealed k ≠ none → src'.revealed k ≠ none := by
@@ -198,7 +198,7 @@ theorem syncIn_of_treeFrame (top : TopTree) (cCore cTime : Carried C) (bi : Fin 
   · refine {
       corrupt := ?_, bound := ?_, released := ?_, exposed := ?_, candidates := ?_, flag := ?_
       reveal := h.reveal, releasedPending := h.released, opening := ?_
-      pendingValid := hF.1.2.2, allocated := ?_, virtualSeen := ?_, compilerBound := ?_
+      pendingValid := fun p value hp => hF.1.2.2 p value hp, allocated := ?_, virtualSeen := ?_, compilerBound := ?_
       trace := ?_, bad := h.bad, share := hF.2, restAgree := hF.1.1, restFree := hF.1.2.1
       realPrivate := hf.realPrivate, frontier := ?_, candidatesPaid := ?_, doneCached := hd }
     · rw [hsig]; exact hf.corrupt
@@ -213,7 +213,7 @@ theorem syncIn_of_treeFrame (top : TopTree) (cCore cTime : Carried C) (bi : Fin 
         XmssSecurity.Bridge.topLayer_ne_bottom (treeKey_opening hk).1.symm
       rw [heq _ hk] at he
       obtain ⟨value, hv⟩ := hf.opening.released e he T
-      exact ⟨value, hcache hv⟩
+      with_reducible_and_instances exact ⟨value, hcache hv⟩
     · intro p hp
       rw [h.allocated]
       exact hf.allocated p (hpend ▸ hp)
@@ -374,14 +374,17 @@ theorem returnOpening_frame (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.
       have hkey : pending.key = k := of_decide_eq_true (List.mem_filter.mp hmem).2
       refine ⟨key_opening_next pending topLayer (topKey bi) hkey, ?_⟩
       change Function.update src.revealed k (some (s k)) pending.key = some (s pending.key)
-      rw [hkey, Function.update_self]) (by exact hf.pendingValid) hf.restFree (by exact hcomp.1)
+      rw [hkey, Function.update_self]) (fun p value hp => hf.pendingValid p value hp) hf.restFree
+      (by exact hcomp.1)
       planted hrplant
   have hsrc : planted.1.2 = srcC := hplants.1
   have hstate : planted.2 = cacheState stC planted.2.1.1.1.1.data.cache := hplants.2.1
   have hpend : (dataOf x planted.2).pending = (dataOf x st).pending := by
     rw [hstate]; rfl
-  have hgrow : (dataOf x st).cache ≤ (dataOf x planted.2).cache :=
-    hcomp.2.trans hplants.2.2.2.1
+  have hgrow : (dataOf x st).cache ≤ (dataOf x planted.2).cache := by
+    refine le_trans ?_ hplants.2.2.2.1
+    rw [show (dataOf x stC).cache = (merged x.2.1 st.1.1 a'.2.cache).1.1.data.cache from rfl]
+    with_reducible exact hcomp.2
   have hrev : planted.1.2.revealed = Function.update src.revealed k (some (s k)) := by
     rw [hsrc]
   rcases hbad with hbad | hbad
@@ -399,7 +402,7 @@ theorem returnOpening_frame (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.
     agreement := hplants.2.2.1
     released := ?_
     bad := ?_ }
-  · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, hpend, ?_, hgrow, ?_, ?_, ?_, ?_⟩
+  · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, hpend, ?_, (by with_reducible exact hgrow), ?_, ?_, ?_, ?_⟩
     any_goals (change planted.1.2.signing = _; rw [hsrc])
     any_goals (change planted.1.2.trees = _; rw [hsrc])
     any_goals (change planted.1.2.exposed = _; rw [hsrc])
@@ -426,6 +429,7 @@ theorem returnOpening_frame (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.
     rw [hsrc, hstate]
     exact hR.2.1
   · intro pending value hvalue hreleased
+    dsimp only
     rw [hpend] at hvalue
     by_cases he : pending.key = k
     · apply hplants.2.2.2.2.2 pending ?_ value hvalue
@@ -435,7 +439,9 @@ theorem returnOpening_frame (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.
         change planted.1.2.revealed pending.key ≠ none at hreleased
         rw [hrev, Function.update_of_ne he] at hreleased
         exact hreleased
-      exact hgrow (hf.releasedPending pending value hvalue hold)
+      exact hgrow (by
+        have h' := hf.releasedPending pending value hvalue hold
+        with_reducible exact h')
   · change planted.2.2.bad = none
     rw [hstate]
     exact hbad
@@ -577,7 +583,8 @@ theorem topStartX_post (hinj : Function.Injective x.2.1) (bi : Fin (2 ^ layerHei
       exact ha')
     rcases hbad with hbad | hbad
     · exact Or.inr {
-        toReleaseFrame := ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, hcomp.2, rfl, rfl, rfl, rfl⟩
+        toReleaseFrame := ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, (by with_reducible exact hcomp.2),
+          rfl, rfl, rfl, rfl⟩
         revealed := rfl
         reveal := hrev
         agreement := hcomp.1
@@ -658,7 +665,7 @@ theorem returnChain_frame (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     refine ⟨congrArg SourceState.signing hplants.1, congrArg SourceState.trees hplants.1,
       congrArg SourceState.exposed hplants.1, congrArg SourceState.allocated hplants.1,
       congrArg SourceState.candidates hplants.1, congrArg SourceState.hiddenFlag hplants.1,
-      ?_, ?_, hplants.2.2.2.1, ?_, ?_, ?_, ?_⟩
+      ?_, ?_, (by with_reducible exact hplants.2.2.2.1), ?_, ?_, ?_, ?_⟩
     all_goals (rw [hplants.2.1] <;> rfl)
   have rf := (rf1.trans hcp.toReleaseFrame).trans rf3
   have hrevF : planted.1.2.revealed = revealed.1.2.revealed := by
@@ -696,6 +703,7 @@ theorem returnChain_frame (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
       · obtain ⟨d, hd, hkey⟩ := hn
         have he := pendingKey_topChain p bi l d hkey
         subst p
+        dsimp only
         exact hplants.2.2.2.2.2 (.top bi l d) (List.mem_map.mpr ⟨d, hd, rfl⟩) value
           (rf3.pending ▸ hv)
       · have hold : src.revealed p.key ≠ none := by
@@ -766,16 +774,16 @@ theorem chains_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
     (htree : b.1.base.trees bi = some (some tree)) (hmark : b.2.1.2 = false)
     (r : ((Fin n → Digest) × SourceState C) × CompState C)
     (hr : r ∈ support (runX (compBackend x q s pads u rest noise)
-      (Concrete.sequenceFin fun i => returnChainX x.1 bi tree (g i)) b.1.base b.2)) :
+      (OverPermutation.sequenceFin fun i => returnChainX x.1 bi tree (g i)) b.1.base b.2)) :
     ReleasePostIn prims x s pads u rest noise top cCore cTime a b
       (fun v => ∀ i, v i = (tree.topSignature.chainValue (g i)).interpret s) r := by
   induction n generalizing b with
   | zero =>
-    simp only [Concrete.sequenceFin, runX_pure, mem_support_pure_iff] at hr
+    simp only [OverPermutation.sequenceFin, runX_pure, mem_support_pure_iff] at hr
     subst r
     exact Or.inr ⟨fun i => i.elim0, hs, rfl, rfl, rfl, rfl, hmark⟩
   | succ n ih =>
-    simp only [Concrete.sequenceFin, runX_bind, mem_support_bind_iff] at hr
+    simp only [OverPermutation.sequenceFin, runX_bind, mem_support_bind_iff] at hr
     obtain ⟨r1, hr1, r2, hr2, hr⟩ := hr
     rw [runX_pure, mem_support_pure_iff] at hr
     subst r

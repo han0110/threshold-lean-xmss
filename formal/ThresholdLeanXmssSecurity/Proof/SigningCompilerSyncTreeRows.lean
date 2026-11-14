@@ -3,7 +3,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerSyncBackend
 
 /-! # Virtual and pending rows established by a bottom-tree build -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerSyncTreeRows
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -43,7 +43,7 @@ theorem backendT_virtual_seen (tagOf : CappedCompilerState C × Bool → Tag) (x
     (hr : r ∈ support ((shareBackendTagT tagOf x.1 x.2.1 x.2.2 q s pads τ g noise rest
       (.inl (.inl (.inl (.virtual T p))))).run st)) :
     (T, p) ∈ (dataOf x r.2).virtual := by
-  simp only [shareBackendTagT, backendRaw, ordinaryFullRaw, ordinaryRaw,
+  simp only [shareBackendTagT, backendRaw, ordinaryFullRaw, ordinaryRaw.eq_def,
     simulateQ_bind, resolvePrivateTable_lift, simulateQ_pure, StateT.run,
     ordinary, SigningCappedExpectProof.cappedHybrid, revealImpl, countImpl,
     compilerImpl, deferredImpl, map_pure] at hr
@@ -79,7 +79,7 @@ theorem backendT_bottom_seen (tagOf : CappedCompilerState C × Bool → Tag) (x 
     (hr : r ∈ support ((shareBackendTagT tagOf x.1 x.2.1 x.2.2 q s pads τ g noise rest
       (.inl (.inl (.inl (.pending (.bottom e l d)))))).run st)) :
     (dataOf x r.2).pending (.bottom e l d) ≠ none := by
-  simp only [shareBackendTagT, backendRaw, ordinaryFullRaw, ordinaryRaw,
+  simp only [shareBackendTagT, backendRaw, ordinaryFullRaw, ordinaryRaw.eq_def,
     simulateQ_bind, simulateQ_pure, StateT.run, mem_support_bind_iff,
     mem_support_pure_iff] at hr
   obtain ⟨a, ha, rfl⟩ := hr
@@ -96,7 +96,7 @@ theorem backendT_record_seen (tagOf : CappedCompilerState C × Bool → Tag) (x 
     (hr : r ∈ support ((shareBackendTagT tagOf x.1 x.2.1 x.2.2 q s pads τ g noise rest
       (.inl (.inl (.inl (.record p value))))).run st)) :
     (dataOf x r.2).pending p ≠ none := by
-  simp only [shareBackendTagT, backendRaw, ordinaryFullRaw, ordinaryRaw,
+  simp only [shareBackendTagT, backendRaw, ordinaryFullRaw, ordinaryRaw.eq_def,
     simulateQ_bind, resolvePrivateTable_lift, simulateQ_pure, StateT.run,
     ordinary, SigningCappedExpectProof.cappedHybrid, revealImpl, countImpl,
     compilerImpl, deferredImpl, map_pure] at hr
@@ -108,7 +108,7 @@ theorem sourceVirtualX_chain_seen (tagOf : CappedCompilerState C × Bool → Tag
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
     (τ : CPoint → Digest) (g : C.Term × CPoint → HashOutput)
     (noise : ChainNoiseIndex → HashOutput) (rest : RestSlot C → HashOutput)
-    (T : C.Term) (lay : Layer) (e : KeyIndex) (l : ChainIndex) (d : Digit)
+    (T : C.Term) (lay : Layer) (e : KeyIndex) (l : ChainIndex) (d : WinternitzDigit)
     (src : SourceState C) (st : FullState C Tag)
     (r : (Unit × SourceState C) × FullState C Tag)
     (hr : r ∈ support (runX
@@ -191,7 +191,7 @@ theorem sourceBottomRowX_eq (P : PublicParameter) (seeds : C.Term → HashOutput
         | some (DeferredDigest.known value) => value
         | _ => 0)) := by
   simp [sourceBottomRowX, deferredBottomRow, simulateQ_list_mapM, backendQuery,
-    sourceBackendX]
+    sourceBackendX.eq_def]
   rfl
 
 /-- The complete bottom row establishes all three virtual and pending positions. -/
@@ -221,7 +221,7 @@ theorem sourceBottomRowX_rows (tagOf : CappedCompilerState C × Bool → Tag) (x
       intro query hquery src st r hr
       simp only [bottomRowPrfCalls, List.mem_flatMap, List.mem_map] at hquery
       obtain ⟨d, _, T, _, rfl⟩ := hquery
-      simp only [sourceBackendX, runX_bind, runX_pure, mem_support_bind_iff,
+      simp only [sourceBackendX.eq_def, runX_bind, runX_pure, mem_support_bind_iff,
         mem_support_pure_iff] at hr
       obtain ⟨a, ha, rfl⟩ := hr
       intro U p he
@@ -275,7 +275,7 @@ theorem sourceBottomTreeX_rows (tagOf : CappedCompilerState C × Bool → Tag) (
   have established := runX_mapM_seen
     (shareBackendTagT tagOf x.1 x.2.1 x.2.2 q s pads τ g noise rest)
     ((List.finRange (2 ^ layerHeight)).flatMap fun k =>
-      (List.finRange numChains).map fun l => (bottomKey b k, l))
+      (List.finRange chainCount).map fun l => (bottomKey b k, l))
     (fun el => sourceBottomRowX x.1 x.2.1 el.1 el.2)
     (fun el st => ∀ d : XmssSecurity.ChainStep,
       (∀ T, (T, .chain bottomLayer el.1 el.2
@@ -289,7 +289,7 @@ theorem sourceBottomTreeX_rows (tagOf : CappedCompilerState C × Bool → Tag) (
       el.1 el.2 src st r hr) src st rows hrows
   intro k l d
   have hm : (bottomKey b k, l) ∈ ((List.finRange (2 ^ layerHeight)).flatMap fun k =>
-      (List.finRange numChains).map fun l => (bottomKey b k, l)) := by
+      (List.finRange chainCount).map fun l => (bottomKey b k, l)) := by
     simp only [List.mem_flatMap, List.mem_map]
     exact ⟨k, List.mem_finRange k, l, List.mem_finRange l, rfl⟩
   have h := established _ hm d

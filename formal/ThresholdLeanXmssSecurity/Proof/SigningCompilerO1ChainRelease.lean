@@ -7,7 +7,7 @@ recorded digit keeps `SyncMid`. `releaseCovered_mid` and `releaseKey_mid` state 
 a covered chain, and of every chain of a key, keeps `SyncMid` or stops the compiler side.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1ChainRelease
@@ -74,8 +74,8 @@ theorem syncMid_widen (top : TopTree) (sigCore sigTime sigTime' : TsigState C)
       bottomSeen := hx.bottomSeen }
 
 /-- A digit set after `recordStartX` holds a digit when the digit is the new one or was there. -/
-theorem mem_recordStart (starts : KeyIndex → ChainIndex → Finset Digit) (e : KeyIndex)
-    (l : ChainIndex) (d : Digit) (e' : KeyIndex) (l' : ChainIndex) (d' : Digit) :
+theorem mem_recordStart (starts : KeyIndex → ChainIndex → Finset WinternitzDigit) (e : KeyIndex)
+    (l : ChainIndex) (d : WinternitzDigit) (e' : KeyIndex) (l' : ChainIndex) (d' : WinternitzDigit) :
     d' ∈ Function.update starts e (Function.update (starts e) l (insert d (starts e l))) e' l' ↔
       (e' = e ∧ l' = l ∧ d' = d) ∨ d' ∈ starts e' l' := by
   by_cases he : e' = e
@@ -89,7 +89,7 @@ theorem mem_recordStart (starts : KeyIndex → ChainIndex → Finset Digit) (e :
 /-- A recorded digit keeps the relation inside the handler. It needs the stored tree and the
 codeword search of the digit. -/
 theorem recordStart_mid (top : TopTree) (sigCore sigTime : TsigState C) (e : KeyIndex)
-    (l : ChainIndex) (d : Digit) (a : RealState C) (b : SourceStateO1 C × CompState C)
+    (l : ChainIndex) (d : WinternitzDigit) (a : RealState C) (b : SourceStateO1 C × CompState C)
     (hs : SyncMid prims x top s pads noise (gOf s pads u) rest sigCore sigTime a b)
     (htree : ∃ tree, b.1.base.trees (treeOf e) = some (some tree))
     (hrec : ∃ receipt : SigningGuessProof.Round2Receipt C, receipt.key = e ∧
@@ -359,7 +359,7 @@ theorem releaseKey_mid (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (t
   rw [runXO1_pure, support_pure, Set.mem_singleton_iff] at hr
   subst hr
   exact releaseChains_mid prims x q s pads u rest noise hkeys top sigCore sigTime e a hcov
-    (List.finRange numChains) b hs hmark mid hmid
+    (List.finRange chainCount) b hs hmark mid hmid
 
 end Inner
 
@@ -369,7 +369,11 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1ChainRelease
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1ChainRelease.syncMid_widen
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1ChainRelease.mem_recordStart' depends on axioms: [propext, Quot.sound] -/
+/--
+info: 'ThresholdLeanXmssSecurity.SigningCompilerO1ChainRelease.mem_recordStart' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1ChainRelease.mem_recordStart
 

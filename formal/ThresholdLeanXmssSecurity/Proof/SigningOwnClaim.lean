@@ -13,7 +13,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningOwnVerify
   `slack_split` states that their sum is two times `signingSlack`.
 -/
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -41,14 +41,14 @@ all its values. It is `DistinctFlagBound` of `Proof/SeedHit.lean` with the own b
 the calls of the dealer. -/
 def DistinctFlagOwn (prims : Primitives) (C : Committee) : Prop :=
   ∀ (A : TsigAdversary C) (q : ℕ), HasSigningOwnBound A q →
-    Pr[fun z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = true | flaggedRun prims A] ≤
+    Pr{let z ← flaggedRun prims A}[¬KeyCollision z.1.2.1 z.1.2.2 ∧ z.2.1.2 = true] ≤
       ((Fintype.card (KeySlot C) * q : ℕ) : ℝ≥0∞) / 2 ^ 256
 
 /-- `HiddenCoreAt` of `Proof/SigningCore.lean` with the own budget. -/
 def HiddenCoreOwnAt (prims : Primitives) (C : Committee) : Prop :=
   ∀ (A : TsigAdversary C) (q : ℕ) (x : Keys3 C), x ∈ support (keyGen3 (C := C)) →
     ¬KeyCollision x.2.1 x.2.2 → HasSigningOwnBound A q → q + signingSlack < 2 ^ 127 →
-    Pr[fun r => r.1.2 = false ∧ r.1.1 = true | runSigningWorld prims (flaggedAfter A x)] ≤
+    Pr{let r ← runSigningWorld prims (flaggedAfter A x)}[r.1.2 = false ∧ r.1.1 = true] ≤
       ENNReal.ofReal (signingHashError (q + signingSlack))
 
 end SigningOwnClaim

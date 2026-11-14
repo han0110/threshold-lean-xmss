@@ -9,7 +9,7 @@ base call. Its eager grind is recorded as a deterministic replay certificate,
 which persists under every conservative cache extension.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open scoped ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerPotential
@@ -24,7 +24,7 @@ def EntryTrials (seeds : C.Term → HashOutput) (P : PublicParameter) (cache : H
   ∀ entry ∈ trace, SigningGuessProof.RandomizerCached seeds cache entry.request.leafIndex ∧
     ∃ answer, cache (.hash (randomizerInput P bottomLayer entry.request.leafIndex
       (SigningGuessProof.cachedRandomizer seeds cache entry.request.leafIndex)
-      (bytesLE 32 entry.request.message))) = some answer ∧
+      (littleEndianBytes 32 entry.request.message))) = some answer ∧
       DeterministicSigning.Resolves cache
         (baseGrind P entry.request.leafIndex entry.request.message answer) ()
 
@@ -46,7 +46,7 @@ theorem cachedExtra_base (seeds : C.Term → HashOutput) (P : PublicParameter)
     (hcall : BaseCall P e (SigningGuessProof.cachedRandomizer seeds before.1.1.1 e) before.2.1 t)
     (bound : before.2.1.bound e = some message) (answer : HashOutput)
     (cached : after.1.1.1 (.hash (randomizerInput P bottomLayer e
-      (SigningGuessProof.cachedRandomizer seeds before.1.1.1 e) (bytesLE 32 message))) = some answer) :
+      (SigningGuessProof.cachedRandomizer seeds before.1.1.1 e) (littleEndianBytes 32 message))) = some answer) :
     SigningR1FixedProof.cachedExtra seeds P before t after = baseGrind P e message answer := by
   have base : ∃ e, BaseCall P e (SigningGuessProof.cachedRandomizer seeds before.1.1.1 e) before.2.1 t :=
     ⟨e, hcall⟩
@@ -104,13 +104,13 @@ theorem compilerImpl_entryTrials (P : PublicParameter) (seeds : C.Term → HashO
               have hself := (randomOracle_support q st.data.cache (a.1, a.2.cache) raw).2.1
               have cached : a.2.cache (.hash (randomizerInput P bottomLayer hbase.choose
                   (SigningGuessProof.cachedRandomizer seeds st.data.cache hbase.choose)
-                  (bytesLE 32 message))) = some a.1 := by
+                  (littleEndianBytes 32 message))) = some a.1 := by
                 have call := hashCallAt_of_baseCall hcall hm
                 rcases call with impossible | call
                 · cases impossible
                 · have address : q = .hash (randomizerInput P bottomLayer hbase.choose
                       (SigningGuessProof.cachedRandomizer seeds st.data.cache hbase.choose)
-                      (bytesLE 32 message)) := by
+                      (littleEndianBytes 32 message)) := by
                     simpa only [Sum.inr.injEq, Sum.inl.injEq] using call
                   rw [← address]
                   exact hself
@@ -125,7 +125,7 @@ theorem compilerImpl_entryTrials (P : PublicParameter) (seeds : C.Term → HashO
               change SigningGuessProof.RandomizerCached seeds b.2 hbase.choose ∧
                 ∃ answer, b.2 (.hash (randomizerInput P bottomLayer hbase.choose
                   (SigningGuessProof.cachedRandomizer seeds b.2 hbase.choose)
-                  (bytesLE 32 message))) = some answer ∧
+                  (littleEndianBytes 32 message))) = some answer ∧
                     DeterministicSigning.Resolves b.2 (baseGrind P hbase.choose message answer) ()
               refine ⟨SigningR1FixedProof.randomizerCached_mono grow hprf, a.1, ?_, replay⟩
               rw [← SigningGuessProof.cachedRandomizer_stable seeds st.data.cache b.2 _ grow hprf]
@@ -165,6 +165,7 @@ theorem compiler_hash_no_trigger (P : PublicParameter) (seeds : C.Term → HashO
         (((Query C →ₒ HashOutput).randomOracle q).run st.data.cache) := by
   simp only [compilerImpl, deferredImpl, StateT.run, bind_map_left,
     SigningR1FixedProof.cachedExtra, noBase, if_false, simulateQ_pure, SigningLaneUnionProof.traceStepAt]
+  rw [map_eq_bind_pure_comp]
   rfl
 
 /-- Message-digest calls can never trigger a randomizer-base grind. -/
@@ -219,13 +220,13 @@ theorem traceStepAt_traced_base (P : PublicParameter) (seeds : C.Term → HashOu
     (hprf : SigningGuessProof.RandomizerCached seeds cache e)
     (bound : state.bound e = some message) (answer : HashOutput)
     (cached : cache (.hash (randomizerInput P bottomLayer e
-      (SigningGuessProof.cachedRandomizer seeds cache e) (bytesLE 32 message))) = some answer)
+      (SigningGuessProof.cachedRandomizer seeds cache e) (littleEndianBytes 32 message))) = some answer)
     (recorded : e ∈ trace.1.leafIndices) :
     SigningLaneUnionProof.traceStepAt seeds P cache state
       (.inr (.inr (.inl (.hash (randomizerInput P bottomLayer e
-        (SigningGuessProof.cachedRandomizer seeds cache e) (bytesLE 32 message)))))) completed trace = trace := by
+        (SigningGuessProof.cachedRandomizer seeds cache e) (littleEndianBytes 32 message)))))) completed trace = trace := by
   let call : (WorldSpec C).Domain := .inr (.inr (.inl (.hash (randomizerInput P bottomLayer e
-    (SigningGuessProof.cachedRandomizer seeds cache e) (bytesLE 32 message)))))
+    (SigningGuessProof.cachedRandomizer seeds cache e) (littleEndianBytes 32 message)))))
   have base : BaseCall P e (SigningGuessProof.cachedRandomizer seeds cache e) state call :=
     ⟨_, by rw [baseInput, bound]; rfl, Or.inr rfl⟩
   have trigger : ∃ e, SigningGuessProof.RandomizerCached seeds cache e ∧
@@ -245,7 +246,7 @@ theorem traced_trials (P : PublicParameter) (seeds : C.Term → HashOutput)
     (e : KeyIndex) (message : Message) (bound : st.bound e = some message)
     (recorded : e ∈ st.trace.1.leafIndices) :
     ∃ answer, st.data.cache (.hash (randomizerInput P bottomLayer e
-      (SigningGuessProof.cachedRandomizer seeds st.data.cache e) (bytesLE 32 message))) = some answer ∧
+      (SigningGuessProof.cachedRandomizer seeds st.data.cache e) (littleEndianBytes 32 message))) = some answer ∧
       DeterministicSigning.Resolves st.data.cache (baseGrind P e message answer) () := by
   obtain ⟨entry, he, leaf⟩ := List.mem_map.mp recorded
   have hb := (bases entry he).1
@@ -272,15 +273,15 @@ theorem traceStepAt_fresh_base (P : PublicParameter) (seeds : C.Term → HashOut
     (hprf : SigningGuessProof.RandomizerCached seeds cache e)
     (bound : state.bound e = some message)
     (fresh : cache (.hash (randomizerInput P bottomLayer e
-      (SigningGuessProof.cachedRandomizer seeds cache e) (bytesLE 32 message))) = none) :
+      (SigningGuessProof.cachedRandomizer seeds cache e) (littleEndianBytes 32 message))) = none) :
     SigningLaneUnionProof.traceStepAt seeds P cache state
       (.inr (.inr (.inl (.hash (randomizerInput P bottomLayer e
-        (SigningGuessProof.cachedRandomizer seeds cache e) (bytesLE 32 message)))))) completed trace =
+        (SigningGuessProof.cachedRandomizer seeds cache e) (littleEndianBytes 32 message)))))) completed trace =
       (trace.1 ++ [⟨⟨e, message⟩, signOf (laneKey P) e
         (cachedFound completed P e (SigningGuessProof.cachedRandomizer seeds cache e) message),
         keptView IsMsg cache, keptView IsMsg completed⟩], trace.2) := by
   let call : (WorldSpec C).Domain := .inr (.inr (.inl (.hash (randomizerInput P bottomLayer e
-    (SigningGuessProof.cachedRandomizer seeds cache e) (bytesLE 32 message)))))
+    (SigningGuessProof.cachedRandomizer seeds cache e) (littleEndianBytes 32 message)))))
   have base : BaseCall P e (SigningGuessProof.cachedRandomizer seeds cache e) state call :=
     ⟨_, by rw [baseInput, bound]; rfl, Or.inr rfl⟩
   have trigger : ∃ e, SigningGuessProof.RandomizerCached seeds cache e ∧
@@ -339,10 +340,10 @@ theorem compiler_fresh_base_count (prims : Primitives) (P : PublicParameter)
     (hprf : SigningGuessProof.RandomizerCached seeds st.data.cache e)
     (bound : st.bound e = some message)
     (fresh : st.data.cache (.hash (randomizerInput P bottomLayer e
-      (SigningGuessProof.cachedRandomizer seeds st.data.cache e) (bytesLE 32 message))) = none)
+      (SigningGuessProof.cachedRandomizer seeds st.data.cache e) (littleEndianBytes 32 message))) = none)
     (q : Query C)
     (canonical : q = .hash (randomizerInput P bottomLayer e
-      (SigningGuessProof.cachedRandomizer seeds st.data.cache e) (bytesLE 32 message)))
+      (SigningGuessProof.cachedRandomizer seeds st.data.cache e) (littleEndianBytes 32 message)))
     (r : DeferredSpec C (.hash q) × CompilerBackend C)
     (run : r ∈ support ((compilerImpl P seeds (.hash q)).run st)) :
     XmssSecurity.Ghost.nCount P (compilerView r.2).1 (compilerView r.2).2 =
@@ -361,7 +362,7 @@ theorem compiler_fresh_base_count (prims : Primitives) (P : PublicParameter)
   have extra := cachedExtra_base seeds P
     (((st.data.cache, 0), []), compilerSigning st, false)
     (((a.2.cache, 0), []), compilerSigning st, false) _ e message hprf base bound a.1 cached
-  rw [extra, baseGrind_eq, simulateQ_map, StateT.run_map] at hb
+  rw [extra, baseGrind_eq P e message a.1, simulateQ_map, StateT.run_map] at hb
   simp only [support_map, Set.mem_image] at hb
   obtain ⟨completed, hg, hb⟩ := hb
   rw [← hb]
@@ -392,7 +393,7 @@ theorem compiler_traced_base_view (P : PublicParameter) (seeds : C.Term → Hash
     (bound : st.bound e = some message) (recorded : e ∈ st.trace.1.leafIndices)
     (q : Query C)
     (canonical : q = .hash (randomizerInput P bottomLayer e
-      (SigningGuessProof.cachedRandomizer seeds st.data.cache e) (bytesLE 32 message)))
+      (SigningGuessProof.cachedRandomizer seeds st.data.cache e) (littleEndianBytes 32 message)))
     (r : DeferredSpec C (.hash q) × CompilerBackend C)
     (run : r ∈ support ((compilerImpl P seeds (.hash q)).run st)) :
     compilerView r.2 = compilerView st := by
@@ -412,7 +413,17 @@ theorem compiler_traced_base_view (P : PublicParameter) (seeds : C.Term → Hash
   have extra := cachedExtra_base seeds P
     (((st.data.cache, 0), []), compilerSigning st, false)
     (((st.data.cache, 0), []), compilerSigning st, false) _ e message hprf base bound answer cached
-  rw [extra, resolved.run_eq_pure, mem_support_pure_iff] at hb
+  have hpure : ∀ {α : Type} {cache : QueryCache (Query C →ₒ HashOutput)}
+      {computation : OracleComp (Query C →ₒ HashOutput) α} {value : α},
+      DeterministicSigning.Resolves cache computation value →
+      (simulateQ randomOracle computation).run cache = pure (value, cache) := by
+    intro α cache computation value h
+    induction h with
+    | pure value => rfl
+    | query input answer hanswer next value _ ih =>
+      rw [simulateQ_bind, simulateQ_spec_query, StateT.run_bind,
+        QueryImpl.withCaching_run_some _ hanswer, pure_bind, ih]
+  rw [extra, hpure resolved, mem_support_pure_iff] at hb
   subst b
   rw [canonical]
   rw [traceStepAt_traced_base P seeds st.data.cache st.data.cache (compilerSigning st) st.trace e message
@@ -424,7 +435,7 @@ theorem base_call_query (P : PublicParameter) (rho : Digest) (state : TsigState 
     (q : Query C) (e : KeyIndex)
     (base : BaseCall P e rho state (.inr (.inr (.inl q)))) :
     ∃ message, state.bound e = some message ∧
-      q = .hash (randomizerInput P bottomLayer e rho (bytesLE 32 message)) := by
+      q = .hash (randomizerInput P bottomLayer e rho (littleEndianBytes 32 message)) := by
   cases bound : state.bound e with
   | none =>
       obtain ⟨input, hinput, _⟩ := base
@@ -442,13 +453,13 @@ theorem traceStepAt_stale_base (P : PublicParameter) (seeds : C.Term → HashOut
     (hprf : SigningGuessProof.RandomizerCached seeds cache e)
     (bound : state.bound e = some message) (answer : HashOutput)
     (cached : cache (.hash (randomizerInput P bottomLayer e
-      (SigningGuessProof.cachedRandomizer seeds cache e) (bytesLE 32 message))) = some answer)
+      (SigningGuessProof.cachedRandomizer seeds cache e) (littleEndianBytes 32 message))) = some answer)
     (unrecorded : e ∉ trace.1.leafIndices) :
     (SigningLaneUnionProof.traceStepAt seeds P cache state
       (.inr (.inr (.inl (.hash (randomizerInput P bottomLayer e
-        (SigningGuessProof.cachedRandomizer seeds cache e) (bytesLE 32 message)))))) completed trace).2 = true := by
+        (SigningGuessProof.cachedRandomizer seeds cache e) (littleEndianBytes 32 message)))))) completed trace).2 = true := by
   let call : (WorldSpec C).Domain := .inr (.inr (.inl (.hash (randomizerInput P bottomLayer e
-    (SigningGuessProof.cachedRandomizer seeds cache e) (bytesLE 32 message)))))
+    (SigningGuessProof.cachedRandomizer seeds cache e) (littleEndianBytes 32 message)))))
   have base : BaseCall P e (SigningGuessProof.cachedRandomizer seeds cache e) state call :=
     ⟨_, by rw [baseInput, bound]; rfl, Or.inr rfl⟩
   have trigger : ∃ e, SigningGuessProof.RandomizerCached seeds cache e ∧
@@ -464,10 +475,10 @@ theorem compiler_stale_base (P : PublicParameter) (seeds : C.Term → HashOutput
     (hprf : SigningGuessProof.RandomizerCached seeds st.data.cache e)
     (bound : st.bound e = some message) (answer : HashOutput)
     (cached : st.data.cache (.hash (randomizerInput P bottomLayer e
-      (SigningGuessProof.cachedRandomizer seeds st.data.cache e) (bytesLE 32 message))) = some answer)
+      (SigningGuessProof.cachedRandomizer seeds st.data.cache e) (littleEndianBytes 32 message))) = some answer)
     (unrecorded : e ∉ st.trace.1.leafIndices) (q : Query C)
     (canonical : q = .hash (randomizerInput P bottomLayer e
-      (SigningGuessProof.cachedRandomizer seeds st.data.cache e) (bytesLE 32 message)))
+      (SigningGuessProof.cachedRandomizer seeds st.data.cache e) (littleEndianBytes 32 message)))
     (r : DeferredSpec C (.hash q) × CompilerBackend C)
     (run : r ∈ support ((compilerImpl P seeds (.hash q)).run st)) : r.2.trace.2 = true := by
   obtain ⟨a, _, b, _, result⟩ := compiler_hash_support P seeds q st r run
@@ -494,7 +505,7 @@ theorem compiler_hash_count_le (prims : Primitives) (P : PublicParameter)
     obtain ⟨message, bound, canonical⟩ := base_call_query P
       (SigningGuessProof.cachedRandomizer seeds st.data.cache e) (compilerSigning st) (.hash input) e hcall
     cases cached : st.data.cache (.hash (randomizerInput P bottomLayer e
-        (SigningGuessProof.cachedRandomizer seeds st.data.cache e) (bytesLE 32 message))) with
+        (SigningGuessProof.cachedRandomizer seeds st.data.cache e) (littleEndianBytes 32 message))) with
     | none =>
       rw [compiler_fresh_base_count prims P seeds st e message hprf bound cached _ canonical r run]
       exact Nat.le_succ _
@@ -550,7 +561,7 @@ theorem reachable_ghostInv (prims : Primitives) (P : PublicParameter)
   induction reachable with
   | initial =>
     exact XmssSecurity.Ghost.inv_initial (laneKey P)
-      (cache0 := keptView IsMsg (∅ : HashCache C)) (by intro e y; unfold keptView; split <;> rfl)
+      (cache0 := keptView IsMsg (∅ : HashCache C)) (by intro e y; simp [keptView]; exact ite_self _)
   | step t st r reachable run ih =>
     simp only [countImpl, StateT.run_mk, support_map, Set.mem_image] at run
     obtain ⟨a, ha, eq⟩ := run
@@ -589,31 +600,30 @@ theorem compiler_fresh_base_viewLaw (prims : Primitives) (P : PublicParameter)
     (hprf : SigningGuessProof.RandomizerCached seeds st.data.cache e)
     (bound : st.bound e = some message)
     (fresh : st.data.cache (.hash (randomizerInput P bottomLayer e
-      (SigningGuessProof.cachedRandomizer seeds st.data.cache e) (bytesLE 32 message))) = none)
+      (SigningGuessProof.cachedRandomizer seeds st.data.cache e) (littleEndianBytes 32 message))) = none)
     (q : Query C) (k : ℕ)
     (canonical : q = .hash (randomizerInput P bottomLayer e
-      (SigningGuessProof.cachedRandomizer seeds st.data.cache e) (bytesLE 32 message))) :
-    𝒟[(fun r => compilerView r.2) <$> ((compilerImpl P seeds (.hash q)).run st)] =
-      𝒟[(fun r => r.2.1) <$>
-        (SigningLane2Proof.signWithBaseStep (laneKey P) ⟨e, message⟩).run (compilerView st, k)] := by
+      (SigningGuessProof.cachedRandomizer seeds st.data.cache e) (littleEndianBytes 32 message))) :
+    ((fun r => compilerView r.2) <$> ((compilerImpl P seeds (.hash q)).run st)) =ᵈ
+      ((fun r => r.2.1) <$>
+        (SigningLane2Proof.signWithBaseStep (laneKey P) ⟨e, message⟩).run (compilerView st, k)) := by
   rw [compiler_hash_view_run, canonical]
   have eager := eagerBase_signWithBaseStep prims P
     (SigningGuessProof.cachedRandomizer seeds st.data.cache e) ⟨e, message⟩ st.data.cache fresh st.trace.1 k
-  have mapped := evalDist_map_eq_of_evalDist_eq eager (fun r => r.2.1)
+  have mapped := eager.map (fun r => r.2.1)
   simp only [map_bind, map_pure] at mapped
-  refine Eq.trans ?_ mapped
-  apply congrArg (fun p : ProbComp (XmssSecurity.HashSpec.QueryCache × XmssSecurity.SigningCacheTrace) => 𝒟[p])
+  refine EvalDistEq.trans (EvalDistEq.of_eq ?_) mapped
   apply OracleComp.bind_congr_of_forall_mem_support
   intro a ha
   have cached := (randomOracle_support _ st.data.cache a ha).2.1
   have base : BaseCall P e (SigningGuessProof.cachedRandomizer seeds st.data.cache e)
       (compilerSigning st) (.inr (.inr (.inl (.hash (randomizerInput P bottomLayer e
-        (SigningGuessProof.cachedRandomizer seeds st.data.cache e) (bytesLE 32 message)))))) :=
+        (SigningGuessProof.cachedRandomizer seeds st.data.cache e) (littleEndianBytes 32 message)))))) :=
     ⟨_, by change (st.bound e).map _ = _; rw [bound]; rfl, Or.inr rfl⟩
   have extra := cachedExtra_base seeds P
     (((st.data.cache, 0), []), compilerSigning st, false)
     (((a.2, 0), []), compilerSigning st, false) _ e message hprf base bound a.1 cached
-  rw [extra, baseGrind_eq, simulateQ_map, StateT.run_map, bind_map_left]
+  rw [extra, baseGrind_eq P e message a.1, simulateQ_map, StateT.run_map, bind_map_left]
   apply OracleComp.bind_congr_of_forall_mem_support
   intro completed hg
   rw [traceStepAt_fresh_base P seeds st.data.cache completed.2 (compilerSigning st) st.trace e message
@@ -633,7 +643,7 @@ theorem viewSum_step (publicKey : XmssSecurity.PublicKey) (P : PublicParameter) 
     (hq : q < 2 ^ 127) (input : (XmssSecurity.OracleWorld + XmssSecurity.SigningSpec).Domain)
     (s : XmssSecurity.Ghost.State) (inv : XmssSecurity.Ghost.Inv (laneKey P) s)
     (room : XmssSecurity.Ghost.IsAdvHash input → s.2 < q) :
-    ∑' r, Pr[= r | (XmssSecurity.Ghost.impl publicKey (laneKey P) input).run s] * viewSum P q r.2 ≤
+    ∑' r, Pr{let z ← (XmssSecurity.Ghost.impl publicKey (laneKey P) input).run s}[z = r] * viewSum P q r.2 ≤
       viewSum P q s + (2 ^ 128 : ℝ≥0∞) *
         (XmssSecurity.Ghost.openCost (laneKey P) input s +
           XmssSecurity.Ghost.signedCost (laneKey P) input s) := by
@@ -665,11 +675,11 @@ theorem viewSum_step (publicKey : XmssSecurity.PublicKey) (P : PublicParameter) 
 theorem viewSum_sign (publicKey : XmssSecurity.PublicKey) (P : PublicParameter) (q : ℕ)
     (hq : q < 2 ^ 127) (request : XmssSecurity.SignRequest) (s : XmssSecurity.Ghost.State)
     (inv : XmssSecurity.Ghost.Inv (laneKey P) s) :
-    ∑' r, Pr[= r | (SigningLane2Proof.signWithBaseStep (laneKey P) request).run s] *
+    ∑' r, Pr{let z ← (SigningLane2Proof.signWithBaseStep (laneKey P) request).run s}[z = r] *
       viewSum P q r.2 ≤ viewSum P q s := by
   have law := SigningLane2Proof.evalDist_signWithBaseStep publicKey (laneKey P) request s
   have transfer := SigningLane2Proof.tsum_view_eq _ _ id law (viewSum P q)
-  rw [show (∑' r, Pr[= r | (SigningLane2Proof.signWithBaseStep (laneKey P) request).run s] *
+  rw [show (∑' r, Pr{let z ← (SigningLane2Proof.signWithBaseStep (laneKey P) request).run s}[z = r] *
       viewSum P q r.2) = _ from transfer]
   have h := viewSum_step publicKey P q hq (.inr request) s inv (by simp [XmssSecurity.Ghost.IsAdvHash])
   simpa only [XmssSecurity.Ghost.openCost, XmssSecurity.Ghost.signedCost,
@@ -696,7 +706,7 @@ theorem compilerPotential_le_sum (P : PublicParameter) (q : ℕ) (st : CompilerB
 theorem compilerPotential_over_cap (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : ℕ) (t : DeferredQuery C) (counted : deferredCounted t)
     (st : CompilerBackend C × ℕ) (over : q ≤ st.2) :
-    ∑' r, Pr[= r | (countImpl (compilerImpl P seeds) deferredCounted t).run st] *
+    ∑' r, Pr{let z ← (countImpl (compilerImpl P seeds) deferredCounted t).run st}[z = r] *
       compilerPotential P q r.2 = 0 := by
   apply ENNReal.tsum_eq_zero.mpr
   intro r
@@ -704,18 +714,18 @@ theorem compilerPotential_over_cap (P : PublicParameter) (seeds : C.Term → Has
   · have count := SigningLane2Proof.countImpl_support_count (compilerImpl P seeds) deferredCounted t st r hr
     have past : ¬ r.2.2 ≤ q := by rw [count, if_pos counted]; omega
     simp only [compilerPotential, SigningLane2Proof.lane2Potential, if_neg past, ite_self, mul_zero]
-  · simp [probOutput_eq_zero_of_not_mem_support hr]
+  · simp [prEvent_eq_zero_of_not_mem_support _ hr]
 
 /-- The count tick and stopping are harmless when bounding by the previous-count sum. -/
 theorem counted_potential_le_previousSum (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : ℕ) (t : DeferredQuery C) (counted : deferredCounted t)
     (st : CompilerBackend C × ℕ) (within : st.2 ≤ q) :
-    ∑' r, Pr[= r | (countImpl (compilerImpl P seeds) deferredCounted t).run st] *
+    ∑' r, Pr{let z ← (countImpl (compilerImpl P seeds) deferredCounted t).run st}[z = r] *
       compilerPotential P q r.2 ≤
-      (∑' r, Pr[= r | (compilerImpl P seeds t).run st.1] *
+      (∑' r, Pr{let z ← (compilerImpl P seeds t).run st.1}[z = r] *
         viewSum P q (compilerView r.2, st.2)) * ((2 ^ 128 : ℝ≥0∞) * 2 ^ 128)⁻¹ := by
   simp only [countImpl, StateT.run_mk]
-  rw [tsum_probOutput_map_mul]
+  rw [OracleComp.tsum_prEvent_map_mul]
   simp only [if_pos counted]
   rw [← ENNReal.tsum_mul_right]
   apply ENNReal.tsum_le_tsum
@@ -732,11 +742,11 @@ theorem fresh_base_sum_le (prims : Primitives) (publicKey : XmssSecurity.PublicK
     (hprf : SigningGuessProof.RandomizerCached seeds st.1.data.cache e)
     (bound : st.1.bound e = some message)
     (fresh : st.1.data.cache (.hash (randomizerInput P bottomLayer e
-      (SigningGuessProof.cachedRandomizer seeds st.1.data.cache e) (bytesLE 32 message))) = none)
+      (SigningGuessProof.cachedRandomizer seeds st.1.data.cache e) (littleEndianBytes 32 message))) = none)
     (t : Query C)
     (canonical : t = .hash (randomizerInput P bottomLayer e
-      (SigningGuessProof.cachedRandomizer seeds st.1.data.cache e) (bytesLE 32 message))) :
-    ∑' r, Pr[= r | (compilerImpl P seeds (.hash t)).run st.1] *
+      (SigningGuessProof.cachedRandomizer seeds st.1.data.cache e) (littleEndianBytes 32 message))) :
+    ∑' r, Pr{let z ← (compilerImpl P seeds (.hash t)).run st.1}[z = r] *
       viewSum P q (compilerView r.2, st.2) ≤ viewSum P q (compilerView st.1, st.2) := by
   have law := compiler_fresh_base_viewLaw prims P seeds st.1 e message hprf bound fresh t st.2 canonical
   have transfer := SigningLane2Proof.tsum_map_eq
@@ -745,10 +755,10 @@ theorem fresh_base_sum_le (prims : Primitives) (publicKey : XmssSecurity.PublicK
     (fun r => compilerView r.2) (fun r => r.2.1)
     law (fun v => viewSum P q (v, st.2))
   refine transfer.le.trans ?_
-  have eq : (∑' r, Pr[= r | (SigningLane2Proof.signWithBaseStep (laneKey P) ⟨e, message⟩).run
-      (compilerView st.1, st.2)] * viewSum P q (r.2.1, st.2)) =
-      ∑' r, Pr[= r | (SigningLane2Proof.signWithBaseStep (laneKey P) ⟨e, message⟩).run
-        (compilerView st.1, st.2)] * viewSum P q r.2 := by
+  have eq : (∑' r, Pr{let z ← ((SigningLane2Proof.signWithBaseStep (laneKey P) ⟨e, message⟩).run
+      (compilerView st.1, st.2))}[z = r] * viewSum P q (r.2.1, st.2)) =
+      ∑' r, Pr{let z ← ((SigningLane2Proof.signWithBaseStep (laneKey P) ⟨e, message⟩).run
+        (compilerView st.1, st.2))}[z = r] * viewSum P q r.2 := by
     apply SigningLane2Proof.tsum_congr_support
     intro r hr
     have count := (SigningLane2Proof.counts_signWithBaseStep (laneKey P) ⟨e, message⟩
@@ -763,7 +773,7 @@ theorem compilerPotential_same_live_view (P : PublicParameter) (seeds : C.Term �
     (st : CompilerBackend C × ℕ) (live : st.1.trace.2 = false)
     (same : ∀ r ∈ support ((compilerImpl P seeds t).run st.1),
       r.2.trace.2 = false → compilerView r.2 = compilerView st.1) :
-    ∑' r, Pr[= r | (countImpl (compilerImpl P seeds) deferredCounted t).run st] *
+    ∑' r, Pr{let z ← (countImpl (compilerImpl P seeds) deferredCounted t).run st}[z = r] *
       compilerPotential P q r.2 ≤ compilerPotential P q st := by
   apply XmssSecurity.Ghost.tsum_le_of_support
   intro r hr
@@ -808,23 +818,27 @@ theorem compiler_hash_other_view (P : PublicParameter) (seeds : C.Term → HashO
 theorem compiler_message_stateLaw (prims : Primitives) (publicKey : XmssSecurity.PublicKey)
     (P : PublicParameter) (seeds : C.Term → HashOutput) (input : HashInput)
     (message : IsMsg input) (st : CompilerBackend C × ℕ) :
-    𝒟[(fun r => (compilerView r.2.1, r.2.2)) <$>
-      (countImpl (compilerImpl P seeds) deferredCounted (.hash (.hash input))).run st] =
-      𝒟[(fun r => r.2) <$> (XmssSecurity.Ghost.impl publicKey (laneKey P)
-        (.inl (.inr input))).run (compilerView st.1, st.2)] := by
+    ((fun r => (compilerView r.2.1, r.2.2)) <$>
+      (countImpl (compilerImpl P seeds) deferredCounted (.hash (.hash input))).run st) =ᵈ
+      ((fun r => r.2) <$> (XmssSecurity.Ghost.impl publicKey (laneKey P)
+        (.inl (.inr input))).run (compilerView st.1, st.2)) := by
   simp only [countImpl, StateT.run_mk, compiler_hash_message P seeds input message,
     Functor.map_map, deferredCounted, if_true]
   erw [Functor.map_map]
   have law := worldCall_stateLaw_isMsg prims publicKey (laneKey P) message
     st.1.data.cache st.1.trace.1 st.2
-  simpa only [compilerView, hashAnswer, if_neg (fun h => not_isMsg_of_mpc h message)] using law
+  simp only [hashAnswer, if_neg (fun h => not_isMsg_of_mpc h message)] at law
+  refine EvalDistEq.trans (EvalDistEq.of_eq ?_) law
+  erw [Functor.map_map]
+  refine congrArg (· <$> _) (funext fun a => ?_)
+  simp [compilerView]
 
 /-- The expected compensated sum of a message step increases by at most one digest space. -/
 theorem compiler_message_sum_le (prims : Primitives) (publicKey : XmssSecurity.PublicKey)
     (P : PublicParameter) (seeds : C.Term → HashOutput) (q : ℕ) (hq : q < 2 ^ 127)
     (input : HashInput) (message : IsMsg input) (st : CompilerBackend C × ℕ)
     (inv : XmssSecurity.Ghost.Inv (laneKey P) (compilerView st.1, st.2)) (room : st.2 < q) :
-    ∑' r, Pr[= r | (countImpl (compilerImpl P seeds) deferredCounted (.hash (.hash input))).run st] *
+    ∑' r, Pr{let z ← (countImpl (compilerImpl P seeds) deferredCounted (.hash (.hash input))).run st}[z = r] *
       viewSum P q (compilerView r.2.1, r.2.2) ≤ viewSum P q (compilerView st.1, st.2) + 2 ^ 128 := by
   have law := compiler_message_stateLaw prims publicKey P seeds input message st
   have transfer := SigningLane2Proof.tsum_view_eq
@@ -846,9 +860,9 @@ theorem compiler_message_sum_le (prims : Primitives) (publicKey : XmssSecurity.P
 theorem counted_potential_le_nextSum (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : ℕ) (t : DeferredQuery C) (counted : deferredCounted t)
     (st : CompilerBackend C × ℕ) (room : st.2 < q) :
-    ∑' r, Pr[= r | (countImpl (compilerImpl P seeds) deferredCounted t).run st] *
+    ∑' r, Pr{let z ← (countImpl (compilerImpl P seeds) deferredCounted t).run st}[z = r] *
       compilerPotential P q r.2 ≤
-      (∑' r, Pr[= r | (countImpl (compilerImpl P seeds) deferredCounted t).run st] *
+      (∑' r, Pr{let z ← (countImpl (compilerImpl P seeds) deferredCounted t).run st}[z = r] *
         viewSum P q (compilerView r.2.1, r.2.2)) * ((2 ^ 128 : ℝ≥0∞) * 2 ^ 128)⁻¹ := by
   rw [← ENNReal.tsum_mul_right]
   apply ENNReal.tsum_le_tsum
@@ -857,7 +871,7 @@ theorem counted_potential_le_nextSum (P : PublicParameter) (seeds : C.Term → H
   by_cases run : r ∈ support ((countImpl (compilerImpl P seeds) deferredCounted t).run st)
   · have count := SigningLane2Proof.countImpl_support_count (compilerImpl P seeds) deferredCounted t st r run
     exact mul_le_mul_right (compilerPotential_le_sum P q r.2 (by rw [count, if_pos counted]; omega)) _
-  · simp only [probOutput_eq_zero_of_not_mem_support run, zero_mul, le_refl]
+  · simp only [prEvent_eq_zero_of_not_mem_support _ run, zero_mul, le_refl]
 
 /-- A message query pays at most one inverse digest space in stopped potential. -/
 theorem compilerPotential_message (prims : Primitives) (publicKey : XmssSecurity.PublicKey)
@@ -865,7 +879,7 @@ theorem compilerPotential_message (prims : Primitives) (publicKey : XmssSecurity
     (input : HashInput) (message : IsMsg input) (st : CompilerBackend C × ℕ)
     (inv : XmssSecurity.Ghost.Inv (laneKey P) (compilerView st.1, st.2))
     (live : st.1.trace.2 = false) (room : st.2 < q) :
-    ∑' r, Pr[= r | (countImpl (compilerImpl P seeds) deferredCounted (.hash (.hash input))).run st] *
+    ∑' r, Pr{let z ← (countImpl (compilerImpl P seeds) deferredCounted (.hash (.hash input))).run st}[z = r] *
       compilerPotential P q r.2 ≤ compilerPotential P q st + (2 ^ 128 : ℝ≥0∞)⁻¹ := by
   refine (counted_potential_le_nextSum P seeds q (.hash (.hash input)) trivial st room).trans ?_
   refine (mul_le_mul_left (compiler_message_sum_le prims publicKey P seeds q hq input message st inv room) _).trans ?_
@@ -889,8 +903,8 @@ theorem compilerPotentialStep (prims : Primitives) : CompilerPotentialStep (C :=
           Bool.false_eq_true, not_false_eq_true]
       rw [if_pos ⟨⟨trivial, room⟩, side⟩]
       exact compilerPotential_message prims ⟨0, x.1⟩ x.1 x.2.1 q hq input message st inv live room
-    · suffices step : ∑' r, Pr[= r | (countImpl (compilerImpl x.1 x.2.1) deferredCounted
-          (.hash (.hash input))).run st] * compilerPotential x.1 q r.2 ≤
+    · suffices step : ∑' r, Pr{let z ← ((countImpl (compilerImpl x.1 x.2.1) deferredCounted
+          (.hash (.hash input))).run st)}[z = r] * compilerPotential x.1 q r.2 ≤
           compilerPotential x.1 q st from step.trans le_self_add
       by_cases trigger : ∃ e, SigningGuessProof.RandomizerCached x.2.1 st.1.data.cache e ∧
           BaseCall x.1 e (SigningGuessProof.cachedRandomizer x.2.1 st.1.data.cache e)
@@ -900,7 +914,7 @@ theorem compilerPotentialStep (prims : Primitives) : CompilerPotentialStep (C :=
           (SigningGuessProof.cachedRandomizer x.2.1 st.1.data.cache e)
           (compilerSigning st.1) (.hash input) e base
         cases cached : st.1.data.cache (.hash (randomizerInput x.1 bottomLayer e
-            (SigningGuessProof.cachedRandomizer x.2.1 st.1.data.cache e) (bytesLE 32 m))) with
+            (SigningGuessProof.cachedRandomizer x.2.1 st.1.data.cache e) (littleEndianBytes 32 m))) with
         | none =>
           refine (counted_potential_le_previousSum x.1 x.2.1 q (.hash (.hash input))
             trivial st room.le).trans ?_

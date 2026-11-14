@@ -15,7 +15,7 @@ routes have the same normal form.
   reduce.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerSyncHonestRead
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof

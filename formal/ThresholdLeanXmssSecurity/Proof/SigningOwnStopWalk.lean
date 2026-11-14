@@ -33,7 +33,7 @@ namespace ThresholdLeanXmssSecurity
 
 namespace SigningOwnStop
 
-open LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof SigningJointEagerProof
+open HashSig LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof SigningJointEagerProof
   SigningPartnerBoundProof SigningReleasedLinkProof SigningReleasedAlignProof SigningOwnForger
 
 attribute [local instance] Classical.propDecidable
@@ -222,7 +222,7 @@ theorem ledger_run_rerun {α : Type} (x : SigningSecurityProof.Keys3 C)
         _ middle le_rfl _ hrest
     have hcached : p.1.1.1.1.1.1 (.hash t) = some output := hle (hmiddleLe hmid)
     change r ∈ support ((simulateQ (ledgerWorld prims x)
-      (SigningCacheProof.freeHom (tweakable (Concrete.oracleHash t >>= next)))).run p) at hr
+      (SigningCacheProof.freeHom (tweakable (Verification.oracleHashWithHash t >>= next)))).run p) at hr
     rw [tweakable_bind, tweakable_oracleHash, MonadHom.mmap_bind] at hr
     simp only [simulateQ_bind, StateT.run_bind, mem_support_bind_iff] at hr
     obtain ⟨step, hstep, hr⟩ := hr
@@ -231,7 +231,7 @@ theorem ledger_run_rerun {α : Type} (x : SigningSecurityProof.Keys3 C)
         (SigningSecurityProof.liftFree (hashQuery (.hash t)))).run p) at hstep
       rw [SigningSecurityProof.liftFree, hashQuery, free] at hstep
       erw [liftComp_query, simulateQ_query] at hstep
-      simp at hstep
+      erw [id_map] at hstep
       exact hstep
     obtain ⟨hsplit, hledger⟩ := ledgerWorld_support prims x (.inr (.inr (.inl (.hash t)))) p step hstep'
     rw [stopCharge_cached x _ t output hcached, Nat.add_zero] at hledger
@@ -417,19 +417,19 @@ theorem world_base_grind (x : SigningSecurityProof.Keys3 C) (t : (WorldSpec C).D
     (hprf : SigningGuessProof.RandomizerCached x.2.1 s.1.1.1.1.1 e)
     (hbase : BaseCall x.1 e (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) s.2.1.1 t)
     (hb : s.2.1.1.bound e = some message) :
-    ∃ (initial first : HashCache C) (found : Option (Randomness × Encoding)) (answer : HashOutput),
+    ∃ (initial first : HashCache C) (found : Option (Randomizer × Encoding)) (answer : HashOutput),
       (found, first) ∈ support ((simulateQ (randomOracle (spec := Query C →ₒ HashOutput))
         (simulateQ (fun input => query (spec := Query C →ₒ HashOutput) (.hash input))
-          (grind x.1 bottomLayer e (bytesLE 32 message) (truncateHash answer)
+          (grind x.1 bottomLayer e (littleEndianBytes 32 message) (truncateHash answer)
             randomizerAttemptLimit 0))).run initial) ∧
       first ≤ r.2.1.1.1.1.1 ∧
       r.2.1.1.1.1.1 (.hash (randomizerInput x.1 bottomLayer e
-        (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (bytesLE 32 message))) = some answer := by
+        (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (littleEndianBytes 32 message))) = some answer := by
   have hcall : HashCallAt (randomizerInput x.1 bottomLayer e
-      (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (bytesLE 32 message)) t := by
+      (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (littleEndianBytes 32 message)) t := by
     obtain ⟨input, hi, hc⟩ := hbase
     have hi' : randomizerInput x.1 bottomLayer e
-        (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (bytesLE 32 message) = input := by
+        (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (littleEndianBytes 32 message) = input := by
       unfold baseInput at hi
       rw [hb] at hi
       exact Option.some.inj hi
@@ -442,7 +442,7 @@ theorem world_base_grind (x : SigningSecurityProof.Keys3 C) (t : (WorldSpec C).D
   obtain ⟨outer, ⟨counted, hcounted, rfl⟩, heq⟩ := hc'
   obtain ⟨baseAnswer, hanswer⟩ := countImpl_hash_cached prims _ t hcall _ counted hcounted
   have ha : called.2.1.1.1 (.hash (randomizerInput x.1 bottomLayer e
-      (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (bytesLE 32 message))) = some baseAnswer := by
+      (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (littleEndianBytes 32 message))) = some baseAnswer := by
     rw [← heq]
     exact hanswer
   rw [SigningReleasedLinkProof.jointCachedExtra_base x (s.1.1.1, s.2) called.2 t e message baseAnswer
@@ -463,20 +463,20 @@ theorem world_base_witness (x : SigningSecurityProof.Keys3 C) (e : KeyIndex) (me
     (s : SplitState C) (hprf : SigningGuessProof.RandomizerCached x.2.1 s.1.1.1.1.1 e)
     (hb : s.2.1.1.bound e = some message) (r : HashOutput × SplitState C)
     (hr : r ∈ support ((world prims x (.inr (.inr (.inl (.hash (randomizerInput x.1 bottomLayer e
-      (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (bytesLE 32 message))))))).run s)) :
-    ∃ (initial first : HashCache C) (found : Option (Randomness × Encoding)),
+      (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (littleEndianBytes 32 message))))))).run s)) :
+    ∃ (initial first : HashCache C) (found : Option (Randomizer × Encoding)),
       (found, first) ∈ support ((simulateQ (randomOracle (spec := Query C →ₒ HashOutput))
         (simulateQ (fun input => query (spec := Query C →ₒ HashOutput) (.hash input))
-          (grind x.1 bottomLayer e (bytesLE 32 message) (truncateHash r.1)
+          (grind x.1 bottomLayer e (littleEndianBytes 32 message) (truncateHash r.1)
             randomizerAttemptLimit 0))).run initial) ∧
       first ≤ r.2.1.1.1.1.1 := by
   have hbase : BaseCall x.1 e (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) s.2.1.1
       (.inr (.inr (.inl (.hash (randomizerInput x.1 bottomLayer e
-        (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (bytesLE 32 message)))))) :=
+        (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (littleEndianBytes 32 message)))))) :=
     ⟨_, by rw [baseInput, hb]; rfl, Or.inr rfl⟩
   obtain ⟨initial, first, found, answer, hrun, hle, hcache⟩ := world_base_grind prims x
     (.inr (.inr (.inl (.hash (randomizerInput x.1 bottomLayer e
-      (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (bytesLE 32 message)))))) s r hr e message
+      (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (littleEndianBytes 32 message)))))) s r hr e message
     hprf hbase hb
   have hanswer : answer = r.1 :=
     Option.some.inj (hcache.symm.trans (world_free_hash_cached prims x _ s r hr))
@@ -503,7 +503,7 @@ theorem ledger_hashQuery (x : SigningSecurityProof.Keys3 C) (input : HashInput) 
     (SigningSecurityProof.liftFree (hashQuery (.hash input)))).run p) at hr
   rw [SigningSecurityProof.liftFree, hashQuery, free] at hr
   erw [liftComp_query, simulateQ_query] at hr
-  simp at hr
+  erw [id_map] at hr
   exact hr
 
 /-- Both handler facts for one signer. The search of a signer at a bound key does not move the
@@ -512,7 +512,7 @@ passes the check the run is after the stop. -/
 theorem ledger_signCodeword (x : SigningSecurityProof.Keys3 C) (e : KeyIndex) (message : Message)
     (candidate : Digest) (tree : BottomTree) (p : LedgerState C)
     (hagree : TreeAgrees x p.1.1.1.1.1.1 tree e) (hb : p.2.1.1.bound e = some message)
-    (r : Option (Randomness × Encoding) × LedgerState C)
+    (r : Option (Randomizer × Encoding) × LedgerState C)
     (hr : r ∈ support ((simulateQ (ledgerWorld prims x)
       (SigningSecurityProof.liftFree (signCodeword x.1 (tree.commitment e) e message candidate))).run p)) :
     r.2.1.2 = p.1.2 := by
@@ -542,7 +542,7 @@ theorem ledger_signCodeword (x : SigningSecurityProof.Keys3 C) (e : KeyIndex) (m
         simulateQ_bind, StateT.run_bind, mem_support_bind_iff] at hr
       obtain ⟨base, hbase, htail⟩ := hr
       obtain ⟨hsplit2, hledger2⟩ := ledgerWorld_support prims x
-        (.inr (.inr (.inl (.hash (randomizerInput x.1 bottomLayer e candidate (bytesLE 32 message))))))
+        (.inr (.inr (.inl (.hash (randomizerInput x.1 bottomLayer e candidate (littleEndianBytes 32 message))))))
         opened.2 base (ledger_hashQuery prims x _ opened.2 base hbase)
       rw [stopCharge_free_of_not_keyed x _ _ (fun h => by
         obtain ⟨e', he'⟩ := (keyed_iff _ _).mp h

@@ -1,7 +1,7 @@
 import ThresholdLeanXmssSecurity.Proof.SigningLaneUnion
 import ThresholdLeanXmssSecurity.Proof.SigningLane2TraceLink
 import Mathlib.Tactic.DeriveFintype
-import XmssSecurity.Proof.ExactQueryCount
+import ThresholdLeanXmssSecurity.Proof.VendoredExcerpt
 
 /-!
 # The capped signing compiler
@@ -22,7 +22,7 @@ The coupling includes adaptive PRF programming, candidate coverage and count
 transport. It does not accept a separately chosen program or implementation.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 
 noncomputable section
 
@@ -48,11 +48,11 @@ theorem hiddenCandidate_none_of_isMsg (P : PublicParameter) (input : HashInput)
     exact SigningLane2BridgeProof.not_isMsg_randomizerInput _ _ _ _ _ h
   have hb : ¬∃ e l p v, input = XmssSecurity.Concrete.CacheView.chainInput P e l p v := by
     rintro ⟨e, l, p, v, rfl⟩
-    rw [SigningGuessLinkProof.chainInput_eq_bridge] at h
+    erw [SigningGuessLinkProof.chainInput_eq_bridge] at h
     exact byte23_chain _ _ _ _ _ h
   have ht : ¬∃ b l p v, input = XmssSecurity.Concrete.CacheView.topChainInput P b l p v := by
     rintro ⟨b, l, p, v, rfl⟩
-    rw [SigningGuessLinkProof.topChainInput_eq_bridge] at h
+    erw [SigningGuessLinkProof.topChainInput_eq_bridge] at h
     exact byte23_chain _ _ _ _ _ h
   simp only [hiddenCandidate, dif_neg hc, dif_neg hr, dif_neg hb, dif_neg ht]
 
@@ -295,12 +295,13 @@ theorem pendingValid_step (q : DeferredQuery C) (st : DeferredState C)
           exact hst
       | none =>
           simp only [deferredImpl, StateT.run, hp, support_map] at hr
+          erw [support_map] at hr
           obtain ⟨a, ha, rfl⟩ := hr
           intro w v hv
           by_cases hwp : w = p
           · subst w
             simp only [Function.update_self, Option.some.injEq] at hv
-            subst v
+            obtain rfl : a = v := Option.some.inj hv
             exact samplePending_valid p a ha
           · simp only [Function.update_of_ne hwp] at hv
             exact hst w v hv
@@ -316,6 +317,7 @@ theorem pendingValid_step (q : DeferredQuery C) (st : DeferredState C)
           exact hst
       | none =>
           simp only [deferredImpl, StateT.run, hp, support_map] at hr
+          erw [support_map] at hr
           obtain ⟨a, _, rfl⟩ := hr
           exact hst
   | inspect p =>
@@ -331,6 +333,7 @@ theorem pendingValid_step (q : DeferredQuery C) (st : DeferredState C)
       exact hst
   | sample =>
       simp only [deferredImpl, StateT.run, support_map] at hr
+      erw [support_map] at hr
       obtain ⟨a, _, rfl⟩ := hr
       exact hst
   | record p value =>
@@ -348,6 +351,7 @@ theorem pendingValid_step (q : DeferredQuery C) (st : DeferredState C)
         exact hst w v hv
   | uniform n =>
       simp only [deferredImpl, StateT.run, support_map] at hr
+      erw [support_map] at hr
       obtain ⟨a, _, rfl⟩ := hr
       exact hst
   | bindKey e message =>
@@ -366,6 +370,7 @@ theorem pending_truncate_next (st : DeferredState C) (hst : PendingValid st)
     subst k'
     change (XmssSecurity.Rom.hashOutputEquivDigestPair (v.interpret s)).2 = _
     simp [DeferredOutput.interpret, hv', DeferredDigest.interpret]
+    rfl
   · rw [hk] at hk'
     contradiction
 
@@ -390,6 +395,7 @@ theorem pending_repeat (p : PendingInput) (st : DeferredState C)
       rfl
   | none =>
       simp only [deferredImpl, StateT.run, h, support_map] at hv
+      erw [support_map] at hv
       obtain ⟨a, _, hpair⟩ := hv
       cases hpair
       simp [deferredImpl, StateT.run]
@@ -500,7 +506,7 @@ def deferredHash {α : Type} (oa : OracleComp HashSpec α) : OracleComp (Deferre
 queries. The type gives setup no reveal oracle. -/
 def deferredTopTree (P : PublicParameter) : OracleComp (DeferredSpec C) TopTree := do
   let indices := (List.finRange (2 ^ layerHeight)).flatMap fun b =>
-    (List.finRange numChains).map fun l => (b, l)
+    (List.finRange chainCount).map fun l => (b, l)
   let ends ← indices.mapM fun bl => deferredTopEnd (C := C) bl.1 bl.2
   let keys := indices.map fun bl => (topKey bl.1, bl.2)
   let chainEnd := fun e l => ends.getD (keys.idxOf (e, l)) 0
@@ -538,7 +544,7 @@ theorem exact_pending_calls (ps : List PendingInput) :
       (ps.mapM fun p => backendQuery (C := C) (.pending p)) ps.length := by
   simpa using (exact_mapM deferredCounted ps
     (fun p => backendQuery (C := C) (.pending p)) (fun _ => 1)
-    (fun p _ => by simpa only [DeferredSpec, deferredCounted, if_true] using
+    (fun p _ => by simpa [DeferredSpec, deferredCounted] using
       exact_backendQuery (C := C) (.pending p)))
 
 /-- Prefix caching does not reduce the six calls performed by the bottom row. -/
@@ -582,7 +588,7 @@ theorem exact_deferredBottomRow (e : XmssSecurity.LeafIndex) (l : XmssSecurity.C
     (exact_bottomRow_prf e l) _ 6 fun _ => ?_
   have hp (p : Point) : XmssSecurity.ExactPredicateQueryCount deferredCounted
       (backendQuery (C := C) (.pad p)) 0 := by
-    simpa only [deferredCounted, if_false] using exact_backendQuery (C := C) (.pad p)
+    simpa [deferredCounted] using exact_backendQuery (C := C) (.pad p)
   refine XmssSecurity.ExactQueryCount.ExactPredicateQueryCount.bind (hp _) _ 6 fun _ => ?_
   refine XmssSecurity.ExactQueryCount.ExactPredicateQueryCount.bind (hp _) _ 6 fun _ => ?_
   simpa only [Nat.add_zero] using
@@ -598,12 +604,12 @@ theorem bottom_walks_of_edges (P : PublicParameter) (H : HashInput → HashOutpu
     (h₀ : truncateHash (H (PendingInput.input P (.bottom e l ⟨0, by decide⟩) s₀)) = s₁)
     (h₁ : truncateHash (H (PendingInput.input P (.bottom e l ⟨1, by decide⟩) s₁)) = s₂)
     (h₂ : truncateHash (H (PendingInput.input P (.bottom e l ⟨2, by decide⟩) s₂)) = endpoint) :
-    evalTh H (Concrete.chainWalk P bottomLayer e l 0 1 s₀) = s₁ ∧
-    evalTh H (Concrete.chainWalk P bottomLayer e l 0 2 s₀) = s₂ ∧
-    evalTh H (Concrete.chainWalk P bottomLayer e l 0 3 s₀) = endpoint := by
+    evalTh H (Verification.chainWalkWithHash P bottomLayer e l 0 1 s₀) = s₁ ∧
+    evalTh H (Verification.chainWalkWithHash P bottomLayer e l 0 2 s₀) = s₂ ∧
+    evalTh H (Verification.chainWalkWithHash P bottomLayer e l 0 3 s₀) = endpoint := by
   letI : NeZero (chainLength - 1) := ⟨by decide⟩
   let step : Fin (chainLength - 1) → Digest → Digest := fun p value =>
-    truncateHash (H (tweakableHashInput P (.chain bottomLayer e p) (Concrete.chainPayload l value)))
+    truncateHash (H (tweakableHashInput P (.chain bottomLayer e p) (Verification.chainPayload l value)))
   have he₀ : step 0 s₀ = s₁ := by
     simpa [step, PendingInput.input, SigningGuessLinkProof.chainInput_eq_bridge,
       chainLength, winternitzBits] using h₀
@@ -613,7 +619,7 @@ theorem bottom_walks_of_edges (P : PublicParameter) (H : HashInput → HashOutpu
   have he₂ : step 2 s₂ = endpoint := by
     simp only [PendingInput.input, SigningGuessLinkProof.chainInput_eq_bridge] at h₂
     change truncateHash (H (tweakableHashInput P (.chain bottomLayer e ⟨2, by decide⟩)
-      (Concrete.chainPayload l s₂))) = endpoint
+      (Verification.chainPayload l s₂))) = endpoint
     exact h₂
   change step 0 s₀ = s₁ ∧ step 1 (step 0 s₀) = s₂ ∧
     step 2 (step 1 (step 0 s₀)) = endpoint
@@ -700,14 +706,14 @@ def OpeningReady (seeds : C.Term → HashOutput) (st : DeferredState C)
 /-- A stored top signature keeps its chain values symbolic until a successful tree
 request returns them. It can coexist with a cached bottom tree used by round two. -/
 structure DeferredTopSignature where
-  randomness : Randomness
+  randomness : Randomizer
   encoding : Encoding
   chainValue : ChainIndex → DeferredDigest
   path : Fin layerHeight → Digest
 
 def DeferredTopSignature.materialize (sig : DeferredTopSignature) :
     OracleComp (DeferredSpec C + RevealSpec HiddenKey Digest) LayerSignature := do
-  let values ← Concrete.sequenceFin fun l => revealDigest (sig.chainValue l)
+  let values ← OverPermutation.sequenceFin fun l => revealDigest (sig.chainValue l)
   pure ⟨sig.randomness, values, sig.path⟩
 
 /-- The bottom tree stores its top signature without revealing its chain inputs. -/
@@ -850,7 +856,7 @@ def sourceHashProgram {α : Type} (P : PublicParameter) (seeds : C.Term → Hash
 /-- The top signature job repeats the prefix walk at its chosen position and keeps
 its returned chain value symbolic. -/
 def sourceTopValue (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (b : XmssSecurity.TopIndex) (l : ChainIndex) (p : Digit) : SourceM C DeferredDigest := do
+    (b : XmssSecurity.TopIndex) (l : ChainIndex) (p : WinternitzDigit) : SourceM C DeferredDigest := do
   let _ ← C.terms.mapM fun T => sourceVirtual P seeds T (.chain topLayer (topKey b) l (digit 0))
   let values ← (List.finRange p.val).mapM fun i => sourcePending P (.top b l
     ⟨i.val, by have hi := i.isLt; have hp := p.isLt; change i.val < 3; change p.val < 4 at hp; omega⟩)
@@ -858,7 +864,7 @@ def sourceTopValue (P : PublicParameter) (seeds : C.Term → HashOutput)
 
 /-- The verification suffix of an honestly generated symbolic top chain. -/
 def sourceTopRecover (P : PublicParameter) (b : XmssSecurity.TopIndex)
-    (l : ChainIndex) (p : Digit) (initial : DeferredDigest) : SourceM C Digest := do
+    (l : ChainIndex) (p : WinternitzDigit) (initial : DeferredDigest) : SourceM C Digest := do
   let values ← (List.finRange (3 - p.val)).mapM fun i => sourcePending P (.top b l
     ⟨p.val + i.val, by have hi := i.isLt; change p.val + i.val < 3; omega⟩)
   let last := (values.getLast?.map (·.low)).getD initial
@@ -873,7 +879,7 @@ prefix signing walk and its verification suffix retain their original hash calls
 def sourceBottomTree (P : PublicParameter) (seeds : C.Term → HashOutput)
     (top : TopTree) (b : XmssSecurity.TopIndex) : SourceM C (Option DeferredBottomTree) := do
   let indices := (List.finRange (2 ^ layerHeight)).flatMap fun k =>
-    (List.finRange numChains).map fun l => (bottomKey b k, l)
+    (List.finRange chainCount).map fun l => (bottomKey b k, l)
   let rows ← indices.mapM fun el => sourceBottomRow P seeds el.1 el.2
   let commitments ← (List.finRange (2 ^ layerHeight)).mapM fun k =>
     sourceCommitment P seeds (bottomKey b k)
@@ -882,22 +888,22 @@ def sourceBottomTree (P : PublicParameter) (seeds : C.Term → HashOutput)
   let commitment := fun (e : KeyIndex) => commitments.getD (e.val % 2 ^ layerHeight) 0
   let root ← sourceHashProgram P seeds
     (merkleNode P bottomLayer (fun e l => (cpk e l).2.2) layerHeight b.val)
-  let message := bytesLE 16 root
+  let message := littleEndianBytes 16 root
   let baseAnswer ← sourcePending P (.base topLayer (topKey b) message)
   let base := match baseAnswer.low with | .known value => value | .secret _ => 0
   let some (randomness, encoding) ← sourceHashProgram P seeds
     (grind P topLayer (topKey b) message base randomizerAttemptLimit 0) | pure none
-  let values ← Concrete.sequenceFin fun l => sourceTopValue P seeds b l (encoding l)
+  let values ← OverPermutation.sequenceFin fun l => sourceTopValue P seeds b l (encoding l)
   let path ← sourceHashProgram P seeds (merklePath P topLayer top.chainEnd (topKey b))
-  let digest ← sourceHashProgram P seeds (Concrete.messageDigest P topLayer (topKey b) message randomness)
+  let digest ← sourceHashProgram P seeds (Verification.messageDigestWithHash P topLayer (topKey b) message randomness)
   let some checked := Codeword.decode digest | pure none
   if checked ≠ encoding then
     modify fun (st : SourceState C) => { st with consistent := false }
     pure none
   else
-    let ends ← Concrete.sequenceFin fun l => sourceTopRecover P b l (encoding l) (values l)
-    let leaf ← sourceHashProgram P seeds (Concrete.leafHash P topLayer (topKey b) ends)
-    let topRoot ← sourceHashProgram P seeds (Concrete.treeFold P topLayer (topKey b) path layerHeight leaf)
+    let ends ← OverPermutation.sequenceFin fun l => sourceTopRecover P b l (encoding l) (values l)
+    let leaf ← sourceHashProgram P seeds (Verification.leafHashWithHash P topLayer (topKey b) ends)
+    let topRoot ← sourceHashProgram P seeds (Verification.treeFoldWithHash P topLayer (topKey b) path layerHeight leaf)
     if topRoot ≠ top.root then pure none else
       pure (some ⟨cpk, commitment, root, ⟨randomness, encoding, values, path⟩⟩)
 
@@ -914,7 +920,7 @@ def sourceBottomOnce (P : PublicParameter) (seeds : C.Term → HashOutput)
 /-- Q reveals only the canonical suffix and programs its already-masked PRF
 points. Its caller supplies the position chosen by the successful codeword check. -/
 def sourceReleaseBottomSuffix (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (e : KeyIndex) (l : ChainIndex) (start : Digit) : SourceM C Unit := do
+    (e : KeyIndex) (l : ChainIndex) (start : WinternitzDigit) : SourceM C Unit := do
   let keys := (List.finRange 3).filter fun p => start.val ≤ p.val
   let _ ← keys.mapM fun p => do
     let value ← sourceReveal (.bottomChain e l p)
@@ -934,7 +940,7 @@ def sourceReturnTree (P : PublicParameter) (seeds : C.Term → HashOutput)
   modify fun (st : SourceState C) => { st with consistent := st.consistent && ok }
   let pending := (← get).allocated.filter fun p => p.key = .opening topLayer (topKey b)
   let _ ← pending.mapM (sourcePlant P)
-  let values ← Concrete.sequenceFin fun l => do
+  let values ← OverPermutation.sequenceFin fun l => do
     let start := tree.topSignature.encoding l
     let keys := (List.finRange 3).filter fun p => start.val ≤ p.val
     let _ ← keys.mapM fun p => sourceReveal (.topChain b l p)
@@ -1029,7 +1035,7 @@ def sourceHonestSignature (prims : Primitives) (x : Keys3 C) (top : TopTree)
   let opening ← sourceRoProgram prims x.1 x.2.1 (prfValue x.2.1 (.randomizer bottomLayer e))
   let some (randomness, encoding) ← sourceRoProgram prims x.1 x.2.1
     (signCodeword x.1 (tree.commitment e) e message opening) | pure none
-  let values ← Concrete.sequenceFin fun l =>
+  let values ← OverPermutation.sequenceFin fun l =>
     if (encoding l).val = 3 then pure (tree.cpk e l).2.2 else do
       sourceReleaseBottomSuffix x.1 x.2.1 e l (encoding l)
       let value ← sourceRoProgram prims x.1 x.2.1 (prfValue x.2.1 (.chain bottomLayer e l (encoding l)))
@@ -1037,7 +1043,7 @@ def sourceHonestSignature (prims : Primitives) (x : Keys3 C) (top : TopTree)
         (if (encoding l).val = 1 then (tree.cpk e l).1 else (tree.cpk e l).2.1) ^^^ value)
   let path ← sourceHashProgram x.1 x.2.1
     (merklePath x.1 bottomLayer (fun key l => (tree.cpk key l).2.2) e)
-  let topValues ← Concrete.sequenceFin fun l => sourceRevealDigest (tree.topSignature.chainValue l)
+  let topValues ← OverPermutation.sequenceFin fun l => sourceRevealDigest (tree.topSignature.chainValue l)
   let topPart : LayerSignature := ⟨tree.topSignature.randomness, topValues, tree.topSignature.path⟩
   pure (some ⟨e, fun lay => if lay = bottomLayer then ⟨randomness, values, path⟩ else topPart⟩)
 
@@ -1051,7 +1057,7 @@ def sourceGame (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) :
     let value ← sourceHash x.1 x.2.1 (.hash input)
     modify fun (s : SourceState C) => { s with candidates := s.candidates ++ SigningGuessLinkProof.callCandidates x.1 st.signing st.exposed input }
     pure value
-  let verified ← simulateQ verifyImpl (Concrete.verify ⟨top.root, x.1⟩ forgery.message forgery.signature)
+  let verified ← simulateQ verifyImpl (Verification.verifyWithHash ⟨top.root, x.1⟩ forgery.message forgery.signature)
   let fresh ← if (signersAt st.signing forgery.signature.leafIndex forgery.message).card < C.t then
     pure true else do
       let honest ← sourceHonestSignature prims x top forgery.signature.leafIndex forgery.message
@@ -1135,7 +1141,7 @@ terms, supplies the local capped-expectation step. -/
 def CompilerPotentialStep : Prop :=
   ∀ (x : Keys3 C) (q : ℕ), q < 2 ^ 127 →
     ∀ (t : DeferredQuery C) (st : CompilerBackend C × ℕ), CompilerReachable x.1 x.2.1 st →
-      st.1.trace.2 = false → ∑' r, Pr[= r | (countImpl (compilerImpl x.1 x.2.1) deferredCounted t).run st] *
+      st.1.trace.2 = false → ∑' r, Pr{let z ← (countImpl (compilerImpl x.1 x.2.1) deferredCounted t).run st}[z = r] *
         compilerPotential x.1 q r.2 ≤ compilerPotential x.1 q st +
           if cappedCall deferredCounted q t st ∧ ¬deferredInputSide x.1 t then
             (2 ^ 128 : ℝ≥0∞)⁻¹ else 0
@@ -1147,12 +1153,12 @@ def CompilerCoupling (prims : Primitives) : Prop :=
     x ∈ support (TprfSecurityProof.keyGen3 (C := C)) →
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
     (∀ r ∈ support (runSigningWorld prims (gameAfter A x)), r.2 ≤ q) → q < 2 ^ 127 →
-    Pr[fun z => SigningLaneUnionProof.NoFlag (SigningLaneUnionProof.observed z) ∧
+    Pr{let z ←
+      SigningLaneUnionProof.traceRun prims A x}[SigningLaneUnionProof.NoFlag (SigningLaneUnionProof.observed z) ∧
       SigningLaneUnionProof.NotChargedLogged prims x (SigningLaneUnionProof.observed z) ∧
       (SigningLaneUnionProof.LoggedInputHit prims x (SigningLaneUnionProof.observed z) ∨
-        SigningLaneUnionProof.StaleBaseAt z ∨ SigningLaneUnionProof.GhostAt x z) |
-      SigningLaneUnionProof.traceRun prims A x] ≤
-        Pr[fun r => r.2.2.2 = true ∨ compilerEvent x.1 q r.2.1 | compilerRun prims A x q]
+        SigningLaneUnionProof.StaleBaseAt z ∨ SigningLaneUnionProof.GhostAt x z)] ≤
+        Pr{let r ← compilerRun prims A x q}[r.2.2.2 = true ∨ compilerEvent x.1 q r.2.1]
 
 /-- The trace adapter preserves the pending-edge invariant of its backend. -/
 theorem compilerImpl_pendingValid (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -1209,7 +1215,7 @@ theorem compilerImpl_stale (P : PublicParameter) (seeds : C.Term → HashOutput)
 state, without imposing a false lower bound on a stopped compensator. -/
 theorem compilerPotential_step_stale (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : ℕ) (t : DeferredQuery C) (st : CompilerBackend C × ℕ) (hs : st.1.trace.2 = true) :
-    ∑' r, Pr[= r | (countImpl (compilerImpl P seeds) deferredCounted t).run st] *
+    ∑' r, Pr{let z ← (countImpl (compilerImpl P seeds) deferredCounted t).run st}[z = r] *
       compilerPotential P q r.2 ≤ compilerPotential P q st +
         if cappedCall deferredCounted q t st ∧ ¬deferredInputSide P t then
           (2 ^ 128 : ℝ≥0∞)⁻¹ else 0 := by
@@ -1225,10 +1231,9 @@ theorem compilerPotential_step_stale (P : PublicParameter) (seeds : C.Term → H
 
 theorem compilerView_initial : compilerView (compilerInit (C := C)) = (∅, []) := by
   apply Prod.ext
-  · funext input
+  · refine QueryCache.ext fun input => ?_
     simp [compilerView, compilerInit, deferredInit, SigningLane2BridgeProof.keptView]
-    intro _
-    rfl
+    exact ite_self _
   · rfl
 
 /-- The empty trace and empty cache give zero total potential. -/
@@ -1311,6 +1316,7 @@ theorem deferredImpl_keptView_uncounted (t : DeferredQuery C)
       cases hp : st.pads p with
       | none =>
           simp only [deferredImpl, StateT.run, hp, support_map] at hr
+          erw [support_map] at hr
           obtain ⟨a, _, rfl⟩ := hr
           rfl
       | some value =>
@@ -1335,10 +1341,12 @@ theorem deferredImpl_keptView_uncounted (t : DeferredQuery C)
           rfl
   | sample =>
       simp only [deferredImpl, StateT.run, support_map] at hr
+      erw [support_map] at hr
       obtain ⟨a, _, rfl⟩ := hr
       rfl
   | uniform n =>
       simp only [deferredImpl, StateT.run, support_map] at hr
+      erw [support_map] at hr
       obtain ⟨a, _, rfl⟩ := hr
       rfl
   | _ =>
@@ -1377,7 +1385,7 @@ reachability or non-stale hypothesis. -/
 theorem compilerPotential_step_uncounted (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : ℕ) (t : DeferredQuery C) (ht : ¬deferredCounted t)
     (st : CompilerBackend C × ℕ) :
-    ∑' r, Pr[= r | (countImpl (compilerImpl P seeds) deferredCounted t).run st] *
+    ∑' r, Pr{let z ← (countImpl (compilerImpl P seeds) deferredCounted t).run st}[z = r] *
       compilerPotential P q r.2 ≤ compilerPotential P q st +
         if cappedCall deferredCounted q t st ∧ ¬deferredInputSide P t then
           (2 ^ 128 : ℝ≥0∞)⁻¹ else 0 := by
@@ -1390,7 +1398,7 @@ theorem compilerPotential_step_uncounted (P : PublicParameter) (seeds : C.Term �
     exact compilerPotential_congr P q _ st hv hs (by simp [ht])
   rw [SigningLane2Proof.tsum_congr_support _ _ (fun _ => compilerPotential P q st) heq,
     ENNReal.tsum_mul_right]
-  exact (mul_le_of_le_one_left' tsum_probOutput_le_one).trans le_self_add
+  exact (mul_le_of_le_one_left' (OracleComp.tsum_prEvent_le_one _)).trans le_self_add
 
 /-- Advancing the count while keeping the view cannot increase the stopped
 potential. The moment term decreases with the remaining budget. -/
@@ -1424,6 +1432,7 @@ theorem compilerImpl_view_pending (P : PublicParameter) (seeds : C.Term → Hash
   cases hp : st.data.pending p with
   | none =>
       simp only [deferredImpl, hp, support_map] at ha
+      erw [support_map] at ha
       obtain ⟨v, _, rfl⟩ := ha
       exact ⟨rfl, rfl⟩
   | some value =>
@@ -1450,7 +1459,7 @@ theorem compilerPotential_step_of_sameView (P : PublicParameter)
     (ht : deferredCounted t) (st : CompilerBackend C × ℕ)
     (hview : ∀ r ∈ support ((compilerImpl P seeds t).run st.1),
       compilerView r.2 = compilerView st.1 ∧ r.2.trace.2 = st.1.trace.2) :
-    ∑' r, Pr[= r | (countImpl (compilerImpl P seeds) deferredCounted t).run st] *
+    ∑' r, Pr{let z ← (countImpl (compilerImpl P seeds) deferredCounted t).run st}[z = r] *
       compilerPotential P q r.2 ≤ compilerPotential P q st +
         if cappedCall deferredCounted q t st ∧ ¬deferredInputSide P t then
           (2 ^ 128 : ℝ≥0∞)⁻¹ else 0 := by
@@ -1465,7 +1474,7 @@ theorem compilerPotential_step_of_sameView (P : PublicParameter)
 /-- The pending-call case of the fixed local potential contract is unconditional. -/
 theorem compilerPotential_step_pending (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : ℕ) (p : PendingInput) (st : CompilerBackend C × ℕ) :
-    ∑' r, Pr[= r | (countImpl (compilerImpl P seeds) deferredCounted (.pending p)).run st] *
+    ∑' r, Pr{let z ← (countImpl (compilerImpl P seeds) deferredCounted (.pending p)).run st}[z = r] *
       compilerPotential P q r.2 ≤ compilerPotential P q st +
         if cappedCall (deferredCounted (C := C)) q (.pending p) st ∧
             ¬deferredInputSide (C := C) P (.pending p) then
@@ -1476,7 +1485,7 @@ theorem compilerPotential_step_pending (P : PublicParameter) (seeds : C.Term →
 /-- The virtual-PRF case of the fixed local potential contract is unconditional. -/
 theorem compilerPotential_step_virtual (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : ℕ) (T : C.Term) (p : Point) (st : CompilerBackend C × ℕ) :
-    ∑' r, Pr[= r | (countImpl (compilerImpl P seeds) deferredCounted (.virtual T p)).run st] *
+    ∑' r, Pr{let z ← (countImpl (compilerImpl P seeds) deferredCounted (.virtual T p)).run st}[z = r] *
       compilerPotential P q r.2 ≤ compilerPotential P q st +
         if cappedCall deferredCounted q (.virtual T p) st ∧ ¬deferredInputSide P (.virtual T p) then
           (2 ^ 128 : ℝ≥0∞)⁻¹ else 0 :=
@@ -1489,7 +1498,7 @@ theorem compilerPotentialStep_iff_hash : CompilerPotentialStep (C := C) ↔
     ∀ (x : Keys3 C) (q : ℕ), q < 2 ^ 127 →
       ∀ (t : Query C) (st : CompilerBackend C × ℕ),
         CompilerReachable x.1 x.2.1 st → st.1.trace.2 = false →
-        ∑' r, Pr[= r | (countImpl (compilerImpl x.1 x.2.1) deferredCounted (.hash t)).run st] *
+        ∑' r, Pr{let z ← (countImpl (compilerImpl x.1 x.2.1) deferredCounted (.hash t)).run st}[z = r] *
           compilerPotential x.1 q r.2 ≤ compilerPotential x.1 q st +
             if cappedCall deferredCounted q (.hash t) st ∧ ¬deferredInputSide x.1 (.hash t) then
               (2 ^ 128 : ℝ≥0∞)⁻¹ else 0 := by
@@ -1560,7 +1569,7 @@ theorem compilerImpl_view_not_hash (P : PublicParameter) (seeds : C.Term → Has
 theorem compilerPotential_step_not_hash (P : PublicParameter)
     (seeds : C.Term → HashOutput) (q : ℕ) (t : Query C)
     (ht : ∀ input, t ≠ .hash input) (st : CompilerBackend C × ℕ) :
-    ∑' r, Pr[= r | (countImpl (compilerImpl P seeds) deferredCounted (.hash t)).run st] *
+    ∑' r, Pr{let z ← (countImpl (compilerImpl P seeds) deferredCounted (.hash t)).run st}[z = r] *
       compilerPotential P q r.2 ≤ compilerPotential P q st +
         if cappedCall deferredCounted q (.hash t) st ∧ ¬deferredInputSide P (.hash t) then
           (2 ^ 128 : ℝ≥0∞)⁻¹ else 0 :=
@@ -1573,8 +1582,8 @@ theorem compilerPotentialStep_iff_hashInput : CompilerPotentialStep (C := C) ↔
     ∀ (x : Keys3 C) (q : ℕ), q < 2 ^ 127 →
       ∀ (input : HashInput) (st : CompilerBackend C × ℕ),
         CompilerReachable x.1 x.2.1 st → st.1.trace.2 = false →
-        ∑' r, Pr[= r | (countImpl (compilerImpl x.1 x.2.1) deferredCounted
-          (.hash (.hash input))).run st] *
+        ∑' r, Pr{let z ← ((countImpl (compilerImpl x.1 x.2.1) deferredCounted
+          (.hash (.hash input))).run st)}[z = r] *
           compilerPotential x.1 q r.2 ≤ compilerPotential x.1 q st +
             if cappedCall (deferredCounted (C := C)) q (.hash (.hash input)) st ∧
                 ¬deferredInputSide (C := C) x.1 (.hash (.hash input)) then
@@ -1605,6 +1614,7 @@ theorem deferredImpl_cache_le (t : DeferredQuery C) (st : DeferredState C)
       cases hp : st.pending p with
       | none =>
           simp only [deferredImpl, StateT.run, hp, support_map] at hr
+          erw [support_map] at hr
           obtain ⟨a, _, rfl⟩ := hr
           exact le_rfl
       | some value =>
@@ -1615,6 +1625,7 @@ theorem deferredImpl_cache_le (t : DeferredQuery C) (st : DeferredState C)
       cases hp : st.pads p with
       | none =>
           simp only [deferredImpl, StateT.run, hp, support_map] at hr
+          erw [support_map] at hr
           obtain ⟨a, _, rfl⟩ := hr
           exact le_rfl
       | some value =>
@@ -1633,10 +1644,12 @@ theorem deferredImpl_cache_le (t : DeferredQuery C) (st : DeferredState C)
           exact le_rfl
   | sample =>
       simp only [deferredImpl, StateT.run, support_map] at hr
+      erw [support_map] at hr
       obtain ⟨a, _, rfl⟩ := hr
       exact le_rfl
   | uniform n =>
       simp only [deferredImpl, StateT.run, support_map] at hr
+      erw [support_map] at hr
       obtain ⟨a, _, rfl⟩ := hr
       exact le_rfl
   | _ =>

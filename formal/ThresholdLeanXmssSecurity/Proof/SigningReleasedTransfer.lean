@@ -9,7 +9,7 @@ and every tracked entry outside bottom-message trials. Successful round-two
 receipts identify selections under compatible cache extensions.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningReleasedTransferProof
@@ -144,15 +144,15 @@ set_option linter.constructorNameAsVariable false in
 set_option maxRecDepth 4000 in
 /-- The observable law moves the released row to the current split one run. -/
 theorem releasedPartner_eq_split_log (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr[SigningLinkPaidProof.ReleasedPartnerRow prims x |
-      SigningUnchargedLoggedProof.jointRun prims A x] =
-      Pr[fun z => LoggedReleasedRow prims x (z.1, z.2.1.1.1.1.2, z.2.1.1.1.2) |
-        splitRunAt prims A x] := by
-  have hj : Pr[SigningLinkPaidProof.ReleasedPartnerRow prims x |
-      SigningUnchargedLoggedProof.jointRun prims A x] =
-      Pr[fun z => LoggedReleasedRow prims x (z.1, z.2.1.2, z.2.2) |
-        SigningUnchargedLoggedProof.jointRun prims A x] := by
-    apply probEvent_ext
+    Pr{let z ←
+      SigningUnchargedLoggedProof.jointRun prims A x}[SigningLinkPaidProof.ReleasedPartnerRow prims x z] =
+      Pr{let z ←
+        splitRunAt prims A x}[LoggedReleasedRow prims x (z.1, z.2.1.1.1.1.2, z.2.1.1.1.2)] := by
+  have hj : Pr{let z ←
+      SigningUnchargedLoggedProof.jointRun prims A x}[SigningLinkPaidProof.ReleasedPartnerRow prims x z] =
+      Pr{let z ←
+        SigningUnchargedLoggedProof.jointRun prims A x}[LoggedReleasedRow prims x (z.1, z.2.1.2, z.2.2)] := by
+    apply prEvent_congr_of_support _ _ _
     intro z hz
     have hl : (z.1.1, z.2) ∈ support (SigningCostProof.loggedRun prims A x) := by
       rw [← SigningUnchargedLoggedProof.jointRun_logged, support_map]
@@ -160,8 +160,7 @@ theorem releasedPartner_eq_split_log (A : TsigAdversary C) (x : SigningSecurityP
     exact and_congr (SigningPartnerTransferProof.lazyPartnerRow_congr prims x z.1.1 z.1.2
       z.2.1.2 z.2.2 (loggedRun_cacheFromLog prims A x (z.1.1, z.2) (by with_reducible exact hl))) Iff.rfl
   rw [hj, ← probEvent_oneRun prims A x (LoggedReleasedRow prims x),
-    ← splitRunAt_oneRun, probEvent_map]
-  rfl
+    ← splitRunAt_oneRun, prEvent_map]
 
 open SigningGuessProof SigningDescentProof SigningCacheProof
 
@@ -241,7 +240,7 @@ theorem verifyRun_released_receipt (A : TsigAdversary C) (x : SigningSecurityPro
 
 /-- Keep the source's unlogged stream keys while taking all tracked entries from the destination. -/
 def completeCache (source destination : HashCache C) : HashCache C :=
-  fun q => if Tracked q then destination q else source q
+  QueryCache.ofFn fun q => if Tracked q then destination q else source q
 
 /-- A tracked cache extension extends to a full cache extension. -/
 theorem le_completeCache {source logged destination : HashCache C}
@@ -249,14 +248,14 @@ theorem le_completeCache {source logged destination : HashCache C}
     source ≤ completeCache source destination := by
   intro q answer ha
   by_cases hq : Tracked q
-  · simp only [completeCache, if_pos hq]
+  · simp only [completeCache, QueryCache.ofFn_apply, if_pos hq]
     exact hle (by rw [← hlog q hq]; exact ha)
-  · simpa only [completeCache, if_neg hq] using ha
+  · simpa only [completeCache, QueryCache.ofFn_apply, if_neg hq] using ha
 
 /-- The completed cache reads every tracked query exactly as the destination does. -/
 theorem completeCache_tracked (source destination : HashCache C) (q : Query C) (hq : Tracked q) :
     completeCache source destination q = destination q := by
-  simp only [completeCache, if_pos hq]
+  simp only [completeCache, QueryCache.ofFn_apply, if_pos hq]
 
 set_option linter.constructorNameAsVariable false in
 set_option maxRecDepth 4000 in
@@ -304,7 +303,7 @@ theorem splitRun_source (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
     exact ⟨_, (by with_reducible exact hone), rfl⟩
   have hl : (z.1, z.2.1.1.1.1.2, z.2.1.1.1.2) ∈ support
       ((fun w => (w.1, w.2.1.2, w.2.2)) <$> SigningUnchargedLoggedProof.jointRun prims A x) := by
-    with_reducible exact (mem_support_iff_of_evalDist_eq (evalDist_oneRun prims A x) _).mp ho
+    with_reducible exact (Set.ext_iff.mp (OracleComp.support_eq_of_evalDistEq (evalDist_oneRun prims A x)) _).mp ho
   rw [support_map] at hl
   obtain ⟨w, hw, he⟩ := hl
   exact ⟨w, (by with_reducible exact hw), congrArg Prod.fst he, congrArg (fun y => y.2.1) he,
@@ -362,7 +361,7 @@ set_option linter.constructorNameAsVariable false in
 theorem releasedTransfer : SigningLinkPaidProof.ReleasedTransfer prims (C := C) := by
   intro A q x _ _ _ _
   rw [releasedPartner_eq_split_log]
-  exact probEvent_mono (fun z hz h => splitRun_released_partner prims A x z (by with_reducible exact hz) h)
+  exact prEvent_mono_of_support _ _ _ (fun z hz h => splitRun_released_partner prims A x z (by with_reducible exact hz) h)
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningReleasedTransferProof.cachedExtra_frame' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

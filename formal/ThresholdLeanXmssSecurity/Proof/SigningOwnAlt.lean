@@ -19,7 +19,7 @@ set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 set_option linter.constructorNameAsVariable false
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -36,8 +36,8 @@ variable {C : Committee} (prims : Primitives)
 unit, the check of `c_e`. The verification makes no commitment call. -/
 def AltOwn : Prop :=
   ∀ (A : TsigAdversary C) (x : Keys3 C),
-    Pr[fun r => SigningGuessProof.AlternativeCommitment x.2.1 x.1 r.2.1 |
-        SigningDescentProof.exposedRun prims A x] ≤
+    Pr{let r ←
+        SigningDescentProof.exposedRun prims A x}[SigningGuessProof.AlternativeCommitment x.2.1 x.1 r.2.1] ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ * forgerCost prims A x
         (fun t => ownDomainUnit (SigningGuessProof.RawCommitmentInput x.1) t + round2Unit t)
 
@@ -52,12 +52,12 @@ abbrev altPotential : LoggedState C → ℝ≥0∞ :=
 
 /-- A program raises the commitment potential by at most `n` units from `s`. -/
 def AltLe {α : Type} (oa : OracleComp (WorldSpec C) α) (n : ℕ) (s : LoggedState C) : Prop :=
-  ∑' r, Pr[= r | (simulateQ (loggedImpl prims) oa).run s] * altPotential x r.2 ≤
+  ∑' r, Pr{let z ← (simulateQ (loggedImpl prims) oa).run s}[z = r] * altPotential x r.2 ≤
     altPotential x s + (2 ^ 128 : ℝ≥0∞)⁻¹ * (n : ℝ≥0∞)
 
 /-- One call raises the commitment potential by its commitment cost. -/
 theorem alt_step (t : (WorldSpec C).Domain) (s : LoggedState C) :
-    ∑' r, Pr[= r | (loggedImpl prims t).run s] * altPotential x r.2 ≤
+    ∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] * altPotential x r.2 ≤
       altPotential x s + (2 ^ 128 : ℝ≥0∞)⁻¹ *
         (SigningGuessProof.rawDomainCost (SigningGuessProof.RawCommitmentInput x.1) t : ℝ≥0∞) := by
   refine SigningGuessProof.guarded_domain_step prims (fun _ => True)
@@ -93,7 +93,7 @@ theorem alt_run_bound {α : Type} (oa : OracleComp (WorldSpec C) α) (n : ℕ)
     · simp only [ne_eq, not_not] at hne
       simp [hne]
   · rw [XmssSecurity.expectedSimulatedCost_indicator]
-    exact XmssSecurity.expectedSimulatedQueryCount_le_of_isQueryBoundP _ _ _ _ n hb
+    exact XmssSecurity.expectedSimulatedQueryCount_le_of_isQueryBoundP _ _ _ n _ hb
 
 /-- The rises of a program and of its continuation add. -/
 theorem altLe_bind {α β : Type} (oa : OracleComp (WorldSpec C) α) (ob : α → OracleComp (WorldSpec C) β)
@@ -101,18 +101,18 @@ theorem altLe_bind {α β : Type} (oa : OracleComp (WorldSpec C) α) (ob : α �
     (h2 : ∀ z ∈ support ((simulateQ (loggedImpl prims) oa).run s), AltLe prims x (ob z.1) b z.2)
     (h : a + b ≤ n) : AltLe prims x (oa >>= ob) n s := by
   unfold AltLe at h1 h2 ⊢
-  rw [simulateQ_bind, StateT.run_bind, tsum_probOutput_bind_mul]
-  calc _ ≤ ∑' z, Pr[= z | (simulateQ (loggedImpl prims) oa).run s] *
+  rw [simulateQ_bind, StateT.run_bind, OracleComp.tsum_prEvent_bind_mul]
+  calc _ ≤ ∑' z, Pr{let y ← (simulateQ (loggedImpl prims) oa).run s}[y = z] *
         (altPotential x z.2 + (2 ^ 128 : ℝ≥0∞)⁻¹ * (b : ℝ≥0∞)) := by
         refine ENNReal.tsum_le_tsum fun z => ?_
         by_cases hz : z ∈ support ((simulateQ (loggedImpl prims) oa).run s)
         · gcongr
           exact h2 z hz
-        · simp [probOutput_eq_zero_of_not_mem_support hz]
+        · simp [prEvent_eq_zero_of_not_mem_support _ hz]
     _ ≤ (altPotential x s + (2 ^ 128 : ℝ≥0∞)⁻¹ * (a : ℝ≥0∞)) + 1 * ((2 ^ 128 : ℝ≥0∞)⁻¹ * (b : ℝ≥0∞)) := by
         simp_rw [mul_add]
         rw [ENNReal.tsum_add, ENNReal.tsum_mul_right]
-        exact add_le_add h1 (mul_le_mul_left tsum_probOutput_le_one _)
+        exact add_le_add h1 (mul_le_mul_left (OracleComp.tsum_prEvent_le_one _) _)
     _ ≤ _ := by
         rw [one_mul, add_assoc, ← mul_add]
         gcongr
@@ -134,7 +134,7 @@ theorem altLe_block {β : Type} (block : OracleComp (Query C →ₒ HashOutput) 
     by_cases hr : r ∈ support ((simulateQ (loggedImpl prims)
       (liftFree (SigningHitProof.hashEmbed block))).run s)
     · simp [guarded, SigningOwnHit.programmed_run prims _ s hp r hr]
-    · simp [probOutput_eq_zero_of_not_mem_support hr]
+    · simp [prEvent_eq_zero_of_not_mem_support _ hr]
   conv_rhs => rw [altPotential, guarded, if_neg hp]
   have hc := SigningOwnPotential.logged_block_potential_le prims
     (SigningGuessProof.RawCommitmentInput x.1) (SigningGuessProof.rawCommitmentForest x.2.1 x.1)
@@ -257,9 +257,9 @@ theorem eval_commit (keys : Keys C) (i : C.Party) (J : C.Quorum) (pt : Point) (m
 
 /-- `signCodeword` makes one commitment call and then no other. -/
 theorem signCodeword_split (commitment : Digest) (e : KeyIndex) (message : Message) (ρ : Digest) :
-    ∃ K : HashOutput → OracleComp HashSpec (Option (Randomness × Encoding)),
+    ∃ K : HashOutput → OracleComp HashSpec (Option (Randomizer × Encoding)),
       signCodeword (C := C) x.1 commitment e message ρ =
-        tweakable (Concrete.oracleHash (commitmentInput x.1 e ρ) : OracleComp HashSpec HashOutput) >>=
+        tweakable (Verification.oracleHashWithHash (commitmentInput x.1 e ρ) : OracleComp HashSpec HashOutput) >>=
           (fun o => tweakable (K o)) ∧
       ∀ o, SigningSelectionProof.NoCall
         (fun input => SigningGuessProof.RawCommitmentInput (C := C) x.1 (.hash input)) (K o) := by
@@ -279,7 +279,7 @@ theorem signCodeword_commit (commitment : Digest) (e : KeyIndex) (message : Mess
   rw [hK]
   refine SigningOwnHit.bound_bind_le (a := 1) (b := 0) (tweakable_commit_bound x _ 1 ?_)
     (fun o => tweakable_noCommit x _ (hKn o)) le_rfl
-  unfold Concrete.oracleHash
+  unfold Verification.oracleHashWithHash
   exact (isQueryBoundP_query_iff _ _ _).2 fun _ => Nat.one_pos
 
 theorem signRound2With_commit (part : Point → OracleComp (RoSpec C) Digest)
@@ -319,6 +319,7 @@ theorem altRise_bottomOnce (top : TopTree) (b : Fin (2 ^ layerHeight)) (st : Tsi
     exact altRise_bind prims x (altRise_bottom prims x top b)
       (fun _ => altRise_of_bound prims x _ 0 (isQueryBoundP_pure _ _ _)) (by omega)
 
+set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 100000 in
 /-- A signing oracle raises the commitment potential by the one check of `c_e` of a round-2
 request. Its builds are covered by the commitment completion. -/
@@ -362,7 +363,7 @@ theorem altRise_tsigOracles (top : TopTree) (q : (TsigSpec C).Domain) (st : Tsig
         rcases r with _ | values <;> simp
 
 set_option maxRecDepth 100000 in
-attribute [local irreducible] merkleNode merklePath grind Concrete.treeFold Concrete.chainWalk in
+attribute [local irreducible] merkleNode merklePath grind Verification.treeFoldWithHash Verification.chainWalkWithHash in
 /-- The canonical commitment replay fact. A resolved bottom ceremony resolves the canonical
 commitment of each of its keys. -/
 theorem resolves_rawCommitment (cache : HashCache C) (top : TopTree) (e : KeyIndex)
@@ -372,7 +373,9 @@ theorem resolves_rawCommitment (cache : HashCache C) (top : TopTree) (e : KeyInd
     DeterministicSigning.Resolves cache (SigningGuessProof.rawCommitment x.2.1 x.1 e) () := by
   unfold referenceTree ceremonyOutput at h
   obtain ⟨outputs, houtputs, -⟩ := h.of_bind
-  obtain ⟨values, hvalues, -⟩ := houtputs.of_map
+  beta_reduce at houtputs
+  rw [map_eq_bind_pure_comp] at houtputs
+  obtain ⟨values, hvalues, hpureInv⟩ := houtputs.of_bind
   have hmem : (⟨.commitment e, [.randomizer bottomLayer e]⟩ : Job) ∈ bottomJobs (treeOf e) := by
     have hk := bottomKey_treeOf e
     simp only [bottomJobs, List.mem_append, List.mem_flatMap, List.mem_finRange, true_and, List.mem_map,
@@ -382,7 +385,8 @@ theorem resolves_rawCommitment (cache : HashCache C) (top : TopTree) (e : KeyInd
   simp only [referenceJob, List.mapM_cons, List.mapM_nil, bind_pure_comp, map_pure] at hjob
   rw [bind_map_left] at hjob
   obtain ⟨ρ, hρ, hrest⟩ := hjob.of_bind
-  obtain ⟨a', hq, -⟩ := hrest.of_map
+  rw [map_eq_bind_pure_comp] at hrest
+  obtain ⟨a', hq, hpureInv⟩ := hrest.of_bind
   unfold SigningGuessProof.rawCommitment
   rw [SigningOwnCommit.rawRandomizer_eq]
   refine hρ.bind ?_
@@ -390,7 +394,7 @@ theorem resolves_rawCommitment (cache : HashCache C) (top : TopTree) (e : KeyInd
 
 theorem altLe_pure {α : Type} (a : α) (n : ℕ) (s : LoggedState C) :
     AltLe prims x (pure a : OracleComp (WorldSpec C) α) n s := by
-  simp only [AltLe, simulateQ_pure, StateT.run_pure, tsum_probOutput_pure_mul]
+  simp only [AltLe, simulateQ_pure, StateT.run_pure, OracleComp.tsum_prEvent_pure_mul]
   exact le_add_right le_rfl
 
 set_option maxRecDepth 100000 in
@@ -441,12 +445,12 @@ theorem altRise_honestSignature (top : TopTree) (e : KeyIndex) (message : Messag
 theorem verify_noCommit (publicKey : PublicKey) (message : Message) (signature : Signature) :
     SigningSelectionProof.NoCall
       (fun input => SigningGuessProof.RawCommitmentInput (C := C) x.1 (.hash input))
-      (Concrete.verify publicKey message signature : OracleComp HashSpec Bool) := by
+      (Verification.verifyWithHash publicKey message signature : OracleComp HashSpec Bool) := by
   have hs := fun P domain payload (_ : ∀ lay key, domain ≠ HashDomain.message lay key) =>
     SigningOwnCommit.not_rawCommitment_tweakable (C := C) x.1 P domain payload
   have hm := fun P lay key payload =>
     SigningOwnCommit.not_rawCommitment_tweakable (C := C) x.1 P (.message lay key) payload
-  unfold Concrete.verify
+  unfold Verification.verifyWithHash
   refine SigningSelectionProof.noCall_bind _ (SigningOwnCommit.layerRoot_noCall _ _ (hs _) _ _ _ _
     (SigningOwnCommit.messageDigest_noCall _ _ _ _ _ (hm _ _ _) _)) fun bottomRoot => ?_
   cases bottomRoot with
@@ -457,7 +461,7 @@ theorem verify_noCommit (publicKey : PublicKey) (message : Message) (signature :
       cases root <;> exact SigningSelectionProof.noCall_pure _ _
 
 set_option maxRecDepth 100000 in
-attribute [local irreducible] merkleNode merklePath grind Concrete.treeFold Concrete.chainWalk in
+attribute [local irreducible] merkleNode merklePath grind Verification.treeFoldWithHash Verification.chainWalkWithHash in
 /-- The top ceremony makes no commitment call. -/
 theorem topTree_noCommit :
     (referenceTree SigningHitProof.forestHash (SigningHitProof.forestValue x.2.1) x.1 emptyTop .top).IsQueryBoundP
@@ -480,7 +484,7 @@ end Calculus
 set_option maxRecDepth 100000 in
 /-- The dealer does not raise the commitment potential. The top ceremony makes no commitment call. -/
 theorem alt_dealer_rise (x : Keys3 C) :
-    ∑' r, Pr[= r | dealerRun prims x] * altPotential x r.2.1 ≤
+    ∑' r, Pr{let z ← dealerRun prims x}[z = r] * altPotential x r.2.1 ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ * ((0 : ℕ) : ℝ≥0∞) := by
   have hprog : referenceTree (fun oa => liftFree (tweakable oa)) (fun p => liftFree (prfValue x.2.1 p))
       x.1 emptyTop .top = liftFree (SigningHitProof.hashEmbed (referenceTree SigningHitProof.forestHash
@@ -488,7 +492,7 @@ theorem alt_dealer_rise (x : Keys3 C) :
     rw [show referenceTree (fun oa => liftFree (tweakable oa)) (fun p => liftFree (prfValue x.2.1 p))
         x.1 emptyTop .top = liftFree (referenceTree tweakable (prfValue x.2.1) x.1 emptyTop .top) from
       referenceTree_φ _ _ _ _, ← SigningHitProof.hashEmbed_referenceTree]
-  rw [dealerRun, flatWorld, carry_run, tsum_probOutput_map_mul, hprog]
+  rw [dealerRun, flatWorld, carry_run, OracleComp.tsum_prEvent_map_mul, hprog]
   have h := altRise_of_bound prims x _ 0 (hashEmbed_commit_bound x _ 0 (topTree_noCommit x)) loggedInit
   have h0 : altPotential x loggedInit = 0 := by
     simp [guarded, loggedInit, Programmed, SigningHitProof.completionPotential_empty]
@@ -501,21 +505,21 @@ set_option maxRecDepth 100000 in
 round-2 request by its check of `c_e`. -/
 theorem alt_step_rise (x : Keys3 C) (top : TopTree)
     (t : (LocalSpec C + TsigSpec C).Domain) (p : FlatState C) :
-    ∑' r, Pr[= r | (flatOracles prims x (SigningHitProof.actualDealt x top) t).run p] *
+    ∑' r, Pr{let z ← (flatOracles prims x (SigningHitProof.actualDealt x top) t).run p}[z = r] *
         altPotential x r.2.1 ≤
       altPotential x p.1 + (2 ^ 128 : ℝ≥0∞)⁻¹ *
         ((ownDomainUnit (SigningGuessProof.RawCommitmentInput x.1) t + round2Unit t : ℕ) : ℝ≥0∞) := by
-  rw [flatOracles, flat, StateT.run_mk, tsum_probOutput_map_mul, carry_run_pair, tsum_probOutput_map_mul]
+  rw [flatOracles, flat, StateT.run_mk, OracleComp.tsum_prEvent_map_mul, carry_run_pair, OracleComp.tsum_prEvent_map_mul]
   cases t with
   | inl t =>
-    simp only [flaggedOracles, StateT.run_mk, simulateQ_map, StateT.run_map, tsum_probOutput_map_mul]
+    simp only [flaggedOracles, StateT.run_mk, simulateQ_map, StateT.run_map, OracleComp.tsum_prEvent_map_mul]
     erw [adversary_query, simulateQ_query]
     simp only [OracleQuery.input_query, OracleQuery.cont_query]
     erw [id_map]
     refine (alt_step prims x (.inl (.inl t)) p.1).trans_eq ?_
     rcases t with n | (q | q) <;> rfl
   | inr q =>
-    simp only [flaggedOracles, StateT.run_mk, simulateQ_map, StateT.run_map, tsum_probOutput_map_mul]
+    simp only [flaggedOracles, StateT.run_mk, simulateQ_map, StateT.run_map, OracleComp.tsum_prEvent_map_mul]
     rw [SigningHitProof.tsigOracles_free]
     refine (altRise_tsigOracles prims x top q p.2.1 p.1).trans ?_
     simp [ownDomainUnit]
@@ -525,14 +529,14 @@ set_option maxRecDepth 100000 in
 and the tail repeats the commitment call of its build. -/
 theorem alt_finish_rise (x : Keys3 C) (top : TopTree) (forgery : Forgery) (st : TsigState C)
     (s : LoggedState C) :
-    ∑' r, Pr[= r | (simulateQ (loggedImpl prims)
-          (tsigFinish (SigningHitProof.actualDealt x top) (forgery, st))).run s] *
+    ∑' r, Pr{let z ← ((simulateQ (loggedImpl prims)
+          (tsigFinish (SigningHitProof.actualDealt x top) (forgery, st))).run s)}[z = r] *
         altPotential x r.2 ≤
       altPotential x s + (2 ^ 128 : ℝ≥0∞)⁻¹ * ((0 : ℕ) : ℝ≥0∞) := by
   show AltLe prims x _ 0 s
   unfold SigningCoreProof.tsigFinish
   dsimp only
-  have hverify : AltLe prims x (liftFree (tweakable (Concrete.verify ⟨top.root, x.1⟩ forgery.message
+  have hverify : AltLe prims x (liftFree (tweakable (Verification.verifyWithHash ⟨top.root, x.1⟩ forgery.message
       forgery.signature))) 0 s :=
     altRise_of_bound prims x _ 0 (tweakable_noCommit x _ (verify_noCommit x _ _ _)) s
   refine altLe_bind prims x _ _ s 0 0 0 hverify (fun z _ => ?_) le_rfl
@@ -557,7 +561,7 @@ theorem altOwn : AltOwn prims (C := C) := by
     (fun top forgery st s _ => alt_finish_rise prims x top forgery st s)
   rw [Nat.add_zero, Nat.cast_zero, add_zero] at hf
   refine le_trans ?_ hf
-  rw [← loggedRun_forget, probEvent_map, probEvent_eq_tsum_ite]
+  rw [← loggedRun_forget, prEvent_map, OracleComp.prEvent_eq_tsum_ite]
   refine ENNReal.tsum_le_tsum fun z => ?_
   by_cases hz : z ∈ support (loggedRun prims A x)
   · by_cases hw : SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1
@@ -565,7 +569,7 @@ theorem altOwn : AltOwn prims (C := C) := by
       rw [SigningHitProof.completionPotential_terminal _ _ _
         (SigningGuessProof.alternativeCommitment_completed x.2.1 x.1 _ hw), mul_one]
     · simp [hw]
-  · simp [probOutput_eq_zero_of_not_mem_support hz]
+  · simp [prEvent_eq_zero_of_not_mem_support _ hz]
 
 end ThresholdLeanXmssSecurity.SigningOwnAlt
 

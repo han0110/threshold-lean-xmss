@@ -10,7 +10,7 @@ Consequently the input-side row is unchanged when a cache is replaced by any cac
 that agrees at all tracked inputs, including the cache reconstructed from its log.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 
 namespace ThresholdLeanXmssSecurity.SigningLaneInputLoggedProof
@@ -64,6 +64,7 @@ theorem chainTarget_eq (x : SigningSecurityProof.Keys3 C) (r : Result C)
   simp only [chainTarget, SigningCostProof.finalOf, honestKey_eq prims x _ _ _ h,
     FinalState.key, bottomOpened, topOpened, selectedEncoding, topEncoding,
     topSignedInput, honestRoot, bottomStep_eq h, topStep_eq h, thView_eq h]
+  rfl
 
 theorem partialChainTarget_eq (x : SigningSecurityProof.Keys3 C) (r : Result C)
     (candidates : List (HiddenKey × Digest)) (n : ℕ) {a b : HashCache C}
@@ -136,6 +137,7 @@ theorem topUnopened_congr (x : SigningSecurityProof.Keys3 C) (top : TopTree)
         (by with_reducible exact referenceTree_tracked x top _)⟩
   simp only [TopUnopened, hr]
 
+set_option backward.isDefEq.respectTransparency false in
 /-- Unopened top-chain values have the same tracked-cache dependence. -/
 theorem unopenedTopTarget_eq (x : SigningSecurityProof.Keys3 C) (r : Result C)
     (candidates : List (HiddenKey × Digest)) (n : ℕ) {a b : HashCache C}

@@ -48,7 +48,7 @@ namespace ThresholdLeanXmssSecurity
 
 namespace SigningTopRowsProof
 
-open LeanXmss ThresholdLeanXmss SigningOpeningProof SigningUnchargedLoggedProof SigningAssemblyProof
+open HashSig LeanXmss ThresholdLeanXmss SigningOpeningProof SigningUnchargedLoggedProof SigningAssemblyProof
 
 attribute [local instance] Classical.propDecidable
 
@@ -89,7 +89,8 @@ theorem resolves_forestValue_cached (cache : HashCache C) (seeds : C.Term → Ha
   unfold SigningHitProof.forestValue at h
   obtain ⟨values, hvalues, _⟩ := h.of_bind
   obtain ⟨b, hb⟩ := SigningHitProof.resolves_mapM_member _ _ values hvalues T hT
-  obtain ⟨v, hv, _⟩ := hb.of_map
+  rw [map_eq_bind_pure_comp] at hb
+  obtain ⟨v, hv, _⟩ := hb.of_bind
   rw [← bind_pure (OracleComp.lift _)] at hv
   obtain ⟨a, ha, _⟩ := hv.query_inv
   simp [ha]
@@ -157,7 +158,7 @@ theorem unopened_hit (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) (w
   have hcand : ((.topChain (XmssSecurity.topKeyOf forgery.signature.leafIndex) l ⟨_, hl⟩ : HiddenKey),
       (XmssSecurity.Bridge.toModelSig forgery.signature).top.chainValue l) ∈ v.1.2 := by
     refine hmem _ ?_
-    rw [show (XmssSecurity.Bridge.toModelPk ⟨top.root, x.1⟩).parameter = x.1 from rfl,
+    erw [show (XmssSecurity.Bridge.toModelPk ⟨top.root, x.1⟩).parameter = x.1 from rfl,
       SigningGuessLinkProof.callCandidates_topChainInput]
     exact List.mem_singleton_self _
   refine ⟨_, hlog ▸ List.mem_append_right adversaryLog hcand, ?_⟩

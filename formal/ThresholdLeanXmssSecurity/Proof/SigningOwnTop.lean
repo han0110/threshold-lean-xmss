@@ -11,7 +11,7 @@ selected trial of that search.
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -58,7 +58,7 @@ theorem randomizer_not_topDigest (P : PublicParameter) (key : XmssSecurity.TopIn
   have he := h.1
   change (XmssSecurity.bytesLE 16 P ++ XmssSecurity.fieldBytes
     (XmssSecurity.tweakFields 7 0 (LeanXmss.layerHi lay 0) e.val) ++
-    (LeanXmss.bytesLE 16 rho ++ message)).take 32 = _ at he
+    (HashSig.littleEndianBytes 16 rho ++ message)).take 32 = _ at he
   have ht := congrArg (fun xs => xs.drop 16) he
   simp only [List.take_append, XmssSecurity.length_bytesLE] at ht
   simp at ht
@@ -68,24 +68,24 @@ theorem randomizer_not_topDigest (P : PublicParameter) (key : XmssSecurity.TopIn
 
 /-- The digest call of a top message reads only the top digest input of its trial. -/
 theorem messageDigest_top_noCall (P : PublicParameter) (b : Fin (2 ^ layerHeight)) (root : Digest)
-    (randomness : Randomness) (q : HashInput → Prop)
+    (randomness : Randomizer) (q : HashInput → Prop)
     (hq : ¬q (XmssSecurity.Concrete.CacheView.topEncodingInput P b (root, randomness))) :
-    NoCall q (Concrete.messageDigest P topLayer (topKey b) (bytesLE 16 root) randomness :
+    NoCall q (Verification.messageDigestWithHash P topLayer (topKey b) (littleEndianBytes 16 root) randomness :
       OracleComp HashSpec Digest) := by
-  unfold Concrete.messageDigest Concrete.tweakableHash
+  unfold Verification.messageDigestWithHash Verification.tweakableHashWithHash
   refine noCall_bind _ (noCall_query _ _ ?_) fun _ => noCall_pure _ _
   convert hq using 2
   exact XmssSecurity.Bridge.topMessage_input P b root randomness
 
 theorem topEncodingInput_not_other (P : PublicParameter) (key b : XmssSecurity.TopIndex) (hkb : key ≠ b)
-    (payload : Digest × Randomness) :
+    (payload : Digest × Randomizer) :
     ¬XmssSecurity.AtHashAddress P (.topEncoding key)
       (XmssSecurity.Concrete.CacheView.topEncodingInput P b payload) := fun h =>
   hkb (XmssSecurity.HashDomain.topEncoding.inj
     ((XmssSecurity.atHashAddress_tweakableHashInput_iff _ _ _ _).1 h)).symm
 
 set_option maxRecDepth 100000 in
-attribute [local irreducible] merkleNode merklePath grind Concrete.treeFold Concrete.chainWalk in
+attribute [local irreducible] merkleNode merklePath grind Verification.treeFoldWithHash Verification.chainWalkWithHash in
 /-- A bottom ceremony of tree `b` reads no top digest input of another key. -/
 theorem bottomTree_no_topDigest (x : Keys3 C) (top : TopTree) (key : XmssSecurity.TopIndex)
     (b : Fin (2 ^ layerHeight)) (hkb : key ≠ b) :
@@ -103,7 +103,7 @@ theorem bottomTree_no_topDigest (x : Keys3 C) (top : TopTree) (key : XmssSecurit
   dsimp only
   refine isQueryBoundP_bind (n := 0) (m := 0) (hq _ (merkleNode_noCall x.1 _ hs _ _ _ _)) fun root _ => ?_
   refine isQueryBoundP_bind (n := 0) (m := 0) (hq _ ?_) fun base _ => ?_
-  · unfold Concrete.oracleHash
+  · unfold Verification.oracleHashWithHash
     exact noCall_map _ _ (noCall_query _ _ (randomizer_not_topDigest x.1 key _ _ _ _))
   refine isQueryBoundP_bind (n := 0) (m := 0) (hq _ (grind_noCall x.1 _ _ _ _ _
     (fun r => messageDigest_top_noCall x.1 b _ r _ (topEncodingInput_not_other x.1 key b hkb _)) _ _))
@@ -122,12 +122,12 @@ theorem bottomTree_no_topDigest (x : Keys3 C) (top : TopTree) (key : XmssSecurit
   split_ifs <;> exact isQueryBoundP_pure _ _ _
 
 set_option maxRecDepth 100000 in
-attribute [local irreducible] merkleNode merklePath grind Concrete.treeFold Concrete.chainWalk in
+attribute [local irreducible] merkleNode merklePath grind Verification.treeFoldWithHash Verification.chainWalkWithHash in
 /-- The canonical top search of a key reads each top digest input of that key in a bottom
 ceremony. The ceremony of the same key is a rerun of the search. -/
 theorem canonicalTopGrind_covers_bottom (x : Keys3 C) (top : TopTree) (key : XmssSecurity.TopIndex)
     (b : Fin (2 ^ layerHeight)) (cache : HashCache C)
-    (z : ((Digest × Option (Randomness × Encoding)) × HashCache C) × HashCache C)
+    (z : ((Digest × Option (Randomizer × Encoding)) × HashCache C) × HashCache C)
     (hz : z ∈ support ((simulateQ (Query C →ₒ HashOutput).randomOracle
       (SigningHitProof.recordReads (SigningGuessProof.canonicalTopGrind x key) ∅)).run cache))
     (w : (Option TreeOutput × HashCache C) × HashCache C)
@@ -165,14 +165,16 @@ theorem canonicalTopGrind_covers_bottom (x : Keys3 C) (top : TopTree) (key : Xms
       rcases outputs with _ | outputs
       · rw [← hv.pure_inv]
         exact .pure _
-      obtain ⟨values, hvalues, hvo⟩ := houtputs.of_map
+      rw [map_eq_bind_pure_comp] at houtputs
+      obtain ⟨values, hvalues, hpureInv⟩ := houtputs.of_bind
+      have hvo := hpureInv.pure_inv
       cases hvo
       dsimp only at hv ⊢
       refine resolves_lift_bind (fun root hroot => resolves_lift_bound _ _
         (hq _ (merkleNode_noCall x.1 _ hs _ _ _ _)) hT root hroot) (fun root hroot => ?_) _ hv
       refine resolves_lift_bind (fun base hbase => resolves_lift_bound _ _ (hq _ ?_) hT base hbase)
         (fun base hbase => ?_)
-      · unfold Concrete.oracleHash
+      · unfold Verification.oracleHashWithHash
         exact noCall_map _ _ (noCall_query _ _ (randomizer_not_topDigest x.1 key _ _ _ _))
       have hsetup : DeterministicSigning.Resolves w.1.2 (canonicalTopSetup x key) (root, base) := by
         unfold canonicalTopSetup canonicalTopSetupForJobs canonicalTopAfterJobs
@@ -182,7 +184,9 @@ theorem canonicalTopGrind_covers_bottom (x : Keys3 C) (top : TopTree) (key : Xms
       obtain ⟨pair, hpair, hzg⟩ := hzres'.of_bind
       have hpe : pair = (root, base) := (hpair.mono hzfin).unique (hsetup.mono hwrec)
       subst hpe
-      obtain ⟨sel, hsel, hz1⟩ := hzg.of_map
+      rw [map_eq_bind_pure_comp] at hzg
+      obtain ⟨sel, hsel, hpureInv⟩ := hzg.of_bind
+      have hz1 := hpureInv.pure_inv
       refine resolves_lift_bind (fun selected hselected => resolves_transfer hsel hselected hzc hzfin hwrec)
         (fun selected hselected => ?_)
       have hss : selected = sel := (hselected.mono hwrec).unique (hsel.mono hzfin)
@@ -205,7 +209,7 @@ theorem canonicalTopGrind_covers_bottom (x : Keys3 C) (top : TopTree) (key : Xms
         · have hi : i = .hash (XmssSecurity.Concrete.CacheView.topEncodingInput x.1 key (root, randomness)) :=
             Classical.byContradiction fun h => hp ⟨ha, h⟩
           subst hi
-          unfold coverCacheAt
+          simp only [coverCacheAt, QueryCache.ofFn_apply]
           rw [if_pos (fun _ => by simp [hout])]
           exact hwrec hv
         · exact hT i value ha hv
@@ -227,7 +231,7 @@ theorem canonicalTopGrind_covers_bottom (x : Keys3 C) (top : TopTree) (key : Xms
         (hq _ (merklePath_noCall x.1 _ hs _ _ _)) hT path h) (fun path _ => ?_)
       have hcheck := layerRoot_noCall x.1 (fun i => topDigestAddress (C := C) x.1 key (.hash i) ∧
         Query.hash (C := C) i ≠ .hash (XmssSecurity.Concrete.CacheView.topEncodingInput x.1 key (root, randomness)))
-        hs' topLayer (topKey key) (bytesLE 16 root)
+        hs' topLayer (topKey key) (littleEndianBytes 16 root)
         ⟨randomness, fun l => digestAt (values.getD l.val []) 0, path⟩
         (messageDigest_top_noCall x.1 key root randomness _ (fun h => h.2 rfl))
       refine resolves_lift_bind (fun topRoot h => @resolves_lift_bound _ _ _ _ _

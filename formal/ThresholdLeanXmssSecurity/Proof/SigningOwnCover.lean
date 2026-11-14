@@ -13,7 +13,7 @@ potential.
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -144,7 +144,7 @@ theorem topPath_index_lt (b : Fin (2 ^ layerHeight)) (level : ℕ) (hl : level <
 
 open Classical in
 theorem topEncodingHash_irrelevant (P P' : PublicParameter) (key : XmssSecurity.TopIndex) (root : Digest)
-    (randomness : Randomness) :
+    (randomness : Randomizer) :
     (XmssSecurity.Concrete.topEncodingHash P' key root randomness :
       OracleComp XmssSecurity.HashSpec _).IsQueryBoundP
       (fun input => forestRelevant (C := C) P (.hash input)) 0 := by
@@ -227,11 +227,14 @@ theorem resolves_topAuthenticationRoot (S : QueryCache XmssSecurity.HashSpec) (P
     have hd : key.val / 2 ^ levels = 2 * n + key.val / 2 ^ levels % 2 := by
       rw [hn, pow_succ, ← Nat.div_div_eq_div_mul]
       omega
-    rw [XmssSecurity.Concrete.topTreeNode, hleft, hright] at hu
+    erw [XmssSecurity.Concrete.topTreeNode.eq_def] at hu
+    simp only at hu
+    rw [hleft, hright] at hu
     obtain ⟨left, hl, hu⟩ := hu.of_bind
     obtain ⟨right, hr, hu⟩ := hu.of_bind
     rw [dif_pos hlt] at hu
-    rw [XmssSecurity.Concrete.topAuthenticationRoot]
+    erw [XmssSecurity.Concrete.topAuthenticationRoot.eq_def]
+    simp only
     by_cases hbit : key.val.testBit levels = true
     · have hodd : key.val / 2 ^ levels = 2 * n + 1 := by
         rw [Nat.testBit_eq_decide_div_mod_eq] at hbit
@@ -263,7 +266,7 @@ theorem resolves_topAuthenticationRoot (S : QueryCache XmssSecurity.HashSpec) (P
 /-- A successful top search reads the digest of its selected trial, and that digest decodes to the
 selected codeword. -/
 theorem resolves_topSignFrom_some (S : QueryCache XmssSecurity.HashSpec) (P : PublicParameter)
-    (key : XmssSecurity.TopIndex) (root : Digest) (base : Randomness) :
+    (key : XmssSecurity.TopIndex) (root : Digest) (base : Randomizer) :
     ∀ attempts trial randomness encoding, DeterministicSigning.Resolves S
       (XmssSecurity.Concrete.topSignFrom P key root base attempts trial : OracleComp XmssSecurity.HashSpec _)
       (some (randomness, encoding)) →
@@ -277,7 +280,8 @@ theorem resolves_topSignFrom_some (S : QueryCache XmssSecurity.HashSpec) (P : Pu
     cases h.pure_inv
   | succ attempts ih =>
     intro trial randomness encoding h
-    rw [XmssSecurity.Concrete.topSignFrom] at h
+    erw [XmssSecurity.Concrete.topSignFrom.eq_def] at h
+    simp only at h
     obtain ⟨digest, hdigest, h⟩ := h.of_bind
     cases hdec : XmssSecurity.TargetSum.decodeDigest digest with
     | none =>
@@ -324,10 +328,12 @@ theorem resolves_merkleNode_top (S : QueryCache XmssSecurity.HashSpec) (P : Publ
   induction level with
   | zero =>
     intro _ j hj u hu
-    rw [XmssSecurity.Concrete.topTreeNode, XmssSecurity.Concrete.topLeafAt] at hu
+    erw [XmssSecurity.Concrete.topTreeNode.eq_def] at hu
+    simp only at hu
+    erw [XmssSecurity.Concrete.topLeafAt.eq_def] at hu
     obtain ⟨ends, hends', hleaf⟩ := hu.of_bind
-    rw [merkleNode, SigningCacheProof.leafKey_top j (by simpa using hj), XmssSecurity.Bridge.leafHash_top,
-      hends _ _ hends']
+    rw [merkleNode, SigningCacheProof.leafKey_top j (by simpa using hj)]
+    erw [XmssSecurity.Bridge.leafHash_top, hends _ _ hends']
     exact hleaf
   | succ level ih =>
     intro hlevel j hj u hu
@@ -352,7 +358,7 @@ theorem resolves_merkleNode_top (S : QueryCache XmssSecurity.HashSpec) (P : Publ
       simp [XmssSecurity.Concrete.topChildNode, XmssSecurity.Concrete.topNodeOfNat, XmssSecurity.topLifetime,
         XmssSecurity.treeHeight, Nat.mod_eq_of_lt hjlt]
     have hnode : ∀ left right : Digest,
-        (Concrete.tweakableHash P (.node topLayer (level + 1) j) (Concrete.nodePayload left right) :
+        (Verification.tweakableHashWithHash P (.node topLayer (level + 1) j) (OverPermutation.nodePayload left right) :
           OracleComp HashSpec Digest) =
         (XmssSecurity.Concrete.topNodeHash P ⟨level, hlt⟩ (XmssSecurity.Concrete.topNodeOfNat j) left right :
           OracleComp XmssSecurity.HashSpec _) := by
@@ -360,7 +366,9 @@ theorem resolves_merkleNode_top (S : QueryCache XmssSecurity.HashSpec) (P : Publ
       have h := XmssSecurity.Bridge.nodeHash_top P ⟨level, hlt⟩ (XmssSecurity.Concrete.topNodeOfNat j) left right
       rw [hval] at h
       exact h
-    rw [XmssSecurity.Concrete.topTreeNode, hleft, hright] at hu
+    erw [XmssSecurity.Concrete.topTreeNode.eq_def] at hu
+    simp only at hu
+    rw [hleft, hright] at hu
     obtain ⟨left, hl, hu⟩ := hu.of_bind
     obtain ⟨right, hr, hu⟩ := hu.of_bind
     rw [dif_pos hlt] at hu
@@ -390,10 +398,10 @@ theorem resolves_merkleNode_bottom (S : QueryCache XmssSecurity.HashSpec) (P : P
     have hval : (XmssSecurity.Concrete.merkleNodeOfNat j).val = j := by
       simp [XmssSecurity.Concrete.merkleNodeOfNat, XmssSecurity.lifetime, XmssSecurity.treeHeight,
         Nat.mod_eq_of_lt hjlt]
-    rw [XmssSecurity.Concrete.treeNode_zero_eq, XmssSecurity.Concrete.leafAt] at hu
+    erw [XmssSecurity.Concrete.treeNode_zero_eq, XmssSecurity.Concrete.leafAt] at hu
     obtain ⟨ends, hends', hleaf⟩ := hu.of_bind
-    rw [merkleNode, SigningCacheProof.leafKey_bottom j, XmssSecurity.Bridge.leafHash_bottom,
-      hS _ (by simpa using hval) _ hends']
+    rw [merkleNode, SigningCacheProof.leafKey_bottom j]
+    erw [XmssSecurity.Bridge.leafHash_bottom, hS _ (by simpa using hval) _ hends']
     exact hleaf
   | succ level ih =>
     intro hlevel j hj hS u hu
@@ -418,7 +426,7 @@ theorem resolves_merkleNode_bottom (S : QueryCache XmssSecurity.HashSpec) (P : P
       simp [XmssSecurity.Concrete.childNode, XmssSecurity.Concrete.merkleNodeOfNat, XmssSecurity.lifetime,
         XmssSecurity.treeHeight, Nat.mod_eq_of_lt hjlt]
     have hnode : ∀ left right : Digest,
-        (Concrete.tweakableHash P (.node bottomLayer (level + 1) j) (Concrete.nodePayload left right) :
+        (Verification.tweakableHashWithHash P (.node bottomLayer (level + 1) j) (OverPermutation.nodePayload left right) :
           OracleComp HashSpec Digest) =
         (XmssSecurity.Concrete.nodeHash P ⟨level, hlt⟩ (XmssSecurity.Concrete.merkleNodeOfNat j) left right :
           OracleComp XmssSecurity.HashSpec _) := by
@@ -431,7 +439,8 @@ theorem resolves_merkleNode_bottom (S : QueryCache XmssSecurity.HashSpec) (P : P
       intro c hc i hi
       rw [pow_succ, ← Nat.div_div_eq_div_mul, hi]
       omega
-    rw [XmssSecurity.Concrete.treeNode_succ_eq, hleft, hright] at hu
+    erw [XmssSecurity.Concrete.treeNode_succ_eq] at hu
+    rw [hleft, hright] at hu
     obtain ⟨left, hl, hu⟩ := hu.of_bind
     obtain ⟨right, hr, hu⟩ := hu.of_bind
     rw [dif_pos hlt] at hu
@@ -467,33 +476,33 @@ theorem topCeremony_ends (x : SigningSecurityProof.Keys3 C) (resolved record bou
 open Classical in
 /-- The cache `bound` on the inputs that are not relevant to the forest or that `record` holds. -/
 def coverCache (P : PublicParameter) (record bound : HashCache C) : HashCache C :=
-  fun input => if forestRelevant P input → (record input).isSome then bound input else none
+  QueryCache.ofFn fun input => if forestRelevant P input → (record input).isSome then bound input else none
 
 theorem coverCache_le (P : PublicParameter) (record bound : HashCache C) :
     coverCache P record bound ≤ bound := by
   intro input value h
-  unfold coverCache at h
+  simp only [coverCache, QueryCache.ofFn_apply] at h
   split_ifs at h
   · exact h
 
 theorem record_le_coverCache (P : PublicParameter) {record bound : HashCache C} (hle : record ≤ bound) :
     record ≤ coverCache P record bound := by
   intro input value h
-  unfold coverCache
+  simp only [coverCache, QueryCache.ofFn_apply]
   rw [if_pos (fun _ => by simp [h])]
   exact hle h
 
 theorem coverCache_irrelevant {P : PublicParameter} {record bound : HashCache C} {input : Query C}
     {value : HashOutput} (hrel : ¬forestRelevant P input) (h : bound input = some value) :
     coverCache P record bound input = some value := by
-  unfold coverCache
+  simp only [coverCache, QueryCache.ofFn_apply]
   rw [if_pos (fun h' => absurd h' hrel)]
   exact h
 
 theorem isSome_of_coverCache {P : PublicParameter} {record bound : HashCache C} {input : Query C}
     (h : (coverCache P record bound input).isSome) (hrel : forestRelevant P input) :
     (record input).isSome := by
-  unfold coverCache at h
+  simp only [coverCache, QueryCache.ofFn_apply] at h
   split_ifs at h with hc
   · exact hc hrel
   · simp at h
@@ -538,7 +547,8 @@ open Classical in
 theorem forestHash_irrelevant {α : Type} (P : PublicParameter) (oa : OracleComp HashSpec α)
     (h : oa.IsQueryBoundP (fun input => forestRelevant (C := C) P (.hash input)) 0) :
     (forestHash (C := C) oa).IsQueryBoundP (forestRelevant P) 0 := by
-  letI : (Query C →ₒ HashOutput).IsUniformSpec := OracleSpec.IsUniformSpec.ofFintypeInhabited _
+  letI : OracleSpec.UniformAnswerMeasure (Query C →ₒ HashOutput) :=
+    OracleSpec.UniformAnswerMeasure.ofFiniteNonempty _
   apply h.simulateQ_of_step
   · intro input _
     simp only [isQueryBoundP_query_iff]
@@ -553,10 +563,10 @@ theorem randomizer_not_forestRelevant (P P' : PublicParameter) (lay : Layer) (e 
   have h := Query.hash.inj he
   have heq :
       XmssSecurity.bytesLE 16 P' ++ XmssSecurity.fieldBytes (XmssSecurity.tweakFields 7 0 (layerHi lay 0) e.val) ++
-        (LeanXmss.bytesLE 16 ρ ++ message) =
+        (HashSig.littleEndianBytes 16 ρ ++ message) =
       XmssSecurity.bytesLE 16 P ++ XmssSecurity.fieldBytes (XmssSecurity.hashDomainFields domain) ++
         (payload ++ XmssSecurity.domainSuffix domain) := by
-    rw [← XmssSecurity.Bridge.tweakableHashInput_eq, ← h]
+    rw [← XmssSecurity.Bridge.tweakableHashInput_eq P domain payload, ← h]
     simp only [randomizerInput, List.append_assoc]
     rfl
   have ht := congrArg (fun fields => fields.tag.toNat) (XmssSecurity.Bridge.prefix_inj heq).2.1
@@ -564,7 +574,7 @@ theorem randomizer_not_forestRelevant (P P' : PublicParameter) (lay : Layer) (e 
 
 open Classical in
 theorem topSignFrom_irrelevant (P P' : PublicParameter) (key : XmssSecurity.TopIndex) (root : Digest)
-    (base : Randomness) : ∀ attempts trial,
+    (base : Randomizer) : ∀ attempts trial,
     (XmssSecurity.Concrete.topSignFrom P' key root base attempts trial :
       OracleComp XmssSecurity.HashSpec _).IsQueryBoundP
       (fun input => forestRelevant (C := C) P (.hash input)) 0 := by
@@ -573,7 +583,8 @@ theorem topSignFrom_irrelevant (P P' : PublicParameter) (key : XmssSecurity.TopI
   | zero => intro trial; simp [XmssSecurity.Concrete.topSignFrom]
   | succ attempts ih =>
     intro trial
-    rw [XmssSecurity.Concrete.topSignFrom]
+    erw [XmssSecurity.Concrete.topSignFrom.eq_def]
+    simp only
     refine isQueryBoundP_bind (n := 0) (m := 0) ?_ (fun digest _ => ?_)
     · unfold XmssSecurity.Concrete.topEncodingHash XmssSecurity.Concrete.tweakableHash
         XmssSecurity.Concrete.oracleHash
@@ -593,7 +604,7 @@ theorem forestRun_model (x : SigningSecurityProof.Keys3 C) (cache : HashCache C)
       (recordReads (forestRun x) ∅)).run cache)) :
     ∃ (secret : XmssSecurity.LeafIndex → XmssSecurity.ChainIndex → Digest)
       (topSecret : XmssSecurity.TopIndex → XmssSecurity.ChainIndex → Digest)
-      (result : Digest × (XmssSecurity.TopIndex → Option (Randomness × Encoding))),
+      (result : Digest × (XmssSecurity.TopIndex → Option (Randomizer × Encoding))),
       (∀ e l, DeterministicSigning.Resolves z.1.2
         (forestValue x.2.1 (.chain bottomLayer e l (digit 0))) (secret e l)) ∧
       (∀ b l, DeterministicSigning.Resolves z.1.2
@@ -604,7 +615,17 @@ theorem forestRun_model (x : SigningSecurityProof.Keys3 C) (cache : HashCache C)
             OracleComp XmssSecurity.HashSpec _)).run (SigningDescentProof.thView z.1.2)) := by
   obtain ⟨secret, topSecret, result, hsecret, htopSecret, hmodel⟩ := forestRun_resolves x cache z hz
   refine ⟨secret, topSecret, result, hsecret, htopSecret, ?_⟩
-  rw [hmodel.run_eq_pure]
+  have hpure : ∀ {α : Type} {cache : QueryCache XmssSecurity.HashSpec}
+      {computation : OracleComp XmssSecurity.HashSpec α} {value : α},
+      DeterministicSigning.Resolves cache computation value →
+      (simulateQ randomOracle computation).run cache = pure (value, cache) := by
+    intro α cache computation value h
+    induction h with
+    | pure value => rfl
+    | query input answer hanswer next value _ ih =>
+      rw [simulateQ_bind, simulateQ_spec_query, StateT.run_bind,
+        QueryImpl.withCaching_run_some _ hanswer, pure_bind, ih]
+  rw [hpure hmodel]
   simp only [StateT.run_pure, support_pure]
   exact Set.mem_singleton _
 
@@ -612,7 +633,7 @@ theorem forestRun_model (x : SigningSecurityProof.Keys3 C) (cache : HashCache C)
 theorem topJob_lift (x : SigningSecurityProof.Keys3 C) {forest record target bound : HashCache C}
     (secret : XmssSecurity.LeafIndex → XmssSecurity.ChainIndex → Digest)
     (topSecret : XmssSecurity.TopIndex → XmssSecurity.ChainIndex → Digest)
-    (result : Digest × (XmssSecurity.TopIndex → Option (Randomness × Encoding)))
+    (result : Digest × (XmssSecurity.TopIndex → Option (Randomizer × Encoding)))
     (hmem : (result, SigningDescentProof.thView forest) ∈ support
       ((simulateQ XmssSecurity.HashSpec.randomOracle
         (XmssSecurity.Concrete.honestKeygen x.1 secret topSecret (fun _ _ => pure 0) :
@@ -632,7 +653,8 @@ theorem topJob_lift (x : SigningSecurityProof.Keys3 C) {forest record target bou
   refine resolves_transfer (u := bitsOfDigest value) ?_ hbits hft hfb hrb
   simp only [referenceJob, List.mapM_cons, List.mapM_nil, pure_bind, bind_assoc]
   refine (htopSecret b l).bind ?_
-  refine DeterministicSigning.Resolves.map (forestHash_resolves _ _ _ ?_) _
+  rw [map_eq_bind_pure_comp]
+  refine (forestHash_resolves _ _ _ ?_).bind (.pure _)
   erw [XmssSecurity.Bridge.chainWalk_top]
   exact hwalk
 
@@ -640,7 +662,7 @@ theorem topJob_lift (x : SigningSecurityProof.Keys3 C) {forest record target bou
 theorem signJob_lift (x : SigningSecurityProof.Keys3 C) {forest record target bound : HashCache C}
     (secret : XmssSecurity.LeafIndex → XmssSecurity.ChainIndex → Digest)
     (topSecret : XmssSecurity.TopIndex → XmssSecurity.ChainIndex → Digest)
-    (result : Digest × (XmssSecurity.TopIndex → Option (Randomness × Encoding)))
+    (result : Digest × (XmssSecurity.TopIndex → Option (Randomizer × Encoding)))
     (hmem : (result, SigningDescentProof.thView forest) ∈ support
       ((simulateQ XmssSecurity.HashSpec.randomOracle
         (XmssSecurity.Concrete.honestKeygen x.1 secret topSecret (fun _ _ => pure 0) :
@@ -662,7 +684,8 @@ theorem signJob_lift (x : SigningSecurityProof.Keys3 C) {forest record target bo
   refine resolves_transfer (u := bitsOfDigest value) ?_ hbits hft hfb hrb
   simp only [referenceJob, List.mapM_cons, List.mapM_nil, pure_bind, bind_assoc]
   refine (htopSecret b l).bind ?_
-  refine DeterministicSigning.Resolves.map (forestHash_resolves _ _ _ ?_) _
+  rw [map_eq_bind_pure_comp]
+  refine (forestHash_resolves _ _ _ ?_).bind (.pure _)
   erw [XmssSecurity.Bridge.chainWalk_top]
   exact hwalk
 
@@ -671,7 +694,7 @@ inputs that are not relevant to the forest. -/
 theorem bottomJob_lift (x : SigningSecurityProof.Keys3 C) {forest record target bound : HashCache C}
     (secret : XmssSecurity.LeafIndex → XmssSecurity.ChainIndex → Digest)
     (topSecret : XmssSecurity.TopIndex → XmssSecurity.ChainIndex → Digest)
-    (result : Digest × (XmssSecurity.TopIndex → Option (Randomness × Encoding)))
+    (result : Digest × (XmssSecurity.TopIndex → Option (Randomizer × Encoding)))
     (hmem : (result, SigningDescentProof.thView forest) ∈ support
       ((simulateQ XmssSecurity.HashSpec.randomOracle
         (XmssSecurity.Concrete.honestKeygen x.1 secret topSecret (fun _ _ => pure 0) :
@@ -695,9 +718,9 @@ theorem bottomJob_lift (x : SigningSecurityProof.Keys3 C) {forest record target 
     obtain ⟨start, hstart, hhead⟩ := resolves_mapM_head (d := 0) hvs
     have hs : start = secret (bottomKey b k) l := (hstart.mono hrb).unique ((hsecret _ l).mono hfb)
     have hwalk : ∀ n ≤ 3, ∀ v, DeterministicSigning.Resolves record
-        (forestHash (Concrete.chainWalk x.1 bottomLayer (bottomKey b k) l 0 n (vs.getD 0 0))) v →
+        (forestHash (Verification.chainWalkWithHash x.1 bottomLayer (bottomKey b k) l 0 n (vs.getD 0 0))) v →
         DeterministicSigning.Resolves target
-          (forestHash (Concrete.chainWalk x.1 bottomLayer (bottomKey b k) l 0 n (vs.getD 0 0))) v := by
+          (forestHash (Verification.chainWalkWithHash x.1 bottomLayer (bottomKey b k) l 0 n (vs.getD 0 0))) v := by
       intro n hn v hv
       obtain ⟨before, after, value, hrun, hafter⟩ :=
         XmssSecurity.Concrete.CacheReplay.honestKeygen_runsBelow_chainWalk hmem (bottomKey b k) l n hn
@@ -727,7 +750,7 @@ set_option maxRecDepth 100000 in
 theorem bottomMerkle_lift (x : SigningSecurityProof.Keys3 C) {forest record target bound : HashCache C}
     (secret : XmssSecurity.LeafIndex → XmssSecurity.ChainIndex → Digest)
     (topSecret : XmssSecurity.TopIndex → XmssSecurity.ChainIndex → Digest)
-    (result : Digest × (XmssSecurity.TopIndex → Option (Randomness × Encoding)))
+    (result : Digest × (XmssSecurity.TopIndex → Option (Randomizer × Encoding)))
     (hmem : (result, SigningDescentProof.thView forest) ∈ support
       ((simulateQ XmssSecurity.HashSpec.randomOracle
         (XmssSecurity.Concrete.honestKeygen x.1 secret topSecret (fun _ _ => pure 0) :
@@ -743,11 +766,11 @@ theorem bottomMerkle_lift (x : SigningSecurityProof.Keys3 C) {forest record targ
       ((bottomJobs b).mapM (referenceJob forestHash (forestValue x.2.1) x.1)) values) :
     ∀ root, DeterministicSigning.Resolves record (forestHash (merkleNode x.1 bottomLayer
         (fun e l => digestAt (values.getD (((List.finRange (2 ^ layerHeight)).flatMap fun k =>
-          (List.finRange numChains).map fun l => (bottomKey b k, l)).idxOf (e, l)) []) 2)
+          (List.finRange chainCount).map fun l => (bottomKey b k, l)).idxOf (e, l)) []) 2)
         layerHeight b.val)) root →
       DeterministicSigning.Resolves target (forestHash (merkleNode x.1 bottomLayer
         (fun e l => digestAt (values.getD (((List.finRange (2 ^ layerHeight)).flatMap fun k =>
-          (List.finRange numChains).map fun l => (bottomKey b k, l)).idxOf (e, l)) []) 2)
+          (List.finRange chainCount).map fun l => (bottomKey b k, l)).idxOf (e, l)) []) 2)
         layerHeight b.val)) root := by
   intro root hroot
   have hvalid : XmssSecurity.TreeSubtreeValid 16 (XmssSecurity.Concrete.merkleNodeOfNat b.val) := by
@@ -778,7 +801,7 @@ theorem bottomMerkle_lift (x : SigningSecurityProof.Keys3 C) {forest record targ
   have h1 := resolves_forestValue anyPrims record record le_rfl _ _ _ hs
   change replayStarts anyPrims x record bottomLayer (bottomKey b k) l = start at h1
   have hv := SigningCacheProof.resolves_value hwk
-  rw [XmssSecurity.Concrete.CacheReplay.eval_chainWalk] at hv
+  erw [XmssSecurity.Concrete.CacheReplay.eval_chainWalk] at hv
   have hst : start = secret (bottomKey b k) l := (hs.mono hrb).unique ((hsecret _ l).mono hfb)
   unfold XmssSecurity.Concrete.oneTimePublicKey at hends
   have hE := hends.of_sequenceFin l
@@ -795,7 +818,7 @@ top ceremony is resolved. -/
 theorem topPath_lift (x : SigningSecurityProof.Keys3 C) {forest record target bound : HashCache C}
     (secret : XmssSecurity.LeafIndex → XmssSecurity.ChainIndex → Digest)
     (topSecret : XmssSecurity.TopIndex → XmssSecurity.ChainIndex → Digest)
-    (result : Digest × (XmssSecurity.TopIndex → Option (Randomness × Encoding)))
+    (result : Digest × (XmssSecurity.TopIndex → Option (Randomizer × Encoding)))
     (hmem : (result, SigningDescentProof.thView forest) ∈ support
       ((simulateQ XmssSecurity.HashSpec.randomOracle
         (XmssSecurity.Concrete.honestKeygen x.1 secret topSecret (fun _ _ => pure 0) :
@@ -842,7 +865,7 @@ relevant to the forest, when the top ceremony is resolved. -/
 theorem topCheck_lift (x : SigningSecurityProof.Keys3 C) {forest record target bound : HashCache C}
     (secret : XmssSecurity.LeafIndex → XmssSecurity.ChainIndex → Digest)
     (topSecret : XmssSecurity.TopIndex → XmssSecurity.ChainIndex → Digest)
-    (result : Digest × (XmssSecurity.TopIndex → Option (Randomness × Encoding)))
+    (result : Digest × (XmssSecurity.TopIndex → Option (Randomizer × Encoding)))
     (hmem : (result, SigningDescentProof.thView forest) ∈ support
       ((simulateQ XmssSecurity.HashSpec.randomOracle
         (XmssSecurity.Concrete.honestKeygen x.1 secret topSecret (fun _ _ => pure 0) :
@@ -855,20 +878,20 @@ theorem topCheck_lift (x : SigningSecurityProof.Keys3 C) {forest record target b
     (cache : HashCache C) (top : TopTree)
     (htop : DeterministicSigning.Resolves cache
       (referenceTree forestHash (forestValue x.2.1) x.1 emptyTop .top) (some (.top top)))
-    (hcb : cache ≤ bound) (b : Fin (2 ^ layerHeight)) (root : Digest) (base : Randomness)
-    (randomness : Randomness) (encoding : Encoding)
+    (hcb : cache ≤ bound) (b : Fin (2 ^ layerHeight)) (root : Digest) (base : Randomizer)
+    (randomness : Randomizer) (encoding : Encoding)
     (hselected : DeterministicSigning.Resolves record (forestHash (grind x.1 topLayer (topKey b)
-      (bytesLE 16 root) base randomizerAttemptLimit 0)) (some (randomness, encoding)))
+      (littleEndianBytes 16 root) base randomizerAttemptLimit 0)) (some (randomness, encoding)))
     (values : List (List Bit))
     (hvalues : DeterministicSigning.Resolves record
       ((signJobs b encoding).mapM (referenceJob forestHash (forestValue x.2.1) x.1)) values)
     (path : Fin layerHeight → Digest)
     (hpath : DeterministicSigning.Resolves record
       (forestHash (merklePath x.1 topLayer top.chainEnd (topKey b))) path) :
-    ∀ topRoot, DeterministicSigning.Resolves record (forestHash (Concrete.layerRoot x.1 topLayer (topKey b)
-        (bytesLE 16 root) ⟨randomness, fun l => digestAt (values.getD l.val []) 0, path⟩)) topRoot →
-      DeterministicSigning.Resolves target (forestHash (Concrete.layerRoot x.1 topLayer (topKey b)
-        (bytesLE 16 root) ⟨randomness, fun l => digestAt (values.getD l.val []) 0, path⟩)) topRoot := by
+    ∀ topRoot, DeterministicSigning.Resolves record (forestHash (Verification.layerRootWithHash x.1 topLayer (topKey b)
+        (littleEndianBytes 16 root) ⟨randomness, fun l => digestAt (values.getD l.val []) 0, path⟩)) topRoot →
+      DeterministicSigning.Resolves target (forestHash (Verification.layerRootWithHash x.1 topLayer (topKey b)
+        (littleEndianBytes 16 root) ⟨randomness, fun l => digestAt (values.getD l.val []) 0, path⟩)) topRoot := by
   intro topRoot htopRoot
   refine forestHash_resolves _ _ _ ?_
   have hS := resolves_forestHash _ _ _ htopRoot
@@ -876,7 +899,7 @@ theorem topCheck_lift (x : SigningSecurityProof.Keys3 C) {forest record target b
   have hS0W := SigningCacheProof.thView_mono hfb
   have hS0T := SigningCacheProof.thView_mono hft
   have hsel := resolves_forestHash _ _ _ hselected
-  rw [SigningGuessProof.grind_top_eq] at hsel
+  erw [SigningGuessProof.grind_top_eq] at hsel
   obtain ⟨digest, hdigest, hdec⟩ := resolves_topSignFrom_some _ _ _ _ _ _ _ _ _ hsel
   have hchain : ∀ l : ChainIndex, ∃ finish,
       DeterministicSigning.Resolves (SigningDescentProof.thView forest)
@@ -894,7 +917,9 @@ theorem topCheck_lift (x : SigningSecurityProof.Keys3 C) {forest record target b
     simp only [signJobs, List.getElem_map, List.getElem_finRange, referenceJob, List.mapM_cons,
       List.mapM_nil, pure_bind, bind_assoc] at hjob
     obtain ⟨start, hstart, hjob⟩ := hjob.of_bind
-    obtain ⟨cv, hcv, hbits⟩ := hjob.of_map
+    rw [map_eq_bind_pure_comp] at hjob
+    obtain ⟨cv, hcv, hpureInv⟩ := hjob.of_bind
+    have hbits := hpureInv.pure_inv
     have hst : start = topSecret b l := (hstart.mono hrb).unique ((htopSecret b l).mono hfb)
     have hcv' := resolves_forestHash _ _ _ hcv
     erw [XmssSecurity.Bridge.chainWalk_top] at hcv'
@@ -902,8 +927,8 @@ theorem topCheck_lift (x : SigningSecurityProof.Keys3 C) {forest record target b
       XmssSecurity.Concrete.CacheReplay.honestKeygen_runsBelow_topChainWalk hmem b l 3 (by decide)
     have hfull := (DeterministicSigning.resolves_of_run _ before (value, after) hrun).mono hafter
     refine ⟨value, hfull, ?_⟩
-    rw [show (3 : ℕ) = (encoding l).val + (3 - (encoding l).val) by omega,
-      XmssSecurity.Bridge.topChainWalk_split] at hfull
+    rw [show (3 : ℕ) = (encoding l).val + (3 - (encoding l).val) by omega] at hfull
+    erw [XmssSecurity.Bridge.topChainWalk_split] at hfull
     obtain ⟨u, hu, hrest⟩ := hfull.of_bind
     rw [hst] at hcv'
     have hcu : u = cv := (hu.mono hS0W).unique (hcv'.mono hSW)
@@ -912,18 +937,20 @@ theorem topCheck_lift (x : SigningSecurityProof.Keys3 C) {forest record target b
     simpa only [Nat.zero_add] using hrest
   choose fin hfin using hchain
   have hrecover : DeterministicSigning.Resolves (SigningDescentProof.thView forest)
-      (Concrete.sequenceFin fun l => Concrete.recoverChain x.1 topLayer (topKey b) l (encoding l)
+      (OverPermutation.sequenceFin fun l => Verification.recoverChainWithHash x.1 topLayer (topKey b) l (encoding l)
         (digestAt (values.getD l.val []) 0) : OracleComp HashSpec _) fin := by
     rw [XmssSecurity.Bridge.sequenceFin_eq]
     refine DeterministicSigning.Resolves.sequenceFin (fun l => ?_)
-    unfold Concrete.recoverChain
+    unfold Verification.recoverChainWithHash
     erw [XmssSecurity.Bridge.chainWalk_top]
     exact (hfin l).2
   obtain ⟨before, after, lf, hrun, hafter⟩ :=
     XmssSecurity.Concrete.CacheReplay.honestKeygen_runsBelow_topTreeNode hmem 0 b (by omega)
-      (by simpa [XmssSecurity.topLifetime, XmssSecurity.treeHeight] using b.isLt)
+      (by simp [XmssSecurity.topLifetime, XmssSecurity.treeHeight]; exact b.isLt)
   have hlf := (DeterministicSigning.resolves_of_run _ before (lf, after) hrun).mono hafter
-  rw [XmssSecurity.Concrete.topTreeNode, XmssSecurity.Concrete.topLeafAt] at hlf
+  erw [XmssSecurity.Concrete.topTreeNode.eq_def] at hlf
+  simp only at hlf
+  erw [XmssSecurity.Concrete.topLeafAt.eq_def] at hlf
   obtain ⟨E, hE, hlfHash⟩ := hlf.of_bind
   have hEfin : E = fin := by
     funext l
@@ -931,15 +958,15 @@ theorem topCheck_lift (x : SigningSecurityProof.Keys3 C) {forest record target b
     exact (hE.of_sequenceFin l).unique (hfin l).1
   subst hEfin
   have hots : ∀ leaf, DeterministicSigning.Resolves (SigningDescentProof.thView record)
-      (Concrete.otsLeaf x.1 topLayer (topKey b) (bytesLE 16 root) randomness
+      (Verification.otsLeafWithHash x.1 topLayer (topKey b) (littleEndianBytes 16 root) randomness
         (fun l => digestAt (values.getD l.val []) 0) : OracleComp HashSpec _) leaf → leaf = some lf := by
     intro leaf hleaf
-    unfold Concrete.otsLeaf at hleaf
+    unfold Verification.otsLeafWithHash at hleaf
     erw [XmssSecurity.Bridge.messageDigest_top] at hleaf
     obtain ⟨d, hd, hleaf⟩ := hleaf.of_bind
     have hdd : d = digest := hd.unique hdigest
     subst hdd
-    rw [XmssSecurity.Bridge.decode_eq, hdec] at hleaf
+    erw [XmssSecurity.Bridge.decode_eq, hdec] at hleaf
     obtain ⟨ends, hends, hleaf⟩ := hleaf.of_bind
     have hef : ends = E := (hends.mono hSW).unique (hrecover.mono hS0W)
     subst hef
@@ -947,10 +974,10 @@ theorem topCheck_lift (x : SigningSecurityProof.Keys3 C) {forest record target b
     erw [XmssSecurity.Bridge.leafHash_top] at hlv
     rw [← hleaf.pure_inv, (hlv.mono hSW).unique (hlfHash.mono hS0W)]
     rfl
-  unfold Concrete.layerRoot at hS ⊢
+  unfold Verification.layerRootWithHash at hS ⊢
   refine resolves_lift_bind ?_ ?_ _ hS
   · intro leaf hleaf
-    unfold Concrete.otsLeaf at hleaf ⊢
+    unfold Verification.otsLeafWithHash at hleaf ⊢
     erw [XmssSecurity.Bridge.messageDigest_top] at hleaf ⊢
     classical
     refine resolves_lift_bind (fun d hd => resolves_lift_bound _ _ (topEncodingHash_irrelevant _ _ _ _ _)
@@ -982,7 +1009,9 @@ theorem topCheck_lift (x : SigningSecurityProof.Keys3 C) {forest record target b
     have hroot := (DeterministicSigning.resolves_of_run _ before (rv, after) hrun).mono hafter
     refine resolves_transfer (resolves_topAuthenticationRoot _ x.1 topSecret b path lf
       (fun u hu => (hu.unique ?_)) (fun i u hu => ?_) 16 le_rfl rv hroot) hr hS0T hS0W hSW
-    · rw [XmssSecurity.Concrete.topTreeNode, XmssSecurity.Concrete.topLeafAt]
+    · erw [XmssSecurity.Concrete.topTreeNode.eq_def]
+      simp only
+      erw [XmssSecurity.Concrete.topLeafAt.eq_def]
       exact hE.bind hlfHash
     · have hp := hpath'.of_sequenceFin i
       have hm := resolves_merkleNode_top _ x.1 topSecret _ hends i.val
@@ -1010,13 +1039,16 @@ theorem forestRun_covers_top (x : SigningSecurityProof.Keys3 C) (cache : HashCac
     have hR' := hR
     unfold referenceTree ceremonyOutput at hR' ⊢
     obtain ⟨outputs, houtputs, htail⟩ := hR'.of_bind
-    obtain ⟨values, hvalues, rfl⟩ := houtputs.of_map
+    beta_reduce at houtputs
+    rw [map_eq_bind_pure_comp] at houtputs
+    obtain ⟨values, hvalues, hpureInv⟩ := houtputs.of_bind
+    obtain rfl := hpureInv.pure_inv
     obtain ⟨root, hroot, hfinal⟩ := htail.of_bind
     have hvaluesF := resolves_mapM_lift _ _ (topJob_lift x secret topSecret result hmem htopSecret
       le_rfl hzfin hwrec) values hvalues
     have hrootF : DeterministicSigning.Resolves z.1.2 (forestHash (merkleNode x.1 topLayer
         (fun e l => digestAt (values.getD (((List.finRange (2 ^ layerHeight)).flatMap fun b =>
-          (List.finRange numChains).map fun l => (topKey b, l)).idxOf (e, l)) []) 0) layerHeight 0)) root := by
+          (List.finRange chainCount).map fun l => (topKey b, l)).idxOf (e, l)) []) 0) layerHeight 0)) root := by
       have htopR := hR
       rw [← hfinal.pure_inv] at htopR
       clear hR' htail hfinal hvalues
@@ -1029,7 +1061,11 @@ theorem forestRun_covers_top (x : SigningSecurityProof.Keys3 C) (cache : HashCac
         (topCeremony_ends x w.1.2 z.1.2 w.2 _ htopR hwrec hzfin topSecret htopSecret)
         16 le_rfl 0 (by decide) value htree
     rw [← hfinal.pure_inv]
-    exact (hvaluesF.map some).bind (hrootF.bind (.pure _))
+    have hsome : DeterministicSigning.Resolves z.1.2
+        (some <$> List.mapM (referenceJob forestHash (forestValue x.2.1) x.1) topJobs) (some values) := by
+      rw [map_eq_bind_pure_comp]
+      exact hvaluesF.bind (.pure _)
+    exact hsome.bind (hrootF.bind (.pure _))
   have hle := recordReads_le_of_resolves _ ∅ z.2 z.1.2 w.1.1 (fun _ _ h => by cases h) hforest w hw hzfin
   obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp hread
   simp [hle hv]
@@ -1065,11 +1101,19 @@ theorem forestRun_covers_bottom (x : SigningSecurityProof.Keys3 C) (top : TopTre
     unfold referenceTree ceremonyOutput at hR' ⊢
     refine resolves_lift_bind ?_ ?_ _ hR'
     · intro outputs houtputs
-      obtain ⟨values, hvalues, rfl⟩ := houtputs.of_map
+      beta_reduce at houtputs
+      rw [map_eq_bind_pure_comp] at houtputs
+      obtain ⟨values, hvalues, hpureInv⟩ := houtputs.of_bind
+      obtain rfl := hpureInv.pure_inv
+      beta_reduce
+      rw [map_eq_bind_pure_comp]
       exact (resolves_mapM_lift _ _ (bottomJob_lift x secret topSecret result hmem hsecret hzc hzfin hwrec
-        hT b) values hvalues).map some
+        hT b) values hvalues).bind (.pure _)
     intro outputs houtputs
-    obtain ⟨values, hvalues, rfl⟩ := houtputs.of_map
+    beta_reduce at houtputs
+    rw [map_eq_bind_pure_comp] at houtputs
+    obtain ⟨values, hvalues, hpureInv⟩ := houtputs.of_bind
+    obtain rfl := hpureInv.pure_inv
     refine resolves_lift_bind
       (bottomMerkle_lift x secret topSecret result hmem hsecret hzc hzfin hwrec top b w.1.1 hR values hvalues) ?_
     intro root hroot
@@ -1080,7 +1124,7 @@ theorem forestRun_covers_bottom (x : SigningSecurityProof.Keys3 C) (top : TopTre
     intro base hbase
     refine resolves_lift_bind (fun selected hselected => resolves_lift_bound _ _ ?_ hT selected hselected) ?_
     · refine forestHash_irrelevant _ _ ?_
-      rw [SigningGuessProof.grind_top_eq]
+      erw [SigningGuessProof.grind_top_eq]
       exact topSignFrom_irrelevant _ _ _ _ _ _ _
     intro selected hselected
     rcases selected with _ | ⟨randomness, encoding⟩
@@ -1089,11 +1133,19 @@ theorem forestRun_covers_bottom (x : SigningSecurityProof.Keys3 C) (top : TopTre
       exact .pure _
     refine resolves_lift_bind ?_ ?_
     · intro outs houts
-      obtain ⟨vals, hvals, rfl⟩ := houts.of_map
+      beta_reduce at houts
+      rw [map_eq_bind_pure_comp] at houts
+      obtain ⟨vals, hvals, hpureInv⟩ := houts.of_bind
+      obtain rfl := hpureInv.pure_inv
+      beta_reduce
+      rw [map_eq_bind_pure_comp]
       exact (resolves_mapM_lift _ _ (signJob_lift x secret topSecret result hmem htopSecret hzc hzfin hwrec
-        b encoding) vals hvals).map some
+        b encoding) vals hvals).bind (.pure _)
     intro outputs' houtputs'
-    obtain ⟨values', hvalues', rfl⟩ := houtputs'.of_map
+    beta_reduce at houtputs'
+    rw [map_eq_bind_pure_comp] at houtputs'
+    obtain ⟨values', hvalues', hpureInv⟩ := houtputs'.of_bind
+    obtain rfl := hpureInv.pure_inv
     refine resolves_lift_bind
       (topPath_lift x secret topSecret result hmem htopSecret hzc hzfin hwrec cache top htop hcfin b) ?_
     intro path hpath

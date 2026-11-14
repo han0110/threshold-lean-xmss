@@ -101,16 +101,16 @@ theorem countImpl_support_count (t : κ) (st : σ × ℕ) (x : spec t × (σ × 
 /-- Two functions that agree on the support have the same expectation. -/
 theorem tsum_congr_support {β : Type} (mx : ProbComp β) (F G : β → ℝ≥0∞)
     (h : ∀ x ∈ support mx, F x = G x) :
-    ∑' x, Pr[= x | mx] * F x = ∑' x, Pr[= x | mx] * G x := by
+    ∑' x, Pr{let z ← mx}[z = x] * F x = ∑' x, Pr{let z ← mx}[z = x] * G x := by
   refine tsum_congr fun x => ?_
   by_cases hx : x ∈ support mx
   · rw [h x hx]
-  · simp [probOutput_eq_zero_of_not_mem_support hx]
+  · simp [prEvent_eq_zero_of_not_mem_support _ hx]
 
 /-- The expectation of a sum of three functions. -/
 theorem tsum_add3 {β : Type} (mx : ProbComp β) (F G H : β → ℝ≥0∞) :
-    ∑' x, Pr[= x | mx] * (F x + G x + H x) =
-      ∑' x, Pr[= x | mx] * F x + ∑' x, Pr[= x | mx] * G x + ∑' x, Pr[= x | mx] * H x := by
+    ∑' x, Pr{let z ← mx}[z = x] * (F x + G x + H x) =
+      ∑' x, Pr{let z ← mx}[z = x] * F x + ∑' x, Pr{let z ← mx}[z = x] * G x + ∑' x, Pr{let z ← mx}[z = x] * H x := by
   simp_rw [mul_add]
   rw [ENNReal.tsum_add, ENNReal.tsum_add]
 
@@ -121,46 +121,46 @@ def lane2Sum (l : ℝ≥0∞) (f1 f2 f3 f4 : σ × ℕ → ℝ≥0∞) (st : σ 
 /-- The compensated step. `f1` rises by `cost1`, `f2` rises by at least `l * cost1`, and `f3`
 rises by at most `A * openC`. So `f3 - f2 / l` falls by `cost1` and rises by `A * openC`, and the
 sum rises by at most `A * openC + N * signedC`. -/
-theorem lane2Sum_step (N l A : ℝ≥0∞) (f1 f2 f3 f4 : σ × ℕ → ℝ≥0∞)
+theorem lane2Sum_step {β : Type} (N l A : ℝ≥0∞) (f1 f2 f3 f4 : σ × ℕ → ℝ≥0∞)
     (cost1 openC signedC : κ → σ × ℕ → ℝ≥0∞) (mx : ProbComp (β × (σ × ℕ))) (st : σ × ℕ) (t : κ)
-    (h1 : ∑' x, Pr[= x | mx] * f1 x.2 ≤ f1 st + cost1 t st)
-    (h2 : f2 st + l * cost1 t st ≤ ∑' x, Pr[= x | mx] * f2 x.2)
-    (h3 : ∑' x, Pr[= x | mx] * f3 x.2 ≤ f3 st + A * openC t st)
-    (h4 : ∑' x, Pr[= x | mx] * f4 x.2 ≤ f4 st + N * signedC t st)
+    (h1 : ∑' x, Pr{let z ← mx}[z = x] * f1 x.2 ≤ f1 st + cost1 t st)
+    (h2 : f2 st + l * cost1 t st ≤ ∑' x, Pr{let z ← mx}[z = x] * f2 x.2)
+    (h3 : ∑' x, Pr{let z ← mx}[z = x] * f3 x.2 ≤ f3 st + A * openC t st)
+    (h4 : ∑' x, Pr{let z ← mx}[z = x] * f4 x.2 ≤ f4 st + N * signedC t st)
     (hcomp : ∀ st, f2 st ≤ l * f3 st) (hf2 : ∀ st, f2 st ≠ ⊤) (hA : A ≤ N)
     (hl0 : l ≠ 0) (hlt : l ≠ ⊤) :
-    ∑' x, Pr[= x | mx] * lane2Sum l f1 f2 f3 f4 x.2 ≤
+    ∑' x, Pr{let z ← mx}[z = x] * lane2Sum l f1 f2 f3 f4 x.2 ≤
       lane2Sum l f1 f2 f3 f4 st + N * (openC t st + signedC t st) := by
   have hle : ∀ s, f2 s * l⁻¹ ≤ f3 s := fun s => by
     calc f2 s * l⁻¹ ≤ l * f3 s * l⁻¹ := mul_le_mul' (hcomp s) le_rfl
       _ = f3 s := by rw [mul_comm l, mul_assoc, ENNReal.mul_inv_cancel hl0 hlt, mul_one]
   have hb : ∀ s, f2 s * l⁻¹ ≠ ⊤ := fun s => ENNReal.mul_ne_top (hf2 s) (ENNReal.inv_ne_top.2 hl0)
-  have hd : ∑' x, Pr[= x | mx] * (f3 x.2 - f2 x.2 * l⁻¹) + cost1 t st ≤
+  have hd : ∑' x, Pr{let z ← mx}[z = x] * (f3 x.2 - f2 x.2 * l⁻¹) + cost1 t st ≤
       (f3 st - f2 st * l⁻¹) + A * openC t st := by
     rcases eq_or_ne (f3 st) ⊤ with htop | htop
     · rw [htop, ENNReal.top_sub (hb st), top_add]; exact le_top
-    have hsplit : ∑' x, Pr[= x | mx] * (f3 x.2 - f2 x.2 * l⁻¹) +
-        (∑' x, Pr[= x | mx] * f2 x.2) * l⁻¹ = ∑' x, Pr[= x | mx] * f3 x.2 := by
+    have hsplit : ∑' x, Pr{let z ← mx}[z = x] * (f3 x.2 - f2 x.2 * l⁻¹) +
+        (∑' x, Pr{let z ← mx}[z = x] * f2 x.2) * l⁻¹ = ∑' x, Pr{let z ← mx}[z = x] * f3 x.2 := by
       rw [← ENNReal.tsum_mul_right, ← ENNReal.tsum_add]
       refine tsum_congr fun x => ?_
       rw [mul_assoc, ← mul_add, tsub_add_cancel_of_le (hle x.2)]
-    have hlow : f2 st * l⁻¹ + cost1 t st ≤ (∑' x, Pr[= x | mx] * f2 x.2) * l⁻¹ := by
+    have hlow : f2 st * l⁻¹ + cost1 t st ≤ (∑' x, Pr{let z ← mx}[z = x] * f2 x.2) * l⁻¹ := by
       calc f2 st * l⁻¹ + cost1 t st = (f2 st + l * cost1 t st) * l⁻¹ := by
             rw [add_mul, mul_comm l, mul_assoc, ENNReal.mul_inv_cancel hl0 hlt, mul_one]
         _ ≤ _ := mul_le_mul' h2 le_rfl
     rw [← ENNReal.add_le_add_iff_right (hb st)]
-    calc ∑' x, Pr[= x | mx] * (f3 x.2 - f2 x.2 * l⁻¹) + cost1 t st + f2 st * l⁻¹ =
-          ∑' x, Pr[= x | mx] * (f3 x.2 - f2 x.2 * l⁻¹) + (f2 st * l⁻¹ + cost1 t st) := by ring
-      _ ≤ ∑' x, Pr[= x | mx] * (f3 x.2 - f2 x.2 * l⁻¹) + (∑' x, Pr[= x | mx] * f2 x.2) * l⁻¹ :=
+    calc ∑' x, Pr{let z ← mx}[z = x] * (f3 x.2 - f2 x.2 * l⁻¹) + cost1 t st + f2 st * l⁻¹ =
+          ∑' x, Pr{let z ← mx}[z = x] * (f3 x.2 - f2 x.2 * l⁻¹) + (f2 st * l⁻¹ + cost1 t st) := by ring
+      _ ≤ ∑' x, Pr{let z ← mx}[z = x] * (f3 x.2 - f2 x.2 * l⁻¹) + (∑' x, Pr{let z ← mx}[z = x] * f2 x.2) * l⁻¹ :=
           add_le_add le_rfl hlow
       _ ≤ f3 st + A * openC t st := hsplit.le.trans h3
       _ = (f3 st - f2 st * l⁻¹) + A * openC t st + f2 st * l⁻¹ := by
           rw [add_right_comm, tsub_add_cancel_of_le (hle st)]
   unfold lane2Sum
   rw [tsum_add3]
-  calc _ ≤ f1 st + cost1 t st + ∑' x, Pr[= x | mx] * (f3 x.2 - f2 x.2 * l⁻¹) +
+  calc _ ≤ f1 st + cost1 t st + ∑' x, Pr{let z ← mx}[z = x] * (f3 x.2 - f2 x.2 * l⁻¹) +
         (f4 st + N * signedC t st) := add_le_add (add_le_add h1 le_rfl) h4
-    _ = f1 st + (∑' x, Pr[= x | mx] * (f3 x.2 - f2 x.2 * l⁻¹) + cost1 t st) +
+    _ = f1 st + (∑' x, Pr{let z ← mx}[z = x] * (f3 x.2 - f2 x.2 * l⁻¹) + cost1 t st) +
         (f4 st + N * signedC t st) := by ring
     _ ≤ f1 st + ((f3 st - f2 st * l⁻¹) + A * openC t st) + (f4 st + N * signedC t st) :=
         add_le_add (add_le_add le_rfl hd) le_rfl
@@ -178,18 +178,18 @@ step lemmas `f1_step` to `f4_step`, `landing_mul_hvSum_le`, `momentA_le_N` and
 theorem lane2Potential_step (q : ℕ) (N l A : ℝ≥0∞) (f1 f2 f3 f4 : σ × ℕ → ℝ≥0∞)
     (cost1 openC signedC : κ → σ × ℕ → ℝ≥0∞) (Inv : σ × ℕ → Prop)
     (h1 : ∀ t st, Inv st →
-      ∑' x, Pr[= x | (countImpl impl p t).run st] * f1 x.2 ≤ f1 st + cost1 t st)
+      ∑' x, Pr{let z ← (countImpl impl p t).run st}[z = x] * f1 x.2 ≤ f1 st + cost1 t st)
     (h2 : ∀ t st, Inv st →
-      f2 st + l * cost1 t st ≤ ∑' x, Pr[= x | (countImpl impl p t).run st] * f2 x.2)
+      f2 st + l * cost1 t st ≤ ∑' x, Pr{let z ← (countImpl impl p t).run st}[z = x] * f2 x.2)
     (h3 : ∀ t st, Inv st → (p t → st.2 < q) →
-      ∑' x, Pr[= x | (countImpl impl p t).run st] * f3 x.2 ≤ f3 st + A * openC t st)
+      ∑' x, Pr{let z ← (countImpl impl p t).run st}[z = x] * f3 x.2 ≤ f3 st + A * openC t st)
     (h4 : ∀ t st, Inv st →
-      ∑' x, Pr[= x | (countImpl impl p t).run st] * f4 x.2 ≤ f4 st + N * signedC t st)
+      ∑' x, Pr{let z ← (countImpl impl p t).run st}[z = x] * f4 x.2 ≤ f4 st + N * signedC t st)
     (hcomp : ∀ st, f2 st ≤ l * f3 st) (hf2 : ∀ st, f2 st ≠ ⊤)
     (hcost : ∀ t st, openC t st + signedC t st ≤ if p t ∧ ¬inputSide t then 1 else 0)
     (hA : A ≤ N) (hl0 : l ≠ 0) (hlt : l ≠ ⊤) (hN0 : N ≠ 0) (hNt : N ≠ ⊤) :
     ∀ t st, Inv st →
-      ∑' x, Pr[= x | (countImpl impl p t).run st] * lane2Potential q N l f1 f2 f3 f4 x.2 ≤
+      ∑' x, Pr{let z ← (countImpl impl p t).run st}[z = x] * lane2Potential q N l f1 f2 f3 f4 x.2 ≤
         lane2Potential q N l f1 f2 f3 f4 st +
           if cappedCall p q t st ∧ ¬inputSide t then N⁻¹ else 0 := by
   intro t st hst
@@ -199,8 +199,8 @@ theorem lane2Potential_step (q : ℕ) (N l A : ℝ≥0∞) (f1 f2 f3 f4 : σ × 
     have hst2 : st.2 ≤ q := le_trans (Nat.le_add_right _ _) hq
     rw [tsum_congr_support mx _ (fun x => lane2Sum l f1 f2 f3 f4 x.2 * (N * N)⁻¹) fun x hx => by
       rw [lane2Potential, if_pos (by rw [countImpl_support_count impl p t st x hx]; exact hq)]]
-    have hmul : ∀ x : spec t × (σ × ℕ), Pr[= x | mx] * (lane2Sum l f1 f2 f3 f4 x.2 * (N * N)⁻¹) =
-        Pr[= x | mx] * lane2Sum l f1 f2 f3 f4 x.2 * (N * N)⁻¹ := fun x => (mul_assoc _ _ _).symm
+    have hmul : ∀ x : spec t × (σ × ℕ), Pr{let z ← mx}[z = x] * (lane2Sum l f1 f2 f3 f4 x.2 * (N * N)⁻¹) =
+        Pr{let z ← mx}[z = x] * lane2Sum l f1 f2 f3 f4 x.2 * (N * N)⁻¹ := fun x => (mul_assoc _ _ _).symm
     simp_rw [hmul]
     rw [ENNReal.tsum_mul_right, lane2Potential, if_pos hst2]
     have hs := lane2Sum_step N l A f1 f2 f3 f4 cost1 openC signedC mx st t (h1 t st hst) (h2 t st hst)
@@ -232,13 +232,13 @@ theorem probEvent_lane2_le {β K T : Type} [Fintype K] [DecidableEq K] [Fintype 
     (f1 f2 f3 f4 : σ × ℕ → ℝ≥0∞) (cost1 openC signedC : κ → σ × ℕ → ℝ≥0∞) (Inv : σ × ℕ → Prop)
     (hinv : ∀ t st, Inv st → ∀ x ∈ support ((countImpl impl p t).run st), Inv x.2)
     (h1 : ∀ t st, Inv st →
-      ∑' x, Pr[= x | (countImpl impl p t).run st] * f1 x.2 ≤ f1 st + cost1 t st)
+      ∑' x, Pr{let z ← (countImpl impl p t).run st}[z = x] * f1 x.2 ≤ f1 st + cost1 t st)
     (h2 : ∀ t st, Inv st →
-      f2 st + l * cost1 t st ≤ ∑' x, Pr[= x | (countImpl impl p t).run st] * f2 x.2)
+      f2 st + l * cost1 t st ≤ ∑' x, Pr{let z ← (countImpl impl p t).run st}[z = x] * f2 x.2)
     (h3 : ∀ t st, Inv st → (p t → st.2 < q) →
-      ∑' x, Pr[= x | (countImpl impl p t).run st] * f3 x.2 ≤ f3 st + A * openC t st)
+      ∑' x, Pr{let z ← (countImpl impl p t).run st}[z = x] * f3 x.2 ≤ f3 st + A * openC t st)
     (h4 : ∀ t st, Inv st →
-      ∑' x, Pr[= x | (countImpl impl p t).run st] * f4 x.2 ≤
+      ∑' x, Pr{let z ← (countImpl impl p t).run st}[z = x] * f4 x.2 ≤
         f4 st + (Fintype.card T : ℝ≥0∞) * signedC t st)
     (hcomp : ∀ st, f2 st ≤ l * f3 st) (hf2 : ∀ st, f2 st ≠ ⊤)
     (hcost : ∀ t st, openC t st + signedC t st ≤ if p t ∧ ¬inputSide t then 1 else 0)
@@ -247,9 +247,9 @@ theorem probEvent_lane2_le {β K T : Type} [Fintype K] [DecidableEq K] [Fintype 
     (hE : ∀ st, E st → (Fintype.card T : ℝ≥0∞) * Fintype.card T ≤ f1 st + f4 st)
     (oa : OracleComp (spec + RevealSpec K T) β) (σ₀ : σ) (hσ₀ : Inv (σ₀, 0))
     (hf1₀ : f1 (σ₀, 0) = 0) (hf3₀ : f3 (σ₀, 0) = 0) (hf4₀ : f4 (σ₀, 0) = 0) :
-    Pr[fun r => r.2.2.2 = true ∨ (E r.2.1 ∧ r.2.1.2 ≤ q) | $ᵗ (K → T) >>= fun s =>
+    Pr{let r ← ($ᵗ (K → T) >>= fun s =>
       (simulateQ (cappedHybrid impl inputSide p keyOf point q s) oa).run
-        ((σ₀, 0), fun _ => none, false)] ≤ q * (Fintype.card T : ℝ≥0∞)⁻¹ := by
+        ((σ₀, 0), fun _ => none, false))}[r.2.2.2 = true ∨ (E r.2.1 ∧ r.2.1.2 ≤ q)] ≤ q * (Fintype.card T : ℝ≥0∞)⁻¹ := by
   have hN0 : (Fintype.card T : ℝ≥0∞) ≠ 0 := by
     exact_mod_cast Fintype.card_ne_zero
   have hNt : (Fintype.card T : ℝ≥0∞) ≠ ⊤ := ENNReal.natCast_ne_top _
@@ -276,22 +276,22 @@ section Transfer
 /-- Two computations whose maps have the same law have the same expectation of a function of the
 map. -/
 theorem tsum_map_eq {β β' T : Type} (mx : ProbComp β) (my : ProbComp β') (f : β → T) (g : β' → T)
-    (hlaw : 𝒟[f <$> mx] = 𝒟[g <$> my]) (F : T → ℝ≥0∞) :
-    ∑' x, Pr[= x | mx] * F (f x) = ∑' y, Pr[= y | my] * F (g y) := by
-  rw [← tsum_probOutput_map_mul mx f F, ← tsum_probOutput_map_mul my g F]
+    (hlaw : (f <$> mx) =ᵈ (g <$> my)) (F : T → ℝ≥0∞) :
+    ∑' x, Pr{let z ← mx}[z = x] * F (f x) = ∑' y, Pr{let z ← my}[z = y] * F (g y) := by
+  rw [← OracleComp.tsum_prEvent_map_mul mx f F, ← OracleComp.tsum_prEvent_map_mul my g F]
   refine tsum_congr fun z => ?_
-  rw [probOutput_def, probOutput_def, hlaw]
+  rw [hlaw.prEvent_eq (· = z)]
 
 /-- A step whose state law, read through `view`, equals the state law of another step has the same
 expectation of every function of the read state. -/
 theorem tsum_view_eq {α α' S S' : Type} (mx : ProbComp (α × S)) (my : ProbComp (α' × S'))
-    (view : S → S') (hlaw : 𝒟[(fun x => view x.2) <$> mx] = 𝒟[(fun y => y.2) <$> my])
+    (view : S → S') (hlaw : ((fun x => view x.2) <$> mx) =ᵈ ((fun y => y.2) <$> my))
     (F : S' → ℝ≥0∞) :
-    ∑' x, Pr[= x | mx] * F (view x.2) = ∑' y, Pr[= y | my] * F y.2 := by
-  rw [← tsum_probOutput_map_mul mx (fun x => view x.2) F,
-    ← tsum_probOutput_map_mul my (fun y => y.2) F]
+    ∑' x, Pr{let z ← mx}[z = x] * F (view x.2) = ∑' y, Pr{let z ← my}[z = y] * F y.2 := by
+  rw [← OracleComp.tsum_prEvent_map_mul mx (fun x => view x.2) F,
+    ← OracleComp.tsum_prEvent_map_mul my (fun y => y.2) F]
   refine tsum_congr fun z => ?_
-  rw [probOutput_def, probOutput_def, hlaw]
+  rw [hlaw.prEvent_eq (· = z)]
 
 variable (publicKey : XmssSecurity.PublicKey) (secretKey : XmssSecurity.SecretKey)
   {α S : Type} (mx : ProbComp (α × S)) (view : S → XmssSecurity.Ghost.State) (st : S)
@@ -299,9 +299,9 @@ variable (publicKey : XmssSecurity.PublicKey) (secretKey : XmssSecurity.SecretKe
 
 /-- `f1_step` of leanVM for any step with the state law of a leanVM step. -/
 theorem f1_step_of_law
-    (hlaw : 𝒟[(fun x => view x.2) <$> mx] =
-      𝒟[(fun y => y.2) <$> (XmssSecurity.Ghost.impl publicKey secretKey input).run (view st)]) :
-    ∑' x, Pr[= x | mx] * XmssSecurity.Ghost.f1 secretKey (view x.2) ≤
+    (hlaw : ((fun x => view x.2) <$> mx) =ᵈ
+      ((fun y => y.2) <$> (XmssSecurity.Ghost.impl publicKey secretKey input).run (view st))) :
+    ∑' x, Pr{let z ← mx}[z = x] * XmssSecurity.Ghost.f1 secretKey (view x.2) ≤
       XmssSecurity.Ghost.f1 secretKey (view st) +
         XmssSecurity.Ghost.cost1 secretKey input (view st) := by
   rw [tsum_view_eq mx _ view hlaw]
@@ -309,19 +309,19 @@ theorem f1_step_of_law
 
 /-- `f2_step` of leanVM for any step with the state law of a leanVM step. -/
 theorem f2_step_of_law
-    (hlaw : 𝒟[(fun x => view x.2) <$> mx] =
-      𝒟[(fun y => y.2) <$> (XmssSecurity.Ghost.impl publicKey secretKey input).run (view st)]) :
+    (hlaw : ((fun x => view x.2) <$> mx) =ᵈ
+      ((fun y => y.2) <$> (XmssSecurity.Ghost.impl publicKey secretKey input).run (view st))) :
     XmssSecurity.Ghost.f2 secretKey (view st) +
         XmssSecurity.Partner.landing * XmssSecurity.Ghost.cost1 secretKey input (view st) ≤
-      ∑' x, Pr[= x | mx] * XmssSecurity.Ghost.f2 secretKey (view x.2) := by
+      ∑' x, Pr{let z ← mx}[z = x] * XmssSecurity.Ghost.f2 secretKey (view x.2) := by
   rw [tsum_view_eq mx _ view hlaw]
   exact XmssSecurity.Ghost.f2_step publicKey secretKey input (view st)
 
 /-- `f3_step` of leanVM for any step with the state law of a leanVM step. -/
 theorem f3_step_of_law (Q : ℕ) (hQ : Q ≤ 2 ^ 127) (hinv : XmssSecurity.Ghost.Inv secretKey (view st))
-    (hlaw : 𝒟[(fun x => view x.2) <$> mx] =
-      𝒟[(fun y => y.2) <$> (XmssSecurity.Ghost.impl publicKey secretKey input).run (view st)]) :
-    ∑' x, Pr[= x | mx] * XmssSecurity.Ghost.f3 secretKey Q (view x.2) ≤
+    (hlaw : ((fun x => view x.2) <$> mx) =ᵈ
+      ((fun y => y.2) <$> (XmssSecurity.Ghost.impl publicKey secretKey input).run (view st))) :
+    ∑' x, Pr{let z ← mx}[z = x] * XmssSecurity.Ghost.f3 secretKey Q (view x.2) ≤
       XmssSecurity.Ghost.f3 secretKey Q (view st) +
         XmssSecurity.Ghost.cost3 secretKey Q input (view st) := by
   rw [tsum_view_eq mx _ view hlaw]
@@ -329,9 +329,9 @@ theorem f3_step_of_law (Q : ℕ) (hQ : Q ≤ 2 ^ 127) (hinv : XmssSecurity.Ghost
 
 /-- `f4_step` of leanVM for any step with the state law of a leanVM step. -/
 theorem f4_step_of_law
-    (hlaw : 𝒟[(fun x => view x.2) <$> mx] =
-      𝒟[(fun y => y.2) <$> (XmssSecurity.Ghost.impl publicKey secretKey input).run (view st)]) :
-    ∑' x, Pr[= x | mx] * XmssSecurity.Ghost.f4 secretKey (view x.2) ≤
+    (hlaw : ((fun x => view x.2) <$> mx) =ᵈ
+      ((fun y => y.2) <$> (XmssSecurity.Ghost.impl publicKey secretKey input).run (view st))) :
+    ∑' x, Pr{let z ← mx}[z = x] * XmssSecurity.Ghost.f4 secretKey (view x.2) ≤
       XmssSecurity.Ghost.f4 secretKey (view st) +
         XmssSecurity.Ghost.cost4 secretKey input (view st) := by
   rw [tsum_view_eq mx _ view hlaw]
@@ -371,15 +371,15 @@ def signWithBaseStep (request : XmssSecurity.SignRequest) :
 /-- The state law of the base-returning sign step is the state law of the leanVM sign step. -/
 theorem evalDist_signWithBaseStep (request : XmssSecurity.SignRequest)
     (s : XmssSecurity.Ghost.State) :
-    𝒟[(fun x => x.2) <$> (signWithBaseStep secretKey request).run s] =
-      𝒟[(fun y => y.2) <$> (XmssSecurity.Ghost.impl publicKey secretKey (.inr request)).run s] := by
+    ((fun x => x.2) <$> (signWithBaseStep secretKey request).run s) =ᵈ
+      ((fun y => y.2) <$> (XmssSecurity.Ghost.impl publicKey secretKey (.inr request)).run s) := by
   obtain ⟨⟨cache, trace⟩, k⟩ := s
   have hsign : (simulateQ XmssSecurity.romImpl
       (XmssSecurity.Concrete.scheme.sign secretKey request.leafIndex request.message)).run cache =
       (fun r => (r.1.2, r.2)) <$> (simulateQ XmssSecurity.romImpl
         (signWithBase secretKey request.leafIndex request.message)).run cache := by
     rw [← snd_signWithBase, simulateQ_map, StateT.run_map]
-  congr 1
+  refine EvalDistEq.of_eq ?_
   rw [XmssSecurity.Ghost.impl_run, XmssSecurity.Ghost.source_sign, signWithBaseStep, StateT.run_mk]
   simp only [Functor.map_map]
   erw [hsign]
@@ -393,7 +393,7 @@ theorem evalDist_signWithBaseStep (request : XmssSecurity.SignRequest)
 include publicKey in
 /-- `f1_step` of leanVM holds at the base-returning sign step. -/
 theorem f1_step_signWithBase (request : XmssSecurity.SignRequest) (s : XmssSecurity.Ghost.State) :
-    ∑' x, Pr[= x | (signWithBaseStep secretKey request).run s] * XmssSecurity.Ghost.f1 secretKey x.2 ≤
+    ∑' x, Pr{let z ← (signWithBaseStep secretKey request).run s}[z = x] * XmssSecurity.Ghost.f1 secretKey x.2 ≤
       XmssSecurity.Ghost.f1 secretKey s + XmssSecurity.Ghost.cost1 secretKey (.inr request) s :=
   f1_step_of_law publicKey secretKey _ id s (.inr request)
     (by simpa using evalDist_signWithBaseStep publicKey secretKey request s)
@@ -403,7 +403,7 @@ include publicKey in
 theorem f2_step_signWithBase (request : XmssSecurity.SignRequest) (s : XmssSecurity.Ghost.State) :
     XmssSecurity.Ghost.f2 secretKey s +
         XmssSecurity.Partner.landing * XmssSecurity.Ghost.cost1 secretKey (.inr request) s ≤
-      ∑' x, Pr[= x | (signWithBaseStep secretKey request).run s] * XmssSecurity.Ghost.f2 secretKey x.2 :=
+      ∑' x, Pr{let z ← (signWithBaseStep secretKey request).run s}[z = x] * XmssSecurity.Ghost.f2 secretKey x.2 :=
   f2_step_of_law publicKey secretKey _ id s (.inr request)
     (by simpa using evalDist_signWithBaseStep publicKey secretKey request s)
 
@@ -411,7 +411,7 @@ include publicKey in
 /-- `f3_step` of leanVM holds at the base-returning sign step. -/
 theorem f3_step_signWithBase (Q : ℕ) (hQ : Q ≤ 2 ^ 127) (request : XmssSecurity.SignRequest)
     (s : XmssSecurity.Ghost.State) (hs : XmssSecurity.Ghost.Inv secretKey s) :
-    ∑' x, Pr[= x | (signWithBaseStep secretKey request).run s] * XmssSecurity.Ghost.f3 secretKey Q x.2 ≤
+    ∑' x, Pr{let z ← (signWithBaseStep secretKey request).run s}[z = x] * XmssSecurity.Ghost.f3 secretKey Q x.2 ≤
       XmssSecurity.Ghost.f3 secretKey Q s + XmssSecurity.Ghost.cost3 secretKey Q (.inr request) s :=
   f3_step_of_law publicKey secretKey _ id s (.inr request) Q hQ hs
     (by simpa using evalDist_signWithBaseStep publicKey secretKey request s)
@@ -419,7 +419,7 @@ theorem f3_step_signWithBase (Q : ℕ) (hQ : Q ≤ 2 ^ 127) (request : XmssSecur
 include publicKey in
 /-- `f4_step` of leanVM holds at the base-returning sign step. -/
 theorem f4_step_signWithBase (request : XmssSecurity.SignRequest) (s : XmssSecurity.Ghost.State) :
-    ∑' x, Pr[= x | (signWithBaseStep secretKey request).run s] * XmssSecurity.Ghost.f4 secretKey x.2 ≤
+    ∑' x, Pr{let z ← (signWithBaseStep secretKey request).run s}[z = x] * XmssSecurity.Ghost.f4 secretKey x.2 ≤
       XmssSecurity.Ghost.f4 secretKey s + XmssSecurity.Ghost.cost4 secretKey (.inr request) s :=
   f4_step_of_law publicKey secretKey _ id s (.inr request)
     (by simpa using evalDist_signWithBaseStep publicKey secretKey request s)
@@ -443,9 +443,9 @@ abbrev ghostView (st : S × ℕ) : XmssSecurity.Ghost.State := (view st.1, st.2)
 
 /-- `f1_step` of leanVM for a step whose view has the law of a leanVM step at any count. -/
 theorem f1_step_of_viewLaw
-    (hlaw : 𝒟[(fun x => view x.2.1) <$> mx] =
-      𝒟[(fun y => y.2.1) <$> (XmssSecurity.Ghost.impl publicKey secretKey input).run (view st.1, k)]) :
-    ∑' x, Pr[= x | mx] * XmssSecurity.Ghost.f1 secretKey (ghostView view x.2) ≤
+    (hlaw : ((fun x => view x.2.1) <$> mx) =ᵈ
+      ((fun y => y.2.1) <$> (XmssSecurity.Ghost.impl publicKey secretKey input).run (view st.1, k))) :
+    ∑' x, Pr{let z ← mx}[z = x] * XmssSecurity.Ghost.f1 secretKey (ghostView view x.2) ≤
       XmssSecurity.Ghost.f1 secretKey (ghostView view st) +
         XmssSecurity.Ghost.cost1 secretKey input (ghostView view st) := by
   have h := tsum_map_eq mx ((XmssSecurity.Ghost.impl publicKey secretKey input).run (view st.1, k))
@@ -455,11 +455,11 @@ theorem f1_step_of_viewLaw
 
 /-- `f2_step` of leanVM for a step whose view has the law of a leanVM step at any count. -/
 theorem f2_step_of_viewLaw
-    (hlaw : 𝒟[(fun x => view x.2.1) <$> mx] =
-      𝒟[(fun y => y.2.1) <$> (XmssSecurity.Ghost.impl publicKey secretKey input).run (view st.1, k)]) :
+    (hlaw : ((fun x => view x.2.1) <$> mx) =ᵈ
+      ((fun y => y.2.1) <$> (XmssSecurity.Ghost.impl publicKey secretKey input).run (view st.1, k))) :
     XmssSecurity.Ghost.f2 secretKey (ghostView view st) +
         XmssSecurity.Partner.landing * XmssSecurity.Ghost.cost1 secretKey input (ghostView view st) ≤
-      ∑' x, Pr[= x | mx] * XmssSecurity.Ghost.f2 secretKey (ghostView view x.2) := by
+      ∑' x, Pr{let z ← mx}[z = x] * XmssSecurity.Ghost.f2 secretKey (ghostView view x.2) := by
   have h := tsum_map_eq mx ((XmssSecurity.Ghost.impl publicKey secretKey input).run (view st.1, k))
     (fun x => view x.2.1) (fun y => y.2.1) hlaw
     (fun c => XmssSecurity.Ghost.f2 secretKey (c, 0))
@@ -467,9 +467,9 @@ theorem f2_step_of_viewLaw
 
 /-- `f4_step` of leanVM for a step whose view has the law of a leanVM step at any count. -/
 theorem f4_step_of_viewLaw
-    (hlaw : 𝒟[(fun x => view x.2.1) <$> mx] =
-      𝒟[(fun y => y.2.1) <$> (XmssSecurity.Ghost.impl publicKey secretKey input).run (view st.1, k)]) :
-    ∑' x, Pr[= x | mx] * XmssSecurity.Ghost.f4 secretKey (ghostView view x.2) ≤
+    (hlaw : ((fun x => view x.2.1) <$> mx) =ᵈ
+      ((fun y => y.2.1) <$> (XmssSecurity.Ghost.impl publicKey secretKey input).run (view st.1, k))) :
+    ∑' x, Pr{let z ← mx}[z = x] * XmssSecurity.Ghost.f4 secretKey (ghostView view x.2) ≤
       XmssSecurity.Ghost.f4 secretKey (ghostView view st) +
         XmssSecurity.Ghost.cost4 secretKey input (ghostView view st) := by
   have h := tsum_map_eq mx ((XmssSecurity.Ghost.impl publicKey secretKey input).run (view st.1, k))
@@ -487,7 +487,7 @@ theorem f3_step_of_counts (Q : ℕ)
         XmssSecurity.Ghost.vCount secretKey.parameter (view x.2.1).1 (view x.2.1).2 =
           XmssSecurity.Ghost.vCount secretKey.parameter (view st.1).1 (view st.1).2 ∧
         (x.2.2 = st.2 ∨ (x.2.2 = st.2 + 1 ∧ st.2 < Q))) :
-    ∑' x, Pr[= x | mx] * XmssSecurity.Ghost.f3 secretKey Q (ghostView view x.2) ≤
+    ∑' x, Pr{let z ← mx}[z = x] * XmssSecurity.Ghost.f3 secretKey Q (ghostView view x.2) ≤
       XmssSecurity.Ghost.f3 secretKey Q (ghostView view st) := by
   refine XmssSecurity.Ghost.tsum_le_of_support _ _ _ fun x hx => ?_
   obtain ⟨hn, hv, hk⟩ := hsupp x hx
@@ -564,29 +564,29 @@ theorem probEvent_ghost_lane2_le {β K T : Type} [Fintype K] [DecidableEq K] [Fi
     (hinv : ∀ t st, XmssSecurity.Ghost.Inv secretKey (ghostView view st) →
       ∀ x ∈ support ((countImpl impl p t).run st), XmssSecurity.Ghost.Inv secretKey (ghostView view x.2))
     (h1 : ∀ t st, XmssSecurity.Ghost.Inv secretKey (ghostView view st) →
-      ∑' x, Pr[= x | (countImpl impl p t).run st] * XmssSecurity.Ghost.f1 secretKey (ghostView view x.2) ≤
+      ∑' x, Pr{let z ← (countImpl impl p t).run st}[z = x] * XmssSecurity.Ghost.f1 secretKey (ghostView view x.2) ≤
         XmssSecurity.Ghost.f1 secretKey (ghostView view st) + cost1 t st)
     (h2 : ∀ t st, XmssSecurity.Ghost.Inv secretKey (ghostView view st) →
       XmssSecurity.Ghost.f2 secretKey (ghostView view st) + XmssSecurity.Partner.landing * cost1 t st ≤
-        ∑' x, Pr[= x | (countImpl impl p t).run st] *
+        ∑' x, Pr{let z ← (countImpl impl p t).run st}[z = x] *
           XmssSecurity.Ghost.f2 secretKey (ghostView view x.2))
     (h3 : ∀ t st, XmssSecurity.Ghost.Inv secretKey (ghostView view st) → (p t → st.2 < q) →
-      ∑' x, Pr[= x | (countImpl impl p t).run st] *
+      ∑' x, Pr{let z ← (countImpl impl p t).run st}[z = x] *
           XmssSecurity.Ghost.f3 secretKey q (ghostView view x.2) ≤
         XmssSecurity.Ghost.f3 secretKey q (ghostView view st) +
           ENNReal.ofReal (XmssSecurity.Partner.momentA XmssSecurity.Ghost.pReal q) * openC t st)
     (h4 : ∀ t st, XmssSecurity.Ghost.Inv secretKey (ghostView view st) →
-      ∑' x, Pr[= x | (countImpl impl p t).run st] * XmssSecurity.Ghost.f4 secretKey (ghostView view x.2) ≤
+      ∑' x, Pr{let z ← (countImpl impl p t).run st}[z = x] * XmssSecurity.Ghost.f4 secretKey (ghostView view x.2) ≤
         XmssSecurity.Ghost.f4 secretKey (ghostView view st) +
           ((2 ^ XmssSecurity.digestBits : ℕ) : ℝ≥0∞) * signedC t st)
     (hcost : ∀ t st, openC t st + signedC t st ≤ if p t ∧ ¬inputSide t then 1 else 0)
     (oa : OracleComp (spec + RevealSpec K T) β) (σ₀ : σ)
     (cache0 : XmssSecurity.HashSpec.QueryCache) (hview₀ : view σ₀ = (cache0, []))
     (hc0 : ∀ e y, cache0 (XmssSecurity.Partner.input secretKey.parameter e y) = none) :
-    Pr[fun r => r.2.2.2 = true ∨ (ghostEvent secretKey view r.2.1 ∧ r.2.1.2 ≤ q) |
-      $ᵗ (K → T) >>= fun s =>
+    Pr{let r ←
+      ($ᵗ (K → T) >>= fun s =>
         (simulateQ (cappedHybrid impl inputSide p keyOf point q s) oa).run
-          ((σ₀, 0), fun _ => none, false)] ≤ q * (Fintype.card T : ℝ≥0∞)⁻¹ := by
+          ((σ₀, 0), fun _ => none, false))}[r.2.2.2 = true ∨ (ghostEvent secretKey view r.2.1 ∧ r.2.1.2 ≤ q)] ≤ q * (Fintype.card T : ℝ≥0∞)⁻¹ := by
   have hN : (Fintype.card T : ℝ≥0∞) = ((2 ^ XmssSecurity.digestBits : ℕ) : ℝ≥0∞) := by
     rw [hcard]
   have hst₀ : ghostView view (σ₀, 0) = ((cache0, []), 0) := by simp [ghostView, hview₀]

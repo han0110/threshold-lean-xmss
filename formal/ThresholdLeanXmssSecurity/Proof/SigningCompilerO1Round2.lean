@@ -20,7 +20,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Slack
 - `step_round2` is the step contract of round 2.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Round2
@@ -151,6 +151,7 @@ theorem real_round2 (top : TopTree) (i : C.Party) (J : C.Quorum) (e : KeyIndex) 
         refine bind_congr fun own => ?_
         rw [StateT.run_bind]
         simp only [StateT.run_lift, bind_assoc, pure_bind]
+        rw [map_eq_bind_pure_comp]
         refine bind_congr fun v => ?_
         rcases v with _ | v <;> rfl
   change (fun z => (z.1.1, (z.1.2, z.2))) <$> (simulateQ (realImpl x (gOf s pads u) rest)
@@ -254,7 +255,7 @@ theorem record_mid (top : TopTree) (sig : TsigState C) (e : KeyIndex) (message :
 at a key with `t` signers, and runs the chain part of the signer. -/
 theorem chain_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)
     (sigCore sigTime : TsigState C) (atThreshold : Bool) (i : C.Party) (J : C.Quorum)
-    (e : KeyIndex) (message : Message) (l : ChainIndex) (d : Digit) (dtree : DeferredBottomTree)
+    (e : KeyIndex) (message : Message) (l : ChainIndex) (d : WinternitzDigit) (dtree : DeferredBottomTree)
     (receipt : SigningGuessProof.Round2Receipt C) (hkey : receipt.key = e)
     (hbound : sigTime.bound e = some receipt.message) (henc : receipt.encoding l = d)
     (htime : sigTime.bound = sigCore.bound)
@@ -336,13 +337,13 @@ theorem chains_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
     (hrun : SigningGuessProof.ReceiptRuns prims x top (realLog a) receipt)
     (ra : (Fin n → Option Digest) × RealState C)
     (hra : ra ∈ support ((simulateQ (realWorld prims x s pads u rest)
-      (Concrete.sequenceFin fun j => if (encoding (g j)).val < chainLength - 1 then
+      (OverPermutation.sequenceFin fun j => if (encoding (g j)).val < chainLength - 1 then
         some <$> (SigningJointEagerProof.dealtOf x top).part i J
           (.chain bottomLayer e (g j) (encoding (g j))) message
       else pure none)).run a))
     (rb : ((Fin n → Option Digest) × SourceStateO1 C) × CompState C)
     (hrb : rb ∈ support (runXO1 (compBackend x q s pads u rest noise)
-      (Concrete.sequenceFin fun j => if (encoding (g j)).val < chainLength - 1 then
+      (OverPermutation.sequenceFin fun j => if (encoding (g j)).val < chainLength - 1 then
         some <$> chainX prims x atThreshold i J message (.chain bottomLayer e (g j) (encoding (g j)))
       else pure none) b.1 b.2)) :
     RealStop q ra.2 ∨ Stop rb.2 ∨
@@ -353,15 +354,15 @@ theorem chains_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
         rb.1.2.base.trees = b.1.base.trees ∧ realLog a ≤ realLog ra.2) := by
   induction n generalizing a b with
   | zero =>
-    simp only [Concrete.sequenceFin, simulateQ_pure, StateT.run_pure, mem_support_pure_iff] at hra
-    simp only [Concrete.sequenceFin, SigningCompilerO1ChainRelease.runXO1_pure,
+    simp only [OverPermutation.sequenceFin, simulateQ_pure, StateT.run_pure, mem_support_pure_iff] at hra
+    simp only [OverPermutation.sequenceFin, SigningCompilerO1ChainRelease.runXO1_pure,
       mem_support_pure_iff] at hrb
     subst hra hrb
     exact Or.inr (Or.inr ⟨funext fun j => j.elim0, hs, hcar, hmark, rfl, rfl, le_rfl⟩)
   | succ n ih =>
-    simp only [Concrete.sequenceFin, simulateQ_bind, simulateQ_pure, StateT.run_bind,
+    simp only [OverPermutation.sequenceFin, simulateQ_bind, simulateQ_pure, StateT.run_bind,
       StateT.run_pure, mem_support_bind_iff, mem_support_pure_iff] at hra
-    simp only [Concrete.sequenceFin, SigningCompilerO1ChainRelease.runXO1_bind,
+    simp only [OverPermutation.sequenceFin, SigningCompilerO1ChainRelease.runXO1_bind,
       SigningCompilerO1ChainRelease.runXO1_pure, mem_support_bind_iff, mem_support_pure_iff] at hrb
     obtain ⟨ra1, hra1, ra2, hra2, rfl⟩ := hra
     obtain ⟨rb1, hrb1, rb2, hrb2, rfl⟩ := hrb
@@ -419,7 +420,7 @@ timing state widened to the record state. Then the compiler releases the key at 
 both sides append the release record. -/
 theorem tail_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)
     (sig st0 : TsigState C) (i : C.Party) (J : C.Quorum) (e : KeyIndex) (message : Message)
-    (dtree : DeferredBottomTree) (ρ : Digest) (randomness : Randomness) (encoding : Encoding)
+    (dtree : DeferredBottomTree) (ρ : Digest) (randomness : Randomizer) (encoding : Encoding)
     (a : RealState C) (b : SourceStateO1 C × CompState C)
     (hs : SyncIn prims x s pads u rest noise top ((sig, a.1.2.1.2), a.1.2.2)
       ((sig, a.1.2.1.2), a.1.2.2) a b)
@@ -432,13 +433,13 @@ theorem tail_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
       (some (randomness, encoding)))
     (ra : (ChainIndex → Option Digest) × RealState C)
     (hra : ra ∈ support ((simulateQ (realWorld prims x s pads u rest)
-      (Concrete.sequenceFin fun l => if (encoding l).val < chainLength - 1 then
+      (OverPermutation.sequenceFin fun l => if (encoding l).val < chainLength - 1 then
         some <$> (SigningJointEagerProof.dealtOf x top).part i J
           (.chain bottomLayer e l (encoding l)) message
       else pure none)).run a))
     (rb1 : ((ChainIndex → Option Digest) × SourceStateO1 C) × CompState C)
     (hrb1 : rb1 ∈ support (runXO1 (compBackend x q s pads u rest noise)
-      (Concrete.sequenceFin fun l => if (encoding l).val < chainLength - 1 then
+      (OverPermutation.sequenceFin fun l => if (encoding l).val < chainLength - 1 then
         some <$> chainX prims x (roundTwoReleased st0 e message i) i J message
           (.chain bottomLayer e l (encoding l))
       else pure none) b.1 b.2))

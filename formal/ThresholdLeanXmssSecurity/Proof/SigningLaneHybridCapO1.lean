@@ -12,7 +12,7 @@ source and the unchanged capped backend. `laneTraceCap_of_compilerO1` derives th
 original cap from this coupling and the unchanged local potential step.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 
 noncomputable section
 
@@ -24,7 +24,7 @@ attribute [local instance] Classical.propDecidable
 /-- The A100 source state, plus the digits that successful round-2 calls used. -/
 structure SourceStateO1 (C : Committee) where
   base : SourceState C
-  starts : KeyIndex → ChainIndex → Finset Digit
+  starts : KeyIndex → ChainIndex → Finset WinternitzDigit
 
 abbrev SourceMO1 (C : Committee) :=
   StateT (SourceStateO1 C) (OracleComp (DeferredSpec C + RevealSpec HiddenKey Digest))
@@ -39,10 +39,10 @@ def liftBase {α : Type} (oa : SourceM C α) : SourceMO1 C α :=
 abbrev roundTwoReleased (st : TsigState C) (e : KeyIndex) (message : Message) (i : C.Party) : Bool :=
   decide (C.t ≤ (signersAt { st with released := st.released ++ [(e, message, i)] } e message).card)
 
-def firstStart (S : Finset Digit) : Option Digit :=
+def firstStart (S : Finset WinternitzDigit) : Option WinternitzDigit :=
   (List.finRange chainLength).find? fun d => decide (d ∈ S)
 
-def recordStart (e : KeyIndex) (l : ChainIndex) (pos : Digit) : SourceMO1 C Unit :=
+def recordStart (e : KeyIndex) (l : ChainIndex) (pos : WinternitzDigit) : SourceMO1 C Unit :=
   modify fun st =>
     { st with starts :=
         Function.update st.starts e (Function.update (st.starts e) l (insert pos (st.starts e l))) }
@@ -63,7 +63,7 @@ def crossedKeys (old new : TsigState C) : List KeyIndex :=
 /-- Q at every chain of key `e`, each from its smallest stored digit. -/
 def sourceReleaseKey (P : PublicParameter) (seeds : C.Term → HashOutput)
     (e : KeyIndex) : SourceMO1 C Unit := do
-  let _ ← (List.finRange numChains).mapM fun l => sourceReleaseCovered P seeds e l
+  let _ ← (List.finRange chainCount).mapM fun l => sourceReleaseCovered P seeds e l
   pure ()
 
 /-- The `cpk` values of the real ceremony output of tree `bi`, which read the first commitment job
@@ -129,7 +129,7 @@ def sourceGameO1 (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) :
     modify fun (s : SourceState C) => { s with candidates :=
       s.candidates ++ SigningGuessLinkProof.callCandidates x.1 st.signing st.exposed input }
     pure value : SourceM C HashOutput)
-  let verified ← simulateQ verifyImpl (Concrete.verify ⟨top.root, x.1⟩ forgery.message forgery.signature)
+  let verified ← simulateQ verifyImpl (Verification.verifyWithHash ⟨top.root, x.1⟩ forgery.message forgery.signature)
   let fresh ← if (signersAt st.signing forgery.signature.leafIndex forgery.message).card < C.t then
     pure true else do
       let honest ← liftBase (sourceHonestSignature prims x top forgery.signature.leafIndex forgery.message)
@@ -158,12 +158,12 @@ def CompilerCouplingO1 (prims : Primitives) : Prop :=
     x ∈ support (TprfSecurityProof.keyGen3 (C := C)) →
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
     (∀ r ∈ support (runSigningWorld prims (gameAfter A x)), r.2 ≤ q) → q < 2 ^ 127 →
-    Pr[fun z => SigningLaneUnionProof.NoFlag (SigningLaneUnionProof.observed z) ∧
+    Pr{let z ←
+      SigningLaneUnionProof.traceRun prims A x}[SigningLaneUnionProof.NoFlag (SigningLaneUnionProof.observed z) ∧
       SigningLaneUnionProof.NotChargedLogged prims x (SigningLaneUnionProof.observed z) ∧
       (SigningLaneUnionProof.LoggedInputHit prims x (SigningLaneUnionProof.observed z) ∨
-        SigningLaneUnionProof.StaleBaseAt z ∨ SigningLaneUnionProof.GhostAt x z) |
-      SigningLaneUnionProof.traceRun prims A x] ≤
-        Pr[fun r => r.2.2.2 = true ∨ compilerEvent x.1 q r.2.1 | compilerRunO1 prims A x q]
+        SigningLaneUnionProof.StaleBaseAt z ∨ SigningLaneUnionProof.GhostAt x z)] ≤
+        Pr{let r ← compilerRunO1 prims A x q}[r.2.2.2 = true ∨ compilerEvent x.1 q r.2.1]
 
 theorem laneTraceCap_of_compilerO1 (prims : Primitives)
     (hstep : CompilerPotentialStep (C := C)) (hcouple : CompilerCouplingO1 (C := C) prims) :

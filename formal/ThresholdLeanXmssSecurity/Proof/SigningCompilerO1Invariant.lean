@@ -2,7 +2,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningLaneHybridCapO1
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerCoupling
 
 /-! # Coalition-indexed release invariants for the corrected O1 source -/
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Invariant
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -19,7 +19,7 @@ def BottomDone (seeds : C.Term → HashOutput) (s : HiddenKey → Digest)
   PointDone seeds data (.chain bottomLayer e l (chainStepDigit pos))
     (bottomReleaseTarget s data e l pos)
 
-def Covered (starts : KeyIndex → ChainIndex → Finset Digit)
+def Covered (starts : KeyIndex → ChainIndex → Finset WinternitzDigit)
     (e : KeyIndex) (l : ChainIndex) (pos : XmssSecurity.ChainStep) : Prop :=
   ∃ d ∈ starts e l, d.val ≤ pos.val
 

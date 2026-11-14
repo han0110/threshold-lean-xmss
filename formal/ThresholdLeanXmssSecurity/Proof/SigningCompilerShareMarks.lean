@@ -10,7 +10,7 @@ The source invariants are a bounded X port of SourceKeeps; query syntax follows
 SigningCompilerShareSource. Support transport uses VCV-io's stateful inclusion.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerShare.Marks
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -64,9 +64,12 @@ theorem bind {oa : SourceMX C α} {f : α → SourceMX C β}
 theorem lift {oa : OracleComp (SpecX C) α} (h : Queries NoMark oa) :
     Quiet (C := C) (liftM oa) := by
   intro st
+  have hrun : (liftM oa : SourceMX C α).run st = (fun a => (a, st)) <$> oa := by
+    rw [map_eq_bind_pure_comp]
+    rfl
+  rw [hrun]
   refine ⟨h.map (fun a => (a, st)), ?_⟩
   intro r hr
-  change r ∈ support ((fun a => (a, st)) <$> oa) at hr
   obtain ⟨a, _, rfl⟩ := mem_support_map_peel _ _ hr
   rfl
 theorem map (f : α → β) {oa : SourceMX C α} (h : Quiet oa) : Quiet (f <$> oa) := by
@@ -80,7 +83,7 @@ theorem mapM (xs : List α) (f : α → SourceMX C β)
       exact (h a (List.mem_cons_self ..)).bind fun b =>
         (ih fun a ha => h a (List.mem_cons_of_mem _ ha)).bind fun bs => pure (b :: bs)
 theorem sequenceFin {n : ℕ} (f : Fin n → SourceMX C α) (h : ∀ a, Quiet (f a)) :
-    Quiet (Concrete.sequenceFin f) := by
+    Quiet (OverPermutation.sequenceFin f) := by
   induction n with
   | zero => exact pure _
   | succ n ih =>
@@ -158,7 +161,7 @@ local macro "quiet_step" : tactic => `(tactic|
 
 @[simp] theorem quiet_sourceBackendX (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : DeferredQuery C) : Quiet (sourceBackendX P seeds q) := by
-  cases q <;> simp only [sourceBackendX]
+  cases q <;> simp only [sourceBackendX.eq_def]
   all_goals first | with_reducible apply quiet_sourceHashX | with_reducible apply quiet_sourcePendingX |
     with_reducible apply quiet_sourceVirtualX | exact quiet_deferred _
 
@@ -177,12 +180,12 @@ local macro "quiet_step" : tactic => `(tactic|
   repeat' first | with_reducible apply quiet_sourceVirtualX | with_reducible apply quiet_sourcePendingX | quiet_step
 
 @[simp] theorem quiet_sourceTopValueX (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (b : XmssSecurity.TopIndex) (l : ChainIndex) (p : Digit) : Quiet (sourceTopValueX P seeds b l p) := by
+    (b : XmssSecurity.TopIndex) (l : ChainIndex) (p : WinternitzDigit) : Quiet (sourceTopValueX P seeds b l p) := by
   unfold sourceTopValueX
   repeat' first | with_reducible apply quiet_sourceVirtualX | with_reducible apply quiet_sourcePendingX | quiet_step
 
 @[simp] theorem quiet_sourceTopRecoverX (P : PublicParameter) (b : XmssSecurity.TopIndex)
-    (l : ChainIndex) (p : Digit) (initial : DeferredDigest) :
+    (l : ChainIndex) (p : WinternitzDigit) (initial : DeferredDigest) :
     Quiet (sourceTopRecoverX (C := C) P b l p initial) := by
   unfold sourceTopRecoverX
   repeat' first | with_reducible apply quiet_sourcePendingX | quiet_step
@@ -206,7 +209,7 @@ local macro "quiet_step" : tactic => `(tactic|
   repeat' first | with_reducible apply quiet_sourceBottomTreeX | quiet_step
 
 @[simp] theorem quiet_sourceReleaseBottomSuffixX (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (e : KeyIndex) (l : ChainIndex) (start : Digit) :
+    (e : KeyIndex) (l : ChainIndex) (start : WinternitzDigit) :
     Quiet (sourceReleaseBottomSuffixX P seeds e l start) := by
   unfold sourceReleaseBottomSuffixX
   repeat' first | with_reducible apply quiet_sourceRevealX | with_reducible apply quiet_sourcePlantX | quiet_step
@@ -470,7 +473,7 @@ theorem simulate_tagLe {α : Type} (τ : CPoint → SigningShareLazy.Digest)
 Port of current VCVio StateT/Basic:360; the pinned version uses SetM lifts. -/
 theorem mem_support_of_simulate_run {ι α σ : Type} {spec : OracleSpec ι}
     {n : Type → Type} [Monad n] [LawfulMonad n]
-    [MonadLiftT n SetM] [LawfulMonadLiftT n SetM]
+    [MonadAttach n] [ExactMonadAttach n]
     (impl : QueryImpl spec (StateT σ n)) (oa : OracleComp spec α) (s : σ)
     {z : α × σ} (hz : z ∈ support ((simulateQ impl oa).run s)) : z.1 ∈ support oa := by
   apply support_simulateQ_run'_subset impl oa s

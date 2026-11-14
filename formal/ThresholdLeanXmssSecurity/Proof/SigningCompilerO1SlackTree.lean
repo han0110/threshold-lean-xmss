@@ -12,7 +12,7 @@ The reveal of a stored signature value keeps the linked invariant. The release o
 keeps the signing state, and its start point is cached after the release.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1SlackTree
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -27,7 +27,7 @@ set_option linter.constructorNameAsVariable false
 
 section Steps
 variable (P : PublicParameter) (seeds : C.Term → HashOutput) (q : ℕ) (s : HiddenKey → Digest)
-  (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset Digit)
+  (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset WinternitzDigit)
 
 theorem completePrf_top_slackO1 (hinj : Function.Injective seeds) (b : XmssSecurity.TopIndex)
     (kind : Option ChainIndex) (source : SourceState C) (backend : CappedCompilerState C)
@@ -83,7 +83,7 @@ theorem sourceTopCompletion_slackO1 (hinj : Function.Injective seeds)
 
 set_option backward.isDefEq.respectTransparency false in
 theorem sourceTopStartCompletion_base (hinj : Function.Injective seeds)
-    (b : XmssSecurity.TopIndex) (l : ChainIndex) (start : Digit)
+    (b : XmssSecurity.TopIndex) (l : ChainIndex) (start : WinternitzDigit)
     (source : SourceState C) (backend : CappedCompilerState C)
     (h : BaseInvariant seeds s sig starts source backend)
     (r : (Unit × SourceState C) × CappedCompilerState C)
@@ -167,7 +167,7 @@ theorem sourceReturnTree_base (hinj : Function.Injective seeds)
     simp [topLayer, bottomLayer] at hx
   have hcached : PrfPointCached seeds opening.2.1.1.data (.randomizer topLayer (topKey b)) :=
     fun T => Option.ne_none_iff_exists'.mpr (ho.2.2.2.1 T)
-  refine ⟨runSource_sequenceFin_inv P seeds q s (BaseInvariant seeds s sig starts) numChains
+  refine ⟨runSource_sequenceFin_inv P seeds q s (BaseInvariant seeds s sig starts) chainCount
     (sourceReturnedChain P seeds b tree)
     (fun l st backend hb a ha => sourceReturnedChain_base P seeds q s sig starts hinj b tree l
       (hshape l) st backend hb a ha) planted.1.2 planted.2 hp values hvalues, ?_⟩
@@ -187,7 +187,7 @@ theorem sourceRevealDigest_linked (value : DeferredDigest) (hv : NoBottomOpening
 
 /-- The suffix release makes its start point readable. -/
 theorem sourceReleaseBottomSuffix_readO1 (hinj : Function.Injective seeds)
-    (e : KeyIndex) (l : ChainIndex) (start : Digit) (hstart : start.val < 3)
+    (e : KeyIndex) (l : ChainIndex) (start : WinternitzDigit) (hstart : start.val < 3)
     (source : SourceState C) (backend : CappedCompilerState C)
     (h : LinkedInvariant seeds s sig starts source backend)
     (r : (Unit × SourceState C) × CappedCompilerState C)

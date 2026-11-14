@@ -2,7 +2,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerSyncChain
 
 /-! # Monotonicity of compiler virtual rows and pending domains -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerSyncRows
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -193,12 +193,12 @@ theorem ordinaryT_rows (x : Keys3 C)
       (ordinary_grows x.1 x.2.1 q s pads t st r hr).2
   cases t with
   | inr k =>
-    simp only [ordinaryT, ordinaryRaw, resolvePrivateTable_lift] at hr
+    simp only [ordinaryT, ordinaryRaw.eq_def, resolvePrivateTable_lift] at hr
     exact plain _ r hr
   | inl t =>
     cases t with
     | hash input =>
-      simp only [ordinaryT, ordinaryRaw] at hr
+      simp only [ordinaryT, ordinaryRaw.eq_def] at hr
       cases hz : restRoute x.2.1 x.2.2 input with
       | some z =>
         simp only [hz] at hr
@@ -211,10 +211,10 @@ theorem ordinaryT_rows (x : Keys3 C)
       | bottom e l p => exact freshPendingT_rows noise rest _ st r hr
       | top b l p => exact freshPendingT_rows noise rest _ st r hr
       | _ =>
-        simp only [ordinaryT, ordinaryRaw, resolvePrivateTable_lift] at hr
+        simp only [ordinaryT, ordinaryRaw.eq_def, resolvePrivateTable_lift] at hr
         exact plain _ r hr
     | _ =>
-      simp only [ordinaryT, ordinaryRaw, resolvePrivateTable_lift] at hr
+      simp only [ordinaryT, ordinaryRaw.eq_def, resolvePrivateTable_lift] at hr
       exact plain _ r hr
 
 /-- No query of the tagged backend removes an allocated row or pending entry. -/

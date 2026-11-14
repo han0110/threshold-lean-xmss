@@ -13,7 +13,7 @@ The lemmas are the lemmas of `SigningCompilerShare.Marks` for the O1 program. Th
 answer of a tree request goes through `patchTree`. This map makes no query and sets no mark.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Marks
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -82,7 +82,7 @@ theorem mapM (xs : List α) (f : α → SourceMXO1 C β)
         (ih fun a ha => h a (List.mem_cons_of_mem _ ha)).bind fun bs => pure (b :: bs)
 
 theorem sequenceFin {n : ℕ} (f : Fin n → SourceMXO1 C α) (h : ∀ a, QuietO1 (f a)) :
-    QuietO1 (Concrete.sequenceFin f) := by
+    QuietO1 (OverPermutation.sequenceFin f) := by
   induction n with
   | zero => exact pure _
   | succ n ih =>
@@ -131,7 +131,7 @@ local macro "quiet_step" : tactic => `(tactic|
     | split
     | (dsimp only; split))
 
-theorem quiet_recordStartX (e : KeyIndex) (l : ChainIndex) (pos : Digit) :
+theorem quiet_recordStartX (e : KeyIndex) (l : ChainIndex) (pos : WinternitzDigit) :
     QuietO1 (recordStartX (C := C) e l pos) :=
   QuietO1.modify _ fun _ => rfl
 

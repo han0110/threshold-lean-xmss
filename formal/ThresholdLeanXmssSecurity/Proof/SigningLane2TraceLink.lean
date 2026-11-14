@@ -11,7 +11,7 @@ with the same selected input, or a stale base. The selected input is in the entr
 initial cache; its partner yields leanVM’s pre-signing or post-signing ghost event.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 
 namespace ThresholdLeanXmssSecurity.SigningLane2TraceLinkProof
@@ -34,7 +34,7 @@ def EntryBases (seeds : C.Term → HashOutput) (P : PublicParameter) (cache : Ha
     SigningGuessProof.RandomizerCached seeds cache entry.request.leafIndex ∧
     ∃ answer, cache (.hash (randomizerInput P bottomLayer entry.request.leafIndex
       (SigningGuessProof.cachedRandomizer seeds cache entry.request.leafIndex)
-      (bytesLE 32 entry.request.message))) = some answer
+      (littleEndianBytes 32 entry.request.message))) = some answer
 
 /-- The same entry provenance holds after cache extension and compatible message binding. -/
 theorem EntryBases.mono {seeds : C.Term → HashOutput} {P : PublicParameter}
@@ -53,7 +53,7 @@ theorem fresh_base_not_mem (seeds : C.Term → HashOutput) (P : PublicParameter)
     (h : EntryBases seeds P cache state trace) (e : KeyIndex) (message : Message)
     (hb : state.bound e = some message)
     (hf : cache (.hash (randomizerInput P bottomLayer e
-      (SigningGuessProof.cachedRandomizer seeds cache e) (bytesLE 32 message))) = none) :
+      (SigningGuessProof.cachedRandomizer seeds cache e) (littleEndianBytes 32 message))) = none) :
     e ∉ trace.leafIndices := by
   intro he
   obtain ⟨entry, hentry, hkey⟩ := List.mem_map.mp he
@@ -348,15 +348,15 @@ theorem keyed_valid_cached (keyOf : HashInput → Option KeyIndex) (input : Hash
 
 /-- A successful unsigned search that installs no target selects an input cached before the search. -/
 theorem grind_unsigned_cached (P : PublicParameter) (e : KeyIndex) (message : Message)
-    (base : Randomness) : ∀ attempts trial (s : TrialState C),
+    (base : Randomizer) : ∀ attempts trial (s : TrialState C),
     SeenCached s.1.1 s.1.2 →
     s.1.2.state.signed e = none → ∀ r,
     r ∈ support ((simulateQ (keyedSplitOracle (XmssSecurity.encodingInputLeafIndex? P))
       (simulateQ (fun input => query (spec := Query C →ₒ HashOutput) (.hash input))
-        (grind P bottomLayer e (bytesLE 32 message) base attempts trial))).run s) →
+        (grind P bottomLayer e (littleEndianBytes 32 message) base attempts trial))).run s) →
     r.2.1.2.state.signed e = none → ∀ randomness encoding, r.1 = some (randomness, encoding) →
     ∃ answer, s.1.1 (.hash (tweakableHashInput P (.message bottomLayer e)
-      (bytesLE 32 message ++ bytesLE 16 randomness))) = some answer ∧
+      (littleEndianBytes 32 message ++ littleEndianBytes 16 randomness))) = some answer ∧
       Codeword.decode (truncateHash answer) = some encoding := by
   intro attempts
   induction attempts with
@@ -367,7 +367,8 @@ theorem grind_unsigned_cached (P : PublicParameter) (e : KeyIndex) (message : Me
     cases hout
   | succ n ih =>
     intro trial s hinv hs r hr hn randomness encoding hout
-    simp [grind, Concrete.messageDigest, Concrete.tweakableHash, Concrete.oracleHash] at hr
+    simp [grind, Verification.messageDigestWithHash, Verification.tweakableHashWithHash, Verification.thWithHash,
+      Verification.oracleHashWithHash] at hr
     obtain ⟨answer, cache, monitor, flags, hquery, hr⟩ := hr
     have hk := SigningLane2BridgeProof.encodingInputLeafIndex?_messageInput P e message
       (base + BitVec.ofNat digestBits trial)
@@ -399,10 +400,11 @@ theorem grind_unsigned_cached (P : PublicParameter) (e : KeyIndex) (message : Me
       dsimp only at hselected
       refine ⟨selectedAnswer, ?_, hdecode⟩
       by_cases he : Query.hash (C := C) (tweakableHashInput P (.message bottomLayer e)
-          (bytesLE 32 message ++ bytesLE 16 randomness)) =
+          (littleEndianBytes 32 message ++ littleEndianBytes 16 randomness)) =
           .hash (tweakableHashInput P (.message bottomLayer e)
-            (bytesLE 32 message ++ bytesLE 16 (base + BitVec.ofNat digestBits trial)))
-      · rw [he, hrandom.2.1] at hselected
+            (littleEndianBytes 32 message ++ littleEndianBytes 16 (base + BitVec.ofNat digestBits trial)))
+      · rw [he] at hselected
+        erw [hrandom.2.1] at hselected
         have ho' := Option.some.inj hselected
         rw [← ho', hdec] at hdecode
         cases hdecode
@@ -437,11 +439,11 @@ theorem keyed_flag_invalid (keyOf : HashInput → Option KeyIndex) (input : Hash
   simp [cachedTrialAt, cachedTrial, hv]
 
 /-- A grind raising a flag raises its own key's flag at its successful stopping trial. -/
-theorem grind_raised (P : PublicParameter) (key : KeyIndex) (message : Message) (base : Randomness) :
+theorem grind_raised (P : PublicParameter) (key : KeyIndex) (message : Message) (base : Randomizer) :
     ∀ attempts trial (s : TrialState C) r,
     r ∈ support ((simulateQ (keyedSplitOracle (XmssSecurity.encodingInputLeafIndex? P))
       (simulateQ (fun input => query (spec := Query C →ₒ HashOutput) (.hash input))
-        (grind P bottomLayer key (bytesLE 32 message) base attempts trial))).run s) →
+        (grind P bottomLayer key (littleEndianBytes 32 message) base attempts trial))).run s) →
     ∀ e, s.2 e = false → r.2.2 e = true → key = e ∧
       ∃ randomness encoding, r.1 = some (randomness, encoding) ∧ r.2.1.2.state.signed e = none := by
   intro attempts
@@ -453,7 +455,8 @@ theorem grind_raised (P : PublicParameter) (key : KeyIndex) (message : Message) 
     cases hf
   | succ n ih =>
     intro trial s r hr e hs hf
-    simp [grind, Concrete.messageDigest, Concrete.tweakableHash, Concrete.oracleHash] at hr
+    simp [grind, Verification.messageDigestWithHash, Verification.tweakableHashWithHash, Verification.thWithHash,
+      Verification.oracleHashWithHash] at hr
     obtain ⟨answer, cache, monitor, flags, hquery, hr⟩ := hr
     have hk := SigningLane2BridgeProof.encodingInputLeafIndex?_messageInput P key message
       (base + BitVec.ofNat digestBits trial)
@@ -504,11 +507,11 @@ theorem world_base_data (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (hbase : BaseCall x.1 e (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) s.2.1.1 t)
     (hbound : s.2.1.1.bound e = some message) :
     ∃ (called : (WorldSpec C).Range t × FlatJointState C) (answer : HashOutput)
-      (ground : Option (Randomness × Encoding) × TrialState C),
+      (ground : Option (Randomizer × Encoding) × TrialState C),
       called ∈ support ((carry (SigningCostProof.loggedImpl prims) t).run (s.1.1.1, s.2)) ∧
       (answer, called.2.1.1.1) ∈ support (((Query C →ₒ HashOutput).randomOracle
         (.hash (randomizerInput x.1 bottomLayer e
-          (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (bytesLE 32 message)))).run s.1.1.1.1.1) ∧
+          (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (littleEndianBytes 32 message)))).run s.1.1.1.1.1) ∧
       ground ∈ support ((simulateQ (keyedSplitOracle (XmssSecurity.encodingInputLeafIndex? x.1))
         (foundGrind x.1 e message answer)).run
           ((called.2.1.1.1, queryEntryStep (XmssSecurity.encodingInputLeafIndex? x.1)
@@ -554,10 +557,10 @@ theorem signWithBaseStep_sign_support (key : XmssSecurity.SecretKey)
 /-- A supported fresh lazy base query followed by its grind gives a supported leanVM signature. -/
 theorem raw_fresh_sign_support (prims : Primitives) (P : PublicParameter) (e : KeyIndex)
     (rho : Digest) (message : Message) (initial afterBase completed : HashCache C)
-    (answer : HashOutput) (found : Option (Randomness × Encoding))
-    (hfresh : initial (.hash (randomizerInput P bottomLayer e rho (bytesLE 32 message))) = none)
+    (answer : HashOutput) (found : Option (Randomizer × Encoding))
+    (hfresh : initial (.hash (randomizerInput P bottomLayer e rho (littleEndianBytes 32 message))) = none)
     (ha : (answer, afterBase) ∈ support (((Query C →ₒ HashOutput).randomOracle
-      (.hash (randomizerInput P bottomLayer e rho (bytesLE 32 message)))).run initial))
+      (.hash (randomizerInput P bottomLayer e rho (littleEndianBytes 32 message)))).run initial))
     (hg : (found, completed) ∈ support ((simulateQ (Query C →ₒ HashOutput).randomOracle
       (foundGrind P e message answer)).run afterBase)) :
     (signOf (laneKey P) e found, keptView IsMsg completed) ∈ support ((simulateQ XmssSecurity.romImpl
@@ -568,8 +571,8 @@ theorem raw_fresh_sign_support (prims : Primitives) (P : PublicParameter) (e : K
         keptView IsMsg initial, keptView IsMsg completed⟩]), 0))
   have hstep : result ∈ support ((SigningLane2Proof.signWithBaseStep (laneKey P) ⟨e, message⟩).run
       ((keptView IsMsg initial, []), 0)) := by
-    apply (mem_support_iff_of_evalDist_eq
-      (eagerBase_signWithBaseStep prims P rho ⟨e, message⟩ initial hfresh [] 0) result).mp
+    apply (Set.ext_iff.mp (OracleComp.support_eq_of_evalDistEq
+      (eagerBase_signWithBaseStep prims P rho ⟨e, message⟩ initial hfresh [] 0)) result).mp
     rw [support_map]
     refine ⟨((truncateHash answer, found), completed), ?_, rfl⟩
     rw [mem_support_bind_iff]
@@ -589,7 +592,7 @@ theorem world_fresh_sign_support (prims : Primitives) (x : SigningSecurityProof.
     (hbase : BaseCall x.1 e (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) s.2.1.1 t)
     (hbound : s.2.1.1.bound e = some message)
     (hfresh : s.1.1.1.1.1 (.hash (randomizerInput x.1 bottomLayer e
-      (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (bytesLE 32 message))) = none) :
+      (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (littleEndianBytes 32 message))) = none) :
     (signOf (laneKey x.1) e (cachedFound r.2.1.1.1.1.1 x.1 e
       (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) message),
       keptView IsMsg r.2.1.1.1.1.1) ∈ support ((simulateQ XmssSecurity.romImpl
@@ -602,7 +605,7 @@ theorem world_fresh_sign_support (prims : Primitives) (x : SigningSecurityProof.
   have hcache : ground.2.1.1 = r.2.1.1.1.1.1 := congrArg (fun p => p.1.1) he
   have hanswer := (randomOracle_support _ s.1.1.1.1.1 (answer, called.2.1.1.1) ha).2.1
   obtain ⟨hle, hev⟩ := randomOracle_run_evalTh
-    (grind x.1 bottomLayer e (bytesLE 32 message) (truncateHash answer) randomizerAttemptLimit 0)
+    (grind x.1 bottomLayer e (littleEndianBytes 32 message) (truncateHash answer) randomizerAttemptLimit 0)
     called.2.1.1.1 (ground.1, ground.2.1.1) (by with_reducible exact hraw)
   have hpost := hle hanswer
   dsimp only at hpost
@@ -617,7 +620,7 @@ theorem world_fresh_sign_support (prims : Primitives) (x : SigningSecurityProof.
 theorem keptView_le {initial completed : HashCache C} (h : initial ≤ completed) :
     keptView IsMsg initial ≤ keptView IsMsg completed := by
   intro input answer ha
-  simp only [keptView] at ha ⊢
+  simp only [keptView, QueryCache.ofFn_apply] at ha ⊢
   split_ifs at ha ⊢ with hi
   exact h ha
 
@@ -748,7 +751,7 @@ open SigningDescentProof SigningCacheProof
 
 /-- A successful final selection is the canonical cached grind at its bound message. -/
 theorem selected_cachedFound (prims : Primitives) (z : FinalState C)
-    (pair : Message × Randomness) (hs : z.selected prims = some pair) :
+    (pair : Message × Randomizer) (hs : z.selected prims = some pair) :
     z.state.bound z.key = some pair.1 ∧ ∃ encoding,
       cachedFound z.cache z.keys.1 z.key (SigningGuessProof.cachedRandomizer z.keys.2.1 z.cache z.key)
         pair.1 = some (pair.2, encoding) := by
@@ -778,7 +781,7 @@ theorem selected_cachedFound (prims : Primitives) (z : FinalState C)
 
 /-- The message-only cache view retains every encoding input. -/
 theorem keptView_encodingInput (cache : HashCache C) (P : PublicParameter) (e : KeyIndex)
-    (pair : Message × Randomness) :
+    (pair : Message × Randomizer) :
     keptView IsMsg cache (XmssSecurity.Concrete.CacheView.encodingInput P e pair) =
       thView cache (XmssSecurity.Concrete.CacheView.encodingInput P e pair) := by
   obtain ⟨message, randomness⟩ := pair
@@ -786,7 +789,7 @@ theorem keptView_encodingInput (cache : HashCache C) (P : PublicParameter) (e : 
     change IsMsg (XmssSecurity.Partner.input P e (message, randomness))
     rw [← messageInput_eq_partnerInput]
     exact byte23_msg _ _ _ _
-  simp only [keptView, if_pos hi]
+  simp only [keptView, QueryCache.ofFn_apply, if_pos hi]
   rfl
 
 /-- The final partner equality becomes a collision for a trace entry whose initial cache
@@ -797,7 +800,7 @@ theorem entry_collision_of_partner (P : PublicParameter) (cache : HashCache C)
     (ha : entry.initialCache (XmssSecurity.Concrete.CacheView.encodingInput P entry.request.leafIndex
       (entry.request.message, signature.randomness)) = some answer)
     (hle : entry.initialCache ≤ keptView IsMsg cache)
-    (other : Message × Randomness)
+    (other : Message × Randomizer)
     (hne : (entry.request.message, signature.randomness) ≠ other)
     (hvalid : XmssSecurity.TargetSum.ValidDigest (XmssSecurity.truncateHash answer))
     (heq : XmssSecurity.Concrete.CacheView.encodingHash (thView cache) P entry.request.leafIndex
@@ -900,7 +903,7 @@ theorem world_cachedFound_stable (prims : Primitives) (x : SigningSecurityProof.
   have hcache : ground.2.1.1 = r.2.1.1.1.1.1 := congrArg (fun p => p.1.1) he
   have hanswer := (randomOracle_support _ s.1.1.1.1.1 (answer, called.2.1.1.1) ha).2.1
   obtain ⟨hgrow, hev⟩ := randomOracle_run_evalTh
-    (grind x.1 bottomLayer e (bytesLE 32 message) (truncateHash answer) randomizerAttemptLimit 0)
+    (grind x.1 bottomLayer e (littleEndianBytes 32 message) (truncateHash answer) randomizerAttemptLimit 0)
     called.2.1.1.1 (ground.1, ground.2.1.1) (by with_reducible exact hraw)
   have hpost := hgrow hanswer
   dsimp only at hpost
@@ -962,14 +965,14 @@ theorem traceRun_entryStable (prims : Primitives) (A : TsigAdversary C)
 
 /-- The actual lazy base query and grind determine the cached canonical search. -/
 theorem foundGrind_cachedFound (P : PublicParameter) (e : KeyIndex) (rho : Digest) (message : Message)
-    (initial afterBase completed : HashCache C) (answer : HashOutput) (found : Option (Randomness × Encoding))
+    (initial afterBase completed : HashCache C) (answer : HashOutput) (found : Option (Randomizer × Encoding))
     (ha : (answer, afterBase) ∈ support (((Query C →ₒ HashOutput).randomOracle
-      (.hash (randomizerInput P bottomLayer e rho (bytesLE 32 message)))).run initial))
+      (.hash (randomizerInput P bottomLayer e rho (littleEndianBytes 32 message)))).run initial))
     (hg : (found, completed) ∈ support ((simulateQ (Query C →ₒ HashOutput).randomOracle
       (foundGrind P e message answer)).run afterBase)) : cachedFound completed P e rho message = found := by
   have hanswer := (randomOracle_support _ initial (answer, afterBase) ha).2.1
   obtain ⟨hle, hev⟩ := randomOracle_run_evalTh
-    (grind P bottomLayer e (bytesLE 32 message) (truncateHash answer) randomizerAttemptLimit 0)
+    (grind P bottomLayer e (littleEndianBytes 32 message) (truncateHash answer) randomizerAttemptLimit 0)
     afterBase (found, completed) (by simpa only [foundGrind] using hg)
   have hpost := hle hanswer
   dsimp only at hpost
@@ -1015,11 +1018,11 @@ theorem world_unsigned_selection (prims : Primitives) (x : SigningSecurityProof.
     (called_seenCached prims x t s hs called hc) hunsigned ground
     (by simpa only [foundGrind] using hg) (hm ▸ hn) randomness encoding hfound
   have hne : Query.hash (C := C) (tweakableHashInput x.1 (.message bottomLayer e)
-      (bytesLE 32 message ++ bytesLE 16 randomness)) ≠
+      (littleEndianBytes 32 message ++ littleEndianBytes 16 randomness)) ≠
       .hash (randomizerInput x.1 bottomLayer e
-        (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (bytesLE 32 message)) := by
+        (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (littleEndianBytes 32 message)) := by
     intro h
-    have hi := byte23_msg x.1 bottomLayer e (bytesLE 32 message ++ bytesLE 16 randomness)
+    have hi := byte23_msg x.1 bottomLayer e (littleEndianBytes 32 message ++ littleEndianBytes 16 randomness)
     rw [Query.hash.inj h] at hi
     exact not_isMsg_randomizerInput _ _ _ _ _ hi
   have hbefore := ((randomOracle_support _ s.1.1.1.1.1 (answer, called.2.1.1.1) ha).2.2 _ hne).symm.trans hselected
@@ -1120,7 +1123,7 @@ theorem world_raised_trigger (prims : Primitives) (x : SigningSecurityProof.Keys
         exact (hpure hg).elim
       | some message =>
         cases hanswer : called.2.1.1.1 (.hash (randomizerInput x.1 bottomLayer hb.choose
-            (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 hb.choose) (bytesLE 32 message))) with
+            (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 hb.choose) (littleEndianBytes 32 message))) with
         | none =>
           simp only [hbound, hanswer] at hg
           exact (hpure hg).elim

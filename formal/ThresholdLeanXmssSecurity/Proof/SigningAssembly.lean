@@ -77,7 +77,7 @@ namespace ThresholdLeanXmssSecurity
 
 namespace SigningAssemblyProof
 
-open LeanXmss ThresholdLeanXmss SigningUnchargedLoggedProof SigningFlatEagerProof
+open HashSig LeanXmss ThresholdLeanXmss SigningUnchargedLoggedProof SigningFlatEagerProof
 
 attribute [local instance] Classical.propDecidable
 
@@ -168,11 +168,11 @@ theorem win_cover (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) (w : 
 
 /-- The win without the flag of the signing core is the win of the joint run. -/
 theorem probEvent_core_eq_win (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr[fun r => r.1.2 = false ∧ r.1.1 = true | runSigningWorld prims (SigningCoreProof.flaggedAfter A x)] =
-      Pr[Win | jointRun prims A x] := by
+    Pr{let r ← runSigningWorld prims (SigningCoreProof.flaggedAfter A x)}[r.1.2 = false ∧ r.1.1 = true] =
+      Pr{let z ← jointRun prims A x}[Win z] := by
   rw [SigningDescentProof.runSigningWorld_flaggedAfter, ← SigningCostProof.loggedRun_forget,
-    ← jointRun_logged, Functor.map_map, Functor.map_map, probEvent_map]
-  refine probEvent_ext fun w _ => ?_
+    ← jointRun_logged, Functor.map_map, Functor.map_map, prEvent_map]
+  refine prEvent_congr_of_support _ _ _ fun w _ => ?_
   simp only [Function.comp_apply, Win]
   constructor
   · intro h
@@ -184,21 +184,21 @@ theorem probEvent_core_eq_win (A : TsigAdversary C) (x : SigningSecurityProof.Ke
 set_option maxRecDepth 100000 in
 /-- The win is at most the sum of the charged event, the lazy partner row and the uncharged rows. -/
 theorem probEvent_win_le_rows (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr[Win | jointRun prims A x] ≤
-      Pr[Charged prims x | jointRun prims A x] + Pr[LazyPartnerRow prims x | jointRun prims A x] +
-        Pr[UnchargedRow prims x | jointRun prims A x] := by
-  have hcover : Pr[Win | jointRun prims A x] ≤ Pr[fun w => Charged prims x w ∨ LazyPartnerRow prims x w ∨
-      UnchargedRow prims x w | jointRun prims A x] := by
-    refine probEvent_mono fun w hw hwin => ?_
+    Pr{let z ← jointRun prims A x}[Win z] ≤
+      Pr{let z ← jointRun prims A x}[Charged prims x z] + Pr{let z ← jointRun prims A x}[LazyPartnerRow prims x z] +
+        Pr{let z ← jointRun prims A x}[UnchargedRow prims x z] := by
+  have hcover : Pr{let z ← jointRun prims A x}[Win z] ≤ Pr{let w ← jointRun prims A x}[Charged prims x w ∨ LazyPartnerRow prims x w ∨
+      UnchargedRow prims x w] := by
+    refine prEvent_mono_of_support _ _ _ fun w hw hwin => ?_
     rcases win_cover prims A x w hw hwin with h | h | h | h | h
     · exact Or.inl h
     · exact Or.inr (Or.inr (Or.inl h))
     · exact Or.inr (Or.inl h)
     · exact Or.inr (Or.inr (Or.inr (Or.inl h)))
     · exact Or.inr (Or.inr (Or.inr (Or.inr h)))
-  have h1 := probEvent_or_le (jointRun prims A x) (Charged prims x)
+  have h1 := prEvent_or_le (jointRun prims A x) (Charged prims x)
     (fun w => LazyPartnerRow prims x w ∨ UnchargedRow prims x w)
-  have h2 := probEvent_or_le (jointRun prims A x) (LazyPartnerRow prims x) (UnchargedRow prims x)
+  have h2 := prEvent_or_le (jointRun prims A x) (LazyPartnerRow prims x) (UnchargedRow prims x)
   refine hcover.trans (h1.trans ?_)
   rw [add_assoc]
   exact add_le_add le_rfl h2
@@ -213,9 +213,9 @@ theorem chargedLane_bound (ρ : SigningSecurityProof.Keys3 C → KeyIndex → Di
     (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (hq : ∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q)
     (hsmall : q < 2 ^ 127) :
-    Pr[Charged prims x | jointRun prims A x] + Pr[R1HitRow | splitRunAt prims ρ A x] ≤ (q : ℝ≥0∞) / 2 ^ 128 := by
+    Pr{let z ← jointRun prims A x}[Charged prims x z] + Pr{let z ← splitRunAt prims ρ A x}[R1HitRow z] ≤ (q : ℝ≥0∞) / 2 ^ 128 := by
   obtain ⟨T, hhit⟩ := SigningGuessProof.hit_bound_structural_cost prims A q x hx hkeys hq hsmall
-  replace hhit : Pr[SigningCostProof.WinHit prims x | SigningDescentProof.exposedRun prims A x] ≤
+  replace hhit : Pr{let z ← SigningDescentProof.exposedRun prims A x}[SigningCostProof.WinHit prims x z] ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ * SigningGuessProof.sourceExpectedCost prims A x
         (SigningGuessProof.structuralHitCost x T) := hhit
   have hcost := SigningGuessProof.source_output_costs_le prims A x T q hq
@@ -228,14 +228,14 @@ theorem chargedLane_bound (ρ : SigningSecurityProof.Keys3 C → KeyIndex → Di
     funext t
     exact (SigningPartnerLinkProof.topDigest_add_bottomDigestCost x t).symm
   let run := SigningDescentProof.exposedRun prims A x
-  have h1 : Pr[Charged prims x | jointRun prims A x] = Pr[SigningGuessProof.ChargedOutput prims x | run] := by
-    change _ = Pr[_ | SigningDescentProof.exposedRun prims A x]
-    rw [← SigningGuessLinkProof.verifyRun_forget, ← jointRun_verify, Functor.map_map, probEvent_map]
+  have h1 : Pr{let z ← jointRun prims A x}[Charged prims x z] = Pr{let z ← run}[SigningGuessProof.ChargedOutput prims x z] := by
+    change _ = Pr{let z ← SigningDescentProof.exposedRun prims A x}[SigningGuessProof.ChargedOutput prims x z]
+    rw [← SigningGuessLinkProof.verifyRun_forget, ← jointRun_verify, Functor.map_map, prEvent_map]
     rfl
-  have h2 := probEvent_or_le run (SigningCostProof.WinHit prims x)
+  have h2 := prEvent_or_le run (SigningCostProof.WinHit prims x)
     (fun r => SigningGuessProof.AlternativeCommitment x.2.1 x.1 r.2.1 ∨
       ∃ key, SigningGuessProof.ResolvedTopPartner x key r.2.1)
-  have h3 := probEvent_or_le run (fun r => SigningGuessProof.AlternativeCommitment x.2.1 x.1 r.2.1)
+  have h3 := prEvent_or_le run (fun r => SigningGuessProof.AlternativeCommitment x.2.1 x.1 r.2.1)
     (fun r => ∃ key, SigningGuessProof.ResolvedTopPartner x key r.2.1)
   have hsum := add_le_add (h2.trans (add_le_add hhit (h3.trans (add_le_add
     (SigningGuessProof.alternativeCommitment_bound_source prims A x)
@@ -259,9 +259,9 @@ def PartnerTransfer (ρ : SigningSecurityProof.Keys3 C → KeyIndex → Digest) 
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
     (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) →
     q < 2 ^ 127 →
-    Pr[LazyPartnerRow prims x | jointRun prims A x] ≤
-      Pr[fun z => EagerPartner prims x z ∧ ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1 |
-        splitRunAt prims ρ A x]
+    Pr{let z ← jointRun prims A x}[LazyPartnerRow prims x z] ≤
+      Pr{let z ←
+        splitRunAt prims ρ A x}[EagerPartner prims x z ∧ ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1]
 
 /-- The crossing of the partner row. The lazy partner row is at most the hit of the R1 monitor
 (charged lane) and the lane 2 row (uncharged lane) on the split run. -/
@@ -271,8 +271,8 @@ def PartnerCrossing (ρ : SigningSecurityProof.Keys3 C → KeyIndex → Digest) 
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
     (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) →
     q < 2 ^ 127 →
-    Pr[LazyPartnerRow prims x | jointRun prims A x] ≤
-      Pr[R1HitRow | splitRunAt prims ρ A x] + Pr[CachedPartnerRow prims x | splitRunAt prims ρ A x]
+    Pr{let z ← jointRun prims A x}[LazyPartnerRow prims x z] ≤
+      Pr{let z ← splitRunAt prims ρ A x}[R1HitRow z] + Pr{let z ← splitRunAt prims ρ A x}[CachedPartnerRow prims x z]
 
 set_option maxRecDepth 100000 in
 /-- The split on the split run. A partner win without another opening of a commitment hits the R1
@@ -280,7 +280,7 @@ monitor or has a cached selection, by `R1Link`. -/
 theorem partnerCrossing_of_link (ρ : SigningSecurityProof.Keys3 C → KeyIndex → Digest)
     (hlink : R1Link prims ρ) (htransfer : PartnerTransfer prims ρ) : PartnerCrossing prims ρ := by
   intro A q x hx hkeys hq hsmall
-  refine (htransfer A q x hx hkeys hq hsmall).trans ((probEvent_mono fun z hz h => ?_).trans (probEvent_or_le _ _ _))
+  refine (htransfer A q x hx hkeys hq hsmall).trans ((prEvent_mono_of_support _ _ _ fun z hz h => ?_).trans (prEvent_or_le _ _ _))
   obtain ⟨⟨hwin, hpartner⟩, halt⟩ := h
   by_cases hcached : CachedSelection z
   · exact Or.inr ⟨⟨hwin, hpartner⟩, hcached⟩
@@ -299,7 +299,7 @@ def UnchargedLaneCap (ρ : SigningSecurityProof.Keys3 C → KeyIndex → Digest)
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
     (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) →
     q < 2 ^ 127 →
-    Pr[UnchargedRow prims x | jointRun prims A x] + Pr[CachedPartnerRow prims x | splitRunAt prims ρ A x] ≤
+    Pr{let z ← jointRun prims A x}[UnchargedRow prims x z] + Pr{let z ← splitRunAt prims ρ A x}[CachedPartnerRow prims x z] ≤
       (q : ℝ≥0∞) / 2 ^ 128
 
 /-- The constants of leanVM lane 2 at `N = 2^128`. The moment `A` is at most `N` for `q < 2^127`,

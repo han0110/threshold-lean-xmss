@@ -11,7 +11,7 @@ other part of the ceremony reads a commitment input.
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -33,30 +33,30 @@ variable (p : Query C → Prop)
 
 /-- The cache `bound` on the inputs that are not in `p` or that `record` holds. -/
 def coverCacheAt (record bound : HashCache C) : HashCache C :=
-  fun input => if p input → (record input).isSome then bound input else none
+  QueryCache.ofFn fun input => if p input → (record input).isSome then bound input else none
 
 theorem coverCacheAt_le (record bound : HashCache C) : coverCacheAt p record bound ≤ bound := by
   intro input value h
-  unfold coverCacheAt at h
+  simp only [coverCacheAt, QueryCache.ofFn_apply] at h
   split_ifs at h
   · exact h
 
 theorem record_le_coverCacheAt {record bound : HashCache C} (hle : record ≤ bound) :
     record ≤ coverCacheAt p record bound := by
   intro input value h
-  unfold coverCacheAt
+  simp only [coverCacheAt, QueryCache.ofFn_apply]
   rw [if_pos (fun _ => by simp [h])]
   exact hle h
 
 theorem coverCacheAt_irrelevant {record bound : HashCache C} {input : Query C} {value : HashOutput}
     (hrel : ¬p input) (h : bound input = some value) : coverCacheAt p record bound input = some value := by
-  unfold coverCacheAt
+  simp only [coverCacheAt, QueryCache.ofFn_apply]
   rw [if_pos (fun h' => absurd h' hrel)]
   exact h
 
 theorem isSome_of_coverCacheAt {record bound : HashCache C} {input : Query C}
     (h : (coverCacheAt p record bound input).isSome) (hrel : p input) : (record input).isSome := by
-  unfold coverCacheAt at h
+  simp only [coverCacheAt, QueryCache.ofFn_apply] at h
   split_ifs at h with hc
   · exact hc hrel
   · simp at h
@@ -72,16 +72,16 @@ include hs
 
 theorem tweakableHash_noCall (domain : HashDomain) (payload : HashInput)
     (hd : ∀ lay key, domain ≠ .message lay key) :
-    NoCall p (Concrete.tweakableHash P domain payload : OracleComp HashSpec Digest) := by
-  unfold Concrete.tweakableHash
+    NoCall p (Verification.tweakableHashWithHash P domain payload : OracleComp HashSpec Digest) := by
+  unfold Verification.tweakableHashWithHash
   exact noCall_bind _ (noCall_query _ _ (hs domain payload hd)) fun _ => noCall_pure _ _
 
 theorem chainWalk_noCall (lay : Layer) (key : KeyIndex) (chain : ChainIndex) (start steps : ℕ) (value : Digest) :
-    NoCall p (Concrete.chainWalk P lay key chain start steps value : OracleComp HashSpec Digest) := by
+    NoCall p (Verification.chainWalkWithHash P lay key chain start steps value : OracleComp HashSpec Digest) := by
   induction steps with
   | zero => exact noCall_pure _ _
   | succ steps ih =>
-    rw [Concrete.chainWalk]
+    rw [Verification.chainWalkWithHash]
     refine noCall_bind _ ih fun previous => ?_
     split_ifs
     · exact tweakableHash_noCall P p hs _ _ (fun _ _ h => by cases h)
@@ -106,13 +106,13 @@ theorem merklePath_noCall (lay : Layer) (ends : KeyIndex → ChainIndex → Dige
 
 theorem treeFold_noCall (lay : Layer) (key : KeyIndex) (path : Fin layerHeight → Digest) :
     ∀ levels value,
-      NoCall p (Concrete.treeFold P lay key path levels value : OracleComp HashSpec Digest) := by
+      NoCall p (Verification.treeFoldWithHash P lay key path levels value : OracleComp HashSpec Digest) := by
   intro levels
   induction levels with
   | zero => intro value; exact noCall_pure _ _
   | succ levels ih =>
     intro value
-    rw [Concrete.treeFold]
+    rw [Verification.treeFoldWithHash]
     refine noCall_bind _ (ih _) fun _ => ?_
     split_ifs <;> exact tweakableHash_noCall P p hs _ _ (fun _ _ h => by cases h)
 
@@ -120,35 +120,35 @@ variable (lay : Layer) (key : KeyIndex) (message : HashInput)
 
 omit hs in
 theorem messageDigest_noCall (hm : ∀ payload, ¬p (tweakableHashInput P (.message lay key) payload))
-    (randomness : Randomness) :
-    NoCall p (Concrete.messageDigest P lay key message randomness : OracleComp HashSpec Digest) := by
-  unfold Concrete.messageDigest Concrete.tweakableHash
+    (randomness : Randomizer) :
+    NoCall p (Verification.messageDigestWithHash P lay key message randomness : OracleComp HashSpec Digest) := by
+  unfold Verification.messageDigestWithHash Verification.tweakableHashWithHash
   exact noCall_bind _ (noCall_query _ _ (hm _)) fun _ => noCall_pure _ _
 
-theorem otsLeaf_noCall (randomness : Randomness) (values : ChainIndex → Digest)
-    (hmd : NoCall p (Concrete.messageDigest P lay key message randomness : OracleComp HashSpec Digest)) :
-    NoCall p (Concrete.otsLeaf P lay key message randomness values : OracleComp HashSpec _) := by
-  unfold Concrete.otsLeaf
+theorem otsLeaf_noCall (randomness : Randomizer) (values : ChainIndex → Digest)
+    (hmd : NoCall p (Verification.messageDigestWithHash P lay key message randomness : OracleComp HashSpec Digest)) :
+    NoCall p (Verification.otsLeafWithHash P lay key message randomness values : OracleComp HashSpec _) := by
+  unfold Verification.otsLeafWithHash
   refine noCall_bind _ hmd fun digest => ?_
   split
   · refine noCall_bind _ (noCall_sequenceFin _ _ fun _ => ?_) fun _ => ?_
-    · unfold Concrete.recoverChain; exact chainWalk_noCall P p hs _ _ _ _ _ _
+    · unfold Verification.recoverChainWithHash; exact chainWalk_noCall P p hs _ _ _ _ _ _
     · exact noCall_map _ _ (tweakableHash_noCall P p hs _ _ (fun _ _ h => by cases h))
   · exact noCall_pure _ _
 
 theorem layerRoot_noCall (part : LayerSignature)
-    (hmd : NoCall p (Concrete.messageDigest P lay key message part.randomness : OracleComp HashSpec Digest)) :
-    NoCall p (Concrete.layerRoot P lay key message part : OracleComp HashSpec _) := by
-  unfold Concrete.layerRoot
+    (hmd : NoCall p (Verification.messageDigestWithHash P lay key message part.randomizer : OracleComp HashSpec Digest)) :
+    NoCall p (Verification.layerRootWithHash P lay key message part : OracleComp HashSpec _) := by
+  unfold Verification.layerRootWithHash
   refine noCall_bind _ (otsLeaf_noCall P p hs lay key message _ _ hmd) fun leaf => ?_
   rcases leaf with _ | leaf
   · exact noCall_pure _ _
   · exact noCall_bind _ (treeFold_noCall P p hs _ _ _ _ _) fun _ => noCall_pure _ _
 
 omit hs in
-theorem grind_noCall (base : Randomness)
+theorem grind_noCall (base : Randomizer)
     (hmd : ∀ randomness,
-      NoCall p (Concrete.messageDigest P lay key message randomness : OracleComp HashSpec Digest)) :
+      NoCall p (Verification.messageDigestWithHash P lay key message randomness : OracleComp HashSpec Digest)) :
     ∀ attempts trial, NoCall p (grind P lay key message base attempts trial) := by
   intro attempts
   induction attempts with
@@ -183,7 +183,8 @@ theorem not_rawCommitment_tweakable (P P' : PublicParameter) (domain : HashDomai
 theorem forestHash_noCall {α : Type} (q : Query C → Prop) (oa : OracleComp HashSpec α)
     (h : NoCall (fun input => q (.hash input)) oa) :
     (SigningHitProof.forestHash (C := C) oa).IsQueryBoundP q 0 := by
-  letI : (Query C →ₒ HashOutput).IsUniformSpec := OracleSpec.IsUniformSpec.ofFintypeInhabited _
+  letI : OracleSpec.UniformAnswerMeasure (Query C →ₒ HashOutput) :=
+    OracleSpec.UniformAnswerMeasure.ofFiniteNonempty _
   rw [noCall_iff] at h
   apply h.simulateQ_of_step
   · intro input _
@@ -281,12 +282,13 @@ theorem commitmentJob_resolves (x : Keys3 C) {record : HashCache C} {units : Lis
   simp only [referenceJob, List.mapM_cons, List.mapM_nil, bind_pure_comp, map_pure]
   rw [bind_map_left]
   refine hρ.bind ?_
-  refine DeterministicSigning.Resolves.map (forestHash_resolves _ _ _ ?_) _
+  rw [map_eq_bind_pure_comp]
+  refine (forestHash_resolves _ _ _ ?_).bind (.pure _)
   exact .query (commitmentInput x.1 e ρ) answer
     (show SigningDescentProof.thView record _ = some answer from hanswer) _ _ (.pure _)
 
 set_option maxRecDepth 100000 in
-attribute [local irreducible] merkleNode merklePath grind Concrete.treeFold Concrete.chainWalk in
+attribute [local irreducible] merkleNode merklePath grind Verification.treeFoldWithHash Verification.chainWalkWithHash in
 /-- The commitment completion reads each commitment input of a bottom ceremony. -/
 theorem commitmentForest_covers_bottom (x : Keys3 C) (top : TopTree) (b : Fin (2 ^ layerHeight))
     (cache : HashCache C) (z : (List Unit × HashCache C) × HashCache C)
@@ -327,8 +329,13 @@ theorem commitmentForest_covers_bottom (x : Keys3 C) (top : TopTree) (b : Fin (2
     unfold referenceTree ceremonyOutput at hR' ⊢
     refine resolves_lift_bind ?_ ?_ _ hR'
     · intro outputs houtputs
-      obtain ⟨values, hvalues, rfl⟩ := houtputs.of_map
-      exact (resolves_mapM_lift _ _ hjob values hvalues).map some
+      beta_reduce at houtputs
+      rw [map_eq_bind_pure_comp] at houtputs
+      obtain ⟨values, hvalues, hpureInv⟩ := houtputs.of_bind
+      obtain rfl := hpureInv.pure_inv
+      beta_reduce
+      rw [map_eq_bind_pure_comp]
+      exact (resolves_mapM_lift _ _ hjob values hvalues).bind (.pure _)
     intro outputs _ v hv
     refine resolves_lift_bound _ _ ?_ hT v hv
     have hq := fun {α : Type} (oa : OracleComp HashSpec α)
@@ -341,7 +348,7 @@ theorem commitmentForest_covers_bottom (x : Keys3 C) (top : TopTree) (b : Fin (2
     refine isQueryBoundP_bind (n := 0) (m := 0)
       (hq _ (merkleNode_noCall x.1 _ (structural_not_commitment x.1) _ _ _ _)) fun root _ => ?_
     refine isQueryBoundP_bind (n := 0) (m := 0) (hq _ ?_) fun base _ => ?_
-    · unfold Concrete.oracleHash
+    · unfold Verification.oracleHashWithHash
       refine noCall_map _ _ (noCall_query _ _ fun h => ?_)
       obtain ⟨e, ρ, he⟩ := (rawCommitmentInput_hash_iff x.1 _).1 h
       exact SigningGuessProof.commitmentInput_ne_randomizerInput x.1 e _ _ ρ _ _ he

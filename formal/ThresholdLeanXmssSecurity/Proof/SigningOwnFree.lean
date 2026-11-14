@@ -13,7 +13,7 @@ such an input is never charged (`free_not_charged`).
 * A pending input at a revealed key is not charged (`pending_not_charged`).
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 
 noncomputable section
@@ -57,7 +57,7 @@ theorem dec_eq_none (P : PublicParameter) (input : HashInput)
   unfold XmssSecurity.Ghost.dec
   rw [dif_neg]
   rintro ⟨⟨e, message, randomness⟩, hy⟩
-  refine h e (bytesLE 32 message ++ bytesLE 16 randomness) ?_
+  refine h e (littleEndianBytes 32 message ++ littleEndianBytes 16 randomness) ?_
   rw [← hy]
   exact (SigningLane2BridgeProof.messageInput_eq_partnerInput P e message randomness).symm
 
@@ -80,12 +80,12 @@ theorem hiddenCandidate_leafNode (P : PublicParameter) (domain : HashDomain) (pa
   have hb : ¬∃ e l p v, tweakableHashInput P domain payload =
       XmssSecurity.Concrete.CacheView.chainInput P e l p v := by
     rintro ⟨e, l, p, v, h⟩
-    rw [SigningGuessLinkProof.chainInput_eq_bridge] at h
+    rw [SigningGuessLinkProof.chainInput_eq_bridge P e l p v] at h
     exact hchain _ _ _ (tweakableInput_injective h).1
   have ht : ¬∃ b l p v, tweakableHashInput P domain payload =
       XmssSecurity.Concrete.CacheView.topChainInput P b l p v := by
     rintro ⟨b, l, p, v, h⟩
-    rw [SigningGuessLinkProof.topChainInput_eq_bridge] at h
+    rw [SigningGuessLinkProof.topChainInput_eq_bridge P b l p v] at h
     exact hchain _ _ _ (tweakableInput_injective h).1
   simp only [hiddenCandidate, dif_neg hc, dif_neg hr, dif_neg hb, dif_neg ht]
 
@@ -146,15 +146,15 @@ theorem free_merkleNode (P : PublicParameter) (lay : Layer)
 
 /-- The top search queries free inputs only. -/
 theorem free_topGrind (P : PublicParameter) (b : Fin (2 ^ layerHeight)) (root : Digest)
-    (base : Randomness) (attempts trial : ℕ) :
+    (base : Randomizer) (attempts trial : ℕ) :
     XmssSecurity.Bridge.OnlyQueries (FreeInput P)
-      (grind P topLayer (topKey b) (bytesLE 16 root) base attempts trial) := by
+      (grind P topLayer (topKey b) (littleEndianBytes 16 root) base attempts trial) := by
   induction attempts generalizing trial with
   | zero => exact .pure _
   | succ attempts ih =>
       have hfree := free_topDigest P b (root, base + BitVec.ofNat digestBits trial)
       unfold XmssSecurity.Concrete.CacheView.topEncodingInput at hfree
-      rw [← XmssSecurity.Bridge.topMessage_input] at hfree
+      rw [← XmssSecurity.Bridge.topMessage_input P b root (base + BitVec.ofNat digestBits trial)] at hfree
       refine ((XmssSecurity.Bridge.onlyQueries_query hfree).bind fun _ => .pure _).bind fun digest => ?_
       cases Codeword.decode digest with
       | some encoding => exact .pure _

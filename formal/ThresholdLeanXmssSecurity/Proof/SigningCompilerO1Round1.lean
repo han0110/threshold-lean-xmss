@@ -18,7 +18,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1SyncHandlers
   handler into the guard and its run.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Round1
@@ -75,7 +75,8 @@ theorem backendT_bindKey (st : CompState C) (e : KeyIndex) (message : Message)
     (hf : RestFree x.2.1 st.1.1.1.1.data.cache) :
     (compBackend x q s pads u rest noise (.inl (.inl (.inl (.bindKey e message))))).run st =
       pure ((), boundState st e message) := by
-  simp only [shareBackendTagT, backendRaw, ordinaryFullRaw, ordinaryRaw, StateT.run]
+  unfold compBackend shareBackendTagT backendRaw ordinaryFullRaw ordinaryRaw
+  simp only [StateT.run]
   rw [ordinary_uncounted x.1 x.2.1 q s pads (.bindKey e message)
     (by exact not_false) (by intro p; simp)]
   simp [compilerImpl, StateT.run, splitRest, merged, withCache, boundState,
@@ -394,6 +395,8 @@ theorem real_round1 (top : TopTree) (i : C.Party) (J : C.Quorum) (e : KeyIndex) 
       rw [if_neg hg]
       simp only [StateT.run_bind, StateT.run_set, pure_bind, StateT.run_map, liftM, monadLift,
         MonadLift.monadLift, StateT.run_lift, bind_pure_comp, Functor.map_map]
+      erw [StateT.run_map, StateT.run_lift]
+      simp only [bind_pure_comp, Functor.map_map]
       rfl
   change (fun z => (z.1.1, (z.1.2, z.2))) <$> (simulateQ (realImpl x (gOf s pads u) rest)
     ((rawTraceFlatWith prims x (openingOracles x (SigningJointEagerProof.dealtOf x top))
@@ -413,6 +416,7 @@ theorem real_round1 (top : TopTree) (i : C.Party) (J : C.Quorum) (e : KeyIndex) 
       exact (id_map _).symm
     rw [hfuse]
     simp only [Functor.map_map]
+    erw [simulateQ_map, StateT.run_map, Functor.map_map]
     erw [simulateQ_map, StateT.run_map, Functor.map_map]
     rfl
 

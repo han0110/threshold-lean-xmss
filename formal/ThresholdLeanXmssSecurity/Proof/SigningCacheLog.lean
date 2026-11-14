@@ -44,7 +44,7 @@ namespace ThresholdLeanXmssSecurity
 
 namespace SigningCacheLogProof
 
-open LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof SigningHitLaneProof
+open HashSig LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof SigningHitLaneProof
 
 variable {C : Committee} (prims : Primitives)
 
@@ -58,7 +58,7 @@ def hashCall : (Σ t : (WorldSpec C).Domain, (WorldSpec C).Range t) → Option (
 
 /-- The first logged answer of `H` at each input. -/
 def logCache (log : QueryLog (WorldSpec C)) : HashCache C :=
-  fun q => ((log.filterMap hashCall).find? fun entry => entry.1 = q).map Prod.snd
+  QueryCache.ofFn fun q => ((log.filterMap hashCall).find? fun entry => entry.1 = q).map Prod.snd
 
 /-- An input of `H` other than a stream key. -/
 def Tracked (q : Query C) : Prop := ∀ key, q ≠ .streamKey key
@@ -77,7 +77,7 @@ theorem logCache_logQuery (log : QueryLog (WorldSpec C)) (t : (WorldSpec C).Doma
     (q : Query C) :
     logCache (log.logQuery t u) q =
       (logCache log q).or ((hashCall ⟨t, u⟩).bind fun entry => if entry.1 = q then some entry.2 else none) := by
-  unfold logCache
+  simp only [logCache, QueryCache.ofFn_apply]
   rw [QueryLog.logQuery, List.filterMap_append, List.find?_append, Option.map_or]
   cases h : hashCall ⟨t, u⟩ with
   | none => simp [QueryLog.singleton, h]
@@ -186,18 +186,18 @@ on the flat eager run, where it reads `logCache` of the log. -/
 theorem probEvent_flatRun_eq_flatEagerRun (P : PublicParameter) (ρ : KeyIndex → Digest) (A : TsigAdversary C)
     (x : SigningSecurityProof.Keys3 C) (E : Result C × HashCache C × Rest C (TsigState C × Bool) → Prop)
     (hE : ∀ r c c' rest, (∀ q, Tracked q → c q = c' q) → (E (r, c, rest) ↔ E (r, c', rest))) :
-    Pr[fun z => E (z.1, z.2.1.1.1, restOf z.2) | flatRun prims A x] =
-      Pr[fun z => E (z.1, logCache z.2.1.2, restOf z.2) | flatEagerRun prims P ρ A x] := by
-  calc _ = Pr[fun z => E (z.1, logCache z.2.1.2, restOf z.2) | flatRun prims A x] :=
-        probEvent_ext fun z hz => hE _ _ _ _ (flatRun_cacheFromLog prims A x z hz)
-    _ = Pr[fun y => E (y.1, logCache y.2.1.2, y.2) | (fun z => (z.1, restOf z.2)) <$> flatRun prims A x] := by
-        rw [probEvent_map]
+    Pr{let z ← flatRun prims A x}[E (z.1, z.2.1.1.1, restOf z.2)] =
+      Pr{let z ← flatEagerRun prims P ρ A x}[E (z.1, logCache z.2.1.2, restOf z.2)] := by
+  calc _ = Pr{let z ← flatRun prims A x}[E (z.1, logCache z.2.1.2, restOf z.2)] :=
+        prEvent_congr_of_support _ _ _ fun z hz => hE _ _ _ _ (flatRun_cacheFromLog prims A x z hz)
+    _ = Pr{let y ← (fun z => (z.1, restOf z.2)) <$> flatRun prims A x}[E (y.1, logCache y.2.1.2, y.2)] := by
+        rw [prEvent_map]
         rfl
-    _ = Pr[fun y => E (y.1, logCache y.2.1.2, y.2) |
-          (fun z => (z.1, restOf z.2)) <$> flatEagerRun prims P ρ A x] :=
-        probEvent_congr' (fun _ _ => Iff.rfl) (evalDist_flatEagerRun prims P ρ A x).symm
+    _ = Pr{let y ←
+          (fun z => (z.1, restOf z.2)) <$> flatEagerRun prims P ρ A x}[E (y.1, logCache y.2.1.2, y.2)] :=
+        (evalDist_flatEagerRun prims P ρ A x).symm.prEvent_eq fun y => E (y.1, logCache y.2.1.2, y.2)
     _ = _ := by
-        rw [probEvent_map]
+        rw [prEvent_map]
         rfl
 
 end Transfer
@@ -273,7 +273,7 @@ them whose cache is below the cache of the state. -/
 def SignedWitness (P : PublicParameter) (ρ : KeyIndex → Digest)
     (p : (LoggedState C × Monitor) × (TsigState C × Bool)) : Prop :=
   ∀ e, p.1.2.state.signed e ≠ none → ∃ message answer, p.2.1.bound e = some message ∧
-    p.1.1.1.1 (.hash (randomizerInput P bottomLayer e (ρ e) (bytesLE 32 message))) = some answer ∧
+    p.1.1.1.1 (.hash (randomizerInput P bottomLayer e (ρ e) (littleEndianBytes 32 message))) = some answer ∧
     ∃ initial first, ((), first) ∈ support ((simulateQ (randomOracle (spec := Query C →ₒ HashOutput))
       (baseGrind P e message answer)).run initial) ∧ first ≤ p.1.1.1.1
 
@@ -302,7 +302,7 @@ theorem monitoredWorld_signed_grind (keyOf : XmssSecurity.HashInput → Option X
   change y.2.2 = queryEntryStep keyOf p.1.2 (hashEntry ⟨t, w.1⟩)
   by_cases h : ∃ e, BaseCall P e (ρ e) p.2.1 t
   · obtain ⟨message, answer, hb, hans, initial, first, hmem, hle⟩ := hwit _ (hsigned _ h.choose_spec)
-    have hans' : w.2.1.1 (.hash (randomizerInput P bottomLayer h.choose (ρ h.choose) (bytesLE 32 message))) =
+    have hans' : w.2.1.1 (.hash (randomizerInput P bottomLayer h.choose (ρ h.choose) (littleEndianBytes 32 message))) =
         some answer := hgrow hans
     simp only [grindExtra, dif_pos h, hb, hans'] at hy
     rw [monitoredOracle_rerun keyOf _ initial first w.2.1.1 () hmem (hle.trans hgrow) _ hcov'] at hy

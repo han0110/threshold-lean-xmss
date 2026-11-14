@@ -6,7 +6,7 @@ The fixed-table backend retains its full state while exposing the exact order
 of marks, opening-release guards, share reads and counted hash tails.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerSyncBackend
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -37,7 +37,7 @@ theorem backendT_snapshot (st : FullState C Tag)
     (hf : RestFree x.2.1 st.1.1.1.1.data.cache) :
     (shareBackendTagT tagOf x.1 x.2.1 x.2.2 q s pads τ g noise rest
       (.inl (.inl (.inl .snapshot)))).run st = pure (dataOf x st, st) := by
-  simp only [shareBackendTagT, backendRaw, ordinaryFullRaw, ordinaryRaw,
+  simp only [shareBackendTagT, backendRaw, ordinaryFullRaw, ordinaryRaw.eq_def,
     simulateQ_bind, resolvePrivateTable_lift, simulateQ_pure, StateT.run,
     ordinary_snapshot, pure_bind, splitRest_merged_of_restFree _ _ _ hf]
 
@@ -46,7 +46,7 @@ theorem backendT_uniform (n : ℕ) (st : FullState C Tag)
     (shareBackendTagT tagOf x.1 x.2.1 x.2.2 q s pads τ g noise rest
       (.inl (.inl (.inl (.uniform n))))).run st =
       (fun v => (v, st)) <$> (query (spec := unifSpec) n) := by
-  simp only [shareBackendTagT, backendRaw, ordinaryFullRaw, ordinaryRaw,
+  simp only [shareBackendTagT, backendRaw, ordinaryFullRaw, ordinaryRaw.eq_def,
     simulateQ_bind, resolvePrivateTable_lift, simulateQ_pure, StateT.run]
   rw [ordinary_uncounted x.1 x.2.1 q s pads (.uniform n)
     (by exact not_false) (by intro p; simp)]
@@ -79,7 +79,7 @@ theorem backendT_rest (input : Query C) (z : RestSlot C)
       | none => hashTail x.1 x.2.1 (restInput x.2.1 x.2.2 z)
           (merged x.2.1 st.1.1 st.2.cache) (rest z)
           ((dataOf x st).cache.cacheQuery (restInput x.2.1 x.2.2 z) (rest z))) := by
-  simp only [shareBackendTagT, backendRaw, hr, ordinaryFullRaw, ordinaryRaw, hz,
+  simp only [shareBackendTagT, backendRaw, hr, ordinaryFullRaw, ordinaryRaw.eq_def, hz,
     StateT.run, bind_pure_comp, simulateQ_map]
   rw [freshRestT_run]
   rfl
@@ -94,7 +94,7 @@ theorem backendT_ordinaryHash (input : Query C)
         (deferredInputSide x.1) deferredCounted (deferredKey x.1)
         (deferredPoint x.1) q s (.inl (.hash input))).run
           (merged x.2.1 st.1.1 st.2.cache) := by
-  simp only [shareBackendTagT, backendRaw, hr, ordinaryFullRaw, ordinaryRaw, hz,
+  simp only [shareBackendTagT, backendRaw, hr, ordinaryFullRaw, ordinaryRaw.eq_def, hz,
     StateT.run, bind_pure_comp, simulateQ_map, resolvePrivateTable_lift, ordinary]
 
 end Backend

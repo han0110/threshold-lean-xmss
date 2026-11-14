@@ -12,7 +12,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1RealLog
   early cap with the flag up, or a share failure with a false tag. It applies `run_coupled`.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Final
@@ -41,8 +41,8 @@ theorem realRun_mem_traceRun (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2
     (noise : ChainNoiseIndex → HashOutput) (r : SigningLaneUnionProof.TraceOutcome C)
     (hr : r ∈ support (realRun prims A x s pads (gOf s pads u) rest noise)) :
     r ∈ support (SigningLaneUnionProof.traceRun prims A x) := by
-  rw [← mem_support_evalDist_iff, traceRun_eq_realRun prims A x hkeys,
-    mem_support_evalDist_iff, mem_support_bind_iff]
+  rw [OracleComp.support_eq_of_evalDistEq (traceRun_eq_realRun prims A x hkeys),
+    mem_support_bind_iff]
   refine ⟨s, by simp, ?_⟩
   rw [mem_support_bind_iff]
   refine ⟨pads, by simp, ?_⟩
@@ -68,23 +68,23 @@ event, an early cap with the flag up, or a share failure with a false tag. -/
 theorem real_le_table (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (u : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput)
     (noise : ChainNoiseIndex → HashOutput) :
-    Pr[fun z => RealEvent prims x z ∧ (SigningLaneUnionProof.observed z).2.1 ≤ q |
-        realRun prims A x s pads (gOf s pads u) rest noise] ≤
-      Pr[fun z => CompGood x q z.1 ∨ (z.1.1.2.base.hiddenFlag = true ∧ CapEarlyO1 z) ∨ NullBad z.2 |
-        eagerRunTagTO1 prims A x q s pads (NoFalse.tau s pads) (gOf s pads u) noise rest] := by
+    Pr{let z ←
+        realRun prims A x s pads (gOf s pads u) rest noise}[RealEvent prims x z ∧ (SigningLaneUnionProof.observed z).2.1 ≤ q] ≤
+      Pr{let z ←
+        eagerRunTagTO1 prims A x q s pads (NoFalse.tau s pads) (gOf s pads u) noise rest}[CompGood x q z.1 ∨ (z.1.1.2.base.hiddenFlag = true ∧ CapEarlyO1 z) ∨ NullBad z.2] := by
   have hreal : realRun prims A x s pads (gOf s pads u) rest noise =
       Prod.fst <$> realRunRaw prims A x s pads (gOf s pads u) rest noise := rfl
   have hcomp : eagerRunTagTO1 prims A x q s pads (NoFalse.tau s pads) (gOf s pads u) noise rest =
       SigningCompilerShareTables.finish x.2.1 <$>
         (simulateQ (compBackend x q s pads u rest noise) (sourceProgramO1X prims A x)).run
           SigningCompilerShareTables.initial := rfl
-  calc _ = Pr[fun z => (RealEvent prims x z ∧ (SigningLaneUnionProof.observed z).2.1 ≤ q) ∧
-          z.1.1.1.2 = z.2.2.1.2 | realRun prims A x s pads (gOf s pads u) rest noise] :=
-        probEvent_congr' (fun z hz =>
-          ⟨fun h => ⟨h, realRun_flag prims A x s pads hkeys u rest noise z hz⟩, And.left⟩) rfl
+  calc _ = Pr{let z ← realRun prims A x s pads (gOf s pads u) rest noise}[(RealEvent prims x z ∧ (SigningLaneUnionProof.observed z).2.1 ≤ q) ∧
+          z.1.1.1.2 = z.2.2.1.2] :=
+        prEvent_congr_of_support _ _ _ (fun z hz =>
+          ⟨fun h => ⟨h, realRun_flag prims A x s pads hkeys u rest noise z hz⟩, And.left⟩)
     _ ≤ _ := by
-      rw [hreal, hcomp, probEvent_map, probEvent_map]
-      refine probEvent_le_of_relTriple
+      rw [hreal, hcomp, prEvent_map, prEvent_map]
+      refine prEvent_le_of_relTriple
         (SigningCompilerO1Coupled.run_coupled prims x q s pads u rest noise A hkeys) ?_
       rintro z c hrel ⟨⟨hE, hq⟩, hfl⟩
       by_cases hstop : Stop c.2

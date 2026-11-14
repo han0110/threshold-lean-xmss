@@ -33,7 +33,7 @@ namespace ThresholdLeanXmssSecurity
 
 namespace SigningReleasedProof
 
-open LeanXmss ThresholdLeanXmss SigningOpeningProof
+open HashSig LeanXmss ThresholdLeanXmss SigningOpeningProof
 
 variable {C : Committee}
 
@@ -46,10 +46,10 @@ set_option maxRecDepth 100000 in
 randomness. -/
 theorem run_signCodeword_cached (P : PublicParameter) (commitment : Digest) (e : KeyIndex)
     (message : Message) (candidate : Digest) (s : HashCache C × ℕ)
-    (r : Option (Randomness × Encoding) × HashCache C × ℕ)
+    (r : Option (Randomizer × Encoding) × HashCache C × ℕ)
     (hr : r ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
       (SigningSecurityProof.liftFree (signCodeword P commitment e message candidate))).run s))
-    (randomness : Randomness) (encoding : Encoding) (hs : r.1 = some (randomness, encoding)) :
+    (randomness : Randomizer) (encoding : Encoding) (hs : r.1 = some (randomness, encoding)) :
     (SigningDescentProof.thView r.2.1
       (XmssSecurity.Concrete.CacheView.encodingInput P e (message, randomness))).isSome := by
   have hd := (SigningCacheProof.run_liftFree prims _ s r hr _ (SigningCacheProof.agrees_answersOf le_rfl)).symm.trans hs

@@ -16,7 +16,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1SyncHandlers
   the boundary relation holds at that tree with the fixed pads.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Setup
@@ -42,24 +42,24 @@ attribute [local irreducible] Queries
 /-- A walk of three steps from position 0 is three reads of truncated hashes. -/
 theorem tweakable_walkThree (P : PublicParameter) (lay : Layer) (key : KeyIndex) (l : ChainIndex)
     (v : Digest) :
-    tweakable (C := C) (Concrete.chainWalk P lay key l 0 3 v : OracleComp HashSpec Digest) = (do
+    tweakable (C := C) (Verification.chainWalkWithHash P lay key l 0 3 v : OracleComp HashSpec Digest) = (do
       let v₁ ← truncateHash <$> hashQuery (.hash (tweakableHashInput P (.chain lay key ⟨0, by decide⟩)
-        (Concrete.chainPayload l v)))
+        (Verification.chainPayload l v)))
       let v₂ ← truncateHash <$> hashQuery (.hash (tweakableHashInput P (.chain lay key ⟨1, by decide⟩)
-        (Concrete.chainPayload l v₁)))
+        (Verification.chainPayload l v₁)))
       truncateHash <$> hashQuery (.hash (tweakableHashInput P (.chain lay key ⟨2, by decide⟩)
-        (Concrete.chainPayload l v₂)))) := by
+        (Verification.chainPayload l v₂)))) := by
   rw [SigningCompilerO1Lemmas.chainWalk_step _ _ _ _ _ _ _ (by decide : 0 + 2 < chainLength - 1),
     SigningCompilerO1Lemmas.chainWalk_step _ _ _ _ _ _ _ (by decide : 0 + 1 < chainLength - 1),
     SigningCompilerO1Lemmas.chainWalk_step _ _ _ _ _ _ _ (by decide : 0 + 0 < chainLength - 1),
-    show (Concrete.chainWalk P lay key l 0 0 v : OracleComp HashSpec Digest) = pure v from rfl]
+    show (Verification.chainWalkWithHash P lay key l 0 0 v : OracleComp HashSpec Digest) = pure v from rfl]
   simp only [tweakable_bind, SigningCompilerO1Lemmas.tweakable_tweakableHash, pure_bind]
   rfl
 
 /-- The input of a top chain edge is the input of its pending call. -/
 theorem topChain_input (P : PublicParameter) (bi : XmssSecurity.TopIndex) (l : ChainIndex)
     (k : XmssSecurity.ChainStep) (w : Digest) :
-    tweakableHashInput P (.chain topLayer (topKey bi) k) (Concrete.chainPayload l w) =
+    tweakableHashInput P (.chain topLayer (topKey bi) k) (Verification.chainPayload l w) =
       (PendingInput.top bi l k).input P w := rfl
 
 /-- The compiler program of one chain end reads the virtual terms of the chain start and makes the
@@ -72,8 +72,9 @@ theorem sourceTopEnd_eq (P : PublicParameter) (seeds : C.Term → HashOutput)
       let _ ← sourcePendingX P (.top bi l ⟨1, by decide⟩)
       let last ← sourcePendingX P (.top bi l ⟨2, by decide⟩)
       pure (match last.low with | .known value => value | .secret _ => 0)) := by
-  simp only [deferredTopEnd, simulateQ_bind, simulateQ_list_mapM, simulateQ_pure, backendQuery,
-    simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query, id_map, sourceBackendX]
+  simp only [deferredTopEnd, simulateQ_bind, simulateQ_pure, backendQuery,
+    simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query, id_map]
+  erw [simulateQ_list_mapM]
   rfl
 
 /-- The compiler program of one chain end keeps the reveal map of the source. -/
@@ -127,7 +128,7 @@ theorem realTopEnd_eq (bi : XmssSecurity.TopIndex) (l : ChainIndex) :
     simulateQ (realWorld prims x s pads u rest) (realTopEnd x.1 x.2.1 bi l) =
       realHonest prims x s pads u rest (prfValue x.2.1 (.chain topLayer (topKey bi) l (digit 0)))
         >>= fun v₀ => realHonest prims x s pads u rest
-          (tweakable (Concrete.chainWalk x.1 topLayer (topKey bi) l 0 3 v₀)) := by
+          (tweakable (Verification.chainWalkWithHash x.1 topLayer (topKey bi) l 0 3 v₀)) := by
   simp only [realTopEnd, simulateQ_bind]
 
 /-- The posts of two parts of a run compose. The second part may use the value of the first part.
@@ -170,7 +171,7 @@ theorem topStep_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (cCo
     (ra : Digest × RealState C)
     (hra : ra ∈ support ((realHonest prims x s pads u rest (truncateHash <$> hashQuery
       (.hash (tweakableHashInput x.1 (.chain topLayer (topKey bi) k)
-        (Concrete.chainPayload l (s (.topChain bi l k))))))).run a))
+        (Verification.chainPayload l (s (.topChain bi l k))))))).run a))
     (rb : (DeferredOutput × SourceState C) × CompState C)
     (hrb : rb ∈ support (runX (compBackend x q s pads u rest noise)
       (sourcePendingX x.1 (.top bi l k)) src st)) :
@@ -381,7 +382,7 @@ theorem topEnds_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top
 theorem sourceTopTreeX_eq (P : PublicParameter) (seeds : C.Term → HashOutput) :
     sourceTopTreeX P seeds = (do
       let indices := (List.finRange (2 ^ layerHeight)).flatMap fun b =>
-        (List.finRange numChains).map fun l => (b, l)
+        (List.finRange chainCount).map fun l => (b, l)
       let ends ← indices.mapM fun bl => simulateQ (sourceBackendX P seeds) (deferredTopEnd bl.1 bl.2)
       let keys := indices.map fun bl => (topKey bl.1, bl.2)
       let chainEnd := fun e l => ends.getD (keys.idxOf (e, l)) 0

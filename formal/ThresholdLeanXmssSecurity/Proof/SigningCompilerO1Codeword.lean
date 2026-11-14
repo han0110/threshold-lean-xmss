@@ -13,7 +13,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Queries
 - `codeword_sync` adds the resolution of the search on the log cache of the real side.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Codeword
@@ -51,12 +51,13 @@ theorem sourceHashProgramX_bind (P : PublicParameter) (seeds : C.Term → HashOu
     (oa : OracleComp HashSpec α) (f : α → OracleComp HashSpec β) :
     sourceHashProgramX (C := C) P seeds (oa >>= f) =
       sourceHashProgramX P seeds oa >>= fun v => sourceHashProgramX P seeds (f v) := by
-  simp only [sourceHashProgramX, deferredHash, simulateQ_bind]
+  simp only [sourceHashProgramX, deferredHash]
+  erw [simulateQ_bind, simulateQ_bind]
 
 /-- One hash call of the compiler is one hash read. -/
 theorem sourceHashProgramX_oracleHash (P : PublicParameter) (seeds : C.Term → HashOutput)
     (input : HashInput) :
-    sourceHashProgramX (C := C) P seeds (Concrete.oracleHash input) = sourceHashX P seeds (.hash input) :=
+    sourceHashProgramX (C := C) P seeds (Verification.oracleHashWithHash input) = sourceHashX P seeds (.hash input) :=
   rfl
 
 section Calls
@@ -74,7 +75,7 @@ theorem realHonest_bind {α β : Type} (oa : OracleComp HashSpec α) (f : α →
 
 /-- One real hash call is one read. -/
 theorem realHonest_oracleHash (input : HashInput) :
-    realHonest prims x s pads u rest (tweakable (Concrete.oracleHash input)) =
+    realHonest prims x s pads u rest (tweakable (Verification.oracleHashWithHash input)) =
       readCall prims x s pads u rest false (.inl (.hash input)) := by
   rw [realHonest_tweakable]
   exact (simulateQ_query _ _).trans (id_map _)
@@ -124,7 +125,7 @@ theorem codeword_core (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (to
           SyncAt prims x s pads u rest noise top rev (fun _ _ => False) cCore cTime ra.2
             (⟨rb.1.2, b.1.starts⟩, rb.2) ∧ rb.2.1.2 = false)) := by
   have hq1 : Queries (fun input => ∀ e ρ message, input ≠ randomizerInput x.1 bottomLayer e ρ message)
-      (Concrete.oracleHash (commitmentInput x.1 e ρ) : OracleComp HashSpec HashOutput) :=
+      (Verification.oracleHashWithHash (commitmentInput x.1 e ρ) : OracleComp HashSpec HashOutput) :=
     Queries.query _ fun f τ m =>
       SigningGuessProof.commitmentInput_ne_randomizerInput _ _ _ _ _ _ _
   unfold signCodeword
@@ -150,7 +151,7 @@ theorem codeword_core (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (to
     rw [realHonest_bind, sourceHashProgramX_bind, runX_bind, realHonest_oracleHash,
       sourceHashProgramX_oracleHash]
     refine relTriple_bind (baseRead_sync prims x q s pads u rest noise hkeys false top rev cCore cTime
-      e ρ (bytesLE 32 message) r1a.2 (⟨r1b.1.2, b.1.starts⟩, r1b.2) hs1 (by rw [hc1]; exact hsig)
+      e ρ (littleEndianBytes 32 message) r1a.2 (⟨r1b.1.2, b.1.starts⟩, r1b.2) hs1 (by rw [hc1]; exact hsig)
       htime ha1 hb1 hm1) fun r2a r2b h2 => ?_
     rcases h2 with h2 | h2 | ⟨hv2, hs2, hsrc2, hm2, -, -, -⟩
     · exact relTriple_of_support_left fun c hc _ =>

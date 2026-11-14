@@ -27,7 +27,7 @@ namespace ThresholdLeanXmssSecurity
 
 namespace SigningOwnStop
 
-open LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof SigningJointEagerProof
+open HashSig LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof SigningJointEagerProof
   SigningPartnerBoundProof SigningReleasedLinkProof SigningReleasedAlignProof SigningOwnForger
 
 attribute [local instance] Classical.propDecidable
@@ -39,9 +39,9 @@ variable {C : Committee} (prims : Primitives)
 opening of a commitment, apart from one call of the verification. -/
 def R1OwnSource : Prop :=
   ∀ (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C),
-    Pr[fun z => SigningOneRunProof.R1HitRow z ∧
-        ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1 |
-        SigningOneRunProof.splitRunAt prims A x] ≤
+    Pr{let z ←
+        SigningOneRunProof.splitRunAt prims A x}[SigningOneRunProof.R1HitRow z ∧
+        ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1] ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ * (SigningGuessProof.sourceExpectedCost prims A x (ownKeyedCost x) + (1 : ℕ))
 
 /-! ## The handlers -/
@@ -105,6 +105,7 @@ theorem opening_freeKeyed (x : SigningSecurityProof.Keys3 C) (top : TopTree)
       (SigningSelectionProof.tsigOracles_noCall x top e q
         (fun i J e' message parts h => ht i J e' message parts (h ▸ rfl)) s.1.1))
 
+set_option backward.isDefEq.respectTransparency false in
 /-- A round-2 request keeps the ledger paid. The search of the signer is a rerun or runs after the
 stop. -/
 theorem ledger_round2 (x : SigningSecurityProof.Keys3 C) (top : TopTree) (i : C.Party) (J : C.Quorum)
@@ -291,7 +292,7 @@ theorem ledger_finish (x : SigningSecurityProof.Keys3 C) (top : TopTree) (forger
   obtain ⟨v, hv, hr⟩ := hr
   have hpv : Paid x 1 p v.2 := ledger_run_except prims x
     (XmssSecurity.Concrete.CacheView.encodingInput x.1 forgery.signature.leafIndex
-      (forgery.message, (forgery.signature.layers bottomLayer).randomness)) _
+      (forgery.message, (forgery.signature.layers bottomLayer).randomizer)) _
     (freeKeyed_except_of_atKey x.1 _ _ fun e => SigningSelectionProof.noCall_liftFree _ _
       (SigningSelectionProof.loggedTweakable_bound x.1 _ _ _ _
         (SigningSelectionProof.verify_bound x.1 e _ _ _))) p v hv
@@ -426,29 +427,29 @@ theorem ledgerRun_paid (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
 /-- The cost of the log of the split run has the law of the cost of the log of `loggedRun`. -/
 theorem expected_logCost_split_eq (c : (WorldSpec C).Domain → ℕ) (A : TsigAdversary C)
     (x : SigningSecurityProof.Keys3 C) :
-    ∑' z, Pr[= z | SigningOneRunProof.splitRunAt prims A x] *
+    ∑' z, Pr{let y ← SigningOneRunProof.splitRunAt prims A x}[y = z] *
         (SigningGuessLaneProof.logCost c z.2.1.1.1.2 : ℝ≥0∞) =
-      ∑' z, Pr[= z | SigningCostProof.loggedRun prims A x] *
+      ∑' z, Pr{let y ← SigningCostProof.loggedRun prims A x}[y = z] *
         (SigningGuessLaneProof.logCost c z.2.2 : ℝ≥0∞) := by
-  have h1 := tsum_probOutput_map_mul (SigningOneRunProof.splitRunAt prims A x)
+  have h1 := OracleComp.tsum_prEvent_map_mul (SigningOneRunProof.splitRunAt prims A x)
     (fun z => (z.1, (z.2.1.1.1, z.2.2))) (fun y => (SigningGuessLaneProof.logCost c y.2.1.2 : ℝ≥0∞))
   rw [SigningOneRunProof.splitRunAt_oneRun] at h1
-  have h2 := tsum_probOutput_map_mul (SigningOneRunProof.oneRun prims A x)
+  have h2 := OracleComp.tsum_prEvent_map_mul (SigningOneRunProof.oneRun prims A x)
     (fun z => (z.1, z.2.1.1.2, z.2.1.2)) (fun y => (SigningGuessLaneProof.logCost c y.2.2 : ℝ≥0∞))
-  have h3 := tsum_probOutput_map_mul (SigningUnchargedLoggedProof.jointRun prims A x)
+  have h3 := OracleComp.tsum_prEvent_map_mul (SigningUnchargedLoggedProof.jointRun prims A x)
     (fun z => (z.1, z.2.1.2, z.2.2)) (fun y => (SigningGuessLaneProof.logCost c y.2.2 : ℝ≥0∞))
-  have h4 := tsum_probOutput_map_mul (SigningUnchargedLoggedProof.jointRun prims A x)
+  have h4 := OracleComp.tsum_prEvent_map_mul (SigningUnchargedLoggedProof.jointRun prims A x)
     (fun z => (z.1.1, z.2)) (fun y => (SigningGuessLaneProof.logCost c y.2.2 : ℝ≥0∞))
   rw [SigningUnchargedLoggedProof.jointRun_logged] at h4
   have hlaw := SigningOneRunProof.evalDist_oneRun prims A x
   rw [← h1, h4]
   refine (h2.symm.trans ?_).trans h3
-  exact tsum_congr fun y => by rw [probOutput_congr rfl hlaw]
+  exact tsum_congr fun y => by rw [hlaw.prEvent_eq (· = y)]
 
 /-- The cost of the log of `loggedRun` in expectation is the expected cost of the source run. -/
 theorem expected_logCost_le (c : (WorldSpec C).Domain → ℕ) (A : TsigAdversary C)
     (x : SigningSecurityProof.Keys3 C) :
-    ∑' z, Pr[= z | SigningCostProof.loggedRun prims A x] *
+    ∑' z, Pr{let y ← SigningCostProof.loggedRun prims A x}[y = z] *
         (SigningGuessLaneProof.logCost c z.2.2 : ℝ≥0∞) ≤
       SigningGuessProof.sourceExpectedCost prims A x c := by
   have h := XmssSecurity.expectedFinal_le (SigningCostProof.loggedImpl prims) (Inv := fun _ => True)
@@ -472,14 +473,14 @@ theorem r1OwnSource : R1OwnSource prims (C := C) := by
   intro A x
   set ε : ℝ≥0∞ := (2 ^ 128 : ℝ≥0∞)⁻¹
   have hpot := ledgerRun_stopRisk_le prims A x
-  have hlaw : ∑' z, Pr[= z | ledgerRun prims A x] *
+  have hlaw : ∑' z, Pr{let y ← ledgerRun prims A x}[y = z] *
         (SigningGuessLaneProof.logCost (ownKeyedCost x) z.2.1.1.1.1.2 : ℝ≥0∞) =
-      ∑' z, Pr[= z | SigningCostProof.loggedRun prims A x] *
+      ∑' z, Pr{let y ← SigningCostProof.loggedRun prims A x}[y = z] *
         (SigningGuessLaneProof.logCost (ownKeyedCost x) z.2.2 : ℝ≥0∞) := by
-    rw [← expected_logCost_split_eq, ← ledgerRun_forget, tsum_probOutput_map_mul]
-  rw [← ledgerRun_forget, probEvent_map]
-  calc _ ≤ ∑' z, Pr[= z | ledgerRun prims A x] * SigningOwnR1.stopRisk x z.2.1.1.1.1.1.1 z.2.1.1.1.2 := by
-        rw [probEvent_eq_tsum_ite]
+    rw [← expected_logCost_split_eq, ← ledgerRun_forget, OracleComp.tsum_prEvent_map_mul]
+  rw [← ledgerRun_forget, prEvent_map]
+  calc _ ≤ ∑' z, Pr{let y ← ledgerRun prims A x}[y = z] * SigningOwnR1.stopRisk x z.2.1.1.1.1.1.1 z.2.1.1.1.2 := by
+        rw [OracleComp.prEvent_eq_tsum_ite]
         refine ENNReal.tsum_le_tsum fun z => ?_
         split_ifs with hz
         · have hone : SigningOwnR1.stopRisk x z.2.1.1.1.1.1.1 z.2.1.1.1.2 = 1 := by
@@ -488,8 +489,8 @@ theorem r1OwnSource : R1OwnSource prims (C := C) := by
             simp [SigningOwnR1.stopRisk, halt, Monitor.risk, hhit]
           rw [hone, mul_one]
         · exact bot_le
-    _ ≤ ε * ∑' z, Pr[= z | ledgerRun prims A x] * (z.2.1.2 : ℝ≥0∞) := hpot
-    _ ≤ ε * ∑' z, Pr[= z | ledgerRun prims A x] *
+    _ ≤ ε * ∑' z, Pr{let y ← ledgerRun prims A x}[y = z] * (z.2.1.2 : ℝ≥0∞) := hpot
+    _ ≤ ε * ∑' z, Pr{let y ← ledgerRun prims A x}[y = z] *
           ((1 : ℝ≥0∞) + (SigningGuessLaneProof.logCost (ownKeyedCost x) z.2.1.1.1.1.2 : ℝ≥0∞)) := by
         refine mul_le_mul' le_rfl (tsum_le_of_support _ _ _ fun z hz => ?_)
         have h := ledgerRun_paid prims A x z hz
@@ -497,10 +498,10 @@ theorem r1OwnSource : R1OwnSource prims (C := C) := by
               ((SigningGuessLaneProof.logCost (ownKeyedCost x) z.2.1.1.1.1.2 + 1 : ℕ) : ℝ≥0∞) := by
               exact_mod_cast h
           _ = _ := by push_cast; ring
-    _ = ε * ((1 : ℝ≥0∞) + ∑' z, Pr[= z | ledgerRun prims A x] *
+    _ = ε * ((1 : ℝ≥0∞) + ∑' z, Pr{let y ← ledgerRun prims A x}[y = z] *
           (SigningGuessLaneProof.logCost (ownKeyedCost x) z.2.1.1.1.1.2 : ℝ≥0∞)) := by
         rw [tsum_probOutput_mul_const_add]
-    _ = ε * ((1 : ℝ≥0∞) + ∑' z, Pr[= z | SigningCostProof.loggedRun prims A x] *
+    _ = ε * ((1 : ℝ≥0∞) + ∑' z, Pr{let y ← SigningCostProof.loggedRun prims A x}[y = z] *
           (SigningGuessLaneProof.logCost (ownKeyedCost x) z.2.2 : ℝ≥0∞)) := by
         rw [hlaw]
     _ ≤ _ := by

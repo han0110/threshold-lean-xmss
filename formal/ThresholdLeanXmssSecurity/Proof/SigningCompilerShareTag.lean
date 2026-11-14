@@ -8,7 +8,7 @@ unchanged. Relabelling preserves the complete lazy and eager execution, mapping
 only the tag of the optional first-bad record.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerShareTag
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -137,7 +137,7 @@ theorem shareRunTag_retag (f : Tag → Tag')
 open SigningShareLazy
 
 /-- Preserve the kind and lucky bit of the first bad record. -/
-def mapBad (f : Tag → Tag') (st : ShareState κ ι (ImplBad Tag)) :
+def mapBad {κ ι : Type} (f : Tag → Tag') (st : ShareState κ ι (ImplBad Tag)) :
     ShareState κ ι (ImplBad Tag') :=
   ⟨st.cache, st.done, st.bad.map (fun b => (f b.1, b.2))⟩
 

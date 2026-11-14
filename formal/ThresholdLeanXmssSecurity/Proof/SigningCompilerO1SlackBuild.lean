@@ -7,7 +7,7 @@ keep `LinkedInvariant`. So the typed hash programs, the bottom rows, the top tre
 commitments, the stored top values, their verification suffix and the bottom tree keep it too.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1SlackBuild
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -22,7 +22,7 @@ set_option linter.constructorNameAsVariable false
 
 section Steps
 variable (P : PublicParameter) (seeds : C.Term → HashOutput) (q : ℕ) (s : HiddenKey → Digest)
-  (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset Digit)
+  (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset WinternitzDigit)
 
 theorem sourceModify_linked (f : SourceState C → SourceState C)
     (hs : ∀ source, (f source).signing = source.signing)
@@ -153,7 +153,6 @@ theorem sourceHashProgram_linked {α : Type} (hinj : Function.Injective seeds)
   unfold sourceHashProgram deferredHash
   induction oa using OracleComp.inductionOn with
   | pure value =>
-      simp only [simulateQ_pure]
       exact SourcePreserves.pure value
   | query_bind input next ih =>
       simp only [simulateQ_bind, backendQuery, simulateQ_query,
@@ -186,7 +185,7 @@ theorem sourceTopEnd_linked (hinj : Function.Injective seeds) (b : XmssSecurity.
       (simulateQ (sourceBackend P seeds) (deferredTopEnd b l)) := by
   simp only [deferredTopEnd, simulateQ_bind, simulateQ_list_mapM,
     simulateQ_pure, backendQuery, simulateQ_query, OracleQuery.input_query,
-    OracleQuery.cont_query, id_map, sourceBackend]
+    OracleQuery.cont_query, id_map, sourceBackend.eq_def]
   refine (SourcePreserves.mapM _ _
     (fun T _ => sourceVirtual_linked P seeds q s sig starts hinj T _)).bind _ fun _ => ?_
   refine (sourcePending_linked P seeds q s sig starts hinj _).bind _ fun _ => ?_
@@ -212,7 +211,7 @@ theorem sourceCommitment_linked (hinj : Function.Injective seeds) (e : KeyIndex)
     (fun _ => SourcePreserves.pure _)
 
 theorem sourceTopValue_linked (hinj : Function.Injective seeds) (b : XmssSecurity.TopIndex)
-    (l : ChainIndex) (pos : Digit) :
+    (l : ChainIndex) (pos : WinternitzDigit) :
     SourcePreserves P seeds q s (LinkedInvariant seeds s sig starts)
       (sourceTopValue P seeds b l pos) := by
   unfold sourceTopValue
@@ -223,7 +222,7 @@ theorem sourceTopValue_linked (hinj : Function.Injective seeds) (b : XmssSecurit
     (fun _ => SourcePreserves.pure _)
 
 theorem sourceTopRecover_linked (hinj : Function.Injective seeds) (b : XmssSecurity.TopIndex)
-    (l : ChainIndex) (pos : Digit) (initial : DeferredDigest) :
+    (l : ChainIndex) (pos : WinternitzDigit) (initial : DeferredDigest) :
     SourcePreserves P seeds q s (LinkedInvariant seeds s sig starts)
       (sourceTopRecover P b l pos initial) := by
   unfold sourceTopRecover
@@ -242,7 +241,8 @@ theorem sourceBottomTree_linked (hinj : Function.Injective seeds) (top : TopTree
       (sourceBottomTree P seeds top b) := by
   unfold sourceBottomTree
   refine (SourcePreserves.mapM _ _
-    (fun el _ => sourceBottomRow_linked P seeds q s sig starts hinj el.1 el.2)).bind _
+    (fun (el : KeyIndex × ChainIndex) _ =>
+      sourceBottomRow_linked P seeds q s sig starts hinj el.1 el.2)).bind _
     fun rows => ?_
   refine (SourcePreserves.mapM _ _
     (fun k _ => sourceCommitment_linked P seeds q s sig starts hinj (bottomKey b k))).bind _

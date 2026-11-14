@@ -15,7 +15,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Lemmas
   reduces the run of the real call.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Calls
@@ -200,7 +200,7 @@ theorem backendT_virtual_step (T : C.Term) (p : Point) (st : CompState C)
       (dataOf x r.2).pending = (dataOf x st).pending ∧
       (dataOf x r.2).virtual = insert (T, p) (dataOf x st).virtual ∧
       RestFree x.2.1 r.2.1.1.1.1.data.cache := by
-  simp only [shareBackendTagT, backendRaw, ordinaryFullRaw, ordinaryRaw,
+  simp only [shareBackendTagT, backendRaw, ordinaryFullRaw, ordinaryRaw.eq_def,
     simulateQ_bind, resolvePrivateTable_lift, simulateQ_pure, StateT.run,
     ordinary, SigningCappedExpectProof.cappedHybrid, revealImpl, countImpl,
     compilerImpl, deferredImpl, map_pure] at hr

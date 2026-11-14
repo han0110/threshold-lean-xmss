@@ -10,7 +10,7 @@ The readiness tests of the source read only the bound map. So the virtual call a
 take the link `source.signing.bound = sig.bound`.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1SlackSteps
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -24,7 +24,7 @@ set_option linter.constructorNameAsVariable false
 
 section Steps
 variable (P : PublicParameter) (seeds : C.Term → HashOutput) (q : ℕ) (s : HiddenKey → Digest)
-  (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset Digit)
+  (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset WinternitzDigit)
 
 theorem sourcePlant_terminal_slackO1 (p : PendingInput)
     (source : SourceState C) (backend : CappedCompilerState C)

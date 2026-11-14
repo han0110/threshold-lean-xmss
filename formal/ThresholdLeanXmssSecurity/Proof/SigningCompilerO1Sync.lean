@@ -17,7 +17,7 @@ the setup holds at the initial states, and `syncFinal_of_verify` states that the
 verification gives the relation after the tail.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Sync
@@ -136,7 +136,7 @@ structure ExtraO1 (prims : Primitives) (x : Keys3 C) (top : TopTree) (s : Hidden
   /-- A visible base input at the bound message has a trace entry. -/
   baseTraced : ∀ e message, (realSigning a).bound e = some message →
     visibleOf a (.hash (randomizerInput x.1 bottomLayer e (s (.opening bottomLayer e))
-      (bytesLE 32 message))) ≠ none → e ∈ a.1.1.2.1.leafIndices
+      (littleEndianBytes 32 message))) ≠ none → e ∈ a.1.1.2.1.leafIndices
   /-- The log cache is below the visible cache and equals it outside the trial inputs. -/
   logAgreement : SigningPartnerCompareProof.LogAgreement x.1 a.1.1.1.1.1
   /-- Each stored real tree has a counted run below the log cache. -/

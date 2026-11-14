@@ -24,7 +24,7 @@ namespace ThresholdLeanXmssSecurity
 
 namespace SigningLaneUnionProof
 
-open LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof SigningJointEagerProof
+open HashSig LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof SigningJointEagerProof
   SigningOneRunProof SigningPartnerBoundProof SigningLane2BridgeProof SigningLane2FlatProof
   SigningOpeningProof SigningUnchargedLoggedProof SigningAssemblyProof SigningTopRowsProof
   SigningCacheLogProof SigningLinkPaidProof SigningLane2Proof
@@ -65,7 +65,7 @@ def traceStepAt (seeds : C.Term → HashOutput) (P : PublicParameter) (cache : H
     match st.bound h.choose with
     | some message =>
       if cache (.hash (randomizerInput P bottomLayer h.choose
-          (SigningGuessProof.cachedRandomizer seeds cache h.choose) (bytesLE 32 message))) = none then
+          (SigningGuessProof.cachedRandomizer seeds cache h.choose) (littleEndianBytes 32 message))) = none then
         (aux.1 ++ [⟨⟨h.choose, message⟩,
           signOf (laneKey P) h.choose (cachedFound cache' P h.choose
             (SigningGuessProof.cachedRandomizer seeds cache h.choose) message),
@@ -165,8 +165,8 @@ def LaneTraceCap : Prop :=
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
     (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) →
     q < 2 ^ 127 →
-    Pr[fun z => NoFlag (observed z) ∧ NotChargedLogged prims x (observed z) ∧ (LoggedInputHit prims x (observed z) ∨ StaleBaseAt z ∨ GhostAt x z) |
-      traceRun prims A x] ≤ (q : ℝ≥0∞) / 2 ^ 128
+    Pr{let z ←
+      traceRun prims A x}[NoFlag (observed z) ∧ NotChargedLogged prims x (observed z) ∧ (LoggedInputHit prims x (observed z) ∨ StaleBaseAt z ∨ GhostAt x z)] ≤ (q : ℝ≥0∞) / 2 ^ 128
 
 /-! ## The assembly -/
 
@@ -194,12 +194,12 @@ theorem hiddenCoreAt_of_laneUnion (hlink : ReleasedLink prims (C := C))
   have hcharged := chargedLane_bound_oneRun prims A q x hx hkeys hq hsmall
   let Ev : JointResult C × ℕ × QueryLog (WorldSpec C) → Prop := fun r =>
     NoFlag r ∧ NotChargedLogged prims x r ∧ (SigningReleasedTransferProof.LoggedReleasedRow prims x r ∨ LoggedInputHit prims x r)
-  have h1 : Pr[Win | jointRun prims A x] ≤ Pr[Charged prims x | jointRun prims A x] +
-      Pr[fun w => ReleasedPartnerRow prims x w ∨ UnchargedRow prims x w | jointRun prims A x] :=
-    (probEvent_mono fun w hw hwin => win_cover_released prims A x w hw hwin).trans (probEvent_or_le _ _ _)
-  have h2 : Pr[fun w => ReleasedPartnerRow prims x w ∨ UnchargedRow prims x w | jointRun prims A x] ≤
-      Pr[fun w => Ev (w.1, w.2.1.2, w.2.2) | jointRun prims A x] := by
-    refine probEvent_mono fun w hw h => ?_
+  have h1 : Pr{let z ← jointRun prims A x}[Win z] ≤ Pr{let z ← jointRun prims A x}[Charged prims x z] +
+      Pr{let w ← jointRun prims A x}[ReleasedPartnerRow prims x w ∨ UnchargedRow prims x w] :=
+    (prEvent_mono_of_support _ _ _ fun w hw hwin => win_cover_released prims A x w hw hwin).trans (prEvent_or_le _ _ _)
+  have h2 : Pr{let w ← jointRun prims A x}[ReleasedPartnerRow prims x w ∨ UnchargedRow prims x w] ≤
+      Pr{let w ← jointRun prims A x}[Ev (w.1, w.2.1.2, w.2.2)] := by
+    refine prEvent_mono_of_support _ _ _ fun w hw h => ?_
     have hl : (w.1.1, w.2) ∈ support (SigningCostProof.loggedRun prims A x) := by
       rw [← jointRun_logged, support_map]
       exact ⟨w, hw, rfl⟩
@@ -218,15 +218,15 @@ theorem hiddenCoreAt_of_laneUnion (hlink : ReleasedLink prims (C := C))
         w.2.1.2 w.2.2 (loggedRun_cacheFromLog prims A x (w.1.1, w.2) hl)) Iff.rfl).mp h
     · right
       exact hin A x w hw (laneInputRow_of_unchargedRow prims A x w hw h)
-  have h3 : Pr[fun w => Ev (w.1, w.2.1.2, w.2.2) | jointRun prims A x] =
-      Pr[fun z => Ev (observed z) | traceRun prims A x] := by
-    rw [← probEvent_oneRun prims A x Ev, ← splitRunAt_oneRun, probEvent_map, ← traceRun_forget, probEvent_map]
+  have h3 : Pr{let w ← jointRun prims A x}[Ev (w.1, w.2.1.2, w.2.2)] =
+      Pr{let z ← traceRun prims A x}[Ev (observed z)] := by
+    rw [← probEvent_oneRun prims A x Ev, ← splitRunAt_oneRun, prEvent_map, ← traceRun_forget, prEvent_map]
     rfl
-  have h4 : Pr[fun z => Ev (observed z) | traceRun prims A x] ≤
-      Pr[fun z => SigningOneRunProof.R1HitRow (splitOf z) ∨
-        (NoFlag (observed z) ∧ NotChargedLogged prims x (observed z) ∧ (LoggedInputHit prims x (observed z) ∨ StaleBaseAt z ∨ GhostAt x z)) |
-        traceRun prims A x] := by
-    refine probEvent_mono fun z hz h => ?_
+  have h4 : Pr{let z ← traceRun prims A x}[Ev (observed z)] ≤
+      Pr{let z ←
+        traceRun prims A x}[SigningOneRunProof.R1HitRow (splitOf z) ∨
+        (NoFlag (observed z) ∧ NotChargedLogged prims x (observed z) ∧ (LoggedInputHit prims x (observed z) ∨ StaleBaseAt z ∨ GhostAt x z))] := by
+    refine prEvent_mono_of_support _ _ _ fun z hz h => ?_
     obtain ⟨hnf, hnc, h⟩ := h
     have hs : splitOf z ∈ support (SigningOneRunProof.splitRunAt prims A x) := by
       rw [← traceRun_forget, support_map]
@@ -240,13 +240,12 @@ theorem hiddenCoreAt_of_laneUnion (hlink : ReleasedLink prims (C := C))
         · exact Or.inl hhit
         · exact (halt hcommit).elim
     · exact Or.inr ⟨hnf, hnc, Or.inl h⟩
-  have h5 : Pr[fun z => SigningOneRunProof.R1HitRow (splitOf z) ∨
-        (NoFlag (observed z) ∧ NotChargedLogged prims x (observed z) ∧ (LoggedInputHit prims x (observed z) ∨ StaleBaseAt z ∨ GhostAt x z)) |
-        traceRun prims A x] ≤
-      Pr[SigningOneRunProof.R1HitRow | SigningOneRunProof.splitRunAt prims A x] + (q : ℝ≥0∞) / 2 ^ 128 := by
-    refine (probEvent_or_le _ _ _).trans (add_le_add (le_of_eq ?_) (hcap A q x hx hkeys hq hsmall))
-    rw [← traceRun_forget, probEvent_map]
-    rfl
+  have h5 : Pr{let z ←
+        traceRun prims A x}[SigningOneRunProof.R1HitRow (splitOf z) ∨
+        (NoFlag (observed z) ∧ NotChargedLogged prims x (observed z) ∧ (LoggedInputHit prims x (observed z) ∨ StaleBaseAt z ∨ GhostAt x z))] ≤
+      Pr{let z ← SigningOneRunProof.splitRunAt prims A x}[SigningOneRunProof.R1HitRow z] + (q : ℝ≥0∞) / 2 ^ 128 := by
+    refine (prEvent_or_le _ _ _).trans (add_le_add (le_of_eq ?_) (hcap A q x hx hkeys hq hsmall))
+    rw [← traceRun_forget, prEvent_map]
   refine h1.trans ((add_le_add le_rfl (h2.trans ((le_of_eq h3).trans (h4.trans h5)))).trans ?_)
   refine le_trans (le_of_eq ?_) (add_le_add hcharged le_rfl)
   ring

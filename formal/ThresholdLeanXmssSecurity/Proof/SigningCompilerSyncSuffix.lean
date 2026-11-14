@@ -7,7 +7,7 @@ preserves synchronization with the fixed real state. Only the requested suffix
 is revealed; all source control fields and compiler counters remain unchanged.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerSyncSuffix
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -39,7 +39,7 @@ structure ReleaseFrame (x : Keys3 C) (b b' : SourceState C × CompState C) : Pro
 
 /-- All bookkeeping and revealed-coordinate effects of the canonical suffix. -/
 structure SuffixFrame (x : Keys3 C) (s : HiddenKey → Digest) (e : KeyIndex)
-    (l : ChainIndex) (start : Digit) (b b' : SourceState C × CompState C) : Prop
+    (l : ChainIndex) (start : WinternitzDigit) (b b' : SourceState C × CompState C) : Prop
     extends ReleaseFrame x b b' where
   revealed : ∀ k, (∀ d : XmssSecurity.ChainStep, start.val ≤ d.val →
     k ≠ .bottomChain e l d) → b'.1.revealed k = b.1.revealed k
@@ -77,7 +77,7 @@ def bottomCompletionX (e : KeyIndex) (l : ChainIndex) (d : XmssSecurity.ChainSte
   modify fun (st : SourceState C) => { st with consistent := st.consistent && ok }
 
 theorem sourceReleaseBottomSuffixX_eq (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (e : KeyIndex) (l : ChainIndex) (start : Digit) :
+    (e : KeyIndex) (l : ChainIndex) (start : WinternitzDigit) :
     sourceReleaseBottomSuffixX P seeds e l start = (do
       let keys := (List.finRange 3).filter fun d => start.val ≤ d.val
       let _ ← keys.mapM (bottomCompletionX (C := C) e l)
@@ -277,7 +277,7 @@ theorem completions_post (x : Keys3 C) (hinj : Function.Injective x.2.1)
 
 /-- Successful suffix postconditions before restoring the complete synchronization record. -/
 structure SuffixPost (x : Keys3 C) (s : HiddenKey → Digest) (visible : HashCache C)
-    (e : KeyIndex) (l : ChainIndex) (start : Digit)
+    (e : KeyIndex) (l : ChainIndex) (start : WinternitzDigit)
     (b b' : SourceState C × CompState C) : Prop extends SuffixFrame x s e l start b b' where
   reveal : RevealRelation s b'.1 b'.2.1.1
   agreement : CacheRelation x.1 x.2.1 s (dataOf x b'.2) visible
@@ -300,7 +300,7 @@ theorem releaseSuffix_post (x : Keys3 C)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
     (τ : CPoint → Digest) (g : C.Term × CPoint → HashOutput)
     (noise : ChainNoiseIndex → HashOutput) (rest : RestSlot C → HashOutput)
-    (e : KeyIndex) (l : ChainIndex) (start : Digit)
+    (e : KeyIndex) (l : ChainIndex) (start : WinternitzDigit)
     (a : RealState C) (src : SourceState C) (st : CompState C)
     (hs : SyncCore x s pads noise g rest a (src, st)) (hmark : st.1.2 = false)
     (hrows : ∀ d : XmssSecurity.ChainStep, start.val ≤ d.val →
@@ -383,7 +383,7 @@ theorem releaseSuffix_post (x : Keys3 C)
 /-- Port of ReleasePost.syncFields for the bottom-chain suffix reveal set. -/
 theorem SuffixPost.syncFields (x : Keys3 C) (s : HiddenKey → Digest) (pads : Point → Digest)
     (noise : ChainNoiseIndex → HashOutput) (g : C.Term × CPoint → HashOutput)
-    (rest : RestSlot C → HashOutput) (e : KeyIndex) (l : ChainIndex) (start : Digit)
+    (rest : RestSlot C → HashOutput) (e : KeyIndex) (l : ChainIndex) (start : WinternitzDigit)
     (a : RealState C) (src src' : SourceState C) (st st' : CompState C)
     (hs : SyncFields x s pads noise g rest a (src, st))
     (h : SuffixPost x s (visibleOf a) e l start (src, st) (src', st'))
@@ -444,7 +444,7 @@ theorem releaseSuffix_sync (x : Keys3 C)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
     (τ : CPoint → Digest) (g : C.Term × CPoint → HashOutput)
     (noise : ChainNoiseIndex → HashOutput) (rest : RestSlot C → HashOutput)
-    (e : KeyIndex) (l : ChainIndex) (start : Digit)
+    (e : KeyIndex) (l : ChainIndex) (start : WinternitzDigit)
     (a : RealState C) (src : SourceState C) (st : CompState C)
     (hs : SyncCore x s pads noise g rest a (src, st)) (hmark : st.1.2 = false)
     (hrows : ∀ d : XmssSecurity.ChainStep, start.val ≤ d.val →

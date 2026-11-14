@@ -9,7 +9,7 @@ from the fused state. `forger_sync` states that the forger phase of both sides k
 relation with the fixed pads until a stop, from the contract of each oracle call.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Run

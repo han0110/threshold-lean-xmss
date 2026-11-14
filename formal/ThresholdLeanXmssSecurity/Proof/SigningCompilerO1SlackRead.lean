@@ -9,7 +9,7 @@ A permitted hash call keeps `LinkedInvariant`. An honest PRF evaluation at one r
 are no PRF queries. Typed hashes and the codeword search keep `LinkedInvariant`.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1SlackRead
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -23,7 +23,7 @@ set_option linter.constructorNameAsVariable false
 
 section Steps
 variable (P : PublicParameter) (seeds : C.Term → HashOutput) (q : ℕ) (s : HiddenKey → Digest)
-  (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset Digit)
+  (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset WinternitzDigit)
 
 /-- A permitted hash call keeps the linked invariant. -/
 theorem sourceHash_allowed (hinj : Function.Injective seeds) (query : Query C)
@@ -113,7 +113,7 @@ end Steps
 
 section BaseHandlers
 variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest)
-  (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset Digit)
+  (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset WinternitzDigit)
 
 theorem sourcePart_readO1 (hinj : Function.Injective x.2.1) (i : C.Party) (J : C.Quorum)
     (point : Point) (message : Message) :

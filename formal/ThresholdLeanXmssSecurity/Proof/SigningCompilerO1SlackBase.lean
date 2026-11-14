@@ -10,7 +10,7 @@ state and completes the bottom randomizer of the key. Round 1 and the tree reque
 invariant at the signing state of the source. The honest-signature tail keeps `LinkedInvariant`.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1SlackBase
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -26,7 +26,7 @@ set_option linter.constructorNameAsVariable false
 
 section BaseHandlers
 variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest)
-  (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset Digit)
+  (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset WinternitzDigit)
 
 /-- A step that keeps the signing state, and that keeps the linked invariant at the signing state of
 its start, keeps the invariant at the signing state of the source. -/
@@ -241,7 +241,7 @@ theorem sourceTree_stable (hinj : Function.Injective x.2.1) (top : TopTree)
 
 /-- A suffix release and the full PRF read at its start point keep the linked invariant. -/
 theorem sourcePrfValue_after_QO1 (hinj : Function.Injective x.2.1) (e : KeyIndex) (l : ChainIndex)
-    (pos : Digit) (hpos : pos.val < 3) :
+    (pos : WinternitzDigit) (hpos : pos.val < 3) :
     SourcePreserves x.1 x.2.1 q s (LinkedInvariant x.2.1 s sig starts) (do
       sourceReleaseBottomSuffix x.1 x.2.1 e l pos
       sourceRoProgram prims x.1 x.2.1 (prfValue x.2.1 (.chain bottomLayer e l pos))) := by
@@ -303,7 +303,7 @@ theorem sourceHonestSignature_linked (hinj : Function.Injective x.2.1) (top : To
           obtain ⟨values, hvalues, path, hpath, topValues, htop, hr⟩ := hr
           have hvaluesInv : LinkedInvariant x.2.1 s sig starts values.1.2 values.2 := by
             apply (SourcePreserves.sequenceFin (P := x.1) (seeds := x.2.1) (q := q) (s := s)
-              numChains _ (fun l => ?_)) found.1.2 found.2 hf values hvalues
+              chainCount _ (fun l => ?_)) found.1.2 found.2 hf values hvalues
             split
             · exact SourcePreserves.pure _
             · rename_i hpos
@@ -319,7 +319,7 @@ theorem sourceHonestSignature_linked (hinj : Function.Injective x.2.1) (top : To
           have hpathInv := sourceHashProgram_linked x.1 x.2.1 q s sig starts hinj _ values.1.2
             values.2 hvaluesInv path hpath
           have htopInv := SourcePreserves.sequenceFin (P := x.1) (seeds := x.2.1) (q := q)
-            (s := s) numChains (fun l => sourceRevealDigest (tree.topSignature.chainValue l))
+            (s := s) chainCount (fun l => sourceRevealDigest (tree.topSignature.chainValue l))
             (fun l => sourceRevealDigest_linked x.1 x.2.1 q s sig starts _ (shape l))
             path.1.2 path.2 hpathInv topValues htop
           rw [runSource_pure, mem_support_pure_iff] at hr

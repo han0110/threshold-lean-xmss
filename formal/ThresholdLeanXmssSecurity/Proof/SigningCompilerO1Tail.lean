@@ -25,7 +25,7 @@ import ThresholdLeanXmssSecurity.Proof.TreeCheckKernelCoupling
   `codeword_sync`, and the path is `hashProgram_sync`.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Tail
@@ -60,7 +60,7 @@ theorem merkleNode_congr (P : PublicParameter) (lay : Layer) (f g : KeyIndex →
     intro idx _ hidx
     simp only [merkleNode]
     rw [hfg]
-    simp only [lifetime, numLayers, layerHeight, Nat.sub_zero] at hidx hT ⊢
+    simp only [lifetime, layerCount, layerHeight, Nat.sub_zero] at hidx hT ⊢
     rw [Nat.mod_eq_of_lt (by omega)]
     exact hidx
   | succ level ih =>
@@ -122,20 +122,20 @@ theorem sequenceFin_support {σ α β : Type}
       (∀ i a src st, Inv a src st → ¬Stop1 a → ¬Stop2 st →
         ∀ ra ∈ support ((f i).run a), ∀ rb ∈ support (runX backend (g i) src st),
           Stop1 ra.2 ∨ Stop2 rb.2 ∨ (R i ra.1 rb.1.1 ∧ Inv ra.2 rb.1.2 rb.2)) →
-      ∀ a src st, ∀ ra ∈ support ((Concrete.sequenceFin f).run a),
-        ∀ rb ∈ support (runX backend (Concrete.sequenceFin g) src st),
+      ∀ a src st, ∀ ra ∈ support ((OverPermutation.sequenceFin f).run a),
+        ∀ rb ∈ support (runX backend (OverPermutation.sequenceFin g) src st),
           (Stop1 a → Stop1 ra.2) ∧ (Stop2 st → Stop2 rb.2) ∧
           (Inv a src st → ¬Stop1 a → ¬Stop2 st → Stop1 ra.2 ∨ Stop2 rb.2 ∨
             ((∀ i, R i (ra.1 i) (rb.1.1 i)) ∧ Inv ra.2 rb.1.2 rb.2))
   | 0, f, g, R, _, _, _, a, src, st, ra, hra, rb, hrb => by
-    simp only [Concrete.sequenceFin, StateT.run_pure, mem_support_pure_iff] at hra
-    simp only [Concrete.sequenceFin, runX_pure, mem_support_pure_iff] at hrb
+    simp only [OverPermutation.sequenceFin, StateT.run_pure, mem_support_pure_iff] at hra
+    simp only [OverPermutation.sequenceFin, runX_pure, mem_support_pure_iff] at hrb
     subst hra hrb
     exact ⟨id, id, fun hi _ _ => Or.inr (Or.inr ⟨fun i => i.elim0, hi⟩)⟩
   | n + 1, f, g, R, h1, h2, hstep, a, src, st, ra, hra, rb, hrb => by
-    simp only [Concrete.sequenceFin, StateT.run_bind, StateT.run_pure, mem_support_bind_iff,
+    simp only [OverPermutation.sequenceFin, StateT.run_bind, StateT.run_pure, mem_support_bind_iff,
       mem_support_pure_iff] at hra
-    simp only [Concrete.sequenceFin, runX_bind, runX_pure, mem_support_bind_iff,
+    simp only [OverPermutation.sequenceFin, runX_bind, runX_pure, mem_support_bind_iff,
       mem_support_pure_iff] at hrb
     obtain ⟨ra1, hra1, ra2, hra2, rfl⟩ := hra
     obtain ⟨rb1, hrb1, rb2, hrb2, rfl⟩ := hrb
@@ -166,14 +166,14 @@ theorem runX_sequenceFin_support {β : Type}
     ∀ {n : ℕ} (g : Fin n → SourceMX C β) (R : Fin n → β → Prop),
       (∀ i src st, Inv src st → ∀ rb ∈ support (runX backend (g i) src st),
         R i rb.1.1 ∧ Inv rb.1.2 rb.2) →
-      ∀ src st, Inv src st → ∀ rb ∈ support (runX backend (Concrete.sequenceFin g) src st),
+      ∀ src st, Inv src st → ∀ rb ∈ support (runX backend (OverPermutation.sequenceFin g) src st),
         (∀ i, R i (rb.1.1 i)) ∧ Inv rb.1.2 rb.2
   | 0, g, R, _, src, st, hi, rb, hrb => by
-    simp only [Concrete.sequenceFin, runX_pure, mem_support_pure_iff] at hrb
+    simp only [OverPermutation.sequenceFin, runX_pure, mem_support_pure_iff] at hrb
     subst hrb
     exact ⟨fun i => i.elim0, hi⟩
   | n + 1, g, R, hstep, src, st, hi, rb, hrb => by
-    simp only [Concrete.sequenceFin, runX_bind, runX_pure, mem_support_bind_iff,
+    simp only [OverPermutation.sequenceFin, runX_bind, runX_pure, mem_support_bind_iff,
       mem_support_pure_iff] at hrb
     obtain ⟨rb1, hrb1, rb2, hrb2, rfl⟩ := hrb
     obtain ⟨hr, hi1⟩ := hstep 0 src st hi rb1 hrb1
@@ -217,7 +217,7 @@ theorem revealDigests_run (values : ChainIndex → DeferredDigest) (src : Source
     (hfree : RestFree x.2.1 st.1.1.1.1.data.cache)
     (rb : ((ChainIndex → Digest) × SourceState C) × CompState C)
     (hrb : rb ∈ support (runX (compBackend x q s pads u rest noise)
-      (Concrete.sequenceFin fun l => sourceRevealDigestX (values l)) src st)) :
+      (OverPermutation.sequenceFin fun l => sourceRevealDigestX (values l)) src st)) :
     (∀ l, rb.1.1 l = (values l).interpret s) ∧ rb.1.2 = { src with revealed := rb.1.2.revealed } ∧
       rb.2 = (((st.1.1.1, (rb.2.1.1.2.1, st.1.1.2.2)), st.1.2), st.2) := by
   have h := runX_sequenceFin_support (compBackend x q s pads u rest noise)
@@ -263,7 +263,7 @@ theorem relTriple_compStop {α β : Type} (oa : ProbComp α) (ob : SourceMX C β
 `a` is the real state at the start of the tail. The rows of key `e` have their virtual terms and their
 pending answers. -/
 def TailInv (top : TopTree) (rev : HiddenKey → Option Digest) (c : Carried C) (a : RealState C)
-    (starts : KeyIndex → ChainIndex → Finset Digit) (e : KeyIndex) (a' : RealState C)
+    (starts : KeyIndex → ChainIndex → Finset WinternitzDigit) (e : KeyIndex) (a' : RealState C)
     (src : SourceState C) (st : CompState C) : Prop :=
   SyncAt prims x s pads u rest noise top rev (fun _ _ => False) c c a' (⟨src, starts⟩, st) ∧
     (∀ l (d : XmssSecurity.ChainStep),
@@ -273,7 +273,7 @@ def TailInv (top : TopTree) (rev : HiddenKey → Option Digest) (c : Carried C) 
 
 /-- The post of a step inside the tail keeps `TailInv` when the step keeps each revealed key. -/
 theorem tailInv_of_inPost (top : TopTree) (rev : HiddenKey → Option Digest) (c : Carried C)
-    (a : RealState C) (starts : KeyIndex → ChainIndex → Finset Digit) (e : KeyIndex)
+    (a : RealState C) (starts : KeyIndex → ChainIndex → Finset WinternitzDigit) (e : KeyIndex)
     (a' : RealState C) (src : SourceState C) (st : CompState C)
     (hi : TailInv prims x s pads u rest noise top rev c a starts e a' src st)
     {α β : Type} (value : α → β → Prop) (oa : SourceMX C β)
@@ -295,7 +295,7 @@ theorem tailInv_of_inPost (top : TopTree) (rev : HiddenKey → Option Digest) (c
 /-- The opening read of the tail. Both sides read the PRF value, and no revealed key changes. -/
 theorem opening_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)
     (rev : HiddenKey → Option Digest) (c : Carried C) (a : RealState C)
-    (starts : KeyIndex → ChainIndex → Finset Digit) (e : KeyIndex)
+    (starts : KeyIndex → ChainIndex → Finset WinternitzDigit) (e : KeyIndex)
     (a' : RealState C) (src : SourceState C) (st : CompState C)
     (hi : TailInv prims x s pads u rest noise top rev c a starts e a' src st)
     (ha : ¬RealStop q a') (hb : ¬Stop st) (ra : Digest × RealState C)
@@ -339,7 +339,7 @@ theorem opening_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top
 /-- One chain of the tail below digit 3. Both sides give the same value. -/
 theorem chainStep_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)
     (rev : HiddenKey → Option Digest) (c : Carried C) (a : RealState C)
-    (starts : KeyIndex → ChainIndex → Finset Digit) (e : KeyIndex) (l : ChainIndex) (d : Digit)
+    (starts : KeyIndex → ChainIndex → Finset WinternitzDigit) (e : KeyIndex) (l : ChainIndex) (d : WinternitzDigit)
     (hd : d.val < 3) (H : Digest → Digest)
     (a' : RealState C) (src : SourceState C) (st : CompState C)
     (hi : TailInv prims x s pads u rest noise top rev c a starts e a' src st)
@@ -374,7 +374,7 @@ theorem chainStep_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (t
 below digit 3 is `chainStep_sync`. -/
 theorem chains_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)
     (rev : HiddenKey → Option Digest) (c : Carried C) (a : RealState C)
-    (starts : KeyIndex → ChainIndex → Finset Digit) (e : KeyIndex) (encoding : Encoding)
+    (starts : KeyIndex → ChainIndex → Finset WinternitzDigit) (e : KeyIndex) (encoding : Encoding)
     (f : ChainIndex → StateT (RealState C) ProbComp Digest) (g : ChainIndex → SourceMX C Digest)
     (hshape : ∀ l, (∃ w, f l = pure w ∧ g l = pure w) ∨ ∃ H : Digest → Digest,
       (encoding l).val < 3 ∧
@@ -387,9 +387,9 @@ theorem chains_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
     (a' : RealState C) (src : SourceState C) (st : CompState C)
     (hi : TailInv prims x s pads u rest noise top rev c a starts e a' src st)
     (ha : ¬RealStop q a') (hb : ¬Stop st) (ra : (ChainIndex → Digest) × RealState C)
-    (hra : ra ∈ support ((Concrete.sequenceFin f).run a'))
+    (hra : ra ∈ support ((OverPermutation.sequenceFin f).run a'))
     (rb : ((ChainIndex → Digest) × SourceState C) × CompState C)
-    (hrb : rb ∈ support (runX (compBackend x q s pads u rest noise) (Concrete.sequenceFin g) src st)) :
+    (hrb : rb ∈ support (runX (compBackend x q s pads u rest noise) (OverPermutation.sequenceFin g) src st)) :
     RealStop q ra.2 ∨ Stop rb.2 ∨
       (ra.1 = rb.1.1 ∧ TailInv prims x s pads u rest noise top rev c a starts e ra.2 rb.1.2 rb.2) := by
   have h := sequenceFin_support (compBackend x q s pads u rest noise) (RealStop q) Stop
@@ -443,7 +443,7 @@ theorem syncFinal'_of_syncAt (top : TopTree) (vlog : List (HiddenKey × Digest))
 /-- The relation inside the tail gives the relation after the tail at the same state. A failed step
 of the tail returns there. -/
 theorem tailInv_final (top : TopTree) (vlog : List (HiddenKey × Digest)) (a : RealState C)
-    (rev : HiddenKey → Option Digest) (starts : KeyIndex → ChainIndex → Finset Digit) (e : KeyIndex)
+    (rev : HiddenKey → Option Digest) (starts : KeyIndex → ChainIndex → Finset WinternitzDigit) (e : KeyIndex)
     (a' : RealState C) (src : SourceState C) (st : CompState C)
     (hi : TailInv prims x s pads u rest noise top rev (withCandidates a (a.1.2.2.2 ++ vlog)).1.2 a
       starts e a' src st) :

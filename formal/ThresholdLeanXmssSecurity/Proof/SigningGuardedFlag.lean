@@ -49,7 +49,7 @@ namespace ThresholdLeanXmssSecurity
 
 namespace SigningGuardedFlagProof
 
-open LeanXmss ThresholdLeanXmss SigningOpeningProof
+open HashSig LeanXmss ThresholdLeanXmss SigningOpeningProof
 
 attribute [local instance] Classical.propDecidable
 
@@ -164,11 +164,11 @@ def GuardedFlagCoupling : Prop :=
       (outHit : (t : κ) → σ × ℕ → spec t × (σ × ℕ) → Prop)
       (oa : OracleComp (spec + RevealSpec K Digest) β) (σ₀ : σ),
       (∀ t σ₁ n, p t → ¬inputSide t →
-        Pr[outHit t (σ₁, n) | (countImpl impl p t).run (σ₁, n)] ≤ (2 ^ 128 : ℝ≥0∞)⁻¹) ∧
-      Pr[GuardedFlag prims x | jointRun prims A x] ≤
-        Pr[fun r => r.2.2.2 = true | $ᵗ (K → Digest) >>= fun s =>
+        Pr{let z ← (countImpl impl p t).run (σ₁, n)}[(outHit t (σ₁, n)) z] ≤ (2 ^ 128 : ℝ≥0∞)⁻¹) ∧
+      Pr{let z ← jointRun prims A x}[GuardedFlag prims x z] ≤
+        Pr{let r ← ($ᵗ (K → Digest) >>= fun s =>
           (simulateQ (revealImpl (countImpl impl p) (cappedCall p q) inputSide outHit keyOf point s) oa).run
-            ((σ₀, 0), fun _ => none, false)]
+            ((σ₀, 0), fun _ => none, false))}[r.2.2.2 = true]
 
 open SigningUnchargedLoggedProof SigningPartnerBoundProof in
 set_option maxRecDepth 100000 in
@@ -178,10 +178,10 @@ theorem unchargedLaneBoundLogged_of_guardedCoupling (hlink : FreshPartnerLink (C
   intro A q x hx hkeys hq hsmall
   obtain ⟨κ, σ, β, K, spec, _, _, _, impl, inputSide, p, keyOf, point, outHit, oa, σ₀, hout, hflag⟩ :=
     hcouple A q x hx hkeys hq hsmall
-  have hle : Pr[UnchargedWinLogged prims x | SigningCostProof.loggedRun prims A x] ≤
-      Pr[GuardedFlag prims x | jointRun prims A x] := by
-    rw [← jointRun_logged, probEvent_map]
-    exact probEvent_mono fun w hw hu => guardedFlag_of_win prims hlink A x w hw hu
+  have hle : Pr{let z ← SigningCostProof.loggedRun prims A x}[UnchargedWinLogged prims x z] ≤
+      Pr{let z ← jointRun prims A x}[GuardedFlag prims x z] := by
+    rw [← jointRun_logged, prEvent_map]
+    exact prEvent_mono_of_support _ _ _ fun w hw hu => guardedFlag_of_win prims hlink A x w hw hu
   exact hle.trans (probEvent_le_of_capped impl inputSide p
     (jointRun prims A x) (GuardedFlag prims x) keyOf point q outHit hout oa σ₀ hflag)
 
@@ -206,8 +206,8 @@ open SigningUnchargedLoggedProof in
 /-- The guarded flag has no mass outside the winning forgeries. In the first counterexample the
 forgery is arbitrary, so the flag has probability at most the win. -/
 theorem probEvent_guardedFlag_not_win (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr[fun w => GuardedFlag prims x w ∧ w.1.1.1 ≠ (true, false) | jointRun prims A x] = 0 :=
-  probEvent_eq_zero fun w _ h => h.2 (guardedFlag_win prims x w h.1)
+    Pr{let w ← jointRun prims A x}[GuardedFlag prims x w ∧ w.1.1.1 ≠ (true, false)] = 0 :=
+  prEvent_eq_zero_of_forall_mem_support _ _ fun w _ h => h.2 (guardedFlag_win prims x w h.1)
 
 /-- A chain start with an absent PRF entry gives no target. The logged zero of the first
 counterexample therefore meets no target. -/
@@ -298,7 +298,7 @@ def VerificationPrefix (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
           ((SigningCoreProof.tsigInit, false), ∅, []))).run p.2) ∧
     v ∈ support ((simulateQ (SigningCacheProof.countImpl prims) (SigningSecurityProof.liftFree
       (SigningGuessLinkProof.loggedTweakable x.1 q.1.2.1.1 q.1.2.2.1
-        (Concrete.verify ⟨top.root, x.1⟩ q.1.1.message q.1.1.signature)))).run q.2) ∧
+        (Verification.verifyWithHash ⟨top.root, x.1⟩ q.1.1.message q.1.1.signature)))).run q.2) ∧
     f ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
       (if (signersAt q.1.2.1.1 q.1.1.signature.leafIndex q.1.1.message).card < C.t then pure true
       else

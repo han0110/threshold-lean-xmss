@@ -14,7 +14,7 @@ The lemmas are the lemmas of `SigningCompilerShare.Guarded` and `SigningCompiler
 program.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Guarded
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -52,8 +52,8 @@ variable (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) (q : ℕ) (s :
 
 /-- The table run has no first share failure with a false tag. -/
 theorem tableRunO1_falseBad_zero (hinj : Function.Injective x.2.1) (k : SigningShareLazy.Kind) :
-    Pr[fun z => (SigningShareLazy.erase z.2).bad = some (false, k) |
-      tableRunO1 prims A x q s pads (NoFalse.tau s pads)] = 0 := by
+    Pr{let z ←
+      tableRunO1 prims A x q s pads (NoFalse.tau s pads)}[(SigningShareLazy.erase z.2).bad = some (false, k)] = 0 := by
   rw [← firstbad_lawO1]
   exact lazyRunO1_falseBad_zero prims A x q s pads hinj k
 
@@ -76,7 +76,7 @@ theorem lazyRunO1_hidden_nonbad (hinj : Function.Injective x.2.1)
     (hf : z.1.1.2.base.hiddenFlag = false) : z.2.bad = none := by
   apply noBad_of_tagsO1 z ?_ ?_ hf
   · intro k
-    exact (probEvent_eq_zero_iff.mp
+    exact ((OracleComp.prEvent_eq_zero_iff _ _).mp
       (lazyRunO1_falseBad_zero prims A x q s pads hinj k)) z hz
   · intro k l hb
     exact shareRunO1_tagTrue prims A x q s pads (NoFalse.tau s pads)
@@ -89,7 +89,7 @@ theorem tableRunO1_hidden_nonbad (hinj : Function.Injective x.2.1)
     (hf : z.1.1.2.base.hiddenFlag = false) : z.2.bad = none := by
   apply noBad_of_tagsO1 z ?_ ?_ hf
   · intro k
-    exact (probEvent_eq_zero_iff.mp
+    exact ((OracleComp.prEvent_eq_zero_iff _ _).mp
       (tableRunO1_falseBad_zero prims A x q s pads hinj k)) z hz
   · exact tableRunO1_tagTrue prims A x q s pads (NoFalse.tau s pads) z hz
 
@@ -97,30 +97,30 @@ theorem tableRunO1_hidden_nonbad (hinj : Function.Injective x.2.1)
 probability. -/
 theorem compilerRunPadsO1_hidden_eq_tableO1 (hinj : Function.Injective x.2.1)
     (E : CompilerOutcomeO1 C → Prop) :
-    Pr[fun o => E o ∧ o.1.2.base.hiddenFlag = false | compilerRunPadsO1 prims A x q s pads] =
-      Pr[fun z => E z.1 ∧ z.1.1.2.base.hiddenFlag = false |
-        tableRunO1 prims A x q s pads (NoFalse.tau s pads)] := by
+    Pr{let o ← compilerRunPadsO1 prims A x q s pads}[E o ∧ o.1.2.base.hiddenFlag = false] =
+      Pr{let z ←
+        tableRunO1 prims A x q s pads (NoFalse.tau s pads)}[E z.1 ∧ z.1.1.2.base.hiddenFlag = false] := by
   let G : CompilerOutcomeO1 C × Table.FrozenState C → Prop :=
     fun w => E w.1 ∧ w.1.1.2.base.hiddenFlag = false
   have hl :
-      Pr[fun z => E z.1 ∧ z.1.1.2.base.hiddenFlag = false |
-        lazyRunO1 prims A x q s pads (NoFalse.tau s pads)] =
-      Pr[fun z => G (z.1, SigningShareLazy.erase z.2) ∧ z.2.bad = none |
-        lazyRunO1 prims A x q s pads (NoFalse.tau s pads)] := by
-    apply probEvent_congr' ?_ rfl
+      Pr{let z ←
+        lazyRunO1 prims A x q s pads (NoFalse.tau s pads)}[E z.1 ∧ z.1.1.2.base.hiddenFlag = false] =
+      Pr{let z ←
+        lazyRunO1 prims A x q s pads (NoFalse.tau s pads)}[G (z.1, SigningShareLazy.erase z.2) ∧ z.2.bad = none] := by
+    refine prEvent_congr_of_support _ _ _ ?_
     intro z hz
     exact ⟨fun h => ⟨h, lazyRunO1_hidden_nonbad prims A x q s pads hinj z hz h.2⟩, And.left⟩
   have ht :
-      Pr[fun z => G (z.1, SigningShareLazy.erase z.2) ∧ z.2.bad = none |
-        tableRunO1 prims A x q s pads (NoFalse.tau s pads)] =
-      Pr[fun z => E z.1 ∧ z.1.1.2.base.hiddenFlag = false |
-        tableRunO1 prims A x q s pads (NoFalse.tau s pads)] := by
-    apply probEvent_congr' ?_ rfl
+      Pr{let z ←
+        tableRunO1 prims A x q s pads (NoFalse.tau s pads)}[G (z.1, SigningShareLazy.erase z.2) ∧ z.2.bad = none] =
+      Pr{let z ←
+        tableRunO1 prims A x q s pads (NoFalse.tau s pads)}[E z.1 ∧ z.1.1.2.base.hiddenFlag = false] := by
+    refine prEvent_congr_of_support _ _ _ ?_
     intro z hz
     exact ⟨And.left, fun h => ⟨h, tableRunO1_hidden_nonbad prims A x q s pads hinj z hz h.2⟩⟩
-  rw [compilerRunPadsO1_eq_lazyO1 prims A x q s pads hinj (NoFalse.tau s pads), probEvent_map]
-  change Pr[fun z => E z.1 ∧ z.1.1.2.base.hiddenFlag = false |
-    lazyRunO1 prims A x q s pads (NoFalse.tau s pads)] = _
+  rw [compilerRunPadsO1_eq_lazyO1 prims A x q s pads hinj (NoFalse.tau s pads), prEvent_map]
+  change Pr{let z ←
+    lazyRunO1 prims A x q s pads (NoFalse.tau s pads)}[E z.1 ∧ z.1.1.2.base.hiddenFlag = false] = _
   rw [hl, nonbad_lawO1, ht]
 
 end FlagRuns
@@ -132,24 +132,24 @@ variable (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) (q : ℕ) (s :
 /-- With the flag down, the pad run and the table run give each event the same probability. -/
 theorem compilerRunPadsO1_hidden_eq_table (hinj : Function.Injective x.2.1)
     (E : CompilerOutcomeO1 C → Prop) :
-    Pr[fun o => E o ∧ o.1.2.base.hiddenFlag = false | compilerRunPadsO1 prims A x q s pads] =
-      Pr[fun z => E z.1 ∧ z.1.1.2.base.hiddenFlag = false |
-        tableRunCO1 prims A x q s pads (NoFalse.tau s pads)] := by
+    Pr{let o ← compilerRunPadsO1 prims A x q s pads}[E o ∧ o.1.2.base.hiddenFlag = false] =
+      Pr{let z ←
+        tableRunCO1 prims A x q s pads (NoFalse.tau s pads)}[E z.1 ∧ z.1.1.2.base.hiddenFlag = false] := by
   rw [compilerRunPadsO1_hidden_eq_tableO1 prims A x q s pads hinj E,
-    ← tableRunCO1_project, probEvent_map]
+    ← tableRunCO1_project, prEvent_map]
   rfl
 
 /-- No share failure of the table run has a false tag. -/
 theorem tableRunCO1_falseTag_zero (hinj : Function.Injective x.2.1) :
-    Pr[fun z => ∃ c k l, z.2.bad = some ((false, c), k, l) |
-      tableRunCO1 prims A x q s pads (NoFalse.tau s pads)] = 0 := by
-  apply probEvent_eq_zero_iff.mpr
+    Pr{let z ←
+      tableRunCO1 prims A x q s pads (NoFalse.tau s pads)}[∃ c k l, z.2.bad = some ((false, c), k, l)] = 0 := by
+  apply (OracleComp.prEvent_eq_zero_iff _ _).mpr
   intro z hz hbad
   obtain ⟨c, k, l, hbad⟩ := hbad
   have hz' : projectO1 z ∈ support (tableRunO1 prims A x q s pads (NoFalse.tau s pads)) := by
     rw [← tableRunCO1_project, support_map]
     exact Set.mem_image_of_mem _ hz
-  apply (probEvent_eq_zero_iff.mp (tableRunO1_falseBad_zero prims A x q s pads hinj k))
+  apply ((OracleComp.prEvent_eq_zero_iff _ _).mp (tableRunO1_falseBad_zero prims A x q s pads hinj k))
     (projectO1 z) hz'
   simp only [projectO1, Prod.map, mapBad, SigningShareLazy.erase, hbad, Option.map_some]
 

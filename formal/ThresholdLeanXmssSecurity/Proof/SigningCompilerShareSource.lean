@@ -9,7 +9,7 @@ The source syntax bound uses VCV-io's structural `IsQueryBound` with an inert
 budget; its combinators follow the source field-preservation proof.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerShare
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -33,7 +33,7 @@ abbrev CPoint := {p : Point // Constrained p}
     Constrained (.randomizer bottomLayer e) := Or.inl rfl
 
 @[simp] theorem constrained_bottom_chain (e : KeyIndex) (l : ChainIndex)
-    (p : Digit) (hp : p.val < 3) : Constrained (.chain bottomLayer e l p) :=
+    (p : WinternitzDigit) (hp : p.val < 3) : Constrained (.chain bottomLayer e l p) :=
   Or.inl ⟨rfl, hp⟩
 
 @[simp] theorem constrained_top_randomizer (b : XmssSecurity.TopIndex) :
@@ -111,9 +111,9 @@ theorem bind {oa : SourceMX C α} {f : α → SourceMX C β}
 @[simp] theorem modify (f : SourceState C → SourceState C) :
     Safe (modify f : SourceMX C Unit) := fun _ => Queries.pure _
 theorem lift {oa : OracleComp (SpecX C) α} (h : Queries Allowed oa) :
-    Safe (C := C) (liftM oa) := fun st => h.map (fun a => (a, st))
+    Safe (C := C) (liftM oa) := fun st => h.bind fun a => Queries.pure (a, st)
 theorem map (f : α → β) {oa : SourceMX C α} (h : Safe oa) : Safe (f <$> oa) :=
-  fun st => (h st).map (Prod.map f id)
+  fun st => (h st).bind fun z => Queries.pure (f z.1, z.2)
 theorem mapM (xs : List α) (f : α → SourceMX C β)
     (h : ∀ a ∈ xs, Safe (f a)) : Safe (xs.mapM f) := by
   induction xs with
@@ -123,7 +123,7 @@ theorem mapM (xs : List α) (f : α → SourceMX C β)
       exact (h a (List.mem_cons_self ..)).bind fun b =>
         (ih fun a ha => h a (List.mem_cons_of_mem _ ha)).bind fun bs => pure (b :: bs)
 theorem sequenceFin {n : ℕ} (f : Fin n → SourceMX C α) (h : ∀ a, Safe (f a)) :
-    Safe (Concrete.sequenceFin f) := by
+    Safe (OverPermutation.sequenceFin f) := by
   induction n with
   | zero => exact pure _
   | succ n ih =>
@@ -222,7 +222,7 @@ local macro "source_step" : tactic => `(tactic|
 
 @[simp] theorem safe_sourceBackendX (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : DeferredQuery C) (h : DeferredAllowed q) : Safe (sourceBackendX P seeds q) := by
-  cases q <;> simp only [sourceBackendX]
+  cases q <;> unfold sourceBackendX
   all_goals first | with_reducible apply safe_sourceHashX | with_reducible apply safe_sourcePendingX |
     with_reducible apply safe_sourceVirtualX | exact safe_deferred _ h
 
@@ -291,12 +291,12 @@ theorem queries_deferredTopTree (P : PublicParameter) :
   repeat' first | with_reducible apply safe_sourceVirtualX | with_reducible apply safe_sourcePendingX | source_step
 
 @[simp] theorem safe_sourceTopValueX (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (b : XmssSecurity.TopIndex) (l : ChainIndex) (p : Digit) : Safe (sourceTopValueX P seeds b l p) := by
+    (b : XmssSecurity.TopIndex) (l : ChainIndex) (p : WinternitzDigit) : Safe (sourceTopValueX P seeds b l p) := by
   unfold sourceTopValueX
   repeat' first | with_reducible apply safe_sourceVirtualX | with_reducible apply safe_sourcePendingX | source_step
 
 @[simp] theorem safe_sourceTopRecoverX (P : PublicParameter) (b : XmssSecurity.TopIndex)
-    (l : ChainIndex) (p : Digit) (initial : DeferredDigest) :
+    (l : ChainIndex) (p : WinternitzDigit) (initial : DeferredDigest) :
     Safe (sourceTopRecoverX (C := C) P b l p initial) := by
   unfold sourceTopRecoverX
   repeat' first | with_reducible apply safe_sourcePendingX | source_step
@@ -320,7 +320,7 @@ theorem queries_deferredTopTree (P : PublicParameter) :
   repeat' first | with_reducible apply safe_sourceBottomTreeX | source_step
 
 @[simp] theorem safe_sourceReleaseBottomSuffixX (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (e : KeyIndex) (l : ChainIndex) (start : Digit) :
+    (e : KeyIndex) (l : ChainIndex) (start : WinternitzDigit) :
     Safe (sourceReleaseBottomSuffixX P seeds e l start) := by
   unfold sourceReleaseBottomSuffixX
   repeat' first | with_reducible apply safe_sourceRevealX | with_reducible apply safe_sourcePlantX | source_step

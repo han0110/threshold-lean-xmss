@@ -18,7 +18,7 @@ So a first share failure of the lazy run with a false tag is a lucky read, and i
 zero. The lemmas are the lemmas of `SigningCompilerShare.NoFalse` for the O1 program.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1NoFalse
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -371,38 +371,38 @@ theorem lazyRunO1_noFalse (hinj : Function.Injective x.2.1)
 /-- The lazy run has no first share failure with a false tag that is not a lucky read. -/
 theorem lazyRunO1_nonLucky_zero (hinj : Function.Injective x.2.1)
     (k : SigningShareLazy.Kind) (l : Bool) (hnot : ¬(k = .read ∧ l = true)) :
-    Pr[fun z => z.2.bad = some (false, k, l) |
-      lazyRunO1 prims A x q s pads (NoFalse.tau s pads)] = 0 :=
-  probEvent_eq_zero_iff.mpr fun z hz hb =>
+    Pr{let z ←
+      lazyRunO1 prims A x q s pads (NoFalse.tau s pads)}[z.2.bad = some (false, k, l)] = 0 :=
+  (OracleComp.prEvent_eq_zero_iff _ _).mpr fun z hz hb =>
     hnot (lazyRunO1_noFalse prims A x q s pads hinj z hz k l hb)
 
 /-- A lucky read with a false tag has probability zero, by the ratio of lucky reads of the lazy
 run. -/
 theorem lazyRunO1_luckyFalse_zero (hinj : Function.Injective x.2.1) :
-    Pr[fun z => z.2.bad = some (false, .read, true) |
-      lazyRunO1 prims A x q s pads (NoFalse.tau s pads)] = 0 := by
+    Pr{let z ←
+      lazyRunO1 prims A x q s pads (NoFalse.tau s pads)}[z.2.bad = some (false, .read, true)] = 0 := by
   have hr := SigningShareLazy.lazy_lucky_ratio C.terms terms_nodup mem_terms
     (NoFalse.tau s pads) (shareRunTagO1 prims A x q s pads Prod.snd)
     (SigningShareLazy.init (B := SigningShareLazy.ImplBad Bool)) rfl false
-  change Pr[fun z => z.2.bad = some (false, .read, false) |
-      lazyRunO1 prims A x q s pads (NoFalse.tau s pads)] =
+  change Pr{let z ←
+      lazyRunO1 prims A x q s pads (NoFalse.tau s pads)}[z.2.bad = some (false, .read, false)] =
     (Fintype.card SigningShareLazy.Digest - 1 : ℕ) *
-      Pr[fun z => z.2.bad = some (false, .read, true) |
-        lazyRunO1 prims A x q s pads (NoFalse.tau s pads)] at hr
+      Pr{let z ←
+        lazyRunO1 prims A x q s pads (NoFalse.tau s pads)}[z.2.bad = some (false, .read, true)] at hr
   rw [lazyRunO1_nonLucky_zero prims A x q s pads hinj .read false (by simp)] at hr
   have hn : ((Fintype.card SigningShareLazy.Digest - 1 : ℕ) : ℝ≥0∞) ≠ 0 := by
     have hc : Fintype.card SigningShareLazy.Digest = 2 ^ 128 := by
       change Fintype.card (BitVec 128) = 2 ^ 128
-      exact card_bitVec 128
+      exact Fintype.card_bitVec 128
     rw [hc]
     norm_num
   exact (mul_eq_zero.mp hr.symm).resolve_left hn
 
 /-- The lazy run has no first share failure with a false tag. -/
 theorem lazyRunO1_falseBad_zero (hinj : Function.Injective x.2.1) (k : SigningShareLazy.Kind) :
-    Pr[fun z => (SigningShareLazy.erase z.2).bad = some (false, k) |
-      lazyRunO1 prims A x q s pads (NoFalse.tau s pads)] = 0 := by
-  apply probEvent_eq_zero_iff.mpr
+    Pr{let z ←
+      lazyRunO1 prims A x q s pads (NoFalse.tau s pads)}[(SigningShareLazy.erase z.2).bad = some (false, k)] = 0 := by
+  apply (OracleComp.prEvent_eq_zero_iff _ _).mpr
   intro z hz hb
   have hbad : ∃ l, z.2.bad = some (false, k, l) := by
     simp only [SigningShareLazy.erase, Option.map_eq_some_iff] at hb
@@ -412,7 +412,7 @@ theorem lazyRunO1_falseBad_zero (hinj : Function.Injective x.2.1) (k : SigningSh
   obtain ⟨l, hl⟩ := hbad
   have hshape := lazyRunO1_noFalse prims A x q s pads hinj z hz k l hl
   rcases hshape with ⟨rfl, rfl⟩
-  exact (probEvent_eq_zero_iff.mp (lazyRunO1_luckyFalse_zero prims A x q s pads hinj)) z hz hl
+  exact ((OracleComp.prEvent_eq_zero_iff _ _).mp (lazyRunO1_luckyFalse_zero prims A x q s pads hinj)) z hz hl
 
 end FlagRuns
 

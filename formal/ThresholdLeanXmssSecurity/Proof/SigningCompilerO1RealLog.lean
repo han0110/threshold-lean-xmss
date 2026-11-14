@@ -12,7 +12,7 @@ run is the flag of its final opening state. `honest_resolves` states that a hash
 computation resolves on the log cache after its real run.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1RealLog
 open SigningOpeningProof SigningSecurityProof
@@ -24,13 +24,13 @@ variable (prims : Primitives) (x : Keys3 C)
 
 /-- The codeword search of round 2 as a hash-only computation. -/
 def codewordForest (P : PublicParameter) (commitment : Digest) (e : KeyIndex) (message : Message)
-    (ρ : Digest) : OracleComp (Query C →ₒ HashOutput) (Option (Randomness × Encoding)) :=
+    (ρ : Digest) : OracleComp (Query C →ₒ HashOutput) (Option (Randomizer × Encoding)) :=
   SigningHitProof.forestHash (do
-    let opened := truncateHash (← Concrete.oracleHash (commitmentInput P e ρ))
+    let opened := truncateHash (← Verification.oracleHashWithHash (commitmentInput P e ρ))
     if opened ≠ commitment then pure none else
-    let base := truncateHash (← Concrete.oracleHash
-      (randomizerInput P bottomLayer e ρ (bytesLE 32 message)))
-    grind P bottomLayer e (bytesLE 32 message) base randomizerAttemptLimit 0)
+    let base := truncateHash (← Verification.oracleHashWithHash
+      (randomizerInput P bottomLayer e ρ (littleEndianBytes 32 message)))
+    grind P bottomLayer e (littleEndianBytes 32 message) base randomizerAttemptLimit 0)
 
 /-- The hash-only form is `signCodeword`. -/
 theorem hashEmbed_codewordForest (P : PublicParameter) (commitment : Digest) (e : KeyIndex)
@@ -100,6 +100,7 @@ theorem resolves_countRun {α : Type} (oa : OracleComp (Query C →ₒ HashOutpu
     rw [hashQuery, free]
     erw [liftComp_query, simulateQ_query]
     simp
+    refine ⟨answer, ?_, rfl⟩
     change _ ∈ support ((fun z => (z.1, (z.2,
       n + SeedHitProof.signCost (.inr (.inr (.inl input)) : (WorldSpec C).Domain)))) <$>
         (SeedHitProof.signImpl prims (.inr (.inr (.inl input)))).run cache)

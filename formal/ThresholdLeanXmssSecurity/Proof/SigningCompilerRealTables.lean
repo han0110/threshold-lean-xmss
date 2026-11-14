@@ -8,7 +8,7 @@ The real source reads the resulting share table and the installed chain cache;
 its complete traced outcome and original query count remain joint.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerRealTables
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -178,7 +178,7 @@ theorem refreshAllPrf_inl (b : C.Term) (t : TprfSecurityProof.Slot C → HashOut
     (θ : Point → Digest) (T : C.Term) (p : Point) :
     refreshAllPrf b t θ (.inl (T, p)) = if T = b then
       t (.inl (b, p)) ^^^ (TprfSecurityProof.prfSum t p +
-        TprfCorrectnessProof.toXor (θ p)).setWidth hashOutputBits else t (.inl (T, p)) := by
+        TprfCorrectnessProof.toXor (θ p)).setWidth 256 else t (.inl (T, p)) := by
   by_cases h : T = b <;>
     simp [refreshAllPrf, TprfSecurityProof.shiftTable, TprfSecurityProof.shiftOf, h]
 
@@ -277,12 +277,12 @@ theorem tau_swap (sh : TprfSecurityProof.Slot C → HashOutput)
 
 /-- XOR by an extended digest preserves the high half of the full output. -/
 theorem xor_setWidth_pair (v : HashOutput) (d : XmssSecurity.Digest) :
-    v ^^^ d.setWidth hashOutputBits = SigningShareLazy.pair.symm
+    v ^^^ d.setWidth 256 = SigningShareLazy.pair.symm
       ((SigningShareLazy.pair v).1, (SigningShareLazy.pair v).2 ^^^ d) := by
   apply SigningShareLazy.pair.injective
   rw [Equiv.apply_symm_apply]
   apply Prod.ext
-  · change (v ^^^ d.setWidth hashOutputBits).extractLsb' digestBits digestBits =
+  · change (v ^^^ d.setWidth 256).extractLsb' digestBits digestBits =
       v.extractLsb' digestBits digestBits
     apply BitVec.eq_of_getLsbD_eq
     intro k hk
@@ -312,7 +312,7 @@ theorem refresh_constrained_fiber {B : Type} (b : C.Term) (bs : List C.Term)
   by_cases hT : T = b
   · subst T
     simp only [↓reduceIte]
-    change t (.inl (b, p.val)) ^^^ (tablePrf t p.val ^^^ θ p.val).setWidth hashOutputBits = _
+    change t (.inl (b, p.val)) ^^^ (tablePrf t p.val ^^^ θ p.val).setWidth 256 = _
     rw [xor_setWidth_pair, ← hb, xorSum_otherTerms]
     apply congrArg (SigningShareLazy.pair.symm)
     apply Prod.ext
@@ -416,46 +416,40 @@ theorem eagerTrace_swap {B : Type} (prims : Primitives) (A : TsigAdversary C)
 
 private theorem uniform_prod_bind {α β γ : Type} [Fintype α] [Fintype β]
     [SampleableType α] [SampleableType β] (next : α → β → ProbComp γ) :
-    𝒟[do let a ← $ᵗ α; let b ← $ᵗ β; next a b] =
-      𝒟[($ᵗ (α × β)) >>= fun z => next z.1 z.2] := by
-  have h := congrArg (fun d => d >>= fun z => 𝒟[next z.1 z.2])
-    (XmssSecurity.evalDist_independent_uniform_pair (α := α) (β := β))
-  simpa only [← evalDist_bind, bind_assoc, pure_bind] using h
+    (do let a ← $ᵗ α; let b ← $ᵗ β; next a b) =ᵈ
+      (($ᵗ (α × β)) >>= fun z => next z.1 z.2) := by
+  have h := (XmssSecurity.evalDist_independent_uniform_pair (α := α) (β := β)).bind_left
+    (fun z => next z.1 z.2)
+  simpa only [bind_assoc, pure_bind] using h
 
 private theorem uniform_triple_bind {α β γ δ : Type} [Fintype α] [Fintype β]
     [Fintype γ] [SampleableType α] [SampleableType β] [SampleableType γ]
     (next : α → β → γ → ProbComp δ) :
-    𝒟[do let c ← $ᵗ γ; let a ← $ᵗ α; let b ← $ᵗ β; next a b c] =
-      𝒟[($ᵗ (α × β × γ)) >>= fun z => next z.1 z.2.1 z.2.2] := by
-  calc
-    _ = 𝒟[do let a ← $ᵗ α; let c ← $ᵗ γ; let b ← $ᵗ β; next a b c] :=
-      OracleComp.DeferredSampling.evalDist_bind_comm _ _ _
-    _ = 𝒟[do let a ← $ᵗ α; let b ← $ᵗ β; let c ← $ᵗ γ; next a b c] := by
-      apply evalDist_bind_congr
-      intro a _
-      exact OracleComp.DeferredSampling.evalDist_bind_comm _ _ _
-    _ = 𝒟[do let a ← $ᵗ α; let bc ← $ᵗ (β × γ); next a bc.1 bc.2] := by
-      apply evalDist_bind_congr
-      intro a _
-      exact uniform_prod_bind (next a)
-    _ = _ := uniform_prod_bind _
+    (do let c ← $ᵗ γ; let a ← $ᵗ α; let b ← $ᵗ β; next a b c) =ᵈ
+      (($ᵗ (α × β × γ)) >>= fun z => next z.1 z.2.1 z.2.2) := by
+  refine EvalDistEq.trans (OracleComp.EvalDistEq.bind_bind_swap ($ᵗ γ) ($ᵗ α)
+    (fun c a => $ᵗ β >>= fun b => next a b c)) ?_
+  refine EvalDistEq.trans (EvalDistEq.bind_right ($ᵗ α) fun a =>
+    OracleComp.EvalDistEq.bind_bind_swap ($ᵗ γ) ($ᵗ β) (fun c b => next a b c)) ?_
+  refine EvalDistEq.trans (EvalDistEq.bind_right ($ᵗ α) fun a => uniform_prod_bind (next a)) ?_
+  exact uniform_prod_bind (fun a (bc : β × γ) => next a bc.1 bc.2)
 
 /-- Exact joint law of the original trace, with independent free slots and a
 fiber table at every constrained point. -/
 theorem traceRun_eq_realRun (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
     (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) :
-    𝒟[SigningLaneUnionProof.traceRun prims A x] =
-    𝒟[do
+    SigningLaneUnionProof.traceRun prims A x =ᵈ
+    (do
       let s ← $ᵗ (HiddenKey → Digest)
       let pads ← $ᵗ (Point → Digest)
       let u ← $ᵗ (C.Term × CPoint → HashOutput)
       let rest ← $ᵗ (RestSlot C → HashOutput)
       let noise ← $ᵗ (ChainNoiseIndex → HashOutput)
       realRun prims A x s pads (SigningShareLazy.fiberTable C.terms (NoFalse.tau s pads)
-        (SigningShareLazy.init : Table.FrozenState C) u) rest noise] := by
+        (SigningShareLazy.init : Table.FrozenState C) u) rest noise) := by
   obtain ⟨T, _⟩ := lackedTerm_empty (C := C)
   obtain ⟨b, bs, hb⟩ := List.exists_cons_of_ne_nil (List.ne_nil_of_mem (mem_terms T))
-  rw [traceRun_eq_symbolic_noise prims A x hkeys b]
+  refine (traceRun_eq_symbolic_noise prims A x hkeys b).trans ?_
   let old := fun (sh : TprfSecurityProof.Slot C → HashOutput) (F : Point → Digest)
       (s : HiddenKey → Digest) => do
     let n ← $ᵗ (ChainNoiseIndex → HashOutput)
@@ -465,38 +459,35 @@ theorem traceRun_eq_realRun (prims : Primitives) (A : TsigAdversary C) (x : Keys
     let n ← $ᵗ (ChainNoiseIndex → HashOutput)
     realRun prims A x s F (SigningShareLazy.fiberTable C.terms (NoFalse.tau s F)
       (SigningShareLazy.init : Table.FrozenState C) (slotSplit sh).1) (slotSplit sh).2 n
-  change 𝒟[do let s ← $ᵗ (HiddenKey → Digest)
-               let sh ← $ᵗ (TprfSecurityProof.Slot C → HashOutput)
-               let F ← $ᵗ (Point → Digest); old sh F s] = _
-  rw [uniform_triple_bind old]
-  have hu := evalDist_map_bijective_uniform_cross
+  change (do let s ← $ᵗ (HiddenKey → Digest)
+             let sh ← $ᵗ (TprfSecurityProof.Slot C → HashOutput)
+             let F ← $ᵗ (Point → Digest); old sh F s : ProbComp _) =ᵈ _
+  refine (uniform_triple_bind old).trans ?_
+  have hm := (SampleableType.map_uniformSample_evalDistEq_of_bijective
     (α := (TprfSecurityProof.Slot C → HashOutput) × (Point → Digest) × (HiddenKey → Digest))
-    (swapFree b) (swapFree_involutive b).bijective
-  have hm := congrArg (fun d => d >>= fun z => 𝒟[old z.1 z.2.1 z.2.2]) hu
-  simp only [← evalDist_bind, bind_map_left] at hm
-  rw [← hm]
-  trans 𝒟[($ᵗ ((TprfSecurityProof.Slot C → HashOutput) × (Point → Digest) ×
-    (HiddenKey → Digest))) >>= fun z => new z.1 z.2.1 z.2.2]
-  · apply evalDist_bind_congr
-    rintro ⟨sh, F, s⟩ _
-    apply evalDist_bind_congr
-    intro n _
+    (f := swapFree b) (swapFree_involutive b).bijective).bind_left
+    (fun z => old z.1 z.2.1 z.2.2)
+  simp only [bind_map_left] at hm
+  refine hm.symm.trans ?_
+  refine EvalDistEq.trans (my := ($ᵗ ((TprfSecurityProof.Slot C → HashOutput) × (Point → Digest) ×
+    (HiddenKey → Digest))) >>= fun z => new z.1 z.2.1 z.2.2) ?_ ?_
+  · refine EvalDistEq.bind_right _ fun ⟨sh, F, s⟩ => ?_
+    refine EvalDistEq.bind_right _ fun n => ?_
     rw [eagerTrace_swap (B := SigningShareLazy.FrozenBad Bool) prims A x b bs hb]
-  rw [← uniform_triple_bind new]
-  apply evalDist_bind_congr
-  intro s _
-  trans 𝒟[do let F ← $ᵗ (Point → Digest)
-             let sh ← $ᵗ (TprfSecurityProof.Slot C → HashOutput); new sh F s]
-  · exact OracleComp.DeferredSampling.evalDist_bind_comm _ _ _
-  apply evalDist_bind_congr
-  intro F _
-  have hs := evalDist_map_bijective_uniform_cross (α := TprfSecurityProof.Slot C → HashOutput)
-    (slotSplit (C := C)) slotSplit.bijective
-  have hs' := congrArg (fun d => d >>= fun pair =>
-    𝒟[new (slotSplit.symm pair) F s]) hs
-  simp only [← evalDist_bind, bind_map_left, Equiv.symm_apply_apply] at hs'
-  rw [hs', ← uniform_prod_bind (fun u rest => new (slotSplit.symm (u, rest)) F s)]
-  simp only [new, Equiv.apply_symm_apply]
+  refine (uniform_triple_bind new).symm.trans ?_
+  refine EvalDistEq.bind_right _ fun s => ?_
+  refine EvalDistEq.trans (OracleComp.EvalDistEq.bind_bind_swap
+    ($ᵗ (TprfSecurityProof.Slot C → HashOutput)) ($ᵗ (Point → Digest))
+    (fun sh F => new sh F s)) ?_
+  refine EvalDistEq.bind_right _ fun F => ?_
+  have hs' := (SampleableType.map_uniformSample_evalDistEq_of_bijective
+    (α := TprfSecurityProof.Slot C → HashOutput)
+    (f := slotSplit (C := C)) slotSplit.bijective).bind_left
+    (fun pair => new (slotSplit.symm pair) F s)
+  simp only [bind_map_left, Equiv.symm_apply_apply] at hs'
+  refine hs'.trans ?_
+  refine (uniform_prod_bind (fun u rest => new (slotSplit.symm (u, rest)) F s)).symm.trans ?_
+  simp only [new, Equiv.apply_symm_apply, EvalDistEq.refl]
 
 set_option linter.constructorNameAsVariable false in
 /-- Every fixed sampled table obeys the original support-wise query budget. -/
@@ -511,8 +502,8 @@ theorem realRun_count_le (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C
         (SigningShareLazy.init : Table.FrozenState C) u) rest noise)) :
     (SigningLaneUnionProof.observed r).2.1 ≤ q := by
   apply SigningLaneUnionProof.traceRun_count_le prims A q x hq r
-  rw [← mem_support_evalDist_iff, traceRun_eq_realRun prims A x hkeys,
-    mem_support_evalDist_iff, mem_support_bind_iff]
+  rw [OracleComp.support_eq_of_evalDistEq (traceRun_eq_realRun prims A x hkeys),
+    mem_support_bind_iff]
   refine ⟨s, by simp, ?_⟩
   rw [mem_support_bind_iff]
   refine ⟨pads, by simp, ?_⟩

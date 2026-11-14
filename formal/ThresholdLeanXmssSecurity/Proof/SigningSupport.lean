@@ -69,7 +69,7 @@ namespace ThresholdLeanXmssSecurity
 
 namespace SigningSupportProof
 
-open LeanXmss ThresholdLeanXmss SigningOpeningProof
+open HashSig LeanXmss ThresholdLeanXmss SigningOpeningProof
 
 variable {C : Committee}
 
@@ -335,7 +335,7 @@ theorem verifyRun_bottomOpened (A : TsigAdversary C) (x : SigningSecurityProof.K
       (s : HashCache C × ℕ) (v : (Bool × List (HiddenKey × Digest)) × HashCache C × ℕ),
       v ∈ support ((simulateQ (SigningCacheProof.countImpl prims) (SigningSecurityProof.liftFree
         (SigningGuessLinkProof.loggedTweakable x.1 state trees
-          (Concrete.verify ⟨top.root, x.1⟩ forgery.message forgery.signature)))).run s) ∧
+          (Verification.verifyWithHash ⟨top.root, x.1⟩ forgery.message forgery.signature)))).run s) ∧
       r.1.2 = adversaryLog ++ v.1.2 ∧ v.2.1 ≤ r.2.1 ∧
       ∀ (hk : SigningDescentProof.HonestKey) (l : XmssSecurity.ChainIndex) (p : ℕ),
         p < SigningDescentProof.bottomOpened r.2.1 x.1 forgery.signature.leafIndex hk l →
@@ -355,7 +355,7 @@ def ReleasedResolved : Prop :=
         (s : HashCache C × ℕ) (v : (Bool × List (HiddenKey × Digest)) × HashCache C × ℕ),
         v ∈ support ((simulateQ (SigningCacheProof.countImpl prims) (SigningSecurityProof.liftFree
           (SigningGuessLinkProof.loggedTweakable x.1 state trees
-            (Concrete.verify ⟨top.root, x.1⟩ forgery.message forgery.signature)))).run s) ∧
+            (Verification.verifyWithHash ⟨top.root, x.1⟩ forgery.message forgery.signature)))).run s) ∧
         r.1.2 = adversaryLog ++ v.1.2 ∧ v.2.1 ≤ r.2.1 ∧
         let z := SigningCostProof.finalOf x (r.1.1, r.2) top state forgery
         (z.honestKey prims).released = true → SelectedCached s.1 x.1 z.key (z.honestKey prims)

@@ -14,7 +14,7 @@ adds the record of the signer at a bound key, and the update of corruption chang
 corrupt set.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1SlackControl
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -46,7 +46,7 @@ theorem sourceRound1_releasedBound (top : TopTree) (i : C.Party) (J : C.Quorum) 
   subst a
   dsimp only at hr
   split at hr
-  · rw [runSource_pure, mem_support_pure_iff] at hr
+  · erw [runSource_pure, mem_support_pure_iff] at hr
     subst r
     exact h
   · rename_i hguard
@@ -72,7 +72,7 @@ theorem sourceRound1_releasedBound (top : TopTree) (i : C.Party) (J : C.Quorum) 
       split
       · exact ((sourceControl_sourceReleaseOpening x.1 x.2.1 e).comp Prod.fst).bind _
           fun _ => part.map some
-      · exact (SourceKeeps.pure _).bind _ fun _ => part.map some
+      · exact part.map some
 
 /-- The tree request of the base source keeps the signing state. -/
 theorem sourceSigning_tree (top : TopTree) (b : XmssSecurity.TopIndex) :
@@ -178,8 +178,8 @@ theorem round2Callback_controlAt (flag : Bool) (st : TsigState C) (i : C.Party) 
     split
     · exact SourcePreservesO1.bind (sourceReleaseCovered_controlAt q s x.1 x.2.1 flag st _ _) _
         fun _ => part
-    · exact SourcePreservesO1.bind (SourcePreservesO1.pure _) _ fun _ => part
-  · exact SourcePreservesO1.bind (SourcePreservesO1.pure _) _ fun _ => part
+    · exact part
+  · exact part
 
 /-- Each signing request keeps the control fields. -/
 theorem sourceTsigO1_control (top : TopTree) (flag : Bool) (t : TsigQuery C) :
@@ -194,7 +194,7 @@ theorem sourceTsigO1_control (top : TopTree) (flag : Bool) (t : TsigQuery C) :
       subst a
       dsimp only at hr
       split at hr
-      · rw [runSourceO1_pure, mem_support_pure_iff] at hr
+      · erw [runSourceO1_pure, mem_support_pure_iff] at hr
         subst r
         exact h
       · rw [runSourceO1_bind, mem_support_bind_iff] at hr
@@ -233,7 +233,7 @@ theorem sourceTsigO1_control (top : TopTree) (flag : Bool) (t : TsigQuery C) :
       subst a
       dsimp only at hr
       split at hr
-      · rw [runSourceO1_pure, mem_support_pure_iff] at hr
+      · erw [runSourceO1_pure, mem_support_pure_iff] at hr
         subst r
         exact h
       · rename_i hguard
@@ -276,8 +276,7 @@ theorem sourceTsigO1_control (top : TopTree) (flag : Bool) (t : TsigQuery C) :
           intro current backend hc
           exact ⟨⟨hc.1.1, hc.1.2.1, hc.1.2.2.1,
             releasedBound_withRecord _ e message i hc.1.2.2.2 hc.2⟩, hc.2⟩
-        · refine SourcePreservesO1.bind (SourcePreservesO1.pure ()) _ fun _ => ?_
-          refine SourcePreservesO1.bind (SourcePreservesO1.modify _ ?_) _
+        · refine SourcePreservesO1.bind (SourcePreservesO1.modify _ ?_) _
             fun _ => SourcePreservesO1.pure _
           intro current backend hc
           exact ⟨⟨hc.1.1, hc.1.2.1, hc.1.2.2.1,

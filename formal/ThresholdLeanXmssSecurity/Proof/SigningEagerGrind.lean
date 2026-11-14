@@ -173,8 +173,8 @@ theorem randomOracle_run_cached (target : D) (cache : (D →ₒ R).QueryCache) :
 /-- A lazy call whose answer the rest ignores leaves the law of the result unchanged. -/
 theorem evalDist_run'_query_bind_const {α : Type} (target : D) (oa : OracleComp (D →ₒ R) α)
     (cache : (D →ₒ R).QueryCache) :
-    𝒟[(simulateQ randomOracle (liftM ((D →ₒ R).query target) >>= fun _ => oa)).run' cache] =
-      𝒟[(simulateQ randomOracle oa).run' cache] := by
+    (simulateQ randomOracle (liftM ((D →ₒ R).query target) >>= fun _ => oa)).run' cache =ᵈ
+      (simulateQ randomOracle oa).run' cache := by
   set oa' : OracleComp (D →ₒ R) α := oa >>= fun a => liftM ((D →ₒ R).query target) >>= fun _ => pure a
   have hrun : ∀ c, (simulateQ randomOracle oa').run c = (simulateQ randomOracle oa).run c >>= fun r =>
       (randomOracle (spec := D →ₒ R) target).run r.2 >>= fun q => pure (r.1, q.2) := by
@@ -190,31 +190,31 @@ theorem evalDist_run'_query_bind_const {α : Type} (target : D) (oa : OracleComp
     simp only [support_pure, Set.mem_singleton_iff] at hres
     subst hres
     exact randomOracle_run_cached target r.2 q hq
-  have hforget : ∀ c, 𝒟[(simulateQ randomOracle oa').run' c] = 𝒟[(simulateQ randomOracle oa).run' c] := by
+  have hforget : ∀ c, (simulateQ randomOracle oa').run' c =ᵈ (simulateQ randomOracle oa).run' c := by
     intro c
     have hconst : ∀ x : α × (D →ₒ R).QueryCache,
-        𝒟[(fun x => x.1) <$> ((randomOracle (spec := D →ₒ R) target).run x.2 >>= fun q => pure (x.1, q.2))] =
-          𝒟[(pure x.1 : ProbComp α)] := by
+        ((fun x => x.1) <$> ((randomOracle (spec := D →ₒ R) target).run x.2 >>= fun q => pure (x.1, q.2))) =ᵈ
+          (pure x.1 : ProbComp α) := by
       intro x
       rw [map_bind]
       simp only [map_pure]
-      exact DeferredSampling.evalDist_bind_const_neverFails _ (by simp) _
-    rw [StateT.run'_eq, StateT.run'_eq, hrun, map_bind, evalDist_bind, evalDist_map]
-    simp_rw [hconst]
+      exact OracleComp.EvalDistEq.bind_const _ _
+    rw [StateT.run'_eq, StateT.run'_eq, hrun, map_bind]
+    refine (EvalDistEq.bind_right _ hconst).trans (EvalDistEq.of_eq ?_)
     simp [map_eq_bind_pure_comp]
   have hleft : (simulateQ randomOracle (liftM ((D →ₒ R).query target) >>= fun _ => oa)).run' cache =
       (randomOracle (spec := D →ₒ R) target).run cache >>= fun q => (simulateQ randomOracle oa).run' q.2 := by
     rw [simulateQ_bind, simulateQ_spec_query, StateT.run'_eq, StateT.run_bind, map_bind]
     rfl
   have hpre := evalDist_randomOracle_run_eq_query_then_of_cached oa' cache target (hcached cache)
-  calc _ = 𝒟[(randomOracle (spec := D →ₒ R) target).run cache >>= fun q =>
-          (simulateQ randomOracle oa').run' q.2] := by
-        rw [hleft]
-        exact DeferredSampling.evalDist_bind_congr_left _ _ _ fun q => (hforget q.2).symm
-    _ = 𝒟[(simulateQ randomOracle oa').run' cache] := by
-        rw [StateT.run'_eq, evalDist_map, hpre, ← evalDist_map, map_bind]
-        rfl
-    _ = _ := hforget cache
+  rw [hleft]
+  refine (EvalDistEq.bind_right ((randomOracle (spec := D →ₒ R) target).run cache)
+    fun q => (hforget q.2).symm).trans ?_
+  refine EvalDistEq.trans ?_ (hforget cache)
+  rw [StateT.run'_eq]
+  refine EvalDistEq.trans (EvalDistEq.of_eq ?_) (hpre.map Prod.fst).symm
+  rw [map_bind]
+  rfl
 
 theorem run'_query_bind {α : Type} (target : D) (next : R → OracleComp (D →ₒ R) α)
     (cache : (D →ₒ R).QueryCache) :
@@ -227,13 +227,15 @@ theorem run'_query_bind {α : Type} (target : D) (next : R → OracleComp (D →
 /-- A lazy subcomputation whose result the rest ignores leaves the law of the result unchanged. -/
 theorem evalDist_run'_bind_const {α β : Type} (ob : OracleComp (D →ₒ R) β) (oa : OracleComp (D →ₒ R) α)
     (cache : (D →ₒ R).QueryCache) :
-    𝒟[(simulateQ randomOracle (ob >>= fun _ => oa)).run' cache] =
-      𝒟[(simulateQ randomOracle oa).run' cache] := by
+    (simulateQ randomOracle (ob >>= fun _ => oa)).run' cache =ᵈ
+      (simulateQ randomOracle oa).run' cache := by
   induction ob using OracleComp.inductionOn generalizing cache with
   | pure b => rw [pure_bind]
   | query_bind t next ih =>
-    rw [bind_assoc, run'_query_bind, ← evalDist_run'_query_bind_const t oa cache, run'_query_bind]
-    exact DeferredSampling.evalDist_bind_congr_left _ _ _ fun q => ih q.1 q.2
+    rw [bind_assoc, run'_query_bind]
+    refine EvalDistEq.trans ?_ (evalDist_run'_query_bind_const t oa cache)
+    rw [run'_query_bind]
+    exact EvalDistEq.bind_right _ fun q => ih q.1 q.2
 
 /-- The eager grind. The first call of an input samples its answer `u` and then runs `extra input u`
 on the same lazy oracle, so the trials of `extra` are cached at that call and are not results of the
@@ -248,7 +250,7 @@ def eagerOracle (extra : D → R → OracleComp (D →ₒ R) Unit) :
 /-- The eager run has the law of the lazy run. -/
 theorem evalDist_eagerOracle_run' {α : Type} (extra : D → R → OracleComp (D →ₒ R) Unit)
     (oa : OracleComp (D →ₒ R) α) (cache : (D →ₒ R).QueryCache) :
-    𝒟[(simulateQ (eagerOracle extra) oa).run' cache] = 𝒟[(simulateQ randomOracle oa).run' cache] := by
+    (simulateQ (eagerOracle extra) oa).run' cache =ᵈ (simulateQ randomOracle oa).run' cache := by
   induction oa using OracleComp.inductionOn generalizing cache with
   | pure a => simp
   | query_bind t next ih =>
@@ -268,18 +270,18 @@ theorem evalDist_eagerOracle_run' {α : Type} (extra : D → R → OracleComp (D
           (simulateQ randomOracle (extra t q.1)).run q.2 >>= fun r => pure (q.1, r.2) := by
         simp only [eagerOracle, StateT.run_mk, hc]
       rw [he, bind_assoc]
-      refine DeferredSampling.evalDist_bind_congr_left _ _ _ fun q => ?_
+      refine EvalDistEq.bind_right _ fun q => ?_
       simp only [bind_assoc, pure_bind]
-      rw [← evalDist_run'_bind_const (extra t q.1) (next q.1) q.2, StateT.run'_eq, simulateQ_bind,
-        StateT.run_bind, map_bind, evalDist_bind, evalDist_bind]
-      exact congrArg _ (funext fun r => (ih q.1 r.2).trans (by rw [StateT.run'_eq]))
+      refine EvalDistEq.trans ?_ (evalDist_run'_bind_const (extra t q.1) (next q.1) q.2)
+      rw [StateT.run'_eq, simulateQ_bind, StateT.run_bind, map_bind]
+      exact EvalDistEq.bind_right _ fun r => (ih q.1 r.2).trans (EvalDistEq.of_eq (by rw [StateT.run'_eq]))
 
 /-- The eager run has the law of the lazy run on the result and the log of the calls of the
 computation. The trials of `extra` are not in the log. -/
 theorem evalDist_eagerOracle_logged {α : Type} (extra : D → R → OracleComp (D →ₒ R) Unit)
     (oa : OracleComp (D →ₒ R) α) (cache : (D →ₒ R).QueryCache) :
-    𝒟[(simulateQ (eagerOracle extra) (simulateQ loggingOracle oa).run).run' cache] =
-      𝒟[(simulateQ randomOracle (simulateQ loggingOracle oa).run).run' cache] :=
+    (simulateQ (eagerOracle extra) (simulateQ loggingOracle oa).run).run' cache =ᵈ
+      (simulateQ randomOracle (simulateQ loggingOracle oa).run).run' cache :=
   evalDist_eagerOracle_run' extra _ cache
 
 end SigningEagerGrindProof

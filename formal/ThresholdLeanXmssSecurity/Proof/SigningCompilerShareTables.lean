@@ -10,7 +10,7 @@ oracle supplies fresh chain answers and free slot reads; sampling that oracle
 in advance preserves the complete compiler outcome and share metadata.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerShareTables
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -236,6 +236,9 @@ theorem freshRest_run (P : PublicParameter) (seeds : C.Term → HashOutput)
       OracleQuery.cont_query, id_map, SigningGuessProof.privateRoImpl,
       QueryImpl.add_apply_inr, roSim.run_liftM]
     erw [QueryImpl.withCaching_run_none _ (hf hp), bind_map_left]
+    refine bind_congr fun a => ?_
+    rw [map_eq_bind_pure_comp]
+    rfl
 
 
 theorem Fresh.cache_left (seeds : C.Term → HashOutput) (pairs : C.Pair → HashOutput)
@@ -788,11 +791,11 @@ theorem eagerRunTagT_backend (tagOf : CappedCompilerState C × Bool → Tag)
 /-- Reuse the pinned independent-uniform-pair law under an arbitrary continuation. -/
 private theorem uniform_pair {α β γ : Type} [Fintype α] [Fintype β]
     [SampleableType α] [SampleableType β] (next : α → β → ProbComp γ) :
-    𝒟[do let a ← $ᵗ α; let b ← $ᵗ β; next a b] =
-      𝒟[($ᵗ (α × β)) >>= fun z => next z.1 z.2] := by
-  have h := congrArg (fun d => d >>= fun z => 𝒟[next z.1 z.2])
-    (XmssSecurity.evalDist_independent_uniform_pair (α := α) (β := β))
-  simpa only [← evalDist_bind, bind_assoc, pure_bind] using h
+    (do let a ← $ᵗ α; let b ← $ᵗ β; next a b) =ᵈ
+      (($ᵗ (α × β)) >>= fun z => next z.1 z.2) := by
+  have h := (XmssSecurity.evalDist_independent_uniform_pair (α := α) (β := β)).bind_left
+    (fun z => next z.1 z.2)
+  simpa only [bind_assoc, pure_bind] using h
 
 /-- Independent noise and free-slot tables preserve every compiler field and
 all eager share metadata, including the first-bad lucky bit. -/
@@ -801,22 +804,27 @@ theorem eagerRunTag_eq_tables (tagOf : CappedCompilerState C × Bool → Tag)
     (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
     (τ : CPoint → Digest) (g : C.Term × CPoint → HashOutput) :
-    𝒟[eagerRunTag tagOf prims A x q s pads τ g] =
-      𝒟[do let noise ← $ᵗ (ChainNoiseIndex → HashOutput)
+    eagerRunTag tagOf prims A x q s pads τ g =ᵈ
+      (do
+           let noise ← $ᵗ (ChainNoiseIndex → HashOutput)
            let rest ← $ᵗ (RestSlot C → HashOutput)
-           eagerRunTagT tagOf prims A x q s pads τ g noise rest] := by
+           eagerRunTagT tagOf prims A x q s pads τ g noise rest) := by
   have hi : Function.Injective (TprfSecurityProof.slotInput x.2.1 x.2.2) := by
     simp only [TprfSecurityProof.KeyCollision, not_or, not_not] at hkeys
     exact TprfSecurityProof.slotInput_injective hkeys.1 hkeys.2
-  rw [eagerRunTag_raw tagOf prims A x hi, privateRo_eq_table]
+  rw [eagerRunTag_raw tagOf prims A x hi]
+  refine (privateRo_eq_table _ _).trans ?_
   simp only [tableExtending_empty]
   let e := Equiv.sumArrowEquivProdArrow ChainNoiseIndex (RestSlot C) HashOutput
-  have hu := evalDist_map_bijective_uniform_cross (α := TableIndex C → HashOutput) e e.bijective
-  have hm := congrArg (fun d => d >>= fun z =>
-    𝒟[simulateQ (resolvePrivateTable (e.symm z)) (rawProgram tagOf prims A x q s pads τ g)]) hu
-  simp only [← evalDist_bind, bind_map_left, Equiv.symm_apply_apply] at hm
-  rw [hm, uniform_pair (fun noise rest => eagerRunTagT tagOf prims A x q s pads τ g noise rest)]
-  rfl
+  have hu := SampleableType.map_uniformSample_evalDistEq_of_bijective
+    (α := TableIndex C → HashOutput) e.bijective
+  have hm := hu.bind_left (fun z =>
+    simulateQ (resolvePrivateTable (e.symm z)) (rawProgram tagOf prims A x q s pads τ g))
+  simp only [bind_map_left, Equiv.symm_apply_apply] at hm
+  refine hm.trans ?_
+  refine EvalDistEq.trans ?_
+    (uniform_pair (fun noise rest => eagerRunTagT tagOf prims A x q s pads τ g noise rest)).symm
+  exact EvalDistEq.of_eq rfl
 
 
 /-- The initial fiber table does not depend on the type of bad metadata. -/

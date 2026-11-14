@@ -6,7 +6,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerShareTable
 The fixed target table uses the private pad table. Visible pads identify
 those fixed entries at the original source's stable release boundaries.
 -/
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerShare.NoFalse
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -509,28 +509,28 @@ theorem lazyRun_noFalse (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
 theorem lazyRun_nonLucky_zero (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
     (hinj : Function.Injective x.2.1) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
     (k : SigningShareLazy.Kind) (l : Bool) (hnot : ¬(k = .read ∧ l = true)) :
-    Pr[fun z => z.2.bad = some (false, k, l) |
-      Table.lazyRun prims A x q s pads (tau s pads)] = 0 :=
-  probEvent_eq_zero_iff.mpr fun z hz hb => hnot (lazyRun_noFalse prims A x hinj q s pads z hz k l hb)
+    Pr{let z ←
+      Table.lazyRun prims A x q s pads (tau s pads)}[z.2.bad = some (false, k, l)] = 0 :=
+  prEvent_eq_zero_of_forall_mem_support _ _ fun z hz hb => hnot (lazyRun_noFalse prims A x hinj q s pads z hz k l hb)
 
 /-- Lucky false-tag reads have zero probability by the original lazy ratio. -/
 theorem lazyRun_luckyFalse_zero (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
     (hinj : Function.Injective x.2.1) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest) :
-    Pr[fun z => z.2.bad = some (false, .read, true) |
-      Table.lazyRun prims A x q s pads (tau s pads)] = 0 := by
+    Pr{let z ←
+      Table.lazyRun prims A x q s pads (tau s pads)}[z.2.bad = some (false, .read, true)] = 0 := by
   have hr := SigningShareLazy.lazy_lucky_ratio C.terms terms_nodup mem_terms
     (tau s pads) (shareRun prims A x q s pads)
     (SigningShareLazy.init (B := SigningShareLazy.ImplBad Bool)) rfl false
-  change Pr[fun z => z.2.bad = some (false, .read, false) |
-      Table.lazyRun prims A x q s pads (tau s pads)] =
+  change Pr{let z ←
+      Table.lazyRun prims A x q s pads (tau s pads)}[z.2.bad = some (false, .read, false)] =
     (Fintype.card SigningShareLazy.Digest - 1 : ℕ) *
-      Pr[fun z => z.2.bad = some (false, .read, true) |
-        Table.lazyRun prims A x q s pads (tau s pads)] at hr
+      Pr{let z ←
+        Table.lazyRun prims A x q s pads (tau s pads)}[z.2.bad = some (false, .read, true)] at hr
   rw [lazyRun_nonLucky_zero prims A x hinj q s pads .read false (by simp)] at hr
   have hn : ((Fintype.card SigningShareLazy.Digest - 1 : ℕ) : ℝ≥0∞) ≠ 0 := by
     have hc : Fintype.card SigningShareLazy.Digest = 2 ^ 128 := by
       change Fintype.card (BitVec 128) = 2 ^ 128
-      exact card_bitVec 128
+      exact Fintype.card_bitVec 128
     rw [hc]
     norm_num
   exact (mul_eq_zero.mp hr.symm).resolve_left hn
@@ -539,10 +539,9 @@ theorem lazyRun_luckyFalse_zero (prims : Primitives) (A : TsigAdversary C) (x : 
 theorem lazyRun_falseBad_zero (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
     (hinj : Function.Injective x.2.1) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
     (k : SigningShareLazy.Kind) :
-    Pr[fun z => (SigningShareLazy.erase z.2).bad = some (false, k) |
-      Table.lazyRun prims A x q s pads (tau s pads)] = 0 := by
-  apply probEvent_eq_zero_iff.mpr
-  intro z hz hb
+    Pr{let z ←
+      Table.lazyRun prims A x q s pads (tau s pads)}[(SigningShareLazy.erase z.2).bad = some (false, k)] = 0 := by
+  refine prEvent_eq_zero_of_forall_mem_support _ _ fun z hz hb => ?_
   have hbad : ∃ l, z.2.bad = some (false, k, l) := by
     simp only [SigningShareLazy.erase, Option.map_eq_some_iff] at hb
     obtain ⟨⟨g, kind, l⟩, he, hval⟩ := hb
@@ -551,7 +550,7 @@ theorem lazyRun_falseBad_zero (prims : Primitives) (A : TsigAdversary C) (x : Ke
   obtain ⟨l, hl⟩ := hbad
   have hshape := lazyRun_noFalse prims A x hinj q s pads z hz k l hl
   rcases hshape with ⟨rfl, rfl⟩
-  exact (probEvent_eq_zero_iff.mp (lazyRun_luckyFalse_zero prims A x hinj q s pads)) z hz hl
+  exact ((OracleComp.prEvent_eq_zero_iff _ _).mp (lazyRun_luckyFalse_zero prims A x hinj q s pads)) z hz hl
 
 end ThresholdLeanXmssSecurity.SigningCompilerShare.NoFalse
 

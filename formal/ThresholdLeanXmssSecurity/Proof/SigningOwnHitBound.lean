@@ -17,7 +17,7 @@ set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 set_option linter.constructorNameAsVariable false
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -36,7 +36,7 @@ units pay the structural calls of the verification. -/
 def HitOwn : Prop :=
   ∀ (A : TsigAdversary C) (q : ℕ) (x : Keys3 C), x ∈ support (keyGen3 (C := C)) →
     ¬KeyCollision x.2.1 x.2.2 → HasSigningOwnBound A q → q + signingSlack < 2 ^ 127 →
-    Pr[WinHit prims x | SigningDescentProof.exposedRun prims A x] ≤
+    Pr{let z ← SigningDescentProof.exposedRun prims A x}[WinHit prims x z] ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ * (forgerCost prims A x (ownDomainUnit (SigningHitProof.forestRelevant x.1)) +
         (2 ^ 16 + 382 : ℕ))
 
@@ -124,15 +124,15 @@ theorem hitOwn_of_gate (hgate : KeyGateBoundOwn prims C) : HitOwn prims (C := C)
     (fun top t p hp => hitInv_step prims x T top t p hp)
     (fun top forgery st s hs => hit_finish_rise prims A x T top forgery st s hs)
   refine le_trans ?_ hf
-  rw [SigningHitLaneProof.winHit_logged, probEvent_eq_tsum_ite]
+  rw [SigningHitLaneProof.winHit_logged, OracleComp.prEvent_eq_tsum_ite]
   refine ENNReal.tsum_le_tsum fun z => ?_
   by_cases hz : z ∈ support (loggedRun prims A x)
   · by_cases hw : WinHit prims x (z.1, z.2.1)
     · simp only [hw, if_true, guarded, if_neg (noProgramQuery prims C A x z hz)]
       simpa only [mul_one] using mul_le_mul_right
-        (SigningGuessProof.structuralHitPotential_terminal prims A x T z hz hw) (Pr[= z | loggedRun prims A x])
+        (SigningGuessProof.structuralHitPotential_terminal prims A x T z hz hw) (Pr{let y ← loggedRun prims A x}[y = z])
     · simp [hw]
-  · simp [probOutput_eq_zero_of_not_mem_support hz]
+  · simp [prEvent_eq_zero_of_not_mem_support _ hz]
 
 end ThresholdLeanXmssSecurity.SigningOwnHitBound
 

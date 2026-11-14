@@ -19,7 +19,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningOwnForger
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -113,12 +113,12 @@ variable [SampleableType State]
 changes nothing. -/
 theorem step_sizeDiscounted (t : Index × Fin 3 × State) (s : GraphState Index State) (hs : Valid s)
     (target : Index → State) :
-    (∑' r, Pr[= r | LayeredGraph.step t s] * sizeDiscounted target r.2.1) ≤ sizeDiscounted target s.1 := by
+    (∑' r, Pr{let z ← LayeredGraph.step t s}[z = r] * sizeDiscounted target r.2.1) ≤ sizeDiscounted target s.1 := by
   unfold LayeredGraph.step
   split
-  · rw [tsum_probOutput_pure_mul]
+  · rw [OracleComp.tsum_prEvent_pure_mul]
   · rename_i hfresh
-    rw [tsum_probOutput_map_mul]
+    rw [OracleComp.tsum_prEvent_map_mul]
     have hl : t.2.1.val < (s.1 t.1).length := by rw [hs]; exact t.2.1.isLt
     have hf : (s.1 t.1)[t.2.1.val] t.2.2 = none := by
       simpa only [edge, List.getElem?_eq_getElem hl, Option.bind_some] using hfresh
@@ -127,7 +127,7 @@ theorem step_sizeDiscounted (t : Index × Fin 3 × State) (s : GraphState Index 
       rw [size_update_insertEdge s.1 t.1 t.2.1 t.2.2 output (hs t.1), hfresh]
       rfl
     calc
-      _ = (∑' output : State, Pr[= output | $ᵗ State] *
+      _ = (∑' output : State, Pr{let z ← $ᵗ State}[z = output] *
             potential (Function.update s.1 t.1 (insertEdge (s.1 t.1) t.2.1.val t.2.2 output)) target) /
             growth State ^ (size s.1 + 1) := by
         simp only [sizeDiscounted, hsize, div_eq_mul_inv, ← mul_assoc]
@@ -142,16 +142,16 @@ theorem step_sizeDiscounted (t : Index × Fin 3 × State) (s : GraphState Index 
 /-- `terminal_probability_of_expected` with the number of the edges. -/
 theorem sizeTerminal_probability_of_expected {α : Type}
     (run : ProbComp (α × (Index → List (State → Option State)))) (target : Index → State) (q : ℕ)
-    (hmean : (∑' r, Pr[= r | run] * sizeDiscounted target r.2) ≤ 1) :
-    Pr[fun r => SizeTerminal target q r.2 | run] ≤ growth State ^ q / (5 : ℝ≥0∞) ^ 68 := by
+    (hmean : (∑' r, Pr{let z ← run}[z = r] * sizeDiscounted target r.2) ≤ 1) :
+    Pr{let r ← run}[SizeTerminal target q r.2] ≤ growth State ^ q / (5 : ℝ≥0∞) ^ 68 := by
   classical
-  have hmass : Pr[fun r => SizeTerminal target q r.2 | run] *
+  have hmass : Pr{let r ← run}[SizeTerminal target q r.2] *
       ((5 : ℝ≥0∞) ^ 68 / growth State ^ q) ≤ 1 := by
     calc
-      _ = ∑' r, (if SizeTerminal target q r.2 then Pr[= r | run] else 0) *
+      _ = ∑' r, (if SizeTerminal target q r.2 then Pr{let z ← run}[z = r] else 0) *
           ((5 : ℝ≥0∞) ^ 68 / growth State ^ q) := by
-        rw [probEvent_eq_tsum_ite, ENNReal.tsum_mul_right]
-      _ ≤ ∑' r, Pr[= r | run] * sizeDiscounted target r.2 := by
+        rw [OracleComp.prEvent_eq_tsum_ite, ENNReal.tsum_mul_right]
+      _ ≤ ∑' r, Pr{let z ← run}[z = r] * sizeDiscounted target r.2 := by
         apply ENNReal.tsum_le_tsum
         intro r
         split_ifs with hr
@@ -177,13 +177,13 @@ def sizePotential (target : ChainIndex → Digest) (s : State C) : ℝ≥0∞ :=
 set_option backward.isDefEq.respectTransparency false in
 theorem chain_query_sizeDiscounted (record : QueryCache (ProtectedSlot C →ₒ HashOutput))
     (target : ChainIndex → Digest) (l : ChainIndex) (k : Fin 3) (v : Digest) :
-    (∑' r, Pr[= r | ((ProtectedSlot C →ₒ HashOutput).randomOracle (.inr (l, k, v))).run record] *
+    (∑' r, Pr{let z ← ((ProtectedSlot C →ₒ HashOutput).randomOracle (.inr (l, k, v))).run record}[z = r] *
       LayeredGraph.sizeDiscounted target (rows r.2)) ≤
       LayeredGraph.sizeDiscounted target (rows record) := by
   have hp := chain_query_projection record 0 l k v
-  have hm := congrArg (fun d : SPMF (Digest × LayeredGraph.GraphState ChainIndex Digest) =>
-    ∑' r, d r * LayeredGraph.sizeDiscounted target r.2.1) hp
-  simp only [← probOutput_def, tsum_probOutput_map_mul] at hm
+  have hm := congrArg (fun f : Digest × LayeredGraph.GraphState ChainIndex Digest → ℝ≥0∞ => ∑' r, f r)
+    (funext fun r => congrArg (· * LayeredGraph.sizeDiscounted target r.2.1) (hp.prEvent_eq (· = r)))
+  simp only [OracleComp.tsum_prEvent_map_mul] at hm
   rw [hm]
   exact LayeredGraph.step_sizeDiscounted (l, k, v) (rows record, 0)
     (fun i => rows_length record i) target
@@ -191,7 +191,7 @@ theorem chain_query_sizeDiscounted (record : QueryCache (ProtectedSlot C →ₒ 
 set_option backward.isDefEq.respectTransparency false in
 theorem slot_query_sizeDiscounted (record : QueryCache (ProtectedSlot C →ₒ HashOutput))
     (target : ChainIndex → Digest) (slot : TprfSecurityProof.Slot C) :
-    (∑' r, Pr[= r | ((ProtectedSlot C →ₒ HashOutput).randomOracle (.inl slot)).run record] *
+    (∑' r, Pr{let z ← ((ProtectedSlot C →ₒ HashOutput).randomOracle (.inl slot)).run record}[z = r] *
       LayeredGraph.sizeDiscounted target (rows r.2)) ≤
       LayeredGraph.sizeDiscounted target (rows record) := by
   classical
@@ -199,28 +199,28 @@ theorem slot_query_sizeDiscounted (record : QueryCache (ProtectedSlot C →ₒ H
   | some value =>
     rw [show ((ProtectedSlot C →ₒ HashOutput).randomOracle (.inl slot)).run record =
       pure (value, record) from QueryImpl.withCaching_run_some _ hc,
-      tsum_probOutput_pure_mul]
+      OracleComp.tsum_prEvent_pure_mul]
   | none =>
     rw [show ((ProtectedSlot C →ₒ HashOutput).randomOracle (.inl slot)).run record =
       (fun value => (value, record.cacheQuery (.inl slot) value)) <$> ($ᵗ HashOutput) from
-        QueryImpl.withCaching_run_none _ hc, tsum_probOutput_map_mul]
+        QueryImpl.withCaching_run_none _ hc, OracleComp.tsum_prEvent_map_mul]
     simp only [rows_update_slot]
-    rw [tsum_probOutput_mul_of_const_on_support _ (fun _ _ => rfl) (by simp)]
+    rw [OracleComp.tsum_prEvent_mul_of_const_on_support _ (fun _ _ => rfl)]
 
 set_option backward.isDefEq.respectTransparency false in
 theorem query_sizeDiscounted (target : ChainIndex → Digest) (t : (Spec C).Domain) (s : State C) :
-    (∑' r, Pr[= r | (implementation t).run s] * sizePotential target r.2) ≤
+    (∑' r, Pr{let z ← (implementation t).run s}[z = r] * sizePotential target r.2) ≤
       sizePotential target s := by
   classical
   rcases t with (slot | ⟨l, k, v⟩) | n | input
-  · simpa only [implementation, StateT.run, tsum_probOutput_map_mul, sizePotential] using
+  · simpa only [implementation, StateT.run, OracleComp.tsum_prEvent_map_mul, sizePotential] using
       slot_query_sizeDiscounted s.1 target slot
-  · simpa only [implementation, StateT.run, tsum_probOutput_map_mul, sizePotential] using
+  · simpa only [implementation, StateT.run, OracleComp.tsum_prEvent_map_mul, sizePotential] using
       chain_query_sizeDiscounted s.1 target l k v
-  · simp only [implementation, StateT.run, tsum_probOutput_map_mul]
-    exact le_of_eq (tsum_probOutput_mul_of_const_on_support _ (fun _ _ => rfl) (by simp))
-  · simp only [implementation, StateT.run, tsum_probOutput_map_mul, sizePotential]
-    exact le_of_eq (tsum_probOutput_mul_of_const_on_support _ (fun _ _ => rfl) (by simp))
+  · simp only [implementation, StateT.run, OracleComp.tsum_prEvent_map_mul]
+    exact le_of_eq (OracleComp.tsum_prEvent_mul_of_const_on_support _ (fun _ _ => rfl))
+  · simp only [implementation, StateT.run, OracleComp.tsum_prEvent_map_mul, sizePotential]
+    exact le_of_eq (OracleComp.tsum_prEvent_mul_of_const_on_support _ (fun _ _ => rfl))
 
 theorem expected_sizePotential {α : Type} (oa : OracleComp (Spec C) α)
     (target : ChainIndex → Digest) (s : State C) :
@@ -241,11 +241,11 @@ bound holds for a program with any number of other calls. -/
 theorem terminal_probability_size {α : Type} (oa : OracleComp (Spec C) α)
     (target : ChainIndex → Digest) (s : State C)
     (hempty : rows s.1 = LayeredGraph.emptyRows) (q : ℕ) (hq : q < 2 ^ 127) :
-    Pr[fun r => LayeredGraph.SizeTerminal target q (rows r.2.1) |
-      (simulateQ implementation oa).run s] ≤ (2 ^ 128 : ℝ≥0∞)⁻¹ := by
+    Pr{let r ←
+      (simulateQ implementation oa).run s}[LayeredGraph.SizeTerminal target q (rows r.2.1)] ≤ (2 ^ 128 : ℝ≥0∞)⁻¹ := by
   let run := (fun r => (r.1, rows r.2.1)) <$> (simulateQ implementation oa).run s
-  have hmean : (∑' r, Pr[= r | run] * LayeredGraph.sizeDiscounted target r.2) ≤ 1 := by
-    rw [tsum_probOutput_map_mul]
+  have hmean : (∑' r, Pr{let z ← run}[z = r] * LayeredGraph.sizeDiscounted target r.2) ≤ 1 := by
+    rw [OracleComp.tsum_prEvent_map_mul]
     apply le_trans (expected_sizePotential oa target s)
     simp only [sizePotential, LayeredGraph.sizeDiscounted, hempty, SigningHitProof.LayeredGraph.potential,
       SigningHitProof.LayeredGraph.productWeight_empty, ENNReal.ofReal_one]
@@ -254,7 +254,7 @@ theorem terminal_probability_size {α : Type} (oa : OracleComp (Spec C) α)
         ENNReal.div_le_div le_rfl (one_le_pow₀ SigningHitProof.LayeredGraph.growth_one_le)
       _ = 1 := by simp
   have h := LayeredGraph.sizeTerminal_probability_of_expected run target q hmean
-  rw [probEvent_map] at h
+  rw [prEvent_map] at h
   exact h.trans (SigningHitProof.LayeredGraph.growth_query_cap q hq
     (show Fintype.card Digest = 2 ^ 128 by simp [digestBits]))
 
@@ -282,7 +282,7 @@ def HashTop (input : HashInput) : Prop :=
 
 theorem topChainInput_eq (l : ChainIndex) (k : ChainStep) (v : Digest) :
     XmssSecurity.Concrete.CacheView.topChainInput x.1 b l k v =
-      tweakableHashInput x.1 (.chain topLayer (topKey b) k) (Concrete.chainPayload l v) := by
+      tweakableHashInput x.1 (.chain topLayer (topKey b) k) (Verification.chainPayload l v) := by
   erw [XmssSecurity.Bridge.topChain_input]
   rfl
 
@@ -291,7 +291,7 @@ theorem tweakableHashInput_topChain {domain : LeanXmss.HashDomain} {payload : Ha
     (h : tweakableHashInput x.1 domain payload =
       XmssSecurity.Concrete.CacheView.topChainInput x.1 b l k v) :
     domain = .chain topLayer (topKey b) k := by
-  rw [topChainInput_eq] at h
+  erw [topChainInput_eq] at h
   have hf := (fieldInput_injective (by
     simpa only [tweakableHashInput, tweakBytes, List.append_assoc] using h)).1
   cases domain with
@@ -302,30 +302,30 @@ theorem tweakableHashInput_topChain {domain : LeanXmss.HashDomain} {payload : Ha
 
 theorem tweakableHash_bound (domain : LeanXmss.HashDomain) (payload : HashInput) (n : ℕ)
     (hn : (∃ k, domain = .chain topLayer (topKey b) k) → 0 < n) :
-    (Concrete.tweakableHash x.1 domain payload : OracleComp HashSpec Digest).IsQueryBoundP
+    (Verification.tweakableHashWithHash x.1 domain payload : OracleComp HashSpec Digest).IsQueryBoundP
       (HashTop x b) n := by
-  unfold Concrete.tweakableHash Concrete.oracleHash
+  unfold Verification.tweakableHashWithHash Verification.thWithHash Verification.oracleHashWithHash
   simp only [bind_pure_comp, isQueryBoundP_map_iff, HasQuery.instOfMonadLift_query,
     isQueryBoundP_query_iff]
   rintro ⟨l, k, v, h⟩
   exact hn ⟨k, tweakableHashInput_topChain x b h⟩
 
 theorem oracleHash_zero (input : HashInput) (h : ¬HashTop x b input) :
-    (Concrete.oracleHash input : OracleComp HashSpec HashOutput).IsQueryBoundP (HashTop x b) 0 := by
-  unfold Concrete.oracleHash
+    (Verification.oracleHashWithHash input : OracleComp HashSpec HashOutput).IsQueryBoundP (HashTop x b) 0 := by
+  unfold Verification.oracleHashWithHash
   simp only [HasQuery.instOfMonadLift_query, isQueryBoundP_query_iff]
   exact fun h' => (h h').elim
 
 theorem sequenceFin_bound {ι : Type} {spec : OracleSpec ι} {α : Type} (p : ι → Prop)
     [DecidablePred p] (m : ℕ) :
     ∀ {n : ℕ} (f : Fin n → OracleComp spec α), (∀ a, (f a).IsQueryBoundP p m) →
-      (Concrete.sequenceFin f).IsQueryBoundP p (n * m) := by
+      (OverPermutation.sequenceFin f).IsQueryBoundP p (n * m) := by
   intro n
   induction n with
-  | zero => intro f _; simp [Concrete.sequenceFin]
+  | zero => intro f _; simp [OverPermutation.sequenceFin]
   | succ n ih =>
     intro f hf
-    rw [Concrete.sequenceFin, show (n + 1) * m = m + (n * m + 0) by ring]
+    rw [OverPermutation.sequenceFin, show (n + 1) * m = m + (n * m + 0) by ring]
     exact isQueryBoundP_bind (hf 0) fun _ _ =>
       isQueryBoundP_bind (ih (fun a => f a.succ) fun a => hf a.succ) fun _ _ => by simp
 
@@ -344,14 +344,14 @@ theorem mapM_bound {ι : Type} {spec : OracleSpec ι} {α β : Type} (p : ι →
         (by simp)
 
 theorem chainWalk_bound (lay : Layer) (key : KeyIndex) (l : ChainIndex) (start : ℕ) :
-    ∀ steps v, (Concrete.chainWalk x.1 lay key l start steps v : OracleComp HashSpec Digest).IsQueryBoundP
+    ∀ steps v, (Verification.chainWalkWithHash x.1 lay key l start steps v : OracleComp HashSpec Digest).IsQueryBoundP
       (HashTop x b) (if lay = topLayer ∧ key = topKey b then steps else 0) := by
   intro steps
   induction steps with
-  | zero => intro v; simp [Concrete.chainWalk]
+  | zero => intro v; simp [Verification.chainWalkWithHash, OverPermutation.walkChain]
   | succ steps ih =>
     intro v
-    rw [Concrete.chainWalk, show (if lay = topLayer ∧ key = topKey b then steps + 1 else 0) =
+    rw [Verification.chainWalkWithHash, show (if lay = topLayer ∧ key = topKey b then steps + 1 else 0) =
       (if lay = topLayer ∧ key = topKey b then steps else 0) +
         (if lay = topLayer ∧ key = topKey b then 1 else 0) by split_ifs <;> rfl]
     apply isQueryBoundP_bind (ih v)
@@ -365,67 +365,67 @@ theorem chainWalk_bound (lay : Layer) (key : KeyIndex) (l : ChainIndex) (start :
     · rw [dif_neg hstep]
       simp
 
-theorem recoverChain_bound (lay : Layer) (key : KeyIndex) (l : ChainIndex) (digit : Digit)
+theorem recoverChain_bound (lay : Layer) (key : KeyIndex) (l : ChainIndex) (digit : WinternitzDigit)
     (v : Digest) :
-    (Concrete.recoverChain x.1 lay key l digit v : OracleComp HashSpec Digest).IsQueryBoundP
+    (Verification.recoverChainWithHash x.1 lay key l digit v : OracleComp HashSpec Digest).IsQueryBoundP
       (HashTop x b) (if lay = topLayer ∧ key = topKey b then 3 else 0) :=
   (chainWalk_bound x b lay key l _ _ v).mono (by split_ifs <;> simp [chainLength, winternitzBits])
 
 theorem leafHash_zero (lay : Layer) (key : KeyIndex) (endpoints : ChainIndex → Digest) :
-    (Concrete.leafHash x.1 lay key endpoints : OracleComp HashSpec Digest).IsQueryBoundP
+    (Verification.leafHashWithHash x.1 lay key endpoints : OracleComp HashSpec Digest).IsQueryBoundP
       (HashTop x b) 0 :=
   tweakableHash_bound x b _ _ 0 fun ⟨_, h⟩ => by cases h
 
 theorem messageDigest_zero (lay : Layer) (key : KeyIndex) (message : HashInput)
-    (randomness : Randomness) :
-    (Concrete.messageDigest x.1 lay key message randomness : OracleComp HashSpec Digest).IsQueryBoundP
+    (randomness : Randomizer) :
+    (Verification.messageDigestWithHash x.1 lay key message randomness : OracleComp HashSpec Digest).IsQueryBoundP
       (HashTop x b) 0 :=
   tweakableHash_bound x b _ _ 0 fun ⟨_, h⟩ => by cases h
 
 theorem treeFold_zero (lay : Layer) (key : KeyIndex) (path : Fin layerHeight → Digest) :
-    ∀ levels v, (Concrete.treeFold x.1 lay key path levels v : OracleComp HashSpec Digest).IsQueryBoundP
+    ∀ levels v, (Verification.treeFoldWithHash x.1 lay key path levels v : OracleComp HashSpec Digest).IsQueryBoundP
       (HashTop x b) 0 := by
   intro levels
   induction levels with
-  | zero => intro v; simp [Concrete.treeFold]
+  | zero => intro v; simp [Verification.treeFoldWithHash, OverPermutation.foldPath]
   | succ levels ih =>
     intro v
-    rw [Concrete.treeFold]
+    rw [Verification.treeFoldWithHash]
     apply isQueryBoundP_bind (n := 0) (m := 0) (ih v)
     intro current _
     split_ifs <;> exact tweakableHash_bound x b _ _ 0 fun ⟨_, h⟩ => by cases h
 
-theorem otsLeaf_bound (lay : Layer) (key : KeyIndex) (message : HashInput) (randomness : Randomness)
+theorem otsLeaf_bound (lay : Layer) (key : KeyIndex) (message : HashInput) (randomness : Randomizer)
     (values : ChainIndex → Digest) :
-    (Concrete.otsLeaf x.1 lay key message randomness values : OracleComp HashSpec (Option Digest)).IsQueryBoundP
+    (Verification.otsLeafWithHash x.1 lay key message randomness values : OracleComp HashSpec (Option Digest)).IsQueryBoundP
       (HashTop x b) (if lay = topLayer ∧ key = topKey b then 174 else 0) := by
-  unfold Concrete.otsLeaf
+  unfold Verification.otsLeafWithHash
   refine (isQueryBoundP_bind (n := 0) (m := (if lay = topLayer ∧ key = topKey b then 174 else 0)) (messageDigest_zero x b lay key message randomness)
     fun digest _ => ?_).mono (by simp)
   split
   · refine (isQueryBoundP_bind (m := 0) (sequenceFin_bound _ _ _ fun chainIdx =>
       recoverChain_bound x b lay key chainIdx _ _) fun _ _ => ?_).mono ?_
     · simpa using leafHash_zero x b lay key _
-    · split_ifs <;> simp [numChains]
+    · split_ifs <;> simp [chainCount]
   · simp
 
 theorem layerRoot_bound (lay : Layer) (key : KeyIndex) (message : HashInput)
     (part : LayerSignature) :
-    (Concrete.layerRoot x.1 lay key message part : OracleComp HashSpec (Option Digest)).IsQueryBoundP
+    (Verification.layerRootWithHash x.1 lay key message part : OracleComp HashSpec (Option Digest)).IsQueryBoundP
       (HashTop x b) (if lay = topLayer ∧ key = topKey b then 174 else 0) := by
-  unfold Concrete.layerRoot
+  unfold Verification.layerRootWithHash
   refine (isQueryBoundP_bind (m := 0) (otsLeaf_bound x b lay key message _ _) fun leaf _ => ?_).mono
     (by simp)
   split
   · rw [bind_pure_comp, isQueryBoundP_map_iff]
-    have h := treeFold_zero x b lay key part.path
+    have h := treeFold_zero x b lay key part.authenticationPath
     exact h _ _
   · simp
 
 theorem verify_bound (root : Digest) (message : Message) (signature : Signature) :
-    (Concrete.verify ⟨root, x.1⟩ message signature : OracleComp HashSpec Bool).IsQueryBoundP
+    (Verification.verifyWithHash ⟨root, x.1⟩ message signature : OracleComp HashSpec Bool).IsQueryBoundP
       (HashTop x b) 174 := by
-  unfold Concrete.verify
+  unfold Verification.verifyWithHash
   refine (isQueryBoundP_bind (n := 0) (m := 174) ((layerRoot_bound x b bottomLayer _ _ _).mono
     (by simp [bottomLayer, topLayer])) fun bottomRoot _ => ?_).mono (by simp)
   split
@@ -451,7 +451,7 @@ theorem merklePath_zero (lay : Layer) (chainEnd : KeyIndex → ChainIndex → Di
   unfold merklePath
   simpa using sequenceFin_bound (HashTop x b) 0 _ fun level => merkleNode_zero x b lay chainEnd _ _
 
-theorem grind_zero (lay : Layer) (key : KeyIndex) (message : HashInput) (base : Randomness) :
+theorem grind_zero (lay : Layer) (key : KeyIndex) (message : HashInput) (base : Randomizer) :
     ∀ attempts trial, (grind x.1 lay key message base attempts trial).IsQueryBoundP (HashTop x b) 0 := by
   intro attempts
   induction attempts with
@@ -468,13 +468,13 @@ theorem grind_zero (lay : Layer) (key : KeyIndex) (message : HashInput) (base : 
 theorem not_hashTop_commitment (e : KeyIndex) (ρ : Digest) :
     ¬HashTop x b (commitmentInput x.1 e ρ) := by
   rintro ⟨l, k, v, h⟩
-  rw [topChainInput_eq] at h
+  erw [topChainInput_eq] at h
   exact SigningGuessProof.commitmentInput_ne_tweakableHashInput _ _ _ _ _ _ h
 
 theorem not_hashTop_randomizer (lay : Layer) (e : KeyIndex) (ρ : Digest) (message : HashInput) :
     ¬HashTop x b (randomizerInput x.1 lay e ρ message) := by
   rintro ⟨l, k, v, h⟩
-  rw [topChainInput_eq] at h
+  erw [topChainInput_eq] at h
   exact SigningGuessLinkProof.randomizerInput_ne_tweakableHashInput _ _ _ _ _ _ _ _ h
 
 /-- A call of `H` at a chain position of top key `b`, in the signing oracle. -/
@@ -484,7 +484,7 @@ def RoTop : (RoSpec C).Domain → Prop
 
 theorem tweakable_bound {α : Type} (oa : OracleComp HashSpec α) (n : ℕ)
     (h : oa.IsQueryBoundP (HashTop x b) n) : (tweakable (C := C) oa).IsQueryBoundP (RoTop x b) n := by
-  letI : (RoSpec C).IsUniformSpec := .ofFintypeInhabited _
+  letI : OracleSpec.UniformAnswerMeasure (RoSpec C) := OracleSpec.UniformAnswerMeasure.ofFiniteNonempty _
   apply h.simulateQ_of_step
   · intro input _
     exact (isQueryBoundP_query_iff (spec := RoSpec C) (RoTop x b) (.inl (.hash input)) 1).mpr
@@ -590,7 +590,7 @@ theorem jobs_bound (items : List Job) (cost : ℕ) (h : ∀ job ∈ items, jobCo
     (referenceJob_bound x b job).mono (h job hj)
 
 -- The proof times out unless these recursive programs are irreducible.
-attribute [local irreducible] merkleNode merklePath grind Concrete.treeFold Concrete.chainWalk in
+attribute [local irreducible] merkleNode merklePath grind Verification.treeFoldWithHash Verification.chainWalkWithHash in
 set_option maxRecDepth 100000 in
 /-- A build of bottom tree `b'` makes `348` chain calls at top key `b` when `b' = b`, and none
 otherwise. -/
@@ -598,7 +598,7 @@ theorem ceremony_bottom_bound (top : TopTree) (b' : XmssSecurity.TopIndex) :
     (referenceTree tweakable (prfValue x.2.1) x.1 top (.bottom b') : OracleComp (RoSpec C) _).IsQueryBoundP
       (RoTop x b) (if b' = b then 348 else 0) := by
   simp only [referenceTree, ceremonyOutput]
-  generalize List.flatMap (fun k => List.map (fun l => (bottomKey b' k, l)) (List.finRange numChains))
+  generalize List.flatMap (fun k => List.map (fun l => (bottomKey b' k, l)) (List.finRange chainCount))
     (List.finRange (2 ^ layerHeight)) = keys
   refine (isQueryBoundP_bind (n := 0) (m := if b' = b then 348 else 0) ?_ fun o ho => ?_).mono
     (by simp)
@@ -671,8 +671,7 @@ def WorldTop : (WorldSpec C).Domain → Prop
 theorem liftFree_bound {α : Type} (ro : OracleComp (RoSpec C) α) (n : ℕ)
     (h : ro.IsQueryBoundP (RoTop x b) n) :
     (SigningSecurityProof.liftFree ro).IsQueryBoundP (WorldTop x b) n := by
-  letI : (LocalSpec C).IsUniformSpec := .ofFintypeInhabited _
-  letI : (WorldSpec C).IsUniformSpec := .ofFintypeInhabited _
+  letI : OracleSpec.UniformAnswerMeasure (LocalSpec C) := OracleSpec.UniformAnswerMeasure.ofFiniteNonempty _
   have hl : (liftComp ro (LocalSpec C)).IsQueryBoundP (TopChainCall x b) n := by
     rw [liftComp_def]
     apply h.simulateQ_of_step
@@ -696,7 +695,7 @@ theorem liftFree_bound {α : Type} (ro : OracleComp (RoSpec C) α) (n : ℕ)
 theorem localize_bound {α : Type} (oa : OracleComp (WorldSpec C) α) (n : ℕ)
     (h : oa.IsQueryBoundP (WorldTop x b) n) :
     (simulateQ worldLocalize oa).IsQueryBoundP (TopChainCall x b) n := by
-  letI : (LocalSpec C).IsUniformSpec := .ofFintypeInhabited _
+  letI : OracleSpec.UniformAnswerMeasure (LocalSpec C) := OracleSpec.UniformAnswerMeasure.ofFiniteNonempty _
   apply h.simulateQ_of_step
   · rintro ((t | t) | t) _
     · exact (isQueryBoundP_query_iff (spec := LocalSpec C) (TopChainCall x b) t 1).mpr
@@ -735,9 +734,7 @@ theorem part_bound (top : TopTree) (i : C.Party) (J : C.Quorum) (p : Point) (mes
 set_option maxRecDepth 100000 in
 theorem bottom_bound (top : TopTree) (b' : XmssSecurity.TopIndex) :
     ((actualDealt x top).bottom b').IsQueryBoundP (WorldTop x b) (if b' = b then 348 else 0) := by
-  change ((fun | some (.bottom tree) => some tree | _ => none) <$>
-    referenceTree (fun oa => SigningSecurityProof.liftFree (tweakable oa))
-      (fun p => SigningSecurityProof.liftFree (prfValue x.2.1 p)) x.1 top (.bottom b')).IsQueryBoundP _ _
+  simp only [dealtWith]
   rw [isQueryBoundP_map_iff, show referenceTree (fun oa => SigningSecurityProof.liftFree (tweakable oa))
       (fun p => SigningSecurityProof.liftFree (prfValue x.2.1 p)) x.1 top (.bottom b') =
       SigningSecurityProof.liftFree (referenceTree tweakable (prfValue x.2.1) x.1 top (.bottom b')) from
@@ -755,18 +752,17 @@ theorem bottomOnce_bound (top : TopTree) (b' : XmssSecurity.TopIndex) (st : Tsig
     simp only [StateT.run_bind]
     refine (isQueryBoundP_bind (n := if b' = b then 348 else 0) (m := 0) ?_ fun _ _ => ?_).mono
       (by simp)
-    · change ((fun a => (a, st)) <$> (actualDealt x top).bottom b').IsQueryBoundP _ _
-      rw [isQueryBoundP_map_iff]
-      exact bottom_bound x b top b'
+    · change ((actualDealt x top).bottom b' >>= fun a => pure (a, st)).IsQueryBoundP (WorldTop x b) _
+      exact isQueryBoundP_bind (n := if b' = b then 348 else 0) (m := 0) (bottom_bound x b top b')
+        fun _ _ => isQueryBoundP_pure _ _ _
     · simp
 
 set_option synthInstance.maxHeartbeats 400000 in
 theorem run_liftM_bound {α : Type} (oa : OracleComp (WorldSpec C) α) (s : TsigState C) (n : ℕ)
     (h : oa.IsQueryBoundP (WorldTop x b) n) :
     ((liftM oa : StateT (TsigState C) (OracleComp (WorldSpec C)) α).run s).IsQueryBoundP (WorldTop x b) n := by
-  change ((fun a => (a, s)) <$> oa).IsQueryBoundP _ _
-  rw [isQueryBoundP_map_iff]
-  exact h
+  change (oa >>= fun a => pure (a, s)).IsQueryBoundP (WorldTop x b) _
+  exact isQueryBoundP_bind (n := n) (m := 0) h fun _ _ => isQueryBoundP_pure _ _ _
 
 theorem signRound2_bound (top : TopTree) (i : C.Party) (J : C.Quorum) (commitment : Digest)
     (e : KeyIndex) (message : Message) (parts : C.Party → Digest) :
@@ -785,6 +781,7 @@ theorem signRound2_bound (top : TopTree) (i : C.Party) (J : C.Quorum) (commitmen
         exact part_bound x b top i J _ message
       · exact isQueryBoundP_pure _ _ _
 
+set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 100000 in
 /-- A signing oracle that opens no tree at `b` makes no chain call at top key `b`. -/
 theorem tsig_step_zero (top : TopTree) (q : (TsigSpec C).Domain) (st : TsigState C)
@@ -904,8 +901,7 @@ theorem honest_bound (top : TopTree) (e : KeyIndex) (message : Message) :
       split
       · exact value_bound x b top _
       · exact isQueryBoundP_pure _ _ _
-      · exact isQueryBoundP_bind (n := 0) (m := 0) (value_bound x b top _) fun _ _ =>
-          isQueryBoundP_pure _ _ _
+      · exact (isQueryBoundP_map_iff _ _ _).mpr (value_bound x b top _)
   · exact isQueryBoundP_bind (n := 0) (m := 0)
       (liftFree_bound x b _ _ (tweakable_bound x b _ _ (merklePath_zero x b _ _ _))) fun _ _ =>
         isQueryBoundP_pure _ _ _
@@ -955,7 +951,7 @@ theorem after_jobs_bound (after : List XmssSecurity.TopIndex) (hb : b ∉ after)
 
 end TopChain
 
-attribute [local irreducible] merkleNode merklePath grind Concrete.treeFold Concrete.chainWalk in
+attribute [local irreducible] merkleNode merklePath grind Verification.treeFoldWithHash Verification.chainWalkWithHash in
 set_option maxRecDepth 100000 in
 open Classical in
 /-- The stopped continuation after the selected block makes at most `q + topChainSlack` calls of `H`
@@ -1015,7 +1011,8 @@ theorem size_cacheQuery_le (x : SigningSecurityProof.Keys3 C) (b : XmssSecurity.
     exact Nat.le_add_right _ _
   · have hcall : TopChainCall x b (.inr (.inl (protectedInput x b (.inr (l, k, v))))) :=
       ⟨l, k, v, rfl⟩
-    rw [if_pos hcall, PublicContinuation.rows_update_chain]
+    rw [if_pos hcall]
+    erw [PublicContinuation.rows_update_chain]
     have h := LayeredGraph.size_update_insertEdge (PublicContinuation.rows record) l k v
       (truncateHash value) (PublicContinuation.rows_length record l)
     exact le_trans (le_of_eq h) (Nat.add_le_add_left (by split_ifs <;> simp) _)

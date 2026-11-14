@@ -17,7 +17,7 @@ noncomputable section
 namespace ThresholdLeanXmssSecurity
 namespace SigningReleasedLinkProof
 
-open LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof
+open HashSig LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof
   SigningJointEagerProof SigningPartnerBoundProof SigningOneRunProof
 
 attribute [local instance] Classical.propDecidable
@@ -234,7 +234,7 @@ theorem jointCachedExtra_base (x : SigningSecurityProof.Keys3 C)
     (hbase : BaseCall x.1 e (SigningGuessProof.cachedRandomizer x.2.1 p.1.1.1 e) p.2.1.1 t)
     (hbound : p.2.1.1.bound e = some message)
     (hanswer : p'.1.1.1 (.hash (randomizerInput x.1 bottomLayer e
-      (SigningGuessProof.cachedRandomizer x.2.1 p.1.1.1 e) (bytesLE 32 message))) = some answer) :
+      (SigningGuessProof.cachedRandomizer x.2.1 p.1.1.1 e) (littleEndianBytes 32 message))) = some answer) :
     jointCachedExtra x.2.1 x.1 p t p' = baseGrind x.1 e message answer := by
   unfold jointCachedExtra SigningR1FixedProof.cachedExtra
   rw [if_pos ⟨e, hcache, hbase⟩]
@@ -259,7 +259,7 @@ theorem world_base_subrun (x : SigningSecurityProof.Keys3 C) (t : (WorldSpec C).
       (ground : Unit × ((HashCache C × Monitor) × (XmssSecurity.LeafIndex → Bool))),
       called ∈ support ((carry (SigningCostProof.loggedImpl prims) t).run (s.1.1.1, s.2)) ∧
       called.2.1.1.1 (.hash (randomizerInput x.1 bottomLayer e
-        (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (bytesLE 32 message))) = some answer ∧
+        (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (littleEndianBytes 32 message))) = some answer ∧
       ground ∈ support ((simulateQ (keyedSplitOracle (XmssSecurity.encodingInputLeafIndex? x.1))
         (baseGrind x.1 e message answer)).run
           ((called.2.1.1.1, queryEntryStep (XmssSecurity.encodingInputLeafIndex? x.1)
@@ -269,10 +269,10 @@ theorem world_base_subrun (x : SigningSecurityProof.Keys3 C) (t : (WorldSpec C).
     support_map, Set.mem_image] at hr
   obtain ⟨called, hc, ground, hg, rfl⟩ := hr
   have hcall : HashCallAt (randomizerInput x.1 bottomLayer e
-      (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (bytesLE 32 message)) t := by
+      (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (littleEndianBytes 32 message)) t := by
     obtain ⟨input, hi, ht⟩ := hbase
     have he : randomizerInput x.1 bottomLayer e
-        (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (bytesLE 32 message) = input := by
+        (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (littleEndianBytes 32 message) = input := by
       unfold baseInput at hi
       rw [hbound] at hi
       exact Option.some.inj hi
@@ -282,7 +282,7 @@ theorem world_base_subrun (x : SigningSecurityProof.Keys3 C) (t : (WorldSpec C).
   obtain ⟨outer, ⟨counted, hcounted, rfl⟩, heq⟩ := hc'
   obtain ⟨answer, ha⟩ := countImpl_hash_cached prims _ t hcall _ counted hcounted
   have hanswer : called.2.1.1.1 (.hash (randomizerInput x.1 bottomLayer e
-      (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (bytesLE 32 message))) = some answer := by
+      (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (littleEndianBytes 32 message))) = some answer := by
     rw [← heq]
     exact ha
   rw [jointCachedExtra_base x (s.1.1.1, s.2) called.2 t e message answer hcache hbase hbound hanswer] at hg

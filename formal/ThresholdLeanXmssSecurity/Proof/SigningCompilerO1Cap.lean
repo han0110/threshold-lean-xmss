@@ -13,7 +13,7 @@ failure have the same law in the lazy run and in the table run.
 The lemmas are the lemmas of `SigningCompilerShareCap` for the O1 program.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Cap
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -41,8 +41,9 @@ theorem badCap_iffO1 (z : CompilerOutcomeO1 C × ShareStateT C (Bool × Bool)) :
 `SigningCompilerShareCap.probEvent_or_eq`. -/
 theorem probEvent_or_eq {α : Type} (oa : ProbComp α) (P Q : α → Prop)
     (disjoint : ∀ z, P z → Q z → False) :
-    Pr[fun z => P z ∨ Q z | oa] = Pr[P | oa] + Pr[Q | oa] := by
-  simp only [probEvent_eq_tsum_ite, ← ENNReal.tsum_add]
+    Pr{let z ← oa}[P z ∨ Q z] = Pr{let z ← oa}[P z] + Pr{let z ← oa}[Q z] := by
+  rw [OracleComp.prEvent_eq_tsum_ite oa (fun z => P z ∨ Q z), OracleComp.prEvent_eq_tsum_ite oa P,
+    OracleComp.prEvent_eq_tsum_ite oa Q, ← ENNReal.tsum_add]
   apply tsum_congr
   intro z
   by_cases hp : P z <;> by_cases hq : Q z <;> simp_all
@@ -100,7 +101,7 @@ theorem lazyRunCO1_bad_hidden (hinj : Function.Injective x.2.1)
     exact Set.mem_image_of_mem _ hz
   cases m with
   | false =>
-      have hn := (probEvent_eq_zero_iff.mp
+      have hn := ((OracleComp.prEvent_eq_zero_iff _ _).mp
         (lazyRunO1_falseBad_zero prims A x q s pads hinj k)) (projectO1 z) hz'
       exact (hn (by simp [projectO1, mapBad, SigningShareLazy.erase, hb])).elim
   | true =>
@@ -111,10 +112,10 @@ theorem lazyRunCO1_bad_hidden (hinj : Function.Injective x.2.1)
 /-- A table run with the flag up and an early cap costs at most a pad run with the flag up and the
 cap. -/
 theorem tableRunCO1_capEarly_le (hinj : Function.Injective x.2.1) :
-    Pr[fun z => z.1.1.2.base.hiddenFlag = true ∧ CapEarlyO1 z |
-      tableRunCO1 prims A x q s pads (NoFalse.tau s pads)] ≤
-    Pr[fun z => z.1.2.base.hiddenFlag = true ∧ z.2.2.2 = true |
-      compilerRunPadsO1 prims A x q s pads] := by
+    Pr{let z ←
+      tableRunCO1 prims A x q s pads (NoFalse.tau s pads)}[z.1.1.2.base.hiddenFlag = true ∧ CapEarlyO1 z] ≤
+    Pr{let z ←
+      compilerRunPadsO1 prims A x q s pads}[z.1.2.base.hiddenFlag = true ∧ z.2.2.2 = true] := by
   let N : CompilerOutcomeO1 C × ShareStateT C (Bool × Bool) → Prop :=
     fun z => (z.1.1.2.base.hiddenFlag = true ∧ z.1.2.2.2 = true) ∧ z.2.bad = none
   let B : CompilerOutcomeO1 C × ShareStateT C (Bool × Bool) → Prop :=
@@ -124,36 +125,35 @@ theorem tableRunCO1_capEarly_le (hinj : Function.Injective x.2.1) :
     obtain ⟨m, k, l, h⟩ := (badCap_iffO1 z).mp hb
     rw [hn.2] at h
     cases h
-  have hn : Pr[N | lazyRunCO1 prims A x q s pads (NoFalse.tau s pads)] =
-      Pr[N | tableRunCO1 prims A x q s pads (NoFalse.tau s pads)] :=
+  have hn : Pr{let z ← lazyRunCO1 prims A x q s pads (NoFalse.tau s pads)}[N z] =
+      Pr{let z ← tableRunCO1 prims A x q s pads (NoFalse.tau s pads)}[N z] :=
     nonbad_lawCO1 prims A x q s pads (NoFalse.tau s pads)
       (fun z => z.1.1.2.base.hiddenFlag = true ∧ z.1.2.2.2 = true)
-  have hb : Pr[B | lazyRunCO1 prims A x q s pads (NoFalse.tau s pads)] =
-      Pr[B | tableRunCO1 prims A x q s pads (NoFalse.tau s pads)] := by
-    have h : Pr[BadCap | (fun z => (SigningShareLazy.erase z.2).bad) <$>
-        lazyRunCO1 prims A x q s pads (NoFalse.tau s pads)] =
-        Pr[BadCap | (fun z => (SigningShareLazy.erase z.2).bad) <$>
-          tableRunCO1 prims A x q s pads (NoFalse.tau s pads)] :=
-      probEvent_congr' (fun _ _ => Iff.rfl)
-        (erased_bad_lawCO1 prims A x q s pads (NoFalse.tau s pads))
-    simpa only [probEvent_map, Function.comp_def, B] using h
+  have hb : Pr{let z ← lazyRunCO1 prims A x q s pads (NoFalse.tau s pads)}[B z] =
+      Pr{let z ← tableRunCO1 prims A x q s pads (NoFalse.tau s pads)}[B z] := by
+    have h : Pr{let y ← ((fun z => (SigningShareLazy.erase z.2).bad) <$>
+        lazyRunCO1 prims A x q s pads (NoFalse.tau s pads))}[BadCap y] =
+        Pr{let y ← ((fun z => (SigningShareLazy.erase z.2).bad) <$>
+          tableRunCO1 prims A x q s pads (NoFalse.tau s pads))}[BadCap y] :=
+      (erased_bad_lawCO1 prims A x q s pads (NoFalse.tau s pads)).prEvent_eq _
+    simpa only [prEvent_map, Function.comp_def, B] using h
   calc
-    _ ≤ Pr[fun z => N z ∨ B z | tableRunCO1 prims A x q s pads (NoFalse.tau s pads)] := by
-      apply probEvent_mono
+    _ ≤ Pr{let z ← tableRunCO1 prims A x q s pads (NoFalse.tau s pads)}[N z ∨ B z] := by
+      apply prEvent_mono_of_support _ _ _
       intro z _ h
       rcases h.2 with noBad | bad
       · exact Or.inl ⟨⟨h.1, noBad.2⟩, noBad.1⟩
       · exact Or.inr ((badCap_iffO1 z).mpr bad)
-    _ = Pr[N | tableRunCO1 prims A x q s pads (NoFalse.tau s pads)] +
-        Pr[B | tableRunCO1 prims A x q s pads (NoFalse.tau s pads)] :=
+    _ = Pr{let z ← tableRunCO1 prims A x q s pads (NoFalse.tau s pads)}[N z] +
+        Pr{let z ← tableRunCO1 prims A x q s pads (NoFalse.tau s pads)}[B z] :=
       probEvent_or_eq _ N B disjoint
-    _ = Pr[N | lazyRunCO1 prims A x q s pads (NoFalse.tau s pads)] +
-        Pr[B | lazyRunCO1 prims A x q s pads (NoFalse.tau s pads)] := by rw [hn, hb]
-    _ = Pr[fun z => N z ∨ B z | lazyRunCO1 prims A x q s pads (NoFalse.tau s pads)] :=
+    _ = Pr{let z ← lazyRunCO1 prims A x q s pads (NoFalse.tau s pads)}[N z] +
+        Pr{let z ← lazyRunCO1 prims A x q s pads (NoFalse.tau s pads)}[B z] := by rw [hn, hb]
+    _ = Pr{let z ← lazyRunCO1 prims A x q s pads (NoFalse.tau s pads)}[N z ∨ B z] :=
       (probEvent_or_eq _ N B disjoint).symm
-    _ ≤ Pr[fun z => z.1.1.2.base.hiddenFlag = true ∧ z.1.2.2.2 = true |
-        lazyRunCO1 prims A x q s pads (NoFalse.tau s pads)] := by
-      apply probEvent_mono
+    _ ≤ Pr{let z ←
+        lazyRunCO1 prims A x q s pads (NoFalse.tau s pads)}[z.1.1.2.base.hiddenFlag = true ∧ z.1.2.2.2 = true] := by
+      apply prEvent_mono_of_support _ _ _
       intro z hz h
       rcases h with hn | hb
       · exact hn.1
@@ -161,8 +161,7 @@ theorem tableRunCO1_capEarly_le (hinj : Function.Injective x.2.1) :
         exact ⟨lazyRunCO1_bad_hidden prims A x q s pads hinj z hz m true k l hb,
           lazyRunCO1_capTrue prims A x q s pads (NoFalse.tau s pads) z hz m k l hb⟩
     _ = _ := by
-      rw [compilerRunPadsO1_eq_lazy prims A x q s pads hinj (NoFalse.tau s pads), probEvent_map]
-      rfl
+      rw [compilerRunPadsO1_eq_lazy prims A x q s pads hinj (NoFalse.tau s pads), prEvent_map]
 
 end CapRuns
 

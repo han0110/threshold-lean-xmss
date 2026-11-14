@@ -8,7 +8,7 @@ reveal synchronization and pending validity. Covered suffixes have their pads an
 exact masked PRF target sums, including when new starts are recorded at a crossing.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Release
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -29,7 +29,7 @@ def runSourceO1 {α : Type} (P : PublicParameter) (seeds : C.Term → HashOutput
     (oa.run src)).run backend
 
 abbrev BaseInvariant (seeds : C.Term → HashOutput) (s : HiddenKey → Digest)
-    (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset Digit)
+    (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset WinternitzDigit)
     (source : SourceState C) (backend : CappedCompilerState C) :=
   ReleaseInvariantO1 seeds s sig ⟨source, starts⟩ backend
 
@@ -69,7 +69,7 @@ theorem BottomDone.persist {seeds : C.Term → HashOutput} {s : HiddenKey → Di
 
 /-- A fixed coalition and starts map permit ordinary source frames. -/
 theorem ReleaseSlackO1.frame {seeds : C.Term → HashOutput} {s : HiddenKey → Digest}
-    {sig : TsigState C} {starts : KeyIndex → ChainIndex → Finset Digit}
+    {sig : TsigState C} {starts : KeyIndex → ChainIndex → Finset WinternitzDigit}
     {source source' : SourceState C} {data data' : DeferredState C}
     (h : ReleaseSlackO1 seeds s sig ⟨source, starts⟩ data)
     (hc : ∀ seed point, data'.cache (.prf seed point) = data.cache (.prf seed point))
@@ -137,7 +137,7 @@ theorem ReleaseSlackO1.pads_mono {seeds : C.Term → HashOutput} {s : HiddenKey 
 
 /-- Completing one chain point preserves both coalition alternatives elsewhere. -/
 theorem ReleaseSlackO1.complete_chain {seeds : C.Term → HashOutput} {s : HiddenKey → Digest}
-    {sig : TsigState C} {starts : KeyIndex → ChainIndex → Finset Digit}
+    {sig : TsigState C} {starts : KeyIndex → ChainIndex → Finset WinternitzDigit}
     {source source' : SourceState C} {data data' : DeferredState C}
     (h : ReleaseSlackO1 seeds s sig ⟨source, starts⟩ data)
     (e : KeyIndex) (l : ChainIndex) (pos : XmssSecurity.ChainStep)
@@ -160,7 +160,7 @@ theorem ReleaseSlackO1.complete_chain {seeds : C.Term → HashOutput} {s : Hidde
     by_cases he : Point.chain bottomLayer f j (chainStepDigit step) =
         .chain bottomLayer e l (chainStepDigit pos)
     · obtain ⟨_, he, hj, hstep⟩ := Point.chain.inj he
-      have hpos : step = pos := Fin.ext (congrArg (fun d : Digit => d.val) hstep)
+      have hpos : step = pos := Fin.ext (congrArg (fun d : WinternitzDigit => d.val) hstep)
       subst f; subst j; subst step
       exact hd
     · exact BottomDone.frame hh (fun T => hc _ _ he) hp
@@ -174,7 +174,7 @@ theorem ReleaseSlackO1.complete_chain {seeds : C.Term → HashOutput} {s : Hidde
     by_cases he : Point.chain bottomLayer f j (chainStepDigit step) =
         .chain bottomLayer e l (chainStepDigit pos)
     · obtain ⟨_, he, hj, hstep⟩ := Point.chain.inj he
-      have hpos : step = pos := Fin.ext (congrArg (fun d : Digit => d.val) hstep)
+      have hpos : step = pos := Fin.ext (congrArg (fun d : WinternitzDigit => d.val) hstep)
       subst f; subst j; subst step
       exact Or.inl hd
     · rcases h.bottom_chain f j step with hh | hh | ⟨hm, m, hb, hn, hh⟩
@@ -194,7 +194,7 @@ theorem ReleaseSlackO1.complete_chain {seeds : C.Term → HashOutput} {s : Hidde
 
 /-- A reveal may expose a bottom opening only once that opening is complete. -/
 theorem ReleaseSlackO1.reveal {seeds : C.Term → HashOutput} {s : HiddenKey → Digest}
-    {sig : TsigState C} {starts : KeyIndex → ChainIndex → Finset Digit}
+    {sig : TsigState C} {starts : KeyIndex → ChainIndex → Finset WinternitzDigit}
     {source : SourceState C} {data : DeferredState C}
     (h : ReleaseSlackO1 seeds s sig ⟨source, starts⟩ data) (key : HiddenKey) (value : Digest)
     (ha : ∀ e, key = .opening bottomLayer e →
@@ -211,7 +211,7 @@ theorem ReleaseSlackO1.reveal {seeds : C.Term → HashOutput} {s : HiddenKey →
 
 theorem sourceReveal_slack (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : ℕ) (s : HiddenKey → Digest) (sig : TsigState C)
-    (starts : KeyIndex → ChainIndex → Finset Digit) (key : HiddenKey)
+    (starts : KeyIndex → ChainIndex → Finset WinternitzDigit) (key : HiddenKey)
     (source : SourceState C) (backend : CappedCompilerState C)
     (hs : ReleaseSlackO1 seeds s sig ⟨source, starts⟩ backend.1.1.data)
     (ha : ∀ e, key = .opening bottomLayer e →
@@ -231,7 +231,7 @@ theorem sourceReveal_slack (P : PublicParameter) (seeds : C.Term → HashOutput)
 
 theorem sourceRevealDigest_slack (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : ℕ) (s : HiddenKey → Digest) (sig : TsigState C)
-    (starts : KeyIndex → ChainIndex → Finset Digit) (value : DeferredDigest)
+    (starts : KeyIndex → ChainIndex → Finset WinternitzDigit) (value : DeferredDigest)
     (source : SourceState C) (backend : CappedCompilerState C)
     (hs : ReleaseSlackO1 seeds s sig ⟨source, starts⟩ backend.1.1.data)
     (ha : ∀ e, value = .secret (.opening bottomLayer e) →
@@ -250,7 +250,7 @@ theorem sourceRevealDigest_slack (P : PublicParameter) (seeds : C.Term → HashO
 
 theorem sourcePad_slack (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : ℕ) (s : HiddenKey → Digest) (sig : TsigState C)
-    (starts : KeyIndex → ChainIndex → Finset Digit) (point : Point)
+    (starts : KeyIndex → ChainIndex → Finset WinternitzDigit) (point : Point)
     (source : SourceState C) (backend : CappedCompilerState C)
     (hs : ReleaseSlackO1 seeds s sig ⟨source, starts⟩ backend.1.1.data)
     (r : (Digest × SourceState C) × CappedCompilerState C)
@@ -282,7 +282,7 @@ theorem sourcePad_slack (P : PublicParameter) (seeds : C.Term → HashOutput)
 /-- A single PRF completion installs the exact masked target and retains full O1 slack. -/
 theorem completePrf_chain_slack (P : PublicParameter) (seeds : C.Term → HashOutput)
     (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset Digit)
+    (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset WinternitzDigit)
     (e : KeyIndex) (l : ChainIndex) (pos : XmssSecurity.ChainStep)
     (source : SourceState C) (backend : CappedCompilerState C)
     (hs : ReleaseSlackO1 seeds s sig ⟨source, starts⟩ backend.1.1.data)
@@ -310,7 +310,7 @@ theorem completePrf_chain_slack (P : PublicParameter) (seeds : C.Term → HashOu
 /-- The actual reveal-pad-complete body establishes the full masked bottom constraint. -/
 theorem sourceBottomCompletion_slack (P : PublicParameter) (seeds : C.Term → HashOutput)
     (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset Digit)
+    (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset WinternitzDigit)
     (e : KeyIndex) (l : ChainIndex) (pos : XmssSecurity.ChainStep)
     (source : SourceState C) (backend : CappedCompilerState C)
     (h : BaseInvariant seeds s sig starts source backend)
@@ -358,7 +358,7 @@ theorem sourceBottomCompletion_slack (P : PublicParameter) (seeds : C.Term → H
 /-- Pending plants preserve the full O1 invariant, including all covered targets. -/
 theorem sourcePlant_invariant (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : ℕ) (s : HiddenKey → Digest) (sig : TsigState C)
-    (starts : KeyIndex → ChainIndex → Finset Digit) (p : PendingInput)
+    (starts : KeyIndex → ChainIndex → Finset WinternitzDigit) (p : PendingInput)
     (source : SourceState C) (backend : CappedCompilerState C)
     (h : BaseInvariant seeds s sig starts source backend)
     (ha : ∀ e, p.key = .opening bottomLayer e →
@@ -407,7 +407,7 @@ theorem sourcePlant_invariant (P : PublicParameter) (seeds : C.Term → HashOutp
 /-- A traversal keeps every earlier full bottom constraint while establishing the next one. -/
 theorem runSource_mapM_done (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : ℕ) (s : HiddenKey → Digest) (sig : TsigState C)
-    (starts : KeyIndex → ChainIndex → Finset Digit) (e : KeyIndex) (l : ChainIndex)
+    (starts : KeyIndex → ChainIndex → Finset WinternitzDigit) (e : KeyIndex) (l : ChainIndex)
     (items : List XmssSecurity.ChainStep) (oa : XmssSecurity.ChainStep → SourceM C Unit)
     (step : ∀ pos ∈ items, ∀ source backend, BaseInvariant seeds s sig starts source backend →
       ∀ r : (Unit × SourceState C) × CappedCompilerState C,
@@ -440,8 +440,8 @@ theorem runSource_mapM_done (P : PublicParameter) (seeds : C.Term → HashOutput
 /-- Both actual suffix loops retain pads, target sums, and crossed coverage. -/
 theorem sourceReleaseBottomSuffix_base (P : PublicParameter) (seeds : C.Term → HashOutput)
     (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset Digit)
-    (e : KeyIndex) (l : ChainIndex) (start : Digit)
+    (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset WinternitzDigit)
+    (e : KeyIndex) (l : ChainIndex) (start : WinternitzDigit)
     (source : SourceState C) (backend : CappedCompilerState C)
     (h : BaseInvariant seeds s sig starts source backend)
     (r : (Unit × SourceState C) × CappedCompilerState C)
@@ -512,7 +512,7 @@ theorem runSourceO1_cache_le {α : Type} (P : PublicParameter) (seeds : C.Term �
 /-- The lifted original suffix satisfies the exact O1 full-strength contract. -/
 theorem sourceReleaseBottomSuffix_doneO1 (P : PublicParameter) (seeds : C.Term → HashOutput)
     (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (sig : TsigState C) (e : KeyIndex) (l : ChainIndex) (start : Digit)
+    (sig : TsigState C) (e : KeyIndex) (l : ChainIndex) (start : WinternitzDigit)
     (src : SourceStateO1 C) (backend : CappedCompilerState C)
     (h : ReleaseInvariantO1 seeds s sig src backend)
     (r : (Unit × SourceStateO1 C) × CappedCompilerState C)
@@ -527,7 +527,7 @@ theorem sourceReleaseBottomSuffix_doneO1 (P : PublicParameter) (seeds : C.Term �
 /-- The selected suffix may be computed against the pre-insertion starts invariant. -/
 theorem sourceReleaseCovered_base (P : PublicParameter) (seeds : C.Term → HashOutput)
     (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset Digit)
+    (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset WinternitzDigit)
     (e : KeyIndex) (l : ChainIndex) (src : SourceStateO1 C) (backend : CappedCompilerState C)
     (h : BaseInvariant seeds s sig starts src.base backend)
     (r : (Unit × SourceStateO1 C) × CappedCompilerState C)
@@ -569,9 +569,9 @@ theorem sourceReleaseCovered_slack (P : PublicParameter) (seeds : C.Term → Has
 
 /-- New starts are admitted at a stable boundary once their entire suffix is complete. -/
 theorem ReleaseSlackO1.record_done {seeds : C.Term → HashOutput} {s : HiddenKey → Digest}
-    {sig : TsigState C} {source : SourceState C} {starts : KeyIndex → ChainIndex → Finset Digit}
+    {sig : TsigState C} {source : SourceState C} {starts : KeyIndex → ChainIndex → Finset WinternitzDigit}
     {data : DeferredState C} (h : ReleaseSlackO1 seeds s sig ⟨source, starts⟩ data)
-    (e : KeyIndex) (l : ChainIndex) (d : Digit)
+    (e : KeyIndex) (l : ChainIndex) (d : WinternitzDigit)
     (hdone : ∀ pos, Covered (Function.update starts e (Function.update (starts e) l (insert d (starts e l))))
       e l pos → BottomDone seeds s data e l pos) :
     ReleaseSlackO1 seeds s sig
@@ -609,7 +609,7 @@ theorem ReleaseSlackO1.record_done {seeds : C.Term → HashOutput} {s : HiddenKe
 /-- Recording a start and completing its coverage restores all stable O1 clauses. -/
 theorem recordThenCover_slack (P : PublicParameter) (seeds : C.Term → HashOutput)
     (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (sig : TsigState C) (e : KeyIndex) (l : ChainIndex) (d : Digit)
+    (sig : TsigState C) (e : KeyIndex) (l : ChainIndex) (d : WinternitzDigit)
     (src : SourceStateO1 C) (backend : CappedCompilerState C)
     (h : ReleaseInvariantO1 seeds s sig src backend)
     (r : (Unit × SourceStateO1 C) × CappedCompilerState C)

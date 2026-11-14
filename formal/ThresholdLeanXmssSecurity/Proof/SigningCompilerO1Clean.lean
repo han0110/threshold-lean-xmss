@@ -15,7 +15,7 @@ of a commitment.
 - `tableRunCO1_le_clean` is `tableRunCO1_le_guarded` with the clean event.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Clean
@@ -59,13 +59,13 @@ def CompilerCouplingClean (prims : Primitives) : Prop :=
   ∀ (A : TsigAdversary C) (q : ℕ) (x : Keys3 C),
     x ∈ support (TprfSecurityProof.keyGen3 (C := C)) →
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
-    Pr[fun z => (SigningLaneUnionProof.NoFlag (SigningLaneUnionProof.observed z) ∧
+    Pr{let z ←
+      SigningLaneUnionProof.traceRun prims A x}[(SigningLaneUnionProof.NoFlag (SigningLaneUnionProof.observed z) ∧
       SigningLaneUnionProof.NotChargedLogged prims x (SigningLaneUnionProof.observed z) ∧
       (SigningLaneUnionProof.LoggedInputHit prims x (SigningLaneUnionProof.observed z) ∨
         SigningLaneUnionProof.StaleBaseAt z ∨ SigningLaneUnionProof.GhostAt x z)) ∧
-      (SigningLaneUnionProof.observed z).2.1 ≤ q |
-      SigningLaneUnionProof.traceRun prims A x] ≤
-        Pr[CleanCompilerEvent x q | compilerRunO1 prims A x q]
+      (SigningLaneUnionProof.observed z).2.1 ≤ q] ≤
+        Pr{let z ← compilerRunO1 prims A x q}[CleanCompilerEvent x q z]
 
 /-- The good event of the compiler outcome with no second opening, with the hidden-key flag down. -/
 def CleanGood (x : Keys3 C) (q : ℕ) (o : CompilerOutcomeO1 C) : Prop :=
@@ -112,7 +112,13 @@ theorem final_clean (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
   change SigningGuessProof.RandomizerCached x.2.1 (dataOf x c.2).cache e at hrc
   change ρ ≠ SigningGuessProof.cachedRandomizer x.2.1 (dataOf x c.2).cache e at hne
   obtain ⟨vlog, win, hz, ⟨⟨hfields, hcache⟩, -⟩, -, rev, -, hextra⟩ := hf
-  have hle : (dataOf x c.2).cache ≤ visibleOf (realEnd z) := hcache.cache_le
+  have hle : (dataOf x c.2).cache ≤ visibleOf (realEnd z) := by
+    have hdata : dataOf x ((c.1.2, c.2).1.base, (c.1.2, c.2).2).2 = dataOf x c.2 := rfl
+    have hvis : visibleOf (withCandidates (realEnd z) ((realEnd z).1.2.2.2 ++ vlog)) =
+        visibleOf (realEnd z) := rfl
+    have h := hcache.cache_le
+    rw [hdata, hvis] at h
+    exact h
   have hrf : realFlag (realEnd z) = false := by
     have h1 := congrArg (fun w => w.1.1.2) hz
     exact h1.symm.trans hflag
@@ -154,25 +160,25 @@ event, an early cap with the flag up, or a share failure with a false tag. A cha
 `SigningCompilerO1Final.real_le_table`. -/
 theorem real_le_table_clean (A : TsigAdversary C) (q : ℕ)
     (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) :
-    Pr[fun z => RealEvent prims x z ∧ (SigningLaneUnionProof.observed z).2.1 ≤ q |
-        realRun prims A x s pads (gOf s pads u) rest noise] ≤
-      Pr[fun z => CleanGood x q z.1 ∨ (z.1.1.2.base.hiddenFlag = true ∧ CapEarlyO1 z) ∨
-          NullBad z.2 |
-        eagerRunTagTO1 prims A x q s pads (NoFalse.tau s pads) (gOf s pads u) noise rest] := by
+    Pr{let z ←
+        realRun prims A x s pads (gOf s pads u) rest noise}[RealEvent prims x z ∧ (SigningLaneUnionProof.observed z).2.1 ≤ q] ≤
+      Pr{let z ←
+        eagerRunTagTO1 prims A x q s pads (NoFalse.tau s pads) (gOf s pads u) noise rest}[CleanGood x q z.1 ∨ (z.1.1.2.base.hiddenFlag = true ∧ CapEarlyO1 z) ∨
+          NullBad z.2] := by
   have hreal : realRun prims A x s pads (gOf s pads u) rest noise =
       Prod.fst <$> realRunRaw prims A x s pads (gOf s pads u) rest noise := rfl
   have hcomp : eagerRunTagTO1 prims A x q s pads (NoFalse.tau s pads) (gOf s pads u) noise rest =
       SigningCompilerShareTables.finish x.2.1 <$>
         (simulateQ (compBackend x q s pads u rest noise) (sourceProgramO1X prims A x)).run
           SigningCompilerShareTables.initial := rfl
-  calc _ = Pr[fun z => (RealEvent prims x z ∧ (SigningLaneUnionProof.observed z).2.1 ≤ q) ∧
-          z.1.1.1.2 = z.2.2.1.2 | realRun prims A x s pads (gOf s pads u) rest noise] :=
-        probEvent_congr' (fun z hz =>
+  calc _ = Pr{let z ← realRun prims A x s pads (gOf s pads u) rest noise}[(RealEvent prims x z ∧ (SigningLaneUnionProof.observed z).2.1 ≤ q) ∧
+          z.1.1.1.2 = z.2.2.1.2] :=
+        prEvent_congr_of_support _ _ _ (fun z hz =>
           ⟨fun h => ⟨h, SigningCompilerO1Final.realRun_flag prims A x s pads hkeys u rest noise z hz⟩,
-            And.left⟩) rfl
+            And.left⟩)
     _ ≤ _ := by
-      rw [hreal, hcomp, probEvent_map, probEvent_map]
-      refine probEvent_le_of_relTriple
+      rw [hreal, hcomp, prEvent_map, prEvent_map]
+      refine prEvent_le_of_relTriple
         (SigningCompilerO1Coupled.run_coupled prims x q s pads u rest noise A hkeys) ?_
       rintro z c hrel ⟨⟨hE, hq⟩, hfl⟩
       by_cases hstop : Stop c.2
@@ -201,9 +207,9 @@ end Final
 /-- A pointwise bound of two continuations bounds the two binds. A copy of the private lemma
 `probEvent_bind_le_bind` of `SigningCompilerO1Coupling.lean`. -/
 private theorem probEvent_bind_le_bind {α β γ : Type} (oa : ProbComp α) (f : α → ProbComp β)
-    (g : α → ProbComp γ) (P : β → Prop) (Q : γ → Prop) (h : ∀ a, Pr[P | f a] ≤ Pr[Q | g a]) :
-    Pr[P | oa >>= f] ≤ Pr[Q | oa >>= g] := by
-  rw [probEvent_bind_eq_tsum, probEvent_bind_eq_tsum]
+    (g : α → ProbComp γ) (P : β → Prop) (Q : γ → Prop) (h : ∀ a, Pr{let z ← f a}[P z] ≤ Pr{let z ← g a}[Q z]) :
+    Pr{let z ← oa >>= f}[P z] ≤ Pr{let z ← oa >>= g}[Q z] := by
+  rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_bind_eq_tsum]
   exact ENNReal.tsum_le_tsum fun a => mul_le_mul' le_rfl (h a)
 
 /-- For fixed hidden labels and pads, the right event of `real_le_table_clean` over the table run
@@ -211,34 +217,34 @@ costs at most the clean event of the pad run. A changed copy of
 `SigningCompilerO1Coupling.tableRunCO1_le_guarded`. -/
 theorem tableRunCO1_le_clean (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) (q : ℕ)
     (s : HiddenKey → Digest) (pads : Point → Digest) (hinj : Function.Injective x.2.1) :
-    Pr[fun z => CleanGood x q z.1 ∨ (z.1.1.2.base.hiddenFlag = true ∧ CapEarlyO1 z) ∨ NullBad z.2 |
-        tableRunCO1 prims A x q s pads (NoFalse.tau s pads)] ≤
-      Pr[CleanCompilerEvent x q | compilerRunPadsO1 prims A x q s pads] := by
+    Pr{let z ←
+        tableRunCO1 prims A x q s pads (NoFalse.tau s pads)}[CleanGood x q z.1 ∨ (z.1.1.2.base.hiddenFlag = true ∧ CapEarlyO1 z) ∨ NullBad z.2] ≤
+      Pr{let z ← compilerRunPadsO1 prims A x q s pads}[CleanCompilerEvent x q z] := by
   let t := tableRunCO1 prims A x q s pads (NoFalse.tau s pads)
   let p := compilerRunPadsO1 prims A x q s pads
   let E : CompilerOutcomeO1 C → Prop := fun o => o.2.2.2 = true ∨
     (compilerEvent x.1 q o.2.1 ∧ ¬SecondOpening x.1 x.2.1 o.2.1.1.data)
-  have hgood : Pr[fun z => CleanGood x q z.1 | t] =
-      Pr[fun o => E o ∧ o.1.2.base.hiddenFlag = false | p] := by
+  have hgood : Pr{let z ← t}[CleanGood x q z.1] =
+      Pr{let o ← p}[E o ∧ o.1.2.base.hiddenFlag = false] := by
     rw [compilerRunPadsO1_hidden_eq_table prims A x q s pads hinj E]
-    exact probEvent_ext fun z _ => And.comm
-  have hnull : Pr[fun z => NullBad z.2 | t] = 0 :=
+    exact prEvent_congr_of_support _ _ _ fun z _ => And.comm
+  have hnull : Pr{let z ← t}[NullBad z.2] = 0 :=
     tableRunCO1_falseTag_zero prims A x q s pads hinj
-  have hguard : Pr[CleanCompilerEvent x q | p] =
-      Pr[fun o => E o ∧ o.1.2.base.hiddenFlag = false | p] +
-        Pr[fun o => o.1.2.base.hiddenFlag = true ∧ o.2.2.2 = true | p] := by
+  have hguard : Pr{let z ← p}[CleanCompilerEvent x q z] =
+      Pr{let o ← p}[E o ∧ o.1.2.base.hiddenFlag = false] +
+        Pr{let o ← p}[o.1.2.base.hiddenFlag = true ∧ o.2.2.2 = true] := by
     rw [← SigningCompilerO1Cap.probEvent_or_eq]
-    · exact probEvent_ext fun o _ => by
+    · exact prEvent_congr_of_support _ _ _ fun o _ => by
         simp only [CleanCompilerEvent, E, and_comm]
     · intro o h1 h2
       rw [h1.2] at h2
       exact Bool.false_ne_true h2.1
-  calc _ ≤ Pr[fun z => CleanGood x q z.1 | t] +
-        Pr[fun z => (z.1.1.2.base.hiddenFlag = true ∧ CapEarlyO1 z) ∨ NullBad z.2 | t] :=
-          probEvent_or_le _ _ _
-    _ ≤ Pr[fun z => CleanGood x q z.1 | t] +
-        (Pr[fun z => z.1.1.2.base.hiddenFlag = true ∧ CapEarlyO1 z | t] +
-          Pr[fun z => NullBad z.2 | t]) := add_le_add le_rfl (probEvent_or_le _ _ _)
+  calc _ ≤ Pr{let z ← t}[CleanGood x q z.1] +
+        Pr{let z ← t}[(z.1.1.2.base.hiddenFlag = true ∧ CapEarlyO1 z) ∨ NullBad z.2] :=
+          prEvent_or_le _ _ _
+    _ ≤ Pr{let z ← t}[CleanGood x q z.1] +
+        (Pr{let z ← t}[z.1.1.2.base.hiddenFlag = true ∧ CapEarlyO1 z] +
+          Pr{let z ← t}[NullBad z.2]) := add_le_add le_rfl (prEvent_or_le _ _ _)
     _ ≤ _ := by
       rw [hgood, hnull, add_zero, hguard]
       exact add_le_add le_rfl (tableRunCO1_capEarly_le prims A x q s pads hinj)
@@ -247,16 +253,16 @@ theorem tableRunCO1_le_clean (prims : Primitives) (A : TsigAdversary C) (x : Key
 theorem compilerCouplingClean (prims : Primitives) : CompilerCouplingClean (C := C) prims := by
   intro A q x _ hkeys
   have hinj : Function.Injective x.2.1 := not_not.mp (not_or.mp hkeys).1
-  rw [probEvent_congr' (fun _ _ => Iff.rfl) (traceRun_eq_realRun prims A x hkeys),
-    probEvent_congr' (fun _ _ => Iff.rfl) (compilerRunO1_eq_padTable prims A x q)]
+  rw [(traceRun_eq_realRun prims A x hkeys).prEvent_eq,
+    (compilerRunO1_eq_padTable prims A x q).prEvent_eq]
   refine probEvent_bind_le_bind _ _ _ _ _ fun s => ?_
   refine probEvent_bind_le_bind _ _ _ _ _ fun pads => ?_
   refine le_trans ?_ (tableRunCO1_le_clean prims A x q s pads hinj)
-  rw [probEvent_congr' (fun _ _ => Iff.rfl) (tableRunCO1_eq_tables prims A x q s pads hkeys _)]
+  rw [(tableRunCO1_eq_tables prims A x q s pads hkeys _).prEvent_eq]
   refine probEvent_bind_le_bind _ _ _ _ _ fun u => ?_
-  refine le_of_le_of_eq ?_ (probEvent_bind_bind_swap ($ᵗ (RestSlot C → HashOutput))
+  refine le_of_le_of_eq ?_ ((OracleComp.EvalDistEq.bind_bind_swap ($ᵗ (RestSlot C → HashOutput))
     ($ᵗ (ChainNoiseIndex → HashOutput)) (fun rest noise =>
-      eagerRunTagTO1 prims A x q s pads (NoFalse.tau s pads) (gOf s pads u) noise rest) _)
+      eagerRunTagTO1 prims A x q s pads (NoFalse.tau s pads) (gOf s pads u) noise rest)).prEvent_eq _)
   refine probEvent_bind_le_bind _ _ _ _ _ fun rest => ?_
   refine probEvent_bind_le_bind _ _ _ _ _ fun noise => ?_
   exact real_le_table_clean prims x s pads u rest noise A q hkeys

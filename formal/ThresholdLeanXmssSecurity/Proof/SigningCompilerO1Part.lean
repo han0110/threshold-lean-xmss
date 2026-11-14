@@ -11,7 +11,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Programs
   source.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Part
@@ -45,8 +45,8 @@ theorem keepsRevealed_hash (P : PublicParameter) (seeds : C.Term → HashOutput)
     · rename_i hlay
       subst hlay
       exact (h seed e rfl).elim
-    · exact (SourceKeepsX.pure PUnit.unit).bind _ fun _ => SourceKeepsX.lift _
-  · exact (SourceKeepsX.pure ()).bind _ fun _ => SourceKeepsX.lift _
+    · exact SourceKeepsX.lift _
+  · exact SourceKeepsX.lift _
 
 /-- A program run of a `mapM` keeps a field when each run of its body keeps it. -/
 theorem keeps_roMapM {ι α β : Type} (prims : Primitives) (P : PublicParameter)
@@ -68,7 +68,7 @@ theorem keeps_roMapM {ι α β : Type} (prims : Primitives) (P : PublicParameter
 
 /-- The compiler part at a chain point keeps the reveal map of the source. -/
 theorem keepsRevealed_part (prims : Primitives) (x : Keys3 C) (i : C.Party) (J : C.Quorum)
-    (lay : Layer) (e : KeyIndex) (l : ChainIndex) (d : Digit) (message : Message) :
+    (lay : Layer) (e : KeyIndex) (l : ChainIndex) (d : WinternitzDigit) (message : Message) :
     SourceKeepsX (fun src : SourceState C => src.revealed)
       (sourcePartX prims x i J (.chain lay e l d) message) := by
   have hread : ∀ input : Query C, (∀ seed e, input ≠ .prf seed (.randomizer bottomLayer e)) →
@@ -150,7 +150,7 @@ theorem part_frame (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top :
 The reveal map of the source stays. -/
 theorem part_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)
     (cCore cTime : Carried C) (i : C.Party) (J : C.Quorum) (e : KeyIndex) (l : ChainIndex)
-    (d : Digit) (message : Message) (a : RealState C) (b : SourceStateO1 C × CompState C)
+    (d : WinternitzDigit) (message : Message) (a : RealState C) (b : SourceStateO1 C × CompState C)
     (hs : SyncIn prims x s pads u rest noise top cCore cTime a b)
     (htime : cTime.1.1.bound = cCore.1.1.bound) (hd : d.val < chainLength - 1)
     (hrows : ∀ d' : XmssSecurity.ChainStep, (dataOf x b.2).pending (.bottom e l d') ≠ none)

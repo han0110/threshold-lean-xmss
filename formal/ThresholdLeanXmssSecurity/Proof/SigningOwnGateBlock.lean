@@ -16,7 +16,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningOwnGate
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -49,8 +49,8 @@ def GoodSize (b : XmssSecurity.TopIndex) (target : ChainIndex → Digest) (q : �
 set_option backward.isDefEq.respectTransparency false in
 theorem inner_bound_size (b : XmssSecurity.TopIndex) (target : ChainIndex → Digest) (q : ℕ)
     {α : Type} (r : α × PublicContinuation.State C) :
-    Pr[fun h => GoodSize b target q r (tableExtending r.2.1 h) |
-      $ᵗ (ProtectedSlot C → HashOutput)] ≤
+    Pr{let h ←
+      $ᵗ (ProtectedSlot C → HashOutput)}[GoodSize b target q r (tableExtending r.2.1 h)] ≤
       if LayeredGraph.SizeTerminal target q (PublicContinuation.rows r.2.1)
       then ((2 ^ 128 : ℝ≥0∞) ^ 58)⁻¹ else 0 := by
   classical
@@ -59,38 +59,38 @@ theorem inner_bound_size (b : XmssSecurity.TopIndex) (target : ChainIndex → Di
     by_cases ha : ∃ D : Finset C.Party, D.card ≤ C.t - 1 ∧
         UnopenedPrivacy.RecordAllowed D (UnopenedPrivacy.topStarts b) r.2.1
     · obtain ⟨D, hD, hallowed⟩ := ha
-      apply le_trans (probEvent_mono (p := fun h => GoodSize b target q r (tableExtending r.2.1 h))
+      apply le_trans (prEvent_mono_of_support _ (fun h => GoodSize b target q r (tableExtending r.2.1 h)) _
         (fun _ _ h => h.2.1))
       exact PosteriorCompletion.marked_density D hD b r.2.1 hallowed (List.finRange 3)
         (List.nodup_finRange 3) target
-    · simp [GoodSize, ha]
-  · simp [GoodSize, ht]
+    · exact le_of_eq_of_le (prEvent_eq_zero_of_forall_mem_support _ _ fun h _ hg => ha hg.1) zero_le
+  · rw [if_neg ht]
+    exact le_of_eq (prEvent_eq_zero_of_forall_mem_support _ _ fun h _ hg => ht hg.2.2)
 
 set_option backward.isDefEq.respectTransparency false in
 theorem posterior_bound_size {α : Type}
     (oa : OracleComp ((ProtectedSlot C →ₒ HashOutput) + CountedPosterior.AuxSpec C) α)
     (s : PublicContinuation.State C) (b : XmssSecurity.TopIndex)
     (target : ChainIndex → Digest) (q : ℕ) :
-    Pr[fun p => GoodSize b target q p.1 p.2 | do
+    Pr{let p ← (do
       let h ← $ᵗ (ProtectedSlot C → HashOutput)
       let table := tableExtending s.1 h
       let r ← (simulateQ (FinitePosterior.eager table CountedPosterior.aux) oa).run s
-      pure (r, table)] ≤
+      pure (r, table))}[GoodSize b target q p.1 p.2] ≤
       ((2 ^ 128 : ℝ≥0∞) ^ 58)⁻¹ *
-        Pr[fun r => LayeredGraph.SizeTerminal target q (PublicContinuation.rows r.2.1) |
-          (simulateQ (FinitePosterior.lazy CountedPosterior.aux) oa).run s] := by
+        Pr{let r ←
+          (simulateQ (FinitePosterior.lazy CountedPosterior.aux) oa).run s}[LayeredGraph.SizeTerminal target q (PublicContinuation.rows r.2.1)] := by
   have hd := FinitePosterior.joint_table_mixed CountedPosterior.aux CountedPosterior.aux_preserves oa s
-  have hp := probEvent_congr' (p := fun p => GoodSize b target q p.1 p.2)
-    (q := fun p => GoodSize b target q p.1 p.2) (fun _ _ => Iff.rfl) hd
-  rw [hp, probEvent_bind_eq_tsum]
-  simp only [bind_pure_comp, probEvent_map]
+  have hp := hd.prEvent_eq (fun p => GoodSize b target q p.1 p.2)
+  rw [hp, OracleComp.prEvent_bind_eq_tsum]
+  simp only [bind_pure_comp, prEvent_map]
   calc
-    _ ≤ ∑' r, Pr[= r | (simulateQ (FinitePosterior.lazy CountedPosterior.aux) oa).run s] *
+    _ ≤ ∑' r, Pr{let z ← (simulateQ (FinitePosterior.lazy CountedPosterior.aux) oa).run s}[z = r] *
         (if LayeredGraph.SizeTerminal target q (PublicContinuation.rows r.2.1)
           then ((2 ^ 128 : ℝ≥0∞) ^ 58)⁻¹ else 0) :=
-      ENNReal.tsum_le_tsum fun r => mul_le_mul_left' (inner_bound_size b target q r) _
+      ENNReal.tsum_le_tsum fun r => mul_le_mul_right (inner_bound_size b target q r) _
     _ = _ := by
-      rw [probEvent_eq_tsum_ite, ← ENNReal.tsum_mul_left]
+      rw [OracleComp.prEvent_eq_tsum_ite, ← ENNReal.tsum_mul_left]
       apply tsum_congr
       intro r
       split <;> simp only [zero_mul, mul_comm]
@@ -101,11 +101,11 @@ theorem counted_terminal_probability_size (x : SigningSecurityProof.Keys3 C)
     (oa : OracleComp (LocalSpec C) α) (cache : HashCache C) (n : ℕ)
     (hempty : ∀ l k v, cache (protectedInput x b (.inr (l, k, v))) = none)
     (target : ChainIndex → Digest) (q : ℕ) (hq : q < 2 ^ 127) :
-    Pr[fun r => LayeredGraph.SizeTerminal target q (PublicContinuation.rows r.2.1) |
-      (simulateQ (FinitePosterior.lazy CountedPosterior.aux)
+    Pr{let r ←
+      ((simulateQ (FinitePosterior.lazy CountedPosterior.aux)
         (simulateQ (CountedPosterior.localQuery prims x b) oa)).run
           ((ProtectedRouting.split (protectedInput x b) cache).1,
-            (ProtectedRouting.split (protectedInput x b) cache).2, n)] ≤
+            (ProtectedRouting.split (protectedInput x b) cache).2, n))}[LayeredGraph.SizeTerminal target q (PublicContinuation.rows r.2.1)] ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ := by
   rw [← PublicContinuation.counted_run prims x b hno oa cache n]
   exact PublicContinuation.terminal_probability_size _ target _ (PublicContinuation.rows_empty _ hempty) q hq
@@ -119,14 +119,14 @@ theorem fixed_endpoint_bound_size (x : SigningSecurityProof.Keys3 C) (b : XmssSe
     let s : PublicContinuation.State C :=
       ((ProtectedRouting.split (protectedInput x b) cache).1,
         (ProtectedRouting.split (protectedInput x b) cache).2, n)
-    Pr[fun p => GoodSize b target q p.1 p.2 | do
+    Pr{let p ← (do
       let h ← $ᵗ (ProtectedSlot C → HashOutput)
       let table := tableExtending s.1 h
       let r ← (simulateQ (FinitePosterior.eager table CountedPosterior.aux)
         (simulateQ (CountedPosterior.localQuery prims x b) oa)).run s
-      pure (r, table)] ≤ ((2 ^ 128 : ℝ≥0∞) ^ 58)⁻¹ * (2 ^ 128 : ℝ≥0∞)⁻¹ := by
+      pure (r, table))}[GoodSize b target q p.1 p.2] ≤ ((2 ^ 128 : ℝ≥0∞) ^ 58)⁻¹ * (2 ^ 128 : ℝ≥0∞)⁻¹ := by
   apply le_trans (posterior_bound_size _ _ b target q)
-  exact mul_le_mul_left' (counted_terminal_probability_size prims x b hno oa
+  exact mul_le_mul_right (counted_terminal_probability_size prims x b hno oa
     cache n hempty target q hq) _
 
 set_option backward.isDefEq.respectTransparency false in
@@ -140,12 +140,12 @@ theorem adaptive_endpoint_bound_size (x : SigningSecurityProof.Keys3 C) (b : Xms
     let s : PublicContinuation.State C :=
       ((ProtectedRouting.split (protectedInput x b) cache).1,
         (ProtectedRouting.split (protectedInput x b) cache).2, n)
-    Pr[fun p => GoodSize b (choose p.2) q p.1 p.2 | do
+    Pr{let p ← (do
       let h ← $ᵗ (ProtectedSlot C → HashOutput)
       let table := tableExtending s.1 h
       let r ← (simulateQ (FinitePosterior.eager table CountedPosterior.aux)
         (simulateQ (CountedPosterior.localQuery prims x b) (next (choose table)))).run s
-      pure (r, table)] ≤ (2 ^ 128 : ℝ≥0∞)⁻¹ := by
+      pure (r, table))}[GoodSize b (choose p.2) q p.1 p.2] ≤ (2 ^ 128 : ℝ≥0∞)⁻¹ := by
   let s : PublicContinuation.State C :=
     ((ProtectedRouting.split (protectedInput x b) cache).1,
       (ProtectedRouting.split (protectedInput x b) cache).2, n)
@@ -186,37 +186,37 @@ theorem after_private_bound_size (x : SigningSecurityProof.Keys3 C) (b : XmssSec
         (liftComp ((SelectedKeygen.jobs b).mapM
           (referenceJob tweakable (prfValue x.2.1) x.1)) (LocalSpec C)) s),
       ∀ r ∈ support (CountedPosterior.run prims x b table
-        (next ((List.finRange numChains).map fun l => bitsOfDigest (SelectedKeygen.endpoints table b l)))
+        (next ((List.finRange chainCount).map fun l => bitsOfDigest (SelectedKeygen.endpoints table b l)))
         (s.1, s.2.1, 0)),
       event table (PrivateRecord.restoreOutcome p.2.1 p.2.2.2 r) →
         GoodSize b (SelectedKeygen.endpoints table b) q r table) :
     let s : PublicContinuation.State C :=
       ((ProtectedRouting.split (protectedInput x b) cache).1,
         (ProtectedRouting.split (protectedInput x b) cache).2, n)
-    Pr[fun p => event p.2 p.1 | do
+    Pr{let p ← (do
       let h ← $ᵗ (ProtectedSlot C → HashOutput)
       let table := tableExtending s.1 h
       let r ← CountedPosterior.run prims x b table (do
         let outputs ← liftComp ((SelectedKeygen.jobs b).mapM
           (referenceJob tweakable (prfValue x.2.1) x.1)) (LocalSpec C)
         next outputs) s
-      pure (r, table)] ≤ (2 ^ 128 : ℝ≥0∞)⁻¹ := by
+      pure (r, table))}[event p.2 p.1] ≤ (2 ^ 128 : ℝ≥0∞)⁻¹ := by
   dsimp only
   let s : PublicContinuation.State C :=
     ((ProtectedRouting.split (protectedInput x b) cache).1,
       (ProtectedRouting.split (protectedInput x b) cache).2, n)
   let visible := fun target : ChainIndex → Digest =>
-    next ((List.finRange numChains).map fun l => bitsOfDigest (target l))
-  apply le_trans (b := Pr[fun p => GoodSize b (SelectedKeygen.endpoints p.2 b) q p.1 p.2 | do
+    next ((List.finRange chainCount).map fun l => bitsOfDigest (target l))
+  apply le_trans (b := Pr{let p ← (do
     let h ← $ᵗ (ProtectedSlot C → HashOutput)
     let table := tableExtending s.1 h
     let r ← CountedPosterior.run prims x b table (visible (SelectedKeygen.endpoints table b))
       (s.1, s.2.1, 0)
-    pure (r, table)])
-  · simp only [probEvent_bind_eq_tsum, bind_pure_comp, probEvent_map]
+    pure (r, table))}[GoodSize b (SelectedKeygen.endpoints p.2 b) q p.1 p.2])
+  · simp only [OracleComp.prEvent_bind_eq_tsum, bind_pure_comp, prEvent_map]
     apply ENNReal.tsum_le_tsum
     intro h
-    apply mul_le_mul_left'
+    apply mul_le_mul_right
     apply PrivateRecord.private_bind_bound prims x b _ _ _ _ s (FinitePosterior.extending_agrees _ _)
     · intro p hp
       rw [(SelectedKeygen.counted_jobs_support prims x b hno _ s p hp).1]
@@ -316,14 +316,14 @@ theorem private_afterOutputs_bound_size (A : TsigAdversary C) (x : SigningSecuri
     let s : PublicContinuation.State C :=
       ((ProtectedRouting.split (protectedInput x b) cache).1,
         (ProtectedRouting.split (protectedInput x b) cache).2, n)
-    Pr[fun p => GateProbability.SupportedException prims A x b p.1 | do
+    Pr{let p ← (do
       let h ← $ᵗ (ProtectedSlot C → HashOutput)
       let table := tableExtending s.1 h
       let r ← CountedPosterior.run prims x b table (do
         let selected ← liftComp ((SelectedKeygen.jobs b).mapM
           (referenceJob tweakable (prfValue x.2.1) x.1)) (LocalSpec C)
         simulateQ worldLocalize (PublicVerification.afterOutputs A x b after left selected)) s
-      pure (r, table)] ≤ (2 ^ 128 : ℝ≥0∞)⁻¹ := by
+      pure (r, table))}[GateProbability.SupportedException prims A x b p.1] ≤ (2 ^ 128 : ℝ≥0∞)⁻¹ := by
   apply after_private_bound_size prims x b hno _ cache n (q + topChainSlack) hempty hsmall
     (fun _ => GateProbability.SupportedException prims A x b)
   intro h
@@ -339,15 +339,15 @@ theorem raw_block_bound_size (A : TsigAdversary C) (x : SigningSecurityProof.Key
     (hempty : ∀ l k v, cache (protectedInput x b (.inr (l, k, v))) = none)
     (hallowed : UnopenedPrivacy.RecordAllowed ∅ (UnopenedPrivacy.topStarts b)
       (ProtectedRouting.split (protectedInput x b) cache).1) :
-    Pr[GateProbability.RawException prims A x b |
-      (simulateQ (SigningCacheProof.countImpl prims) (PublicVerification.block A x b after left)).run
-        (cache, n)] ≤
+    Pr{let z ←
+      ((simulateQ (SigningCacheProof.countImpl prims) (PublicVerification.block A x b after left)).run
+        (cache, n))}[GateProbability.RawException prims A x b z] ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ := by
-  apply le_trans (b := Pr[fun r => GateProbability.SupportedException prims A x b
+  apply le_trans (b := Pr{let r ←
+      (simulateQ (SigningCacheProof.countImpl prims) (PublicVerification.block A x b after left)).run (cache, n)}[GateProbability.SupportedException prims A x b
     (r.1, (ProtectedRouting.split (protectedInput x b) r.2.1).1,
-      (ProtectedRouting.split (protectedInput x b) r.2.1).2, r.2.2) |
-      (simulateQ (SigningCacheProof.countImpl prims) (PublicVerification.block A x b after left)).run (cache, n)])
-  · apply probEvent_mono
+      (ProtectedRouting.split (protectedInput x b) r.2.1).2, r.2.2)])
+  · apply prEvent_mono_of_support _ _ _
     intro r _ hr
     obtain ⟨log, hz, hex⟩ := hr
     exact ⟨(r.1, r.2, log), hz, hex, rfl⟩
@@ -366,12 +366,12 @@ theorem logged_block_bound_own (A : TsigAdversary C) (x : SigningSecurityProof.K
     (hempty : ∀ l k v, s.1.1 (protectedInput x b (.inr (l, k, v))) = none)
     (hallowed : UnopenedPrivacy.RecordAllowed ∅ (UnopenedPrivacy.topStarts b)
       (ProtectedRouting.split (protectedInput x b) s.1.1).1) :
-    Pr[fun r => GateProbability.RawException prims A x b (r.1, r.2.1) |
-      (simulateQ (loggedImpl prims) (PublicVerification.block A x b after left)).run s] ≤
+    Pr{let r ←
+      (simulateQ (loggedImpl prims) (PublicVerification.block A x b after left)).run s}[GateProbability.RawException prims A x b (r.1, r.2.1)] ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ := by
-  have he := congrArg (fun oa => Pr[GateProbability.RawException prims A x b | oa])
+  have he := congrArg (fun oa => Pr{let z ← oa}[GateProbability.RawException prims A x b z])
     (logged_forget prims (PublicVerification.block A x b after left) s)
-  simp only [probEvent_map, Function.comp_def] at he
+  simp only [prEvent_map, Function.comp_def] at he
   apply he.le.trans
   exact raw_block_bound_size prims A x b hno after hb left s.1.1 s.1.2 q hown hsmall hempty hallowed
 
@@ -382,7 +382,7 @@ def KeyGateBoundOwn (prims : Primitives) (C : Committee) : Prop :=
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
     HasSigningOwnBound A q → q + signingSlack < 2 ^ 127 → ∃ T : C.Term, ∀ (b : XmssSecurity.TopIndex) s,
       RawReachable prims s → ¬GateSeen (.inr (.inr (.inl (topGateInput x T b)))) s.2 →
-      (∑' r, Pr[= r | (loggedImpl prims (.inr (.inr (.inl (topGateInput x T b))))).run s] *
+      (∑' r, Pr{let z ← (loggedImpl prims (.inr (.inr (.inl (topGateInput x T b))))).run s}[z = r] *
         continuationReserve prims (SigningDescentProof.finalRun A x) (ForestExceptionAt prims x b) r.2) ≤
           (2 ^ 128 : ℝ≥0∞)⁻¹
 
@@ -406,9 +406,9 @@ theorem keyGateBoundOwn_of_block : KeyGateBoundOwn prims C := by
     (fun l step value => hfresh _ (by exact ⟨l, step, value, rfl⟩))
     (SelectedKeygen.fresh_record_allowed x b initial.1.1 hfresh)
   rw [← PublicVerification.liveBlock_exception_probability prims A x b after left initial] at hbound
-  apply le_trans (b := Pr[fun r => GateProbability.RawException prims A x b (r.1, r.2.1) |
-    (simulateQ (loggedImpl prims) (OracleComp.queryBind (.inr (.inr (.inl (topGateInput x T b)))) k)).run initial])
-  · apply probEvent_mono
+  apply le_trans (b := Pr{let r ←
+    (simulateQ (loggedImpl prims) (OracleComp.queryBind (.inr (.inr (.inl (topGateInput x T b)))) k)).run initial}[GateProbability.RawException prims A x b (r.1, r.2.1)])
+  · apply prEvent_mono_of_support _ _ _
     intro r hr hex
     exact ⟨r.2.2, prefixRun_support_resume prims (SigningDescentProof.finalRun A x)
       n _ initial hp r hr, hex⟩

@@ -11,7 +11,7 @@ state from before the call. Each key that crosses the threshold by the corruptio
 list, so the promotion to the new signing state keeps the slack.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1SlackCorrupt
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -70,13 +70,13 @@ theorem sourceCorruptO1_stable (hinj : Function.Injective x.2.1) (top : TopTree)
     ReleaseInvariantO1 x.2.1 s r.1.2.base.signing r.1.2 r.2 := by
   simp only [sourceTsigO1, runSourceO1_bind, runSourceO1_get, pure_bind] at hr
   split at hr
-  · rw [runSourceO1_pure, mem_support_pure_iff] at hr
+  · erw [runSourceO1_pure, mem_support_pure_iff] at hr
     subst r
     exact h
   · rename_i hguard
     simp only [runSourceO1_bind, runSourceO1_modify, pure_bind, mem_support_bind_iff] at hr
     obtain ⟨sweep, hsweep, hr⟩ := hr
-    rw [runSourceO1_pure, mem_support_pure_iff] at hr
+    erw [runSourceO1_pure, mem_support_pure_iff] at hr
     subst r
     let new : TsigState C :=
       { src.base.signing with corrupt := insert i src.base.signing.corrupt }

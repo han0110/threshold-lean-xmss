@@ -8,7 +8,7 @@ The visible cache records raw oracle answers. The private cache retains the
 preloaded chain table, while term and mask slots are resolved separately.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerSyncReal
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -32,7 +32,7 @@ def Quiet (x : Keys3 C) (s : HiddenKey → Digest) (pads : Point → Digest)
 
 def syncPrivate (x : Keys3 C) (s : HiddenKey → Digest) (pads : Point → Digest)
     (noise : ChainNoiseIndex → HashOutput) (priv visible : HashCache C) : HashCache C :=
-  fun q => if Quiet x s pads noise q then visible q else priv q
+  QueryCache.ofFn fun q => if Quiet x s pads noise q then visible q else priv q
 
 structure RealPrivate (x : Keys3 C) (s : HiddenKey → Digest) (pads : Point → Digest)
     (noise : ChainNoiseIndex → HashOutput) (g : C.Term × SigningCompilerShare.CPoint → HashOutput)
@@ -72,13 +72,12 @@ theorem noise_interpret (x : Keys3 C) (s : HiddenKey → Digest) (pads : Point �
     realCache x s pads noise (.hash ((chainPending e).input x.1 (s (chainPending e).key))) =
       some ((pendingOutput (chainPending e) (noise e)).interpret s) := by
   rw [← installed_input x s pads noise e]
-  change chainTableCache x.1 (installed s pads noise).2 (noiseHigh noise)
-    (XmssSecurity.CappedChain.globalChainTableEdgeInput x.1 (installed s pads noise).2 e) = _
+  simp only [realCache, embedHashCache, QueryCache.ofFn_apply]
   have hex : ∃ a, XmssSecurity.CappedChain.globalChainTableEdgeInput x.1
       (installed s pads noise).2 a =
         XmssSecurity.CappedChain.globalChainTableEdgeInput x.1 (installed s pads noise).2 e := ⟨e, rfl⟩
   unfold chainTableCache
-  rw [dif_pos hex, edge_input_injective x.1 (installed s pads noise).2 hex.choose_spec]
+  rw [QueryCache.ofFn_apply, dif_pos hex, edge_input_injective x.1 (installed s pads noise).2 hex.choose_spec]
   congr 1
   rcases e with ⟨l, e | b, p⟩ <;> fin_cases p <;> rfl
 
@@ -211,7 +210,7 @@ theorem syncPrivate_agrees (priv w : HashCache C) (q : Query C)
 theorem syncPrivate_eq (priv w : HashCache C)
     (h : ∀ q, Quiet x s pads noise q → priv q = w q) :
     syncPrivate x s pads noise priv w = priv := by
-  funext q
+  refine QueryCache.ext fun q => ?_
   by_cases hq : Quiet x s pads noise q
   · simp [syncPrivate, hq, h q hq]
   · simp [syncPrivate, hq]
@@ -219,16 +218,16 @@ theorem syncPrivate_eq (priv w : HashCache C)
 theorem syncPrivate_nested (priv w w' : HashCache C) :
     syncPrivate x s pads noise (syncPrivate x s pads noise priv w) w' =
       syncPrivate x s pads noise priv w' := by
-  funext q; by_cases hq : Quiet x s pads noise q <;> simp [syncPrivate, hq]
+  refine QueryCache.ext fun q => ?_; by_cases hq : Quiet x s pads noise q <;> simp [syncPrivate, hq]
 
 theorem syncPrivate_cacheQuery (priv w : HashCache C) (q : Query C) (v : HashOutput)
     (hq : Quiet x s pads noise q) :
     syncPrivate x s pads noise priv (w.cacheQuery q v) =
       (syncPrivate x s pads noise priv w).cacheQuery q v := by
-  funext z
+  refine QueryCache.ext fun z => ?_
   by_cases he : z = q
   · subst z; simp [syncPrivate, hq]
-  · simp only [QueryCache.cacheQuery_of_ne _ _ he, syncPrivate]
+  · simp only [QueryCache.cacheQuery_of_ne _ _ he, syncPrivate, QueryCache.ofFn_apply]
 
 theorem quiet_query (g : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput)
     (t : (SigningGuessProof.SigningRawSpec C).Domain) (ht : QuietQ x s pads noise t)
@@ -303,8 +302,9 @@ theorem quiet_message (x : Keys3 C) (s : HiddenKey → Digest) (pads : Point →
     (noise : ChainNoiseIndex → HashOutput) (i : HashInput) (hi : IsMsg i) :
     Quiet x s pads noise (.hash i) := by
   refine ⟨not_isSlot_hash x i, ?_⟩
-  change chainTableCache x.1 (installed s pads noise).2 (noiseHigh noise) i = none
+  simp only [realCache, embedHashCache, QueryCache.ofFn_apply]
   unfold chainTableCache
+  rw [QueryCache.ofFn_apply]
   apply dif_neg
   rintro ⟨e, he⟩
   rw [installed_input] at he
@@ -320,7 +320,8 @@ theorem quiet_grind (x : Keys3 C) (s : HiddenKey → Digest) (pads : Point → D
   induction attempts generalizing trial with
   | zero => simp only [grind, simulateQ_pure]; exact Queries.pure _
   | succ attempts ih =>
-    simp only [grind, Concrete.messageDigest, Concrete.tweakableHash, Concrete.oracleHash,
+    simp only [grind, Verification.messageDigestWithHash, Verification.tweakableHashWithHash,
+      Verification.thWithHash, Verification.oracleHashWithHash,
       HasQuery.instOfMonadLift_query, simulateQ_bind, simulateQ_spec_query,
       bind_assoc, pure_bind]
     apply Queries.bind (Queries.query _ (quiet_message x s pads noise _
@@ -337,7 +338,7 @@ theorem quiet_baseGrind (x : Keys3 C) (s : HiddenKey → Digest) (pads : Point �
       (SigningFlatEagerProof.baseGrind x.1 e message answer) := by
   unfold SigningFlatEagerProof.baseGrind
   simpa only [simulateQ_map] using (quiet_grind x s pads noise bottomLayer e
-    (bytesLE 32 message) (truncateHash answer) randomizerAttemptLimit 0).map (fun _ => ())
+    (littleEndianBytes 32 message) (truncateHash answer) randomizerAttemptLimit 0).map (fun _ => ())
 
 theorem quiet_cachedExtra (x : Keys3 C) (s : HiddenKey → Digest) (pads : Point → Digest)
     (noise : ChainNoiseIndex → HashOutput) (before after : SigningFlatProof.FlatState C)

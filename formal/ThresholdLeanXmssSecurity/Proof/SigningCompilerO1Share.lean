@@ -10,7 +10,7 @@ The proof follows `SigningCompilerShare.compilerRunPads_eq_shareRun`. The tag dr
 lemmas of `SigningCompilerShareTag`.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Share
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof

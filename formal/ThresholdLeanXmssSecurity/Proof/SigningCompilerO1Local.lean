@@ -18,7 +18,7 @@ one side.
 - `local_ordinary` couples each other read.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Local
@@ -227,14 +227,14 @@ theorem local_uniform (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (to
   rintro v v' (rfl : v = v')
   have hlog : SigningCacheLogProof.logCache (a.1.1.1.1.1.2.logQuery (.inl (.inl (.inl n))) v) =
       SigningCacheLogProof.logCache a.1.1.1.1.1.2 := by
-    funext query
+    refine QueryCache.ext fun query => ?_
     rw [SigningCacheLogProof.logCache_logQuery]
     exact Option.or_none
   have hf : CallFrame x (fun _ => False) a (uniformAfter x n a v) (b.1.base, b.2) (b.1.base, b.2) :=
     { carried := rfl
       visible := le_refl _
       fresh := fun _ h => Or.inl h
-      log := fun query w h => (congrFun hlog query).trans h
+      log := fun query w h => (congrFun (congrArg QueryCache.toFn hlog) query).trans h
       logAgreement := fun hl => by
         change SigningPartnerCompareProof.LogAgreement x.1
           ((a.1.1.1.1.1.1, a.1.1.1.1.1.2.logQuery (.inl (.inl (.inl n))) v))

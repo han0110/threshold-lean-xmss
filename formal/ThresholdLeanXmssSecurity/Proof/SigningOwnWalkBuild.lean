@@ -24,7 +24,7 @@ the lift of a unit.
   half of its pending answer.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 
 noncomputable section
 
@@ -191,14 +191,14 @@ theorem mapM {α β : Type} {c : ℕ} (items : List α) (oa : α → SourceM C �
 theorem sequenceFin {α : Type} {c : ℕ} (n : ℕ) (oa : Fin n → SourceM C α)
     (I : SourceState C → LState C → Prop)
     (h : ∀ i, Walk P seeds Q s I c (fun _ => I) (oa i)) :
-    Walk P seeds Q s I (n * c) (fun _ => I) (Concrete.sequenceFin oa) := by
+    Walk P seeds Q s I (n * c) (fun _ => I) (OverPermutation.sequenceFin oa) := by
   induction n with
   | zero =>
-      simpa only [Concrete.sequenceFin, Nat.zero_mul] using
+      simpa only [OverPermutation.sequenceFin, Nat.zero_mul] using
         Walk.pure (P := P) (seeds := seeds) (Q := Q) (s := s) (Pre := I)
           (Post := fun (_ : Fin 0 → α) => I) _ fun _ _ h => h
   | succ n ih =>
-      simp only [Concrete.sequenceFin]
+      simp only [OverPermutation.sequenceFin]
       refine Walk.conseq (Walk.bind (h 0) fun head =>
         Walk.bind (ih (fun i => oa i.succ) fun i => h i.succ) fun tail =>
           Walk.pure (Post := fun _ => I) _ fun _ _ h => h) (fun _ _ h => h) (fun _ _ _ h => h) ?_
@@ -294,6 +294,7 @@ section Calls
 
 variable (P : PublicParameter) (seeds : C.Term → HashOutput) (Q : ℕ) (s : HiddenKey → Digest)
 
+set_option backward.isDefEq.respectTransparency false in
 /-- A backend call other than a `.record` over an answer keeps each pending answer. -/
 theorem deferredImpl_pending_keep (t : DeferredQuery C) (st : DeferredState C)
     (r : DeferredSpec C t × DeferredState C) (hr : r ∈ support ((deferredImpl t).run st))
@@ -503,6 +504,7 @@ theorem baseInv_step {readyEx cachedEx : Option KeyIndex} {src : SourceState C} 
     · exact secondOpening_mono P seeds hcache hkeep (h.dirtySecond hd)
     · exact secondOpening_mono P seeds hcache hkeep (of_decide_eq_true hd)
 
+set_option backward.isDefEq.respectTransparency false in
 /-- A backend call adds a virtual row only at `.virtual`, and a pending answer only at `.pending`
 or `.record`. -/
 theorem deferredImpl_frame (t : DeferredQuery C) (st : DeferredState C)
@@ -652,6 +654,7 @@ theorem compilerImpl_snapshot_eq (st : CompilerBackend C) (x : DeferredState C �
   simp only [compilerImpl, deferredImpl, StateT.run, map_pure] at hx
   exact hx
 
+set_option backward.isDefEq.respectTransparency false in
 theorem compilerImpl_pending_some (p : PendingInput) (st : CompilerBackend C)
     (x : DeferredOutput × CompilerBackend C)
     (hx : x ∈ support ((compilerImpl P seeds (.pending p)).run st)) :
@@ -738,11 +741,11 @@ variable (P : PublicParameter)
 
 theorem free_sequenceFin {α : Type} (n : ℕ) (oa : Fin n → OracleComp HashSpec α)
     (h : ∀ i, XmssSecurity.Bridge.OnlyQueries (FreeInput P) (oa i)) :
-    XmssSecurity.Bridge.OnlyQueries (FreeInput P) (Concrete.sequenceFin oa) := by
+    XmssSecurity.Bridge.OnlyQueries (FreeInput P) (OverPermutation.sequenceFin oa) := by
   induction n with
   | zero => exact .pure _
   | succ n ih =>
-      simp only [Concrete.sequenceFin]
+      simp only [OverPermutation.sequenceFin]
       exact (h 0).bind fun _ => (ih (fun i => oa i.succ) fun i => h i.succ).bind fun _ => .pure _
 
 theorem free_merklePath (lay : Layer) (chainEnd : KeyIndex → ChainIndex → Digest)
@@ -752,30 +755,30 @@ theorem free_merklePath (lay : Layer) (chainEnd : KeyIndex → ChainIndex → Di
 
 theorem free_leafHash (lay : Layer) (key : KeyIndex) (endpoints : ChainIndex → Digest) :
     XmssSecurity.Bridge.OnlyQueries (FreeInput P)
-      (Concrete.leafHash P lay key endpoints : OracleComp HashSpec Digest) :=
+      (Verification.leafHashWithHash P lay key endpoints : OracleComp HashSpec Digest) :=
   (XmssSecurity.Bridge.onlyQueries_query (free_leaf P lay _ _)).bind fun _ => .pure _
 
 theorem free_treeFold (lay : Layer) (key : KeyIndex) (path : Fin layerHeight → Digest)
     (levels : ℕ) (value : Digest) :
     XmssSecurity.Bridge.OnlyQueries (FreeInput P)
-      (Concrete.treeFold P lay key path levels value : OracleComp HashSpec Digest) := by
+      (Verification.treeFoldWithHash P lay key path levels value : OracleComp HashSpec Digest) := by
   induction levels with
   | zero => exact .pure _
   | succ levels ih =>
-      simp only [Concrete.treeFold]
+      simp only [Verification.treeFoldWithHash]
       refine ih.bind fun _ => ?_
       split
       · exact (XmssSecurity.Bridge.onlyQueries_query (free_node P lay _ _ _)).bind fun _ => .pure _
       · exact (XmssSecurity.Bridge.onlyQueries_query (free_node P lay _ _ _)).bind fun _ => .pure _
 
 theorem free_topMessageDigest (b : Fin (2 ^ layerHeight)) (root : Digest)
-    (randomness : Randomness) :
+    (randomness : Randomizer) :
     XmssSecurity.Bridge.OnlyQueries (FreeInput P)
-      (Concrete.messageDigest P topLayer (topKey b) (bytesLE 16 root) randomness :
+      (Verification.messageDigestWithHash P topLayer (topKey b) (littleEndianBytes 16 root) randomness :
         OracleComp HashSpec Digest) := by
   have hfree := free_topDigest P b (root, randomness)
   unfold XmssSecurity.Concrete.CacheView.topEncodingInput at hfree
-  rw [← XmssSecurity.Bridge.topMessage_input] at hfree
+  rw [← XmssSecurity.Bridge.topMessage_input P b root randomness] at hfree
   exact (XmssSecurity.Bridge.onlyQueries_query hfree).bind fun _ => .pure _
 
 end Free
@@ -1032,10 +1035,8 @@ theorem walk_sourcePending {readyEx cachedEx : Option KeyIndex} (p : PendingInpu
         BaseInv P seeds readyEx cachedEx src st ∧ CommitReady p st) _
         fun src st h => ⟨BaseInv.of_source P seeds (src := src) h.2.1 rfl rfl rfl, h.2.2.1⟩) fun _ => tail _)
         (fun _ _ h => h) (fun _ _ _ h => h) le_rfl
-    · exact Walk.conseq (c := 0 + 0) (Walk.bind (Walk.pure (Post := fun _ src st =>
-        BaseInv P seeds readyEx cachedEx src st ∧ CommitReady p st) PUnit.unit
-        fun _ _ h => ⟨h.2.1, h.2.2.1⟩) fun _ => tail _)
-        (fun _ _ h => h) (fun _ _ _ h => h) le_rfl
+    · refine Walk.conseq (tail _) (fun _ _ h => ?_) (fun _ _ _ h => h) le_rfl
+      exact ⟨h.2.1, h.2.2.1⟩
 
 /-- A hash call at a free input keeps `BaseInv` and is not charged. -/
 theorem walk_freeHash {readyEx cachedEx : Option KeyIndex} (input : HashInput)
@@ -1119,8 +1120,9 @@ theorem walk_sourceTopEnd (b : XmssSecurity.TopIndex) (l : ChainIndex) :
       (fun _ => BaseInv P seeds none none) (sourcePending P (.top b l i)) := fun i =>
     Walk.conseq (walk_sourcePending P seeds Q s (.top b l i)) (fun _ _ h => ⟨h, fun _ he => by
       cases he⟩) (fun _ _ _ h => h.1) le_rfl
-  simp only [deferredTopEnd, simulateQ_bind, simulateQ_list_mapM, simulateQ_pure, backendQuery,
-    simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query, id_map, sourceBackend]
+  simp only [deferredTopEnd, simulateQ_bind, simulateQ_pure, backendQuery,
+    simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query, id_map]
+  erw [simulateQ_list_mapM]
   refine Walk.conseq (c := C.terms.length * 0 + (0 + (0 + (0 + 0)))) (Walk.bind
     (Walk.mapM _ _ _ fun T _ => Walk.conseq (walk_sourceVirtual_other P seeds Q s T _
       (fun _ h => by cases h)) (fun _ _ h => h) (fun _ _ _ h => h.1) le_rfl)
@@ -1209,7 +1211,7 @@ theorem walk_completePrf {readyEx cachedEx : Option KeyIndex} (point : Point) (t
       ∀ T ∈ C.terms.filter (· ≠ slack), st.1.1.1.data.cache (.prf (seeds T) point) ≠ none)
       (fun src st st' hg h => ⟨hB src st st' hg h.1, fun T hT => hcached st st' hg T (h.2 T hT)⟩))
       fun st' => ?_) (fun _ _ h => ⟨h.1.1, h.1.2, h.2⟩) (fun _ _ _ h => h) le_rfl
-    rw [liftM_bind]
+    erw [liftM_bind]
     refine Walk.conseq (c := 0 + 0) (Walk.bind (walk_sample P seeds Q s (fun src st => B src st ∧
       ∀ T ∈ C.terms.filter (· ≠ slack), st.1.1.1.data.cache (.prf (seeds T) point) ≠ none)
       (fun src st st' hg h => ⟨hB src st st' hg h.1, fun T hT => hcached st st' hg T (h.2 T hT)⟩))
@@ -1608,6 +1610,7 @@ theorem walk_sourceBottomRow (e : KeyIndex) (l : ChainIndex) :
   simp only [sourceBottomRow, deferredBottomRow, simulateQ_bind, simulateQ_list_mapM,
     simulateQ_pure, backendQuery, simulateQ_query, OracleQuery.input_query,
     OracleQuery.cont_query, id_map]
+  erw [simulateQ_list_mapM]
   refine Walk.conseq (c := _ * 0 + (0 + (0 + (_ * 0 + 0)))) (Walk.bind
     (Walk.mapM _ _ _ fun t ht => ?_) fun _ => Walk.bind (walk_pad P seeds Q s _) fun _ =>
       Walk.bind (walk_pad P seeds Q s _) fun _ => Walk.bind (Walk.mapM _ _ _ fun p hp =>
@@ -1618,7 +1621,7 @@ theorem walk_sourceBottomRow (e : KeyIndex) (l : ChainIndex) :
     exact Walk.conseq (c := 0 + 0) (Walk.bind (walk_sourceVirtual P seeds Q s T _) fun _ =>
       Walk.pure _ fun _ _ h => h.1) (fun _ _ h => h) (fun _ _ _ h => h) le_rfl
 
-theorem walk_sourceTopValue (b : XmssSecurity.TopIndex) (l : ChainIndex) (pos : Digit) :
+theorem walk_sourceTopValue (b : XmssSecurity.TopIndex) (l : ChainIndex) (pos : WinternitzDigit) :
     Walk P seeds Q s (BaseInv P seeds none none) 0 (fun _ => BaseInv P seeds none none)
       (sourceTopValue P seeds b l pos) := by
   unfold sourceTopValue
@@ -1628,7 +1631,7 @@ theorem walk_sourceTopValue (b : XmssSecurity.TopIndex) (l : ChainIndex) (pos : 
         fun _ h => by cases h) fun _ => Walk.pure _ fun _ _ h => h)
     (fun _ _ h => h) (fun _ _ _ h => h) (by simp)
 
-theorem walk_sourceTopRecover (b : XmssSecurity.TopIndex) (l : ChainIndex) (pos : Digit)
+theorem walk_sourceTopRecover (b : XmssSecurity.TopIndex) (l : ChainIndex) (pos : WinternitzDigit)
     (initial : DeferredDigest) :
     Walk P seeds Q s (BaseInv P seeds none none) 0 (fun _ => BaseInv P seeds none none)
       (sourceTopRecover P b l pos initial) := by
@@ -1693,10 +1696,10 @@ theorem walk_sourceBottomTree (top : TopTree) (b : XmssSecurity.TopIndex) :
           ∀ tree, (none : Option DeferredBottomTree) = some tree →
             c.low = .known (tree.commitment (bottomKey b k)) := fun _ _ h =>
     ⟨h.1, fun k => by obtain ⟨c, hc, -⟩ := h.2 k; exact ⟨c, hc, fun _ he => by cases he⟩⟩
-  have seq0 : ∀ {α : Type} (oa : Fin numChains → SourceM C α), (∀ l, Walk P seeds Q s
+  have seq0 : ∀ {α : Type} (oa : Fin chainCount → SourceM C α), (∀ l, Walk P seeds Q s
       (BaseInv P seeds none none) 0 (fun _ => BaseInv P seeds none none) (oa l)) →
       Walk P seeds Q s (BaseInv P seeds none none) 0 (fun _ => BaseInv P seeds none none)
-        (Concrete.sequenceFin oa) := fun oa h =>
+        (OverPermutation.sequenceFin oa) := fun oa h =>
     Walk.conseq (Walk.sequenceFin _ oa _ h) (fun _ _ h => h) (fun _ _ _ h => h) (by simp)
   dsimp only
   refine Walk.conseq (c := 0 + (0 + (0 + (0 + 0)))) (Walk.bind (fr (Walk.conseq
@@ -1737,7 +1740,7 @@ theorem walk_sourceBottomTree (top : TopTree) (b : XmssSecurity.TopIndex) :
           refine ⟨c, hc, fun tree he => ?_⟩
           cases he
           rw [hl]
-          simp only [bottomKey_mod]
+          exact congrArg (fun n => DeferredDigest.known (ds.getD n 0)) (bottomKey_mod b k).symm
 
 /-- A run over the ledger is a run over the capped hybrid without the ledger. -/
 theorem runL_proj {α : Type} (oa : SourceM C α) (src : SourceState C) (st : LState C)
@@ -1820,11 +1823,11 @@ end ThresholdLeanXmssSecurity.SigningOwnWalkBuild
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningOwnWalkBuild.walkInv_iff
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkBuild.Grows.refl' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkBuild.Grows.refl' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningOwnWalkBuild.Grows.refl
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkBuild.Grows.trans' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkBuild.Grows.trans' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningOwnWalkBuild.Grows.trans
 
@@ -2024,7 +2027,11 @@ end ThresholdLeanXmssSecurity.SigningOwnWalkBuild
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningOwnWalkBuild.walk_pendingCall
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkBuild.commitReady_grows' depends on axioms: [propext, Quot.sound] -/
+/--
+info: 'ThresholdLeanXmssSecurity.SigningOwnWalkBuild.commitReady_grows' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningOwnWalkBuild.commitReady_grows
 

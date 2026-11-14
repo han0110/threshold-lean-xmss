@@ -11,7 +11,7 @@ and the final count bound. The local count laws below account for the release
 and cache bookkeeping performed by the live source interpreter.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 
 noncomputable section
 
@@ -80,7 +80,7 @@ theorem exact_revealQuery (k : HiddenKey) :
     XmssSecurity.ExactPredicateQueryCount sourceCounted (revealQuery (C := C) k) 0 := by
   change XmssSecurity.ExactPredicateQueryCount sourceCounted
     (liftM (OracleSpec.query (spec := DeferredSpec C + RevealSpec HiddenKey Digest) (.inr k))) 0
-  simpa only [bind_pure, sourceCounted, if_false, Nat.zero_add] using
+  simpa [sourceCounted] using
     (XmssSecurity.ExactPredicateQueryCount.query (predicate := sourceCounted (C := C)) (.inr k)
       (fun a => (pure a : OracleComp (DeferredSpec C + RevealSpec HiddenKey Digest) _)) 0
       (fun a => XmssSecurity.ExactPredicateQueryCount.pure a))
@@ -275,9 +275,9 @@ theorem sourceCost_sourceBackend (P : PublicParameter) (seeds : C.Term → HashO
     (t : DeferredQuery C) : SourceCost (sourceBackend P seeds t)
       (if deferredCounted t then 1 else 0) := by
   cases t with
-  | hash q => simpa only [sourceBackend, deferredCounted, if_true] using sourceCost_sourceHash P seeds q
-  | pending p => simpa only [sourceBackend, deferredCounted, if_true] using sourceCost_sourcePending (C := C) P p
-  | virtual T p => simpa only [sourceBackend, deferredCounted, if_true] using sourceCost_sourceVirtual P seeds T p
+  | hash q => erw [if_pos trivial]; exact sourceCost_sourceHash P seeds q
+  | pending p => erw [if_pos trivial]; exact sourceCost_sourcePending (C := C) P p
+  | virtual T p => erw [if_pos trivial]; exact sourceCost_sourceVirtual P seeds T p
   | _ => exact sourceCost_deferredQuery _
 
 /-- Exact source costs survive the actual release-aware interpreter. -/
@@ -320,7 +320,7 @@ theorem cappedCompiler_step_count (P : PublicParameter) (seeds : C.Term → Hash
       simp only [SigningCappedExpectProof.cappedHybrid, revealImpl, StateT.run_mk,
         mem_support_pure_iff] at hr
       subst r
-      simp only [sourceCounted, if_false, Nat.add_zero]
+      simp [sourceCounted]
 
 /-- Exact source accounting is the count stored by the fixed capped compiler.
 It is not an assumed correspondence to the real-world budget. -/
@@ -658,75 +658,58 @@ set_option backward.isDefEq.respectTransparency false in
 /-- The actual slack sampler uses the truncation of a fresh full hash answer
 for its high half. This has the existing leanVM programmed-answer law. -/
 theorem evalDist_slack_high (target others : Digest) :
-    𝒟[(fun high : HashOutput => XmssSecurity.Rom.hashOutputEquivDigestPair.symm
-      (truncateHash high, target ^^^ others)) <$> ($ᵗ HashOutput)] =
-    𝒟[XmssSecurity.Rom.sampleHashOutputWithDigest (target ^^^ others)] := by
+    ((fun high : HashOutput => XmssSecurity.Rom.hashOutputEquivDigestPair.symm
+      (truncateHash high, target ^^^ others)) <$> ($ᵗ HashOutput)) =ᵈ
+    XmssSecurity.Rom.sampleHashOutputWithDigest (target ^^^ others) := by
   rw [XmssSecurity.Rom.sampleHashOutputWithDigest]
-  calc
-    _ = 𝒟[(fun high : Digest => XmssSecurity.Rom.hashOutputEquivDigestPair.symm
-        (high, target ^^^ others)) <$> (truncateHash <$> ($ᵗ HashOutput))] := by
-      simp only [Functor.map_map]
-    _ = _ := by
-      have ht : 𝒟[truncateHash <$> ($ᵗ HashOutput)] = 𝒟[$ᵗ Digest] :=
-        XmssSecurity.Rom.evalDist_truncate_uniformHashOutput
-      rw [evalDist_map, ht, ← evalDist_map]
-      rfl
+  have ht : (truncateHash <$> ($ᵗ HashOutput)) =ᵈ $ᵗ Digest :=
+    XmssSecurity.Rom.evalDist_truncate_uniformHashOutput
+  refine EvalDistEq.trans (EvalDistEq.of_eq ?_)
+    (ht.map (fun high : Digest => XmssSecurity.Rom.hashOutputEquivDigestPair.symm
+      (high, target ^^^ others)))
+  simp only [Functor.map_map]
 
 set_option backward.isDefEq.respectTransparency false in
 /-- For any already-fixed other-term aggregate, a fresh uniform target and the
 compiler's sampled high half are exactly a uniform ordinary PRF answer paired
 with the aggregate it determines. -/
 theorem evalDist_slack_target (others : Digest) :
-    𝒟[(do
+    (do
       let target ← $ᵗ Digest
       let high ← $ᵗ HashOutput
       pure (target, XmssSecurity.Rom.hashOutputEquivDigestPair.symm
-        (truncateHash high, target ^^^ others)) : ProbComp (Digest × HashOutput))] =
-      𝒟[(fun value : HashOutput => (truncateHash value ^^^ others, value)) <$> ($ᵗ HashOutput)] := by
+        (truncateHash high, target ^^^ others)) : ProbComp (Digest × HashOutput)) =ᵈ
+      ((fun value : HashOutput => (truncateHash value ^^^ others, value)) <$> ($ᵗ HashOutput)) := by
   have hbij : Function.Bijective (fun value : Digest => value ^^^ others) :=
     (show Function.Involutive (fun value : Digest => value ^^^ others) from
       fun value => by simp [BitVec.xor_assoc]).bijective
   have hshift :
-      𝒟[(do
+      (do
         let target ← $ᵗ Digest
         let value ← XmssSecurity.Rom.sampleHashOutputWithDigest (target ^^^ others)
-        pure (target, value) : ProbComp (Digest × HashOutput))] =
-      𝒟[(fun pair : Digest × HashOutput => (pair.1 ^^^ others, pair.2)) <$>
-        XmssSecurity.Rom.sampledHashOutputWithDigest] := by
-    apply evalDist_ext
-    intro result
-    have ht := probOutput_bind_bijective_uniform_cross (α := Digest)
-      (fun value : Digest => value ^^^ others) hbij
-      (fun target => do
-        let value ← XmssSecurity.Rom.sampleHashOutputWithDigest (target ^^^ others)
-        pure (target, value)) result
+        pure (target, value) : ProbComp (Digest × HashOutput)) =ᵈ
+      ((fun pair : Digest × HashOutput => (pair.1 ^^^ others, pair.2)) <$>
+        XmssSecurity.Rom.sampledHashOutputWithDigest) := by
+    have hb := (SampleableType.map_uniformSample_evalDistEq_of_bijective hbij).bind_left
+      (fun low : Digest => do
+        let value ← XmssSecurity.Rom.sampleHashOutputWithDigest low
+        pure (low ^^^ others, value))
+    simp only [bind_map_left, BitVec.xor_assoc, BitVec.xor_self, BitVec.xor_zero] at hb
+    refine hb.trans (EvalDistEq.of_eq ?_)
     simp only [XmssSecurity.Rom.sampledHashOutputWithDigest, map_eq_bind_pure_comp,
-      bind_assoc, pure_bind, Function.comp_apply, BitVec.xor_assoc, BitVec.xor_self,
-      BitVec.xor_zero] at ht ⊢
-    convert ht.symm using 1
+      bind_assoc, pure_bind, Function.comp_apply]
     rfl
-  calc
-    _ = 𝒟[(do
-        let target ← $ᵗ Digest
-        let value ← XmssSecurity.Rom.sampleHashOutputWithDigest (target ^^^ others)
-        pure (target, value) : ProbComp (Digest × HashOutput))] := by
-      refine OracleComp.DeferredSampling.evalDist_bind_congr_left ($ᵗ Digest) _ _
-        (fun target => ?_)
-      calc
-        _ = 𝒟[(fun value : HashOutput => (target, value)) <$>
-            ((fun high : HashOutput => XmssSecurity.Rom.hashOutputEquivDigestPair.symm
-              (truncateHash high, target ^^^ others)) <$> ($ᵗ HashOutput))] := by
-          simp only [map_eq_bind_pure_comp, bind_assoc, pure_bind, Function.comp_apply]
-        _ = _ := by
-          rw [evalDist_map, evalDist_slack_high, ← evalDist_map]
-          rw [map_eq_bind_pure_comp]
-          rfl
-    _ = 𝒟[(fun pair : Digest × HashOutput => (pair.1 ^^^ others, pair.2)) <$>
-        XmssSecurity.Rom.sampledHashOutputWithDigest] := hshift
-    _ = _ := by
-      rw [evalDist_map, XmssSecurity.Rom.evalDist_sampledHashOutputWithDigest_eq_uniform,
-        ← evalDist_map, Functor.map_map]
+  refine EvalDistEq.trans (EvalDistEq.bind_right ($ᵗ Digest) fun target => ?_) (hshift.trans ?_)
+  · refine EvalDistEq.trans (EvalDistEq.of_eq ?_)
+      (((evalDist_slack_high target others).map
+        (fun value : HashOutput => (target, value))).trans (EvalDistEq.of_eq ?_))
+    · simp only [map_eq_bind_pure_comp, bind_assoc, pure_bind, Function.comp_apply]
+    · rw [map_eq_bind_pure_comp]
       rfl
+  · refine (XmssSecurity.Rom.evalDist_sampledHashOutputWithDigest_eq_uniform.map _).trans
+      (EvalDistEq.of_eq ?_)
+    rw [Functor.map_map]
+    rfl
 
 /-- An ordinary slack answer determines the aggregate while all other term
 values remain fixed. -/
@@ -740,13 +723,13 @@ theorem termSum_slack_output (values : C.Term → Digest) (slack : C.Term) (outp
 and `slack` may be selected from the prior cache; the sampled target is fresh.
 The existing cache entries are represented unchanged by `values` off `slack`. -/
 theorem evalDist_slack_program (values : C.Term → Digest) (slack : C.Term) :
-    𝒟[(do
+    (do
       let target ← $ᵗ Digest
       let high ← $ᵗ HashOutput
       pure (target, XmssSecurity.Rom.hashOutputEquivDigestPair.symm
-        (truncateHash high, target ^^^ otherTermSum values slack)) : ProbComp (Digest × HashOutput))] =
-      𝒟[(fun output : HashOutput =>
-        (termSum (Function.update values slack (truncateHash output)), output)) <$> ($ᵗ HashOutput)] := by
+        (truncateHash high, target ^^^ otherTermSum values slack)) : ProbComp (Digest × HashOutput)) =ᵈ
+      ((fun output : HashOutput =>
+        (termSum (Function.update values slack (truncateHash output)), output)) <$> ($ᵗ HashOutput)) := by
   simpa only [termSum_slack_output] using evalDist_slack_target (otherTermSum values slack)
 
 set_option backward.isDefEq.respectTransparency false in
@@ -767,6 +750,7 @@ theorem runSource_deferredQuery_uncounted (P : PublicParameter) (seeds : C.Term 
     SigningCappedExpectProof.cappedHybrid, revealImpl, countImpl, StateT.run_mk,
     cappedCall, ht, false_and, decide_false, Bool.or_false, if_false, Nat.add_zero,
     bind_map_left, Functor.map_map]
+  rw [map_eq_bind_pure_comp]
   rfl
 
 theorem runSource_inspect (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -835,6 +819,7 @@ theorem runSource_plant (P : PublicParameter) (seeds : C.Term → HashOutput)
   rw [runSource_deferredQuery_uncounted P seeds q s (.plant input value) (by exact not_false)]
   simp only [compilerImpl, StateT.run, Functor.map_map]
 
+set_option backward.isDefEq.respectTransparency false in
 /-- The live planting routine preserves both relations and succeeds even when
 the concrete commitment was queried earlier. It materializes the symbolic next
 secret through the reveal interface, without changing source control data,
@@ -890,54 +875,47 @@ set_option backward.isDefEq.respectTransparency false in
 half; its low half stays the exact symbolic next-coordinate. -/
 theorem evalDist_samplePending_internal (p : PendingInput) (k : HiddenKey)
     (hk : p.next = some k) :
-    𝒟[samplePending p] =
-      𝒟[(fun high : Digest => (⟨high, .secret k⟩ : DeferredOutput)) <$> ($ᵗ Digest)] := by
+    samplePending p =ᵈ
+      ((fun high : Digest => (⟨high, .secret k⟩ : DeferredOutput)) <$> ($ᵗ Digest)) := by
   have hsplit :
-      𝒟[(XmssSecurity.Rom.hashOutputEquivDigestPair : HashOutput → Digest × Digest) <$>
-        ($ᵗ HashOutput)] = 𝒟[XmssSecurity.Rom.independentDigestHalves] :=
+      ((XmssSecurity.Rom.hashOutputEquivDigestPair : HashOutput → Digest × Digest) <$>
+        ($ᵗ HashOutput)) =ᵈ XmssSecurity.Rom.independentDigestHalves :=
     XmssSecurity.Rom.evalDist_split_uniformHashOutput_eq_independent
-  calc
-    _ = 𝒟[(fun halves : Digest × Digest => (⟨halves.1, .secret k⟩ : DeferredOutput)) <$>
-        (XmssSecurity.Rom.hashOutputEquivDigestPair <$> ($ᵗ HashOutput))] := by
-      simp only [samplePending, hk, map_eq_bind_pure_comp, bind_assoc, pure_bind,
-        Function.comp_apply]
-    _ = 𝒟[(fun halves : Digest × Digest => (⟨halves.1, .secret k⟩ : DeferredOutput)) <$>
-        XmssSecurity.Rom.independentDigestHalves] := by
-      rw [evalDist_map, hsplit, ← evalDist_map]
-    _ = _ := by
-      simp only [XmssSecurity.Rom.independentDigestHalves, map_eq_bind_pure_comp,
-        bind_assoc, pure_bind, Function.comp_apply]
-      apply OracleComp.DeferredSampling.evalDist_bind_congr_left
-      intro high
-      exact OracleComp.DeferredSampling.evalDist_bind_const_neverFails
-        ($ᵗ Digest) (probFailure_uniformSample _) _
+  refine EvalDistEq.trans (EvalDistEq.of_eq ?_)
+    ((hsplit.map (fun halves : Digest × Digest =>
+      (⟨halves.1, .secret k⟩ : DeferredOutput))).trans ?_)
+  · simp only [samplePending, hk, map_eq_bind_pure_comp, bind_assoc, pure_bind,
+      Function.comp_apply]
+  · simp only [XmssSecurity.Rom.independentDigestHalves, map_eq_bind_pure_comp,
+      bind_assoc, pure_bind, Function.comp_apply]
+    refine EvalDistEq.bind_right _ fun high => ?_
+    exact OracleComp.EvalDistEq.bind_const ($ᵗ Digest) _
 
 set_option backward.isDefEq.respectTransparency false in
 /-- Sampling the next coordinate and then the fixed internal pending sampler
 is exactly a uniform oracle answer paired with its actual low half. -/
 theorem evalDist_samplePending_fresh_next (p : PendingInput) (k : HiddenKey)
     (hk : p.next = some k) (s : HiddenKey → Digest) :
-    𝒟[(do
+    (do
       let next ← $ᵗ Digest
       let answer ← samplePending p
-      pure (next, answer.interpret (Function.update s k next)) : ProbComp (Digest × HashOutput))] =
-      𝒟[(fun output : HashOutput => (truncateHash output, output)) <$> ($ᵗ HashOutput)] := by
-  calc
-    _ = 𝒟[XmssSecurity.Rom.sampledHashOutputWithDigest] := by
-      change _ = 𝒟[(do
-        let next ← $ᵗ Digest
-        let output ← XmssSecurity.Rom.sampleHashOutputWithDigest next
-        pure (next, output) : ProbComp (Digest × HashOutput))]
-      apply OracleComp.DeferredSampling.evalDist_bind_congr_left
-      intro next
-      change 𝒟[(fun answer : DeferredOutput =>
-        (next, answer.interpret (Function.update s k next))) <$> samplePending p] = _
-      rw [evalDist_map, evalDist_samplePending_internal p k hk, ← evalDist_map]
-      simp only [DeferredOutput.interpret, DeferredDigest.interpret,
-        Function.update_self, XmssSecurity.Rom.sampleHashOutputWithDigest,
-        map_eq_bind_pure_comp, bind_assoc, pure_bind, Function.comp_apply]
-      rfl
-    _ = _ := XmssSecurity.Rom.evalDist_sampledHashOutputWithDigest_eq_uniform
+      pure (next, answer.interpret (Function.update s k next)) : ProbComp (Digest × HashOutput)) =ᵈ
+      ((fun output : HashOutput => (truncateHash output, output)) <$> ($ᵗ HashOutput)) := by
+  refine EvalDistEq.trans ?_ XmssSecurity.Rom.evalDist_sampledHashOutputWithDigest_eq_uniform
+  change _ =ᵈ (do
+    let next ← $ᵗ Digest
+    let output ← XmssSecurity.Rom.sampleHashOutputWithDigest next
+    pure (next, output) : ProbComp (Digest × HashOutput))
+  refine EvalDistEq.bind_right _ fun next => ?_
+  refine EvalDistEq.trans (EvalDistEq.of_eq ?_)
+    (((evalDist_samplePending_internal p k hk).map (fun answer : DeferredOutput =>
+      (next, answer.interpret (Function.update s k next)))).trans (EvalDistEq.of_eq ?_))
+  · rw [map_eq_bind_pure_comp]
+    rfl
+  · simp only [DeferredOutput.interpret, DeferredDigest.interpret,
+      Function.update_self, XmssSecurity.Rom.sampleHashOutputWithDigest,
+      map_eq_bind_pure_comp, bind_assoc, pure_bind, Function.comp_apply]
+    rfl
 
 set_option backward.isDefEq.respectTransparency false in
 /-- A fresh terminal pending call has the ordinary lazy-oracle law, including
@@ -981,38 +959,32 @@ set_option backward.isDefEq.respectTransparency false in
 the same fresh ordinary hash output. -/
 theorem evalDist_samplePending_pair (p : PendingInput) (k : HiddenKey)
     (hk : p.next = some k) :
-    𝒟[(do
+    (do
       let next ← $ᵗ Digest
       let answer ← samplePending p
-      pure (next, answer) : ProbComp (Digest × DeferredOutput))] =
-      𝒟[(fun output : HashOutput => (truncateHash output,
+      pure (next, answer) : ProbComp (Digest × DeferredOutput)) =ᵈ
+      ((fun output : HashOutput => (truncateHash output,
         (⟨(XmssSecurity.Rom.hashOutputEquivDigestPair output).1, .secret k⟩ : DeferredOutput))) <$>
-        ($ᵗ HashOutput)] := by
-  calc
-    _ = 𝒟[(do
-        let next ← $ᵗ Digest
-        let high ← $ᵗ Digest
-        pure (next, (⟨high, .secret k⟩ : DeferredOutput)) : ProbComp (Digest × DeferredOutput))] := by
-      apply OracleComp.DeferredSampling.evalDist_bind_congr_left
-      intro next
-      change 𝒟[(fun answer : DeferredOutput => (next, answer)) <$> samplePending p] = _
-      rw [evalDist_map, evalDist_samplePending_internal p k hk, ← evalDist_map]
-      simp only [map_eq_bind_pure_comp, bind_assoc, pure_bind, Function.comp_apply]
-    _ = 𝒟[(do
-        let high ← $ᵗ Digest
-        let next ← $ᵗ Digest
-        pure (next, (⟨high, .secret k⟩ : DeferredOutput)) : ProbComp (Digest × DeferredOutput))] :=
-      OracleComp.DeferredSampling.evalDist_bind_comm _ _ _
-    _ = 𝒟[(fun halves : Digest × Digest =>
-        (halves.2, (⟨halves.1, .secret k⟩ : DeferredOutput))) <$>
-        XmssSecurity.Rom.independentDigestHalves] := by
-      simp only [XmssSecurity.Rom.independentDigestHalves, map_eq_bind_pure_comp,
-        bind_assoc, pure_bind, Function.comp_apply]
+        ($ᵗ HashOutput)) := by
+  refine EvalDistEq.trans (EvalDistEq.bind_right ($ᵗ Digest) fun next => ?_)
+    ((OracleComp.EvalDistEq.bind_bind_swap ($ᵗ Digest) ($ᵗ Digest)
+      (fun next high => (pure (next, (⟨high, .secret k⟩ : DeferredOutput)) :
+        ProbComp (Digest × DeferredOutput)))).trans ?_)
+  · refine EvalDistEq.trans (EvalDistEq.of_eq ?_)
+      (((evalDist_samplePending_internal p k hk).map
+        (fun answer : DeferredOutput => (next, answer))).trans (EvalDistEq.of_eq ?_))
+    · rw [map_eq_bind_pure_comp]
       rfl
-    _ = _ := by
-      rw [evalDist_map, ← XmssSecurity.Rom.evalDist_split_uniformHashOutput_eq_independent,
-        ← evalDist_map, Functor.map_map]
-      rfl
+    · simp only [map_eq_bind_pure_comp, bind_assoc, pure_bind, Function.comp_apply]
+  refine EvalDistEq.trans (EvalDistEq.of_eq ?_)
+    ((XmssSecurity.Rom.evalDist_split_uniformHashOutput_eq_independent.symm.map
+      (fun halves : Digest × Digest =>
+        (halves.2, (⟨halves.1, .secret k⟩ : DeferredOutput)))).trans (EvalDistEq.of_eq ?_))
+  · simp only [XmssSecurity.Rom.independentDigestHalves, map_eq_bind_pure_comp,
+      bind_assoc, pure_bind, Function.comp_apply]
+    rfl
+  · rw [Functor.map_map]
+    rfl
 
 /-- An internal edge never has its own input as its next coordinate. -/
 theorem pending_next_ne_key (p : PendingInput) (k : HiddenKey)
@@ -1043,6 +1015,7 @@ theorem pending_next_ne_key (p : PendingInput) (k : HiddenKey)
         omega
       · cases hk
 
+set_option backward.isDefEq.respectTransparency false in
 /-- Updating a coordinate not yet used by any pending input or low half leaves
 the established cache relation unchanged. This is the local dependency check
 needed before drawing an internal chain's next coordinate. -/
@@ -1100,27 +1073,23 @@ theorem relTriple_deferredPending_internal (P : PublicParameter)
   let symbolic (output : HashOutput) : DeferredOutput :=
     ⟨(XmssSecurity.Rom.hashOutputEquivDigestPair output).1, .secret k⟩
   have hright :
-      𝒟[(do
+      (do
         let next ← $ᵗ Digest
         let r ← (deferredImpl (.pending p)).run data
-        pure ((next, r.1), r.2) : ProbComp ((Digest × DeferredOutput) × DeferredState C))] =
-      𝒟[(fun output : HashOutput =>
+        pure ((next, r.1), r.2) : ProbComp ((Digest × DeferredOutput) × DeferredState C)) =ᵈ
+      ((fun output : HashOutput =>
         ((truncateHash output, symbolic output),
           { data with pending := Function.update data.pending p (some (symbolic output)) })) <$>
-          ($ᵗ HashOutput)] := by
-    calc
-      _ = 𝒟[(fun pair : Digest × DeferredOutput =>
-          (pair, { data with pending := Function.update data.pending p (some pair.2) })) <$>
-          (do
-            let next ← $ᵗ Digest
-            let answer ← samplePending p
-            pure (next, answer))] := by
-        simp only [deferredImpl, StateT.run, hp, map_eq_bind_pure_comp,
-          bind_assoc, pure_bind, Function.comp_apply]
-        rfl
-      _ = _ := by
-        rw [evalDist_map, evalDist_samplePending_pair p k hn, ← evalDist_map, Functor.map_map]
-  refine relTriple_of_evalDist_eq_right
+          ($ᵗ HashOutput)) := by
+    refine EvalDistEq.trans (EvalDistEq.of_eq ?_)
+      (((evalDist_samplePending_pair p k hn).map (fun pair : Digest × DeferredOutput =>
+        (pair, { data with pending := Function.update data.pending p (some pair.2) }))).trans
+        (EvalDistEq.of_eq ?_))
+    · simp only [deferredImpl, StateT.run, hp, map_eq_bind_pure_comp,
+        bind_assoc, pure_bind, Function.comp_apply]
+      rfl
+    · rw [Functor.map_map]
+  refine relTriple_of_evalDistEq_right
     (oa := ((fun r : HashOutput × HashCache C => ((truncateHash r.1, r.1), r.2)) <$>
       (((Query C →ₒ HashOutput).randomOracle (.hash (p.input P (s p.key)))).run actual)))
     hright.symm ?_
@@ -1191,7 +1160,7 @@ theorem relTriple_grind (P : PublicParameter) (seeds : C.Term → HashOutput)
       exact relTriple_pure_pure ⟨rfl, h⟩
   | succ attempts ih =>
       intro trial data actual h
-      simp only [grind, Concrete.messageDigest, Concrete.tweakableHash, Concrete.oracleHash,
+      simp only [grind, Verification.messageDigestWithHash, Verification.tweakableHashWithHash, Verification.thWithHash, Verification.oracleHashWithHash,
         HasQuery.instOfMonadLift_query, simulateQ_bind, simulateQ_spec_query,
         StateT.run_bind, bind_assoc, pure_bind]
       refine relTriple_bind
@@ -1219,7 +1188,7 @@ theorem relTriple_baseGrind (P : PublicParameter) (seeds : C.Term → HashOutput
       (fun a b => a.1 = b.1 ∧ CacheRelation P seeds s { data with cache := b.2 } a.2) := by
   simp only [SigningFlatEagerProof.baseGrind, simulateQ_map, StateT.run_map]
   exact relTriple_map (relTriple_post_mono
-    (relTriple_grind P seeds s bottomLayer e (bytesLE 32 message) (truncateHash answer)
+    (relTriple_grind P seeds s bottomLayer e (littleEndianBytes 32 message) (truncateHash answer)
       randomizerAttemptLimit 0 data actual h) (fun _ _ hab => ⟨by trivial, hab.2⟩))
 
 /-- Once the trigger parameters agree, the exact cached-extra program used by
@@ -1257,11 +1226,12 @@ theorem CacheRelation.keptView {P : PublicParameter} {seeds : C.Term → HashOut
     (h : CacheRelation P seeds s data actual) :
     SigningLane2BridgeProof.keptView IsMsg actual =
       SigningLane2BridgeProof.keptView IsMsg data.cache := by
-  funext input
-  unfold SigningLane2BridgeProof.keptView
-  split
-  · exact h.message input ‹IsMsg input›
-  · rfl
+  refine QueryCache.ext fun input => ?_
+  simp only [SigningLane2BridgeProof.keptView, QueryCache.ofFn_apply]
+  by_cases hm : IsMsg input
+  · erw [if_pos hm, if_pos hm]
+    exact h.message input hm
+  · erw [if_neg hm, if_neg hm]
 
 theorem runSource_snapshot (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : ℕ) (s : HiddenKey → Digest)
@@ -1346,6 +1316,7 @@ theorem cachedTerm_cacheQuery (seeds : C.Term → HashOutput) (hinj : Function.I
       exact hu (hinj (Query.prf.inj he).1)
     simp only [cachedTerm, QueryCache.cacheQuery_of_ne _ _ hq, Function.update_of_ne hu]
 
+set_option backward.isDefEq.respectTransparency false in
 /-- The final concrete slack answer used by `completePrf` makes the aggregate
 exactly its supplied target; the choice of the slack term may be adaptive. -/
 theorem termSum_final_slack (seeds : C.Term → HashOutput) (hinj : Function.Injective seeds)
@@ -1565,7 +1536,7 @@ theorem evalDist_slackPlant_fresh (P : PublicParameter) (seeds : C.Term → Hash
     (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
     (p : Point) (slack : C.Term) (source : SourceState C) (backend : CappedCompilerState C)
     (hm : backend.1.1.data.cache (.prf (seeds slack) p) = none) :
-    𝒟[(do
+    (do
       let target ← $ᵗ Digest
       let r ← runSource P seeds q s (do
         let high ← liftM (deferredQuery (C := C) .sample)
@@ -1573,33 +1544,33 @@ theorem evalDist_slackPlant_fresh (P : PublicParameter) (seeds : C.Term → Hash
           (XmssSecurity.Rom.hashOutputEquivDigestPair.symm
             (truncateHash high, target ^^^ otherTermSum (cachedTerm seeds backend.1.1.data p) slack)))))
         source backend
-      pure (target, r.2) : ProbComp (Digest × CappedCompilerState C))] =
-    𝒟[(do
+      pure (target, r.2) : ProbComp (Digest × CappedCompilerState C)) =ᵈ
+    (do
       let r ← runSource P seeds q s (liftM (fillTerm seeds p slack)) source backend
-      pure (termSum (cachedTerm seeds r.2.1.1.data p), r.2) : ProbComp (Digest × CappedCompilerState C))] := by
+      pure (termSum (cachedTerm seeds r.2.1.1.data p), r.2) : ProbComp (Digest × CappedCompilerState C)) := by
   let write : Digest × HashOutput → Digest × CappedCompilerState C := fun pair =>
     (pair.1, replaceCompilerCache backend
       (backend.1.1.data.cache.cacheQuery (.prf (seeds slack) p) pair.2))
   have h :
-      𝒟[write <$> (do
+      (write <$> (do
         let target ← $ᵗ Digest
         let high ← $ᵗ HashOutput
         pure (target, XmssSecurity.Rom.hashOutputEquivDigestPair.symm
-          (truncateHash high, target ^^^ otherTermSum (cachedTerm seeds backend.1.1.data p) slack)))] =
-      𝒟[write <$> ((fun output : HashOutput =>
+          (truncateHash high, target ^^^ otherTermSum (cachedTerm seeds backend.1.1.data p) slack)))) =ᵈ
+      (write <$> ((fun output : HashOutput =>
         (termSum (Function.update (cachedTerm seeds backend.1.1.data p) slack (truncateHash output)), output)) <$>
-          ($ᵗ HashOutput))] := by
-    rw [evalDist_map, evalDist_slack_program, ← evalDist_map]
+          ($ᵗ HashOutput))) := by
+    exact (evalDist_slack_program _ _).map write
   simp only [map_eq_bind_pure_comp, bind_assoc, pure_bind, Function.comp_apply, write] at h
   simp only [runSource_slackPlant P seeds q s p slack _ source backend hm,
     runSource_fillTerm, hm, bind_map_left]
-  change _ = 𝒟[(do
+  change _ =ᵈ (do
     let value ← $ᵗ HashOutput
     pure (termSum (cachedTerm seeds
       { backend.1.1.data with cache := backend.1.1.data.cache.cacheQuery (.prf (seeds slack) p) value } p),
       replaceCompilerCache backend
         (backend.1.1.data.cache.cacheQuery (.prf (seeds slack) p) value)) :
-        ProbComp (Digest × CappedCompilerState C))]
+        ProbComp (Digest × CappedCompilerState C))
   simp only [cachedTerm_cacheQuery seeds hinj]
   exact h
 
@@ -1629,19 +1600,18 @@ theorem evalDist_completePrf_fresh (P : PublicParameter) (seeds : C.Term → Has
     (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
     (p : Point) (slack : C.Term) (source : SourceState C) (backend : CappedCompilerState C)
     (hfirst : firstUnmaterialized seeds backend.1.1.data p = some slack) :
-    𝒟[(do
+    (do
       let target ← $ᵗ Digest
       let r ← runSource P seeds q s (liftM (completePrf seeds p target)) source backend
-      pure (target, r.2) : ProbComp (Digest × CappedCompilerState C))] =
-    𝒟[(do
+      pure (target, r.2) : ProbComp (Digest × CappedCompilerState C)) =ᵈ
+    (do
       let filled ← runSource P seeds q s
         (liftM ((C.terms.filter (· ≠ slack)).mapM (fillTerm seeds p))) source backend
       let r ← runSource P seeds q s (liftM (fillTerm seeds p slack)) filled.1.2 filled.2
-      pure (termSum (cachedTerm seeds r.2.1.1.data p), r.2) : ProbComp (Digest × CappedCompilerState C))] := by
+      pure (termSum (cachedTerm seeds r.2.1.1.data p), r.2) : ProbComp (Digest × CappedCompilerState C)) := by
   simp only [runSource_completePrf_slack P seeds q s p slack _ source backend hfirst, bind_assoc]
-  rw [OracleComp.DeferredSampling.evalDist_bind_comm]
-  apply evalDist_bind_congr
-  intro filled hfilled
+  refine (OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans ?_
+  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun filled hfilled => ?_
   have hcache := fillTerms_cache P seeds q s p (C.terms.filter (· ≠ slack))
     source backend filled hfilled
   have hm : filled.2.1.1.data.cache (.prf (seeds slack) p) = none := by
@@ -1884,7 +1854,7 @@ theorem baseCall_hash_iff (P : PublicParameter) (e : KeyIndex) (value : Digest)
     (st : TsigState C) (input : HashInput) :
     SigningFlatProof.BaseCall P e value st (.inr (.inr (.inl (.hash input)))) ↔
       ∃ message, st.bound e = some message ∧
-        input = randomizerInput P bottomLayer e value (bytesLE 32 message) := by
+        input = randomizerInput P bottomLayer e value (littleEndianBytes 32 message) := by
   constructor
   · rintro ⟨other, hother, hcall⟩
     have hi : other = input := by
@@ -2283,10 +2253,10 @@ with its full visible cache. Silent presampled entries are never exposed to
 cachedExtra or traceStepAt before an actual source read. -/
 theorem traceRun_eq_private_prefix {α : Type} (prims : Primitives)
     (A : TsigAdversary C) (x : Keys3 C) (ghost : OracleComp (Query C →ₒ HashOutput) α) :
-    𝒟[SigningLaneUnionProof.traceRun prims A x] =
-      𝒟[Prod.fst <$> (do
+    SigningLaneUnionProof.traceRun prims A x =ᵈ
+      (Prod.fst <$> (do
         let _ ← simulateQ (Query C →ₒ HashOutput).randomOracle ghost
-        simulateQ SigningGuessProof.privateRoImpl (rawTraceProgram prims A x)).run ∅] := by
+        simulateQ SigningGuessProof.privateRoImpl (rawTraceProgram prims A x)).run ∅) := by
   have h := SigningGuessProof.randomOracle_private_prefix_private ghost
     (rawTraceProgram prims A x) (∅ : HashCache C)
   rw [traceRun_eq_raw] at h
@@ -2308,8 +2278,8 @@ theorem rawTraceProgram_prefix_count_le {α : Type} (prims : Primitives)
       (rawTraceProgram prims A x)).run pre.2)) :
     (SigningLaneUnionProof.observed r.1).2.1 ≤ q := by
   apply SigningLaneUnionProof.traceRun_count_le prims A q x hq r.1
-  rw [← mem_support_evalDist_iff, traceRun_eq_private_prefix prims A x ghost,
-    mem_support_evalDist_iff, support_map]
+  rw [OracleComp.support_eq_of_evalDistEq (traceRun_eq_private_prefix prims A x ghost),
+    support_map]
   refine ⟨r, ?_, rfl⟩
   rw [StateT.run_bind, mem_support_bind_iff]
   refine ⟨pre, hpre, ?_⟩
@@ -2389,8 +2359,8 @@ Unlike a final-cache-only projection, the reified source reconstructs the
 visible cache before every cached-randomizer trigger and trace decision. -/
 theorem traceRun_eq_presampled_slots (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
     (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) :
-    𝒟[SigningLaneUnionProof.traceRun prims A x] =
-      𝒟[($ᵗ (TprfSecurityProof.Slot C → HashOutput)) >>= presampledTrace prims A x] := by
+    SigningLaneUnionProof.traceRun prims A x =ᵈ
+      (($ᵗ (TprfSecurityProof.Slot C → HashOutput)) >>= presampledTrace prims A x) := by
   have hinj : Function.Injective (TprfSecurityProof.slotInput x.2.1 x.2.2) := by
     simp only [TprfSecurityProof.KeyCollision, not_or, not_not] at hkeys
     exact TprfSecurityProof.slotInput_injective hkeys.1 hkeys.2
@@ -2407,12 +2377,12 @@ theorem traceRun_eq_presampled_slots (prims : Primitives) (A : TsigAdversary C) 
     intro table
     dsimp only [SigningGuessProof.setSigningSlots, SigningGuessProof.signingSlots]
     congr 2
-    funext slot
+    refine QueryCache.ext fun slot => ?_
     exact TprfSecurityProof.fillSlots_of_mem table _ _ (Finset.mem_toList.mpr (Finset.mem_univ slot))
   simp only [hfill] at h
-  change 𝒟[($ᵗ (TprfSecurityProof.Slot C → HashOutput)) >>= presampledTrace prims A x] =
-    𝒟[Prod.fst <$> (simulateQ (SeedHitProof.splitWorld prims x.2.1 x.2.2)
-      (rawAsWorld (rawTraceProgram prims A x))).run ((∅, ∅), 0)] at h
+  change (($ᵗ (TprfSecurityProof.Slot C → HashOutput)) >>= presampledTrace prims A x) =ᵈ
+    (Prod.fst <$> (simulateQ (SeedHitProof.splitWorld prims x.2.1 x.2.2)
+      (rawAsWorld (rawTraceProgram prims A x))).run ((∅, ∅), 0)) at h
   rw [splitRaw_result prims x hinj, traceRun_eq_raw] at h
   exact h.symm
 
@@ -2427,8 +2397,8 @@ theorem presampledTrace_count_le (prims : Primitives) (A : TsigAdversary C) (x :
     (hr : r ∈ support (presampledTrace prims A x table)) :
     (SigningLaneUnionProof.observed r).2.1 ≤ q := by
   apply SigningLaneUnionProof.traceRun_count_le prims A q x hq r
-  rw [← mem_support_evalDist_iff, traceRun_eq_presampled_slots prims A x hkeys,
-    mem_support_evalDist_iff, mem_support_bind_iff]
+  rw [OracleComp.support_eq_of_evalDistEq (traceRun_eq_presampled_slots prims A x hkeys),
+    mem_support_bind_iff]
   refine ⟨table, by simp, ?_⟩
   with_reducible exact hr
 
@@ -2478,10 +2448,10 @@ theorem refreshPrfPair_involutive (slack : C.Term) : Function.Involutive (refres
 /-- Joint uniform law of the entire private table and all its aggregate
 targets. The table is retained, so adaptive future queries may inspect it. -/
 theorem refreshAllPrf_joint (slack : C.Term) :
-    𝒟[(fun pair => (refreshAllPrf slack pair.1 pair.2, pair.2)) <$>
-      ($ᵗ ((TprfSecurityProof.Slot C → HashOutput) × (Point → Digest)))] =
-    𝒟[(fun table => (table, tablePrf table)) <$>
-      ($ᵗ (TprfSecurityProof.Slot C → HashOutput))] := by
+    ((fun pair => (refreshAllPrf slack pair.1 pair.2, pair.2)) <$>
+      ($ᵗ ((TprfSecurityProof.Slot C → HashOutput) × (Point → Digest)))) =ᵈ
+    ((fun table => (table, tablePrf table)) <$>
+      ($ᵗ (TprfSecurityProof.Slot C → HashOutput))) := by
   let observe : ((TprfSecurityProof.Slot C → HashOutput) × (Point → Digest)) →
       (TprfSecurityProof.Slot C → HashOutput) × (Point → Digest) :=
     fun pair => (pair.1, tablePrf pair.1)
@@ -2489,42 +2459,47 @@ theorem refreshAllPrf_joint (slack : C.Term) :
       observe ∘ refreshPrfPair slack := by
     funext pair
     simp only [Function.comp_apply, observe, refreshPrfPair, refreshAllPrf_value]
-  have hu := evalDist_map_bijective_uniform_cross
-    (α := (TprfSecurityProof.Slot C → HashOutput) × (Point → Digest))
-    (refreshPrfPair slack) (refreshPrfPair_involutive slack).bijective
+  have hu : (refreshPrfPair slack <$>
+      ($ᵗ ((TprfSecurityProof.Slot C → HashOutput) × (Point → Digest)))) =ᵈ
+      ($ᵗ ((TprfSecurityProof.Slot C → HashOutput) × (Point → Digest))) :=
+    SampleableType.map_uniformSample_evalDistEq_of_bijective
+      (refreshPrfPair_involutive slack).bijective
   have hm : (fun pair => (refreshAllPrf slack pair.1 pair.2, pair.2)) <$>
       ($ᵗ ((TprfSecurityProof.Slot C → HashOutput) × (Point → Digest))) =
       observe <$> (refreshPrfPair slack <$>
         ($ᵗ ((TprfSecurityProof.Slot C → HashOutput) × (Point → Digest)))) := by
     rw [Functor.map_map, he]
     rfl
-  rw [hm, evalDist_map, hu, ← evalDist_map]
   have hp : observe <$>
       ($ᵗ ((TprfSecurityProof.Slot C → HashOutput) × (Point → Digest))) =
       (fun table => (table, tablePrf table)) <$>
         (Prod.fst <$> ($ᵗ ((TprfSecurityProof.Slot C → HashOutput) × (Point → Digest)))) := by
     rw [Functor.map_map]
-  rw [hp, evalDist_map, evalDist_map_fst_uniformSample_prod, ← evalDist_map]
+  have hfst : (Prod.fst <$> ($ᵗ ((TprfSecurityProof.Slot C → HashOutput) × (Point → Digest)))) =ᵈ
+      ($ᵗ (TprfSecurityProof.Slot C → HashOutput)) :=
+    fun p => (prEvent_map _ _ _).trans (SampleableType.prEvent_uniformSample_fst p)
+  exact (EvalDistEq.of_eq hm).trans ((hu.map observe).trans
+    ((EvalDistEq.of_eq hp).trans (hfst.map _)))
 
 /-- Apply the joint table change to the full adaptive traced experiment,
 retaining both its original outcome and the private table/aggregate pair. -/
 theorem presampledTrace_joint_prf (prims : Primitives) (A : TsigAdversary C)
     (x : Keys3 C) (slack : C.Term) :
-    𝒟[do
+    (do
       let table ← $ᵗ (TprfSecurityProof.Slot C → HashOutput)
       let result ← presampledTrace prims A x table
-      pure (result, table, tablePrf table)] =
-    𝒟[do
+      pure (result, table, tablePrf table)) =ᵈ
+    (do
       let pair ← $ᵗ ((TprfSecurityProof.Slot C → HashOutput) × (Point → Digest))
       let table := refreshAllPrf slack pair.1 pair.2
       let result ← presampledTrace prims A x table
-      pure (result, table, pair.2)] := by
+      pure (result, table, pair.2)) := by
   let next : ((TprfSecurityProof.Slot C → HashOutput) × (Point → Digest)) →
       ProbComp (SigningLaneUnionProof.TraceOutcome C ×
         (TprfSecurityProof.Slot C → HashOutput) × (Point → Digest)) :=
     fun pair => (fun result => (result, pair)) <$> presampledTrace prims A x pair.1
-  have h := congrArg (fun d => d >>= fun pair => 𝒟[next pair]) (refreshAllPrf_joint slack)
-  simpa only [← evalDist_bind, bind_map_left, next, bind_pure_comp] using h.symm
+  have h := (refreshAllPrf_joint slack).bind_left next
+  simpa only [bind_map_left, next, bind_pure_comp] using h.symm
 
 set_option backward.isDefEq.respectTransparency false in
 /-- The actual adaptive-slack completion is the exact fixed-target fiber of
@@ -2537,49 +2512,47 @@ theorem probEvent_completePrf_fiber (P : PublicParameter) (seeds : C.Term → Ha
     (hfirst : firstUnmaterialized seeds backend.1.1.data point = some slack)
     (event : CappedCompilerState C → Prop) :
     (Fintype.card Digest : ℝ≥0∞)⁻¹ *
-      Pr[fun r => event r.2 |
-        runSource P seeds q s (liftM (completePrf seeds point target)) source backend] =
-      Pr[fun r => termSum (cachedTerm seeds r.2.1.1.data point) = target ∧ event r.2 | do
+      Pr{let r ←
+        runSource P seeds q s (liftM (completePrf seeds point target)) source backend}[event r.2] =
+      Pr{let r ← (do
         let filled ← runSource P seeds q s
           (liftM ((C.terms.filter (· ≠ slack)).mapM (fillTerm seeds point))) source backend
-        runSource P seeds q s (liftM (fillTerm seeds point slack)) filled.1.2 filled.2] := by
+        runSource P seeds q s (liftM (fillTerm seeds point slack)) filled.1.2 filled.2)}[termSum (cachedTerm seeds r.2.1.1.data point) = target ∧ event r.2] := by
   let observe : Digest × CappedCompilerState C → Prop :=
     fun pair => pair.1 = target ∧ event pair.2
-  have h := probEvent_congr' (fun _ _ => Iff.rfl)
+  have h := EvalDistEq.prEvent_eq
     (evalDist_completePrf_fresh P seeds hinj q s point slack source backend hfirst)
-    (p := observe)
+    observe
   have hleft : ∀ value : Digest,
-      Pr[fun r => value = target ∧ event r.2 |
-        runSource P seeds q s (liftM (completePrf seeds point value)) source backend] =
+      Pr{let r ←
+        runSource P seeds q s (liftM (completePrf seeds point value)) source backend}[value = target ∧ event r.2] =
       if value = target then
-        Pr[fun r => event r.2 |
-          runSource P seeds q s (liftM (completePrf seeds point target)) source backend]
+        Pr{let r ←
+          runSource P seeds q s (liftM (completePrf seeds point target)) source backend}[event r.2]
       else 0 := by
     intro value
     by_cases hv : value = target
     · subst value
       simp only [true_and, if_true]
     · simp only [hv, false_and, if_false]
-      simpa only [Bool.false_eq_true] using probEvent_false
+      simpa only [Bool.false_eq_true] using prEvent_false
         (runSource P seeds q s (liftM (completePrf seeds point value)) source backend)
-  simp only [bind_pure_comp, probEvent_bind_eq_tsum, probEvent_map, Function.comp_def,
+  simp only [bind_pure_comp, OracleComp.prEvent_bind_eq_tsum, prEvent_map, Function.comp_def,
     observe] at h
-  simp only [hleft, mul_ite, mul_zero, tsum_ite_eq, probOutput_uniformSample] at h
-  simpa only [probEvent_bind_eq_tsum] using h
+  simp only [hleft, mul_ite, mul_zero, tsum_ite_eq, SampleableType.prEvent_uniformSample_eq_singleton] at h
+  simpa only [OracleComp.prEvent_bind_eq_tsum] using h
 
 /-- The original complete trace experiment may sample all aggregate PRF
 targets eagerly. The private share table remains correlated with those
 targets, and the visible source still observes only actually read entries. -/
 theorem traceRun_eq_eager_prf (prims : Primitives) (A : TsigAdversary C)
     (x : Keys3 C) (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (slack : C.Term) :
-    𝒟[SigningLaneUnionProof.traceRun prims A x] =
-      𝒟[($ᵗ ((TprfSecurityProof.Slot C → HashOutput) × (Point → Digest))) >>= fun pair =>
-        presampledTrace prims A x (refreshAllPrf slack pair.1 pair.2)] := by
-  have h := congrArg (fun distribution => Prod.fst <$> distribution)
-    (presampledTrace_joint_prf prims A x slack)
-  simp only [← evalDist_map, map_bind, map_pure, bind_pure] at h
-  rw [traceRun_eq_presampled_slots prims A x hkeys]
-  exact h
+    SigningLaneUnionProof.traceRun prims A x =ᵈ
+      (($ᵗ ((TprfSecurityProof.Slot C → HashOutput) × (Point → Digest))) >>= fun pair =>
+        presampledTrace prims A x (refreshAllPrf slack pair.1 pair.2)) := by
+  have h := (presampledTrace_joint_prf prims A x slack).map Prod.fst
+  simp only [map_bind, map_pure, bind_pure] at h
+  exact (traceRun_eq_presampled_slots prims A x hkeys).trans h
 
 /-- Resolve the private share slots without exposing them to the source's
 visible cache. Every other query still uses the ordinary private oracle. -/
@@ -2672,11 +2645,11 @@ theorem presampledTrace_eq_private_prefix {α : Type} (prims : Primitives)
     (A : TsigAdversary C) (x : Keys3 C)
     (table : TprfSecurityProof.Slot C → HashOutput)
     (ghost : OracleComp (Query C →ₒ HashOutput) α) :
-    𝒟[presampledTrace prims A x table] =
-      𝒟[Prod.fst <$> (do
+    presampledTrace prims A x table =ᵈ
+      (Prod.fst <$> (do
         let _ ← simulateQ (Query C →ₒ HashOutput).randomOracle ghost
         simulateQ SigningGuessProof.privateRoImpl
-          (simulateQ (resolveSlots x.2.1 x.2.2 table) (rawTraceProgram prims A x))).run ∅] := by
+          (simulateQ (resolveSlots x.2.1 x.2.2 table) (rawTraceProgram prims A x))).run ∅) := by
   rw [presampledTrace_eq_resolved]
   exact (SigningGuessProof.randomOracle_private_prefix_private ghost _ ∅).symm
 
@@ -2699,18 +2672,17 @@ still reconstructed by `rawTraceProgram` before each trace inspection. -/
 theorem traceRun_eq_eager_forest (prims : Primitives) (A : TsigAdversary C)
     (x : Keys3 C) (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (slack : C.Term) :
-    𝒟[SigningLaneUnionProof.traceRun prims A x] =
-      𝒟[do
+    SigningLaneUnionProof.traceRun prims A x =ᵈ
+      (do
         let pair ← $ᵗ ((TprfSecurityProof.Slot C → HashOutput) × (Point → Digest))
         Prod.fst <$> (do
           let _ ← simulateQ (Query C →ₒ HashOutput).randomOracle
             (privateReferenceForest x.1 pair.2)
           simulateQ SigningGuessProof.privateRoImpl
             (simulateQ (resolveSlots x.2.1 x.2.2 (refreshAllPrf slack pair.1 pair.2))
-              (rawTraceProgram prims A x))).run ∅] := by
-  rw [traceRun_eq_eager_prf prims A x hkeys slack]
-  apply evalDist_bind_congr
-  intro pair _
+              (rawTraceProgram prims A x))).run ∅) := by
+  refine (traceRun_eq_eager_prf prims A x hkeys slack).trans ?_
+  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun pair _ => ?_
   exact presampledTrace_eq_private_prefix prims A x _ _
 
 set_option linter.constructorNameAsVariable false in
@@ -2730,8 +2702,8 @@ theorem resolvedTrace_prefix_count_le {α : Type} (prims : Primitives)
       (simulateQ (resolveSlots x.2.1 x.2.2 table) (rawTraceProgram prims A x))).run pre.2)) :
     (SigningLaneUnionProof.observed r.1).2.1 ≤ q := by
   apply presampledTrace_count_le prims A x hkeys q hq table r.1
-  rw [← mem_support_evalDist_iff, presampledTrace_eq_private_prefix prims A x table ghost,
-    mem_support_evalDist_iff, support_map]
+  rw [OracleComp.support_eq_of_evalDistEq (presampledTrace_eq_private_prefix prims A x table ghost),
+    support_map]
   refine ⟨r, ?_, rfl⟩
   rw [StateT.run_bind, mem_support_bind_iff]
   refine ⟨pre, hpre, ?_⟩
@@ -2739,19 +2711,20 @@ theorem resolvedTrace_prefix_count_le {α : Type} (prims : Primitives)
 
 /-- Embed a private hash-only cache in the structured query domain. No PRF or
 mask entry is introduced by this embedding. -/
-def embedHashCache (cache : QueryCache HashSpec) : HashCache C
+def embedHashCache (cache : QueryCache HashSpec) : HashCache C :=
+  QueryCache.ofFn fun
   | .hash input => cache input
   | _ => none
 
 theorem embedHashCache_empty : embedHashCache (C := C) ∅ = ∅ := by
-  funext q
+  refine QueryCache.ext fun q => ?_
   cases q <;> rfl
 
 theorem embedHashCache_cacheQuery (cache : QueryCache HashSpec)
     (input : HashInput) (value : HashOutput) :
     embedHashCache (C := C) (cache.cacheQuery input value) =
       (embedHashCache cache).cacheQuery (.hash input) value := by
-  funext q
+  refine QueryCache.ext fun q => ?_
   cases q <;> simp [embedHashCache, QueryCache.cacheQuery]
   rename_i other
   by_cases h : other = input
@@ -2799,6 +2772,7 @@ def privateChainColumn (P : PublicParameter)
   keys.mapM fun key => XmssSecurity.Concrete.chainTrajectory P key chain 0
     (chainLength - 1) (start key chain)
 
+set_option backward.isDefEq.respectTransparency false in
 theorem privateChainColumn_run (P : PublicParameter)
     (start : XmssSecurity.ChainKey → ChainIndex → Digest) (chain : ChainIndex)
     (keys : List XmssSecurity.ChainKey) (cache : QueryCache HashSpec) :
@@ -2851,40 +2825,38 @@ trajectory law. Their complete cache is retained by the adaptive source. -/
 theorem presampledTrace_eq_programmed_chains (prims : Primitives) (A : TsigAdversary C)
     (x : Keys3 C) (table : TprfSecurityProof.Slot C → HashOutput)
     (start : XmssSecurity.ChainKey → ChainIndex → Digest) :
-    𝒟[presampledTrace prims A x table] =
-      𝒟[do
+    presampledTrace prims A x table =ᵈ
+      (do
         let pre ← XmssSecurity.CappedChain.programmedAllChainTrajectoriesFromCache
           x.1 start ∅ XmssSecurity.CappedChain.allChains
         Prod.fst <$> (simulateQ SigningGuessProof.privateRoImpl
           (simulateQ (resolveSlots x.2.1 x.2.2 table) (rawTraceProgram prims A x))).run
-            (embedHashCache pre.2)] := by
-  rw [presampledTrace_eq_private_prefix prims A x table
-    (hashAsQuery (C := C) (privateChains x.1 start XmssSecurity.CappedChain.allChains))]
+            (embedHashCache pre.2)) := by
+  refine (presampledTrace_eq_private_prefix prims A x table
+    (hashAsQuery (C := C) (privateChains x.1 start XmssSecurity.CappedChain.allChains))).trans ?_
   rw [← embedHashCache_empty (C := C)]
   simp only [StateT.run_bind, hashAsQuery_run, privateChains_run, bind_map_left,
     map_bind, Prod.map_snd]
   have hchains := XmssSecurity.CappedChain.evalDist_allChainTrajectories_eq_programmed
     x.1 start XmssSecurity.CappedChain.allChains ∅ XmssSecurity.CappedChain.allChains_nodup
     (fun _ _ _ _ _ _ => rfl)
-  rw [evalDist_bind, hchains, ← evalDist_bind]
-  rfl
+  exact hchains.bind_left _
 
 /-- The exact original guarded trace has an eager PRF and programmed-chain
 representation, with every visible state field and real call count retained. -/
 theorem traceRun_eq_eager_chains (prims : Primitives) (A : TsigAdversary C)
     (x : Keys3 C) (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (slack : C.Term) :
-    𝒟[SigningLaneUnionProof.traceRun prims A x] =
-      𝒟[do
+    SigningLaneUnionProof.traceRun prims A x =ᵈ
+      (do
         let pair ← $ᵗ ((TprfSecurityProof.Slot C → HashOutput) × (Point → Digest))
         let pre ← XmssSecurity.CappedChain.programmedAllChainTrajectoriesFromCache
           x.1 (prfChainStarts pair.2) ∅ XmssSecurity.CappedChain.allChains
         Prod.fst <$> (simulateQ SigningGuessProof.privateRoImpl
           (simulateQ (resolveSlots x.2.1 x.2.2 (refreshAllPrf slack pair.1 pair.2))
-            (rawTraceProgram prims A x))).run (embedHashCache pre.2)] := by
-  rw [traceRun_eq_eager_prf prims A x hkeys slack]
-  apply evalDist_bind_congr
-  intro pair _
+            (rawTraceProgram prims A x))).run (embedHashCache pre.2)) := by
+  refine (traceRun_eq_eager_prf prims A x hkeys slack).trans ?_
+  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun pair _ => ?_
   exact presampledTrace_eq_programmed_chains prims A x _ _
 
 /-- The distinct threshold-PRF points that seed the global chain family. -/
@@ -2892,6 +2864,7 @@ def chainStartPoint : XmssSecurity.ChainKey × ChainIndex → Point
   | (.inl e, l) => .chain bottomLayer e l (digit 0)
   | (.inr b, l) => .chain topLayer (topKey b) l (digit 0)
 
+set_option backward.isDefEq.respectTransparency false in
 theorem chainStartPoint_injective : Function.Injective chainStartPoint := by
   rintro ⟨key, chain⟩ ⟨other, otherChain⟩ h
   cases key <;> cases other <;> simp only [chainStartPoint, Point.chain.injEq] at h
@@ -2942,9 +2915,9 @@ theorem refreshChainPair_involutive : Function.Involutive refreshChainPair := by
 /-- Joint uniform law retaining the whole PRF function together with the chain
 seeds. This permits the existing global trajectory sampler to supply the seeds. -/
 theorem refreshChainStarts_joint :
-    𝒟[(fun pair => (refreshChainStarts pair.1 pair.2, pair.2)) <$>
-      ($ᵗ ((Point → Digest) × (XmssSecurity.ChainKey → ChainIndex → Digest)))] =
-    𝒟[(fun F => (F, prfChainStarts F)) <$> ($ᵗ (Point → Digest))] := by
+    ((fun pair => (refreshChainStarts pair.1 pair.2, pair.2)) <$>
+      ($ᵗ ((Point → Digest) × (XmssSecurity.ChainKey → ChainIndex → Digest)))) =ᵈ
+    ((fun F => (F, prfChainStarts F)) <$> ($ᵗ (Point → Digest))) := by
   let observe : ((Point → Digest) × (XmssSecurity.ChainKey → ChainIndex → Digest)) →
       (Point → Digest) × (XmssSecurity.ChainKey → ChainIndex → Digest) :=
     fun pair => (pair.1, prfChainStarts pair.1)
@@ -2952,51 +2925,51 @@ theorem refreshChainStarts_joint :
       observe ∘ refreshChainPair := by
     funext pair
     simp only [Function.comp_apply, observe, refreshChainPair, refreshChainStarts_value]
-  have hu := evalDist_map_bijective_uniform_cross
-    (α := (Point → Digest) × (XmssSecurity.ChainKey → ChainIndex → Digest))
-    refreshChainPair refreshChainPair_involutive.bijective
+  have hu : (refreshChainPair <$>
+      ($ᵗ ((Point → Digest) × (XmssSecurity.ChainKey → ChainIndex → Digest)))) =ᵈ
+      ($ᵗ ((Point → Digest) × (XmssSecurity.ChainKey → ChainIndex → Digest))) :=
+    SampleableType.map_uniformSample_evalDistEq_of_bijective refreshChainPair_involutive.bijective
   have hm : (fun pair => (refreshChainStarts pair.1 pair.2, pair.2)) <$>
       ($ᵗ ((Point → Digest) × (XmssSecurity.ChainKey → ChainIndex → Digest))) =
       observe <$> (refreshChainPair <$>
         ($ᵗ ((Point → Digest) × (XmssSecurity.ChainKey → ChainIndex → Digest)))) := by
     rw [Functor.map_map, he]
     rfl
-  rw [hm, evalDist_map, hu, ← evalDist_map]
   have hp : observe <$>
       ($ᵗ ((Point → Digest) × (XmssSecurity.ChainKey → ChainIndex → Digest))) =
       (fun F => (F, prfChainStarts F)) <$>
         (Prod.fst <$> ($ᵗ ((Point → Digest) × (XmssSecurity.ChainKey → ChainIndex → Digest)))) := by
     rw [Functor.map_map]
-  rw [hp, evalDist_map, evalDist_map_fst_uniformSample_prod, ← evalDist_map]
+  have hfst : (Prod.fst <$>
+      ($ᵗ ((Point → Digest) × (XmssSecurity.ChainKey → ChainIndex → Digest)))) =ᵈ
+      ($ᵗ (Point → Digest)) :=
+    fun p => (prEvent_map _ _ _).trans (SampleableType.prEvent_uniformSample_fst p)
+  exact (EvalDistEq.of_eq hm).trans ((hu.map observe).trans
+    ((EvalDistEq.of_eq hp).trans (hfst.map _)))
 
 set_option backward.isDefEq.respectTransparency false in
 /-- The chain-seed change of variables with an arbitrary continuation that
 retains both the full PRF function and the sampled seeds. -/
 theorem refreshChainStarts_bind {α : Type}
     (next : (Point → Digest) → (XmssSecurity.ChainKey → ChainIndex → Digest) → ProbComp α) :
-    𝒟[($ᵗ (Point → Digest)) >>= fun F => next F (prfChainStarts F)] =
-      𝒟[do
+    (($ᵗ (Point → Digest)) >>= fun F => next F (prfChainStarts F)) =ᵈ
+      (do
         let F ← $ᵗ (Point → Digest)
         let start ← XmssSecurity.CappedChain.Concrete.sampleChainStarts
-        next (refreshChainStarts F start) start] := by
-  have h := congrArg (fun d => d >>= fun pair => 𝒟[next pair.1 pair.2]) refreshChainStarts_joint
-  simp only [← evalDist_bind, bind_map_left] at h
-  rw [← h, evalDist_bind, ← XmssSecurity.evalDist_independent_uniform_pair,
-    ← evalDist_bind]
+        next (refreshChainStarts F start) start) := by
+  have h := refreshChainStarts_joint.bind_left fun pair => next pair.1 pair.2
+  simp only [bind_map_left] at h
+  refine h.symm.trans ?_
+  refine ((XmssSecurity.evalDist_independent_uniform_pair.bind_left
+    (fun pair : (Point → Digest) × (XmssSecurity.ChainKey → ChainIndex → Digest) =>
+      next (refreshChainStarts pair.1 pair.2) pair.2)).symm).trans ?_
   simp only [bind_assoc, pure_bind]
-  apply evalDist_bind_congr
-  intro F _
-  have hstart : 𝒟[XmssSecurity.CappedChain.Concrete.sampleChainStarts] =
-      𝒟[($ᵗ (XmssSecurity.ChainKey → ChainIndex → Digest))] := by
-    apply SPMF.ext
-    intro start
-    change Pr[= start | XmssSecurity.CappedChain.Concrete.sampleChainStarts] =
-      Pr[= start | ($ᵗ (XmssSecurity.ChainKey → ChainIndex → Digest))]
-    rw [XmssSecurity.CappedChain.Concrete.probOutput_sampleChainStarts,
-      probOutput_uniformSample]
-    rfl
-  rw [evalDist_bind, ← hstart, ← evalDist_bind]
-  rfl
+  refine EvalDistEq.bind_right _ fun F => ?_
+  have hstart : XmssSecurity.CappedChain.Concrete.sampleChainStarts =ᵈ
+      ($ᵗ (XmssSecurity.ChainKey → ChainIndex → Digest)) :=
+    XmssSecurity.CappedChain.Concrete.evalDist_sampleChainStarts_eq_uniform.trans
+      (fun p => SampleableType.prEvent_uniformSample_inst_irrel _ _ p)
+  exact (hstart.bind_left _).symm
 
 set_option backward.isDefEq.respectTransparency false in
 /-- The original trace represented using leanVM's complete global chain
@@ -3005,20 +2978,19 @@ entire correlated share table and programmed hash cache feed the source. -/
 theorem traceRun_eq_chain_material (prims : Primitives) (A : TsigAdversary C)
     (x : Keys3 C) (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (slack : C.Term) :
-    𝒟[SigningLaneUnionProof.traceRun prims A x] =
-      𝒟[do
+    SigningLaneUnionProof.traceRun prims A x =ᵈ
+      (do
         let table ← $ᵗ (TprfSecurityProof.Slot C → HashOutput)
         let F ← $ᵗ (Point → Digest)
         let material ← XmssSecurity.CappedChain.programmedGlobalChainTrajectoryMaterial x.1
         Prod.fst <$> (simulateQ SigningGuessProof.privateRoImpl
           (simulateQ (resolveSlots x.2.1 x.2.2
               (refreshAllPrf slack table (refreshChainStarts F material.1)))
-            (rawTraceProgram prims A x))).run (embedHashCache material.2.2)] := by
-  rw [traceRun_eq_eager_chains prims A x hkeys slack, evalDist_bind,
-    ← XmssSecurity.evalDist_independent_uniform_pair, ← evalDist_bind]
+            (rawTraceProgram prims A x))).run (embedHashCache material.2.2)) := by
+  refine (traceRun_eq_eager_chains prims A x hkeys slack).trans ?_
+  refine ((XmssSecurity.evalDist_independent_uniform_pair.bind_left _).symm).trans ?_
   simp only [bind_assoc, pure_bind]
-  apply evalDist_bind_congr
-  intro table _
+  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun table _ => ?_
   have hseed := refreshChainStarts_bind (fun F start => do
     let pre ← XmssSecurity.CappedChain.programmedAllChainTrajectoriesFromCache
       x.1 start ∅ XmssSecurity.CappedChain.allChains
@@ -3200,7 +3172,7 @@ halves. It is used only in the mathematical source representation. -/
 def chainTableCache (P : PublicParameter)
     (table : XmssSecurity.CappedChain.GlobalChainValueIndex → Digest)
     (high : XmssSecurity.CappedChain.GlobalChainEdgeIndex → Digest) : QueryCache HashSpec :=
-  fun input => if h : ∃ edge, XmssSecurity.CappedChain.globalChainTableEdgeInput P table edge = input then
+  QueryCache.ofFn fun input => if h : ∃ edge, XmssSecurity.CappedChain.globalChainTableEdgeInput P table edge = input then
     some (XmssSecurity.CappedChain.globalChainEdgeOutputFromHigh high table h.choose) else none
 
 set_option backward.isDefEq.respectTransparency false in
@@ -3213,8 +3185,8 @@ theorem chainMaterial_cache_eq (P : PublicParameter)
       (XmssSecurity.CappedChain.globalChainTrajectoryMaterialTable material)
       (XmssSecurity.CappedChain.globalChainEdgeHighTableOfCache material.2.2 P
         (XmssSecurity.CappedChain.globalChainTrajectoryMaterialTable material)) := by
-  funext input
-  unfold chainTableCache
+  refine QueryCache.ext fun input => ?_
+  simp only [chainTableCache, QueryCache.ofFn_apply]
   split_ifs with h
   · have he : ∃ output : HashOutput,
         material.2.2 (XmssSecurity.CappedChain.globalChainTableEdgeInput P
@@ -3238,8 +3210,8 @@ theorem chainMaterial_starts_eq (P : PublicParameter)
     (hm : material ∈ support (XmssSecurity.CappedChain.programmedGlobalChainTrajectoryMaterial P)) :
     material.1 = XmssSecurity.CappedChain.globalChainTableSeedTargets
       (XmssSecurity.CappedChain.globalChainTrajectoryMaterialTable material) := by
-  have ho := (mem_support_iff_of_evalDist_eq
-    (XmssSecurity.CappedChain.evalDist_programmedGlobalChainTrajectoryMaterial_eq_output P)
+  have ho := (Set.ext_iff.mp (OracleComp.support_eq_of_evalDistEq
+    (XmssSecurity.CappedChain.evalDist_programmedGlobalChainTrajectoryMaterial_eq_output P))
     material).mp hm
   have h := XmssSecurity.CappedChain.globalChainRandomnessOfMaterial_secret P material ho
   change XmssSecurity.CappedChain.globalChainTableSeedTargets
@@ -3250,12 +3222,9 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Use the pinned joint law of every chain label and every high half. The
 cache reconstruction above permits arbitrary adaptive source continuations. -/
 theorem chainMaterial_view_uniform (P : PublicParameter) :
-    𝒟[XmssSecurity.CappedChain.globalChainTableHighViewOfMaterial P <$>
-      XmssSecurity.CappedChain.programmedGlobalChainTrajectoryMaterial P] =
-    𝒟[XmssSecurity.CappedChain.independentGlobalChainTableHigh] := by
-  rw [evalDist_map,
-    XmssSecurity.CappedChain.evalDist_programmedGlobalChainTrajectoryMaterial_eq_output,
-    ← evalDist_map]
+    (XmssSecurity.CappedChain.globalChainTableHighViewOfMaterial P <$>
+      XmssSecurity.CappedChain.programmedGlobalChainTrajectoryMaterial P) =ᵈ
+    XmssSecurity.CappedChain.independentGlobalChainTableHigh := by
   have hf : XmssSecurity.CappedChain.globalChainTableHighViewOfMaterial P =
       XmssSecurity.CappedChain.globalChainKeygenRandomnessView ∘
         XmssSecurity.CappedChain.globalChainRandomnessOfMaterial P := by
@@ -3268,8 +3237,10 @@ theorem chainMaterial_view_uniform (P : PublicParameter) :
           XmssSecurity.CappedChain.outputGlobalChainTrajectoryMaterial P) := by
     rw [Functor.map_map, hf]
     rfl
-  rw [hm, evalDist_map, XmssSecurity.CappedChain.evalDist_outputGlobalChainRandomness_eq_uniform,
-    ← evalDist_map, XmssSecurity.CappedChain.evalDist_globalChainKeygenRandomnessView_eq_independent]
+  exact (((XmssSecurity.CappedChain.evalDist_programmedGlobalChainTrajectoryMaterial_eq_output
+    P).map _).trans (EvalDistEq.of_eq hm)).trans
+    (((XmssSecurity.CappedChain.evalDist_outputGlobalChainRandomness_eq_uniform P).map _).trans
+      XmssSecurity.CappedChain.evalDist_globalChainKeygenRandomnessView_eq_independent)
 
 set_option backward.isDefEq.respectTransparency false in
 /-- The original complete trace with independent global chain labels and
@@ -3278,8 +3249,8 @@ by a marginal projection, before running the original adaptive source. -/
 theorem traceRun_eq_independent_chains (prims : Primitives) (A : TsigAdversary C)
     (x : Keys3 C) (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (slack : C.Term) :
-    𝒟[SigningLaneUnionProof.traceRun prims A x] =
-      𝒟[do
+    SigningLaneUnionProof.traceRun prims A x =ᵈ
+      (do
         let table ← $ᵗ (TprfSecurityProof.Slot C → HashOutput)
         let F ← $ᵗ (Point → Digest)
         let view ← XmssSecurity.CappedChain.independentGlobalChainTableHigh
@@ -3287,12 +3258,10 @@ theorem traceRun_eq_independent_chains (prims : Primitives) (A : TsigAdversary C
           (simulateQ (resolveSlots x.2.1 x.2.2 (refreshAllPrf slack table
               (refreshChainStarts F (XmssSecurity.CappedChain.globalChainTableSeedTargets view.1))))
             (rawTraceProgram prims A x))).run
-              (embedHashCache (chainTableCache x.1 view.1 view.2))] := by
-  rw [traceRun_eq_chain_material prims A x hkeys slack]
-  apply evalDist_bind_congr
-  intro table _
-  apply evalDist_bind_congr
-  intro F _
+              (embedHashCache (chainTableCache x.1 view.1 view.2))) := by
+  refine (traceRun_eq_chain_material prims A x hkeys slack).trans ?_
+  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun table _ => ?_
+  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun F _ => ?_
   let replay : ((XmssSecurity.CappedChain.GlobalChainValueIndex → Digest) ×
       (XmssSecurity.CappedChain.GlobalChainEdgeIndex → Digest)) →
       ProbComp (SigningLaneUnionProof.TraceOutcome C) := fun view =>
@@ -3300,18 +3269,15 @@ theorem traceRun_eq_independent_chains (prims : Primitives) (A : TsigAdversary C
       (simulateQ (resolveSlots x.2.1 x.2.2 (refreshAllPrf slack table
           (refreshChainStarts F (XmssSecurity.CappedChain.globalChainTableSeedTargets view.1))))
         (rawTraceProgram prims A x))).run (embedHashCache (chainTableCache x.1 view.1 view.2))
-  calc
-    _ = 𝒟[(XmssSecurity.CappedChain.globalChainTableHighViewOfMaterial x.1 <$>
-        XmssSecurity.CappedChain.programmedGlobalChainTrajectoryMaterial x.1) >>= replay] := by
-      erw [bind_map_left]
-      apply congrArg evalDist
-      apply OracleComp.bind_congr_of_forall_mem_support
-      intro material hm
-      dsimp only [replay, XmssSecurity.CappedChain.globalChainTableHighViewOfMaterial]
-      rw [← chainMaterial_starts_eq x.1 material hm, ← chainMaterial_cache_eq x.1 material hm]
-    _ = _ := by
-      rw [evalDist_bind, chainMaterial_view_uniform, ← evalDist_bind]
-      rfl
+  refine EvalDistEq.trans
+    (my := (XmssSecurity.CappedChain.globalChainTableHighViewOfMaterial x.1 <$>
+      XmssSecurity.CappedChain.programmedGlobalChainTrajectoryMaterial x.1) >>= replay)
+    (EvalDistEq.of_eq ?_) ((chainMaterial_view_uniform x.1).bind_left replay)
+  erw [bind_map_left]
+  apply OracleComp.bind_congr_of_forall_mem_support
+  intro material hm
+  dsimp only [replay, XmssSecurity.CappedChain.globalChainTableHighViewOfMaterial]
+  rw [← chainMaterial_starts_eq x.1 material hm, ← chainMaterial_cache_eq x.1 material hm]
 
 abbrev PrfChainTables := (Point → Digest) × (XmssSecurity.CappedChain.GlobalChainValueIndex → Digest)
 
@@ -3371,29 +3337,33 @@ theorem hiddenCoordinateSwap_involutive : Function.Involutive hiddenCoordinateSw
 /-- The exact hidden table is uniform jointly with all retained PRF and chain
 data. Future observations may depend on the full installed tables. -/
 theorem hiddenCoordinates_joint :
-    𝒟[(fun pair => (installHiddenCoordinates pair.1 pair.2, pair.2)) <$>
-      ($ᵗ (PrfChainTables × (HiddenKey → Digest)))] =
-    𝒟[(fun tables => (tables, hiddenCoordinates tables)) <$> ($ᵗ PrfChainTables)] := by
+    ((fun pair => (installHiddenCoordinates pair.1 pair.2, pair.2)) <$>
+      ($ᵗ (PrfChainTables × (HiddenKey → Digest)))) =ᵈ
+    ((fun tables => (tables, hiddenCoordinates tables)) <$> ($ᵗ PrfChainTables)) := by
   let observe : PrfChainTables × (HiddenKey → Digest) → PrfChainTables × (HiddenKey → Digest) :=
     fun pair => (pair.1, hiddenCoordinates pair.1)
   have he : (fun pair => (installHiddenCoordinates pair.1 pair.2, pair.2)) =
       observe ∘ hiddenCoordinateSwap := by
     funext pair
     simp only [Function.comp_apply, observe, hiddenCoordinateSwap, hiddenCoordinates_install]
-  have hu := evalDist_map_bijective_uniform_cross
-    (α := PrfChainTables × (HiddenKey → Digest)) hiddenCoordinateSwap
+  have hu : (hiddenCoordinateSwap <$> ($ᵗ (PrfChainTables × (HiddenKey → Digest)))) =ᵈ
+      ($ᵗ (PrfChainTables × (HiddenKey → Digest))) :=
+    SampleableType.map_uniformSample_evalDistEq_of_bijective
       hiddenCoordinateSwap_involutive.bijective
   have hm : (fun pair => (installHiddenCoordinates pair.1 pair.2, pair.2)) <$>
       ($ᵗ (PrfChainTables × (HiddenKey → Digest))) =
       observe <$> (hiddenCoordinateSwap <$> ($ᵗ (PrfChainTables × (HiddenKey → Digest)))) := by
     rw [Functor.map_map, he]
     rfl
-  rw [hm, evalDist_map, hu, ← evalDist_map]
   have hp : observe <$> ($ᵗ (PrfChainTables × (HiddenKey → Digest))) =
       (fun tables => (tables, hiddenCoordinates tables)) <$>
         (Prod.fst <$> ($ᵗ (PrfChainTables × (HiddenKey → Digest)))) := by
     rw [Functor.map_map]
-  rw [hp, evalDist_map, evalDist_map_fst_uniformSample_prod, ← evalDist_map]
+  have hfst : (Prod.fst <$> ($ᵗ (PrfChainTables × (HiddenKey → Digest)))) =ᵈ
+      ($ᵗ PrfChainTables) :=
+    fun p => (prEvent_map _ _ _).trans (SampleableType.prEvent_uniformSample_fst p)
+  exact (EvalDistEq.of_eq hm).trans ((hu.map observe).trans
+    ((EvalDistEq.of_eq hp).trans (hfst.map _)))
 
 /-- The fixed original trace source over a prescribed private share table and
 chain cache. This is a representation used by the coupling proof. -/
@@ -3408,50 +3378,35 @@ def eagerTrace (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) (slack :
 
 set_option backward.isDefEq.respectTransparency false in
 theorem uniformPrfChainTables_law :
-    𝒟[do
+    (do
       let F ← $ᵗ (Point → Digest)
       let labels ← XmssSecurity.CappedChain.independentGlobalChainValueTable
-      pure (F, labels)] = 𝒟[($ᵗ PrfChainTables)] := by
-  rw [show (do
-      let F ← $ᵗ (Point → Digest)
-      let labels ← XmssSecurity.CappedChain.independentGlobalChainValueTable
-      pure (F, labels)) =
-      Prod.mk <$> ($ᵗ (Point → Digest)) <*>
-        XmssSecurity.CappedChain.independentGlobalChainValueTable by simp [monad_norm]]
-  apply evalDist_ext
-  intro pair
-  rw [probOutput_seq_map_prod_mk_eq_mul,
-    XmssSecurity.CappedChain.independentGlobalChainValueTable_eq_uniform,
-    probOutput_uniformSample, probOutput_uniformSample, probOutput_uniformSample]
-  simp only [PrfChainTables, Fintype.card_prod, Nat.cast_mul,
-    ENNReal.mul_inv (Or.inr (ENNReal.natCast_ne_top _)) (Or.inl (ENNReal.natCast_ne_top _))]
-  rfl
+      pure (F, labels)) =ᵈ ($ᵗ PrfChainTables) := by
+  rw [XmssSecurity.CappedChain.independentGlobalChainValueTable_eq_uniform]
+  refine EvalDistEq.trans ?_ (fun p =>
+    SampleableType.prEvent_uniformSample_inst_irrel (instSampleableTypeProd _ _) _ p)
+  rw [SampleableType.uniformSample_prod_eq_bind]
+  refine EvalDistEq.bind_right _ fun F => ?_
+  exact EvalDistEq.bind_left (fun p => SampleableType.prEvent_uniformSample_inst_irrel _ _ p) _
 
 set_option backward.isDefEq.respectTransparency false in
 theorem traceRun_eq_eager_tables (prims : Primitives) (A : TsigAdversary C)
     (x : Keys3 C) (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (slack : C.Term) :
-    𝒟[SigningLaneUnionProof.traceRun prims A x] =
-      𝒟[do
+    SigningLaneUnionProof.traceRun prims A x =ᵈ
+      (do
         let shares ← $ᵗ (TprfSecurityProof.Slot C → HashOutput)
         let tables ← $ᵗ PrfChainTables
         let high ← XmssSecurity.CappedChain.independentGlobalChainHigh
-        eagerTrace prims A x slack shares tables high] := by
-  rw [traceRun_eq_independent_chains prims A x hkeys slack]
-  apply evalDist_bind_congr
-  intro shares _
-  calc
-    _ = 𝒟[(do
-        let F ← $ᵗ (Point → Digest)
-        let labels ← XmssSecurity.CappedChain.independentGlobalChainValueTable
-        pure (F, labels)) >>= fun tables => do
-          let high ← XmssSecurity.CappedChain.independentGlobalChainHigh
-          eagerTrace prims A x slack shares tables high] := by
-      simp only [XmssSecurity.CappedChain.independentGlobalChainTableHigh,
-        eagerTrace, bind_assoc, pure_bind]
-    _ = _ := by
-      rw [evalDist_bind, uniformPrfChainTables_law, ← evalDist_bind]
-      rfl
+        eagerTrace prims A x slack shares tables high) := by
+  refine (traceRun_eq_independent_chains prims A x hkeys slack).trans ?_
+  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun shares _ => ?_
+  refine EvalDistEq.trans (EvalDistEq.of_eq ?_)
+    (uniformPrfChainTables_law.bind_left fun tables => do
+      let high ← XmssSecurity.CappedChain.independentGlobalChainHigh
+      eagerTrace prims A x slack shares tables high)
+  simp only [XmssSecurity.CappedChain.independentGlobalChainTableHigh,
+    eagerTrace, bind_assoc, pure_bind]
 
 /-- The original full trace with A100's exact uniformly sampled `HiddenKey`
 table installed jointly into the PRF and chain data. All other sampled data
@@ -3459,20 +3414,19 @@ are retained for the later adaptive source execution. -/
 theorem traceRun_eq_eager_hidden (prims : Primitives) (A : TsigAdversary C)
     (x : Keys3 C) (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (slack : C.Term) :
-    𝒟[SigningLaneUnionProof.traceRun prims A x] =
-      𝒟[do
+    SigningLaneUnionProof.traceRun prims A x =ᵈ
+      (do
         let shares ← $ᵗ (TprfSecurityProof.Slot C → HashOutput)
         let pair ← $ᵗ (PrfChainTables × (HiddenKey → Digest))
         let high ← XmssSecurity.CappedChain.independentGlobalChainHigh
-        eagerTrace prims A x slack shares (installHiddenCoordinates pair.1 pair.2) high] := by
-  rw [traceRun_eq_eager_tables prims A x hkeys slack]
-  apply evalDist_bind_congr
-  intro shares _
+        eagerTrace prims A x slack shares (installHiddenCoordinates pair.1 pair.2) high) := by
+  refine (traceRun_eq_eager_tables prims A x hkeys slack).trans ?_
+  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun shares _ => ?_
   let next : PrfChainTables → ProbComp (SigningLaneUnionProof.TraceOutcome C) := fun tables => do
     let high ← XmssSecurity.CappedChain.independentGlobalChainHigh
     eagerTrace prims A x slack shares tables high
-  have h := congrArg (fun d => d >>= fun pair => 𝒟[next pair.1]) hiddenCoordinates_joint
-  simpa only [← evalDist_bind, bind_map_left, next] using h.symm
+  have h := hiddenCoordinates_joint.bind_left fun pair => next pair.1
+  simpa only [bind_map_left, next] using h.symm
 
 /-- The two public bottom-row pads translate the corresponding PRF targets
 by the actual hidden chain labels. -/
@@ -3495,16 +3449,19 @@ theorem maskPrfChainTables_involutive (s : HiddenKey → Digest) :
   · rfl
 
 theorem hiddenCoordinates_bind {α : Type} (next : PrfChainTables → ProbComp α) :
-    𝒟[($ᵗ PrfChainTables) >>= next] =
-      𝒟[do
+    (($ᵗ PrfChainTables) >>= next) =ᵈ
+      (do
         let s ← $ᵗ (HiddenKey → Digest)
         let tables ← $ᵗ PrfChainTables
-        next (installHiddenCoordinates tables s)] := by
-  have h := congrArg (fun d => d >>= fun pair => 𝒟[next pair.1]) hiddenCoordinates_joint
-  simp only [← evalDist_bind, bind_map_left] at h
-  rw [← h, evalDist_bind, ← XmssSecurity.evalDist_independent_uniform_pair, ← evalDist_bind]
+        next (installHiddenCoordinates tables s)) := by
+  have h := hiddenCoordinates_joint.bind_left fun pair => next pair.1
+  simp only [bind_map_left] at h
+  refine h.symm.trans ?_
+  refine ((XmssSecurity.evalDist_independent_uniform_pair.bind_left
+    (fun pair : PrfChainTables × (HiddenKey → Digest) =>
+      next (installHiddenCoordinates pair.1 pair.2))).symm).trans ?_
   simp only [bind_assoc, pure_bind]
-  exact OracleComp.DeferredSampling.evalDist_bind_comm ($ᵗ PrfChainTables)
+  exact OracleComp.EvalDistEq.bind_bind_swap ($ᵗ PrfChainTables)
     ($ᵗ (HiddenKey → Digest)) (fun tables s => next (installHiddenCoordinates tables s))
 
 /-- The exact original trace source over one uniform `HiddenKey` table, with
@@ -3513,46 +3470,37 @@ conditioned on the installed aggregate targets. -/
 theorem traceRun_eq_symbolic_tables (prims : Primitives) (A : TsigAdversary C)
     (x : Keys3 C) (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (slack : C.Term) :
-    𝒟[SigningLaneUnionProof.traceRun prims A x] =
-      𝒟[do
+    SigningLaneUnionProof.traceRun prims A x =ᵈ
+      (do
         let s ← $ᵗ (HiddenKey → Digest)
         let shares ← $ᵗ (TprfSecurityProof.Slot C → HashOutput)
         let tables ← $ᵗ PrfChainTables
         let high ← XmssSecurity.CappedChain.independentGlobalChainHigh
         eagerTrace prims A x slack shares
-          (installHiddenCoordinates (maskPrfChainTables s tables) s) high] := by
-  rw [traceRun_eq_eager_tables prims A x hkeys slack]
+          (installHiddenCoordinates (maskPrfChainTables s tables) s) high) := by
+  refine (traceRun_eq_eager_tables prims A x hkeys slack).trans ?_
   let next := fun shares s tables => do
     let high ← XmssSecurity.CappedChain.independentGlobalChainHigh
     eagerTrace prims A x slack shares (installHiddenCoordinates tables s) high
-  calc
-    _ = 𝒟[do
-        let shares ← $ᵗ (TprfSecurityProof.Slot C → HashOutput)
-        let s ← $ᵗ (HiddenKey → Digest)
-        let tables ← $ᵗ PrfChainTables
-        next shares s tables] := by
-      apply evalDist_bind_congr
-      intro shares _
-      exact hiddenCoordinates_bind (fun tables => do
-        let high ← XmssSecurity.CappedChain.independentGlobalChainHigh
-        eagerTrace prims A x slack shares tables high)
-    _ = 𝒟[do
-        let s ← $ᵗ (HiddenKey → Digest)
-        let shares ← $ᵗ (TprfSecurityProof.Slot C → HashOutput)
-        let tables ← $ᵗ PrfChainTables
-        next shares s tables] :=
-      OracleComp.DeferredSampling.evalDist_bind_comm
-        ($ᵗ (TprfSecurityProof.Slot C → HashOutput)) ($ᵗ (HiddenKey → Digest))
-        (fun shares s => ($ᵗ PrfChainTables) >>= next shares s)
-    _ = _ := by
-      apply evalDist_bind_congr
-      intro s _
-      apply evalDist_bind_congr
-      intro shares _
-      have hu := evalDist_map_bijective_uniform_cross (α := PrfChainTables)
-        (maskPrfChainTables s) (maskPrfChainTables_involutive s).bijective
-      have hmap := congrArg (fun d => d >>= fun tables => 𝒟[next shares s tables]) hu
-      simpa only [← evalDist_bind, bind_map_left, next] using hmap.symm
+  refine EvalDistEq.trans (my := (do
+      let shares ← $ᵗ (TprfSecurityProof.Slot C → HashOutput)
+      let s ← $ᵗ (HiddenKey → Digest)
+      let tables ← $ᵗ PrfChainTables
+      next shares s tables)) ?_ ?_
+  · refine OracleComp.EvalDistEq.bind_congr_of_support _ fun shares _ => ?_
+    exact hiddenCoordinates_bind (fun tables => do
+      let high ← XmssSecurity.CappedChain.independentGlobalChainHigh
+      eagerTrace prims A x slack shares tables high)
+  refine (OracleComp.EvalDistEq.bind_bind_swap
+    ($ᵗ (TprfSecurityProof.Slot C → HashOutput)) ($ᵗ (HiddenKey → Digest))
+    (fun shares s => ($ᵗ PrfChainTables) >>= next shares s)).trans ?_
+  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun s _ => ?_
+  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun shares _ => ?_
+  have hu : (maskPrfChainTables s <$> ($ᵗ PrfChainTables)) =ᵈ ($ᵗ PrfChainTables) :=
+    SampleableType.map_uniformSample_evalDistEq_of_bijective
+      (maskPrfChainTables_involutive s).bijective
+  have hmap := hu.bind_left (next shares s)
+  simpa only [bind_map_left, next] using hmap.symm
 
 set_option linter.constructorNameAsVariable false in
 set_option maxRecDepth 4000 in
@@ -3569,8 +3517,8 @@ theorem symbolicTables_count_le (prims : Primitives) (A : TsigAdversary C)
       (installHiddenCoordinates (maskPrfChainTables s tables) s) high)) :
     (SigningLaneUnionProof.observed r).2.1 ≤ q := by
   apply SigningLaneUnionProof.traceRun_count_le prims A q x hq r
-  rw [← mem_support_evalDist_iff, traceRun_eq_symbolic_tables prims A x hkeys slack,
-    mem_support_evalDist_iff, mem_support_bind_iff]
+  rw [OracleComp.support_eq_of_evalDistEq (traceRun_eq_symbolic_tables prims A x hkeys slack),
+    mem_support_bind_iff]
   refine ⟨s, by simp, ?_⟩
   rw [mem_support_bind_iff]
   refine ⟨shares, by simp, ?_⟩
@@ -3579,6 +3527,7 @@ theorem symbolicTables_count_le (prims : Primitives) (A : TsigAdversary C)
   rw [mem_support_bind_iff]
   refine ⟨high, ?_, ?_⟩
   · simp [XmssSecurity.CappedChain.independentGlobalChainHigh]
+    exact Set.mem_univ _
   · with_reducible exact hr
 
 /-- Ordinary PRF reads with their values discarded. The private cache is kept
@@ -3703,8 +3652,8 @@ theorem fillPrfCache_resolved (seeds : C.Term → HashOutput) (point : Point)
 early, including terms that were already cached. The final cache law is exact. -/
 theorem evalDist_fillPrfCache_prefix (seeds : C.Term → HashOutput) (point : Point)
     (terms earlier : List C.Term) (hsub : ∀ T ∈ earlier, T ∈ terms) (cache : HashCache C) :
-    𝒟[fillPrfCache seeds point terms cache] =
-      𝒟[fillPrfCache seeds point earlier cache >>= fillPrfCache seeds point terms] := by
+    fillPrfCache seeds point terms cache =ᵈ
+      (fillPrfCache seeds point earlier cache >>= fillPrfCache seeds point terms) := by
   induction earlier generalizing cache with
   | nil => simp
   | cons T earlier ih =>
@@ -3712,25 +3661,25 @@ theorem evalDist_fillPrfCache_prefix (seeds : C.Term → HashOutput) (point : Po
         (fillPrfQueries seeds point terms) cache (.prf (seeds T) point)
         (fun r hr => (fillPrfQueries_cached seeds point terms cache r hr).2 T
           (hsub T (List.mem_cons_self ..)))
-      have hmap := congrArg (fun d => Prod.snd <$> d) hquery
-      simp only [← evalDist_map, map_bind] at hmap
-      change 𝒟[fillPrfCache seeds point terms cache] =
-        𝒟[((Query C →ₒ HashOutput).randomOracle (.prf (seeds T) point)).run cache >>=
-          fun r => fillPrfCache seeds point terms r.2] at hmap
-      rw [hmap, fillPrfCache_cons, bind_assoc]
-      apply evalDist_bind_congr
-      intro r _
+      have hmap := hquery.map Prod.snd
+      simp only [map_bind] at hmap
+      change fillPrfCache seeds point terms cache =ᵈ
+        (((Query C →ₒ HashOutput).randomOracle (.prf (seeds T) point)).run cache >>=
+          fun r => fillPrfCache seeds point terms r.2) at hmap
+      refine hmap.trans ?_
+      rw [fillPrfCache_cons, bind_assoc]
+      refine OracleComp.EvalDistEq.bind_congr_of_support _ fun r _ => ?_
       exact ih (fun U hu => hsub U (List.mem_cons_of_mem _ hu)) r.2
 
 /-- The ordinary full-cache law depends only on which terms are filled, not
 on their order or repetitions. -/
 theorem evalDist_fillPrfCache_ext (seeds : C.Term → HashOutput) (point : Point)
     (left right : List C.Term) (hmem : ∀ T, T ∈ left ↔ T ∈ right) (cache : HashCache C) :
-    𝒟[fillPrfCache seeds point left cache] = 𝒟[fillPrfCache seeds point right cache] := by
-  rw [evalDist_fillPrfCache_prefix seeds point left right (fun T h => (hmem T).mpr h) cache]
-  conv_rhs => rw [← bind_pure (fillPrfCache seeds point right cache)]
-  apply evalDist_bind_congr
-  intro result hr
+    fillPrfCache seeds point left cache =ᵈ fillPrfCache seeds point right cache := by
+  refine (evalDist_fillPrfCache_prefix seeds point left right
+    (fun T h => (hmem T).mpr h) cache).trans ?_
+  refine EvalDistEq.trans ?_ (EvalDistEq.of_eq (bind_pure (fillPrfCache seeds point right cache)))
+  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun result hr => ?_
   simp only [fillPrfCache, support_map] at hr
   obtain ⟨r, hr, rfl⟩ := hr
   rw [fillPrfCache_resolved seeds point left r.2]
@@ -3755,12 +3704,11 @@ theorem probEvent_completePrf_fiber_all (P : PublicParameter)
     (hmissing : firstUnmaterialized seeds backend.1.1.data point ≠ none)
     (event : CappedCompilerState C → Prop) :
     (Fintype.card Digest : ℝ≥0∞)⁻¹ *
-      Pr[fun r => event r.2 |
-        runSource P seeds q s (liftM (completePrf seeds point target)) source backend] =
-      Pr[fun cache =>
-        termSum (cachedTerm seeds { backend.1.1.data with cache := cache } point) = target ∧
-          event (replaceCompilerCache backend cache) |
-        fillPrfCache seeds point C.terms backend.1.1.data.cache] := by
+      Pr{let r ←
+        runSource P seeds q s (liftM (completePrf seeds point target)) source backend}[event r.2] =
+      Pr{let cache ←
+        fillPrfCache seeds point C.terms backend.1.1.data.cache}[termSum (cachedTerm seeds { backend.1.1.data with cache := cache } point) = target ∧
+          event (replaceCompilerCache backend cache)] := by
   obtain ⟨slack, hfirst⟩ := Option.ne_none_iff_exists'.mp hmissing
   rw [probEvent_completePrf_fiber P seeds hinj q s point slack target source backend hfirst]
   have hmem : ∀ T : C.Term, T ∈ C.terms.filter (· ≠ slack) ++ [slack] ↔ T ∈ C.terms := by
@@ -3770,7 +3718,7 @@ theorem probEvent_completePrf_fiber_all (P : PublicParameter)
     tauto
   have heq := evalDist_fillPrfCache_ext seeds point
     (C.terms.filter (· ≠ slack) ++ [slack]) C.terms hmem backend.1.1.data.cache
-  rw [← probEvent_congr' (fun _ _ => Iff.rfl) heq]
+  rw [← heq.prEvent_eq]
   have hsingle : fillPrfCache seeds point [slack] = fun cache =>
       Prod.snd <$> (((Query C →ₒ HashOutput).randomOracle (.prf (seeds slack) point)).run cache) := by
     funext cache
@@ -3778,7 +3726,7 @@ theorem probEvent_completePrf_fiber_all (P : PublicParameter)
   rw [fillPrfCache_append, hsingle]
   simp only [runSource_fillTerms_randomOracle, runSource_fillTerm_randomOracle, bind_map_left]
   simp only [fillPrfCache, bind_map_left]
-  simp only [probEvent_bind_eq_tsum, probEvent_map, replaceCompilerCache_twice]
+  simp only [OracleComp.prEvent_bind_eq_tsum, prEvent_map, replaceCompilerCache_twice]
   rfl
 
 /-- One ordinary term can be materialized before the actual fixed-target
@@ -3792,11 +3740,11 @@ theorem probEvent_completePrf_delay_fill (P : PublicParameter)
     (backend : CappedCompilerState C)
     (hslack : backend.1.1.data.cache (.prf (seeds slack) point) = none)
     (event : CappedCompilerState C → Prop) :
-    Pr[fun r => event r.2 |
-      runSource P seeds q s (liftM (completePrf seeds point target)) source backend] =
-    Pr[fun r => event r.2 | do
+    Pr{let r ←
+      runSource P seeds q s (liftM (completePrf seeds point target)) source backend}[event r.2] =
+    Pr{let r ← (do
       let filled ← runSource P seeds q s (liftM (fillTerm seeds point T)) source backend
-      runSource P seeds q s (liftM (completePrf seeds point target)) filled.1.2 filled.2] := by
+      runSource P seeds q s (liftM (completePrf seeds point target)) filled.1.2 filled.2)}[event r.2] := by
   have missing (st : DeferredState C) (h : st.cache (.prf (seeds slack) point) = none) :
       firstUnmaterialized seeds st point ≠ none := by
     intro hf
@@ -3808,14 +3756,14 @@ theorem probEvent_completePrf_delay_fill (P : PublicParameter)
       event (replaceCompilerCache backend cache)
   have hright :
       (Fintype.card Digest : ℝ≥0∞)⁻¹ *
-        Pr[fun r => event r.2 | do
+        Pr{let r ← (do
           let filled ← runSource P seeds q s (liftM (fillTerm seeds point T)) source backend
-          runSource P seeds q s (liftM (completePrf seeds point target)) filled.1.2 filled.2] =
-      Pr[eventCache | do
+          runSource P seeds q s (liftM (completePrf seeds point target)) filled.1.2 filled.2)}[event r.2] =
+      Pr{let z ← (do
         let r ← ((Query C →ₒ HashOutput).randomOracle (.prf (seeds T) point)).run
           backend.1.1.data.cache
-        fillPrfCache seeds point C.terms r.2] := by
-    simp only [runSource_fillTerm_randomOracle, bind_map_left, probEvent_bind_eq_tsum]
+        fillPrfCache seeds point C.terms r.2)}[eventCache z] := by
+    simp only [runSource_fillTerm_randomOracle, bind_map_left, OracleComp.prEvent_bind_eq_tsum]
     rw [← ENNReal.tsum_mul_left]
     apply tsum_congr
     intro r
@@ -3830,7 +3778,7 @@ theorem probEvent_completePrf_delay_fill (P : PublicParameter)
       rw [probEvent_completePrf_fiber_all P seeds hinj q s point target source
         (replaceCompilerCache backend r.2) (missing _ hs) event]
       rfl
-    · simp only [probOutput_eq_zero_of_not_mem_support hr, zero_mul]
+    · simp only [prEvent_eq_zero_of_not_mem_support _ hr, zero_mul]
   have hearly := evalDist_fillPrfCache_prefix seeds point C.terms [T]
     (fun U _ => mem_terms U) backend.1.1.data.cache
   have hsingle : fillPrfCache seeds point [T] = fun cache =>
@@ -3842,7 +3790,7 @@ theorem probEvent_completePrf_delay_fill (P : PublicParameter)
     (by simp) (by simp)).mp
   rw [hright, probEvent_completePrf_fiber_all P seeds hinj q s point target source backend
     (missing _ hslack) event]
-  exact probEvent_congr' (fun _ _ => Iff.rfl) hearly
+  exact hearly.prEvent_eq _
 
 /-- The fixed-target postponement law as equality of the complete backend
 marginals, suitable for arbitrary adaptive continuations. -/
@@ -3852,16 +3800,15 @@ theorem evalDist_completePrf_delay_fill (P : PublicParameter)
     (T slack : C.Term) (hne : slack ≠ T) (source : SourceState C)
     (backend : CappedCompilerState C)
     (hslack : backend.1.1.data.cache (.prf (seeds slack) point) = none) :
-    𝒟[Prod.snd <$> runSource P seeds q s
-      (liftM (completePrf seeds point target)) source backend] =
-    𝒟[Prod.snd <$> (do
+    (Prod.snd <$> runSource P seeds q s
+      (liftM (completePrf seeds point target)) source backend) =ᵈ
+    (Prod.snd <$> (do
       let filled ← runSource P seeds q s (liftM (fillTerm seeds point T)) source backend
-      runSource P seeds q s (liftM (completePrf seeds point target)) filled.1.2 filled.2)] := by
-  apply evalDist_ext
-  intro result
-  simp only [← probEvent_eq_eq_probOutput, probEvent_map]
+      runSource P seeds q s (liftM (completePrf seeds point target)) filled.1.2 filled.2)) := by
+  intro p
+  rw [prEvent_map, prEvent_map]
   exact probEvent_completePrf_delay_fill P seeds hinj q s point target T slack hne
-    source backend hslack (fun b => b = result)
+    source backend hslack p
 
 set_option backward.isDefEq.respectTransparency false in
 /-- A deferred query with no hidden candidate leaves the capped flag unchanged.
@@ -3883,6 +3830,7 @@ theorem runSource_deferredQuery_no_candidate (P : PublicParameter)
     revealImpl, countImpl, StateT.run_mk, deferredInputSide, hc, Option.isSome_none,
     Bool.false_eq_true, and_false, false_and, false_or, decide_false, Bool.or_false,
     bind_map_left, Functor.map_map]
+  rw [map_eq_bind_pure_comp]
   rfl
 
 set_option backward.isDefEq.respectTransparency false in
@@ -3928,7 +3876,9 @@ theorem runSource_liftM {α : Type} (P : PublicParameter) (seeds : C.Term → Ha
           (deferredInputSide P) deferredCounted (deferredKey P) (deferredPoint P) q s)
           oa).run backend) := by
   unfold runSource
-  have hlift : (liftM oa : SourceM C α).run source = (fun a => (a, source)) <$> oa := rfl
+  have hlift : (liftM oa : SourceM C α).run source = (fun a => (a, source)) <$> oa := by
+    rw [map_eq_bind_pure_comp]
+    rfl
   rw [hlift, simulateQ_map, StateT.run_map]
 
 theorem runSource_liftM_source {α : Type} (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -3975,13 +3925,13 @@ theorem probEvent_completePrf_delay_read (P : PublicParameter)
     (backend : CappedCompilerState C)
     (hslack : backend.1.1.data.cache (.prf (seeds slack) point) = none)
     (event : HashOutput → CappedCompilerState C → Prop) :
-    Pr[fun r => event r.1.1 r.2 | runSource P seeds q s (do
+    Pr{let r ← (runSource P seeds q s (do
       let _ ← liftM (completePrf seeds point target)
-      liftM (deferredQuery (C := C) (.hash (.prf (seeds T) point)))) source backend] =
-    Pr[fun r => event r.1.1 r.2 | runSource P seeds q s (do
+      liftM (deferredQuery (C := C) (.hash (.prf (seeds T) point)))) source backend)}[event r.1.1 r.2] =
+    Pr{let r ← (runSource P seeds q s (do
       let value ← liftM (deferredQuery (C := C) (.hash (.prf (seeds T) point)))
       let _ ← liftM (completePrf seeds point target)
-      pure value) source backend] := by
+      pure value) source backend)}[event r.1.1 r.2] := by
   have missing (st : DeferredState C) (h : st.cache (.prf (seeds slack) point) = none) :
       firstUnmaterialized seeds st point ≠ none := by
     intro hf
@@ -3994,17 +3944,17 @@ theorem probEvent_completePrf_delay_read (P : PublicParameter)
         (incrementCompilerCount (replaceCompilerCache backend cache))
   have hright :
       (Fintype.card Digest : ℝ≥0∞)⁻¹ *
-        Pr[fun r => event r.1.1 r.2 | runSource P seeds q s (do
+        Pr{let r ← (runSource P seeds q s (do
           let value ← liftM (deferredQuery (C := C) (.hash (.prf (seeds T) point)))
           let _ ← liftM (completePrf seeds point target)
-          pure value) source backend] =
-      Pr[eventCache | do
+          pure value) source backend)}[event r.1.1 r.2] =
+      Pr{let z ← (do
         let r ← ((Query C →ₒ HashOutput).randomOracle (.prf (seeds T) point)).run
           backend.1.1.data.cache
-        fillPrfCache seeds point C.terms r.2] := by
+        fillPrfCache seeds point C.terms r.2)}[eventCache z] := by
     simp only [runSource_bind, runSource_prfQuery, runSource_pure]
     simp only [bind_map_left, bind_pure_comp]
-    simp only [probEvent_bind_eq_tsum, probEvent_map]
+    simp only [OracleComp.prEvent_bind_eq_tsum, prEvent_map]
     rw [← ENNReal.tsum_mul_left]
     apply tsum_congr
     intro r
@@ -4017,14 +3967,13 @@ theorem probEvent_completePrf_delay_read (P : PublicParameter)
         · intro he
           exact hne (hinj (Query.prf.inj he).1)
       change _ * ((Fintype.card Digest : ℝ≥0∞)⁻¹ *
-        Pr[fun done => event r.1 done.2 | runSource P seeds q s
+        Pr{let done ← (runSource P seeds q s
           (liftM (completePrf seeds point target)) source
-          (incrementCompilerCount (replaceCompilerCache backend r.2))]) = _
+          (incrementCompilerCount (replaceCompilerCache backend r.2)))}[event r.1 done.2]) = _
       rw [probEvent_completePrf_fiber_all P seeds hinj q s point target source
         (incrementCompilerCount (replaceCompilerCache backend r.2)) (missing _ hs)]
       congr 1
-      apply probEvent_congr' _ rfl
-      intro cache hc
+      refine prEvent_congr_of_support _ _ _ fun cache hc => ?_
       simp only [fillPrfCache, support_map] at hc
       obtain ⟨filled, hfilled, rfl⟩ := hc
       have ht := (randomOracle_support (.prf (seeds T) point) backend.1.1.data.cache r hr).2.1
@@ -4032,7 +3981,7 @@ theorem probEvent_completePrf_delay_read (P : PublicParameter)
       simp only [replaceCompilerCache_increment, replaceCompilerCache_twice,
         eventCache, hv, Option.getD_some]
       rfl
-    · simp only [probOutput_eq_zero_of_not_mem_support hr, zero_mul]
+    · simp only [prEvent_eq_zero_of_not_mem_support _ hr, zero_mul]
   have hearly := evalDist_fillPrfCache_prefix seeds point C.terms [T]
     (fun U _ => mem_terms U) backend.1.1.data.cache
   have hsingle : fillPrfCache seeds point [T] = fun cache =>
@@ -4043,15 +3992,15 @@ theorem probEvent_completePrf_delay_read (P : PublicParameter)
   apply (ENNReal.mul_right_inj (a := (Fintype.card Digest : ℝ≥0∞)⁻¹)
     (by simp) (by simp)).mp
   rw [hright, runSource_completePrf_then_read P seeds hinj]
-  erw [probEvent_map]
+  erw [prEvent_map]
   change (Fintype.card Digest : ℝ≥0∞)⁻¹ *
-    Pr[fun r => event ((r.2.1.1.data.cache (.prf (seeds T) point)).getD 0)
-      (incrementCompilerCount r.2) |
-      runSource P seeds q s (liftM (completePrf seeds point target)) source backend] = _
+    Pr{let r ←
+      runSource P seeds q s (liftM (completePrf seeds point target)) source backend}[event ((r.2.1.1.data.cache (.prf (seeds T) point)).getD 0)
+      (incrementCompilerCount r.2)] = _
   erw [probEvent_completePrf_fiber_all P seeds hinj q s point target source backend
     (missing _ hslack) (fun b => event ((b.1.1.data.cache (.prf (seeds T) point)).getD 0)
       (incrementCompilerCount b))]
-  exact probEvent_congr' (fun _ _ => Iff.rfl) hearly
+  exact hearly.prEvent_eq _
 
 set_option backward.isDefEq.respectTransparency false in
 /-- The complete actual source/interpreter law for moving a counted term read
@@ -4063,13 +4012,13 @@ theorem evalDist_completePrf_delay_read (P : PublicParameter)
     (T slack : C.Term) (hne : slack ≠ T) (source : SourceState C)
     (backend : CappedCompilerState C)
     (hslack : backend.1.1.data.cache (.prf (seeds slack) point) = none) :
-    𝒟[runSource P seeds q s (do
+    runSource P seeds q s (do
       let _ ← liftM (completePrf seeds point target)
-      liftM (deferredQuery (C := C) (.hash (.prf (seeds T) point)))) source backend] =
-    𝒟[runSource P seeds q s (do
+      liftM (deferredQuery (C := C) (.hash (.prf (seeds T) point)))) source backend =ᵈ
+    runSource P seeds q s (do
       let value ← liftM (deferredQuery (C := C) (.hash (.prf (seeds T) point)))
       let _ ← liftM (completePrf seeds point target)
-      pure value) source backend] := by
+      pure value) source backend := by
   let before : SourceM C HashOutput := do
     let _ ← liftM (completePrf seeds point target)
     liftM (deferredQuery (C := C) (.hash (.prf (seeds T) point)))
@@ -4090,24 +4039,20 @@ theorem evalDist_completePrf_delay_read (P : PublicParameter)
       let _ ← completePrf seeds point target
       pure value) source backend r
     simpa only [liftM_bind, liftM_pure, after] using hr
-  change 𝒟[runSource P seeds q s before source backend] =
-    𝒟[runSource P seeds q s after source backend]
-  apply evalDist_ext
-  intro result
-  simp only [← probEvent_eq_eq_probOutput]
+  change runSource P seeds q s before source backend =ᵈ
+    runSource P seeds q s after source backend
+  refine OracleComp.evalDistEq_of_forall_prEvent_eq_output fun result => ?_
   calc
-    _ = Pr[fun r => ((r.1.1, source), r.2) = result |
-        runSource P seeds q s before source backend] := by
-      apply probEvent_congr' _ rfl
-      intro r hr
+    _ = Pr{let r ←
+        runSource P seeds q s before source backend}[((r.1.1, source), r.2) = result] := by
+      refine prEvent_congr_of_support _ _ _ fun r hr => ?_
       rw [← hb r hr]
-    _ = Pr[fun r => ((r.1.1, source), r.2) = result |
-        runSource P seeds q s after source backend] :=
+    _ = Pr{let r ←
+        runSource P seeds q s after source backend}[((r.1.1, source), r.2) = result] :=
       probEvent_completePrf_delay_read P seeds hinj q s point target T slack hne
         source backend hslack (fun value st => ((value, source), st) = result)
     _ = _ := by
-      apply probEvent_congr' _ rfl
-      intro r hr
+      refine prEvent_congr_of_support _ _ _ fun r hr => ?_
       rw [← ha r hr]
 
 /-- The finite chain-edge coordinates whose noise is sampled by the compiler. -/
@@ -4144,6 +4089,7 @@ theorem samplePending_eq_map (p : PendingInput) :
   simp only [samplePending, bind_pure_comp]
   rfl
 
+set_option backward.isDefEq.respectTransparency false in
 /-- Materialized pending entries never disappear, including after a record
 replaces an answer. This is a statement about domains, not value equality. -/
 theorem deferredImpl_pending_mono (t : DeferredQuery C) (st : DeferredState C)
@@ -4498,14 +4444,13 @@ theorem compilerRun_eq_chainNoiseRaw (prims : Primitives) (A : TsigAdversary C)
 visible pending map, visible cache, trace, flag, and count remain source-owned. -/
 theorem compilerRun_eq_private_chain_prefix (prims : Primitives) (A : TsigAdversary C)
     (x : Keys3 C) (q : ℕ) {α : Type} (ghost : OracleComp (ChainNoiseIndex →ₒ HashOutput) α) :
-    𝒟[compilerRun prims A x q] = 𝒟[do
+    compilerRun prims A x q =ᵈ (do
       let s ← $ᵗ (HiddenKey → Digest)
       Prod.fst <$> (do
         let _ ← simulateQ (ChainNoiseIndex →ₒ HashOutput).randomOracle ghost
-        simulateQ SigningGuessProof.privateRoImpl (chainNoiseRawProgram prims A x q s)).run ∅] := by
+        simulateQ SigningGuessProof.privateRoImpl (chainNoiseRawProgram prims A x q s)).run ∅) := by
   rw [compilerRun_eq_chainNoiseRaw]
-  apply evalDist_bind_congr
-  intro s _
+  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun s _ => ?_
   exact (SigningGuessProof.randomOracle_private_prefix_private ghost
     (chainNoiseRawProgram prims A x q s) ∅).symm
 
@@ -4518,30 +4463,28 @@ def resolveChainNoise (table : ChainNoiseIndex → HashOutput) :
 /-- Coordinate resampling preserves the law of any subsequent private program. -/
 theorem chainNoise_update_bind {α : Type} (edge : ChainNoiseIndex)
     (next : (ChainNoiseIndex → HashOutput) → ProbComp α) :
-    𝒟[do
+    (do
       let value ← $ᵗ HashOutput
       let table ← $ᵗ (ChainNoiseIndex → HashOutput)
-      next (Function.update table edge value)] =
-    𝒟[($ᵗ (ChainNoiseIndex → HashOutput)) >>= next] := by
-  have h := congrArg (fun d => d >>= fun table => 𝒟[next table])
-    (evalDist_uniformSample_bind_update (D := ChainNoiseIndex) (R := HashOutput) edge)
-  simpa only [← evalDist_bind, bind_assoc, pure_bind] using h
+      next (Function.update table edge value)) =ᵈ
+    (($ᵗ (ChainNoiseIndex → HashOutput)) >>= next) := by
+  exact evalDistEq_uniformSample_bind_update edge next
 
 set_option backward.isDefEq.respectTransparency false in
 /-- Eagerly sampling the finite chain-noise table preserves the entire raw
 source result. The table is private; its reads do not populate visible state. -/
 theorem privateChainNoise_eq_table {α : Type} (oa : OracleComp ChainNoiseSpec α)
     (noise : (ChainNoiseIndex →ₒ HashOutput).QueryCache) :
-    𝒟[Prod.fst <$> (simulateQ SigningGuessProof.privateRoImpl oa).run noise] =
-    𝒟[do
+    (Prod.fst <$> (simulateQ SigningGuessProof.privateRoImpl oa).run noise) =ᵈ
+    (do
       let table ← $ᵗ (ChainNoiseIndex → HashOutput)
-      simulateQ (resolveChainNoise (tableExtending noise table)) oa] := by
+      simulateQ (resolveChainNoise (tableExtending noise table)) oa) := by
   classical
   induction oa using OracleComp.inductionOn generalizing noise with
   | pure value =>
       simp only [simulateQ_pure, StateT.run_pure, map_pure]
-      exact (OracleComp.DeferredSampling.evalDist_bind_const_neverFails
-        ($ᵗ (ChainNoiseIndex → HashOutput)) (by simp) (pure value)).symm
+      exact (OracleComp.EvalDistEq.bind_const
+        ($ᵗ (ChainNoiseIndex → HashOutput)) (pure value)).symm
   | query_bind t next ih =>
       simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query,
         OracleQuery.cont_query, id_map, StateT.run_bind, map_bind]
@@ -4553,57 +4496,47 @@ theorem privateChainNoise_eq_table {α : Type} (oa : OracleComp ChainNoiseSpec �
                 (query (spec := unifSpec) n : ProbComp (Fin (n + 1))) := rfl
           rw [hu, bind_map_left]
           simp only [resolveChainNoise]
-          calc
-            _ = 𝒟[do
-              let value ← (query (spec := unifSpec) n : ProbComp (Fin (n + 1)))
-              let table ← $ᵗ (ChainNoiseIndex → HashOutput)
-              simulateQ (resolveChainNoise (tableExtending noise table)) (next value)] := by
-                apply evalDist_bind_congr
-                intro value _
-                exact ih value noise
-            _ = _ := OracleComp.DeferredSampling.evalDist_bind_comm _ _ _
+          refine EvalDistEq.trans
+            (OracleComp.EvalDistEq.bind_congr_of_support _ fun value _ => ih value noise) ?_
+          exact OracleComp.EvalDistEq.bind_bind_swap _ _ _
       | inr edge =>
-          change 𝒟[((ChainNoiseIndex →ₒ HashOutput).randomOracle edge).run noise >>= fun r =>
-            Prod.fst <$> (simulateQ SigningGuessProof.privateRoImpl (next r.1)).run r.2] = _
+          change (((ChainNoiseIndex →ₒ HashOutput).randomOracle edge).run noise >>= fun r =>
+            Prod.fst <$> (simulateQ SigningGuessProof.privateRoImpl (next r.1)).run r.2) =ᵈ _
           simp only [resolveChainNoise, pure_bind]
           cases hn : noise edge with
           | some value =>
-              rw [QueryImpl.withCaching_run_some _ hn, pure_bind, ih value noise]
-              apply evalDist_bind_congr
-              intro table _
-              simp only [tableExtending, hn, Option.getD_some]
+              rw [QueryImpl.withCaching_run_some _ hn, pure_bind]
+              refine (ih value noise).trans ?_
+              refine OracleComp.EvalDistEq.bind_congr_of_support _ fun table _ => ?_
+              simp only [tableExtending, hn, Option.getD_some, EvalDistEq.refl]
           | none =>
               rw [QueryImpl.withCaching_run_none _ hn, bind_map_left]
               let replay : (ChainNoiseIndex → HashOutput) → ProbComp α := fun table =>
                 simulateQ (resolveChainNoise (tableExtending noise table))
                   (next (tableExtending noise table edge))
-              calc
-                _ = 𝒟[do
-                    let value ← $ᵗ HashOutput
-                    let table ← $ᵗ (ChainNoiseIndex → HashOutput)
-                    replay (Function.update table edge value)] := by
-                  apply evalDist_bind_congr
-                  intro value _
-                  rw [ih value (noise.cacheQuery edge value)]
-                  apply evalDist_bind_congr
-                  intro table _
-                  dsimp only [replay]
-                  rw [tableExtending_cacheQuery,
-                    ← tableExtending_update_of_none noise table hn value]
-                  simp only [Function.update_self]
-                _ = _ := chainNoise_update_bind edge replay
+              refine EvalDistEq.trans (my := (do
+                  let value ← $ᵗ HashOutput
+                  let table ← $ᵗ (ChainNoiseIndex → HashOutput)
+                  replay (Function.update table edge value)))
+                ?_ (chainNoise_update_bind edge replay)
+              refine OracleComp.EvalDistEq.bind_congr_of_support _ fun value _ => ?_
+              refine (ih value (noise.cacheQuery edge value)).trans ?_
+              refine OracleComp.EvalDistEq.bind_congr_of_support _ fun table _ => ?_
+              dsimp only [replay]
+              rw [tableExtending_cacheQuery,
+                ← tableExtending_update_of_none noise table hn value]
+              simp only [Function.update_self, EvalDistEq.refl]
 
 /-- The actual compiler with one independent private chain-noise table. All
 source and backend observations are retained, including the original counter. -/
 theorem compilerRun_eq_chainNoiseTable (prims : Primitives) (A : TsigAdversary C)
     (x : Keys3 C) (q : ℕ) :
-    𝒟[compilerRun prims A x q] = 𝒟[do
+    compilerRun prims A x q =ᵈ (do
       let s ← $ᵗ (HiddenKey → Digest)
       let table ← $ᵗ (ChainNoiseIndex → HashOutput)
-      simulateQ (resolveChainNoise table) (chainNoiseRawProgram prims A x q s)] := by
+      simulateQ (resolveChainNoise table) (chainNoiseRawProgram prims A x q s)) := by
   rw [compilerRun_eq_chainNoiseRaw]
-  apply evalDist_bind_congr
-  intro s _
+  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun s _ => ?_
   simpa only [tableExtending_empty] using
     privateChainNoise_eq_table (chainNoiseRawProgram prims A x q s) ∅
 
@@ -4779,6 +4712,7 @@ def WritesPrf (seed : HashOutput) (point : Point) : DeferredQuery C → Prop
   | .plant input _ => input.query (C := C) = .prf seed point
   | _ => False
 
+set_option backward.isDefEq.respectTransparency false in
 /-- Deferred backend calls frame every PRF entry they do not address. Pending
 plants address the hash domain and therefore cannot change a PRF entry. -/
 theorem deferredImpl_prf_frame (t : DeferredQuery C) (st : DeferredState C)
@@ -5728,6 +5662,7 @@ theorem sourcePad_slack (P : PublicParameter) (seeds : C.Term → HashOutput)
       · rw [Function.update_of_ne he]
         exact hprevious
 
+set_option backward.isDefEq.respectTransparency false in
 /-- Completing one Q point preserves the other release constraints. The
 pad is already present at positive positions and remains fixed. -/
 theorem ReleaseSlack.complete_chain {seeds : C.Term → HashOutput} {s : HiddenKey → Digest}
@@ -5801,7 +5736,7 @@ def sourceBottomCompletion (_P : PublicParameter) (seeds : C.Term → HashOutput
 
 /-- These are exactly the completion bodies in the frozen Q source. -/
 theorem sourceReleaseBottomSuffix_eq (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (e : KeyIndex) (l : ChainIndex) (start : Digit) :
+    (e : KeyIndex) (l : ChainIndex) (start : WinternitzDigit) :
     sourceReleaseBottomSuffix P seeds e l start = (do
       let keys := (List.finRange 3).filter fun p => start.val ≤ p.val
       let _ ← keys.mapM (sourceBottomCompletion P seeds e l)
@@ -6041,7 +5976,7 @@ set_option backward.isDefEq.respectTransparency false in
 and pending validity, for every start position and every repeated call. -/
 theorem sourceReleaseBottomSuffix_slack (P : PublicParameter) (seeds : C.Term → HashOutput)
     (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (e : KeyIndex) (l : ChainIndex) (start : Digit)
+    (e : KeyIndex) (l : ChainIndex) (start : WinternitzDigit)
     (source : SourceState C) (backend : CappedCompilerState C)
     (hs : ReleaseSlack seeds s source backend.1.1.data)
     (hrev : RevealRelation s source backend) (hv : PendingValid backend.1.1.data)
@@ -6222,7 +6157,7 @@ def NoBottomOpening (value : DeferredDigest) : Prop :=
 
 /-- R completes a top-chain PRF precisely when its opened suffix starts at zero. -/
 def sourceTopStartCompletion (seeds : C.Term → HashOutput) (b : XmssSecurity.TopIndex)
-    (l : ChainIndex) (start : Digit) : SourceM C Unit :=
+    (l : ChainIndex) (start : WinternitzDigit) : SourceM C Unit :=
   if start.val = 0 then do
     let _ ← sourceTopCompletion seeds b (some l)
     pure ()
@@ -6245,7 +6180,7 @@ theorem sourceReturnTree_eq (P : PublicParameter) (seeds : C.Term → HashOutput
       let opening ← sourceTopCompletion seeds b none
       let pending := (← get).allocated.filter fun p => p.key = .opening topLayer (topKey b)
       let _ ← pending.mapM (sourcePlant P)
-      let values ← Concrete.sequenceFin (sourceReturnedChain P seeds b tree)
+      let values ← OverPermutation.sequenceFin (sourceReturnedChain P seeds b tree)
       pure (⟨tree.cpk, tree.commitment, tree.root,
         ⟨tree.topSignature.randomness, values, tree.topSignature.path⟩⟩, opening)) := by
   have distribute {α β : Type} (condition : Prop) [Decidable condition]
@@ -6261,7 +6196,7 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Both branches of R's optional start completion preserve the joint invariant. -/
 theorem sourceTopStartCompletion_slack (P : PublicParameter) (seeds : C.Term → HashOutput)
     (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (b : XmssSecurity.TopIndex) (l : ChainIndex) (start : Digit)
+    (b : XmssSecurity.TopIndex) (l : ChainIndex) (start : WinternitzDigit)
     (source : SourceState C) (backend : CappedCompilerState C)
     (hs : ReleaseSlack seeds s source backend.1.1.data)
     (hrev : RevealRelation s source backend) (hv : PendingValid backend.1.1.data)
@@ -6333,17 +6268,17 @@ theorem runSource_sequenceFin_inv {α : Type} (P : PublicParameter) (seeds : C.T
         r ∈ support (runSource P seeds q s (oa i) source backend) → I r.1.2 r.2) →
       ∀ source backend, I source backend →
         ∀ r : ((Fin n → α) × SourceState C) × CappedCompilerState C,
-        r ∈ support (runSource P seeds q s (Concrete.sequenceFin oa) source backend) → I r.1.2 r.2 := by
+        r ∈ support (runSource P seeds q s (OverPermutation.sequenceFin oa) source backend) → I r.1.2 r.2 := by
   intro n
   induction n with
   | zero =>
       intro oa _ source backend hs r hr
-      simp only [Concrete.sequenceFin, runSource_pure, mem_support_pure_iff] at hr
+      simp only [OverPermutation.sequenceFin, runSource_pure, mem_support_pure_iff] at hr
       subst r
       exact hs
   | succ n ih =>
       intro oa step source backend hs r hr
-      simp only [Concrete.sequenceFin, runSource_bind, mem_support_bind_iff] at hr
+      simp only [OverPermutation.sequenceFin, runSource_bind, mem_support_bind_iff] at hr
       obtain ⟨head, hhead, tail, htail, hr⟩ := hr
       rw [runSource_pure, mem_support_pure_iff] at hr
       subst r
@@ -6384,10 +6319,11 @@ theorem sourceReturnTree_slack (P : PublicParameter) (seeds : C.Term → HashOut
     · intro e he
       have hx := hkey.symm.trans he
       simp [topLayer, bottomLayer] at hx
-  exact runSource_sequenceFin_inv P seeds q s I numChains (sourceReturnedChain P seeds b tree)
+  exact runSource_sequenceFin_inv P seeds q s I chainCount (sourceReturnedChain P seeds b tree)
     (fun l st backend h a ha => sourceReturnedChain_slack P seeds hinj q s b tree l (hshape l)
       st backend h.1 h.2.1 h.2.2 a ha) planted.1.2 planted.2 hp values hvalues
 
+set_option backward.isDefEq.respectTransparency false in
 /-- An actual pending read never returns an opening as its symbolic low half. -/
 theorem runSource_pending_noBottomOpening (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : ℕ) (s : HiddenKey → Digest) (p : PendingInput)
@@ -6494,7 +6430,7 @@ set_option backward.isDefEq.respectTransparency false in
 /-- The actual top-prefix walk stores only known values or chain coordinates;
 its result cannot name a bottom opening. -/
 theorem sourceTopValue_noBottomOpening (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest) (b : XmssSecurity.TopIndex) (l : ChainIndex) (pos : Digit)
+    (q : ℕ) (s : HiddenKey → Digest) (b : XmssSecurity.TopIndex) (l : ChainIndex) (pos : WinternitzDigit)
     (source : SourceState C) (backend : CappedCompilerState C)
     (hv : PendingValid backend.1.1.data)
     (r : (DeferredDigest × SourceState C) × CappedCompilerState C)
@@ -6528,19 +6464,19 @@ theorem runSource_sequenceFin_values {α : Type} (P : PublicParameter) (seeds : 
         r ∈ support (runSource P seeds q s (oa i) source backend) → V r.1.1) →
       ∀ source backend, PendingValid backend.1.1.data →
         ∀ r : ((Fin n → α) × SourceState C) × CappedCompilerState C,
-        r ∈ support (runSource P seeds q s (Concrete.sequenceFin oa) source backend) →
+        r ∈ support (runSource P seeds q s (OverPermutation.sequenceFin oa) source backend) →
           ∀ i, V (r.1.1 i) := by
   intro n
   induction n with
   | zero =>
       intro oa _ source backend _ r hr
-      simp only [Concrete.sequenceFin, runSource_pure, mem_support_pure_iff] at hr
+      simp only [OverPermutation.sequenceFin, runSource_pure, mem_support_pure_iff] at hr
       subst r
       intro i
       exact Fin.elim0 i
   | succ n ih =>
       intro oa step source backend hv r hr
-      simp only [Concrete.sequenceFin, runSource_bind, mem_support_bind_iff] at hr
+      simp only [OverPermutation.sequenceFin, runSource_bind, mem_support_bind_iff] at hr
       obtain ⟨head, hhead, tail, htail, hr⟩ := hr
       rw [runSource_pure, mem_support_pure_iff] at hr
       subst r
@@ -6584,7 +6520,7 @@ theorem sourceBottomTree_noBottomOpening (P : PublicParameter) (seeds : C.Term �
       rcases answer with ⟨randomness, encoding⟩
       simp only [hf, runSource_bind, mem_support_bind_iff] at hr
       obtain ⟨values, hvalues, path, hpath, digest, hdigest, hr⟩ := hr
-      have hall := runSource_sequenceFin_values P seeds q s NoBottomOpening numChains
+      have hall := runSource_sequenceFin_values P seeds q s NoBottomOpening chainCount
         (fun l => sourceTopValue P seeds b l (encoding l))
         (fun l st back h a ha => sourceTopValue_noBottomOpening P seeds q s b l (encoding l) st back h a ha)
         found.1.2 found.2 hv6 values hvalues
@@ -6716,14 +6652,14 @@ theorem SourceKeeps.mapM {α β γ : Type} {field : SourceState C → γ}
 
 theorem SourceKeeps.sequenceFin {α β : Type} {field : SourceState C → β} :
     ∀ n (oa : Fin n → SourceM C α), (∀ i, SourceKeeps field (oa i)) →
-      SourceKeeps field (Concrete.sequenceFin oa) := by
+      SourceKeeps field (OverPermutation.sequenceFin oa) := by
   intro n
   induction n with
   | zero => intro oa _; exact SourceKeeps.pure Fin.elim0
   | succ n ih =>
       intro oa h
       change SourceKeeps field (oa 0 >>= fun head =>
-        Concrete.sequenceFin (fun i : Fin n => oa i.succ) >>= fun tail => Pure.pure (Fin.cases head tail : Fin (n + 1) → α))
+        OverPermutation.sequenceFin (fun i : Fin n => oa i.succ) >>= fun tail => Pure.pure (Fin.cases head tail : Fin (n + 1) → α))
       exact (h 0).bind _ (fun head => (ih _ (fun i => h i.succ)).bind _
         (fun tail => SourceKeeps.pure (Fin.cases head tail : Fin (n + 1) → α)))
 
@@ -6883,7 +6819,7 @@ theorem sourceControl_sourceCommitment (P : PublicParameter) (seeds : C.Term →
   exact (sourceControl_sourcePending P (.commitment e)).bind _ (fun _ => SourceKeeps.pure _)
 
 theorem sourceControl_sourceTopValue (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (b : XmssSecurity.TopIndex) (l : ChainIndex) (pos : Digit) :
+    (b : XmssSecurity.TopIndex) (l : ChainIndex) (pos : WinternitzDigit) :
     SourceKeeps sourceControl (sourceTopValue P seeds b l pos) := by
   unfold sourceTopValue
   refine (SourceKeeps.mapM _ _ (fun T _ => sourceControl_sourceVirtual P seeds T _)).bind _ fun _ => ?_
@@ -6891,7 +6827,7 @@ theorem sourceControl_sourceTopValue (P : PublicParameter) (seeds : C.Term → H
     (fun _ => SourceKeeps.pure _)
 
 theorem sourceControl_sourceTopRecover (P : PublicParameter) (b : XmssSecurity.TopIndex)
-    (l : ChainIndex) (pos : Digit) (initial : DeferredDigest) :
+    (l : ChainIndex) (pos : WinternitzDigit) (initial : DeferredDigest) :
     SourceKeeps (sourceControl (C := C)) (sourceTopRecover P b l pos initial) := by
   unfold sourceTopRecover
   refine (SourceKeeps.mapM _ _ (fun i _ => sourceControl_sourcePending P (.top b l _))).bind _
@@ -6915,7 +6851,7 @@ theorem sourceControl_sourceBottomTree (P : PublicParameter) (seeds : C.Term →
     fun commitments => ?_
   refine (SourceKeeps.mapM _ _ (fun T _ => sourceControl_sourceVirtual P seeds T _)).bind _ fun _ => ?_
   refine (sourceControl_sourceHashProgram P seeds _).bind _ fun root => ?_
-  refine (sourceControl_sourcePending P (.base topLayer (topKey b) (bytesLE 16 root))).bind _ fun base => ?_
+  refine (sourceControl_sourcePending P (.base topLayer (topKey b) (littleEndianBytes 16 root))).bind _ fun base => ?_
   refine (sourceControl_sourceHashProgram P seeds _).bind _ fun found => ?_
   cases found with
   | none => exact SourceKeeps.pure none
@@ -7036,7 +6972,7 @@ theorem mapM {α β : Type} (items : List α) (oa : α → SourceM C β)
 
 theorem sequenceFin {α : Type} (n : ℕ) (oa : Fin n → SourceM C α)
     (h : ∀ i, SourcePreserves P seeds q s I (oa i)) :
-    SourcePreserves P seeds q s I (Concrete.sequenceFin oa) :=
+    SourcePreserves P seeds q s I (OverPermutation.sequenceFin oa) :=
   runSource_sequenceFin_inv P seeds q s I n oa h
 
 theorem simulateQ {ι α : Type} {spec : OracleSpec ι} (impl : QueryImpl spec (SourceM C))
@@ -7764,6 +7700,7 @@ theorem sourcePad_releaseInvariant (P : PublicParameter) (seeds : C.Term → Has
     sourceReveals_deferredQuery P seeds q s (.pad point) source backend h.2.1 r hr,
     runSource_pendingValid P seeds q s _ source backend h.2.2 r hr⟩
 
+set_option backward.isDefEq.respectTransparency false in
 /-- A typed hash program has no PRF reads, so every actual source call preserves
 the joint release invariant. -/
 theorem sourceHashProgram_releaseInvariant {α : Type} (P : PublicParameter)
@@ -7810,7 +7747,7 @@ theorem sourceTopEnd_releaseInvariant (P : PublicParameter) (seeds : C.Term → 
       (simulateQ (sourceBackend P seeds) (deferredTopEnd b l)) := by
   simp only [deferredTopEnd, simulateQ_bind, simulateQ_list_mapM,
     simulateQ_pure, backendQuery, simulateQ_query, OracleQuery.input_query,
-    OracleQuery.cont_query, id_map, sourceBackend]
+    OracleQuery.cont_query, id_map]
   refine (SourcePreserves.mapM _ _ (fun T _ => sourceVirtual_releaseInvariant P seeds hinj q s T _)).bind _ fun _ => ?_
   refine (sourcePending_releaseInvariant P seeds hinj q s _).bind _ fun _ => ?_
   refine (sourcePending_releaseInvariant P seeds hinj q s _).bind _ fun _ => ?_
@@ -7837,7 +7774,7 @@ theorem sourceCommitment_releaseInvariant (P : PublicParameter) (seeds : C.Term 
 /-- The stored symbolic top-signature prefix preserves the joint release invariant. -/
 theorem sourceTopValue_releaseInvariant (P : PublicParameter) (seeds : C.Term → HashOutput)
     (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (b : XmssSecurity.TopIndex) (l : ChainIndex) (pos : Digit) :
+    (b : XmssSecurity.TopIndex) (l : ChainIndex) (pos : WinternitzDigit) :
     SourcePreserves P seeds q s (ReleaseInvariant seeds s) (sourceTopValue P seeds b l pos) := by
   unfold sourceTopValue
   refine (SourcePreserves.mapM _ _ (fun T _ => sourceVirtual_releaseInvariant P seeds hinj q s T _)).bind _ fun _ => ?_
@@ -7848,7 +7785,7 @@ theorem sourceTopValue_releaseInvariant (P : PublicParameter) (seeds : C.Term �
 joint release invariant even on its consistency-failure branch. -/
 theorem sourceTopRecover_releaseInvariant (P : PublicParameter) (seeds : C.Term → HashOutput)
     (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (b : XmssSecurity.TopIndex) (l : ChainIndex) (pos : Digit) (initial : DeferredDigest) :
+    (b : XmssSecurity.TopIndex) (l : ChainIndex) (pos : WinternitzDigit) (initial : DeferredDigest) :
     SourcePreserves P seeds q s (ReleaseInvariant seeds s) (sourceTopRecover P b l pos initial) := by
   unfold sourceTopRecover
   refine (SourcePreserves.mapM _ _ (fun _ _ => sourcePending_releaseInvariant P seeds hinj q s _)).bind _ fun values => ?_
@@ -7866,8 +7803,8 @@ theorem sourceBottomTree_releaseInvariant (P : PublicParameter) (seeds : C.Term 
     (top : TopTree) (b : XmssSecurity.TopIndex) :
     SourcePreserves P seeds q s (ReleaseInvariant seeds s) (sourceBottomTree P seeds top b) := by
   unfold sourceBottomTree
-  refine (SourcePreserves.mapM _ _ (fun el _ => sourceBottomRow_releaseInvariant P seeds hinj q s el.1 el.2)).bind _
-    fun rows => ?_
+  refine SourcePreserves.bind (SourcePreserves.mapM _ _ (fun el _ => by
+    exact sourceBottomRow_releaseInvariant P seeds hinj q s el.1 el.2)) _ fun rows => ?_
   refine (SourcePreserves.mapM _ _ (fun k _ => sourceCommitment_releaseInvariant P seeds hinj q s (bottomKey b k))).bind _
     fun commitments => ?_
   refine (SourcePreserves.mapM _ _ (fun T _ => sourceVirtual_releaseInvariant P seeds hinj q s T _)).bind _
@@ -8109,7 +8046,7 @@ set_option backward.isDefEq.respectTransparency false in
 supplies the honest `eval`/`prfValue` precondition for any returned position. -/
 theorem sourceReleaseBottomSuffix_cached (P : PublicParameter) (seeds : C.Term → HashOutput)
     (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (e : KeyIndex) (l : ChainIndex) (start : Digit)
+    (e : KeyIndex) (l : ChainIndex) (start : WinternitzDigit)
     (source : SourceState C) (backend : CappedCompilerState C)
     (h : ReleaseInvariant seeds s source backend)
     (r : (Unit × SourceState C) × CappedCompilerState C)
@@ -8137,7 +8074,7 @@ theorem sourceReleaseBottomSuffix_cached (P : PublicParameter) (seeds : C.Term �
 /-- Q at a nonterminal position makes the exact requested point readable. -/
 theorem sourceReleaseBottomSuffix_readable (P : PublicParameter) (seeds : C.Term → HashOutput)
     (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (e : KeyIndex) (l : ChainIndex) (start : Digit) (hstart : start.val < 3)
+    (e : KeyIndex) (l : ChainIndex) (start : WinternitzDigit) (hstart : start.val < 3)
     (source : SourceState C) (backend : CappedCompilerState C)
     (h : ReleaseInvariant seeds s source backend)
     (r : (Unit × SourceState C) × CappedCompilerState C)
@@ -8243,7 +8180,7 @@ theorem sourceCodeword_releaseInvariant (prims : Primitives) (P : PublicParamete
 partial PRF evaluation in the round-2 callback. -/
 theorem sourcePart_after_Q (prims : Primitives) (x : Keys3 C)
     (hinj : Function.Injective x.2.1) (q : ℕ) (s : HiddenKey → Digest)
-    (i : C.Party) (J : C.Quorum) (e : KeyIndex) (l : ChainIndex) (pos : Digit)
+    (i : C.Party) (J : C.Quorum) (e : KeyIndex) (l : ChainIndex) (pos : WinternitzDigit)
     (hpos : pos.val < 3) (message : Message) :
     SourcePreserves x.1 x.2.1 q s (ReleaseInvariant x.2.1 s) (do
       sourceReleaseBottomSuffix x.1 x.2.1 e l pos
@@ -8343,7 +8280,7 @@ theorem sourceRound2_releaseInvariant (prims : Primitives) (x : Keys3 C)
 by the reference honest signature. -/
 theorem sourcePrfValue_after_Q (prims : Primitives) (P : PublicParameter)
     (seeds : C.Term → HashOutput) (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (e : KeyIndex) (l : ChainIndex) (pos : Digit) (hpos : pos.val < 3) :
+    (e : KeyIndex) (l : ChainIndex) (pos : WinternitzDigit) (hpos : pos.val < 3) :
     SourcePreserves P seeds q s (ReleaseInvariant seeds s) (do
       sourceReleaseBottomSuffix P seeds e l pos
       sourceRoProgram prims P seeds (prfValue seeds (.chain bottomLayer e l pos))) := by
@@ -8408,7 +8345,7 @@ theorem sourceHonestSignature_releaseInvariant (prims : Primitives) (x : Keys3 C
           obtain ⟨values, hvalues, path, hpath, topValues, htop, hr⟩ := hr
           have hvaluesInv : ReleaseInvariant x.2.1 s values.1.2 values.2 := by
             apply (SourcePreserves.sequenceFin (P := x.1) (seeds := x.2.1) (q := q) (s := s)
-              numChains _ (fun l => ?_)) found.1.2 found.2 hf values hvalues
+              chainCount _ (fun l => ?_)) found.1.2 found.2 hf values hvalues
             split
             · exact SourcePreserves.pure _
             · rename_i hpos
@@ -8419,7 +8356,7 @@ theorem sourceHonestSignature_releaseInvariant (prims : Primitives) (x : Keys3 C
                     (if (encoding l).val = 1 then (tree.cpk e l).1 else (tree.cpk e l).2.1) ^^^ value)
           have hpathInv := sourceHashProgram_releaseInvariant x.1 x.2.1 hinj q s _ values.1.2 values.2 hvaluesInv path hpath
           have htopInv := SourcePreserves.sequenceFin (P := x.1) (seeds := x.2.1) (q := q) (s := s)
-            numChains (fun l => sourceRevealDigest (tree.topSignature.chainValue l))
+            chainCount (fun l => sourceRevealDigest (tree.topSignature.chainValue l))
             (fun l => sourceRevealDigest_releaseInvariant x.1 x.2.1 q s _ (shape l))
             path.1.2 path.2 hpathInv topValues htop
           rw [runSource_pure, mem_support_pure_iff] at hr
@@ -8473,7 +8410,7 @@ theorem sourceControl_sourceBottomCompletion (P : PublicParameter) (seeds : C.Te
     exact SourceKeeps.modify (field := sourceControl) (fun st => { st with consistent := st.consistent && ok }) (fun _ => rfl)
 
 theorem sourceControl_sourceReleaseBottomSuffix (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (e : KeyIndex) (l : ChainIndex) (start : Digit) :
+    (e : KeyIndex) (l : ChainIndex) (start : WinternitzDigit) :
     SourceKeeps sourceControl (sourceReleaseBottomSuffix P seeds e l start) := by
   rw [sourceReleaseBottomSuffix_eq]
   refine (SourceKeeps.mapM _ _ (fun pos _ => sourceControl_sourceBottomCompletion P seeds e l pos)).bind _ fun _ => ?_
@@ -8824,6 +8761,7 @@ theorem sourceGame_releaseInvariant (prims : Primitives) (A : TsigAdversary C) (
     ((compilerInit, 0), fun _ => none, false) (guardedReleaseInvariant_initial x.2.1 s) r hr).2.2 hf
 
 
+set_option backward.isDefEq.respectTransparency false in
 /-- Existing visible pads survive every primitive backend call. -/
 theorem deferredImpl_pads_mono (t : DeferredQuery C) (st : DeferredState C)
     (r : DeferredSpec C t × DeferredState C)
@@ -9123,30 +9061,28 @@ def resolvePrivateTable (table : D → R) :
 /-- Coordinate resampling preserves the law of any subsequent private program. -/
 theorem privateTable_update_bind {α : Type} (edge : D)
     (next : (D → R) → ProbComp α) :
-    𝒟[do
+    (do
       let value ← $ᵗ R
       let table ← $ᵗ (D → R)
-      next (Function.update table edge value)] =
-    𝒟[($ᵗ (D → R)) >>= next] := by
-  have h := congrArg (fun d => d >>= fun table => 𝒟[next table])
-    (evalDist_uniformSample_bind_update (D := D) (R := R) edge)
-  simpa only [← evalDist_bind, bind_assoc, pure_bind] using h
+      next (Function.update table edge value)) =ᵈ
+    (($ᵗ (D → R)) >>= next) := by
+  exact evalDistEq_uniformSample_bind_update edge next
 
 set_option backward.isDefEq.respectTransparency false in
 /-- Eagerly sampling the finite private table preserves the entire raw
 source result. The table is private; its reads do not populate visible state. -/
 theorem privateRo_eq_table {α : Type} (oa : OracleComp (SigningGuessProof.PrivateRoSpec D R) α)
     (noise : (D →ₒ R).QueryCache) :
-    𝒟[Prod.fst <$> (simulateQ SigningGuessProof.privateRoImpl oa).run noise] =
-    𝒟[do
+    (Prod.fst <$> (simulateQ SigningGuessProof.privateRoImpl oa).run noise) =ᵈ
+    (do
       let table ← $ᵗ (D → R)
-      simulateQ (resolvePrivateTable (tableExtending noise table)) oa] := by
+      simulateQ (resolvePrivateTable (tableExtending noise table)) oa) := by
   classical
   induction oa using OracleComp.inductionOn generalizing noise with
   | pure value =>
       simp only [simulateQ_pure, StateT.run_pure, map_pure]
-      exact (OracleComp.DeferredSampling.evalDist_bind_const_neverFails
-        ($ᵗ (D → R)) (by simp) (pure value)).symm
+      exact (OracleComp.EvalDistEq.bind_const
+        ($ᵗ (D → R)) (pure value)).symm
   | query_bind t next ih =>
       simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query,
         OracleQuery.cont_query, id_map, StateT.run_bind, map_bind]
@@ -9158,45 +9094,36 @@ theorem privateRo_eq_table {α : Type} (oa : OracleComp (SigningGuessProof.Priva
                 (query (spec := unifSpec) n : ProbComp (Fin (n + 1))) := rfl
           rw [hu, bind_map_left]
           simp only [resolvePrivateTable]
-          calc
-            _ = 𝒟[do
-              let value ← (query (spec := unifSpec) n : ProbComp (Fin (n + 1)))
-              let table ← $ᵗ (D → R)
-              simulateQ (resolvePrivateTable (tableExtending noise table)) (next value)] := by
-                apply evalDist_bind_congr
-                intro value _
-                exact ih value noise
-            _ = _ := OracleComp.DeferredSampling.evalDist_bind_comm _ _ _
+          refine EvalDistEq.trans
+            (OracleComp.EvalDistEq.bind_congr_of_support _ fun value _ => ih value noise) ?_
+          exact OracleComp.EvalDistEq.bind_bind_swap _ _ _
       | inr edge =>
-          change 𝒟[((D →ₒ R).randomOracle edge).run noise >>= fun r =>
-            Prod.fst <$> (simulateQ SigningGuessProof.privateRoImpl (next r.1)).run r.2] = _
+          change (((D →ₒ R).randomOracle edge).run noise >>= fun r =>
+            Prod.fst <$> (simulateQ SigningGuessProof.privateRoImpl (next r.1)).run r.2) =ᵈ _
           simp only [resolvePrivateTable, pure_bind]
           cases hn : noise edge with
           | some value =>
-              rw [QueryImpl.withCaching_run_some _ hn, pure_bind, ih value noise]
-              apply evalDist_bind_congr
-              intro table _
-              simp only [tableExtending, hn, Option.getD_some]
+              rw [QueryImpl.withCaching_run_some _ hn, pure_bind]
+              refine (ih value noise).trans ?_
+              refine OracleComp.EvalDistEq.bind_congr_of_support _ fun table _ => ?_
+              simp only [tableExtending, hn, Option.getD_some, EvalDistEq.refl]
           | none =>
               rw [QueryImpl.withCaching_run_none _ hn, bind_map_left]
               let replay : (D → R) → ProbComp α := fun table =>
                 simulateQ (resolvePrivateTable (tableExtending noise table))
                   (next (tableExtending noise table edge))
-              calc
-                _ = 𝒟[do
-                    let value ← $ᵗ R
-                    let table ← $ᵗ (D → R)
-                    replay (Function.update table edge value)] := by
-                  apply evalDist_bind_congr
-                  intro value _
-                  rw [ih value (noise.cacheQuery edge value)]
-                  apply evalDist_bind_congr
-                  intro table _
-                  dsimp only [replay]
-                  rw [tableExtending_cacheQuery,
-                    ← tableExtending_update_of_none noise table hn value]
-                  simp only [Function.update_self]
-                _ = _ := privateTable_update_bind edge replay
+              refine EvalDistEq.trans (my := (do
+                  let value ← $ᵗ R
+                  let table ← $ᵗ (D → R)
+                  replay (Function.update table edge value)))
+                ?_ (privateTable_update_bind edge replay)
+              refine OracleComp.EvalDistEq.bind_congr_of_support _ fun value _ => ?_
+              refine (ih value (noise.cacheQuery edge value)).trans ?_
+              refine OracleComp.EvalDistEq.bind_congr_of_support _ fun table _ => ?_
+              dsimp only [replay]
+              rw [tableExtending_cacheQuery,
+                ← tableExtending_update_of_none noise table hn value]
+              simp only [Function.update_self, EvalDistEq.refl]
 
 end PrivateTable
 
@@ -9215,11 +9142,11 @@ theorem cappedCompiler_eq_padTable (P : PublicParameter) (seeds : C.Term → Has
     (q : ℕ) (s : HiddenKey → Digest) {α : Type}
     (oa : OracleComp (DeferredSpec C + RevealSpec HiddenKey Digest) α)
     (backend : CappedCompilerState C) :
-    𝒟[(simulateQ (SigningCappedExpectProof.cappedHybrid (compilerImpl P seeds)
+    (simulateQ (SigningCappedExpectProof.cappedHybrid (compilerImpl P seeds)
       (deferredInputSide P) deferredCounted (deferredKey P) (deferredPoint P) q s)
-      oa).run backend] = 𝒟[do
+      oa).run backend =ᵈ (do
         let pads ← $ᵗ (Point → Digest)
-        compilerProgramPads P seeds q s pads oa backend] := by
+        compilerProgramPads P seeds q s pads oa backend) := by
   rw [← cappedPadNoiseRaw_simulate P seeds q s oa backend ∅ (fun _ _ => rfl)]
   simpa only [tableExtending_empty, compilerProgramPads] using
     privateRo_eq_table ((simulateQ (cappedPadNoiseRaw P seeds q s) oa).run backend) ∅
@@ -9236,10 +9163,10 @@ def compilerRunPads (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
 fields, cache, trace, reveals, consistency, flag and count kept joint. -/
 theorem sourceProgram_eq_compilerRunPads (prims : Primitives) (A : TsigAdversary C)
     (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest) :
-    𝒟[(simulateQ (SigningCappedExpectProof.cappedHybrid (compilerImpl x.1 x.2.1)
+    (simulateQ (SigningCappedExpectProof.cappedHybrid (compilerImpl x.1 x.2.1)
       (deferredInputSide x.1) deferredCounted (deferredKey x.1) (deferredPoint x.1) q s)
-      (sourceProgram prims A x)).run ((compilerInit, 0), fun _ => none, false)] =
-    𝒟[do let pads ← $ᵗ (Point → Digest); compilerRunPads prims A x q s pads] :=
+      (sourceProgram prims A x)).run ((compilerInit, 0), fun _ => none, false) =ᵈ
+    (do let pads ← $ᵗ (Point → Digest); compilerRunPads prims A x q s pads) :=
   cappedCompiler_eq_padTable x.1 x.2.1 q s (sourceProgram prims A x)
     ((compilerInit, 0), fun _ => none, false)
 
@@ -9247,13 +9174,12 @@ theorem sourceProgram_eq_compilerRunPads (prims : Primitives) (A : TsigAdversary
 fixed compiler's complete outcome distribution. -/
 theorem compilerRun_eq_padTable (prims : Primitives) (A : TsigAdversary C)
     (x : Keys3 C) (q : ℕ) :
-    𝒟[compilerRun prims A x q] = 𝒟[do
+    compilerRun prims A x q =ᵈ (do
       let s ← $ᵗ (HiddenKey → Digest)
       let pads ← $ᵗ (Point → Digest)
-      compilerRunPads prims A x q s pads] := by
+      compilerRunPads prims A x q s pads) := by
   unfold compilerRun
-  apply evalDist_bind_congr
-  intro s _
+  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun s _ => ?_
   exact sourceProgram_eq_compilerRunPads prims A x q s
 
 
@@ -9272,8 +9198,8 @@ theorem compilerProgramPads_support (P : PublicParameter) (seeds : C.Term → Ha
     r ∈ support ((simulateQ (SigningCappedExpectProof.cappedHybrid (compilerImpl P seeds)
       (deferredInputSide P) deferredCounted (deferredKey P) (deferredPoint P) q s)
       oa).run backend) := by
-  apply (mem_support_iff_of_evalDist_eq
-    (cappedCompiler_eq_padTable P seeds q s oa backend) r).mpr
+  apply (Set.ext_iff.mp (OracleComp.support_eq_of_evalDistEq
+    (cappedCompiler_eq_padTable P seeds q s oa backend)) r).mpr
   rw [mem_support_bind_iff]
   refine ⟨pads, ?_, hr⟩
   rw [support_uniformSample]
@@ -9502,83 +9428,71 @@ def chainNoiseMaterialEquiv :
 full chain noise; the unused chain seeds have been marginalized away. -/
 theorem installedChainNoise_bind {α : Type} (F : Point → Digest) (s : HiddenKey → Digest)
     (next : PrfChainTables → (ChainNoiseIndex → Digest) → ProbComp α) :
-    𝒟[do
+    (do
       let labels ← XmssSecurity.CappedChain.independentGlobalChainValueTable
       let high ← XmssSecurity.CappedChain.independentGlobalChainHigh
-      next (installHiddenCoordinates (maskPrfChainTables s (F, labels)) s) high] =
-    𝒟[do
+      next (installHiddenCoordinates (maskPrfChainTables s (F, labels)) s) high) =ᵈ
+    (do
       let noise ← $ᵗ (ChainNoiseIndex → HashOutput)
       next (installHiddenCoordinates (maskPrfChainTables s (F, noiseLabels noise)) s)
-        (noiseHigh noise)] := by
+        (noiseHigh noise)) := by
   let observe := fun tables :
       (XmssSecurity.CappedChain.GlobalChainValueIndex → Digest) × (ChainNoiseIndex → Digest) =>
     next (installHiddenCoordinates (maskPrfChainTables s (F, tables.1)) s) tables.2
-  have hu := evalDist_map_bijective_uniform_cross
-    (α := (XmssSecurity.ChainKey → ChainIndex → Digest) × (ChainNoiseIndex → HashOutput))
-    chainNoiseMaterialEquiv
-    chainNoiseMaterialEquiv.bijective
-  have hm := congrArg (fun d => d >>= fun tables => 𝒟[observe tables]) hu
-  simp only [← evalDist_bind, bind_map_left] at hm
-  calc
-    _ = 𝒟[($ᵗ ((XmssSecurity.CappedChain.GlobalChainValueIndex → Digest) ×
-        (ChainNoiseIndex → Digest))) >>= observe] := by
-      conv_rhs => rw [evalDist_bind, ← XmssSecurity.evalDist_independent_uniform_pair, ← evalDist_bind]
-      simp only [bind_assoc, pure_bind, observe]
-      have hl : 𝒟[XmssSecurity.CappedChain.independentGlobalChainValueTable] =
-          𝒟[$ᵗ (XmssSecurity.CappedChain.GlobalChainValueIndex → Digest)] := by
-        apply evalDist_ext
-        intro labels
-        simp only [XmssSecurity.CappedChain.independentGlobalChainValueTable,
-          probOutput_uniformSample]
-        erw [probOutput_uniformSample]
-      have hh : 𝒟[XmssSecurity.CappedChain.independentGlobalChainHigh] =
-          𝒟[$ᵗ (ChainNoiseIndex → Digest)] := by
-        apply evalDist_ext
-        intro high
-        simp only [XmssSecurity.CappedChain.independentGlobalChainHigh,
-          probOutput_uniformSample]
-        erw [probOutput_uniformSample]
-      simp only [evalDist_bind, hl, hh]
-      rfl
-    _ = 𝒟[do
-        let material ← $ᵗ ((XmssSecurity.ChainKey → ChainIndex → Digest) ×
-          (ChainNoiseIndex → HashOutput))
-        next (installHiddenCoordinates (maskPrfChainTables s (F, noiseLabels material.2)) s)
-          (noiseHigh material.2)] := by
-      rw [← hm]
-      apply evalDist_bind_congr
-      intro material _
-      dsimp only [observe, chainNoiseMaterialEquiv, Equiv.coe_fn_mk]
-      rw [install_noiseLabels]
-    _ = _ := by
-      rw [evalDist_bind, ← XmssSecurity.evalDist_independent_uniform_pair, ← evalDist_bind]
-      simp only [bind_assoc, pure_bind]
-      exact OracleComp.DeferredSampling.evalDist_bind_const_neverFails
-        ($ᵗ (XmssSecurity.ChainKey → ChainIndex → Digest)) (probFailure_uniformSample _) _
+  have hu : (chainNoiseMaterialEquiv <$>
+      ($ᵗ ((XmssSecurity.ChainKey → ChainIndex → Digest) × (ChainNoiseIndex → HashOutput)))) =ᵈ
+      ($ᵗ ((XmssSecurity.CappedChain.GlobalChainValueIndex → Digest) ×
+        (ChainNoiseIndex → Digest))) :=
+    SampleableType.map_uniformSample_evalDistEq_of_bijective chainNoiseMaterialEquiv.bijective
+  have hm := hu.bind_left observe
+  simp only [bind_map_left] at hm
+  have hl : XmssSecurity.CappedChain.independentGlobalChainValueTable =ᵈ
+      $ᵗ (XmssSecurity.CappedChain.GlobalChainValueIndex → Digest) :=
+    fun p => SampleableType.prEvent_uniformSample_inst_irrel _ _ p
+  have hh : XmssSecurity.CappedChain.independentGlobalChainHigh =ᵈ
+      $ᵗ (ChainNoiseIndex → Digest) :=
+    fun p => SampleableType.prEvent_uniformSample_inst_irrel _ _ p
+  refine EvalDistEq.trans
+    (my := ($ᵗ ((XmssSecurity.CappedChain.GlobalChainValueIndex → Digest) ×
+      (ChainNoiseIndex → Digest))) >>= observe) ?_ ?_
+  · refine EvalDistEq.trans ?_
+      (XmssSecurity.evalDist_independent_uniform_pair.bind_left observe)
+    simp only [bind_assoc, pure_bind, observe]
+    exact hl.bind fun labels => hh.bind_left _
+  refine hm.symm.trans ?_
+  refine EvalDistEq.trans (my := (do
+      let material ← $ᵗ ((XmssSecurity.ChainKey → ChainIndex → Digest) ×
+        (ChainNoiseIndex → HashOutput))
+      next (installHiddenCoordinates (maskPrfChainTables s (F, noiseLabels material.2)) s)
+        (noiseHigh material.2))) ?_ ?_
+  · refine OracleComp.EvalDistEq.bind_congr_of_support _ fun material _ => ?_
+    dsimp only [observe, chainNoiseMaterialEquiv, Equiv.coe_fn_mk]
+    rw [install_noiseLabels]
+  refine ((XmssSecurity.evalDist_independent_uniform_pair.bind_left _).symm).trans ?_
+  simp only [bind_assoc, pure_bind]
+  exact OracleComp.EvalDistEq.bind_const
+    ($ᵗ (XmssSecurity.ChainKey → ChainIndex → Digest)) _
 
 /-- The original trace uses the same hidden labels and full chain-noise table
 as the compiler representation, with independent PRF pads and share material. -/
 theorem traceRun_eq_symbolic_noise (prims : Primitives) (A : TsigAdversary C)
     (x : Keys3 C) (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (slack : C.Term) :
-    𝒟[SigningLaneUnionProof.traceRun prims A x] =
-      𝒟[do
+    SigningLaneUnionProof.traceRun prims A x =ᵈ
+      (do
         let s ← $ᵗ (HiddenKey → Digest)
         let shares ← $ᵗ (TprfSecurityProof.Slot C → HashOutput)
         let F ← $ᵗ (Point → Digest)
         let noise ← $ᵗ (ChainNoiseIndex → HashOutput)
         eagerTrace prims A x slack shares
           (installHiddenCoordinates (maskPrfChainTables s (F, noiseLabels noise)) s)
-          (noiseHigh noise)] := by
-  rw [traceRun_eq_symbolic_tables prims A x hkeys slack]
-  apply evalDist_bind_congr
-  intro s _
-  apply evalDist_bind_congr
-  intro shares _
-  rw [evalDist_bind, ← uniformPrfChainTables_law, ← evalDist_bind]
+          (noiseHigh noise)) := by
+  refine (traceRun_eq_symbolic_tables prims A x hkeys slack).trans ?_
+  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun s _ => ?_
+  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun shares _ => ?_
+  refine ((uniformPrfChainTables_law.bind_left _).symm).trans ?_
   simp only [bind_assoc, pure_bind]
-  apply evalDist_bind_congr
-  intro F _
+  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun F _ => ?_
   exact installedChainNoise_bind F s (eagerTrace prims A x slack shares)
 
 end EagerPadTransfer
@@ -9627,7 +9541,7 @@ end SigningCompilerCouplingProof
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.relTriple_deferredPending_terminal' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.relTriple_deferredPending_terminal
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.CacheRelation.updateSecret' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.CacheRelation.updateSecret' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.CacheRelation.updateSecret
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.relTriple_deferredPending_internal' depends on axioms: [propext, Classical.choice, Quot.sound] -/
@@ -10146,7 +10060,7 @@ def sourceHashProgramX {α : Type} (P : PublicParameter) (seeds : C.Term → Has
 /-- The top signature job repeats the prefix walk at its chosen position and keeps
 its returned chain value symbolic. -/
 def sourceTopValueX (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (b : XmssSecurity.TopIndex) (l : ChainIndex) (p : Digit) : SourceMX C DeferredDigest := do
+    (b : XmssSecurity.TopIndex) (l : ChainIndex) (p : WinternitzDigit) : SourceMX C DeferredDigest := do
   let _ ← C.terms.mapM fun T => sourceVirtualX P seeds T (.chain topLayer (topKey b) l (digit 0))
   let values ← (List.finRange p.val).mapM fun i => sourcePendingX P (.top b l
     ⟨i.val, by have hi := i.isLt; have hp := p.isLt; change i.val < 3; change p.val < 4 at hp; omega⟩)
@@ -10154,7 +10068,7 @@ def sourceTopValueX (P : PublicParameter) (seeds : C.Term → HashOutput)
 
 /-- The verification suffix of an honestly generated symbolic top chain. -/
 def sourceTopRecoverX (P : PublicParameter) (b : XmssSecurity.TopIndex)
-    (l : ChainIndex) (p : Digit) (initial : DeferredDigest) : SourceMX C Digest := do
+    (l : ChainIndex) (p : WinternitzDigit) (initial : DeferredDigest) : SourceMX C Digest := do
   let values ← (List.finRange (3 - p.val)).mapM fun i => sourcePendingX P (.top b l
     ⟨p.val + i.val, by have hi := i.isLt; change p.val + i.val < 3; omega⟩)
   let last := (values.getLast?.map (·.low)).getD initial
@@ -10169,7 +10083,7 @@ prefix signing walk and its verification suffix retain their original hash calls
 def sourceBottomTreeX (P : PublicParameter) (seeds : C.Term → HashOutput)
     (top : TopTree) (b : XmssSecurity.TopIndex) : SourceMX C (Option DeferredBottomTree) := do
   let indices := (List.finRange (2 ^ layerHeight)).flatMap fun k =>
-    (List.finRange numChains).map fun l => (bottomKey b k, l)
+    (List.finRange chainCount).map fun l => (bottomKey b k, l)
   let rows ← indices.mapM fun el => sourceBottomRowX P seeds el.1 el.2
   let commitments ← (List.finRange (2 ^ layerHeight)).mapM fun k =>
     sourceCommitmentX P seeds (bottomKey b k)
@@ -10178,22 +10092,22 @@ def sourceBottomTreeX (P : PublicParameter) (seeds : C.Term → HashOutput)
   let commitment := fun (e : KeyIndex) => commitments.getD (e.val % 2 ^ layerHeight) 0
   let root ← sourceHashProgramX P seeds
     (merkleNode P bottomLayer (fun e l => (cpk e l).2.2) layerHeight b.val)
-  let message := bytesLE 16 root
+  let message := littleEndianBytes 16 root
   let baseAnswer ← sourcePendingX P (.base topLayer (topKey b) message)
   let base := match baseAnswer.low with | .known value => value | .secret _ => 0
   let some (randomness, encoding) ← sourceHashProgramX P seeds
     (grind P topLayer (topKey b) message base randomizerAttemptLimit 0) | pure none
-  let values ← Concrete.sequenceFin fun l => sourceTopValueX P seeds b l (encoding l)
+  let values ← OverPermutation.sequenceFin fun l => sourceTopValueX P seeds b l (encoding l)
   let path ← sourceHashProgramX P seeds (merklePath P topLayer top.chainEnd (topKey b))
-  let digest ← sourceHashProgramX P seeds (Concrete.messageDigest P topLayer (topKey b) message randomness)
+  let digest ← sourceHashProgramX P seeds (Verification.messageDigestWithHash P topLayer (topKey b) message randomness)
   let some checked := Codeword.decode digest | pure none
   if checked ≠ encoding then
     modify fun (st : SourceState C) => { st with consistent := false }
     pure none
   else
-    let ends ← Concrete.sequenceFin fun l => sourceTopRecoverX P b l (encoding l) (values l)
-    let leaf ← sourceHashProgramX P seeds (Concrete.leafHash P topLayer (topKey b) ends)
-    let topRoot ← sourceHashProgramX P seeds (Concrete.treeFold P topLayer (topKey b) path layerHeight leaf)
+    let ends ← OverPermutation.sequenceFin fun l => sourceTopRecoverX P b l (encoding l) (values l)
+    let leaf ← sourceHashProgramX P seeds (Verification.leafHashWithHash P topLayer (topKey b) ends)
+    let topRoot ← sourceHashProgramX P seeds (Verification.treeFoldWithHash P topLayer (topKey b) path layerHeight leaf)
     if topRoot ≠ top.root then pure none else
       pure (some ⟨cpk, commitment, root, ⟨randomness, encoding, values, path⟩⟩)
 
@@ -10210,7 +10124,7 @@ def sourceBottomOnceX (P : PublicParameter) (seeds : C.Term → HashOutput)
 /-- Q reveals only the canonical suffix and programs its already-masked PRF
 points. Its caller supplies the position chosen by the successful codeword check. -/
 def sourceReleaseBottomSuffixX (P : PublicParameter) (_seeds : C.Term → HashOutput)
-    (e : KeyIndex) (l : ChainIndex) (start : Digit) : SourceMX C Unit := do
+    (e : KeyIndex) (l : ChainIndex) (start : WinternitzDigit) : SourceMX C Unit := do
   let keys := (List.finRange 3).filter fun p => start.val ≤ p.val
   let _ ← keys.mapM fun p => do
     let value ← sourceRevealX (.bottomChain e l p)
@@ -10230,7 +10144,7 @@ def sourceReturnTreeX (P : PublicParameter) (_seeds : C.Term → HashOutput)
   modify fun (st : SourceState C) => { st with consistent := st.consistent && ok }
   let pending := (← get).allocated.filter fun p => p.key = .opening topLayer (topKey b)
   let _ ← pending.mapM (sourcePlantX P)
-  let values ← Concrete.sequenceFin fun l => do
+  let values ← OverPermutation.sequenceFin fun l => do
     let start := tree.topSignature.encoding l
     let keys := (List.finRange 3).filter fun p => start.val ≤ p.val
     let _ ← keys.mapM fun p => sourceRevealX (.topChain b l p)
@@ -10327,7 +10241,7 @@ def sourceHonestSignatureX (prims : Primitives) (x : Keys3 C) (top : TopTree)
   let opening ← sourceRoProgramX prims x.1 x.2.1 (prfValue x.2.1 (.randomizer bottomLayer e))
   let some (randomness, encoding) ← sourceRoProgramX prims x.1 x.2.1
     (signCodeword x.1 (tree.commitment e) e message opening) | pure none
-  let values ← Concrete.sequenceFin fun l =>
+  let values ← OverPermutation.sequenceFin fun l =>
     if (encoding l).val = 3 then pure (tree.cpk e l).2.2 else do
       sourceReleaseBottomSuffixX x.1 x.2.1 e l (encoding l)
       let value ← sourceRoProgramX prims x.1 x.2.1 (prfValue x.2.1 (.chain bottomLayer e l (encoding l)))
@@ -10335,7 +10249,7 @@ def sourceHonestSignatureX (prims : Primitives) (x : Keys3 C) (top : TopTree)
         (if (encoding l).val = 1 then (tree.cpk e l).1 else (tree.cpk e l).2.1) ^^^ value)
   let path ← sourceHashProgramX x.1 x.2.1
     (merklePath x.1 bottomLayer (fun key l => (tree.cpk key l).2.2) e)
-  let topValues ← Concrete.sequenceFin fun l => sourceRevealDigestX (tree.topSignature.chainValue l)
+  let topValues ← OverPermutation.sequenceFin fun l => sourceRevealDigestX (tree.topSignature.chainValue l)
   let topPart : LayerSignature := ⟨tree.topSignature.randomness, topValues, tree.topSignature.path⟩
   pure (some ⟨e, fun lay => if lay = bottomLayer then ⟨randomness, values, path⟩ else topPart⟩)
 
@@ -10351,7 +10265,7 @@ def sourceGameX (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) :
     let value ← sourceHashX x.1 x.2.1 (.hash input)
     modify fun (s : SourceState C) => { s with candidates := s.candidates ++ SigningGuessLinkProof.callCandidates x.1 st.signing st.exposed input }
     pure value
-  let verified ← simulateQ verifyImpl (Concrete.verify ⟨top.root, x.1⟩ forgery.message forgery.signature)
+  let verified ← simulateQ verifyImpl (Verification.verifyWithHash ⟨top.root, x.1⟩ forgery.message forgery.signature)
   let fresh ← if (signersAt st.signing forgery.signature.leafIndex forgery.message).card < C.t then
     pure true else do
       let honest ← sourceHonestSignatureX prims x top forgery.signature.leafIndex forgery.message
@@ -10391,8 +10305,8 @@ def mapX (seeds : C.Term → HashOutput) {α : Type} (p : SourceMX C α) : Sourc
 @[simp] theorem mapX_lift (seeds : C.Term → HashOutput) {α : Type} (p : OracleComp (SpecX C) α) :
     mapX seeds (liftM p) = liftM (simulateQ (expand seeds) p) := by
   funext st
-  change simulateQ (expand seeds) ((fun a => (a, st)) <$> p) = _
-  rw [simulateQ_map]
+  change simulateQ (expand seeds) (p >>= fun a => pure (a, st)) = _
+  simp only [simulateQ_bind, simulateQ_pure]
   rfl
 
 @[simp] theorem expand_deferred (seeds : C.Term → HashOutput) (q : DeferredQuery C) :
@@ -10432,10 +10346,10 @@ def mapX (seeds : C.Term → HashOutput) {α : Type} (p : SourceMX C α) : Sourc
 
 @[simp] theorem mapX_sequenceFin (seeds : C.Term → HashOutput) {α : Type} {n : ℕ}
     (f : Fin n → SourceMX C α) :
-    mapX seeds (Concrete.sequenceFin f) = Concrete.sequenceFin (fun a => mapX seeds (f a)) := by
+    mapX seeds (OverPermutation.sequenceFin f) = OverPermutation.sequenceFin (fun a => mapX seeds (f a)) := by
   induction n with
-  | zero => simp [Concrete.sequenceFin]
-  | succ n ih => simp [Concrete.sequenceFin, ih]
+  | zero => simp [OverPermutation.sequenceFin]
+  | succ n ih => simp [OverPermutation.sequenceFin, ih]
 
 theorem mapX_simulateQ (seeds : C.Term → HashOutput) {ι α : Type} {spec : OracleSpec ι}
     (implX : QueryImpl spec (SourceMX C)) (impl : QueryImpl spec (SourceM C))
@@ -10535,12 +10449,12 @@ theorem mapX_signRound2With (seeds : C.Term → HashOutput)
   mapX_simulateQ seeds _ _ (mapX_sourceBackend P seeds) _
 
 @[simp] theorem mapX_sourceTopValue (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (b : XmssSecurity.TopIndex) (l : ChainIndex) (p : Digit) :
+    (b : XmssSecurity.TopIndex) (l : ChainIndex) (p : WinternitzDigit) :
     mapX seeds (sourceTopValueX P seeds b l p) = sourceTopValue P seeds b l p := by
   simp [sourceTopValueX, sourceTopValue]
 
 @[simp] theorem mapX_sourceTopRecover (seeds : C.Term → HashOutput) (P : PublicParameter)
-    (b : XmssSecurity.TopIndex) (l : ChainIndex) (p : Digit) (initial : DeferredDigest) :
+    (b : XmssSecurity.TopIndex) (l : ChainIndex) (p : WinternitzDigit) (initial : DeferredDigest) :
     mapX seeds (sourceTopRecoverX P b l p initial) = sourceTopRecover P b l p initial := by
   simp only [sourceTopRecoverX, sourceTopRecover, mapX_bind, mapX_mapM, mapX_sourcePending]
   congr 1
@@ -10584,9 +10498,10 @@ set_option maxHeartbeats 1000000 in
   cases st.trees b <;> simp
 
 @[simp] theorem mapX_sourceReleaseBottomSuffix (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (e : KeyIndex) (l : ChainIndex) (start : Digit) :
+    (e : KeyIndex) (l : ChainIndex) (start : WinternitzDigit) :
     mapX seeds (sourceReleaseBottomSuffixX P seeds e l start) = sourceReleaseBottomSuffix P seeds e l start := by
   simp [sourceReleaseBottomSuffixX, sourceReleaseBottomSuffix]
+  rfl
 
 @[simp] theorem mapX_sourceReturnTree (P : PublicParameter) (seeds : C.Term → HashOutput)
     (b : XmssSecurity.TopIndex) (tree : DeferredBottomTree) :

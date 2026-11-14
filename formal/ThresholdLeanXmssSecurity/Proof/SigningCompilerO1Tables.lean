@@ -9,7 +9,7 @@ run that samples the noise table and the free slot table in advance. The proof f
 `SigningCompilerShareTables.eagerRunTag_eq_tables`.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Tables
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -100,35 +100,39 @@ theorem eagerRunTagTO1_raw (prims : Primitives) (A : TsigAdversary C) (x : Keys3
 port of the private `SigningCompilerShareTables.uniform_pair`. -/
 private theorem uniform_pair {α β γ : Type} [Fintype α] [Fintype β]
     [SampleableType α] [SampleableType β] (next : α → β → ProbComp γ) :
-    𝒟[do let a ← $ᵗ α; let b ← $ᵗ β; next a b] =
-      𝒟[($ᵗ (α × β)) >>= fun z => next z.1 z.2] := by
-  have h := congrArg (fun d => d >>= fun z => 𝒟[next z.1 z.2])
-    (XmssSecurity.evalDist_independent_uniform_pair (α := α) (β := β))
-  simpa only [← evalDist_bind, bind_assoc, pure_bind] using h
+    (do let a ← $ᵗ α; let b ← $ᵗ β; next a b) =ᵈ
+      (($ᵗ (α × β)) >>= fun z => next z.1 z.2) := by
+  have h := (XmssSecurity.evalDist_independent_uniform_pair (α := α) (β := β)).bind_left
+    (fun z => next z.1 z.2)
+  simpa only [bind_assoc, pure_bind] using h
 
 /-- For a fixed share table, independent noise and free slot tables keep the law of the run. -/
 theorem eagerRunCO1_eq_tables (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
     (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
     (τ : CPoint → Digest) (g : C.Term × CPoint → HashOutput) :
-    𝒟[eagerRunCO1 prims A x q s pads τ g] =
-      𝒟[do let noise ← $ᵗ (ChainNoiseIndex → HashOutput)
+    eagerRunCO1 prims A x q s pads τ g =ᵈ
+      (do
+           let noise ← $ᵗ (ChainNoiseIndex → HashOutput)
            let rest ← $ᵗ (RestSlot C → HashOutput)
-           eagerRunTagTO1 prims A x q s pads τ g noise rest] := by
+           eagerRunTagTO1 prims A x q s pads τ g noise rest) := by
   have hi : Function.Injective (TprfSecurityProof.slotInput x.2.1 x.2.2) := by
     simp only [TprfSecurityProof.KeyCollision, not_or, not_not] at hkeys
     exact TprfSecurityProof.slotInput_injective hkeys.1 hkeys.2
   simp only [eagerRunTagTO1_raw]
-  rw [eagerRunCO1_raw prims A x hi, privateRo_eq_table]
+  rw [eagerRunCO1_raw prims A x hi]
+  refine (privateRo_eq_table _ _).trans ?_
   simp only [tableExtending_empty]
   let e := Equiv.sumArrowEquivProdArrow ChainNoiseIndex (RestSlot C) HashOutput
-  have hu := evalDist_map_bijective_uniform_cross (α := TableIndex C → HashOutput) e e.bijective
-  have hm := congrArg (fun d => d >>= fun z =>
-    𝒟[simulateQ (resolvePrivateTable (e.symm z)) (rawProgramO1 prims A x q s pads τ g)]) hu
-  simp only [← evalDist_bind, bind_map_left, Equiv.symm_apply_apply] at hm
-  rw [hm, uniform_pair (fun noise rest =>
-    simulateQ (resolvePrivateTable (Sum.elim noise rest)) (rawProgramO1 prims A x q s pads τ g))]
-  rfl
+  have hu := SampleableType.map_uniformSample_evalDistEq_of_bijective
+    (α := TableIndex C → HashOutput) e.bijective
+  have hm := hu.bind_left (fun z =>
+    simulateQ (resolvePrivateTable (e.symm z)) (rawProgramO1 prims A x q s pads τ g))
+  simp only [bind_map_left, Equiv.symm_apply_apply] at hm
+  refine hm.trans ?_
+  refine EvalDistEq.trans ?_ (uniform_pair (fun noise rest =>
+    simulateQ (resolvePrivateTable (Sum.elim noise rest)) (rawProgramO1 prims A x q s pads τ g))).symm
+  exact EvalDistEq.of_eq rfl
 
 section Share
 variable (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest)
@@ -137,16 +141,16 @@ variable (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) (q : ℕ) (s :
 /-- The table run samples the noise table and the free slots. -/
 theorem tableRunCO1_eq_tables (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (τ : CPoint → Digest) :
-    𝒟[tableRunCO1 prims A x q s pads τ] =
-      𝒟[do let u ← $ᵗ (C.Term × CPoint → HashOutput)
+    tableRunCO1 prims A x q s pads τ =ᵈ
+      (do
+           let u ← $ᵗ (C.Term × CPoint → HashOutput)
            let noise ← $ᵗ (ChainNoiseIndex → HashOutput)
            let rest ← $ᵗ (RestSlot C → HashOutput)
            eagerRunTagTO1 prims A x q s pads τ
              (SigningShareLazy.fiberTable C.terms τ (SigningShareLazy.init : FrozenStateC C) u)
-             noise rest] := by
+             noise rest) := by
   unfold tableRunCO1
-  apply evalDist_bind_congr
-  intro u _
+  refine EvalDistEq.bind_right _ fun u => ?_
   exact eagerRunCO1_eq_tables prims A x hkeys q s pads τ _
 
 end Share

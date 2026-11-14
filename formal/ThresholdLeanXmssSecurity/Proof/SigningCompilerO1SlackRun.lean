@@ -11,7 +11,7 @@ the bound maps. A release sweep of one key keeps the control fields of the base 
 recorded digits.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1SlackRun
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -25,7 +25,7 @@ set_option linter.constructorNameAsVariable false
 
 section Steps
 variable (P : PublicParameter) (seeds : C.Term → HashOutput) (q : ℕ) (s : HiddenKey → Digest)
-  (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset Digit)
+  (sig : TsigState C) (starts : KeyIndex → ChainIndex → Finset WinternitzDigit)
 
 /-- A step that keeps the signing state of the source keeps the link of the bound maps. -/
 theorem linked_of_signing {α : Type} (oa : SourceM C α)
@@ -92,11 +92,11 @@ theorem mapM {α β : Type} (items : List α) (oa : α → SourceMO1 C β)
 
 theorem sequenceFin {α : Type} (n : ℕ) (oa : Fin n → SourceMO1 C α)
     (h : ∀ i, SourcePreservesO1 P seeds q s I (oa i)) :
-    SourcePreservesO1 P seeds q s I (Concrete.sequenceFin oa) := by
+    SourcePreservesO1 P seeds q s I (OverPermutation.sequenceFin oa) := by
   induction n with
   | zero => exact SourcePreservesO1.pure _
   | succ n ih =>
-      simp only [Concrete.sequenceFin]
+      simp only [OverPermutation.sequenceFin]
       refine SourcePreservesO1.bind (h 0) _ fun head => ?_
       refine SourcePreservesO1.bind (ih (fun i => oa i.succ) fun i => h i.succ) _ fun tail => ?_
       exact SourcePreservesO1.pure _

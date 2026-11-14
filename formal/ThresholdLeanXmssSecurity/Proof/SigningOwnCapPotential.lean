@@ -17,7 +17,7 @@ of `SigningOwnLedger` as the count. `OwnInv` is the count invariant of leanVM wi
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -170,7 +170,7 @@ theorem own_count_le (prims : Primitives) (P : PublicParameter) (seeds : C.Term 
         (SigningGuessProof.cachedRandomizer seeds st.1.data.cache e) (compilerSigning st.1)
         (.hash input) e hcall
       cases cached : st.1.data.cache (.hash (randomizerInput P bottomLayer e
-          (SigningGuessProof.cachedRandomizer seeds st.1.data.cache e) (bytesLE 32 message))) with
+          (SigningGuessProof.cachedRandomizer seeds st.1.data.cache e) (littleEndianBytes 32 message))) with
       | none =>
         rw [SigningCompilerPotential.compiler_fresh_base_count prims P seeds st.1 e message hprf
           bound cached _ canonical r run]
@@ -223,11 +223,11 @@ theorem ownInv_step (prims : Primitives) (P : PublicParameter) (seeds : C.Term �
 /-- The counted run with a function of the state is the run of the backend. -/
 theorem tsum_countImpl (P : PublicParameter) (seeds : C.Term → HashOutput) (t : DeferredQuery C)
     (st : CompilerBackend C × ℕ) (F : CompilerBackend C × ℕ → ℝ≥0∞) :
-    ∑' r, Pr[= r | (countImpl (compilerImpl P seeds) deferredCounted t).run st] * F r.2 =
-      ∑' r, Pr[= r | (compilerImpl P seeds t).run st.1] *
+    ∑' r, Pr{let z ← (countImpl (compilerImpl P seeds) deferredCounted t).run st}[z = r] * F r.2 =
+      ∑' r, Pr{let z ← (compilerImpl P seeds t).run st.1}[z = r] *
         F (r.2, st.2 + if deferredCounted t then 1 else 0) := by
   simp only [countImpl, StateT.run_mk]
-  rw [tsum_probOutput_map_mul]
+  rw [OracleComp.tsum_prEvent_map_mul]
 
 /-- A tick of the count within the budget lowers the compensated sum. -/
 theorem viewSum_tick (P : PublicParameter) (B : ℕ)
@@ -262,7 +262,7 @@ that carries no candidate at an unrevealed key. It does not rise at another call
 theorem ownPotential_step (prims : Primitives) (x : Keys3 C) (B : ℕ) (hB : B < 2 ^ 127)
     (t : DeferredQuery C) (st : CompilerBackend C × ℕ) (stored : HiddenKey → Option Digest)
     (g : OwnGhost) (h : OwnInv x.1 x.2.1 (st, g)) :
-    ∑' r, Pr[= r | (countImpl (compilerImpl x.1 x.2.1) deferredCounted t).run st] *
+    ∑' r, Pr{let z ← (countImpl (compilerImpl x.1 x.2.1) deferredCounted t).run st}[z = r] *
         ownPotential x.1 B (r.2, ownAux x.1 x.2.1 t (st, stored) g) ≤
       ownPotential x.1 B (st, g) +
         if ownCharged x.1 x.2.1 t (st, stored) g ∧ g.ledger < B ∧
@@ -309,7 +309,7 @@ theorem ownPotential_step (prims : Primitives) (x : Keys3 C) (B : ℕ) (hB : B <
   have pointwise : (∀ r ∈ support ((compilerImpl x.1 x.2.1 t).run st.1), r.2.trace.2 = false →
       SigningCompilerPotential.viewSum x.1 B (compilerView r.2, g.ledger) ≤
         SigningCompilerPotential.viewSum x.1 B (compilerView st.1, g.ledger)) →
-      ∑' r, Pr[= r | (compilerImpl x.1 x.2.1 t).run st.1] *
+      ∑' r, Pr{let z ← (compilerImpl x.1 x.2.1 t).run st.1}[z = r] *
         ownPotential x.1 B ((r.2, st.2 + if deferredCounted t then 1 else 0), g') ≤
           ownPotential x.1 B (st, g) := by
     intro hp
@@ -321,21 +321,21 @@ theorem ownPotential_step (prims : Primitives) (x : Keys3 C) (B : ℕ) (hB : B <
       exact (ownPotential_le x.1 B (r.2, st.2 + if deferredCounted t then 1 else 0) g' g.ledger
         hstep.1 hstep.2).trans
         (mul_le_mul' (hp r hr nl) le_rfl)
-  have expect : ∑' r, Pr[= r | (compilerImpl x.1 x.2.1 t).run st.1] *
+  have expect : ∑' r, Pr{let z ← (compilerImpl x.1 x.2.1 t).run st.1}[z = r] *
         SigningCompilerPotential.viewSum x.1 B (compilerView r.2, g.ledger) ≤
         SigningCompilerPotential.viewSum x.1 B (compilerView st.1, g.ledger) →
-      ∑' r, Pr[= r | (compilerImpl x.1 x.2.1 t).run st.1] *
+      ∑' r, Pr{let z ← (compilerImpl x.1 x.2.1 t).run st.1}[z = r] *
         ownPotential x.1 B ((r.2, st.2 + if deferredCounted t then 1 else 0), g') ≤
           ownPotential x.1 B (st, g) := by
     intro he
     rw [pre]
-    calc _ ≤ ∑' r, Pr[= r | (compilerImpl x.1 x.2.1 t).run st.1] *
+    calc _ ≤ ∑' r, Pr{let z ← (compilerImpl x.1 x.2.1 t).run st.1}[z = r] *
           (SigningCompilerPotential.viewSum x.1 B (compilerView r.2, g.ledger) *
             ((2 ^ 128 : ℝ≥0∞) * 2 ^ 128)⁻¹) :=
           ENNReal.tsum_le_tsum fun r =>
             mul_le_mul_right (ownPotential_le x.1 B (r.2, st.2 + if deferredCounted t then 1 else 0)
               g' g.ledger hstep.1 hstep.2) _
-      _ = (∑' r, Pr[= r | (compilerImpl x.1 x.2.1 t).run st.1] *
+      _ = (∑' r, Pr{let z ← (compilerImpl x.1 x.2.1 t).run st.1}[z = r] *
           SigningCompilerPotential.viewSum x.1 B (compilerView r.2, g.ledger)) *
             ((2 ^ 128 : ℝ≥0∞) * 2 ^ 128)⁻¹ := by
         rw [← ENNReal.tsum_mul_right]
@@ -371,15 +371,16 @@ theorem ownPotential_step (prims : Primitives) (x : Keys3 C) (B : ℕ) (hB : B <
           (fun s => SigningCompilerPotential.viewSum x.1 B (compilerView s.1, s.2))).symm.le.trans
           (SigningCompilerPotential.compiler_message_sum_le prims ⟨0, x.1⟩ x.1 x.2.1 B hB input
             hmsg (st.1, g.ledger) inv room)
-        simp only [deferredCounted, if_true] at sum
+        simp only [deferredCounted] at sum
+        erw [if_pos trivial] at sum
         rw [pre]
-        calc _ ≤ ∑' r, Pr[= r | (compilerImpl x.1 x.2.1 (.hash (.hash input))).run st.1] *
+        calc _ ≤ ∑' r, Pr{let z ← (compilerImpl x.1 x.2.1 (.hash (.hash input))).run st.1}[z = r] *
               (SigningCompilerPotential.viewSum x.1 B (compilerView r.2, g.ledger + 1) *
                 ((2 ^ 128 : ℝ≥0∞) * 2 ^ 128)⁻¹) :=
               ENNReal.tsum_le_tsum fun r => mul_le_mul_right (ownPotential_le x.1 B
                 (r.2, st.2 + if deferredCounted (C := C) (.hash (.hash input)) then 1 else 0) g'
                 (g.ledger + 1) (by rw [hledger, if_pos hc]) (by omega)) _
-          _ = (∑' r, Pr[= r | (compilerImpl x.1 x.2.1 (.hash (.hash input))).run st.1] *
+          _ = (∑' r, Pr{let z ← (compilerImpl x.1 x.2.1 (.hash (.hash input))).run st.1}[z = r] *
               SigningCompilerPotential.viewSum x.1 B (compilerView r.2, g.ledger + 1)) *
                 ((2 ^ 128 : ℝ≥0∞) * 2 ^ 128)⁻¹ := by
             rw [← ENNReal.tsum_mul_right]
@@ -401,7 +402,7 @@ theorem ownPotential_step (prims : Primitives) (x : Keys3 C) (B : ℕ) (hB : B <
           | some p => exact absurd ⟨by rw [hd]; rfl, cached⟩ fresh
         rw [view]
         exact (viewSum_closed x.1 B _ _ _ input u
-          (by simp only [compilerView, SigningLane2BridgeProof.keptView, if_pos hmsg]; exact cached)
+          (by simp only [compilerView, SigningLane2BridgeProof.keptView, QueryCache.ofFn_apply]; erw [if_pos hmsg]; exact cached)
           hdec).le
     by_cases trigger : ∃ e, SigningGuessProof.RandomizerCached x.2.1 st.1.data.cache e ∧
         SigningFlatProof.BaseCall x.1 e (SigningGuessProof.cachedRandomizer x.2.1 st.1.data.cache e)
@@ -411,7 +412,7 @@ theorem ownPotential_step (prims : Primitives) (x : Keys3 C) (B : ℕ) (hB : B <
         (SigningGuessProof.cachedRandomizer x.2.1 st.1.data.cache e)
         (compilerSigning st.1) (.hash input) e base
       cases cached : st.1.data.cache (.hash (randomizerInput x.1 bottomLayer e
-          (SigningGuessProof.cachedRandomizer x.2.1 st.1.data.cache e) (bytesLE 32 m))) with
+          (SigningGuessProof.cachedRandomizer x.2.1 st.1.data.cache e) (littleEndianBytes 32 m))) with
       | none =>
         exact (expect (SigningCompilerPotential.fresh_base_sum_le prims ⟨0, x.1⟩ x.1 x.2.1 B hB
           (st.1, g.ledger) inv e m hprf bound cached (.hash input) canonical)).trans le_self_add
@@ -492,11 +493,11 @@ set_option maxRecDepth 100000 in
 dirty, with the ledger within `B`, has probability at most `B / 2^128`. -/
 theorem ownRun_cap (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) (Q B : ℕ)
     (hB : B < 2 ^ 127) :
-    Pr[fun r => (r.1.2.2.2 = true ∨ (compilerEvent x.1 Q r.1.2.1 ∧ r.2.dirty = false)) ∧
-        r.2.ledger ≤ B | ownRun prims A x Q] ≤ (B : ℝ≥0∞) / 2 ^ 128 := by
+    Pr{let r ← ownRun prims A x Q}[(r.1.2.2.2 = true ∨ (compilerEvent x.1 Q r.1.2.1 ∧ r.2.dirty = false)) ∧
+        r.2.ledger ≤ B] ≤ (B : ℝ≥0∞) / 2 ^ 128 := by
   have hcard : Fintype.card Digest = 2 ^ 128 := by
     unfold Digest digestBits
-    exact card_bitVec 128
+    exact Fintype.card_bitVec 128
   have live : (compilerInit (C := C)).trace.2 = false := by simp [compilerInit]
   have hinit : OwnInv x.1 x.2.1 ((compilerInit, 0), ⟨0, false⟩) :=
     ⟨CompilerReachable.initial, Or.inr (Or.inr (SigningCompilerPotential.reachable_ghostInv prims
@@ -525,7 +526,7 @@ theorem ownRun_cap (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) (Q B
         (simulateQ (ownHybrid x.1 x.2.1 Q s) (sourceProgramO1 prims A x)).run ownInit) := by
     rw [map_bind]
     rfl
-  rw [hrun, probEvent_map]
+  rw [hrun, prEvent_map]
   refine main.trans (le_of_eq ?_)
   rw [hcard, div_eq_mul_inv]
   norm_num

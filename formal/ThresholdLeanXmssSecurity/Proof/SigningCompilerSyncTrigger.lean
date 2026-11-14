@@ -6,7 +6,7 @@ The explicit no-hit branch aligns the cached grind and trace update. Chain
 preloads either appear in the visible cache or expose an unrevealed candidate.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerSyncTrigger
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -46,7 +46,7 @@ theorem baseCall_hashAt_iff (P : PublicParameter) (e : KeyIndex) (rho : Digest)
     (hcall : SigningFlatProof.HashCallAt input call) :
     SigningFlatProof.BaseCall P e rho signing call ↔
       ∃ message, signing.bound e = some message ∧
-        input = randomizerInput P bottomLayer e rho (bytesLE 32 message) := by
+        input = randomizerInput P bottomLayer e rho (littleEndianBytes 32 message) := by
   rw [baseCall_hash_route P e rho signing input call hcall]
   exact baseCall_hash_iff P e rho signing input
 
@@ -122,10 +122,11 @@ theorem realCache_some_chain (x : Keys3 C) (s : HiddenKey → Digest)
     (pads : Point → Digest) (noise : ChainNoiseIndex → HashOutput)
     (query : Query C) (value : HashOutput) (h : realCache x s pads noise query = some value) :
     ∃ edge, query = .hash ((chainPending edge).input x.1 (s (chainPending edge).key)) := by
-  cases query <;> simp only [realCache, embedHashCache, reduceCtorEq] at h
+  cases query <;> simp only [realCache, embedHashCache, QueryCache.ofFn_apply, reduceCtorEq] at h
   case hash input =>
     change chainTableCache x.1 (installed s pads noise).2 (noiseHigh noise) input = some value at h
     unfold chainTableCache at h
+    rw [QueryCache.ofFn_apply] at h
     split at h
     · rename_i he
       obtain ⟨edge, hedge⟩ := he
@@ -213,7 +214,7 @@ theorem cachedExtra_at (P : PublicParameter) (seeds : C.Term → HashOutput)
   have he : m = message := Option.some.inj (hb.symm.trans hm)
   subst m
   have hc : after.1.1.1 (.hash (randomizerInput P bottomLayer e
-      (SigningGuessProof.cachedRandomizer seeds before.1.1.1 e) (bytesLE 32 message))) =
+      (SigningGuessProof.cachedRandomizer seeds before.1.1.1 e) (littleEndianBytes 32 message))) =
       after.1.1.1 (.hash input) := by rw [hi]
   rw [SigningR1FixedProof.cachedExtra, if_pos ⟨e, hprf, hcall⟩,
     SigningFlatEagerProof.grindExtra, dif_pos base, chosen]
@@ -265,12 +266,12 @@ theorem grind_eval_sync (P : PublicParameter) (actual cache : HashCache C)
   induction attempts generalizing trial with
   | zero => simp only [grind, evalTh, simulateQ_pure]
   | succ attempts ih =>
-    simp only [grind, Concrete.messageDigest, Concrete.tweakableHash, Concrete.oracleHash,
+    simp only [grind, Verification.messageDigestWithHash, Verification.tweakableHashWithHash, Verification.thWithHash, Verification.oracleHashWithHash,
       HasQuery.instOfMonadLift_query, evalTh, simulateQ_bind, simulateQ_query,
-      OracleQuery.input_query, OracleQuery.cont_query, id_map, pure_bind]
+      OracleQuery.input_query, OracleQuery.cont_query, id_map, pure_bind, thInput_hashDomainFields]
     have hv := h _ (SigningLane2BridgeProof.isMsg_trialInput P lay e message base trial)
     change actual (.hash (tweakableHashInput P (.message lay e)
-      (message ++ bytesLE 16 (base + BitVec.ofNat digestBits trial)))) = _ at hv
+      (message ++ littleEndianBytes 16 (base + BitVec.ofNat digestBits trial)))) = _ at hv
     rw [hv]
     simp only [simulateQ_pure, pure_bind]
     cases Codeword.decode (truncateHash
@@ -282,13 +283,13 @@ theorem grind_eval_sync (P : PublicParameter) (actual cache : HashCache C)
 theorem cachedFound_sync (P : PublicParameter) (seeds : C.Term → HashOutput)
     (s : HiddenKey → Digest) (data : DeferredState C) (actual : HashCache C)
     (h : CacheRelation P seeds s data actual) (e : KeyIndex) (rho : Digest) (message : Message)
-    (hb : actual (.hash (randomizerInput P bottomLayer e rho (bytesLE 32 message))) =
-      data.cache (.hash (randomizerInput P bottomLayer e rho (bytesLE 32 message)))) :
+    (hb : actual (.hash (randomizerInput P bottomLayer e rho (littleEndianBytes 32 message))) =
+      data.cache (.hash (randomizerInput P bottomLayer e rho (littleEndianBytes 32 message)))) :
     SigningLane2FlatProof.cachedFound actual P e rho message =
       SigningLane2FlatProof.cachedFound data.cache P e rho message := by
   unfold SigningLane2FlatProof.cachedFound
   rw [hb]
-  exact grind_eval_sync P actual data.cache h.message bottomLayer e (bytesLE 32 message) _ _ _
+  exact grind_eval_sync P actual data.cache h.message bottomLayer e (littleEndianBytes 32 message) _ _ _
 
 
 /-- At a triggering hash, the freshness test reads the just-queried input. -/
@@ -319,6 +320,7 @@ theorem traceStepAt_at (P : PublicParameter) (seeds : C.Term → HashOutput)
   rw [SigningLaneUnionProof.traceStepAt, dif_pos ht, he, hm]
   simp only []
   rw [hi]
+  congr
 
 /-- The synchronized trace includes its stale bit and both message-cache views. -/
 theorem traceStepAt_sync (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -385,8 +387,8 @@ theorem capHit_stuck (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest)
     apply dif_neg
     rintro ⟨z, hz⟩
     exact not_isSlot_hash x input ⟨z.val, hz⟩
-  simp only [shareBackendTagT, StateT.run, backendRaw, hrout, ordinaryFullRaw,
-    ordinaryRaw, hrest, simulateQ_bind, simulateQ_pure,
+  unfold shareBackendTagT backendRaw ordinaryFullRaw ordinaryRaw at hr
+  simp only [StateT.run, hrout, hrest, simulateQ_bind, simulateQ_pure,
     resolvePrivateTable_lift, mem_support_bind_iff, mem_support_pure_iff] at hr
   obtain ⟨a, ha, rfl⟩ := hr
   refine ⟨?_, Or.inl hbad⟩

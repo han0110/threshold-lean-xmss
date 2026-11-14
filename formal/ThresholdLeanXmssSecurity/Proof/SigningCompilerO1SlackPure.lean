@@ -12,7 +12,7 @@ No bottom chain cell and no pad changes in these steps, so `BottomDone.frame` ca
 `bottom_chain` and `crossed_done`.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1SlackPure
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -25,7 +25,7 @@ attribute [local instance] Classical.propDecidable
 set_option linter.constructorNameAsVariable false
 
 variable {seeds : C.Term → HashOutput} {s : HiddenKey → Digest} {sig : TsigState C}
-  {starts : KeyIndex → ChainIndex → Finset Digit}
+  {starts : KeyIndex → ChainIndex → Finset WinternitzDigit}
 
 /-- Each bottom randomizer has its exact target or a missing concrete term. -/
 theorem ReleaseSlackO1.bottom_opening_admissible {src : SourceStateO1 C} {data : DeferredState C}

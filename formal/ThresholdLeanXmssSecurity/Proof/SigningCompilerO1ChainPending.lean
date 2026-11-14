@@ -14,7 +14,7 @@ the pending call of the compiler at that edge.
   the stored answer, or it stores the answer of the fixed noise (`backendT_chainPending`).
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending
@@ -188,8 +188,8 @@ theorem backendT_chainPending (edge : ChainNoiseIndex) (st : CompState C)
               (some (pendingOutput (chainPending edge) (noise edge))) } },
             st.1.1.1.2 + 1), st.1.1.2), st.1.2), st.2)) := by
   rcases edge with ⟨l, e | b, p⟩ <;>
-    simp only [shareBackendTagT, backendRaw, ordinaryFullRaw, ordinaryRaw, StateT.run,
-      chainPending, freshPending] <;>
+    (unfold compBackend shareBackendTagT backendRaw ordinaryFullRaw ordinaryRaw
+     simp only [StateT.run, chainPending, freshPending]) <;>
     simp only [merged, withCache] <;>
     (cases st.1.1.1.1.data.pending _) <;>
     simp [incrementCompilerCount, splitRest, withCache, erase_merge_of_restFree _ _ _ hf,

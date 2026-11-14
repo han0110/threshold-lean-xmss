@@ -154,15 +154,12 @@ The statement layer is `ThresholdLeanXmss/`. The proofs are in `ThresholdLeanXms
 
 * `Scheme`, `Ideal`, `Reductions` and the files of `Statement/` hold the protocol and the world, the
   functionalities and the games, the simulators and the reductions, and the claims.
-* `Lemmas`, `Execution`, `Coupling` and `ProgramQuiet` hold the paper lemmas named after their
-  source, the execution model, the round-by-round coupling and the computations with no programming
-  query.
+* `Lemmas`, `Execution` and `Coupling` hold the paper lemmas named after their source, the
+  execution model and the round-by-round coupling.
 * `Keygen*` holds keygen completeness and the keygen simulation.
 * `Gadgets`, `Check*` and `Main*` hold the gadgets, the check and the batch.
-* `Tree`, `TreeSecurity`, `TreeKey*` and `Dealer` hold the ceremony completeness, the key hop, the
-  dealer and the tree success.
-* `TreeSim*`, `TreeTwin*`, `TreeLockstep*`, `TreeCheck*`, `TreeSalt*`, `TreeRawSalt*`,
-  `TreeHashBudget*`, `TreeEvents*` and `TreeAssembly` hold the simulation hop of a ceremony.
+* `Tree` and `Dealer` hold the ceremony completeness, the dealer and the tree success. `TreeSim` and
+  `TreeCheckKernelCoupling` hold lemmas on the runs of a ceremony that the signing proof uses.
 * `Tprf`, `Signing`, `SigningSecurity`, `SigningCore`, `SeedHit` and `HiddenCore` hold the
   threshold PRF, signing correctness, the signing spine and the hidden keys.
 * `SigningDescent`, `SigningCache`, `SigningSelection` and `SigningOpening` hold the leanVM descent
@@ -174,17 +171,15 @@ The statement layer is `ThresholdLeanXmss/`. The proofs are in `ThresholdLeanXms
   uncharged lane and its shared cap.
 * `SigningOwn*`, `SeedHitOwn`, `SigningLedgerExpect` and `SigningStronglyUnforgeable` hold the signing
   claim with the budget of the forger alone.
-* `Lifetime*` holds the forms of the simulation hop that start from a given cache. The salt route of
-  the simulation hop uses them.
+* `VendoredExcerpt` holds five lemmas of leanVM `1acdff19` that leanVM removed later.
 
-This file does not import the modules of the key hop and of the simulation hop of a ceremony. They
-are `TreeSecurity`, `TreeHops`, the `TreeKey*` files and the files that only these use.
+The library does not hold the modules of the key hop and of the simulation hop of a ceremony.
 
 `ThresholdLeanXmssSecurity/Bridge/` holds four files that are not a part of the proof. They state in
 elementary terms what the definitions of VCVio and of leanVM that the statement layer reads are at
-the pinned revisions. The branch that moves the proof to Lean 4.35 proves the same statements for
-its revisions at the same paths, and `tools/bridge_compare.py` compares the two sides. This file
-does not import these files. -/
+the pinned revisions. Commit `fddaa63` holds the same statements at the same paths for the revisions
+before the move to Lean 4.35, and `tools/bridge_compare.py` compares the two sides. This file does
+not import these files. -/
 
 namespace ThresholdLeanXmssSecurity
 

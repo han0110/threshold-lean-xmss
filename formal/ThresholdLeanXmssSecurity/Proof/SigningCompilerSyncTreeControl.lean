@@ -5,7 +5,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerSyncTreeRows
 Structural ports of SigningCompilerCoupling.SourceKeeps and its sourceControl
 lemmas to SourceMX; their oracle answers and control fields are unchanged.
 -/
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerSyncTreeControl
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -75,14 +75,14 @@ theorem SourceKeepsX.mapM {α β γ : Type} {field : SourceState C → γ}
 
 theorem SourceKeepsX.sequenceFin {α β : Type} {field : SourceState C → β} :
     ∀ n (oa : Fin n → SourceMX C α), (∀ i, SourceKeepsX field (oa i)) →
-      SourceKeepsX field (Concrete.sequenceFin oa) := by
+      SourceKeepsX field (OverPermutation.sequenceFin oa) := by
   intro n
   induction n with
   | zero => intro oa _; exact SourceKeepsX.pure Fin.elim0
   | succ n ih =>
       intro oa h
       change SourceKeepsX field (oa 0 >>= fun head =>
-        Concrete.sequenceFin (fun i : Fin n => oa i.succ) >>= fun tail => Pure.pure (Fin.cases head tail : Fin (n + 1) → α))
+        OverPermutation.sequenceFin (fun i : Fin n => oa i.succ) >>= fun tail => Pure.pure (Fin.cases head tail : Fin (n + 1) → α))
       exact (h 0).bind _ (fun head => (ih _ (fun i => h i.succ)).bind _
         (fun tail => SourceKeepsX.pure (Fin.cases head tail : Fin (n + 1) → α)))
 
@@ -240,7 +240,7 @@ theorem sourceControl_sourceCommitment (P : PublicParameter) (seeds : C.Term →
   exact (sourceControl_sourcePending P (.commitment e)).bind _ (fun _ => SourceKeepsX.pure _)
 
 theorem sourceControl_sourceTopValue (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (b : XmssSecurity.TopIndex) (l : ChainIndex) (pos : Digit) :
+    (b : XmssSecurity.TopIndex) (l : ChainIndex) (pos : WinternitzDigit) :
     SourceKeepsX sourceControl (sourceTopValueX P seeds b l pos) := by
   unfold sourceTopValueX
   refine (SourceKeepsX.mapM _ _ (fun T _ => sourceControl_sourceVirtual P seeds T _)).bind _ fun _ => ?_
@@ -248,7 +248,7 @@ theorem sourceControl_sourceTopValue (P : PublicParameter) (seeds : C.Term → H
     (fun _ => SourceKeepsX.pure _)
 
 theorem sourceControl_sourceTopRecover (P : PublicParameter) (b : XmssSecurity.TopIndex)
-    (l : ChainIndex) (pos : Digit) (initial : DeferredDigest) :
+    (l : ChainIndex) (pos : WinternitzDigit) (initial : DeferredDigest) :
     SourceKeepsX (sourceControl (C := C)) (sourceTopRecoverX P b l pos initial) := by
   unfold sourceTopRecoverX
   refine (SourceKeepsX.mapM _ _ (fun i _ => sourceControl_sourcePending P (.top b l _))).bind _
@@ -272,7 +272,7 @@ theorem sourceControl_sourceBottomTree (P : PublicParameter) (seeds : C.Term →
     fun commitments => ?_
   refine (SourceKeepsX.mapM _ _ (fun T _ => sourceControl_sourceVirtual P seeds T _)).bind _ fun _ => ?_
   refine (sourceControl_sourceHashProgram P seeds _).bind _ fun root => ?_
-  refine (sourceControl_sourcePending P (.base topLayer (topKey b) (bytesLE 16 root))).bind _ fun base => ?_
+  refine (sourceControl_sourcePending P (.base topLayer (topKey b) (littleEndianBytes 16 root))).bind _ fun base => ?_
   refine (sourceControl_sourceHashProgram P seeds _).bind _ fun found => ?_
   cases found with
   | none => exact SourceKeepsX.pure none
@@ -380,7 +380,7 @@ end ThresholdLeanXmssSecurity.SigningCompilerSyncTreeControl
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncTreeControl.SourceKeepsX.lift
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncTreeControl.SourceKeepsX.bind' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncTreeControl.SourceKeepsX.bind' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncTreeControl.SourceKeepsX.bind
 

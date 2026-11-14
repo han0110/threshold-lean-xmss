@@ -126,8 +126,8 @@ theorem expectedFinal_flag_le (q : ℕ) (s : K → T) (f : σ × ℕ → ℝ≥0
     intro st stored b
     simp only [XmssSecurity.expectedFinal] at ih ⊢
     rcases t with t | key
-    · rw [cappedHybrid_inl_run, cappedHybrid_inl_run, tsum_probOutput_bind_mul,
-        tsum_probOutput_bind_mul]
+    · rw [cappedHybrid_inl_run, cappedHybrid_inl_run, OracleComp.tsum_prEvent_bind_mul,
+        OracleComp.tsum_prEvent_bind_mul]
       simp only [Bool.true_or]
       generalize (b || decide (cappedCall p q t st ∧ inputSide t ∧
         stored (keyOf t) = none ∧ s (keyOf t) = point t)) = b'
@@ -135,7 +135,7 @@ theorem expectedFinal_flag_le (q : ℕ) (s : K → T) (f : σ × ℕ → ℝ≥0
       refine (ENNReal.tsum_le_tsum fun x => mul_le_mul_right (hle x) _).trans ?_
       simp only [mul_add, mul_one, ENNReal.tsum_add]
       gcongr
-      exact tsum_probOutput_le_one
+      exact (OracleComp.tsum_prEvent_le_one _)
     · rw [revealImpl_inr_run, revealImpl_inr_run]
       exact ih _ _ _ _
 
@@ -145,11 +145,11 @@ at most `1 / |T|`. -/
 theorem expectedFinal_capped_le_aux (q : ℕ) (Inv : σ × ℕ → Prop) (f : σ × ℕ → ℝ≥0∞)
     (hinv : ∀ t st, Inv st → ∀ x ∈ support ((countImpl impl p t).run st), Inv x.2)
     (hstep : ∀ t st, Inv st →
-      ∑' x, Pr[= x | (countImpl impl p t).run st] * f x.2 ≤
+      ∑' x, Pr{let z ← (countImpl impl p t).run st}[z = x] * f x.2 ≤
         f st + if cappedCall p q t st ∧ ¬inputSide t then (Fintype.card T : ℝ≥0∞)⁻¹ else 0)
     (oa : OracleComp (spec + RevealSpec K T) β) :
     ∀ (st : σ × ℕ) (stored : K → Option T), Inv st →
-      ∑' s, Pr[= s | $ᵗ (K → T)] * XmssSecurity.expectedFinal
+      ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * XmssSecurity.expectedFinal
           (cappedHybrid impl inputSide p keyOf point q s) (cappedPotential f) oa (st, stored, false) ≤
         f st + (q - st.2 : ℕ) * (Fintype.card T : ℝ≥0∞)⁻¹ := by
   induction oa using OracleComp.inductionOn with
@@ -158,7 +158,7 @@ theorem expectedFinal_capped_le_aux (q : ℕ) (Inv : σ × ℕ → Prop) (f : σ
     simp only [XmssSecurity.expectedFinal_pure, cappedPotential, Bool.false_eq_true, if_false,
       zero_add]
     rw [ENNReal.tsum_mul_right]
-    exact (mul_le_of_le_one_left' tsum_probOutput_le_one).trans le_self_add
+    exact (mul_le_of_le_one_left' (OracleComp.tsum_prEvent_le_one _)).trans le_self_add
   | query_bind t k ih =>
     intro st stored hst
     set ε : ℝ≥0∞ := (Fintype.card T : ℝ≥0∞)⁻¹
@@ -171,10 +171,10 @@ theorem expectedFinal_capped_le_aux (q : ℕ) (Inv : σ × ℕ → Prop) (f : σ
         XmssSecurity.expectedFinal (I s) (cappedPotential f) (k x.1) (x.2, stored, b) with hGdef
       have hrun : ∀ s, XmssSecurity.expectedFinal (I s) (cappedPotential f)
           (liftM ((spec + RevealSpec K T).query (.inl t)) >>= k) (st, stored, false) =
-          ∑' x, Pr[= x | mx] * G s x (decide (P s)) := by
+          ∑' x, Pr{let z ← mx}[z = x] * G s x (decide (P s)) := by
         intro s
         simp only [XmssSecurity.expectedFinal, I, hGdef]
-        rw [cappedHybrid_inl_run, tsum_probOutput_bind_mul]
+        rw [cappedHybrid_inl_run, OracleComp.tsum_prEvent_bind_mul]
         simp only [Bool.false_or, hPdef]
         rfl
       have hflag : ∀ s x, G s x (decide (P s)) ≤ (if P s then 1 else 0) + G s x false := by
@@ -188,48 +188,48 @@ theorem expectedFinal_capped_le_aux (q : ℕ) (Inv : σ × ℕ → Prop) (f : σ
         simp only [mx, countImpl, StateT.run_mk, support_map, Set.mem_image] at hx
         obtain ⟨y, -, rfl⟩ := hx
         rfl
-      have hhit : ∑' s, Pr[= s | $ᵗ (K → T)] * (if P s then 1 else 0) ≤
+      have hhit : ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * (if P s then 1 else 0) ≤
           if cappedCall p q t st ∧ inputSide t then ε else 0 := by
         by_cases hc : cappedCall p q t st ∧ inputSide t
         · rw [if_pos hc]
           simp only [mul_ite, mul_one, mul_zero]
-          rw [← probEvent_eq_tsum_ite]
-          exact (probEvent_mono fun s _ h => h.2.2.2).trans
+          rw [← OracleComp.prEvent_eq_tsum_ite]
+          exact (prEvent_mono_of_support _ _ _ fun s _ h => h.2.2.2).trans
             (le_of_eq (probEvent_uniform_key_eq (keyOf t) (point t)))
         · rw [if_neg hc]
           have : ∀ s, ¬P s := fun s h => hc ⟨h.1, h.2.1⟩
           simp [this]
-      have hcont : ∑' x, Pr[= x | mx] * ∑' s, Pr[= s | $ᵗ (K → T)] * G s x false ≤
+      have hcont : ∑' x, Pr{let z ← mx}[z = x] * ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * G s x false ≤
           f st + (if cappedCall p q t st ∧ ¬inputSide t then ε else 0) +
             (q - (st.2 + if p t then 1 else 0) : ℕ) * ε := by
-        calc _ ≤ ∑' x, Pr[= x | mx] * (f x.2 + (q - (st.2 + if p t then 1 else 0) : ℕ) * ε) := by
+        calc _ ≤ ∑' x, Pr{let z ← mx}[z = x] * (f x.2 + (q - (st.2 + if p t then 1 else 0) : ℕ) * ε) := by
               refine ENNReal.tsum_le_tsum fun x => ?_
               by_cases hx : x ∈ support mx
               · gcongr
                 have := ih x.1 x.2 stored (hinv t st hst x hx)
                 rw [hsupp x hx] at this
                 exact this
-              · simp [probOutput_eq_zero_of_not_mem_support hx]
-          _ = ∑' x, Pr[= x | mx] * f x.2 +
-              ∑' x, Pr[= x | mx] * ((q - (st.2 + if p t then 1 else 0) : ℕ) * ε) := by
+              · simp [prEvent_eq_zero_of_not_mem_support _ hx]
+          _ = ∑' x, Pr{let z ← mx}[z = x] * f x.2 +
+              ∑' x, Pr{let z ← mx}[z = x] * ((q - (st.2 + if p t then 1 else 0) : ℕ) * ε) := by
               simp only [mul_add, ENNReal.tsum_add]
           _ ≤ _ := by
               refine add_le_add (hstep t st hst) ?_
               rw [ENNReal.tsum_mul_right]
-              exact mul_le_of_le_one_left' tsum_probOutput_le_one
-      calc _ = ∑' s, Pr[= s | $ᵗ (K → T)] * ∑' x, Pr[= x | mx] * G s x (decide (P s)) := by
+              exact mul_le_of_le_one_left' (OracleComp.tsum_prEvent_le_one _)
+      calc _ = ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * ∑' x, Pr{let z ← mx}[z = x] * G s x (decide (P s)) := by
             exact tsum_congr fun s => congrArg _ (hrun s)
-        _ ≤ ∑' s, Pr[= s | $ᵗ (K → T)] * ∑' x, Pr[= x | mx] *
+        _ ≤ ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * ∑' x, Pr{let z ← mx}[z = x] *
             ((if P s then 1 else 0) + G s x false) := by
             gcongr with s x
             exact hflag s x
-        _ ≤ ∑' s, Pr[= s | $ᵗ (K → T)] * (if P s then 1 else 0) +
-            ∑' x, Pr[= x | mx] * ∑' s, Pr[= s | $ᵗ (K → T)] * G s x false := by
+        _ ≤ ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * (if P s then 1 else 0) +
+            ∑' x, Pr{let z ← mx}[z = x] * ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * G s x false := by
             simp only [mul_add, ENNReal.tsum_add]
             refine add_le_add ?_ (le_of_eq ?_)
             · gcongr with s
               rw [ENNReal.tsum_mul_right]
-              exact mul_le_of_le_one_left' tsum_probOutput_le_one
+              exact mul_le_of_le_one_left' (OracleComp.tsum_prEvent_le_one _)
             · simp only [← ENNReal.tsum_mul_left]
               rw [ENNReal.tsum_comm]
               simp only [mul_left_comm]
@@ -262,9 +262,9 @@ theorem expectedFinal_capped_le_aux (q : ℕ) (Inv : σ × ℕ → Prop) (f : σ
         exact ih v st _ hst
       | none =>
         simp only [revealImpl_inr_run, hstored, Option.getD_none]
-        set H : T → (K → T) → ℝ≥0∞ := fun v s => ∑' r, Pr[= r |
-          (simulateQ (cappedHybrid impl inputSide p keyOf point q s) (k v)).run
-            (st, Function.update stored key (some v), false)] * cappedPotential f r.2 with hHdef
+        set H : T → (K → T) → ℝ≥0∞ := fun v s => ∑' r, Pr{let z ←
+          ((simulateQ (cappedHybrid impl inputSide p keyOf point q s) (k v)).run
+            (st, Function.update stored key (some v), false))}[z = r] * cappedPotential f r.2 with hHdef
         have hH : ∀ v s w, H v (Function.update s key w) = H v s := by
           intro v s w
           simp only [hHdef]
@@ -275,7 +275,7 @@ theorem expectedFinal_capped_le_aux (q : ℕ) (Inv : σ × ℕ → Prop) (f : σ
             rintro rfl
             simp at hk'
           exact Function.update_of_ne hne _ _
-        have hih : ∀ v, ∑ s, Pr[= s | $ᵗ (K → T)] * H v s ≤ f st + (q - st.2 : ℕ) * ε := by
+        have hih : ∀ v, ∑ s, Pr{let z ← $ᵗ (K → T)}[z = s] * H v s ≤ f st + (q - st.2 : ℕ) * ε := by
           intro v
           have := ih v st (Function.update stored key (some v)) hst
           rwa [tsum_fintype] at this
@@ -288,53 +288,53 @@ least one on `E`, bounds the flag or `E` by `q / |T|`. No query bound is needed.
 theorem probEvent_capped_expect_le (q : ℕ) (Inv : σ × ℕ → Prop) (f : σ × ℕ → ℝ≥0∞)
     (hinv : ∀ t st, Inv st → ∀ x ∈ support ((countImpl impl p t).run st), Inv x.2)
     (hstep : ∀ t st, Inv st →
-      ∑' x, Pr[= x | (countImpl impl p t).run st] * f x.2 ≤
+      ∑' x, Pr{let z ← (countImpl impl p t).run st}[z = x] * f x.2 ≤
         f st + if cappedCall p q t st ∧ ¬inputSide t then (Fintype.card T : ℝ≥0∞)⁻¹ else 0)
     (E : σ × ℕ → Prop) (hE : ∀ st, E st → 1 ≤ f st)
     (oa : OracleComp (spec + RevealSpec K T) β) (σ₀ : σ) (hσ₀ : Inv (σ₀, 0)) (hf₀ : f (σ₀, 0) = 0) :
-    Pr[fun r => r.2.2.2 = true ∨ E r.2.1 | $ᵗ (K → T) >>= fun s =>
+    Pr{let r ← ($ᵗ (K → T) >>= fun s =>
       (simulateQ (cappedHybrid impl inputSide p keyOf point q s) oa).run
-        ((σ₀, 0), fun _ => none, false)] ≤ q * (Fintype.card T : ℝ≥0∞)⁻¹ := by
+        ((σ₀, 0), fun _ => none, false))}[r.2.2.2 = true ∨ E r.2.1] ≤ q * (Fintype.card T : ℝ≥0∞)⁻¹ := by
   have hΦ : ∀ st : (σ × ℕ) × (K → Option T) × Bool, (st.2.2 = true ∨ E st.1) →
       1 ≤ cappedPotential f st := by
     rintro st (h | h)
     · simp [cappedPotential, h]
     · exact (hE _ h).trans le_add_self
-  rw [probEvent_bind_eq_tsum]
-  calc _ ≤ ∑' s, Pr[= s | $ᵗ (K → T)] * XmssSecurity.expectedFinal
+  rw [OracleComp.prEvent_bind_eq_tsum]
+  calc _ ≤ ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * XmssSecurity.expectedFinal
         (cappedHybrid impl inputSide p keyOf point q s) (cappedPotential f) oa
         ((σ₀, 0), fun _ => none, false) := by
         refine ENNReal.tsum_le_tsum fun s => ?_
         gcongr
-        exact XmssSecurity.probEvent_le_expectedFinal _ (cappedPotential f)
-          (fun st => st.2.2 = true ∨ E st.1) hΦ oa _
+        simpa using XmssSecurity.const_mul_probEvent_le_expectedFinal _ (cappedPotential f)
+          (fun st => st.2.2 = true ∨ E st.1) 1 hΦ oa _
     _ ≤ f (σ₀, 0) + (q - (σ₀, 0).2 : ℕ) * (Fintype.card T : ℝ≥0∞)⁻¹ :=
         expectedFinal_capped_le_aux impl inputSide p keyOf point q Inv f hinv hstep oa _ _ hσ₀
     _ = _ := by simp [hf₀]
 
 /-- The 128-bit case of `probEvent_capped_expect_le`, as a bound on any event that the flag or `E`
 dominates. The bound is `q / 2 ^ 128`. -/
-theorem probEvent_le_of_capped_expect {γ : Type} [SampleableType (K → LeanXmss.Digest)]
-    (run : ProbComp γ) (event : γ → Prop) (keyOf : κ → K) (point : κ → LeanXmss.Digest) (q : ℕ)
+theorem probEvent_le_of_capped_expect {γ : Type} [SampleableType (K → HashSig.Digest)]
+    (run : ProbComp γ) (event : γ → Prop) (keyOf : κ → K) (point : κ → HashSig.Digest) (q : ℕ)
     (Inv : σ × ℕ → Prop) (f : σ × ℕ → ℝ≥0∞)
     (hinv : ∀ t st, Inv st → ∀ x ∈ support ((countImpl impl p t).run st), Inv x.2)
     (hstep : ∀ t st, Inv st →
-      ∑' x, Pr[= x | (countImpl impl p t).run st] * f x.2 ≤
+      ∑' x, Pr{let z ← (countImpl impl p t).run st}[z = x] * f x.2 ≤
         f st + if cappedCall p q t st ∧ ¬inputSide t then (2 ^ 128 : ℝ≥0∞)⁻¹ else 0)
     (E : σ × ℕ → Prop) (hE : ∀ st, E st → 1 ≤ f st)
-    (oa : OracleComp (spec + RevealSpec K LeanXmss.Digest) β) (σ₀ : σ) (hσ₀ : Inv (σ₀, 0))
+    (oa : OracleComp (spec + RevealSpec K HashSig.Digest) β) (σ₀ : σ) (hσ₀ : Inv (σ₀, 0))
     (hf₀ : f (σ₀, 0) = 0)
-    (hcouple : Pr[event | run] ≤ Pr[fun r => r.2.2.2 = true ∨ E r.2.1 |
-      $ᵗ (K → LeanXmss.Digest) >>= fun s =>
+    (hcouple : Pr{let z ← run}[event z] ≤ Pr{let r ←
+      ($ᵗ (K → HashSig.Digest) >>= fun s =>
         (simulateQ (cappedHybrid impl inputSide p keyOf point q s) oa).run
-          ((σ₀, 0), fun _ => none, false)]) :
-    Pr[event | run] ≤ q / 2 ^ 128 := by
-  have hcard : Fintype.card LeanXmss.Digest = 2 ^ 128 := by
-    unfold LeanXmss.Digest LeanXmss.digestBits; exact card_bitVec 128
+          ((σ₀, 0), fun _ => none, false))}[r.2.2.2 = true ∨ E r.2.1]) :
+    Pr{let z ← run}[event z] ≤ q / 2 ^ 128 := by
+  have hcard : Fintype.card HashSig.Digest = 2 ^ 128 := by
+    unfold HashSig.Digest HashSig.digestBits; exact Fintype.card_bitVec 128
   have hstep' : ∀ t st, Inv st →
-      ∑' x, Pr[= x | (countImpl impl p t).run st] * f x.2 ≤
+      ∑' x, Pr{let z ← (countImpl impl p t).run st}[z = x] * f x.2 ≤
         f st + if cappedCall p q t st ∧ ¬inputSide t then
-          (Fintype.card LeanXmss.Digest : ℝ≥0∞)⁻¹ else 0 := by
+          (Fintype.card HashSig.Digest : ℝ≥0∞)⁻¹ else 0 := by
     intro t st hst
     rw [hcard]
     exact_mod_cast hstep t st hst

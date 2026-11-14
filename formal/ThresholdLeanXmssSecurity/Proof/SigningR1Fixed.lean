@@ -80,7 +80,7 @@ namespace ThresholdLeanXmssSecurity
 
 namespace SigningR1FixedProof
 
-open LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof SigningHitLaneProof
+open HashSig LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof SigningHitLaneProof
   SigningPartnerBoundProof
 
 variable {C : Committee} (prims : Primitives)
@@ -121,18 +121,18 @@ def flatEagerRun (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) : Prob
 /-- The flat eager run has the law of `flatRun` for the result, the count, the log and the carried
 state. The trigger reads the cache, and the law holds for each extra call. -/
 theorem evalDist_flatEagerRun (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    𝒟[(fun z => (z.1, restOf z.2)) <$> flatEagerRun prims A x] =
-      𝒟[(fun z => (z.1, restOf z.2)) <$> flatRun prims A x] := by
+    ((fun z => (z.1, restOf z.2)) <$> flatEagerRun prims A x) =ᵈ
+      ((fun z => (z.1, restOf z.2)) <$> flatRun prims A x) := by
   rw [flatRun_eq_flatGame]
   exact evalDist_flatGame_eq prims _ _ (hashLaw_eagerWorld prims _) (hashLaw_carry_logged prims) A x
 
 /-- The flat eager run has the law of `loggedRun` for the result, the count and the log. -/
 theorem evalDist_flatEagerRun_logged (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    𝒟[(fun z => (z.1, z.2.1.1.2, z.2.1.2)) <$> flatEagerRun prims A x] =
-      𝒟[(fun z => (z.1, z.2.1.2, z.2.2)) <$> SigningCostProof.loggedRun prims A x] := by
-  have h := congrArg (fun d => (fun z : Result C × Rest C (TsigState C × Bool) => (z.1, z.2.1.1, z.2.1.2)) <$> d)
-    (evalDist_flatEagerRun prims A x)
-  simp only [← evalDist_map, Functor.map_map] at h
+    ((fun z => (z.1, z.2.1.1.2, z.2.1.2)) <$> flatEagerRun prims A x) =ᵈ
+      ((fun z => (z.1, z.2.1.2, z.2.2)) <$> SigningCostProof.loggedRun prims A x) := by
+  have h := (evalDist_flatEagerRun prims A x).map
+    (fun z : Result C × Rest C (TsigState C × Bool) => (z.1, z.2.1.1, z.2.1.2))
+  simp only [Functor.map_map] at h
   rw [← flatRun_logged, Functor.map_map]
   exact h
 
@@ -154,8 +154,8 @@ theorem monitoredRun_forget (keyOf : XmssSecurity.HashInput → Option XmssSecur
 /-- The hit costs `2^-128` for each keyed call of the log in expectation. -/
 theorem probEvent_r1Hit_le_logKeyed (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
     (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr[R1Hit | monitoredRun prims keyOf A x] ≤
-      (2 ^ 128 : ℝ≥0∞)⁻¹ * ∑' z, Pr[= z | monitoredRun prims keyOf A x] *
+    Pr{let z ← monitoredRun prims keyOf A x}[R1Hit z] ≤
+      (2 ^ 128 : ℝ≥0∞)⁻¹ * ∑' z, Pr{let y ← monitoredRun prims keyOf A x}[y = z] *
         (logKeyed keyOf z.2.1.1.2 : ℝ≥0∞) := by
   classical
   have hinit : CacheSeen (monitoredInit (C := C)).1.1.1.1 (monitoredInit (C := C)).1.2 :=
@@ -167,7 +167,7 @@ theorem probEvent_r1Hit_le_logKeyed (keyOf : XmssSecurity.HashInput → Option X
   rw [hrisk, zero_add, hlog] at h
   simp only [Nat.sub_zero] at h
   refine le_trans ?_ h
-  rw [probEvent_eq_tsum_ite]
+  rw [OracleComp.prEvent_eq_tsum_ite]
   refine ENNReal.tsum_le_tsum fun z => ?_
   split_ifs with hz
   · have hone : z.2.1.2.risk = 1 := by simp [Monitor.risk, show z.2.1.2.hit = true from hz]
@@ -178,23 +178,23 @@ theorem probEvent_r1Hit_le_logKeyed (keyOf : XmssSecurity.HashInput → Option X
 /-- The keyed calls of the log of the flat eager run have the law of those of `loggedRun`. -/
 theorem expected_logKeyed_eq (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
     (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    ∑' z, Pr[= z | monitoredRun prims keyOf A x] * (logKeyed keyOf z.2.1.1.2 : ℝ≥0∞) =
-      ∑' z, Pr[= z | SigningCostProof.loggedRun prims A x] * (logKeyed keyOf z.2.2 : ℝ≥0∞) := by
-  have h1 := tsum_probOutput_map_mul (monitoredRun prims keyOf A x) (fun z => (z.1, (z.2.1.1, z.2.2)))
+    ∑' z, Pr{let y ← monitoredRun prims keyOf A x}[y = z] * (logKeyed keyOf z.2.1.1.2 : ℝ≥0∞) =
+      ∑' z, Pr{let y ← SigningCostProof.loggedRun prims A x}[y = z] * (logKeyed keyOf z.2.2 : ℝ≥0∞) := by
+  have h1 := OracleComp.tsum_prEvent_map_mul (monitoredRun prims keyOf A x) (fun z => (z.1, (z.2.1.1, z.2.2)))
     (fun y => (logKeyed keyOf y.2.1.2 : ℝ≥0∞))
   rw [monitoredRun_forget] at h1
-  have h2 := tsum_probOutput_map_mul (flatEagerRun prims A x) (fun z => (z.1, z.2.1.1.2, z.2.1.2))
+  have h2 := OracleComp.tsum_prEvent_map_mul (flatEagerRun prims A x) (fun z => (z.1, z.2.1.1.2, z.2.1.2))
     (fun y => (logKeyed keyOf y.2.2 : ℝ≥0∞))
-  have h3 := tsum_probOutput_map_mul (SigningCostProof.loggedRun prims A x) (fun z => (z.1, z.2.1.2, z.2.2))
+  have h3 := OracleComp.tsum_prEvent_map_mul (SigningCostProof.loggedRun prims A x) (fun z => (z.1, z.2.1.2, z.2.2))
     (fun y => (logKeyed keyOf y.2.2 : ℝ≥0∞))
   have hlaw := evalDist_flatEagerRun_logged prims A x
   rw [← h1, ← h3, ← h2]
-  exact tsum_congr fun y => by rw [probOutput_congr rfl hlaw]
+  exact tsum_congr fun y => by rw [hlaw.prEvent_eq (· = y)]
 
 /-- The bound of R1 for the trigger of `cachedExtra`. The hit costs `2^-128` for each bottom digest
 call, as `bottomPartnerLogged_bound`. -/
 theorem r1Hit_bound (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr[R1Hit | monitoredRun prims (XmssSecurity.encodingInputLeafIndex? x.1) A x] ≤
+    Pr{let z ← monitoredRun prims (XmssSecurity.encodingInputLeafIndex? x.1) A x}[R1Hit z] ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ * SigningGuessProof.sourceExpectedCost prims A x
         (SigningPartnerLinkProof.bottomDigestCost x) := by
   refine (probEvent_r1Hit_le_logKeyed prims _ A x).trans ?_
@@ -220,11 +220,11 @@ theorem splitRun_forget (keyOf : XmssSecurity.HashInput → Option XmssSecurity.
 
 /-- The bound of R1 on the split run. -/
 theorem split_r1Hit_bound (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr[fun z => z.2.1.1.2.hit = true | splitRun prims (XmssSecurity.encodingInputLeafIndex? x.1) A x] ≤
+    Pr{let z ← splitRun prims (XmssSecurity.encodingInputLeafIndex? x.1) A x}[z.2.1.1.2.hit = true] ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ * SigningGuessProof.sourceExpectedCost prims A x
         (SigningPartnerLinkProof.bottomDigestCost x) := by
   refine le_trans (le_of_eq ?_) (r1Hit_bound prims A x)
-  rw [← splitRun_forget, probEvent_map]
+  rw [← splitRun_forget, prEvent_map]
   rfl
 
 end Split
@@ -253,9 +253,9 @@ def PartnerTransfer : Prop :=
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
     (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) →
     q < 2 ^ 127 →
-    Pr[LazyPartnerRow prims x | jointRun prims A x] ≤
-      Pr[fun z => EagerPartner prims x z ∧ ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1 |
-        splitRunAt prims A x]
+    Pr{let z ← jointRun prims A x}[LazyPartnerRow prims x z] ≤
+      Pr{let z ←
+        splitRunAt prims A x}[EagerPartner prims x z ∧ ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1]
 
 /-- `PartnerCrossing` of `SigningAssembly` on the split run of `cachedExtra`. -/
 def PartnerCrossing : Prop :=
@@ -264,8 +264,8 @@ def PartnerCrossing : Prop :=
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
     (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) →
     q < 2 ^ 127 →
-    Pr[LazyPartnerRow prims x | jointRun prims A x] ≤
-      Pr[R1HitRow | splitRunAt prims A x] + Pr[CachedPartnerRow prims x | splitRunAt prims A x]
+    Pr{let z ← jointRun prims A x}[LazyPartnerRow prims x z] ≤
+      Pr{let z ← splitRunAt prims A x}[R1HitRow z] + Pr{let z ← splitRunAt prims A x}[CachedPartnerRow prims x z]
 
 set_option maxRecDepth 100000 in
 /-- The crossing of the partner row from `R1Link` and the transfer, as
@@ -274,7 +274,7 @@ theorem partnerCrossing_of_link (hlink : R1Link prims (C := C)) (htransfer : Par
     PartnerCrossing prims (C := C) := by
   unfold PartnerCrossing
   intro A q x hx hkeys hq hsmall
-  refine (htransfer A q x hx hkeys hq hsmall).trans ((probEvent_mono fun z hz h => ?_).trans (probEvent_or_le _ _ _))
+  refine (htransfer A q x hx hkeys hq hsmall).trans ((prEvent_mono_of_support _ _ _ fun z hz h => ?_).trans (prEvent_or_le _ _ _))
   obtain ⟨⟨hwin, hpartner⟩, halt⟩ := h
   by_cases hcached : CachedSelection z
   · exact Or.inr ⟨⟨hwin, hpartner⟩, hcached⟩
@@ -290,13 +290,13 @@ open SigningCacheLogProof
 
 /-- An invariant of each trial of a grind at `e` on `message` holds after the grind. -/
 theorem grind_inv (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) (P : PublicParameter)
-    (e : KeyIndex) (message : Message) (base : Randomness) (Inv : HashCache C × Monitor → Prop)
+    (e : KeyIndex) (message : Message) (base : Randomizer) (Inv : HashCache C × Monitor → Prop)
     (hstep : ∀ randomness s, Inv s → ∀ w ∈ support ((monitoredOracle keyOf
-      (.hash (tweakableHashInput P (.message bottomLayer e) (bytesLE 32 message ++ bytesLE 16 randomness)))).run s),
+      (.hash (tweakableHashInput P (.message bottomLayer e) (littleEndianBytes 32 message ++ littleEndianBytes 16 randomness)))).run s),
       Inv w.2) :
     ∀ attempts trial s, Inv s → ∀ z ∈ support ((simulateQ (monitoredOracle keyOf)
       (simulateQ (fun input => query (spec := Query C →ₒ HashOutput) (.hash input))
-        (grind P bottomLayer e (bytesLE 32 message) base attempts trial))).run s), Inv z.2 := by
+        (grind P bottomLayer e (littleEndianBytes 32 message) base attempts trial))).run s), Inv z.2 := by
   intro attempts
   induction attempts with
   | zero =>
@@ -306,7 +306,8 @@ theorem grind_inv (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIn
     exact hs
   | succ n ih =>
     intro trial s hs z hz
-    simp [grind, Concrete.messageDigest, Concrete.tweakableHash, Concrete.oracleHash] at hz
+    simp [grind, Verification.messageDigestWithHash, Verification.tweakableHashWithHash, Verification.thWithHash,
+      Verification.oracleHashWithHash] at hz
     obtain ⟨a, a1, b, hw, hz⟩ := hz
     have hmid := hstep _ s hs _ hw
     cases hdec : Codeword.decode (truncateHash a) with
@@ -322,7 +323,7 @@ theorem grind_inv (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIn
 theorem baseGrind_inv (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) (P : PublicParameter)
     (e : KeyIndex) (message : Message) (answer : HashOutput) (Inv : HashCache C × Monitor → Prop)
     (hstep : ∀ randomness s, Inv s → ∀ w ∈ support ((monitoredOracle keyOf
-      (.hash (tweakableHashInput P (.message bottomLayer e) (bytesLE 32 message ++ bytesLE 16 randomness)))).run s),
+      (.hash (tweakableHashInput P (.message bottomLayer e) (littleEndianBytes 32 message ++ littleEndianBytes 16 randomness)))).run s),
       Inv w.2)
     (s : HashCache C × Monitor) (hs : Inv s)
     (z : Unit × (HashCache C × Monitor)) (hz : z ∈ support ((simulateQ (monitoredOracle keyOf)
@@ -426,7 +427,7 @@ theorem signedWitness_step_core (P : PublicParameter) (ρ : KeyIndex → Digest)
     exact SigningCacheProof.countImpl_grows prims t p.1.1.1 v hv
   have hcase0 : y.2 = (w.2.1.1, queryEntryStep (XmssSecurity.encodingInputLeafIndex? P) p.1.2 (hashEntry ⟨t, w.1⟩)) ∨
       ∃ g message answer, G ∧ BaseCall P g (ρ g) p.2.1 t ∧ p.2.1.bound g = some message ∧
-      w.2.1.1 (.hash (randomizerInput P bottomLayer g (ρ g) (bytesLE 32 message))) = some answer ∧
+      w.2.1.1 (.hash (randomizerInput P bottomLayer g (ρ g) (littleEndianBytes 32 message))) = some answer ∧
       y ∈ support ((simulateQ (monitoredOracle (XmssSecurity.encodingInputLeafIndex? P))
         (baseGrind P g message answer)).run
           (w.2.1.1, queryEntryStep (XmssSecurity.encodingInputLeafIndex? P) p.1.2 (hashEntry ⟨t, w.1⟩))) := by
@@ -443,7 +444,7 @@ theorem signedWitness_step_core (P : PublicParameter) (ρ : KeyIndex → Digest)
           simp only [hb, simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hy
           exact Or.inl (by rw [hy])
         | some message =>
-          cases ha : w.2.1.1 (.hash (randomizerInput P bottomLayer h.choose (ρ h.choose) (bytesLE 32 message))) with
+          cases ha : w.2.1.1 (.hash (randomizerInput P bottomLayer h.choose (ρ h.choose) (littleEndianBytes 32 message))) with
           | none =>
             simp only [hb, ha, simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hy
             exact Or.inl (by rw [hy])
@@ -461,7 +462,7 @@ theorem signedWitness_step_core (P : PublicParameter) (ρ : KeyIndex → Digest)
     · exact baseGrind_cache_le _ P g m a _ y hg
   have hsig : ∀ f, y.2.2.state.signed f ≠ none → p.1.2.state.signed f ≠ none ∨
       ∃ message answer, G ∧ BaseCall P f (ρ f) p.2.1 t ∧ p.2.1.bound f = some message ∧
-        w.2.1.1 (.hash (randomizerInput P bottomLayer f (ρ f) (bytesLE 32 message))) = some answer ∧
+        w.2.1.1 (.hash (randomizerInput P bottomLayer f (ρ f) (littleEndianBytes 32 message))) = some answer ∧
         y ∈ support ((simulateQ (monitoredOracle (XmssSecurity.encodingInputLeafIndex? P))
           (baseGrind P f message answer)).run (w.2.1.1, Q)) := by
     intro f hf

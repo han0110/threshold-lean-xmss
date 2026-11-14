@@ -7,7 +7,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerShareSource
 Free slots agree with their fixed table, share cells agree with their eager
 table, and pending answers retain their symbolic next coordinate.
 -/
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerSyncFrame
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -446,12 +446,12 @@ theorem ordinaryT_restAgree (x : Keys3 C)
     fun z v hv => h z v ((ordinary_rest_frame x q s pads t ha hn st r hr z) ▸ hv)
   cases t with
   | inr k =>
-    simp only [ordinaryT, ordinaryRaw, resolvePrivateTable_lift] at hr
+    unfold ordinaryT ordinaryRaw at hr; simp only [resolvePrivateTable_lift] at hr
     exact ho (.inr k) ha (by intro a he; cases he) r hr
   | inl t =>
     cases t with
     | hash input =>
-      simp only [ordinaryT, ordinaryRaw] at hr
+      unfold ordinaryT ordinaryRaw at hr
       cases hz : restRoute x.2.1 x.2.2 input with
       | some z =>
         simp only [hz] at hr
@@ -464,10 +464,10 @@ theorem ordinaryT_restAgree (x : Keys3 C)
       | bottom e l p => exact freshPendingT_restAgree x noise rest _ st h r hr
       | top b l p => exact freshPendingT_restAgree x noise rest _ st h r hr
       | _ =>
-        simp only [ordinaryT, ordinaryRaw, resolvePrivateTable_lift] at hr
+        unfold ordinaryT ordinaryRaw at hr; simp only [resolvePrivateTable_lift] at hr
         exact ho _ ha (by intro a he; cases he) r hr
     | _ =>
-      simp only [ordinaryT, ordinaryRaw, resolvePrivateTable_lift] at hr
+      unfold ordinaryT ordinaryRaw at hr; simp only [resolvePrivateTable_lift] at hr
       exact ho _ ha (by intro a he; cases he) r hr
 
 attribute [local irreducible] ordinaryStepTag readStepTag eagerHandlerTag
@@ -663,12 +663,12 @@ theorem ordinaryT_pendingValid (x : Keys3 C)
     PendingValid r.2.1.1.data := by
   cases t with
   | inr k =>
-    simp only [ordinaryT, ordinaryRaw, resolvePrivateTable_lift] at hr
+    unfold ordinaryT ordinaryRaw at hr; simp only [resolvePrivateTable_lift] at hr
     exact ordinary_pendingValid x.1 x.2.1 q s pads _ st h r hr
   | inl t =>
     cases t with
     | hash input =>
-      simp only [ordinaryT, ordinaryRaw] at hr
+      unfold ordinaryT ordinaryRaw at hr
       cases hz : restRoute x.2.1 x.2.2 input with
       | some z =>
         simp only [hz] at hr
@@ -681,10 +681,10 @@ theorem ordinaryT_pendingValid (x : Keys3 C)
       | bottom e l p => exact freshPendingT_pendingValid x noise rest _ st h r hr
       | top b l p => exact freshPendingT_pendingValid x noise rest _ st h r hr
       | _ =>
-        simp only [ordinaryT, ordinaryRaw, resolvePrivateTable_lift] at hr
+        unfold ordinaryT ordinaryRaw at hr; simp only [resolvePrivateTable_lift] at hr
         exact ordinary_pendingValid x.1 x.2.1 q s pads _ st h r hr
     | _ =>
-      simp only [ordinaryT, ordinaryRaw, resolvePrivateTable_lift] at hr
+      unfold ordinaryT ordinaryRaw at hr; simp only [resolvePrivateTable_lift] at hr
       exact ordinary_pendingValid x.1 x.2.1 q s pads _ st h r hr
 
 /-- Every query preserves pending validity of the merged backend. -/

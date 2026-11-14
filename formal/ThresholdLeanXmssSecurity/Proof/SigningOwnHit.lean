@@ -16,7 +16,7 @@ set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 set_option linter.constructorNameAsVariable false
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -39,8 +39,8 @@ theorem gatedContinuation_sum_step_unseen {ι α : Type} [Fintype ι]
     (gate : ι → (WorldSpec C).Domain) (hinj : Function.Injective gate)
     (t : (WorldSpec C).Domain) (s : LoggedState C) (ε : ℝ≥0∞)
     (hgate : ∀ i, ¬GateSeen (gate i) s.2 → t = gate i →
-      (∑' r, Pr[= r | (loggedImpl prims t).run s] * continuationReserve prims oa (event i) r.2) ≤ ε) :
-    (∑' r, Pr[= r | (loggedImpl prims t).run s] *
+      (∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] * continuationReserve prims oa (event i) r.2) ≤ ε) :
+    (∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] *
       ∑ i, gatedContinuation prims oa (event i) (gate i) r.2) ≤
       (∑ i, gatedContinuation prims oa (event i) (gate i) s) +
         if ∃ i, t = gate i ∧ ¬GateSeen (gate i) s.2 then ε else 0 := by
@@ -81,11 +81,11 @@ theorem unseenGate_cost_le {ι α : Type} [Fintype ι] (gate : ι → (WorldSpec
     ((Finset.univ.filter fun i => GateSeen (gate i) s.2).card : ℝ≥0∞)
   have hstep : ∀ t (s : LoggedState C), True →
       f s + (if ∃ i, t = gate i ∧ ¬GateSeen (gate i) s.2 then 1 else 0) ≤
-        ∑' r, Pr[= r | (loggedImpl prims t).run s] * f r.2 := by
+        ∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] * f r.2 := by
     intro t s _
-    calc _ = ∑' r, Pr[= r | (loggedImpl prims t).run s] *
+    calc _ = ∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] *
           (f s + if ∃ i, t = gate i ∧ ¬GateSeen (gate i) s.2 then 1 else 0) := by
-          rw [ENNReal.tsum_mul_right, tsum_probOutput_eq_one' (by simp), one_mul]
+          rw [ENNReal.tsum_mul_right, OracleComp.tsum_prEvent_eq_one, one_mul]
       _ ≤ _ := by
           refine ENNReal.tsum_le_tsum fun r => ?_
           by_cases hr : r ∈ support ((loggedImpl prims t).run s)
@@ -109,7 +109,7 @@ theorem unseenGate_cost_le {ι α : Type} [Fintype ι] (gate : ι → (WorldSpec
               exact_mod_cast hlt
             · simp only [f, add_zero]
               exact_mod_cast Finset.card_le_card hsub
-          · simp [probOutput_eq_zero_of_not_mem_support hr]
+          · simp [prEvent_eq_zero_of_not_mem_support _ hr]
   have hge := XmssSecurity.expectedFinal_ge (loggedImpl prims) (Inv := fun _ => True)
     (fun _ _ _ _ _ => trivial) f _ hstep oa s trivial
   have hle : XmssSecurity.expectedFinal (loggedImpl prims) f oa s ≤ (Fintype.card ι : ℝ≥0∞) := by
@@ -136,7 +136,7 @@ def HitInv (x : Keys3 C) (T : C.Term) (top : TopTree) (s : LoggedState C) : Prop
 def GateFunded (A : TsigAdversary C) (x : Keys3 C) (T : C.Term) : Prop :=
   ∀ (b : XmssSecurity.TopIndex) s, SigningHitProof.RawReachable prims s →
     ¬SigningHitProof.GateSeen (.inr (.inr (.inl (SigningHitProof.topGateInput x T b)))) s.2 →
-    (∑' r, Pr[= r | (loggedImpl prims (.inr (.inr (.inl (SigningHitProof.topGateInput x T b))))).run s] *
+    (∑' r, Pr{let z ← (loggedImpl prims (.inr (.inr (.inl (SigningHitProof.topGateInput x T b))))).run s}[z = r] *
       SigningHitProof.continuationReserve prims (SigningDescentProof.finalRun A x)
         (SigningHitProof.ForestExceptionAt prims x b) r.2) ≤ (2 ^ 128 : ℝ≥0∞)⁻¹
 
@@ -188,7 +188,7 @@ theorem topGate_injective : Function.Injective fun b : XmssSecurity.TopIndex =>
 
 /-- The gate part of the hit potential does not rise at a call when each gate is seen. -/
 theorem gateSum_step (t : (WorldSpec C).Domain) (s : LoggedState C) (hs : AllSeen x T s) :
-    ∑' r, Pr[= r | (loggedImpl prims t).run s] *
+    ∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] *
         ∑ b, SigningHitProof.gatedContinuation prims (SigningDescentProof.finalRun A x)
           (SigningHitProof.ForestExceptionAt prims x b)
           (.inr (.inr (.inl (SigningHitProof.topGateInput x T b)))) r.2 ≤
@@ -204,7 +204,7 @@ set_option maxRecDepth 100000 in
 /-- The gate part of the hit potential does not rise over a program when each gate is seen. -/
 theorem gateSum_run_le {α : Type} (oa : OracleComp (WorldSpec C) α) (s : LoggedState C)
     (hs : AllSeen x T s) :
-    ∑' r, Pr[= r | (simulateQ (loggedImpl prims) oa).run s] *
+    ∑' r, Pr{let z ← (simulateQ (loggedImpl prims) oa).run s}[z = r] *
         ∑ b, SigningHitProof.gatedContinuation prims (SigningDescentProof.finalRun A x)
           (SigningHitProof.ForestExceptionAt prims x b)
           (.inr (.inr (.inl (SigningHitProof.topGateInput x T b)))) r.2 ≤
@@ -212,14 +212,17 @@ theorem gateSum_run_le {α : Type} (oa : OracleComp (WorldSpec C) α) (s : Logge
         (SigningHitProof.ForestExceptionAt prims x b)
         (.inr (.inr (.inl (SigningHitProof.topGateInput x T b)))) s := by
   have h := XmssSecurity.expectedFinal_le (loggedImpl prims) (Inv := AllSeen x T)
-    (fun t s hs r hr => allSeen_step prims x T t s hs r hr) _ (fun _ _ => 0 * 0)
+    (fun t s hs r hr => allSeen_step prims x T t s hs r hr)
+    (fun s => ∑ b, SigningHitProof.gatedContinuation prims (SigningDescentProof.finalRun A x)
+      (SigningHitProof.ForestExceptionAt prims x b)
+      (.inr (.inr (.inl (SigningHitProof.topGateInput x T b)))) s) (fun _ _ => 0 * 0)
     (fun t s hs => (gateSum_step prims A x T t s hs).trans (le_add_right le_rfl)) oa s hs
   rw [XmssSecurity.expectedSimulatedCost_const_mul, zero_mul, add_zero] at h
   exact h
 
 /-- One call raises the guarded hit potential by its structural cost when each gate is seen. -/
 theorem hit_seen_step (t : (WorldSpec C).Domain) (s : LoggedState C) (hs : AllSeen x T s) :
-    ∑' r, Pr[= r | (loggedImpl prims t).run s] *
+    ∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] *
         guarded (SigningGuessProof.structuralHitPotential prims A x T) r.2 ≤
       guarded (SigningGuessProof.structuralHitPotential prims A x T) s +
         (2 ^ 128 : ℝ≥0∞)⁻¹ *
@@ -243,7 +246,7 @@ theorem hit_seen_step (t : (WorldSpec C).Domain) (s : LoggedState C) (hs : AllSe
 seen. -/
 theorem hit_run_le {α : Type} (oa : OracleComp (WorldSpec C) α) (s : LoggedState C)
     (hs : AllSeen x T s) :
-    ∑' r, Pr[= r | (simulateQ (loggedImpl prims) oa).run s] *
+    ∑' r, Pr{let z ← (simulateQ (loggedImpl prims) oa).run s}[z = r] *
         guarded (SigningGuessProof.structuralHitPotential prims A x T) r.2 ≤
       guarded (SigningGuessProof.structuralHitPotential prims A x T) s +
         (2 ^ 128 : ℝ≥0∞)⁻¹ * XmssSecurity.expectedSimulatedCost (loggedImpl prims)
@@ -265,7 +268,7 @@ theorem hit_run_bound {α : Type} (oa : OracleComp (WorldSpec C) α) (n : ℕ)
     (hb : oa.IsQueryBoundP
       (fun t => SigningGuessProof.rawDomainCost (SigningHitProof.forestRelevant x.1) t ≠ 0) n)
     (s : LoggedState C) (hs : AllSeen x T s) :
-    ∑' r, Pr[= r | (simulateQ (loggedImpl prims) oa).run s] *
+    ∑' r, Pr{let z ← (simulateQ (loggedImpl prims) oa).run s}[z = r] *
         guarded (SigningGuessProof.structuralHitPotential prims A x T) r.2 ≤
       guarded (SigningGuessProof.structuralHitPotential prims A x T) s +
         (2 ^ 128 : ℝ≥0∞)⁻¹ * (n : ℝ≥0∞) := by
@@ -280,7 +283,7 @@ theorem hit_run_bound {α : Type} (oa : OracleComp (WorldSpec C) α) (n : ℕ)
     · simp only [ne_eq, not_not] at hne
       simp [hne]
   · rw [XmssSecurity.expectedSimulatedCost_indicator]
-    exact XmssSecurity.expectedSimulatedQueryCount_le_of_isQueryBoundP _ _ _ _ n hb
+    exact XmssSecurity.expectedSimulatedQueryCount_le_of_isQueryBoundP _ _ _ n _ hb
 
 /-- A block of honest hash calls that the forest completion covers does not raise the guarded hit
 potential when each gate is seen. -/
@@ -292,8 +295,8 @@ theorem hit_block_le {β : Type} (block : OracleComp (Query C →ₒ HashOutput)
         (SigningHitProof.recordReads block ∅)).run z.2),
       ∀ input, SigningHitProof.forestRelevant x.1 input → (w.1.2 input).isSome →
         (z.1.2 input).isSome ∨ (s.1.1 input).isSome) :
-    ∑' r, Pr[= r | (simulateQ (loggedImpl prims)
-        (liftFree (SigningHitProof.hashEmbed block))).run s] *
+    ∑' r, Pr{let z ← ((simulateQ (loggedImpl prims)
+        (liftFree (SigningHitProof.hashEmbed block))).run s)}[z = r] *
         guarded (SigningGuessProof.structuralHitPotential prims A x T) r.2 ≤
       guarded (SigningGuessProof.structuralHitPotential prims A x T) s := by
   by_cases hp : Programmed s.2
@@ -301,14 +304,14 @@ theorem hit_block_le {β : Type} (block : OracleComp (Query C →ₒ HashOutput)
     by_cases hr : r ∈ support ((simulateQ (loggedImpl prims)
       (liftFree (SigningHitProof.hashEmbed block))).run s)
     · simp [guarded, programmed_run prims _ s hp r hr]
-    · simp [probOutput_eq_zero_of_not_mem_support hr]
+    · simp [prEvent_eq_zero_of_not_mem_support _ hr]
   rw [guarded, if_neg hp]
   have hc := SigningOwnPotential.logged_block_potential_le prims (SigningHitProof.forestRelevant x.1)
     (SigningHitProof.forestRun x) (fun _ record => SigningHitProof.forestTargets x.1 record) block s
     hcovered
   have hg := gateSum_run_le prims A x T (liftFree (SigningHitProof.hashEmbed block)) s hs
-  calc _ ≤ ∑' r, Pr[= r | (simulateQ (loggedImpl prims)
-        (liftFree (SigningHitProof.hashEmbed block))).run s] *
+  calc _ ≤ ∑' r, Pr{let z ← ((simulateQ (loggedImpl prims)
+        (liftFree (SigningHitProof.hashEmbed block))).run s)}[z = r] *
           SigningGuessProof.structuralHitPotential prims A x T r.2 := by
         refine ENNReal.tsum_le_tsum fun r => ?_
         gcongr
@@ -322,8 +325,8 @@ theorem hit_block_le {β : Type} (block : OracleComp (Query C →ₒ HashOutput)
 seen. Each of its calls is on a cached input. -/
 theorem hit_replay_le {β : Type} (oa : OracleComp (Query C →ₒ HashOutput) β) (v : β)
     (s : LoggedState C) (hs : AllSeen x T s) (hres : DeterministicSigning.Resolves s.1.1 oa v) :
-    ∑' r, Pr[= r | (simulateQ (loggedImpl prims)
-        (liftFree (SigningHitProof.hashEmbed oa))).run s] *
+    ∑' r, Pr{let z ← ((simulateQ (loggedImpl prims)
+        (liftFree (SigningHitProof.hashEmbed oa))).run s)}[z = r] *
         guarded (SigningGuessProof.structuralHitPotential prims A x T) r.2 ≤
       guarded (SigningGuessProof.structuralHitPotential prims A x T) s := by
   refine hit_block_le prims A x T oa s hs fun z hz w hw input _ hread => Or.inr ?_
@@ -371,7 +374,7 @@ theorem liftFree_bound {α : Type} (R : OracleComp (RoSpec C) α) (n : ℕ)
 invariant. -/
 def HonestFlat (top : TopTree) {α : Type} (R : OracleComp (RoSpec C) α) : Prop :=
   ∀ s, RunInv x T top s →
-    ∑' r, Pr[= r | (simulateQ (loggedImpl prims) (liftFree R)).run s] *
+    ∑' r, Pr{let z ← (simulateQ (loggedImpl prims) (liftFree R)).run s}[z = r] *
         guarded (SigningGuessProof.structuralHitPotential prims A x T) r.2 ≤
       guarded (SigningGuessProof.structuralHitPotential prims A x T) s
 
@@ -380,12 +383,12 @@ theorem honestFlat_bind (top : TopTree) {α β : Type} {R : OracleComp (RoSpec C
     (hf : ∀ a, HonestFlat prims A x T top (f a)) : HonestFlat prims A x T top (R >>= f) := by
   intro s hs
   rw [show ∀ {α β : Type} (R : OracleComp (RoSpec C) α) (f : α → OracleComp (RoSpec C) β),
-    liftFree (R >>= f) = liftFree R >>= fun a => liftFree (f a) from φ_bind, simulateQ_bind, StateT.run_bind, tsum_probOutput_bind_mul]
+    liftFree (R >>= f) = liftFree R >>= fun a => liftFree (f a) from φ_bind, simulateQ_bind, StateT.run_bind, OracleComp.tsum_prEvent_bind_mul]
   refine le_trans (ENNReal.tsum_le_tsum fun z => ?_) (hR s hs)
   by_cases hz : z ∈ support ((simulateQ (loggedImpl prims) (liftFree R)).run s)
   · gcongr
     exact hf z.1 z.2 (runInv_run prims x T top _ s hs z hz)
-  · simp [probOutput_eq_zero_of_not_mem_support hz]
+  · simp [prEvent_eq_zero_of_not_mem_support _ hz]
 
 theorem honestFlat_of_bound (top : TopTree) {α : Type} (R : OracleComp (RoSpec C) α)
     (h : R.IsQueryBoundP (RoRelevant x) 0) : HonestFlat prims A x T top R := fun s hs => by
@@ -424,7 +427,7 @@ theorem message_not_forestRelevant (P P' : PublicParameter) (lay : Layer) (key :
           XmssSecurity.fieldBytes (XmssSecurity.tweakFields 12 0 (layerHi lay 0) key.val) ++ payload =
         XmssSecurity.bytesLE 16 P ++ XmssSecurity.fieldBytes (XmssSecurity.hashDomainFields domain) ++
           (payload' ++ XmssSecurity.domainSuffix domain) := by
-    rw [← XmssSecurity.Bridge.tweakableHashInput_eq, ← h]
+    rw [← XmssSecurity.Bridge.tweakableHashInput_eq P domain payload', ← h]
     rfl
   have ht := congrArg (fun fields => fields.tag.toNat) (XmssSecurity.Bridge.prefix_inj heq).2.1
   cases domain <;> simp only [SigningHitProof.StructuralDomain] at hd <;>
@@ -442,11 +445,11 @@ theorem mapM_bound_zero {ι α β : Type} {spec : OracleSpec ι} (xs : List α)
 
 theorem sequenceFin_bound_zero {ι α : Type} {spec : OracleSpec ι} {n : ℕ}
     (f : Fin n → OracleComp spec α) (p : ι → Prop) [DecidablePred p]
-    (hf : ∀ a, (f a).IsQueryBoundP p 0) : (Concrete.sequenceFin f).IsQueryBoundP p 0 := by
+    (hf : ∀ a, (f a).IsQueryBoundP p 0) : (OverPermutation.sequenceFin f).IsQueryBoundP p 0 := by
   induction n with
   | zero => exact isQueryBoundP_pure _ _ _
   | succ n ih =>
-      unfold Concrete.sequenceFin
+      unfold OverPermutation.sequenceFin
       exact isQueryBoundP_bind (n := 0) (m := 0) (hf 0) (fun _ _ =>
         isQueryBoundP_bind (n := 0) (m := 0) (ih _ fun i => hf i.succ) (fun _ _ => isQueryBoundP_pure _ _ _))
 
@@ -491,13 +494,14 @@ theorem eval_bound (keys : Keys C) (i : C.Party) (J : C.Quorum) (pt : Point) (me
     cases he
 
 theorem grind_bound (P : PublicParameter) (lay : Layer) (key : KeyIndex) (message : HashInput)
-    (base : Randomness) : ∀ attempts trial,
+    (base : Randomizer) : ∀ attempts trial,
     (grind P lay key message base attempts trial : OracleComp HashSpec _).IsQueryBoundP
       (fun input => SigningHitProof.forestRelevant (C := C) x.1 (.hash input)) 0
   | 0, _ => isQueryBoundP_pure _ _ _
   | attempts + 1, trial => by
     rw [grind]
-    unfold Concrete.messageDigest Concrete.tweakableHash Concrete.oracleHash
+    unfold Verification.messageDigestWithHash Verification.tweakableHashWithHash Verification.thWithHash
+      Verification.oracleHashWithHash
     simp only [bind_assoc, pure_bind]
     refine isQueryBoundP_bind (n := 0) (m := 0) ?_ fun _ _ => ?_
     · exact (isQueryBoundP_query_iff _ _ _).2 fun hf =>
@@ -511,7 +515,7 @@ theorem signCodeword_bound (P : PublicParameter) (commitment : Digest) (e : KeyI
     (signCodeword P commitment e message ρ).IsQueryBoundP (RoRelevant x) 0 := by
   unfold signCodeword
   refine tweakable_bound x _ ?_
-  unfold Concrete.oracleHash
+  unfold Verification.oracleHashWithHash
   refine isQueryBoundP_bind (n := 0) (m := 0) ?_ fun _ _ => ?_
   · exact (isQueryBoundP_query_iff _ _ _).2 fun hf =>
       (SigningGuessProof.forestRelevant_not_commitment x.1 _ hf ⟨_, _, _, rfl⟩).elim
@@ -553,6 +557,7 @@ theorem signRound2With_bound (part : Point → OracleComp (RoSpec C) Digest)
     · simpa using hpart _
     · exact isQueryBoundP_pure _ _ _
 
+set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 100000 in
 /-- A signing oracle does not raise the guarded hit potential. Its builds are covered by the
 forest completion, and its other calls are not structural. -/
@@ -600,7 +605,10 @@ theorem resolves_bottom_root (cache : HashCache C) (top : TopTree) (b : Fin (2 ^
       (merkleNode x.1 bottomLayer (fun e l => (tree.cpk e l).2.2) layerHeight b.val) root := by
   unfold referenceTree ceremonyOutput at h
   obtain ⟨outputs, houtputs, htail⟩ := h.of_bind
-  obtain ⟨values, hvalues, rfl⟩ := houtputs.of_map
+  beta_reduce at houtputs
+  rw [map_eq_bind_pure_comp] at houtputs
+  obtain ⟨values, hvalues, hpureInv⟩ := houtputs.of_bind
+  obtain rfl := hpureInv.pure_inv
   obtain ⟨root, hroot, hrest⟩ := htail.of_bind
   obtain ⟨base, -, hrest⟩ := hrest.of_bind
   obtain ⟨selected, -, hrest⟩ := hrest.of_bind
@@ -687,17 +695,18 @@ theorem bound_of_calls {α : Type} {oa : OracleComp HashSpec α} {n : ℕ}
     · exact ih u (h.2 u)
     · exact (ih u (h.2 u)).mono (Nat.sub_le _ _)
 
-attribute [local irreducible] layerHeight numChains in
+attribute [local irreducible] layerHeight chainCount in
 /-- One layer of the verification makes at most `191` structural calls. Its message digest call is
 not structural. -/
 theorem layerRoot_relevant (P : PublicParameter) (lay : Layer) (key : KeyIndex)
     (message : HashInput) (part : LayerSignature) :
-    (Concrete.layerRoot P lay key message part : OracleComp HashSpec (Option Digest)).IsQueryBoundP
+    (Verification.layerRootWithHash P lay key message part : OracleComp HashSpec (Option Digest)).IsQueryBoundP
       (fun input => SigningHitProof.forestRelevant (C := C) x.1 (.hash input)) 191 := by
-  unfold Concrete.layerRoot Concrete.otsLeaf
+  unfold Verification.layerRootWithHash Verification.otsLeafWithHash
   refine bound_bind_le (a := 175) (b := 16) (bound_bind_le (a := 0) (b := 175) ?_
     (fun digest => ?_) le_rfl) (fun leaf => ?_) le_rfl
-  · unfold Concrete.messageDigest Concrete.tweakableHash Concrete.oracleHash
+  · unfold Verification.messageDigestWithHash Verification.tweakableHashWithHash Verification.thWithHash
+      Verification.oracleHashWithHash
     refine isQueryBoundP_bind (n := 0) (m := 0) ?_ fun _ _ => isQueryBoundP_pure _ _ _
     exact (isQueryBoundP_query_iff _ _ _).2 fun hf => (message_not_forestRelevant _ _ _ _ _ hf).elim
   · refine bound_of_calls ?_ _
@@ -708,21 +717,21 @@ theorem layerRoot_relevant (P : PublicParameter) (lay : Layer) (key : KeyIndex)
         refine SigningOwnVerify.calls_bind_le (SigningOwnVerify.calls_sequenceFin (b := 3) _
           fun chainIdx => (SigningOwnVerify.calls_chainWalk _ _ _ _ _ _ _).mono ?_) (b := 1)
           (fun _ => SigningOwnVerify.calls_bind_le (SigningOwnVerify.calls_tweakableHash _ _ _) (b := 0)
-            (fun _ => isQueryBoundP_pure _ _ _) le_rfl) (by unfold numChains; omega)
+            (fun _ => isQueryBoundP_pure _ _ _) le_rfl) (by unfold chainCount; omega)
         unfold chainLength winternitzBits
         omega
   · refine bound_of_calls ?_ _
     cases leaf with
     | none => exact isQueryBoundP_pure _ _ _
     | some leaf =>
-        exact SigningOwnVerify.calls_bind_le (SigningOwnVerify.calls_treeFold P lay key part.path
+        exact SigningOwnVerify.calls_bind_le (SigningOwnVerify.calls_treeFold P lay key part.authenticationPath
           layerHeight leaf) (b := 0) (fun _ => isQueryBoundP_pure _ _ _) (by unfold layerHeight; omega)
 
 /-- The verification makes at most `382` structural calls. -/
 theorem verify_relevant (publicKey : PublicKey) (message : Message) (signature : Signature) :
-    (Concrete.verify publicKey message signature : OracleComp HashSpec Bool).IsQueryBoundP
+    (Verification.verifyWithHash publicKey message signature : OracleComp HashSpec Bool).IsQueryBoundP
       (fun input => SigningHitProof.forestRelevant (C := C) x.1 (.hash input)) 382 := by
-  unfold Concrete.verify
+  unfold Verification.verifyWithHash
   refine bound_bind_le (layerRoot_relevant x _ _ _ _ _) (b := 191) (fun bottomRoot => ?_) le_rfl
   cases bottomRoot with
   | none => exact isQueryBoundP_pure _ _ _
@@ -765,7 +774,7 @@ whose cache resolves `oa` to `v`. -/
 def HonestFlatAfter (top : TopTree) {β : Type} (oa : OracleComp (Query C →ₒ HashOutput) β) (v : β)
     {α : Type} (R : OracleComp (RoSpec C) α) : Prop :=
   ∀ s, RunInv x T top s → DeterministicSigning.Resolves s.1.1 oa v →
-    ∑' r, Pr[= r | (simulateQ (loggedImpl prims) (liftFree R)).run s] *
+    ∑' r, Pr{let z ← (simulateQ (loggedImpl prims) (liftFree R)).run s}[z = r] *
         guarded (SigningGuessProof.structuralHitPotential prims A x T) r.2 ≤
       guarded (SigningGuessProof.structuralHitPotential prims A x T) s
 
@@ -775,13 +784,13 @@ theorem honestFlatAfter_bind (top : TopTree) {β : Type} (oa : OracleComp (Query
     HonestFlatAfter prims A x T top oa v (R >>= f) := by
   intro s hs hres
   rw [show ∀ {α β : Type} (R : OracleComp (RoSpec C) α) (f : α → OracleComp (RoSpec C) β),
-    liftFree (R >>= f) = liftFree R >>= fun a => liftFree (f a) from φ_bind, simulateQ_bind, StateT.run_bind, tsum_probOutput_bind_mul]
+    liftFree (R >>= f) = liftFree R >>= fun a => liftFree (f a) from φ_bind, simulateQ_bind, StateT.run_bind, OracleComp.tsum_prEvent_bind_mul]
   refine le_trans (ENNReal.tsum_le_tsum fun z => ?_) (hR s hs hres)
   by_cases hz : z ∈ support ((simulateQ (loggedImpl prims) (liftFree R)).run s)
   · gcongr
     exact hf z.1 z.2 (runInv_run prims x T top _ s hs z hz)
       (hres.mono (logged_cache_le prims _ s z hz))
-  · simp [probOutput_eq_zero_of_not_mem_support hz]
+  · simp [prEvent_eq_zero_of_not_mem_support _ hz]
 
 theorem honestFlatAfter_of (top : TopTree) {β : Type} (oa : OracleComp (Query C →ₒ HashOutput) β)
     (v : β) {α : Type} {R : OracleComp (RoSpec C) α} (hR : HonestFlat prims A x T top R) :
@@ -801,13 +810,13 @@ theorem honestFlat_honestSignature (top : TopTree) (e : KeyIndex) (message : Mes
   rw [← SigningHitProof.hashEmbed_referenceTree, map_eq_bind_pure_comp, bind_assoc]
   intro s hs
   rw [show ∀ {α β : Type} (R : OracleComp (RoSpec C) α) (f : α → OracleComp (RoSpec C) β),
-    liftFree (R >>= f) = liftFree R >>= fun a => liftFree (f a) from φ_bind, simulateQ_bind, StateT.run_bind, tsum_probOutput_bind_mul]
+    liftFree (R >>= f) = liftFree R >>= fun a => liftFree (f a) from φ_bind, simulateQ_bind, StateT.run_bind, OracleComp.tsum_prEvent_bind_mul]
   refine le_trans (ENNReal.tsum_le_tsum fun z => ?_) (honestFlat_bottom prims A x T top (treeOf e) s hs)
   by_cases hz : z ∈ support ((simulateQ (loggedImpl prims) (liftFree (SigningHitProof.hashEmbed
     (referenceTree SigningHitProof.forestHash (SigningHitProof.forestValue x.2.1) x.1 top
       (.bottom (treeOf e)))))).run s)
   swap
-  · simp [probOutput_eq_zero_of_not_mem_support hz]
+  · simp [prEvent_eq_zero_of_not_mem_support _ hz]
   gcongr
   have hres := logged_hashEmbed_resolves prims _ s z hz
   have hinv := runInv_run prims x T top _ s hs z hz
@@ -837,28 +846,28 @@ theorem honestFlat_honestSignature (top : TopTree) (e : KeyIndex) (message : Mes
 
 theorem hit_bind_le {α β : Type} (oa : OracleComp (WorldSpec C) α) (ob : α → OracleComp (WorldSpec C) β)
     (s : LoggedState C) (a b : ℝ≥0∞)
-    (h1 : ∑' r, Pr[= r | (simulateQ (loggedImpl prims) oa).run s] *
+    (h1 : ∑' r, Pr{let z ← (simulateQ (loggedImpl prims) oa).run s}[z = r] *
         guarded (SigningGuessProof.structuralHitPotential prims A x T) r.2 ≤
       guarded (SigningGuessProof.structuralHitPotential prims A x T) s + a)
     (h2 : ∀ z ∈ support ((simulateQ (loggedImpl prims) oa).run s),
-      ∑' r, Pr[= r | (simulateQ (loggedImpl prims) (ob z.1)).run z.2] *
+      ∑' r, Pr{let y ← (simulateQ (loggedImpl prims) (ob z.1)).run z.2}[y = r] *
           guarded (SigningGuessProof.structuralHitPotential prims A x T) r.2 ≤
         guarded (SigningGuessProof.structuralHitPotential prims A x T) z.2 + b) :
-    ∑' r, Pr[= r | (simulateQ (loggedImpl prims) (oa >>= ob)).run s] *
+    ∑' r, Pr{let z ← (simulateQ (loggedImpl prims) (oa >>= ob)).run s}[z = r] *
         guarded (SigningGuessProof.structuralHitPotential prims A x T) r.2 ≤
       guarded (SigningGuessProof.structuralHitPotential prims A x T) s + (a + b) := by
-  rw [simulateQ_bind, StateT.run_bind, tsum_probOutput_bind_mul]
-  calc _ ≤ ∑' z, Pr[= z | (simulateQ (loggedImpl prims) oa).run s] *
+  rw [simulateQ_bind, StateT.run_bind, OracleComp.tsum_prEvent_bind_mul]
+  calc _ ≤ ∑' z, Pr{let y ← (simulateQ (loggedImpl prims) oa).run s}[y = z] *
         (guarded (SigningGuessProof.structuralHitPotential prims A x T) z.2 + b) := by
         refine ENNReal.tsum_le_tsum fun z => ?_
         by_cases hz : z ∈ support ((simulateQ (loggedImpl prims) oa).run s)
         · gcongr
           exact h2 z hz
-        · simp [probOutput_eq_zero_of_not_mem_support hz]
+        · simp [prEvent_eq_zero_of_not_mem_support _ hz]
     _ ≤ (guarded (SigningGuessProof.structuralHitPotential prims A x T) s + a) + 1 * b := by
         simp_rw [mul_add]
         rw [ENNReal.tsum_add, ENNReal.tsum_mul_right]
-        exact add_le_add h1 (mul_le_mul_left tsum_probOutput_le_one _)
+        exact add_le_add h1 (mul_le_mul_left (OracleComp.tsum_prEvent_le_one _) _)
     _ = _ := by rw [one_mul, add_assoc]
 
 end Calculus
@@ -868,7 +877,7 @@ set_option maxRecDepth 100000 in
 reads of the forest completion. -/
 theorem hit_dealer_rise (A : TsigAdversary C) (x : Keys3 C) (T : C.Term)
     (hgate : GateFunded prims A x T) :
-    ∑' r, Pr[= r | dealerRun prims x] *
+    ∑' r, Pr{let z ← dealerRun prims x}[z = r] *
         guarded (SigningGuessProof.structuralHitPotential prims A x T) r.2.1 ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ * ((2 ^ 16 : ℕ) : ℝ≥0∞) := by
   set ε := (2 ^ 128 : ℝ≥0∞)⁻¹
@@ -885,12 +894,12 @@ theorem hit_dealer_rise (A : TsigAdversary C) (x : Keys3 C) (T : C.Term)
       rw [loggedImpl_log prims t s r hr, programmed_logQuery, not_or] at hn
       exact hn
     exact .step t s (hs hn'.1) hn'.2 r hr
-  have hstep : ∀ t s, Inv s → ∑' r, Pr[= r | (loggedImpl prims t).run s] * guarded G r.2 ≤
+  have hstep : ∀ t s, Inv s → ∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] * guarded G r.2 ≤
       guarded G s + ε * (if ∃ b, t = gate b ∧ ¬SigningHitProof.GateSeen (gate b) s.2 then 1 else 0) := by
     intro t s hs
     by_cases hb : Programmed s.2 ∨ IsProgram t
-    · refine le_trans (le_of_eq (tsum_probOutput_mul_of_const_on_support _ (c := 0)
-        (fun r hr => ?_) (by simp))) zero_le
+    · refine le_trans (le_of_eq (OracleComp.tsum_prEvent_mul_of_const_on_support _ (c := 0)
+        (fun r hr => ?_))) zero_le
       rw [guarded, if_pos (by rw [loggedImpl_log prims t s r hr, programmed_logQuery]; exact hb)]
     push Not at hb
     rw [guarded, if_neg hb.1]
@@ -924,10 +933,10 @@ theorem hit_dealer_rise (A : TsigAdversary C) (x : Keys3 C) (T : C.Term)
     rw [show referenceTree (fun oa => liftFree (tweakable oa)) (fun p => liftFree (prfValue x.2.1 p))
         x.1 emptyTop .top = liftFree (referenceTree tweakable (prfValue x.2.1) x.1 emptyTop .top) from
       referenceTree_φ _ _ _ _, ← SigningHitProof.hashEmbed_referenceTree]
-  rw [dealerRun, flatWorld, carry_run, tsum_probOutput_map_mul, hprog]
-  change ∑' r, Pr[= r | (simulateQ (loggedImpl prims) prog).run loggedInit] *
+  rw [dealerRun, flatWorld, carry_run, OracleComp.tsum_prEvent_map_mul, hprog]
+  change ∑' r, Pr{let z ← (simulateQ (loggedImpl prims) prog).run loggedInit}[z = r] *
     guarded (SigningGuessProof.structuralHitPotential prims A x T) r.2 ≤ _
-  calc _ ≤ ∑' r, Pr[= r | (simulateQ (loggedImpl prims) prog).run loggedInit] *
+  calc _ ≤ ∑' r, Pr{let z ← (simulateQ (loggedImpl prims) prog).run loggedInit}[z = r] *
         (SigningHitProof.completionPotential (SigningHitProof.forestRelevant x.1)
           (SigningHitProof.forestCompletion x) r.2.1.1 + guarded G r.2) := by
         refine ENNReal.tsum_le_tsum fun r => ?_
@@ -952,21 +961,21 @@ theorem hit_dealer_rise (A : TsigAdversary C) (x : Keys3 C) (T : C.Term)
 part and a round-2 check add nothing. -/
 theorem hit_step_rise (A : TsigAdversary C) (x : Keys3 C) (T : C.Term) (top : TopTree)
     (t : (LocalSpec C + TsigSpec C).Domain) (p : FlatState C) (hp : HitInv prims x T top p.1) :
-    ∑' r, Pr[= r | (flatOracles prims x (SigningHitProof.actualDealt x top) t).run p] *
+    ∑' r, Pr{let z ← (flatOracles prims x (SigningHitProof.actualDealt x top) t).run p}[z = r] *
         guarded (SigningGuessProof.structuralHitPotential prims A x T) r.2.1 ≤
       guarded (SigningGuessProof.structuralHitPotential prims A x T) p.1 +
         (2 ^ 128 : ℝ≥0∞)⁻¹ * (ownDomainUnit (SigningHitProof.forestRelevant x.1) t : ℝ≥0∞) := by
-  rw [flatOracles, flat, StateT.run_mk, tsum_probOutput_map_mul, carry_run_pair, tsum_probOutput_map_mul]
+  rw [flatOracles, flat, StateT.run_mk, OracleComp.tsum_prEvent_map_mul, carry_run_pair, OracleComp.tsum_prEvent_map_mul]
   cases t with
   | inl t =>
-    simp only [flaggedOracles, StateT.run_mk, simulateQ_map, StateT.run_map, tsum_probOutput_map_mul]
+    simp only [flaggedOracles, StateT.run_mk, simulateQ_map, StateT.run_map, OracleComp.tsum_prEvent_map_mul]
     erw [adversary_query, simulateQ_query]
     simp only [OracleQuery.input_query, OracleQuery.cont_query]
     erw [id_map]
     refine (hit_seen_step prims A x T (.inl (.inl t)) p.1 hp.2.1).trans_eq ?_
     rcases t with n | (q | q) <;> rfl
   | inr q =>
-    simp only [flaggedOracles, StateT.run_mk, simulateQ_map, StateT.run_map, tsum_probOutput_map_mul]
+    simp only [flaggedOracles, StateT.run_mk, simulateQ_map, StateT.run_map, OracleComp.tsum_prEvent_map_mul]
     rw [SigningHitProof.tsigOracles_free]
     refine (honestFlat_tsigOracles prims A x T top q p.2.1 p.1 ⟨hp.2.1, hp.2.2⟩).trans ?_
     simp [ownDomainUnit]
@@ -975,8 +984,8 @@ theorem hit_step_rise (A : TsigAdversary C) (x : Keys3 C) (T : C.Term) (top : To
 second build of the tail adds nothing. -/
 theorem hit_finish_rise (A : TsigAdversary C) (x : Keys3 C) (T : C.Term) (top : TopTree)
     (forgery : Forgery) (st : TsigState C) (s : LoggedState C) (hs : HitInv prims x T top s) :
-    ∑' r, Pr[= r | (simulateQ (loggedImpl prims)
-          (tsigFinish (SigningHitProof.actualDealt x top) (forgery, st))).run s] *
+    ∑' r, Pr{let z ← ((simulateQ (loggedImpl prims)
+          (tsigFinish (SigningHitProof.actualDealt x top) (forgery, st))).run s)}[z = r] *
         guarded (SigningGuessProof.structuralHitPotential prims A x T) r.2 ≤
       guarded (SigningGuessProof.structuralHitPotential prims A x T) s +
         (2 ^ 128 : ℝ≥0∞)⁻¹ * ((382 : ℕ) : ℝ≥0∞) := by
@@ -984,7 +993,7 @@ theorem hit_finish_rise (A : TsigAdversary C) (x : Keys3 C) (T : C.Term) (top : 
   unfold SigningCoreProof.tsigFinish
   dsimp only
   have hverify := hit_run_bound prims A x T
-    (liftFree (tweakable (Concrete.verify ⟨top.root, x.1⟩ forgery.message forgery.signature))) 382
+    (liftFree (tweakable (Verification.verifyWithHash ⟨top.root, x.1⟩ forgery.message forgery.signature))) 382
     (liftFree_bound x _ 382 (by
       rw [← SigningHitProof.hashEmbed_forestHash]
       exact hashEmbed_bound x _ 382 (forestHash_bound x _ 382 (verify_relevant x _ _ _)))) s hs.2.1
@@ -992,12 +1001,12 @@ theorem hit_finish_rise (A : TsigAdversary C) (x : Keys3 C) (T : C.Term) (top : 
   refine hit_bind_le prims A x T _ _ s _ 0 hverify fun z hz => ?_
   have hz' := runInv_run prims x T top _ s hinv z hz
   split_ifs
-  · simp only [pure_bind, simulateQ_pure, StateT.run_pure, tsum_probOutput_pure_mul]
+  · simp only [pure_bind, simulateQ_pure, StateT.run_pure, OracleComp.tsum_prEvent_pure_mul]
     exact le_add_right le_rfl
   · rw [← add_zero (0 : ℝ≥0∞)]
     refine hit_bind_le prims A x T _ _ z.2 0 0 ?_ fun w _ => ?_
     swap
-    · simp only [pure_bind, simulateQ_pure, StateT.run_pure, tsum_probOutput_pure_mul]
+    · simp only [pure_bind, simulateQ_pure, StateT.run_pure, OracleComp.tsum_prEvent_pure_mul]
       exact le_add_right le_rfl
     have hsig := honestFlat_honestSignature prims A x T top forgery.signature.leafIndex forgery.message
       z.2 hz'
@@ -1166,7 +1175,7 @@ end ThresholdLeanXmssSecurity.SigningOwnHit
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningOwnHit.bound_bind_le
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningOwnHit.bound_of_calls' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.SigningOwnHit.bound_of_calls' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningOwnHit.bound_of_calls
 

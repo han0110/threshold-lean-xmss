@@ -12,7 +12,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1HashProgram
   commitment call.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1BuildCommit
@@ -50,10 +50,10 @@ theorem realCommitment_run (e : KeyIndex) (a : RealState C) :
   rw [simulateQ_map, StateT.run_map]
   refine congrArg _ ?_
   have h := SigningCompilerO1HashProgram.realHonest_tweakable prims x s pads u rest
-    (Concrete.oracleHash (commitmentInput x.1 e r1.1))
+    (Verification.oracleHashWithHash (commitmentInput x.1 e r1.1))
   change (realHonest prims x s pads u rest _).run r1.2 = _
   rw [h]
-  simp [Concrete.oracleHash, SigningCompilerO1Pending.readCall_false]
+  simp [Verification.oracleHashWithHash, SigningCompilerO1Pending.readCall_false]
 
 /-- The compiler commitment makes the virtual reads, then one pending call. -/
 theorem runX_sourceCommitmentX (e : KeyIndex) (src : SourceState C) (st : CompState C) :

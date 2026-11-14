@@ -9,7 +9,7 @@ Non-slot reads use the visible cache after any opening-release prefix. The
 counted real call and free compiler call retain their separate trace routes.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead
@@ -165,16 +165,12 @@ theorem cachedExtra_monitored (P : PublicParameter) (seeds : C.Term → HashOutp
 theorem relTriple_supported {α β : Type} {oa : ProbComp α} {ob : ProbComp β}
     {R : α → β → Prop} (h : RelTriple oa ob R) :
     RelTriple oa ob (fun a b => R a b ∧ a ∈ support oa ∧ b ∈ support ob) := by
+  let : MeasurableSpace α := ⊤
+  let : MeasurableSpace β := ⊤
   obtain ⟨c, hc⟩ := relTriple_iff_relWP.1 h
-  refine relTriple_iff_relWP.2 ⟨c, fun z hz => ⟨hc z hz, ?_, ?_⟩⟩
-  · have hp : z.1 ∈ support (Prod.fst <$> c.1) := by
-      rw [support_map]; exact ⟨z, hz, rfl⟩
-    rw [c.2.map_fst] at hp
-    exact (mem_support_evalDist_iff _ _).1 hp
-  · have hp : z.2 ∈ support (Prod.snd <$> c.1) := by
-      rw [support_map]; exact ⟨z, hz, rfl⟩
-    rw [c.2.map_snd] at hp
-    exact (mem_support_evalDist_iff _ _).1 hp
+  refine relTriple_iff_relWP.2 ⟨c, ?_⟩
+  filter_upwards [hc, ae_mem_support_prod c] with z hz hmem
+  exact ⟨hz, hmem.1, hmem.2⟩
 
 /-- A coupled marginal retains the complete states and their support facts. -/
 theorem relTriple_of_projections {α β γ δ : Type} (oa : ProbComp α) (ob : ProbComp β)
@@ -629,7 +625,11 @@ end ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.cacheRead_nonhash
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.ordinary_not_suspended' depends on axioms: [propext, Quot.sound] -/
+/--
+info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.ordinary_not_suspended' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.ordinary_not_suspended
 

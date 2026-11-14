@@ -68,7 +68,7 @@ namespace ThresholdLeanXmssSecurity
 
 namespace SigningOneRunProof
 
-open LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof SigningJointEagerProof
+open HashSig LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof SigningJointEagerProof
 
 variable {C : Committee} (prims : Primitives)
 
@@ -86,34 +86,33 @@ def oneRun (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
 
 /-- The one run preserves the result, the count, both logs and the carried state. -/
 theorem evalDist_oneRun_rest (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    𝒟[(fun z => (z.1, restOf z.2)) <$> oneRun prims A x] =
-      𝒟[(fun z => (z.1, restOf z.2)) <$>
-        (jointGame (carry (SigningCostProof.loggedImpl prims)) A x).run jointInit] :=
+    ((fun z => (z.1, restOf z.2)) <$> oneRun prims A x) =ᵈ
+      ((fun z => (z.1, restOf z.2)) <$>
+        (jointGame (carry (SigningCostProof.loggedImpl prims)) A x).run jointInit) :=
   evalDist_jointGame_eq prims _ _ (hashLaw_eagerWorld prims _) (hashLaw_carry_logged prims) A x
 
 /-- The eager law of the one run. The result, the verification candidates, the count and the call
 log have the law of `jointRun`. -/
 theorem evalDist_oneRun (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    𝒟[(fun z => (z.1, z.2.1.1.2, z.2.1.2)) <$> oneRun prims A x] =
-      𝒟[(fun z => (z.1, z.2.1.2, z.2.2)) <$> SigningUnchargedLoggedProof.jointRun prims A x] := by
-  have h := congrArg
-    (fun d => (fun z : JointResult C × Rest C (OpeningState C) => (z.1, z.2.1)) <$> d)
-    (evalDist_oneRun_rest prims A x)
-  simp only [← evalDist_map, Functor.map_map] at h
+    ((fun z => (z.1, z.2.1.1.2, z.2.1.2)) <$> oneRun prims A x) =ᵈ
+      ((fun z => (z.1, z.2.1.2, z.2.2)) <$> SigningUnchargedLoggedProof.jointRun prims A x) := by
+  have h := (evalDist_oneRun_rest prims A x).map
+    (fun z : JointResult C × Rest C (OpeningState C) => (z.1, z.2.1))
+  simp only [Functor.map_map] at h
   rw [← jointGame_eq_jointRun, Functor.map_map]
   exact h
 
 /-- Each event on the observable joint outcome has the same probability on the one run. -/
 theorem probEvent_oneRun (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
     (event : JointResult C × (ℕ × QueryLog (WorldSpec C)) → Prop) :
-    Pr[fun z => event (z.1, z.2.1.1.2, z.2.1.2) | oneRun prims A x] =
-      Pr[fun z => event (z.1, z.2.1.2, z.2.2) | SigningUnchargedLoggedProof.jointRun prims A x] := by
+    Pr{let z ← oneRun prims A x}[event (z.1, z.2.1.1.2, z.2.1.2)] =
+      Pr{let z ← SigningUnchargedLoggedProof.jointRun prims A x}[event (z.1, z.2.1.2, z.2.2)] := by
   have h := evalDist_oneRun prims A x
-  have hp : Pr[event | (fun z => (z.1, z.2.1.1.2, z.2.1.2)) <$> oneRun prims A x] =
-      Pr[event | (fun z => (z.1, z.2.1.2, z.2.2)) <$>
-        SigningUnchargedLoggedProof.jointRun prims A x] := by
-    simp only [probEvent_eq_tsum_indicator, probOutput_def, h]
-  simpa only [probEvent_map, Function.comp_def] using hp
+  have hp : Pr{let y ← (fun z => (z.1, z.2.1.1.2, z.2.1.2)) <$> oneRun prims A x}[event y] =
+      Pr{let y ← ((fun z => (z.1, z.2.1.2, z.2.2)) <$>
+        SigningUnchargedLoggedProof.jointRun prims A x)}[event y] := by
+    exact h.prEvent_eq _
+  simpa only [prEvent_map, Function.comp_def] using hp
 
 end Eager
 
@@ -195,8 +194,8 @@ theorem monitoredRun_forget (keyOf : XmssSecurity.HashInput → Option XmssSecur
 /-- The hit costs `2^-128` for each keyed call of the log in expectation. -/
 theorem probEvent_hit_le_logKeyed (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
     (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr[fun z => z.2.1.2.hit = true | monitoredRun prims keyOf A x] ≤
-      (2 ^ 128 : ℝ≥0∞)⁻¹ * ∑' z, Pr[= z | monitoredRun prims keyOf A x] *
+    Pr{let z ← monitoredRun prims keyOf A x}[z.2.1.2.hit = true] ≤
+      (2 ^ 128 : ℝ≥0∞)⁻¹ * ∑' z, Pr{let y ← monitoredRun prims keyOf A x}[y = z] *
         (logKeyed keyOf z.2.1.1.2 : ℝ≥0∞) := by
   classical
   have hinit : CacheSeen (monitoredInit (C := C)).1.1.1.1 (monitoredInit (C := C)).1.2 :=
@@ -209,7 +208,7 @@ theorem probEvent_hit_le_logKeyed (keyOf : XmssSecurity.HashInput → Option Xms
   rw [hrisk, zero_add, hlog] at h
   simp only [Nat.sub_zero] at h
   refine le_trans ?_ h
-  rw [probEvent_eq_tsum_ite]
+  rw [OracleComp.prEvent_eq_tsum_ite]
   refine ENNReal.tsum_le_tsum fun z => ?_
   split_ifs with hz
   · have hone : z.2.1.2.risk = 1 := by simp [Monitor.risk, hz]
@@ -220,26 +219,26 @@ theorem probEvent_hit_le_logKeyed (keyOf : XmssSecurity.HashInput → Option Xms
 /-- The keyed calls of the log of the monitored one run have the law of those of `loggedRun`. -/
 theorem expected_logKeyed_eq (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
     (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    ∑' z, Pr[= z | monitoredRun prims keyOf A x] * (logKeyed keyOf z.2.1.1.2 : ℝ≥0∞) =
-      ∑' z, Pr[= z | SigningCostProof.loggedRun prims A x] * (logKeyed keyOf z.2.2 : ℝ≥0∞) := by
-  have h1 := tsum_probOutput_map_mul (monitoredRun prims keyOf A x) (fun z => (z.1, (z.2.1.1, z.2.2)))
+    ∑' z, Pr{let y ← monitoredRun prims keyOf A x}[y = z] * (logKeyed keyOf z.2.1.1.2 : ℝ≥0∞) =
+      ∑' z, Pr{let y ← SigningCostProof.loggedRun prims A x}[y = z] * (logKeyed keyOf z.2.2 : ℝ≥0∞) := by
+  have h1 := OracleComp.tsum_prEvent_map_mul (monitoredRun prims keyOf A x) (fun z => (z.1, (z.2.1.1, z.2.2)))
     (fun y => (logKeyed keyOf y.2.1.2 : ℝ≥0∞))
   rw [monitoredRun_forget] at h1
-  have h2 := tsum_probOutput_map_mul (oneRun prims A x) (fun z => (z.1, z.2.1.1.2, z.2.1.2))
+  have h2 := OracleComp.tsum_prEvent_map_mul (oneRun prims A x) (fun z => (z.1, z.2.1.1.2, z.2.1.2))
     (fun y => (logKeyed keyOf y.2.2 : ℝ≥0∞))
-  have h3 := tsum_probOutput_map_mul (SigningUnchargedLoggedProof.jointRun prims A x)
+  have h3 := OracleComp.tsum_prEvent_map_mul (SigningUnchargedLoggedProof.jointRun prims A x)
     (fun z => (z.1, z.2.1.2, z.2.2)) (fun y => (logKeyed keyOf y.2.2 : ℝ≥0∞))
-  have h4 := tsum_probOutput_map_mul (SigningUnchargedLoggedProof.jointRun prims A x)
+  have h4 := OracleComp.tsum_prEvent_map_mul (SigningUnchargedLoggedProof.jointRun prims A x)
     (fun z => (z.1.1, z.2)) (fun y => (logKeyed keyOf y.2.2 : ℝ≥0∞))
   rw [SigningUnchargedLoggedProof.jointRun_logged] at h4
   have hlaw := evalDist_oneRun prims A x
   rw [← h1, h4]
   refine (h2.symm.trans ?_).trans h3
-  exact tsum_congr fun y => by rw [probOutput_congr rfl hlaw]
+  exact tsum_congr fun y => by rw [hlaw.prEvent_eq (· = y)]
 
 /-- The bound of R1 on the one run. The hit costs `2^-128` for each bottom digest call. -/
 theorem r1Hit_bound (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr[fun z => z.2.1.2.hit = true | monitoredRun prims (XmssSecurity.encodingInputLeafIndex? x.1) A x] ≤
+    Pr{let z ← monitoredRun prims (XmssSecurity.encodingInputLeafIndex? x.1) A x}[z.2.1.2.hit = true] ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ * SigningGuessProof.sourceExpectedCost prims A x
         (SigningPartnerLinkProof.bottomDigestCost x) := by
   refine (probEvent_hit_le_logKeyed prims _ A x).trans ?_
@@ -360,11 +359,11 @@ def R1HitRow (z : SplitOutcome C) : Prop :=
 
 /-- The bound of R1 on the split one run. -/
 theorem split_r1Hit_bound (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr[R1HitRow | splitRunAt prims A x] ≤
+    Pr{let z ← splitRunAt prims A x}[R1HitRow z] ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ * SigningGuessProof.sourceExpectedCost prims A x
         (SigningPartnerLinkProof.bottomDigestCost x) := by
   refine le_trans (le_of_eq ?_) (r1Hit_bound prims A x)
-  rw [← splitRunAt_forget, probEvent_map]
+  rw [← splitRunAt_forget, prEvent_map]
   rfl
 
 end Split

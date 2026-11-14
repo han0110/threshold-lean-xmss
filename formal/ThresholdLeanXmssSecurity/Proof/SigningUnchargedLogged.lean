@@ -49,7 +49,7 @@ namespace ThresholdLeanXmssSecurity
 
 namespace SigningUnchargedLoggedProof
 
-open LeanXmss ThresholdLeanXmss SigningHitLaneProof SigningCostProof SigningPartnerBoundProof
+open HashSig LeanXmss ThresholdLeanXmss SigningHitLaneProof SigningCostProof SigningPartnerBoundProof
 
 attribute [local instance] Classical.propDecidable
 
@@ -537,7 +537,7 @@ theorem freshPartnerLink_of_classification (hclass : SelectionClassification (C 
       forgery.signature.leafIndex selected' = digest := by
     simp only [XmssSecurity.Concrete.CacheView.encodingHash, XmssSecurity.Concrete.CacheView.digestAt,
       SigningDescentProof.thView]
-    rw [hS]
+    erw [QueryCache.ofFn_apply, hS]
     exact hdS
   have hFdigest : XmssSecurity.Concrete.CacheView.encodingHash (SigningDescentProof.thView w.2.1.1) x.1
       forgery.signature.leafIndex
@@ -558,13 +558,13 @@ theorem freshPartnerLink_of_classification (hclass : SelectionClassification (C 
     | none =>
       simp only [XmssSecurity.Concrete.CacheView.encodingHash, XmssSecurity.Concrete.CacheView.digestAt,
         SigningDescentProof.thView] at hFdigest
-      rw [hc] at hFdigest
+      erw [QueryCache.ofFn_apply, hc] at hFdigest
       rw [← hFdigest, XmssSecurity.TargetSum.decodeDigest_zero_eq_none] at hdecode
       cases hdecode
   have hFdigest' : XmssSecurity.truncateHash outputF = digest := by
     simp only [XmssSecurity.Concrete.CacheView.encodingHash, XmssSecurity.Concrete.CacheView.digestAt,
       SigningDescentProof.thView] at hFdigest
-    rw [hF] at hFdigest
+    erw [QueryCache.ofFn_apply, hF] at hFdigest
     exact hFdigest
   have hseen := joint_covered prims A x w hw (XmssSecurity.encodingInputLeafIndex? x.1) _ (by rw [hF]; simp)
   unfold monitorOf at hseen
@@ -650,13 +650,13 @@ def UnchargedFlagCoupling : Prop :=
       (outHit : (t : κ) → σ × ℕ → spec t × (σ × ℕ) → Prop)
       (oa : OracleComp (spec + SigningOpeningProof.RevealSpec K Digest) β) (σ₀ : σ),
       (∀ t σ₁ n, p t → ¬inputSide t →
-        Pr[outHit t (σ₁, n) | (SigningOpeningProof.countImpl impl p t).run (σ₁, n)] ≤
+        Pr{let z ← (SigningOpeningProof.countImpl impl p t).run (σ₁, n)}[(outHit t (σ₁, n)) z] ≤
           (2 ^ 128 : ℝ≥0∞)⁻¹) ∧
-      Pr[UnchargedFlag prims x | jointRun prims A x] ≤
-        Pr[fun r => r.2.2.2 = true | $ᵗ (K → Digest) >>= fun s =>
+      Pr{let z ← jointRun prims A x}[UnchargedFlag prims x z] ≤
+        Pr{let r ← ($ᵗ (K → Digest) >>= fun s =>
           (simulateQ (SigningOpeningProof.revealImpl (SigningOpeningProof.countImpl impl p)
             (SigningOpeningProof.cappedCall p q) inputSide outHit keyOf point s) oa).run
-              ((σ₀, 0), fun _ => none, false)]
+              ((σ₀, 0), fun _ => none, false))}[r.2.2.2 = true]
 
 set_option maxRecDepth 100000 in
 /-- The uncharged lane on the log from the fresh partner link and the coupling. -/
@@ -665,10 +665,10 @@ theorem unchargedLaneBoundLogged_of_coupling (hlink : FreshPartnerLink (C := C) 
   intro A q x hx hkeys hq hsmall
   obtain ⟨κ, σ, β, K, spec, _, _, _, impl, inputSide, p, keyOf, point, outHit, oa, σ₀, hout, hflag⟩ :=
     hcouple A q x hx hkeys hq hsmall
-  have hle : Pr[UnchargedWinLogged prims x | loggedRun prims A x] ≤
-      Pr[UnchargedFlag prims x | jointRun prims A x] := by
-    rw [← jointRun_logged, probEvent_map]
-    exact probEvent_mono fun w hw hu => unchargedFlag_of_win prims hlink A x w hw hu
+  have hle : Pr{let z ← loggedRun prims A x}[UnchargedWinLogged prims x z] ≤
+      Pr{let z ← jointRun prims A x}[UnchargedFlag prims x z] := by
+    rw [← jointRun_logged, prEvent_map]
+    exact prEvent_mono_of_support _ _ _ fun w hw hu => unchargedFlag_of_win prims hlink A x w hw hu
   exact hle.trans (SigningOpeningProof.probEvent_le_of_capped impl inputSide p
     (jointRun prims A x) (UnchargedFlag prims x) keyOf point q outHit hout oa σ₀ hflag)
 

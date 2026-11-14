@@ -13,7 +13,7 @@ the compiler. Each call is a hash read that is no slot and no bottom base input,
 - `verify_call` couples one call with its candidates.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Verify
@@ -242,7 +242,8 @@ theorem verify_sync_aux (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (
     have hstep := verify_call prims x q s pads u rest noise hkeys top input hq.1 vlog a b hs ha hb
       hmark
     rw [← hsig, ← hexp] at hstep
-    rw [real_query_bind, comp_query_bind]
+    erw [real_query_bind]
+    rw [comp_query_bind]
     refine relTriple_bind hstep ?_
     rintro ⟨va, a'⟩ ⟨⟨vb, srcb⟩, stb⟩ (h | h | ⟨hv, hcar, hsync, hm⟩)
     · exact relTriple_of_support_left fun c hc _ => Or.inl

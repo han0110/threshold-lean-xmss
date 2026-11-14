@@ -136,7 +136,7 @@ namespace ThresholdLeanXmssSecurity
 
 namespace SigningPartnerLinkProof
 
-open LeanXmss ThresholdLeanXmss
+open HashSig LeanXmss ThresholdLeanXmss
 
 variable {C : Committee} (prims : Primitives)
 
@@ -185,8 +185,8 @@ theorem topDigest_add_bottomDigestCost (x : SigningSecurityProof.Keys3 C) (t : (
 
 /-- The top partner charged to the top digest calls alone. -/
 theorem resolvedTopPartner_bound_topDigest (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr[fun r => ∃ key, SigningGuessProof.ResolvedTopPartner x key r.2.1 |
-        SigningDescentProof.exposedRun prims A x] ≤
+    Pr{let r ←
+        SigningDescentProof.exposedRun prims A x}[∃ key, SigningGuessProof.ResolvedTopPartner x key r.2.1] ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ * SigningGuessProof.sourceExpectedCost prims A x
         (SigningGuessProof.rawDomainCost (SigningGuessProof.anyTopDigestInput x.1)) := by
   convert SigningGuessProof.cachePotential_bound_source prims A x (SigningGuessProof.anyTopDigestInput x.1)
@@ -209,7 +209,7 @@ def UnchargedWin2 (x : SigningSecurityProof.Keys3 C) (r : SigningCostProof.Outco
 /-- The bottom partner event costs one unit for each bottom digest call. -/
 def BottomPartnerBound : Prop :=
   ∀ (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C),
-    Pr[partner x | SigningDescentProof.exposedRun prims A x] ≤
+    Pr{let z ← SigningDescentProof.exposedRun prims A x}[partner x z] ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ * SigningGuessProof.sourceExpectedCost prims A x (bottomDigestCost x)
 
 /-- The fixed-cap bound of the new uncharged lane. -/
@@ -219,7 +219,7 @@ def UnchargedLaneBound2 : Prop :=
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
     (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) →
     q < 2 ^ 127 →
-    Pr[UnchargedWin2 prims partner x | SigningDescentProof.exposedRun prims A x] ≤ (q : ℝ≥0∞) / 2 ^ 128
+    Pr{let z ← SigningDescentProof.exposedRun prims A x}[UnchargedWin2 prims partner x z] ≤ (q : ℝ≥0∞) / 2 ^ 128
 
 set_option maxRecDepth 100000 in
 theorem chargedOutput2_bound (hpartner : BottomPartnerBound prims partner) (A : TsigAdversary C)
@@ -228,10 +228,10 @@ theorem chargedOutput2_bound (hpartner : BottomPartnerBound prims partner) (A : 
     (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (hq : ∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q)
     (hsmall : q < 2 ^ 127) :
-    Pr[ChargedOutput2 prims partner x | SigningDescentProof.exposedRun prims A x] ≤
+    Pr{let z ← SigningDescentProof.exposedRun prims A x}[ChargedOutput2 prims partner x z] ≤
       (q : ℝ≥0∞) / 2 ^ 128 := by
   obtain ⟨T, hhit⟩ := SigningGuessProof.hit_bound_structural_cost prims A q x hx hkeys hq hsmall
-  replace hhit : Pr[SigningCostProof.WinHit prims x | SigningDescentProof.exposedRun prims A x] ≤
+  replace hhit : Pr{let z ← SigningDescentProof.exposedRun prims A x}[SigningCostProof.WinHit prims x z] ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ * SigningGuessProof.sourceExpectedCost prims A x
         (SigningGuessProof.structuralHitCost x T) := hhit
   have hcost := SigningGuessProof.source_output_costs_le prims A x T q hq
@@ -244,16 +244,16 @@ theorem chargedOutput2_bound (hpartner : BottomPartnerBound prims partner) (A : 
     funext t
     exact (topDigest_add_bottomDigestCost x t).symm
   let run := SigningDescentProof.exposedRun prims A x
-  have h1 := probEvent_or_le run (SigningGuessProof.ChargedOutput prims x) (partner x)
-  have h2 := probEvent_or_le run (SigningCostProof.WinHit prims x)
+  have h1 := prEvent_or_le run (SigningGuessProof.ChargedOutput prims x) (partner x)
+  have h2 := prEvent_or_le run (SigningCostProof.WinHit prims x)
     (fun r => SigningGuessProof.AlternativeCommitment x.2.1 x.1 r.2.1 ∨
       ∃ key, SigningGuessProof.ResolvedTopPartner x key r.2.1)
-  have h3 := probEvent_or_le run (fun r => SigningGuessProof.AlternativeCommitment x.2.1 x.1 r.2.1)
+  have h3 := prEvent_or_le run (fun r => SigningGuessProof.AlternativeCommitment x.2.1 x.1 r.2.1)
     (fun r => ∃ key, SigningGuessProof.ResolvedTopPartner x key r.2.1)
   have hsum := h1.trans (add_le_add (h2.trans (add_le_add hhit (h3.trans (add_le_add
     (SigningGuessProof.alternativeCommitment_bound_source prims A x)
     (resolvedTopPartner_bound_topDigest prims A x))))) (hpartner A x))
-  change Pr[ChargedOutput2 prims partner x | run] ≤ _ at hsum
+  change Pr{let z ← run}[ChargedOutput2 prims partner x z] ≤ _ at hsum
   rw [← mul_add, ← mul_add, ← mul_add] at hsum
   refine hsum.trans ?_
   rw [div_eq_mul_inv, mul_comm (q : ℝ≥0∞)]
@@ -263,12 +263,12 @@ theorem chargedOutput2_bound (hpartner : BottomPartnerBound prims partner) (A : 
 
 set_option maxRecDepth 100000 in
 theorem win_le_charged2_uncharged2 (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr[fun r => r.1.2 = false ∧ r.1.1 = true |
-      runSigningWorld prims (SigningCoreProof.flaggedAfter A x)] ≤
-    Pr[ChargedOutput2 prims partner x | SigningDescentProof.exposedRun prims A x] +
-      Pr[UnchargedWin2 prims partner x | SigningDescentProof.exposedRun prims A x] := by
-  rw [SigningDescentProof.runSigningWorld_flaggedAfter, probEvent_map]
-  refine (probEvent_mono fun r _ hw => ?_).trans (probEvent_or_le _ _ _)
+    Pr{let r ←
+      runSigningWorld prims (SigningCoreProof.flaggedAfter A x)}[r.1.2 = false ∧ r.1.1 = true] ≤
+    Pr{let z ← SigningDescentProof.exposedRun prims A x}[ChargedOutput2 prims partner x z] +
+      Pr{let z ← SigningDescentProof.exposedRun prims A x}[UnchargedWin2 prims partner x z] := by
+  rw [SigningDescentProof.runSigningWorld_flaggedAfter, prEvent_map]
+  refine (prEvent_mono_of_support _ _ _ fun r _ hw => ?_).trans (prEvent_or_le _ _ _)
   by_cases hc : ChargedOutput2 prims partner x r
   · exact Or.inl hc
   · exact Or.inr ⟨Prod.ext hw.2 hw.1, hc⟩

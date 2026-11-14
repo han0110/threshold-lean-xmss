@@ -9,7 +9,7 @@ undone point has an absent term. These invariants concern only share execution;
 no source, fixed-pad or target-table relation is assumed.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerShare.Witness
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof

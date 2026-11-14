@@ -12,7 +12,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1RealBuild
 - `walk_sync` couples a chain walk with the pending calls of `walkCalls`. The three lemmas above use it.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1BuildSteps
@@ -84,7 +84,7 @@ theorem mapM_walkCalls_top (P : PublicParameter) (b : XmssSecurity.TopIndex) (l 
 
 /-- The verification walk of a top chain keeps the reveal map of the source. -/
 theorem keepsRevealed_topRecover (P : PublicParameter) (b : XmssSecurity.TopIndex) (l : ChainIndex)
-    (p : Digit) (initial : DeferredDigest) :
+    (p : WinternitzDigit) (initial : DeferredDigest) :
     SourceKeepsX (fun src : SourceState C => src.revealed) (sourceTopRecoverX P b l p initial) := by
   unfold sourceTopRecoverX
   refine (SourceKeepsX.mapM _ _
@@ -97,7 +97,7 @@ theorem keepsRevealed_topRecover (P : PublicParameter) (b : XmssSecurity.TopInde
 
 /-- A chain value of the top signature keeps the reveal map of the source. -/
 theorem keepsRevealed_topValue (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (b : XmssSecurity.TopIndex) (l : ChainIndex) (p : Digit) :
+    (b : XmssSecurity.TopIndex) (l : ChainIndex) (p : WinternitzDigit) :
     SourceKeepsX (fun src : SourceState C => src.revealed) (sourceTopValueX P seeds b l p) := by
   unfold sourceTopValueX
   refine (SourceKeepsX.mapM _ _
@@ -185,14 +185,14 @@ theorem sourceBottomRowX_walks (P : PublicParameter) (seeds : C.Term → HashOut
         | some (DeferredDigest.known value) => value
         | _ => 0)) := by
   rw [sourceBottomRowX_eq, bottomRowCalls_walks]
-  simp [bottomRowPrfCalls, List.mapM_append, sourceBackendX, Function.comp_def]
+  simp [bottomRowPrfCalls, List.mapM_append, Function.comp_def]
   rfl
 
 /-- A compiler row keeps the reveal map of the source. -/
 theorem keepsRevealed_row (P : PublicParameter) (seeds : C.Term → HashOutput) (e : KeyIndex)
     (l : ChainIndex) :
     SourceKeepsX (fun src : SourceState C => src.revealed) (sourceBottomRowX P seeds e l) := by
-  have hv (d : Digit) := SourceKeepsX.mapM (field := fun src : SourceState C => src.revealed) C.terms
+  have hv (d : WinternitzDigit) := SourceKeepsX.mapM (field := fun src : SourceState C => src.revealed) C.terms
     (fun T => sourceVirtualX P seeds T (.chain bottomLayer e l d))
     (fun T _ => SigningCompilerO1Lemmas.keepsRevealed_virtual P seeds T bottomLayer e l d)
   have hw (n : ℕ) := SourceKeepsX.mapM (field := fun src : SourceState C => src.revealed)
@@ -277,9 +277,20 @@ theorem pad_sync (cCore : Carried C) (p : Point) (a : RealState C) (src : Source
   | none =>
     simp only [padStep, hp]
     obtain ⟨⟨hF, hC⟩, hcnt⟩ := hs
-    refine Or.inr (Or.inr ⟨rfl, ⟨⟨{ hF with opening := ⟨hF.opening.1, hF.opening.2⟩ },
-      ⟨hC.agree, hC.pending⟩⟩, hcnt⟩, ⟨rfl, le_rfl, fun _ h => Or.inl h, le_rfl, id, rfl, rfl, rfl,
-      rfl, rfl, fun _ _ => rfl, fun _ h1 h2 => (h2 h1).elim, fun _ h => h, fun _ _ h => h⟩, hmark⟩)
+    refine Or.inr (Or.inr ⟨rfl, ⟨⟨?_, ?_⟩, ?_⟩, ?_, hmark⟩)
+    · exact { hF with opening := ⟨hF.opening.1, hF.opening.2⟩ }
+    · have key : ∀ (d d' : DeferredState C) (act : HashCache C), d'.cache = d.cache →
+          d'.pending = d.pending → d'.virtual = d.virtual →
+          CacheRelation x.1 x.2.1 s d act → CacheRelation x.1 x.2.1 s d' act := by
+        intro d d' act h1 h2 h3 h
+        refine ⟨fun query hq => ?_, fun p' value hv => ?_⟩
+        · rw [h1]
+          exact h.agree query fun hs => hq ⟨by rw [h1]; exact hs.1, by rw [h2, h3]; exact hs.2⟩
+        · exact h.pending p' value (by rw [← h2]; exact hv)
+      exact key (dataOf x (src, st).2) _ _ rfl rfl rfl hC
+    · exact hcnt
+    · exact ⟨rfl, le_rfl, fun _ h => Or.inl h, le_rfl, id, rfl, rfl, rfl,
+        rfl, rfl, fun _ _ => rfl, fun _ h1 h2 => (h2 h1).elim, fun _ h => h, fun _ _ h => h⟩
 
 /-- A chain walk of `n` steps from position `start`. The real side walks from `v`, and the compiler
 side makes the pending calls of `walkCalls`. The last answer gives the real value. -/
@@ -287,7 +298,7 @@ theorem walk_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (cCore 
     (side : XmssSecurity.LeafIndex ⊕ XmssSecurity.TopIndex) (lay : Layer) (key : KeyIndex)
     (l : ChainIndex)
     (hinput : ∀ (k : ChainStep) (w : Digest),
-      tweakableHashInput x.1 (.chain lay key k) (Concrete.chainPayload l w) =
+      tweakableHashInput x.1 (.chain lay key k) (Verification.chainPayload l w) =
         (chainPending (l, side, k)).input x.1 w)
     (start n : ℕ) (hn : start + n ≤ chainLength - 1) (v : Digest)
     (hv : 0 < n → ∀ h : start < chainLength - 1, v = s (chainPending (l, side, ⟨start, h⟩)).key)
@@ -296,7 +307,7 @@ theorem walk_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (cCore 
     (hmark : st.1.2 = false)
     (ra : Digest × RealState C)
     (hra : ra ∈ support ((realHonest prims x s pads u rest
-      (tweakable (Concrete.chainWalk x.1 lay key l start n v))).run a))
+      (tweakable (Verification.chainWalkWithHash x.1 lay key l start n v))).run a))
     (rb : (List DeferredOutput × SourceState C) × CompState C)
     (hrb : rb ∈ support (runX (compBackend x q s pads u rest noise)
       ((walkCalls side l start n).mapM (sourcePendingX x.1)) src st)) :
@@ -310,7 +321,7 @@ theorem walk_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (cCore 
           (start + n = chainLength - 1 → ∃ d, last.low = .known d)) ra rb := by
   induction n generalizing ra rb with
   | zero =>
-    rw [show (Concrete.chainWalk x.1 lay key l start 0 v : OracleComp HashSpec Digest) = pure v
+    rw [show (Verification.chainWalkWithHash x.1 lay key l start 0 v : OracleComp HashSpec Digest) = pure v
       from rfl, tweakable_pure, realHonest_pure, StateT.run_pure, mem_support_pure_iff] at hra
     rw [show walkCalls side l start 0 = [] from rfl, List.mapM_nil, runX_pure,
       mem_support_pure_iff] at hrb
@@ -337,7 +348,7 @@ theorem walk_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (cCore 
     rw [hcalls]
     have hstopa : RealStop q r1.2 → RealStop q r0.2 := fun h =>
       realHonest_stop prims x q s pads u rest (truncateHash <$> hashQuery (.hash (tweakableHashInput
-        x.1 (.chain lay key ⟨start + n, hlt⟩) (Concrete.chainPayload l r1.1)))) r1.2 h _
+        x.1 (.chain lay key ⟨start + n, hlt⟩) (Verification.chainPayload l r1.1)))) r1.2 h _
         (by with_reducible exact h2)
     have hstopb : Stop rb1.2 → Stop rb2.2 := fun h =>
       runX_compStop x q s pads u rest noise _ rb1.1.2 rb1.2 h rb2 hb2
@@ -361,7 +372,7 @@ theorem walk_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (cCore 
         obtain ⟨hval, hsec, -⟩ := hv1.2.2.2 last hl
         rw [hval, hsec hlt]
         rfl
-    have heq : tweakableHashInput x.1 (.chain lay key ⟨start + n, hlt⟩) (Concrete.chainPayload l r1.1) =
+    have heq : tweakableHashInput x.1 (.chain lay key ⟨start + n, hlt⟩) (Verification.chainPayload l r1.1) =
         (chainPending (l, side, ⟨start + n, hlt⟩)).input x.1
           (s (chainPending (l, side, ⟨start + n, hlt⟩)).key) := by
       rw [hinput, hprev]
@@ -475,13 +486,13 @@ theorem row_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : T
   obtain ⟨r1, h1, hra⟩ := realWorld_bind_support prims x s pads u rest _ _ r0.2 ra hra
   obtain ⟨r2, h2, hra⟩ := realWorld_bind_support prims x s pads u rest _ _ r1.2 ra hra
   obtain ⟨y1, hy1, hra⟩ := realWorld_bind_support prims x s pads u rest
-    (tweakable (Concrete.chainWalk x.1 bottomLayer e l 0 1 r0.1)) _ r2.2 ra
+    (tweakable (Verification.chainWalkWithHash x.1 bottomLayer e l 0 1 r0.1)) _ r2.2 ra
     (by with_reducible exact hra)
   obtain ⟨y2, hy2, hra⟩ := realWorld_bind_support prims x s pads u rest
-    (tweakable (Concrete.chainWalk x.1 bottomLayer e l 0 2 r0.1)) _ y1.2 ra
+    (tweakable (Verification.chainWalkWithHash x.1 bottomLayer e l 0 2 r0.1)) _ y1.2 ra
     (by with_reducible exact hra)
   obtain ⟨y3, hy3, hra⟩ := realWorld_bind_support prims x s pads u rest
-    (tweakable (Concrete.chainWalk x.1 bottomLayer e l 0 3 r0.1)) _ y2.2 ra
+    (tweakable (Verification.chainWalkWithHash x.1 bottomLayer e l 0 3 r0.1)) _ y2.2 ra
     (by with_reducible exact hra)
   rw [simulateQ_pure, StateT.run_pure, mem_support_pure_iff] at hra
   subst hra
@@ -505,7 +516,7 @@ theorem row_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : T
   have hpads2 := backend_padsFixed x q s pads u rest noise _ rb1.2 hpads1 rb2 hb2
   have hpads3 := backend_padsFixed x q s pads u rest noise _ rb2.2 hpads2 rb3 hb3
   have hinput : ∀ (k : ChainStep) (w : Digest),
-      tweakableHashInput x.1 (.chain bottomLayer e k) (Concrete.chainPayload l w) =
+      tweakableHashInput x.1 (.chain bottomLayer e k) (Verification.chainPayload l w) =
         (chainPending (l, .inl e, k)).input x.1 w := fun k w =>
     (SigningGuessLinkProof.chainInput_eq_bridge x.1 e l k w).symm
   have hstart : r0.1 = tauOf s pads p0 →
@@ -617,7 +628,7 @@ theorem row_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : T
 /-- One chain value of the top signature of a build. The compiler value is symbolic, and the real
 value is its reading at the secrets. -/
 theorem topValue_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)
-    (cCore cTime : Carried C) (bi : Fin (2 ^ layerHeight)) (l : ChainIndex) (p : Digit)
+    (cCore cTime : Carried C) (bi : Fin (2 ^ layerHeight)) (l : ChainIndex) (p : WinternitzDigit)
     (a : RealState C) (b : SourceStateO1 C × CompState C)
     (hs : SyncIn prims x s pads u rest noise top cCore cTime a b)
     (htime : cTime.1.1.bound = cCore.1.1.bound)
@@ -639,7 +650,7 @@ theorem topValue_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (to
   have hp := p.isLt
   have hL : chainLength = 4 := rfl
   have hinput : ∀ (k : ChainStep) (w : Digest),
-      tweakableHashInput x.1 (.chain topLayer (topKey bi) k) (Concrete.chainPayload l w) =
+      tweakableHashInput x.1 (.chain topLayer (topKey bi) k) (Verification.chainPayload l w) =
         (chainPending (l, .inr bi, k)).input x.1 w := fun k w =>
     (SigningGuessLinkProof.topChainInput_eq_bridge x.1 bi l k w).symm
   let p0 : CPoint := ⟨.chain topLayer (topKey bi) l (digit 0), constrained_top_chain bi l⟩
@@ -712,7 +723,7 @@ theorem topValue_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (to
 
 /-- The verification walk of one top chain of a build, from the value of `topValue_sync`. -/
 theorem topRecover_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)
-    (cCore cTime : Carried C) (bi : Fin (2 ^ layerHeight)) (l : ChainIndex) (p : Digit)
+    (cCore cTime : Carried C) (bi : Fin (2 ^ layerHeight)) (l : ChainIndex) (p : WinternitzDigit)
     (v : Digest) (dv : DeferredDigest) (hv : v = dv.interpret s)
     (hlow : ∀ h : p.val < 3, dv = .secret (.topChain bi l ⟨p.val, h⟩))
     (hend : p.val = 3 → ∃ w, dv = .known w)
@@ -722,7 +733,7 @@ theorem topRecover_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (
     (ha : ¬RealStop q a) (hb : ¬Stop b.2) (hmark : b.2.1.2 = false)
     (ra : Digest × RealState C)
     (hra : ra ∈ support ((realHonest prims x s pads u rest
-      (tweakable (Concrete.recoverChain x.1 topLayer (topKey bi) l p v))).run a))
+      (tweakable (Verification.recoverChainWithHash x.1 topLayer (topKey bi) l p v))).run a))
     (rb : (Digest × SourceState C) × CompState C)
     (hrb : rb ∈ support (runX (compBackend x q s pads u rest noise)
       (sourceTopRecoverX x.1 bi l p dv) b.1.base b.2)) :
@@ -733,12 +744,12 @@ theorem topRecover_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (
     (compBackend x q s pads u rest noise) b.1.base b.2 rb hrb
   have hp := p.isLt
   have hinput : ∀ (k : ChainStep) (w : Digest),
-      tweakableHashInput x.1 (.chain topLayer (topKey bi) k) (Concrete.chainPayload l w) =
+      tweakableHashInput x.1 (.chain topLayer (topKey bi) k) (Verification.chainPayload l w) =
         (chainPending (l, .inr bi, k)).input x.1 w := fun k w =>
     (SigningGuessLinkProof.topChainInput_eq_bridge x.1 bi l k w).symm
   have hra' : ra ∈ support ((realHonest prims x s pads u rest (tweakable
-      (Concrete.chainWalk x.1 topLayer (topKey bi) l p.val (chainLength - 1 - p.val) v))).run a) := by
-    unfold Concrete.recoverChain at hra
+      (Verification.chainWalkWithHash x.1 topLayer (topKey bi) l p.val (chainLength - 1 - p.val) v))).run a) := by
+    unfold Verification.recoverChainWithHash at hra
     with_reducible exact hra
   unfold sourceTopRecoverX at hrb
   obtain ⟨rb1, hb1, hrb⟩ := runX_bind_support x q s pads u rest noise _ _ _ _ rb hrb

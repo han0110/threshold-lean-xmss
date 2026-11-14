@@ -10,7 +10,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningGuessLink
   to the verification.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Queries
 open SigningCompilerShare
@@ -41,37 +41,37 @@ theorem queries_noBase (P : PublicParameter) {α : Type} (oa : OracleComp HashSp
   exact SigningGuessLinkProof.randomizerInput_ne_tweakableHashInput _ _ _ _ _ _ _ _ heq.symm
 
 theorem queries_tweakableHash (P : PublicParameter) (domain : HashDomain) (payload : HashInput) :
-    Queries IsTweakable (Concrete.tweakableHash P domain payload : OracleComp HashSpec Digest) := by
-  unfold Concrete.tweakableHash Concrete.oracleHash
+    Queries IsTweakable (Verification.tweakableHashWithHash P domain payload : OracleComp HashSpec Digest) := by
+  unfold Verification.tweakableHashWithHash Verification.thWithHash Verification.oracleHashWithHash
   exact (Queries.query _ ⟨P, domain, payload, rfl⟩).bind fun _ => Queries.pure _
 
 theorem queries_sequenceFin {α : Type} {n : ℕ} (f : Fin n → OracleComp HashSpec α)
-    (h : ∀ i, Queries IsTweakable (f i)) : Queries IsTweakable (Concrete.sequenceFin f) := by
+    (h : ∀ i, Queries IsTweakable (f i)) : Queries IsTweakable (OverPermutation.sequenceFin f) := by
   induction n with
   | zero => exact Queries.pure _
   | succ n ih =>
-      unfold Concrete.sequenceFin
+      unfold OverPermutation.sequenceFin
       exact (h 0).bind fun _ => (ih _ fun i => h i.succ).bind fun _ => Queries.pure _
 
 theorem queries_leafHash (P : PublicParameter) (lay : Layer) (key : KeyIndex)
     (ends : ChainIndex → Digest) :
-    Queries IsTweakable (Concrete.leafHash P lay key ends : OracleComp HashSpec Digest) :=
+    Queries IsTweakable (Verification.leafHashWithHash P lay key ends : OracleComp HashSpec Digest) :=
   queries_tweakableHash _ _ _
 
 theorem queries_messageDigest (P : PublicParameter) (lay : Layer) (key : KeyIndex)
-    (message : HashInput) (randomness : Randomness) :
+    (message : HashInput) (randomness : Randomizer) :
     Queries IsTweakable
-      (Concrete.messageDigest P lay key message randomness : OracleComp HashSpec Digest) :=
+      (Verification.messageDigestWithHash P lay key message randomness : OracleComp HashSpec Digest) :=
   queries_tweakableHash _ _ _
 
 theorem queries_treeFold (P : PublicParameter) (lay : Layer) (key : KeyIndex)
     (path : Fin layerHeight → Digest) (levels : ℕ) (value : Digest) :
     Queries IsTweakable
-      (Concrete.treeFold P lay key path levels value : OracleComp HashSpec Digest) := by
+      (Verification.treeFoldWithHash P lay key path levels value : OracleComp HashSpec Digest) := by
   induction levels with
   | zero => exact Queries.pure _
   | succ levels ih =>
-      unfold Concrete.treeFold
+      unfold Verification.treeFoldWithHash
       refine ih.bind fun _ => ?_
       dsimp only
       split <;> exact queries_tweakableHash _ _ _
@@ -91,7 +91,7 @@ theorem queries_merklePath (P : PublicParameter) (lay : Layer)
   queries_sequenceFin _ fun _ => queries_merkleNode _ _ _ _ _
 
 theorem queries_grind (P : PublicParameter) (lay : Layer) (key : KeyIndex) (message : HashInput)
-    (base : Randomness) (attempts trial : ℕ) :
+    (base : Randomizer) (attempts trial : ℕ) :
     Queries IsTweakable (grind P lay key message base attempts trial) := by
   induction attempts generalizing trial with
   | zero => exact Queries.pure _
@@ -106,11 +106,11 @@ theorem queries_grind (P : PublicParameter) (lay : Layer) (key : KeyIndex) (mess
 theorem queries_chainWalk (P : PublicParameter) (lay : Layer) (key : KeyIndex)
     (chainIdx : ChainIndex) (start steps : ℕ) (value : Digest) :
     Queries IsTweakable
-      (Concrete.chainWalk P lay key chainIdx start steps value : OracleComp HashSpec Digest) := by
+      (Verification.chainWalkWithHash P lay key chainIdx start steps value : OracleComp HashSpec Digest) := by
   induction steps with
   | zero => exact Queries.pure _
   | succ steps ih =>
-      unfold Concrete.chainWalk
+      unfold Verification.chainWalkWithHash
       refine ih.bind fun _ => ?_
       split
       · exact queries_tweakableHash _ _ _
@@ -120,8 +120,8 @@ theorem queries_chainWalk (P : PublicParameter) (lay : Layer) (key : KeyIndex)
 theorem queries_layerRoot (P : PublicParameter) (lay : Layer) (key : KeyIndex)
     (message : HashInput) (part : LayerSignature) :
     Queries IsTweakable
-      (Concrete.layerRoot P lay key message part : OracleComp HashSpec (Option Digest)) := by
-  unfold Concrete.layerRoot Concrete.otsLeaf
+      (Verification.layerRootWithHash P lay key message part : OracleComp HashSpec (Option Digest)) := by
+  unfold Verification.layerRootWithHash Verification.otsLeafWithHash
   refine Queries.bind ((queries_messageDigest _ _ _ _ _).bind fun digest => ?_) fun leaf => ?_
   · cases Codeword.decode digest with
     | none => exact Queries.pure _
@@ -132,12 +132,12 @@ theorem queries_layerRoot (P : PublicParameter) (lay : Layer) (key : KeyIndex)
   · cases leaf with
     | none => exact Queries.pure _
     | some leaf =>
-        exact (queries_treeFold P lay key part.path layerHeight leaf).bind fun _ => Queries.pure _
+        exact (queries_treeFold P lay key part.authenticationPath layerHeight leaf).bind fun _ => Queries.pure _
 
 theorem queries_verify (publicKey : PublicKey) (message : Message) (signature : Signature) :
     Queries IsTweakable
-      (Concrete.verify publicKey message signature : OracleComp HashSpec Bool) := by
-  unfold Concrete.verify
+      (Verification.verifyWithHash publicKey message signature : OracleComp HashSpec Bool) := by
+  unfold Verification.verifyWithHash
   refine (queries_layerRoot _ _ _ _ _).bind fun bottomRoot => ?_
   cases bottomRoot with
   | none => exact Queries.pure _
@@ -151,7 +151,7 @@ theorem queries_verify (publicKey : PublicKey) (message : Message) (signature : 
 theorem verify_noBase (P : PublicParameter) (publicKey : PublicKey) (message : Message)
     (signature : Signature) :
     Queries (fun input => ∀ e ρ message', input ≠ randomizerInput P bottomLayer e ρ message')
-      (Concrete.verify publicKey message signature : OracleComp HashSpec Bool) :=
+      (Verification.verifyWithHash publicKey message signature : OracleComp HashSpec Bool) :=
   queries_noBase P _ (queries_verify publicKey message signature)
 
 end ThresholdLeanXmssSecurity.SigningCompilerO1Queries

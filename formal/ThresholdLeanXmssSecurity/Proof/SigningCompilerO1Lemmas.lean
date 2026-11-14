@@ -15,7 +15,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerSyncHonestRead
   carried state and the stop of the real side.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Lemmas
@@ -147,7 +147,7 @@ theorem syncFields_observe (x : Keys3 C) (hkeys : ¬TprfSecurityProof.KeyCollisi
 
 /-- A virtual call at a chain point keeps the reveal map of the source. -/
 theorem keepsRevealed_virtual (P : PublicParameter) (seeds : C.Term → HashOutput) (T : C.Term)
-    (lay : Layer) (e : KeyIndex) (l : ChainIndex) (d : Digit) :
+    (lay : Layer) (e : KeyIndex) (l : ChainIndex) (d : WinternitzDigit) :
     SourceKeepsX (fun src : SourceState C => src.revealed)
       (sourceVirtualX P seeds T (.chain lay e l d)) := by
   unfold sourceVirtualX
@@ -193,17 +193,18 @@ theorem truncateHash_interpret (s : HiddenKey → Digest) (v : DeferredOutput) :
 theorem chainWalk_step {m : Type → Type} [Monad m] [HasQuery HashSpec m] (P : PublicParameter)
     (lay : Layer) (key : KeyIndex) (l : ChainIndex) (start n : ℕ) (v : Digest)
     (h : start + n < chainLength - 1) :
-    Concrete.chainWalk (m := m) P lay key l start (n + 1) v =
-      Concrete.chainWalk P lay key l start n v >>= fun previous =>
-        Concrete.tweakableHash P (.chain lay key ⟨start + n, h⟩) (Concrete.chainPayload l previous) := by
-  simp only [Concrete.chainWalk, dif_pos h]
+    Verification.chainWalkWithHash (m := m) P lay key l start (n + 1) v =
+      Verification.chainWalkWithHash P lay key l start n v >>= fun previous =>
+        Verification.tweakableHashWithHash P (.chain lay key ⟨start + n, h⟩) (Verification.chainPayload l previous) := by
+  rw [Verification.chainWalk_eq_succ]
+  simp only [dif_pos h]
 
 /-- One step of `Th` on the domain of `H` is the truncated answer of one query. -/
 theorem tweakable_tweakableHash (P : PublicParameter) (domain : HashDomain) (payload : HashInput) :
-    tweakable (C := C) (Concrete.tweakableHash P domain payload : OracleComp HashSpec Digest) =
+    tweakable (C := C) (Verification.tweakableHashWithHash P domain payload : OracleComp HashSpec Digest) =
       truncateHash <$> hashQuery (.hash (tweakableHashInput P domain payload)) := by
-  simp [Concrete.tweakableHash, tweakable_bind, tweakable_oracleHash, tweakable_pure,
-    map_eq_bind_pure_comp]
+  simp [Verification.tweakableHashWithHash, Verification.thWithHash, tweakable_bind,
+    tweakable_oracleHash, tweakable_pure, thInput_hashDomainFields, map_eq_bind_pure_comp]
 
 section Runs
 variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
@@ -330,7 +331,11 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1Lemmas
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Lemmas.tweakable_tweakableHash
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Lemmas.cacheRelation_congr' depends on axioms: [propext, Quot.sound] -/
+/--
+info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Lemmas.cacheRelation_congr' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Lemmas.cacheRelation_congr
 

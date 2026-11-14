@@ -15,7 +15,7 @@ is `SigningCompilerCouplingProof.compilerImpl_prf_frame`; the XOR bridges
 use the pinned threshold PRF's additive representation.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 
 noncomputable section
 
@@ -30,7 +30,7 @@ set_option backward.isDefEq.respectTransparency false
 set_option maxHeartbeats 1600000
 set_option maxRecDepth 10000
 set_option allowUnsafeReducibility true in
-attribute [local reducible] LeanXmss.digestBits LeanXmss.hashOutputBits
+attribute [local reducible] HashSig.digestBits
   XmssSecurity.digestBits XmssSecurity.hashOutputBits
 attribute [local irreducible] sourceProgramX sourceProgram sourceGameX sourceGame
 
@@ -72,12 +72,12 @@ theorem route_spec (seeds : C.Term → HashOutput) (hinj : Function.Injective se
 abbrev ShareCache (C : Committee) := C.Term × CPoint → Option SigningShareLazy.HashOutput
 
 def merge (seeds : C.Term → HashOutput) (rest : HashCache C) (share : ShareCache C) :
-    HashCache C := fun query => match route seeds query with
+    HashCache C := QueryCache.ofFn fun query => match route seeds query with
   | some z => share z
   | none => rest query
 
 def erase (seeds : C.Term → HashOutput) (cache : HashCache C) : HashCache C :=
-  fun query => if (route seeds query).isSome then none else cache query
+  QueryCache.ofFn fun query => if (route seeds query).isSome then none else cache query
 
 def RestFree (seeds : C.Term → HashOutput) (rest : HashCache C) : Prop :=
   ∀ query z, route seeds query = some z → rest query = none
@@ -97,18 +97,18 @@ theorem restFree_erase (seeds : C.Term → HashOutput) (cache : HashCache C) :
 
 theorem merge_erase (seeds : C.Term → HashOutput) (rest : HashCache C)
     (share : ShareCache C) : merge seeds (erase seeds rest) share = merge seeds rest share := by
-  funext query
+  refine QueryCache.ext fun query => ?_
   cases h : route seeds query <;> simp [merge, erase, h]
 
 theorem merge_split (seeds : C.Term → HashOutput) (hinj : Function.Injective seeds)
     (cache : HashCache C) :
     merge seeds (erase seeds cache) (fun z => cache (key seeds z)) = cache := by
-  funext query
+  refine QueryCache.ext fun query => ?_
   cases h : route seeds query with
   | none => simp [merge, erase, h]
   | some z =>
       have he := (route_spec seeds hinj query z).mp h
-      simp only [merge, h]
+      simp only [merge, QueryCache.ofFn_apply, h]
       subst query
       rfl
 
@@ -328,7 +328,7 @@ theorem ordinary_eq_padStep (P : PublicParameter) (seeds : C.Term → HashOutput
       cases t with
       | pad p =>
           cases h : st.1.1.data.pads p <;>
-            simp [cappedPadNoiseRaw, StateT.run, padNoiseRawRead, ordinary, padStep, h,
+            simp [cappedPadNoiseRaw.eq_def, StateT.run, padNoiseRawRead, ordinary, padStep, h,
               resolvePrivateTable]
       | _ => exact resolvePrivateTable_lift pads _
 
@@ -353,19 +353,19 @@ theorem merge_update (seeds : C.Term → HashOutput) (hinj : Function.Injective 
     (value : SigningShareLazy.HashOutput) :
     merge seeds rest (Function.update share z (some value)) =
       (merge seeds rest share).cacheQuery (key seeds z) value := by
-  funext query
+  refine QueryCache.ext fun query => ?_
   by_cases h : query = key seeds z
   · subst query
     erw [merge_key seeds hinj, Function.update_self, QueryCache.cacheQuery_self]
   · rw [QueryCache.cacheQuery_of_ne _ _ h]
     cases hr : route seeds query with
-    | none => simp only [merge, hr]
+    | none => simp only [merge, QueryCache.ofFn_apply, hr]
     | some y =>
         have hy : y ≠ z := by
           intro he
           subst y
           exact h ((route_spec seeds hinj query z).mp hr)
-        simp only [merge, hr, Function.update_of_ne hy]
+        simp only [merge, QueryCache.ofFn_apply, hr, Function.update_of_ne hy]
 
 @[simp] theorem withCache_withCache (st : CappedCompilerState C)
     (a b : HashCache C) : withCache (withCache st a) b = withCache st b := rfl
@@ -1056,7 +1056,7 @@ theorem step_law (P : PublicParameter) (seeds : C.Term → HashOutput)
 
 @[simp] theorem merge_empty (seeds : C.Term → HashOutput) :
     merge seeds (∅ : HashCache C) (fun _ => none) = ∅ := by
-  funext query
+  refine QueryCache.ext fun query => ?_
   cases h : route seeds query <;> simp [merge, h]
 
 @[simp] theorem merged_init (seeds : C.Term → HashOutput) :
@@ -1110,12 +1110,12 @@ theorem evalDist_compilerRunPads_eq_shareRun (prims : Primitives) (A : TsigAdver
     (x : Keys3 C) (hinj : Function.Injective x.2.1) (q : ℕ)
     (s : HiddenKey → Digest) (pads : Point → Digest)
     (τ : CPoint → SigningShareLazy.Digest) :
-    𝒟[compilerRunPads prims A x q s pads] =
-      𝒟[Prod.fst <$> (simulateQ
+    compilerRunPads prims A x q s pads =ᵈ
+      (Prod.fst <$> (simulateQ
         (SigningShareLazy.unifImpl (ShareState C) +
           SigningShareLazy.lazyImpl (Tag := Bool) C.terms τ)
         (shareRun prims A x q s pads)).run
-          (SigningShareLazy.init (B := SigningShareLazy.ImplBad Bool))] := by
+          (SigningShareLazy.init (B := SigningShareLazy.ImplBad Bool))) := by
   rw [compilerRunPads_eq_shareRun prims A x hinj q s pads τ]
   rfl
 

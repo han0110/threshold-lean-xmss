@@ -17,7 +17,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerCouplingUntil
 - `hashProgram_sync` is the same coupling for the relation inside a handler.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1HashProgram
@@ -123,7 +123,7 @@ theorem runX_sourceHashProgramX {α : Type} (oa : OracleComp HashSpec α) (src :
     | query_bind input next ih =>
       simp only [sourceHashProgramX, deferredHash, simulateQ_bind, simulateQ_query,
         OracleQuery.input_query, OracleQuery.cont_query, id_map] at ih ⊢
-      simp only [ih]
+      refine (congrArg (_ >>= ·) (funext ih)).trans ?_
       rfl
   rw [← simulateQ_fuse, Functor.map_map, runX, hinner]
   exact (id_map _).symm
@@ -144,7 +144,7 @@ theorem readCall_stop (rq : (RoSpec C).Domain) (st : RealState C) (h : RealStop 
 source state `src`, the mark, and each pending answer of `st₀`. Both sides return the same answer. -/
 theorem hash_step (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)
     (rev : HiddenKey → Option Digest) (cCore cTime : Carried C) (src : SourceState C)
-    (starts : KeyIndex → ChainIndex → Finset Digit) (st₀ : CompState C) (input : HashInput)
+    (starts : KeyIndex → ChainIndex → Finset WinternitzDigit) (st₀ : CompState C) (input : HashInput)
     (hbase : ∀ e ρ message, input ≠ randomizerInput x.1 bottomLayer e ρ message)
     (a : RealState C) (b : SourceState C × CompState C)
     (hs : b.1 = src ∧

@@ -30,7 +30,7 @@ set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 set_option backward.isDefEq.respectTransparency false
 
-open OracleComp OracleSpec LeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
 noncomputable section
 
@@ -45,8 +45,8 @@ namespace SigningLane2BridgeProof
 /-- The bottom message digest input of the threshold signing is the input `Partner.input` of
 leanVM. Both are the same bytes, so the map is the identity. -/
 theorem messageInput_eq_partnerInput (parameter : PublicParameter) (key : XmssSecurity.LeafIndex)
-    (message : Message) (randomness : Randomness) :
-    tweakableHashInput parameter (.message bottomLayer key) (bytesLE 32 message ++ bytesLE 16 randomness) =
+    (message : Message) (randomness : Randomizer) :
+    tweakableHashInput parameter (.message bottomLayer key) (littleEndianBytes 32 message ++ littleEndianBytes 16 randomness) =
       XmssSecurity.Partner.input parameter key (message, randomness) :=
   XmssSecurity.Bridge.message_input parameter key message randomness
 
@@ -59,9 +59,9 @@ theorem partnerInput_eq_iff (parameter : PublicParameter) (key key' : XmssSecuri
 
 /-- The leaf index that leanVM reads from a threshold message digest input is its key. -/
 theorem encodingInputLeafIndex?_messageInput (parameter : PublicParameter) (key : XmssSecurity.LeafIndex)
-    (message : Message) (randomness : Randomness) :
+    (message : Message) (randomness : Randomizer) :
     XmssSecurity.encodingInputLeafIndex? parameter
-        (tweakableHashInput parameter (.message bottomLayer key) (bytesLE 32 message ++ bytesLE 16 randomness)) =
+        (tweakableHashInput parameter (.message bottomLayer key) (littleEndianBytes 32 message ++ littleEndianBytes 16 randomness)) =
       some key := by
   rw [messageInput_eq_partnerInput]
   exact XmssSecurity.encodingInputLeafIndex?_encodingInput parameter key (message, randomness)
@@ -83,24 +83,24 @@ variable {C : Committee} (prims : Primitives) (K : HashInput → Prop)
 open Classical in
 /-- The cache of leanVM in a cache of the world. It keeps the entries of `Th` at the inputs of `K`. -/
 def keptView (c : HashCache C) : XmssSecurity.HashSpec.QueryCache :=
-  fun x => if K x then c (.hash x) else none
+  QueryCache.ofFn fun x => if K x then c (.hash x) else none
 
 variable {K}
 
 theorem keptView_cacheQuery_of_kept {x : HashInput} (hK : K x) (c : HashCache C) (u : HashOutput) :
     keptView K (c.cacheQuery (.hash x) u) = (keptView K c).cacheQuery x u := by
-  funext y
+  refine QueryCache.ext fun y => ?_
   by_cases hy : y = x
   · subst y
     simp [keptView, hK]
   · rw [QueryCache.cacheQuery_of_ne _ _ hy]
-    simp only [keptView]
+    simp only [keptView, QueryCache.ofFn_apply]
     rw [QueryCache.cacheQuery_of_ne _ _ (fun h => hy (Query.hash.inj h))]
 
 theorem keptView_cacheQuery_of_not {q : Query C} (hq : ∀ x, q = .hash x → ¬K x) (c : HashCache C)
     (u : HashOutput) : keptView K (c.cacheQuery q u) = keptView K c := by
-  funext y
-  simp only [keptView]
+  refine QueryCache.ext fun y => ?_
+  simp only [keptView, QueryCache.ofFn_apply]
   split_ifs with hy
   · rw [QueryCache.cacheQuery_of_ne]
     rintro rfl
@@ -132,9 +132,10 @@ count. This is the hypothesis `hlaw` of `f1_step_of_viewLaw` to `f4_step_of_view
 theorem worldCall_viewLaw (publicKey : XmssSecurity.PublicKey) (secretKey : XmssSecurity.SecretKey)
     {x : HashInput} (hK : K x) (hx : ¬MpcInput x) (c : HashCache C)
     (trace : XmssSecurity.SigningCacheTrace) (k : ℕ) :
-    𝒟[(fun p => (keptView K p.2, trace)) <$> (hashAnswer prims (.hash x)).run c] =
-      𝒟[(fun y => y.2.1) <$>
-        (XmssSecurity.Ghost.impl publicKey secretKey (.inl (.inr x))).run ((keptView K c, trace), k)] := by
+    ((fun p => (keptView K p.2, trace)) <$> (hashAnswer prims (.hash x)).run c) =ᵈ
+      ((fun y => y.2.1) <$>
+        (XmssSecurity.Ghost.impl publicKey secretKey (.inl (.inr x))).run ((keptView K c, trace), k)) := by
+  refine EvalDistEq.of_eq ?_
   rw [XmssSecurity.Ghost.impl_run, XmssSecurity.Ghost.simulateQ_source_world, ← hashAnswer_keptView prims hK hx c]
   simp only [Functor.map_map, XmssSecurity.signingCacheTraceUpdate]
 
@@ -143,10 +144,11 @@ is the hypothesis `hlaw` of `f3_step_of_law`. -/
 theorem worldCall_stateLaw (publicKey : XmssSecurity.PublicKey) (secretKey : XmssSecurity.SecretKey)
     {x : HashInput} (hK : K x) (hx : ¬MpcInput x) (c : HashCache C)
     (trace : XmssSecurity.SigningCacheTrace) (k : ℕ) :
-    𝒟[(fun p => (((keptView K p.2, trace), k + 1) : XmssSecurity.Ghost.State)) <$>
-        (hashAnswer prims (.hash x)).run c] =
-      𝒟[(fun y => y.2) <$>
-        (XmssSecurity.Ghost.impl publicKey secretKey (.inl (.inr x))).run ((keptView K c, trace), k)] := by
+    ((fun p => (((keptView K p.2, trace), k + 1) : XmssSecurity.Ghost.State)) <$>
+        (hashAnswer prims (.hash x)).run c) =ᵈ
+      ((fun y => y.2) <$>
+        (XmssSecurity.Ghost.impl publicKey secretKey (.inl (.inr x))).run ((keptView K c, trace), k)) := by
+  refine EvalDistEq.of_eq ?_
   rw [XmssSecurity.Ghost.impl_run, XmssSecurity.Ghost.simulateQ_source_world, ← hashAnswer_keptView prims hK hx c]
   simp only [Functor.map_map, XmssSecurity.signingCacheTraceUpdate, XmssSecurity.Ghost.tick,
     XmssSecurity.Ghost.IsAdvHash, if_true]
@@ -156,14 +158,14 @@ with a fixed trace and the count. -/
 theorem f1_step_worldCall (publicKey : XmssSecurity.PublicKey) (secretKey : XmssSecurity.SecretKey)
     {x : HashInput} (hK : K x) (hx : ¬MpcInput x) (c : HashCache C)
     (trace : XmssSecurity.SigningCacheTrace) (n : ℕ) :
-    ∑' z, Pr[= z | (fun p => (p.1, (p.2, n + 1))) <$> (hashAnswer prims (.hash x)).run c] *
+    ∑' z, Pr{let y ← (fun p => (p.1, (p.2, n + 1))) <$> (hashAnswer prims (.hash x)).run c}[y = z] *
         XmssSecurity.Ghost.f1 secretKey (SigningLane2Proof.ghostView (fun c' => (keptView K c', trace)) z.2) ≤
       XmssSecurity.Ghost.f1 secretKey (SigningLane2Proof.ghostView (fun c' => (keptView K c', trace)) (c, n)) +
         XmssSecurity.Ghost.cost1 secretKey (.inl (.inr x))
           (SigningLane2Proof.ghostView (fun c' => (keptView K c', trace)) (c, n)) :=
   SigningLane2Proof.f1_step_of_viewLaw publicKey secretKey _ (fun c' => (keptView K c', trace)) (c, n)
     (.inl (.inr x)) n (by
-      rw [← worldCall_viewLaw prims publicKey secretKey hK hx c trace n]
+      refine EvalDistEq.trans (EvalDistEq.of_eq ?_) (worldCall_viewLaw prims publicKey secretKey hK hx c trace n)
       simp only [Functor.map_map])
 
 /-- A computation of leanVM that queries only kept inputs outside the MPC runs in the world as the
@@ -177,7 +179,7 @@ theorem roRun_tweakable_keptView {α : Type} {oa : OracleComp HashSpec α}
   | pure a => simp [tweakable_pure, roRun_pure]
   | query x hx next _ ih =>
     rw [tweakable_bind]
-    change (fun p => (p.1, keptView K p.2)) <$> roRun prims (tweakable (Concrete.oracleHash x) >>= _) c = _
+    change (fun p => (p.1, keptView K p.2)) <$> roRun prims (tweakable (Verification.oracleHashWithHash x) >>= _) c = _
     rw [tweakable_oracleHash, roRun_bind, roRun_hashQuery, map_bind]
     simp only [simulateQ_bind, simulateQ_spec_query, StateT.run_bind]
     calc _ = ((fun p => (p.1, keptView K p.2)) <$> (hashAnswer prims (.hash x)).run c) >>=
@@ -191,10 +193,10 @@ theorem roRun_tweakable_keptView {α : Type} {oa : OracleComp HashSpec α}
 /-- `worldCall_stateLaw` with the view of the message digest inputs. -/
 theorem worldCall_stateLaw_isMsg (publicKey : XmssSecurity.PublicKey) (secretKey : XmssSecurity.SecretKey)
     {x : HashInput} (hK : IsMsg x) (c : HashCache C) (trace : XmssSecurity.SigningCacheTrace) (k : ℕ) :
-    𝒟[(fun p => (((keptView IsMsg p.2, trace), k + 1) : XmssSecurity.Ghost.State)) <$>
-        (hashAnswer prims (.hash x)).run c] =
-      𝒟[(fun y => y.2) <$>
-        (XmssSecurity.Ghost.impl publicKey secretKey (.inl (.inr x))).run ((keptView IsMsg c, trace), k)] :=
+    ((fun p => (((keptView IsMsg p.2, trace), k + 1) : XmssSecurity.Ghost.State)) <$>
+        (hashAnswer prims (.hash x)).run c) =ᵈ
+      ((fun y => y.2) <$>
+        (XmssSecurity.Ghost.impl publicKey secretKey (.inl (.inr x))).run ((keptView IsMsg c, trace), k)) :=
   worldCall_stateLaw prims publicKey secretKey hK (fun h => not_isMsg_of_mpc h hK) c trace k
 
 end World
@@ -207,16 +209,16 @@ on the same inputs and from the same base. -/
 section Grind
 
 variable (secretKey : XmssSecurity.SecretKey) (key : XmssSecurity.LeafIndex) (message : Message)
-  (base : Randomness)
+  (base : Randomizer)
 
 /-- The signature of leanVM from the codeword that the grind finds. -/
-def signOf (found : Option (Randomness × Encoding)) : Option XmssSecurity.Signature :=
+def signOf (found : Option (Randomizer × Encoding)) : Option XmssSecurity.Signature :=
   found.map fun p => XmssSecurity.Concrete.precomputedSignWithEncoding secretKey key p.1 p.2
 
 /-- The bottom grind is the table signer of leanVM from the same base. -/
 theorem grind_eq_tableSignFrom (attempts trial : ℕ) :
     signOf secretKey key <$>
-        (grind secretKey.parameter bottomLayer key (bytesLE 32 message) base attempts trial :
+        (grind secretKey.parameter bottomLayer key (littleEndianBytes 32 message) base attempts trial :
           OracleComp HashSpec _) =
       (XmssSecurity.Seeded.tableSignFrom base secretKey key message attempts trial :
         OracleComp XmssSecurity.HashSpec _) := by
@@ -235,7 +237,7 @@ theorem grind_eq_tableSignFrom (attempts trial : ℕ) :
 /-- Lifted to the world of leanVM, the bottom grind is `precomputedSignBoundedAttempts`. -/
 theorem liftM_grind_eq (attempts trial : ℕ) :
     (liftM (show OracleComp XmssSecurity.HashSpec _ from signOf secretKey key <$>
-        grind secretKey.parameter bottomLayer key (bytesLE 32 message) base attempts trial) :
+        grind secretKey.parameter bottomLayer key (littleEndianBytes 32 message) base attempts trial) :
           OracleComp XmssSecurity.OracleWorld _) =
       XmssSecurity.Concrete.precomputedSignBoundedAttempts secretKey key message base attempts trial := by
   rw [grind_eq_tableSignFrom]
@@ -245,13 +247,13 @@ theorem randomizerAttemptLimit_eq : randomizerAttemptLimit = XmssSecurity.signin
 
 /-- The grind queries only its trial inputs. -/
 theorem grind_onlyQueries (S : HashInput → Prop) (parameter : PublicParameter) (lay : Layer) (key : KeyIndex)
-    (message : HashInput) (base : Randomness) (hS : ∀ t, S (trialInput parameter lay key message base t)) :
+    (message : HashInput) (base : Randomizer) (hS : ∀ t, S (trialInput parameter lay key message base t)) :
     ∀ attempts trial, XmssSecurity.Bridge.OnlyQueries S
       (grind parameter lay key message base attempts trial : OracleComp HashSpec _)
   | 0, _ => .pure _
   | attempts + 1, trial => by
     rw [grind]
-    unfold Concrete.messageDigest Concrete.tweakableHash
+    unfold Verification.messageDigestWithHash Verification.tweakableHashWithHash Verification.thWithHash
     simp only [bind_assoc, pure_bind]
     refine (XmssSecurity.Bridge.onlyQueries_query (hS trial)).bind fun output => ?_
     split
@@ -288,44 +290,44 @@ variable {C : Committee} (prims : Primitives) {K : HashInput → Prop}
 
 /-- The base call at bottom key `key` from the opened value `ρ`, as in `signCodeword`. It also
 returns the base, which round 1 releases. -/
-def baseCall : OracleComp HashSpec (Randomness × Option (Randomness × Encoding)) := do
-  let base := truncateHash (← Concrete.oracleHash
-    (randomizerInput secretKey.parameter bottomLayer key ρ (bytesLE 32 message)))
-  let found ← grind secretKey.parameter bottomLayer key (bytesLE 32 message) base randomizerAttemptLimit 0
+def baseCall : OracleComp HashSpec (Randomizer × Option (Randomizer × Encoding)) := do
+  let base := truncateHash (← Verification.oracleHashWithHash
+    (randomizerInput secretKey.parameter bottomLayer key ρ (littleEndianBytes 32 message)))
+  let found ← grind secretKey.parameter bottomLayer key (littleEndianBytes 32 message) base randomizerAttemptLimit 0
   pure (base, found)
 
 /-- The grind from base `b` with the base in front, in the world of leanVM on a cache. -/
-def grindRun (c : XmssSecurity.HashSpec.QueryCache) (b : Randomness) :
-    ProbComp ((Randomness × Option XmssSecurity.Signature) × XmssSecurity.HashSpec.QueryCache) :=
+def grindRun (c : XmssSecurity.HashSpec.QueryCache) (b : Randomizer) :
+    ProbComp ((Randomizer × Option XmssSecurity.Signature) × XmssSecurity.HashSpec.QueryCache) :=
   (simulateQ XmssSecurity.romImpl (do
     let result ← XmssSecurity.Concrete.precomputedSignBoundedAttempts secretKey key message b
       XmssSecurity.signingAttemptLimit 0
     pure (b, result))).run c
 
-theorem roRun_baseCall_rest (hK : ∀ b t, K (trialInput secretKey.parameter bottomLayer key (bytesLE 32 message) b t))
-    (c : HashCache C) (b : Randomness) :
+theorem roRun_baseCall_rest (hK : ∀ b t, K (trialInput secretKey.parameter bottomLayer key (littleEndianBytes 32 message) b t))
+    (c : HashCache C) (b : Randomizer) :
     (fun p => ((p.1.1, signOf secretKey key p.1.2), keptView K p.2)) <$>
-        roRun prims (tweakable (grind secretKey.parameter bottomLayer key (bytesLE 32 message) b
+        roRun prims (tweakable (grind secretKey.parameter bottomLayer key (littleEndianBytes 32 message) b
           randomizerAttemptLimit 0 >>= fun found => pure (b, found))) c =
       grindRun secretKey key message (keptView K c) b := by
   have hq : XmssSecurity.Bridge.OnlyQueries (fun x => K x ∧ ¬MpcInput x)
-      (grind secretKey.parameter bottomLayer key (bytesLE 32 message) b randomizerAttemptLimit 0 >>=
+      (grind secretKey.parameter bottomLayer key (littleEndianBytes 32 message) b randomizerAttemptLimit 0 >>=
         fun found => pure (b, found) : OracleComp HashSpec _) :=
     (grind_onlyQueries _ _ _ _ _ _ (fun t => ⟨hK b t, messageInput_not_mpc _ _ _ _⟩) _ _).bind
       fun _ => .pure _
   have h := roRun_tweakable_keptView prims hq c
-  have hmap : (fun p : (Randomness × Option (Randomness × Encoding)) × HashCache C =>
+  have hmap : (fun p : (Randomizer × Option (Randomizer × Encoding)) × HashCache C =>
       ((p.1.1, signOf secretKey key p.1.2), keptView K p.2)) =
-      (fun q : (Randomness × Option (Randomness × Encoding)) × XmssSecurity.HashSpec.QueryCache =>
+      (fun q : (Randomizer × Option (Randomizer × Encoding)) × XmssSecurity.HashSpec.QueryCache =>
         ((q.1.1, signOf secretKey key q.1.2), q.2)) ∘ (fun p => (p.1, keptView K p.2)) := rfl
   rw [hmap, comp_map, h, grindRun, ← liftM_grind_eq]
   have hlift : (do
       let result ← (liftM (show OracleComp XmssSecurity.HashSpec _ from signOf secretKey key <$>
-        grind secretKey.parameter bottomLayer key (bytesLE 32 message) b XmssSecurity.signingAttemptLimit 0) :
+        grind secretKey.parameter bottomLayer key (littleEndianBytes 32 message) b XmssSecurity.signingAttemptLimit 0) :
           OracleComp XmssSecurity.OracleWorld _)
       pure (b, result) : OracleComp XmssSecurity.OracleWorld _) =
       liftM (show OracleComp XmssSecurity.HashSpec _ from (fun q => (q.1, signOf secretKey key q.2)) <$>
-        (grind secretKey.parameter bottomLayer key (bytesLE 32 message) b randomizerAttemptLimit 0 >>=
+        (grind secretKey.parameter bottomLayer key (littleEndianBytes 32 message) b randomizerAttemptLimit 0 >>=
           fun found => pure (b, found))) := by
     simp [map_eq_bind_pure_comp, liftM_bind]
     rfl
@@ -336,21 +338,21 @@ theorem roRun_baseCall_rest (hK : ∀ b t, K (trialInput secretKey.parameter bot
 /-- The base call on a fresh randomizer input has the law of `signWithBase` of leanVM on the view,
 at a key whose top tree is signed. -/
 theorem evalDist_baseCall
-    (hK : ∀ b t, K (trialInput secretKey.parameter bottomLayer key (bytesLE 32 message) b t))
-    (hR : ¬K (randomizerInput secretKey.parameter bottomLayer key ρ (bytesLE 32 message)))
+    (hK : ∀ b t, K (trialInput secretKey.parameter bottomLayer key (littleEndianBytes 32 message) b t))
+    (hR : ¬K (randomizerInput secretKey.parameter bottomLayer key ρ (littleEndianBytes 32 message)))
     (c : HashCache C) (hfresh : c (.hash (randomizerInput secretKey.parameter bottomLayer key ρ
-      (bytesLE 32 message))) = none)
+      (littleEndianBytes 32 message))) = none)
     (htop : XmssSecurity.Concrete.topSignedAt secretKey key = true) :
-    𝒟[(fun p => ((p.1.1, signOf secretKey key p.1.2), keptView K p.2)) <$>
-        roRun prims (tweakable (baseCall secretKey key ρ message)) c] =
-      𝒟[(simulateQ XmssSecurity.romImpl (SigningLane2Proof.signWithBase secretKey key message)).run
-        (keptView K c)] := by
+    ((fun p => ((p.1.1, signOf secretKey key p.1.2), keptView K p.2)) <$>
+        roRun prims (tweakable (baseCall secretKey key ρ message)) c) =ᵈ
+      ((simulateQ XmssSecurity.romImpl (SigningLane2Proof.signWithBase secretKey key message)).run
+        (keptView K c)) := by
   rw [baseCall, tweakable_bind, tweakable_oracleHash, roRun_bind,
     roRun_fresh prims _ (randomizerInput_not_mpc _ _ _ _ _) c hfresh, map_bind, bind_map_left]
   have hstep : ∀ u : HashOutput, (fun p => ((p.1.1, signOf secretKey key p.1.2), keptView K p.2)) <$>
-      roRun prims (tweakable (grind secretKey.parameter bottomLayer key (bytesLE 32 message) (truncateHash u)
+      roRun prims (tweakable (grind secretKey.parameter bottomLayer key (littleEndianBytes 32 message) (truncateHash u)
         randomizerAttemptLimit 0 >>= fun found => pure (truncateHash u, found)))
-        (c.cacheQuery (.hash (randomizerInput secretKey.parameter bottomLayer key ρ (bytesLE 32 message))) u) =
+        (c.cacheQuery (.hash (randomizerInput secretKey.parameter bottomLayer key ρ (littleEndianBytes 32 message))) u) =
       grindRun secretKey key message (keptView K c) (truncateHash u) := by
     intro u
     rw [roRun_baseCall_rest prims secretKey key message hK, keptView_cacheQuery_of_not]
@@ -366,34 +368,33 @@ theorem evalDist_baseCall
       XmssSecurity.Concrete.signingRandomness _
   rw [SigningLane2Proof.signWithBase, simulateQ_bind, StateT.run_bind, hsample, bind_map_left]
   simp only [htop, if_true]
-  change _ = 𝒟[XmssSecurity.Concrete.signingRandomness >>= grindRun secretKey key message (keptView K c)]
-  have ht : 𝒟[(truncateHash <$> ($ᵗ HashOutput) : ProbComp Randomness)] =
-      𝒟[XmssSecurity.Concrete.signingRandomness] := by
+  change _ =ᵈ (XmssSecurity.Concrete.signingRandomness >>= grindRun secretKey key message (keptView K c))
+  have ht : (truncateHash <$> ($ᵗ HashOutput) : ProbComp Randomizer) =ᵈ
+      XmssSecurity.Concrete.signingRandomness := by
     rw [XmssSecurity.Concrete.signingRandomness_eq]
     refine XmssSecurity.Rom.evalDist_truncate_uniformHashOutput.trans ?_
-    rw [evalDist_uniformSample, evalDist_uniformSample]
-    rfl
-  rw [← bind_map_left (f := truncateHash), evalDist_bind, evalDist_bind, ht]
-  rfl
+    exact fun p => SampleableType.prEvent_uniformSample_inst_irrel _ _ p
+  rw [← bind_map_left (f := truncateHash)]
+  exact ht.bind_left _
 
 /-- The base call with the trace entry of leanVM has the law of `signWithBaseStep`. -/
 theorem baseCall_signWithBaseStep (request : XmssSecurity.SignRequest)
     (hK : ∀ b t, K (trialInput secretKey.parameter bottomLayer request.leafIndex
-      (bytesLE 32 request.message) b t))
-    (hR : ¬K (randomizerInput secretKey.parameter bottomLayer request.leafIndex ρ (bytesLE 32 request.message)))
+      (littleEndianBytes 32 request.message) b t))
+    (hR : ¬K (randomizerInput secretKey.parameter bottomLayer request.leafIndex ρ (littleEndianBytes 32 request.message)))
     (c : HashCache C) (hfresh : c (.hash (randomizerInput secretKey.parameter bottomLayer request.leafIndex ρ
-      (bytesLE 32 request.message))) = none)
+      (littleEndianBytes 32 request.message))) = none)
     (htop : XmssSecurity.Concrete.topSignedAt secretKey request.leafIndex = true)
     (trace : XmssSecurity.SigningCacheTrace) (k : ℕ) :
-    𝒟[(fun p => ((p.1.1, signOf secretKey request.leafIndex p.1.2),
+    ((fun p => ((p.1.1, signOf secretKey request.leafIndex p.1.2),
         ((keptView K p.2, trace ++ [⟨request, signOf secretKey request.leafIndex p.1.2, keptView K c,
           keptView K p.2⟩]), k))) <$>
-        roRun prims (tweakable (baseCall secretKey request.leafIndex ρ request.message)) c] =
-      𝒟[(SigningLane2Proof.signWithBaseStep secretKey request).run ((keptView K c, trace), k)] := by
+        roRun prims (tweakable (baseCall secretKey request.leafIndex ρ request.message)) c) =ᵈ
+      (SigningLane2Proof.signWithBaseStep secretKey request).run ((keptView K c, trace), k) := by
   have h := evalDist_baseCall prims secretKey request.leafIndex ρ request.message hK hR c hfresh htop
-  have h' := congrArg (fun d => (fun r : (XmssSecurity.Randomness × Option XmssSecurity.Signature) ×
-      XmssSecurity.HashSpec.QueryCache => (r.1, ((r.2, trace ++ [⟨request, r.1.2, keptView K c, r.2⟩]), k))) <$> d) h
-  simp only [← evalDist_map, Functor.map_map] at h'
+  have h' := h.map (fun r : (XmssSecurity.Randomness × Option XmssSecurity.Signature) ×
+      XmssSecurity.HashSpec.QueryCache => (r.1, ((r.2, trace ++ [⟨request, r.1.2, keptView K c, r.2⟩]), k)))
+  simp only [Functor.map_map] at h'
   rw [SigningLane2Proof.signWithBaseStep, StateT.run_mk]
   exact h'
 
@@ -401,35 +402,34 @@ theorem baseCall_signWithBaseStep (request : XmssSecurity.SignRequest)
 `hlaw` of `f1_step_of_law` to `f4_step_of_law`. -/
 theorem baseCall_stateLaw (publicKey : XmssSecurity.PublicKey) (request : XmssSecurity.SignRequest)
     (hK : ∀ b t, K (trialInput secretKey.parameter bottomLayer request.leafIndex
-      (bytesLE 32 request.message) b t))
-    (hR : ¬K (randomizerInput secretKey.parameter bottomLayer request.leafIndex ρ (bytesLE 32 request.message)))
+      (littleEndianBytes 32 request.message) b t))
+    (hR : ¬K (randomizerInput secretKey.parameter bottomLayer request.leafIndex ρ (littleEndianBytes 32 request.message)))
     (c : HashCache C) (hfresh : c (.hash (randomizerInput secretKey.parameter bottomLayer request.leafIndex ρ
-      (bytesLE 32 request.message))) = none)
+      (littleEndianBytes 32 request.message))) = none)
     (htop : XmssSecurity.Concrete.topSignedAt secretKey request.leafIndex = true)
     (trace : XmssSecurity.SigningCacheTrace) (k : ℕ) :
-    𝒟[(fun p => (((keptView K p.2, trace ++ [⟨request, signOf secretKey request.leafIndex p.1.2,
+    ((fun p => (((keptView K p.2, trace ++ [⟨request, signOf secretKey request.leafIndex p.1.2,
           keptView K c, keptView K p.2⟩]), k) : XmssSecurity.Ghost.State)) <$>
-        roRun prims (tweakable (baseCall secretKey request.leafIndex ρ request.message)) c] =
-      𝒟[(fun y => y.2) <$>
-        (XmssSecurity.Ghost.impl publicKey secretKey (.inr request)).run ((keptView K c, trace), k)] := by
-  have h := congrArg (fun d => Prod.snd <$> d)
-    (baseCall_signWithBaseStep prims secretKey ρ request hK hR c hfresh htop trace k)
-  simp only [← evalDist_map, Functor.map_map] at h
+        roRun prims (tweakable (baseCall secretKey request.leafIndex ρ request.message)) c) =ᵈ
+      ((fun y => y.2) <$>
+        (XmssSecurity.Ghost.impl publicKey secretKey (.inr request)).run ((keptView K c, trace), k)) := by
+  have h := (baseCall_signWithBaseStep prims secretKey ρ request hK hR c hfresh htop trace k).map Prod.snd
+  simp only [Functor.map_map] at h
   exact h.trans (SigningLane2Proof.evalDist_signWithBaseStep publicKey secretKey request _)
 
 /-- `f1_step` of leanVM at the base call, for a state that is a world cache with the trace and the
 count. -/
 theorem f1_step_baseCall (publicKey : XmssSecurity.PublicKey) (request : XmssSecurity.SignRequest)
     (hK : ∀ b t, K (trialInput secretKey.parameter bottomLayer request.leafIndex
-      (bytesLE 32 request.message) b t))
-    (hR : ¬K (randomizerInput secretKey.parameter bottomLayer request.leafIndex ρ (bytesLE 32 request.message)))
+      (littleEndianBytes 32 request.message) b t))
+    (hR : ¬K (randomizerInput secretKey.parameter bottomLayer request.leafIndex ρ (littleEndianBytes 32 request.message)))
     (c : HashCache C) (hfresh : c (.hash (randomizerInput secretKey.parameter bottomLayer request.leafIndex ρ
-      (bytesLE 32 request.message))) = none)
+      (littleEndianBytes 32 request.message))) = none)
     (htop : XmssSecurity.Concrete.topSignedAt secretKey request.leafIndex = true)
     (trace : XmssSecurity.SigningCacheTrace) (k : ℕ) :
-    ∑' z, Pr[= z | (fun p => (p.1, (((keptView K p.2, trace ++ [⟨request, signOf secretKey request.leafIndex p.1.2,
+    ∑' z, Pr{let y ← ((fun p => (p.1, (((keptView K p.2, trace ++ [⟨request, signOf secretKey request.leafIndex p.1.2,
           keptView K c, keptView K p.2⟩]), k) : XmssSecurity.Ghost.State))) <$>
-        roRun prims (tweakable (baseCall secretKey request.leafIndex ρ request.message)) c] *
+        roRun prims (tweakable (baseCall secretKey request.leafIndex ρ request.message)) c)}[y = z] *
         XmssSecurity.Ghost.f1 secretKey z.2 ≤
       XmssSecurity.Ghost.f1 secretKey ((keptView K c, trace), k) +
         XmssSecurity.Ghost.cost1 secretKey (.inr request) ((keptView K c, trace), k) :=
@@ -440,7 +440,7 @@ theorem f1_step_baseCall (publicKey : XmssSecurity.PublicKey) (request : XmssSec
 /-! With `K = IsMsg` the hypotheses on `K` hold. -/
 
 theorem isMsg_trialInput (parameter : PublicParameter) (lay : Layer) (key : KeyIndex) (message : HashInput)
-    (b : Randomness) (t : ℕ) : IsMsg (trialInput parameter lay key message b t) :=
+    (b : Randomizer) (t : ℕ) : IsMsg (trialInput parameter lay key message b t) :=
   byte23_msg _ _ _ _
 
 theorem not_isMsg_randomizerInput (parameter : PublicParameter) (lay : Layer) (e : KeyIndex) (ρ : Digest)
@@ -452,14 +452,14 @@ theorem not_isMsg_randomizerInput (parameter : PublicParameter) (lay : Layer) (e
 /-- `baseCall_stateLaw` with the view of the message digest inputs. -/
 theorem baseCall_stateLaw_isMsg (publicKey : XmssSecurity.PublicKey) (request : XmssSecurity.SignRequest)
     (c : HashCache C) (hfresh : c (.hash (randomizerInput secretKey.parameter bottomLayer request.leafIndex ρ
-      (bytesLE 32 request.message))) = none)
+      (littleEndianBytes 32 request.message))) = none)
     (htop : XmssSecurity.Concrete.topSignedAt secretKey request.leafIndex = true)
     (trace : XmssSecurity.SigningCacheTrace) (k : ℕ) :
-    𝒟[(fun p => (((keptView IsMsg p.2, trace ++ [⟨request, signOf secretKey request.leafIndex p.1.2,
+    ((fun p => (((keptView IsMsg p.2, trace ++ [⟨request, signOf secretKey request.leafIndex p.1.2,
           keptView IsMsg c, keptView IsMsg p.2⟩]), k) : XmssSecurity.Ghost.State)) <$>
-        roRun prims (tweakable (baseCall secretKey request.leafIndex ρ request.message)) c] =
-      𝒟[(fun y => y.2) <$>
-        (XmssSecurity.Ghost.impl publicKey secretKey (.inr request)).run ((keptView IsMsg c, trace), k)] :=
+        roRun prims (tweakable (baseCall secretKey request.leafIndex ρ request.message)) c) =ᵈ
+      ((fun y => y.2) <$>
+        (XmssSecurity.Ghost.impl publicKey secretKey (.inr request)).run ((keptView IsMsg c, trace), k)) :=
   baseCall_stateLaw prims secretKey ρ publicKey request (fun b t => isMsg_trialInput _ _ _ _ b t)
     (not_isMsg_randomizerInput _ _ _ _ _) c hfresh htop trace k
 
@@ -484,8 +484,8 @@ theorem topKeyOf_bottomKey (b k : Fin (2 ^ layerHeight)) :
 
 /-- The top grind is `topSignFrom` of leanVM from the same base. -/
 theorem grind_top_eq_topSignFrom (parameter : PublicParameter) (key : XmssSecurity.TopIndex)
-    (root : Digest) (base : Randomness) (attempts trial : ℕ) :
-    (grind parameter topLayer (XmssSecurity.Bridge.topKey key) (bytesLE 16 root) base attempts trial :
+    (root : Digest) (base : Randomizer) (attempts trial : ℕ) :
+    (grind parameter topLayer (XmssSecurity.Bridge.topKey key) (littleEndianBytes 16 root) base attempts trial :
         OracleComp HashSpec _) =
       (XmssSecurity.Concrete.topSignFrom parameter key root base attempts trial :
         OracleComp XmssSecurity.HashSpec _) := by

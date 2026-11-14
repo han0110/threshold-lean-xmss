@@ -9,7 +9,7 @@ candidate log. A raw world read observes its answer in the visible cache,
 runs the quiet grind, retains the counted call, and updates the trace.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerSyncRealRead
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -95,7 +95,7 @@ theorem rawTraceWorld_read (prims : Primitives) (x : Keys3 C)
 /-- Re-observing a visible answer does not change the visible cache. -/
 theorem observe_same (vis : HashCache C) (q : Query C) (v : HashOutput)
     (hv : vis q = some v) : vis.cacheQuery q v = vis := by
-  funext z
+  refine QueryCache.ext fun z => ?_
   by_cases hz : z = q
   · subst z; simp only [QueryCache.cacheQuery_self, hv]
   · exact QueryCache.cacheQuery_of_ne vis v hz

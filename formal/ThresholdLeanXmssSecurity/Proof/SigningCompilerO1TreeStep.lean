@@ -11,7 +11,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1BuildOnce
   one side. Both sides return the real stored tree and the opening value of its top key.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1TreeStep
@@ -311,7 +311,7 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1TreeStep
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1TreeStep.sourceTree_eq
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1TreeStep.exists_of_mem_support_map' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1TreeStep.exists_of_mem_support_map' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1TreeStep.exists_of_mem_support_map
 

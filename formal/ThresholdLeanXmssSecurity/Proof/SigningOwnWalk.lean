@@ -15,7 +15,7 @@ most `n` charged calls, when each handler makes at most one charged call at a co
 none at another query.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 
 noncomputable section
 
@@ -178,11 +178,11 @@ theorem mapM {α β : Type} {c : ℕ} (items : List α) (oa : α → SourceMO1 C
 
 theorem sequenceFin {α : Type} {c : ℕ} (n : ℕ) (oa : Fin n → SourceMO1 C α)
     (h : ∀ i, SourceCharges P seeds Q s (fun _ => True) c (oa i)) :
-    SourceCharges P seeds Q s (fun _ => True) (n * c) (Concrete.sequenceFin oa) := by
+    SourceCharges P seeds Q s (fun _ => True) (n * c) (OverPermutation.sequenceFin oa) := by
   induction n with
   | zero => exact SourceCharges.mono (SourceCharges.pure _) (fun _ h => h) (Nat.zero_le _)
   | succ n ih =>
-      simp only [Concrete.sequenceFin]
+      simp only [OverPermutation.sequenceFin]
       refine SourceCharges.mono (SourceCharges.bind (h 0) _ fun head =>
         SourceCharges.bind (ih (fun i => oa i.succ) fun i => h i.succ) _ fun tail =>
           SourceCharges.pure _) (fun _ h => h) ?_

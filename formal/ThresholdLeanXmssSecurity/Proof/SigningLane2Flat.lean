@@ -52,7 +52,7 @@ namespace ThresholdLeanXmssSecurity
 
 namespace SigningLane2FlatProof
 
-open LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof SigningLane2BridgeProof
+open HashSig LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof SigningLane2BridgeProof
 
 variable {C : Committee} (prims : Primitives)
 
@@ -61,11 +61,12 @@ variable {C : Committee} (prims : Primitives)
 /-- A cache that changes only at `q` keeps the view when `q` is not a message digest input. -/
 theorem keptView_eq_of_agree {q : Query C} (hq : ∀ x, q = .hash x → ¬IsMsg x) {c c' : HashCache C}
     (h : ∀ q', q' ≠ q → c' q' = c q') : keptView IsMsg c' = keptView IsMsg c := by
-  funext y
-  simp only [keptView]
-  split_ifs with hy
-  · exact h _ fun h' => hq y h'.symm hy
-  · rfl
+  refine QueryCache.ext fun y => ?_
+  simp only [keptView, QueryCache.ofFn_apply]
+  by_cases hy : IsMsg y
+  · erw [if_pos hy, if_pos hy]
+    exact h _ fun h' => hq y h'.symm hy
+  · erw [if_neg hy, if_neg hy]
 
 /-- A world call that can write `H` at a message digest input. It is a call of `H` on either copy,
 or a programming query, at that input. -/
@@ -177,7 +178,7 @@ theorem randomOracle_run_eq_roRun {α : Type} {oa : OracleComp HashSpec α}
   | pure a => simp [tweakable_pure, roRun_pure]
   | query x hx next _ ih =>
     rw [tweakable_bind]
-    change _ = roRun prims (tweakable (Concrete.oracleHash x) >>= _) c
+    change _ = roRun prims (tweakable (Verification.oracleHashWithHash x) >>= _) c
     rw [tweakable_oracleHash, roRun_bind, roRun_hashQuery]
     simp only [simulateQ_bind, StateT.run_bind]
     simp only [simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query, id_map, hashAnswer, if_neg hx]
@@ -186,9 +187,9 @@ theorem randomOracle_run_eq_roRun {α : Type} {oa : OracleComp HashSpec α}
 
 /-- The grind of `baseGrind` with its result. -/
 def foundGrind (P : PublicParameter) (e : KeyIndex) (message : Message) (answer : HashOutput) :
-    OracleComp (Query C →ₒ HashOutput) (Option (Randomness × Encoding)) :=
+    OracleComp (Query C →ₒ HashOutput) (Option (Randomizer × Encoding)) :=
   simulateQ (fun input => query (spec := Query C →ₒ HashOutput) (.hash input))
-    (grind P bottomLayer e (bytesLE 32 message) (truncateHash answer) randomizerAttemptLimit 0)
+    (grind P bottomLayer e (littleEndianBytes 32 message) (truncateHash answer) randomizerAttemptLimit 0)
 
 theorem baseGrind_eq (P : PublicParameter) (e : KeyIndex) (message : Message) (answer : HashOutput) :
     baseGrind (C := C) P e message answer = (fun _ => ()) <$> foundGrind P e message answer := rfl
@@ -197,14 +198,17 @@ theorem baseGrind_eq (P : PublicParameter) (e : KeyIndex) (message : Message) (a
 base call `baseCall` of `SigningLane2Bridge`. -/
 theorem eagerBase_eq_roRun (P : PublicParameter) (e : KeyIndex) (ρ : Digest) (message : Message)
     (c : HashCache C) :
-    ((Query C →ₒ HashOutput).randomOracle (.hash (randomizerInput P bottomLayer e ρ (bytesLE 32 message)))).run c >>=
+    ((Query C →ₒ HashOutput).randomOracle (.hash (randomizerInput P bottomLayer e ρ (littleEndianBytes 32 message)))).run c >>=
         (fun p => (simulateQ (Query C →ₒ HashOutput).randomOracle (foundGrind P e message p.1)).run p.2 >>=
           fun w => pure ((truncateHash p.1, w.1), w.2)) =
       roRun prims (tweakable (baseCall (laneKey P) e ρ message)) c := by
-  rw [baseCall, tweakable_bind, tweakable_oracleHash, roRun_bind, roRun_hashQuery]
-  simp only [hashAnswer, if_neg (randomizerInput_not_mpc _ _ _ _ _)]
+  unfold baseCall
+  rw [tweakable_bind, tweakable_oracleHash, roRun_bind, roRun_hashQuery]
+  simp only [hashAnswer, if_neg (randomizerInput_not_mpc (laneKey P).parameter bottomLayer e ρ
+    (littleEndianBytes 32 message))]
   refine bind_congr fun p => ?_
-  rw [tweakable_bind, roRun_bind, ← randomOracle_run_eq_roRun prims
+  rw [tweakable_bind, roRun_bind]
+  erw [← randomOracle_run_eq_roRun prims
     ((grind_onlyQueries _ _ _ _ _ _ (fun t => messageInput_not_mpc _ _ _ _)) _ _)]
   rfl
 
@@ -213,17 +217,17 @@ include prims in
 the law of `signWithBaseStep` on the view. `htop` holds at `laneKey`. -/
 theorem eagerBase_signWithBaseStep (P : PublicParameter) (ρ : Digest) (request : XmssSecurity.SignRequest)
     (c : HashCache C)
-    (hfresh : c (.hash (randomizerInput P bottomLayer request.leafIndex ρ (bytesLE 32 request.message))) = none)
+    (hfresh : c (.hash (randomizerInput P bottomLayer request.leafIndex ρ (littleEndianBytes 32 request.message))) = none)
     (trace : XmssSecurity.SigningCacheTrace) (k : ℕ) :
-    𝒟[(fun p => ((p.1.1, signOf (laneKey P) request.leafIndex p.1.2),
+    ((fun p => ((p.1.1, signOf (laneKey P) request.leafIndex p.1.2),
         ((keptView IsMsg p.2, trace ++ [⟨request, signOf (laneKey P) request.leafIndex p.1.2, keptView IsMsg c,
           keptView IsMsg p.2⟩]), k))) <$>
         (((Query C →ₒ HashOutput).randomOracle
-          (.hash (randomizerInput P bottomLayer request.leafIndex ρ (bytesLE 32 request.message)))).run c >>=
+          (.hash (randomizerInput P bottomLayer request.leafIndex ρ (littleEndianBytes 32 request.message)))).run c >>=
           (fun p => (simulateQ (Query C →ₒ HashOutput).randomOracle
             (foundGrind P request.leafIndex request.message p.1)).run p.2 >>=
-              fun w => pure ((truncateHash p.1, w.1), w.2)))] =
-      𝒟[(SigningLane2Proof.signWithBaseStep (laneKey P) request).run ((keptView IsMsg c, trace), k)] := by
+              fun w => pure ((truncateHash p.1, w.1), w.2)))) =ᵈ
+      (SigningLane2Proof.signWithBaseStep (laneKey P) request).run ((keptView IsMsg c, trace), k) := by
   rw [eagerBase_eq_roRun prims P request.leafIndex ρ request.message c]
   exact baseCall_signWithBaseStep prims (laneKey P) ρ request (fun b t => isMsg_trialInput _ _ _ _ b t)
     (not_isMsg_randomizerInput _ _ _ _ _) c hfresh (topSignedAt_laneKey P _) trace k
@@ -239,10 +243,10 @@ abbrev SplitState.cache (p : SplitState C) : HashCache C := p.1.1.1.1.1
 
 /-- The result of the grind at key `e` read from a cache that holds its trials. -/
 def cachedFound (c : HashCache C) (P : PublicParameter) (e : KeyIndex) (ρ : Digest) (message : Message) :
-    Option (Randomness × Encoding) :=
+    Option (Randomizer × Encoding) :=
   evalTh (fun x => (c (.hash x)).getD 0)
-    (grind P bottomLayer e (bytesLE 32 message)
-      (truncateHash ((c (.hash (randomizerInput P bottomLayer e ρ (bytesLE 32 message)))).getD 0))
+    (grind P bottomLayer e (littleEndianBytes 32 message)
+      (truncateHash ((c (.hash (randomizerInput P bottomLayer e ρ (littleEndianBytes 32 message)))).getD 0))
       randomizerAttemptLimit 0)
 
 open Classical in
@@ -255,7 +259,7 @@ def traceStep (P : PublicParameter) (ρ : KeyIndex → Digest) (p : SplitState C
   if h : ∃ e, BaseCall P e (ρ e) p.2.1 t then
     match p.2.1.bound h.choose with
     | some message =>
-      if p.cache (.hash (randomizerInput P bottomLayer h.choose (ρ h.choose) (bytesLE 32 message))) = none then
+      if p.cache (.hash (randomizerInput P bottomLayer h.choose (ρ h.choose) (littleEndianBytes 32 message))) = none then
         trace ++ [⟨⟨h.choose, message⟩,
           signOf (laneKey P) h.choose (cachedFound p'.cache P h.choose (ρ h.choose) message),
           keptView IsMsg p.cache, keptView IsMsg p'.cache⟩]
@@ -356,10 +360,10 @@ theorem countImpl_hashCallAt {input : HashInput} {t : (WorldSpec C).Domain} (ht 
 /-- The canonical base call of `e` calls `H` at the randomizer input of `e` and its bound message. -/
 theorem hashCallAt_of_baseCall {P : PublicParameter} {e : KeyIndex} {ρ : Digest} {st : TsigState C}
     {t : (WorldSpec C).Domain} (ht : BaseCall P e ρ st t) {message : Message} (hm : st.bound e = some message) :
-    HashCallAt (randomizerInput P bottomLayer e ρ (bytesLE 32 message)) t := by
+    HashCallAt (randomizerInput P bottomLayer e ρ (littleEndianBytes 32 message)) t := by
   obtain ⟨input, hb, hcall⟩ := ht
   simp only [baseInput, hm] at hb
-  have h2 : some (randomizerInput P bottomLayer e ρ (bytesLE 32 message)) = some input := hb
+  have h2 : some (randomizerInput P bottomLayer e ρ (littleEndianBytes 32 message)) = some input := hb
   rw [Option.some.inj h2]
   exact hcall
 
@@ -367,7 +371,7 @@ theorem hashCallAt_of_baseCall {P : PublicParameter} {e : KeyIndex} {ρ : Digest
 theorem traceStep_base (P : PublicParameter) (ρ : KeyIndex → Digest) (t : (WorldSpec C).Domain)
     (p : SplitState C) (h : ∃ e, BaseCall P e (ρ e) p.2.1 t) {message : Message}
     (hm : p.2.1.bound h.choose = some message)
-    (hfresh : p.cache (.hash (randomizerInput P bottomLayer h.choose (ρ h.choose) (bytesLE 32 message))) = none)
+    (hfresh : p.cache (.hash (randomizerInput P bottomLayer h.choose (ρ h.choose) (littleEndianBytes 32 message))) = none)
     (p' : SplitState C) (trace : XmssSecurity.SigningCacheTrace) :
     traceStep P ρ p t p' trace = trace ++ [⟨⟨h.choose, message⟩,
       signOf (laneKey P) h.choose (cachedFound p'.cache P h.choose (ρ h.choose) message),
@@ -380,7 +384,7 @@ theorem traceStep_base (P : PublicParameter) (ρ : KeyIndex → Digest) (t : (Wo
 theorem grindExtra_base (P : PublicParameter) (ρ : KeyIndex → Digest) (t : (WorldSpec C).Domain)
     (p : FlatState C) (h : ∃ e, BaseCall P e (ρ e) p.2.1 t) {message : Message}
     (hm : p.2.1.bound h.choose = some message) (p' : FlatState C) (u : HashOutput)
-    (hu : p'.1.1.1 (.hash (randomizerInput P bottomLayer h.choose (ρ h.choose) (bytesLE 32 message))) = some u) :
+    (hu : p'.1.1.1 (.hash (randomizerInput P bottomLayer h.choose (ρ h.choose) (littleEndianBytes 32 message))) = some u) :
     grindExtra P ρ p t p' = baseGrind P h.choose message u := by
   unfold grindExtra
   rw [dif_pos h]
@@ -393,14 +397,14 @@ of a key, on a fresh randomizer input, the view and the trace of the split run h
 theorem splitWorld_baseLaw (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
     (P : PublicParameter) (ρ : KeyIndex → Digest) (t : (WorldSpec C).Domain) (p : SplitState C)
     (h : ∃ e, BaseCall P e (ρ e) p.2.1 t) {message : Message} (hm : p.2.1.bound h.choose = some message)
-    (hfresh : p.cache (.hash (randomizerInput P bottomLayer h.choose (ρ h.choose) (bytesLE 32 message))) = none)
+    (hfresh : p.cache (.hash (randomizerInput P bottomLayer h.choose (ρ h.choose) (littleEndianBytes 32 message))) = none)
     (trace : XmssSecurity.SigningCacheTrace) (k : ℕ) :
-    𝒟[(fun z : (WorldSpec C).Range t × SplitState C => (((keptView IsMsg (SplitState.cache z.2), traceStep P ρ p t z.2 trace), k) : XmssSecurity.Ghost.State)) <$>
-        (splitWorld prims keyOf (grindExtra P ρ) t).run p] =
-      𝒟[(fun y => y.2) <$> (SigningLane2Proof.signWithBaseStep (laneKey P) ⟨h.choose, message⟩).run
-        ((keptView IsMsg p.cache, trace), k)] := by
+    ((fun z : (WorldSpec C).Range t × SplitState C => (((keptView IsMsg (SplitState.cache z.2), traceStep P ρ p t z.2 trace), k) : XmssSecurity.Ghost.State)) <$>
+        (splitWorld prims keyOf (grindExtra P ρ) t).run p) =ᵈ
+      ((fun y => y.2) <$> (SigningLane2Proof.signWithBaseStep (laneKey P) ⟨h.choose, message⟩).run
+        ((keptView IsMsg p.cache, trace), k)) := by
   have hcall := hashCallAt_of_baseCall h.choose_spec hm
-  set R := randomizerInput P bottomLayer h.choose (ρ h.choose) (bytesLE 32 message) with hR
+  set R := randomizerInput P bottomLayer h.choose (ρ h.choose) (littleEndianBytes 32 message) with hR
   simp only [splitWorld, StateT.run_mk, map_bind, Functor.map_map]
   let G : HashCache C → XmssSecurity.Ghost.State := fun c' =>
     ((keptView IsMsg c', trace ++ [⟨⟨h.choose, message⟩,
@@ -444,7 +448,7 @@ theorem splitWorld_baseLaw (keyOf : XmssSecurity.HashInput → Option XmssSecuri
       ((fun w => w.2) <$> ((Query C →ₒ HashOutput).randomOracle (.hash R)).run p.cache) >>= K := by
     rw [← hcarry, bind_map_left]
   rw [hbind, bind_map_left]
-  let F : (Randomness × Option (Randomness × Encoding)) × HashCache C → XmssSecurity.Ghost.State := fun q =>
+  let F : (Randomizer × Option (Randomizer × Encoding)) × HashCache C → XmssSecurity.Ghost.State := fun q =>
     ((keptView IsMsg q.2, trace ++ [⟨⟨h.choose, message⟩, signOf (laneKey P) h.choose q.1.2, keptView IsMsg p.cache,
       keptView IsMsg q.2⟩]), k)
   have hstep : ∀ w ∈ support (((Query C →ₒ HashOutput).randomOracle (.hash R)).run p.cache),
@@ -461,12 +465,10 @@ theorem splitWorld_baseLaw (keyOf : XmssSecurity.HashInput → Option XmssSecuri
       rw [cachedFound, hev y.2 le_rfl, hle hself, Option.getD_some]
     simp only [Function.comp_apply, G, F, hfound]
   rw [bind_congr_of_forall_mem_support _ hstep, ← map_bind]
-  have hlaw := congrArg (fun d => Prod.snd <$> d)
-    (eagerBase_signWithBaseStep prims P (ρ h.choose) ⟨h.choose, message⟩ p.cache hfresh trace k)
-  simp only [← evalDist_map, Functor.map_map] at hlaw
-  refine hlaw.trans ?_
-  rw [evalDist_map]
-  rfl
+  have hlaw := (eagerBase_signWithBaseStep prims P (ρ h.choose) ⟨h.choose, message⟩ p.cache hfresh trace k).map
+    Prod.snd
+  simp only [Functor.map_map] at hlaw
+  exact hlaw
 
 /-! ## The interface hypotheses
 
@@ -487,14 +489,14 @@ not run on a fresh randomizer input. A call on that input before the release is 
 of the capped flag. -/
 def StaleBase (P : PublicParameter) (ρ : KeyIndex → Digest) (s : LaneState C) : Prop :=
   ∃ e message, s.2.1.bound e = some message ∧
-    s.1.1.1.1.1.1 (.hash (randomizerInput P bottomLayer e (ρ e) (bytesLE 32 message))) ≠ none ∧
+    s.1.1.1.1.1.1 (.hash (randomizerInput P bottomLayer e (ρ e) (littleEndianBytes 32 message))) ≠ none ∧
     e ∉ s.1.2.leafIndices
 
 /-- Each key with a trace entry has its randomizer input cached, and its grind from that answer
 finds all its trials cached. -/
 def BaseTrialsCached (P : PublicParameter) (ρ : KeyIndex → Digest) (s : LaneState C) : Prop :=
   ∀ e message, s.2.1.bound e = some message → e ∈ s.1.2.leafIndices →
-    ∃ u, s.1.1.1.1.1.1 (.hash (randomizerInput P bottomLayer e (ρ e) (bytesLE 32 message))) = some u ∧
+    ∃ u, s.1.1.1.1.1.1 (.hash (randomizerInput P bottomLayer e (ρ e) (littleEndianBytes 32 message))) = some u ∧
       ∀ y ∈ support ((simulateQ (Query C →ₒ HashOutput).randomOracle (baseGrind P e message u)).run
         s.1.1.1.1.1.1), y.2 = s.1.1.1.1.1.1
 
@@ -512,9 +514,9 @@ def MsgCallLaw (P : PublicParameter) (ρ : KeyIndex → Digest) : Prop :=
   ∀ (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) (publicKey : XmssSecurity.PublicKey)
     (x : HashInput) (t : (WorldSpec C).Domain), IsMsg x → HashCallAt x t →
     ∀ (s : LaneState C) (k : ℕ),
-      𝒟[(fun z : (WorldSpec C).Range t × LaneState C => (((laneView z.2), k + 1) : XmssSecurity.Ghost.State)) <$>
-          (laneWorld prims keyOf P ρ t).run s] =
-        𝒟[(fun y => y.2) <$> (XmssSecurity.Ghost.impl publicKey (laneKey P) (.inl (.inr x))).run (laneView s, k)]
+      ((fun z : (WorldSpec C).Range t × LaneState C => (((laneView z.2), k + 1) : XmssSecurity.Ghost.State)) <$>
+          (laneWorld prims keyOf P ρ t).run s) =ᵈ
+        ((fun y => y.2) <$> (XmssSecurity.Ghost.impl publicKey (laneKey P) (.inl (.inr x))).run (laneView s, k))
 
 end SigningLane2FlatProof
 

@@ -14,7 +14,7 @@ and a recorded digit at or below it is no chain target. The same holds at the to
 position at or above the top digit of a resolved bottom ceremony.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Canonical
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -48,7 +48,7 @@ theorem canonical_digit (r : SigningCostProof.Outcome C) (top : TopTree) (state 
   rw [SigningGuessProof.E_messageDigest_cache, XmssSecurity.Bridge.decode_eq] at hdecode
   unfold SigningDescentProof.selectedEncoding
   change ((SigningCostProof.finalOf x r top state forgery).selected prims).bind _ = _
-  rw [hsel, Option.bind_some, ← he]
+  erw [hsel, Option.bind_some, ← he]
   exact hdecode
 
 set_option maxRecDepth 100000 in
@@ -59,7 +59,7 @@ theorem covered_not_target (r : SigningGuessLinkProof.LoggedOutcome C) (top : To
     (state : TsigState C) (forgery : Forgery) (hm : r.1.1.2 = some (top, state, forgery))
     (htop : TopFacts prims (SigningCacheProof.answersOf r.2.1) x.2.1 x.1 top)
     (hn : ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 r.2.1)
-    (starts : ChainIndex → Finset Digit)
+    (starts : ChainIndex → Finset WinternitzDigit)
     (htraced : ∀ l d, d ∈ starts l → ∃ receipt : SigningGuessProof.Round2Receipt C,
       receipt.key = forgery.signature.leafIndex ∧
       state.bound forgery.signature.leafIndex = some receipt.message ∧ receipt.encoding l = d ∧
@@ -107,7 +107,7 @@ theorem top_covered_not_target (r : SigningGuessLinkProof.LoggedOutcome C) (top 
     (hdec : XmssSecurity.TargetSum.decodeDigest
       (XmssSecurity.Concrete.CacheView.topEncodingHash (SigningDescentProof.thView r.2.1) x.1
         (XmssSecurity.topKeyOf forgery.signature.leafIndex)
-        (tree.root, tree.topSignature.randomness)) = some encoding)
+        (tree.root, tree.topSignature.randomizer)) = some encoding)
     (l : XmssSecurity.ChainIndex) (p : XmssSecurity.ChainStep) (hle : (encoding l).val ≤ p.val) :
     SigningGuessLinkProof.chainTarget prims x r
         (.topChain (XmssSecurity.topKeyOf forgery.signature.leafIndex) l p) = none ∧
@@ -120,7 +120,7 @@ theorem top_covered_not_target (r : SigningGuessLinkProof.LoggedOutcome C) (top 
     unfold SigningDescentProof.topEncoding
     have hi : SigningDescentProof.topSignedInput r.2.1 x.1 forgery.signature.leafIndex
         ((SigningCostProof.finalOf x (r.1.1, r.2) top state forgery).honestKey prims) =
-        (tree.root, tree.topSignature.randomness) := hinput
+        (tree.root, tree.topSignature.randomizer) := hinput
     rw [hi]
     exact hdec
   have hopen := SigningDescentProof.topOpened_of r.2.1 x.1 forgery.signature.leafIndex _ henc

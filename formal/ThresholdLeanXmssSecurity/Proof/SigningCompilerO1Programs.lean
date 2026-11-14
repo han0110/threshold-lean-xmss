@@ -11,7 +11,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerSyncSuffix
   `slotList_sync` read a list of terms or slots, one call at a time.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.ProgramLogic.Relational
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1Programs

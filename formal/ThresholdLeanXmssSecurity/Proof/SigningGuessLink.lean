@@ -77,7 +77,7 @@ namespace ThresholdLeanXmssSecurity
 
 namespace SigningGuessLinkProof
 
-open LeanXmss ThresholdLeanXmss SigningOpeningProof
+open HashSig LeanXmss ThresholdLeanXmss SigningOpeningProof
 
 attribute [local instance] Classical.propDecidable
 
@@ -118,7 +118,7 @@ def tsigFinishLogged (dealt : Dealt C (OracleComp (WorldSpec C))) (trees : Finse
       OracleComp (WorldSpec C) ((Bool × TsigState C × Forgery) × List (HiddenKey × Digest))
   | (forgery, st) => do
     let verified ← SigningCoreProof.honestLift (loggedTweakable dealt.parameter st trees
-      (Concrete.verify ⟨dealt.top.root, dealt.parameter⟩ forgery.message forgery.signature))
+      (Verification.verifyWithHash ⟨dealt.top.root, dealt.parameter⟩ forgery.message forgery.signature))
     let fresh ← if (signersAt st forgery.signature.leafIndex forgery.message).card < C.t then pure true else do
       let honest ← honestSignature (fun oa => SigningCoreProof.honestLift oa) dealt
         forgery.signature.leafIndex forgery.message
@@ -132,9 +132,9 @@ theorem tsigFinishLogged_forget (dealt : Dealt C (OracleComp (WorldSpec C)))
   unfold tsigFinishLogged SigningCoreProof.tsigFinish
   dsimp only
   have h : SigningCoreProof.honestLift (tweakable (C := C)
-      (Concrete.verify ⟨dealt.top.root, dealt.parameter⟩ forgery.message forgery.signature)) =
+      (Verification.verifyWithHash ⟨dealt.top.root, dealt.parameter⟩ forgery.message forgery.signature)) =
       Prod.fst <$> SigningCoreProof.honestLift (loggedTweakable dealt.parameter st trees
-        (Concrete.verify ⟨dealt.top.root, dealt.parameter⟩ forgery.message forgery.signature)) := by
+        (Verification.verifyWithHash ⟨dealt.top.root, dealt.parameter⟩ forgery.message forgery.signature)) := by
     rw [← loggedTweakable_forget dealt.parameter st trees]
     unfold SigningCoreProof.honestLift worldRoles free
     dsimp only
@@ -237,7 +237,7 @@ theorem logged_query_support {α : Type} (input : XmssSecurity.HashInput)
   have heq : (simulateQ (logImpl P st trees) (liftM (HashSpec.query input) >>= next)).run log =
       hashQuery (C := C) (.hash input) >>= fun a => (simulateQ (logImpl P st trees) (next a)).run
         (log ++ callCandidates P st trees input) := by
-    simp [logImpl]
+    erw [simulateQ_bind]; simp [logImpl]
   rw [heq, SigningSecurityProof.liftFree, liftComp_bind, free_bind] at hz
   obtain ⟨p, hp, hz⟩ := SigningCacheProof.run_bind_support prims _ _ s z hz
   exact ⟨p, SigningCacheProof.run_hashQuery prims _ s p hp, SigningCacheProof.countRun_grows prims _ s p hp, hz⟩
@@ -278,7 +278,7 @@ theorem logged_reads (cache : HashCache C) {α : Type} {oa : OracleComp HashSpec
       hle (SigningCacheProof.countRun_grows prims _ p.2 z hz hp)
     have hanswer : XmssSecurity.Concrete.CacheReplay.answer (SigningDescentProof.thView cache) x = p.1 := by
       simp only [XmssSecurity.Concrete.CacheReplay.answer, SigningDescentProof.thView, hcache]
-      rfl
+      erw [QueryCache.ofFn_apply, hcache]; rfl
     rw [hanswer] at ih
     exact ih _ p.2 z hz hle c hc
 
@@ -406,7 +406,7 @@ theorem randomizerInput_ne_tweakableHashInput
     randomizerInput P lay e ρ m ≠ tweakableHashInput P' domain payload := by
   intro h
   have hf := (fieldInput_injective
-    (payload := bytesLE 16 ρ ++ m)
+    (payload := littleEndianBytes 16 ρ ++ m)
     (payload' := payload)
     (by simpa only [randomizerInput, tweakableHashInput, tweakBytes,
       List.append_assoc] using h)).1
@@ -416,13 +416,13 @@ theorem randomizerInput_ne_tweakableHashInput
 theorem chainInput_eq_bridge (P : PublicParameter) (e : XmssSecurity.LeafIndex)
     (l : XmssSecurity.ChainIndex) (p : XmssSecurity.ChainStep) (v : Digest) :
     XmssSecurity.Concrete.CacheView.chainInput P e l p v =
-      tweakableHashInput P (.chain bottomLayer e p) (Concrete.chainPayload l v) :=
+      tweakableHashInput P (.chain bottomLayer e p) (Verification.chainPayload l v) :=
   (XmssSecurity.Bridge.chain_input P e l p v).symm
 
 theorem topChainInput_eq_bridge (P : PublicParameter) (b : XmssSecurity.TopIndex)
     (l : XmssSecurity.ChainIndex) (p : XmssSecurity.ChainStep) (v : Digest) :
     XmssSecurity.Concrete.CacheView.topChainInput P b l p v =
-      tweakableHashInput P (.chain topLayer (topKey b) p) (Concrete.chainPayload l v) :=
+      tweakableHashInput P (.chain topLayer (topKey b) p) (Verification.chainPayload l v) :=
   (XmssSecurity.Bridge.topChain_input P b l p v).symm
 
 theorem hiddenCandidate_chainInput (P : PublicParameter) (e : XmssSecurity.LeafIndex)
@@ -447,8 +447,8 @@ theorem hiddenCandidate_chainInput (P : PublicParameter) (e : XmssSecurity.LeafI
   have hv : v = hex.choose_spec.choose_spec.choose_spec.choose := by
     refine XmssSecurity.Concrete.CacheView.chainInput_injective P e l p ?_
     convert hspec using 2
-  simp only [Option.some.injEq, Prod.mk.injEq, HiddenKey.bottomChain.injEq]
-  exact ⟨⟨he.symm, hl.symm, hp.symm⟩, hv.symm⟩
+  simp only [Option.some.injEq]
+  exact Prod.ext ((HiddenKey.bottomChain.injEq _ _ _ _ _ _).mpr ⟨he.symm, hl.symm, hp.symm⟩) hv.symm
 
 theorem hiddenCandidate_topChainInput (P : PublicParameter) (b : XmssSecurity.TopIndex)
     (l : XmssSecurity.ChainIndex) (p : XmssSecurity.ChainStep) (v : Digest) :
@@ -481,8 +481,8 @@ theorem hiddenCandidate_topChainInput (P : PublicParameter) (b : XmssSecurity.To
     · unfold XmssSecurity.Concrete.CacheView.topChainInput
       exact congrArg (fun d => XmssSecurity.tweakableHashInput P d _)
         ((XmssSecurity.HashDomain.topChain.injEq _ _ _ _ _ _).mpr ⟨hb, hl, hp⟩)
-  simp only [Option.some.injEq, Prod.mk.injEq, HiddenKey.topChain.injEq]
-  exact ⟨⟨hb.symm, hl.symm, hp.symm⟩, hv.symm⟩
+  simp only [Option.some.injEq]
+  exact Prod.ext ((HiddenKey.topChain.injEq _ _ _ _ _ _).mpr ⟨hb.symm, hl.symm, hp.symm⟩) hv.symm
 
 theorem not_released_bottomChain (st : TsigState C) (trees : Finset (Fin (2 ^ layerHeight)))
     (e : XmssSecurity.LeafIndex) (l : XmssSecurity.ChainIndex) (p : XmssSecurity.ChainStep) :
@@ -526,7 +526,7 @@ theorem tsigFinishLogged_eq (dealt : Dealt C (OracleComp (WorldSpec C)))
     (trees : Finset (Fin (2 ^ layerHeight))) (forgery : Forgery) (st : TsigState C) :
     tsigFinishLogged dealt trees (forgery, st) =
       SigningCoreProof.honestLift (loggedTweakable dealt.parameter st trees
-        (Concrete.verify ⟨dealt.top.root, dealt.parameter⟩ forgery.message forgery.signature)) >>= fun v =>
+        (Verification.verifyWithHash ⟨dealt.top.root, dealt.parameter⟩ forgery.message forgery.signature)) >>= fun v =>
         (fun fresh => ((v.1 && fresh, st, forgery), v.2)) <$>
           (if (signersAt st forgery.signature.leafIndex forgery.message).card < C.t then pure true else
             (fun honest => decide (honest ≠ some forgery.signature)) <$>
@@ -548,7 +548,7 @@ theorem verifyRun_verification (A : TsigAdversary C) (x : SigningSecurityProof.K
       (s : HashCache C × ℕ) (v : (Bool × List (HiddenKey × Digest)) × HashCache C × ℕ),
       v ∈ support ((simulateQ (SigningCacheProof.countImpl prims) (SigningSecurityProof.liftFree
         (loggedTweakable x.1 state trees
-          (Concrete.verify ⟨top.root, x.1⟩ forgery.message forgery.signature)))).run s) ∧
+          (Verification.verifyWithHash ⟨top.root, x.1⟩ forgery.message forgery.signature)))).run s) ∧
       r.1.2 = adversaryLog ++ v.1.2 ∧ v.2.1 ≤ r.2.1 := by
   unfold verifyRun verifyFinal at hr
   dsimp only at hr
@@ -582,14 +582,14 @@ theorem verification_reads (P : PublicParameter) (st : TsigState C) (trees : Fin
     (root : Digest) (forgery : Forgery) (s : HashCache C × ℕ)
     (v : (Bool × List (HiddenKey × Digest)) × HashCache C × ℕ)
     (hv : v ∈ support ((simulateQ (SigningCacheProof.countImpl prims) (SigningSecurityProof.liftFree
-        (loggedTweakable P st trees (Concrete.verify ⟨root, P⟩ forgery.message forgery.signature)))).run s))
+        (loggedTweakable P st trees (Verification.verifyWithHash ⟨root, P⟩ forgery.message forgery.signature)))).run s))
     (cache : HashCache C) (hle : v.2.1 ≤ cache) {input : XmssSecurity.HashInput}
     (h : Reads (SigningDescentProof.thView cache)
       (XmssSecurity.Concrete.verify (XmssSecurity.Bridge.toModelPk ⟨root, P⟩) forgery.signature.leafIndex
         forgery.message (XmssSecurity.Bridge.toModelSig forgery.signature)) input) :
     ∀ c ∈ callCandidates P st trees input, c ∈ v.1.2 := by
   unfold loggedTweakable at hv
-  rw [XmssSecurity.Bridge.verify_real] at hv
+  erw [XmssSecurity.Bridge.verify_real] at hv
   exact logged_reads prims P st trees cache h [] s v hv hle
 
 end Run
@@ -659,7 +659,7 @@ theorem guess_hiddenInputHit (A : TsigAdversary C) (x : SigningSecurityProof.Key
     have hc : ((.bottomChain forgery.signature.leafIndex l ⟨_, hd⟩ : HiddenKey),
         (XmssSecurity.Bridge.toModelSig forgery.signature).chainValue l) ∈ v.1.2 := by
       refine hmem _ ?_
-      rw [show (XmssSecurity.Bridge.toModelPk ⟨top.root, x.1⟩).parameter = x.1 from rfl,
+      erw [show (XmssSecurity.Bridge.toModelPk ⟨top.root, x.1⟩).parameter = x.1 from rfl,
         callCandidates_chainInput]
       exact List.mem_singleton_self _
     refine ⟨_, hlog ▸ List.mem_append_right adversaryLog hc, ?_⟩
@@ -676,7 +676,7 @@ theorem guess_hiddenInputHit (A : TsigAdversary C) (x : SigningSecurityProof.Key
     have hc : ((.topChain (XmssSecurity.topKeyOf forgery.signature.leafIndex) l ⟨_, hd⟩ : HiddenKey),
         (XmssSecurity.Bridge.toModelSig forgery.signature).top.chainValue l) ∈ v.1.2 := by
       refine hmem _ ?_
-      rw [show (XmssSecurity.Bridge.toModelPk ⟨top.root, x.1⟩).parameter = x.1 from rfl,
+      erw [show (XmssSecurity.Bridge.toModelPk ⟨top.root, x.1⟩).parameter = x.1 from rfl,
         callCandidates_topChainInput]
       exact List.mem_singleton_self _
     refine ⟨_, hlog ▸ List.mem_append_right adversaryLog hc, ?_⟩
@@ -696,11 +696,11 @@ set_option maxRecDepth 100000 in
 /-- An uncharged win in the Guess case raises the input-side flag on the extended log. The win is
 not needed, so the claim holds for every Guess. -/
 theorem probEvent_guess_le (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr[fun r => SigningGuessProof.UnchargedWin prims x r ∧ GuessCase prims x r |
-        SigningDescentProof.exposedRun prims A x] ≤
-      Pr[fun r => HiddenInputHit x (chainTarget prims x r) r | verifyRun prims A x] := by
-  rw [← verifyRun_forget, probEvent_map]
-  refine probEvent_mono fun r hr h => ?_
+    Pr{let r ←
+        SigningDescentProof.exposedRun prims A x}[SigningGuessProof.UnchargedWin prims x r ∧ GuessCase prims x r] ≤
+      Pr{let r ← verifyRun prims A x}[HiddenInputHit x (chainTarget prims x r) r] := by
+  rw [← verifyRun_forget, prEvent_map]
+  refine prEvent_mono_of_support _ _ _ fun r hr h => ?_
   obtain ⟨top, state, forgery, hm, hguess⟩ := h.2
   exact guess_hiddenInputHit prims A x r hr top state forgery hm hguess
 

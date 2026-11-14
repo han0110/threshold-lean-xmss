@@ -9,7 +9,7 @@ including its entire final state. Marks occur at the original call boundaries.
 The query alphabet excludes raw PRF plants and constrains all completion points.
 -/
 
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss ENNReal
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerO1SourceProof
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
@@ -25,7 +25,7 @@ abbrev SourceMXO1 (C : Committee) := StateT (SourceStateO1 C) (OracleComp (SpecX
 def liftBaseX {α : Type} (oa : SourceMX C α) : SourceMXO1 C α :=
   StateT.mk fun st => (fun r => (r.1, { st with base := r.2 })) <$> oa.run st.base
 
-def recordStartX (e : KeyIndex) (l : ChainIndex) (pos : Digit) : SourceMXO1 C Unit :=
+def recordStartX (e : KeyIndex) (l : ChainIndex) (pos : WinternitzDigit) : SourceMXO1 C Unit :=
   modify fun st =>
     { st with starts :=
         Function.update st.starts e (Function.update (st.starts e) l (insert pos (st.starts e l))) }
@@ -40,7 +40,7 @@ def sourceReleaseCoveredX (P : PublicParameter) (seeds : C.Term → HashOutput)
 /-- Q at every chain of key `e`, each from its smallest stored digit. -/
 def sourceReleaseKeyX (P : PublicParameter) (seeds : C.Term → HashOutput)
     (e : KeyIndex) : SourceMXO1 C Unit := do
-  let _ ← (List.finRange numChains).mapM fun l => sourceReleaseCoveredX P seeds e l
+  let _ ← (List.finRange chainCount).mapM fun l => sourceReleaseCoveredX P seeds e l
   pure ()
 
 def sourceTsigO1X (prims : Primitives) (x : Keys3 C) (top : TopTree) :
@@ -98,7 +98,7 @@ def sourceGameO1X (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) :
     modify fun (s : SourceState C) => { s with candidates :=
       s.candidates ++ SigningGuessLinkProof.callCandidates x.1 st.signing st.exposed input }
     pure value : SourceMX C HashOutput)
-  let verified ← simulateQ verifyImpl (Concrete.verify ⟨top.root, x.1⟩ forgery.message forgery.signature)
+  let verified ← simulateQ verifyImpl (Verification.verifyWithHash ⟨top.root, x.1⟩ forgery.message forgery.signature)
   let fresh ← if (signersAt st.signing forgery.signature.leafIndex forgery.message).card < C.t then
     pure true else do
       let honest ← liftBaseX (sourceHonestSignatureX prims x top forgery.signature.leafIndex forgery.message)
@@ -138,8 +138,8 @@ def mapXO1 (seeds : C.Term → HashOutput) {α : Type} (p : SourceMXO1 C α) : S
 @[simp] theorem mapXO1_lift (seeds : C.Term → HashOutput) {α : Type} (p : OracleComp (SpecX C) α) :
     mapXO1 seeds (liftM p) = liftM (simulateQ (expand seeds) p) := by
   funext st
-  change simulateQ (expand seeds) ((fun a => (a, st)) <$> p) = _
-  rw [simulateQ_map]
+  change simulateQ (expand seeds) (p >>= fun a => pure (a, st)) = _
+  simp only [simulateQ_bind, simulateQ_pure]
   rfl
 
 @[simp] theorem mapXO1_map (seeds : C.Term → HashOutput) {α β : Type}
@@ -161,10 +161,10 @@ def mapXO1 (seeds : C.Term → HashOutput) {α : Type} (p : SourceMXO1 C α) : S
 
 @[simp] theorem mapXO1_sequenceFin (seeds : C.Term → HashOutput) {α : Type} {n : ℕ}
     (f : Fin n → SourceMXO1 C α) :
-    mapXO1 seeds (Concrete.sequenceFin f) = Concrete.sequenceFin (fun a => mapXO1 seeds (f a)) := by
+    mapXO1 seeds (OverPermutation.sequenceFin f) = OverPermutation.sequenceFin (fun a => mapXO1 seeds (f a)) := by
   induction n with
-  | zero => simp [Concrete.sequenceFin]
-  | succ n ih => simp [Concrete.sequenceFin, ih]
+  | zero => simp [OverPermutation.sequenceFin]
+  | succ n ih => simp [OverPermutation.sequenceFin, ih]
 
 theorem mapXO1_simulateQ (seeds : C.Term → HashOutput) {ι α : Type} {spec : OracleSpec ι}
     (implX : QueryImpl spec (SourceMXO1 C)) (impl : QueryImpl spec (SourceMO1 C))
@@ -193,7 +193,7 @@ theorem mapXO1_simulateQ (seeds : C.Term → HashOutput) {ι α : Type} {spec : 
   simp
 
 @[simp] theorem mapXO1_recordStart (seeds : C.Term → HashOutput)
-    (e : KeyIndex) (l : ChainIndex) (pos : Digit) :
+    (e : KeyIndex) (l : ChainIndex) (pos : WinternitzDigit) :
     mapXO1 seeds (recordStartX e l pos) = recordStart e l pos := by
   simp [recordStartX, recordStart]
 
@@ -263,9 +263,16 @@ theorem bind {oa : SourceMXO1 C α} {f : α → SourceMXO1 C β}
 @[simp] theorem modify (f : SourceStateO1 C → SourceStateO1 C) :
     SafeO1 (modify f : SourceMXO1 C Unit) := fun _ => Queries.pure _
 theorem lift {oa : OracleComp (SpecX C) α} (h : Queries Allowed oa) :
-    SafeO1 (C := C) (liftM oa) := fun st => h.map (fun a => (a, st))
+    SafeO1 (C := C) (liftM oa) := fun st => by
+  have hrun : (liftM oa : SourceMXO1 C α).run st = (fun a => (a, st)) <$> oa := by
+    rw [map_eq_bind_pure_comp]
+    rfl
+  rw [hrun]
+  exact h.map (fun a => (a, st))
 theorem map (f : α → β) {oa : SourceMXO1 C α} (h : SafeO1 oa) : SafeO1 (f <$> oa) :=
-  fun st => (h st).map (Prod.map f id)
+  fun st => by
+    rw [StateT.run_map]
+    exact (h st).map (Prod.map f id)
 theorem mapM (xs : List α) (f : α → SourceMXO1 C β)
     (h : ∀ a ∈ xs, SafeO1 (f a)) : SafeO1 (xs.mapM f) := by
   induction xs with
@@ -275,7 +282,7 @@ theorem mapM (xs : List α) (f : α → SourceMXO1 C β)
       exact (h a (List.mem_cons_self ..)).bind fun b =>
         (ih fun a ha => h a (List.mem_cons_of_mem _ ha)).bind fun bs => pure (b :: bs)
 theorem sequenceFin {n : ℕ} (f : Fin n → SourceMXO1 C α) (h : ∀ a, SafeO1 (f a)) :
-    SafeO1 (Concrete.sequenceFin f) := by
+    SafeO1 (OverPermutation.sequenceFin f) := by
   induction n with
   | zero => exact pure _
   | succ n ih =>
@@ -315,7 +322,7 @@ local macro "o1_step" : tactic => `(tactic|
     | split
     | (dsimp only; split))
 
-@[simp] theorem safe_recordStartX (e : KeyIndex) (l : ChainIndex) (pos : Digit) :
+@[simp] theorem safe_recordStartX (e : KeyIndex) (l : ChainIndex) (pos : WinternitzDigit) :
     SafeO1 (recordStartX (C := C) e l pos) := SafeO1.modify _
 
 @[simp] theorem safe_sourceReleaseCoveredX (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -551,12 +558,19 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1SourceProof
 #guard_msgs in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1SourceProof.safe_recordStartX
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1SourceProof.safe_sourceReleaseCoveredX' depends on axioms: [propext,
- Quot.sound] -/
+/--
+info: 'ThresholdLeanXmssSecurity.SigningCompilerO1SourceProof.safe_sourceReleaseCoveredX' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
 #guard_msgs in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1SourceProof.safe_sourceReleaseCoveredX
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1SourceProof.safe_sourceReleaseKeyX' depends on axioms: [propext, Quot.sound] -/
+/--
+info: 'ThresholdLeanXmssSecurity.SigningCompilerO1SourceProof.safe_sourceReleaseKeyX' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
 #guard_msgs in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1SourceProof.safe_sourceReleaseKeyX
 
