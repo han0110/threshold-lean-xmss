@@ -282,8 +282,7 @@ theorem commitmentJob_resolves (x : Keys3 C) {record : HashCache C} {units : Lis
   simp only [referenceJob, List.mapM_cons, List.mapM_nil, bind_pure_comp, map_pure]
   rw [bind_map_left]
   refine hρ.bind ?_
-  rw [map_eq_bind_pure_comp]
-  refine (forestHash_resolves _ _ _ ?_).bind (.pure _)
+  refine DeterministicSigning.Resolves.map (forestHash_resolves _ _ _ ?_) _
   exact .query (commitmentInput x.1 e ρ) answer
     (show SigningDescentProof.thView record _ = some answer from hanswer) _ _ (.pure _)
 
@@ -329,13 +328,8 @@ theorem commitmentForest_covers_bottom (x : Keys3 C) (top : TopTree) (b : Fin (2
     unfold referenceTree ceremonyOutput at hR' ⊢
     refine resolves_lift_bind ?_ ?_ _ hR'
     · intro outputs houtputs
-      beta_reduce at houtputs
-      rw [map_eq_bind_pure_comp] at houtputs
-      obtain ⟨values, hvalues, hpureInv⟩ := houtputs.of_bind
-      obtain rfl := hpureInv.pure_inv
-      beta_reduce
-      rw [map_eq_bind_pure_comp]
-      exact (resolves_mapM_lift _ _ hjob values hvalues).bind (.pure _)
+      obtain ⟨values, hvalues, rfl⟩ := houtputs.of_map
+      exact (resolves_mapM_lift _ _ hjob values hvalues).map some
     intro outputs _ v hv
     refine resolves_lift_bound _ _ ?_ hT v hv
     have hq := fun {α : Type} (oa : OracleComp HashSpec α)

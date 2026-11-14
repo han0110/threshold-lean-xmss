@@ -9451,14 +9451,6 @@ theorem resolvedTopPartner_bound_digest_cost (prims : Primitives) (A : TsigAdver
   exact h.trans (mul_le_mul_right
     (sourceExpectedCost_mono prims A x _ _ (topDigest_rawCost_le x.1)) _)
 
-/-- A resolved computation resolves under a map. The source is
-`leanVM@1acdff19`, `formal/lean_xmss/XmssSecurity/Proof/Bridge/Basic.lean`, line 85. -/
-theorem DeterministicSigning.Resolves.map {D R : Type} {α β : Type} {cache : QueryCache (D →ₒ R)}
-    {c : OracleComp (D →ₒ R) α} {v : α} (h : DeterministicSigning.Resolves cache c v) (g : α → β) :
-    DeterministicSigning.Resolves cache (g <$> c) (g v) := by
-  rw [map_eq_bind_pure_comp]
-  exact h.bind (.pure _)
-
 /-- Every completed bottom ceremony resolves the canonical setup and scan,
 including ceremonies that return no tree. -/
 theorem resolves_referenceBottom_topGrind (x : SigningSecurityProof.Keys3 C)
@@ -9469,7 +9461,7 @@ theorem resolves_referenceBottom_topGrind (x : SigningSecurityProof.Keys3 C)
     ∃ root selected, DeterministicSigning.Resolves cache (canonicalTopGrind x key) (root, selected) := by
   unfold referenceTree ceremonyOutput at h
   obtain ⟨outputs, houtputs, hrest⟩ := h.of_bind
-  obtain ⟨values, hvalues, houtputs⟩ := SigningHitProof.DeterministicSigning.Resolves.of_map houtputs
+  obtain ⟨values, hvalues, houtputs⟩ := houtputs.of_map
   subst outputs
   obtain ⟨root, hroot, hrest⟩ := hrest.of_bind
   obtain ⟨base, hbase, hrest⟩ := hrest.of_bind
@@ -9484,7 +9476,7 @@ theorem resolves_referenceBottom_topGrind (x : SigningSecurityProof.Keys3 C)
     exact .pure _
   unfold canonicalTopGrind topGrindAfter
   apply hsetup.bind
-  exact DeterministicSigning.Resolves.map hscan (fun selected => (root, selected))
+  exact hscan.map (fun selected => (root, selected))
 
 /-- A returned bottom tree identifies the root and selected randomness of the
 canonical scan. Acceptance checks after the scan do not change either value. -/
@@ -9497,7 +9489,7 @@ theorem resolves_referenceBottom_topGrind_some (x : SigningSecurityProof.Keys3 C
       (tree.root, some (tree.topSignature.randomizer, encoding)) := by
   unfold referenceTree ceremonyOutput at h
   obtain ⟨outputs, houtputs, hrest⟩ := h.of_bind
-  obtain ⟨values, hvalues, houtputs⟩ := SigningHitProof.DeterministicSigning.Resolves.of_map houtputs
+  obtain ⟨values, hvalues, houtputs⟩ := houtputs.of_map
   subst outputs
   obtain ⟨root, hroot, hrest⟩ := hrest.of_bind
   obtain ⟨base, hbase, hrest⟩ := hrest.of_bind
@@ -9512,13 +9504,13 @@ theorem resolves_referenceBottom_topGrind_some (x : SigningSecurityProof.Keys3 C
       exact .pure _
     unfold canonicalTopGrind topGrindAfter
     apply hsetup.bind
-    exact DeterministicSigning.Resolves.map hscan (fun selected => (root, selected))
+    exact hscan.map (fun selected => (root, selected))
   cases selected with
   | none => cases hrest.pure_inv
   | some selected =>
     rcases selected with ⟨randomness, encoding⟩
     obtain ⟨outputs, houtputs, hrest⟩ := hrest.of_bind
-    obtain ⟨values', _, houtputs⟩ := SigningHitProof.DeterministicSigning.Resolves.of_map houtputs
+    obtain ⟨values', _, houtputs⟩ := houtputs.of_map
     subst outputs
     obtain ⟨path, _, hrest⟩ := hrest.of_bind
     obtain ⟨verified, _, hrest⟩ := hrest.of_bind

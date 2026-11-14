@@ -89,8 +89,7 @@ theorem resolves_forestValue_cached (cache : HashCache C) (seeds : C.Term → Ha
   unfold SigningHitProof.forestValue at h
   obtain ⟨values, hvalues, _⟩ := h.of_bind
   obtain ⟨b, hb⟩ := SigningHitProof.resolves_mapM_member _ _ values hvalues T hT
-  rw [map_eq_bind_pure_comp] at hb
-  obtain ⟨v, hv, _⟩ := hb.of_bind
+  obtain ⟨v, hv, _⟩ := hb.of_map
   rw [← bind_pure (OracleComp.lift _)] at hv
   obtain ⟨a, ha, _⟩ := hv.query_inv
   simp [ha]

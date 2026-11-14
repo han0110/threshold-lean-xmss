@@ -605,10 +605,7 @@ theorem resolves_bottom_root (cache : HashCache C) (top : TopTree) (b : Fin (2 ^
       (merkleNode x.1 bottomLayer (fun e l => (tree.cpk e l).2.2) layerHeight b.val) root := by
   unfold referenceTree ceremonyOutput at h
   obtain ⟨outputs, houtputs, htail⟩ := h.of_bind
-  beta_reduce at houtputs
-  rw [map_eq_bind_pure_comp] at houtputs
-  obtain ⟨values, hvalues, hpureInv⟩ := houtputs.of_bind
-  obtain rfl := hpureInv.pure_inv
+  obtain ⟨values, hvalues, rfl⟩ := houtputs.of_map
   obtain ⟨root, hroot, hrest⟩ := htail.of_bind
   obtain ⟨base, -, hrest⟩ := hrest.of_bind
   obtain ⟨selected, -, hrest⟩ := hrest.of_bind

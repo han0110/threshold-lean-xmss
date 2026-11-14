@@ -615,17 +615,7 @@ theorem forestRun_model (x : SigningSecurityProof.Keys3 C) (cache : HashCache C)
             OracleComp XmssSecurity.HashSpec _)).run (SigningDescentProof.thView z.1.2)) := by
   obtain ⟨secret, topSecret, result, hsecret, htopSecret, hmodel⟩ := forestRun_resolves x cache z hz
   refine ⟨secret, topSecret, result, hsecret, htopSecret, ?_⟩
-  have hpure : ∀ {α : Type} {cache : QueryCache XmssSecurity.HashSpec}
-      {computation : OracleComp XmssSecurity.HashSpec α} {value : α},
-      DeterministicSigning.Resolves cache computation value →
-      (simulateQ randomOracle computation).run cache = pure (value, cache) := by
-    intro α cache computation value h
-    induction h with
-    | pure value => rfl
-    | query input answer hanswer next value _ ih =>
-      rw [simulateQ_bind, simulateQ_spec_query, StateT.run_bind,
-        QueryImpl.withCaching_run_some _ hanswer, pure_bind, ih]
-  rw [hpure hmodel]
+  rw [hmodel.run_eq_pure]
   simp only [StateT.run_pure, support_pure]
   exact Set.mem_singleton _
 
@@ -653,8 +643,7 @@ theorem topJob_lift (x : SigningSecurityProof.Keys3 C) {forest record target bou
   refine resolves_transfer (u := bitsOfDigest value) ?_ hbits hft hfb hrb
   simp only [referenceJob, List.mapM_cons, List.mapM_nil, pure_bind, bind_assoc]
   refine (htopSecret b l).bind ?_
-  rw [map_eq_bind_pure_comp]
-  refine (forestHash_resolves _ _ _ ?_).bind (.pure _)
+  refine DeterministicSigning.Resolves.map (forestHash_resolves _ _ _ ?_) _
   erw [XmssSecurity.Bridge.chainWalk_top]
   exact hwalk
 
@@ -684,8 +673,7 @@ theorem signJob_lift (x : SigningSecurityProof.Keys3 C) {forest record target bo
   refine resolves_transfer (u := bitsOfDigest value) ?_ hbits hft hfb hrb
   simp only [referenceJob, List.mapM_cons, List.mapM_nil, pure_bind, bind_assoc]
   refine (htopSecret b l).bind ?_
-  rw [map_eq_bind_pure_comp]
-  refine (forestHash_resolves _ _ _ ?_).bind (.pure _)
+  refine DeterministicSigning.Resolves.map (forestHash_resolves _ _ _ ?_) _
   erw [XmssSecurity.Bridge.chainWalk_top]
   exact hwalk
 
@@ -917,9 +905,7 @@ theorem topCheck_lift (x : SigningSecurityProof.Keys3 C) {forest record target b
     simp only [signJobs, List.getElem_map, List.getElem_finRange, referenceJob, List.mapM_cons,
       List.mapM_nil, pure_bind, bind_assoc] at hjob
     obtain ⟨start, hstart, hjob⟩ := hjob.of_bind
-    rw [map_eq_bind_pure_comp] at hjob
-    obtain ⟨cv, hcv, hpureInv⟩ := hjob.of_bind
-    have hbits := hpureInv.pure_inv
+    obtain ⟨cv, hcv, hbits⟩ := hjob.of_map
     have hst : start = topSecret b l := (hstart.mono hrb).unique ((htopSecret b l).mono hfb)
     have hcv' := resolves_forestHash _ _ _ hcv
     erw [XmssSecurity.Bridge.chainWalk_top] at hcv'
@@ -1039,10 +1025,7 @@ theorem forestRun_covers_top (x : SigningSecurityProof.Keys3 C) (cache : HashCac
     have hR' := hR
     unfold referenceTree ceremonyOutput at hR' ⊢
     obtain ⟨outputs, houtputs, htail⟩ := hR'.of_bind
-    beta_reduce at houtputs
-    rw [map_eq_bind_pure_comp] at houtputs
-    obtain ⟨values, hvalues, hpureInv⟩ := houtputs.of_bind
-    obtain rfl := hpureInv.pure_inv
+    obtain ⟨values, hvalues, rfl⟩ := houtputs.of_map
     obtain ⟨root, hroot, hfinal⟩ := htail.of_bind
     have hvaluesF := resolves_mapM_lift _ _ (topJob_lift x secret topSecret result hmem htopSecret
       le_rfl hzfin hwrec) values hvalues
@@ -1061,11 +1044,7 @@ theorem forestRun_covers_top (x : SigningSecurityProof.Keys3 C) (cache : HashCac
         (topCeremony_ends x w.1.2 z.1.2 w.2 _ htopR hwrec hzfin topSecret htopSecret)
         16 le_rfl 0 (by decide) value htree
     rw [← hfinal.pure_inv]
-    have hsome : DeterministicSigning.Resolves z.1.2
-        (some <$> List.mapM (referenceJob forestHash (forestValue x.2.1) x.1) topJobs) (some values) := by
-      rw [map_eq_bind_pure_comp]
-      exact hvaluesF.bind (.pure _)
-    exact hsome.bind (hrootF.bind (.pure _))
+    exact (hvaluesF.map some).bind (hrootF.bind (.pure _))
   have hle := recordReads_le_of_resolves _ ∅ z.2 z.1.2 w.1.1 (fun _ _ h => by cases h) hforest w hw hzfin
   obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp hread
   simp [hle hv]
@@ -1101,19 +1080,11 @@ theorem forestRun_covers_bottom (x : SigningSecurityProof.Keys3 C) (top : TopTre
     unfold referenceTree ceremonyOutput at hR' ⊢
     refine resolves_lift_bind ?_ ?_ _ hR'
     · intro outputs houtputs
-      beta_reduce at houtputs
-      rw [map_eq_bind_pure_comp] at houtputs
-      obtain ⟨values, hvalues, hpureInv⟩ := houtputs.of_bind
-      obtain rfl := hpureInv.pure_inv
-      beta_reduce
-      rw [map_eq_bind_pure_comp]
+      obtain ⟨values, hvalues, rfl⟩ := houtputs.of_map
       exact (resolves_mapM_lift _ _ (bottomJob_lift x secret topSecret result hmem hsecret hzc hzfin hwrec
-        hT b) values hvalues).bind (.pure _)
+        hT b) values hvalues).map some
     intro outputs houtputs
-    beta_reduce at houtputs
-    rw [map_eq_bind_pure_comp] at houtputs
-    obtain ⟨values, hvalues, hpureInv⟩ := houtputs.of_bind
-    obtain rfl := hpureInv.pure_inv
+    obtain ⟨values, hvalues, rfl⟩ := houtputs.of_map
     refine resolves_lift_bind
       (bottomMerkle_lift x secret topSecret result hmem hsecret hzc hzfin hwrec top b w.1.1 hR values hvalues) ?_
     intro root hroot
@@ -1133,19 +1104,11 @@ theorem forestRun_covers_bottom (x : SigningSecurityProof.Keys3 C) (top : TopTre
       exact .pure _
     refine resolves_lift_bind ?_ ?_
     · intro outs houts
-      beta_reduce at houts
-      rw [map_eq_bind_pure_comp] at houts
-      obtain ⟨vals, hvals, hpureInv⟩ := houts.of_bind
-      obtain rfl := hpureInv.pure_inv
-      beta_reduce
-      rw [map_eq_bind_pure_comp]
+      obtain ⟨vals, hvals, rfl⟩ := houts.of_map
       exact (resolves_mapM_lift _ _ (signJob_lift x secret topSecret result hmem htopSecret hzc hzfin hwrec
-        b encoding) vals hvals).bind (.pure _)
+        b encoding) vals hvals).map some
     intro outputs' houtputs'
-    beta_reduce at houtputs'
-    rw [map_eq_bind_pure_comp] at houtputs'
-    obtain ⟨values', hvalues', hpureInv⟩ := houtputs'.of_bind
-    obtain rfl := hpureInv.pure_inv
+    obtain ⟨values', hvalues', rfl⟩ := houtputs'.of_map
     refine resolves_lift_bind
       (topPath_lift x secret topSecret result hmem htopSecret hzc hzfin hwrec cache top htop hcfin b) ?_
     intro path hpath

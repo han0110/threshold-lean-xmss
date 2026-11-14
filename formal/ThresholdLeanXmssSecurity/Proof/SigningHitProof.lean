@@ -3,6 +3,7 @@ import ThresholdLeanXmssSecurity.Proof.Tree
 import XmssSecurity.Proof.TopKeygenQueryBound
 import XmssSecurity.Proof.MerkleQueryBound
 import XmssSecurity.Proof.TopStructural
+import ThresholdLeanXmssSecurity.Proof.VendoredExcerpt
 
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
@@ -2281,29 +2282,6 @@ theorem resolves_mapM_member {α β : Type} {cache : HashCache C}
     · exact ⟨b, hb⟩
     · exact ih bs hbs a' ha'
 
-/-- A resolved map comes from a resolved computation. The source is
-`leanVM@1acdff19`, `formal/lean_xmss/XmssSecurity/Proof/Bridge/Basic.lean`, line 90. -/
-theorem DeterministicSigning.Resolves.of_map {D R : Type} {α β : Type} {cache : QueryCache (D →ₒ R)}
-    {c : OracleComp (D →ₒ R) α} {g : α → β} {w : β}
-    (h : DeterministicSigning.Resolves cache (g <$> c) w) :
-    ∃ v, DeterministicSigning.Resolves cache c v ∧ g v = w := by
-  rw [map_eq_bind_pure_comp] at h
-  obtain ⟨v, hv, hw⟩ := h.of_bind
-  exact ⟨v, hv, hw.pure_inv⟩
-
-/-- A resolved computation runs with no change of the cache. The source is
-`leanVM@1acdff19`, `formal/lean_xmss/XmssSecurity/Proof/Deterministic/Replay.lean`, line 72. -/
-theorem DeterministicSigning.Resolves.run_eq_pure {D R : Type} [DecidableEq D] [SampleableType R]
-    {α : Type} {cache : QueryCache (D →ₒ R)}
-    {computation : OracleComp (D →ₒ R) α} {value : α}
-    (h : DeterministicSigning.Resolves cache computation value) :
-    (simulateQ (D →ₒ R).randomOracle computation).run cache = Pure.pure (value, cache) := by
-  induction h with
-  | pure value => rfl
-  | query input answer hanswer next value _ ih =>
-      rw [simulateQ_bind, simulateQ_spec_query, StateT.run_bind,
-        QueryImpl.withCaching_run_some _ hanswer, pure_bind, ih]
-
 /-- A resolved top ceremony has read every top chain start and its full chain. -/
 theorem resolves_referenceTop_chains (x : SigningSecurityProof.Keys3 C)
     (cache : HashCache C) (top : TopTree)
@@ -2318,7 +2296,7 @@ theorem resolves_referenceTop_chains (x : SigningSecurityProof.Keys3 C)
           OracleComp XmssSecurity.HashSpec _) finish := by
   unfold referenceTree ceremonyOutput at h
   obtain ⟨outputs, houtputs, _⟩ := h.of_bind
-  obtain ⟨values, hvalues, _⟩ := DeterministicSigning.Resolves.of_map houtputs
+  obtain ⟨values, hvalues, _⟩ := houtputs.of_map
   let job : Job := ⟨.chainEnd (topKey b) l, [.chain topLayer (topKey b) l (digit 0)]⟩
   have hmem : job ∈ topJobs := by
     simp only [topJobs, List.mem_flatMap, List.mem_finRange, true_and, List.mem_map]
@@ -2326,7 +2304,7 @@ theorem resolves_referenceTop_chains (x : SigningSecurityProof.Keys3 C)
   obtain ⟨bits, hjob⟩ := resolves_mapM_member _ _ values hvalues job hmem
   simp only [referenceJob, job, List.mapM_cons, List.mapM_nil, pure_bind, bind_assoc] at hjob
   obtain ⟨start, hstart, htail⟩ := hjob.of_bind
-  obtain ⟨finish, hfinish, _⟩ := DeterministicSigning.Resolves.of_map htail
+  obtain ⟨finish, hfinish, _⟩ := htail.of_map
   refine ⟨start, finish, hstart, ?_⟩
   have hm := resolves_forestHash _ _ _ hfinish
   erw [XmssSecurity.Bridge.chainWalk_top] at hm
@@ -2355,7 +2333,7 @@ theorem resolves_referenceTop_merkle (x : SigningSecurityProof.Keys3 C)
       (merkleNode x.1 topLayer top.chainEnd layerHeight 0) top.root := by
   unfold referenceTree ceremonyOutput at h
   obtain ⟨outputs, houtputs, htail⟩ := h.of_bind
-  obtain ⟨values, _, rfl⟩ := DeterministicSigning.Resolves.of_map houtputs
+  obtain ⟨values, _, rfl⟩ := houtputs.of_map
   obtain ⟨root, hroot, hfinal⟩ := htail.of_bind
   have he := hfinal.pure_inv
   have ht := TreeOutput.top.inj (Option.some.inj he)
@@ -2480,7 +2458,7 @@ theorem resolves_referenceBottom_chains (x : SigningSecurityProof.Keys3 C)
           OracleComp XmssSecurity.HashSpec _) finish := by
   unfold referenceTree ceremonyOutput at h
   obtain ⟨outputs, houtputs, _⟩ := h.of_bind
-  obtain ⟨values, hvalues, _⟩ := DeterministicSigning.Resolves.of_map houtputs
+  obtain ⟨values, hvalues, _⟩ := houtputs.of_map
   let job : Job := ⟨.chainRow (bottomKey b k) l,
     [.chain bottomLayer (bottomKey b k) l (digit 0),
       .chain bottomLayer (bottomKey b k) l (digit 1),
@@ -2579,7 +2557,7 @@ theorem resolves_referenceBottom_merkle (x : SigningSecurityProof.Keys3 C)
             (replayStarts prims x cache bottomLayer (bottomKey b k) l) := by
   unfold referenceTree ceremonyOutput at h
   obtain ⟨outputs, houtputs, htail⟩ := h.of_bind
-  obtain ⟨values, hvalues, rfl⟩ := DeterministicSigning.Resolves.of_map houtputs
+  obtain ⟨values, hvalues, rfl⟩ := houtputs.of_map
   obtain ⟨root, hroot, _⟩ := htail.of_bind
   let ends : KeyIndex → ChainIndex → Digest := fun e l =>
     digestAt (values.getD ((bottomKeys b).idxOf (e, l)) []) 2
@@ -2721,7 +2699,7 @@ theorem forestRun_honestRun (x : SigningSecurityProof.Keys3 C) (cache : HashCach
         (SigningDescentProof.thView z.1.2)) := by
   obtain ⟨result, hmodel⟩ := forestRun_replay prims x cache z hz larger hle
   refine ⟨result, ?_⟩
-  rw [DeterministicSigning.Resolves.run_eq_pure hmodel]
+  rw [hmodel.run_eq_pure]
   simp
 
 set_option backward.isDefEq.respectTransparency false in

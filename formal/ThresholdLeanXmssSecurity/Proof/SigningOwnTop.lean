@@ -165,9 +165,7 @@ theorem canonicalTopGrind_covers_bottom (x : Keys3 C) (top : TopTree) (key : Xms
       rcases outputs with _ | outputs
       · rw [← hv.pure_inv]
         exact .pure _
-      rw [map_eq_bind_pure_comp] at houtputs
-      obtain ⟨values, hvalues, hpureInv⟩ := houtputs.of_bind
-      have hvo := hpureInv.pure_inv
+      obtain ⟨values, hvalues, hvo⟩ := houtputs.of_map
       cases hvo
       dsimp only at hv ⊢
       refine resolves_lift_bind (fun root hroot => resolves_lift_bound _ _
@@ -184,9 +182,7 @@ theorem canonicalTopGrind_covers_bottom (x : Keys3 C) (top : TopTree) (key : Xms
       obtain ⟨pair, hpair, hzg⟩ := hzres'.of_bind
       have hpe : pair = (root, base) := (hpair.mono hzfin).unique (hsetup.mono hwrec)
       subst hpe
-      rw [map_eq_bind_pure_comp] at hzg
-      obtain ⟨sel, hsel, hpureInv⟩ := hzg.of_bind
-      have hz1 := hpureInv.pure_inv
+      obtain ⟨sel, hsel, hz1⟩ := hzg.of_map
       refine resolves_lift_bind (fun selected hselected => resolves_transfer hsel hselected hzc hzfin hwrec)
         (fun selected hselected => ?_)
       have hss : selected = sel := (hselected.mono hwrec).unique (hsel.mono hzfin)

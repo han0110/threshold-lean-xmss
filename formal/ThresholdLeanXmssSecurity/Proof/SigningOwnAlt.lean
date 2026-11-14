@@ -373,9 +373,7 @@ theorem resolves_rawCommitment (cache : HashCache C) (top : TopTree) (e : KeyInd
     DeterministicSigning.Resolves cache (SigningGuessProof.rawCommitment x.2.1 x.1 e) () := by
   unfold referenceTree ceremonyOutput at h
   obtain ⟨outputs, houtputs, -⟩ := h.of_bind
-  beta_reduce at houtputs
-  rw [map_eq_bind_pure_comp] at houtputs
-  obtain ⟨values, hvalues, hpureInv⟩ := houtputs.of_bind
+  obtain ⟨values, hvalues, -⟩ := houtputs.of_map
   have hmem : (⟨.commitment e, [.randomizer bottomLayer e]⟩ : Job) ∈ bottomJobs (treeOf e) := by
     have hk := bottomKey_treeOf e
     simp only [bottomJobs, List.mem_append, List.mem_flatMap, List.mem_finRange, true_and, List.mem_map,
@@ -385,8 +383,7 @@ theorem resolves_rawCommitment (cache : HashCache C) (top : TopTree) (e : KeyInd
   simp only [referenceJob, List.mapM_cons, List.mapM_nil, bind_pure_comp, map_pure] at hjob
   rw [bind_map_left] at hjob
   obtain ⟨ρ, hρ, hrest⟩ := hjob.of_bind
-  rw [map_eq_bind_pure_comp] at hrest
-  obtain ⟨a', hq, hpureInv⟩ := hrest.of_bind
+  obtain ⟨a', hq, -⟩ := hrest.of_map
   unfold SigningGuessProof.rawCommitment
   rw [SigningOwnCommit.rawRandomizer_eq]
   refine hρ.bind ?_

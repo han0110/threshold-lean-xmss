@@ -51,17 +51,7 @@ theorem baseTrialsCached_iff_resolved (P : PublicParameter) (ρ : KeyIndex → D
   · intro h e message hb he
     obtain ⟨u, hu, hres⟩ := h e message hb he
     refine ⟨u, hu, fun z hz => ?_⟩
-    have hpure : ∀ {α : Type} {cache : QueryCache (Query C →ₒ HashOutput)}
-        {computation : OracleComp (Query C →ₒ HashOutput) α} {value : α},
-        DeterministicSigning.Resolves cache computation value →
-        (simulateQ randomOracle computation).run cache = pure (value, cache) := by
-      intro α cache computation value h
-      induction h with
-      | pure value => rfl
-      | query input answer hanswer next value _ ih =>
-        rw [simulateQ_bind, simulateQ_spec_query, StateT.run_bind,
-          QueryImpl.withCaching_run_some _ hanswer, pure_bind, ih]
-    rw [hpure hres, mem_support_pure_iff] at hz
+    rw [hres.run_eq_pure, mem_support_pure_iff] at hz
     exact congrArg Prod.snd hz
 
 /-- Removing the two monitors from an eager grind leaves the same lazy-oracle
@@ -250,17 +240,7 @@ theorem laneWorld_traced_base_view
   rw [← hoa, grindExtra_base P ρ t (s.1.1.1.1, s.2) hbase hb w.2 u hu'] at hv'
   change (v.1, v.2.1.1) ∈ support
     ((simulateQ (Query C →ₒ HashOutput).randomOracle (baseGrind P hbase.choose message u)).run w.2.1.1.1) at hv'
-  have hpure : ∀ {α : Type} {cache : QueryCache (Query C →ₒ HashOutput)}
-      {computation : OracleComp (Query C →ₒ HashOutput) α} {value : α},
-      DeterministicSigning.Resolves cache computation value →
-      (simulateQ randomOracle computation).run cache = pure (value, cache) := by
-    intro α cache computation value h
-    induction h with
-    | pure value => rfl
-    | query input answer hanswer next value _ ih =>
-      rw [simulateQ_bind, simulateQ_spec_query, StateT.run_bind,
-        QueryImpl.withCaching_run_some _ hanswer, pure_bind, ih]
-  rw [hc, hpure hres, mem_support_pure_iff] at hv'
+  rw [hc, hres.run_eq_pure, mem_support_pure_iff] at hv'
   have hvCache : v.2.1.1 = s.1.1.1.1.1.1 := congrArg Prod.snd hv'
   apply Prod.ext
   · exact congrArg (keptView IsMsg) hvCache

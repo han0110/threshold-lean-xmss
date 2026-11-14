@@ -413,17 +413,7 @@ theorem compiler_traced_base_view (P : PublicParameter) (seeds : C.Term → Hash
   have extra := cachedExtra_base seeds P
     (((st.data.cache, 0), []), compilerSigning st, false)
     (((st.data.cache, 0), []), compilerSigning st, false) _ e message hprf base bound answer cached
-  have hpure : ∀ {α : Type} {cache : QueryCache (Query C →ₒ HashOutput)}
-      {computation : OracleComp (Query C →ₒ HashOutput) α} {value : α},
-      DeterministicSigning.Resolves cache computation value →
-      (simulateQ randomOracle computation).run cache = pure (value, cache) := by
-    intro α cache computation value h
-    induction h with
-    | pure value => rfl
-    | query input answer hanswer next value _ ih =>
-      rw [simulateQ_bind, simulateQ_spec_query, StateT.run_bind,
-        QueryImpl.withCaching_run_some _ hanswer, pure_bind, ih]
-  rw [extra, hpure resolved, mem_support_pure_iff] at hb
+  rw [extra, resolved.run_eq_pure, mem_support_pure_iff] at hb
   subst b
   rw [canonical]
   rw [traceStepAt_traced_base P seeds st.data.cache st.data.cache (compilerSigning st) st.trace e message

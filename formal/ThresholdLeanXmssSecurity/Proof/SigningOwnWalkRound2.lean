@@ -342,8 +342,7 @@ theorem walk_signCodeword (prims : Primitives) (commitment : Digest) (e : KeyInd
           exact hs
         · right; right
           rw [SigningFlatEagerProof.baseGrind] at hres
-          rw [map_eq_bind_pure_comp] at hres
-          obtain ⟨w, hw, -⟩ := hres.of_bind
+          obtain ⟨w, hw, -⟩ := hres.of_map
           rw [hst]
           exact ⟨w, hw⟩
       · right; left
