@@ -1795,7 +1795,7 @@ theorem splitHalvCoin_tv (prims : Primitives) (K : Constants C E) (D : C.Coaliti
     (hrel : SplitHalvRel K D AR BR AD BD DR DD)
     (pa : Ad.State × (ℕ → E) × Shares C E × (C.Party → Shares C E) × Finset C.Party) (fresh : C.Term → Fin 2 → E)
     (hrec : ∀ i, i ∉ D.1 → i ∈ pa.2.2.2.2)
-    (y : (Fin (firstInput fun i : C.Party => if i ∈ D.1 then (none : Option ℕ) else some 1) → E) ×
+    (y : (Fin (firstInput fun i : C.Party => if i ∈ D.1 then (none : Option ℕ) else some 2) → E) ×
       (Ad.State × Finset C.Party))
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen)
     (hsplit : SplitHistories D (fun i => (hsR i).history))
@@ -1972,7 +1972,7 @@ theorem splitSliceCoin_tv (prims : Primitives) (K : Constants C E) (D : C.Coalit
     (hrel : SplitSliceRel D xsR ysR xsD ysD) (hdiff : ShamirDifference K D DR DD)
     (pa : Ad.State × (ℕ → E) × Shares C E × (C.Party → Shares C E) × Finset C.Party) (fresh : C.Term → Fin 2 → E)
     (hrec : ∀ i, i ∉ D.1 → i ∈ pa.2.2.2.2)
-    (y : (Fin (firstInput fun i : C.Party => if i ∈ D.1 then (none : Option ℕ) else some 1) → E) ×
+    (y : (Fin (firstInput fun i : C.Party => if i ∈ D.1 then (none : Option ℕ) else some 2) → E) ×
       (Ad.State × Finset C.Party))
     (cache : HashCache C) (seen : Finset (List Bit)) (hcov : DigestSaltsCovered cache seen)
     (hsplit : SplitHistories D (fun i => (hsR i).history))

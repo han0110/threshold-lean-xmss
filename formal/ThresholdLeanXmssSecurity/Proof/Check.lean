@@ -227,8 +227,8 @@ def boolBit : Bool ≃ Bit where
 variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] [Fintype E]
 
 /-- A hash output splits into the element of its first bits and its other bits. -/
-def hashSplit (K : Constants C E) : HashOutput ≃ E × (Fin 64 → Bool) :=
-  (bitsEquiv 256).trans <| ((finSumFinEquiv (m := elementBits) (n := 64)).symm.arrowCongr (Equiv.refl Bool)).trans <|
+def hashSplit (K : Constants C E) : HashOutput ≃ E × (Fin 128 → Bool) :=
+  (bitsEquiv 256).trans <| ((finSumFinEquiv (m := elementBits) (n := 128)).symm.arrowCongr (Equiv.refl Bool)).trans <|
     (Equiv.sumArrowEquivProdArrow _ _ _).trans <|
       Equiv.prodCongr ((Equiv.arrowCongr (Equiv.refl _) boolBit).trans K.encode.symm) (Equiv.refl _)
 
@@ -243,13 +243,13 @@ theorem probEvent_elementOfHash (K : Constants C E) (p : E → Prop) [DecidableP
     Pr{let z ← elementOfHash K <$> ($ᵗ HashOutput)}[p z] = (Finset.univ.filter p).card / Fintype.card E := by
   classical
   rw [prEvent_map, SampleableType.prEvent_uniformSample]
-  have hcard : (Finset.univ.filter fun h => p (elementOfHash K h)).card = (Finset.univ.filter p).card * 2 ^ 64 := by
+  have hcard : (Finset.univ.filter fun h => p (elementOfHash K h)).card = (Finset.univ.filter p).card * 2 ^ 128 := by
     rw [← Fintype.card_subtype, ← Fintype.card_subtype,
       Fintype.card_congr ((hashSplit K).subtypeEquiv (p := fun h => p (elementOfHash K h))
         (q := fun z => p z.1) fun h => by simp [Function.comp, hashSplit_fst]),
       Fintype.card_congr (Equiv.prodSubtypeFstEquivSubtypeProd (p := p))]
     simp
-  have hH : Fintype.card HashOutput = Fintype.card E * 2 ^ 64 := by
+  have hH : Fintype.card HashOutput = Fintype.card E * 2 ^ 128 := by
     rw [card_field K, Fintype.card_congr (bitsEquiv 256), Fintype.card_fun, Fintype.card_bool, Fintype.card_fin]; norm_num [elementBits]
   rw [hcard, hH]
   push_cast
@@ -1050,7 +1050,7 @@ theorem randBits_run' {α : Type} (count : ℕ) (f : PrssOutput C Bit → RunM C
 
 theorem challenge_run' {α : Type} (f : E → RunM C E (CheckSpec C E) α) (st : RunState C) :
     (challenge K (hybridCheckGadgets K i) >>= f).run' st =
-      call (Sum.inl (Sum.inl 1)) >>= fun o => match o with
+      call (Sum.inl (Sum.inl 2)) >>= fun o => match o with
         | some (.inl (.inl v)) => oracleStep (challengeQuery K st.tag st.label v) >>= fun r => match r with
           | some r => (f r).run' ⟨st.history, st.label + 1, st.tag⟩
           | none => failure
@@ -1891,9 +1891,9 @@ theorem final_bound [Nonempty C.Party] (A B : C.Party → ℕ → E) (D : C.Part
   swap
   · intro k j; unfold digestOutbox; split_ifs <;> rfl
   simp only [require_bind_of (digestsAgree_honest z₄.1 hlen₄ hag₄ _), challenge_run']
-  refine probEvent_honest_call prims _ _ (fuel + 1) (fun _ => Sum.inl (Sum.inl 1)) _ _ z₄.2 _ ?_
+  refine probEvent_honest_call prims _ _ (fuel + 1) (fun _ => Sum.inl (Sum.inl 2)) _ _ z₄.2 _ ?_
   intro z₅ hz₅
-  obtain ⟨hs₅, v₅, hz₅⟩ := check_coin_support prims K 1 z₄.2 z₅ hz₅
+  obtain ⟨hs₅, v₅, hz₅⟩ := check_coin_support prims K 2 z₄.2 z₅ hz₅
   simp only [hz₅, hs₅]
   have hbound := challengeQuery_none_le prims K 0 (L + 1 + 1 + 1) v₅ Ks L (by omega) z₄.2 hok₄
   refine (probEvent_honest_common prims _ _ (fuel + 1) (challengeQuery K 0 (L + 1 + 1 + 1) v₅) _ _
@@ -2032,9 +2032,9 @@ theorem halving_bound [Nonempty C.Party] (width : ℕ) (hwidth : 1 ≤ width) :
     obtain ⟨hs₁, Z₁, hZ₁, hz₁⟩ := check_extendMult_support prims K _ 2 (fun i => rfl) s z₁ hz₁
     simp only [hz₁, hs₁, challenge_run', List.length_cons, List.length_nil, zero_add, Nat.reduceAdd]
     rw [show fuel + 2 * n + 7 = (fuel + 2 * n + 6) + 1 by ring]
-    refine probEvent_honest_call prims _ _ (fuel + 2 * n + 6) (fun _ => Sum.inl (Sum.inl 1)) _ _ s _ ?_
+    refine probEvent_honest_call prims _ _ (fuel + 2 * n + 6) (fun _ => Sum.inl (Sum.inl 2)) _ _ s _ ?_
     intro z₂ hz₂
-    obtain ⟨hs₂, v₂, hz₂⟩ := check_coin_support prims K 1 s z₂ hz₂
+    obtain ⟨hs₂, v₂, hz₂⟩ := check_coin_support prims K 2 s z₂ hz₂
     simp only [hz₂, hs₂]
     rw [chalErr_succ]
     refine (probEvent_honest_common prims _ _ _ (challengeQuery K 0 (L + 1) v₂) _ _
@@ -2215,9 +2215,9 @@ theorem slice_bound [Nonempty C.Party] (τ : List E) (count : ℕ) (hτ : ∀ b 
     simp only [hz₁, hs₁, challenge_run', List.length_cons, List.length_nil, zero_add, Nat.reduceAdd]
     rw [show fuel + 2 * n + 2 * halvingSteps (sliceWidth count) + 7 =
       (fuel + 2 * n + 2 * halvingSteps (sliceWidth count) + 6) + 1 by ring]
-    refine probEvent_honest_call prims _ _ _ (fun _ => Sum.inl (Sum.inl 1)) _ _ s _ ?_
+    refine probEvent_honest_call prims _ _ _ (fun _ => Sum.inl (Sum.inl 2)) _ _ s _ ?_
     intro z₂ hz₂
-    obtain ⟨hs₂, v₂, hz₂⟩ := check_coin_support prims K 1 s z₂ hz₂
+    obtain ⟨hs₂, v₂, hz₂⟩ := check_coin_support prims K 2 s z₂ hz₂
     simp only [hz₂, hs₂]
     rw [show n + 1 + halvingSteps (sliceWidth count) + 1 = (n + halvingSteps (sliceWidth count) + 1) + 1 by ring,
       chalErr_succ]
@@ -2295,7 +2295,7 @@ variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] (K : Constants C E
 
 theorem coinKey_expand_run' {α : Type} (count : ℕ) (f : List E → RunM C E (CheckSpec C E) α) (st : RunState C) :
     (coinKey K (hybridCheckGadgets K i) >>= fun key => expand K key count >>= f).run' st =
-      call (Sum.inl (Sum.inl 1)) >>= fun o => match o with
+      call (Sum.inl (Sum.inl 2)) >>= fun o => match o with
         | some (.inl (.inl v)) => oracleStep (tauQuery K st.tag st.label v count) >>= fun τ =>
             (f τ).run' ⟨st.history, st.label + 1, st.tag⟩
         | _ => failure := by
@@ -2544,9 +2544,9 @@ theorem check_honest_bound [Nonempty C.Party] (counts : List ℕ) (x : C.Party �
   simp only [checkProtocol, check_eq _ _ _ _ (hne _)]
   simp only [hcnt, coinKey_expand_run']
   rw [show checkRounds counts.sum = (2 * halvings counts.sum + 7) + 1 by unfold checkRounds; ring]
-  refine probEvent_honest_call prims _ _ _ (fun _ => Sum.inl (Sum.inl 1)) _ _ ∅ _ ?_
+  refine probEvent_honest_call prims _ _ _ (fun _ => Sum.inl (Sum.inl 2)) _ _ ∅ _ ?_
   intro z₁ hz₁
-  obtain ⟨hs₁, v₁, hz₁⟩ := check_coin_support prims K 1 ∅ z₁ hz₁
+  obtain ⟨hs₁, v₁, hz₁⟩ := check_coin_support prims K 2 ∅ z₁ hz₁
   simp only [hz₁, hs₁]
   have hok₀ : CacheOK (C := C) ∅ 0 ∅ := fun q h => absurd rfl h
   refine (probEvent_honest_common prims _ _ _ (tauQuery K 0 0 v₁ (coins counts.sum)) _ _
@@ -3067,7 +3067,7 @@ lemma hybrid_coinKey_queryBound :
     RunBound (coinKey K (hybridCheckGadgets K i)) 1 := by
   unfold coinKey
   exact ((RunBound.get).bind (fun st =>
-    (hybrid_coin_queryBound K i 1).bind (fun values =>
+    (hybrid_coin_queryBound K i 2).bind (fun values =>
       RunBound.lift (oracleStep_queryBound (hashQuery_queryBound _))))).mono (by omega)
 
 lemma expand_queryBound {ι : Type} {G : OracleSpec ι} (key : HashOutput) (count : ℕ) :
@@ -4065,15 +4065,24 @@ theorem probEvent_uniform_injective_mem {α β : Type} [Fintype α] [Nonempty α
   gcongr
 
 lemma coin_input_injective (K : Constants C E) (tag label : ℕ) :
-    Function.Injective (fun r : E => Query.coinKey (C := C) tag label (List.ofFn (K.encode r))) := by
+    Function.Injective (fun v : Fin 2 → E => Query.coinKey (C := C) tag label
+      ((List.ofFn v).flatMap fun v => List.ofFn (K.encode v))) := by
   intro a b hab
-  have h := Query.coinKey.inj hab
-  exact K.encode.injective (List.ofFn_injective h.2.2)
+  have h := (Query.coinKey.inj hab).2.2
+  simp only [List.ofFn_succ, List.ofFn_zero, List.flatMap_cons, List.flatMap_nil,
+    List.append_nil] at h
+  obtain ⟨h0, h1⟩ := List.append_inj h (by simp only [List.length_ofFn])
+  funext i
+  fin_cases i
+  · exact K.encode.injective (List.ofFn_injective h0)
+  · exact K.encode.injective (List.ofFn_injective h1)
 
 theorem coin_input_guess_bound (K : Constants C E) (tag label : ℕ) (Q : Finset (Query C)) :
-    Pr{let r : E ← $ᵗ E}[Query.coinKey tag label (List.ofFn (K.encode r)) ∈ Q] ≤
-      Q.card / (Fintype.card E : ℕ) :=
-  probEvent_uniform_injective_mem _ (coin_input_injective K tag label) Q
+    Pr{let v : Fin 2 → E ← $ᵗ (Fin 2 → E)}[Query.coinKey tag label
+      ((List.ofFn v).flatMap fun v => List.ofFn (K.encode v)) ∈ Q] ≤
+      Q.card / (Fintype.card E ^ 2 : ℕ) := by
+  simpa only [Fintype.card_fun, Fintype.card_fin] using
+    probEvent_uniform_injective_mem _ (coin_input_injective K tag label) Q
 
 lemma digest_input_injective (history : (Fin 256 → Bit) → HashOutput) :
     Function.Injective (fun salt : Fin 256 → Bit => Query.digest (C := C) (List.ofFn salt) (history salt)) := by
@@ -6074,7 +6083,7 @@ theorem executePhase_challenge (K : Constants C E) (D : C.Coalition) (A : CheckA
     executePhase localRoles D A (checkFunctionalities K) (fuel+1) st
       (fun i => (challenge K (hybridCheckGadgets K i) >>= f i).run' (hs i)) = (do
       let p ← runFunctionality localRoles D (leftAdversary (leftAdversary A)) (Fcoin (E := E)) st
-        (fun i => if i ∈ D.1 then none else some 1)
+        (fun i => if i ∈ D.1 then none else some 2)
       executePhase localRoles D A (checkFunctionalities K) fuel p.1
         (fun i => afterChallenge K (hs i) (f i) (p.2 i))) := by
   simp_rw [challenge_run']
@@ -10230,7 +10239,7 @@ lemma hybrid_challenge_no_digest (K : Constants C E) (i : C.Party) :
     unfold coinKey
     apply (DigestRunBound.of_zero RunBound.get).bind
     intro hs
-    apply (DigestRunBound.of_zero (hybrid_coin_queryBound K i 1)).bind
+    apply (DigestRunBound.of_zero (hybrid_coin_queryBound K i 2)).bind
     intro values
     apply DigestRunBound.lift
     exact localStep_digestBound (hashQuery_no_digest _ (by simp [DigestQuery,digestSaltProjection]))

@@ -66,8 +66,8 @@ the advantage of a reduction is only as strong as that reduction.
 * No field covers a corruption between two ceremonies. The keygen and ceremony claims cover their
   static coalitions, and the signing claim covers adaptive corruptions.
 * No field fixes the basis or the bit encoding of the check field. The claims take every value of
-  `Constants`. Its field `encode` gives `E` exactly `2 ^ 192` elements (`Constants.card`), so `E` is
-  isomorphic to `GF(2^192)`. `constants_nonempty` gives a value only for the committee of one
+  `Constants`. Its field `encode` gives `E` exactly `2 ^ 128` elements (`Constants.card`), so `E` is
+  isomorphic to `GF(2^128)`. `constants_nonempty` gives a value only for the committee of one
   operator, so it does not instantiate the implementation.
 * No field connects the model to the Rust code.
 * No field is in the random-permutation model. leanXMSS is in that model at the revision `64f80302`

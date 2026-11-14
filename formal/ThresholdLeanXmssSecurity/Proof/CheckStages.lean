@@ -214,7 +214,7 @@ theorem executePhase_challenge_live {α : Type} (K : Constants C E) (D : C.Coali
       (fun i => if live i then (challenge K (hybridCheckGadgets K i) >>= g i).run' (hs i) else failure) =
     if ∀ i, i ∉ D.1 → live i then (do
       let p ← runFunctionality localRoles D (leftAdversary (leftAdversary Ad)) (Fcoin (E := E)) st
-        (fun i => if i ∈ D.1 then none else some 1)
+        (fun i => if i ∈ D.1 then none else some 2)
       executePhase localRoles D Ad (checkFunctionalities K) fuel p.1
         (fun i => afterChallenge K (hs i) (g i) (p.2 i)))
     else pure (st, fun _ => none) := by
@@ -230,7 +230,7 @@ theorem executePhase_challenge_live {α : Type} (K : Constants C E) (D : C.Coali
           | none => failure
       | _ => failure
     have hp : (fun i => if live i then (challenge K (hybridCheckGadgets K i) >>= g i).run' (hs i) else failure) =
-        (fun i => optionalCall (if live i then some (.inl (.inl 1)) else none) (next i)) := by
+        (fun i => optionalCall (if live i then some (.inl (.inl 2)) else none) (next i)) := by
       funext i
       by_cases hi : live i <;> simp only [hi, if_true, if_false, optionalCall, challenge_run', next]
       apply bind_congr
@@ -478,9 +478,9 @@ lemma finalTail_eq (K : Constants C E) (D : C.Coalition) (known knownQ : Shares 
 /-- The coin of the last challenge and the adversary's reply to it. -/
 def coinDraw (D : C.Coalition) (Ad : CheckAdversary C E Ia) (p0 : Ad.State) :
     OracleComp (LocalSpec C)
-      ((Fin (firstInput fun i : C.Party => if i ∈ D.1 then (none : Option ℕ) else some 1) → E) ×
+      ((Fin (firstInput fun i : C.Party => if i ∈ D.1 then (none : Option ℕ) else some 2) → E) ×
         (Ad.State × Finset C.Party)) := do
-  let v ← liftComp ($ᵗ (Fin (firstInput fun i : C.Party => if i ∈ D.1 then (none : Option ℕ) else some 1) → E))
+  let v ← liftComp ($ᵗ (Fin (firstInput fun i : C.Party => if i ∈ D.1 then (none : Option ℕ) else some 2) → E))
     (LocalSpec C)
   let p ← (leftAdversary (leftAdversary Ad)).answer p0 (List.ofFn v)
   pure (v, p)
@@ -490,7 +490,7 @@ def coinNext {β : Type} (K : Constants C E) (D : C.Coalition) (Ad : CheckAdvers
     (known knownQ : Shares C E) (attack : ℕ → E) (offset : C.Party → Shares C E) (receivers : Finset C.Party)
     (A B V : C.Party → E) (hs : MaskTable C E → MaskTable C E → C.Party → RunState C)
     (tail : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β) (w q : MaskTable C E)
-    (x : (Fin (firstInput fun i : C.Party => if i ∈ D.1 then (none : Option ℕ) else some 1) → E) ×
+    (x : (Fin (firstInput fun i : C.Party => if i ∈ D.1 then (none : Option ℕ) else some 2) → E) ×
       (Ad.State × Finset C.Party)) : OracleComp (LocalSpec C) β :=
   executePhase localRoles D Ad (checkFunctionalities K) fuel x.2.1 (fun i =>
     afterChallenge K (hs w q i) (fun r => StateT.lift (finalOpenProgram K i
@@ -523,7 +523,7 @@ theorem ghostFinalChallenge (prims : Primitives) (K : Constants C E) (D : C.Coal
             else failure) >>= tail) := by
   simp only [finalTail_eq, executePhase_challenge_live]
   split_ifs with hall
-  · have hin : ∀ i, i ∉ D.1 → ((if i ∈ D.1 then none else some 1 : Option ℕ)).isSome := by
+  · have hin : ∀ i, i ∉ D.1 → ((if i ∈ D.1 then none else some 2 : Option ℕ)).isSome := by
       intro i hi; simp [hi]
     rw [runFunctionality_coin_local D (leftAdversary (leftAdversary Ad)) p0 _ hin]
     have side : ∀ (A B V : C.Party → E) (hs : MaskTable C E → MaskTable C E → C.Party → RunState C),
@@ -533,7 +533,7 @@ theorem ghostFinalChallenge (prims : Primitives) (K : Constants C E) (D : C.Coal
             let q ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
             (do
               let p ← (do
-                let v ← liftComp ($ᵗ (Fin (firstInput fun i => if i ∈ D.1 then none else some 1) → E))
+                let v ← liftComp ($ᵗ (Fin (firstInput fun i => if i ∈ D.1 then none else some 2) → E))
                   (LocalSpec C)
                 let p ← (leftAdversary (leftAdversary Ad)).answer p0 (List.ofFn v)
                 pure (p.1, fun i => if i ∉ D.1 ∧ i ∈ p.2 then some (List.ofFn v) else none))
@@ -1858,7 +1858,7 @@ def halvCont (K : Constants C E) (width n j : ℕ) (A B : C.Party → ℕ → E)
 def halvCoinNext {β : Type} (K : Constants C E) (D : C.Coalition) (Ad : CheckAdversary C E Ia) (F : ℕ)
     (hs : C.Party → RunState C) (g : C.Party → E → RunM C E (CheckSpec C E) Unit)
     (tail : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
-    (y : (Fin (firstInput fun i : C.Party => if i ∈ D.1 then (none : Option ℕ) else some 1) → E) ×
+    (y : (Fin (firstInput fun i : C.Party => if i ∈ D.1 then (none : Option ℕ) else some 2) → E) ×
       (Ad.State × Finset C.Party)) : OracleComp (LocalSpec C) β :=
   executePhase localRoles D Ad (checkFunctionalities K) F y.2.1
     (fun i => afterChallenge K (hs i) (g i) (if i ∉ D.1 ∧ i ∈ y.2.2 then some (List.ofFn y.1) else none)) >>= tail
@@ -1872,7 +1872,7 @@ lemma halvChallenge_eq {β : Type} (K : Constants C E) (D : C.Coalition) (Ad : C
       (fun i => if i ∈ rec then (challenge K (hybridCheckGadgets K i) >>= g i).run' (hs i) else failure) >>= tail =
     coinDraw D Ad st >>= halvCoinNext K D Ad F hs g tail := by
   rw [executePhase_challenge_live K D Ad F st (fun i => i ∈ rec) hs g, if_pos hrec]
-  have hin : ∀ i, i ∉ D.1 → ((if i ∈ D.1 then none else some 1 : Option ℕ)).isSome := by
+  have hin : ∀ i, i ∉ D.1 → ((if i ∈ D.1 then none else some 2 : Option ℕ)).isSome := by
     intro i hi; simp [hi]
   rw [runFunctionality_coin_local D (leftAdversary (leftAdversary Ad)) st _ hin]
   simp only [coinDraw, halvCoinNext, bind_assoc, pure_bind]
@@ -1885,7 +1885,7 @@ theorem halvCoin_tv (prims : Primitives) (K : Constants C E) (D : C.Coalition) (
     (hrel : HalvRel K D (halvedLength^[j] width) AR BR AD BD DR DD)
     (pa : Ad.State × (ℕ → E) × Shares C E × (C.Party → Shares C E) × Finset C.Party) (fresh : C.Term → Fin 2 → E)
     (hrec : ∀ i, i ∉ D.1 → i ∈ pa.2.2.2.2)
-    (y : (Fin (firstInput fun i : C.Party => if i ∈ D.1 then (none : Option ℕ) else some 1) → E) ×
+    (y : (Fin (firstInput fun i : C.Party => if i ∈ D.1 then (none : Option ℕ) else some 2) → E) ×
       (Ad.State × Finset C.Party))
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen) :
     letI : MeasurableSpace β := ⊤

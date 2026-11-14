@@ -70,7 +70,9 @@ $\bigl((2\binom{n}{t-1} + n^2)\, q + N^2\bigr) / 2^{256}$. \\
 
 The numbers $s_{\mathrm{kg}}$ and $s_{\mathrm{tree}}$ count the honest secret inputs of the hash.
 One check with $d$ coins and $R$ halving steps has the error
-$(d + 2(R + 1)) / (2^{192} - 2) + (R + 2)\, q / 2^{192}$, and a ceremony pays it for each batch.
+$(d + 2(R + 1)) / (2^{128} - 2) + (R + 2)\, q / 2^{256}$, and a ceremony pays it for each batch.
+The second term is for a call that hits the key input of a coin before the coin opens. The key
+input has two opened field elements.
 
 The bundle \lean{Theorems} has seventeen claims, one field for each. The other claims are the honest
 runs (completeness), the failure
@@ -192,7 +194,7 @@ model and the bound differ in three points. $H$ is a random oracle, one budget c
 of the forger and its round-2 requests, and the bound has two more terms. The separate claim
 \lean{SigningSecurityStatement} has the hash term $q / 2^{127}$ and the budget of every party, as
 leanXMSS has them at the revision that \lean{lakefile.toml} pins.
-\item The check field is any field with $2^{192}$ elements. No claim fixes its basis.
+\item The check field is any field with $2^{128}$ elements. No claim fixes its basis.
 \end{itemize}
 The module docs of \lean{Statement/Dkg.lean} and \lean{Statement/Signing.lean} list the deviations
 of the protocol.

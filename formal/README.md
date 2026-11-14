@@ -20,3 +20,5 @@ cd formal
 python3 tools/bridge_compare.py --old-commit fddaa63 --new ThresholdLeanXmssSecurity/Bridge
 python3 tools/bridge_compare_test.py --old-commit fddaa63 --new ThresholdLeanXmssSecurity/Bridge
 ```
+
+The bridge covers the move of the upstream definitions only. After the move, the model got two changes of meaning that the bridge does not cover, so that it agrees with the code. The check field has `2^128` elements, and the key of a coin hashes two opened values.

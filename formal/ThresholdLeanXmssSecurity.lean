@@ -26,7 +26,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningStronglyUnforgeable
 `thresholdLeanXmss_security` gives `ThresholdLeanXmssSecurityStatement`
 (`ThresholdLeanXmss/Statement/Theorems.lean`). It is the bundle `Theorems`, with one field for each of
 seventeen claims about the protocol of `ThresholdLeanXmss/Scheme.lean`. The theorem holds for every
-committee `n = 2t - 1`, every check field `E` with `2^192` elements, every `Th`, every circuit family
+committee `n = 2t - 1`, every check field `E` with `2^128` elements, every `Th`, every circuit family
 and every setting. Each claim covers one protocol or one gadget alone. No claim composes the
 keygen, the ceremonies and the signing. `statement.tex` holds the deployment contract and the argument
 of that composition. The module doc of `Statement/Theorems.lean` holds the full model. The module docs

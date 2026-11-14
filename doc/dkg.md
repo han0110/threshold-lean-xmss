@@ -603,7 +603,7 @@ r = \mathrm{expand}\Big( H\big( \texttt{"thlxmss-coin"} \,\Vert\, \rho \,\Vert\,
 ```
 Here $\mathsf{Rand}(\rho, 1)$ gives two elements of $\mathbb F_{128}$, and $\mathsf{OpenSh}$ opens both in the same round. These are two calls of $\mathsf{Coin}$ of [GS20, Prot. 6](https://eprint.iacr.org/2020/134), and each call gives one element, as $F_{\mathrm{coin}}$ of [GS20, Functionality 5](https://eprint.iacr.org/2020/134) does. The key hashes both opened values.
 
-The key has two values for this reason. Before the coin opens, a guess of the key input succeeds with probability $2^{-128}$ for each hash call with one value, and with probability $2^{-256}$ with two values.
+The key has two values for this reason. Before the coin opens, a guess of the key input succeeds with probability $2^{-128}$ for each hash call with one value, and with probability $2^{-256}$ with two values. These numbers hold for uniform values, as $F_{\mathrm{coin}}$ gives them. In the protocol the values come from the PRSS streams, and the security of AES as a PRF covers that step.
 
 Value $k$ of $\mathrm{expand}(\mathrm{key})$ is the first 128 bits of $H(\texttt{"thlxmss-expand"} \,\Vert\, \mathrm{key} \,\Vert\, k)$. A challenge is the first expanded value outside $`\{0, 1\}`$.
 
@@ -832,7 +832,7 @@ The proof follows the steps of [GS20](https://eprint.iacr.org/2020/134).
 | check     | the check securely computes $F_{\mathrm{multVerify}}$ with abort                                                        | [GS20, Lemma 11](https://eprint.iacr.org/2020/134) |
 | one batch | a batch securely computes its outputs with abort in the $`\{F_{\mathrm{mult}}, F_{\mathrm{multVerify}}\}`$-hybrid model | [GS20, Thm. 2](https://eprint.iacr.org/2020/134)   |
 
-The check misses a wrong tuple with probability at most $(d + 2(m+1)) / (2^{128} - 2) < 2^{-121}$, for $d = 18$ coins and $m = 24$ halvings.
+The check misses a wrong tuple with probability at most $(d + 2(m+1)) / (2^{128} - 2) < 2^{-121}$, for $d = 18$ coins and $m = 24$ halvings. A hash call that hits the key input of a coin before the coin opens adds $(m + 2)\, q / 2^{256}$ for $q$ hash calls of the adversary. The Lean claim has both terms in `checkErrorOf`.
 
 Two PRSS keys give the same 128-bit AES key with probability at most $k^2 / 2^{129}$, for the $k$ PRSS keys of a ceremony.
 

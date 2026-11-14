@@ -613,7 +613,7 @@ theorem sliceCoin_tv (prims : Primitives) (K : Constants C E) (D : C.Coalition) 
     (hrel : SliceRel K D τ count j xsR ysR xsD ysD DR DD)
     (pa : Ad.State × (ℕ → E) × Shares C E × (C.Party → Shares C E) × Finset C.Party) (fresh : C.Term → Fin 2 → E)
     (hrec : ∀ i, i ∉ D.1 → i ∈ pa.2.2.2.2)
-    (y : (Fin (firstInput fun i : C.Party => if i ∈ D.1 then (none : Option ℕ) else some 1) → E) ×
+    (y : (Fin (firstInput fun i : C.Party => if i ∈ D.1 then (none : Option ℕ) else some 2) → E) ×
       (Ad.State × Finset C.Party))
     (cache : HashCache C) (seen : Finset (List Bit)) (hcov : DigestSaltsCovered cache seen) :
     letI : MeasurableSpace β := ⊤
@@ -808,7 +808,7 @@ omit [Fintype E] [DecidableEq E] [SampleableType E] in
 theorem start_run' {α : Type} (K : Constants C E) (i : C.Party) (d : ℕ) (f : List E → RunM C E (CheckSpec C E) α)
     (st : RunState C) :
     ((coinKey K (hybridCheckGadgets K i) >>= fun key => expand K key d) >>= f).run' st =
-      call (Sum.inl (Sum.inl 1)) >>= fun o => match o with
+      call (Sum.inl (Sum.inl 2)) >>= fun o => match o with
         | some (.inl (.inl v)) => oracleStep (startQuery K st.tag st.label v d) >>= fun τ =>
             (f τ).run' ⟨st.history, st.label + 1, st.tag⟩
         | _ => failure := by
@@ -829,7 +829,7 @@ theorem executePhase_start {α : Type} (K : Constants C E) (D : C.Coalition) (A 
     executePhase localRoles D A (checkFunctionalities K) (fuel + 1) st
       (fun i => ((coinKey K (hybridCheckGadgets K i) >>= fun key => expand K key d) >>= f i).run' (hs i)) = (do
       let p ← runFunctionality localRoles D (leftAdversary (leftAdversary A)) (Fcoin (E := E)) st
-        (fun i => if i ∈ D.1 then none else some 1)
+        (fun i => if i ∈ D.1 then none else some 2)
       executePhase localRoles D A (checkFunctionalities K) fuel p.1
         (fun i => afterStart K (hs i) d (f i) (p.2 i))) := by
   simp_rw [start_run']
@@ -845,7 +845,7 @@ theorem executePhase_start {α : Type} (K : Constants C E) (D : C.Coalition) (A 
 def startCoinNext {β : Type} (K : Constants C E) (D : C.Coalition) (Ad : CheckAdversary C E Ia) (F d : ℕ)
     (hs : C.Party → RunState C) (g : C.Party → List E → RunM C E (CheckSpec C E) Unit)
     (tail : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
-    (y : (Fin (firstInput fun i : C.Party => if i ∈ D.1 then (none : Option ℕ) else some 1) → E) ×
+    (y : (Fin (firstInput fun i : C.Party => if i ∈ D.1 then (none : Option ℕ) else some 2) → E) ×
       (Ad.State × Finset C.Party)) : OracleComp (LocalSpec C) β :=
   executePhase localRoles D Ad (checkFunctionalities K) F y.2.1
     (fun i => afterStart K (hs i) d (g i) (if i ∉ D.1 ∧ i ∈ y.2.2 then some (List.ofFn y.1) else none)) >>= tail
@@ -858,7 +858,7 @@ lemma start_eq {β : Type} (K : Constants C E) (D : C.Coalition) (Ad : CheckAdve
       (fun i => ((coinKey K (hybridCheckGadgets K i) >>= fun key => expand K key d) >>= g i).run' (hs i)) >>= tail =
     coinDraw D Ad st >>= startCoinNext K D Ad F d hs g tail := by
   rw [executePhase_start K D Ad F st hs d g]
-  have hin : ∀ i, i ∉ D.1 → ((if i ∈ D.1 then none else some 1 : Option ℕ)).isSome := by
+  have hin : ∀ i, i ∉ D.1 → ((if i ∈ D.1 then none else some 2 : Option ℕ)).isSome := by
     intro i hi; simp [hi]
   rw [runFunctionality_coin_local D (leftAdversary (leftAdversary Ad)) st _ hin]
   simp only [coinDraw, startCoinNext, bind_assoc, pure_bind]

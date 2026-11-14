@@ -71,10 +71,11 @@ def treeBatches : Tree → ℕ
       (chunks settings.batchSize (signJobs b fun _ => digit 0)).length
 
 /-- The soundness error of one check with `d` coins and `R` halving steps, `(d + 2 (R + 1)) / (|E| - 2)`
-(GS20, Lemmas 8 to 10). It adds `q / |E|` for each of the `R + 2` coins, for a counted call that hits
-the key input of a coin before `Fcoin` reveals the fresh value. -/
+(GS20, Lemmas 8 to 10). It adds `q / |E|²` for each of the `R + 2` coins, for a counted call that hits
+the key input of a coin before `Fcoin` reveals the fresh values. The key input has two opened
+values. -/
 def checkErrorOf (d R q : ℕ) : ℝ :=
-  (d + 2 * (R + 1) : ℕ) / (Fintype.card E - 2 : ℝ) + ((R + 2) * q : ℕ) / (Fintype.card E : ℝ)
+  (d + 2 * (R + 1) : ℕ) / (Fintype.card E - 2 : ℝ) + ((R + 2) * q : ℕ) / (Fintype.card E : ℝ) ^ 2
 
 /-- The soundness error of the checks of all batches of a ceremony. -/
 def treeCheckError (tree : Tree) (q : ℕ) : ℝ :=

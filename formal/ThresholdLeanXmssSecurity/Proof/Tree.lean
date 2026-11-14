@@ -725,9 +725,9 @@ theorem realRand_run {R : Type} [Zero R] (ctx : Context C) (codec : Codec C E R)
 
 theorem realChallenge_run (ctx : Context C) (st : RunState C) :
     (challenge K (realCheckGadgets (G := G) K ctx)).run st =
-      oracleStep (prssDraw ctx (elementCodec K) st.label 1 1) >>= fun o =>
-        openSh K ctx (conv K ctx o.1) 1 >>= fun opened =>
-          oracleStep (challengeQuery K st.tag st.label (vector 1 opened)) >>= fun r => match r with
+      oracleStep (prssDraw ctx (elementCodec K) st.label 1 2) >>= fun o =>
+        openSh K ctx (conv K ctx o.1) 2 >>= fun opened =>
+          oracleStep (challengeQuery K st.tag st.label (vector 2 opened)) >>= fun r => match r with
             | some r => pure (r, nextLabel st)
             | none => failure := by
   simp only [challenge, coinKey, challengeQuery, StateT.run_bind, StateT.run_get, pure_bind, bind_assoc]
@@ -742,9 +742,9 @@ theorem realChallenge_run (ctx : Context C) (st : RunState C) :
 
 theorem realTau_run (ctx : Context C) (count : ℕ) (st : RunState C) :
     (coinKey K (realCheckGadgets (G := G) K ctx) >>= fun key => expand K key count).run st =
-      oracleStep (prssDraw ctx (elementCodec K) st.label 1 1) >>= fun o =>
-        openSh K ctx (conv K ctx o.1) 1 >>= fun opened =>
-          oracleStep (tauQuery K st.tag st.label (vector 1 opened) count) >>= fun τ => pure (τ, nextLabel st) := by
+      oracleStep (prssDraw ctx (elementCodec K) st.label 1 2) >>= fun o =>
+        openSh K ctx (conv K ctx o.1) 2 >>= fun opened =>
+          oracleStep (tauQuery K st.tag st.label (vector 2 opened) count) >>= fun τ => pure (τ, nextLabel st) := by
   simp only [coinKey, expand, tauQuery, StateT.run_bind, StateT.run_get, pure_bind, bind_assoc]
   rw [realCoin_run]
   simp only [bind_assoc, pure_bind, oracleStep_bind]
@@ -893,7 +893,7 @@ theorem isShamir_honestR [CharP E 2] (rr : C.Term → ℕ → E) (k : ℕ) :
     IsShamir K (fun i => conv K (localContext i) (honestR rr i) k) (∑ T, rr T k) :=
   (isShamir_conv rr k).congr (fun i => (conv_congr i _ _ k fun T hT => by simp [honestR, hT]).symm) rfl
 
-/-- An honest real coin of one value. Every operator continues with one common value. -/
+/-- An honest real coin of two values. Every operator continues with the two common values. -/
 theorem coin_step [Nonempty C.Party] (F : Functionality C I O L R) (reply : L → R) (fuel : ℕ)
     (st : C.Party → RunState C) (lab : ℕ) (hL : ∀ i, (st i).label = lab)
     (g : C.Party → List E → RunState C → PartyM C E (CallSpec I O) α) (event : (C.Party → Option α) → Prop)
@@ -902,19 +902,19 @@ theorem coin_step [Nonempty C.Party] (F : Functionality C I O L R) (reply : L �
       Pr{let z ← (simulateQ (localAnswer prims)
         (honestStart (fun i => g i v (nextLabel (st i))) >>= honestRounds F reply fuel)).run' s'}[event z] ≤ ε) :
     Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => ((realCheckGadgets K (prssCtx keys kT kP i)).coin 1).run (st i) >>= fun p =>
+      (honestStart (fun i => ((realCheckGadgets K (prssCtx keys kT kP i)).coin 2).run (st i) >>= fun p =>
         g i p.1 p.2) >>= honestRounds F reply (fuel + 1))).run' s}[event z] ≤ ε := by
   haveI := charP_two (E := E)
   simp only [realCoin_run, hL, bind_assoc, pure_bind, openSh_prssCtx]
   refine draw_step prims F reply (fuel + 1) _ (fun i => FrameR.prssDraw _ _ (FrameR.elementDraw K) _ _ _) _ event s hn ε
     fun h₀ s' _ _ hn' hle hfr => ?_
   simp only [D_prssDraw, conv_prssCtx]
-  set rr := fun T => D prims h₀ ((elementCodec K).draw (.term T) (kT T) lab 1 1)
-  refine openSh_step prims K F reply fuel (fun i => conv K (localContext i) (honestR rr i)) (fun k => ∑ T, rr T k) 1
+  set rr := fun T => D prims h₀ ((elementCodec K).draw (.term T) (kT T) lab 1 2)
+  refine openSh_step prims K F reply fuel (fun i => conv K (localContext i) (honestR rr i)) (fun k => ∑ T, rr T k) 2
     (fun k _ => isShamir_honestR K rr k) _ event s' ε ?_
-  have hvec : ∀ i, vector 1 (openValueN K i (conv K (localContext i) (honestR rr i))
-      (fun k => openOut (E := E) k (conv K (localContext k) (honestR rr k)) 1 i)) = vector 1 (fun k => ∑ T, rr T k) :=
-    fun i => vector_congr' 1 _ _ ((openShN_honest K _ _ 1 (fun k _ => isShamir_honestR K rr k) i).2)
+  have hvec : ∀ i, vector 2 (openValueN K i (conv K (localContext i) (honestR rr i))
+      (fun k => openOut (E := E) k (conv K (localContext k) (honestR rr k)) 2 i)) = vector 2 (fun k => ∑ T, rr T k) :=
+    fun i => vector_congr' 2 _ _ ((openShN_honest K _ _ 2 (fun k _ => isShamir_honestR K rr k) i).2)
   simp only [hvec]
   exact h _ s' hn' hle hfr
 
@@ -1057,20 +1057,20 @@ theorem coinPart_step [Nonempty C.Party] (F : Functionality C I O L R) (reply : 
       Pr{let z ← (simulateQ (localAnswer prims)
         (honestStart (fun i => g i v) >>= honestRounds F reply fuel)).run' s'}[event z] ≤ ε) :
     Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => oracleStep (prssDraw (prssCtx keys kT kP i) (elementCodec K) lab 1 1) >>= fun o =>
-        openSh K (prssCtx keys kT kP i) (conv K (prssCtx keys kT kP i) o.1) 1 >>= fun opened =>
-          g i (vector 1 opened)) >>= honestRounds F reply (fuel + 1))).run' s}[event z] ≤ ε := by
+      (honestStart (fun i => oracleStep (prssDraw (prssCtx keys kT kP i) (elementCodec K) lab 1 2) >>= fun o =>
+        openSh K (prssCtx keys kT kP i) (conv K (prssCtx keys kT kP i) o.1) 2 >>= fun opened =>
+          g i (vector 2 opened)) >>= honestRounds F reply (fuel + 1))).run' s}[event z] ≤ ε := by
   haveI := charP_two (E := E)
   simp only [openSh_prssCtx]
   refine draw_step prims F reply (fuel + 1) _ (fun i => FrameR.prssDraw _ _ (FrameR.elementDraw K) _ _ _) _ event s hn ε
     fun h₀ s' _ _ hn' hle hfr => ?_
   simp only [D_prssDraw, conv_prssCtx]
-  set rr := fun T => D prims h₀ ((elementCodec K).draw (.term T) (kT T) lab 1 1)
-  refine openSh_step prims K F reply fuel (fun i => conv K (localContext i) (honestR rr i)) (fun k => ∑ T, rr T k) 1
+  set rr := fun T => D prims h₀ ((elementCodec K).draw (.term T) (kT T) lab 1 2)
+  refine openSh_step prims K F reply fuel (fun i => conv K (localContext i) (honestR rr i)) (fun k => ∑ T, rr T k) 2
     (fun k _ => isShamir_honestR K rr k) _ event s' ε ?_
-  have hvec : ∀ i, vector 1 (openValueN K i (conv K (localContext i) (honestR rr i))
-      (fun k => openOut (E := E) k (conv K (localContext k) (honestR rr k)) 1 i)) = vector 1 (fun k => ∑ T, rr T k) :=
-    fun i => vector_congr' 1 _ _ ((openShN_honest K _ _ 1 (fun k _ => isShamir_honestR K rr k) i).2)
+  have hvec : ∀ i, vector 2 (openValueN K i (conv K (localContext i) (honestR rr i))
+      (fun k => openOut (E := E) k (conv K (localContext k) (honestR rr k)) 2 i)) = vector 2 (fun k => ∑ T, rr T k) :=
+    fun i => vector_congr' 2 _ _ ((openShN_honest K _ _ 2 (fun k _ => isShamir_honestR K rr k) i).2)
   simp only [hvec]
   exact h _ s' hn' hle hfr
 

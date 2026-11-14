@@ -21,7 +21,7 @@ Its plan:
 1. Mask the outputs of the real run with the accept bit of `F_multVerify`. The runs differ only
    when an honest operator accepts wrong tuples.
 2. Agreeing copies and wrong tuples: `delinearization_card_bound`, `sliceChallenge_soundness`,
-   `halvingChallenge_soundness` and `finalChallenge_soundness`, with `q / |E|` for each coin key
+   `halvingChallenge_soundness` and `finalChallenge_soundness`, with `q / |E|²` for each coin key
    queried before its coin.
 3. Disagreeing copies: two honest digests of a term differ unless two history or digest outputs
    collide.

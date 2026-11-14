@@ -95,7 +95,7 @@ end Committee
 /-! ## Public constants -/
 
 /-- The bits of an element of the check field. -/
-def elementBits : ℕ := 192
+def elementBits : ℕ := 128
 
 /-- A word of the check holds `2 ^ wordBits` tuples. -/
 def wordBits : ℕ := 6
@@ -134,11 +134,11 @@ structure Constants (C : Committee) (E : Type) [Field E] [Algebra Bit E] where
 /-- The committee of one operator. -/
 def soloCommittee : Committee := ⟨1, le_rfl⟩
 
-/-- The basis of `GF(2^192)` over `F_2` that the witness of `Constants` uses. -/
+/-- The basis of `GF(2^128)` over `F_2` that the witness of `Constants` uses. -/
 def galoisBasis : Module.Basis (Fin elementBits) Bit (GaloisField 2 elementBits) :=
   Module.finBasisOfFinrankEq Bit (GaloisField 2 elementBits) (GaloisField.finrank 2 (by decide))
 
-/-- `Constants` has a value for the committee of one operator over `GF(2^192)`. -/
+/-- `Constants` has a value for the committee of one operator over `GF(2^128)`. -/
 theorem constants_nonempty : Nonempty (Constants soloCommittee (GaloisField 2 elementBits)) := by
   have held : ∀ (i : soloCommittee.Party) (T : soloCommittee.Term), i ∈ soloCommittee.holders T := by
     intro i T
@@ -165,7 +165,7 @@ theorem constants_nonempty : Nonempty (Constants soloCommittee (GaloisField 2 el
     weight_independent := galoisBasis.linearIndependent.comp _ (Fin.castLE_injective (by decide))
     encode := galoisBasis.equivFun.toEquiv }⟩
 
-/-- A field with a value of `Constants` has `2 ^ 192` elements. -/
+/-- A field with a value of `Constants` has `2 ^ 128` elements. -/
 theorem Constants.card {C : Committee} {E : Type} [Field E] [Algebra Bit E] (K : Constants C E) :
     Nat.card E = 2 ^ elementBits := by
   rw [Nat.card_congr K.encode, Nat.card_fun]
@@ -244,8 +244,8 @@ inductive Query (C : Committee)
   | digest (salt : List Bit) (history : HashOutput)
   /-- `H(key)`, whose first 128 bits key the AES-128 of a stream, with the label `rss-prss`. -/
   | streamKey (key : HashOutput)
-  /-- `H` of the tag of the batch, the round label `ρ` of the `Rand(ρ, 1)` of a coin, and its opened
-  value, the key of its expansion, with the tag `thlxmss-coin`. -/
+  /-- `H` of the tag of the batch, the round label `ρ` of the `Rand(ρ, 1)` of a coin, and its two
+  opened values, the key of its expansion, with the tag `thlxmss-coin`. -/
   | coinKey (tag ρ : ℕ) (value : List Bit)
   /-- Value `index` of the expansion of a coin key, with the tag `thlxmss-expand`. -/
   | expand (key : HashOutput) (index : ℕ)
@@ -696,11 +696,13 @@ def coinProduct (τ : List E) (offset width a : ℕ) : E :=
 def elementOfHash (h : HashOutput) : E := K.encode.symm fun b => if h.getLsbD b.val then 1 else 0
 
 /-- The key of a coin, `H` of the tag of the batch, the label `ρ` of its `Rand(ρ, 1)`, which is the
-label before the coin, and its opened value (`doc/dkg.md` 1.9). The model counts the labels over a
-ceremony, and the implementation counts the rounds of each batch. -/
+label before the coin, and its two opened values (`doc/dkg.md` 1.9). The two values are two calls of
+`Coin` of GS20, Protocol 6, in one round. `Fcoin` gives two independent uniform elements, so a guess
+of the key input before they open needs `2 * elementBits` bits in the `Fcoin`-hybrid model. The model
+counts the labels over a ceremony, and the implementation counts the rounds of each batch. -/
 def coinKey : RunM C E G HashOutput := do
   let state ← get
-  let values ← gadgets.coin 1
+  let values ← gadgets.coin 2
   StateT.lift (oracleStep (hashQuery (.coinKey state.tag state.label
     (values.flatMap fun v => List.ofFn (K.encode v)))))
 
