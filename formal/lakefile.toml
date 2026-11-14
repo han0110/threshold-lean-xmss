@@ -18,3 +18,4 @@ name = "ThresholdLeanXmss"
 
 [[lean_lib]]
 name = "ThresholdLeanXmssSecurity"
+globs = ["ThresholdLeanXmssSecurity.*"]
