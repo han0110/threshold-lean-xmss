@@ -24,24 +24,148 @@ the entry file. The theorem
 type. A claim counts as proved only when the axiom guard of that theorem lists
 \texttt{propext}, \texttt{Classical.choice} and \texttt{Quot.sound} and no other axiom.
 
-\section{The system}
+The sections follow the order of the note of leanXMSS, so that a reader can put each claim next to
+its source. Section~\ref{sec:scheme} is the scheme, and Section~\ref{sec:tprf} is the threshold PRF
+$F$. Section~\ref{sec:dkg} is the setup by DKG, and Section~\ref{sec:signing} is the signing. Two
+parts do not follow the note. No section is for its Section~2.2, the setup by a trusted dealer with
+$n = 3f + 1$, because each claim is for $n = 2t - 1$. Section~\ref{sec:mpc} is the MPC protocol,
+and the note has no section for it.
 
-There are $n = 2t - 1$ operators, and at most $t - 1$ are corrupt. The protocol has three parts.
+The bundle has two main claims.
 \begin{itemize}\itemsep0pt
-\item The seed generation deals a public parameter $P$, one seed for each term of a replicated sharing, and
-one key for each pair of operators. It is a commit, reveal and echo protocol.
-\item A ceremony builds one tree of leanXMSS by MPC. The MPC is the protocol of Goyal and Song
-(GS20) on replicated shares. The top ceremony gives the public key. A bottom ceremony gives one
-bottom tree and the signature of its root by one top key.
-\item The signing has two rounds. Each signer sends a part of the threshold PRF of PRAWNS, and the
-parts of $t$ signers give one signature of leanXMSS.
+\item The setup by DKG acts as a trusted dealer, within the errors of Section~\ref{sec:dkg}. This
+claim is not complete. It is proved for the seed generation, which is the first step of the keygen
+ceremony. The same claim for a ceremony, \lean{TreeSecurityStatement}, is stated and not proved,
+and it is no claim of the bundle.
+\item Signing with a trusted dealer is strongly unforgeable (Section~\ref{sec:signing}). This claim
+is proved.
+\end{itemize}
+No theorem composes the setup by DKG with the signing.
+
+The bundle \lean{Theorems} has seventeen claims, one field for each.
+
+\begin{center}\footnotesize
+\begin{tabularx}{\textwidth}{@{}llXl@{}}
+\toprule
+Field & End statement & Source & Section \\
+\midrule
+\lean{tprfCorrectness} & \lean{TprfCorrectnessStatement} & PRAWNS, Definition 2.1 & \ref{sec:tprf} \\
+\lean{tprfSecurity} & \lean{TprfSecurityStatement} & PRAWNS, Definition 2.2 and Theorem 5.1 & \ref{sec:tprf} \\
+\midrule
+\lean{seedGenSecurity} & \lean{SeedGenSecurityStatement} & The note, Section 2.1. GL05 and CDG+18 & \ref{sec:keygen} \\
+\lean{seedGenCompleteness} & \lean{SeedGenCompletenessStatement} & The note, Section 2.1, honest run & \ref{sec:keygen} \\
+\lean{treeCompleteness} & \lean{TreeCompletenessStatement} & The note, Section 2.1, honest run & \ref{sec:bottom} \\
+\lean{dealerTree} & \lean{DealerTreeStatement} & PRAWNS, Section 3.1 & \ref{sec:bottom} \\
+\lean{treeSuccess} & \lean{TreeSuccessStatement} & The note, Section 2.1, honest run & \ref{sec:bottom} \\
+\midrule
+\lean{coin} & \lean{CoinStatement} & GS20, Lemma 3 & \ref{sec:mpc} \\
+\lean{mult} & \lean{MultStatement} & GS20, Lemma 4 & \ref{sec:mpc} \\
+\lean{extendMult} & \lean{ExtendMultStatement} & GS20, Lemma 5 & \ref{sec:mpc} \\
+\lean{multVerify} & \lean{MultVerifyStatement} & GS20, Lemmas 8 to 11 & \ref{sec:mpc} \\
+\lean{main} & \lean{MainStatement} & GS20, Theorem 2 & \ref{sec:mpc} \\
+\lean{coinCompleteness} & \lean{CoinCompletenessStatement} & GS20, Protocol 6, honest run & \ref{sec:mpc} \\
+\lean{multVerifyCompleteness} & \lean{MultVerifyCompletenessStatement} & GS20, Protocol 17, honest run & \ref{sec:mpc} \\
+\lean{mainCompleteness} & \lean{MainCompletenessStatement} & GS20, Protocol 19, honest run & \ref{sec:mpc} \\
+\midrule
+\lean{signingCorrectness} & \lean{SigningCorrectnessStatement} & The note, Section 2.3, honest run & \ref{sec:signing} \\
+\lean{stronglyUnforgeable} & \lean{ThresholdLeanXmssStronglyUnforgeable} & PRAWNS, Definition 3.2 & \ref{sec:signing} \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+A source with the words ``honest run'' states the protocol and no claim on its honest run. GS20
+states no completeness lemma. Each of these fields is the honest run of its protocol.
+
+\section{The scheme}\label{sec:scheme}
+
+The note states leanXMSS in its Section~1. The Lean development takes the definitions of leanXMSS
+from leanVM, at the revision that \lean{lakefile.toml} pins. No claim of the bundle is about the
+scheme alone.
+
+There are $n = 2t - 1$ operators, and at most $t - 1$ are corrupt. The threshold protocol has
+three parts, namely the seed generation, the ceremonies and the signing.
+
+\section{The threshold PRF \texorpdfstring{$F$}{F}}\label{sec:tprf}
+
+The note has $F$ in its Section~2, after PRAWNS. There is one seed for each set $T$ of $t - 1$
+operators, and the other operators hold it. $F(x)$ is the sum of the hashes of $x$ under all seeds.
+The part of a signer has one mask for each co-signer, and the masks cancel in a quorum. PRAWNS
+builds $F$ from a secure PRF (its Section~5). The note and the model have the hash in its place.
+
+In Lean, $F$ is \lean{prfValue}, the part of a signer is \lean{eval}, and the sum of the parts is
+\lean{combine}. Both claims of this section are proved.
+
+\begin{center}\small
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+Lean claim & Statement \\
+\midrule
+\lean{TprfCorrectnessStatement} & The parts of each quorum give $F(x)$ (PRAWNS, Definition 2.1). \\
+\lean{TprfSecurityStatement} & The threshold PRF is adaptively secure. The bound is
+$\bigl((2\binom{n}{t-1} + n^2)\, q + N^2\bigr) / 2^{256}$. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Here $N = \binom{n}{t-1} + n^2$ bounds the number of keys.
+
+\begin{center}\small
+\begin{tabularx}{\textwidth}{@{}lXX@{}}
+\toprule
+Source & What the source proves & What the Lean claim states \\
+\midrule
+PRAWNS, Theorem 5.1 & Adaptive security of the threshold PRF, with the loss
+$2\binom{n}{t-1}$. & The same loss, as a concrete bound in the random-oracle model. The bound has two more
+terms, $n^2 q / 2^{256}$ for a guess of a hidden pair key and $N^2 / 2^{256}$ for two equal keys. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\section{The setup by DKG}\label{sec:dkg}
+
+The note has the setup by DKG in its Section~2.1. It has two ceremonies, the keygen and the
+ceremony of each bottom tree. The target of the setup is the trusted dealer $\mathsf{KeyGen}$ of
+PRAWNS, Section~3.1, for the trees of leanXMSS. The note claims malicious security with abort
+against $t - 1$ operators at the ceremonies (its Section~2), and it gives no formal theorem.
+
+This main claim is not complete. The claims on the seed generation, on the honest runs and on the
+dealer are proved. The security of a tree ceremony, \lean{TreeSecurityStatement}, is stated and not
+proved.
+
+A ceremony builds one tree of leanXMSS by MPC. The MPC is an adaptation of the protocol of Goyal
+and Song (GS20) to replicated shares, and Section~\ref{sec:differences} lists the differences. The
+top ceremony gives the public key. A bottom ceremony gives one bottom tree and the signature of its
+root by one top key.
+
+\subsection{The keygen ceremony}\label{sec:keygen}
+
+In the note, the keygen is one ceremony. It generates $P$, the seeds and the pair keys, and then
+the MPC hashes the chains of the top keys and opens their ends. In Lean these are two steps, and
+each step has its own claims.
+\begin{itemize}\itemsep0pt
+\item The first step is the seed generation. The seed generation deals a public parameter $P$, one
+seed for each term of a replicated sharing, and one key for each pair of operators. It is a commit,
+reveal and echo protocol.
+\item The second step is the ceremony of the top tree. It has the claims of
+Section~\ref{sec:bottom}.
 \end{itemize}
 
-\section{The claims}
+The security of the keygen ceremony is proved for its first step only.
 
-The bundle has two main claims. The seed generation is indistinguishable from a trusted dealer, within the
-error below. Signing with a trusted dealer is strongly unforgeable. The same claim for a ceremony,
-\lean{TreeSecurityStatement}, is stated and not proved, and it is no claim of the bundle.
+\begin{center}\small
+\begin{tabularx}{\textwidth}{@{}l>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X@{}}
+\toprule
+Step & Security & Honest run \\
+\midrule
+Seed generation & \lean{SeedGenSecurityStatement}, proved &
+\lean{SeedGenCompletenessStatement}, proved \\
+Ceremony of the top tree & \lean{TreeSecurityStatement}, stated and not proved &
+\lean{TreeCompletenessStatement}, proved \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The claim on the dealer of the top tree, \lean{DealerTreeStatement}, is proved too.
 
 \begin{center}\small
 \begin{tabularx}{\textwidth}{@{}lX@{}}
@@ -50,40 +174,203 @@ Lean claim & Statement \\
 \midrule
 \lean{SeedGenSecurityStatement} & The seed generation securely computes the dealer $\Fn{seedGen}$ with
 selective abort. The error is $(q + s_{\mathrm{kg}})^2 / 2^{256}$. \\
+\lean{SeedGenCompletenessStatement} & An honest seed generation gives the keys of $\Fn{seedGen}$,
+except when two derived keys collide (\lean{derivedKeyCollision}). \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The dealer $\Fn{seedGen}$ is $\mathsf{KeyGen}'$ of PRAWNS, Section~5.1, for leanXMSS, with selective
+abort. The number $s_{\mathrm{kg}}$ counts the honest secret inputs of the hash.
+
+\subsection{Each bottom tree}\label{sec:bottom}
+
+In the note, the MPC hashes the chains of the keys of a bottom tree, and it opens their ends and
+their masked values. The tree is built in the clear. Then the MPC opens the signature of the root
+by the next top key.
+
+The security claim of this section is stated and not proved. The honest run and the two claims on
+the dealer are proved. \lean{TreeCompletenessStatement} and \lean{DealerTreeStatement} cover the top
+tree too.
+
+\begin{center}\small
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+Lean claim & Statement \\
+\midrule
 \lean{TreeSecurityStatement} & Each ceremony securely computes the dealer $\Fn{tree}$ of its tree
 with selective abort. The error is the check error, $(q + s_{\mathrm{tree}})^2 / 2^{256}$,
 $k^2 / 2^{129}$ for the $k$ AES keys, and the PRF advantage of one fixed reduction against
-AES-128. This claim is stated, and no theorem proves it. It is no field of the bundle. \\
+AES-128. This claim is stated and not proved. It is no field of the bundle. \\
+\lean{TreeCompletenessStatement} & An honest ceremony gives the tree of $\Fn{tree}$, except when an
+honest check aborts (\lean{treeAbortError}). \\
 \lean{DealerTreeStatement} & When the circuits compute $\Th$, the dealer $\Fn{tree}$ gives the
 trees of the key generation of the signing game. \\
+\lean{TreeSuccessStatement} & When the circuits compute $\Th$, $\Fn{tree}$ gives a bottom tree on
+the top tree of the same seeds, except with probability $(1 - p)^L$. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Each of the four claims is for a positive batch size (\lean{batchSize}). The two claims on a
+ceremony are for keys that come from one dealing of a parameter, seeds and pair keys
+(\lean{DealtInputs}), and they are for every circuit family. Only the two claims on the dealer
+take the hypothesis \lean{CircuitsCompute}.
+
+The number $s_{\mathrm{tree}}$ counts the honest secret inputs of the hash. The probability
+$(1 - p)^L$ is the failure probability of the randomizer search of a top signature.
+
+\begin{center}\small
+\begin{tabularx}{\textwidth}{@{}lXX@{}}
+\toprule
+Source & What the source proves & What the Lean claim states \\
+\midrule
+GS20, Theorem 2 & Security with abort against a static adversary with at most $t$ of $n = 2t + 1$
+parties, in a hybrid model. & Security with selective abort on the real network, for every coalition
+of at most $t - 1$ of $n = 2t - 1$ operators, with explicit error terms. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{The MPC protocol}\label{sec:mpc}
+
+The note names the MPC in one sentence of its Section~2.1. It is an honest-majority MPC with
+replicated sharing (CDI05) and the check of GS20, with abort. Each batch of a ceremony is an
+adaptation of the main protocol of GS20 (Protocol 19), and Section~\ref{sec:differences} lists the
+differences.
+
+The claims of this section are lemmas on the gadgets of that protocol, each in the hybrid model of
+its gadget. All of them are proved.
+
+\begin{center}\small
+\begin{tabularx}{\textwidth}{@{}llX@{}}
+\toprule
+Lean claim & Source & Statement \\
+\midrule
+\lean{CoinStatement} & GS20, Lemma 3 & $\mathsf{Coin}$ securely computes $\Fn{coin}$ with selective
+abort, with the error $0$. \\
+\lean{MultStatement} & GS20, Lemma 4 & The multiplication securely computes $\Fn{mult}$ up to an
+additive attack, with the error $0$. \\
+\lean{ExtendMultStatement} & GS20, Lemma 5 & The multiplication of inner products securely computes
+$\Fn{extendMult}$ up to an additive attack, with the error $0$. \\
+\lean{MultVerifyStatement} & GS20, Lemmas 8 to 11 & The check with its digests securely computes
+$\Fn{multVerify}$. The error is the soundness error of one check plus a birthday term of the
+hash. \\
+\lean{MainStatement} & GS20, Theorem 2 & A batch securely computes $\Fn{main}$ in the
+$\{\Fn{mult}, \Fn{multVerify}\}$-hybrid model, up to a birthday term of the copy hashes. \\
+\lean{CoinCompletenessStatement} & GS20, Protocol 6 & An honest $\mathsf{Coin}$ gives the output of
+$\Fn{coin}$. \\
+\lean{MultVerifyCompletenessStatement} & GS20, Protocol 17 & An honest check accepts correct tuples,
+except when it aborts on a coin (\lean{abortErrorOf}). \\
+\lean{MainCompletenessStatement} & GS20, Protocol 19 & An honest batch gives the outputs of
+$\Fn{main}$. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The soundness error of one check with $d$ coins and $R$ halving steps is
+$(d + 2(R + 1)) / (2^{128} - 2) + (R + 2)\, q / 2^{256}$ (\lean{checkErrorOf}), and a ceremony pays
+it for each batch. The second term is for a call that hits the key input of a coin before the coin opens. The key
+input has two opened field elements. The error of \lean{MultVerifyStatement} is this soundness
+error plus the birthday term $(q + 2 n \binom{n}{t-1} + R + 2)^2 / 2^{256}$ of the hash
+(\lean{checkHashError}).
+
+The next table gives the hybrid model and the valid inputs of each claim. A claim does not cover
+other inputs. An honest run has the hybrid model and the valid inputs of its gadget, and
+\lean{multVerifyCompleteness} also needs \lean{CorrectTuples}.
+
+\begin{center}\small
+\begin{tabularx}{\textwidth}{@{}lllX@{}}
+\toprule
+Field & Hybrid model in GS20 & Hybrid model in Lean & Valid inputs \\
+\midrule
+\lean{coin} & $\Fn{rand}$ & $\Fn{rand}$ & \lean{SameCount} \\
+\lean{mult} & $\Fn{doubleRand}$ & $\Fn{rand}$ & \lean{SameCount} \\
+\lean{extendMult} & $\Fn{doubleRand}$ & $\Fn{rand}$ & \lean{ShamirInputs} \\
+\lean{multVerify} & $\{\Fn{coin}, \Fn{mult}, \Fn{extendMult}\}$ &
+$\{\Fn{coin}, \Fn{extendMult}, \Fn{rand}\}$ & \lean{TupleInputs} \\
+\lean{main} & $\{\Fn{mult}, \Fn{multVerify}\}$ & $\{\Fn{mult}, \Fn{multVerify}\}$ &
+\lean{MainInputs} \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\begin{itemize}\itemsep0pt
+\item \lean{SameCount} says that the honest operators agree on the count.
+\item \lean{ShamirInputs} says that the honest operators agree on the kind and the length of each
+entry, and that the honest Shamir shares of each entry lie on one polynomial of degree at most
+$t - 1$.
+\item \lean{TupleInputs} says that the honest views have the same counts and modes. It also says
+that the honest holders of a term agree on all its copies when they agree on its values that a
+corrupt operator fills.
+\item \lean{CorrectTuples} says that every tuple is a product.
+\item \lean{MainInputs} says that each job has one sharing with one width at each honest holder,
+and that every holder of each term agrees on it, the corrupt holders included.
+\end{itemize}
+
+\begin{center}\small
+\begin{tabularx}{\textwidth}{@{}lXX@{}}
+\toprule
+Source & What the source proves & What the Lean claim states \\
+\midrule
+GS20, Lemmas 3 to 5 & Perfect security of the coin and the multiplications. & The same, with
+error $0$, for functionalities on replicated shares. They leak more than those of GS20 on some
+inputs. \\
+GS20, Lemmas 8 to 11 & The soundness error of the check. & The error of the check of this protocol, which has
+multilinear weights and other halving steps, and birthday terms for the hash digests. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\section{The signing}\label{sec:signing}
+
+The note has the signing in its Section~2.3. The signing has two rounds. Each signer sends a part of
+the threshold PRF of PRAWNS, and the parts of $t$ signers give one signature of leanXMSS. Both
+claims of this section are proved.
+
+In round 1, each signer sends its part of the randomizer value. In round 2, a signer checks the
+sum of these parts against the commitment $c_e$ of the ceremony, finds the codeword, and sends its
+parts of the chain values. The key generation of the signing game is the trusted dealer
+\lean{dealerKeyGen}. It is $\mathsf{KeyGen}$ of PRAWNS, Section~3.1, for the trees of leanXMSS and
+for $n = 2t - 1$.
+
+\begin{center}\small
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+Lean claim & Statement \\
+\midrule
+\lean{SigningCorrectnessStatement} & An honest quorum fails with probability at most
+$2 (1 - p)^L$, and its signature verifies. \\
 \lean{ThresholdLeanXmssStronglyUnforgeable} & The signing is strongly unforgeable under adaptive
 corruption. Here $q$ counts only the own
 calls of the forger to $H$ and to the PRG and its round-2 requests. The count holds on every path
 of its program and for every answer.
 The bound is $(q + 2^{15} + 384) / 2^{127} + N q / 2^{256} + N^2 / 2^{256}$, where
 $N = \binom{n}{t-1} + n^2$ bounds the number of keys. \\
-\lean{TprfSecurityStatement} & The threshold PRF is adaptively secure. The bound is
-$\bigl((2\binom{n}{t-1} + n^2)\, q + N^2\bigr) / 2^{256}$. \\
 \bottomrule
 \end{tabularx}
 \end{center}
-
-The numbers $s_{\mathrm{kg}}$ and $s_{\mathrm{tree}}$ count the honest secret inputs of the hash.
-One check with $d$ coins and $R$ halving steps has the error
-$(d + 2(R + 1)) / (2^{128} - 2) + (R + 2)\, q / 2^{256}$, and a ceremony pays it for each batch.
-The second term is for a call that hits the key input of a coin before the coin opens. The key
-input has two opened field elements.
-
-The bundle \lean{Theorems} has seventeen claims, one field for each. The other claims are the honest
-runs (completeness), the failure
-probability of the randomizer search, and the gadgets of GS20, namely \lean{CoinStatement},
-\lean{MultStatement}, \lean{ExtendMultStatement}, \lean{MultVerifyStatement} and
-\lean{MainStatement}.
 
 The library also proves \lean{SigningSecurityStatement}, the signing claim with the budget of every
 party. It is not in the bundle. The separate theorem \lean{signingSecurityClosed} proves it and has
 its own axiom guard. The budget $q$ of this claim counts the calls of $H$ and of the PRG by every
 party, and the bound is $q / 2^{127} + N q / 2^{256} + N^2 / 2^{256}$.
+
+\begin{center}\small
+\begin{tabularx}{\textwidth}{@{}lXX@{}}
+\toprule
+Source & What the source proves & What the Lean claim states \\
+\midrule
+PRAWNS, Definition 3.2 & Adaptive unforgeability of a one-time threshold signature. & Adaptive
+strong unforgeability of the signing of leanXMSS. \\
+leanXMSS & Strong unforgeability with the bound $(q + 2^{10}) / 2^{127}$ in the random-permutation
+model. The budget $q$ counts the permutation calls of the adversary alone, and a second number
+limits the signing requests. & The bound $(q + 2^{15} + 384) / 2^{127}$ and the two terms of the
+hidden keys, in the random-oracle model. One budget $q$ counts the own calls of the forger and its
+round-2 requests. \\
+\bottomrule
+\end{tabularx}
+\end{center}
 
 \section{The model}
 
@@ -95,7 +382,8 @@ Each choice of the model has a published source.
 Topic & Model in Lean & Source \\
 \midrule
 Network & Synchronous rounds and private authenticated links. & GS20, Section 3.1 \\
-Adversary & Malicious and rushing, with at most $t - 1$ corrupt operators. & GS20 \\
+Adversary & Malicious, with at most $t - 1$ corrupt operators. It is also rushing, which is a
+choice of the model. & GS20 \\
 Notion & Simulation with a distinguisher on the joint output, with selective abort. & Canetti 2000, GL05 \\
 Corruption & Static in the seed generation and in each ceremony. Adaptive in the signing. & GS20, PRAWNS \\
 Erasure & An operator erases its seed generation state and its ceremony state. A corruption gives only its
@@ -151,43 +439,77 @@ claims fix $\Th$, and the signing claim makes it a random oracle. The step betwe
 random-oracle heuristic for Keccak, as in leanXMSS.
 \end{itemize}
 
-\section{The claims against their sources}
+\section{The differences to the sources}\label{sec:differences}
 
-\begin{center}\small
-\begin{tabularx}{\textwidth}{@{}lXX@{}}
-\toprule
-Source & What the source proves & What the Lean claim states \\
-\midrule
-GS20, Theorem 2 & Security with abort against a static adversary with at most $t$ of $n = 2t + 1$
-parties, in a hybrid model. & Security with selective abort on the real network, for every coalition
-of at most $t - 1$ of $n = 2t - 1$ operators, with explicit error terms. \\
-GS20, Lemmas 3 to 5 & Perfect security of the coin and the multiplications. & The same, with
-error $0$, for functionalities on replicated shares. They leak more than those of GS20 on some
-inputs. \\
-GS20, Lemmas 8 to 11 & The soundness error of the check. & The error of the check of this protocol, which has
-multilinear weights and other halving steps, and birthday terms for the hash digests. \\
-PRAWNS, Theorem 5.1 & Adaptive security of the threshold PRF, with the loss
-$2\binom{n}{t-1}$. & The same loss, as a concrete bound in the random-oracle model. The bound has two more
-terms, $n^2 q / 2^{256}$ for a guess of a hidden pair key and $N^2 / 2^{256}$ for two equal keys. \\
-PRAWNS, Definition 3.2 & Adaptive unforgeability of a one-time threshold signature. & Adaptive
-strong unforgeability of the signing of leanXMSS. \\
-leanXMSS & Strong unforgeability with the bound $(q + 2^{10}) / 2^{127}$ in the random-permutation
-model. The budget $q$ counts the permutation calls of the adversary alone, and a second number
-limits the signing requests. & The bound $(q + 2^{15} + 384) / 2^{127}$ and the two terms of the
-hidden keys, in the random-oracle model. One budget $q$ counts the own calls of the forger and its
-round-2 requests. \\
-\bottomrule
-\end{tabularx}
-\end{center}
-
-The claims differ from the sources in these points.
+The claims differ from the sources in these points. The first list has the differences to GS20.
 \begin{itemize}\itemsep0pt
 \item The abort is selective. Each operator aborts alone, because the network has no broadcast.
 GS20 aborts all honest operators together. Rule 3 of the contract covers the difference.
 \item Replicated shares replace the Shamir shares of GS20. So the check also compares hash digests
 of the copies of each term, and the bound has birthday terms.
+\item GS20 gives the functionalities of the multiplication and of the check the Shamir shares of
+the honest parties. In a replicated
+sharing, two honest holders of a term can hold different copies. So each gadget claim names its
+valid inputs (Section~\ref{sec:mpc}). \lean{TupleInputs} admits different copies of a term only
+when the honest holders differ on a value of that term that a corrupt operator fills.
+\lean{MainInputs} admits no different copies, and the corrupt holders must agree too.
+\item GS20 proves Lemmas 4 and 5 in the $\Fn{doubleRand}$-hybrid model. The multiplication claims
+are in the $\Fn{rand}$-hybrid model. The multiplication of the model is \lean{mulRep} with
+\lean{reshare} on the outputs of $\Fn{rand}$, and it has no double sharing.
+\item GS20 proves Lemma 11 in the $\{\Fn{coin}, \Fn{mult}, \Fn{extendMult}\}$-hybrid model. The
+check claim is in the $\{\Fn{coin}, \Fn{extendMult}, \Fn{rand}\}$-hybrid model. The last step of
+the check calls $\Fn{extendMult}$ on products of length one, where Protocol 15 of GS20 calls
+$\Fn{mult}$. It calls $\Fn{rand}$ for its random sharings, as Protocol 15 does.
+\item GS20 takes each challenge of the check from $\Fn{coin}$. The model hashes two values of
+$\Fn{coin}$ to a key (\lean{coinKey}) and expands the key with $H$ (\lean{expand}). A challenge
+of a halving step is the first expanded value outside $\{0, 1\}$ among at most $2^{64}$ values
+(\lean{challenge}), and a check aborts when a slice coin is $0$. So the soundness error has the
+denominator $2^{128} - 2$, and an honest check can abort (\lean{abortErrorOf}).
+\item GS20 has arithmetic circuits over a field $\mathbb{F}$ with $|\mathbb{F}| \ge n + 1$, with
+input, addition, multiplication, random and output gates. The model has layered Boolean circuits
+(\lean{Circuit}), with sums of wires and a constant and with products. It has no random gate. The
+check field of $2^{128}$ elements has the role of the extension field of GS20.
+\item A batch is an adaptation of Protocol 19 of GS20, and a ceremony is a sequence of batches
+(\lean{runJobs}). A batch has no client. The operators hold the inputs as sharings before the run.
+A batch makes a new sharing of the outputs, checks every tuple, and opens the outputs to all
+operators.
+\item $\Fn{main}$ gives every output to the adversary, because each output is public. Functionality
+18 of GS20 gives the adversary only the outputs of the corrupted clients. $\Fn{main}$ also leaks
+the view of each honest operator of the input terms that the corrupt operators know. On the valid
+inputs (\lean{MainInputs}), the corrupt holders hold the same copies, so this second leak gives the
+adversary no new value.
+\item The adversary of the model is rushing. GS20 has malicious parties and synchronous channels
+(its Section~3.1), and it does not name a rushing adversary.
+\item The check field is any field with $2^{128}$ elements. No claim fixes its basis.
+\end{itemize}
+The second list has the differences to PRAWNS.
+\begin{itemize}\itemsep0pt
 \item The game of PRAWNS, Figure 3, has the condition $t > (n + |D|)/2$ on its line 8. It fails for
 $n = 2t - 1$ when one operator is corrupt. The signing game drops it and takes rule 1 of the contract in its place.
+\item The oracle $\mathsf{OSign}$ of Figure 3 has one round, and it answers one request of each
+party. The signing game has two rounds with the quorum (\lean{TsigQuery}), and it answers a
+repeated request for the same message. The first accepted request of round 1 at a key fixes the
+message of that key for all honest operators, also when the run does not end.
+\item The oracle $\mathsf{OCorrupt}$ of the signing game stops at $t - 1$ operators, as the note
+has security against $t - 1$ operators. Figure 3 has no such limit.
+\item Figure 3 gives the forger the public key and the public key of the combiner. The signing
+game gives
+it the public key and the top tree, and a tree request gives a bottom tree and the opened
+randomizer value of its top key.
+\end{itemize}
+The third list has the differences to the note.
+\begin{itemize}\itemsep0pt
+\item The note (\lean{doc/leanXMSS.pdf}) has a commit and a reveal for the seed generation. The
+protocol has one more round, the echo. In the echo, the operators compare a hash of $P$ and a hash
+of the seeds that they share.
+\item The note has the signing for both setups and for every $t$. Each claim is for $n = 2t - 1$.
+So no claim covers the committee $n = 3f + 1$, $t = 2f + 1$ of the setup by a trusted dealer.
+\item The ceremony of a bottom tree also opens a commitment $c_e$ to the randomizer value of each
+key, and a signer of round 2 checks the sum of the parts of round 1 against it. The note has no
+such commitment and no such check.
+\end{itemize}
+The last list has the differences to leanXMSS.
+\begin{itemize}\itemsep0pt
 \item The comparison with leanXMSS is for the revision of leanVM that \lean{lakefile.toml} pins.
 Its end statement counts only the calls of the adversary, in the random-permutation model. The
 signing claim has that form. Its game is not the generic game of leanXMSS, which has one signer with no state. The
@@ -197,7 +519,9 @@ $2^{15} + 384$ where leanXMSS has $2^{10}$. leanXMSS also proves the bound $(q +
 calls of the adversary (\lean{leanXmss_rom_adversary_bound}). The separate claim
 \lean{SigningSecurityStatement} has the hash term $q / 2^{127}$ and the budget of every party, as
 leanXMSS stated them at the earlier revision \lean{1acdff19}.
-\item The check field is any field with $2^{128}$ elements. No claim fixes its basis.
+\item The seed generation and ceremony claims fix $\Th$, and the signing claim has $\Th$ as a
+random oracle. No theorem connects the two models. The step between them is the random-oracle
+heuristic for Keccak.
 \end{itemize}
 The module docs of \lean{Statement/Dkg.lean} and \lean{Statement/Signing.lean} list the deviations
 of the protocol.
@@ -327,6 +651,7 @@ does not apply. A proof for concurrent batches needs a notion with an interactiv
 \section*{References}
 
 \begin{description}\itemsep0pt
+\item[Note] T. Wambsgans. leanXMSS candidate. \lean{doc/leanXMSS.pdf}.
 \item[GS20] V. Goyal and Y. Song. Malicious Security Comes Free in Honest-Majority MPC. ePrint
 2020/134.
 \item[PRAWNS] The threshold PRF and the one-time threshold signature of ePrint 2026/2142.
