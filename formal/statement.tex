@@ -167,7 +167,8 @@ inputs. \\
 GS20, Lemmas 8 to 11 & The soundness error of the check. & The error of the check of this protocol, which has
 multilinear weights and other halving steps, and birthday terms for the hash digests. \\
 PRAWNS, Theorem 5.1 & Adaptive security of the threshold PRF, with the loss
-$2\binom{n}{t-1}$. & The same loss, as a concrete bound in the random-oracle model. \\
+$2\binom{n}{t-1}$. & The same loss, as a concrete bound in the random-oracle model. The bound has two more
+terms, $n^2 q / 2^{256}$ for a guess of a hidden pair key and $N^2 / 2^{256}$ for two equal keys. \\
 PRAWNS, Definition 3.2 & Adaptive unforgeability of a one-time threshold signature. & Adaptive
 strong unforgeability of the signing of leanXMSS. \\
 leanXMSS & Strong unforgeability with the bound $(q + 2^{10}) / 2^{127}$ in the random-permutation
@@ -190,8 +191,9 @@ $n = 2t - 1$ when one operator is corrupt. The signing game drops it and takes r
 \item The comparison with leanXMSS is for the revision of leanVM that \lean{lakefile.toml} pins.
 Its end statement counts only the calls of the adversary, in the random-permutation model. The
 signing claim has that form. Its game is not the generic game of leanXMSS, which has one signer with no state. The
-model and the bound differ in three points. $H$ is a random oracle, one budget counts the own calls
-of the forger and its round-2 requests, and the bound has two more terms. leanXMSS also proves the bound $(q + 2^{10} - 1) / 2^{127}$ in the random-oracle model for the own
+model and the bound differ in four points. $H$ is a random oracle, one budget counts the own calls
+of the forger and its round-2 requests, the bound has two more terms, and the fixed slack is
+$2^{15} + 384$ where leanXMSS has $2^{10}$. leanXMSS also proves the bound $(q + 2^{10} - 1) / 2^{127}$ in the random-oracle model for the own
 calls of the adversary (\lean{leanXmss_rom_adversary_bound}). The separate claim
 \lean{SigningSecurityStatement} has the hash term $q / 2^{127}$ and the budget of every party, as
 leanXMSS stated them at the earlier revision \lean{1acdff19}.

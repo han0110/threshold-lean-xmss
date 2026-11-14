@@ -10,12 +10,13 @@ The signing claim is strong unforgeability for the game of PRAWNS, Figure 3, in 
 That form is `StronglyUnforgeable` of leanVM, in `formal/Statement/SufCma.lean` at the pinned
 revision `f5f3672f`. The game is not the generic game of leanXMSS, which has one signer with no state. It has adaptive corruption,
 tree requests, two signing rounds of a quorum, and `breaksOneMessagePerKey`. The model and the bound
-differ from leanXMSS in three points.
+differ from leanXMSS in four points.
 
 * `H` is a random oracle. leanXMSS has the random permutation of Keccak.
 * One cost counts the own calls of `H` and `PRG` and the round-2 requests (`adversaryCost`). leanXMSS
   has a budget for the permutation calls and a limit for the signing requests.
 * The bound has two more terms, for the hidden keys of the operators.
+* The fixed slack is `2 ^ 15 + 384`. leanXMSS has `2 ^ 10`.
 
 ## Deviations from PRAWNS
 
