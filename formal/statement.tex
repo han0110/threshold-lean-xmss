@@ -187,13 +187,14 @@ GS20 aborts all honest operators together. Rule 3 of the contract covers the dif
 of the copies of each term, and the bound has birthday terms.
 \item The game of PRAWNS, Figure 3, has the condition $t > (n + |D|)/2$ on its line 8. It fails for
 $n = 2t - 1$ when one operator is corrupt. The signing game drops it and takes rule 1 of the contract in its place.
-\item The comparison with leanXMSS is for the revision \lean{64f80302} of leanVM. That statement
-counts only the calls of the adversary, in the random-permutation model. The signing claim has
-that form. Its game is not the generic game of leanXMSS, which has one signer with no state. The
+\item The comparison with leanXMSS is for the revision of leanVM that \lean{lakefile.toml} pins.
+Its end statement counts only the calls of the adversary, in the random-permutation model. The
+signing claim has that form. Its game is not the generic game of leanXMSS, which has one signer with no state. The
 model and the bound differ in three points. $H$ is a random oracle, one budget counts the own calls
-of the forger and its round-2 requests, and the bound has two more terms. The separate claim
+of the forger and its round-2 requests, and the bound has two more terms. leanXMSS also proves the bound $(q + 2^{10} - 1) / 2^{127}$ in the random-oracle model for the own
+calls of the adversary (\lean{leanXmss_rom_adversary_bound}). The separate claim
 \lean{SigningSecurityStatement} has the hash term $q / 2^{127}$ and the budget of every party, as
-leanXMSS has them at the revision that \lean{lakefile.toml} pins.
+leanXMSS stated them at the earlier revision \lean{1acdff19}.
 \item The check field is any field with $2^{128}$ elements. No claim fixes its basis.
 \end{itemize}
 The module docs of \lean{Statement/Dkg.lean} and \lean{Statement/Signing.lean} list the deviations
@@ -328,7 +329,7 @@ does not apply. A proof for concurrent batches needs a notion with an interactiv
 \item[PRAWNS] The threshold PRF and the one-time threshold signature of ePrint 2026/2142.
 \item[leanXMSS] The Lean proof of leanXMSS in \lean{leanEthereum/leanVM}, \lean{formal/lean_xmss},
 at the revision of \lean{lakefile.toml}. The comparison of the signing claim is with
-\lean{formal/Statement/SufCma.lean} at the revision \lean{64f80302}.
+\lean{formal/Statement/SufCma.lean} and \lean{formal/Statement/LeanXmss.lean} at the same revision.
 \item[CDI05] R. Cramer, I. Damg\aa rd and Y. Ishai. Share Conversion, Pseudorandom Secret-Sharing
 and Applications to Secure Computation. TCC 2005.
 \item[Canetti 2000] R. Canetti. Security and Composition of Multiparty Cryptographic Protocols.

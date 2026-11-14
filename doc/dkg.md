@@ -607,11 +607,11 @@ The key has two values for this reason. Before the coin opens, a guess of the ke
 
 Value $k$ of $\mathrm{expand}(\mathrm{key})$ is the first 128 bits of $H(\texttt{"thlxmss-expand"} \,\Vert\, \mathrm{key} \,\Vert\, k)$. A challenge is the first expanded value outside $`\{0, 1\}`$.
 
-The key hashes $\rho$ as the channel tag and the round. No two coins of a ceremony share $\rho$, so each coin is an independent call to $F_{\mathrm{coin}}$.
+The key hashes $\rho$ as the channel tag and the round. No two coins of a ceremony share $\rho$, so the opened values of each coin come from an independent call to $F_{\mathrm{coin}}$. The expanded values of two coins are independent too, unless their keys collide. Two of $k$ coin keys collide with probability at most $k^2 / 2^{257}$.
 
 #### Security
 
-$\mathsf{Coin}$ securely computes $F_{\mathrm{coin}}$ with abort [GS20, Lemma 3](https://eprint.iacr.org/2020/134).
+The opening of the two values securely computes $F_{\mathrm{coin}}$ with abort [GS20, Lemma 3](https://eprint.iacr.org/2020/134). The hash and the expansion are steps on top of it, in the random-oracle model.
 
 - $\mathsf{Rand}$ is unknown to any coalition, and $\mathsf{OpenSh}$ outputs the correct value or aborts.
 - A coin that checks reshared values opens in the round after the reshare, because a rushing operator sees the honest shares first.

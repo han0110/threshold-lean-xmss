@@ -28,6 +28,8 @@ This module couples the real ceremony on random hidden streams with `F_tree` and
 `TreeSimStagesGoal` couples the rounds, `TreeSimHashBoundGoal` (`TreeSimHop`) bounds the hash event, and
 `TreeSimCheckBoundGoal` bounds an accepted wrong output. The assembly takes all three as hypotheses.
 The live route `treeSimulationHop_of_pairs3` in `TreeEvents3` uses the couplings of this module.
+The library does not hold `TreeSimHop` and `TreeEvents3`. It holds this module for the lemmas that
+the signing proof reads.
 
 ## Invariants
 

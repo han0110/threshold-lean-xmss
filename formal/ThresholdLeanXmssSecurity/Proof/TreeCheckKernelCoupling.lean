@@ -75,20 +75,17 @@ the real programs `P` (`n` rounds) and the adapter's hybrid programs `Q`
 The pinned and current leanVM proof libraries were searched. Their cache
 lemmas (`CacheAgreement`, `CacheQuerySupport`) concern the XMSS hash cache
 only, and they have no synchronous scheduler or PRSS setup. The private
-echo-round lemmas of `TreeSetupKeys` are copied with their proofs.
+echo-round lemmas of `TreeSetupKeys`, a module that the library does not hold, are copied with their
+proofs.
 
 ## Modules
 
 This module holds the transfer of a coupling along a map of the left run, `pairQuery`, the echo-round lemmas, `realRun`, `hybRun`,
-`Final` and the lemmas on the phases of a real execution. Other modules hold the other declarations
-of the namespace `TreeCheckKernelCoupling`.
+`Final` and the lemmas on the phases of a real execution. The signing proof reads some of them.
 
-* `TreeCheckKernelCoupled` holds `adapter`, `Coupled` and `hashPrefix_support`.
-* `TreeCheckKernelChecked` holds `RowsAligned`, `checkpoint_aligned`, `PairsAgree`, `pairsAgree`,
-  `setup_pair_agree`, `logged_coherent`, `coupled_exchange`, `coupled_prefix` and `coupled_end`.
-* `TreeCheckKernelCovered` holds `kernel_erase`, `kernel_start`, `corrupt_rows` and `kernel_of_real`.
-* `TreeCheckGadgetPass` holds `realRun_doomed`.
-* `TreeCheckKernelClosure` holds `hybrid_rounds`.
+The library does not hold the other modules of the check kernel. They are a part of the proof that
+a tree ceremony is secure. They are `TreeCheckWalkCoupling`, which defines `CheckKernelCoupling`,
+and the modules with the other declarations of the namespace `TreeCheckKernelCoupling`.
 -/
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
