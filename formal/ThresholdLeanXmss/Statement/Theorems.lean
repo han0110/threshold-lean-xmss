@@ -57,7 +57,7 @@ so each completeness field is the honest run of its protocol.
 * The seed generation and each ceremony are separate claims. Each has a rushing malicious adversary
   with its own static coalition. The seed generation and ceremony claims run the real network with
   the real PRSS.
-* Each gadget claim is in a hybrid model. `coin`, `mult` and `extendMult` are in the
+* Each building-block claim is in a hybrid model. `coin`, `mult` and `extendMult` are in the
   `F_rand`-hybrid model. `multVerify` is in the `{F_coin, F_extendMult, F_rand}`-hybrid model, and
   `main` is in the `{F_mult, F_multVerify}`-hybrid model. The PRSS outputs of one round realize
   `F_rand` (CDI05).
@@ -103,7 +103,7 @@ the advantage of a reduction is only as strong as that reduction.
   it for the seed generation. For the top tree, `TreeSecurityStatement` covers the ceremony of
   `topJobs`, which opens the chain ends. The local build of the tree from them is no part of the claim.
 * No field composes the seed generation, the ceremonies and the signing. Each field covers one
-  protocol or one gadget alone. `statement.tex` holds the deployment contract and a sketch of that
+  protocol or one building block alone. `statement.tex` holds the deployment contract and a sketch of that
   composition, with its open points.
 * No field covers a corruption between two ceremonies. The seed generation and ceremony claims
   cover their static coalitions, and the signing claim covers adaptive corruptions.

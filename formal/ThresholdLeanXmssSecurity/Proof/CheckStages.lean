@@ -52,16 +52,16 @@ attribute [local instance] inhabitedField
 /-- The check after the masked multiplication of the randomization. -/
 def finalRest (K : Constants C E) (i : C.Party) (a b d : E) (w q : Shares C E) :
     RunM C E (CheckSpec C E) Unit := do
-  let salts ← (hybridCheckGadgets K i).randBits 256
+  let salts ← (hybridCheckBuildingBlocks K i).randBits 256
   compareDigests (localContext i) salts.1
   finalAfterDigests K i (conv K (localContext i) w 0) (conv K (localContext i) w 1) a b d
     (conv K (localContext i) q 0) (conv K (localContext i) q 1)
 
 theorem finalStep_eq (K : Constants C E) (i : C.Party) (Av Bv : ℕ → E) (V : E) (A B : C.Party → E)
     (hA : A i = Av 0) (hB : B i = Bv 0) :
-    finalStep K (localContext i) (hybridCheckGadgets K i) (Av, Bv, V) = (do
-      let w ← (hybridCheckGadgets K i).randElements 2
-      let q ← (hybridCheckGadgets K i).extendMult (maskedProducts K A B i w.1)
+    finalStep K (localContext i) (hybridCheckBuildingBlocks K i) (Av, Bv, V) = (do
+      let w ← (hybridCheckBuildingBlocks K i).randElements 2
+      let q ← (hybridCheckBuildingBlocks K i).extendMult (maskedProducts K A B i w.1)
       finalRest K i (A i) (B i) V w.1 q) := by
   simp only [finalStep, finalRest, finalAfterDigests, finalOpenProgram, maskedProducts]
   rw [hA, hB]
@@ -88,7 +88,8 @@ theorem finalStep_masks (prims : Primitives) (K : Constants C E) (D : C.Coalitio
     (fuel : ℕ) (st : Ad.State) (Av Bv : C.Party → ℕ → E) (V : C.Party → E) (hs : C.Party → RunState C) :
     SameRun prims
       (executePhase localRoles D Ad (checkFunctionalities K) (fuel + 2) st
-        (fun i => (finalStep K (localContext i) (hybridCheckGadgets K i) (Av i, Bv i, V i)).run' (hs i)))
+        (fun i => (finalStep K (localContext i) (hybridCheckBuildingBlocks K i) (Av i, Bv i, V i)).run'
+            (hs i)))
       (do
         let p ← (leftAdversary (rightAdversary Ad)).answer st ()
         let p' ← (rightAdversary (leftAdversary Ad)).answer p.1
@@ -98,10 +99,11 @@ theorem finalStep_masks (prims : Primitives) (K : Constants C E) (D : C.Coalitio
         executePhase localRoles D Ad (checkFunctionalities K) fuel p'.1
           (finalMaskedProgram K D (fun j => Av j 0) (fun j => Bv j 0) V hs p.2.1 p'.2.1 p'.2.2.1 p'.2.2.2.1
             p'.2.2.2.2 w q)) := by
-  have he : (fun i => (finalStep K (localContext i) (hybridCheckGadgets K i) (Av i, Bv i, V i)).run' (hs i)) =
+  have he : (fun i => (finalStep K (localContext i) (hybridCheckBuildingBlocks K i) (Av i, Bv i, V i)).run'
+      (hs i)) =
       (fun i => (do
-        let w ← (hybridCheckGadgets K i).randElements 2
-        let q ← (hybridCheckGadgets K i).extendMult
+        let w ← (hybridCheckBuildingBlocks K i).randElements 2
+        let q ← (hybridCheckBuildingBlocks K i).extendMult
           (maskedProducts K (fun j => Av j 0) (fun j => Bv j 0) i w.1)
         finalRest K i (Av i 0) (Bv i 0) (V i) w.1 q).run' (hs i)) := by
     funext i
@@ -139,7 +141,7 @@ theorem finalMasked_missing (K : Constants C E) (D : C.Coalition) (Ad : CheckAdv
       (finalMaskedProgram K D A B V hs known attack knownQ offset receivers w q) = pure (st, fun _ => none) := by
   rw [executePhase_congr_honest D Ad _ _ st _
     (fun i => if i ∈ receivers then
-      ((hybridCheckGadgets K i).randBits 256 >>= fun salts => (do
+      ((hybridCheckBuildingBlocks K i).randBits 256 >>= fun salts => (do
         compareDigests (localContext i) salts.1
         finalAfterDigests K i (conv K (localContext i) (randShares D 2 known w i) 0)
           (conv K (localContext i) (randShares D 2 known w i) 1) (A i) (B i) (V i)
@@ -211,7 +213,8 @@ theorem executePhase_challenge_live {α : Type} (K : Constants C E) (D : C.Coali
     (fuel : ℕ) (st : Ad.State) (live : C.Party → Prop) [DecidablePred live] (hs : C.Party → RunState C)
     (g : C.Party → E → RunM C E (CheckSpec C E) α) :
     executePhase localRoles D Ad (checkFunctionalities K) (fuel + 1) st
-      (fun i => if live i then (challenge K (hybridCheckGadgets K i) >>= g i).run' (hs i) else failure) =
+      (fun i => if live i then (challenge K (hybridCheckBuildingBlocks K i) >>= g i).run' (hs i) else
+          failure) =
     if ∀ i, i ∉ D.1 → live i then (do
       let p ← runFunctionality localRoles D (leftAdversary (leftAdversary Ad)) (Fcoin (E := E)) st
         (fun i => if i ∈ D.1 then none else some 2)
@@ -219,7 +222,7 @@ theorem executePhase_challenge_live {α : Type} (K : Constants C E) (D : C.Coali
         (fun i => afterChallenge K (hs i) (g i) (p.2 i)))
     else pure (st, fun _ => none) := by
   split_ifs with hall
-  · rw [executePhase_congr_honest D Ad _ _ st _ (fun i => (challenge K (hybridCheckGadgets K i) >>= g i).run' (hs i))
+  · rw [executePhase_congr_honest D Ad _ _ st _ (fun i => (challenge K (hybridCheckBuildingBlocks K i) >>= g i).run' (hs i))
       (fun i hi => if_pos (hall i hi))]
     exact executePhase_challenge K D Ad fuel st hs g
   · push Not at hall
@@ -229,7 +232,7 @@ theorem executePhase_challenge_live {α : Type} (K : Constants C E) (D : C.Coali
           | some r => (g i r).run' ⟨(hs i).history, (hs i).label + 1, (hs i).tag⟩
           | none => failure
       | _ => failure
-    have hp : (fun i => if live i then (challenge K (hybridCheckGadgets K i) >>= g i).run' (hs i) else failure) =
+    have hp : (fun i => if live i then (challenge K (hybridCheckBuildingBlocks K i) >>= g i).run' (hs i) else failure) =
         (fun i => optionalCall (if live i then some (.inl (.inl 2)) else none) (next i)) := by
       funext i
       by_cases hi : live i <;> simp only [hi, if_true, if_false, optionalCall, challenge_run', next]
@@ -472,7 +475,7 @@ lemma finalTail_eq (K : Constants C E) (D : C.Coalition) (known knownQ : Shares 
     (offset : C.Party → Shares C E) (receivers : Finset C.Party) (A B V : C.Party → E) (w q : MaskTable C E)
     (i : C.Party) :
     finalTail K D known knownQ attack offset receivers A B V w q i =
-      challenge K (hybridCheckGadgets K i) >>= fun r => StateT.lift (finalOpenProgram K i
+      challenge K (hybridCheckBuildingBlocks K i) >>= fun r => StateT.lift (finalOpenProgram K i
         (finalMaskVector K D known knownQ attack offset receivers r A B V w q i)) := rfl
 
 /-- The coin of the last challenge and the adversary's reply to it. -/
@@ -761,7 +764,7 @@ theorem finalMasked_all (K : Constants C E) (D : C.Coalition) (Ad : CheckAdversa
     executePhase localRoles D Ad (checkFunctionalities K) fuel st
       (finalMaskedProgram K D A B V hs known attack knownQ offset receivers w q) =
     executePhase localRoles D Ad (checkFunctionalities K) fuel st
-      (fun i => ((hybridCheckGadgets K i).randBits 256 >>= fun salts =>
+      (fun i => ((hybridCheckBuildingBlocks K i).randBits 256 >>= fun salts =>
         compareDigests (localContext i) salts.1 >>= fun _ =>
           finalTail K D known knownQ attack offset receivers A B V w q i).run'
         (finalHs K hs (finalOut K D A B known attack knownQ offset receivers w q) i)) := by
@@ -1031,11 +1034,11 @@ theorem finalStep_tv (prims : Primitives) (K : Constants C E) (D : C.Coalition) 
     letI : MeasurableSpace β := ⊤
     measureTVDist ((simulateQ (localAnswer prims)
         (executePhase localRoles D Ad (checkFunctionalities K) (fuel + 3 + 2) st
-          (fun i => (finalStep K (localContext i) (hybridCheckGadgets K i) (AvR i, BvR i, VR i)).run' (hsR i)) >>=
+          (fun i => (finalStep K (localContext i) (hybridCheckBuildingBlocks K i) (AvR i, BvR i, VR i)).run' (hsR i)) >>=
           tail)).run' cache)
       ((simulateQ (localAnswer prims)
         (executePhase localRoles D Ad (checkFunctionalities K) (fuel + 3 + 2) st
-          (fun i => (finalStep K (localContext i) (hybridCheckGadgets K i) (AvD i, BvD i, VD i)).run' (hsD i)) >>=
+          (fun i => (finalStep K (localContext i) (hybridCheckBuildingBlocks K i) (AvD i, BvD i, VD i)).run' (hsD i)) >>=
           tail)).run' cache) ≤
       2 * (((C.terms.length * (seen.card + (step + step) + (fuel + 2 + 1) * step + final +
         (C.n + 1) * C.terms.length) : ℕ) : ℝ) / 2 ^ 256) := by
@@ -1139,7 +1142,7 @@ theorem executePhase_extend_live {α : Type} (K : Constants C E) (D : C.Coalitio
     (fuel : ℕ) (st : Ad.State) (live : C.Party → Prop) [DecidablePred live] (hs : C.Party → RunState C)
     (products : C.Party → List (Product C E)) (f : C.Party → Shares C E → RunM C E (CheckSpec C E) α) :
     executePhase localRoles D Ad (checkFunctionalities K) (fuel + 1) st
-      (fun i => if live i then ((hybridCheckGadgets K i).extendMult (products i) >>= f i).run' (hs i)
+      (fun i => if live i then ((hybridCheckBuildingBlocks K i).extendMult (products i) >>= f i).run' (hs i)
         else failure) =
     if ∀ i, i ∉ D.1 → live i then (do
       let p ← runFunctionality localRoles D (rightAdversary (leftAdversary Ad)) (FextendMult K) st
@@ -1149,7 +1152,7 @@ theorem executePhase_extend_live {α : Type} (K : Constants C E) (D : C.Coalitio
     else pure (st, fun _ => none) := by
   split_ifs with hall
   · rw [executePhase_congr_honest D Ad _ _ st _
-      (fun i => ((hybridCheckGadgets K i).extendMult (products i) >>= f i).run' (hs i))
+      (fun i => ((hybridCheckBuildingBlocks K i).extendMult (products i) >>= f i).run' (hs i))
       (fun i hi => if_pos (hall i hi))]
     exact executePhase_extend K D Ad fuel st products hs f
   · push Not at hall
@@ -1158,7 +1161,8 @@ theorem executePhase_extend_live {α : Type} (K : Constants C E) (D : C.Coalitio
       | some (.inl (.inr z)) =>
           (f i z).run' ⟨recordHistory K i (hs i).history z (products i).length, (hs i).label + 1, (hs i).tag⟩
       | _ => failure
-    have hp : (fun i => if live i then ((hybridCheckGadgets K i).extendMult (products i) >>= f i).run' (hs i)
+    have hp :
+        (fun i => if live i then ((hybridCheckBuildingBlocks K i).extendMult (products i) >>= f i).run' (hs i)
         else failure) =
         (fun i => optionalCall (if live i then some (.inl (.inr (products i))) else none) (next i)) := by
       funext i
@@ -1178,10 +1182,11 @@ theorem finalStep_missing (K : Constants C E) (D : C.Coalition) (Ad : CheckAdver
     (Av Bv : C.Party → ℕ → E) (V : C.Party → E) (hmiss : ∃ i, i ∉ D.1 ∧ ¬ live i) :
     executePhase localRoles D Ad (checkFunctionalities K) (fuel + 1) st
       (fun i => if live i then
-        (finalStep K (localContext i) (hybridCheckGadgets K i) (Av i, Bv i, V i)).run' (hs i) else failure) =
+        (finalStep K (localContext i) (hybridCheckBuildingBlocks K i) (Av i, Bv i, V i)).run' (hs i) else
+            failure) =
       pure (st, fun _ => none) := by
   let g : C.Party → PrssOutput C E → RunM C E (CheckSpec C E) Unit := fun i w => do
-    let q ← (hybridCheckGadgets K i).extendMult
+    let q ← (hybridCheckBuildingBlocks K i).extendMult
       (maskedProducts K (fun j => Av j 0) (fun j => Bv j 0) i w.1)
     finalRest K i (Av i 0) (Bv i 0) (V i) w.1 q
   let next : C.Party → Option ((List E ⊕ Shares C E) ⊕ (PrssOutput C E ⊕ PrssOutput C Bit)) →
@@ -1189,7 +1194,8 @@ theorem finalStep_missing (K : Constants C E) (D : C.Coalition) (Ad : CheckAdver
     | some (.inr (.inl w)) => (g i w).run' ⟨(hs i).history, (hs i).label + 1, (hs i).tag⟩
     | _ => failure
   have hp : (fun i => if live i then
-      (finalStep K (localContext i) (hybridCheckGadgets K i) (Av i, Bv i, V i)).run' (hs i) else failure) =
+      (finalStep K (localContext i) (hybridCheckBuildingBlocks K i) (Av i, Bv i, V i)).run' (hs i) else
+          failure) =
       (fun i => optionalCall (if live i then some (.inr (.inl 2)) else none) (next i)) := by
     funext i
     by_cases hi : live i
@@ -1495,12 +1501,12 @@ theorem finalStep_live_tv (prims : Primitives) (K : Constants C E) (D : C.Coalit
     measureTVDist ((simulateQ (localAnswer prims)
         (executePhase localRoles D Ad (checkFunctionalities K) (fuel + 5) st
           (fun i => if live i then
-            (finalStep K (localContext i) (hybridCheckGadgets K i) (AvR i, BvR i, VR i)).run' (hsR i)
+            (finalStep K (localContext i) (hybridCheckBuildingBlocks K i) (AvR i, BvR i, VR i)).run' (hsR i)
             else failure) >>= tail)).run' cache)
       ((simulateQ (localAnswer prims)
         (executePhase localRoles D Ad (checkFunctionalities K) (fuel + 5) st
           (fun i => if live i then
-            (finalStep K (localContext i) (hybridCheckGadgets K i) (AvD i, BvD i, VD i)).run' (hsD i)
+            (finalStep K (localContext i) (hybridCheckBuildingBlocks K i) (AvD i, BvD i, VD i)).run' (hsD i)
             else failure) >>= tail)).run' cache) ≤
       coupleBound C step final seen.card (fuel + 5) := by
   let : MeasurableSpace β := ⊤
@@ -1521,12 +1527,14 @@ theorem finalStep_live_tv (prims : Primitives) (K : Constants C E) (D : C.Coalit
 /-- The rest of the check from halving step `j`, with `n` steps left. -/
 def halvProg (K : Constants C E) (width n j : ℕ) (A B : ℕ → E) (V : E) (i : C.Party) :
     RunM C E (CheckSpec C E) Unit :=
-  (List.range' j n).foldlM (halvingStep K (localContext i) (hybridCheckGadgets K i) width) (A, B, V) >>=
-    finalStep K (localContext i) (hybridCheckGadgets K i)
+  (List.range' j n).foldlM (halvingStep K (localContext i) (hybridCheckBuildingBlocks K i) width)
+      (A, B, V) >>=
+    finalStep K (localContext i) (hybridCheckBuildingBlocks K i)
 
 omit [Fintype E] [DecidableEq E] [SampleableType E] in
 lemma halvProg_zero (K : Constants C E) (width j : ℕ) (A B : ℕ → E) (V : E) (i : C.Party) :
-    halvProg K width 0 j A B V i = finalStep K (localContext i) (hybridCheckGadgets K i) (A, B, V) := by
+    halvProg K width 0 j A B V i = finalStep K (localContext i) (hybridCheckBuildingBlocks K i)
+        (A, B, V) := by
   simp [halvProg]
 
 /-- The halving vectors after a step with challenge `r`. -/
@@ -1542,8 +1550,8 @@ def halvProducts (len : ℕ) (A B : ℕ → E) : List (Product C E) :=
 omit [Fintype E] [DecidableEq E] [SampleableType E] in
 lemma halvProg_succ (K : Constants C E) (width n j : ℕ) (A B : ℕ → E) (V : E) (i : C.Party) :
     halvProg K width (n + 1) j A B V i = (do
-      let p ← (hybridCheckGadgets K i).extendMult (halvProducts (halvedLength^[j] width) A B)
-      let r ← challenge K (hybridCheckGadgets K i)
+      let p ← (hybridCheckBuildingBlocks K i).extendMult (halvProducts (halvedLength^[j] width) A B)
+      let r ← challenge K (hybridCheckBuildingBlocks K i)
       halvProg K width n (j + 1) (halvFold (halvedLength^[j] width) r A) (halvFold (halvedLength^[j] width) r B)
         (conv K (localContext i) p 0 + (V + conv K (localContext i) p 1) * r + conv K (localContext i) p 1 * r ^ 2)
         i) := by
@@ -1639,7 +1647,7 @@ theorem halvRest_zero (prims : Primitives) (K : Constants C E) (D : C.Coalition)
 /-- The rest of a halving step after its multiplication. -/
 def halvNext (K : Constants C E) (width n j : ℕ) (A B : ℕ → E) (V : E) (i : C.Party) (p : Shares C E) :
     RunM C E (CheckSpec C E) Unit := do
-  let r ← challenge K (hybridCheckGadgets K i)
+  let r ← challenge K (hybridCheckBuildingBlocks K i)
   halvProg K width n (j + 1) (halvFold (halvedLength^[j] width) r A) (halvFold (halvedLength^[j] width) r B)
     (conv K (localContext i) p 0 + (V + conv K (localContext i) p 1) * r + conv K (localContext i) p 1 * r ^ 2) i
 
@@ -1659,7 +1667,7 @@ theorem halvExtend_local (K : Constants C E) (D : C.Coalition) (Ad : CheckAdvers
             (fun g => extendTotal K D (halvInputs D (halvedLength^[j] width) A B) g + pa.2.1 g)
             pa.2.2.1 pa.2.2.2.1 pa.2.2.2.2 fresh i))) := by
   have hp : (fun i => if live i then (halvProg K width (n + 1) j (A i) (B i) (V i) i).run' (hs i) else failure) =
-      (fun i => if live i then ((hybridCheckGadgets K i).extendMult (halvProducts (halvedLength^[j] width) (A i) (B i))
+      (fun i => if live i then ((hybridCheckBuildingBlocks K i).extendMult (halvProducts (halvedLength^[j] width) (A i) (B i))
         >>= halvNext K width n j (A i) (B i) (V i) i).run' (hs i) else failure) := by
     funext i; rw [halvProg_succ]; rfl
   rw [hp, executePhase_extend_live K D Ad F st live hs
@@ -1682,7 +1690,7 @@ theorem halvExtend_missing (K : Constants C E) (D : C.Coalition) (Ad : CheckAdve
       (fun i => if live i then (halvProg K width (n + 1) j (A i) (B i) (V i) i).run' (hs i) else failure) =
       pure (st, fun _ => none) := by
   have hp : (fun i => if live i then (halvProg K width (n + 1) j (A i) (B i) (V i) i).run' (hs i) else failure) =
-      (fun i => if live i then ((hybridCheckGadgets K i).extendMult (halvProducts (halvedLength^[j] width) (A i) (B i))
+      (fun i => if live i then ((hybridCheckBuildingBlocks K i).extendMult (halvProducts (halvedLength^[j] width) (A i) (B i))
         >>= halvNext K width n j (A i) (B i) (V i) i).run' (hs i) else failure) := by
     funext i; rw [halvProg_succ]; rfl
   rw [hp, executePhase_extend_live K D Ad F st live hs _ _, if_neg hmiss]
@@ -1831,7 +1839,7 @@ lemma halvAfter_form (K : Constants C E) (D : C.Coalition) (Ad : CheckAdversary 
           pa.2.2.1 pa.2.2.2.1 pa.2.2.2.2 fresh i)) =
     executePhase localRoles D Ad (checkFunctionalities K) F' st
       (fun i => if i ∈ pa.2.2.2.2 then
-        (challenge K (hybridCheckGadgets K i) >>= fun r =>
+        (challenge K (hybridCheckBuildingBlocks K i) >>= fun r =>
           halvProg K width n (j + 1) (halvFold (halvedLength^[j] width) r (A i))
             (halvFold (halvedLength^[j] width) r (B i))
             (conv K (localContext i) (halvOut K D (halvedLength^[j] width) A B pa fresh i) 0 +
@@ -1869,7 +1877,7 @@ lemma halvChallenge_eq {β : Type} (K : Constants C E) (D : C.Coalition) (Ad : C
     (g : C.Party → E → RunM C E (CheckSpec C E) Unit)
     (tail : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β) :
     executePhase localRoles D Ad (checkFunctionalities K) (F + 1) st
-      (fun i => if i ∈ rec then (challenge K (hybridCheckGadgets K i) >>= g i).run' (hs i) else failure) >>= tail =
+      (fun i => if i ∈ rec then (challenge K (hybridCheckBuildingBlocks K i) >>= g i).run' (hs i) else failure) >>= tail =
     coinDraw D Ad st >>= halvCoinNext K D Ad F hs g tail := by
   rw [executePhase_challenge_live K D Ad F st (fun i => i ∈ rec) hs g, if_pos hrec]
   have hin : ∀ i, i ∉ D.1 → ((if i ∈ D.1 then none else some 2 : Option ℕ)).isSome := by

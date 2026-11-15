@@ -1666,11 +1666,11 @@ theorem splitFinalStep_tv (prims : Primitives) (K : Constants C E) (D : C.Coalit
     letI : MeasurableSpace β := ⊤
     measureTVDist ((simulateQ (localAnswer prims)
         (executePhase localRoles D Ad (checkFunctionalities K) (fuel + 3 + 2) st
-          (fun i => (finalStep K (localContext i) (hybridCheckGadgets K i) (AvR i, BvR i, VR i)).run' (hsR i)) >>=
+          (fun i => (finalStep K (localContext i) (hybridCheckBuildingBlocks K i) (AvR i, BvR i, VR i)).run' (hsR i)) >>=
           tailR)).run' cache)
       ((simulateQ (localAnswer prims)
         (executePhase localRoles D Ad (checkFunctionalities K) (fuel + 3 + 2) st
-          (fun i => (finalStep K (localContext i) (hybridCheckGadgets K i) (AvD i, BvD i, VD i)).run' (hsD i)) >>=
+          (fun i => (finalStep K (localContext i) (hybridCheckBuildingBlocks K i) (AvD i, BvD i, VD i)).run' (hsD i)) >>=
           tailD)).run' cache) ≤
       splitBound C step final k (fuel + 3 + 2) := by
   have hview : ∀ known : Shares C E, maskedView K D known 0 (fun j => AvD j 0) (fun j => BvD j 0) =
@@ -1731,12 +1731,12 @@ theorem splitFinalStep_live_tv (prims : Primitives) (K : Constants C E) (D : C.C
     measureTVDist ((simulateQ (localAnswer prims)
         (executePhase localRoles D Ad (checkFunctionalities K) (fuel + 5) st
           (fun i => if live i then
-            (finalStep K (localContext i) (hybridCheckGadgets K i) (AvR i, BvR i, VR i)).run' (hsR i)
+            (finalStep K (localContext i) (hybridCheckBuildingBlocks K i) (AvR i, BvR i, VR i)).run' (hsR i)
             else failure) >>= tailR)).run' cache)
       ((simulateQ (localAnswer prims)
         (executePhase localRoles D Ad (checkFunctionalities K) (fuel + 5) st
           (fun i => if live i then
-            (finalStep K (localContext i) (hybridCheckGadgets K i) (AvD i, BvD i, VD i)).run' (hsD i)
+            (finalStep K (localContext i) (hybridCheckBuildingBlocks K i) (AvD i, BvD i, VD i)).run' (hsD i)
             else failure) >>= tailD)).run' cache) ≤
       splitBound C step final k (fuel + 5) := by
   obtain ⟨htagR, htagD, hknownHist, hcommonR, hcommonD⟩ := hh

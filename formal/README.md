@@ -27,7 +27,7 @@ These facts complete the table.
 
 - `TreeSecurityStatement` is stated and not proved, and it is no field of the bundle.
 - `treeCompleteness` and `dealerTree` cover the top tree and each bottom tree with the signature of its root.
-- The eight fields of section 3.3 are lemmas on the gadgets of the DKG. Its honest runs are `coinCompleteness`, `multVerifyCompleteness` and `mainCompleteness`.
+- The eight fields of section 3.3 are lemmas on the building blocks of the DKG. The honest-run claims are `coinCompleteness`, `multVerifyCompleteness` and `mainCompleteness`.
 - The threshold PRF of section 2 serves the signing of section 4.
 - The note has no section for the MPC protocol. It names the MPC in its Section 2.1.
 - No section is for Section 2.2 of the note, the setup by a trusted dealer with $n = 3f + 1$. Each claim is for $n = 2t - 1$, and the dealer of the signing game is `dealerKeyGen`.
@@ -37,7 +37,7 @@ These facts complete the table.
 - The seed generation is secure with selective abort against a static coalition.
 - The threshold PRF is secure against an adaptive coalition.
 - The signing is strongly unforgeable with adaptive corruption.
-- The gadgets of the DKG are secure, and each honest run gives its output, except with the failure probability that its claim names.
+- The building blocks of the DKG are secure, and each honest run gives its output, except with the failure probability that its claim names.
 - The honest ceremonies of a tree give the tree of its dealer, except with the failure probability that its claim names. When the circuits compute `Th`, that dealer gives the trees of the signing claim.
 
 The claims are stated in the paper model of the protocol, in the random-oracle model. The seed generation and ceremony claims take `Th` as one fixed function. Only `dealerTree` and `treeSuccess` assume that the circuits compute `Th`.
@@ -48,9 +48,9 @@ The axiom guard of the root theorem lists only `propext`, `Classical.choice` and
 
 One important claim has no proof. `TreeSecurityStatement` says that one ceremony of the DKG is secure with selective abort. It is stated and not proved, and it is no part of the bundle.
 
-So the first main claim is proved for the seed generation and for the gadgets. It is not proved for a ceremony.
+So the first main claim is proved for the seed generation and for the building blocks. It is not proved for a ceremony.
 
-No claim composes the seed generation, the ceremonies and the signing. Each claim covers one protocol or one gadget alone. So no theorem composes the DKG with the signing, and no claim joins the two ceremonies of a bottom tree. [statement.tex](./statement.tex) holds a sketch of the composition, with its open points.
+No claim composes the seed generation, the ceremonies and the signing. Each claim covers one protocol or one building block alone. So no theorem composes the DKG with the signing, and no claim joins the two ceremonies of a bottom tree. [statement.tex](./statement.tex) holds a sketch of the composition, with its open points.
 
 What is claimed, and what is not, is [statement.tex](./statement.tex).
 

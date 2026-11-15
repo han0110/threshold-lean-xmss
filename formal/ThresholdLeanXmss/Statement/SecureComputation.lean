@@ -4,7 +4,7 @@ import VCVio.OracleComp.SimSemantics.Append.Core
 /-!
 # Secure computation
 
-Read this file second. It holds the notions of the seed generation, ceremony and gadget claims, namely
+Read this file second. It holds the notions of the seed generation, ceremony and building-block claims, namely
 secure computation in the simulation framework of Canetti 2000, with the selective abort of GL05
 and the hybrid model of GS20.
 

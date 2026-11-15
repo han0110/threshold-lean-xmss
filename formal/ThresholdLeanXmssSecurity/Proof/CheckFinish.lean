@@ -104,7 +104,8 @@ def sliceClaim (τ : List E) (j : ℕ) (r V t0 tInf : E) : E :=
 /-- The rest of the check from slice step `j`, with `n` slice steps left. -/
 def sliceProg (K : Constants C E) (τ : List E) (count n j : ℕ) (xs ys : Shares C E) (V : E) (i : C.Party) :
     RunM C E (CheckSpec C E) Unit :=
-  (List.range' j n).foldlM (sliceStep K (localContext i) (hybridCheckGadgets K i) τ count) (xs, ys, V) >>=
+  (List.range' j n).foldlM (sliceStep K (localContext i) (hybridCheckBuildingBlocks K i) τ count)
+      (xs, ys, V) >>=
     fun p => halvProg K (sliceWidth count) (halvingSteps (sliceWidth count)) 0 (conv K (localContext i) p.1)
       (conv K (localContext i) p.2.1) p.2.2 i
 
@@ -117,8 +118,8 @@ lemma sliceProg_zero (K : Constants C E) (τ : List E) (count j : ℕ) (xs ys : 
 omit [Fintype E] [DecidableEq E] [SampleableType E] in
 lemma sliceProg_succ (K : Constants C E) (τ : List E) (count n j : ℕ) (xs ys : Shares C E) (V : E) (i : C.Party) :
     sliceProg K τ count (n + 1) j xs ys V i = (do
-      let t ← (hybridCheckGadgets K i).extendMult (sliceProducts τ count j xs ys)
-      let r ← challenge K (hybridCheckGadgets K i)
+      let t ← (hybridCheckBuildingBlocks K i).extendMult (sliceProducts τ count j xs ys)
+      let r ← challenge K (hybridCheckBuildingBlocks K i)
       sliceProg K τ count n (j + 1) (sliceFold count j r xs) (sliceFold count j r ys)
         (sliceClaim τ j r V (conv K (localContext i) t 0) (conv K (localContext i) t 1)) i) := by
   simp only [sliceProg, List.range'_succ, List.foldlM_cons, sliceStep, bind_assoc, pure_bind]
@@ -383,7 +384,7 @@ lemma sliceRel_step [CharP E 2] (K : Constants C E) (D : C.Coalition) (τ : List
 /-- The rest of a slice step after its multiplication. -/
 def sliceNext (K : Constants C E) (τ : List E) (count n j : ℕ) (xs ys : Shares C E) (V : E) (i : C.Party)
     (t : Shares C E) : RunM C E (CheckSpec C E) Unit := do
-  let r ← challenge K (hybridCheckGadgets K i)
+  let r ← challenge K (hybridCheckBuildingBlocks K i)
   sliceProg K τ count n (j + 1) (sliceFold count j r xs) (sliceFold count j r ys)
     (sliceClaim τ j r V (conv K (localContext i) t 0) (conv K (localContext i) t 1)) i
 
@@ -414,7 +415,8 @@ theorem sliceExtend_local (K : Constants C E) (D : C.Coalition) (Ad : CheckAdver
             pa.2.2.1 pa.2.2.2.1 pa.2.2.2.2 fresh i))) := by
   have hp : (fun i => if live i then (sliceProg K τ count (n + 1) j (xs i) (ys i) (V i) i).run' (hs i)
       else failure) =
-      (fun i => if live i then ((hybridCheckGadgets K i).extendMult (sliceProducts τ count j (xs i) (ys i))
+      (fun i => if live i then
+          ((hybridCheckBuildingBlocks K i).extendMult (sliceProducts τ count j (xs i) (ys i))
         >>= sliceNext K τ count n j (xs i) (ys i) (V i) i).run' (hs i) else failure) := by
     funext i; rw [sliceProg_succ]; rfl
   rw [hp, executePhase_extend_live K D Ad F st live hs
@@ -438,7 +440,8 @@ theorem sliceExtend_missing (K : Constants C E) (D : C.Coalition) (Ad : CheckAdv
       pure (st, fun _ => none) := by
   have hp : (fun i => if live i then (sliceProg K τ count (n + 1) j (xs i) (ys i) (V i) i).run' (hs i)
       else failure) =
-      (fun i => if live i then ((hybridCheckGadgets K i).extendMult (sliceProducts τ count j (xs i) (ys i))
+      (fun i => if live i then
+          ((hybridCheckBuildingBlocks K i).extendMult (sliceProducts τ count j (xs i) (ys i))
         >>= sliceNext K τ count n j (xs i) (ys i) (V i) i).run' (hs i) else failure) := by
     funext i; rw [sliceProg_succ]; rfl
   rw [hp, executePhase_extend_live K D Ad F st live hs _ _, if_neg hmiss]
@@ -563,7 +566,7 @@ lemma sliceAfter_form (K : Constants C E) (D : C.Coalition) (Ad : CheckAdversary
           pa.2.2.1 pa.2.2.2.1 pa.2.2.2.2 fresh i)) =
     executePhase localRoles D Ad (checkFunctionalities K) F' st
       (fun i => if i ∈ pa.2.2.2.2 then
-        (challenge K (hybridCheckGadgets K i) >>= fun r =>
+        (challenge K (hybridCheckBuildingBlocks K i) >>= fun r =>
           sliceProg K τ count n (j + 1) (sliceFold count j r (xs i)) (sliceFold count j r (ys i))
             (sliceClaim τ j r (V i) (conv K (localContext i) (sliceOut K D τ count j xs ys pa fresh i) 0)
               (conv K (localContext i) (sliceOut K D τ count j xs ys pa fresh i) 1)) i).run'
@@ -807,12 +810,12 @@ def startQuery (K : Constants C E) (tag ρ : ℕ) (values : List E) (d : ℕ) : 
 omit [Fintype E] [DecidableEq E] [SampleableType E] in
 theorem start_run' {α : Type} (K : Constants C E) (i : C.Party) (d : ℕ) (f : List E → RunM C E (CheckSpec C E) α)
     (st : RunState C) :
-    ((coinKey K (hybridCheckGadgets K i) >>= fun key => expand K key d) >>= f).run' st =
+    ((coinKey K (hybridCheckBuildingBlocks K i) >>= fun key => expand K key d) >>= f).run' st =
       call (Sum.inl (Sum.inl 2)) >>= fun o => match o with
         | some (.inl (.inl v)) => oracleStep (startQuery K st.tag st.label v d) >>= fun τ =>
             (f τ).run' ⟨st.history, st.label + 1, st.tag⟩
         | _ => failure := by
-  simp only [coinKey, expand, bind_assoc, hybridCheckGadgets, freshLabel, startQuery, oracleStep_bind]
+  simp only [coinKey, expand, bind_assoc, hybridCheckBuildingBlocks, freshLabel, startQuery, oracleStep_bind]
   simp [StateT.run'_eq, StateT.run_bind, StateT.run_lift, StateT.run_modifyGet, StateT.run_get]
   refine bind_congr fun o => ?_
   rcases o with _ | ((v | z) | w) <;> simp [StateT.run_lift]
@@ -827,7 +830,7 @@ def afterStart {α : Type} (K : Constants C E) (hs : RunState C) (d : ℕ) (f : 
 theorem executePhase_start {α : Type} (K : Constants C E) (D : C.Coalition) (A : CheckAdversary C E Ia)
     (fuel : ℕ) (st : A.State) (hs : C.Party → RunState C) (d : ℕ) (f : C.Party → List E → RunM C E (CheckSpec C E) α) :
     executePhase localRoles D A (checkFunctionalities K) (fuel + 1) st
-      (fun i => ((coinKey K (hybridCheckGadgets K i) >>= fun key => expand K key d) >>= f i).run' (hs i)) = (do
+      (fun i => ((coinKey K (hybridCheckBuildingBlocks K i) >>= fun key => expand K key d) >>= f i).run' (hs i)) = (do
       let p ← runFunctionality localRoles D (leftAdversary (leftAdversary A)) (Fcoin (E := E)) st
         (fun i => if i ∈ D.1 then none else some 2)
       executePhase localRoles D A (checkFunctionalities K) fuel p.1
@@ -855,7 +858,7 @@ lemma start_eq {β : Type} (K : Constants C E) (D : C.Coalition) (Ad : CheckAdve
     (st : Ad.State) (hs : C.Party → RunState C) (g : C.Party → List E → RunM C E (CheckSpec C E) Unit)
     (tail : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β) :
     executePhase localRoles D Ad (checkFunctionalities K) (F + 1) st
-      (fun i => ((coinKey K (hybridCheckGadgets K i) >>= fun key => expand K key d) >>= g i).run' (hs i)) >>= tail =
+      (fun i => ((coinKey K (hybridCheckBuildingBlocks K i) >>= fun key => expand K key d) >>= g i).run' (hs i)) >>= tail =
     coinDraw D Ad st >>= startCoinNext K D Ad F d hs g tail := by
   rw [executePhase_start K D Ad F st hs d g]
   have hin : ∀ i, i ∉ D.1 → ((if i ∈ D.1 then none else some 2 : Option ℕ)).isSome := by
@@ -927,7 +930,7 @@ theorem executePhase_afterStart_common {α : Type} (prims : Primitives) (K : Con
 
 /-- The check from its first coin, on the lifted vectors `X`, `Y`, `Z`. -/
 def startProg (K : Constants C E) (count : ℕ) (X Y Z : Shares C E) (i : C.Party) : RunM C E (CheckSpec C E) Unit :=
-  (coinKey K (hybridCheckGadgets K i) >>= fun key => expand K key (coins count)) >>= fun τ =>
+  (coinKey K (hybridCheckBuildingBlocks K i) >>= fun key => expand K key (coins count)) >>= fun τ =>
     StateT.lift (require (∀ b < sliceBits, τ.getD b 0 ≠ 0)) >>= fun _ =>
       sliceProg K τ count sliceBits 0 (fun T k => wordWeightOf K τ count k * X T k) Y
         (conv K (localContext i) (claimOf K τ count Z) 0) i
@@ -935,10 +938,10 @@ def startProg (K : Constants C E) (count : ℕ) (X Y Z : Shares C E) (i : C.Part
 omit [Fintype E] [DecidableEq E] [SampleableType E] in
 theorem check_startProg (K : Constants C E) (i : C.Party) (tuples : List (Tuple C))
     (h : (tuples.map (·.count)).sum ≠ 0) :
-    check K (localContext i) (hybridCheckGadgets K i) tuples =
+    check K (localContext i) (hybridCheckBuildingBlocks K i) tuples =
       startProg K (tuples.map (·.count)).sum (liftedPart tuples (·.x)) (liftedPart tuples (·.y))
         (liftedPart tuples (·.z)) i := by
-  rw [check_eq K (localContext i) (hybridCheckGadgets K i) tuples h]
+  rw [check_eq K (localContext i) (hybridCheckBuildingBlocks K i) tuples h]
   unfold startProg sliceProg halvProg
   simp only [bind_assoc]
   refine bind_congr fun key => bind_congr fun τ => bind_congr fun _ => ?_

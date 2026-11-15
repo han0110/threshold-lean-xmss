@@ -11,7 +11,7 @@ The intermediate results of the cited papers, each named after its source. The p
 `ThresholdLeanXmss/Statement.lean` combine them as follows.
 
 * The key generation follows GS20, Theorem 2.
-* Its gadget steps are `F_rand` from PRSS (CDI05), the reshare (GS20, Lemma 4) and the coin (GS20,
+* Its building-block steps are `F_rand` from PRSS (CDI05), the reshare (GS20, Lemma 4) and the coin (GS20,
   Lemma 3).
 * Its check steps are the digests (CGH+18, Protocol 3.3), the check (GS20, Lemmas 8 to 11), the word
   weights of `src/check.rs`, and the slice steps (Gruen 2024). The challenges come from

@@ -3,9 +3,9 @@
 > [!WARNING]
 > This is an experimental proof of concept. It has no security audit and no complete security proof. Please do not use it.
 
-This note gives the MPC gadgets that the protocol uses, and a toy example for understanding.
+This note gives the MPC building blocks that the protocol uses, and a toy example for understanding.
 
-## 1. Gadgets
+## 1. Building blocks
 
 ### 1.1 Legend
 
@@ -17,7 +17,7 @@ This note gives the MPC gadgets that the protocol uses, and a toy example for un
 | $t - 1$                                                       | corrupt operators at most, malicious, security with selective abort [GL05](https://eprint.iacr.org/2002/040) |
 | $\mathbb F_2$                                                 | the field of the circuit                                                                                     |
 | $\mathbb F_{128}$                                             | the field of the check, the leanVM field $\mathbb F_{64}[y]/(y^2 + xy + 1)$                                  |
-| $\mathbb F$                                                   | either of the two, in a gadget that works over both. Both have characteristic 2, so $+$ is XOR and $- = +$   |
+| $\mathbb F$                                                   | either of the two, in a building block that works over both. Both have characteristic 2, so $+$ is XOR and $- = +$   |
 | $\mathrm{GF}(2^8) = \mathbb F_2[x]/(x^8 + x^4 + x^3 + x + 1)$ | the field of the examples, elements written as integers ($x = 2$, $2^{-1} = 141$, $3^{-1} = 246$)            |
 | $\alpha_i = i + 1$                                            | the evaluation point of $P_i$                                                                                |
 | $H$                                                           | a collision-resistant hash                                                                                   |
@@ -154,9 +154,9 @@ The threshold PRF and the signing masks hash a secret key first and no tag, as i
 | $\texttt{"thlxmss-keygen-echo"}$, $\texttt{"thlxmss-prss-echo"}$ | the term keys that the sender and the receiver share                | 3.1     |
 | $\texttt{"thlxmss-commit"}$, $\texttt{"thlxmss-prss-commit"}$    | the sender, the receiver and the reveal                             | 3.1     |
 
-#### 1.1.5 Gadget table
+#### 1.1.5 Building-block table
 
-| gadget                    | input $\to$ output                                                                  | rounds                  | messages                                                       | section |
+| building block            | input $\to$ output                                                                  | rounds                  | messages                                                       | section |
 | ------------------------- | ----------------------------------------------------------------------------------- | ----------------------- | -------------------------------------------------------------- | ------- |
 | $\mathsf{Rand}$           | $\to [\negthinspace[ r ]\negthinspace]$                                             | 0                       | none                                                           | 1.2     |
 | $\mathsf{MulRep}$         | $`[\negthinspace[ x ]\negthinspace], [\negthinspace[ y ]\negthinspace] \to \{xy\}`$ | 0                       | none                                                           | 1.3     |
@@ -168,7 +168,7 @@ The threshold PRF and the signing masks hash a secret key first and no tag, as i
 | $\mathsf{OpenSh}$         | $\langle v \rangle \to v$                                                           | 1                       | $n(n-1)$                                                       | 1.8     |
 | $\mathsf{Coin}$ (derived) | $\to r$ public                                                                      | 1                       | as $\mathsf{OpenSh}$                                           | 1.9     |
 
-The gadgets compose by one rule. A product is $`\{\cdot\}`$, and $`\{\cdot\}`$ is reshared to $[\negthinspace[ \cdot ]\negthinspace]$ in the next round.
+The building blocks compose by one rule. A product is $`\{\cdot\}`$, and $`\{\cdot\}`$ is reshared to $[\negthinspace[ \cdot ]\negthinspace]$ in the next round.
 
 #### 1.1.6 Notation against the literature
 
@@ -636,7 +636,7 @@ The inputs are $[\negthinspace[ b_0 ]\negthinspace], \dots, [\negthinspace[ b_7 
 2. The check covers the seven gates and $\mathsf{Rerand}$.
 3. The re-randomized output opens.
 
-Every multiplication is a gadget, and every gadget is one of 1.2 to 1.9. Every message is sent by $\mathsf{Reshare}$, $\mathsf{OpenRep}$ or $\mathsf{OpenSh}$.
+Every multiplication uses a building block of 1.2 to 1.9. Every message is sent by $\mathsf{Reshare}$, $\mathsf{OpenRep}$ or $\mathsf{OpenSh}$.
 
 ### 2.1 AND layers
 
@@ -733,7 +733,7 @@ b_0 \wedge \dots \wedge b_7 = \mathsf{OpenRep}\big( [\negthinspace[ z' ]\negthin
 
 ### 2.4 Rounds
 
-| phase       | gadgets                                            | rounds            |
+| phase       | building blocks                                    | rounds            |
 | ----------- | -------------------------------------------------- | ----------------- |
 | AND layers  | $L \times \mathsf{Reshare}$                        | $L = 3$           |
 | rerand      | $\mathsf{Rerand}$                                  | 1                 |
@@ -789,7 +789,7 @@ The commitment $c_e$ fixes the randomizer value $F(A_{\mathrm{rnd}}(e))$, which 
 
 A batch of 128 chains has $L = 72$ AND layers and $m = 24$ halvings. Its check covers $`N = N_{\mathrm{and}} + N_{\mathrm{out}} \approx 1.4 \cdot 10^7`$ tuple bits, $`N_{\mathrm{and}} = 128 \cdot 3 \cdot 36{,}288`$ from the AND gates and $`N_{\mathrm{out}} = 128 \cdot 6 \cdot 64`$ from the $\mathsf{Rerand}$ of the six outputs.
 
-| phase      | gadgets                                                                                                               | rounds                        |
+| phase      | building blocks                                                                                                       | rounds                        |
 | ---------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
 | AND layers | $L \times \mathsf{Reshare}$                                                                                           | 72 (peer) or 144 (collector)  |
 | rerand     | $\mathsf{Rerand}$                                                                                                     | 1                             |
@@ -819,7 +819,7 @@ A bottom tree is $2^{16} \cdot 58$ chains, 29,696 chain batches. Signing takes 2
 
 ### 3.3 Security
 
-The key generation targets the property of [GS20, Thm. 2](https://eprint.iacr.org/2020/134). The target is that it securely computes the trusted dealer of $\mathsf{KeyGen}$ [BBDLN26](https://eprint.iacr.org/2026/2142) with abort, against a malicious adversary that statically corrupts up to $t - 1$ of the $n = 2t - 1$ operators. The Lean proof in `formal/` proves this for the seed generation. It proves each gadget secure for its own functionality, in the hybrid model of that gadget. It does not prove it for a ceremony. That claim is `TreeSecurityStatement`, and it is stated and not proved. No Lean theorem composes the seed generation, the ceremonies and the signing.
+The key generation targets the property of [GS20, Thm. 2](https://eprint.iacr.org/2020/134). The target is that it securely computes the trusted dealer of $\mathsf{KeyGen}$ [BBDLN26](https://eprint.iacr.org/2026/2142) with abort, against a malicious adversary that statically corrupts up to $t - 1$ of the $n = 2t - 1$ operators. The Lean proof in `formal/` proves this for the seed generation. It proves each building block secure for its own functionality, in the hybrid model of that building block. It does not prove it for a ceremony. That claim is `TreeSecurityStatement`, and it is stated and not proved. No Lean theorem composes the seed generation, the ceremonies and the signing.
 
 The claims cover only $n = 2t - 1$ and a classical adversary. The "Model" section of [`formal/ThresholdLeanXmss/Statement/Theorems.lean`](../formal/ThresholdLeanXmss/Statement/Theorems.lean) gives the full model.
 
@@ -838,7 +838,7 @@ Two PRSS keys give the same 128-bit AES key with probability at most $k^2 / 2^{1
 
 The ceremony claim assumes that AES-128 is a multi-key PRF on the hidden PRSS keys, and its advantage is a term of the bound. The budget $q$ counts oracle calls, not time.
 
-The gadget claims are internal lemmas. Their functionalities leak more than those of [GS20](https://eprint.iacr.org/2020/134) on some inputs, and `TupleInputs`, `MainInputs` and `ShamirInputs` restrict their inputs. The seed generation and ceremony claims run the real network, so they do not depend on these interfaces.
+The building-block claims are internal lemmas. Their functionalities leak more than those of [GS20](https://eprint.iacr.org/2020/134) on some inputs, and `TupleInputs`, `MainInputs` and `ShamirInputs` restrict their inputs. The seed generation and ceremony claims run the real network, so they do not depend on these interfaces.
 
 The protocol differs from [GS20](https://eprint.iacr.org/2020/134) in three points, and each point needs its own argument.
 

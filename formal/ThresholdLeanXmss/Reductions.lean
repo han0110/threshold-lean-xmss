@@ -141,15 +141,15 @@ def ceremonySimulator (counters : ℕ × ℕ) (jobs : List Job) (D : C.Coalition
       if j ∈ C.holders T then (st.corrupt j).map (·.seed T) else none).getD 0
     let keys : Keys C := ⟨parameter, seeds, fun _ => 0⟩
     let openings := chunks settings.batchSize opened
-    let gadgets := fun (ctx : Context C) (k : ℕ) (batch : List Job) =>
-      { realRunGadgets K ctx settings.mode with
+    let buildingBlocks := fun (ctx : Context C) (k : ℕ) (batch : List Job) =>
+      { realRunBuildingBlocks K ctx settings.mode with
         output := fun v count => do
           let clear ← StateT.lift (oracleStep (batch.mapM (evalJob circuits parameter seeds)))
           let shift := fun g => ((openings.getD (k - counters.2) []).flatten.getD g 0) + (clear.flatten.getD g 0)
           StateT.lift (openRep K ctx (fun T g => if T₀ = some T then v T g + shift g else v T g) count) }
     let (((state, outputs), _), calls) ← ((executePhase (emulatedRoles D) D A noFunctionality
       (ceremonyFuel circuits settings) st.adversary fun i =>
-        (ceremonyWith K circuits settings gadgets i keys counters jobs : PartyM C E RealSpec (List (List Bit)))).run ∅).run
+        (ceremonyWith K circuits settings buildingBlocks i keys counters jobs : PartyM C E RealSpec (List (List Bit)))).run ∅).run
     pure (⟨state, st.log ++ calls, st.corrupt⟩, Finset.univ.filter fun i => (outputs i).isSome)
   output st := pure st.adversary
 

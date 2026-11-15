@@ -3,7 +3,7 @@ import ThresholdLeanXmssSecurity.Proof.Lemmas
 import Mathlib.Algebra.CharP.Algebra
 
 /-!
-# The gadgets
+# The building blocks
 
 `CoinStatement` and `CoinCompletenessStatement` follow GS20, Lemma 3. `MultStatement` follows GS20,
 Lemma 4, in both reshare modes. `ExtendMultStatement` follows GS20, Lemma 5.

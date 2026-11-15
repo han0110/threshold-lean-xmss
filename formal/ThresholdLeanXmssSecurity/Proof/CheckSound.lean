@@ -631,7 +631,8 @@ theorem sound_challenge_normalize {Ia : Type} (prims : Primitives) (K : Constant
     (g : C.Party → E → RunM C E (CheckSpec C E) Unit) :
     SameLocalOutput prims
       (executePhase localRoles D A (checkFunctionalities K) (fuel + 1) st
-        (fun i => if live i then (challenge K (hybridCheckGadgets K i) >>= g i).run' (hs i) else failure))
+        (fun i => if live i then (challenge K (hybridCheckBuildingBlocks K i) >>= g i).run' (hs i) else
+            failure))
       (do
         let v ← liftComp ($ᵗ (Fin (firstInput fun i : C.Party => if i ∈ D.1 then
           (none : Option ℕ) else some 2) → E)) (LocalSpec C)
@@ -679,7 +680,7 @@ theorem sound_challenge_phase {Ia : Type} (prims : Primitives) (K : Constants C 
     Pr{let out ←
       (simulateQ (localAnswer prims)
         (executePhase localRoles D A (checkFunctionalities K) (fuel + 1) st
-          (fun i => if live i then (challenge K (hybridCheckGadgets K i) >>= g i).run' (hs i)
+          (fun i => if live i then (challenge K (hybridCheckBuildingBlocks K i) >>= g i).run' (hs i)
             else failure))).run' cache}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤
       seen.card / Fintype.card E ^ 2 +
         ((keys.card + seen.card) / 2 ^ 256 + m / (Fintype.card E - 2 : ℕ) + ε) := by
@@ -763,7 +764,7 @@ theorem sound_finalChallenge_phase {Ia : Type} (prims : Primitives) (K : Constan
     r * (1 + r) * (I q2 - (I wa + I a) * (I wb + I b)) = 0
   change Pr{let out ← (simulateQ (localAnswer prims)
     (executePhase localRoles D A (checkFunctionalities K) ((fuel + 1) + 1) st
-      (fun i => if live i then (challenge K (hybridCheckGadgets K i) >>= fun r =>
+      (fun i => if live i then (challenge K (hybridCheckBuildingBlocks K i) >>= fun r =>
         StateT.lift (finalOpenProgram K i
           (finalOpenVector (wa i) (wb i) (a i) (b i) (d i) (q0 i) (q2 i) r))).run' (hs i)
         else failure))).run' cache}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤ _
@@ -966,7 +967,7 @@ theorem sound_salt_phase {Ia : Type} (prims : Primitives) (K : Constants C E)
     Pr{let out ←
       (simulateQ (localAnswer prims)
         (executePhase localRoles D A (checkFunctionalities K) (fuel + 4) st
-          (fun i => ((hybridCheckGadgets K i).randBits 256 >>= fun salts =>
+          (fun i => ((hybridCheckBuildingBlocks K i).randBits 256 >>= fun salts =>
             compareDigests (localContext i) salts.1 >>= fun _ =>
             finalAfterDigests K i (wa i) (wb i) (a i) (b i) (d i) (q0 i) (q2 i)).run' (hs i)))).run' cache}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤
       soundError E q H 2 := by
@@ -1014,11 +1015,11 @@ theorem sound_finalStep {Ia : Type} (prims : Primitives) (K : Constants C E)
       (simulateQ (localAnswer prims)
         (executePhase localRoles D A (checkFunctionalities K) (fuel + 6) st
           (fun i => if live i then
-            (finalStep K (localContext i) (hybridCheckGadgets K i) (Av i, Bv i, V i)).run' (hs i)
+            (finalStep K (localContext i) (hybridCheckBuildingBlocks K i) (Av i, Bv i, V i)).run' (hs i)
             else failure))).run' cache}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤ soundError E q H 2 := by
   by_cases hall : ∀ i, i ∉ D.1 → live i
   · rw [executePhase_congr_honest D A _ _ st _
-      (fun i => (finalStep K (localContext i) (hybridCheckGadgets K i) (Av i, Bv i, V i)).run' (hs i))
+      (fun i => (finalStep K (localContext i) (hybridCheckBuildingBlocks K i) (Av i, Bv i, V i)).run' (hs i))
       (fun i hi => if_pos (hall i hi))]
     have he := SameLocalOutput.of_sameRun prims (finalStep_masks prims K D A (fuel + 4) st Av Bv V hs)
     rw [(he cache).prEvent_eq]
@@ -1521,7 +1522,8 @@ theorem sound_start_normalize {Ia : Type} (prims : Primitives) (K : Constants C 
     (g : C.Party → List E → RunM C E (CheckSpec C E) Unit) :
     SameLocalOutput prims
       (executePhase localRoles D A (checkFunctionalities K) (fuel + 1) st
-        (fun i => ((coinKey K (hybridCheckGadgets K i) >>= fun key => expand K key d) >>= g i).run' (hs i)))
+        (fun i => ((coinKey K (hybridCheckBuildingBlocks K i) >>= fun key => expand K key d) >>= g i).run'
+            (hs i)))
       (do
         let v ← liftComp ($ᵗ (Fin (firstInput fun i : C.Party => if i ∈ D.1 then
           (none : Option ℕ) else some 2) → E)) (LocalSpec C)
@@ -1561,7 +1563,7 @@ theorem sound_start_phase {Ia : Type} (prims : Primitives) (K : Constants C E) (
     Pr{let out ←
       (simulateQ (localAnswer prims)
         (executePhase localRoles D A (checkFunctionalities K) (fuel + 1) st
-          (fun i => ((coinKey K (hybridCheckGadgets K i) >>= fun key => expand K key d) >>= g i).run' (hs i)))).run' cache}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤
+          (fun i => ((coinKey K (hybridCheckBuildingBlocks K i) >>= fun key => expand K key d) >>= g i).run' (hs i)))).run' cache}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤
       seen.card / Fintype.card E ^ 2 + ((keys.card + seen.card) / 2 ^ 256 + δ + ε) := by
   rw [(sound_start_normalize prims K D A fuel d st hs tag L htag g cache).prEvent_eq]
   conv_lhs =>
@@ -1952,7 +1954,7 @@ theorem checkSoundRoundInduction (prims : Primitives) (K : Constants C E) : Chec
   rw [hF]
   change Pr{let out ← (simulateQ (localAnswer prims)
     (executePhase localRoles D A (checkFunctionalities K) (F + 1) st
-      (fun i => ((coinKey K (hybridCheckGadgets K i) >>= fun key => expand K key (coins counts.sum)) >>= g i).run'
+      (fun i => ((coinKey K (hybridCheckBuildingBlocks K i) >>= fun key => expand K key (coins counts.sum)) >>= g i).run'
         (hs i)))).run' cache}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤ _
   apply le_trans (sound_start_phase prims K D A F step (coins counts.sum) ha st hs 0 0
     (fun i hi => ⟨rfl, rfl⟩) g cache seen ∅ (SoundCache.of_covered 0 cache seen hc) bad

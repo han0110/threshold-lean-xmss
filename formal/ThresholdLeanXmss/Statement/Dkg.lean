@@ -3,7 +3,7 @@ import Mathlib.Algebra.Polynomial.Eval.Defs
 import VCVio.EvalDist.EvalDistEq
 
 /-!
-# The seed generation, the ceremonies and the gadgets
+# The seed generation, the ceremonies and the building blocks
 
 The claims about the key generation of `doc/dkg.md`, at the level at which GS20 states them. This
 file holds the error terms, the valid inputs and the claims. `Theorems.lean` holds the model.
@@ -17,7 +17,7 @@ file holds the error terms, the valid inputs and the claims. `Theorems.lean` hol
 * `F_mult` and `F_multVerify` leak the view of each honest operator of the terms that the corrupt
   operators know. GS20 leaks one copy of these terms in Functionalities 7 and 16. In a run of
   circuits, a corrupt filler chooses each split copy, so the adversary already knows the leaked
-  copies. On other inputs of the gadget claims, the leak is larger than in GS20.
+  copies. On other inputs of the building-block claims, the leak is larger than in GS20.
 * `F_main` also leaks these views. Its inputs agree at every holder, the corrupt holders included,
   as the seed generation echo makes them, so it leaks only what GS20, Functionality 18, leaks.
 * Each operator aborts alone, so every functionality except `F_rand` has selective abort, `F_mult`

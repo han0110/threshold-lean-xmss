@@ -67,8 +67,8 @@ the real programs `P` (`n` rounds) and the adapter's hybrid programs `Q`
 * The adversary's oracle calls use `localAnswer` in both worlds.
   `streamWorld` answers only the honest PRG calls under hidden names from the
   hidden cache.
-* The adapter's labels, indices and counts are those of the real gadgets
-  (`TreeCheckWalkTransport.realCheckGadgets_shapes`).
+* The adapter's labels, indices and counts are those of the real building blocks
+  (`TreeCheckWalkTransport.realCheckBuildingBlocks_shapes`).
 * Replacing hidden honest PRSS values by fresh samples also needs every
   hidden-cache entry to lie below the check's first label.
 

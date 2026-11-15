@@ -286,12 +286,13 @@ def appendLayer (jobs : List Circuit) (layer : ℕ) (wires : List (C.Term → Li
     List (C.Term → List Bit) :=
   wires.zipIdx.map fun (w, k) T => w T ++ (((gatesAt jobs layer).zipIdx.filter (·.1.1 = k)).map fun (_, g) => z T g)
 
-def layerBody (K : Constants C E) (gadgets : RunGadgets C E G) (jobs : List Circuit) :
+def layerBody (K : Constants C E) (buildingBlocks : RunBuildingBlocks C E G) (jobs : List Circuit) :
     List (C.Term → List Bit) × List (Tuple C) → ℕ → RunM C E G (List (C.Term → List Bit) × List (Tuple C)) :=
   fun p layer => do
-    let z ← gadgets.mult (layerX K jobs layer p.1) (layerY K jobs layer p.1) (gatesAt jobs layer).length
+    let z ← buildingBlocks.mult (layerX K jobs layer p.1) (layerY K jobs layer p.1)
+        (gatesAt jobs layer).length
     pure (appendLayer jobs layer p.1 z,
-      p.2 ++ [⟨layerX K jobs layer p.1, layerY K jobs layer p.1, z, (gatesAt jobs layer).length, gadgets.mode⟩])
+      p.2 ++ [⟨layerX K jobs layer p.1, layerY K jobs layer p.1, z, (gatesAt jobs layer).length, buildingBlocks.mode⟩])
 
 def outputsOf (jobs : List Circuit) : List (ℕ × Affine) := jobs.zipIdx.flatMap fun (job, k) => job.outputs.map fun a => (k, a)
 
@@ -303,17 +304,17 @@ def assemble (jobs : List Circuit) (opened : ℕ → Bit) : List (List Bit) :=
   (jobs.map (·.outputs.length)).zipIdx.map fun (width, k) =>
     vector width fun g => opened (((jobs.map (·.outputs.length)).take k).sum + g)
 
-def tailBody (K : Constants C E) (gadgets : RunGadgets C E G) (jobs : List Circuit) :
+def tailBody (K : Constants C E) (buildingBlocks : RunBuildingBlocks C E G) (jobs : List Circuit) :
     List (C.Term → List Bit) × List (Tuple C) → RunM C E G (List (List Bit)) := fun p => do
-  let v' ← gadgets.rerand (outputShares K jobs p.1) (outputsOf jobs).length
-  gadgets.verify (p.2 ++ [⟨outputShares K jobs p.1, one K, v', (outputsOf jobs).length, .peer⟩])
-  let opened ← gadgets.output v' (outputsOf jobs).length
+  let v' ← buildingBlocks.rerand (outputShares K jobs p.1) (outputsOf jobs).length
+  buildingBlocks.verify (p.2 ++ [⟨outputShares K jobs p.1, one K, v', (outputsOf jobs).length, .peer⟩])
+  let opened ← buildingBlocks.output v' (outputsOf jobs).length
   pure (assemble jobs opened)
 
-theorem runJobs_eq (K : Constants C E) (gadgets : RunGadgets C E G) (jobs : List Circuit)
+theorem runJobs_eq (K : Constants C E) (buildingBlocks : RunBuildingBlocks C E G) (jobs : List Circuit)
     (inputs : List (C.Term → List Bit)) :
-    runJobs K gadgets jobs inputs =
-      (List.range (depth jobs)).foldlM (layerBody K gadgets jobs) (inputs, []) >>= tailBody K gadgets jobs := by
+    runJobs K buildingBlocks jobs inputs =
+      (List.range (depth jobs)).foldlM (layerBody K buildingBlocks jobs) (inputs, []) >>= tailBody K buildingBlocks jobs := by
   rfl
 
 variable (K : Constants C E) (mode : ReshareMode) (jobs : List Circuit) (i : C.Party)
@@ -321,16 +322,18 @@ variable (K : Constants C E) (mode : ReshareMode) (jobs : List Circuit) (i : C.P
 /-- The rest of the program of operator `i` before the layers `ls`. -/
 def progAt (ls : List ℕ) (p : List (C.Term → List Bit) × List (Tuple C)) (st : RunState C) :
     PartyM C E (MainSpec C) (List (List Bit)) :=
-  (ls.foldlM (layerBody K (hybridRunGadgets K mode i) jobs) p >>= tailBody K (hybridRunGadgets K mode i) jobs).run' st
+  (ls.foldlM (layerBody K (hybridRunBuildingBlocks K mode i) jobs) p >>= tailBody K (hybridRunBuildingBlocks K mode i) jobs).run' st
 
-theorem layerBody_apply (gadgets : RunGadgets C E G) (p : List (C.Term → List Bit) × List (Tuple C)) (l : ℕ) :
-    layerBody K gadgets jobs p l = (do
-      let z ← gadgets.mult (layerX K jobs l p.1) (layerY K jobs l p.1) (gatesAt jobs l).length
+theorem layerBody_apply (buildingBlocks : RunBuildingBlocks C E G)
+    (p : List (C.Term → List Bit) × List (Tuple C)) (l : ℕ) :
+    layerBody K buildingBlocks jobs p l = (do
+      let z ← buildingBlocks.mult (layerX K jobs l p.1) (layerY K jobs l p.1) (gatesAt jobs l).length
       pure (appendLayer jobs l p.1 z,
-        p.2 ++ [⟨layerX K jobs l p.1, layerY K jobs l p.1, z, (gatesAt jobs l).length, gadgets.mode⟩])) := rfl
+        p.2 ++ [⟨layerX K jobs l p.1, layerY K jobs l p.1, z, (gatesAt jobs l).length,
+            buildingBlocks.mode⟩])) := rfl
 
 theorem hybrid_mult (x y : Shares C Bit) (n : ℕ) :
-    (hybridRunGadgets (E := E) K mode i).mult x y n = (do
+    (hybridRunBuildingBlocks (E := E) K mode i).mult x y n = (do
       let some (.inl (.inl z)) ← StateT.lift (call (.inl (.inl (x, y, n)))) | StateT.lift failure
       pure z) := rfl
 
@@ -349,24 +352,26 @@ theorem progAt_cons (l : ℕ) (ls : List ℕ) (p : List (C.Term → List Bit) ×
   rcases r with _ | ((z | z) | u) <;> simp [progAt, StateT.run'_eq, StateT.run_bind]
   all_goals rfl
 
-theorem tailBody_apply (gadgets : RunGadgets C E G) (p : List (C.Term → List Bit) × List (Tuple C)) :
-    tailBody K gadgets jobs p = (do
-      let v' ← gadgets.rerand (outputShares K jobs p.1) (outputsOf jobs).length
-      gadgets.verify (p.2 ++ [⟨outputShares K jobs p.1, one K, v', (outputsOf jobs).length, .peer⟩])
-      let opened ← gadgets.output v' (outputsOf jobs).length
+theorem tailBody_apply (buildingBlocks : RunBuildingBlocks C E G)
+    (p : List (C.Term → List Bit) × List (Tuple C)) :
+    tailBody K buildingBlocks jobs p = (do
+      let v' ← buildingBlocks.rerand (outputShares K jobs p.1) (outputsOf jobs).length
+      buildingBlocks.verify (p.2 ++ [⟨outputShares K jobs p.1, one K, v', (outputsOf jobs).length, .peer⟩])
+      let opened ← buildingBlocks.output v' (outputsOf jobs).length
       pure (assemble jobs opened)) := rfl
 
 theorem hybrid_rerand (v : Shares C Bit) (n : ℕ) :
-    (hybridRunGadgets (E := E) K mode i).rerand v n = (do
+    (hybridRunBuildingBlocks (E := E) K mode i).rerand v n = (do
       let some (.inl (.inr z)) ← StateT.lift (call (.inl (.inr (v, one K, n)))) | StateT.lift failure
       pure z) := rfl
 
 theorem hybrid_verify (tuples : List (Tuple C)) :
-    (hybridRunGadgets (E := E) K mode i).verify tuples = (do
+    (hybridRunBuildingBlocks (E := E) K mode i).verify tuples = (do
       let some (.inr ()) ← StateT.lift (call (.inr tuples)) | StateT.lift failure) := rfl
 
 theorem hybrid_output (v : Shares C Bit) (n : ℕ) :
-    (hybridRunGadgets (E := E) K mode i).output v n = StateT.lift (openRep K (localContext i) v n) := rfl
+    (hybridRunBuildingBlocks (E := E) K mode i).output v n = StateT.lift (openRep K (localContext i) v n) :=
+        rfl
 
 theorem progAt_nil (p : List (C.Term → List Bit) × List (Tuple C)) (st : RunState C) :
     progAt K mode jobs i [] p st =

@@ -389,7 +389,7 @@ structure Context (C : Committee) where
   keys : Keys C
   prss : PrssKeys C
 
-/-- Operator `i` with no keys, for the gadgets that read only `self`. -/
+/-- Operator `i` with no keys, for the building blocks that read only `self`. -/
 def localContext (i : C.Party) : Context C := ⟨i, ⟨0, fun _ => 0, fun _ => 0⟩, ⟨fun _ => 0, fun _ => 0⟩⟩
 
 /-! ## Sharings -/
@@ -433,7 +433,7 @@ inductive Product (C : Committee) (E : Type)
   /-- Of two Shamir vectors, which `MulSh` shares. -/
   | shamir (x y : ℕ → E) (count : ℕ)
 
-section Gadgets
+section BuildingBlocks
 
 variable [Field E] [Algebra Bit E] (K : Constants C E) (ctx : Context C)
 
@@ -628,7 +628,7 @@ def compareDigests (salts : Shares C Bit) : RunM C E G Unit := do
     (digestOf j)[C.terms.idxOf T]? = (digestOf j')[C.terms.idxOf T]? ∧
       (digestOf j)[C.terms.idxOf T]?.isSome))
 
-end Gadgets
+end BuildingBlocks
 
 /-! ## The check
 
@@ -676,9 +676,9 @@ def bitOf (k : ℕ) : Fin (2 ^ wordBits) := ⟨k % 2 ^ wordBits, Nat.mod_lt _ (b
 /-- The tries of a challenge. -/
 def challengeTries : ℕ := 2 ^ 64
 
-/-- The gadgets that the check calls, namely the values of `F_coin`, the inner products of
+/-- The building blocks that the check calls, namely the values of `F_coin`, the inner products of
 `F_extendMult` as a replicated sharing, and the PRSS outputs of `F_rand`. -/
-structure CheckGadgets (C : Committee) (E : Type) {ι : Type} (G : OracleSpec ι) where
+structure CheckBuildingBlocks (C : Committee) (E : Type) {ι : Type} (G : OracleSpec ι) where
   coin : ℕ → RunM C E G (List E)
   extendMult : List (Product C E) → RunM C E G (Shares C E)
   randElements : ℕ → RunM C E G (PrssOutput C E)
@@ -686,7 +686,8 @@ structure CheckGadgets (C : Committee) (E : Type) {ι : Type} (G : OracleSpec ι
 
 section Check
 
-variable [Field E] [Algebra Bit E] (K : Constants C E) (ctx : Context C) (gadgets : CheckGadgets C E G)
+variable [Field E] [Algebra Bit E] (K : Constants C E) (ctx : Context C)
+    (buildingBlocks : CheckBuildingBlocks C E G)
 
 /-- `τ^a`, the product of the coins `τ[offset + b]` at the set bits `b < width` of `a`. -/
 def coinProduct (τ : List E) (offset width a : ℕ) : E :=
@@ -703,7 +704,7 @@ counts the labels over the ceremonies of a tree, and the implementation counts t
 batch. -/
 def coinKey : RunM C E G HashOutput := do
   let state ← get
-  let values ← gadgets.coin 2
+  let values ← buildingBlocks.coin 2
   StateT.lift (oracleStep (hashQuery (.coinKey state.tag state.label
     (values.flatMap fun v => List.ofFn (K.encode v)))))
 
@@ -722,7 +723,7 @@ def findChallenge (key : HashOutput) : ℕ → ℕ → OracleComp (RoSpec C) (Op
 
 /-- A challenge, the first expanded value of a fresh coin outside `{0, 1}`. -/
 def challenge : RunM C E G E := do
-  let key ← coinKey K gadgets
+  let key ← coinKey K buildingBlocks
   let some r ← StateT.lift (oracleStep (findChallenge K key challengeTries 0)) | StateT.lift failure
   pure r
 
@@ -742,7 +743,7 @@ def check (tuples : List (Tuple C)) : RunM C E G Unit := do
   let width := sliceWidth count
   -- De-linearization with the coins `τ` and the word weights `x^q`. The claim weighs tuple `k` by
   -- `τ^h τ^w x^q`, and `x` keeps `τ^w x^q`.
-  let τ ← expand K (← coinKey K gadgets) d
+  let τ ← expand K (← coinKey K buildingBlocks) d
   StateT.lift (require (∀ b < s, τ.getD b 0 ≠ 0))
   let wordWeight := fun k => coinProduct τ s (d - s) (wordOf count k) * K.weight (bitOf k)
   let claim : Shares C E := fun T _ => ∑ k ∈ Finset.range (2 ^ s * width),
@@ -752,9 +753,9 @@ def check (tuples : List (Tuple C)) : RunM C E G Unit := do
       conv K ctx claim 0)) fun (xs, ys, D) j => do
     let half := width * 2 ^ (s - 1 - j)
     let rest := fun k => coinProduct τ 0 (s - 1 - j) (k / width)
-    let t ← gadgets.extendMult [.replicated (fun T k => rest k * xs T k) ys half,
+    let t ← buildingBlocks.extendMult [.replicated (fun T k => rest k * xs T k) ys half,
       .replicated (fun T k => rest k * (xs T k + xs T (k + half))) (fun T k => ys T k + ys T (k + half)) half]
-    let r ← challenge K gadgets
+    let r ← challenge K buildingBlocks
     let t₀ := conv K ctx t 0
     let tInf := conv K ctx t 1
     let t₁ := (D + t₀) / τ.getD (s - 1 - j) 0
@@ -767,29 +768,29 @@ def check (tuples : List (Tuple C)) : RunM C E G Unit := do
       let half := halvedLength length
       let hi := fun (v : ℕ → E) k => if k + half < length then v (k + half) else 0
       let sum := fun (v : ℕ → E) k => v k + hi v k
-      let p ← gadgets.extendMult [.shamir A B half, .shamir (sum A) (sum B) half]
-      let r ← challenge K gadgets
+      let p ← buildingBlocks.extendMult [.shamir A B half, .shamir (sum A) (sum B) half]
+      let r ← challenge K buildingBlocks
       let fold := fun (v : ℕ → E) k => v k + r * (v k + hi v k)
       pure (fold A, fold B, conv K ctx p 0 + (D + conv K ctx p 1) * r + conv K ctx p 1 * r ^ 2)
   -- Randomization (GS20, Protocol 15), with the digests before its coin.
-  let w ← gadgets.randElements 2
+  let w ← buildingBlocks.randElements 2
   let wa := conv K ctx w.1 0
   let wb := conv K ctx w.1 1
-  let q ← gadgets.extendMult [.shamir (fun _ => wa) (fun _ => wb) 1,
+  let q ← buildingBlocks.extendMult [.shamir (fun _ => wa) (fun _ => wb) 1,
     .shamir (fun _ => wa + A 0) (fun _ => wb + B 0) 1]
   let q₀ := conv K ctx q 0
   let q₂ := conv K ctx q 1
-  let salts ← gadgets.randBits 256
+  let salts ← buildingBlocks.randBits 256
   compareDigests ctx salts.1
-  let r ← challenge K gadgets
+  let r ← challenge K buildingBlocks
   let opened ← StateT.lift (openSh K ctx (fun k => match k with
     | 0 => wa + r * (wa + A 0)
     | 1 => wb + r * (wb + B 0)
     | _ => q₀ + (D + q₀ + q₂) * r + q₂ * r ^ 2) 3)
   StateT.lift (require (opened 0 * opened 1 = opened 2))
 
-/-- The gadgets of the real check, from the PRSS keys of the ceremony. -/
-def realCheckGadgets : CheckGadgets C E G where
+/-- The building blocks of the real check, from the PRSS keys of the ceremony. -/
+def realCheckBuildingBlocks : CheckBuildingBlocks C E G where
   coin count := do coinWith K ctx (← prssRandomness ctx (elementCodec K) 1 count) count
   extendMult products := do
     let randomness ← prssRandomness ctx (elementCodec K) 0 products.length
@@ -847,9 +848,9 @@ structure Job where
 /-- The Boolean circuit of each job kind under each public parameter, which the MPC evaluates. -/
 abbrev Circuits := PublicParameter → JobKind → Circuit
 
-/-- The gadgets that a run calls, namely `F_mult` for the AND gates in `mode` and for `Rerand`, and
+/-- The building blocks that a run calls, namely `F_mult` for the AND gates in `mode` and for `Rerand`, and
 `F_multVerify` for the check (GS20, Protocol 19). -/
-structure RunGadgets (C : Committee) (E : Type) {ι : Type} (G : OracleSpec ι) where
+structure RunBuildingBlocks (C : Committee) (E : Type) {ι : Type} (G : OracleSpec ι) where
   mode : ReshareMode
   mult : Shares C Bit → Shares C Bit → ℕ → RunM C E G (Shares C Bit)
   rerand : Shares C Bit → ℕ → RunM C E G (Shares C Bit)
@@ -890,7 +891,8 @@ def inputShares (job : Job) : PartyM C E G (C.Term → List Bit) := do
 /-- A run of the circuits of some jobs on their input sharings (GS20, Protocol 19). The AND gates of
 one layer of all jobs take one call of `mult`. Then `rerand` re-randomizes the outputs, `verify`
 checks every tuple, and `output` opens the outputs (BBY23, Section 4.3, and MPClan, App. B). -/
-def runJobs (gadgets : RunGadgets C E G) (jobs : List Circuit) (inputs : List (C.Term → List Bit)) :
+def runJobs (buildingBlocks : RunBuildingBlocks C E G) (jobs : List Circuit)
+    (inputs : List (C.Term → List Bit)) :
     RunM C E G (List (List Bit)) := do
   let (wires, tuples) ← (List.range (depth jobs)).foldlM (init := (inputs, ([] : List (Tuple C))))
     fun (wires, tuples) layer => do
@@ -900,28 +902,28 @@ def runJobs (gadgets : RunGadgets C E G) (jobs : List Circuit) (inputs : List (C
         | some (k, ab) => ab.1.share (wires.getD k fun _ => []) K.publicTerm T | none => 0
       let y : Shares C Bit := fun T g => match gates[g]? with
         | some (k, ab) => ab.2.share (wires.getD k fun _ => []) K.publicTerm T | none => 0
-      let z ← gadgets.mult x y gates.length
+      let z ← buildingBlocks.mult x y gates.length
       let wires := wires.zipIdx.map fun (w, k) T =>
         w T ++ ((gates.zipIdx.filter (·.1.1 = k)).map fun (_, g) => z T g)
-      pure (wires, tuples ++ [⟨x, y, z, gates.length, gadgets.mode⟩])
+      pure (wires, tuples ++ [⟨x, y, z, gates.length, buildingBlocks.mode⟩])
   let outputs := jobs.zipIdx.flatMap fun (job, k) => job.outputs.map fun a => (k, a)
   let v : Shares C Bit := fun T g => match outputs[g]? with
     | some (k, a) => a.share (wires.getD k fun _ => []) K.publicTerm T | none => 0
-  let v' ← gadgets.rerand v outputs.length
-  gadgets.verify (tuples ++ [⟨v, one K, v', outputs.length, .peer⟩])
-  let opened ← gadgets.output v' outputs.length
+  let v' ← buildingBlocks.rerand v outputs.length
+  buildingBlocks.verify (tuples ++ [⟨v, one K, v', outputs.length, .peer⟩])
+  let opened ← buildingBlocks.output v' outputs.length
   let widths := jobs.map (·.outputs.length)
   pure (widths.zipIdx.map fun (width, k) =>
     vector width fun g => opened ((widths.take k).sum + g))
 
-/-- The gadgets of the real run in `mode`, from the PRSS keys of the ceremony. -/
-def realRunGadgets (mode : ReshareMode) : RunGadgets C E G where
+/-- The building blocks of the real run in `mode`, from the PRSS keys of the ceremony. -/
+def realRunBuildingBlocks (mode : ReshareMode) : RunBuildingBlocks C E G where
   mode := mode
   mult x y count := do
     reshareWith K ctx mode (← prssRandomness ctx bitCodec 0 count) (mulRep K ctx x y) count
   rerand v count := do
     reshare K ctx bitCodec (← prssRandomness ctx bitCodec 0 count) (ownerSum K ctx v) count
-  verify := check K ctx (realCheckGadgets K ctx)
+  verify := check K ctx (realCheckBuildingBlocks K ctx)
   output v count := StateT.lift (openRep K ctx v count)
 
 end Run
@@ -1193,28 +1195,28 @@ section Ceremony
 variable [Field E] [Algebra Bit E] (K : Constants C E)
 
 /-- One ceremony at operator `i`, as a program on the counters. It runs one PRSS setup and then
-each batch of `jobs`, with the gadgets `gadgets ctx k jobs` of batch `k`. The counters are the next
-round label and the tag `k` of the next batch. Each batch starts with empty running digests and
-continues the round labels. The real protocol uses `realRunGadgets`. -/
+each batch of `jobs`, with the building blocks `buildingBlocks ctx k jobs` of batch `k`.
+The counters are the next round label and the tag `k` of the next batch. Each batch starts with empty
+running digests and continues the round labels. The real protocol uses `realRunBuildingBlocks`. -/
 def ceremonyRun (circuits : Circuits) (settings : Settings)
-    (gadgets : Context C → ℕ → List Job → RunGadgets C E G) (i : C.Party) (keys : Keys C)
+    (buildingBlocks : Context C → ℕ → List Job → RunBuildingBlocks C E G) (i : C.Party) (keys : Keys C)
     (jobs : List Job) : StateT (ℕ × ℕ) (PartyM C E G) (Option (List (List Bit))) := do
   let prss ← StateT.lift (prssSetup i)
   let ctx : Context C := ⟨i, keys, prss⟩
   batched settings.batchSize (fun jobs => do
     let (label, k) ← get
     let inputs ← StateT.lift (jobs.mapM (inputShares ctx))
-    let (outputs, state) ← StateT.lift ((runJobs K (gadgets ctx k jobs)
+    let (outputs, state) ← StateT.lift ((runJobs K (buildingBlocks ctx k jobs)
       (jobs.map (circuits keys.parameter ·.kind)) inputs).run ⟨fun _ => [], label, k⟩)
     set (state.label, k + 1)
     pure (some outputs)) jobs
 
-/-- One ceremony of the public job list `jobs` from the public counters `counters`, with the gadgets
-`gadgets`. It gives the opened output of each job. -/
+/-- One ceremony of the public job list `jobs` from the public counters `counters`, with the building blocks
+`buildingBlocks`. It gives the opened output of each job. -/
 def ceremonyWith (circuits : Circuits) (settings : Settings)
-    (gadgets : Context C → ℕ → List Job → RunGadgets C E G) (i : C.Party) (keys : Keys C)
+    (buildingBlocks : Context C → ℕ → List Job → RunBuildingBlocks C E G) (i : C.Party) (keys : Keys C)
     (counters : ℕ × ℕ) (jobs : List Job) : PartyM C E G (List (List Bit)) := do
-  let some outputs ← (ceremonyRun K circuits settings gadgets i keys jobs).run' counters | failure
+  let some outputs ← (ceremonyRun K circuits settings buildingBlocks i keys jobs).run' counters | failure
   pure outputs
 
 /-- The real ceremony. It is one protocol with three uses, namely `topJobs` for the top tree,
@@ -1222,7 +1224,8 @@ def ceremonyWith (circuits : Circuits) (settings : Settings)
 bottom tree `b` by its top key. -/
 def ceremony (circuits : Circuits) (settings : Settings) (i : C.Party) (keys : Keys C)
     (counters : ℕ × ℕ) (jobs : List Job) : PartyM C E G (List (List Bit)) :=
-  ceremonyWith K circuits settings (fun ctx _ _ => realRunGadgets K ctx settings.mode) i keys counters jobs
+  ceremonyWith K circuits settings (fun ctx _ _ => realRunBuildingBlocks K ctx settings.mode)
+    i keys counters jobs
 
 /-- The ceremonies of a tree at operator `i`, with the local steps of `ceremonyOutput` between them
 (`new_top_tree` and `new_bottom_tree` of `src/dkg.rs`). Each ceremony has its own PRSS setup. The
@@ -1232,7 +1235,7 @@ def newTree (circuits : Circuits) (settings : Settings) (i : C.Party) (keys : Ke
     (tree : Tree) : PartyM C E G TreeOutput := do
   let some output ← (ceremonyOutput (m := StateT (ℕ × ℕ) (PartyM C E G))
       (fun oa => StateT.lift (oracleStep (tweakable oa))) keys.parameter
-      (ceremonyRun K circuits settings (fun ctx _ _ => realRunGadgets K ctx settings.mode) i keys)
+      (ceremonyRun K circuits settings (fun ctx _ _ => realRunBuildingBlocks K ctx settings.mode) i keys)
       top tree).run' (0, 0) | failure
   pure output
 
@@ -1586,8 +1589,9 @@ bits. -/
 abbrev CheckSpec (C : Committee) (E : Type) :=
   CallSpec ((ℕ ⊕ List (Product C E)) ⊕ (ℕ ⊕ ℕ)) ((List E ⊕ Shares C E) ⊕ (PrssOutput C E ⊕ PrssOutput C Bit))
 
-/-- The gadgets of the check as calls. Each call takes one round label, as each real gadget does. -/
-def hybridCheckGadgets (i : C.Party) : CheckGadgets C E (CheckSpec C E) where
+/-- The building blocks of the check as calls.
+Each call takes one round label, as each real building block does. -/
+def hybridCheckBuildingBlocks (i : C.Party) : CheckBuildingBlocks C E (CheckSpec C E) where
   coin count := do
     let _ ← freshLabel
     let some (.inl (.inl values)) ← StateT.lift (call (.inl (.inl count))) | StateT.lift failure
@@ -1614,7 +1618,7 @@ def filledHistory (i : C.Party) (tuples : List (Tuple C)) (T : C.Term) : List Bi
 
 /-- The check in the `{F_coin, F_extendMult, F_rand}`-hybrid model (GS20, Protocol 17). -/
 def checkProtocol (i : C.Party) (tuples : List (Tuple C)) : PartyM C E (CheckSpec C E) Unit :=
-  (check K (localContext i) (hybridCheckGadgets K i) tuples).run' ⟨filledHistory K i tuples, 0, 0⟩
+  (check K (localContext i) (hybridCheckBuildingBlocks K i) tuples).run' ⟨filledHistory K i tuples, 0, 0⟩
 
 /-- The steps of the check of `count` tuple bits. -/
 def checkRounds (count : ℕ) : ℕ := 2 * halvings count + 8
@@ -1625,8 +1629,8 @@ abbrev MainSpec (C : Committee) :=
   CallSpec (((Shares C Bit × Shares C Bit × ℕ) ⊕ (Shares C Bit × Shares C Bit × ℕ)) ⊕ List (Tuple C))
     ((Shares C Bit ⊕ Shares C Bit) ⊕ Unit)
 
-/-- The gadgets of a run as calls, with `Rerand` as a product with `[[1]]` (GS20, Protocol 19). -/
-def hybridRunGadgets (mode : ReshareMode) (i : C.Party) : RunGadgets C E (MainSpec C) where
+/-- The building blocks of a run as calls, with `Rerand` as a product with `[[1]]` (GS20, Protocol 19). -/
+def hybridRunBuildingBlocks (mode : ReshareMode) (i : C.Party) : RunBuildingBlocks C E (MainSpec C) where
   mode := mode
   mult x y count := do
     let some (.inl (.inl z)) ← StateT.lift (call (.inl (.inl (x, y, count)))) | StateT.lift failure
@@ -1641,7 +1645,7 @@ def hybridRunGadgets (mode : ReshareMode) (i : C.Party) : RunGadgets C E (MainSp
 /-- A run in the `{F_mult, F_multVerify}`-hybrid model (GS20, Protocol 19). -/
 def mainProtocol (mode : ReshareMode) (jobs : List Circuit) (i : C.Party) (inputs : List (C.Term → List Bit)) :
     PartyM C E (MainSpec C) (List (List Bit)) :=
-  (runJobs K (hybridRunGadgets K mode i) jobs inputs).run' startRun
+  (runJobs K (hybridRunBuildingBlocks K mode i) jobs inputs).run' startRun
 
 /-- The steps of a run of `jobs`, one call of `F_mult` for each AND layer and for `Rerand`, one call
 of `F_multVerify` and one round for `OpenRep`. -/

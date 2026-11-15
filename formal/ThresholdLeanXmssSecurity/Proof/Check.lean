@@ -1,4 +1,4 @@
-import ThresholdLeanXmssSecurity.Proof.Gadgets
+import ThresholdLeanXmssSecurity.Proof.BuildingBlocks
 import VCVio.OracleComp.QueryTracking.LoggingOracle.Core
 import Mathlib.Tactic.ComputeDegree
 import Mathlib.Algebra.CharP.Algebra
@@ -892,7 +892,7 @@ attribute [local instance] Classical.propDecidable
 section CheckProgram
 
 variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] {ι : Type} {G : OracleSpec ι}
-  (K : Constants C E) (ctx : Context C) (gadgets : CheckGadgets C E G)
+  (K : Constants C E) (ctx : Context C) (buildingBlocks : CheckBuildingBlocks C E G)
 
 /-- The values of a part of the tuples, as one vector over `E` for each term. -/
 def liftedPart (tuples : List (Tuple C)) (part : Tuple C → Shares C Bit) : Shares C E := fun T k =>
@@ -913,9 +913,9 @@ def sliceStep (τ : List E) (count : ℕ) :
   fun (xs, ys, D) j => do
     let half := sliceWidth count * 2 ^ (sliceBits - 1 - j)
     let rest := fun k => coinProduct τ 0 (sliceBits - 1 - j) (k / sliceWidth count)
-    let t ← gadgets.extendMult [.replicated (fun T k => rest k * xs T k) ys half,
+    let t ← buildingBlocks.extendMult [.replicated (fun T k => rest k * xs T k) ys half,
       .replicated (fun T k => rest k * (xs T k + xs T (k + half))) (fun T k => ys T k + ys T (k + half)) half]
-    let r ← challenge K gadgets
+    let r ← challenge K buildingBlocks
     let t₀ := conv K ctx t 0
     let tInf := conv K ctx t 1
     let t₁ := (D + t₀) / τ.getD (sliceBits - 1 - j) 0
@@ -929,23 +929,23 @@ def halvingStep (width : ℕ) : (ℕ → E) × (ℕ → E) × E → ℕ → RunM
     let half := halvedLength length
     let hi := fun (v : ℕ → E) k => if k + half < length then v (k + half) else 0
     let sum := fun (v : ℕ → E) k => v k + hi v k
-    let p ← gadgets.extendMult [.shamir A B half, .shamir (sum A) (sum B) half]
-    let r ← challenge K gadgets
+    let p ← buildingBlocks.extendMult [.shamir A B half, .shamir (sum A) (sum B) half]
+    let r ← challenge K buildingBlocks
     let fold := fun (v : ℕ → E) k => v k + r * (v k + hi v k)
     pure (fold A, fold B, conv K ctx p 0 + (D + conv K ctx p 1) * r + conv K ctx p 1 * r ^ 2)
 
 /-- The randomization of `check` and its final test. -/
 def finalStep : (ℕ → E) × (ℕ → E) × E → RunM C E G Unit := fun (A, B, D) => do
-  let w ← gadgets.randElements 2
+  let w ← buildingBlocks.randElements 2
   let wa := conv K ctx w.1 0
   let wb := conv K ctx w.1 1
-  let q ← gadgets.extendMult [.shamir (fun _ => wa) (fun _ => wb) 1,
+  let q ← buildingBlocks.extendMult [.shamir (fun _ => wa) (fun _ => wb) 1,
     .shamir (fun _ => wa + A 0) (fun _ => wb + B 0) 1]
   let q₀ := conv K ctx q 0
   let q₂ := conv K ctx q 1
-  let salts ← gadgets.randBits 256
+  let salts ← buildingBlocks.randBits 256
   compareDigests ctx salts.1
-  let r ← challenge K gadgets
+  let r ← challenge K buildingBlocks
   let opened ← StateT.lift (openSh K ctx (fun k => match k with
     | 0 => wa + r * (wa + A 0)
     | 1 => wb + r * (wb + B 0)
@@ -953,16 +953,17 @@ def finalStep : (ℕ → E) × (ℕ → E) × E → RunM C E G Unit := fun (A, B
   StateT.lift (require (opened 0 * opened 1 = opened 2))
 
 theorem check_eq (tuples : List (Tuple C)) (h : (tuples.map (·.count)).sum ≠ 0) :
-    check K ctx gadgets tuples = (do
+    check K ctx buildingBlocks tuples = (do
       let count := (tuples.map (·.count)).sum
-      let τ ← expand K (← coinKey K gadgets) (coins count)
+      let τ ← expand K (← coinKey K buildingBlocks) (coins count)
       StateT.lift (require (∀ b < sliceBits, τ.getD b 0 ≠ 0))
-      let p ← (List.range sliceBits).foldlM (sliceStep K ctx gadgets τ count)
+      let p ← (List.range sliceBits).foldlM (sliceStep K ctx buildingBlocks τ count)
         ((fun T k => wordWeightOf K τ count k * liftedPart tuples (·.x) T k : Shares C E), liftedPart tuples (·.y),
           conv K ctx (claimOf K τ count (liftedPart tuples (·.z))) 0)
-      let p' ← (List.range (halvings count - sliceBits)).foldlM (halvingStep K ctx gadgets (sliceWidth count))
+      let p' ← (List.range (halvings count - sliceBits)).foldlM
+          (halvingStep K ctx buildingBlocks (sliceWidth count))
         (conv K ctx p.1, conv K ctx p.2.1, p.2.2)
-      finalStep K ctx gadgets p') := by
+      finalStep K ctx buildingBlocks p') := by
   simp only [check, if_neg h]
   rfl
 
@@ -972,7 +973,7 @@ end
 
 end ThresholdLeanXmssSecurity
 
-/-! ## The gadgets of the check as steps -/
+/-! ## The building blocks of the check as steps -/
 
 namespace ThresholdLeanXmssSecurity
 
@@ -982,7 +983,7 @@ noncomputable section
 
 attribute [local instance] Classical.propDecidable
 
-section GadgetSteps
+section BuildingBlockSteps
 
 variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] (K : Constants C E) (i : C.Party)
 
@@ -1006,63 +1007,64 @@ theorem oracleStep_bind {ι : Type} {G : OracleSpec ι} {α β : Type} (oa : Ora
 
 theorem extendMult_run' {α : Type} (products : List (Product C E)) (f : Shares C E → RunM C E (CheckSpec C E) α)
     (st : RunState C) :
-    ((hybridCheckGadgets K i).extendMult products >>= f).run' st =
+    ((hybridCheckBuildingBlocks K i).extendMult products >>= f).run' st =
       call (Sum.inl (Sum.inr products)) >>= fun o => match o with
         | some (.inl (.inr z)) => (f z).run' ⟨recordHistory K i st.history z products.length, st.label + 1, st.tag⟩
         | _ => failure := by
-  simp only [hybridCheckGadgets, freshLabel, record, bind_assoc]
+  simp only [hybridCheckBuildingBlocks, freshLabel, record, bind_assoc]
   simp [StateT.run'_eq, StateT.run_bind, StateT.run_lift, StateT.run_modifyGet]
   refine bind_congr fun o => ?_
   rcases o with _ | ((v | z) | w) <;> simp [StateT.run_lift, localContext]
   rfl
 
 theorem coin_run' {α : Type} (count : ℕ) (f : List E → RunM C E (CheckSpec C E) α) (st : RunState C) :
-    ((hybridCheckGadgets K i).coin count >>= f).run' st =
+    ((hybridCheckBuildingBlocks K i).coin count >>= f).run' st =
       call (Sum.inl (Sum.inl count)) >>= fun o => match o with
         | some (.inl (.inl v)) => (f v).run' ⟨st.history, st.label + 1, st.tag⟩
         | _ => failure := by
-  simp only [hybridCheckGadgets, freshLabel, bind_assoc]
+  simp only [hybridCheckBuildingBlocks, freshLabel, bind_assoc]
   simp [StateT.run'_eq, StateT.run_bind, StateT.run_lift, StateT.run_modifyGet]
   refine bind_congr fun o => ?_
   rcases o with _ | ((v | z) | w) <;> simp [StateT.run_lift]
 
 theorem randElements_run' {α : Type} (count : ℕ) (f : PrssOutput C E → RunM C E (CheckSpec C E) α)
     (st : RunState C) :
-    ((hybridCheckGadgets K i).randElements count >>= f).run' st =
+    ((hybridCheckBuildingBlocks K i).randElements count >>= f).run' st =
       call (Sum.inr (Sum.inl count)) >>= fun o => match o with
         | some (.inr (.inl w)) => (f w).run' ⟨st.history, st.label + 1, st.tag⟩
         | _ => failure := by
-  simp only [hybridCheckGadgets, freshLabel, bind_assoc]
+  simp only [hybridCheckBuildingBlocks, freshLabel, bind_assoc]
   simp [StateT.run'_eq, StateT.run_bind, StateT.run_lift, StateT.run_modifyGet]
   refine bind_congr fun o => ?_
   rcases o with _ | ((v | z) | (w | w)) <;> simp [StateT.run_lift]
 
 theorem randBits_run' {α : Type} (count : ℕ) (f : PrssOutput C Bit → RunM C E (CheckSpec C E) α)
     (st : RunState C) :
-    ((hybridCheckGadgets K i).randBits count >>= f).run' st =
+    ((hybridCheckBuildingBlocks K i).randBits count >>= f).run' st =
       call (Sum.inr (Sum.inr count)) >>= fun o => match o with
         | some (.inr (.inr w)) => (f w).run' ⟨st.history, st.label + 1, st.tag⟩
         | _ => failure := by
-  simp only [hybridCheckGadgets, freshLabel, bind_assoc]
+  simp only [hybridCheckBuildingBlocks, freshLabel, bind_assoc]
   simp [StateT.run'_eq, StateT.run_bind, StateT.run_lift, StateT.run_modifyGet]
   refine bind_congr fun o => ?_
   rcases o with _ | ((v | z) | (w | w)) <;> simp [StateT.run_lift]
 
 theorem challenge_run' {α : Type} (f : E → RunM C E (CheckSpec C E) α) (st : RunState C) :
-    (challenge K (hybridCheckGadgets K i) >>= f).run' st =
+    (challenge K (hybridCheckBuildingBlocks K i) >>= f).run' st =
       call (Sum.inl (Sum.inl 2)) >>= fun o => match o with
         | some (.inl (.inl v)) => oracleStep (challengeQuery K st.tag st.label v) >>= fun r => match r with
           | some r => (f r).run' ⟨st.history, st.label + 1, st.tag⟩
           | none => failure
         | _ => failure := by
-  simp only [challenge, coinKey, bind_assoc, hybridCheckGadgets, freshLabel, challengeQuery, oracleStep_bind]
+  simp only [challenge, coinKey, bind_assoc, hybridCheckBuildingBlocks, freshLabel, challengeQuery,
+      oracleStep_bind]
   simp [StateT.run'_eq, StateT.run_bind, StateT.run_lift, StateT.run_modifyGet, StateT.run_get]
   refine bind_congr fun o => ?_
   rcases o with _ | ((v | z) | w) <;> simp [StateT.run_lift]
   refine bind_congr fun key => bind_congr fun r => ?_
   rcases r with _ | r <;> simp [StateT.run_lift]
 
-end GadgetSteps
+end BuildingBlockSteps
 
 end
 
@@ -1865,7 +1867,8 @@ theorem final_bound [Nonempty C.Party] (A B : C.Party → ℕ → E) (D : C.Part
     (h : C.Party → C.Term → List Bit) (hh : HistAgree h) (L : ℕ) (Ks : Finset HashOutput) (s : HashCache C)
     (hs : CacheOK Ks L s) (fuel : ℕ) :
     Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => (finalStep K (localContext i) (hybridCheckGadgets K i) (A i, B i, D i)).run'
+      (honestStart
+          (fun i => (finalStep K (localContext i) (hybridCheckBuildingBlocks K i) (A i, B i, D i)).run'
         ⟨h i, L, 0⟩) >>= honestRounds (checkFunctionalities K) checkReply (fuel + 6))).run' s}[z ≠ fun _ => some ()] ≤
       Ks.card / 2 ^ 256 + (2 / Fintype.card E) ^ challengeTries := by
   simp only [finalStep, randElements_run']
@@ -2008,8 +2011,9 @@ theorem halving_bound [Nonempty C.Party] (width : ℕ) (hwidth : 1 ≤ width) :
       ∀ (h : C.Party → C.Term → List Bit), HistAgree h → ∀ (L c : ℕ) (Ks : Finset HashOutput), Ks.card ≤ c →
       ∀ (s : HashCache C), CacheOK Ks L s → ∀ fuel : ℕ,
       Pr{let z ← (simulateQ (localAnswer prims)
-        (honestStart (fun i => ((List.range' j₀ n).foldlM (halvingStep K (localContext i) (hybridCheckGadgets K i) width)
-          (A i, B i, D i) >>= finalStep K (localContext i) (hybridCheckGadgets K i)).run' ⟨h i, L, 0⟩) >>=
+        (honestStart (fun i => ((List.range' j₀ n).foldlM (halvingStep K (localContext i) (hybridCheckBuildingBlocks K i) width)
+          (A i, B i, D i) >>= finalStep K (localContext i) (hybridCheckBuildingBlocks K i)).run'
+              ⟨h i, L, 0⟩) >>=
           honestRounds (checkFunctionalities K) checkReply (fuel + 2 * n + 6))).run' s}[z ≠ fun _ => some ()] ≤ chalErr E c (n + 1) := by
   intro n
   induction n with
@@ -2179,12 +2183,12 @@ theorem slice_bound [Nonempty C.Party] (τ : List E) (count : ℕ) (hτ : ∀ b 
       ∀ (h : C.Party → C.Term → List Bit), HistAgree h → ∀ (L c : ℕ) (Ks : Finset HashOutput), Ks.card ≤ c →
       ∀ (s : HashCache C), CacheOK Ks L s → ∀ fuel : ℕ,
       Pr{let z ← (simulateQ (localAnswer prims)
-        (honestStart (fun i => ((List.range' j₀ n).foldlM (sliceStep K (localContext i) (hybridCheckGadgets K i) τ count)
+        (honestStart (fun i => ((List.range' j₀ n).foldlM (sliceStep K (localContext i) (hybridCheckBuildingBlocks K i) τ count)
           (xs i, ys i, D i) >>= fun p =>
             (List.range (halvingSteps (sliceWidth count))).foldlM
-              (halvingStep K (localContext i) (hybridCheckGadgets K i) (sliceWidth count))
+              (halvingStep K (localContext i) (hybridCheckBuildingBlocks K i) (sliceWidth count))
               (conv K (localContext i) p.1, conv K (localContext i) p.2.1, p.2.2) >>=
-            finalStep K (localContext i) (hybridCheckGadgets K i)).run' ⟨h i, L, 0⟩) >>=
+            finalStep K (localContext i) (hybridCheckBuildingBlocks K i)).run' ⟨h i, L, 0⟩) >>=
           honestRounds (checkFunctionalities K) checkReply
             (fuel + 2 * n + 2 * halvingSteps (sliceWidth count) + 6))).run' s}[z ≠ fun _ => some ()] ≤
         chalErr E c (n + halvingSteps (sliceWidth count) + 1) := by
@@ -2294,12 +2298,12 @@ section StartPhase
 variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] (K : Constants C E) (i : C.Party)
 
 theorem coinKey_expand_run' {α : Type} (count : ℕ) (f : List E → RunM C E (CheckSpec C E) α) (st : RunState C) :
-    (coinKey K (hybridCheckGadgets K i) >>= fun key => expand K key count >>= f).run' st =
+    (coinKey K (hybridCheckBuildingBlocks K i) >>= fun key => expand K key count >>= f).run' st =
       call (Sum.inl (Sum.inl 2)) >>= fun o => match o with
         | some (.inl (.inl v)) => oracleStep (tauQuery K st.tag st.label v count) >>= fun τ =>
             (f τ).run' ⟨st.history, st.label + 1, st.tag⟩
         | _ => failure := by
-  simp only [coinKey, expand, bind_assoc, hybridCheckGadgets, freshLabel, tauQuery, oracleStep_bind]
+  simp only [coinKey, expand, bind_assoc, hybridCheckBuildingBlocks, freshLabel, tauQuery, oracleStep_bind]
   simp [StateT.run'_eq, StateT.run_bind, StateT.run_lift, StateT.run_modifyGet, StateT.run_get]
   refine bind_congr fun o => ?_
   rcases o with _ | ((v | z) | w) <;> simp [StateT.run_lift]
@@ -3028,8 +3032,8 @@ section CheckBounds
 variable (K : Constants C E) (i : C.Party)
 
 lemma hybrid_coin_queryBound (count : ℕ) :
-    RunBound ((hybridCheckGadgets K i).coin count) 0 := by
-  unfold hybridCheckGadgets
+    RunBound ((hybridCheckBuildingBlocks K i).coin count) 0 := by
+  unfold hybridCheckBuildingBlocks
   apply (RunBound.bind (m := 0) RunBound.freshLabel (fun _ => ?_)).mono (by omega)
   apply (RunBound.bind (m := 0) (RunBound.lift (PartyBound.call _)) (fun out => ?_)).mono (by omega)
   split
@@ -3037,8 +3041,8 @@ lemma hybrid_coin_queryBound (count : ℕ) :
   · exact RunBound.lift PartyBound.failure
 
 lemma hybrid_extendMult_queryBound (products : List (Product C E)) :
-    RunBound ((hybridCheckGadgets K i).extendMult products) 0 := by
-  unfold hybridCheckGadgets
+    RunBound ((hybridCheckBuildingBlocks K i).extendMult products) 0 := by
+  unfold hybridCheckBuildingBlocks
   apply (RunBound.bind (m := 0) RunBound.freshLabel (fun _ => ?_)).mono (by omega)
   apply (RunBound.bind (m := 0) (RunBound.lift (PartyBound.call _)) (fun out => ?_)).mono (by omega)
   split
@@ -3046,8 +3050,8 @@ lemma hybrid_extendMult_queryBound (products : List (Product C E)) :
   · exact RunBound.lift PartyBound.failure
 
 lemma hybrid_randElements_queryBound (count : ℕ) :
-    RunBound ((hybridCheckGadgets K i).randElements count) 0 := by
-  unfold hybridCheckGadgets
+    RunBound ((hybridCheckBuildingBlocks K i).randElements count) 0 := by
+  unfold hybridCheckBuildingBlocks
   apply (RunBound.bind (m := 0) RunBound.freshLabel (fun _ => ?_)).mono (by omega)
   apply (RunBound.bind (m := 0) (RunBound.lift (PartyBound.call _)) (fun out => ?_)).mono (by omega)
   split
@@ -3055,8 +3059,8 @@ lemma hybrid_randElements_queryBound (count : ℕ) :
   · exact RunBound.lift PartyBound.failure
 
 lemma hybrid_randBits_queryBound (count : ℕ) :
-    RunBound ((hybridCheckGadgets K i).randBits count) 0 := by
-  unfold hybridCheckGadgets
+    RunBound ((hybridCheckBuildingBlocks K i).randBits count) 0 := by
+  unfold hybridCheckBuildingBlocks
   apply (RunBound.bind (m := 0) RunBound.freshLabel (fun _ => ?_)).mono (by omega)
   apply (RunBound.bind (m := 0) (RunBound.lift (PartyBound.call _)) (fun out => ?_)).mono (by omega)
   split
@@ -3064,7 +3068,7 @@ lemma hybrid_randBits_queryBound (count : ℕ) :
   · exact RunBound.lift PartyBound.failure
 
 lemma hybrid_coinKey_queryBound :
-    RunBound (coinKey K (hybridCheckGadgets K i)) 1 := by
+    RunBound (coinKey K (hybridCheckBuildingBlocks K i)) 1 := by
   unfold coinKey
   exact ((RunBound.get).bind (fun st =>
     (hybrid_coin_queryBound K i 2).bind (fun values =>
@@ -3080,7 +3084,7 @@ lemma expand_queryBound {ι : Type} {G : OracleSpec ι} (key : HashOutput) (coun
     (fun k _ => (isQueryBoundP_map_iff ..).2 (hashQuery_queryBound _))
 
 lemma hybrid_challenge_queryBound :
-    RunBound (challenge K (hybridCheckGadgets K i)) (1 + challengeTries) := by
+    RunBound (challenge K (hybridCheckBuildingBlocks K i)) (1 + challengeTries) := by
   unfold challenge
   refine ((hybrid_coinKey_queryBound K i).bind (fun key =>
     (RunBound.lift (oracleStep_queryBound (findChallenge_queryBound K key challengeTries 0))).bind
@@ -3098,21 +3102,23 @@ lemma compareDigests_queryBound {ι : Type} {G : OracleSpec ι} (salts : Shares 
         RunBound.lift (PartyBound.require _))))).mono (by omega)
 
 lemma sliceStep_queryBound (τ : List E) (count : ℕ) (v : Shares C E × Shares C E × E) (j : ℕ) :
-    RunBound (sliceStep K (localContext i) (hybridCheckGadgets K i) τ count v j) (1 + challengeTries) := by
+    RunBound (sliceStep K (localContext i) (hybridCheckBuildingBlocks K i) τ count v j)
+        (1 + challengeTries) := by
   rcases v with ⟨xs, ys, D⟩
   unfold sliceStep
   exact ((hybrid_extendMult_queryBound K i _).bind (fun t =>
     (hybrid_challenge_queryBound K i).bind (fun r => RunBound.pure _))).mono (by omega)
 
 lemma halvingStep_queryBound (width : ℕ) (v : (ℕ → E) × (ℕ → E) × E) (j : ℕ) :
-    RunBound (halvingStep K (localContext i) (hybridCheckGadgets K i) width v j) (1 + challengeTries) := by
+    RunBound (halvingStep K (localContext i) (hybridCheckBuildingBlocks K i) width v j)
+        (1 + challengeTries) := by
   rcases v with ⟨A, B, D⟩
   unfold halvingStep
   exact ((hybrid_extendMult_queryBound K i _).bind (fun t =>
     (hybrid_challenge_queryBound K i).bind (fun r => RunBound.pure _))).mono (by omega)
 
 lemma finalStep_queryBound (v : (ℕ → E) × (ℕ → E) × E) :
-    RunBound (finalStep K (localContext i) (hybridCheckGadgets K i) v)
+    RunBound (finalStep K (localContext i) (hybridCheckBuildingBlocks K i) v)
       (2 * C.terms.length + (1 + challengeTries)) := by
   rcases v with ⟨A, B, D⟩
   unfold finalStep
@@ -3126,7 +3132,7 @@ lemma finalStep_queryBound (v : (ℕ → E) × (ℕ → E) × E) :
 
 /-- The query budget of one operator, including all branches that abort early. -/
 theorem check_queryBound (tuples : List (Tuple C)) :
-    RunBound (check K (localContext i) (hybridCheckGadgets K i) tuples)
+    RunBound (check K (localContext i) (hybridCheckBuildingBlocks K i) tuples)
       (halvings (tuples.map (·.count)).sum + 2 + coins (tuples.map (·.count)).sum +
         (halvings (tuples.map (·.count)).sum + 1) * challengeTries + 2 * C.terms.length) := by
   by_cases hz : (tuples.map (·.count)).sum = 0
@@ -6035,7 +6041,7 @@ theorem executePhase_extend (K : Constants C E) (D : C.Coalition) (A : CheckAdve
     (fuel : ℕ) (st : A.State) (products : C.Party → List (Product C E)) (hs : C.Party → RunState C)
     (f : C.Party → Shares C E → RunM C E (CheckSpec C E) α) :
     executePhase localRoles D A (checkFunctionalities K) (fuel+1) st
-      (fun i => ((hybridCheckGadgets K i).extendMult (products i) >>= f i).run' (hs i)) = (do
+      (fun i => ((hybridCheckBuildingBlocks K i).extendMult (products i) >>= f i).run' (hs i)) = (do
       let p ← runFunctionality localRoles D (rightAdversary (leftAdversary A)) (FextendMult K) st
         (fun i => if i ∈ D.1 then none else some (products i))
       executePhase localRoles D A (checkFunctionalities K) fuel p.1
@@ -6056,7 +6062,7 @@ theorem executePhase_extend_shift (K : Constants C E) (D : C.Coalition) (A : Che
     (h : ExtendViewRelation K D (fun i => if i ∈ D.1 then none else some (a i))
       (fun i => if i ∈ D.1 then none else some (b i))) :
     executePhase localRoles D A (checkFunctionalities K) (fuel+1) st
-      (fun i => ((hybridCheckGadgets K i).extendMult (a i) >>= f i).run' (hs i)) = (do
+      (fun i => ((hybridCheckBuildingBlocks K i).extendMult (a i) >>= f i).run' (hs i)) = (do
       let p ← runFunctionality localRoles D (rightAdversary (leftAdversary A)) (FextendMult K) st
         (fun i => if i ∈ D.1 then none else some (b i))
       let out := addHiddenOutput D (firstInput (fun j => if j ∈ D.1 then none else some (b j))).length
@@ -6081,7 +6087,7 @@ theorem executePhase_challenge (K : Constants C E) (D : C.Coalition) (A : CheckA
     (fuel : ℕ) (st : A.State) (hs : C.Party → RunState C)
     (f : C.Party → E → RunM C E (CheckSpec C E) α) :
     executePhase localRoles D A (checkFunctionalities K) (fuel+1) st
-      (fun i => (challenge K (hybridCheckGadgets K i) >>= f i).run' (hs i)) = (do
+      (fun i => (challenge K (hybridCheckBuildingBlocks K i) >>= f i).run' (hs i)) = (do
       let p ← runFunctionality localRoles D (leftAdversary (leftAdversary A)) (Fcoin (E := E)) st
         (fun i => if i ∈ D.1 then none else some 2)
       executePhase localRoles D A (checkFunctionalities K) fuel p.1
@@ -7829,7 +7835,7 @@ theorem executePhase_randElements (K : Constants C E) (D : C.Coalition) (A : Che
     (fuel : ℕ) (st : A.State) (count : C.Party → ℕ) (hs : C.Party → RunState C)
     (f : C.Party → PrssOutput C E → RunM C E (CheckSpec C E) α) :
     executePhase localRoles D A (checkFunctionalities K) (fuel+1) st
-      (fun i => ((hybridCheckGadgets K i).randElements (count i) >>= f i).run' (hs i)) = (do
+      (fun i => ((hybridCheckBuildingBlocks K i).randElements (count i) >>= f i).run' (hs i)) = (do
       let p ← runFunctionality localRoles D (leftAdversary (rightAdversary A)) (Frand E) st
         (fun i => if i ∈ D.1 then none else some (count i))
       executePhase localRoles D A (checkFunctionalities K) fuel p.1
@@ -7848,7 +7854,7 @@ theorem executePhase_randBits (K : Constants C E) (D : C.Coalition) (A : CheckAd
     (fuel : ℕ) (st : A.State) (count : C.Party → ℕ) (hs : C.Party → RunState C)
     (f : C.Party → PrssOutput C Bit → RunM C E (CheckSpec C E) α) :
     executePhase localRoles D A (checkFunctionalities K) (fuel+1) st
-      (fun i => ((hybridCheckGadgets K i).randBits (count i) >>= f i).run' (hs i)) = (do
+      (fun i => ((hybridCheckBuildingBlocks K i).randBits (count i) >>= f i).run' (hs i)) = (do
       let p ← runFunctionality localRoles D (rightAdversary (rightAdversary A)) (Frand Bit) st
         (fun i => if i ∈ D.1 then none else some (count i))
       executePhase localRoles D A (checkFunctionalities K) fuel p.1
@@ -7898,7 +7904,7 @@ theorem executePhase_randElements_first (prims : Primitives) (K : Constants C E)
     (hs : C.Party → RunState C) (f : C.Party → Shares C E → RunM C E (CheckSpec C E) α) :
     SameRun prims
       (executePhase localRoles D A (checkFunctionalities K) (fuel+1) st
-        (fun i => ((hybridCheckGadgets K i).randElements count >>= fun w => f i w.1).run' (hs i)))
+        (fun i => ((hybridCheckBuildingBlocks K i).randElements count >>= fun w => f i w.1).run' (hs i)))
       (do
         let p ← (leftAdversary (rightAdversary A)).answer st ()
         let fresh ← liftComp ($ᵗ (C.Term → Fin count → E)) (LocalSpec C)
@@ -7964,7 +7970,7 @@ theorem executePhase_maskedExtend (K : Constants C E) (D : C.Coalition) (Ad : Ch
     (fuel : ℕ) (st : Ad.State) (known : Shares C E) (w : MaskTable C E) (A B : C.Party → E)
     (hs : C.Party → RunState C) (f : C.Party → Shares C E → RunM C E (CheckSpec C E) α) :
     executePhase localRoles D Ad (checkFunctionalities K) (fuel+1) st
-      (fun i => ((hybridCheckGadgets K i).extendMult
+      (fun i => ((hybridCheckBuildingBlocks K i).extendMult
         (maskedProducts K A B i (randShares D 2 known w i)) >>= f i).run' (hs i)) = (do
       let p ← (rightAdversary (leftAdversary Ad)).answer st (maskedView K D known 0 A B)
       let fresh ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
@@ -8004,8 +8010,8 @@ theorem executePhase_finalMasks (prims : Primitives) (K : Constants C E)
     SameRun prims
       (executePhase localRoles D Ad (checkFunctionalities K) (fuel+2) st
         (fun i => (do
-          let w ← (hybridCheckGadgets K i).randElements 2
-          let q ← (hybridCheckGadgets K i).extendMult (maskedProducts K A B i w.1)
+          let w ← (hybridCheckBuildingBlocks K i).randElements 2
+          let q ← (hybridCheckBuildingBlocks K i).extendMult (maskedProducts K A B i w.1)
           f i w.1 q).run' (hs i)))
       (do
         let p ← (leftAdversary (rightAdversary Ad)).answer st ()
@@ -8019,7 +8025,7 @@ theorem executePhase_finalMasks (prims : Primitives) (K : Constants C E)
               (fun g => extendTotal K D (maskedInputs K D p.2.1 w A B) g+p'.2.1 g)
               p'.2.2.1 p'.2.2.2.1 p'.2.2.2.2 q i))) := by
   refine (executePhase_randElements_first prims K D Ad (fuel+1) st 2 hs
-    (fun i w => (hybridCheckGadgets K i).extendMult (maskedProducts K A B i w) >>= f i w)).trans ?_
+    (fun i w => (hybridCheckBuildingBlocks K i).extendMult (maskedProducts K A B i w) >>= f i w)).trans ?_
   refine SameRun.bind_right ((leftAdversary (rightAdversary Ad)).answer st ()) ?_
   intro p
   simp_rw [executePhase_maskedExtend]
@@ -8065,13 +8071,14 @@ theorem executePhase_randBits_missing (K : Constants C E) (D : C.Coalition)
     (f : C.Party → PrssOutput C Bit → RunM C E (CheckSpec C E) α)
     (hmissing : ∃ i,i ∉ D.1 ∧ ¬live i) :
     executePhase localRoles D A (checkFunctionalities K) (fuel+1) st
-      (fun i => if live i then ((hybridCheckGadgets K i).randBits count >>= f i).run' (hs i) else failure) =
+      (fun i => if live i then ((hybridCheckBuildingBlocks K i).randBits count >>= f i).run' (hs i) else
+          failure) =
       pure (st,fun _ => none) := by
   let next : C.Party → Option ((List E ⊕ Shares C E) ⊕ (PrssOutput C E ⊕ PrssOutput C Bit)) →
       PartyM C E (CheckSpec C E) α := fun i o => match o with
     | some (.inr (.inr w)) => (f i w).run' ⟨(hs i).history,(hs i).label+1,(hs i).tag⟩
     | _ => failure
-  have hp : (fun i => if live i then ((hybridCheckGadgets K i).randBits count >>= f i).run' (hs i) else failure) =
+  have hp : (fun i => if live i then ((hybridCheckBuildingBlocks K i).randBits count >>= f i).run' (hs i) else failure) =
       (fun i => optionalCall (if live i then some (.inr (.inr count)) else none) (next i)) := by
     funext i
     by_cases hi : live i <;> simp only [hi,if_true,if_false,optionalCall,randBits_run',next]
@@ -9414,7 +9421,7 @@ theorem tableDigests_fresh (prims : Primitives) (hist : C.Term → List Bit)
     intro d
     exact ih hn.2 (fun ds => k (d::ds))
 
-/-- The hiding theorem applies directly to the uniform table used by the actual salt gadget. -/
+/-- The hiding theorem applies directly to the uniform table used by the actual salt building block. -/
 theorem tableDigests_hide (prims : Primitives) (hist : C.Term → List Bit)
     (Ts : List C.Term) (hTs : Ts.Nodup) (cache : HashCache C)
     (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen)
@@ -10024,7 +10031,7 @@ theorem executePhase_randBits_first (prims : Primitives) (K : Constants C E)
     (hs : C.Party → RunState C) (f : C.Party → Shares C Bit → RunM C E (CheckSpec C E) α) :
     SameRun prims
       (executePhase localRoles D A (checkFunctionalities K) (fuel+1) st
-        (fun i => ((hybridCheckGadgets K i).randBits count >>= fun w => f i w.1).run' (hs i)))
+        (fun i => ((hybridCheckBuildingBlocks K i).randBits count >>= fun w => f i w.1).run' (hs i)))
       (do
         let p ← (rightAdversary (rightAdversary A)).answer st ()
         let fresh ← liftComp ($ᵗ (C.Term → Fin count → Bit)) (LocalSpec C)
@@ -10110,7 +10117,7 @@ variable {E Ia : Type}
 variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
 attribute [local instance] inhabitedField
 
-/-- For the actual salt gadget, known columns consume at most one outer digest per party;
+/-- For the actual salt building block, known columns consume at most one outer digest per party;
 all hypotheses about salt independence are discharged by its sampled-table definition. -/
 theorem executePhase_digestHide_randShares (prims : Primitives) (K : Constants C E) (D : C.Coalition)
     (A : CheckAdversary C E Ia) (fuel : ℕ) (st : A.State) (knownSalt : Shares C Bit)
@@ -10234,8 +10241,8 @@ lemma findChallenge_no_digest (K : Constants C E) (key : HashOutput) : ∀ tries
     · exact findChallenge_no_digest K key tries (index+1)
 
 lemma hybrid_challenge_no_digest (K : Constants C E) (i : C.Party) :
-    DigestRunBound (challenge K (hybridCheckGadgets K i)) := by
-  have hc : DigestRunBound (coinKey K (hybridCheckGadgets K i)) := by
+    DigestRunBound (challenge K (hybridCheckBuildingBlocks K i)) := by
+  have hc : DigestRunBound (coinKey K (hybridCheckBuildingBlocks K i)) := by
     unfold coinKey
     apply (DigestRunBound.of_zero RunBound.get).bind
     intro hs
@@ -10300,7 +10307,7 @@ variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E
 
 def finalAfterDigests (K : Constants C E) (i : C.Party) (wa wb a b d q0 q2 : E) :
     RunM C E (CheckSpec C E) Unit := do
-  let r ← challenge K (hybridCheckGadgets K i)
+  let r ← challenge K (hybridCheckBuildingBlocks K i)
   StateT.lift (finalOpenProgram K i (finalOpenVector wa wb a b d q0 q2 r))
 
 /-- The remaining source program after the digest comparison has no honest outer-digest calls. -/
@@ -10364,14 +10371,14 @@ theorem saltDigestPhase_hide (prims : Primitives) (K : Constants C E) (D : C.Coa
     letI : MeasurableSpace β := ⊤
     measureTVDist ((simulateQ (localAnswer prims)
       (executePhase localRoles D A (checkFunctionalities K) (fuel+1) st
-        (fun i => ((hybridCheckGadgets K i).randBits 256 >>= fun salts =>
+        (fun i => ((hybridCheckBuildingBlocks K i).randBits 256 >>= fun salts =>
           compareDigests (localContext i) salts.1 >>= f i).run' (hs i)) >>= tail)).run' cache)
       ((simulateQ (localAnswer prims) (saltGhostPhase K D A fuel st hs f tail)).run' cache) ≤
       ((C.terms.length*(seen.card+(fuel+1)*step+final+(C.n+1)*C.terms.length) : ℕ) : ℝ)/2^256 := by
   let : MeasurableSpace β := ⊤
   have hsame : SameRun prims
       (executePhase localRoles D A (checkFunctionalities K) (fuel+1) st
-        (fun i => ((hybridCheckGadgets K i).randBits 256 >>= fun salts =>
+        (fun i => ((hybridCheckBuildingBlocks K i).randBits 256 >>= fun salts =>
           compareDigests (localContext i) salts.1 >>= f i).run' (hs i)) >>= tail)
       ((rightAdversary (rightAdversary A)).answer st () >>= saltActualContinuation K D A fuel hs f tail) := by
     have hh := (executePhase_randBits_first prims K D A fuel st 256 hs

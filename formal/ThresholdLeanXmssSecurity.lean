@@ -1,5 +1,5 @@
 import ThresholdLeanXmss.Statement
-import ThresholdLeanXmssSecurity.Proof.Gadgets
+import ThresholdLeanXmssSecurity.Proof.BuildingBlocks
 import ThresholdLeanXmssSecurity.Proof.Tprf
 import ThresholdLeanXmssSecurity.Proof.Signing
 import ThresholdLeanXmssSecurity.Proof.Tree
@@ -27,7 +27,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningStronglyUnforgeable
 (`ThresholdLeanXmss/Statement/Theorems.lean`). It is the bundle `Theorems`, with one field for each of
 seventeen claims about the protocol of `ThresholdLeanXmss/Scheme.lean`. The theorem holds for every
 committee `n = 2t - 1`, every check field `E` with `2^128` elements, every `Th`, every circuit family
-and every setting. Each claim covers one protocol or one gadget alone. No claim composes the
+and every setting. Each claim covers one protocol or one building block alone. No claim composes the
 seed generation, the ceremonies and the signing. `statement.tex` holds the deployment contract and a sketch
 of that composition, with its open points. The module doc of `Statement/Theorems.lean` holds the full
 model. The module docs
@@ -79,9 +79,9 @@ claim with the budget of every party. That claim is no field of the bundle.
    `H` (CDG+18). Honest commitments become fresh values until a call hits a commitment input.
    `seedGenProgramAliasBound` pays the programming collisions. The bad events fit `seedGenHashError`.
 
-## Gadgets, check and batch
+## Building blocks, check and batch
 
-1. `coinSecurity`, `coinCompleteness`, `multStatement` and `extendMultSecurity` (`Proof/Gadgets`)
+1. `coinSecurity`, `coinCompleteness`, `multStatement` and `extendMultSecurity` (`Proof/BuildingBlocks`)
    follow GS20, Lemmas 3 to 5, in the `F_rand`-hybrid model, with `cdi05_pair_has_holder`,
    `cdi05_mulRep_correct`, `cdi05_conv_correct` and `gs20_mulSh_correct`.
 2. `multVerifyClosed` (`Proof/CheckSplit`) gives `MultVerifyStatement`. The digests compare the copies
@@ -160,7 +160,7 @@ The statement layer is `ThresholdLeanXmss/`. The proofs are in `ThresholdLeanXms
 * `Lemmas`, `Execution` and `Coupling` hold the paper lemmas named after their source, the
   execution model and the round-by-round coupling.
 * `SeedGen*` holds seed generation completeness and the seed generation simulation.
-* `Gadgets`, `Check*` and `Main*` hold the gadgets, the check and the batch.
+* `BuildingBlocks`, `Check*` and `Main*` hold the building blocks, the check and the batch.
 * `Tree` and `Dealer` hold the tree completeness, the dealer and the tree success. `TreeSim` and
   `TreeCheckKernelCoupling` hold lemmas on the runs of a ceremony that the signing proof uses.
   `CeremonyIndex` holds the position of a batch in a ceremony, for the simulator of the claim that

@@ -266,9 +266,9 @@ theorem simulateQ_fixedLocal_prssRounds (F : Functionality C I O L R) (reply : L
 
 end PrssSetup
 
-/-! ## Tree completeness, the real gadgets with `H` fixed -/
+/-! ## Tree completeness, the real building blocks with `H` fixed -/
 
-section RealGadgets
+section RealBuildingBlocks
 
 variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] (prims : Primitives) {ι : Type} {G : OracleSpec ι}
 
@@ -337,7 +337,7 @@ theorem sum_honestPairs {R : Type} [Field R] [CharP R 2] (h : Query C → HashOu
   have hji : j ≠ i := Finset.ne_of_mem_erase hj
   rw [dif_neg hji, dif_neg (Ne.symm hji)]
 
-end RealGadgets
+end RealBuildingBlocks
 
 /-! ### An honest peer reshare -/
 
@@ -697,7 +697,7 @@ def contextProductValues (ctx : Context C) (products : List (Product C E)) : ℕ
   fun g => match products[g]? with | some p => productShare K ctx p | none => 0
 
 theorem realExtendMult_run (ctx : Context C) (products : List (Product C E)) (st : RunState C) :
-    ((realCheckGadgets (G := G) K ctx).extendMult products).run st =
+    ((realCheckBuildingBlocks (G := G) K ctx).extendMult products).run st =
       oracleStep (prssDraw ctx (elementCodec K) st.label 0 products.length) >>= fun o =>
         exchange (reshareOut K ctx (elementCodec K) o.1 o.2 (contextProductValues K ctx products) products.length) >>=
           fun inbox => pure (reshareZ K ctx (elementCodec K) o.1 o.2 (contextProductValues K ctx products) products.length inbox,
@@ -709,11 +709,11 @@ theorem realExtendMult_run (ctx : Context C) (products : List (Product C E)) (st
     rw [show o = (o.1, o.2) from rfl, reshare_run]; rfl))
 
 theorem realCoin_run (ctx : Context C) (count : ℕ) (st : RunState C) :
-    ((realCheckGadgets (G := G) K ctx).coin count).run st =
+    ((realCheckBuildingBlocks (G := G) K ctx).coin count).run st =
       oracleStep (prssDraw ctx (elementCodec K) st.label 1 count) >>= fun o =>
         openSh K ctx (conv K ctx o.1) count >>= fun opened => pure (vector count opened, nextLabel st) := by
   have := prssRandomness_run (G := G) ctx (elementCodec K) 1 count (fun o => coinWith K ctx o count) st
-  simp only [realCheckGadgets]
+  simp only [realCheckBuildingBlocks]
   rw [this]
   refine congrArg (_ >>= ·) (funext fun o => ?_)
   simp [coinWith, StateT.run_bind, StateT.run_lift]
@@ -725,7 +725,7 @@ theorem realRand_run {R : Type} [Zero R] (ctx : Context C) (codec : Codec C E R)
   simpa using this
 
 theorem realChallenge_run (ctx : Context C) (st : RunState C) :
-    (challenge K (realCheckGadgets (G := G) K ctx)).run st =
+    (challenge K (realCheckBuildingBlocks (G := G) K ctx)).run st =
       oracleStep (prssDraw ctx (elementCodec K) st.label 1 2) >>= fun o =>
         openSh K ctx (conv K ctx o.1) 2 >>= fun opened =>
           oracleStep (challengeQuery K st.tag st.label (vector 2 opened)) >>= fun r => match r with
@@ -742,7 +742,7 @@ theorem realChallenge_run (ctx : Context C) (st : RunState C) :
   · rfl
 
 theorem realTau_run (ctx : Context C) (count : ℕ) (st : RunState C) :
-    (coinKey K (realCheckGadgets (G := G) K ctx) >>= fun key => expand K key count).run st =
+    (coinKey K (realCheckBuildingBlocks (G := G) K ctx) >>= fun key => expand K key count).run st =
       oracleStep (prssDraw ctx (elementCodec K) st.label 1 2) >>= fun o =>
         openSh K ctx (conv K ctx o.1) 2 >>= fun opened =>
           oracleStep (tauQuery K st.tag st.label (vector 2 opened) count) >>= fun τ => pure (τ, nextLabel st) := by
@@ -857,7 +857,7 @@ theorem draw_step {β : Type} (F : Functionality C I O L R) (reply : L → R) (f
 
 end DrawStep
 
-section RealGadgetSteps
+section RealBuildingBlockSteps
 
 variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] {I O L R α : Type} (prims : Primitives)
   (K : Constants C E) (keys : C.Party → Keys C) (kT : C.Term → HashOutput) (kP : C.Pair → HashOutput)
@@ -903,7 +903,8 @@ theorem coin_step [Nonempty C.Party] (F : Functionality C I O L R) (reply : L �
       Pr{let z ← (simulateQ (localAnswer prims)
         (honestStart (fun i => g i v (nextLabel (st i))) >>= honestRounds F reply fuel)).run' s'}[event z] ≤ ε) :
     Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => ((realCheckGadgets K (prssCtx keys kT kP i)).coin 2).run (st i) >>= fun p =>
+      (honestStart
+          (fun i => ((realCheckBuildingBlocks K (prssCtx keys kT kP i)).coin 2).run (st i) >>= fun p =>
         g i p.1 p.2) >>= honestRounds F reply (fuel + 1))).run' s}[event z] ≤ ε := by
   haveI := charP_two (E := E)
   simp only [realCoin_run, hL, bind_assoc, pure_bind, openSh_prssCtx]
@@ -960,7 +961,7 @@ theorem extendMult_step [Nonempty C.Party] (F : Functionality C I O L R) (reply 
           ⟨recordHistory K i (st i).history (fun T k => if i ∈ C.holders T ∧ k < n then Z T k else 0) n,
             lab + 1, (st i).tag⟩) >>= honestRounds F reply fuel)).run' s'}[event z] ≤ ε) :
     Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => ((realCheckGadgets K (prssCtx keys kT kP i)).extendMult (products i)).run (st i) >>=
+      (honestStart (fun i => ((realCheckBuildingBlocks K (prssCtx keys kT kP i)).extendMult (products i)).run (st i) >>=
         fun p => g i p.1 p.2) >>= honestRounds F reply (fuel + 1))).run' s}[event z] ≤ ε := by
   haveI := charP_two (E := E)
   simp only [realExtendMult_run, hL, hlen, bind_assoc, pure_bind]
@@ -982,7 +983,7 @@ theorem extendMult_step [Nonempty C.Party] (F : Functionality C I O L R) (reply 
   simp only [hz]
   exact h Z (fun k => sum_honestShare K (prssCtx keys kT kP) rr zz _ (fun _ => rfl) k) s' hn' hle hfr
 
-end RealGadgetSteps
+end RealBuildingBlockSteps
 
 end ThresholdLeanXmssSecurity
 
@@ -1086,7 +1087,8 @@ theorem challenge_step [Nonempty C.Party] (F : Functionality C I O L R) (reply :
       Pr{let z ← (simulateQ (localAnswer prims)
         (honestStart (fun i => g i r (nextLabel (st i))) >>= honestRounds F reply fuel)).run' s'}[event z] ≤ ε) :
     Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => (challenge K (realCheckGadgets K (prssCtx keys kT kP i))).run (st i) >>= fun p =>
+      (honestStart
+          (fun i => (challenge K (realCheckBuildingBlocks K (prssCtx keys kT kP i))).run (st i) >>= fun p =>
         g i p.1 p.2) >>= honestRounds F reply (fuel + 1))).run' s}[event z] ≤
       (Ks.card / 2 ^ 256 + (2 / Fintype.card E) ^ challengeTries) + ε := by
   simp only [realChallenge_run, hL, hT, bind_assoc]
@@ -1116,7 +1118,7 @@ theorem tau_step [Nonempty C.Party] (F : Functionality C I O L R) (reply : L →
       Pr{let z ← (simulateQ (localAnswer prims)
         (honestStart (fun i => g i τ (nextLabel (st i))) >>= honestRounds F reply fuel)).run' s'}[event z] ≤ ε) :
     Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => (coinKey K (realCheckGadgets K (prssCtx keys kT kP i)) >>= fun key =>
+      (honestStart (fun i => (coinKey K (realCheckBuildingBlocks K (prssCtx keys kT kP i)) >>= fun key =>
         expand K key d).run (st i) >>= fun p => g i p.1 p.2) >>= honestRounds F reply (fuel + 1))).run' s}[event z] ≤
       (Ks.card / 2 ^ 256 + sliceBits / Fintype.card E) + ε := by
   simp only [realTau_run, hL, hT, bind_assoc, pure_bind]
@@ -1181,11 +1183,11 @@ variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] [Fintype E] [Decid
   (prims : Primitives) (K : Constants C E) (keys : C.Party → Keys C) (kT : C.Term → HashOutput)
   (kP : C.Pair → HashOutput)
 
-@[simp] theorem realCheckGadgets_randElements {ι : Type} {G : OracleSpec ι} (ctx : Context C) (c : ℕ) :
-    (realCheckGadgets (G := G) K ctx).randElements c = prssRandomness ctx (elementCodec K) 1 c := rfl
+@[simp] theorem realCheckBuildingBlocks_randElements {ι : Type} {G : OracleSpec ι} (ctx : Context C) (c : ℕ) :
+    (realCheckBuildingBlocks (G := G) K ctx).randElements c = prssRandomness ctx (elementCodec K) 1 c := rfl
 
-@[simp] theorem realCheckGadgets_randBits {ι : Type} {G : OracleSpec ι} (ctx : Context C) (c : ℕ) :
-    (realCheckGadgets (G := G) K ctx).randBits c = prssRandomness ctx bitCodec 2 c := rfl
+@[simp] theorem realCheckBuildingBlocks_randBits {ι : Type} {G : OracleSpec ι} (ctx : Context C) (c : ℕ) :
+    (realCheckBuildingBlocks (G := G) K ctx).randBits c = prssRandomness ctx bitCodec 2 c := rfl
 
 theorem rand_step' {R' : Type} [Field R'] (F : Functionality C I O L R) (reply : L → R) (fuel : ℕ)
     (codec : Codec C E R') (hdraw : ∀ name key ρ idx count, FrameR prims (codec.draw name key ρ idx count))
@@ -1214,7 +1216,7 @@ theorem extendMult_step' [Nonempty C.Party] (F : Functionality C I O L R) (reply
           ⟨recordHistory K i (st i).history (fun T k => if i ∈ C.holders T ∧ k < n then Z T k else 0) n,
             lab + 1, (st i).tag⟩)) >>= honestRounds F reply fuel)).run' s'}[event z] ≤ ε) :
     Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => ((realCheckGadgets K (prssCtx keys kT kP i)).extendMult (products i)).run (st i) >>=
+      (honestStart (fun i => ((realCheckBuildingBlocks K (prssCtx keys kT kP i)).extendMult (products i)).run (st i) >>=
         g i) >>= honestRounds F reply (fuel + 1))).run' s}[event z] ≤ ε :=
   extendMult_step prims K keys kT kP F reply fuel products n hlen st lab hL (fun i a b => g i (a, b)) event s hn ε h
 
@@ -1241,7 +1243,8 @@ theorem challenge_step' [Nonempty C.Party] (F : Functionality C I O L R) (reply 
       Pr{let z ← (simulateQ (localAnswer prims)
         (honestStart (fun i => g i (r, nextLabel (st i))) >>= honestRounds F reply fuel)).run' s'}[event z] ≤ ε) :
     Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => (challenge K (realCheckGadgets K (prssCtx keys kT kP i))).run (st i) >>= g i) >>=
+      (honestStart
+          (fun i => (challenge K (realCheckBuildingBlocks K (prssCtx keys kT kP i))).run (st i) >>= g i) >>=
         honestRounds F reply (fuel + 1))).run' s}[event z] ≤
       (Ks.card / 2 ^ 256 + (2 / Fintype.card E) ^ challengeTries) + ε :=
   challenge_step prims K keys kT kP F reply fuel st lab tg hL hT (fun i a b => g i (a, b)) event s hn Ks Lk hLk hs ε h
@@ -1257,7 +1260,7 @@ theorem tau_step' [Nonempty C.Party] (F : Functionality C I O L R) (reply : L �
       Pr{let z ← (simulateQ (localAnswer prims)
         (honestStart (fun i => g i (τ, nextLabel (st i))) >>= honestRounds F reply fuel)).run' s'}[event z] ≤ ε) :
     Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => (coinKey K (realCheckGadgets K (prssCtx keys kT kP i)) >>= fun key =>
+      (honestStart (fun i => (coinKey K (realCheckBuildingBlocks K (prssCtx keys kT kP i)) >>= fun key =>
         expand K key d).run (st i) >>= g i) >>= honestRounds F reply (fuel + 1))).run' s}[event z] ≤
       (Ks.card / 2 ^ 256 + sliceBits / Fintype.card E) + ε :=
   tau_step prims K keys kT kP F reply fuel d hd st lab tg hL hT (fun i a b => g i (a, b)) event s hn Ks Lk hLk hs ε h
@@ -1274,11 +1277,13 @@ theorem real_final_bound [Nonempty C.Party] (F : Functionality C I O L R) (reply
       Pr{let z ← (simulateQ (localAnswer prims)
         (honestStart (fun i => g i ⟨hist' i, lab + 4, tg⟩) >>= honestRounds F reply fuel)).run' s'}[event z] ≤ ε) :
     Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => (finalStep K (prssCtx keys kT kP i) (realCheckGadgets K (prssCtx keys kT kP i))
+      (honestStart
+          (fun i => (finalStep K (prssCtx keys kT kP i) (realCheckBuildingBlocks K (prssCtx keys kT kP i))
         (A i, B i, D i)).run ⟨hist i, lab, tg⟩ >>= fun p => g i p.2) >>= honestRounds F reply (fuel + 4))).run' s}[event z] ≤
       (Ks.card / 2 ^ 256 + (2 / Fintype.card E) ^ challengeTries) + ε := by
   haveI := charP_two (E := E)
-  simp only [finalStep, StateT.run_bind, bind_assoc, realCheckGadgets_randElements, realCheckGadgets_randBits]
+  simp only [finalStep, StateT.run_bind, bind_assoc, realCheckBuildingBlocks_randElements,
+      realCheckBuildingBlocks_randBits]
   refine rand_step' prims keys kT kP F reply (fuel + 4) (elementCodec K) (FrameR.elementDraw K) 1 2 _ lab
     (fun _ => rfl) _ event s hn _ fun r₁ zz₁ s₁ hn₁ hle₁ hfr₁ => ?_
   dsimp only [nextLabel]
@@ -1383,8 +1388,9 @@ theorem real_halving_bound [Nonempty C.Party] (F : Functionality C I O L R) (rep
           (honestStart (fun i => g i ⟨hist' i, lab + 2 * n + 4, tg⟩) >>= honestRounds F reply fuel)).run' s'}[event z] ≤ ε) →
       Pr{let z ← (simulateQ (localAnswer prims)
         (honestStart (fun i => ((List.range' j₀ n).foldlM (halvingStep K (prssCtx keys kT kP i)
-          (realCheckGadgets K (prssCtx keys kT kP i)) width) (A i, B i, D i)).run ⟨hist i, lab, tg⟩ >>= fun x =>
-            (finalStep K (prssCtx keys kT kP i) (realCheckGadgets K (prssCtx keys kT kP i)) x.1).run x.2 >>=
+          (realCheckBuildingBlocks K (prssCtx keys kT kP i)) width) (A i, B i, D i)).run ⟨hist i, lab, tg⟩ >>= fun x =>
+            (finalStep K (prssCtx keys kT kP i) (realCheckBuildingBlocks K (prssCtx keys kT kP i)) x.1).run
+                x.2 >>=
               fun p => g i p.2) >>= honestRounds F reply (fuel + 2 * n + 4))).run' s}[event z] ≤ chalErr E c (n + 1) + ε := by
   intro n
   induction n with
@@ -1488,11 +1494,12 @@ theorem real_slice_bound [Nonempty C.Party] (F : Functionality C I O L R) (reply
             honestRounds F reply fuel)).run' s'}[event z] ≤ ε) →
       Pr{let z ← (simulateQ (localAnswer prims)
         (honestStart (fun i => ((List.range' j₀ n).foldlM (sliceStep K (prssCtx keys kT kP i)
-          (realCheckGadgets K (prssCtx keys kT kP i)) τ count) (xs i, ys i, D i)).run ⟨hist i, lab, tg⟩ >>= fun p =>
+          (realCheckBuildingBlocks K (prssCtx keys kT kP i)) τ count) (xs i, ys i, D i)).run ⟨hist i, lab, tg⟩ >>= fun p =>
             ((List.range (halvingSteps (sliceWidth count))).foldlM (halvingStep K (prssCtx keys kT kP i)
-              (realCheckGadgets K (prssCtx keys kT kP i)) (sliceWidth count))
+              (realCheckBuildingBlocks K (prssCtx keys kT kP i)) (sliceWidth count))
               (conv K (prssCtx keys kT kP i) p.1.1, conv K (prssCtx keys kT kP i) p.1.2.1, p.1.2.2)).run p.2 >>= fun x =>
-            (finalStep K (prssCtx keys kT kP i) (realCheckGadgets K (prssCtx keys kT kP i)) x.1).run x.2 >>=
+            (finalStep K (prssCtx keys kT kP i) (realCheckBuildingBlocks K (prssCtx keys kT kP i)) x.1).run
+                x.2 >>=
               fun q => g i q.2) >>=
           honestRounds F reply (fuel + 2 * n + 2 * halvingSteps (sliceWidth count) + 4))).run' s}[event z] ≤
         chalErr E c (n + halvingSteps (sliceWidth count) + 1) + ε := by
@@ -1603,8 +1610,9 @@ variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] [Fintype E] [Decid
 
 theorem tau_split {ι : Type} {G : OracleSpec ι} {β : Type} (ctx : Context C) (d : ℕ) (st : RunState C)
     (f : List E × RunState C → PartyM C E G β) :
-    ((coinKey K (realCheckGadgets (G := G) K ctx)).run st >>= fun x => (expand K x.1 d).run x.2 >>= f) =
-      (coinKey K (realCheckGadgets K ctx) >>= fun key => expand K key d).run st >>= f := by
+    ((coinKey K (realCheckBuildingBlocks (G := G) K ctx)).run st >>= fun x => (expand K x.1 d).run x.2 >>=
+        f) =
+      (coinKey K (realCheckBuildingBlocks K ctx) >>= fun key => expand K key d).run st >>= f := by
   rw [StateT.run_bind, bind_assoc]
 
 /-- An honest real check of correct tuples. It aborts only on a coin. -/
@@ -1623,7 +1631,8 @@ theorem real_check_bound [Nonempty C.Party] (F : Functionality C I O L R) (reply
         (honestStart (fun i => g i ⟨hist' i, lab + 2 * halvings cnt + 5, tg⟩) >>=
           honestRounds F reply fuel)).run' s'}[event z] ≤ ε) :
     Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => (check K (prssCtx keys kT kP i) (realCheckGadgets K (prssCtx keys kT kP i))
+      (honestStart
+          (fun i => (check K (prssCtx keys kT kP i) (realCheckBuildingBlocks K (prssCtx keys kT kP i))
         (tuples i)).run ⟨hist i, lab, tg⟩ >>= fun p => g i p.2) >>=
           honestRounds F reply (fuel + 2 * halvings cnt + 5))).run' s}[event z] ≤
       (Ks.card / 2 ^ 256 + sliceBits / Fintype.card E) + (chalErr E (c + 1) (halvings cnt + 1) + ε) := by
@@ -1803,18 +1812,18 @@ variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] {I O L R α : Type
 
 theorem realMult_run {ι : Type} {G : OracleSpec ι} (ctx : Context C) (mode : ReshareMode) (x y : Shares C Bit)
     (count : ℕ) (st : RunState C) {β : Type} (f : Shares C Bit × RunState C → PartyM C E G β) :
-    ((realRunGadgets K ctx mode).mult x y count).run st >>= f =
+    ((realRunBuildingBlocks K ctx mode).mult x y count).run st >>= f =
       oracleStep (prssDraw ctx (bitCodec (E := E)) st.label 0 count) >>= fun o =>
         (reshareWith K ctx mode o (mulRep K ctx x y) count).run (nextLabel st) >>= f := by
-  simp only [realRunGadgets]
+  simp only [realRunBuildingBlocks]
   rw [prssRandomness_run, bind_assoc]
 
 theorem realRerand_run {ι : Type} {G : OracleSpec ι} (ctx : Context C) (mode : ReshareMode) (v : Shares C Bit)
     (count : ℕ) (st : RunState C) {β : Type} (f : Shares C Bit × RunState C → PartyM C E G β) :
-    ((realRunGadgets K ctx mode).rerand v count).run st >>= f =
+    ((realRunBuildingBlocks K ctx mode).rerand v count).run st >>= f =
       oracleStep (prssDraw ctx (bitCodec (E := E)) st.label 0 count) >>= fun o =>
         (reshare K ctx (bitCodec (E := E)) o (ownerSum K ctx v) count).run (nextLabel st) >>= f := by
-  simp only [realRunGadgets]
+  simp only [realRunBuildingBlocks]
   rw [prssRandomness_run, bind_assoc]
 
 /-- An honest real multiplication in `mode`. Every operator continues with its held terms of one
@@ -1830,7 +1839,7 @@ theorem mult_step [Nonempty C.Party] (F : Functionality C I O L R) (reply : L �
           ⟨recordMode K mode i (st i).history (fun T k => if i ∈ C.holders T ∧ k < n then z T k else 0) n,
             lab + 1, (st i).tag⟩)) >>= honestRounds F reply fuel)).run' s'}[event y] ≤ ε) :
     Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => ((realRunGadgets K (prssCtx keys kT kP i) mode).mult (X i) (Y i) n).run (st i) >>=
+      (honestStart (fun i => ((realRunBuildingBlocks K (prssCtx keys kT kP i) mode).mult (X i) (Y i) n).run (st i) >>=
         g i) >>= honestRounds F reply (fuel + mode.rounds))).run' s}[event z] ≤ ε := by
   simp only [realMult_run, hL]
   refine draw_step prims F reply _ _ (fun i => FrameR.prssDraw _ _ FrameR.bitDraw _ _ _) _ event s hn ε
@@ -2012,7 +2021,8 @@ theorem rerand_step [Nonempty C.Party] (F : Functionality C I O L R) (reply : L 
           ⟨recordMode K .peer i (st i).history (fun T k => if i ∈ C.holders T ∧ k < n then z T k else 0) n,
             lab + 1, (st i).tag⟩)) >>= honestRounds F reply fuel)).run' s'}[event y] ≤ ε) :
     Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => ((realRunGadgets K (prssCtx keys kT kP i) mode).rerand (V i) n).run (st i) >>=
+      (honestStart
+          (fun i => ((realRunBuildingBlocks K (prssCtx keys kT kP i) mode).rerand (V i) n).run (st i) >>=
         g i) >>= honestRounds F reply (fuel + 1))).run' s}[event z] ≤ ε := by
   simp only [realRerand_run, hL]
   refine draw_step prims F reply _ _ (fun i => FrameR.prssDraw _ _ FrameR.bitDraw _ _ _) _ event s hn ε
@@ -2138,9 +2148,10 @@ variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] [Fintype E] [Decid
   (prims : Primitives) (K : Constants C E) (keys : C.Party → Keys C) (kT : C.Term → HashOutput)
   (kP : C.Pair → HashOutput)
 
-theorem check_zero_run {ι : Type} {G : OracleSpec ι} (ctx : Context C) (gadgets : CheckGadgets C E G)
+theorem check_zero_run {ι : Type} {G : OracleSpec ι} (ctx : Context C)
+    (buildingBlocks : CheckBuildingBlocks C E G)
     (tuples : List (Tuple C)) (h0 : (tuples.map (·.count)).sum = 0) (st : RunState C) :
-    (check K ctx gadgets tuples).run st = pure ((), st) := by
+    (check K ctx buildingBlocks tuples).run st = pure ((), st) := by
   simp [check, h0]
 
 /-- An honest real check of correct tuples, with no tuple or with some tuples. -/
@@ -2159,7 +2170,8 @@ theorem real_check_any [Nonempty C.Party] (F : Functionality C I O L R) (reply :
         (honestStart (fun i => g i ((), ⟨hist' i, lab + checkLabels cnt, tg⟩)) >>=
           honestRounds F reply fuel)).run' s'}[event z] ≤ ε) :
     Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => (check K (prssCtx keys kT kP i) (realCheckGadgets K (prssCtx keys kT kP i))
+      (honestStart
+          (fun i => (check K (prssCtx keys kT kP i) (realCheckBuildingBlocks K (prssCtx keys kT kP i))
         (tuples i)).run ⟨hist i, lab, tg⟩ >>= g i) >>=
           honestRounds F reply (fuel + checkLabels cnt))).run' s}[event z] ≤ checkCost E c cnt Ks.card + ε := by
   by_cases hpos : cnt = 0
@@ -2228,7 +2240,7 @@ theorem tail_bound [Nonempty C.Party] (F : Functionality C I O L R) (reply : L �
         (honestStart (fun i => g i (mainOutputs jobs x, ⟨hist' i, lab + 1 + checkLabels cnt, tg⟩)) >>=
           honestRounds F reply fuel)).run' s'}[event z] ≤ ε) :
     Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => (tailBody K (realRunGadgets K (prssCtx keys kT kP i) mode) jobs (p i)).run
+      (honestStart (fun i => (tailBody K (realRunBuildingBlocks K (prssCtx keys kT kP i) mode) jobs (p i)).run
         ⟨hist i, lab, tg⟩ >>= g i) >>= honestRounds F reply (fuel + 1 + checkLabels cnt + 1))).run' s}[event z] ≤
       checkCost E c cnt Ks.card + ε := by
   set n := (outputsOf jobs).length with hn_def
@@ -2263,7 +2275,7 @@ theorem tail_bound [Nonempty C.Party] (F : Functionality C I O L R) (reply : L �
       rw [map_count_of_agree i _ _ (hlen' i) (hag' i), hTs', List.map_append, List.sum_append, ← hcnt]
       simp
   have hh₁ := histAgree_recordMode K .peer hist hh zv z n (fun i T g hi hg => by simp [hzv, hi, hg])
-  simp only [realRunGadgets]
+  simp only [realRunBuildingBlocks]
   rw [show fuel + 1 + checkLabels cnt = (fuel + 1) + checkLabels cnt from rfl]
   refine real_check_any prims K keys kT kP F reply _ cnt hcnt' (liftedPart Ts' (·.x)) (liftedPart Ts' (·.y))
     (liftedPart Ts' (·.z)) (fun i T hT => liftedPart_agree' i _ Ts' (hlen' i) (hag' i) T hT)
@@ -2325,9 +2337,9 @@ theorem layers_bound [Nonempty C.Party] (F : Functionality C I O L R) (reply : L
           (honestStart (fun i => g i (mainOutputs jobs x, ⟨hist' i, lab + k + 1 + checkLabels (tupleCount jobs), tg⟩)) >>=
             honestRounds F reply fuel)).run' s'}[event z] ≤ ε) →
       Pr{let z ← (simulateQ (localAnswer prims)
-        (honestStart (fun i => ((List.range' l k).foldlM (layerBody K (realRunGadgets K (prssCtx keys kT kP i) mode) jobs)
+        (honestStart (fun i => ((List.range' l k).foldlM (layerBody K (realRunBuildingBlocks K (prssCtx keys kT kP i) mode) jobs)
           (p i)).run ⟨hist i, lab, tg⟩ >>= fun q =>
-            (tailBody K (realRunGadgets K (prssCtx keys kT kP i) mode) jobs q.1).run q.2 >>= g i) >>=
+            (tailBody K (realRunBuildingBlocks K (prssCtx keys kT kP i) mode) jobs q.1).run q.2 >>= g i) >>=
           honestRounds F reply (fuel + k * mode.rounds + 1 + checkLabels (tupleCount jobs) + 1))).run' s}[event z] ≤
         checkCost E c (tupleCount jobs) Ks.card + ε := by
   intro k
@@ -2349,7 +2361,7 @@ theorem layers_bound [Nonempty C.Party] (F : Functionality C I O L R) (reply : L
       fun z hz s₁ hn₁ hle₁ hfr₁ => ?_
     dsimp only
     have hinv' := layerInv_step K jobs x mode l p W Ts hinv z hz
-    simp only [realRunGadgets] at hinv' ⊢
+    simp only [realRunBuildingBlocks] at hinv' ⊢
     refine ih (l + 1) _ _ _ (by omega) hinv' ?_ _
       (histAgree_recordMode K mode hist hh _ z _ fun i T g hi hg => by simp [hi, hg]) (lab + 1) tg Lk c Ks
       (by omega) hKs s₁ hn₁ (cacheOK_of_frame hs hfr₁) fuel g event ε fun hist' Ks' s' h1 h2 h3 h4 => ?_
@@ -2626,7 +2638,7 @@ theorem batch_step [Nonempty C.Party] (F : Functionality C I O L R) (reply : L �
             honestRounds F reply fuel)).run' s'}[event z] ≤ ε) :
     Pr{let z ← (simulateQ (localAnswer prims)
       (honestStart (fun i => (jobs.mapM (inputShares (prssCtx (dealtKeys parameter seeds pairKeys) kT kP i))) >>=
-        fun inputs => (runJobs K (realRunGadgets K (prssCtx (dealtKeys parameter seeds pairKeys) kT kP i) mode)
+        fun inputs => (runJobs K (realRunBuildingBlocks K (prssCtx (dealtKeys parameter seeds pairKeys) kT kP i) mode)
           (jobs.map (circuits parameter ·.kind)) inputs).run ⟨fun _ => [], lab, tg⟩ >>= g i) >>=
         honestRounds F reply (fuel + depth (jobs.map (circuits parameter ·.kind)) * mode.rounds + 1 +
           checkLabels (tupleCount (jobs.map (circuits parameter ·.kind))) + 1))).run' s}[event z] ≤
@@ -2678,7 +2690,7 @@ def realBatch (ctx : Context C) (parameter : PublicParameter) (jobs : List Job) 
     StateT (ℕ × ℕ) (PartyM C E RealSpec) (Option (List (List Bit))) := do
   let (label, k) ← get
   let inputs ← StateT.lift (jobs.mapM (inputShares ctx))
-  let (outputs, state) ← StateT.lift ((runJobs K (realRunGadgets K ctx mode) (jobs.map (circuits parameter ·.kind))
+  let (outputs, state) ← StateT.lift ((runJobs K (realRunBuildingBlocks K ctx mode) (jobs.map (circuits parameter ·.kind))
     inputs).run ⟨fun _ => [], label, k⟩)
   set (state.label, k + 1)
   pure (some outputs)
@@ -2686,7 +2698,7 @@ def realBatch (ctx : Context C) (parameter : PublicParameter) (jobs : List Job) 
 theorem realBatch_run (ctx : Context C) (parameter : PublicParameter) (jobs : List Job) (st : ℕ × ℕ) :
     (realBatch K circuits mode ctx parameter jobs).run st =
       jobs.mapM (inputShares ctx) >>= fun inputs =>
-        (runJobs K (realRunGadgets K ctx mode) (jobs.map (circuits parameter ·.kind)) inputs).run
+        (runJobs K (realRunBuildingBlocks K ctx mode) (jobs.map (circuits parameter ·.kind)) inputs).run
           ⟨fun _ => [], st.1, st.2⟩ >>= fun r => pure (some r.1, (r.2.label, st.2 + 1)) := by
   simp only [realBatch, StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, bind_assoc, StateT.run_set,
     StateT.run_pure]
@@ -3230,7 +3242,7 @@ omit [Fintype E] [DecidableEq E] in
 the batches of `jobs` with the new PRSS keys. -/
 theorem ceremonyRun_run (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairKeys : C.Pair → HashOutput)
     (i : C.Party) (jobs : List Job) (st : ℕ × ℕ) :
-    (ceremonyRun K circuits settings (fun ctx _ _ => realRunGadgets K ctx settings.mode) i
+    (ceremonyRun K circuits settings (fun ctx _ _ => realRunBuildingBlocks K ctx settings.mode) i
         (dealtKeys parameter seeds pairKeys i) jobs : StateT (ℕ × ℕ) (PartyM C E RealSpec) _).run st =
       prssSetup i >>= fun prss => ((chunks settings.batchSize jobs).mapM (realBatch K circuits settings.mode
         ⟨i, dealtKeys parameter seeds pairKeys i, prss⟩ parameter)).run st >>= fun p =>
@@ -5107,7 +5119,7 @@ theorem streamWorld_fresh_rel {C : Committee} (prims : Primitives) (D : C.Coalit
   apply relTriple_map
   exact relTriple_uniformSample_bij (AddGroup.addRight_bijective δ) _ (fun _ => ⟨rfl, rfl, rfl⟩)
 
-/-- A gadget continuation can consume the coupled tables with their exact resulting caches. -/
+/-- A building-block continuation can consume the coupled tables with their exact resulting caches. -/
 theorem streamWorld_fresh_bind_rel {C : Committee} (prims : Primitives) (D : C.Coalition)
     {n : ℕ} (addr : Fin n → ((KeyName C × HashOutput) × ℕ × ℕ × ℕ))
     (ha : Function.Injective addr) (hh : ∀ i, Hidden D (addr i).1.1)
@@ -9618,15 +9630,16 @@ theorem renameRun_compareDigests (ctx : Context C) (salts : Shares C Bit) :
       compareDigests (hiddenContextSwap D a b ctx) salts := by
   simp [compareDigests, hiddenContextSwap, simulateQ_list_mapM]
 
-/-- Rename every primitive gadget of a check, while retaining its data and schedule. -/
-def renameCheckGadgets (gadgets : CheckGadgets C E G) : CheckGadgets C E G where
-  coin n := renameRun D a b (gadgets.coin n)
-  extendMult xs := renameRun D a b (gadgets.extendMult xs)
-  randElements n := renameRun D a b (gadgets.randElements n)
-  randBits n := renameRun D a b (gadgets.randBits n)
+/-- Rename every primitive building block of a check, while retaining its data and schedule. -/
+def renameCheckBuildingBlocks (buildingBlocks : CheckBuildingBlocks C E G) : CheckBuildingBlocks C E G where
+  coin n := renameRun D a b (buildingBlocks.coin n)
+  extendMult xs := renameRun D a b (buildingBlocks.extendMult xs)
+  randElements n := renameRun D a b (buildingBlocks.randElements n)
+  randBits n := renameRun D a b (buildingBlocks.randBits n)
 
-theorem renameRun_coinKey (gadgets : CheckGadgets C E G) :
-    renameRun D a b (coinKey K gadgets) = coinKey K (renameCheckGadgets D a b gadgets) := by
+theorem renameRun_coinKey (buildingBlocks : CheckBuildingBlocks C E G) :
+    renameRun D a b (coinKey K buildingBlocks) = coinKey K
+        (renameCheckBuildingBlocks D a b buildingBlocks) := by
   simp only [coinKey, renameRun_bind, renameRun_get, renameRun_lift, renameParty_oracleStep,
     roStreamRename_hash]
   rfl
@@ -9636,8 +9649,9 @@ theorem renameRun_expand (key : HashOutput) (count : ℕ) :
       ThresholdLeanXmss.expand K key count := by
   simp [ThresholdLeanXmss.expand, simulateQ_list_mapM]
 
-theorem renameRun_challenge (gadgets : CheckGadgets C E G) :
-    renameRun D a b (challenge K gadgets) = challenge K (renameCheckGadgets D a b gadgets) := by
+theorem renameRun_challenge (buildingBlocks : CheckBuildingBlocks C E G) :
+    renameRun D a b (challenge K buildingBlocks) = challenge K
+        (renameCheckBuildingBlocks D a b buildingBlocks) := by
   unfold challenge
   rw [renameRun_bind, renameRun_coinKey]
   congr 1
@@ -9647,18 +9661,19 @@ theorem renameRun_challenge (gadgets : CheckGadgets C E G) :
   funext out
   cases out <;> simp
 
-theorem renameRun_check (ctx : Context C) (gadgets : CheckGadgets C E G) (tuples : List (Tuple C)) :
-    renameRun D a b (check K ctx gadgets tuples) =
-      check K (hiddenContextSwap D a b ctx) (renameCheckGadgets D a b gadgets) tuples := by
+theorem renameRun_check (ctx : Context C) (buildingBlocks : CheckBuildingBlocks C E G)
+    (tuples : List (Tuple C)) :
+    renameRun D a b (check K ctx buildingBlocks tuples) =
+      check K (hiddenContextSwap D a b ctx) (renameCheckBuildingBlocks D a b buildingBlocks) tuples := by
   simp only [check, renameRun_ite, renameRun_pure, renameRun_bind, renameRun_lift,
     renameParty_require, renameRun_expand, renameRun_coinKey, renameRun_foldlM,
     renameRun_challenge, renameRun_compareDigests, renameParty_openSh]
   rfl
 
-theorem rename_realCheckGadgets (ctx : Context C) :
-    renameCheckGadgets (G := G) D a b (realCheckGadgets K ctx) =
-      realCheckGadgets K (hiddenContextSwap D a b ctx) := by
-  unfold renameCheckGadgets realCheckGadgets
+theorem rename_realCheckBuildingBlocks (ctx : Context C) :
+    renameCheckBuildingBlocks (G := G) D a b (realCheckBuildingBlocks K ctx) =
+      realCheckBuildingBlocks K (hiddenContextSwap D a b ctx) := by
+  unfold renameCheckBuildingBlocks realCheckBuildingBlocks
   congr 1
   · funext count
     rw [renameRun_bind, renameRun_prssRandomness _ D a b (roStreamRename_elementCodec K D a b)]
@@ -9676,17 +9691,17 @@ theorem rename_realCheckGadgets (ctx : Context C) :
   · funext count
     exact renameRun_prssRandomness _ D a b (roStreamRename_bitCodec D a b) _ _ _
 
-def renameRunGadgets (gadgets : RunGadgets C E G) : RunGadgets C E G where
-  mode := gadgets.mode
-  mult x y n := renameRun D a b (gadgets.mult x y n)
-  rerand x n := renameRun D a b (gadgets.rerand x n)
-  verify xs := renameRun D a b (gadgets.verify xs)
-  output x n := renameRun D a b (gadgets.output x n)
+def renameRunBuildingBlocks (buildingBlocks : RunBuildingBlocks C E G) : RunBuildingBlocks C E G where
+  mode := buildingBlocks.mode
+  mult x y n := renameRun D a b (buildingBlocks.mult x y n)
+  rerand x n := renameRun D a b (buildingBlocks.rerand x n)
+  verify xs := renameRun D a b (buildingBlocks.verify xs)
+  output x n := renameRun D a b (buildingBlocks.output x n)
 
-theorem rename_realRunGadgets (ctx : Context C) (mode : ReshareMode) :
-    renameRunGadgets (G := G) D a b (realRunGadgets K ctx mode) =
-      realRunGadgets K (hiddenContextSwap D a b ctx) mode := by
-  unfold renameRunGadgets realRunGadgets
+theorem rename_realRunBuildingBlocks (ctx : Context C) (mode : ReshareMode) :
+    renameRunBuildingBlocks (G := G) D a b (realRunBuildingBlocks K ctx mode) =
+      realRunBuildingBlocks K (hiddenContextSwap D a b ctx) mode := by
+  unfold renameRunBuildingBlocks realRunBuildingBlocks
   congr 1
   · funext x y count
     rw [renameRun_bind, renameRun_prssRandomness _ D a b (roStreamRename_bitCodec D a b)]
@@ -9701,14 +9716,14 @@ theorem rename_realRunGadgets (ctx : Context C) (mode : ReshareMode) :
     rw [renameRun_reshare]
     rfl
   · funext tuples
-    rw [renameRun_check, rename_realCheckGadgets]
+    rw [renameRun_check, rename_realCheckBuildingBlocks]
   · funext v count
     rw [renameRun_lift, renameParty_openRep]
 
-theorem renameRun_runJobs (gadgets : RunGadgets C E G)
+theorem renameRun_runJobs (buildingBlocks : RunBuildingBlocks C E G)
     (jobs : List Circuit) (inputs : List (C.Term → List Bit)) :
-    renameRun D a b (runJobs K gadgets jobs inputs) =
-      runJobs K (renameRunGadgets D a b gadgets) jobs inputs := by
+    renameRun D a b (runJobs K buildingBlocks jobs inputs) =
+      runJobs K (renameRunBuildingBlocks D a b buildingBlocks) jobs inputs := by
   simp only [runJobs, renameRun_bind, renameRun_foldlM, renameRun_pure]
   rfl
 
@@ -9716,9 +9731,9 @@ theorem renameRun_runJobs (gadgets : RunGadgets C E G)
 renaming its honest stream requests. This includes the check and the final opening. -/
 theorem renameRun_realRunJobs (ctx : Context C) (mode : ReshareMode)
     (jobs : List Circuit) (inputs : List (C.Term → List Bit)) :
-    renameRun (G := G) D a b (runJobs K (realRunGadgets K ctx mode) jobs inputs) =
-      runJobs K (realRunGadgets K (hiddenContextSwap D a b ctx) mode) jobs inputs := by
-  rw [renameRun_runJobs, rename_realRunGadgets]
+    renameRun (G := G) D a b (runJobs K (realRunBuildingBlocks K ctx mode) jobs inputs) =
+      runJobs K (realRunBuildingBlocks K (hiddenContextSwap D a b ctx) mode) jobs inputs := by
+  rw [renameRun_runJobs, rename_realRunBuildingBlocks]
 
 end Protocol
 /-- The pending network interface is retained; only later honest stream queries are renamed. -/
@@ -9913,10 +9928,11 @@ theorem evalDist_lazyKey_realRunJobs_swap [Field E] [Algebra Bit E] (K : Constan
     (inputs : C.Party → List (C.Term → List Bit)) (rs : C.Party → RunState C) (s : HashCache C) :
     (simulateQ (lazyKeyWorld prims D)
       (executePhase worldRoles D A noFunctionality fuel state
-        (fun i => (runJobs K (realRunGadgets K (ctx i) mode) jobs (inputs i)).run (rs i)))).run' (s,∅) =ᵈ
+        (fun i => (runJobs K (realRunBuildingBlocks K (ctx i) mode) jobs (inputs i)).run (rs i)))).run'
+            (s,∅) =ᵈ
       (simulateQ (lazyKeyWorld prims D)
         (executePhase worldRoles D A noFunctionality fuel state
-          (fun i => (runJobs K (realRunGadgets K (hiddenContextSwap D a b (ctx i)) mode)
+          (fun i => (runJobs K (realRunBuildingBlocks K (hiddenContextSwap D a b (ctx i)) mode)
             jobs (inputs i)).run (rs i)))).run' (s,∅) := by
   refine (evalDist_lazyKeyPhase_rename prims D a b A fuel state _ s).trans ?_
   simp only [renameParty_runRun, renameRun_realRunJobs, EvalDistEq.refl]

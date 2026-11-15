@@ -44,7 +44,7 @@ these fields.
 Sections 2.1 and 2.3 of the note. Read also \texttt{Scheme.lean}, \texttt{Ideal.lean} and
 \texttt{Reductions.lean}, which define the protocol, the functionalities, the games, the simulators and the
 fixed reductions. Appendix B lists the differences from the sources. No claim is about Section 2.2
-of the note, the setup with $n=3f+1$. The note has no separate section for the MPC gadgets.
+of the note, the setup with $n=3f+1$. The note has no separate section for the MPC building blocks.
 
 \section{The setting}
 
@@ -69,7 +69,7 @@ The signing game of PRAWNS (Definition 3.2) \\
 Corruption & Static. The corrupt operators of each claim are fixed before its protocol starts. & Adaptive.
 The forger corrupts operators during the game. A corruption reveals only keys, because the setup state is
 erased. \\
-Network & The seed generation and ceremony claims use the real network and the real PRSS. The gadget
+Network & The seed generation and ceremony claims use the real network and the real PRSS. The building-block
 claims use hybrid models, where an ideal functionality replaces a sub-protocol. & The forger sends requests for the two signing rounds of a quorum. \\
 $\Th$ & A fixed function on the inputs that the MPC evaluates, namely the chain steps and $c_e$ & Part of
 the random oracle \\
@@ -95,7 +95,7 @@ call the counted copy of the oracles. The honest parties and the functionalities
 whose calls do not count. Both copies share one cache.
 \item In each simulation claim, the ideal run makes at most $q$ plus a fixed overhead of counted calls. An
 explicit simulator (seed generation, ceremony) is fixed code that emulates the honest parties for free,
-and only its programming queries count. For an existential simulator (gadgets), the claim only states that it
+and only its programming queries count. For an existential simulator (building blocks), the claim only states that it
 exists, and all its calls count, the emulation included \cite{Can00}.
 \item Strong unforgeability counts the own calls of the forger and its round-2 requests.
 \end{itemize}
@@ -203,8 +203,8 @@ then that bottom tree on it, except with probability at most $(1-p)^L$. Here $p=
 and $L$ is the limit of randomizer attempts. The term $(1-p)^L$ bounds the failure probability of the
 search for the top signature.
 
-\subsection*{The MPC gadgets}
-The gadget claims adapt the lemmas of GS20 to one batch of the model. Each claim holds on its valid inputs
+\subsection*{The MPC building blocks}
+The building-block claims adapt the lemmas of GS20 to one batch of the model. Each claim holds on its valid inputs
 below. These claims do not give the security of a ceremony, which is stated and not proved.
 \begin{center}\small
 \begin{tabularx}{\textwidth}{@{}lX@{}}
@@ -223,7 +223,7 @@ value, corrupt holders included. \\
 \bottomrule
 \end{tabularx}
 \end{center}
-In the gadget claims, $d$ and $R$ are the coin and halving counts for the number of input tuples.
+In the building-block claims, $d$ and $R$ are the coin and halving counts for the number of input tuples.
 GS20 gives no completeness lemma. A source marked ``honest run'' gives only a protocol.
 \paragraph{Coin} (\lean{CoinStatement}). In the $\Fn{rand}$ hybrid and on \lean{SameCount}, the coin
 protocol securely computes $\Fn{coin}$ with selective abort and error $0$ (GS20, Lemma 3).
@@ -481,7 +481,7 @@ advantage is in the open claim only. \\
 \addlinespace[2pt]
 A3 & Honest Shamir shares fix each sharing (GS20, Section~3.2). Functionalities 7, 9, 16 leak corrupt
 shares. & Honest copies can differ. $\Fn{mult}$, $\Fn{multVerify}$, $\Fn{main}$ also leak honest copies
-of terms that corrupt operators hold. & Gadget claims hold on valid inputs only. On \lean{MainInputs} the
+of terms that corrupt operators hold. & Building-block claims hold on valid inputs only. On \lean{MainInputs} the
 copy leak of $\Fn{main}$ gives no new value. \\
 \addlinespace[2pt]
 % Row A4 depends on the model change.
@@ -576,7 +576,7 @@ signature is a second ceremony with its own PRSS setup, after the local search. 
 \bottomrule
 \end{xltabular}}
 \noindent Five parts fall under the open claim \lean{TreeSecurityStatement}, which is stated and not
-proved. They are the real gadgets in the place of the ideal ones, the PRSS in the place of $\Fn{rand}$ (B2),
+proved. They are the real building blocks in the place of the ideal ones, the PRSS in the place of $\Fn{rand}$ (B2),
 the sequence of batches (B6), the echo of a PRSS setup, and the opening of $c_e$ by the MPC (B8). No claim
 covers the join of the two ceremonies of a bottom tree (B13). The separate claim
 \lean{SigningSecurityStatement}, outside the bundle, uses the budget of every party, as leanXMSS does at

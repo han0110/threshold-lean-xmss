@@ -7,11 +7,11 @@ A ceremony starts at public counters. The tag of a batch is the batch counter, a
 start at zero in a signature ceremony. `ceremonySimulator` reads the outputs of `F_ceremony` at the
 position `k - counters.2` of batch `k`.
 
-* `ceremonyWith_position` states that the batch at position `j` of a ceremony runs with the gadgets
+* `ceremonyWith_position` states that the batch at position `j` of a ceremony runs with the building blocks
   of position `j`, for every start of the counters. Its tag is `counters.2 + j`.
 * `getD_chunks_map` states that the outputs of `F_ceremony` at position `j` of `chunks` are the
   outputs of the jobs of batch `j`.
-* `ceremonySimulator_answer` states that `ceremonySimulator` runs `ceremonyWith` with such gadgets.
+* `ceremonySimulator_answer` states that `ceremonySimulator` runs `ceremonyWith` with such building blocks.
 
 This file imports only the statement layer.
 -/
@@ -46,37 +46,38 @@ section Programs
 variable [Field E] [Algebra Bit E] (K : Constants C E)
 
 /-- The batches of a ceremony from the label `label` and the tag `k`. The batch at position `j` has
-the tag `k + j - j₀` for the start `j₀` of the positions, and it runs with the gadgets
-`gadgets ctx j jobs` of its position. -/
-def batchesAt (circuits : Circuits) (gadgets : Context C → ℕ → List Job → RunGadgets C E G)
+the tag `k + j - j₀` for the start `j₀` of the positions, and it runs with the building blocks
+`buildingBlocks ctx j jobs` of its position. -/
+def batchesAt (circuits : Circuits) (buildingBlocks : Context C → ℕ → List Job → RunBuildingBlocks C E G)
     (ctx : Context C) : List (List Job) → ℕ → ℕ → ℕ →
       PartyM C E G (List (Option (List (List Bit))) × (ℕ × ℕ))
   | [], _, label, k => pure ([], (label, k))
   | jobs :: rest, j, label, k => do
       let inputs ← jobs.mapM (inputShares ctx)
-      let r ← (runJobs K (gadgets ctx j jobs) (jobs.map (circuits ctx.keys.parameter ·.kind)) inputs).run
+      let r ←
+          (runJobs K (buildingBlocks ctx j jobs) (jobs.map (circuits ctx.keys.parameter ·.kind)) inputs).run
         ⟨fun _ => [], label, k⟩
-      let rs ← batchesAt circuits gadgets ctx rest (j + 1) r.2.label (k + 1)
+      let rs ← batchesAt circuits buildingBlocks ctx rest (j + 1) r.2.label (k + 1)
       pure (some r.1 :: rs.1, rs.2)
 
-/-- A ceremony from the counters `(label, k₀ + j)`, with gadgets that read the position `k - k₀` of
+/-- A ceremony from the counters `(label, k₀ + j)`, with building blocks that read the position `k - k₀` of
 batch `k`. It is the PRSS setup and then the batches from position `j`. -/
 theorem ceremonyRun_position (circuits : Circuits) (settings : Settings)
-    (gadgets : Context C → ℕ → List Job → RunGadgets C E G) (i : C.Party) (keys : Keys C)
+    (buildingBlocks : Context C → ℕ → List Job → RunBuildingBlocks C E G) (i : C.Party) (keys : Keys C)
     (jobs : List Job) (label k₀ j : ℕ) :
-    (ceremonyRun K circuits settings (fun ctx k js => gadgets ctx (k - k₀) js) i keys jobs).run (label, k₀ + j) =
+    (ceremonyRun K circuits settings (fun ctx k js => buildingBlocks ctx (k - k₀) js) i keys jobs).run (label, k₀ + j) =
       prssSetup i >>= fun prss =>
-        batchesAt K circuits gadgets ⟨i, keys, prss⟩ (chunks settings.batchSize jobs) j label (k₀ + j) >>= fun p =>
+        batchesAt K circuits buildingBlocks ⟨i, keys, prss⟩ (chunks settings.batchSize jobs) j label (k₀ + j) >>= fun p =>
           pure (p.1.foldlM (fun acc batch => batch.map (acc ++ ·)) [], p.2) := by
   have hbatches : ∀ (ctx : Context C) (batches : List (List Job)) (label j : ℕ),
       (batches.mapM (fun js => (do
         let (label, k) ← get
         let inputs ← StateT.lift (js.mapM (inputShares ctx))
-        let (outputs, state) ← StateT.lift ((runJobs K (gadgets ctx (k - k₀) js)
+        let (outputs, state) ← StateT.lift ((runJobs K (buildingBlocks ctx (k - k₀) js)
           (js.map (circuits ctx.keys.parameter ·.kind)) inputs).run ⟨fun _ => [], label, k⟩)
         set (state.label, k + 1)
         pure (some outputs) : StateT (ℕ × ℕ) (PartyM C E G) (Option (List (List Bit)))))).run (label, k₀ + j) =
-      batchesAt K circuits gadgets ctx batches j label (k₀ + j) := by
+      batchesAt K circuits buildingBlocks ctx batches j label (k₀ + j) := by
     intro ctx batches
     induction batches with
     | nil => intro label j; simp [batchesAt]
@@ -92,17 +93,18 @@ theorem ceremonyRun_position (circuits : Circuits) (settings : Settings)
     (hbatches ⟨i, keys, prss⟩ (chunks settings.batchSize jobs) label j)
 
 /-- The ceremony that `ceremonySimulator` runs. From every start `counters`, the batch at position
-`j` runs with the gadgets of position `j`, and the tag of its coin keys is `counters.2 + j`. -/
+`j` runs with the building blocks of position `j`, and the tag of its coin keys is `counters.2 + j`. -/
 theorem ceremonyWith_position (circuits : Circuits) (settings : Settings)
-    (gadgets : Context C → ℕ → List Job → RunGadgets C E G) (i : C.Party) (keys : Keys C)
+    (buildingBlocks : Context C → ℕ → List Job → RunBuildingBlocks C E G) (i : C.Party) (keys : Keys C)
     (counters : ℕ × ℕ) (jobs : List Job) :
-    ceremonyWith K circuits settings (fun ctx k js => gadgets ctx (k - counters.2) js) i keys counters jobs =
+    ceremonyWith K circuits settings (fun ctx k js => buildingBlocks ctx (k - counters.2) js) i keys counters
+        jobs =
       prssSetup i >>= fun prss =>
-        batchesAt K circuits gadgets ⟨i, keys, prss⟩ (chunks settings.batchSize jobs) 0 counters.1 counters.2 >>=
+        batchesAt K circuits buildingBlocks ⟨i, keys, prss⟩ (chunks settings.batchSize jobs) 0 counters.1 counters.2 >>=
           fun p => match p.1.foldlM (fun acc batch => batch.map (acc ++ ·)) [] with
             | some outputs => pure outputs
             | none => failure := by
-  have h := ceremonyRun_position K circuits settings gadgets i keys jobs counters.1 counters.2 0
+  have h := ceremonyRun_position K circuits settings buildingBlocks i keys jobs counters.1 counters.2 0
   rw [Nat.add_zero] at h
   unfold ceremonyWith
   rw [StateT.run'_eq, show counters = (counters.1, counters.2) from rfl, h]
@@ -121,18 +123,18 @@ variable [Field E] [Algebra Bit E] (K : Constants C E)
 
 attribute [local instance] Classical.propDecidable
 
-/-- The gadgets of `ceremonySimulator` for the batch at position `j`. The opening shifts the first
+/-- The building blocks of `ceremonySimulator` for the batch at position `j`. The opening shifts the first
 lacked term by the outputs of `F_ceremony` at position `j` of `chunks`. -/
-def simulatorGadgets (circuits : Circuits) (settings : Settings) (D : C.Coalition) (parameter : PublicParameter)
+def simulatorBuildingBlocks (circuits : Circuits) (settings : Settings) (D : C.Coalition) (parameter : PublicParameter)
     (seeds : C.Term → HashOutput) (opened : List (List Bit)) (ctx : Context C) (j : ℕ) (batch : List Job) :
-    RunGadgets C E RealSpec :=
-  { realRunGadgets K ctx settings.mode with
+    RunBuildingBlocks C E RealSpec :=
+  { realRunBuildingBlocks K ctx settings.mode with
     output := fun v count => do
       let clear ← StateT.lift (oracleStep (batch.mapM (evalJob circuits parameter seeds)))
       let shift := fun g => (((chunks settings.batchSize opened).getD j []).flatten.getD g 0) + (clear.flatten.getD g 0)
       StateT.lift (openRep K ctx (fun T g => if lackedTerm D.1 = some T then v T g + shift g else v T g) count) }
 
-/-- `ceremonySimulator` runs `ceremonyWith` with gadgets that read the position `k - counters.2` of
+/-- `ceremonySimulator` runs `ceremonyWith` with building blocks that read the position `k - counters.2` of
 batch `k`. So `ceremonyWith_position` applies to the program that it runs. -/
 theorem ceremonySimulator_answer (circuits : Circuits) (settings : Settings) (counters : ℕ × ℕ) (jobs : List Job)
     (D : C.Coalition) (A : Adversary C E (Keys C) PEmpty PEmpty)
@@ -146,7 +148,7 @@ theorem ceremonySimulator_answer (circuits : Circuits) (settings : Settings) (co
         let (((state, outputs), _), calls) ← ((executePhase (emulatedRoles D) D A noFunctionality
           (ceremonyFuel circuits settings) st.adversary fun i =>
             (ceremonyWith K circuits settings (fun ctx k js =>
-              simulatorGadgets K circuits settings D parameter seeds opened ctx (k - counters.2) js)
+              simulatorBuildingBlocks K circuits settings D parameter seeds opened ctx (k - counters.2) js)
               i keys counters jobs : PartyM C E RealSpec (List (List Bit)))).run ∅).run
         pure (⟨state, st.log ++ calls, st.corrupt⟩, Finset.univ.filter fun i => (outputs i).isSome)) := rfl
 

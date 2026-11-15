@@ -35,7 +35,7 @@ Signer $P_i$ holds two kinds of secret keys, as in the key generation.
 - It holds $`\mathrm{seed}_T`$ for each term $T$ with $i \notin T$.
 - It holds $K_{ij} = K_{ji}$ for each other operator $j$.
 
-## 2. Gadgets
+## 2. Building blocks
 
 ### 2.1 Eval
 
