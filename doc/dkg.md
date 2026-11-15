@@ -760,7 +760,7 @@ These facts complete the table.
 - Gates with a public operand are linear.
 - With the extra outputs of a bottom tree, a quorum of $t$ signers unmasks $y_p$ with no MPC.
 
-A tree is a session of batches. Each batch runs the AND layers, $\mathsf{Rerand}$, the check and the $\mathsf{OpenRep}$ of 2. Signing a bottom root with its top key is one more run of the same shape.
+A ceremony is one PRSS setup and then the batches of a public job list, and it opens every output. Each batch runs the AND layers, $\mathsf{Rerand}$, the check and the $\mathsf{OpenRep}$ of 2. Signing a bottom root with its top key is a second ceremony of the same shape. It starts with its own PRSS setup, after the randomizer search on the root.
 
 The randomizer value $F(A_{\mathrm{rnd}}(e))$ of the top key does not depend on the bottom root. So it opens as one more output of the last commitment batch, and its hash output does not open.
 
@@ -797,7 +797,7 @@ A batch of 128 chains has $L = 72$ AND layers and $m = 24$ halvings. Its check c
 | open       | $\mathsf{OpenRep}$                                                                                                    | 1                             |
 | total      |                                                                                                                       | 126 (peer) or 198 (collector) |
 
-A commitment batch has 24 AND layers and 76 (peer) or 100 (collector) rounds, also with the top randomizer value. The PRSS setup adds 3 rounds and $32 (s + 3) + 16$ bytes from $P_i$ to each $P_j$ per ceremony, for $s$ shared terms.
+A commitment batch has 24 AND layers and 76 (peer) or 100 (collector) rounds, also with the top randomizer value. The PRSS setup adds 3 rounds and $32 (s + 3) + 16$ bytes from $P_i$ to each $P_j$ per ceremony, for $s$ shared terms. So a bottom tree pays it twice, once for its tree and once for the signature of its root.
 
 The AND layers dominate the bandwidth.
 
@@ -819,7 +819,7 @@ A bottom tree is $2^{16} \cdot 58$ chains, 29,696 chain batches. Signing takes 2
 
 ### 3.3 Security
 
-The key generation targets the property of [GS20, Thm. 2](https://eprint.iacr.org/2020/134). The target is that it securely computes the trusted dealer of $\mathsf{KeyGen}$ [BBDLN26](https://eprint.iacr.org/2026/2142) with abort, against a malicious adversary that statically corrupts up to $t - 1$ of the $n = 2t - 1$ operators. The Lean proof in `formal/` proves this for the seed generation. It proves each gadget secure for its own functionality, in the hybrid model of that gadget. It does not prove it for a tree ceremony. That claim is stated as `TreeSecurityStatement`, and no theorem proves it. No Lean theorem composes the seed generation, the ceremonies and the signing.
+The key generation targets the property of [GS20, Thm. 2](https://eprint.iacr.org/2020/134). The target is that it securely computes the trusted dealer of $\mathsf{KeyGen}$ [BBDLN26](https://eprint.iacr.org/2026/2142) with abort, against a malicious adversary that statically corrupts up to $t - 1$ of the $n = 2t - 1$ operators. The Lean proof in `formal/` proves this for the seed generation. It proves each gadget secure for its own functionality, in the hybrid model of that gadget. It does not prove it for a ceremony. That claim is `TreeSecurityStatement`, and it is stated and not proved. No Lean theorem composes the seed generation, the ceremonies and the signing.
 
 The claims cover only $n = 2t - 1$ and a classical adversary. The "Model" section of [`formal/ThresholdLeanXmss/Statement/Theorems.lean`](../formal/ThresholdLeanXmss/Statement/Theorems.lean) gives the full model.
 
@@ -853,13 +853,13 @@ The protocol differs from [GS20](https://eprint.iacr.org/2020/134) in three poin
 
 The fresh PRSS keys and the named commitments of 3.1 are not in the note [Wam26](https://github.com/TomWambsgans/sphincs.art/blob/9a528527d2d0ea41d2b3b322d2548c0828569a6d/leanXMSS.tex). The fresh keys make the random sharings independent of the outputs, as [GS20, Functionality 1](https://eprint.iacr.org/2020/134) and Hybrid 2 of [GS20, Lemma 4](https://eprint.iacr.org/2020/134) need.
 
-A failed session is rerun, because a tree is a function of the seeds.
+A failed run of a tree is run again. Correct outputs give the same tree, because a tree is a function of the public parameter, the seeds and the hash.
 
-Each claim covers the static coalition of one ceremony, corrupted before it. At most $t - 1$ operators are corrupted over the lifetime of the key. These separate claims give no end-to-end claim, which needs a composition as in [Can00](https://eprint.iacr.org/1998/018).
+Each claim covers the static coalition of one ceremony, corrupted before it. At most $t - 1$ operators are corrupted over the lifetime of the key. These separate claims give no end-to-end claim, which needs a composition as in [Can00](https://eprint.iacr.org/1998/018). No claim joins the two ceremonies of a bottom tree. [`formal/statement.tex`](../formal/statement.tex) holds the deployment contract and a sketch of the composition, with its open points.
 
-The claims cover ceremonies that run one at a time. A ceremony that runs during another ceremony or during a signing session is outside the claims. Production stays inside the claims if it builds each bottom tree with no other ceremony and no open signing session.
+The claims cover ceremonies that run one at a time. A ceremony that runs during another ceremony or during a signing session is outside the claims. So production must build each bottom tree with no ceremony of another tree and no open signing session.
 
-The claims cover a ceremony that runs its batches one after another. The implementation runs several batches of one ceremony at the same time, to limit the memory and to use the waits of the network. No claim covers these concurrent batches. The claims have a distinguisher that sees the final output, and such claims compose in sequence only. The result of [KLR10](https://dblp.uni-trier.de/rec/journals/siamcomp/KushilevitzLR10.html) gives concurrent composition for perfect security with a straight-line simulator. The check has a statistical error and the PRG is computational, so that result does not apply.
+The claims cover a ceremony that runs its batches one after another. The implementation runs the signature ceremony as one batch, and it runs several batches of one ceremony at the same time, to limit the memory and to use the waits of the network. No claim covers these concurrent batches. The claims have a distinguisher that sees the final output, and such claims compose in sequence only. The result of [KLR10](https://dblp.uni-trier.de/rec/journals/siamcomp/KushilevitzLR10.html) gives concurrent composition for perfect security with a straight-line simulator. The check has a statistical error and the PRG is computational, so that result does not apply.
 
 At the end of each ceremony, also on abort, an operator must erase its private ceremony state. It keeps only $P$, $`\mathrm{seed}_T`$, $K_{ij}$ and the public outputs. So a later corruption gives only the keys, as [`sign.md`](sign.md#4-security) assumes.
 

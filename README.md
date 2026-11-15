@@ -11,7 +11,7 @@ This repository implements threshold t-of-(2t-1) leanXMSS (EIP-8450) base on the
 
 See [`doc/dkg.md`](doc/dkg.md) for the DKG and [`doc/sign.md`](doc/sign.md) for signing.
 
-[`formal/`](formal) holds Lean 4 proofs of security claims of the protocol, for two main claims. The DKG acts as a trusted dealer of the keys and the trees. This claim is not complete. The seed generation is proved, and the security of a tree ceremony is stated and not proved. The signing with that dealer is correct and strongly unforgeable, and this claim is proved. See [`formal/README.md`](formal/README.md).
+[`formal/`](formal) holds Lean 4 proofs of security claims of the protocol, for two main claims. The DKG acts as a trusted dealer of the keys and the trees. This claim is not complete. The seed generation is proved, and the security of a ceremony is stated and not proved. The signing with that dealer is correct and strongly unforgeable, and this claim is proved. See [`formal/README.md`](formal/README.md).
 
 The code uses leanVM at revision `f5f3672f`. leanVM does not make some leanXMSS items public at this revision, so [`src/lean_xmss.rs`](src/lean_xmss.rs) holds verbatim copies of them.
 
@@ -81,7 +81,7 @@ The table gives the cost of one bottom tree, which holds $2^{16}$ one-time keys.
 
 - The CPU is Intel Core i9-13900K. Each operator has $8$ of its threads.
 - Each operator runs $512$ batches at the same time.
-- The wall time is the MPC time of one full bottom tree, as operator 0 logs it.
+- The wall time is the MPC time of one full bottom tree, as operator 0 logs it. The logged time and bytes do not include the two PRSS setups and the signature of the root.
 - The delay is a fixed $150$ ms one way on every link, with TCP buffers of $128$ MB.
 - The links have no bandwidth limit, jitter or loss, so a real network can take longer.
 - The runs predate the reshare of the outputs before the check. The code now takes $198$ (collector) or $126$ (peer) rounds per batch.
