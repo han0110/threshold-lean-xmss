@@ -60,14 +60,6 @@ theorem programFree_tsigFinishLogged (x : SigningSecurityProof.Keys3 C) (top : T
     (SigningGuessLinkProof.tsigFinishLogged_forget (dealtOf x top) trees p)).mpr
       (SigningHitProof.programFree_finish x top p)
 
-set_option maxRecDepth 100000 in
-/-- The complete joint program has no programming query on any response branch. -/
-theorem programFree_verifyFinal (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    SigningHitProof.ProgramFree (SigningGuessLinkProof.verifyFinal A x) := by
-  classical
-  exact (isQueryBoundP_iff_of_map_eq (SigningGuessLinkProof.verifyFinal_forget A x)).mpr
-    (SigningHitProof.programFree_finalRun A x)
-
 /-- The result and the unreleased candidates of the joint run. -/
 abbrev JointResult (C : Committee) :=
   Result C × List (SigningOpeningProof.HiddenKey × Digest)
@@ -166,52 +158,6 @@ theorem evalDist_jointGame_eq (prims : Primitives)
   (evalDist_map_restOf (hashLaw_jointGame prims W' hW' A x) ∅
     ((0, []), ((SigningCoreProof.tsigInit, false), ∅, []))).symm
 
-/-- The canonical-base grind of the flat run, with the extra opening state carried along. -/
-def jointGrindExtra (P : PublicParameter) (ρ : KeyIndex → Digest) (p : FlatJointState C)
-    (t : (WorldSpec C).Domain) (p' : FlatJointState C) :
-    OracleComp (Query C →ₒ HashOutput) Unit :=
-  grindExtra P ρ (p.1, p.2.1) t (p'.1, p'.2.1)
-
-/-- The joint run with an eager grind at each canonical base call. -/
-def jointEagerRun (prims : Primitives) (P : PublicParameter) (ρ : KeyIndex → Digest)
-    (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    ProbComp (JointResult C × FlatJointState C) :=
-  (jointGame (eagerWorld prims (jointGrindExtra P ρ)) A x).run jointInit
-
-/-- The eager joint run preserves the result, count, both logs and the carried state. -/
-theorem evalDist_jointEagerRun_rest (prims : Primitives) (P : PublicParameter)
-    (ρ : KeyIndex → Digest) (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    ((fun z => (z.1, restOf z.2)) <$> jointEagerRun prims P ρ A x) =ᵈ
-      ((fun z => (z.1, restOf z.2)) <$>
-        (jointGame (carry (SigningCostProof.loggedImpl prims)) A x).run jointInit) :=
-  evalDist_jointGame_eq prims _ _ (hashLaw_eagerWorld prims _)
-    (hashLaw_carry_logged prims) A x
-
-/-- The eager law for `jointRun`: the result, verification candidates, count and call log have
-exactly the original joint distribution. -/
-theorem evalDist_jointEagerRun (prims : Primitives) (P : PublicParameter)
-    (ρ : KeyIndex → Digest) (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    ((fun z => (z.1, z.2.1.1.2, z.2.1.2)) <$> jointEagerRun prims P ρ A x) =ᵈ
-      ((fun z => (z.1, z.2.1.2, z.2.2)) <$> SigningUnchargedLoggedProof.jointRun prims A x) := by
-  have h := (evalDist_jointEagerRun_rest prims P ρ A x).map
-    (fun z : JointResult C × Rest C (OpeningState C) => (z.1, z.2.1))
-  simp only [Functor.map_map] at h
-  rw [← jointGame_eq_jointRun, Functor.map_map]
-  exact h
-
-/-- Any event on the observable joint outcome transports through the eager law. -/
-theorem probEvent_jointEagerRun (prims : Primitives) (P : PublicParameter)
-    (ρ : KeyIndex → Digest) (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
-    (event : JointResult C × (ℕ × QueryLog (WorldSpec C)) → Prop) :
-    Pr{let z ← jointEagerRun prims P ρ A x}[event (z.1, z.2.1.1.2, z.2.1.2)] =
-      Pr{let z ← SigningUnchargedLoggedProof.jointRun prims A x}[event (z.1, z.2.1.2, z.2.2)] := by
-  have h := evalDist_jointEagerRun prims P ρ A x
-  have hp : Pr{let y ← (fun z => (z.1, z.2.1.1.2, z.2.1.2)) <$> jointEagerRun prims P ρ A x}[event y] =
-      Pr{let y ← ((fun z => (z.1, z.2.1.2, z.2.2)) <$>
-        SigningUnchargedLoggedProof.jointRun prims A x)}[event y] := by
-    exact h.prEvent_eq event
-  simpa only [prEvent_map, Function.comp_def] using hp
-
 /-- info: 'ThresholdLeanXmssSecurity.SigningJointEagerProof.programFree_openingOracles' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms programFree_openingOracles
@@ -220,10 +166,6 @@ theorem probEvent_jointEagerRun (prims : Primitives) (P : PublicParameter)
 #guard_msgs (whitespace := lax) in
 #print axioms programFree_tsigFinishLogged
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningJointEagerProof.programFree_verifyFinal' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms programFree_verifyFinal
-
 /-- info: 'ThresholdLeanXmssSecurity.SigningJointEagerProof.hashLaw_jointGame' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms hashLaw_jointGame
@@ -231,18 +173,6 @@ theorem probEvent_jointEagerRun (prims : Primitives) (P : PublicParameter)
 /-- info: 'ThresholdLeanXmssSecurity.SigningJointEagerProof.jointGame_eq_jointRun' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms jointGame_eq_jointRun
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningJointEagerProof.evalDist_jointEagerRun_rest' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms evalDist_jointEagerRun_rest
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningJointEagerProof.evalDist_jointEagerRun' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms evalDist_jointEagerRun
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningJointEagerProof.probEvent_jointEagerRun' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms probEvent_jointEagerRun
 
 end SigningJointEagerProof
 end ThresholdLeanXmssSecurity

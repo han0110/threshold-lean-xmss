@@ -11,7 +11,7 @@ Each makes at most the charged calls that the own budget counts at its query.
 * A corruption and round 1 use the units of the base source. Their PRF and mask calls are no
   `.hash (.hash _)` call, so they make no charged call (`charges_corrupt`, `charges_round1`).
 * A tree request reveals the chain values of a stored top signature. The clause
-  `storedTopShape` states that none of them is a bottom opening, so the reveals keep the invariant
+  `WalkInv.storedTopShape` states that none of them is a bottom opening, so the reveals keep the invariant
   (`charges_tree`).
 * Round 1 binds the key before it releases a ready opening. `baseInv_bind` treats the binding with
   an exception of `ready` at the key, and the release or the test of readiness closes it.
@@ -385,7 +385,8 @@ theorem walk_prfValue (prims : Primitives) (seed : C.Term → HashOutput) (point
     walk_map P seeds Q s (walk_sourceHash P seeds Q s _ 0 fun _ h => by cases h) _) fun _ =>
       Walk.pure _ fun _ _ h => h) (fun _ _ h => h) (fun _ _ _ h => h) (by simp)
 
-/-- `walk_sourceBottomOnce`, which also states that a successful tree has `TopShape`. -/
+/-- The walk of `sourceBottomOnce` keeps `BaseInv` with no charged call, and a successful tree has
+`TopShape`. -/
 theorem walk_sourceBottomOnce_shape (top : TopTree) (b : XmssSecurity.TopIndex) :
     Walk P seeds Q s (BaseInv P seeds none none) 0
       (fun r src st => BaseInv P seeds none none src st ∧ ∀ tree, r = some tree → TopShape tree)

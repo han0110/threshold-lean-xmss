@@ -350,17 +350,6 @@ def addChallenge (st : TprfState C) (x : Point) (y : Digest) : TprfState C :=
 /-- The initial state of `tprfGame`. -/
 def tprfInit : TprfState C := ⟨∅, fun _ _ => ∅, ∅, fun _ => none⟩
 
-/-- `corrupt i` is refused. -/
-def CorruptRefused (st : TprfState C) (i : C.Party) : Prop :=
-  ∃ x ∈ st.challenged, ∃ ec, C.t ≤ (st.corrupt ∪ st.queried x ec ∪ {i}).card
-
-/-- `eval i J x ec` is refused. -/
-def EvalRefused (st : TprfState C) (i : C.Party) (J : C.Quorum) (x : Point) (ec : Message) : Prop :=
-  i ∉ J.1 ∨ (C.t ≤ (st.corrupt ∪ st.queried x ec ∪ {i}).card ∧ x ∈ st.challenged)
-
-/-- `challenge x` is refused. -/
-def ChallengeRefused (st : TprfState C) (x : Point) : Prop := ∃ ec, C.t ≤ (st.corrupt ∪ st.queried x ec).card
-
 open Classical in
 /-- The oracles of `tprfGame` with the world fused in. The adversary queries `adversary D` for the
 corrupt operators `D`, an honest `Eval` runs `evalH`, and a challenge runs `prfH` or `sampleH`. -/
@@ -1053,18 +1042,6 @@ theorem presampled_transport {σ' : Type} {getC' : σ' → SlotCache C} {setC' :
   have h := hk (out p (a, s)).1 (out p (a, s)).2 (by rw [hget']; exact hs)
   rw [hget'] at h
   exact h
-
-theorem presampled_ite (x : Slot C) {α : Type} (c : σ → Prop) [DecidablePred c] (m₁ m₂ : σ → StateT σ ProbComp α)
-    (hc : ∀ p v, c (setC p v) ↔ c p) (h₁ : ∀ p, Presampled getC setC x (m₁ p)) (h₂ : ∀ p, Presampled getC setC x (m₂ p))
-    (hm₁ : ∀ p v, m₁ (setC p v) = m₁ p) (hm₂ : ∀ p v, m₂ (setC p v) = m₂ p) :
-    Presampled getC setC x (StateT.mk fun p => if c p then (m₁ p).run p else (m₂ p).run p) := by
-  intro p hp β k hk
-  simp only [StateT.run_mk, hc]
-  split_ifs
-  · simp only [hm₁]
-    exact h₁ p p hp k hk
-  · simp only [hm₂]
-    exact h₂ p p hp k hk
 
 end Presample
 
@@ -1985,10 +1962,6 @@ theorem symCore_challenge_run (b : Bool) (x : Point) (p : TprfState C × HashCac
           else (prfSlots x).run p.2) := by
   simp only [gameImplWith, StateT.run_mk]
 
-theorem viewInv_afterStep {v : SymState C × Bool} {records reads} (hv : ViewInv v records reads)
-    (t : (LocalSpec C + TprfSpec C).Domain) (c : HashCache C) :
-    ViewInv (afterStep seeds pairKeys v t v.1.1.1 c) records reads := hv
-
 set_option maxRecDepth 10000 in
 /-- The symbolic game on a full table gives the same weights for both `b`. -/
 theorem balanced_simulateQ (oa : OracleComp (LocalSpec C + TprfSpec C) Bool) :
@@ -2505,17 +2478,6 @@ theorem gameImplWith_corrupt_cases {σ' : Type}
     split_ifs at hz
     · simp only [support_pure, Set.mem_singleton_iff] at hz; subst hz; exact Or.inl rfl
     all_goals simp only [support_map, Set.mem_image] at hz; obtain ⟨w, -, rfl⟩ := hz; exact Or.inl rfl
-
-theorem symImpl_hit (σ : KeySlot C) (b : Bool) (parameter : PublicParameter) (t : (LocalSpec C + TprfSpec C).Domain)
-    (p : SymState C × Bool) (hD : ¬Revealed p.1.1.1.corrupt σ) {k : HashOutput} (hk : Hit σ t k) :
-    ∀ z ∈ support ((symImpl prims (updSeeds σ k seeds) (updPairs σ k pairKeys) b parameter t).run p),
-      σ ∈ z.2.1.2 := by
-  intro z hz
-  obtain ⟨u, rfl, hu⟩ := hk
-  simp only [symImpl, withFired, StateT.run_mk, support_map, Set.mem_image] at hz
-  obtain ⟨w, -, rfl⟩ := hz
-  simp only [Finset.mem_union, firedBy, Finset.mem_filter, Finset.mem_univ, true_and]
-  exact Or.inr ⟨hD, (exists_slot_iff_hitQuery seeds pairKeys σ u k).mpr hu⟩
 
 theorem symImpl_miss (σ : KeySlot C) (b : Bool) (parameter : PublicParameter) (t : (LocalSpec C + TprfSpec C).Domain)
     (p : SymState C × Bool) (hD : ¬Revealed p.1.1.1.corrupt σ) (hσ : σ ∉ p.1.2) (hrev : ¬RevealsAt σ p.1.1.1 t)

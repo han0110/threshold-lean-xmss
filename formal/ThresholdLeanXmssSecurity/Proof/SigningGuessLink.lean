@@ -15,8 +15,8 @@ A Guess forges a hidden honest chain value below the opened position. The verifi
   candidates of its calls in call order. `callCandidates` is the `hash` row of
   `unreleasedCandidates`. It filters with an explicit classical instance, because the kernel does
   not reduce the matcher of `unreleasedCandidates` on a chain input.
-* `verifyRun` is `openingRun` whose log ends with the candidates of the verification calls. Its
-  outcome type is the type of `openingRun`, so `HiddenInputHit` applies unchanged.
+* `verifyRun` is `exposedRun` with a log of the candidates of the adversary calls, followed by the
+  candidates of the verification calls. `HiddenInputHit` applies to its outcomes (`LoggedOutcome`).
   `verifyRun_forget` gives back `exposedRun` exactly.
 * `verifyRun_verification` gives the call-time data of the verification calls. They run at the
   final state of the oracles, their log ends the log of the run, and their cache is below the final
@@ -36,21 +36,8 @@ A Guess forges a hidden honest chain value below the opened position. The verifi
 * `reads_verify_chain` and `reads_verify_topChain` walk the verification of leanVM with the
   `CacheReplay` evaluation lemmas. The first step of chain `l` calls `H` on the forged value at the
   forged digit.
-* `guess_hiddenInputHit` and `probEvent_guess_le` give the Guess case of
-  `SigningGuessProof.winResidual_guess_or_bottomPartner` as a `HiddenInputHit`. The proof does not
-  use the win, so `UnchargedWin` only selects the case.
-
-## The top partner
-
-The table of `SigningOpening` lists the top partner as uncharged. The docstring of
-`winResidual_guess_or_bottomPartner` says that it is charged. Both are right for their own split.
-
-* `WinResidual` belongs to the split `WinOutput`/`WinResidual`. The separate hypothesis
-  `OutputLaneBound` bounds `WinOutput`, which includes every `TopPartner`.
-* In the split of `hiddenCoreAt_of_uncharged`, `ChargedOutput` holds only
-  `ResolvedTopPartner`. `topPartner_resolved` and `uncharged_topPartner_no_successful_bottom` show
-  that a top partner with a successful cached bottom tree is charged. A top partner without one
-  stays in `UnchargedWin`.
+* `guess_hiddenInputHit` gives a Guess of the forgery as a `HiddenInputHit`. The proof does not use
+  the win. `SigningLinkPaid` and `SigningAssembly` use it.
 
 ## The bottom-partner interface
 
@@ -144,8 +131,8 @@ theorem tsigFinishLogged_forget (dealt : Dealt C (OracleComp (WorldSpec C)))
   refine bind_congr fun v => ?_
   split_ifs <;> simp
 
-/-- `openingFinal` whose log also holds the unreleased candidates of the verification calls, after
-the candidates of the adversary calls. -/
+/-- `SigningDescentProof.finalRun` with a log of the unreleased candidates of the adversary calls,
+followed by the candidates of the verification calls. -/
 def verifyFinal (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
     OracleComp (WorldSpec C)
       (((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) × List (HiddenKey × Digest)) := do
@@ -684,26 +671,6 @@ theorem guess_hiddenInputHit (A : TsigAdversary C) (x : SigningSecurityProof.Key
     rw [if_pos ⟨rfl, hlt⟩]
     exact congrArg some hvalue.symm
 
-/-- The Guess case of `SigningGuessProof.winResidual_guess_or_bottomPartner` on an outcome of
-`exposedRun`. -/
-def GuessCase (x : SigningSecurityProof.Keys3 C) (r : SigningCostProof.Outcome C) : Prop :=
-  ∃ top state forgery, r.1.2 = some (top, state, forgery) ∧
-    let z := SigningCostProof.finalOf x r top state forgery
-    SigningDescentProof.Guess z.cache x.1 z.key (z.honestKey prims) forgery.message
-      (XmssSecurity.Bridge.toModelSig forgery.signature)
-
-set_option maxRecDepth 100000 in
-/-- An uncharged win in the Guess case raises the input-side flag on the extended log. The win is
-not needed, so the claim holds for every Guess. -/
-theorem probEvent_guess_le (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr{let r ←
-        SigningDescentProof.exposedRun prims A x}[SigningGuessProof.UnchargedWin prims x r ∧ GuessCase prims x r] ≤
-      Pr{let r ← verifyRun prims A x}[HiddenInputHit x (chainTarget prims x r) r] := by
-  rw [← verifyRun_forget, prEvent_map]
-  refine prEvent_mono_of_support _ _ _ fun r hr h => ?_
-  obtain ⟨top, state, forgery, hm, hguess⟩ := h.2
-  exact guess_hiddenInputHit prims A x r hr top state forgery hm hguess
-
 end Target
 
 end SigningGuessLinkProof
@@ -725,11 +692,3 @@ info: 'ThresholdLeanXmssSecurity.SigningGuessLinkProof.guess_hiddenInputHit' dep
 -/
 #guard_msgs in
 #print axioms ThresholdLeanXmssSecurity.SigningGuessLinkProof.guess_hiddenInputHit
-
-/--
-info: 'ThresholdLeanXmssSecurity.SigningGuessLinkProof.probEvent_guess_le' depends on axioms: [propext,
- Classical.choice,
- Quot.sound]
--/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningGuessLinkProof.probEvent_guess_le

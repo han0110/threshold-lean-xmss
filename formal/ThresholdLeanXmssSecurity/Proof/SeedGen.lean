@@ -1235,22 +1235,6 @@ theorem seedGenDistance_of_coupling (h : SeedGenCoupling (C := C) (E := E) prims
   rw [hoa, hob] at hdist
   exact hdist.trans (max_le hbad₁ hbad₂)
 
-/-- `seedGenHashError` covers `q · S / 2^256` for a counted call at one of the `S` honest points and
-`(q + S)² / 2^257` for a collision of two of the `q + S` points. -/
-theorem guess_add_collision_le_seedGenHashError (q : ℕ) :
-    ((q * seedGenSecrets C : ℕ) : ℝ) / 2 ^ 256 + ((q + seedGenSecrets C) ^ 2 : ℕ) / 2 ^ 257 ≤ seedGenHashError C q := by
-  unfold seedGenHashError
-  set S := seedGenSecrets C
-  have h257 : (2 : ℝ) ^ 257 = 2 * 2 ^ 256 := by rw [pow_succ]; ring
-  rw [h257, div_add_div _ _ (by positivity) (by positivity), div_le_div_iff₀ (by positivity) (by positivity)]
-  push_cast
-  have hq : (0 : ℝ) ≤ q := q.cast_nonneg
-  have hS : (0 : ℝ) ≤ S := S.cast_nonneg
-  have key : (q : ℝ) * S * (2 * 2 ^ 256) + 2 ^ 256 * (q + S) ^ 2 ≤ (q + S) ^ 2 * (2 * 2 ^ 256) := by
-    nlinarith [sq_nonneg ((q : ℝ) - S), mul_nonneg hq hS, sq_nonneg (q : ℝ), sq_nonneg (S : ℝ),
-      (by positivity : (0 : ℝ) < 2 ^ 256)]
-  nlinarith [key, (by positivity : (0 : ℝ) < 2 ^ 256)]
-
 /-- `SeedGenSecurityStatement` from the coupling. -/
 theorem seedGenSecurity_of_coupling (h : SeedGenCoupling (C := C) (E := E) prims) :
     SeedGenSecurityStatement (C := C) (E := E) prims :=
@@ -1272,86 +1256,11 @@ structure SeedGenRoundTrace (C : Committee) (E : Type) where
   outgoing : C.Party → Mail C E
   sent : C.Party → Mail C E
 
-/-- Recording each round separately preserves the boundary before honest reveals. -/
-def seedGenTraceRounds (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) :
-    ℕ → A.State → (C.Party → Step C E RealSpec (Keys C)) →
-      OracleComp (WorldSpec C) ((A.State × (C.Party → Option (Keys C))) × List (SeedGenRoundTrace C E))
-  | 0, state, steps => pure ((state, fun i => (steps i).output), [])
-  | fuel + 1, state, steps =>
-    if ∀ i, i ∉ D.1 → (steps i).isDone then pure ((state, fun i => (steps i).output), []) else do
-      let (r, log) ← (simulateQ loggingOracle (stepRound worldRoles D A noFunctionality state steps)).run
-      let (out, rest) ← seedGenTraceRounds D A fuel r.1 r.2.1
-      pure (out, ⟨log, fun i => (steps i).outbox, r.2.2⟩ :: rest)
-
-theorem fst_seedGenTraceRounds (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) :
-    ∀ fuel state steps, Prod.fst <$> seedGenTraceRounds D A fuel state steps =
-      executeRounds worldRoles D A noFunctionality fuel state steps
-  | 0, state, steps => by simp [seedGenTraceRounds, executeRounds]
-  | fuel + 1, state, steps => by
-    simp only [seedGenTraceRounds, executeRounds]
-    split_ifs
-    · simp
-    · simp only [map_bind, map_pure]
-      have h : ∀ r : A.State × (C.Party → Step C E RealSpec (Keys C)) × (C.Party → Mail C E),
-          (seedGenTraceRounds D A fuel r.1 r.2.1 >>= fun p => pure p.1) =
-            executeRounds worldRoles D A noFunctionality fuel r.1 r.2.1 := by
-        intro r
-        simpa only [map_eq_bind_pure_comp, Function.comp_def] using
-          fst_seedGenTraceRounds D A fuel r.1 r.2.1
-      simp only [h]
-      exact loggingOracle.run_simulateQ_bind_fst
-        (stepRound worldRoles D A noFunctionality state steps) (fun r =>
-        executeRounds worldRoles D A noFunctionality fuel r.1 r.2.1)
-
 structure SeedGenRealTrace (C : Committee) (E : Type) where
   start : (WorldSpec C).QueryLog
   honestStart : (WorldSpec C).QueryLog
   rounds : List (SeedGenRoundTrace C E)
   final : (WorldSpec C).QueryLog
-
-/-- The real game with private logs, including one log for each synchronous round. -/
-def seedGenRealTrace (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
-    (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) :
-    OracleComp (WorldSpec C) (Bool × SeedGenRealTrace C E) := do
-  let (state, startLog) ← (simulateQ loggingOracle (worldRoles.adversary (A.start (corruptInputs D x) z))).run
-  let (steps, honestLog) ← (simulateQ loggingOracle (startSteps worldRoles D fun i =>
-    (seedGen i : PartyM C E RealSpec (Keys C)))).run
-  let (out, rounds) ← seedGenTraceRounds D A setupRounds state steps
-  let (accept, finalLog) ← (simulateQ loggingOracle (worldRoles.adversary (Z out))).run
-  pure (accept, ⟨startLog, honestLog, rounds, finalLog⟩)
-
-theorem fst_seedGenRealTrace (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
-    (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) :
-    Prod.fst <$> seedGenRealTrace D A x z Z =
-      distinguish (realExecution D A noFunctionality setupRounds
-        (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) x z) Z := by
-  unfold seedGenRealTrace distinguish realExecution executePhase
-  simp only [map_bind, map_pure, bind_assoc]
-  simp only [loggingOracle.run_simulateQ_bind_fst]
-  simp only [bind_pure]
-  conv_rhs =>
-    rw [← loggingOracle.fst_map_run_simulateQ (worldRoles.adversary (A.start (corruptInputs D x) z)), bind_map_left]
-  refine bind_congr fun start => ?_
-  conv_rhs =>
-    rw [← loggingOracle.fst_map_run_simulateQ (startSteps worldRoles D fun i =>
-      (seedGen i : PartyM C E RealSpec (Keys C))), bind_map_left]
-  refine bind_congr fun initial => ?_
-  rw [← fst_seedGenTraceRounds D A setupRounds start.1 initial.1, bind_map_left]
-
-/-- A private bad flag may inspect round boundaries without changing real acceptance. -/
-def seedGenFlaggedReal (bad : SeedGenRealTrace C E → Bool) (D : C.Coalition)
-    (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
-    (Z : Distinguisher C A.State (Keys C)) : OracleComp (WorldSpec C) (Bool × Bool) :=
-  (fun r => (r.1, bad r.2)) <$> seedGenRealTrace D A x z Z
-
-theorem seedGenFlaggedReal_accepts (prims : Primitives) (bad : SeedGenRealTrace C E → Bool)
-    (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
-    (Z : Distinguisher C A.State (Keys C)) :
-    accepts prims (Prod.fst <$> seedGenFlaggedReal bad D A x z Z) =
-      accepts prims (distinguish (realExecution D A noFunctionality setupRounds
-        (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) x z) Z) := by
-  simp only [seedGenFlaggedReal, Functor.map_map]
-  rw [fst_seedGenRealTrace]
 
 end ThresholdLeanXmssSecurity
 
@@ -1361,63 +1270,12 @@ namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
 variable {C : Committee} {E : Type}
 
-/-- The programming query separates pre-reveal queries in this log from subsequent queries. -/
-def seedGenFlaggedIdeal (bad : (WorldSpec C).QueryLog → Bool) (D : C.Coalition)
-    (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
-    (Z : Distinguisher C A.State (Keys C)) : OracleComp (WorldSpec C) (Bool × Bool) :=
-  (fun r => (r.1, bad r.2)) <$> (simulateQ loggingOracle
-    (distinguish (idealExecution (fun oa => oa) D FseedGen (seedGenSimulator D A) x z) Z)).run
-
-theorem seedGenFlaggedIdeal_accepts (prims : Primitives) (bad : (WorldSpec C).QueryLog → Bool)
-    (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
-    (Z : Distinguisher C A.State (Keys C)) :
-    accepts prims (Prod.fst <$> seedGenFlaggedIdeal bad D A x z Z) =
-      accepts prims (distinguish (idealExecution (fun oa => oa) D FseedGen (seedGenSimulator D A) x z) Z) := by
-  simp only [seedGenFlaggedIdeal, Functor.map_map]
-  rw [loggingOracle.fst_map_run_simulateQ]
-
 /-- Programming a fresh random-oracle input inserts the prescribed answer. -/
 theorem programAnswer_run_fresh {q : Query C} (hfixed : ¬ IsFixed q)
     (s : HashCache C) (hfresh : s q = none) (y : HashOutput) :
     (programAnswer (q, y)).run s = pure (true, s.cacheQuery q y) := by
   change ¬ (∃ input, q = .hash input ∧ MpcInput input) at hfixed
   simp [programAnswer, StateT.run_bind, StateT.run_get, hfixed, hfresh, StateT.run_set]
-
-/-- At a fresh point, first sampling an answer and then programming is exactly a lazy read,
-including the final cache. -/
-theorem sample_program_eq_hashAnswer (prims : Primitives) {q : Query C} (hfixed : ¬ IsFixed q)
-    (s : HashCache C) (hfresh : s q = none) :
-    ((do
-      let y ← StateT.lift ($ᵗ HashOutput)
-      let _ ← programAnswer (q, y)
-      pure y : StateT (HashCache C) ProbComp HashOutput).run s) =
-        (hashAnswer prims q).run s := by
-  simp only [StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind]
-  simp only [programAnswer_run_fresh hfixed s hfresh, pure_bind, StateT.run_pure]
-  rw [hashAnswer_of_not_isFixed prims hfixed, OracleSpec.randomOracle,
-    QueryImpl.withCaching_run_none _ hfresh]
-  rfl
-
-/-- The local swap remains valid under an arbitrary cache-dependent continuation. -/
-theorem sample_program_bind_eq_hashAnswer (prims : Primitives) {α : Type} {q : Query C}
-    (hfixed : ¬ IsFixed q) (s : HashCache C) (hfresh : s q = none)
-    (k : HashOutput → StateT (HashCache C) ProbComp α) :
-    ((do
-      let y ← StateT.lift ($ᵗ HashOutput)
-      let _ ← programAnswer (q, y)
-      k y : StateT (HashCache C) ProbComp α).run s) =
-        (hashAnswer prims q >>= k).run s := by
-  have h := sample_program_eq_hashAnswer prims hfixed s hfresh
-  have heq : (do
-      let y ← StateT.lift ($ᵗ HashOutput)
-      let _ ← programAnswer (q, y)
-      k y : StateT (HashCache C) ProbComp α) =
-      (do
-        let y ← StateT.lift ($ᵗ HashOutput)
-        let _ ← programAnswer (q, y)
-        pure y : StateT (HashCache C) ProbComp HashOutput) >>= k := by
-    simp only [bind_assoc, pure_bind]
-  rw [heq, StateT.run_bind, h, StateT.run_bind]
 
 end ThresholdLeanXmssSecurity
 
@@ -1469,104 +1327,12 @@ theorem extractReveal_eq_of_unique (calls : CallLog C) (sent : C.Party → Mail 
       · contradiction)
   exact congrArg (fun o : Option (List HashOutput) => o.getD []) h
 
-/-- The uniqueness premise of extraction follows from collision-freedom on the observed inputs. -/
-theorem extractReveal_eq_of_no_collision (calls : CallLog C) (sent : C.Party → Mail C E)
-    (j i : C.Party) (reveal : List HashOutput) (value : HashOutput)
-    (hcall : (.commit .seedGen j i reveal, value) ∈ calls)
-    (hsent : [value] = Msg.hashesOf (sent j i))
-    (hnocollision : ∀ q y q' y', (q, y) ∈ calls → (q', y') ∈ calls → y = y' → q = q') :
-    extractReveal calls sent j i = reveal := by
-  apply extractReveal_eq_of_unique calls sent j i reveal value hcall hsent
-  intro reveal' value' hcall' hsent'
-  have hv : value' = value := by simpa using hsent'.trans hsent.symm
-  have hq := hnocollision _ _ _ _ hcall' hcall hv
-  exact Query.commit.inj hq |>.2.2.2
-
-/-- The number of terms grows enough to cover the small-committee slack in the query count. -/
-theorem threshold_le_term_count (C : Committee) : C.t ≤ C.n.choose (C.t - 1) := by
-  have hn : C.t ≤ C.n := by have := C.one_le_t; unfold Committee.n; omega
-  have h := Nat.choose_le_choose (C.t - 1) hn
-  have ht : C.t = (C.t - 1) + 1 := by have := C.one_le_t; omega
-  have heq : C.t.choose (C.t - 1) = C.t := by
-    calc C.t.choose (C.t - 1) = ((C.t - 1) + 1).choose (C.t - 1) := congrArg (fun n => n.choose (C.t - 1)) ht
-      _ = C.t - 1 + 1 := Nat.choose_succ_self_right _
-      _ = C.t := ht.symm
-  rwa [heq] at h
-
-/-- A counting envelope for distinct free inputs. Commitments and shared-key hashes contribute
-`honest * n` each; fresh opening checks contribute `honest * (corrupt + 1)`; parameter derivations
-contribute `honest`; term derivations contribute at most `t * choose n (t - 1)`; pair derivations
-contribute at most `choose n 2`. -/
-theorem seedGen_freeInput_envelope_le_secrets (C : Committee) (honest corrupt : ℕ)
-    (hpartition : honest + corrupt = C.n) :
-    honest * (2 * C.n + corrupt + 2) + C.t * C.n.choose (C.t - 1) + C.n.choose 2 ≤
-      seedGenSecrets C := by
-  have ht := C.one_le_t
-  have hterms := threshold_le_term_count C
-  have hbudget : honest * (2 * C.n + corrupt + 2) ≤ C.n * (2 * C.n + 2) := by
-    nlinarith [sq_nonneg corrupt]
-  have hn : C.n + 1 = 2 * C.t := by unfold Committee.n; omega
-  have hsmall : 2 * C.t ≤ C.t * C.n.choose (C.t - 1) + 2 := by
-    by_cases ht1 : C.t = 1
-    · simp [ht1]
-    · have ht2 : 2 ≤ C.t := by omega
-      nlinarith
-  have hnT : (C.n + 1) * C.n.choose (C.t - 1) = 2 * (C.t * C.n.choose (C.t - 1)) := by
-    rw [hn, mul_assoc]
-  unfold seedGenSecrets termCount
-  nlinarith [hnT]
-
 /-- Every term has exactly `t` holders. -/
 theorem seedGen_card_holders (C : Committee) (T : C.Term) : (C.holders T).card = C.t := by
   rw [Committee.holders, Finset.card_compl, Fintype.card_fin, T.2]
   have := C.one_le_t
   unfold Committee.n
   omega
-
-/-- A finite cover of the free inputs, grouped by the six places where seed generation hashes.
-The opening family contains only corrupt senders and the unused self opening; honest openings
-reuse a commitment input. The pair family has one input for each unordered pair. -/
-def seedGenFreeInputCover (D : C.Coalition)
-    (commit opening shared : C.Party → C.Party → Query C)
-    (parameter : C.Party → Query C) (term : C.Party → C.Term → Query C)
-    (pair : C.Pair → Query C) : List (Query C) :=
-  let honest := D.1ᶜ.toList
-  honest.flatMap (fun i => C.parties.map (commit i)) ++
-    honest.flatMap (fun i => (i :: D.1.toList).map (opening i)) ++
-    honest.map parameter ++
-    C.terms.flatMap (fun T => (C.holders T).toList.map (fun i => term i T)) ++
-    (pairList C).map pair ++
-    honest.flatMap (fun i => C.parties.map (shared i))
-
-theorem seedGenFreeInputCover_length_le (D : C.Coalition)
-    (commit opening shared : C.Party → C.Party → Query C)
-    (parameter : C.Party → Query C) (term : C.Party → C.Term → Query C)
-    (pair : C.Pair → Query C) :
-    (seedGenFreeInputCover D commit opening shared parameter term pair).length ≤ seedGenSecrets C := by
-  have hp : C.parties.length = C.n := by simp [Committee.parties]
-  have ht : C.terms.length = C.n.choose (C.t - 1) := by
-    simp [Committee.terms]
-  have hpair : (pairList C).length ≤ C.n.choose 2 := by
-    simpa [pairList] using card_pair_le C
-  have hpartition : D.1ᶜ.card + D.1.card = C.n := by
-    simpa only [Fintype.card_fin] using Finset.card_compl_add_card D.1
-  have h := seedGen_freeInput_envelope_le_secrets C D.1ᶜ.card D.1.card hpartition
-  simp only [seedGenFreeInputCover, List.length_append, List.length_flatMap,
-    List.length_map, List.length_cons, Finset.length_toList, seedGen_card_holders, hp,
-    List.map_const', List.sum_replicate, smul_eq_mul, ht]
-  nlinarith
-
-/-- A set covered by the list is bounded by the fixed statement's `seedGenSecrets`. -/
-theorem seedGenFreeInputCover_card_le (D : C.Coalition)
-    (commit opening shared : C.Party → C.Party → Query C)
-    (parameter : C.Party → Query C) (term : C.Party → C.Term → Query C)
-    (pair : C.Pair → Query C) (inputs : Finset (Query C))
-    (hcover : ∀ q ∈ inputs, q ∈ seedGenFreeInputCover D commit opening shared parameter term pair) :
-    inputs.card ≤ seedGenSecrets C := by
-  calc inputs.card ≤ (seedGenFreeInputCover D commit opening shared parameter term pair).toFinset.card :=
-      Finset.card_le_card (fun q hq => List.mem_toFinset.mpr (hcover q hq))
-    _ ≤ (seedGenFreeInputCover D commit opening shared parameter term pair).length := List.toFinset_card_le _
-    _ ≤ seedGenSecrets C := seedGenFreeInputCover_length_le D commit opening shared parameter term pair
 
 /-- The honest sender's fields in a received reveal agree with the sampled fields. -/
 theorem setupView_honest_sender (D : C.Coalition) (parts : C.Party → Parts C)
@@ -1585,59 +1351,6 @@ def seedGenPairViewInput (parts : C.Party → Parts C) (revealed : C.Party → M
   let view := setupView .seedGen i (parts i) (revealed i)
   .derive .seedGen .pair [(view p.1.1).pair p.1.2, (view p.1.2).pair p.1.1]
 
-/-- One representative per unordered pair suffices, even when corrupt parties equivocate. -/
-def seedGenPairRepresentative (D : C.Coalition) (parts : C.Party → Parts C)
-    (revealed : C.Party → Mail C E) (p : C.Pair) : Query C :=
-  seedGenPairViewInput parts revealed (if p.1.1 ∈ D.1 then p.1.2 else p.1.1) p
-
-theorem seedGenPairViewInput_eq_representative (D : C.Coalition) (parts : C.Party → Parts C)
-    (revealed : C.Party → Mail C E)
-    (hreceived : ∀ i j, j ∉ D.1 → j ≠ i →
-      Msg.hashesOf (revealed i j) = revealTo .seedGen (parts j) j i)
-    (i : C.Party) (hi : i ∉ D.1) (p : C.Pair) (hip : p.1.1 = i ∨ p.1.2 = i) :
-    seedGenPairViewInput parts revealed i p = seedGenPairRepresentative D parts revealed p := by
-  rcases hip with hleft | hright
-  · simp only [seedGenPairRepresentative, hleft, if_neg hi]
-  · by_cases hleft : p.1.1 ∈ D.1
-    · simp only [seedGenPairRepresentative, if_pos hleft, hright]
-    · have hright' : p.1.2 ∉ D.1 := hright ▸ hi
-      unfold seedGenPairRepresentative
-      rw [if_neg hleft]
-      unfold seedGenPairViewInput
-      dsimp only
-      rw [setupView_honest_sender D parts revealed hreceived i p.1.1 hleft,
-        setupView_honest_sender D parts revealed hreceived i p.1.2 hright',
-        setupView_honest_sender D parts revealed hreceived p.1.1 p.1.1 hleft,
-        setupView_honest_sender D parts revealed hreceived p.1.1 p.1.2 hright']
-      rw [honestView_pair .seedGen parts (Or.inr hright),
-        honestView_pair .seedGen parts (Or.inl hright),
-        honestView_pair .seedGen parts (Or.inl rfl),
-        honestView_pair .seedGen parts (Or.inr rfl)]
-
-/-- An honest opening check either reuses the honest sender's commitment input or belongs
-to the family of corrupt/self openings. -/
-theorem seedGen_openInput_covered (D : C.Coalition) (parts : C.Party → Parts C)
-    (revealed : C.Party → Mail C E)
-    (hreceived : ∀ i j, j ∉ D.1 → j ≠ i →
-      Msg.hashesOf (revealed i j) = revealTo .seedGen (parts j) j i)
-    (shared : C.Party → C.Party → Query C) (parameter : C.Party → Query C)
-    (term : C.Party → C.Term → Query C) (pair : C.Pair → Query C)
-    (i j : C.Party) (hi : i ∉ D.1) :
-    Query.commit .seedGen j i (Msg.hashesOf (revealed i j)) ∈
-      seedGenFreeInputCover D
-        (fun i j => .commit .seedGen i j (revealTo .seedGen (parts i) i j))
-        (fun i j => .commit .seedGen j i (Msg.hashesOf (revealed i j)))
-        shared parameter term pair := by
-  simp only [seedGenFreeInputCover, List.mem_append, List.mem_flatMap, List.mem_map,
-    Finset.mem_toList, Finset.mem_compl, Committee.parties, List.mem_finRange, true_and,
-    List.mem_cons] 
-  by_cases hj : j ∈ D.1
-  · aesop
-  · by_cases hji : j = i
-    · subst j; aesop
-    · have hq := hreceived i j hj hji
-      aesop
-
 end ThresholdLeanXmssSecurity
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
@@ -1645,35 +1358,6 @@ noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
 variable {C : Committee}
-
-theorem relabelHashCache_query (e : Query C ≃ Query C) (s : HashCache C)
-    (q : Query C) (y : HashOutput) :
-    relabelHashCache e (s.cacheQuery q y) = (relabelHashCache e s).cacheQuery (e q) y := by
-  refine QueryCache.ext fun q' => ?_
-  simp only [relabelHashCache, QueryCache.cacheQuery, QueryCache.toFn_ofFn]
-  by_cases h : q' = e q
-  · subst q'; rw [Equiv.symm_apply_apply]; simp
-  · have h' : e.symm q' ≠ q := fun heq => h (by rw [← e.apply_symm_apply q', heq])
-    simp [h, h']
-
-/-- A lazy random-oracle answer is invariant under a bijective renaming of its input,
-with the same renaming applied to the final cache. -/
-theorem hashAnswer_relabel (prims : Primitives) (e : Query C ≃ Query C) (q : Query C)
-    (hfixed : ¬ IsFixed q) (hfixed' : ¬ IsFixed (e q)) (s : HashCache C) :
-    (fun p : HashOutput × HashCache C => (p.1, relabelHashCache e p.2)) <$>
-        (hashAnswer prims q).run s =
-      (hashAnswer prims (e q)).run (relabelHashCache e s) := by
-  rw [hashAnswer_of_not_isFixed prims hfixed, hashAnswer_of_not_isFixed prims hfixed',
-    OracleSpec.randomOracle]
-  have hs : relabelHashCache e s (e q) = s q := by change s (e.symm (e q)) = s q; rw [Equiv.symm_apply_apply]
-  cases h : s q with
-  | none =>
-    rw [QueryImpl.withCaching_run_none _ h, QueryImpl.withCaching_run_none _ (hs.trans h)]
-    simp only [Functor.map_map, relabelHashCache_query]
-    rfl
-  | some y =>
-    rw [QueryImpl.withCaching_run_some _ h, QueryImpl.withCaching_run_some _ (hs.trans h)]
-    rfl
 
 end ThresholdLeanXmssSecurity
 
@@ -1870,61 +1554,6 @@ def seedGenEchoInbox (prims : Primitives) (coalition : C.Coalition)
   if active j then echoOutbox .seedGen j (keys j) (D prims h (sharedQueries .seedGen j (keys j))) i
   else some .abort
 
-/-- Changing coherent hidden seeds leaves the complete final check unchanged, including selective
-abort. Honest echo collisions are the only excluded cases; corrupt messages are arbitrary. -/
-theorem seedGen_echoCheck_hidden_invariant (prims : Primitives) (coalition : C.Coalition)
-    (active : C.Party → Prop) (sent : C.Party → Mail C E)
-    (h h' : Query C → HashOutput)
-    (keys keys' : C.Party → HashOutput × (C.Term → HashOutput) × (C.Party → HashOutput))
-    (hp : ∀ i, i ∉ coalition.1 → (keys i).1 = (keys' i).1)
-    (hk : ∀ i T, i ∉ coalition.1 → KnownTo coalition.1 T → (keys i).2.1 T = (keys' i).2.1 T)
-    (hh : ∀ i j T, i ∉ coalition.1 → j ∉ coalition.1 → ¬ KnownTo coalition.1 T →
-      i ∈ C.holders T → j ∈ C.holders T → (keys i).2.1 T = (keys j).2.1 T)
-    (hh' : ∀ i j T, i ∉ coalition.1 → j ∉ coalition.1 → ¬ KnownTo coalition.1 T →
-      i ∈ C.holders T → j ∈ C.holders T → (keys' i).2.1 T = (keys' j).2.1 T)
-    (hc : ∀ i j, i ∉ coalition.1 → j ∈ coalition.1 →
-      h (.sharedKeys .seedGen ((sharedTerms i j).map (keys i).2.1)) =
-        h' (.sharedKeys .seedGen ((sharedTerms i j).map (keys' i).2.1)))
-    (hn : ∀ i j, i ∉ coalition.1 → j ∉ coalition.1 →
-      h (.sharedKeys .seedGen ((sharedTerms i j).map (keys i).2.1)) =
-        h (.sharedKeys .seedGen ((sharedTerms j i).map (keys j).2.1)) →
-      Query.sharedKeys (C := C) .seedGen ((sharedTerms i j).map (keys i).2.1) =
-        Query.sharedKeys .seedGen ((sharedTerms j i).map (keys j).2.1))
-    (hn' : ∀ i j, i ∉ coalition.1 → j ∉ coalition.1 →
-      h' (.sharedKeys .seedGen ((sharedTerms i j).map (keys' i).2.1)) =
-        h' (.sharedKeys .seedGen ((sharedTerms j i).map (keys' j).2.1)) →
-      Query.sharedKeys (C := C) .seedGen ((sharedTerms i j).map (keys' i).2.1) =
-        Query.sharedKeys .seedGen ((sharedTerms j i).map (keys' j).2.1))
-    (i : C.Party) (hi : i ∉ coalition.1) :
-    echoCheck .seedGen i (keys i) (D prims h (sharedQueries .seedGen i (keys i)))
-      (seedGenEchoInbox prims coalition active sent h keys i) ↔
-    echoCheck .seedGen i (keys' i) (D prims h' (sharedQueries .seedGen i (keys' i)))
-      (seedGenEchoInbox prims coalition active sent h' keys' i) := by
-  unfold echoCheck
-  apply forall_congr'
-  intro j
-  apply forall_congr'
-  intro hji
-  by_cases hj : j ∈ coalition.1
-  · simp only [seedGenEchoInbox, if_pos hj]
-    have he : echoOf .seedGen (keys i) (D prims h (sharedQueries .seedGen i (keys i))) j =
-        echoOf .seedGen (keys' i) (D prims h' (sharedQueries .seedGen i (keys' i))) j := by
-      simp only [echoOf, ite_true, List.singleton_append, List.cons.injEq, and_true,
-        D_sharedQueries_at]
-      exact ⟨hp i hi, hc i j hi hj⟩
-    rw [he]
-  · simp only [seedGenEchoInbox, if_neg hj]
-    by_cases ha : active j
-    · simp only [if_pos ha, echoOutbox, if_neg (Ne.symm hji), Msg.hashesOf]
-      apply eq_comm.trans
-      apply Iff.trans _ eq_comm
-      exact seedGen_echo_eq_hidden_invariant prims coalition h h' i j
-        (keys i) (keys j) (keys' i) (keys' j) (hp i hi) (hp j hj)
-        (fun T hT => hk i T hi hT) (fun T hT => hk j T hj hT)
-        (fun T hT => hh i j T hi hj hT) (fun T hT => hh' i j T hi hj hT)
-        (hn i j hi hj) (hn' i j hi hj)
-    · simp [ha, Msg.hashesOf, echoOf]
-
 /-- The last local continuation of seed generation makes no oracle calls. -/
 theorem advance_seedGenEchoResume (i : C.Party)
     (keys : HashOutput × (C.Term → HashOutput) × (C.Party → HashOutput))
@@ -2023,93 +1652,6 @@ theorem stepRound_seedGenEchoStep (prims : Primitives) (coalition : C.Coalition)
       simp only [worldRoles, free, seedGenEchoOutput, if_neg hi]
       exact simulateQ_pure _ _
   · rw [sequenceFin_pure, pure_bind]
-
-/-- The entire last execution round, with its early-exit rule. -/
-theorem executeRounds_seedGenEchoStep_one (prims : Primitives) (coalition : C.Coalition)
-    (active : C.Party → Prop) (A : Adversary C E Unit PEmpty PEmpty) (state : A.State)
-    (h : Query C → HashOutput)
-    (keys : C.Party → HashOutput × (C.Term → HashOutput) × (C.Party → HashOutput)) :
-    executeRounds worldRoles coalition A noFunctionality 1 state
-      (seedGenEchoStep prims coalition active h keys) =
-      (if ∀ i, i ∉ coalition.1 → ¬ active i then pure (state, fun _ => none) else do
-        let (state, sent) ← worldRoles.adversary (A.round state fun c i =>
-          if c ∈ coalition.1 ∧ i ∉ coalition.1 then
-            (seedGenEchoStep prims coalition active h keys i).outbox c else none)
-        pure (state, seedGenEchoOutput prims coalition active sent h keys)) := by
-  have hd : (∀ i, i ∉ coalition.1 →
-      (seedGenEchoStep prims coalition active h keys (E := E) i).isDone) ↔
-      ∀ i, i ∉ coalition.1 → ¬ active i := by
-    apply forall_congr'
-    intro i
-    apply forall_congr'
-    intro hi
-    simp only [seedGenEchoStep, hi, false_or]
-    by_cases ha : active i <;> simp [ha, Step.isDone]
-  rw [executeRounds]
-  simp only [hd]
-  split_ifs with hd'
-  · congr 1
-    apply congrArg (fun f => (state, f))
-    funext i
-    have hi : i ∈ coalition.1 ∨ ¬ active i := by
-      by_cases hc : i ∈ coalition.1
-      · exact Or.inl hc
-      · exact Or.inr (hd' i hc)
-    simp only [seedGenEchoStep, if_pos hi, Step.output]
-  · rw [stepRound_seedGenEchoStep]
-    simp only [bind_assoc, pure_bind, executeRounds, Step.output]
-
-/-- The final receiver set is unchanged whenever visible echoes and final checks are unchanged.
-This is an equality of the actual `executeRounds` computations, for an arbitrary adversary. -/
-theorem executeRounds_seedGenEchoStep_receivers_congr (prims : Primitives) (coalition : C.Coalition)
-    (active : C.Party → Prop) (A : Adversary C E Unit PEmpty PEmpty) (state : A.State)
-    (h h' : Query C → HashOutput)
-    (keys keys' : C.Party → HashOutput × (C.Term → HashOutput) × (C.Party → HashOutput))
-    (hvisible : ∀ i c, i ∉ coalition.1 → c ∈ coalition.1 →
-      echoOf .seedGen (keys i) (D prims h (sharedQueries .seedGen i (keys i))) c =
-        echoOf .seedGen (keys' i) (D prims h' (sharedQueries .seedGen i (keys' i))) c)
-    (hchecks : ∀ (sent : C.Party → Mail C E) (i : C.Party) (_ : i ∉ coalition.1),
-      echoCheck .seedGen i (keys i) (D prims h (sharedQueries .seedGen i (keys i)))
-        (seedGenEchoInbox prims coalition active sent h keys i) ↔
-      echoCheck .seedGen i (keys' i) (D prims h' (sharedQueries .seedGen i (keys' i)))
-        (seedGenEchoInbox prims coalition active sent h' keys' i)) :
-    (fun r => (r.1, fun i => (r.2 i).isSome)) <$>
-      executeRounds worldRoles coalition A noFunctionality 1 state
-        (seedGenEchoStep prims coalition active h keys) =
-    (fun r => (r.1, fun i => (r.2 i).isSome)) <$>
-      executeRounds worldRoles coalition A noFunctionality 1 state
-        (seedGenEchoStep prims coalition active h' keys') := by
-  rw [executeRounds_seedGenEchoStep_one, executeRounds_seedGenEchoStep_one]
-  split_ifs with hd
-  · rfl
-  · have hmsg : (fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then
-        (seedGenEchoStep prims coalition active h keys (E := E) i).outbox c else none) =
-        (fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then
-        (seedGenEchoStep prims coalition active h' keys' (E := E) i).outbox c else none) := by
-      funext c i
-      split_ifs with hci
-      · unfold seedGenEchoStep
-        split_ifs
-        · rfl
-        · simp only [Step.outbox, echoOutbox]
-          rw [hvisible i c hci.2 hci.1]
-      · rfl
-    rw [hmsg]
-    simp only [map_bind, map_pure]
-    refine bind_congr fun r => ?_
-    apply congrArg pure
-    apply congrArg (fun f => (r.1, f))
-    funext i
-    unfold seedGenEchoOutput
-    by_cases hi : i ∈ coalition.1 ∨ ¬ active i
-    · simp only [if_pos hi]
-    · simp only [if_neg hi]
-      have hih : i ∉ coalition.1 := fun hc => hi (Or.inl hc)
-      have habort : (fun j => Msg.isAbort (seedGenEchoInbox prims coalition active r.2 h keys i j)) =
-          (fun j => Msg.isAbort (seedGenEchoInbox prims coalition active r.2 h' keys' i j)) :=
-        funext fun j => seedGenEchoInbox_isAbort prims coalition active r.2 h h' keys keys' i j
-      simp only [habort, hchecks r.2 i hih]
-      split_ifs <;> rfl
 
 end ThresholdLeanXmssSecurity
 
@@ -2622,50 +2164,6 @@ theorem sameRun_seedGenLocal_split (prims : Primitives) (coalition : C.Coalition
   simp only [bind_assoc]
   exact SameRun.refl prims _
 
-/-- Insert independent unused programming at the commit boundary. Its inputs may depend on all
-prefix data, including the private parts and the corrupt commit messages. -/
-def seedGenProgrammedReal (prims : Primitives) (coalition : C.Coalition)
-    (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
-    (Z : Distinguisher C A.State (Keys C))
-    (inputs : ((C.Party → Parts C) × A.State × (C.Party → Step C E RealSpec (Keys C)) ×
-      (C.Party → Mail C E)) → List (Query C)) : ProbComp Bool := do
-  let (r, cache) ← (simulateQ (localAnswer prims) (seedGenLocalCommitPrefix coalition A x z)).run ∅
-  (uniformPrograms (inputs r) >>= fun _ =>
-    simulateQ (localAnswer prims) (seedGenLocalPostCommit coalition A Z r)).run' cache
-
-/-- The programming block can be removed from this complete game, without freshness or
-collision assumptions. This is the real marginal needed by the coupling route. -/
-theorem evalDist_seedGenProgrammedReal (prims : Primitives) (coalition : C.Coalition)
-    (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
-    (Z : Distinguisher C A.State (Keys C))
-    (inputs : ((C.Party → Parts C) × A.State × (C.Party → Step C E RealSpec (Keys C)) ×
-      (C.Party → Mail C E)) → List (Query C))
-    (hinputs : ∀ r q, q ∈ inputs r → ¬ IsFixed q) :
-    seedGenProgrammedReal prims coalition A x z Z inputs =ᵈ
-      (simulateQ (localAnswer prims)
-        (seedGenLocalCommitPrefix coalition A x z >>= seedGenLocalPostCommit coalition A Z)).run' ∅ := by
-  unfold seedGenProgrammedReal
-  rw [simulateQ_bind, StateT.run'_eq, StateT.run_bind, map_bind]
-  refine EvalDistEq.bind_right _ ?_
-  rintro ⟨r, cache⟩
-  exact evalDist_uniformPrograms_prepend prims (inputs r) (hinputs r)
-    (seedGenLocalPostCommit coalition A Z r) cache
-
-/-- The programmed real game has exactly the original real acceptance probability. -/
-theorem seedGenProgrammedReal_accepts (prims : Primitives) (coalition : C.Coalition)
-    (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
-    (Z : Distinguisher C A.State (Keys C))
-    (inputs : ((C.Party → Parts C) × A.State × (C.Party → Step C E RealSpec (Keys C)) ×
-      (C.Party → Mail C E)) → List (Query C))
-    (hinputs : ∀ r q, q ∈ inputs r → ¬ IsFixed q) :
-    (Pr{let y ← seedGenProgrammedReal prims coalition A x z Z inputs}[y = true]).toReal =
-      accepts prims (distinguish (realExecution coalition A noFunctionality setupRounds
-        (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) x z) Z) := by
-  have heq := (evalDist_seedGenProgrammedReal prims coalition A x z Z inputs hinputs).trans
-    (sameRun_seedGenLocal_split prims coalition A x z Z).run'_eq.symm
-  exact (congrArg ENNReal.toReal (heq.prEvent_eq _)).trans
-    (seedGenLocalGame_accepts prims coalition A x z Z)
-
 end ThresholdLeanXmssSecurity
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
@@ -2977,26 +2475,6 @@ theorem evalDist_tablePrograms {ι : Type} [Finite ι] [DecidableEq ι]
       (uniformPrograms (indices.map inputs)).run s := by
   simp only [tablePrograms, StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind]
   exact evalDist_table_programValues indices hnd inputs s
-
-/-- The full dealer-table programming block disappears before any local continuation, including
-its future adversary and distinguisher queries. -/
-theorem evalDist_tablePrograms_prepend (prims : Primitives) {ι : Type} [Finite ι] [DecidableEq ι]
-    [SampleableType (ι → HashOutput)] (indices : List ι) (hnd : indices.Nodup)
-    (inputs : ι → Query C) (hinputs : ∀ i ∈ indices, ¬ IsFixed (inputs i))
-    {α : Type} (k : OracleComp (LocalSpec C) α) (s : HashCache C) :
-    (tablePrograms indices inputs >>= fun _ => simulateQ (localAnswer prims) k).run' s =ᵈ
-      (simulateQ (localAnswer prims) k).run' s := by
-  have he := evalDist_run_bind_of_eq (fun _ : Unit => simulateQ (localAnswer prims) k)
-    s (evalDist_tablePrograms indices hnd inputs s)
-  have hm := he.map Prod.fst
-  simp only [StateT.run'_eq]
-  refine hm.trans ?_
-  simpa only [StateT.run'_eq] using
-    evalDist_uniformPrograms_prepend prims (indices.map inputs)
-    (by
-      intro q hq
-      obtain ⟨i, hi, rfl⟩ := List.mem_map.mp hq
-      exact hinputs i hi) k s
 
 end ThresholdLeanXmssSecurity
 
@@ -3964,95 +3442,6 @@ noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
 
-/-- Replace the selected table cells by the corresponding dealer keys. -/
-def seedGenExchangeTable {ι Ω R : Type} (points : ι → Ω) (table : Ω → R) (keys : ι → R) : Ω → R :=
-  fun q => @dite R (∃ i, points i = q) (Classical.propDecidable _)
-    (fun h => keys (Classical.choose h)) (fun _ => table q)
-
-theorem seedGenExchangeTable_at {ι Ω R : Type} (points : ι → Ω) (hinj : Function.Injective points)
-    (table : Ω → R) (keys : ι → R) (i : ι) :
-    seedGenExchangeTable points table keys (points i) = keys i := by
-  classical
-  unfold seedGenExchangeTable
-  rw [dif_pos ⟨i, rfl⟩]
-  exact congrArg keys (hinj (Classical.choose_spec (show ∃ j, points j = points i from ⟨i, rfl⟩)))
-
-theorem seedGenExchangeTable_outside {ι Ω R : Type} (points : ι → Ω)
-    (table : Ω → R) (keys : ι → R) (q : Ω) (hq : ∀ i, points i ≠ q) :
-    seedGenExchangeTable points table keys q = table q := by
-  classical
-  simp [seedGenExchangeTable, not_exists.mpr hq]
-
-/-- Exchange the selected oracle cells with the independent hidden dealer keys. -/
-def seedGenTableKeyExchange {ι Ω R : Type} (points : ι → Ω)
-    (p : (Ω → R) × (ι → R)) : (Ω → R) × (ι → R) :=
-  (seedGenExchangeTable points p.1 p.2, fun i => p.1 (points i))
-
-theorem seedGenTableKeyExchange_involutive {ι Ω R : Type} (points : ι → Ω)
-    (hinj : Function.Injective points) : Function.Involutive (seedGenTableKeyExchange (R := R) points) := by
-  classical
-  intro p
-  apply Prod.ext
-  · funext q
-    change seedGenExchangeTable points (seedGenExchangeTable points p.1 p.2) (fun i => p.1 (points i)) q = p.1 q
-    rcases Classical.em (∃ i, points i = q) with hq | hq
-    · obtain ⟨i, rfl⟩ := hq
-      exact seedGenExchangeTable_at points hinj _ _ i
-    · have hn : ∀ i, points i ≠ q := not_exists.mp hq
-      rw [seedGenExchangeTable_outside points _ _ q hn, seedGenExchangeTable_outside points _ _ q hn]
-  · funext i
-    exact seedGenExchangeTable_at points hinj p.1 p.2 i
-
-/-- The joint distribution is preserved, not merely the marginal distribution of the hidden keys. -/
-theorem evalDist_seedGenTableKeyExchange {ι Ω R : Type} [Finite ι] [Finite Ω] [Finite R] [Nonempty R]
-    [SampleableType (Ω → R)] [SampleableType (ι → R)]
-    (points : ι → Ω) (hinj : Function.Injective points) :
-    (seedGenTableKeyExchange (R := R) points <$> ($ᵗ ((Ω → R) × (ι → R)))) =ᵈ
-      $ᵗ ((Ω → R) × (ι → R)) :=
-  SampleableType.map_uniformSample_evalDistEq_of_bijective (seedGenTableKeyExchange_involutive points hinj).bijective
-
-/-- The exchange remains valid under every continuation using both tables. -/
-theorem evalDist_seedGenTableKeyExchange_bind {ι Ω R α : Type}
-    [Finite ι] [Finite Ω] [Finite R] [Nonempty R]
-    [SampleableType (Ω → R)] [SampleableType (ι → R)]
-    (points : ι → Ω) (hinj : Function.Injective points)
-    (k : (Ω → R) → (ι → R) → ProbComp α) :
-    (do
-      let table ← $ᵗ (Ω → R)
-      let keys ← $ᵗ (ι → R)
-      let p := seedGenTableKeyExchange points (table, keys)
-      k p.1 p.2) =ᵈ
-    (do
-      let table ← $ᵗ (Ω → R)
-      let keys ← $ᵗ (ι → R)
-      k table keys) := by
-  classical
-  have he := evalDist_seedGenTableKeyExchange (R := R) points hinj
-  have hb : ((seedGenTableKeyExchange (R := R) points <$> ($ᵗ ((Ω → R) × (ι → R)))) >>= fun p => k p.1 p.2) =ᵈ
-      (($ᵗ ((Ω → R) × (ι → R))) >>= fun p => k p.1 p.2) :=
-    he.bind_left _
-  rw [bind_map_left] at hb
-  change ((Prod.mk <$> ($ᵗ (Ω → R)) <*> ($ᵗ (ι → R))) >>= fun p =>
-    k (seedGenTableKeyExchange points p).1 (seedGenTableKeyExchange points p).2) =ᵈ
-    ((Prod.mk <$> ($ᵗ (Ω → R)) <*> ($ᵗ (ι → R))) >>= fun p => k p.1 p.2) at hb
-  simpa only [seq_eq_bind_map, bind_map_left, bind_assoc] using hb
-
-/-- Cached cells outside the selected fresh positions remain unchanged. -/
-theorem seedGenExchangeTable_overlay {ι Ω R : Type} (points : ι → Ω)
-    (table : Ω → R) (keys : ι → R) (cache : Ω → Option R)
-    (hfresh : ∀ i, cache (points i) = none) :
-    (fun q => (cache q).getD (seedGenExchangeTable points table keys q)) =
-      seedGenExchangeTable points (fun q => (cache q).getD (table q)) keys := by
-  classical
-  funext q
-  rcases Classical.em (∃ i, points i = q) with hq | hq
-  · obtain ⟨i, rfl⟩ := hq
-    letI : Decidable (∃ j, points j = points i) := Classical.propDecidable _
-    simp only [hfresh, Option.getD_none, seedGenExchangeTable]
-  · have hn : ∀ i, points i ≠ q := not_exists.mp hq
-    rw [seedGenExchangeTable_outside points table keys q hn,
-      seedGenExchangeTable_outside points (fun q => (cache q).getD (table q)) keys q hn]
-
 variable {C : Committee}
 
 /-- Canonical raw-parts derivation inputs, indexed by the model's existing key names. -/
@@ -4066,68 +3455,6 @@ def seedGenNames (C : Committee) : List (KeyName C) := (Finset.univ : Finset (Ke
 theorem seedGenNamedInput_not_fixed (parts : C.Party → Parts C) (name : KeyName C) :
     ¬ IsFixed (seedGenNamedInput parts name) := by
   cases name <;> simp [seedGenNamedInput, parameterInput, termInput, pairInput, IsFixed]
-
-/-- The complete canonical table may be sampled after the simulator's programming boundary.
-Its insertion before the local continuation preserves that continuation's output distribution. -/
-theorem evalDist_seedGenNamedTable_prepend (prims : Primitives) (parts : C.Party → Parts C)
-    {α : Type} (k : OracleComp (LocalSpec C) α) (s : HashCache C) :
-    (tablePrograms (seedGenNames C) (seedGenNamedInput parts) >>= fun _ =>
-      simulateQ (localAnswer prims) k).run' s =ᵈ
-      (simulateQ (localAnswer prims) k).run' s :=
-  evalDist_tablePrograms_prepend prims _ (Finset.nodup_toList _) _
-    (fun name _ => seedGenNamedInput_not_fixed parts name) k s
-
-/-- Exchange only hidden named coordinates, leaving the dealer's public and corrupt coordinates
-unchanged. This uses the same `Hidden` predicate as the stated model. -/
-def seedGenHiddenNamedSwap (coalition : C.Coalition)
-    (p : (KeyName C → HashOutput) × (KeyName C → HashOutput)) :
-    (KeyName C → HashOutput) × (KeyName C → HashOutput) :=
-  (fun name => if Hidden coalition name then p.2 name else p.1 name,
-   fun name => if Hidden coalition name then p.1 name else p.2 name)
-
-theorem seedGenHiddenNamedSwap_involutive (coalition : C.Coalition) :
-    Function.Involutive (seedGenHiddenNamedSwap coalition) := by
-  intro p
-  apply Prod.ext <;> funext name <;>
-    by_cases hh : Hidden coalition name <;> simp [seedGenHiddenNamedSwap, hh]
-
-theorem seedGenHiddenNamedSwap_known (coalition : C.Coalition)
-    (p : (KeyName C → HashOutput) × (KeyName C → HashOutput))
-    (name : KeyName C) (hknown : ¬ Hidden coalition name) :
-    (seedGenHiddenNamedSwap coalition p).1 name = p.1 name ∧
-      (seedGenHiddenNamedSwap coalition p).2 name = p.2 name := by
-  simp [seedGenHiddenNamedSwap, hknown]
-
-theorem evalDist_seedGenHiddenNamedSwap (coalition : C.Coalition) :
-    (seedGenHiddenNamedSwap coalition <$>
-      ($ᵗ ((KeyName C → HashOutput) × (KeyName C → HashOutput)))) =ᵈ
-    $ᵗ ((KeyName C → HashOutput) × (KeyName C → HashOutput)) :=
-  SampleableType.map_uniformSample_evalDistEq_of_bijective (seedGenHiddenNamedSwap_involutive coalition).bijective
-
-theorem seedGenNamedInput_injective (parts : C.Party → Parts C) (hnd : (seedGenInputs parts).Nodup) :
-    Function.Injective (seedGenNamedInput parts) := by
-  have hs := List.nodup_append.mp (List.nodup_cons.mp hnd).2
-  have ht : Function.Injective (termInput .seedGen parts) := by
-    intro T T' he
-    exact List.inj_on_of_nodup_map hs.1 (by simp [Committee.terms]) (by simp [Committee.terms]) he
-  have hp : Function.Injective (pairInput .seedGen parts) := by
-    intro p p' he
-    exact List.inj_on_of_nodup_map hs.2.1 (by simp [pairList]) (by simp [pairList]) he
-  intro a b he
-  cases a <;> cases b <;> try rfl
-  all_goals first
-    | (apply congrArg KeyName.term; exact ht he)
-    | (apply congrArg KeyName.pair; exact hp he)
-    | (simp [seedGenNamedInput, parameterInput, termInput, pairInput] at he)
-
-/-- Noninjective raw derivation positions are already covered by the proved input-collision bound. -/
-theorem probEvent_seedGenNamedInput_collision :
-    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
-      ¬ Function.Injective (seedGenNamedInput parts)] ≤
-      ((Fintype.card C.Term ^ 2 + Fintype.card C.Pair ^ 2 : ℕ) : ℝ≥0∞) *
-        (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-  refine (prEvent_mono _ _ _ (fun parts hn hnd => hn (seedGenNamedInput_injective parts hnd))).trans ?_
-  exact probEvent_seedGen_collision
 
 end ThresholdLeanXmssSecurity
 
@@ -4201,24 +3528,6 @@ theorem stepRound_seedGenInitialSteps (coalition : C.Coalition)
 def seedGenRevealInbox (coalition : C.Coalition) (parts : C.Party → Parts C)
     (committed : C.Party → Mail C E) (sent : C.Party → Mail C E) : C.Party → Mail C E :=
   roundInbox coalition sent (seedGenRevealSteps coalition parts committed)
-
-/-- Every surviving reveal inbox contains all the honest openings. -/
-theorem seedGenRevealInbox_honest (coalition : C.Coalition) (parts : C.Party → Parts C)
-    (committed sent : C.Party → Mail C E) (i : C.Party)
-    (ha : (C.parties.any fun j => Msg.isAbort (seedGenRevealInbox coalition parts committed sent i j)) = false)
-    (j : C.Party) (hj : j ∉ coalition.1) (hji : j ≠ i) :
-    Msg.hashesOf (seedGenRevealInbox coalition parts committed sent i j) =
-      revealTo .seedGen (parts j) j i := by
-  have hno := List.any_eq_false.mp ha j (List.mem_finRange j)
-  by_cases hb : (C.parties.any fun l => Msg.isAbort (committed j l)) = true
-  · have hstep : seedGenRevealSteps coalition parts committed j = .done none := by
-      simp only [seedGenRevealSteps, hb, or_true, if_true]
-    have hr := roundInbox_abort coalition sent (seedGenRevealSteps coalition parts committed) i j hj hstep
-    change ¬ Msg.isAbort (roundInbox coalition sent (seedGenRevealSteps coalition parts committed) i j) = true at hno
-    rw [hr] at hno
-    exact (hno rfl).elim
-  · simp only [seedGenRevealInbox, roundInbox, seedGenRevealSteps,
-      hj, hb, Bool.false_eq_true, false_or, if_false, Step.delivered, revealOutbox, if_neg (Ne.symm hji), Msg.hashesOf]
 
 /-- If one honest operator passed the abort-frame check at reveal, all honest operators sent
 reveals in that round. This includes senders that fail their own opening checks afterwards. -/
@@ -4534,164 +3843,11 @@ theorem SeedGenUsesOnly.hash {Q : Query C → Prop} (q : Query C) (hq : Q q) :
   rcases hr with ⟨y, _, rfl⟩
   simpa using List.mem_singleton.mp hq' ▸ hq
 
-theorem SeedGenUsesOnly.list_mapM {α β : Type} {Q : Query C → Prop} (l : List α)
-    (f : α → OracleComp (LocalSpec C) β) (hf : ∀ a ∈ l, SeedGenUsesOnly Q (f a)) :
-    SeedGenUsesOnly Q (l.mapM f) := by
-  induction l with
-  | nil => exact SeedGenUsesOnly.pure Q []
-  | cons a l ih =>
-    simp only [List.mapM_cons]
-    exact (hf a (by simp)).bind fun x =>
-      ((ih (fun b hb => hf b (by simp [hb]))).bind fun xs => SeedGenUsesOnly.pure Q (x :: xs))
-
 theorem seedGen_liftComp_mapM {α β : Type} (f : α → OracleComp (RoSpec C) β) (l : List α) :
     liftComp (l.mapM f) (LocalSpec C) = l.mapM (fun a => liftComp (f a) (LocalSpec C)) := by
   induction l with
   | nil => rfl
   | cons a l ih => simp only [List.mapM_cons, liftComp_bind, liftComp_pure, ih]
-
-def seedGenParameterViewInput (i : C.Party) (parts : C.Party → Parts C) (revealed : C.Party → Mail C E) : Query C :=
-  .derive .seedGen .parameter (C.parties.map fun j => (setupView .seedGen i (parts i) (revealed i) j).parameter)
-
-def seedGenTermViewInput (i : C.Party) (T : C.Term) (parts : C.Party → Parts C)
-    (revealed : C.Party → Mail C E) : Query C :=
-  .derive .seedGen .term ((C.parties.filter (· ∈ C.holders T)).map fun j =>
-    (setupView .seedGen i (parts i) (revealed i) j).term T)
-
-/-- Every derivation query is a parameter input, a held-term input, or an endpoint-pair input. -/
-theorem seedGen_deriveKeys_usesOnly (i : C.Party) (parts : C.Party → Parts C) (revealed : C.Party → Mail C E) :
-    SeedGenUsesOnly (fun q => q = seedGenParameterViewInput i parts revealed ∨
-      (∃ T, i ∈ C.holders T ∧ q = seedGenTermViewInput i T parts revealed) ∨
-      (∃ p : C.Pair, (p.1.1 = i ∨ p.1.2 = i) ∧ q = seedGenPairViewInput parts revealed i p))
-      (liftComp (deriveKeys .seedGen i (setupView .seedGen i (parts i) (revealed i))) (LocalSpec C)) := by
-  unfold deriveKeys
-  simp only [ite_true, liftComp_bind, liftComp_pure]
-  apply SeedGenUsesOnly.bind
-  · exact SeedGenUsesOnly.hash _ (Or.inl rfl)
-  intro parameter
-  apply SeedGenUsesOnly.bind
-  · rw [seedGen_liftComp_mapM]
-    apply SeedGenUsesOnly.list_mapM
-    intro T hT
-    split_ifs with hi
-    · exact SeedGenUsesOnly.hash _ (Or.inr (Or.inl ⟨T, hi, rfl⟩))
-    · exact SeedGenUsesOnly.pure _ 0
-  · intro terms
-    apply SeedGenUsesOnly.bind
-    · rw [seedGen_liftComp_mapM]
-      apply SeedGenUsesOnly.list_mapM
-      intro j hj
-      split_ifs with hji
-      · exact SeedGenUsesOnly.pure _ 0
-      · apply SeedGenUsesOnly.hash
-        right; right
-        refine ⟨C.pairOf i j (Ne.symm hji), ?_, rfl⟩
-        unfold Committee.pairOf
-        split <;> simp
-    · intro pairs
-      exact SeedGenUsesOnly.pure _ _
-
-theorem seedGen_commitQueries_usesOnly (i : C.Party) (own : Parts C) :
-    SeedGenUsesOnly (fun q => ∃ j, q = .commit .seedGen i j (revealTo .seedGen own i j))
-      (liftComp (commitQueries .seedGen i own) (LocalSpec C)) := by
-  rw [commitQueries, seedGen_liftComp_mapM]
-  exact SeedGenUsesOnly.list_mapM _ _ fun j _ => SeedGenUsesOnly.hash _ ⟨j, rfl⟩
-
-theorem seedGen_openQueries_usesOnly (i : C.Party) (revealed : Mail C E) :
-    SeedGenUsesOnly (fun q => ∃ j, q = .commit .seedGen j i (Msg.hashesOf (revealed j)))
-      (liftComp (openQueries .seedGen i revealed) (LocalSpec C)) := by
-  rw [openQueries, seedGen_liftComp_mapM]
-  exact SeedGenUsesOnly.list_mapM _ _ fun j _ => SeedGenUsesOnly.hash _ ⟨j, rfl⟩
-
-theorem seedGen_sharedQueries_usesOnly (i : C.Party)
-    (keys : HashOutput × (C.Term → HashOutput) × (C.Party → HashOutput)) :
-    SeedGenUsesOnly (fun q => ∃ j, q = .sharedKeys .seedGen ((sharedTerms i j).map keys.2.1))
-      (liftComp (sharedQueries .seedGen i keys) (LocalSpec C)) := by
-  rw [sharedQueries, seedGen_liftComp_mapM]
-  exact SeedGenUsesOnly.list_mapM _ _ fun j _ => SeedGenUsesOnly.hash _ ⟨j, rfl⟩
-
-def seedGenEchoDataKeys (data : Option (SeedGenEchoData C)) :
-    HashOutput × (C.Term → HashOutput) × (C.Party → HashOutput) :=
-  data.map Prod.fst |>.getD (0, fun _ => 0, fun _ => 0)
-
-/-- The complete query footprint of one actual reveal computation. The shared inputs use its
-returned keys, so they are not chosen independently of the trace. -/
-def SeedGenRevealInput (i : C.Party) (parts : C.Party → Parts C) (revealed : C.Party → Mail C E)
-    (data : Option (SeedGenEchoData C)) (q : Query C) : Prop :=
-  (∃ j, q = .commit .seedGen j i (Msg.hashesOf (revealed i j))) ∨
-  q = seedGenParameterViewInput i parts revealed ∨
-  (∃ T, i ∈ C.holders T ∧ q = seedGenTermViewInput i T parts revealed) ∨
-  (∃ p : C.Pair, (p.1.1 = i ∨ p.1.2 = i) ∧ q = seedGenPairViewInput parts revealed i p) ∨
-  (∃ j, q = .sharedKeys .seedGen ((sharedTerms i j).map (seedGenEchoDataKeys data).2.1))
-
-theorem seedGenRevealCompute_hash_inputs (i : C.Party) (parts : C.Party → Parts C)
-    (committed : Mail C E) (revealed : C.Party → Mail C E)
-    (r : Option (SeedGenEchoData C) × List (Query C))
-    (hr : r ∈ support (seedGenHashLog (seedGenRevealCompute i (parts i) committed (revealed i)))) :
-    ∀ q ∈ r.2, SeedGenRevealInput i parts revealed r.1 q := by
-  unfold seedGenRevealCompute at hr
-  split_ifs at hr with ha
-  · simp only [seedGenHashLog_pure, support_pure, Set.mem_singleton_iff] at hr
-    subst hr
-    simp
-  · rw [seedGenHashLog_bind] at hr
-    simp only [support_bind, Set.mem_iUnion, support_pure, Set.mem_singleton_iff] at hr
-    obtain ⟨⟨opens, lo⟩, hlo, ⟨out, lt⟩, hlt, rfl⟩ := hr
-    by_cases ho : openCheck .seedGen i (parts i) committed (revealed i) opens
-    · simp only [ho, not_true_eq_false, if_false, pure_bind] at hlt
-      rw [seedGenHashLog_bind] at hlt
-      simp only [support_bind, Set.mem_iUnion, support_pure, Set.mem_singleton_iff] at hlt
-      obtain ⟨⟨keys, lk⟩, hlk, ⟨out', ls⟩, hls, heq⟩ := hlt
-      rw [seedGenHashLog_bind] at hls
-      simp only [support_bind, Set.mem_iUnion, seedGenHashLog_pure,
-        support_pure, Set.mem_singleton_iff] at hls
-      obtain ⟨⟨shared, ls'⟩, hls', ⟨o, le⟩, he, he'⟩ := hls
-      cases he
-      cases he'
-      cases heq
-      intro q hq
-      simp only [List.mem_append, List.append_nil] at hq
-      rcases hq with hq | hq | hq
-      · exact Or.inl (seedGen_openQueries_usesOnly i (revealed i) (opens, lo) hlo q hq)
-      · rcases seedGen_deriveKeys_usesOnly i parts revealed (keys, lk) hlk q hq with hp | ht | hp
-        · exact Or.inr (Or.inl hp)
-        · exact Or.inr (Or.inr (Or.inl ht))
-        · exact Or.inr (Or.inr (Or.inr (Or.inl hp)))
-      · exact Or.inr (Or.inr (Or.inr (Or.inr
-          (seedGen_sharedQueries_usesOnly i keys (shared, ls') hls' q hq))))
-    · simp only [ho, not_false_eq_true, if_true, seedGenHashLog_pure, support_pure,
-        Set.mem_singleton_iff] at hlt
-      cases hlt
-      intro q hq
-      exact Or.inl (seedGen_openQueries_usesOnly i (revealed i) (opens, lo) hlo q (by simpa using hq))
-
-set_option maxHeartbeats 1000000 in
-/-- Each executed reveal input belongs to the six-family cover once honest reveals are present. -/
-theorem seedGenRevealInput_mem_cover (coalition : C.Coalition) (parts : C.Party → Parts C)
-    (revealed : C.Party → Mail C E) (data : C.Party → Option (SeedGenEchoData C))
-    (hreceived : ∀ i j, j ∉ coalition.1 → j ≠ i →
-      Msg.hashesOf (revealed i j) = revealTo .seedGen (parts j) j i)
-    (i : C.Party) (hi : i ∉ coalition.1) (q : Query C)
-    (hq : SeedGenRevealInput i parts revealed (data i) q) :
-    q ∈ seedGenFreeInputCover coalition
-      (fun i j => .commit .seedGen i j (revealTo .seedGen (parts i) i j))
-      (fun i j => .commit .seedGen j i (Msg.hashesOf (revealed i j)))
-      (fun i j => .sharedKeys .seedGen ((sharedTerms i j).map (seedGenEchoDataKeys (data i)).2.1))
-      (fun i => seedGenParameterViewInput i parts revealed)
-      (fun i T => seedGenTermViewInput i T parts revealed)
-      (seedGenPairRepresentative coalition parts revealed) := by
-  rcases hq with ⟨j, rfl⟩ | rfl | ⟨T, hT, rfl⟩ | ⟨p, hip, rfl⟩ | ⟨j, rfl⟩
-  · exact seedGen_openInput_covered coalition parts revealed hreceived _ _ _ _ i j hi
-  all_goals simp only [seedGenFreeInputCover, List.mem_append, List.mem_flatMap,
-    List.mem_map, Finset.mem_toList, Finset.mem_compl, Committee.parties, List.mem_finRange,
-    true_and, List.mem_cons]
-  · aesop
-  · have hTm : T ∈ C.terms := by simp [Committee.terms]
-    aesop
-  · have hp := seedGenPairViewInput_eq_representative coalition parts revealed hreceived i hi p hip
-    have hpm : p ∈ pairList C := by simp [pairList]
-    aesop
-  · aesop
 
 end ThresholdLeanXmssSecurity
 
@@ -4701,222 +3857,6 @@ namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
 variable {C : Committee} {E : Type}
 
-/-- Every logged query of a sequence belongs to one actual component run with the returned value. -/
-theorem seedGenHashLog_sequenceFin_support {α : Type} :
-    ∀ {n : ℕ} (f : Fin n → OracleComp (LocalSpec C) α)
-      (r : (Fin n → α) × List (Query C)), r ∈ support (seedGenHashLog (OverPermutation.sequenceFin f)) →
-      ∀ q ∈ r.2, ∃ i, ∃ s : α × List (Query C),
-        s ∈ support (seedGenHashLog (f i)) ∧ s.1 = r.1 i ∧ q ∈ s.2
-  | 0, f, r, hr => by
-      simp only [OverPermutation.sequenceFin, seedGenHashLog_pure, support_pure, Set.mem_singleton_iff] at hr
-      subst hr
-      simp
-  | n + 1, f, r, hr => by
-      simp only [OverPermutation.sequenceFin, seedGenHashLog_bind, seedGenHashLog_pure,
-        support_bind, Set.mem_iUnion, support_pure, Set.mem_singleton_iff] at hr
-      obtain ⟨⟨a, la⟩, ha, ⟨out, lb⟩, hb, rfl⟩ := hr
-      obtain ⟨⟨tail, lt⟩, ht, ⟨v, lv⟩, hv, he⟩ := hb
-      cases hv
-      cases he
-      intro q hq
-      simp only [List.append_nil, List.mem_append] at hq
-      rcases hq with hq | hq
-      · exact ⟨0, (a, la), ha, rfl, hq⟩
-      · obtain ⟨i, s, hs, he, hq⟩ := seedGenHashLog_sequenceFin_support
-          (fun j : Fin n => f j.succ) (tail, lt) ht q hq
-        exact ⟨i.succ, s, hs, he, hq⟩
-
-/-- A reveal trace that has any query necessarily passed the abort-frame test. -/
-theorem seedGenRevealCompute_nonempty (i : C.Party) (own : Parts C) (committed revealed : Mail C E)
-    (r : Option (SeedGenEchoData C) × List (Query C))
-    (hr : r ∈ support (seedGenHashLog (seedGenRevealCompute i own committed revealed)))
-    (q : Query C) (hq : q ∈ r.2) :
-    (C.parties.any fun j => Msg.isAbort (revealed j)) = false := by
-  by_contra ha
-  have ha' : (C.parties.any fun j => Msg.isAbort (revealed j)) = true := by
-    cases he : (C.parties.any fun j => Msg.isAbort (revealed j)) <;> simp_all
-  simp only [seedGenRevealCompute, ha', if_true, seedGenHashLog_pure, support_pure,
-    Set.mem_singleton_iff] at hr
-  cases hr
-  cases hq
-
-/-- Every query in the actual second-round trace belongs to its returned party's footprint. -/
-theorem seedGenRevealComputations_hash_inputs (coalition : C.Coalition) (parts : C.Party → Parts C)
-    (committed sent : C.Party → Mail C E)
-    (r : (C.Party → Option (SeedGenEchoData C)) × List (Query C))
-    (hr : r ∈ support (seedGenHashLog (seedGenRevealComputations coalition parts committed sent)))
-    (q : Query C) (hq : q ∈ r.2) :
-    (∀ k j, j ∉ coalition.1 → j ≠ k →
-      Msg.hashesOf (seedGenRevealInbox coalition parts committed sent k j) = revealTo .seedGen (parts j) j k) ∧
-    ∃ i, i ∉ coalition.1 ∧ SeedGenRevealInput i parts
-      (seedGenRevealInbox coalition parts committed sent) (r.1 i) q := by
-  obtain ⟨i, s, hs, he, hq⟩ := seedGenHashLog_sequenceFin_support _ r hr q hq
-  by_cases hi : i ∈ coalition.1 ∨ (C.parties.any fun j => Msg.isAbort (committed i j)) = true
-  · simp only [if_pos hi, seedGenHashLog_pure, support_pure, Set.mem_singleton_iff] at hs
-    cases hs
-    cases hq
-  · simp only [if_neg hi] at hs
-    have ha := seedGenRevealCompute_nonempty i (parts i) (committed i)
-      (seedGenRevealInbox coalition parts committed sent i) s hs q hq
-    refine ⟨seedGenRevealInbox_all_honest coalition parts committed sent i ha, i,
-      (fun hc => hi (Or.inl hc)), ?_⟩
-    rw [← he]
-    exact seedGenRevealCompute_hash_inputs i parts (committed i)
-      (seedGenRevealInbox coalition parts committed sent) s hs q hq
-
-/-- The initial trace contains exactly the honest commitment family. -/
-theorem seedGenInitialCommitments_hash_inputs (coalition : C.Coalition) (parts : C.Party → Parts C)
-    (r : (C.Party → List HashOutput) × List (Query C))
-    (hr : r ∈ support (seedGenHashLog (seedGenInitialCommitments coalition parts)))
-    (q : Query C) (hq : q ∈ r.2) :
-    ∃ i, i ∉ coalition.1 ∧ ∃ j, q = .commit .seedGen i j (revealTo .seedGen (parts i) i j) := by
-  obtain ⟨i, s, hs, _, hq⟩ := seedGenHashLog_sequenceFin_support _ r hr q hq
-  by_cases hi : i ∈ coalition.1
-  · simp only [if_pos hi, seedGenHashLog_pure, support_pure, Set.mem_singleton_iff] at hs
-    cases hs
-    cases hq
-  · simp only [if_neg hi] at hs
-    exact ⟨i, hi, seedGen_commitQueries_usesOnly i (parts i) s hs q hq⟩
-
-/-- The first- and second-round traces cover all free hash work in the split real execution. -/
-theorem seedGen_all_free_inputs_card_le (coalition : C.Coalition) (parts : C.Party → Parts C)
-    (initial : (C.Party → List HashOutput) × List (Query C))
-    (hi : initial ∈ support (seedGenHashLog (seedGenInitialCommitments coalition parts)))
-    (committed sent : C.Party → Mail C E)
-    (reveal : (C.Party → Option (SeedGenEchoData C)) × List (Query C))
-    (hr : reveal ∈ support (seedGenHashLog (seedGenRevealComputations coalition parts committed sent))) :
-    (initial.2 ++ reveal.2).toFinset.card ≤ seedGenSecrets C := by
-  apply seedGenFreeInputCover_card_le coalition
-    (fun i j => .commit .seedGen i j (revealTo .seedGen (parts i) i j))
-    (fun i j => .commit .seedGen j i (Msg.hashesOf (seedGenRevealInbox coalition parts committed sent i j)))
-    (fun i j => .sharedKeys .seedGen ((sharedTerms i j).map (seedGenEchoDataKeys (reveal.1 i)).2.1))
-    (fun i => seedGenParameterViewInput i parts (seedGenRevealInbox coalition parts committed sent))
-    (fun i T => seedGenTermViewInput i T parts (seedGenRevealInbox coalition parts committed sent))
-    (seedGenPairRepresentative coalition parts (seedGenRevealInbox coalition parts committed sent))
-  intro q hq
-  rcases List.mem_append.mp (List.mem_toFinset.mp hq) with hq | hq
-  · obtain ⟨i, hih, j, rfl⟩ := seedGenInitialCommitments_hash_inputs coalition parts initial hi q hq
-    simp only [seedGenFreeInputCover, List.mem_append, List.mem_flatMap, List.mem_map,
-      Finset.mem_toList, Finset.mem_compl, Committee.parties, List.mem_finRange, true_and]
-    exact Or.inl (Or.inl (Or.inl (Or.inl (Or.inl ⟨i, hih, j, rfl⟩))))
-  · obtain ⟨hreceived, i, hih, hqi⟩ := seedGenRevealComputations_hash_inputs coalition parts committed sent reveal hr q hq
-    exact seedGenRevealInput_mem_cover coalition parts _ reveal.1 hreceived i hih q hqi
-
-/-- Log the free computations after the commit boundary and keep the actual echo output. -/
-def seedGenFreeTracePostCommit (coalition : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
-    (state : A.State) (parts : C.Party → Parts C) (committed : C.Party → Mail C E) :
-    OracleComp (LocalSpec C) ((A.State × (C.Party → Option (Keys C))) × List (Query C)) :=
-  if ∀ i, i ∉ coalition.1 → (C.parties.any fun j => Msg.isAbort (committed i j)) = true then
-    pure ((state, fun _ => none), [])
-  else do
-    let (st, sent) ← A.round state fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then
-      (seedGenRevealSteps coalition parts committed i).outbox c else none
-    let (data, inputs) ← seedGenHashLog (seedGenRevealComputations coalition parts committed sent)
-    let out ← seedGenFinishLocal coalition A st data
-    pure (out, inputs)
-
-theorem fst_seedGenFreeTracePostCommit (coalition : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
-    (state : A.State) (parts : C.Party → Parts C) (committed : C.Party → Mail C E) :
-    Prod.fst <$> seedGenFreeTracePostCommit coalition A state parts committed =
-      seedGenPostCommitLocal coalition A state parts committed := by
-  unfold seedGenFreeTracePostCommit seedGenPostCommitLocal
-  split_ifs
-  · rfl
-  · simp only [map_bind]
-    refine bind_congr fun r => ?_
-    rcases r with ⟨st, sent⟩
-    dsimp only
-    conv_rhs => rw [← seedGenHashLog_fst (seedGenRevealComputations coalition parts committed sent), bind_map_left]
-    refine bind_congr fun data => ?_
-    simp only [map_bind, map_pure, bind_pure_comp, bind_pure, id_map]
-
-/-- A complete real execution instrumented only on the honest hash computations. -/
-def seedGenFreeTraceLocalGame (coalition : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
-    (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) :
-    OracleComp (LocalSpec C) (Bool × List (Query C)) := do
-  let state ← A.start (corruptInputs coalition x) z
-  let parts ← OverPermutation.sequenceFin fun (_ : C.Party) => liftComp (sampleParts (C := C)) (LocalSpec C)
-  let (commitments, initial) ← seedGenHashLog (seedGenInitialCommitments coalition parts)
-  let (st, sent) ← A.round state fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then
-    commitOutbox i (commitments i) c else none
-  let (r, rest) ← seedGenFreeTracePostCommit coalition A st parts (seedGenCommitInbox coalition parts commitments sent)
-  let out ← Z r
-  pure (out, initial ++ rest)
-
-theorem fst_seedGenFreeTraceLocalGame (coalition : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
-    (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) :
-    Prod.fst <$> seedGenFreeTraceLocalGame coalition A x z Z = seedGenNormalizedLocalGame coalition A x z Z := by
-  unfold seedGenFreeTraceLocalGame seedGenNormalizedLocalGame
-  simp only [map_bind]
-  refine bind_congr fun state => bind_congr fun parts => ?_
-  conv_rhs => rw [← seedGenHashLog_fst (seedGenInitialCommitments coalition parts), bind_map_left]
-  refine bind_congr fun initial => ?_
-  refine bind_congr fun r => ?_
-  rcases r with ⟨st, sent⟩
-  dsimp only
-  conv_rhs => rw [← fst_seedGenFreeTracePostCommit coalition A st parts _, bind_map_left]
-  refine bind_congr fun rest => ?_
-  simp only [map_bind, map_pure, bind_pure_comp, bind_pure, id_map]
-
-/-- Prefix commitments alone are also covered when the execution stops before reveal. -/
-theorem seedGen_initial_free_inputs_card_le (coalition : C.Coalition) (parts : C.Party → Parts C)
-    (initial : (C.Party → List HashOutput) × List (Query C))
-    (hi : initial ∈ support (seedGenHashLog (seedGenInitialCommitments coalition parts))) :
-    initial.2.toFinset.card ≤ seedGenSecrets C := by
-  apply seedGenFreeInputCover_card_le coalition
-    (fun i j => .commit .seedGen i j (revealTo .seedGen (parts i) i j))
-    (fun _ _ => .sharedKeys .seedGen []) (fun _ _ => .sharedKeys .seedGen [])
-    (fun _ => .sharedKeys .seedGen []) (fun _ _ => .sharedKeys .seedGen []) (fun _ => .sharedKeys .seedGen [])
-  intro q hq
-  obtain ⟨i, hih, j, rfl⟩ := seedGenInitialCommitments_hash_inputs coalition parts initial hi q (List.mem_toFinset.mp hq)
-  simp only [seedGenFreeInputCover, List.mem_append, List.mem_flatMap, List.mem_map,
-    Finset.mem_toList, Finset.mem_compl, Committee.parties, List.mem_finRange, true_and]
-  exact Or.inl (Or.inl (Or.inl (Or.inl (Or.inl ⟨i, hih, j, rfl⟩))))
-
-/-- `seedGenSecrets` bounds every distinct free hash input in every complete instrumented run.
-No extraction, freshness, collision, successful-output or query-bound hypothesis is assumed. -/
-theorem seedGenFreeTraceLocalGame_card_le (coalition : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
-    (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C))
-    (r : Bool × List (Query C)) (hr : r ∈ support (seedGenFreeTraceLocalGame coalition A x z Z)) :
-    r.2.toFinset.card ≤ seedGenSecrets C := by
-  unfold seedGenFreeTraceLocalGame at hr
-  simp only [support_bind, Set.mem_iUnion, support_pure, Set.mem_singleton_iff] at hr
-  obtain ⟨state, _, parts, _, ⟨commitments, initial⟩, hi, ⟨st, sent⟩, _, ⟨out, rest⟩, hrest,
-    b, _, rfl⟩ := hr
-  unfold seedGenFreeTracePostCommit at hrest
-  split_ifs at hrest with ha
-  · simp only [support_pure, Set.mem_singleton_iff] at hrest
-    cases hrest
-    simp only [List.append_nil]
-    exact seedGen_initial_free_inputs_card_le coalition parts (commitments, initial) hi
-  · simp only [support_bind, Set.mem_iUnion, support_pure, Set.mem_singleton_iff] at hrest
-    obtain ⟨⟨st', sent'⟩, _, ⟨data, inputs⟩, hd, out', _, he⟩ := hrest
-    cases he
-    exact seedGen_all_free_inputs_card_le coalition parts (commitments, initial) hi _ sent' (data, inputs) hd
-
-/-- The bound holds in the actual lazy oracle semantics, starting from every cache. -/
-theorem seedGenFreeTraceLocalGame_run_card_le (prims : Primitives) (coalition : C.Coalition)
-    (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
-    (Z : Distinguisher C A.State (Keys C)) (cache : HashCache C)
-    (r : Bool × List (Query C))
-    (hr : r ∈ support ((simulateQ (localAnswer prims) (seedGenFreeTraceLocalGame coalition A x z Z)).run' cache)) :
-    r.2.toFinset.card ≤ seedGenSecrets C :=
-  seedGenFreeTraceLocalGame_card_le coalition A x z Z r
-    (support_simulateQ_run'_subset (localAnswer prims) _ cache hr)
-
-/-- Instrumentation preserves the complete real-game result distribution. -/
-theorem evalDist_seedGenFreeTraceLocalGame (prims : Primitives) (coalition : C.Coalition)
-    (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
-    (Z : Distinguisher C A.State (Keys C)) (cache : HashCache C) :
-    Prod.fst <$> (simulateQ (localAnswer prims) (seedGenFreeTraceLocalGame coalition A x z Z)).run' cache =ᵈ
-      (simulateQ (localAnswer prims) (seedGenLocalGame coalition A x z Z)).run' cache := by
-  have he : Prod.fst <$> (simulateQ (localAnswer prims) (seedGenFreeTraceLocalGame coalition A x z Z)).run' cache =
-      (simulateQ (localAnswer prims) (Prod.fst <$> seedGenFreeTraceLocalGame coalition A x z Z)).run' cache := by
-    simp [simulateQ_map, StateT.run'_eq, StateT.run_map, Functor.map_map]
-  rw [he, fst_seedGenFreeTraceLocalGame]
-  simp only [StateT.run'_eq]
-  exact ((sameRun_seedGenLocal_normalized prims coalition A x z Z cache).map _).symm
-
 end ThresholdLeanXmssSecurity
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
@@ -4925,63 +3865,9 @@ namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
 variable {C : Committee}
 
-/-- Erase only the points cells; all other random-oracle cells are retained. -/
-def seedGenStripCache (points : Query C → Prop) (cache : HashCache C) : HashCache C :=
-  QueryCache.ofFn fun q => if points q then none else cache q
-
-theorem seedGenStripCache_query (points : Query C → Prop) (q : Query C)
-    (hq : ¬ points q) (y : HashOutput) (cache : HashCache C) :
-    seedGenStripCache points (cache.cacheQuery q y) = (seedGenStripCache points cache).cacheQuery q y := by
-  refine QueryCache.ext fun q' => ?_
-  by_cases hp : points q'
-  · have hne : q' ≠ q := fun he => hq (he ▸ hp)
-    simp [seedGenStripCache, hp, QueryCache.cacheQuery, hne]
-  · by_cases he : q' = q
-    · subst q'; simp [seedGenStripCache, hq]
-    · simp [seedGenStripCache, hp, QueryCache.cacheQuery, Function.update_apply, he]
-
-/-- An unprotected hash query commutes with erasure of the points cache cells. -/
-theorem hashAnswer_seedGenStripCache (prims : Primitives) (points : Query C → Prop)
-    (q : Query C) (hq : ¬ points q) (cache : HashCache C) :
-    (fun r : HashOutput × HashCache C => (r.1, seedGenStripCache points r.2)) <$>
-        (hashAnswer prims q).run cache =
-      (hashAnswer prims q).run (seedGenStripCache points cache) := by
-  by_cases hf : IsFixed q
-  · obtain ⟨input, rfl, hinput⟩ := hf
-    rw [hashAnswer_of_isFixed prims hinput]
-    rfl
-  · rw [hashAnswer_of_not_isFixed prims hf, OracleSpec.randomOracle]
-    have hs : seedGenStripCache points cache q = cache q := by simp [seedGenStripCache, hq]
-    cases he : cache q with
-    | none =>
-      rw [QueryImpl.withCaching_run_none _ he, QueryImpl.withCaching_run_none _ (hs.trans he)]
-      simp only [Functor.map_map, seedGenStripCache_query points q hq]
-    | some y =>
-      rw [QueryImpl.withCaching_run_some _ he, QueryImpl.withCaching_run_some _ (hs.trans he)]
-      rfl
-
 /-- The points query test includes the internal hash of a counted PRG call. -/
 def SeedGenTouches (points : Query C → Prop) (t : (LocalSpec C).Domain) : Prop :=
   ∃ q ∈ seedGenLocalHashInputs t, points q
-
-/-- All unprotected local queries commute with cache erasure, including private sampling and PRG. -/
-theorem localAnswer_seedGenStripCache (prims : Primitives) (points : Query C → Prop)
-    (t : (LocalSpec C).Domain) (ht : ¬ SeedGenTouches points t) (cache : HashCache C) :
-    (fun r : (LocalSpec C).Range t × HashCache C => (r.1, seedGenStripCache points r.2)) <$>
-        (localAnswer prims t).run cache =
-      (localAnswer prims t).run (seedGenStripCache points cache) := by
-  rcases t with n | q | x
-  · change _ <$> (fun y => (y, cache)) <$> (query (spec := unifSpec) n : ProbComp _) =
-      (fun y => (y, seedGenStripCache points cache)) <$> (query (spec := unifSpec) n : ProbComp _)
-    simp only [Functor.map_map]
-  · exact hashAnswer_seedGenStripCache prims points q
-      (fun hq => ht ⟨q, by simp [seedGenLocalHashInputs], hq⟩) cache
-  · have hp : ¬ points (.streamKey x.2.1) :=
-      fun hq => ht ⟨_, by simp [seedGenLocalHashInputs], hq⟩
-    change _ <$> (prgAnswer prims x).run cache = (prgAnswer prims x).run _
-    simp only [prgAnswer, StateT.run_bind, StateT.run_pure, map_bind, map_pure]
-    conv_rhs => rw [← hashAnswer_seedGenStripCache prims points (.streamKey x.2.1) hp cache,
-      bind_map_left]
 
 /-- Stop a local computation immediately before its first points query. -/
 def seedGenAvoid (points : Query C → Prop) {α : Type} (oa : OracleComp (LocalSpec C) α) :
@@ -4991,54 +3877,6 @@ def seedGenAvoid (points : Query C → Prop) {α : Type} (oa : OracleComp (Local
 
 @[simp] theorem seedGenAvoid_pure (points : Query C → Prop) {α : Type} (a : α) :
     seedGenAvoid points (pure a) = pure (some a) := rfl
-
-theorem seedGenAvoid_query_bind (points : Query C → Prop) {α : Type} (t : (LocalSpec C).Domain)
-    (k : (LocalSpec C).Range t → OracleComp (LocalSpec C) α) :
-    seedGenAvoid points (OracleComp.lift (OracleSpec.query t) >>= k) =
-      if SeedGenTouches points t then pure none else
-        OracleComp.lift (OracleSpec.query t) >>= fun a => seedGenAvoid points (k a) := by
-  unfold seedGenAvoid
-  simp only [simulateQ_bind, simulateQ_query, OracleQuery.cont_query, OracleQuery.input_query, id_map]
-  split_ifs with h <;> simp [OptionT.run_bind, OptionT.run_lift, h]
-
-/-- An adaptive computation stopped before a points query cannot distinguish the points
-cache contents. The equality preserves its result and the entire unprotected final cache. -/
-theorem seedGenAvoid_run_strip (prims : Primitives) (points : Query C → Prop) {α : Type}
-    (oa : OracleComp (LocalSpec C) α) :
-    ∀ cache : HashCache C,
-      (fun r : Option α × HashCache C => (r.1, seedGenStripCache points r.2)) <$>
-          (simulateQ (localAnswer prims) (seedGenAvoid points oa)).run cache =
-        (simulateQ (localAnswer prims) (seedGenAvoid points oa)).run (seedGenStripCache points cache) := by
-  induction oa using OracleComp.inductionOn with
-  | pure a => intro cache; rfl
-  | query_bind t k ih =>
-    intro cache
-    rw [seedGenAvoid_query_bind]
-    split_ifs with ht
-    · rfl
-    · simp only [simulateQ_bind, simulateQ_query, OracleQuery.cont_query, OracleQuery.input_query,
-        id_map, StateT.run_bind, map_bind]
-      conv_rhs => rw [← localAnswer_seedGenStripCache prims points t ht cache, bind_map_left]
-      exact bind_congr fun r => ih r.1 r.2
-
-/-- Arbitrary initial caches with the same unprotected cells give the same stopped output law. -/
-theorem seedGenAvoid_run'_eq (prims : Primitives) (points : Query C → Prop) {α : Type}
-    (oa : OracleComp (LocalSpec C) α) (s t : HashCache C)
-    (hst : ∀ q, ¬ points q → s q = t q) :
-    (simulateQ (localAnswer prims) (seedGenAvoid points oa)).run' s =
-      (simulateQ (localAnswer prims) (seedGenAvoid points oa)).run' t := by
-  have he : seedGenStripCache points s = seedGenStripCache points t := by
-    refine QueryCache.ext fun q => ?_
-    simp only [seedGenStripCache, QueryCache.ofFn_apply]
-    split_ifs with hq
-    · rfl
-    · exact hst q hq
-  have hs := congrArg (Functor.map Prod.fst) (seedGenAvoid_run_strip prims points oa s)
-  have ht := congrArg (Functor.map Prod.fst) (seedGenAvoid_run_strip prims points oa t)
-  simp only [Functor.map_map] at hs ht
-  simp only [StateT.run'_eq]
-  exact hs.trans ((congrArg (fun cache => Prod.fst <$>
-    (simulateQ (localAnswer prims) (seedGenAvoid points oa)).run cache) he).trans ht.symm)
 
 end ThresholdLeanXmssSecurity
 
@@ -5058,83 +3896,6 @@ def SeedGenGoodLog (points : Query C → Prop) (l : List (Query C)) : Prop := �
     SeedGenGoodLog points (seedGenLocalHashInputs t) ↔ ¬ SeedGenTouches points t := by
   simp [SeedGenGoodLog, SeedGenTouches]
 
-theorem seedGenHashLog_query_bind {α : Type} (t : (LocalSpec C).Domain)
-    (k : (LocalSpec C).Range t → OracleComp (LocalSpec C) α) :
-    seedGenHashLog (OracleComp.lift (OracleSpec.query t) >>= k) = (do
-      let u ← OracleComp.lift (OracleSpec.query t)
-      let (a, l) ← seedGenHashLog (k u)
-      pure (a, seedGenLocalHashInputs t ++ l)) := by
-  rw [seedGenHashLog_bind]
-  have he : seedGenHashLog (OracleComp.lift (OracleSpec.query t)) =
-      (fun u => (u, seedGenLocalHashInputs t)) <$> OracleComp.lift (OracleSpec.query t) := by
-    simp only [seedGenHashLog, simulateQ_query, OracleQuery.cont_query, OracleQuery.input_query, id_map]
-    rcases t with n | q | x <;> rfl
-  rw [he, bind_map_left]
-
-theorem seedGenHashLog_run_query_bind (prims : Primitives) {α : Type} (t : (LocalSpec C).Domain)
-    (k : (LocalSpec C).Range t → OracleComp (LocalSpec C) α) (cache : HashCache C) :
-    (simulateQ (localAnswer prims) (seedGenHashLog (OracleComp.lift (OracleSpec.query t) >>= k))).run cache =
-      (do
-        let p ← (localAnswer prims t).run cache
-        (fun r : (α × List (Query C)) × HashCache C =>
-          ((r.1.1, seedGenLocalHashInputs t ++ r.1.2), r.2)) <$>
-            (simulateQ (localAnswer prims) (seedGenHashLog (k p.1))).run p.2) := by
-  rw [seedGenHashLog_query_bind]
-  simp only [simulateQ_bind, simulateQ_query, OracleQuery.cont_query, OracleQuery.input_query, id_map,
-    StateT.run_bind, simulateQ_pure, StateT.run_pure]
-  refine bind_congr fun p => ?_
-  rw [map_eq_bind_pure_comp]
-  rfl
-
-/-- Rejecting at the first protected query gives exactly the original accepting mass with no hit. -/
-theorem probEvent_seedGenHashLog_good_eq_avoid (prims : Primitives) (points : Query C → Prop)
-    {α : Type} (oa : OracleComp (LocalSpec C) α) :
-    ∀ (cache : HashCache C) (a : α),
-      Pr{let r ← (simulateQ (localAnswer prims) (seedGenHashLog oa)).run cache}[
-        r.1.1 = a ∧ SeedGenGoodLog points r.1.2] =
-      Pr{let r ← (simulateQ (localAnswer prims) (seedGenAvoid points oa)).run cache}[r.1 = some a] := by
-  induction oa using OracleComp.inductionOn with
-  | pure b =>
-    intro cache a
-    letI : DecidableEq α := Classical.decEq α
-    have hg : SeedGenGoodLog points [] := by simp [SeedGenGoodLog]
-    simp only [seedGenHashLog_pure, seedGenAvoid_pure, simulateQ_pure, StateT.run_pure,
-      prEvent_pure, hg, and_true, Option.some.injEq]
-  | query_bind t k ih =>
-    intro cache a
-    rw [seedGenHashLog_run_query_bind, seedGenAvoid_query_bind]
-    by_cases ht : SeedGenTouches points t
-    · rw [if_pos ht]
-      have hn : (none : Option α) ≠ some a := by intro h; cases h
-      simp only [simulateQ_pure, StateT.run_pure, prEvent_pure, if_neg hn]
-      rw [OracleComp.prEvent_bind_eq_tsum]
-      simp only [prEvent_map, seedGenGoodLog_append, seedGenGoodLog_local,
-        ht, not_true_eq_false, false_and, and_false, prEvent_false, mul_zero, tsum_zero]
-    · rw [if_neg ht]
-      simp only [simulateQ_bind, simulateQ_query, OracleQuery.cont_query, OracleQuery.input_query,
-        id_map, StateT.run_bind]
-      rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_bind_eq_tsum]
-      apply tsum_congr
-      intro p
-      congr 1
-      simp only [prEvent_map, seedGenGoodLog_append, seedGenGoodLog_local,
-        ht, not_false_eq_true, true_and]
-      exact ih p.1 p.2 a
-
-/-- Exact equality of accepting-and-no-hit mass after changing any protected cache values.
-The local computation is arbitrary and adaptive; legitimate queries outside `points` are unrestricted. -/
-theorem probEvent_seedGenHashLog_good_eq (prims : Primitives) (points : Query C → Prop)
-    {α : Type} (oa : OracleComp (LocalSpec C) α) (s t : HashCache C)
-    (hst : ∀ q, ¬ points q → s q = t q) (a : α) :
-    Pr{let r ← (simulateQ (localAnswer prims) (seedGenHashLog oa)).run s}[
-      r.1.1 = a ∧ SeedGenGoodLog points r.1.2] =
-    Pr{let r ← (simulateQ (localAnswer prims) (seedGenHashLog oa)).run t}[
-      r.1.1 = a ∧ SeedGenGoodLog points r.1.2] := by
-  rw [probEvent_seedGenHashLog_good_eq_avoid, probEvent_seedGenHashLog_good_eq_avoid]
-  have he := seedGenAvoid_run'_eq prims points oa s t hst
-  have hp := congrArg (fun m : ProbComp (Option α) => Pr{let z ← m}[z = some a]) he
-  simpa only [StateT.run'_eq, prEvent_map] using hp
-
 end ThresholdLeanXmssSecurity
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
@@ -5143,152 +3904,9 @@ namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
 variable {C : Committee}
 
-def seedGenInstallValues {ι : Type} (indices : List ι) (inputs : ι → Query C)
-    (values : ι → HashOutput) (cache : HashCache C) : HashCache C :=
-  indices.foldl (fun s i => programCache (inputs i) (values i) s) cache
-
-/-- The deterministic install is exactly the model's sequence of programming attempts. -/
-theorem programValues_run_install {ι : Type} (indices : List ι) (inputs : ι → Query C)
-    (values : ι → HashOutput) (cache : HashCache C) :
-    (programValues (indices.map inputs) (indices.map values)).run cache =
-      pure ((), seedGenInstallValues indices inputs values cache) := by
-  induction indices generalizing cache with
-  | nil => rfl
-  | cons i l ih =>
-    simp only [List.map_cons, programValues_run_cons, seedGenInstallValues, List.foldl_cons]
-    exact ih _
-
-theorem programCache_agrees_off (points : Query C → Prop) (q : Query C) (x y : HashOutput)
-    (s t : HashCache C) (hst : ∀ z, ¬ points z → s z = t z) (hxy : ¬ points q → x = y) :
-    ∀ z, ¬ points z → programCache q x s z = programCache q y t z := by
-  intro z hz
-  by_cases he : z = q
-  · subst z
-    have hs := hst q hz
-    have hv := hxy hz
-    subst y
-    unfold programCache
-    rw [hs]
-    split_ifs
-    · exact hs
-    · simp
-  · unfold programCache
-    split_ifs <;> simpa only [QueryCache.cacheQuery_of_ne _ _ he] using hst z hz
-
-/-- Installing two tables that differ only at protected inputs preserves every other cell. -/
-theorem seedGenInstallValues_agrees_off {ι : Type} (points : Query C → Prop)
-    (indices : List ι) (inputs : ι → Query C) (left right : ι → HashOutput)
-    (s t : HashCache C) (hst : ∀ q, ¬ points q → s q = t q)
-    (hvalues : ∀ i ∈ indices, ¬ points (inputs i) → left i = right i) :
-    ∀ q, ¬ points q → seedGenInstallValues indices inputs left s q =
-      seedGenInstallValues indices inputs right t q := by
-  induction indices generalizing s t with
-  | nil => exact hst
-  | cons i l ih =>
-    simp only [seedGenInstallValues, List.foldl_cons]
-    exact ih _ _ (programCache_agrees_off points (inputs i) (left i) (right i) s t hst
-      (hvalues i (by simp))) (fun j hj => hvalues j (by simp [hj]))
-
 /-- Only raw derivation inputs of hidden names are excluded. Echo inputs remain unrestricted. -/
 def SeedGenHiddenInput (coalition : C.Coalition) (parts : C.Party → Parts C) (q : Query C) : Prop :=
   ∃ name, Hidden coalition name ∧ seedGenNamedInput parts name = q
-
-def seedGenNamedInstall (parts : C.Party → Parts C) (table : KeyName C → HashOutput)
-    (cache : HashCache C) : HashCache C :=
-  seedGenInstallValues (seedGenNames C) (seedGenNamedInput parts) table cache
-
-/-- The actual named programming block respects the hidden-coordinate exchange, even with
-pre-existing cache cells, repeated inputs or unsuccessful programming attempts. -/
-theorem seedGenNamedInstall_swap_agrees (coalition : C.Coalition) (parts : C.Party → Parts C)
-    (p : (KeyName C → HashOutput) × (KeyName C → HashOutput)) (s t : HashCache C)
-    (hst : ∀ q, ¬ SeedGenHiddenInput coalition parts q → s q = t q) :
-    ∀ q, ¬ SeedGenHiddenInput coalition parts q →
-      seedGenNamedInstall parts p.1 s q =
-        seedGenNamedInstall parts (seedGenHiddenNamedSwap coalition p).1 t q := by
-  apply seedGenInstallValues_agrees_off _ _ _ _ _ _ _ hst
-  intro name _ hn
-  have hk : ¬ Hidden coalition name := fun hh => hn ⟨name, hh, rfl⟩
-  exact (seedGenHiddenNamedSwap_known coalition p name hk).1.symm
-
-/-- A cache established before the hidden exchange may depend on every exposed dealer coordinate. -/
-def SeedGenBaseKnown (coalition : C.Coalition)
-    (base : (KeyName C → HashOutput) → HashCache C) : Prop :=
-  ∀ d d', (∀ name, ¬ Hidden coalition name → d name = d' name) → base d = base d'
-
-/-- Export either the hidden oracle-table coordinates or the independent hidden dealer coordinates,
-then run an arbitrary adaptive continuation, stopping only at hidden raw derivation inputs. -/
-def seedGenHiddenExport (prims : Primitives) (coalition : C.Coalition) (parts : C.Party → Parts C)
-    (base : (KeyName C → HashOutput) → HashCache C) {α : Type}
-    (k : (KeyName C → HashOutput) → OracleComp (LocalSpec C) α) (useOracle : Bool) : ProbComp (Option α) := do
-  let p ← $ᵗ ((KeyName C → HashOutput) × (KeyName C → HashOutput))
-  let out := if useOracle then (seedGenHiddenNamedSwap coalition p).2 else p.2
-  (simulateQ (localAnswer prims) (seedGenAvoid (SeedGenHiddenInput coalition parts) (k out))).run'
-    (seedGenNamedInstall parts p.1 (base p.2))
-
-/-- The full hidden-key export comparison, including its oracle continuation. Uniform dealer keys
-may replace the hidden derived values without changing any accepting-and-no-hit mass. -/
-theorem evalDist_seedGenHiddenExport (prims : Primitives) (coalition : C.Coalition)
-    (parts : C.Party → Parts C) (base : (KeyName C → HashOutput) → HashCache C)
-    (hbase : SeedGenBaseKnown coalition base) {α : Type}
-    (k : (KeyName C → HashOutput) → OracleComp (LocalSpec C) α) :
-    seedGenHiddenExport prims coalition parts base k true =ᵈ
-      seedGenHiddenExport prims coalition parts base k false := by
-  let finish := fun p : (KeyName C → HashOutput) × (KeyName C → HashOutput) =>
-    (simulateQ (localAnswer prims) (seedGenAvoid (SeedGenHiddenInput coalition parts) (k p.2))).run'
-      (seedGenNamedInstall parts p.1 (base p.2))
-  have hpoint (p : (KeyName C → HashOutput) × (KeyName C → HashOutput)) :
-      (simulateQ (localAnswer prims) (seedGenAvoid (SeedGenHiddenInput coalition parts)
-        (k (seedGenHiddenNamedSwap coalition p).2))).run' (seedGenNamedInstall parts p.1 (base p.2)) =
-      finish (seedGenHiddenNamedSwap coalition p) := by
-    apply seedGenAvoid_run'_eq
-    apply seedGenNamedInstall_swap_agrees
-    have hb : base p.2 = base (seedGenHiddenNamedSwap coalition p).2 :=
-      hbase _ _ (fun name hn => (seedGenHiddenNamedSwap_known coalition p name hn).2.symm)
-    intro q _
-    rw [hb]
-  change (($ᵗ ((KeyName C → HashOutput) × (KeyName C → HashOutput))) >>= _) =ᵈ
-    (($ᵗ ((KeyName C → HashOutput) × (KeyName C → HashOutput))) >>= finish)
-  simp only [Bool.true_eq, Bool.false_eq, if_true, if_false]
-  conv_lhs => arg 2; ext p; rw [hpoint p]
-  have h := (evalDist_seedGenHiddenNamedSwap coalition).bind_left finish
-  rwa [bind_map_left] at h
-
-/-- The complete continuation, retaining its query log and never stopping early. -/
-def seedGenHiddenExportLogged (prims : Primitives) (coalition : C.Coalition) (parts : C.Party → Parts C)
-    (base : (KeyName C → HashOutput) → HashCache C) {α : Type}
-    (k : (KeyName C → HashOutput) → OracleComp (LocalSpec C) α) (useOracle : Bool) :
-    ProbComp (α × List (Query C)) := do
-  let p ← $ᵗ ((KeyName C → HashOutput) × (KeyName C → HashOutput))
-  let out := if useOracle then (seedGenHiddenNamedSwap coalition p).2 else p.2
-  (simulateQ (localAnswer prims) (seedGenHashLog (k out))).run'
-    (seedGenNamedInstall parts p.1 (base p.2))
-
-theorem probEvent_seedGenHiddenExportLogged_good (prims : Primitives) (coalition : C.Coalition)
-    (parts : C.Party → Parts C) (base : (KeyName C → HashOutput) → HashCache C)
-    {α : Type} (k : (KeyName C → HashOutput) → OracleComp (LocalSpec C) α)
-    (useOracle : Bool) (a : α) :
-    Pr{let r ← seedGenHiddenExportLogged prims coalition parts base k useOracle}[
-      r.1 = a ∧ SeedGenGoodLog (SeedGenHiddenInput coalition parts) r.2] =
-    Pr{let z ← seedGenHiddenExport prims coalition parts base k useOracle}[z = some a] := by
-  unfold seedGenHiddenExportLogged seedGenHiddenExport
-  rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_bind_eq_tsum]
-  apply tsum_congr
-  intro p
-  congr 1
-  simp only [StateT.run'_eq, prEvent_map]
-  exact probEvent_seedGenHashLog_good_eq_avoid prims (SeedGenHiddenInput coalition parts) _ _ a
-
-/-- Equal accepting-and-not-bad probabilities for the two actual, nonstopping hidden export games. -/
-theorem seedGenHiddenExport_accept_and_not_bad (prims : Primitives) (coalition : C.Coalition)
-    (parts : C.Party → Parts C) (base : (KeyName C → HashOutput) → HashCache C)
-    (hbase : SeedGenBaseKnown coalition base)
-    (k : (KeyName C → HashOutput) → OracleComp (LocalSpec C) Bool) :
-    Pr{let r ← seedGenHiddenExportLogged prims coalition parts base k true}[
-      r.1 = true ∧ SeedGenGoodLog (SeedGenHiddenInput coalition parts) r.2] =
-    Pr{let r ← seedGenHiddenExportLogged prims coalition parts base k false}[
-      r.1 = true ∧ SeedGenGoodLog (SeedGenHiddenInput coalition parts) r.2] := by
-  rw [probEvent_seedGenHiddenExportLogged_good, probEvent_seedGenHiddenExportLogged_good]
-  exact (evalDist_seedGenHiddenExport prims coalition parts base hbase k).prEvent_eq _
 
 end ThresholdLeanXmssSecurity
 
@@ -5339,18 +3957,6 @@ theorem simulateQ_fixedLocal_seedGenRevealComputations (prims : Primitives) (coa
     · rfl
     · exact simulateQ_fixedLocal_seedGenRevealCompute prims h i (parts i) (committed i) _
   · exact sequenceFin_pure _
-
-/-- Any actual lazy-oracle reveal result is the fixed-oracle result for its final cache. -/
-theorem seedGenRevealComputations_run_fixed (prims : Primitives) (coalition : C.Coalition)
-    (h : Query C → HashOutput) (parts : C.Party → Parts C) (committed sent : C.Party → Mail C E)
-    (cache : HashCache C) (r : (C.Party → Option (SeedGenEchoData C)) × HashCache C)
-    (hr : r ∈ support ((simulateQ (localAnswer prims)
-      (seedGenRevealComputations coalition parts committed sent)).run cache))
-    (hg : Good prims h) (ha : Agrees h r.2) :
-    r.1 = seedGenRevealAllFixed prims coalition h parts committed sent := by
-  have hs := (localRun_support (prims := prims) _ cache r hr).2.2 h hg ha
-  rw [simulateQ_fixedLocal_seedGenRevealComputations] at hs
-  exact hs
 
 /-- A successful echo output supplies the actual inbox checks and its honest key value. -/
 theorem seedGenEchoDataOutput_some (coalition : C.Coalition) (data : C.Party → Option (SeedGenEchoData C))
@@ -5491,143 +4097,6 @@ def seedGenDeriveHead : Query C → HashOutput
   | .derive _ _ values => values.headD 0
   | _ => 0
 
-/-- Guessing a canonical hidden term input costs one uniform 256-bit private coordinate,
-even when the proposed input depends on all the other private coordinates. -/
-theorem probEvent_seedGenHiddenTerm_guess (coalition : C.Coalition)
-    (target : (C.Party → Parts C) → Query C) (hinv : SeedGenPrivateInvariant coalition target)
-    (T : C.Term) (hh : ¬ KnownTo coalition.1 T) :
-    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
-      termInput .seedGen parts T = target parts] ≤
-      (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-  obtain ⟨a, rest, ha⟩ := exists_first_holder T
-  calc
-    _ ≤ Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
-        (parts a).term T = seedGenDeriveHead (target parts)] := by
-      refine prEvent_mono _ _ _ fun parts he => ?_
-      rw [← he]
-      simp [termInput, ha, seedGenDeriveHead]
-    _ = _ := probEvent_parts_collision (fun parts => (parts a).term T)
-      (fun parts => seedGenDeriveHead (target parts)) a (some T) none
-      (fun c parts => by simp [shiftAt, shiftParts])
-      (fun c parts => by rw [hinv.1 a T hh c parts])
-
-/-- The same bound for a hidden honest--honest pair uses the first endpoint's private part. -/
-theorem probEvent_seedGenHiddenPair_guess (coalition : C.Coalition)
-    (target : (C.Party → Parts C) → Query C) (hinv : SeedGenPrivateInvariant coalition target)
-    (p : C.Pair) (hp : p.1.1 ∉ coalition.1 ∧ p.1.2 ∉ coalition.1) :
-    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
-      pairInput .seedGen parts p = target parts] ≤
-      (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-  calc
-    _ ≤ Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
-        (parts p.1.1).pair p.1.2 = seedGenDeriveHead (target parts)] := by
-      refine prEvent_mono _ _ _ fun parts he => ?_
-      rw [← he]
-      simp [pairInput, seedGenDeriveHead]
-    _ = _ := probEvent_parts_collision (fun parts => (parts p.1.1).pair p.1.2)
-      (fun parts => seedGenDeriveHead (target parts)) p.1.1 none (some p.1.2)
-      (fun c parts => by simp [shiftAt, shiftParts])
-      (fun c parts => by rw [hinv.2 p hp.1 hp.2 c parts])
-
-/-- Union bound for one private-invariant query at any hidden raw derivation input. -/
-theorem probEvent_seedGenHiddenInput_guess (coalition : C.Coalition)
-    (target : (C.Party → Parts C) → Query C) (hinv : SeedGenPrivateInvariant coalition target) :
-    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
-      SeedGenHiddenInput coalition parts (target parts)] ≤
-      ((Fintype.card C.Term + Fintype.card C.Pair : ℕ) : ℝ≥0∞) *
-        (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-  have hm : ∀ parts, SeedGenHiddenInput coalition parts (target parts) →
-      (∃ T ∈ (Finset.univ : Finset C.Term), ¬ KnownTo coalition.1 T ∧ termInput .seedGen parts T = target parts) ∨
-      (∃ p ∈ (Finset.univ : Finset C.Pair), p.1.1 ∉ coalition.1 ∧ p.1.2 ∉ coalition.1 ∧
-        pairInput .seedGen parts p = target parts) := by
-    rintro parts ⟨name, hn, he⟩
-    cases name with
-    | parameter => exact hn.elim
-    | term T => exact Or.inl ⟨T, Finset.mem_univ _, hn, he⟩
-    | pair p => exact Or.inr ⟨p, Finset.mem_univ _, hn.1, hn.2, he⟩
-  refine (prEvent_mono _ _ _ (fun parts => hm parts)).trans ((prEvent_or_le _ _ _).trans ?_)
-  have ht : ∀ T : C.Term,
-      Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
-        ¬ KnownTo coalition.1 T ∧ termInput .seedGen parts T = target parts] ≤ (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-    intro T
-    by_cases hh : ¬ KnownTo coalition.1 T
-    · simpa only [hh, not_false_eq_true, true_and] using probEvent_seedGenHiddenTerm_guess coalition target hinv T hh
-    · simp [hh]
-  have hp : ∀ p : C.Pair,
-      Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
-        p.1.1 ∉ coalition.1 ∧ p.1.2 ∉ coalition.1 ∧ pairInput .seedGen parts p = target parts] ≤ (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-    intro p
-    by_cases hh : p.1.1 ∉ coalition.1 ∧ p.1.2 ∉ coalition.1
-    · simpa only [hh.1, hh.2, not_false_eq_true, true_and] using probEvent_seedGenHiddenPair_guess coalition target hinv p hh
-    · have he : ∀ parts, ¬ (p.1.1 ∉ coalition.1 ∧ p.1.2 ∉ coalition.1 ∧ pairInput .seedGen parts p = target parts) :=
-        fun _ h => hh ⟨h.1, h.2.1⟩
-      simp only [he, prEvent_false, zero_le]
-  calc
-    _ ≤ (∑ T : C.Term, (Fintype.card HashOutput : ℝ≥0∞)⁻¹) +
-        (∑ p : C.Pair, (Fintype.card HashOutput : ℝ≥0∞)⁻¹) :=
-      add_le_add ((prEvent_exists_finset_le _ _ _).trans (Finset.sum_le_sum fun T _ => ht T))
-        ((prEvent_exists_finset_le _ _ _).trans (Finset.sum_le_sum fun p _ => hp p))
-    _ = _ := by simp [add_mul]
-
-/-- All proposed queries may depend on the other coordinates; only invariance of hidden
-coordinates is required. This is the guessing bound consumed after the trace normalization. -/
-theorem probEvent_seedGenHiddenInput_queries (coalition : C.Coalition) (m : ℕ)
-    (queries : (C.Party → Parts C) → Fin m → Query C) (hinv : SeedGenPrivateInvariant coalition queries) :
-    Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
-      ∃ i : Fin m, SeedGenHiddenInput coalition parts (queries parts i)] ≤
-      ((m * seedGenSecrets C : ℕ) : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-  have hi (i : Fin m) : SeedGenPrivateInvariant coalition (fun parts => queries parts i) := by
-    constructor
-    · intro a T hh c parts
-      exact congrFun (hinv.1 a T hh c parts) i
-    · intro p ha hb c parts
-      exact congrFun (hinv.2 p ha hb c parts) i
-  have hc : Fintype.card C.Term + Fintype.card C.Pair ≤ seedGenSecrets C := by
-    have hp := card_pair_le C
-    rw [card_term]
-    unfold seedGenSecrets termCount
-    omega
-  calc _ = Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
-        ∃ i ∈ (Finset.univ : Finset (Fin m)),
-        SeedGenHiddenInput coalition parts (queries parts i)] := by simp
-    _ ≤ ∑ i : Fin m, Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
-        SeedGenHiddenInput coalition parts (queries parts i)] := prEvent_exists_finset_le _ _ _
-    _ ≤ ∑ _i : Fin m, ((Fintype.card C.Term + Fintype.card C.Pair : ℕ) : ℝ≥0∞) *
-        (Fintype.card HashOutput : ℝ≥0∞)⁻¹ :=
-      Finset.sum_le_sum fun i _ => probEvent_seedGenHiddenInput_guess coalition _ (hi i)
-    _ ≤ _ := by
-      simp only [Finset.sum_const, Finset.card_univ, Fintype.card_fin, nsmul_eq_mul, Nat.cast_mul]
-      rw [← mul_assoc]
-      apply mul_le_mul_left
-      apply mul_le_mul_right
-      exact_mod_cast hc
-
-/-- Hidden term coordinates never occur in an honest reveal addressed to a corrupt operator. -/
-theorem seedGen_reveal_hiddenTerm_shift (coalition : C.Coalition) (T : C.Term)
-    (hh : ¬ KnownTo coalition.1 T) (a i j : C.Party) (hj : j ∈ coalition.1)
-    (c : HashOutput) (parts : C.Party → Parts C) :
-    revealTo .seedGen (shiftAt a (some T) none c parts i) i j = revealTo .seedGen (parts i) i j := by
-  by_cases hi : i = a
-  · subst i
-    simp only [shiftAt, if_pos rfl, revealTo, shiftParts]
-    congr 2
-    apply List.map_congr_left
-    intro U hU
-    have hne : T ≠ U := fun he => hh (he ▸ seedGen_sharedTerms_known coalition a j hj U hU)
-    simp [hne]
-  · simp [shiftAt, hi]
-
-/-- Hidden honest--honest pair parts likewise never occur in a corrupt-facing reveal. -/
-theorem seedGen_reveal_hiddenPair_shift (coalition : C.Coalition) (p : C.Pair)
-    (hp : p.1.1 ∉ coalition.1 ∧ p.1.2 ∉ coalition.1) (i j : C.Party) (hj : j ∈ coalition.1)
-    (c : HashOutput) (parts : C.Party → Parts C) :
-    revealTo .seedGen (shiftAt p.1.1 none (some p.1.2) c parts i) i j = revealTo .seedGen (parts i) i j := by
-  have hne : p.1.2 ≠ j := fun he => hp.2 (he ▸ hj)
-  by_cases hi : i = p.1.1
-  · subst i
-    simp [shiftAt, shiftParts, revealTo, hne]
-  · simp [shiftAt, hi]
-
 /-- Sample the private parts and then an arbitrary randomized transcript. -/
 def seedGenPartsKernel {α : Type} (K : (C.Party → Parts C) → ProbComp α) :
     ProbComp ((C.Party → Parts C) × α) := do
@@ -5733,31 +4202,6 @@ theorem probEvent_seedGenHiddenInput_kernel_one {α : Type} (coalition : C.Coali
       add_le_add ((prEvent_exists_finset_le _ _ _).trans (Finset.sum_le_sum fun T _ => ht T))
         ((prEvent_exists_finset_le _ _ _).trans (Finset.sum_le_sum fun p _ => hp p))
     _ = _ := by simp [add_mul]
-
-/-- The complete guessing bound for an adaptive randomized private-invariant transcript. -/
-theorem probEvent_seedGenHiddenInput_kernel (coalition : C.Coalition) (m : ℕ)
-    (K : (C.Party → Parts C) → ProbComp (Fin m → Query C)) (hinv : SeedGenPrivateInvariant coalition K) :
-    Pr{let p ← seedGenPartsKernel K}[∃ i : Fin m, SeedGenHiddenInput coalition p.1 (p.2 i)] ≤
-      ((m * seedGenSecrets C : ℕ) : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-  have hc : Fintype.card C.Term + Fintype.card C.Pair ≤ seedGenSecrets C := by
-    have hp := card_pair_le C
-    rw [card_term]
-    unfold seedGenSecrets termCount
-    omega
-  calc
-    _ = Pr{let p ← seedGenPartsKernel K}[
-        ∃ i ∈ (Finset.univ : Finset (Fin m)), SeedGenHiddenInput coalition p.1 (p.2 i)] := by simp
-    _ ≤ ∑ i : Fin m, Pr{let p ← seedGenPartsKernel K}[SeedGenHiddenInput coalition p.1 (p.2 i)] :=
-      prEvent_exists_finset_le _ _ _
-    _ ≤ ∑ _i : Fin m, ((Fintype.card C.Term + Fintype.card C.Pair : ℕ) : ℝ≥0∞) *
-        (Fintype.card HashOutput : ℝ≥0∞)⁻¹ :=
-      Finset.sum_le_sum fun i _ => probEvent_seedGenHiddenInput_kernel_one coalition K hinv (fun r => r i)
-    _ ≤ _ := by
-      simp only [Finset.sum_const, Finset.card_univ, Fintype.card_fin, nsmul_eq_mul, Nat.cast_mul]
-      rw [← mul_assoc]
-      apply mul_le_mul_left
-      apply mul_le_mul_right
-      exact_mod_cast hc
 
 end ThresholdLeanXmssSecurity
 
@@ -6084,18 +4528,6 @@ theorem evalDist_seedGenWorld_eager (prims : Primitives) (S : Finset (Query C))
   simp only [StateT.run'_eq]
   rw [map_bind]
 
-/-- Every complete world program has a finite eager representation. This applies without any
-query-budget or freshness hypothesis to the real and ideal seed generation experiments alike. -/
-theorem seedGenWorld_eager_exists (prims : Primitives) {α : Type}
-    (oa : OracleComp (WorldSpec C) α) :
-    ∃ S : Finset (Query C), ∀ cache : HashCache C,
-      (simulateQ (worldAnswer prims) oa).run' cache =ᵈ
-        (do let h ← $ᵗ (S → HashOutput);
-              (simulateQ (seedGenFiniteEager h) (simulateQ (seedGenFiniteWorld prims S) oa)).run'
-                (seedGenRestrictCache S cache)) := by
-  obtain ⟨S, hS⟩ := seedGenWorldCovered_exists oa
-  exact ⟨S, evalDist_seedGenWorld_eager prims S oa hS⟩
-
 end ThresholdLeanXmssSecurity
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
@@ -6111,11 +4543,6 @@ def seedGenFiniteTotal (prims : Primitives) (S : Finset (Query C)) (h : S → Ha
   | .hash input => if MpcInput input then prims.Th input else
       if hq : q ∈ S then h ⟨q, hq⟩ else 0
   | _ => if hq : q ∈ S then h ⟨q, hq⟩ else 0
-
-theorem seedGenFiniteTotal_good (prims : Primitives) (S : Finset (Query C)) (h : S → HashOutput) :
-    Good prims (seedGenFiniteTotal prims S h) := by
-  intro input hi
-  simp [seedGenFiniteTotal, hi]
 
 /-- Reading a table value into the occupancy cache leaves the overlaid total function unchanged. -/
 theorem seedGenTableExtending_read {Ω : Type} [DecidableEq Ω] (cache : SeedGenFiniteCache Ω)
@@ -6205,172 +4632,9 @@ namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
 variable {C : Committee} {E : Type}
 
-theorem seedGenCrossCoordinates_has_corrupt (coalition : C.Coalition) (p : C.Pair)
-    (hp : p ∈ seedGenCrossCoordinates coalition) : p.1.1 ∈ coalition.1 ∨ p.1.2 ∈ coalition.1 := by
-  obtain ⟨r, _, rfl⟩ := List.mem_map.mp hp
-  have hr := (seedGenCrossList_mem coalition r.1).mp r.2
-  unfold seedGenCrossPair Committee.pairOf
-  split_ifs <;> simp [hr.1]
-
-/-- The actual simulator programming-input list is invariant under shifts of hidden term
-and honest--honest pair coordinates when its pre-programming transcript is fixed. -/
-theorem seedGenProgrammingInputs_privateInvariant (coalition : C.Coalition)
-    (log : CallLog C) (sent : C.Party → Mail C E) :
-    SeedGenPrivateInvariant coalition (fun parts =>
-      seedGenProgrammingInputs coalition (seedGenProgramView coalition parts log sent)) := by
-  constructor
-  · intro a T hh c parts
-    have hparam (i j : C.Party) :
-        (seedGenProgramView coalition (shiftAt a (some T) none c parts) log sent i j).parameter =
-          (seedGenProgramView coalition parts log sent i j).parameter := by
-      unfold seedGenProgramView shiftAt
-      split_ifs <;> rfl
-    have hterm (U : C.Term) (hu : U ∈ seedGenKnownCoordinates coalition) (i j : C.Party) :
-        (seedGenProgramView coalition (shiftAt a (some T) none c parts) log sent i j).term U =
-          (seedGenProgramView coalition parts log sent i j).term U := by
-      have hu' : KnownTo coalition.1 U := of_decide_eq_true (List.mem_filter.mp hu).2
-      have hne : T ≠ U := fun he => hh (he ▸ hu')
-      unfold seedGenProgramView shiftAt
-      split_ifs <;> simp [shiftParts, hne]
-    have hpair (i j k : C.Party) :
-        (seedGenProgramView coalition (shiftAt a (some T) none c parts) log sent i j).pair k =
-          (seedGenProgramView coalition parts log sent i j).pair k := by
-      unfold seedGenProgramView shiftAt
-      split_ifs <;> simp [shiftParts]
-    dsimp only
-    unfold seedGenProgrammingInputs
-    apply congrArg₂ List.append
-    · apply congrArg₂ List.cons
-      · simp only [seedGenParameterProgrammingInput, hparam]
-      · apply List.map_congr_left
-        intro U hU
-        simp only [seedGenTermProgrammingInput]
-        congr 1
-        apply List.map_congr_left
-        intro j _
-        exact hterm U hU _ j
-    · apply List.map_congr_left
-      intro p _
-      simp only [seedGenPairProgrammingInput, hpair]
-  · intro p ha hb c parts
-    have hparam (i j : C.Party) :
-        (seedGenProgramView coalition (shiftAt p.1.1 none (some p.1.2) c parts) log sent i j).parameter =
-          (seedGenProgramView coalition parts log sent i j).parameter := by
-      unfold seedGenProgramView shiftAt
-      split_ifs <;> rfl
-    have hterm (U : C.Term) (i j : C.Party) :
-        (seedGenProgramView coalition (shiftAt p.1.1 none (some p.1.2) c parts) log sent i j).term U =
-          (seedGenProgramView coalition parts log sent i j).term U := by
-      unfold seedGenProgramView shiftAt
-      split_ifs <;> simp [shiftParts]
-    have hpart (i j k : C.Party) (hn : ¬ (j = p.1.1 ∧ k = p.1.2)) :
-        (seedGenProgramView coalition (shiftAt p.1.1 none (some p.1.2) c parts) log sent i j).pair k =
-          (seedGenProgramView coalition parts log sent i j).pair k := by
-      unfold seedGenProgramView shiftAt
-      by_cases hj : j ∈ coalition.1
-      · simp [hj]
-      · by_cases he : j = p.1.1
-        · have hk : p.1.2 ≠ k := fun hk => hn ⟨he, hk.symm⟩
-          simp [ha, he, shiftParts, hk]
-        · simp [hj, he]
-    have hpair (r : C.Pair) (hr : r ∈ seedGenCrossCoordinates coalition) :
-        seedGenPairProgrammingInput coalition
-            (seedGenProgramView coalition (shiftAt p.1.1 none (some p.1.2) c parts) log sent) r =
-          seedGenPairProgrammingInput coalition (seedGenProgramView coalition parts log sent) r := by
-      have hr' := seedGenCrossCoordinates_has_corrupt coalition r hr
-      have hn₁ : ¬ (r.1.1 = p.1.1 ∧ r.1.2 = p.1.2) := by
-        rintro ⟨he₁, he₂⟩
-        rcases hr' with hr' | hr'
-        · exact ha (he₁ ▸ hr')
-        · exact hb (he₂ ▸ hr')
-      have hn₂ : ¬ (r.1.2 = p.1.1 ∧ r.1.1 = p.1.2) := by
-        rintro ⟨he₁, he₂⟩
-        rcases hr' with hr' | hr'
-        · exact hb (he₂ ▸ hr')
-        · exact ha (he₁ ▸ hr')
-      simp only [seedGenPairProgrammingInput, hpart _ _ _ hn₁, hpart _ _ _ hn₂]
-    dsimp only
-    unfold seedGenProgrammingInputs
-    apply congrArg₂ List.append
-    · apply congrArg₂ List.cons
-      · simp only [seedGenParameterProgrammingInput, hparam]
-      · apply List.map_congr_left
-        intro U _
-        simp only [seedGenTermProgrammingInput, hterm]
-    · exact List.map_congr_left hpair
-
-/-- Randomized private-invariant kernels remain invariant when postprocessed with a function
-that may inspect the parts, provided it too ignores the hidden coordinates. -/
-theorem SeedGenPrivateInvariant.map_kernel {α β : Type} (coalition : C.Coalition)
-    (K : (C.Party → Parts C) → ProbComp α) (f : (C.Party → Parts C) → α → β)
-    (hK : SeedGenPrivateInvariant coalition K) (hf : ∀ a, SeedGenPrivateInvariant coalition (fun parts => f parts a)) :
-    SeedGenPrivateInvariant coalition (fun parts => f parts <$> K parts) := by
-  constructor
-  · intro a T hh c parts
-    dsimp only
-    rw [hK.1 a T hh c parts]
-    congr 1
-    funext r
-    exact (hf r).1 a T hh c parts
-  · intro p ha hb c parts
-    dsimp only
-    rw [hK.2 p ha hb c parts]
-    congr 1
-    funext r
-    exact (hf r).2 p ha hb c parts
-
 /-- The number of actual programming attempts; it does not depend on the transcript. -/
 def seedGenProgrammingCount (coalition : C.Coalition) : ℕ :=
   1 + (seedGenKnownCoordinates coalition).length + (seedGenCrossCoordinates coalition).length
-
-theorem seedGenProgrammingInputs_length (coalition : C.Coalition) (view : C.Party → C.Party → Parts C) :
-    (seedGenProgrammingInputs coalition view).length = seedGenProgrammingCount coalition := by
-  simp [seedGenProgrammingInputs, seedGenProgrammingCount, Nat.add_comm, Nat.add_assoc]
-
-/-- Bound aliases between canonical hidden inputs and extracted-view programming inputs
-for an invariant pre-programming transcript. -/
-theorem probEvent_seedGenProgramming_hidden_alias (coalition : C.Coalition)
-    (K : (C.Party → Parts C) → ProbComp (CallLog C × (C.Party → Mail C E)))
-    (hK : SeedGenPrivateInvariant coalition K) :
-    Pr{let p ← seedGenPartsKernel K}[∃ q ∈ seedGenProgrammingInputs coalition (seedGenProgramView coalition p.1 p.2.1 p.2.2),
-        SeedGenHiddenInput coalition p.1 q] ≤
-      ((seedGenProgrammingCount coalition * seedGenSecrets C : ℕ) : ℝ≥0∞) *
-        (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-  let queries := fun (parts : C.Party → Parts C) (r : CallLog C × (C.Party → Mail C E))
-      (i : Fin (seedGenProgrammingCount coalition)) =>
-    (seedGenProgrammingInputs coalition (seedGenProgramView coalition parts r.1 r.2)).getD i
-      (.derive .seedGen .parameter [])
-  have hqi (r : CallLog C × (C.Party → Mail C E)) :
-      SeedGenPrivateInvariant coalition (fun parts => queries parts r) := by
-    have hi := seedGenProgrammingInputs_privateInvariant coalition r.1 r.2
-    constructor
-    · intro a T hh c parts
-      funext i
-      exact congrArg (fun xs : List (Query C) => xs.getD i (.derive .seedGen .parameter []))
-        (hi.1 a T hh c parts)
-    · intro p ha hb c parts
-      funext i
-      exact congrArg (fun xs : List (Query C) => xs.getD i (.derive .seedGen .parameter []))
-        (hi.2 p ha hb c parts)
-  have hb := probEvent_seedGenHiddenInput_kernel coalition (seedGenProgrammingCount coalition)
-    (fun parts => queries parts <$> K parts) (hK.map_kernel coalition K queries hqi)
-  have he : Pr{let p ← seedGenPartsKernel K}[∃ i : Fin (seedGenProgrammingCount coalition),
-        SeedGenHiddenInput coalition p.1 (queries p.1 p.2 i)] =
-      Pr{let p ← seedGenPartsKernel (fun parts => queries parts <$> K parts)}[
-        ∃ i : Fin (seedGenProgrammingCount coalition), SeedGenHiddenInput coalition p.1 (p.2 i)] := by
-    rw [show seedGenPartsKernel (fun parts => queries parts <$> K parts) =
-        (fun p => (p.1, queries p.1 p.2)) <$> seedGenPartsKernel K by
-      simp only [seedGenPartsKernel, bind_map_left, map_bind, map_pure], prEvent_map]
-  rw [← he] at hb
-  apply le_trans (prEvent_mono _ _ _ (fun p hp => ?_)) hb
-  obtain ⟨q, hq, hh⟩ := hp
-  obtain ⟨i, hi, heq⟩ := List.mem_iff_getElem.mp hq
-  have hi' : i < seedGenProgrammingCount coalition := by
-    rwa [seedGenProgrammingInputs_length] at hi
-  refine ⟨⟨i, hi'⟩, ?_⟩
-  dsimp only [queries]
-  rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hi, Option.getD_some, heq]
-  exact hh
 
 end ThresholdLeanXmssSecurity
 
@@ -7042,63 +5306,6 @@ theorem seedGenReferenceKernel_random_length_le (prims : Primitives) (coalition 
     (seedGenReferenceLocalGame_queryBound prims coalition h table A x z Z q hq parts) r
     (seedGenFixedLocal_support_subset prims h _ hr)
 
-/-- The guessing lemma applies to a variable-length transcript bounded on its support. -/
-theorem probEvent_seedGenHiddenInput_kernel_list {α : Type} (coalition : C.Coalition)
-    (K : (C.Party → Parts C) → ProbComp α) (hinv : SeedGenPrivateInvariant coalition K)
-    (queries : α → List (Query C)) (m : ℕ)
-    (hbound : ∀ parts r, r ∈ support (K parts) → (queries r).length ≤ m) :
-    Pr{let p ← seedGenPartsKernel K}[∃ v ∈ queries p.2, SeedGenHiddenInput coalition p.1 v] ≤
-      ((m * seedGenSecrets C : ℕ) : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-  let targets (r : α) (i : Fin m) := (queries r).getD i.val (.streamKey 0)
-  let K' (parts : C.Party → Parts C) := targets <$> K parts
-  have hinv' : SeedGenPrivateInvariant coalition K' := by
-    constructor
-    · intro a T hT c parts
-      dsimp only [K']
-      rw [hinv.1 a T hT c parts]
-    · intro p ha hb c parts
-      dsimp only [K']
-      rw [hinv.2 p ha hb c parts]
-  have he : seedGenPartsKernel K' =
-      (fun p : (C.Party → Parts C) × α => (p.1, targets p.2)) <$> seedGenPartsKernel K := by
-    simp only [seedGenPartsKernel, K', map_bind, bind_map_left, map_pure]
-  have hb := probEvent_seedGenHiddenInput_kernel coalition m K' hinv'
-  rw [he, prEvent_map] at hb
-  apply le_trans (prEvent_mono_of_support _ _ _ (fun p hp hh => ?_)) hb
-  rcases p with ⟨parts, r⟩
-  have hr : r ∈ support (K parts) := by
-    simp only [seedGenPartsKernel, support_bind, Set.mem_iUnion, support_pure,
-      Set.mem_singleton_iff, Prod.mk.injEq] at hp
-    obtain ⟨p', _, r', hr', he₁, he₂⟩ := hp
-    cases he₁
-    cases he₂
-    exact hr'
-  obtain ⟨v, hv, hh⟩ := hh
-  obtain ⟨j, hj, he⟩ := List.mem_iff_getElem.mp hv
-  refine ⟨⟨j, Nat.lt_of_lt_of_le hj (hbound parts r hr)⟩, ?_⟩
-  simpa only [targets, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hj, Option.getD_some, he] using hh
-
-/-- The full reference transcript guesses a hidden raw input with probability at most `q*S/N`.
-There is no invariance or transcript-length assumption left for the caller to discharge. -/
-theorem probEvent_seedGenReference_hidden_guess (prims : Primitives) (coalition : C.Coalition)
-    (h : Query C → HashOutput) (table : KeyName C → HashOutput)
-    (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
-    (Z : Distinguisher C A.State (Keys C)) (q : ℕ) (hq : IsQueryBounded A Z setupRounds q) :
-    Pr{let p ← seedGenPartsKernel (seedGenReferenceKernel prims coalition h table A x z Z)}[
-      ∃ v ∈ p.2.2, SeedGenHiddenInput coalition p.1 v] ≤
-      ((q * seedGenSecrets C : ℕ) : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-  have hb := probEvent_seedGenHiddenInput_kernel_list coalition
-    (seedGenReferenceKernel prims coalition h table A x z Z)
-    (seedGenReferenceKernel_privateInvariant prims coalition h table A x z Z)
-    (fun r => r.2.filter fun v => ¬ IsFixed v) q
-    (seedGenReferenceKernel_random_length_le prims coalition h table A x z Z q hq)
-  apply le_trans (prEvent_mono _ _ _ (fun p hh => ?_)) hb
-  obtain ⟨v, hv, name, hn, he⟩ := hh
-  refine ⟨v, List.mem_filter.mpr ⟨hv, ?_⟩, name, hn, he⟩
-  apply decide_eq_true
-  rw [← he]
-  exact seedGenNamedInput_not_fixed p.1 name
-
 end ThresholdLeanXmssSecurity
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
@@ -7153,18 +5360,6 @@ theorem seedGenReferenceKeys_shared_corrupt (prims : Primitives) (coalition : C.
   exact seedGen_sharedInput_known coalition i c hc _ _
     (seedGenReferenceKeys_known prims coalition h left right parts revealed i)
 
-/-- A sufficient noncollision condition for every honest pair in the reference echo round. -/
-def SeedGenReferenceEchoRegular (prims : Primitives) (coalition : C.Coalition)
-    (h : Query C → HashOutput) (table : KeyName C → HashOutput)
-    (parts : C.Party → Parts C) (revealed : C.Party → Mail C E) : Prop :=
-  ∀ i j, i ∉ coalition.1 → j ∉ coalition.1 →
-    let ki := seedGenReferenceKeys prims coalition h table parts revealed i
-    let kj := seedGenReferenceKeys prims coalition h table parts revealed j
-    h (.sharedKeys .seedGen ((sharedTerms i j).map ki.2.1)) =
-      h (.sharedKeys .seedGen ((sharedTerms j i).map kj.2.1)) →
-    Query.sharedKeys (C := C) .seedGen ((sharedTerms i j).map ki.2.1) =
-      Query.sharedKeys .seedGen ((sharedTerms j i).map kj.2.1)
-
 theorem seedGenReferenceData_echoStep (prims : Primitives) (coalition : C.Coalition)
     (h : Query C → HashOutput) (table : KeyName C → HashOutput)
     (parts : C.Party → Parts C) (commitSent revealSent : C.Party → Mail C E) (i : C.Party) :
@@ -7193,139 +5388,6 @@ theorem seedGenReferenceData_visible (prims : Primitives) (coalition : C.Coaliti
     rw [seedGenReferenceKeys_shared_corrupt prims coalition h left right parts _ i c hc]
     rfl
   · rfl
-
-/-- The actual reference receiver decision is invariant under hidden-table replacement,
-except for the stated relevant honest echo collisions in either table. -/
-theorem seedGenReferenceData_receivers (prims : Primitives) (coalition : C.Coalition)
-    (h : Query C → HashOutput) (left right : KeyName C → HashOutput)
-    (parts : C.Party → Parts C) (commitSent revealSent echoSent : C.Party → Mail C E)
-    (hl : SeedGenReferenceEchoRegular prims coalition h left parts (fun i j => revealSent j i))
-    (hr : SeedGenReferenceEchoRegular prims coalition h right parts (fun i j => revealSent j i)) (i : C.Party) :
-    (seedGenEchoDataOutput coalition (seedGenReferenceData prims coalition h left parts commitSent revealSent) echoSent i).isSome =
-      (seedGenEchoDataOutput coalition (seedGenReferenceData prims coalition h right parts commitSent revealSent) echoSent i).isSome := by
-  let active := seedGenReferenceActive coalition h commitSent revealSent
-  let kl := seedGenReferenceKeys prims coalition h left parts (fun i j => revealSent j i)
-  let kr := seedGenReferenceKeys prims coalition h right parts (fun i j => revealSent j i)
-  have hsteps (table : KeyName C → HashOutput) :
-      (fun j => seedGenEchoDataStep (E := E) j (seedGenReferenceData prims coalition h table parts commitSent revealSent j)) =
-        seedGenEchoStep prims coalition active h (seedGenReferenceKeys prims coalition h table parts (fun i j => revealSent j i)) :=
-    funext fun j => seedGenReferenceData_echoStep prims coalition h table parts commitSent revealSent j
-  unfold seedGenEchoDataOutput
-  rw [seedGenReferenceData_active, seedGenReferenceData_active]
-  by_cases ha : active i
-  · change seedGenReferenceActive coalition h commitSent revealSent i at ha
-    simp only [if_pos ha]
-    have hi := ha.1
-    simp only [if_neg hi, hsteps, roundInbox_seedGenEchoStep]
-    have hab : (fun j => Msg.isAbort (seedGenEchoInbox prims coalition active echoSent h kl i j)) =
-        (fun j => Msg.isAbort (seedGenEchoInbox prims coalition active echoSent h kr i j)) :=
-      funext fun j => seedGenEchoInbox_isAbort prims coalition active echoSent h h kl kr i j
-    have hc := seedGen_echoCheck_hidden_invariant prims coalition active echoSent h h kl kr
-      (fun _ _ => rfl)
-      (fun j T _ hT => seedGenReferenceKeys_known prims coalition h left right parts _ j T hT)
-      (fun j k T _ _ hT hj hk => seedGenReferenceKeys_coherent prims coalition h left parts _ j k T hT hj hk)
-      (fun j k T _ _ hT hj hk => seedGenReferenceKeys_coherent prims coalition h right parts _ j k T hT hj hk)
-      (fun j c _ hc => seedGenReferenceKeys_shared_corrupt prims coalition h left right parts _ j c hc)
-      hl hr i hi
-    change (if C.parties.any (fun j => Msg.isAbort (seedGenEchoInbox prims coalition active echoSent h kl i j)) then none
-      else if echoCheck .seedGen i (kl i) (D prims h (sharedQueries .seedGen i (kl i)))
-        (seedGenEchoInbox prims coalition active echoSent h kl i) then some (keysOf (kl i)) else none).isSome = _
-    rw [hab, hc]
-    split_ifs <;> rfl
-  · change ¬ seedGenReferenceActive coalition h commitSent revealSent i at ha
-    simp only [if_neg ha, Option.isSome_none]
-
-/-- The complete final reference round preserves the adversary state and receiver set
-under hidden-table replacement outside the two relevant collision events. -/
-theorem seedGenReferenceFinish_receivers (prims : Primitives) (coalition : C.Coalition)
-    (h : Query C → HashOutput) (left right : KeyName C → HashOutput)
-    (A : Adversary C E Unit PEmpty PEmpty) (state : A.State)
-    (parts : C.Party → Parts C) (commitSent revealSent : C.Party → Mail C E)
-    (hl : SeedGenReferenceEchoRegular prims coalition h left parts (fun i j => revealSent j i))
-    (hr : SeedGenReferenceEchoRegular prims coalition h right parts (fun i j => revealSent j i)) :
-    (fun r => (r.1, fun i => (r.2 i).isSome)) <$>
-      seedGenFinishLocal coalition A state (seedGenReferenceData prims coalition h left parts commitSent revealSent) =
-    (fun r => (r.1, fun i => (r.2 i).isSome)) <$>
-      seedGenFinishLocal coalition A state (seedGenReferenceData prims coalition h right parts commitSent revealSent) := by
-  have he (table : KeyName C → HashOutput) :
-      (∀ i, i ∉ coalition.1 → seedGenReferenceData prims coalition h table parts commitSent revealSent i = none) ↔
-        ∀ i, i ∉ coalition.1 → ¬ seedGenReferenceActive coalition h commitSent revealSent i := by
-    apply forall_congr'
-    intro i
-    apply forall_congr'
-    intro _
-    rw [seedGenReferenceData_active]
-    split_ifs <;> simp_all
-  unfold seedGenFinishLocal
-  simp only [he]
-  split_ifs with ha
-  · rfl
-  · have hv : (fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then
-        (seedGenEchoDataStep (E := E) i (seedGenReferenceData prims coalition h left parts commitSent revealSent i)).outbox c
-        else none) = (fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then
-        (seedGenEchoDataStep (E := E) i (seedGenReferenceData prims coalition h right parts commitSent revealSent i)).outbox c
-        else none) := by
-      funext c i
-      split_ifs with hc
-      · exact seedGenReferenceData_visible prims coalition h left right parts commitSent revealSent i c hc.1
-      · rfl
-    rw [hv]
-    simp only [map_bind, map_pure]
-    apply bind_congr
-    intro r
-    congr 2
-    funext i
-    exact seedGenReferenceData_receivers prims coalition h left right parts commitSent revealSent r.2 hl hr i
-
-/-- Stop symmetrically if the honest-pair noncollision test fails for either table. -/
-def seedGenReferenceStoppedFinish (prims : Primitives) (coalition : C.Coalition)
-    (h : Query C → HashOutput) (left right : KeyName C → HashOutput)
-    (A : Adversary C E Unit PEmpty PEmpty) (state : A.State)
-    (parts : C.Party → Parts C) (commitSent revealSent : C.Party → Mail C E) (useLeft : Bool) :
-    OracleComp (LocalSpec C) (Option (A.State × (C.Party → Bool))) :=
-  if SeedGenReferenceEchoRegular prims coalition h left parts (fun i j => revealSent j i) ∧
-      SeedGenReferenceEchoRegular prims coalition h right parts (fun i j => revealSent j i) then
-    (fun r => some (r.1, fun i => (r.2 i).isSome)) <$>
-      seedGenFinishLocal coalition A state (seedGenReferenceData prims coalition h
-        (if useLeft then left else right) parts commitSent revealSent)
-  else pure none
-
-/-- The symmetric stopped echo comparison has no collision hypothesis. -/
-theorem seedGenReferenceStoppedFinish_eq (prims : Primitives) (coalition : C.Coalition)
-    (h : Query C → HashOutput) (left right : KeyName C → HashOutput)
-    (A : Adversary C E Unit PEmpty PEmpty) (state : A.State)
-    (parts : C.Party → Parts C) (commitSent revealSent : C.Party → Mail C E) :
-    seedGenReferenceStoppedFinish prims coalition h left right A state parts commitSent revealSent true =
-      seedGenReferenceStoppedFinish prims coalition h left right A state parts commitSent revealSent false := by
-  unfold seedGenReferenceStoppedFinish
-  by_cases hc : SeedGenReferenceEchoRegular prims coalition h left parts (fun i j => revealSent j i) ∧
-      SeedGenReferenceEchoRegular prims coalition h right parts (fun i j => revealSent j i)
-  · rw [if_pos hc, if_pos hc]
-    have he := seedGenReferenceFinish_receivers prims coalition h left right A state parts commitSent revealSent hc.1 hc.2
-    simpa only [Functor.map_map, Bool.false_eq_true, if_true, if_false] using
-      congrArg (fun oa => Option.some <$> oa) he
-  · rw [if_neg hc, if_neg hc]
-
-/-- The remaining actual reference rounds, stopped on the symmetric echo collision event. -/
-def seedGenReferenceStoppedPostCommit (prims : Primitives) (coalition : C.Coalition)
-    (h : Query C → HashOutput) (left right : KeyName C → HashOutput)
-    (A : Adversary C E Unit PEmpty PEmpty) (state : A.State)
-    (parts : C.Party → Parts C) (commitSent : C.Party → Mail C E) (useLeft : Bool) :
-    OracleComp (LocalSpec C) (Option (A.State × (C.Party → Bool))) :=
-  if ∀ i, i ∉ coalition.1 → seedGenCommitAborted coalition commitSent i = true then
-    pure (some (state, fun _ => false))
-  else do
-    let (st, sent) ← A.round state (seedGenReferenceRevealView coalition parts commitSent)
-    seedGenReferenceStoppedFinish prims coalition h left right A st parts commitSent sent useLeft
-
-/-- Exact hidden-table invariance through both remaining reference rounds, including early abort. -/
-theorem seedGenReferenceStoppedPostCommit_eq (prims : Primitives) (coalition : C.Coalition)
-    (h : Query C → HashOutput) (left right : KeyName C → HashOutput)
-    (A : Adversary C E Unit PEmpty PEmpty) (state : A.State)
-    (parts : C.Party → Parts C) (commitSent : C.Party → Mail C E) :
-    seedGenReferenceStoppedPostCommit prims coalition h left right A state parts commitSent true =
-      seedGenReferenceStoppedPostCommit prims coalition h left right A state parts commitSent false := by
-  simp only [seedGenReferenceStoppedPostCommit, seedGenReferenceStoppedFinish_eq]
 
 end ThresholdLeanXmssSecurity
 
@@ -7373,123 +5435,6 @@ theorem stepRound_seedGenInitialSteps_observed (coalition : C.Coalition)
       simp only [free_pure, liftM_pure]
       rfl
   · rw [sequenceFin_pure, pure_bind]
-
-/-- Fixed-oracle interpretation of the two local copies. Programming is unused in a prefix. -/
-def seedGenFixedPrefixWorld (prims : Primitives) (h : Query C → HashOutput) : QueryImpl (WorldSpec C) ProbComp :=
-  fixedLocal prims h + ((fun _ => pure false) : QueryImpl (ProgramSpec C) ProbComp) + fixedLocal prims h
-
-/-- The actual observed adversary prefix, using fixed honest commitment answers. -/
-def seedGenFixedCommitKernel (prims : Primitives) (coalition : C.Coalition)
-    (h : Query C → HashOutput) (A : Adversary C E Unit PEmpty PEmpty)
-    (x : C.Party → Unit) (z : Aux) (parts : C.Party → Parts C) :
-    ProbComp (CallLog C × (C.Party → Mail C E)) :=
-  simulateQ (seedGenFixedPrefixWorld prims h) do
-    let (state, log) ← observe (A.start (corruptInputs coalition x) z)
-    let ((_, sent), calls) ← observe (A.round state (seedGenFixedCommitView prims coalition h parts))
-    pure (log ++ calls, sent)
-
-theorem seedGenFixedCommitKernel_privateInvariant (prims : Primitives) (coalition : C.Coalition)
-    (h : Query C → HashOutput) (A : Adversary C E Unit PEmpty PEmpty)
-    (x : C.Party → Unit) (z : Aux) :
-    SeedGenPrivateInvariant coalition (seedGenFixedCommitKernel prims coalition h A x z) := by
-  have he (parts : C.Party → Parts C) :
-      seedGenFixedCommitKernel prims coalition h A x z (seedGenExposedParts coalition parts) =
-        seedGenFixedCommitKernel prims coalition h A x z parts := by
-    simp only [seedGenFixedCommitKernel, seedGenFixedCommitView_exposed]
-  have hi := seedGenExposedParts_privateInvariant coalition
-  constructor
-  · intro a T hT c parts
-    rw [← he (shiftAt a (some T) none c parts), hi.1 a T hT c parts, he parts]
-  · intro p ha hb c parts
-    rw [← he (shiftAt p.1.1 none (some p.1.2) c parts), hi.2 p ha hb c parts, he parts]
-
-/-- The programming alias bound is instantiated for the actual fixed-oracle observed prefix. -/
-theorem probEvent_seedGenFixedCommit_programming_alias (prims : Primitives) (coalition : C.Coalition)
-    (h : Query C → HashOutput) (A : Adversary C E Unit PEmpty PEmpty)
-    (x : C.Party → Unit) (z : Aux) :
-    Pr{let p ← seedGenPartsKernel (seedGenFixedCommitKernel prims coalition h A x z)}[
-      ∃ v ∈ seedGenProgrammingInputs coalition
-        (seedGenProgramView coalition p.1 p.2.1 p.2.2), SeedGenHiddenInput coalition p.1 v] ≤
-      ((seedGenProgrammingCount coalition * seedGenSecrets C : ℕ) : ℝ≥0∞) *
-        (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-  exact probEvent_seedGenProgramming_hidden_alias coalition _
-    (seedGenFixedCommitKernel_privateInvariant prims coalition h A x z)
-
-/-- The fixed prefix retains exactly the simulator's actual observed `stepRound` log. -/
-theorem seedGenFixedCommitKernel_stepRound (prims : Primitives) (coalition : C.Coalition)
-    (h : Query C → HashOutput) (A : Adversary C E Unit PEmpty PEmpty)
-    (x : C.Party → Unit) (z : Aux) (parts : C.Party → Parts C) :
-    simulateQ (seedGenFixedPrefixWorld prims h) (do
-      let (state, log) ← observe (A.start (corruptInputs coalition x) z)
-      let (r, calls) ← (stepRound observedRoles coalition A noFunctionality state
-        (seedGenInitialSteps coalition parts (fun j => D prims h (commitQueries .seedGen j (parts j))))).run
-      pure (log ++ calls, r.2.2)) = seedGenFixedCommitKernel prims coalition h A x z parts := by
-  unfold seedGenFixedCommitKernel
-  apply congrArg (simulateQ (seedGenFixedPrefixWorld prims h))
-  apply bind_congr
-  rintro ⟨state, log⟩
-  dsimp only
-  erw [stepRound_seedGenInitialSteps_observed coalition A state parts
-    (fun j => D prims h (commitQueries .seedGen j (parts j)))]
-  simp only [observedRoles, WriterT.run_bind, WriterT.run_pure, map_pure, pure_bind, bind_assoc,
-    show (∅ : CallLog C) = [] from rfl, List.append_nil, seedGenFixedCommitView]
-  rfl
-
-/-- Start and commit of the actual adversary, with fixed honest commitment answers. -/
-def seedGenFixedCommitLocal (prims : Primitives) (coalition : C.Coalition)
-    (h : Query C → HashOutput) (A : Adversary C E Unit PEmpty PEmpty)
-    (x : C.Party → Unit) (z : Aux) (parts : C.Party → Parts C) :
-    OracleComp (LocalSpec C) (A.State × (C.Party → Mail C E)) := do
-  let state ← A.start (corruptInputs coalition x) z
-  A.round state (seedGenFixedCommitView prims coalition h parts)
-
-def seedGenFixedCommitQueryKernel (prims : Primitives) (coalition : C.Coalition)
-    (h : Query C → HashOutput) (A : Adversary C E Unit PEmpty PEmpty)
-    (x : C.Party → Unit) (z : Aux) (parts : C.Party → Parts C) :
-    ProbComp ((A.State × (C.Party → Mail C E)) × List (Query C)) :=
-  simulateQ (fixedLocal prims h) (seedGenHashLog (seedGenFixedCommitLocal prims coalition h A x z parts))
-
-theorem seedGenFixedCommitQueryKernel_privateInvariant (prims : Primitives) (coalition : C.Coalition)
-    (h : Query C → HashOutput) (A : Adversary C E Unit PEmpty PEmpty)
-    (x : C.Party → Unit) (z : Aux) :
-    SeedGenPrivateInvariant coalition (seedGenFixedCommitQueryKernel prims coalition h A x z) := by
-  have he (parts : C.Party → Parts C) :
-      seedGenFixedCommitQueryKernel prims coalition h A x z (seedGenExposedParts coalition parts) =
-        seedGenFixedCommitQueryKernel prims coalition h A x z parts := by
-    simp only [seedGenFixedCommitQueryKernel, seedGenFixedCommitLocal, seedGenFixedCommitView_exposed]
-  have hi := seedGenExposedParts_privateInvariant coalition
-  constructor
-  · intro a T hT c parts
-    rw [← he (shiftAt a (some T) none c parts), hi.1 a T hT c parts, he parts]
-  · intro p ha hb c parts
-    rw [← he (shiftAt p.1.1 none (some p.1.2) c parts), hi.2 p ha hb c parts, he parts]
-
-/-- A direct hidden-input guessing bound for the actual fixed-oracle start/commit prefix. -/
-theorem probEvent_seedGenFixedCommit_hidden_guess (prims : Primitives) (coalition : C.Coalition)
-    (h : Query C → HashOutput) (A : Adversary C E Unit PEmpty PEmpty)
-    (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C))
-    (q : ℕ) (hq : IsQueryBounded A Z setupRounds q) :
-    Pr{let p ← seedGenPartsKernel (seedGenFixedCommitQueryKernel prims coalition h A x z)}[
-      ∃ v ∈ p.2.2, SeedGenHiddenInput coalition p.1 v] ≤
-      ((q * seedGenSecrets C : ℕ) : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-  have hbound (parts : C.Party → Parts C) :
-      IsQueryBoundP (seedGenFixedCommitLocal prims coalition h A x z parts) Counted q := by
-    obtain ⟨start, step, final, ht, hs, hr, _, _⟩ := hq
-    apply (isQueryBoundP_bind (hs (corruptInputs coalition x) z) (fun state _ => hr state _)).mono
-    simp only [setupRounds] at ht
-    omega
-  have hb := probEvent_seedGenHiddenInput_kernel_list coalition
-    (seedGenFixedCommitQueryKernel prims coalition h A x z)
-    (seedGenFixedCommitQueryKernel_privateInvariant prims coalition h A x z)
-    (fun r => r.2.filter fun v => ¬ IsFixed v) q
-    (fun parts r hr => seedGenHashLog_random_length_le _ q (hbound parts) r
-      (seedGenFixedLocal_support_subset prims h _ hr))
-  apply le_trans (prEvent_mono _ _ _ (fun p hh => ?_)) hb
-  obtain ⟨v, hv, name, hn, he⟩ := hh
-  refine ⟨v, List.mem_filter.mpr ⟨hv, ?_⟩, name, hn, he⟩
-  apply decide_eq_true
-  rw [← he]
-  exact seedGenNamedInput_not_fixed p.1 name
 
 end ThresholdLeanXmssSecurity
 
@@ -7569,44 +5514,6 @@ theorem evalDist_seedGenNormalized_fixed_reference (prims : Primitives) (coaliti
     simulateQ_seedGenPostCommit_reference prims coalition h (fun name => h (seedGenNamedInput parts name))
       A st parts (fun _ _ => rfl) sent]
 
-/-- Every complete local computation is a mixture of fixed finite oracle tables.
-The envelope is a semantic device; its size is not used as a query bound. -/
-theorem seedGenLocal_eager_fixed_exists (prims : Primitives) {α : Type}
-    (oa : OracleComp (LocalSpec C) α) :
-    ∃ S : Finset (Query C),
-      (simulateQ (localAnswer prims) oa).run' ∅ =ᵈ
-        (do let h ← $ᵗ (S → HashOutput);
-              simulateQ (fixedLocal prims (seedGenFiniteTotal prims S h)) oa) := by
-  obtain ⟨S, hS⟩ := seedGenWorld_eager_exists prims (free oa)
-  refine ⟨S, ?_⟩
-  have he := hS ∅
-  simp only [worldAnswer, seedGenFiniteWorld, simulateQ_free] at he
-  have hc : seedGenRestrictCache S (∅ : HashCache C) = ∅ := rfl
-  simp only [hc, seedGenFiniteLocal_eager_fixed, tableExtending_empty] at he
-  exact he
-
-/-- End-to-end distributional connection from the actual real experiment to the finite
-reference game. Its hidden table is still the actual oracle table, not an independent dealer. -/
-theorem seedGenReal_reference_exists (prims : Primitives) (coalition : C.Coalition)
-    (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
-    (Z : Distinguisher C A.State (Keys C)) :
-    ∃ S : Finset (Query C),
-      (simulateQ (worldAnswer prims)
-        (distinguish (realExecution coalition A noFunctionality setupRounds
-          (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) x z) Z)).run' ∅ =ᵈ
-        (do
-          let ht ← $ᵗ (S → HashOutput);
-          let parts ← OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)
-          let h := seedGenFiniteTotal prims S ht
-          simulateQ (fixedLocal prims h)
-            (seedGenReferenceLocalGame prims coalition h (fun name => h (seedGenNamedInput parts name)) A x z Z parts)) := by
-  obtain ⟨S, hS⟩ := seedGenLocal_eager_fixed_exists prims (seedGenNormalizedLocalGame coalition A x z Z)
-  refine ⟨S, ?_⟩
-  rw [simulateQ_seedGenReal_eq_local]
-  refine ((sameRun_seedGenLocal_normalized prims coalition A x z Z).run'_eq.trans hS).trans ?_
-  refine EvalDistEq.bind_right _ fun ht => ?_
-  exact evalDist_seedGenNormalized_fixed_reference prims coalition (seedGenFiniteTotal prims S ht) A x z Z
-
 end ThresholdLeanXmssSecurity
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
@@ -7641,46 +5548,6 @@ theorem seedGenAllNamedInputs_mem (parts : C.Party → Parts C) (name : KeyName 
   refine ⟨parts, Finset.mem_univ _, Finset.mem_image.mpr ⟨name, ?_, rfl⟩⟩
   simp [seedGenNames]
 
-/-- Any requested finite set can be included in the eager oracle domain. -/
-theorem seedGenLocal_eager_fixed_exists_cover (prims : Primitives) (R : Finset (Query C))
-    {α : Type} (oa : OracleComp (LocalSpec C) α) :
-    ∃ S : Finset (Query C), R ⊆ S ∧
-      (simulateQ (localAnswer prims) oa).run' ∅ =ᵈ
-        (do let h ← $ᵗ (S → HashOutput);
-              simulateQ (fixedLocal prims (seedGenFiniteTotal prims S h)) oa) := by
-  obtain ⟨S₀, hS₀⟩ := seedGenWorldCovered_exists (free oa)
-  let S := S₀ ∪ R
-  have hS : SeedGenWorldCovered S (free oa) := hS₀.mono (by intro q hq; exact Finset.mem_union_left R hq)
-  refine ⟨S, (by intro q hq; exact Finset.mem_union_right S₀ hq), ?_⟩
-  have he := evalDist_seedGenWorld_eager prims S (free oa) hS ∅
-  simp only [worldAnswer, seedGenFiniteWorld, simulateQ_free] at he
-  have hc : seedGenRestrictCache S (∅ : HashCache C) = ∅ := rfl
-  simp only [hc, seedGenFiniteLocal_eager_fixed, tableExtending_empty] at he
-  exact he
-
-/-- The actual real experiment has a finite reference representation whose oracle includes
-every canonical hidden input, even on branches where no honest operator reaches derivation. -/
-theorem seedGenReal_reference_exists_cover (prims : Primitives) (coalition : C.Coalition)
-    (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
-    (Z : Distinguisher C A.State (Keys C)) :
-    ∃ S : Finset (Query C), (∀ parts name, seedGenNamedInput parts name ∈ S) ∧
-      (simulateQ (worldAnswer prims)
-        (distinguish (realExecution coalition A noFunctionality setupRounds
-          (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) x z) Z)).run' ∅ =ᵈ
-        (do
-          let ht ← $ᵗ (S → HashOutput);
-          let parts ← OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)
-          let h := seedGenFiniteTotal prims S ht
-          simulateQ (fixedLocal prims h)
-            (seedGenReferenceLocalGame prims coalition h (fun name => h (seedGenNamedInput parts name)) A x z Z parts)) := by
-  obtain ⟨S, hmem, hS⟩ := seedGenLocal_eager_fixed_exists_cover prims (seedGenAllNamedInputs C)
-    (seedGenNormalizedLocalGame coalition A x z Z)
-  refine ⟨S, (fun parts name => hmem (seedGenAllNamedInputs_mem parts name)), ?_⟩
-  rw [simulateQ_seedGenReal_eq_local]
-  refine ((sameRun_seedGenLocal_normalized prims coalition A x z Z).run'_eq.trans hS).trans ?_
-  refine EvalDistEq.bind_right _ fun ht => ?_
-  exact evalDist_seedGenNormalized_fixed_reference prims coalition (seedGenFiniteTotal prims S ht) A x z Z
-
 /-- A canonical input in the enlarged domain reads an actual sampled cell, never the fallback. -/
 theorem seedGenFiniteTotal_named (prims : Primitives) (S : Finset (Query C))
     (h : S → HashOutput) (parts : C.Party → Parts C) (name : KeyName C)
@@ -7689,22 +5556,6 @@ theorem seedGenFiniteTotal_named (prims : Primitives) (S : Finset (Query C))
   cases name <;>
     simp [seedGenFiniteTotal, seedGenNamedInput, parameterInput, termInput, pairInput] at hn ⊢ <;>
     simp [hn]
-
-/-- On distinct canonical inputs, the sampled finite oracle induces a uniform
-named table. This marginal statement does not assert independence from an adaptive transcript. -/
-theorem evalDist_seedGenFiniteNamed_uniform (prims : Primitives) (S : Finset (Query C))
-    (parts : C.Party → Parts C) (hmem : ∀ name, seedGenNamedInput parts name ∈ S)
-    (hinj : Function.Injective (seedGenNamedInput parts)) :
-    ((fun h name => seedGenFiniteTotal prims S h (seedGenNamedInput parts name)) <$>
-      ($ᵗ (S → HashOutput))) =ᵈ $ᵗ (KeyName C → HashOutput) := by
-  let e : KeyName C → S := fun name => ⟨seedGenNamedInput parts name, hmem name⟩
-  have he : Function.Injective e := fun a b hab => hinj (congrArg Subtype.val hab)
-  have ht : (fun (h : S → HashOutput) name => seedGenFiniteTotal prims S h (seedGenNamedInput parts name)) =
-      (fun h : S → HashOutput => h ∘ e) := by
-    funext h name
-    exact seedGenFiniteTotal_named prims S h parts name (hmem name)
-  rw [ht]
-  exact evalDistEq_uniformSample_map_comp_injective he
 
 end ThresholdLeanXmssSecurity
 

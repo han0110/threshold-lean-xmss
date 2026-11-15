@@ -129,13 +129,6 @@ theorem traceWorld_bases (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
   rw [hstate]
   exact h
 
-theorem traceWorld_run_bases (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
-    {α : Type} (source : OracleComp (WorldSpec C) α) (s : TraceState C)
-    (hs : TraceBases x s) (r : α × TraceState C)
-    (hr : r ∈ support ((simulateQ (traceWorld prims x) source).run s)) : TraceBases x r.2 := by
-  exact SeedHitProof.support_simulateQ_inv _ (TraceBases x)
-    (fun t p hp r hr => traceWorld_bases prims x t p hp r hr) source s hs r hr
-
 theorem traceWorld_carried (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (t : (WorldSpec C).Domain) (s : TraceState C) (r : (WorldSpec C).Range t × TraceState C)
     (hr : r ∈ support ((traceWorld prims x t).run s)) : r.2.2 = s.2 := by
@@ -162,73 +155,6 @@ theorem traceForger_split (prims : Primitives) (x : SigningSecurityProof.Keys3 C
     (traceWorld_forgets prims x) t
   rw [← hf s.1.1 s.1.2 s.2, support_map]
   exact ⟨r, hr, rfl⟩
-
-/-- Message binding by the outer handler preserves every trace entry's fixed base. -/
-theorem traceForger_bases (prims : Primitives) (x : SigningSecurityProof.Keys3 C) (top : TopTree)
-    (t : (LocalSpec C + TsigSpec C).Domain) (s : TraceState C) (hs : TraceBases x s)
-    (r : (LocalSpec C + TsigSpec C).Range t × TraceState C)
-    (hr : r ∈ support ((traceForger prims x top t).run s)) : TraceBases x r.2 := by
-  have hb := (SigningSupportProof.gameOracles_stateGrows (dealtOf x top) t _ _
-    (SigningReleasedLinkProof.forger_source prims x top t (s.1.1, s.2) (r.1, (r.2.1.1, r.2.2))
-      (traceForger_split prims x top t s r hr))).1
-  simp only [traceForger, flatWith, StateT.run_mk, support_map, Set.mem_image] at hr
-  obtain ⟨w, hw, rfl⟩ := hr
-  have hi := traceWorld_run_bases prims x _ s hs w hw
-  have hc := traceWorld_run_carried prims x _ s w hw
-  refine ⟨?_, hi.2⟩
-  have he := hi.1
-  rw [hc] at he
-  exact he.mono le_rfl hb
-
-theorem traceForger_run_bases (prims : Primitives) (x : SigningSecurityProof.Keys3 C) (top : TopTree)
-    {α : Type} (source : OracleComp (LocalSpec C + TsigSpec C) α) (s : TraceState C)
-    (hs : TraceBases x s) (r : α × TraceState C)
-    (hr : r ∈ support ((simulateQ (traceForger prims x top) source).run s)) : TraceBases x r.2 := by
-  exact SeedHitProof.support_simulateQ_inv _ (TraceBases x)
-    (fun t p hp r hr => traceForger_bases prims x top t p hp r hr) source s hs r hr
-
-/-- The actual trace has no repeated leaf index, including unsuccessful searches. -/
-theorem traceRun_bases (prims : Primitives) (A : TsigAdversary C)
-    (x : SigningSecurityProof.Keys3 C) (z : TraceOutcome C)
-    (hz : z ∈ support (traceRun prims A x)) : TraceBases x z.2 := by
-  unfold traceRun traceGame jointGameWith at hz
-  simp only [StateT.run_bind, mem_support_bind_iff] at hz
-  obtain ⟨setup, hsetup, hz⟩ := hz
-  have hi : TraceBases x
-      (((SigningOneRunProof.monitoredInit.1, fun _ => false), ([], false)), SigningOneRunProof.monitoredInit.2) := by
-    exact ⟨fun _ h => (List.not_mem_nil h).elim, List.nodup_nil⟩
-  have hset : TraceBases x setup.2 := by
-    apply traceWorld_run_bases prims x _ _ hi setup
-    with_reducible exact hsetup
-  cases hout : setup.1 with
-  | none =>
-    simp only [hout, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
-    rw [hz]
-    exact hset
-  | some tree =>
-    cases tree with
-    | bottom tree =>
-      simp only [hout, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
-      rw [hz]
-      exact hset
-    | top top =>
-      simp only [hout, StateT.run_bind, getCarried, StateT.run_mk, pure_bind,
-        mem_support_bind_iff] at hz
-      obtain ⟨middle, hmiddle, finished, hfinished, hz⟩ := hz
-      have hm : TraceBases x middle.2 := by
-        apply traceForger_run_bases prims x top _ setup.2 hset middle
-        with_reducible exact hmiddle
-      have hf : TraceBases x finished.2 := by
-        apply traceWorld_run_bases prims x _ middle.2 hm finished
-        with_reducible exact hfinished
-      simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
-      rw [hz]
-      exact hf
-
-theorem traceRun_nodup (prims : Primitives) (A : TsigAdversary C)
-    (x : SigningSecurityProof.Keys3 C) (z : TraceOutcome C)
-    (hz : z ∈ support (traceRun prims A x)) : z.2.1.2.1.leafIndices.Nodup :=
-  (traceRun_bases prims A x z (by with_reducible exact hz)).2
 
 /-- A cached selection collision is a pre-signing partner or a post-signing repeat.
 The pure case split is the argument of pinned leanVM's
@@ -873,17 +799,6 @@ theorem world_seenCached (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
   exact keyed_run_seenCached _ _ _ (called_seenCached prims x t s hs called hc) ground
     (by with_reducible exact hg)
 
-/-- The actual trace run retains every monitor-seen input in its hash cache. -/
-theorem traceRun_seenCached (prims : Primitives) (A : TsigAdversary C)
-    (x : SigningSecurityProof.Keys3 C) (z : TraceOutcome C)
-    (hz : z ∈ support (traceRun prims A x)) : SeenCached z.2.1.1.1.1.1.1 z.2.1.1.1.2 := by
-  apply traceRun_worldInvariant prims A x (fun s => SeenCached s.1.1.1.1.1.1 s.1.1.1.2)
-    (fun _ _ h => h) ?_ (fun _ h => h.elim) z (by with_reducible exact hz)
-  intro t s hs r hr
-  simp only [traceWorld, StateT.run_mk, support_map, Set.mem_image] at hr
-  obtain ⟨step, hstep, rfl⟩ := hr
-  exact world_seenCached prims x t (s.1.1, s.2) hs step hstep
-
 /-- The completed canonical search is stable under every future cache extension. -/
 theorem world_cachedFound_stable (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (t : (WorldSpec C).Domain) (s : SigningReleasedLinkProof.SplitState C)
@@ -955,13 +870,6 @@ theorem traceWorld_entryStable (prims : Primitives) (x : SigningSecurityProof.Ke
               h.choose_spec.1 h.choose_spec.2 hb cache hle)
       · exact hold
   · exact hold
-
-theorem traceRun_entryStable (prims : Primitives) (A : TsigAdversary C)
-    (x : SigningSecurityProof.Keys3 C) (z : TraceOutcome C)
-    (hz : z ∈ support (traceRun prims A x)) : EntryStable x z.2.1.1.1.1.1.1 z.2.1.2.1 := by
-  exact traceRun_worldInvariant prims A x (fun s => EntryStable x s.1.1.1.1.1.1 s.1.2.1)
-    (fun _ _ h => h) (fun t s hs r hr => traceWorld_entryStable prims x t s hs r hr)
-    (fun _ h => (List.not_mem_nil h).elim) z (by with_reducible exact hz)
 
 /-- The actual lazy base query and grind determine the cached canonical search. -/
 theorem foundGrind_cachedFound (P : PublicParameter) (e : KeyIndex) (rho : Digest) (message : Message)
@@ -1077,21 +985,6 @@ theorem traceWorld_entryUnsigned (prims : Primitives) (x : SigningSecurityProof.
             h.choose_spec.1 h.choose_spec.2 hb hn signature hsig
       · exact hold
   · exact hold
-
-/-- Every still-unsigned signed trace entry selected an initially cached input. -/
-theorem traceRun_entryUnsigned (prims : Primitives) (A : TsigAdversary C)
-    (x : SigningSecurityProof.Keys3 C) (z : TraceOutcome C)
-    (hz : z ∈ support (traceRun prims A x)) : EntryUnsigned x.1 z.2.1.1.1.2 z.2.1.2.1 := by
-  have h := traceRun_worldInvariant prims A x
-    (fun s => SeenCached s.1.1.1.1.1.1 s.1.1.1.2 ∧ EntryUnsigned x.1 s.1.1.1.2 s.1.2.1)
-    (fun _ _ h => h) ?_ ⟨fun _ h => h.elim, fun _ h => (List.not_mem_nil h).elim⟩ z
-    (by with_reducible exact hz)
-  · exact h.2
-  intro t s hs r hr
-  refine ⟨?_, traceWorld_entryUnsigned prims x t s hs.1 hs.2 r hr⟩
-  simp only [traceWorld, StateT.run_mk, support_map, Set.mem_image] at hr
-  obtain ⟨step, hstep, rfl⟩ := hr
-  exact world_seenCached prims x t (s.1.1, s.2) hs.1 step hstep
 
 /-- A newly raised flag identifies its own guarded canonical base call. -/
 theorem world_raised_trigger (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
@@ -1384,10 +1277,6 @@ end ThresholdLeanXmssSecurity.SigningLane2TraceLinkProof
 /-- info: 'ThresholdLeanXmssSecurity.SigningLane2TraceLinkProof.lane2TraceLink' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningLane2TraceLinkProof.lane2TraceLink
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningLane2TraceLinkProof.traceRun_nodup' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningLane2TraceLinkProof.traceRun_nodup
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningLane2TraceLinkProof.traceRun_alignment' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

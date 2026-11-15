@@ -754,43 +754,6 @@ theorem safe_frame {α : Type} (tagOf : CappedCompilerState C × Bool → Tag) (
   exact ⟨backendT_frame tagOf x hi q s pads τ g noise rest t ht st h.1 r hr,
     backendT_shareG tagOf x q s pads τ g noise rest t st h.2 r hr⟩
 
-/-- The actual adversary-facing compiler handler preserves the frames. -/
-theorem compAdv_frame (tagOf : CappedCompilerState C × Bool → Tag)
-    (prims : Primitives) (x : Keys3 C) (top : TopTree)
-    (hi : Function.Injective (TprfSecurityProof.slotInput x.2.1 x.2.2))
-    (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
-    (τ : CPoint → Digest) (g : C.Term × CPoint → HashOutput)
-    (noise : ChainNoiseIndex → HashOutput) (rest : RestSlot C → HashOutput)
-    (t : (LocalSpec C + TsigSpec C).Domain) (src : SourceState C) (st : FullState C Tag)
-    (h : Frame x rest st.1.1 ∧ ShareG g st.2)
-    (r : (LocalSpec C + TsigSpec C) t × (SourceState C × FullState C Tag))
-    (hr : r ∈ support ((SigningCompilerUntil.fuse (sourceOraclesX prims x top)
-      (shareBackendTagT tagOf x.1 x.2.1 x.2.2 q s pads τ g noise rest) t).run (src, st))) :
-    Frame x rest r.2.2.1.1 ∧ ShareG g r.2.2.2 := by
-  simp only [SigningCompilerUntil.fuse, StateT.run, support_map] at hr
-  obtain ⟨a, ha, rfl⟩ := hr
-  exact safe_frame tagOf x hi q s pads τ g noise rest _
-    (safe_sourceOraclesX prims x top t) src st h a ha
-
-/-- The same invariant through the complete adversary program. -/
-theorem compAdv_simulate_frame {α : Type} (tagOf : CappedCompilerState C × Bool → Tag)
-    (prims : Primitives) (x : Keys3 C) (top : TopTree)
-    (hi : Function.Injective (TprfSecurityProof.slotInput x.2.1 x.2.2))
-    (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
-    (τ : CPoint → Digest) (g : C.Term × CPoint → HashOutput)
-    (noise : ChainNoiseIndex → HashOutput) (rest : RestSlot C → HashOutput)
-    (oa : OracleComp (LocalSpec C + TsigSpec C) α)
-    (src : SourceState C) (st : FullState C Tag)
-    (h : Frame x rest st.1.1 ∧ ShareG g st.2)
-    (r : α × (SourceState C × FullState C Tag))
-    (hr : r ∈ support ((simulateQ (SigningCompilerUntil.fuse (sourceOraclesX prims x top)
-      (shareBackendTagT tagOf x.1 x.2.1 x.2.2 q s pads τ g noise rest)) oa).run (src, st))) :
-    Frame x rest r.2.2.1.1 ∧ ShareG g r.2.2.2 := by
-  apply simulateQ_sticky _ (fun sc => Frame x rest sc.2.1.1 ∧ ShareG g sc.2.2)
-    ?_ oa (src, st) h r hr
-  intro t sc h r hr
-  exact compAdv_frame tagOf prims x top hi q s pads τ g noise rest t sc.1 sc.2 h r hr
-
 theorem initial_frame (x : Keys3 C) (rest : RestSlot C → HashOutput)
     (g : C.Term × CPoint → HashOutput) :
     Frame x rest (initial (C := C) (Tag := Tag)).1.1 ∧
@@ -799,10 +762,6 @@ theorem initial_frame (x : Keys3 C) (rest : RestSlot C → HashOutput)
   · intro z v hv; cases hv
   · intro input z hz; rfl
   · intro y v hv; cases hv
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncFrame.compAdv_simulate_frame' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms compAdv_simulate_frame
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncFrame.backendT_shareG' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

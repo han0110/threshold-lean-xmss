@@ -1433,8 +1433,6 @@ theorem Pres_eval (B : HashInput → Prop) (keys : Keys C) (i : C.Party) (J : C.
   · exact Pres_map prims B _ (Pres_query_ne_hash prims B _ fun _ h => by cases h)
   · exact Pres_map prims B _ (Pres_query_ne_hash prims B _ fun _ h => by cases h)
 
-theorem isMsg_of_isMsg80 {x : HashInput} (hx : IsMsg80 x) : IsMsg x := hx.1
-
 theorem Pres_referenceJob (B : HashInput → Prop) (seeds : C.Term → HashOutput) (P : PublicParameter) (job : Job) :
     Pres prims B (referenceJob tweakable (prfValue seeds) P job) := by
   obtain ⟨kind, points⟩ := job

@@ -245,23 +245,6 @@ theorem swapFree_involutive (b : C.Term) : Function.Involutive (swapFree b) := b
         by_cases hp : Constrained (.randomizer lay e) <;>
           simp [freeSecrets, hp, congrFun hv, freeTheta, freeTarget]
 
-theorem tau_congr (s s' : HiddenKey → Digest) (F F' : Point → Digest)
-    (ho : ∀ lay e, Constrained (.randomizer lay e) →
-      s (.opening lay e) = s' (.opening lay e))
-    (hb : ∀ e l p, s (.bottomChain e l p) = s' (.bottomChain e l p))
-    (ht : ∀ b l p, s (.topChain b l p) = s' (.topChain b l p))
-    (hF : ∀ p : CPoint, F p.val = F' p.val) :
-    NoFalse.tau s F = NoFalse.tau s' F' := by
-  funext p
-  induction p using NoFalse.constrained_cases with
-  | ho e => exact ho _ e (constrained_bottom_randomizer e)
-  | hto b => exact ho _ _ (constrained_top_randomizer b)
-  | htc b l => simp only [NoFalse.tau_top_start, ht]
-  | hc e l pos =>
-      have hp := hF ⟨.chain bottomLayer e l (XmssSecurity.CappedChain.chainStepDigit pos),
-        constrained_bottom_chain e l (XmssSecurity.CappedChain.chainStepDigit pos) pos.isLt⟩
-      simp only [NoFalse.tau_bottom_chain, hb, hp]
-
 theorem tau_swap (sh : TprfSecurityProof.Slot C → HashOutput)
     (F : Point → Digest) (s : HiddenKey → Digest) :
     NoFalse.tau (freeSecrets sh s) (freePads sh F) = NoFalse.tau s F := by
@@ -489,48 +472,6 @@ theorem traceRun_eq_realRun (prims : Primitives) (A : TsigAdversary C) (x : Keys
   refine (uniform_prod_bind (fun u rest => new (slotSplit.symm (u, rest)) F s)).symm.trans ?_
   simp only [new, Equiv.apply_symm_apply, EvalDistEq.refl]
 
-set_option linter.constructorNameAsVariable false in
-/-- Every fixed sampled table obeys the original support-wise query budget. -/
-theorem realRun_count_le (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
-    (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (q : ℕ)
-    (hq : ∀ r ∈ support (runSigningWorld prims (gameAfter A x)), r.2 ≤ q)
-    (s : HiddenKey → Digest) (pads : Point → Digest) (u : C.Term × CPoint → HashOutput)
-    (rest : RestSlot C → HashOutput) (noise : ChainNoiseIndex → HashOutput)
-    (r : SigningLaneUnionProof.TraceOutcome C)
-    (hr : r ∈ support (realRun prims A x s pads
-      (SigningShareLazy.fiberTable C.terms (NoFalse.tau s pads)
-        (SigningShareLazy.init : Table.FrozenState C) u) rest noise)) :
-    (SigningLaneUnionProof.observed r).2.1 ≤ q := by
-  apply SigningLaneUnionProof.traceRun_count_le prims A q x hq r
-  rw [OracleComp.support_eq_of_evalDistEq (traceRun_eq_realRun prims A x hkeys),
-    mem_support_bind_iff]
-  refine ⟨s, by simp, ?_⟩
-  rw [mem_support_bind_iff]
-  refine ⟨pads, by simp, ?_⟩
-  rw [mem_support_bind_iff]
-  refine ⟨u, by simp, ?_⟩
-  rw [mem_support_bind_iff]
-  refine ⟨rest, by simp, ?_⟩
-  rw [mem_support_bind_iff]
-  refine ⟨noise, by simp, ?_⟩
-  with_reducible exact hr
-
-set_option linter.constructorNameAsVariable false in
-theorem realRunRaw_count_le (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
-    (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (q : ℕ)
-    (hq : ∀ r ∈ support (runSigningWorld prims (gameAfter A x)), r.2 ≤ q)
-    (s : HiddenKey → Digest) (pads : Point → Digest) (u : C.Term × CPoint → HashOutput)
-    (rest : RestSlot C → HashOutput) (noise : ChainNoiseIndex → HashOutput)
-    (r : SigningLaneUnionProof.TraceOutcome C × HashCache C)
-    (hr : r ∈ support (realRunRaw prims A x s pads
-      (SigningShareLazy.fiberTable C.terms (NoFalse.tau s pads)
-        (SigningShareLazy.init : Table.FrozenState C) u) rest noise)) :
-    (SigningLaneUnionProof.observed r.1).2.1 ≤ q := by
-  apply realRun_count_le prims A x hkeys q hq s pads u rest noise r.1
-  rw [realRun, support_map, Set.mem_image]
-  refine ⟨r, ?_, rfl⟩
-  with_reducible exact hr
-
 end ThresholdLeanXmssSecurity.SigningCompilerRealTables
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerRealTables.swapFree_involutive' depends on axioms: [propext, Classical.choice, Quot.sound] -/
@@ -556,11 +497,3 @@ end ThresholdLeanXmssSecurity.SigningCompilerRealTables
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerRealTables.traceRun_eq_realRun' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerRealTables.traceRun_eq_realRun
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerRealTables.realRun_count_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerRealTables.realRun_count_le
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerRealTables.realRunRaw_count_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerRealTables.realRunRaw_count_le

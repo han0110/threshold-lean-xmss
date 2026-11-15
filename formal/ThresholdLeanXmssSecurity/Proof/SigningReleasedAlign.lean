@@ -528,16 +528,6 @@ theorem forger_marked (prims : Primitives) (x : SigningSecurityProof.Keys3 C) (t
   obtain ⟨w, hw, rfl⟩ := hr
   exact world_run_marked prims x e digest _ s hs w hw
 
-theorem forger_run_marked (prims : Primitives) (x : SigningSecurityProof.Keys3 C) (top : TopTree)
-    (e : XmssSecurity.LeafIndex) (digest : XmssSecurity.Digest) {α : Type}
-    (source : OracleComp (LocalSpec C + TsigSpec C) α) (s : SplitState C)
-    (hs : Marked e digest ((s.1.1.1.1.1, s.1.1.2), s.1.2)) (r : α × SplitState C)
-    (hr : r ∈ support ((simulateQ (forger prims x top) source).run s)) :
-    Marked e digest ((r.2.1.1.1.1.1, r.2.1.1.2), r.2.1.2) := by
-  exact SeedHitProof.support_simulateQ_inv _
-    (fun s : SplitState C => Marked e digest ((s.1.1.1.1.1, s.1.1.2), s.1.2))
-    (fun t s hs r hr => forger_marked prims x top t e digest s hs r hr) source s hs r hr
-
 /-- No actual world call overwrites a signed target. -/
 theorem world_signed (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (t : (WorldSpec C).Domain) (e : KeyIndex) (target : Digest)
@@ -950,15 +940,6 @@ theorem forger_stored (prims : Primitives) (x : SigningSecurityProof.Keys3 C) (t
     obtain ⟨answer, ha, rfl⟩ := hw
     exact world_tsig_stored prims x top t s.2.1.1 s hs answer ha
 
-theorem forger_run_stored (prims : Primitives) (x : SigningSecurityProof.Keys3 C) (top : TopTree)
-    {α : Type} (source : OracleComp (LocalSpec C + TsigSpec C) α) (s : SplitState C)
-    (hs : SigningGuessProof.StoredTreeRuns prims x top s.1.1.1.1.1 s.2.1.1) (r : α × SplitState C)
-    (hr : r ∈ support ((simulateQ (forger prims x top) source).run s)) :
-    SigningGuessProof.StoredTreeRuns prims x top r.2.1.1.1.1.1 r.2.2.1.1 := by
-  exact SeedHitProof.support_simulateQ_inv _
-    (fun p : SplitState C => SigningGuessProof.StoredTreeRuns prims x top p.1.1.1.1.1 p.2.1.1)
-    (fun t p hp r hr => forger_stored prims x top t p hp r hr) source s hs r hr
-
 /-- An execution invariant holds before every retained occurrence. -/
 theorem occurrence_before_inv {ι σ α : Type} {spec : OracleSpec ι}
     (V : QueryImpl spec (StateT σ ProbComp)) (Inv : σ → Prop)
@@ -1237,13 +1218,6 @@ theorem forger_cache_le (prims : Primitives) (x : SigningSecurityProof.Keys3 C) 
   simp only [forger, flatWith, StateT.run_mk, support_map, Set.mem_image] at hr
   obtain ⟨w, hw, rfl⟩ := hr
   exact world_run_cache_le prims x _ s w hw
-
-theorem forger_run_cache_le (prims : Primitives) (x : SigningSecurityProof.Keys3 C) (top : TopTree)
-    {α : Type} (source : OracleComp (LocalSpec C + TsigSpec C) α) (s : SplitState C)
-    (r : α × SplitState C)
-    (hr : r ∈ support ((simulateQ (forger prims x top) source).run s)) : s.1.1.1.1.1 ≤ r.2.1.1.1.1.1 := by
-  exact SeedHitProof.support_simulateQ_inv _ (fun p : SplitState C => s.1.1.1.1.1 ≤ p.1.1.1.1.1)
-    (fun t p hp r hr => hp.trans (forger_cache_le prims x top t p r hr)) source s le_rfl r hr
 
 /-- The full signing handler inherits the actual round-two marking fact. -/
 theorem forger_round2_marked (prims : Primitives) (x : SigningSecurityProof.Keys3 C)

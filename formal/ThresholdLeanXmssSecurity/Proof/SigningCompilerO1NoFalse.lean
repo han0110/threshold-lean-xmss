@@ -222,10 +222,6 @@ theorem bind {oa : SourceMXO1 C α} {f : α → SourceMXO1 C β}
   obtain ⟨mid, hm, hz⟩ := hz
   exact hf mid.1.1.1 mid.1.1.2 mid.1.2 mid.2 (h st bm sh hst mid hm) z hz
 
-theorem map (f : α → β) {oa : SourceMXO1 C α} (h : FalseSafeO1 P seeds q s pads oa) :
-    FalseSafeO1 P seeds q s pads (f <$> oa) := by
-  simpa only [bind_pure_comp] using bind h (fun a => pure (f a))
-
 theorem simulate {ι : Type} {spec : OracleSpec ι}
     (impl : QueryImpl spec (SourceMXO1 C)) (oa : OracleComp spec α)
     (h : ∀ t, FalseSafeO1 P seeds q s pads (impl t)) :
@@ -449,10 +445,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1NoFalse
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1NoFalse.FalseSafeO1.bind' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1NoFalse.FalseSafeO1.bind
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1NoFalse.FalseSafeO1.map' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1NoFalse.FalseSafeO1.map
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1NoFalse.FalseSafeO1.simulate' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

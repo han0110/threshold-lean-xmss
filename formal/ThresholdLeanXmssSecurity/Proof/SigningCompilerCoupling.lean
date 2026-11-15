@@ -49,300 +49,8 @@ theorem SourceCost.get : SourceCost (get : SourceM C (SourceState C)) 0 := by
   intro st
   exact .pure (st, st)
 
-theorem SourceCost.modify (f : SourceState C → SourceState C) :
-    SourceCost (modify f : SourceM C Unit) 0 := by
-  intro st
-  exact .pure ((), f st)
-
-theorem SourceCost.lift {α : Type}
-    (oa : OracleComp (DeferredSpec C + RevealSpec HiddenKey Digest) α) (n : ℕ)
-    (h : XmssSecurity.ExactPredicateQueryCount sourceCounted oa n) :
-    SourceCost (liftM oa : SourceM C α) n := by
-  intro st
-  change XmssSecurity.ExactPredicateQueryCount sourceCounted
-    (oa >>= fun a => Pure.pure (a, st)) n
-  simpa only [Nat.add_zero] using
-    (XmssSecurity.ExactQueryCount.ExactPredicateQueryCount.bind h _ 0
-      (fun a => XmssSecurity.ExactPredicateQueryCount.pure (a, st)))
-
-set_option backward.isDefEq.respectTransparency false in
-theorem exact_deferredQuery (q : DeferredQuery C) :
-    XmssSecurity.ExactPredicateQueryCount sourceCounted (deferredQuery q)
-      (if deferredCounted q then 1 else 0) := by
-  change XmssSecurity.ExactPredicateQueryCount sourceCounted
-    (liftM (OracleSpec.query (spec := DeferredSpec C + RevealSpec HiddenKey Digest) (.inl q))) _
-  simpa only [bind_pure, sourceCounted, Nat.zero_add] using
-    (XmssSecurity.ExactPredicateQueryCount.query (predicate := sourceCounted (C := C)) (.inl q)
-      (fun a => (pure a : OracleComp (DeferredSpec C + RevealSpec HiddenKey Digest) _)) 0
-      (fun a => XmssSecurity.ExactPredicateQueryCount.pure a))
-
-theorem exact_revealQuery (k : HiddenKey) :
-    XmssSecurity.ExactPredicateQueryCount sourceCounted (revealQuery (C := C) k) 0 := by
-  change XmssSecurity.ExactPredicateQueryCount sourceCounted
-    (liftM (OracleSpec.query (spec := DeferredSpec C + RevealSpec HiddenKey Digest) (.inr k))) 0
-  simpa [sourceCounted] using
-    (XmssSecurity.ExactPredicateQueryCount.query (predicate := sourceCounted (C := C)) (.inr k)
-      (fun a => (pure a : OracleComp (DeferredSpec C + RevealSpec HiddenKey Digest) _)) 0
-      (fun a => XmssSecurity.ExactPredicateQueryCount.pure a))
-
-theorem sourceCost_deferredQuery (q : DeferredQuery C) :
-    SourceCost (liftM (deferredQuery q) : SourceM C (DeferredSpec C q))
-      (if deferredCounted q then 1 else 0) :=
-  SourceCost.lift _ _ (exact_deferredQuery q)
-
-theorem exact_deferredQuery_uncounted (q : DeferredQuery C) (hq : ¬deferredCounted q) :
-    XmssSecurity.ExactPredicateQueryCount sourceCounted (deferredQuery q) 0 := by
-  simpa only [if_neg hq] using exact_deferredQuery q
-
-theorem sourceCost_deferredQuery_counted (q : DeferredQuery C) (hq : deferredCounted q) :
-    SourceCost (liftM (deferredQuery q) : SourceM C (DeferredSpec C q)) 1 := by
-  simpa only [if_pos hq] using sourceCost_deferredQuery q
-
-theorem sourceCost_deferredQuery_uncounted (q : DeferredQuery C) (hq : ¬deferredCounted q) :
-    SourceCost (liftM (deferredQuery q) : SourceM C (DeferredSpec C q)) 0 :=
-  SourceCost.lift _ 0 (exact_deferredQuery_uncounted q hq)
-
-theorem sourceCost_sourceReveal (k : HiddenKey) : SourceCost (sourceReveal (C := C) k) 0 := by
-  unfold sourceReveal
-  refine SourceCost.get.bind (m := 0) _ fun st => ?_
-  cases st.revealed k with
-  | some value => exact SourceCost.pure value
-  | none =>
-      refine (SourceCost.lift _ 0 (exact_revealQuery k)).bind (m := 0) _ fun value => ?_
-      exact (SourceCost.modify _).bind (m := 0) _ fun _ => SourceCost.pure value
-
-theorem sourceCost_sourceRevealDigest (d : DeferredDigest) :
-    SourceCost (sourceRevealDigest (C := C) d) 0 := by
-  cases d with
-  | known value => exact SourceCost.pure value
-  | secret k => exact sourceCost_sourceReveal k
-
-/-- Silent filling never consumes the hash budget. The corresponding real PRF
-query still appears later as a separate counted call. -/
-theorem exact_fillTerm (seeds : C.Term → HashOutput) (p : Point) (T : C.Term) :
-    XmssSecurity.ExactPredicateQueryCount sourceCounted (fillTerm seeds p T) 0 := by
-  unfold fillTerm
-  refine XmssSecurity.ExactQueryCount.ExactPredicateQueryCount.bind
-    (exact_deferredQuery_uncounted .snapshot id) _ 0 fun st => ?_
-  split
-  · refine XmssSecurity.ExactQueryCount.ExactPredicateQueryCount.bind
-      (exact_deferredQuery_uncounted .sample id) _ 0 fun value => ?_
-    exact XmssSecurity.ExactQueryCount.ExactPredicateQueryCount.bind
-      (exact_deferredQuery_uncounted (.plant (.prf (seeds T) p) value) id) _ 0
-      (fun _ => XmssSecurity.ExactPredicateQueryCount.pure ())
-  · exact .pure ()
-
-/-- Adaptive slack selection and PRF programming are entirely uncounted. -/
-theorem exact_completePrf (seeds : C.Term → HashOutput) (p : Point) (target : Digest) :
-    XmssSecurity.ExactPredicateQueryCount sourceCounted (completePrf seeds p target) 0 := by
-  unfold completePrf
-  refine XmssSecurity.ExactQueryCount.ExactPredicateQueryCount.bind
-    (exact_deferredQuery_uncounted .snapshot id) _ 0 fun st => ?_
-  cases firstUnmaterialized seeds st p with
-  | none => exact .pure _
-  | some slack =>
-      have hfill : XmssSecurity.ExactPredicateQueryCount sourceCounted
-          ((C.terms.filter (· ≠ slack)).mapM (fillTerm seeds p)) 0 := by
-        simpa using (exact_mapM sourceCounted (C.terms.filter (· ≠ slack))
-          (fillTerm seeds p) (fun _ => 0) (fun T _ => exact_fillTerm seeds p T))
-      refine XmssSecurity.ExactQueryCount.ExactPredicateQueryCount.bind hfill _ 0 fun _ => ?_
-      refine XmssSecurity.ExactQueryCount.ExactPredicateQueryCount.bind
-        (exact_deferredQuery_uncounted .snapshot id) _ 0 fun st' => ?_
-      refine XmssSecurity.ExactQueryCount.ExactPredicateQueryCount.bind
-        (exact_deferredQuery_uncounted .sample id) _ 0 fun high => ?_
-      exact exact_deferredQuery_uncounted (.plant (.prf (seeds slack) p)
-        (XmssSecurity.Rom.hashOutputEquivDigestPair.symm
-          (truncateHash high, target ^^^ otherTermSum (cachedTerm seeds st' p) slack))) id
-
-theorem SourceCost.mapM_zero {α β : Type} (xs : List α) (f : α → SourceM C β)
-    (hf : ∀ a ∈ xs, SourceCost (f a) 0) : SourceCost (xs.mapM f) 0 := by
-  induction xs with
-  | nil => exact SourceCost.pure []
-  | cons a xs ih =>
-      rw [List.mapM_cons]
-      refine (hf a (List.mem_cons_self ..)).bind (m := 0) _ fun b => ?_
-      exact (ih (fun a ha => hf a (List.mem_cons_of_mem _ ha))).bind (m := 0) _
-        (fun bs => SourceCost.pure (b :: bs))
-
-theorem sourceCost_sourcePlant (P : PublicParameter) (p : PendingInput) :
-    SourceCost (sourcePlant (C := C) P p) 0 := by
-  unfold sourcePlant
-  refine (SourceCost.lift _ 0 (exact_deferredQuery_uncounted (.inspect p) id)).bind
-    (m := 0) _ fun answer => ?_
-  cases answer with
-  | none => exact SourceCost.pure ()
-  | some answer =>
-      refine (sourceCost_sourceReveal p.key).bind (m := 0) _ fun input => ?_
-      refine (sourceCost_sourceRevealDigest answer.low).bind (m := 0) _ fun low => ?_
-      exact (SourceCost.lift _ 0 (exact_deferredQuery_uncounted (.plant (.pending P p input)
-        (XmssSecurity.Rom.hashOutputEquivDigestPair.symm (answer.high, low))) id)).bind
-          (m := 0) _ (fun _ => SourceCost.modify _)
-
-theorem sourceCost_sourceReleaseOpening (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (e : KeyIndex) : SourceCost (sourceReleaseOpening P seeds e) 0 := by
-  unfold sourceReleaseOpening
-  refine SourceCost.get.bind (m := 0) _ fun st => ?_
-  split
-  · refine (sourceCost_sourceReveal (.opening bottomLayer e)).bind (m := 0) _ fun value => ?_
-    refine (SourceCost.lift _ 0 (exact_completePrf seeds (.randomizer bottomLayer e) value)).bind
-      (m := 0) _ fun _ => ?_
-    refine (SourceCost.modify _).bind (m := 0) _ fun _ => ?_
-    refine SourceCost.get.bind (m := 0) _ fun st' => ?_
-    exact (SourceCost.mapM_zero _ (sourcePlant P)
-      (fun p _ => sourceCost_sourcePlant P p)).bind (m := 0) _ (fun _ => SourceCost.pure ())
-  · exact SourceCost.pure ()
-
-set_option backward.isDefEq.respectTransparency false in
-/-- P may fill and reveal many entries, but an actual hash/PRF call still has
-exactly one counted backend query. -/
-theorem sourceCost_sourceHash (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : Query C) : SourceCost (sourceHash P seeds q) 1 := by
-  have hquery (q : Query C) :
-      SourceCost (liftM (deferredQuery (.hash q)) : SourceM C HashOutput) 1 := by
-    simpa only [deferredCounted, if_true] using sourceCost_deferredQuery (C := C) (.hash q)
-  unfold sourceHash
-  cases q with
-  | prf seed point =>
-      cases point with
-      | randomizer lay e =>
-          dsimp only
-          split
-          · refine (SourceCost.lift _ 0 (exact_deferredQuery_uncounted .snapshot id)).bind
-              (m := 1) _ fun backend => ?_
-            refine SourceCost.get.bind (m := 1) _ fun st => ?_
-            split
-            · exact (sourceCost_sourceReleaseOpening P seeds e).bind (m := 1) _
-                (fun _ => hquery _)
-            · simpa only [pure_bind] using hquery (.prf seed (.randomizer lay e))
-          · simpa only [pure_bind] using hquery (.prf seed (.randomizer lay e))
-      | _ => simpa only [pure_bind] using hquery _
-  | _ => simpa only [pure_bind] using hquery _
-
-set_option backward.isDefEq.respectTransparency false in
-/-- Virtual PRF cache hits and first insertions both consume their actual call;
-the release after the call adds no cost. -/
-theorem sourceCost_sourceVirtual (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (T : C.Term) (p : Point) : SourceCost (sourceVirtual P seeds T p) 1 := by
-  unfold sourceVirtual
-  have hquery : SourceCost (liftM (deferredQuery (C := C) (.virtual T p)) : SourceM C Unit) 1 := by
-    simpa only [deferredCounted, if_true] using sourceCost_deferredQuery (C := C) (.virtual T p)
-  refine hquery.bind (m := 0) _ fun _ => ?_
-  cases p with
-  | randomizer lay e =>
-      dsimp only
-      split
-      · refine (SourceCost.lift _ 0 (exact_deferredQuery_uncounted .snapshot id)).bind
-          (m := 0) _ fun backend => ?_
-        refine SourceCost.get.bind (m := 0) _ fun st => ?_
-        split
-        · exact sourceCost_sourceReleaseOpening P seeds e
-        · exact SourceCost.pure ()
-      · exact SourceCost.pure ()
-  | _ => exact SourceCost.pure ()
-
-set_option backward.isDefEq.respectTransparency false in
-/-- Both pending-cache hits and the concrete post-release fallback retain one
-counted call. Recording an already-cached commitment does not add another call. -/
-theorem sourceCost_sourcePending (P : PublicParameter) (p : PendingInput) :
-    SourceCost (sourcePending (C := C) P p) 1 := by
-  have htail (prior : Option DeferredOutput) : SourceCost (do
-      let value ← liftM (deferredQuery (C := C) (.pending p))
-      if prior.isNone then
-        modify fun (st : SourceState C) => { st with allocated := st.allocated ++ [p] }
-      pure value : SourceM C DeferredOutput) 1 := by
-    refine (sourceCost_deferredQuery_counted (.pending p) trivial).bind (m := 0) _ fun value => ?_
-    split
-    · exact (SourceCost.modify _).bind (m := 0) _ (fun _ => SourceCost.pure value)
-    · exact SourceCost.pure value
-  unfold sourcePending
-  refine (sourceCost_deferredQuery_uncounted (.inspect p) id).bind (m := 1) _ fun prior => ?_
-  refine SourceCost.get.bind (m := 1) _ fun st => ?_
-  dsimp only
-  split
-  · refine (sourceCost_deferredQuery_counted (.hash (.hash _)) trivial).bind
-      (m := 0) _ fun value => ?_
-    refine (sourceCost_deferredQuery_uncounted (.record p value) id).bind (m := 0) _ fun _ => ?_
-    exact (SourceCost.modify _).bind (m := 0) _ (fun _ => SourceCost.pure _)
-  · rename_i original priorCopy known next hmiss
-    split
-    · exact (SourceCost.modify _).bind (m := 1) _ (fun _ => htail original)
-    · simpa only [pure_bind] using htail original
-
-set_option backward.isDefEq.respectTransparency false in
-/-- The live source interpreter preserves the declared cost of every backend
-instruction, including all three counted constructors. -/
-theorem sourceCost_sourceBackend (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (t : DeferredQuery C) : SourceCost (sourceBackend P seeds t)
-      (if deferredCounted t then 1 else 0) := by
-  cases t with
-  | hash q => erw [if_pos trivial]; exact sourceCost_sourceHash P seeds q
-  | pending p => erw [if_pos trivial]; exact sourceCost_sourcePending (C := C) P p
-  | virtual T p => erw [if_pos trivial]; exact sourceCost_sourceVirtual P seeds T p
-  | _ => exact sourceCost_deferredQuery _
-
-/-- Exact source costs survive the actual release-aware interpreter. -/
-theorem sourceCost_simulateBackend (P : PublicParameter) (seeds : C.Term → HashOutput)
-    {α : Type} {oa : OracleComp (DeferredSpec C) α} {n : ℕ}
-    (h : XmssSecurity.ExactPredicateQueryCount deferredCounted oa n) :
-    SourceCost (simulateQ (sourceBackend P seeds) oa) n := by
-  induction h with
-  | pure a => simpa only [simulateQ_pure] using SourceCost.pure (C := C) a
-  | query t next n _ ih =>
-      simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query,
-        OracleQuery.cont_query, id_map]
-      simpa only [Nat.add_comm] using (sourceCost_sourceBackend P seeds t).bind _ ih
-
-/-- The live bottom-row source retains all six prefix calls and all term calls,
-even when P releases the opening during the row. -/
-theorem sourceCost_sourceBottomRow (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (e : KeyIndex) (l : ChainIndex) : SourceCost (sourceBottomRow P seeds e l)
-      (3 * C.terms.length + 6) :=
-  sourceCost_simulateBackend P seeds (exact_deferredBottomRow e l)
-
 abbrev CappedCompilerState (C : Committee) :=
   (CompilerBackend C × ℕ) × (HiddenKey → Option Digest) × Bool
-
-/-- One actual capped-kernel call increments precisely the source's declared
-counter, regardless of the cap flag or any cache hit. -/
-theorem cappedCompiler_step_count (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest) (t : DeferredQuery C ⊕ HiddenKey)
-    (st : CappedCompilerState C)
-    (r : (DeferredSpec C + RevealSpec HiddenKey Digest) t × CappedCompilerState C)
-    (hr : r ∈ support ((SigningCappedExpectProof.cappedHybrid (compilerImpl P seeds)
-      (deferredInputSide P) deferredCounted (deferredKey P) (deferredPoint P) q s t).run st)) :
-    r.2.1.2 = st.1.2 + if sourceCounted t then 1 else 0 := by
-  cases t with
-  | inl t =>
-      simp only [SigningCappedExpectProof.cappedHybrid, revealImpl, StateT.run_mk, support_map] at hr
-      obtain ⟨a, ha, rfl⟩ := hr
-      exact SigningLane2Proof.countImpl_support_count (compilerImpl P seeds) deferredCounted t st.1 a ha
-  | inr k =>
-      simp only [SigningCappedExpectProof.cappedHybrid, revealImpl, StateT.run_mk,
-        mem_support_pure_iff] at hr
-      subst r
-      simp [sourceCounted]
-
-/-- Exact source accounting is the count stored by the fixed capped compiler.
-It is not an assumed correspondence to the real-world budget. -/
-theorem exact_cappedCompiler_run_count (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest) {α : Type}
-    {oa : OracleComp (DeferredSpec C + RevealSpec HiddenKey Digest) α} {n : ℕ}
-    (h : XmssSecurity.ExactPredicateQueryCount sourceCounted oa n)
-    (st : CappedCompilerState C) (r : α × CappedCompilerState C)
-    (hr : r ∈ support ((simulateQ (SigningCappedExpectProof.cappedHybrid (compilerImpl P seeds)
-      (deferredInputSide P) deferredCounted (deferredKey P) (deferredPoint P) q s) oa).run st)) :
-    r.2.1.2 = st.1.2 + n := by
-  induction h generalizing st r with
-  | pure a =>
-      simp only [simulateQ_pure, StateT.run_pure, mem_support_pure_iff] at hr
-      subst r
-      exact (Nat.add_zero _).symm
-  | query t next n _ ih =>
-      simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query,
-        OracleQuery.cont_query, id_map, StateT.run_bind, mem_support_bind_iff] at hr
-      obtain ⟨a, ha, hr⟩ := hr
-      rw [ih a.1 a.2 r hr, cappedCompiler_step_count P seeds q s t st a ha]
-      omega
 
 /-- Execute a local piece of the existing source with the one fixed capped
 backend. This is the same interpretation used by `compilerRun`. -/
@@ -520,27 +228,6 @@ theorem CacheRelation.cacheQuery {P : PublicParameter} {seeds : C.Term → HashO
   · intro p answer hp
     exact QueryCache.le_cacheQuery actual hq (h.pending p answer hp)
 
-/-- Conservative planting succeeds whenever the proposed value is the coupled
-real answer, including the already-materialized case. -/
-theorem deferredPlant_correct (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (s : HiddenKey → Digest) (data : DeferredState C) (actual : HashCache C)
-    (h : CacheRelation P seeds s data actual) (query : PlantInput) (value : HashOutput)
-    (hv : actual query.query = some value)
-    (r : Bool × DeferredState C)
-    (hr : r ∈ support ((deferredImpl (.plant query value)).run data)) :
-    r.1 = true ∧ CacheRelation P seeds s r.2 actual := by
-  cases hc : data.cache query.query with
-  | none =>
-      simp only [deferredImpl, StateT.run, hc] at hr
-      subst r
-      exact ⟨rfl, h.materialize query.query value hv⟩
-  | some prior =>
-      have he : prior = value := Option.some.inj ((h.cache_le hc).symm.trans hv)
-      subst prior
-      simp only [deferredImpl, StateT.run, hc, decide_true] at hr
-      subst r
-      exact ⟨rfl, h⟩
-
 open OracleComp.ProgramLogic.Relational
 
 set_option backward.isDefEq.respectTransparency false in
@@ -620,117 +307,6 @@ theorem CacheRelation.allocatePending {P : PublicParameter} {seeds : C.Term → 
     · change Function.update data.pending p (some value) other = some answer at ho
       rw [Function.update_of_ne he] at ho
       exact QueryCache.le_cacheQuery actual hq (h.pending other answer ho)
-
-/-- A fresh virtual PRF call also grows the suspended set while preserving all
-earlier pending hash answers. Previously sampled term values remain in the real
-cache until the adaptive slack programming step materializes them. -/
-theorem CacheRelation.allocateVirtual {P : PublicParameter} {seeds : C.Term → HashOutput}
-    {s : HiddenKey → Digest} {data : DeferredState C} {actual : HashCache C}
-    (h : CacheRelation P seeds s data actual) (T : C.Term) (p : Point) (value : HashOutput)
-    (hq : actual (.prf (seeds T) p) = none) :
-    CacheRelation P seeds s { data with virtual := insert (T, p) data.virtual }
-      (actual.cacheQuery (.prf (seeds T) p) value) := by
-  have hm : data.cache (.prf (seeds T) p) = none := by
-    cases hc : data.cache (.prf (seeds T) p) with
-    | none => rfl
-    | some old =>
-        have he := h.cache_le hc
-        rw [hq] at he
-        cases he
-  refine ⟨?_, ?_⟩
-  · intro query hn
-    by_cases he : query = .prf (seeds T) p
-    · subst query
-      exact (hn ⟨hm, Or.inr ⟨T, p, Finset.mem_insert_self _ _, rfl⟩⟩).elim
-    · rw [QueryCache.cacheQuery_of_ne _ _ he]
-      apply h.agree query
-      intro hs
-      apply hn
-      refine ⟨hs.1, ?_⟩
-      rcases hs.2 with hs | hs
-      · exact Or.inl hs
-      · obtain ⟨U, point, hu, hquery⟩ := hs
-        exact Or.inr ⟨U, point, Finset.mem_insert_of_mem hu, hquery⟩
-  · intro other answer ho
-    exact QueryCache.le_cacheQuery actual hq (h.pending other answer ho)
-
-set_option backward.isDefEq.respectTransparency false in
-/-- The actual slack sampler uses the truncation of a fresh full hash answer
-for its high half. This has the existing leanVM programmed-answer law. -/
-theorem evalDist_slack_high (target others : Digest) :
-    ((fun high : HashOutput => XmssSecurity.Rom.hashOutputEquivDigestPair.symm
-      (truncateHash high, target ^^^ others)) <$> ($ᵗ HashOutput)) =ᵈ
-    XmssSecurity.Rom.sampleHashOutputWithDigest (target ^^^ others) := by
-  rw [XmssSecurity.Rom.sampleHashOutputWithDigest]
-  have ht : (truncateHash <$> ($ᵗ HashOutput)) =ᵈ $ᵗ Digest :=
-    XmssSecurity.Rom.evalDist_truncate_uniformHashOutput
-  refine EvalDistEq.trans (EvalDistEq.of_eq ?_)
-    (ht.map (fun high : Digest => XmssSecurity.Rom.hashOutputEquivDigestPair.symm
-      (high, target ^^^ others)))
-  simp only [Functor.map_map]
-
-set_option backward.isDefEq.respectTransparency false in
-/-- For any already-fixed other-term aggregate, a fresh uniform target and the
-compiler's sampled high half are exactly a uniform ordinary PRF answer paired
-with the aggregate it determines. -/
-theorem evalDist_slack_target (others : Digest) :
-    (do
-      let target ← $ᵗ Digest
-      let high ← $ᵗ HashOutput
-      pure (target, XmssSecurity.Rom.hashOutputEquivDigestPair.symm
-        (truncateHash high, target ^^^ others)) : ProbComp (Digest × HashOutput)) =ᵈ
-      ((fun value : HashOutput => (truncateHash value ^^^ others, value)) <$> ($ᵗ HashOutput)) := by
-  have hbij : Function.Bijective (fun value : Digest => value ^^^ others) :=
-    (show Function.Involutive (fun value : Digest => value ^^^ others) from
-      fun value => by simp [BitVec.xor_assoc]).bijective
-  have hshift :
-      (do
-        let target ← $ᵗ Digest
-        let value ← XmssSecurity.Rom.sampleHashOutputWithDigest (target ^^^ others)
-        pure (target, value) : ProbComp (Digest × HashOutput)) =ᵈ
-      ((fun pair : Digest × HashOutput => (pair.1 ^^^ others, pair.2)) <$>
-        XmssSecurity.Rom.sampledHashOutputWithDigest) := by
-    have hb := (SampleableType.map_uniformSample_evalDistEq_of_bijective hbij).bind_left
-      (fun low : Digest => do
-        let value ← XmssSecurity.Rom.sampleHashOutputWithDigest low
-        pure (low ^^^ others, value))
-    simp only [bind_map_left, BitVec.xor_assoc, BitVec.xor_self, BitVec.xor_zero] at hb
-    refine hb.trans (EvalDistEq.of_eq ?_)
-    simp only [XmssSecurity.Rom.sampledHashOutputWithDigest, map_eq_bind_pure_comp,
-      bind_assoc, pure_bind, Function.comp_apply]
-    rfl
-  refine EvalDistEq.trans (EvalDistEq.bind_right ($ᵗ Digest) fun target => ?_) (hshift.trans ?_)
-  · refine EvalDistEq.trans (EvalDistEq.of_eq ?_)
-      (((evalDist_slack_high target others).map
-        (fun value : HashOutput => (target, value))).trans (EvalDistEq.of_eq ?_))
-    · simp only [map_eq_bind_pure_comp, bind_assoc, pure_bind, Function.comp_apply]
-    · rw [map_eq_bind_pure_comp]
-      rfl
-  · refine (XmssSecurity.Rom.evalDist_sampledHashOutputWithDigest_eq_uniform.map _).trans
-      (EvalDistEq.of_eq ?_)
-    rw [Functor.map_map]
-    rfl
-
-/-- An ordinary slack answer determines the aggregate while all other term
-values remain fixed. -/
-theorem termSum_slack_output (values : C.Term → Digest) (slack : C.Term) (output : HashOutput) :
-    termSum (Function.update values slack (truncateHash output)) =
-      truncateHash output ^^^ otherTermSum values slack := by
-  have h := termSum_program values slack (truncateHash output ^^^ otherTermSum values slack)
-  simpa only [BitVec.xor_assoc, BitVec.xor_self, BitVec.xor_zero] using h
-
-/-- The joint local law used at an adaptively selected absent term. `values`
-and `slack` may be selected from the prior cache; the sampled target is fresh.
-The existing cache entries are represented unchanged by `values` off `slack`. -/
-theorem evalDist_slack_program (values : C.Term → Digest) (slack : C.Term) :
-    (do
-      let target ← $ᵗ Digest
-      let high ← $ᵗ HashOutput
-      pure (target, XmssSecurity.Rom.hashOutputEquivDigestPair.symm
-        (truncateHash high, target ^^^ otherTermSum values slack)) : ProbComp (Digest × HashOutput)) =ᵈ
-      ((fun output : HashOutput =>
-        (termSum (Function.update values slack (truncateHash output)), output)) <$> ($ᵗ HashOutput)) := by
-  simpa only [termSum_slack_output] using evalDist_slack_target (otherTermSum values slack)
 
 set_option backward.isDefEq.respectTransparency false in
 /-- Uncounted source bookkeeping uses the fixed compiler without changing its
@@ -820,104 +396,6 @@ theorem runSource_plant (P : PublicParameter) (seeds : C.Term → HashOutput)
   simp only [compilerImpl, StateT.run, Functor.map_map]
 
 set_option backward.isDefEq.respectTransparency false in
-/-- The live planting routine preserves both relations and succeeds even when
-the concrete commitment was queried earlier. It materializes the symbolic next
-secret through the reveal interface, without changing source control data,
-the compiler trace, or either counter/flag. -/
-theorem sourcePlant_correct (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest) (p : PendingInput)
-    (source : SourceState C) (backend : CappedCompilerState C) (actual : HashCache C)
-    (hrev : RevealRelation s source backend)
-    (hcache : CacheRelation P seeds s backend.1.1.data actual)
-    (r : (Unit × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource P seeds q s (sourcePlant P p) source backend)) :
-    RevealRelation s r.1.2 r.2 ∧ CacheRelation P seeds s r.2.1.1.data actual ∧
-      r.1.2 = { source with revealed := r.1.2.revealed } ∧
-      r.2.1 = ({ backend.1.1 with data := r.2.1.1.data }, backend.1.2) ∧
-      r.2.2.2 = backend.2.2 := by
-  simp only [sourcePlant, runSource_bind, runSource_inspect,
-    mem_support_bind_iff] at hr
-  obtain ⟨_, rfl, hr⟩ := hr
-  cases hp : backend.1.1.data.pending p with
-  | none =>
-      simp only [hp, runSource_pure, mem_support_pure_iff] at hr
-      subst r
-      exact ⟨hrev, hcache, rfl, rfl, rfl⟩
-  | some answer =>
-      simp only [hp, runSource_bind, mem_support_bind_iff] at hr
-      obtain ⟨ri, hri, rl, hrl, rp, hrp, hr⟩ := hr
-      obtain ⟨hi, hriRev, hriBackend, hriFlag⟩ :=
-        sourceReveal_correct P seeds q s p.key source backend hrev ri hri
-      have hriSource := sourceReveal_frame P seeds q s p.key source backend ri hri
-      obtain ⟨hl, hrlRev, hrlBackend, hrlFlag, hrlSource⟩ :=
-        sourceRevealDigest_correct P seeds q s answer.low ri.1.2 ri.2 hriRev rl hrl
-      have hb : rl.2.1 = backend.1 := hrlBackend.trans hriBackend
-      have hc : CacheRelation P seeds s rl.2.1.1.data actual := by
-        rw [hb]
-        exact hcache
-      rw [runSource_plant] at hrp
-      simp only [support_map] at hrp
-      obtain ⟨planted, hplanted, rfl⟩ := hrp
-      have hv : actual (PlantInput.pending P p ri.1.1).query =
-          some (XmssSecurity.Rom.hashOutputEquivDigestPair.symm (answer.high, rl.1.1)) := by
-        rw [hi, hl]
-        exact hcache.pending p answer hp
-      obtain ⟨hok, hfinal⟩ := deferredPlant_correct P seeds s rl.2.1.1.data actual hc
-        (.pending P p ri.1.1) _ hv planted hplanted
-      simp only [runSource_modify, mem_support_pure_iff, hok, Bool.and_true] at hr
-      subst r
-      refine ⟨hrlRev, hfinal, ?_, ?_, hrlFlag.trans hriFlag⟩
-      · rw [hrlSource, hriSource]
-      · simp only [hb]
-
-set_option backward.isDefEq.respectTransparency false in
-/-- At an internal edge the actual pending sampler draws only a uniform high
-half; its low half stays the exact symbolic next-coordinate. -/
-theorem evalDist_samplePending_internal (p : PendingInput) (k : HiddenKey)
-    (hk : p.next = some k) :
-    samplePending p =ᵈ
-      ((fun high : Digest => (⟨high, .secret k⟩ : DeferredOutput)) <$> ($ᵗ Digest)) := by
-  have hsplit :
-      ((XmssSecurity.Rom.hashOutputEquivDigestPair : HashOutput → Digest × Digest) <$>
-        ($ᵗ HashOutput)) =ᵈ XmssSecurity.Rom.independentDigestHalves :=
-    XmssSecurity.Rom.evalDist_split_uniformHashOutput_eq_independent
-  refine EvalDistEq.trans (EvalDistEq.of_eq ?_)
-    ((hsplit.map (fun halves : Digest × Digest =>
-      (⟨halves.1, .secret k⟩ : DeferredOutput))).trans ?_)
-  · simp only [samplePending, hk, map_eq_bind_pure_comp, bind_assoc, pure_bind,
-      Function.comp_apply]
-  · simp only [XmssSecurity.Rom.independentDigestHalves, map_eq_bind_pure_comp,
-      bind_assoc, pure_bind, Function.comp_apply]
-    refine EvalDistEq.bind_right _ fun high => ?_
-    exact OracleComp.EvalDistEq.bind_const ($ᵗ Digest) _
-
-set_option backward.isDefEq.respectTransparency false in
-/-- Sampling the next coordinate and then the fixed internal pending sampler
-is exactly a uniform oracle answer paired with its actual low half. -/
-theorem evalDist_samplePending_fresh_next (p : PendingInput) (k : HiddenKey)
-    (hk : p.next = some k) (s : HiddenKey → Digest) :
-    (do
-      let next ← $ᵗ Digest
-      let answer ← samplePending p
-      pure (next, answer.interpret (Function.update s k next)) : ProbComp (Digest × HashOutput)) =ᵈ
-      ((fun output : HashOutput => (truncateHash output, output)) <$> ($ᵗ HashOutput)) := by
-  refine EvalDistEq.trans ?_ XmssSecurity.Rom.evalDist_sampledHashOutputWithDigest_eq_uniform
-  change _ =ᵈ (do
-    let next ← $ᵗ Digest
-    let output ← XmssSecurity.Rom.sampleHashOutputWithDigest next
-    pure (next, output) : ProbComp (Digest × HashOutput))
-  refine EvalDistEq.bind_right _ fun next => ?_
-  refine EvalDistEq.trans (EvalDistEq.of_eq ?_)
-    (((evalDist_samplePending_internal p k hk).map (fun answer : DeferredOutput =>
-      (next, answer.interpret (Function.update s k next)))).trans (EvalDistEq.of_eq ?_))
-  · rw [map_eq_bind_pure_comp]
-    rfl
-  · simp only [DeferredOutput.interpret, DeferredDigest.interpret,
-      Function.update_self, XmssSecurity.Rom.sampleHashOutputWithDigest,
-      map_eq_bind_pure_comp, bind_assoc, pure_bind, Function.comp_apply]
-    rfl
-
-set_option backward.isDefEq.respectTransparency false in
 /-- A fresh terminal pending call has the ordinary lazy-oracle law, including
 its full cache update and the newly allocated symbolic-table entry. -/
 theorem relTriple_deferredPending_terminal (P : PublicParameter)
@@ -953,164 +431,6 @@ theorem relTriple_deferredPending_terminal (P : PublicParameter)
   simpa only [hi] using h.allocatePending p
     ⟨(XmssSecurity.Rom.hashOutputEquivDigestPair output).1,
       .known (XmssSecurity.Rom.hashOutputEquivDigestPair output).2⟩ hp ha
-
-set_option backward.isDefEq.respectTransparency false in
-/-- The next coordinate and the actual symbolic answer retain both halves of
-the same fresh ordinary hash output. -/
-theorem evalDist_samplePending_pair (p : PendingInput) (k : HiddenKey)
-    (hk : p.next = some k) :
-    (do
-      let next ← $ᵗ Digest
-      let answer ← samplePending p
-      pure (next, answer) : ProbComp (Digest × DeferredOutput)) =ᵈ
-      ((fun output : HashOutput => (truncateHash output,
-        (⟨(XmssSecurity.Rom.hashOutputEquivDigestPair output).1, .secret k⟩ : DeferredOutput))) <$>
-        ($ᵗ HashOutput)) := by
-  refine EvalDistEq.trans (EvalDistEq.bind_right ($ᵗ Digest) fun next => ?_)
-    ((OracleComp.EvalDistEq.bind_bind_swap ($ᵗ Digest) ($ᵗ Digest)
-      (fun next high => (pure (next, (⟨high, .secret k⟩ : DeferredOutput)) :
-        ProbComp (Digest × DeferredOutput)))).trans ?_)
-  · refine EvalDistEq.trans (EvalDistEq.of_eq ?_)
-      (((evalDist_samplePending_internal p k hk).map
-        (fun answer : DeferredOutput => (next, answer))).trans (EvalDistEq.of_eq ?_))
-    · rw [map_eq_bind_pure_comp]
-      rfl
-    · simp only [map_eq_bind_pure_comp, bind_assoc, pure_bind, Function.comp_apply]
-  refine EvalDistEq.trans (EvalDistEq.of_eq ?_)
-    ((XmssSecurity.Rom.evalDist_split_uniformHashOutput_eq_independent.symm.map
-      (fun halves : Digest × Digest =>
-        (halves.2, (⟨halves.1, .secret k⟩ : DeferredOutput)))).trans (EvalDistEq.of_eq ?_))
-  · simp only [XmssSecurity.Rom.independentDigestHalves, map_eq_bind_pure_comp,
-      bind_assoc, pure_bind, Function.comp_apply]
-    rfl
-  · rw [Functor.map_map]
-    rfl
-
-/-- An internal edge never has its own input as its next coordinate. -/
-theorem pending_next_ne_key (p : PendingInput) (k : HiddenKey)
-    (hk : p.next = some k) : k ≠ p.key := by
-  cases p with
-  | commitment e => cases hk
-  | base lay e message => cases hk
-  | bottom e l pos =>
-      simp only [PendingInput.next] at hk
-      split at hk
-      · cases hk
-        intro he
-        have hv := congrArg (fun key => match key with
-          | .bottomChain _ _ position => position.val
-          | _ => 0) he
-        change pos.val + 1 = pos.val at hv
-        omega
-      · cases hk
-  | top b l pos =>
-      simp only [PendingInput.next] at hk
-      split at hk
-      · cases hk
-        intro he
-        have hv := congrArg (fun key => match key with
-          | .topChain _ _ position => position.val
-          | _ => 0) he
-        change pos.val + 1 = pos.val at hv
-        omega
-      · cases hk
-
-set_option backward.isDefEq.respectTransparency false in
-/-- Updating a coordinate not yet used by any pending input or low half leaves
-the established cache relation unchanged. This is the local dependency check
-needed before drawing an internal chain's next coordinate. -/
-theorem CacheRelation.updateSecret {P : PublicParameter} {seeds : C.Term → HashOutput}
-    {s : HiddenKey → Digest} {data : DeferredState C} {actual : HashCache C}
-    (h : CacheRelation P seeds s data actual) (k : HiddenKey) (value : Digest)
-    (hkeys : ∀ p answer, data.pending p = some answer → p.key ≠ k)
-    (hlows : ∀ p answer, data.pending p = some answer → answer.low ≠ .secret k) :
-    CacheRelation P seeds (Function.update s k value) data actual := by
-  refine ⟨?_, ?_⟩
-  · intro query hn
-    apply h.agree query
-    rintro ⟨hc, hp | hv⟩
-    · obtain ⟨p, answer, hp, hq⟩ := hp
-      apply hn
-      refine ⟨hc, Or.inl ⟨p, answer, hp, ?_⟩⟩
-      simpa only [Function.update_of_ne (hkeys p answer hp)] using hq
-    · exact hn ⟨hc, Or.inr hv⟩
-  · intro p answer hp
-    rw [Function.update_of_ne (hkeys p answer hp)]
-    have he : answer.interpret (Function.update s k value) = answer.interpret s := by
-      unfold DeferredOutput.interpret
-      cases hl : answer.low with
-      | known d => rfl
-      | secret key =>
-          have hk : key ≠ k := by
-            intro he
-            exact hlows p answer hp (he ▸ hl)
-          simp only [DeferredDigest.interpret, Function.update_of_ne hk]
-    rw [he]
-    exact h.pending p answer hp
-
-set_option backward.isDefEq.respectTransparency false in
-/-- One internal chain edge couples the real cache call to the fixed pending
-interpreter. The fresh next coordinate is kept in the output of this local
-resampling lemma; it is the low half of that very same real oracle answer. -/
-theorem relTriple_deferredPending_internal (P : PublicParameter)
-    (seeds : C.Term → HashOutput) (s : HiddenKey → Digest)
-    (data : DeferredState C) (actual : HashCache C)
-    (h : CacheRelation P seeds s data actual) (p : PendingInput) (k : HiddenKey)
-    (hn : p.next = some k) (hp : data.pending p = none)
-    (ha : actual (.hash (p.input P (s p.key))) = none)
-    (hkeys : ∀ prior answer, data.pending prior = some answer → prior.key ≠ k)
-    (hlows : ∀ prior answer, data.pending prior = some answer → answer.low ≠ .secret k) :
-    RelTriple
-      ((fun r : HashOutput × HashCache C => ((truncateHash r.1, r.1), r.2)) <$>
-        (((Query C →ₒ HashOutput).randomOracle (.hash (p.input P (s p.key)))).run actual))
-      (do
-        let next ← $ᵗ Digest
-        let r ← (deferredImpl (.pending p)).run data
-        pure ((next, r.1), r.2))
-      (fun a b => a.1.1 = b.1.1 ∧
-        a.1.2 = b.1.2.interpret (Function.update s k b.1.1) ∧
-        CacheRelation P seeds (Function.update s k b.1.1) b.2 a.2) := by
-  let symbolic (output : HashOutput) : DeferredOutput :=
-    ⟨(XmssSecurity.Rom.hashOutputEquivDigestPair output).1, .secret k⟩
-  have hright :
-      (do
-        let next ← $ᵗ Digest
-        let r ← (deferredImpl (.pending p)).run data
-        pure ((next, r.1), r.2) : ProbComp ((Digest × DeferredOutput) × DeferredState C)) =ᵈ
-      ((fun output : HashOutput =>
-        ((truncateHash output, symbolic output),
-          { data with pending := Function.update data.pending p (some (symbolic output)) })) <$>
-          ($ᵗ HashOutput)) := by
-    refine EvalDistEq.trans (EvalDistEq.of_eq ?_)
-      (((evalDist_samplePending_pair p k hn).map (fun pair : Digest × DeferredOutput =>
-        (pair, { data with pending := Function.update data.pending p (some pair.2) }))).trans
-        (EvalDistEq.of_eq ?_))
-    · simp only [deferredImpl, StateT.run, hp, map_eq_bind_pure_comp,
-        bind_assoc, pure_bind, Function.comp_apply]
-      rfl
-    · rw [Functor.map_map]
-  refine relTriple_of_evalDistEq_right
-    (oa := ((fun r : HashOutput × HashCache C => ((truncateHash r.1, r.1), r.2)) <$>
-      (((Query C →ₒ HashOutput).randomOracle (.hash (p.input P (s p.key)))).run actual)))
-    hright.symm ?_
-  rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ ha, Functor.map_map]
-  refine relTriple_map (relTriple_post_mono (relTriple_refl ($ᵗ HashOutput))
-    fun output output' he => ?_)
-  subst output'
-  have hkey : p.key ≠ k := (pending_next_ne_key p k hn).symm
-  have hi : (symbolic output).interpret (Function.update s k (truncateHash output)) = output := by
-    simp only [symbolic, DeferredOutput.interpret, DeferredDigest.interpret, Function.update_self]
-    exact XmssSecurity.Rom.hashOutputEquivDigestPair.symm_apply_apply output
-  refine ⟨rfl, hi.symm, ?_⟩
-  have hinput : Function.update s k (truncateHash output) p.key = s p.key :=
-    Function.update_of_ne hkey _ _
-  have ha' : actual (.hash (p.input P (Function.update s k (truncateHash output) p.key))) = none := by
-    rw [hinput]
-    exact ha
-  have hc := (h.updateSecret k (truncateHash output) hkeys hlows).allocatePending
-    p (symbolic output) hp ha'
-  rw [hinput, hi] at hc
-  exact hc
 
 set_option backward.isDefEq.respectTransparency false in
 /-- Message trials can be coupled directly on the two concrete caches even
@@ -1461,21 +781,6 @@ theorem cachedRandomizer_termSum (seeds : C.Term → HashOutput) (data : Deferre
   rw [List.foldl_map, TprfCorrectnessProof.toXor_foldl _ _ _ terms_nodup]
   simp [TprfCorrectnessProof.toXor_zero, Committee.terms]
 
-/-- PRF completion makes the precise cached-randomizer guard true, and its
-reported consistency uses the same randomizer that the trace adapter reads. -/
-theorem completePrf_randomizer (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (e : KeyIndex) (target : Digest) (source : SourceState C) (backend : CappedCompilerState C)
-    (r : (Bool × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource P seeds q s
-      (liftM (completePrf seeds (.randomizer bottomLayer e) target)) source backend)) :
-    SigningGuessProof.RandomizerCached seeds r.2.1.1.data.cache e ∧
-      (r.1.1 = true ↔ SigningGuessProof.cachedRandomizer seeds r.2.1.1.data.cache e = target) ∧
-      (firstUnmaterialized seeds backend.1.1.data (.randomizer bottomLayer e) ≠ none → r.1.1 = true) := by
-  obtain ⟨hc, hv, hs⟩ := completePrf_correct P seeds hinj q s
-    (.randomizer bottomLayer e) target source backend r hr
-  exact ⟨hc, by rwa [cachedRandomizer_termSum], hs⟩
-
 /-- Once the source has materialized a randomizer, its readiness and value
 agree with the actual cache. This is the cache part of aligning the triggers. -/
 theorem CacheRelation.randomizer {P : PublicParameter} {seeds : C.Term → HashOutput}
@@ -1497,84 +802,6 @@ def replaceCompilerCache (backend : CappedCompilerState C) (cache : HashCache C)
     backend.2.1, backend.2.2)
 
 set_option backward.isDefEq.respectTransparency false in
-/-- The actual sampled-high and plant suffix of `completePrf`, when its
-selected slot is still absent. The full capped backend is retained. -/
-theorem runSource_slackPlant (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest) (p : Point) (slack : C.Term) (target : Digest)
-    (source : SourceState C) (backend : CappedCompilerState C)
-    (hm : backend.1.1.data.cache (.prf (seeds slack) p) = none) :
-    runSource P seeds q s (do
-      let high ← liftM (deferredQuery (C := C) .sample)
-      liftM (deferredQuery (C := C) (.plant (.prf (seeds slack) p)
-        (XmssSecurity.Rom.hashOutputEquivDigestPair.symm
-          (truncateHash high, target ^^^ otherTermSum (cachedTerm seeds backend.1.1.data p) slack)))))
-      source backend =
-      (fun high : HashOutput => ((true, source), replaceCompilerCache backend
-        (backend.1.1.data.cache.cacheQuery (.prf (seeds slack) p)
-          (XmssSecurity.Rom.hashOutputEquivDigestPair.symm
-            (truncateHash high, target ^^^ otherTermSum (cachedTerm seeds backend.1.1.data p) slack))))) <$>
-        ($ᵗ HashOutput) := by
-  simp only [runSource_bind, runSource_sample, bind_map_left]
-  rw [map_eq_bind_pure_comp]
-  apply bind_congr
-  intro high
-  let value : HashOutput := XmssSecurity.Rom.hashOutputEquivDigestPair.symm
-    (truncateHash high, target ^^^ otherTermSum (cachedTerm seeds backend.1.1.data p) slack)
-  change runSource P seeds q s
-    (liftM (deferredQuery (C := C) (.plant (.prf (seeds slack) p) value))) source backend =
-    pure ((true, source), replaceCompilerCache backend
-      (backend.1.1.data.cache.cacheQuery (.prf (seeds slack) p) value))
-  rw [runSource_plant P seeds q s (.prf (seeds slack) p) value source backend]
-  simp only [deferredImpl, StateT.run, PlantInput.query, hm, map_pure]
-  rfl
-
-set_option backward.isDefEq.respectTransparency false in
-/-- The fresh-target joint law now includes the actual source suffix and its
-entire updated backend. The ordinary side uses the existing silent term fill;
-the aggregate is read from its resulting concrete cache. -/
-theorem evalDist_slackPlant_fresh (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (p : Point) (slack : C.Term) (source : SourceState C) (backend : CappedCompilerState C)
-    (hm : backend.1.1.data.cache (.prf (seeds slack) p) = none) :
-    (do
-      let target ← $ᵗ Digest
-      let r ← runSource P seeds q s (do
-        let high ← liftM (deferredQuery (C := C) .sample)
-        liftM (deferredQuery (C := C) (.plant (.prf (seeds slack) p)
-          (XmssSecurity.Rom.hashOutputEquivDigestPair.symm
-            (truncateHash high, target ^^^ otherTermSum (cachedTerm seeds backend.1.1.data p) slack)))))
-        source backend
-      pure (target, r.2) : ProbComp (Digest × CappedCompilerState C)) =ᵈ
-    (do
-      let r ← runSource P seeds q s (liftM (fillTerm seeds p slack)) source backend
-      pure (termSum (cachedTerm seeds r.2.1.1.data p), r.2) : ProbComp (Digest × CappedCompilerState C)) := by
-  let write : Digest × HashOutput → Digest × CappedCompilerState C := fun pair =>
-    (pair.1, replaceCompilerCache backend
-      (backend.1.1.data.cache.cacheQuery (.prf (seeds slack) p) pair.2))
-  have h :
-      (write <$> (do
-        let target ← $ᵗ Digest
-        let high ← $ᵗ HashOutput
-        pure (target, XmssSecurity.Rom.hashOutputEquivDigestPair.symm
-          (truncateHash high, target ^^^ otherTermSum (cachedTerm seeds backend.1.1.data p) slack)))) =ᵈ
-      (write <$> ((fun output : HashOutput =>
-        (termSum (Function.update (cachedTerm seeds backend.1.1.data p) slack (truncateHash output)), output)) <$>
-          ($ᵗ HashOutput))) := by
-    exact (evalDist_slack_program _ _).map write
-  simp only [map_eq_bind_pure_comp, bind_assoc, pure_bind, Function.comp_apply, write] at h
-  simp only [runSource_slackPlant P seeds q s p slack _ source backend hm,
-    runSource_fillTerm, hm, bind_map_left]
-  change _ =ᵈ (do
-    let value ← $ᵗ HashOutput
-    pure (termSum (cachedTerm seeds
-      { backend.1.1.data with cache := backend.1.1.data.cache.cacheQuery (.prf (seeds slack) p) value } p),
-      replaceCompilerCache backend
-        (backend.1.1.data.cache.cacheQuery (.prf (seeds slack) p) value)) :
-        ProbComp (Digest × CappedCompilerState C))
-  simp only [cachedTerm_cacheQuery seeds hinj]
-  exact h
-
-set_option backward.isDefEq.respectTransparency false in
 /-- The live completion chooses the missing term, fills the others, then uses
 their resulting cache in the sampled-high planting suffix. -/
 theorem runSource_completePrf_slack (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -1591,36 +818,6 @@ theorem runSource_completePrf_slack (P : PublicParameter) (seeds : C.Term → Ha
             (truncateHash high, target ^^^ otherTermSum (cachedTerm seeds filled.2.1.1.data p) slack)))))
         filled.1.2 filled.2 := by
   simp only [completePrf, liftM_bind, runSource_bind, runSource_snapshot, pure_bind, hfirst]
-
-set_option backward.isDefEq.respectTransparency false in
-/-- For a fresh target, the complete adaptive source routine has the joint law
-of ordinary silent term filling and the aggregate thereby determined. All
-backend state, including the pre-existing trace, count and flag, is retained. -/
-theorem evalDist_completePrf_fresh (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (p : Point) (slack : C.Term) (source : SourceState C) (backend : CappedCompilerState C)
-    (hfirst : firstUnmaterialized seeds backend.1.1.data p = some slack) :
-    (do
-      let target ← $ᵗ Digest
-      let r ← runSource P seeds q s (liftM (completePrf seeds p target)) source backend
-      pure (target, r.2) : ProbComp (Digest × CappedCompilerState C)) =ᵈ
-    (do
-      let filled ← runSource P seeds q s
-        (liftM ((C.terms.filter (· ≠ slack)).mapM (fillTerm seeds p))) source backend
-      let r ← runSource P seeds q s (liftM (fillTerm seeds p slack)) filled.1.2 filled.2
-      pure (termSum (cachedTerm seeds r.2.1.1.data p), r.2) : ProbComp (Digest × CappedCompilerState C)) := by
-  simp only [runSource_completePrf_slack P seeds q s p slack _ source backend hfirst, bind_assoc]
-  refine (OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans ?_
-  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun filled hfilled => ?_
-  have hcache := fillTerms_cache P seeds q s p (C.terms.filter (· ≠ slack))
-    source backend filled hfilled
-  have hm : filled.2.1.1.data.cache (.prf (seeds slack) p) = none := by
-    rw [hcache.2.2 (.prf (seeds slack) p)]
-    · exact firstUnmaterialized_some seeds backend.1.1.data p slack hfirst
-    · intro T ht he
-      have hne : T ≠ slack := of_decide_eq_true (List.mem_filter.mp ht).2
-      exact hne (hinj (Query.prf.inj he).1).symm
-  exact evalDist_slackPlant_fresh P seeds hinj q s p slack filled.1.2 filled.2 hm
 
 /-- The fixed capped backend never clears a hit, on any source query. -/
 theorem cappedCompiler_flag_sticky (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -1641,31 +838,6 @@ theorem cappedCompiler_flag_sticky (P : PublicParameter) (seeds : C.Term → Has
         mem_support_pure_iff] at hr
       subst r
       exact hflag
-
-/-- A hit survives every subsequent piece of the actual source, including
-releases, memoized tree returns, and final verification. -/
-theorem runSource_flag_sticky {α : Type} (P : PublicParameter)
-    (seeds : C.Term → HashOutput) (q : ℕ) (s : HiddenKey → Digest) (oa : SourceM C α)
-    (source : SourceState C) (backend : CappedCompilerState C)
-    (hflag : backend.2.2 = true)
-    (r : (α × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource P seeds q s oa source backend)) : r.2.2.2 = true :=
-  simulateQ_sticky _ (fun st : CappedCompilerState C => st.2.2 = true)
-    (cappedCompiler_flag_sticky P seeds q s) (oa.run source) backend hflag r hr
-
-/-- Source continuations cannot reduce the actual capped counter. This does
-not require a syntactic bound on answers outside the oracle's support. -/
-theorem runSource_count_mono {α : Type} (P : PublicParameter)
-    (seeds : C.Term → HashOutput) (q : ℕ) (s : HiddenKey → Digest) (oa : SourceM C α)
-    (source : SourceState C) (backend : CappedCompilerState C)
-    (r : (α × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource P seeds q s oa source backend)) :
-    backend.1.2 ≤ r.2.1.2 := by
-  refine simulateQ_sticky _ (fun st : CappedCompilerState C => backend.1.2 ≤ st.1.2)
-    ?_ (oa.run source) backend (le_refl _) r hr
-  intro t st hst value hvalue
-  rw [cappedCompiler_step_count P seeds q s t st value hvalue]
-  exact le_trans hst (Nat.le_add_right _ _)
 
 /-- A counted parsed coordinate raises the fixed capped flag independently of
 the underlying answer and of whether that answer was cached. -/
@@ -1701,55 +873,6 @@ theorem cappedCompiler_hash_hit (P : PublicParameter) (seeds : C.Term → HashOu
       (.inl (.hash (.hash input)))).run st)) : r.2.2.2 = true :=
   cappedCompiler_candidate_hit P seeds q s (.hash (.hash input)) trivial k value
     hcandidate st hunreleased hvalue hcap r hr
-
-set_option backward.isDefEq.respectTransparency false in
-/-- A concrete source hash has no release prefix: P is considered only on PRF
-queries. This equality exposes the same capped kernel used by `compilerRun`. -/
-theorem runSource_hashInput (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest) (input : HashInput)
-    (source : SourceState C) (backend : CappedCompilerState C) :
-    runSource P seeds q s (sourceHash P seeds (.hash input)) source backend =
-      (fun r => ((r.1, source), r.2)) <$>
-        ((SigningCappedExpectProof.cappedHybrid (compilerImpl P seeds)
-          (deferredInputSide P) deferredCounted (deferredKey P) (deferredPoint P) q s
-          (.inl (.hash (.hash input)))).run backend) := by
-  simp only [sourceHash, pure_bind]
-  change (simulateQ (SigningCappedExpectProof.cappedHybrid (compilerImpl P seeds)
-      (deferredInputSide P) deferredCounted (deferredKey P) (deferredPoint P) q s)
-      (deferredQuery (.hash (.hash input)) >>= fun value => pure (value, source))).run backend = _
-  simp only [deferredQuery, HasQuery.instOfMonadLift_query, bind_pure_comp,
-    simulateQ_map, StateT.run_map, simulateQ_spec_query]
-  rfl
-
-set_option backward.isDefEq.respectTransparency false in
-/-- A supported source hash followed by any continuation pays a hit whenever
-the complete run is within the cap. The prefix count bound follows from that
-final bound, even for an adaptive adversary. -/
-theorem runSource_hashInput_hit {α : Type} (P : PublicParameter)
-    (seeds : C.Term → HashOutput) (q : ℕ) (s : HiddenKey → Digest)
-    (input : HashInput) (k : HiddenKey) (value : Digest)
-    (hcandidate : hiddenCandidate P input = some (k, value))
-    (next : HashOutput → SourceM C α) (source : SourceState C)
-    (backend : CappedCompilerState C) (hreveal : RevealRelation s source backend)
-    (hunreleased : source.revealed k = none) (hvalue : s k = value)
-    (r : (α × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource P seeds q s
-      (sourceHash P seeds (.hash input) >>= next) source backend))
-    (hcap : r.2.1.2 ≤ q) : r.2.2.2 = true := by
-  rw [runSource_bind, mem_support_bind_iff] at hr
-  obtain ⟨a, ha, hr⟩ := hr
-  have hmono := runSource_count_mono P seeds q s (next a.1.1) a.1.2 a.2 r hr
-  rw [runSource_hashInput, support_map] at ha
-  obtain ⟨b, hb, rfl⟩ := ha
-  have hstep := cappedCompiler_step_count P seeds q s (.inl (.hash (.hash input))) backend b hb
-  have hlt : backend.1.2 < q := by
-    simp only [sourceCounted, deferredCounted, if_true] at hstep
-    have hstep' : b.2.1.2 = backend.1.2 + 1 := hstep
-    have hbound : b.2.1.2 ≤ q := le_trans hmono hcap
-    omega
-  exact runSource_flag_sticky P seeds q s (next b.1) source b.2
-    (cappedCompiler_hash_hit P seeds q s input k value hcandidate backend
-      (hreveal.1 ▸ hunreleased) hvalue hlt b hb) r hr
 
 /-- The commitment parser returns the opening coordinate and its actual input
 digest, independently of the existential witnesses used by the parser. -/
@@ -1815,28 +938,6 @@ theorem suspendedHash_candidate (P : PublicParameter) (seeds : C.Term → HashOu
   · obtain ⟨T, point, _, he⟩ := hp
     cases he
 
-/-- For an in-budget continuation with no hit, the current raw hash is outside
-the entire pending set. The premise refers to materialization, not to an
-assumed oracle agreement or a selected coupling witness. -/
-theorem runSource_hashInput_not_suspended {α : Type} (P : PublicParameter)
-    (seeds : C.Term → HashOutput) (q : ℕ) (s : HiddenKey → Digest)
-    (input : HashInput) (next : HashOutput → SourceM C α)
-    (source : SourceState C) (backend : CappedCompilerState C)
-    (hreveal : RevealRelation s source backend)
-    (hreleased : ReleasedPending P s source backend.1.1.data)
-    (r : (α × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource P seeds q s
-      (sourceHash P seeds (.hash input) >>= next) source backend))
-    (hcap : r.2.1.2 ≤ q) (hflag : r.2.2.2 = false) :
-    ¬SuspendedQuery P seeds s backend.1.1.data (.hash input) := by
-  intro hsuspended
-  obtain ⟨k, hcandidate, hk⟩ := suspendedHash_candidate P seeds s source
-    backend.1.1.data hreleased input hsuspended
-  have hh := runSource_hashInput_hit P seeds q s input k (s k) hcandidate next source
-    backend hreveal hk rfl r hr hcap
-  rw [hflag] at hh
-  cases hh
-
 /-- The two concrete opening constraints needed at a raw source call: the
 actual PRF aggregate interprets the secret, and a revealed opening has all its
 compiler terms materialized. Preservation by setup and release is separate. -/
@@ -1870,68 +971,6 @@ theorem baseCall_hash_iff (P : PublicParameter) (e : KeyIndex) (value : Digest)
     refine ⟨_, ?_, Or.inr rfl⟩
     simp only [SigningFlatProof.baseInput, hm, Option.map_some]
 
-/-- With the final capped flag down, a real canonical base cannot precede its
-source opening release. A readiness mismatch is therefore paid by that flag,
-including the case of an earlier cached real base. -/
-theorem runSource_hashInput_ready {α : Type} (P : PublicParameter)
-    (seeds : C.Term → HashOutput) (q : ℕ) (s : HiddenKey → Digest)
-    (input : HashInput) (next : HashOutput → SourceM C α)
-    (source : SourceState C) (backend : CappedCompilerState C) (actual : HashCache C)
-    (hreveal : RevealRelation s source backend)
-    (hopening : OpeningRelation seeds s source backend.1.1.data actual)
-    (e : KeyIndex) (hactual : SigningGuessProof.RandomizerCached seeds actual e)
-    (hbase : SigningFlatProof.BaseCall P e (SigningGuessProof.cachedRandomizer seeds actual e)
-      source.signing (.inr (.inr (.inl (.hash input)))))
-    (r : (α × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource P seeds q s
-      (sourceHash P seeds (.hash input) >>= next) source backend))
-    (hcap : r.2.1.2 ≤ q) (hflag : r.2.2.2 = false) :
-    SigningGuessProof.RandomizerCached seeds backend.1.1.data.cache e := by
-  apply hopening.released e
-  intro hn
-  obtain ⟨message, _, hi⟩ := (baseCall_hash_iff P e _ source.signing input).mp hbase
-  have hcandidate : hiddenCandidate P input =
-      some (.opening bottomLayer e, s (.opening bottomLayer e)) := by
-    rw [hi, hiddenCandidate_randomizerInput, hopening.actualValue e hactual]
-  have hh := runSource_hashInput_hit P seeds q s input (.opening bottomLayer e)
-    (s (.opening bottomLayer e)) hcandidate next source backend hreveal hn rfl r hr hcap
-  rw [hflag] at hh
-  cases hh
-
-/-- On a supported in-budget no-hit continuation the real cached-extra trigger
-and the fixed compiler trigger agree for this exact raw hash call. -/
-theorem runSource_hashInput_trigger_iff {α : Type} (P : PublicParameter)
-    (seeds : C.Term → HashOutput) (q : ℕ) (s : HiddenKey → Digest)
-    (input : HashInput) (next : HashOutput → SourceM C α)
-    (source : SourceState C) (backend : CappedCompilerState C) (actual : HashCache C)
-    (hreveal : RevealRelation s source backend)
-    (hcache : CacheRelation P seeds s backend.1.1.data actual)
-    (hopening : OpeningRelation seeds s source backend.1.1.data actual)
-    (hbound : source.signing.bound = backend.1.1.bound)
-    (r : (α × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource P seeds q s
-      (sourceHash P seeds (.hash input) >>= next) source backend))
-    (hcap : r.2.1.2 ≤ q) (hflag : r.2.2.2 = false) (e : KeyIndex) :
-    (SigningGuessProof.RandomizerCached seeds actual e ∧
-      SigningFlatProof.BaseCall P e (SigningGuessProof.cachedRandomizer seeds actual e)
-        source.signing (.inr (.inr (.inl (.hash input))))) ↔
-    (SigningGuessProof.RandomizerCached seeds backend.1.1.data.cache e ∧
-      SigningFlatProof.BaseCall P e (SigningGuessProof.cachedRandomizer seeds backend.1.1.data.cache e)
-        (compilerSigning backend.1.1) (.inr (.inr (.inl (.hash input))))) := by
-  have hbound' : source.signing.bound = (compilerSigning backend.1.1).bound := hbound
-  constructor
-  · rintro ⟨ha, hb⟩
-    have hc := runSource_hashInput_ready P seeds q s input next source backend actual
-      hreveal hopening e ha hb r hr hcap hflag
-    refine ⟨hc, ?_⟩
-    rw [baseCall_hash_iff] at hb ⊢
-    rwa [hbound', (hcache.randomizer e hc).2] at hb
-  · rintro ⟨hc, hb⟩
-    obtain ⟨ha, hv⟩ := hcache.randomizer e hc
-    refine ⟨ha, ?_⟩
-    rw [baseCall_hash_iff] at hb ⊢
-    rwa [hbound', hv]
-
 /-- A stateful source exposes its own cache while the private random oracle
 keeps a separate cache. This exact equality retains the whole visible state;
 it is a reification law, not a coupling hypothesis for the signing theorem. -/
@@ -1963,54 +1002,12 @@ theorem RawStateLaw.get {σ : Type} (cache : σ → HashCache C) :
   intro st
   simp only [StateT.run_get, simulateQ_pure, StateT.run_pure, map_pure]
 
-/-- Local control updates are shared verbatim; only raw calls can extend the
-visible cache in this source reification. -/
-theorem RawStateLaw.modify {σ : Type} (cache : σ → HashCache C) (f : σ → σ)
-    (hf : ∀ st, cache (f st) = cache st) : RawStateLaw cache (modify f) (modify f) := by
-  intro st
-  simp only [StateT.run_modify, simulateQ_pure, StateT.run_pure, map_pure, hf]
-
 theorem RawStateLaw.map {σ α β : Type} (cache : σ → HashCache C)
     {source : StateT σ (OracleComp (SigningGuessProof.SigningRawSpec C)) α}
     {actual : StateT σ ProbComp α} (h : RawStateLaw cache source actual) (f : α → β) :
     RawStateLaw cache (f <$> source) (f <$> actual) := by
   simpa only [bind_pure_comp] using RawStateLaw.bind cache h (fun value => Pure.pure (f value))
     (fun value => Pure.pure (f value)) (fun value => RawStateLaw.pure cache (f value))
-
-/-- The existing raw observation handler reconstructs every visible hash entry
-online. A private prefix remains invisible until a source call reads its slot. -/
-theorem rawObserve_law {α : Type}
-    (oa : OracleComp (SigningGuessProof.SigningRawSpec C) α) :
-    RawStateLaw (C := C) id (simulateQ SigningGuessProof.privateRoObserve oa)
-      (simulateQ SigningGuessProof.privateRoImpl oa) :=
-  SigningGuessProof.privateRoObserve_run oa
-
-/-- Reify an arbitrary raw-oracle program already used by the signing source,
-retaining both its returned value and the original visible cache. -/
-def rawVisibleLocal (prims : Primitives) (t : (LocalSpec C).Domain) :
-    StateT (HashCache C) (OracleComp (SigningGuessProof.SigningRawSpec C))
-      ((LocalSpec C).Range t) :=
-  simulateQ SigningGuessProof.privateRoObserve (SigningGuessProof.signingRawLocal prims t)
-
-theorem rawVisibleLocal_law (prims : Primitives) (t : (LocalSpec C).Domain) :
-    RawStateLaw (C := C) id (rawVisibleLocal prims t) (signingLocalAnswer prims t) := by
-  rw [← SigningGuessProof.signingRawLocal_eq]
-  exact rawObserve_law _
-
-/-- A local raw-cache program can be carried by any visible state. This is the
-same cache replacement performed by the original logged and monitored worlds. -/
-theorem RawStateLaw.focus {σ α : Type} (cache : σ → HashCache C)
-    (replace : σ → HashCache C → σ) (hcache : ∀ st c, cache (replace st c) = c)
-    {source : StateT (HashCache C) (OracleComp (SigningGuessProof.SigningRawSpec C)) α}
-    {actual : StateT (HashCache C) ProbComp α} (h : RawStateLaw id source actual) :
-    RawStateLaw cache
-      (StateT.mk fun st => (fun r => (r.1, replace st r.2)) <$> source.run (cache st))
-      (StateT.mk fun st => (fun r => (r.1, replace st r.2)) <$> actual.run (cache st)) := by
-  intro st
-  have he := h (cache st)
-  simp only [id_eq] at he
-  simp only [StateT.run_mk, simulateQ_map, StateT.run_map, he,
-    Functor.map_map, hcache]
 
 /-- Interpretation commutes with a source simulation whose query cases have
 already been reified. -/
@@ -2248,43 +1245,6 @@ theorem traceRun_eq_raw (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
   simp only [Functor.map_map] at h
   exact h.trans (id_map _)
 
-/-- Private read-only presampling preserves the original guarded trace event
-with its full visible cache. Silent presampled entries are never exposed to
-cachedExtra or traceStepAt before an actual source read. -/
-theorem traceRun_eq_private_prefix {α : Type} (prims : Primitives)
-    (A : TsigAdversary C) (x : Keys3 C) (ghost : OracleComp (Query C →ₒ HashOutput) α) :
-    SigningLaneUnionProof.traceRun prims A x =ᵈ
-      (Prod.fst <$> (do
-        let _ ← simulateQ (Query C →ₒ HashOutput).randomOracle ghost
-        simulateQ SigningGuessProof.privateRoImpl (rawTraceProgram prims A x)).run ∅) := by
-  have h := SigningGuessProof.randomOracle_private_prefix_private ghost
-    (rawTraceProgram prims A x) (∅ : HashCache C)
-  rw [traceRun_eq_raw] at h
-  exact h.symm
-
-set_option linter.constructorNameAsVariable false in
-set_option maxRecDepth 4000 in
-/-- Every supported privately presampled trace obeys the original budget.
-This transports the original real-world bound without a replacement source
-budget premise, and includes runs whose hidden-key flag is already raised. -/
-theorem rawTraceProgram_prefix_count_le {α : Type} (prims : Primitives)
-    (A : TsigAdversary C) (x : Keys3 C) (q : ℕ)
-    (hq : ∀ r ∈ support (runSigningWorld prims (gameAfter A x)), r.2 ≤ q)
-    (ghost : OracleComp (Query C →ₒ HashOutput) α)
-    (pre : α × HashCache C)
-    (hpre : pre ∈ support ((simulateQ (Query C →ₒ HashOutput).randomOracle ghost).run ∅))
-    (r : SigningLaneUnionProof.TraceOutcome C × HashCache C)
-    (hr : r ∈ support ((simulateQ SigningGuessProof.privateRoImpl
-      (rawTraceProgram prims A x)).run pre.2)) :
-    (SigningLaneUnionProof.observed r.1).2.1 ≤ q := by
-  apply SigningLaneUnionProof.traceRun_count_le prims A q x hq r.1
-  rw [OracleComp.support_eq_of_evalDistEq (traceRun_eq_private_prefix prims A x ghost),
-    support_map]
-  refine ⟨r, ?_, rfl⟩
-  rw [StateT.run_bind, mem_support_bind_iff]
-  refine ⟨pre, hpre, ?_⟩
-  with_reducible exact hr
-
 /-- Embed raw uniform/hash accesses in the existing local alphabet, so the
 established finite share-slot presampling theorem can interpret this source. -/
 def rawToLocal : QueryImpl (SigningGuessProof.SigningRawSpec C) (OracleComp (LocalSpec C))
@@ -2386,22 +1346,6 @@ theorem traceRun_eq_presampled_slots (prims : Primitives) (A : TsigAdversary C) 
   rw [splitRaw_result prims x hinj, traceRun_eq_raw] at h
   exact h.symm
 
-set_option linter.constructorNameAsVariable false in
-set_option maxRecDepth 4000 in
-/-- The original support-wise cap holds for each complete presampled share
-table, with the original trace count still inside the retained outcome. -/
-theorem presampledTrace_count_le (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
-    (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (q : ℕ)
-    (hq : ∀ r ∈ support (runSigningWorld prims (gameAfter A x)), r.2 ≤ q)
-    (table : TprfSecurityProof.Slot C → HashOutput) (r : SigningLaneUnionProof.TraceOutcome C)
-    (hr : r ∈ support (presampledTrace prims A x table)) :
-    (SigningLaneUnionProof.observed r).2.1 ≤ q := by
-  apply SigningLaneUnionProof.traceRun_count_le prims A q x hq r
-  rw [OracleComp.support_eq_of_evalDistEq (traceRun_eq_presampled_slots prims A x hkeys),
-    mem_support_bind_iff]
-  refine ⟨table, by simp, ?_⟩
-  with_reducible exact hr
-
 /-- All aggregate PRF values of the private share table. -/
 def tablePrf (table : TprfSecurityProof.Slot C → HashOutput) (point : Point) : Digest :=
   TprfSecurityProof.prfSum table point
@@ -2500,47 +1444,6 @@ theorem presampledTrace_joint_prf (prims : Primitives) (A : TsigAdversary C)
     fun pair => (fun result => (result, pair)) <$> presampledTrace prims A x pair.1
   have h := (refreshAllPrf_joint slack).bind_left next
   simpa only [bind_map_left, next, bind_pure_comp] using h.symm
-
-set_option backward.isDefEq.respectTransparency false in
-/-- The actual adaptive-slack completion is the exact fixed-target fiber of
-ordinary lazy filling. This identity needs no conditional-freshness assertion
-about a previously sampled secret and retains arbitrary backend observations. -/
-theorem probEvent_completePrf_fiber (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (point : Point) (slack : C.Term) (target : Digest)
-    (source : SourceState C) (backend : CappedCompilerState C)
-    (hfirst : firstUnmaterialized seeds backend.1.1.data point = some slack)
-    (event : CappedCompilerState C → Prop) :
-    (Fintype.card Digest : ℝ≥0∞)⁻¹ *
-      Pr{let r ←
-        runSource P seeds q s (liftM (completePrf seeds point target)) source backend}[event r.2] =
-      Pr{let r ← (do
-        let filled ← runSource P seeds q s
-          (liftM ((C.terms.filter (· ≠ slack)).mapM (fillTerm seeds point))) source backend
-        runSource P seeds q s (liftM (fillTerm seeds point slack)) filled.1.2 filled.2)}[termSum (cachedTerm seeds r.2.1.1.data point) = target ∧ event r.2] := by
-  let observe : Digest × CappedCompilerState C → Prop :=
-    fun pair => pair.1 = target ∧ event pair.2
-  have h := EvalDistEq.prEvent_eq
-    (evalDist_completePrf_fresh P seeds hinj q s point slack source backend hfirst)
-    observe
-  have hleft : ∀ value : Digest,
-      Pr{let r ←
-        runSource P seeds q s (liftM (completePrf seeds point value)) source backend}[value = target ∧ event r.2] =
-      if value = target then
-        Pr{let r ←
-          runSource P seeds q s (liftM (completePrf seeds point target)) source backend}[event r.2]
-      else 0 := by
-    intro value
-    by_cases hv : value = target
-    · subst value
-      simp only [true_and, if_true]
-    · simp only [hv, false_and, if_false]
-      simpa only [Bool.false_eq_true] using prEvent_false
-        (runSource P seeds q s (liftM (completePrf seeds point value)) source backend)
-  simp only [bind_pure_comp, OracleComp.prEvent_bind_eq_tsum, prEvent_map, Function.comp_def,
-    observe] at h
-  simp only [hleft, mul_ite, mul_zero, tsum_ite_eq, SampleableType.prEvent_uniformSample_eq_singleton] at h
-  simpa only [OracleComp.prEvent_bind_eq_tsum] using h
 
 /-- The original complete trace experiment may sample all aggregate PRF
 targets eagerly. The private share table remains correlated with those
@@ -2665,49 +1568,6 @@ def privateReferenceForest (P : PublicParameter) (F : Point → Digest) :
   let trees ← (List.finRange (2 ^ layerHeight)).mapM fun b =>
     referenceTree hash (fun p => pure (F p)) P top (.bottom b)
   pure (some (top, trees))
-
-/-- The original full trace law with both aggregate PRFs and the complete
-honest reference forest presampled privately. The original online cache is
-still reconstructed by `rawTraceProgram` before each trace inspection. -/
-theorem traceRun_eq_eager_forest (prims : Primitives) (A : TsigAdversary C)
-    (x : Keys3 C) (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
-    (slack : C.Term) :
-    SigningLaneUnionProof.traceRun prims A x =ᵈ
-      (do
-        let pair ← $ᵗ ((TprfSecurityProof.Slot C → HashOutput) × (Point → Digest))
-        Prod.fst <$> (do
-          let _ ← simulateQ (Query C →ₒ HashOutput).randomOracle
-            (privateReferenceForest x.1 pair.2)
-          simulateQ SigningGuessProof.privateRoImpl
-            (simulateQ (resolveSlots x.2.1 x.2.2 (refreshAllPrf slack pair.1 pair.2))
-              (rawTraceProgram prims A x))).run ∅) := by
-  refine (traceRun_eq_eager_prf prims A x hkeys slack).trans ?_
-  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun pair _ => ?_
-  exact presampledTrace_eq_private_prefix prims A x _ _
-
-set_option linter.constructorNameAsVariable false in
-set_option maxRecDepth 4000 in
-/-- After fixing the share table and any supported private prefix, every
-supported source execution retains the original real-world query cap. -/
-theorem resolvedTrace_prefix_count_le {α : Type} (prims : Primitives)
-    (A : TsigAdversary C) (x : Keys3 C)
-    (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (q : ℕ)
-    (hq : ∀ r ∈ support (runSigningWorld prims (gameAfter A x)), r.2 ≤ q)
-    (table : TprfSecurityProof.Slot C → HashOutput)
-    (ghost : OracleComp (Query C →ₒ HashOutput) α)
-    (pre : α × HashCache C)
-    (hpre : pre ∈ support ((simulateQ (Query C →ₒ HashOutput).randomOracle ghost).run ∅))
-    (r : SigningLaneUnionProof.TraceOutcome C × HashCache C)
-    (hr : r ∈ support ((simulateQ SigningGuessProof.privateRoImpl
-      (simulateQ (resolveSlots x.2.1 x.2.2 table) (rawTraceProgram prims A x))).run pre.2)) :
-    (SigningLaneUnionProof.observed r.1).2.1 ≤ q := by
-  apply presampledTrace_count_le prims A x hkeys q hq table r.1
-  rw [OracleComp.support_eq_of_evalDistEq (presampledTrace_eq_private_prefix prims A x table ghost),
-    support_map]
-  refine ⟨r, ?_, rfl⟩
-  rw [StateT.run_bind, mem_support_bind_iff]
-  refine ⟨pre, hpre, ?_⟩
-  with_reducible exact hr
 
 /-- Embed a private hash-only cache in the structured query domain. No PRF or
 mask entry is introduced by this embedding. -/
@@ -3408,26 +2268,6 @@ theorem traceRun_eq_eager_tables (prims : Primitives) (A : TsigAdversary C)
   simp only [XmssSecurity.CappedChain.independentGlobalChainTableHigh,
     eagerTrace, bind_assoc, pure_bind]
 
-/-- The original full trace with A100's exact uniformly sampled `HiddenKey`
-table installed jointly into the PRF and chain data. All other sampled data
-are retained for the later adaptive source execution. -/
-theorem traceRun_eq_eager_hidden (prims : Primitives) (A : TsigAdversary C)
-    (x : Keys3 C) (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
-    (slack : C.Term) :
-    SigningLaneUnionProof.traceRun prims A x =ᵈ
-      (do
-        let shares ← $ᵗ (TprfSecurityProof.Slot C → HashOutput)
-        let pair ← $ᵗ (PrfChainTables × (HiddenKey → Digest))
-        let high ← XmssSecurity.CappedChain.independentGlobalChainHigh
-        eagerTrace prims A x slack shares (installHiddenCoordinates pair.1 pair.2) high) := by
-  refine (traceRun_eq_eager_tables prims A x hkeys slack).trans ?_
-  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun shares _ => ?_
-  let next : PrfChainTables → ProbComp (SigningLaneUnionProof.TraceOutcome C) := fun tables => do
-    let high ← XmssSecurity.CappedChain.independentGlobalChainHigh
-    eagerTrace prims A x slack shares tables high
-  have h := hiddenCoordinates_joint.bind_left fun pair => next pair.1
-  simpa only [bind_map_left, next] using h.symm
-
 /-- The two public bottom-row pads translate the corresponding PRF targets
 by the actual hidden chain labels. -/
 def bottomPrfOffset (s : HiddenKey → Digest) : Point → Digest
@@ -3502,34 +2342,6 @@ theorem traceRun_eq_symbolic_tables (prims : Primitives) (A : TsigAdversary C)
   have hmap := hu.bind_left (next shares s)
   simpa only [bind_map_left, next] using hmap.symm
 
-set_option linter.constructorNameAsVariable false in
-set_option maxRecDepth 4000 in
-/-- Every supported execution of the fixed symbolic-table representation
-obeys the original real-world cap, for every sampled secret table. -/
-theorem symbolicTables_count_le (prims : Primitives) (A : TsigAdversary C)
-    (x : Keys3 C) (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
-    (slack : C.Term) (q : ℕ)
-    (hq : ∀ r ∈ support (runSigningWorld prims (gameAfter A x)), r.2 ≤ q)
-    (s : HiddenKey → Digest) (shares : TprfSecurityProof.Slot C → HashOutput)
-    (tables : PrfChainTables) (high : XmssSecurity.CappedChain.GlobalChainEdgeIndex → Digest)
-    (r : SigningLaneUnionProof.TraceOutcome C)
-    (hr : r ∈ support (eagerTrace prims A x slack shares
-      (installHiddenCoordinates (maskPrfChainTables s tables) s) high)) :
-    (SigningLaneUnionProof.observed r).2.1 ≤ q := by
-  apply SigningLaneUnionProof.traceRun_count_le prims A q x hq r
-  rw [OracleComp.support_eq_of_evalDistEq (traceRun_eq_symbolic_tables prims A x hkeys slack),
-    mem_support_bind_iff]
-  refine ⟨s, by simp, ?_⟩
-  rw [mem_support_bind_iff]
-  refine ⟨shares, by simp, ?_⟩
-  rw [mem_support_bind_iff]
-  refine ⟨tables, by simp, ?_⟩
-  rw [mem_support_bind_iff]
-  refine ⟨high, ?_, ?_⟩
-  · simp [XmssSecurity.CappedChain.independentGlobalChainHigh]
-    exact Set.mem_univ _
-  · with_reducible exact hr
-
 /-- Ordinary PRF reads with their values discarded. The private cache is kept
 in the interpreter; this program does not change the visible trace or count. -/
 def fillPrfQueries (seeds : C.Term → HashOutput) (point : Point) (terms : List C.Term) :
@@ -3587,34 +2399,6 @@ theorem runSource_fillTerms_randomOracle (P : PublicParameter)
       simp only [runSource_pure, bind_map_left, map_pure, replaceCompilerCache_twice]
       rfl
 
-/-- A full ordinary filling schedule includes every specified term in the
-resulting cache, independently of the initial cache and of repeated reads. -/
-theorem fillPrfQueries_cached (seeds : C.Term → HashOutput) (point : Point)
-    (terms : List C.Term) (cache : HashCache C)
-    (r : List Unit × HashCache C)
-    (hr : r ∈ support ((simulateQ (Query C →ₒ HashOutput).randomOracle
-      (fillPrfQueries seeds point terms)).run cache)) :
-    cache ≤ r.2 ∧ ∀ T ∈ terms, ∃ value, r.2 (.prf (seeds T) point) = some value := by
-  induction terms generalizing cache r with
-  | nil =>
-      simp only [fillPrfQueries, List.mapM_nil, simulateQ_pure, StateT.run_pure,
-        mem_support_pure_iff] at hr
-      subst r
-      exact ⟨le_rfl, fun _ h => (List.not_mem_nil h).elim⟩
-  | cons T terms ih =>
-      simp only [fillPrfQueries, List.mapM_cons, simulateQ_bind, simulateQ_pure,
-        StateT.run_bind, StateT.run_pure, HasQuery.instOfMonadLift_query, simulateQ_query,
-        OracleQuery.input_query, OracleQuery.cont_query, id_map, bind_assoc, pure_bind,
-        mem_support_bind_iff, mem_support_pure_iff] at hr
-      obtain ⟨head, hhead, tail, htail, rfl⟩ := hr
-      have hh := randomOracle_support (.prf (seeds T) point) cache head hhead
-      have ht := ih head.2 tail htail
-      refine ⟨hh.1.trans ht.1, ?_⟩
-      intro U hu
-      rcases List.mem_cons.mp hu with rfl | hu
-      · exact ⟨head.1, ht.1 hh.2.1⟩
-      · exact ht.2 U hu
-
 /-- Retain just the cache of an ordinary PRF filling schedule. -/
 def fillPrfCache (seeds : C.Term → HashOutput) (point : Point)
     (terms : List C.Term) (cache : HashCache C) : ProbComp (HashCache C) :=
@@ -3624,191 +2408,6 @@ def fillPrfCache (seeds : C.Term → HashOutput) (point : Point)
 @[simp] theorem fillPrfCache_nil (seeds : C.Term → HashOutput) (point : Point)
     (cache : HashCache C) : fillPrfCache seeds point [] cache = pure cache := by
   simp [fillPrfCache, fillPrfQueries]
-
-theorem fillPrfCache_cons (seeds : C.Term → HashOutput) (point : Point)
-    (T : C.Term) (terms : List C.Term) (cache : HashCache C) :
-    fillPrfCache seeds point (T :: terms) cache =
-      ((Query C →ₒ HashOutput).randomOracle (.prf (seeds T) point)).run cache >>= fun r =>
-        fillPrfCache seeds point terms r.2 := by
-  simp only [fillPrfCache, fillPrfQueries, List.mapM_cons,
-    HasQuery.instOfMonadLift_query, simulateQ_bind, simulateQ_pure,
-    simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query, id_map,
-    StateT.run_bind, StateT.run_pure, map_bind, map_pure, bind_assoc, pure_bind]
-  simp only [bind_pure_comp]
-
-/-- Replaying an already cached filling schedule is a deterministic no-op. -/
-theorem fillPrfCache_resolved (seeds : C.Term → HashOutput) (point : Point)
-    (terms : List C.Term) (cache : HashCache C)
-    (hc : ∀ T ∈ terms, ∃ value, cache (.prf (seeds T) point) = some value) :
-    fillPrfCache seeds point terms cache = pure cache := by
-  induction terms with
-  | nil => exact fillPrfCache_nil seeds point cache
-  | cons T terms ih =>
-      obtain ⟨value, hv⟩ := hc T (List.mem_cons_self ..)
-      rw [fillPrfCache_cons, QueryImpl.withCaching_run_some _ hv, pure_bind]
-      exact ih (fun U hu => hc U (List.mem_cons_of_mem _ hu))
-
-/-- Any earlier consisting of terms that the schedule will fill can be sampled
-early, including terms that were already cached. The final cache law is exact. -/
-theorem evalDist_fillPrfCache_prefix (seeds : C.Term → HashOutput) (point : Point)
-    (terms earlier : List C.Term) (hsub : ∀ T ∈ earlier, T ∈ terms) (cache : HashCache C) :
-    fillPrfCache seeds point terms cache =ᵈ
-      (fillPrfCache seeds point earlier cache >>= fillPrfCache seeds point terms) := by
-  induction earlier generalizing cache with
-  | nil => simp
-  | cons T earlier ih =>
-      have hquery := evalDist_randomOracle_run_eq_query_then_of_cached
-        (fillPrfQueries seeds point terms) cache (.prf (seeds T) point)
-        (fun r hr => (fillPrfQueries_cached seeds point terms cache r hr).2 T
-          (hsub T (List.mem_cons_self ..)))
-      have hmap := hquery.map Prod.snd
-      simp only [map_bind] at hmap
-      change fillPrfCache seeds point terms cache =ᵈ
-        (((Query C →ₒ HashOutput).randomOracle (.prf (seeds T) point)).run cache >>=
-          fun r => fillPrfCache seeds point terms r.2) at hmap
-      refine hmap.trans ?_
-      rw [fillPrfCache_cons, bind_assoc]
-      refine OracleComp.EvalDistEq.bind_congr_of_support _ fun r _ => ?_
-      exact ih (fun U hu => hsub U (List.mem_cons_of_mem _ hu)) r.2
-
-/-- The ordinary full-cache law depends only on which terms are filled, not
-on their order or repetitions. -/
-theorem evalDist_fillPrfCache_ext (seeds : C.Term → HashOutput) (point : Point)
-    (left right : List C.Term) (hmem : ∀ T, T ∈ left ↔ T ∈ right) (cache : HashCache C) :
-    fillPrfCache seeds point left cache =ᵈ fillPrfCache seeds point right cache := by
-  refine (evalDist_fillPrfCache_prefix seeds point left right
-    (fun T h => (hmem T).mpr h) cache).trans ?_
-  refine EvalDistEq.trans ?_ (EvalDistEq.of_eq (bind_pure (fillPrfCache seeds point right cache)))
-  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun result hr => ?_
-  simp only [fillPrfCache, support_map] at hr
-  obtain ⟨r, hr, rfl⟩ := hr
-  rw [fillPrfCache_resolved seeds point left r.2]
-  intro T ht
-  exact (fillPrfQueries_cached seeds point right cache r hr).2 T ((hmem T).mp ht)
-
-theorem fillPrfCache_append (seeds : C.Term → HashOutput) (point : Point)
-    (left right : List C.Term) (cache : HashCache C) :
-    fillPrfCache seeds point (left ++ right) cache =
-      fillPrfCache seeds point left cache >>= fillPrfCache seeds point right := by
-  induction left generalizing cache with
-  | nil => simp
-  | cons T left ih => simp only [List.cons_append, fillPrfCache_cons, ih, bind_assoc]
-
-set_option backward.isDefEq.respectTransparency false in
-/-- The adaptive completion is the exact fixed-target fiber of the canonical
-all-term cache law. This includes every field of the existing capped backend. -/
-theorem probEvent_completePrf_fiber_all (P : PublicParameter)
-    (seeds : C.Term → HashOutput) (hinj : Function.Injective seeds)
-    (q : ℕ) (s : HiddenKey → Digest) (point : Point) (target : Digest)
-    (source : SourceState C) (backend : CappedCompilerState C)
-    (hmissing : firstUnmaterialized seeds backend.1.1.data point ≠ none)
-    (event : CappedCompilerState C → Prop) :
-    (Fintype.card Digest : ℝ≥0∞)⁻¹ *
-      Pr{let r ←
-        runSource P seeds q s (liftM (completePrf seeds point target)) source backend}[event r.2] =
-      Pr{let cache ←
-        fillPrfCache seeds point C.terms backend.1.1.data.cache}[termSum (cachedTerm seeds { backend.1.1.data with cache := cache } point) = target ∧
-          event (replaceCompilerCache backend cache)] := by
-  obtain ⟨slack, hfirst⟩ := Option.ne_none_iff_exists'.mp hmissing
-  rw [probEvent_completePrf_fiber P seeds hinj q s point slack target source backend hfirst]
-  have hmem : ∀ T : C.Term, T ∈ C.terms.filter (· ≠ slack) ++ [slack] ↔ T ∈ C.terms := by
-    intro T
-    simp only [List.mem_append, List.mem_filter, List.mem_singleton, mem_terms, true_and,
-      decide_eq_true_eq]
-    tauto
-  have heq := evalDist_fillPrfCache_ext seeds point
-    (C.terms.filter (· ≠ slack) ++ [slack]) C.terms hmem backend.1.1.data.cache
-  rw [← heq.prEvent_eq]
-  have hsingle : fillPrfCache seeds point [slack] = fun cache =>
-      Prod.snd <$> (((Query C →ₒ HashOutput).randomOracle (.prf (seeds slack) point)).run cache) := by
-    funext cache
-    simp only [fillPrfCache_cons, fillPrfCache_nil, bind_pure_comp]
-  rw [fillPrfCache_append, hsingle]
-  simp only [runSource_fillTerms_randomOracle, runSource_fillTerm_randomOracle, bind_map_left]
-  simp only [fillPrfCache, bind_map_left]
-  simp only [OracleComp.prEvent_bind_eq_tsum, prEvent_map, replaceCompilerCache_twice]
-  rfl
-
-/-- One ordinary term can be materialized before the actual fixed-target
-completion while a distinct slack term remains missing. This is an exact law
-for arbitrary observations of the complete capped backend, with no freshness
-assumption on the supplied target. -/
-theorem probEvent_completePrf_delay_fill (P : PublicParameter)
-    (seeds : C.Term → HashOutput) (hinj : Function.Injective seeds)
-    (q : ℕ) (s : HiddenKey → Digest) (point : Point) (target : Digest)
-    (T slack : C.Term) (hne : slack ≠ T) (source : SourceState C)
-    (backend : CappedCompilerState C)
-    (hslack : backend.1.1.data.cache (.prf (seeds slack) point) = none)
-    (event : CappedCompilerState C → Prop) :
-    Pr{let r ←
-      runSource P seeds q s (liftM (completePrf seeds point target)) source backend}[event r.2] =
-    Pr{let r ← (do
-      let filled ← runSource P seeds q s (liftM (fillTerm seeds point T)) source backend
-      runSource P seeds q s (liftM (completePrf seeds point target)) filled.1.2 filled.2)}[event r.2] := by
-  have missing (st : DeferredState C) (h : st.cache (.prf (seeds slack) point) = none) :
-      firstUnmaterialized seeds st point ≠ none := by
-    intro hf
-    obtain ⟨value, hv⟩ := (firstUnmaterialized_none_iff seeds st point).mp hf slack
-    rw [h] at hv
-    cases hv
-  let eventCache : HashCache C → Prop := fun cache =>
-    termSum (cachedTerm seeds { backend.1.1.data with cache := cache } point) = target ∧
-      event (replaceCompilerCache backend cache)
-  have hright :
-      (Fintype.card Digest : ℝ≥0∞)⁻¹ *
-        Pr{let r ← (do
-          let filled ← runSource P seeds q s (liftM (fillTerm seeds point T)) source backend
-          runSource P seeds q s (liftM (completePrf seeds point target)) filled.1.2 filled.2)}[event r.2] =
-      Pr{let z ← (do
-        let r ← ((Query C →ₒ HashOutput).randomOracle (.prf (seeds T) point)).run
-          backend.1.1.data.cache
-        fillPrfCache seeds point C.terms r.2)}[eventCache z] := by
-    simp only [runSource_fillTerm_randomOracle, bind_map_left, OracleComp.prEvent_bind_eq_tsum]
-    rw [← ENNReal.tsum_mul_left]
-    apply tsum_congr
-    intro r
-    rw [mul_left_comm]
-    by_cases hr : r ∈ support (((Query C →ₒ HashOutput).randomOracle
-        (.prf (seeds T) point)).run backend.1.1.data.cache)
-    · have hs : r.2 (.prf (seeds slack) point) = none := by
-        rw [(randomOracle_support (.prf (seeds T) point) backend.1.1.data.cache r hr).2.2]
-        · exact hslack
-        · intro he
-          exact hne (hinj (Query.prf.inj he).1)
-      rw [probEvent_completePrf_fiber_all P seeds hinj q s point target source
-        (replaceCompilerCache backend r.2) (missing _ hs) event]
-      rfl
-    · simp only [prEvent_eq_zero_of_not_mem_support _ hr, zero_mul]
-  have hearly := evalDist_fillPrfCache_prefix seeds point C.terms [T]
-    (fun U _ => mem_terms U) backend.1.1.data.cache
-  have hsingle : fillPrfCache seeds point [T] = fun cache =>
-      Prod.snd <$> (((Query C →ₒ HashOutput).randomOracle (.prf (seeds T) point)).run cache) := by
-    funext cache
-    simp only [fillPrfCache_cons, fillPrfCache_nil, bind_pure_comp]
-  rw [hsingle, bind_map_left] at hearly
-  apply (ENNReal.mul_right_inj (a := (Fintype.card Digest : ℝ≥0∞)⁻¹)
-    (by simp) (by simp)).mp
-  rw [hright, probEvent_completePrf_fiber_all P seeds hinj q s point target source backend
-    (missing _ hslack) event]
-  exact hearly.prEvent_eq _
-
-/-- The fixed-target postponement law as equality of the complete backend
-marginals, suitable for arbitrary adaptive continuations. -/
-theorem evalDist_completePrf_delay_fill (P : PublicParameter)
-    (seeds : C.Term → HashOutput) (hinj : Function.Injective seeds)
-    (q : ℕ) (s : HiddenKey → Digest) (point : Point) (target : Digest)
-    (T slack : C.Term) (hne : slack ≠ T) (source : SourceState C)
-    (backend : CappedCompilerState C)
-    (hslack : backend.1.1.data.cache (.prf (seeds slack) point) = none) :
-    (Prod.snd <$> runSource P seeds q s
-      (liftM (completePrf seeds point target)) source backend) =ᵈ
-    (Prod.snd <$> (do
-      let filled ← runSource P seeds q s (liftM (fillTerm seeds point T)) source backend
-      runSource P seeds q s (liftM (completePrf seeds point target)) filled.1.2 filled.2)) := by
-  intro p
-  rw [prEvent_map, prEvent_map]
-  exact probEvent_completePrf_delay_fill P seeds hinj q s point target T slack hne
-    source backend hslack p
 
 set_option backward.isDefEq.respectTransparency false in
 /-- A deferred query with no hidden candidate leaves the capped flag unchanged.
@@ -3832,29 +2431,6 @@ theorem runSource_deferredQuery_no_candidate (P : PublicParameter)
     bind_map_left, Functor.map_map]
   rw [map_eq_bind_pure_comp]
   rfl
-
-set_option backward.isDefEq.respectTransparency false in
-/-- The actual counted compiler PRF call is precisely one lazy cache query.
-Neither a base grind nor a trace update occurs on this structured query. -/
-theorem runSource_prfQuery (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest) (seed : HashOutput) (point : Point)
-    (source : SourceState C) (backend : CappedCompilerState C) :
-    runSource P seeds q s (liftM (deferredQuery (C := C) (.hash (.prf seed point))))
-      source backend =
-      (fun r => ((r.1, source),
-        (({ backend.1.1 with data := { backend.1.1.data with cache := r.2 } },
-          backend.1.2 + 1), backend.2))) <$>
-        (((Query C →ₒ HashOutput).randomOracle (.prf seed point)).run
-          backend.1.1.data.cache) := by
-  rw [runSource_deferredQuery_no_candidate P seeds q s (.hash (.prf seed point)) rfl]
-  have noBase : ¬∃ e, SigningGuessProof.RandomizerCached seeds backend.1.1.data.cache e ∧
-      SigningFlatProof.BaseCall P e (SigningGuessProof.cachedRandomizer seeds backend.1.1.data.cache e)
-        (compilerSigning backend.1.1) (.inr (.inr (.inl (.prf seed point)))) := by
-    rintro ⟨e, _, input, _, hcall⟩
-    rcases hcall with hcall | hcall <;> cases hcall
-  rw [SigningCompilerPotential.compiler_hash_no_trigger P seeds (.prf seed point)
-    backend.1.1 noBase, Functor.map_map]
-  simp only [deferredCounted, if_true]
 
 /-- Increment exactly the existing capped counter. -/
 def incrementCompilerCount (backend : CappedCompilerState C) : CappedCompilerState C :=
@@ -3880,180 +2456,6 @@ theorem runSource_liftM {α : Type} (P : PublicParameter) (seeds : C.Term → Ha
     rw [map_eq_bind_pure_comp]
     rfl
   rw [hlift, simulateQ_map, StateT.run_map]
-
-theorem runSource_liftM_source {α : Type} (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest)
-    (oa : OracleComp (DeferredSpec C + RevealSpec HiddenKey Digest) α)
-    (source : SourceState C) (backend : CappedCompilerState C)
-    (r : (α × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource P seeds q s (liftM oa) source backend)) :
-    r.1.2 = source := by
-  rw [runSource_liftM, support_map] at hr
-  obtain ⟨a, _, rfl⟩ := hr
-  rfl
-
-/-- A counted term read after completion returns the installed value and
-increments the count once, even though it is a cache hit. -/
-theorem runSource_completePrf_then_read (P : PublicParameter)
-    (seeds : C.Term → HashOutput) (hinj : Function.Injective seeds)
-    (q : ℕ) (s : HiddenKey → Digest) (point : Point) (target : Digest) (T : C.Term)
-    (source : SourceState C) (backend : CappedCompilerState C) :
-    runSource P seeds q s (do
-      let _ ← liftM (completePrf seeds point target)
-      liftM (deferredQuery (C := C) (.hash (.prf (seeds T) point)))) source backend =
-      (fun r => (((r.2.1.1.data.cache (.prf (seeds T) point)).getD 0, source),
-        incrementCompilerCount r.2)) <$>
-        runSource P seeds q s (liftM (completePrf seeds point target)) source backend := by
-  rw [runSource_bind, map_eq_bind_pure_comp]
-  apply OracleComp.bind_congr_of_forall_mem_support
-  intro r hr
-  have hs := runSource_liftM_source P seeds q s (completePrf seeds point target)
-    source backend r hr
-  obtain ⟨value, hv⟩ := (completePrf_correct P seeds hinj q s point target source backend r hr).1 T
-  rw [runSource_prfQuery, QueryImpl.withCaching_run_some _ hv, map_pure]
-  simp only [Function.comp_apply, hv, Option.getD_some, hs]
-  rfl
-
-set_option backward.isDefEq.respectTransparency false in
-/-- Exact postponement across an actual counted PRF query. Both the returned
-term value and the complete backend are retained; the call is still counted
-once on either side, including when the term was already cached. -/
-theorem probEvent_completePrf_delay_read (P : PublicParameter)
-    (seeds : C.Term → HashOutput) (hinj : Function.Injective seeds)
-    (q : ℕ) (s : HiddenKey → Digest) (point : Point) (target : Digest)
-    (T slack : C.Term) (hne : slack ≠ T) (source : SourceState C)
-    (backend : CappedCompilerState C)
-    (hslack : backend.1.1.data.cache (.prf (seeds slack) point) = none)
-    (event : HashOutput → CappedCompilerState C → Prop) :
-    Pr{let r ← (runSource P seeds q s (do
-      let _ ← liftM (completePrf seeds point target)
-      liftM (deferredQuery (C := C) (.hash (.prf (seeds T) point)))) source backend)}[event r.1.1 r.2] =
-    Pr{let r ← (runSource P seeds q s (do
-      let value ← liftM (deferredQuery (C := C) (.hash (.prf (seeds T) point)))
-      let _ ← liftM (completePrf seeds point target)
-      pure value) source backend)}[event r.1.1 r.2] := by
-  have missing (st : DeferredState C) (h : st.cache (.prf (seeds slack) point) = none) :
-      firstUnmaterialized seeds st point ≠ none := by
-    intro hf
-    obtain ⟨value, hv⟩ := (firstUnmaterialized_none_iff seeds st point).mp hf slack
-    rw [h] at hv
-    cases hv
-  let eventCache : HashCache C → Prop := fun cache =>
-    termSum (cachedTerm seeds { backend.1.1.data with cache := cache } point) = target ∧
-      event ((cache (.prf (seeds T) point)).getD 0)
-        (incrementCompilerCount (replaceCompilerCache backend cache))
-  have hright :
-      (Fintype.card Digest : ℝ≥0∞)⁻¹ *
-        Pr{let r ← (runSource P seeds q s (do
-          let value ← liftM (deferredQuery (C := C) (.hash (.prf (seeds T) point)))
-          let _ ← liftM (completePrf seeds point target)
-          pure value) source backend)}[event r.1.1 r.2] =
-      Pr{let z ← (do
-        let r ← ((Query C →ₒ HashOutput).randomOracle (.prf (seeds T) point)).run
-          backend.1.1.data.cache
-        fillPrfCache seeds point C.terms r.2)}[eventCache z] := by
-    simp only [runSource_bind, runSource_prfQuery, runSource_pure]
-    simp only [bind_map_left, bind_pure_comp]
-    simp only [OracleComp.prEvent_bind_eq_tsum, prEvent_map]
-    rw [← ENNReal.tsum_mul_left]
-    apply tsum_congr
-    intro r
-    rw [mul_left_comm]
-    by_cases hr : r ∈ support (((Query C →ₒ HashOutput).randomOracle
-        (.prf (seeds T) point)).run backend.1.1.data.cache)
-    · have hs : r.2 (.prf (seeds slack) point) = none := by
-        rw [(randomOracle_support (.prf (seeds T) point) backend.1.1.data.cache r hr).2.2]
-        · exact hslack
-        · intro he
-          exact hne (hinj (Query.prf.inj he).1)
-      change _ * ((Fintype.card Digest : ℝ≥0∞)⁻¹ *
-        Pr{let done ← (runSource P seeds q s
-          (liftM (completePrf seeds point target)) source
-          (incrementCompilerCount (replaceCompilerCache backend r.2)))}[event r.1 done.2]) = _
-      rw [probEvent_completePrf_fiber_all P seeds hinj q s point target source
-        (incrementCompilerCount (replaceCompilerCache backend r.2)) (missing _ hs)]
-      congr 1
-      refine prEvent_congr_of_support _ _ _ fun cache hc => ?_
-      simp only [fillPrfCache, support_map] at hc
-      obtain ⟨filled, hfilled, rfl⟩ := hc
-      have ht := (randomOracle_support (.prf (seeds T) point) backend.1.1.data.cache r hr).2.1
-      have hv := (fillPrfQueries_cached seeds point C.terms r.2 filled hfilled).1 ht
-      simp only [replaceCompilerCache_increment, replaceCompilerCache_twice,
-        eventCache, hv, Option.getD_some]
-      rfl
-    · simp only [prEvent_eq_zero_of_not_mem_support _ hr, zero_mul]
-  have hearly := evalDist_fillPrfCache_prefix seeds point C.terms [T]
-    (fun U _ => mem_terms U) backend.1.1.data.cache
-  have hsingle : fillPrfCache seeds point [T] = fun cache =>
-      Prod.snd <$> (((Query C →ₒ HashOutput).randomOracle (.prf (seeds T) point)).run cache) := by
-    funext cache
-    simp only [fillPrfCache_cons, fillPrfCache_nil, bind_pure_comp]
-  rw [hsingle, bind_map_left] at hearly
-  apply (ENNReal.mul_right_inj (a := (Fintype.card Digest : ℝ≥0∞)⁻¹)
-    (by simp) (by simp)).mp
-  rw [hright, runSource_completePrf_then_read P seeds hinj]
-  erw [prEvent_map]
-  change (Fintype.card Digest : ℝ≥0∞)⁻¹ *
-    Pr{let r ←
-      runSource P seeds q s (liftM (completePrf seeds point target)) source backend}[event ((r.2.1.1.data.cache (.prf (seeds T) point)).getD 0)
-      (incrementCompilerCount r.2)] = _
-  erw [probEvent_completePrf_fiber_all P seeds hinj q s point target source backend
-    (missing _ hslack) (fun b => event ((b.1.1.data.cache (.prf (seeds T) point)).getD 0)
-      (incrementCompilerCount b))]
-  exact hearly.prEvent_eq _
-
-set_option backward.isDefEq.respectTransparency false in
-/-- The complete actual source/interpreter law for moving a counted term read
-before fixed-target completion. The returned value, source state, cache, trace,
-reveal state, flag, and counter are all retained. -/
-theorem evalDist_completePrf_delay_read (P : PublicParameter)
-    (seeds : C.Term → HashOutput) (hinj : Function.Injective seeds)
-    (q : ℕ) (s : HiddenKey → Digest) (point : Point) (target : Digest)
-    (T slack : C.Term) (hne : slack ≠ T) (source : SourceState C)
-    (backend : CappedCompilerState C)
-    (hslack : backend.1.1.data.cache (.prf (seeds slack) point) = none) :
-    runSource P seeds q s (do
-      let _ ← liftM (completePrf seeds point target)
-      liftM (deferredQuery (C := C) (.hash (.prf (seeds T) point)))) source backend =ᵈ
-    runSource P seeds q s (do
-      let value ← liftM (deferredQuery (C := C) (.hash (.prf (seeds T) point)))
-      let _ ← liftM (completePrf seeds point target)
-      pure value) source backend := by
-  let before : SourceM C HashOutput := do
-    let _ ← liftM (completePrf seeds point target)
-    liftM (deferredQuery (C := C) (.hash (.prf (seeds T) point)))
-  let after : SourceM C HashOutput := do
-    let value ← liftM (deferredQuery (C := C) (.hash (.prf (seeds T) point)))
-    let _ ← liftM (completePrf seeds point target)
-    pure value
-  have hb : ∀ r ∈ support (runSource P seeds q s before source backend), r.1.2 = source := by
-    intro r hr
-    apply runSource_liftM_source P seeds q s (do
-      let _ ← completePrf seeds point target
-      deferredQuery (C := C) (.hash (.prf (seeds T) point))) source backend r
-    simpa only [liftM_bind, before] using hr
-  have ha : ∀ r ∈ support (runSource P seeds q s after source backend), r.1.2 = source := by
-    intro r hr
-    apply runSource_liftM_source P seeds q s (do
-      let value ← deferredQuery (C := C) (.hash (.prf (seeds T) point))
-      let _ ← completePrf seeds point target
-      pure value) source backend r
-    simpa only [liftM_bind, liftM_pure, after] using hr
-  change runSource P seeds q s before source backend =ᵈ
-    runSource P seeds q s after source backend
-  refine OracleComp.evalDistEq_of_forall_prEvent_eq_output fun result => ?_
-  calc
-    _ = Pr{let r ←
-        runSource P seeds q s before source backend}[((r.1.1, source), r.2) = result] := by
-      refine prEvent_congr_of_support _ _ _ fun r hr => ?_
-      rw [← hb r hr]
-    _ = Pr{let r ←
-        runSource P seeds q s after source backend}[((r.1.1, source), r.2) = result] :=
-      probEvent_completePrf_delay_read P seeds hinj q s point target T slack hne
-        source backend hslack (fun value st => ((value, source), st) = result)
-    _ = _ := by
-      refine prEvent_congr_of_support _ _ _ fun r hr => ?_
-      rw [← ha r hr]
 
 /-- The finite chain-edge coordinates whose noise is sampled by the compiler. -/
 abbrev ChainNoiseIndex := XmssSecurity.CappedChain.GlobalChainEdgeIndex
@@ -4180,13 +2582,6 @@ theorem compilerImpl_pending_mono (P : PublicParameter) (seeds : C.Term → Hash
       obtain ⟨a, ha, rfl⟩ := hr
       exact deferredImpl_pending_mono _ st.data a ha p hp
 
-/-- A private chain-noise cache records only draws already made by the source.
-A pre-sampled private cache will be used only after the exact raw-source law;
-it is never substituted for the compiler's visible pending map. -/
-def ChainNoiseInv (noise : (ChainNoiseIndex →ₒ HashOutput).QueryCache)
-    (backend : CappedCompilerState C) : Prop :=
-  ∀ edge, backend.1.1.data.pending (chainPending edge) = none → noise edge = none
-
 abbrev ChainNoiseSpec := SigningGuessProof.PrivateRoSpec ChainNoiseIndex HashOutput
 
 def chainNoiseRawPending (p : PendingInput) (edge : ChainNoiseIndex)
@@ -4235,29 +2630,6 @@ theorem cappedCompiler_pending_run (P : PublicParameter) (seeds : C.Term → Has
   | some answer => simp only [map_pure]; rfl
   | none => simp only [samplePending_eq_map, Functor.map_map]
 
-/-- The private-noise reading kernel exposes exactly one fresh draw when the
-visible pending entry is absent. A previously visible answer is replayed. -/
-theorem chainNoiseRawPending_run (p : PendingInput) (edge : ChainNoiseIndex)
-    (backend : CappedCompilerState C) (noise : (ChainNoiseIndex →ₒ HashOutput).QueryCache)
-    (hfresh : backend.1.1.data.pending p = none → noise edge = none) :
-    (simulateQ SigningGuessProof.privateRoImpl (chainNoiseRawPending p edge backend)).run noise =
-    match backend.1.1.data.pending p with
-    | some answer => pure ((answer, incrementCompilerCount backend), noise)
-    | none => (fun value : HashOutput =>
-        let answer := pendingOutput p value
-        ((answer, (({ backend.1.1 with data := { backend.1.1.data with
-          pending := Function.update backend.1.1.data.pending p (some answer) } },
-            backend.1.2 + 1), backend.2)), noise.cacheQuery edge value)) <$> ($ᵗ HashOutput) := by
-  cases hp : backend.1.1.data.pending p with
-  | some answer => simp only [chainNoiseRawPending, hp, simulateQ_pure, StateT.run_pure]
-  | none =>
-      simp only [chainNoiseRawPending, hp, HasQuery.instOfMonadLift_query, simulateQ_bind,
-        simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query, id_map,
-        simulateQ_pure, StateT.run_bind, StateT.run_pure,
-        SigningGuessProof.privateRoImpl, QueryImpl.add_apply_inr]
-      simp only [bind_pure_comp]
-      erw [QueryImpl.withCaching_run_none _ (hfresh hp), Functor.map_map]
-
 /-- The actual capped wrapper never deletes visible pending entries. -/
 theorem cappedCompiler_pending_mono (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : ℕ) (s : HiddenKey → Digest) (t : DeferredQuery C ⊕ HiddenKey)
@@ -4278,267 +2650,6 @@ theorem cappedCompiler_pending_mono (P : PublicParameter) (seeds : C.Term → Ha
         mem_support_pure_iff] at hr
       subst r
       exact hp
-
-/-- The private noise cache can remain in place across any original step. -/
-theorem ChainNoiseInv.actual_step (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest) (t : DeferredQuery C ⊕ HiddenKey)
-    (noise : (ChainNoiseIndex →ₒ HashOutput).QueryCache) (backend : CappedCompilerState C)
-    (h : ChainNoiseInv noise backend)
-    (r : (DeferredSpec C + RevealSpec HiddenKey Digest) t × CappedCompilerState C)
-    (hr : r ∈ support ((SigningCappedExpectProof.cappedHybrid (compilerImpl P seeds)
-      (deferredInputSide P) deferredCounted (deferredKey P) (deferredPoint P) q s t).run backend)) :
-    ChainNoiseInv noise r.2 := by
-  intro edge he
-  apply h edge
-  by_contra hn
-  exact cappedCompiler_pending_mono P seeds q s t backend r hr (chainPending edge) hn he
-
-/-- Fresh private chain draws are recorded in the same visible pending domain.
-This invariant concerns only visited coordinates; no full table is exposed. -/
-theorem chainNoiseRawPending_inv (edge : ChainNoiseIndex)
-    (backend : CappedCompilerState C) (noise : (ChainNoiseIndex →ₒ HashOutput).QueryCache)
-    (h : ChainNoiseInv noise backend)
-    (r : (DeferredOutput × CappedCompilerState C) × (ChainNoiseIndex →ₒ HashOutput).QueryCache)
-    (hr : r ∈ support ((simulateQ SigningGuessProof.privateRoImpl
-      (chainNoiseRawPending (chainPending edge) edge backend)).run noise)) :
-    ChainNoiseInv r.2 r.1.2 := by
-  rw [chainNoiseRawPending_run (chainPending edge) edge backend noise (h edge)] at hr
-  cases hp : backend.1.1.data.pending (chainPending edge) with
-  | some answer =>
-      simp only [hp, mem_support_pure_iff] at hr
-      subst r
-      exact h
-  | none =>
-      simp only [hp, support_map] at hr
-      obtain ⟨value, _, rfl⟩ := hr
-      intro other ho
-      by_cases he : other = edge
-      · subst other
-        simp only [Function.update_self] at ho
-        cases ho
-      · have hne : chainPending other ≠ chainPending edge :=
-          fun heq => he (chainPending_injective heq)
-        change (noise.cacheQuery edge value) other = none
-        rw [QueryCache.cacheQuery_of_ne _ _ he]
-        apply h other
-        simpa only [Function.update_of_ne hne] using ho
-
-set_option backward.isDefEq.respectTransparency false in
-/-- One reified compiler step has exactly the actual step's full visible
-result, and keeps its private draw history inside the online pending domain. -/
-theorem cappedChainNoiseRaw_step (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest) (t : DeferredQuery C ⊕ HiddenKey)
-    (backend : CappedCompilerState C) (noise : (ChainNoiseIndex →ₒ HashOutput).QueryCache)
-    (h : ChainNoiseInv noise backend) :
-    (Prod.fst <$> (simulateQ SigningGuessProof.privateRoImpl
-        ((cappedChainNoiseRaw P seeds q s t).run backend)).run noise =
-      ((SigningCappedExpectProof.cappedHybrid (compilerImpl P seeds)
-        (deferredInputSide P) deferredCounted (deferredKey P) (deferredPoint P) q s t).run backend)) ∧
-    (∀ r ∈ support ((simulateQ SigningGuessProof.privateRoImpl
-      ((cappedChainNoiseRaw P seeds q s t).run backend)).run noise), ChainNoiseInv r.2 r.1.2) := by
-  have ordinary (t : DeferredQuery C ⊕ HiddenKey) :
-      (Prod.fst <$> (simulateQ SigningGuessProof.privateRoImpl
-          (liftM ((SigningCappedExpectProof.cappedHybrid (compilerImpl P seeds)
-            (deferredInputSide P) deferredCounted (deferredKey P) (deferredPoint P) q s t).run backend))).run noise =
-        ((SigningCappedExpectProof.cappedHybrid (compilerImpl P seeds)
-          (deferredInputSide P) deferredCounted (deferredKey P) (deferredPoint P) q s t).run backend)) ∧
-      (∀ r ∈ support ((simulateQ SigningGuessProof.privateRoImpl
-        (liftM ((SigningCappedExpectProof.cappedHybrid (compilerImpl P seeds)
-          (deferredInputSide P) deferredCounted (deferredKey P) (deferredPoint P) q s t).run backend))).run noise),
-        ChainNoiseInv r.2 r.1.2) := by
-    rw [SigningGuessProof.privateRoImpl, roSim.run_liftM]
-    constructor
-    · simp only [Functor.map_map, id_map']
-    · intro r hr
-      simp only [support_map] at hr
-      obtain ⟨a, ha, rfl⟩ := hr
-      exact h.actual_step P seeds q s t noise backend a ha
-  have pending (edge : ChainNoiseIndex) :
-      (Prod.fst <$> (simulateQ SigningGuessProof.privateRoImpl
-        (chainNoiseRawPending (chainPending edge) edge backend)).run noise =
-        ((SigningCappedExpectProof.cappedHybrid (compilerImpl P seeds)
-          (deferredInputSide P) deferredCounted (deferredKey P) (deferredPoint P) q s
-          (.inl (.pending (chainPending edge)))).run backend)) ∧
-      (∀ r ∈ support ((simulateQ SigningGuessProof.privateRoImpl
-        (chainNoiseRawPending (chainPending edge) edge backend)).run noise), ChainNoiseInv r.2 r.1.2) := by
-    constructor
-    · rw [chainNoiseRawPending_run _ edge backend noise (h edge), cappedCompiler_pending_run]
-      cases hp : backend.1.1.data.pending (chainPending edge) with
-      | none => simp only [Functor.map_map]
-      | some value => simp only [map_pure]
-    · exact fun r hr => chainNoiseRawPending_inv edge backend noise h r hr
-  cases t with
-  | inr key => exact ordinary (.inr key)
-  | inl t =>
-      cases t with
-      | pending p =>
-          cases p with
-          | bottom e l p => exact pending (l, .inl e, p)
-          | top b l p => exact pending (l, .inr b, p)
-          | commitment e => exact ordinary (.inl (.pending (.commitment e)))
-          | base lay e message => exact ordinary (.inl (.pending (.base lay e message)))
-      | hash query => exact ordinary (.inl (.hash query))
-      | virtual term point => exact ordinary (.inl (.virtual term point))
-      | pad point => exact ordinary (.inl (.pad point))
-      | inspect p => exact ordinary (.inl (.inspect p))
-      | plant input value => exact ordinary (.inl (.plant input value))
-      | snapshot => exact ordinary (.inl .snapshot)
-      | sample => exact ordinary (.inl .sample)
-      | record p value => exact ordinary (.inl (.record p value))
-      | uniform n => exact ordinary (.inl (.uniform n))
-      | bindKey e message => exact ordinary (.inl (.bindKey e message))
-
-/-- Exact reification of an arbitrary program of the fixed compiler. Every
-source-owned field and every capped-backend field remains in the result. -/
-theorem cappedChainNoiseRaw_simulate (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest) {α : Type}
-    (oa : OracleComp (DeferredSpec C + RevealSpec HiddenKey Digest) α)
-    (backend : CappedCompilerState C) (noise : (ChainNoiseIndex →ₒ HashOutput).QueryCache)
-    (h : ChainNoiseInv noise backend) :
-    Prod.fst <$> (simulateQ SigningGuessProof.privateRoImpl
-        ((simulateQ (cappedChainNoiseRaw P seeds q s) oa).run backend)).run noise =
-      (simulateQ (SigningCappedExpectProof.cappedHybrid (compilerImpl P seeds)
-        (deferredInputSide P) deferredCounted (deferredKey P) (deferredPoint P) q s)
-        oa).run backend := by
-  induction oa using OracleComp.inductionOn generalizing backend noise with
-  | pure value => simp
-  | query_bind t next ih =>
-      simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query,
-        OracleQuery.cont_query, id_map, StateT.run_bind, map_bind]
-      have step := cappedChainNoiseRaw_step P seeds q s t backend noise h
-      calc
-        _ = (simulateQ SigningGuessProof.privateRoImpl
-            ((cappedChainNoiseRaw P seeds q s t).run backend)).run noise >>= fun r =>
-          (simulateQ (SigningCappedExpectProof.cappedHybrid (compilerImpl P seeds)
-            (deferredInputSide P) deferredCounted (deferredKey P) (deferredPoint P) q s)
-            (next r.1.1)).run r.1.2 := by
-          apply OracleComp.bind_congr_of_forall_mem_support
-          intro r hr
-          exact ih r.1.1 r.1.2 r.2 (step.2 r hr)
-        _ = _ := by
-          conv_rhs => rw [← step.1]
-          simp only [bind_map_left]
-
-/-- The exact fixed compiler source, reified over a private chain-noise oracle.
-The private oracle's cache is absent from the result available to the source. -/
-def chainNoiseRawProgram (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
-    (q : ℕ) (s : HiddenKey → Digest) : OracleComp ChainNoiseSpec (CompilerOutcome C) :=
-  (simulateQ (cappedChainNoiseRaw x.1 x.2.1 q s) (sourceProgram prims A x)).run
-    ((compilerInit, 0), fun _ => none, false)
-
-/-- Full actual compiler reification, with the same secret table and the same
-source program. No pending entry is pre-populated in its visible backend. -/
-theorem compilerRun_eq_chainNoiseRaw (prims : Primitives) (A : TsigAdversary C)
-    (x : Keys3 C) (q : ℕ) :
-    compilerRun prims A x q = (do
-      let s ← $ᵗ (HiddenKey → Digest)
-      Prod.fst <$> (simulateQ SigningGuessProof.privateRoImpl
-        (chainNoiseRawProgram prims A x q s)).run ∅) := by
-  unfold compilerRun
-  apply bind_congr
-  intro s
-  exact (cappedChainNoiseRaw_simulate x.1 x.2.1 q s (sourceProgram prims A x)
-    ((compilerInit, 0), fun _ => none, false) ∅ (fun _ _ => rfl)).symm
-
-/-- Private chain precomputation changes no actual compiler observation. The
-visible pending map, visible cache, trace, flag, and count remain source-owned. -/
-theorem compilerRun_eq_private_chain_prefix (prims : Primitives) (A : TsigAdversary C)
-    (x : Keys3 C) (q : ℕ) {α : Type} (ghost : OracleComp (ChainNoiseIndex →ₒ HashOutput) α) :
-    compilerRun prims A x q =ᵈ (do
-      let s ← $ᵗ (HiddenKey → Digest)
-      Prod.fst <$> (do
-        let _ ← simulateQ (ChainNoiseIndex →ₒ HashOutput).randomOracle ghost
-        simulateQ SigningGuessProof.privateRoImpl (chainNoiseRawProgram prims A x q s)).run ∅) := by
-  rw [compilerRun_eq_chainNoiseRaw]
-  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun s _ => ?_
-  exact (SigningGuessProof.randomOracle_private_prefix_private ghost
-    (chainNoiseRawProgram prims A x q s) ∅).symm
-
-/-- Resolve a private chain table while forwarding private uniform draws. -/
-def resolveChainNoise (table : ChainNoiseIndex → HashOutput) :
-    QueryImpl ChainNoiseSpec ProbComp
-  | .inl n => query (spec := unifSpec) n
-  | .inr edge => pure (table edge)
-
-/-- Coordinate resampling preserves the law of any subsequent private program. -/
-theorem chainNoise_update_bind {α : Type} (edge : ChainNoiseIndex)
-    (next : (ChainNoiseIndex → HashOutput) → ProbComp α) :
-    (do
-      let value ← $ᵗ HashOutput
-      let table ← $ᵗ (ChainNoiseIndex → HashOutput)
-      next (Function.update table edge value)) =ᵈ
-    (($ᵗ (ChainNoiseIndex → HashOutput)) >>= next) := by
-  exact evalDistEq_uniformSample_bind_update edge next
-
-set_option backward.isDefEq.respectTransparency false in
-/-- Eagerly sampling the finite chain-noise table preserves the entire raw
-source result. The table is private; its reads do not populate visible state. -/
-theorem privateChainNoise_eq_table {α : Type} (oa : OracleComp ChainNoiseSpec α)
-    (noise : (ChainNoiseIndex →ₒ HashOutput).QueryCache) :
-    (Prod.fst <$> (simulateQ SigningGuessProof.privateRoImpl oa).run noise) =ᵈ
-    (do
-      let table ← $ᵗ (ChainNoiseIndex → HashOutput)
-      simulateQ (resolveChainNoise (tableExtending noise table)) oa) := by
-  classical
-  induction oa using OracleComp.inductionOn generalizing noise with
-  | pure value =>
-      simp only [simulateQ_pure, StateT.run_pure, map_pure]
-      exact (OracleComp.EvalDistEq.bind_const
-        ($ᵗ (ChainNoiseIndex → HashOutput)) (pure value)).symm
-  | query_bind t next ih =>
-      simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query,
-        OracleQuery.cont_query, id_map, StateT.run_bind, map_bind]
-      cases t with
-      | inl n =>
-          have hu : (SigningGuessProof.privateRoImpl (D := ChainNoiseIndex)
-              (R := HashOutput) (.inl n)).run noise =
-              (fun value => (value, noise)) <$>
-                (query (spec := unifSpec) n : ProbComp (Fin (n + 1))) := rfl
-          rw [hu, bind_map_left]
-          simp only [resolveChainNoise]
-          refine EvalDistEq.trans
-            (OracleComp.EvalDistEq.bind_congr_of_support _ fun value _ => ih value noise) ?_
-          exact OracleComp.EvalDistEq.bind_bind_swap _ _ _
-      | inr edge =>
-          change (((ChainNoiseIndex →ₒ HashOutput).randomOracle edge).run noise >>= fun r =>
-            Prod.fst <$> (simulateQ SigningGuessProof.privateRoImpl (next r.1)).run r.2) =ᵈ _
-          simp only [resolveChainNoise, pure_bind]
-          cases hn : noise edge with
-          | some value =>
-              rw [QueryImpl.withCaching_run_some _ hn, pure_bind]
-              refine (ih value noise).trans ?_
-              refine OracleComp.EvalDistEq.bind_congr_of_support _ fun table _ => ?_
-              simp only [tableExtending, hn, Option.getD_some, EvalDistEq.refl]
-          | none =>
-              rw [QueryImpl.withCaching_run_none _ hn, bind_map_left]
-              let replay : (ChainNoiseIndex → HashOutput) → ProbComp α := fun table =>
-                simulateQ (resolveChainNoise (tableExtending noise table))
-                  (next (tableExtending noise table edge))
-              refine EvalDistEq.trans (my := (do
-                  let value ← $ᵗ HashOutput
-                  let table ← $ᵗ (ChainNoiseIndex → HashOutput)
-                  replay (Function.update table edge value)))
-                ?_ (chainNoise_update_bind edge replay)
-              refine OracleComp.EvalDistEq.bind_congr_of_support _ fun value _ => ?_
-              refine (ih value (noise.cacheQuery edge value)).trans ?_
-              refine OracleComp.EvalDistEq.bind_congr_of_support _ fun table _ => ?_
-              dsimp only [replay]
-              rw [tableExtending_cacheQuery,
-                ← tableExtending_update_of_none noise table hn value]
-              simp only [Function.update_self, EvalDistEq.refl]
-
-/-- The actual compiler with one independent private chain-noise table. All
-source and backend observations are retained, including the original counter. -/
-theorem compilerRun_eq_chainNoiseTable (prims : Primitives) (A : TsigAdversary C)
-    (x : Keys3 C) (q : ℕ) :
-    compilerRun prims A x q =ᵈ (do
-      let s ← $ᵗ (HiddenKey → Digest)
-      let table ← $ᵗ (ChainNoiseIndex → HashOutput)
-      simulateQ (resolveChainNoise table) (chainNoiseRawProgram prims A x q s)) := by
-  rw [compilerRun_eq_chainNoiseRaw]
-  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun s _ => ?_
-  simpa only [tableExtending_empty] using
-    privateChainNoise_eq_table (chainNoiseRawProgram prims A x q s) ∅
 
 /-- A PRF point whose complete concrete term sum has its required value. -/
 def PointDone (seeds : C.Term → HashOutput) (data : DeferredState C)
@@ -4620,26 +2731,6 @@ theorem LackedUncached.corrupt_mono {seeds : C.Term → HashOutput}
   apply h T
   rintro ⟨i, hi, hh⟩
   exact hT ⟨i, hDE hi, hh⟩
-
-/-- Adaptive corruption preserves the release-slack alternatives whenever
-its actual guard permits the enlarged corrupt set. -/
-theorem ReleaseSlack.corrupt_mono {seeds : C.Term → HashOutput} {s : HiddenKey → Digest}
-    {source : SourceState C} {data : DeferredState C}
-    (h : ReleaseSlack seeds s source data) (D : Finset C.Party)
-    (hD : source.signing.corrupt ⊆ D) (hcard : D.card ≤ C.t - 1) :
-    ReleaseSlack seeds s { source with signing := { source.signing with corrupt := D } } data := by
-  refine ⟨hcard, ?_, ?_, ?_, ?_, h.bottom_released⟩
-  · intro e
-    rcases h.bottom_opening e with hd | ⟨hb, hu⟩ | ⟨hb, hm⟩
-    · exact Or.inl hd
-    · exact Or.inr (Or.inl ⟨hb, hu.corrupt_mono hD⟩)
-    · exact Or.inr (Or.inr ⟨hb, hm⟩)
-  · intro e l pos
-    exact (h.bottom_chain e l pos).imp id (fun hu => hu.corrupt_mono hD)
-  · intro b
-    exact (h.top_opening b).imp id (fun hu => hu.corrupt_mono hD)
-  · intro b l
-    exact (h.top_start b l).imp id (fun hu => hu.corrupt_mono hD)
 
 /-- One absent term is precisely enough to rule out the no-slack branch. -/
 theorem firstUnmaterialized_ne_none_of_missing (seeds : C.Term → HashOutput)
@@ -4872,53 +2963,6 @@ theorem sourceOracles_local_hiddenFlag (prims : Primitives) (x : Keys3 C) (top :
   rw [runSource_pure, mem_support_pure_iff] at hr
   subst r
   rfl
-
-/-- A supported adversary PRF read on a lacked term cannot finish with the
-source hidden-key flag down. This uses the original flag, not the capped flag. -/
-theorem sourceOracles_lacked_prf_flag (prims : Primitives) (x : Keys3 C) (top : TopTree)
-    (q : ℕ) (s : HiddenKey → Digest) (T : C.Term) (point : Point)
-    (source : SourceState C) (backend : CappedCompilerState C)
-    (hT : ¬TprfSecurityProof.Revealed source.signing.corrupt (.inl T))
-    (r : (LocalSpec C (.inr (.inl (.prf (x.2.1 T) point))) × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource x.1 x.2.1 q s
-      (sourceOracles prims x top (.inl (.inr (.inl (.prf (x.2.1 T) point))))) source backend)) :
-    r.1.2.hiddenFlag = true := by
-  rw [sourceOracles_local_hiddenFlag prims x top q s (.inr (.inl (.prf (x.2.1 T) point))) source backend r hr,
-    hiddenHit_lacked_prf x source.signing.corrupt T point hT, Bool.or_true]
-
-set_option backward.isDefEq.respectTransparency false in
-/-- The actual corruption branch is a guarded source-state update, with no
-backend call or random-oracle effect. -/
-theorem runSource_corrupt (prims : Primitives) (x : Keys3 C) (top : TopTree)
-    (q : ℕ) (s : HiddenKey → Digest) (i : C.Party)
-    (source : SourceState C) (backend : CappedCompilerState C) :
-    runSource x.1 x.2.1 q s (sourceTsig prims x top (.corrupt i)) source backend =
-    if C.t - 1 < (insert i source.signing.corrupt).card then
-      pure ((none, source), backend)
-    else pure ((some (dealtKeys x.1 x.2.1 x.2.2 i),
-      { source with signing := { source.signing with corrupt := insert i source.signing.corrupt } }), backend) := by
-  simp only [sourceTsig, runSource_bind, runSource_get, pure_bind]
-  split <;> simp only [runSource_bind, runSource_modify, runSource_pure, pure_bind]
-
-set_option backward.isDefEq.respectTransparency false in
-/-- The release-slack invariant survives each accepted or rejected adaptive
-corruption call of the actual signing source. -/
-theorem releaseSlack_corrupt (prims : Primitives) (x : Keys3 C) (top : TopTree)
-    (q : ℕ) (s : HiddenKey → Digest) (i : C.Party)
-    (source : SourceState C) (backend : CappedCompilerState C)
-    (h : ReleaseSlack x.2.1 s source backend.1.1.data)
-    (r : (TsigSpec C (.corrupt i) × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource x.1 x.2.1 q s (sourceTsig prims x top (.corrupt i)) source backend)) :
-    ReleaseSlack x.2.1 s r.1.2 r.2.1.1.data := by
-  rw [runSource_corrupt] at hr
-  split at hr
-  · simp only [mem_support_pure_iff] at hr
-    subst r
-    exact h
-  · rename_i hcard
-    simp only [mem_support_pure_iff] at hr
-    subst r
-    exact h.corrupt_mono _ (Finset.subset_insert _ _) (Nat.le_of_not_gt hcard)
 
 /-- Equal concrete term entries give the same complete-point constraint. -/
 theorem PointDone.of_cache_eq {seeds : C.Term → HashOutput} {a b : DeferredState C}
@@ -5314,76 +3358,6 @@ theorem sourceReleaseOpening_slack (P : PublicParameter) (seeds : C.Term → Has
   sourceReleaseOpening_slack_frame P seeds hinj q s e source backend backend.1.1.data
     hs (fun _ _ => rfl) (fun _ _ _ => Iff.rfl) rfl hv hrev r hr
 
-/-- A virtual term preserves every release clause unless it finishes readiness
-at its own bottom randomizer. At that point P must run before the boundary. -/
-theorem ReleaseSlack.virtual_unready {seeds : C.Term → HashOutput} {s : HiddenKey → Digest}
-    {source : SourceState C} {data : DeferredState C}
-    (h : ReleaseSlack seeds s source data) (T : C.Term) (point : Point)
-    (hn : ∀ e, point = .randomizer bottomLayer e →
-      ¬OpeningReady seeds { data with virtual := insert (T, point) data.virtual } source.signing e) :
-    ReleaseSlack seeds s source { data with virtual := insert (T, point) data.virtual } := by
-  refine ⟨h.corrupt_bound, ?_, h.bottom_chain, h.top_opening, h.top_start, h.bottom_released⟩
-  intro e
-  rcases h.bottom_opening e with hd | ⟨hb, hu⟩ | ⟨hb, U, hv, hc⟩
-  · exact Or.inl hd
-  · exact Or.inr (Or.inl ⟨hb, hu⟩)
-  · apply Or.inr ∘ Or.inr
-    refine ⟨hb, ?_⟩
-    by_cases he : point = .randomizer bottomLayer e
-    · have hnot : ¬∀ V : C.Term,
-          (V, Point.randomizer bottomLayer e) ∈ insert (T, point) data.virtual ∨
-            (data.cache (.prf (seeds V) (.randomizer bottomLayer e))).isSome := by
-        intro hall
-        exact hn e he ⟨hb, hall⟩
-      obtain ⟨V, hV⟩ := not_forall.mp hnot
-      refine ⟨V, fun hmem => hV (Or.inl hmem), ?_⟩
-      cases hh : data.cache (.prf (seeds V) (.randomizer bottomLayer e)) with
-      | none => rfl
-      | some value => exact (hV (Or.inr (by simp [hh]))).elim
-    · refine ⟨U, ?_, hc⟩
-      change (U, Point.randomizer bottomLayer e) ∉ insert (T, point) data.virtual
-      simp only [Finset.mem_insert, not_or]
-      exact ⟨fun heq => he (congrArg Prod.snd heq).symm, hv⟩
-
-/-- The last virtual term leaves the same concrete slack available to P. -/
-theorem ReleaseSlack.ready_virtual_missing {seeds : C.Term → HashOutput}
-    {s : HiddenKey → Digest} {source : SourceState C} {data : DeferredState C}
-    (h : ReleaseSlack seeds s source data) (T : C.Term) (e : KeyIndex)
-    (hd : ¬PointDone seeds data (.randomizer bottomLayer e) (s (.opening bottomLayer e)))
-    (hr : OpeningReady seeds
-      { data with virtual := insert (T, Point.randomizer bottomLayer e) data.virtual }
-      source.signing e) :
-    data.cache (.prf (seeds T) (.randomizer bottomLayer e)) = none := by
-  rcases h.bottom_opening e with hh | ⟨hb, _⟩ | ⟨_, U, hv, hc⟩
-  · exact (hd hh).elim
-  · exact (hr.1 hb).elim
-  · rcases hr.2 U with hmem | hcached
-    · have heq : U = T := by
-        rcases Finset.mem_insert.mp hmem with heq | hmem
-        · exact congrArg Prod.fst heq
-        · exact (hv hmem).elim
-      subst U
-      exact hc
-    · simp only [hc, Option.isSome_none, Bool.false_eq_true] at hcached
-
-/-- Before a raw PRF answer closes readiness, its own term is still missing
-unless P's aggregate was already completed. -/
-theorem ReleaseSlack.readyAfter_missing {seeds : C.Term → HashOutput}
-    {s : HiddenKey → Digest} {source : SourceState C} {data : DeferredState C}
-    (h : ReleaseSlack seeds s source data) (query : Query C) (e : KeyIndex)
-    (hd : ¬PointDone seeds data (.randomizer bottomLayer e) (s (.opening bottomLayer e)))
-    (hr : ReadyAfter seeds data source.signing e query) :
-    ∃ T : C.Term, query = .prf (seeds T) (.randomizer bottomLayer e) ∧
-      data.cache (.prf (seeds T) (.randomizer bottomLayer e)) = none := by
-  rcases h.bottom_opening e with hh | ⟨hb, _⟩ | ⟨_, T, hv, hc⟩
-  · exact (hd hh).elim
-  · exact (hr.1 hb).elim
-  · refine ⟨T, ?_, hc⟩
-    rcases hr.2 T with hmem | hcached | heq
-    · exact (hv hmem).elim
-    · simp only [hc, Option.isSome_none, Bool.false_eq_true] at hcached
-    · exact heq
-
 set_option backward.isDefEq.respectTransparency false in
 /-- Each virtual PRF read inserts its virtual slot and retains its one actual
 call in the capped counter, including repeated reads. -/
@@ -5396,55 +3370,6 @@ theorem runSource_virtual (P : PublicParameter) (seeds : C.Term → HashOutput)
         backend.1.2 + 1), backend.2)) := by
   rw [runSource_deferredQuery_no_candidate P seeds q s (.virtual T point) rfl]
   simp only [compilerImpl, deferredImpl, StateT.run, map_pure, deferredCounted, if_true]
-
-set_option backward.isDefEq.respectTransparency false in
-/-- The actual virtual source call rechecks P after its counted insertion.
-It returns to a stable release-slack boundary in every readiness branch. -/
-theorem sourceVirtual_slack (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (T : C.Term) (point : Point) (source : SourceState C) (backend : CappedCompilerState C)
-    (hs : ReleaseSlack seeds s source backend.1.1.data)
-    (hv : PendingValid backend.1.1.data) (hrev : RevealRelation s source backend)
-    (r : (Unit × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource P seeds q s (sourceVirtual P seeds T point) source backend)) :
-    ReleaseSlack seeds s r.1.2 r.2.1.1.data := by
-  cases point with
-  | chain lay e l pos =>
-      simp only [sourceVirtual, runSource_bind, runSource_virtual, pure_bind,
-        runSource_pure, mem_support_pure_iff] at hr
-      subst r
-      exact hs.virtual_unready T _ (by intro f hf; cases hf)
-  | randomizer lay e =>
-      by_cases hl : lay = bottomLayer
-      · subst lay
-        simp only [sourceVirtual, runSource_bind, runSource_virtual, pure_bind,
-          ↓reduceIte, runSource_snapshot, runSource_get] at hr
-        split at hr
-        · let nextBackend : CappedCompilerState C :=
-            (({ backend.1.1 with data := { backend.1.1.data with
-                virtual := insert (T, Point.randomizer bottomLayer e) backend.1.1.data.virtual } },
-              backend.1.2 + 1), backend.2)
-          have hout := sourceReleaseOpening_slack_frame P seeds hinj q s e source nextBackend
-            backend.1.1.data hs (fun _ _ => rfl) (by
-              intro f hfe U
-              change ((U, Point.randomizer bottomLayer f) ∈
-                insert (T, Point.randomizer bottomLayer e) backend.1.1.data.virtual ↔ _)
-              simp [hfe]) rfl hv hrev r hr
-          exact hout.1
-        · rename_i hready
-          rw [runSource_pure, mem_support_pure_iff] at hr
-          subst r
-          exact hs.virtual_unready T _ (by
-            intro f hf
-            have he : e = f := (Point.randomizer.inj hf).2
-            subst f
-            exact hready)
-      · simp only [sourceVirtual, runSource_bind, runSource_virtual, pure_bind,
-          hl, ↓reduceIte, runSource_pure, mem_support_pure_iff] at hr
-        subst r
-        exact hs.virtual_unready T _ (by
-          intro f hf
-          exact (hl (Point.randomizer.inj hf).1).elim)
 
 /-- Recording a reveal preserves slack when any bottom opening it exposes is
 already complete. Reveals of chain coordinates need no additional condition. -/
@@ -5582,23 +3507,6 @@ theorem ReleaseSlack.bottom_chain_admissible {seeds : C.Term → HashOutput}
       (bottomReleaseTarget s data e l pos) ∨
     firstUnmaterialized seeds data (.chain bottomLayer e l (XmssSecurity.CappedChain.chainStepDigit pos)) ≠ none :=
   (h.bottom_chain e l pos).imp And.right (fun hu => hu.missing h.corrupt_bound)
-
-/-- The R opening alternatives guarantee a missing concrete term or the exact
-previously completed top randomizer. -/
-theorem ReleaseSlack.top_opening_admissible {seeds : C.Term → HashOutput}
-    {s : HiddenKey → Digest} {source : SourceState C} {data : DeferredState C}
-    (h : ReleaseSlack seeds s source data) (b : XmssSecurity.TopIndex) :
-    PointDone seeds data (.randomizer topLayer (topKey b)) (s (.opening topLayer (topKey b))) ∨
-      firstUnmaterialized seeds data (.randomizer topLayer (topKey b)) ≠ none :=
-  (h.top_opening b).imp id (fun hu => hu.missing h.corrupt_bound)
-
-/-- The same R slack guarantee holds at every top-chain starting point. -/
-theorem ReleaseSlack.top_start_admissible {seeds : C.Term → HashOutput}
-    {s : HiddenKey → Digest} {source : SourceState C} {data : DeferredState C}
-    (h : ReleaseSlack seeds s source data) (b : XmssSecurity.TopIndex) (l : ChainIndex) :
-    PointDone seeds data (.chain topLayer (topKey b) l (digit 0)) (s (.topChain b l ⟨0, by decide⟩)) ∨
-      firstUnmaterialized seeds data (.chain topLayer (topKey b) l (digit 0)) ≠ none :=
-  (h.top_start b l).imp id (fun hu => hu.missing h.corrupt_bound)
 
 /-- Adding pads conservatively preserves all existing masked targets. An
 unallocated positive-position pad can occur only in Q's uncached alternative. -/
@@ -6015,101 +3923,6 @@ def topReleaseKey (b : XmssSecurity.TopIndex) : Option ChainIndex → HiddenKey
   | none => .opening topLayer (topKey b)
   | some l => .topChain b l ⟨0, by decide⟩
 
-/-- Each R completion has an exact finished target or a concrete missing term. -/
-theorem ReleaseSlack.top_admissible {seeds : C.Term → HashOutput} {s : HiddenKey → Digest}
-    {source : SourceState C} {data : DeferredState C}
-    (h : ReleaseSlack seeds s source data) (b : XmssSecurity.TopIndex) (kind : Option ChainIndex) :
-    PointDone seeds data (topReleasePoint b kind) (s (topReleaseKey b kind)) ∨
-      firstUnmaterialized seeds data (topReleasePoint b kind) ≠ none := by
-  cases kind with
-  | none => exact h.top_opening_admissible b
-  | some l => exact h.top_start_admissible b l
-
-/-- Completing one R point preserves every other release constraint. -/
-theorem ReleaseSlack.complete_top {seeds : C.Term → HashOutput} {s : HiddenKey → Digest}
-    {source source' : SourceState C} {data data' : DeferredState C}
-    (h : ReleaseSlack seeds s source data) (b : XmssSecurity.TopIndex) (kind : Option ChainIndex)
-    (hs : source'.signing = source.signing)
-    (hc : ∀ seed point, point ≠ topReleasePoint b kind →
-      data'.cache (.prf seed point) = data.cache (.prf seed point))
-    (hv : data'.virtual = data.virtual) (hp : data'.pads = data.pads)
-    (hr : ∀ e, source'.revealed (.opening bottomLayer e) ≠ none →
-      source.revealed (.opening bottomLayer e) ≠ none)
-    (hd : PointDone seeds data' (topReleasePoint b kind) (s (topReleaseKey b kind))) :
-    ReleaseSlack seeds s source' data' := by
-  have done : ∀ point target, point ≠ topReleasePoint b kind →
-      PointDone seeds data point target → PointDone seeds data' point target :=
-    fun _ _ hn hh => hh.of_cache_eq (fun T => hc _ _ hn)
-  have uncache : ∀ point, point ≠ topReleasePoint b kind →
-      LackedUncached seeds source.signing.corrupt data point →
-        LackedUncached seeds source'.signing.corrupt data' point := by
-    intro point hn hh T hT
-    rw [hc _ _ hn]
-    exact hh T (hs ▸ hT)
-  have randomizer_ne : ∀ e, Point.randomizer bottomLayer e ≠ topReleasePoint b kind := by
-    intro e
-    cases kind <;> simp [topReleasePoint, topLayer, bottomLayer]
-  have chain_ne : ∀ e l pos, Point.chain bottomLayer e l pos ≠ topReleasePoint b kind := by
-    intro e l pos
-    cases kind <;> simp [topReleasePoint, topLayer, bottomLayer]
-  refine ⟨hs ▸ h.corrupt_bound, ?_, ?_, ?_, ?_, ?_⟩
-  · intro e
-    rcases h.bottom_opening e with hh | ⟨hb, hh⟩ | ⟨hb, T, ht, hh⟩
-    · exact Or.inl (done _ _ (randomizer_ne e) hh)
-    · exact Or.inr (Or.inl ⟨hs ▸ hb, uncache _ (randomizer_ne e) hh⟩)
-    · exact Or.inr (Or.inr ⟨hs ▸ hb, T, hv ▸ ht, (hc _ _ (randomizer_ne e)).trans hh⟩)
-  · intro e l pos
-    rcases h.bottom_chain e l pos with ⟨hh, hk⟩ | hh
-    · refine Or.inl ⟨?_, ?_⟩
-      · simpa only [hp] using hh
-      · simpa only [bottomReleaseTarget, hp] using done _ _ (chain_ne e l _) hk
-    · exact Or.inr (uncache _ (chain_ne e l _) hh)
-  · intro f
-    by_cases he : Point.randomizer topLayer (topKey f) = topReleasePoint b kind
-    · apply Or.inl
-      cases kind with
-      | none =>
-          have hk := (Point.randomizer.inj he).2
-          simpa only [topReleasePoint, topReleaseKey, hk] using hd
-      | some l => cases he
-    · exact (h.top_opening f).imp (done _ _ he) (uncache _ he)
-  · intro f j
-    by_cases he : Point.chain topLayer (topKey f) j (digit 0) = topReleasePoint b kind
-    · apply Or.inl
-      cases kind with
-      | none => cases he
-      | some l =>
-          obtain ⟨_, hk, hj, _⟩ := Point.chain.inj he
-          have hf : f = b := by
-            have hh := congrArg (fun e : KeyIndex => e.val) hk
-            exact Fin.ext hh
-          subst f
-          subst j
-          exact hd
-    · exact (h.top_start f j).imp (done _ _ he) (uncache _ he)
-  · intro e he
-    exact done _ _ (randomizer_ne e) (h.bottom_released e (hr e he))
-
-/-- R's actual completion succeeds and preserves the release invariant. -/
-theorem completePrf_top_slack (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (b : XmssSecurity.TopIndex) (kind : Option ChainIndex)
-    (source : SourceState C) (backend : CappedCompilerState C)
-    (hs : ReleaseSlack seeds s source backend.1.1.data)
-    (r : (Bool × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource P seeds q s
-      (liftM (completePrf seeds (topReleasePoint b kind) (s (topReleaseKey b kind)))) source backend)) :
-    r.1.1 = true ∧ ReleaseSlack seeds s r.1.2 r.2.1.1.data ∧
-      PointDone seeds r.2.1.1.data (topReleasePoint b kind) (s (topReleaseKey b kind)) := by
-  have hd := completePrf_done_or_missing P seeds hinj q s _ _ source backend
-    (hs.top_admissible b kind) r hr
-  have hf := completePrf_frame P seeds q s _ _ source backend r hr
-  have hdata := congrArg (fun b : CappedCompilerState C => b.1.1.data) hf.2.1
-  have hvirtual := congrArg DeferredState.virtual hdata
-  have hpads := congrArg DeferredState.pads hdata
-  exact ⟨hd.1, hs.complete_top b kind (congrArg SourceState.signing hf.1)
-    hf.2.2.2 hvirtual hpads (fun _ he => hf.1 ▸ he) hd.2, hd.2⟩
-
 /-- R's reveal-and-complete prefix, returning its materialized input. -/
 def sourceTopCompletion (seeds : C.Term → HashOutput) (b : XmssSecurity.TopIndex)
     (kind : Option ChainIndex) : SourceM C Digest := do
@@ -6117,39 +3930,6 @@ def sourceTopCompletion (seeds : C.Term → HashOutput) (b : XmssSecurity.TopInd
   let ok ← liftM (completePrf seeds (topReleasePoint b kind) value)
   modify fun (st : SourceState C) => { st with consistent := st.consistent && ok }
   pure value
-
-set_option backward.isDefEq.respectTransparency false in
-/-- R's actual prefix preserves slack and reveal synchronization and returns
-exactly the hidden coordinate used to complete its PRF constraint. -/
-theorem sourceTopCompletion_slack (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (b : XmssSecurity.TopIndex) (kind : Option ChainIndex)
-    (source : SourceState C) (backend : CappedCompilerState C)
-    (hs : ReleaseSlack seeds s source backend.1.1.data) (hrev : RevealRelation s source backend)
-    (r : (Digest × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource P seeds q s (sourceTopCompletion seeds b kind) source backend)) :
-    r.1.1 = s (topReleaseKey b kind) ∧ ReleaseSlack seeds s r.1.2 r.2.1.1.data ∧
-      RevealRelation s r.1.2 r.2 ∧
-      PointDone seeds r.2.1.1.data (topReleasePoint b kind) (s (topReleaseKey b kind)) := by
-  simp only [sourceTopCompletion, runSource_bind, mem_support_bind_iff] at hr
-  obtain ⟨revealed, hreveal, completed, hcompleted, modified, hmodified, hr⟩ := hr
-  have hrevealed := sourceReveal_correct P seeds q s (topReleaseKey b kind)
-    source backend hrev revealed hreveal
-  have hslack := sourceReveal_slack P seeds q s (topReleaseKey b kind) source backend hs
-    (by intro e he; cases kind <;> simp [topReleaseKey, topLayer, bottomLayer] at he) revealed hreveal
-  rw [hrevealed.1] at hcompleted
-  have hc := completePrf_top_slack P seeds hinj q s b kind revealed.1.2 revealed.2 hslack
-    completed hcompleted
-  have hf := completePrf_frame P seeds q s _ _ revealed.1.2 revealed.2 completed hcompleted
-  have hsource := congrArg SourceState.revealed hf.1
-  have hbackend := congrArg (fun b : CappedCompilerState C => b.2.1) hf.2.1
-  have hfinal := hrevealed.2.1.frame hsource hbackend
-  rw [runSource_modify, mem_support_pure_iff] at hmodified
-  subst modified
-  rw [runSource_pure, mem_support_pure_iff] at hr
-  subst r
-  exact ⟨hrevealed.1, hc.2.1.frame rfl (fun _ _ => rfl) rfl rfl (fun _ he => he),
-    hfinal, hc.2.2⟩
 
 /-- A stored symbolic top-signature value does not name a bottom opening. -/
 def NoBottomOpening (value : DeferredDigest) : Prop :=
@@ -6193,71 +3973,6 @@ theorem sourceReturnTree_eq (P : PublicParameter) (seeds : C.Term → HashOutput
     topReleasePoint, topReleaseKey, distribute, bind_assoc, pure_bind]
 
 set_option backward.isDefEq.respectTransparency false in
-/-- Both branches of R's optional start completion preserve the joint invariant. -/
-theorem sourceTopStartCompletion_slack (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (b : XmssSecurity.TopIndex) (l : ChainIndex) (start : WinternitzDigit)
-    (source : SourceState C) (backend : CappedCompilerState C)
-    (hs : ReleaseSlack seeds s source backend.1.1.data)
-    (hrev : RevealRelation s source backend) (hv : PendingValid backend.1.1.data)
-    (r : (Unit × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource P seeds q s (sourceTopStartCompletion seeds b l start) source backend)) :
-    ReleaseSlack seeds s r.1.2 r.2.1.1.data ∧ RevealRelation s r.1.2 r.2 ∧
-      PendingValid r.2.1.1.data := by
-  have hv' := runSource_pendingValid P seeds q s _ source backend hv r hr
-  by_cases hp : start.val = 0
-  · simp only [sourceTopStartCompletion, hp, ↓reduceIte, runSource_bind,
-      mem_support_bind_iff, runSource_pure, mem_support_pure_iff] at hr
-    obtain ⟨completed, hcompleted, rfl⟩ := hr
-    have hc := sourceTopCompletion_slack P seeds hinj q s b (some l) source backend hs hrev
-      completed hcompleted
-    exact ⟨hc.2.1, hc.2.2.1, hv'⟩
-  · simp only [sourceTopStartCompletion, hp, ↓reduceIte, runSource_pure,
-      mem_support_pure_iff] at hr
-    subst r
-    exact ⟨hs, hrev, hv⟩
-
-set_option backward.isDefEq.respectTransparency false in
-/-- R's chain body preserves the joint invariant for its stored symbolic value. -/
-theorem sourceReturnedChain_slack (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (b : XmssSecurity.TopIndex) (tree : DeferredBottomTree) (l : ChainIndex)
-    (hvalue : NoBottomOpening (tree.topSignature.chainValue l))
-    (source : SourceState C) (backend : CappedCompilerState C)
-    (hs : ReleaseSlack seeds s source backend.1.1.data)
-    (hrev : RevealRelation s source backend) (hv : PendingValid backend.1.1.data)
-    (r : (Digest × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource P seeds q s (sourceReturnedChain P seeds b tree l) source backend)) :
-    ReleaseSlack seeds s r.1.2 r.2.1.1.data ∧ RevealRelation s r.1.2 r.2 ∧
-      PendingValid r.2.1.1.data := by
-  let I := fun source backend => ReleaseSlack seeds s source backend.1.1.data ∧
-    RevealRelation s source backend ∧ PendingValid backend.1.1.data
-  simp only [sourceReturnedChain, runSource_bind, mem_support_bind_iff] at hr
-  obtain ⟨revealed, hreveal, completed, hcompleted, planted, hplanted, hr⟩ := hr
-  have hi : I revealed.1.2 revealed.2 := by
-    apply runSource_mapM_inv P seeds q s (fun pos => sourceReveal (.topChain b l pos)) I _
-      ?_ source backend ⟨hs, hrev, hv⟩ revealed hreveal
-    intro pos _ st backend h a ha
-    exact ⟨sourceReveal_slack P seeds q s _ st backend h.1
-        (by intro e he; cases he) a ha,
-      (sourceReveal_correct P seeds q s _ st backend h.2.1 a ha).2.1,
-      runSource_pendingValid P seeds q s _ st backend h.2.2 a ha⟩
-  have hc := sourceTopStartCompletion_slack P seeds hinj q s b l (tree.topSignature.encoding l)
-    revealed.1.2 revealed.2 hi.1 hi.2.1 hi.2.2 completed hcompleted
-  have hp : I planted.1.2 planted.2 := by
-    apply runSource_mapM_inv P seeds q s (fun pos => sourcePlant P (.top b l pos)) I _
-      ?_ completed.1.2 completed.2 hc planted hplanted
-    intro pos _ st backend h a ha
-    exact ⟨sourcePlant_slack P seeds q s (.top b l pos) st backend h.1 h.2.2
-        (by intro e he; cases he) a ha,
-      sourcePlant_revealRelation P seeds q s _ st backend h.2.1 a ha,
-      runSource_pendingValid P seeds q s _ st backend h.2.2 a ha⟩
-  exact ⟨sourceRevealDigest_slack P seeds q s _ planted.1.2 planted.2 hp.1
-      (fun e he => (hvalue e he).elim) r hr,
-    (sourceRevealDigest_correct P seeds q s _ planted.1.2 planted.2 hp.2.1 r hr).2.1,
-    runSource_pendingValid P seeds q s _ planted.1.2 planted.2 hp.2.2 r hr⟩
-
-set_option backward.isDefEq.respectTransparency false in
 /-- The same index-order induction as `treeSimHash_state_sequenceFin_invariant`,
 applied to the actual two-state source interpreter. -/
 theorem runSource_sequenceFin_inv {α : Type} (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -6284,44 +3999,6 @@ theorem runSource_sequenceFin_inv {α : Type} (P : PublicParameter) (seeds : C.T
       subst r
       exact ih (fun i => oa i.succ) (fun i => step i.succ) head.1.2 head.2
         (step 0 source backend hs head hhead) tail htail
-
-set_option backward.isDefEq.respectTransparency false in
-/-- The full frozen R source preserves the joint release invariant for stored
-signature values whose symbolic coordinates are not bottom openings. -/
-theorem sourceReturnTree_slack (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (b : XmssSecurity.TopIndex) (tree : DeferredBottomTree)
-    (hshape : ∀ l, NoBottomOpening (tree.topSignature.chainValue l))
-    (source : SourceState C) (backend : CappedCompilerState C)
-    (hs : ReleaseSlack seeds s source backend.1.1.data)
-    (hrev : RevealRelation s source backend) (hv : PendingValid backend.1.1.data)
-    (r : ((BottomTree × Digest) × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource P seeds q s (sourceReturnTree P seeds b tree) source backend)) :
-    ReleaseSlack seeds s r.1.2 r.2.1.1.data ∧ RevealRelation s r.1.2 r.2 ∧
-      PendingValid r.2.1.1.data := by
-  let I := fun source backend => ReleaseSlack seeds s source backend.1.1.data ∧
-    RevealRelation s source backend ∧ PendingValid backend.1.1.data
-  rw [sourceReturnTree_eq] at hr
-  simp only [runSource_bind, runSource_get, pure_bind, mem_support_bind_iff] at hr
-  obtain ⟨opening, hopening, planted, hplanted, values, hvalues, hr⟩ := hr
-  rw [runSource_pure, mem_support_pure_iff] at hr
-  subst r
-  have ho := sourceTopCompletion_slack P seeds hinj q s b none source backend hs hrev opening hopening
-  have hv' := runSource_pendingValid P seeds q s _ source backend hv opening hopening
-  have hp : I planted.1.2 planted.2 := by
-    apply runSource_mapM_inv P seeds q s (sourcePlant P) I _
-      ?_ opening.1.2 opening.2 ⟨ho.2.1, ho.2.2.1, hv'⟩ planted hplanted
-    intro p hmem st backend h a ha
-    have hkey : p.key = .opening topLayer (topKey b) := of_decide_eq_true (List.mem_filter.mp hmem).2
-    apply And.intro (sourcePlant_slack P seeds q s p st backend h.1 h.2.2 ?_ a ha)
-    · exact ⟨sourcePlant_revealRelation P seeds q s p st backend h.2.1 a ha,
-        runSource_pendingValid P seeds q s _ st backend h.2.2 a ha⟩
-    · intro e he
-      have hx := hkey.symm.trans he
-      simp [topLayer, bottomLayer] at hx
-  exact runSource_sequenceFin_inv P seeds q s I chainCount (sourceReturnedChain P seeds b tree)
-    (fun l st backend h a ha => sourceReturnedChain_slack P seeds hinj q s b tree l (hshape l)
-      st backend h.1 h.2.1 h.2.2 a ha) planted.1.2 planted.2 hp values hvalues
 
 set_option backward.isDefEq.respectTransparency false in
 /-- An actual pending read never returns an opening as its symbolic low half. -/
@@ -6984,16 +4661,6 @@ theorem simulateQ {ι α : Type} {spec : OracleSpec ι} (impl : QueryImpl spec (
       simp only [simulateQ_bind, simulateQ_spec_query]
       exact (step t).bind _ ih
 
-/-- A control-field frame preserves the shape of every saved successful tree. -/
-theorem storedTopShape {α : Type} {oa : SourceM C α} (h : SourceKeeps sourceControl oa) :
-    SourcePreserves P seeds q s (fun source _ => StoredTopShape source) oa := by
-  intro source backend hs r hr
-  exact hs.of_control (h.run P seeds q s source backend r hr)
-
-theorem pendingValid {α : Type} (oa : SourceM C α) :
-    SourcePreserves P seeds q s (fun _ backend => PendingValid backend.1.1.data) oa :=
-  fun source backend hv r hr => runSource_pendingValid P seeds q s oa source backend hv r hr
-
 end SourcePreserves
 
 set_option backward.isDefEq.respectTransparency false in
@@ -7097,44 +4764,6 @@ theorem sourceReveals_sourceVirtual (P : PublicParameter) (seeds : C.Term → Ha
         · exact SourcePreserves.pure ()
       · exact SourcePreserves.pure ()
   | _ => exact SourcePreserves.pure ()
-
-set_option backward.isDefEq.respectTransparency false in
-theorem sourceReveals_sourcePending (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest) (p : PendingInput) :
-    SourcePreserves P seeds q s (RevealRelation s) (sourcePending P p) := by
-  have tail (prior : Option DeferredOutput) : SourcePreserves P seeds q s (RevealRelation s) (do
-      let value ← liftM (deferredQuery (C := C) (.pending p))
-      if prior.isNone then modify fun (source : SourceState C) => { source with allocated := source.allocated ++ [p] }
-      pure value : SourceM C DeferredOutput) := by
-    refine (sourceReveals_deferredQuery P seeds q s (.pending p)).bind _ fun value => ?_
-    split
-    · exact (sourceReveals_modify P seeds q s (fun st => { st with allocated := st.allocated ++ [p] })
-        (fun _ => rfl)).bind _ (fun _ => SourcePreserves.pure value)
-    · exact SourcePreserves.pure value
-  unfold sourcePending
-  refine (sourceReveals_deferredQuery P seeds q s (.inspect p)).bind _ fun prior => ?_
-  refine SourcePreserves.get.bind _ fun source => ?_
-  dsimp only
-  split
-  · refine (sourceReveals_deferredQuery P seeds q s (.hash (.hash _))).bind _ fun value => ?_
-    refine (sourceReveals_deferredQuery P seeds q s (.record p value)).bind _ fun _ => ?_
-    exact (sourceReveals_modify P seeds q s (fun st => { st with allocated := st.allocated ++ [p] })
-      (fun _ => rfl)).bind _ (fun _ => SourcePreserves.pure _)
-  · rename_i original priorCopy known next hmiss
-    split
-    · exact (sourceReveals_modify P seeds q s (fun st => { st with consistent := false })
-        (fun _ => rfl)).bind _ (fun _ => tail original)
-    · simpa only [pure_bind] using tail original
-
-/-- Every concrete source backend handler preserves reveal synchronization. -/
-theorem sourceReveals_sourceBackend (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest) (t : DeferredQuery C) :
-    SourcePreserves P seeds q s (RevealRelation s) (sourceBackend P seeds t) := by
-  cases t with
-  | hash input => exact sourceReveals_sourceHash P seeds q s input
-  | pending p => exact sourceReveals_sourcePending P seeds q s p
-  | virtual T point => exact sourceReveals_sourceVirtual P seeds q s T point
-  | _ => exact sourceReveals_deferredQuery P seeds q s _
 
 /-- A concrete PRF read is permitted by the source when its term is held by the
 coalition, already cached, or at a bottom randomizer with an assigned message. -/
@@ -7453,21 +5082,6 @@ theorem SourcePreserves.map {α β : Type} {P : PublicParameter} {seeds : C.Term
   exact h.bind _ (fun value => SourcePreserves.pure (f value))
 
 set_option backward.isDefEq.respectTransparency false in
-/-- The actual full PRF evaluator reads only its given point, so the readable
-point condition suffices throughout all its sequential concrete term reads. -/
-theorem sourcePrfValue_readInvariant (prims : Primitives) (P : PublicParameter)
-    (seeds : C.Term → HashOutput) (hinj : Function.Injective seeds)
-    (q : ℕ) (s : HiddenKey → Digest) (point : Point) :
-    SourcePreserves P seeds q s (ReadInvariant seeds s point)
-      (sourceRoProgram prims P seeds (prfValue seeds point)) := by
-  simp only [sourceRoProgram, prfValue, simulateQ_bind, simulateQ_list_mapM, simulateQ_pure]
-  refine (SourcePreserves.mapM _ _ (fun T _ => ?_)).bind _ (fun _ => SourcePreserves.pure _)
-  simp only [prf, hashQuery, HasQuery.instOfMonadLift_query, simulateQ_map, simulateQ_query,
-      OracleQuery.input_query, OracleQuery.cont_query, id_map, sourceRo]
-  exact (sourceHash_readInvariant P seeds hinj q s point (.prf (seeds T) point)
-    (fun seed p he => (Query.prf.inj he).2.symm)).map truncateHash
-
-set_option backward.isDefEq.respectTransparency false in
 /-- The actual partial PRF evaluator also reads only its given point. Its masks
 are separate structured queries, so they preserve the same readable point. -/
 theorem sourceEval_readInvariant (prims : Primitives) (P : PublicParameter)
@@ -7511,359 +5125,6 @@ theorem sourceReadAllowed_of_no_hiddenHit (x : Keys3 C) (source : SourceState C)
   rw [hh] at htrue
   cases htrue
 
-set_option backward.isDefEq.respectTransparency false in
-/-- Private uniform sampling has no source, cache or release effect. -/
-theorem sourceUniform_releaseInvariant (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest) (n : ℕ) :
-    SourcePreserves P seeds q s (ReleaseInvariant seeds s)
-      (liftM (deferredQuery (C := C) (.uniform n))) := by
-  intro source backend h r hr
-  rw [runSource_deferredQuery_uncounted P seeds q s (.uniform n) (by exact not_false)] at hr
-  simp only [compilerImpl, StateT.run, deferredImpl, Functor.map_map] at hr
-  change r ∈ support ((fun value : Fin (n + 1) => ((value, source), backend)) <$>
-    (liftM (OracleSpec.query (spec := unifSpec) n) : ProbComp (Fin (n + 1)))) at hr
-  rw [support_map] at hr
-  obtain ⟨value, _, rfl⟩ := hr
-  exact h
-
-set_option backward.isDefEq.respectTransparency false in
-/-- Each actual local adversary call preserves the release invariant whenever
-its original hidden-key test is false. Its PRG branch retains the stream-key call. -/
-theorem sourceLocal_releaseInvariant (prims : Primitives) (x : Keys3 C)
-    (hinj : Function.Injective x.2.1) (q : ℕ) (s : HiddenKey → Digest)
-    (t : (LocalSpec C).Domain) (source : SourceState C) (backend : CappedCompilerState C)
-    (h : ReleaseInvariant x.2.1 s source backend)
-    (hh : SigningCoreProof.hiddenHit x source.signing.corrupt t = false)
-    (r : (LocalSpec C t × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource x.1 x.2.1 q s (sourceLocal prims x t) source backend)) :
-    ReleaseInvariant x.2.1 s r.1.2 r.2 := by
-  cases t with
-  | inl n => exact sourceUniform_releaseInvariant x.1 x.2.1 q s n source backend h r hr
-  | inr t =>
-      cases t with
-      | inl query =>
-          exact ⟨sourceHash_slack x.1 x.2.1 hinj q s query source backend h.1
-              (sourceReadAllowed_of_no_hiddenHit x source backend.1.1.data query hh) h.2.2 h.2.1 r hr,
-            sourceReveals_sourceHash x.1 x.2.1 q s query source backend h.2.1 r hr,
-            runSource_pendingValid x.1 x.2.1 q s _ source backend h.2.2 r hr⟩
-      | inr inp =>
-          exact ((sourceHash_releaseInvariant x.1 x.2.1 hinj q s (.streamKey inp.2.1)
-              (fun _ _ he => by cases he)).bind _ (fun _ => SourcePreserves.pure _))
-            source backend h r hr
-
-/-- Updating fields outside signing and reveals preserves the joint release
-invariant and has no backend effect. -/
-theorem ReleaseInvariant.source_frame {seeds : C.Term → HashOutput} {s : HiddenKey → Digest}
-    {source source' : SourceState C} {backend : CappedCompilerState C}
-    (h : ReleaseInvariant seeds s source backend)
-    (hs : source'.signing = source.signing) (hr : source'.revealed = source.revealed) :
-    ReleaseInvariant seeds s source' backend :=
-  ⟨h.1.frame hs (fun _ _ => rfl) rfl rfl (fun _ he => hr ▸ he),
-    h.2.1.frame hr rfl, h.2.2⟩
-
-set_option backward.isDefEq.respectTransparency false in
-/-- At the original adversary boundary, a final down hidden-key flag supplies
-the local no-hit premise. Thus the actual call, including its final flag and
-candidate-log update, preserves the release invariant until that original flag. -/
-theorem sourceOracles_local_releaseInvariant (prims : Primitives) (x : Keys3 C)
-    (hinj : Function.Injective x.2.1) (top : TopTree) (q : ℕ) (s : HiddenKey → Digest)
-    (t : (LocalSpec C).Domain) (source : SourceState C) (backend : CappedCompilerState C)
-    (h : ReleaseInvariant x.2.1 s source backend)
-    (r : (LocalSpec C t × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource x.1 x.2.1 q s (sourceOracles prims x top (.inl t)) source backend))
-    (hflag : r.1.2.hiddenFlag = false) : ReleaseInvariant x.2.1 s r.1.2 r.2 := by
-  have hlocal := sourceOracles_local_hiddenFlag prims x top q s t source backend r hr
-  have hh : SigningCoreProof.hiddenHit x source.signing.corrupt t = false := by
-    rw [hflag] at hlocal
-    exact (Bool.or_eq_false_iff.mp hlocal.symm).2
-  simp only [sourceOracles, runSource_bind, runSource_get, mem_support_bind_iff,
-    mem_support_pure_iff] at hr
-  obtain ⟨_, rfl, a, ha, b, hb, hr⟩ := hr
-  have hi := sourceLocal_releaseInvariant prims x hinj q s t source backend h hh a ha
-  rw [runSource_modify, mem_support_pure_iff] at hb
-  subst b
-  rw [runSource_pure, mem_support_pure_iff] at hr
-  subst r
-  exact hi.source_frame rfl rfl
-
-/-- Source-only updates that preserve signing and reveal maps preserve the
-joint release invariant. -/
-theorem sourceModify_releaseInvariant (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest) (f : SourceState C → SourceState C)
-    (hs : ∀ source, (f source).signing = source.signing)
-    (hr : ∀ source, (f source).revealed = source.revealed) :
-    SourcePreserves P seeds q s (ReleaseInvariant seeds s) (modify f : SourceM C Unit) :=
-  SourcePreserves.modify f (fun source _ h => h.source_frame (hs source) (hr source))
-
-set_option backward.isDefEq.respectTransparency false in
-/-- A raw pending read changes only the pending table and count; it preserves
-release slack on both the cached and fresh sampling branches. -/
-theorem sourceRawPending_releaseInvariant (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest) (p : PendingInput) :
-    SourcePreserves P seeds q s (ReleaseInvariant seeds s)
-      (liftM (deferredQuery (C := C) (.pending p))) := by
-  intro source backend h r hr
-  refine ⟨?_, sourceReveals_deferredQuery P seeds q s (.pending p) source backend h.2.1 r hr,
-    runSource_pendingValid P seeds q s _ source backend h.2.2 r hr⟩
-  rw [runSource_deferredQuery_no_candidate P seeds q s (.pending p) rfl] at hr
-  simp only [compilerImpl, StateT.run, support_map] at hr
-  obtain ⟨a, ⟨b, hb, rfl⟩, rfl⟩ := hr
-  cases hp : backend.1.1.data.pending p with
-  | some value =>
-      simp only [deferredImpl, hp, mem_support_pure_iff] at hb
-      subst b
-      exact h.1
-  | none =>
-      simp only [deferredImpl, hp, support_map] at hb
-      obtain ⟨value, _, rfl⟩ := hb
-      exact h.1.frame rfl (fun _ _ => rfl) rfl rfl (fun _ he => he)
-
-set_option backward.isDefEq.respectTransparency false in
-/-- Pending inspection is read-only for both source and backend. -/
-theorem sourceInspect_releaseInvariant (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest) (p : PendingInput) :
-    SourcePreserves P seeds q s (ReleaseInvariant seeds s)
-      (liftM (deferredQuery (C := C) (.inspect p))) := by
-  intro source backend h r hr
-  rw [runSource_inspect, mem_support_pure_iff] at hr
-  subst r
-  exact h
-
-set_option backward.isDefEq.respectTransparency false in
-/-- Recording a concrete post-release pending answer changes no PRF entry,
-virtual slot or pad. -/
-theorem sourceRecord_releaseInvariant (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest) (p : PendingInput) (value : HashOutput) :
-    SourcePreserves P seeds q s (ReleaseInvariant seeds s)
-      (liftM (deferredQuery (C := C) (.record p value))) := by
-  intro source backend h r hr
-  refine ⟨?_, sourceReveals_deferredQuery P seeds q s (.record p value) source backend h.2.1 r hr,
-    runSource_pendingValid P seeds q s _ source backend h.2.2 r hr⟩
-  rw [runSource_deferredQuery_uncounted P seeds q s (.record p value) (by exact not_false)] at hr
-  simp only [compilerImpl, deferredImpl, StateT.run, support_map] at hr
-  obtain ⟨a, ⟨b, hb, rfl⟩, rfl⟩ := hr
-  simp only [mem_support_pure_iff] at hb
-  subst b
-  exact h.1.frame rfl (fun _ _ => rfl) rfl rfl (fun _ he => he)
-
-set_option backward.isDefEq.respectTransparency false in
-/-- The actual pending handler preserves the release invariant, including its
-concrete hash/cache fallback after an opening has already been revealed. -/
-theorem sourcePending_releaseInvariant (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest) (p : PendingInput) :
-    SourcePreserves P seeds q s (ReleaseInvariant seeds s) (sourcePending P p) := by
-  have tail (prior : Option DeferredOutput) : SourcePreserves P seeds q s (ReleaseInvariant seeds s) (do
-      let value ← liftM (deferredQuery (C := C) (.pending p))
-      if prior.isNone then modify fun (source : SourceState C) => { source with allocated := source.allocated ++ [p] }
-      pure value : SourceM C DeferredOutput) := by
-    refine (sourceRawPending_releaseInvariant P seeds q s p).bind _ fun value => ?_
-    split
-    · exact (sourceModify_releaseInvariant P seeds q s (fun st => { st with allocated := st.allocated ++ [p] })
-        (fun _ => rfl) (fun _ => rfl)).bind _ (fun _ => SourcePreserves.pure value)
-    · exact SourcePreserves.pure value
-  unfold sourcePending
-  refine (sourceInspect_releaseInvariant P seeds q s p).bind _ fun prior => ?_
-  refine SourcePreserves.get.bind _ fun source => ?_
-  dsimp only
-  split
-  · rename_i priorCopy known next input hknown hnext
-    have hhash := sourceHash_releaseInvariant P seeds hinj q s (.hash (p.input P input))
-        (fun _ _ he => by cases he)
-    simp only [sourceHash, pure_bind] at hhash
-    refine hhash.bind _ fun value => ?_
-    refine (sourceRecord_releaseInvariant P seeds q s p value).bind _ fun _ => ?_
-    exact (sourceModify_releaseInvariant P seeds q s (fun st => { st with allocated := st.allocated ++ [p] })
-      (fun _ => rfl) (fun _ => rfl)).bind _ (fun _ => SourcePreserves.pure _)
-  · rename_i original priorCopy known next hmiss
-    split
-    · exact (sourceModify_releaseInvariant P seeds q s (fun st => { st with consistent := false })
-        (fun _ => rfl) (fun _ => rfl)).bind _ (fun _ => tail original)
-    · simpa only [pure_bind] using tail original
-
-/-- The actual virtual call, including its P release check, preserves the joint
-release invariant. -/
-theorem sourceVirtual_releaseInvariant (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest) (T : C.Term) (point : Point) :
-    SourcePreserves P seeds q s (ReleaseInvariant seeds s) (sourceVirtual P seeds T point) := by
-  intro source backend h r hr
-  exact ⟨sourceVirtual_slack P seeds hinj q s T point source backend h.1 h.2.2 h.2.1 r hr,
-    sourceReveals_sourceVirtual P seeds q s T point source backend h.2.1 r hr,
-    runSource_pendingValid P seeds q s _ source backend h.2.2 r hr⟩
-
-/-- Both fresh and cached pad reads preserve the joint release invariant. -/
-theorem sourcePad_releaseInvariant (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest) (point : Point) :
-    SourcePreserves P seeds q s (ReleaseInvariant seeds s)
-      (liftM (deferredQuery (C := C) (.pad point))) := by
-  intro source backend h r hr
-  exact ⟨(sourcePad_slack P seeds q s point source backend h.1 r hr).1,
-    sourceReveals_deferredQuery P seeds q s (.pad point) source backend h.2.1 r hr,
-    runSource_pendingValid P seeds q s _ source backend h.2.2 r hr⟩
-
-set_option backward.isDefEq.respectTransparency false in
-/-- A typed hash program has no PRF reads, so every actual source call preserves
-the joint release invariant. -/
-theorem sourceHashProgram_releaseInvariant {α : Type} (P : PublicParameter)
-    (seeds : C.Term → HashOutput) (hinj : Function.Injective seeds)
-    (q : ℕ) (s : HiddenKey → Digest) (oa : OracleComp HashSpec α) :
-    SourcePreserves P seeds q s (ReleaseInvariant seeds s) (sourceHashProgram P seeds oa) := by
-  unfold sourceHashProgram deferredHash
-  induction oa using OracleComp.inductionOn with
-  | pure value =>
-      simp only [simulateQ_pure]
-      exact SourcePreserves.pure value
-  | query_bind input next ih =>
-      simp only [simulateQ_bind, backendQuery, simulateQ_query,
-        OracleQuery.input_query, OracleQuery.cont_query, id_map]
-      exact (sourceHash_releaseInvariant P seeds hinj q s (.hash input)
-        (fun _ _ he => by cases he)).bind _ ih
-
-set_option backward.isDefEq.respectTransparency false in
-/-- The actual six-call bottom row preserves release slack through its virtual
-PRF terms, both public pads and each repeated pending-prefix read. -/
-theorem sourceBottomRow_releaseInvariant (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (e : KeyIndex) (l : ChainIndex) :
-    SourcePreserves P seeds q s (ReleaseInvariant seeds s) (sourceBottomRow P seeds e l) := by
-  simp only [sourceBottomRow, deferredBottomRow, simulateQ_bind, simulateQ_list_mapM,
-    simulateQ_pure, backendQuery, simulateQ_query, OracleQuery.input_query,
-    OracleQuery.cont_query, id_map]
-  refine (SourcePreserves.mapM _ _ (fun t ht => ?_)).bind _ fun _ => ?_
-  · obtain ⟨pos, _, hm⟩ := List.mem_flatMap.mp ht
-    obtain ⟨T, _, rfl⟩ := List.mem_map.mp hm
-    exact (sourceVirtual_releaseInvariant P seeds hinj q s T _).bind _ (fun _ => SourcePreserves.pure ())
-  · refine (sourcePad_releaseInvariant P seeds q s _).bind _ fun first => ?_
-    refine (sourcePad_releaseInvariant P seeds q s _).bind _ fun second => ?_
-    exact (SourcePreserves.mapM _ _ (fun p _ => sourcePending_releaseInvariant P seeds hinj q s p)).bind _
-      (fun _ => SourcePreserves.pure _)
-
-set_option backward.isDefEq.respectTransparency false in
-/-- A top-chain build reads its virtual starting terms and three pending edges
-without revealing those chain inputs. -/
-theorem sourceTopEnd_releaseInvariant (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (b : XmssSecurity.TopIndex) (l : ChainIndex) :
-    SourcePreserves P seeds q s (ReleaseInvariant seeds s)
-      (simulateQ (sourceBackend P seeds) (deferredTopEnd b l)) := by
-  simp only [deferredTopEnd, simulateQ_bind, simulateQ_list_mapM,
-    simulateQ_pure, backendQuery, simulateQ_query, OracleQuery.input_query,
-    OracleQuery.cont_query, id_map]
-  refine (SourcePreserves.mapM _ _ (fun T _ => sourceVirtual_releaseInvariant P seeds hinj q s T _)).bind _ fun _ => ?_
-  refine (sourcePending_releaseInvariant P seeds hinj q s _).bind _ fun _ => ?_
-  refine (sourcePending_releaseInvariant P seeds hinj q s _).bind _ fun _ => ?_
-  exact (sourcePending_releaseInvariant P seeds hinj q s _).bind _ (fun _ => SourcePreserves.pure _)
-
-/-- The full actual top-tree setup preserves the joint release invariant. -/
-theorem sourceTopTree_releaseInvariant (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest) :
-    SourcePreserves P seeds q s (ReleaseInvariant seeds s) (sourceTopTree P seeds) := by
-  simp only [sourceTopTree, deferredTopTree, simulateQ_bind, simulateQ_list_mapM, simulateQ_pure]
-  refine (SourcePreserves.mapM _ _ (fun bl _ => sourceTopEnd_releaseInvariant P seeds hinj q s bl.1 bl.2)).bind _
-    fun ends => ?_
-  exact (sourceHashProgram_releaseInvariant P seeds hinj q s _).bind _ (fun _ => SourcePreserves.pure _)
-
-/-- A commitment can trigger P during its virtual terms; the subsequent pending
-call keeps the concrete cache fallback and preserves release slack. -/
-theorem sourceCommitment_releaseInvariant (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest) (e : KeyIndex) :
-    SourcePreserves P seeds q s (ReleaseInvariant seeds s) (sourceCommitment P seeds e) := by
-  unfold sourceCommitment
-  refine (SourcePreserves.mapM _ _ (fun T _ => sourceVirtual_releaseInvariant P seeds hinj q s T _)).bind _ fun _ => ?_
-  exact (sourcePending_releaseInvariant P seeds hinj q s _).bind _ (fun _ => SourcePreserves.pure _)
-
-/-- The stored symbolic top-signature prefix preserves the joint release invariant. -/
-theorem sourceTopValue_releaseInvariant (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (b : XmssSecurity.TopIndex) (l : ChainIndex) (pos : WinternitzDigit) :
-    SourcePreserves P seeds q s (ReleaseInvariant seeds s) (sourceTopValue P seeds b l pos) := by
-  unfold sourceTopValue
-  refine (SourcePreserves.mapM _ _ (fun T _ => sourceVirtual_releaseInvariant P seeds hinj q s T _)).bind _ fun _ => ?_
-  exact (SourcePreserves.mapM _ _ (fun _ _ => sourcePending_releaseInvariant P seeds hinj q s _)).bind _
-    (fun _ => SourcePreserves.pure _)
-
-/-- The verification suffix of a stored symbolic top signature preserves the
-joint release invariant even on its consistency-failure branch. -/
-theorem sourceTopRecover_releaseInvariant (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (b : XmssSecurity.TopIndex) (l : ChainIndex) (pos : WinternitzDigit) (initial : DeferredDigest) :
-    SourcePreserves P seeds q s (ReleaseInvariant seeds s) (sourceTopRecover P b l pos initial) := by
-  unfold sourceTopRecover
-  refine (SourcePreserves.mapM _ _ (fun _ _ => sourcePending_releaseInvariant P seeds hinj q s _)).bind _ fun values => ?_
-  dsimp only
-  split
-  · exact SourcePreserves.pure _
-  · exact (sourceModify_releaseInvariant P seeds q s (fun st => { st with consistent := false })
-      (fun _ => rfl) (fun _ => rfl)).bind _ (fun _ => SourcePreserves.pure _)
-
-set_option backward.isDefEq.respectTransparency false in
-/-- The complete actual bottom-tree construction preserves release slack and
-both synchronization invariants, on successful builds and on every failure path. -/
-theorem sourceBottomTree_releaseInvariant (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (top : TopTree) (b : XmssSecurity.TopIndex) :
-    SourcePreserves P seeds q s (ReleaseInvariant seeds s) (sourceBottomTree P seeds top b) := by
-  unfold sourceBottomTree
-  refine SourcePreserves.bind (SourcePreserves.mapM _ _ (fun el _ => by
-    exact sourceBottomRow_releaseInvariant P seeds hinj q s el.1 el.2)) _ fun rows => ?_
-  refine (SourcePreserves.mapM _ _ (fun k _ => sourceCommitment_releaseInvariant P seeds hinj q s (bottomKey b k))).bind _
-    fun commitments => ?_
-  refine (SourcePreserves.mapM _ _ (fun T _ => sourceVirtual_releaseInvariant P seeds hinj q s T _)).bind _
-    fun _ => ?_
-  refine (sourceHashProgram_releaseInvariant P seeds hinj q s _).bind _ fun root => ?_
-  refine (sourcePending_releaseInvariant P seeds hinj q s _).bind _ fun base => ?_
-  refine (sourceHashProgram_releaseInvariant P seeds hinj q s _).bind _ fun found => ?_
-  cases found with
-  | none => exact SourcePreserves.pure none
-  | some answer =>
-      rcases answer with ⟨randomness, encoding⟩
-      refine (SourcePreserves.sequenceFin _ _
-        (fun l => sourceTopValue_releaseInvariant P seeds hinj q s b l (encoding l))).bind _ fun values => ?_
-      refine (sourceHashProgram_releaseInvariant P seeds hinj q s _).bind _ fun path => ?_
-      refine (sourceHashProgram_releaseInvariant P seeds hinj q s _).bind _ fun digest => ?_
-      cases hd : Codeword.decode digest with
-      | none =>
-          dsimp only
-          exact SourcePreserves.pure none
-      | some checked =>
-          dsimp only
-          split
-          · exact (sourceModify_releaseInvariant P seeds q s (fun st => { st with consistent := false })
-              (fun _ => rfl) (fun _ => rfl)).bind _ (fun _ => SourcePreserves.pure none)
-          · refine (SourcePreserves.sequenceFin _ _
-              (fun l => sourceTopRecover_releaseInvariant P seeds hinj q s b l (encoding l) (values l))).bind _ fun ends => ?_
-            refine (sourceHashProgram_releaseInvariant P seeds hinj q s _).bind _ fun leaf => ?_
-            refine (sourceHashProgram_releaseInvariant P seeds hinj q s _).bind _ fun root => ?_
-            split <;> exact SourcePreserves.pure _
-
-/-- D17's fresh build and stored success or failure branches all preserve the
-joint release invariant. -/
-theorem sourceBottomOnce_releaseInvariant (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (top : TopTree) (b : XmssSecurity.TopIndex) :
-    SourcePreserves P seeds q s (ReleaseInvariant seeds s) (sourceBottomOnce P seeds top b) := by
-  unfold sourceBottomOnce
-  refine SourcePreserves.get.bind _ fun source => ?_
-  cases source.trees b with
-  | some tree => exact SourcePreserves.pure tree
-  | none =>
-      refine (sourceBottomTree_releaseInvariant P seeds hinj q s top b).bind _ fun tree => ?_
-      exact (sourceModify_releaseInvariant P seeds q s
-        (fun st => { st with trees := Function.update st.trees b (some tree) })
-        (fun _ => rfl) (fun _ => rfl)).bind _ (fun _ => SourcePreserves.pure tree)
-
-/-- Forgetting virtual slots in a comparison state preserves every release
-constraint; concrete entries and all targets remain unchanged. -/
-theorem ReleaseSlack.virtual_subset {seeds : C.Term → HashOutput} {s : HiddenKey → Digest}
-    {source : SourceState C} {data : DeferredState C}
-    (h : ReleaseSlack seeds s source data) (virtual : Finset (C.Term × Point))
-    (hv : virtual ⊆ data.virtual) : ReleaseSlack seeds s source { data with virtual := virtual } := by
-  refine ⟨h.corrupt_bound, ?_, h.bottom_chain, h.top_opening, h.top_start, h.bottom_released⟩
-  intro e
-  rcases h.bottom_opening e with hd | ⟨hb, hu⟩ | ⟨hb, T, ht, hc⟩
-  · exact Or.inl hd
-  · exact Or.inr (Or.inl ⟨hb, hu⟩)
-  · exact Or.inr (Or.inr ⟨hb, T, fun hm => ht (hv hm), hc⟩)
-
 /-- Updating the source binding needs only the release alternative at that
 one key; every other key's message binding and release constraint is unchanged. -/
 theorem ReleaseSlack.bind {seeds : C.Term → HashOutput} {s : HiddenKey → Digest}
@@ -7886,67 +5147,6 @@ theorem ReleaseSlack.bind {seeds : C.Term → HashOutput} {s : HiddenKey → Dig
     · exact Or.inr (Or.inl ⟨by simpa only [Function.update_of_ne hfe] using hb, hu⟩)
     · exact Or.inr (Or.inr ⟨by simpa only [Function.update_of_ne hfe] using hb, hm⟩)
 
-/-- If binding does not make P ready, the actual unchanged backend already
-supplies a stable release-slack boundary. -/
-theorem ReleaseSlack.bind_unready {seeds : C.Term → HashOutput} {s : HiddenKey → Digest}
-    {source : SourceState C} {data : DeferredState C}
-    (h : ReleaseSlack seeds s source data) (e : KeyIndex) (message : Message)
-    (hn : ¬OpeningReady seeds data
-      { source.signing with bound := Function.update source.signing.bound e (some message) } e) :
-    ReleaseSlack seeds s { source with signing :=
-      { source.signing with bound := Function.update source.signing.bound e (some message) } } data := by
-  apply h.bind e message
-  apply Or.inr
-  have hall : ¬∀ T : C.Term, (T, Point.randomizer bottomLayer e) ∈ data.virtual ∨
-      (data.cache (.prf (seeds T) (.randomizer bottomLayer e))).isSome :=
-    fun ht => hn ⟨by simp, ht⟩
-  obtain ⟨T, hT⟩ := not_forall.mp hall
-  refine ⟨T, fun hm => hT (Or.inl hm), ?_⟩
-  cases hc : data.cache (.prf (seeds T) (.randomizer bottomLayer e)) with
-  | none => rfl
-  | some value => exact (hT (Or.inr (by simp [hc]))).elim
-
-/-- A newly bound key always has a valid comparison state for P: erase only
-that key's virtual slots in the comparison, keeping the actual backend intact.
-P's existing frame theorem ignores precisely those selected virtual slots. -/
-theorem ReleaseSlack.bind_filtered {seeds : C.Term → HashOutput} {s : HiddenKey → Digest}
-    {source : SourceState C} {data : DeferredState C}
-    (h : ReleaseSlack seeds s source data) (e : KeyIndex) (message : Message) :
-    ReleaseSlack seeds s { source with signing :=
-      { source.signing with bound := Function.update source.signing.bound e (some message) } }
-      { data with virtual := data.virtual.filter (fun tp => tp.2 ≠ .randomizer bottomLayer e) } := by
-  apply (h.virtual_subset _ (Finset.filter_subset _ _)).bind e message
-  rcases h.bottom_opening e with hd | ⟨_, hu⟩ | ⟨_, T, _, hc⟩
-  · exact Or.inl hd
-  · obtain ⟨T, hT⟩ := exists_lacked_term source.signing.corrupt h.corrupt_bound
-    exact Or.inr ⟨T, fun hm => (Finset.mem_filter.mp hm).2 rfl, hu T hT⟩
-  · exact Or.inr ⟨T, fun hm => (Finset.mem_filter.mp hm).2 rfl, hc⟩
-
-/-- P after the source binds a key runs on the actual backend, even if all its
-missing concrete terms were already virtual at the binding boundary. -/
-theorem sourceReleaseOpening_after_bind (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (e : KeyIndex) (message : Message) (source : SourceState C) (backend : CappedCompilerState C)
-    (h : ReleaseInvariant seeds s source backend)
-    (r : (Unit × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource P seeds q s (sourceReleaseOpening P seeds e)
-      { source with signing := { source.signing with bound := Function.update source.signing.bound e (some message) } }
-      backend)) :
-    ReleaseInvariant seeds s r.1.2 r.2 ∧
-      PointDone seeds r.2.1.1.data (.randomizer bottomLayer e) (s (.opening bottomLayer e)) := by
-  have hrev : RevealRelation s
-      { source with signing := { source.signing with bound := Function.update source.signing.bound e (some message) } }
-      backend := h.2.1
-  have hp := sourceReleaseOpening_slack_frame P seeds hinj q s e _ backend _
-    (h.1.bind_filtered e message) (fun _ _ => rfl) (by
-      intro f hfe T
-      simp only [Finset.mem_filter]
-      refine ⟨fun hm => ⟨hm, ?_⟩, And.left⟩
-      intro he
-      exact hfe (Point.randomizer.inj he).2) rfl h.2.2 hrev r hr
-  exact ⟨⟨hp.1, sourceReveals_sourceReleaseOpening P seeds q s e _ backend hrev r hr,
-    runSource_pendingValid P seeds q s _ _ backend h.2.2 r hr⟩, hp.2⟩
-
 /-- The actual write-once backend binding has no data-cache or release effect. -/
 theorem runSource_bindKey (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : ℕ) (s : HiddenKey → Digest) (e : KeyIndex) (message : Message)
@@ -7956,46 +5156,6 @@ theorem runSource_bindKey (P : PublicParameter) (seeds : C.Term → HashOutput)
   rw [runSource_deferredQuery_uncounted P seeds q s (.bindKey e message) (by exact not_false)]
   simp only [compilerImpl, StateT.run, map_pure]
   rfl
-
-set_option backward.isDefEq.respectTransparency false in
-/-- The actual round-1 handler preserves the joint release invariant through
-its guards, source and backend binding, immediate P check, and honest partial
-PRF evaluation. This covers binding after every term was made virtual. -/
-theorem sourceRound1_releaseInvariant (prims : Primitives) (x : Keys3 C)
-    (hinj : Function.Injective x.2.1) (top : TopTree) (q : ℕ) (s : HiddenKey → Digest)
-    (i : C.Party) (J : C.Quorum) (e : KeyIndex) (message : Message) :
-    SourcePreserves x.1 x.2.1 q s (ReleaseInvariant x.2.1 s)
-      (sourceTsig prims x top (.round1 i J e message)) := by
-  intro source backend h r hr
-  have part (source' : SourceState C) (backend' : CappedCompilerState C)
-      (h' : ReleaseInvariant x.2.1 s source' backend')
-      (hp : PointReadable x.2.1 source' backend'.1.1.data (.randomizer bottomLayer e))
-      (hr' : r ∈ support (runSource x.1 x.2.1 q s
-        (some <$> sourcePart prims x i J (.randomizer bottomLayer e) message) source' backend')) :
-      ReleaseInvariant x.2.1 s r.1.2 r.2 :=
-    (((sourcePart_readInvariant prims x hinj q s i J (.randomizer bottomLayer e) message).map some)
-      source' backend' ⟨h', hp⟩ r hr').1
-  simp only [sourceTsig, runSource_bind, runSource_get, pure_bind] at hr
-  split at hr
-  · rw [runSource_pure, mem_support_pure_iff] at hr
-    subst r
-    exact h
-  · simp only [runSource_bind, runSource_modify, runSource_bindKey, runSource_snapshot, runSource_get, pure_bind] at hr
-    let assigned : SourceState C := { source with signing :=
-      { source.signing with bound := Function.update source.signing.bound e (some message) } }
-    let boundBackend : CappedCompilerState C := (({ backend.1.1 with bound := (if backend.1.1.bound e = none then Function.update backend.1.1.bound e (some message) else backend.1.1.bound) }, backend.1.2), backend.2)
-    have hbase : ReleaseInvariant x.2.1 s source boundBackend := h
-    split at hr
-    · rename_i hready
-      rw [runSource_bind, mem_support_bind_iff] at hr
-      obtain ⟨released, hreleased, hr⟩ := hr
-      have hp := sourceReleaseOpening_after_bind x.1 x.2.1 hinj q s e message source boundBackend hbase
-        released (by with_reducible exact hreleased)
-      exact part released.1.2 released.2 hp.1 hp.2.readable hr
-    · rename_i hready
-      have hs : ReleaseSlack x.2.1 s assigned boundBackend.1.1.data := h.1.bind_unready e message hready
-      have hi : ReleaseInvariant x.2.1 s assigned boundBackend := ⟨hs, h.2⟩
-      exact part assigned boundBackend hi (Or.inr ⟨e, rfl, by simp [assigned]⟩) hr
 
 /-- Every canonical term at a point has a concrete cached answer. -/
 def PrfPointCached (seeds : C.Term → HashOutput) (data : DeferredState C) (point : Point) : Prop :=
@@ -8085,24 +5245,6 @@ theorem sourceReleaseBottomSuffix_readable (P : PublicParameter) (seeds : C.Term
     ⟨start.val, hstart⟩ (Nat.le_refl _)
   exact hc
 
-set_option backward.isDefEq.respectTransparency false in
-/-- R leaves its opening point concretely cached before the tree oracle runs
-its counted full PRF read. All later plants and chain releases preserve it. -/
-theorem sourceReturnTree_opening_cached (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (b : XmssSecurity.TopIndex) (tree : DeferredBottomTree)
-    (source : SourceState C) (backend : CappedCompilerState C)
-    (h : ReleaseInvariant seeds s source backend)
-    (r : ((BottomTree × Digest) × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource P seeds q s (sourceReturnTree P seeds b tree) source backend)) :
-    PrfPointCached seeds r.2.1.1.data (.randomizer topLayer (topKey b)) := by
-  rw [sourceReturnTree_eq, runSource_bind, mem_support_bind_iff] at hr
-  obtain ⟨opening, hopening, hr⟩ := hr
-  have ho := sourceTopCompletion_slack P seeds hinj q s b none source backend h.1 h.2.1 opening hopening
-  have hc : PrfPointCached seeds opening.2.1.1.data (.randomizer topLayer (topKey b)) :=
-    fun T => Option.ne_none_iff_exists'.mpr (ho.2.2.2.1 T)
-  exact hc.mono (runSource_cache_le P seeds q s _ opening.1.2 opening.2 r hr)
-
 /-- A projection of preserved source fields is itself preserved. -/
 theorem SourceKeeps.comp {α β γ : Type} {field : SourceState C → β} {oa : SourceM C α}
     (h : SourceKeeps field oa) (f : β → γ) : SourceKeeps (fun st => f (field st)) oa :=
@@ -8120,36 +5262,6 @@ theorem sourceSigning_sourceBottomOnce (P : PublicParameter) (seeds : C.Term →
       refine ((sourceControl_sourceBottomTree P seeds top b).comp Prod.fst).bind _ fun tree => ?_
       exact (SourceKeeps.modify (fun st => { st with trees := Function.update st.trees b (some tree) })
         (fun _ => rfl)).bind _ (fun _ => SourceKeeps.pure tree)
-
-set_option backward.isDefEq.respectTransparency false in
-/-- The actual tree oracle builds or replays its D17 result, runs R only on a
-successful result, and then reads the already-completed top opening point. -/
-theorem sourceTree_releaseInvariant (prims : Primitives) (x : Keys3 C)
-    (hinj : Function.Injective x.2.1) (top : TopTree) (q : ℕ) (s : HiddenKey → Digest)
-    (b : XmssSecurity.TopIndex) (source : SourceState C) (backend : CappedCompilerState C)
-    (h : ReleaseInvariant x.2.1 s source backend) (hshape : StoredTopShape source)
-    (r : (TsigSpec C (.tree b) × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource x.1 x.2.1 q s (sourceTsig prims x top (.tree b)) source backend)) :
-    ReleaseInvariant x.2.1 s r.1.2 r.2 := by
-  simp only [sourceTsig, runSource_bind, mem_support_bind_iff] at hr
-  obtain ⟨built, hbuilt, hr⟩ := hr
-  have hb := sourceBottomOnce_releaseInvariant x.1 x.2.1 hinj q s top b source backend h built hbuilt
-  cases ht : built.1.1 with
-  | none =>
-      simp only [ht, runSource_pure, mem_support_pure_iff] at hr
-      subst r
-      exact hb
-  | some tree =>
-      have shape := sourceBottomOnce_noBottomOpening x.1 x.2.1 q s top b source backend h.2.2 hshape built hbuilt tree ht
-      simp only [ht, runSource_bind, mem_support_bind_iff] at hr
-      obtain ⟨returned, hreturned, opened, hopened, hr⟩ := hr
-      have ret := sourceReturnTree_slack x.1 x.2.1 hinj q s b tree shape built.1.2 built.2 hb.1 hb.2.1 hb.2.2 returned hreturned
-      have cached := sourceReturnTree_opening_cached x.1 x.2.1 hinj q s b tree built.1.2 built.2 hb returned hreturned
-      have ho := sourcePrfValue_readInvariant prims x.1 x.2.1 hinj q s (.randomizer topLayer (topKey b))
-        returned.1.2 returned.2 ⟨ret, Or.inl cached⟩ opened hopened
-      rw [runSource_pure, mem_support_pure_iff] at hr
-      subst r
-      exact ho.1
 
 /-- Typed hashes interpreted through the honest RO interface preserve the
 release invariant, including the stream-key routing of that interface. -/
@@ -8228,140 +5340,6 @@ theorem ReleaseInvariant.released {seeds : C.Term → HashOutput} {s : HiddenKey
       { source.signing with released := source.signing.released ++ [(e, message, i)] } } backend :=
   ⟨⟨h.1.corrupt_bound, h.1.bottom_opening, h.1.bottom_chain, h.1.top_opening,
     h.1.top_start, h.1.bottom_released⟩, h.2⟩
-
-set_option backward.isDefEq.respectTransparency false in
-/-- The complete actual round-2 handler preserves the release invariant through
-D17 replay/build, the bound randomizer read, codeword selection and every Q callback. -/
-theorem sourceRound2_releaseInvariant (prims : Primitives) (x : Keys3 C)
-    (hinj : Function.Injective x.2.1) (top : TopTree) (q : ℕ) (s : HiddenKey → Digest)
-    (i : C.Party) (J : C.Quorum) (e : KeyIndex) (message : Message) (parts : C.Party → Digest) :
-    SourcePreserves x.1 x.2.1 q s (ReleaseInvariant x.2.1 s)
-      (sourceTsig prims x top (.round2 i J e message parts)) := by
-  intro source backend h r hr
-  simp only [sourceTsig, runSource_bind, runSource_get, pure_bind] at hr
-  split at hr
-  · rw [runSource_pure, mem_support_pure_iff] at hr
-    subst r
-    exact h
-  · rename_i hguard
-    have hbound : source.signing.bound e = some message := by tauto
-    rw [runSource_bind, mem_support_bind_iff] at hr
-    obtain ⟨built, hbuilt, hr⟩ := hr
-    have hb := sourceBottomOnce_releaseInvariant x.1 x.2.1 hinj q s top (treeOf e) source backend h built hbuilt
-    have hsign := (sourceSigning_sourceBottomOnce x.1 x.2.1 top (treeOf e)).run x.1 x.2.1 q s source backend built hbuilt
-    cases ht : built.1.1 with
-    | none =>
-        simp only [ht, runSource_pure, mem_support_pure_iff] at hr
-        subst r
-        exact hb
-    | some tree =>
-        simp only [ht, runSource_bind, mem_support_bind_iff] at hr
-        obtain ⟨own, hown, values, hvalues, hr⟩ := hr
-        have hp : ReadInvariant x.2.1 s (.randomizer bottomLayer e) built.1.2 built.2 := by
-          refine ⟨hb, Or.inr ⟨e, rfl, ?_⟩⟩
-          rw [hsign, hbound]
-          exact Option.some_ne_none _
-        have ho := sourcePart_readInvariant prims x hinj q s i J (.randomizer bottomLayer e) message
-          built.1.2 built.2 hp own hown
-        have hv := sourceRound2Values_releaseInvariant prims x hinj q s i J (tree.commitment e) e message
-          (Function.update parts i own.1.1) own.1.2 own.2 ho.1 values hvalues
-        cases hvalues : values.1.1 with
-        | none =>
-            simp only [hvalues, runSource_pure, mem_support_pure_iff] at hr
-            subst r
-            exact hv
-        | some signature =>
-            simp only [hvalues, runSource_bind, runSource_modify, pure_bind, runSource_pure,
-              mem_support_pure_iff] at hr
-            subst r
-            exact hv.released e message i
-
-/-- Q also supplies the exact point permission for the full PRF evaluator used
-by the reference honest signature. -/
-theorem sourcePrfValue_after_Q (prims : Primitives) (P : PublicParameter)
-    (seeds : C.Term → HashOutput) (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (e : KeyIndex) (l : ChainIndex) (pos : WinternitzDigit) (hpos : pos.val < 3) :
-    SourcePreserves P seeds q s (ReleaseInvariant seeds s) (do
-      sourceReleaseBottomSuffix P seeds e l pos
-      sourceRoProgram prims P seeds (prfValue seeds (.chain bottomLayer e l pos))) := by
-  intro source backend h r hr
-  rw [runSource_bind, mem_support_bind_iff] at hr
-  obtain ⟨released, hreleased, hr⟩ := hr
-  have hp := sourceReleaseBottomSuffix_readable P seeds hinj q s e l pos hpos source backend h released hreleased
-  exact (sourcePrfValue_readInvariant prims P seeds hinj q s (.chain bottomLayer e l pos)
-    released.1.2 released.2 hp r hr).1
-
-/-- Revealing a signature coordinate cannot newly reveal a bottom opening. -/
-theorem sourceRevealDigest_releaseInvariant (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest) (value : DeferredDigest) (hv : NoBottomOpening value) :
-    SourcePreserves P seeds q s (ReleaseInvariant seeds s) (sourceRevealDigest value) := by
-  intro source backend h r hr
-  exact ⟨sourceRevealDigest_slack P seeds q s value source backend h.1
-      (fun e he => (hv e he).elim) r hr,
-    sourceReveals_sourceRevealDigest P seeds q s value source backend h.2.1 r hr,
-    runSource_pendingValid P seeds q s _ source backend h.2.2 r hr⟩
-
-set_option maxRecDepth 100000 in
-set_option maxHeartbeats 1000000 in
-set_option linter.constructorNameAsVariable false in
-set_option backward.isDefEq.respectTransparency false in
-/-- The exact reference honest-signature suffix preserves the release
-invariant through its fresh tree rebuild, P, codeword check, all Q evaluations,
-authentication path and final symbolic top-signature reveals. -/
-theorem sourceHonestSignature_releaseInvariant (prims : Primitives) (x : Keys3 C)
-    (hinj : Function.Injective x.2.1) (top : TopTree) (q : ℕ) (s : HiddenKey → Digest)
-    (e : KeyIndex) (message : Message) :
-    SourcePreserves x.1 x.2.1 q s (ReleaseInvariant x.2.1 s)
-      (sourceHonestSignature prims x top e message) := by
-  intro source backend h r hr
-  simp only [sourceHonestSignature, runSource_bind, mem_support_bind_iff] at hr
-  obtain ⟨built, hbuilt, hr⟩ := hr
-  have hb := sourceBottomTree_releaseInvariant x.1 x.2.1 hinj q s top (treeOf e) source backend h built hbuilt
-  cases ht : built.1.1 with
-  | none =>
-      simp only [ht, runSource_pure, mem_support_pure_iff] at hr
-      subst r
-      exact hb
-  | some tree =>
-      have shape := sourceBottomTree_noBottomOpening x.1 x.2.1 q s top (treeOf e) source backend h.2.2 built hbuilt tree ht
-      simp only [ht, runSource_bind, mem_support_bind_iff] at hr
-      obtain ⟨released, hreleased, opening, hopening, found, hfound, hr⟩ := hr
-      have hp := sourceReleaseOpening_slack x.1 x.2.1 hinj q s e built.1.2 built.2 hb.1 hb.2.2 hb.2.1 released hreleased
-      have hi : ReadInvariant x.2.1 s (.randomizer bottomLayer e) released.1.2 released.2 :=
-        ⟨⟨hp.1, sourceReveals_sourceReleaseOpening x.1 x.2.1 q s e built.1.2 built.2 hb.2.1 released hreleased,
-          runSource_pendingValid x.1 x.2.1 q s _ built.1.2 built.2 hb.2.2 released hreleased⟩, hp.2.readable⟩
-      have ho := sourcePrfValue_readInvariant prims x.1 x.2.1 hinj q s (.randomizer bottomLayer e)
-        released.1.2 released.2 hi opening hopening
-      have hf := sourceCodeword_releaseInvariant prims x.1 x.2.1 hinj q s (tree.commitment e) e message opening.1.1
-        opening.1.2 opening.2 ho.1 found hfound
-      cases hfound : found.1.1 with
-      | none =>
-          simp only [hfound, runSource_pure, mem_support_pure_iff] at hr
-          subst r
-          exact hf
-      | some result =>
-          rcases result with ⟨randomness, encoding⟩
-          simp only [hfound, runSource_bind, mem_support_bind_iff] at hr
-          obtain ⟨values, hvalues, path, hpath, topValues, htop, hr⟩ := hr
-          have hvaluesInv : ReleaseInvariant x.2.1 s values.1.2 values.2 := by
-            apply (SourcePreserves.sequenceFin (P := x.1) (seeds := x.2.1) (q := q) (s := s)
-              chainCount _ (fun l => ?_)) found.1.2 found.2 hf values hvalues
-            split
-            · exact SourcePreserves.pure _
-            · rename_i hpos
-              have hlt : (encoding l).val < 3 := by have hbound := (encoding l).isLt; change (encoding l).val < 4 at hbound; omega
-              simpa only [map_eq_bind_pure_comp, bind_assoc, Function.comp_def] using
-                (sourcePrfValue_after_Q prims x.1 x.2.1 hinj q s e l (encoding l) hlt).map
-                  (fun value => if (encoding l).val = 0 then value else
-                    (if (encoding l).val = 1 then (tree.cpk e l).1 else (tree.cpk e l).2.1) ^^^ value)
-          have hpathInv := sourceHashProgram_releaseInvariant x.1 x.2.1 hinj q s _ values.1.2 values.2 hvaluesInv path hpath
-          have htopInv := SourcePreserves.sequenceFin (P := x.1) (seeds := x.2.1) (q := q) (s := s)
-            chainCount (fun l => sourceRevealDigest (tree.topSignature.chainValue l))
-            (fun l => sourceRevealDigest_releaseInvariant x.1 x.2.1 q s _ (shape l))
-            path.1.2 path.2 hpathInv topValues htop
-          rw [runSource_pure, mem_support_pure_iff] at hr
-          subst r
-          exact htopInv
 
 theorem SourceKeeps.map {α β γ : Type} {field : SourceState C → γ} {oa : SourceM C α}
     (h : SourceKeeps field oa) (f : α → β) : SourceKeeps field (f <$> oa) := by
@@ -8614,152 +5592,12 @@ theorem sourceTsig_controlInvariant (prims : Primitives) (x : Keys3 C) (top : To
                   (fun st => { st with signing := { st.signing with released := st.signing.released ++ [(e, message, i)] } })
                   (fun _ => rfl) (fun _ => rfl)).bind _ (fun _ => SourcePreserves.pure _)
 
-set_option backward.isDefEq.respectTransparency false in
-/-- Every actual signing call preserves the release invariant when the saved
-successful tree signatures have their established symbolic-coordinate shape. -/
-theorem sourceTsig_releaseInvariant (prims : Primitives) (x : Keys3 C)
-    (hinj : Function.Injective x.2.1) (top : TopTree) (q : ℕ) (s : HiddenKey → Digest)
-    (t : TsigQuery C) (source : SourceState C) (backend : CappedCompilerState C)
-    (h : ReleaseInvariant x.2.1 s source backend) (hshape : StoredTopShape source)
-    (r : (TsigSpec C t × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource x.1 x.2.1 q s (sourceTsig prims x top t) source backend)) :
-    ReleaseInvariant x.2.1 s r.1.2 r.2 := by
-  cases t with
-  | corrupt i =>
-      have hs := releaseSlack_corrupt prims x top q s i source backend h.1 r hr
-      rw [runSource_corrupt] at hr
-      split at hr <;> rw [mem_support_pure_iff] at hr <;> subst r
-      · exact ⟨hs, h.2⟩
-      · exact ⟨hs, h.2⟩
-  | tree b => exact sourceTree_releaseInvariant prims x hinj top q s b source backend h hshape r hr
-  | round1 i J e message => exact sourceRound1_releaseInvariant prims x hinj top q s i J e message source backend h r hr
-  | round2 i J e message parts => exact sourceRound2_releaseInvariant prims x hinj top q s i J e message parts source backend h r hr
-
 /-- The actual source retains pending validity and saved-signature shape on all
 runs. Release slack is required while its original hidden-key flag is down. -/
 def GuardedReleaseInvariant (seeds : C.Term → HashOutput) (s : HiddenKey → Digest)
     (source : SourceState C) (backend : CappedCompilerState C) : Prop :=
   PendingValid backend.1.1.data ∧ StoredTopShape source ∧
     (source.hiddenFlag = false → ReleaseInvariant seeds s source backend)
-
-/-- Control-preserving honest computations lift their release invariant to
-its original-hidden-flag guarded form. -/
-theorem sourceControl_guardedRelease {α : Type} (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest) (oa : SourceM C α)
-    (hc : SourceKeeps sourceControl oa)
-    (hi : SourcePreserves P seeds q s (ReleaseInvariant seeds s) oa) :
-    SourcePreserves P seeds q s (GuardedReleaseInvariant seeds s) oa := by
-  intro source backend h r hr
-  have control := hc.run P seeds q s source backend r hr
-  have flag := congrArg (fun c => c.2.2.1) control
-  refine ⟨runSource_pendingValid P seeds q s oa source backend h.1 r hr,
-    h.2.1.of_control control, fun hf => ?_⟩
-  exact hi source backend (h.2.2 (flag.symm.trans hf)) r hr
-
-/-- Source-only updates outside the guarded invariant's fields preserve it. -/
-theorem sourceModify_guardedRelease (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest) (f : SourceState C → SourceState C)
-    (hs : ∀ source, (f source).signing = source.signing)
-    (hr : ∀ source, (f source).revealed = source.revealed)
-    (ht : ∀ source, (f source).trees = source.trees)
-    (hf : ∀ source, (f source).hiddenFlag = source.hiddenFlag) :
-    SourcePreserves P seeds q s (GuardedReleaseInvariant seeds s) (modify f : SourceM C Unit) := by
-  apply SourcePreserves.modify
-  intro source backend h
-  refine ⟨h.1, ?_, fun flag => (h.2.2 ((hf source).symm.trans flag)).source_frame (hs source) (hr source)⟩
-  intro b tree hb
-  apply h.2.1 b tree
-  rw [ht source] at hb
-  exact hb
-
-set_option backward.isDefEq.respectTransparency false in
-/-- The full actual adversary/signing oracle preserves release slack guarded
-by the original hidden-key flag, including its candidate and exposed-tree logs. -/
-theorem sourceOracles_guardedRelease (prims : Primitives) (x : Keys3 C)
-    (hinj : Function.Injective x.2.1) (top : TopTree) (q : ℕ) (s : HiddenKey → Digest)
-    (t : (LocalSpec C + TsigSpec C).Domain) :
-    SourcePreserves x.1 x.2.1 q s (GuardedReleaseInvariant x.2.1 s) (sourceOracles prims x top t) := by
-  intro source backend h r hr
-  cases t with
-  | inl t =>
-      simp only [sourceOracles, runSource_bind, runSource_get, mem_support_bind_iff,
-        mem_support_pure_iff] at hr
-      obtain ⟨_, rfl, a, ha, b, hb, hr⟩ := hr
-      have control := sourceControl_preserves x.1 x.2.1 q s source.hiddenFlag _
-        (sourceControl_sourceLocal prims x t) source backend ⟨h.1, h.2.1, rfl⟩ a ha
-      rw [runSource_modify, mem_support_pure_iff] at hb
-      subst b
-      rw [runSource_pure, mem_support_pure_iff] at hr
-      subst r
-      refine ⟨control.1, control.2.1, fun hf => ?_⟩
-      have flags := Bool.or_eq_false_iff.mp hf
-      have hi := sourceLocal_releaseInvariant prims x hinj q s t source backend (h.2.2 flags.1) flags.2 a ha
-      exact hi.source_frame rfl rfl
-  | inr t =>
-      simp only [sourceOracles, runSource_bind, mem_support_bind_iff] at hr
-      obtain ⟨a, ha, b, hb, hr⟩ := hr
-      have control := sourceTsig_controlInvariant prims x top q s source.hiddenFlag t
-        source backend ⟨h.1, h.2.1, rfl⟩ a ha
-      rw [runSource_modify, mem_support_pure_iff] at hb
-      subst b
-      rw [runSource_pure, mem_support_pure_iff] at hr
-      subst r
-      refine ⟨control.1, control.2.1, fun hf => ?_⟩
-      have hi := sourceTsig_releaseInvariant prims x hinj top q s t source backend
-        (h.2.2 (control.2.2.symm.trans hf)) h.2.1 a ha
-      exact hi.source_frame rfl rfl
-
-set_option maxRecDepth 100000 in
-set_option linter.constructorNameAsVariable false in
-/-- The complete fixed source game preserves the original-hidden-flag guarded
-release invariant, from setup through adaptive calls, verification and the
-reference honest signature used by the strong-forgery test. -/
-theorem sourceGame_guardedRelease (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
-    (hinj : Function.Injective x.2.1) (q : ℕ) (s : HiddenKey → Digest) :
-    SourcePreserves x.1 x.2.1 q s (GuardedReleaseInvariant x.2.1 s) (sourceGame prims A x) := by
-  unfold sourceGame
-  refine (sourceControl_guardedRelease x.1 x.2.1 q s _ (sourceControl_sourceTopTree x.1 x.2.1)
-    (sourceTopTree_releaseInvariant x.1 x.2.1 hinj q s)).bind _ fun top => ?_
-  refine (SourcePreserves.simulateQ _ (sourceOracles_guardedRelease prims x hinj top q s) _).bind _
-    fun forgery => ?_
-  refine SourcePreserves.get.bind _ fun st => ?_
-  refine (SourcePreserves.simulateQ _ (fun input => ?_) _).bind _ fun verified => ?_
-  · refine (sourceControl_guardedRelease x.1 x.2.1 q s _ (sourceControl_sourceHash x.1 x.2.1 (.hash input))
-      (sourceHash_releaseInvariant x.1 x.2.1 hinj q s (.hash input) (fun _ _ he => by cases he))).bind _ fun value => ?_
-    exact (sourceModify_guardedRelease x.1 x.2.1 q s
-      (fun source => { source with candidates := source.candidates ++ SigningGuessLinkProof.callCandidates x.1 st.signing st.exposed input })
-      (fun _ => rfl) (fun _ => rfl) (fun _ => rfl) (fun _ => rfl)).bind _ (fun _ => SourcePreserves.pure value)
-  · split
-    · exact SourcePreserves.pure _
-    · exact (sourceControl_guardedRelease x.1 x.2.1 q s _
-        (sourceControl_sourceHonestSignature prims x top forgery.signature.leafIndex forgery.message)
-        (sourceHonestSignature_releaseInvariant prims x hinj top q s forgery.signature.leafIndex forgery.message)).bind _
-        (fun _ => SourcePreserves.pure _)
-
-/-- The actual empty source and capped compiler satisfy the guarded invariant. -/
-theorem guardedReleaseInvariant_initial (seeds : C.Term → HashOutput) (s : HiddenKey → Digest) :
-    GuardedReleaseInvariant (C := C) seeds s sourceInit ((compilerInit, 0), fun _ => none, false) := by
-  have pending : PendingValid (deferredInit (C := C)) := by
-    intro p value hp
-    cases hp
-  exact ⟨pending, storedTopShape_initial, fun _ =>
-    ⟨releaseSlack_initial seeds s, revealRelation_initial s, pending⟩⟩
-
-set_option maxRecDepth 100000 in
-set_option maxHeartbeats 1000000 in
-set_option linter.constructorNameAsVariable false in
-/-- In every supported run of the fixed actual source/compiler, a down original
-hidden-key flag gives the P/Q/R release-slack invariant and both synchronization
-invariants. No coupling to the original trace experiment is assumed here. -/
-theorem sourceGame_releaseInvariant (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
-    (hinj : Function.Injective x.2.1) (q : ℕ) (s : HiddenKey → Digest)
-    (r : ((Bool × TopTree × Forgery) × SourceState C) × CappedCompilerState C)
-    (hr : r ∈ support (runSource x.1 x.2.1 q s (sourceGame prims A x)
-      sourceInit ((compilerInit, 0), fun _ => none, false)))
-    (hf : r.1.2.hiddenFlag = false) : ReleaseInvariant x.2.1 s r.1.2 r.2 :=
-  (sourceGame_guardedRelease prims A x hinj q s sourceInit
-    ((compilerInit, 0), fun _ => none, false) (guardedReleaseInvariant_initial x.2.1 s) r hr).2.2 hf
-
 
 set_option backward.isDefEq.respectTransparency false in
 /-- Existing visible pads survive every primitive backend call. -/
@@ -9049,9 +5887,9 @@ variable {D R : Type} [DecidableEq D] [Finite D] [Finite R] [Nonempty R]
   [SampleableType R] [SampleableType (D → R)]
 
 /- Source: VCVio/OracleComp/QueryTracking/RandomOracle/EagerTable.lean,
-`evalDist_simulateQ_randomOracle_run'_eq_tableExtending`, with the independent
-uniform-query case from `privateChainNoise_eq_table` above. This adapter keeps
-private uniform draws interleaved and uses the same coordinate marginalization. -/
+`evalDist_simulateQ_randomOracle_run'_eq_tableExtending`, with an independent
+uniform-query case. This adapter keeps private uniform draws interleaved and uses
+the same coordinate marginalization. -/
 /-- Resolve a private finite table while forwarding private uniform draws. -/
 def resolvePrivateTable (table : D → R) :
     QueryImpl (SigningGuessProof.PrivateRoSpec D R) ProbComp
@@ -9151,38 +5989,6 @@ theorem cappedCompiler_eq_padTable (P : PublicParameter) (seeds : C.Term → Has
   simpa only [tableExtending_empty, compilerProgramPads] using
     privateRo_eq_table ((simulateQ (cappedPadNoiseRaw P seeds q s) oa).run backend) ∅
 
-/-- The fixed source with fixed hidden labels and private eager pads. It starts
-with the same empty visible backend and returns the entire compiler outcome. -/
-def compilerRunPads (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
-    (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest) :
-    ProbComp (CompilerOutcome C) :=
-  compilerProgramPads x.1 x.2.1 q s pads (sourceProgram prims A x)
-    ((compilerInit, 0), fun _ => none, false)
-
-/-- The actual source law for each fixed hidden-label table, with all source
-fields, cache, trace, reveals, consistency, flag and count kept joint. -/
-theorem sourceProgram_eq_compilerRunPads (prims : Primitives) (A : TsigAdversary C)
-    (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest) :
-    (simulateQ (SigningCappedExpectProof.cappedHybrid (compilerImpl x.1 x.2.1)
-      (deferredInputSide x.1) deferredCounted (deferredKey x.1) (deferredPoint x.1) q s)
-      (sourceProgram prims A x)).run ((compilerInit, 0), fun _ => none, false) =ᵈ
-    (do let pads ← $ᵗ (Point → Digest); compilerRunPads prims A x q s pads) :=
-  cappedCompiler_eq_padTable x.1 x.2.1 q s (sourceProgram prims A x)
-    ((compilerInit, 0), fun _ => none, false)
-
-/-- Independently sampling hidden labels and eager pads preserves the original
-fixed compiler's complete outcome distribution. -/
-theorem compilerRun_eq_padTable (prims : Primitives) (A : TsigAdversary C)
-    (x : Keys3 C) (q : ℕ) :
-    compilerRun prims A x q =ᵈ (do
-      let s ← $ᵗ (HiddenKey → Digest)
-      let pads ← $ᵗ (Point → Digest)
-      compilerRunPads prims A x q s pads) := by
-  unfold compilerRun
-  refine OracleComp.EvalDistEq.bind_congr_of_support _ fun s _ => ?_
-  exact sourceProgram_eq_compilerRunPads prims A x q s
-
-
 section EagerPadTransfer
 set_option backward.isDefEq.respectTransparency false
 set_option maxRecDepth 100000
@@ -9204,16 +6010,6 @@ theorem compilerProgramPads_support (P : PublicParameter) (seeds : C.Term → Ha
   refine ⟨pads, ?_, hr⟩
   rw [support_uniformSample]
   trivial
-
-/-- The actual release invariant holds on every fixed eager-pad source run. -/
-theorem compilerRunPads_releaseInvariant (prims : Primitives) (A : TsigAdversary C)
-    (x : Keys3 C) (hinj : Function.Injective x.2.1) (q : ℕ)
-    (s : HiddenKey → Digest) (pads : Point → Digest) (r : CompilerOutcome C)
-    (hr : r ∈ support (compilerRunPads prims A x q s pads))
-    (hf : r.1.2.hiddenFlag = false) : ReleaseInvariant x.2.1 s r.1.2 r.2 := by
-  apply sourceGame_releaseInvariant prims A x hinj q s r _ hf
-  exact compilerProgramPads_support x.1 x.2.1 q s pads (sourceProgram prims A x)
-    ((compilerInit, 0), fun _ => none, false) r hr
 
 /-- Except for a pad query, the actual backend preserves the visible pad map. -/
 theorem deferredImpl_pads_of_ne (t : DeferredQuery C) (st : DeferredState C)
@@ -9340,14 +6136,6 @@ theorem compilerProgramPads_visible (P : PublicParameter) (seeds : C.Term → Ha
         mem_support_bind_iff] at hr
       obtain ⟨a, ha, hr⟩ := hr
       exact ih a.1 a.2 (step t backend h a ha) hr
-
-/-- In the source run, every visible pad is the eager table value. -/
-theorem compilerRunPads_visible (prims : Primitives) (A : TsigAdversary C)
-    (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
-    (r : CompilerOutcome C) (hr : r ∈ support (compilerRunPads prims A x q s pads)) :
-    ∀ p v, r.2.1.1.data.pads p = some v → v = pads p := by
-  exact compilerProgramPads_visible x.1 x.2.1 q s pads (sourceProgram prims A x)
-    ((compilerInit, 0), fun _ => none, false) (by intros p v hv; cases hv) r hr
 
 /-- The retained high half of each eager chain-noise output. -/
 def noiseHigh (noise : ChainNoiseIndex → HashOutput) : ChainNoiseIndex → Digest :=
@@ -9499,54 +6287,18 @@ end EagerPadTransfer
 
 end SigningCompilerCouplingProof
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.exact_completePrf' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.exact_completePrf
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceCost_sourceBackend' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourceCost_sourceBackend
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceCost_sourceBottomRow' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourceCost_sourceBottomRow
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.exact_cappedCompiler_run_count' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.exact_cappedCompiler_run_count
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceReveal_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.sourceReveal_correct
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.deferredPlant_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.deferredPlant_correct
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.relTriple_deferredHash' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.relTriple_deferredHash
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.CacheRelation.allocatePending' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.CacheRelation.allocatePending
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.CacheRelation.allocateVirtual' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.CacheRelation.allocateVirtual
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.evalDist_slack_target' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.evalDist_slack_target
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.evalDist_slack_program' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.evalDist_slack_program
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourcePlant_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourcePlant_correct
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.evalDist_samplePending_fresh_next' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.evalDist_samplePending_fresh_next
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.relTriple_deferredPending_terminal' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.relTriple_deferredPending_terminal
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.CacheRelation.updateSecret' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.CacheRelation.updateSecret
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.relTriple_deferredPending_internal' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.relTriple_deferredPending_internal
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.relTriple_cachedExtra' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.relTriple_cachedExtra
@@ -9556,54 +6308,21 @@ end SigningCompilerCouplingProof
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.completePrf_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.completePrf_correct
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.completePrf_randomizer' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.completePrf_randomizer
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.evalDist_slackPlant_fresh' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.evalDist_slackPlant_fresh
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.evalDist_completePrf_fresh' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.evalDist_completePrf_fresh
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.runSource_hashInput_hit' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.runSource_hashInput_hit
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.runSource_hashInput_trigger_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.runSource_hashInput_trigger_iff
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.rawTraceGame_law' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.rawTraceGame_law
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.traceRun_eq_private_prefix' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.traceRun_eq_private_prefix
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.rawTraceProgram_prefix_count_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.rawTraceProgram_prefix_count_le
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.traceRun_eq_presampled_slots' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.traceRun_eq_presampled_slots
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.presampledTrace_count_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.presampledTrace_count_le
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.refreshAllPrf_joint' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.refreshAllPrf_joint
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.traceRun_eq_eager_prf' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.traceRun_eq_eager_prf
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.probEvent_completePrf_fiber' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.probEvent_completePrf_fiber
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.presampledTrace_eq_resolved' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.presampledTrace_eq_resolved
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.traceRun_eq_eager_forest' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.traceRun_eq_eager_forest
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.resolvedTrace_prefix_count_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.resolvedTrace_prefix_count_le
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.traceRun_eq_eager_chains' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.traceRun_eq_eager_chains
@@ -9628,56 +6347,14 @@ end SigningCompilerCouplingProof
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.traceRun_eq_symbolic_tables' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.traceRun_eq_symbolic_tables
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.symbolicTables_count_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.symbolicTables_count_le
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.runSource_fillTerms_randomOracle' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.runSource_fillTerms_randomOracle
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.evalDist_fillPrfCache_ext' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.evalDist_fillPrfCache_ext
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.probEvent_completePrf_fiber_all' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.probEvent_completePrf_fiber_all
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.evalDist_completePrf_delay_fill' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.evalDist_completePrf_delay_fill
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.runSource_prfQuery' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.runSource_prfQuery
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.runSource_completePrf_then_read' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.runSource_completePrf_then_read
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.probEvent_completePrf_delay_read' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.probEvent_completePrf_delay_read
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.evalDist_completePrf_delay_read' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.evalDist_completePrf_delay_read
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.compilerImpl_pending_mono' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.compilerImpl_pending_mono
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.cappedChainNoiseRaw_step' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.cappedChainNoiseRaw_step
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.cappedChainNoiseRaw_simulate' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.cappedChainNoiseRaw_simulate
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.compilerRun_eq_chainNoiseRaw' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.compilerRun_eq_chainNoiseRaw
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.compilerRun_eq_private_chain_prefix' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.compilerRun_eq_private_chain_prefix
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.privateChainNoise_eq_table' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.privateChainNoise_eq_table
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.compilerRun_eq_chainNoiseTable' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.compilerRun_eq_chainNoiseTable
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.releaseSlack_initial' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
@@ -9688,12 +6365,6 @@ end SigningCompilerCouplingProof
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.compilerImpl_prf_frame' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.compilerImpl_prf_frame
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceOracles_lacked_prf_flag' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourceOracles_lacked_prf_flag
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.releaseSlack_corrupt' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.releaseSlack_corrupt
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.completePrf_frame' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.completePrf_frame
@@ -9706,15 +6377,6 @@ end SigningCompilerCouplingProof
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceReleaseOpening_slack' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.sourceReleaseOpening_slack
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.ReleaseSlack.ready_virtual_missing' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.ReleaseSlack.ready_virtual_missing
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.ReleaseSlack.readyAfter_missing' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.ReleaseSlack.readyAfter_missing
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceVirtual_slack' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourceVirtual_slack
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceReveal_slack' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
@@ -9741,15 +6403,6 @@ end SigningCompilerCouplingProof
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.sourceReleaseBottomSuffix_slack
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.completePrf_top_slack' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.completePrf_top_slack
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceTopCompletion_slack' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourceTopCompletion_slack
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceReturnTree_slack' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourceReturnTree_slack
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourcePending_noBottomOpening' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.sourcePending_noBottomOpening
@@ -9775,9 +6428,6 @@ end SigningCompilerCouplingProof
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceBottomOnce_storedTopShape' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.sourceBottomOnce_storedTopShape
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceReveals_sourceBackend' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourceReveals_sourceBackend
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.ReleaseSlack.read' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.ReleaseSlack.read
@@ -9794,70 +6444,22 @@ end SigningCompilerCouplingProof
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.sourceHash_slack
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourcePrfValue_readInvariant' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourcePrfValue_readInvariant
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceEval_readInvariant' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.sourceEval_readInvariant
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourcePart_readInvariant' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.sourcePart_readInvariant
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceOracles_local_releaseInvariant' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourceOracles_local_releaseInvariant
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourcePending_releaseInvariant' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourcePending_releaseInvariant
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceBottomRow_releaseInvariant' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourceBottomRow_releaseInvariant
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceTopTree_releaseInvariant' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourceTopTree_releaseInvariant
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceBottomTree_releaseInvariant' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourceBottomTree_releaseInvariant
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceBottomOnce_releaseInvariant' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourceBottomOnce_releaseInvariant
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceReleaseOpening_after_bind' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourceReleaseOpening_after_bind
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceRound1_releaseInvariant' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourceRound1_releaseInvariant
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceReleaseBottomSuffix_cached' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.sourceReleaseBottomSuffix_cached
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceReleaseBottomSuffix_readable' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.sourceReleaseBottomSuffix_readable
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceReturnTree_opening_cached' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourceReturnTree_opening_cached
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceTree_releaseInvariant' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourceTree_releaseInvariant
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceRound2_releaseInvariant' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourceRound2_releaseInvariant
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceHonestSignature_releaseInvariant' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourceHonestSignature_releaseInvariant
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceTsig_controlInvariant' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.sourceTsig_controlInvariant
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceOracles_guardedRelease' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourceOracles_guardedRelease
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceGame_guardedRelease' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourceGame_guardedRelease
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceGame_releaseInvariant' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourceGame_releaseInvariant
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.cappedCompiler_pad_run' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
@@ -9879,29 +6481,13 @@ end SigningCompilerCouplingProof
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.cappedCompiler_eq_padTable
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceProgram_eq_compilerRunPads' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.sourceProgram_eq_compilerRunPads
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.compilerRun_eq_padTable' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.compilerRun_eq_padTable
-
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.compilerProgramPads_support' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.compilerProgramPads_support
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.compilerRunPads_releaseInvariant' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.compilerRunPads_releaseInvariant
-
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.compilerProgramPads_visible' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningCompilerCouplingProof.compilerProgramPads_visible
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.compilerRunPads_visible' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningCompilerCouplingProof.compilerRunPads_visible
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.install_terminal_only' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
@@ -10366,22 +6952,6 @@ theorem mapX_simulateQ (seeds : C.Term → HashOutput) {ι α : Type} {spec : Or
     mapX seeds (simulateQ impl oa) = simulateQ (fun t => mapX seeds (impl t)) oa :=
   mapX_simulateQ seeds _ _ (fun _ => rfl) oa
 
-theorem mapX_signRound2With (seeds : C.Term → HashOutput)
-    (liftX : ∀ {α : Type}, OracleComp (RoSpec C) α → SourceMX C α)
-    (lift : ∀ {α : Type}, OracleComp (RoSpec C) α → SourceM C α)
-    (partX : Point → SourceMX C Digest) (part : Point → SourceM C Digest)
-    (hlift : ∀ {α} (oa : OracleComp (RoSpec C) α), mapX seeds (liftX oa) = lift oa)
-    (hpart : ∀ p, mapX seeds (partX p) = part p)
-    (P : PublicParameter) (J : C.Quorum) (commitment : Digest)
-    (e : KeyIndex) (message : Message) (parts : C.Party → Digest) :
-    mapX seeds (signRound2With liftX partX P J commitment e message parts) =
-      signRound2With lift part P J commitment e message parts := by
-  simp only [signRound2With, mapX_bind, hlift]
-  congr 1
-  funext answer
-  rcases answer with _ | ⟨randomness, encoding⟩ <;> simp [hpart]
-
-
 @[simp] theorem mapX_sourceReveal (seeds : C.Term → HashOutput) (k : HiddenKey) :
     mapX seeds (sourceRevealX k) = sourceReveal k := by
   simp only [sourceRevealX, sourceReveal, mapX_bind, mapX_get]
@@ -10584,26 +7154,12 @@ set_option maxHeartbeats 1000000 in
     mapX x.2.1 (sourceGameX prims A x) = sourceGame prims A x := by
   simp [sourceGameX, sourceGame]
 
-/-- Expanding the atomic completions and erasing the marks recovers the exact
-source program, including its entire final state, without any premise. -/
-theorem sourceProgram_eq_expand (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) :
-    sourceProgram prims A x = simulateQ (expand x.2.1) (sourceProgramX prims A x) := by
-  exact (congrArg (fun p => p.run sourceInit) (mapX_sourceGame prims A x)).symm
-
 end ThresholdLeanXmssSecurity.SigningCompilerCouplingProof
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.mapX_simulateQ' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.mapX_simulateQ
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.mapX_signRound2With' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.mapX_signRound2With
-
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.mapX_sourceGame' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.mapX_sourceGame
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceProgram_eq_expand' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.sourceProgram_eq_expand

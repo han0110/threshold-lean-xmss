@@ -25,7 +25,7 @@ This module reduces `SeedGenKnownMismatch`, the known-half hypothesis of `seedGe
 needs the hiding of the honest parts by the commitments before the programming (CDG+18).
 
 * The prefix agrees with a prefix whose honest commitments are fresh uncached values, unless a logged
-  query is an honest commitment input (`seedGenStripCache`, `seedGenAvoid_run_strip`).
+  query is an honest commitment input.
 * In that prefix the transcript does not read the parts. Each logged query then costs at most
   `K / 2^256`, and each pair of inputs costs at most `2^-256`.
 -/
@@ -788,11 +788,6 @@ variable {C : Committee} {E : Type} (prims : Primitives)
 /-- At most `k` compared cells of a cache are filled. -/
 def SeedGenComparedCount (D : C.Coalition) (s : HashCache C) (k : ℕ) : Prop :=
   ∃ S : Finset (Query C), S.card ≤ k ∧ ∀ q, SeedGenComparedCell D q → s q ≠ none → q ∈ S
-
-theorem seedGenComparedCount_mono {D : C.Coalition} {s : HashCache C} {k k' : ℕ}
-    (h : SeedGenComparedCount D s k) (hk : k ≤ k') : SeedGenComparedCount D s k' := by
-  obtain ⟨S, hS, hm⟩ := h
-  exact ⟨S, hS.trans hk, hm⟩
 
 theorem seedGenComparedCount_insert {D : C.Coalition} {s : HashCache C} {k : ℕ}
     (h : SeedGenComparedCount D s k) (q : Query C) (u : HashOutput) :

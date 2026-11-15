@@ -190,11 +190,6 @@ theorem good_init (order : List κ) (τ : ι → Digest)
     exact ⟨b, rfl⟩
   · exact (h.false p).elim
 
-/-- The empty-cache slack is the head of the chosen order. -/
-theorem slack_init (order : List κ) (p : ι) (x : Option B) :
-    slack order (init x) p = order.head? := by
-  cases order <;> simp [slack, init]
-
 /-- With a head term, only that term is constrained in the empty cache. -/
 theorem fiberTable_init_cons (b₀ : κ) (rest : List κ) (τ : ι → Digest)
     (x : Option B) (u : κ × ι → HashOutput) (b : κ) (p : ι) :
@@ -206,15 +201,6 @@ theorem fiberTable_init_cons (b₀ : κ) (rest : List κ) (τ : ι → Digest)
   · subst b
     simp [fiberTable, slack, init]
   · simp [fiberTable, slack, init, h, Ne.symm h]
-
-/-- With an empty order, the private table is just the visible-cache overlay. -/
-theorem fiberTable_nil (τ : ι → Digest) (st : ShareState κ ι B)
-    (u : κ × ι → HashOutput) :
-    fiberTable [] τ st u = fun y => (st.cache y).getD (u y) := by
-  funext y
-  rcases y with ⟨b, p⟩
-  cases h : st.cache (b, p) <;> simp [fiberTable, slack, h]
-
 
 /-- The two-cell change of low halves used when reading the current slack. -/
 def slackMove (target rest : Digest) : (HashOutput × HashOutput) ≃
@@ -235,13 +221,6 @@ def slackMove (target rest : Digest) : (HashOutput × HashOutput) ≃
       simp only [Equiv.apply_symm_apply] <;> apply Prod.ext <;>
       simp only [← BitVec.xor_assoc, BitVec.xor_self, BitVec.zero_xor] <;>
       simp [BitVec.xor_assoc]
-
-/-- The adaptive two-cell change preserves uniform full hash outputs, including high halves. -/
-theorem evalDist_slackMove (target rest : Digest) :
-    𝒟[slackMove target rest <$> ($ᵗ (HashOutput × HashOutput))] =
-      𝒟[$ᵗ (HashOutput × HashOutput)] :=
-  (SampleableType.map_uniformSample_evalDistEq_of_bijective
-    (slackMove target rest).bijective).evalDist_eq
 
 section UntilBad
 
@@ -456,23 +435,6 @@ private theorem impl_frozen_step (order : List κ) (τ : ι → Digest)
         simp [observe, hz']
       refine hl.trans ?_
       cases q <;> simp [frozen, StateT.run, h, setsBad_erase, hs, observe]
-
-/-- Full stopped-observation equality for the original and frozen handlers. -/
-theorem impl_frozen_observe (order : List κ) (τ : ι → Digest)
-    (draw : κ × ι → ProbComp HashOutput)
-    (finish : κ → ι → Digest → ShareState κ ι (ImplBad Tag) → ProbComp HashOutput)
-    {α : Type} (oa : OracleComp (ShareSpec κ ι Tag) α)
-    (st : ShareState κ ι (ImplBad Tag)) :
-    observe erase ShareState.bad <$> (simulateQ (impl order τ draw finish) oa).run st =ᵈ
-      observe id ShareState.bad <$>
-        (simulateQ (frozen order τ (impl order τ draw finish)) oa).run (erase st) := by
-  apply untilBad_proj _ _ erase ShareState.bad
-  · exact impl_frozen_step order τ draw finish
-  · intro q s r hr z hz
-    rw [impl_bad_next order τ draw finish q s z hz, hr]
-    rfl
-  · exact frozen_sticky order τ (impl order τ draw finish)
-
 
 /-- Uniform queries preserve the visible share state. -/
 def unifImpl (σ : Type) : QueryImpl unifSpec (StateT σ ProbComp) :=
@@ -2231,13 +2193,3 @@ end ThresholdLeanXmssSecurity.SigningShareLazy
  Quot.sound] -/
 #guard_msgs in
 #print axioms ThresholdLeanXmssSecurity.SigningShareLazy.fiberTable_init_cons
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningShareLazy.fiberTable_nil' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningShareLazy.fiberTable_nil
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningShareLazy.evalDist_slackMove' depends on axioms: [propext,
- Classical.choice,
- Quot.sound] -/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningShareLazy.evalDist_slackMove

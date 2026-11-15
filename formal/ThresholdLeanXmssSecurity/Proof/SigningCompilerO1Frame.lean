@@ -47,12 +47,6 @@ def flagUp (a : RealState C) : RealState C := ((a.1.1, ((a.1.2.1.1, true), a.1.2
 
 theorem withCarried_self (a : RealState C) : withCarried a a.1.2 = a := rfl
 
-theorem withSigning_eq (a : RealState C) (sig : TsigState C) :
-    withSigning a sig = withCarried a ((sig, a.1.2.1.2), a.1.2.2) := rfl
-
-theorem withCandidates_eq (a : RealState C) (cs : List (HiddenKey × Digest)) :
-    withCandidates a cs = withCarried a (a.1.2.1, a.1.2.2.1, cs) := rfl
-
 /-! ## The relation with open rows -/
 
 /-- `ExtraO1` with `bottomSeen` void at the rows of `openRow`. A row is open from its first honest
@@ -97,14 +91,6 @@ theorem extra_of_extraOpen (openRow : KeyIndex → ChainIndex → Prop) (a : Rea
       by_cases ho : openRow e l
       · exact Or.inr (hrows e l ho)
       · exact h.bottomSeen hf T e l d ho hv }
-
-/-- A larger set of open rows keeps the relation. -/
-theorem ExtraOpen.mono (openRow openRow' : KeyIndex → ChainIndex → Prop) (a : RealState C)
-    (b : SourceStateO1 C × CompState C) (h : ExtraOpen prims x top s rev openRow a b)
-    (hsub : ∀ e l, openRow e l → openRow' e l) :
-    ExtraOpen prims x top s rev openRow' a b :=
-  ⟨h.rest, h.prfSeen,
-    fun hf T e l d ho hv => h.bottomSeen hf T e l d (fun hold => ho (hsub e l hold)) hv⟩
 
 end Open
 
@@ -652,14 +638,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1Frame
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Frame.withCarried_self
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Frame.withSigning_eq' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Frame.withSigning_eq
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Frame.withCandidates_eq' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Frame.withCandidates_eq
-
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Frame.extraOpen_of_extra' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Frame.extraOpen_of_extra
@@ -667,10 +645,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1Frame
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Frame.extra_of_extraOpen' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Frame.extra_of_extraOpen
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Frame.ExtraOpen.mono' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Frame.ExtraOpen.mono
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Frame.hashTail_pads' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

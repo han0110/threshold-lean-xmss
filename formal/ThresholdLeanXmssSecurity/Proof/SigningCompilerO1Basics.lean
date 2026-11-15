@@ -57,17 +57,6 @@ theorem firstStart_spec (S : Finset WinternitzDigit) (d : WinternitzDigit) (h : 
 theorem firstStart_none_iff (S : Finset WinternitzDigit) : firstStart S = none ↔ S = ∅ := by
   simp [firstStart, List.find?_eq_none, Finset.eq_empty_iff_forall_notMem]
 
-theorem liftBase_pure {α : Type} (a : α) :
-    liftBase (pure a : SourceM C α) = pure a := by
-  funext st
-  simp [liftBase, StateT.run_pure]
-
-theorem liftBase_bind {α β : Type} (oa : SourceM C α) (f : α → SourceM C β) :
-    liftBase (oa >>= f) = (liftBase oa >>= fun a => liftBase (f a)) := by
-  funext st
-  change (liftBase (oa >>= f)).run st = (liftBase oa >>= fun a => liftBase (f a)).run st
-  simp [liftBase, StateT.run_bind, map_bind, bind_map_left]
-
 theorem compilerRunO1_eq_padTable (prims : Primitives) (A : TsigAdversary C)
     (x : Keys3 C) (q : ℕ) :
     compilerRunO1 prims A x q =ᵈ (do
@@ -114,14 +103,6 @@ info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Basics.firstStart_spec' depend
  Quot.sound] -/
 #guard_msgs in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Basics.firstStart_none_iff
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Basics.liftBase_pure' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Basics.liftBase_pure
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Basics.liftBase_bind' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Basics.liftBase_bind
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Basics.compilerRunO1_eq_padTable' depends on axioms: [propext,
  Classical.choice,

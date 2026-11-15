@@ -134,12 +134,6 @@ theorem pure {α : Type} (value : α) : SourceCharges P seeds Q s Pre 0 (Pure.pu
   subst r
   exact ⟨hw, le_rfl⟩
 
-theorem get : SourceCharges P seeds Q s Pre 0 (get : SourceMO1 C (SourceStateO1 C)) := by
-  intro src st hw _ r hr
-  rw [runSourceL_get, mem_support_pure_iff] at hr
-  subst r
-  exact ⟨hw, le_rfl⟩
-
 theorem modify (f : SourceStateO1 C → SourceStateO1 C)
     (hf : ∀ src st, WalkInv P seeds src st → Pre src → WalkInv P seeds (f src) st) :
     SourceCharges P seeds Q s Pre 0 (modify f : SourceMO1 C Unit) := by
@@ -255,10 +249,6 @@ end SourceCharges
 /-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalk.SourceCharges.pure' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms SourceCharges.pure
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalk.SourceCharges.get' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms SourceCharges.get
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalk.SourceCharges.modify' depends on axioms: [propext,
  Classical.choice,

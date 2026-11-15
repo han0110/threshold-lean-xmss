@@ -303,30 +303,6 @@ def BottomRows (x : Keys3 C) (b : XmssSecurity.TopIndex) (st : FullState C Tag) 
       (XmssSecurity.CappedChain.chainStepDigit d)) ∈ (dataOf x st).virtual) ∧
     (dataOf x st).pending (.bottom (bottomKey b k) l d) ≠ none
 
-/-- D17 either retains the stored row domain or establishes it with the first build. -/
-theorem sourceBottomOnceX_rows (tagOf : CappedCompilerState C × Bool → Tag) (x : Keys3 C)
-    (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
-    (τ : CPoint → Digest) (g : C.Term × CPoint → HashOutput)
-    (noise : ChainNoiseIndex → HashOutput) (rest : RestSlot C → HashOutput)
-    (top : TopTree) (b : XmssSecurity.TopIndex) (src : SourceState C) (st : FullState C Tag)
-    (stored : src.trees b ≠ none → BottomRows x b st)
-    (r : (Option DeferredBottomTree × SourceState C) × FullState C Tag)
-    (hr : r ∈ support (runX
-      (shareBackendTagT tagOf x.1 x.2.1 x.2.2 q s pads τ g noise rest)
-      (sourceBottomOnceX x.1 x.2.1 top b) src st)) :
-    BottomRows x b r.2 := by
-  simp only [sourceBottomOnceX, runX_bind, runX_get, pure_bind] at hr
-  cases ht : src.trees b with
-  | some tree =>
-    simp only [ht, runX_pure, mem_support_pure_iff] at hr
-    subst r
-    exact stored (by simp [ht])
-  | none =>
-    simp only [ht, runX_bind, runX_modify, runX_pure, pure_bind,
-      mem_support_bind_iff, mem_support_pure_iff] at hr
-    obtain ⟨a, ha, rfl⟩ := hr
-    exact sourceBottomTreeX_rows tagOf x q s pads τ g noise rest top b src st a ha
-
 end ThresholdLeanXmssSecurity.SigningCompilerSyncTreeRows
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncTreeRows.runX_rows' depends on axioms: [propext, Classical.choice, Quot.sound] -/
@@ -372,7 +348,3 @@ end ThresholdLeanXmssSecurity.SigningCompilerSyncTreeRows
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncTreeRows.sourceBottomTreeX_rows' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncTreeRows.sourceBottomTreeX_rows
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncTreeRows.sourceBottomOnceX_rows' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncTreeRows.sourceBottomOnceX_rows

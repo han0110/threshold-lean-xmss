@@ -38,7 +38,8 @@ variable {C : Committee} {E : Type} [Field E] [Algebra Bit E]
 
 /-! ## Runs in the world
 
-The local copies of `probEvent_runWorld_fst` and `abs_accepts_bind_sub_le` of `SeedGenSecurity`. -/
+The local copy of `probEvent_runWorld_fst` of `SeedGenSecurity`, and a bound for two continuations of
+one game (`main_abs_accepts_bind_sub_le`). -/
 
 theorem main_probEvent_runWorld_fst (prims : Primitives) {β : Type} (oa : OracleComp (WorldSpec C) β)
     (Q : β → Prop) :
@@ -438,15 +439,6 @@ theorem MainRunInv.pure {prims : Primitives} {α : Type} {P : α → HashCache C
 theorem mainOpenedGood_none (D : C.Coalition) (n : ℕ) (target : ℕ → Bit) :
     MainOpenedGood D n target (fun _ => none) := fun _ _ _ h => by cases h
 
-theorem mainOpenedGood_pure_none (prims : Primitives) {σ : Type} (D : C.Coalition) (n : ℕ)
-    (target : ℕ → Bit) (st : σ) (s : HashCache C) z
-    (hz : z ∈ support ((simulateQ (localAnswer prims)
-      (pure (st, fun _ => none) : OracleComp (LocalSpec C) (σ × (C.Party → Option (ℕ → Bit))))).run s)) :
-    MainOpenedGood D n target z.1.2 := by
-  simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
-  subst hz
-  exact mainOpenedGood_none D n target
-
 set_option linter.constructorNameAsVariable false in
 theorem mainSimOpenX_inv (prims : Primitives) (K : Constants C E) (D : C.Coalition) (A : MainAdversary C E)
     (jobs : List Circuit) (st : A.State) (receivers : Finset C.Party)
@@ -662,7 +654,8 @@ theorem mainOpenSound_holds (prims : Primitives) (K : Constants C E) : MainOpenS
 
 /-! ## The network through one oracle implementation
 
-Local copies of `mapRoles` and `simulateQ_executePhase` of `CheckSecurity`. -/
+A local copy of `mapRoles` of `CheckSecurity`, and the run of a phase through one oracle
+implementation (`main_simulateQ_executePhase`). -/
 
 section MapRoles
 

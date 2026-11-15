@@ -645,96 +645,9 @@ theorem map (f : α → β) {oa : SourceMX C α} (h : TagSafe H P seeds q s pads
     TagSafe H P seeds q s pads (f <$> oa) := by
   simpa only [bind_pure_comp] using h.bind (fun a => pure (f a))
 
-theorem simulate {ι : Type} {spec : OracleSpec ι}
-    (impl : QueryImpl spec (SourceMX C)) (oa : OracleComp spec α)
-    (h : ∀ t, TagSafe H P seeds q s pads (impl t)) :
-    TagSafe H P seeds q s pads (simulateQ impl oa) := by
-  induction oa using OracleComp.inductionOn with
-  | pure a => simpa only [simulateQ_pure] using pure (H := H) (P := P) (seeds := seeds) (q := q) (s := s) (pads := pads) a
-  | query_bind t next ih =>
-      simp only [simulateQ_bind, simulateQ_spec_query]
-      exact (h t).bind ih
-
-/-- A current-flag mark synchronizes the boundary before its continuation. -/
-theorem get_mark (f : SourceState C → SourceMX C α)
-    (hf : ∀ st, TagSafe H P seeds q s pads (f st)) :
-    TagSafe H P seeds q s pads (do
-      let st ← get
-      let _ ← liftM (markQ (C := C) st.hiddenFlag)
-      f st) := by
-  intro st bm sh he ht z hz
-  simp only [StateT.run_bind, StateT.run_get, pure_bind] at hz
-  change z ∈ support (jointRun H P seeds q s pads
-    (markQ st.hiddenFlag >>= fun _ => (f st).run st) bm sh) at hz
-  rw [jointRun_bind, joint_mark] at hz
-  simp only [pure_bind] at hz
-  exact hf st st (bm.1, st.hiddenFlag) sh rfl ht z hz
 end TagSafe
 
-theorem Quiet.tagSafe {α : Type} {oa : SourceMX C α} (h : Quiet oa)
-    (P : PublicParameter) (seeds : C.Term → HashOutput) (q : ℕ)
-    (s : HiddenKey → Digest) (pads : Point → Digest)
-    (τ : CPoint → SigningShareLazy.Digest)
-    (draw : C.Term × CPoint → ProbComp SigningShareLazy.HashOutput)
-    (finish : C.Term → CPoint → SigningShareLazy.Digest → ShareState C →
-      ProbComp SigningShareLazy.HashOutput) :
-    TagSafe (handler τ draw finish) P seeds q s pads oa := by
-  intro st bm sh he ht z hz
-  have hq := h.at st
-  have hj := joint_noMark P seeds q s pads τ draw finish (oa.run st) hq.1
-    bm sh (by simpa only [he] using ht) z hz
-  have hf := hq.2 z.1.1 hj.2.2
-  exact ⟨hj.1.trans (he.trans hf.symm), by simp only [hf]; exact le_rfl,
-    by simpa only [hf, he] using hj.2.1⟩
-
-/-- Every actual call restores mark=flag, and all stored tags lie below it. -/
-theorem sourceOraclesX_tagSafe (prims : Primitives) (x : Keys3 C) (top : TopTree)
-    (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
-    (τ : CPoint → SigningShareLazy.Digest)
-    (draw : C.Term × CPoint → ProbComp SigningShareLazy.HashOutput)
-    (finish : C.Term → CPoint → SigningShareLazy.Digest → ShareState C →
-      ProbComp SigningShareLazy.HashOutput)
-    (t : (LocalSpec C + TsigSpec C).Domain) :
-    TagSafe (handler τ draw finish) x.1 x.2.1 q s pads (sourceOraclesX prims x top t) := by
-  intro st bm sh he ht z hz
-  rw [sourceOraclesX_marked, jointRun_bind, joint_mark] at hz
-  simp only [pure_bind] at hz
-  have hmono := flag_le_callMark x st t
-  have hj := joint_noMark x.1 x.2.1 q s pads τ draw finish
-    ((callRest prims x top st t).run st) (callRest_noMark prims x top st t)
-    (bm.1, callMark x st t) sh (ht.mono hmono) z hz
-  have hf := callRest_flag prims x top st t z.1.1 hj.2.2
-  exact ⟨hj.1.trans hf.symm, by simpa only [hf] using hmono,
-    by simpa only [hf] using hj.2.1⟩
-
 attribute [local irreducible] TagSafe
-
-/-- Setup, all adaptive calls, verification and the reference signature preserve
-mark/flag agreement at their boundaries. -/
-theorem sourceGameX_tagSafe (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
-    (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
-    (τ : CPoint → SigningShareLazy.Digest)
-    (draw : C.Term × CPoint → ProbComp SigningShareLazy.HashOutput)
-    (finish : C.Term → CPoint → SigningShareLazy.Digest → ShareState C →
-      ProbComp SigningShareLazy.HashOutput) :
-    TagSafe (handler τ draw finish) x.1 x.2.1 q s pads (sourceGameX prims A x) := by
-  unfold sourceGameX
-  apply TagSafe.get_mark
-  intro initial
-  apply TagSafe.bind ((quiet_sourceTopTreeX x.1 x.2.1).tagSafe x.1 x.2.1 q s pads τ draw finish)
-  intro top
-  apply TagSafe.bind (TagSafe.simulate _ _
-    (sourceOraclesX_tagSafe prims x top q s pads τ draw finish))
-  intro forgery
-  apply TagSafe.get_mark
-  intro st
-  apply TagSafe.bind
-    ((Quiet.simulate _ _ (quiet_verify x.1 x.2.1 st)).tagSafe x.1 x.2.1 q s pads τ draw finish)
-  intro verified
-  split <;> simp only [pure_bind]
-  · exact TagSafe.pure _
-  · exact ((quiet_sourceHonestSignatureX prims x top _ _).tagSafe
-      x.1 x.2.1 q s pads τ draw finish).bind fun _ => TagSafe.pure _
 
 @[simp] theorem handler_view (τ : CPoint → SigningShareLazy.Digest)
     (draw : C.Term × CPoint → ProbComp SigningShareLazy.HashOutput)
@@ -745,33 +658,6 @@ theorem sourceGameX_tagSafe (prims : Primitives) (A : TsigAdversary C) (x : Keys
   simp only [shareQuery, simulateQ_spec_query, handler, QueryImpl.add_apply_inr,
     SigningShareLazy.impl, StateT.run]
 
-/-- A first bad event tagged true entails the original source's final hidden flag.
-The statement covers both lazy and eager handlers without any seed assumption. -/
-theorem shareRun_tagTrue (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
-    (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
-    (τ : CPoint → SigningShareLazy.Digest)
-    (draw : C.Term × CPoint → ProbComp SigningShareLazy.HashOutput)
-    (finish : C.Term → CPoint → SigningShareLazy.Digest → ShareState C →
-      ProbComp SigningShareLazy.HashOutput)
-    (z : CompilerOutcome C × ShareState C)
-    (hz : z ∈ support ((simulateQ (handler τ draw finish)
-      (shareRun prims A x q s pads)).run SigningShareLazy.init))
-    (k : SigningShareLazy.Kind) (l : Bool) (hbad : z.2.bad = some (true, k, l)) :
-    z.1.1.2.hiddenFlag = true := by
-  simp only [shareRun, simulateQ_bind, StateT.run_bind, handler_view, pure_bind,
-    simulateQ_pure, StateT.run_pure, mem_support_bind_iff, mem_support_pure_iff] at hz
-  obtain ⟨r, hr, rfl⟩ := hz
-  have hs := sourceGameX_tagSafe prims A x q s pads τ draw finish
-  unfold TagSafe at hs
-  have hi : TagLe (sourceInit (C := C)).hiddenFlag
-      (SigningShareLazy.init (κ := C.Term) (ι := CPoint) (B := SigningShareLazy.ImplBad Bool)) := by
-    intro b k l hb
-    simp [SigningShareLazy.init] at hb
-  have result := hs sourceInit (((compilerInit, 0), fun _ => none, false), false)
-    SigningShareLazy.init rfl hi r (by simpa only [jointRun, sourceProgramX] using hr)
-  have hb := result.2.2 true k l hbad
-  exact Bool.le_iff_imp.mp hb rfl
-
 end ThresholdLeanXmssSecurity.SigningCompilerShare.Marks
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerShare.Marks.quiet_sourceTsigX' depends on axioms: [propext,
@@ -779,15 +665,3 @@ end ThresholdLeanXmssSecurity.SigningCompilerShare.Marks
  Quot.sound] -/
 #guard_msgs in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerShare.Marks.quiet_sourceTsigX
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerShare.Marks.sourceOraclesX_tagSafe' depends on axioms: [propext,
- Classical.choice,
- Quot.sound] -/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerShare.Marks.sourceOraclesX_tagSafe
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerShare.Marks.shareRun_tagTrue' depends on axioms: [propext,
- Classical.choice,
- Quot.sound] -/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerShare.Marks.shareRun_tagTrue

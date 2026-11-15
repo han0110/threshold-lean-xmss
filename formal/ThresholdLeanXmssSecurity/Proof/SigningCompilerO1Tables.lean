@@ -4,9 +4,8 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerShareTables
 /-! # Private tables for the eager share run of the O1 source
 
 `tableRunCO1_eq_tables` states that the eager fiber run of the O1 source has the same law as the
-run that samples the noise table and the free slot table in advance. The proof follows
-`SigningCompilerSyncStop.tableRunC_eq_tables` and
-`SigningCompilerShareTables.eagerRunTag_eq_tables`.
+run that samples the noise table and the free slot table in advance. The proof moves the run to the
+raw backend and replaces the private oracle by one uniform table (`privateRo_eq_table`).
 -/
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
@@ -96,8 +95,8 @@ theorem eagerRunTagTO1_raw (prims : Primitives) (A : TsigAdversary C) (x : Keys3
   rw [simulateQ_StateT_compose _ _ _ (fun _ _ => rfl)]
   rfl
 
-/-- Reuse the pinned independent-uniform-pair law under an arbitrary continuation. This lemma is a
-port of the private `SigningCompilerShareTables.uniform_pair`. -/
+/-- The independent uniform pair law of leanVM (`XmssSecurity.evalDist_independent_uniform_pair`)
+under an arbitrary continuation. -/
 private theorem uniform_pair {α β γ : Type} [Fintype α] [Fintype β]
     [SampleableType α] [SampleableType β] (next : α → β → ProbComp γ) :
     (do let a ← $ᵗ α; let b ← $ᵗ β; next a b) =ᵈ

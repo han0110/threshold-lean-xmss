@@ -60,8 +60,8 @@ theorem baseCall_bound_congr (P : PublicParameter) (e : KeyIndex) (rho : Digest)
   unfold SigningFlatProof.BaseCall SigningFlatProof.baseInput
   rw [hbound]
 
-/-- One-step port of `runSource_hashInput_ready`: the input branch supplies
-no-hit directly, without a premise about a supported continuation. -/
+/-- On one hash input, a cached randomizer that the base call reads is also cached in the deferred
+cache. The input branch supplies no-hit directly, without a premise about a supported continuation. -/
 theorem hashInput_ready_step (P : PublicParameter) (seeds : C.Term → HashOutput)
     (s : HiddenKey → Digest) (input : HashInput) (call : (WorldSpec C).Domain)
     (hcall : SigningFlatProof.HashCallAt input call) (source : SourceState C)
@@ -77,7 +77,8 @@ theorem hashInput_ready_step (P : PublicParameter) (seeds : C.Term → HashOutpu
   obtain ⟨message, _, hi⟩ := (baseCall_hashAt_iff P e _ source.signing input call hcall).mp hbase
   rw [hi, hiddenCandidate_randomizerInput, hopening.actualValue e hactual]
 
-/-- One-step port of `runSource_hashInput_trigger_iff`. -/
+/-- On one hash input, the base-call trigger on the actual cache holds exactly when it holds on the
+deferred cache. -/
 theorem trigger_iff_step (P : PublicParameter) (seeds : C.Term → HashOutput)
     (s : HiddenKey → Digest) (input : HashInput) (call otherCall : (WorldSpec C).Domain)
     (hcall : SigningFlatProof.HashCallAt input call)
@@ -454,16 +455,6 @@ theorem unreleasedCandidates_congr (P : PublicParameter) (signing signing' : Tsi
   exact candidateList_congr (hiddenCandidate P) (Released signing trees) (Released signing' trees)
     (funext (released_congr signing signing' trees hb)) t
 
-/-- Membership in the hash branch records its parsed candidate. -/
-theorem unreleasedCandidates_hash_mem (P : PublicParameter) (signing : TsigState C)
-    (trees : Finset (Fin (2 ^ layerHeight))) (input : HashInput) (c : HiddenKey × Digest)
-    (hc : c ∈ unreleasedCandidates P signing trees (.inr (.inl (.hash input)))) :
-    hiddenCandidate P input = some c := by
-  rw [unreleasedCandidates_eq_candidateList] at hc
-  obtain ⟨other, he, hh⟩ := candidateList_mem (hiddenCandidate P) (Released signing trees) _ c hc
-  cases he
-  exact hh
-
 /-- C1/C2 make the two pre-call control updates identical. -/
 theorem control_sync (x : Keys3 C) (s : HiddenKey → Digest)
     (pads : Point → Digest) (noise : ChainNoiseIndex → HashOutput)
@@ -477,22 +468,6 @@ theorem control_sync (x : Keys3 C) (s : HiddenKey → Digest)
   constructor
   · rw [h.flag, h.corrupt]
   · rw [h.candidates, h.exposed, unreleasedCandidates_congr x.1 _ _ _ t h.bound]
-
-/-- Every newly logged exact candidate is covered by the one-input no-hit branch. -/
-theorem candidatesPaid_append (P : PublicParameter) (s : HiddenKey → Digest)
-    (source : SourceState C) (t : (LocalSpec C).Domain)
-    (hpaid : ∀ c ∈ source.candidates, c.2 = s c.1 → source.revealed c.1 ≠ none)
-    (hno : ∀ input k, t = .inr (.inl (.hash input)) →
-      hiddenCandidate P input = some (k, s k) → source.revealed k ≠ none) :
-    ∀ c ∈ source.candidates ++ unreleasedCandidates P source.signing source.exposed t,
-      c.2 = s c.1 → source.revealed c.1 ≠ none := by
-  intro c hc he
-  rcases List.mem_append.mp hc with hc | hc
-  · exact hpaid c hc he
-  · rw [unreleasedCandidates_eq_candidateList] at hc
-    obtain ⟨input, ht, hh⟩ := candidateList_mem (hiddenCandidate P)
-      (Released source.signing source.exposed) t c hc
-    exact hno input c.1 ht (hh.trans (congrArg some (Prod.ext rfl he)))
 
 end ThresholdLeanXmssSecurity.SigningCompilerSyncTrigger
 
@@ -527,10 +502,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerSyncTrigger
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncTrigger.control_sync' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncTrigger.control_sync
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncTrigger.candidatesPaid_append' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncTrigger.candidatesPaid_append
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncRelease.SyncFields.mark' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

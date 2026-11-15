@@ -39,20 +39,6 @@ theorem ordinary_routes (x : Keys3 C) (input : Query C) (hn : ¬IsSlot x input) 
     rintro ⟨z, h⟩
     exact hn ⟨z.val, h⟩
 
-theorem hiddenHit_ordinary (x : Keys3 C) (D : Finset C.Party)
-    (input : Query C) (hn : ¬IsSlot x input) :
-    SigningCoreProof.hiddenHit x D (.inr (.inl input)) = false := by
-  cases input with
-  | prf seed p =>
-    simp only [SigningCoreProof.hiddenHit, decide_eq_false_iff_not]
-    rintro ⟨T, rfl, _⟩
-    exact hn ⟨.inl (T, p), rfl⟩
-  | mask seed p message J =>
-    simp only [SigningCoreProof.hiddenHit, decide_eq_false_iff_not]
-    rintro ⟨pair, rfl, _⟩
-    exact hn ⟨.inr (pair, p, message, J), rfl⟩
-  | _ => rfl
-
 /-- A visible hit and a quiet miss have one common lazy-cache law. -/
 theorem realRead_ordinary (x : Keys3 C) (s : HiddenKey → Digest)
     (pads : Point → Digest) (noise : ChainNoiseIndex → HashOutput)
@@ -77,89 +63,6 @@ def ordinaryPrefix (x : Keys3 C) (input : Query C)
     if lay = bottomLayer ∧ ReadyAfter x.2.1 (dataOf x st) src.signing e input
     then sourceReleaseOpeningX x.1 x.2.1 e else pure ()
   | _ => pure ()
-
-theorem localFrame_refl (x : Keys3 C) (a : RealState C) (b : SourceState C × CompState C) :
-    LocalFrame x a a b b :=
-  ⟨rfl, rfl, le_rfl, rfl, rfl, rfl, rfl, rfl, rfl, le_rfl, fun _ _ => rfl⟩
-
-/-- P preserves the pre-read relation on a non-slot input, including count. -/
-theorem ordinaryPrefix_sync (x : Keys3 C)
-    (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
-    (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
-    (τ : CPoint → Digest) (g : C.Term × CPoint → HashOutput)
-    (noise : ChainNoiseIndex → HashOutput) (rest : RestSlot C → HashOutput)
-    (input : Query C) (hn : ¬IsSlot x input) (a : RealState C)
-    (src : SourceState C) (st : CompState C)
-    (hs : SyncCore x s pads noise g rest a (src, st)) (hmark : st.1.2 = false)
-    (r : (Unit × SourceState C) × CompState C)
-    (hr : r ∈ support (runX
-      (shareBackendTagT capTag x.1 x.2.1 x.2.2 q s pads τ g noise rest)
-      (ordinaryPrefix x input src st) src st)) :
-    Stop r.2 ∨ (SyncCore x s pads noise g rest a (r.1.2, r.2) ∧
-      LocalFrame x a a (src, st) (r.1.2, r.2)) := by
-  have hpure (he : ordinaryPrefix x input src st = pure ()) :
-      Stop r.2 ∨ (SyncCore x s pads noise g rest a (r.1.2, r.2) ∧
-        LocalFrame x a a (src, st) (r.1.2, r.2)) := by
-    rw [he, runX_pure, mem_support_pure_iff] at hr
-    subst r
-    exact Or.inr ⟨hs, localFrame_refl x a (src, st)⟩
-  cases input with
-  | prf seed point =>
-    cases point with
-    | randomizer lay e =>
-      by_cases hp : lay = bottomLayer ∧
-          ReadyAfter x.2.1 (dataOf x st) src.signing e (.prf seed (.randomizer lay e))
-      · obtain ⟨rfl, hready⟩ := hp
-        simp only [ordinaryPrefix, hready, and_self, if_true] at hr
-        by_cases hreveal : src.revealed (.opening bottomLayer e) = none
-        · have hrelease := releaseOpening_sync x hkeys q s pads τ g noise rest e seed a src st
-            (visibleOf a) hs.1.1 hs.1.2 hmark hreveal hready (Or.inl ⟨hn, rfl⟩) r hr
-          rcases hrelease with hstop | ⟨hnext, hframe, _, hcount, _⟩
-          · exact Or.inl hstop
-          · exact Or.inr ⟨⟨hnext, hs.2.trans hcount.symm⟩, hframe⟩
-        · rw [runX_releaseOpening_revealed _ x.1 x.2.1 e src st hreveal,
-            mem_support_pure_iff] at hr
-          subst r
-          exact Or.inr ⟨hs, localFrame_refl x a (src, st)⟩
-      · apply hpure
-        exact if_neg hp
-    | _ => exact hpure rfl
-  | _ => exact hpure rfl
-
-/-- The write-only monitor is retained when lifting the existing cache coupling. -/
-theorem cachedExtra_monitored (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (s : HiddenKey → Digest) (before after : SigningFlatProof.FlatState C)
-    (call : (WorldSpec C).Domain) (data : DeferredState C) (actual : HashCache C)
-    (h : CacheRelation P seeds s data actual)
-    (keyOf : HashInput → Option XmssSecurity.LeafIndex)
-    (monitor : SigningPartnerBoundProof.Monitor) (bits : XmssSecurity.LeafIndex → Bool) :
-    RelTriple
-      ((simulateQ (SigningOneRunProof.keyedSplitOracle keyOf)
-        (SigningR1FixedProof.cachedExtra seeds P before call after)).run ((actual, monitor), bits))
-      ((simulateQ (Query C →ₒ HashOutput).randomOracle
-        (SigningR1FixedProof.cachedExtra seeds P before call after)).run data.cache)
-      (fun a b => a.1 = b.1 ∧ CacheRelation P seeds s { data with cache := b.2 } a.2.1.1) := by
-  let oa := SigningR1FixedProof.cachedExtra seeds P before call after
-  have hf : (fun z => (z.1, z.2.1.1)) <$>
-      (simulateQ (SigningOneRunProof.keyedSplitOracle keyOf) oa).run ((actual, monitor), bits) =
-      (simulateQ (Query C →ₒ HashOutput).randomOracle oa).run actual := by
-    rw [← SigningFlatEagerProof.monitoredOracle_run_forget keyOf oa actual monitor,
-      ← SigningOneRunProof.keyedSplitOracle_run_forget keyOf oa (actual, monitor) bits,
-      Functor.map_map]
-  have hl : RelTriple
-      ((simulateQ (SigningOneRunProof.keyedSplitOracle keyOf) oa).run ((actual, monitor), bits))
-      ((simulateQ (Query C →ₒ HashOutput).randomOracle oa).run actual)
-      (fun a b => (a.1, a.2.1.1) = b) := by
-    rw [← hf]
-    simpa only [id_map] using
-      (relTriple_map (f := id) (g := fun z => (z.1, z.2.1.1))
-        (relTriple_post_mono (relTriple_refl
-          ((simulateQ (SigningOneRunProof.keyedSplitOracle keyOf) oa).run ((actual, monitor), bits)))
-          (fun a b he => congrArg (fun z => (z.1, z.2.1.1)) he)))
-  apply relTriple_post_mono (XmssSecurity.relTriple_trans_exists hl
-    (relTriple_cachedExtra P seeds s before after call data actual h))
-  rintro a b ⟨_, rfl, he, hc⟩
-  exact ⟨he, hc⟩
 
 -- Port of TreeSim.treeSim_relTriple_support, avoiding its ceremony imports.
 theorem relTriple_supported {α β : Type} {oa : ProbComp α} {ob : ProbComp β}
@@ -221,17 +124,6 @@ theorem randomOracle_observe (cache : HashCache C) (input : Query C)
       mem_support_pure_iff] at hr
     subst r
     exact observe_same cache input value hv
-
-theorem cacheRead_support (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (input : Query C) (call : (WorldSpec C).Domain) (signing : TsigState C)
-    (trace : XmssSecurity.SigningCacheTrace × Bool) (cache : HashCache C)
-    (r : ReadView C HashOutput) (hr : r ∈ support (cacheRead P seeds input call signing trace cache)) :
-    cache ≤ r.2.1 ∧ r.2.1 input = some r.1 := by
-  simp only [cacheRead, mem_support_bind_iff, mem_support_pure_iff] at hr
-  obtain ⟨a, ha, b, hb, rfl⟩ := hr
-  have hread := randomOracle_support input cache a ha
-  have hgrind := SigningReleasedTransferProof.cachedExtra_frame seeds P _ call _ b hb
-  exact ⟨hread.1.trans hgrind.1, hgrind.1 hread.2.1⟩
 
 /-- The existing deferred-read coupling, projected to its two ordinary caches. -/
 theorem cacheQuery_rel (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -314,28 +206,6 @@ def realReadView {α : Type} (r : α × RealState C) : ReadView C α :=
 
 def compilerReadView {α : Type} (x : Keys3 C) (r : α × CompState C) : ReadView C α :=
   (r.1, (dataOf x r.2).cache, r.2.1.1.1.1.trace)
-
-theorem ordinary_merged (x : Keys3 C) (hinj : Function.Injective x.2.1)
-    (q : ℕ) (s : HiddenKey → Digest)
-    (input : Query C) (hn : ¬IsSlot x input) (st : CompState C)
-    (r : HashOutput × CappedCompilerState C)
-    (hr : r ∈ support ((SigningCappedExpectProof.cappedHybrid (compilerImpl x.1 x.2.1)
-      (deferredInputSide x.1) deferredCounted (deferredKey x.1) (deferredPoint x.1) q s
-      (.inl (.hash input))).run (merged x.2.1 st.1.1 st.2.cache))) :
-    merged x.2.1 (splitRest x.2.1 r.2) st.2.cache = r.2 := by
-  apply merged_split_of_agree x.2.1 hinj
-  intro z
-  have ht : ¬SourceWritesPrf (C := C) (x.2.1 z.1) z.2.val (.inl (.hash input)) := by
-    intro he
-    exact hn ⟨.inl (z.1, z.2), he.symm⟩
-  revert r
-  generalize hm : merged x.2.1 st.1.1 st.2.cache = m
-  intro r hr
-  have hf := cappedCompiler_prf_frame x.1 x.2.1 q s (.inl (.hash input)) m r hr (x.2.1 z.1) z.2.val ht
-  refine hf.trans ?_
-  rw [← hm]
-  simp only [merged, withCache]
-  exact merge_key x.2.1 hinj st.1.1.1.1.data.cache st.2.cache z
 
 theorem ordinary_merged_gen (x : Keys3 C) (hinj : Function.Injective x.2.1)
     (q : ℕ) (s : HiddenKey → Digest)
@@ -428,56 +298,6 @@ theorem cachedExtra_congr (seeds : C.Term → HashOutput) (P : PublicParameter)
     simp only [hs]
     split <;> simp_all
 
-/-- Forgetting monitors and the private cache gives the exact counted-call view. -/
-theorem realWorld_read_view (prims : Primitives) (x : Keys3 C)
-    (s : HiddenKey → Digest) (pads : Point → Digest) (noise : ChainNoiseIndex → HashOutput)
-    (g : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput)
-    (rq : (RoSpec C).Domain) (a : RealState C)
-    (hr : RealPrivate x s pads noise g rest a.2 (visibleOf a))
-    (h : (∃ value, visibleOf a (readInput rq) = some value) ∨
-      Quiet x s pads noise (readInput rq)) :
-    realReadView <$>
-      (fuse (rawTraceWorld prims x) (realImpl x g rest) (.inl (.inl (.inr rq)))).run a =
-    (fun r => (readAnswer prims rq r.1, r.2)) <$>
-      cacheRead x.1 x.2.1 (readInput rq) (.inl (.inl (.inr rq)))
-        a.1.2.1.1 a.1.1.2 (visibleOf a) := by
-  rw [rawTraceWorld_read, realRead_ordinary x s pads noise g rest a.2 (visibleOf a) hr _ h]
-  simp only [map_bind, bind_map_left, cacheRead]
-  apply bind_congr_of_forall_mem_support
-  intro z hz
-  have ho := randomOracle_observe (visibleOf a) (readInput rq) z hz
-  rw [ho]
-  rw [grind_quiet_transport x s pads noise g rest _ _ _ _ _
-    (fun input hi => syncPrivate_agrees x s pads noise a.2 z.2 input hi)]
-  simp only [Functor.map_map, map_bind, map_pure]
-  have he : SigningR1FixedProof.cachedExtra x.2.1 x.1
-      (a.1.1.1.1.1, a.1.2.1) (.inl (.inl (.inr rq)))
-      (((z.2, a.1.1.1.1.1.1.2), a.1.1.1.1.1.2), a.1.2.1) =
-      SigningR1FixedProof.cachedExtra x.2.1 x.1
-        ((((visibleOf a), 0), []), a.1.2.1.1, false) (.inl (.inl (.inr rq)))
-        (((z.2, 0), []), a.1.2.1.1, false) :=
-    cachedExtra_congr x.2.1 x.1 _ _ _ _ _ rfl rfl rfl
-  rw [he]
-  simp only [bind_map_left]
-  rw [← keyedSplit_cache_forget (XmssSecurity.encodingInputLeafIndex? x.1) _
-    ((z.2, SigningFlatEagerProof.queryEntryStep (XmssSecurity.encodingInputLeafIndex? x.1)
-      a.1.1.1.1.2 (SigningPartnerBoundProof.hashEntry
-        ⟨.inl (.inl (.inr rq)), readAnswer prims rq z.1⟩)), a.1.1.1.2)]
-  simp only [bind_map_left]
-  rfl
-
-theorem cacheRead_nonhash (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (input : Query C) (call : (WorldSpec C).Domain) (signing : TsigState C)
-    (trace : XmssSecurity.SigningCacheTrace × Bool) (cache : HashCache C)
-    (hn : ∀ i, ¬SigningFlatProof.HashCallAt i call) :
-    cacheRead P seeds input call signing trace cache =
-      (fun r => (r.1, r.2, trace)) <$>
-        (((Query C →ₒ HashOutput).randomOracle input).run cache) := by
-  unfold cacheRead
-  simp only [nonhash_cachedExtra seeds P _ _ call hn, simulateQ_pure,
-    StateT.run_pure, pure_bind, nonhash_traceStepAt seeds P _ _ signing call trace hn,
-    map_pure, bind_pure_comp]
-
 theorem ordinary_not_suspended (x : Keys3 C) (s : HiddenKey → Digest)
     (data : DeferredState C) (input : Query C) (hn : ¬IsSlot x input)
     (hh : ∀ i, input ≠ .hash i) : ¬SuspendedQuery x.1 x.2.1 s data input := by
@@ -534,44 +354,15 @@ theorem compilerRead_fields (x : Keys3 C) (hinj : Function.Injective x.2.1)
     (congrArg DeferredState.virtual hdata).trans rfl,
     le_of_le_of_eq hgrow (congrArg DeferredState.cache hdata).symm⟩
 
-/-- Every real RO or PRG call counts once and retains the opening state. -/
-theorem realWorld_read_fields (prims : Primitives) (x : Keys3 C)
-    (g : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput)
-    (rq : (RoSpec C).Domain) (a : RealState C)
-    (r : (RoSpec C).Range rq × RealState C)
-    (hr : r ∈ support ((fuse (rawTraceWorld prims x) (realImpl x g rest)
-      (.inl (.inl (.inr rq)))).run a)) :
-    r.2.1.2 = a.1.2 ∧ r.2.1.1.1.1.1.1.2 = a.1.1.1.1.1.1.2 + 1 := by
-  rw [rawTraceWorld_read] at hr
-  simp only [mem_support_bind_iff, mem_support_pure_iff] at hr
-  obtain ⟨z, _, y, _, rfl⟩ := hr
-  exact ⟨rfl, by cases rq <;> rfl⟩
-
 end ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.ordinary_routes' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.ordinary_routes
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.hiddenHit_ordinary' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.hiddenHit_ordinary
-
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.realRead_ordinary' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.realRead_ordinary
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.localFrame_refl' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.localFrame_refl
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.ordinaryPrefix_sync' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.ordinaryPrefix_sync
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.cachedExtra_monitored' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.cachedExtra_monitored
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.relTriple_supported' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
@@ -585,10 +376,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.randomOracle_observe
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.cacheRead_support' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.cacheRead_support
-
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.cacheQuery_rel' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.cacheQuery_rel
@@ -596,10 +383,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.cacheRead_hash_rel' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.cacheRead_hash_rel
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.ordinary_merged' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.ordinary_merged
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.ordinary_merged_gen' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
@@ -617,14 +400,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.cachedExtra_congr
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.realWorld_read_view' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.realWorld_read_view
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.cacheRead_nonhash' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.cacheRead_nonhash
-
 /--
 info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.ordinary_not_suspended' depends on axioms: [propext,
  Classical.choice,
@@ -640,7 +415,3 @@ info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.ordinary_not_suspe
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.compilerRead_fields' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.compilerRead_fields
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.realWorld_read_fields' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncLocalRead.realWorld_read_fields

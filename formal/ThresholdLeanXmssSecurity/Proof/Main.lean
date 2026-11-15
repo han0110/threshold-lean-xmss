@@ -177,85 +177,8 @@ theorem support_runWorld {α : Type} (oa : OracleComp (WorldSpec C) α) (r : α 
 /-- The cache `s'` keeps every entry of `s`. -/
 def Extends (s s' : HashCache C) : Prop := ∀ q v, s q = some v → s' q = some v
 
-theorem Extends.refl (s : HashCache C) : Extends s s := fun _ _ h => h
-
 theorem Extends.trans {s₁ s₂ s₃ : HashCache C} (h₁ : Extends s₁ s₂) (h₂ : Extends s₂ s₃) : Extends s₁ s₃ :=
   fun q v h => h₂ q v (h₁ q v h)
-
-/-- A lazy random-oracle answer returns the cached value, or caches a fresh one. -/
-theorem support_randomOracle (q : Query C) (σ : HashCache C) (z : HashOutput × HashCache C)
-    (hz : z ∈ support (((Query C →ₒ HashOutput).randomOracle q).run σ)) :
-    Extends σ z.2 ∧ z.2 q = some z.1 := by
-  rw [randomOracle.apply_eq] at hz
-  rcases hσ : σ q with _ | v
-  · simp [StateT.run_bind, hσ, modifyGet, MonadStateOf.modifyGet] at hz
-    obtain ⟨i, hi⟩ := hz
-    have : z = (i, σ.cacheQuery q i) := by simpa [StateT.modifyGet, StateT.run] using hi
-    subst this
-    refine ⟨fun q' v hv => ?_, QueryCache.cacheQuery_self _ _ _⟩
-    have hne : q' ≠ q := fun h => by subst h; rw [hσ] at hv; cases hv
-    simpa [QueryCache.cacheQuery, Function.update_of_ne hne] using hv
-  · simp [StateT.run_bind, hσ] at hz
-    subst hz
-    exact ⟨Extends.refl σ, hσ⟩
-
-theorem support_hashAnswer (q : Query C) (σ : HashCache C) (z : HashOutput × HashCache C)
-    (hz : z ∈ support ((hashAnswer prims q).run σ)) :
-    Extends σ z.2 ∧ ((∀ input, q = .hash input → ¬ MpcInput input) → z.2 q = some z.1) := by
-  cases q
-  case hash input =>
-    by_cases hm : MpcInput input
-    · simp only [hashAnswer, hm, if_true] at hz
-      simp at hz
-      subst hz
-      exact ⟨Extends.refl σ, fun h => absurd hm (h input rfl)⟩
-    · simp only [hashAnswer, hm, if_false] at hz
-      exact ⟨(support_randomOracle _ σ z hz).1, fun _ => (support_randomOracle _ σ z hz).2⟩
-  all_goals exact ⟨(support_randomOracle _ σ z hz).1, fun _ => (support_randomOracle _ σ z hz).2⟩
-
-theorem support_prgAnswer (x : PrgInput C) (σ : HashCache C) (z : Bit × HashCache C)
-    (hz : z ∈ support ((prgAnswer prims x).run σ)) : Extends σ z.2 := by
-  simp only [prgAnswer] at hz
-  rw [StateT.run_bind, mem_support_bind_iff] at hz
-  obtain ⟨y, hy, hz⟩ := hz
-  simp at hz
-  subst hz
-  exact (support_hashAnswer prims _ σ y hy).1
-
-theorem support_localAnswer_extends (t : (LocalSpec C).Domain) (σ : HashCache C) (z)
-    (hz : z ∈ support ((localAnswer prims t).run σ)) : Extends σ z.2 := by
-  rcases t with n | q | x
-  · simp [localAnswer, unifFwdImpl] at hz
-    obtain ⟨a, rfl⟩ := hz
-    exact Extends.refl σ
-  · exact (support_hashAnswer prims q σ z hz).1
-  · exact support_prgAnswer prims x σ z hz
-
-theorem support_programAnswer (x : Query C × HashOutput) (σ : HashCache C) (z : Bool × HashCache C)
-    (hz : z ∈ support ((programAnswer x).run σ)) : Extends σ z.2 := by
-  simp only [programAnswer, StateT.run_bind, StateT.run_get, pure_bind] at hz
-  split_ifs at hz with h
-  · simp at hz
-    subst hz
-    exact Extends.refl σ
-  · simp [StateT.run_bind] at hz
-    subst hz
-    intro q v hv
-    have hne : q ≠ x.1 := fun hq => by subst hq; simp [hv] at h
-    simpa [QueryCache.cacheQuery, Function.update_of_ne hne] using hv
-
-theorem support_baseWorld_extends (t : (WorldSpec C).Domain) (σ : HashCache C) (z)
-    (hz : z ∈ support ((worldAnswer prims t).run σ)) : Extends σ z.2 := by
-  rcases t with (t | x) | t
-  · exact support_localAnswer_extends prims t σ z hz
-  · exact support_programAnswer x σ z hz
-  · exact support_localAnswer_extends prims t σ z hz
-
-/-- The cache of the world only grows. -/
-theorem baseWorld_extends {α : Type} (oa : OracleComp (WorldSpec C) α) (σ : HashCache C) (z)
-    (hz : z ∈ support ((simulateQ (worldAnswer prims) oa).run σ)) : Extends σ z.2 :=
-  OracleComp.simulateQ_run_preservesInv (worldAnswer prims) (Extends σ)
-    (fun t σ₀ h₀ z hz => h₀.trans (support_baseWorld_extends prims t σ₀ z hz)) oa σ (Extends.refl σ) z hz
 
 end Cache
 
@@ -1614,19 +1537,6 @@ namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
 variable {C : Committee} {E : Type} [Field E] [Algebra Bit E]
 
-/-- A corrupt operator's additive product share uses only known terms. -/
-theorem main_mulRep_known (K : Constants C E) (D : C.Coalition)
-    (i : C.Party) (hi : i ∈ D.1) (x y : Shares C Bit) (count g : ℕ)
-    (hg : g < count) :
-    mulRep K (localContext i) (knownView D.1 count x) (knownView D.1 count y) g =
-      mulRep K (localContext i) x y g := by
-  unfold mulRep
-  refine Finset.sum_congr rfl fun AB hAB => ?_
-  obtain ⟨ha, hb⟩ := K.pairs_held i AB hAB
-  have hka : KnownTo D.1 AB.1 := ⟨i, hi, ha⟩
-  have hkb : KnownTo D.1 AB.2 := ⟨i, hi, hb⟩
-  simp only [knownView, hka, hkb, hg, and_self, if_true]
-
 /-- Splitting the additive shares into honest and corrupt contributions. -/
 theorem main_mulRep_honest_add_corrupt (K : Constants C E) (D : C.Coalition)
     (x y : Shares C Bit) (g : ℕ) :
@@ -1636,21 +1546,6 @@ theorem main_mulRep_honest_add_corrupt (K : Constants C E) (D : C.Coalition)
   rw [Finset.sum_filter_not_add_sum_filter]
   exact mulRep_views_sum K (fun _ => x) (fun _ => y) x y g
     (fun _ _ _ => rfl) (fun _ _ _ => rfl)
-
-/-- The multiplication difference is computable from the attack and the known terms. -/
-theorem main_mulRep_difference (K : Constants C E) (D : C.Coalition)
-    (x y : Shares C Bit) (count g : ℕ) (hg : g < count) (d : Bit) :
-    ((∑ i ∈ Finset.univ.filter (fun i => i ∉ D.1),
-        mulRep K (localContext i) x y g) + d) - shareValue x g * shareValue y g =
-      d - ∑ i ∈ Finset.univ.filter (fun i => i ∈ D.1),
-        mulRep K (localContext i) (knownView D.1 count x) (knownView D.1 count y) g := by
-  have hknown : (∑ i ∈ Finset.univ.filter (fun i => i ∈ D.1),
-      mulRep K (localContext i) (knownView D.1 count x) (knownView D.1 count y) g) =
-      ∑ i ∈ Finset.univ.filter (fun i => i ∈ D.1), mulRep K (localContext i) x y g := by
-    refine Finset.sum_congr rfl fun i hi => ?_
-    exact main_mulRep_known K D i (Finset.mem_filter.mp hi).2 x y count g hg
-  rw [hknown, ← main_mulRep_honest_add_corrupt K D x y g]
-  ring
 
 end ThresholdLeanXmssSecurity
 
@@ -1804,30 +1699,6 @@ theorem main_mulRep_views (K : Constants C E) (D : C.Coalition)
   refine Finset.sum_congr rfl fun AB hAB => ?_
   obtain ⟨hA, hB⟩ := K.pairs_held i AB hAB
   rw [hx i AB.1 hi hA, hy i AB.2 hi hB]
-
-/-- Agreement can be checked on known terms when every unknown term already agrees. -/
-theorem main_consistent_iff_known {α : Type} [Zero α] (D : C.Coalition)
-    (views : C.Party → C.Term → α)
-    (hidden : ∀ T, ¬ KnownTo D.1 T → ConsistentAt D views T) :
-    Consistent D views ↔ Consistent D (fun i T => if KnownTo D.1 T then views i T else 0) := by
-  constructor
-  · intro h T i hi j hj hiD hjD
-    dsimp only
-    split_ifs with hT
-    · exact h T i hi j hj hiD hjD
-    · rfl
-  · intro h T
-    by_cases hT : KnownTo D.1 T
-    · intro i hi j hj hiD hjD
-      simpa only [hT, if_true] using h T i hi j hj hiD hjD
-    · exact hidden T hT
-
-/-- Computing an affine gate commutes with hiding the unknown terms. -/
-theorem main_affine_known (D : C.Coalition) (a : Affine)
-    (w w' : C.Term → List Bit) (publicTerm : C.Term)
-    (h : ∀ T, KnownTo D.1 T → w T = w' T) (T : C.Term) (hT : KnownTo D.1 T) :
-    a.share w publicTerm T = a.share w' publicTerm T := by
-  simp only [Affine.share, h T hT]
 
 /-- One layer preserves equality of the known wire lists. -/
 theorem main_appendLayer_known (D : C.Coalition) (jobs : List Circuit) (l : ℕ)

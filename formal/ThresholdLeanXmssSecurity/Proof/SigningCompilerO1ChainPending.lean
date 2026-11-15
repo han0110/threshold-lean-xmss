@@ -91,10 +91,6 @@ theorem cacheRelation_chainPending (P : PublicParameter) (seeds : C.Term → Has
     · rw [Function.update_of_ne hpp] at hp'
       exact SigningCompilerO1Lemmas.le_cacheQuery_of_seen vis _ _ hseen (h.pending p' value hp')
 
-/-- The data of the compiler state does not read the count. -/
-theorem dataOf_count (x : Keys3 C) (st : CompState C) (count : ℕ) :
-    dataOf x ((((st.1.1.1.1, count), st.1.1.2), st.1.2), st.2) = dataOf x st := rfl
-
 /-- The data of the compiler state after a new pending answer. -/
 theorem dataOf_pending (x : Keys3 C) (st : CompState C) (p : PendingInput)
     (answer : DeferredOutput) (count : ℕ) :
@@ -381,10 +377,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.cacheRelation_chainPending' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.cacheRelation_chainPending
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.dataOf_count' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.dataOf_count
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1ChainPending.dataOf_pending' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

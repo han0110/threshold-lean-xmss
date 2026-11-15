@@ -2,24 +2,16 @@ import ThresholdLeanXmssSecurity.Proof.SigningSupport
 import ThresholdLeanXmssSecurity.Proof.SigningUnchargedLogged
 
 /-!
-# A released signature is resolved in the cache
+# The receipts of a released signature
 
-`releasedResolved` proves `SigningSupportProof.ReleasedResolved`. Outside `OpeningMatch`, a released
-final key has its selected digest input in the cache when the verification starts.
+This module holds two receipt lemmas. `verifyRun_released_receipt` of
+`Proof/SigningReleasedTransfer.lean` uses them.
 
-* A release needs `t` signers. The corrupt operators are at most `t - 1`, so an honest round 2
-  released the chain parts at the key. Its receipt holds a supported run of `signCodeword`.
-* `run_signCodeword_cached` shows that this run calls the selected digest input. It replays the run
-  and uses `encodingInput_cached_of_decode_some` of leanVM.
-* Outside `OpeningMatch`, the receipt has the canonical randomizer (`ReceiptRuns.canonical`), so its
-  randomness is the selected randomness (`ReceiptRuns.selected`).
 * `openingRun_receipts` moves the run of `openingOracles` to a run of `flaggedReceiptOracles` with
   the same state and cache.
-
-`verifyRun_bottomOpened_eq` then holds with no hypothesis.
-
-`topOpened_cache_eq` is the cache form of `topOpened`. It needs the same honest root on both caches
-and the top digest input in the smaller cache.
+* `receiptRun_released` gives the receipt of a release. A release needs `t` signers. The corrupt
+  operators are at most `t - 1`, so an honest round 2 released the chain parts at the key. Its
+  receipt has supported runs below the cache.
 -/
 
 set_option pp.deepTerms false
@@ -40,26 +32,6 @@ variable {C : Committee}
 section Grind
 
 variable (prims : Primitives)
-
-set_option maxRecDepth 100000 in
-/-- A supported run of `signCodeword` that returns a randomness calls the digest input of that
-randomness. -/
-theorem run_signCodeword_cached (P : PublicParameter) (commitment : Digest) (e : KeyIndex)
-    (message : Message) (candidate : Digest) (s : HashCache C × ℕ)
-    (r : Option (Randomizer × Encoding) × HashCache C × ℕ)
-    (hr : r ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
-      (SigningSecurityProof.liftFree (signCodeword P commitment e message candidate))).run s))
-    (randomness : Randomizer) (encoding : Encoding) (hs : r.1 = some (randomness, encoding)) :
-    (SigningDescentProof.thView r.2.1
-      (XmssSecurity.Concrete.CacheView.encodingInput P e (message, randomness))).isSome := by
-  have hd := (SigningCacheProof.run_liftFree prims _ s r hr _ (SigningCacheProof.agrees_answersOf le_rfl)).symm.trans hs
-  rw [D_signCodeword (prims := prims) _ _ _ _ _ (SigningGuessProof.signCodeword_some_commitment prims _ P
-    commitment e message candidate _ hd).symm] at hd
-  have hdecode := E_grind_spec (prims := prims) _ _ _ _ _ _ _ _ _ hd
-  rw [SigningGuessProof.E_messageDigest_cache, XmssSecurity.Bridge.decode_eq] at hdecode
-  obtain ⟨output, hout⟩ := XmssSecurity.Concrete.CacheView.encodingInput_cached_of_decode_some _ P e message
-    randomness encoding hdecode
-  exact Option.isSome_iff_exists.mpr ⟨output, hout⟩
 
 end Grind
 
@@ -134,142 +106,8 @@ section Verification
 
 variable (prims : Primitives)
 
-set_option maxRecDepth 100000 in
-/-- Outside `OpeningMatch`, a released signature of the final key has its selected digest input in
-the cache when the verification starts. -/
-theorem releasedResolved : SigningSupportProof.ReleasedResolved prims (C := C) := by
-  intro A x r hr top state forgery hm hn
-  obtain ⟨p, q, w, hp, hp1, hq, hw, rfl⟩ :=
-    SigningUnchargedLoggedProof.verifyFinal_support (SigningCacheProof.countImpl prims)
-      (∅, 0) A x r hr top state forgery hm
-  rw [SigningGuessLinkProof.tsigFinishLogged_eq] at hw
-  obtain ⟨v, hv, hw⟩ := SigningCacheProof.run_bind_support prims _ _ _ w hw
-  rw [simulateQ_map, StateT.run_map, support_map] at hw
-  obtain ⟨f, hf, rfl⟩ := hw
-  simp only [Option.some.injEq, Prod.mk.injEq] at hm
-  obtain ⟨-, rfl, rfl⟩ := hm
-  refine ⟨_, _, _, v, hv, rfl, SigningCacheProof.countRun_grows prims _ _ f hf, ?_⟩
-  intro z hrel
-  have hqv : q.2.1 ≤ f.2.1 := (SigningCacheProof.countRun_grows prims _ _ v hv).trans
-    (SigningCacheProof.countRun_grows prims _ _ f hf)
-  rw [SigningSupportProof.honestKey_released] at hrel
-  unfold SigningSupportProof.releasedAt at hrel
-  clear hw
-  change (match q.1.2.1.1.bound q.1.1.signature.leafIndex with
-    | some message => decide (C.t ≤ (signersAt q.1.2.1.1 q.1.1.signature.leafIndex message).card)
-    | none => false) = true at hrel
-  cases hb : q.1.2.1.1.bound q.1.1.signature.leafIndex with
-  | none =>
-    rw [hb] at hrel
-    cases hrel
-  | some message =>
-  rw [hb] at hrel
-  have ht := of_decide_eq_true hrel
-  obtain ⟨q', hq', -, hstate, hcache⟩ := openingRun_receipts prims x _ _ SigningCoreProof.tsigInit false
-    p.2 q hq
-  obtain ⟨receipt, -, hkey, hmessage, hruns⟩ := receiptRun_released prims x top _ p.2 q' (by exact hq')
-    q.1.1.signature.leafIndex message (by rw [hstate]; exact ht)
-  rw [hcache] at hruns
-  have htop : TopFacts prims (SigningCacheProof.answersOf f.2.1) x.2.1 x.1 top := by
-    have hval := SigningCacheProof.run_liftFree prims _ _ p hp (SigningCacheProof.answersOf f.2.1)
-      (SigningCacheProof.agrees_answersOf ((SigningCacheProof.countRun_grows prims _ _ q hq).trans hqv))
-    rw [hp1] at hval
-    obtain ⟨generated, hgen, hchain, hroot⟩ :=
-      D_refTop (prims := prims) (h := SigningCacheProof.answersOf f.2.1) x.1 x.2.1 emptyTop
-    have he : generated = top := TreeOutput.top.inj (Option.some.inj (hgen.symm.trans hval.symm))
-    subst generated
-    exact ⟨hchain, hroot⟩
-  have hfinal := SigningGuessProof.ReceiptRuns.mono prims x top hqv receipt hruns
-  dsimp only at hn
-  have hcanon := SigningGuessProof.ReceiptRuns.canonical prims x
-    (((v.1.1 && f.1, q.1.2.1.2), some (top, q.1.2.1.1, q.1.1)), f.2) top q.1.2.1.1 q.1.1 rfl htop
-    receipt hfinal hkey hn
-  have hselected := SigningGuessProof.ReceiptRuns.selected prims z receipt hfinal hkey
-    (by rw [hkey, hmessage]; exact hb) hcanon.1
-  intro selected hmem
-  have hs : selected = (receipt.message, receipt.randomness) :=
-    Option.some.inj ((Option.mem_def.mp hmem).symm.trans hselected)
-  subst selected
-  obtain ⟨-, -, -, sCode, rCode, -, -, -, -, hCode, hCodeOut, hCodeLe⟩ := hruns
-  obtain ⟨output, houtput⟩ := Option.isSome_iff_exists.mp (run_signCodeword_cached prims x.1
-    receipt.commitment receipt.key receipt.message receipt.candidate sCode rCode hCode
-    receipt.randomness receipt.encoding hCodeOut)
-  rw [show z.key = receipt.key from hkey.symm]
-  exact Option.isSome_iff_exists.mpr ⟨output, hCodeLe houtput⟩
-
-set_option maxRecDepth 100000 in
-/-- Outside `OpeningMatch`, the read of `bottomOpened` at the start of the verification is the
-read on the final cache. -/
-theorem verifyRun_bottomOpened_eq (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
-    (r : SigningGuessLinkProof.LoggedOutcome C) (hr : r ∈ support (SigningGuessLinkProof.verifyRun prims A x))
-    (top : TopTree) (state : TsigState C) (forgery : Forgery) (hm : r.1.1.2 = some (top, state, forgery))
-    (hn : ¬SigningGuessProof.OpeningMatch prims x (r.1.1, r.2)) :
-    ∃ s : HashCache C × ℕ, s.1 ≤ r.2.1 ∧
-      let z := SigningCostProof.finalOf x (r.1.1, r.2) top state forgery
-      SigningDescentProof.bottomOpened s.1 x.1 z.key (z.honestKey prims) =
-        SigningDescentProof.bottomOpened r.2.1 x.1 z.key (z.honestKey prims) :=
-  SigningSupportProof.verifyRun_bottomOpened_eq prims (releasedResolved prims) A x r hr top state forgery hm hn
-
 end Verification
-
-section Top
-
-/-- The digest input of the honest top signature of the tree of `e` is in the cache `c`. -/
-def TopSignedCached (c : HashCache C) (P : XmssSecurity.PublicParameter) (e : XmssSecurity.LeafIndex)
-    (hk : SigningDescentProof.HonestKey) : Prop :=
-  (SigningDescentProof.thView c (XmssSecurity.Concrete.CacheView.topEncodingInput P (XmssSecurity.topKeyOf e)
-    (SigningDescentProof.topSignedInput c P e hk))).isSome
-
-/-- If the honest root reads the same on both caches and the top digest input is in the smaller
-cache, the read of `topOpened` does not change. -/
-theorem topOpened_cache_eq {c c' : HashCache C} (hle : c ≤ c') (P : XmssSecurity.PublicParameter)
-    (e : XmssSecurity.LeafIndex) (hk : SigningDescentProof.HonestKey)
-    (hroot : SigningDescentProof.honestRoot c P e hk = SigningDescentProof.honestRoot c' P e hk)
-    (hc : TopSignedCached c P e hk) :
-    SigningDescentProof.topOpened c P e hk = SigningDescentProof.topOpened c' P e hk := by
-  have hinput : SigningDescentProof.topSignedInput c P e hk = SigningDescentProof.topSignedInput c' P e hk := by
-    unfold SigningDescentProof.topSignedInput
-    rw [hroot]
-  obtain ⟨output, hout⟩ := Option.isSome_iff_exists.mp hc
-  have hout' : SigningDescentProof.thView c' (XmssSecurity.Concrete.CacheView.topEncodingInput P
-      (XmssSecurity.topKeyOf e) (SigningDescentProof.topSignedInput c' P e hk)) = some output := by
-    rw [← hinput]
-    exact hle (show c (.hash _) = some output from hout)
-  have henc : SigningDescentProof.topEncoding c P e hk = SigningDescentProof.topEncoding c' P e hk := by
-    unfold SigningDescentProof.topEncoding
-    rw [XmssSecurity.Concrete.CacheView.topEncodingHash, XmssSecurity.Concrete.CacheView.topEncodingHash,
-      XmssSecurity.Concrete.CacheView.digestAt_eq_of_cache_eq_some hout,
-      XmssSecurity.Concrete.CacheView.digestAt_eq_of_cache_eq_some hout']
-  funext l
-  unfold SigningDescentProof.topOpened
-  rw [henc]
-
-end Top
 
 end SigningReleasedProof
 
 end ThresholdLeanXmssSecurity
-
-/--
-info: 'ThresholdLeanXmssSecurity.SigningReleasedProof.releasedResolved' depends on axioms: [propext,
- Classical.choice,
- Quot.sound]
--/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningReleasedProof.releasedResolved
-
-/--
-info: 'ThresholdLeanXmssSecurity.SigningReleasedProof.verifyRun_bottomOpened_eq' depends on axioms: [propext,
- Classical.choice,
- Quot.sound]
--/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningReleasedProof.verifyRun_bottomOpened_eq
-
-/--
-info: 'ThresholdLeanXmssSecurity.SigningReleasedProof.topOpened_cache_eq' depends on axioms: [propext,
- Classical.choice,
- Quot.sound]
--/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningReleasedProof.topOpened_cache_eq

@@ -27,66 +27,6 @@ open SigningHitProof SigningHitLaneProof SigningCostProof
 variable {C : Committee} (prims : Primitives)
 
 open Classical in
-/-- The completion potential does not rise at a call that each completion takes as
-its own target. The step `completionPotential_randomOracle_step` charges each relevant
-input. -/
-theorem completionPotential_covered_step (relevant : Query C → Prop)
-    (completion : OracleComp (Query C →ₒ HashOutput) (CompletionTargets C)) (input : Query C)
-    (cache : HashCache C)
-    (hcovered : ∀ z ∈ support ((simulateQ (Query C →ₒ HashOutput).randomOracle completion).run cache),
-      relevant input → (z.1 input).1 = input) :
-    (∑' r, Pr{let z ← ((Query C →ₒ HashOutput).randomOracle input).run cache}[z = r] *
-      completionPotential relevant completion r.2) ≤ completionPotential relevant completion cache := by
-  classical
-  cases hcache : cache input with
-  | some output =>
-      rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_some _ hcache, OracleComp.tsum_prEvent_pure_mul]
-  | none =>
-  let Q := (Query C →ₒ HashOutput).randomOracle input
-  let F := simulateQ (Query C →ₒ HashOutput).randomOracle completion
-  let event : (HashOutput × CompletionTargets C) × HashCache C → Prop :=
-    fun z => CompletedHit relevant z.1.2 (cache.cacheQuery input z.1.1)
-  have hcomm : Commutes Q F := by
-    simpa [Q, F] using commutes_simulateQ (Query C →ₒ HashOutput).randomOracle
-      commutes_randomOracle_randomOracle
-      (OracleComp.lift (OracleSpec.query (spec := Query C →ₒ HashOutput) input)) completion
-  have hforward : (∑' r, Pr{let z ← Q.run cache}[z = r] * completionPotential relevant completion r.2) =
-      Pr{let z ← (do let u ← Q; let targets ← F; pure (u, targets)).run cache}[event z] := by
-    simp only [StateT.run_bind, bind_pure_comp, OracleComp.prEvent_bind_eq_tsum]
-    apply tsum_congr
-    intro r
-    by_cases hr : r ∈ support (Q.run cache)
-    · have hc := randomOracle_result_cache input cache r hr
-      simp only [completionPotential, F, event, hc, StateT.run_map, prEvent_map, Function.comp_def]
-    · simp [prEvent_eq_zero_of_not_mem_support _ hr]
-  change (∑' r, Pr{let z ← Q.run cache}[z = r] * completionPotential relevant completion r.2) ≤ _
-  rw [hforward, (hcomm cache).prEvent_eq _]
-  simp only [StateT.run_bind, bind_pure_comp, OracleComp.prEvent_bind_eq_tsum]
-  calc
-    _ ≤ ∑' r, Pr{let z ← F.run cache}[z = r] * (if CompletedHit relevant r.1 cache then 1 else 0) := by
-      apply ENNReal.tsum_le_tsum
-      intro r
-      by_cases hr : r ∈ support (F.run cache)
-      · refine mul_le_mul_right ?_ _
-        simp only [StateT.run_map, prEvent_map]
-        change Pr{let z ← Q.run r.2}[CompletedHit relevant r.1 (cache.cacheQuery input z.1)] ≤ _
-        by_cases hbad : CompletedHit relevant r.1 cache
-        · rw [if_pos hbad]
-          exact (prEvent_le_one _)
-        · rw [if_neg hbad]
-          calc
-            _ ≤ Pr{let _ ← Q.run r.2}[False] := by
-              apply prEvent_mono_of_support _ _ _
-              intro z _ hh
-              obtain ⟨hrel, hne, _⟩ := completedHit_cacheQuery relevant r.1 cache input z.1 hbad hh
-              exact hne (hcovered r hr hrel).symm
-            _ = 0 := by simp
-      · simp [prEvent_eq_zero_of_not_mem_support _ hr]
-    _ = completionPotential relevant completion cache := by
-      simp only [completionPotential, F, mul_ite, mul_one, mul_zero]
-      exact (OracleComp.prEvent_eq_tsum_ite _ _).symm
-
-open Classical in
 /-- The completion potential does not rise in a block of calls, if
 each relevant input that the block reads after a completion is a read of that completion or is in
 the cache at the start. The premise reads the block only from a completed cache. -/
@@ -247,12 +187,6 @@ theorem logged_block_potential_le {α β : Type} (relevant : Query C → Prop)
   exact h
 
 end SigningOwnPotential
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningOwnPotential.completionPotential_covered_step' depends on axioms: [propext,
- Classical.choice,
- Quot.sound] -/
-#guard_msgs in
-#print axioms SigningOwnPotential.completionPotential_covered_step
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningOwnPotential.completionPotential_recorded_block_le' depends on axioms: [propext,
  Classical.choice,

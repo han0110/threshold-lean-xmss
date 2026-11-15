@@ -396,13 +396,6 @@ theorem queries_deferredTopTree (P : PublicParameter) :
     | (with_reducible apply Safe.simulate; intro t)
     | source_step
 
-/-- The actual source has no raw PRF plants and completes only constrained points. -/
-theorem sourceProgramX_allowed (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) :
-    Queries Allowed (sourceProgramX prims A x) := by
-  have h := safe_sourceGameX prims A x
-  unfold Safe at h
-  exact h sourceInit
-
 end ThresholdLeanXmssSecurity.SigningCompilerShare
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerShare.queries_deferredTopTree' depends on axioms: [propext,
@@ -416,9 +409,3 @@ end ThresholdLeanXmssSecurity.SigningCompilerShare
  Quot.sound] -/
 #guard_msgs in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerShare.safe_sourceTsigX
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerShare.sourceProgramX_allowed' depends on axioms: [propext,
- Classical.choice,
- Quot.sound] -/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerShare.sourceProgramX_allowed

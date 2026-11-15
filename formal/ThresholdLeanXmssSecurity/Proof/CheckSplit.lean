@@ -180,25 +180,6 @@ lemma splitHistories_cacheCollision (cache : HashCache C)
   · exact ⟨.digest s ha, .digest t hb, d, d,
       fun he => hh (Query.digest.inj he).2, hda, hdb, HEq.rfl⟩
 
-section BirthdayPure
-
-local instance : (Query C →ₒ HashOutput).UniformAnswerMeasure :=
-  OracleSpec.UniformAnswerMeasure.ofFiniteNonempty _
-
-/-- The birthday estimate for an entire adaptive hash computation, from the empty cache. -/
-theorem splitHash_birthday {α : Type} (oa : OracleComp (Query C →ₒ HashOutput) α)
-    (n : ℕ) (hn : IsTotalQueryBound oa n) :
-    Pr{let z ← (simulateQ cachingOracle oa).run ∅}[CacheHasCollision z.2] ≤
-      (n ^ 2 : ℝ≥0∞) / (2 * 2 ^ 256) := by
-  letI : Inhabited (Query C) := ⟨.history []⟩
-  have hcard : Fintype.card HashOutput = 2 ^ 256 := by
-    unfold HashOutput
-    exact Fintype.card_bitVec 256
-  have h := prEvent_cacheCollision_le_birthday_total oa n hn (fun _ => le_rfl)
-  simpa only [hcard, Nat.cast_pow, Nat.cast_ofNat] using h
-
-end BirthdayPure
-
 /-- Equal recorded prefixes determine all values that a corrupt filler supplied. -/
 lemma split_filledValues_of_history (K : Constants C E) (D : C.Coalition) (T : C.Term)
     (a b : List (Tuple C)) (hc : a.map (·.count) = b.map (·.count))
@@ -396,15 +377,6 @@ lemma splitInit_histories (K : Constants C E) (counts : List ℕ)
   exact ⟨T, hT, i, j, hi, hj, hiT, hjT,
     splitInit_history_length K counts D x hx T i j hi hj hiT hjT, hne⟩
 
-lemma SplitHistories.transfer (D : C.Coalition) {a b : C.Party → C.Term → List Bit}
-    (h : SplitHistories D a)
-    (he : ∀ T, KnownTo D.1 T → ∀ i, i ∉ D.1 → i ∈ C.holders T → a i T = b i T) :
-    SplitHistories D b := by
-  obtain ⟨T, hT, i, j, hi, hj, hiT, hjT, hlen, hne⟩ := h
-  exact ⟨T, hT, i, j, hi, hj, hiT, hjT,
-    by simpa only [← he T hT i hi hiT, ← he T hT j hj hjT] using hlen,
-    by simpa only [← he T hT i hi hiT, ← he T hT j hj hjT] using hne⟩
-
 /-- Recording arbitrary offsets preserves the split, since every field encoding has the same length. -/
 lemma SplitHistories.record (K : Constants C E) (D : C.Coalition)
     {h : C.Party → C.Term → List Bit} (hs : SplitHistories D h)
@@ -527,113 +499,6 @@ lemma SplitCacheBound.mono {cache : HashCache C} {k l : ℕ}
     (h : SplitCacheBound cache k) (hkl : k ≤ l) : SplitCacheBound cache l := by
   obtain ⟨S, hs, hc⟩ := h
   exact ⟨S, hs.trans hkl, hc⟩
-
-lemma splitHash_random_bind {α : Type} (q : Query C)
-    (f : HashOutput → StateT (HashCache C) ProbComp α) (cache : HashCache C) (k : ℕ)
-    (hno : ¬ CacheHasCollision cache) (hk : SplitCacheBound cache k) (ε : ℝ≥0∞)
-    (hf : ∀ u s, ¬ CacheHasCollision s → SplitCacheBound s (k + 1) →
-      Pr{let z ← (f u).run s}[CacheHasCollision z.2] ≤ ε) :
-    Pr{let z ←
-      (((Query C →ₒ HashOutput).randomOracle q) >>= f).run cache}[CacheHasCollision z.2] ≤
-      (k : ℝ≥0∞) / 2 ^ 256 + ε := by
-  rw [StateT.run_bind]
-  cases he : cache q with
-  | some u =>
-    rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_some _ he, pure_bind]
-    exact (hf u cache hno (hk.mono (by omega))).trans le_add_self
-  | none =>
-    rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ he, bind_map_left]
-    have h := (prEvent_bind_le_prEvent_add_of_support ($ᵗ HashOutput)
-      (fun u => (f u).run (cache.cacheQuery q u))
-      (fun u => CacheHasCollision (cache.cacheQuery q u)) (fun z => CacheHasCollision z.2)
-      fun u _ hu => hf u _ hu (hk.insert q u)).trans
-      (add_le_add (splitHash_insert_birthday cache q k hno hk) le_rfl)
-    simpa only [uniformSampleImpl] using h
-
-lemma splitLocal_uncounted (prims : Primitives) (t : (LocalSpec C).Domain)
-    (h : ¬ Counted t) : ∃ p, localAnswer prims t = StateT.lift p := by
-  rcases t with n | q | x
-  · exact ⟨_, rfl⟩
-  · cases q with
-    | hash input =>
-      have hi : MpcInput input := by simpa only [Counted, not_not] using h
-      refine ⟨pure (prims.Th input), ?_⟩
-      change hashAnswer prims (.hash input) = _
-      rw [hashAnswer_of_isFixed prims hi]
-      rfl
-    | _ => exact (h trivial).elim
-  · exact (h trivial).elim
-
-/-- Whole-run birthday bound with private sampling and the fixed `Th` domain excluded from the count. -/
-theorem splitLocal_birthday_aux (prims : Primitives) {α : Type}
-    (oa : OracleComp (LocalSpec C) α) : ∀ (n k : ℕ), IsQueryBoundP oa Counted n →
-    ∀ cache : HashCache C, ¬ CacheHasCollision cache → SplitCacheBound cache k →
-    Pr{let z ← (simulateQ (localAnswer prims) oa).run cache}[CacheHasCollision z.2] ≤
-      ∑ j ∈ Finset.range n, ((k + j : ℕ) : ℝ≥0∞) / 2 ^ 256 := by
-  induction oa using OracleComp.inductionOn with
-  | pure a =>
-    intro n k _ cache hno hk
-    simp only [simulateQ_pure, StateT.run_pure, map_pure, prEvent_pure_prop, hno, if_false]
-    exact zero_le
-  | query_bind t f ih =>
-    intro n k hn cache hno hk
-    rw [isQueryBoundP_query_bind_iff] at hn
-    have hlift : ∀ p, localAnswer prims t = StateT.lift p →
-        Pr{let z ←
-          (simulateQ (localAnswer prims) (liftM ((LocalSpec C).query t) >>= f)).run cache}[CacheHasCollision z.2] ≤
-          ∑ j ∈ Finset.range n, ((k + j : ℕ) : ℝ≥0∞) / 2 ^ 256 := by
-      intro p hp
-      change Pr{let z ←
-        (localAnswer prims t >>= fun u => simulateQ (localAnswer prims) (f u)).run cache}[CacheHasCollision z.2] ≤ _
-      rw [hp]
-      simp only [StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind]
-      apply prEvent_bind_le_of_forall_le_of_support
-      intro u _
-      exact (ih u _ k (hn.2 u) cache hno hk).trans
-        (Finset.sum_le_sum_of_subset (Finset.range_mono (by split_ifs <;> omega)))
-    by_cases ht : Counted t
-    swap
-    · obtain ⟨p, hp⟩ := splitLocal_uncounted prims t ht
-      exact hlift p hp
-    rcases isAtom_localAnswer prims t with ⟨p, hp⟩ | ⟨q, g, hq⟩
-    · exact hlift p hp
-    have hnpos : 0 < n := by have := hn.1.resolve_left (not_not.mpr ht); omega
-    have he : (k : ℝ≥0∞) / 2 ^ 256 +
-        ∑ j ∈ Finset.range (n - 1), ((k + 1 + j : ℕ) : ℝ≥0∞) / 2 ^ 256 =
-        ∑ j ∈ Finset.range n, ((k + j : ℕ) : ℝ≥0∞) / 2 ^ 256 := by
-      conv_rhs => rw [show n = (n - 1) + 1 from by omega]
-      rw [Finset.sum_range_succ']
-      simp only [Nat.add_zero]
-      rw [add_comm]
-      congr 1
-      apply Finset.sum_congr rfl
-      intro j _
-      rw [show k + 1 + j = k + (j + 1) by omega]
-    rw [← he]
-    change Pr{let z ←
-      (localAnswer prims t >>= fun u => simulateQ (localAnswer prims) (f u)).run cache}[CacheHasCollision z.2] ≤ _
-    rw [hq, bind_map_left]
-    apply splitHash_random_bind q _ cache k hno hk
-    intro u s hs hsk
-    apply ih (g u) (n - 1) (k + 1) _ s hs hsk
-    simpa only [if_pos ht] using hn.2 (g u)
-
-/-- The full local oracle, including private sampling and PRG calls, satisfies the tight birthday bound. -/
-theorem splitLocal_birthday (prims : Primitives) {α : Type}
-    (oa : OracleComp (LocalSpec C) α) (n : ℕ) (hn : IsQueryBoundP oa Counted n) :
-    Pr{let z ← (simulateQ (localAnswer prims) oa).run ∅}[CacheHasCollision z.2] ≤
-      ((n * (n - 1) : ℕ) : ℝ≥0∞) / (2 * 2 ^ 256) := by
-  have h := splitLocal_birthday_aux prims oa n 0 hn ∅
-    (by rintro ⟨a, b, u, v, _, ha, _, _⟩; simp at ha)
-    ⟨∅, by simp, fun t ht => (ht rfl).elim⟩
-  simp only [Nat.zero_add, div_eq_mul_inv] at h
-  exact h.trans_eq (ENNReal.gauss_sum_inv_eq n (2 ^ 256))
-
-lemma splitInit_dummy_histories (K : Constants C E) (counts : List ℕ)
-    (D : C.Coalition) (x : C.Party → List (Tuple C)) (hx : TupleInputs K counts D x)
-    (hsplit : ¬ MultVerifyAgree D (fun i => if i ∈ D.1 then none else some (x i))) :
-    SplitHistories D (fun i => filledHistory K i (dummyOf D x i)) := by
-  exact (splitInit_histories K counts D x hx hsplit).transfer D (initHist K counts D x hx).2.2.1
 
 lemma splitHalv_hist {σ : Type} (K : Constants C E) (D : C.Coalition) (len tg L : ℕ)
     (AR BR AD BD : C.Party → ℕ → E) (hsR hsD : C.Party → RunState C)
@@ -838,21 +703,6 @@ theorem splitRegion_birthday_aux (prims : Primitives) (P : Query C → Prop) {α
               (by simpa only [if_neg hq, Nat.add_zero] using hsk))
         simpa only [if_neg hq, zero_add] using h
 
-/-- Queries outside the selected hash domains need no charge in their collision bound. -/
-theorem splitRegion_birthday (prims : Primitives) (P : Query C → Prop) {α : Type}
-    (oa : OracleComp (LocalSpec C) α) (n : ℕ) (hn : IsQueryBoundP oa (SplitRegionCounted P) n) :
-    Pr{let z ←
-      (simulateQ (localAnswer prims) oa).run ∅}[CacheHasCollision (splitRegionCache P z.2)] ≤
-      ((n * (n - 1) : ℕ) : ℝ≥0∞) / (2 * 2 ^ 256) := by
-  have hempty : splitRegionCache P (∅ : HashCache C) = ∅ := by
-    refine QueryCache.ext fun q => ?_
-    simp [splitRegionCache]
-  have h := splitRegion_birthday_aux prims P oa n 0 hn ∅
-    (by rw [hempty]; rintro ⟨a, b, u, v, _, ha, _, _⟩; simp at ha)
-    (by rw [hempty]; exact ⟨∅, by simp, fun t ht => (ht rfl).elim⟩)
-  simp only [Nat.zero_add, div_eq_mul_inv] at h
-  exact h.trans_eq (ENNReal.gauss_sum_inv_eq n (2 ^ 256))
-
 lemma splitRegionCounted_counted (P : Query C → Prop) (t : (LocalSpec C).Domain)
     (h : SplitRegionCounted P t) : Counted t := by
   obtain ⟨q, hq, _⟩ := h
@@ -882,29 +732,6 @@ lemma splitHistories_abort_region (D : C.Coalition) (h : C.Party → C.Term → 
   apply splitHistories_abort D h hsplit (splitRegionCache SplitHashDomain cache) hno ds _ sent i
   intro j hj T hT hjT
   simpa [splitRegionCache, SplitHashDomain] using hds j hj T hT hjT
-
-/-- A selected-domain call budget fits half of the hash-error allowance. -/
-theorem splitRegion_birthday_le_checkHashError (prims : Primitives) (P : Query C → Prop)
-    {α : Type} (oa : OracleComp (LocalSpec C) α) (count q n : ℕ)
-    (hn : IsQueryBoundP oa (SplitRegionCounted P) n)
-    (hbudget : n ≤ q + termHashes C + halvings count + 2) :
-    (Pr{let z ←
-      (simulateQ (localAnswer prims) oa).run ∅}[CacheHasCollision (splitRegionCache P z.2)]).toReal ≤ checkHashError C count q / 2 := by
-  have h := ENNReal.toReal_mono (by finiteness) (splitRegion_birthday prims P oa n hn)
-  have hnum : n * (n - 1) ≤ (q + termHashes C + halvings count + 2) ^ 2 := by
-    calc
-      n * (n - 1) ≤ n * n := Nat.mul_le_mul_left n (Nat.sub_le n 1)
-      _ ≤ _ := by rw [pow_two]; exact Nat.mul_le_mul hbudget hbudget
-  have hnumR : ((n * (n - 1) : ℕ) : ℝ) ≤ ((q + termHashes C + halvings count + 2) ^ 2 : ℕ) :=
-    by exact_mod_cast hnum
-  simp only [ENNReal.toReal_div, ENNReal.toReal_natCast, ENNReal.toReal_mul,
-    ENNReal.toReal_pow, ENNReal.toReal_ofNat] at h
-  unfold checkHashError
-  calc
-    _ ≤ ((n * (n - 1) : ℕ) : ℝ) / (2 * 2 ^ 256) := h
-    _ ≤ ((q + termHashes C + halvings count + 2) ^ 2 : ℕ) / (2 * (2 : ℝ) ^ 256) := by
-      exact div_le_div_of_nonneg_right hnumR (by positivity)
-    _ = _ := by ring
 
 lemma splitRegion_step_bound (prims : Primitives) (P : Query C → Prop)
     (t : (LocalSpec C).Domain) (cache : HashCache C) (k : ℕ)
@@ -1253,14 +1080,6 @@ lemma split_challengeQuery_no_digest (K : Constants C E) (tg L : ℕ) (v : List 
       split_findChallenge_no_digest K key challengeTries 0
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E] in
-lemma split_bind_sample_digestBound {σ' α β : Type} [SampleableType α] (oa : OracleComp (LocalSpec C) σ')
-    (k : σ' → α → β) (n : ℕ) (h : IsQueryBoundP oa (SplitRegionCounted SplitHashDomain) n) :
-    IsQueryBoundP (oa >>= fun p => liftComp ($ᵗ α) (LocalSpec C) >>= fun f => pure (k p f)) (SplitRegionCounted SplitHashDomain) n :=
-  (isQueryBoundP_bind (m := 0) h fun p _ =>
-    isQueryBoundP_bind (n := 0) (m := 0) (split_prob_lift_no_digest _) fun _ _ => isQueryBoundP_pure _ _ 0).mono
-    (by omega)
-
-omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E] in
 lemma split_sample_bind_digestBound {σ' α : Type} [SampleableType α] (ans : α → OracleComp (LocalSpec C) σ')
     (n : ℕ) (h : ∀ a, IsQueryBoundP (ans a) (SplitRegionCounted SplitHashDomain) n) :
     IsQueryBoundP (liftComp ($ᵗ α) (LocalSpec C) >>= fun v => ans v >>= fun pa => pure (v, pa)) (SplitRegionCounted SplitHashDomain) n :=
@@ -1276,19 +1095,6 @@ lemma split_coinDraw_digestBound (D : C.Coalition) (Ad : CheckAdversary C E Ia) 
   dsimp only [leftAdversary]
   simp only [bind_assoc, pure_bind]
   exact (isQueryBoundP_bind (m := 0) (ha st _) (fun _ _ => isQueryBoundP_pure _ _ 0)).mono (by omega)
-
-lemma split_extend_digestBound (K : Constants C E) (D : C.Coalition) (Ad : CheckAdversary C E Ia) (step : ℕ)
-    (ha : ∀ st l, IsQueryBoundP (Ad.answer st l) Counted step) (st : Ad.State)
-    (inputs : C.Party → Option (List (Product C E))) (h : ∀ i, i ∉ D.1 → (inputs i).isSome) :
-    IsQueryBoundP (runFunctionality localRoles D (rightAdversary (leftAdversary Ad)) (FextendMult K) st inputs)
-      (SplitRegionCounted SplitHashDomain) step := by
-  rw [runFunctionality_extend_local K D (rightAdversary (leftAdversary Ad)) st inputs h]
-  refine split_bind_sample_digestBound _ _ step ?_
-  apply (counted_splitRegionBound SplitHashDomain)
-  dsimp only [leftAdversary, rightAdversary]
-  simp only [bind_assoc, pure_bind]
-  exact (isQueryBoundP_bind (m := 0) (ha st _) (fun _ _ => isQueryBoundP_pure _ _ 0)).mono (by omega)
-
 
 lemma split_finalReplies_digestBound (Ad : CheckAdversary C E Ia) (step : ℕ)
     (ha : ∀ st l, IsQueryBoundP (Ad.answer st l) Counted step) (st : Ad.State)

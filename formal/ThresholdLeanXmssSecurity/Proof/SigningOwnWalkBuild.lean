@@ -1795,21 +1795,6 @@ theorem baseInv_store {src : SourceState C} {st : LState C} (h : BaseInv P seeds
   · simp only [Function.update_of_ne he] at hb ⊢
     exact h.treeCommit b' hb k
 
-/-- `sourceBottomOnce` keeps `BaseInv` and makes no charged call. -/
-theorem walk_sourceBottomOnce (top : TopTree) (b : XmssSecurity.TopIndex) :
-    Walk P seeds Q s (BaseInv P seeds none none) 0 (fun _ => BaseInv P seeds none none)
-      (sourceBottomOnce P seeds top b) := by
-  unfold sourceBottomOnce
-  refine Walk.conseq (c := 0 + 0) (Walk.bind Walk.get fun src0 => ?_)
-    (fun _ _ h => h) (fun _ _ _ h => h) le_rfl
-  split
-  · exact Walk.pure _ fun _ _ h => h.2
-  · refine Walk.conseq (c := 0 + (0 + 0)) (Walk.bind (Walk.conseq (walk_sourceBottomTree_shape P
-      seeds Q s top b) (fun _ _ h => h.2) (fun _ _ _ h => h) le_rfl) fun tree =>
-      Walk.bind (Walk.modify (Post := fun _ => BaseInv P seeds none none) _ fun src st h =>
-        baseInv_store P seeds h.1.1 b tree h.1.2 h.2) fun _ => Walk.pure _ fun _ _ h => h)
-      (fun _ _ h => h) (fun _ _ _ h => h) le_rfl
-
 end Units
 
 /-- The setup makes no charged call. -/
@@ -2166,10 +2151,6 @@ info: 'ThresholdLeanXmssSecurity.SigningOwnWalkBuild.commitReady_grows' depends 
 /-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkBuild.baseInv_store' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningOwnWalkBuild.baseInv_store
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkBuild.walk_sourceBottomOnce' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningOwnWalkBuild.walk_sourceBottomOnce
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkBuild.charges_setup' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

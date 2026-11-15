@@ -2,17 +2,16 @@ import ThresholdLeanXmssSecurity.Proof.SeedGenHalves
 import ThresholdLeanXmssSecurity.Proof.Coupling
 
 /-!
-# Seed generation security: the two coupling stages
+# The hidden half of the seed generation security
 
-`seedGenSecurityFull` of `Proof/SeedGenHalves.lean` takes two stage hypotheses:
-`SeedGenEchoFresh` (the echo-collision core of the hidden half) and `SeedGenKnownMismatch`
-(the known half on the simulator's emulation).
+This file proves the hidden half `SeedGenHiddenFresh` (`seedGenHiddenFresh_of_echoFreshExt`) from the
+echo-collision bound `seedGenEchoFreshExt`. `seedGenSecurityComplete` uses it and takes the known half
+`SeedGenKnownMismatch` as a hypothesis. `seedGenSecurityDone_of_programAlias` of
+`Proof/SeedGenKnown.lean` uses `seedGenSecurityComplete`.
 
-`seedGenHiddenDistanceProof` gives the hidden-half estimate.
-
-1. `SeedGenEchoFresh` holds for every covering domain `S`, but off `S` the finite oracle answers `0`.
-   We choose the domain, so we add every echo input (`seedGenSharedInputs`) and prove the bound there
-   (`SeedGenEchoFreshExt`). The chain of `SeedGenHalves` and `SeedGenSecurity` is redone with that domain.
+1. Off the domain `S` the finite oracle answers `0`. The proof adds every echo input
+   (`seedGenSharedInputs`) to `S` and proves the bound there (`SeedGenEchoFreshExt`). The chain of
+   `SeedGenHalves` and `SeedGenSecurity` repeats with that domain.
 2. The echo cells of the fresh table `u` are the echo inputs whose coordinate at the canonical hidden
    term of an honest pair is the fresh seed. Each fixed query is a cell with probability at most
    `|pairs| / 2^256` (`probEvent_seedGenEchoCell_le`).
@@ -39,9 +38,9 @@ attribute [local instance] Classical.propDecidable
 
 /-! ## The echo-collision bound on a domain with every echo input
 
-`SeedGenEchoFresh` quantifies over every covering domain `S`. Off `S` the finite oracle answers `0`,
-so two echo inputs off `S` always collide. The domain of the proof is ours to choose
-(`seedGenHiddenFresh_of_reference` picks it), so we add every echo input of the seed generation to it. -/
+Off a covering domain `S` the finite oracle answers `0`, so two echo inputs off `S` always collide.
+The proof chooses the domain (`seedGenHiddenFresh_of_echoFreshExt` picks it), so it adds every echo
+input of the seed generation to it. -/
 
 section Domain
 
@@ -63,7 +62,7 @@ section Chain
 
 variable {C : Committee} {E : Type} (prims : Primitives)
 
-/-- `SeedGenEchoFresh` on a domain that holds every echo input. -/
+/-- The echo-collision bound on a domain that holds every echo input. -/
 def SeedGenEchoFreshExt (prims : Primitives) : Prop :=
   ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
@@ -1033,15 +1032,11 @@ section Main
 
 variable {C : Committee} {E : Type} (prims : Primitives)
 
-/-- `SeedGenSecurityStatement`, from the two open stages. -/
+/-- `SeedGenSecurityStatement`, from the known half `SeedGenKnownMismatch`. -/
 theorem seedGenSecurityComplete (hK : SeedGenKnownMismatch (C := C) (E := E) prims) :
     SeedGenSecurityStatement (C := C) (E := E) prims :=
   seedGenSecurity_of_halves prims
     (seedGenHiddenDistance_of_fresh prims (seedGenHiddenFresh_of_echoFreshExt prims (seedGenEchoFreshExt prims))) hK
-
-/-- The hidden half of the seed generation claim, with no open hypothesis. -/
-theorem seedGenHiddenDistanceProof : SeedGenHiddenDistance (C := C) (E := E) prims :=
-  seedGenHiddenDistance_of_fresh prims (seedGenHiddenFresh_of_echoFreshExt prims (seedGenEchoFreshExt prims))
 
 end Main
 
@@ -1050,7 +1045,3 @@ end ThresholdLeanXmssSecurity
 /-- info: 'ThresholdLeanXmssSecurity.seedGenSecurityComplete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.seedGenSecurityComplete
-
-/-- info: 'ThresholdLeanXmssSecurity.seedGenHiddenDistanceProof' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.seedGenHiddenDistanceProof

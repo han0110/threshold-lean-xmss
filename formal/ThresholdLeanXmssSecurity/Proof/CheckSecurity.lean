@@ -20,13 +20,12 @@ Its plan:
 
 1. Mask the outputs of the real run with the accept bit of `F_multVerify`. The runs differ only
    when an honest operator accepts wrong tuples.
-2. Agreeing copies and wrong tuples: `delinearization_card_bound`, `sliceChallenge_soundness`,
-   `halvingChallenge_soundness` and `finalChallenge_soundness`, with `q / |E|²` for each coin key
-   queried before its coin.
+2. For agreeing copies and wrong tuples, `delinearization_card_bound` and the soundness of the
+   slice, halving and final coins apply, with `q / |E|²` for each coin key queried before its coin.
 3. Disagreeing copies: two honest digests of a term differ unless two history or digest outputs
    collide.
-4. Couple the run on `x` with the run on `canonicalDummyTuples`. Each call keeps the view
-   (`executePhase_extend_shift`, `shamirPair_call_shift`), the salts hide the digests of the unknown
+4. Couple the run on `x` with the run on `canonicalDummyTuples`. Each call keeps the view,
+   the salts hide the digests of the unknown
    terms (`saltDigestPhase_hide`), and the last opening matches by `finalMaskNetwork_sameRun`.
 5. Steps 3 and 4 should share one collision event. With a separate birthday term for each, the
    terms of steps 2 to 4 exceed `checkHashError` when `C(n, t - 1) > R + 2` and `q` is large.

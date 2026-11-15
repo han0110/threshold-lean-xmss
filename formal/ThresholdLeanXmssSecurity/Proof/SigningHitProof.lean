@@ -180,86 +180,6 @@ theorem continuationReserve_terminal {α : Type} (oa : OracleComp (WorldSpec C) 
   have hres := transcriptResidual_run prims oa oa loggedInit rfl z hz
   simp [continuationReserve, hres, he]
 
-/-- A reserve paid at the first query and carried without further charges. -/
-def fundedContinuation {α : Type} (oa : OracleComp (WorldSpec C) α)
-    (event : α × LoggedState C → Prop) (s : LoggedState C) : ℝ≥0∞ :=
-  open Classical in if s.2 = [] then 0 else continuationReserve prims oa event s
-
-theorem loggedImpl_log_nonempty (t : (WorldSpec C).Domain) (s : LoggedState C)
-    (r : (WorldSpec C).Range t × LoggedState C)
-    (hr : r ∈ support ((loggedImpl prims t).run s)) : r.2.2 ≠ [] := by
-  rw [loggedImpl_log prims t s r hr]
-  simp [QueryLog.logQuery, QueryLog.singleton]
-
-theorem initialLogInvariant_step (t : (WorldSpec C).Domain) (s : LoggedState C)
-    (r : (WorldSpec C).Range t × LoggedState C)
-    (hr : r ∈ support ((loggedImpl prims t).run s)) :
-    r.2.2 = [] → r.2 = loggedInit := by
-  intro hnil
-  exact (loggedImpl_log_nonempty prims t s r hr hnil).elim
-
-theorem fundedContinuation_next {α : Type} (oa : OracleComp (WorldSpec C) α)
-    (event : α × LoggedState C → Prop) (t : (WorldSpec C).Domain) (s : LoggedState C) :
-    (∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] * fundedContinuation prims oa event r.2) =
-      ∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] * continuationReserve prims oa event r.2 := by
-  apply tsum_congr
-  intro r
-  by_cases hr : r ∈ support ((loggedImpl prims t).run s)
-  · simp [fundedContinuation, loggedImpl_log_nonempty prims t s r hr]
-  · simp [prEvent_eq_zero_of_not_mem_support _ hr]
-
-open Classical in
-/-- Only the initial, matching query pays for this reserve. A small event bound
-therefore suffices even for the universal raw-query condition of IsHitPotential. -/
-theorem fundedContinuation_step {α : Type} (first : (WorldSpec C).Domain)
-    (k : (WorldSpec C).Range first → OracleComp (WorldSpec C) α)
-    (event : α × LoggedState C → Prop) (ε : ℝ≥0∞)
-    (hprob : Pr{let z ← (simulateQ (loggedImpl prims) (query first >>= k)).run loggedInit}[event z] ≤ ε)
-    (t : (WorldSpec C).Domain) (s : LoggedState C) (hs : s.2 = [] → s = loggedInit) :
-    (∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] *
-      fundedContinuation prims (query first >>= k) event r.2) ≤
-      fundedContinuation prims (query first >>= k) event s +
-        @ite ℝ≥0∞ (s.2 = [] ∧ t = first) (Classical.propDecidable _) ε 0 := by
-  classical
-  letI : DecidableEq ((WorldSpec C).Range t × LoggedState C) := Classical.decEq _
-  rw [fundedContinuation_next]
-  by_cases hnil : s.2 = []
-  · have hstate := hs hnil
-    subst s
-    by_cases ht : t = first
-    · subst t
-      simpa [fundedContinuation, continuationReserve, transcriptResidual, loggedInit] using
-        (continuationReserve_step prims (query first >>= k) event first loggedInit).trans hprob
-    · have hz : (∑' r, Pr{let z ← (loggedImpl prims t).run loggedInit}[z = r] *
-          continuationReserve prims (query first >>= k) event r.2) = 0 := by
-        apply ENNReal.tsum_eq_zero.mpr
-        intro r
-        by_cases hr : r ∈ support ((loggedImpl prims t).run loggedInit)
-        · change Pr{let z ← (loggedImpl prims t).run loggedInit}[z = r] *
-            continuationReserve prims (queryBind first k) event r.2 = 0
-          simp [continuationReserve, loggedImpl_log prims t loggedInit r hr,
-            transcriptResidual, loggedInit, transcriptNext,
-            QueryLog.logQuery, QueryLog.singleton, ht, -PFunctor.FreeM.liftBind_eq]
-        · simp [prEvent_eq_zero_of_not_mem_support _ hr]
-      rw [hz]
-      simp [fundedContinuation, loggedInit, ht]
-  · simpa [fundedContinuation, hnil] using
-      continuationReserve_step prims (query first >>= k) event t s
-
-theorem fundedContinuation_terminal {α : Type} (first : (WorldSpec C).Domain)
-    (k : (WorldSpec C).Range first → OracleComp (WorldSpec C) α)
-    (event : α × LoggedState C → Prop) (z : α × LoggedState C)
-    (hz : z ∈ support ((simulateQ (loggedImpl prims) (query first >>= k)).run loggedInit))
-    (he : event z) : fundedContinuation prims (query first >>= k) event z.2 = 1 := by
-  classical
-  have hres := transcriptResidual_run prims (query first >>= k) (query first >>= k) loggedInit rfl z hz
-  have hnil : z.2.2 ≠ [] := by
-    intro hn
-    simp only [hn, transcriptResidual, List.foldl_nil, Option.some.injEq] at hres
-    cases hres
-  rw [fundedContinuation, if_neg hnil]
-  exact continuationReserve_terminal prims _ event z hz he
-
 /-- Reachability includes arbitrary supported nonprogramming calls. In
 particular, a matching program prefix cannot hide extra unlogged cache entries. -/
 inductive RawReachable : LoggedState C → Prop
@@ -295,19 +215,6 @@ theorem prefixRun_resume {α : Type} (oa : OracleComp (WorldSpec C) α) (n : ℕ
     | pure a => rfl
     | queryBind t k => simpa only [prefixRun, bind_assoc, ih] using
         (show (query t >>= k) = OracleComp.queryBind t k from rfl)
-
-/-- Prefix execution commutes with changing only the final return value. -/
-theorem prefixRun_map {α β : Type} (f : α → β) (oa : OracleComp (WorldSpec C) α) (n : ℕ) :
-    prefixRun (f <$> oa) n = (fun rest => f <$> rest) <$> prefixRun oa n := by
-  induction n generalizing oa with
-  | zero => simp [prefixRun]
-  | succ n ih =>
-    cases oa with
-    | pure a =>
-      rfl
-    | queryBind t k =>
-      change prefixRun (OracleComp.queryBind t (fun u => f <$> k u)) (n + 1) = _
-      simp [prefixRun, map_bind, ih]
 
 /-- Every continuation of a supported prefix is a supported full execution.
 The game's worst-case count bound therefore also applies after conditioning. -/
@@ -874,18 +781,6 @@ theorem programFree_adversary {α : Type} (oa : OracleComp (LocalSpec C) α) :
     rcases t with t | (t | t) <;>
       exact programFree_query _ (by change ¬False; exact not_false)
 
-/-- Structural induction also allows an auxiliary oracle state. -/
-theorem programFree_simulateState {ι α σ : Type} {spec : OracleSpec ι}
-    (impl : QueryImpl spec (StateT σ (OracleComp (WorldSpec C))))
-    (h : ∀ t s, ProgramFree ((impl t).run s)) (oa : OracleComp spec α) (s : σ) :
-    ProgramFree ((simulateQ impl oa).run s) := by
-  induction oa using OracleComp.inductionOn generalizing s with
-  | pure a => simpa using programFree_pure (C := C) (a, s)
-  | query_bind t k ih =>
-    simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query,
-      OracleQuery.cont_query, id_map, StateT.run_bind]
-    exact programFree_bind _ _ (h t s) (fun r => ih r.1 r.2)
-
 /-- Neither branch of the flagged handler can program the random oracle. -/
 theorem programFree_flaggedOracles (x : SigningSecurityProof.Keys3 C) (top : TopTree)
     (t : (LocalSpec C + TsigSpec C).Domain) (s : TsigState C × Bool) :
@@ -923,25 +818,6 @@ theorem programFree_finish (x : SigningSecurityProof.Keys3 C) (top : TopTree)
       simpa using programFree_pure (C := C)
         (verified && decide (honest ≠ some forgery.signature), st, forgery)
 
-set_option maxRecDepth 100000 in
-theorem programFree_finalRun (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    ProgramFree (SigningDescentProof.finalRun A x) := by
-  unfold SigningDescentProof.finalRun
-  dsimp only
-  rw [show referenceTree (fun oa => SigningSecurityProof.liftFree (tweakable oa))
-      (fun p => SigningSecurityProof.liftFree (prfValue x.2.1 p)) x.1 emptyTop .top =
-      SigningSecurityProof.liftFree (referenceTree tweakable (prfValue x.2.1) x.1 emptyTop .top) from
-    referenceTree_φ _ _ _ _]
-  apply programFree_bind _ _ (programFree_liftFree _)
-  intro output
-  rcases output with _ | (top | tree)
-  · exact programFree_pure _
-  · apply programFree_bind
-    · exact programFree_simulateState _ (programFree_flaggedOracles x top) _ _
-    · intro r
-      exact programFree_map _ _ (programFree_finish x top _)
-  · exact programFree_pure _
-
 theorem programFree_queryBind_iff {α : Type} (t : (WorldSpec C).Domain)
     (k : (WorldSpec C).Range t → OracleComp (WorldSpec C) α) :
     ProgramFree (.queryBind t k) ↔ ¬IsProgram t ∧ ∀ u, ProgramFree (k u) := by
@@ -949,43 +825,6 @@ theorem programFree_queryBind_iff {α : Type} (t : (WorldSpec C).Domain)
   change (query t >>= k).IsQueryBoundP IsProgram 0 ↔ _
   simp only [HasQuery.instOfMonadLift_query, isQueryBoundP_query_bind_iff,
     Nat.lt_irrefl, or_false, Nat.sub_zero, ite_self, ProgramFree]
-
-theorem programFree_prefix {α : Type} (oa : OracleComp (WorldSpec C) α)
-    (hfree : ProgramFree oa) (n : ℕ) : ProgramFree (prefixRun oa n) := by
-  induction n generalizing oa with
-  | zero => simpa only [prefixRun] using programFree_pure oa
-  | succ n ih =>
-    cases oa with
-    | pure a => exact programFree_pure _
-    | queryBind t k =>
-      obtain ⟨ht, hk⟩ := (programFree_queryBind_iff t k).mp hfree
-      exact programFree_bind _ _ (programFree_query t ht) (fun u => ih (k u) (hk u))
-
-/-- Every supported residual inherits syntactic absence of programming.
-This includes the residual selected by a matching gate prefix. -/
-theorem programFree_residual {α σ : Type}
-    (impl : QueryImpl (WorldSpec C) (StateT σ ProbComp))
-    (oa : OracleComp (WorldSpec C) α) (hfree : ProgramFree oa) (n : ℕ) (s : σ)
-    (r : OracleComp (WorldSpec C) α × σ)
-    (hr : r ∈ support ((simulateQ impl (prefixRun oa n)).run s)) : ProgramFree r.1 := by
-  induction n generalizing oa s r with
-  | zero =>
-    simp only [prefixRun, simulateQ_pure, StateT.run_pure, mem_support_pure_iff] at hr
-    subst r
-    exact hfree
-  | succ n ih =>
-    cases oa with
-    | pure a =>
-      simp only [prefixRun, simulateQ_pure, StateT.run_pure, mem_support_pure_iff] at hr
-      subst r
-      exact programFree_pure _
-    | queryBind t k =>
-      obtain ⟨ht, hk⟩ := (programFree_queryBind_iff t k).mp hfree
-      simp only [prefixRun, simulateQ_bind, HasQuery.instOfMonadLift_query, simulateQ_query,
-        OracleQuery.input_query, OracleQuery.cont_query, id_map, StateT.run_bind,
-        mem_support_bind_iff] at hr
-      obtain ⟨v, _, hr⟩ := hr
-      exact ih (k v.1) (hk v.1) v.2 r hr
 
 /-- A fixed target costs one unit when the fresh oracle answer is sampled. -/
 theorem fixedTargetCharge (target : Digest) :
@@ -995,170 +834,6 @@ theorem fixedTargetCharge (target : Digest) :
     XmssSecurity.truncateHash output = target] = _
   simpa only [XmssSecurity.digestBits, Nat.cast_pow, Nat.cast_ofNat] using
     XmssSecurity.Rom.uniform_truncate_probability target
-
-/-- When the honest target arrives after the candidate inputs, charge each earlier
-candidate once. This only bounds the sampling step; target stability is separate. -/
-theorem lateTargetCharge {ι : Type} (candidates : Finset ι) (output : ι → Digest) :
-    Pr{let fresh : HashOutput ← $ᵗ HashOutput}[∃ i ∈ candidates, truncateHash fresh = output i] ≤
-      (candidates.card : ℝ≥0∞) * (2 ^ 128 : ℝ≥0∞)⁻¹ := by
-  calc
-    _ ≤ ∑ i ∈ candidates,
-        Pr{let fresh : HashOutput ← $ᵗ HashOutput}[truncateHash fresh = output i] :=
-      prEvent_exists_finset_le candidates _ _
-    _ = _ := by simp only [fixedTargetCharge, Finset.sum_const, nsmul_eq_mul]
-
-/-- The deferred charge applies to a fresh honest hash call in the actual logged world. -/
-theorem lateTarget_loggedStep {ι : Type} (candidates : Finset ι) (output : ι → Digest)
-    (q : Query C) (s : LoggedState C) (hfresh : s.1.1 q = none) :
-    Pr{let z ← (loggedImpl prims (.inr (.inr (.inl q)))).run s}[
-      ∃ i ∈ candidates, truncateHash z.1 = output i] ≤
-        (candidates.card : ℝ≥0∞) * (2 ^ 128 : ℝ≥0∞)⁻¹ := by
-  simp only [loggedImpl, SigningCacheProof.countImpl, SeedHitProof.withCount, StateT.run_mk,
-    prEvent_map]
-  change Pr{let z ← ((Query C →ₒ HashOutput).randomOracle q).run s.1.1}[
-    ∃ i ∈ candidates, truncateHash z.1 = output i] ≤ _
-  rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ hfresh, prEvent_map]
-  exact lateTargetCharge candidates output
-
-/-- A hit against targets fixed before this part of the run. Entries already in
-the initial cache are excluded, including the honest target entries themselves. -/
-def FixedHit (initial : HashCache C) (relevant : Query C → Prop)
-    (target : Query C → Digest) (cache : HashCache C) : Prop :=
-  ∃ input output, cache input = some output ∧ initial input = none ∧
-    relevant input ∧ truncateHash output = target input
-
-theorem fixedHit_initial (initial : HashCache C) (relevant : Query C → Prop)
-    (target : Query C → Digest) : ¬FixedHit initial relevant target initial := by
-  rintro ⟨input, output, hsome, hnone, _⟩
-  simp [hnone] at hsome
-
-theorem fixedHit_cacheQuery (initial cache : HashCache C) (relevant : Query C → Prop)
-    (target : Query C → Digest) (input : Query C) (output : HashOutput)
-    (hnot : ¬FixedHit initial relevant target cache)
-    (hnew : FixedHit initial relevant target (cache.cacheQuery input output)) :
-    initial input = none ∧ relevant input ∧ truncateHash output = target input := by
-  obtain ⟨other, value, hvalue, hnone, hrel, htarget⟩ := hnew
-  by_cases heq : other = input
-  · subst other
-    simp only [QueryCache.cacheQuery_self, Option.some.injEq] at hvalue
-    subst value
-    exact ⟨hnone, hrel, htarget⟩
-  · rw [QueryCache.cacheQuery_of_ne _ _ heq] at hvalue
-    exact False.elim (hnot ⟨other, value, hvalue, hnone, hrel, htarget⟩)
-
-open Classical in
-/-- The cache hit indicator has a one-query increment bound, including cache hits. -/
-theorem fixedHit_randomOracle_step (initial cache : HashCache C)
-    (relevant : Query C → Prop) (target : Query C → Digest) (input : Query C) :
-    Pr{let z ← ((Query C →ₒ HashOutput).randomOracle input).run cache}[
-      FixedHit initial relevant target z.2] ≤
-        (if FixedHit initial relevant target cache then 1 else 0) +
-          (2 ^ 128 : ℝ≥0∞)⁻¹ := by
-  by_cases hbad : FixedHit initial relevant target cache
-  · simp only [if_pos hbad]
-    exact le_trans (prEvent_le_one _) (le_add_right le_rfl)
-  · simp only [if_neg hbad, zero_add]
-    cases hc : cache input with
-    | none =>
-      rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ hc, prEvent_map]
-      calc
-        _ ≤ Pr{let output : HashOutput ← $ᵗ HashOutput}[truncateHash output = target input] :=
-          prEvent_mono _ _ _ fun output hh =>
-            (fixedHit_cacheQuery initial cache relevant target input output hbad hh).2.2
-        _ = _ := fixedTargetCharge (target input)
-    | some output =>
-      rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_some _ hc]
-      simp [hbad]
-
-open Classical in
-/-- The fixed-target indicator on the logged signing state. -/
-def fixedHitPotential (initial : HashCache C) (relevant : Query C → Prop)
-    (target : Query C → Digest) (s : LoggedState C) : ℝ≥0∞ :=
-  if FixedHit initial relevant target s.1.1 then 1 else 0
-
-open Classical in
-theorem fixedHit_loggedStep (initial : HashCache C) (relevant : Query C → Prop)
-    (target : Query C → Digest) (t : (WorldSpec C).Domain) (s : LoggedState C)
-    (ht : ¬IsProgram t) :
-    Pr{let z ← (loggedImpl prims t).run s}[FixedHit initial relevant target z.2.1.1] ≤
-      fixedHitPotential initial relevant target s +
-        (SeedHitProof.signCost t : ℝ≥0∞) * (2 ^ 128 : ℝ≥0∞)⁻¹ := by
-  simp only [loggedImpl, SigningCacheProof.countImpl, SeedHitProof.withCount, StateT.run_mk,
-    prEvent_map, fixedHitPotential]
-  rcases t with ((n | (q | p)) | prog) | (n | (q | p))
-  · change Pr{let z ← (unifFwdImpl (Query C →ₒ HashOutput) n).run s.1.1}[
-        FixedHit initial relevant target z.2] ≤ _
-    by_cases h : FixedHit initial relevant target s.1.1 <;>
-      simp [unifFwdImpl, h, SeedHitProof.signCost]
-  · change Pr{let z ← ((Query C →ₒ HashOutput).randomOracle q).run s.1.1}[
-        FixedHit initial relevant target z.2] ≤ _
-    simpa only [SeedHitProof.signCost, Nat.cast_one, one_mul] using
-      fixedHit_randomOracle_step initial s.1.1 relevant target q
-  · change Pr{let z ← (prgAnswer prims p).run s.1.1}[
-        FixedHit initial relevant target z.2] ≤ _
-    simpa [prgAnswer, hashAnswer, StateT.run_bind, StateT.run_pure, bind_pure_comp,
-      prEvent_map, SeedHitProof.signCost, Function.comp_def] using
-      fixedHit_randomOracle_step initial s.1.1 relevant target (.streamKey p.2.1)
-  · exact False.elim (ht (by trivial))
-  · change Pr{let z ← (unifFwdImpl (Query C →ₒ HashOutput) n).run s.1.1}[
-        FixedHit initial relevant target z.2] ≤ _
-    by_cases h : FixedHit initial relevant target s.1.1 <;>
-      simp [unifFwdImpl, h, SeedHitProof.signCost]
-  · change Pr{let z ← ((Query C →ₒ HashOutput).randomOracle q).run s.1.1}[
-        FixedHit initial relevant target z.2] ≤ _
-    simpa only [SeedHitProof.signCost, Nat.cast_one, one_mul] using
-      fixedHit_randomOracle_step initial s.1.1 relevant target q
-  · change Pr{let z ← (prgAnswer prims p).run s.1.1}[
-        FixedHit initial relevant target z.2] ≤ _
-    simpa [prgAnswer, hashAnswer, StateT.run_bind, StateT.run_pure, bind_pure_comp,
-      prEvent_map, SeedHitProof.signCost, Function.comp_def] using
-      fixedHit_randomOracle_step initial s.1.1 relevant target (.streamKey p.2.1)
-
-open Classical in
-theorem fixedHitPotential_step (initial : HashCache C) (relevant : Query C → Prop)
-    (target : Query C → Digest) (t : (WorldSpec C).Domain) (s : LoggedState C)
-    (ht : ¬IsProgram t) :
-    ∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] *
-        fixedHitPotential initial relevant target r.2 ≤
-      fixedHitPotential initial relevant target s +
-        (SeedHitProof.signCost t : ℝ≥0∞) * (2 ^ 128 : ℝ≥0∞)⁻¹ := by
-  have h := fixedHit_loggedStep prims initial relevant target t s ht
-  rw [OracleComp.prEvent_eq_tsum_ite] at h
-  simpa only [fixedHitPotential, mul_ite, mul_one, mul_zero] using h
-
-/-- Fixed targets admit the expected-cost bound over the entire mixed signing
-world, including the PRG's internal cache lookup. -/
-theorem fixedHit_le_expectedCost {α : Type} (oa : OracleComp (WorldSpec C) α)
-    (hnoprog : NoProgramming prims oa) (initial : HashCache C)
-    (relevant : Query C → Prop) (target : Query C → Digest) :
-    Pr{let z ← (simulateQ (loggedImpl prims) oa).run ((initial, 0), [])}[
-      FixedHit initial relevant target z.2.1.1] ≤
-      XmssSecurity.expectedSimulatedCost (loggedImpl prims)
-        (fun t _ => (SeedHitProof.signCost t : ℝ≥0∞) * (2 ^ 128 : ℝ≥0∞)⁻¹)
-        oa ((initial, 0), []) := by
-  classical
-  let f := fixedHitPotential initial relevant target
-  let s : LoggedState C := ((initial, 0), [])
-  have hs : ¬Programmed s.2 := by simp [s, Programmed]
-  have hzero : guarded f s = 0 := by
-    simp [guarded, hs, f, fixedHitPotential, s, fixedHit_initial]
-  calc
-    _ = XmssSecurity.expectedFinal (loggedImpl prims) (guarded f) oa s := by
-      rw [OracleComp.prEvent_eq_tsum_ite, XmssSecurity.expectedFinal]
-      apply tsum_congr
-      intro z
-      by_cases hz : z ∈ support ((simulateQ (loggedImpl prims) oa).run s)
-      · simp [guarded, hnoprog s hs z hz, f, fixedHitPotential, mul_ite, s]
-      · simp [prEvent_eq_zero_of_not_mem_support _ hz, s]
-    _ ≤ guarded f s + XmssSecurity.expectedSimulatedCost (loggedImpl prims)
-        (fun t _ => (SeedHitProof.signCost t : ℝ≥0∞) * (2 ^ 128 : ℝ≥0∞)⁻¹) oa s := by
-      refine XmssSecurity.expectedFinal_le (loggedImpl prims) (Inv := fun _ => True)
-        (fun _ _ _ _ _ => trivial) _ _ ?_ oa s trivial
-      intro t state _
-      exact guarded_step prims (fun _ => True) f
-        (fun t state _ _ ht => fixedHitPotential_step prims initial relevant target t state ht)
-        t state (fun _ => trivial)
-    _ = _ := by rw [hzero, zero_add]
 
 /-- Inputs and digests supplied by an honest completion, indexed by candidate. -/
 abbrev CompletionTargets (C : Committee) := Query C → Query C × Digest
@@ -2006,116 +1681,6 @@ def unopenedFinalRun (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
     | pure ((false, false), none)
   (fun w => ((w.1, r.2.2), some (top, w.2.1, w.2.2))) <$>
     SigningCoreProof.tsigFinish (actualDealt x top) (r.1, r.2.1)
-
-set_option maxRecDepth 100000 in
-set_option synthInstance.maxHeartbeats 100000 in
-/-- The stopped final program has exactly the unopened event mass, from any
-initial raw state, with the original verification continuation. -/
-theorem unopenedFinalRun_probability (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
-    (b : Fin (2 ^ layerHeight)) (s : LoggedState C)
-    (event : (((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) × LoggedState C) → Prop)
-    (hnone : ∀ flags s, ¬event ((flags, none), s)) :
-    Pr{let z ← (simulateQ (loggedImpl prims) (unopenedFinalRun A x b)).run s}[event z] =
-    Pr{let r ← (simulateQ (loggedImpl prims) (openedFinalRun A x b)).run s}[
-      event (r.1.1, r.2) ∧ r.1.2 = false] := by
-  classical
-  unfold unopenedFinalRun openedFinalRun
-  simp only [simulateQ_bind, StateT.run_bind, OracleComp.prEvent_bind_eq_tsum]
-  apply tsum_congr
-  intro r
-  congr 1
-  rcases hr : r.1 with _ | (top | bottom)
-  · simp [hnone]
-  · simp only [simulateQ_bind, StateT.run_bind, OracleComp.prEvent_bind_eq_tsum]
-    have h := unopenedRun_bind_probability prims x top b (A ⟨top.root, x.1⟩ top)
-        (SigningCoreProof.tsigInit, false) r.2
-        (fun r => (fun w => ((w.1, r.2.2), some (top, w.2.1, w.2.2))) <$>
-          SigningCoreProof.tsigFinish (actualDealt x top) (r.1, r.2.1))
-        ((false, false), none) event (hnone (false, false))
-    simp only [simulateQ_bind, StateT.run_bind, OracleComp.prEvent_bind_eq_tsum, Functor.map_map] at h
-    refine Eq.trans ?_ h
-    apply tsum_congr
-    intro v
-    cases v.1 <;> rfl
-  · simp [hnone]
-
-set_option maxRecDepth 100000 in
-/-- Instrumentation changes neither real calls nor the returned game outcome. -/
-theorem openedFinalRun_forget (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
-    (b : Fin (2 ^ layerHeight)) :
-    Prod.fst <$> openedFinalRun A x b = SigningDescentProof.finalRun A x := by
-  unfold openedFinalRun SigningDescentProof.finalRun
-  rw [map_bind]
-  apply bind_congr
-  intro output
-  rcases output with _ | (top | bottom)
-  · simp
-  · simp only [map_bind, Functor.map_map]
-    erw [← openedRun_forget x top b (A ⟨top.root, x.1⟩ top) (SigningCoreProof.tsigInit, false) false,
-      bind_map_left]
-  · simp
-
-set_option maxRecDepth 100000 in
-open SigningCacheProof in
-/-- A set bit in the actual instrumented final run supplies the resolved
-bottom tree in its final cache, after verification and freshness checking. -/
-theorem openedFinalRun_resolves (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
-    (b : Fin (2 ^ layerHeight)) (initial : HashCache C × ℕ)
-    (r : (((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) × Bool) × (HashCache C × ℕ))
-    (hr : r ∈ support ((simulateQ (SigningCacheProof.countImpl prims) (openedFinalRun A x b)).run initial))
-    (hopen : r.1.2 = true) :
-    ∃ top state forgery, r.1.1.2 = some (top, state, forgery) ∧ BottomResolved x top b r.2.1 := by
-  unfold openedFinalRun at hr
-  obtain ⟨p, hp, hr⟩ := run_bind_support prims _ _ initial r hr
-  rcases hp1 : p.1 with _ | (top | bottom)
-  · rw [hp1] at hr
-    simp at hr
-    subst hr
-    cases hopen
-  swap
-  · rw [hp1] at hr
-    simp at hr
-    subst hr
-    cases hopen
-  rw [hp1] at hr
-  obtain ⟨q, hq, hr⟩ := run_bind_support prims _ _ p.2 r hr
-  have hresolved := openedRun_resolves prims x top b (A ⟨top.root, x.1⟩ top)
-    ((SigningCoreProof.tsigInit, false), false) p.2 (by simp) (by simp [SigningCoreProof.tsigInit]) q hq
-  have hgrow := countRun_grows prims _ _ r hr
-  simp only [simulateQ_map, StateT.run_map, support_map, Set.mem_image] at hr
-  obtain ⟨w, hw, rfl⟩ := hr
-  exact ⟨top, w.1.2.1, w.1.2.2, rfl, bottomResolved_mono x top b hgrow (hresolved hopen)⟩
-
-/-- Logged instrumentation preserves precisely the raw-query transcript. -/
-def openedLoggedRun (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
-    (b : Fin (2 ^ layerHeight)) :=
-  (simulateQ (loggedImpl prims) (openedFinalRun A x b)).run loggedInit
-
-set_option maxRecDepth 100000 in
-theorem openedLoggedRun_forget (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
-    (b : Fin (2 ^ layerHeight)) :
-    (fun r => (r.1.1, r.2)) <$> openedLoggedRun prims A x b = loggedRun prims A x := by
-  rw [openedLoggedRun, loggedRun, ← openedFinalRun_forget A x b, simulateQ_map, StateT.run_map]
-  rfl
-
-set_option maxRecDepth 100000 in
-/-- Each real supported prefix lifts to an instrumented prefix with the exact
-same raw state. Thus the opening instrumentation remains valid at a PRF gate. -/
-theorem prefixRun_opened_lift (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
-    (b : Fin (2 ^ layerHeight)) (n : ℕ)
-    (rest : OracleComp (WorldSpec C) ((Bool × Bool) × Option (TopTree × TsigState C × Forgery)))
-    (s : LoggedState C)
-    (hp : (rest, s) ∈ support ((simulateQ (loggedImpl prims)
-      (prefixRun (SigningDescentProof.finalRun A x) n)).run loggedInit)) :
-    ∃ instrumented,
-      (instrumented, s) ∈ support ((simulateQ (loggedImpl prims)
-        (prefixRun (openedFinalRun A x b) n)).run loggedInit) ∧ Prod.fst <$> instrumented = rest := by
-  rw [← openedFinalRun_forget A x b, prefixRun_map, simulateQ_map, StateT.run_map,
-    support_map, Set.mem_image] at hp
-  obtain ⟨⟨instrumented, state⟩, hi, he⟩ := hp
-  have hs : state = s := congrArg Prod.snd he
-  subst state
-  exact ⟨instrumented, hi, congrArg Prod.fst he⟩
 
 theorem eval_mapM {α β : Type} (h : Query C → HashOutput)
     (f : α → OracleComp (Query C →ₒ HashOutput) β) (xs : List α) :
@@ -3419,103 +2984,6 @@ def pairPotential (honest candidate : Query C) (cache : HashCache C) : ℝ≥0�
     | none => (2 ^ 128 : ℝ≥0∞)⁻¹
     | some value => if truncateHash output = truncateHash value then 1 else 0
 
-theorem pairPotential_freshStep (honest candidate input : Query C)
-    (hne : candidate ≠ honest) (cache : HashCache C) (hfresh : cache input = none) :
-    ∑' output : HashOutput, Pr{let z ← $ᵗ HashOutput}[z = output] *
-        pairPotential honest candidate (cache.cacheQuery input output) =
-      pairPotential honest candidate cache +
-        (if input = candidate then (2 ^ 128 : ℝ≥0∞)⁻¹ else 0) := by
-  classical
-  by_cases hcandidate : input = candidate
-  · subst input
-    cases hh : cache honest with
-    | none =>
-      simp only [pairPotential, QueryCache.cacheQuery_self,
-        QueryCache.cacheQuery_of_ne _ _ (Ne.symm hne), hh, hfresh, ↓reduceIte, zero_add]
-      exact OracleComp.tsum_prEvent_mul_of_const_on_support _ (fun _ _ => rfl)
-    | some value =>
-      simp only [pairPotential, QueryCache.cacheQuery_self,
-        QueryCache.cacheQuery_of_ne _ _ (Ne.symm hne), hh, hfresh, ↓reduceIte, zero_add,
-        mul_ite, mul_one, mul_zero]
-      rw [← OracleComp.prEvent_eq_tsum_ite]
-      exact fixedTargetCharge (truncateHash value)
-  · by_cases hhonest : input = honest
-    · subst input
-      cases hc : cache candidate with
-      | none =>
-        simp only [pairPotential, QueryCache.cacheQuery_of_ne _ _ hne, hc, if_neg hcandidate, add_zero]
-        exact OracleComp.tsum_prEvent_mul_of_const_on_support _ (fun _ _ => rfl)
-      | some value =>
-        simp only [pairPotential, QueryCache.cacheQuery_self,
-          QueryCache.cacheQuery_of_ne _ _ hne, hc, hfresh, if_neg hcandidate, add_zero,
-          mul_ite, mul_one, mul_zero]
-        rw [← OracleComp.prEvent_eq_tsum_ite]
-        simpa only [eq_comm] using fixedTargetCharge (truncateHash value)
-    · simp only [pairPotential, QueryCache.cacheQuery_of_ne _ _ (Ne.symm hcandidate),
-        QueryCache.cacheQuery_of_ne _ _ (Ne.symm hhonest), if_neg hcandidate, add_zero]
-      exact OracleComp.tsum_prEvent_mul_of_const_on_support _ (fun _ _ => rfl)
-
-theorem pairPotential_randomOracle_step (honest candidate input : Query C)
-    (hne : candidate ≠ honest) (cache : HashCache C) :
-    ∑' r, Pr{let z ← ((Query C →ₒ HashOutput).randomOracle input).run cache}[z = r] *
-        pairPotential honest candidate r.2 =
-      pairPotential honest candidate cache +
-        (if cache input = none ∧ input = candidate then (2 ^ 128 : ℝ≥0∞)⁻¹ else 0) := by
-  classical
-  cases hc : cache input with
-  | none =>
-    rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ hc,
-      OracleComp.tsum_prEvent_map_mul]
-    change (∑' output : HashOutput, Pr{let z ← $ᵗ HashOutput}[z = output] *
-      pairPotential honest candidate (cache.cacheQuery input output)) = _
-    simpa only [hc, true_and] using pairPotential_freshStep honest candidate input hne cache hc
-  | some output =>
-    rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_some _ hc,
-      OracleComp.tsum_prEvent_pure_mul]
-    simp
-
-/-- A finite family of pairs, indexed by candidate input so no query pays twice. -/
-def fixedPairPotential (candidates : Finset (Query C)) (honest : Query C → Query C)
-    (cache : HashCache C) : ℝ≥0∞ :=
-  ∑ candidate ∈ candidates, pairPotential (honest candidate) candidate cache
-
-theorem fixedPairPotential_randomOracle_step (candidates : Finset (Query C))
-    (honest : Query C → Query C) (hne : ∀ c ∈ candidates, c ≠ honest c)
-    (input : Query C) (cache : HashCache C) :
-    ∑' r, Pr{let z ← ((Query C →ₒ HashOutput).randomOracle input).run cache}[z = r] *
-        fixedPairPotential candidates honest r.2 =
-      fixedPairPotential candidates honest cache +
-        (if cache input = none ∧ input ∈ candidates then (2 ^ 128 : ℝ≥0∞)⁻¹ else 0) := by
-  classical
-  simp only [fixedPairPotential, Finset.mul_sum]
-  rw [Summable.tsum_finsetSum (fun _ _ => ENNReal.summable)]
-  trans ∑ c ∈ candidates, (pairPotential (honest c) c cache +
-    if cache input = none ∧ input = c then (2 ^ 128 : ℝ≥0∞)⁻¹ else 0)
-  · apply Finset.sum_congr rfl
-    intro c hc
-    exact pairPotential_randomOracle_step (honest c) c input (hne c hc) cache
-  rw [Finset.sum_add_distrib]
-  congr 1
-  by_cases hc : cache input = none
-  · simp [hc]
-  · simp [hc]
-
-theorem fixedPairPotential_empty (candidates : Finset (Query C))
-    (honest : Query C → Query C) : fixedPairPotential candidates honest ∅ = 0 := by
-  simp [fixedPairPotential, pairPotential]
-
-theorem fixedPairPotential_of_hit (candidates : Finset (Query C))
-    (honest : Query C → Query C) (cache : HashCache C) (candidate : Query C)
-    (hc : candidate ∈ candidates) (output value : HashOutput)
-    (houtput : cache candidate = some output) (hvalue : cache (honest candidate) = some value)
-    (heq : truncateHash output = truncateHash value) :
-    1 ≤ fixedPairPotential candidates honest cache := by
-  have hpair : pairPotential (honest candidate) candidate cache = 1 := by
-    simp [pairPotential, houtput, hvalue, heq]
-  rw [← hpair]
-  exact Finset.single_le_sum (f := fun c => pairPotential (honest c) c cache)
-    (fun _ _ => zero_le) hc
-
 /-- Lift a cache potential through both copies of the local signing oracle. -/
 theorem cachePotential_loggedStep (f : HashCache C → ℝ≥0∞)
     (hhash : ∀ input cache,
@@ -3586,64 +3054,6 @@ theorem completionPotential_terminal (relevant : Query C → Prop)
     (hstable : ∀ z ∈ support ((simulateQ (Query C →ₒ HashOutput).randomOracle completion).run cache),
       CompletedHit relevant z.1 cache) : completionPotential relevant completion cache = 1 := by
   exact (OracleComp.prEvent_eq_one_iff _ _).2 hstable
-
-theorem fixedPairPotential_loggedStep (candidates : Finset (Query C))
-    (honest : Query C → Query C) (hne : ∀ c ∈ candidates, c ≠ honest c)
-    (t : (WorldSpec C).Domain) (s : LoggedState C) (ht : ¬IsProgram t) :
-    ∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] *
-        fixedPairPotential candidates honest r.2.1.1 ≤
-      fixedPairPotential candidates honest s.1.1 +
-        (SeedHitProof.signCost t : ℝ≥0∞) * (2 ^ 128 : ℝ≥0∞)⁻¹ := by
-  apply cachePotential_loggedStep prims (fixedPairPotential candidates honest) _ t s ht
-  intro input cache
-  rw [fixedPairPotential_randomOracle_step candidates honest hne input cache]
-  split_ifs
-  · exact le_rfl
-  · gcongr
-    exact zero_le
-
-/-- Expected-cost accounting for fixed input pairs in either query order. -/
-theorem fixedPairHits_le_expectedCost {α : Type} (oa : OracleComp (WorldSpec C) α)
-    (hnoprog : NoProgramming prims oa) (candidates : Finset (Query C))
-    (honest : Query C → Query C) (hne : ∀ c ∈ candidates, c ≠ honest c) :
-    Pr{let z ← (simulateQ (loggedImpl prims) oa).run loggedInit}[
-      ∃ c ∈ candidates, ∃ output value,
-      z.2.1.1 c = some output ∧ z.2.1.1 (honest c) = some value ∧
-        truncateHash output = truncateHash value] ≤
-      XmssSecurity.expectedSimulatedCost (loggedImpl prims)
-        (fun t _ => (SeedHitProof.signCost t : ℝ≥0∞) * (2 ^ 128 : ℝ≥0∞)⁻¹)
-        oa loggedInit := by
-  classical
-  let f : LoggedState C → ℝ≥0∞ := fun s => fixedPairPotential candidates honest s.1.1
-  have hs : ¬Programmed (loggedInit (C := C)).2 := by simp [loggedInit, Programmed]
-  have hzero : guarded f loggedInit = 0 := by
-    simp [guarded, f, loggedInit, fixedPairPotential_empty]
-  calc
-    _ ≤ XmssSecurity.expectedFinal (loggedImpl prims) (guarded f) oa loggedInit := by
-      rw [OracleComp.prEvent_eq_tsum_ite, XmssSecurity.expectedFinal]
-      apply ENNReal.tsum_le_tsum
-      intro z
-      split_ifs with hhit
-      · by_cases hz : z ∈ support ((simulateQ (loggedImpl prims) oa).run loggedInit)
-        · rw [guarded, if_neg (hnoprog loggedInit hs z hz)]
-          obtain ⟨c, hc, output, value, houtput, hvalue, heq⟩ := hhit
-          calc
-            _ = Pr{let y ← (simulateQ (loggedImpl prims) oa).run loggedInit}[y = z] * 1 := (mul_one _).symm
-            _ ≤ _ := by
-              gcongr
-              exact fixedPairPotential_of_hit candidates honest z.2.1.1 c hc
-                output value houtput hvalue heq
-        · rw [prEvent_eq_zero_of_not_mem_support _ hz, zero_mul]
-      · exact zero_le
-    _ ≤ guarded f loggedInit + XmssSecurity.expectedSimulatedCost (loggedImpl prims)
-        (fun t _ => (SeedHitProof.signCost t : ℝ≥0∞) * (2 ^ 128 : ℝ≥0∞)⁻¹) oa loggedInit := by
-      refine XmssSecurity.expectedFinal_le (loggedImpl prims) (Inv := fun _ => True)
-        (fun _ _ _ _ _ => trivial) _ _ ?_ oa loggedInit trivial
-      intro t state _
-      exact guarded_step prims (fun _ => True) f
-        (fun t state _ _ ht => fixedPairPotential_loggedStep prims candidates honest hne t state ht)
-        t state (fun _ => trivial)
-    _ = _ := by rw [hzero, zero_add]
 
 /-- The exact total depth below the public endpoints required by a valid codeword. -/
 theorem valid_encoding_deficit (encoding : XmssSecurity.Encoding)
@@ -3776,19 +3186,6 @@ theorem joint_uniformStart_density {Index : Type} [Fintype Index] [DecidableEq I
     (Fintype.card (Index → State) : ℝ≥0∞)⁻¹
   simpa only [mul_one, Fintype.card_fun, Nat.cast_pow] using h
 
-/-- Sampling a uniform start and retaining only marked paths reaches any fixed
-endpoint with probability at most one digest guess. -/
-theorem uniformStart_endpoint {n : ℕ} (observed : Fin n → State → Option State)
-    (endpoint : State) :
-    ((PMF.ofFintype (fun _ : State => (Fintype.card State : ℝ≥0∞)⁻¹) (by
-      rw [Finset.sum_const, Finset.card_univ, nsmul_eq_mul]
-      exact ENNReal.mul_inv_cancel (Nat.cast_ne_zero.mpr Fintype.card_ne_zero) (ENNReal.natCast_ne_top _))).bind (law observed)) (some endpoint) ≤
-      (Fintype.card State : ℝ≥0∞)⁻¹ := by
-  rw [PMF.bind_apply, tsum_fintype]
-  simp only [PMF.ofFintype_apply, ← Finset.mul_sum]
-  simpa only [mul_one] using mul_le_mul_right (law_column observed endpoint)
-    (Fintype.card State : ℝ≥0∞)⁻¹
-
 /-- Query each listed layer once, discarding a path when a previously queried
 alternative enters its output. The marking table stays fixed during this walk. -/
 def walk {Index : Type} (observed : Index → State → Option State) :
@@ -3874,31 +3271,6 @@ theorem walk_run {Index : Type} [DecidableEq Index]
         exact ih hn value cache (fun j hj input => hc j (by simp [hj]) input)
       · simp only [if_neg h]
         exact hnone _
-
-/-- The marked-density bound holds for the actual lazy random-oracle walk,
-not just for the abstract row recurrence. -/
-theorem walk_density {Index : Type} [DecidableEq Index]
-    (observed : Index → State → Option State) (indices : List Index) (hn : indices.Nodup)
-    (cache : QueryCache ((Index × State) →ₒ State))
-    (hc : ∀ index ∈ indices, ∀ input, cache (index, input) = observed index input)
-    (endpoint : State) :
-    letI : Inhabited State := Classical.inhabited_of_nonempty inferInstance
-    letI : SampleableType State := .ofFintype State
-    letI : UniformAnswerMeasure ((Index × State) →ₒ State) := .ofFiniteNonempty _
-    ∑ start, Pr{let z ← (simulateQ ((Index × State) →ₒ State).randomOracle (walk observed indices start)).run' cache}[
-      z = some endpoint] ≤ 1 := by
-  classical
-  letI : Inhabited State := Classical.inhabited_of_nonempty inferInstance
-  letI : SampleableType State := .ofFintype State
-  letI : UniformAnswerMeasure ((Index × State) →ₒ State) := .ofFiniteNonempty _
-  letI : MeasurableSpace (Option State) := ⊤
-  calc
-    _ = ∑ start, law (fun k : Fin indices.length => observed indices[k]) start (some endpoint) := by
-      apply Finset.sum_congr rfl
-      intro start _
-      rw [prEvent_eq_evalDist_singleton, walk_run observed indices hn start cache hc,
-        PMF.toMeasure_apply_singleton _ _ (MeasurableSet.singleton _)]
-    _ ≤ 1 := law_column _ endpoint
 
 end MarkedChain
 
@@ -3990,29 +3362,6 @@ theorem authenticDepth_query_cap (q : ℕ) (hq : q < 2 ^ 127) :
   exact (div_le_div_of_nonneg_right
     (hstep.trans (Real.exp_le_exp.mpr hexponent)) (by positivity)).trans authenticDepth_tail_constant
 
-/-- A valid codeword needs at least 23 chain values strictly below the public
-endpoint. This is the quantitative form needed for an unopened top key. -/
-theorem valid_encoding_short_chains (encoding : XmssSecurity.Encoding)
-    (hvalid : XmssSecurity.TargetSum.Valid encoding) :
-    23 ≤ (Finset.univ.filter fun l => (encoding l).val < 3).card := by
-  classical
-  have hle (l : XmssSecurity.ChainIndex) : (encoding l).val ≤ 3 := by
-    have h := (encoding l).isLt
-    norm_num [XmssSecurity.chainLength, XmssSecurity.winternitzBits] at h
-    omega
-  have hdeficit := valid_encoding_deficit encoding hvalid
-  have hbound : (∑ l, (3 - (encoding l).val)) ≤
-      ∑ l : XmssSecurity.ChainIndex, if (encoding l).val < 3 then 3 else 0 := by
-    apply Finset.sum_le_sum
-    intro l _
-    split_ifs with hl <;> omega
-  have hcount : (∑ l : XmssSecurity.ChainIndex, if (encoding l).val < 3 then 3 else 0) =
-      (Finset.univ.filter fun l => (encoding l).val < 3).card * 3 := by
-    rw [← Finset.sum_filter]
-    simp
-  rw [hdeficit, hcount] at hbound
-  omega
-
 open SigningDescentProof in
 /-- A collision-free recovered root forces every forged chain value to be the
 honest value at its digit. This is stronger than one existential guess. -/
@@ -4049,35 +3398,6 @@ theorem fresh_layer_authentic
   exact (guess_or_hit_of_end step leafHash nodeHash secret path stepCached leafCached nodeCached l
     (encoding l) (value l) (congrFun hends l) (hcached.1 l)).resolve_right hhit
 
-open SigningDescentProof in
-/-- Root agreement without an output hit requires authentic values at at least
-23 distinct chain indices below their endpoints. Hiddenness is a separate condition. -/
-theorem fresh_layer_many_guesses
-    (step : XmssSecurity.ChainIndex → ℕ → XmssSecurity.Digest → XmssSecurity.Digest)
-    (leafHash : (XmssSecurity.ChainIndex → XmssSecurity.Digest) → XmssSecurity.Digest)
-    (nodeHash : ℕ → XmssSecurity.Digest → XmssSecurity.Digest → XmssSecurity.Digest)
-    (secret : XmssSecurity.ChainIndex → XmssSecurity.Digest) (path : ℕ → XmssSecurity.Digest)
-    (stepCached : XmssSecurity.ChainIndex → ℕ → XmssSecurity.Digest → Prop)
-    (leafCached : (XmssSecurity.ChainIndex → XmssSecurity.Digest) → Prop)
-    (nodeCached : ℕ → XmssSecurity.Digest → XmssSecurity.Digest → Prop)
-    (encoding : XmssSecurity.Encoding) (hvalid : XmssSecurity.TargetSum.Valid encoding)
-    (value : XmssSecurity.ChainIndex → XmssSecurity.Digest) (forgedPath : ℕ → XmssSecurity.Digest)
-    (hroot : XmssSecurity.Merkle.ascend nodeHash forgedPath 0 XmssSecurity.treeHeight
-        (leafHash (XmssSecurity.recoveredEndpoints step encoding value)) =
-      XmssSecurity.Merkle.ascend nodeHash path 0 XmssSecurity.treeHeight
-        (leafHash (honestEnds step secret)))
-    (hcached : LayerCached step leafHash nodeHash stepCached leafCached nodeCached encoding value forgedPath) :
-    LayerHit step leafHash nodeHash secret path stepCached leafCached nodeCached ∨
-      ∃ chains : Finset XmssSecurity.ChainIndex, 23 ≤ chains.card ∧
-        ∀ l ∈ chains, (encoding l).val < 3 ∧ value l = honestValue step secret l (encoding l).val := by
-  classical
-  rcases fresh_layer_authentic step leafHash nodeHash secret path stepCached leafCached nodeCached
-    encoding value forgedPath hroot hcached with hhit | hauth
-  · exact Or.inl hhit
-  · exact Or.inr ⟨Finset.univ.filter (fun l => (encoding l).val < 3),
-      valid_encoding_short_chains encoding hvalid,
-      fun l hl => ⟨(Finset.mem_filter.mp hl).2, hauth l⟩⟩
-
 /-- Every committee has a first PRF term. -/
 theorem terms_cons (C : Committee) : ∃ T rest, C.terms = T :: rest := by
   classical
@@ -4089,57 +3409,6 @@ theorem terms_cons (C : Committee) : ∃ T rest, C.terms = T :: rest := by
   apply List.exists_cons_of_ne_nil
   intro h
   simpa [h] using hmem
-
-/-- The ceremony of the top tree begins with a chain-start PRF job. This avoids reducing the
-concrete list of all top keys during the first-query proof. -/
-theorem topJobs_cons : ∃ b l rest, topJobs =
-    ⟨.chainEnd (topKey b) l, [.chain topLayer (topKey b) l (digit 0)]⟩ :: rest := by
-  have hb : (List.finRange (2 ^ layerHeight)) ≠ [] := by
-    intro h
-    have := congrArg List.length h
-    simp [layerHeight] at this
-  have hl : (List.finRange chainCount) ≠ [] := by
-    intro h
-    have := congrArg List.length h
-    simp [chainCount] at this
-  obtain ⟨b, bs, hb⟩ := List.exists_cons_of_ne_nil hb
-  obtain ⟨l, ls, hl⟩ := List.exists_cons_of_ne_nil hl
-  refine ⟨b, l, ?_⟩
-  simp only [topJobs, hb, List.flatMap_cons, hl, List.map_cons, List.cons_append]
-  exact ⟨_, rfl⟩
-
-set_option maxRecDepth 100000 in
-/-- The first operation of the actual ceremony of the top tree is a threshold PRF call. -/
-theorem referenceTree_top_first (x : SigningSecurityProof.Keys3 C) :
-    ∃ p k, referenceTree (fun oa => SigningSecurityProof.liftFree (tweakable oa))
-        (fun p => SigningSecurityProof.liftFree (prfValue x.2.1 p)) x.1 emptyTop .top =
-      SigningSecurityProof.liftFree (prfValue x.2.1 p) >>= k := by
-  obtain ⟨b, l, rest, hrest⟩ := topJobs_cons
-  simp only [referenceTree, ceremonyOutput, hrest, List.mapM_cons, referenceJob,
-    List.mapM_nil, bind_pure_comp, bind_map_left, map_bind, bind_assoc, pure_bind]
-  exact ⟨_, _, rfl⟩
-
-set_option maxRecDepth 100000 in
-/-- A threshold PRF starts by hashing the seed of its first term. -/
-theorem prfValue_first (seeds : C.Term → HashOutput) (p : Point) :
-    ∃ T k, SigningSecurityProof.liftFree (prfValue seeds p) =
-      query (spec := WorldSpec C) (.inr (.inr (.inl (.prf (seeds T) p)))) >>= k := by
-  obtain ⟨T, rest, hrest⟩ := terms_cons C
-  simp only [prfValue, hrest, List.mapM_cons, prf, bind_map_left, bind_assoc,
-    SigningSecurityProof.liftFree, liftComp_bind, free_bind, liftComp_map]
-  exact ⟨T, _, rfl⟩
-
-set_option maxRecDepth 100000 in
-/-- The signing run starts with a free PRF hash, before it reaches the adversary. -/
-theorem finalRun_first (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    ∃ T p k, SigningDescentProof.finalRun A x =
-      query (spec := WorldSpec C) (.inr (.inr (.inl (.prf (x.2.1 T) p)))) >>= k := by
-  obtain ⟨p, ktop, htop⟩ := referenceTree_top_first x
-  obtain ⟨T, kprf, hprf⟩ := prfValue_first x.2.1 p
-  unfold SigningDescentProof.finalRun
-  dsimp only
-  rw [htop, hprf, bind_assoc, bind_assoc]
-  exact ⟨T, p, _, rfl⟩
 
 def topGateInput (x : SigningSecurityProof.Keys3 C) (T : C.Term)
     (b : XmssSecurity.TopIndex) : Query C :=
@@ -4192,75 +3461,6 @@ theorem finalRun_gate (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
     · simp [job]
   · simp only [topJobs, List.mem_flatMap, List.mem_finRange, true_and, List.mem_map]
     exact ⟨b, ⟨0, by decide⟩, rfl⟩
-
-set_option maxRecDepth 100000 in
-/-- Assembly of a completion potential and a rare-event reserve. The hypotheses
-separate the concrete forest proof from the unopened-key probability bound. -/
-theorem isHitPotential_of_completion (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
-    (relevant : Query C → Prop)
-    (completion : OracleComp (Query C →ₒ HashOutput) (CompletionTargets C))
-    (hreads : CompletionReadsTargets relevant completion) (firstInput : Query C)
-    (hirrelevant : ¬relevant firstInput)
-    (k : HashOutput → OracleComp (WorldSpec C) ((Bool × Bool) × Option (TopTree × TsigState C × Forgery)))
-    (hfirst : SigningDescentProof.finalRun A x =
-      query (spec := WorldSpec C) (.inr (.inr (.inl firstInput))) >>= k)
-    (exception : (((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) × LoggedState C) → Prop)
-    (hrare : Pr{let z ← loggedRun prims A x}[exception z] ≤ (2 ^ 128 : ℝ≥0∞)⁻¹)
-    (hcover : ∀ z ∈ support (loggedRun prims A x), WinHit prims x (z.1, z.2.1) →
-      (∀ r ∈ support ((simulateQ (Query C →ₒ HashOutput).randomOracle completion).run z.2.1.1),
-        CompletedHit relevant r.1 z.2.1.1) ∨ exception z) :
-    ∃ Inv f, IsHitPotential prims A x Inv f := by
-  classical
-  let first : (WorldSpec C).Domain := .inr (.inr (.inl firstInput))
-  let main : OracleComp (WorldSpec C) ((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) :=
-    query first >>= k
-  let g := completionPotential relevant completion
-  let f : LoggedState C → ℝ≥0∞ := fun s => g s.1.1 + fundedContinuation prims main exception s
-  refine ⟨fun s => s.2 = [] → s = loggedInit, f, ?_, ?_, ?_, ?_, ?_⟩
-  · intro _
-    rfl
-  · simp [f, g, fundedContinuation, loggedInit, completionPotential_empty]
-  · intro t s _ _ r hr
-    exact initialLogInvariant_step prims t s r hr
-  · intro t s hs _ ht
-    change (∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] *
-      (g r.2.1.1 + fundedContinuation prims main exception r.2)) ≤ _
-    simp_rw [mul_add]
-    rw [ENNReal.tsum_add]
-    have hfund := fundedContinuation_step prims first k exception (2 ^ 128 : ℝ≥0∞)⁻¹
-      (by simpa only [loggedRun, hfirst, first, loggedInit] using hrare) t s hs
-    have hg := completionPotential_loggedStep prims relevant completion hreads t s ht
-    letI : Decidable (s.2 = [] ∧ t = first) := Classical.propDecidable _
-    by_cases hspecial : s.2 = [] ∧ t = first
-    · obtain ⟨hnil, rfl⟩ := hspecial
-      have hgzero := completionPotential_freeHash_step prims relevant completion hreads firstInput s
-      simp only [if_neg hirrelevant, add_zero] at hgzero
-      have hf : (∑' r, Pr{let z ← (loggedImpl prims first).run s}[z = r] *
-          fundedContinuation prims main exception r.2) ≤
-          fundedContinuation prims main exception s + (2 ^ 128 : ℝ≥0∞)⁻¹ := by
-        simpa only [hnil, and_self, if_pos, main] using hfund
-      calc
-        _ ≤ g s.1.1 + (fundedContinuation prims main exception s + (2 ^ 128 : ℝ≥0∞)⁻¹) :=
-          add_le_add hgzero hf
-        _ = _ := by simp [f, first, SeedHitProof.signCost, add_assoc]
-    · have hf : (∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] *
-          fundedContinuation prims main exception r.2) ≤ fundedContinuation prims main exception s := by
-        simpa only [if_neg hspecial, add_zero, main] using hfund
-      calc
-        _ ≤ (g s.1.1 + (SeedHitProof.signCost t : ℝ≥0∞) * (2 ^ 128 : ℝ≥0∞)⁻¹) +
-            fundedContinuation prims main exception s := add_le_add hg hf
-        _ = _ := by dsimp [f]; ac_rfl
-  · intro z hz hwin
-    rcases hcover z hz hwin with hstable | hexception
-    · have hg := completionPotential_terminal relevant completion z.2.1.1 hstable
-      change 1 ≤ completionPotential relevant completion z.2.1.1 + _
-      rw [hg]
-      exact le_add_right le_rfl
-    · have hf := fundedContinuation_terminal prims first k exception z
-        (by simpa only [loggedRun, hfirst, first, loggedInit] using hz) hexception
-      change 1 ≤ g z.2.1.1 + fundedContinuation prims main exception z.2
-      rw [hf]
-      exact le_add_left le_rfl
 
 set_option maxRecDepth 100000 in
 /-- Per-key reserves use separate nonstructural PRF calls. The invariant keeps
@@ -4353,33 +3553,6 @@ def NoForestCollision (x : SigningSecurityProof.Keys3 C) (cache : HashCache C) :
         (forestPayload prims x cache domain)) →
       truncateHash output ≠ truncateHash (SigningCacheProof.answersOf cache
         (.hash (XmssSecurity.tweakableHashInput x.1 domain (forestPayload prims x cache domain))))
-
-/-- A collision can disappear under cache extension only if its canonical
-payload changes or the original canonical input was not cached. -/
-theorem forestCollision_changes (x : SigningSecurityProof.Keys3 C)
-    (cache larger : HashCache C) (hle : cache ≤ larger)
-    (hbad : ¬NoForestCollision prims x cache) (hno : NoForestCollision prims x larger) :
-    ∃ domain, ForestDomain domain ∧
-      (forestPayload prims x cache domain ≠ forestPayload prims x larger domain ∨
-        cache (.hash (XmssSecurity.tweakableHashInput x.1 domain
-          (forestPayload prims x cache domain))) = none) := by
-  classical
-  unfold NoForestCollision at hbad
-  push_neg at hbad
-  obtain ⟨domain, hd, input, output, hc, hpos, hne, heq⟩ := hbad
-  refine ⟨domain, hd, ?_⟩
-  by_cases hp : forestPayload prims x cache domain = forestPayload prims x larger domain
-  · right
-    cases ho : cache (.hash (XmssSecurity.tweakableHashInput x.1 domain
-        (forestPayload prims x cache domain))) with
-    | none => rfl
-    | some honest =>
-      exfalso
-      have ho' := hle ho
-      rw [hp] at hpos hne ho'
-      apply hno domain hd input output (hle hc) hpos hne
-      simpa only [SigningCacheProof.answersOf, ho, ho', Option.getD_some] using heq
-  · exact Or.inl hp
 
 set_option backward.isDefEq.respectTransparency false in
 /-- In a cache without forest collisions, a cached payload with the canonical
@@ -4564,21 +3737,6 @@ theorem forestPayload_bottomNode (x : SigningSecurityProof.Keys3 C) (cache : Has
     simp only [hchildren.1, hchildren.2,
       XmssSecurity.Concrete.CacheView.authenticationNodePayload, hb, Bool.false_eq_true, ↓reduceIte]
 
-theorem bottomNode_valid (b : XmssSecurity.LeafIndex) (level : XmssSecurity.MerkleLevel) :
-    XmssSecurity.TreeSubtreeValid (level.val + 1)
-      (XmssSecurity.Concrete.CacheView.nodeIndex b level.val) := by
-  have hsum : (2 * XmssSecurity.treeHeight - (level.val + 1)) + (level.val + 1) =
-      2 * XmssSecurity.treeHeight := by have := level.isLt; omega
-  have hlt : b.val / 2 ^ (level.val + 1) < 2 ^ (2 * XmssSecurity.treeHeight - (level.val + 1)) := by
-    apply (Nat.div_lt_iff_lt_mul (by positivity : 0 < 2 ^ (level.val + 1))).2
-    rw [← Nat.pow_add, hsum]
-    exact b.isLt
-  change (b.val / 2 ^ (level.val + 1) + 1) * 2 ^ (level.val + 1) ≤ _
-  calc
-    _ ≤ 2 ^ (2 * XmssSecurity.treeHeight - (level.val + 1)) * 2 ^ (level.val + 1) :=
-      Nat.mul_le_mul_right _ hlt
-    _ = XmssSecurity.lifetime := by rw [← Nat.pow_add, hsum]; rfl
-
 set_option backward.isDefEq.respectTransparency false in
 open SigningDescentProof in
 /-- Canonical collision exclusion rules out the entire bottom-layer hit event. -/
@@ -4636,41 +3794,6 @@ theorem noBottomHit_of_payload (z : FinalState C)
       exact Prod.ext (congrArg Prod.snd hpair) (congrArg Prod.fst hpair)
     · simp only [XmssSecurity.Concrete.CacheView.authenticationNodePayload, hb, Bool.false_eq_true, ↓reduceIte] at hp
       exact XmssSecurity.Concrete.nodePayload_injective hp
-
-open SigningDescentProof in
-theorem noForestCollision_bottomHit (z : FinalState C)
-    (hno : NoForestCollision prims z.keys z.cache) :
-    ¬LayerHit (bottomStep z.cache z.keys.1 z.key)
-      (XmssSecurity.Concrete.CacheView.leafHash (thView z.cache) z.keys.1 z.key)
-      (XmssSecurity.Concrete.CacheView.nodeHash (thView z.cache) z.keys.1 z.key)
-      (z.honestKey prims).secret (z.honestKey prims).path
-      (bottomStepCached z.cache z.keys.1 z.key) (bottomLeafCached z.cache z.keys.1 z.key)
-      (bottomNodeCached z.cache z.keys.1 z.key) := by
-  apply noBottomHit_of_payload prims z
-  intro domain hd
-  apply noForestCollision_payload prims z.keys z.cache hno domain
-  · cases domain with
-    | chain _ _ _ | leaf _ => trivial
-    | merkle level node =>
-      have hj : node.val / 2 ^ (16 - (level.val + 1)) < 2 ^ 16 := by
-        rw [hd]; exact (treeOf z.key).isLt
-      have hl : level.val < 16 := level.isLt
-      rw [Nat.div_lt_iff_lt_mul (by positivity), ← pow_add] at hj
-      change (node.val + 1) * 2 ^ (level.val + 1) ≤ 2 ^ 32
-      calc
-        _ ≤ 2 ^ (16 + (16 - (level.val + 1))) * 2 ^ (level.val + 1) := Nat.mul_le_mul_right _ hj
-        _ = _ := by rw [← pow_add, show 16 + (16 - (level.val + 1)) + (level.val + 1) = 32 by omega]
-    | topChain _ _ _ | topLeaf _ | topMerkle _ _ | encoding _ | topEncoding _ => cases hd
-  · cases domain <;> simp_all [BottomDomain, StructuralDomain]
-
-open SigningDescentProof in
-/-- Both layers of the completed replay are free of the original hit event. -/
-theorem noForestCollision_hit (z : FinalState C)
-    (hno : NoForestCollision prims z.keys z.cache) :
-    ¬Hit z.cache z.keys.1 z.key (z.honestKey prims) := by
-  rintro (h | h)
-  · exact noForestCollision_bottomHit prims z hno h
-  · exact noForestCollision_topHit prims z hno h
 
 theorem bottomDomain_valid (b : Fin (2 ^ layerHeight)) (domain : XmssSecurity.HashDomain)
     (hd : BottomDomain b domain) : ForestDomain domain ∧ StructuralDomain domain := by
@@ -4736,28 +3859,6 @@ theorem forestException_witness (x : SigningSecurityProof.Keys3 C)
   intro domain hdomain input output hc hpos hne heq
   exact hno (completedHit_forest_of_completedCollision prims x z.2.1.1 r hr
     domain hdomain input output hc hpos hne heq)
-
-/-- An exceptional hit has a concrete witness to unstable or missing honest
-replay data in its original cache. It cannot be dismissed as a collision created
-by the completion itself. -/
-theorem forestException_replayChanges (x : SigningSecurityProof.Keys3 C)
-    (z : (((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) × LoggedState C))
-    (hex : ForestException prims x z) :
-    ∃ r : (Unit × HashCache C) × HashCache C,
-      r ∈ support ((simulateQ (Query C →ₒ HashOutput).randomOracle
-        (recordReads (forestRun x) ∅)).run z.2.1.1) ∧
-      NoForestCollision prims x r.2 ∧
-      ∃ domain, ForestDomain domain ∧
-        (forestPayload prims x z.2.1.1 domain ≠ forestPayload prims x r.2 domain ∨
-          z.2.1.1 (.hash (XmssSecurity.tweakableHashInput x.1 domain
-            (forestPayload prims x z.2.1.1 domain))) = none) := by
-  obtain ⟨r, hr, hno⟩ := forestException_witness prims x z hex
-  obtain ⟨top, state, forgery, _, hhit⟩ := hex.1.2
-  have hbad : ¬NoForestCollision prims x z.2.1.1 := by
-    intro hn
-    exact noForestCollision_hit prims ⟨x, top, state, forgery, z.2.1.1, false⟩ hn hhit
-  exact ⟨r, hr, hno, forestCollision_changes prims x z.2.1.1 r.2
-    (recordReads_resolves (forestRun x) ∅ z.2.1.1 (by intro i v h; cases h) r hr).1 hbad hno⟩
 
 set_option maxRecDepth 100000 in
 /-- The actual top tree resolves every PRF and structural read in the
@@ -4874,51 +3975,6 @@ theorem forestException_fresh (A : TsigAdversary C) (x : SigningSecurityProof.Ke
     exposedRun_fresh_or_bottom prims A x (z.1, z.2.1) he hex.1.1
   · exact ⟨top, state, forgery, hsome, hfresh⟩
   · exact False.elim (forestException_unopened prims A x z hz hex top state forgery hsome output hresolved)
-
-set_option maxRecDepth 100000 in
-/-- Any completed semantic bottom call excludes the exceptional event at that
-key. The call may fail; only its supported execution and cache inclusion matter. -/
-theorem forestException_no_bottom_call (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
-    (z : (((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) × LoggedState C))
-    (hz : z ∈ support (loggedRun prims A x)) (hex : ForestException prims x z)
-    (top : TopTree) (state : TsigState C) (forgery : Forgery)
-    (hsome : z.1.2 = some (top, state, forgery))
-    (initial : HashCache C × ℕ) (r : Option TreeOutput × (HashCache C × ℕ))
-    (hr : r ∈ support ((simulateQ (SigningCacheProof.countImpl prims)
-      (SigningSecurityProof.liftFree
-        (referenceTree tweakable (prfValue x.2.1) x.1 top (.bottom (treeOf forgery.signature.leafIndex))))).run initial))
-    (hle : r.2.1 ≤ z.2.1.1) : False := by
-  rw [← hashEmbed_referenceTree] at hr
-  have hresolved := run_hashEmbed_resolves prims _ initial r hr
-  exact forestException_unopened prims A x z hz hex top state forgery hsome r.1 (hresolved.mono hle)
-
-set_option maxRecDepth 100000 in
-/-- An exceptional terminal trace cannot have a supported suffix beginning
-with the semantic bottom call for its forged key, followed by any continuation. -/
-theorem forestException_no_bottom_suffix (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
-    (z : (((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) × LoggedState C))
-    (hz : z ∈ support (loggedRun prims A x)) (hex : ForestException prims x z)
-    (top : TopTree) (state : TsigState C) (forgery : Forgery)
-    (hsome : z.1.2 = some (top, state, forgery)) (initial : LoggedState C)
-    (k : Option TreeOutput → OracleComp (WorldSpec C) ((Bool × Bool) × Option (TopTree × TsigState C × Forgery)))
-    (hsuffix : z ∈ support ((simulateQ (loggedImpl prims)
-      (SigningSecurityProof.liftFree
-        (referenceTree tweakable (prfValue x.2.1) x.1 top (.bottom (treeOf forgery.signature.leafIndex))) >>= k)).run initial)) :
-    False := by
-  let call := SigningSecurityProof.liftFree
-    (referenceTree tweakable (prfValue x.2.1) x.1 top (.bottom (treeOf forgery.signature.leafIndex)))
-  have hforget : (fun r => (r.1, r.2.1)) <$>
-      ((simulateQ (loggedImpl prims) (call >>= k)).run initial) =
-      ((simulateQ (SigningCacheProof.countImpl prims) (call >>= k)).run initial.1) :=
-    SigningCoreProof.simulateQ_run_forget _ _
-      (fun t s log => by simp [loggedImpl, Functor.map_map]) _ _ _
-  have hc : (z.1, z.2.1) ∈ support
-      ((simulateQ (SigningCacheProof.countImpl prims) (call >>= k)).run initial.1) := by
-    rw [← hforget, support_map]
-    exact Set.mem_image_of_mem _ hsuffix
-  obtain ⟨r, hr, htail⟩ := SigningCacheProof.run_bind_support prims call k initial.1 (z.1, z.2.1) hc
-  exact forestException_no_bottom_call prims A x z hz hex top state forgery hsome initial.1 r hr
-    (SigningCacheProof.countRun_grows prims (k r.1) r.2 (z.1, z.2.1) htail)
 
 set_option maxRecDepth 100000 in
 /-- The actual key-generation prefix replays to the same top tree after every
@@ -5140,168 +4196,12 @@ theorem forestException_authentic (A : TsigAdversary C) (x : SigningSecurityProo
   exact ⟨r, hr, hno, top, state, forgery, hsome, encoding, hvalid,
     valid_encoding_deficit encoding hvalid, hauth.resolve_left hn, hcode, hsuffix⟩
 
-set_option maxRecDepth 100000 in
-/-- The authentic depth certificate is already true in the actual final
-cache. It does not depend on targets chosen by the later forest completion. -/
-theorem forestException_authentic_original (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
-    (z : (((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) × LoggedState C))
-    (hz : z ∈ support (loggedRun prims A x)) (hex : ForestException prims x z) :
-    ∃ top state forgery, z.1.2 = some (top, state, forgery) ∧
-      ∃ encoding : XmssSecurity.Encoding, XmssSecurity.TargetSum.Valid encoding ∧
-        (∑ l, (3 - (encoding l).val)) = 68 ∧
-        (∀ l, (XmssSecurity.Bridge.toModelSig forgery.signature).top.chainValue l =
-          XmssSecurity.Wots.walk
-            (XmssSecurity.Concrete.CacheView.topChainStep (SigningDescentProof.thView z.2.1.1) x.1
-              (XmssSecurity.topKeyOf forgery.signature.leafIndex) l)
-            0 (encoding l).val
-            (replayStarts prims x z.2.1.1 topLayer
-              (topKey (XmssSecurity.topKeyOf forgery.signature.leafIndex)) l)) ∧
-          ActualTopCodeword z.2.1.1 x.1 forgery.signature.leafIndex forgery.message
-            (XmssSecurity.Bridge.toModelSig forgery.signature) encoding ∧
-          ∀ l, ∃ finish, DeterministicSigning.Resolves (SigningDescentProof.thView z.2.1.1)
-            (XmssSecurity.Concrete.topChainWalk x.1 (XmssSecurity.topKeyOf forgery.signature.leafIndex) l
-              (encoding l).val (XmssSecurity.chainLength - 1 - (encoding l).val)
-              ((XmssSecurity.Bridge.toModelSig forgery.signature).top.chainValue l) :
-                OracleComp XmssSecurity.HashSpec _) finish := by
-  obtain ⟨r, hr, _, top, state, forgery, hsome, encoding, hvalid, hdepth, hauth, hcode, hsuffix⟩ :=
-    forestException_authentic prims A x z hz hex
-  have hgrow := (recordReads_resolves (forestRun x) ∅ z.2.1.1
-    (by intro input output hh; cases hh) r hr).1
-  have he : (z.1, z.2.1) ∈ support (SigningDescentProof.exposedRun prims A x) := by
-    rw [← loggedRun_forget, support_map]
-    exact Set.mem_image_of_mem _ hz
-  have htop := exposedRun_top_resolves prims A x (z.1, z.2.1) he hex.1.1 top state forgery hsome
-  refine ⟨top, state, forgery, hsome, encoding, hvalid, hdepth, fun l => ?_, hcode, hsuffix⟩
-  exact (hauth l).trans (resolves_referenceTop_walks prims x z.2.1.1 r.2 hgrow top htop
-    _ l (encoding l).val (by have hh : (encoding l).val < 4 := (encoding l).isLt; omega))
-
 /-- Partition the exceptional event by the forgery's top key. The gate for
 each part is fixed by that key before the adversary runs. -/
 def ForestExceptionAt (x : SigningSecurityProof.Keys3 C) (b : XmssSecurity.TopIndex)
     (z : (((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) × LoggedState C)) : Prop :=
   ForestException prims x z ∧ ∃ top state forgery,
     z.1.2 = some (top, state, forgery) ∧ XmssSecurity.topKeyOf forgery.signature.leafIndex = b
-
-set_option maxRecDepth 100000 in
-/-- The actual instrumented adversary never opens the key of an exceptional
-forgery. This connects the semantic handler bit to the final winning event. -/
-theorem forestExceptionAt_no_opened (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
-    (b : Fin (2 ^ layerHeight))
-    (r : ((((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) × Bool) × LoggedState C))
-    (hr : r ∈ support (openedLoggedRun prims A x b))
-    (hex : ForestExceptionAt prims x b (r.1.1, r.2)) : r.1.2 = false := by
-  cases hopen : r.1.2 with
-  | false => rfl
-  | true =>
-    exfalso
-    have hforget : (fun z => (z.1, z.2.1)) <$> openedLoggedRun prims A x b =
-        ((simulateQ (SigningCacheProof.countImpl prims) (openedFinalRun A x b)).run (∅, 0)) :=
-      SigningCoreProof.simulateQ_run_forget _ _
-        (fun t s log => by simp [loggedImpl, Functor.map_map]) _ _ _
-    have hc : (r.1, r.2.1) ∈ support
-        ((simulateQ (SigningCacheProof.countImpl prims) (openedFinalRun A x b)).run (∅, 0)) := by
-      rw [← hforget, support_map]
-      exact Set.mem_image_of_mem _ hr
-    obtain ⟨top, state, forgery, hsome, output, hresolved⟩ :=
-      openedFinalRun_resolves prims A x b (∅, 0) (r.1, r.2.1) hc hopen
-    obtain ⟨top', state', forgery', hsome', hkey⟩ := hex.2
-    have htuple := Option.some.inj (hsome'.symm.trans hsome)
-    cases htuple
-    have hz : (r.1.1, r.2) ∈ support (loggedRun prims A x) := by
-      rw [← openedLoggedRun_forget prims A x b, support_map]
-      exact Set.mem_image_of_mem _ hr
-    have hb : treeOf forgery.signature.leafIndex = b := hkey
-    rw [← hb] at hresolved
-    exact forestException_unopened prims A x (r.1.1, r.2) hz hex.1 top state forgery hsome output hresolved
-
-set_option maxRecDepth 100000 in
-/-- Adding the semantic unopened condition loses no exceptional-event mass.
-The real program and its complete raw transcript are preserved. -/
-theorem forestExceptionAt_unopened_probability (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
-    (b : Fin (2 ^ layerHeight)) :
-    Pr{let z ← loggedRun prims A x}[ForestExceptionAt prims x b z] =
-      Pr{let r ← openedLoggedRun prims A x b}[
-        ForestExceptionAt prims x b (r.1.1, r.2) ∧ r.1.2 = false] := by
-  rw [← openedLoggedRun_forget prims A x b, prEvent_map]
-  exact prEvent_congr_of_support _ _ _ (fun r hr => ⟨fun h => ⟨h, forestExceptionAt_no_opened prims A x b r hr h⟩,
-    fun h => h.1⟩)
-
-set_option maxRecDepth 100000 in
-/-- The exceptional event can be analyzed in a program that aborts before
-opening the forged bottom key during the adversary; verification remains real. -/
-theorem forestExceptionAt_stopped_probability (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
-    (b : Fin (2 ^ layerHeight)) :
-    Pr{let z ← loggedRun prims A x}[ForestExceptionAt prims x b z] =
-    Pr{let z ← (simulateQ (loggedImpl prims) (unopenedFinalRun A x b)).run loggedInit}[
-      ForestExceptionAt prims x b z] := by
-  rw [forestExceptionAt_unopened_probability prims A x b]
-  symm
-  apply unopenedFinalRun_probability
-  intro flags s hex
-  obtain ⟨top, state, forgery, hsome, _⟩ := hex.2
-  cases hsome
-
-set_option maxRecDepth 100000 in
-/-- The unopened-event identity also holds after conditioning on any supported
-instrumented prefix; it is not merely an unconditional probability identity. -/
-theorem forestExceptionAt_unopened_prefix (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
-    (b : Fin (2 ^ layerHeight)) (n : ℕ)
-    (rest : OracleComp (WorldSpec C) (((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) × Bool))
-    (s : LoggedState C)
-    (hp : (rest, s) ∈ support ((simulateQ (loggedImpl prims)
-      (prefixRun (openedFinalRun A x b) n)).run loggedInit)) :
-    Pr{let r ← (simulateQ (loggedImpl prims) rest).run s}[
-      ForestExceptionAt prims x b (r.1.1, r.2)] =
-    Pr{let r ← (simulateQ (loggedImpl prims) rest).run s}[
-      ForestExceptionAt prims x b (r.1.1, r.2) ∧ r.1.2 = false] := by
-  apply prEvent_congr_of_support
-  intro r hr
-  constructor
-  · intro hex
-    exact ⟨hex, forestExceptionAt_no_opened prims A x b r
-      (prefixRun_support_resume prims (openedFinalRun A x b) n rest s hp r hr) hex⟩
-  · exact And.left
-
-set_option maxRecDepth 100000 in
-/-- The original query cap remains valid on every continuation of any
-supported program prefix, as required by the conditional gate analysis. -/
-theorem prefixRun_count_le (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) (q : ℕ)
-    (hq : ∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q)
-    (n : ℕ) (rest : OracleComp (WorldSpec C) ((Bool × Bool) × Option (TopTree × TsigState C × Forgery)))
-    (s : LoggedState C)
-    (hp : (rest, s) ∈ support ((simulateQ (loggedImpl prims)
-      (prefixRun (SigningDescentProof.finalRun A x) n)).run loggedInit)) :
-    ∀ z ∈ support ((simulateQ (loggedImpl prims) rest).run s), z.2.1.2 ≤ q := by
-  intro z hz
-  have hfull := prefixRun_support_resume prims (SigningDescentProof.finalRun A x) n rest s hp z hz
-  apply exposedRun_count_le prims A x q hq (z.1, z.2.1)
-  rw [← loggedRun_forget, support_map]
-  exact Set.mem_image_of_mem _ hfull
-
-set_option maxRecDepth 100000 in
-/-- A matching reserve is exactly the exceptional unopened-event probability
-at a supported instrumented prefix, with the same cache, count, and transcript. -/
-theorem continuationReserve_unopened (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
-    (b : Fin (2 ^ layerHeight)) (gate : (WorldSpec C).Domain) (s : LoggedState C)
-    (k : (WorldSpec C).Range gate → OracleComp (WorldSpec C)
-      ((Bool × Bool) × Option (TopTree × TsigState C × Forgery)))
-    (hs : RawReachable prims s)
-    (hk : transcriptResidual (SigningDescentProof.finalRun A x) s.2 =
-      some (OracleComp.queryBind gate k)) :
-    ∃ n instrumented,
-      (instrumented, s) ∈ support ((simulateQ (loggedImpl prims)
-        (prefixRun (openedFinalRun A x b) n)).run loggedInit) ∧
-      Prod.fst <$> instrumented = OracleComp.queryBind gate k ∧
-      (∑' r, Pr{let z ← (loggedImpl prims gate).run s}[z = r] *
-        continuationReserve prims (SigningDescentProof.finalRun A x) (ForestExceptionAt prims x b) r.2) =
-      Pr{let r ← (simulateQ (loggedImpl prims) instrumented).run s}[
-        ForestExceptionAt prims x b (r.1.1, r.2) ∧ r.1.2 = false] := by
-  obtain ⟨n, hp⟩ := rawReachable_prefix prims s hs (SigningDescentProof.finalRun A x) _ hk
-  obtain ⟨instrumented, hi, he⟩ := prefixRun_opened_lift prims A x b n _ s hp
-  refine ⟨n, instrumented, hi, he, ?_⟩
-  rw [continuationReserve_matchingQuery prims _ _ gate s k hk, ← he,
-    simulateQ_map, StateT.run_map, prEvent_map]
-  exact forestExceptionAt_unopened_prefix prims A x b n instrumented s hi
 
 namespace LayeredGraph
 
@@ -5356,13 +4256,6 @@ theorem root_insertEdge (rows : List (State → Option State)) (layer : ℕ)
         · simp only [h, ↓reduceIte, List.drop_succ_cons, Prod.mk.injEq, and_true]
           omega
         · simp [h]
-
-theorem root_layer_le (rows : List (State → Option State)) (start : State) :
-    (root rows start).1 ≤ rows.length := by
-  induction rows generalizing start with
-  | nil => simp [root]
-  | cons row rows ih =>
-    cases h : row start <;> simp [root, h, ih]
 
 theorem drop_insertEdge (rows : List (State → Option State)) (skip layer : ℕ)
     (input output : State) :
@@ -6281,21 +5174,6 @@ def implementation : QueryImpl (GraphSpec Index State) (StateT (GraphState Index
 
 def Valid (s : GraphState Index State) : Prop := ∀ i, (s.1 i).length = 3
 
-theorem step_valid (t : Index × Fin 3 × State) (s : GraphState Index State) (hs : Valid s)
-    (r : State × GraphState Index State) (hr : r ∈ support (step t s)) : Valid r.2 := by
-  unfold step at hr
-  split at hr
-  · simp only [support_pure, Set.mem_singleton_iff] at hr
-    subst r
-    exact hs
-  · simp only [support_map, Set.mem_image] at hr
-    obtain ⟨output, _, rfl⟩ := hr
-    intro i
-    by_cases hi : i = t.1
-    · subst i
-      simpa only [Function.update_self, length_insertEdge] using hs t.1
-    · simpa only [Function.update_of_ne hi] using hs i
-
 theorem step_potential (t : Index × Fin 3 × State) (s : GraphState Index State)
     (hs : Valid s) (target : Index → State) :
     (∑' r, Pr{let z ← step t s}[z = r] * potential r.2.1 target) ≤ growth State * potential s.1 target := by
@@ -6342,26 +5220,6 @@ theorem step_discounted (t : Index × Fin 3 × State) (s : GraphState Index Stat
         ENNReal.mul_div_mul_right _ _ growth_ne_zero growth_ne_top]
       rfl
 
-/-- Discounting the graph potential turns its multiplicative drift into the
-standard VCV-io expected-final invariant, for arbitrary adaptive programs. -/
-theorem expected_discounted_le {α : Type} (oa : OracleComp (GraphSpec Index State) α)
-    (target : Index → State) (s : GraphState Index State) (hs : Valid s) :
-    XmssSecurity.expectedFinal implementation (discounted target) oa s ≤ discounted target s := by
-  have hzero (comp : OracleComp (GraphSpec Index State) α) (state : GraphState Index State) :
-      XmssSecurity.expectedSimulatedCost implementation (fun _ _ => 0) comp state = 0 := by
-    induction comp using OracleComp.inductionOn generalizing state with
-    | pure value => rfl
-    | query_bind t next ih =>
-      simp only [XmssSecurity.expectedSimulatedCost_query_bind, ih, mul_zero,
-        tsum_zero, add_zero]
-  have h := XmssSecurity.expectedFinal_le implementation
-    (Inv := Valid) (fun t state hstate r hr => step_valid t state hstate r hr)
-    (discounted target) (fun _ _ => 0)
-    (fun t state hstate => by
-      simpa only [add_zero, implementation, StateT.run] using step_discounted t state hstate target)
-    oa s hs
-  simpa only [hzero, add_zero] using h
-
 def Terminal (target : Index → State) (q : ℕ) (s : GraphState Index State) : Prop :=
   s.2 ≤ q ∧
   (∀ i, Set.InjOn (fun v : Fin 3 × State => v.1.val) (component (s.1 i) 3 3 (target i))) ∧
@@ -6400,17 +5258,6 @@ theorem terminal_probability_of_expected {α : Type} (run : ProbComp (α × Grap
   apply (ENNReal.le_div_iff_mul_le (Or.inl (by norm_num)) (Or.inl (by norm_num))).mpr
   simpa only [one_mul] using hmul
 
-/-- The adaptive observed-graph bound, before coupling the observed table to
-the marked signing run. No response-independence premise is hidden in it. -/
-theorem terminal_probability {α : Type} (oa : OracleComp (GraphSpec Index State) α)
-    (target : Index → State) (q : ℕ) :
-    Pr{let r ← (simulateQ implementation oa).run (emptyRows, 0)}[
-      Terminal target q r.2] ≤
-        growth State ^ q / (5 : ℝ≥0∞) ^ 68 := by
-  apply terminal_probability_of_expected
-  simpa only [XmssSecurity.expectedFinal, discounted, potential, productWeight_empty, ENNReal.ofReal_one,
-    pow_zero, div_one] using expected_discounted_le oa target (emptyRows, 0) (by intro i; rfl)
-
 theorem growth_query_cap (q : ℕ) (hq : q < 2 ^ 127) (hcard : Fintype.card State = 2 ^ 128) :
     growth State ^ q / (5 : ℝ≥0∞) ^ 68 ≤ (2 ^ 128 : ℝ≥0∞)⁻¹ := by
   have hg : (1 + (124 / 3 : ℝ) / Fintype.card State) = 1 + 124 / (3 * (2 : ℝ) ^ 128) := by
@@ -6423,89 +5270,7 @@ theorem growth_query_cap (q : ℕ) (hq : q < 2 ^ 127) (hcard : Fintype.card Stat
       ENNReal.ofReal_pow (by norm_num), ENNReal.ofReal_ofNat]
   simpa only [growth, hg, hr, ENNReal.ofReal_ofNat] using h
 
-theorem terminal_probability_digest {α : Type} (oa : OracleComp (GraphSpec Index State) α)
-    (target : Index → State) (q : ℕ) (hq : q < 2 ^ 127)
-    (hcard : Fintype.card State = 2 ^ 128) :
-    Pr{let r ← (simulateQ implementation oa).run (emptyRows, 0)}[
-      Terminal target q r.2] ≤ (2 ^ 128 : ℝ≥0∞)⁻¹ :=
-  (terminal_probability oa target q).trans (growth_query_cap q hq hcard)
-
 variable {Aux : Type} {ι : Type} {auxSpec : OracleSpec ι}
-
-/-- Auxiliary queries may carry arbitrary state and randomness. Their graph
-projection is required to stay fixed; graph queries retain fresh uniform sampling. -/
-def mixedImplementation
-    (aux : QueryImpl auxSpec (StateT (GraphState Index State × Aux) ProbComp)) :
-    QueryImpl (GraphSpec Index State + auxSpec) (StateT (GraphState Index State × Aux) ProbComp)
-  | .inl t => fun s => (fun r => (r.1, r.2, s.2)) <$> step t s.1
-  | .inr t => aux t
-
-theorem mixed_expected_discounted_le {α : Type}
-    (aux : QueryImpl auxSpec (StateT (GraphState Index State × Aux) ProbComp))
-    (haux : ∀ t s r, r ∈ support ((aux t).run s) → r.2.1 = s.1)
-    (oa : OracleComp (GraphSpec Index State + auxSpec) α)
-    (target : Index → State) (s : GraphState Index State × Aux) (hs : Valid s.1) :
-    XmssSecurity.expectedFinal (mixedImplementation aux) (fun r => discounted target r.1) oa s ≤
-      discounted target s.1 := by
-  have hzero (comp : OracleComp (GraphSpec Index State + auxSpec) α)
-      (state : GraphState Index State × Aux) :
-      XmssSecurity.expectedSimulatedCost (mixedImplementation aux) (fun _ _ => 0) comp state = 0 := by
-    induction comp using OracleComp.inductionOn generalizing state with
-    | pure value => rfl
-    | query_bind t next ih =>
-      simp only [XmssSecurity.expectedSimulatedCost_query_bind, ih, mul_zero, tsum_zero, add_zero]
-  have hinv : ∀ t state, Valid state.1 → ∀ r ∈ support ((mixedImplementation aux t).run state), Valid r.2.1 := by
-    intro t state hstate r hr
-    cases t with
-    | inl t =>
-      simp only [mixedImplementation, StateT.run, support_map, Set.mem_image] at hr
-      obtain ⟨v, hv, rfl⟩ := hr
-      exact step_valid t state.1 hstate v hv
-    | inr t => rw [haux t state r hr]; exact hstate
-  have hstep : ∀ t state, Valid state.1 →
-      (∑' r, Pr{let z ← (mixedImplementation aux t).run state}[z = r] * discounted target r.2.1) ≤
-        discounted target state.1 := by
-    intro t state hstate
-    cases t with
-    | inl t =>
-      simp only [mixedImplementation, StateT.run, OracleComp.tsum_prEvent_map_mul]
-      exact step_discounted t state.1 hstate target
-    | inr t =>
-      change (∑' r : auxSpec.Range t × GraphState Index State × Aux,
-        Pr{let z ← (aux t).run state}[z = r] * discounted target r.2.1) ≤ discounted target state.1
-      calc
-        _ = (∑' r, Pr{let z ← (aux t).run state}[z = r]) * discounted target state.1 := by
-          rw [← ENNReal.tsum_mul_right]
-          apply tsum_congr
-          intro r
-          by_cases hr : r ∈ support ((aux t).run state)
-          · rw [haux t state r hr]
-          · simp only [mixedImplementation, prEvent_eq_zero_of_not_mem_support _ hr, zero_mul]
-        _ ≤ _ := mul_le_of_le_one_left zero_le (OracleComp.tsum_prEvent_le_one _)
-  have h := XmssSecurity.expectedFinal_le (mixedImplementation aux)
-    (Inv := fun r => Valid r.1) hinv (fun r => discounted target r.1) (fun _ _ => 0)
-    (fun t state hstate => by simpa only [add_zero] using hstep t state hstate) oa s hs
-  simpa only [hzero, add_zero] using h
-
-/-- Arbitrary auxiliary oracle interaction consumes no extra graph drift.
-The bound still uses the graph-query count recorded by the implementation. -/
-theorem mixed_terminal_probability_digest {α : Type}
-    (aux : QueryImpl auxSpec (StateT (GraphState Index State × Aux) ProbComp))
-    (haux : ∀ t s r, r ∈ support ((aux t).run s) → r.2.1 = s.1)
-    (oa : OracleComp (GraphSpec Index State + auxSpec) α) (initial : Aux)
-    (target : Index → State) (q : ℕ) (hq : q < 2 ^ 127)
-    (hcard : Fintype.card State = 2 ^ 128) :
-    Pr{let r ← (simulateQ (mixedImplementation aux) oa).run ((emptyRows, 0), initial)}[
-      Terminal target q r.2.1] ≤ (2 ^ 128 : ℝ≥0∞)⁻¹ := by
-  let run := (simulateQ (mixedImplementation aux) oa).run ((emptyRows, 0), initial)
-  have hm := mixed_expected_discounted_le aux haux oa target ((emptyRows, 0), initial) (by intro i; rfl)
-  have h := terminal_probability_of_expected ((fun r => (r.1, r.2.1)) <$> run) target q (by
-    rw [OracleComp.tsum_prEvent_map_mul]
-    simpa only [XmssSecurity.expectedFinal, discounted, potential, productWeight_empty,
-      ENNReal.ofReal_one, pow_zero, div_one] using hm)
-  have h' : Pr{let r ← run}[Terminal target q r.2.1] ≤ growth State ^ q / (5 : ℝ≥0∞) ^ 68 := by
-    simpa only [prEvent_map, Function.comp_def] using h
-  exact h'.trans (growth_query_cap q hq hcard)
 
 /-- A canonical path with unique observed predecessors admits no branched
 observed component at its endpoint. The premise is supplied by the chosen
@@ -7015,33 +5780,6 @@ theorem query_eq (f : D → E) (hinj : Function.Injective f) (e : E) :
         QueryImpl.withCaching_run_none _ (hc.trans hv), Functor.map_map,
         Function.comp_def, Prod.map_apply, id, split_update_out f cache e (not_exists.mp h)]
 
-set_option backward.isDefEq.respectTransparency false in
-theorem run_eq {α : Type} (f : D → E) (hinj : Function.Injective f)
-    (oa : OracleComp (E →ₒ R) α) (cache : QueryCache (E →ₒ R)) :
-    (simulateQ (FinitePosterior.lazy aux) (simulateQ (route f) oa)).run (split f cache) =
-      Prod.map id (split f) <$> (simulateQ (E →ₒ R).randomOracle oa).run cache := by
-  have h := TprfSecurityProof.StateMap.simulateQ (query_eq f hinj) oa cache
-  rw [← QueryImpl.simulateQ_compose]
-  exact h
-
-/-- The posterior identity holds for the original oracle program, with only
-its finite protected cells presampled. -/
-theorem joint_original [Finite D] [Finite R] [Nonempty R] [SampleableType (D → R)]
-    {α : Type} (f : D → E) (hinj : Function.Injective f)
-    (oa : OracleComp (E →ₒ R) α) (cache : QueryCache (E →ₒ R)) :
-    (do
-      let h ← $ᵗ (D → R)
-      let table := tableExtending (split f cache).1 h
-      let r ← (simulateQ (FinitePosterior.eager table aux) (simulateQ (route f) oa)).run (split f cache)
-      pure (r, table)) =ᵈ
-    (do
-      let r ← (simulateQ (E →ₒ R).randomOracle oa).run cache
-      let h ← $ᵗ (D → R)
-      pure (Prod.map id (split f) r, tableExtending (split f r.2).1 h)) := by
-  refine (FinitePosterior.joint_table_mixed aux aux_preserves _ _).trans ?_
-  rw [run_eq f hinj]
-  simp only [bind_map_left, Function.comp_def, Prod.map_snd, EvalDistEq.refl]
-
 def samplingAux : QueryImpl (unifSpec + (E →ₒ R))
     (StateT (QueryCache (D →ₒ R) × QueryCache (E →ₒ R)) ProbComp)
   | .inl n => fun s => (fun v => (v, s)) <$> (liftM (unifSpec.query n) : ProbComp _)
@@ -7120,34 +5858,6 @@ theorem eager_forget_run (table : D → R) {α : Type}
       (simulateQ (unrecorded table) oa).run s.2 :=
   (TprfSecurityProof.StateMap.simulateQ (eager_forget_query table) oa s).symm
 
-/-- For a fixed latent table, changing the observation record changes neither
-the program's output nor its auxiliary lazy cache. -/
-theorem eager_reset (table : D → R) {α : Type}
-    (oa : OracleComp ((D →ₒ R) + (unifSpec + (E →ₒ R))) α)
-    (record record' : QueryCache (D →ₒ R)) (cache : QueryCache (E →ₒ R)) :
-    Prod.map id Prod.snd <$>
-      (simulateQ (FinitePosterior.eager table samplingAux) oa).run (record, cache) =
-    Prod.map id Prod.snd <$>
-      (simulateQ (FinitePosterior.eager table samplingAux) oa).run (record', cache) := by
-  rw [eager_forget_run, eager_forget_run]
-
-/-- Private key-generation reads may be erased from the observation record
-before the public continuation. Their values remain in the latent table. -/
-theorem erase_private (table : D → R) {α β : Type}
-    (privateRun : OracleComp ((D →ₒ R) + (unifSpec + (E →ₒ R))) α)
-    (next : α → OracleComp ((D →ₒ R) + (unifSpec + (E →ₒ R))) β)
-    (s : QueryCache (D →ₒ R) × QueryCache (E →ₒ R)) :
-    Prod.map id Prod.snd <$>
-      (simulateQ (FinitePosterior.eager table samplingAux) (privateRun >>= next)).run s =
-    (do
-      let r ← (simulateQ (FinitePosterior.eager table samplingAux) privateRun).run s
-      Prod.map id Prod.snd <$>
-        (simulateQ (FinitePosterior.eager table samplingAux) (next r.1)).run (s.1, r.2.2)) := by
-  simp only [simulateQ_bind, StateT.run_bind, map_bind]
-  apply bind_congr
-  intro r
-  exact eager_reset table (next r.1) r.2.1 s.1 r.2.2
-
 set_option backward.isDefEq.respectTransparency false in
 theorem eager_route_preserves (f : D → E) (hinj : Function.Injective f) (table : D → R)
     (P : D → Prop) (e : E) (he : ∀ d, f d = e → P d)
@@ -7209,39 +5919,6 @@ theorem protectedLocal_eq (x : SigningSecurityProof.Keys3 C) (b : XmssSecurity.T
       prgAnswer, hashAnswer, map_eq_bind_pure_comp, simulateQ_bind, simulateQ_pure, Function.comp_def] using
       (ProtectedRouting.queryWithSampling_eq (protectedInput x b) hinj (.streamKey p.2.1)).map
         (fun v => prims.aes.eval (truncateHash v) p.2.2)
-
-set_option backward.isDefEq.respectTransparency false in
-theorem protectedLocal_run_eq (x : SigningSecurityProof.Keys3 C) (b : XmssSecurity.TopIndex)
-    (hno : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) {α : Type}
-    (oa : OracleComp (LocalSpec C) α) (cache : HashCache C) :
-    (simulateQ (FinitePosterior.lazy ProtectedRouting.samplingAux)
-      (simulateQ (protectedLocal prims x b) oa)).run (ProtectedRouting.split (protectedInput x b) cache) =
-    Prod.map id (ProtectedRouting.split (protectedInput x b)) <$>
-      (simulateQ (signingLocalAnswer prims) oa).run cache := by
-  classical
-  rw [← QueryImpl.simulateQ_compose]
-  exact TprfSecurityProof.StateMap.simulateQ (protectedLocal_eq prims x b hno) oa cache
-
-open Classical in
-/-- Joint deferred sampling for the actual signing local oracle, including
-private sampling and PRG derivations. -/
-theorem protectedLocal_joint (x : SigningSecurityProof.Keys3 C) (b : XmssSecurity.TopIndex)
-    (hno : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) {α : Type}
-    (oa : OracleComp (LocalSpec C) α) (cache : HashCache C) :
-    (do
-      let h ← $ᵗ (ProtectedSlot C → HashOutput)
-      let table := tableExtending (ProtectedRouting.split (protectedInput x b) cache).1 h
-      let r ← (simulateQ (FinitePosterior.eager table ProtectedRouting.samplingAux)
-        (simulateQ (protectedLocal prims x b) oa)).run (ProtectedRouting.split (protectedInput x b) cache)
-      pure (r, table)) =ᵈ
-    (do
-      let r ← (simulateQ (signingLocalAnswer prims) oa).run cache
-      let h ← $ᵗ (ProtectedSlot C → HashOutput)
-      pure (Prod.map id (ProtectedRouting.split (protectedInput x b)) r,
-        tableExtending (ProtectedRouting.split (protectedInput x b) r.2).1 h)) := by
-  refine (FinitePosterior.joint_table_mixed _ ProtectedRouting.samplingAux_preserves _ _).trans ?_
-  rw [protectedLocal_run_eq prims x b hno]
-  simp only [bind_map_left, Function.comp_def, Prod.map_snd, EvalDistEq.refl]
 
 /-- Forget the role tag on local calls. Only the syntactically unreachable
 programming branch receives a placeholder response. -/
@@ -7737,13 +6414,6 @@ def chainCache (cache : QueryCache (ProtectedSlot C →ₒ HashOutput)) (l : Cha
     QueryCache ((XmssSecurity.ChainStep × Digest) →ₒ HashOutput) :=
   QueryCache.ofFn fun p => cache (.inr (l, p))
 
-/-- The observed overlay is applied after splitting the uniform table. -/
-theorem split_overlay (cache : QueryCache (ProtectedSlot C →ₒ HashOutput))
-    (table : ProtectedSlot C → HashOutput) :
-    split (tableExtending cache table) =
-      (tableExtending (slotCache cache) (split table).1,
-       fun l => tableExtending (chainCache cache l) ((split table).2 l)) := rfl
-
 set_option backward.isDefEq.respectTransparency false in
 theorem uniform_pair {A B : Type} [Fintype A] [Fintype B]
     [Nonempty A] [Nonempty B] [SampleableType A] [SampleableType B]
@@ -7811,11 +6481,6 @@ theorem hiddenHit_readAllowed (x : SigningSecurityProof.Keys3 C) (D : Finset C.P
 
 def CacheAllowed (D : Finset C.Party) (challenged : Finset Point) (cache : SlotCache C) : Prop :=
   ∀ slot, (cache slot).isSome → ReadAllowed D challenged slot
-
-theorem CacheAllowed.empty (D : Finset C.Party) (challenged : Finset Point) :
-    CacheAllowed D challenged ∅ := by
-  intro slot h
-  simp at h
 
 theorem CacheAllowed.mono {D D' : Finset C.Party} (hD : D ⊆ D')
     {challenged : Finset Point} {cache : SlotCache C} (h : CacheAllowed D challenged cache) :
@@ -8063,95 +6728,6 @@ theorem shift_read (D : Finset C.Party) (challenged : Finset Point) (Tstar : C.T
   · rcases pair with ⟨pair, p, message, J⟩
     simp [shiftTable, shiftOf, Shifted, recordQueriers]
 
-theorem consistent_shift (D : Finset C.Party) (challenged : Finset Point) (Tstar : C.Term)
-    (hT : D ⊆ Tstar.1) (reads : List (Slot C × HashOutput))
-    (hreads : ∀ r ∈ reads, ReadAllowed D challenged r.1)
-    {c c' : Point → TprfCorrectnessProof.XorDigest} {ω : Slot C → HashOutput}
-    (h : TprfSecurityProof.Consistent [] reads challenged c ω) :
-    TprfSecurityProof.Consistent [] reads challenged c'
-      (shiftTable [] D challenged Tstar (fun p => c p + c' p) ω) := by
-  refine ⟨by simp, fun r hr => ?_, fun p hp => ?_⟩
-  · rw [shift_read D challenged Tstar hT _ _ _ (hreads r hr), h.2.1 r hr]
-  · rw [prfSum_shiftTable _ _ hp, h.2.2 p hp, ← add_assoc, TprfSecurityProof.XorDigest.add_self, zero_add]
-
-/-- Equal XOR fibers remain equal even after fixing every nonchallenged slot.
-The unrevealed pivot may be selected from the final corruption set. -/
-theorem card_consistent_eq (D : Finset C.Party) (hD : D.card ≤ C.t - 1)
-    (challenged : Finset Point) (reads : List (Slot C × HashOutput))
-    (hreads : ∀ r ∈ reads, ReadAllowed D challenged r.1) (c c' : Point → TprfCorrectnessProof.XorDigest) :
-    (Finset.univ.filter (TprfSecurityProof.Consistent [] reads challenged c)).card =
-      (Finset.univ.filter (TprfSecurityProof.Consistent [] reads challenged c')).card := by
-  classical
-  obtain ⟨T, hDT, hT⟩ := Finset.exists_superset_card_eq hD (by simp [Committee.n]; omega)
-  let Tstar : C.Term := ⟨T, hT⟩
-  refine Finset.card_nbij'
-    (shiftTable [] D challenged Tstar (fun p => c p + c' p))
-    (shiftTable [] D challenged Tstar (fun p => c p + c' p)) ?_ ?_
-    (fun ω _ => shiftTable_shiftTable _ _) (fun ω _ => shiftTable_shiftTable _ _)
-  · intro ω hω
-    simp only [Finset.coe_filter, Finset.mem_univ, true_and, Set.mem_setOf_eq] at hω ⊢
-    exact consistent_shift D challenged Tstar hDT reads hreads hω
-  · intro ω hω
-    simp only [Finset.coe_filter, Finset.mem_univ, true_and, Set.mem_setOf_eq] at hω ⊢
-    have h := consistent_shift D challenged Tstar hDT reads hreads (c' := c) hω
-    simpa only [add_comm] using h
-
-/-- Fixing the unopened starts costs exactly one uniform digest per point,
-even with arbitrary auxiliary data at nonchallenged slots. -/
-theorem card_consistent_mul (D : Finset C.Party) (hD : D.card ≤ C.t - 1)
-    (challenged : Finset Point) (reads : List (Slot C × HashOutput))
-    (hreads : ∀ r ∈ reads, ReadAllowed D challenged r.1)
-    (c : Point → TprfCorrectnessProof.XorDigest) :
-    (Finset.univ.filter (TprfSecurityProof.Consistent [] reads challenged c)).card *
-        (2 ^ digestBits) ^ challenged.card =
-      (Finset.univ.filter (TprfSecurityProof.Consistent [] reads ∅ c)).card := by
-  letI : Fintype TprfCorrectnessProof.XorDigest := inferInstanceAs (Fintype Digest)
-  letI : DecidableEq TprfCorrectnessProof.XorDigest := inferInstanceAs (DecidableEq Digest)
-  let f : (Slot C → HashOutput) → (challenged → TprfCorrectnessProof.XorDigest) :=
-    fun ω p => prfSum ω p.1
-  rw [Finset.card_eq_sum_card_fiberwise (f := f)
-    (s := Finset.univ.filter (TprfSecurityProof.Consistent [] reads ∅ c)) (t := Finset.univ)
-    (fun _ _ => Finset.mem_univ _)]
-  have hfiber : ∀ d : challenged → TprfCorrectnessProof.XorDigest,
-      ((Finset.univ.filter (TprfSecurityProof.Consistent [] reads ∅ c)).filter fun ω => f ω = d).card =
-        (Finset.univ.filter (TprfSecurityProof.Consistent [] reads challenged c)).card := by
-    intro d
-    rw [card_consistent_eq D hD challenged reads hreads c
-      (fun p => if h : p ∈ challenged then d ⟨p, h⟩ else 0), Finset.filter_filter]
-    apply congrArg Finset.card
-    apply Finset.filter_congr
-    intro ω _
-    simp only [TprfSecurityProof.Consistent, List.not_mem_nil, IsEmpty.forall_iff, implies_true, true_and,
-      Finset.notMem_empty, and_true, f]
-    apply and_congr_right
-    intro _
-    constructor
-    · intro h p hp
-      rw [dif_pos hp, ← h]
-    · intro h
-      funext p
-      have he := h p.1 p.2
-      rwa [dif_pos p.2] at he
-  have hcard : Fintype.card TprfCorrectnessProof.XorDigest = 2 ^ digestBits := by
-    change Fintype.card Digest = _
-    simp
-  rw [Finset.sum_congr rfl fun d _ => hfiber d, Finset.sum_const, Finset.card_univ,
-    smul_eq_mul, Fintype.card_fun, Fintype.card_coe, hcard, mul_comm]
-
-theorem probability_consistent_mul (D : Finset C.Party) (hD : D.card ≤ C.t - 1)
-    (challenged : Finset Point) (reads : List (Slot C × HashOutput))
-    (hreads : ∀ r ∈ reads, ReadAllowed D challenged r.1)
-    (c : Point → TprfCorrectnessProof.XorDigest) :
-    Pr{let z ← $ᵗ (Slot C → HashOutput)}[(TprfSecurityProof.Consistent [] reads challenged c) z] *
-        (2 ^ digestBits : ℝ≥0∞) ^ challenged.card =
-      Pr{let z ← $ᵗ (Slot C → HashOutput)}[(TprfSecurityProof.Consistent [] reads ∅ c) z] := by
-  rw [SampleableType.prEvent_uniformSample, SampleableType.prEvent_uniformSample, div_eq_mul_inv, div_eq_mul_inv,
-    mul_right_comm]
-  have h := card_consistent_mul D hD challenged reads hreads c
-  have hcast := congrArg (fun n : ℕ => (n : ℝ≥0∞)) h
-  push_cast at hcast
-  rw [hcast]
-
 /-- The protected starts of one top key, one independent digest per chain. -/
 def topStarts (b : XmssSecurity.TopIndex) : Finset Point :=
   Finset.univ.image fun l : ChainIndex => Point.chain topLayer (topKey b) l (digit 0)
@@ -8161,18 +6737,6 @@ theorem topStarts_card (b : XmssSecurity.TopIndex) : (topStarts b).card = 58 := 
   · simp [chainCount]
   · intro l k h
     exact (Point.chain.inj h).2.2.1
-
-/-- All 58 protected starts have equal fibers at fixed allowed slot-read constraints.
-This statement retains the view's mass, including inconsistent views of mass zero. -/
-theorem topStarts_probability (D : Finset C.Party) (hD : D.card ≤ C.t - 1)
-    (b : XmssSecurity.TopIndex) (reads : List (Slot C × HashOutput))
-    (hreads : ∀ r ∈ reads, ReadAllowed D (topStarts b) r.1)
-    (c : Point → TprfCorrectnessProof.XorDigest) :
-    Pr{let z ← $ᵗ (Slot C → HashOutput)}[(TprfSecurityProof.Consistent [] reads (topStarts b) c) z] *
-        (2 ^ 128 : ℝ≥0∞) ^ 58 =
-      Pr{let z ← $ᵗ (Slot C → HashOutput)}[(TprfSecurityProof.Consistent [] reads ∅ c) z] := by
-  simpa only [topStarts_card, digestBits] using
-    probability_consistent_mul D hD (topStarts b) reads hreads c
 
 theorem topStarts_randomizer (b : XmssSecurity.TopIndex) (lay : Layer) (e : KeyIndex) :
     Point.randomizer lay e ∉ topStarts b := by
@@ -8668,49 +7232,6 @@ theorem topStarts_posterior_probability (D : Finset C.Party) (hD : D.card ≤ C.
   simpa only [topStarts_card, digestBits] using
     overlay_prf_probability D hD (topStarts b) cache hcache c
 
-/-- A job only depends on its declared PRF points. -/
-theorem referenceJob_congr {m : Type → Type} [Monad m] [LawfulMonad m]
-    (lift : ∀ {α : Type}, OracleComp HashSpec α → m α) (F G : Point → m Digest)
-    (P : PublicParameter) (job : Job) (h : ∀ p ∈ job.points, F p = G p) :
-    referenceJob lift F P job = referenceJob lift G P job := by
-  unfold referenceJob
-  rw [mapM_congr_mem h]
-
-/-- An unrelated bottom tree does not depend on the protected start values
-when its public top tree and hash implementation are held fixed. -/
-theorem referenceBottom_congr {m : Type → Type} [Monad m] [LawfulMonad m]
-    (lift : ∀ {α : Type}, OracleComp HashSpec α → m α) (F G : Point → m Digest)
-    (P : PublicParameter) (top : TopTree) (b b' : XmssSecurity.TopIndex) (hne : b' ≠ b)
-    (h : ∀ p, p ∉ topStarts b → F p = G p) :
-    referenceTree lift F P top (.bottom b') = referenceTree lift G P top (.bottom b') := by
-  have hbottom : (bottomJobs b').mapM (referenceJob lift F P) =
-      (bottomJobs b').mapM (referenceJob lift G P) :=
-    mapM_congr_mem (fun job hj => referenceJob_congr lift F G P job
-      (fun p hp => h p (bottomJobs_avoid b b' job hj p hp)))
-  have hsign : ∀ encoding, (signJobs b' encoding).mapM (referenceJob lift F P) =
-      (signJobs b' encoding).mapM (referenceJob lift G P) := fun encoding =>
-    mapM_congr_mem (fun job hj => referenceJob_congr lift F G P job
-      (fun p hp => h p (signJobs_avoid b b' hne encoding job hj p hp)))
-  simp only [referenceTree, ceremonyOutput, hbottom, hsign]
-
-/-- Parts evaluated at unprotected points are unchanged by the same table
-bijection, even when their quorum and evaluation context were chosen adaptively. -/
-theorem evalSum_shift_unchallenged (D : Finset C.Party) (challenged : Finset Point)
-    (Tstar : C.Term) (hT : D ⊆ Tstar.1) (δ : Point → TprfCorrectnessProof.XorDigest)
-    (ω : Slot C → HashOutput) (i : C.Party) (J : C.Quorum) (p : Point) (message : Message)
-    (hp : p ∉ challenged) :
-    evalSum (shiftTable [] D challenged Tstar δ ω) i J p message = evalSum ω i J p message := by
-  unfold evalSum
-  congr 1
-  · apply Finset.sum_congr rfl
-    intro T _
-    rw [shift_read D challenged Tstar hT δ ω (.inl (T, p)) (Or.inr hp)]
-  · apply Finset.sum_congr rfl
-    intro j _
-    split
-    · rfl
-    · rw [shift_read D challenged Tstar hT δ ω _ (by trivial)]
-
 end UnopenedPrivacy
 
 namespace SelectedKeygen
@@ -9039,31 +7560,6 @@ theorem interpret_jobs (x : SigningSecurityProof.Keys3 C) (b : XmssSecurity.TopI
       pure ((List.finRange chainCount).map fun l => bitsOfDigest (endpoints table b l)) := by
   rw [SeedHitProof.hom_mapM]
   simp only [jobs, List.mapM_map, Function.comp_def, interpret_job prims x b hno, List.mapM_pure]
-
-set_option backward.isDefEq.respectTransparency false in
-/-- The actual selected key-generation block can be replaced by its endpoint
-vector before an arbitrary local continuation, after hiding its private record. -/
-theorem skip_jobs (x : SigningSecurityProof.Keys3 C) (b : XmssSecurity.TopIndex)
-    (hno : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
-    (table : ProtectedSlot C → HashOutput) {α : Type}
-    (next : List (List Bit) → OracleComp (LocalSpec C) α)
-    (s : QueryCache (ProtectedSlot C →ₒ HashOutput) × HashCache C) :
-    Prod.map id Prod.snd <$>
-      (simulateQ (FinitePosterior.eager table ProtectedRouting.samplingAux)
-        (simulateQ (protectedLocal prims x b) (do
-          let outputs ← liftComp ((jobs b).mapM (referenceJob tweakable (prfValue x.2.1) x.1)) (LocalSpec C)
-          next outputs))).run s =
-    Prod.map id Prod.snd <$>
-      (simulateQ (FinitePosterior.eager table ProtectedRouting.samplingAux)
-        (simulateQ (protectedLocal prims x b)
-          (next ((List.finRange chainCount).map fun l => bitsOfDigest (endpoints table b l))))).run s := by
-  classical
-  rw [ProtectedRouting.eager_forget_run, ProtectedRouting.eager_forget_run]
-  simp only [simulateQ_bind]
-  change ((interpret prims x b table ((jobs b).mapM (referenceJob tweakable (prfValue x.2.1) x.1))) >>=
-    fun outputs => simulateQ (ProtectedRouting.unrecorded table)
-      (simulateQ (protectedLocal prims x b) (next outputs))).run s.2 = _
-  rw [interpret_jobs prims x b hno, pure_bind]
 
 /-- The public continuation of the ceremony of the top tree receives only the job
 outputs. In particular the selected block exposes only its endpoint bits. -/
@@ -9428,18 +7924,6 @@ open Classical
     (cache : QueryCache (D →ₒ R)) (table : D → R) :
     FinitePosterior.evalRecorded (query (spec := D →ₒ R) t >>= k) cache table =
       FinitePosterior.evalRecorded (k (table t)) (cache.cacheQuery t (table t)) table := rfl
-
-theorem evalRecorded_bind {D R α β : Type} [DecidableEq D]
-    (oa : OracleComp (D →ₒ R) α) (next : α → OracleComp (D →ₒ R) β)
-    (cache : QueryCache (D →ₒ R)) (table : D → R) :
-    FinitePosterior.evalRecorded (oa >>= next) cache table =
-      FinitePosterior.evalRecorded (next (FinitePosterior.evalRecorded oa cache table).1)
-        (FinitePosterior.evalRecorded oa cache table).2 table := by
-  induction oa using OracleComp.inductionOn generalizing cache with
-  | pure a => simp only [pure_bind, evalRecorded_pure]
-  | query_bind t k ih =>
-    change FinitePosterior.evalRecorded (k (table t) >>= next) (cache.cacheQuery t (table t)) table = _
-    exact ih (table t) (cache.cacheQuery t (table t))
 
 def mapAnswer {State R Index : Type} (project : R → State) :
     QueryImpl ((Index × State) →ₒ State) (OracleComp ((Index × State) →ₒ R)) :=
@@ -9844,10 +8328,6 @@ theorem counted_run (x : SigningSecurityProof.Keys3 C) (b : XmssSecurity.TopInde
   (local_run prims x b hno oa cache n).trans
     (CountedPosterior.local_lazy_run prims x b hno oa cache n).symm
 
-theorem rows_split (x : SigningSecurityProof.Keys3 C) (b : XmssSecurity.TopIndex)
-    (cache : HashCache C) : rows (ProtectedRouting.split (protectedInput x b) cache).1 =
-      fun l => observedTopRows x.1 cache b l := rfl
-
 theorem rows_empty (record : QueryCache (ProtectedSlot C →ₒ HashOutput))
     (h : ∀ l k v, record (.inr (l, k, v)) = none) : rows record = LayeredGraph.emptyRows := by
   funext l
@@ -10066,10 +8546,6 @@ theorem run_restore_shift (hidden observed : QueryCache (ProtectedSlot C →ₒ 
   rw [show (observed, raw, offset) = shift offset (observed, raw, 0) from by simp [shift],
     run_shift, Functor.map_map]
   rfl
-
-theorem restored_public_count_le (hidden : QueryCache (ProtectedSlot C →ₒ HashOutput))
-    (offset : ℕ) (s : PublicContinuation.State C) :
-    s.2.2 ≤ (restore hidden (shift offset s)).2.2 := Nat.le_add_left _ _
 
 end PrivateRecord
 
@@ -10556,25 +9032,6 @@ def tail (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
       verify x top r
   | _ => pure ((false, false), none)
 
-set_option maxRecDepth 100000 in
-theorem unopened_factor (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
-    (b : XmssSecurity.TopIndex) :
-    unopenedFinalRun A x b = (do
-      let output ← referenceTree (fun oa => SigningSecurityProof.liftFree (tweakable oa))
-        (fun p => SigningSecurityProof.liftFree (prfValue x.2.1 p)) x.1 emptyTop .top
-      let verified ← tail A x b output
-      freshness x verified) := by
-  unfold unopenedFinalRun
-  apply bind_congr
-  rintro (_ | (top | bottom))
-  · simp [tail, freshness]
-  · simp only [tail, bind_assoc]
-    apply bind_congr
-    rintro (_ | r)
-    · simp [freshness]
-    · exact finish_factor x top r
-  · simp [tail, freshness]
-
 def checkedTail (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
     (b : XmssSecurity.TopIndex) (output : Option TreeOutput) : OracleComp (WorldSpec C) (Output C) :=
   tail A x b output >>= freshness x
@@ -10597,25 +9054,6 @@ def afterSelected (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
     OracleComp (LocalSpec C) (Output C) :=
   simulateQ worldLocalize (afterOutputs A x b after left
     ((List.finRange chainCount).map fun l => bitsOfDigest (target l)))
-
-set_option maxRecDepth 100000 in
-theorem unopened_split (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
-    (b : XmssSecurity.TopIndex) (before after : List XmssSecurity.TopIndex)
-    (hsplit : topJobs = before.flatMap SelectedKeygen.jobs ++ SelectedKeygen.jobs b ++
-      after.flatMap SelectedKeygen.jobs) :
-    unopenedFinalRun A x b = (do
-      let left ← SigningSecurityProof.liftFree ((before.flatMap SelectedKeygen.jobs).mapM
-        (referenceJob tweakable (prfValue x.2.1) x.1))
-      let selected ← SigningSecurityProof.liftFree ((SelectedKeygen.jobs b).mapM
-        (referenceJob tweakable (prfValue x.2.1) x.1))
-      afterOutputs A x b after left selected) := by
-  rw [unopened_factor]
-  rw [show referenceTree (fun oa => SigningSecurityProof.liftFree (tweakable oa))
-      (fun p => SigningSecurityProof.liftFree (prfValue x.2.1 p)) x.1 emptyTop .top =
-      SigningSecurityProof.liftFree (referenceTree tweakable (prfValue x.2.1) x.1 emptyTop .top) from
-    referenceTree_φ _ _ _ _]
-  rw [SelectedKeygen.referenceTree_split tweakable (prfValue x.2.1) x.1 emptyTop before after b hsplit]
-  simp only [SigningSecurityProof.liftFree, liftComp_bind, free_bind, bind_assoc, afterOutputs, checkedTail]
 
 set_option backward.isDefEq.respectTransparency false in
 theorem localize_free {α : Type} (oa : OracleComp (LocalSpec C) α) :
@@ -10963,17 +9401,6 @@ theorem split_le {D E R : Type} (f : D → E) (left right : QueryCache (E →ₒ
   · have hl : (split f left).2 input = left input := by simp [split, h]
     have hr : (split f right).2 input = right input := by simp [split, h]
     exact hr.symm.trans (h₂ (hl.trans hv))
-
-theorem split_mono {D E R : Type} (f : D → E) {left right : QueryCache (E →ₒ R)}
-    (h : left ≤ right) : (split f left).1 ≤ (split f right).1 ∧
-      (split f left).2 ≤ (split f right).2 := by
-  classical
-  refine ⟨fun {_} {_} hv => h hv, ?_⟩
-  intro input value hv
-  rcases Classical.em (∃ d : D, f d = input) with he | he
-  · simp [split, he] at hv
-  · simpa only [split, he, ↓reduceIte, QueryCache.ofFn_apply] using
-      h (by simpa only [split, he, ↓reduceIte, QueryCache.ofFn_apply] using hv)
 
 end ProtectedRouting
 
@@ -11589,31 +10016,6 @@ theorem hitPotential_of_keyGates (hgate : KeyGateBound prims C) : HitPotential p
       ⟨⟨hwin, h⟩, top, state, forgery, hsome, rfl⟩, ?_⟩
     exact finalRun_gate prims A x T _ loggedInit z hz
 
-/-- A stronger sufficient condition for funding the entire exceptional event
-at the first query. The unconditional proof instead funds each top key separately. -/
-def ForestExceptionBound (prims : Primitives) (C : Committee) : Prop :=
-  ∀ (A : TsigAdversary C) (q : ℕ) (x : SigningSecurityProof.Keys3 C),
-    x ∈ support (TprfSecurityProof.keyGen3 (C := C)) →
-    ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
-    (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) →
-    q < 2 ^ 127 → Pr{let z ← loggedRun prims A x}[ForestException prims x z] ≤ (2 ^ 128 : ℝ≥0∞)⁻¹
-
-/-- An alternative assembly using a single first-query reserve, assuming a
-bound on the entire exceptional winning event. -/
-theorem isHitPotential_forest (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
-    (hrare : Pr{let z ← loggedRun prims A x}[ForestException prims x z] ≤ (2 ^ 128 : ℝ≥0∞)⁻¹) :
-    ∃ Inv f, IsHitPotential prims A x Inv f := by
-  classical
-  obtain ⟨T, p, k, hfirst⟩ := finalRun_first A x
-  apply isHitPotential_of_completion prims A x (forestRelevant x.1) (forestCompletion x)
-    (forestCompletion_reads x) (.prf (x.2.1 T) p) (forestRelevant_prf _ _ _) k hfirst
-    (ForestException prims x) hrare
-  intro z _ hwin
-  by_cases h : ∀ r ∈ support ((simulateQ (Query C →ₒ HashOutput).randomOracle
-      (forestCompletion x)).run z.2.1.1), CompletedHit (forestRelevant x.1) r.1 z.2.1.1
-  · exact Or.inl h
-  · exact Or.inr ⟨hwin, h⟩
-
 end SigningHitProof
 
 set_option maxRecDepth 100000 in
@@ -11632,25 +10034,9 @@ theorem hitPotential (prims : Primitives) (C : Committee) : HitPotential prims C
 theorem hitLaneBoundClosed (prims : Primitives) (C : Committee) : HitLaneBound prims C :=
   hitLaneBound prims C (hitPotential prims C) (noProgramQuery prims C)
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.fixedHit_le_expectedCost' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.fixedHit_le_expectedCost
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.fundedContinuation_step' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.fundedContinuation_step
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.fundedContinuation_terminal' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.fundedContinuation_terminal
-
 /-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.completionPotential_randomOracle_step' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningHitProof.completionPotential_randomOracle_step
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.isHitPotential_of_completion' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.isHitPotential_of_completion
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.forestCompletion_reads' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
@@ -11663,22 +10049,6 @@ theorem hitLaneBoundClosed (prims : Primitives) (C : Committee) : HitLaneBound p
 /-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.completedHit_forest_of_collision' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningHitProof.completedHit_forest_of_collision
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.finalRun_first' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.finalRun_first
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.isHitPotential_forest' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.isHitPotential_forest
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.fixedPairHits_le_expectedCost' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.fixedPairHits_le_expectedCost
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.fresh_layer_many_guesses' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.fresh_layer_many_guesses
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.recordReads_resolves' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
@@ -11712,14 +10082,6 @@ theorem hitLaneBoundClosed (prims : Primitives) (C : Committee) : HitLaneBound p
 #guard_msgs (whitespace := lax) in
 #print axioms SigningHitProof.forestException_authentic
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.forestException_replayChanges' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.forestException_replayChanges
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.MarkedChain.walk_density' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.MarkedChain.walk_density
-
 /-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.suffixWeight_pending' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningHitProof.suffixWeight_pending
@@ -11743,10 +10105,6 @@ theorem hitLaneBoundClosed (prims : Primitives) (C : Committee) : HitLaneBound p
 /-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.prefixRun_support_resume' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningHitProof.prefixRun_support_resume
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.prefixRun_count_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.prefixRun_count_le
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.gate_bound_of_prefix' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
@@ -11788,45 +10146,13 @@ theorem hitLaneBoundClosed (prims : Primitives) (C : Committee) : HitLaneBound p
 #guard_msgs (whitespace := lax) in
 #print axioms SigningHitProof.forestException_unopened
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.forestException_no_bottom_call' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.forestException_no_bottom_call
-
 /-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.resolves_verify_topWalks' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningHitProof.resolves_verify_topWalks
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.forestException_authentic_original' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.forestException_authentic_original
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.forestException_no_bottom_suffix' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.forestException_no_bottom_suffix
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.openedFinalRun_forget' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.openedFinalRun_forget
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.prefixRun_opened_lift' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.prefixRun_opened_lift
-
 /-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.forestException_fresh' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningHitProof.forestException_fresh
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.forestExceptionAt_unopened_probability' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.forestExceptionAt_unopened_probability
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.forestExceptionAt_unopened_prefix' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.forestExceptionAt_unopened_prefix
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.continuationReserve_unopened' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.continuationReserve_unopened
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.unopenedRun_probability' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
@@ -11840,26 +10166,6 @@ theorem hitLaneBoundClosed (prims : Primitives) (C : Committee) : HitLaneBound p
 #guard_msgs (whitespace := lax) in
 #print axioms SigningHitProof.unopenedRun_bind_probability
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.unopenedFinalRun_probability' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.unopenedFinalRun_probability
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.forestExceptionAt_stopped_probability' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.forestExceptionAt_stopped_probability
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.UnopenedPrivacy.topStarts_probability' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.UnopenedPrivacy.topStarts_probability
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.UnopenedPrivacy.referenceBottom_congr' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.UnopenedPrivacy.referenceBottom_congr
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.UnopenedPrivacy.evalSum_shift_unchallenged' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.UnopenedPrivacy.evalSum_shift_unchallenged
-
 /-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.LayeredGraph.weight_mean_step' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningHitProof.LayeredGraph.weight_mean_step
@@ -11871,18 +10177,6 @@ theorem hitLaneBoundClosed (prims : Primitives) (C : Committee) : HitLaneBound p
 /-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.LayeredGraph.productWeight_terminal' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningHitProof.LayeredGraph.productWeight_terminal
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.LayeredGraph.expected_discounted_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.LayeredGraph.expected_discounted_le
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.LayeredGraph.terminal_probability_digest' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.LayeredGraph.terminal_probability_digest
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.LayeredGraph.mixed_terminal_probability_digest' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningHitProof.LayeredGraph.mixed_terminal_probability_digest
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningHitProof.LayeredGraph.component_canonical_injective' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

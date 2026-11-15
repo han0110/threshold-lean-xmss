@@ -5,30 +5,16 @@ import XmssSecurity.Proof.AdaptiveFreshTarget
 /-!
 # The costs of the signing core
 
-`HiddenCoreAt` of `Proof/SigningCore.lean` (steps 5 and 6 of the signing plan in
-the module docstring of `ThresholdLeanXmssSecurity.lean`) and the full signing claim
-`signingSecurityComplete`.
+This module holds the common terms of the cost lanes of `HiddenCoreAt` (`Proof/SigningCore.lean`,
+step 5 of the signing plan in the module docstring of `ThresholdLeanXmssSecurity.lean`).
 
-The component lemmas:
-
-* A win without the flag ends in a bad event on the final cache of `exposedRun` (`win_le_bad`, from
-  `signing_run_badEvent_closed`).
+* `Outcome` and `finalOf` read an outcome of `exposedRun`.
+* `HitLaneBound` says that a win with a hit costs one unit for each call. The output of a fresh call
+  is a uniform truncation that equals a fixed honest output with probability `2^-128`.
+  `hitLaneBoundClosed` in `SigningHitProof` proves it.
+* The logged run records each call with its answer and forgets to `exposedRun` (`loggedRun_forget`).
 * The budget of `gameAfter` bounds the count of `exposedRun` (`exposedRun_count_le`).
 * Two units for each call give `signingHashError q` (`signingHashError_eq`).
-* A fresh call of `H` truncates to a fixed digest with probability `2^-128`, on both copies
-  (`free_fresh_truncate_le`, `counted_fresh_truncate_le`).
-* The logged run records each call with its answer and forgets to `exposedRun` (`loggedRun_forget`).
-
-The hypotheses of `hiddenCoreAt`:
-
-* `HitLaneBound`: a win with a hit costs one unit for each call. The output of a fresh call is a
-  uniform truncation that equals a fixed honest output with probability `2^-128`.
-* `GuessPartnerLaneBound`: a win with a guess or a partner costs one unit for each call. A guess
-  queries a hidden chain value at a chain call, and a partner meets the selected codeword output at
-  a digest call. The two call types are disjoint.
-
-The calls of `KeyGen` count in `q` and are never bad, so they pay the lower-order terms of leanVM
-(`firstLaneSlack`).
 -/
 
 set_option pp.deepTerms false
@@ -63,15 +49,6 @@ def WinHit (x : SigningSecurityProof.Keys3 C) (r : Outcome C) : Prop :=
     let z := finalOf x r top state forgery
     Hit z.cache z.keys.1 z.key (z.honestKey prims)
 
-/-- A win without the flag that ends in a guess or a partner on the final cache. -/
-def WinGuessPartner (x : SigningSecurityProof.Keys3 C) (r : Outcome C) : Prop :=
-  r.1.1 = (true, false) ∧ ∃ top state forgery, r.1.2 = some (top, state, forgery) ∧
-    let z := finalOf x r top state forgery
-    Guess z.cache z.keys.1 z.key (z.honestKey prims) z.forgery.message
-        (XmssSecurity.Bridge.toModelSig z.forgery.signature) ∨
-      Partner z.cache z.keys.1 z.key (z.honestKey prims) z.forgery.message
-        (XmssSecurity.Bridge.toModelSig z.forgery.signature)
-
 /-! ## The lane interfaces -/
 
 /-- The hit lane (step 5 of the plan). A win with a hit costs `2^-128` for each call. -/
@@ -80,40 +57,6 @@ def HitLaneBound (prims : Primitives) (C : Committee) : Prop :=
     ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
     (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) → q < 2 ^ 127 →
     Pr{let z ← exposedRun prims A x}[WinHit prims x z] ≤ (q : ℝ≥0∞) / 2 ^ 128
-
-/-- The guess and partner lane (step 5 of the plan). A win with a guess or a partner costs
-`2^-128` for each call. -/
-def GuessPartnerLaneBound (prims : Primitives) (C : Committee) : Prop :=
-  ∀ (A : TsigAdversary C) (q : ℕ) (x : SigningSecurityProof.Keys3 C), x ∈ support (TprfSecurityProof.keyGen3 (C := C)) →
-    ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
-    (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) → q < 2 ^ 127 →
-    Pr{let z ← exposedRun prims A x}[WinGuessPartner prims x z] ≤ (q : ℝ≥0∞) / 2 ^ 128
-
-/-! ## The unit of a call -/
-
-/-- A fresh call of `H` truncates to a fixed digest with probability `2^-128`, as
-`XmssSecurity.Rom.uniform_truncate_probability`. -/
-theorem fresh_truncate_le (q : Query C) (s : HashCache C) (hs : s q = none) (d : Digest) :
-    Pr{let p ← ((Query C →ₒ HashOutput).randomOracle q).run s}[truncateHash p.1 = d] ≤
-      ((2 ^ XmssSecurity.digestBits : ℕ) : ℝ≥0∞)⁻¹ := by
-  rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ hs, prEvent_map]
-  exact (XmssSecurity.Rom.uniform_truncate_probability d).le
-
-/-- A fresh call of `H` on the free copy of the signing world costs `2^-128` for a fixed digest. -/
-theorem free_fresh_truncate_le (q : Query C) (s : HashCache C × ℕ) (hs : s.1 q = none) (d : Digest) :
-    Pr{let z ← (countImpl prims (.inr (.inr (.inl q)))).run s}[truncateHash z.1 = d] ≤
-      ((2 ^ XmssSecurity.digestBits : ℕ) : ℝ≥0∞)⁻¹ := by
-  simp only [countImpl, SeedHitProof.withCount, StateT.run_mk]
-  rw [prEvent_map]
-  exact fresh_truncate_le q s.1 hs d
-
-/-- A fresh call of `H` on the counted copy of the signing world costs `2^-128` for a fixed digest. -/
-theorem counted_fresh_truncate_le (q : Query C) (s : HashCache C × ℕ) (hs : s.1 q = none) (d : Digest) :
-    Pr{let z ← (countImpl prims (.inl (.inl (.inr (.inl q))))).run s}[truncateHash z.1 = d] ≤
-      ((2 ^ XmssSecurity.digestBits : ℕ) : ℝ≥0∞)⁻¹ := by
-  simp only [countImpl, SeedHitProof.withCount, StateT.run_mk]
-  rw [prEvent_map]
-  exact fresh_truncate_le q s.1 hs d
 
 /-! ## The logged run -/
 
@@ -133,19 +76,6 @@ theorem loggedRun_forget (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C
   SigningCoreProof.simulateQ_run_forget _ _ (fun t s b => by simp [loggedImpl, Functor.map_map]) _ _ _
 
 /-! ## The glue -/
-
-set_option maxRecDepth 100000 in
-/-- A win without the flag ends in a bad event on the final cache, by `signing_run_badEvent_closed`. -/
-theorem win_le_bad (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr{let r ← runSigningWorld prims (SigningCoreProof.flaggedAfter A x)}[r.1.2 = false ∧ r.1.1 = true] ≤
-      Pr{let z ← exposedRun prims A x}[WinHit prims x z] + Pr{let z ← exposedRun prims A x}[WinGuessPartner prims x z] := by
-  rw [runSigningWorld_flaggedAfter, prEvent_map]
-  refine le_trans (prEvent_mono_of_support _ _ _ fun r hr hwin => ?_) (prEvent_or_le _ _ _)
-  have hwin' : r.1.1 = (true, false) := Prod.ext hwin.2 hwin.1
-  obtain ⟨top, state, forgery, hsome, hbad⟩ := signing_run_badEvent_closed prims A x r hr hwin'
-  rcases hbad with h | h
-  · exact Or.inl ⟨hwin', top, state, forgery, hsome, h⟩
-  · exact Or.inr ⟨hwin', top, state, forgery, hsome, h⟩
 
 set_option maxRecDepth 100000 in
 /-- The budget of `gameAfter` bounds the count of `exposedRun`. -/
@@ -170,23 +100,4 @@ theorem signingHashError_eq (q : ℕ) :
 
 end SigningCostProof
 
-open SigningCostProof in
-/-- `HiddenCoreAt` from the two open lanes. -/
-theorem hiddenCoreAt (prims : Primitives) (C : Committee) (hitLane : HitLaneBound prims C)
-    (guessPartnerLane : GuessPartnerLaneBound prims C) : SigningCoreProof.HiddenCoreAt prims C := by
-  intro A q x hx hc hq hsmall
-  rw [signingHashError_eq]
-  exact le_trans (win_le_bad prims A x)
-    (add_le_add (hitLane A q x hx hc hq hsmall) (guessPartnerLane A q x hx hc hq hsmall))
-
-open SigningCostProof in
-/-- `SigningSecurityStatement` from the two open lanes. -/
-theorem signingSecurityComplete (prims : Primitives) (C : Committee) (hitLane : HitLaneBound prims C)
-    (guessPartnerLane : GuessPartnerLaneBound prims C) : SigningSecurityStatement prims C :=
-  signingSecurityFull prims C (hiddenCoreAt prims C hitLane guessPartnerLane)
-
 end ThresholdLeanXmssSecurity
-
-/-- info: 'ThresholdLeanXmssSecurity.signingSecurityComplete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.signingSecurityComplete

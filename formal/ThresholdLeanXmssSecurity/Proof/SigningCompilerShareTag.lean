@@ -123,17 +123,6 @@ theorem shareBackendTag_retag (f : Tag → Tag')
   · by_cases hp : Constrained p <;>
       simp [shareBackendTag, hp, StateT.run, shareQueryTag, retag]; rfl
 
-theorem shareRunTag_retag (f : Tag → Tag')
-    (tagOf : CappedCompilerState C × Bool → Tag)
-    (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
-    (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest) :
-    shareRunTag (f ∘ tagOf) prims A x q s pads =
-      simulateQ (retag f) (shareRunTag tagOf prims A x q s pads) := by
-  simp only [shareRunTag, simulateQ_bind, simulateQ_pure, retag_view]
-  rw [simulateQ_StateT_compose _ _ _ (shareBackendTag_retag f tagOf x.1 x.2.1 q s pads)]
-  rfl
-
-
 open SigningShareLazy
 
 /-- Preserve the kind and lucky bit of the first bad record. -/
@@ -270,12 +259,6 @@ theorem eagerRun_retag (f : Tag → Tag') (τ : CPoint → SigningShareLazy.Dige
   rfl
 
 end ThresholdLeanXmssSecurity.SigningCompilerShareTag
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerShareTag.shareRunTag_retag' depends on axioms: [propext,
- Classical.choice,
- Quot.sound] -/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerShareTag.shareRunTag_retag
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerShareTag.lazyRun_retag' depends on axioms: [propext,
  Classical.choice,

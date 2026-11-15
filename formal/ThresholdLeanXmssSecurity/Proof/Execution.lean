@@ -122,17 +122,6 @@ variable {α : Type}
 @[simp] theorem delivered_call (input : ι) (resume : G input → OracleComp (PartySpec C E G) (Option α)) :
     (Step.call input resume).delivered = fun _ => none := rfl
 
-theorem exchangeResume_abort (f : Mail C E → PartyM C E G α) (inbox : Mail C E) (k : C.Party)
-    (hk : inbox k = some .abort) : exchangeResume f inbox = pure none := by
-  have : (C.parties.any fun j => Msg.isAbort (inbox j)) = true :=
-    List.any_eq_true.mpr ⟨k, List.mem_finRange k, by simp [hk, Msg.isAbort]⟩
-  simp [exchangeResume, this]
-
-theorem advance_exchangeResume_abort (f : Mail C E → PartyM C E G α) (inbox : Mail C E) (k : C.Party)
-    (hk : inbox k = some .abort) : advance (exchangeResume f inbox) = pure (.done none) := by
-  rw [exchangeResume_abort f inbox k hk]
-  rfl
-
 /-- The inbox of operator `j` in a round, as `stepRound` builds it. -/
 def roundInbox (D : C.Coalition) (sent : C.Party → C.Party → Option (Msg E))
     (steps : C.Party → Step C E G α) (j : C.Party) : Mail C E :=
@@ -143,13 +132,6 @@ theorem roundInbox_abort (D : C.Coalition) (sent : C.Party → C.Party → Optio
     (steps : C.Party → Step C E G α) (j k : C.Party) (hk : k ∉ D.1) (habort : steps k = .done none) :
     roundInbox D sent steps j k = some .abort := by
   simp [roundInbox, hk, habort]
-
-/-- Every operator that waits in `exchange` aborts in the round after an honest operator aborts. -/
-theorem advance_roundInbox_abort (D : C.Coalition) (sent : C.Party → C.Party → Option (Msg E))
-    (steps : C.Party → Step C E G α) (j k : C.Party) (hk : k ∉ D.1) (habort : steps k = .done none)
-    (f : Mail C E → PartyM C E G α) :
-    advance (exchangeResume f (roundInbox D sent steps j)) = pure (.done none) :=
-  advance_exchangeResume_abort f _ k (roundInbox_abort D sent steps j k hk habort)
 
 end Abort
 
@@ -190,19 +172,6 @@ theorem simulateQ_sequenceFin {κ : Type} {spec : OracleSpec κ} {m : Type → T
     simp only [OverPermutation.sequenceFin, simulateQ_bind, simulateQ_pure]
     refine bind_congr fun a => ?_
     rw [simulateQ_sequenceFin impl (fun i : Fin n => f i.succ)]
-
-theorem mem_support_sequenceFin {α : Type} :
-    ∀ {n : ℕ} (f : Fin n → ProbComp α) (x : Fin n → α), x ∈ support (OverPermutation.sequenceFin f) →
-      ∀ i, x i ∈ support (f i)
-  | 0, f, x, _ => fun i => i.elim0
-  | n + 1, f, x, hx => by
-    simp only [OverPermutation.sequenceFin, support_bind, Set.mem_iUnion, support_pure,
-      Set.mem_singleton_iff] at hx
-    obtain ⟨a, ha, t, ht, rfl⟩ := hx
-    intro i
-    cases i using Fin.cases with
-    | zero => exact ha
-    | succ i => exact mem_support_sequenceFin (fun i : Fin n => f i.succ) t ht i
 
 @[simp] theorem free_pure {α : Type} (a : α) : free (C := C) (pure a) = pure a := simulateQ_pure _ _
 
@@ -277,23 +246,6 @@ theorem simulateQ_world_free {α : Type} (oa : OracleComp (LocalSpec C) α) (s :
     (simulateQ (world prims) (free oa)).run.run s =
       (fun z => ((z.1, 1), z.2)) <$> (simulateQ (localAnswer prims) oa).run s := by
   rw [world_eq_add, simulateQ_free, run_simulateQ_withAddCost_zero, StateT.run_map]
-
-/-- The counted copy pays the cost of the world for each of its queries, from any cache. -/
-theorem simulateQ_world_counted {α : Type} (oa : OracleComp (SimulatorSpec C) α) :
-    simulateQ (world prims) (counted oa) =
-      simulateQ (QueryImpl.withAddCost (localAnswer (C := C) prims + programAnswer (C := C) :
-        QueryImpl (SimulatorSpec C) (StateT (HashCache C) ProbComp))
-        (fun t : (SimulatorSpec C).Domain => match t with
-          | .inl (.inl _) => 0
-          | .inl (.inr (.inl (.hash input))) => if MpcInput input then 0 else 1
-          | _ => 1)) oa := by
-  rw [world_eq_add, simulateQ_counted]
-
-theorem runWorld_free {α : Type} (oa : OracleComp (LocalSpec C) α) :
-    runWorld prims (free oa) = (fun a => (a, 0)) <$> (simulateQ (localAnswer prims) oa).run' ∅ := by
-  unfold runWorld
-  rw [StateT.run'_eq, simulateQ_world_free, StateT.run'_eq, Functor.map_map, Functor.map_map]
-  rfl
 
 end World
 
@@ -628,24 +580,6 @@ theorem simulateQ_localAnswer_hash (q : Query C) :
   rw [simulateQ_localAnswer_liftComp, hashQuery]
   exact (simulateQ_query _ _).trans (id_map _)
 
-theorem sameRun_hash_dup (q : Query C) {γ : Type}
-    (k : HashOutput → HashOutput → OracleComp (LocalSpec C) γ) :
-    SameRun prims
-      (liftComp (hashQuery q) (LocalSpec C) >>= fun a => liftComp (hashQuery q) (LocalSpec C) >>= fun b => k a b)
-      (liftComp (hashQuery q) (LocalSpec C) >>= fun a => k a a) := fun s => by
-  simp only [simulateQ_bind, simulateQ_localAnswer_hash]
-  rw [hashAnswer_dup]
-
-/-- A query of `H` after a computation `m` returns the answer of the same query before `m`. -/
-theorem sameRun_hash_dup_after (q : Query C) {β γ : Type} (m : OracleComp (LocalSpec C) β)
-    (k : HashOutput → β → HashOutput → OracleComp (LocalSpec C) γ) :
-    SameRun prims
-      (liftComp (hashQuery q) (LocalSpec C) >>= fun a => m >>= fun y =>
-        liftComp (hashQuery q) (LocalSpec C) >>= fun b => k a y b)
-      (liftComp (hashQuery q) (LocalSpec C) >>= fun a => m >>= fun y => k a y a) :=
-  (SameRun.bind_right _ fun a => sameRun_swap prims m (liftComp (hashQuery q) (LocalSpec C)) (k a)).trans
-    (sameRun_hash_dup prims q fun a b => m >>= fun y => k a y b)
-
 /-- An implementation whose steps only add entries to the cache. -/
 def Grows {κ : Type} {spec : OracleSpec κ} (impl : QueryImpl spec (StateT (HashCache C) ProbComp)) : Prop :=
   ∀ t s, ∀ z ∈ support ((impl t).run s), s ≤ z.2
@@ -944,13 +878,6 @@ theorem honestRounds_succ (F : Functionality C I O L R) (reply : L → R) (fuel 
     honestRounds F reply (fuel + 1) steps = honestStep F reply steps >>= honestRounds F reply fuel := by
   simp [honestRounds, h]
 
-/-- With no corrupt operator, the inbox of a round is what the operators deliver. -/
-theorem roundInbox_noCoalition (sent : C.Party → C.Party → Option (Msg E))
-    (steps : C.Party → Step C E G α) (j : C.Party) :
-    roundInbox noCoalition sent steps j = fun k => (steps k).delivered j := by
-  funext k
-  simp [roundInbox]
-
 /-- An inbox with no abort frame passes the check of `exchange`. -/
 theorem exchangeResume_of_no_abort (f : Mail C E → PartyM C E G α) (inbox : Mail C E)
     (h : ∀ k, Msg.isAbort (inbox k) = false) : exchangeResume f inbox = (f inbox).run := by
@@ -974,51 +901,6 @@ both, are within the probability of the bad set. -/
 section Coupling
 
 variable {κ : Type} {spec : OracleSpec κ} {σ α : Type}
-
-theorem probOutput_simulateQ_run_eq_zero_of_bad (impl : QueryImpl spec (StateT σ ProbComp)) (bad : σ → Prop)
-    (h_mono : ∀ t s, bad s → ∀ x ∈ support ((impl t).run s), bad x.2)
-    (oa : OracleComp spec α) (s₀ : σ) (h_bad : bad s₀) (x : α) (s : σ) (hs : ¬ bad s) :
-    Pr{let z ← (simulateQ impl oa).run s₀}[z = (x, s)] = 0 :=
-  prEvent_eq_zero_of_forall_mem_support _ _ fun z hz hzeq => by
-    subst hzeq
-    exact hs (ProgramLogic.Relational.forall_mem_support_simulateQ_run_of_bad impl bad h_mono oa h_bad _ hz)
-
-theorem probOutput_simulateQ_run_eq_of_not_bad (impl₁ impl₂ : QueryImpl spec (StateT σ ProbComp))
-    (bad : σ → Prop) (h_agree : ∀ t s, ¬ bad s → (impl₁ t).run s =ᵈ (impl₂ t).run s)
-    (h_mono₁ : ∀ t s, bad s → ∀ x ∈ support ((impl₁ t).run s), bad x.2)
-    (h_mono₂ : ∀ t s, bad s → ∀ x ∈ support ((impl₂ t).run s), bad x.2)
-    (oa : OracleComp spec α) (s₀ : σ) (x : α) (s : σ) (hs : ¬ bad s) :
-    Pr{let z ← (simulateQ impl₁ oa).run s₀}[z = (x, s)] = Pr{let z ← (simulateQ impl₂ oa).run s₀}[z = (x, s)] := by
-  have hiff : ∀ z : α × σ, z = (x, s) ↔ (z = (x, s) ∧ ¬ bad z.2) := fun z =>
-    ⟨fun hz => ⟨hz, hz ▸ hs⟩, And.left⟩
-  exact (prEvent_congr _ _ _ hiff).trans ((ProgramLogic.Relational.prEvent_simulateQ_run_and_not_bad_eq
-    impl₁ impl₂ bad (fun t s hs _ => (h_agree t s hs).prEvent_eq _) h_mono₁ h_mono₂ oa s₀
-    (· = (x, s))).trans (prEvent_congr _ _ _ hiff).symm)
-
-theorem probEvent_simulateQ_run_bad_eq (impl₁ impl₂ : QueryImpl spec (StateT σ ProbComp))
-    (bad : σ → Prop) (h_agree : ∀ t s, ¬ bad s → (impl₁ t).run s =ᵈ (impl₂ t).run s)
-    (h_mono₁ : ∀ t s, bad s → ∀ x ∈ support ((impl₁ t).run s), bad x.2)
-    (h_mono₂ : ∀ t s, bad s → ∀ x ∈ support ((impl₂ t).run s), bad x.2)
-    (oa : OracleComp spec α) (s₀ : σ) :
-    Pr{let z ← (simulateQ impl₁ oa).run s₀}[(bad ∘ Prod.snd) z] = Pr{let z ← (simulateQ impl₂ oa).run s₀}[(bad ∘ Prod.snd) z] :=
-  ProgramLogic.Relational.prEvent_simulateQ_run_bad_eq impl₁ impl₂ bad
-    (fun t s hs _ => (h_agree t s hs).prEvent_eq _) h_mono₁ h_mono₂ oa s₀
-
-/-- The fundamental lemma of game playing for implementations into `StateT σ ProbComp`. Outside the
-bad set, the two implementations give the same distribution at each step. -/
-theorem tvDist_simulateQ_le_probEvent_bad (impl₁ impl₂ : QueryImpl spec (StateT σ ProbComp))
-    (bad : σ → Prop) (oa : OracleComp spec α) (s₀ : σ)
-    (h_agree : ∀ t s, ¬ bad s → (impl₁ t).run s =ᵈ (impl₂ t).run s)
-    (h_mono₁ : ∀ t s, bad s → ∀ x ∈ support ((impl₁ t).run s), bad x.2)
-    (h_mono₂ : ∀ t s, bad s → ∀ x ∈ support ((impl₂ t).run s), bad x.2) :
-    letI : MeasurableSpace α := ⊤
-    measureTVDist ((simulateQ impl₁ oa).run' s₀) ((simulateQ impl₂ oa).run' s₀) ≤
-      Pr{let z ← (simulateQ impl₁ oa).run s₀}[(bad ∘ Prod.snd) z].toReal := by
-  let : MeasurableSpace α := ⊤
-  rw [measureTVDist_eq_toReal_measureETVDist]
-  exact ENNReal.toReal_mono (prEvent_ne_top _)
-    (ProgramLogic.Relational.measureETVDist_simulateQ_run'_le_prEvent_bad_of_evalDistEq impl₁ impl₂ bad
-      h_agree h_mono₁ h_mono₂ oa s₀)
 
 /-- Two games whose good parts accept with the same probability differ by at most the larger
 probability of their bad events. -/
@@ -1563,19 +1445,6 @@ theorem probEvent_bind_le_mul {α β : Type} {mx : ProbComp α} {my : α → Pro
     split_ifs <;> simp
   · simp [prEvent_eq_zero_of_not_mem_support _ hx]
 
-theorem simulateQ_replyImpl_liftComp {L R α : Type} (reply : L → R) (oa : OracleComp (LocalSpec C) α) :
-    simulateQ (replyImpl reply) (liftComp oa (LocalSpec C + (L →ₒ R))) = oa := by
-  induction oa using OracleComp.inductionOn with
-  | pure a => simp
-  | query_bind t k ih =>
-    rw [liftComp_bind, simulateQ_bind]
-    simp only [ih]
-    congr 1
-    rw [liftComp_query]
-    simp [replyImpl]
-    refine (simulateQ_query _ _).trans ?_
-    rcases t with n | x | x <;> rfl
-
 theorem simulateQ_replyImpl_liftComp_prob {L R α : Type} (reply : L → R) (oa : ProbComp α) :
     simulateQ (replyImpl (C := C) reply) (liftComp oa (LocalSpec C + (L →ₒ R))) = liftComp oa (LocalSpec C) := by
   induction oa using OracleComp.inductionOn with
@@ -1627,10 +1496,6 @@ abbrev bottomKeys (b : Fin (2 ^ layerHeight)) : List (KeyIndex × ChainIndex) :=
 theorem run'_lift_bind {α β : Type} (c : PartyM C E G α) (f : α → RunM C E G β) (st : RunState C) :
     (StateT.lift c >>= f).run' st = c >>= fun r => (f r).run' st := by
   simp [StateT.run'_eq, StateT.run_bind, StateT.run_lift]
-
-/-- Relabeling oracle inputs also relabels the private cache. -/
-def relabelHashCache (e : Query C ≃ Query C) (s : HashCache C) : HashCache C :=
-  QueryCache.ofFn fun q => s (e.symm q)
 
 end Shared
 

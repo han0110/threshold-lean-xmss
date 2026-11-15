@@ -65,22 +65,20 @@ def CapEarlyO1 (z : CompilerOutcomeO1 C × ShareStateT C (Bool × Bool)) : Prop 
 
 end CapRuns
 
-/-- The initial frozen state with the flag tag is good. This lemma is a port of the private
-`SigningCompilerShare.Table.initial_good`. -/
+/-- The initial frozen state with the flag tag is good, by `SigningShareLazy.good_init`. -/
 private theorem initial_good (τ : CPoint → Digest) :
     SigningShareLazy.Good C.terms τ (SigningShareLazy.init : Table.FrozenState C) := by
   obtain ⟨T, _⟩ := lackedTerm_empty (C := C)
   exact SigningShareLazy.good_init C.terms τ (Or.inl (List.ne_nil_of_mem (mem_terms T)))
 
-/-- The initial frozen state with the cap tag is good. This lemma is a port of the private
-`SigningCompilerShareCap.initial_good`. -/
+/-- The initial frozen state with the cap tag is good, by `SigningShareLazy.good_init`. -/
 private theorem initial_goodC (τ : CPoint → Digest) :
     SigningShareLazy.Good C.terms τ (SigningShareLazy.init : FrozenStateC C) := by
   obtain ⟨T, _⟩ := lackedTerm_empty (C := C)
   exact SigningShareLazy.good_init C.terms τ (Or.inl (List.ne_nil_of_mem (mem_terms T)))
 
-/-- The lazy frozen run with the flag tag has the law of the fiber table run. This lemma is a port
-of the private `SigningCompilerShare.Table.frozen_law`. -/
+/-- The lazy frozen run with the flag tag has the law of the fiber table run, by
+`SigningShareLazy.lazyFrozen_eq_eagerFrozen`. -/
 private theorem frozen_law (τ : CPoint → Digest) {α : Type}
     (oa : OracleComp (RunSpec C) α) :
     (simulateQ (SigningShareLazy.unifImpl (Table.FrozenState C) +
@@ -95,8 +93,8 @@ private theorem frozen_law (τ : CPoint → Digest) {α : Type}
   SigningShareLazy.lazyFrozen_eq_eagerFrozen C.terms terms_nodup mem_terms τ oa
     SigningShareLazy.init (initial_good τ)
 
-/-- The lazy frozen run with the cap tag has the law of the fiber table run. This lemma is a port
-of the private `SigningCompilerShareCap.frozen_law`. -/
+/-- The lazy frozen run with the cap tag has the law of the fiber table run, by
+`SigningShareLazy.lazyFrozen_eq_eagerFrozen`. -/
 private theorem frozen_lawC (τ : CPoint → Digest) {α : Type}
     (oa : OracleComp (RunSpecT C (Bool × Bool)) α) :
     (simulateQ (SigningShareLazy.unifImpl (FrozenStateC C) +

@@ -357,41 +357,6 @@ theorem fuse_stop {ι κ σ : Type} {spec : OracleSpec ι} {mid : OracleSpec κ}
   unfold eagerRunTag eagerRunC eagerHandlerTag eagerHandlerC
   rfl
 
-/-- The original eager fiber experiment with both auxiliary tables sampled. -/
-theorem tableRunC_eq_tables (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
-    (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
-    (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest) (τ : CPoint → Digest) :
-    tableRunC prims A x q s pads τ =ᵈ
-      (do
-           let u ← $ᵗ (C.Term × CPoint → HashOutput)
-           let noise ← $ᵗ (ChainNoiseIndex → HashOutput)
-           let rest ← $ᵗ (RestSlot C → HashOutput)
-           eagerRunTagT capTag prims A x q s pads τ
-             (SigningShareLazy.fiberTable C.terms τ (SigningShareLazy.init : FrozenStateC C) u)
-             noise rest) := by
-  unfold tableRunC
-  refine EvalDistEq.bind_right _ fun u => ?_
-  rw [← eagerRunTag_capTag]
-  exact eagerRunTag_eq_tables capTag prims A x hkeys q s pads τ _
-
-/-- Intersecting any final event with the original real budget changes no probability. -/
-theorem realRun_count_restrict (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
-    (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (q : ℕ)
-    (hq : ∀ r ∈ support (runSigningWorld prims (gameAfter A x)), r.2 ≤ q)
-    (s : HiddenKey → Digest) (pads : Point → Digest) (u : C.Term × CPoint → HashOutput)
-    (rest : RestSlot C → HashOutput) (noise : ChainNoiseIndex → HashOutput)
-    (E : SigningLaneUnionProof.TraceOutcome C → Prop) :
-    Pr{let z ← (realRun prims A x s pads
-      (SigningShareLazy.fiberTable C.terms (NoFalse.tau s pads)
-        (SigningShareLazy.init : Table.FrozenState C) u) rest noise)}[E z] =
-    Pr{let r ←
-      (realRun prims A x s pads
-        (SigningShareLazy.fiberTable C.terms (NoFalse.tau s pads)
-          (SigningShareLazy.init : Table.FrozenState C) u) rest noise)}[E r ∧ (SigningLaneUnionProof.observed r).2.1 ≤ q] := by
-  refine prEvent_congr_of_support _ _ _ fun r hr => ?_
-  exact ⟨fun he => ⟨he, realRun_count_le prims A x hkeys q hq s pads u rest noise r hr⟩,
-    And.left⟩
-
 abbrev TraceCount (st : SigningLaneUnionProof.TraceState C) : ℕ := st.1.1.1.1.1.2
 abbrev TraceFlag (st : SigningLaneUnionProof.TraceState C) : Bool := st.2.1.2
 
@@ -500,14 +465,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerSyncStop
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncStop.fuse_stop' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncStop.fuse_stop
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncStop.tableRunC_eq_tables' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncStop.tableRunC_eq_tables
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncStop.realRun_count_restrict' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncStop.realRun_count_restrict
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncStop.rawTraceWorld_control' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

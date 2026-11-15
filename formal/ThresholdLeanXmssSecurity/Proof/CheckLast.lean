@@ -4,8 +4,9 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 /-!
 # The last stages of the check proof
 
-`CheckSoundStage` (step 2) and `CheckSplitStage` (steps 3 and 4) of `Proof/CheckCore.lean`, and from
-them `MultVerifySecurityStatement` through `multVerifyStatementFull`.
+`multVerifyOfSplitRoute` gives `MultVerifySecurityStatement` from `CheckSoundStage` (step 2 of
+`Proof/CheckCore.lean`) and `CheckSplitDistance` (steps 3 and 4). `multVerifySecurity` in
+`Proof/CheckSplit.lean` uses it.
 -/
 
 set_option pp.deepTerms false
@@ -26,11 +27,6 @@ section Final
 variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
 attribute [local instance] inhabitedField
 
-/-- `MultVerifySecurityStatement` from the two open stages. -/
-theorem multVerifyOfStages (prims : Primitives) (K : Constants C E)
-    (hsound : CheckSoundStage prims K) (hsplit : CheckSplitStage prims K) : MultVerifySecurityStatement prims K :=
-  multVerifyStatementFull prims K hsound hsplit
-
 end Final
 
 /-! ## A route for the split case
@@ -42,7 +38,7 @@ alone, with one bad event. Off the bad event the coupling of the real run with t
 aborts at `compareDigests` in both runs. The bad event is a hit of a hidden digest point or a
 collision of the two honest history or digest points of a split term. The collision is a birthday
 event, since a corrupt operator chooses the offsets that each honest holder appends to its history
-(`multFinish`). It replaces `CheckSplitStage` in the assembly of `checkCoreDistance`. -/
+(`multFinish`). `checkCoreDistanceSplit` uses it to give `CheckCoreDistance`. -/
 
 section SplitRoute
 
@@ -60,11 +56,6 @@ def CheckSplitDistance (prims : Primitives) (K : Constants C E) : Prop :=
     |localAccepts prims (checkRealLocal K (checkRounds counts.sum) D A x z Z) -
       localAccepts prims (checkIdealLocal K (checkRounds counts.sum) D A x z Z)| ≤
       checkHashError C counts.sum q
-
-/-- `CheckSplitStage` gives `CheckSplitDistance`. -/
-theorem checkSplitDistance_of_stage (prims : Primitives) (K : Constants C E) (h : CheckSplitStage prims K) :
-    CheckSplitDistance prims K :=
-  fun counts D A x z Z q hx hq hpos hq128 hagree => (h counts D A x z Z q hx hq hpos hq128 hagree).abs_sub_le
 
 /-- `CheckCoreDistance` from the soundness stage and the split distance, with `checkCoupleStage`. -/
 theorem checkCoreDistanceSplit (prims : Primitives) (K : Constants C E) (hsound : CheckSoundStage prims K)

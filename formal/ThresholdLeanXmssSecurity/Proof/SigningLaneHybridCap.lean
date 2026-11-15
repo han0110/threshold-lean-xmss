@@ -35,8 +35,6 @@ deriving instance DecidableEq, Fintype for HiddenKey
 
 instance : Inhabited HiddenKey := ⟨.opening bottomLayer ⟨0, by decide⟩⟩
 
-instance : SampleableType HiddenKey := SampleableType.ofFintype _
-
 /-- The message-digest domain is disjoint from every hidden-input coordinate. -/
 theorem hiddenCandidate_none_of_isMsg (P : PublicParameter) (input : HashInput)
     (h : IsMsg input) : hiddenCandidate P input = none := by
@@ -63,35 +61,6 @@ def worldCandidate (P : PublicParameter) : (WorldSpec C).Domain → Option (Hidd
   | .inl (.inl (.inr (.inl (.hash input)))) => hiddenCandidate P input
   | .inr (.inr (.inl (.hash input))) => hiddenCandidate P input
   | _ => none
-
-def InputSide (P : PublicParameter) (t : (WorldSpec C).Domain) : Prop :=
-  (worldCandidate P t).isSome
-
-theorem worldCandidate_hashCall (P : PublicParameter) (input : HashInput)
-    (t : (WorldSpec C).Domain) (h : SigningFlatProof.HashCallAt input t) :
-    worldCandidate P t = hiddenCandidate P input := by
-  rcases h with rfl | rfl <;> rfl
-
-/-- A message-digest call never carries an input-side candidate. -/
-theorem not_inputSide_msgCall (P : PublicParameter) (t : (WorldSpec C).Domain)
-    (h : SigningLane2FlatProof.MsgCall t) : ¬InputSide P t := by
-  obtain ⟨input, hi, h | ⟨u, rfl⟩⟩ := h
-  · simp only [InputSide, worldCandidate_hashCall P input t h,
-      hiddenCandidate_none_of_isMsg P input hi, Option.isSome_none, Bool.false_eq_true,
-      not_false_eq_true]
-  · simp [InputSide, worldCandidate]
-
-/-- The calls that the signing world counts, namely each call of `H` and of `PRG` and each
-programming query, on both copies. -/
-def SigningCounted : (WorldSpec C).Domain → Prop
-  | .inl (.inl (.inl _)) => False
-  | .inr (.inl _) => False
-  | _ => True
-
-theorem inputSide_counted (P : PublicParameter) (t : (WorldSpec C).Domain)
-    (h : InputSide P t) : SigningCounted t := by
-  rcases t with ((n | q | y) | p) | (n | q | y)
-  all_goals trivial
 
 attribute [local instance] Classical.propDecidable
 
@@ -374,33 +343,6 @@ theorem pending_truncate_next (st : DeferredState C) (hst : PendingValid st)
   · rw [hk] at hk'
     contradiction
 
-/-- A cached pending call still spends one counted call. -/
-theorem pending_cached_count (p : PendingInput) (st : DeferredState C)
-    (v : DeferredOutput) (hv : st.pending p = some v) (n : ℕ) :
-    ((countImpl deferredImpl deferredCounted (.pending p)).run (st, n)) =
-      pure (v, st, n + 1) := by
-  simp [countImpl, deferredImpl, StateT.run, StateT.mk, hv, deferredCounted]
-  rfl
-
-/-- Two reads of the same edge reuse the entire symbolic answer. -/
-theorem pending_repeat (p : PendingInput) (st : DeferredState C)
-    (v : DeferredOutput) (st' : DeferredState C)
-    (hv : (v, st') ∈ support ((deferredImpl (.pending p)).run st)) :
-    (deferredImpl (.pending p)).run st' = pure (v, st') := by
-  cases h : st.pending p with
-  | some a =>
-      simp [deferredImpl, StateT.run, h] at hv
-      obtain ⟨rfl, rfl⟩ := hv
-      simp [deferredImpl, StateT.run, h]
-      rfl
-  | none =>
-      simp only [deferredImpl, StateT.run, h, support_map] at hv
-      erw [support_map] at hv
-      obtain ⟨a, _, hpair⟩ := hv
-      cases hpair
-      simp [deferredImpl, StateT.run]
-      rfl
-
 def deferredQuery (q : DeferredQuery C) :
     OracleComp (DeferredSpec C + RevealSpec HiddenKey Digest) (DeferredSpec C q) :=
   query (spec := DeferredSpec C + RevealSpec HiddenKey Digest) (.inl q)
@@ -423,41 +365,6 @@ def materializePending (P : PublicParameter) (p : PendingInput) :
   let low ← revealDigest answer.low
   deferredQuery (.plant (.pending P p input)
     (XmssSecurity.Rom.hashOutputEquivDigestPair.symm (answer.high, low)))
-
-/-- The source-level capped kernel. Its backend cannot inspect `s`. -/
-abbrev deferredCapped (P : PublicParameter) (q : ℕ) (s : HiddenKey → Digest) :=
-  SigningCappedExpectProof.cappedHybrid (deferredImpl (C := C))
-    (deferredInputSide P) deferredCounted (deferredKey P) (deferredPoint P) q s
-
-/-- The symbolic-next invariant also survives the count and reveal wrappers. -/
-theorem pendingValid_capped_step (P : PublicParameter) (q : ℕ) (s : HiddenKey → Digest)
-    (t : (DeferredSpec C + RevealSpec HiddenKey Digest).Domain)
-    (st : (DeferredState C × ℕ) × (HiddenKey → Option Digest) × Bool)
-    (hst : PendingValid st.1.1)
-    (r : (DeferredSpec C + RevealSpec HiddenKey Digest) t ×
-      ((DeferredState C × ℕ) × (HiddenKey → Option Digest) × Bool))
-    (hr : r ∈ support ((deferredCapped P q s t).run st)) : PendingValid r.2.1.1 := by
-  cases t with
-  | inl t =>
-      simp only [deferredCapped, SigningCappedExpectProof.cappedHybrid, revealImpl,
-        countImpl, StateT.run_mk, support_map] at hr
-      obtain ⟨a, ⟨b, hb, rfl⟩, rfl⟩ := hr
-      exact pendingValid_step t st.1.1 hst b hb
-  | inr k =>
-      simp only [deferredCapped, SigningCappedExpectProof.cappedHybrid, revealImpl,
-        StateT.run_mk, mem_support_pure_iff] at hr
-      subst r
-      exact hst
-
-/-- Any source program over this fixed backend preserves symbolic chain edges,
-including runs that interleave materialization with concrete hash queries. -/
-theorem pendingValid_capped_run {α : Type} (P : PublicParameter) (q : ℕ)
-    (s : HiddenKey → Digest) (oa : OracleComp (DeferredSpec C + RevealSpec HiddenKey Digest) α)
-    (st : (DeferredState C × ℕ) × (HiddenKey → Option Digest) × Bool)
-    (hst : PendingValid st.1.1) :
-    ∀ r ∈ support ((simulateQ (deferredCapped P q s) oa).run st), PendingValid r.2.1.1 :=
-  simulateQ_run_preservesInv (deferredCapped P q s) (fun st => PendingValid st.1.1)
-    (pendingValid_capped_step P q s) oa st hst
 
 /-- The six calls in `referenceJob.chainRow`, including both repeated prefixes. -/
 def bottomRowCalls (e : XmssSecurity.LeafIndex) (l : XmssSecurity.ChainIndex) : List PendingInput :=
@@ -512,119 +419,6 @@ def deferredTopTree (P : PublicParameter) : OracleComp (DeferredSpec C) TopTree 
   let chainEnd := fun e l => ends.getD (keys.idxOf (e, l)) 0
   let root ← deferredHash (merkleNode P topLayer chainEnd layerHeight 0)
   pure ⟨chainEnd, root⟩
-
-/-- The exact predicate count of a finite list of calls, by the existing leanVM
-exact-count induction. -/
-theorem exact_mapM {ι α β : Type} {spec : OracleSpec ι} (p : ι → Prop)
-    [DecidablePred p] (xs : List α) (f : α → OracleComp spec β) (cost : α → ℕ)
-    (hf : ∀ a ∈ xs, XmssSecurity.ExactPredicateQueryCount p (f a) (cost a)) :
-    XmssSecurity.ExactPredicateQueryCount p (xs.mapM f) ((xs.map cost).sum) := by
-  induction xs with
-  | nil => exact .pure []
-  | cons a xs ih =>
-      simp only [List.mapM_cons, List.map_cons, List.sum_cons]
-      refine XmssSecurity.ExactQueryCount.ExactPredicateQueryCount.bind
-        (hf a (List.mem_cons_self ..)) _ _ fun y => ?_
-      simpa only [Nat.add_zero] using
-        (XmssSecurity.ExactQueryCount.ExactPredicateQueryCount.bind
-          (ih (fun a ha => hf a (List.mem_cons_of_mem _ ha))) _ 0
-          (fun ys => XmssSecurity.ExactPredicateQueryCount.pure (y :: ys)))
-
-/-- One backend query contributes exactly its declared cost, even if cached. -/
-theorem exact_backendQuery (q : DeferredQuery C) :
-    XmssSecurity.ExactPredicateQueryCount deferredCounted (backendQuery q)
-      (if deferredCounted q then 1 else 0) := by
-  simpa only [backendQuery, bind_pure, Nat.zero_add] using
-    (XmssSecurity.ExactPredicateQueryCount.query q
-      (fun y => (pure y : OracleComp (DeferredSpec C) (DeferredSpec C q))) 0
-      (fun y => XmssSecurity.ExactPredicateQueryCount.pure y))
-
-theorem exact_pending_calls (ps : List PendingInput) :
-    XmssSecurity.ExactPredicateQueryCount deferredCounted
-      (ps.mapM fun p => backendQuery (C := C) (.pending p)) ps.length := by
-  simpa using (exact_mapM deferredCounted ps
-    (fun p => backendQuery (C := C) (.pending p)) (fun _ => 1)
-    (fun p _ => by simpa [DeferredSpec, deferredCounted] using
-      exact_backendQuery (C := C) (.pending p)))
-
-/-- Prefix caching does not reduce the six calls performed by the bottom row. -/
-theorem exact_bottomRow_pending (e : XmssSecurity.LeafIndex) (l : XmssSecurity.ChainIndex) :
-    XmssSecurity.ExactPredicateQueryCount deferredCounted
-      ((bottomRowCalls e l).mapM fun p => backendQuery (C := C) (.pending p)) 6 := by
-  exact exact_pending_calls (bottomRowCalls e l)
-
-/-- The row compiler pays once per PRF term at each of its three input points. -/
-theorem exact_bottomRow_prf (e : XmssSecurity.LeafIndex) (l : XmssSecurity.ChainIndex) :
-    XmssSecurity.ExactPredicateQueryCount deferredCounted
-      ((bottomRowPrfCalls C e l).mapM fun q => do
-        let _ ← backendQuery q
-        pure ()) (3 * C.terms.length) := by
-  have hquery : ∀ q ∈ bottomRowPrfCalls C e l,
-      XmssSecurity.ExactPredicateQueryCount deferredCounted
-        (do let _ ← backendQuery q; pure ()) 1 := by
-    intro q hq
-    have hc : deferredCounted q := by
-      simp only [bottomRowPrfCalls, List.mem_flatMap, List.mem_map] at hq
-      obtain ⟨p, _, T, _, rfl⟩ := hq
-      trivial
-    simpa only [hc, if_true, Nat.add_zero] using
-      (XmssSecurity.ExactQueryCount.ExactPredicateQueryCount.bind
-        (exact_backendQuery q) (fun _ => pure ()) 0
-        (fun _ => XmssSecurity.ExactPredicateQueryCount.pure ()))
-  have h := exact_mapM deferredCounted (bottomRowPrfCalls C e l)
-    (fun q => do let _ ← backendQuery q; pure ()) (fun _ => 1) hquery
-  have hn : (List.map (fun _ => 1) (bottomRowPrfCalls C e l)).sum = 3 * C.terms.length := by
-    simp [bottomRowPrfCalls]
-    omega
-  rw [hn] at h
-  exact h
-
-/-- The compiler retains the full source cost, including all cached repeated edges. -/
-theorem exact_deferredBottomRow (e : XmssSecurity.LeafIndex) (l : XmssSecurity.ChainIndex) :
-    XmssSecurity.ExactPredicateQueryCount deferredCounted
-      (deferredBottomRow (C := C) e l) (3 * C.terms.length + 6) := by
-  unfold deferredBottomRow
-  refine XmssSecurity.ExactQueryCount.ExactPredicateQueryCount.bind
-    (exact_bottomRow_prf e l) _ 6 fun _ => ?_
-  have hp (p : Point) : XmssSecurity.ExactPredicateQueryCount deferredCounted
-      (backendQuery (C := C) (.pad p)) 0 := by
-    simpa [deferredCounted] using exact_backendQuery (C := C) (.pad p)
-  refine XmssSecurity.ExactQueryCount.ExactPredicateQueryCount.bind (hp _) _ 6 fun _ => ?_
-  refine XmssSecurity.ExactQueryCount.ExactPredicateQueryCount.bind (hp _) _ 6 fun _ => ?_
-  simpa only [Nat.add_zero] using
-    (XmssSecurity.ExactQueryCount.ExactPredicateQueryCount.bind
-      (exact_bottomRow_pending (C := C) e l) _ 0
-      (fun _ => XmssSecurity.ExactPredicateQueryCount.pure _))
-
-set_option backward.isDefEq.respectTransparency false in
-/-- The three ordinary chain walks underlying one symbolic bottom row. -/
-theorem bottom_walks_of_edges (P : PublicParameter) (H : HashInput → HashOutput)
-    (e : KeyIndex) (l : ChainIndex)
-    (s₀ s₁ s₂ endpoint : Digest)
-    (h₀ : truncateHash (H (PendingInput.input P (.bottom e l ⟨0, by decide⟩) s₀)) = s₁)
-    (h₁ : truncateHash (H (PendingInput.input P (.bottom e l ⟨1, by decide⟩) s₁)) = s₂)
-    (h₂ : truncateHash (H (PendingInput.input P (.bottom e l ⟨2, by decide⟩) s₂)) = endpoint) :
-    evalTh H (Verification.chainWalkWithHash P bottomLayer e l 0 1 s₀) = s₁ ∧
-    evalTh H (Verification.chainWalkWithHash P bottomLayer e l 0 2 s₀) = s₂ ∧
-    evalTh H (Verification.chainWalkWithHash P bottomLayer e l 0 3 s₀) = endpoint := by
-  letI : NeZero (chainLength - 1) := ⟨by decide⟩
-  let step : Fin (chainLength - 1) → Digest → Digest := fun p value =>
-    truncateHash (H (tweakableHashInput P (.chain bottomLayer e p) (Verification.chainPayload l value)))
-  have he₀ : step 0 s₀ = s₁ := by
-    simpa [step, PendingInput.input, SigningGuessLinkProof.chainInput_eq_bridge,
-      chainLength, winternitzBits] using h₀
-  have he₁ : step 1 s₁ = s₂ := by
-    simpa [step, PendingInput.input, SigningGuessLinkProof.chainInput_eq_bridge,
-      chainLength, winternitzBits] using h₁
-  have he₂ : step 2 s₂ = endpoint := by
-    simp only [PendingInput.input, SigningGuessLinkProof.chainInput_eq_bridge] at h₂
-    change truncateHash (H (tweakableHashInput P (.chain bottomLayer e ⟨2, by decide⟩)
-      (Verification.chainPayload l s₂))) = endpoint
-    exact h₂
-  change step 0 s₀ = s₁ ∧ step 1 (step 0 s₀) = s₂ ∧
-    step 2 (step 1 (step 0 s₀)) = endpoint
-  rw [he₀, he₁, he₂]
-  exact ⟨rfl, rfl, rfl⟩
 
 open scoped BigOperators
 
@@ -689,12 +483,6 @@ def completePrf (seeds : C.Term → HashOutput) (p : Point) (target : Digest) :
       deferredQuery (.plant (.prf (seeds slack) p)
         (XmssSecurity.Rom.hashOutputEquivDigestPair.symm (truncateHash high, low)))
 
-/-- Release the bottom opening and establish its threshold PRF constraint. -/
-def releaseBottomOpening (seeds : C.Term → HashOutput) (e : KeyIndex) :
-    OracleComp (DeferredSpec C + RevealSpec HiddenKey Digest) Bool := do
-  let value ← revealQuery (.opening bottomLayer e)
-  completePrf seeds (.randomizer bottomLayer e) value
-
 /-- Backend readiness uses both actual and virtual PRF entries. It does not confuse
 an earlier tree evaluation with the materialization of an honest answer. -/
 def OpeningReady (seeds : C.Term → HashOutput) (st : DeferredState C)
@@ -710,11 +498,6 @@ structure DeferredTopSignature where
   encoding : Encoding
   chainValue : ChainIndex → DeferredDigest
   path : Fin layerHeight → Digest
-
-def DeferredTopSignature.materialize (sig : DeferredTopSignature) :
-    OracleComp (DeferredSpec C + RevealSpec HiddenKey Digest) LayerSignature := do
-  let values ← OverPermutation.sequenceFin fun l => revealDigest (sig.chainValue l)
-  pure ⟨sig.randomness, values, sig.path⟩
 
 /-- The bottom tree stores its top signature without revealing its chain inputs. -/
 structure DeferredBottomTree where
@@ -1786,22 +1569,9 @@ end SigningLaneHybridCapProof
 #guard_msgs (whitespace := lax) in
 #print axioms SigningLaneHybridCapProof.hiddenCandidate_none_of_isMsg
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningLaneHybridCapProof.not_inputSide_msgCall' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningLaneHybridCapProof.not_inputSide_msgCall
-
 /-- info: 'ThresholdLeanXmssSecurity.SigningLaneHybridCapProof.PendingInput.not_isMsg' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningLaneHybridCapProof.PendingInput.not_isMsg
-/-- info: 'ThresholdLeanXmssSecurity.SigningLaneHybridCapProof.pendingValid_capped_run' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningLaneHybridCapProof.pendingValid_capped_run
-/-- info: 'ThresholdLeanXmssSecurity.SigningLaneHybridCapProof.exact_deferredBottomRow' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningLaneHybridCapProof.exact_deferredBottomRow
-/-- info: 'ThresholdLeanXmssSecurity.SigningLaneHybridCapProof.bottom_walks_of_edges' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms SigningLaneHybridCapProof.bottom_walks_of_edges
 /-- info: 'ThresholdLeanXmssSecurity.SigningLaneHybridCapProof.termSum_program' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms SigningLaneHybridCapProof.termSum_program

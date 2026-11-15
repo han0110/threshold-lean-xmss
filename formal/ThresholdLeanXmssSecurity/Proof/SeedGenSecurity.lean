@@ -13,7 +13,8 @@ The coupling route relates `SeedGenCoupling` of `Proof/SeedGen.lean` to `SeedGen
    the real run whose distinguisher replaces the hidden keys by fresh ones (`seedGenHiddenZ`). The real
    run is a mixture of fixed-table reference runs on a common covering domain. On distinct canonical
    inputs, the hidden oracle cells and an independent dealer table exchange (the relabeling), so the
-   hidden-half hypothesis is `SeedGenHiddenFreshSwapped`, on the relabeled reference runs.
+   hidden-half hypothesis `SeedGenHiddenFresh` reduces to the relabeled reference runs
+   (`seedGenSwappedMixture`).
 -/
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
@@ -609,37 +610,6 @@ theorem evalDist_seedGenReal_referenceMixture (prims : Primitives) (D : C.Coalit
   refine EvalDistEq.bind_right _ fun ht => ?_
   exact evalDist_seedGenNormalized_fixed_reference prims D (seedGenFiniteTotal prims S ht) A x z Z
 
-/-- Hidden half on fixed-table reference runs: for every oracle domain that covers both runs and
-every canonical input, replacing the hidden output keys by fresh ones moves the acceptance by at
-most half the error. -/
-def SeedGenHiddenFreshReference (prims : Primitives) : Prop :=
-  ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
-    (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
-    ∀ S : Finset (Query C), (∀ parts name, seedGenNamedInput parts name ∈ S) →
-      SeedGenWorldCovered S (free (seedGenNormalizedLocalGame D A x z Z)) →
-      SeedGenWorldCovered S (free (seedGenNormalizedLocalGame D A x z (seedGenHiddenZ D Z))) →
-      |(Pr{let y ← seedGenReferenceMixture prims D A x z Z S}[y = true]).toReal -
-        (Pr{let y ← seedGenReferenceMixture prims D A x z (seedGenHiddenZ D Z) S}[y = true]).toReal| ≤
-        seedGenHashError C q / 2
-
-theorem seedGenHiddenFresh_of_reference (prims : Primitives)
-    (h : SeedGenHiddenFreshReference (C := C) (E := E) prims) :
-    SeedGenHiddenFresh (C := C) (E := E) prims := by
-  intro D A x z Z q hq
-  obtain ⟨S₁, h₁⟩ := seedGenWorldCovered_exists (free (seedGenNormalizedLocalGame D A x z Z))
-  obtain ⟨S₂, h₂⟩ := seedGenWorldCovered_exists (free (seedGenNormalizedLocalGame D A x z (seedGenHiddenZ D Z)))
-  let S := S₁ ∪ S₂ ∪ seedGenAllNamedInputs C
-  have hS₁ : SeedGenWorldCovered S (free (seedGenNormalizedLocalGame D A x z Z)) :=
-    h₁.mono (fun _ hq => Finset.mem_union_left _ (Finset.mem_union_left _ hq))
-  have hS₂ : SeedGenWorldCovered S (free (seedGenNormalizedLocalGame D A x z (seedGenHiddenZ D Z))) :=
-    h₂.mono (fun _ hq => Finset.mem_union_left _ (Finset.mem_union_right _ hq))
-  have hmem : ∀ parts name, seedGenNamedInput parts name ∈ S :=
-    fun parts name => Finset.mem_union_right _ (seedGenAllNamedInputs_mem parts name)
-  rw [accepts_eq_probOutput, accepts_eq_probOutput,
-    (evalDist_seedGenReal_referenceMixture prims D A x z Z S hS₁).prEvent_eq (· = true),
-    (evalDist_seedGenReal_referenceMixture prims D A x z (seedGenHiddenZ D Z) S hS₂).prEvent_eq (· = true)]
-  exact h D A x z Z q hq S hmem hS₁ hS₂
-
 /-! ### The relabeling of the hidden keys -/
 
 theorem seedGenMaskKeys_table_congr (D : C.Coalition) (t t' : KeyName C → HashOutput)
@@ -737,25 +707,6 @@ theorem evalDist_seedGenReferenceMixture_swap (prims : Primitives) (D : C.Coalit
   · simp only [if_neg hinj]
     rfl
 
-/-- Hidden half on the relabeled reference runs. -/
-def SeedGenHiddenFreshSwapped (prims : Primitives) : Prop :=
-  ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
-    (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
-    ∀ (S : Finset (Query C)) (hmem : ∀ parts name, seedGenNamedInput parts name ∈ S),
-      SeedGenWorldCovered S (free (seedGenNormalizedLocalGame D A x z Z)) →
-      SeedGenWorldCovered S (free (seedGenNormalizedLocalGame D A x z (seedGenHiddenZ D Z))) →
-      |(Pr{let y ← seedGenSwappedMixture prims D A x z Z S hmem}[y = true]).toReal -
-        (Pr{let y ← seedGenSwappedMixture prims D A x z (seedGenHiddenZ D Z) S hmem}[y = true]).toReal| ≤
-        seedGenHashError C q / 2
-
-theorem seedGenHiddenFreshReference_of_swapped (prims : Primitives)
-    (h : SeedGenHiddenFreshSwapped (C := C) (E := E) prims) :
-    SeedGenHiddenFreshReference (C := C) (E := E) prims := by
-  intro D A x z Z q hq S hmem h₁ h₂
-  rw [(evalDist_seedGenReferenceMixture_swap prims D A x z Z S hmem).prEvent_eq (· = true),
-    (evalDist_seedGenReferenceMixture_swap prims D A x z (seedGenHiddenZ D Z) S hmem).prEvent_eq (· = true)]
-  exact h D A x z Z q hq S hmem h₁ h₂
-
 end RealHidden
 
 /-! ## The claim from the two hybrid halves -/
@@ -776,25 +727,6 @@ theorem seedGenSecurity_of_halves (hH : SeedGenHiddenDistance (C := C) (E := E) 
     SeedGenSecurityStatement (C := C) (E := E) prims :=
   seedGenSecurity_of_coupling prims (seedGenCoupling_of_halves prims hH hK)
 
-/-- `SeedGenCoupling`, open at the hidden half on the relabeled reference runs and at the known
-half. -/
-theorem seedGenCoupling (hH : SeedGenHiddenFreshSwapped (C := C) (E := E) prims)
-    (hK : SeedGenKnownMismatch (C := C) (E := E) prims) :
-    SeedGenCoupling (C := C) (E := E) prims :=
-  seedGenCoupling_of_halves prims
-    (seedGenHiddenDistance_of_fresh prims
-      (seedGenHiddenFresh_of_reference prims (seedGenHiddenFreshReference_of_swapped prims hH))) hK
-
-/-- `SeedGenSecurityStatement`, open at the same two halves as `seedGenCoupling`. -/
-theorem seedGenSecurityProof (hH : SeedGenHiddenFreshSwapped (C := C) (E := E) prims)
-    (hK : SeedGenKnownMismatch (C := C) (E := E) prims) :
-    SeedGenSecurityStatement (C := C) (E := E) prims :=
-  seedGenSecurity_of_coupling prims (seedGenCoupling prims hH hK)
-
 end Main
 
 end ThresholdLeanXmssSecurity
-
-/-- info: 'ThresholdLeanXmssSecurity.seedGenSecurityProof' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.seedGenSecurityProof

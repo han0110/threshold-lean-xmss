@@ -13,8 +13,8 @@ The target is `CheckCoreDistance` of `Proof/CheckSecurity.lean`, and from it `Mu
   uses that `F_multVerify` leaks `z - x y` of the agreeing copies, so the real and the
   `canonicalDummyTuples` claims differ by the difference of the inner products. The budget is
   `coupleBound_le_coupleHashError`.
-* `checkCoreDistanceFull` proves `CheckCoreDistance` from the two hypotheses
-  `CheckSoundStage` and `CheckSplitStage`.
+* `checkCoreDistanceSplit` of `Proof/CheckLast.lean` uses `checkCoupleStage` to prove
+  `CheckCoreDistance`.
 -/
 
 set_option pp.deepTerms false
@@ -1300,40 +1300,6 @@ lemma liftedPart_flat (tuples : List (Tuple C)) (part : Tuple C → Shares C Bit
       | none => 0 :=
   getD_flatMap_vector_pos (fun τ g => algebraMap Bit E (part τ T g)) tuples k
 
-omit [Fintype E] [DecidableEq E] [SampleableType E] in
-/-- Two lists of tuples with the counts `counts` and equal parts at every position have equal lifted
-parts. -/
-lemma liftedPart_congr_flat (counts : List ℕ) (a b : List (Tuple C)) (part : Tuple C → Shares C Bit) (T : C.Term)
-    (ha : a.map (·.count) = counts) (hb : b.map (·.count) = counts)
-    (h : ∀ m g, m < counts.length → g < counts.getD m 0 →
-      a[m]?.map (fun τ => part τ T g) = b[m]?.map (fun τ => part τ T g)) :
-    liftedPart (E := E) a part T = liftedPart b part T := by
-  funext k
-  rw [liftedPart_flat, liftedPart_flat, ha, hb]
-  rcases hp : flatPos counts k with _ | ⟨m, g⟩
-  · rfl
-  · obtain ⟨hm, hg⟩ := flatPos_spec counts k m g hp
-    have e := h m g hm hg
-    simp only
-    rw [show a[m]?.map (fun τ => algebraMap Bit E (part τ T g)) =
-        (a[m]?.map fun τ => part τ T g).map (algebraMap Bit E) by rw [Option.map_map]; rfl, e,
-      Option.map_map]
-    rfl
-
-omit [Fintype E] [DecidableEq E] [SampleableType E] in
-/-- With agreeing copies the real lifted parts are one sharing. -/
-lemma real_lifted_consistent (K : Constants C E) {counts : List ℕ} {D : C.Coalition} {x : C.Party → List (Tuple C)}
-    (hx : TupleInputs K counts D x) (hagree : MultVerifyAgree D (fun i => if i ∈ D.1 then none else some (x i)))
-    (part : Tuple C → Shares C Bit) (hpart : part = (·.x) ∨ part = (·.y) ∨ part = (·.z))
-    (T : C.Term) (i j : C.Party) (hiT : i ∈ C.holders T) (hjT : j ∈ C.holders T) (hi : i ∉ D.1) (hj : j ∉ D.1) :
-    liftedPart (E := E) (x i) part T = liftedPart (x j) part T := by
-  refine liftedPart_congr_flat counts _ _ part T (hx.1 i hi) (hx.1 j hj) fun m g hm hg => ?_
-  have e := agree_at K hx hagree T i j hiT hjT hi hj m g hm hg
-  rcases hpart with rfl | rfl | rfl
-  · simpa [Option.map_map, Function.comp_def] using congrArg (Option.map Prod.fst) e
-  · simpa [Option.map_map, Function.comp_def] using congrArg (Option.map fun p => p.2.1) e
-  · simpa [Option.map_map, Function.comp_def] using congrArg (Option.map fun p => p.2.2) e
-
 /-- Tuple `m` of the ideal input of an honest operator. -/
 lemma dummyOf_get (D : C.Coalition) (x : C.Party → List (Tuple C)) (i : C.Party) (hi : i ∉ D.1) (T₀ : C.Term)
     (hT₀ : lackedTerm D.1 = some T₀) (m : ℕ) :
@@ -1690,16 +1656,6 @@ attribute [local instance] inhabitedField
 theorem checkCoupleStage (prims : Primitives) (K : Constants C E) : CheckCoupleStage prims K :=
   checkCoupleStage_of_init prims K (checkInitRel_of_slice K (checkInitSlice K))
 
-/-- `CheckCoreDistance` from the two stages that are still open: the soundness stage and the
-disagreement stage. -/
-theorem checkCoreDistanceFull (prims : Primitives) (K : Constants C E)
-    (hsound : CheckSoundStage prims K) (hsplit : CheckSplitStage prims K) : CheckCoreDistance prims K :=
-  checkCoreDistanceProof prims K hsound (checkCoupleStage prims K) hsplit
-
-theorem multVerifyStatementFull (prims : Primitives) (K : Constants C E)
-    (hsound : CheckSoundStage prims K) (hsplit : CheckSplitStage prims K) : MultVerifySecurityStatement prims K :=
-  multVerifyStatementProof prims K (checkCoreDistanceFull prims K hsound hsplit)
-
 end Final
 
 end ThresholdLeanXmssSecurity
@@ -1707,11 +1663,3 @@ end ThresholdLeanXmssSecurity
 /-- info: 'ThresholdLeanXmssSecurity.checkCoupleStage' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.checkCoupleStage
-
-/-- info: 'ThresholdLeanXmssSecurity.checkCoreDistanceFull' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.checkCoreDistanceFull
-
-/-- info: 'ThresholdLeanXmssSecurity.multVerifyStatementFull' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.multVerifyStatementFull

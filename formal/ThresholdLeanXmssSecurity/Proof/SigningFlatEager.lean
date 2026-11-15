@@ -3,7 +3,8 @@ import ThresholdLeanXmssSecurity.Proof.SigningFlat
 /-!
 # The eager grind on the flat run
 
-This module gives step 1 of the plan in `SigningEagerGrind` on the flat run of `SigningFlat`.
+This module puts the eager grind on the flat run of `SigningFlat`. `SigningOneRun` uses its hash law
+and its R1 monitor on the joint run.
 
 ## The hash form
 
@@ -12,21 +13,15 @@ This module gives step 1 of the plan in `SigningEagerGrind` on the flat run of `
 * `hashLaw_carry_logged` gives the hash form of a world call other than a programming query.
 * `eagerWorld extra` runs the lazy calls of `extra` after each world call. `extra` reads the state
   before the call, the call and the state after the call. `hashLaw_eagerWorld` shows that the extra
-  calls keep the law. This is `evalDist_mixed_run'_bind_const` of `SigningFlat`, the step of
-  `evalDist_eagerMixed_run'`. `evalDist_eagerMixed_run'` itself does not apply, because its extra
-  calls see only the input and the answer, not `bound e`.
-* `hashLaw_simulateQ_world`, `hashLaw_flatWith` and `hashLaw_flatGame` lift the law to the flat run.
+  calls keep the law. This is `evalDist_mixed_run'_bind_const` of `SigningFlat`. The extra calls
+  see the state, so they can read `bound e`.
+* `hashLaw_simulateQ_world` and `hashLaw_flatWith` lift the law to the flat run.
 
 ## The eager grind
 
 * `grindExtra P ρ` runs the honest grind of `signCodeword` at each canonical base call of a key `e`
   (`BaseCall`), on the answer of the base input. The trigger reads only the carried state, so a
-  later base call runs the grind again. `baseCall_once` gives that its base input is cached. That
-  its trials are cached requires a separate invariant.
-* `flatRun_eq_flatGame` writes `flatRun` as `flatGame` over `flatWorld`.
-* `evalDist_flatEagerRun` shows that the flat eager run has the law of `flatRun` for the result, the
-  count, the log and the carried state. `evalDist_flatEagerRun_logged` gives the law of `loggedRun`
-  without the cache. The final cache differs.
+  later base call runs the grind again.
 
 ## The R1 monitor
 
@@ -39,26 +34,18 @@ This module gives step 1 of the plan in `SigningEagerGrind` on the flat run of `
 * A fresh trial at a signed key only marks its input as seen. This differs from the sign attempt of
   leanVM, which checks the target. In the first grind at a key the key is unsigned. A later grind
   at the key runs on the same base answer, so its trials are likely cached.
-* `monitoredGame_forgets` shows that the monitor is write-only. `monitoredRun_forget` gives the
-  flat eager run exactly.
+* `monitoredWorld_forgets` shows that the monitor is write-only.
 * `trialFresh_risk_sum_le` shows that a trial costs nothing. It is the sign branch of
   `fresh_risk_sum_le` with `CappedEncodingMonitor.uniformDigest_sign_bonus_sum_le`.
   `monitoredOracle_run_risk_le` lifts it to a grind with `XmssSecurity.expectedFinal_le`.
 * `PotStep` is the step of the potential in expectation, with the keyed calls of the log as cost.
-  `potStep_monitoredGame` lifts it to the flat run.
-* `r1Hit_bound` bounds the hit by `2^-128` for each bottom digest call in expectation, the bound of
-  `bottomPartnerLogged_bound`. The keyed calls of the log transfer to `loggedRun` by
-  `evalDist_flatEagerRun_logged`.
+  `potStep_monitoredWorld` gives it for one world call, and `potStep_flatWith` lifts it to the flat
+  run.
 
 ## The split
 
 * `splitRun` adds a write-only flag to the monitor. `cachedTrial` raises it at a trial on a seen
-  input with a valid digest at an unsigned key. `CachedSelection` is the flag.
-* `split_r1Hit_bound` is `r1Hit_bound` on the split run.
-* `R1Link` is the step-3 hypothesis. Its partner win reads the final cache of the eager run, which differs
-  from the final cache of `loggedRun`.
-* The link needs `P := x.1` and `ρ x` the honest openings. `SigningReleased.run_signCodeword_cached`
-  shows that a trial calls `CacheView.encodingInput P e`, which `encodingInputLeafIndex? x.1` reads.
+  input with a valid digest at an unsigned key.
 -/
 
 set_option pp.deepTerms false
@@ -260,60 +247,11 @@ def gameWith {m : Type → Type} [Monad m] (A : TsigAdversary C) (x : SigningSec
 def getCarried {τ σ : Type} : StateT (τ × σ) ProbComp σ :=
   StateT.mk fun p => pure (p.2, p)
 
-/-- The flat run over a world handler that may read the carried state. -/
-def flatGame (W : QueryImpl (WorldSpec C) (StateT (FlatState C) ProbComp)) (A : TsigAdversary C)
-    (x : SigningSecurityProof.Keys3 C) : StateT (FlatState C) ProbComp (Result C) :=
-  gameWith A x W (fun dealt => flatWith (SigningCoreProof.flaggedOracles x dealt) W) getCarried
-
-/-- The flat run in hash form. -/
-def gameHash (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    StateT (Rest C (TsigState C × Bool)) (OracleComp (HashSpec C)) (Result C) :=
-  gameWith A x (worldTracker prims) (fun dealt => outerTracker prims (SigningCoreProof.flaggedOracles x dealt))
-    (StateT.mk fun r => pure (r.2, r))
-
-/-- The initial flat state. -/
-def flatInit : FlatState C := (SigningHitLaneProof.loggedInit, (SigningCoreProof.tsigInit, false))
-
-theorem flatRun_eq_flatGame (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    flatRun prims A x = (flatGame (flatWorld prims) A x).run flatInit := by
-  unfold flatRun flatGame gameWith
-  rw [StateT.run_bind]
-  refine bind_congr fun z => ?_
-  rcases z with ⟨_ | (top | tree), l⟩
-  · rfl
-  · simp [StateT.run_bind, getCarried, flatOracles, flat_eq_flatWith, flatWorld]
-  · rfl
-
 theorem hashLaw_getCarried {σ : Type} :
     HashLaw (C := C) (getCarried (σ := σ)) (fun r => pure (r.2, r)) := by
   intro c r β K
   simp only [getCarried, StateT.run_mk, pure_bind]
   rfl
-
-set_option maxRecDepth 100000 in
-/-- The flat run over a world handler with the law of the hash form has the law of `gameHash`. -/
-theorem hashLaw_flatGame (W : QueryImpl (WorldSpec C) (StateT (FlatState C) ProbComp))
-    (hW : ∀ t, ¬SigningHitLaneProof.IsProgram t → HashLaw (W t) (worldHash prims t)) (A : TsigAdversary C)
-    (x : SigningSecurityProof.Keys3 C) : HashLaw (flatGame W A x) (gameHash prims A x).run := by
-  unfold flatGame gameHash gameWith
-  dsimp only
-  have hsetup : SigningHitProof.ProgramFree (referenceTree (fun oa => SigningSecurityProof.liftFree (tweakable oa))
-      (fun p => SigningSecurityProof.liftFree (prfValue x.2.1 p)) x.1 emptyTop .top) := by
-    rw [show referenceTree (fun oa => SigningSecurityProof.liftFree (tweakable oa))
-        (fun p => SigningSecurityProof.liftFree (prfValue x.2.1 p)) x.1 emptyTop .top =
-        SigningSecurityProof.liftFree (referenceTree tweakable (prfValue x.2.1) x.1 emptyTop .top) from
-      referenceTree_φ _ _ _ _]
-    exact SigningHitProof.programFree_liftFree _
-  refine hashLaw_bindT (hashLaw_simulateQ_world prims W hW _ hsetup) fun r => ?_
-  rcases r with _ | (top | tree)
-  · exact hashLaw_pure _
-  · refine hashLaw_bindT (hashLaw_simulateQ _ _
-      (fun t => hashLaw_flatWith prims _ (SigningHitProof.programFree_flaggedOracles x top) W hW t) _) fun a => ?_
-    refine hashLaw_bindT hashLaw_getCarried fun s => ?_
-    refine hashLaw_bindT (hashLaw_simulateQ_world prims W hW _ (SigningHitProof.programFree_finish x top _))
-      fun w => ?_
-    exact hashLaw_pure _
-  · exact hashLaw_pure _
 
 /-- The law of the result and the rest of a computation with a hash form. -/
 theorem evalDist_map_restOf {σ α : Type} {m : StateT (SigningHitLaneProof.LoggedState C × σ) ProbComp α}
@@ -324,17 +262,6 @@ theorem evalDist_map_restOf {σ α : Type} {m : StateT (SigningHitLaneProof.Logg
   simp only [simulateQ_pure, StateT.run'_eq, StateT.run_pure, map_pure, Prod.mk.eta, bind_pure] at h
   rw [map_eq_bind_pure_comp, StateT.run'_eq]
   exact h
-
-/-- Two world handlers with the law of the hash form give flat runs with one law of the result and
-the rest. -/
-theorem evalDist_flatGame_eq (W W' : QueryImpl (WorldSpec C) (StateT (FlatState C) ProbComp))
-    (hW : ∀ t, ¬SigningHitLaneProof.IsProgram t → HashLaw (W t) (worldHash prims t))
-    (hW' : ∀ t, ¬SigningHitLaneProof.IsProgram t → HashLaw (W' t) (worldHash prims t)) (A : TsigAdversary C)
-    (x : SigningSecurityProof.Keys3 C) :
-    ((fun z => (z.1, restOf z.2)) <$> (flatGame W A x).run flatInit) =ᵈ
-      ((fun z => (z.1, restOf z.2)) <$> (flatGame W' A x).run flatInit) :=
-  (evalDist_map_restOf (hashLaw_flatGame prims W hW A x) ∅ ((0, []), (SigningCoreProof.tsigInit, false))).trans
-    (evalDist_map_restOf (hashLaw_flatGame prims W' hW' A x) ∅ ((0, []), (SigningCoreProof.tsigInit, false))).symm
 
 end Game
 
@@ -362,31 +289,6 @@ def grindExtra (P : PublicParameter) (ρ : KeyIndex → Digest) (p : FlatState C
       | none => pure ()
     | none => pure ()
   else pure ()
-
-/-- The flat run with the eager grind at each canonical base call. -/
-def flatEagerRun (P : PublicParameter) (ρ : KeyIndex → Digest) (A : TsigAdversary C)
-    (x : SigningSecurityProof.Keys3 C) : ProbComp (Result C × FlatState C) :=
-  (flatGame (eagerWorld prims (grindExtra P ρ)) A x).run flatInit
-
-/-- The flat eager run has the law of `flatRun` for the result, the count, the log and the carried
-state. The final cache differs. -/
-theorem evalDist_flatEagerRun (P : PublicParameter) (ρ : KeyIndex → Digest) (A : TsigAdversary C)
-    (x : SigningSecurityProof.Keys3 C) :
-    ((fun z => (z.1, restOf z.2)) <$> flatEagerRun prims P ρ A x) =ᵈ
-      ((fun z => (z.1, restOf z.2)) <$> flatRun prims A x) := by
-  rw [flatRun_eq_flatGame]
-  exact evalDist_flatGame_eq prims _ _ (hashLaw_eagerWorld prims _) (hashLaw_carry_logged prims) A x
-
-/-- The flat eager run has the law of `loggedRun` for the result, the count and the log. -/
-theorem evalDist_flatEagerRun_logged (P : PublicParameter) (ρ : KeyIndex → Digest) (A : TsigAdversary C)
-    (x : SigningSecurityProof.Keys3 C) :
-    ((fun z => (z.1, z.2.1.1.2, z.2.1.2)) <$> flatEagerRun prims P ρ A x) =ᵈ
-      ((fun z => (z.1, z.2.1.2, z.2.2)) <$> SigningCostProof.loggedRun prims A x) := by
-  have h := (evalDist_flatEagerRun prims P ρ A x).map
-    (fun z : Result C × Rest C (TsigState C × Bool) => (z.1, z.2.1.1, z.2.1.2))
-  simp only [Functor.map_map] at h
-  rw [← flatRun_logged, Functor.map_map]
-  exact h
 
 end Eager
 
@@ -642,30 +544,6 @@ theorem forgets_getCarried {τ κ : Type} :
   intro a b s
   simp [getCarried]
 
-/-- The flat eager run with the R1 monitor. -/
-def monitoredGame (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
-    (extra : FlatState C → (WorldSpec C).Domain → FlatState C → OracleComp (Query C →ₒ HashOutput) Unit)
-    (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    StateT ((SigningHitLaneProof.LoggedState C × Monitor) × (TsigState C × Bool)) ProbComp (Result C) :=
-  gameWith A x (monitoredWorld prims keyOf extra)
-    (fun dealt => flatWith (SigningCoreProof.flaggedOracles x dealt) (monitoredWorld prims keyOf extra)) getCarried
-
-theorem monitoredGame_forgets (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
-    (extra : FlatState C → (WorldSpec C).Domain → FlatState C → OracleComp (Query C →ₒ HashOutput) Unit)
-    (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Forgets (monitoredGame prims keyOf extra A x) (flatGame (eagerWorld prims extra) A x) := by
-  unfold monitoredGame flatGame gameWith
-  dsimp only
-  have hW := monitoredWorld_forgets prims keyOf extra
-  refine forgets_bind (forgets_simulateQ _ _ hW _) fun r => ?_
-  rcases r with _ | (top | tree)
-  · exact forgets_pure _
-  · refine forgets_bind (forgets_simulateQ _ _ (forgets_flatWith _ _ _ hW) _) fun a => ?_
-    refine forgets_bind forgets_getCarried fun s => ?_
-    refine forgets_bind (forgets_simulateQ _ _ hW _) fun w => ?_
-    exact forgets_pure _
-  · exact forgets_pure _
-
 end Monitored
 
 section Potential
@@ -766,8 +644,8 @@ theorem potStep_bind (keyOf : XmssSecurity.HashInput → Option XmssSecurity.Lea
           change κ y.2 ≤ κ z.2 at h2
           omega
 
-/-- A world call raises the risk of the R1 monitor by at most `2^-128` at an encoding input. This is
-`logged_risk_le` with every logged call as a query. -/
+/-- A world call raises the risk of the R1 monitor by at most `2^-128` at an encoding input, with
+every logged call as a query. -/
 theorem logged_query_risk_le (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
     (t : (WorldSpec C).Domain) (l : SigningHitLaneProof.LoggedState C) (m : Monitor) (hcov : CacheSeen l.1.1 m)
     (ht : ¬SigningHitLaneProof.IsProgram t) :
@@ -789,8 +667,8 @@ theorem logged_query_risk_le (keyOf : XmssSecurity.HashInput → Option XmssSecu
     all_goals exact randomOracle_risk_le keyOf _ false l.1.1 m hcov
   · exact hconst _ _ fun w => rfl
 
-/-- A world call keeps every cached input seen by the R1 monitor. This is `covered_step` with every
-logged call as a query. -/
+/-- A world call keeps every cached input seen by the R1 monitor, with every logged call as a
+query. -/
 theorem logged_query_cacheSeen (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
     (t : (WorldSpec C).Domain) (l : SigningHitLaneProof.LoggedState C) (m : Monitor) (hcov : CacheSeen l.1.1 m)
     (ht : ¬SigningHitLaneProof.IsProgram t) (r : (WorldSpec C).Range t × SigningHitLaneProof.LoggedState C)
@@ -930,33 +808,6 @@ theorem potStep_getCarried (keyOf : XmssSecurity.HashInput → Option XmssSecuri
   intro p hp
   simpa [getCarried] using potStep_pure (C := C) keyOf p.2 p hp
 
-set_option maxRecDepth 100000 in
-/-- The flat eager run with the R1 monitor pays `2^-128` for each keyed call. -/
-theorem potStep_monitoredGame (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
-    (extra : FlatState C → (WorldSpec C).Domain → FlatState C → OracleComp (Query C →ₒ HashOutput) Unit)
-    (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    PotStep keyOf (monitoredGame prims keyOf extra A x) := by
-  unfold monitoredGame gameWith
-  dsimp only
-  have hW := potStep_monitoredWorld prims (σ := TsigState C × Bool) keyOf extra
-  have hsetup : SigningHitProof.ProgramFree (referenceTree (fun oa => SigningSecurityProof.liftFree (tweakable oa))
-      (fun p => SigningSecurityProof.liftFree (prfValue x.2.1 p)) x.1 emptyTop .top) := by
-    rw [show referenceTree (fun oa => SigningSecurityProof.liftFree (tweakable oa))
-        (fun p => SigningSecurityProof.liftFree (prfValue x.2.1 p)) x.1 emptyTop .top =
-        SigningSecurityProof.liftFree (referenceTree tweakable (prfValue x.2.1) x.1 emptyTop .top) from
-      referenceTree_φ _ _ _ _]
-    exact SigningHitProof.programFree_liftFree _
-  refine potStep_bind keyOf (potStep_simulateQ_world keyOf _ hW _ hsetup) fun r => ?_
-  rcases r with _ | (top | tree)
-  · exact potStep_pure keyOf _
-  · refine potStep_bind keyOf (potStep_simulateQ keyOf _
-      (fun t => potStep_flatWith keyOf _ (SigningHitProof.programFree_flaggedOracles x top) _ hW t) _) fun a => ?_
-    refine potStep_bind keyOf (potStep_getCarried keyOf) fun s => ?_
-    refine potStep_bind keyOf (potStep_simulateQ_world keyOf _ hW _ (SigningHitProof.programFree_finish x top _))
-      fun w => ?_
-    exact potStep_pure keyOf _
-  · exact potStep_pure keyOf _
-
 end Potential
 
 section Bound
@@ -968,63 +819,6 @@ variable {C : Committee} (prims : Primitives)
 /-- The initial state of the flat eager run with the R1 monitor. -/
 def monitoredInit : (SigningHitLaneProof.LoggedState C × Monitor) × (TsigState C × Bool) :=
   ((SigningHitLaneProof.loggedInit, Monitor.empty), (SigningCoreProof.tsigInit, false))
-
-/-- The flat eager run with the R1 monitor. -/
-def monitoredRun (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) (P : PublicParameter)
-    (ρ : KeyIndex → Digest) (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    ProbComp (Result C × (SigningHitLaneProof.LoggedState C × Monitor) × (TsigState C × Bool)) :=
-  (monitoredGame prims keyOf (grindExtra P ρ) A x).run monitoredInit
-
-/-- The hit of the R1 monitor. The grind at the base call installs the selected digest of a fresh
-selection as the target of its key. A query at the key with a valid digest before the base call
-is pending risk. -/
-def R1Hit (z : Result C × (SigningHitLaneProof.LoggedState C × Monitor) × (TsigState C × Bool)) : Prop :=
-  z.2.1.2.hit = true
-
-theorem monitoredRun_forget (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
-    (P : PublicParameter) (ρ : KeyIndex → Digest) (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    (fun z => (z.1, (z.2.1.1, z.2.2))) <$> monitoredRun prims keyOf P ρ A x = flatEagerRun prims P ρ A x :=
-  monitoredGame_forgets prims keyOf (grindExtra P ρ) A x _ _ _
-
-/-- The hit costs `2^-128` for each keyed call of the log in expectation. -/
-theorem probEvent_r1Hit_le_logKeyed (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
-    (P : PublicParameter) (ρ : KeyIndex → Digest) (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr{let z ← monitoredRun prims keyOf P ρ A x}[R1Hit z] ≤
-      (2 ^ 128 : ℝ≥0∞)⁻¹ * ∑' z, Pr{let y ← monitoredRun prims keyOf P ρ A x}[y = z] *
-        (logKeyed keyOf z.2.1.1.2 : ℝ≥0∞) := by
-  classical
-  have hinit : CacheSeen (monitoredInit (C := C)).1.1.1.1 (monitoredInit (C := C)).1.2 :=
-    fun input h => (h rfl).elim
-  have h := (potStep_monitoredGame prims keyOf (grindExtra P ρ) A x monitoredInit hinit).2
-  have hrisk : (monitoredInit (C := C)).1.2.risk = 0 := by
-    simp [monitoredInit, Monitor.risk, Monitor.empty, XmssSecurity.CappedEncodingMonitor.State.pendingRisk_empty]
-  have hlog : logKeyed keyOf (monitoredInit (C := C)).1.1.2 = 0 := rfl
-  rw [hrisk, zero_add, hlog] at h
-  simp only [Nat.sub_zero] at h
-  refine le_trans ?_ h
-  rw [OracleComp.prEvent_eq_tsum_ite]
-  refine ENNReal.tsum_le_tsum fun z => ?_
-  split_ifs with hz
-  · have hone : z.2.1.2.risk = 1 := by simp [Monitor.risk, show z.2.1.2.hit = true from hz]
-    rw [hone, mul_one]
-    exact le_rfl
-  · exact bot_le
-
-/-- The keyed calls of the log of the flat eager run have the law of those of `loggedRun`. -/
-theorem expected_logKeyed_eq (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
-    (P : PublicParameter) (ρ : KeyIndex → Digest) (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    ∑' z, Pr{let y ← monitoredRun prims keyOf P ρ A x}[y = z] * (logKeyed keyOf z.2.1.1.2 : ℝ≥0∞) =
-      ∑' z, Pr{let y ← SigningCostProof.loggedRun prims A x}[y = z] * (logKeyed keyOf z.2.2 : ℝ≥0∞) := by
-  have h1 := OracleComp.tsum_prEvent_map_mul (monitoredRun prims keyOf P ρ A x) (fun z => (z.1, (z.2.1.1, z.2.2)))
-    (fun y => (logKeyed keyOf y.2.1.2 : ℝ≥0∞))
-  rw [monitoredRun_forget] at h1
-  have h2 := OracleComp.tsum_prEvent_map_mul (flatEagerRun prims P ρ A x) (fun z => (z.1, z.2.1.1.2, z.2.1.2))
-    (fun y => (logKeyed keyOf y.2.2 : ℝ≥0∞))
-  have h3 := OracleComp.tsum_prEvent_map_mul (SigningCostProof.loggedRun prims A x) (fun z => (z.1, z.2.1.2, z.2.2))
-    (fun y => (logKeyed keyOf y.2.2 : ℝ≥0∞))
-  have hlaw := evalDist_flatEagerRun_logged prims P ρ A x
-  rw [← h1, ← h3, ← h2]
-  exact tsum_congr fun y => by rw [hlaw.prEvent_eq (· = y)]
 
 /-- The keyed calls of the log of `loggedRun` in expectation are the expected keyed cost. -/
 theorem expected_logKeyed_le (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
@@ -1042,19 +836,6 @@ theorem expected_logKeyed_le (keyOf : XmssSecurity.HashInput → Option XmssSecu
   have hzero : logKeyed keyOf (SigningHitLaneProof.loggedInit (C := C)).2 = 0 := rfl
   rw [hzero, Nat.cast_zero, zero_add] at h
   exact h
-
-/-- The bound of R1. The hit of the R1 monitor on the flat eager run costs `2^-128` for each bottom
-digest call, as `bottomPartnerLogged_bound`. -/
-theorem r1Hit_bound (P : PublicParameter) (ρ : KeyIndex → Digest) (A : TsigAdversary C)
-    (x : SigningSecurityProof.Keys3 C) :
-    Pr{let z ← monitoredRun prims (XmssSecurity.encodingInputLeafIndex? x.1) P ρ A x}[R1Hit z] ≤
-      (2 ^ 128 : ℝ≥0∞)⁻¹ * SigningGuessProof.sourceExpectedCost prims A x
-        (SigningPartnerLinkProof.bottomDigestCost x) := by
-  refine (probEvent_r1Hit_le_logKeyed prims _ P ρ A x).trans ?_
-  rw [expected_logKeyed_eq]
-  gcongr
-  exact (expected_logKeyed_le prims _ A x).trans
-    (SigningGuessProof.sourceExpectedCost_mono prims A x _ _ (keyedCost_le_bottomDigestCost x))
 
 end Bound
 
@@ -1080,14 +861,6 @@ def splitOracle (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafInde
   fun q => StateT.mk fun s => (fun w => (w.1, (w.2, s.2 || cachedTrial keyOf s.1.2 q w.1))) <$>
     (monitoredOracle keyOf q).run s.1
 
-theorem splitOracle_run_forget (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) {β : Type}
-    (ob : OracleComp (Query C →ₒ HashOutput) β) (s : HashCache C × Monitor) (b : Bool) :
-    (fun z => (z.1, z.2.1)) <$> (simulateQ (splitOracle keyOf) ob).run (s, b) =
-      (simulateQ (monitoredOracle keyOf) ob).run s :=
-  SigningCoreProof.simulateQ_run_forget _ _ (fun q c b => by
-    simp only [splitOracle, StateT.run_mk, Functor.map_map]
-    exact id_map _) ob s b
-
 /-- `monitoredWorld` with the flag of a cached trial. -/
 def splitWorld (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
     (extra : SigningHitLaneProof.LoggedState C × σ → (WorldSpec C).Domain →
@@ -1098,15 +871,6 @@ def splitWorld (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex
       (simulateQ (splitOracle keyOf) (extra (p.1.1.1, p.2) t z.2)).run
         ((z.2.1.1.1, queryEntryStep keyOf p.1.1.2 (hashEntry ⟨t, z.1⟩)), p.1.2)
 
-theorem splitWorld_forgets (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
-    (extra : SigningHitLaneProof.LoggedState C × σ → (WorldSpec C).Domain →
-      SigningHitLaneProof.LoggedState C × σ → OracleComp (Query C →ₒ HashOutput) Unit)
-    (t : (WorldSpec C).Domain) : Forgets (splitWorld prims keyOf extra t) (monitoredWorld prims keyOf extra t) := by
-  intro a b s
-  simp only [splitWorld, monitoredWorld, StateT.run_mk, map_bind, Functor.map_map]
-  refine bind_congr fun z => ?_
-  rw [← splitOracle_run_forget keyOf _ _ b, Functor.map_map]
-
 /-- The flat eager run with the R1 monitor and the flag of a cached trial. -/
 def splitGame (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
     (extra : FlatState C → (WorldSpec C).Domain → FlatState C → OracleComp (Query C →ₒ HashOutput) Unit)
@@ -1115,81 +879,14 @@ def splitGame (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
   gameWith A x (splitWorld prims keyOf extra)
     (fun dealt => flatWith (SigningCoreProof.flaggedOracles x dealt) (splitWorld prims keyOf extra)) getCarried
 
-theorem splitGame_forgets (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
-    (extra : FlatState C → (WorldSpec C).Domain → FlatState C → OracleComp (Query C →ₒ HashOutput) Unit)
-    (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Forgets (splitGame prims keyOf extra A x) (monitoredGame prims keyOf extra A x) := by
-  unfold splitGame monitoredGame gameWith
-  dsimp only
-  have hW := splitWorld_forgets prims keyOf extra
-  refine forgets_bind (forgets_simulateQ _ _ hW _) fun r => ?_
-  rcases r with _ | (top | tree)
-  · exact forgets_pure _
-  · refine forgets_bind (forgets_simulateQ _ _ (forgets_flatWith _ _ _ hW) _) fun a => ?_
-    refine forgets_bind forgets_getCarried fun s => ?_
-    refine forgets_bind (forgets_simulateQ _ _ hW _) fun w => ?_
-    exact forgets_pure _
-  · exact forgets_pure _
-
 /-- The flat eager run with the R1 monitor and the flag of a cached trial. -/
 def splitRun (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) (P : PublicParameter)
     (ρ : KeyIndex → Digest) (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
     ProbComp (Result C × ((SigningHitLaneProof.LoggedState C × Monitor) × Bool) × (TsigState C × Bool)) :=
   (splitGame prims keyOf (grindExtra P ρ) A x).run ((monitoredInit.1, false), monitoredInit.2)
 
-/-- The flag is write-only, so the split run gives `monitoredRun` exactly. -/
-theorem splitRun_forget (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) (P : PublicParameter)
-    (ρ : KeyIndex → Digest) (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    (fun z => (z.1, (z.2.1.1, z.2.2))) <$> splitRun prims keyOf P ρ A x = monitoredRun prims keyOf P ρ A x :=
-  splitGame_forgets prims keyOf (grindExtra P ρ) A x _ _ _
-
-/-- The split of R1. A grind at a base call met a selection that the log holds before the call. -/
-def CachedSelection (z : Result C × ((SigningHitLaneProof.LoggedState C × Monitor) × Bool) × (TsigState C × Bool)) :
-    Prop :=
-  z.2.1.2 = true
-
-/-- Step 3 of R1, open. A bottom partner win with no cached selection raises the R1 monitor, unless
-`ρ` comes from a commitment collision. `ρ x` must be the honest openings of `x`. The win reads the
-final cache of the eager run. -/
-def R1Link (ρ : SigningSecurityProof.Keys3 C → KeyIndex → Digest) : Prop :=
-  ∀ (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) z,
-    z ∈ support (splitRun prims (XmssSecurity.encodingInputLeafIndex? x.1) x.1 (ρ x) A x) →
-    z.1.1 = (true, false) → SigningPartnerLinkProof.BottomPartnerCase prims x (z.1, z.2.1.1.1.1) →
-    ¬CachedSelection z →
-    z.2.1.1.2.hit = true ∨ SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1
-
-/-- The bound of R1 on the split run. -/
-theorem split_r1Hit_bound (P : PublicParameter) (ρ : KeyIndex → Digest) (A : TsigAdversary C)
-    (x : SigningSecurityProof.Keys3 C) :
-    Pr{let z ← splitRun prims (XmssSecurity.encodingInputLeafIndex? x.1) P ρ A x}[z.2.1.1.2.hit = true] ≤
-      (2 ^ 128 : ℝ≥0∞)⁻¹ * SigningGuessProof.sourceExpectedCost prims A x
-        (SigningPartnerLinkProof.bottomDigestCost x) := by
-  refine le_trans (le_of_eq ?_) (r1Hit_bound prims P ρ A x)
-  rw [← splitRun_forget, prEvent_map]
-  rfl
-
 end Split
 
 end SigningFlatEagerProof
 
 end ThresholdLeanXmssSecurity
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningFlatEagerProof.evalDist_flatEagerRun' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningFlatEagerProof.evalDist_flatEagerRun
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningFlatEagerProof.evalDist_flatEagerRun_logged' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningFlatEagerProof.evalDist_flatEagerRun_logged
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningFlatEagerProof.r1Hit_bound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningFlatEagerProof.r1Hit_bound
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningFlatEagerProof.monitoredRun_forget' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningFlatEagerProof.monitoredRun_forget
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningFlatEagerProof.split_r1Hit_bound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningFlatEagerProof.split_r1Hit_bound

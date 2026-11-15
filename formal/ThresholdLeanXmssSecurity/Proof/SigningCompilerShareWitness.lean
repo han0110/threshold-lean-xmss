@@ -35,9 +35,6 @@ def lazyFinish (b : C.Term) (p : CPoint) (target : SigningShareLazy.Digest)
   (fun h => SigningShareLazy.pair.symm (SigningShareLazy.lowHash h,
     target ^^^ SigningShareLazy.others C.terms sh p b)) <$> ($ᵗ SigningShareLazy.HashOutput)
 
-theorem lazyHandler_eq_handler (τ : CPoint → SigningShareLazy.Digest) :
-    lazyHandler (C := C) τ = Marks.handler τ (fun _ => $ᵗ SigningShareLazy.HashOutput) lazyFinish := rfl
-
 theorem shareOK_init (τ : CPoint → SigningShareLazy.Digest) :
     ShareOK (C := C) τ (SigningShareLazy.init (B := SigningShareLazy.ImplBad Bool)) := by
   constructor
@@ -60,8 +57,6 @@ theorem slack_none (order : List C.Term) (sh : ShareState C) (p : CPoint) :
 /-- Full outputs, including the high halves, are retained at cached entries. -/
 def Extends (sh sh' : ShareState C) : Prop :=
   ∀ y v, sh.cache y = some v → sh'.cache y = some v
-
-theorem Extends.refl (sh : ShareState C) : Extends sh sh := fun _ _ h => h
 
 theorem Extends.trans {sh mid sh' : ShareState C} (h : Extends sh mid)
     (h' : Extends mid sh') : Extends sh sh' := fun y v hv => h' y v (h y v hv)
@@ -429,12 +424,6 @@ theorem simulate_tagFrom {α : Type} (τ : CPoint → SigningShareLazy.Digest)
       · exact Or.inr htag
 
 end ThresholdLeanXmssSecurity.SigningCompilerShare.Witness
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerShare.Witness.lazyHandler_eq_handler' depends on axioms: [propext,
- Classical.choice,
- Quot.sound] -/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerShare.Witness.lazyHandler_eq_handler
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerShare.Witness.shareOK_init' depends on axioms: [propext,
  Classical.choice,

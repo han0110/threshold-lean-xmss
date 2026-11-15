@@ -3,21 +3,22 @@ import ThresholdLeanXmssSecurity.Proof.SigningPartnerLink
 /-!
 # The bound of the fresh bottom partner
 
-This module defines the lane 1 bottom partner of leanVM and proves that it costs `2^-128` for each
-bottom digest call.
+This module defines the pending-risk monitor of leanVM on a logged run. It bounds the rise of the
+monitor risk at each call by `2^-128` for each bottom digest call. `r1Hit_bound` in `SigningOneRun`
+and `units_le` in `SigningOwnForger` use it.
 
 ## The recording run
 
 * `loggedRun` of `SigningCost` logs each call of the run with its answer, in call order.
   `loggedRun_forget` gives back `exposedRun` exactly. So the log is the recording run. The cache at
   the start of a grind is the set of inputs that the log holds before the first call of the grind.
+* An outcome of `exposedRun` holds only the final cache. So it cannot tell a fresh selection from a
+  cached one, and the monitor reads the log.
 * `monitorOf` replays the hash calls of a log with the encoding monitor of leanVM
   (`EncodingMonitor.State`). `seen` holds the called inputs, so a call is fresh if its input is not
   in `seen`. `Covered` says that each cached input of `H` is in `seen`.
 
-## The partner
-
-`BottomPartnerLogged` is the hit of the monitor.
+## The monitor
 
 * The monitor installs the first fresh free-copy call with a valid digest at an unsigned key `e`.
   Round 2 at `e` runs only for the message in `st.bound e`, and a grind runs only if `ρ` opens `c_e`.
@@ -30,12 +31,11 @@ bottom digest call.
 * A fresh call at `e` after the selection hits if its digest is the selected digest.
 * A call on a seen input changes nothing. Its answer is the cached answer, so its match was already
   checked.
-* `monitorOf_hit_of_query_before_sign` and `monitorOf_hit_of_sign_before_query` show both orders on
-  a log of two calls.
 
 ## The bound
 
-`probEvent_hit_le` follows the pending-risk argument of `CappedEncodingMonitor`.
+`randomOracle_risk_le` follows the pending-risk argument of `CappedEncodingMonitor` at one call of
+the lazy `H`.
 
 * A fresh call at an unsigned key adds `1 / |validDigests|` to the pending risk on a valid digest.
   This is `2^-128` in expectation (`uniformDigest_valid_bonus_sum_eq`).
@@ -46,22 +46,6 @@ bottom digest call.
   with a continuation, so they do not apply to a potential on `loggedImpl` directly.
 
 `keyedCost_le_bottomDigestCost` shows that the monitor charges only bottom digest calls.
-`bottomPartnerLogged_bound` is the bottom partner bound.
-
-## The type of the partner event
-
-`SigningPartnerLinkProof.BottomPartnerBound` takes `partner` on an outcome of `exposedRun`. That
-outcome holds only the final cache, the state, the forgery and the count, and `partner` cannot see
-the adversary. So no event at that type can tell a fresh selection from a cached one.
-
-* Take an adversary that learns the base after round 1 at `e` and calls the scan line at `e`
-  before round 2. Take a second adversary that makes the same calls after round 2.
-* Both runs can end with the same outcome. The selection is cached in the first run and fresh in
-  the second run.
-
-So this module states the split on `loggedRun`. `chargedOutputLogged_bound` and
-`hiddenCoreAt_of_logged` follow `SigningPartnerLinkProof.chargedOutput2_bound` and
-`SigningPartnerLinkProof.hiddenCoreAt_of_split`. The hypothesis is `UnchargedLaneBoundLogged`.
 -/
 
 set_option pp.deepTerms false
@@ -389,29 +373,6 @@ theorem randomOracle_risk_le (keyOf : XmssSecurity.HashInput → Option XmssSecu
 def Covered (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) (s : LoggedState C) : Prop :=
   ∀ input, s.1.1 (.hash input) ≠ none → input ∈ (monitorOf keyOf s.2).seen
 
-/-- Each call of `loggedImpl` other than a programming query raises the risk by at most `2^-128`
-for each hash call at an encoding input. -/
-theorem logged_risk_le (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
-    (t : (WorldSpec C).Domain) (s : LoggedState C) (hs : Covered keyOf s) (ht : ¬IsProgram t) :
-    ∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] * (monitorOf keyOf r.2.2).risk ≤
-      (monitorOf keyOf s.2).risk + (2 ^ 128 : ℝ≥0∞)⁻¹ * (keyedCost keyOf t : ℝ≥0∞) := by
-  simp only [loggedImpl, SigningCacheProof.countImpl, SeedHitProof.withCount, StateT.run_mk,
-    OracleComp.tsum_prEvent_map_mul, monitorOf_logQuery]
-  have hconst : ∀ {α : Type} (mx : ProbComp α) (F : α → ℝ≥0∞),
-      (∀ w, F w = (monitorOf keyOf s.2).risk) →
-      ∑' w, Pr{let z ← mx}[z = w] * F w ≤ (monitorOf keyOf s.2).risk + (2 ^ 128 : ℝ≥0∞)⁻¹ * (keyedCost keyOf t : ℝ≥0∞) :=
-    fun mx F hF => (tsum_probOutput_mul_le_of_const mx F _ fun w _ => (hF w).le).trans le_self_add
-  rcases t with ((n | (q | p)) | prog) | (n | (q | p))
-  · exact hconst _ _ fun w => rfl
-  · cases q
-    all_goals exact randomOracle_risk_le keyOf _ false s.1.1 _ hs
-  · exact hconst _ _ fun w => rfl
-  · exact (ht trivial).elim
-  · exact hconst _ _ fun w => rfl
-  · cases q
-    all_goals exact randomOracle_risk_le keyOf _ true s.1.1 _ hs
-  · exact hconst _ _ fun w => rfl
-
 theorem loggedImpl_support (t : (WorldSpec C).Domain) (s : LoggedState C)
     (r : (WorldSpec C).Range t × LoggedState C) (hr : r ∈ support ((loggedImpl prims t).run s)) :
     ∃ w ∈ support ((SeedHitProof.signImpl prims t).run s.1.1),
@@ -433,98 +394,6 @@ theorem randomOracle_cache_ne (q : Query C) (cache : HashCache C)
     rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ hc, support_map] at hw
     obtain ⟨v, -, rfl⟩ := hw
     exact QueryCache.cacheQuery_of_ne _ _ hne
-
-theorem covered_step (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
-    (t : (WorldSpec C).Domain) (s : LoggedState C) (hs : ¬Programmed s.2 → Covered keyOf s)
-    (r : (WorldSpec C).Range t × LoggedState C) (hr : r ∈ support ((loggedImpl prims t).run s)) :
-    ¬Programmed r.2.2 → Covered keyOf r.2 := by
-  intro hp
-  have hlog := loggedImpl_log prims t s r hr
-  rw [hlog, programmed_logQuery, not_or] at hp
-  have hcov := hs hp.1
-  obtain ⟨w, hw, h1, hcache, hlog'⟩ := loggedImpl_support prims t s r hr
-  intro input hin
-  rw [hcache] at hin
-  rw [hlog', monitorOf_logQuery]
-  have hsub : ∀ entry, (monitorOf keyOf s.2).seen ⊆ ((monitorOf keyOf s.2).after keyOf entry).seen := by
-    intro entry
-    cases entry with
-    | none => exact le_rfl
-    | some entry => exact (Set.subset_insert _ _).trans (Monitor.step_seen keyOf _ entry)
-  have hq : ∀ (q : Query C) (honest : Bool) (v : HashOutput),
-      (v, w.2) ∈ support (((Query C →ₒ HashOutput).randomOracle q).run s.1.1) →
-      input ∈ ((monitorOf keyOf s.2).after keyOf (queryEntry q v honest)).seen := by
-    intro q honest v hv
-    by_cases he : q = .hash input
-    · subst he
-      exact Monitor.step_seen keyOf (monitorOf keyOf s.2) (input, XmssSecurity.truncateHash v, honest)
-        (Set.mem_insert _ _)
-    · have hc := randomOracle_cache_ne q s.1.1 (v, w.2) hv (.hash input) (Ne.symm he)
-      exact hsub _ (hcov input (hc ▸ hin))
-  rcases t with ((n | (q | p)) | prog) | (n | (q | p))
-  · change w ∈ support ((fun u => (u, s.1.1)) <$> (query (spec := unifSpec) n : ProbComp (Fin (n + 1)))) at hw
-    rw [support_map] at hw
-    obtain ⟨u, -, rfl⟩ := hw
-    exact hcov input hin
-  · change w ∈ support (((Query C →ₒ HashOutput).randomOracle q).run s.1.1) at hw
-    cases q
-    all_goals exact hq _ false w.1 hw
-  · change w ∈ support ((prgAnswer prims p).run s.1.1) at hw
-    simp only [prgAnswer, hashAnswer, StateT.run_bind, StateT.run_pure, support_bind, support_pure] at hw
-    obtain ⟨x, hx, hw⟩ := Set.mem_iUnion₂.1 hw
-    have hw2 : w.2 = x.2 := congrArg Prod.snd (show w = _ from hw)
-    have hc := randomOracle_cache_ne _ s.1.1 x hx (.hash input) (by simp)
-    rw [hw2, hc] at hin
-    exact hcov input hin
-  · exact (hp.2 trivial).elim
-  · change w ∈ support ((fun u => (u, s.1.1)) <$> (query (spec := unifSpec) n : ProbComp (Fin (n + 1)))) at hw
-    rw [support_map] at hw
-    obtain ⟨u, -, rfl⟩ := hw
-    exact hcov input hin
-  · change w ∈ support (((Query C →ₒ HashOutput).randomOracle q).run s.1.1) at hw
-    cases q
-    all_goals exact hq _ true w.1 hw
-  · change w ∈ support ((prgAnswer prims p).run s.1.1) at hw
-    simp only [prgAnswer, hashAnswer, StateT.run_bind, StateT.run_pure, support_bind, support_pure] at hw
-    obtain ⟨x, hx, hw⟩ := Set.mem_iUnion₂.1 hw
-    have hw2 : w.2 = x.2 := congrArg Prod.snd (show w = _ from hw)
-    have hc := randomOracle_cache_ne _ s.1.1 x hx (.hash input) (by simp)
-    rw [hw2, hc] at hin
-    exact hcov input hin
-
-set_option maxRecDepth 100000 in
-/-- A hit of the monitor on `loggedRun` costs `2^-128` for each hash call at an encoding input. -/
-theorem probEvent_hit_le (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
-    (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr{let z ← loggedRun prims A x}[(monitorOf keyOf z.2.2).hit = true] ≤
-      (2 ^ 128 : ℝ≥0∞)⁻¹ * XmssSecurity.expectedSimulatedCost (loggedImpl prims)
-        (fun t _ => (keyedCost keyOf t : ℝ≥0∞)) (SigningDescentProof.finalRun A x) loggedInit := by
-  let potential : LoggedState C → ℝ≥0∞ := fun s => (monitorOf keyOf s.2).risk
-  let Inv : LoggedState C → Prop := fun s => ¬Programmed s.2 → Covered keyOf s
-  let bad : LoggedState C → Prop := fun s => (monitorOf keyOf s.2).hit = true ∧ ¬Programmed s.2
-  have hbad : ∀ s, bad s → 1 ≤ guarded potential s := by
-    intro s hs
-    rw [guarded, if_neg hs.2]
-    simp [potential, Monitor.risk, hs.1]
-  have hstep : ∀ t s, Inv s → ∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] * guarded potential r.2 ≤
-      guarded potential s + (2 ^ 128 : ℝ≥0∞)⁻¹ * (keyedCost keyOf t : ℝ≥0∞) := by
-    intro t s hs
-    exact SigningGuessProof.guarded_domain_step prims (Covered keyOf) potential
-      (fun t => (2 ^ 128 : ℝ≥0∞)⁻¹ * (keyedCost keyOf t : ℝ≥0∞))
-      (fun t s hs _ ht => logged_risk_le prims keyOf t s hs ht) t s hs
-  have hinit : Inv loggedInit := fun _ input h => (h rfl).elim
-  have hz : guarded potential loggedInit = 0 := by
-    rw [guarded, if_neg (show ¬Programmed (loggedInit (C := C)).2 by simp [loggedInit, Programmed])]
-    simp [potential, monitorOf, loggedInit, Monitor.risk, Monitor.empty,
-      XmssSecurity.CappedEncodingMonitor.State.pendingRisk_empty]
-  have hb := SigningGuessProof.probEvent_le_chargedCost (loggedImpl prims) Inv
-    (fun t s hs r hr => covered_step prims keyOf t s hs r hr) (guarded potential) bad hbad
-    (fun t _ => (keyedCost keyOf t : ℝ≥0∞)) (2 ^ 128 : ℝ≥0∞)⁻¹ hstep
-    (SigningDescentProof.finalRun A x) loggedInit hinit hz
-  refine le_trans ?_ hb
-  apply prEvent_mono_of_support _ _ _
-  intro z hz hhit
-  exact ⟨hhit, noProgramQuery prims C A x z hz⟩
 
 /-- An encoding input is not a top digest input. -/
 theorem encodingInput_not_anyTopDigestInput (x : SigningSecurityProof.Keys3 C) (e : XmssSecurity.LeafIndex)
@@ -575,177 +444,6 @@ theorem keyedCost_le_bottomDigestCost (x : SigningSecurityProof.Keys3 C) (t : (W
     all_goals exact Nat.zero_le _
   · exact Nat.zero_le _
 
-/-- The first order of leanVM `runObserved_empty_eq_true_of_query_before_sign_of_valid`. A call on
-the counted copy meets a later fresh selection at the same key. -/
-theorem monitorOf_hit_of_query_before_sign
-    (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) (e : XmssSecurity.LeafIndex)
-    (query sign : XmssSecurity.HashInput) (hquery : keyOf query = some e) (hsign : keyOf sign = some e)
-    (hne : sign ≠ query) (queryOutput signOutput : HashOutput)
-    (heq : XmssSecurity.truncateHash queryOutput = XmssSecurity.truncateHash signOutput)
-    (hvalid : XmssSecurity.TargetSum.ValidDigest (XmssSecurity.truncateHash signOutput)) :
-    (monitorOf keyOf ([⟨.inl (.inl (.inr (.inl (.hash query)))), queryOutput⟩,
-      ⟨.inr (.inr (.inl (.hash sign))), signOutput⟩] : QueryLog (WorldSpec C))).hit = true := by
-  have h1 : Monitor.empty.step keyOf (query, XmssSecurity.truncateHash queryOutput, false) =
-      ⟨insert query ∅, XmssSecurity.EncodingMonitor.State.empty.addPending e
-        (XmssSecurity.truncateHash signOutput), false⟩ := by
-    rw [Monitor.step_of_not_seen keyOf _ _ (Set.notMem_empty _),
-      Monitor.fresh_unsigned keyOf _ _ _ _ e hquery rfl, heq, if_pos hvalid]
-    rfl
-  have hseen : sign ∉ (insert query ∅ : Set XmssSecurity.HashInput) := by simpa using hne
-  have hsigned : (XmssSecurity.EncodingMonitor.State.empty.addPending e
-      (XmssSecurity.truncateHash signOutput)).signed e = none := rfl
-  change ((Monitor.empty.step keyOf (query, XmssSecurity.truncateHash queryOutput, false)).step keyOf
-    (sign, XmssSecurity.truncateHash signOutput, true)).hit = true
-  rw [h1, Monitor.step_of_not_seen keyOf _ _ hseen, Monitor.fresh_unsigned keyOf _ _ _ _ e hsign hsigned,
-    if_pos hvalid, if_pos rfl]
-  simp [XmssSecurity.EncodingMonitor.State.addPending]
-
-/-- The second order of leanVM `runObserved_empty_eq_true_of_sign_before_query_of_valid`. A later
-fresh call on another input meets the selected digest. -/
-theorem monitorOf_hit_of_sign_before_query
-    (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) (e : XmssSecurity.LeafIndex)
-    (sign query : XmssSecurity.HashInput) (hsign : keyOf sign = some e) (hquery : keyOf query = some e)
-    (hne : query ≠ sign) (signOutput queryOutput : HashOutput)
-    (heq : XmssSecurity.truncateHash queryOutput = XmssSecurity.truncateHash signOutput)
-    (hvalid : XmssSecurity.TargetSum.ValidDigest (XmssSecurity.truncateHash signOutput)) :
-    (monitorOf keyOf ([⟨.inr (.inr (.inl (.hash sign))), signOutput⟩,
-      ⟨.inl (.inl (.inr (.inl (.hash query)))), queryOutput⟩] : QueryLog (WorldSpec C))).hit = true := by
-  have h1 : Monitor.empty.step keyOf (sign, XmssSecurity.truncateHash signOutput, true) =
-      ⟨insert sign ∅, XmssSecurity.EncodingMonitor.State.empty.install e
-        (XmssSecurity.truncateHash signOutput), false || decide (XmssSecurity.truncateHash signOutput ∈
-          XmssSecurity.EncodingMonitor.State.empty.pending e)⟩ := by
-    rw [Monitor.step_of_not_seen keyOf _ _ (Set.notMem_empty _),
-      Monitor.fresh_unsigned keyOf _ _ _ _ e hsign rfl, if_pos hvalid, if_pos rfl]
-    rfl
-  have hseen : query ∉ (insert sign ∅ : Set XmssSecurity.HashInput) := by simpa using hne
-  have hsigned : (XmssSecurity.EncodingMonitor.State.empty.install e
-      (XmssSecurity.truncateHash signOutput)).signed e = some (XmssSecurity.truncateHash signOutput) := by
-    simp [XmssSecurity.EncodingMonitor.State.install]
-  change ((Monitor.empty.step keyOf (sign, XmssSecurity.truncateHash signOutput, true)).step keyOf
-    (query, XmssSecurity.truncateHash queryOutput, false)).hit = true
-  rw [h1, Monitor.step_of_not_seen keyOf _ _ hseen,
-    Monitor.fresh_signed keyOf _ _ _ _ e hquery _ hsigned, heq]
-  simp
-
-/-- An outcome of `loggedRun`. -/
-abbrev LoggedOutcome (C : Committee) :=
-  ((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) × LoggedState C
-
-/-- The lane 1 bottom partner of leanVM on the log of a run. The selection at a key `e` is a fresh
-honest call with a valid digest, and some call at `e` on another input meets its digest, before or
-after it. -/
-def BottomPartnerLogged (x : SigningSecurityProof.Keys3 C) (z : LoggedOutcome C) : Prop :=
-  (monitorOf (XmssSecurity.encodingInputLeafIndex? x.1) z.2.2).hit = true
-
-/-- The bottom partner costs `2^-128` for each bottom digest call. -/
-theorem bottomPartnerLogged_bound (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr{let z ← loggedRun prims A x}[BottomPartnerLogged x z] ≤
-      (2 ^ 128 : ℝ≥0∞)⁻¹ * SigningGuessProof.sourceExpectedCost prims A x
-        (SigningPartnerLinkProof.bottomDigestCost x) := by
-  refine (probEvent_hit_le prims _ A x).trans ?_
-  gcongr
-  apply XmssSecurity.expectedSimulatedCost_mono
-  intro t _
-  exact_mod_cast keyedCost_le_bottomDigestCost x t
-
-/-- The charged lane with the bottom partner on the log. -/
-def ChargedOutputLogged (x : SigningSecurityProof.Keys3 C) (z : LoggedOutcome C) : Prop :=
-  SigningGuessProof.ChargedOutput prims x (z.1, z.2.1) ∨ BottomPartnerLogged x z
-
-/-- The win that the charged lane on the log leaves. -/
-def UnchargedWinLogged (x : SigningSecurityProof.Keys3 C) (z : LoggedOutcome C) : Prop :=
-  z.1.1 = (true, false) ∧ ¬ChargedOutputLogged prims x z
-
-/-- The fixed-cap bound of the uncharged lane on the log. -/
-def UnchargedLaneBoundLogged : Prop :=
-  ∀ (A : TsigAdversary C) (q : ℕ) (x : SigningSecurityProof.Keys3 C),
-    x ∈ support (TprfSecurityProof.keyGen3 (C := C)) →
-    ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
-    (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) →
-    q < 2 ^ 127 →
-    Pr{let z ← loggedRun prims A x}[UnchargedWinLogged prims x z] ≤ (q : ℝ≥0∞) / 2 ^ 128
-
-set_option maxRecDepth 100000 in
-/-- `SigningPartnerLinkProof.chargedOutput2_bound` with the bottom partner on the log. -/
-theorem chargedOutputLogged_bound (A : TsigAdversary C) (q : ℕ) (x : SigningSecurityProof.Keys3 C)
-    (hx : x ∈ support (TprfSecurityProof.keyGen3 (C := C)))
-    (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
-    (hq : ∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q)
-    (hsmall : q < 2 ^ 127) :
-    Pr{let z ← loggedRun prims A x}[ChargedOutputLogged prims x z] ≤ (q : ℝ≥0∞) / 2 ^ 128 := by
-  obtain ⟨T, hhit⟩ := SigningGuessProof.hit_bound_structural_cost prims A q x hx hkeys hq hsmall
-  replace hhit : Pr{let z ← SigningDescentProof.exposedRun prims A x}[SigningCostProof.WinHit prims x z] ≤
-      (2 ^ 128 : ℝ≥0∞)⁻¹ * SigningGuessProof.sourceExpectedCost prims A x
-        (SigningGuessProof.structuralHitCost x T) := hhit
-  have hcost := SigningGuessProof.source_output_costs_le prims A x T q hq
-  have hdigest : SigningGuessProof.sourceExpectedCost prims A x SigningGuessLaneProof.digestCost =
-      SigningGuessProof.sourceExpectedCost prims A x
-          (SigningGuessProof.rawDomainCost (SigningGuessProof.anyTopDigestInput x.1)) +
-        SigningGuessProof.sourceExpectedCost prims A x (SigningPartnerLinkProof.bottomDigestCost x) := by
-    rw [← SigningGuessProof.sourceExpectedCost_add]
-    congr 1
-    funext t
-    exact (SigningPartnerLinkProof.topDigest_add_bottomDigestCost x t).symm
-  let run := SigningDescentProof.exposedRun prims A x
-  have h1 : Pr{let z ← loggedRun prims A x}[ChargedOutputLogged prims x z] ≤
-      Pr{let z ← run}[SigningGuessProof.ChargedOutput prims x z] + Pr{let z ← loggedRun prims A x}[BottomPartnerLogged x z] := by
-    refine (prEvent_or_le (loggedRun prims A x)
-      (fun z => SigningGuessProof.ChargedOutput prims x (z.1, z.2.1)) (BottomPartnerLogged x)).trans (le_of_eq ?_)
-    refine congrArg₂ (· + ·) ?_ rfl
-    change _ = Pr{let z ← SigningDescentProof.exposedRun prims A x}[SigningGuessProof.ChargedOutput prims x z]
-    rw [← loggedRun_forget, prEvent_map]
-  have h2 := prEvent_or_le run (SigningCostProof.WinHit prims x)
-    (fun r => SigningGuessProof.AlternativeCommitment x.2.1 x.1 r.2.1 ∨
-      ∃ key, SigningGuessProof.ResolvedTopPartner x key r.2.1)
-  have h3 := prEvent_or_le run (fun r => SigningGuessProof.AlternativeCommitment x.2.1 x.1 r.2.1)
-    (fun r => ∃ key, SigningGuessProof.ResolvedTopPartner x key r.2.1)
-  have hsum := h1.trans (add_le_add (h2.trans (add_le_add hhit (h3.trans (add_le_add
-    (SigningGuessProof.alternativeCommitment_bound_source prims A x)
-    (SigningPartnerLinkProof.resolvedTopPartner_bound_topDigest prims A x))))) (bottomPartnerLogged_bound prims A x))
-  rw [← mul_add, ← mul_add, ← mul_add] at hsum
-  refine hsum.trans ?_
-  rw [div_eq_mul_inv, mul_comm (q : ℝ≥0∞)]
-  refine mul_le_mul_right (le_trans (le_of_eq ?_) hcost) _
-  rw [hdigest]
-  ac_rfl
-
-set_option maxRecDepth 100000 in
-theorem win_le_chargedLogged_unchargedLogged (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr{let r ←
-      runSigningWorld prims (SigningCoreProof.flaggedAfter A x)}[r.1.2 = false ∧ r.1.1 = true] ≤
-    Pr{let z ← loggedRun prims A x}[ChargedOutputLogged prims x z] +
-      Pr{let z ← loggedRun prims A x}[UnchargedWinLogged prims x z] := by
-  rw [SigningDescentProof.runSigningWorld_flaggedAfter, ← loggedRun_forget, Functor.map_map, prEvent_map]
-  refine (prEvent_mono_of_support _ _ _ fun r _ hw => ?_).trans (prEvent_or_le _ _ _)
-  by_cases hc : ChargedOutputLogged prims x r
-  · exact Or.inl hc
-  · exact Or.inr ⟨Prod.ext hw.2 hw.1, hc⟩
-
-/-- The signing core from the uncharged lane on the log. The bottom partner bound is proved. -/
-theorem hiddenCoreAt_of_logged (hresidual : UnchargedLaneBoundLogged (C := C) prims) :
-    SigningCoreProof.HiddenCoreAt prims C := by
-  intro A q x hx hkeys hq hsmall
-  rw [SigningCostProof.signingHashError_eq]
-  exact (win_le_chargedLogged_unchargedLogged prims A x).trans
-    (add_le_add (chargedOutputLogged_bound prims A q x hx hkeys hq hsmall)
-      (hresidual A q x hx hkeys hq hsmall))
-
 end SigningPartnerBoundProof
 
 end ThresholdLeanXmssSecurity
-
-/--
-info: 'ThresholdLeanXmssSecurity.SigningPartnerBoundProof.bottomPartnerLogged_bound' depends on axioms: [propext,
- Classical.choice,
- Quot.sound]
--/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningPartnerBoundProof.bottomPartnerLogged_bound
-
-/--
-info: 'ThresholdLeanXmssSecurity.SigningPartnerBoundProof.hiddenCoreAt_of_logged' depends on axioms: [propext,
- Classical.choice,
- Quot.sound]
--/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningPartnerBoundProof.hiddenCoreAt_of_logged

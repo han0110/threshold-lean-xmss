@@ -79,10 +79,6 @@ theorem ObsEq.bind_right (oa : OracleComp (LocalSpec C) α) {f g : α → Oracle
     (h : ∀ a, ObsEq prims (f a) (g a)) : ObsEq prims (oa >>= f) (oa >>= g) :=
   ObsEq.bind_support oa fun a _ => h a
 
-theorem ObsEq.bind {oa ob : OracleComp (LocalSpec C) α} {f g : α → OracleComp (LocalSpec C) β}
-    (h : ObsEq prims oa ob) (hfg : ∀ a, ObsEq prims (f a) (g a)) : ObsEq prims (oa >>= f) (ob >>= g) :=
-  (h.bind_left f).trans (ObsEq.bind_right ob hfg)
-
 theorem ObsEq.map {oa ob : OracleComp (LocalSpec C) α} (h : ObsEq prims oa ob) (f : α → β) :
     ObsEq prims (f <$> oa) (f <$> ob) := by
   simp only [map_eq_bind_pure_comp]

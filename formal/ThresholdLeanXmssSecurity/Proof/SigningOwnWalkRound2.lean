@@ -391,8 +391,8 @@ theorem TreeAt.grows {e : KeyIndex} {tree : Option DeferredBottomTree} {st st' :
   obtain ⟨c, hc, hl⟩ := h t ht
   exact ⟨c, hg.pending _ _ hc, hl⟩
 
-/-- `walk_sourceBottomOnce`, which also states that a successful tree of the key holds the low half
-of its commitment answer. -/
+/-- The walk of `sourceBottomOnce` keeps `BaseInv` with no charged call, and a successful tree of
+the key holds the low half of its commitment answer. -/
 theorem walk_sourceBottomOnce_at (top : TopTree) (e : KeyIndex) :
     Walk P seeds Q s (BaseInv P seeds none none) 0
       (fun r src st => BaseInv P seeds none none src st ∧ TreeAt e r st)

@@ -5,7 +5,6 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerSyncBackend
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerSyncRealRead
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Release
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerPotential
-import ThresholdLeanXmssSecurity.Proof.SigningCompilerShareGuarded
 import ThresholdLeanXmssSecurity.Proof.SigningReleasedAlign
 
 /-! # The boundary relation of the O1 coupling

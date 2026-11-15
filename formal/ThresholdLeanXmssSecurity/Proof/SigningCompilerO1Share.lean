@@ -6,8 +6,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Source
 `compilerRunPadsO1_eq_lazy` states that the O1 source with fixed hidden labels and eager private
 pads is equal, as a program, to the first component of the O1 source over the lazy share backend
 with the cap tag.
-The proof follows `SigningCompilerShare.compilerRunPads_eq_shareRun`. The tag drops by the retag
-lemmas of `SigningCompilerShareTag`.
+The tag drops by the retag lemmas of `SigningCompilerShareTag`.
 -/
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
@@ -84,7 +83,7 @@ section Share
 variable (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest)
   (pads : Point → Digest)
 
-/-- The pad run is the lazy share run. It is `compilerRunPads_eq_shareRun` for the O1 source. -/
+/-- The pad run of the O1 source is the lazy share run. -/
 theorem compilerRunPadsO1_eq_lazy (hinj : Function.Injective x.2.1) (τ : CPoint → Digest) :
     compilerRunPadsO1 prims A x q s pads = Prod.fst <$> lazyRunCO1 prims A x q s pads τ := by
   have htag := lazyRun_retag (C := C) (Tag := Bool × Bool) Prod.fst τ

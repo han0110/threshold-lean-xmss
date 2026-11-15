@@ -75,19 +75,6 @@ theorem seen_update {table : DigestCache} {seen : Set XmssSecurity.HashInput}
     simp
   · simp [Set.mem_insert_iff, he, hseen]
 
-/-- Installation at a fresh valid input detects any previously cached equal digest. -/
-theorem install_detects_cached
-    {keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex}
-    {table : DigestCache} {monitor : Monitor} (h : CacheInvariant keyOf table monitor)
-    (input other : XmssSecurity.HashInput) (e : XmssSecurity.LeafIndex)
-    (digest : XmssSecurity.Digest)
-    (hk : keyOf input = some e) (hs : monitor.state.signed e = none)
-    (hv : XmssSecurity.TargetSum.ValidDigest digest)
-    (hother : table other = some digest) (hkey : keyOf other = some e) :
-    (monitor.fresh keyOf input digest true).hit = true := by
-  rw [monitor.fresh_unsigned keyOf input digest true e hk hs]
-  simp [hv, h.pending other digest e hother hkey hs hv]
-
 /-- A fresh installation preserves the full cache invariant. -/
 theorem invariant_install
     {keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex}

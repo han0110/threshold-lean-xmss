@@ -509,21 +509,6 @@ theorem runSourceO1_cache_le {α : Type} (P : PublicParameter) (seeds : C.Term �
     (fun t st hs a ha => hs.trans (cappedCompiler_cache_le P seeds q s t st a ha))
     (oa.run src) backend le_rfl r hr
 
-/-- The lifted original suffix satisfies the exact O1 full-strength contract. -/
-theorem sourceReleaseBottomSuffix_doneO1 (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
-    (sig : TsigState C) (e : KeyIndex) (l : ChainIndex) (start : WinternitzDigit)
-    (src : SourceStateO1 C) (backend : CappedCompilerState C)
-    (h : ReleaseInvariantO1 seeds s sig src backend)
-    (r : (Unit × SourceStateO1 C) × CappedCompilerState C)
-    (hr : r ∈ support (runSourceO1 P seeds q s
-      (liftBase (sourceReleaseBottomSuffix P seeds e l start)) src backend)) :
-    ReleaseInvariantO1 seeds s sig r.1.2 r.2 ∧
-      ∀ pos : XmssSecurity.ChainStep, start.val ≤ pos.val → BottomDone seeds s r.2.1.1.data e l pos := by
-  rw [runSourceO1_liftBase, support_map] at hr
-  obtain ⟨a, ha, rfl⟩ := hr
-  exact sourceReleaseBottomSuffix_base P seeds hinj q s sig src.starts e l start src.base backend h a ha
-
 /-- The selected suffix may be computed against the pre-insertion starts invariant. -/
 theorem sourceReleaseCovered_base (P : PublicParameter) (seeds : C.Term → HashOutput)
     (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
@@ -804,12 +789,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1Release
  Quot.sound] -/
 #guard_msgs in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Release.runSourceO1_cache_le
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Release.sourceReleaseBottomSuffix_doneO1' depends on axioms: [propext,
- Classical.choice,
- Quot.sound] -/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1Release.sourceReleaseBottomSuffix_doneO1
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1Release.sourceReleaseCovered_base' depends on axioms: [propext,
  Classical.choice,

@@ -1069,56 +1069,6 @@ theorem step_law (P : PublicParameter) (seeds : C.Term → HashOutput)
   rw [merge_empty]
   rfl
 
-/-- The final view merges the complete share cache without projecting any
-component of the original compiler outcome. -/
-theorem shareRun_final (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
-    (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
-    (τ : CPoint → SigningShareLazy.Digest) :
-    Prod.fst <$> (simulateQ (lazyHandler τ) (shareRun prims A x q s pads)).run
-      (SigningShareLazy.init (B := SigningShareLazy.ImplBad Bool)) =
-      projectResult x.2.1 <$> runShareProgram x.1 x.2.1 q s pads τ
-        (sourceProgramX prims A x) (((compilerInit, 0), fun _ => none, false), false)
-        (SigningShareLazy.init (B := SigningShareLazy.ImplBad Bool)) := by
-  simp only [shareRun, runShareProgram, simulateQ_bind, StateT.run_bind, map_bind,
-    lazy_view_run, pure_bind, simulateQ_pure, StateT.run_pure, map_pure,
-    bind_pure_comp, projectResult, simulateQ_map, StateT.run_map, Functor.map_map]
-  rfl
-
-/-- The fixed-pad compiler and the lazy share backend have the same full outcome
-for arbitrary targets. Seed injectivity is the original collision-free condition. -/
-theorem compilerRunPads_eq_shareRun (prims : Primitives) (A : TsigAdversary C)
-    (x : Keys3 C) (hinj : Function.Injective x.2.1) (q : ℕ)
-    (s : HiddenKey → Digest) (pads : Point → Digest)
-    (τ : CPoint → SigningShareLazy.Digest) :
-    compilerRunPads prims A x q s pads =
-      Prod.fst <$> (simulateQ (lazyHandler τ) (shareRun prims A x q s pads)).run
-        (SigningShareLazy.init (B := SigningShareLazy.ImplBad Bool)) := by
-  rw [shareRun_final, compilerRunPads, sourceProgram_eq_expand, compilerProgramPads_ordinary]
-  have hi : Inv x.2.1 (((compilerInit, 0), fun _ => none, false), false)
-      (SigningShareLazy.init (B := SigningShareLazy.ImplBad Bool)) := by
-    constructor
-    · intro query z hz
-      rfl
-    · simp [DoneCached, SigningShareLazy.init]
-  simpa only [merged_init] using program_eq_of_steps x.1 x.2.1 q s pads τ
-    (step_law x.1 x.2.1 hinj q s pads τ) (sourceProgramX prims A x)
-    (sourceProgramX_allowed prims A x) _ _ hi
-
-/-- B2 retains the source output, every source field, the entire merged backend,
-trace, count, reveals and cap flag; share metadata stays in the outer state. -/
-theorem evalDist_compilerRunPads_eq_shareRun (prims : Primitives) (A : TsigAdversary C)
-    (x : Keys3 C) (hinj : Function.Injective x.2.1) (q : ℕ)
-    (s : HiddenKey → Digest) (pads : Point → Digest)
-    (τ : CPoint → SigningShareLazy.Digest) :
-    compilerRunPads prims A x q s pads =ᵈ
-      (Prod.fst <$> (simulateQ
-        (SigningShareLazy.unifImpl (ShareState C) +
-          SigningShareLazy.lazyImpl (Tag := Bool) C.terms τ)
-        (shareRun prims A x q s pads)).run
-          (SigningShareLazy.init (B := SigningShareLazy.ImplBad Bool))) := by
-  rw [compilerRunPads_eq_shareRun prims A x hinj q s pads τ]
-  rfl
-
 end ThresholdLeanXmssSecurity.SigningCompilerShare
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerShare.complete_merge' depends on axioms: [propext,
@@ -1132,9 +1082,3 @@ end ThresholdLeanXmssSecurity.SigningCompilerShare
  Quot.sound] -/
 #guard_msgs in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerShare.readStep_merge
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerShare.evalDist_compilerRunPads_eq_shareRun' depends on axioms: [propext,
- Classical.choice,
- Quot.sound] -/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerShare.evalDist_compilerRunPads_eq_shareRun

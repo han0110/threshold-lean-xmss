@@ -79,20 +79,6 @@ theorem hashTail_slot (x : Keys3 C) (input : Query C) (hs : IsSlot x input)
   simp only [simulateQ_pure, StateT.run_pure, pure_bind]
   rw [nonhash_traceStepAt x.2.1 x.1 _ _ _ _ _ (slot_no_hashCall x input hs).2]
 
-theorem observe_slot_value (x : Keys3 C)
-    (s : HiddenKey → Digest) (pads : Point → Digest) (noise : ChainNoiseIndex → HashOutput)
-    (g : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput)
-    (priv vis : HashCache C) (hr : RealPrivate x s pads noise g rest priv vis)
-    (input : Query C) (hs : IsSlot x input) :
-    vis ≤ vis.cacheQuery input (realTable g rest hs.choose) := by
-  cases hv : vis input with
-  | none => exact QueryCache.le_cacheQuery vis hv
-  | some v =>
-    have he := hr.visible input v hv
-    rw [dif_pos hs] at he
-    rw [Option.some.inj he, observe_same vis input v hv]
-
-
 /-- A concrete read materializes one nonhash cell in both cache views. -/
 theorem cacheRelation_slot (x : Keys3 C) (s : HiddenKey → Digest)
     (data : DeferredState C) (vis : HashCache C) (input : Query C)
@@ -240,10 +226,6 @@ theorem backend_slot_read (x : Keys3 C)
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalSlot.hashTail_slot' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncLocalSlot.hashTail_slot
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalSlot.observe_slot_value' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncLocalSlot.observe_slot_value
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncLocalSlot.cacheRelation_slot' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

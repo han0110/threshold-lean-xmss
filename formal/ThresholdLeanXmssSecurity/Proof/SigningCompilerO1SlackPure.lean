@@ -198,25 +198,6 @@ theorem ReleaseSlackO1.virtual_unready {source : SourceState C} {data : Deferred
       simp only [Finset.mem_insert, not_or]
       exact ⟨fun heq => he (congrArg Prod.snd heq).symm, hv⟩
 
-/-- The last virtual term at a ready bottom randomizer that is not complete has no cache entry. -/
-theorem ReleaseSlackO1.ready_virtual_missing {src : SourceStateO1 C} {data : DeferredState C}
-    (h : ReleaseSlackO1 seeds s sig src data) (T : C.Term) (e : KeyIndex)
-    (hd : ¬PointDone seeds data (.randomizer bottomLayer e) (s (.opening bottomLayer e)))
-    (hr : OpeningReady seeds
-      { data with virtual := insert (T, Point.randomizer bottomLayer e) data.virtual } sig e) :
-    data.cache (.prf (seeds T) (.randomizer bottomLayer e)) = none := by
-  rcases h.bottom_opening e with hh | ⟨hb, _⟩ | ⟨_, U, hv, hc⟩
-  · exact (hd hh).elim
-  · exact (hr.1 hb).elim
-  · rcases hr.2 U with hmem | hcached
-    · have heq : U = T := by
-        rcases Finset.mem_insert.mp hmem with heq | hmem
-        · exact congrArg Prod.fst heq
-        · exact (hv hmem).elim
-      subst U
-      exact hc
-    · simp only [hc, Option.isSome_none, Bool.false_eq_true] at hcached
-
 /-- A smaller virtual set keeps the slack. -/
 theorem ReleaseSlackO1.virtual_subset {source : SourceState C} {data : DeferredState C}
     (h : ReleaseSlackO1 seeds s sig ⟨source, starts⟩ data) (virtual : Finset (C.Term × Point))
@@ -287,10 +268,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1SlackPure
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1SlackPure.ReleaseSlackO1.virtual_unready' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1SlackPure.ReleaseSlackO1.virtual_unready
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1SlackPure.ReleaseSlackO1.ready_virtual_missing' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1SlackPure.ReleaseSlackO1.ready_virtual_missing
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1SlackPure.ReleaseSlackO1.virtual_subset' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

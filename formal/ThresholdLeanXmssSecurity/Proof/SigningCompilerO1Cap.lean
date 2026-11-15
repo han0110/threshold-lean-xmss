@@ -37,8 +37,7 @@ theorem badCap_iffO1 (z : CompilerOutcomeO1 C × ShareStateT C (Bool × Bool)) :
   | none => simp
   | some r => rcases r with ⟨⟨m, c⟩, k, l⟩; cases c <;> simp
 
-/-- Disjoint events add exactly. This lemma is a port of the private
-`SigningCompilerShareCap.probEvent_or_eq`. -/
+/-- Disjoint events add exactly. -/
 theorem probEvent_or_eq {α : Type} (oa : ProbComp α) (P Q : α → Prop)
     (disjoint : ∀ z, P z → Q z → False) :
     Pr{let z ← oa}[P z ∨ Q z] = Pr{let z ← oa}[P z] + Pr{let z ← oa}[Q z] := by

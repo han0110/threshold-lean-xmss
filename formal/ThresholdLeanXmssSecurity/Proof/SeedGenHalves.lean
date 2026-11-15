@@ -2,28 +2,26 @@ import ThresholdLeanXmssSecurity.Proof.SeedGenSecurity
 import ThresholdLeanXmssSecurity.Proof.Coupling
 
 /-!
-# Seed generation security: the two hybrid halves
+# The stages of the hidden half of the seed generation security
 
-This module relates the two halves of `seedGenSecurityProof`:
-`SeedGenHiddenFreshSwapped` (the hidden half on the relabeled reference runs) and
-`SeedGenKnownMismatch` (the known half on the simulator's emulation).
+This module holds the stages of the hidden half on the relabeled reference runs
+(`seedGenSwappedMixture`). `seedGenSwapped_le_of_ext` of `Proof/SeedGenFinish.lean` uses them, and
+`seedGenHiddenFresh_of_echoFreshExt` uses its bound to prove `SeedGenHiddenFresh`.
 
-The hidden half is reduced to one echo-collision bound, `SeedGenEchoFresh`.
+The hidden half is reduced to one echo-collision event, `SeedGenEchoIrregular`.
 
 1. Stage A (`seedGenStageA`). The relabeled oracle answers the canonical hidden inputs with
    the dealer's table. Replace it by the independent oracle. The two runs agree unless the parts
    clash (`SeedGenClash`, at most `seedGenClashCount / 2^256`) or a call of the adversary or the
    distinguisher hits a canonical hidden input (at most `q (|terms| + |pairs|) / 2^256`). Without a
    clash, no honest derivation of an exposed key reads a canonical hidden input.
-2. Stage B (`seedGenIndepEcho_of_acceptGap`). On the independent run, the table enters only
+2. Stage B (`seedGenStageB_parts`). On the independent run, the table enters only
    the hidden coordinates of the outputs and the receivers. The run splits into a table-free
    transcript and the outputs of the table. The fresh keys of `seedGenHiddenZ` and the table are two
    independent fresh tables, so the gap is at most the probability that their receivers differ.
 3. The receivers of two tables agree unless one of them makes an echo collision on two honest
    operators that share a hidden term (`seedGenReferenceData_receivers_hidden`).
-4. The echo interface: `SeedGenEchoFresh`, the probability of such a collision on the independent run.
-
-`SeedGenKnownMismatch` states the known-half estimate.
+4. `SeedGenEchoIrregular` is such a collision on the independent run (`seedGenReceiversGap_irregular`).
 -/
 
 set_option pp.deepTerms false
@@ -124,25 +122,6 @@ theorem relTriple_fixedLocal_swap (h₁ h₂ : Query C → HashOutput) (P : Quer
 theorem fst_simulateQ_seedGenHashLog (h : Query C → HashOutput) {α : Type} (oa : OracleComp (LocalSpec C) α) :
     Prod.fst <$> simulateQ (fixedLocal prims h) (seedGenHashLog oa) = simulateQ (fixedLocal prims h) oa := by
   rw [← simulateQ_map, seedGenHashLog_fst]
-
-/-- The acceptance gap of two fixed oracles that agree off `P` is at most the probability that the
-logged run queries a point of `P`. -/
-theorem abs_probOutput_fixedLocal_swap_le (h₁ h₂ : Query C → HashOutput) (P : Query C → Prop)
-    (hP : ∀ v, ¬ P v → h₁ v = h₂ v) (oa : OracleComp (LocalSpec C) Bool) :
-    |(Pr{let z ← simulateQ (fixedLocal prims h₁) oa}[z = true]).toReal -
-        (Pr{let z ← simulateQ (fixedLocal prims h₂) oa}[z = true]).toReal| ≤
-      (Pr{let r ← simulateQ (fixedLocal prims h₂) (seedGenHashLog oa)}[∃ v ∈ r.2, P v]).toReal := by
-  have h := abs_probEvent_sub_le_of_relTriple (fun r : Bool × List (Query C) => ∃ v ∈ r.2, P v)
-    (fun r => r.1 = true) (fun b => b = true) (relTriple_post_mono
-      (relTriple_fixedLocal_swap prims h₁ h₂ P hP oa) fun x y hxy => by
-        rcases hxy with hb | he
-        · exact Or.inl hb
-        · exact Or.inr (by rw [he]))
-  have hl : Pr{let r : Bool × List (Query C) ← simulateQ (fixedLocal prims h₂) (seedGenHashLog oa)}[
-      r.1 = true] = Pr{let z ← simulateQ (fixedLocal prims h₂) oa}[z = true] := by
-    rw [← fst_simulateQ_seedGenHashLog prims h₂ oa, prEvent_map]
-  rw [hl] at h
-  rwa [abs_sub_comm]
 
 /-- The one-sided gaps of two fixed oracles that agree off `P`, in both directions. -/
 theorem probOutput_fixedLocal_swap_le (h₁ h₂ : Query C → HashOutput) (P : Query C → Prop)
@@ -1141,8 +1120,6 @@ theorem evalDist_seedGenRestrict_bind {β : Type} (F : SeedGenFresh C → ProbCo
   have h := (evalDist_seedGenRestrict (C := C)).bind_left F
   rwa [bind_map_left] at h
 
-theorem seedGenTableOf_restrict (u : SeedGenFresh C) : seedGenRestrict (seedGenTableOf u.1 u.2) = u := rfl
-
 theorem uniformSample_prod_bind {α β γ : Type} [SampleableType α] [SampleableType β]
     (f : α × β → ProbComp γ) :
     ($ᵗ (α × β)) >>= f = ($ᵗ α) >>= fun a => ($ᵗ β) >>= fun b => f (a, b) := by
@@ -1259,51 +1236,6 @@ theorem seedGenStageB_parts (D : C.Coalition) (A : Adversary C E Unit PEmpty PEm
 /-- Stage A on one distinguisher costs the clashes and the guesses. -/
 def seedGenStageAError (C : Committee) (q : ℕ) : ℝ := ((seedGenClashCount C + q * seedGenGuessNames C : ℕ) : ℝ) / 2 ^ 256
 
-/-- The open stage: on the independent reference run, replacing the hidden keys by fresh ones moves
-the acceptance by at most what remains of half the error after stage A on both distinguishers. -/
-def SeedGenIndepEcho (prims : Primitives) : Prop :=
-  ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
-    (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
-    ∀ (S : Finset (Query C)), (∀ parts name, seedGenNamedInput parts name ∈ S) →
-      SeedGenWorldCovered S (free (seedGenNormalizedLocalGame D A x z Z)) →
-      SeedGenWorldCovered S (free (seedGenNormalizedLocalGame D A x z (seedGenHiddenZ D Z))) →
-      |(Pr{let y ← seedGenIndepMixture prims D A x z Z S}[y = true]).toReal -
-        (Pr{let y ← seedGenIndepMixture prims D A x z (seedGenHiddenZ D Z) S}[y = true]).toReal| ≤
-        seedGenHashError C q / 2 - 2 * seedGenStageAError C q
-
-/-- The hidden half on the relabeled reference runs, from stage A and the open stage B. -/
-theorem seedGenHiddenFreshSwapped_of_indepEcho (hB : SeedGenIndepEcho (C := C) (E := E) prims) :
-    SeedGenHiddenFreshSwapped (C := C) (E := E) prims := by
-  intro D A x z Z q hq S hmem h₁ h₂
-  have hA₁ := seedGenStageA prims D A x z Z S hmem q hq
-  have hA₂ := seedGenStageA prims D A x z (seedGenHiddenZ D Z) S hmem q (isQueryBounded_seedGenHiddenZ D A Z q hq)
-  have hb := hB D A x z Z q hq S (hmem · ·) h₁ h₂
-  unfold seedGenStageAError at hb
-  calc _ ≤ |(Pr{let y ← seedGenSwappedMixture prims D A x z Z S hmem}[y = true]).toReal -
-          (Pr{let y ← seedGenIndepMixture prims D A x z Z S}[y = true]).toReal| +
-        |(Pr{let y ← seedGenIndepMixture prims D A x z Z S}[y = true]).toReal -
-          (Pr{let y ← seedGenIndepMixture prims D A x z (seedGenHiddenZ D Z) S}[y = true]).toReal| +
-        |(Pr{let y ← seedGenIndepMixture prims D A x z (seedGenHiddenZ D Z) S}[y = true]).toReal -
-          (Pr{let y ← seedGenSwappedMixture prims D A x z (seedGenHiddenZ D Z) S hmem}[y = true]).toReal| := by
-        refine (abs_sub_le _ (Pr{let y ← seedGenIndepMixture prims D A x z (seedGenHiddenZ D Z) S}[y = true]).toReal _).trans ?_
-        gcongr
-        exact abs_sub_le _ _ _
-    _ ≤ _ := by
-        rw [abs_sub_comm ((Pr{let y ← seedGenIndepMixture prims D A x z (seedGenHiddenZ D Z) S}[y = true]).toReal)]
-        linarith
-
-/-- The open core of the hidden half: on the independent reference run, two independent fresh tables
-give different receivers with probability at most what remains of half the error. The receivers
-depend on a table only through the honest echo comparisons, so this is the echo-collision bound. -/
-def SeedGenAcceptGap (prims : Primitives) : Prop :=
-  ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
-    (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
-    ∀ (S : Finset (Query C)), (∀ parts name, seedGenNamedInput parts name ∈ S) →
-      SeedGenWorldCovered S (free (seedGenNormalizedLocalGame D A x z Z)) →
-      SeedGenWorldCovered S (free (seedGenNormalizedLocalGame D A x z (seedGenHiddenZ D Z))) →
-      (Pr{let y ← seedGenPartsKernel (seedGenStageBSampler prims D A x z S)}[SeedGenReceiversGap prims D A S y]).toReal ≤
-        seedGenHashError C q / 2 - 2 * seedGenStageAError C q
-
 /-- The fresh table `u` makes an echo collision on a pair of honest operators that share a hidden
 term, in a transcript that reaches the echo. -/
 def SeedGenEchoIrregular (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (S : Finset (Query C))
@@ -1352,91 +1284,13 @@ theorem probEvent_seedGenEchoIrregular_swap (D : C.Coalition) (A : Adversary C E
   rw [← hp, prEvent_map]
   rfl
 
-theorem seedGenIndepEcho_of_acceptGap (hG : SeedGenAcceptGap (C := C) (E := E) prims) :
-    SeedGenIndepEcho (C := C) (E := E) prims := by
-  intro D A x z Z q hq S hmem h₁ h₂
-  refine le_trans ?_ (hG D A x z Z q hq S hmem h₁ h₂)
-  have hZ : Pr{let y ← seedGenIndepMixture prims D A x z Z S}[y = true] =
-      Pr{let y ← (OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)) >>= fun parts =>
-        seedGenStageBSampler prims D A x z S parts >>= fun w =>
-          seedGenStageBRun prims D A Z S parts w w.2.2.2 w.2.2.2}[y = true] := by
-    exact (EvalDistEq.bind_right _ fun parts =>
-      evalDist_seedGenIndep_Z prims D A x z Z S parts).prEvent_eq (· = true)
-  have hH : Pr{let y ← seedGenIndepMixture prims D A x z (seedGenHiddenZ D Z) S}[y = true] =
-      Pr{let y ← (OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)) >>= fun parts =>
-        seedGenStageBSampler prims D A x z S parts >>= fun w =>
-          seedGenStageBRun prims D A Z S parts w w.2.2.1 w.2.2.2}[y = true] := by
-    exact (EvalDistEq.bind_right _ fun parts =>
-      evalDist_seedGenIndep_hiddenZ prims D A x z Z S parts).prEvent_eq (· = true)
-  rw [hZ, hH, probEvent_seedGenPartsKernel_eq_tsum (seedGenStageBSampler prims D A x z S)
-    (fun parts w => SeedGenReceiversGap prims D A S (parts, w))]
-  refine abs_probOutput_bind_sub_le _ _ _ _ (fun parts => ?_) (fun parts => ?_) ?_
-  · exact seedGenStageB_parts prims D A x z Z S parts (fun w => w.2.2.2) (fun w => w.2.2.1) fun w hw => Ne.symm hw
-  · exact seedGenStageB_parts prims D A x z Z S parts (fun w => w.2.2.1) (fun w => w.2.2.2) fun w hw => hw
-  · rw [← probEvent_seedGenPartsKernel_eq_tsum (seedGenStageBSampler prims D A x z S)
-      (fun parts w => SeedGenReceiversGap prims D A S (parts, w))]
-    exact (prEvent_ne_top _)
-
-/-- The open core of the hidden half, as an echo-collision bound. On the independent reference run,
-a fresh table makes the honest echo inputs of two honest operators that share a hidden term distinct
-but with equal hashes with probability at most a quarter of what remains of the error. -/
-def SeedGenEchoFresh (prims : Primitives) : Prop :=
-  ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
-    (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
-    ∀ (S : Finset (Query C)), (∀ parts name, seedGenNamedInput parts name ∈ S) →
-      SeedGenWorldCovered S (free (seedGenNormalizedLocalGame D A x z Z)) →
-      SeedGenWorldCovered S (free (seedGenNormalizedLocalGame D A x z (seedGenHiddenZ D Z))) →
-      (Pr{let r ← seedGenPartsKernel (seedGenStageBSampler prims D A x z S)}[
-        SeedGenEchoIrregular prims D A S r r.2.2.2.1]).toReal ≤
-        (seedGenHashError C q / 2 - 2 * seedGenStageAError C q) / 2
-
-theorem seedGenAcceptGap_of_echoFresh (hF : SeedGenEchoFresh (C := C) (E := E) prims) :
-    SeedGenAcceptGap (C := C) (E := E) prims := by
-  intro D A x z Z q hq S hmem h₁ h₂
-  have hb := hF D A x z Z q hq S hmem h₁ h₂
-  have hle : Pr{let y ← seedGenPartsKernel (seedGenStageBSampler prims D A x z S)}[SeedGenReceiversGap prims D A S y] ≤
-      Pr{let r ← seedGenPartsKernel (seedGenStageBSampler prims D A x z S)}[
-        SeedGenEchoIrregular prims D A S r r.2.2.2.1] +
-      Pr{let r ← seedGenPartsKernel (seedGenStageBSampler prims D A x z S)}[
-        SeedGenEchoIrregular prims D A S r r.2.2.2.1] :=
-    calc _ ≤ Pr{let r ← seedGenPartsKernel (seedGenStageBSampler prims D A x z S)}[
-          SeedGenEchoIrregular prims D A S r r.2.2.2.1 ∨ SeedGenEchoIrregular prims D A S r r.2.2.2.2] :=
-          prEvent_mono _ _ _ fun r hr => seedGenReceiversGap_irregular prims D A S r hr
-      _ ≤ _ := prEvent_or_le _ _ _
-      _ = _ := by rw [probEvent_seedGenEchoIrregular_swap]
-  have ht := ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨(prEvent_ne_top _), (prEvent_ne_top _)⟩) hle
-  rw [ENNReal.toReal_add (prEvent_ne_top _) (prEvent_ne_top _)] at ht
-  linarith
-
 end StageB
 
 section Main
 
 variable {C : Committee} {E : Type} (prims : Primitives)
 
-/-- `SeedGenSecurityStatement`, open at the echo-collision core of the hidden half and at the known
-half. -/
-theorem seedGenSecurityFull (hF : SeedGenEchoFresh (C := C) (E := E) prims)
-    (hK : SeedGenKnownMismatch (C := C) (E := E) prims) :
-    SeedGenSecurityStatement (C := C) (E := E) prims :=
-  seedGenSecurityProof prims (seedGenHiddenFreshSwapped_of_indepEcho prims
-    (seedGenIndepEcho_of_acceptGap prims (seedGenAcceptGap_of_echoFresh prims hF))) hK
-
-/-- The hidden half, open only at the echo-collision bound. -/
-theorem seedGenHiddenFreshSwapped_of_echoFresh (hF : SeedGenEchoFresh (C := C) (E := E) prims) :
-    SeedGenHiddenFreshSwapped (C := C) (E := E) prims :=
-  seedGenHiddenFreshSwapped_of_indepEcho prims
-    (seedGenIndepEcho_of_acceptGap prims (seedGenAcceptGap_of_echoFresh prims hF))
-
 end Main
-
-/-- info: 'ThresholdLeanXmssSecurity.seedGenSecurityFull' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms seedGenSecurityFull
-
-/-- info: 'ThresholdLeanXmssSecurity.seedGenHiddenFreshSwapped_of_echoFresh' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms seedGenHiddenFreshSwapped_of_echoFresh
 
 /-- info: 'ThresholdLeanXmssSecurity.seedGenStageA' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

@@ -434,18 +434,6 @@ theorem WEq.counted_sample {α : Type} (p : ProbComp α) :
     WEq prims (counted (C := C) (liftComp (liftComp p (LocalSpec C)) (SimulatorSpec C))) (free (liftComp p (LocalSpec C))) :=
   fun s => by rw [world_counted_liftComp, world_free_liftComp]
 
-/-- Free samples with the same distribution. -/
-theorem WEq.free_dist {α β : Type} (p p' : ProbComp α) (h : p =ᵈ p') (k : α → OracleComp (WorldSpec C) β) :
-    WEq prims (free (liftComp p (LocalSpec C)) >>= k) (free (liftComp p' (LocalSpec C)) >>= k) := fun s => by
-  rw [world_run_free_bind, world_run_free_bind]
-  exact h.bind_left _
-
-theorem free_liftComp_merge {α β γ : Type} (p : ProbComp α) (q : ProbComp β) (k : α → β → OracleComp (WorldSpec C) γ) :
-    (free (liftComp p (LocalSpec C)) >>= fun a => free (liftComp q (LocalSpec C)) >>= k a) =
-      free (liftComp (do let a ← p; let b ← q; pure (a, b)) (LocalSpec C)) >>= fun ab => k ab.1 ab.2 := by
-  simp only [liftComp_bind, free_bind, bind_assoc, liftComp_pure]
-  rfl
-
 theorem accepts_eq_of_WEq {oa ob : OracleComp (WorldSpec C) Bool} (h : WEq prims oa ob) :
     accepts prims oa = accepts prims ob := by
   unfold accepts runWorld
@@ -991,27 +979,6 @@ theorem reshare_run' {ι : Type} {G : OracleSpec ι} {R : Type} [Field R] (K : C
   simp
 
 end Reshare
-
-theorem world_support_const {α : Type} (prims : Primitives) (oa : OracleComp (WorldSpec C) α) (b : Bool)
-    (s : HashCache C) : ∀ r ∈ support ((simulateQ (world prims) (oa >>= fun _ => pure b)).run.run s), r.1.1 = b := by
-  intro r hr
-  obtain ⟨p, -, q, hq, rfl⟩ := mem_support_world_bind prims _ _ s r hr
-  change q ∈ support (pure ((b, 1), p.2) : ProbComp _) at hq
-  simp at hq; subst hq; rfl
-
-theorem accepts_const {α : Type} (prims : Primitives) (oa : OracleComp (WorldSpec C) α) (b : Bool) :
-    accepts prims (oa >>= fun _ => pure b) = if b then 1 else 0 := by
-  unfold accepts runWorld
-  rw [StateT.run'_eq]
-  erw [prEvent_map]
-  cases b
-  · simp only [Bool.false_eq_true, if_false]
-    rw [prEvent_eq_zero_of_forall_mem_support _ _ fun r hr => by
-      simp [world_support_const prims oa false ∅ r hr]]
-    rfl
-  · simp only [if_true]
-    rw [(OracleComp.prEvent_eq_one_iff _ _).2 fun r hr => by simp [world_support_const prims oa true ∅ r hr]]
-    rfl
 
 section MultPeer
 variable [Field E] [Algebra Bit E]
@@ -2618,10 +2585,6 @@ def MultCollectorCoupling (prims : Primitives) (K : Constants C E) : Prop :=
 theorem CostLe.ite (prims : Primitives) {α : Type} (p : Prop) [Decidable p] {oa ob : OracleComp (WorldSpec C) α} {n : ℕ}
     (ha : CostLe prims oa n) (hb : CostLe prims ob n) : CostLe prims (if p then oa else ob) n := by
   split_ifs <;> assumption
-
-theorem CostLe.counted_pure' (prims : Primitives) {α : Type} (a : α) :
-    CostLe prims (counted (C := C) (liftComp (Pure.pure a : OracleComp (LocalSpec C) α) (SimulatorSpec C))) 0 := by
-  rw [liftComp_pure, counted_pure]; exact CostLe.pure prims a
 
 theorem multCollector_of_coupling (prims : Primitives) (K : Constants C E) (h : MultCollectorCoupling prims K) :
     SecurelyComputes prims (multProtocol K .collector) (1 + ReshareMode.collector.rounds) (Frand Bit)

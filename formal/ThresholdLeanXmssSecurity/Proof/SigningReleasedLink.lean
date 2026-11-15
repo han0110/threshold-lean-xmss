@@ -246,48 +246,6 @@ theorem jointCachedExtra_base (x : SigningSecurityProof.Keys3 C)
   simp only [he, hbound]
   rw [he, hanswer]
 
-set_option linter.constructorNameAsVariable false in
-/-- At a cached canonical base call, the split world contains the monitored grind subrun.
-The subrun includes the real per-key cached-selection flags. -/
-theorem world_base_subrun (x : SigningSecurityProof.Keys3 C) (t : (WorldSpec C).Domain)
-    (s : SplitState C) (r : (WorldSpec C).Range t × SplitState C)
-    (hr : r ∈ support ((world prims x t).run s)) (e : KeyIndex) (message : Message)
-    (hcache : SigningGuessProof.RandomizerCached x.2.1 s.1.1.1.1.1 e)
-    (hbase : BaseCall x.1 e (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) s.2.1.1 t)
-    (hbound : s.2.1.1.bound e = some message) :
-    ∃ (called : (WorldSpec C).Range t × FlatJointState C) (answer : HashOutput)
-      (ground : Unit × ((HashCache C × Monitor) × (XmssSecurity.LeafIndex → Bool))),
-      called ∈ support ((carry (SigningCostProof.loggedImpl prims) t).run (s.1.1.1, s.2)) ∧
-      called.2.1.1.1 (.hash (randomizerInput x.1 bottomLayer e
-        (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (littleEndianBytes 32 message))) = some answer ∧
-      ground ∈ support ((simulateQ (keyedSplitOracle (XmssSecurity.encodingInputLeafIndex? x.1))
-        (baseGrind x.1 e message answer)).run
-          ((called.2.1.1.1, queryEntryStep (XmssSecurity.encodingInputLeafIndex? x.1)
-            s.1.1.2 (hashEntry ⟨t, called.1⟩)), s.1.2)) ∧
-      r.1 = called.1 ∧ r.2.1.1.2 = ground.2.1.2 ∧ r.2.1.2 = ground.2.2 := by
-  simp only [world, keyedSplitWorld, StateT.run_mk, mem_support_bind_iff,
-    support_map, Set.mem_image] at hr
-  obtain ⟨called, hc, ground, hg, rfl⟩ := hr
-  have hcall : HashCallAt (randomizerInput x.1 bottomLayer e
-      (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (littleEndianBytes 32 message)) t := by
-    obtain ⟨input, hi, ht⟩ := hbase
-    have he : randomizerInput x.1 bottomLayer e
-        (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (littleEndianBytes 32 message) = input := by
-      unfold baseInput at hi
-      rw [hbound] at hi
-      exact Option.some.inj hi
-    exact he.symm ▸ ht
-  have hc' := hc
-  simp only [carry, SigningCostProof.loggedImpl, StateT.run_mk, support_map, Set.mem_image] at hc'
-  obtain ⟨outer, ⟨counted, hcounted, rfl⟩, heq⟩ := hc'
-  obtain ⟨answer, ha⟩ := countImpl_hash_cached prims _ t hcall _ counted hcounted
-  have hanswer : called.2.1.1.1 (.hash (randomizerInput x.1 bottomLayer e
-      (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) (littleEndianBytes 32 message))) = some answer := by
-    rw [← heq]
-    exact ha
-  rw [jointCachedExtra_base x (s.1.1.1, s.2) called.2 t e message answer hcache hbase hbound hanswer] at hg
-  exact ⟨called, answer, ground, hc, hanswer, hg, rfl, rfl, rfl⟩
-
 /-- A threshold of signers contains a recorded honest release, since corruption stops below it. -/
 theorem signers_release (state : TsigState C) (hc : state.corrupt.card ≤ C.t - 1)
     (e : KeyIndex) (message : Message) (ht : C.t ≤ (signersAt state e message).card) :
@@ -421,10 +379,6 @@ theorem releasedLink_of_alignment_separation
 /-- info: 'ThresholdLeanXmssSecurity.SigningReleasedLinkProof.jointCachedExtra_base' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms jointCachedExtra_base
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningReleasedLinkProof.world_base_subrun' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms world_base_subrun
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningReleasedLinkProof.releasedLink_of_alignment_separation' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

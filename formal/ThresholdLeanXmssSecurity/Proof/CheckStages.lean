@@ -2,10 +2,10 @@ import ThresholdLeanXmssSecurity.Proof.CheckCore
 import ThresholdLeanXmssSecurity.Proof.Coupling
 
 /-!
-# The three stages of the check core distance
+# The couple stage of the check core distance
 
-The target is `CheckSoundStage`, `CheckCoupleStage` and `CheckSplitStage` of `Proof/CheckCore.lean`.
-The stages are named hypotheses of `checkCoreDistanceProof`.
+The target is `CheckCoupleStage` of `Proof/CheckCore.lean`.
+The theorem `checkCoupleStage` of `Proof/CheckFinish.lean` uses the couplings of this file.
 
 The local couplings for `CheckCoupleStage` (step 4 of the plan of `Proof/CheckSecurity.lean`):
 
@@ -1269,13 +1269,6 @@ lemma honest_mulSh_diff [CharP E 2] (K : Constants C E) (D : C.Coalition) (AR BR
     Finset.sum_sub_distrib]
 
 omit [Fintype E] [DecidableEq E] [SampleableType E] in
-lemma conv_lin (K : Constants C E) (i : C.Party) (u v : E) (f g : C.Term → E) :
-    conv K (localContext i) (fun T _ => u * f T + v * g T) 0 =
-      u * conv K (localContext i) (fun T _ => f T) 0 + v * conv K (localContext i) (fun T _ => g T) 0 := by
-  simp only [conv, Finset.mul_sum, ← Finset.sum_add_distrib]
-  refine Finset.sum_congr rfl fun T _ => by ring
-
-omit [Fintype E] [DecidableEq E] [SampleableType E] in
 lemma conv_sub_eq (K : Constants C E) (i : C.Party) (zR zD : Shares C E) (g : ℕ) (f : C.Term → E)
     (h : ∀ T, i ∈ C.holders T → zR T g - zD T g = f T) :
     conv K (localContext i) zR g - conv K (localContext i) zD g =
@@ -1425,14 +1418,6 @@ lemma challengeQuery_no_digest (K : Constants C E) (tg L : ℕ) (v : List E) :
       findChallenge_no_digest K key challengeTries 0
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E] in
-lemma bind_sample_digestBound {σ' α β : Type} [SampleableType α] (oa : OracleComp (LocalSpec C) σ')
-    (k : σ' → α → β) (n : ℕ) (h : IsQueryBoundP oa DigestQuery n) :
-    IsQueryBoundP (oa >>= fun p => liftComp ($ᵗ α) (LocalSpec C) >>= fun f => pure (k p f)) DigestQuery n :=
-  (isQueryBoundP_bind (m := 0) h fun p _ =>
-    isQueryBoundP_bind (n := 0) (m := 0) (prob_lift_no_digest _) fun _ _ => isQueryBoundP_pure _ _ 0).mono
-    (by omega)
-
-omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E] in
 lemma sample_bind_digestBound {σ' α : Type} [SampleableType α] (ans : α → OracleComp (LocalSpec C) σ')
     (n : ℕ) (h : ∀ a, IsQueryBoundP (ans a) DigestQuery n) :
     IsQueryBoundP (liftComp ($ᵗ α) (LocalSpec C) >>= fun v => ans v >>= fun pa => pure (v, pa)) DigestQuery n :=
@@ -1446,18 +1431,6 @@ lemma coinDraw_digestBound (D : C.Coalition) (Ad : CheckAdversary C E Ia) (step 
   refine sample_bind_digestBound _ step fun v => ?_
   apply counted_digestBound
   dsimp only [leftAdversary]
-  simp only [bind_assoc, pure_bind]
-  exact (isQueryBoundP_bind (m := 0) (ha st _) (fun _ _ => isQueryBoundP_pure _ _ 0)).mono (by omega)
-
-lemma extend_digestBound (K : Constants C E) (D : C.Coalition) (Ad : CheckAdversary C E Ia) (step : ℕ)
-    (ha : ∀ st l, IsQueryBoundP (Ad.answer st l) Counted step) (st : Ad.State)
-    (inputs : C.Party → Option (List (Product C E))) (h : ∀ i, i ∉ D.1 → (inputs i).isSome) :
-    IsQueryBoundP (runFunctionality localRoles D (rightAdversary (leftAdversary Ad)) (FextendMult K) st inputs)
-      DigestQuery step := by
-  rw [runFunctionality_extend_local K D (rightAdversary (leftAdversary Ad)) st inputs h]
-  refine bind_sample_digestBound _ _ step ?_
-  apply counted_digestBound
-  dsimp only [leftAdversary, rightAdversary]
   simp only [bind_assoc, pure_bind]
   exact (isQueryBoundP_bind (m := 0) (ha st _) (fun _ _ => isQueryBoundP_pure _ _ 0)).mono (by omega)
 
@@ -2041,19 +2014,9 @@ theorem halvRest_all (prims : Primitives) (K : Constants C E) (D : C.Coalition) 
     exact halvRest_succ prims K D Ad step final width n j (fuel + 2 * n + 5) ha tail
       (halvRest_all prims K D Ad step final width hr ha hw tail hq n (j + 1) fuel (by omega))
 
-/-- `CheckCoreDistance` from the three open stages. -/
-theorem checkCoreDistanceProof (prims : Primitives) (K : Constants C E)
-    (hsound : CheckSoundStage prims K) (hcouple : CheckCoupleStage prims K)
-    (hsplit : CheckSplitStage prims K) : CheckCoreDistance prims K :=
-  checkCoreDistance prims K hsound hcouple hsplit
-
 end Stages
 
 end ThresholdLeanXmssSecurity
-
-/-- info: 'ThresholdLeanXmssSecurity.checkCoreDistanceProof' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.checkCoreDistanceProof
 
 /-- info: 'ThresholdLeanXmssSecurity.finalStep_tv' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

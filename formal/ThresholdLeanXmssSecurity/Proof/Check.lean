@@ -551,43 +551,6 @@ noncomputable section
 
 variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
 
-omit [Fintype E] [DecidableEq E] in
-open Polynomial in
-/-- The `t` honest shares fix the polynomial, so an accepted opening is its value at `0` (GS20,
-Protocol 6, step 2). -/
-theorem gs20_openSh_robust (K : Constants C E) (D : C.Coalition) (V : Polynomial E)
-    (hV : V.natDegree ≤ C.t - 1) (share : C.Party → E) (honest : ∀ j ∉ D.1, share j = V.eval (K.point j))
-    (accepted : ∀ j, share j =
-      ∑ l ∈ univ.filter (fun l : C.Party => l.val < C.t), lagrangeFirst K (K.point j) l * share l) :
-    ∑ l ∈ univ.filter (fun l : C.Party => l.val < C.t), lagrangeFirst K 0 l * share l = V.eval 0 := by
-  set S := univ.filter (fun l : C.Party => l.val < C.t)
-  set W := Lagrange.interpolate S K.point share
-  have hW : ∀ x, W.eval x = ∑ l ∈ S, lagrangeFirst K x l * share l := fun x => by
-    simp only [W, Lagrange.interpolate_apply, eval_finsetSum, eval_mul, eval_C,
-      Lagrange.eval_basis_eq_prod, lagrangeFirst]
-    refine Finset.sum_congr rfl fun l _ => ?_
-    rw [mul_comm]
-  have ht := C.one_le_t
-  have hS : S.card ≤ C.t := by
-    calc S.card ≤ (range C.t).card :=
-          Finset.card_le_card_of_injOn (fun l => l.val) (fun l hl => by simpa [S] using hl)
-            (fun a _ b _ h => Fin.ext h)
-      _ = C.t := card_range _
-  have hWV : W = V := by
-    refine Polynomial.eq_of_degree_sub_lt_of_eval_finset_eq (D.1ᶜ.map K.point) ?_ ?_
-    · rw [card_map, card_compl, Fintype.card_fin]
-      have hWdeg : W.degree < C.t :=
-        (Lagrange.degree_interpolate_lt _ K.point.injective.injOn).trans_le (by exact_mod_cast hS)
-      have hVdeg : V.degree < C.t :=
-        (degree_le_of_natDegree_le hV).trans_lt (by exact_mod_cast (by omega : C.t - 1 < C.t))
-      refine (degree_sub_le _ _).trans_lt ((max_lt hWdeg hVdeg).trans_le ?_)
-      have := D.2
-      exact_mod_cast (by simp only [Committee.n]; omega : C.t ≤ C.n - D.1.card)
-    · intro y hy
-      obtain ⟨j, hj, rfl⟩ := Finset.mem_map.mp hy
-      rw [hW, ← accepted, honest j (Finset.mem_compl.mp hj)]
-  rw [← hW, hWV]
-
 theorem card_first : (univ.filter fun l : C.Party => l.val < C.t).card = C.t := by
   have ht : C.t ≤ C.n := by have := C.one_le_t; simp only [Committee.n]; omega
   rw [Fin.card_filter_val_lt]
@@ -1016,16 +979,6 @@ theorem extendMult_run' {α : Type} (products : List (Product C E)) (f : Shares 
   refine bind_congr fun o => ?_
   rcases o with _ | ((v | z) | w) <;> simp [StateT.run_lift, localContext]
   rfl
-
-theorem coin_run' {α : Type} (count : ℕ) (f : List E → RunM C E (CheckSpec C E) α) (st : RunState C) :
-    ((hybridCheckBuildingBlocks K i).coin count >>= f).run' st =
-      call (Sum.inl (Sum.inl count)) >>= fun o => match o with
-        | some (.inl (.inl v)) => (f v).run' ⟨st.history, st.label + 1, st.tag⟩
-        | _ => failure := by
-  simp only [hybridCheckBuildingBlocks, freshLabel, bind_assoc]
-  simp [StateT.run'_eq, StateT.run_bind, StateT.run_lift, StateT.run_modifyGet]
-  refine bind_congr fun o => ?_
-  rcases o with _ | ((v | z) | w) <;> simp [StateT.run_lift]
 
 theorem randElements_run' {α : Type} (count : ℕ) (f : PrssOutput C E → RunM C E (CheckSpec C E) α)
     (st : RunState C) :
@@ -1581,10 +1534,6 @@ theorem openSh_run' {α : Type} (v : ℕ → E) (f : (ℕ → E) → RunM C E (C
   simp only [openSh, bind_assoc]
   simp only [StateT.run'_eq, StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind, map_bind]
   rfl
-
-theorem require_run' (c : Prop) (st : RunState C) :
-    (StateT.lift (require c) : RunM C E (CheckSpec C E) Unit).run' st = require c := by
-  simp [StateT.run'_eq, StateT.run_lift]
 
 end DigestSteps
 
@@ -2744,34 +2693,6 @@ theorem probEvent_findChallenge_mem (K : Constants C E) (key : HashOutput) (S : 
       rw [hM, Nat.add_sub_cancel]
       simpa using (card_add_ratio S.card M (by omega)).le
 
-/-- A challenge on a fresh coin key lands in `S` with probability at most
-`|Ks| / 2^256 + |S| / (|E| - 2)`, when the cache holds expansions only of the keys `Ks`. The first term
-is a key that collides with an earlier key. -/
-theorem challengeQuery_mem_le (K : Constants C E) (tag ρ : ℕ) (v : List E) (Ks : Finset HashOutput) (L : ℕ)
-    (hρ : L ≤ ρ) (s : HashCache C) (hs : CacheOK Ks L s) (S : Finset E) :
-    Pr{let z ←
-      (simulateQ (localAnswer prims) (liftComp (challengeQuery K tag ρ v) (LocalSpec C))).run s}[∃ e ∈ S, z.1 = some e] ≤
-      Ks.card / 2 ^ 256 + S.card / (Fintype.card E - 2 : ℕ) := by
-  have hq : ¬ IsFixed (C := C) (.coinKey tag ρ (v.flatMap fun v => List.ofFn (K.encode v))) := by
-    rintro ⟨_, h, _⟩; cases h
-  have hfresh := coinKey_fresh hρ hs tag (v.flatMap fun v => List.ofFn (K.encode v))
-  rw [simulateQ_localAnswer_liftComp, challengeQuery, simulateQ_bind, StateT.run_bind]
-  have hev : ∀ mx : ProbComp (Option E × HashCache C),
-      Pr{let z ← mx}[∃ e ∈ S, z.1 = some e] = Pr{let z ← mx}[¬ ¬ ∃ e ∈ S, z.1 = some e] := fun mx => by simp
-  rw [hev]
-  refine (prEvent_bind_le_prEvent_add_of_support _ _ (fun z : HashOutput × HashCache C => ¬ z.1 ∉ Ks) _
-    fun z hz hkey => ?_).trans (add_le_add ?_ le_rfl)
-  rotate_left
-  · simp only [not_not]
-    exact probEvent_hash_fresh_mem prims hq hfresh Ks
-  · rw [not_not] at hkey
-    rw [← hev]
-    refine probEvent_findChallenge_mem prims K z.1 S challengeTries 0 z.2 fun i _ => ?_
-    by_contra hne
-    rcases support_hashQuery_entries prims hq s z hz _ hne with h | h
-    · exact hkey ((hs _ h).1 _ i rfl)
-    · cases h
-
 end ChallengeSoundness
 
 end
@@ -2800,22 +2721,6 @@ def dummyTuples (D : C.Coalition) (known : C.Party → Option (List (Tuple C))) 
         (differences.getD k fun _ => 0) g + shareValue τ.x g * shareValue τ.y g - ∑ T' ∈ univ.erase T₀, τ.z T' g
         else τ.z T g, τ.count, τ.mode⟩
     | none => τ
-
-/-- The simulator of the check. It runs the adversary against the honest operators on the dummy inputs,
-and the honest operators that accept receive the output of `F_multVerify`. -/
-def checkSimulator (K : Constants C E) (fuel : ℕ) (D : C.Coalition)
-    (A : Adversary C E (List (Tuple C)) ((List E ⊕ (C.Party → List (Product C E))) ⊕ (Unit ⊕ Unit))
-      ((Finset C.Party ⊕ ((ℕ → E) × Shares C E × (C.Party → Shares C E) × Finset C.Party)) ⊕
-        ((Shares C E × (C.Party → C.Party → ℕ → E)) ⊕ (Shares C Bit × (C.Party → C.Party → ℕ → Bit))))) :
-    Simulator (C := C) (LocalSpec C) (List (Tuple C))
-      ((C.Party → Option (List (Tuple C))) × List (ℕ → Bit) × Bool) (Finset C.Party) A.State where
-  State := A.State
-  start x z := A.start x z
-  answer st leak := do
-    let r ← executePhase localRoles D A (checkFunctionalities K) fuel st
-      fun i => checkProtocol K i (dummyTuples D leak.1 leak.2.1 i)
-    pure (r.1, univ.filter fun i => r.2 i = some ())
-  output st := pure st
 
 end ThresholdLeanXmssSecurity
 
@@ -2862,31 +2767,11 @@ theorem queryBound_mapM {ι α β : Type} {S : OracleSpec ι} (p : ι → Prop) 
       isQueryBoundP_bind htail (fun ys _ => isQueryBoundP_pure p (y :: ys) 0))
     simpa [Nat.succ_mul, Nat.add_comm] using hb
 
-/-- The key query plus at most `challengeTries` expansion queries. -/
-theorem challengeQuery_queryBound (K : Constants C E) (tag label : ℕ) (v : List E) :
-    IsQueryBoundP (challengeQuery K tag label v) (fun _ => True) (1 + challengeTries) := by
-  unfold challengeQuery
-  apply isQueryBoundP_bind
-  · change IsQueryBoundP (liftM (OracleSpec.query (spec := RoSpec C) (.inl _))) _ 1
-    exact (isQueryBoundP_query_iff _ _ _).2 (by omega)
-  · intro key _
-    exact findChallenge_queryBound K key _ _
-
 /-- A single random-oracle input consumes one query. -/
 theorem hashQuery_queryBound (q : Query C) :
     IsQueryBoundP (hashQuery q) (fun _ => True) 1 := by
   change IsQueryBoundP (liftM (OracleSpec.query (spec := RoSpec C) (.inl q))) _ 1
   exact (isQueryBoundP_query_iff _ _ _).2 (by omega)
-
-/-- The de-linearization expansion uses one key query and `count` expansions. -/
-theorem tauQuery_queryBound (K : Constants C E) (tag label : ℕ) (v : List E) (count : ℕ) :
-    IsQueryBoundP (tauQuery K tag label v count) (fun _ => True) (1 + count) := by
-  unfold tauQuery
-  apply isQueryBoundP_bind (hashQuery_queryBound _)
-  intro key _
-  simpa using queryBound_mapM (fun _ => True)
-    (fun k => elementOfHash K <$> hashQuery (C := C) (.expand key k)) 1 (List.range count)
-    (fun k _ => (isQueryBoundP_map_iff ..).2 (hashQuery_queryBound _))
 
 /-- Two hashes for each term suffice for the salted digest list. -/
 theorem digestQuery_queryBound (i : C.Party) (salts : Shares C Bit) (h : C.Term → List Bit) :
@@ -3656,18 +3541,6 @@ lemma final_mask_shift (w a a' r : E) (hr : 1 + r ≠ 0) :
   field_simp
   ring
 
-/-- Each fixed-challenge shift is a bijection of the mask space. -/
-def finalMaskEquiv {ι : Type} (r : E) (Δ : ι → E) : (ι → E) ≃ (ι → E) :=
-  Equiv.addRight (fun T => r / (1 + r) * Δ T)
-
-lemma finalMaskEquiv_apply {ι : Type} (r : E) (Δ w : ι → E) (T : ι) :
-    finalMaskEquiv r Δ w T = w T + r / (1 + r) * Δ T := rfl
-
-/-- The fixed-challenge bijection preserves a uniform table of mask terms. -/
-theorem finalMaskEquiv_uniform {ι : Type} [Fintype ι] (r : E) (Δ : ι → E) :
-    finalMaskEquiv r Δ <$> ($ᵗ (ι → E)) =ᵈ $ᵗ (ι → E) :=
-  SampleableType.map_uniformSample_evalDistEq_of_bijective (finalMaskEquiv r Δ).bijective
-
 def canonicalCheckSimulator (K : Constants C E) (fuel : ℕ) (D : C.Coalition)
     (A : Adversary C E (List (Tuple C)) ((List E ⊕ (C.Party → List (Product C E))) ⊕ (Unit ⊕ Unit))
       ((Finset C.Party ⊕ ((ℕ → E) × Shares C E × (C.Party → Shares C E) × Finset C.Party)) ⊕
@@ -3878,47 +3751,6 @@ attribute [local instance] Classical.propDecidable inhabitedField
 set_option linter.unusedSectionVars false
 variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
 
-/-- An independent challenge may be sampled after the masks even when it selects their bijection. -/
-theorem finalMaskEquiv_late_uniform {ι β : Type} [Fintype ι]
-    (challenge : ProbComp E) (Δ : E → ι → E) (f : E → (ι → E) → ProbComp β) :
-    (do let w ← $ᵗ (ι → E); let r ← challenge; f r (finalMaskEquiv r (Δ r) w)) =ᵈ
-      (do let w ← $ᵗ (ι → E); let r ← challenge; f r w) := by
-  calc (do let w ← $ᵗ (ι → E); let r ← challenge; f r (finalMaskEquiv r (Δ r) w) : ProbComp β)
-    _ =ᵈ (do let r ← challenge; let w ← $ᵗ (ι → E); f r (finalMaskEquiv r (Δ r) w) : ProbComp β) :=
-      OracleComp.EvalDistEq.bind_bind_swap _ _ _
-    _ =ᵈ (do let r ← challenge; let w ← $ᵗ (ι → E); f r w : ProbComp β) := by
-      refine EvalDistEq.bind_right _ fun r => ?_
-      have he : (($ᵗ (ι → E)) >>= fun w => f r (finalMaskEquiv r (Δ r) w)) =
-          (finalMaskEquiv r (Δ r) <$> ($ᵗ (ι → E))) >>= f r := by simp
-      rw [he]
-      exact (finalMaskEquiv_uniform r (Δ r)).bind_left _
-    _ =ᵈ (do let w ← $ᵗ (ι → E); let r ← challenge; f r w : ProbComp β) :=
-      (OracleComp.EvalDistEq.bind_bind_swap _ _ _).symm
-
-/-- The coordinate shift fixes every known mask coordinate. -/
-lemma finalMaskEquiv_known {ι : Type} (r : E) (Δ w : ι → E) (T : ι) (hT : Δ T = 0) :
-    finalMaskEquiv r Δ w T = w T := by
-  simp [finalMaskEquiv_apply, hT]
-
-/-- `Conv` respects the coefficientwise mask shift. No spanning argument is required. -/
-lemma conv_maskShift (K : Constants C E) (i : C.Party) (w A A' : Shares C E) (r : E) (g : ℕ) :
-    conv K (localContext i) (fun T k => w T k + r / (1 + r) * (A T k - A' T k)) g =
-      conv K (localContext i) w g + r / (1 + r) *
-        (conv K (localContext i) A g - conv K (localContext i) A' g) := by
-  simp only [conv, mul_add, mul_sub, Finset.sum_add_distrib, Finset.sum_sub_distrib]
-  rw [Finset.mul_sum, Finset.mul_sum]
-  congr 1
-  congr 1 <;> apply Finset.sum_congr rfl <;> intro T hT <;> ring
-
-lemma final_opening_shift (K : Constants C E) (i : C.Party) (w A A' : Shares C E) (r : E)
-    (hr : 1 + r ≠ 0) (g : ℕ) :
-    let w' := fun T k => w T k + r / (1 + r) * (A T k - A' T k)
-    conv K (localContext i) w' g + r * (conv K (localContext i) w' g + conv K (localContext i) A' g) =
-      conv K (localContext i) w g + r * (conv K (localContext i) w g + conv K (localContext i) A g) := by
-  dsimp only
-  rw [conv_maskShift]
-  exact final_mask_shift _ _ _ _ hr
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -3930,67 +3762,6 @@ namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable inhabitedField
 set_option linter.unusedSectionVars false
 variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
-
-/-- The cached-oracle challenge bound for any set of at most `m` bad values. -/
-theorem challengeQuery_pred_card_le (prims : Primitives) (K : Constants C E)
-    (tag label : ℕ) (v : List E) (Ks : Finset HashOutput) (L m : ℕ)
-    (hL : L ≤ label) (s : HashCache C) (hs : CacheOK Ks L s) (P : E → Prop) [DecidablePred P]
-    (hP : (univ.filter P).card ≤ m) :
-    Pr{let z ←
-      (simulateQ (localAnswer prims) (liftComp (challengeQuery K tag label v) (LocalSpec C))).run s}[∃ r, P r ∧ z.1 = some r] ≤
-        Ks.card / 2 ^ 256 + m / (Fintype.card E - 2 : ℕ) := by
-  have h := challengeQuery_mem_le prims K tag label v Ks L hL s hs (univ.filter P)
-  simp only [Finset.mem_filter, Finset.mem_univ, true_and] at h
-  refine h.trans ?_
-  gcongr
-
-/-- GS20 Lemma 10, with the model's actual cached challenge expansion. -/
-theorem finalChallenge_soundness (prims : Primitives) (K : Constants C E)
-    (tag label : ℕ) (v : List E) (Ks : Finset HashOutput) (L : ℕ)
-    (hL : L ≤ label) (s : HashCache C) (hs : CacheOK Ks L s)
-    (a b a0 b0 D e0 e2 : E) (hwrong : D ≠ a * b) :
-    Pr{let z ←
-      (simulateQ (localAnswer prims) (liftComp (challengeQuery K tag label v) (LocalSpec C))).run s}[∃ r,
-      ((a0 + r * (a0 + a)) * (b0 + r * (b0 + b)) =
-        (a0 * b0 + e0) + (D + (a0 * b0 + e0) + ((a0 + a) * (b0 + b) + e2)) * r +
-          ((a0 + a) * (b0 + b) + e2) * r ^ 2) ∧ z.1 = some r] ≤
-        Ks.card / 2 ^ 256 + 2 / (Fintype.card E - 2 : ℕ) := by
-  letI : CharP E 2 := charP_two
-  exact challengeQuery_pred_card_le prims K tag label v Ks L 2 hL s hs _
-    (by simpa using gs20_lemma10_final_step a b a0 b0 D e0 e2 hwrong)
-
-/-- Gruen's slice step, with the same actual challenge distribution. -/
-theorem sliceChallenge_soundness (prims : Primitives) (K : Constants C E)
-    (tag label : ℕ) (v : List E) (Ks : Finset HashOutput) (L : ℕ)
-    (hL : L ≤ label) (s : HashCache C) (hs : CacheOK Ks L s)
-    (c D t0 t1 t2 e0 eInf : E) (hc : c ≠ 0) (hwrong : D ≠ t0 + c * (t0 + t1 + t2)) :
-    Pr{let z ←
-      (simulateQ (localAnswer prims) (liftComp (challengeQuery K tag label v) (LocalSpec C))).run s}[∃ r,
-      ((1 + r) * (t0 + e0) + r * ((D + (t0 + e0)) / c) + r * (1 + r) * (t2 + eInf) =
-        t0 + t1 * r + t2 * r ^ 2) ∧ z.1 = some r] ≤
-        Ks.card / 2 ^ 256 + 2 / (Fintype.card E - 2 : ℕ) := by
-  letI : CharP E 2 := charP_two
-  exact challengeQuery_pred_card_le prims K tag label v Ks L 2 hL s hs _
-    (by simpa using gruen_slice_step c D t0 t1 t2 e0 eInf hc hwrong)
-
-/-- GS20 Lemma 9, with the same actual challenge distribution. -/
-theorem halvingChallenge_soundness (prims : Primitives) (K : Constants C E)
-    (tag label : ℕ) (v : List E) (Ks : Finset HashOutput) (L : ℕ)
-    (hL : L ≤ label) (s : HashCache C) (hs : CacheOK Ks L s)
-    (lo hi lo' hi' : List E) (claim e0 e2 : E)
-    (hwrong : claim ≠ (List.zipWith (· * ·) lo lo').sum + (List.zipWith (· * ·) hi hi').sum)
-    (hlen : lo.length = hi.length ∧ lo'.length = hi'.length ∧ lo.length = lo'.length) :
-    Pr{let z ←
-      (simulateQ (localAnswer prims) (liftComp (challengeQuery K tag label v) (LocalSpec C))).run s}[∃ r,
-      ((List.zipWith (· * ·) lo lo').sum + e0 +
-          (claim + (List.zipWith (· * ·) (List.zipWith (· + ·) lo hi) (List.zipWith (· + ·) lo' hi')).sum + e2) * r +
-          ((List.zipWith (· * ·) (List.zipWith (· + ·) lo hi) (List.zipWith (· + ·) lo' hi')).sum + e2) * r ^ 2 =
-        (List.zipWith (· * ·) (List.zipWith (fun a b => a + r * (a + b)) lo hi)
-          (List.zipWith (fun a b => a + r * (a + b)) lo' hi')).sum) ∧ z.1 = some r] ≤
-        Ks.card / 2 ^ 256 + 2 / (Fintype.card E - 2 : ℕ) := by
-  letI : CharP E 2 := charP_two
-  exact challengeQuery_pred_card_le prims K tag label v Ks L 2 hL s hs _
-    (by simpa using gs20_lemma9_halving_step lo hi lo' hi' claim e0 e2 hwrong hlen)
 
 end ThresholdLeanXmssSecurity
 end
@@ -4083,25 +3854,6 @@ lemma coin_input_injective (K : Constants C E) (tag label : ℕ) :
   · exact K.encode.injective (List.ofFn_injective h0)
   · exact K.encode.injective (List.ofFn_injective h1)
 
-theorem coin_input_guess_bound (K : Constants C E) (tag label : ℕ) (Q : Finset (Query C)) :
-    Pr{let v : Fin 2 → E ← $ᵗ (Fin 2 → E)}[Query.coinKey tag label
-      ((List.ofFn v).flatMap fun v => List.ofFn (K.encode v)) ∈ Q] ≤
-      Q.card / (Fintype.card E ^ 2 : ℕ) := by
-  simpa only [Fintype.card_fun, Fintype.card_fin] using
-    probEvent_uniform_injective_mem _ (coin_input_injective K tag label) Q
-
-lemma digest_input_injective (history : (Fin 256 → Bit) → HashOutput) :
-    Function.Injective (fun salt : Fin 256 → Bit => Query.digest (C := C) (List.ofFn salt) (history salt)) := by
-  intro a b hab
-  exact List.ofFn_injective (Query.digest.inj hab).1
-
-/-- This event involves salted digest inputs, never history inputs. -/
-theorem digest_input_guess_bound (history : (Fin 256 → Bit) → HashOutput) (Q : Finset (Query C)) :
-    Pr{let salt : Fin 256 → Bit ← $ᵗ (Fin 256 → Bit)}[Query.digest (List.ofFn salt) (history salt) ∈ Q] ≤
-      Q.card / 2 ^ 256 := by
-  have h := probEvent_uniform_injective_mem _ (digest_input_injective (C := C) history) Q
-  simpa only [Fintype.card_fun, Fintype.card_fin, ZMod.card, Nat.cast_pow, Nat.cast_ofNat] using h
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -4114,78 +3866,6 @@ attribute [local instance] Classical.propDecidable
 set_option linter.unusedSectionVars false
 variable {C : Committee}
 
-lemma relabelHashCache_apply (e : Query C ≃ Query C) (s : HashCache C) (q : Query C) :
-    relabelHashCache e s (e q) = s q := by
-  unfold relabelHashCache
-  change s (e.symm (e q)) = s q
-  rw [e.symm_apply_apply]
-
-lemma relabelHashCache_insert (e : Query C ≃ Query C) (s : HashCache C)
-    (q : Query C) (u : HashOutput) :
-    relabelHashCache e (s.cacheQuery q u) = (relabelHashCache e s).cacheQuery (e q) u := by
-  refine QueryCache.ext fun q' => ?_
-  by_cases h : q' = e q
-  · subst q'
-    exact (relabelHashCache_apply e (s.cacheQuery q u) q).trans
-      ((QueryCache.cacheQuery_self s q u).trans (QueryCache.cacheQuery_self (relabelHashCache e s) (e q) u).symm)
-  · have h' : e.symm q' ≠ q := by intro he; apply h; simpa using congrArg e he
-    simp [relabelHashCache, QueryCache.cacheQuery_of_ne _ _ h, QueryCache.cacheQuery_of_ne _ _ h']
-
-/-- Lazy random-oracle answers commute with an input bijection at random-oracle inputs. -/
-theorem hashAnswer_reindex (prims : Primitives) (e : Query C ≃ Query C) (s : HashCache C)
-    (q : Query C) (hq : ¬ IsFixed q) (heq : ¬ IsFixed (e q)) :
-    (hashAnswer prims (e q)).run (relabelHashCache e s) =
-      (fun p => (p.1, relabelHashCache e p.2)) <$> (hashAnswer prims q).run s := by
-  rw [hashAnswer_of_not_isFixed prims hq, hashAnswer_of_not_isFixed prims heq]
-  cases hs : s q with
-  | none =>
-    have hs' : relabelHashCache e s (e q) = none := (relabelHashCache_apply e s q).trans hs
-    rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ hs,
-      QueryImpl.withCaching_run_none _ hs', Functor.map_map]
-    congr 1
-    funext u
-    simp only [Function.comp_apply, relabelHashCache_insert]
-  | some u =>
-    have hs' : relabelHashCache e s (e q) = some u := (relabelHashCache_apply e s q).trans hs
-    rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_some _ hs,
-      QueryImpl.withCaching_run_some _ hs', map_pure]
-
-/-- One salted digest pair can be exchanged while every other query is fixed. -/
-def digestSwap (salt : List Bit) (h h' : HashOutput) : Query C ≃ Query C :=
-  Equiv.swap (.digest salt h) (.digest salt h')
-
-lemma digestSwap_history (salt values : List Bit) (h h' : HashOutput) :
-    digestSwap (C := C) salt h h' (.history values) = .history values := by
-  simp [digestSwap, Equiv.swap_apply_def]
-
-lemma digestSwap_coinKey (salt values : List Bit) (h h' : HashOutput) (tag label : ℕ) :
-    digestSwap (C := C) salt h h' (.coinKey tag label values) = .coinKey tag label values := by
-  simp [digestSwap, Equiv.swap_apply_def]
-
-lemma digestSwap_other_salt (salt salt' : List Bit) (h h' u : HashOutput) (hne : salt' ≠ salt) :
-    digestSwap (C := C) salt h h' (.digest salt' u) = .digest salt' u := by
-  simp [digestSwap, Equiv.swap_apply_def, hne]
-
-def hashAnswerFlat (prims : Primitives) (q : Query C) : StateT (HashCache C) ProbComp HashOutput :=
-  hashAnswer prims q
-
-/-- The single-digest coupling is exact after transporting the cache. -/
-theorem hashAnswer_digestSwap (prims : Primitives) (salt : List Bit) (h h' : HashOutput) (s : HashCache C) :
-    (hashAnswer prims (.digest salt h')).run (relabelHashCache (digestSwap salt h h') s) =
-      (fun p => (p.1, relabelHashCache (digestSwap salt h h') p.2)) <$>
-        (hashAnswer prims (.digest salt h)).run s := by
-  have h1 : ¬ IsFixed (C := C) (.digest salt h) := by rintro ⟨_, hh, _⟩; cases hh
-  have h2 : ¬ IsFixed (digestSwap (C := C) salt h h' (.digest salt h)) := by
-    simp only [digestSwap, Equiv.swap_apply_left]
-    rintro ⟨_, hh, _⟩; cases hh
-  have hh : digestSwap (C := C) salt h h' (.digest salt h) = .digest salt h' := Equiv.swap_apply_left _ _
-  have hh' : (hashAnswer prims (digestSwap salt h h' (.digest salt h))).run
-      (relabelHashCache (digestSwap salt h h') s) =
-      (hashAnswer prims (.digest salt h')).run (relabelHashCache (digestSwap salt h h') s) := by
-    exact congrArg (fun q => (hashAnswerFlat prims q).run
-      (relabelHashCache (digestSwap salt h h') s)) hh
-  exact hh'.symm.trans (hashAnswer_reindex prims (digestSwap salt h h') s (.digest salt h) h1 h2)
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -4197,53 +3877,6 @@ namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
 set_option linter.unusedSectionVars false
 variable {C : Committee}
-
-lemma digestSwap_isFixed_iff (salt : List Bit) (h h' : HashOutput) (q : Query C) :
-    IsFixed (digestSwap salt h h' q) ↔ IsFixed q := by
-  cases q <;> simp [IsFixed, digestSwap, Equiv.swap_apply_def]
-  intro x hx
-  split_ifs at hx <;> cases hx
-
-lemma hashAnswer_digestSwap_all (prims : Primitives) (salt : List Bit) (h h' : HashOutput)
-    (s : HashCache C) (q : Query C) :
-    (hashAnswer prims (digestSwap salt h h' q)).run (relabelHashCache (digestSwap salt h h') s) =
-      (fun p => (p.1, relabelHashCache (digestSwap salt h h') p.2)) <$> (hashAnswer prims q).run s := by
-  by_cases hq : IsFixed q
-  · obtain ⟨input, rfl, hi⟩ := hq
-    have he : digestSwap (C := C) salt h h' (.hash input) = .hash input := by
-      simp [digestSwap, Equiv.swap_apply_def]
-    change (hashAnswerFlat prims _).run _ = _
-    rw [he]
-    change (hashAnswer prims (.hash input)).run _ = _
-    rw [hashAnswer_of_isFixed prims hi]
-    simp
-  · exact hashAnswer_reindex prims _ s q hq (fun hx => hq ((digestSwap_isFixed_iff salt h h' q).mp hx))
-
-/-- Transport the cache along a digest swap throughout an arbitrary hash-oracle program. -/
-theorem hashProgram_digestSwap (prims : Primitives) (salt : List Bit) (h h' : HashOutput)
-    {α : Type} (oa : OracleComp (Query C →ₒ HashOutput) α) (s : HashCache C) :
-    (simulateQ (fun q => hashAnswer prims (digestSwap salt h h' q)) oa).run
-        (relabelHashCache (digestSwap salt h h') s) =
-      (fun p => (p.1, relabelHashCache (digestSwap salt h h') p.2)) <$>
-        (simulateQ (hashAnswer prims) oa).run s := by
-  induction oa using OracleComp.inductionOn generalizing s with
-  | pure a => simp
-  | query_bind q k ih =>
-    simp only [simulateQ_bind, simulateQ_spec_query, StateT.run_bind]
-    have hstep : (hashAnswerFlat prims (digestSwap salt h h' q)).run
-        (relabelHashCache (digestSwap salt h h') s) =
-        (fun p : HashOutput × HashCache C => (p.1, relabelHashCache (digestSwap salt h h') p.2)) <$>
-          (hashAnswerFlat prims q).run s := hashAnswer_digestSwap_all prims salt h h' s q
-    change ((hashAnswerFlat prims (digestSwap salt h h' q)).run
-      (relabelHashCache (digestSwap salt h h') s) >>= fun p : HashOutput × HashCache C =>
-        (simulateQ (fun q => hashAnswer prims (digestSwap salt h h' q)) (k p.1)).run p.2) =
-      (fun p => (p.1, relabelHashCache (digestSwap salt h h') p.2)) <$>
-        ((hashAnswerFlat prims q).run s >>= fun p : HashOutput × HashCache C =>
-          (simulateQ (hashAnswer prims) (k p.1)).run p.2)
-    rw [hstep, bind_map_left, map_bind]
-    congr 1
-    funext p
-    exact ih p.1 p.2
 
 end ThresholdLeanXmssSecurity
 end
@@ -4534,28 +4167,6 @@ def multFinish (D : C.Coalition) (width : ℕ) (filled : C.Term → ℕ → Opti
     some fun T g => if i ∈ C.holders T ∧ g < width then
       z T g + (if ∃ j ∈ D.1, filled T g = some j then offset i T g else 0) else 0
 
-def addHiddenOutput (D : C.Coalition) (width : ℕ) (delta : ℕ → E)
-    (out : C.Party → Option (Shares C E)) : C.Party → Option (Shares C E) :=
-  fun i => (out i).map fun z T g => z T g +
-    if i ∈ C.holders T ∧ g < width ∧ lackedTerm D.1 = some T then delta g else 0
-
-lemma multFinish_shift (D : C.Coalition) (width : ℕ) (filled : C.Term → ℕ → Option C.Party)
-    (result result' : ℕ → E) (known : Shares C E) (offset : C.Party → Shares C E)
-    (receivers : Finset C.Party) (fresh : C.Term → Fin width → E) :
-    multFinish D width filled result known offset receivers fresh =
-      addHiddenOutput D width (fun g => result g-result' g)
-        (multFinish D width filled result' known offset receivers fresh) := by
-  funext i
-  dsimp only [multFinish,addHiddenOutput]
-  by_cases hi : i ∈ D.1 ∨ i ∉ receivers
-  · simp only [if_pos hi,Option.map_none]
-  · simp only [if_neg hi,Option.map_some]
-    congr 1
-    funext T g
-    by_cases hh : i ∈ C.holders T <;> by_cases hg : g < width <;>
-      by_cases ht : lackedTerm D.1 = some T <;>
-      simp only [hh,hg,ht,true_and,false_and,and_true,and_false,if_true,if_false,add_zero] <;> ring
-
 def extendTotal (K : Constants C E) (D : C.Coalition)
     (inputs : C.Party → Option (List (Product C E))) (g : ℕ) : E :=
   ∑ i ∈ univ.filter (· ∉ D.1),
@@ -4571,67 +4182,6 @@ lemma FextendMult_run_finish (K : Constants C E) (D : C.Coalition)
       pure (multFinish D (firstInput inputs).length (filler K .peer)
         (fun g => extendTotal K D inputs g+d g) known offset receivers fresh)) := rfl
 
-def multLeak (view : C.Party → List (Product C E)) :
-    OracleComp (LocalSpec C + ((C.Party → List (Product C E)) →ₒ
-      ((ℕ → E) × Shares C E × (C.Party → Shares C E) × Finset C.Party)))
-      ((ℕ → E) × Shares C E × (C.Party → Shares C E) × Finset C.Party) := leak view
-
-def multRun (D : C.Coalition) (width : ℕ) (filled : C.Term → ℕ → Option C.Party)
-    (total : ℕ → E) (view : C.Party → List (Product C E)) :
-    OracleComp (LocalSpec C + ((C.Party → List (Product C E)) →ₒ
-      ((ℕ → E) × Shares C E × (C.Party → Shares C E) × Finset C.Party)))
-      (C.Party → Option (Shares C E)) := do
-  let (d,known,offset,receivers) ← multLeak view
-  let fresh ← sample (C.Term → Fin width → E)
-  pure (multFinish D width filled (fun g => total g+d g) known offset receivers fresh)
-
-lemma multRun_shift (D : C.Coalition) (width : ℕ) (filled : C.Term → ℕ → Option C.Party)
-    (total total' : ℕ → E) (view : C.Party → List (Product C E)) :
-    multRun D width filled total view =
-      addHiddenOutput D width (fun g => total g-total' g) <$> multRun D width filled total' view := by
-  unfold multRun
-  simp only [map_bind]
-  apply bind_congr
-  intro reply
-  rcases reply with ⟨d,known,offset,receivers⟩
-  simp only [map_bind]
-  apply bind_congr
-  intro fresh
-  simp only [map_pure]
-  have hdelta : (fun g => total g+d g-(total' g+d g)) = (fun g => total g-total' g) := by
-    funext g; ring
-  have hout := multFinish_shift D width filled (fun g => total g+d g)
-    (fun g => total' g+d g) known offset receivers fresh
-  rw [hdelta] at hout
-  exact congrArg Pure.pure hout
-
-/-- One complete ideal multiplication call couples exactly, including the adversary's adaptive reply. -/
-theorem FextendMult_run_shift (K : Constants C E) (D : C.Coalition)
-    (a b : C.Party → Option (List (Product C E))) (h : ExtendViewRelation K D a b) :
-    (FextendMult K).run D a =
-      addHiddenOutput D (firstInput b).length (fun g => extendTotal K D a g-extendTotal K D b g) <$>
-        (FextendMult K).run D b := by
-  have hview := extendView_eq_of_relation K D a b h
-  have hlen : (firstInput a).length = (firstInput b).length := by
-    simpa only [List.length_map] using congrArg List.length h.1
-  change multRun D (firstInput a).length (filler K .peer) (extendTotal K D a) (extendView K D.1 a) =
-    addHiddenOutput D (firstInput b).length (fun g => extendTotal K D a g-extendTotal K D b g) <$>
-      multRun D (firstInput b).length (filler K .peer) (extendTotal K D b) (extendView K D.1 b)
-  rw [hview,hlen]
-  exact multRun_shift D _ _ _ _ _
-
-/-- Known output terms are unchanged by the coupled multiplication. -/
-lemma addHiddenOutput_known (D : C.Coalition) (width : ℕ) (delta : ℕ → E)
-    (out : C.Party → Option (Shares C E)) (i : C.Party) (T : C.Term)
-    (hT : KnownTo D.1 T) :
-    ((addHiddenOutput D width delta out i).map fun z => z T) = ((out i).map fun z => z T) := by
-  have hnot : lackedTerm D.1 ≠ some T := fun hh => lackedTerm_unknown D T hh hT
-  simp only [addHiddenOutput,Option.map_map]
-  congr 1
-  funext z
-  funext g
-  simp [hnot]
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -4644,43 +4194,7 @@ attribute [local instance] Classical.propDecidable inhabitedField
 set_option linter.unusedSectionVars false
 variable {C : Committee} {E : Type}
 
-/-- Equality of functionality programs lifts through an adaptive adversary's entire callback. -/
-theorem runFunctionality_map_output {m : Type → Type} [Monad m] [LawfulMonad m]
-    {I O L R Ia : Type} (Ro : Roles C m) (D : C.Coalition) (A : Adversary C E Ia L R)
-    (F : Functionality C I O L R) (st : A.State) (a b : C.Party → Option I)
-    (f : (C.Party → Option O) → (C.Party → Option O))
-    (hinput : ∀ i, i ∉ D.1 → (a i).isSome = (b i).isSome)
-    (hcall : F.run D a = f <$> F.run D b) (hzero : f (fun _ => none) = fun _ => none) :
-    runFunctionality Ro D A F st a =
-      (fun r => (r.1,f r.2)) <$> runFunctionality Ro D A F st b := by
-  have hi : (∀ i, i ∉ D.1 → (a i).isSome) ↔ (∀ i, i ∉ D.1 → (b i).isSome) := by
-    constructor <;> intro h i hD
-    · rw [← hinput i hD]; exact h i hD
-    · rw [hinput i hD]; exact h i hD
-  unfold runFunctionality
-  simp only [hi]
-  split_ifs
-  · simp only [hcall,simulateQ_map,StateT.run_map,bind_map_left,map_bind,map_pure]
-  · simp [hzero]
-
 variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
-
-/-- The network callback itself has the hidden-output translation, with identical adversary state. -/
-theorem runFunctionality_extend_shift {m : Type → Type} [Monad m] [LawfulMonad m]
-    {Ia : Type} (Ro : Roles C m) (K : Constants C E) (D : C.Coalition)
-    (A : Adversary C E Ia (C.Party → List (Product C E))
-      ((ℕ → E) × Shares C E × (C.Party → Shares C E) × Finset C.Party))
-    (st : A.State) (a b : C.Party → Option (List (Product C E)))
-    (hinput : ∀ i, i ∉ D.1 → (a i).isSome = (b i).isSome)
-    (h : ExtendViewRelation K D a b) :
-    runFunctionality Ro D A (FextendMult K) st a =
-      (fun r => (r.1,addHiddenOutput D (firstInput b).length
-        (fun g => extendTotal K D a g-extendTotal K D b g) r.2)) <$>
-      runFunctionality Ro D A (FextendMult K) st b := by
-  apply runFunctionality_map_output Ro D A (FextendMult K) st a b _ hinput
-  · exact FextendMult_run_shift K D a b h
-  · funext i
-    rfl
 
 end ThresholdLeanXmssSecurity
 end
@@ -4793,26 +4307,6 @@ lemma HiddenDifference.conv (K : Constants C E) (D : C.Coalition)
   apply Finset.sum_congr rfl
   intro T hT
   rw [hdiff i hi T (by simpa [localContext] using (Finset.mem_filter.mp hT).2)]
-
-lemma HiddenDifference.lin (D : C.Coalition) {a b c d : C.Party → Shares C E}
-    (h₁ : HiddenDifference D a b) (h₂ : HiddenDifference D c d) (u v : ℕ → E) :
-    HiddenDifference D (fun i T g => u g*a i T g+v g*c i T g)
-      (fun i T g => u g*b i T g+v g*d i T g) := by
-  obtain ⟨delta₁,h₁known,h₁diff⟩ := h₁
-  obtain ⟨delta₂,h₂known,h₂diff⟩ := h₂
-  refine ⟨fun T g => u g*delta₁ T g+v g*delta₂ T g,?_,?_⟩
-  · intro T hT g; simp [h₁known T hT,h₂known T hT]
-  · intro i hi T hT g
-    dsimp only
-    rw [← h₁diff i hi T hT g,← h₂diff i hi T hT g]
-    ring
-
-lemma HiddenDifference.reindex (D : C.Coalition) {a b : C.Party → Shares C E}
-    (h : HiddenDifference D a b) (f : ℕ → ℕ) :
-    HiddenDifference D (fun i T g => a i T (f g)) (fun i T g => b i T (f g)) := by
-  obtain ⟨delta,hknown,hdiff⟩ := h
-  exact ⟨fun T g => delta T (f g),fun T hT g => hknown T hT (f g),
-    fun i hi T hT g => hdiff i hi T hT (f g)⟩
 
 end ThresholdLeanXmssSecurity
 end
@@ -4983,21 +4477,6 @@ theorem final_three_openings (a b a' b' wa wb wa' wb' d d' e0 e2 r : E)
   rw [herror,ha,hb] at h
   linear_combination h-h'
 
-/-- The mask translation preserves all three public openings when the error is fixed. -/
-theorem final_three_openings_shift (a b a' b' wa wb d d' e0 e2 r : E)
-    (hr : 1+r ≠ 0) (herror : d-a*b = d'-a'*b') :
-    let wa' := wa+r/(1+r)*(a-a')
-    let wb' := wb+r/(1+r)*(b-b')
-    (wa+r*(wa+a),wb+r*(wb+b),
-      (wa*wb+e0)+(d+(wa*wb+e0)+((wa+a)*(wb+b)+e2))*r+((wa+a)*(wb+b)+e2)*r^2) =
-    (wa'+r*(wa'+a'),wb'+r*(wb'+b'),
-      (wa'*wb'+e0)+(d'+(wa'*wb'+e0)+((wa'+a')*(wb'+b')+e2))*r+
-        ((wa'+a')*(wb'+b')+e2)*r^2) := by
-  dsimp only
-  have ha := (final_mask_shift wa a a' r hr).symm
-  have hb := (final_mask_shift wb b b' r hr).symm
-  exact Prod.ext ha (Prod.ext hb (final_three_openings _ _ _ _ _ _ _ _ _ _ _ _ _ herror ha hb))
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -5021,73 +4500,6 @@ lemma honest_sum_sub (D : C.Coalition) (f g : C.Party → E)
   have hiD : i ∈ D.1 := by simpa using hi
   rw [hD i hiD,sub_self]
 
-/-- The honest `MulSh` contributions change by exactly the change of the actual product. -/
-theorem honest_mulSh_difference (K : Constants C E) (D : C.Coalition)
-    (A B A' B' : C.Party → ℕ → E) (a b a' b' : ℕ → E) (n : ℕ)
-    (hA : ∀ g < n,IsShamir K (fun i => A i g) (a g))
-    (hB : ∀ g < n,IsShamir K (fun i => B i g) (b g))
-    (hA' : ∀ g < n,IsShamir K (fun i => A' i g) (a' g))
-    (hB' : ∀ g < n,IsShamir K (fun i => B' i g) (b' g))
-    (hAD : ∀ i ∈ D.1,∀ g < n,A i g = A' i g)
-    (hBD : ∀ i ∈ D.1,∀ g < n,B i g = B' i g) :
-    (∑ i ∈ univ.filter (· ∉ D.1),mulSh K (localContext i) (A i) (B i) n) -
-      (∑ i ∈ univ.filter (· ∉ D.1),mulSh K (localContext i) (A' i) (B' i) n) =
-        (∑ g ∈ range n,a g*b g) - ∑ g ∈ range n,a' g*b' g := by
-  letI : CharP E 2 := charP_two
-  rw [honest_sum_sub D _ _ (by
-    intro i hi
-    unfold mulSh
-    congr 1
-    apply Finset.sum_congr rfl
-    intro g hg
-    rw [hAD i hi g (mem_range.mp hg),hBD i hi g (mem_range.mp hg)])]
-  have hs : ∀ (U V : C.Party → ℕ → E) (u v : ℕ → E),
-      (∀ g < n,IsShamir K (fun i => U i g) (u g)) →
-      (∀ g < n,IsShamir K (fun i => V i g) (v g)) →
-      (∑ i,mulSh K (localContext i) (U i) (V i) n) = ∑ g ∈ range n,u g*v g := by
-    intro U V u v hU hV
-    simp only [mulSh,localContext,Finset.mul_sum]
-    rw [Finset.sum_comm]
-    apply Finset.sum_congr rfl
-    intro g hg
-    exact sum_lagrangeAll_shamir K (hU g (mem_range.mp hg)) (hV g (mem_range.mp hg))
-  rw [hs A B a b hA hB,hs A' B' a' b' hA' hB']
-
-/-- In particular the attack added by `F_extendMult` induces the same product error. -/
-theorem honest_mulSh_error_eq (K : Constants C E) (D : C.Coalition)
-    (A B A' B' : C.Party → ℕ → E) (a b a' b' : ℕ → E) (n : ℕ) (attack : E)
-    (hA : ∀ g < n,IsShamir K (fun i => A i g) (a g))
-    (hB : ∀ g < n,IsShamir K (fun i => B i g) (b g))
-    (hA' : ∀ g < n,IsShamir K (fun i => A' i g) (a' g))
-    (hB' : ∀ g < n,IsShamir K (fun i => B' i g) (b' g))
-    (hAD : ∀ i ∈ D.1,∀ g < n,A i g = A' i g)
-    (hBD : ∀ i ∈ D.1,∀ g < n,B i g = B' i g) :
-    (∑ i ∈ univ.filter (· ∉ D.1),mulSh K (localContext i) (A i) (B i) n) + attack -
-      (∑ g ∈ range n,a g*b g) =
-    (∑ i ∈ univ.filter (· ∉ D.1),mulSh K (localContext i) (A' i) (B' i) n) + attack -
-      (∑ g ∈ range n,a' g*b' g) := by
-  have h := honest_mulSh_difference K D A B A' B' a b a' b' n hA hB hA' hB' hAD hBD
-  linear_combination h
-
-/-- Error recurrence for Gruen's weighted slice fold. -/
-lemma slice_residual_identity (c d t0 t1 t2 e0 eInf r : E) (hc : c ≠ 0) :
-    ((1+r)*(t0+e0)+r*((d+(t0+e0))/c)+r*(1+r)*(t2+eInf)) -
-      (t0+t1*r+t2*r^2) =
-    (1+r)*e0+r/c*((d-(t0+c*(t0+t1+t2)))+e0)+r*(1+r)*eInf := by
-  letI : CharP E 2 := charP_two
-  have two : (2 : E) = 0 := CharTwo.two_eq_zero
-  field_simp
-  linear_combination (norm := ring_nf) (r*t0+r*t0*c+r*c*t2)*two
-
-/-- Error recurrence for the quadratic dimension-reduction step. -/
-lemma halving_residual_identity (d lo hi cross e0 e2 r : E) :
-    (lo+e0+(d+(lo+hi+cross)+e2)*r+(lo+hi+cross+e2)*r^2) -
-      (lo+cross*r+(lo+hi+cross)*r^2) =
-    e0+r*(d-(lo+hi))+r*(1+r)*e2 := by
-  letI : CharP E 2 := charP_two
-  have two : (2 : E) = 0 := CharTwo.two_eq_zero
-  linear_combination (norm := ring_nf) (lo*r+hi*r)*two
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -5099,56 +4511,6 @@ namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
 set_option linter.unusedSectionVars false
 variable {C : Committee}
-
-/-- Digest renaming leaves every PRG key unchanged. -/
-lemma digestSwap_streamKey (salt : List Bit) (h h' : HashOutput) (key : HashOutput) :
-    digestSwap (C := C) salt h h' (.streamKey key) = .streamKey key := by
-  simp [digestSwap,Equiv.swap_apply_def]
-
-lemma prgAnswer_digestSwap (prims : Primitives) (salt : List Bit) (h h' : HashOutput)
-    (s : HashCache C) (x : PrgInput C) :
-    (prgAnswer prims x).run (relabelHashCache (digestSwap salt h h') s) =
-      (fun p => (p.1,relabelHashCache (digestSwap salt h h') p.2)) <$>
-        (prgAnswer prims x).run s := by
-  have hq := hashAnswer_digestSwap_all prims salt h h' s (.streamKey x.2.1)
-  rw [digestSwap_streamKey] at hq
-  unfold prgAnswer
-  simp only [StateT.run_bind,StateT.run_pure,map_bind,map_pure]
-  rw [hq,bind_map_left]
-
-def localDigestAnswer (prims : Primitives) (salt : List Bit) (h h' : HashOutput) :
-    QueryImpl (LocalSpec C) (StateT (HashCache C) ProbComp) :=
-  unifFwdImpl (Query C →ₒ HashOutput) +
-    (((fun (q : Query C) => (hashAnswer prims (digestSwap salt h h' q) :
-      StateT (HashCache C) ProbComp HashOutput)) :
-      QueryImpl (Query C →ₒ HashOutput) (StateT (HashCache C) ProbComp)) + prgAnswer (C := C) prims)
-
-/-- The cache transport works for private draws, hashes, and PRG calls together. -/
-theorem localAnswer_digestSwap (prims : Primitives) (salt : List Bit) (h h' : HashOutput)
-    (s : HashCache C) (t : (LocalSpec C).Domain) :
-    (localDigestAnswer prims salt h h' t).run (relabelHashCache (digestSwap salt h h') s) =
-      (fun p => (p.1,relabelHashCache (digestSwap salt h h') p.2)) <$>
-        (localAnswer prims t).run s := by
-  rcases t with n | q | x
-  · simp [localDigestAnswer,localAnswer,unifFwdImpl,Functor.map_map]
-  · exact hashAnswer_digestSwap_all prims salt h h' s q
-  · exact prgAnswer_digestSwap prims salt h h' s x
-
-/-- Digest coupling for a whole local computation, including an adaptive adversary. -/
-theorem localProgram_digestSwap (prims : Primitives) (salt : List Bit) (h h' : HashOutput)
-    {α : Type} (oa : OracleComp (LocalSpec C) α) (s : HashCache C) :
-    (simulateQ (localDigestAnswer prims salt h h') oa).run
-        (relabelHashCache (digestSwap salt h h') s) =
-      (fun p => (p.1,relabelHashCache (digestSwap salt h h') p.2)) <$>
-        (simulateQ (localAnswer prims) oa).run s := by
-  induction oa using OracleComp.inductionOn generalizing s with
-  | pure a => simp
-  | query_bind q k ih =>
-    simp only [simulateQ_bind,simulateQ_spec_query,StateT.run_bind]
-    rw [localAnswer_digestSwap,bind_map_left,map_bind]
-    apply bind_congr
-    intro p
-    exact ih p.1 p.2
 
 end ThresholdLeanXmssSecurity
 end
@@ -5175,23 +4537,6 @@ theorem sameRun_uniform_equiv (prims : Primitives) {α : Type} [Fintype α] [Sam
   have he : e <$> ($ᵗ α) =ᵈ $ᵗ α :=
     SampleableType.map_uniformSample_evalDistEq_of_bijective e.bijective
   simpa only [liftComp_map] using sameRun_liftComp_of_evalDist (C := C) prims _ _ he
-
-/-- A later transcript may choose the mask bijection; arbitrary hash and PRG queries are retained. -/
-theorem sameRun_late_uniform_equiv (prims : Primitives) {α β γ : Type}
-    [Fintype α] [SampleableType α] (transcript : OracleComp (LocalSpec C) β)
-    (e : β → α ≃ α) (k : β → α → OracleComp (LocalSpec C) γ) :
-    SameRun prims
-      (do let w ← liftComp ($ᵗ α) (LocalSpec C); let t ← transcript; k t (e t w))
-      (do let w ← liftComp ($ᵗ α) (LocalSpec C); let t ← transcript; k t w) := by
-  have h : ∀ t, SameRun prims
-      (liftComp ($ᵗ α) (LocalSpec C) >>= fun w => k t (e t w))
-      (liftComp ($ᵗ α) (LocalSpec C) >>= k t) := by
-    intro t
-    simpa only [bind_map_left] using
-      (sameRun_uniform_equiv (C := C) prims (e t)).bind (fun w => SameRun.refl prims (k t w))
-  exact (sameRun_swap prims (liftComp ($ᵗ α) (LocalSpec C)) transcript (fun w t => k t (e t w))).trans
-    ((SameRun.bind_right transcript h).trans
-      (sameRun_swap prims (liftComp ($ᵗ α) (LocalSpec C)) transcript (fun w t => k t w)).symm)
 
 end ThresholdLeanXmssSecurity
 end
@@ -5291,18 +4636,6 @@ theorem multFinish_translate (D : C.Coalition) (width : ℕ) (filled : C.Term �
       rw [multTerms_translate D width result result' known delta fresh hknown hsum T g hT.2]
       ring
     · simp only [if_neg hT,add_zero]
-
-/-- The fresh-table translation is measure preserving. -/
-theorem multFresh_translate_uniform (width : ℕ) (delta : Shares C E) :
-    (fun fresh : C.Term → Fin width → E => fun T k => fresh T k-delta T k) <$>
-      ($ᵗ (C.Term → Fin width → E)) =ᵈ $ᵗ (C.Term → Fin width → E) := by
-  let e : (C.Term → Fin width → E) ≃ (C.Term → Fin width → E) :=
-    Equiv.addRight (fun T k => -delta T k)
-  have he : (fun fresh : C.Term → Fin width → E => fun T k => fresh T k-delta T k) = e := by
-    funext fresh T k
-    simp [e,sub_eq_add_neg]
-  rw [he]
-  exact SampleableType.map_uniformSample_evalDistEq_of_bijective e.bijective
 
 end ThresholdLeanXmssSecurity
 end
@@ -5442,45 +4775,6 @@ def saltedDigestAnswer (prims : Primitives) (salt history : List Bit) :
   let h ← hashAnswer prims (.history history)
   hashAnswer prims (.digest salt h)
 
-lemma relabelHashCache_digest_history (salt history : List Bit) (h h' : HashOutput) (s : HashCache C) :
-    relabelHashCache (digestSwap salt h h') s (.history history) = s (.history history) := by
-  have he := relabelHashCache_apply (digestSwap (C := C) salt h h') s (.history history)
-  rw [digestSwap_history] at he
-  exact he
-
-/-- The real and dummy inner histories may both be publicly queried. Only their outer digest names move. -/
-theorem saltedDigestAnswer_couple (prims : Primitives) (salt history history' : List Bit)
-    (h h' : HashOutput) (s : HashCache C)
-    (hh : s (.history history) = some h) (hh' : s (.history history') = some h') :
-    (saltedDigestAnswer prims salt history').run (relabelHashCache (digestSwap salt h h') s) =
-      (fun p => (p.1,relabelHashCache (digestSwap salt h h') p.2)) <$>
-        (saltedDigestAnswer prims salt history).run s := by
-  have hf : ∀ history : List Bit,¬ IsFixed (C := C) (.history history) := by
-    intro history
-    rintro ⟨_,he,_⟩
-    cases he
-  have hh'' : relabelHashCache (digestSwap salt h h') s (.history history') = some h' :=
-    (relabelHashCache_digest_history salt history' h h' s).trans hh'
-  unfold saltedDigestAnswer
-  simp only [StateT.run_bind]
-  rw [hashAnswer_run_cached prims (hf _) hh'',hashAnswer_run_cached prims (hf _) hh,pure_bind,pure_bind]
-  exact hashAnswer_digestSwap prims salt h h' s
-
-/-- The coupling extends through the entire adaptive local continuation after the digest is sent. -/
-theorem saltedDigestAnswer_bind_couple (prims : Primitives) (salt history history' : List Bit)
-    (h h' : HashOutput) (s : HashCache C)
-    (hh : s (.history history) = some h) (hh' : s (.history history') = some h')
-    {α : Type} (k : HashOutput → OracleComp (LocalSpec C) α) :
-    ((saltedDigestAnswer prims salt history' >>= fun d => simulateQ (localDigestAnswer prims salt h h') (k d)).run
-      (relabelHashCache (digestSwap salt h h') s)) =
-    (fun p => (p.1,relabelHashCache (digestSwap salt h h') p.2)) <$>
-      ((saltedDigestAnswer prims salt history >>= fun d => simulateQ (localAnswer prims) (k d)).run s) := by
-  simp only [StateT.run_bind]
-  rw [saltedDigestAnswer_couple prims salt history history' h h' s hh hh',bind_map_left,map_bind]
-  apply bind_congr
-  intro p
-  exact localProgram_digestSwap prims salt h h' (k p.1) p.2
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -5570,13 +4864,6 @@ lemma ShamirDifference.congr (K : Constants C E) (D : C.Coalition)
   obtain ⟨P,hP,he,hD⟩ := h
   exact ⟨P,hP,fun i hi => by rw [ha i hi,hb i hi];exact he i hi,hD⟩
 
-lemma ShamirDifference.ite (K : Constants C E) (D : C.Coalition)
-    {a b : C.Party → E} (h : ShamirDifference K D a b) (p : Prop) [Decidable p] :
-    ShamirDifference K D (fun i => if p then a i else 0) (fun i => if p then b i else 0) := by
-  by_cases hp : p
-  · simpa only [if_pos hp] using h
-  · simpa only [if_neg hp] using ShamirDifference.refl K D (fun _ => 0)
-
 def shamirPairInputs (D : C.Coalition) (A B U V : C.Party → ℕ → E) (n m : ℕ) :
     C.Party → Option (List (Product C E)) :=
   fun i => if i ∈ D.1 then none else some [.shamir (A i) (B i) n,.shamir (U i) (V i) m]
@@ -5627,53 +4914,6 @@ theorem shamirPair_viewRelation (K : Constants C E) (D : C.Coalition)
       | succ g =>
         apply ShamirDifference.congr K D (ShamirDifference.refl K D (fun _ => (0 : E))) <;>
           intro i hi <;> simp [shamirPairInputs,hi]
-
-/-- The complete adaptive callback on the two Shamir products preserves the adversary's state. -/
-theorem shamirPair_call_shift {Ia : Type} (K : Constants C E) (D : C.Coalition)
-    (Adv : Adversary C E Ia (C.Party → List (Product C E))
-      ((ℕ → E) × Shares C E × (C.Party → Shares C E) × Finset C.Party)) (st : Adv.State)
-    (A B U V A' B' U' V' : C.Party → ℕ → E) (n m : ℕ)
-    (hA : ∀ k,ShamirDifference K D (fun i => A i k) (fun i => A' i k))
-    (hB : ∀ k,ShamirDifference K D (fun i => B i k) (fun i => B' i k))
-    (hU : ∀ k,ShamirDifference K D (fun i => U i k) (fun i => U' i k))
-    (hV : ∀ k,ShamirDifference K D (fun i => V i k) (fun i => V' i k)) :
-    let a := shamirPairInputs D A B U V n m
-    let b := shamirPairInputs D A' B' U' V' n m
-    runFunctionality localRoles D Adv (FextendMult K) st a =
-      (fun out => (out.1,addHiddenOutput D 2
-        (fun g => extendTotal K D a g-extendTotal K D b g) out.2)) <$>
-        runFunctionality localRoles D Adv (FextendMult K) st b := by
-  dsimp only
-  have hlen : (firstInput (shamirPairInputs D A' B' U' V' n m)).length = 2 := by
-    obtain ⟨j,hj,he⟩ := firstInput_honest (I := List (Product C E)) D
-      (fun i => [.shamir (A' i) (B' i) n,.shamir (U' i) (V' i) m])
-    change (firstInput (fun i => if i ∈ D.1 then none else some
-      [Product.shamir (A' i) (B' i) n,Product.shamir (U' i) (V' i) m])).length = 2
-    rw [he]
-    rfl
-  have h := runFunctionality_extend_shift localRoles K D Adv st
-    (shamirPairInputs D A B U V n m) (shamirPairInputs D A' B' U' V' n m)
-    (by intro i hi; simp [shamirPairInputs,hi])
-    (shamirPair_viewRelation K D A B U V A' B' U' V' n m hA hB hU hV)
-  simpa only [hlen] using h
-
-/-- The input to the actual halving functionality has the same adversarial view in both runs. -/
-theorem halving_view_eq (K : Constants C E) (D : C.Coalition)
-    (A B A' B' : C.Party → ℕ → E) (length half : ℕ)
-    (hA : ∀ k,ShamirDifference K D (fun i => A i k) (fun i => A' i k))
-    (hB : ∀ k,ShamirDifference K D (fun i => B i k) (fun i => B' i k)) :
-    let sum := fun (A : C.Party → ℕ → E) i k => A i k+if k+half < length then A i (k+half) else 0
-    extendView K D.1 (shamirPairInputs D A B (sum A) (sum B) half half) =
-      extendView K D.1 (shamirPairInputs D A' B' (sum A') (sum B') half half) := by
-  dsimp only
-  apply extendView_eq_of_relation K D
-  apply shamirPair_viewRelation K D _ _ _ _ _ _ _ _ half half hA hB
-  · intro k
-    simpa only [one_mul] using ShamirDifference.lin K D (hA k)
-      (ShamirDifference.ite K D (hA (k+half)) (k+half < length)) 1 1
-  · intro k
-    simpa only [one_mul] using ShamirDifference.lin K D (hB k)
-      (ShamirDifference.ite K D (hB (k+half)) (k+half < length)) 1 1
 
 end ThresholdLeanXmssSecurity
 end
@@ -5997,25 +5237,6 @@ lemma runCheck_randBits (K : Constants C E) (D : C.Coalition) (A : CheckAdversar
   rw [checkFunctionalities,runFunctionality_sum_inr,runFunctionality_sum_inr]
   simp only [Functor.map_map,Function.comp_def,Option.map_map]
 
-/-- The actual check-interface multiplication call has the same hidden-output coupling. -/
-theorem runCheck_extend_shift (K : Constants C E) (D : C.Coalition) (A : CheckAdversary C E Ia)
-    (st : A.State) (a b : C.Party → List (Product C E))
-    (h : ExtendViewRelation K D (fun i => if i ∈ D.1 then none else some (a i))
-      (fun i => if i ∈ D.1 then none else some (b i))) :
-    runFunctionality localRoles D A (checkFunctionalities K) st
-      (fun i => if i ∈ D.1 then none else some (.inl (.inr (a i)))) =
-      (fun p => (p.1,fun i =>
-        ((addHiddenOutput D (firstInput (fun j => if j ∈ D.1 then none else some (b j))).length
-          (fun g => extendTotal K D (fun j => if j ∈ D.1 then none else some (a j)) g -
-            extendTotal K D (fun j => if j ∈ D.1 then none else some (b j)) g) p.2) i).map
-          (Sum.inl ∘ Sum.inr))) <$>
-        runFunctionality localRoles D (rightAdversary (leftAdversary A)) (FextendMult K) st
-          (fun i => if i ∈ D.1 then none else some (b i)) := by
-  rw [runCheck_extend,runFunctionality_extend_shift localRoles K D (rightAdversary (leftAdversary A)) st _ _ (by
-    intro i hi
-    simp [hi]) h]
-  simp only [Functor.map_map,Function.comp_def]
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -6054,25 +5275,6 @@ theorem executePhase_extend (K : Constants C E) (D : C.Coalition) (A : CheckAdve
   congr 1
   funext i
   cases he : p.2 i <;> rfl
-
-/-- The hidden-input translation is preserved through the real scheduler and the recorded history. -/
-theorem executePhase_extend_shift (K : Constants C E) (D : C.Coalition) (A : CheckAdversary C E Ia)
-    (fuel : ℕ) (st : A.State) (a b : C.Party → List (Product C E)) (hs : C.Party → RunState C)
-    (f : C.Party → Shares C E → RunM C E (CheckSpec C E) α)
-    (h : ExtendViewRelation K D (fun i => if i ∈ D.1 then none else some (a i))
-      (fun i => if i ∈ D.1 then none else some (b i))) :
-    executePhase localRoles D A (checkFunctionalities K) (fuel+1) st
-      (fun i => ((hybridCheckBuildingBlocks K i).extendMult (a i) >>= f i).run' (hs i)) = (do
-      let p ← runFunctionality localRoles D (rightAdversary (leftAdversary A)) (FextendMult K) st
-        (fun i => if i ∈ D.1 then none else some (b i))
-      let out := addHiddenOutput D (firstInput (fun j => if j ∈ D.1 then none else some (b j))).length
-        (fun g => extendTotal K D (fun j => if j ∈ D.1 then none else some (a j)) g -
-          extendTotal K D (fun j => if j ∈ D.1 then none else some (b j)) g) p.2
-      executePhase localRoles D A (checkFunctionalities K) fuel p.1
-        (fun i => afterExtend K i (a i).length (hs i) (f i) (out i))) := by
-  rw [executePhase_extend,runFunctionality_extend_shift localRoles K D (rightAdversary (leftAdversary A)) st _ _ (by
-    intro i hi
-    simp [hi]) h,bind_map_left]
 
 def afterChallenge (K : Constants C E) (hs : RunState C)
     (f : E → RunM C E (CheckSpec C E) α) (out : Option (List E)) :
@@ -6354,16 +5556,6 @@ def randShares (D : C.Coalition) (count : ℕ) (known : Shares C E)
     if KnownTo D.1 T then known T g else if h : g < count then fresh T ⟨g,h⟩ else 0
   else 0
 
-lemma randFinish_shares (D : C.Coalition) (count : ℕ) (known : Shares C E)
-    (knownPairs : C.Party → C.Party → ℕ → E) (fresh : C.Term → Fin count → E)
-    (pairs : C.Pair → Fin count → E) (i : C.Party) (hi : i ∉ D.1) :
-    ((randFinish D count known knownPairs fresh pairs i).map Prod.fst) =
-      some (randShares D count known fresh i) := by
-  simp only [randFinish,if_neg hi,Option.map_some]
-  congr 1
-  funext T g
-  by_cases ht : i ∈ C.holders T <;> by_cases hk : KnownTo D.1 T <;> simp [randShares,ht,hk]
-
 lemma randShares_hiddenDifference (D : C.Coalition) (count : ℕ) (known : Shares C E)
     (a b : C.Term → Fin count → E) :
     HiddenDifference D (randShares D count known a) (randShares D count known b) := by
@@ -6431,65 +5623,6 @@ lemma maskedView_eq (K : Constants C E) (D : C.Coalition) (known : Shares C E)
     maskedView K D known a A B = maskedView K D known b A B :=
   final_mask_leak_independent K D known a b A B
 
-/-- The actual masked leak allows both secret tables to be sampled after any intervening
-transcript whose only input from this call is the adversary's reply. -/
-theorem maskedTables_defer (prims : Primitives) (K : Constants C E) (D : C.Coalition)
-    (known : Shares C E) (A B : C.Party → E)
-    (reply : (C.Party → List (Product C E)) → OracleComp (LocalSpec C) σ)
-    (transcript : σ → OracleComp (LocalSpec C) τ)
-    (k : σ → τ → MaskTable C E → MaskTable C E → OracleComp (LocalSpec C) γ) :
-    SameRun prims
-      (do
-        let w ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
-        let p ← reply (maskedView K D known w A B)
-        let q ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
-        let t ← transcript p
-        k p t w q)
-      (do
-        let p ← reply (maskedView K D known 0 A B)
-        let t ← transcript p
-        let w ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
-        let q ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
-        k p t w q) := by
-  have hv : ∀ w,maskedView K D known w A B = maskedView K D known 0 A B :=
-    fun w => maskedView_eq K D known w 0 A B
-  simp_rw [hv]
-  refine (sameRun_swap prims (liftComp ($ᵗ (MaskTable C E)) (LocalSpec C))
-    (reply (maskedView K D known 0 A B)) _).trans ?_
-  refine SameRun.bind_right _ fun p => ?_
-  refine (SameRun.bind_right (g := fun w => transcript p >>= fun t =>
-    liftComp ($ᵗ (MaskTable C E)) (LocalSpec C) >>= fun q => k p t w q)
-    (liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)) fun w => ?_).trans ?_
-  · exact sameRun_swap prims _ (transcript p) _
-  · exact sameRun_swap prims _ (transcript p) _
-
-/-- The late transcript may choose the triangular, measure-preserving table translation. -/
-theorem maskedTables_late_bijection (prims : Primitives) (K : Constants C E) (D : C.Coalition)
-    (known : Shares C E) (A B : C.Party → E)
-    (reply : (C.Party → List (Product C E)) → OracleComp (LocalSpec C) σ)
-    (transcript : σ → OracleComp (LocalSpec C) τ)
-    (e : σ → τ → MaskTable C E ≃ MaskTable C E)
-    (f : σ → τ → MaskTable C E → MaskTable C E ≃ MaskTable C E)
-    (k : σ → τ → MaskTable C E → MaskTable C E → OracleComp (LocalSpec C) γ) :
-    SameRun prims
-      (do
-        let w ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
-        let p ← reply (maskedView K D known w A B)
-        let q ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
-        let t ← transcript p
-        k p t (e p t w) (f p t w q))
-      (do
-        let w ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
-        let p ← reply (maskedView K D known w A B)
-        let q ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
-        let t ← transcript p
-        k p t w q) := by
-  refine (maskedTables_defer prims K D known A B reply transcript
-    (fun p t w q => k p t (e p t w) (f p t w q))).trans ?_
-  refine SameRun.trans ?_ (maskedTables_defer prims K D known A B reply transcript k).symm
-  refine SameRun.bind_right _ fun p => SameRun.bind_right _ fun t => ?_
-  exact sameRun_uniform_two_equivs prims (e p t) (f p t) (k p t)
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -6502,34 +5635,6 @@ attribute [local instance] Classical.propDecidable
 set_option linter.unusedSectionVars false
 variable {C : Committee}
 
-lemma relabelHashCache_digestSwap_fresh (salt : List Bit) (h h' : HashOutput) (s : HashCache C)
-    (hf : s (.digest salt h) = none) (hf' : s (.digest salt h') = none) :
-    relabelHashCache (digestSwap salt h h') s = s := by
-  refine QueryCache.ext fun q => ?_
-  change s ((Equiv.swap (Query.digest salt h) (Query.digest salt h')) q) = s q
-  by_cases hq : q = .digest salt h
-  · subst q
-    rw [Equiv.swap_apply_left,hf,hf']
-  · by_cases hq' : q = .digest salt h'
-    · subst q
-      rw [Equiv.swap_apply_right,hf,hf']
-    · rw [Equiv.swap_apply_of_ne_of_ne hq hq']
-
-/-- From a cache with fresh outer names, changing the committed history exactly renames only those names. -/
-theorem saltedDigest_fresh_couple (prims : Primitives) (salt history history' : List Bit)
-    (h h' : HashOutput) (s : HashCache C)
-    (hh : s (.history history) = some h) (hh' : s (.history history') = some h')
-    (hf : s (.digest salt h) = none) (hf' : s (.digest salt h') = none)
-    {α : Type} (k : HashOutput → OracleComp (LocalSpec C) α) :
-    (saltedDigestAnswer prims salt history' >>= fun d =>
-      simulateQ (localDigestAnswer prims salt h h') (k d)).run' s =
-    (saltedDigestAnswer prims salt history >>= fun d =>
-      simulateQ (localAnswer prims) (k d)).run' s := by
-  have hc := saltedDigestAnswer_bind_couple prims salt history history' h h' s hh hh' k
-  rw [relabelHashCache_digestSwap_fresh salt h h' s hf hf'] at hc
-  simp only [StateT.run'_eq]
-  rw [hc,Functor.map_map]
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -6540,37 +5645,6 @@ noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
 set_option linter.unusedSectionVars false
-
-/-- A query budget bounds every projected trace, including traces chosen adaptively from answers. -/
-theorem projected_log_length_le {ι β α : Type} {S : OracleSpec ι}
-    [PFunctor.DecidableEq S.toPFunctor] [UniformAnswerMeasure S] (charged : ι → Prop) [DecidablePred charged]
-    (project : ι → Option β) (hproject : ∀ t,(project t).isSome → charged t)
-    {oa : OracleComp S α} {q : ℕ} (hq : IsQueryBoundP oa charged q)
-    {z : α × QueryLog S} (hz : z ∈ support ((simulateQ loggingOracle oa).run)) :
-    (z.2.filterMap (fun entry => project entry.1)).length ≤ q := by
-  induction oa using OracleComp.inductionOn generalizing q z with
-  | pure x =>
-      simp only [simulateQ_pure] at hz
-      subst hz
-      simp
-  | query_bind t k ih =>
-      rw [isQueryBoundP_query_bind_iff] at hq
-      obtain ⟨hpos,hrest⟩ := hq
-      rw [run_simulateQ_loggingOracle_query_bind,support_bind] at hz
-      simp only [Set.mem_iUnion,support_map] at hz
-      obtain ⟨u,_,z',hz',rfl⟩ := hz
-      have hb := ih u (hrest u) hz'
-      cases hp : project t with
-      | none =>
-          simp only [List.filterMap_cons,hp] 
-          by_cases hc : charged t <;> simp only [hc,if_true,if_false] at hb <;> omega
-      | some b =>
-          have hc := hproject t (by simp [hp])
-          simp only [hc,if_true] at hb
-          simp only [List.filterMap_cons,hp,List.length_cons]
-          rcases hpos with hn | hn
-          · exact False.elim (hn hc)
-          · omega
 
 /-- A uniform secret hits an arbitrary independent query trace with probability at most q/card. -/
 theorem independent_trace_guess_bound {α β : Type} [Fintype α] [Nonempty α] [SampleableType α]
@@ -6616,37 +5690,6 @@ attribute [local instance] Classical.propDecidable inhabitedField
 set_option linter.unusedSectionVars false
 variable {C : Committee} {E : Type}
 variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
-
-/-- A known output term is fixed by the adversary's reply, independently of the product or fresh table. -/
-theorem multFinish_known_independent (D : C.Coalition) (width : ℕ)
-    (filled : C.Term → ℕ → Option C.Party) (result result' : ℕ → E) (known : Shares C E)
-    (offset : C.Party → Shares C E) (receivers : Finset C.Party)
-    (a b : C.Term → Fin width → E) (i : C.Party) (T : C.Term) (hT : KnownTo D.1 T) :
-    ((multFinish D width filled result known offset receivers a i).map (fun z => z T)) =
-      ((multFinish D width filled result' known offset receivers b i).map (fun z => z T)) := by
-  have hn : lackedTerm D.1 ≠ some T := fun h => lackedTerm_unknown D T h hT
-  unfold multFinish
-  by_cases hi : i ∈ D.1 ∨ i ∉ receivers
-  · simp only [if_pos hi,Option.map_none]
-  · simp only [if_neg hi,Option.map_some]
-    congr 1
-    funext g
-    simp only [if_neg hn,if_pos hT]
-
-/-- Every recorded known history is likewise independent of the hidden product and output coins. -/
-theorem recordHistory_multFinish_known (K : Constants C E) (D : C.Coalition) (width : ℕ)
-    (result result' : ℕ → E) (known : Shares C E) (offset : C.Party → Shares C E)
-    (receivers : Finset C.Party) (a b : C.Term → Fin width → E)
-    (history : C.Term → List Bit) (i : C.Party) (T : C.Term) (hT : KnownTo D.1 T) :
-    ((multFinish D width (filler K .peer) result known offset receivers a i).map
-      (fun z => recordHistory K i history z width T)) =
-    ((multFinish D width (filler K .peer) result' known offset receivers b i).map
-      (fun z => recordHistory K i history z width T)) := by
-  have h := multFinish_known_independent D width (filler K .peer) result result' known offset receivers a b i T hT
-  have hp := congrArg (Option.map (fun z : ℕ → E => if i ∈ C.holders T then
-    history T ++ ((List.range width).filter fun g => (filler K .peer T g).isSome).flatMap ((elementCodec K).toBits ∘ z)
-    else history T)) h
-  simpa only [Option.map_map,Function.comp_def,recordHistory] using hp
 
 end ThresholdLeanXmssSecurity
 end
@@ -6709,14 +5752,6 @@ theorem finalOpen_network_congr (K : Constants C E) (D : C.Coalition)
   by_cases hl : live i <;> simp only [hl,if_true,if_false]
   rw [hv i hi hl]
 
-/-- The source-level final opening is the same program, with no remaining use of its history. -/
-lemma finalOpen_run' (K : Constants C E) (i : C.Party) (v : ℕ → E) (hs : RunState C) :
-    ((do
-      let opened ← StateT.lift (openSh K (localContext i) v 3)
-      StateT.lift (require (opened 0*opened 1=opened 2))) : RunM C E (CheckSpec C E) Unit).run' hs =
-      finalOpenProgram K i v := by
-  simp only [StateT.run'_eq,StateT.run_bind,StateT.run_lift,map_bind,map_pure,bind_assoc,pure_bind,bind_pure,finalOpenProgram]
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -6730,47 +5765,6 @@ set_option linter.unusedSectionVars false
 variable {C : Committee} {E : Type}
 variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
 
-/-- The honest shares alone fix an accepted opening, whatever the corrupt parties sent. -/
-theorem openValue_robust (K : Constants C E) (D : C.Coalition) (v : C.Party → ℕ → E)
-    (vals : ℕ → E)
-    (hv : ∀ g < 3,∃ P : Polynomial E,P.natDegree ≤ C.t-1 ∧ P.eval 0=vals g ∧
-      ∀ j,j ∉ D.1 → v j g=P.eval (K.point j))
-    (i : C.Party) (hi : i ∉ D.1) (inbox : Mail C E)
-    (hin : ∀ j,j ∉ D.1 → j ≠ i → inbox j=openOutbox j (v j) i)
-    (hag : OpenAgrees K i (v i) inbox) :
-    ∀ g < 3,openValue K i (v i) inbox g=vals g := by
-  intro g hg
-  obtain ⟨P,hP,hP0,hPj⟩ := hv g hg
-  rw [← hP0]
-  apply gs20_openSh_robust K D P hP
-  · intro j hj
-    rw [← hPj j hj]
-    unfold openShare
-    by_cases he : j=i
-    · subst j
-      simp
-    · rw [if_neg he,hin j hj he]
-      simp [openOutbox,Ne.symm he,Msg.elementAt,vector,hg]
-  · exact fun j => hag j g hg
-
-/-- If an honest party accepts the final opening, the GS20 final error polynomial vanishes. -/
-theorem final_accept_implies_root (K : Constants C E) (D : C.Coalition)
-    (v : C.Party → ℕ → E) (a b wa wb d e0 e2 r : E)
-    (hv : ∀ g < 3,∃ P : Polynomial E,P.natDegree ≤ C.t-1 ∧
-      P.eval 0=finalOpenVector wa wb a b d (wa*wb+e0) ((wa+a)*(wb+b)+e2) r g ∧
-      ∀ j,j ∉ D.1 → v j g=P.eval (K.point j))
-    (i : C.Party) (hi : i ∉ D.1) (inbox : Mail C E)
-    (hin : ∀ j,j ∉ D.1 → j ≠ i → inbox j=openOutbox j (v j) i)
-    (hag : OpenAgrees K i (v i) inbox)
-    (haccept : openValue K i (v i) inbox 0*openValue K i (v i) inbox 1=
-      openValue K i (v i) inbox 2) :
-    r*(d-a*b)+(1+r)*e0+r*(1+r)*e2=0 := by
-  have ho := openValue_robust K D v _ hv i hi inbox hin hag
-  rw [ho 0 (by omega),ho 1 (by omega),ho 2 (by omega)] at haccept
-  change (wa+r*(wa+a))*(wb+r*(wb+b)) =
-    (wa*wb+e0)+(d+(wa*wb+e0)+((wa+a)*(wb+b)+e2))*r+((wa+a)*(wb+b)+e2)*r^2 at haccept
-  rw [← final_residual_identity a b wa wb d e0 e2 r,← haccept,sub_self]
-
 lemma final_residual_card_le_two (a b d e0 e2 : E) (hwrong : d ≠ a*b) :
     (univ.filter fun r : E => r*(d-a*b)+(1+r)*e0+r*(1+r)*e2=0).card ≤ 2 := by
   apply card_filter_le_two_of_quadratic e0 (d-a*b+e0+e2) e2
@@ -6780,32 +5774,6 @@ lemma final_residual_card_le_two (a b d e0 e2 : E) (hwrong : d ≠ a*b) :
     linear_combination h1-h0-h2
   · intro r hr
     linear_combination hr
-
-/-- The actual cached challenge bounds acceptance of any later adaptive continuation,
-provided acceptance implies the final error root. -/
-theorem finalChallenge_adaptive_soundness {β : Type} (prims : Primitives) (K : Constants C E)
-    (tag label : ℕ) (coin : List E) (Ks : Finset HashOutput) (cache : HashCache C)
-    (hfresh : cache (.coinKey tag label (coin.flatMap fun v => List.ofFn (K.encode v)))=none)
-    (hexpand : ∀ key idx,cache (.expand key idx) ≠ none → key ∈ Ks)
-    (a b d e0 e2 : E) (hwrong : d ≠ a*b)
-    (cont : Option E × HashCache C → ProbComp β) (accept : β → Prop)
-    (hroot : ∀ p x,x ∈ support (cont p) → accept x →
-      ∃ r,p.1=some r ∧ r*(d-a*b)+(1+r)*e0+r*(1+r)*e2=0) :
-    Pr{let z ← (simulateQ (localAnswer prims)
-      (liftComp (challengeQuery K tag label coin) (LocalSpec C))).run cache >>= cont}[accept z] ≤
-        Ks.card / 2^256 + 2/(Fintype.card E-2 : ℕ) := by
-  let roots := univ.filter fun r : E => r*(d-a*b)+(1+r)*e0+r*(1+r)*e2=0
-  have hp : Pr{let z ← (simulateQ (localAnswer prims)
-      (liftComp (challengeQuery K tag label coin) (LocalSpec C))).run cache >>= cont}[accept z] ≤
-    Pr{let p ← (simulateQ (localAnswer prims)
-      (liftComp (challengeQuery K tag label coin) (LocalSpec C))).run cache}[∃ r ∈ roots,p.1=some r] := by
-    refine prEvent_bind_le_prEvent_of_support _ _ _ _ fun p hp hn => ?_
-    refine prEvent_eq_zero_of_forall_mem_support _ _ fun x hx ha => ?_
-    obtain ⟨r,hr,he⟩ := hroot p x hx ha
-    exact hn ⟨r,by simp [roots,he],hr⟩
-  refine hp.trans ((challengeQuery_mem_le_of_fresh prims K tag label coin Ks cache hfresh hexpand roots).trans ?_)
-  gcongr
-  exact_mod_cast final_residual_card_le_two a b d e0 e2 hwrong
 
 end ThresholdLeanXmssSecurity
 end
@@ -6947,23 +5915,6 @@ theorem finalRoundAccept_all_live (K : Constants C E) (D : C.Coalition) (live : 
     List.any_eq_true.mpr ⟨j,List.mem_finRange j,by simp [finalInbox,hj,hl,Msg.isAbort]⟩
   exact Bool.false_ne_true (h.1.symm.trans habort)
 
-/-- Acceptance in the actual final round implies the final polynomial root. -/
-theorem finalRoundOutputs_implies_root (K : Constants C E) (D : C.Coalition)
-    (live : C.Party → Prop) (v : C.Party → ℕ → E) (sent : C.Party → Mail C E)
-    (a b wa wb d e0 e2 r : E)
-    (hv : ∀ g < 3,∃ P : Polynomial E,P.natDegree ≤ C.t-1 ∧
-      P.eval 0=finalOpenVector wa wb a b d (wa*wb+e0) ((wa+a)*(wb+b)+e2) r g ∧
-      ∀ j,j ∉ D.1 → v j g=P.eval (K.point j))
-    (i : C.Party) (hi : finalRoundOutputs K D live v sent i=some ()) :
-    r*(d-a*b)+(1+r)*e0+r*(1+r)*e2=0 := by
-  have ha : i ∉ D.1 ∧ live i ∧ finalRoundAccept K D live v sent i := by
-    by_contra hn
-    simp [finalRoundOutputs,hn] at hi
-  have hl := finalRoundAccept_all_live K D live v sent i ha.2.2
-  exact final_accept_implies_root K D v a b wa wb d e0 e2 r hv i ha.1
-    (finalInbox D live v sent i)
-    (fun j hj _ => by simp [finalInbox,hj,hl j hj]) ha.2.2.2.1 ha.2.2.2.2
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -6993,29 +5944,6 @@ lemma SameLocalOutput.bind_right (prims : Primitives) (oa : OracleComp (LocalSpe
   simp only [simulateQ_bind,StateT.run'_eq,StateT.run_bind,map_bind]
   refine EvalDistEq.bind_right _ fun p => ?_
   exact h p.1 p.2
-
-/-- A challenge query can be made before a selective-abort decision. The result is ignored
-on aborted branches, and its cache effects remain indistinguishable in the full continuation. -/
-theorem challenge_before_selective_reply (prims : Primitives)
-    (reply : OracleComp (LocalSpec C) α) (challenge : OracleComp (LocalSpec C) β)
-    (go : α → Prop) (next : α → β → OracleComp (LocalSpec C) γ)
-    (abort : α → OracleComp (LocalSpec C) γ) :
-    SameLocalOutput prims
-      (do let p ← reply; if go p then challenge >>= next p else abort p)
-      (do let r ← challenge; let p ← reply; if go p then next p r else abort p) := by
-  have h : SameLocalOutput prims
-      (do let p ← reply; if go p then challenge >>= next p else abort p)
-      (do let p ← reply; let r ← challenge; if go p then next p r else abort p) := by
-    apply SameLocalOutput.bind_right
-    intro p s
-    by_cases hg : go p
-    · simp only [if_pos hg, EvalDistEq.refl]
-    · simp only [if_neg hg]
-      exact (local_prefetch_output prims challenge (abort p) s).symm
-  intro s
-  refine (h s).trans ?_
-  exact SameLocalOutput.of_sameRun prims
-    (sameRun_swap prims reply challenge (fun p r => if go p then next p r else abort p)) s
 
 end ThresholdLeanXmssSecurity
 end
@@ -7103,29 +6031,6 @@ variable {C : Committee}
 def digestSaltHit (salt : List Bit) : (LocalSpec C).Domain → Bool
   | .inr (.inl (.digest s _)) => decide (s=salt)
   | _ => false
-
-lemma localDigestAnswer_eq_of_no_salt (prims : Primitives) (salt : List Bit)
-    (h h' : HashOutput) (t : (LocalSpec C).Domain) (s : HashCache C)
-    (ht : digestSaltHit salt t=false) :
-    (localAnswer prims t).run s=(localDigestAnswer prims salt h h' t).run s := by
-  rcases t with n | q | x
-  · rfl
-  · have hq : digestSwap salt h h' q=q := by
-      cases q <;> simp_all [digestSaltHit,digestSwap,Equiv.swap_apply_def]
-    change (hashAnswerFlat prims q).run s=(hashAnswerFlat prims (digestSwap salt h h' q)).run s
-    rw [hq]
-  · rfl
-
-/-- Digest renaming is coupled against the actual local oracle until a query at the hidden salt. -/
-theorem digestSwap_until_salt (prims : Primitives) (salt : List Bit) (h h' : HashOutput)
-    (oa : OracleComp (LocalSpec C) α) (s : HashCache C) :
-    letI : MeasurableSpace (α × HashCache C) := ⊤
-    measureTVDist ((simulateQ (localAnswer prims) oa).run s)
-      ((simulateQ (localDigestAnswer prims salt h h') oa).run s) ≤
-        Pr{let z : α × HashCache C × Bool ←
-          (simulateQ (flagQueries (localAnswer prims) (digestSaltHit salt)) oa).run (s,false)}[z.2.2=true].toReal := by
-  exact localHandler_until_query (localAnswer prims) (localDigestAnswer prims salt h h')
-    (digestSaltHit salt) (fun t s ht => localDigestAnswer_eq_of_no_salt prims salt h h' t s ht) oa s
 
 end ThresholdLeanXmssSecurity
 end
@@ -7216,60 +6121,6 @@ lemma digestSaltHit_projection (salt : List Bit) : digestSaltHit (C := C) salt =
   · rfl
   · cases q <;> simp [digestSaltHit,digestSaltProjection]
   · rfl
-
-/-- The adaptive query trace is independent of a freshly chosen hidden salt. -/
-theorem digestSaltFlag_bound (prims : Primitives) (oa : OracleComp (LocalSpec C) α)
-    (s : HashCache C) (q : ℕ) (hq : IsQueryBoundP oa Counted q) :
-    Pr{let z : α × HashCache C × Bool ← (do
-      let salt ← $ᵗ (Fin 256 → Bit)
-      (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (s,false))}[z.2.2=true] ≤
-      (q : ℝ≥0∞)/2^256 := by
-  let raw := (simulateQ (projectQueries (localAnswer prims) digestSaltProjection) oa).run (s,[])
-  let trace := (fun z : α × HashCache C × List (List Bit) => z.2.2) <$> raw
-  have ht : ∀ l ∈ support trace,l.length ≤ q := by
-    intro l hl
-    simp only [trace,support_map,Set.mem_image] at hl
-    obtain ⟨z,hz,rfl⟩ := hl
-    simpa using projectQueries_length (localAnswer prims) Counted digestSaltProjection
-      digestSaltProjection_counted hq s [] hz
-  have hb := independent_salt_trace_bound trace q ht
-  have hp : ∀ salt : Fin 256 → Bit,
-      Pr{let z : α × HashCache C × Bool ←
-        (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (s,false)}[z.2.2=true] =
-      Pr{let l ← trace}[List.ofFn salt ∈ l] := by
-    intro salt
-    rw [digestSaltHit_projection]
-    have he := projectQueries_flag (localAnswer prims) digestSaltProjection (List.ofFn salt) oa s []
-    simp only [List.not_mem_nil,decide_false] at he
-    have he' : (simulateQ (flagQueries (localAnswer prims)
-        (fun t => decide (digestSaltProjection t=some (List.ofFn salt)))) oa).run (s,false) =
-        (fun z : α × HashCache C × List (List Bit) => (z.1,(z.2.1,decide (List.ofFn salt ∈ z.2.2)))) <$> raw := by
-      convert he.symm using 1 <;> congr
-      · funext t
-        by_cases h : digestSaltProjection t=some (List.ofFn salt) <;> simp only [h,decide_true,decide_false]
-      · funext z
-        by_cases h : List.ofFn salt ∈ z.2.2 <;> simp only [h,decide_true,decide_false]
-    rw [he',prEvent_map]
-    simp only [trace,prEvent_map,Function.comp_def,decide_eq_true_eq]
-  have he : Pr{let z : α × HashCache C × Bool ← (do
-      let salt ← $ᵗ (Fin 256 → Bit)
-      (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (s,false))}[z.2.2=true] =
-      Pr{let p : List (List Bit) × (Fin 256 → Bit) ← (do
-        let l ← trace; let salt ← $ᵗ (Fin 256 → Bit); pure (l,salt))}[List.ofFn p.2 ∈ p.1] := by
-    have hswap : (do let l ← trace; let salt ← $ᵗ (Fin 256 → Bit); pure (l,salt) :
-        ProbComp (List (List Bit) × (Fin 256 → Bit))) =ᵈ
-        (do let salt ← $ᵗ (Fin 256 → Bit); let l ← trace; pure (l,salt)) :=
-      OracleComp.EvalDistEq.bind_bind_swap _ _ _
-    rw [hswap.prEvent_eq]
-    refine prEvent_bind_congr _ _ _ _ _ fun salt => ?_
-    have hm : (do let l ← trace; pure (l,salt) : ProbComp (List (List Bit) × (Fin 256 → Bit))) =
-        (fun l => (l,salt)) <$> trace := (map_eq_bind_pure_comp ProbComp _ _).symm
-    rw [hp salt]
-    exact ((congrArg (fun m : ProbComp (List (List Bit) × (Fin 256 → Bit)) =>
-      Pr{let p ← m}[List.ofFn p.2 ∈ p.1]) hm).trans (prEvent_map _ _ _)).symm
-
-  rw [he]
-  exact hb
 
 end ThresholdLeanXmssSecurity
 end
@@ -7393,50 +6244,6 @@ attribute [local instance] Classical.propDecidable
 set_option linter.unusedSectionVars false
 variable {C : Committee} {α : Type}
 
-/-- Programming a digest at an independent hidden salt costs at most q/2^256,
-even if its inner hash and programmed value depend on that salt. -/
-theorem hidden_digest_programming_bound (prims : Primitives) (cache : HashCache C)
-    (h d : (Fin 256 → Bit) → HashOutput) (oa : OracleComp (LocalSpec C) α)
-    (q : ℕ) (hq : IsQueryBoundP oa Counted q) :
-    letI : MeasurableSpace α := ⊤
-    measureTVDist (do
-        let _salt ← $ᵗ (Fin 256 → Bit)
-        (simulateQ (localAnswer prims) oa).run' cache)
-      (do
-        let salt ← $ᵗ (Fin 256 → Bit)
-        (simulateQ (localAnswer prims) oa).run'
-          (cache.cacheQuery (.digest (List.ofFn salt) (h salt)) (d salt))) ≤
-      (q : ℝ)/2^256 := by
-  let : MeasurableSpace α := ⊤
-  let prob := fun salt : Fin 256 → Bit =>
-    Pr{let z : α × HashCache C × Bool ←
-      (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (cache,false)}[z.2.2=true]
-  have hb := measureTVDist_bind_left_le_tsum ($ᵗ (Fin 256 → Bit))
-    (fun _ => (simulateQ (localAnswer prims) oa).run' cache)
-    (fun salt => (simulateQ (localAnswer prims) oa).run'
-      (cache.cacheQuery (.digest (List.ofFn salt) (h salt)) (d salt)))
-  simp only [tsum_fintype] at hb
-  have hsum : (∑ salt : Fin 256 → Bit,Pr{let z ← $ᵗ (Fin 256 → Bit)}[z = salt].toReal * (prob salt).toReal) =
-      Pr{let z : α × HashCache C × Bool ← (do
-        let salt ← $ᵗ (Fin 256 → Bit)
-        (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (cache,false))}[z.2.2=true].toReal := by
-    rw [OracleComp.prEvent_bind_eq_tsum,tsum_fintype,ENNReal.toReal_sum]
-    · simp only [ENNReal.toReal_mul,prob]
-    · intro salt _
-      exact ENNReal.mul_ne_top (prEvent_ne_top _) (prEvent_ne_top _)
-  calc
-    _ ≤ ∑ salt : Fin 256 → Bit,Pr{let z ← $ᵗ (Fin 256 → Bit)}[z = salt].toReal * (prob salt).toReal := by
-      refine hb.trans (Finset.sum_le_sum fun salt _ => ?_)
-      exact mul_le_mul_of_nonneg_left
-        (digest_programming_until_salt prims cache (List.ofFn salt) (h salt) (d salt) oa)
-        ENNReal.toReal_nonneg
-    _ = _ := hsum
-    _ ≤ (q : ℝ)/2^256 := by
-      have hp := ENNReal.toReal_mono (by finiteness)
-        (digestSaltFlag_bound prims oa cache q hq)
-      simpa only [ENNReal.toReal_div,ENNReal.toReal_natCast,ENNReal.toReal_pow,
-        ENNReal.toReal_ofNat] using hp
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -7461,61 +6268,6 @@ lemma saltedDigestAnswer_fresh (prims : Primitives) (cache : HashCache C)
     hashAnswer_of_not_isFixed prims hdigest,OracleSpec.randomOracle,QueryImpl.withCaching_run_none _ hf]
   rfl
 
-/-- A real two-level salted commitment hides any already cached inner history from an arbitrary
-q-query continuation. The continuation may contain the distinguisher and all subsequent rounds. -/
-theorem saltedDigest_hide_fresh (prims : Primitives) (cache : HashCache C)
-    (history : List Bit) (h : HashOutput) (hh : cache (.history history)=some h)
-    (hf : ∀ salt : Fin 256 → Bit,cache (.digest (List.ofFn salt) h)=none)
-    (k : HashOutput → OracleComp (LocalSpec C) α) (q : ℕ)
-    (hq : ∀ d,IsQueryBoundP (k d) Counted q) :
-    letI : MeasurableSpace α := ⊤
-    measureTVDist
-      (do let salt ← $ᵗ (Fin 256 → Bit)
-          (saltedDigestAnswer prims (List.ofFn salt) history >>= fun d =>
-            simulateQ (localAnswer prims) (k d)).run' cache)
-      (do let d ← $ᵗ HashOutput
-          (simulateQ (localAnswer prims) (k d)).run' cache) ≤ (q : ℝ)/2^256 := by
-  let : MeasurableSpace α := ⊤
-  let real : ProbComp α := do
-    let salt ← $ᵗ (Fin 256 → Bit)
-    (saltedDigestAnswer prims (List.ofFn salt) history >>= fun d =>
-      simulateQ (localAnswer prims) (k d)).run' cache
-  let programmed : ProbComp α := do
-    let d ← $ᵗ HashOutput
-    let salt ← $ᵗ (Fin 256 → Bit)
-    (simulateQ (localAnswer prims) (k d)).run'
-      (cache.cacheQuery (.digest (List.ofFn salt) h) d)
-  let ghost : ProbComp α := do
-    let d ← $ᵗ HashOutput
-    let _salt ← $ᵗ (Fin 256 → Bit)
-    (simulateQ (localAnswer prims) (k d)).run' cache
-  have hr : real =ᵈ programmed := by
-    have he : real = (do
-        let salt ← $ᵗ (Fin 256 → Bit)
-        let d ← $ᵗ HashOutput
-        (simulateQ (localAnswer prims) (k d)).run'
-          (cache.cacheQuery (.digest (List.ofFn salt) h) d)) := by
-      unfold real
-      apply bind_congr
-      intro salt
-      simp only [StateT.run'_eq,StateT.run_bind]
-      rw [saltedDigestAnswer_fresh prims cache (List.ofFn salt) history h hh (hf salt)]
-      simp only [bind_map_left,map_bind]
-    rw [he]
-    exact OracleComp.EvalDistEq.bind_bind_swap _ _ _
-  have hg : ghost =ᵈ (do
-      let d ← $ᵗ HashOutput
-      (simulateQ (localAnswer prims) (k d)).run' cache) :=
-    EvalDistEq.bind_right _ fun d => OracleComp.EvalDistEq.bind_const _ _
-  have hb : measureTVDist ghost programmed ≤ (q : ℝ)/2^256 := by
-    refine measureTVDist_bind_left_le_of_forall_le _ _ _ (by positivity) fun d => ?_
-    exact hidden_digest_programming_bound prims cache (fun _ => h) (fun _ => d) (k d) q (hq d)
-  change measureTVDist real _ ≤ _
-  rw [measureTVDist_comm] at hb
-  unfold measureTVDist at hb ⊢
-  rw [hr.evalDist_eq,← hg.evalDist_eq]
-  exact hb
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -7538,77 +6290,6 @@ def digestGhostGame (prims : Primitives) (cache : HashCache C)
     (k : HashOutput → OracleComp (LocalSpec C) α) : ProbComp α := do
   let d ← $ᵗ HashOutput
   (simulateQ (localAnswer prims) (k d)).run' cache
-
-lemma digestProgrammedGame_bound (prims : Primitives) (cache : HashCache C) (h : HashOutput)
-    (k : HashOutput → OracleComp (LocalSpec C) α) (q : ℕ) (hq : ∀ d,IsQueryBoundP (k d) Counted q) :
-    letI : MeasurableSpace α := ⊤
-    measureTVDist (digestProgrammedGame prims cache h k) (digestGhostGame prims cache k) ≤ (q : ℝ)/2^256 := by
-  let : MeasurableSpace α := ⊤
-  let programmed : ProbComp α := do
-    let d ← $ᵗ HashOutput
-    let salt ← $ᵗ (Fin 256 → Bit)
-    (simulateQ (localAnswer prims) (k d)).run' (cache.cacheQuery (.digest (List.ofFn salt) h) d)
-  let ghost : ProbComp α := do
-    let d ← $ᵗ HashOutput
-    let _salt ← $ᵗ (Fin 256 → Bit)
-    (simulateQ (localAnswer prims) (k d)).run' cache
-  have hr : digestProgrammedGame prims cache h k =ᵈ programmed :=
-    OracleComp.EvalDistEq.bind_bind_swap _ _ _
-  have hg : ghost =ᵈ digestGhostGame prims cache k :=
-    EvalDistEq.bind_right _ fun d => OracleComp.EvalDistEq.bind_const _ _
-  have hb : measureTVDist ghost programmed ≤ (q : ℝ)/2^256 := by
-    refine measureTVDist_bind_left_le_of_forall_le _ _ _ (by positivity) fun d => ?_
-    exact hidden_digest_programming_bound prims cache (fun _ => h) (fun _ => d) (k d) q (hq d)
-  change measureTVDist (digestProgrammedGame prims cache h k) (digestGhostGame prims cache k) ≤ _
-  rw [measureTVDist_comm] at hb
-  unfold measureTVDist at hb ⊢
-  rw [hr.evalDist_eq,← hg.evalDist_eq]
-  exact hb
-
-/-- A two-level commitment hides its history even after earlier oracle queries. Only their
-outer digest salts are charged; the inner history may already be completely known. -/
-theorem saltedDigest_hide (prims : Primitives) (cache : HashCache C)
-    (history : List Bit) (h : HashOutput) (hh : cache (.history history)=some h)
-    (seen : Finset (List Bit))
-    (hf : ∀ salt : Fin 256 → Bit,List.ofFn salt ∉ seen → cache (.digest (List.ofFn salt) h)=none)
-    (k : HashOutput → OracleComp (LocalSpec C) α) (q : ℕ)
-    (hq : ∀ d,IsQueryBoundP (k d) Counted q) :
-    letI : MeasurableSpace α := ⊤
-    measureTVDist
-      (do let salt ← $ᵗ (Fin 256 → Bit)
-          (saltedDigestAnswer prims (List.ofFn salt) history >>= fun d =>
-            simulateQ (localAnswer prims) (k d)).run' cache)
-      (digestGhostGame prims cache k) ≤ ((seen.card+q : ℕ) : ℝ)/2^256 := by
-  let : MeasurableSpace α := ⊤
-  let actual : (Fin 256 → Bit) → ProbComp α := fun salt =>
-    (saltedDigestAnswer prims (List.ofFn salt) history >>= fun d =>
-      simulateQ (localAnswer prims) (k d)).run' cache
-  let overwrite : (Fin 256 → Bit) → ProbComp α := fun salt => do
-    let d ← $ᵗ HashOutput
-    (simulateQ (localAnswer prims) (k d)).run' (cache.cacheQuery (.digest (List.ofFn salt) h) d)
-  have hstep : ∀ salt,List.ofFn salt ∉ seen → actual salt =ᵈ overwrite salt := by
-    intro salt hs
-    have he : actual salt=overwrite salt := by
-      simp only [actual,overwrite,StateT.run'_eq,StateT.run_bind]
-      rw [saltedDigestAnswer_fresh prims cache (List.ofFn salt) history h hh (hf salt hs)]
-      simp only [bind_map_left,map_bind]
-    rw [he]
-  have hb := measureTVDist_bind_left_le_prEvent_of_evalDistEq ($ᵗ (Fin 256 → Bit)) actual overwrite
-    (fun salt => List.ofFn salt ∈ seen) hstep
-  have hguess : Pr{let salt : Fin 256 → Bit ← $ᵗ (Fin 256 → Bit)}[List.ofFn salt ∈ seen].toReal ≤
-      (seen.card : ℝ)/2^256 := by
-    have hg := probEvent_uniform_injective_mem (fun salt : Fin 256 → Bit => List.ofFn salt)
-      List.ofFn_injective seen
-    have hgr := ENNReal.toReal_mono (by finiteness) hg
-    simpa only [Fintype.card_fun,Fintype.card_fin,ZMod.card,Nat.cast_pow,Nat.cast_ofNat,
-      ENNReal.toReal_div,ENNReal.toReal_natCast,ENNReal.toReal_pow,ENNReal.toReal_ofNat] using hgr
-  have hc := digestProgrammedGame_bound prims cache h k q hq
-  have ht := measureTVDist_triangle (($ᵗ (Fin 256 → Bit)) >>= actual)
-    (digestProgrammedGame prims cache h k) (digestGhostGame prims cache k)
-  refine ht.trans ?_
-  calc
-    _ ≤ (seen.card : ℝ)/2^256 + (q : ℝ)/2^256 := add_le_add (hb.trans hguess) hc
-    _ = _ := by push_cast; ring
 
 end ThresholdLeanXmssSecurity
 end
@@ -7868,15 +6549,6 @@ theorem executePhase_randBits (K : Constants C E) (D : C.Coalition) (A : CheckAd
   funext i
   cases he : p.2 i <;> rfl
 
-/-- The fresh PRSS pair table is irrelevant whenever the continuation uses only replicated terms. -/
-theorem randFinish_first (D : C.Coalition) (count : ℕ) (known : Shares C R)
-    (knownPairs : C.Party → C.Party → ℕ → R) (fresh : C.Term → Fin count → R)
-    (pairs pairs' : C.Pair → Fin count → R) [Zero R] (i : C.Party) :
-    (randFinish D count known knownPairs fresh pairs i).map Prod.fst =
-      (randFinish D count known knownPairs fresh pairs' i).map Prod.fst := by
-  unfold randFinish
-  by_cases hi : i ∈ D.1 <;> simp [hi]
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -8102,48 +6774,6 @@ namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
 set_option linter.unusedSectionVars false
 variable {C : Committee} {E I O Ia L R α β : Type} [Inhabited β]
-
-/-- The honest local oracle computations can precede every honest continuation, with the
-same final oracle cache. Corrupt programs are not run. -/
-theorem startSteps_local (prims : Primitives) (D : C.Coalition)
-    (oa : C.Party → OracleComp (LocalSpec C) β)
-    (f : C.Party → β → PartyM C E (CallSpec I O) α) :
-    SameRun prims (startSteps localRoles D (fun i => localStep (oa i) >>= f i))
-      (do
-        let v ← OverPermutation.sequenceFin (fun i => if i ∈ D.1 then pure default else oa i)
-        startSteps localRoles D (fun i => f i (v i))) := by
-  let queries : C.Party → OracleComp (LocalSpec C) β := fun i => if i ∈ D.1 then pure default else oa i
-  let next : C.Party → β → OracleComp (LocalSpec C) (Step C E (CallSpec I O) α) :=
-    fun i b => if i ∈ D.1 then pure (.done none) else advance (f i b).run
-  have hn : startSteps localRoles D (fun i => localStep (oa i) >>= f i) =
-      OverPermutation.sequenceFin (fun i => queries i >>= fun b => next i b >>= fun v => pure v) := by
-    unfold startSteps
-    congr 1
-    funext i
-    by_cases hi : i ∈ D.1 <;>
-      simp only [queries,next,hi,if_true,if_false,pure_bind,bind_pure,localRoles,advance_localStep_bind]
-  rw [hn]
-  have hh := sameRun_sequenceFin_dep prims queries next (fun _ _ v => v)
-  refine hh.trans (SameRun.of_eq ?_)
-  apply bind_congr
-  intro v
-  change (OverPermutation.sequenceFin (fun i => next i (v i)) >>= pure) = _
-  rw [bind_pure]
-  rfl
-
-/-- The scheduler preserves that reordering through the complete adaptive network continuation. -/
-theorem executePhase_local (prims : Primitives) (D : C.Coalition) (A : Adversary C E Ia L R)
-    (F : Functionality C I O L R) (fuel : ℕ) (st : A.State)
-    (oa : C.Party → OracleComp (LocalSpec C) β)
-    (f : C.Party → β → PartyM C E (CallSpec I O) α) :
-    SameRun prims (executePhase localRoles D A F fuel st (fun i => localStep (oa i) >>= f i))
-      (do
-        let v ← OverPermutation.sequenceFin (fun i => if i ∈ D.1 then pure default else oa i)
-        executePhase localRoles D A F fuel st (fun i => f i (v i))) := by
-  unfold executePhase
-  have h := (startSteps_local prims D oa f).bind (fun steps =>
-    SameRun.refl prims (executeRounds localRoles D A F fuel st steps))
-  simpa only [bind_assoc] using h
 
 end ThresholdLeanXmssSecurity
 end
@@ -8553,34 +7183,6 @@ lemma vector_extend_ofFn {R : Type} [Zero R] (n : ℕ) (v : Fin n → R) :
   · intro k h₁ h₂
     have hk : k < n := by simpa [vector] using h₁
     simp [vector,hk]
-
-/-- Every honest holder of an unknown term receives the same independent 256-bit salt. -/
-theorem randFinish_unknown_salt (D : C.Coalition) (known : Shares C Bit)
-    (knownPairs : C.Party → C.Party → ℕ → Bit) (fresh : C.Term → Fin 256 → Bit)
-    (pairs : C.Pair → Fin 256 → Bit) (i : C.Party) (hi : i ∉ D.1)
-    (T : C.Term) (ht : i ∈ C.holders T) (hu : ¬KnownTo D.1 T) :
-    (randFinish D 256 known knownPairs fresh pairs i).map (fun w => vector 256 (w.1 T)) =
-      some (List.ofFn (fresh T)) := by
-  simp only [randFinish,if_neg hi,Option.map_some,if_pos ht,if_neg hu]
-  rw [vector_extend_ofFn]
-
-/-- Resampling one unknown salt changes no known salt, and changes no other honest term. -/
-theorem randFinish_update_salt (D : C.Coalition) (known : Shares C Bit)
-    (knownPairs : C.Party → C.Party → ℕ → Bit) (fresh : C.Term → Fin 256 → Bit)
-    (pairs : C.Pair → Fin 256 → Bit) (T U : C.Term) (u : Fin 256 → Bit)
-    (hU : U ≠ T ∨ KnownTo D.1 U) (i : C.Party) :
-    (randFinish D 256 known knownPairs (Function.update fresh T u) pairs i).map (fun w => w.1 U) =
-      (randFinish D 256 known knownPairs fresh pairs i).map (fun w => w.1 U) := by
-  unfold randFinish
-  by_cases hi : i ∈ D.1
-  · simp only [if_pos hi,Option.map_none]
-  · simp only [if_neg hi,Option.map_some]
-    by_cases hu : i ∈ C.holders U
-    · simp only [if_pos hu]
-      rcases hU with hne | hknown
-      · simp only [Function.update_of_ne hne]
-      · simp only [if_pos hknown]
-    · simp only [if_neg hu]
 
 end ThresholdLeanXmssSecurity
 end
@@ -9215,31 +7817,6 @@ attribute [local instance] Classical.propDecidable
 set_option linter.unusedSectionVars false
 variable {C : Committee} {α β : Type}
 
-/-- The hiding bound includes every earlier adaptive query in the same execution. -/
-theorem saltedDigestProgram_hide_after (prims : Primitives) (cache : HashCache C)
-    (seen : Finset (List Bit)) (hs : DigestSaltsCovered cache seen)
-    (before : OracleComp (LocalSpec C) β) (history : β → List Bit)
-    (k : β → HashOutput → OracleComp (LocalSpec C) α)
-    (charged : (LocalSpec C).Domain → Prop) [DecidablePred charged]
-    (hproject : ∀ t,(digestSaltProjection t).isSome → charged t)
-    (p q : ℕ) (hp : IsQueryBoundP before charged p) (hq : ∀ b d,IsQueryBoundP (k b d) charged q) :
-    letI : MeasurableSpace α := ⊤
-    measureTVDist ((simulateQ (localAnswer prims) (before >>= fun b => saltedDigestProgram (history b) (k b))).run' cache)
-      ((simulateQ (localAnswer prims) (before >>= fun b =>
-        liftComp ($ᵗ HashOutput) (LocalSpec C) >>= k b)).run' cache) ≤
-      ((seen.card+p+q : ℕ) : ℝ)/2^256 := by
-  let : MeasurableSpace α := ⊤
-  simp only [simulateQ_bind,StateT.run'_eq,StateT.run_bind,map_bind]
-  refine le_of_eq_of_le (congrArg₂ measureTVDist (bind_eq_attach_bind _ _) (bind_eq_attach_bind _ _))
-    (measureTVDist_bind_left_le_of_forall_le _ _ _ (by positivity) fun z => ?_)
-  obtain ⟨z,hz⟩ := z
-  replace hz := MonadAttach.mem_support.2 hz
-  obtain ⟨seen',hc,hcard⟩ := localProgram_digest_covered prims before charged hproject p hp cache seen hs z hz
-  have hb := saltedDigestProgram_hide prims z.2 seen' hc (history z.1) (k z.1) charged hproject q (hq z.1)
-  refine hb.trans ?_
-  apply div_le_div_of_nonneg_right _ (by positivity)
-  exact_mod_cast Nat.add_le_add_right hcard q
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -9289,63 +7866,6 @@ lemma saltedDigestProgram_digestBound (history : List Bit)
   simpa only [Nat.zero_add] using isQueryBoundP_bind (prob_lift_no_digest ($ᵗ (Fin 256 → Bit))) (fun salt _ =>
     isQueryBoundP_bind (oneDigestQuery_digestBound (List.ofFn salt) history) fun d _ => hq d)
 
-def saltedDigestList : List (List Bit) → (List HashOutput → OracleComp (LocalSpec C) α) → OracleComp (LocalSpec C) α
-  | [], k => k []
-  | h::hs, k => saltedDigestProgram h fun d => saltedDigestList hs fun ds => k (d::ds)
-
-def ghostDigestList : List (List Bit) → (List HashOutput → OracleComp (LocalSpec C) α) → OracleComp (LocalSpec C) α
-  | [], k => k []
-  | _::hs, k => liftComp ($ᵗ HashOutput) (LocalSpec C) >>= fun d => ghostDigestList hs fun ds => k (d::ds)
-
-set_option maxRecDepth 4096 in
-lemma saltedDigestList_digestBound (histories : List (List Bit))
-    (k : List HashOutput → OracleComp (LocalSpec C) α) (q : ℕ)
-    (hq : ∀ ds,IsQueryBoundP (k ds) DigestQuery q) :
-    IsQueryBoundP (saltedDigestList histories k) DigestQuery (histories.length+q) := by
-  induction histories generalizing k with
-  | nil => simpa only [saltedDigestList,List.length_nil,Nat.zero_add] using hq []
-  | cons h hs ih =>
-    simpa only [saltedDigestList,List.length_cons,Nat.add_assoc,Nat.add_comm,Nat.add_left_comm] using
-      saltedDigestProgram_digestBound h (fun d => saltedDigestList hs fun ds => k (d::ds)) (hs.length+q)
-        (fun d => ih (fun ds => k (d::ds)) (fun ds => hq (d::ds)))
-
-/-- All independently salted commitments can be replaced by fresh digest tokens. The whole
-remaining protocol and distinguisher may be in `k`; only its outer digest calls are charged. -/
-theorem saltedDigestList_hide (prims : Primitives) (histories : List (List Bit))
-    (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen)
-    (k : List HashOutput → OracleComp (LocalSpec C) α) (q : ℕ)
-    (hq : ∀ ds,IsQueryBoundP (k ds) DigestQuery q) :
-    letI : MeasurableSpace α := ⊤
-    measureTVDist ((simulateQ (localAnswer prims) (saltedDigestList histories k)).run' cache)
-      ((simulateQ (localAnswer prims) (ghostDigestList histories k)).run' cache) ≤
-      ((histories.length*(seen.card+q+histories.length) : ℕ) : ℝ)/2^256 := by
-  let : MeasurableSpace α := ⊤
-  induction histories generalizing k with
-  | nil => simp [saltedDigestList,ghostDigestList]
-  | cons h hs ih =>
-    let next := fun d => saltedDigestList hs fun ds => k (d::ds)
-    let ghost := liftComp ($ᵗ HashOutput) (LocalSpec C) >>= next
-    have hb := saltedDigestProgram_hide prims cache seen hc h next DigestQuery
-      (fun _ ht => ht) (hs.length+q)
-      (fun d => saltedDigestList_digestBound hs (fun ds => k (d::ds)) q (fun ds => hq (d::ds)))
-    have ht : measureTVDist ((simulateQ (localAnswer prims) ghost).run' cache)
-        ((simulateQ (localAnswer prims) (ghostDigestList (h::hs) k)).run' cache) ≤
-        ((hs.length*(seen.card+q+hs.length) : ℕ) : ℝ)/2^256 := by
-      simp only [ghost,ghostDigestList,simulateQ_bind,StateT.run'_eq,StateT.run_bind,
-        run_liftComp_prob,bind_map_left,map_bind]
-      refine measureTVDist_bind_left_le_of_forall_le _ _ _ (by positivity) fun d => ?_
-      exact ih (fun ds => k (d::ds)) (fun ds => hq (d::ds))
-    have htri := measureTVDist_triangle
-      ((simulateQ (localAnswer prims) (saltedDigestProgram h next)).run' cache)
-      ((simulateQ (localAnswer prims) ghost).run' cache)
-      ((simulateQ (localAnswer prims) (ghostDigestList (h::hs) k)).run' cache)
-    refine htri.trans ((add_le_add hb ht).trans ?_)
-    rw [← add_div]
-    apply div_le_div_of_nonneg_right _ (by positivity)
-    simp only [List.length_cons]
-    push_cast
-    nlinarith [show (0 : ℝ) ≤ hs.length by positivity]
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -9357,88 +7877,6 @@ namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
 set_option linter.unusedSectionVars false
 variable {C : Committee} {α : Type}
-
-def tableDigests (hist : C.Term → List Bit) (table : C.Term → Fin 256 → Bit) :
-    List C.Term → (List HashOutput → OracleComp (LocalSpec C) α) → OracleComp (LocalSpec C) α
-  | [], k => k []
-  | T::Ts, k => do
-    let d ← liftComp (oneDigestQuery (C := C) (List.ofFn (table T)) (hist T)) (LocalSpec C)
-    tableDigests hist table Ts fun ds => k (d::ds)
-
-lemma tableDigests_congr (hist : C.Term → List Bit) (table table' : C.Term → Fin 256 → Bit)
-    (Ts : List C.Term) (ht : ∀ T ∈ Ts,table T=table' T)
-    (k : List HashOutput → OracleComp (LocalSpec C) α) :
-    tableDigests hist table Ts k=tableDigests hist table' Ts k := by
-  induction Ts generalizing k with
-  | nil => rfl
-  | cons T Ts ih =>
-    simp only [tableDigests,ht T (by simp)]
-    apply bind_congr
-    intro d
-    exact ih (fun U hU => ht U (by simp [hU])) _
-
-/-- A uniform salt table gives independent fresh salts along any list of distinct terms.
-The proof resamples coordinates, so no enumeration or size assumption on the committee is needed. -/
-theorem tableDigests_fresh (prims : Primitives) (hist : C.Term → List Bit)
-    (Ts : List C.Term) (hTs : Ts.Nodup)
-    (k : List HashOutput → OracleComp (LocalSpec C) α) :
-    SameRun prims
-      (do let table ← liftComp ($ᵗ (C.Term → Fin 256 → Bit)) (LocalSpec C)
-          tableDigests hist table Ts k)
-      (saltedDigestList (Ts.map hist) k) := by
-  induction Ts generalizing k with
-  | nil =>
-    simp only [tableDigests,List.map_nil,saltedDigestList]
-    exact sameRun_discard_sample prims _
-  | cons T Ts ih =>
-    have hn := List.nodup_cons.mp hTs
-    let draw := saltedDigestProgram (C := C) (hist T) (fun d => pure d)
-    let rest := fun table d => tableDigests hist table Ts fun ds => k (d::ds)
-    refine (sameRun_uniform_coordinate prims T (fun table => tableDigests hist table (T::Ts) k)).symm.trans ?_
-    have hupdate : ∀ table : C.Term → Fin 256 → Bit,∀ salt,
-        tableDigests hist (Function.update table T salt) (T::Ts) k=
-          (do let d ← liftComp (oneDigestQuery (C := C) (List.ofFn salt) (hist T)) (LocalSpec C)
-              rest table d) := by
-      intro table salt
-      simp only [tableDigests,Function.update_self]
-      apply bind_congr
-      intro d
-      apply tableDigests_congr
-      intro U hU
-      have hne : U ≠ T := by intro he; subst U; exact hn.1 hU
-      exact Function.update_of_ne hne _ _
-    refine SameRun.trans (ob := (do
-      let table ← liftComp ($ᵗ (C.Term → Fin 256 → Bit)) (LocalSpec C)
-      draw >>= rest table)) (SameRun.of_eq ?_) ?_
-    · simp only [draw,saltedDigestProgram,bind_assoc,pure_bind]
-      simp_rw [hupdate]
-    have hswap := sameRun_swap prims (liftComp ($ᵗ (C.Term → Fin 256 → Bit)) (LocalSpec C)) draw rest
-    refine hswap.trans ?_
-    simp only [draw,rest,List.map_cons,saltedDigestList,saltedDigestProgram,bind_assoc,pure_bind]
-    apply SameRun.bind_right
-    intro salt
-    apply SameRun.bind_right
-    intro d
-    exact ih hn.2 (fun ds => k (d::ds))
-
-/-- The hiding theorem applies directly to the uniform table used by the actual salt building block. -/
-theorem tableDigests_hide (prims : Primitives) (hist : C.Term → List Bit)
-    (Ts : List C.Term) (hTs : Ts.Nodup) (cache : HashCache C)
-    (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen)
-    (k : List HashOutput → OracleComp (LocalSpec C) α) (q : ℕ)
-    (hq : ∀ ds,IsQueryBoundP (k ds) DigestQuery q) :
-    letI : MeasurableSpace α := ⊤
-    measureTVDist ((simulateQ (localAnswer prims) (do
-        let table ← liftComp ($ᵗ (C.Term → Fin 256 → Bit)) (LocalSpec C)
-        tableDigests hist table Ts k)).run' cache)
-      ((simulateQ (localAnswer prims) (ghostDigestList (Ts.map hist) k)).run' cache) ≤
-      ((Ts.length*(seen.card+q+Ts.length) : ℕ) : ℝ)/2^256 := by
-  let : MeasurableSpace α := ⊤
-  have he := tableDigests_fresh prims hist Ts hTs k cache
-  have he' := he.map Prod.fst
-  simp only [← StateT.run'_eq] at he'
-  rw [measureTVDist,he'.evalDist_eq]
-  simpa only [measureTVDist,List.length_map] using saltedDigestList_hide prims (Ts.map hist) cache seen hc k q hq
 
 end ThresholdLeanXmssSecurity
 end

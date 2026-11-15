@@ -140,28 +140,6 @@ def LoggedReleasedRow (x : SigningSecurityProof.Keys3 C)
     (r : JointResult C × ℕ × QueryLog (WorldSpec C)) : Prop :=
   SigningLinkPaidProof.ReleasedPartnerRow prims x (r.1, (logCache r.2.2, r.2.1), r.2.2)
 
-set_option linter.constructorNameAsVariable false in
-set_option maxRecDepth 4000 in
-/-- The observable law moves the released row to the current split one run. -/
-theorem releasedPartner_eq_split_log (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr{let z ←
-      SigningUnchargedLoggedProof.jointRun prims A x}[SigningLinkPaidProof.ReleasedPartnerRow prims x z] =
-      Pr{let z ←
-        splitRunAt prims A x}[LoggedReleasedRow prims x (z.1, z.2.1.1.1.1.2, z.2.1.1.1.2)] := by
-  have hj : Pr{let z ←
-      SigningUnchargedLoggedProof.jointRun prims A x}[SigningLinkPaidProof.ReleasedPartnerRow prims x z] =
-      Pr{let z ←
-        SigningUnchargedLoggedProof.jointRun prims A x}[LoggedReleasedRow prims x (z.1, z.2.1.2, z.2.2)] := by
-    apply prEvent_congr_of_support _ _ _
-    intro z hz
-    have hl : (z.1.1, z.2) ∈ support (SigningCostProof.loggedRun prims A x) := by
-      rw [← SigningUnchargedLoggedProof.jointRun_logged, support_map]
-      exact ⟨z, (by with_reducible exact hz), rfl⟩
-    exact and_congr (SigningPartnerTransferProof.lazyPartnerRow_congr prims x z.1.1 z.1.2
-      z.2.1.2 z.2.2 (loggedRun_cacheFromLog prims A x (z.1.1, z.2) (by with_reducible exact hl))) Iff.rfl
-  rw [hj, ← probEvent_oneRun prims A x (LoggedReleasedRow prims x),
-    ← splitRunAt_oneRun, prEvent_map]
-
 open SigningGuessProof SigningDescentProof SigningCacheProof
 
 set_option linter.constructorNameAsVariable false in
@@ -356,13 +334,6 @@ theorem splitRun_released_partner (A : TsigAdversary C) (x : SigningSecurityProo
   exact hlazy.1.2.1 (Or.inr (Or.inl
     ((alternativeCommitment_congr_of_outside x.2.1 x.1 hframe.2).mp halt)))
 
-set_option linter.constructorNameAsVariable false in
-/-- The original released-transfer inequality holds on the actual cache-derived one run. -/
-theorem releasedTransfer : SigningLinkPaidProof.ReleasedTransfer prims (C := C) := by
-  intro A q x _ _ _ _
-  rw [releasedPartner_eq_split_log]
-  exact prEvent_mono_of_support _ _ _ (fun z hz h => splitRun_released_partner prims A x z (by with_reducible exact hz) h)
-
 /-- info: 'ThresholdLeanXmssSecurity.SigningReleasedTransferProof.cachedExtra_frame' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms cachedExtra_frame
@@ -383,10 +354,6 @@ theorem releasedTransfer : SigningLinkPaidProof.ReleasedTransfer prims (C := C) 
 #guard_msgs (whitespace := lax) in
 #print axioms splitRun_logAgreement
 
-/-- info: 'ThresholdLeanXmssSecurity.SigningReleasedTransferProof.releasedPartner_eq_split_log' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms releasedPartner_eq_split_log
-
 /-- info: 'ThresholdLeanXmssSecurity.SigningReleasedTransferProof.receipt_selected_extension' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms receipt_selected_extension
@@ -406,9 +373,5 @@ theorem releasedTransfer : SigningLinkPaidProof.ReleasedTransfer prims (C := C) 
 /-- info: 'ThresholdLeanXmssSecurity.SigningReleasedTransferProof.splitRun_released_partner' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms splitRun_released_partner
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningReleasedTransferProof.releasedTransfer' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms releasedTransfer
 
 end ThresholdLeanXmssSecurity.SigningReleasedTransferProof

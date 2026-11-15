@@ -179,14 +179,15 @@ The statement layer is `ThresholdLeanXmss/`. The proofs are in `ThresholdLeanXms
 * `Scheme`, `Ideal`, `Reductions` and the files of `Statement/` hold the protocol and the world, the
   functionalities and the games, the simulators and the reductions, and the claims.
 * `Lemmas`, `Execution` and `Coupling` hold the paper lemmas named after their source, the
-  execution model and the round-by-round coupling.
+  execution model and lemmas on couplings and query bounds.
 * `SeedGen*` holds seed generation completeness and the seed generation simulation.
 * `BuildingBlocks`, `Check*` and `Main*` hold the building blocks, the check and the batch.
 * `CeremonyHybrid/` holds the claim of one ceremony in the hybrid model.
 * `TreeHybrid/` holds the claim of one tree in the hybrid model.
 * `PrssRand/` holds the claim of the PRSS streams from dealt keys.
 * `Tree` and `Dealer` hold the tree completeness, the dealer and the tree success. `TreeSim` and
-  `TreeCheckKernelCoupling` hold lemmas on the runs of a ceremony that the signing proof uses.
+  `TreeCheckKernelCoupling` hold small lemmas on the draw order of a list and on couplings. The
+  signing proof uses them.
   `CeremonyIndex` holds the position of a batch in a ceremony, for the simulator of the claim that
   is stated and not proved. The end theorem does not use it.
 * `Tprf`, `Signing`, `SigningSecurity`, `SigningCore`, `SeedHit` and `HiddenCore` hold the
@@ -200,7 +201,7 @@ The statement layer is `ThresholdLeanXmss/`. The proofs are in `ThresholdLeanXms
   uncharged lane and its shared cap.
 * `SigningOwn*`, `SeedHitOwn`, `SigningLedgerExpect` and `SigningStronglyUnforgeable` hold the signing
   claim with the budget of the forger alone.
-* `VendoredExcerpt` holds eight declarations of leanVM `1acdff19` that leanVM removed later.
+* `VendoredExcerpt` holds five declarations of leanVM `1acdff19` that leanVM removed later.
 
 The library does not hold the modules of the key hop and of the simulation hop of a ceremony. -/
 

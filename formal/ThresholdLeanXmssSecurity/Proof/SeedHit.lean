@@ -1049,17 +1049,6 @@ theorem fused_count_mono (hinj : Function.Injective (slotInput x.2.1 x.2.2)) (t 
     exact ⟨z, hz, rfl⟩
   exact withCount_mono (routedImpl prims x.2.1 x.2.2) _ p.2 ((z.1, z.2.1), z.2.2) hz'
 
-/-- A call of `H` by the forger costs one call. -/
-theorem fused_count_ro (u : Query C) (p : GState C) :
-    ∀ z ∈ support ((fusedImpl prims x top (.inl (.inr (.inl u)))).run p), z.2.2.2 = p.2.2 + 1 := by
-  intro z hz
-  simp only [fusedImpl, StateT.run_mk, support_map, Set.mem_image] at hz
-  obtain ⟨w, hw, rfl⟩ := hz
-  change w ∈ support ((withCount (routedImpl prims x.2.1 x.2.2) (.inl (.inl (.inr (.inl u))))).run p.2) at hw
-  simp only [withCount, StateT.run_mk, support_map, Set.mem_image] at hw
-  obtain ⟨w', -, rfl⟩ := hw
-  rfl
-
 /-- After the flag, the first hit keys stay. -/
 theorem fused_frozen (t : (LocalSpec C + TsigSpec C).Domain) (p : GState C) (hp : p.1.1.2 = true) :
     ∀ z ∈ support ((fusedImpl prims x top t).run p), z.2.1.1.2 = true ∧ z.2.1.2 = p.1.2 := by
@@ -1119,17 +1108,6 @@ theorem fused_miss (σ : KeySlot C) (t : (LocalSpec C + TsigSpec C).Domain) (p :
   · rcases h2 σ h with h | ⟨-, u, rfl, hs⟩
     · exact hσ h
     · exact hk u rfl hs
-
-/-- A call that hits the hidden key `σ` while the flag is down makes `σ` a first hit key. -/
-theorem fused_hit (σ : KeySlot C) (u : Query C) (p : GState C) (hD : ¬Revealed p.1.1.1.corrupt σ)
-    (hf : p.1.1.2 = false) (hs : ∃ s, slotKey s = σ ∧ slotInput x.2.1 x.2.2 s = u) :
-    ∀ z ∈ support ((fusedImpl prims x top (.inl (.inr (.inl u)))).run p), σ ∈ z.2.1.2 := by
-  intro z hz
-  simp only [fusedImpl, StateT.run_mk, support_map, Set.mem_image] at hz
-  obtain ⟨w, -, rfl⟩ := hz
-  simp only [hf, Bool.false_eq_true, if_false, Finset.mem_union, firedBy, Finset.mem_filter, Finset.mem_univ,
-    true_and]
-  exact Or.inr ⟨hD, hs⟩
 
 theorem probComp_support_nonempty {α : Type} (mx : ProbComp α) : (support mx).Nonempty :=
   OracleComp.support_nonempty mx

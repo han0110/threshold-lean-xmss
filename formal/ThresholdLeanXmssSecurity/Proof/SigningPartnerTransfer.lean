@@ -2,21 +2,12 @@ import ThresholdLeanXmssSecurity.Proof.SigningAssembly
 import ThresholdLeanXmssSecurity.Proof.SigningCacheLog
 
 /-!
-The lazy partner row and the cache reconstructed from the joint call log.
+The lazy partner row under the agreement of two caches.
 
-1. Prove tracked-cache congruence for the selected pair, the honest key, the
-   bottom partner, and all three charged events.
-2. Reconstruct the entire lazy row from `logCache` of `SigningCacheLog` on `jointRun`.
-3. Move that event to `splitRunAt` with the exact eager observable law.
-4. Reduce `PartnerTransfer` to `PartnerCacheComparison`, on one split execution.
-
-`PartnerCacheComparison` is equivalent to `PartnerTransfer`.
-Its two events read different caches: `logCache` and the final eager cache.
-Cache extension alone does not prove equality of the replayed selection:
-an eager read may fill an earlier absent trial of the default-zero replay.
-
-The eager sampling law holds for every fixed randomizer function. None of these
-proofs uses the false fixed-randomizer `R1Link` or changes its trigger.
+This module proves tracked-cache congruence for the selected pair, the honest key, the bottom
+partner, and all three charged events. `lazyPartnerRow_congr` and `chargedOutput_congr` give the
+row and the charged events on two caches that agree on the tracked entries.
+`SigningReleasedTransfer`, `SigningLaneUnion` and `SigningOwnBudget` use these lemmas.
 -/
 
 open OracleComp OracleSpec
@@ -265,71 +256,6 @@ theorem lazyPartnerRow_congr (x : SigningSecurityProof.Keys3 C) (r : Result C)
   simp only [LazyPartnerRow, Win, Charged, chargedOutput_congr prims x r n h,
     bottomPartnerCase_congr prims x r n h]
 
-/-- The lazy row reconstructed from the observable result, count and world log. -/
-def LoggedPartnerRow (x : SigningSecurityProof.Keys3 C)
-    (r : Result C × ℕ × QueryLog (WorldSpec C)) : Prop :=
-  LazyPartnerRow prims x ((r.1, []), (logCache r.2.2, r.2.1), r.2.2)
-
-/-- A1 supplies the exact cache reconstruction on the original joint run. -/
-theorem jointRun_lazyPartner_eq (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr{let z ← SigningUnchargedLoggedProof.jointRun prims A x}[LazyPartnerRow prims x z] =
-      Pr{let z ←
-        SigningUnchargedLoggedProof.jointRun prims A x}[LoggedPartnerRow prims x (z.1.1, z.2.1.2, z.2.2)] := by
-  apply prEvent_congr_of_support _ _ _
-  intro z hz
-  have hl : (z.1.1, z.2) ∈ support (SigningCostProof.loggedRun prims A x) := by
-    rw [← SigningUnchargedLoggedProof.jointRun_logged, support_map]
-    exact ⟨z, hz, rfl⟩
-  exact lazyPartnerRow_congr prims x z.1.1 z.1.2 z.2.1.2 z.2.2
-    (loggedRun_cacheFromLog prims A x _ hl)
-
-/-- A1 and the eager observable law move the original lazy row to the split run,
-where it still reads the cache reconstructed from the original call log. -/
-theorem lazyPartner_eq_split_log (ρ : SigningSecurityProof.Keys3 C → KeyIndex → Digest)
-    (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr{let z ← SigningUnchargedLoggedProof.jointRun prims A x}[LazyPartnerRow prims x z] =
-      Pr{let z ←
-        splitRunAt prims ρ A x}[LoggedPartnerRow prims x (z.1, z.2.1.1.1.1.2, z.2.1.1.1.2)] := by
-  rw [jointRun_lazyPartner_eq]
-  have hj : Pr{let z ←
-        SigningUnchargedLoggedProof.jointRun prims A x}[LoggedPartnerRow prims x (z.1.1, z.2.1.2, z.2.2)] =
-      Pr{let z ←
-        SigningCostProof.loggedRun prims A x}[LoggedPartnerRow prims x (z.1, z.2.1.2, z.2.2)] := by
-    rw [← SigningUnchargedLoggedProof.jointRun_logged, prEvent_map]
-  rw [hj]
-  have he := (evalDist_flatEagerRun_logged prims x.1 (ρ x) A x).prEvent_eq (LoggedPartnerRow prims x)
-  simp only [prEvent_map] at he
-  rw [← he]
-  rw [splitRunAt, ← monitoredRun_forget, prEvent_map,
-    ← splitRun_forget, prEvent_map]
-
-/-- Exact remaining A26 comparison, now on one split execution. The left event
-uses the logged cache; the right uses the eager cache. The selected pair must
-not be assumed monotone under cache extension. -/
-def PartnerCacheComparison (ρ : SigningSecurityProof.Keys3 C → KeyIndex → Digest) : Prop :=
-  ∀ (A : TsigAdversary C) (q : ℕ) (x : SigningSecurityProof.Keys3 C),
-    x ∈ support (TprfSecurityProof.keyGen3 (C := C)) →
-    ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
-    (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) →
-    q < 2 ^ 127 →
-    Pr{let z ←
-      splitRunAt prims ρ A x}[LoggedPartnerRow prims x (z.1, z.2.1.1.1.1.2, z.2.1.1.1.2)] ≤
-    Pr{let z ←
-      splitRunAt prims ρ A x}[EagerPartner prims x z ∧
-      ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1]
-
-/-- The remaining comparison is equivalent to the original target, with no
-additional hypotheses and no change to either event. -/
-theorem partnerTransfer_iff_comparison (ρ : SigningSecurityProof.Keys3 C → KeyIndex → Digest) :
-    PartnerTransfer prims ρ ↔ PartnerCacheComparison prims ρ := by
-  unfold PartnerTransfer PartnerCacheComparison
-  simp only [lazyPartner_eq_split_log prims ρ]
-
-/-- The original target follows once its remaining same-run cache comparison is proved. -/
-theorem partnerTransfer_of_comparison (ρ : SigningSecurityProof.Keys3 C → KeyIndex → Digest)
-    (h : PartnerCacheComparison prims ρ) : PartnerTransfer prims ρ :=
-  (partnerTransfer_iff_comparison prims ρ).mpr h
-
 /-- info: 'ThresholdLeanXmssSecurity.SigningPartnerTransferProof.selected_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms selected_eq
@@ -345,22 +271,6 @@ theorem partnerTransfer_of_comparison (ρ : SigningSecurityProof.Keys3 C → Key
 /-- info: 'ThresholdLeanXmssSecurity.SigningPartnerTransferProof.lazyPartnerRow_congr' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms lazyPartnerRow_congr
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningPartnerTransferProof.jointRun_lazyPartner_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms jointRun_lazyPartner_eq
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningPartnerTransferProof.lazyPartner_eq_split_log' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms lazyPartner_eq_split_log
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningPartnerTransferProof.partnerTransfer_iff_comparison' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms partnerTransfer_iff_comparison
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningPartnerTransferProof.partnerTransfer_of_comparison' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms partnerTransfer_of_comparison
 
 end SigningPartnerTransferProof
 end ThresholdLeanXmssSecurity

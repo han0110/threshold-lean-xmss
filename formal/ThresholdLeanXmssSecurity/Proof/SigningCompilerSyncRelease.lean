@@ -26,15 +26,6 @@ theorem key_opening_next (p : PendingInput) (lay : Layer) (e : KeyIndex)
     (h : p.key = .opening lay e) : p.next = none := by
   exact PendingInput.next_none_of_opening p lay e h
 
-theorem plant_low_known (data : DeferredState C) (h : PendingValid data)
-    (p : PendingInput) (a : DeferredOutput) (ha : data.pending p = some a)
-    (lay : Layer) (e : KeyIndex) (hk : p.key = .opening lay e) :
-    ∃ d, a.low = .known d := by
-  rcases h p a ha with ⟨k, hn, _⟩ | ⟨_, hl⟩
-  · rw [key_opening_next p lay e hk] at hn
-    cases hn
-  · exact hl
-
 /-- Pointwise extension of both visible caches, with unchanged symbolic cells. -/
 theorem _root_.ThresholdLeanXmssSecurity.SigningCompilerCouplingProof.CacheRelation.grow
     {P : PublicParameter} {seeds : C.Term → HashOutput}
@@ -207,46 +198,6 @@ theorem VisibleAfter.grows {x : Keys3 C} {g : C.Term × CPoint → HashOutput}
   · exact le_rfl
   · exact le_rfl
   · exact QueryCache.le_cacheQuery old hn
-
-theorem readyAfter_covers (x : Keys3 C)
-    (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
-    (s : HiddenKey → Digest) (pads : Point → Digest) (noise : ChainNoiseIndex → HashOutput)
-    (g : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput)
-    (priv old next : HashCache C) (data : DeferredState C) (signing : TsigState C)
-    (e : KeyIndex) (query : Query C)
-    (hr : RealPrivate x s pads noise g rest priv old)
-    (hc : CacheRelation x.1 x.2.1 s data old)
-    (hv : ∀ T p, (T, p) ∈ data.virtual → old (.prf (x.2.1 T) p) ≠ none)
-    (hready : ReadyAfter x.2.1 data signing e query)
-    (hafter : VisibleAfter x g e query old next) :
-    ∀ T, next (.prf (x.2.1 T) (.randomizer bottomLayer e)) =
-      some (g (T, ⟨.randomizer bottomLayer e, constrained_bottom_randomizer e⟩)) := by
-  have hcached (T : C.Term)
-      (hn : old (.prf (x.2.1 T) (.randomizer bottomLayer e)) ≠ none) :
-      old (.prf (x.2.1 T) (.randomizer bottomLayer e)) =
-        some (g (T, ⟨.randomizer bottomLayer e, constrained_bottom_randomizer e⟩)) := by
-    cases ho : old (.prf (x.2.1 T) (.randomizer bottomLayer e)) with
-    | none => exact (hn ho).elim
-    | some value =>
-      have he := realPrivate_slotValue x hkeys s pads noise g rest priv old hr
-        (.inl (T, .randomizer bottomLayer e)) value ho
-      rw [realTable_constrained g rest T
-        ⟨.randomizer bottomLayer e, constrained_bottom_randomizer e⟩] at he
-      exact congrArg some he
-  intro T
-  rcases hready.2 T with ht | ht | ht
-  · exact hafter.grows (hcached T (hv T _ ht))
-  · cases hd : data.cache (.prf (x.2.1 T) (.randomizer bottomLayer e)) with
-    | none => simp [hd] at ht
-    | some value =>
-      exact hafter.grows (hcached T (by rw [hc.cache_le hd]; exact Option.some_ne_none _))
-  · rcases hafter with ⟨hn, _⟩ | ⟨hn, rfl⟩ | ⟨U, hu, _, rfl⟩
-    · exact (hn ⟨.inl (T, .randomizer bottomLayer e), ht.symm⟩).elim
-    · exact hcached T (ht ▸ hn)
-    · have hi : Function.Injective x.2.1 := not_not.mp (not_or.mp hkeys).1
-      have he : U = T := hi (Query.prf.inj (hu.symm.trans ht)).1
-      subst U
-      rw [ht, QueryCache.cacheQuery_self]
 
 theorem erase_merge_of_restFree (seeds : C.Term → HashOutput) (cache : HashCache C)
     (share : ShareCache C) (h : RestFree seeds cache) :
@@ -1056,10 +1007,6 @@ theorem releaseOpening_sync (x : Keys3 C)
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncRelease.eager_complete_cached' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms eager_complete_cached
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncRelease.readyAfter_covers' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms readyAfter_covers
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncRelease.sourceRevealX_sync' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

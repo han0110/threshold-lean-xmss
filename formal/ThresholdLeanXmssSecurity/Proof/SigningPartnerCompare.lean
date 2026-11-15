@@ -3,20 +3,15 @@ import ThresholdLeanXmssSecurity.Proof.SigningPartnerTransfer
 /-!
 The comparison of reconstructed and eager caches.
 
-The extra eager calls only query bottom message inputs. On actual split-run
-support, every logged answer survives in the eager cache, and every tracked
-input outside that domain agrees exactly with the log cache. In particular,
-the PRF answers, cached randomizers and commitment-collision event agree.
+The extra eager calls query only bottom message inputs. On the support of the
+split run, every logged answer stays in the eager cache, and every tracked
+input outside that domain agrees with the log cache (`LogAgreement`). So the
+PRF answers, the cached randomizers and the commitment-collision event agree.
 
-These structural facts do not assert that the selected pair is unchanged:
-an extra answer can make an earlier, previously absent trial decode. `PartnerCacheComparison` requires a probability inequality between these
-two cache-dependent events; the structural facts alone do not give it.
-
-`splitRun_partner_of_selected_eq` transports the original lazy row to the
-original eager event under explicit equality of the two selected pairs.
-This equality is not asserted on all support points. The separate failures
-of the R1 link and the global cached-selection flag do not supply it, and
-do not by themselves refute the probability comparison.
+These facts do not show that the selected pair stays the same. An extra answer
+can make an earlier trial decode. `bottomPartnerCase_of_selected_eq` carries a
+partner from a smaller cache to a larger cache when the two selected pairs are
+equal.
 -/
 
 open OracleComp OracleSpec
@@ -215,33 +210,6 @@ theorem grindExtra_cache_frame (P : PublicParameter) (ρ : KeyIndex → Digest)
     subst z
     exact ⟨le_rfl, fun _ _ => rfl⟩
 
-theorem eagerWorld_logAgreement_of_frame (P : PublicParameter)
-    (extra : FlatState C → (WorldSpec C).Domain → FlatState C →
-      OracleComp (Query C →ₒ HashOutput) Unit)
-    (hframe : ∀ p t p' z,
-      z ∈ support ((simulateQ (randomOracle (spec := Query C →ₒ HashOutput))
-        (extra p t p')).run p'.1.1.1) →
-      p'.1.1.1 ≤ z.2 ∧ ∀ q, OutsideTrials P q → z.2 q = p'.1.1.1 q)
-    (t : (WorldSpec C).Domain) (ht : ¬IsProgram t) (p : FlatState C)
-    (hp : LogAgreement P p.1) z
-    (hz : z ∈ support ((eagerWorld prims extra t).run p)) :
-    LogAgreement P z.2.1 := by
-  simp only [eagerWorld, carry, StateT.run_mk, support_bind, support_map,
-    Set.mem_iUnion, Set.mem_image] at hz
-  obtain ⟨_, ⟨w, hw, rfl⟩, y, hy, rfl⟩ := hz
-  dsimp only at hy ⊢
-  have hlog := logAgreement_step prims P t ht p.1 hp w hw
-  have hf := hframe p t (w.2, p.2) y hy
-  exact ⟨hlog.1.trans hf.1, fun q hq => (hf.2 q hq).trans (hlog.2 q hq)⟩
-
-theorem eagerWorld_logAgreement (P : PublicParameter) (ρ : KeyIndex → Digest)
-    (t : (WorldSpec C).Domain) (ht : ¬IsProgram t) (p : FlatState C)
-    (hp : LogAgreement P p.1) z
-    (hz : z ∈ support ((eagerWorld prims (grindExtra P ρ) t).run p)) :
-    LogAgreement P z.2.1 :=
-  eagerWorld_logAgreement_of_frame prims P (grindExtra P ρ)
-    (grindExtra_cache_frame P ρ) t ht p hp z hz
-
 /-- The invariant rule for world programs excludes programming only at the
 calls actually permitted by `ProgramFree`. -/
 theorem support_programFree_inv {σ α : Type}
@@ -278,71 +246,6 @@ theorem flatWith_inv {ι σ : Type} {spec : OracleSpec ι}
   obtain ⟨w, hw, rfl⟩ := hz
   exact support_programFree_inv W (fun p => Inv p.1) hW _ (hfree t s.2) s hs w hw
 
-/-- A logged-state invariant survives setup, every forger call, and verification. -/
-theorem flatGame_inv
-    (W : QueryImpl (WorldSpec C) (StateT (FlatState C) ProbComp))
-    (Inv : LoggedState C → Prop)
-    (hW : ∀ t, ¬IsProgram t → ∀ s, Inv s.1 → ∀ z ∈ support ((W t).run s), Inv z.2.1)
-    (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
-    (s : FlatState C) (hs : Inv s.1) z
-    (hz : z ∈ support ((flatGame W A x).run s)) : Inv z.2.1 := by
-  have hsetup : SigningHitProof.ProgramFree (referenceTree
-      (fun oa => SigningSecurityProof.liftFree (tweakable oa))
-      (fun p => SigningSecurityProof.liftFree (prfValue x.2.1 p)) x.1 emptyTop .top) := by
-    rw [show referenceTree (fun oa => SigningSecurityProof.liftFree (tweakable oa))
-        (fun p => SigningSecurityProof.liftFree (prfValue x.2.1 p)) x.1 emptyTop .top =
-        SigningSecurityProof.liftFree (referenceTree tweakable (prfValue x.2.1) x.1 emptyTop .top) from
-      referenceTree_φ _ _ _ _]
-    exact SigningHitProof.programFree_liftFree _
-  unfold flatGame gameWith at hz
-  dsimp only at hz
-  rw [StateT.run_bind, mem_support_bind_iff] at hz
-  obtain ⟨r, hr, hz⟩ := hz
-  have hi := support_programFree_inv W (fun p => Inv p.1) hW _ hsetup s hs r hr
-  rcases r with ⟨_ | (top | tree), p⟩
-  · simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
-    subst z
-    exact hi
-  · simp only [StateT.run_bind, getCarried, StateT.run_mk, pure_bind,
-      mem_support_bind_iff] at hz
-    obtain ⟨a, ha, w, hw, hz⟩ := hz
-    have ha' := SeedHitProof.support_simulateQ_inv _ (fun p : FlatState C => Inv p.1)
-      (flatWith_inv W Inv hW _ (SigningHitProof.programFree_flaggedOracles x top)) _ p hi a ha
-    have hw' := support_programFree_inv W (fun p => Inv p.1) hW _
-      (SigningHitProof.programFree_finish x top _) a.2 ha' w hw
-    simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
-    subst z
-    exact hw'
-  · simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
-    subst z
-    exact hi
-
-theorem flatEagerRun_logAgreement (P : PublicParameter) (ρ : KeyIndex → Digest)
-    (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) z
-    (hz : z ∈ support (flatEagerRun prims P ρ A x)) : LogAgreement P z.2.1 := by
-  exact flatGame_inv _ (LogAgreement P) (eagerWorld_logAgreement prims P ρ)
-    A x flatInit (by
-      constructor
-      · intro q output h
-        simp [flatInit, loggedInit, logCache] at h
-      · intro q _
-        rfl) z hz
-
-/-- The comparison is unconditional on actual split support; it does not use
-the fixed-randomizer `R1Link`, a budget, or a key-distinctness assumption. -/
-theorem splitRun_logAgreement
-    (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
-    (P : PublicParameter) (ρ : KeyIndex → Digest) (A : TsigAdversary C)
-    (x : SigningSecurityProof.Keys3 C) z
-    (hz : z ∈ support (splitRun prims keyOf P ρ A x)) : LogAgreement P z.2.1.1.1 := by
-  have hmon : (z.1, (z.2.1.1, z.2.2)) ∈ support (monitoredRun prims keyOf P ρ A x) := by
-    rw [← splitRun_forget, support_map]
-    exact ⟨z, hz, rfl⟩
-  have heager : (z.1, (z.2.1.1.1, z.2.2)) ∈ support (flatEagerRun prims P ρ A x) := by
-    rw [← monitoredRun_forget prims keyOf, support_map]
-    exact ⟨_, hmon, rfl⟩
-  exact flatEagerRun_logAgreement prims P ρ A x _ heager
-
 theorem cachedRandomizer_eq_of_outside (seeds : C.Term → HashOutput)
     (P : PublicParameter) {a b : HashCache C}
     (h : ∀ q, OutsideTrials P q → a q = b q) :
@@ -363,16 +266,6 @@ theorem alternativeCommitment_congr_of_outside (seeds : C.Term → HashOutput)
   simp only [SigningGuessProof.AlternativeCommitment, SigningGuessProof.RandomizerCached,
     hr, h _ (outsideTrials_prf P _ _), h _ (outsideTrials_commitment P _ _)]
   rw [hr]
-
-/-- Eager precomputation cannot create or remove the commitment exception. -/
-theorem splitRun_alternativeCommitment
-    (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
-    (P : PublicParameter) (ρ : KeyIndex → Digest) (A : TsigAdversary C)
-    (x : SigningSecurityProof.Keys3 C) z
-    (hz : z ∈ support (splitRun prims keyOf P ρ A x)) :
-    SigningGuessProof.AlternativeCommitment x.2.1 P z.2.1.1.1.1.1 ↔
-      SigningGuessProof.AlternativeCommitment x.2.1 P (logCache z.2.1.1.1.2) :=
-  alternativeCommitment_congr_of_outside x.2.1 P (splitRun_logAgreement prims keyOf P ρ A x z hz).2
 
 open SigningDescentProof SigningCacheProof
 
@@ -440,41 +333,8 @@ theorem bottomPartnerCase_of_selected_eq (x : SigningSecurityProof.Keys3 C)
       exact ⟨enc, (congrArg XmssSecurity.TargetSum.decodeDigest heq).symm.trans hv⟩)
   exact ⟨top, st, forgery, hr, pair, hs', hne, hleft.symm.trans (heq.trans hright)⟩
 
-/-- The original same-run event transport, conditional only on equality of
-the selected replay. Cache inclusion and commitment transport are supplied
-by the actual split execution, rather than additional assumptions. -/
-theorem splitRun_partner_of_selected_eq
-    (ρ : SigningSecurityProof.Keys3 C → KeyIndex → Digest)
-    (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) (z : SplitOutcome C)
-    (hz : z ∈ support (splitRunAt prims ρ A x))
-    (hselected : ∀ top st forgery, z.1.2 = some (top, st, forgery) →
-      (FinalState.mk x top st forgery (logCache z.2.1.1.1.2) false).selected prims =
-        (FinalState.mk x top st forgery z.2.1.1.1.1.1 false).selected prims)
-    (hlazy : SigningPartnerTransferProof.LoggedPartnerRow prims x
-      (z.1, z.2.1.1.1.1.2, z.2.1.1.1.2)) :
-    EagerPartner prims x z ∧
-      ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1 := by
-  have hcache := splitRun_logAgreement prims (XmssSecurity.encodingInputLeafIndex? x.1)
-    x.1 (ρ x) A x z hz
-  have halt := splitRun_alternativeCommitment prims (XmssSecurity.encodingInputLeafIndex? x.1)
-    x.1 (ρ x) A x z hz
-  change z.1.1 = (true, false) ∧
-    ¬SigningGuessProof.ChargedOutput prims x (z.1, logCache z.2.1.1.1.2, z.2.1.1.1.1.2) ∧
-    SigningPartnerLinkProof.BottomPartnerCase prims x
-      (z.1, logCache z.2.1.1.1.2, z.2.1.1.1.1.2) at hlazy
-  refine ⟨⟨hlazy.1, bottomPartnerCase_of_selected_eq prims x z.1 _ hcache.1 hselected hlazy.2.2⟩, ?_⟩
-  exact fun he => hlazy.2.1 (Or.inr (Or.inl (halt.mp he)))
-
 end SigningPartnerCompareProof
 end ThresholdLeanXmssSecurity
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningPartnerCompareProof.splitRun_logAgreement' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningPartnerCompareProof.splitRun_logAgreement
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningPartnerCompareProof.splitRun_alternativeCommitment' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningPartnerCompareProof.splitRun_alternativeCommitment
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningPartnerCompareProof.selected_decode' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
@@ -483,7 +343,3 @@ end ThresholdLeanXmssSecurity
 /-- info: 'ThresholdLeanXmssSecurity.SigningPartnerCompareProof.bottomPartnerCase_of_selected_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningPartnerCompareProof.bottomPartnerCase_of_selected_eq
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningPartnerCompareProof.splitRun_partner_of_selected_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningPartnerCompareProof.splitRun_partner_of_selected_eq

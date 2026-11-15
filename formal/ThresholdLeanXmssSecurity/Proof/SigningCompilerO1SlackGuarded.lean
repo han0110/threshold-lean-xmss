@@ -171,25 +171,6 @@ theorem sourceOraclesO1_guardedS (hinj : Function.Injective x.2.1) (top : TopTre
         (h.1.2.2 (control.2.2.1.symm.trans hf)) h.2 h.1.2.1 a ha
       exact ReleaseInvariantO1.source_frame hi rfl rfl
 
-set_option maxRecDepth 100000 in
-/-- The complete O1 game keeps the guarded invariant. -/
-theorem sourceGameO1_guardedS (A : TsigAdversary C) (hinj : Function.Injective x.2.1) :
-    SourcePreservesO1 x.1 x.2.1 q s (GuardedReleaseInvariantS x.2.1 s)
-      (sourceGameO1 prims A x) := by
-  unfold sourceGameO1
-  refine SourcePreservesO1.bind (setupO1_guardedS x q s hinj) _ fun top => ?_
-  refine SourcePreservesO1.bind (SourcePreservesO1.simulateQ _
-    (sourceOraclesO1_guardedS prims x q s hinj top) _) _ fun forgery => ?_
-  refine SourcePreservesO1.bind SourcePreservesO1.get _ fun current => ?_
-  refine SourcePreservesO1.bind (SourcePreservesO1.simulateQ _
-    (fun input => verifyO1_guardedS x q s hinj current.base input) _) _ fun verified => ?_
-  dsimp only
-  split
-  · exact SourcePreservesO1.bind (SourcePreservesO1.pure _) _ fun _ => SourcePreservesO1.pure _
-  · exact SourcePreservesO1.bind (honestO1_guardedS prims x q s hinj top _ _) _
-      fun _ => SourcePreservesO1.bind (SourcePreservesO1.pure _) _
-        fun _ => SourcePreservesO1.pure _
-
 end Handlers
 
 end ThresholdLeanXmssSecurity.SigningCompilerO1SlackGuarded
@@ -217,7 +198,3 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1SlackGuarded
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1SlackGuarded.sourceOraclesO1_guardedS' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1SlackGuarded.sourceOraclesO1_guardedS
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1SlackGuarded.sourceGameO1_guardedS' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1SlackGuarded.sourceGameO1_guardedS

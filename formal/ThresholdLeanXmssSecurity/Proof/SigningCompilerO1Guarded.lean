@@ -9,9 +9,6 @@ that is up. So a run with the flag down has no share failure.
 With the flag down, the pad run and the table run give each event of the full outcome the same
 probability. The statement holds for the table run with the flag tag and for the table run with the
 cap tag. No first share failure of the table run with the cap tag has a false flag part.
-
-The lemmas are the lemmas of `SigningCompilerShare.Guarded` and `SigningCompilerShareCap` for the O1
-program.
 -/
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal
@@ -29,8 +26,7 @@ set_option maxRecDepth 100000
 attribute [local irreducible] sourceProgramO1X sourceProgramO1 sourceGameO1X sourceGameO1
 
 /-- An outcome with the flag down, no failure with a false tag, and a flag up after each failure with
-a true tag has no share failure. This lemma is a port of the private
-`SigningCompilerShare.Guarded.noBad_of_tags`. -/
+a true tag has no share failure. -/
 private theorem noBad_of_tagsO1 (z : CompilerOutcomeO1 C × ShareState C)
     (hfalse : ∀ k, (SigningShareLazy.erase z.2).bad ≠ some (false, k))
     (htrue : ∀ k l, z.2.bad = some (true, k, l) → z.1.1.2.base.hiddenFlag = true)

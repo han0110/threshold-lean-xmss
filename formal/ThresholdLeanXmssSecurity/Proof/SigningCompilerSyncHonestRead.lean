@@ -9,10 +9,11 @@ routes have the same normal form.
 
 - `rawTraceWorld_read_honest` is the normal form of `rawTraceWorld_read` for the honest copy.
 - `rawTraceWorld_read_route` states the normal form for a call `t` on either route.
-- `realWorld_slot_route`, `realWorld_read_view_route` and `realWorld_read_fields_route` are
-  `realWorld_slot`, `realWorld_read_view` and `realWorld_read_fields` for a call `t` on either
-  route. The value of a call `t` needs a `cast`, because the range of a variable `t` does not
-  reduce.
+- `realWorld_slot_route` is `realWorld_slot` for a call `t` on either route.
+- `realWorld_read_view_route` gives the counted-call view of a read on either route.
+- `realWorld_read_fields_route` states that a read on either route counts once and keeps the
+  opening state.
+- The value of a call `t` needs a `cast`, because the range of a variable `t` does not reduce.
 -/
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss

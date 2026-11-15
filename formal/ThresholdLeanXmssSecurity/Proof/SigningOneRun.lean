@@ -17,44 +17,6 @@ one run, the joint eager run with the cached trigger of `SigningR1Fixed`.
 * `splitRunAt` adds one write-only flag of a cached trial for each key (`keyedSplitOracle`).
   `CachedSelectionAt` reads the flag at the key of the forgery, so the row is per key.
   `split_r1Hit_bound` is the R1 bound on it, and `splitRunAt_oneRun` forgets it to `oneRun`.
-
-## `R1Link` with the true-opening disjunct is false
-
-`Released` of `SigningOpening` releases the bottom opening of `e` once `bound e` is set. Round 1 of
-one honest operator sets `bound e`, but it caches only the PRF entries of the terms of that
-operator. So a guess of the opening after round 1 is not a candidate, and it is not yet a base
-call of a cached key. The argument is on the support, as in `SigningR1Fixed`.
-
-1. Take `t = 2` with two operators and no corruption. A term is a set of `t - 1` operators, and
-   its holders are the other operators, so operator `1` holds no copy of the term `{1}`. The
-   forger asks round 1 of operator `1` at `e` on `m` with the quorum of both. `eval` reads only
-   the terms of `L J 1`, so this sets `bound e` and leaves the entry of `{1}` at
-   `.randomizer bottomLayer e` uncached.
-2. The forger asks `H` at the base input of `e` and `m` with a guess `ρ'`. The call is a base call,
-   but `RandomizerCached` fails, so `cachedExtra` runs no grind. The opening is released, so
-   `unreleasedCandidates` logs nothing. The forger then asks the trials up to the first codeword
-   and a partner `(m', r')` with the same digest.
-3. The forger asks `.tree (treeOf e)`. The setup caches all PRF entries at `e`. Take a support
-   point where their XOR is `ρ'`. No later call is a base call.
-4. Steps 4 and 5 of the counterexample of `SigningR1Fixed` follow unchanged. No grind ran, so the
-   monitor installs no target and no flag rises. No commitment collides. The candidate log has no
-   opening of `e`, so `TrueOpeningHit` is false. The verification suffix logs no opening of `e`,
-   because `bound e` is set. `BottomPartnerCase` holds with the selection of step 2.
-
-The guess costs `2^-128` per call, but no row of the current table logs it. Two trigger choices change which event records it.
-
-* The first trigger choice in `SigningR1Fixed`. The trigger runs the grind at each world call after
-  which the PRF entries, the bound message and the base answer of a key are all cached. After
-  step 3 the grind meets the seen trials of step 2, so the flag of `e` rises. This keeps
-  `TrueOpeningHit` and the input-side event of the uncharged lane.
-* A candidate at each call that carries the opening of a key whose PRF entries are not all cached,
-  read from the call log. This changes the input-side event of the uncharged lane, so the cap of
-  that lane changes with it.
-
-## The interface hypotheses
-
-* `R1Link` is stated in its exact form and is false. The cap of the uncharged lane on this run and the assembly
-  of `HiddenCoreAt` from `TopRow` and `AbsentRow` depend on its fix and are not stated here.
 -/
 
 set_option pp.deepTerms false
@@ -367,21 +329,6 @@ theorem split_r1Hit_bound (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 
   rfl
 
 end Split
-
-section Link
-
-/-- `R1Link` on the split one run, with the true-opening disjunct. A bottom partner win with no cached
-selection at the forged key hits the R1 monitor, has another opening of a commitment, or has a
-candidate that carried the true opening before its release. It is false, by the counterexample in
-the module doc. -/
-def R1Link : Prop :=
-  ∀ (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) z, z ∈ support (splitRunAt prims A x) →
-    z.1.1.1 = (true, false) → SigningPartnerLinkProof.BottomPartnerCase prims x (z.1.1, z.2.1.1.1.1) →
-    ¬CachedSelectionAt z →
-    R1HitRow z ∨ SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1 ∨
-      SigningOpeningProof.TrueOpeningHit x (z.1, z.2.1.1.1.1)
-
-end Link
 
 end SigningOneRunProof
 

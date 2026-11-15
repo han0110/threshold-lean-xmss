@@ -249,10 +249,6 @@ theorem bind {oa : SourceMXO1 C α} {f : α → SourceMXO1 C β}
   have hj := hf mid.1.1.1 mid.1.1.2 mid.1.2 mid.2 hi.1 hi.2.2 z hz
   exact ⟨hj.1, hi.2.1.trans hj.2.1, hj.2.2⟩
 
-theorem map (f : α → β) {oa : SourceMXO1 C α} (h : TagSafeO1 H P seeds q s pads oa) :
-    TagSafeO1 H P seeds q s pads (f <$> oa) := by
-  simpa only [bind_pure_comp] using h.bind (fun a => pure (f a))
-
 theorem simulate {ι : Type} {spec : OracleSpec ι}
     (impl : QueryImpl spec (SourceMXO1 C)) (oa : OracleComp spec α)
     (h : ∀ t, TagSafeO1 H P seeds q s pads (impl t)) :

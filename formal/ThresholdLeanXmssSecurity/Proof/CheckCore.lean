@@ -20,13 +20,14 @@ The hash budget splits as `soundHashError + coupleHashError = checkHashError`
 `q + R + 2` cached expansion keys at each of the `R + 2` coins, and the coupling pays a guess or a
 collision of the `termHashes` honest history and digest points.
 
-`checkCoreDistance` proves `CheckCoreDistance` from three stages, one for each case:
+The file states two stages as named `Prop`s. `checkCoreDistanceSplit` of `Proof/CheckLast.lean`
+uses them to prove `CheckCoreDistance`.
 
-* `CheckSoundStage` (step 2): agreeing copies and a wrong tuple, the honest output probability of
-  the real run.
-* `CheckCoupleStage` (step 4): agreeing copies, the masked real run against the ideal run.
-* `CheckSplitStage` (steps 3 and 4): disagreeing copies, one experiment with one bad flag
-  (`SharedBad`) for the real, the masked and the ideal run, bounded by `checkHashError` alone.
+* `CheckSoundStage` (step 2) bounds the honest output probability of the real run when the copies
+  agree and a tuple is wrong.
+* `CheckCoupleStage` (step 4) bounds the masked real run against the ideal run when the copies agree.
+
+`SharedBad` is one experiment with one bad flag for the real, the masked and the ideal run.
 -/
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss Finset
@@ -199,11 +200,6 @@ def MultVerifyAgree (D : C.Coalition) (inputs : C.Party → Option (List (Tuple 
       ((inputs i).bind (·[k]?)).map (fun τ => (τ.x T g, τ.y T g, τ.z T g)) =
         ((inputs j).bind (·[k]?)).map fun τ => (τ.x T g, τ.y T g, τ.z T g)
 
-theorem multVerifyAgree_of_accept (D : C.Coalition) (inputs : C.Party → Option (List (Tuple C)))
-    (h : (multVerifyLeak D inputs).2.2 = true) : MultVerifyAgree D inputs := by
-  simp only [multVerifyLeak, decide_eq_true_eq] at h
-  exact h.1
-
 theorem checkRealLocal_eq (K : Constants C E) (fuel : ℕ) (D : C.Coalition)
     (A : CheckAdversary C E (List (Tuple C))) (x : C.Party → List (Tuple C)) (z : Aux)
     (Z : Distinguisher C A.State Unit) :
@@ -302,9 +298,6 @@ def coupleHashError (C : Committee) (count q : ℕ) : ℝ :=
 lemma soundHashError_nonneg (count q : ℕ) : 0 ≤ soundHashError count q := by
   unfold soundHashError; positivity
 
-lemma coupleHashError_nonneg (count q : ℕ) : 0 ≤ coupleHashError C count q := by
-  unfold coupleHashError; positivity
-
 /-- The two parts are exactly `checkHashError`. -/
 theorem soundHash_add_coupleHash (count q : ℕ) :
     soundHashError count q + coupleHashError C count q = checkHashError C count q := by
@@ -340,37 +333,6 @@ def SharedBad (prims : Primitives) (g₁ g₂ g₃ : OracleComp (LocalSpec C) Bo
     Pr{let ω ← J}[ω.2.2.1 = true] = Pr{let b ← (simulateQ (localAnswer prims) g₃).run' ∅}[b = true] ∧
     (∀ ω ∈ support J, ω.2.2.2 = false → ω.1 = ω.2.1 ∧ ω.2.1 = ω.2.2.1) ∧
     (Pr{let ω ← J}[ω.2.2.2 = true]).toReal ≤ ε
-
-lemma abs_toReal_sub_le {a b e : ENNReal} (ha : a ≤ 1) (hb : b ≤ 1) (he : e ≤ 1)
-    (h₁ : a ≤ b + e) (h₂ : b ≤ a + e) : |a.toReal - b.toReal| ≤ e.toReal := by
-  have ha' : a ≠ ⊤ := ne_top_of_le_ne_top ENNReal.one_ne_top ha
-  have hb' : b ≠ ⊤ := ne_top_of_le_ne_top ENNReal.one_ne_top hb
-  have he' : e ≠ ⊤ := ne_top_of_le_ne_top ENNReal.one_ne_top he
-  have h₁' := (ENNReal.toReal_le_toReal ha' (ENNReal.add_ne_top.mpr ⟨hb', he'⟩)).mpr h₁
-  have h₂' := (ENNReal.toReal_le_toReal hb' (ENNReal.add_ne_top.mpr ⟨ha', he'⟩)).mpr h₂
-  rw [ENNReal.toReal_add hb' he'] at h₁'
-  rw [ENNReal.toReal_add ha' he'] at h₂'
-  rw [abs_le]
-  constructor <;> linarith
-
-/-- Two games of one shared-bad experiment differ by at most the probability of the flag. -/
-theorem SharedBad.abs_sub_le {prims : Primitives} {g₁ g₂ g₃ : OracleComp (LocalSpec C) Bool} {ε : ℝ}
-    (h : SharedBad prims g₁ g₂ g₃ ε) : |localAccepts prims g₁ - localAccepts prims g₃| ≤ ε := by
-  obtain ⟨J, h₁, -, h₃, hagree, hbad⟩ := h
-  refine le_trans ?_ hbad
-  unfold localAccepts
-  rw [← h₁, ← h₃]
-  refine abs_toReal_sub_le (prEvent_le_one _) (prEvent_le_one _) (prEvent_le_one _) ?_ ?_
-  · refine (prEvent_mono_of_support _ _ _ fun ω hω h => ?_).trans (prEvent_or_le J _ _)
-    by_cases hb : ω.2.2.2 = true
-    · exact Or.inr hb
-    · obtain ⟨e₁, e₂⟩ := hagree ω hω (by simpa using hb)
-      exact Or.inl (by rw [← e₂, ← e₁]; exact h)
-  · refine (prEvent_mono_of_support _ _ _ fun ω hω h => ?_).trans (prEvent_or_le J _ _)
-    by_cases hb : ω.2.2.2 = true
-    · exact Or.inr hb
-    · obtain ⟨e₁, e₂⟩ := hagree ω hω (by simpa using hb)
-      exact Or.inl (by rw [e₁, e₂]; exact h)
 
 end SharedBad
 
@@ -408,45 +370,6 @@ def CheckCoupleStage (prims : Primitives) (K : Constants C E) : Prop :=
       localAccepts prims (checkIdealLocal K (checkRounds counts.sum) D A x z Z)| ≤
       coupleHashError C counts.sum q
 
-/-- Steps 3 and 4 with one collision event: when the honest copies disagree, one experiment joins
-the real, the masked and the ideal run. Off one bad flag, no honest operator of the real run outputs
-(so the real and the masked game agree, step 3) and the masked and the ideal game agree (step 4). -/
-def CheckSplitStage (prims : Primitives) (K : Constants C E) : Prop :=
-  ∀ (counts : List ℕ) (D : C.Coalition) (A : CheckAdversary C E (List (Tuple C)))
-    (x : C.Party → List (Tuple C)) (z : Aux) (Z : Distinguisher C A.State Unit) (q : ℕ),
-    TupleInputs K counts D x → IsQueryBounded A Z (checkRounds counts.sum) q →
-    counts.sum ≠ 0 → q < 2 ^ 128 →
-    ¬ MultVerifyAgree D (fun i => if i ∈ D.1 then none else some (x i)) →
-    SharedBad prims (checkRealLocal K (checkRounds counts.sum) D A x z Z)
-      (checkMaskedLocal K (checkRounds counts.sum) D A x z Z)
-      (checkIdealLocal K (checkRounds counts.sum) D A x z Z) (checkHashError C counts.sum q)
-
-/-- `CheckCoreDistance` from the three stages. -/
-theorem checkCoreDistance (prims : Primitives) (K : Constants C E) (hsound : CheckSoundStage prims K)
-    (hcouple : CheckCoupleStage prims K) (hsplit : CheckSplitStage prims K) :
-    CheckCoreDistance prims K := by
-  intro counts D A x z Z q hx hq hpos hq128
-  have hE := checkErrorOf_nonneg K (coins counts.sum) (halvings counts.sum) q
-  by_cases hagree : MultVerifyAgree D (fun i => if i ∈ D.1 then none else some (x i))
-  · have hc := hcouple counts D A x z Z q hx hq hpos hq128 hagree
-    have hcl := coupleHashError_le (C := C) counts.sum q
-    by_cases hacc : (multVerifyLeak D (fun i => if i ∈ D.1 then none else some (x i))).2.2 = true
-    · rw [← checkMasked_eq_real_of_accept prims K _ D A x z Z hacc]
-      linarith
-    · have hm := checkReal_masked_le prims K (checkRounds counts.sum) D A x z Z
-      have hs := hsound counts D A x z Z q hx hq hpos hq128 hagree (by simpa using hacc)
-      have hsum := soundHash_add_coupleHash_le (C := C) counts.sum q
-      have htri := abs_sub_le (localAccepts prims (checkRealLocal K (checkRounds counts.sum) D A x z Z))
-        (localAccepts prims (checkMaskedLocal K (checkRounds counts.sum) D A x z Z))
-        (localAccepts prims (checkIdealLocal K (checkRounds counts.sum) D A x z Z))
-      linarith
-  · have h := (hsplit counts D A x z Z q hx hq hpos hq128 hagree).abs_sub_le
-    linarith
-
 end Assembly
-
-/-- info: 'ThresholdLeanXmssSecurity.checkCoreDistance' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms checkCoreDistance
 
 end ThresholdLeanXmssSecurity

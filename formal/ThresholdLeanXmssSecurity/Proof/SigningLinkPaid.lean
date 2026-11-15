@@ -4,8 +4,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningTopRows
 /-!
 # The partner link with a paid flag
 
-The forms of `R1Link` of `SigningR1Fixed` and of `SigningOneRun` are false. This
-module splits the bottom partner row by the release at the forged key. An unreleased partner is paid
+This module splits the bottom partner row by the release at the forged key. An unreleased partner is paid
 by the input-side flag, and a released partner keeps the R1 split.
 
 ## The three counterexamples
@@ -24,7 +23,7 @@ can give the chain parts at `e`, and the replayed honest key is unreleased (`hon
   `absentRow_hit` gives a hit on `unopenedTopTarget`.
 
 So none of the three escapes the restated conclusion. Each is a charged hit or a row of the
-uncharged lane, which the shared cap already pays (`win_cover_released`).
+uncharged lane (`win_cover_released`).
 
 ## The released partner
 
@@ -55,15 +54,7 @@ the unreleased partner is paid on `jointRun`, where the input-side row already l
 * `laneInputRow_of_unchargedRow` folds the three uncharged rows into one input-side row on the
   partial target or the unopened top target.
 * `chargedLane_bound_oneRun` is the charged lane with the R1 bound of the one run.
-* `hiddenCoreAt_of_releasedLink` proves `HiddenCoreAt` from `ReleasedLink`, `ReleasedTransfer` and
-  `SharedLaneCap`.
-
-## The interface hypotheses
-
-* `ReleasedLink`, by the argument above.
-* `ReleasedTransfer`, the move of the released partner row to the eager cache, as `PartnerTransfer`.
-* `SharedLaneCap`, the input-side row and the lane 2 row under one cap. The two rows
-  are on two runs, so lane 2 must enter the capped hybrid of the input-side row.
+* `ReleasedLink` is the link at a released key, by the argument above.
 -/
 
 set_option pp.deepTerms false
@@ -170,17 +161,6 @@ theorem win_cover_released (A : TsigAdversary C) (x : SigningSecurityProof.Keys3
           (mem_verifyRun_of_joint prims A x w hw) top state forgery hm hguess) habsent⟩))
   · exact Or.inr (Or.inr (Or.inr (Or.inl ⟨hwin, hc, htop, fun h => hc (Or.inr (Or.inr h))⟩)))
 
-set_option maxRecDepth 100000 in
-/-- The win is at most the charged event, the released partner row and the uncharged rows. -/
-theorem probEvent_win_le_released (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Pr{let z ← jointRun prims A x}[Win z] ≤
-      Pr{let z ← jointRun prims A x}[Charged prims x z] + Pr{let z ← jointRun prims A x}[ReleasedPartnerRow prims x z] +
-        Pr{let z ← jointRun prims A x}[UnchargedRow prims x z] := by
-  refine (prEvent_mono_of_support _ _ _ fun w hw hwin => win_cover_released prims A x w hw hwin).trans
-    ((prEvent_or_le _ _ _).trans ?_)
-  rw [add_assoc]
-  exact add_le_add le_rfl (prEvent_or_le _ _ _)
-
 /-! ## The input-side row -/
 
 /-- The input-side row of the uncharged lane. A candidate hits the partial chain target or the
@@ -217,43 +197,11 @@ def ReleasedLink : Prop :=
     ReleasedAt z.1.1.2 → ¬SigningOneRunProof.CachedSelectionAt z →
     SigningOneRunProof.R1HitRow z ∨ SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1
 
-/-- The transfer of the released partner row to the final cache of the split one run. -/
-def ReleasedTransfer : Prop :=
-  ∀ (A : TsigAdversary C) (q : ℕ) (x : SigningSecurityProof.Keys3 C),
-    x ∈ support (TprfSecurityProof.keyGen3 (C := C)) →
-    ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
-    (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) →
-    q < 2 ^ 127 →
-    Pr{let z ← jointRun prims A x}[ReleasedPartnerRow prims x z] ≤
-      Pr{let z ←
-        SigningOneRunProof.splitRunAt prims A x}[z.1.1.1 = (true, false) ∧
-          SigningPartnerLinkProof.BottomPartnerCase prims x (z.1.1, z.2.1.1.1.1) ∧ ReleasedAt z.1.1.2 ∧
-          ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1]
-
-set_option maxRecDepth 100000 in
-/-- The crossing of the released partner row into the R1 hit and the lane 2 row. -/
-theorem releasedCrossing (hlink : ReleasedLink prims (C := C)) (htransfer : ReleasedTransfer prims (C := C))
-    (A : TsigAdversary C) (q : ℕ) (x : SigningSecurityProof.Keys3 C)
-    (hx : x ∈ support (TprfSecurityProof.keyGen3 (C := C))) (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
-    (hq : ∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q)
-    (hsmall : q < 2 ^ 127) :
-    Pr{let z ← jointRun prims A x}[ReleasedPartnerRow prims x z] ≤
-      Pr{let z ← SigningOneRunProof.splitRunAt prims A x}[SigningOneRunProof.R1HitRow z] +
-        Pr{let z ← SigningOneRunProof.splitRunAt prims A x}[Lane2Row prims x z] := by
-  refine (htransfer A q x hx hkeys hq hsmall).trans ((prEvent_mono_of_support _ _ _ fun z hz h => ?_).trans
-    (prEvent_or_le _ _ _))
-  obtain ⟨hwin, hpartner, hrel, halt⟩ := h
-  by_cases hcached : SigningOneRunProof.CachedSelectionAt z
-  · exact Or.inr ⟨hwin, hpartner, hrel, hcached⟩
-  · rcases hlink A x z hz hwin hpartner hrel hcached with hhit | hcommit
-    · exact Or.inl hhit
-    · exact (halt hcommit).elim
-
 /-! ## The assembly -/
 
 set_option maxRecDepth 100000 in
-/-- The charged lane on the split one run. It is `chargedLane_bound` with the R1 bound of
-`SigningOneRunProof.split_r1Hit_bound`. -/
+/-- The charged lane on the split one run. The charged output events on `jointRun` and the R1 hit
+on the split one run (`SigningOneRunProof.split_r1Hit_bound`) have the sum bound `q / 2 ^ 128`. -/
 theorem chargedLane_bound_oneRun (A : TsigAdversary C) (q : ℕ) (x : SigningSecurityProof.Keys3 C)
     (hx : x ∈ support (TprfSecurityProof.keyGen3 (C := C)))
     (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
@@ -296,36 +244,6 @@ theorem chargedLane_bound_oneRun (A : TsigAdversary C) (q : ℕ) (x : SigningSec
   rw [hdigest]
   ac_rfl
 
-/-- The shared cap of the uncharged lane. The input-side row on the joint run and the lane 2 row on
-the split one run share one cap of `q / 2^128`, as the input-side flag and the lane 2 event share it
-in `SigningLane2Proof.probEvent_lane2_le`. -/
-def SharedLaneCap : Prop :=
-  ∀ (A : TsigAdversary C) (q : ℕ) (x : SigningSecurityProof.Keys3 C),
-    x ∈ support (TprfSecurityProof.keyGen3 (C := C)) →
-    ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
-    (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) →
-    q < 2 ^ 127 →
-    Pr{let z ← jointRun prims A x}[LaneInputRow prims x z] + Pr{let z ← SigningOneRunProof.splitRunAt prims A x}[Lane2Row prims x z] ≤
-      (q : ℝ≥0∞) / 2 ^ 128
-
-set_option maxRecDepth 100000 in
-/-- `HiddenCoreAt` from the link at a released key, its transfer, and the shared cap of the
-uncharged lane. -/
-theorem hiddenCoreAt_of_releasedLink (hlink : ReleasedLink prims (C := C))
-    (htransfer : ReleasedTransfer prims (C := C)) (hcap : SharedLaneCap prims (C := C)) :
-    SigningCoreProof.HiddenCoreAt prims C := by
-  intro A q x hx hkeys hq hsmall
-  rw [SigningCostProof.signingHashError_eq, probEvent_core_eq_win]
-  have hcharged := chargedLane_bound_oneRun prims A q x hx hkeys hq hsmall
-  have huncharged := (add_le_add
-    (prEvent_mono_of_support _ _ _ fun w hw h => laneInputRow_of_unchargedRow prims A x w hw h) le_rfl).trans
-    (hcap A q x hx hkeys hq hsmall)
-  refine (probEvent_win_le_released prims A x).trans ?_
-  refine (add_le_add (add_le_add le_rfl (releasedCrossing prims hlink htransfer A q x hx hkeys hq hsmall))
-    le_rfl).trans ?_
-  refine le_trans (le_of_eq ?_) (add_le_add hcharged huncharged)
-  ring
-
 end SigningLinkPaidProof
 
 end ThresholdLeanXmssSecurity
@@ -333,7 +251,3 @@ end ThresholdLeanXmssSecurity
 /-- info: 'ThresholdLeanXmssSecurity.SigningLinkPaidProof.win_cover_released' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningLinkPaidProof.win_cover_released
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningLinkPaidProof.hiddenCoreAt_of_releasedLink' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningLinkPaidProof.hiddenCoreAt_of_releasedLink

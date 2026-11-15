@@ -3,22 +3,12 @@ import ThresholdLeanXmssSecurity.Proof.SigningCost
 /-!
 # The guess and partner lane
 
-`GuessPartnerLaneBound` of `Proof/SigningCost.lean` from two lanes on the logged run.
-
-The component lemmas:
+This file splits the cost of the logged run into digest calls and guess calls. The signing lanes,
+for example `Proof/SigningLaneUnion.lean` and `Proof/SigningGuessProof.lean`, use it.
 
 * The count of the logged run is the sum of the costs of the calls in its log
-  (`loggedRun_count_eq`).
+  (`loggedRun_count_eq`), and it is within the budget `q` (`loggedRun_count_le`).
 * A call costs one unit as a digest call or as a guess call, and never both (`digestCost_add_guessCost`).
-* The two lanes share the budget `q` of the run (`guessPartnerLaneBound`).
-
-The hypotheses of `guessPartnerLaneBound`:
-
-* `GuessLaneBound`: a win with a guess costs `2^-128` for each guess call of the log, in expectation.
-* `PartnerLaneBound`: a win with a partner costs `2^-128` for each digest call of the log, in
-  expectation.
-
-The proof plan of the lanes is in the notes of `Proof/SigningCost.lean` and `Proof/HiddenCore.lean`.
 -/
 
 set_option pp.deepTerms false
@@ -71,15 +61,6 @@ theorem digestCost_add_guessCost (t : (WorldSpec C).Domain) :
   unfold guessCost
   omega
 
-theorem logCost_add (log : QueryLog (WorldSpec C)) :
-    logCost digestCost log + logCost guessCost log = logCost SeedHitProof.signCost log := by
-  induction log with
-  | nil => rfl
-  | cons entry log ih =>
-    simp only [logCost, List.map_cons, List.sum_cons] at ih ⊢
-    rw [← digestCost_add_guessCost entry.1]
-    omega
-
 /-- The count of the logged run is the sum of the costs of the calls in its log. -/
 theorem loggedRun_count_eq (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
     ∀ r ∈ support (loggedRun prims A x), r.2.1.2 = logCost SeedHitProof.signCost r.2.2 := by
@@ -102,78 +83,6 @@ theorem loggedRun_count_le (A : TsigAdversary C) (x : SigningSecurityProof.Keys3
   rw [← loggedRun_forget, support_map]
   exact ⟨r, hr, rfl⟩
 
-/-- A win without the flag that ends in a guess on the final cache. -/
-def WinGuess (x : SigningSecurityProof.Keys3 C) (r : Outcome C) : Prop :=
-  r.1.1 = (true, false) ∧ ∃ top state forgery, r.1.2 = some (top, state, forgery) ∧
-    let z := finalOf x r top state forgery
-    Guess z.cache z.keys.1 z.key (z.honestKey prims) z.forgery.message
-      (XmssSecurity.Bridge.toModelSig z.forgery.signature)
-
-/-- A win without the flag that ends in a partner on the final cache. -/
-def WinPartner (x : SigningSecurityProof.Keys3 C) (r : Outcome C) : Prop :=
-  r.1.1 = (true, false) ∧ ∃ top state forgery, r.1.2 = some (top, state, forgery) ∧
-    let z := finalOf x r top state forgery
-    Partner z.cache z.keys.1 z.key (z.honestKey prims) z.forgery.message
-      (XmssSecurity.Bridge.toModelSig z.forgery.signature)
-
-/-- The outcome of `exposedRun` in an outcome of the logged run. -/
-abbrev forget (r : ((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) × (HashCache C × ℕ) ×
-    QueryLog (WorldSpec C)) : Outcome C :=
-  (r.1, r.2.1)
-
-/-! ## The lane interfaces -/
-
-/-- The guess lane. A win with a guess costs `2^-128` for each guess call of the log, in
-expectation. -/
-def GuessLaneBound (prims : Primitives) (C : Committee) : Prop :=
-  ∀ (A : TsigAdversary C) (q : ℕ) (x : SigningSecurityProof.Keys3 C), x ∈ support (TprfSecurityProof.keyGen3 (C := C)) →
-    ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
-    (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) → q < 2 ^ 127 →
-    Pr{let r ← loggedRun prims A x}[WinGuess prims x (forget r)] ≤
-      ∑' r, Pr{let z ← loggedRun prims A x}[z = r] * ((logCost guessCost r.2.2 : ℝ≥0∞) / 2 ^ 128)
-
-/-- The partner lane. A win with a partner costs `2^-128` for each digest call of the log, in
-expectation. -/
-def PartnerLaneBound (prims : Primitives) (C : Committee) : Prop :=
-  ∀ (A : TsigAdversary C) (q : ℕ) (x : SigningSecurityProof.Keys3 C), x ∈ support (TprfSecurityProof.keyGen3 (C := C)) →
-    ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2 →
-    (∀ r ∈ support (runSigningWorld prims (SigningSecurityProof.gameAfter A x)), r.2 ≤ q) → q < 2 ^ 127 →
-    Pr{let r ← loggedRun prims A x}[WinPartner prims x (forget r)] ≤
-      ∑' r, Pr{let z ← loggedRun prims A x}[z = r] * ((logCost digestCost r.2.2 : ℝ≥0∞) / 2 ^ 128)
-
 end SigningGuessLaneProof
 
-set_option maxRecDepth 100000 in
-open SigningCostProof SigningGuessLaneProof in
-/-- `GuessPartnerLaneBound` from the two lanes, which share the budget `q`. -/
-theorem guessPartnerLaneBound (prims : Primitives) (C : Committee) (guessLane : GuessLaneBound prims C)
-    (partnerLane : PartnerLaneBound prims C) : GuessPartnerLaneBound prims C := by
-  intro A q x hx hc hq hsmall
-  rw [← loggedRun_forget, prEvent_map]
-  calc Pr{let z ← loggedRun prims A x}[WinGuessPartner prims x (z.1, z.2.1)]
-      ≤ Pr{let r ← loggedRun prims A x}[WinGuess prims x (forget r)] +
-          Pr{let r ← loggedRun prims A x}[WinPartner prims x (forget r)] := by
-        refine le_trans (prEvent_mono _ _ _ fun r hr => ?_) (prEvent_or_le _ _ _)
-        obtain ⟨hwin, top, state, forgery, hsome, h | h⟩ := hr
-        · exact Or.inl ⟨hwin, top, state, forgery, hsome, h⟩
-        · exact Or.inr ⟨hwin, top, state, forgery, hsome, h⟩
-    _ ≤ ∑' r, Pr{let z ← loggedRun prims A x}[z = r] * ((logCost guessCost r.2.2 : ℝ≥0∞) / 2 ^ 128) +
-          ∑' r, Pr{let z ← loggedRun prims A x}[z = r] * ((logCost digestCost r.2.2 : ℝ≥0∞) / 2 ^ 128) :=
-        add_le_add (guessLane A q x hx hc hq hsmall) (partnerLane A q x hx hc hq hsmall)
-    _ ≤ ∑' r, Pr{let z ← loggedRun prims A x}[z = r] * ((q : ℝ≥0∞) / 2 ^ 128) := by
-        rw [← ENNReal.tsum_add]
-        refine ENNReal.tsum_le_tsum fun r => ?_
-        rw [← mul_add, ← ENNReal.add_div]
-        by_cases hr : r ∈ support (loggedRun prims A x)
-        · refine mul_le_mul_right (ENNReal.div_le_div_right ?_ _) _
-          rw [← Nat.cast_add, add_comm, logCost_add, ← loggedRun_count_eq prims A x r hr]
-          exact_mod_cast loggedRun_count_le prims A x q hq r hr
-        · simp [prEvent_eq_zero_of_not_mem_support _ hr]
-    _ = (∑' r, Pr{let z ← loggedRun prims A x}[z = r]) * ((q : ℝ≥0∞) / 2 ^ 128) := ENNReal.tsum_mul_right
-    _ ≤ (q : ℝ≥0∞) / 2 ^ 128 := mul_le_of_le_one_left bot_le (OracleComp.tsum_prEvent_le_one _)
-
 end ThresholdLeanXmssSecurity
-
-/-- info: 'ThresholdLeanXmssSecurity.guessPartnerLaneBound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.guessPartnerLaneBound

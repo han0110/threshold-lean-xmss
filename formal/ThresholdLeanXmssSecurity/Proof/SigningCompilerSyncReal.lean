@@ -357,31 +357,6 @@ theorem quiet_cachedExtra (x : Keys3 C) (s : HiddenKey → Digest) (pads : Point
     · exact Queries.pure _
   · exact Queries.pure _
 
-theorem realImpl_slotInput (x : Keys3 C)
-    (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
-    (g : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput)
-    (z : TprfSecurityProof.Slot C) (priv : HashCache C) :
-    ((realImpl x g rest) (.inr (TprfSecurityProof.slotInput x.2.1 x.2.2 z))).run priv =
-      pure (realTable g rest z, priv) := by
-  have hi := TprfSecurityProof.slotInput_injective (not_not.mp (not_or.mp hkeys).1) (not_not.mp (not_or.mp hkeys).2)
-  have hs : IsSlot x (TprfSecurityProof.slotInput x.2.1 x.2.2 z) := ⟨z, rfl⟩
-  rw [realImpl_slot x g rest _ hs, hi hs.choose_spec]
-
-theorem realImpl_constrained (x : Keys3 C)
-    (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
-    (g : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput)
-    (T : C.Term) (p : CPoint) (priv : HashCache C) :
-    ((realImpl x g rest) (.inr (.prf (x.2.1 T) p.val))).run priv = pure (g (T, p), priv) := by
-  simpa only [TprfSecurityProof.slotInput, realTable_constrained] using realImpl_slotInput x hkeys g rest (.inl (T, p.val)) priv
-
-theorem realImpl_rest (x : Keys3 C)
-    (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
-    (g : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput)
-    (z : RestSlot C) (priv : HashCache C) :
-    ((realImpl x g rest) (.inr (TprfSecurityProof.slotInput x.2.1 x.2.2 z.val))).run priv =
-      pure (rest z, priv) := by
-  rw [realImpl_slotInput x hkeys g rest z.val priv, realTable_rest]
-
 theorem realImpl_preload (x : Keys3 C) (s : HiddenKey → Digest) (pads : Point → Digest)
     (noise : ChainNoiseIndex → HashOutput) (g : C.Term × CPoint → HashOutput)
     (rest : RestSlot C → HashOutput) (priv vis : HashCache C)
@@ -532,25 +507,6 @@ theorem rawTraceWorld_realPrivate (prims : Primitives) (t : (WorldSpec C).Domain
   obtain ⟨a, ha, rfl⟩ := hr
   exact rawKeyedSplitWorld_realPrivate prims t (st.1.1, st.2) priv h a ha
 
-/-- Any outer handler may update its own opening state; the trace cache is framed. -/
-theorem rawTraceFlatWith_realPrivate {ι : Type} {spec : OracleSpec ι}
-    (prims : Primitives)
-    (outer : QueryImpl spec (StateT (SigningJointEagerProof.OpeningState C)
-      (OracleComp (WorldSpec C)))) (t : ι) :
-    RealPrivateLaw x s pads noise g rest (fun st => st.1.1.1.1.1.1)
-      (rawTraceFlatWith prims x outer t) := by
-  intro st priv h r hr
-  simp only [rawTraceFlatWith, StateT.run_mk, simulateQ_map, StateT.run_map,
-    support_map, Set.mem_image] at hr
-  obtain ⟨a, ha, rfl⟩ := hr
-  exact RealPrivateLaw.simulateQ (fun st => st.1.1.1.1.1.1) (rawTraceWorld prims x)
-    (rawTraceWorld_realPrivate prims) _ st priv h a ha
-
-theorem realAdv_realPrivate (prims : Primitives) (top : TopTree) (t : (LocalSpec C + TsigSpec C).Domain) :
-    RealPrivateLaw x s pads noise g rest (fun st => st.1.1.1.1.1.1)
-      (rawTraceFlatWith prims x (openingOracles x (SigningJointEagerProof.dealtOf x top)) t) :=
-  rawTraceFlatWith_realPrivate prims _ t
-
 /-- Fusion retains the same visible and private states as the nested interpretation. -/
 theorem RealPrivateLaw.fuse {ι σ : Type} {spec : OracleSpec ι}
     (cache : σ → HashCache C)
@@ -564,18 +520,6 @@ theorem RealPrivateLaw.fuse {ι σ : Type} {spec : OracleSpec ι}
   obtain ⟨b, hb, rfl⟩ := hr
   exact h a.1 a.2 ha b hb
 
-theorem realAdv_preserves (prims : Primitives) (top : TopTree)
-    (t : (LocalSpec C + TsigSpec C).Domain)
-    (a : SigningLaneUnionProof.TraceState C × HashCache C)
-    (ha : RealPrivate x s pads noise g rest a.2 a.1.1.1.1.1.1.1)
-    (r : (LocalSpec C + TsigSpec C).Range t ×
-      (SigningLaneUnionProof.TraceState C × HashCache C))
-    (hr : r ∈ support ((SigningCompilerUntil.fuse
-      (rawTraceFlatWith prims x (openingOracles x (SigningJointEagerProof.dealtOf x top)))
-      (realImpl x g rest) t).run a)) :
-    RealPrivate x s pads noise g rest r.2.2 r.2.1.1.1.1.1.1.1 :=
-  RealPrivateLaw.fuse _ _ t (realAdv_realPrivate prims top t) a ha r hr
-
 theorem realWorld_preserves (prims : Primitives) (t : (WorldSpec C).Domain)
     (a : SigningLaneUnionProof.TraceState C × HashCache C)
     (ha : RealPrivate x s pads noise g rest a.2 a.1.1.1.1.1.1.1)
@@ -585,17 +529,6 @@ theorem realWorld_preserves (prims : Primitives) (t : (WorldSpec C).Domain)
     RealPrivate x s pads noise g rest r.2.2 r.2.1.1.1.1.1.1.1 :=
   RealPrivateLaw.fuse _ _ t (rawTraceWorld_realPrivate prims t) a ha r hr
 
-
-/-- The old visible-state world law specializes directly to quiet calls. -/
-theorem rawTraceWorld_quiet (prims : Primitives) (t : (WorldSpec C).Domain)
-    (ht : ¬SigningHitLaneProof.IsProgram t) (st : SigningLaneUnionProof.TraceState C)
-    (priv : HashCache C)
-    (hq : Queries (QuietQ x s pads noise) ((rawTraceWorld prims x t).run st))
-    (h : ∀ q, Quiet x s pads noise q → priv q = st.1.1.1.1.1.1 q) :
-    (simulateQ (realImpl x g rest) ((rawTraceWorld prims x t).run st)).run priv =
-      (fun r => (r, syncPrivate x s pads noise priv r.2.1.1.1.1.1.1)) <$>
-        (SigningLaneUnionProof.traceWorld prims x t).run st :=
-  quiet_rawStateLaw x s pads noise g rest _ _ _ (rawTraceWorld_law prims x t ht) st hq priv h
 
 end HandlerPreservation
 
@@ -624,12 +557,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerSyncReal
  Quot.sound] -/
 #guard_msgs in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncReal.realPrivate_actualValue
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncReal.realAdv_preserves' depends on axioms: [propext,
- Classical.choice,
- Quot.sound] -/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncReal.realAdv_preserves
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncReal.realWorld_preserves' depends on axioms: [propext,
  Classical.choice,

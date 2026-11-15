@@ -564,21 +564,6 @@ theorem prawns_lemma52_guess (game : ProbComp (Bool × C.Term)) [Nonempty C.Term
   rw [mul_assoc, hguess]
   split_ifs <;> simp
 
-/-- A codeword covers another only if they are equal, since all codewords have the same digit sum
-(PRAWNS, Definition 3.1, for the codewords of leanXMSS). -/
-theorem prawns_cover_free (d d' : Digest) (hd : Codeword.Valid d) (hd' : Codeword.Valid d')
-    (hcover : ∀ l, (digestDigits d : Encoding) l ≤ (digestDigits d' : Encoding) l) :
-    (digestDigits d : Encoding) = (digestDigits d' : Encoding) := by
-  have hsum : ∑ l, ((digestDigits d : Encoding) l).val = ∑ l, ((digestDigits d' : Encoding) l).val := by
-    have h1 := hd.2
-    have h2 := hd'.2
-    simp only [Codeword.sum] at h1 h2
-    rw [h1, h2]
-  have hle : ∀ l ∈ Finset.univ, ((digestDigits d : Encoding) l).val ≤ ((digestDigits d' : Encoding) l).val :=
-    fun l _ => hcover l
-  funext l
-  exact Fin.ext ((Finset.sum_eq_sum_iff_of_le hle).mp hsum l (Finset.mem_univ l))
-
 end ThresholdLeanXmssSecurity
 
 /-- info: 'ThresholdLeanXmssSecurity.prawns_quorum_holds_term' depends on axioms: [propext, Classical.choice, Quot.sound] -/

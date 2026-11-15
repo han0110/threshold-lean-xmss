@@ -3,8 +3,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningOpening
 /-!
 # The expectation form of the capped hit bound
 
-This module holds the tool of change R2 (`SigningEagerGrind`). The uncharged lane is one expectation
-over a capped hybrid, and not a flag that one call decides.
+The uncharged lane is one expectation over a capped hybrid, and not a flag that one call decides.
 
 ## The hybrid
 
@@ -49,7 +48,7 @@ Let `N = |T| = 2 ^ 128`.
   `1 / N` through the flag. Each of the `U_h` encoding calls is output side, and the lane 2
   potential of leanVM in `f` rises by `1 / N`. The cap counts both, so the bound is
   `E[T_h + U_h] / N ≤ q / N`.
-* In the coin-flip trace of `SigningEagerGrind`, the coin is an uncounted call, and `f` does not
+* In a coin-flip trace, the coin is an uncounted call, and `f` does not
   rise at it. On heads the `q` commitment calls before round 1 are input side, and the flag costs at
   most `q / N`. On tails the `q` encoding calls at `e` are output side, and `f` rises by at most
   `q / N`. The induction takes the mean of the two branches, so the bound is `q / N`, and not the
@@ -139,7 +138,7 @@ theorem expectedFinal_flag_le (q : ℕ) (s : K → T) (f : σ × ℕ → ℝ≥0
     · rw [revealImpl_inr_run, revealImpl_inr_run]
       exact ih _ _ _ _
 
-/-- The expectation form of `probEvent_capped_le_aux`, from the count `st.2`. The flag pays for the
+/-- The bound on the averaged expected potential, from the count `st.2`. The flag pays for the
 input-side calls, and `f` pays for the output-side calls. Each of the first `q` counted calls costs
 at most `1 / |T|`. -/
 theorem expectedFinal_capped_le_aux (q : ℕ) (Inv : σ × ℕ → Prop) (f : σ × ℕ → ℝ≥0∞)
@@ -282,7 +281,7 @@ theorem expectedFinal_capped_le_aux (q : ℕ) (Inv : σ × ℕ → Prop) (f : σ
         rw [tsum_fintype]
         exact sum_uniform_reveal_le key H _ hH hih
 
-/-- The expectation form of `probEvent_hit_capped_le`. A potential `f` that starts at zero, rises in
+/-- The expectation form of the capped hit bound. A potential `f` that starts at zero, rises in
 expectation by at most `1 / |T|` at each of the first `q` counted output-side calls, and is at
 least one on `E`, bounds the flag or `E` by `q / |T|`. No query bound is needed. -/
 theorem probEvent_capped_expect_le (q : ℕ) (Inv : σ × ℕ → Prop) (f : σ × ℕ → ℝ≥0∞)

@@ -4,9 +4,8 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 /-!
 # Fixed-cap hits for the uncharged lane of the signing proof
 
-`SigningGuessProof.UnchargedLaneBound` asks `Pr[UnchargedWin] ≤ q / 2 ^ 128` with one unit for the
-whole lane. A union of one bound for each event gives `3q / 2 ^ 128`, so one capped flag must
-dominate the lane. This module holds the tools for that flag and the definitions of its events.
+This module holds the tools for one capped flag of the uncharged lane and the definitions of its
+events.
 
 ## The calls of the uncharged lane
 
@@ -28,53 +27,25 @@ the `hiddenHit` flag instead, and the lane requires that flag to stay false.
 
 ## The tools
 
-* `probEvent_hit_keyed_le` and `probEvent_hit_keyed_digest_le` bound `q` calls that each aim at one
-  key of uniform secrets `s : K → T` by `q / |T|`, under `IsQueryBoundP`.
-* The signing budget is support-wise (`SigningCostProof.exposedRun_count_le`). It does not give
-  `IsQueryBoundP`, which quantifies over every answer. The lazy oracle never gives two answers to
-  one input. An adversary that asks `H(u)` twice and makes `q + 1` more calls only when the answers
-  differ has a support-wise count of two, but it is not `IsQueryBoundP` for `q`.
-* So the lane uses the capped form. `countImpl` counts the calls, and `cappedCall` lets only the
-  first `q` raise the flag. `revealImpl` adds a reveal oracle for the secrets. A capped input-side
-  call hits an unrevealed secret, and any other capped call hits an output-side target.
-  `probEvent_hit_capped_le` bounds the flag by `q / |T|` with no query bound, if each output-side
-  call hits with probability at most `1 / |T|` (`hout`). `probEvent_le_of_capped` is its 128-bit
-  form for an event that the flag dominates.
-* An output-side target fixed by the state meets a fresh 256-bit answer with probability `2^-128`.
-  So the mixed step holds. The selected digest must be a target fixed by the state from the start,
-  which the hybrid gives by sampling it eagerly.
-* `relTriple_withCaching_planted` shows that a value planted at an unqueried point of a caching
-  oracle is invisible until the other run queries that point.
+* `probEvent_uniform_key_eq` gives the chance `1 / |T|` that one coordinate of uniform secrets
+  `s : K → T` equals a fixed point.
+* `countImpl` counts the calls, and `cappedCall` lets only the first `q` raise the flag.
+  `revealImpl` adds a reveal oracle for the secrets. A capped input-side call hits an unrevealed
+  secret, and any other capped call hits an output-side target.
+* `revealImpl_run_congr`, `revealImpl_inr_run` and `sum_uniform_reveal_le` average a run over the
+  secret of one key at its reveal.
+* `simulateQ_sticky` keeps a sticky bad event on the state through a run.
 
 ## The events
 
-* `hiddenCandidate` parses the one hidden value that a hash input carries. `commitmentInput_key_eq`
-  and `randomizerInput_key_eq` fix the key of an opening, and the tweak bytes fix the step and the
-  layer.
-* `openingRun` is `exposedRun` with a log of the unreleased candidates of the adversary hash calls
-  (`openingRun_forget`). The release of an opening is the first `round1` at `e` (bottom) or the
-  `tree b` query (top). A chain value below the opened position is never released.
+* `hiddenCandidate` parses the one hidden value that a hash input carries.
+  `SigningGuessProof.commitmentInput_key_eq` and `SigningGuessProof.randomizerInput_key_eq` fix the
+  key of an opening, and the tweak bytes fix the step and the layer.
+* `openingOracles` is `flaggedOracles` with a log of the unreleased candidates of the adversary
+  calls (`openingOracles_forget`). The release of an opening is the first `round1` at `e` (bottom)
+  or the `tree b` query (top). A chain value below the opened position is never released.
 * `HiddenInputHit` compares the log with the targets at the end. An opening is read from the final
   cache by `cachedOpening`, and it is absent if a PRF term is not in the final cache.
-  `TrueOpeningHit` is its opening part.
-
-## The hybrid
-
-The secrets are the openings and the hidden chain values. The output targets are the selected
-digest of each bottom key and the honest top digest of each top key, sampled at the start.
-
-* Before a release, an honest computation that reads a hidden value does not query the oracle on
-  an input that carries it. It takes a fresh answer and keeps it in a pending table. The commitment
-  `c_e` of `dealt.bottom` and the honest chain walks are such answers.
-* At the release, the pending answers are planted at the true inputs. They agree with the real run
-  until the adversary queries a planted input (`relTriple_withCaching_planted`), which is a hit.
-* The opening `ρ_e = F(x)` takes its value from the secret at the release. The release picks the
-  least term `T` that `st.corrupt` does not reveal at that time, samples the other terms lazily, and
-  programs the entry of `.prf seed_T x` so that the sum is the secret. The upper 128 bits of that
-  entry are fresh. Corruption is adaptive, so `T` cannot be fixed earlier. The two runs agree until
-  `hiddenHit`.
-* The honest grind at `e` returns the presampled selected digest. A partner is then a fresh answer
-  that meets it.
 -/
 
 set_option pp.deepTerms false
@@ -113,33 +84,6 @@ theorem probEvent_uniform_key_eq (key : K) (x : T) :
   rw [hfil, Fintype.card_fun, hK, pow_succ, Nat.cast_mul, Nat.add_sub_cancel, Nat.cast_pow]
   rw [ENNReal.div_eq_inv_mul, ENNReal.mul_inv (Or.inl hpow) (Or.inl (by simp)), mul_comm, ← mul_assoc,
     ENNReal.mul_inv_cancel hpow (by simp), one_mul]
-
-/-- A computation with at most `q` counted calls, each aimed at one key and one point, run on a
-handler that never reads the uniform secrets `s : K → T`, hits its key with probability at most
-`q / |T|`. -/
-theorem probEvent_hit_keyed_le (impl : QueryImpl spec (StateT σ ProbComp)) (p : κ → Prop)
-    [DecidablePred p] (keyOf : κ → K) (point : κ → T) (oa : OracleComp spec β) (q : ℕ)
-    (hq : IsQueryBoundP oa p q) (σ₀ : σ) :
-    Pr{let r ← ($ᵗ (K → T) >>= fun s =>
-      (simulateQ (flagImpl impl (fun t s => p t ∧ s (keyOf t) = point t) s) oa).run (σ₀, false))}[r.2.2 = true] ≤
-        q * (Fintype.card T : ℝ≥0∞)⁻¹ :=
-  probEvent_flag_le impl _ _ p _ (fun _ _ h => h.1)
-    (fun t _ => le_trans (prEvent_mono_of_support _ _ _ fun _ _ h => h.2)
-      (le_of_eq (probEvent_uniform_key_eq (keyOf t) (point t)))) oa q σ₀ hq
-
-/-- The 128-bit case of `probEvent_hit_keyed_le`. The bound is `q / 2 ^ 128`. -/
-theorem probEvent_hit_keyed_digest_le [SampleableType (K → HashSig.Digest)]
-    (impl : QueryImpl spec (StateT σ ProbComp)) (p : κ → Prop) [DecidablePred p]
-    (keyOf : κ → K) (point : κ → HashSig.Digest) (oa : OracleComp spec β) (q : ℕ)
-    (hq : IsQueryBoundP oa p q) (σ₀ : σ) :
-    Pr{let r ← ($ᵗ (K → HashSig.Digest) >>= fun s =>
-      (simulateQ (flagImpl impl (fun t s => p t ∧ s (keyOf t) = point t) s) oa).run (σ₀, false))}[r.2.2 = true] ≤
-        q / 2 ^ 128 := by
-  refine (probEvent_hit_keyed_le impl p keyOf point oa q hq σ₀).trans (le_of_eq ?_)
-  have hcard : Fintype.card HashSig.Digest = 2 ^ 128 := by
-    unfold HashSig.Digest HashSig.digestBits; exact Fintype.card_bitVec 128
-  rw [hcard, div_eq_mul_inv]
-  norm_num
 
 end KeyedHit
 
@@ -217,20 +161,6 @@ theorem revealImpl_run_congr (s s' : K → T) (oa : OracleComp (spec + RevealSpe
       · simpa [Function.update_of_ne hk] using hk'
 
 omit [Fintype K] [Fintype T] [SampleableType (K → T)] in
-/-- A counted call raises the flag exactly when it hits. -/
-theorem revealImpl_inl_run (s : K → T) (t : κ) (k : spec t → OracleComp (spec + RevealSpec K T) β)
-    (σ₀ : σ) (stored : K → Option T) :
-    (simulateQ (revealImpl impl counted inputSide outHit keyOf point s)
-        (liftM ((spec + RevealSpec K T).query (.inl t)) >>= k)).run (σ₀, stored, false) =
-      (impl t).run σ₀ >>= fun x =>
-        (simulateQ (revealImpl impl counted inputSide outHit keyOf point s) (k x.1)).run
-          (x.2, stored, decide (counted t σ₀ ∧
-            ((inputSide t ∧ stored (keyOf t) = none ∧ s (keyOf t) = point t) ∨
-              (¬inputSide t ∧ outHit t σ₀ x)))) := by
-  rw [revealImpl_query_bind_run]
-  simp only [revealImpl, StateT.run_mk, bind_map_left, Bool.false_or]
-
-omit [Fintype K] [Fintype T] [SampleableType (K → T)] in
 /-- A reveal returns the stored secret, or else the secret itself, and stores it. -/
 theorem revealImpl_inr_run (s : K → T) (key : K) (k : T → OracleComp (spec + RevealSpec K T) β)
     (σ₀ : σ) (stored : K → Option T) (b : Bool) :
@@ -275,189 +205,6 @@ def countImpl (impl : QueryImpl spec (StateT σ ProbComp)) (p : κ → Prop) :
 
 /-- The capped flag. Only the first `q` calls that satisfy `p` can raise it. -/
 abbrev cappedCall (p : κ → Prop) (q : ℕ) : κ → σ × ℕ → Prop := fun t st => p t ∧ st.2 < q
-
-/-- The mixed capped bound from the count `n`. Each capped call hits with probability at most
-`1 / |T|`. An input-side call hits an unrevealed uniform secret. Another call hits an output-side
-target, with probability at most `1 / |T|` by `hout`. No query bound is needed. -/
-theorem probEvent_capped_le_aux (q : ℕ)
-    (outHit : (t : κ) → σ × ℕ → spec t × (σ × ℕ) → Prop)
-    (hout : ∀ t σ₀ n, p t → ¬inputSide t →
-      Pr{let z ← (countImpl impl p t).run (σ₀, n)}[(outHit t (σ₀, n)) z] ≤ (Fintype.card T : ℝ≥0∞)⁻¹)
-    (oa : OracleComp (spec + RevealSpec K T) β) :
-    ∀ (σ₀ : σ) (n : ℕ) (stored : K → Option T),
-      Pr{let r ← ($ᵗ (K → T) >>= fun s =>
-        (simulateQ (revealImpl (countImpl impl p) (cappedCall p q) inputSide outHit keyOf point s) oa).run
-          ((σ₀, n), stored, false))}[r.2.2.2 = true] ≤ (q - n : ℕ) * (Fintype.card T : ℝ≥0∞)⁻¹ := by
-  induction oa using OracleComp.inductionOn with
-  | pure a =>
-    intro σ₀ n stored
-    simp [Function.comp_def]
-  | query_bind t k ih =>
-    intro σ₀ n stored
-    rcases t with t | key
-    · set ε : ℝ≥0∞ := (Fintype.card T : ℝ≥0∞)⁻¹
-      set I := revealImpl (countImpl impl p) (cappedCall p q) inputSide outHit keyOf point
-      set mx := (countImpl impl p t).run (σ₀, n)
-      set hit : (K → T) → spec t × (σ × ℕ) → Prop := fun s x => cappedCall p q t (σ₀, n) ∧
-        ((inputSide t ∧ stored (keyOf t) = none ∧ s (keyOf t) = point t) ∨
-          (¬inputSide t ∧ outHit t (σ₀, n) x)) with hhitdef
-      set g : (K → T) → spec t × (σ × ℕ) → ℝ≥0∞ := fun s x =>
-        Pr{let r ← (simulateQ (I s) (k x.1)).run (x.2, stored, false)}[r.2.2.2 = true] with hg
-      have hsupp : ∀ x ∈ support mx, x.2.2 = n + if p t then 1 else 0 := by
-        intro x hx
-        simp only [mx, countImpl, StateT.run_mk, support_map, Set.mem_image] at hx
-        obtain ⟨y, -, rfl⟩ := hx
-        rfl
-      have key : ∀ s, Pr{let r ← ((simulateQ (I s)
-          (liftM ((spec + RevealSpec K T).query (.inl t)) >>= k)).run ((σ₀, n), stored, false))}[r.2.2.2 = true] ≤
-          ∑' x, Pr{let z ← mx}[z = x] * ((if hit s x then 1 else 0) + g s x) := by
-        intro s
-        rw [revealImpl_inl_run, OracleComp.prEvent_bind_eq_tsum]
-        refine ENNReal.tsum_le_tsum fun x => ?_
-        gcongr
-        by_cases hs : hit s x
-        · rw [if_pos hs]
-          exact le_trans (prEvent_le_one _) le_self_add
-        · have hs' : decide (hit s x) = false := decide_eq_false hs
-          rw [if_neg hs, zero_add, hg]
-          exact le_of_eq (by congr; convert hs')
-      have hsum : ∑' x, Pr{let z ← mx}[z = x] * (∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * g s x) ≤
-          (q - (n + if p t then 1 else 0) : ℕ) * ε := by
-        calc _ ≤ ∑' x, Pr{let z ← mx}[z = x] * ((q - (n + if p t then 1 else 0) : ℕ) * ε) := by
-              refine ENNReal.tsum_le_tsum fun x => ?_
-              by_cases hx : x ∈ support mx
-              · gcongr
-                have := ih x.1 x.2.1 x.2.2 stored
-                rw [OracleComp.prEvent_bind_eq_tsum] at this
-                rw [← hsupp x hx]
-                exact this
-              · simp [prEvent_eq_zero_of_not_mem_support _ hx]
-          _ ≤ _ := by rw [ENNReal.tsum_mul_right]; exact mul_le_of_le_one_left' (OracleComp.tsum_prEvent_le_one _)
-      have hhit : ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * ∑' x, Pr{let z ← mx}[z = x] * (if hit s x then 1 else 0) ≤
-          if cappedCall p q t (σ₀, n) then ε else 0 := by
-        by_cases hc : cappedCall p q t (σ₀, n)
-        · rw [if_pos hc]
-          by_cases hin : inputSide t
-          · calc _ ≤ ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] *
-                  (if stored (keyOf t) = none ∧ s (keyOf t) = point t then 1 else 0) := by
-                  refine ENNReal.tsum_le_tsum fun s => ?_
-                  gcongr
-                  calc _ ≤ ∑' x, Pr{let z ← mx}[z = x] *
-                        (if stored (keyOf t) = none ∧ s (keyOf t) = point t then 1 else 0) := by
-                        refine ENNReal.tsum_le_tsum fun x => ?_
-                        gcongr
-                        by_cases h : stored (keyOf t) = none ∧ s (keyOf t) = point t
-                        · rw [if_pos h]
-                          split_ifs <;> simp
-                        · have : ¬hit s x := fun hx => hx.2.elim (fun h' => h h'.2) (fun h' => h'.1 hin)
-                          simp [this]
-                    _ ≤ _ := by
-                        rw [ENNReal.tsum_mul_right]; exact mul_le_of_le_one_left' (OracleComp.tsum_prEvent_le_one _)
-              _ ≤ ε := by
-                  simp only [mul_ite, mul_one, mul_zero]
-                  rw [← OracleComp.prEvent_eq_tsum_ite]
-                  exact le_trans (prEvent_mono_of_support _ _ _ fun s _ h => h.2)
-                    (le_of_eq (probEvent_uniform_key_eq (keyOf t) (point t)))
-          · calc _ ≤ ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * ε := by
-                  refine ENNReal.tsum_le_tsum fun s => ?_
-                  gcongr
-                  have hiff : ∀ x, hit s x ↔ outHit t (σ₀, n) x := fun x =>
-                    ⟨fun hx => hx.2.elim (fun h => (hin h.1).elim) (fun h => h.2),
-                      fun hx => ⟨hc, Or.inr ⟨hin, hx⟩⟩⟩
-                  simp only [hiff, mul_ite, mul_one, mul_zero]
-                  rw [← OracleComp.prEvent_eq_tsum_ite]
-                  exact hout t σ₀ n hc.1 hin
-              _ ≤ ε := by
-                  rw [ENNReal.tsum_mul_right]; exact mul_le_of_le_one_left' (OracleComp.tsum_prEvent_le_one _)
-        · rw [if_neg hc]
-          have : ∀ s x, ¬hit s x := fun s x hx => hc hx.1
-          simp [this]
-      calc _ = ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * Pr{let r ← ((simulateQ (I s)
-            (liftM ((spec + RevealSpec K T).query (.inl t)) >>= k)).run ((σ₀, n), stored, false))}[r.2.2.2 = true] :=
-            OracleComp.prEvent_bind_eq_tsum _ _ _
-        _ ≤ ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * ∑' x, Pr{let z ← mx}[z = x] * ((if hit s x then 1 else 0) + g s x) :=
-            ENNReal.tsum_le_tsum fun s => by gcongr; exact key s
-        _ = ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * ∑' x, Pr{let z ← mx}[z = x] * (if hit s x then 1 else 0) +
-            ∑' x, Pr{let z ← mx}[z = x] * (∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * g s x) := by
-            simp only [mul_add, ENNReal.tsum_add, ← ENNReal.tsum_mul_left]
-            congr 1
-            rw [ENNReal.tsum_comm]
-            simp only [mul_left_comm]
-        _ ≤ (if cappedCall p q t (σ₀, n) then ε else 0) +
-            (q - (n + if p t then 1 else 0) : ℕ) * ε := add_le_add hhit hsum
-        _ ≤ (q - n : ℕ) * ε := by
-            by_cases hpt : p t
-            · by_cases hn : n < q
-              · rw [if_pos ⟨hpt, hn⟩, if_pos hpt, ← one_add_mul]
-                gcongr
-                exact_mod_cast (by omega : 1 + (q - (n + 1)) ≤ q - n)
-              · rw [if_neg (fun h => hn h.2), if_pos hpt, zero_add]
-                gcongr
-                omega
-            · rw [if_neg (fun h => hpt h.1), if_neg hpt, zero_add, add_zero]
-    · cases hstored : stored key with
-      | some v =>
-        simp only [revealImpl_inr_run, hstored, Option.getD_some]
-        exact ih v σ₀ n _
-      | none =>
-        simp only [revealImpl_inr_run, hstored, Option.getD_none]
-        set H : T → (K → T) → ℝ≥0∞ := fun v s => Pr{let r ←
-          ((simulateQ (revealImpl (countImpl impl p) (cappedCall p q) inputSide outHit keyOf point s)
-            (k v)).run ((σ₀, n), Function.update stored key (some v), false))}[r.2.2.2 = true] with hHdef
-        have hH : ∀ v s w, H v (Function.update s key w) = H v s := by
-          intro v s w
-          simp only [hHdef]
-          rw [revealImpl_run_congr (countImpl impl p) (cappedCall p q) inputSide outHit keyOf point
-            (Function.update s key w) s (k v) (σ₀, n) _ false]
-          intro k' hk'
-          have hne : k' ≠ key := by
-            rintro rfl
-            simp at hk'
-          exact Function.update_of_ne hne _ _
-        have hih : ∀ v, ∑ s, Pr{let z ← $ᵗ (K → T)}[z = s] * H v s ≤
-            (q - n : ℕ) * (Fintype.card T : ℝ≥0∞)⁻¹ := by
-          intro v
-          have := ih v σ₀ n (Function.update stored key (some v))
-          rwa [OracleComp.prEvent_bind_eq_tsum, tsum_fintype] at this
-        rw [OracleComp.prEvent_bind_eq_tsum, tsum_fintype]
-        calc _ = ∑ s, Pr{let z ← $ᵗ (K → T)}[z = s] * H (s key) s := by rw [hHdef]
-          _ ≤ _ := sum_uniform_reveal_le key H _ hH hih
-
-/-- The mixed capped hit bound. Any computation, run on a handler that never reads the uniform
-secrets, raises the capped flag with probability at most `q / |T|`. -/
-theorem probEvent_hit_capped_le (q : ℕ) (outHit : (t : κ) → σ × ℕ → spec t × (σ × ℕ) → Prop)
-    (hout : ∀ t σ₀ n, p t → ¬inputSide t →
-      Pr{let z ← (countImpl impl p t).run (σ₀, n)}[(outHit t (σ₀, n)) z] ≤ (Fintype.card T : ℝ≥0∞)⁻¹)
-    (oa : OracleComp (spec + RevealSpec K T) β) (σ₀ : σ) :
-    Pr{let r ← ($ᵗ (K → T) >>= fun s =>
-      (simulateQ (revealImpl (countImpl impl p) (cappedCall p q) inputSide outHit keyOf point s) oa).run
-        ((σ₀, 0), fun _ => none, false))}[r.2.2.2 = true] ≤ q * (Fintype.card T : ℝ≥0∞)⁻¹ := by
-  simpa using probEvent_capped_le_aux impl inputSide p keyOf point q outHit hout oa σ₀ 0 (fun _ => none)
-
-/-- The 128-bit case of `probEvent_hit_capped_le`, as a bound on any event that the capped flag
-dominates. The bound is `q / 2 ^ 128`. -/
-theorem probEvent_le_of_capped {γ : Type} [SampleableType (K → HashSig.Digest)]
-    (run : ProbComp γ) (event : γ → Prop) (keyOf : κ → K) (point : κ → HashSig.Digest) (q : ℕ)
-    (outHit : (t : κ) → σ × ℕ → spec t × (σ × ℕ) → Prop)
-    (hout : ∀ t σ₀ n, p t → ¬inputSide t →
-      Pr{let z ← (countImpl impl p t).run (σ₀, n)}[(outHit t (σ₀, n)) z] ≤ (2 ^ 128 : ℝ≥0∞)⁻¹)
-    (oa : OracleComp (spec + RevealSpec K HashSig.Digest) β) (σ₀ : σ)
-    (hcouple : Pr{let z ← run}[event z] ≤ Pr{let r ← ($ᵗ (K → HashSig.Digest) >>= fun s =>
-      (simulateQ (revealImpl (countImpl impl p) (cappedCall p q) inputSide outHit keyOf point s) oa).run
-        ((σ₀, 0), fun _ => none, false))}[r.2.2.2 = true]) :
-    Pr{let z ← run}[event z] ≤ q / 2 ^ 128 := by
-  have hcard : Fintype.card HashSig.Digest = 2 ^ 128 := by
-    unfold HashSig.Digest HashSig.digestBits; exact Fintype.card_bitVec 128
-  have hout' : ∀ t σ₀ n, p t → ¬inputSide t →
-      Pr{let z ← (countImpl impl p t).run (σ₀, n)}[(outHit t (σ₀, n)) z] ≤
-        (Fintype.card HashSig.Digest : ℝ≥0∞)⁻¹ := by
-    intro t σ₀ n hp hin
-    rw [hcard]
-    exact_mod_cast hout t σ₀ n hp hin
-  refine hcouple.trans ((probEvent_hit_capped_le impl inputSide p keyOf point q outHit hout' oa σ₀).trans
-    (le_of_eq ?_))
-  rw [hcard, div_eq_mul_inv]
-  norm_num
 
 end RevealHit
 
@@ -545,41 +292,6 @@ theorem openingOracles_forget (x : SigningSecurityProof.Keys3 C)
   · simp [openingOracles, Functor.map_map]
   · simp [openingOracles, Functor.map_map]
 
-/-- `finalRun` with the log of the unreleased candidates. -/
-def openingFinal (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    OracleComp (WorldSpec C)
-      (((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) × List (HiddenKey × Digest)) := do
-  let value := fun p => SigningSecurityProof.liftFree (prfValue x.2.1 p)
-  let some (.top top) ← referenceTree (fun oa => SigningSecurityProof.liftFree (tweakable oa)) value x.1 emptyTop .top
-    | pure (((false, false), none), [])
-  let dealt := dealtWith (fun oa => SigningSecurityProof.liftFree oa) x.1 (dealtKeys x.1 x.2.1 x.2.2) top value
-  let r ← (simulateQ (openingOracles x dealt) (A ⟨dealt.top.root, dealt.parameter⟩ dealt.top)).run
-    ((SigningCoreProof.tsigInit, false), ∅, [])
-  (fun w => (((w.1, r.2.1.2), some (top, w.2.1, w.2.2)), r.2.2.2)) <$>
-    SigningCoreProof.tsigFinish dealt (r.1, r.2.1.1)
-
-theorem openingFinal_forget (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    Prod.fst <$> openingFinal A x = SigningDescentProof.finalRun A x := by
-  unfold openingFinal SigningDescentProof.finalRun
-  rw [map_bind]
-  refine bind_congr fun r => ?_
-  rcases r with _ | (top | tree)
-  · simp
-  · simp only [map_bind, Functor.map_map]
-    rw [← SigningCoreProof.simulateQ_run_forget _ _ (openingOracles_forget x _) _ _ (∅, []), bind_map_left]
-  · simp
-
-/-- `exposedRun` with the log of the unreleased candidates. -/
-def openingRun (prims : Primitives) (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    ProbComp ((((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) × List (HiddenKey × Digest)) ×
-      HashCache C × ℕ) :=
-  (simulateQ (SeedHitProof.withCount (SeedHitProof.signImpl prims)) (openingFinal A x)).run ((∅ : HashCache C), 0)
-
-theorem openingRun_forget (prims : Primitives) (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    (fun r => (r.1.1, r.2)) <$> openingRun prims A x = SigningDescentProof.exposedRun prims A x := by
-  unfold openingRun SigningDescentProof.exposedRun
-  rw [← openingFinal_forget, simulateQ_map, StateT.run_map]
-
 /-- The target of a hidden key at the end of the run. An opening is read from the final cache.
 `chainTarget` gives the honest chain value at a position below the opened one, and `none` at an
 opened position. -/
@@ -594,12 +306,6 @@ def HiddenInputHit (x : SigningSecurityProof.Keys3 C) (chainTarget : HiddenKey �
     (r : (((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) × List (HiddenKey × Digest)) ×
       HashCache C × ℕ) : Prop :=
   ∃ c ∈ r.1.2, hiddenTarget x chainTarget r.2.1 c.1 = some c.2
-
-/-- The true-opening hit, the opening part of `HiddenInputHit`. -/
-def TrueOpeningHit (x : SigningSecurityProof.Keys3 C)
-    (r : (((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) × List (HiddenKey × Digest)) ×
-      HashCache C × ℕ) : Prop :=
-  HiddenInputHit x (fun _ => none) r
 
 end TrueOpening
 
@@ -631,146 +337,10 @@ theorem simulateQ_sticky (impl : QueryImpl spec (StateT σ ProbComp)) (Bad : σ 
     obtain ⟨x, hx, hb⟩ := hb
     exact ih x.1 x.2 (hsticky t s hs x hx) b hb
 
-/-- Identical until the right run touches. Two runs of one handler from related states give equal
-outputs and related states, unless a sticky event fires on the right. -/
-theorem relTriple_simulateQ_until (impl : QueryImpl spec (StateT σ ProbComp)) (Bad : σ → Prop)
-    (Agree : σ → σ → Prop) (hsticky : ∀ t s, Bad s → ∀ b ∈ support ((impl t).run s), Bad b.2)
-    (hstep : ∀ t s₁ s₂, Agree s₁ s₂ → RelTriple ((impl t).run s₁) ((impl t).run s₂)
-      fun a b => Bad b.2 ∨ (a.1 = b.1 ∧ Agree a.2 b.2))
-    (oa : OracleComp spec α) :
-    ∀ s₁ s₂, Bad s₂ ∨ Agree s₁ s₂ → RelTriple ((simulateQ impl oa).run s₁) ((simulateQ impl oa).run s₂)
-      fun a b => Bad b.2 ∨ (a.1 = b.1 ∧ Agree a.2 b.2) := by
-  induction oa using OracleComp.inductionOn with
-  | pure a =>
-    intro s₁ s₂ hs
-    by_cases hb : Bad s₂
-    · exact relTriple_of_support_right fun b hb' _ => Or.inl
-        (simulateQ_sticky impl Bad hsticky (pure a) s₂ hb b hb')
-    · simp only [simulateQ_pure, StateT.run_pure]
-      exact relTriple_pure_pure (Or.inr ⟨rfl, hs.resolve_left hb⟩)
-  | query_bind t k ih =>
-    intro s₁ s₂ hs
-    by_cases hb : Bad s₂
-    · exact relTriple_of_support_right fun b hb' _ => Or.inl
-        (simulateQ_sticky impl Bad hsticky _ s₂ hb b hb')
-    simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query, id_map,
-      StateT.run_bind]
-    refine relTriple_bind (hstep t s₁ s₂ (hs.resolve_left hb)) fun a b hab => ?_
-    rcases hab with hbad | ⟨heq, hagree⟩
-    · exact relTriple_of_support_right fun c hc _ => Or.inl
-        (simulateQ_sticky impl Bad hsticky _ b.2 hbad c hc)
-    · rw [heq]
-      exact ih b.1 a.2 b.2 (Or.inr hagree)
-
 variable {Q : Type} [DecidableEq Q] {hashSpec : OracleSpec Q}
-
-/-- Two caches agree off `u`, and the right cache misses `u`. The left cache may hold a planted
-value at `u`. -/
-def AgreeOff (u : Q) (c₁ c₂ : hashSpec.QueryCache) : Prop :=
-  c₂ u = none ∧ ∀ w, w ≠ u → c₁ w = c₂ w
-
-/-- One step of a caching oracle keeps two caches that agree off `u` in agreement, unless the right
-cache gets `u`. -/
-theorem relTriple_withCaching_step (so : QueryImpl hashSpec ProbComp) (u : Q) (t : Q)
-    (c₁ c₂ : hashSpec.QueryCache) (h : AgreeOff u c₁ c₂) :
-    RelTriple ((so.withCaching t).run c₁) ((so.withCaching t).run c₂)
-      fun a b => (b.2 u).isSome ∨ (a.1 = b.1 ∧ AgreeOff u a.2 b.2) := by
-  by_cases htu : t = u
-  · subst htu
-    rw [QueryImpl.withCaching_run_none so h.1]
-    refine relTriple_of_support_right fun b hb _ => Or.inl ?_
-    simp only [support_map, Set.mem_image] at hb
-    obtain ⟨v, -, rfl⟩ := hb
-    simp
-  · have hw := h.2 t htu
-    cases hc : c₂ t with
-    | some y =>
-      rw [QueryImpl.withCaching_run_some so hc, QueryImpl.withCaching_run_some so (hw.trans hc)]
-      exact relTriple_pure_pure (Or.inr ⟨rfl, h⟩)
-    | none =>
-      rw [QueryImpl.withCaching_run_none so hc, QueryImpl.withCaching_run_none so (hw.trans hc)]
-      refine relTriple_map (relTriple_post_mono (relTriple_refl (so t)) fun v v' hv => ?_)
-      subst hv
-      refine Or.inr ⟨rfl, ?_, fun w hwu => ?_⟩
-      · simp [QueryCache.cacheQuery_of_ne _ _ (Ne.symm htu), h.1]
-      · by_cases hwt : w = t
-        · subst hwt
-          simp [QueryCache.cacheQuery_self]
-        · simp [QueryCache.cacheQuery_of_ne _ _ hwt, h.2 w hwu]
-
-/-- A value planted at an unqueried point of a caching oracle is invisible until the right run
-queries that point. For a planted commitment at `commitmentInput P e ρ_e`, the point is the opening
-query, so the runs agree until a true-opening hit. -/
-theorem relTriple_withCaching_planted (so : QueryImpl hashSpec ProbComp) (u : Q)
-    (oa : OracleComp hashSpec α) (c₁ c₂ : hashSpec.QueryCache) (h : AgreeOff u c₁ c₂) :
-    RelTriple ((simulateQ so.withCaching oa).run c₁) ((simulateQ so.withCaching oa).run c₂)
-      fun a b => (b.2 u).isSome ∨ (a.1 = b.1 ∧ AgreeOff u a.2 b.2) := by
-  refine relTriple_simulateQ_until so.withCaching (fun c => (c u).isSome) (AgreeOff u) ?_
-    (relTriple_withCaching_step so u) oa c₁ c₂ (Or.inr h)
-  intro t c hc b hb
-  cases ht : c t with
-  | some y =>
-    rw [QueryImpl.withCaching_run_some so ht, support_pure, Set.mem_singleton_iff] at hb
-    subst hb
-    exact hc
-  | none =>
-    have htu : u ≠ t := by
-      rintro rfl
-      simp [ht] at hc
-    rw [QueryImpl.withCaching_run_none so ht, support_map, Set.mem_image] at hb
-    obtain ⟨v, -, rfl⟩ := hb
-    simpa [QueryCache.cacheQuery_of_ne _ _ htu] using hc
 
 end Planting
 
 end SigningOpeningProof
 
 end ThresholdLeanXmssSecurity
-
-/--
-info: 'ThresholdLeanXmssSecurity.SigningOpeningProof.probEvent_hit_keyed_le' depends on axioms: [propext,
- Classical.choice,
- Quot.sound]
--/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningOpeningProof.probEvent_hit_keyed_le
-
-/--
-info: 'ThresholdLeanXmssSecurity.SigningOpeningProof.probEvent_hit_keyed_digest_le' depends on axioms: [propext,
- Classical.choice,
- Quot.sound]
--/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningOpeningProof.probEvent_hit_keyed_digest_le
-
-/--
-info: 'ThresholdLeanXmssSecurity.SigningOpeningProof.probEvent_hit_capped_le' depends on axioms: [propext,
- Classical.choice,
- Quot.sound]
--/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningOpeningProof.probEvent_hit_capped_le
-
-/--
-info: 'ThresholdLeanXmssSecurity.SigningOpeningProof.probEvent_le_of_capped' depends on axioms: [propext,
- Classical.choice,
- Quot.sound]
--/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningOpeningProof.probEvent_le_of_capped
-
-/--
-info: 'ThresholdLeanXmssSecurity.SigningOpeningProof.openingRun_forget' depends on axioms: [propext,
- Classical.choice,
- Quot.sound]
--/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningOpeningProof.openingRun_forget
-
-/--
-info: 'ThresholdLeanXmssSecurity.SigningOpeningProof.relTriple_withCaching_planted' depends on axioms: [propext,
- Classical.choice,
- Quot.sound]
--/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningOpeningProof.relTriple_withCaching_planted

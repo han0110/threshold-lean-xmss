@@ -50,25 +50,6 @@ theorem openValue_eq_interpolate (K : Constants C E) (D : C.Coalition)
   obtain ⟨P, hP, hP0, hPj⟩ := openAgrees_honest_polynomial K D v i inbox hin hag g hg
   rw [interpolate_honest_polynomial K D P hP _ hPj, hP0]
 
-/-- Public linear combinations commute with the fixed honest interpolation. -/
-theorem interpolate_lin (K : Constants C E) (D : Finset C.Party)
-    (a b : C.Party → E) (u v x : E) :
-    interpolate K D (fun i => u * a i + v * b i) x =
-      u * interpolate K D a x + v * interpolate K D b x := by
-  simp only [interpolate, mul_add, Finset.sum_add_distrib, Finset.mul_sum]
-  congr 1 <;> apply Finset.sum_congr rfl <;> intro i hi <;> ring
-
-/-- Different accepting operators open the same values, without comparing digests. -/
-theorem accepted_openValues_agree (K : Constants C E) (D : C.Coalition)
-    (v : C.Party → ℕ → E) (i j : C.Party) (inboxI inboxJ : Mail C E)
-    (hinI : ∀ k, k ∉ D.1 → k ≠ i → inboxI k = openOutbox k (v k) i)
-    (hinJ : ∀ k, k ∉ D.1 → k ≠ j → inboxJ k = openOutbox k (v k) j)
-    (hagI : OpenAgrees K i (v i) inboxI) (hagJ : OpenAgrees K j (v j) inboxJ)
-    (g : ℕ) (hg : g < 3) :
-    openValue K i (v i) inboxI g = openValue K j (v j) inboxJ g := by
-  rw [openValue_eq_interpolate K D v i inboxI hinI hagI g hg,
-    openValue_eq_interpolate K D v j inboxJ hinJ hagJ g hg]
-
 /-- The final three effective values depend only on the pre-challenge shares. -/
 theorem interpolate_finalOpenVector (K : Constants C E) (D : Finset C.Party)
     (wa wb a b d q0 q2 : C.Party → E) (r : E) (g : ℕ) :
@@ -123,39 +104,6 @@ theorem finalRoundOutputs_effective_root (K : Constants C E) (D : C.Coalition)
   exact final_accept_effective_root K D wa wb a b d q0 q2 r i (finalInbox D live v sent i)
     (fun j hj _ => by simp [finalInbox, hj, hl j hj, v]) ha.2.2.2.1 ha.2.2.2.2
 
-/-- The cached final challenge bounds even a rushing, selectively aborting final reply. -/
-theorem finalChallenge_effective_soundness (prims : Primitives) (K : Constants C E)
-    (D : C.Coalition) (tag label : ℕ) (coin : List E) (Ks : Finset HashOutput) (cache : HashCache C)
-    (hfresh : cache (.coinKey tag label (coin.flatMap fun v => List.ofFn (K.encode v))) = none)
-    (hexpand : ∀ key idx, cache (.expand key idx) ≠ none → key ∈ Ks)
-    (wa wb a b d q0 q2 : C.Party → E)
-    (hwrong : interpolate K D.1 d 0 ≠ interpolate K D.1 a 0 * interpolate K D.1 b 0)
-    (reply : E → HashCache C → ProbComp ((C.Party → Prop) × (C.Party → Mail C E))) :
-    Pr{let out : C.Party → Option Unit ←
-      (simulateQ (localAnswer prims)
-        (liftComp (challengeQuery K tag label coin) (LocalSpec C))).run cache >>= fun p =>
-      match p.1 with
-      | none => pure (fun _ : C.Party => (none : Option Unit))
-      | some r => do
-        let ans ← reply r p.2
-        pure (finalRoundOutputs K D ans.1
-          (fun j => finalOpenVector (wa j) (wb j) (a j) (b j) (d j) (q0 j) (q2 j) r) ans.2)}[∃ i, out i = some ()] ≤
-      Ks.card / 2 ^ 256 + 2 / (Fintype.card E - 2 : ℕ) := by
-  apply finalChallenge_adaptive_soundness prims K tag label coin Ks cache hfresh hexpand
-    (interpolate K D.1 a 0) (interpolate K D.1 b 0) (interpolate K D.1 d 0)
-    (interpolate K D.1 q0 0 - interpolate K D.1 wa 0 * interpolate K D.1 wb 0)
-    (interpolate K D.1 q2 0 - (interpolate K D.1 wa 0 + interpolate K D.1 a 0) *
-      (interpolate K D.1 wb 0 + interpolate K D.1 b 0)) hwrong
-  intro p out hout ha
-  rcases p with ⟨_ | r, cache'⟩
-  · simp only [support_pure, Set.mem_singleton_iff] at hout
-    subst out
-    simp at ha
-  · simp only [support_bind, support_pure, Set.mem_iUnion, exists_prop, Set.mem_singleton_iff] at hout
-    obtain ⟨ans, _, rfl⟩ := hout
-    obtain ⟨i, hi⟩ := ha
-    exact ⟨r, rfl, finalRoundOutputs_effective_root K D ans.1 ans.2 wa wb a b d q0 q2 r i hi⟩
-
 /-- Slice updates commute with the fixed honest interpolation, including inconsistent claims. -/
 theorem interpolate_sliceClaim (K : Constants C E) (D : Finset C.Party)
     (τ : List E) (j : ℕ) (r : E) (V q0 qInf : C.Party → E) :
@@ -196,25 +144,6 @@ theorem slice_effective_card_le_two (K : Constants C E) (D : C.Coalition)
     t0 t1 t2 (interpolate K D.1 q0 0 - t0) (interpolate K D.1 qInf 0 - t2) hc hwrong
   simp only [sliceClaim, add_sub_cancel] at h ⊢
   exact h
-
-/-- GS20 Lemma 9 applies after reducing the two multiplication outputs to effective scalars. -/
-theorem halving_effective_card_le_two (K : Constants C E) (D : C.Coalition)
-    (lo hi lo' hi' : List E) (V q0 q2 : C.Party → E)
-    (hwrong : interpolate K D.1 V 0 ≠
-      (List.zipWith (· * ·) lo lo').sum + (List.zipWith (· * ·) hi hi').sum)
-    (hlen : lo.length = hi.length ∧ lo'.length = hi'.length ∧ lo.length = lo'.length) :
-    (univ.filter fun r : E =>
-      interpolate K D.1 (fun i => q0 i + (V i + q2 i) * r + q2 i * r ^ 2) 0 =
-        (List.zipWith (· * ·) (List.zipWith (fun a b => a + r * (a + b)) lo hi)
-          (List.zipWith (fun a b => a + r * (a + b)) lo' hi')).sum).card ≤ 2 := by
-  letI : CharP E 2 := charP_two
-  simp_rw [interpolate_halvingClaim]
-  simpa only [add_assoc, add_sub_cancel] using
-    gs20_lemma9_halving_step lo hi lo' hi' (interpolate K D.1 V 0)
-      (interpolate K D.1 q0 0 - (List.zipWith (· * ·) lo lo').sum)
-      (interpolate K D.1 q2 0 -
-        (List.zipWith (· * ·) (List.zipWith (· + ·) lo hi) (List.zipWith (· + ·) lo' hi')).sum)
-      hwrong hlen
 
 /-- A fresh cached challenge contributes its exceptional set and the remaining continuation error. -/
 theorem challengeQuery_step_soundness {β : Type} (prims : Primitives) (K : Constants C E)
@@ -259,16 +188,6 @@ theorem multVerify_reject_wrong_tuple (D : C.Coalition)
   obtain ⟨m, hm, rfl⟩ := List.mem_map.mp hτ
   exact ⟨m, List.mem_range.mp hm, g, hg, sub_ne_zero.mpr hne⟩
 
-/-- A uniform coin is protected against every earlier counted query in an independent trace. -/
-theorem independent_coin_trace_bound (K : Constants C E) (tag label : ℕ)
-    (trace : ProbComp (List (Query C))) (q : ℕ)
-    (htrace : ∀ l ∈ support trace, l.length ≤ q) :
-    Pr{let p : List (Query C) × (Fin 2 → E) ←
-      (do let l ← trace; let v ← $ᵗ (Fin 2 → E); pure (l, v))}[Query.coinKey tag label
-        ((List.ofFn p.2).flatMap fun v => List.ofFn (K.encode v)) ∈ p.1] ≤ (q : ℝ≥0∞) / Fintype.card E ^ 2 := by
-  simpa only [Fintype.card_fun, Fintype.card_fin, Nat.cast_pow] using
-    independent_trace_guess_bound _ (coin_input_injective K tag label) trace q htrace
-
 /-- The concrete final network execution can accept only at an effective error root. -/
 theorem finalOpen_support_effective_root {Ia : Type} (prims : Primitives)
     (K : Constants C E) (D : C.Coalition) (A : CheckAdversary C E Ia)
@@ -290,39 +209,6 @@ theorem finalOpen_support_effective_root {Ia : Type} (prims : Primitives)
   obtain ⟨p, _, rfl⟩ := hout
   obtain ⟨i, hi⟩ := ha
   exact finalRoundOutputs_effective_root K D live p.1.2 wa wb a b d q0 q2 r i hi
-
-/-- Soundness of the actual last challenge and opening, from arbitrary fixed pre-challenge shares. -/
-theorem finalOpen_challenge_soundness {Ia : Type} (prims : Primitives)
-    (K : Constants C E) (D : C.Coalition) (A : CheckAdversary C E Ia)
-    (fuel : ℕ) (st : A.State) (live : C.Party → Prop) (hlive : ∃ i, i ∉ D.1 ∧ live i)
-    (tag label : ℕ) (coin : List E) (Ks : Finset HashOutput) (cache : HashCache C)
-    (hfresh : cache (.coinKey tag label (coin.flatMap fun v => List.ofFn (K.encode v))) = none)
-    (hexpand : ∀ key idx, cache (.expand key idx) ≠ none → key ∈ Ks)
-    (wa wb a b d q0 q2 : C.Party → E)
-    (hwrong : interpolate K D.1 d 0 ≠ interpolate K D.1 a 0 * interpolate K D.1 b 0) :
-    Pr{let out : A.State × (C.Party → Option Unit) ←
-      (simulateQ (localAnswer prims)
-        (liftComp (challengeQuery K tag label coin) (LocalSpec C))).run cache >>= fun p =>
-      match p.1 with
-      | none => pure (st, fun _ : C.Party => (none : Option Unit))
-      | some r => (simulateQ (localAnswer prims)
-          (executePhase localRoles D A (checkFunctionalities K) (fuel + 1) st
-            (fun i => if live i then finalOpenProgram K i
-              (finalOpenVector (wa i) (wb i) (a i) (b i) (d i) (q0 i) (q2 i) r)
-              else failure))).run' p.2}[∃ i, out.2 i = some ()] ≤
-      Ks.card / 2 ^ 256 + 2 / (Fintype.card E - 2 : ℕ) := by
-  apply finalChallenge_adaptive_soundness prims K tag label coin Ks cache hfresh hexpand
-    (interpolate K D.1 a 0) (interpolate K D.1 b 0) (interpolate K D.1 d 0)
-    (interpolate K D.1 q0 0 - interpolate K D.1 wa 0 * interpolate K D.1 wb 0)
-    (interpolate K D.1 q2 0 - (interpolate K D.1 wa 0 + interpolate K D.1 a 0) *
-      (interpolate K D.1 wb 0 + interpolate K D.1 b 0)) hwrong
-  intro p out hout ha
-  rcases p with ⟨_ | r, cache'⟩
-  · simp only [support_pure, Set.mem_singleton_iff] at hout
-    subst out
-    simp at ha
-  · exact ⟨r, rfl, finalOpen_support_effective_root prims K D A fuel st live hlive
-      wa wb a b d q0 q2 r cache' out hout ha⟩
 
 /-- The hash-cache entry introduced by a local query, when the query is counted. -/
 def soundQueryProjection : (LocalSpec C).Domain → Option (Query C)
@@ -2024,14 +1910,6 @@ theorem checkSoundStage (prims : Primitives) (K : Constants C E)
 /-- info: 'ThresholdLeanXmssSecurity.slice_effective_card_le_two' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms slice_effective_card_le_two
-
-/-- info: 'ThresholdLeanXmssSecurity.halving_effective_card_le_two' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms halving_effective_card_le_two
-
-/-- info: 'ThresholdLeanXmssSecurity.finalOpen_challenge_soundness' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms finalOpen_challenge_soundness
 
 /-- info: 'ThresholdLeanXmssSecurity.localProgram_sound_covered' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

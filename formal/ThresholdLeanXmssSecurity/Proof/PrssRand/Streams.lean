@@ -24,14 +24,6 @@ variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algeb
 
 attribute [local instance] inhabitedField
 
-omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
-/-- A computation on the hash cache commutes with a computation on the cache of the hidden streams. -/
-theorem commutes_onHash_onHidden {α β : Type} (m : StateT (HashCache C) ProbComp α)
-    (p : StateT (HiddenCache C) ProbComp β) : Commutes (onHash m) (onHidden p) := by
-  intro s
-  simp only [onHash, onHidden, StateT.run_bind, StateT.run_mk, StateT.run_pure, bind_map_left]
-  exact OracleComp.EvalDistEq.bind_bind_swap _ _ _
-
 section Draws
 
 set_option backward.isDefEq.respectTransparency false
@@ -93,20 +85,6 @@ private theorem sequenceFin_run_pure {σ α : Type} : ∀ {n : ℕ} (f : Fin n �
     simp only [pure_bind, StateT.run_pure]
     congr 2
     exact Fin.cons_self_tail vals
-
-omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
-/-- The positions of one stream that the operators read are fresh. Then the stream is a uniform table,
-and the hidden cache keeps it. -/
-theorem streamWorld_draw_fresh (prims : Primitives) (D : C.Coalition) (name : KeyName C) (key : HashOutput)
-    (ρ idx m : ℕ) (hn : Hidden D name) (s : HashCache C) (c : HiddenCache C)
-    (hc : ∀ g : Fin m, c ((name, key), ρ, idx, g.val) = none) :
-    (simulateQ (streamWorld prims D) (free (liftComp (prgBits name key ρ idx m) (LocalSpec C)))).run (s, c) =ᵈ
-      (fun v : Fin m → Bit => ((fun g => if h : g < m then v ⟨g, h⟩ else 0 : ℕ → Bit),
-        (s, cacheFin (fun g : Fin m => ((name, key), ρ, idx, g.val)) v c))) <$> ($ᵗ (Fin m → Bit)) := by
-  rw [free_prgBits, simulateQ_map, StateT.run_map]
-  refine ((streamWorld_sequenceFin_fresh prims D _ (fun a b h => Fin.ext (congrArg (fun x => x.2.2.2) h))
-    (fun _ => hn) s c hc).map _).trans ?_
-  simp only [Functor.map_map, EvalDistEq.refl]
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
 /-- The positions of one stream are in the hidden cache. Then a later operator reads them and no
