@@ -396,6 +396,25 @@ structure Codec (C : Committee) (E R : Type) where
 /-- The PRSS outputs of one round, namely the terms `r_T` of `Rand` and the pair streams `Z_ij`. -/
 abbrev PrssOutput (C : Committee) (R : Type) := Shares C R × (C.Party → ℕ → R)
 
+/-- One call of `Rand` with the stream index `idx`, for `count` elements of the check field or for
+`count` bits. -/
+inductive RandCall
+  | elements (idx count : ℕ)
+  | bits (idx count : ℕ)
+
+/-- The input of `F_rand` over `E` or over bits for a call. -/
+def RandCall.input : RandCall → ℕ ⊕ ℕ
+  | .elements _ count => .inl count
+  | .bits _ count => .inr count
+
+/-- The stream bits of one key that a call reads. -/
+def RandCall.streamBits : RandCall → ℕ
+  | .elements _ count => elementBits * count
+  | .bits _ count => count
+
+/-- The output of one call, over `E` or over bits. -/
+abbrev RandOutput (C : Committee) (E : Type) := PrssOutput C E ⊕ PrssOutput C Bit
+
 /-- An inner product that the check reshares. -/
 inductive Product (C : Committee) (E : Type)
   /-- Of two replicated vectors, which `MulRep` shares in the slice steps. -/
@@ -440,6 +459,17 @@ def prssRandomness {R : Type} [Zero R] (codec : Codec C E R) (idx count : ℕ) :
     if h : j = ctx.self then pure fun _ => 0
     else codec.draw (.pair (C.pairOf ctx.self j (Ne.symm h))) (ctx.prss.pair j) ρ idx count))
   pure (fun T => r.getD (C.terms.idxOf T) fun _ => 0, fun j => Z.getD j.val fun _ => 0)
+
+/-- The `count` positions of a PRSS output, and zero at every other position. -/
+def clipOutput {R : Type} [Zero R] (count : ℕ) (o : PrssOutput C R) : PrssOutput C R :=
+  (fun T g => if g < count then o.1 T g else 0, fun j g => if g < count then o.2 j g else 0)
+
+/-- One call of `Rand` from the PRSS keys of `ctx`, with a fresh round label. -/
+def randCall : RandCall → RunM C E G (RandOutput C E)
+  | .elements idx count => do
+      pure (.inl (clipOutput count (← prssRandomness ctx (elementCodec K) idx count)))
+  | .bits idx count => do
+      pure (.inr (clipOutput count (← prssRandomness ctx bitCodec idx count)))
 
 /-- `MulRep`, the additive share of the products of two replicated sharings. -/
 def mulRep {R : Type} [CommRing R] (x y : Shares C R) : ℕ → R := fun g =>
@@ -1522,6 +1552,17 @@ section Hybrid
 variable [Field E] [Algebra Bit E] (K : Constants C E)
 
 def startRun : RunState C := ⟨fun _ => [], 0, 0⟩
+
+/-- The PRSS of CDI05, Section 4, in the `F_prssKeys`-hybrid model. Operator `i` gets its PRSS keys
+from the dealer and computes the calls in order, from the round label `label`. It sends no message.
+An operator with no keys aborts. -/
+def prssRandProtocol (label : ℕ) (calls : List RandCall) (i : C.Party) (_ : Unit) :
+    PartyM C E (CallSpec Unit (PrssKeys C)) (List (RandOutput C E)) := do
+  let some prss ← call () | failure
+  (calls.mapM (randCall K { localContext i with prss := prss })).run' ⟨fun _ => [], label, 0⟩
+
+/-- The steps of the protocol, one call of the dealer. -/
+def prssRandRounds : ℕ := 1
 
 /-- `Coin` in the `F_rand`-hybrid model (GS20, Protocol 6). -/
 def coinProtocol (i : C.Party) (count : ℕ) : PartyM C E (CallSpec ℕ (PrssOutput C E)) (List E) := do

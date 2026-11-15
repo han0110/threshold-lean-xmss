@@ -23,12 +23,13 @@ import ThresholdLeanXmssSecurity.Proof.SigningStronglyUnforgeable
 import ThresholdLeanXmssSecurity.Proof.Constants
 import ThresholdLeanXmssSecurity.Proof.CeremonyHybrid.Security
 import ThresholdLeanXmssSecurity.Proof.TagBlocks
+import ThresholdLeanXmssSecurity.Proof.PrssRand.Security
 
 /-! # The end theorem of threshold leanXMSS
 
 `thresholdLeanXmss_security` gives `ThresholdLeanXmssSecurityStatement`
 (`ThresholdLeanXmss/Statement/Theorems.lean`). It is the bundle `Theorems`, with one field for each of
-eighteen claims about the protocol of `ThresholdLeanXmss/Scheme.lean`. The theorem holds for every
+nineteen claims about the protocol of `ThresholdLeanXmss/Scheme.lean`. The theorem holds for every
 committee `n = 2t - 1`, every check field `E` with `2^128` elements, every `Th`, every circuit family
 and every setting. Each claim covers one protocol or one building block alone. No claim composes the
 seed generation, the ceremonies and the signing. `statement.tex` holds the deployment contract and a sketch
@@ -102,6 +103,8 @@ block of 32 bytes that has no zero byte. It is no field of the bundle.
 3. `mainStatementFull` (`Proof/MainStages`) gives `MainStatement` in the `{F_mult, F_multVerify}`-hybrid
    model. The outputs are revealed as in MPClan (`mpclan_honest_holder`). `mainCompleteness`
    (`Proof/Main`) is the honest batch.
+4. `prssRandSecurity` (`Proof/PrssRand/Security`) gives `PrssRandStatement`. The PRSS streams from
+   dealt keys securely compute a public list of calls of `F_rand` in the `F_prssKeys`-hybrid model.
 
 ## Ceremonies
 
@@ -174,6 +177,7 @@ The statement layer is `ThresholdLeanXmss/`. The proofs are in `ThresholdLeanXms
 * `SeedGen*` holds seed generation completeness and the seed generation simulation.
 * `BuildingBlocks`, `Check*` and `Main*` hold the building blocks, the check and the batch.
 * `CeremonyHybrid/` holds the claim of one ceremony in the hybrid model.
+* `PrssRand/` holds the claim of the PRSS streams from dealt keys.
 * `Tree` and `Dealer` hold the tree completeness, the dealer and the tree success. `TreeSim` and
   `TreeCheckKernelCoupling` hold lemmas on the runs of a ceremony that the signing proof uses.
   `CeremonyIndex` holds the position of a batch in a ceremony, for the simulator of the claim that
@@ -213,6 +217,7 @@ theorem thresholdLeanXmss_security : ThresholdLeanXmss.ThresholdLeanXmssSecurity
     multVerifyCompleteness := multVerifyCompleteness prims K
     main := mainStatementFull prims K
     ceremonyHybrid := ceremonyHybridClosed prims K circuits settings
+    prssRand := prssRandSecurity prims K
     mainCompleteness := mainCompleteness prims K
     tprfCorrectness := tprfCorrectness prims C
     tprfSecurity := tprfSecurity prims C
@@ -235,6 +240,10 @@ and `Quot.sound`. -/
 /-- info: 'ThresholdLeanXmssSecurity.ceremonyHybridClosed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ceremonyHybridClosed
+
+/-- info: 'ThresholdLeanXmssSecurity.prssRandSecurity' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms prssRandSecurity
 
 /-- info: 'ThresholdLeanXmssSecurity.thInput_ne_of_no_zero_byte' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

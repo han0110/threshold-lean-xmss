@@ -242,6 +242,56 @@ def Functionality.sum {I₁ O₁ L₁ R₁ I₂ O₂ L₂ R₂ : Type} [Inhabite
       (fun out i => (out i).map Sum.inr) <$> simulateQ right (F₂.run coalition fun i => (inputs i).bind Sum.getRight?)
     else pure fun _ => none
 
+/-- The reply of the adversary to one call of `F_rand`, namely its terms and its pair streams, over
+`E` or over bits. -/
+abbrev RandReply (C : Committee) (E : Type) :=
+  (Shares C E × (C.Party → C.Party → ℕ → E)) ⊕ (Shares C Bit × (C.Party → C.Party → ℕ → Bit))
+
+/-- The PRSS keys of operator `i` from the keys of the terms and of the pairs. -/
+def dealtPrssKeys (term : C.Term → HashOutput) (pair : C.Pair → HashOutput) (i : C.Party) : PrssKeys C :=
+  ⟨fun T => if i ∈ C.holders T then term T else 0,
+    fun j => if h : j = i then 0 else pair (C.pairOf i j (Ne.symm h))⟩
+
+/-- The trusted dealer of the PRSS keys with selective abort, in the form of `F_seedGen`. It samples
+one key for each term and for each pair and leaks the keys of the corrupt operators. The adversary
+names the honest receivers, and the others get no keys (GL05). -/
+def FprssKeys : Functionality C Unit (PrssKeys C) (C.Party → Option (PrssKeys C)) (Finset C.Party) where
+  run coalition _ := do
+    let term ← sample (C.Term → HashOutput)
+    let pair ← sample (C.Pair → HashOutput)
+    let receivers ← leak fun i => if i ∈ coalition.1 then some (dealtPrssKeys term pair i) else none
+    pure fun i => if i ∉ coalition.1 ∧ i ∈ receivers then some (dealtPrssKeys term pair i) else none
+
+/-- A leak of `FrandCalls`. The first leak asks for the receivers, and each other leak is the leak of
+one call of `F_rand`. -/
+abbrev RandLeak := Unit ⊕ (Unit ⊕ Unit)
+
+/-- A reply to a leak of `FrandCalls`, namely the receivers or the reply to one call of `F_rand`. -/
+abbrev RandReplies (C : Committee) (E : Type) := Finset C.Party ⊕ RandReply C E
+
+/-- The leak of one call of `F_rand` as a leak of `FrandCalls`. -/
+def callLeaks : QueryImpl (LocalSpec C + ((Unit ⊕ Unit) →ₒ RandReply C E))
+    (OracleComp (LocalSpec C + (RandLeak →ₒ RandReplies C E))) :=
+  (fun t => OracleComp.lift (OracleSpec.query (spec := LocalSpec C + (RandLeak →ₒ RandReplies C E)) (Sum.inl t))) +
+  (fun (l : Unit ⊕ Unit) => do
+    match ← leak (C := C) (R := RandReplies C E) (Sum.inr l : RandLeak) with
+    | .inr r => pure r
+    | .inl _ => pure (.inl (0, 0)))
+
+/-- The calls of `F_rand` for the public list `calls`, with selective abort. The adversary first names
+the receivers. Then `Frand` runs one time for each call, in order. Each honest receiver gets the
+output of each call, and the other operators get none (GL05). -/
+def FrandCalls [SampleableType E] (calls : List RandCall) :
+    Functionality C Unit (List (RandOutput C E)) RandLeak (RandReplies C E) where
+  run coalition inputs := do
+    let receivers ← (do
+      match ← leak (C := C) (R := RandReplies C E) (Sum.inl () : RandLeak) with
+      | .inl receivers => pure receivers
+      | .inr _ => pure ∅)
+    let outputs ← calls.mapM fun call => simulateQ callLeaks
+      (((Frand (C := C) E).sum (Frand Bit)).run coalition fun i => (inputs i).map fun _ => call.input)
+    pure fun i => if i ∉ coalition.1 ∧ i ∈ receivers then outputs.mapM (· i) else none
+
 end Functionalities
 
 /-! ## The trusted dealer -/

@@ -33,9 +33,10 @@ a source.
     one for the signature of its root by its top key. The fields `treeCompleteness` and
     `dealerTree` cover the top tree and each bottom tree with its signature. `treeSuccess` covers
     a bottom tree on its top tree.
-* The MPC protocol of GS20 is the third group. Its fields are `coin`, `mult`, `extendMult`,
-  `multVerify`, `main` and `ceremonyHybrid`, and the honest runs `coinCompleteness`,
-  `multVerifyCompleteness` and `mainCompleteness`. The note has no section for this group. It names the MPC in Section 2.1.
+* The MPC protocol of GS20 is the third group. Its fields are `prssRand`, `coin`, `mult`,
+  `extendMult`, `multVerify`, `main` and `ceremonyHybrid`, and the honest runs `coinCompleteness`,
+  `multVerifyCompleteness` and `mainCompleteness`. The note has no section for this group. It
+  names the MPC in Section 2.1.
 * The signing is the fourth group (the note, Section 2.3, and PRAWNS, Definition 3.2). Its fields
   are `signingCorrectness` and `stronglyUnforgeable`.
 
@@ -57,10 +58,11 @@ so each completeness field is the honest run of its protocol.
 * The seed generation and each ceremony are separate claims. Each has a rushing malicious adversary
   with its own static coalition. The seed generation claims and `TreeSecurityStatement` run the
   real network with the real PRSS, and `ceremonyHybrid` is in the hybrid model.
-* Each building-block claim is in a hybrid model. `coin`, `mult` and `extendMult` are in the
-  `F_rand`-hybrid model. `multVerify` is in the `{F_coin, F_extendMult, F_rand}`-hybrid model, and
-  `main` and `ceremonyHybrid` are in the `{F_mult, F_multVerify}`-hybrid model. The PRSS outputs
-  of one round realize `F_rand` (CDI05).
+* Each building-block claim is in a hybrid model. `prssRand` is in the `F_prssKeys`-hybrid model.
+  `coin`, `mult` and `extendMult` are in the `F_rand`-hybrid model. `multVerify` is in the
+  `{F_coin, F_extendMult, F_rand}`-hybrid model, and `main` and `ceremonyHybrid` are in the
+  `{F_mult, F_multVerify}`-hybrid model. `prssRand` states that the PRSS streams from dealt keys
+  compute a public list of calls of `F_rand` (CDI05, Section 4).
 * The signing adversary corrupts adaptively, and a corruption gives only the keys of an operator.
   After a ceremony, an operator erases its ceremony state.
 * Honest operators sign at most one message at each key over all quorums
@@ -95,6 +97,8 @@ the advantage of a reduction is only as strong as that reduction.
   PRSS. `Dkg.lean` has this claim as `TreeSecurityStatement`, with the simulator
   `ceremonySimulator`. It is stated and not proved. It is the claim for one ceremony. The fields on
   a tree are the honest run of its ceremonies (`treeCompleteness`) and the two facts on its dealer (`dealerTree` and `treeSuccess`).
+* No field states that the PRSS setup of a ceremony gives the keys of the dealer, and no field
+  joins the building-block claims to the PRSS.
 * No claim joins the two ceremonies of a bottom tree against a corrupt coalition.
   `TreeSecurityStatement` has no simulator and no bound for the ceremony of the tree, the
   randomizer search, the signature ceremony and the check of the signature together. It does not
@@ -160,6 +164,9 @@ structure Theorems (prims : Primitives) (K : Constants C E) (circuits : Circuits
   treeSuccess : TreeSuccessStatement prims circuits settings C
 
   -- The MPC protocol of the setup (GS20).
+  /-- The PRSS streams from dealt keys securely compute a public list of calls of `F_rand`, with
+  selective abort, up to a hash term and a PRF advantage (CDI05, Section 4). -/
+  prssRand : PrssRandStatement prims K
   /-- `Coin` securely computes `F_coin` with selective abort in the `F_rand`-hybrid model, with the
   error `0` (GS20, Lemma 3). -/
   coin : CoinStatement prims K

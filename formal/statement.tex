@@ -43,7 +43,7 @@ composition needs, and Section~\ref{sec:open} lists what is not proved.
 \paragraph{Where to read it.} The claims to review are in the folder
 \texttt{formal/ThresholdLeanXmss/Statement/}, and its
 entry file is \texttt{Theorems.lean}. The type of the root theorem \lean{thresholdLeanXmss_security}
-is the bundle \lean{Theorems}, a structure with eighteen fields, one for each claim. Its axiom guard, a
+is the bundle \lean{Theorems}, a structure with nineteen fields, one for each claim. Its axiom guard, a
 checked list of the axioms that the theorem depends on, has only \texttt{propext},
 \texttt{Classical.choice} and \texttt{Quot.sound}. Appendix A gives the fields and their sources. This
 document calls a claim proved only if it is such a field.
@@ -107,8 +107,8 @@ The forger corrupts operators during the game. A corruption reveals only keys, b
 erased. \\
 \rowrule
 Network & The seed generation claims and the open ceremony claim use the real network and the real PRSS.
-The building-block claims and the hybrid ceremony claim use hybrid models, where an ideal functionality
-replaces a sub-protocol. & The forger sends requests for the two signing rounds of a quorum. \\
+The building-block claims, the PRSS streams claim and the hybrid ceremony claim use hybrid models, where
+an ideal functionality replaces a sub-protocol. The PRSS streams claim has the dealer of the PRSS keys. & The forger sends requests for the two signing rounds of a quorum. \\
 \rowrule
 $\Th$ & A fixed function on the inputs that the MPC evaluates, namely the chain steps and $c_e$ & Part of
 the random oracle \\
@@ -118,7 +118,7 @@ the random oracle \\
 The PRF claims and the claim of signing correctness use the hash model of the setup claims.
 
 \paragraph{Hashing.} $H$ is one lazy random oracle, with a separate domain for each use \cite{BR93,BDG20}.
-The PRG is AES-128, keyed by a hash of the key. The bound of a ceremony on the real network contains the multi-key PRF advantage
+The PRG is AES-128, keyed by a hash of the key. The bound of the PRSS streams claim and the bound of a ceremony on the real network contain the multi-key PRF advantage
 of this PRG \cite{CDI05}. The simulator of the seed generation programs $H$. The proposed simulator of a
 ceremony on the real network does not.
 
@@ -130,7 +130,7 @@ call the counted copy of the oracles. The honest parties and the functionalities
 whose calls do not count. Both copies share one cache.
 \item In each simulation claim, the ideal run makes at most $q$ plus a fixed overhead of counted calls. An
 explicit simulator (seed generation, ceremony on the real network) is fixed code that emulates the honest parties for free,
-and only its programming queries count. For an existential simulator (building blocks, ceremony in the hybrid model), the claim only states that it
+and only its programming queries count. For an existential simulator (building blocks, PRSS streams, ceremony in the hybrid model), the claim only states that it
 exists, and all its calls count, the emulation included \cite{Can00}.
 \end{itemize}
 
@@ -242,7 +242,7 @@ adversary can add offsets of its choice to the shares of a product. A tuple hold
 factors and of their claimed products. In the building-block claims, $d$ and $R$ are the coin and halving
 counts for the number of input tuples. GS20 gives no completeness lemma. A source marked ``honest run'' in
 Appendix A gives only a protocol.
-Each claim holds on its valid inputs in this table.
+Each claim of GS20 holds on its valid inputs in this table.
 {\small
 \begin{xltabular}{\textwidth}{@{}lX@{}}
 \toprule
@@ -263,6 +263,14 @@ at their honest holders and are empty at the other honest operators. All holders
 value, corrupt holders included. \\
 \bottomrule
 \end{xltabular}}
+\paragraph{Random sharings from the PRSS} (\lean{PrssRandStatement}). Take a static coalition and PRSS keys
+from a trusted dealer $\Fn{prssKeys}$, who can leave an honest operator with no keys. Then for every start
+label and fixed public list of calls, the PRSS streams securely compute these $\Fn{rand}$ calls with selective
+abort. A simulator exists that does not program $H$, with at most $q+\mathsf{prssRandOverhead}$ counted calls.
+The error is $k(q+k)/2^{256}+\operatorname{Adv}^{\rm prf}_{\mathsf{hiddenStreams}}(\mathsf{prgReduction})$ for
+the $k=\binom n{t-1}+\binom n2$ PRSS keys. The source is CDI05, Sections 2 and 4, with predistributed keys. It
+differs in the pair keys, the hash to an AES key, and the use as replicated terms with no Shamir conversion. It
+covers neither the PRSS setup nor a join of the building blocks to the PRSS. It is not GS20, Lemma 1.
 \paragraph{Coin} (\lean{CoinStatement}). In the $\Fn{rand}$ hybrid and on \lean{SameCount}, the coin
 protocol securely computes $\Fn{coin}$ with selective abort and error $0$ (GS20, Lemma 3).
 \paragraph{Multiplication} (\lean{MultStatement}). In the $\Fn{rand}$ hybrid, on \lean{SameCount}, in every
@@ -387,7 +395,8 @@ corruption model of the signing game \\
 \item Ceremony security on the real network is stated and not proved, for each of its three uses. So the
 security of the whole keygen ceremony, and of DKG followed by signing, remains open. Three parts fall
 under the open claim \lean{TreeSecurityStatement} only. They are the real building blocks in the place of
-the ideal ones, the PRSS in the place of $\Fn{rand}$ (B2), and the echo of a PRSS setup. The hybrid
+the ideal ones, the join of the building blocks to the PRSS (B2), and the PRSS setup with its echo.
+\lean{prssRand} covers the PRSS streams from dealt keys. The hybrid
 ceremony claim covers the sequence of batches (B6) and the opening of $c_e$ by the MPC (B8), with ideal
 multiplication and check.
 \item No claim covers liveness, concurrent ceremonies, concurrent batches, or adaptive corruption during
@@ -484,6 +493,7 @@ Field & Lean claim & Source item & State \\
 \lean{treeCompleteness} & \lean{TreeCompletenessStatement} & The note, Section 2.1, honest run & Proved \\
 \lean{dealerTree} & \lean{DealerTreeStatement} & PRAWNS, Section 3.1 & Proved \\
 \lean{treeSuccess} & \lean{TreeSuccessStatement} & The note, Section 2.1, honest run & Proved \\
+\lean{prssRand} & \lean{PrssRandStatement} & CDI05, Section 4 & Proved \\
 \lean{coin} & \lean{CoinStatement} & GS20, Lemma 3 & Proved \\
 \lean{mult} & \lean{MultStatement} & GS20, Lemma 4 & Proved \\
 \lean{extendMult} & \lean{ExtendMultStatement} & GS20, Lemma 5 & Proved \\
@@ -520,7 +530,7 @@ abort. Rule 2 of the contract is a deployment requirement with no proof. \\
 \rowrule
 A2 & GS20 is information-theoretic, with a statistical error of the check. & $H$ is a random oracle for digests, coin keys and challenges.
 AES-128 is the PRG. & The bounds of \lean{multVerify} and \lean{main} depend on the call count. The PRF
-advantage is in the open claim only. \\
+advantage is in \lean{prssRand} and in the open claim. \\
 \rowrule
 A3 & Honest Shamir shares fix each sharing (GS20, Section~3.2). Functionalities 7, 9, 16 leak corrupt
 shares. & Honest copies can differ. $\Fn{mult}$, $\Fn{multVerify}$, $\Fn{main}$ also leak honest copies
@@ -565,8 +575,9 @@ copies. & Note's choice & \lean{multVerify}, \lean{main}, with birthday terms \\
 \rowrule
 B2 & Protocol 8 uses $\Fn{doubleRand}$ (Lemmas 4, 5). Lemma 11 has $\Fn{coin}$, $\Fn{mult}$, $\Fn{extendMult}$.
 Protocol 15 also calls $\Fn{rand}$. & A local product and a reshare on $\Fn{rand}$ outputs (\lean{mulRep},
-\lean{reshare}). In the last step of the check, length-one $\Fn{extendMult}$ replaces $\Fn{mult}$. & Replicated sharing & \lean{mult},
-\lean{extendMult}, \lean{multVerify}, in their hybrid models (Section~\ref{sec:dkg}) \\
+\lean{reshare}). In the last step of the check, length-one $\Fn{extendMult}$ replaces $\Fn{mult}$. The PRSS streams from dealt
+keys give the $\Fn{rand}$ outputs. & Replicated sharing & \lean{mult},
+\lean{extendMult}, \lean{multVerify}, in their hybrid models (Section~\ref{sec:dkg}). \lean{prssRand} \\
 \rowrule
 B3 & Powers of one coin (Protocol 13). Halving by Protocol 14. & Products of $d$ coins and public bit
 weights $x^j$. The first seven halving steps differ, still of degree 2. & Performance & \lean{multVerify},

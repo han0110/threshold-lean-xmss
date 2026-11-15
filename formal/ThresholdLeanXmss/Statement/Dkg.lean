@@ -298,6 +298,52 @@ def TreeSuccessStatement (C : Committee) : Prop :=
         let some top := TreeOutput.topTree output | pure none
         Prod.fst <$> dealerCeremony circuits settings parameter seeds top (.bottom b)) _))}[r.1 = none]).toReal ≤ searchFailure
 
+/-- The PRSS keys of one setup, one for each term and one for each pair. -/
+def prssKeyCount (C : Committee) : ℕ := termCount C + C.n.choose 2
+
+/-- An upper bound on the stream-key event, `k (q + k) / 2^256`, with `k = prssKeyCount C`. It
+accounts for the counted calls that hit a hidden PRSS key and for two equal dealt keys. -/
+def prssRandHashError (C : Committee) (q : ℕ) : ℝ := (prssKeyCount C * (q + prssKeyCount C) : ℕ) / 2 ^ 256
+
+/-- The calls of the simulator, which computes the streams of the calls under the keys of the
+coalition. These are at most one key for each term and one for each pair of a corrupt and an honest
+operator. -/
+def prssRandOverhead (C : Committee) (calls : List RandCall) : ℕ :=
+  (termCount C + C.n ^ 2) * (calls.map RandCall.streamBits).sum
+
+/-- The PRSS streams from keys of a trusted dealer securely compute a fixed public list of `F_rand`
+calls, with selective abort, in the `F_prssKeys`-hybrid model. The claim is for every start label.
+
+* It follows the protocol PRSS of CDI05, Section 4, with predistributed keys and the replicated
+  sharing of CDI05, Section 2 item 2.
+* The dealer can leave an honest operator with no keys, and that operator draws nothing.
+* For each coalition and adversary there is a simulator without programming, and all its calls are
+  counted.
+* The error has the hash term `prssRandHashError` and the multi-key PRF advantage of
+  `prgReduction` against `hiddenStreams` on the real run.
+* It differs from CDI05 in three points. The dealer also gives a key to each pair. A hash of a PRSS
+  key gives the AES key of a stream. The values are replicated terms, with no conversion to Shamir
+  shares (CDI05, Section 3.1).
+* It is no claim for the PRSS setup, which gives the keys in the protocol. It does not join the
+  building-block claims to the real PRSS.
+* It is not Lemma 1 of GS20, which is for an interactive protocol. -/
+def PrssRandStatement [SampleableType E] : Prop :=
+  ∀ (label : ℕ) (calls : List RandCall) (D : C.Coalition)
+    (A : Adversary C E Unit (C.Party → Option (PrssKeys C)) (Finset C.Party)),
+    ∃ S : Simulator (C := C) (LocalSpec C) Unit RandLeak (RandReplies C E) A.State,
+      ∀ (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (List (RandOutput C E))) (q : ℕ),
+        IsQueryBounded A Z prssRandRounds q →
+        HasHashQueryBound (runWorld prims (distinguish
+            (idealExecution worldRoles.adversary D (FrandCalls calls) S x z) Z))
+            (q + prssRandOverhead C calls) ∧
+          |accepts prims (distinguish
+              (realExecution D A FprssKeys prssRandRounds (prssRandProtocol K label calls) x z) Z) -
+            accepts prims (distinguish
+              (idealExecution worldRoles.adversary D (FrandCalls calls) S x z) Z)| ≤
+            prssRandHashError C q +
+              (PRFScheme.prfAdvantage (hiddenStreams prims.aes) (prgReduction prims D (distinguish
+                (realExecution D A FprssKeys prssRandRounds (prssRandProtocol K label calls) x z) Z))).toReal
+
 /-- `Coin` securely computes `F_coin` with selective abort in the `F_rand`-hybrid model, perfectly
 (GS20, Lemma 3). The simulator makes no oracle call of its own. -/
 def CoinStatement [SampleableType E] : Prop :=
