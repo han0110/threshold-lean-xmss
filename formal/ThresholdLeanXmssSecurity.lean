@@ -22,6 +22,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningOwnBudget
 import ThresholdLeanXmssSecurity.Proof.SigningStronglyUnforgeable
 import ThresholdLeanXmssSecurity.Proof.Constants
 import ThresholdLeanXmssSecurity.Proof.CeremonyHybrid.Security
+import ThresholdLeanXmssSecurity.Proof.TagBlocks
 
 /-! # The end theorem of threshold leanXMSS
 
@@ -42,6 +43,9 @@ claim with the budget of every party. That claim is no field of the bundle.
 
 `constants_nonempty_of` gives a value of `Constants` over `GF(2^128)` for each committee with fewer
 than `2 ^ 128` operators. It is no field of the bundle.
+
+`thInput_ne_of_no_zero_byte` states that no input of `Th` in the byte model of leanVM starts with a
+block of 32 bytes that has no zero byte. It is no field of the bundle.
 
 ## Units and budgets
 
@@ -231,6 +235,10 @@ and `Quot.sound`. -/
 /-- info: 'ThresholdLeanXmssSecurity.ceremonyHybridClosed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ceremonyHybridClosed
+
+/-- info: 'ThresholdLeanXmssSecurity.thInput_ne_of_no_zero_byte' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms thInput_ne_of_no_zero_byte
 
 /-- info: 'ThresholdLeanXmssSecurity.seedGenSecurityClosed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
