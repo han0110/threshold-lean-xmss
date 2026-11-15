@@ -13,6 +13,8 @@ The root theorem proves the bundle `Theorems`. Its 20 fields serve two main clai
 
 The sections follow the note of leanXMSS, [doc/leanXMSS.pdf](../doc/leanXMSS.pdf). A ceremony is one MPC run, and a tree is the run of all ceremonies of one tree. A claim name gives the unit and then the property.
 
+The claims are stated in the paper model of the protocol, in the random-oracle model. The setup claims take `Th` as one fixed function. Only `dealerTree` and `treeSuccess` assume that the circuits compute `Th`. The axiom guard of the root theorem lists only `propext`, `Classical.choice` and `Quot.sound`, and it covers the claims of the bundle only.
+
 ### The setup by DKG
 
 The target is the trusted dealer `KeyGen` of PRAWNS (the note, Section 2.1). The setup has two protocols, the seed generation and the run of a tree. This claim is **not complete**.
@@ -23,6 +25,7 @@ The target is the trusted dealer `KeyGen` of PRAWNS (the note, Section 2.1). The
 | A tree | `treeCompleteness`, proved | `treeHybridSecurity`, proved, with ideal multiplication and check. No claim on the real network. |
 
 - `dealerTree` and `treeSuccess` link the dealer of the tree functionality to the key generation of the signing game. Both are proved.
+- `F_tree` leaks the openings of all batches of its dealer, so the chain values of the signature have no secrecy after an abort.
 - The keygen ceremony of the note is the seed generation, then the ceremony of the top tree. A bottom tree has two ceremonies, one for the tree and one for the signature of its root.
 - No claim is for Section 2.2 of the note, the setup by a trusted dealer with $n = 3f + 1$. Each claim is for $n = 2t - 1$.
 
@@ -37,34 +40,14 @@ The security of a ceremony rests on these ten proved fields. The note has no sec
 
 - `ceremonyHybridSecurity` covers one ceremony with ideal multiplication and check, not on the real network.
 - `coin`, `mult`, `extendMult`, `multVerify` and `main` are the building blocks of Goyal and Song. `coinCompleteness`, `multVerifyCompleteness` and `mainCompleteness` are their honest runs.
-- `prssRand` covers the random sharings from PRSS keys of a dealer. No claim covers the PRSS setup.
-
-## What is proved
-
-- The seed generation is secure with selective abort against a static coalition.
-- The honest run of a tree gives the output of the tree functionality `F_tree`, up to the error that its claim names. `F_tree` gives no tree when the randomizer search of its dealer fails. When the circuits compute `Th`, `treeSuccess` bounds that probability for a bottom tree on the top tree of the same seeds, and `dealerTree` states that the dealer gives the trees of the signing claim.
-- The threshold PRF is secure against an adaptive coalition.
-- The signing is strongly unforgeable with adaptive corruption.
-- One ceremony is secure with selective abort with ideal multiplication and check, not on the real network.
-- One tree is secure with selective abort with ideal multiplication and check, not on the real network. `F_tree` leaks the openings of all batches of its dealer, so the chain values of the signature have no secrecy after an abort.
-- The building blocks are secure, and each honest run gives the output of its functionality, up to the error that its claim names.
-- The PRSS streams from keys of a dealer give the random sharings.
-
-The claims are stated in the paper model of the protocol, in the random-oracle model. The seed generation and ceremony claims take `Th` as one fixed function. Only `dealerTree` and `treeSuccess` assume that the circuits compute `Th`.
-
-The axiom guard of the root theorem lists only `propext`, `Classical.choice` and `Quot.sound`. It covers the claims of the bundle only.
+- `prssRand` covers the random sharings from PRSS keys of a dealer. No proved claim covers the PRSS setup.
 
 ## What is not proved
 
-No claim covers the security of a tree on the real network. One important claim has no proof. `CeremonySecurityStatement` says that one ceremony of the DKG is secure with selective abort on the real network with the real PRSS. It is stated and not proved, and it is no part of the bundle.
-
-So the first main claim is proved for the seed generation, for the MPC layer, which includes one ceremony in the hybrid model, and for one tree in the hybrid model. It is not proved for a ceremony or a tree on the real network.
-
-No claim covers the PRSS setup, and no claim joins the building blocks to the PRSS. `prssRand` covers only the PRSS streams from keys of a dealer.
-
-No claim composes the seed generation, the ceremonies and the signing. Each claim covers one protocol or one building block alone. So no theorem composes the DKG with the signing. Only `treeHybridSecurity` joins the two ceremonies of a bottom tree, in the hybrid model. [statement.tex](./statement.tex) holds a sketch of the composition, with its open points.
-
-What is claimed, and what is not, is [statement.tex](./statement.tex).
+- No claim covers a tree on the real network. `CeremonySecurityStatement`, for one ceremony on the real network, is stated and not proved, and it is no part of the bundle.
+- No proved claim covers the PRSS setup or joins the building blocks to the PRSS.
+- No theorem composes the setup and the signing.
+- [statement.tex](./statement.tex), Section 5, and [doc/composition.md](./doc/composition.md) give the open points.
 
 ## Map of the claims
 
@@ -100,8 +83,8 @@ flowchart TB
     PKEYS["Dealer of the PRSS keys,<br/>given by the PRSS setup"]:::missing
   end
 
-  style SIG stroke:#999999
-  style DKG stroke:#999999
+  style SIG fill:#ffffff,stroke:#999999
+  style DKG fill:#ffffff,stroke:#999999
 
   SUF --> DEALT
   SCOR --> DEALT
@@ -119,8 +102,6 @@ flowchart TB
   MPC -->|prssRand| PKEYS
 ```
 
-Appendix C of [statement.tex](./statement.tex) has the claims of the MPC layer.
-
 | Open box | Reason |
 | --- | --- |
 | Dealer of the PRSS keys | The proof of the seed generation, the same protocol, needs a port to the PRSS setup. |
@@ -128,7 +109,15 @@ Appendix C of [statement.tex](./statement.tex) has the claims of the MPC layer.
 | `CeremonySecurityStatement` | No composition theorem fits the proved claims, and a direct proof has open steps. |
 | Trusted dealer of the keys and the trees | The composition of the setup and the signing is a sketch. |
 
-No open box comes from a known attack. [statement.tex](./statement.tex), Section 5, has the details.
+No open box comes from a known attack.
+
+## Details
+
+| File | Content |
+| --- | --- |
+| [doc/differences.md](./doc/differences.md) | Each difference to GS20, PRAWNS, the note and leanXMSS |
+| [doc/mpc-layer.md](./doc/mpc-layer.md) | The ceremony claims, the building blocks of GS20 and the PRSS streams |
+| [doc/composition.md](./doc/composition.md) | The sketch of the composition and the gaps of the Rust code |
 
 ## Key files
 
