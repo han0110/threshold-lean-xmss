@@ -83,8 +83,8 @@ flowchart TB
     PKEYS["Dealer of the PRSS keys,<br/>given by the PRSS setup"]:::missing
   end
 
-  style SIG fill:#ffffff,stroke:#999999
-  style DKG fill:#ffffff,stroke:#999999
+  style SIG stroke:#999999
+  style DKG stroke:#999999
 
   SUF --> DEALT
   SCOR --> DEALT
