@@ -19,8 +19,9 @@ the notions of secure computation.
 * An operator program is an `OracleComp` with private sampling, the oracle `H` and one query
   `exchange` for each synchronous round. A program that returns `none` aborts.
 * A program in a hybrid model also has a query `call` to the functionality (GS20, Section 3.1).
-* Each constructor of `Query` is its own domain of `H`. The current byte encoding of the
-  implementation does not separate all these domains yet (`statement.tex`, Section 5).
+* Each constructor of `Query` is its own domain of `H`. In the implementation, a tag of 32 bytes
+  separates each use except `Th` (`doc/dkg.md` 1.1.4). No theorem connects the bytes of a hash call
+  to its input in this model (`statement.tex`, Section 5).
 * The domain `hash` is the tweakable hash `Th` of leanXMSS. In the claims of the key generation, it
   is one fixed function on the inputs that the MPC evaluates, namely a chain step and the commitment
   `c_e`. Every other input of `Th`, namely a leaf, a node and a message digest, and every other

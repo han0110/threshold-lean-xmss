@@ -11,7 +11,8 @@ game.
   free copy, so they call `H` for free.
 * The constructors of `Query` are disjoint domains of `H`, and a repeated query gets the same
   answer. This models domain-separated hashing (Bellare, Davis and Günther, EUROCRYPT 2020). The
-  byte encoding of the implementation does not give this separation yet (`statement.tex`).
+  implementation separates the uses by tags of 32 bytes, and no theorem connects its bytes to this
+  model (`statement.tex`, Section 5).
 -/
 
 set_option autoImplicit false
