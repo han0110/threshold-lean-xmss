@@ -140,6 +140,7 @@ impl Lane for Word {
     }
 }
 
+#[derive(Clone)]
 pub struct Group {
     pub n: usize,
     pub t: usize,

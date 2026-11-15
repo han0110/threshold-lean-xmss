@@ -19,6 +19,8 @@
 //!   a quorum signs with no MPC.
 //! - The top key of a bottom tree signs its root in MPC, because the top tree stores no masked
 //!   values.
+//!   - This signature run starts its own `Party` after the randomizer search on the root, so it
+//!     uses fresh PRSS keys as a second ceremony does.
 //! - A bottom tree also opens the commitment `c_e` of each key `e`, in commitment batches of the
 //!   batch size.
 //!   - The commitment hashes `F(A_rnd(e))` once, at `A_rnd(e)` with step 1.
@@ -30,6 +32,7 @@
 
 use std::fs::{self, DirBuilder, File, OpenOptions};
 use std::io::Write;
+use std::ops::Deref;
 use std::os::unix::fs::{DirBuilderExt, FileExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -200,15 +203,14 @@ async fn commitment_batch(
 }
 
 /// Signs the root of a bottom tree with its top key, in MPC, from the opened randomizer value
-/// `secret` of the key.
-async fn top_signature(
-    party: &Party,
+/// `secret` of the key. `party` makes the party of the MPC after the randomizer search.
+async fn top_signature<P: Deref<Target = Party>>(
+    party: impl AsyncFnOnce() -> Result<P, String>,
     public_parameter: Digest,
     bottom: u32,
     root: Digest,
     secret: Digest,
 ) -> Result<Vec<u8>, String> {
-    let mut channel = party.network.channel();
     let reveal = async |digits: &[usize; V]| {
         let x_0: Vec<Digest> = (0..V)
             .map(|chain| prf_address(Layer::Top, bottom, chain, 0))
@@ -216,7 +218,9 @@ async fn top_signature(
         let public = |step, chain| {
             (chain < V).then(|| hash_public(&public_parameter, Layer::Top, bottom, chain, step))
         };
-        let opened = open_chains(party, &mut channel, &x_0, public, |chain| digits[chain]);
+        let party = party().await?;
+        let mut channel = party.network.channel();
+        let opened = open_chains(&party, &mut channel, &x_0, public, |chain| digits[chain]);
         Ok(opened.await?.0)
     };
     xmss::wots_sign(
@@ -468,13 +472,14 @@ pub async fn new_bottom_tree(
     concurrency: usize,
 ) -> Result<(), String> {
     let (group, operator) = Operator::load(dir);
-    let party = party(group, &operator, network, reshare, batch_size).await?;
     let public_parameter = operator.public_parameter;
     let keys: Vec<u32> = (0..KEYS as u32)
         .map(|k| bottom << LAYER_HEIGHT | k)
         .collect();
-    let (leaves, cpk, commitments, randomizer, ..) =
-        ceremony(&party, public_parameter, Layer::Bottom, &keys, concurrency).await?;
+    let (leaves, cpk, commitments, randomizer, ..) = {
+        let party = party(group.clone(), &operator, network, reshare, batch_size).await?;
+        ceremony(&party, public_parameter, Layer::Bottom, &keys, concurrency).await?
+    };
     let levels = xmss::levels(&public_parameter, Layer::Bottom, bottom, leaves);
     let root = levels[LAYER_HEIGHT][0];
     let top = xmss::levels(
@@ -483,8 +488,9 @@ pub async fn new_bottom_tree(
         0,
         digests(&fs::read(dir.join("top")).unwrap()),
     );
-    let top_signature =
-        top_signature(&party, public_parameter, bottom, root, randomizer.unwrap()).await?;
+    let new_party = async || party(group, &operator, network, reshare, batch_size).await;
+    let secret = randomizer.unwrap();
+    let top_signature = top_signature(new_party, public_parameter, bottom, root, secret).await?;
     let top_signature = [top_signature, xmss::path(&top, bottom as usize)].concat();
     if xmss::layer_root(&public_parameter, Layer::Top, bottom, &root, &top_signature)
         != Some(top[LAYER_HEIGHT][0])
@@ -836,7 +842,8 @@ mod tests {
                 &all_seeds,
                 layer_address(TWEAK_RANDOMIZER, Layer::Top, 0, 9, 0),
             );
-            let signature = top_signature(&party, public_parameter, 9, leaves[0], secret).await;
+            let signature =
+                top_signature(async || Ok(&party), public_parameter, 9, leaves[0], secret).await;
             leads_to_root(Layer::Top, &leaves[0], signature.unwrap(), top_leaves[0]);
             let quorum = [1, 2];
             if !quorum.contains(&party.id) {
@@ -917,7 +924,14 @@ mod tests {
                 layer_address(TWEAK_RANDOMIZER, Layer::Top, 0, 0, 0),
             );
             let bottom_root = fold(Layer::Bottom, 9, leaves[0]);
-            let top = top_signature(&party, public_parameter, 0, bottom_root, secret).await;
+            let top = top_signature(
+                async || Ok(&party),
+                public_parameter,
+                0,
+                bottom_root,
+                secret,
+            )
+            .await;
             if !quorum.contains(&party.id) {
                 return None;
             }
@@ -943,6 +957,44 @@ mod tests {
             Some(xmss::verify(&public_key, &message, &signature))
         });
         assert_eq!(outcomes, vec![None, Some(true), Some(true)]);
+    }
+
+    #[test]
+    fn a_second_party_on_the_network_of_a_bottom_ceremony_signs_its_root_with_the_top_key() {
+        let public_parameter = [9; 16];
+        let path: Vec<u8> = (0..LAYER_HEIGHT * 16).map(|byte| byte as u8).collect();
+        let group = Group::new(2);
+        let outcomes = local_networks(2, async |network, all_seeds| {
+            let new_party = async || {
+                let seeds = group
+                    .held(network.id)
+                    .iter()
+                    .map(|&k| all_seeds[k])
+                    .collect();
+                let party = Party::new(group.clone(), seeds, network.clone(), Reshare::Peer, 4);
+                Arc::new(party.await.unwrap())
+            };
+            // Leaf 9 is key 9 of bottom tree 0. The first party runs the ceremony and then drops.
+            let (leaves, _, _, randomizer, ..) = {
+                let party = new_party().await;
+                let outcome = ceremony(&party, public_parameter, Layer::Bottom, &[9], 1).await;
+                outcome.unwrap()
+            };
+            let fold = |layer, e, leaf| xmss::tests::fold(&public_parameter, layer, e, leaf, &path);
+            let bottom_root = fold(Layer::Bottom, 9, leaves[0]);
+            let signature = top_signature(
+                async || Ok(new_party().await),
+                public_parameter,
+                0,
+                bottom_root,
+                randomizer.unwrap(),
+            );
+            let signature = [signature.await.unwrap(), path.clone()].concat();
+            let root = xmss::layer_root(&public_parameter, Layer::Top, 0, &bottom_root, &signature);
+            let (top_leaves, ..) = trusted_dealer(&all_seeds, public_parameter, Layer::Top, &[0]);
+            root == Some(fold(Layer::Top, 0, top_leaves[0]))
+        });
+        assert_eq!(outcomes, vec![true; 3]);
     }
 
     #[test]
