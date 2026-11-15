@@ -2306,15 +2306,15 @@ theorem checkSplitDistance (prims : Primitives) (K : Constants C E) :
     hsplitH cache seen hc start hcard hk hno
 
 /-- The last split-case gap closes the complete multiplication-check security theorem. -/
-theorem multVerifyClosed (prims : Primitives) (K : Constants C E) : MultVerifyStatement prims K :=
+theorem multVerifySecurity (prims : Primitives) (K : Constants C E) : MultVerifySecurityStatement prims K :=
   multVerifyOfSplitRoute prims K (checkSoundStage prims K) (checkSplitDistance prims K)
 
 /-- info: 'ThresholdLeanXmssSecurity.checkSplitDistance' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms checkSplitDistance
 
-/-- info: 'ThresholdLeanXmssSecurity.multVerifyClosed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.multVerifySecurity' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms multVerifyClosed
+#print axioms multVerifySecurity
 
 end ThresholdLeanXmssSecurity

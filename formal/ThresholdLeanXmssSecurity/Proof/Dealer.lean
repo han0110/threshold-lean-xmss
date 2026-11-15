@@ -4,7 +4,7 @@ import ThresholdLeanXmssSecurity.Proof.Signing
 /-!
 # The dealer of `F_tree`
 
-`DealerTreeStatement` and `TreeSuccessStatement`. When the circuits compute `Th`, the dealer of
+`DealerTreeCorrectnessStatement` and `DealerTreeSuccessStatement`. When the circuits compute `Th`, the dealer of
 `F_tree` evaluates each job as `referenceJob` does, because the inputs of `Th` that the MPC
 evaluates are fixed and never cached. The batches keep the order of the jobs. So the dealer and
 `referenceTree` give the same tree and the same cache, and the success bound follows from the
@@ -351,8 +351,8 @@ end DealerProof
 
 /-- When the circuits compute `Th`, the dealer of `F_tree` gives `referenceTree` with the PRF values
 of the seeds, with the same distribution of the tree and of the next cache. -/
-theorem dealerTreeProof (prims : Primitives) (circuits : Circuits) (settings : Settings) (C : Committee) :
-    DealerTreeStatement prims circuits settings C := by
+theorem dealerTreeCorrectness (prims : Primitives) (circuits : Circuits) (settings : Settings) (C : Committee) :
+    DealerTreeCorrectnessStatement prims circuits settings C := by
   intro hc hsize parameter seeds top tree cache
   rw [localRun_liftComp, localRun_liftComp, roRun_dealer prims circuits settings hc hsize]
 
@@ -395,7 +395,7 @@ theorem roRun_map {α β : Type} (f : α → β) (oa : OracleComp (RoSpec C) α)
   rw [Function.comp, roRun_pure]
   rfl
 
-/-- The run of the dealer in `TreeSuccessStatement` is `refSuccessRun`. -/
+/-- The run of the dealer in `DealerTreeSuccessStatement` is `refSuccessRun`. -/
 theorem roRun_dealerSuccess (hc : CircuitsCompute circuits prims.Th) (hsize : 0 < settings.batchSize)
     (parameter : PublicParameter) (seeds : C.Term → HashOutput) (b : Fin (2 ^ layerHeight)) :
     roRun prims (do
@@ -421,8 +421,8 @@ end Success
 
 /-- When the circuits compute `Th`, the dealer of `F_tree` gives the top tree and then bottom tree
 `b`, except when the randomizer search of its top signature fails. -/
-theorem treeSuccessProof (prims : Primitives) (circuits : Circuits) (settings : Settings) (C : Committee) :
-    TreeSuccessStatement prims circuits settings C := by
+theorem dealerTreeSuccess (prims : Primitives) (circuits : Circuits) (settings : Settings) (C : Committee) :
+    DealerTreeSuccessStatement prims circuits settings C := by
   intro hc hsize parameter seeds b
   have hfin : (1 - codewordP) ^ randomizerAttemptLimit ≠ ⊤ :=
     ENNReal.pow_ne_top (ne_top_of_le_ne_top ENNReal.one_ne_top tsub_le_self)
@@ -432,12 +432,12 @@ theorem treeSuccessProof (prims : Primitives) (circuits : Circuits) (settings : 
   erw [roRun_dealerSuccess prims circuits settings hc hsize]
   exact refSuccess_fail prims parameter seeds b
 
-/-- info: 'ThresholdLeanXmssSecurity.dealerTreeProof' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.dealerTreeCorrectness' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms dealerTreeProof
+#print axioms dealerTreeCorrectness
 
-/-- info: 'ThresholdLeanXmssSecurity.treeSuccessProof' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.dealerTreeSuccess' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms treeSuccessProof
+#print axioms dealerTreeSuccess
 
 end ThresholdLeanXmssSecurity

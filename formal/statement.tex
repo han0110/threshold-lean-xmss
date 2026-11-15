@@ -34,7 +34,7 @@ an output. This claim is not complete. It is proved for the seed generation, whi
 of the multiparty computation (MPC) for a tree or for the signature of a tree root, and the run of a tree
 is all its ceremonies. For a ceremony and for the run of a tree, the claim is proved in a hybrid model,
 where the multiplication and the check are trusted parties. On the real network, it is stated and not
-proved for a ceremony, and a tree has no claim. Appendix~\ref{sec:mpc} lists the claims of the MPC layer.
+proved for a ceremony, and a tree has no such claim. Appendix~\ref{sec:mpc} lists the claims of the MPC layer.
 \item Signing with a trusted dealer is correct and strongly unforgeable with adaptive corruption
 (Section~\ref{sec:signing}). This claim is proved.
 \end{itemize}
@@ -155,7 +155,7 @@ check, and no claim on the real network \\
 \bottomrule
 \end{tabularx}
 \end{center}
-\lean{dealerTree} and \lean{treeSuccess} link the dealer of the tree functionality to the key generation
+\lean{dealerTreeCorrectness} and \lean{dealerTreeSuccess} link the dealer of the tree functionality to the key generation
 of the signing game.
 
 \subsection*{The seed generation}
@@ -190,11 +190,11 @@ receivers. After a successful search of the dealer, they hold the chain values o
 real run aborts in the first ceremony. So these values have no secrecy after an abort. After a failed search,
 the dealer leaks only the openings of the first ceremony and gives no tree. The supplied top tree is a fixed
 input, and each run starts with an empty hash cache. The claim does not link that top tree to the seeds.
-\paragraph{Dealer trees} (\lean{DealerTreeStatement}). Assume \lean{CircuitsCompute} and
+\paragraph{Dealer trees} (\lean{DealerTreeCorrectnessStatement}). Assume \lean{CircuitsCompute} and
 $\mathsf{batchSize}>0$. Take a parameter, seeds, a supplied top tree and a top or bottom tree. Then the
 dealer of the tree functionality gives the reference tree of the key generation of the signing game. The
 two runs have the same joint distribution of the tree and the next hash cache, from every initial cache.
-\paragraph{Dealer success} (\lean{TreeSuccessStatement}). Assume \lean{CircuitsCompute} and
+\paragraph{Dealer success} (\lean{DealerTreeSuccessStatement}). Assume \lean{CircuitsCompute} and
 $\mathsf{batchSize}>0$. Then for every parameter, seeds and bottom index, the dealer builds a top tree and
 then that bottom tree on it, except with probability at most $(1-p)^L$. Here $p=\mathsf{codewordProbability}$
 is the probability that a uniform digest is a codeword, and $L$ is the limit of attempts. The term
@@ -302,7 +302,7 @@ corruption model of the signing game \\
 security of the whole keygen ceremony, and of DKG followed by signing, remains open. Three parts fall
 under the open claim \lean{CeremonySecurityStatement} only. They are the real building blocks in the place of
 the ideal ones, the join of the building blocks to the PRSS (B2), and the PRSS setup with its echo.
-\lean{prssRand} covers the PRSS streams from dealt keys. The hybrid
+\lean{prssRandSecurity} covers the PRSS streams from dealt keys. The hybrid
 ceremony claim covers the sequence of batches (B6) and the opening of $c_e$ by the MPC (B8), with ideal
 multiplication and check. Rows B2 and B8 are in \lean{formal/doc/differences.md}.
 \item No claim covers liveness, concurrent ceremonies, concurrent batches, or adaptive corruption during
@@ -321,7 +321,7 @@ leanXMSS. It is not a theorem.
 \paragraph{The composition.} The composition is an unreviewed paper sketch that follows the sequential
 composition of Canetti \cite{Can00}, and \lean{formal/doc/composition.md} gives it in full. It first
 replaces the seed generation by its dealer. Then it replaces each ceremony, in order, by its dealer. Last,
-\lean{dealerTree} gives the trees of the signing game, and the signing bound applies through the $\Th$
+\lean{dealerTreeCorrectness} gives the trees of the signing game, and the signing bound applies through the $\Th$
 heuristic. These points stay open.
 \begin{itemize}\itemsep0pt
 \item The replacement of a ceremony needs ceremony security on the real network, which is not proved.
@@ -356,8 +356,8 @@ Field & Lean claim & Source item & State \\
 \lean{seedGenCompleteness} & \lean{SeedGenCompletenessStatement} & The note, Section 2.1, honest run & Proved \\
 \lean{treeHybridSecurity} & \lean{TreeHybridSecurityStatement} & GS20, Theorem 2 & Proved \\
 \lean{treeCompleteness} & \lean{TreeCompletenessStatement} & The note, Section 2.1, honest run & Proved \\
-\lean{dealerTree} & \lean{DealerTreeStatement} & PRAWNS, Section 3.1 & Proved \\
-\lean{treeSuccess} & \lean{TreeSuccessStatement} & The note, Section 2.1, honest run & Proved \\
+\lean{dealerTreeCorrectness} & \lean{DealerTreeCorrectnessStatement} & PRAWNS, Section 3.1 & Proved \\
+\lean{dealerTreeSuccess} & \lean{DealerTreeSuccessStatement} & The note, Section 2.1, honest run & Proved \\
 \midrule
 \multicolumn{4}{@{}l}{\textit{The signing}} \\
 \addlinespace[2pt]
@@ -370,15 +370,15 @@ Field & Lean claim & Source item & State \\
 \addlinespace[2pt]
 \lean{ceremonyHybridSecurity} & \lean{CeremonyHybridSecurityStatement} & GS20, Theorem 2 & Proved \\
 --- & \lean{CeremonySecurityStatement} & Note, Section 2.1. GS20, Theorem 2 & Stated and not proved \\
-\lean{coin} & \lean{CoinStatement} & GS20, Lemma 3 & Proved \\
-\lean{mult} & \lean{MultStatement} & GS20, Lemma 4 & Proved \\
-\lean{extendMult} & \lean{ExtendMultStatement} & GS20, Lemma 5 & Proved \\
-\lean{multVerify} & \lean{MultVerifyStatement} & GS20, Lemmas 8 to 11 & Proved \\
-\lean{main} & \lean{MainStatement} & GS20, Theorem 2 & Proved \\
+\lean{coinSecurity} & \lean{CoinSecurityStatement} & GS20, Lemma 3 & Proved \\
+\lean{multSecurity} & \lean{MultSecurityStatement} & GS20, Lemma 4 & Proved \\
+\lean{extendMultSecurity} & \lean{ExtendMultSecurityStatement} & GS20, Lemma 5 & Proved \\
+\lean{multVerifySecurity} & \lean{MultVerifySecurityStatement} & GS20, Lemmas 8 to 11 & Proved \\
+\lean{mainSecurity} & \lean{MainSecurityStatement} & GS20, Theorem 2 & Proved \\
 \lean{coinCompleteness} & \lean{CoinCompletenessStatement} & GS20, Protocol 6, honest run & Proved \\
 \lean{multVerifyCompleteness} & \lean{MultVerifyCompletenessStatement} & GS20, Protocol 17, honest run & Proved \\
 \lean{mainCompleteness} & \lean{MainCompletenessStatement} & GS20, Protocol 19, honest run & Proved \\
-\lean{prssRand} & \lean{PrssRandStatement} & CDI05, Section 4 & Proved \\
+\lean{prssRandSecurity} & \lean{PrssRandSecurityStatement} & CDI05, Section 4 & Proved \\
 \bottomrule
 \end{xltabular}}
 \section{Differences to the sources}\label{sec:diff}
@@ -394,7 +394,7 @@ A1 & GS20 Functionalities 5, 16 and 18 have a common abort. & Each operator abor
 each simulation claim has selective abort. Rule 2 is a requirement with no proof. \\
 \rowrule
 A2 & GS20 is information-theoretic. & $H$ is a random oracle and AES-128 is the PRG. The check and batch
-bounds have hash terms. The PRF advantage is only in \lean{prssRand} and in the open ceremony claim. \\
+bounds have hash terms. The PRF advantage is only in \lean{prssRandSecurity} and in the open ceremony claim. \\
 \rowrule
 A3 & Honest Shamir shares fix each sharing. & Honest copies can differ, so the building-block claims hold on
 valid inputs only. $\Fn{mult}$, $\Fn{multVerify}$, $\Fn{main}$ also leak honest copies of terms that corrupt
@@ -402,7 +402,7 @@ operators hold. On \lean{MainInputs}, this leak gives no new value. \\
 \rowrule
 A4 & GS20, Theorem 2, covers the full protocol. & It holds for a batch, a ceremony and a tree in the
 $\{\Fn{mult},\Fn{multVerify}\}$ hybrid only. On the real network, the claim for one ceremony is stated
-and not proved, and a tree has no claim. \\
+and not proved, and a tree has no such claim. \\
 \rowrule
 A5 & PRAWNS, Figure 3, line 8, needs $t>(n+|D|)/2$. & Line 8 fails for $n=2t-1$ with one corrupt operator or more. \lean{stronglyUnforgeable}
 holds under rule 1 in place of line 8. \\
@@ -424,8 +424,8 @@ PRSS and no meaning of the circuits. $\Fn{ceremony}$ leaks $P$ and the outputs o
 that the real run does not reach. After a partial abort before the last batch, no honest operator gets an
 output. A partial abort at the last opening can leave some honest operators with outputs.
 \lean{CeremonySecurityStatement} is stated and not proved, and it is no field of the bundle. Error $0$ for
-\lean{mult} and \lean{extendMult} is security up to an additive attack, so a product can be wrong until the
-check. \lean{prssRand} covers neither the PRSS setup nor a join to the building blocks. For $R$ halving steps,
+\lean{multSecurity} and \lean{extendMultSecurity} is security up to an additive attack, so a product can be wrong until the
+check. \lean{prssRandSecurity} covers neither the PRSS setup nor a join to the building blocks. For $R$ halving steps,
 \[
  \mathsf{coinFailure}(R)=\tfrac{\mathsf{sliceBits}}{2^{128}}+(R+1)\bigl(\tfrac{2}{2^{128}}\bigr)^{2^{64}},\quad
  \mathsf{abortErrorOf}(R)=\mathsf{coinFailure}(R)+\tfrac{(R+2)^2}{2^{257}}.
@@ -447,15 +447,15 @@ One ceremony & \lean{ceremonyHybridSecurity} & $\Fn{mult},\Fn{multVerify}$ & dea
 \rowrule
 Real ceremony & \lean{CeremonySecurityStatement} & none, open & dealt, with a fixed public encoding & $\mathsf{ceremonyCheckError}+(q+s_{\mathrm{ceremony}})^2/2^{256}+k^2/2^{129}+A$ & GS20, Thm.~2 \\
 \rowrule
-Coin & \lean{coin} & $\Fn{rand}$ & \lean{SameCount} & $0$ & GS20, Lem.~3 \\
+Coin & \lean{coinSecurity} & $\Fn{rand}$ & \lean{SameCount} & $0$ & GS20, Lem.~3 \\
 \rowrule
-Multiplication & \lean{mult} & $\Fn{rand}$ & \lean{SameCount} & $0$ & GS20, Lem.~4 \\
+Multiplication & \lean{multSecurity} & $\Fn{rand}$ & \lean{SameCount} & $0$ & GS20, Lem.~4 \\
 \rowrule
-Inner products & \lean{extendMult} & $\Fn{rand}$ & \lean{ShamirInputs} & $0$ & GS20, Lem.~5 \\
+Inner products & \lean{extendMultSecurity} & $\Fn{rand}$ & \lean{ShamirInputs} & $0$ & GS20, Lem.~5 \\
 \rowrule
-Check & \lean{multVerify} & $\Fn{coin},\Fn{extendMult}$, $\Fn{rand}$ & \lean{TupleInputs} & \lean{checkErrorOf} $+$ \lean{checkHashError} & GS20, Lem.~8--11 \\
+Check & \lean{multVerifySecurity} & $\Fn{coin},\Fn{extendMult}$, $\Fn{rand}$ & \lean{TupleInputs} & \lean{checkErrorOf} $+$ \lean{checkHashError} & GS20, Lem.~8--11 \\
 \rowrule
-One batch & \lean{main} & $\Fn{mult},\Fn{multVerify}$ & \lean{MainInputs} & $(q+c)^2/2^{256}$ & GS20, Thm.~2 \\
+One batch & \lean{mainSecurity} & $\Fn{mult},\Fn{multVerify}$ & \lean{MainInputs} & $(q+c)^2/2^{256}$ & GS20, Thm.~2 \\
 \rowrule
 Honest coin & \lean{coinCompleteness} & $\Fn{rand}$ & \lean{SameCount} & $0$ & GS20, Prot.~6 \\
 \rowrule
@@ -463,7 +463,7 @@ Honest check & \lean{multVerifyCompleteness} & $\Fn{coin},\Fn{extendMult}$, $\Fn
 \rowrule
 Honest batch & \lean{mainCompleteness} & $\Fn{mult},\Fn{multVerify}$ & \lean{MainInputs} & $0$ & GS20, Prot.~19 \\
 \rowrule
-PRSS streams & \lean{prssRand} & dealer $\Fn{prssKeys}$ & a fixed public list of calls & $k(q+k)/2^{256}+A$ & CDI05, Sec.~4 \\
+PRSS streams & \lean{prssRandSecurity} & dealer $\Fn{prssKeys}$ & a fixed public list of calls & $k(q+k)/2^{256}+A$ & CDI05, Sec.~4 \\
 \bottomrule
 \end{xltabular}}
 {\small

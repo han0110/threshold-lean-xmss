@@ -278,7 +278,7 @@ def CeremonySecurityStatement : Prop :=
 /-- When the circuits compute `Th`, the dealer of `F_tree` gives the trees of `KeyGen` of the signing
 claims, namely `referenceTree` with the PRF values of the seeds. The two runs have the same
 distribution of the tree and of the next cache of `H`, from every cache. -/
-def DealerTreeStatement (C : Committee) : Prop :=
+def DealerTreeCorrectnessStatement (C : Committee) : Prop :=
   CircuitsCompute circuits prims.Th → 0 < settings.batchSize →
     ∀ (parameter : PublicParameter) (seeds : C.Term → HashOutput) (top : TopTree) (tree : Tree)
       (cache : HashCache C),
@@ -291,7 +291,7 @@ def DealerTreeStatement (C : Committee) : Prop :=
 tree `b` on that top tree, except with probability `(1 - p)^L` for the randomizer search of its top
 signature. `TreeCompletenessStatement` bounds the distance of the honest ceremonies of a tree to
 `F_tree`, so this claim bounds the abort of `F_tree` itself. -/
-def TreeSuccessStatement (C : Committee) : Prop :=
+def DealerTreeSuccessStatement (C : Committee) : Prop :=
   CircuitsCompute circuits prims.Th → 0 < settings.batchSize →
     ∀ (parameter : PublicParameter) (seeds : C.Term → HashOutput) (b : Fin (2 ^ layerHeight)),
       (Pr{let r ← runWorld prims (free (C := C) (liftComp (do
@@ -328,7 +328,7 @@ calls, with selective abort, in the `F_prssKeys`-hybrid model. The claim is for 
 * It is no claim for the PRSS setup, which gives the keys in the protocol. It does not join the
   building-block claims to the real PRSS.
 * It is not Lemma 1 of GS20, which is for an interactive protocol. -/
-def PrssRandStatement [SampleableType E] : Prop :=
+def PrssRandSecurityStatement [SampleableType E] : Prop :=
   ∀ (label : ℕ) (calls : List RandCall) (D : C.Coalition)
     (A : Adversary C E Unit (C.Party → Option (PrssKeys C)) (Finset C.Party)),
     ∃ S : Simulator (C := C) (LocalSpec C) Unit RandLeak (RandReplies C E) A.State,
@@ -347,7 +347,7 @@ def PrssRandStatement [SampleableType E] : Prop :=
 
 /-- `Coin` securely computes `F_coin` with selective abort in the `F_rand`-hybrid model, perfectly
 (GS20, Lemma 3). The simulator makes no oracle call of its own. -/
-def CoinStatement [SampleableType E] : Prop :=
+def CoinSecurityStatement [SampleableType E] : Prop :=
   SecurelyComputes prims (coinProtocol K) coinRounds (Frand E) Fcoin SameCount 0 fun _ => 0
 
 /-- An honest `Coin` gives the output of `F_coin`. -/
@@ -356,21 +356,21 @@ def CoinCompletenessStatement [SampleableType E] : Prop :=
 
 /-- `MulRep` and `Reshare` in each mode securely compute `F_mult` up to an additive attack in the
 `F_rand`-hybrid model, perfectly (GS20, Lemma 4). The simulator makes no oracle call of its own. -/
-def MultStatement : Prop :=
+def MultSecurityStatement : Prop :=
   ∀ mode : ReshareMode,
     SecurelyComputes prims (multProtocol K mode) (multRounds mode) (Frand Bit) (FmultBit K mode)
       (fun D x => SameCount D fun i => (x i).2.2) 0 fun _ => 0
 
 /-- `MulRep` or `MulSh` and `Reshare` securely compute `F_extendMult` up to an additive attack in the
 `F_rand`-hybrid model, perfectly (GS20, Lemma 5). The simulator makes no oracle call of its own. -/
-def ExtendMultStatement [SampleableType E] : Prop :=
+def ExtendMultSecurityStatement [SampleableType E] : Prop :=
   SecurelyComputes prims (extendMultProtocol K) extendMultRounds (Frand E) (FextendMult K) (ShamirInputs K) 0 fun _ => 0
 
 /-- The check with its salted digests securely computes `F_multVerify` with selective abort in the
 `{F_coin, F_extendMult, F_rand}`-hybrid model (GS20, Lemmas 8 to 11, and CGH+18, Protocol 3.3). The
 error is the soundness of the check and the birthday bound of the counted calls and the honest
 points, namely the history and the digest of each term at each operator and the `R + 2` coin keys. -/
-def MultVerifyStatement [SampleableType E] : Prop :=
+def MultVerifySecurityStatement [SampleableType E] : Prop :=
   ∀ counts : List ℕ,
     SecurelyComputes prims (checkProtocol K) (checkRounds counts.sum) (checkFunctionalities K) FmultVerify
       (TupleInputs K counts) (checkOverhead C counts.sum)
@@ -391,7 +391,7 @@ model. This is GS20, Theorem 2, for public outputs and inputs that the operators
   hashes. The adversary chooses the honest copy of each term that it holds at the `Rerand` leak, so
   a collision of two copies passes the hash check of `OpenRep`. The `q` counted calls and the
   `2 n C(n, t - 1)` copy hashes of the honest operators can collide. -/
-def MainStatement : Prop :=
+def MainSecurityStatement : Prop :=
   ∀ (mode : ReshareMode) (jobs : List Circuit),
     SecurelyComputes prims (mainProtocol K mode jobs) (mainRounds jobs) (mainFunctionalities K mode) (Fmain jobs)
       (MainInputs jobs) (termHashes C) (copyHashError C)
@@ -403,7 +403,7 @@ def MainCompletenessStatement : Prop :=
       (Fmain jobs) (fun _ => Finset.univ) (MainInputs jobs) 0
 
 /-- One ceremony securely computes `F_ceremony` with selective abort in the
-`{F_mult, F_multVerify}`-hybrid model. This is the claim of `main` for all batches of one
+`{F_mult, F_multVerify}`-hybrid model. This is the claim of `mainSecurity` for all batches of one
 ceremony, an adaptation of GS20, Theorem 2.
 
 * It holds for the three job lists, a positive batch size and keys of one dealing.

@@ -10,8 +10,8 @@ import VCVio.OracleComp.SimSemantics.StateT.StateProjection
 `TreeCompletenessStatement` follows from the honest run of the ceremonies of a tree, batch by batch.
 `setup_chunks_step` joins the two ceremonies of a bottom tree. The second PRSS setup keeps the cache
 invariant `CacheOK`, and the counters continue. The lemmas after `treeCompleteness` concern the PRSS
-setup and the hidden streams of a ceremony. The dealer claims `DealerTreeStatement` and
-`TreeSuccessStatement` follow from `dealerTreeProof` and `treeSuccessProof` in `Dealer`.
+setup and the hidden streams of a ceremony. The dealer claims `DealerTreeCorrectnessStatement` and
+`DealerTreeSuccessStatement` follow from `dealerTreeCorrectness` and `dealerTreeSuccess` in `Dealer`.
 -/
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss

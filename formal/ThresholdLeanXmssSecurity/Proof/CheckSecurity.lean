@@ -3,7 +3,7 @@ import ThresholdLeanXmssSecurity.Proof.Check
 /-!
 # The security of the check
 
-`MultVerifyStatement` (GS20, Lemmas 8 to 11, and CGH+18) through `MultVerifyDistance` of
+`MultVerifySecurityStatement` (GS20, Lemmas 8 to 11, and CGH+18) through `MultVerifyDistance` of
 `Proof/Check.lean`.
 
 The component lemmas:
@@ -395,9 +395,9 @@ theorem multVerifyDistance (prims : Primitives) (K : Constants C E) (core : Chec
     constructor <;> linarith
   · exact core counts D A x z Z q hx hq hz (Nat.lt_of_not_le hlarge)
 
-/-- `MultVerifyStatement` from the open stage `CheckCoreDistance`. -/
+/-- `MultVerifySecurityStatement` from the open stage `CheckCoreDistance`. -/
 theorem multVerifyStatementProof (prims : Primitives) (K : Constants C E) (core : CheckCoreDistance prims K) :
-    MultVerifyStatement prims K :=
+    MultVerifySecurityStatement prims K :=
   multVerifyStatement_of_distance prims K (multVerifyDistance prims K core)
 
 end Assembly

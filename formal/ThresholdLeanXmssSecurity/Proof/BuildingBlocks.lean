@@ -5,8 +5,8 @@ import Mathlib.Algebra.CharP.Algebra
 /-!
 # The building blocks
 
-`CoinStatement` and `CoinCompletenessStatement` follow GS20, Lemma 3. `MultStatement` follows GS20,
-Lemma 4, in both reshare modes. `ExtendMultStatement` follows GS20, Lemma 5.
+`CoinSecurityStatement` and `CoinCompletenessStatement` follow GS20, Lemma 3. `MultSecurityStatement` follows GS20,
+Lemma 4, in both reshare modes. `ExtendMultSecurityStatement` follows GS20, Lemma 5.
 -/
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
@@ -886,7 +886,7 @@ theorem WEq.adjust (prims : Primitives) (D : C.Coalition) (known : Shares C E) {
   simp only [world_run_free_bind]
   exact dist_adjust D known fun fr => (simulateQ (world prims) (L fr)).run.run s
 
-theorem coinSecurity (prims : Primitives) (K : Constants C E) : CoinStatement prims K := by
+theorem coinSecurity (prims : Primitives) (K : Constants C E) : CoinSecurityStatement prims K := by
   intro D A
   refine ⟨coinSim K D A, fun x z Z q hx hq => ⟨?_, ?_⟩⟩
   · obtain ⟨start, step, final, hsum, hs, hr, ha, hz⟩ := hq
@@ -1146,7 +1146,7 @@ end PeerSim
 section MultPeerClaim
 variable [Field E] [Algebra Bit E]
 
-/-- The coupling of `MultStatement` in peer mode. The real run and the run of `peerSim` agree. -/
+/-- The coupling of `MultSecurityStatement` in peer mode. The real run and the run of `peerSim` agree. -/
 def MultPeerCoupling (prims : Primitives) (K : Constants C E) : Prop :=
   ∀ (D : C.Coalition)
     (A : Adversary C E (Shares C Bit × Shares C Bit × ℕ) Unit (Shares C Bit × (C.Party → C.Party → ℕ → Bit)))
@@ -1188,7 +1188,7 @@ variable [SampleableType E]
 /-- The count of the inner products, from the leak of `F_extendMult` to the corrupt operators. -/
 def leakCount (l : C.Party → List (Product C E)) : ℕ := (C.parties.map fun c => (l c).length).foldl max 0
 
-/-- The coupling of `ExtendMultStatement`. The real run and the run of `peerSim` agree. -/
+/-- The coupling of `ExtendMultSecurityStatement`. The real run and the run of `peerSim` agree. -/
 def ExtendMultCoupling (prims : Primitives) (K : Constants C E) : Prop :=
   ∀ (D : C.Coalition)
     (A : Adversary C E (List (Product C E)) Unit (Shares C E × (C.Party → C.Party → ℕ → E)))
@@ -1198,7 +1198,7 @@ def ExtendMultCoupling (prims : Primitives) (K : Constants C E) : Prop :=
       (distinguish (idealExecution worldRoles.adversary D (FextendMult K) (peerSim K D A (elementCodec K) leakCount) x z) Z)
 
 theorem extendMult_of_coupling (prims : Primitives) (K : Constants C E) (h : ExtendMultCoupling prims K) :
-    ExtendMultStatement prims K := by
+    ExtendMultSecurityStatement prims K := by
   intro D A
   refine ⟨peerSim K D A (elementCodec K) leakCount, fun x z Z q hx hq => ⟨?_, ?_⟩⟩
   · obtain ⟨start, step, final, hsum, hs, hr, ha, hz⟩ := hq
@@ -2309,7 +2309,7 @@ theorem multPeerSecurity (prims : Primitives) (K : Constants C E) :
   multPeer_of_coupling prims K (multPeerCoupling prims K)
 
 theorem extendMultSecurity (prims : Primitives) (K : Constants C E) [SampleableType E] :
-    ExtendMultStatement prims K :=
+    ExtendMultSecurityStatement prims K :=
   extendMult_of_coupling prims K (extendMultCoupling prims K)
 
 end PeerClaims
@@ -2605,7 +2605,7 @@ def colSim {I Lk : Type} (K : Constants C E) (D : C.Coalition)
   answer st l := colSimAnswer K D A (count l) st
   output st := pure st
 
-/-- The coupling of `MultStatement` in collector mode. The real run and the run of `colSim` agree. -/
+/-- The coupling of `MultSecurityStatement` in collector mode. The real run and the run of `colSim` agree. -/
 def MultCollectorCoupling (prims : Primitives) (K : Constants C E) : Prop :=
   ∀ (D : C.Coalition)
     (A : Adversary C E (Shares C Bit × Shares C Bit × ℕ) Unit (Shares C Bit × (C.Party → C.Party → ℕ → Bit)))
@@ -2663,7 +2663,7 @@ section MultClaim
 variable [Field E] [Algebra Bit E]
 
 theorem multStatement_of_coupling (prims : Primitives) (K : Constants C E) (h : MultCollectorCoupling prims K) :
-    MultStatement prims K := fun mode =>
+    MultSecurityStatement prims K := fun mode =>
   match mode with
   | .peer => multPeerSecurity prims K
   | .collector => multCollector_of_coupling prims K h
@@ -3519,7 +3519,7 @@ section MultProof
 variable [Field E] [Algebra Bit E]
 
 /-- `MulRep` and `Reshare` securely compute `F_mult` in each mode (GS20, Lemma 4). -/
-theorem multStatement (prims : Primitives) (K : Constants C E) : MultStatement prims K :=
+theorem multSecurity (prims : Primitives) (K : Constants C E) : MultSecurityStatement prims K :=
   multStatement_of_coupling prims K (multCollectorCoupling prims K)
 
 end MultProof
@@ -3537,6 +3537,6 @@ end ThresholdLeanXmssSecurity
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.extendMultSecurity
 
-/-- info: 'ThresholdLeanXmssSecurity.multStatement' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.multSecurity' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.multStatement
+#print axioms ThresholdLeanXmssSecurity.multSecurity

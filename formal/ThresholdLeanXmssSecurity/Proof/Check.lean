@@ -6,7 +6,7 @@ import Mathlib.Algebra.CharP.Algebra
 /-!
 # The check
 
-`MultVerifyCompletenessStatement` follows from the honest run of the check. `MultVerifyStatement`
+`MultVerifyCompletenessStatement` follows from the honest run of the check. `MultVerifySecurityStatement`
 (GS20, Lemmas 8 to 11, and CGH+18) reduces to its distance half `MultVerifyDistance`.
 `canonicalCheckSimulator_queryBound` gives the query half. The supporting lemmas concern
 the executions and estimates of `MultVerifyDistance`.
@@ -4272,9 +4272,9 @@ def MultVerifyDistance (prims : Primitives) (K : Constants C E) : Prop :=
         (canonicalCheckSimulator K (checkRounds counts.sum) D A) x z) Z)| ≤
       checkErrorOf (E := E) (coins counts.sum) (halvings counts.sum) q + checkHashError C counts.sum q
 
-/-- Assembly without changing either bound or any quantifier of `MultVerifyStatement`. -/
+/-- Assembly without changing either bound or any quantifier of `MultVerifySecurityStatement`. -/
 theorem multVerifyStatement_of_distance (prims : Primitives) (K : Constants C E)
-    (h : MultVerifyDistance prims K) : MultVerifyStatement prims K := by
+    (h : MultVerifyDistance prims K) : MultVerifySecurityStatement prims K := by
   intro counts D A
   refine ⟨canonicalCheckSimulator K (2 * halvings counts.sum + 8) D A, ?_⟩
   intro x z Z q hx hq

@@ -14,7 +14,7 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
   plain wires (`stages_layer_correct`). The uniform terms of each layer are unused draws, the leak of
   `F_multVerify` is the simulator leak (`stages_verifyLeak`), and after acceptance the copies of
   `Rerand` are `mainRebuild` of the outputs (`stages_rebuild`).
-* `mainStatementFull`: `MainStatement`.
+* `mainSecurity`: `MainSecurityStatement`.
 -/
 
 set_option pp.deepTerms false
@@ -1981,9 +1981,9 @@ theorem mainRealSim (prims : Primitives) (K : Constants C E) : MainRealSim prims
   rw [← List.range_eq_range'] at h
   exact h
 
-/-- `MainStatement` (GS20, Theorem 2). -/
-theorem mainStatementFull {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
-    (prims : Primitives) (K : Constants C E) : MainStatement prims K :=
+/-- `MainSecurityStatement` (GS20, Theorem 2). -/
+theorem mainSecurity {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
+    (prims : Primitives) (K : Constants C E) : MainSecurityStatement prims K :=
   mainStatementProof prims K (mainEngineReal prims K) (mainRealSim prims K)
 
 /-- info: 'ThresholdLeanXmssSecurity.mainEngineReal' depends on axioms: [propext, Classical.choice, Quot.sound] -/
@@ -1994,8 +1994,8 @@ theorem mainStatementFull {E : Type} [Field E] [Fintype E] [DecidableEq E] [Alge
 #guard_msgs (whitespace := lax) in
 #print axioms mainRealSim
 
-/-- info: 'ThresholdLeanXmssSecurity.mainStatementFull' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.mainSecurity' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms mainStatementFull
+#print axioms mainSecurity
 
 end ThresholdLeanXmssSecurity

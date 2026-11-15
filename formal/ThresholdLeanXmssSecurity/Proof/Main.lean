@@ -5,7 +5,7 @@ import VCVio.OracleComp.QueryTracking.Birthday
 /-!
 # A batch
 
-`MainCompletenessStatement` follows from the honest run of a batch. `MainStatement` (GS20, Theorem 2)
+`MainCompletenessStatement` follows from the honest run of a batch. `MainSecurityStatement` (GS20, Theorem 2)
 reduces to its distance half `MainSecurityDistance`. `mainSimulator_queryBound` gives
 the query half.
 -/
@@ -2205,7 +2205,7 @@ theorem mainIdealLocal_eq (K : Constants C E) (D : C.Coalition) (A : MainAdversa
   refine bind_congr fun st => bind_congr fun a => ?_
   rfl
 
-/-- The concrete simulator meets the exact overhead in `MainStatement`. -/
+/-- The concrete simulator meets the exact overhead in `MainSecurityStatement`. -/
 theorem mainSimulator_queryBound (prims : Primitives) (K : Constants C E)
     (D : C.Coalition) (A : MainAdversary C E) (mode : ReshareMode) (jobs : List Circuit)
     (x : C.Party → MainInput C) (z : Aux) (Z : Distinguisher C A.State (List (List Bit)))
@@ -2477,7 +2477,7 @@ theorem main_local_birthday (prims : Primitives) {α : Type}
           (by simpa only [if_pos hc] using h.2 (prims.aes.eval (truncateHash u) x.2.2)) s' hs' hb')).trans ?_
       exact main_birthday_arith n k hn _
 
-/-- The exact copy-collision error used in `MainStatement`. -/
+/-- The exact copy-collision error used in `MainSecurityStatement`. -/
 theorem main_copy_birthday (prims : Primitives) {α : Type}
     (oa : OracleComp (LocalSpec C) α) (n : ℕ) (h : IsQueryBoundP oa Counted n) :
     (Pr{let z ← (simulateQ (localAnswer prims) oa).run ∅}[MainCopyCollision z.2]).toReal ≤
@@ -2504,7 +2504,7 @@ namespace ThresholdLeanXmssSecurity
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
 
-/-- The distance half of `MainStatement` for `mainSimulator`. -/
+/-- The distance half of `MainSecurityStatement` for `mainSimulator`. -/
 def MainSecurityDistance (prims : Primitives) (K : Constants C E) : Prop :=
   ∀ (mode : ReshareMode) (jobs : List Circuit) (D : C.Coalition) (A : MainAdversary C E)
     (x : C.Party → MainInput C) (z : Aux) (Z : Distinguisher C A.State (List (List Bit))) (q : ℕ),
@@ -2514,9 +2514,9 @@ def MainSecurityDistance (prims : Primitives) (K : Constants C E) : Prop :=
       accepts prims (distinguish (idealExecution worldRoles.adversary D (Fmain jobs)
         (mainSimulator K D A mode jobs) x z) Z)| ≤ copyHashError C q
 
-/-- `MainStatement` from its distance half. The query half is `mainSimulator_queryBound`. -/
+/-- `MainSecurityStatement` from its distance half. The query half is `mainSimulator_queryBound`. -/
 theorem mainStatement_of_simulator_distance (prims : Primitives) (K : Constants C E)
-    (h : MainSecurityDistance prims K) : MainStatement prims K := by
+    (h : MainSecurityDistance prims K) : MainSecurityStatement prims K := by
   intro mode jobs D A
   refine ⟨mainSimulator K D A mode jobs, ?_⟩
   intro x z Z q hx hq

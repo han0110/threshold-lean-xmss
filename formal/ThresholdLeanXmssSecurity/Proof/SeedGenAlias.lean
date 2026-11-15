@@ -948,7 +948,7 @@ theorem seedGenProgramAliasBound (prims : Primitives) :
   simpa only [ENNReal.toReal_div, ENNReal.toReal_natCast, ENNReal.toReal_pow,
     ENNReal.toReal_ofNat] using hr
 
-theorem seedGenSecurityClosed (prims : Primitives) :
+theorem seedGenSecurity (prims : Primitives) :
     SeedGenSecurityStatement (C := C) (E := E) prims :=
   seedGenSecurityDone_of_programAlias prims (seedGenProgramAliasBound prims)
 
@@ -958,6 +958,6 @@ end ThresholdLeanXmssSecurity
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.seedGenProgramAliasBound
 
-/-- info: 'ThresholdLeanXmssSecurity.seedGenSecurityClosed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.seedGenSecurity' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.seedGenSecurityClosed
+#print axioms ThresholdLeanXmssSecurity.seedGenSecurity

@@ -6,14 +6,14 @@ Lean 4 statements and proofs of security claims of threshold leanXMSS.
 
 The root theorem proves the bundle `Theorems`. Its 20 fields serve two main claims.
 
-- The DKG acts as a trusted dealer of the keys and the trees. This claim is **not complete**. The seed generation is proved. The security of a ceremony and of a tree is proved in a hybrid model. On the real network, the ceremony claim is stated and not proved, and no claim covers a tree.
+- The DKG acts as a trusted dealer of the keys and the trees. This claim is **not complete**. The seed generation is proved. The security of a ceremony and of a tree is proved in a hybrid model. On the real network, the ceremony claim is stated and not proved, and no claim covers the security of a tree.
 - The signing with that dealer is correct and strongly unforgeable. This claim is proved.
 
 ## The claims
 
 The sections follow the note of leanXMSS, [doc/leanXMSS.pdf](../doc/leanXMSS.pdf). A ceremony is one MPC run, and a tree is the run of all ceremonies of one tree. A claim name gives the unit and then the property.
 
-The claims are stated in the paper model of the protocol, in the random-oracle model. The setup claims take `Th` as one fixed function. Only `dealerTree` and `treeSuccess` assume that the circuits compute `Th`. The axiom guard of the root theorem lists only `propext`, `Classical.choice` and `Quot.sound`, and it covers the claims of the bundle only.
+The claims are stated in the paper model of the protocol, in the random-oracle model. The setup claims take `Th` as one fixed function. Only `dealerTreeCorrectness` and `dealerTreeSuccess` assume that the circuits compute `Th`. The axiom guard of the root theorem lists only `propext`, `Classical.choice` and `Quot.sound`, and it covers the claims of the bundle only.
 
 ### The setup by DKG
 
@@ -24,7 +24,7 @@ The target is the trusted dealer `KeyGen` of PRAWNS (the note, Section 2.1). The
 | Seed generation | `seedGenCompleteness`, proved | `seedGenSecurity`, proved, on the real network |
 | A tree | `treeCompleteness`, proved | `treeHybridSecurity`, proved, with ideal multiplication and check. No claim on the real network. |
 
-- `dealerTree` and `treeSuccess` link the dealer of the tree functionality to the key generation of the signing game. Both are proved.
+- `dealerTreeCorrectness` and `dealerTreeSuccess` link the dealer of the tree functionality to the key generation of the signing game. Both are proved.
 - `F_tree` leaks the openings of all batches of its dealer, so the chain values of the signature have no secrecy after an abort.
 - The keygen ceremony of the note is the seed generation, then the ceremony of the top tree. A bottom tree has two ceremonies, one for the tree and one for the signature of its root.
 - No claim is for Section 2.2 of the note, the setup by a trusted dealer with $n = 3f + 1$. Each claim is for $n = 2t - 1$.
@@ -39,12 +39,12 @@ The target is the trusted dealer `KeyGen` of PRAWNS (the note, Section 2.1). The
 The security of a ceremony rests on these ten proved fields. The note has no section for them, and Appendix C of [statement.tex](./statement.tex) states them.
 
 - `ceremonyHybridSecurity` covers one ceremony with ideal multiplication and check, not on the real network.
-- `coin`, `mult`, `extendMult`, `multVerify` and `main` are the building blocks of Goyal and Song. `coinCompleteness`, `multVerifyCompleteness` and `mainCompleteness` are their honest runs.
-- `prssRand` covers the random sharings from PRSS keys of a dealer. No proved claim covers the PRSS setup.
+- `coinSecurity`, `multSecurity`, `extendMultSecurity`, `multVerifySecurity` and `mainSecurity` are the building blocks of Goyal and Song. `coinCompleteness`, `multVerifyCompleteness` and `mainCompleteness` are their honest runs.
+- `prssRandSecurity` covers the random sharings from PRSS keys of a dealer. No proved claim covers the PRSS setup.
 
 ## What is not proved
 
-- No claim covers a tree on the real network. `CeremonySecurityStatement`, for one ceremony on the real network, is stated and not proved, and it is no part of the bundle.
+- No claim covers the security of a tree on the real network. `CeremonySecurityStatement`, for one ceremony on the real network, is stated and not proved, and it is no part of the bundle.
 - No proved claim covers the PRSS setup or joins the building blocks to the PRSS.
 - No theorem composes the setup and the signing.
 - [statement.tex](./statement.tex), Section 5, and [doc/composition.md](./doc/composition.md) give the open points.
@@ -77,9 +77,9 @@ flowchart TB
     TCOMP["treeCompleteness<br/>honest run of a tree on the real network"]:::proved
     THYB["treeHybridSecurity<br/>one tree with ideal multiplication and check"]:::proved
     TSEC["Security of a tree<br/>on the real network"]:::missing
-    DEALER["dealerTree, treeSuccess<br/>the dealer of F_tree gives the trees of the signing game,<br/>when the circuits compute Th"]:::proved
+    DEALER["dealerTreeCorrectness, dealerTreeSuccess<br/>the dealer of F_tree gives the trees of the signing game,<br/>when the circuits compute Th"]:::proved
     CSEC["CeremonySecurityStatement<br/>one ceremony on the real network"]:::stated
-    MPC["MPC layer, 10 fields, each in its hybrid model<br/>ceremonyHybridSecurity, main, multVerify, mult, extendMult, coin, prssRand,<br/>mainCompleteness, multVerifyCompleteness, coinCompleteness"]:::proved
+    MPC["MPC layer, 10 fields, each in its hybrid model<br/>ceremonyHybridSecurity, mainSecurity, multVerifySecurity, multSecurity,<br/>extendMultSecurity, coinSecurity, prssRandSecurity,<br/>mainCompleteness, multVerifyCompleteness, coinCompleteness"]:::proved
     PKEYS["Dealer of the PRSS keys,<br/>given by the PRSS setup"]:::missing
   end
 
@@ -99,7 +99,7 @@ flowchart TB
   TSEC -.-> CSEC
   CSEC -.-> MPC
   CSEC -.-> PKEYS
-  MPC -->|prssRand| PKEYS
+  MPC -->|prssRandSecurity| PKEYS
 ```
 
 | Open box | Reason |

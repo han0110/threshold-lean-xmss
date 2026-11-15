@@ -1,7 +1,7 @@
 import ThresholdLeanXmssSecurity.Proof.Main
 
 /-!
-# A batch: the distance half of `MainStatement`
+# A batch: the distance half of `MainSecurityStatement`
 
 `MainSecurityDistance` splits at a hybrid game. The hybrid runs `mainSimulator`, but each accepting
 honest operator outputs the copies that it opened, as in the real run.
@@ -1121,10 +1121,10 @@ theorem mainSecurityDistance {E : Type} [Field E] [Fintype E] [DecidableEq E] [A
   mainSecurityDistance_of prims K
     (mainRealHybrid_of_core prims K (mainRealHybridCore_of prims K hengine hsim)) (mainOpenSound_holds prims K)
 
-/-- `MainStatement` (GS20, Theorem 2), open only at `MainEngineReal` and `MainRealSim`. -/
+/-- `MainSecurityStatement` (GS20, Theorem 2), open only at `MainEngineReal` and `MainRealSim`. -/
 theorem mainStatementProof {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
     (prims : Primitives) (K : Constants C E) (hengine : MainEngineReal prims K) (hsim : MainRealSim prims K) :
-    MainStatement prims K :=
+    MainSecurityStatement prims K :=
   mainStatement_of_simulator_distance prims K (mainSecurityDistance prims K hengine hsim)
 
 /-- info: 'ThresholdLeanXmssSecurity.mainOpenSound_holds' depends on axioms: [propext, Classical.choice, Quot.sound] -/

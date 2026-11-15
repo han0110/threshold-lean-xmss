@@ -4,7 +4,7 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 /-!
 # The end of the check proof
 
-The target is `CheckCoreDistance` of `Proof/CheckSecurity.lean`, and from it `MultVerifyStatement`.
+The target is `CheckCoreDistance` of `Proof/CheckSecurity.lean`, and from it `MultVerifySecurityStatement`.
 
 * `checkCoupleStage` proves `CheckCoupleStage` (step 4). The slice loop (`sliceRest_all`) keeps
   `SliceRel` with Gruen's step on replicated products (`sliceRel_step`, which needs the slice coin
@@ -1697,7 +1697,7 @@ theorem checkCoreDistanceFull (prims : Primitives) (K : Constants C E)
   checkCoreDistanceProof prims K hsound (checkCoupleStage prims K) hsplit
 
 theorem multVerifyStatementFull (prims : Primitives) (K : Constants C E)
-    (hsound : CheckSoundStage prims K) (hsplit : CheckSplitStage prims K) : MultVerifyStatement prims K :=
+    (hsound : CheckSoundStage prims K) (hsplit : CheckSplitStage prims K) : MultVerifySecurityStatement prims K :=
   multVerifyStatementProof prims K (checkCoreDistanceFull prims K hsound hsplit)
 
 end Final

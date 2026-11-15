@@ -12,7 +12,7 @@ The two main claims are these.
 
 * The setup by DKG acts as a trusted dealer with selective abort. The fields state this claim for
   the seed generation, and for a tree in the `{F_mult, F_multVerify}`-hybrid model
-  (`treeHybridSecurity`). `dealerTree` states that the dealer of a tree gives the trees of the
+  (`treeHybridSecurity`). `dealerTreeCorrectness` states that the dealer of a tree gives the trees of the
   signing game.
 * Signing with a trusted dealer is strongly unforgeable with adaptive corruption
   (`stronglyUnforgeable`).
@@ -28,24 +28,24 @@ property.
   * No adversary with a bounded budget distinguishes the seed generation from a trusted dealer with
     selective abort, up to the error that the claim names (`seedGenSecurity`).
     `seedGenCompleteness` is its honest run.
-  * `treeHybridSecurity` states the security of a tree in the `{F_mult, F_multVerify}`-hybrid
-    model. No field states it on the real network. `treeCompleteness` is the honest run of a tree.
-    `dealerTree` and `treeSuccess` link the dealer of a tree to the key generation of the signing
-    game.
+  * `treeHybridSecurity` states the security of a tree in the `{F_mult, F_multVerify}`-hybrid model.
+    No field states it on the real network. `treeCompleteness` is the honest run of a tree.
+    `dealerTreeCorrectness` and `dealerTreeSuccess` link the dealer of a tree to the key generation
+    of the signing game.
   * The keygen ceremony of the note is the seed generation and then the ceremony of the top tree.
     The ceremony of a bottom tree of the note is two ceremonies of the model, one for the tree and
     one for the signature of its root by its top key. The fields `treeHybridSecurity`,
-    `treeCompleteness` and `dealerTree` cover the top tree and each bottom tree with its signature.
-    `treeSuccess` covers a bottom tree on its top tree.
+    `treeCompleteness` and `dealerTreeCorrectness` cover the top tree and each bottom tree with its
+    signature. `dealerTreeSuccess` covers a bottom tree on its top tree.
 * The signing is the second group. Its fields are `tprfCorrectness` and `tprfSecurity` for the
   threshold PRF `F` (the note, Section 2, and PRAWNS, Definitions 2.1 and 2.2), and
   `signingCorrectness` and `stronglyUnforgeable` (the note, Section 2.3, and PRAWNS,
   Definition 3.2).
 * The MPC layer is the third group. The security of a ceremony rests on it. Its fields are
-  `ceremonyHybridSecurity` for one ceremony, the building blocks `coin`, `mult`, `extendMult`,
-  `multVerify` and `main` of GS20 with the honest runs `coinCompleteness`,
-  `multVerifyCompleteness` and `mainCompleteness`, and `prssRand` for the PRSS. The note has no
-  section for this group. It names the MPC in Section 2.1.
+  `ceremonyHybridSecurity` for one ceremony, the building blocks `coinSecurity`, `multSecurity`,
+  `extendMultSecurity`, `multVerifySecurity` and `mainSecurity` of GS20 with the honest runs
+  `coinCompleteness`, `multVerifyCompleteness` and `mainCompleteness`, and `prssRandSecurity` for
+  the PRSS. The note has no section for this group. It names the MPC in Section 2.1.
 
 No group is for Section 2.2 of the note, the setup by a trusted dealer with `n = 3f + 1`. Each
 claim is for `n = 2t - 1`.
@@ -66,26 +66,27 @@ so each completeness field is the honest run of its protocol.
   malicious adversary with its own static coalition. The seed generation claims and
   `CeremonySecurityStatement` run the real network with the real PRSS, and `ceremonyHybridSecurity`
   and `treeHybridSecurity` are in the hybrid model.
-* Each building-block claim is in a hybrid model. `prssRand` is in the `F_prssKeys`-hybrid model.
-  `coin`, `mult` and `extendMult` are in the `F_rand`-hybrid model. `multVerify` is in the
-  `{F_coin, F_extendMult, F_rand}`-hybrid model, and `main`, `ceremonyHybridSecurity` and
-  `treeHybridSecurity` are in the `{F_mult, F_multVerify}`-hybrid model. `prssRand` states that the
-  PRSS streams from dealt keys compute a public list of calls of `F_rand` (CDI05, Section 4).
+* Each building-block claim is in a hybrid model. `prssRandSecurity` is in the `F_prssKeys`-hybrid
+  model. `coinSecurity`, `multSecurity` and `extendMultSecurity` are in the `F_rand`-hybrid model.
+  `multVerifySecurity` is in the `{F_coin, F_extendMult, F_rand}`-hybrid model, and `mainSecurity`,
+  `ceremonyHybridSecurity` and `treeHybridSecurity` are in the `{F_mult, F_multVerify}`-hybrid
+  model. `prssRandSecurity` states that the PRSS streams from dealt keys compute a public list of
+  calls of `F_rand` (CDI05, Section 4).
 * The signing adversary corrupts adaptively, and a corruption gives only the keys of an operator.
   After a ceremony, an operator erases its ceremony state.
 * Honest operators sign at most one message at each key over all quorums
   (`breaksOneMessagePerKey`). The signing game enforces it. The PoC has the exchange of
   acknowledgements of `doc/sign.md` 4.1 for it, and a deployment must enforce it too.
 * `H` is one lazy random oracle on `Query`, with one domain for each constructor. `PRG` is AES-128
-  under a hash of the key. `prssRand` and `CeremonySecurityStatement` pay its multi-key PRF advantage.
+  under a hash of the key. `prssRandSecurity` and `CeremonySecurityStatement` pay its multi-key PRF
+  advantage.
 * In the seed generation, ceremony and tree claims, `Th` is one fixed function on the inputs that
-  the MPC evaluates, namely the chain steps and the commitment `c_e`. In the signing claim, all of `H` is a
-  lazy random oracle, `Th` included. The gap between the two models is the random-oracle heuristic
-  for Keccak.
+  the MPC evaluates, namely the chain steps and the commitment `c_e`. In the signing claim, all of
+  `H` is a lazy random oracle, `Th` included. The gap between the two models is the random-oracle
+  heuristic for Keccak.
 * `F_ceremony` and `F_tree` run the circuits of the jobs, so the ceremony and tree claims are stated
-  for every circuit family.
-  `dealerTree` and `treeSuccess` assume that the circuits compute `Th` (`CircuitsCompute`), and they
-  link `F_tree` to the trees of the signing claims.
+  for every circuit family. `dealerTreeCorrectness` and `dealerTreeSuccess` assume that the circuits
+  compute `Th` (`CircuitsCompute`), and they link `F_tree` to the trees of the signing claims.
 * A budget `q` counts calls of `H` and `PRG` on every path of a program, for every answer of the
   oracles. The simulation claims and `tprfSecurity` count only the calls of the adversary and of the
   distinguisher. `stronglyUnforgeable` counts only the own calls of the forger and its round-2
@@ -100,20 +101,22 @@ the advantage of a reduction is only as strong as that reduction.
 
 ## What no field states
 
-* The field `ceremonyHybridSecurity` states that a ceremony securely computes `F_ceremony` in the hybrid
-  model with ideal multiplication and check. No field states it for the real network and the real
-  PRSS. `Dkg.lean` has this claim as `CeremonySecurityStatement`, with the simulator
+* The field `ceremonyHybridSecurity` states that a ceremony securely computes `F_ceremony` in the
+  hybrid model with ideal multiplication and check. No field states it for the real network and the
+  real PRSS. `Dkg.lean` has this claim as `CeremonySecurityStatement`, with the simulator
   `ceremonySimulator`. It is stated and not proved. It is the claim for one ceremony. The fields on
   a tree are its security in the hybrid model (`treeHybridSecurity`), the honest run of its
-  ceremonies (`treeCompleteness`) and the two facts on its dealer (`dealerTree` and `treeSuccess`).
-  No field states the security of a tree on the real network, and `Dkg.lean` has no such claim.
+  ceremonies (`treeCompleteness`) and the two facts on its dealer (`dealerTreeCorrectness` and
+  `dealerTreeSuccess`). No field states the security of a tree on the real network, and `Dkg.lean`
+  has no such claim.
 * No field states that the PRSS setup of a ceremony gives the keys of the dealer, and no field
   joins the building-block claims to the PRSS.
 * Only `treeHybridSecurity` joins the two ceremonies of a bottom tree against a corrupt coalition,
   and only in the hybrid model. On the real network, `CeremonySecurityStatement` has no simulator
   and no bound for the ceremony of the tree, the randomizer search, the signature ceremony and the
   check of the signature together. It does not state that the honest operators of a signature
-  ceremony hold the same encoding, or that each of them starts. `statement.tex` holds the contract rule and a sketch of this join, with its open points.
+  ceremony hold the same encoding, or that each of them starts. `statement.tex` holds the contract
+  rule and a sketch of this join, with its open points.
 * So no field states that the keygen ceremony of the note is secure as a whole. The fields state
   it for the seed generation. `treeHybridSecurity` states it for the top tree with the local build
   of the tree, in the hybrid model only. On the real network, `CeremonySecurityStatement` covers the
@@ -167,10 +170,10 @@ structure Theorems (prims : Primitives) (K : Constants C E) (circuits : Circuits
   treeCompleteness : TreeCompletenessStatement prims K circuits settings
   /-- When the circuits compute `Th`, the dealer of `F_tree` gives the trees of `KeyGen` of the
   signing game (PRAWNS, Section 3.1, and `doc/dkg.md` 3.1). -/
-  dealerTree : DealerTreeStatement prims circuits settings C
+  dealerTreeCorrectness : DealerTreeCorrectnessStatement prims circuits settings C
   /-- When the circuits compute `Th`, `F_tree` gives a bottom tree `b` on the top tree of the same
   seeds, except with probability `(1 - p)^L` (the note, Section 2.1, honest run). -/
-  treeSuccess : TreeSuccessStatement prims circuits settings C
+  dealerTreeSuccess : DealerTreeSuccessStatement prims circuits settings C
 
   -- The signing, with the threshold PRF `F` (the note, Sections 2 and 2.3, and PRAWNS).
   /-- `Combine'` of the parts of a quorum gives `F(msk, x)` (PRAWNS, Definition 2.1). -/
@@ -194,19 +197,19 @@ structure Theorems (prims : Primitives) (K : Constants C E) (circuits : Circuits
   ceremonyHybridSecurity : CeremonyHybridSecurityStatement prims K circuits settings
   /-- `Coin` securely computes `F_coin` with selective abort in the `F_rand`-hybrid model, with the
   error `0` (GS20, Lemma 3). -/
-  coin : CoinStatement prims K
+  coinSecurity : CoinSecurityStatement prims K
   /-- `MulRep` and `Reshare` in each mode securely compute `F_mult` up to an additive attack, with
   selective abort and the error `0` (GS20, Lemma 4). -/
-  mult : MultStatement prims K
+  multSecurity : MultSecurityStatement prims K
   /-- `MulRep` or `MulSh` and `Reshare` securely compute `F_extendMult` up to an additive attack,
   with selective abort and the error `0` (GS20, Lemma 5). -/
-  extendMult : ExtendMultStatement prims K
+  extendMultSecurity : ExtendMultSecurityStatement prims K
   /-- The check with its digests securely computes `F_multVerify` with selective abort. The error is
   `checkErrorOf` and a birthday term of the hash (GS20, Lemmas 8 to 11, and CGH+18). -/
-  multVerify : MultVerifyStatement prims K
+  multVerifySecurity : MultVerifySecurityStatement prims K
   /-- A batch securely computes `F_main` in the `{F_mult, F_multVerify}`-hybrid model, up to a
   birthday term of the copy hashes (GS20, Theorem 2, for public outputs and pre-shared inputs). -/
-  main : MainStatement prims K
+  mainSecurity : MainSecurityStatement prims K
   /-- An honest `Coin` gives the output of `F_coin` (GS20, Protocol 6, honest run). -/
   coinCompleteness : CoinCompletenessStatement prims K
   /-- An honest check accepts correct tuples, except when it aborts on a coin (`abortErrorOf`) (GS20,
@@ -216,7 +219,7 @@ structure Theorems (prims : Primitives) (K : Constants C E) (circuits : Circuits
   mainCompleteness : MainCompletenessStatement prims K
   /-- The PRSS streams from dealt keys securely compute a public list of calls of `F_rand`, with
   selective abort, up to a hash term and a PRF advantage (CDI05, Section 4). -/
-  prssRand : PrssRandStatement prims K
+  prssRandSecurity : PrssRandSecurityStatement prims K
 
 /-- The security claim, for every committee, every check field of characteristic `2` with its
 constants, every `Th` and AES-128, every circuit family, and every setting. -/

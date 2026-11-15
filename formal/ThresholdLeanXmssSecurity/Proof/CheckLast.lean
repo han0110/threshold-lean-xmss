@@ -5,7 +5,7 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 # The last stages of the check proof
 
 `CheckSoundStage` (step 2) and `CheckSplitStage` (steps 3 and 4) of `Proof/CheckCore.lean`, and from
-them `MultVerifyStatement` through `multVerifyStatementFull`.
+them `MultVerifySecurityStatement` through `multVerifyStatementFull`.
 -/
 
 set_option pp.deepTerms false
@@ -26,9 +26,9 @@ section Final
 variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
 attribute [local instance] inhabitedField
 
-/-- `MultVerifyStatement` from the two open stages. -/
+/-- `MultVerifySecurityStatement` from the two open stages. -/
 theorem multVerifyOfStages (prims : Primitives) (K : Constants C E)
-    (hsound : CheckSoundStage prims K) (hsplit : CheckSplitStage prims K) : MultVerifyStatement prims K :=
+    (hsound : CheckSoundStage prims K) (hsplit : CheckSplitStage prims K) : MultVerifySecurityStatement prims K :=
   multVerifyStatementFull prims K hsound hsplit
 
 end Final
@@ -178,9 +178,9 @@ lemma splitSlice_hist {σ' : Type} (K : Constants C E) (D : C.Coalition) (τ : L
     unfold sliceOut
     rw [multFinish_unknown K D 2 _ _ _ _ fresh T hT i j' hi hj' (hrec i hi) (hrec j' hj') hiT hjT]
 
-/-- `MultVerifyStatement` from the soundness stage and the split distance. -/
+/-- `MultVerifySecurityStatement` from the soundness stage and the split distance. -/
 theorem multVerifyOfSplitRoute (prims : Primitives) (K : Constants C E) (hsound : CheckSoundStage prims K)
-    (hsplit : CheckSplitDistance prims K) : MultVerifyStatement prims K :=
+    (hsplit : CheckSplitDistance prims K) : MultVerifySecurityStatement prims K :=
   multVerifyStatementProof prims K (checkCoreDistanceSplit prims K hsound hsplit)
 
 end SplitRoute
