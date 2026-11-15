@@ -18,27 +18,32 @@ The two main claims are these.
 
 ## The order of the fields
 
-The fields are in four groups, in the order of the note of leanXMSS. Each field names its item of
-a source.
+The fields are in three groups. Each field names its item of a source. A ceremony is one MPC run,
+and a tree is the run of all ceremonies of one tree. A claim name gives the unit and then the
+property.
 
-* The threshold PRF `F` is the first group (the note, Section 2, and PRAWNS, Definitions 2.1 and
-  2.2). Its fields are `tprfCorrectness` and `tprfSecurity`.
-* The setup by DKG is the second group (the note, Section 2.1). Its target is the trusted dealer
-  `KeyGen` of PRAWNS. The note has two ceremonies.
-  * The keygen ceremony of the note is the seed generation and then the ceremony of the top tree.
-    No adversary with a bounded budget distinguishes the seed generation from a trusted dealer with
+* The setup by DKG is the first group (the note, Section 2.1). Its target is the trusted dealer
+  `KeyGen` of PRAWNS. The setup has two protocols, the seed generation and the run of a tree.
+  * No adversary with a bounded budget distinguishes the seed generation from a trusted dealer with
     selective abort, up to the error that the claim names (`seedGenSecurity`).
     `seedGenCompleteness` is its honest run.
-  * The ceremony of a bottom tree of the note is two ceremonies of the model, one for the tree and
+  * `treeCompleteness` is the honest run of a tree. No field states the security of a tree.
+    `dealerTree` and `treeSuccess` link the dealer of a tree to the key generation of the signing
+    game.
+  * The keygen ceremony of the note is the seed generation and then the ceremony of the top tree.
+    The ceremony of a bottom tree of the note is two ceremonies of the model, one for the tree and
     one for the signature of its root by its top key. The fields `treeCompleteness` and
     `dealerTree` cover the top tree and each bottom tree with its signature. `treeSuccess` covers
     a bottom tree on its top tree.
-* The MPC protocol of GS20 is the third group. Its fields are `prssRand`, `coin`, `mult`,
-  `extendMult`, `multVerify`, `main` and `ceremonyHybrid`, and the honest runs `coinCompleteness`,
-  `multVerifyCompleteness` and `mainCompleteness`. The note has no section for this group. It
-  names the MPC in Section 2.1.
-* The signing is the fourth group (the note, Section 2.3, and PRAWNS, Definition 3.2). Its fields
-  are `signingCorrectness` and `stronglyUnforgeable`.
+* The signing is the second group. Its fields are `tprfCorrectness` and `tprfSecurity` for the
+  threshold PRF `F` (the note, Section 2, and PRAWNS, Definitions 2.1 and 2.2), and
+  `signingCorrectness` and `stronglyUnforgeable` (the note, Section 2.3, and PRAWNS,
+  Definition 3.2).
+* The MPC layer is the third group. The security of a ceremony rests on it. Its fields are
+  `ceremonyHybridSecurity` for one ceremony, the building blocks `coin`, `mult`, `extendMult`,
+  `multVerify` and `main` of GS20 with the honest runs `coinCompleteness`,
+  `multVerifyCompleteness` and `mainCompleteness`, and `prssRand` for the PRSS. The note has no
+  section for this group. It names the MPC in Section 2.1.
 
 No group is for Section 2.2 of the note, the setup by a trusted dealer with `n = 3f + 1`. Each
 claim is for `n = 2t - 1`.
@@ -56,11 +61,11 @@ so each completeness field is the honest run of its protocol.
   and `signJobs b encoding` for the signature of a bottom root by its top key. `newTree` is the
   ceremonies of one tree with the local steps between them, and it passes the counters on.
 * The seed generation and each ceremony are separate claims. Each has a rushing malicious adversary
-  with its own static coalition. The seed generation claims and `TreeSecurityStatement` run the
-  real network with the real PRSS, and `ceremonyHybrid` is in the hybrid model.
+  with its own static coalition. The seed generation claims and `CeremonySecurityStatement` run the
+  real network with the real PRSS, and `ceremonyHybridSecurity` is in the hybrid model.
 * Each building-block claim is in a hybrid model. `prssRand` is in the `F_prssKeys`-hybrid model.
   `coin`, `mult` and `extendMult` are in the `F_rand`-hybrid model. `multVerify` is in the
-  `{F_coin, F_extendMult, F_rand}`-hybrid model, and `main` and `ceremonyHybrid` are in the
+  `{F_coin, F_extendMult, F_rand}`-hybrid model, and `main` and `ceremonyHybridSecurity` are in the
   `{F_mult, F_multVerify}`-hybrid model. `prssRand` states that the PRSS streams from dealt keys
   compute a public list of calls of `F_rand` (CDI05, Section 4).
 * The signing adversary corrupts adaptively, and a corruption gives only the keys of an operator.
@@ -69,7 +74,7 @@ so each completeness field is the honest run of its protocol.
   (`breaksOneMessagePerKey`). The signing game enforces it. The PoC has the exchange of
   acknowledgements of `doc/sign.md` 4.1 for it, and a deployment must enforce it too.
 * `H` is one lazy random oracle on `Query`, with one domain for each constructor. `PRG` is AES-128
-  under a hash of the key, and the ceremony claim pays its multi-key PRF advantage.
+  under a hash of the key. `prssRand` and `CeremonySecurityStatement` pay its multi-key PRF advantage.
 * In the seed generation and ceremony claims, `Th` is one fixed function on the inputs that the MPC
   evaluates, namely the chain steps and the commitment `c_e`. In the signing claim, all of `H` is a
   lazy random oracle, `Th` included. The gap between the two models is the random-oracle heuristic
@@ -92,20 +97,20 @@ the advantage of a reduction is only as strong as that reduction.
 
 ## What no field states
 
-* The field `ceremonyHybrid` states that a ceremony securely computes `F_ceremony` in the hybrid
+* The field `ceremonyHybridSecurity` states that a ceremony securely computes `F_ceremony` in the hybrid
   model with ideal multiplication and check. No field states it for the real network and the real
-  PRSS. `Dkg.lean` has this claim as `TreeSecurityStatement`, with the simulator
+  PRSS. `Dkg.lean` has this claim as `CeremonySecurityStatement`, with the simulator
   `ceremonySimulator`. It is stated and not proved. It is the claim for one ceremony. The fields on
   a tree are the honest run of its ceremonies (`treeCompleteness`) and the two facts on its dealer (`dealerTree` and `treeSuccess`).
 * No field states that the PRSS setup of a ceremony gives the keys of the dealer, and no field
   joins the building-block claims to the PRSS.
 * No claim joins the two ceremonies of a bottom tree against a corrupt coalition.
-  `TreeSecurityStatement` has no simulator and no bound for the ceremony of the tree, the
+  `CeremonySecurityStatement` has no simulator and no bound for the ceremony of the tree, the
   randomizer search, the signature ceremony and the check of the signature together. It does not
   state that the honest operators of a signature ceremony hold the same encoding, or that each of
   them starts. `statement.tex` holds the contract rule and a sketch of this join, with its open points.
 * So no field states that the keygen ceremony of the note is secure as a whole. The fields state
-  it for the seed generation. For the top tree, `TreeSecurityStatement` covers the ceremony of
+  it for the seed generation. For the top tree, `CeremonySecurityStatement` covers the ceremony of
   `topJobs`, which opens the chain ends. The local build of the tree from them is no part of the claim.
 * No field composes the seed generation, the ceremonies and the signing. Each field covers one
   protocol or one building block alone. `statement.tex` holds the deployment contract and a sketch of that
@@ -139,14 +144,7 @@ variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algeb
 circuit family and one setting. -/
 structure Theorems (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) :
     Prop where
-  -- The threshold PRF `F` (the note, Section 2, and PRAWNS, Definitions 2.1 and 2.2).
-  /-- `Combine'` of the parts of a quorum gives `F(msk, x)` (PRAWNS, Definition 2.1). -/
-  tprfCorrectness : TprfCorrectnessStatement prims C
-  /-- The threshold PRF is adaptively secure, up to `tprfError C q` for `q` counted calls (PRAWNS,
-  Definition 2.2 and Theorem 5.1). -/
-  tprfSecurity : TprfSecurityStatement prims C
-
-  -- The setup by DKG, with the keygen ceremony and each bottom tree (the note, Section 2.1).
+  -- The setup by DKG (the note, Section 2.1).
   /-- The seed generation securely computes `F_seedGen` with selective abort, with the simulator
   `seedGenSimulator` and the error `(q + seedGenSecrets C)² / 2^256` (GL05 and CDG+18). -/
   seedGenSecurity : SeedGenSecurityStatement prims C E
@@ -163,10 +161,26 @@ structure Theorems (prims : Primitives) (K : Constants C E) (circuits : Circuits
   seeds, except with probability `(1 - p)^L` (the note, Section 2.1, honest run). -/
   treeSuccess : TreeSuccessStatement prims circuits settings C
 
-  -- The MPC protocol of the setup (GS20).
-  /-- The PRSS streams from dealt keys securely compute a public list of calls of `F_rand`, with
-  selective abort, up to a hash term and a PRF advantage (CDI05, Section 4). -/
-  prssRand : PrssRandStatement prims K
+  -- The signing, with the threshold PRF `F` (the note, Sections 2 and 2.3, and PRAWNS).
+  /-- `Combine'` of the parts of a quorum gives `F(msk, x)` (PRAWNS, Definition 2.1). -/
+  tprfCorrectness : TprfCorrectnessStatement prims C
+  /-- The threshold PRF is adaptively secure, up to `tprfError C q` for `q` counted calls (PRAWNS,
+  Definition 2.2 and Theorem 5.1). -/
+  tprfSecurity : TprfSecurityStatement prims C
+  /-- An honest quorum fails with probability at most `2 (1 - p)^L`, and its signature verifies
+  (the note, Section 2.3, honest run). -/
+  signingCorrectness : SigningCorrectnessStatement prims C
+  /-- Threshold leanXMSS is strongly unforgeable with adaptive corruption, in the random-oracle
+  model. A forger that itself makes at most `q` calls of `H` and `PRG` and round-2 requests forges
+  with probability at most `(q + 2^15 + 384) / 2^127` plus the two terms of the hidden keys. The
+  calls of the dealer, of the honest operators and of the verification are not in `q` (PRAWNS,
+  Definition 3.2, in the form of leanXMSS). -/
+  stronglyUnforgeable : ThresholdLeanXmssStronglyUnforgeable prims C
+
+  -- The MPC layer, on which the security of a ceremony rests (GS20 and CDI05).
+  /-- One ceremony securely computes `F_ceremony` in the `{F_mult, F_multVerify}`-hybrid model, up
+  to a birthday term of the copy hashes (GS20, Theorem 2, for all batches of a ceremony). -/
+  ceremonyHybridSecurity : CeremonyHybridSecurityStatement prims K circuits settings
   /-- `Coin` securely computes `F_coin` with selective abort in the `F_rand`-hybrid model, with the
   error `0` (GS20, Lemma 3). -/
   coin : CoinStatement prims K
@@ -182,9 +196,6 @@ structure Theorems (prims : Primitives) (K : Constants C E) (circuits : Circuits
   /-- A batch securely computes `F_main` in the `{F_mult, F_multVerify}`-hybrid model, up to a
   birthday term of the copy hashes (GS20, Theorem 2, for public outputs and pre-shared inputs). -/
   main : MainStatement prims K
-  /-- One ceremony securely computes `F_ceremony` in the `{F_mult, F_multVerify}`-hybrid model, up
-  to a birthday term of the copy hashes (GS20, Theorem 2, for all batches of a ceremony). -/
-  ceremonyHybrid : CeremonyHybridStatement prims K circuits settings
   /-- An honest `Coin` gives the output of `F_coin` (GS20, Protocol 6, honest run). -/
   coinCompleteness : CoinCompletenessStatement prims K
   /-- An honest check accepts correct tuples, except when it aborts on a coin (`abortErrorOf`) (GS20,
@@ -192,17 +203,9 @@ structure Theorems (prims : Primitives) (K : Constants C E) (circuits : Circuits
   multVerifyCompleteness : MultVerifyCompletenessStatement prims K
   /-- An honest batch gives the outputs of `F_main` (GS20, Protocol 19, honest run). -/
   mainCompleteness : MainCompletenessStatement prims K
-
-  -- The signing (the note, Section 2.3, and PRAWNS, Definition 3.2).
-  /-- An honest quorum fails with probability at most `2 (1 - p)^L`, and its signature verifies
-  (the note, Section 2.3, honest run). -/
-  signingCorrectness : SigningCorrectnessStatement prims C
-  /-- Threshold leanXMSS is strongly unforgeable with adaptive corruption, in the random-oracle
-  model. A forger that itself makes at most `q` calls of `H` and `PRG` and round-2 requests forges
-  with probability at most `(q + 2^15 + 384) / 2^127` plus the two terms of the hidden keys. The
-  calls of the dealer, of the honest operators and of the verification are not in `q` (PRAWNS,
-  Definition 3.2, in the form of leanXMSS). -/
-  stronglyUnforgeable : ThresholdLeanXmssStronglyUnforgeable prims C
+  /-- The PRSS streams from dealt keys securely compute a public list of calls of `F_rand`, with
+  selective abort, up to a hash term and a PRF advantage (CDI05, Section 4). -/
+  prssRand : PrssRandStatement prims K
 
 /-- The security claim, for every committee, every check field of characteristic `2` with its
 constants, every `Th` and AES-128, every circuit family, and every setting. -/

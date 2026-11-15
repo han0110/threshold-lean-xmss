@@ -40,7 +40,7 @@ file holds the error terms, the valid inputs and the claims. `Theorems.lean` hol
   batch. The implementation runs the signature ceremony as one batch of all its jobs
   (`top_signature` of `src/dkg.rs`).
 * The signature of the root of a bottom tree by its top key is one more ceremony, with its own PRSS
-  setup (`new_bottom_tree` of `src/dkg.rs`). `TreeSecurityStatement` is the claim for one ceremony.
+  setup (`new_bottom_tree` of `src/dkg.rs`). `CeremonySecurityStatement` is the claim for one ceremony.
   It does not join the two ceremonies of a bottom tree.
 * A ceremony takes the start of its counters as a public input, namely the next round label and the
   tag of the next batch. The signature ceremony continues the counters of the ceremony before it,
@@ -76,7 +76,7 @@ def termCount (C : Committee) : ℕ := C.n.choose (C.t - 1)
 check, or the two copy hashes of `OpenRep`. -/
 def termHashes (C : Committee) : ℕ := 2 * C.n * termCount C
 
-/-- The calls of the simulator of `ceremonyHybrid`. It computes the input terms that a corrupt
+/-- The calls of the simulator of `ceremonyHybridSecurity`. It computes the input terms that a corrupt
 operator holds, one call for each term and each point, and it emulates the copy hashes of `OpenRep`
 of each batch. This is a fixed upper bound on the counted calls, not an exact count. -/
 def hybridOverhead (C : Committee) (jobs : List Job) : ℕ :=
@@ -97,7 +97,7 @@ def checkErrorOf (d R q : ℕ) : ℝ :=
   (d + 2 * (R + 1) : ℕ) / (Fintype.card E - 2 : ℝ) + ((R + 2) * q : ℕ) / (Fintype.card E : ℝ) ^ 2
 
 /-- The soundness error of the checks of all batches of a ceremony of `jobs`. -/
-def treeCheckError (jobs : List Job) (q : ℕ) : ℝ :=
+def ceremonyCheckError (jobs : List Job) (q : ℕ) : ℝ :=
   (chunks settings.batchSize jobs).length *
     checkErrorOf (E := E) (maxBatch circuits settings fun jobs => coins (tupleCount jobs))
       (maxBatch circuits settings fun jobs => halvings (tupleCount jobs)) q
@@ -140,7 +140,7 @@ setup has the parts of each operator, the derived keys and the inputs of the has
 keys. Each PRSS key has a stream-key input. Each batch has the history, the digest and the copy hash
 of each term, the copies that a corrupt owner sends to each honest operator, which it hashes for
 free, and the `R + 2` coin keys of its check. -/
-def treeSecrets (C : Committee) (jobs : List Job) : ℕ :=
+def ceremonySecrets (C : Committee) (jobs : List Job) : ℕ :=
   let terms := termCount C
   let pairs := C.n.choose 2
   C.n * (terms + C.n) + terms + pairs + C.n ^ 2 + (terms + pairs) +
@@ -148,8 +148,8 @@ def treeSecrets (C : Committee) (jobs : List Job) : ℕ :=
       maxBatch circuits settings (fun jobs => halvings (tupleCount jobs)) + 2)
 
 /-- The birthday bound of the counted calls and the honest points of a ceremony of `jobs`. -/
-def treeHashError (C : Committee) (jobs : List Job) (q : ℕ) : ℝ :=
-  ((q + treeSecrets circuits settings C jobs) ^ 2 : ℕ) / 2 ^ 256
+def ceremonyHashError (C : Committee) (jobs : List Job) (q : ℕ) : ℝ :=
+  ((q + ceremonySecrets circuits settings C jobs) ^ 2 : ℕ) / 2 ^ 256
 
 /-- The birthday bound `k² / 2^129` of the 128-bit AES keys of the `k` PRSS keys of a ceremony
 (`doc/dkg.md` 3.3). -/
@@ -263,13 +263,13 @@ the bundle `Theorems`. It is stated and not proved.
 
 The claim does not join the two ceremonies of a bottom tree. It does not state that the honest
 operators of a signature ceremony hold the same `encoding`, or that each of them starts. -/
-def TreeSecurityStatement : Prop :=
+def CeremonySecurityStatement : Prop :=
   0 < settings.batchSize → ∀ (counters : ℕ × ℕ) (b : Fin (2 ^ layerHeight)) (encoding : Encoding),
     ∀ jobs ∈ [topJobs, bottomJobs b, signJobs b encoding],
     SimulatedBy prims (fun i keys => (ceremony K circuits settings i keys counters jobs : PartyM C E RealSpec (List (List Bit))))
       (ceremonyFuel circuits settings) (Fceremony circuits jobs) DealtInputs
       (ceremonySimulator K circuits settings counters jobs) 0 fun D A x z Z q =>
-        treeCheckError (E := E) circuits settings jobs q + treeHashError circuits settings C jobs q + streamKeyError C +
+        ceremonyCheckError (E := E) circuits settings jobs q + ceremonyHashError circuits settings C jobs q + streamKeyError C +
           (PRFScheme.prfAdvantage (hiddenStreams prims.aes) (prgReduction prims D
             (distinguish (realExecution D A noFunctionality (ceremonyFuel circuits settings)
               (fun i keys => (ceremony K circuits settings i keys counters jobs : PartyM C E RealSpec (List (List Bit)))) x z) Z))).toReal
@@ -412,7 +412,7 @@ ceremony, an adaptation of GS20, Theorem 2.
   honest operator gets an output of the ceremony. A partial abort at the last opening can leave
   some honest operators with outputs.
 * It is no claim for the real network, for the PRSS or for the meaning of the circuits. -/
-def CeremonyHybridStatement : Prop :=
+def CeremonyHybridSecurityStatement : Prop :=
   0 < settings.batchSize → ∀ (counters : ℕ × ℕ) (b : Fin (2 ^ layerHeight)) (encoding : Encoding),
     ∀ jobs ∈ [topJobs, bottomJobs b, signJobs b encoding],
     SecurelyComputes prims (fun i keys => ceremonyHybrid K circuits settings i keys counters jobs)

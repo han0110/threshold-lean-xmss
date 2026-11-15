@@ -75,7 +75,7 @@ block of 32 bytes that has no zero byte. It is no field of the bundle.
   rushing malicious adversary. The notion is security with selective abort (GL05), in which each
   operator aborts alone. The bundle has this claim for the seed generation, and for one ceremony in
   the `{F_mult, F_multVerify}`-hybrid model. For one ceremony on the real network the claim is
-  `TreeSecurityStatement`. It is stated and not proved.
+  `CeremonySecurityStatement`. It is stated and not proved.
 * The signing adversary corrupts adaptively, at most `t - 1` operators over the lifetime. A
   corruption gives only the keys, because an operator erases its ceremony state.
 * Honest operators sign at most one message for each key (`breaksOneMessagePerKey`). The map `bound`
@@ -83,30 +83,14 @@ block of 32 bytes that has no zero byte. It is no field of the bundle.
 
 ## Seed generation
 
-1. `seedGenCompleteness` (`Proof/SeedGen`) gives `SeedGenCompletenessStatement`. The honest run differs
-   from `F_seedGen` only when two derived keys collide, at `derivedKeyCollision`.
-2. `seedGenSecurityClosed` (`Proof/SeedGenAlias`) gives `SeedGenSecurityStatement` with
+1. `seedGenSecurityClosed` (`Proof/SeedGenAlias`) gives `SeedGenSecurityStatement` with
    `seedGenSimulator`. The simulator extracts the corrupt reveals from the observed calls and programs
    `H` (CDG+18). Honest commitments become fresh values until a call hits a commitment input.
    `seedGenProgramAliasBound` pays the programming collisions. The bad events fit `seedGenHashError`.
+2. `seedGenCompleteness` (`Proof/SeedGen`) gives `SeedGenCompletenessStatement`. The honest run differs
+   from `F_seedGen` only when two derived keys collide, at `derivedKeyCollision`.
 
-## Building blocks, check and batch
-
-1. `coinSecurity`, `coinCompleteness`, `multStatement` and `extendMultSecurity` (`Proof/BuildingBlocks`)
-   follow GS20, Lemmas 3 to 5, in the `F_rand`-hybrid model, with `cdi05_pair_has_holder`,
-   `cdi05_mulRep_correct`, `cdi05_conv_correct` and `gs20_mulSh_correct`.
-2. `multVerifyClosed` (`Proof/CheckSplit`) gives `MultVerifyStatement`. The digests compare the copies
-   of each term (CGH+18, Protocol 3.3). `check_word_weight_ne_zero`, `gs20_lemma8_delinearization`,
-   `gruen_slice_step`, `gs20_lemma9_halving_step` and `gs20_lemma10_final_step` keep a wrong claim
-   wrong except for few challenges. `gs20_lemma11_final_hides` makes the revealed values uniform. The
-   sum is `checkErrorOf`. `multVerifyCompleteness` (`Proof/Check`) pays `abortErrorOf`.
-3. `mainStatementFull` (`Proof/MainStages`) gives `MainStatement` in the `{F_mult, F_multVerify}`-hybrid
-   model. The outputs are revealed as in MPClan (`mpclan_honest_holder`). `mainCompleteness`
-   (`Proof/Main`) is the honest batch.
-4. `prssRandSecurity` (`Proof/PrssRand/Security`) gives `PrssRandStatement`. The PRSS streams from
-   dealt keys securely compute a public list of calls of `F_rand` in the `F_prssKeys`-hybrid model.
-
-## Ceremonies
+## Trees
 
 1. `treeCompleteness` (`Proof/Tree`) runs the honest ceremonies of a tree batch by batch and pays
    `treeAbortError`. `setup_chunks_step` joins the two ceremonies of a bottom tree. The second PRSS
@@ -114,10 +98,6 @@ block of 32 bytes that has no zero byte. It is no field of the bundle.
 2. `dealerTreeProof` and `treeSuccessProof` (`Proof/Dealer`) assume `CircuitsCompute`. Each circuit
    gives `referenceJob`, so `F_tree` gives the trees of `KeyGen`. The search fails with
    `searchFailure`.
-3. `ceremonyHybridClosed` (`Proof/CeremonyHybrid/Security`) gives `CeremonyHybridStatement`. One
-   ceremony securely computes `F_ceremony` in the `{F_mult, F_multVerify}`-hybrid model.
-4. `TreeSecurityStatement`, the claim that one ceremony securely computes `F_ceremony` on the real
-   network with the real PRSS, is no field of the bundle. It is stated and not proved.
 
 ## Signing plan
 
@@ -166,6 +146,27 @@ each top key and the verification.
 `SigningOwnBudgetStatement`. `stronglyUnforgeable_iff` states that the two claims are equivalent. The
 budget is a cost function in the one and a predicate in the other.
 
+## The MPC layer
+
+1. `ceremonyHybridSecurity` (`Proof/CeremonyHybrid/Security`) gives
+   `CeremonyHybridSecurityStatement`. One ceremony securely computes `F_ceremony` in the
+   `{F_mult, F_multVerify}`-hybrid model.
+2. `CeremonySecurityStatement`, the claim that one ceremony securely computes `F_ceremony` on the real
+   network with the real PRSS, is no field of the bundle. It is stated and not proved.
+3. `coinSecurity`, `coinCompleteness`, `multStatement` and `extendMultSecurity` (`Proof/BuildingBlocks`)
+   follow GS20, Lemmas 3 to 5, in the `F_rand`-hybrid model, with `cdi05_pair_has_holder`,
+   `cdi05_mulRep_correct`, `cdi05_conv_correct` and `gs20_mulSh_correct`.
+4. `multVerifyClosed` (`Proof/CheckSplit`) gives `MultVerifyStatement`. The digests compare the copies
+   of each term (CGH+18, Protocol 3.3). `check_word_weight_ne_zero`, `gs20_lemma8_delinearization`,
+   `gruen_slice_step`, `gs20_lemma9_halving_step` and `gs20_lemma10_final_step` keep a wrong claim
+   wrong except for few challenges. `gs20_lemma11_final_hides` makes the revealed values uniform. The
+   sum is `checkErrorOf`. `multVerifyCompleteness` (`Proof/Check`) pays `abortErrorOf`.
+5. `mainStatementFull` (`Proof/MainStages`) gives `MainStatement` in the `{F_mult, F_multVerify}`-hybrid
+   model. The outputs are revealed as in MPClan (`mpclan_honest_holder`). `mainCompleteness`
+   (`Proof/Main`) is the honest batch.
+6. `prssRandSecurity` (`Proof/PrssRand/Security`) gives `PrssRandStatement`. The PRSS streams from
+   dealt keys securely compute a public list of calls of `F_rand` in the `F_prssKeys`-hybrid model.
+
 ## Modules
 
 The statement layer is `ThresholdLeanXmss/`. The proofs are in `ThresholdLeanXmssSecurity/Proof/`.
@@ -204,25 +205,25 @@ theorem thresholdLeanXmss_security : ThresholdLeanXmss.ThresholdLeanXmssSecurity
   intro C E _ _ _ _ K prims circuits settings
   letI : SampleableType E := SampleableType.ofFintype E
   exact {
-    seedGenCompleteness := seedGenCompleteness prims
     seedGenSecurity := seedGenSecurityClosed prims
+    seedGenCompleteness := seedGenCompleteness prims
     treeCompleteness := treeCompleteness prims K circuits settings
     dealerTree := dealerTreeProof prims circuits settings C
     treeSuccess := treeSuccessProof prims circuits settings C
-    coin := coinSecurity prims K
-    coinCompleteness := coinCompleteness prims K
-    mult := multStatement prims K
-    extendMult := extendMultSecurity prims K
-    multVerify := multVerifyClosed prims K
-    multVerifyCompleteness := multVerifyCompleteness prims K
-    main := mainStatementFull prims K
-    ceremonyHybrid := ceremonyHybridClosed prims K circuits settings
-    prssRand := prssRandSecurity prims K
-    mainCompleteness := mainCompleteness prims K
     tprfCorrectness := tprfCorrectness prims C
     tprfSecurity := tprfSecurity prims C
     signingCorrectness := signingCorrectness prims C
-    stronglyUnforgeable := SigningStronglyUnforgeable.stronglyUnforgeable prims C }
+    stronglyUnforgeable := SigningStronglyUnforgeable.stronglyUnforgeable prims C
+    ceremonyHybridSecurity := ceremonyHybridSecurity prims K circuits settings
+    coin := coinSecurity prims K
+    mult := multStatement prims K
+    extendMult := extendMultSecurity prims K
+    multVerify := multVerifyClosed prims K
+    main := mainStatementFull prims K
+    coinCompleteness := coinCompleteness prims K
+    multVerifyCompleteness := multVerifyCompleteness prims K
+    mainCompleteness := mainCompleteness prims K
+    prssRand := prssRandSecurity prims K }
 
 /-! The build fails if the axiom footprint of the end theorem changes. -/
 
@@ -237,9 +238,9 @@ and `Quot.sound`. -/
 #guard_msgs (whitespace := lax) in
 #print axioms multVerifyClosed
 
-/-- info: 'ThresholdLeanXmssSecurity.ceremonyHybridClosed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.ceremonyHybridSecurity' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms ceremonyHybridClosed
+#print axioms ceremonyHybridSecurity
 
 /-- info: 'ThresholdLeanXmssSecurity.prssRandSecurity' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

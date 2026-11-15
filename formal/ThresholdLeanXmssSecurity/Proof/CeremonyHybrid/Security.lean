@@ -3,7 +3,7 @@ import ThresholdLeanXmssSecurity.Proof.CeremonyHybrid.Engine
 /-!
 # One ceremony in the hybrid model of GS20, the proof
 
-`ceremonyHybridClosed` gives `CeremonyHybridStatement`. The proof follows GS20, Theorem 2, with the
+`ceremonyHybridSecurity` gives `CeremonyHybridSecurityStatement`. The proof follows GS20, Theorem 2, with the
 simulator `ceremonyHybridSimulator`.
 
 * `hybridCommon` is the common run of the hybrid and of the ideal run. It starts the adversary,
@@ -358,7 +358,7 @@ theorem hybridRounds_le_fuel (b : Fin (2 ^ layerHeight)) (encoding : Encoding) (
 
 /-- One ceremony securely computes `F_ceremony` with selective abort in the
 `{F_mult, F_multVerify}`-hybrid model (GS20, Theorem 2). -/
-theorem ceremonyHybridClosed : CeremonyHybridStatement prims K circuits settings := by
+theorem ceremonyHybridSecurity : CeremonyHybridSecurityStatement prims K circuits settings := by
   intro hsize counters b encoding jobs hjobs D A
   refine ⟨ceremonyHybridSimulator K circuits settings jobs D A, fun x z Z q hx hq => ?_⟩
   obtain ⟨parameter, seeds, pairKeys, hx⟩ := hx

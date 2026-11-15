@@ -828,7 +828,7 @@ A bottom tree is $2^{16} \cdot 58$ chains, 29,696 chain batches. Signing takes 2
 
 ### 3.3 Security
 
-The key generation targets the property of [GS20, Thm. 2](https://eprint.iacr.org/2020/134). The target is that it securely computes the trusted dealer of $\mathsf{KeyGen}$ [BBDLN26](https://eprint.iacr.org/2026/2142) with abort, against a malicious adversary that statically corrupts up to $t - 1$ of the $n = 2t - 1$ operators. The Lean proof in `formal/` proves this for the seed generation. It proves each building block secure for its own functionality, in the hybrid model of that building block. It proves it for one ceremony in the $`\{F_{\mathrm{mult}}, F_{\mathrm{multVerify}}\}`$-hybrid model (`ceremonyHybrid`). It does not prove it for a ceremony on the real network. That claim is `TreeSecurityStatement`, and it is stated and not proved. Lean proves that the PRSS streams from dealt keys give the random sharings (`prssRand`), and no claim covers the PRSS setup. No Lean theorem composes the seed generation, the ceremonies and the signing.
+The key generation targets the property of [GS20, Thm. 2](https://eprint.iacr.org/2020/134). The target is that it securely computes the trusted dealer of $\mathsf{KeyGen}$ [BBDLN26](https://eprint.iacr.org/2026/2142) with abort, against a malicious adversary that statically corrupts up to $t - 1$ of the $n = 2t - 1$ operators. The Lean proof in `formal/` proves this for the seed generation. It proves each building block secure for its own functionality, in the hybrid model of that building block. It proves it for one ceremony in the $`\{F_{\mathrm{mult}}, F_{\mathrm{multVerify}}\}`$-hybrid model (`ceremonyHybridSecurity`). It does not prove it for a ceremony on the real network. That claim is `CeremonySecurityStatement`, and it is stated and not proved. Lean proves that the PRSS streams from dealt keys give the random sharings (`prssRand`), and no claim covers the PRSS setup. No Lean theorem composes the seed generation, the ceremonies and the signing.
 
 The claims cover only $n = 2t - 1$ and a classical adversary. The "Model" section of [`formal/ThresholdLeanXmss/Statement/Theorems.lean`](../formal/ThresholdLeanXmss/Statement/Theorems.lean) gives the full model.
 
@@ -847,7 +847,7 @@ Two PRSS keys give the same 128-bit AES key with probability at most $k^2 / 2^{1
 
 The ceremony claim on the real network assumes that AES-128 is a multi-key PRF on the hidden PRSS keys, and its advantage is a term of the bound. The budget $q$ counts oracle calls, not time.
 
-The building-block claims are internal lemmas. Their functionalities leak more than those of [GS20](https://eprint.iacr.org/2020/134) on some inputs, and `TupleInputs`, `MainInputs` and `ShamirInputs` restrict their inputs. The seed generation claims and `TreeSecurityStatement` run the real network, so they do not depend on these interfaces.
+The building-block claims are internal lemmas. Their functionalities leak more than those of [GS20](https://eprint.iacr.org/2020/134) on some inputs, and `TupleInputs`, `MainInputs` and `ShamirInputs` restrict their inputs. The seed generation claims and `CeremonySecurityStatement` run the real network, so they do not depend on these interfaces.
 
 The protocol differs from [GS20](https://eprint.iacr.org/2020/134) in three points, and each point needs its own argument.
 
