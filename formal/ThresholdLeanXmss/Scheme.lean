@@ -1621,6 +1621,21 @@ def mainProtocol (mode : ReshareMode) (jobs : List Circuit) (i : C.Party) (input
 of `F_multVerify` and one round for `OpenRep`. -/
 def mainRounds (jobs : List Circuit) : ℕ := depth jobs + 3
 
+/-- One ceremony in the `{F_mult, F_multVerify}`-hybrid model. It has no PRSS setup, because the
+functionalities give the random values. -/
+def ceremonyHybrid (circuits : Circuits) (settings : Settings) (i : C.Party) (keys : Keys C)
+    (counters : ℕ × ℕ) (jobs : List Job) : PartyM C E (MainSpec C) (List (List Bit)) := do
+  let ctx : Context C := ⟨i, keys, ⟨fun _ => 0, fun _ => 0⟩⟩
+  let body : List Job → StateT (ℕ × ℕ) (PartyM C E (MainSpec C)) (Option (List (List Bit))) := fun batch => do
+    let (label, k) ← get
+    let inputs ← StateT.lift (batch.mapM (inputShares ctx))
+    let (outputs, state) ← StateT.lift ((runJobs K (hybridRunBuildingBlocks K settings.mode i)
+      (batch.map (circuits keys.parameter ·.kind)) inputs).run ⟨fun _ => [], label, k⟩)
+    set (state.label, k + 1)
+    pure (some outputs)
+  let some outputs ← (batched settings.batchSize body jobs).run' counters | failure
+  pure outputs
+
 end Hybrid
 
 /-! ## Honest runs -/

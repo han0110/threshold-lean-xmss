@@ -76,6 +76,12 @@ def termCount (C : Committee) : ℕ := C.n.choose (C.t - 1)
 check, or the two copy hashes of `OpenRep`. -/
 def termHashes (C : Committee) : ℕ := 2 * C.n * termCount C
 
+/-- The calls of the simulator of `ceremonyHybrid`. It computes the input terms that a corrupt
+operator holds, one call for each term and each point, and it emulates the copy hashes of `OpenRep`
+of each batch. This is a fixed upper bound on the counted calls, not an exact count. -/
+def hybridOverhead (C : Committee) (jobs : List Job) : ℕ :=
+  (jobs.map (·.points.length)).sum * termCount C + (chunks settings.batchSize jobs).length * termHashes C
+
 /-- The checked batches of a tree, of the ceremony of the top tree or of the two ceremonies of a
 bottom tree. -/
 def treeBatches : Tree → ℕ
@@ -348,5 +354,25 @@ def MainCompletenessStatement : Prop :=
   ∀ (mode : ReshareMode) (jobs : List Circuit),
     Completes prims (mainProtocol K mode jobs) (mainRounds jobs) (mainFunctionalities K mode) mainReply
       (Fmain jobs) (fun _ => Finset.univ) (MainInputs jobs) 0
+
+/-- One ceremony securely computes `F_ceremony` with selective abort in the
+`{F_mult, F_multVerify}`-hybrid model. This is the claim of `main` for all batches of one
+ceremony, an adaptation of GS20, Theorem 2.
+
+* It holds for the three job lists, a positive batch size and keys of one dealing.
+* The multiplication, the rerandomization and the check are ideal functionalities.
+* `F_ceremony` leaks the parameter and each output, also of a batch that the run does not reach.
+* After a partial abort before the last batch, the next functionality call does not run, and no
+  honest operator gets an output of the ceremony. A partial abort at the last opening can leave
+  some honest operators with outputs.
+* It is no claim for the real network, for the PRSS or for the meaning of the circuits. -/
+def CeremonyHybridStatement : Prop :=
+  0 < settings.batchSize → ∀ (counters : ℕ × ℕ) (b : Fin (2 ^ layerHeight)) (encoding : Encoding),
+    ∀ jobs ∈ [topJobs, bottomJobs b, signJobs b encoding],
+    SecurelyComputes prims (fun i keys => ceremonyHybrid K circuits settings i keys counters jobs)
+      (ceremonyBatches settings * maxBatch circuits settings mainRounds)
+      (mainFunctionalities K settings.mode) (Fceremony circuits jobs) DealtInputs
+      (hybridOverhead settings C jobs)
+      (fun q => ((q + (chunks settings.batchSize jobs).length * termHashes C) ^ 2 : ℕ) / 2 ^ 256)
 
 end ThresholdLeanXmss

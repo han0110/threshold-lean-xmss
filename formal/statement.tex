@@ -32,7 +32,8 @@ and GS20, the paper of Goyal and Song \cite{GS20}. The proofs make two main clai
 (Section~\ref{sec:dkg}). Selective abort means that the adversary chooses the honest operators that get
 an output. This claim is not complete. It is proved for the seed generation, which deals the keys. A ceremony is one run
 of the multiparty computation (MPC) for a tree or for the signature of a tree root. For a ceremony, the
-claim is stated and not proved.
+claim is proved in a hybrid model, where the multiplication and the check are trusted parties. For the
+real network, it is stated and not proved.
 \item Signing with a trusted dealer is correct and strongly unforgeable with adaptive corruption
 (Section~\ref{sec:signing}). This claim is proved.
 \end{itemize}
@@ -42,7 +43,7 @@ composition needs, and Section~\ref{sec:open} lists what is not proved.
 \paragraph{Where to read it.} The claims to review are in the folder
 \texttt{formal/ThresholdLeanXmss/Statement/}, and its
 entry file is \texttt{Theorems.lean}. The type of the root theorem \lean{thresholdLeanXmss_security}
-is the bundle \lean{Theorems}, a structure with seventeen fields, one for each claim. Its axiom guard, a
+is the bundle \lean{Theorems}, a structure with eighteen fields, one for each claim. Its axiom guard, a
 checked list of the axioms that the theorem depends on, has only \texttt{propext},
 \texttt{Classical.choice} and \texttt{Quot.sound}. Appendix A gives the fields and their sources. This
 document calls a claim proved only if it is such a field.
@@ -105,8 +106,9 @@ Corruption & Static. The corrupt operators of each claim are fixed before its pr
 The forger corrupts operators during the game. A corruption reveals only keys, because the setup state is
 erased. \\
 \rowrule
-Network & The seed generation and ceremony claims use the real network and the real PRSS. The building-block
-claims use hybrid models, where an ideal functionality replaces a sub-protocol. & The forger sends requests for the two signing rounds of a quorum. \\
+Network & The seed generation claims and the open ceremony claim use the real network and the real PRSS.
+The building-block claims and the hybrid ceremony claim use hybrid models, where an ideal functionality
+replaces a sub-protocol. & The forger sends requests for the two signing rounds of a quorum. \\
 \rowrule
 $\Th$ & A fixed function on the inputs that the MPC evaluates, namely the chain steps and $c_e$ & Part of
 the random oracle \\
@@ -116,9 +118,9 @@ the random oracle \\
 The PRF claims and the claim of signing correctness use the hash model of the setup claims.
 
 \paragraph{Hashing.} $H$ is one lazy random oracle, with a separate domain for each use \cite{BR93,BDG20}.
-The PRG is AES-128, keyed by a hash of the key. The ceremony bound contains the multi-key PRF advantage
+The PRG is AES-128, keyed by a hash of the key. The bound of a ceremony on the real network contains the multi-key PRF advantage
 of this PRG \cite{CDI05}. The simulator of the seed generation programs $H$. The proposed simulator of a
-ceremony does not.
+ceremony on the real network does not.
 
 \paragraph{Budgets.} A budget $q$ bounds the number of calls of $H$ and of the PRG. The bound holds on every
 path of the program and for every answer of the oracles.
@@ -127,8 +129,8 @@ path of the program and for every answer of the oracles.
 call the counted copy of the oracles. The honest parties and the functionalities call a free copy,
 whose calls do not count. Both copies share one cache.
 \item In each simulation claim, the ideal run makes at most $q$ plus a fixed overhead of counted calls. An
-explicit simulator (seed generation, ceremony) is fixed code that emulates the honest parties for free,
-and only its programming queries count. For an existential simulator (building blocks), the claim only states that it
+explicit simulator (seed generation, ceremony on the real network) is fixed code that emulates the honest parties for free,
+and only its programming queries count. For an existential simulator (building blocks, ceremony in the hybrid model), the claim only states that it
 exists, and all its calls count, the emulation included \cite{Can00}.
 \end{itemize}
 
@@ -209,6 +211,13 @@ the Lean declaration states. The number $s_{\mathrm{tree}}=\mathsf{treeSecrets}$
 inputs of the honest operators, and a counted call that hits one of them is a part of the error. The number
 $k=\binom n{t-1}+\binom n2$ counts the PRSS keys that are hashed to AES keys. The terms count the batches
 of this one job list. This claim is no field of the bundle.
+\paragraph{Ceremony in the hybrid model} (\lean{CeremonyHybridStatement}). Assume $\mathsf{batchSize}>0$,
+\lean{DealtInputs} and a static coalition. Then in the $\{\Fn{mult},\Fn{multVerify}\}$ hybrid, for every circuit
+family, start of the labels and tags, and job list, one ceremony securely computes $\Fn{ceremony}$ with selective
+abort. The error is $(q+B\cdot 2n\binom n{t-1})^2/2^{256}$, where $B$ counts the batches of the job list. A
+simulator exists, with at most $q+\mathsf{hybridOverhead}$ counted calls. This is the claim of \lean{main} for all
+batches of a ceremony (GS20, Theorem 2). The multiplication, the rerandomization and the check are ideal, and the
+ceremony has no PRSS setup. It is no claim for the real network, for the PRSS or for the meaning of the circuits.
 \paragraph{Tree completeness} (\lean{TreeCompletenessStatement}). Assume $\mathsf{batchSize}>0$ and
 \lean{DealtInputs}. Then for every circuit family, an honest tree run gives the output of $\Fn{tree}$,
 which computes the whole tree in the clear, within error
@@ -227,7 +236,7 @@ $(1-p)^L$ bounds the failure probability of the search for the top signature.
 
 \subsection*{The MPC building blocks}
 The building-block claims adapt the lemmas of GS20 to one batch of the model. These claims do not give
-the security of a ceremony, which is stated and not proved. The ideal functionality $\Fn{rand}$ gives
+the security of a ceremony on the real network, which is stated and not proved. The ideal functionality $\Fn{rand}$ gives
 random sharings, and the PRSS replaces it in a ceremony. ``Up to an additive attack'' means that the
 adversary can add offsets of its choice to the shares of a product. A tuple holds shared vectors of two
 factors and of their claimed products. In the building-block claims, $d$ and $R$ are the coin and halving
@@ -375,10 +384,12 @@ corruption model of the signing game \\
 
 \paragraph{The claims.}
 \begin{itemize}\itemsep0pt
-\item Ceremony security is stated and not proved, for each of its three uses. So the security of the whole
-keygen ceremony, and of DKG followed by signing, remains open. Five parts fall under the open claim \lean{TreeSecurityStatement}. They are the real
-building blocks in the place of the ideal ones, the PRSS in the place of $\Fn{rand}$ (B2), the sequence of
-batches (B6), the echo of a PRSS setup, and the opening of $c_e$ by the MPC (B8).
+\item Ceremony security on the real network is stated and not proved, for each of its three uses. So the
+security of the whole keygen ceremony, and of DKG followed by signing, remains open. Three parts fall
+under the open claim \lean{TreeSecurityStatement} only. They are the real building blocks in the place of
+the ideal ones, the PRSS in the place of $\Fn{rand}$ (B2), and the echo of a PRSS setup. The hybrid
+ceremony claim covers the sequence of batches (B6) and the opening of $c_e$ by the MPC (B8), with ideal
+multiplication and check.
 \item No claim covers liveness, concurrent ceremonies, concurrent batches, or adaptive corruption during
 the setup or between ceremonies. A corrupt operator can stop any ceremony or signature.
 \item The distinguisher of each simulation claim gets the final joint output and can call the oracles.
@@ -398,8 +409,8 @@ through $F$ at tree points. Each ceremony uses fresh PRSS keys. Only the signing
 tree with correct outputs is a function of $P$, the seeds and $H$.
 \begin{enumerate}\itemsep0pt
 \item Replace the seed generation by its dealer, at the cost of its simulation error.
-\item Replace each ceremony, in order, by its dealer, at the cost of its proposed error. Ceremony security is
-stated and not proved, so this step is open. For one ceremony, the emulating adversary takes the keys of
+\item Replace each ceremony, in order, by its dealer, at the cost of its proposed error. Ceremony security on the
+real network is stated and not proved, so this step is open. For one ceremony, the emulating adversary takes the keys of
 all operators as auxiliary input. It answers signing requests on other trees and repeats earlier phases.
 \item The claim on dealer trees then shows that the dealer gives the trees of the signing game. The signing
 bound then applies through the $\Th$ heuristic.
@@ -477,6 +488,7 @@ Field & Lean claim & Source item & State \\
 \lean{extendMult} & \lean{ExtendMultStatement} & GS20, Lemma 5 & Proved \\
 \lean{multVerify} & \lean{MultVerifyStatement} & GS20, Lemmas 8 to 11 & Proved \\
 \lean{main} & \lean{MainStatement} & GS20, Theorem 2 & Proved \\
+\lean{ceremonyHybrid} & \lean{CeremonyHybridStatement} & GS20, Theorem 2 & Proved \\
 \lean{coinCompleteness} & \lean{CoinCompletenessStatement} & GS20, Protocol 6, honest run & Proved \\
 \lean{multVerifyCompleteness} & \lean{MultVerifyCompletenessStatement} & GS20, Protocol 17, honest run & Proved \\
 \lean{mainCompleteness} & \lean{MainCompletenessStatement} & GS20, Protocol 19, honest run & Proved \\
@@ -516,8 +528,9 @@ copy leak of $\Fn{main}$ gives no new value. \\
 \rowrule
 % Row A4 depends on the model change.
 A4 & GS20, Theorem 2, covers the full protocol, $\{\Fn{mult},\Fn{multVerify}\}$-hybrid. & \lean{main} is
-Theorem 2 for one batch. A ceremony is a PRSS setup and the batches of a public job list on the real
-network. & \lean{TreeSecurityStatement}, for one ceremony, is stated and not proved.
+Theorem 2 for one batch, and \lean{ceremonyHybrid} for all batches of a ceremony, in the same hybrid
+model. On the real network, a ceremony also has a PRSS setup. & \lean{TreeSecurityStatement}, for one
+ceremony on the real network, is stated and not proved.
 \lean{treeCompleteness} (proved) covers the honest run only. \\
 \rowrule
 A5 & PRAWNS, Figure 3, line 8, requires $t>(n+|D|)/2$ for signers that do not coordinate. Its Section~1
@@ -571,7 +584,7 @@ extension field. & Keccak on bits & \lean{main}, for every circuit list \\
 B6 & Clients give inputs and get outputs. The adversary gets corrupt-client outputs (Protocol 19,
 Functionality 18). & No client, pre-shared inputs. A batch (\lean{runJobs}) reshares the outputs, checks every
 tuple and opens them to all, the adversary too. & Public outputs & \lean{main}, \lean{mainCompleteness}, for
-one batch in their hybrid model \\
+one batch in their hybrid model. \lean{ceremonyHybrid}, for all batches of a ceremony \\
 \midrule
 \multicolumn{5}{@{}l}{\textit{The note, PRAWNS and leanXMSS}} \\
 \addlinespace[2pt]

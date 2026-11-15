@@ -34,8 +34,8 @@ a source.
     `dealerTree` cover the top tree and each bottom tree with its signature. `treeSuccess` covers
     a bottom tree on its top tree.
 * The MPC protocol of GS20 is the third group. Its fields are `coin`, `mult`, `extendMult`,
-  `multVerify` and `main`, and the honest runs `coinCompleteness`, `multVerifyCompleteness` and
-  `mainCompleteness`. The note has no section for this group. It names the MPC in Section 2.1.
+  `multVerify`, `main` and `ceremonyHybrid`, and the honest runs `coinCompleteness`,
+  `multVerifyCompleteness` and `mainCompleteness`. The note has no section for this group. It names the MPC in Section 2.1.
 * The signing is the fourth group (the note, Section 2.3, and PRAWNS, Definition 3.2). Its fields
   are `signingCorrectness` and `stronglyUnforgeable`.
 
@@ -55,12 +55,12 @@ so each completeness field is the honest run of its protocol.
   and `signJobs b encoding` for the signature of a bottom root by its top key. `newTree` is the
   ceremonies of one tree with the local steps between them, and it passes the counters on.
 * The seed generation and each ceremony are separate claims. Each has a rushing malicious adversary
-  with its own static coalition. The seed generation and ceremony claims run the real network with
-  the real PRSS.
+  with its own static coalition. The seed generation claims and `TreeSecurityStatement` run the
+  real network with the real PRSS, and `ceremonyHybrid` is in the hybrid model.
 * Each building-block claim is in a hybrid model. `coin`, `mult` and `extendMult` are in the
   `F_rand`-hybrid model. `multVerify` is in the `{F_coin, F_extendMult, F_rand}`-hybrid model, and
-  `main` is in the `{F_mult, F_multVerify}`-hybrid model. The PRSS outputs of one round realize
-  `F_rand` (CDI05).
+  `main` and `ceremonyHybrid` are in the `{F_mult, F_multVerify}`-hybrid model. The PRSS outputs
+  of one round realize `F_rand` (CDI05).
 * The signing adversary corrupts adaptively, and a corruption gives only the keys of an operator.
   After a ceremony, an operator erases its ceremony state.
 * Honest operators sign at most one message at each key over all quorums
@@ -90,10 +90,11 @@ the advantage of a reduction is only as strong as that reduction.
 
 ## What no field states
 
-* No field states that a ceremony securely computes `F_ceremony`. `Dkg.lean` has this claim as
-  `TreeSecurityStatement`, with the simulator `ceremonySimulator`. It is stated and not proved. It
-  is the claim for one ceremony. The fields on a tree are the honest run of its ceremonies
-  (`treeCompleteness`) and the two facts on its dealer (`dealerTree` and `treeSuccess`).
+* The field `ceremonyHybrid` states that a ceremony securely computes `F_ceremony` in the hybrid
+  model with ideal multiplication and check. No field states it for the real network and the real
+  PRSS. `Dkg.lean` has this claim as `TreeSecurityStatement`, with the simulator
+  `ceremonySimulator`. It is stated and not proved. It is the claim for one ceremony. The fields on
+  a tree are the honest run of its ceremonies (`treeCompleteness`) and the two facts on its dealer (`dealerTree` and `treeSuccess`).
 * No claim joins the two ceremonies of a bottom tree against a corrupt coalition.
   `TreeSecurityStatement` has no simulator and no bound for the ceremony of the tree, the
   randomizer search, the signature ceremony and the check of the signature together. It does not
@@ -174,6 +175,9 @@ structure Theorems (prims : Primitives) (K : Constants C E) (circuits : Circuits
   /-- A batch securely computes `F_main` in the `{F_mult, F_multVerify}`-hybrid model, up to a
   birthday term of the copy hashes (GS20, Theorem 2, for public outputs and pre-shared inputs). -/
   main : MainStatement prims K
+  /-- One ceremony securely computes `F_ceremony` in the `{F_mult, F_multVerify}`-hybrid model, up
+  to a birthday term of the copy hashes (GS20, Theorem 2, for all batches of a ceremony). -/
+  ceremonyHybrid : CeremonyHybridStatement prims K circuits settings
   /-- An honest `Coin` gives the output of `F_coin` (GS20, Protocol 6, honest run). -/
   coinCompleteness : CoinCompletenessStatement prims K
   /-- An honest check accepts correct tuples, except when it aborts on a coin (`abortErrorOf`) (GS20,

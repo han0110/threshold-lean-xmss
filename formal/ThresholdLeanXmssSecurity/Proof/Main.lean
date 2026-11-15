@@ -2420,7 +2420,7 @@ theorem main_birthday_hash_step {α : Type} (s : HashCache C) (hs : ¬ CacheHasC
       fun u _ hu => hf u _ hu (mainCacheBound_insert hb q u)).trans
       (add_le_add (main_cache_fresh_collision_bound s hs k hb q) le_rfl)
 
-private theorem main_birthday_arith (n k : ℕ) (hn : 0 < n) (M : ℝ≥0∞) :
+theorem main_birthday_arith (n k : ℕ) (hn : 0 < n) (M : ℝ≥0∞) :
     (k : ℝ≥0∞) / M + (((n - 1) * (k + 1 + (n - 1)) : ℕ) : ℝ≥0∞) / M ≤
       ((n * (k + n) : ℕ) : ℝ≥0∞) / M := by
   rw [← ENNReal.add_div]
