@@ -11,8 +11,8 @@ theorem of `ThresholdLeanXmssSecurityStatement` and the axiom guards.
 The two main claims are these.
 
 * The setup by DKG acts as a trusted dealer with selective abort. The fields state this claim for
-  the seed generation only. `dealerTree` states that the dealer of a ceremony gives the trees of
-  the signing game.
+  the seed generation only. `dealerTree` states that the dealer of a tree gives the trees of the
+  signing game.
 * Signing with a trusted dealer is strongly unforgeable with adaptive corruption
   (`stronglyUnforgeable`).
 
@@ -25,13 +25,14 @@ a source.
   2.2). Its fields are `tprfCorrectness` and `tprfSecurity`.
 * The setup by DKG is the second group (the note, Section 2.1). Its target is the trusted dealer
   `KeyGen` of PRAWNS. The note has two ceremonies.
-  * The keygen ceremony of the note is the seed generation and then the MPC for the top tree. No
-    adversary with a bounded budget distinguishes the seed generation from a trusted dealer with
+  * The keygen ceremony of the note is the seed generation and then the ceremony of the top tree.
+    No adversary with a bounded budget distinguishes the seed generation from a trusted dealer with
     selective abort, up to the error that the claim names (`seedGenSecurity`).
     `seedGenCompleteness` is its honest run.
-  * The ceremony of a bottom tree is the MPC for that tree and for the signature of its root. The
-    fields `treeCompleteness` and `dealerTree` cover the top tree and each bottom tree.
-    `treeSuccess` covers a bottom tree on its top tree.
+  * The ceremony of a bottom tree of the note is two ceremonies of the model, one for the tree and
+    one for the signature of its root by its top key. The fields `treeCompleteness` and
+    `dealerTree` cover the top tree and each bottom tree with its signature. `treeSuccess` covers
+    a bottom tree on its top tree.
 * The MPC protocol of GS20 is the third group. Its fields are `coin`, `mult`, `extendMult`,
   `multVerify` and `main`, and the honest runs `coinCompleteness`, `multVerifyCompleteness` and
   `mainCompleteness`. The note has no section for this group. It names the MPC in Section 2.1.
@@ -48,6 +49,11 @@ so each completeness field is the honest run of its protocol.
 
 * There are `n = 2t - 1` operators, synchronous rounds and private authenticated links (GS20,
   Section 3.1). At most `t - 1` operators are corrupt over the lifetime of the key.
+* A ceremony is one protocol (`ceremony`). It runs one PRSS setup and then the batches of a public
+  job list, and it opens every output. Its public inputs are the job list and the start of its
+  counters. It has three uses, namely `topJobs` for the top tree, `bottomJobs b` for a bottom tree,
+  and `signJobs b encoding` for the signature of a bottom root by its top key. `newTree` is the
+  ceremonies of one tree with the local steps between them, and it passes the counters on.
 * The seed generation and each ceremony are separate claims. Each has a rushing malicious adversary
   with its own static coalition. The seed generation and ceremony claims run the real network with
   the real PRSS.
@@ -66,8 +72,8 @@ so each completeness field is the honest run of its protocol.
   evaluates, namely the chain steps and the commitment `c_e`. In the signing claim, all of `H` is a
   lazy random oracle, `Th` included. The gap between the two models is the random-oracle heuristic
   for Keccak.
-* `F_tree` runs the circuits of the ceremony, so the ceremony claims are stated for every circuit
-  family.
+* `F_ceremony` and `F_tree` run the circuits of the jobs, so the ceremony claims are stated for
+  every circuit family.
   `dealerTree` and `treeSuccess` assume that the circuits compute `Th` (`CircuitsCompute`), and they
   link `F_tree` to the trees of the signing claims.
 * A budget `q` counts calls of `H` and `PRG` on every path of a program, for every answer of the
@@ -84,15 +90,21 @@ the advantage of a reduction is only as strong as that reduction.
 
 ## What no field states
 
-* No field states that a ceremony securely computes `F_tree`. `Dkg.lean` has this claim as
-  `TreeSecurityStatement`, with the simulator `treeSimulator`. It is stated and not proved. The
-  fields on a ceremony are its honest run (`treeCompleteness`) and the two facts on its dealer
-  (`dealerTree` and `treeSuccess`).
+* No field states that a ceremony securely computes `F_ceremony`. `Dkg.lean` has this claim as
+  `TreeSecurityStatement`, with the simulator `ceremonySimulator`. It is stated and not proved. It
+  is the claim for one ceremony. The fields on a tree are the honest run of its ceremonies
+  (`treeCompleteness`) and the two facts on its dealer (`dealerTree` and `treeSuccess`).
+* No claim joins the two ceremonies of a bottom tree against a corrupt coalition.
+  `TreeSecurityStatement` has no simulator and no bound for the ceremony of the tree, the
+  randomizer search, the signature ceremony and the check of the signature together. It does not
+  state that the honest operators of a signature ceremony hold the same encoding, or that each of
+  them starts. `statement.tex` holds the contract rule and a sketch of this join, with its open points.
 * So no field states that the keygen ceremony of the note is secure as a whole. The fields state
-  it for the seed generation. `TreeSecurityStatement` is also the claim for the top tree.
+  it for the seed generation. For the top tree, `TreeSecurityStatement` covers the ceremony of
+  `topJobs`, which opens the chain ends. The local build of the tree from them is no part of the claim.
 * No field composes the seed generation, the ceremonies and the signing. Each field covers one
-  protocol or one gadget alone. `statement.tex` holds the deployment contract and the argument of
-  that composition.
+  protocol or one gadget alone. `statement.tex` holds the deployment contract and a sketch of that
+  composition, with its open points.
 * No field covers a corruption between two ceremonies. The seed generation and ceremony claims
   cover their static coalitions, and the signing claim covers adaptive corruptions.
 * No field fixes the basis or the bit encoding of the check field. The claims take every value of
@@ -135,7 +147,7 @@ structure Theorems (prims : Primitives) (K : Constants C E) (circuits : Circuits
   /-- An honest seed generation gives the keys of `F_seedGen`, except when two derived keys collide (the note,
   Section 2.1, honest run). -/
   seedGenCompleteness : SeedGenCompletenessStatement prims C E
-  /-- An honest ceremony gives the tree of `F_tree`, except when an honest check aborts
+  /-- The honest ceremonies of a tree give the tree of `F_tree`, except when an honest check aborts
   (`treeAbortError`) (the note, Section 2.1, honest run). -/
   treeCompleteness : TreeCompletenessStatement prims K circuits settings
   /-- When the circuits compute `Th`, the dealer of `F_tree` gives the trees of `KeyGen` of the

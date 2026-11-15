@@ -121,31 +121,35 @@ def seedGenSimulator (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) :
 variable (K : Constants C E) (circuits : Circuits) (settings : Settings)
 
 /-- The simulator of one ceremony, after GS20, Theorem 2. It runs `A` with emulated honest operators.
-They use `P` from `F_tree`, the seeds of the corrupt operators for the terms that a corrupt operator
-holds, and zero seeds elsewhere. Their streams under hidden PRSS keys are ideal. The opening of each
-batch shifts the first lacked term `T₀`, so it opens the output of `F_tree` (GS20, Theorem 2, output
-phase, and MPClan, App. B). `Rerand` makes `T₀` uniform first (BBY23, Section 4.3). The receivers
-are the emulated honest operators that do not abort (GL05). -/
-def treeSimulator (top : TopTree) (tree : Tree) (D : C.Coalition) (A : Adversary C E (Keys C) PEmpty PEmpty) :
-    Simulator (C := C) (WorldSpec C) (Keys C) (PublicParameter × List (List (List Bit))) (Finset C.Party) A.State where
+They use `P` from `F_ceremony`, the seeds of the corrupt operators for the terms that a corrupt
+operator holds, and zero seeds elsewhere. Their streams under hidden PRSS keys are ideal. The
+opening of each batch shifts the first lacked term `T₀`, so it opens the outputs of `F_ceremony`
+(GS20, Theorem 2, output phase, and MPClan, App. B). Batch `k` is at position `k - counters.2` of
+the ceremony, so it opens the outputs of the jobs at that position of `chunks`. `Rerand` makes `T₀`
+uniform first (BBY23, Section 4.3). The receivers are the emulated honest operators that do not
+abort (GL05). -/
+def ceremonySimulator (counters : ℕ × ℕ) (jobs : List Job) (D : C.Coalition)
+    (A : Adversary C E (Keys C) PEmpty PEmpty) :
+    Simulator (C := C) (WorldSpec C) (Keys C) (PublicParameter × List (List Bit)) (Finset C.Party) A.State where
   State := SimulatorState C (Keys C) A.State
   start corrupt z := do
     let (state, log) ← observe (A.start corrupt z)
     pure ⟨state, log, corrupt⟩
-  answer st := fun (parameter, openings) => do
+  answer st := fun (parameter, opened) => do
     let T₀ := lackedTerm D.1
     let seeds : C.Term → HashOutput := fun T => (C.parties.findSome? fun j =>
       if j ∈ C.holders T then (st.corrupt j).map (·.seed T) else none).getD 0
     let keys : Keys C := ⟨parameter, seeds, fun _ => 0⟩
-    let gadgets := fun (ctx : Context C) (k : ℕ) (jobs : List Job) =>
+    let openings := chunks settings.batchSize opened
+    let gadgets := fun (ctx : Context C) (k : ℕ) (batch : List Job) =>
       { realRunGadgets K ctx settings.mode with
         output := fun v count => do
-          let clear ← StateT.lift (oracleStep (jobs.mapM (evalJob circuits parameter seeds)))
-          let shift := fun g => ((openings.getD k []).flatten.getD g 0) + (clear.flatten.getD g 0)
+          let clear ← StateT.lift (oracleStep (batch.mapM (evalJob circuits parameter seeds)))
+          let shift := fun g => ((openings.getD (k - counters.2) []).flatten.getD g 0) + (clear.flatten.getD g 0)
           StateT.lift (openRep K ctx (fun T g => if T₀ = some T then v T g + shift g else v T g) count) }
     let (((state, outputs), _), calls) ← ((executePhase (emulatedRoles D) D A noFunctionality
       (ceremonyFuel circuits settings) st.adversary fun i =>
-        (ceremonyWith K circuits settings gadgets i keys top tree : PartyM C E RealSpec TreeOutput)).run ∅).run
+        (ceremonyWith K circuits settings gadgets i keys counters jobs : PartyM C E RealSpec (List (List Bit)))).run ∅).run
     pure (⟨state, st.log ++ calls, st.corrupt⟩, Finset.univ.filter fun i => (outputs i).isSome)
   output st := pure st.adversary
 

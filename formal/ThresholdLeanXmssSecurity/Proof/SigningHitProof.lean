@@ -716,7 +716,7 @@ theorem tsigOracles_free (x : SigningSecurityProof.Keys3 C) (top : TopTree)
 
 
 set_option maxRecDepth 100000 in
-/-- The first tree-opening request begins with the actual free bottom ceremony. -/
+/-- The first tree-opening request begins with the actual free bottom tree. -/
 theorem flagged_tree_prefix (x : SigningSecurityProof.Keys3 C) (top : TopTree)
     (b : Fin (2 ^ layerHeight)) (s : TsigState C × Bool) (hmiss : s.1.trees b = none) :
     ∃ k, (SigningCoreProof.flaggedOracles x
@@ -2058,7 +2058,7 @@ theorem openedFinalRun_forget (A : TsigAdversary C) (x : SigningSecurityProof.Ke
 set_option maxRecDepth 100000 in
 open SigningCacheProof in
 /-- A set bit in the actual instrumented final run supplies the resolved
-bottom ceremony in its final cache, after verification and freshness checking. -/
+bottom tree in its final cache, after verification and freshness checking. -/
 theorem openedFinalRun_resolves (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
     (b : Fin (2 ^ layerHeight)) (initial : HashCache C × ℕ)
     (r : (((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) × Bool) × (HashCache C × ℕ))
@@ -2282,7 +2282,7 @@ theorem resolves_mapM_member {α β : Type} {cache : HashCache C}
     · exact ⟨b, hb⟩
     · exact ih bs hbs a' ha'
 
-/-- A resolved top ceremony has read every top chain start and its full chain. -/
+/-- The resolved top tree has read every top chain start and its full chain. -/
 theorem resolves_referenceTop_chains (x : SigningSecurityProof.Keys3 C)
     (cache : HashCache C) (top : TopTree)
     (h : DeterministicSigning.Resolves cache
@@ -2310,7 +2310,7 @@ theorem resolves_referenceTop_chains (x : SigningSecurityProof.Keys3 C)
   erw [XmssSecurity.Bridge.chainWalk_top] at hm
   exact hm
 
-/-- All starts in an actually resolved top ceremony are stable under extension. -/
+/-- All starts in an actually resolved top tree are stable under extension. -/
 theorem resolves_referenceTop_starts (x : SigningSecurityProof.Keys3 C)
     (cache larger : HashCache C) (hle : cache ≤ larger) (top : TopTree)
     (h : DeterministicSigning.Resolves cache
@@ -2323,7 +2323,7 @@ theorem resolves_referenceTop_starts (x : SigningSecurityProof.Keys3 C)
     (resolves_forestValue prims cache cache le_rfl _ _ _ hs).symm
 
 set_option maxRecDepth 100000 in
-/-- The top ceremony also resolves the Merkle computation, with its actual
+/-- The top tree also resolves the Merkle computation, with its actual
 chain ends and root. -/
 theorem resolves_referenceTop_merkle (x : SigningSecurityProof.Keys3 C)
     (cache : HashCache C) (top : TopTree)
@@ -2442,7 +2442,7 @@ theorem resolves_referenceTop_walks (x : SigningSecurityProof.Keys3 C)
   exact hlarge.trans hsmall.symm
 
 set_option maxRecDepth 100000 in
-/-- A bottom ceremony resolves all its chain starts and complete chains even
+/-- A bottom tree resolves all its chain starts and complete chains even
 if its later grinding step returns `none`. -/
 theorem resolves_referenceBottom_chains (x : SigningSecurityProof.Keys3 C)
     (cache : HashCache C) (top : TopTree) (b k : Fin (2 ^ layerHeight))
@@ -2974,7 +2974,7 @@ theorem bottom_child_index (b j level bit : ℕ) (hl : level < 16) (hbit : bit <
 
 set_option maxRecDepth 100000 in
 set_option backward.isDefEq.respectTransparency false in
-/-- Every target in a completed bottom ceremony is stable, even if its output
+/-- Every target in a completed bottom tree is stable, even if its output
 is `none`. This uses the actual structural reads before grinding. -/
 theorem resolves_referenceBottom_targets (x : SigningSecurityProof.Keys3 C)
     (cache : HashCache C) (top : TopTree) (b : Fin (2 ^ layerHeight))
@@ -4090,7 +4090,7 @@ theorem terms_cons (C : Committee) : ∃ T rest, C.terms = T :: rest := by
   intro h
   simpa [h] using hmem
 
-/-- The top ceremony begins with a chain-start PRF job. This avoids reducing the
+/-- The ceremony of the top tree begins with a chain-start PRF job. This avoids reducing the
 concrete list of all top keys during the first-query proof. -/
 theorem topJobs_cons : ∃ b l rest, topJobs =
     ⟨.chainEnd (topKey b) l, [.chain topLayer (topKey b) l (digit 0)]⟩ :: rest := by
@@ -4109,7 +4109,7 @@ theorem topJobs_cons : ∃ b l rest, topJobs =
   exact ⟨_, rfl⟩
 
 set_option maxRecDepth 100000 in
-/-- The first operation of the actual top ceremony is a threshold PRF call. -/
+/-- The first operation of the actual ceremony of the top tree is a threshold PRF call. -/
 theorem referenceTree_top_first (x : SigningSecurityProof.Keys3 C) :
     ∃ p k, referenceTree (fun oa => SigningSecurityProof.liftFree (tweakable oa))
         (fun p => SigningSecurityProof.liftFree (prfValue x.2.1 p)) x.1 emptyTop .top =
@@ -4694,7 +4694,7 @@ theorem topDomain_valid (domain : XmssSecurity.HashDomain)
 
 open SigningDescentProof in
 /-- Completing unrelated trees cannot erase a hit at a key whose own bottom
-ceremony and the top ceremony are already resolved. -/
+tree and the top tree are already resolved. -/
 theorem resolved_ceremonies_noHit (z : FinalState C)
     (larger : HashCache C) (hle : z.cache ≤ larger)
     (hno : NoForestCollision prims z.keys larger)
@@ -4760,7 +4760,7 @@ theorem forestException_replayChanges (x : SigningSecurityProof.Keys3 C)
     (recordReads_resolves (forestRun x) ∅ z.2.1.1 (by intro i v h; cases h) r hr).1 hbad hno⟩
 
 set_option maxRecDepth 100000 in
-/-- The actual top ceremony resolves every PRF and structural read in the
+/-- The actual top tree resolves every PRF and structural read in the
 final cache. Evaluation alone would not justify stability of its targets. -/
 theorem exposedRun_top_resolves (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
     (r : Outcome C) (hr : r ∈ support (SigningDescentProof.exposedRun prims A x))
@@ -4792,7 +4792,7 @@ theorem exposedRun_top_resolves (A : TsigAdversary C) (x : SigningSecurityProof.
 set_option maxRecDepth 100000 in
 open SigningCacheProof SigningDescentProof in
 /-- Actual freshness checking either uses fewer than t signers or resolves the
-forgery's bottom ceremony. This follows the executed finish branch. -/
+forgery's bottom tree. This follows the executed finish branch. -/
 theorem exposedRun_fresh_or_bottom (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
     (r : Outcome C) (hr : r ∈ support (exposedRun prims A x)) (hwin : r.1.1 = (true, false)) :
     ∃ top state forgery, r.1.2 = some (top, state, forgery) ∧
@@ -4861,7 +4861,7 @@ theorem forestException_unopened (A : TsigAdversary C) (x : SigningSecurityProof
 
 set_option maxRecDepth 100000 in
 /-- Exceptional wins use a fresh signing key: the alternative freshness
-comparison would itself execute the forbidden bottom ceremony. -/
+comparison would itself execute the forbidden bottom tree. -/
 theorem forestException_fresh (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
     (z : (((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) × LoggedState C))
     (hz : z ∈ support (loggedRun prims A x)) (hex : ForestException prims x z) :
@@ -8189,7 +8189,7 @@ theorem topStarts_other (b b' : XmssSecurity.TopIndex) (hne : b' ≠ b)
   apply hne
   exact Fin.ext (congrArg (fun e : KeyIndex => e.val) (Point.chain.inj hk).2.1.symm)
 
-/-- Bottom ceremony jobs contain no protected top-chain start. -/
+/-- The jobs of a bottom tree contain no protected top-chain start. -/
 theorem bottomJobs_avoid (b b' : XmssSecurity.TopIndex) (job : Job)
     (hj : job ∈ bottomJobs b') (p : Point) (hp : p ∈ job.points) : p ∉ topStarts b := by
   simp only [bottomJobs, List.mem_append, List.mem_flatMap, List.mem_map,
@@ -8676,7 +8676,7 @@ theorem referenceJob_congr {m : Type → Type} [Monad m] [LawfulMonad m]
   unfold referenceJob
   rw [mapM_congr_mem h]
 
-/-- An unrelated bottom ceremony does not depend on the protected start values
+/-- An unrelated bottom tree does not depend on the protected start values
 when its public top tree and hash implementation are held fixed. -/
 theorem referenceBottom_congr {m : Type → Type} [Monad m] [LawfulMonad m]
     (lift : ∀ {α : Type}, OracleComp HashSpec α → m α) (F G : Point → m Digest)
@@ -9065,7 +9065,7 @@ theorem skip_jobs (x : SigningSecurityProof.Keys3 C) (b : XmssSecurity.TopIndex)
       (simulateQ (protectedLocal prims x b) (next outputs))).run s.2 = _
   rw [interpret_jobs prims x b hno, pure_bind]
 
-/-- The public continuation of the top ceremony receives only the job
+/-- The public continuation of the ceremony of the top tree receives only the job
 outputs. In particular the selected block exposes only its endpoint bits. -/
 def finish {m : Type → Type} [Monad m]
     (lift : ∀ {α : Type}, OracleComp HashSpec α → m α) (P : PublicParameter)

@@ -124,7 +124,7 @@ its parts.
 
 * An input-side hit on the partial chain target.
 * A bottom partner whose selection is not fresh.
-* A top partner that no successful bottom ceremony resolves.
+* A top partner that no successful bottom tree resolves.
 * A chain start at the key of the forgery with an absent PRF entry.
 -/
 def GuardedFlag (x : SigningSecurityProof.Keys3 C) (w : JointOutcome C) : Prop :=

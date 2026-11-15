@@ -33,7 +33,7 @@ run.
 ## The flag
 
 `UnchargedFlag` is the input-side `HiddenInputHit`, a bottom partner with a selection that is not
-fresh (leanVM lane 2), or a top partner that no bottom ceremony resolves.
+fresh (leanVM lane 2), or a top partner that no bottom tree resolves.
 `unchargedFlag_of_win` shows that every uncharged win on the log raises it.
 `UnchargedFlagCoupling` is the `hcouple` premise of `probEvent_le_of_capped` for this flag.
 -/
@@ -602,7 +602,7 @@ theorem freshPartnerLink_of_classification (hclass : SelectionClassification (C 
 * An input-side hit. An adversary call or a verification call carried an unreleased opening or a
   hidden chain value below the opened position (`HiddenInputHit` of the candidate log).
 * A bottom partner whose selection is not fresh. This is the cached selection of leanVM lane 2.
-* A top partner that no successful bottom ceremony resolves.
+* A top partner that no successful bottom tree resolves.
 -/
 def UnchargedFlag (x : SigningSecurityProof.Keys3 C) (w : JointOutcome C) : Prop :=
   SigningOpeningProof.HiddenInputHit x (SigningGuessLinkProof.chainTarget prims x (w.1, w.2.1)) (w.1, w.2.1) ∨

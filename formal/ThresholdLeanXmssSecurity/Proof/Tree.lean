@@ -5,13 +5,13 @@ import VCVio.ProgramLogic.Relational.Basic
 import VCVio.OracleComp.SimSemantics.StateT.StateProjection
 
 /-!
-# The ceremony
+# The ceremonies of a tree
 
-`TreeCompletenessStatement` follows from the honest run of a ceremony, batch by batch.
-`TreeSecurityStatement` reduces to its distance half `TreeSecurityDistance`.
-`treeSimulator_queryBound` gives the query half. The supporting lemmas concern
-`TreeSecurityDistance`. The dealer claims `DealerTreeStatement` and `TreeSuccessStatement`
-follow from `dealerTreeProof` and `treeSuccessProof` in `Dealer`.
+`TreeCompletenessStatement` follows from the honest run of the ceremonies of a tree, batch by batch.
+`setup_chunks_step` joins the two ceremonies of a bottom tree. The second PRSS setup keeps the cache
+invariant `CacheOK`, and the counters continue. The lemmas after `treeCompleteness` concern the PRSS
+setup and the hidden streams of a ceremony. The dealer claims `DealerTreeStatement` and
+`TreeSuccessStatement` follow from `dealerTreeProof` and `treeSuccessProof` in `Dealer`.
 -/
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
@@ -31,13 +31,13 @@ section TreeStatement
 variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
 variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings)
 
-/-- The honest real ceremony as a local run from the empty cache. -/
+/-- The honest real ceremonies of a tree as a local run from the empty cache. -/
 def realTreeRun (top : TopTree) (tree : Tree) (keys : C.Party → Keys C) : ProbComp (C.Party → Option TreeOutput) :=
-  (simulateQ (localAnswer prims) (honestStart (fun i => (ceremony K circuits settings i (keys i) top tree :
+  (simulateQ (localAnswer prims) (honestStart (fun i => (newTree K circuits settings i (keys i) top tree :
       PartyM C E RealSpec TreeOutput)) >>=
-    honestRounds noFunctionality (fun l => l.elim) (ceremonyFuel circuits settings))).run' ∅
+    honestRounds noFunctionality (fun l => l.elim) (setupRounds + ceremonyFuel circuits settings))).run' ∅
 
-/-- The dealer ceremony as a local run from the empty cache, with its output at every operator. -/
+/-- The dealer of a tree as a local run from the empty cache, with its output at every operator. -/
 def idealTreeRun (parameter : PublicParameter) (seeds : C.Term → HashOutput) (top : TopTree) (tree : Tree) :
     ProbComp (C.Party → Option TreeOutput) :=
   (fun r (_ : C.Party) => r.1) <$> (simulateQ (hashAnswer (C := C) prims + prgAnswer (C := C) prims)
@@ -70,7 +70,7 @@ theorem firstParty_mem_holders_find (seeds : C.Term → HashOutput) (parameter :
     rw [← hj]
     simp [dealtKeys, hjT]
 
-/-- The ideal side of the statement on dealt keys is the dealer ceremony. -/
+/-- The ideal side of the statement on dealt keys is the dealer of the tree. -/
 theorem ideal_tree_eq (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairKeys : C.Pair → HashOutput)
     (top : TopTree) (tree : Tree) :
     (simulateQ (localAnswer prims) (simulateQ (replyImpl (fun _ => (Finset.univ : Finset C.Party)))
@@ -138,26 +138,27 @@ theorem tvDist_le_joint {β : Type} (R I : OracleComp (LocalSpec C) β) (s : Has
     _ ≤ _ := measureTVDist_bind_left_le_prEvent_of_evalDistEq J _ _ (fun p => p.1 ≠ p.2) fun p hp => by
         rw [not_not] at hp; rw [hp]
 
-/-- The real ceremony on dealt keys as a local computation. -/
+/-- The real ceremonies of a tree on dealt keys as a local computation. -/
 def realTree (top : TopTree) (tree : Tree) (parameter : PublicParameter) (seeds : C.Term → HashOutput)
     (pairKeys : C.Pair → HashOutput) : OracleComp (LocalSpec C) (C.Party → Option TreeOutput) :=
-  honestStart (fun i => (ceremony K circuits settings i (dealtKeys parameter seeds pairKeys i) top tree :
+  honestStart (fun i => (newTree K circuits settings i (dealtKeys parameter seeds pairKeys i) top tree :
       PartyM C E RealSpec TreeOutput)) >>=
-    honestRounds noFunctionality (fun l => l.elim) (ceremonyFuel circuits settings)
+    honestRounds noFunctionality (fun l => l.elim) (setupRounds + ceremonyFuel circuits settings)
 
-/-- The dealer ceremony as a local computation, with its output at every operator. -/
+/-- The dealer of a tree as a local computation, with its output at every operator. -/
 def idealTree (parameter : PublicParameter) (seeds : C.Term → HashOutput) (top : TopTree) (tree : Tree) :
     OracleComp (LocalSpec C) (C.Party → Option TreeOutput) :=
   liftComp ((fun r (_ : C.Party) => r.1) <$> dealerCeremony circuits settings parameter seeds top tree) (LocalSpec C)
 
-/-- The dealer ceremony, then the real ceremony, from the empty cache. The first output is the real one. -/
+/-- The dealer of a tree, then the real ceremonies of the tree, from the empty cache. The first output
+is the real one. -/
 def jointTreeRun (top : TopTree) (tree : Tree) (parameter : PublicParameter) (seeds : C.Term → HashOutput)
     (pairKeys : C.Pair → HashOutput) : ProbComp ((C.Party → Option TreeOutput) × (C.Party → Option TreeOutput)) :=
   (simulateQ (localAnswer prims) (idealTree circuits settings parameter seeds top tree >>= fun a =>
     realTree K circuits settings top tree parameter seeds pairKeys >>= fun z => pure (z, a))).run' ∅
 
-/-- The statement reduces to the probability that the real ceremony differs from the dealer
-ceremony in one joint run. -/
+/-- The statement reduces to the probability that the real ceremonies of a tree differ from the dealer
+of the tree in one joint run. -/
 theorem treeCompleteness_of_joint
     (h : 0 < settings.batchSize → ∀ (top : TopTree) (tree : Tree) (parameter : PublicParameter)
       (seeds : C.Term → HashOutput) (pairKeys : C.Pair → HashOutput),
@@ -3110,7 +3111,7 @@ theorem evalRun_eq (parameter : PublicParameter) (seeds : C.Term → HashOutput)
     evalRun prims circuits parameter seeds h jobs = some (jobs.map fun job => D prims h (evalJob circuits parameter seeds job)) := by
   unfold evalRun; rfl
 
-/-- The tree of a ceremony with `H` fixed to `h`, computed in the clear. -/
+/-- A tree with `H` fixed to `h`, computed in the clear. -/
 def ceremonyAt (parameter : PublicParameter) (seeds : C.Term → HashOutput) (h : Query C → HashOutput)
     (top : TopTree) (tree : Tree) : Option TreeOutput :=
   ceremonyOutput (m := Id) (fun oa => D prims h (tweakable oa)) parameter (evalRun prims circuits parameter seeds h) top tree
@@ -3224,41 +3225,61 @@ section Body
 variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] [Fintype E] [DecidableEq E]
   (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings)
 
-/-- The ceremony of operator `i` after the PRSS setup. -/
-def ceremonyBody (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairKeys : C.Pair → HashOutput)
-    (kT : C.Term → HashOutput) (kP : C.Pair → HashOutput) (top : TopTree) (tree : Tree) (i : C.Party) :
-    PartyM C E RealSpec TreeOutput := do
-  let some output ← (ceremonyOutput (m := StateT (ℕ × ℕ) (PartyM C E RealSpec))
-      (fun oa => StateT.lift (oracleStep (tweakable oa))) parameter
-      (batched settings.batchSize (realBatch K circuits settings.mode (prssCtx (dealtKeys parameter seeds pairKeys) kT kP i)
-        parameter)) top tree).run' (0, 0) | failure
-  pure output
+omit [Fintype E] [DecidableEq E] in
+/-- The real ceremony of `jobs` on dealt keys, from the counters `st`. It is the PRSS setup and then
+the batches of `jobs` with the new PRSS keys. -/
+theorem ceremonyRun_run (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairKeys : C.Pair → HashOutput)
+    (i : C.Party) (jobs : List Job) (st : ℕ × ℕ) :
+    (ceremonyRun K circuits settings (fun ctx _ _ => realRunGadgets K ctx settings.mode) i
+        (dealtKeys parameter seeds pairKeys i) jobs : StateT (ℕ × ℕ) (PartyM C E RealSpec) _).run st =
+      prssSetup i >>= fun prss => ((chunks settings.batchSize jobs).mapM (realBatch K circuits settings.mode
+        ⟨i, dealtKeys parameter seeds pairKeys i, prss⟩ parameter)).run st >>= fun p =>
+          pure (p.1.foldlM (fun acc batch => batch.map (acc ++ ·)) [], p.2) := by
+  simp only [ceremonyRun, batched, StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind, StateT.run_pure]
+  rfl
 
-/-- The ceremony of operator `i` after the PRSS setup with the PRSS keys `prss`. -/
-def ceremonyRest (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairKeys : C.Pair → HashOutput)
-    (top : TopTree) (tree : Tree) (i : C.Party) (prss : PrssKeys C) : PartyM C E RealSpec TreeOutput := do
-  let ctx : Context C := ⟨i, dealtKeys parameter seeds pairKeys i, prss⟩
-  let some output ← (ceremonyOutput (m := StateT (ℕ × ℕ) (PartyM C E RealSpec))
-      (fun oa => StateT.lift (oracleStep (tweakable oa))) (dealtKeys parameter seeds pairKeys i).parameter
-      (batched settings.batchSize fun jobs => do
-        let (label, k) ← get
-        let inputs ← StateT.lift (jobs.mapM (inputShares ctx))
-        let (outputs, state) ← StateT.lift ((runJobs K (realRunGadgets K ctx settings.mode)
-          (jobs.map (circuits (dealtKeys parameter seeds pairKeys i).parameter ·.kind)) inputs).run
-            ⟨fun _ => [], label, k⟩)
-        set (state.label, k + 1)
-        pure (some outputs)) top tree).run' (0, 0) | failure
-  pure output
+omit [Field E] [Algebra Bit E] [Fintype E] [DecidableEq E] in
+/-- An honest PRSS setup from a cache with `CacheOK`. Every operator continues with its PRSS keys of
+one dealing, and the cache keeps `CacheOK` for the same keys and the same label bound. -/
+theorem setup_step_cacheOK [Nonempty C.Party] {I O L R α : Type} (F : Functionality C I O L R) (reply : L → R)
+    (fuel : ℕ) (f : C.Party → PrssKeys C → PartyM C E (CallSpec I O) α) (event : (C.Party → Option α) → Prop)
+    (Ks : Finset HashOutput) (Lk : ℕ) (s : HashCache C) (hn : NoMpc s) (hs : CacheOK Ks Lk s) (ε : ℝ≥0∞)
+    (h : ∀ (kT : C.Term → HashOutput) (kP : C.Pair → HashOutput) (s' : HashCache C), NoMpc s' → s ≤ s' →
+      CacheOK Ks Lk s' →
+      Pr{let z ← (simulateQ (localAnswer prims)
+        (honestStart (fun i => f i (prssKeysOf kT kP i)) >>= honestRounds F reply fuel)).run' s'}[event z] ≤ ε) :
+    Pr{let z ← (simulateQ (localAnswer prims)
+      (honestStart (fun i => prssSetup i >>= f i) >>= honestRounds F reply (fuel + 3))).run' s}[event z] ≤ ε :=
+  setup_step prims F reply fuel f event s hn ε fun kT kP s' hn' hle hfr =>
+    h kT kP s' hn' hle (cacheOK_of_frame hs hfr)
 
-theorem ceremony_eq (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairKeys : C.Pair → HashOutput)
-    (top : TopTree) (tree : Tree) (i : C.Party) :
-    (ceremony K circuits settings i (dealtKeys parameter seeds pairKeys i) top tree : PartyM C E RealSpec TreeOutput) =
-      prssSetup i >>= ceremonyRest K circuits settings parameter seeds pairKeys top tree i := rfl
-
-theorem ceremonyRest_honest (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairKeys : C.Pair → HashOutput)
-    (kT : C.Term → HashOutput) (kP : C.Pair → HashOutput) (top : TopTree) (tree : Tree) (i : C.Party) :
-    ceremonyRest K circuits settings parameter seeds pairKeys top tree i (prssKeysOf kT kP i) =
-      ceremonyBody K circuits settings parameter seeds pairKeys kT kP top tree i := rfl
+/-- The join of two ceremonies of a tree. From a cache with `CacheOK Ks Lk` and the counters
+`(lab, k)` of the ceremony before, a new PRSS setup and then the batches `js` abort with probability
+at most `chunksCost`, as the batches of one ceremony do. The counters and the coin keys continue,
+and only the PRSS keys are new. -/
+theorem setup_chunks_step [Nonempty C.Party] {L R : Type} (F : Functionality C PEmpty PEmpty L R) (reply : L → R)
+    (mode : ReshareMode) (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairKeys : C.Pair → HashOutput)
+    {α : Type} (js : List (List Job)) (lab k Lk c : ℕ) (Ks : Finset HashOutput) (hLk : Lk ≤ lab) (hKs : Ks.card ≤ c)
+    (s : HashCache C) (hn : NoMpc s) (hs : CacheOK Ks Lk s) (fuel : ℕ)
+    (g : C.Party → List (Option (List (List Bit))) × (ℕ × ℕ) → PartyM C E RealSpec α)
+    (event : (C.Party → Option α) → Prop) (ε : ℝ≥0∞)
+    (h : ∀ (outs : List (Option (List (List Bit)))) (Ks' : Finset HashOutput) (s' : HashCache C),
+      (∀ h' s'', Good prims h' → s' ≤ s'' → Agrees h' s'' →
+        outs = js.map fun jobs => some (jobs.map fun job => D prims h' (evalJob circuits parameter seeds job))) →
+      Ks'.card ≤ c + (js.map fun jobs => checkKeys (batchCount circuits parameter jobs)).sum →
+      CacheOK Ks' (lab + (js.map (batchLabels circuits parameter)).sum) s' → NoMpc s' → s ≤ s' →
+      Pr{let z ← (simulateQ (localAnswer prims)
+        (honestStart (fun i => g i (outs, (lab + (js.map (batchLabels circuits parameter)).sum, k + js.length))) >>=
+          honestRounds F reply fuel)).run' s'}[event z] ≤ ε) :
+    Pr{let z ← (simulateQ (localAnswer prims)
+      (honestStart (fun i => prssSetup i >>= fun prss =>
+        (js.mapM (realBatch K circuits mode ⟨i, dealtKeys parameter seeds pairKeys i, prss⟩ parameter)).run (lab, k) >>=
+          g i) >>=
+        honestRounds F reply (fuel + (js.map (batchRounds circuits mode parameter)).sum + 3))).run' s}[event z] ≤
+      chunksCost circuits E parameter c js + ε := by
+  refine setup_step_cacheOK prims F reply _ _ event Ks Lk s hn hs _ fun kT kP s₁ hn₁ hle₁ hs₁ => ?_
+  exact chunks_step prims K circuits mode F reply parameter seeds pairKeys kT kP js lab k Lk c Ks hLk hKs s₁ hn₁ hs₁
+    fuel g event ε fun outs Ks' s' houts hKs' hs' hn' hle' => h outs Ks' s' houts hKs' hs' hn' (hle₁.trans hle')
 
 end Body
 
@@ -3282,7 +3303,7 @@ def topChainEnd (outputs : List (List Bit)) : KeyIndex → ChainIndex → Digest
   digestAt (outputs.getD (((List.finRange (2 ^ layerHeight)).flatMap fun b =>
     (List.finRange chainCount).map fun l => (topKey b, l)).idxOf (e, l)) []) 0
 
-/-- The top ceremony after its run. -/
+/-- The top tree after the batches of its ceremony. -/
 def topRest (parameter : PublicParameter) (outs : List (Option (List (List Bit)))) (st : ℕ × ℕ) :
     PartyM C E RealSpec TreeOutput :=
   match outs.foldlM (fun acc batch => batch.map (acc ++ ·)) [] with
@@ -3290,17 +3311,19 @@ def topRest (parameter : PublicParameter) (outs : List (Option (List (List Bit))
       fun root => pure (.top ⟨topChainEnd outputs, root⟩)
   | none => failure
 
-theorem ceremonyBody_top (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairKeys : C.Pair → HashOutput)
-    (kT : C.Term → HashOutput) (kP : C.Pair → HashOutput) (top : TopTree) (i : C.Party) :
-    ceremonyBody K circuits settings parameter seeds pairKeys kT kP top .top i =
-      ((chunks settings.batchSize topJobs).mapM (realBatch K circuits settings.mode
-        (prssCtx (dealtKeys parameter seeds pairKeys) kT kP i) parameter)).run (0, 0) >>= fun p =>
+omit [Fintype E] [DecidableEq E] in
+/-- The ceremony of the top tree is its PRSS setup, its batches and the local root. -/
+theorem newTree_top (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairKeys : C.Pair → HashOutput)
+    (top : TopTree) (i : C.Party) :
+    (newTree K circuits settings i (dealtKeys parameter seeds pairKeys i) top .top : PartyM C E RealSpec TreeOutput) =
+      prssSetup i >>= fun prss => ((chunks settings.batchSize topJobs).mapM (realBatch K circuits settings.mode
+        ⟨i, dealtKeys parameter seeds pairKeys i, prss⟩ parameter)).run (0, 0) >>= fun p =>
           topRest parameter p.1 p.2 := by
-  unfold ceremonyBody
-  simp only [ceremonyOutput, batched]
-  rw [StateT.run'_eq, StateT.run_bind, StateT.run_bind]
-  simp only [bind_assoc, StateT.run_pure, pure_bind, map_bind]
-  refine congrArg (_ >>= ·) (funext fun p => ?_)
+  unfold newTree
+  simp only [ceremonyOutput]
+  rw [StateT.run'_eq, StateT.run_bind]
+  simp only [ceremonyRun_run, bind_assoc, pure_bind, map_bind]
+  refine bind_congr fun prss => bind_congr fun p => ?_
   unfold topRest
   split
   · rename_i outputs heq
@@ -3335,11 +3358,12 @@ theorem top_body_bound [Nonempty C.Party] {L R : Type} (F : Functionality C PEmp
     (ho : ∀ h s', Good prims h → s ≤ s' → Agrees h s' → o₀ = ceremonyAt prims circuits parameter seeds h top .top)
     (hsize : 0 < settings.batchSize) (fuel : ℕ) :
     Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => ceremonyBody K circuits settings parameter seeds pairKeys kT kP top .top i) >>=
+      (honestStart (fun i => ((chunks settings.batchSize topJobs).mapM (realBatch K circuits settings.mode
+        (prssCtx (dealtKeys parameter seeds pairKeys) kT kP i) parameter)).run (0, 0) >>= fun p =>
+          topRest (E := E) parameter p.1 p.2) >>=
         honestRounds F reply (fuel + ((chunks settings.batchSize topJobs).map
           (batchRounds circuits settings.mode parameter)).sum))).run' s}[z ≠ fun _ => o₀] ≤
       chunksCost circuits E parameter 0 (chunks settings.batchSize topJobs) := by
-  simp only [ceremonyBody_top]
   rw [← add_zero (chunksCost circuits E parameter 0 _)]
   refine chunks_step prims K circuits settings.mode F reply parameter seeds pairKeys kT kP _ 0 0 0 0 ∅ le_rfl (by simp)
     s hn hs fuel (fun i p => topRest parameter p.1 p.2) _ 0 fun outs Ks' s' houts hKs' hs' hn' hle' => ?_
@@ -3490,7 +3514,7 @@ def bCommitment (b : Fin (2 ^ layerHeight)) (outputs : List (List Bit)) : KeyInd
 def bRho (b : Fin (2 ^ layerHeight)) (outputs : List (List Bit)) : Digest :=
   digestAt (outputs.getD ((bottomKeys b).length + 2 ^ layerHeight) []) 0
 
-/-- The bottom ceremony after its second run. -/
+/-- A bottom tree after the batches of its signature ceremony. -/
 def bottomRest2 (parameter : PublicParameter) (top : TopTree) (b : Fin (2 ^ layerHeight)) (outputs : List (List Bit))
     (root : Digest) (randomness : Randomizer) (outs : List (Option (List (List Bit)))) :
     PartyM C E RealSpec TreeOutput :=
@@ -3502,9 +3526,10 @@ def bottomRest2 (parameter : PublicParameter) (top : TopTree) (b : Fin (2 ^ laye
       pure (.bottom ⟨bCpk b outputs, bCommitment b outputs, root, ⟨randomness, fun l => digestAt (values.getD l.val []) 0, path⟩⟩)
   | none => failure
 
-/-- The bottom ceremony after its first run. -/
+/-- A bottom tree after its first ceremony. `signRun` is the signature ceremony at an encoding, from
+the counters that the first ceremony leaves. -/
 def bottomRest (parameter : PublicParameter) (top : TopTree) (b : Fin (2 ^ layerHeight))
-    (rb : List Job → StateT (ℕ × ℕ) (PartyM C E RealSpec) (Option (List (List Bit))))
+    (signRun : Encoding → ℕ × ℕ → PartyM C E RealSpec (List (Option (List (List Bit))) × (ℕ × ℕ)))
     (outs : List (Option (List (List Bit)))) (st : ℕ × ℕ) : PartyM C E RealSpec TreeOutput :=
   match outs.foldlM (fun acc batch => batch.map (acc ++ ·)) [] with
   | some outputs =>
@@ -3513,41 +3538,50 @@ def bottomRest (parameter : PublicParameter) (top : TopTree) (b : Fin (2 ^ layer
           (topKey b) (bRho b outputs) (littleEndianBytes 16 root)))) >>= fun base =>
         oracleStep (tweakable (grind parameter topLayer (topKey b) (littleEndianBytes 16 root) base randomizerAttemptLimit 0)) >>=
         fun g => match g with
-          | some (randomness, encoding) => ((chunks settings.batchSize (signJobs b encoding)).mapM rb).run st >>= fun p =>
+          | some (randomness, encoding) => signRun encoding st >>= fun p =>
               bottomRest2 parameter top b outputs root randomness p.1
           | none => failure
   | none => failure
 
-theorem ceremonyBody_bottom (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairKeys : C.Pair → HashOutput)
-    (kT : C.Term → HashOutput) (kP : C.Pair → HashOutput) (top : TopTree) (b : Fin (2 ^ layerHeight)) (i : C.Party) :
-    ceremonyBody K circuits settings parameter seeds pairKeys kT kP top (.bottom b) i =
-      ((chunks settings.batchSize (bottomJobs b)).mapM (realBatch K circuits settings.mode
-        (prssCtx (dealtKeys parameter seeds pairKeys) kT kP i) parameter)).run (0, 0) >>= fun p =>
-          bottomRest settings parameter top b (realBatch K circuits settings.mode
-            (prssCtx (dealtKeys parameter seeds pairKeys) kT kP i) parameter) p.1 p.2 := by
-  unfold ceremonyBody
-  simp only [ceremonyOutput, batched]
-  rw [StateT.run'_eq, StateT.run_bind, StateT.run_bind]
-  simp only [bind_assoc, StateT.run_pure, pure_bind, map_bind]
-  refine congrArg (_ >>= ·) (funext fun p => ?_)
+/-- The signature ceremony of bottom tree `b` at operator `i` on dealt keys, namely its own PRSS setup
+and then its batches from the counters `st`. -/
+def signRun (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairKeys : C.Pair → HashOutput)
+    (b : Fin (2 ^ layerHeight)) (i : C.Party) (encoding : Encoding) (st : ℕ × ℕ) :
+    PartyM C E RealSpec (List (Option (List (List Bit))) × (ℕ × ℕ)) :=
+  prssSetup i >>= fun prss => ((chunks settings.batchSize (signJobs b encoding)).mapM (realBatch K circuits settings.mode
+    ⟨i, dealtKeys parameter seeds pairKeys i, prss⟩ parameter)).run st
+
+omit [Fintype E] [DecidableEq E] in
+/-- The ceremonies of a bottom tree are the PRSS setup and the batches of the first ceremony, the
+local steps, and then the signature ceremony with its own PRSS setup. -/
+theorem newTree_bottom (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairKeys : C.Pair → HashOutput)
+    (top : TopTree) (b : Fin (2 ^ layerHeight)) (i : C.Party) :
+    (newTree K circuits settings i (dealtKeys parameter seeds pairKeys i) top (.bottom b) : PartyM C E RealSpec TreeOutput) =
+      prssSetup i >>= fun prss => ((chunks settings.batchSize (bottomJobs b)).mapM (realBatch K circuits settings.mode
+        ⟨i, dealtKeys parameter seeds pairKeys i, prss⟩ parameter)).run (0, 0) >>= fun p =>
+          bottomRest parameter top b (signRun K circuits settings parameter seeds pairKeys b i) p.1 p.2 := by
+  unfold newTree
+  simp only [ceremonyOutput]
+  rw [StateT.run'_eq, StateT.run_bind]
+  simp only [ceremonyRun_run, bind_assoc, pure_bind, map_bind]
+  refine bind_congr fun prss => bind_congr fun p => ?_
   unfold bottomRest
   split
   · rename_i outputs heq
     rw [heq]
-    simp only [StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind, StateT.run_pure, map_pure, map_bind,
-      bCpk, bCommitment, bRho, bottomKeys]
+    simp only [StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind, map_bind, bCpk, bRho, bottomKeys]
     refine bind_congr fun root => ?_
     refine bind_congr fun base => ?_
     refine bind_congr fun g => ?_
     rcases g with _ | ⟨randomness, encoding⟩
     · simp only [StateT.run_pure, map_pure, pure_bind]
-    · simp only [StateT.run_bind, bind_assoc, map_bind]
-      refine bind_congr fun q => ?_
+    · simp only [StateT.run_bind, bind_assoc, map_bind, ceremonyRun_run, signRun, pure_bind]
+      refine bind_congr fun prss' => bind_congr fun q => ?_
       unfold bottomRest2
       split
       · rename_i values heq'
         rw [heq']
-        simp only [StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind, StateT.run_pure, map_pure, map_bind]
+        simp only [StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind, map_bind]
         refine bind_congr fun path => ?_
         refine bind_congr fun topRoot => ?_
         split_ifs <;> simp only [StateT.run_pure, map_pure, pure_bind] <;> rfl
@@ -3563,6 +3597,25 @@ theorem ceremonyBody_bottom (parameter : PublicParameter) (seeds : C.Term → Ha
     · rename_i o h
       exact absurd h (hne o)
     · rfl
+
+/-- The ceremonies of a tree at operator `i` after its first PRSS setup with the keys `prss`. -/
+def treeRest (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairKeys : C.Pair → HashOutput)
+    (top : TopTree) : Tree → C.Party → PrssKeys C → PartyM C E RealSpec TreeOutput
+  | .top, i, prss => ((chunks settings.batchSize topJobs).mapM (realBatch K circuits settings.mode
+      ⟨i, dealtKeys parameter seeds pairKeys i, prss⟩ parameter)).run (0, 0) >>= fun p => topRest parameter p.1 p.2
+  | .bottom b, i, prss => ((chunks settings.batchSize (bottomJobs b)).mapM (realBatch K circuits settings.mode
+      ⟨i, dealtKeys parameter seeds pairKeys i, prss⟩ parameter)).run (0, 0) >>= fun p =>
+        bottomRest parameter top b (signRun K circuits settings parameter seeds pairKeys b i) p.1 p.2
+
+omit [Fintype E] [DecidableEq E] in
+/-- The ceremonies of a tree on dealt keys start with one PRSS setup. -/
+theorem newTree_eq (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairKeys : C.Pair → HashOutput)
+    (top : TopTree) (tree : Tree) (i : C.Party) :
+    (newTree K circuits settings i (dealtKeys parameter seeds pairKeys i) top tree : PartyM C E RealSpec TreeOutput) =
+      prssSetup i >>= treeRest K circuits settings parameter seeds pairKeys top tree i := by
+  cases tree with
+  | top => exact newTree_top K circuits settings parameter seeds pairKeys top i
+  | bottom b => exact newTree_bottom K circuits settings parameter seeds pairKeys top b i
 
 end BottomBody
 
@@ -3659,14 +3712,15 @@ theorem bottom_body_bound [Nonempty C.Party] {L R : Type} (F : Functionality C P
       (((chunks settings.batchSize (bottomJobs b)).map fun js => checkKeys (batchCount circuits parameter js)).sum)
       (chunks settings.batchSize (signJobs b enc)) ≤ ε) :
     Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => ceremonyBody K circuits settings parameter seeds pairKeys kT kP top (.bottom b) i) >>=
-        honestRounds F reply (fuel + Y + ((chunks settings.batchSize (bottomJobs b)).map
+      (honestStart (fun i => ((chunks settings.batchSize (bottomJobs b)).mapM (realBatch K circuits settings.mode
+        (prssCtx (dealtKeys parameter seeds pairKeys) kT kP i) parameter)).run (0, 0) >>= fun p =>
+          bottomRest parameter top b (signRun K circuits settings parameter seeds pairKeys b i) p.1 p.2) >>=
+        honestRounds F reply (fuel + Y + 3 + ((chunks settings.batchSize (bottomJobs b)).map
           (batchRounds circuits settings.mode parameter)).sum))).run' s}[z ≠ fun _ => o₀] ≤
       chunksCost circuits E parameter 0 (chunks settings.batchSize (bottomJobs b)) + ε := by
-  simp only [ceremonyBody_bottom]
   refine chunks_step prims K circuits settings.mode F reply parameter seeds pairKeys kT kP _ 0 0 0 0 ∅ le_rfl (by simp)
-    s hn hs (fuel + Y) (fun i p => bottomRest settings parameter top b
-      (realBatch K circuits settings.mode (prssCtx (dealtKeys parameter seeds pairKeys) kT kP i) parameter) p.1 p.2)
+    s hn hs (fuel + Y + 3) (fun i p => bottomRest parameter top b
+      (signRun K circuits settings parameter seeds pairKeys b i) p.1 p.2)
       _ ε fun outs Ks₁ s₁ houts hKs₁ hs₁ hn₁ hle₁ => ?_
   dsimp only
   let h₁ := hashOf prims s₁
@@ -3682,11 +3736,11 @@ theorem bottom_body_bound [Nonempty C.Party] {L R : Type} (F : Functionality C P
     rw [houts h s' hg hle ha, chunks_outputs _ hsize] at hf
     exact (Option.some.inj hf).symm
   simp only [bottomRest, hfold]
-  refine common_step prims F reply (fuel + Y) _ (FrameR.tweakable _) _ _ s₁ hn₁ ε
+  refine common_step prims F reply (fuel + Y + 3) _ (FrameR.tweakable _) _ _ s₁ hn₁ ε
     fun root s₂ hr hn₂ hle₂ hfr₂ => ?_
-  refine common_step prims F reply (fuel + Y) _ (FrameR.tweakable _) _ _ s₂ hn₂ ε
+  refine common_step prims F reply (fuel + Y + 3) _ (FrameR.tweakable _) _ _ s₂ hn₂ ε
     fun base s₃ hb hn₃ hle₃ hfr₃ => ?_
-  refine common_step prims F reply (fuel + Y) _ (FrameR.tweakable _) _ _ s₃ hn₃ ε
+  refine common_step prims F reply (fuel + Y + 3) _ (FrameR.tweakable _) _ _ s₃ hn₃ ε
     fun g s₄ hg hn₄ hle₄ hfr₄ => ?_
   have ho₄ : ∀ h s', Good prims h → s₄ ≤ s' → Agrees h s' →
       o₀ = bottomResult prims circuits parameter seeds h top b W root g := by
@@ -3702,12 +3756,13 @@ theorem bottom_body_bound [Nonempty C.Party] {L R : Type} (F : Functionality C P
     rw [ho', honestRounds_failure]
     simp
   · have hs₄ := cacheOK_of_frame (cacheOK_of_frame (cacheOK_of_frame hs₁ hfr₂) hfr₃) hfr₄
-    have hfuel : fuel + Y = (fuel + (Y - ((chunks settings.batchSize (signJobs b encoding)).map
+    have hfuel : fuel + Y + 3 = (fuel + (Y - ((chunks settings.batchSize (signJobs b encoding)).map
         (batchRounds circuits settings.mode parameter)).sum)) +
-          ((chunks settings.batchSize (signJobs b encoding)).map (batchRounds circuits settings.mode parameter)).sum := by
+          ((chunks settings.batchSize (signJobs b encoding)).map (batchRounds circuits settings.mode parameter)).sum + 3 := by
       have := hY encoding; omega
     rw [hfuel]
-    refine le_trans (chunks_step prims K circuits settings.mode F reply parameter seeds pairKeys kT kP _
+    simp only [signRun, bind_assoc]
+    refine le_trans (setup_chunks_step prims K circuits F reply settings.mode parameter seeds pairKeys _
       _ _ _ _ Ks₁ le_rfl hKs₁ s₄ hn₄ hs₄ _ (fun _ p => bottomRest2 parameter top b W root randomness p.1)
         _ 0 fun vals Ks₅ s₅ hvals hKs₅ hs₅ hn₅ hle₅ => ?_) (by simpa using hε encoding)
     dsimp only
@@ -3942,15 +3997,15 @@ attribute [local irreducible] Finset.univ D
 variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] [Fintype E] [DecidableEq E]
   (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings)
 
-theorem ceremony_body_bound [Nonempty C.Party] {L R : Type} (F : Functionality C PEmpty PEmpty L R) (reply : L → R)
+theorem treeRest_bound [Nonempty C.Party] {L R : Type} (F : Functionality C PEmpty PEmpty L R) (reply : L → R)
     (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairKeys : C.Pair → HashOutput)
     (kT : C.Term → HashOutput) (kP : C.Pair → HashOutput) (top : TopTree) (tree : Tree) (o₀ : Option TreeOutput)
     (s : HashCache C) (hn : NoMpc s) (hs : CacheOK ∅ 0 s)
     (ho : ∀ h s', Good prims h → s ≤ s' → Agrees h s' → o₀ = ceremonyAt prims circuits parameter seeds h top tree)
     (hsize : 0 < settings.batchSize) :
     Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => ceremonyBody K circuits settings parameter seeds pairKeys kT kP top tree i) >>=
-        honestRounds F reply (ceremonyBatches settings * maxBatch circuits settings (runRounds settings.mode)))).run' s}[z ≠ fun _ => o₀] ≤
+      (honestStart (fun i => treeRest K circuits settings parameter seeds pairKeys top tree i (prssKeysOf kT kP i)) >>=
+        honestRounds F reply (ceremonyBatches settings * maxBatch circuits settings (runRounds settings.mode) + 3))).run' s}[z ≠ fun _ => o₀] ≤
       chunksBudget E (maxBatch circuits settings fun js => halvings (tupleCount js)) (treeBatches settings tree) 0 := by
   let M := maxBatch circuits settings (runRounds settings.mode)
   let H := maxBatch circuits settings fun js => halvings (tupleCount js)
@@ -3967,13 +4022,15 @@ theorem ceremony_body_bound [Nonempty C.Party] {L R : Type} (F : Functionality C
     have hx : X ≤ ceremonyBatches settings * M :=
       (hround 0 (fun _ => digit 0) js (fun jobs hj => Or.inl hj)).trans
         (Nat.mul_le_mul_right M (treeBatches_le_ceremonyBatches settings .top))
-    have hfuel : ceremonyBatches settings * M = (ceremonyBatches settings * M - X) + X := by omega
+    have hfuel : ceremonyBatches settings * M + 3 = (ceremonyBatches settings * M + 3 - X) + X := by omega
     change Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => ceremonyBody K circuits settings parameter seeds pairKeys kT kP top .top i) >>=
-        honestRounds F reply (ceremonyBatches settings * M))).run' s}[z ≠ fun _ => o₀] ≤ _
+      (honestStart (fun i => ((chunks settings.batchSize topJobs).mapM (realBatch K circuits settings.mode
+        (prssCtx (dealtKeys parameter seeds pairKeys) kT kP i) parameter)).run (0, 0) >>= fun p =>
+          topRest (E := E) parameter p.1 p.2) >>=
+        honestRounds F reply (ceremonyBatches settings * M + 3))).run' s}[z ≠ fun _ => o₀] ≤ _
     rw [hfuel]
     refine (top_body_bound prims K circuits settings F reply parameter seeds pairKeys kT kP top o₀ s hn hs ho hsize
-      (ceremonyBatches settings * M - X)).trans ?_
+      (ceremonyBatches settings * M + 3 - X)).trans ?_
     exact chunksCost_le_budget circuits parameter H js.length 0 js le_rfl
       (fun jobs hj => hhalves 0 (fun _ => digit 0) jobs (Or.inl hj))
   | bottom b =>
@@ -3993,10 +4050,12 @@ theorem ceremony_body_bound [Nonempty C.Party] {L R : Type} (F : Functionality C
       calc X + Y ≤ js.length * M + B * M := add_le_add hX le_rfl
         _ = (treeBatches settings (.bottom b)) * M := by change js.length * M + B * M = (js.length + B) * M; ring
         _ ≤ _ := Nat.mul_le_mul_right M (treeBatches_le_ceremonyBatches settings (.bottom b))
-    have hfuel : ceremonyBatches settings * M = (ceremonyBatches settings * M - (X + Y)) + Y + X := by omega
+    have hfuel : ceremonyBatches settings * M + 3 = (ceremonyBatches settings * M - (X + Y)) + Y + 3 + X := by omega
     change Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => ceremonyBody K circuits settings parameter seeds pairKeys kT kP top (.bottom b) i) >>=
-        honestRounds F reply (ceremonyBatches settings * M))).run' s}[z ≠ fun _ => o₀] ≤ _
+      (honestStart (fun i => ((chunks settings.batchSize (bottomJobs b)).mapM (realBatch K circuits settings.mode
+        (prssCtx (dealtKeys parameter seeds pairKeys) kT kP i) parameter)).run (0, 0) >>= fun p =>
+          bottomRest parameter top b (signRun K circuits settings parameter seeds pairKeys b i) p.1 p.2) >>=
+        honestRounds F reply (ceremonyBatches settings * M + 3))).run' s}[z ≠ fun _ => o₀] ≤ _
     rw [hfuel]
     refine (bottom_body_bound (prims := prims) (K := K) (circuits := circuits) (settings := settings)
       F reply parameter seeds pairKeys kT kP top b o₀ s hn hs ho hsize (ceremonyBatches settings * M - (X + Y)) Y
@@ -4017,14 +4076,13 @@ theorem realTree_bound [Nonempty C.Party] (parameter : PublicParameter) (seeds :
       (realTree K circuits settings top tree parameter seeds pairKeys)).run' s}[z ≠ fun _ => o₀] ≤
       chunksBudget E (maxBatch circuits settings fun js => halvings (tupleCount js)) (treeBatches settings tree) 0 := by
   unfold realTree
-  simp only [ceremony_eq]
-  rw [show ceremonyFuel circuits settings =
-    (ceremonyBatches settings * maxBatch circuits settings (runRounds settings.mode)) + 3 by
+  simp only [newTree_eq]
+  rw [show setupRounds + ceremonyFuel circuits settings =
+    (ceremonyBatches settings * maxBatch circuits settings (runRounds settings.mode) + 3) + 3 by
       unfold ceremonyFuel setupRounds; omega]
   refine setup_step prims noFunctionality (fun l => l.elim) _ _ _ s hn _
     fun kT kP s' hn' hle hfr => ?_
-  simp only [ceremonyRest_honest]
-  exact ceremony_body_bound prims K circuits settings noFunctionality (fun l => l.elim)
+  exact treeRest_bound prims K circuits settings noFunctionality (fun l => l.elim)
     parameter seeds pairKeys kT kP top tree o₀ s' hn' (cacheOK_of_frame hs hfr)
       (fun h s'' hg hle' ha => ho h s'' hg (hle.trans hle') ha) hsize
 
@@ -4042,7 +4100,7 @@ theorem jointTreeRun_bound [Nonempty C.Party] (top : TopTree) (tree : Tree) (par
   rw [bind_pure_comp]
   simpa only [StateT.run'_eq, prEvent_map, Function.comp_def] using hbound
 
-/-- Every honest tree ceremony agrees with the dealer, up to the stated abort bound. -/
+/-- The honest ceremonies of each tree agree with the dealer, up to the stated abort bound. -/
 theorem treeCompleteness : TreeCompletenessStatement prims K circuits settings := by
   letI : Nonempty C.Party := ⟨⟨0, by have := C.one_le_t; simp only [Committee.n]; omega⟩⟩
   refine treeCompleteness_of_joint prims K circuits settings fun hsize top tree parameter seeds pairKeys => ?_
@@ -4192,73 +4250,6 @@ theorem CostLeE.executePhase_emulated {Ia α : Type} (D : C.Coalition) (A : Adve
   split_ifs
   · exact CostLeE.pure prims _
   · exact CostLeE.honest prims D _
-
-variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
-
-/-- One answer of `treeSimulator` costs the rounds of the adversary in the emulated ceremony. -/
-theorem costLe_treeSimulator_answer (K : Constants C E) (circuits : Circuits) (settings : Settings)
-    (top : TopTree) (tree : Tree) (D : C.Coalition) (A : Adversary C E (Keys C) PEmpty PEmpty) (step : ℕ)
-    (hround : ∀ state sent, IsQueryBoundP (A.round state sent) Counted step)
-    (st : (treeSimulator K circuits settings top tree D A).State)
-    (l : PublicParameter × List (List (List Bit))) :
-    CostLe prims ((treeSimulator K circuits settings top tree D A).answer st l)
-      (ceremonyFuel circuits settings * step) := by
-  rcases l with ⟨parameter, openings⟩
-  unfold treeSimulator
-  dsimp only
-  exact ((CostLeE.executePhase_emulated prims D A step hround _ _ _ ∅).bind prims fun _ => CostLe.pure prims _).mono
-    prims (by simp)
-
-theorem treeSimulator_queryBound (K : Constants C E) (circuits : Circuits) (settings : Settings)
-    (top : TopTree) (tree : Tree) (D : C.Coalition) (A : Adversary C E (Keys C) PEmpty PEmpty)
-    (x : C.Party → Keys C) (z : Aux) (Z : Distinguisher C A.State TreeOutput) (q : ℕ)
-    (hq : IsQueryBounded A Z (ceremonyFuel circuits settings) q) :
-    HasHashQueryBound (runWorld prims (distinguish (idealExecution (fun oa => oa) D
-      (Ftree circuits settings top tree) (treeSimulator K circuits settings top tree D A) x z) Z)) (q + 0) := by
-  obtain ⟨start, step, final, hsum, hs, hr, ha, hz⟩ := hq
-  apply hasHashQueryBound_of_costLe
-  unfold distinguish idealExecution
-  simp only [bind_assoc]
-  have hstart : CostLe prims ((treeSimulator K circuits settings top tree D A).start (corruptInputs D x) z) start :=
-    ((CostLe.observe prims _ start (hs _ _)).bind prims fun _ => CostLe.pure prims _).mono prims (by simp)
-  have hanswer := costLe_treeSimulator_answer prims K circuits settings top tree D A step hr
-  refine CostLe.mono prims (CostLe.bind prims hstart
-    (m := 0 + ((ceremonyFuel circuits settings * step + 0) + (0 + (0 + (0 + final))))) fun st => ?_) ?_
-  · unfold Ftree
-    simp only [simulateQ_bind, StateT.run_bind, bind_assoc]
-    refine CostLe.bind prims (n := 0) ?_ fun p => ?_
-    · exact costLe_liftComp_ro prims _ _ st
-    refine (costLe_simulateQ_leak prims _ _ _ ?hl).bind prims fun r => ?_
-    case hl => exact (hanswer _ _).bind prims fun _ => CostLe.pure prims _
-    refine (CostLe.pure prims _).bind prims fun out => ?_
-    refine (CostLe.pure prims _).bind prims fun o => ?_
-    refine (CostLe.pure prims _).bind prims fun r' => ?_
-    exact CostLe.of_counted prims _ _ (hz _)
-  · simp only [Nat.zero_add, Nat.add_zero]
-    omega
-
-/-- The distance half of `TreeSecurityStatement`. -/
-def TreeSecurityDistance (K : Constants C E) (circuits : Circuits) (settings : Settings) : Prop :=
-  0 < settings.batchSize → ∀ (top : TopTree) (tree : Tree) (D : C.Coalition)
-    (A : Adversary C E (Keys C) PEmpty PEmpty) (x : C.Party → Keys C) (z : Aux)
-    (Z : Distinguisher C A.State TreeOutput) (q : ℕ), DealtInputs D x →
-    IsQueryBounded A Z (ceremonyFuel circuits settings) q →
-    |accepts prims (distinguish (realExecution D A noFunctionality (ceremonyFuel circuits settings)
-        (fun i keys => (ceremony K circuits settings i keys top tree : PartyM C E RealSpec TreeOutput)) x z) Z) -
-      accepts prims (distinguish (idealExecution (fun oa => oa) D (Ftree circuits settings top tree)
-        (treeSimulator K circuits settings top tree D A) x z) Z)| ≤
-      treeCheckError (E := E) circuits settings tree q + treeHashError circuits settings C tree q +
-        streamKeyError C +
-        (PRFScheme.prfAdvantage (hiddenStreams prims.aes) (prgReduction prims D
-          (distinguish (realExecution D A noFunctionality (ceremonyFuel circuits settings)
-            (fun i keys => (ceremony K circuits settings i keys top tree : PartyM C E RealSpec TreeOutput)) x z) Z))).toReal
-
-/-- `TreeSecurityStatement` from its distance half. The query half is `treeSimulator_queryBound`. -/
-theorem treeSecurity_of_distance (K : Constants C E) (circuits : Circuits) (settings : Settings)
-    (h : TreeSecurityDistance prims K circuits settings) :
-    TreeSecurityStatement prims K circuits settings := fun hb top tree D A x z Z q hx hq =>
-  ⟨treeSimulator_queryBound prims K circuits settings top tree D A x z Z q hq,
-    h hb top tree D A x z Z q hx hq⟩
 
 end TreeQueryBound
 
@@ -4433,7 +4424,7 @@ def lazyKeyWorld (D : C.Coalition) : QueryImpl (WorldSpec C) (StateT (HashCache 
       else StateT.mk fun st => (fun r => (r.1, (r.2, st.2))) <$> (localAnswer prims (.inr (.inr x))).run st.1
   | .inr t => StateT.mk fun st => (fun r => (r.1, (r.2, st.2))) <$> (localAnswer prims t).run st.1
 
-/-- The next stage of `TreeKeyHop`: the eager table of AES keys is the lazy one. -/
+/-- The eager table of AES keys is the lazy one. -/
 def KeyTableLazy (D : C.Coalition) : Prop :=
   ∀ game : OracleComp (WorldSpec C) Bool,
     Pr{let z ← ($ᵗ (KeyName C × HashOutput → Digest)) >>= fun keys =>
@@ -4441,56 +4432,6 @@ def KeyTableLazy (D : C.Coalition) : Prop :=
       Pr{let z ← (simulateQ (lazyKeyWorld prims D) game).run' (∅, ∅)}[z = true]
 
 end StreamWorld
-
-section Hops
-variable {C : Committee} {E : Type} (prims : Primitives) [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
-variable (K : Constants C E) (circuits : Circuits) (settings : Settings)
-
-/-- The real run of a ceremony with its distinguisher. -/
-def treeRealGame (top : TopTree) (tree : Tree) (D : C.Coalition) (A : Adversary C E (Keys C) PEmpty PEmpty)
-    (x : C.Party → Keys C) (z : Aux) (Z : Distinguisher C A.State TreeOutput) : OracleComp (WorldSpec C) Bool :=
-  distinguish (realExecution D A noFunctionality (ceremonyFuel circuits settings)
-    (fun i keys => (ceremony K circuits settings i keys top tree : PartyM C E RealSpec TreeOutput)) x z) Z
-
-/-- The ideal run of a ceremony with `treeSimulator` and the distinguisher. -/
-def treeIdealGame (top : TopTree) (tree : Tree) (D : C.Coalition) (A : Adversary C E (Keys C) PEmpty PEmpty)
-    (x : C.Party → Keys C) (z : Aux) (Z : Distinguisher C A.State TreeOutput) : OracleComp (WorldSpec C) Bool :=
-  distinguish (idealExecution (fun oa => oa) D (Ftree circuits settings top tree)
-    (treeSimulator K circuits settings top tree D A) x z) Z
-
-/-- The real run against the real run with independent AES keys for the hidden streams. -/
-def TreeKeyHop (split : ℕ → ℝ) : Prop :=
-  0 < settings.batchSize → ∀ (top : TopTree) (tree : Tree) (D : C.Coalition)
-    (A : Adversary C E (Keys C) PEmpty PEmpty) (x : C.Party → Keys C) (z : Aux)
-    (Z : Distinguisher C A.State TreeOutput) (q : ℕ), DealtInputs D x →
-    IsQueryBounded A Z (ceremonyFuel circuits settings) q →
-    |accepts prims (treeRealGame K circuits settings top tree D A x z Z) -
-      (Pr{let y ← ($ᵗ (KeyName C × HashOutput → Digest)) >>= fun keys =>
-        (simulateQ (keyWorld prims D keys) (treeRealGame K circuits settings top tree D A x z Z)).run' ∅}[y = true]).toReal| ≤
-      streamKeyError C + split q
-
-/-- The real run with random hidden streams against the ideal run. -/
-def TreeSimulationHop (split : ℕ → ℝ) : Prop :=
-  0 < settings.batchSize → ∀ (top : TopTree) (tree : Tree) (D : C.Coalition)
-    (A : Adversary C E (Keys C) PEmpty PEmpty) (x : C.Party → Keys C) (z : Aux)
-    (Z : Distinguisher C A.State TreeOutput) (q : ℕ), DealtInputs D x →
-    IsQueryBounded A Z (ceremonyFuel circuits settings) q →
-    |(Pr{let y ← (simulateQ (streamWorld prims D) (treeRealGame K circuits settings top tree D A x z Z)).run'
-            (∅, ∅)}[y = true]).toReal - accepts prims (treeIdealGame K circuits settings top tree D A x z Z)| ≤
-      treeCheckError (E := E) circuits settings tree q + (treeHashError circuits settings C tree q - split q)
-
-theorem treeSecurityDistance_of_hops (split : ℕ → ℝ) (h₁ : TreeKeyHop prims K circuits settings split)
-    (h₂ : TreeSimulationHop prims K circuits settings split) : TreeSecurityDistance prims K circuits settings := by
-  intro hb top tree D A x z Z q hx hq
-  have := abs_sub_le_of_hops prims D (treeRealGame K circuits settings top tree D A x z Z)
-    (treeIdealGame K circuits settings top tree D A x z Z) (streamKeyError C + split q)
-    (treeCheckError (E := E) circuits settings tree q + (treeHashError circuits settings C tree q - split q))
-    (by unfold reductionReal; rw [prfRealExp_prgReduction]; exact h₁ hb top tree D A x z Z q hx hq)
-    (by unfold reductionIdeal; rw [prfIdealExp_prgReduction]; exact h₂ hb top tree D A x z Z q hx hq)
-  unfold treeRealGame treeIdealGame at this
-  linarith
-
-end Hops
 
 end ThresholdLeanXmssSecurity
 
@@ -10099,73 +10040,6 @@ theorem renameParty_list_mapM (D : C.Coalition) (a b : HashOutput)
 section ActualCeremony
 variable [Field E] [Algebra Bit E] (K : Constants C E)
 
-/-- The batch body of `ceremonyWith` specialized to `realRunGadgets`, with its label and batch counter state. -/
-def ceremonyBatch (circuits : Circuits) (settings : Settings) (ctx : Context C) (jobs : List Job) :
-    StateT (ℕ × ℕ) (PartyM C E G) (Option (List (List Bit))) := do
-  let (label,k) ← get
-  let inputs ← StateT.lift (jobs.mapM (inputShares ctx))
-  let (outputs,state) ← StateT.lift ((runJobs K (realRunGadgets K ctx settings.mode)
-    (jobs.map (circuits ctx.keys.parameter ·.kind)) inputs).run ⟨fun _ => [],label,k⟩)
-  set (state.label,k+1)
-  pure (some outputs)
-
-/-- The exact suffix of the real ceremony after its PRSS setup. -/
-def ceremonyAfterSetup (circuits : Circuits) (settings : Settings) (ctx : Context C)
-    (top : TopTree) (tree : Tree) : PartyM C E G TreeOutput := do
-  let some output ← (ceremonyOutput (m := StateT (ℕ × ℕ) (PartyM C E G))
-    (fun oa => StateT.lift (oracleStep (tweakable oa))) ctx.keys.parameter
-    (batched settings.batchSize (ceremonyBatch K circuits settings ctx)) top tree).run' (0,0) | failure
-  pure output
-
-theorem ceremony_eq_prssSetup_bind (circuits : Circuits) (settings : Settings)
-    (i : C.Party) (keys : Keys C) (top : TopTree) (tree : Tree) :
-    (ceremony K circuits settings i keys top tree : PartyM C E G TreeOutput) =
-      prssSetup i >>= fun prss => ceremonyAfterSetup K circuits settings ⟨i,keys,prss⟩ top tree := rfl
-
-theorem rename_ceremonyBatch (D : C.Coalition) (a b : HashOutput) (circuits : Circuits)
-    (settings : Settings) (ctx : Context C) (jobs : List Job) :
-    renameStateHom (G := G) (ℕ × ℕ) D a b (ceremonyBatch K circuits settings ctx jobs) =
-      ceremonyBatch K circuits settings (hiddenContextSwap D a b ctx) jobs := by
-  simp only [ceremonyBatch, MonadHom.mmap_bind, renameStateHom_get, renameStateHom_lift,
-    renameParty_list_mapM, renameParty_inputShares, renameParty_runRun, renameRun_realRunJobs,
-    renameStateHom_set, MonadHom.mmap_pure]
-  rfl
-
-/-- Every batch and the adaptive second run of a bottom tree obey the same hidden-key renaming.
-The public tree computation and all dealer keys are retained. -/
-theorem rename_ceremonyAfterSetup (D : C.Coalition) (a b : HashOutput) (circuits : Circuits)
-    (settings : Settings) (ctx : Context C) (top : TopTree) (tree : Tree) :
-    renameParty (G := G) D a b (ceremonyAfterSetup K circuits settings ctx top tree) =
-      ceremonyAfterSetup K circuits settings (hiddenContextSwap D a b ctx) top tree := by
-  have hbody : renameStateHom (G := G) (ℕ × ℕ) D a b
-      (ceremonyOutput (m := StateT (ℕ × ℕ) (PartyM C E G)) (fun oa => StateT.lift (oracleStep (tweakable oa))) ctx.keys.parameter
-        (batched settings.batchSize (ceremonyBatch K circuits settings ctx)) top tree) =
-      ceremonyOutput (m := StateT (ℕ × ℕ) (PartyM C E G)) (fun oa => StateT.lift (oracleStep (tweakable oa))) ctx.keys.parameter
-        (batched settings.batchSize (ceremonyBatch K circuits settings (hiddenContextSwap D a b ctx))) top tree := by
-    simp only [monadHom_ceremonyOutput, renameStateHom_lift, renameParty_oracleStep,
-      roStreamRename_tweakable, monadHom_batched, rename_ceremonyBatch]
-  unfold ceremonyAfterSetup
-  rw [renameParty_bind, renameParty_runState, hbody]
-  congr 1
-  funext out
-  cases out <;> rfl
-
-/-- The actual post-setup ceremony has the same observable law under a simultaneous swap of
-hidden PRSS keys in the independently keyed world, from an empty key cache. The contexts and
-hash cache are fixed here; this does not assert their setup distribution. -/
-theorem evalDist_lazyKey_ceremonyAfterSetup_swap (prims : Primitives) (D : C.Coalition)
-    (a b : HashOutput) (circuits : Circuits) (settings : Settings)
-    (A : Adversary C E (Keys C) PEmpty PEmpty) (fuel : ℕ) (state : A.State)
-    (ctx : C.Party → Context C) (top : TopTree) (tree : Tree) (s : HashCache C) :
-    (simulateQ (lazyKeyWorld prims D)
-      (executePhase worldRoles D A noFunctionality fuel state
-        (fun i => ceremonyAfterSetup K circuits settings (ctx i) top tree))).run' (s,∅) =ᵈ
-      (simulateQ (lazyKeyWorld prims D)
-        (executePhase worldRoles D A noFunctionality fuel state
-          (fun i => ceremonyAfterSetup K circuits settings (hiddenContextSwap D a b (ctx i)) top tree))).run' (s,∅) := by
-  refine (evalDist_lazyKeyPhase_rename prims D a b A fuel state _ s).trans ?_
-  simp only [rename_ceremonyAfterSetup, EvalDistEq.refl]
-
 /-- The phase identity also holds with a subsequent external observer. The observer retains the
 same oracle cache through the bind and may make adaptive counted queries. -/
 theorem evalDist_lazyKeyPhase_rename_observe (prims : Primitives) (D : C.Coalition)
@@ -10181,24 +10055,6 @@ theorem evalDist_lazyKeyPhase_rename_observe (prims : Primitives) (D : C.Coaliti
         worldRoles.adversary (observe out))).run' (s,∅) := by
   refine (evalDist_lazyKeyWorld_empty_rename prims D a b _ s).trans ?_
   simp only [simulateQ_bind, worldStreamRename_adversary, ← executePhase_rename, EvalDistEq.refl]
-
-/-- The exact post-setup ceremony law includes any subsequent local observer in the same world.
-This is a fixed-context identity, not a statement of how setup samples those contexts. -/
-theorem evalDist_lazyKey_ceremonyAfterSetup_swap_observe (prims : Primitives) (D : C.Coalition)
-    (a b : HashOutput) (circuits : Circuits) (settings : Settings)
-    (A : Adversary C E (Keys C) PEmpty PEmpty) (fuel : ℕ) (state : A.State)
-    (ctx : C.Party → Context C) (top : TopTree) (tree : Tree)
-    (observe : A.State × (C.Party → Option TreeOutput) → OracleComp (LocalSpec C) β) (s : HashCache C) :
-    (simulateQ (lazyKeyWorld prims D) (do
-      let out ← executePhase worldRoles D A noFunctionality fuel state
-        (fun i => ceremonyAfterSetup K circuits settings (ctx i) top tree)
-      worldRoles.adversary (observe out))).run' (s,∅) =ᵈ
-      (simulateQ (lazyKeyWorld prims D) (do
-        let out ← executePhase worldRoles D A noFunctionality fuel state
-          (fun i => ceremonyAfterSetup K circuits settings (hiddenContextSwap D a b (ctx i)) top tree)
-        worldRoles.adversary (observe out))).run' (s,∅) := by
-  refine (evalDist_lazyKeyPhase_rename_observe prims D a b A fuel state _ observe s).trans ?_
-  simp only [rename_ceremonyAfterSetup, EvalDistEq.refl]
 
 end ActualCeremony
 end ThresholdLeanXmssSecurity
@@ -10241,16 +10097,6 @@ theorem renameParty_prssSetup (D : C.Coalition) (a b : HashOutput) (i : C.Party)
   simp only [liftComp_eq_liftM] at hs
   simp [prssSetup, hs, renameParty_commitRevealEcho]
 
-theorem rename_ceremony [Field E] [Algebra Bit E] (K : Constants C E)
-    (D : C.Coalition) (a b : HashOutput) (circuits : Circuits) (settings : Settings)
-    (i : C.Party) (keys : Keys C) (top : TopTree) (tree : Tree) :
-    renameParty (G := G) D a b (ceremony K circuits settings i keys top tree) =
-      prssSetup i >>= fun prss => ceremonyAfterSetup K circuits settings
-        (hiddenContextSwap D a b ⟨i,keys,prss⟩) top tree := by
-  rw [ceremony_eq_prssSetup_bind, renameParty_bind, renameParty_prssSetup]
-  congr 1
-  funext prss
-  exact rename_ceremonyAfterSetup K D a b circuits settings _ top tree
 
 theorem worldStreamRename_realExecution (D : C.Coalition) (a b : HashOutput)
     (A : Adversary C E (Keys C) PEmpty PEmpty) (fuel : ℕ)
@@ -10266,38 +10112,6 @@ theorem worldStreamRename_distinguish (D : C.Coalition) (a b : HashOutput)
       distinguish (simulateQ (worldStreamRename D a b) game) Z := by
   simp only [distinguish, simulateQ_bind, worldStreamRename_adversary]
 
-/-- Full real execution, including setup, adversary start and final distinguisher, is invariant
-under renaming the honest consumption of its hidden PRSS keys in the independent-key world.
-Setup's raw keys and hash cache are not changed; this is not setup entropy or the original-world hop. -/
-theorem evalDist_lazyKey_ceremony_swap [Field E] [Algebra Bit E] (K : Constants C E)
-    (prims : Primitives) (D : C.Coalition) (a b : HashOutput) (circuits : Circuits) (settings : Settings)
-    (A : Adversary C E (Keys C) PEmpty PEmpty) (x : C.Party → Keys C) (z : Aux)
-    (Z : Distinguisher C A.State TreeOutput) (top : TopTree) (tree : Tree) (s : HashCache C) :
-    (simulateQ (lazyKeyWorld prims D)
-      (distinguish (realExecution D A noFunctionality (ceremonyFuel circuits settings)
-        (fun i keys => ceremony K circuits settings i keys top tree) x z) Z)).run' (s,∅) =ᵈ
-      (simulateQ (lazyKeyWorld prims D)
-        (distinguish (realExecution D A noFunctionality (ceremonyFuel circuits settings)
-          (fun i keys => prssSetup i >>= fun prss => ceremonyAfterSetup K circuits settings
-            (hiddenContextSwap D a b ⟨i,keys,prss⟩) top tree) x z) Z)).run' (s,∅) := by
-  refine (evalDist_lazyKeyWorld_empty_rename prims D a b _ s).trans ?_
-  simp only [worldStreamRename_distinguish, worldStreamRename_realExecution, rename_ceremony, EvalDistEq.refl]
-
-/-- The same full-game identity in the ideal hidden-stream world. It retains the actual setup
-and changes only the subsequent honest PRSS-key consumption. -/
-theorem evalDist_stream_ceremony_swap [Field E] [Algebra Bit E] (K : Constants C E)
-    (prims : Primitives) (D : C.Coalition) (a b : HashOutput) (circuits : Circuits) (settings : Settings)
-    (A : Adversary C E (Keys C) PEmpty PEmpty) (x : C.Party → Keys C) (z : Aux)
-    (Z : Distinguisher C A.State TreeOutput) (top : TopTree) (tree : Tree) (s : HashCache C) :
-    (simulateQ (streamWorld prims D)
-      (distinguish (realExecution D A noFunctionality (ceremonyFuel circuits settings)
-        (fun i keys => ceremony K circuits settings i keys top tree) x z) Z)).run' (s,∅) =ᵈ
-      (simulateQ (streamWorld prims D)
-        (distinguish (realExecution D A noFunctionality (ceremonyFuel circuits settings)
-          (fun i keys => prssSetup i >>= fun prss => ceremonyAfterSetup K circuits settings
-            (hiddenContextSwap D a b ⟨i,keys,prss⟩) top tree) x z) Z)).run' (s,∅) := by
-  refine (evalDist_streamWorld_empty_rename prims D a b _ s).trans ?_
-  simp only [worldStreamRename_distinguish, worldStreamRename_realExecution, rename_ceremony, EvalDistEq.refl]
 
 end ThresholdLeanXmssSecurity
 end FullCeremonyRelabeling

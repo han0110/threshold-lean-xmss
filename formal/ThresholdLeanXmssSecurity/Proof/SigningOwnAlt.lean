@@ -11,7 +11,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningOwnCommit
   (`alt_step_rise`). The finish does not raise it (`alt_finish_rise`).
 - A build of a bottom tree is a block that the commitment completion covers. The check of `c_e` in
   the tail repeats the commitment call of the build. `resolves_rawCommitment` states that a resolved
-  bottom ceremony resolves the canonical commitment of each of its keys.
+  bottom tree resolves the canonical commitment of each of its keys.
 - `altOwn` applies `flat_potential_le` with the three rises.
 -/
 
@@ -364,7 +364,7 @@ theorem altRise_tsigOracles (top : TopTree) (q : (TsigSpec C).Domain) (st : Tsig
 
 set_option maxRecDepth 100000 in
 attribute [local irreducible] merkleNode merklePath grind Verification.treeFoldWithHash Verification.chainWalkWithHash in
-/-- The canonical commitment replay fact. A resolved bottom ceremony resolves the canonical
+/-- The canonical commitment replay fact. A resolved bottom tree resolves the canonical
 commitment of each of its keys. -/
 theorem resolves_rawCommitment (cache : HashCache C) (top : TopTree) (e : KeyIndex)
     (out : Option TreeOutput)
@@ -459,7 +459,7 @@ theorem verify_noCommit (publicKey : PublicKey) (message : Message) (signature :
 
 set_option maxRecDepth 100000 in
 attribute [local irreducible] merkleNode merklePath grind Verification.treeFoldWithHash Verification.chainWalkWithHash in
-/-- The top ceremony makes no commitment call. -/
+/-- The ceremony of the top tree makes no commitment call. -/
 theorem topTree_noCommit :
     (referenceTree SigningHitProof.forestHash (SigningHitProof.forestValue x.2.1) x.1 emptyTop .top).IsQueryBoundP
       (SigningGuessProof.RawCommitmentInput x.1) 0 := by
@@ -479,7 +479,8 @@ theorem topTree_noCommit :
 end Calculus
 
 set_option maxRecDepth 100000 in
-/-- The dealer does not raise the commitment potential. The top ceremony makes no commitment call. -/
+/-- The dealer does not raise the commitment potential. The ceremony of the top tree makes no commitment
+call. -/
 theorem alt_dealer_rise (x : Keys3 C) :
     ∑' r, Pr{let z ← dealerRun prims x}[z = r] * altPotential x r.2.1 ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ * ((0 : ℕ) : ℝ≥0∞) := by

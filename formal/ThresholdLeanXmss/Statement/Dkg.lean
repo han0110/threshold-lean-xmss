@@ -33,10 +33,22 @@ file holds the error terms, the valid inputs and the claims. `Theorems.lean` hol
 * The first seven halving steps fold the slices with the coin kept out of `x` (Gruen 2024) and the
   small-value table of BDDT25. Each step is still a degree-2 claim in its challenge.
 * GS20 assumes exactly `(n - 1) / 2` corrupt parties, which is `t - 1` here (GS20, Theorem 1, writes
-  `n = 2t + 1`). `treeSimulator` is defined for every coalition size, because it shifts one lacked
-  term at the opening.
-* The model splits each run into batches of `batchSize` jobs. The implementation sizes chain batches
-  and commitment batches apart, and it puts the top randomizer value in the last commitment batch.
+  `n = 2t + 1`). `ceremonySimulator` is defined for every coalition size, because it shifts one
+  lacked term at the opening.
+* The model splits each ceremony into batches of `batchSize` jobs. The implementation sizes chain
+  batches and commitment batches apart, and it puts the top randomizer value in the last commitment
+  batch. The implementation runs the signature ceremony as one batch of all its jobs
+  (`top_signature` of `src/dkg.rs`).
+* The signature of the root of a bottom tree by its top key is one more ceremony, with its own PRSS
+  setup (`new_bottom_tree` of `src/dkg.rs`). `TreeSecurityStatement` is the claim for one ceremony.
+  It does not join the two ceremonies of a bottom tree.
+* A ceremony takes the start of its counters as a public input, namely the next round label and the
+  tag of the next batch. The signature ceremony continues the counters of the ceremony before it,
+  as the channel numbers continue in the implementation (`src/net.rs`). The model counts the labels
+  over the ceremonies of a tree, and the implementation counts the rounds of each batch.
+* The counters start again for each tree, and each PRSS setup hashes in the same domains of `H`
+  with no name of its ceremony. So the model does not separate the hash inputs of two ceremonies
+  by a domain.
 -/
 
 set_option autoImplicit false
@@ -64,7 +76,8 @@ def termCount (C : Committee) : ℕ := C.n.choose (C.t - 1)
 check, or the two copy hashes of `OpenRep`. -/
 def termHashes (C : Committee) : ℕ := 2 * C.n * termCount C
 
-/-- The checked batches of a ceremony, of the top tree or of the two runs of a bottom tree. -/
+/-- The checked batches of a tree, of the ceremony of the top tree or of the two ceremonies of a
+bottom tree. -/
 def treeBatches : Tree → ℕ
   | .top => (chunks settings.batchSize topJobs).length
   | .bottom b => (chunks settings.batchSize (bottomJobs b)).length +
@@ -77,10 +90,11 @@ values. -/
 def checkErrorOf (d R q : ℕ) : ℝ :=
   (d + 2 * (R + 1) : ℕ) / (Fintype.card E - 2 : ℝ) + ((R + 2) * q : ℕ) / (Fintype.card E : ℝ) ^ 2
 
-/-- The soundness error of the checks of all batches of a ceremony. -/
-def treeCheckError (tree : Tree) (q : ℕ) : ℝ :=
-  treeBatches settings tree * checkErrorOf (E := E) (maxBatch circuits settings fun jobs => coins (tupleCount jobs))
-    (maxBatch circuits settings fun jobs => halvings (tupleCount jobs)) q
+/-- The soundness error of the checks of all batches of a ceremony of `jobs`. -/
+def treeCheckError (jobs : List Job) (q : ℕ) : ℝ :=
+  (chunks settings.batchSize jobs).length *
+    checkErrorOf (E := E) (maxBatch circuits settings fun jobs => coins (tupleCount jobs))
+      (maxBatch circuits settings fun jobs => halvings (tupleCount jobs)) q
 
 /-- The probability that the coins of an honest check with `R` halving steps fail. A slice coin is
 `0`, or one of the `R + 1` challenges finds no value outside `{0, 1}` within `challengeTries` values. -/
@@ -94,9 +108,9 @@ def coinKeyCollision (k : ℕ) : ℝ := (k ^ 2 : ℕ) / 2 ^ 257
 of its `R + 2` coin keys. -/
 def abortErrorOf (R : ℕ) : ℝ := coinFailure (E := E) R + coinKeyCollision (R + 2)
 
-/-- The probability that an honest check of some batch of a ceremony aborts. Two of the `B (R + 2)`
-coin keys of all `B` batches can collide, because a later check reads the cached coins of an earlier
-batch. -/
+/-- The probability that an honest check of some batch of a tree aborts. Two of the `B (R + 2)`
+coin keys of all `B` batches of its ceremonies can collide, because a later check reads the cached
+coins of an earlier batch. -/
 def treeAbortError (tree : Tree) : ℝ :=
   let batches := treeBatches settings tree
   let halvingCount := maxBatch circuits settings fun jobs => halvings (tupleCount jobs)
@@ -115,21 +129,21 @@ def seedGenHashError (C : Committee) (q : ℕ) : ℝ := ((q + seedGenSecrets C) 
 each pair of a corrupt and an honest operator. -/
 def seedGenOverhead (C : Committee) : ℕ := 1 + termCount C + C.n ^ 2
 
-/-- The honest points of `H` in a ceremony that a counted call must not hit. The PRSS setup has the
-parts of each operator, the derived keys and the inputs of the hashes of the shared keys. Each PRSS
-key has a stream-key input. Each batch has the history, the digest and the copy hash of each term,
-the copies that a corrupt owner sends to each honest operator, which it hashes for free, and the
-`R + 2` coin keys of its check. -/
-def treeSecrets (C : Committee) (tree : Tree) : ℕ :=
+/-- The honest points of `H` in a ceremony of `jobs` that a counted call must not hit. The PRSS
+setup has the parts of each operator, the derived keys and the inputs of the hashes of the shared
+keys. Each PRSS key has a stream-key input. Each batch has the history, the digest and the copy hash
+of each term, the copies that a corrupt owner sends to each honest operator, which it hashes for
+free, and the `R + 2` coin keys of its check. -/
+def treeSecrets (C : Committee) (jobs : List Job) : ℕ :=
   let terms := termCount C
   let pairs := C.n.choose 2
   C.n * (terms + C.n) + terms + pairs + C.n ^ 2 + (terms + pairs) +
-    treeBatches settings tree * (3 * terms + C.n * terms +
+    (chunks settings.batchSize jobs).length * (3 * terms + C.n * terms +
       maxBatch circuits settings (fun jobs => halvings (tupleCount jobs)) + 2)
 
-/-- The birthday bound of the counted calls and the honest points of a ceremony. -/
-def treeHashError (C : Committee) (tree : Tree) (q : ℕ) : ℝ :=
-  ((q + treeSecrets circuits settings C tree) ^ 2 : ℕ) / 2 ^ 256
+/-- The birthday bound of the counted calls and the honest points of a ceremony of `jobs`. -/
+def treeHashError (C : Committee) (jobs : List Job) (q : ℕ) : ℝ :=
+  ((q + treeSecrets circuits settings C jobs) ^ 2 : ℕ) / 2 ^ 256
 
 /-- The birthday bound `k² / 2^129` of the 128-bit AES keys of the `k` PRSS keys of a ceremony
 (`doc/dkg.md` 3.3). -/
@@ -224,26 +238,35 @@ def SeedGenSecurityStatement (C : Committee) (E : Type) : Prop :=
   SimulatedBy prims (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) setupRounds FseedGen
     (fun _ _ => True) seedGenSimulator (seedGenOverhead C) fun _ _ _ _ _ q => seedGenHashError C q
 
-/-- An honest ceremony gives the tree of `F_tree`, except when an honest check aborts. -/
+/-- The honest ceremonies of a tree give the tree of `F_tree`, except when an honest check aborts.
+The program is `newTree`. For a bottom tree it is the ceremony of the tree, the randomizer search,
+the signature ceremony with its own PRSS setup, and the check of the top signature. -/
 def TreeCompletenessStatement : Prop :=
   0 < settings.batchSize → ∀ (top : TopTree) (tree : Tree),
-    Completes prims (fun i keys => (ceremony K circuits settings i keys top tree : PartyM C E RealSpec TreeOutput))
-      (ceremonyFuel circuits settings) noFunctionality (fun l => l.elim) (Ftree circuits settings top tree)
+    Completes prims (fun i keys => (newTree K circuits settings i keys top tree : PartyM C E RealSpec TreeOutput))
+      (setupRounds + ceremonyFuel circuits settings) noFunctionality (fun l => l.elim) (Ftree circuits settings top tree)
       (fun _ => Finset.univ) DealtInputs (treeAbortError (E := E) circuits settings tree)
 
-/-- Each ceremony securely computes `F_tree` with selective abort against its own static coalition,
-with the simulator `treeSimulator` (GS20, Theorem 2, and GL05). The bound adds the multi-key PRF
-advantage of `prgReduction` against `hiddenStreams` on the real run, because `treeSimulator` already
-uses ideal streams. This claim is no field of the bundle `Theorems`, and no theorem proves it. -/
+/-- One ceremony securely computes `F_ceremony` with selective abort against its own static
+coalition, with the simulator `ceremonySimulator` (GS20, Theorem 2, and GL05). The claim is for
+each start of the counters and for the three forms of a job list, namely `topJobs`, `bottomJobs b`
+and `signJobs b encoding`, for every `b` and every `encoding`. The job list and the counters are
+public inputs. The bound adds the multi-key PRF advantage of `prgReduction` against `hiddenStreams`
+on the real run, because `ceremonySimulator` already uses ideal streams. This claim is no field of
+the bundle `Theorems`. It is stated and not proved.
+
+The claim does not join the two ceremonies of a bottom tree. It does not state that the honest
+operators of a signature ceremony hold the same `encoding`, or that each of them starts. -/
 def TreeSecurityStatement : Prop :=
-  0 < settings.batchSize → ∀ (top : TopTree) (tree : Tree),
-    SimulatedBy prims (fun i keys => (ceremony K circuits settings i keys top tree : PartyM C E RealSpec TreeOutput))
-      (ceremonyFuel circuits settings) (Ftree circuits settings top tree) DealtInputs
-      (treeSimulator K circuits settings top tree) 0 fun D A x z Z q =>
-        treeCheckError (E := E) circuits settings tree q + treeHashError circuits settings C tree q + streamKeyError C +
+  0 < settings.batchSize → ∀ (counters : ℕ × ℕ) (b : Fin (2 ^ layerHeight)) (encoding : Encoding),
+    ∀ jobs ∈ [topJobs, bottomJobs b, signJobs b encoding],
+    SimulatedBy prims (fun i keys => (ceremony K circuits settings i keys counters jobs : PartyM C E RealSpec (List (List Bit))))
+      (ceremonyFuel circuits settings) (Fceremony circuits jobs) DealtInputs
+      (ceremonySimulator K circuits settings counters jobs) 0 fun D A x z Z q =>
+        treeCheckError (E := E) circuits settings jobs q + treeHashError circuits settings C jobs q + streamKeyError C +
           (PRFScheme.prfAdvantage (hiddenStreams prims.aes) (prgReduction prims D
             (distinguish (realExecution D A noFunctionality (ceremonyFuel circuits settings)
-              (fun i keys => (ceremony K circuits settings i keys top tree : PartyM C E RealSpec TreeOutput)) x z) Z))).toReal
+              (fun i keys => (ceremony K circuits settings i keys counters jobs : PartyM C E RealSpec (List (List Bit)))) x z) Z))).toReal
 
 /-- When the circuits compute `Th`, the dealer of `F_tree` gives the trees of `KeyGen` of the signing
 claims, namely `referenceTree` with the PRF values of the seeds. The two runs have the same
@@ -259,8 +282,8 @@ def DealerTreeStatement (C : Committee) : Prop :=
 
 /-- When the circuits compute `Th`, the dealer of `F_tree` gives the top tree, and then a bottom
 tree `b` on that top tree, except with probability `(1 - p)^L` for the randomizer search of its top
-signature. `TreeCompletenessStatement` bounds the distance of an honest ceremony to `F_tree`, so this
-claim bounds the abort of `F_tree` itself. -/
+signature. `TreeCompletenessStatement` bounds the distance of the honest ceremonies of a tree to
+`F_tree`, so this claim bounds the abort of `F_tree` itself. -/
 def TreeSuccessStatement (C : Committee) : Prop :=
   CircuitsCompute circuits prims.Th → 0 < settings.batchSize →
     ∀ (parameter : PublicParameter) (seeds : C.Term → HashOutput) (b : Fin (2 ^ layerHeight)),

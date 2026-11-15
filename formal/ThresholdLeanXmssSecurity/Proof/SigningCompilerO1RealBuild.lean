@@ -3,10 +3,10 @@ import ThresholdLeanXmssSecurity.Proof.TreeSim
 
 /-! # The real tree builds in the order of the compiler builds
 
-- `realBottomBuild` is the real bottom ceremony in the order of `sourceBottomTreeX`.
+- `realBottomBuild` is the real bottom tree in the order of `sourceBottomTreeX`.
   `realBottom_eq` states that it is the bottom tree of the dealer.
-- `realTopBuild` is the real top ceremony in the order of `deferredTopTree`. `realTop_eq` states
-  that the top ceremony of the dealer never fails and is this build.
+- `realTopBuild` is the real top tree in the order of `deferredTopTree`. `realTop_eq` states
+  that the top tree of the dealer never fails and is this build.
 -/
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
@@ -20,8 +20,8 @@ open SigningSecurityProof
 
 variable {C : Committee}
 
-/-- One row of the real first run. It reads the three PRF values and then walks the chain three
-times from the start. -/
+/-- One row of the real ceremony of a bottom tree. It reads the three PRF values and then walks the chain
+three times from the start. -/
 def realRow (P : PublicParameter) (seeds : C.Term → HashOutput) (e : KeyIndex) (l : ChainIndex) :
     OracleComp (WorldSpec C) (Digest × Digest × Digest) := do
   let v₀ ← liftFree (prfValue seeds (.chain bottomLayer e l (digit 0)))
@@ -32,19 +32,19 @@ def realRow (P : PublicParameter) (seeds : C.Term → HashOutput) (e : KeyIndex)
   let y₃ ← liftFree (tweakable (Verification.chainWalkWithHash P bottomLayer e l 0 3 v₀))
   pure (y₁ ^^^ v₁, y₂ ^^^ v₂, y₃)
 
-/-- One commitment of the real first run. -/
+/-- One commitment of the real ceremony of a bottom tree. -/
 def realCommitment (P : PublicParameter) (seeds : C.Term → HashOutput) (e : KeyIndex) :
     OracleComp (WorldSpec C) Digest := do
   let ρ ← liftFree (prfValue seeds (.randomizer bottomLayer e))
   truncateHash <$> liftFree (tweakable (Verification.oracleHashWithHash (commitmentInput P e ρ)))
 
-/-- One chain value of the real second run. -/
+/-- One chain value of the real signature ceremony. -/
 def realTopValue (P : PublicParameter) (seeds : C.Term → HashOutput) (b : Fin (2 ^ layerHeight))
     (l : ChainIndex) (p : WinternitzDigit) : OracleComp (WorldSpec C) Digest := do
   let v₀ ← liftFree (prfValue seeds (.chain topLayer (topKey b) l (digit 0)))
   liftFree (tweakable (Verification.chainWalkWithHash P topLayer (topKey b) l 0 p.val v₀))
 
-/-- The real bottom ceremony of the dealer in the order of `sourceBottomTreeX`. The `cpk` default
+/-- The real bottom tree of the dealer in the order of `sourceBottomTreeX`. The `cpk` default
 is the first commitment, as `ceremonyOutput` gives it. The real ceremony has no branch for a second
 decode that differs from the codeword of the search. -/
 def realBottomBuild (P : PublicParameter) (seeds : C.Term → HashOutput) (top : TopTree)
@@ -77,13 +77,13 @@ def realBottomBuild (P : PublicParameter) (seeds : C.Term → HashOutput) (top :
   if topRoot ≠ top.root then pure none else
     pure (some ⟨cpk, commitment, root, ⟨randomness, values, path⟩⟩)
 
-/-- One chain end of the real top ceremony. -/
+/-- One chain end of the real ceremony of the top tree. -/
 def realTopEnd (P : PublicParameter) (seeds : C.Term → HashOutput) (b : Fin (2 ^ layerHeight))
     (l : ChainIndex) : OracleComp (WorldSpec C) Digest := do
   let v₀ ← liftFree (prfValue seeds (.chain topLayer (topKey b) l (digit 0)))
   liftFree (tweakable (Verification.chainWalkWithHash P topLayer (topKey b) l 0 3 v₀))
 
-/-- The real top ceremony of the dealer in the order of `deferredTopTree`. -/
+/-- The real top tree of the dealer in the order of `deferredTopTree`. -/
 def realTopBuild (P : PublicParameter) (seeds : C.Term → HashOutput) :
     OracleComp (WorldSpec C) TopTree := do
   let indices := (List.finRange (2 ^ layerHeight)).flatMap fun b =>
@@ -136,8 +136,8 @@ theorem digestAt_getD_map (L : List Digest) (i : ℕ) :
 def rowBits (y : Digest × Digest × Digest) : List Bit :=
   bitsOfDigest y.1 ++ bitsOfDigest y.2.1 ++ bitsOfDigest y.2.2
 
-/-- The `cpk` entry that `ceremonyOutput` reads from the outputs of the first run. A key outside the
-rows reads the first commitment. -/
+/-- The `cpk` entry that `ceremonyOutput` reads from the outputs of the ceremony of the tree. A key
+outside the rows reads the first commitment. -/
 theorem rowBits_read {κ : Type} [BEq κ] [LawfulBEq κ] (rows : List (Digest × Digest × Digest)) (keys : List κ)
     (hrows : rows.length = keys.length) (commitments : List Digest) (hcommitments : commitments ≠ [])
     (rest : List (List Bit)) (key : κ) :
@@ -161,7 +161,7 @@ theorem rowBits_read {κ : Type} [BEq κ] [LawfulBEq κ] (rows : List (Digest ×
       rw [← List.append_nil (bitsOfDigest c), digestAt_succ, hnil]
     simp [digestAt_bits, h1, h2]
 
-/-- The commitment that `ceremonyOutput` reads from the outputs of the first run. -/
+/-- The commitment that `ceremonyOutput` reads from the outputs of the ceremony of the tree. -/
 theorem commitment_read (rows : List (List Bit)) (n : ℕ) (hn : rows.length = n)
     (commitments : List Digest) (rest : List (List Bit)) (j : ℕ) (hj : j < commitments.length) :
     digestAt ((rows ++ commitments.map bitsOfDigest ++ rest).getD (n + j) []) 0 =
@@ -170,7 +170,7 @@ theorem commitment_read (rows : List (List Bit)) (n : ℕ) (hn : rows.length = n
   rw [List.append_assoc, List.getD_append_right _ _ _ _ (by simp), Nat.add_sub_cancel_left,
     List.getD_append _ _ _ _ (by simpa using hj), digestAt_getD_map]
 
-/-- The randomizer value that `ceremonyOutput` reads from the outputs of the first run. -/
+/-- The randomizer value that `ceremonyOutput` reads from the outputs of the ceremony of the tree. -/
 theorem randomizer_read (rows : List (List Bit)) (n : ℕ) (hn : rows.length = n)
     (commitments : List Digest) (m : ℕ) (hm : commitments.length = m) (ρ : Digest) :
     digestAt ((rows ++ commitments.map bitsOfDigest ++ [bitsOfDigest ρ]).getD (n + m) []) 0 = ρ := by
@@ -184,7 +184,7 @@ theorem mapM_fmap {m : Type → Type} [Monad m] [LawfulMonad m] {α β γ : Type
   | [] => by simp
   | a :: l => by simp [List.mapM_cons, mapM_fmap g f l]
 
-/-- The top ceremony of the dealer never fails, and it is the real build in the order of the
+/-- The top tree of the dealer never fails, and it is the real build in the order of the
 compiler build. -/
 theorem realTop_eq (x : Keys3 C) :
     referenceTree (fun oa => SigningSecurityProof.liftFree (tweakable oa))

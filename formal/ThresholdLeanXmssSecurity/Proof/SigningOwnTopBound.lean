@@ -352,7 +352,7 @@ theorem anyTop_bound_zero {α : Type} (oa : OracleComp (Query C →ₒ HashOutpu
 
 set_option maxRecDepth 100000 in
 attribute [local irreducible] merkleNode merklePath grind Verification.treeFoldWithHash Verification.chainWalkWithHash in
-/-- The top ceremony reads no top digest input. -/
+/-- The ceremony of the top tree reads no top digest input. -/
 theorem topTree_no_topDigest :
     (referenceTree SigningHitProof.forestHash (SigningHitProof.forestValue x.2.1) x.1 emptyTop
       .top).IsQueryBoundP (SigningGuessProof.anyTopDigestInput x.1) 0 := by
@@ -486,8 +486,8 @@ theorem topFlat_honestSignature (top : TopTree) (e : KeyIndex) (message : Messag
 end Calculus
 
 set_option maxRecDepth 100000 in
-/-- The dealer does not raise the top partner potential. The top ceremony makes no top digest
-call. -/
+/-- The dealer does not raise the top partner potential. The ceremony of the top tree makes no
+top digest call. -/
 theorem top_dealer_rise (x : Keys3 C) :
     ∑' r, Pr{let z ← dealerRun prims x}[z = r] * topPotential x r.2.1 ≤
       (2 ^ 128 : ℝ≥0∞)⁻¹ * ((0 : ℕ) : ℝ≥0∞) := by

@@ -699,7 +699,8 @@ def elementOfHash (h : HashOutput) : E := K.encode.symm fun b => if h.getLsbD b.
 label before the coin, and its two opened values (`doc/dkg.md` 1.9). The two values are two calls of
 `Coin` of GS20, Protocol 6, in one round. `Fcoin` gives two independent uniform elements, so a guess
 of the key input before they open needs `2 * elementBits` bits in the `Fcoin`-hybrid model. The model
-counts the labels over a ceremony, and the implementation counts the rounds of each batch. -/
+counts the labels over the ceremonies of a tree, and the implementation counts the rounds of each
+batch. -/
 def coinKey : RunM C E G HashOutput := do
   let state ← get
   let values ← gadgets.coin 2
@@ -1033,25 +1034,25 @@ def bottomKey (b k : Fin (2 ^ layerHeight)) : KeyIndex :=
     simp only [layerCount, layerHeight] at *
     omega⟩
 
-/-- The public outputs of the top tree ceremony. -/
+/-- The public outputs of the top tree. -/
 structure TopTree where
   chainEnd : KeyIndex → ChainIndex → Digest
   root : Digest
 
-/-- The public outputs of the ceremony of a bottom tree, namely `cpk_e`, `c_e`, the root, and the
-signature of the root by its top key. -/
+/-- The public outputs of a bottom tree, namely `cpk_e`, `c_e`, the root, and the signature of the
+root by its top key. -/
 structure BottomTree where
   cpk : KeyIndex → ChainIndex → Digest × Digest × Digest
   commitment : KeyIndex → Digest
   root : Digest
   topSignature : LayerSignature
 
-/-- A ceremony, namely the top tree or bottom tree `b`. -/
+/-- A tree, namely the top tree or bottom tree `b`. -/
 inductive Tree
   | top
   | bottom (b : Fin (2 ^ layerHeight))
 
-/-- The output of a ceremony. -/
+/-- The public outputs of a tree. -/
 inductive TreeOutput
   | top (tree : TopTree)
   | bottom (tree : BottomTree)
@@ -1090,12 +1091,12 @@ def grind (parameter : PublicParameter) (lay : Layer) (key : KeyIndex) (message 
 /-- The digest of the `k`-th 128 bits of an output. -/
 def digestAt (bits : List Bit) (k : ℕ) : Digest := digestOfBits (bits.drop (digestBits * k))
 
-/-- The jobs of the top tree, the chain ends of all top keys. -/
+/-- The jobs of the ceremony of the top tree, the chain ends of all top keys. -/
 def topJobs : List Job :=
   (List.finRange (2 ^ layerHeight)).flatMap fun b => (List.finRange chainCount).map fun l =>
     ⟨.chainEnd (topKey b) l, [.chain topLayer (topKey b) l (digit 0)]⟩
 
-/-- The jobs of the first run of bottom tree `b`, namely `cpk` of each key, its commitment `c_e`,
+/-- The jobs of the ceremony of bottom tree `b`, namely `cpk` of each key, its commitment `c_e`,
 and the randomizer value of top key `b`. -/
 def bottomJobs (b : Fin (2 ^ layerHeight)) : List Job :=
   ((List.finRange (2 ^ layerHeight)).flatMap fun k => (List.finRange chainCount).map fun l =>
@@ -1106,8 +1107,8 @@ def bottomJobs (b : Fin (2 ^ layerHeight)) : List Job :=
     ⟨.commitment (bottomKey b k), [.randomizer bottomLayer (bottomKey b k)]⟩) ++
   [⟨.randomizer, [.randomizer topLayer (topKey b)]⟩]
 
-/-- The jobs of the second run of bottom tree `b`. They give the chain values at the positions of
-`encoding` for the signature of its root by top key `b`. -/
+/-- The jobs of the signature ceremony of bottom tree `b`. They give the chain values at the
+positions of `encoding` for the signature of its root by top key `b`. -/
 def signJobs (b : Fin (2 ^ layerHeight)) (encoding : Encoding) : List Job :=
   (List.finRange chainCount).map fun l => ⟨.chainValue (topKey b) l (encoding l), [.chain topLayer (topKey b) l (digit 0)]⟩
 
@@ -1115,7 +1116,7 @@ def signJobs (b : Fin (2 ^ layerHeight)) (encoding : Encoding) : List Job :=
 def chunks {α : Type} (size : ℕ) (items : List α) : List (List α) :=
   (List.range ((items.length + size - 1) / size)).map fun k => (items.drop (size * k)).take size
 
-/-- A run as its batches of `size` jobs. `run` evaluates one batch. -/
+/-- The jobs of a ceremony as batches of `size` jobs. `run` evaluates one batch. -/
 def batched {m : Type → Type} [Monad m] (size : ℕ) (run : List Job → m (Option (List (List Bit))))
     (jobs : List Job) : m (Option (List (List Bit))) := do
   let outputs ← (chunks size jobs).mapM run
@@ -1123,10 +1124,11 @@ def batched {m : Type → Type} [Monad m] (size : ℕ) (run : List Job → m (Op
 
 variable {m : Type → Type} [Monad m] (lift : ∀ {α : Type}, OracleComp HashSpec α → m α)
 
-/-- The public outputs of a ceremony. `run` evaluates the jobs of a run, by MPC for the operators or
-in the clear for the dealer. A bottom tree has two runs. The first gives `cpk`, the commitments and
-the randomizer value of its top key. The second gives the chain values of the top signature, which
-must lead to the root of the top tree (`src/dkg.rs`). -/
+/-- The public outputs of a tree. `run` evaluates the jobs of one ceremony, by MPC for the operators
+or in the clear for the dealer. The top tree has one ceremony. A bottom tree has two. The first gives
+`cpk`, the commitments and the randomizer value of its top key. Each operator then finds the
+codeword of the root by the randomizer search, with no message. The second ceremony gives the chain
+values of the top signature, which must lead to the root of the top tree (`src/dkg.rs`). -/
 def ceremonyOutput (parameter : PublicParameter) (run : List Job → m (Option (List (List Bit))))
     (top : TopTree) : Tree → m (Option TreeOutput)
   | .top => do
@@ -1190,29 +1192,49 @@ section Ceremony
 
 variable [Field E] [Algebra Bit E] (K : Constants C E)
 
-/-- The ceremony of a tree at operator `i`. It runs the PRSS setup, then each batch of each run with
-the gadgets `gadgets ctx k jobs` of batch `k`. Each batch starts with empty running digests and
+/-- One ceremony at operator `i`, as a program on the counters. It runs one PRSS setup and then
+each batch of `jobs`, with the gadgets `gadgets ctx k jobs` of batch `k`. The counters are the next
+round label and the tag `k` of the next batch. Each batch starts with empty running digests and
 continues the round labels. The real protocol uses `realRunGadgets`. -/
-def ceremonyWith (circuits : Circuits) (settings : Settings)
-    (gadgets : Context C → ℕ → List Job → RunGadgets C E G) (i : C.Party) (keys : Keys C) (top : TopTree)
-    (tree : Tree) : PartyM C E G TreeOutput := do
-  let prss ← prssSetup i
+def ceremonyRun (circuits : Circuits) (settings : Settings)
+    (gadgets : Context C → ℕ → List Job → RunGadgets C E G) (i : C.Party) (keys : Keys C)
+    (jobs : List Job) : StateT (ℕ × ℕ) (PartyM C E G) (Option (List (List Bit))) := do
+  let prss ← StateT.lift (prssSetup i)
   let ctx : Context C := ⟨i, keys, prss⟩
+  batched settings.batchSize (fun jobs => do
+    let (label, k) ← get
+    let inputs ← StateT.lift (jobs.mapM (inputShares ctx))
+    let (outputs, state) ← StateT.lift ((runJobs K (gadgets ctx k jobs)
+      (jobs.map (circuits keys.parameter ·.kind)) inputs).run ⟨fun _ => [], label, k⟩)
+    set (state.label, k + 1)
+    pure (some outputs)) jobs
+
+/-- One ceremony of the public job list `jobs` from the public counters `counters`, with the gadgets
+`gadgets`. It gives the opened output of each job. -/
+def ceremonyWith (circuits : Circuits) (settings : Settings)
+    (gadgets : Context C → ℕ → List Job → RunGadgets C E G) (i : C.Party) (keys : Keys C)
+    (counters : ℕ × ℕ) (jobs : List Job) : PartyM C E G (List (List Bit)) := do
+  let some outputs ← (ceremonyRun K circuits settings gadgets i keys jobs).run' counters | failure
+  pure outputs
+
+/-- The real ceremony. It is one protocol with three uses, namely `topJobs` for the top tree,
+`bottomJobs b` for bottom tree `b`, and `signJobs b encoding` for the signature of the root of
+bottom tree `b` by its top key. -/
+def ceremony (circuits : Circuits) (settings : Settings) (i : C.Party) (keys : Keys C)
+    (counters : ℕ × ℕ) (jobs : List Job) : PartyM C E G (List (List Bit)) :=
+  ceremonyWith K circuits settings (fun ctx _ _ => realRunGadgets K ctx settings.mode) i keys counters jobs
+
+/-- The ceremonies of a tree at operator `i`, with the local steps of `ceremonyOutput` between them
+(`new_top_tree` and `new_bottom_tree` of `src/dkg.rs`). Each ceremony has its own PRSS setup. The
+first ceremony starts at the counters `(0, 0)`, and the signature ceremony of a bottom tree starts
+at the counters that the first one leaves. -/
+def newTree (circuits : Circuits) (settings : Settings) (i : C.Party) (keys : Keys C) (top : TopTree)
+    (tree : Tree) : PartyM C E G TreeOutput := do
   let some output ← (ceremonyOutput (m := StateT (ℕ × ℕ) (PartyM C E G))
       (fun oa => StateT.lift (oracleStep (tweakable oa))) keys.parameter
-      (batched settings.batchSize fun jobs => do
-        let (label, k) ← get
-        let inputs ← StateT.lift (jobs.mapM (inputShares ctx))
-        let (outputs, state) ← StateT.lift ((runJobs K (gadgets ctx k jobs)
-          (jobs.map (circuits keys.parameter ·.kind)) inputs).run ⟨fun _ => [], label, k⟩)
-        set (state.label, k + 1)
-        pure (some outputs)) top tree).run' (0, 0) | failure
+      (ceremonyRun K circuits settings (fun ctx _ _ => realRunGadgets K ctx settings.mode) i keys)
+      top tree).run' (0, 0) | failure
   pure output
-
-/-- The real ceremony. -/
-def ceremony (circuits : Circuits) (settings : Settings) (i : C.Party) (keys : Keys C) (top : TopTree)
-    (tree : Tree) : PartyM C E G TreeOutput :=
-  ceremonyWith K circuits settings (fun ctx _ _ => realRunGadgets K ctx settings.mode) i keys top tree
 
 end Ceremony
 
@@ -1232,8 +1254,8 @@ def prawnsKeyGen : ProbComp (PublicParameter × (C.Term → HashOutput) × (C.Pa
   let pairKeys ← $ᵗ (C.Pair → HashOutput)
   pure (parameter, seeds, dealtKeys parameter seeds pairKeys)
 
-/-- The outputs of a ceremony in the clear by leanXMSS, with the PRF values from `F`. This is the
-key generation of PRAWNS, Section 3.1, for the trees of leanXMSS. -/
+/-- The outputs of a tree in the clear by leanXMSS, with the PRF values from `F`. This is the key
+generation of PRAWNS, Section 3.1, for the trees of leanXMSS. -/
 def referenceTree {m : Type → Type} [Monad m] (lift : ∀ {α : Type}, OracleComp HashSpec α → m α)
     (F : Point → m Digest) (parameter : PublicParameter) (top : TopTree) (tree : Tree) : m (Option TreeOutput) :=
   ceremonyOutput lift parameter (fun jobs => some <$> jobs.mapM (referenceJob lift F parameter)) top tree
@@ -1629,7 +1651,7 @@ end Hybrid
 
 /-! ## Honest runs -/
 
-/-- The empty top tree, which the top ceremony takes. -/
+/-- The empty top tree, which the top tree takes. -/
 def emptyTop : TopTree := ⟨fun _ _ => 0, 0⟩
 
 /-- The tree of an output, if it is a top tree. -/
@@ -1637,7 +1659,7 @@ def TreeOutput.topTree : Option TreeOutput → Option TopTree
   | some (.top tree) => some tree
   | _ => none
 
-/-- The batches of a ceremony, at most. -/
+/-- The batches of the ceremonies of a tree, at most. -/
 def ceremonyBatches (settings : Settings) : ℕ :=
   (chunks settings.batchSize topJobs).length ⊔
     ((chunks settings.batchSize (bottomJobs 0)).length + (chunks settings.batchSize (signJobs 0 fun _ => digit 0)).length)
@@ -1646,13 +1668,14 @@ def ceremonyBatches (settings : Settings) : ℕ :=
 def runCircuits (circuits : Circuits) (parameter : PublicParameter) (jobs : List Job) : List Circuit :=
   jobs.map (circuits parameter ·.kind)
 
-/-- The most of a measure over all batches of all runs of all ceremonies. -/
+/-- The most of a measure over all batches of all ceremonies. -/
 def maxBatch (circuits : Circuits) (settings : Settings) (measure : List Circuit → ℕ) : ℕ :=
   Finset.univ.sup fun x : PublicParameter × Fin (2 ^ layerHeight) × Encoding =>
     (([topJobs, bottomJobs x.2.1, signJobs x.2.1 x.2.2].flatMap (chunks settings.batchSize)).map
       fun jobs => measure (runCircuits circuits x.1 jobs)).foldl max 0
 
-/-- A ceremony runs the PRSS setup and its batches. -/
+/-- The rounds of a PRSS setup and of the batches of a tree. They bound the rounds of one
+ceremony. A bottom tree has one more PRSS setup. -/
 def ceremonyFuel (circuits : Circuits) (settings : Settings) : ℕ :=
   setupRounds + ceremonyBatches settings * maxBatch circuits settings (runRounds settings.mode)
 

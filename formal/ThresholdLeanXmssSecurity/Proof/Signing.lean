@@ -478,7 +478,7 @@ theorem D_refTop (P : PublicParameter) (seeds : C.Term → HashOutput) (top0 : T
   rw [htop, List.map_map, getD_map_idxOf_of_mem _ _ _ (by simp [List.mem_flatMap])]
   simp [D_referenceJob, digestAt_bits]
 
-/-- The outputs of the first run of bottom tree `b` with a fixed `H`. -/
+/-- The outputs of the ceremony of bottom tree `b` with a fixed `H`. -/
 abbrev bottomOutputs (prims : Primitives) (h : Query C → HashOutput) (seeds : C.Term → HashOutput)
     (P : PublicParameter) (b : Fin (2 ^ layerHeight)) : List (List Bit) :=
   (bottomJobs b).map fun job => D prims h (referenceJob tweakable (prfValue seeds) P job)
@@ -1522,7 +1522,7 @@ def TopFacts (prims : Primitives) (h : Query C → HashOutput) (seeds : C.Term �
     (D prims h (prfValue seeds (.chain topLayer (topKey b) l (digit 0)))))) ∧
   top.root = E prims h (merkleNode P topLayer top.chainEnd layerHeight 0)
 
-/-- The first run of bottom tree `b` after its outputs, as `ceremonyOutput` gives it. -/
+/-- The ceremony of bottom tree `b` after its outputs, as `ceremonyOutput` gives it. -/
 def referenceBottomRest (seeds : C.Term → HashOutput) (P : PublicParameter) (top : TopTree) (b : Fin (2 ^ layerHeight))
     (outputs : List (List Bit)) : OracleComp (RoSpec C) (Option TreeOutput) := do
   let keys := (List.finRange (2 ^ layerHeight)).flatMap fun k =>

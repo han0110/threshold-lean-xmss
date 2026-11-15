@@ -1,9 +1,9 @@
 import ThresholdLeanXmssSecurity.Proof.SigningOwnCommit
 
 /-!
-# The canonical top search covers the top digest reads of a bottom ceremony
+# The canonical top search covers the top digest reads of a bottom tree
 
-A bottom ceremony of tree `b` reads top digest inputs of key `b` only. Its first part is the setup
+Bottom tree `b` reads top digest inputs of key `b` only. Its first part is the setup
 of `canonicalTopGrind x b`, so its search is a rerun of the canonical search. Its check reads the
 selected trial of that search.
 -/
@@ -86,7 +86,7 @@ theorem topEncodingInput_not_other (P : PublicParameter) (key b : XmssSecurity.T
 
 set_option maxRecDepth 100000 in
 attribute [local irreducible] merkleNode merklePath grind Verification.treeFoldWithHash Verification.chainWalkWithHash in
-/-- A bottom ceremony of tree `b` reads no top digest input of another key. -/
+/-- Bottom tree `b` reads no top digest input of another key. -/
 theorem bottomTree_no_topDigest (x : Keys3 C) (top : TopTree) (key : XmssSecurity.TopIndex)
     (b : Fin (2 ^ layerHeight)) (hkb : key ≠ b) :
     (referenceTree SigningHitProof.forestHash (SigningHitProof.forestValue x.2.1) x.1 top
@@ -124,7 +124,7 @@ theorem bottomTree_no_topDigest (x : Keys3 C) (top : TopTree) (key : XmssSecurit
 set_option maxRecDepth 100000 in
 attribute [local irreducible] merkleNode merklePath grind Verification.treeFoldWithHash Verification.chainWalkWithHash in
 /-- The canonical top search of a key reads each top digest input of that key in a bottom
-ceremony. The ceremony of the same key is a rerun of the search. -/
+tree. The bottom tree of the same key is a rerun of the search. -/
 theorem canonicalTopGrind_covers_bottom (x : Keys3 C) (top : TopTree) (key : XmssSecurity.TopIndex)
     (b : Fin (2 ^ layerHeight)) (cache : HashCache C)
     (z : ((Digest × Option (Randomizer × Encoding)) × HashCache C) × HashCache C)

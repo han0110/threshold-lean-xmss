@@ -9172,8 +9172,8 @@ theorem canonicalTopAfterJobs_no_digest (x : SigningSecurityProof.Keys3 C)
     exact fun h => (topRandomizer_not_topDigest x.1 key _ root h).elim) ?_
   intro _ _; simp
 
-/-- Exactly the first run, root and randomizer-base computation of the actual
-bottom ceremony. No state-derived value is supplied as an external parameter. -/
+/-- Exactly the ceremony of the tree, root and randomizer-base computation of the actual
+bottom tree. No state-derived value is supplied as an external parameter. -/
 def canonicalTopSetupForJobs (x : SigningSecurityProof.Keys3 C) (key : XmssSecurity.TopIndex) (jobs : List Job) (levels : ℕ) :
     OracleComp (Query C →ₒ HashSig.HashOutput) (HashSig.Digest × HashSig.Randomizer) :=
   jobs.mapM (referenceJob SigningHitProof.forestHash (SigningHitProof.forestValue x.2.1) x.1) >>=
@@ -9451,8 +9451,8 @@ theorem resolvedTopPartner_bound_digest_cost (prims : Primitives) (A : TsigAdver
   exact h.trans (mul_le_mul_right
     (sourceExpectedCost_mono prims A x _ _ (topDigest_rawCost_le x.1)) _)
 
-/-- Every completed bottom ceremony resolves the canonical setup and scan,
-including ceremonies that return no tree. -/
+/-- Every completed bottom tree resolves the canonical setup and scan,
+including bottom trees that return no tree. -/
 theorem resolves_referenceBottom_topGrind (x : SigningSecurityProof.Keys3 C)
     (cache : HashCache C) (top : TopTree) (key : XmssSecurity.TopIndex)
     (output : Option TreeOutput)
@@ -9584,7 +9584,7 @@ theorem resolved_bottom_topSignedInput (prims : Primitives) (z : SigningDescentP
       rw [hb]
       rfl
 
-/-- A top partner of a successfully returned, cached bottom ceremony is one
+/-- A top partner of a successfully returned, cached bottom tree is one
 of the canonical partners counted by the all-key completion potential. -/
 theorem topPartner_resolved (prims : Primitives) (A : TsigAdversary C)
     (x : SigningSecurityProof.Keys3 C) (r : Outcome C)
@@ -9747,7 +9747,7 @@ theorem chargedOutput_bound_of_cost (prims : Primitives) (A : TsigAdversary C)
       mul_le_mul_right hcost ((2 ^ 128 : ℝ≥0∞)⁻¹))
 
 /-- The residual retains true-opening probes, bottom guesses/partners, and
-top partners without a successful cached bottom ceremony. -/
+top partners without a successful cached bottom tree. -/
 def UnchargedWin (prims : Primitives) (x : SigningSecurityProof.Keys3 C) (r : Outcome C) : Prop :=
   r.1.1 = (true, false) ∧ ¬ChargedOutput prims x r
 
@@ -9780,7 +9780,7 @@ theorem chargedOutput_bound (prims : Primitives) (A : TsigAdversary C)
     (source_output_costs_le prims A x T q hq)
 
 /-- One fixed-cap obligation remains. It includes unsuccessful/unopened
-bottom ceremonies, rather than assuming their canonical scan succeeded. -/
+bottom trees, rather than assuming their canonical scan succeeded. -/
 def UnchargedLaneBound (prims : Primitives) (C : Committee) : Prop :=
   ∀ (A : TsigAdversary C) (q : ℕ) (x : SigningSecurityProof.Keys3 C),
     x ∈ support (TprfSecurityProof.keyGen3 (C := C)) →
@@ -10141,7 +10141,7 @@ the refuted GuessPartnerDomainBound is not used. CanonicalTopCompletion uses
 the exact source bottomJobs, Merkle root, top randomizer and scan. Its all-key
 completion potential charges at most one unit per digest call, without
 requiring a fresh selected trial. topPartner_resolved proves the bridge for
-successful cached bottom ceremonies, including the exact replayed root.
+successful cached bottom trees, including the exact replayed root.
 alternativeCommitment_bound_source now puts commitment output matches in
 the same source-cost frame. chargedOutput_bound combines these three bounds
 at q/N. The hit proof's auxiliary base-zero top scans are not substituted
@@ -10153,7 +10153,7 @@ codeword conditional on the previous cache.
 Still open: UnchargedLaneBound. The actual threshold-share view must be
 coupled to an adaptive silent-probe/reveal experiment, and its selected digest
 must be coupled to the cached randomizer scan. This residual includes top
-partners without a successful resolved bottom ceremony. The proved
+partners without a successful resolved bottom tree. The proved
 uncharged_topPartner_no_successful_bottom excludes every supported successful
 subrun whose cache extends into the final cache; failed subruns remain.
 Rho can be installed/revealed after the first binding of the message. Chain

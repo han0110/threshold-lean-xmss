@@ -49,7 +49,7 @@ The table of `SigningOpening` lists the top partner as uncharged. The docstring 
   `OutputLaneBound` bounds `WinOutput`, which includes every `TopPartner`.
 * In the split of `hiddenCoreAt_of_uncharged`, `ChargedOutput` holds only
   `ResolvedTopPartner`. `topPartner_resolved` and `uncharged_topPartner_no_successful_bottom` show
-  that a top partner with a successful cached bottom ceremony is charged. A top partner without one
+  that a top partner with a successful cached bottom tree is charged. A top partner without one
   stays in `UnchargedWin`.
 
 ## The bottom-partner interface

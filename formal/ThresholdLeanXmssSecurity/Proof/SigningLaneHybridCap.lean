@@ -874,7 +874,7 @@ def sourceTopRecover (P : PublicParameter) (b : XmssSecurity.TopIndex)
       modify fun (st : SourceState C) => { st with consistent := false }
       pure 0
 
-/-- The actual two-run bottom ceremony, with a symbolic top signature. Both its
+/-- The actual bottom tree with its two ceremonies and a symbolic top signature. Both its
 prefix signing walk and its verification suffix retain their original hash calls. -/
 def sourceBottomTree (P : PublicParameter) (seeds : C.Term → HashOutput)
     (top : TopTree) (b : XmssSecurity.TopIndex) : SourceM C (Option DeferredBottomTree) := do

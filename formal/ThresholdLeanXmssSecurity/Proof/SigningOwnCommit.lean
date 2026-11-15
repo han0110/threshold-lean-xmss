@@ -1,9 +1,9 @@
 import ThresholdLeanXmssSecurity.Proof.SigningOwnCover
 
 /-!
-# The commitment completion covers the commitment reads of a bottom ceremony
+# The commitment completion covers the commitment reads of a bottom tree
 
-A bottom ceremony reads the commitment input `commitmentInput P e ρ` of each of its keys at the
+The ceremony of a bottom tree reads the commitment input `commitmentInput P e ρ` of each of its keys at the
 PRF value `ρ` of the key. The commitment completion `rawCommitmentForest` reads the same input. No
 other part of the ceremony reads a commitment input.
 -/
@@ -288,7 +288,7 @@ theorem commitmentJob_resolves (x : Keys3 C) {record : HashCache C} {units : Lis
 
 set_option maxRecDepth 100000 in
 attribute [local irreducible] merkleNode merklePath grind Verification.treeFoldWithHash Verification.chainWalkWithHash in
-/-- The commitment completion reads each commitment input of a bottom ceremony. -/
+/-- The commitment completion reads each commitment input of a bottom tree. -/
 theorem commitmentForest_covers_bottom (x : Keys3 C) (top : TopTree) (b : Fin (2 ^ layerHeight))
     (cache : HashCache C) (z : (List Unit × HashCache C) × HashCache C)
     (hz : z ∈ support ((simulateQ (Query C →ₒ HashOutput).randomOracle

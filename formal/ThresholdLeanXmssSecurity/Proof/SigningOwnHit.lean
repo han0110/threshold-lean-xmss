@@ -123,7 +123,7 @@ end Gate
 
 attribute [local instance] Classical.propDecidable
 
-/-- The invariant of the hit potential after the dealer. Each top gate is seen, and the top ceremony
+/-- The invariant of the hit potential after the dealer. Each top gate is seen, and the top tree
 is resolved in the cache. -/
 def HitInv (x : Keys3 C) (T : C.Term) (top : TopTree) (s : LoggedState C) : Prop :=
   (¬Programmed s.2 → SigningHitProof.RawReachable prims s) ∧
@@ -149,7 +149,7 @@ def AllSeen (s : LoggedState C) : Prop :=
   ∀ b, SigningHitProof.GateSeen (.inr (.inr (.inl (SigningHitProof.topGateInput x T b)))) s.2
 
 /-- The invariant of the honest work after the dealer. Each top gate is seen, and the cache
-resolves the top ceremony. -/
+resolves the top tree. -/
 def RunInv (top : TopTree) (s : LoggedState C) : Prop :=
   AllSeen x T s ∧ DeterministicSigning.Resolves s.1.1
     (referenceTree SigningHitProof.forestHash (SigningHitProof.forestValue x.2.1) x.1 emptyTop .top)
@@ -596,7 +596,7 @@ theorem honestFlat_tsigOracles (top : TopTree) (q : (TsigSpec C).Domain) (st : T
         rcases r with _ | values <;> simp
 
 set_option maxRecDepth 100000 in
-/-- A resolved bottom ceremony with a tree resolves the Merkle root of the chain ends of that tree. -/
+/-- A bottom tree that resolves to a tree resolves the Merkle root of the chain ends of that tree. -/
 theorem resolves_bottom_root (cache : HashCache C) (top : TopTree) (b : Fin (2 ^ layerHeight))
     (tree : BottomTree)
     (h : DeterministicSigning.Resolves cache (referenceTree SigningHitProof.forestHash
@@ -630,8 +630,8 @@ theorem xor_one_div_two (d : ℕ) : Nat.xor d 1 / 2 = d / 2 := by
   · rw [SigningOwnCover.xor_one_odd]
     omega
 
-/-- The cache and replay fact of the bottom path. A resolved bottom ceremony with a tree resolves the
-authentication path of each key of the tree under the chain ends of that tree. -/
+/-- The cache and replay fact of the bottom path. A bottom tree that resolves to a tree resolves
+the authentication path of each key of the tree under the chain ends of that tree. -/
 theorem resolves_bottomPath (cache : HashCache C) (top : TopTree) (e : KeyIndex) (tree : BottomTree)
     (h : DeterministicSigning.Resolves cache (referenceTree SigningHitProof.forestHash
       (SigningHitProof.forestValue x.2.1) x.1 top (.bottom (treeOf e))) (some (.bottom tree))) :

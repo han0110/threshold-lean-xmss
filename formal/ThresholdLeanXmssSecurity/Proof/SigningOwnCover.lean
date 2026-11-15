@@ -5,7 +5,7 @@ import XmssSecurity.Proof.Bridge.Resolution
 /-!
 # The forest completion covers the honest ceremonies
 
-Each structural input that a top ceremony or a bottom ceremony reads after the forest completion
+Each structural input that the top tree or a bottom tree reads after the forest completion
 is an input that the completion reads. So a block of such reads does not raise the completion
 potential.
 -/
@@ -449,7 +449,7 @@ theorem resolves_merkleNode_bottom (S : QueryCache XmssSecurity.HashSpec) (P : P
     exact (ih (by omega) (2 * j) (by omega) (fun i hi => hS i (hchild 0 (by omega) i hi)) left hl).bind
       ((ih (by omega) (2 * j + 1) hj2 (fun i hi => hS i (hchild 1 (by omega) i hi)) right hr).bind hu)
 
-/-- The chain ends of a resolved top ceremony are the ends of the top chains of the forest. -/
+/-- The chain ends of the resolved top tree are the ends of the top chains of the forest. -/
 theorem topCeremony_ends (x : SigningSecurityProof.Keys3 C) (resolved record bound : HashCache C)
     (top : TopTree)
     (htop : DeterministicSigning.Resolves resolved
@@ -619,7 +619,7 @@ theorem forestRun_model (x : SigningSecurityProof.Keys3 C) (cache : HashCache C)
   simp only [StateT.run_pure, support_pure]
   exact Set.mem_singleton _
 
-/-- A job of the top ceremony reads only inputs of the forest completion. -/
+/-- A job of the ceremony of the top tree reads only inputs of the forest completion. -/
 theorem topJob_lift (x : SigningSecurityProof.Keys3 C) {forest record target bound : HashCache C}
     (secret : XmssSecurity.LeafIndex → XmssSecurity.ChainIndex → Digest)
     (topSecret : XmssSecurity.TopIndex → XmssSecurity.ChainIndex → Digest)
@@ -647,7 +647,7 @@ theorem topJob_lift (x : SigningSecurityProof.Keys3 C) {forest record target bou
   erw [XmssSecurity.Bridge.chainWalk_top]
   exact hwalk
 
-/-- A job of the second run of a bottom ceremony reads only inputs of the forest completion. -/
+/-- A job of the signature ceremony of a bottom tree reads only inputs of the forest completion. -/
 theorem signJob_lift (x : SigningSecurityProof.Keys3 C) {forest record target bound : HashCache C}
     (secret : XmssSecurity.LeafIndex → XmssSecurity.ChainIndex → Digest)
     (topSecret : XmssSecurity.TopIndex → XmssSecurity.ChainIndex → Digest)
@@ -677,7 +677,7 @@ theorem signJob_lift (x : SigningSecurityProof.Keys3 C) {forest record target bo
   erw [XmssSecurity.Bridge.chainWalk_top]
   exact hwalk
 
-/-- A job of the first run of a bottom ceremony reads only inputs of the forest completion and
+/-- A job of the ceremony of a bottom tree reads only inputs of the forest completion and
 inputs that are not relevant to the forest. -/
 theorem bottomJob_lift (x : SigningSecurityProof.Keys3 C) {forest record target bound : HashCache C}
     (secret : XmssSecurity.LeafIndex → XmssSecurity.ChainIndex → Digest)
@@ -734,7 +734,7 @@ theorem bottomJob_lift (x : SigningSecurityProof.Keys3 C) {forest record target 
       (mapM_bound_zero _ _ _ fun _ => forestValue_irrelevant _ _ _) (fun vs _ => by simp)
 
 set_option maxRecDepth 100000 in
-/-- The Merkle tree of a bottom ceremony reads only inputs of the forest completion. -/
+/-- The Merkle tree of a bottom tree reads only inputs of the forest completion. -/
 theorem bottomMerkle_lift (x : SigningSecurityProof.Keys3 C) {forest record target bound : HashCache C}
     (secret : XmssSecurity.LeafIndex → XmssSecurity.ChainIndex → Digest)
     (topSecret : XmssSecurity.TopIndex → XmssSecurity.ChainIndex → Digest)
@@ -802,7 +802,7 @@ theorem bottomMerkle_lift (x : SigningSecurityProof.Keys3 C) {forest record targ
       (bottomKey b k) l 0 3 _)
 
 /-- The authentication path of a top signature reads only inputs of the forest completion, when the
-top ceremony is resolved. -/
+top tree is resolved. -/
 theorem topPath_lift (x : SigningSecurityProof.Keys3 C) {forest record target bound : HashCache C}
     (secret : XmssSecurity.LeafIndex → XmssSecurity.ChainIndex → Digest)
     (topSecret : XmssSecurity.TopIndex → XmssSecurity.ChainIndex → Digest)
@@ -849,7 +849,7 @@ theorem topPath_lift (x : SigningSecurityProof.Keys3 C) {forest record target bo
 
 set_option maxRecDepth 100000 in
 /-- The check of a top signature reads only inputs of the forest completion and inputs that are not
-relevant to the forest, when the top ceremony is resolved. -/
+relevant to the forest, when the top tree is resolved. -/
 theorem topCheck_lift (x : SigningSecurityProof.Keys3 C) {forest record target bound : HashCache C}
     (secret : XmssSecurity.LeafIndex → XmssSecurity.ChainIndex → Digest)
     (topSecret : XmssSecurity.TopIndex → XmssSecurity.ChainIndex → Digest)
@@ -1006,7 +1006,7 @@ theorem topCheck_lift (x : SigningSecurityProof.Keys3 C) {forest record target b
       exact (hp.mono hSW).unique (hm.mono hS0W)
 
 set_option maxRecDepth 100000 in
-/-- The forest completion reads each structural input of the top ceremony. -/
+/-- The forest completion reads each structural input of the ceremony of the top tree. -/
 theorem forestRun_covers_top (x : SigningSecurityProof.Keys3 C) (cache : HashCache C)
     (z : (Unit × HashCache C) × HashCache C)
     (hz : z ∈ support ((simulateQ (Query C →ₒ HashOutput).randomOracle
@@ -1050,8 +1050,8 @@ theorem forestRun_covers_top (x : SigningSecurityProof.Keys3 C) (cache : HashCac
   simp [hle hv]
 
 set_option maxRecDepth 100000 in
-/-- The forest completion reads each structural input of a bottom ceremony, when the top
-ceremony is resolved in the cache at the start. -/
+/-- The forest completion reads each structural input of a bottom tree, when the top
+tree is resolved in the cache at the start. -/
 theorem forestRun_covers_bottom (x : SigningSecurityProof.Keys3 C) (top : TopTree)
     (b : Fin (2 ^ layerHeight)) (cache : HashCache C)
     (htop : DeterministicSigning.Resolves cache

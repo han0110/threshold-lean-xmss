@@ -11,7 +11,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningReleasedAlign
 At the key of the forgery, a recorded digit is the selected digit of the final cache, unless the
 final cache holds an alternative commitment opening. So a bottom chain position with `t` signers
 and a recorded digit at or below it is no chain target. The same holds at the top layer for a
-position at or above the top digit of a resolved bottom ceremony.
+position at or above the top digit of a resolved bottom tree.
 -/
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
@@ -93,7 +93,7 @@ theorem covered_not_target (r : SigningGuessLinkProof.LoggedOutcome C) (top : To
   omega
 
 set_option maxRecDepth 100000 in
-/-- The gate at the top layer. A resolved bottom ceremony of the tree of the forgery gives
+/-- The gate at the top layer. The resolved bottom tree of the forgery gives
 the top digit. A position at or above it is no target of either kind. -/
 theorem top_covered_not_target (r : SigningGuessLinkProof.LoggedOutcome C) (top : TopTree)
     (state : TsigState C) (forgery : Forgery) (hm : r.1.1.2 = some (top, state, forgery))

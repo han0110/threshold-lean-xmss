@@ -13,9 +13,9 @@ holds with probability one, but a win must also verify at the top layer.
 
 * The top setup caches every top chain start (`topStarts_cached`). So the absent start of
   `AbsentRow` is a bottom start.
-* A bottom ceremony reads all its chain starts (`SigningHitProof.resolves_referenceBottom_chains`).
-  So an absent bottom start means that no bottom ceremony of the tree resolves (`TopUnopened`).
-* In `TopRow`, a resolved bottom ceremony makes the partner a `ResolvedTopPartner`
+* A bottom tree reads all its chain starts (`SigningHitProof.resolves_referenceBottom_chains`).
+  So an absent bottom start means that the bottom tree does not resolve (`TopUnopened`).
+* In `TopRow`, a resolved bottom tree makes the partner a `ResolvedTopPartner`
   (`SigningGuessProof.topPartner_resolved`), which is charged. So `TopRow` also gives `TopUnopened`.
 * The game releases top chain values only through `.tree b` with a returned tree (`Ideal.lean`,
   `tsigOracles`). `.round2` returns bottom values only.
@@ -34,7 +34,7 @@ not used, because in `TopRow` it is the forged codeword.
 ## The cap interface
 
 * The cap `q / 2^128` on `HiddenInputHit` for `unopenedTopTarget`. It needs that a returned tree
-  resolves its bottom ceremony on the cache, so that `TopUnopened` at the end means no release.
+  resolves its bottom tree on the cache, so that `TopUnopened` at the end means no release.
 -/
 
 set_option pp.deepTerms false
@@ -54,7 +54,7 @@ attribute [local instance] Classical.propDecidable
 
 variable {C : Committee} (prims : Primitives)
 
-/-- The bottom ceremony of tree `b` does not resolve to a tree in the cache. The game releases the
+/-- Bottom tree `b` does not resolve to a tree in the cache. The game releases the
 top signature of `b` only with a returned tree, so the chain values of top key `b` below the end
 stay hidden. -/
 def TopUnopened (x : SigningSecurityProof.Keys3 C) (cache : HashCache C) (top : TopTree)
@@ -64,7 +64,7 @@ def TopUnopened (x : SigningSecurityProof.Keys3 C) (cache : HashCache C) (top : 
     (some (.bottom tree))
 
 /-- The chain target at an unopened top key. At the top key of the forgery, when its bottom
-ceremony is unopened and the chain start is cached, every position below the end has the honest
+tree is unopened and the chain start is cached, every position below the end has the honest
 value as its target. Every other key has none. -/
 def unopenedTopTarget (x : SigningSecurityProof.Keys3 C) (r : SigningGuessLinkProof.LoggedOutcome C) :
     HiddenKey → Option Digest :=
@@ -106,7 +106,7 @@ theorem topStarts_cached (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C
   exact resolves_forestValue_cached _ _ _ _ hs
 
 set_option maxRecDepth 100000 in
-/-- A bottom chain start with an absent PRF entry leaves its tree unopened. Each bottom ceremony
+/-- A bottom chain start with an absent PRF entry leaves its tree unopened. Each bottom tree
 reads all its chain starts, even when its grind fails. -/
 theorem topUnopened_of_bottomStart (x : SigningSecurityProof.Keys3 C) (cache : HashCache C)
     (top : TopTree) (e : KeyIndex) (l : ChainIndex)
@@ -168,7 +168,7 @@ theorem unopened_hit (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) (w
   exact congrArg some hvalue.symm
 
 set_option maxRecDepth 100000 in
-/-- `TopRow` is an input-side hit on the unopened target. A resolved bottom ceremony would make
+/-- `TopRow` is an input-side hit on the unopened target. A resolved bottom tree would make
 its top partner resolved (`SigningGuessProof.topPartner_resolved`). -/
 theorem topRow_hit (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) (w : JointOutcome C)
     (hw : w ∈ support (jointRun prims A x)) (hrow : TopRow prims x w) :

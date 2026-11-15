@@ -104,7 +104,7 @@ def InputHitRow (x : SigningSecurityProof.Keys3 C) (w : JointOutcome C) : Prop :
 def LazyPartnerRow (x : SigningSecurityProof.Keys3 C) (w : JointOutcome C) : Prop :=
   Win w ∧ ¬Charged prims x w ∧ SigningPartnerLinkProof.BottomPartnerCase prims x (w.1.1, w.2.1)
 
-/-- The row of the top partner that no successful bottom ceremony resolves. -/
+/-- The row of the top partner that no successful bottom tree resolves. -/
 def TopRow (x : SigningSecurityProof.Keys3 C) (w : JointOutcome C) : Prop :=
   Win w ∧ ¬Charged prims x w ∧ SigningGuessProof.TopPartner prims x (w.1.1, w.2.1) ∧
     ¬∃ key, SigningGuessProof.ResolvedTopPartner x key w.2.1.1

@@ -71,8 +71,8 @@ With R3 the base call is the only sign step of a key, so `leafIndices.Nodup` of
 The third disjunct of `UnchargedFlag` is not covered by the table.
 
 * `tree b` and `round2` at a key of tree `b` run `dealt.bottom b`, which is `referenceTree` on the
-  bottom ceremony (Ideal.lean, Scheme.lean). So `¬ResolvedTopPartner` at `b` likely means that no
-  query opened tree `b`. This step is not checked.
+  ceremonies of bottom tree `b` (Ideal.lean, Scheme.lean). So `¬ResolvedTopPartner` at `b` likely means
+  that no query opened tree `b`. This step is not checked.
 * `topOpened` is the digit of the canonical top encoding, also when tree `b` is never opened. So
   `chainTarget (.topChain b l p)` is `none` at that digit, and a forged value there that equals the
   hidden honest value does not raise `HiddenInputHit`.

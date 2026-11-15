@@ -28,8 +28,9 @@ import ThresholdLeanXmssSecurity.Proof.SigningStronglyUnforgeable
 seventeen claims about the protocol of `ThresholdLeanXmss/Scheme.lean`. The theorem holds for every
 committee `n = 2t - 1`, every check field `E` with `2^128` elements, every `Th`, every circuit family
 and every setting. Each claim covers one protocol or one gadget alone. No claim composes the
-seed generation, the ceremonies and the signing. `statement.tex` holds the deployment contract and the argument
-of that composition. The module doc of `Statement/Theorems.lean` holds the full model. The module docs
+seed generation, the ceremonies and the signing. `statement.tex` holds the deployment contract and a sketch
+of that composition, with its open points. The module doc of `Statement/Theorems.lean` holds the full
+model. The module docs
 of `Statement/Dkg.lean` and `Statement/Signing.lean` hold the deviations from the papers. The proofs
 follow GS20 for the DKG and PRAWNS for the signing, and
 they reuse leanVM `formal/lean_xmss` for the hash layer.
@@ -62,8 +63,8 @@ claim with the budget of every party. That claim is no field of the bundle.
   two models is the random-oracle heuristic for Keccak.
 * The seed generation and each ceremony have their own static coalition of at most `t - 1` operators and a
   rushing malicious adversary. The notion is security with selective abort (GL05), in which each
-  operator aborts alone. The bundle has this claim for the seed generation. For a ceremony the claim is
-  `TreeSecurityStatement`, which no theorem proves.
+  operator aborts alone. The bundle has this claim for the seed generation. For one ceremony the claim
+  is `TreeSecurityStatement`. It is stated and not proved.
 * The signing adversary corrupts adaptively, at most `t - 1` operators over the lifetime. A
   corruption gives only the keys, because an operator erases its ceremony state.
 * Honest operators sign at most one message for each key (`breaksOneMessagePerKey`). The map `bound`
@@ -94,12 +95,14 @@ claim with the budget of every party. That claim is no field of the bundle.
 
 ## Ceremonies
 
-1. `treeCompleteness` (`Proof/Tree`) runs the honest gadgets batch by batch and pays `treeAbortError`.
+1. `treeCompleteness` (`Proof/Tree`) runs the honest ceremonies of a tree batch by batch and pays
+   `treeAbortError`. `setup_chunks_step` joins the two ceremonies of a bottom tree. The second PRSS
+   setup keeps the cache invariant `CacheOK`, and the counters continue.
 2. `dealerTreeProof` and `treeSuccessProof` (`Proof/Dealer`) assume `CircuitsCompute`. Each circuit
    gives `referenceJob`, so `F_tree` gives the trees of `KeyGen`. The search fails with
    `searchFailure`.
-3. `TreeSecurityStatement`, the claim that a ceremony securely computes `F_tree`, is no field of the
-   bundle. No theorem proves it.
+3. `TreeSecurityStatement`, the claim that one ceremony securely computes `F_ceremony`, is no field of
+   the bundle. It is stated and not proved.
 
 ## Signing plan
 
@@ -158,8 +161,10 @@ The statement layer is `ThresholdLeanXmss/`. The proofs are in `ThresholdLeanXms
   execution model and the round-by-round coupling.
 * `SeedGen*` holds seed generation completeness and the seed generation simulation.
 * `Gadgets`, `Check*` and `Main*` hold the gadgets, the check and the batch.
-* `Tree` and `Dealer` hold the ceremony completeness, the dealer and the tree success. `TreeSim` and
+* `Tree` and `Dealer` hold the tree completeness, the dealer and the tree success. `TreeSim` and
   `TreeCheckKernelCoupling` hold lemmas on the runs of a ceremony that the signing proof uses.
+  `CeremonyIndex` holds the position of a batch in a ceremony, for the simulator of the claim that
+  is stated and not proved. The end theorem does not use it.
 * `Tprf`, `Signing`, `SigningSecurity`, `SigningCore`, `SeedHit` and `HiddenCore` hold the
   threshold PRF, signing correctness, the signing spine and the hidden keys.
 * `SigningDescent`, `SigningCache`, `SigningSelection` and `SigningOpening` hold the leanVM descent
