@@ -109,8 +109,9 @@ the advantage of a reduction is only as strong as that reduction.
   cover their static coalitions, and the signing claim covers adaptive corruptions.
 * No field fixes the basis or the bit encoding of the check field. The claims take every value of
   `Constants`. Its field `encode` gives `E` exactly `2 ^ 128` elements (`Constants.card`), so `E` is
-  isomorphic to `GF(2^128)`. `constants_nonempty` gives a value only for the committee of one
-  operator, so it does not instantiate the implementation.
+  isomorphic to `GF(2^128)`. `constants_nonempty_of` (`Proof/Constants.lean`) gives a value for each
+  committee with fewer than `2 ^ 128` operators. No field states that the constants of the
+  implementation are such a value.
 * No field connects the model to the Rust code.
 * No field is in the random-permutation model. The end statement of leanXMSS is in that model at the
   pinned revision of leanVM.

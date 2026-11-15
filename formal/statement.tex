@@ -136,7 +136,9 @@ exists, and all its calls count, the emulation included \cite{Can00}.
 with \lean{Constants}, every fixed $\Th$ with AES-128, every circuit family and every setting. The check
 field has the role of the extension field of the GS20 check, and the constants give it exactly $2^{128}$
 elements. A circuit family gives a Boolean circuit for each public parameter and each kind of job. A
-setting gives the batch size and the reshare mode. The claims hold for every value of these constants, and no proof shows that the
+setting gives the batch size and the reshare mode. The claims hold for every value of these constants. A
+value of \lean{Constants} exists over $\mathrm{GF}(2^{128})$ for every committee with $n<2^{128}$
+(\lean{constants_nonempty_of}, a theorem outside the bundle). No proof shows that the
 constants of the code are such a value. Each bound is a fixed expression where the sources write
 ``negligible'' or ``overwhelming''. Some bounds contain the advantage
 of a fixed reduction, and such a bound is only as strong as the definition of that reduction.

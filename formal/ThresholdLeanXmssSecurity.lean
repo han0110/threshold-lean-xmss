@@ -20,6 +20,7 @@ import ThresholdLeanXmssSecurity.Proof.SigningHitProof
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Coupling
 import ThresholdLeanXmssSecurity.Proof.SigningOwnBudget
 import ThresholdLeanXmssSecurity.Proof.SigningStronglyUnforgeable
+import ThresholdLeanXmssSecurity.Proof.Constants
 
 /-! # The end theorem of threshold leanXMSS
 
@@ -37,6 +38,9 @@ they reuse leanVM `formal/lean_xmss` for the hash layer.
 
 `signingSecurityClosed` gives `SigningSecurityStatement` (`Statement/SigningBudgets.lean`), the signing
 claim with the budget of every party. That claim is no field of the bundle.
+
+`constants_nonempty_of` gives a value of `Constants` over `GF(2^128)` for each committee with fewer
+than `2 ^ 128` operators. It is no field of the bundle.
 
 ## Units and budgets
 
@@ -225,6 +229,10 @@ and `Quot.sound`. -/
 /-- info: 'ThresholdLeanXmssSecurity.signingSecurityClosed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms signingSecurityClosed
+
+/-- info: 'ThresholdLeanXmssSecurity.constants_nonempty_of' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms constants_nonempty_of
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningOwnBudget.signingOwnBudget' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

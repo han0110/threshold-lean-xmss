@@ -1,6 +1,5 @@
 import LeanXmss.Scheme
 import Mathlib.Algebra.Field.ZMod
-import Mathlib.FieldTheory.Finite.GaloisField
 import Mathlib.LinearAlgebra.LinearIndependent.Defs
 import VCVio.CryptoFoundations.PRF
 import VCVio.OracleComp.QueryTracking.WriterCost
@@ -130,40 +129,6 @@ structure Constants (C : Committee) (E : Type) [Field E] [Algebra Bit E] where
   weight_independent : LinearIndependent Bit weight
   /-- The bits of an element of `E`. -/
   encode : E ≃ (Fin elementBits → Bit)
-
-/-- The committee of one operator. -/
-def soloCommittee : Committee := ⟨1, le_rfl⟩
-
-/-- The basis of `GF(2^128)` over `F_2` that the witness of `Constants` uses. -/
-def galoisBasis : Module.Basis (Fin elementBits) Bit (GaloisField 2 elementBits) :=
-  Module.finBasisOfFinrankEq Bit (GaloisField 2 elementBits) (GaloisField.finrank 2 (by decide))
-
-/-- `Constants` has a value for the committee of one operator over `GF(2^128)`. -/
-theorem constants_nonempty : Nonempty (Constants soloCommittee (GaloisField 2 elementBits)) := by
-  have held : ∀ (i : soloCommittee.Party) (T : soloCommittee.Term), i ∈ soloCommittee.holders T := by
-    intro i T
-    have : T.1 = ∅ := Finset.card_eq_zero.mp T.2
-    simp [Committee.holders, this]
-  have single : ∀ i j : soloCommittee.Party, i = j := fun i j => Fin.ext (by
-    have := i.2; have := j.2; simp only [soloCommittee, Committee.n] at *; omega)
-  let zero : soloCommittee.Party := ⟨0, by decide⟩
-  let empty : soloCommittee.Term := ⟨∅, rfl⟩
-  exact ⟨{
-    point := ⟨fun _ => 1, fun _ _ _ => single _ _⟩
-    point_ne_zero := fun _ => one_ne_zero
-    pairs := fun _ => Finset.univ
-    pairs_unique := fun _ => ⟨zero, Finset.mem_univ _, fun _ _ => single _ _⟩
-    pairs_held := fun i AB _ => ⟨held i AB.1, held i AB.2⟩
-    filled := ⟨fun _ => empty, fun _ _ _ => single _ _⟩
-    filled_held := fun i => held i _
-    collector := fun _ => (empty, zero)
-    collector_held := fun _ => held _ _
-    owner := fun _ => zero
-    owner_held := fun _ => held _ _
-    publicTerm := empty
-    weight := fun q => galoisBasis (Fin.castLE (by decide) q)
-    weight_independent := galoisBasis.linearIndependent.comp _ (Fin.castLE_injective (by decide))
-    encode := galoisBasis.equivFun.toEquiv }⟩
 
 /-- A field with a value of `Constants` has `2 ^ 128` elements. -/
 theorem Constants.card {C : Committee} {E : Type} [Field E] [Algebra Bit E] (K : Constants C E) :
