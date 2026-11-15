@@ -183,14 +183,19 @@ inductive KeyName (C : Committee)
   | pair (p : C.Pair)
 deriving DecidableEq
 
-/-- An input of `H`. Each constructor is one domain of `H`. The tags of the implementation
-(`doc/dkg.md` 1.1.4) do not separate all of them yet (`statement.tex`, Section 5). -/
+/-- An input of `H`. Each constructor is one domain of `H`. In the implementation, each use
+except `Th` hashes its own tag of 32 bytes first, and no `Th` input of the protocol starts with a
+tag (`doc/dkg.md` 1.1.4). The formulas of the PRF and of the masks below omit these tags. The
+constructor `hash` takes every byte list, and no theorem connects such a call to the
+implementation (`statement.tex`, Section 5). -/
 inductive Query (C : Committee)
   /-- The tweakable hash `Th` of leanXMSS, on the bytes of leanVM. -/
   | hash (input : HashInput)
-  /-- `H16(seed_T ‖ x)`, the PRF of a term, which the note defines with no tag. -/
+  /-- `H16(seed_T ‖ x)`, the PRF of a term. The note defines it with no tag, and the implementation
+  adds the tag `thlxmss-prf`. -/
   | prf (seed : HashOutput) (x : Point)
-  /-- `H16(K_ij ‖ x ‖ m ‖ J)`, a mask of `Eval`, which the note defines with no tag. -/
+  /-- `H16(K_ij ‖ x ‖ m ‖ J)`, a mask of `Eval`. The note defines it with no tag, and the
+  implementation adds the tag `thlxmss-mask`. -/
   | mask (key : HashOutput) (x : Point) (message : Message) (J : C.Quorum)
   /-- `com_{i → j}`, which names its sender and its receiver. The tag is `thlxmss-commit` in the
   seed generation and `thlxmss-prss-commit` in the PRSS setup. -/

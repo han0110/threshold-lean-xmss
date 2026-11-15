@@ -9,7 +9,6 @@
 
 use std::array::from_fn;
 
-use primitives::hash;
 pub use signatures::lean_xmss::{
     CHAIN_LEN, Digest, LAYER_HEIGHT, TWEAK_CHAIN, V, address, chain, layer_hi, layer_index, tweak,
 };
@@ -21,13 +20,14 @@ use tracing::info_span;
 
 use crate::lean_xmss::{MAX_RANDOMIZER_TRIALS, node, th_digests};
 pub(crate) use crate::lean_xmss::{TWEAK_PRF, TWEAK_RANDOMIZER, wots_leaf_hash};
+use crate::mpc::{Tag, tagged_hash};
 
 pub const KEYS: usize = 1 << LAYER_HEIGHT;
 /// One layer signature, the half of a leanXMSS signature after the leaf index.
 pub const LAYER_SIG_SIZE: usize = (SIG_SIZE - size_of::<LeafIndex>()) / 2;
 
-pub fn truncated_hash(parts: &[&[u8]]) -> Digest {
-    hash::hash(&parts.concat())[..16].try_into().unwrap()
+pub fn truncated_hash(tag: &Tag, parts: &[&[u8]]) -> Digest {
+    tagged_hash(tag, parts)[..16].try_into().unwrap()
 }
 
 pub fn xor(a: Digest, b: Digest) -> Digest {
@@ -163,6 +163,8 @@ pub async fn wots_sign(
 
 #[cfg(test)]
 pub mod tests {
+    use signatures::lean_xmss::{TWEAK_LEAF, TWEAK_NODE};
+
     use crate::xmss::*;
 
     pub fn fold(pp: &Digest, layer: Layer, e: u32, leaf: Digest, path: &[u8]) -> Digest {
@@ -175,6 +177,27 @@ pub mod tests {
             };
             node(pp, layer as usize, level + 1, e >> (level + 1), &children)
         })
+    }
+
+    /// The tag blocks of `mpc::tag` rely on this layout of leanVM.
+    #[test]
+    fn the_last_8_bytes_of_an_address_are_zero_for_each_tweak_kind() {
+        let kinds = [
+            TWEAK_PRF,
+            TWEAK_CHAIN,
+            TWEAK_LEAF,
+            TWEAK_NODE,
+            TWEAK_RANDOMIZER,
+            TWEAK_MSG,
+        ];
+        for (kind, layer, step) in kinds
+            .into_iter()
+            .flat_map(|kind| [Layer::Bottom, Layer::Top].map(|layer| (kind, layer)))
+            .flat_map(|(kind, layer)| (0..8).map(move |step| (kind, layer, step)))
+        {
+            let address = layer_address(kind, layer, (1 << 23) - 1, u32::MAX, step);
+            assert_eq!(address[8..], [0; 8]);
+        }
     }
 
     #[tokio::test]

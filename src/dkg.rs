@@ -590,7 +590,7 @@ mod tests {
     fn prf(all_seeds: &[Key], x: Digest) -> Digest {
         all_seeds
             .iter()
-            .map(|seed| truncated_hash(&[seed, &x]))
+            .map(|seed| truncated_hash(prawns::PRF, &[seed, &x]))
             .fold([0; 16], xor)
     }
 

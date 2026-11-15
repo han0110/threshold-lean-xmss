@@ -9,19 +9,19 @@ This note gives the signing protocol. It needs no MPC. It uses the threshold PRF
 
 ### 1.1 Symbols
 
-| symbol                                                                   | meaning                                                                      |
-| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
-| $J$                                                                      | the quorum, a set of $t$ operators that sign together                        |
-| $m$                                                                      | the message, 32 bytes                                                        |
-| $e$                                                                      | the index of the one-time key that signs, used for one message only          |
-| $P$                                                                      | the public parameter                                                         |
-| $\mathrm{Th}(P, A, M)$                                                   | the tweakable hash of [Wam26](#references) at address $A$ on input $M$       |
-| $x_{l,p} = A_{\mathrm{prf}}(e, l, p)$                                    | the PRF input of position $p$ on chain $l$, for $l < 58$ and $p < 4$         |
-| $A_{\mathrm{rnd}}(e, s)$, $A_{\mathrm{msg}}(e)$                          | the addresses of the randomizer, at step $s$, and of the message digest      |
-| $A_{\mathrm{rnd}}(e) = A_{\mathrm{rnd}}(e, 0)$                           | the input of the randomizer value                                            |
-| $`F(x) = \bigoplus_T H(\mathrm{seed}_T \,\Vert\, x)`$                    | the threshold PRF                                                            |
-| $`\mathrm{cpk}_e`$, $c_e$                                                | the public outputs of the key generation for key $e$, see [`dkg.md`](dkg.md) |
-| $`f_{l,p}(y) = \mathrm{Th}(P, A_{\mathrm{chain}}(e, p), y \,\Vert\, l)`$ | the chain step from position $p$ to $p + 1$ on chain $l$                     |
+| symbol                                                                                 | meaning                                                                      |
+| -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| $J$                                                                                    | the quorum, a set of $t$ operators that sign together                        |
+| $m$                                                                                    | the message, 32 bytes                                                        |
+| $e$                                                                                    | the index of the one-time key that signs, used for one message only          |
+| $P$                                                                                    | the public parameter                                                         |
+| $\mathrm{Th}(P, A, M)$                                                                 | the tweakable hash of [Wam26](#references) at address $A$ on input $M$       |
+| $x_{l,p} = A_{\mathrm{prf}}(e, l, p)$                                                  | the PRF input of position $p$ on chain $l$, for $l < 58$ and $p < 4$         |
+| $A_{\mathrm{rnd}}(e, s)$, $A_{\mathrm{msg}}(e)$                                        | the addresses of the randomizer, at step $s$, and of the message digest      |
+| $A_{\mathrm{rnd}}(e) = A_{\mathrm{rnd}}(e, 0)$                                         | the input of the randomizer value                                            |
+| $`F(x) = \bigoplus_T H(\texttt{"thlxmss-prf"} \,\Vert\, \mathrm{seed}_T \,\Vert\, x)`$ | the threshold PRF                                                            |
+| $`\mathrm{cpk}_e`$, $c_e$                                                              | the public outputs of the key generation for key $e$, see [`dkg.md`](dkg.md) |
+| $`f_{l,p}(y) = \mathrm{Th}(P, A_{\mathrm{chain}}(e, p), y \,\Vert\, l)`$               | the chain step from position $p$ to $p + 1$ on chain $l$                     |
 
 ### 1.2 Inputs
 
@@ -52,8 +52,10 @@ L_i = \{\, T \in \mathcal T : \min (J \setminus T) = i \,\}
 
 The part of $P_i$ adds its terms and one mask for each co-signer.
 ```math
-y_i = \bigoplus_{T \in L_i} H(\mathrm{seed}_T \,\Vert\, x) \ \oplus \bigoplus_{j \in J \setminus \{i\}} H(K_{ij} \,\Vert\, x \,\Vert\, m \,\Vert\, J)
+y_i = \bigoplus_{T \in L_i} H(\texttt{"thlxmss-prf"} \,\Vert\, \mathrm{seed}_T \,\Vert\, x) \ \oplus \bigoplus_{j \in J \setminus \{i\}} H(\texttt{"thlxmss-mask"} \,\Vert\, K_{ij} \,\Vert\, x \,\Vert\, m \,\Vert\, J)
 ```
+
+Each $\texttt{"name"}$ is a tag block of 32 bytes, as [`dkg.md`, 1.1.4](dkg.md#114-keys-and-pseudorandom-streams) defines. The two tags are a difference from the note, which defines the PRF and the masks with no tag.
 
 #### Correctness
 
@@ -69,12 +71,12 @@ So shares of $F(x)$ for two different messages do not combine to $F(x)$.
 <details>
 <summary>Example 2-of-3</summary>
 
-For $`J = \{0, 1\}`$, the terms are $`\{0\}`$, $`\{1\}`$ and $`\{2\}`$. Let $`M = H(K_{01} \,\Vert\, x \,\Vert\, m \,\Vert\, J)`$.
+For $`J = \{0, 1\}`$, the terms are $`\{0\}`$, $`\{1\}`$ and $`\{2\}`$. Let $`M = H(\texttt{"thlxmss-mask"} \,\Vert\, K_{01} \,\Vert\, x \,\Vert\, m \,\Vert\, J)`$.
 
-| signer | $L_i$                | $y_i$                                                                     |
-| ------ | -------------------- | ------------------------------------------------------------------------- |
-| $P_0$  | $`\{1\}`$, $`\{2\}`$ | $`H(\mathrm{seed}_1 \Vert x) \oplus H(\mathrm{seed}_2 \Vert x) \oplus M`$ |
-| $P_1$  | $`\{0\}`$            | $`H(\mathrm{seed}_0 \Vert x) \oplus M`$                                   |
+| signer | $L_i$                | $y_i$                                                                                                                               |
+| ------ | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| $P_0$  | $`\{1\}`$, $`\{2\}`$ | $`H(\texttt{"thlxmss-prf"} \Vert \mathrm{seed}_1 \Vert x) \oplus H(\texttt{"thlxmss-prf"} \Vert \mathrm{seed}_2 \Vert x) \oplus M`$ |
+| $P_1$  | $`\{0\}`$            | $`H(\texttt{"thlxmss-prf"} \Vert \mathrm{seed}_0 \Vert x) \oplus M`$                                                                |
 
 </details>
 
@@ -113,7 +115,7 @@ F(x) = \bigoplus_{i \in J} y_i
 <details>
 <summary>Example 2-of-3</summary>
 
-With the parts above, $`y_0 \oplus y_1 = H(\mathrm{seed}_0 \Vert x) \oplus H(\mathrm{seed}_1 \Vert x) \oplus H(\mathrm{seed}_2 \Vert x) = F(x)`$, because $M \oplus M = 0$.
+With the parts above, $`y_0 \oplus y_1 = H(\texttt{"thlxmss-prf"} \Vert \mathrm{seed}_0 \Vert x) \oplus H(\texttt{"thlxmss-prf"} \Vert \mathrm{seed}_1 \Vert x) \oplus H(\texttt{"thlxmss-prf"} \Vert \mathrm{seed}_2 \Vert x) = F(x)`$, because $M \oplus M = 0$.
 
 </details>
 

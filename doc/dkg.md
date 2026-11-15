@@ -138,21 +138,29 @@ Only the PRF uses $`\mathrm{seed}_T`$, and only the signing masks use $K_{ij}$. 
 
 The index $\mathrm{idx}$ is $0$ for reshare masks, $1$ for coins and final masks, and $2$ for digest salts.
 
-The threshold PRF and the signing masks hash a secret key first and no tag, as in the note. Every other use of $H$ hashes its own tag first. The untagged inputs can equal the input of another use, so the uses do not yet have separate domains. The formal model separates the domains that the constructors of `Query` represent, and the implementation must add this separation.
+Each use of $H$ except $\mathrm{Th}$ hashes a tag block of 32 bytes first. The tag block is the ASCII name of the use, padded on the right with `_` to 32 bytes. In a hash input, $\texttt{"name"}$ is this tag block.
 
-| tag                                                              | input after the tag                                                 | section |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------- | ------- |
-| $\texttt{"thlxmss-history"}$                                     | the values that 1.6 appends to $h_T$                                | 1.9     |
-| $\texttt{"thlxmss-copy"}$                                        | the copy $v_T$                                                      | 1.7     |
-| $\texttt{"thlxmss-coin"}$                                        | the channel tag, the round and the two opened values                | 1.9     |
-| $\texttt{"thlxmss-expand"}$                                      | a coin key and the 64-bit index of a value                          | 1.9     |
-| $\texttt{"thlxmss-digest"}$                                      | the salt $s_T$ and $h_T$                                            | 1.9     |
-| $\texttt{"rss-prss"}$                                            | a PRSS key, which gives a PRG key                                   | 1.1.4   |
-| $\texttt{"thlxmss-keygen-parameter"}$                            | all parts of $P$, whose first 16 bytes give $P$                     | 3.1     |
-| $\texttt{"thlxmss-keygen-term"}$, $\texttt{"thlxmss-prss-term"}$ | the parts of $\mathrm{holders}(T)$ in increasing order              | 3.1     |
-| $\texttt{"thlxmss-keygen-pair"}$, $\texttt{"thlxmss-prss-pair"}$ | the part of the lower of $i, j$ for the higher, then the other part | 3.1     |
-| $\texttt{"thlxmss-keygen-echo"}$, $\texttt{"thlxmss-prss-echo"}$ | the term keys that the sender and the receiver share                | 3.1     |
-| $\texttt{"thlxmss-commit"}$, $\texttt{"thlxmss-prss-commit"}$    | the sender, the receiver and the reveal                             | 3.1     |
+- A $\mathrm{Th}$ input is $P \,\Vert\, A \,\Vert\, M$, and bytes 24 to 31 of it are the zero bytes of the address $A$.
+- A tag block has no zero byte, so no $\mathrm{Th}$ input starts with a tag block. A tag of 24 bytes or fewer can be equal to the start of a $\mathrm{Th}$ input, because $P$ is random and the first 8 bytes of $A$ vary.
+- All tag blocks are different. So two uses of $H$ in the protocol never hash the same input. The formal model gives each use its own domain, a constructor of `Query`.
+
+The tags of the threshold PRF and of the signing masks are a difference from the note, which defines both with no tag.
+
+| tag                                                              | input after the tag                                                 | section                          |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------- | -------------------------------- |
+| $\texttt{"thlxmss-history"}$                                     | the values that 1.6 appends to $h_T$                                | 1.9                              |
+| $\texttt{"thlxmss-copy"}$                                        | the copy $v_T$                                                      | 1.7                              |
+| $\texttt{"thlxmss-coin"}$                                        | the channel tag, the round and the two opened values                | 1.9                              |
+| $\texttt{"thlxmss-expand"}$                                      | a coin key and the 64-bit index of a value                          | 1.9                              |
+| $\texttt{"thlxmss-digest"}$                                      | the salt $s_T$ and $h_T$                                            | 1.9                              |
+| $\texttt{"rss-prss"}$                                            | a PRSS key, which gives a PRG key                                   | 1.1.4                            |
+| $\texttt{"thlxmss-keygen-parameter"}$                            | all parts of $P$, whose first 16 bytes give $P$                     | 3.1                              |
+| $\texttt{"thlxmss-keygen-term"}$, $\texttt{"thlxmss-prss-term"}$ | the parts of $\mathrm{holders}(T)$ in increasing order              | 3.1                              |
+| $\texttt{"thlxmss-keygen-pair"}$, $\texttt{"thlxmss-prss-pair"}$ | the part of the lower of $i, j$ for the higher, then the other part | 3.1                              |
+| $\texttt{"thlxmss-keygen-echo"}$, $\texttt{"thlxmss-prss-echo"}$ | the term keys that the sender and the receiver share                | 3.1                              |
+| $\texttt{"thlxmss-commit"}$, $\texttt{"thlxmss-prss-commit"}$    | the sender, the receiver and the reveal                             | 3.1                              |
+| $\texttt{"thlxmss-prf"}$                                         | $`\mathrm{seed}_T`$ and the PRF input $x$                           | 3.1                              |
+| $\texttt{"thlxmss-mask"}$                                        | $K_{ij}$, $x$, $m$ and $J$                                          | [`sign.md`](sign.md#21-eval) 2.1 |
 
 #### 1.1.5 Building-block table
 
@@ -502,7 +510,7 @@ At most $t - 1$ of the $t$ holders are corrupt, so an honest copy or an honest h
 
 #### Privacy
 
-$\mathsf{OpenRep}$ opens only outputs of $\mathsf{Rerand}$, whose fresh terms reveal only $v$. Without it, an output linear in the PRF inputs has the terms $\mathrm{H16}(\mathrm{seed}_T \,\Vert\, x)$, which a later holder of the seeds recomputes.
+$\mathsf{OpenRep}$ opens only outputs of $\mathsf{Rerand}$, whose fresh terms reveal only $v$. Without it, an output linear in the PRF inputs has the terms $\mathrm{H16}(\texttt{"thlxmss-prf"} \,\Vert\, \mathrm{seed}_T \,\Vert\, x)$, which a later holder of the seeds recomputes.
 
 #### Use
 
@@ -747,12 +755,12 @@ b_0 \wedge \dots \wedge b_7 = \mathsf{OpenRep}\big( [\negthinspace[ z' ]\negthin
 
 ### 3.1 From the toy to the key generation
 
-| toy              | Threshold leanXMSS                                                                                                                                                                                   |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 8 random bits    | the chain start $`F(x) = \bigoplus_T \mathrm{H16}(\mathrm{seed}_T \,\Vert\, x)`$, the threshold PRF of [BBDLN26](https://eprint.iacr.org/2026/2142), a $\mathsf{Rand}$ with chosen input, no message |
-| 3 AND layers     | 3 Keccak-f[1600] per chain, 24 layers each, with the 1600 AND gates of $\chi$ in each layer                                                                                                          |
-| 1 gate per layer | the gates of one layer for all 128 chains of a batch, in one $\mathsf{Reshare}$ round                                                                                                                |
-| the AND          | the chain end $y_3$, for bottom trees also $y_1 \oplus F(x_1)$, $y_2 \oplus F(x_2)$ and a commitment to $F(A_{\mathrm{rnd}}(e))$                                                                     |
+| toy              | Threshold leanXMSS                                                                                                                                                                                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 8 random bits    | the chain start $`F(x) = \bigoplus_T \mathrm{H16}(\texttt{"thlxmss-prf"} \,\Vert\, \mathrm{seed}_T \,\Vert\, x)`$, the threshold PRF of [BBDLN26](https://eprint.iacr.org/2026/2142), a $\mathsf{Rand}$ with chosen input, no message |
+| 3 AND layers     | 3 Keccak-f[1600] per chain, 24 layers each, with the 1600 AND gates of $\chi$ in each layer                                                                                                                                           |
+| 1 gate per layer | the gates of one layer for all 128 chains of a batch, in one $\mathsf{Reshare}$ round                                                                                                                                                 |
+| the AND          | the chain end $y_3$, for bottom trees also $y_1 \oplus F(x_1)$, $y_2 \oplus F(x_2)$ and a commitment to $F(A_{\mathrm{rnd}}(e))$                                                                                                      |
 
 These facts complete the table.
 

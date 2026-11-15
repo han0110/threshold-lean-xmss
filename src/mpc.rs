@@ -47,7 +47,7 @@
 //! - A gate covers one 64-bit lane of a circuit layer for all instances of the batch. A `Word`
 //!   holds this lane for four instances.
 //! - The pseudorandom streams use AES-128 in place of Keccak-256 with labeled tags.
-//!   - The AES key hashes the label `rss-prss` and a PRSS key.
+//!   - The AES key hashes the tag `rss-prss` and a PRSS key.
 //!   - A stream depends on the channel, its round and an index, and a coin key hashes the channel
 //!     tag, the round and two opened values.
 //! - The prototype derives its PRSS keys once, in its keygen. Here each ceremony derives fresh PRSS
@@ -417,7 +417,7 @@ impl Tuples {
             x: copies(),
             y: copies(),
             z: copies(),
-            hashes: vec![Hasher::new().update(b"thlxmss-history").clone(); party.held.len()],
+            hashes: vec![Hasher::new().update(HISTORY).clone(); party.held.len()],
         }
     }
 }
@@ -433,7 +433,7 @@ pub fn mul(pairs: &[(usize, usize)], x: impl Fn(usize) -> Word, y: impl Fn(usize
 /// The commitment `H(tag || u8(i) || u8(j) || reveal)` of operator `i` to its reveal to operator
 /// `j`. It names the sender and the receiver, so an operator cannot copy the commitment of another,
 /// as in [CF01](https://eprint.iacr.org/2001/055).
-pub fn commitment(tag: &[u8], i: usize, j: usize, reveal: &[u8]) -> Key {
+pub fn commitment(tag: &Tag, i: usize, j: usize, reveal: &[u8]) -> Key {
     tagged_hash(tag, &[&[i as u8, j as u8], reveal])
 }
 
@@ -441,7 +441,7 @@ pub fn commitment(tag: &[u8], i: usize, j: usize, reveal: &[u8]) -> Key {
 pub async fn commit_reveal(
     channel: &mut Channel,
     id: usize,
-    tag: &[u8],
+    tag: &Tag,
     outgoing: Vec<Vec<u8>>,
 ) -> Result<Vec<Vec<u8>>, String> {
     let commitments: Vec<Vec<u8>> = (0..outgoing.len())
@@ -459,7 +459,7 @@ pub async fn commit_reveal(
 async fn reveal(
     channel: &mut Channel,
     id: usize,
-    tag: &[u8],
+    tag: &Tag,
     commitments: &[Vec<u8>],
     outgoing: Vec<Vec<u8>>,
 ) -> Result<Vec<Vec<u8>>, String> {
@@ -513,7 +513,7 @@ impl Parts {
         group: &Group,
         id: usize,
         revealed: &[&[u8]],
-        [term_tag, pair_tag]: [&[u8]; 2],
+        [term_tag, pair_tag]: [&Tag; 2],
     ) -> (Vec<Key>, Vec<Key>) {
         let term_part = |j: usize, k: usize| -> &[u8] {
             match j == id {
@@ -560,7 +560,7 @@ fn shared(group: &Group, i: usize, j: usize) -> Vec<usize> {
 
 /// The echo of operator `id` to operator `j`, the hash of `tag` and the keys of the terms that both
 /// hold. `keys` holds the keys of the held terms of `id`, in the order of `held`.
-pub fn shared_keys_hash(group: &Group, tag: &[u8], id: usize, j: usize, keys: &[Key]) -> Key {
+pub fn shared_keys_hash(group: &Group, tag: &Tag, id: usize, j: usize, keys: &[Key]) -> Key {
     let held = group.held(id).into_iter().zip(keys);
     let shared: Vec<&[u8]> = held
         .filter(|&(k, _)| group.holds(j, k))
@@ -570,7 +570,11 @@ pub fn shared_keys_hash(group: &Group, tag: &[u8], id: usize, j: usize, keys: &[
 }
 
 /// The tag of the commitments of the PRSS setup.
-pub const PRSS_COMMIT: &[u8] = b"thlxmss-prss-commit";
+pub const PRSS_COMMIT: &Tag = &tag(b"thlxmss-prss-commit");
+
+const PRSS_TERM: &Tag = &tag(b"thlxmss-prss-term");
+const PRSS_PAIR: &Tag = &tag(b"thlxmss-prss-pair");
+const PRSS_ECHO: &Tag = &tag(b"thlxmss-prss-echo");
 
 /// `establish` in three rounds, with the PRSS setup of the ceremony. It returns the PRSS keys of
 /// the held terms and the PRSS pair keys.
@@ -628,9 +632,8 @@ async fn establish(
         .collect();
     let revealed = reveal(&mut channel, id, PRSS_COMMIT, &commitments, reveals).await?;
     let revealed: Vec<&[u8]> = revealed.iter().map(Vec::as_slice).collect();
-    let tags: [&[u8]; 2] = [b"thlxmss-prss-term", b"thlxmss-prss-pair"];
-    let (terms, pairs) = parts.keys(group, id, &revealed, tags);
-    let echo = |j: usize| shared_keys_hash(group, b"thlxmss-prss-echo", id, j, &terms).to_vec();
+    let (terms, pairs) = parts.keys(group, id, &revealed, [PRSS_TERM, PRSS_PAIR]);
+    let echo = |j: usize| shared_keys_hash(group, PRSS_ECHO, id, j, &terms).to_vec();
     let echoes = channel.exchange_bytes((0..n).map(echo).collect()).await?;
     match (0..n).find(|&j| j != id && echoes[j] != echo(j)) {
         Some(j) => Err(format!("operator {j} holds other PRSS keys")),
@@ -763,10 +766,9 @@ impl Party {
         Additive::values(products.iter().map(|&product| lambda * product))
     }
 
-    /// Values `index` to `index + count - 1` of the expansion of a coin key. Value `k` is the first 128 bits of `H("thlxmss-expand" || key || k)`.
+    /// Values `index` to `index + count - 1` of the expansion of a coin key. Value `k` is the first 128 bits of `H(EXPAND || key || k)`.
     pub fn expand(&self, key: &Key, index: u64, count: usize) -> Vec<F128> {
-        let value =
-            |k: u64| cast_slice(&digest(b"thlxmss-expand", &[key, &k.to_le_bytes()])[..2])[0];
+        let value = |k: u64| cast_slice(&digest(EXPAND, &[key, &k.to_le_bytes()])[..2])[0];
         (0..count as u64)
             .map(|offset| value(index + offset))
             .collect()
@@ -1029,7 +1031,7 @@ impl Party {
             };
             sent.scan(0, next).collect()
         };
-        let copy_hash = |copy: &[u64]| digest(b"thlxmss-copy", &[cast_slice(copy)]);
+        let copy_hash = |copy: &[u64]| digest(COPY, &[cast_slice(copy)]);
         let hash = |(copy, &term): (&Vec<u64>, &usize)| match group.owner[term] == id {
             true => [0; HASH_WORDS],
             false => copy_hash(copy),
@@ -1133,10 +1135,7 @@ impl Party {
         let random = self.rand(channel, 1, 4);
         let shares = [0, 1].map(|v| self.conv(random.value(v)));
         let (opened, payloads) = self.open_shamir(channel, &shares, payload).await?;
-        let key = tagged_hash(
-            b"thlxmss-coin",
-            &[cast_slice(&position), cast_slice(&opened)],
-        );
+        let key = tagged_hash(COIN, &[cast_slice(&position), cast_slice(&opened)]);
         Ok((key, payloads))
     }
 
@@ -1144,7 +1143,7 @@ impl Party {
     pub fn digests(&self, channel: &Channel, hashes: &[Hasher]) -> Vec<u64> {
         let salts = self.rand(channel, 2, HASH_WORDS);
         let salted = |(salt, running): (&Vec<u64>, &Hasher)| {
-            digest(b"thlxmss-digest", &[cast_slice(salt), &running.finalize()])
+            digest(DIGEST, &[cast_slice(salt), &running.finalize()])
         };
         salts.words.iter().zip(hashes).flat_map(salted).collect()
     }
@@ -1177,7 +1176,7 @@ impl Party {
 }
 
 fn prg(seed: &Key, stream: u64, target: &mut [u64]) {
-    let key = tagged_hash(b"rss-prss", &[seed]);
+    let key = tagged_hash(RSS_PRSS, &[seed]);
     let cipher = Aes128::new(&Array(key[..16].try_into().unwrap()));
     for (counter, words) in target.chunks_mut(16).enumerate() {
         let mut blocks: [Block; 8] = from_fn(|block| {
@@ -1193,14 +1192,41 @@ fn prg(seed: &Key, stream: u64, target: &mut [u64]) {
 /// The words of a hash.
 const HASH_WORDS: usize = hash::OUT_LEN / size_of::<u64>();
 
-fn digest(tag: &[u8], parts: &[&[u8]]) -> [u64; HASH_WORDS] {
+fn digest(tag: &Tag, parts: &[&[u8]]) -> [u64; HASH_WORDS] {
     load_at(&tagged_hash(tag, parts), 0)
 }
 
-/// `H(tag || parts)`. Each use of `H` in the protocol has its own tag, so no two uses share an
+/// A tag block, the first 32 bytes of each input of `H` except `Th`.
+pub type Tag = [u8; 32];
+
+/// The tag block of `name`, the ASCII name padded on the right with `_` to 32 bytes. Bytes 24 to 31 of each `Th` input `P || A || payload` are the zero bytes of the address `A`. A tag block has no zero byte, so no `Th` input starts with a tag block. A tag of 24 bytes or fewer can be equal to the start of a `Th` input, so a tag block is as long as `P || A`.
+pub const fn tag(name: &[u8]) -> Tag {
+    assert!(name.len() <= 32, "a tag name has more than 32 bytes");
+    let mut block = [b'_'; 32];
+    let mut i = 0;
+    while i < name.len() {
+        assert!(name[i] != 0, "a tag name has a zero byte");
+        block[i] = name[i];
+        i += 1;
+    }
+    block
+}
+
+const HISTORY: &Tag = &tag(b"thlxmss-history");
+const EXPAND: &Tag = &tag(b"thlxmss-expand");
+const COPY: &Tag = &tag(b"thlxmss-copy");
+const COIN: &Tag = &tag(b"thlxmss-coin");
+const DIGEST: &Tag = &tag(b"thlxmss-digest");
+const RSS_PRSS: &Tag = &tag(b"rss-prss");
+
+/// `H(tag || parts)`. Each use of `H` except `Th` has its own tag block, so no two uses share an
 /// input.
-pub fn tagged_hash(tag: &[u8], parts: &[&[u8]]) -> Key {
-    hash::hash(&[&[tag], parts].concat().concat())
+pub fn tagged_hash(tag: &Tag, parts: &[&[u8]]) -> Key {
+    let mut hasher = Hasher::new();
+    let hasher = parts
+        .iter()
+        .fold(hasher.update(tag), |hasher, part| hasher.update(part));
+    hasher.finalize()
 }
 
 fn words(values: impl IntoIterator<Item = Word>) -> Vec<u64> {
@@ -1222,6 +1248,7 @@ pub mod tests {
     use crate::circuit::{Keccak, evaluate};
     use crate::dkg::BATCH_SIZE;
     use crate::mpc::*;
+    use crate::prawns;
 
     pub fn local_parties<T: Send>(
         t: usize,
@@ -1304,6 +1331,33 @@ pub mod tests {
                 .collect();
             handles.into_iter().map(|h| h.join().unwrap()).collect()
         })
+    }
+
+    #[test]
+    fn the_tag_blocks_have_no_zero_byte_and_differ_pairwise() {
+        let tags = [
+            HISTORY,
+            EXPAND,
+            COPY,
+            COIN,
+            DIGEST,
+            RSS_PRSS,
+            PRSS_COMMIT,
+            PRSS_TERM,
+            PRSS_PAIR,
+            PRSS_ECHO,
+            prawns::SEED_GEN_COMMIT,
+            prawns::PARAMETER,
+            prawns::KEYGEN_TERM,
+            prawns::KEYGEN_PAIR,
+            prawns::KEYGEN_ECHO,
+            prawns::PRF,
+            prawns::MASK,
+        ];
+        for (i, tag) in tags.iter().enumerate() {
+            assert!(!tag.contains(&0));
+            assert!(!tags[..i].contains(tag));
+        }
     }
 
     #[test]
@@ -1442,7 +1496,7 @@ pub mod tests {
                         party.prss_terms[0][0] ^= 1;
                     }
                     let mut channel = party.network.channel();
-                    let own = party.digests(&channel, &vec![Hasher::new(); party.held.len()]);
+                    let own = party.digests(&channel, &Tuples::new(&party, 0).hashes);
                     let received = channel.exchange(vec![own.clone(); party.group.n]).await;
                     party.compare_digests(&own, &received.unwrap())
                 });

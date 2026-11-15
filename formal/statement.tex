@@ -435,11 +435,9 @@ it choose two times. So the join has no single simulator or bound, and each cere
 \paragraph{The Rust code.} No theorem connects the Rust proof of concept to the model. In November 2026,
 two side-by-side readings of the code and the model, the second a check of the first, found these gaps.
 \begin{itemize}\itemsep0pt
-\item All hash uses call one Keccak function. The tagged uses have prefix-free tags, but the untagged uses
-start with random keys of different lengths. No proof separates all domains. The model needs injective
-encodings with distinct tags, fixed-width fields or length prefixes, for every use including $\Th$, the PRF
-and the masks. For signing alone, the present input lengths separate the PRF (48 bytes), the masks (84) and
-the honest $\Th$ inputs (64, 80 or 960). The forger can query every input. This observation is not a Lean theorem.
+\item All hash uses call one Keccak function. Tags of 32 bytes separate the uses of the protocol
+(\texttt{doc/dkg.md}, 1.1.4). No theorem connects the bytes of a hash call to its input in the model,
+and the $\Th$ domain of the model takes every byte string.
 \item No theorem connects the circuits, the constants or the wire layout of the code to
 \lean{CircuitsCompute} and \lean{Constants}, and nobody has checked the circuits against
 \lean{CircuitsCompute}.

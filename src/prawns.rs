@@ -1,7 +1,7 @@
 //! This module implements the setup and the quorum signing of the leanXMSS note, with the threshold PRF of [PRAWNS](https://eprint.iacr.org/2026/2142).
 //!
-//! - `F(x)` is the XOR of `H16(k_T || x)` over all terms `T`, so the holders of the terms share
-//!   `F(x)` with no messages.
+//! - `F(x)` is the XOR of `H16(PRF || k_T || x)` over all terms `T`, so the holders of the terms
+//!   share `F(x)` with no messages.
 //! - `seed_gen` derives `P` from a contribution of each operator.
 //!   - It derives each term seed from the parts of all its holders.
 //!   - It derives each pair key from the parts of both operators.
@@ -16,9 +16,11 @@
 //!   PRSS keys of their own.
 //! - A quorum of `t` operators holds every term, because a term contains only `t - 1` operators.
 //!   Each term goes to its first holder in the quorum.
-//! - A signer masks its part with `H16(k_ij || x || m || J)` for each co-signer `j`.
+//! - A signer masks its part with `H16(MASK || k_ij || x || m || J)` for each co-signer `j`.
 //!   - The masks cancel only among parts with the same `x`, `m` and `J`.
 //!   - So parts of signings that differ in one of them do not combine.
+//! - The tag blocks `PRF` and `MASK` are a difference from the note, which hashes the key first.
+//!   They keep the PRF and the masks apart from the other uses of `H`.
 //! - Before it grinds, a signer checks the opened `F(A_rnd(e))` against the commitment `c_e` that
 //!   the bottom tree stores.
 //!   - So a corrupt signer cannot change the value and steer the codeword.
@@ -36,7 +38,7 @@ use std::sync::Arc;
 use primitives::load_at;
 use tracing::{Instrument, info_span};
 
-use crate::mpc::{self, Group, Key, LANES, Party, Replicated};
+use crate::mpc::{self, Group, Key, LANES, Party, Replicated, Tag, tag};
 use crate::net::{Channel, Network};
 use crate::xmss::{
     self, CHAIN_LEN, Digest, Layer, TWEAK_RANDOMIZER, V, layer_address, prf_address,
@@ -89,10 +91,20 @@ impl Operator {
 }
 
 /// The tag of the commitments of `seed_gen`.
-pub const SEED_GEN_COMMIT: &[u8] = b"thlxmss-commit";
+pub const SEED_GEN_COMMIT: &Tag = &tag(b"thlxmss-commit");
 
 /// The tag of the hash of all contributions, which gives `P`.
-pub const PARAMETER: &[u8] = b"thlxmss-keygen-parameter";
+pub const PARAMETER: &Tag = &tag(b"thlxmss-keygen-parameter");
+
+pub const KEYGEN_TERM: &Tag = &tag(b"thlxmss-keygen-term");
+pub const KEYGEN_PAIR: &Tag = &tag(b"thlxmss-keygen-pair");
+pub const KEYGEN_ECHO: &Tag = &tag(b"thlxmss-keygen-echo");
+
+/// The tag of the threshold PRF.
+pub const PRF: &Tag = &tag(b"thlxmss-prf");
+
+/// The tag of the signing masks.
+pub const MASK: &Tag = &tag(b"thlxmss-mask");
 
 /// `seed_gen` in three rounds. Each operator commits to and reveals `[contribution to P || seed parts
 /// of the terms shared with j || pair part for j]` for each `j`. Then it echoes `[H(all P
@@ -117,9 +129,8 @@ pub async fn seed_gen(group: &Group, network: &Arc<Network>) -> Result<Operator,
         .iter()
         .map(|bytes| &bytes[32.min(bytes.len())..])
         .collect();
-    let tags: [&[u8]; 2] = [b"thlxmss-keygen-term", b"thlxmss-keygen-pair"];
-    let (sk, k_ij) = parts.keys(group, id, &revealed, tags);
-    let seed_digest = |j: usize| mpc::shared_keys_hash(group, b"thlxmss-keygen-echo", id, j, &sk);
+    let (sk, k_ij) = parts.keys(group, id, &revealed, [KEYGEN_TERM, KEYGEN_PAIR]);
+    let seed_digest = |j: usize| mpc::shared_keys_hash(group, KEYGEN_ECHO, id, j, &sk);
     let echo = |j: usize| [&contributions_hash[..], &seed_digest(j)].concat();
     let echoes = channel
         .exchange_bytes((0..group.n).map(echo).collect())
@@ -158,7 +169,7 @@ pub fn prf_inputs<const W: usize>(
     for (block, xs) in blocks.blocks_mut().zip(xs.chunks(LANES)) {
         for (slot, x) in xs.iter().enumerate() {
             for (seed, words) in party.seeds.iter().zip(&mut block[1..]) {
-                let [low, high] = digest_lanes(&truncated_hash(&[seed, x]));
+                let [low, high] = digest_lanes(&truncated_hash(PRF, &[seed, x]));
                 words[lanes[0]].0[slot] ^= low;
                 words[lanes[1]].0[slot] ^= high;
             }
@@ -177,11 +188,11 @@ pub fn eval(group: &Group, operator: &Operator, quorum: &[usize], x: &Digest, ec
         .into_iter()
         .zip(&operator.sk)
         .filter(|&(k, _)| quorum.iter().find(|&&j| group.holds(j, k)) == Some(&operator.id))
-        .map(|(_, seed)| truncated_hash(&[seed, x]));
+        .map(|(_, seed)| truncated_hash(PRF, &[seed, x]));
     let masks = quorum
         .iter()
         .filter(|&&j| j != operator.id)
-        .map(|&j| truncated_hash(&[&operator.k_ij[j], x, ec, &quorum_bits]));
+        .map(|&j| truncated_hash(MASK, &[&operator.k_ij[j], x, ec, &quorum_bits]));
     terms.chain(masks).fold([0; 16], xor)
 }
 
@@ -301,7 +312,7 @@ mod tests {
 
     /// The commitment and the reveal of operator 2 to operator `j`, from the tag, `j` and the
     /// reveal of an honest operator.
-    type Commit = fn(&[u8], usize, Vec<u8>) -> (Key, Vec<u8>);
+    type Commit = fn(&Tag, usize, Vec<u8>) -> (Key, Vec<u8>);
 
     /// The echo of operator 2, from the hash of all `P` contributions in `seed_gen`.
     type Echo = fn(Key) -> Vec<u8>;
@@ -484,7 +495,7 @@ mod tests {
             let x = address(&tweak(0, 2, 3).step(1));
             let expected = all_seeds
                 .iter()
-                .map(|seed| truncated_hash(&[seed, &x]))
+                .map(|seed| truncated_hash(PRF, &[seed, &x]))
                 .fold([0; 16], xor);
             for set in (0..1u32 << group.n).filter(|s| s.count_ones() as usize == t) {
                 let quorum: Vec<usize> = (0..group.n).filter(|id| set >> id & 1 == 1).collect();
