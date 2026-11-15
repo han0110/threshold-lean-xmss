@@ -21,6 +21,15 @@ trigger on the joint run.
 * The eager law does not read the trigger. It holds for each `extra` (`hashLaw_eagerWorld`), so the
   guard costs nothing there.
 
+## The limit of the trigger
+
+The trigger does not cover every bottom partner. A forger can call the base input and the trials at
+a key `e` before round 1 binds the message at `e`. None of these calls is a base call, because
+`bound e` is unset. Round 1 then binds the message and makes no base call. If no base call of `e`
+comes after round 1, the trigger never grinds at `e`. So the argument for a released partner needs
+an honest round 2 at `e`, which makes the base call. An unreleased partner needs the separate
+input-side argument of `SigningLinkPaid`.
+
 ## The results
 
 * `splitRun` and `splitRunAt` are the flat eager run of `cachedExtra` with the R1 monitor and the

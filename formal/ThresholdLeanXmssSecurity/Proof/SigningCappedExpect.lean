@@ -15,10 +15,10 @@ The uncharged lane is one expectation over a capped hybrid, and not a flag that 
 * A potential `f` on the state `σ × ℕ` pays for the output side. It starts at zero, and it is at
   least one on the event `E`.
 * `hstep` asks that `f` rise in expectation by at most `1 / |T|` at each of the first `q` counted
-  output-side calls, and not rise at any other call. A potential `g` that rises at every counted
-  output-side call gives such an `f` as `fun st => if st.2 ≤ q then g st else 0`, with the event
-  `fun st => E st ∧ st.2 ≤ q`. The support-wise budget then gives `st.2 ≤ q` in the coupling. An
-  invariant `Inv` restricts `hstep` as in `XmssSecurity.expectedFinal_le`.
+  output-side calls. It asks that `f` not rise at any other call. A potential `g` that rises at
+  every counted output-side call gives such an `f` as `fun st => if st.2 ≤ q then g st else 0`,
+  with the event `fun st => E st ∧ st.2 ≤ q`. The support-wise budget then gives `st.2 ≤ q` in the
+  coupling. An invariant `Inv` restricts `hstep` as in `XmssSecurity.expectedFinal_le`.
 
 ## The results
 
@@ -27,10 +27,10 @@ The uncharged lane is one expectation over a capped hybrid, and not a flag that 
 * `probEvent_capped_expect_le` bounds the flag or `E` by `q / |T|`.
 * `probEvent_le_of_capped_expect` is the 128-bit form for an event that the flag or `E` dominates.
 
-At a counted call the flag rises with probability `1 / |T|` over `s` on the input side, and `f`
-rises by at most `1 / |T|` in expectation on the output side. The count rises by one in both cases.
-So the sum of the two parts is at most `1 / |T|` for each of the first `q` counted calls, also when
-a run mixes the two sides.
+On the input side, a counted call raises the flag with probability `1 / |T|` over `s`. On the
+output side, `f` rises by at most `1 / |T|` in expectation. The count rises by one in both cases.
+So the sum of the two parts is at most `1 / |T|` for each of the first `q` counted calls. This also
+holds when a run mixes the two sides.
 
 `XmssSecurity.expectedFinal_le` fixes one handler, and for a fixed `s` the input-side hit is not a
 random step. So the induction here averages over `s` at each step. It reuses
@@ -43,7 +43,7 @@ Let `N = |T| = 2 ^ 128`.
 
 * In the stopped scan of a true opening, the adversary calls
   `commitmentInput` with trials `ρ'` until a match, and then makes encoding calls. In the hybrid the
-  commitment `c_e` is a fresh pending answer, so the scan does not see `ρ_e` and its length `T_h`
+  commitment `c_e` is a fresh pending answer. So the scan does not see `ρ_e`, and its length `T_h`
   does not depend on `s e`. Each scan call is input side with the unrevealed key `e`, and it costs
   `1 / N` through the flag. Each of the `U_h` encoding calls is output side, and the lane 2
   potential of leanVM in `f` rises by `1 / N`. The cap counts both, so the bound is
@@ -52,7 +52,7 @@ Let `N = |T| = 2 ^ 128`.
   rise at it. On heads the `q` commitment calls before round 1 are input side, and the flag costs at
   most `q / N`. On tails the `q` encoding calls at `e` are output side, and `f` rises by at most
   `q / N`. The induction takes the mean of the two branches, so the bound is `q / N`, and not the
-  `1.5 · q / N` of the flag cap plus `Ghost.collision_le`.
+  `1.5 · q / N` of the flag cap plus `Ghost.collision_le_core`.
 -/
 
 set_option pp.deepTerms false
@@ -281,9 +281,10 @@ theorem expectedFinal_capped_le_aux (q : ℕ) (Inv : σ × ℕ → Prop) (f : σ
         rw [tsum_fintype]
         exact sum_uniform_reveal_le key H _ hH hih
 
-/-- The expectation form of the capped hit bound. A potential `f` that starts at zero, rises in
-expectation by at most `1 / |T|` at each of the first `q` counted output-side calls, and is at
-least one on `E`, bounds the flag or `E` by `q / |T|`. No query bound is needed. -/
+/-- The expectation form of the capped hit bound. Take a potential `f` that starts at zero and is
+at least one on `E`. It rises in expectation by at most `1 / |T|` at each of the first `q` counted
+output-side calls. Then the flag or `E` has probability at most `q / |T|`. No query bound is
+needed. -/
 theorem probEvent_capped_expect_le (q : ℕ) (Inv : σ × ℕ → Prop) (f : σ × ℕ → ℝ≥0∞)
     (hinv : ∀ t st, Inv st → ∀ x ∈ support ((countImpl impl p t).run st), Inv x.2)
     (hstep : ∀ t st, Inv st →

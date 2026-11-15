@@ -10,9 +10,10 @@ game.
   distinguisher run on the counted copy. The honest operators and the functionalities run on the
   free copy, so they call `H` for free.
 * The constructors of `Query` are disjoint domains of `H`, and a repeated query gets the same
-  answer. This models domain-separated hashing (Bellare, Davis and Günther, EUROCRYPT 2020). The
-  implementation separates the uses by tags of 32 bytes, and no theorem connects its bytes to this
-  model (`statement.tex`, Section 5).
+  answer. This models domain-separated hashing (Bellare, Davis and Günther, EUROCRYPT 2020). In the
+  implementation, each use except `Th` hashes its own tag of 32 bytes first. No `Th` input of the
+  protocol starts with a tag (`doc/dkg.md` 1.1.4). No theorem connects the bytes of the
+  implementation to this model (`statement.tex`, Section 5).
 -/
 
 set_option autoImplicit false

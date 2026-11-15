@@ -29,6 +29,11 @@ the `hiddenHit` flag instead, and the lane requires that flag to stay false.
 
 * `probEvent_uniform_key_eq` gives the chance `1 / |T|` that one coordinate of uniform secrets
   `s : K → T` equals a fixed point.
+* The signing budget bounds the count on the support of a run
+  (`SigningCostProof.exposedRun_count_le`). `IsQueryBoundP` is stronger, because it bounds the
+  count for every oracle answer. A program can stay in its budget under a consistent lazy oracle
+  and exceed it after inconsistent answers. For example, a program asks `H(u)` twice and makes
+  `q + 1` more calls only when the two answers differ. So the lane uses the capped form.
 * `countImpl` counts the calls, and `cappedCall` lets only the first `q` raise the flag.
   `revealImpl` adds a reveal oracle for the secrets. A capped input-side call hits an unrevealed
   secret, and any other capped call hits an output-side target.

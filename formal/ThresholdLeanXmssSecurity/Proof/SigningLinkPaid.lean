@@ -4,46 +4,45 @@ import ThresholdLeanXmssSecurity.Proof.SigningTopRows
 /-!
 # The partner link with a paid flag
 
-This module splits the bottom partner row by the release at the forged key. An unreleased partner is paid
-by the input-side flag, and a released partner keeps the R1 split.
+This module splits the bottom partner row by the release at the forged key. An unreleased partner
+is paid by the input-side flag, and a released partner keeps the R1 split.
 
-## The three counterexamples
+## The unreleased partner
 
-In each counterexample the forger asks no round 2 at the forged key `e`. So fewer than `t` operators
-can give the chain parts at `e`, and the replayed honest key is unreleased (`honestKey`,
-`SigningDescent.lean:646`, `signersAt`, `Ideal.lean:423`).
+The partner is unreleased when fewer than `t` operators can give the chain parts at the forged key
+`e` (`ReleasedAt`, `signersAt`). Then the replayed honest key is unreleased too (`honestKey`).
 
-* `bottomOpened` is then the chain end at every chain (`bottomOpened_of_not_released`,
-  `SigningDescent.lean:457`). Every position below the end is a target of `chainTarget`.
-* The descent gives a bottom partner from `same_layer` (`SigningDescent.lean:542`) whether or not
-  the key is released. On the honest key without its selection it reads the bottom layer as a fresh
-  key, and `fresh_layer` gives a hit or a guess below the end (`unreleased_badEvent`).
+* `bottomOpened` is then the chain end at every chain (`bottomOpened_of_not_released`). Every
+  position below the end is a target of `chainTarget`.
+* The descent gives a bottom partner from `same_layer` whether or not the key is released. On the
+  honest key without its selection it reads the bottom layer as a fresh key. Then `fresh_layer`
+  gives a hit or a guess below the end (`unreleased_badEvent`).
 * A guess is a candidate of the verification on a hidden chain value. With all chain starts cached
   it hits `partialChainTarget` (`InputHitRow`). Otherwise `ForgedStartAbsent` holds (`AbsentRow`), and
   `absentRow_hit` gives a hit on `unopenedTopTarget`.
 
-So none of the three escapes the restated conclusion. Each is a charged hit or a row of the
-uncharged lane (`win_cover_released`).
+So an unreleased partner needs no grind at `e`. It is a charged hit or a row of the uncharged lane
+(`win_cover_released`).
 
 ## The released partner
 
 A release needs one honest round 2 at `e` (corruption stops at `t - 1`). Round 2 builds the bottom
-tree, which caches all PRF entries at `e`. It then runs `signCodeword` on the combined parts
-(`Scheme.lean:1221`, `Scheme.lean:1231`). Their opening either opens `c_e` with the true randomizer
-or is an `AlternativeCommitment`. With the true randomizer, the base call is a canonical base call
-of a key with cached PRF entries, so the trigger `cachedExtra` of `SigningOneRun` grinds there.
+tree (`bottomOnce`), which caches all PRF entries at `e`. It then runs `signCodeword` on the
+combined parts (`signRound2With`). Their opening either opens `c_e` with the true randomizer or is
+an `AlternativeCommitment`. With the true randomizer, the base call is a canonical base call of a
+key with cached PRF entries. So the trigger `cachedExtra` of `SigningOneRun` grinds there.
 
-* If the selection is a seen trial, the flag of `e` rises (`cachedTrial`, `SigningFlatEager.lean:1074`).
+* If the selection is a seen trial, the flag of `e` rises (`cachedTrial`).
 * Otherwise the grind installs the digest of the selection as the target of `e`. The partner input
   has the same digest. Before the install it is pending, and the install hits. After the install a
-  fresh call on it hits (`Monitor.fresh`, `SigningPartnerBound.lean:105`). The verification calls it.
+  fresh call on it hits (`Monitor.fresh`). The verification calls it.
 
 No other trigger is needed. `ReleasedLink` states this on the split one run. Its proof needs a run
 invariant through the round 2 handler.
 
 ## Why the flag is on the joint run
 
-The restated link on the split one run would read `HiddenInputHit` on the eager final cache. The
+A link on the split one run would read `HiddenInputHit` on the eager final cache. The
 descent and the verification links (`runHasFinalState`, `verifyRun_verification`) apply only to
 the lazy run, and `SigningOneRunProof.probEvent_oneRun` moves only events that do not read the cache. So
 the unreleased partner is paid on `jointRun`, where the input-side row already lives.

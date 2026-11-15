@@ -7,26 +7,30 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 The target is `CheckCoupleStage` of `Proof/CheckCore.lean`.
 The theorem `checkCoupleStage` of `Proof/CheckFinish.lean` uses the couplings of this file.
 
-The local couplings for `CheckCoupleStage` (step 4 of the plan of `Proof/CheckSecurity.lean`):
+This file holds the local couplings for `CheckCoupleStage`, which is step 4 of the plan of
+`Proof/CheckSecurity.lean`.
 
-* `finalStep_tv`: the final segment of the check (randomization, salts, digests, last challenge and
-  opening), against any rushing adversary with any selective abort. From two states related by
-  `FinalRel` (hidden-term differences, equal corrupt shares, equal claim errors) and related
-  histories, the real and the simulated runs differ by twice the hiding bound of the salted digests
+* `finalStep_tv` couples the final segment of the check against any rushing adversary with any
+  selective abort. The segment is the randomization, the salts, the digests, the last challenge and
+  the opening. The two states are related by `FinalRel`, and the two histories are related.
+  `FinalRel` asks for hidden-term differences, equal corrupt shares and equal claim errors. Then the
+  real and the simulated runs differ by twice the hiding bound of the salted digests
   (`saltDigestPhase_hide`). The proof moves the two hidden tables past the ghost digests, the digest
-  round and the last coin (`sameRun_samples_swap`) and ends with `finalMaskNetwork_sameRun`.
+  round and the last coin (`sameRun_samples_swap`). It ends with `finalMaskNetwork_sameRun`.
 
-* `halvRest_all`: the halving loop (GS20, Protocol 14) followed by the final segment. From two states
-  related by `HalvRel` (Shamir vectors with hidden-term differences and equal corrupt shares, claims
-  whose difference is the difference of the inner products) and `HistRel`, the two runs differ by at
-  most `coupleBound`, for any live set. Each step: the multiplication leaks the same view
-  (`halvInputs_view`), its hidden output difference goes to the lacked term (`multFinish_diff`), the
-  coin and the challenge are common (`executePhase_afterChallenge_common'`), and `halvRel_step` keeps
-  the relation for every challenge.
+* `halvRest_all` couples the halving loop (GS20, Protocol 14) followed by the final segment. The two
+  states are related by `HalvRel` and `HistRel`. `HalvRel` asks for Shamir vectors with hidden-term
+  differences and equal corrupt shares, and for claims whose difference is the difference of the
+  inner products. Then the two runs differ by at most `coupleBound`, for any live set. In each step
+  the multiplication leaks the same view (`halvInputs_view`). Its hidden output difference goes to
+  the lacked term (`multFinish_diff`). The coin and the challenge are common
+  (`executePhase_afterChallenge_common'`), and `halvRel_step` keeps the relation for every
+  challenge.
 
-`CheckCoupleStage` additionally covers the start (first coin, `expand`, `require`), the slice loop (Gruen's
-step with replicated products) with its transition into `HalvRel`, the initial relation of the inputs
-and of `canonicalDummyTuples`, and the budget arithmetic of `coupleBound` against `coupleHashError`.
+`CheckCoupleStage` also covers the start (first coin, `expand`, `require`) and the slice loop
+(Gruen's step with replicated products) with its transition into `HalvRel`. It also covers the
+initial relation of the inputs and of `canonicalDummyTuples`, and the budget arithmetic of
+`coupleBound` against `coupleHashError`.
 -/
 
 set_option pp.deepTerms false

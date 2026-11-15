@@ -3,7 +3,8 @@ This file holds copies from https://github.com/leanEthereum/leanVM at commit
 1acdff19dffcaaf1642e88a9e9b522b415425168, folder `formal/lean_xmss/XmssSecurity/Proof/`.
 Each declaration is a verbatim copy with its upstream name.
 
-leanVM at commit b6167fe4 and later does not have the source file of the first two declarations.
+leanVM at commit b6167fe4 and at commit f5f3672f2b72d3f89dbbaeff18a53a73c975d620 does not have
+the source file of the first two declarations.
 
 * `XmssSecurity.ExactPredicateQueryCount` is lines 15 to 24 of `ExactQueryCount.lean`.
 * `XmssSecurity.ExactQueryCount.ExactPredicateQueryCount.bind` is lines 103 to 117 of

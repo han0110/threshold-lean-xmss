@@ -6,8 +6,8 @@ import XmssSecurity.Scan.PerKey
 # The lane 2 potential of leanVM as one capped potential
 
 `probEvent_capped_expect_le` (`SigningCappedExpect`) takes one potential with an upper step bound
-of `1 / N` at each counted output-side call. The lane 2 proof of leanVM (`Ghost.collision_le`) is
-not of that form. This module gives it that form.
+of `1 / N` at each counted output-side call. The lane 2 proof of leanVM (`Ghost.collision_le_core`)
+is not of that form. This module gives it that form.
 
 ## The leanVM terms
 

@@ -34,11 +34,12 @@ end Final
 When the honest copies disagree, `F_multVerify` rejects, so the ideal run outputs nothing to the
 honest operators. `CheckSplitDistance` bounds the real run against the ideal run by `checkHashError`
 alone, with one bad event. Off the bad event the coupling of the real run with the run on
-`canonicalDummyTuples` keeps the known terms equal at each honest operator, and every honest operator
-aborts at `compareDigests` in both runs. The bad event is a hit of a hidden digest point or a
-collision of the two honest history or digest points of a split term. The collision is a birthday
-event, since a corrupt operator chooses the offsets that each honest holder appends to its history
-(`multFinish`). `checkCoreDistanceSplit` uses it to give `CheckCoreDistance`. -/
+`canonicalDummyTuples` keeps the known terms equal at each honest operator. Every honest operator
+then aborts at `compareDigests` in both runs. The bad event has two forms. It is a hit of a hidden
+digest point, or a collision of the two honest history or digest points of a split term. The
+collision is a birthday event, because a corrupt operator chooses the offsets that each honest
+holder appends to its history (`multFinish`). `checkCoreDistanceSplit` uses it to give
+`CheckCoreDistance`. -/
 
 section SplitRoute
 

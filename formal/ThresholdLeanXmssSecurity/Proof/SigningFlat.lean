@@ -37,6 +37,8 @@ No other signing oracle changes `bound` before its world calls.
   `programFree_simulate_local` of `SigningHitProof`.
 * The presample lemmas of leanVM have no private sampling. This module ports them to
   `mixedOracle`. A private sample commutes with the presample.
+* `evalDist_mixed_run'_bind_const` shows that lazy calls before a run keep the distribution of the
+  result of the run. The final cache can differ, because the lazy calls can add entries to it.
 
 ## The reuse of leanVM
 

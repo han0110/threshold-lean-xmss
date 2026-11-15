@@ -2,7 +2,7 @@ import ThresholdLeanXmssSecurity.Proof.SeedGenFinish
 import ThresholdLeanXmssSecurity.Proof.Coupling
 
 /-!
-# Seed generation security: the known half
+# The known half of the seed generation security
 
 This module reduces `SeedGenKnownMismatch`, the known-half hypothesis of `seedGenSecurityComplete`.
 

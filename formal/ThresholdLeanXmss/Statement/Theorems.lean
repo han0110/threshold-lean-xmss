@@ -42,8 +42,9 @@ property.
   `signingCorrectness` and `stronglyUnforgeable` (the note, Section 2.3, and PRAWNS,
   Definition 3.2).
 * The MPC layer is the third group. The security of a ceremony rests on it. Its fields are
-  `ceremonyHybridSecurity` for one ceremony, the building blocks `coinSecurity`, `multSecurity`,
-  `extendMultSecurity`, `multVerifySecurity` and `mainSecurity` of GS20 with the honest runs
+  `ceremonyHybridSecurity` for one ceremony, the security claims `coinSecurity`, `multSecurity`,
+  `extendMultSecurity`, `multVerifySecurity` and `mainSecurity` of the GS20 building blocks for
+  `F_coin`, `F_mult`, `F_extendMult`, `F_multVerify` and `F_main` with the honest runs
   `coinCompleteness`, `multVerifyCompleteness` and `mainCompleteness`, and `prssRandSecurity` for
   the PRSS. The note has no section for this group. It names the MPC in Section 2.1.
 

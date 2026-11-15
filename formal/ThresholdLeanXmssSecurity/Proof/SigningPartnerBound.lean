@@ -22,9 +22,10 @@ and `units_le` in `SigningOwnForger` use it.
 
 * The monitor installs the first fresh free-copy call with a valid digest at an unsigned key `e`.
   Round 2 at `e` runs only for the message in `st.bound e`, and a grind runs only if `ρ` opens `c_e`.
-  So this call is the selected call of the first grind at `e`, unless `ρ` comes from a commitment
-  collision (`AlternativeCommitment`), or the final verification calls at `e` first.
-* A grind makes no other call between its trials, so its selected input is fresh at the start of
+  So this call is the selected call of the first grind at `e`, with two exceptions. Either `ρ`
+  comes from a commitment collision (`AlternativeCommitment`), or the final verification calls at
+  `e` first.
+* A grind makes no other call between its trials. So its selected input is fresh at the start of
   the grind exactly when it is fresh at its own call.
 * A fresh call at `e` before the selection puts its valid digest in `pending e`. The selection hits
   if its digest is in `pending e`.

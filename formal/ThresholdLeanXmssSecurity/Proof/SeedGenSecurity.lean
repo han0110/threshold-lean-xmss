@@ -1,20 +1,20 @@
 import ThresholdLeanXmssSecurity.Proof.SeedGen
 
 /-!
-# Seed generation security: the coupling
+# The coupling of the seed generation security
 
 The coupling route relates `SeedGenCoupling` of `Proof/SeedGen.lean` to `SeedGenSecurityStatement`.
 
 1. A coupling with a private coin as the bad flag turns any distance bound into an identical-until-bad
    pair. Every probability of a finite computation is rational, so the coin exists.
-2. The hybrid: the emulated outputs with the dealer's hidden keys (`seedGenMixedGame`). The known half
-   `SeedGenKnownMismatch` bounds the mismatch with the ideal outputs.
-3. The hidden half. The dealer's hidden keys are independent of the corrupt leak, so the mixed game is
-   the real run whose distinguisher replaces the hidden keys by fresh ones (`seedGenHiddenZ`). The real
-   run is a mixture of fixed-table reference runs on a common covering domain. On distinct canonical
-   inputs, the hidden oracle cells and an independent dealer table exchange (the relabeling), so the
-   hidden-half hypothesis `SeedGenHiddenFresh` reduces to the relabeled reference runs
-   (`seedGenSwappedMixture`).
+2. The hybrid `seedGenMixedGame` gives the emulated outputs with the dealer's hidden keys. The known
+   half `SeedGenKnownMismatch` bounds the mismatch with the ideal outputs.
+3. In the hidden half, the dealer's hidden keys are independent of the corrupt leak. So the mixed
+   game is the real run whose distinguisher replaces the hidden keys by fresh ones
+   (`seedGenHiddenZ`). The real run is a mixture of fixed-table reference runs on a common covering
+   domain. On distinct canonical inputs, the hidden oracle cells and an independent dealer table
+   exchange (the relabeling). So the hidden-half hypothesis `SeedGenHiddenFresh` reduces to the
+   relabeled reference runs (`seedGenSwappedMixture`).
 -/
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss

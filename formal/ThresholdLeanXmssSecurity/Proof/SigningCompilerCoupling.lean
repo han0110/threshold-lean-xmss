@@ -5886,10 +5886,10 @@ section PrivateTable
 variable {D R : Type} [DecidableEq D] [Finite D] [Finite R] [Nonempty R]
   [SampleableType R] [SampleableType (D → R)]
 
-/- Source: VCVio/OracleComp/QueryTracking/RandomOracle/EagerTable.lean,
-`evalDist_simulateQ_randomOracle_run'_eq_tableExtending`, with an independent
-uniform-query case. This adapter keeps private uniform draws interleaved and uses
-the same coordinate marginalization. -/
+/- This adapter follows `evalDist_simulateQ_randomOracle_run'_eq_tableExtending` of
+VCVio/OracleComp/QueryTracking/RandomOracle/EagerTable.lean, with an independent
+uniform-query case. It keeps private uniform draws interleaved and uses the same
+coordinate marginalization. -/
 /-- Resolve a private finite table while forwarding private uniform draws. -/
 def resolvePrivateTable (table : D → R) :
     QueryImpl (SigningGuessProof.PrivateRoSpec D R) ProbComp

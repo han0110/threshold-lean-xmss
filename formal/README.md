@@ -39,7 +39,7 @@ The target is the trusted dealer `KeyGen` of PRAWNS (the note, Section 2.1). The
 The security of a ceremony rests on these ten proved fields. The note has no section for them, and Appendix C of [statement.tex](./statement.tex) states them.
 
 - `ceremonyHybridSecurity` covers one ceremony with ideal multiplication and check, not on the real network.
-- `coinSecurity`, `multSecurity`, `extendMultSecurity`, `multVerifySecurity` and `mainSecurity` are the building blocks of Goyal and Song. `coinCompleteness`, `multVerifyCompleteness` and `mainCompleteness` are their honest runs.
+- `coinSecurity`, `multSecurity`, `extendMultSecurity`, `multVerifySecurity` and `mainSecurity` state the security of the building blocks of Goyal and Song. `coinCompleteness`, `multVerifyCompleteness` and `mainCompleteness` are their honest runs.
 - `prssRandSecurity` covers the random sharings from PRSS keys of a dealer. No proved claim covers the PRSS setup.
 
 ## What is not proved

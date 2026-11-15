@@ -10,13 +10,14 @@ This module holds the stages of the hidden half on the relabeled reference runs
 
 The hidden half is reduced to one echo-collision event, `SeedGenEchoIrregular`.
 
-1. Stage A (`seedGenStageA`). The relabeled oracle answers the canonical hidden inputs with
-   the dealer's table. Replace it by the independent oracle. The two runs agree unless the parts
-   clash (`SeedGenClash`, at most `seedGenClashCount / 2^256`) or a call of the adversary or the
-   distinguisher hits a canonical hidden input (at most `q (|terms| + |pairs|) / 2^256`). Without a
-   clash, no honest derivation of an exposed key reads a canonical hidden input.
-2. Stage B (`seedGenStageB_parts`). On the independent run, the table enters only
-   the hidden coordinates of the outputs and the receivers. The run splits into a table-free
+1. Stage A (`seedGenStageA`) replaces the relabeled oracle by the independent oracle. The
+   relabeled oracle answers the canonical hidden inputs with the dealer's table. The two runs can
+   differ only in two cases. The parts clash (`SeedGenClash`, at most `seedGenClashCount / 2^256`),
+   or a call of the adversary or the distinguisher hits a canonical hidden input (at most
+   `q (|terms| + |pairs|) / 2^256`). Without a clash, no honest derivation of an exposed key reads a
+   canonical hidden input.
+2. Stage B (`seedGenStageB_parts`) works on the independent run. There the table enters only the
+   hidden coordinates of the outputs and the receivers. The run splits into a table-free
    transcript and the outputs of the table. The fresh keys of `seedGenHiddenZ` and the table are two
    independent fresh tables, so the gap is at most the probability that their receivers differ.
 3. The receivers of two tables agree unless one of them makes an echo collision on two honest

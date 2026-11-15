@@ -15,6 +15,9 @@ and its R1 monitor on the joint run.
   before the call, the call and the state after the call. `hashLaw_eagerWorld` shows that the extra
   calls keep the law. This is `evalDist_mixed_run'_bind_const` of `SigningFlat`. The extra calls
   see the state, so they can read `bound e`.
+* The law covers the result, the rest of the state and each continuation in hash form. These have
+  the same distribution in the eager run and in the lazy run. The final cache of the eager run can
+  differ, because the extra calls can add entries to it.
 * `hashLaw_simulateQ_world` and `hashLaw_flatWith` lift the law to the flat run.
 
 ## The eager grind

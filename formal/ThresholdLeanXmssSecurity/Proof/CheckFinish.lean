@@ -10,7 +10,7 @@ The target is `CheckCoreDistance` of `Proof/CheckSecurity.lean`, and from it `Mu
   `SliceRel` with Gruen's step on replicated products (`sliceRel_step`, which needs the slice coin
   non-zero) and hands over to `halvRest_all` (`sliceRel_halvRel`). The start (first coin, `expand`,
   `require`) is common to the two runs (`start_tv`). The initial relation (`initHist`, `checkInitSlice`)
-  uses that `F_multVerify` leaks `z - x y` of the agreeing copies, so the real and the
+  uses that `F_multVerify` leaks `z - x y` of the agreeing copies. So the real and the
   `canonicalDummyTuples` claims differ by the difference of the inner products. The budget is
   `coupleBound_le_coupleHashError`.
 * `checkCoreDistanceSplit` of `Proof/CheckLast.lean` uses `checkCoupleStage` to prove

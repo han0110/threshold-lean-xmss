@@ -9,11 +9,14 @@ example `Proof/SigningOwnStopRun.lean`, use them.
 
 1. `Adds ok l l'` says that a run appends to the log only hash entries that satisfy `ok`.
 2. `NoCall p oa` says that `oa` never calls an index in `p`. It is irreducible, so that unification
-   never unfolds a deep Merkle tree. The ceremonies, `eval`, `prfValue`, the Merkle path and the top
-   layer never call an input at a bottom key (`referenceTree_bound`, `eval_bound`).
-   `verify_bound` shows that the verification calls at `e` only the forged input.
-3. `Selects` says that each accepted search at `e` for the bound message selects the selected
-   randomness.
+   never unfolds a deep Merkle tree. `AtKey P e` holds for the bottom message digest inputs at `e`.
+   The ceremonies, `eval`, `prfValue`, the Merkle path and the top layer never call such an input
+   (`referenceTree_bound`, `eval_bound`). `verify_bound` shows that the verification calls only the
+   forged digest input among them.
+3. `Selects x top cache e message randomness` says that each accepted search at `e` for `message`
+   selects `randomness`. The search uses a tree of the run, with caches below `cache`. The predicate
+   takes any `message` and any `randomness`, so the bound message and the selected randomness need
+   separate hypotheses.
 4. `message_of_signers` gives the bound message of a key that `t` operators can sign. Fewer than `t`
    are corrupt, and each release is at the bound message (`SigningGuessProof.ReleasedBound`).
 -/

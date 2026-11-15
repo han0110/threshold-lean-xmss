@@ -3,9 +3,9 @@ import ThresholdLeanXmssSecurity.Proof.SigningPartnerTransfer
 /-!
 The comparison of reconstructed and eager caches.
 
-The extra eager calls query only bottom message inputs. On the support of the
-split run, every logged answer stays in the eager cache, and every tracked
-input outside that domain agrees with the log cache (`LogAgreement`). So the
+The extra eager calls query only bottom message inputs. `LogAgreement` holds
+on the support of the split run. Every logged answer stays in the eager cache,
+and every tracked input outside that domain agrees with the log cache. So the
 PRF answers, the cached randomizers and the commitment-collision event agree.
 
 These facts do not show that the selected pair stays the same. An extra answer

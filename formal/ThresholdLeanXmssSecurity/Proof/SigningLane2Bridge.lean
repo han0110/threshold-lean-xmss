@@ -19,9 +19,14 @@ flat run. `SigningCompilerPotential` uses these laws for the lane 2 potential of
 
 ## Potential hypotheses
 
-`evalDist_baseCall` and `baseCall_signWithBaseStep` take `topSignedAt secretKey e = true`. The leanVM key of the flat run must set
-`topSigned b` to the result of the top grind of the ceremony of bottom tree `b`, and a signing at
-key `e` must follow a ceremony of tree `topKeyOf e` that did not abort.
+`evalDist_baseCall` and `baseCall_signWithBaseStep` take `topSignedAt secretKey e = true`. The
+leanVM key of the flat run must set `topSigned b` to the result of the top grind of the ceremony of
+bottom tree `b`. A signing at key `e` must follow a ceremony of tree `topKeyOf e` that did not
+abort.
+
+`topSignedAt secretKey e` reads `secretKey.topSigned (topKeyOf e)`. In the threshold run the top
+key `b` signs the root of bottom tree `b` in the ceremony of that tree, with the top grind. The top
+grind is `topSignFrom` of leanVM, which fills `topSigned` in its key generation.
 -/
 
 set_option pp.deepTerms false
@@ -372,12 +377,6 @@ theorem not_isMsg_randomizerInput (parameter : PublicParameter) (lay : Layer) (e
   decide
 
 end Base
-
-/-! ## The top signature
-
-`topSignedAt secretKey e` reads `secretKey.topSigned (topKeyOf e)`. In the threshold run the top
-key `b` signs the root of bottom tree `b` in the ceremony of that tree, with the top grind. The top
-grind is `topSignFrom` of leanVM, which fills `topSigned` in its key generation. -/
 
 end SigningLane2BridgeProof
 

@@ -17,7 +17,7 @@ honest inputs.
 
 The hash budget splits as `soundHashError + coupleHashError = checkHashError`
 (`soundHash_add_coupleHash`). The soundness pays a collision of a coin key with one of the
-`q + R + 2` cached expansion keys at each of the `R + 2` coins, and the coupling pays a guess or a
+`q + R + 2` cached expansion keys at each of the `R + 2` coins. The coupling pays a guess or a
 collision of the `termHashes` honest history and digest points.
 
 The file states two stages as named `Prop`s. `checkCoreDistanceSplit` of `Proof/CheckLast.lean`

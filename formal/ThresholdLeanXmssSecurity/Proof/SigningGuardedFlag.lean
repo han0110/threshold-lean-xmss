@@ -10,8 +10,8 @@ import ThresholdLeanXmssSecurity.Proof.SigningReleased
 
 * `partialChainTarget` is `none` when a PRF entry of the chain start is absent from the final cache.
 * `ForgedStartAbsent` holds when a chain start at the key of the forgery has an absent PRF entry.
-  If the bottom tree of the key is never built, the replay data of the bottom key are public zeros,
-  and a forgery that wins at the top layer can still be a bottom Guess.
+  If the bottom tree of the key is never built, the replay data of the bottom key are public zeros.
+  Then a forgery that wins at the top layer can still be a bottom Guess.
 * `hiddenInputHit_partial` moves a hit on `chainTarget` to `partialChainTarget`, unless
   `ForgedStartAbsent` holds.
 

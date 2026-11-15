@@ -12,12 +12,13 @@ echo-collision bound `seedGenEchoFreshExt`. `seedGenSecurityComplete` uses it an
 1. Off the domain `S` the finite oracle answers `0`. The proof adds every echo input
    (`seedGenSharedInputs`) to `S` and proves the bound there (`SeedGenEchoFreshExt`). The chain of
    `SeedGenHalves` and `SeedGenSecurity` repeats with that domain.
-2. The echo cells of the fresh table `u` are the echo inputs whose coordinate at the canonical hidden
-   term of an honest pair is the fresh seed. Each fixed query is a cell with probability at most
+2. The fresh table `u` defines the echo cells. An echo input is a cell when its coordinate at the
+   canonical hidden term of an honest pair is the fresh seed. Each fixed query is a cell with
+   probability at most
    `|pairs| / 2^256` (`probEvent_seedGenEchoCell_le`).
 3. Swap the oracle on the cells with an independent copy `a'` (`evalDist_bind_seedGenMix`). The prefix
-   runs identically until it logs a cell (at most `q` counted calls) or an honest echo toward a corrupt
-   operator is a cell (at most `n²` inputs) (`relTriple_seedGenRefPrefixV`).
+   runs identically until one of two events (`relTriple_seedGenRefPrefixV`). It logs a cell (at most
+   `q` counted calls), or an honest echo toward a corrupt operator is a cell (at most `n²` inputs).
 4. Otherwise an echo collision is a collision of two distinct cells of `a'`, `|pairs| / 2^256`.
 5. The total `(1 + q + n²) |pairs| / 2^256` fits in the budget (`seedGenEcho_arith`).
 

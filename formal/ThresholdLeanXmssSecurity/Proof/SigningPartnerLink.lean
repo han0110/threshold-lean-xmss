@@ -7,10 +7,13 @@ A bottom partner is an outcome of `exposedRun` where the forged digest input at 
 forgery differs from the selected input `hk.selected`, and both give the same digest.
 `BottomPartnerCase` names this case. `SigningAssembly` uses it to split the win.
 
-`bottomDigestCost` is `digestCost` minus the top digest calls. The top partner charges only top
-digest calls (`topDigest_rawCost_le`, `resolvedTopPartner_bound_topDigest`). So the charged lane does
-not use the unit of a bottom digest call. `chargedLane_bound_oneRun` in `SigningLinkPaid` uses these
-results.
+`bottomDigestCost` is `digestCost` minus the top digest calls. On a digest call the structural hit
+cost and the commitment cost are zero (`structuralHitCost_zero_digest`, `commitment_not_digest`).
+The top partner charges only top digest calls (`topDigest_rawCost_le`,
+`resolvedTopPartner_bound_topDigest`). So these charged events leave the unit of each bottom digest
+call free. `chargedLane_bound_oneRun` in `SigningLinkPaid` uses this unit for the R1 hit, which
+pays the partner of a fresh selection. The partner of a cached selection does not use this unit.
+It shares the cap of the uncharged lane.
 -/
 
 set_option pp.deepTerms false

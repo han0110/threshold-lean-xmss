@@ -6,7 +6,7 @@ import ThresholdLeanXmssSecurity.Proof.Check
 `MultVerifySecurityStatement` (GS20, Lemmas 8 to 11, and CGH+18) through `MultVerifyDistance` of
 `Proof/Check.lean`.
 
-The component lemmas:
+This module proves these component lemmas.
 
 * The real and the ideal execution run on one shared cache, without the counted and the free copy
   (`accepts_real_eq_local`, `accepts_ideal_eq_local`). `simulateQ_executePhase_mapRoles` moves an oracle
@@ -15,19 +15,20 @@ The component lemmas:
   (`checkLocal_zero`).
 * For `q ≥ 2 ^ 128` the bound is at least `1` (`one_le_checkHashError`).
 
-The distance interface: `CheckCoreDistance`, the two local runs for at least one tuple bit and `q < 2 ^ 128`.
-Its plan:
+`CheckCoreDistance` bounds the distance of the two local runs for at least one tuple bit and
+`q < 2 ^ 128`. Its proof has these steps.
 
 1. Mask the outputs of the real run with the accept bit of `F_multVerify`. The runs differ only
    when an honest operator accepts wrong tuples.
 2. For agreeing copies and wrong tuples, `delinearization_card_bound` and the soundness of the
-   slice, halving and final coins apply, with `q / |E|²` for each coin key queried before its coin.
-3. Disagreeing copies: two honest digests of a term differ unless two history or digest outputs
-   collide.
+   slice, halving and final coins apply. Each coin key that a call queries before its coin costs
+   `q / |E|²`.
+3. When the copies disagree, two honest digests of a term differ unless two history or digest
+   outputs collide.
 4. Couple the run on `x` with the run on `canonicalDummyTuples`. Each call keeps the view,
    the salts hide the digests of the unknown
    terms (`saltDigestPhase_hide`), and the last opening matches by `finalMaskNetwork_sameRun`.
-5. Steps 3 and 4 should share one collision event. With a separate birthday term for each, the
+5. Steps 3 and 4 share one collision event. With a separate birthday term for each, the
    terms of steps 2 to 4 exceed `checkHashError` when `C(n, t - 1) > R + 2` and `q` is large.
 -/
 

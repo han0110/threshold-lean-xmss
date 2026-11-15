@@ -7,7 +7,7 @@ This file splits the cost of the logged run into digest calls and guess calls. T
 for example `Proof/SigningLaneUnion.lean` and `Proof/SigningGuessProof.lean`, use it.
 
 * The count of the logged run is the sum of the costs of the calls in its log
-  (`loggedRun_count_eq`), and it is within the budget `q` (`loggedRun_count_le`).
+  (`loggedRun_count_eq`). It is within the budget `q` (`loggedRun_count_le`).
 * A call costs one unit as a digest call or as a guess call, and never both (`digestCost_add_guessCost`).
 -/
 

@@ -201,7 +201,8 @@ The statement layer is `ThresholdLeanXmss/`. The proofs are in `ThresholdLeanXms
   uncharged lane and its shared cap.
 * `SigningOwn*`, `SeedHitOwn`, `SigningLedgerExpect` and `SigningStronglyUnforgeable` hold the signing
   claim with the budget of the forger alone.
-* `VendoredExcerpt` holds five declarations of leanVM `1acdff19` that leanVM removed later.
+* `VendoredExcerpt` holds five declarations of leanVM `1acdff19` that leanVM `f5f3672f` does not
+  have.
 
 The library does not hold the modules of the key hop and of the simulation hop of a ceremony. -/
 
