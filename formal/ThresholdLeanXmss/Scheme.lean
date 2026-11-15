@@ -1662,20 +1662,34 @@ def mainProtocol (mode : ReshareMode) (jobs : List Circuit) (i : C.Party) (input
 of `F_multVerify` and one round for `OpenRep`. -/
 def mainRounds (jobs : List Circuit) : ℕ := depth jobs + 3
 
-/-- One ceremony in the `{F_mult, F_multVerify}`-hybrid model. It has no PRSS setup, because the
-functionalities give the random values. -/
-def ceremonyHybrid (circuits : Circuits) (settings : Settings) (i : C.Party) (keys : Keys C)
-    (counters : ℕ × ℕ) (jobs : List Job) : PartyM C E (MainSpec C) (List (List Bit)) := do
+/-- One ceremony in the `{F_mult, F_multVerify}`-hybrid model, as a program on the counters. It has
+no PRSS setup, because the functionalities give the random values. -/
+def ceremonyHybridRun (circuits : Circuits) (settings : Settings) (i : C.Party) (keys : Keys C)
+    (jobs : List Job) : StateT (ℕ × ℕ) (PartyM C E (MainSpec C)) (Option (List (List Bit))) :=
   let ctx : Context C := ⟨i, keys, ⟨fun _ => 0, fun _ => 0⟩⟩
-  let body : List Job → StateT (ℕ × ℕ) (PartyM C E (MainSpec C)) (Option (List (List Bit))) := fun batch => do
+  batched settings.batchSize (fun batch => do
     let (label, k) ← get
     let inputs ← StateT.lift (batch.mapM (inputShares ctx))
     let (outputs, state) ← StateT.lift ((runJobs K (hybridRunBuildingBlocks K settings.mode i)
       (batch.map (circuits keys.parameter ·.kind)) inputs).run ⟨fun _ => [], label, k⟩)
     set (state.label, k + 1)
-    pure (some outputs)
-  let some outputs ← (batched settings.batchSize body jobs).run' counters | failure
+    pure (some outputs)) jobs
+
+/-- One ceremony in the `{F_mult, F_multVerify}`-hybrid model from the public counters `counters`.
+It gives the opened output of each job. -/
+def ceremonyHybrid (circuits : Circuits) (settings : Settings) (i : C.Party) (keys : Keys C)
+    (counters : ℕ × ℕ) (jobs : List Job) : PartyM C E (MainSpec C) (List (List Bit)) := do
+  let some outputs ← (ceremonyHybridRun K circuits settings i keys jobs).run' counters | failure
   pure outputs
+
+/-- The ceremonies of a tree in the `{F_mult, F_multVerify}`-hybrid model, with the local steps of
+`ceremonyOutput` between them. It is `newTree` with the hybrid ceremony. -/
+def newTreeHybrid (circuits : Circuits) (settings : Settings) (i : C.Party) (keys : Keys C)
+    (top : TopTree) (tree : Tree) : PartyM C E (MainSpec C) TreeOutput := do
+  let some output ← (ceremonyOutput (m := StateT (ℕ × ℕ) (PartyM C E (MainSpec C)))
+      (fun oa => StateT.lift (oracleStep (tweakable oa))) keys.parameter
+      (ceremonyHybridRun K circuits settings i keys) top tree).run' (0, 0) | failure
+  pure output
 
 end Hybrid
 

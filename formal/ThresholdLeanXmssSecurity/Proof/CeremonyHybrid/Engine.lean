@@ -104,7 +104,7 @@ theorem ceremonyHybrid_eq (settings : Settings) (i : C.Party) (keys : Keys C) (c
     (jobs : List Job) :
     ceremonyHybrid K circuits settings i keys counters jobs =
       hybridBatches K circuits settings.mode i keys (chunks settings.batchSize jobs) := by
-  unfold ceremonyHybrid batched
+  unfold ceremonyHybrid ceremonyHybridRun batched
   simp only [StateT.run'_eq, StateT.run_bind, StateT.run_pure, map_bind]
   rw [mapM_run_of _ (hybridBatch K circuits settings.mode i keys) (fun c => (c.1, c.2 + 1)) ?_, hybridBatches_eq]
   · simp [foldlM_some_append]

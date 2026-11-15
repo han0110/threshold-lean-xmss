@@ -24,12 +24,13 @@ import ThresholdLeanXmssSecurity.Proof.Constants
 import ThresholdLeanXmssSecurity.Proof.CeremonyHybrid.Security
 import ThresholdLeanXmssSecurity.Proof.TagBlocks
 import ThresholdLeanXmssSecurity.Proof.PrssRand.Security
+import ThresholdLeanXmssSecurity.Proof.TreeHybrid.Security
 
 /-! # The end theorem of threshold leanXMSS
 
 `thresholdLeanXmss_security` gives `ThresholdLeanXmssSecurityStatement`
 (`ThresholdLeanXmss/Statement/Theorems.lean`). It is the bundle `Theorems`, with one field for each of
-nineteen claims about the protocol of `ThresholdLeanXmss/Scheme.lean`. The theorem holds for every
+twenty claims about the protocol of `ThresholdLeanXmss/Scheme.lean`. The theorem holds for every
 committee `n = 2t - 1`, every check field `E` with `2^128` elements, every `Th`, every circuit family
 and every setting. Each claim covers one protocol or one building block alone. No claim composes the
 seed generation, the ceremonies and the signing. `statement.tex` holds the deployment contract and a sketch
@@ -67,15 +68,16 @@ block of 32 bytes that has no zero byte. It is no field of the bundle.
 
 * `H` is one lazy random oracle on `Query`. Its constructors are disjoint domains, so
   domain-separated hashing is the assumption.
-* In the seed generation and ceremony claims, `Th` is one fixed function on the inputs that the MPC
-  evaluates, the chain steps and the commitment `c_e`. `CircuitsCompute` states that the circuits
+* In the seed generation, ceremony and tree claims, `Th` is one fixed function on the inputs that
+  the MPC evaluates, the chain steps and the commitment `c_e`. `CircuitsCompute` states that the circuits
   compute this `Th`. In the signing claim, all of `H` is a random oracle. The difference between the
   two models is the random-oracle heuristic for Keccak.
-* The seed generation and each ceremony have their own static coalition of at most `t - 1` operators and a
-  rushing malicious adversary. The notion is security with selective abort (GL05), in which each
-  operator aborts alone. The bundle has this claim for the seed generation, and for one ceremony in
-  the `{F_mult, F_multVerify}`-hybrid model. For one ceremony on the real network the claim is
-  `CeremonySecurityStatement`. It is stated and not proved.
+* The seed generation, each ceremony and each tree have their own static coalition of at most
+  `t - 1` operators and a rushing malicious adversary. The notion is security with selective abort (GL05), in which each
+  operator aborts alone. The bundle has this claim for the seed generation, and for one ceremony and
+  for one tree in the `{F_mult, F_multVerify}`-hybrid model. For one ceremony on the real network the
+  claim is `CeremonySecurityStatement`. It is stated and not proved. No claim states the security of
+  a tree on the real network.
 * The signing adversary corrupts adaptively, at most `t - 1` operators over the lifetime. A
   corruption gives only the keys, because an operator erases its ceremony state.
 * Honest operators sign at most one message for each key (`breaksOneMessagePerKey`). The map `bound`
@@ -98,6 +100,9 @@ block of 32 bytes that has no zero byte. It is no field of the bundle.
 2. `dealerTreeProof` and `treeSuccessProof` (`Proof/Dealer`) assume `CircuitsCompute`. Each circuit
    gives `referenceJob`, so `F_tree` gives the trees of `KeyGen`. The search fails with
    `searchFailure`.
+3. `treeHybridSecurity` (`Proof/TreeHybrid/Security`) gives `TreeHybridSecurityStatement`. The run of
+   one tree, with the two ceremonies of a bottom tree, securely computes `F_tree` in the
+   `{F_mult, F_multVerify}`-hybrid model.
 
 ## Signing plan
 
@@ -178,6 +183,7 @@ The statement layer is `ThresholdLeanXmss/`. The proofs are in `ThresholdLeanXms
 * `SeedGen*` holds seed generation completeness and the seed generation simulation.
 * `BuildingBlocks`, `Check*` and `Main*` hold the building blocks, the check and the batch.
 * `CeremonyHybrid/` holds the claim of one ceremony in the hybrid model.
+* `TreeHybrid/` holds the claim of one tree in the hybrid model.
 * `PrssRand/` holds the claim of the PRSS streams from dealt keys.
 * `Tree` and `Dealer` hold the tree completeness, the dealer and the tree success. `TreeSim` and
   `TreeCheckKernelCoupling` hold lemmas on the runs of a ceremony that the signing proof uses.
@@ -207,6 +213,7 @@ theorem thresholdLeanXmss_security : ThresholdLeanXmss.ThresholdLeanXmssSecurity
   exact {
     seedGenSecurity := seedGenSecurityClosed prims
     seedGenCompleteness := seedGenCompleteness prims
+    treeHybridSecurity := treeHybridSecurity prims K circuits settings
     treeCompleteness := treeCompleteness prims K circuits settings
     dealerTree := dealerTreeProof prims circuits settings C
     treeSuccess := treeSuccessProof prims circuits settings C
@@ -241,6 +248,10 @@ and `Quot.sound`. -/
 /-- info: 'ThresholdLeanXmssSecurity.ceremonyHybridSecurity' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ceremonyHybridSecurity
+
+/-- info: 'ThresholdLeanXmssSecurity.treeHybridSecurity' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms treeHybridSecurity
 
 /-- info: 'ThresholdLeanXmssSecurity.prssRandSecurity' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

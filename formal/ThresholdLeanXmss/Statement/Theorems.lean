@@ -11,7 +11,8 @@ theorem of `ThresholdLeanXmssSecurityStatement` and the axiom guards.
 The two main claims are these.
 
 * The setup by DKG acts as a trusted dealer with selective abort. The fields state this claim for
-  the seed generation only. `dealerTree` states that the dealer of a tree gives the trees of the
+  the seed generation, and for a tree in the `{F_mult, F_multVerify}`-hybrid model
+  (`treeHybridSecurity`). `dealerTree` states that the dealer of a tree gives the trees of the
   signing game.
 * Signing with a trusted dealer is strongly unforgeable with adaptive corruption
   (`stronglyUnforgeable`).
@@ -27,14 +28,15 @@ property.
   * No adversary with a bounded budget distinguishes the seed generation from a trusted dealer with
     selective abort, up to the error that the claim names (`seedGenSecurity`).
     `seedGenCompleteness` is its honest run.
-  * `treeCompleteness` is the honest run of a tree. No field states the security of a tree.
+  * `treeHybridSecurity` states the security of a tree in the `{F_mult, F_multVerify}`-hybrid
+    model. No field states it on the real network. `treeCompleteness` is the honest run of a tree.
     `dealerTree` and `treeSuccess` link the dealer of a tree to the key generation of the signing
     game.
   * The keygen ceremony of the note is the seed generation and then the ceremony of the top tree.
     The ceremony of a bottom tree of the note is two ceremonies of the model, one for the tree and
-    one for the signature of its root by its top key. The fields `treeCompleteness` and
-    `dealerTree` cover the top tree and each bottom tree with its signature. `treeSuccess` covers
-    a bottom tree on its top tree.
+    one for the signature of its root by its top key. The fields `treeHybridSecurity`,
+    `treeCompleteness` and `dealerTree` cover the top tree and each bottom tree with its signature.
+    `treeSuccess` covers a bottom tree on its top tree.
 * The signing is the second group. Its fields are `tprfCorrectness` and `tprfSecurity` for the
   threshold PRF `F` (the note, Section 2, and PRAWNS, Definitions 2.1 and 2.2), and
   `signingCorrectness` and `stronglyUnforgeable` (the note, Section 2.3, and PRAWNS,
@@ -60,14 +62,15 @@ so each completeness field is the honest run of its protocol.
   counters. It has three uses, namely `topJobs` for the top tree, `bottomJobs b` for a bottom tree,
   and `signJobs b encoding` for the signature of a bottom root by its top key. `newTree` is the
   ceremonies of one tree with the local steps between them, and it passes the counters on.
-* The seed generation and each ceremony are separate claims. Each has a rushing malicious adversary
-  with its own static coalition. The seed generation claims and `CeremonySecurityStatement` run the
-  real network with the real PRSS, and `ceremonyHybridSecurity` is in the hybrid model.
+* The seed generation, each ceremony and each tree are separate claims. Each has a rushing
+  malicious adversary with its own static coalition. The seed generation claims and
+  `CeremonySecurityStatement` run the real network with the real PRSS, and `ceremonyHybridSecurity`
+  and `treeHybridSecurity` are in the hybrid model.
 * Each building-block claim is in a hybrid model. `prssRand` is in the `F_prssKeys`-hybrid model.
   `coin`, `mult` and `extendMult` are in the `F_rand`-hybrid model. `multVerify` is in the
-  `{F_coin, F_extendMult, F_rand}`-hybrid model, and `main` and `ceremonyHybridSecurity` are in the
-  `{F_mult, F_multVerify}`-hybrid model. `prssRand` states that the PRSS streams from dealt keys
-  compute a public list of calls of `F_rand` (CDI05, Section 4).
+  `{F_coin, F_extendMult, F_rand}`-hybrid model, and `main`, `ceremonyHybridSecurity` and
+  `treeHybridSecurity` are in the `{F_mult, F_multVerify}`-hybrid model. `prssRand` states that the
+  PRSS streams from dealt keys compute a public list of calls of `F_rand` (CDI05, Section 4).
 * The signing adversary corrupts adaptively, and a corruption gives only the keys of an operator.
   After a ceremony, an operator erases its ceremony state.
 * Honest operators sign at most one message at each key over all quorums
@@ -75,12 +78,12 @@ so each completeness field is the honest run of its protocol.
   acknowledgements of `doc/sign.md` 4.1 for it, and a deployment must enforce it too.
 * `H` is one lazy random oracle on `Query`, with one domain for each constructor. `PRG` is AES-128
   under a hash of the key. `prssRand` and `CeremonySecurityStatement` pay its multi-key PRF advantage.
-* In the seed generation and ceremony claims, `Th` is one fixed function on the inputs that the MPC
-  evaluates, namely the chain steps and the commitment `c_e`. In the signing claim, all of `H` is a
+* In the seed generation, ceremony and tree claims, `Th` is one fixed function on the inputs that
+  the MPC evaluates, namely the chain steps and the commitment `c_e`. In the signing claim, all of `H` is a
   lazy random oracle, `Th` included. The gap between the two models is the random-oracle heuristic
   for Keccak.
-* `F_ceremony` and `F_tree` run the circuits of the jobs, so the ceremony claims are stated for
-  every circuit family.
+* `F_ceremony` and `F_tree` run the circuits of the jobs, so the ceremony and tree claims are stated
+  for every circuit family.
   `dealerTree` and `treeSuccess` assume that the circuits compute `Th` (`CircuitsCompute`), and they
   link `F_tree` to the trees of the signing claims.
 * A budget `q` counts calls of `H` and `PRG` on every path of a program, for every answer of the
@@ -101,22 +104,26 @@ the advantage of a reduction is only as strong as that reduction.
   model with ideal multiplication and check. No field states it for the real network and the real
   PRSS. `Dkg.lean` has this claim as `CeremonySecurityStatement`, with the simulator
   `ceremonySimulator`. It is stated and not proved. It is the claim for one ceremony. The fields on
-  a tree are the honest run of its ceremonies (`treeCompleteness`) and the two facts on its dealer (`dealerTree` and `treeSuccess`).
+  a tree are its security in the hybrid model (`treeHybridSecurity`), the honest run of its
+  ceremonies (`treeCompleteness`) and the two facts on its dealer (`dealerTree` and `treeSuccess`).
+  No field states the security of a tree on the real network, and `Dkg.lean` has no such claim.
 * No field states that the PRSS setup of a ceremony gives the keys of the dealer, and no field
   joins the building-block claims to the PRSS.
-* No claim joins the two ceremonies of a bottom tree against a corrupt coalition.
-  `CeremonySecurityStatement` has no simulator and no bound for the ceremony of the tree, the
-  randomizer search, the signature ceremony and the check of the signature together. It does not
-  state that the honest operators of a signature ceremony hold the same encoding, or that each of
-  them starts. `statement.tex` holds the contract rule and a sketch of this join, with its open points.
+* Only `treeHybridSecurity` joins the two ceremonies of a bottom tree against a corrupt coalition,
+  and only in the hybrid model. On the real network, `CeremonySecurityStatement` has no simulator
+  and no bound for the ceremony of the tree, the randomizer search, the signature ceremony and the
+  check of the signature together. It does not state that the honest operators of a signature
+  ceremony hold the same encoding, or that each of them starts. `statement.tex` holds the contract rule and a sketch of this join, with its open points.
 * So no field states that the keygen ceremony of the note is secure as a whole. The fields state
-  it for the seed generation. For the top tree, `CeremonySecurityStatement` covers the ceremony of
-  `topJobs`, which opens the chain ends. The local build of the tree from them is no part of the claim.
+  it for the seed generation. `treeHybridSecurity` states it for the top tree with the local build
+  of the tree, in the hybrid model only. On the real network, `CeremonySecurityStatement` covers the
+  ceremony of `topJobs`, which opens the chain ends. The local build of the tree from them is no part
+  of that claim.
 * No field composes the seed generation, the ceremonies and the signing. Each field covers one
   protocol or one building block alone. `statement.tex` holds the deployment contract and a sketch of that
   composition, with its open points.
-* No field covers a corruption between two ceremonies. The seed generation and ceremony claims
-  cover their static coalitions, and the signing claim covers adaptive corruptions.
+* No field covers a corruption between two ceremonies. The seed generation, ceremony and tree
+  claims cover their static coalitions, and the signing claim covers adaptive corruptions.
 * No field fixes the basis or the bit encoding of the check field. The claims take every value of
   `Constants`. Its field `encode` gives `E` exactly `2 ^ 128` elements (`Constants.card`), so `E` is
   isomorphic to `GF(2^128)`. `constants_nonempty_of` (`Proof/Constants.lean`) gives a value for each
@@ -151,6 +158,10 @@ structure Theorems (prims : Primitives) (K : Constants C E) (circuits : Circuits
   /-- An honest seed generation gives the keys of `F_seedGen`, except when two derived keys collide (the note,
   Section 2.1, honest run). -/
   seedGenCompleteness : SeedGenCompletenessStatement prims C E
+  /-- The run of a tree securely computes `F_tree` in the `{F_mult, F_multVerify}`-hybrid model, up
+  to the birthday terms of the copy hashes (`treeHybridError`) (GS20, Theorem 2, for the ceremonies
+  of a tree). -/
+  treeHybridSecurity : TreeHybridSecurityStatement prims K circuits settings
   /-- The honest ceremonies of a tree give the tree of `F_tree`, except when an honest check aborts
   (`treeAbortError`) (the note, Section 2.1, honest run). -/
   treeCompleteness : TreeCompletenessStatement prims K circuits settings

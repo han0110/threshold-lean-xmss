@@ -4,9 +4,9 @@ Lean 4 statements and proofs of security claims of threshold leanXMSS.
 
 ## The two main claims
 
-The root theorem proves the bundle `Theorems`. Its 19 fields serve two main claims.
+The root theorem proves the bundle `Theorems`. Its 20 fields serve two main claims.
 
-- The DKG acts as a trusted dealer of the keys and the trees. This claim is **not complete**. The seed generation is proved. The security of a ceremony is proved in a hybrid model, and on the real network it is stated and not proved.
+- The DKG acts as a trusted dealer of the keys and the trees. This claim is **not complete**. The seed generation is proved. The security of a ceremony and of a tree is proved in a hybrid model. On the real network, the ceremony claim is stated and not proved, and no claim covers a tree.
 - The signing with that dealer is correct and strongly unforgeable. This claim is proved.
 
 ## The claims
@@ -20,7 +20,7 @@ The target is the trusted dealer `KeyGen` of PRAWNS (the note, Section 2.1). The
 | | Completeness | Security |
 | --- | --- | --- |
 | Seed generation | `seedGenCompleteness`, proved | `seedGenSecurity`, proved, on the real network |
-| A tree | `treeCompleteness`, proved | No claim for a whole tree. For one ceremony, `ceremonyHybridSecurity` is proved with ideal multiplication and check, and `CeremonySecurityStatement` on the real network is stated and not proved. |
+| A tree | `treeCompleteness`, proved | `treeHybridSecurity`, proved, with ideal multiplication and check. No claim on the real network. |
 
 - `dealerTree` and `treeSuccess` link the dealer of the tree functionality to the key generation of the signing game. Both are proved.
 - The keygen ceremony of the note is the seed generation, then the ceremony of the top tree. A bottom tree has two ceremonies, one for the tree and one for the signature of its root.
@@ -46,6 +46,7 @@ The security of a ceremony rests on these ten proved fields. The note has no sec
 - The threshold PRF is secure against an adaptive coalition.
 - The signing is strongly unforgeable with adaptive corruption.
 - One ceremony is secure with selective abort with ideal multiplication and check, not on the real network.
+- One tree is secure with selective abort with ideal multiplication and check, not on the real network. `F_tree` leaks the openings of all batches of its dealer, so the chain values of the signature have no secrecy after an abort.
 - The building blocks are secure, and each honest run gives the output of its functionality, up to the error that its claim names.
 - The PRSS streams from keys of a dealer give the random sharings.
 
@@ -55,13 +56,13 @@ The axiom guard of the root theorem lists only `propext`, `Classical.choice` and
 
 ## What is not proved
 
-No claim covers the security of a whole tree. One important claim has no proof. `CeremonySecurityStatement` says that one ceremony of the DKG is secure with selective abort on the real network with the real PRSS. It is stated and not proved, and it is no part of the bundle.
+No claim covers the security of a tree on the real network. One important claim has no proof. `CeremonySecurityStatement` says that one ceremony of the DKG is secure with selective abort on the real network with the real PRSS. It is stated and not proved, and it is no part of the bundle.
 
-So the first main claim is proved for the seed generation and for the MPC layer, which includes one ceremony in the hybrid model. It is not proved for a ceremony on the real network.
+So the first main claim is proved for the seed generation, for the MPC layer, which includes one ceremony in the hybrid model, and for one tree in the hybrid model. It is not proved for a ceremony or a tree on the real network.
 
 No claim covers the PRSS setup, and no claim joins the building blocks to the PRSS. `prssRand` covers only the PRSS streams from keys of a dealer.
 
-No claim composes the seed generation, the ceremonies and the signing. Each claim covers one protocol or one building block alone. So no theorem composes the DKG with the signing, and no claim joins the two ceremonies of a bottom tree. [statement.tex](./statement.tex) holds a sketch of the composition, with its open points.
+No claim composes the seed generation, the ceremonies and the signing. Each claim covers one protocol or one building block alone. So no theorem composes the DKG with the signing. Only `treeHybridSecurity` joins the two ceremonies of a bottom tree, in the hybrid model. [statement.tex](./statement.tex) holds a sketch of the composition, with its open points.
 
 What is claimed, and what is not, is [statement.tex](./statement.tex).
 
@@ -91,15 +92,16 @@ flowchart TB
   subgraph DKG["Setup by DKG"]
     SEED["seedGenSecurity, seedGenCompleteness<br/>seed generation on the real network"]:::proved
     TCOMP["treeCompleteness<br/>honest run of a tree on the real network"]:::proved
-    TSEC["Security of a tree<br/>against a coalition"]:::missing
+    THYB["treeHybridSecurity<br/>one tree with ideal multiplication and check"]:::proved
+    TSEC["Security of a tree<br/>on the real network"]:::missing
     DEALER["dealerTree, treeSuccess<br/>the dealer of F_tree gives the trees of the signing game,<br/>when the circuits compute Th"]:::proved
     CSEC["CeremonySecurityStatement<br/>one ceremony on the real network"]:::stated
     MPC["MPC layer, 10 fields, each in its hybrid model<br/>ceremonyHybridSecurity, main, multVerify, mult, extendMult, coin, prssRand,<br/>mainCompleteness, multVerifyCompleteness, coinCompleteness"]:::proved
     PKEYS["Dealer of the PRSS keys,<br/>given by the PRSS setup"]:::missing
   end
 
-  style SIG fill:#ffffff,stroke:#999999
-  style DKG fill:#ffffff,stroke:#999999
+  style SIG stroke:#999999
+  style DKG stroke:#999999
 
   SUF --> DEALT
   SCOR --> DEALT
@@ -110,6 +112,7 @@ flowchart TB
   DEALT -.-> DEALER
   DEALT -.-> TCOMP
   DEALT -.-> TSEC
+  TSEC -.-> THYB
   TSEC -.-> CSEC
   CSEC -.-> MPC
   CSEC -.-> PKEYS
@@ -121,7 +124,7 @@ Appendix C of [statement.tex](./statement.tex) has the claims of the MPC layer.
 | Open box | Reason |
 | --- | --- |
 | Dealer of the PRSS keys | The proof of the seed generation, the same protocol, needs a port to the PRSS setup. |
-| Security of a tree | No statement joins the ceremonies of a tree and its local steps. A claim in the hybrid model is in work. |
+| Security of a tree on the real network | It needs `CeremonySecurityStatement` and the join of the layers, and both are open. |
 | `CeremonySecurityStatement` | No composition theorem fits the proved claims, and a direct proof has open steps. |
 | Trusted dealer of the keys and the trees | The composition of the setup and the signing is a sketch. |
 

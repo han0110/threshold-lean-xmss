@@ -41,7 +41,8 @@ file holds the error terms, the valid inputs and the claims. `Theorems.lean` hol
   (`top_signature` of `src/dkg.rs`).
 * The signature of the root of a bottom tree by its top key is one more ceremony, with its own PRSS
   setup (`new_bottom_tree` of `src/dkg.rs`). `CeremonySecurityStatement` is the claim for one ceremony.
-  It does not join the two ceremonies of a bottom tree.
+  It does not join the two ceremonies of a bottom tree. `TreeHybridSecurityStatement` joins them in
+  the `{F_mult, F_multVerify}`-hybrid model, with no PRSS setup.
 * A ceremony takes the start of its counters as a public input, namely the next round label and the
   tag of the next batch. The signature ceremony continues the counters of the ceremony before it,
   as the channel numbers continue in the implementation (`src/net.rs`). The model counts the labels
@@ -420,5 +421,54 @@ def CeremonyHybridSecurityStatement : Prop :=
       (mainFunctionalities K settings.mode) (Fceremony circuits jobs) DealtInputs
       (hybridOverhead settings C jobs)
       (fun q => ((q + (chunks settings.batchSize jobs).length * termHashes C) ^ 2 : ℕ) / 2 ^ 256)
+
+/-- A fixed upper bound on the counted calls of the simulator of a tree. For each ceremony it has the
+known input terms and the copy hashes of each batch. For a bottom tree it also has the codeword of
+the root, namely the nodes of the tree, the start of the randomizer search and the trials of the
+search. -/
+def treeHybridOverhead (C : Committee) : Tree → ℕ
+  | .top => (topJobs.map (·.points.length)).sum * termCount C +
+      (chunks settings.batchSize topJobs).length * termHashes C
+  | .bottom b => (((bottomJobs b).map (·.points.length)).sum + chainCount) * termCount C +
+      treeBatches settings (.bottom b) * termHashes C + (2 ^ (layerHeight + 1) + randomizerAttemptLimit)
+
+/-- The birthday bound of the copy hashes of a tree. A bottom tree pays one bound at the end of each
+of its two ceremonies, because the codeword of the signature ceremony comes from the opened outputs
+of the first ceremony. -/
+def treeHybridError (C : Committee) (tree : Tree) (q : ℕ) : ℝ :=
+  match tree with
+  | .top => ((q + (chunks settings.batchSize topJobs).length * termHashes C) ^ 2 : ℕ) / 2 ^ 256
+  | .bottom b => ((q + (chunks settings.batchSize (bottomJobs b)).length * termHashes C) ^ 2 : ℕ) / 2 ^ 256 +
+      ((q + treeBatches settings (.bottom b) * termHashes C) ^ 2 : ℕ) / 2 ^ 256
+
+/-- The run of one tree securely computes `F_tree` with selective abort in the
+`{F_mult, F_multVerify}`-hybrid model (GS20, Theorem 2, for the ceremonies of a tree).
+
+* The program is `newTreeHybrid`, the whole run of one tree. For a bottom tree it is the ceremony
+  of the tree, the randomizer search, the signature ceremony and the check of the top signature.
+  The local steps send no message, so the adversary gets no round between the two ceremonies.
+* The claim is for a static coalition, on `DealtInputs`, for a positive batch size, for each top
+  tree and each tree, and for every circuit family. A simulator exists, and the ideal run makes at
+  most `q + treeHybridOverhead` counted calls.
+* The top tree `top` is a fixed public input, and each run starts with an empty hash cache. The
+  claim does not state that `top` is the top tree of the dealt seeds. With another `top`, the check
+  of the top signature can fail, and then the run gives no tree.
+* `F_tree` runs its dealer and leaks `P` and the openings of all batches of that run, and then the
+  adversary names the receivers one time. When the search of the dealer succeeds, the leak has the
+  chain values of the signature ceremony, also when the real run aborts in the first ceremony. So
+  the claim gives no secrecy for these values after an abort. An honest run with a successful
+  search opens all of them. When the search of the dealer fails, the leak has only the openings of
+  the first ceremony, and no receiver gets a tree. This can occur in an honest run. When the
+  check of the top signature fails, the leak keeps the openings of the signature ceremony, and no
+  receiver gets a tree.
+* The multiplication, the rerandomization and the check are ideal, and no ceremony has a PRSS
+  setup. It is no claim for the real network, for the PRSS setup or for the meaning of the
+  circuits. -/
+def TreeHybridSecurityStatement : Prop :=
+  0 < settings.batchSize → ∀ (top : TopTree) (tree : Tree),
+    SecurelyComputes prims (fun i keys => newTreeHybrid K circuits settings i keys top tree)
+      (ceremonyBatches settings * maxBatch circuits settings mainRounds)
+      (mainFunctionalities K settings.mode) (Ftree circuits settings top tree) DealtInputs
+      (treeHybridOverhead settings C tree) (treeHybridError settings C tree)
 
 end ThresholdLeanXmss

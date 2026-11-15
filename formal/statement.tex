@@ -31,9 +31,10 @@ and GS20, the paper of Goyal and Song \cite{GS20}. The proofs make two main clai
 \item The setup by distributed key generation (DKG) acts as a trusted dealer with selective abort
 (Section~\ref{sec:dkg}). Selective abort means that the adversary chooses the honest operators that get
 an output. This claim is not complete. It is proved for the seed generation, which deals the keys. A ceremony is one run
-of the multiparty computation (MPC) for a tree or for the signature of a tree root. For a ceremony, the
-claim is proved in a hybrid model, where the multiplication and the check are trusted parties. For the
-real network, it is stated and not proved. Appendix~\ref{sec:mpc} holds these claims of the MPC layer.
+of the multiparty computation (MPC) for a tree or for the signature of a tree root, and the run of a tree
+is all its ceremonies. For a ceremony and for the run of a tree, the claim is proved in a hybrid model,
+where the multiplication and the check are trusted parties. On the real network, it is stated and not
+proved for a ceremony, and a tree has no claim. Appendix~\ref{sec:mpc} holds the claims of the MPC layer.
 \item Signing with a trusted dealer is correct and strongly unforgeable with adaptive corruption
 (Section~\ref{sec:signing}). This claim is proved.
 \end{itemize}
@@ -43,7 +44,7 @@ composition needs, and Section~\ref{sec:open} lists what is not proved.
 \paragraph{Where to read it.} The claims to review are in the folder
 \texttt{formal/ThresholdLeanXmss/Statement/}, and its
 entry file is \texttt{Theorems.lean}. The type of the root theorem \lean{thresholdLeanXmss_security}
-is the bundle \lean{Theorems}, a structure with nineteen fields, one for each claim. Its axiom guard, a
+is the bundle \lean{Theorems}, a structure with twenty fields, one for each claim. Its axiom guard, a
 checked list of the axioms that the theorem depends on, has only \texttt{propext},
 \texttt{Classical.choice} and \texttt{Quot.sound}. Appendix A gives the fields and their sources. This
 document calls a claim proved only if it is such a field.
@@ -107,7 +108,7 @@ The forger corrupts operators during the game. A corruption reveals only keys, b
 erased. \\
 \rowrule
 Network & The seed generation claims and the open ceremony claim use the real network and the real PRSS.
-The building-block claims, the PRSS streams claim and the hybrid ceremony claim use hybrid models, where
+The building-block claims, the PRSS streams claim and the hybrid ceremony and tree claims use hybrid models, where
 an ideal functionality replaces a sub-protocol. The PRSS streams claim has the dealer of the PRSS keys. & The forger sends requests for the two signing rounds of a quorum. \\
 \rowrule
 $\Th$ & A fixed function on the inputs that the MPC evaluates, namely the chain steps and $c_e$ & Part of
@@ -130,7 +131,7 @@ call the counted copy of the oracles. The honest parties and the functionalities
 whose calls do not count. Both copies share one cache.
 \item In each simulation claim, the ideal run makes at most $q$ plus a fixed overhead of counted calls. An
 explicit simulator (seed generation, ceremony on the real network) is fixed code that emulates the honest parties for free,
-and only its programming queries count. For an existential simulator (building blocks, PRSS streams, ceremony in the hybrid model), the claim only states that it
+and only its programming queries count. For an existential simulator (building blocks, PRSS streams, ceremony and tree in the hybrid model), the claim only states that it
 exists, and all its calls count, the emulation included \cite{Can00}.
 \end{itemize}
 
@@ -164,7 +165,7 @@ The run of the top tree has the first ceremony, and the run of a bottom tree has
 operators build a bottom tree when they need it, between signing sessions on the other trees. A ceremony
 that runs during another ceremony or during a signing session is outside the claims. The keygen ceremony
 of the note is the seed generation, then the ceremony of the top tree. The bottom-tree ceremony of the
-note is two model ceremonies. No security claim covers the local steps. A claim name gives the unit, a
+note is two model ceremonies. Only the tree claim in the hybrid model covers the local steps. A claim name gives the unit, a
 ceremony or a tree, and then the property. The table gives the four entries of the setup, namely the two
 protocols with two properties each.
 \begin{center}\small
@@ -174,9 +175,8 @@ protocols with two properties each.
 \midrule
 Seed generation & \lean{seedGenCompleteness}, proved & \lean{seedGenSecurity}, proved, on the real network \\
 \rowrule
-A tree & \lean{treeCompleteness}, proved & No claim for a whole tree. For one ceremony,
-\lean{ceremonyHybridSecurity} is proved with ideal multiplication and check, and
-\lean{CeremonySecurityStatement} on the real network is stated and not proved. \\
+A tree & \lean{treeCompleteness}, proved & \lean{treeHybridSecurity}, proved with ideal multiplication and
+check, and no claim on the real network \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -203,8 +203,18 @@ which computes the whole tree in the clear, within error
 $\mathsf{treeAbortError}=B\,\mathsf{coinFailure}(R)+[B(R+2)]^2/2^{257}$. Here $B$ counts the
 batches of all ceremonies of the tree, and $R$ is the maximum halving count over all batches of all
 ceremonies. Appendix~\ref{sec:mpc} defines $\mathsf{coinFailure}$.
-\paragraph{Security of a tree} (no claim). No claim covers a whole tree against a coalition.
-Appendix~\ref{sec:mpc} gives the two claims for one ceremony, in the hybrid model and on the real network.
+\paragraph{Tree security in the hybrid model} (\lean{TreeHybridSecurityStatement}). Assume $\mathsf{batchSize}>0$,
+\lean{DealtInputs} and a static coalition. Take a circuit family, a supplied top tree and a tree. Then in the
+$\{\Fn{mult},\Fn{multVerify}\}$ hybrid, the run of the tree (\lean{newTreeHybrid}) securely computes $\Fn{tree}$ with
+selective abort (GS20, Theorem 2). A simulator exists, with at most $q+\mathsf{treeHybridOverhead}$ counted calls.
+The error is $b(B_1)$ for the top tree and $b(B_1)+b(B_2)$ for a bottom tree, with $b(B)=(q+2nB\binom
+n{t-1})^2/2^{256}$. $B_1$ counts the batches of the first ceremony, and $B_2$ those of both. The multiplication, the
+rerandomization and the check are ideal, and no ceremony has a PRSS setup. So it is no claim for the real network or
+the PRSS setup. $\Fn{tree}$ leaks the openings of all batches of its dealer before the adversary names the
+receivers. After a successful search of the dealer, they hold the chain values of the signature, also when the
+real run aborts in the first ceremony. So these values have no secrecy after an abort. After a failed search,
+the dealer leaks only the openings of the first ceremony and gives no tree. The supplied top tree is a fixed
+input, and each run starts with an empty hash cache. The claim does not link that top tree to the seeds.
 \paragraph{Dealer trees} (\lean{DealerTreeStatement}). Assume \lean{CircuitsCompute} and
 $\mathsf{batchSize}>0$. Take a parameter, seeds, a supplied top tree and a top or bottom tree. Then the
 dealer of the tree functionality gives the reference tree of the key generation of the signing game. The
@@ -354,10 +364,10 @@ at the start, or the claim must be extended to a starting cache.
 \item The simulator of the ceremony must work beside the emulated signing service.
 \item The job list of a signature ceremony comes from the output of the ceremony before it, but the open
 claim fixes the job list of one ceremony in advance. So the two ceremonies of a bottom tree need their own
-composition lemma, with one shared oracle. No claim joins them against a corrupt
-coalition.
+composition lemma, with one shared oracle. \lean{treeHybridSecurity} joins them in the hybrid model. No
+claim joins them on the real network.
 \end{itemize}
-The sketch of that join has these points.
+The sketch of that join on the real network has these points.
 \begin{itemize}\itemsep0pt
 \item $\Fn{ceremony}$ gives one output to all its receivers, and the codeword is a function of that output
 and of $H$. So for one parameter, one tree, one circuit family and one oracle, rule 2 gives the same codeword
@@ -370,7 +380,8 @@ on the run, a simulator for the stopped run, and its link to the oracle.
 \item $\Fn{ceremony}$ opens the chain values of a top key at every codeword it gets. So only rules 1 and
 2 limit a top key to one codeword.
 \item $\Fn{tree}$ lets the adversary choose the receivers one time, and two calls of $\Fn{ceremony}$ let
-it choose two times. So the join has no single simulator or bound, and each ceremony adds its own error.
+it choose two times. No simulator and no bound is proved for a join of two calls of $\Fn{ceremony}$ on the
+real network, and each ceremony adds its own error.
 \end{itemize}
 
 \paragraph{The Rust code.} No theorem connects the Rust proof of concept to the model. In November 2026,
@@ -411,6 +422,7 @@ Field & Lean claim & Source item & State \\
 \addlinespace[2pt]
 \lean{seedGenSecurity} & \lean{SeedGenSecurityStatement} & The note, Section 2.1. \cite{GL05,CDG+18} & Proved \\
 \lean{seedGenCompleteness} & \lean{SeedGenCompletenessStatement} & The note, Section 2.1, honest run & Proved \\
+\lean{treeHybridSecurity} & \lean{TreeHybridSecurityStatement} & GS20, Theorem 2 & Proved \\
 \lean{treeCompleteness} & \lean{TreeCompletenessStatement} & The note, Section 2.1, honest run & Proved \\
 \lean{dealerTree} & \lean{DealerTreeStatement} & PRAWNS, Section 3.1 & Proved \\
 \lean{treeSuccess} & \lean{TreeSuccessStatement} & The note, Section 2.1, honest run & Proved \\
@@ -468,8 +480,8 @@ copy leak of $\Fn{main}$ gives no new value. \\
 \rowrule
 % Row A4 depends on the model change.
 A4 & GS20, Theorem 2, covers the full protocol, $\{\Fn{mult},\Fn{multVerify}\}$-hybrid. & \lean{main} is
-Theorem 2 for one batch, and \lean{ceremonyHybridSecurity} for all batches of a ceremony, in the same hybrid
-model. On the real network, a ceremony also has a PRSS setup. & \lean{CeremonySecurityStatement}, for one
+Theorem 2 for one batch, \lean{ceremonyHybridSecurity} for all batches of a ceremony, and
+\lean{treeHybridSecurity} for all ceremonies of a tree, in the same hybrid model. On the real network, a ceremony also has a PRSS setup. & \lean{CeremonySecurityStatement}, for one
 ceremony on the real network, is stated and not proved.
 \lean{treeCompleteness} (proved) covers the honest run only. \\
 \rowrule
@@ -556,7 +568,7 @@ terms, and the slack $2^{15}+384$. & Threshold game & \lean{stronglyUnforgeable}
 \rowrule
 B13 & The note has one ceremony for each bottom tree, which also opens the signature of its root. & The
 signature is a second ceremony with its own PRSS setup, after the local search. & One protocol &
-\lean{treeCompleteness}, for the honest run \\
+\lean{treeCompleteness}, for the honest run. \lean{treeHybridSecurity}, in the hybrid model \\
 \rowrule
 B14 & The note defines the PRF and the masks with no tag. & Each use of $H$ except $\Th$ hashes its own
 tag of 32 bytes first. & Separate domains & \lean{tprfSecurity}, \lean{stronglyUnforgeable}, with one
