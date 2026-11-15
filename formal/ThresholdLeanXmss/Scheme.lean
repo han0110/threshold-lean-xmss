@@ -21,7 +21,7 @@ the notions of secure computation.
   `exchange` for each synchronous round. A program that returns `none` aborts.
 * A program in a hybrid model also has a query `call` to the functionality (GS20, Section 3.1).
 * Each constructor of `Query` is its own domain of `H`. The current byte encoding of the
-  implementation does not separate all these domains yet (`statement.tex`, the model).
+  implementation does not separate all these domains yet (`statement.tex`, Section 5).
 * The domain `hash` is the tweakable hash `Th` of leanXMSS. In the claims of the key generation, it
   is one fixed function on the inputs that the MPC evaluates, namely a chain step and the commitment
   `c_e`. Every other input of `Th`, namely a leaf, a node and a message digest, and every other
@@ -219,7 +219,7 @@ inductive KeyName (C : Committee)
 deriving DecidableEq
 
 /-- An input of `H`. Each constructor is one domain of `H`. The tags of the implementation
-(`doc/dkg.md` 1.1.4) do not separate all of them yet (`statement.tex`, the model). -/
+(`doc/dkg.md` 1.1.4) do not separate all of them yet (`statement.tex`, Section 5). -/
 inductive Query (C : Committee)
   /-- The tweakable hash `Th` of leanXMSS, on the bytes of leanVM. -/
   | hash (input : HashInput)
