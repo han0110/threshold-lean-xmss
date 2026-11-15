@@ -14,6 +14,9 @@
 \newcommand{\doi}[1]{\href{https://doi.org/#1}{\nolinkurl{doi:#1}}}
 \emergencystretch=3em
 \setlength{\parskip}{0.35em}
+\makeatletter
+\renewcommand\paragraph{\@startsection{paragraph}{4}{\z@}{2.25ex \@plus .8ex \@minus .2ex}{-1em}{\normalfont\normalsize\bfseries}}
+\makeatother
 \title{What is proved about threshold leanXMSS}
 \author{}
 \date{November 2026}
@@ -24,8 +27,11 @@
 each claim with three sources. The sources are the leanXMSS note \cite{Wam26}, PRAWNS \cite{BBD+26}
 and GS20, the paper of Goyal and Song \cite{GS20}. The proofs make two main claims.
 \begin{itemize}\itemsep0pt
-\item The setup by DKG acts as a trusted dealer with selective abort (Section~\ref{sec:dkg}). This claim is
-not complete. It is proved for the seed generation. For a ceremony, it is stated and not proved.
+\item The setup by distributed key generation (DKG) acts as a trusted dealer with selective abort
+(Section~\ref{sec:dkg}). Selective abort means that the adversary chooses the honest operators that get
+an output. This claim is not complete. It is proved for the seed generation, which deals the keys. A ceremony is one run
+of the multiparty computation (MPC) for a tree or for the signature of a tree root. For a ceremony, the
+claim is stated and not proved.
 \item Signing with a trusted dealer is correct and strongly unforgeable with adaptive corruption
 (Section~\ref{sec:signing}). This claim is proved.
 \end{itemize}
@@ -35,28 +41,55 @@ composition needs, and Section~\ref{sec:open} lists what is not proved.
 \paragraph{Where to read it.} The claims to review are in the folder
 \texttt{formal/ThresholdLeanXmss/Statement/}, and its
 entry file is \texttt{Theorems.lean}. The type of the root theorem \lean{thresholdLeanXmss_security}
-is the bundle \lean{Theorems}, a structure with seventeen fields, one for each claim. The axiom guard
-of the root theorem lists only \texttt{propext}, \texttt{Classical.choice} and \texttt{Quot.sound}.
-Appendix A gives the fields and their sources. This document calls a claim proved only if it is one of
-these fields.
+is the bundle \lean{Theorems}, a structure with seventeen fields, one for each claim. Its axiom guard, a
+checked list of the axioms that the theorem depends on, has only \texttt{propext},
+\texttt{Classical.choice} and \texttt{Quot.sound}. Appendix A gives the fields and their sources. This
+document calls a claim proved only if it is such a field.
 
 \paragraph{Reading order.} Read the entry file first. Then read the DKG and signing statements next to
 Sections 2.1 and 2.3 of the note. Read also \texttt{Scheme.lean}, \texttt{Ideal.lean} and
-\texttt{Reductions.lean}, which define the protocol, the functionalities, the games, the simulators and the
+\texttt{Reductions.lean}, which define the protocol, the functionalities (ideal trusted parties), the games, the simulators and the
 fixed reductions. Appendix B lists the differences from the sources. No claim is about Section 2.2
 of the note, the setup with $n=3f+1$. The note has no separate section for the MPC building blocks.
 
 \section{The setting}
 
 \paragraph{Parties and network.} There are $n=2t-1$ operators, and at most $t-1$ of them are corrupt. The
-rounds are synchronous, and the links are private and authenticated (GS20, Section 3.1). The adversary is
+corrupt operators form the coalition. A quorum is a set of $t$ signing operators. The
+rounds are synchronous, and links are private and authenticated (GS20, Section 3.1). The adversary is
 malicious and rushing.
 
-\paragraph{The protocol.} The protocol has three parts, namely the seed generation, the ceremonies and the
-signing. A ceremony is one protocol with three uses, namely the top tree, a bottom tree, and the signature
-of a bottom root by its top key. The scheme is leanXMSS of Section 1 of the note. The statement layer takes
-its definitions from leanVM \cite{lea26} at the pinned revision. No field of the bundle is a claim about
-plain leanXMSS.
+\paragraph{The scheme.} The scheme is leanXMSS of Section 1 of the note. A key has two layers of Merkle
+trees. Each one-time key of the top tree signs the root of one bottom tree, and the one-time keys of the
+bottom trees sign messages. A one-time key is a set of 58 hash chains (WOTS), and a signature opens one
+position of each chain. To sign, the signer tries randomizers until the hash of the message and the
+randomizer is a codeword, which gives the 58 positions. A codeword is a digest whose first 58 base-4
+digits have the sum 106 and whose other digits are zero. The search starts from a secret randomizer value
+of the key. For each bottom key $e$, threshold leanXMSS adds a commitment $c_e$ to that value. The statement layer takes its definitions from leanVM \cite{lea26} at the pinned revision.
+No field of the bundle is a claim about plain leanXMSS.
+
+\paragraph{Terms.} The protocol has three parts, the seed generation, the ceremonies and the signing.\par\smallskip
+{\small\noindent
+\begin{tabularx}{\textwidth}{@{}L{2.4cm}X@{}}
+\toprule
+Replicated sharing, PRSS & A shared value is a sum of terms, one for each set of $t-1$ operators, and
+the operators outside that set hold copies of the term. With pseudorandom secret sharing (PRSS), the
+operators get shared random values from keys of one setup, with no interaction \cite{CDI05}. \\
+Seed generation & A commit, reveal and echo protocol. It deals the public parameter $P$ of leanXMSS, the
+replicated seeds, which key the threshold PRF $F$ that a quorum evaluates together
+(Section~\ref{sec:signing}), and the pair keys, one key for each pair of
+operators. \\
+Job, batch & A job is one circuit on shared PRF values, for example the circuit of one chain of a key. A
+batch is at most $\mathsf{batchSize}$ jobs. It is one run of the GS20 protocol with one check, which
+verifies all products of the batch at once. \\
+Ceremony & It runs one PRSS setup, then the MPC evaluates the batches of a public job list
+with replicated sharing and the check of GS20, and opens every output. \\
+Tree run & The sequence of ceremonies of one tree, with the local steps between them (\lean{newTree}). For
+a bottom tree, the run is the ceremony of the tree, the local randomizer search, the signature ceremony that signs its
+root with its top key, and the check of the signature. The operators build a bottom tree when they need it, while they sign with the other
+trees. \\
+\bottomrule
+\end{tabularx}}
 
 \paragraph{Security notions.} The setup claims and strong unforgeability use different models.
 \begin{center}\small
@@ -64,7 +97,8 @@ plain leanXMSS.
 \toprule
  & Setup claims (Section~\ref{sec:dkg}) & Strong unforgeability (Section~\ref{sec:signing}) \\
 \midrule
-Notion & Simulation with a distinguisher on the joint output, with selective abort \cite{Can00,GL05} &
+Notion & Simulation with selective abort \cite{Can00,GL05}. A distinguisher gets the final state of the
+adversary and the outputs of the honest operators, and it compares the real run with the ideal run. &
 The signing game of PRAWNS (Definition 3.2) \\
 Corruption & Static. The corrupt operators of each claim are fixed before its protocol starts. & Adaptive.
 The forger corrupts operators during the game. A corruption reveals only keys, because the setup state is
@@ -76,11 +110,7 @@ the random oracle \\
 \bottomrule
 \end{tabularx}
 \end{center}
-Selective abort means that the adversary chooses the honest operators that get an output. The PRF claims
-and the claim of signing correctness use the hash model of the setup claims. The ceremony
-claim is separate from the seed generation claim, and its inputs are the keys of the operators. The
-operators build a bottom tree when they need it, while they sign with the other trees. The corrupt
-operators of a ceremony are fixed before the ceremony starts.
+The PRF claims and the claim of signing correctness use the hash model of the setup claims.
 
 \paragraph{Hashing.} $H$ is one lazy random oracle, with a separate domain for each use \cite{BR93,BDG20}.
 The PRG is AES-128, keyed by a hash of the key. The ceremony bound contains the multi-key PRF advantage
@@ -97,117 +127,106 @@ whose calls do not count. Both copies share one cache.
 explicit simulator (seed generation, ceremony) is fixed code that emulates the honest parties for free,
 and only its programming queries count. For an existential simulator (building blocks), the claim only states that it
 exists, and all its calls count, the emulation included \cite{Can00}.
-\item Strong unforgeability counts the own calls of the forger and its round-2 requests.
 \end{itemize}
 
 \paragraph{Quantification.} The bundle holds for every committee, every check field of characteristic two
-with \lean{Constants}, every fixed $\Th$ with AES-128, every circuit family and every setting. The
-constants give the check field exactly $2^{128}$ elements. The claims hold for every value of these
-constants, and no proof shows that the constants of the code are such a value. Each bound is
-a fixed expression. Some bounds contain the advantage of a fixed reduction, and such a bound is only as
-strong as the definition of that reduction.
+with \lean{Constants}, every fixed $\Th$ with AES-128, every circuit family and every setting. The check
+field has the role of the extension field of the GS20 check, and the constants give it exactly $2^{128}$
+elements. A circuit family gives a Boolean circuit for each public parameter and each kind of job. A
+setting gives the batch size and the reshare mode. The claims hold for every value of these constants, and no proof shows that the
+constants of the code are such a value. Each bound is a fixed expression where the sources write
+``negligible'' or ``overwhelming''. Some bounds contain the advantage
+of a fixed reduction, and such a bound is only as strong as the definition of that reduction.
 
 \section{The setup by DKG}\label{sec:dkg}
 The target is the trusted dealer $\mathsf{KeyGen}$ of PRAWNS (Section 3.1), adapted to the trees of
-leanXMSS. The note claims malicious security with abort, but it states no formal theorem. The model has
-two protocols.
-\begin{center}\small
-\begin{tabularx}{\textwidth}{@{}lXl@{}}
-\toprule
-Protocol & Steps & Security \\
-\midrule
-Seed generation & A commit, reveal and echo protocol deals the public parameter $P$ of leanXMSS, the
-replicated seeds and the pair keys. & Proved \\
-Ceremony & It runs one PRSS setup. Then the MPC evaluates the batches of a public job list and opens every
-output. The MPC uses replicated sharing \cite{CDI05} and the check of GS20. & Stated and not proved \\
-\bottomrule
-\end{tabularx}
-\end{center}
-The ceremony has three uses, and each use has its own PRSS setup.
+leanXMSS. The note claims malicious security with abort, but states no formal theorem. The model has
+two protocols, the seed generation and the ceremony. It has three uses, each with its own PRSS setup.
 \begin{itemize}\itemsep0pt
 \item The ceremony of the top tree hashes the chains of each top key and opens the chain ends. Each
 operator then builds the tree on these ends in the clear.
-\item The ceremony of a bottom tree does the same for the keys of that tree. It also opens the masked chain
-values and the commitment $c_e$ of each key, and the randomizer value of its top key.
+\item The ceremony of a bottom tree does the same for the keys of that tree. It also opens the masked
+chain values, which are the two inner values of each chain with a PRF value added to each. It opens the
+commitment $c_e$ of each key and the randomizer value of its top key.
 \item The signature ceremony signs the root of a bottom tree with its top key. Each operator first finds
-the codeword of the root by a local search. The ceremony opens the chain values of the signature, and each
-operator checks the signature against the top root.
+the codeword of the root by a local randomizer search. The ceremony opens the chain values of the
+signature, and each operator checks the signature against the top root.
 \end{itemize}
 The keygen ceremony of the note is the seed generation, then the ceremony of the top tree. The
-bottom-tree ceremony of the note is two ceremonies of the model. No security claim covers the local
+bottom-tree ceremony of the note is two model ceremonies. No security claim covers the local
 steps.
 
 \subsection*{The seed generation}
 \paragraph{Seed generation security} (\lean{SeedGenSecurityStatement}). The commit, reveal and echo
-protocol securely computes $\Fn{seedGen}$ with selective abort against a static coalition. With the fixed
-seed simulator, the error is $(q+s_{\mathrm{kg}})^2/2^{256}$. The dealer is $\mathsf{KeyGen}'$ of
-PRAWNS (Section 5.1), adapted to leanXMSS with selective abort. The number
+protocol securely computes $\Fn{seedGen}$ with selective abort against a static coalition. This
+functionality is the dealer $\mathsf{KeyGen}'$ of PRAWNS (Section 5.1), adapted to leanXMSS. With the fixed seed simulator, the error is $(q+s_{\mathrm{kg}})^2/2^{256}$. The number
 $s_{\mathrm{kg}}=\mathsf{seedGenSecrets}$ counts honest secret inputs of the hash.
 \paragraph{Seed generation completeness} (\lean{SeedGenCompletenessStatement}). An honest run gives the keys
 of the dealer, except when two derived keys collide. The error is $\mathsf{derivedKeyCollision}=(\binom
 n{t-1}^2+\binom n2^2)/2^{256}$.
 
 \subsection*{The ceremonies}
-A ceremony evaluates the jobs of a public job list, which is \lean{topJobs}, \lean{bottomJobs} or
-\lean{signJobs}. A job is one circuit on shared PRF values, for example the circuit of one chain of a key.
-The jobs run in batches of at most $\mathsf{batchSize}$ jobs, one batch after another. A batch is one run
-of the GS20 protocol with one check. A tree run (\lean{newTree}) is the sequence of ceremonies of one tree,
-with the local steps between them. A signature ceremony continues the two counters of the MPC state, the
-round label and the batch tag, from the ceremony before it. For a check with $d$ coins and
-$R$ halving steps, define
+A ceremony evaluates one of the public job lists \lean{topJobs}, \lean{bottomJobs} or \lean{signJobs}. A
+signature ceremony continues the two counters of the MPC state, the round label and the batch tag, from
+the ceremony before it. For a check of GS20 with $d$ random coins and $R$ halving steps, which shorten the checked
+vector of products, define
 \[
  e(d,R,q)=\frac{d+2(R+1)}{2^{128}-2}+\frac{(R+2)q}{2^{256}},\quad h(R,q)=\frac{(q+2n\binom
 n{t-1}+R+2)^2}{2^{256}}.
 \]
 These are \lean{checkErrorOf} and \lean{checkHashError}. The second term of $e$ is the cost of a hash call
 that hits the key input of a coin before the coin opens. The key input holds two field elements that are
-secret until then. A ceremony adds one $e$ for each batch, with the maximum coin count and halving count
-over its batches. An honest check can also abort. The next formulas give the failure probability of its
-coins and its abort error.
+secret until then. The error $\mathsf{treeCheckError}$ of a ceremony adds one $e$ for each batch, with the
+maximum coin count and halving count over all batches of all ceremonies. An honest check can also abort. The next formulas
+give the failure probability of its coins and its abort error.
 \[
  \mathsf{coinFailure}(R)=\mathsf{sliceBits}/2^{128}+(R+1)(2/2^{128})^{2^{64}},\quad
  \mathsf{abortErrorOf}(R)=\mathsf{coinFailure}(R)+(R+2)^2/2^{257}.
 \]
-\lean{DealtInputs} says that the inputs come from one dealing of the parameter, the seeds
-and the pair keys for all operators. Only the two dealer claims assume that the circuits compute $\Th$
-(\lean{CircuitsCompute}).
+The ceremony claim is separate from the seed generation one, and its inputs are the keys of the operators. \lean{DealtInputs} says that these inputs come
+from one dealing of the parameter, seeds and pair keys for all operators. Only the two dealer
+claims assume that circuits compute $\Th$ (\lean{CircuitsCompute}).
 \paragraph{Ceremony security} (\lean{TreeSecurityStatement}, stated and not proved). Assume
 $\mathsf{batchSize}>0$ and \lean{DealtInputs}. Then for every circuit family, every start of the labels and
 tags, and each of the three job lists, one ceremony would securely compute $\Fn{ceremony}$ with selective
-abort against its own static coalition. The simulator is the fixed ceremony simulator, and the error is
+abort against its own static coalition. The functionality $\Fn{ceremony}$ computes the jobs in the clear
+on the seeds and leaks $P$ and every output. The simulator is the fixed ceremony simulator, and the error is
 \[
  \mathsf{treeCheckError}+ (q+s_{\mathrm{tree}})^2/2^{256}+k^2/2^{129}+\operatorname{Adv}^{\rm
 prf}_{\mathsf{hiddenStreams}}(\mathsf{prgReduction}).
 \]
-The functionality $\Fn{ceremony}$ computes the jobs in the clear on the seeds and leaks $P$ and every
-output. It lets the adversary choose the operators that receive the output. In the last term, the
-reduction takes the real execution of the ceremony and its distinguisher, exactly as the Lean declaration
-states. The number $s_{\mathrm{tree}}=\mathsf{treeSecrets}$ counts the secret hash inputs of the honest operators,
-and a counted call that hits one of them is a part of the error. The number $k=\binom n{t-1}+\binom n2$
-counts the PRSS keys that are hashed to AES keys. The terms count the batches
-of this one job list. This claim is no field of the bundle, and it does not join the two ceremonies of
-a bottom tree.
+In the last term, the reduction takes the real execution of the ceremony and its distinguisher, exactly as
+the Lean declaration states. The number $s_{\mathrm{tree}}=\mathsf{treeSecrets}$ counts the secret hash
+inputs of the honest operators, and a counted call that hits one of them is a part of the error. The number
+$k=\binom n{t-1}+\binom n2$ counts the PRSS keys that are hashed to AES keys. The terms count the batches
+of this one job list. This claim is no field of the bundle.
 \paragraph{Tree completeness} (\lean{TreeCompletenessStatement}). Assume $\mathsf{batchSize}>0$ and
-\lean{DealtInputs}. Then for every circuit family, an honest tree run gives the output of $\Fn{tree}$
-within error $\mathsf{treeAbortError}=B\,\mathsf{coinFailure}(R)+[B(R+2)]^2/2^{257}$. Here $B$ counts the
-batches of all ceremonies of the tree, and $R$ is the maximum halving count over the batches. For a bottom
-tree, the run is the ceremony of the tree, the local search, the signature ceremony and the check of the
-signature.
+\lean{DealtInputs}. Then for every circuit family, an honest tree run gives the output of $\Fn{tree}$,
+which computes the whole tree in the clear, within error
+$\mathsf{treeAbortError}=B\,\mathsf{coinFailure}(R)+[B(R+2)]^2/2^{257}$. Here $B$ counts the
+batches of all ceremonies of the tree, and $R$ is the maximum halving count over all batches of all
+ceremonies.
 \paragraph{Dealer trees} (\lean{DealerTreeStatement}). Assume \lean{CircuitsCompute} and
-$\mathsf{batchSize}>0$. Then for every parameter, seeds, supplied top tree and top or bottom tree, the dealer
-gives the reference tree of the key generation of the signing game. The two runs have the same joint
-distribution of the tree and the next hash cache, from every initial cache.
+$\mathsf{batchSize}>0$. Then for every parameter, seeds, supplied top tree and top or bottom tree, the
+dealer of the tree functionality gives the reference tree of the key generation of the signing game. The
+two runs have the same joint distribution of the tree and the next hash cache, from every initial cache.
 \paragraph{Dealer success} (\lean{TreeSuccessStatement}). Assume \lean{CircuitsCompute} and
 $\mathsf{batchSize}>0$. Then for every parameter, seeds and bottom index, the dealer builds a top tree and
 then that bottom tree on it, except with probability at most $(1-p)^L$. Here $p=\mathsf{codewordProbability}$
-and $L$ is the limit of randomizer attempts. The term $(1-p)^L$ bounds the failure probability of the
-search for the top signature.
+is the probability that a uniform digest is a codeword, and $L$ is the limit of attempts. The term
+$(1-p)^L$ bounds the failure probability of the search for the top signature.
 
 \subsection*{The MPC building blocks}
-The building-block claims adapt the lemmas of GS20 to one batch of the model. Each claim holds on its valid inputs
-below. These claims do not give the security of a ceremony, which is stated and not proved.
-\begin{center}\small
-\begin{tabularx}{\textwidth}{@{}lX@{}}
+The building-block claims adapt the lemmas of GS20 to one batch of the model. These claims do not give
+the security of a ceremony, which is stated and not proved. The ideal functionality $\Fn{rand}$ gives
+random sharings, and the PRSS replaces it in a ceremony. ``Up to an additive attack'' means that the
+adversary can add offsets of its choice to the shares of a product. A tuple holds shared vectors of two
+factors and of their claimed products. In the building-block claims, $d$ and $R$ are the coin and halving
+counts for the number of input tuples. GS20 gives no completeness lemma. A source marked ``honest run'' in
+Appendix A gives only a protocol.
+Each claim holds on its valid inputs in this table.
+{\small
+\begin{xltabular}{\textwidth}{@{}lX@{}}
 \toprule
 Valid inputs & Requirement \\
 \midrule
@@ -221,10 +240,7 @@ all its copies whenever they agree on the values that corrupt operators fill. \\
 at their honest holders and are empty at the other honest operators. All holders of a term hold the same
 value, corrupt holders included. \\
 \bottomrule
-\end{tabularx}
-\end{center}
-In the building-block claims, $d$ and $R$ are the coin and halving counts for the number of input tuples.
-GS20 gives no completeness lemma. A source marked ``honest run'' gives only a protocol.
+\end{xltabular}}
 \paragraph{Coin} (\lean{CoinStatement}). In the $\Fn{rand}$ hybrid and on \lean{SameCount}, the coin
 protocol securely computes $\Fn{coin}$ with selective abort and error $0$ (GS20, Lemma 3).
 \paragraph{Multiplication} (\lean{MultStatement}). In the $\Fn{rand}$ hybrid, on \lean{SameCount}, in every
@@ -281,21 +297,21 @@ unforgeability, which goes beyond the one-time unforgeability of PRAWNS (Definit
 message, each output signature verifies. The quorum fails with probability at most $2(1-p)^L$, which
 accounts for the top-signature search and the signing search.
 \paragraph{Strong unforgeability} (\lean{ThresholdLeanXmssStronglyUnforgeable}). Take an adaptive forger
-whose own calls of $H$ and of the PRG, plus its round-2 requests, are at most $q$ in total. This bound holds
-on every path and for every oracle answer. Then the forger wins with probability at most
+whose own calls of $H$ and of the PRG, plus its round-2 requests, are at most $q$ in total. Then the
+forger wins with probability at most
 \[
  \boxed{\ (q+2^{15}+384)/2^{127}+Nq/2^{256}+N^2/2^{256}\ }.
 \]
 Rejected round-2 requests also count. The calls of the dealer, of the honest operators and of the final
-verification do not count. The fixed slack, which is the constant next to the budget in the first term,
-accounts for the security loss from these uncounted calls. It is no limit on the number of these calls. A
+verification do not count. The fixed slack, the constant next to the budget in the first term, accounts for
+the security loss from these uncounted calls and does not limit their number. A
 committee with $n\le 33$ has $N<2^{32}$. For such a committee, the two last terms are less than $2^{-80}$
 times the first term, so the bound is $\approx(q+2^{15}+384)/2^{127}$.
 \paragraph{The budget of every party} (\lean{SigningSecurityStatement}). In this second form of the claim,
-$q$ bounds the calls of $H$ and of the PRG by every party in the game runs. Then the bound is
-$q/2^{127}+Nq/2^{256}+N^2/2^{256}$. This claim is outside the bundle, with its own theorem
-\lean{signingSecurityClosed} and its own axiom guard. For a fixed $q$, the two budgets admit different
-classes of forgers.
+$q$ bounds the calls of $H$ and of the PRG by every party in the game runs, as leanXMSS does at revision
+\texttt{1acdff19}. Then the bound is $q/2^{127}+Nq/2^{256}+N^2/2^{256}$. This claim is outside the
+bundle, with its own theorem \lean{signingSecurityClosed} and its own axiom guard. For a fixed $q$, the two
+budgets admit different classes of forgers.
 \paragraph{Comparison with leanXMSS.} Rows A7 and B12 of Appendix B give the details.
 \begin{center}\small
 \begin{tabularx}{\textwidth}{@{}lXX@{}}
@@ -312,9 +328,9 @@ Game & Generic game with one signer that has no state & Adaptive corruption and 
 \end{center}
 
 \section{The deployment contract}\label{sec:contract}
-No theorem composes the setup and the signing. The proposed composition needs these four rules.
-\begin{center}\small
-\begin{tabularx}{\textwidth}{@{}rL{2.9cm}XL{4.1cm}@{}}
+The proposed composition of the setup and the signing needs these four rules.
+{\small
+\begin{xltabular}{\textwidth}{@{}rL{2.9cm}XL{4.1cm}@{}}
 \toprule
  & Rule & Requirement & Needed for \\
 \midrule
@@ -336,17 +352,16 @@ the composition \\
 erases the state of that phase, with its PRSS keys. It keeps only its keys and its tree outputs. & The
 corruption model of the signing game \\
 \bottomrule
-\end{tabularx}
-\end{center}
+\end{xltabular}}
 
 \section{What is not proved}\label{sec:open}
 
 \paragraph{The claims.}
 \begin{itemize}\itemsep0pt
 \item Ceremony security is stated and not proved, for each of its three uses. So the security of the whole
-keygen ceremony, and of DKG followed by signing, remains open.
-\item No claim joins the two ceremonies of a bottom tree against a corrupt coalition. The open claim covers
-one ceremony with a job list that is fixed in advance. This join is an open step of the composition below.
+keygen ceremony, and of DKG followed by signing, remains open. Five parts fall under the open claim \lean{TreeSecurityStatement}. They are the real
+building blocks in the place of the ideal ones, the PRSS in the place of $\Fn{rand}$ (B2), the sequence of
+batches (B6), the echo of a PRSS setup, and the opening of $c_e$ by the MPC (B8).
 \item No claim covers liveness, concurrent ceremonies, concurrent batches, or adaptive corruption during
 the setup or between ceremonies. A corrupt operator can stop any ceremony or signature.
 \item The distinguisher of each simulation claim gets the final joint output and can call the oracles.
@@ -360,10 +375,10 @@ leanXMSS. It is not a theorem.
 \item No claim is in the random-permutation model, which leanXMSS uses for its end statement.
 \end{itemize}
 
-\paragraph{The composition.} The composition is a paper sketch that nobody has reviewed. It follows the
+\paragraph{The composition.} The composition is an unreviewed paper sketch that follows the
 sequential composition of Canetti \cite{Can00}. The seeds enter the ceremonies only
 through $F$ at tree points. Each ceremony uses fresh PRSS keys. Only the signing masks use the pair keys. A
-tree with correct outputs is a function of $P$, the seeds and $H$. The sketch has three steps.
+tree with correct outputs is a function of $P$, the seeds and $H$.
 \begin{enumerate}\itemsep0pt
 \item Replace the seed generation by its dealer, at the cost of its simulation error.
 \item Replace each ceremony, in order, by its dealer, at the cost of its proposed error. Ceremony security is
@@ -375,13 +390,14 @@ bound then applies through the $\Th$ heuristic.
 Four issues remain in step 2.
 \begin{itemize}\itemsep0pt
 \item Each ceremony needs the hash budget of the full system, including the earlier phases and the signing.
-An archived proof attempt, which is not complete, stopped at this issue.
+An archived, incomplete proof attempt stopped at this issue.
 \item The ceremony claim starts with an empty $H$ cache. So the composition must replay the earlier calls
 at the start, or the claim must be extended to a starting cache.
 \item The simulator of the ceremony must work beside the emulated signing service.
 \item The job list of a signature ceremony comes from the output of the ceremony before it, but the open
-claim fixes the job list first. So the two ceremonies of a bottom tree need a composition lemma of their
-own, with one shared oracle. No claim states this lemma.
+claim fixes the job list of one ceremony in advance. So the two ceremonies of a bottom tree need their own
+composition lemma, with one shared oracle. No claim joins them against a corrupt
+coalition.
 \end{itemize}
 The sketch of that join has these points.
 \begin{itemize}\itemsep0pt
@@ -406,10 +422,9 @@ two side-by-side readings of the code and the model, the second a check of the f
 start with random keys of different lengths. No proof separates all domains. The model needs injective
 encodings with distinct tags, fixed-width fields or length prefixes, for every use including $\Th$, the PRF
 and the masks. For signing alone, the present input lengths separate the PRF (48 bytes), the masks (84) and
-the honest $\Th$ inputs (64, 80 or 960). The forger can query every input. This observation is not a Lean
-theorem.
+the honest $\Th$ inputs (64, 80 or 960). The forger can query every input. This observation is not a Lean theorem.
 \item No theorem connects the circuits, the constants or the wire layout of the code to
-\lean{CircuitsCompute} and \lean{Constants}. Nobody has checked the circuits of the code against
+\lean{CircuitsCompute} and \lean{Constants}, and nobody has checked the circuits against
 \lean{CircuitsCompute}.
 \item The code uses acknowledgements where the note assumes consensus for one message per key.
 \item The code drops memory without clearing it.
@@ -458,12 +473,12 @@ Field & Lean claim & Source item & State \\
 \section{Differences to the sources}
 Table B.1 lists the basic differences in the model and in the assumptions, and Table B.2 lists the
 adaptations of the protocol. Each claim in the last column of Table B.2 is a proved field of the bundle
-for the adapted protocol. The three points below are not differences.
+for the adapted protocol. The module documentation also lists the deviations. The two points below are
+not differences.
 \begin{itemize}\itemsep0pt
 \item GS20 has $t$ corrupt parties among $n=2t+1$, and this model has $t-1$ among $n=2t-1$.
 \item The adversary is rushing. GS20 has malicious parties and synchronous channels (its Section~3.1),
 but it does not name a rushing adversary.
-\item Each bound here is a fixed expression where the sources write ``negligible'' or ``overwhelming''.
 \end{itemize}
 {\footnotesize
 \begin{xltabular}{\textwidth}{@{}l>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X@{}}
@@ -575,12 +590,6 @@ signature is a second ceremony with its own PRSS setup, after the local search. 
 \lean{treeCompleteness}, for the honest run \\
 \bottomrule
 \end{xltabular}}
-\noindent Five parts fall under the open claim \lean{TreeSecurityStatement}, which is stated and not
-proved. They are the real building blocks in the place of the ideal ones, the PRSS in the place of $\Fn{rand}$ (B2),
-the sequence of batches (B6), the echo of a PRSS setup, and the opening of $c_e$ by the MPC (B8). No claim
-covers the join of the two ceremonies of a bottom tree (B13). The separate claim
-\lean{SigningSecurityStatement}, outside the bundle, uses the budget of every party, as leanXMSS does at
-revision \texttt{1acdff19}. The module documentation also lists the deviations.
 {\small
 \begin{thebibliography}{CDG+18}\itemsep0pt
 \bibitem[BBD{\etalchar{+}}26]{BBD+26} Dan Boneh, Benedikt B\"unz, Justin D., Yavor Litchev, and Kamilla
