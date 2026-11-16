@@ -368,11 +368,23 @@ theorem honest_mult_support (K : Constants C E) (mode : ReshareMode) (X Y : C.Pa
     ∃ z : Shares C Bit, (∀ g, ∑ T, z T g = ∑ i, mulRep K (localContext i) (X i) (Y i) g) ∧
       o = fun i => some (.inl (.inl fun T g => if i ∈ C.holders T ∧ g < n then z T g else 0)) := by
   simp only [mainFunctionalities, Functionality.sum, FmultBit, Fmult, leak, sample, OracleComp.lift] at ho
-  simp [noCoalition, simulateQ_bind, simulateQ_query, replyImpl', mainReply] at ho
+  simp only [replyImpl', mainReply, Option.mem_def, Option.some.injEq, forall_eq', Sum.isLeft_inl, implies_true,
+    ↓reduceIte, add_apply_inl, Option.bind_some, Sum.getLeft?_inl, noCoalition, Finset.notMem_empty, ↓dreduceIte,
+    Option.map_some, false_or, not_false_eq_true, Finset.filter_true, Option.getD_some, Finset.mem_univ,
+    Finset.sum_erase_eq_sub, false_and, exists_false, add_zero, ite_not, bind_pure_comp, simulateQ_bind,
+    simulateQ_query, OracleQuery.input_query, add_apply_inr, OracleQuery.cont_query, id_map, simulateQ_map, map_bind,
+    Functor.map_map, Option.map_ite, MonadAttach.support_bind, MonadAttach.mem_support, MonadAttach.support_map,
+    Set.mem_iUnion, Set.mem_image, exists_prop, Prod.exists] at ho
   dsimp only [HAdd.hAdd, QueryImpl.add] at ho
-  simp at ho
+  simp only [PFunctor.add_eq_add, ofPFunctor_add, ofPFunctor_toPFunctor, PFunctor.hAdd_B, simulateQ_bind,
+    simulateQ_query, OracleQuery.input_query, add_apply_inr, OracleQuery.cont_query, id_map,
+    MonadAttach.canReturn_bind_iff, Sum.exists, simulateQ_pure, MonadAttach.canReturn_pure_iff, exists_eq_right',
+    exists_and_right, Prod.exists] at ho
   simp only [QueryImpl.add] at ho
-  simp [simulateQ_bind, simulateQ_query, QueryImpl.add, OracleComp.lift] at ho
+  simp only [OracleComp.lift, simulateQ_bind, simulateQ_query, OracleQuery.input_query, add_apply_inr,
+    OracleQuery.cont_query, QueryImpl.add, map_pure, id_eq, pure_bind, simulateQ_pure, MonadAttach.canReturn_pure_iff,
+    Sum.inl.injEq, Prod.mk.injEq, reduceCtorEq, exists_const, false_and, or_false, ↓existsAndEq, and_true,
+    Finset.mem_univ, ↓reduceIte, exists_and_right, Pi.zero_apply, exists_eq_left] at ho
   have hfi : (firstInput fun i => some (X i, Y i, n)).2.2 = n := by rw [firstInput_some_pos]
   set m := (firstInput fun i => some (X i, Y i, n)).2.2 with hm
   rw [← hfi]
@@ -387,7 +399,7 @@ theorem honest_mult_support (K : Constants C E) (mode : ReshareMode) (X Y : C.Pa
     exact this
   · funext i
     simp only [KnownTo, Finset.notMem_empty, false_and, exists_false, if_false]
-    congr 3
+    refine congrArg _ (congrArg _ (congrArg _ ?_))
     funext T g
     have h0 : ∀ a : Bit, Add.add a 0 = a := fun a => add_zero a
     split_ifs <;> simp_all [base, m, Finset.sum_erase_eq_sub]
@@ -1212,10 +1224,23 @@ theorem honest_rerand_support (X Y : C.Party → Shares C Bit) (n : ℕ) o
   have hpos : 0 < C.n := by have := C.one_le_t; unfold Committee.n; omega
   have : Nonempty C.Party := ⟨⟨0, hpos⟩⟩
   simp only [mainFunctionalities, Functionality.sum, FmultBit, Fmult, leak, sample, OracleComp.lift] at ho
-  simp [noCoalition, simulateQ_bind, simulateQ_query, replyImpl, mainReply] at ho
+  simp only [replyImpl, mainReply, Option.mem_def, Option.some.injEq, forall_eq', Sum.isLeft_inl, implies_true,
+    ↓reduceIte, add_apply_inl, Option.bind_some, Sum.getLeft?_inl, Sum.isLeft_inr, Bool.false_eq_true, forall_const,
+    Sum.isRight_inr, Sum.getRight?_inr, noCoalition, Finset.notMem_empty, ↓dreduceIte, Option.map_some, false_or,
+    not_false_eq_true, Finset.filter_true, Option.getD_some, Finset.mem_univ, Finset.sum_erase_eq_sub, false_and,
+    exists_const, add_zero, ite_not, bind_pure_comp, simulateQ_bind, simulateQ_query, OracleQuery.input_query,
+    add_apply_inr, OracleQuery.cont_query, id_map, simulateQ_map, map_bind, Functor.map_map, Option.map_ite,
+    MonadAttach.support_bind, MonadAttach.mem_support, MonadAttach.support_map, Set.mem_iUnion, Set.mem_image,
+    exists_prop, Prod.exists] at ho
   dsimp only [HAdd.hAdd, QueryImpl.add] at ho
-  simp at ho
-  simp [simulateQ_bind, simulateQ_query, QueryImpl.add, OracleComp.lift] at ho
+  simp only [PFunctor.add_eq_add, ofPFunctor_add, ofPFunctor_toPFunctor, PFunctor.hAdd_B, simulateQ_bind,
+    simulateQ_query, OracleQuery.input_query, add_apply_inr, OracleQuery.cont_query, id_map,
+    MonadAttach.canReturn_bind_iff, Sum.exists, simulateQ_pure, MonadAttach.canReturn_pure_iff, exists_and_right,
+    Prod.exists, exists_eq_right'] at ho
+  simp only [OracleComp.lift, QueryImpl.add, simulateQ_bind, simulateQ_query, OracleQuery.input_query,
+    add_apply_inr, OracleQuery.cont_query, map_pure, id_eq, pure_bind, simulateQ_pure, MonadAttach.canReturn_pure_iff,
+    reduceCtorEq, exists_const, false_and, Sum.inr.injEq, Prod.mk.injEq, false_or, ↓existsAndEq, and_true,
+    Finset.mem_univ, ↓reduceIte, exists_and_right, Pi.zero_apply, exists_eq_left] at ho
   have hfi : (firstInput fun i => some (X i, Y i, n)).2.2 = n := by rw [firstInput_some_pos]
   set m := (firstInput fun i => some (X i, Y i, n)).2.2 with hm
   rw [← hfi]
@@ -1230,7 +1255,7 @@ theorem honest_rerand_support (X Y : C.Party → Shares C Bit) (n : ℕ) o
     exact this
   · funext i
     simp only [KnownTo, Finset.notMem_empty, false_and, exists_false, if_false]
-    congr 3
+    refine congrArg _ (congrArg _ (congrArg _ ?_))
     funext T g
     have h0 : ∀ a : Bit, Add.add a 0 = a := fun a => add_zero a
     split_ifs <;> simp_all [base, m, Finset.sum_erase_eq_sub]
@@ -1944,45 +1969,46 @@ theorem mainSimLayers_bound (mode : ReshareMode) (jobs : List Circuit) :
     · exact isQueryBoundP_pure Counted _ _
     · exact mainSimLayers_bound mode jobs ls st data
 
-set_option maxHeartbeats 2000000 in
 include hround in
 theorem mainSimOpen_bound (mode : ReshareMode) (jobs : List Circuit) (st : A.State)
     (receivers : Finset C.Party) (known : C.Party → Shares C Bit) (outputs : List (List Bit)) :
     IsQueryBoundP (mainSimOpen K D A mode jobs st receivers known outputs)
       Counted (step + 2 * C.n * C.terms.length) := by
   unfold mainSimOpen
-  apply IsQueryBoundP.mono (n := 0 + (C.n * C.terms.length + (step + C.n * C.terms.length))) _
-    (Nat.le_of_eq (by ring))
-  refine main_bound_bind (n := 0) (by exact main_bound_sample _) fun fresh => ?_
-  try dsimp only
-  refine main_bound_bind (n := C.n * C.terms.length) (by
-    refine main_bound_sequenceFin C.terms.length _ (fun i => ?_)
-    exact main_bound_ite _ (mainCopyHashes_bound _ _) (isQueryBoundP_pure Counted _ _)) fun ds => ?_
-  refine main_bound_ite _ (isQueryBoundP_pure Counted _ _) ?_
-  refine main_bound_bind (hround _ _) fun r => ?_
-  apply IsQueryBoundP.mono (n := C.n * C.terms.length + 0) _ (Nat.add_zero _).le
-  refine main_bound_bind (n := C.n * C.terms.length) (by
-    refine main_bound_sequenceFin C.terms.length _ (fun i => ?_)
+  -- Reducible unification keeps Lean from evaluating the program in each bound type.
+  with_reducible
+    refine IsQueryBoundP.mono (n := 0 + (C.n * C.terms.length + (step + C.n * C.terms.length))) ?_
+      (Nat.le_of_eq (by ring))
+    refine main_bound_bind (n := 0) (by exact main_bound_sample _) fun fresh => ?_
+    try dsimp only
+    refine main_bound_bind (n := C.n * C.terms.length) (by
+      refine main_bound_sequenceFin C.terms.length _ (fun i => ?_)
+      exact main_bound_ite _ (mainCopyHashes_bound _ _) (isQueryBoundP_pure Counted _ _)) fun ds => ?_
     refine main_bound_ite _ (isQueryBoundP_pure Counted _ _) ?_
-    refine main_bound_ite _ (isQueryBoundP_pure Counted _ _) ?_
-    apply IsQueryBoundP.mono (n := C.terms.length + 0) _ (Nat.add_zero _).le
-    exact main_bound_bind (mainCopyHashes_bound _ _) (fun _ => isQueryBoundP_pure Counted _ 0))
-    (fun accepts => isQueryBoundP_pure Counted _ 0)
+    refine main_bound_bind (hround _ _) fun ⟨st, sent⟩ => ?_
+    refine IsQueryBoundP.mono (n := C.n * C.terms.length + 0) ?_ (Nat.add_zero _).le
+    refine main_bound_bind (n := C.n * C.terms.length) (by
+      refine main_bound_sequenceFin C.terms.length _ (fun i => ?_)
+      refine main_bound_ite _ (isQueryBoundP_pure Counted _ _) ?_
+      refine main_bound_ite _ (isQueryBoundP_pure Counted _ _) ?_
+      refine IsQueryBoundP.mono (n := C.terms.length + 0) ?_ (Nat.add_zero _).le
+      exact main_bound_bind (mainCopyHashes_bound _ _) (fun _ => isQueryBoundP_pure Counted _ 0))
+      (fun accepts => isQueryBoundP_pure Counted _ 0)
 
-set_option maxHeartbeats 2000000 in
 include hanswer hround in
 theorem mainSimTail_bound (mode : ReshareMode) (jobs : List Circuit) (st : A.State)
     (data : MainSimData C) (outputs : List (List Bit)) :
     IsQueryBoundP (mainSimTail K D A mode jobs st data outputs)
       Counted (3 * step + 2 * C.n * C.terms.length) := by
   unfold mainSimTail
-  apply IsQueryBoundP.mono (n := step + (step + (step + 2 * C.n * C.terms.length))) _ (by omega)
-  refine main_bound_bind (hanswer _ _) fun r => ?_
-  try dsimp only
-  refine main_bound_ite _ (isQueryBoundP_pure Counted _ _) ?_
-  refine main_bound_bind (hanswer _ _) fun r' => ?_
-  exact main_bound_ite _ (isQueryBoundP_pure Counted _ _)
-    (mainSimOpen_bound K D A step hround mode jobs _ _ _ _)
+  with_reducible
+    apply IsQueryBoundP.mono (n := step + (step + (step + 2 * C.n * C.terms.length))) _ (by omega)
+    refine main_bound_bind (hanswer _ _) fun r => ?_
+    try dsimp only
+    refine main_bound_ite _ (isQueryBoundP_pure Counted _ _) ?_
+    refine main_bound_bind (hanswer _ _) fun r' => ?_
+    exact main_bound_ite _ (isQueryBoundP_pure Counted _ _)
+      (mainSimOpen_bound K D A step hround mode jobs _ _ _ _)
 
 include hanswer hround in
 theorem mainSimulator_answer_bound (mode : ReshareMode) (jobs : List Circuit)

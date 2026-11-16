@@ -67,6 +67,9 @@ theorem route_spec (seeds : C.Term → HashOutput) (hinj : Function.Injective se
     (z : C.Term × CPoint) : route seeds (key seeds z) = some z :=
   (route_spec seeds hinj _ z).mpr rfl
 
+-- Unification must not compute the decision in `route`.
+attribute [local irreducible] route
+
 abbrev ShareCache (C : Committee) := C.Term × CPoint → Option SigningShareLazy.HashOutput
 
 def merge (seeds : C.Term → HashOutput) (rest : HashCache C) (share : ShareCache C) :
@@ -432,7 +435,6 @@ theorem ordinary_uncounted (P : PublicParameter) (seeds : C.Term → HashOutput)
   simp only [deferredQuery, HasQuery.instOfMonadLift_query, simulateQ_spec_query]
   rfl
 
-set_option maxHeartbeats 1600000 in
 /-- The source's silent fill and the lazy table's one-cell fill make the same draw. -/
 theorem fillTerm_merge (P : PublicParameter) (seeds : C.Term → HashOutput)
     (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
@@ -638,7 +640,6 @@ theorem fillTerms_merge (P : PublicParameter) (seeds : C.Term → HashOutput)
       simp only [simulateQ_map, StateT.run_map, ih, Functor.map_map]
       rfl
 
-set_option maxHeartbeats 1600000 in
 /-- Full lazy completion, including repeat completion, has the actual atomic
 source completion law after merging the cache. Its bad metadata is unrestricted. -/
 theorem complete_merge (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -889,7 +890,6 @@ theorem readStep_run (P : PublicParameter) (seeds : C.Term → HashOutput)
   simp only [SigningShareLazy.lazyImpl, SigningShareLazy.impl, StateT.run, pure_bind]
 
 set_option linter.constructorNameAsVariable false in
-set_option maxHeartbeats 1600000 in
 /-- The constrained read preserves every source-observable compiler field. -/
 theorem readStep_merge (P : PublicParameter) (seeds : C.Term → HashOutput)
     (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)

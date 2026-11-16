@@ -34,6 +34,7 @@ open SigningCompilerO1Frame SigningCompilerO1Pre SigningCompilerO1Reads SigningC
 open SigningCompilerSyncRealRead SigningCompilerSyncLocalRead SigningCompilerSyncHonestRead
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
+attribute [local irreducible] route MonadAttach.support
 
 /-- `relTriple_simulateQ_until` for a program with a query alphabet. The step holds at the allowed
 queries. -/
@@ -198,7 +199,6 @@ theorem hash_step (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
     fun p hp => hframe.pending p (hpend p hp)⟩)
 
 set_option linter.constructorNameAsVariable false in
-set_option maxHeartbeats 800000 in
 /-- A hash program with no bottom base input, for the relation without the top clauses. Both sides
 return the same value, the source state does not move, the log cache of the real side resolves the
 program, and each pending answer stays. -/
@@ -225,10 +225,9 @@ theorem hashProgram_core (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) 
       (compBackend x q s pads u rest noise))
     (RealStop q) (fun z : SourceState C × CompState C => Stop z.2) _ _
     (fun t st h => readCall_stop prims x q s pads u rest (.inl (.hash t)) st h)
-    (fun t st h r hr => fuse_stop (spec := HashSpec)
+    (fuse_stop (spec := HashSpec)
       (fun input => sourceHashX x.1 x.2.1 (.hash input)) (compBackend x q s pads u rest noise)
-      (fun t' st' h' r' hr' => backendT_stop _ _ _ q s pads _ _ noise rest t' st' h' r' hr')
-      t st h r hr)
+      (backendT_stop _ _ _ q s pads _ _ noise rest))
     (fun input hin a' b' hs' ha' hb' => hash_step prims x q s pads u rest noise hkeys top rev cCore
       cTime b.1.base b.1.starts b.2 input hin a' b' hs' ha' hb') oa hbase a (b.1.base, b.2)
     (Or.inr (Or.inr ⟨rfl, hs, hmark, fun _ h => h⟩))
@@ -246,7 +245,6 @@ theorem hashProgram_core (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) 
     honest_resolves prims x s pads u rest noise (SigningHitProof.forestHash oa) a hlog hpriv ra hra
   exact Or.inr (Or.inr ⟨hval, hsrc, hres, hpre, hm, hcarried, hle, hpend⟩)
 
-set_option maxRecDepth 100000 in
 /-- The hash-program coupling inside a handler, from the coupling without the top clauses. -/
 theorem hashProgram_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)
     (rev : HiddenKey → Option Digest) (cCore cTime : Carried C) {α : Type}

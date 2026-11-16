@@ -87,7 +87,6 @@ theorem realHonest_stop {α : Type} (oa : OracleComp HashSpec α) (st : RealStat
     (fun t st' h' => readCall_stop prims x q s pads u rest (.inl (.hash t)) st' h') oa st h
 
 set_option linter.constructorNameAsVariable false in
-set_option maxHeartbeats 800000 in
 /-- The stop of the compiler side persists over a hash program. -/
 theorem compHash_stop {α : Type} (oa : OracleComp HashSpec α) (src : SourceState C)
     (st : CompState C) (h : Stop st) :
@@ -100,10 +99,9 @@ theorem compHash_stop {α : Type} (oa : OracleComp HashSpec α) (src : SourceSta
       ∀ r' ∈ support ((SigningCompilerUntil.fuse (spec := HashSpec)
         (fun input => sourceHashX x.1 x.2.1 (.hash input))
         (compBackend x q s pads u rest noise) t).run st'), Stop r'.2.2 :=
-    fun t st' h' r' hr' => fuse_stop (spec := HashSpec)
+    fuse_stop (spec := HashSpec)
       (fun input => sourceHashX x.1 x.2.1 (.hash input)) (compBackend x q s pads u rest noise)
-      (fun t'' st'' h'' r'' hr'' => backendT_stop _ _ _ q s pads _ _ noise rest t'' st'' h'' r'' hr'')
-      t st' h' r' hr'
+      (backendT_stop _ _ _ q s pads _ _ noise rest)
   exact simulateQ_sticky _ (fun z : SourceState C × CompState C => Stop z.2) hsticky oa (src, st) h z hz
 
 /-- The codeword search on both sides, call by call. Both sides give the same result, and the

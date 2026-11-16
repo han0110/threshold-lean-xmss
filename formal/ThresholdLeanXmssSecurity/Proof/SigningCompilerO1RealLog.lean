@@ -126,7 +126,6 @@ variable (prims : Primitives) (x : Keys3 C) (s : HiddenKey → Digest) (pads : P
   (noise : ChainNoiseIndex → HashOutput)
 
 set_option linter.constructorNameAsVariable false in
-set_option maxHeartbeats 1600000 in
 /-- A grind on the private oracle keeps the private relation at its visible cache. -/
 theorem realPrivate_keyedSplit {β : Type} (g : C.Term × CPoint → HashOutput)
     (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
@@ -150,7 +149,7 @@ theorem realPrivate_keyedSplit {β : Type} (g : C.Term × CPoint → HashOutput)
     simp only [rawKeyedSplitOracle, StateT.run_mk, simulateQ_map, StateT.run_map,
       support_map, Set.mem_image] at hw
     obtain ⟨v, hv, rfl⟩ := hw
-    exact ih _ _ _ (realPrivate_observe h (.inr t) v hv) r hr
+    with_reducible exact ih _ _ _ (realPrivate_observe h (.inr t) v hv) r hr
 
 set_option linter.constructorNameAsVariable false in
 /-- The observed answer of a private read is a lazy read of the visible cache. -/
@@ -172,7 +171,6 @@ theorem realRead_observed (g : C.Term × CPoint → HashOutput) (priv vis : Hash
     simp
 
 set_option linter.constructorNameAsVariable false in
-set_option maxHeartbeats 1600000 in
 /-- One honest call of `H` logs its answer and keeps the log agreement, the private relation and
 the carried state. -/
 theorem honest_call (input : Query C) (a : RealState C)
@@ -198,7 +196,8 @@ theorem honest_call (input : Query C) (a : RealState C)
       exact hpriv.observe_slot input hs
     · rw [realImpl_other x _ rest input hs] at hz
       exact hpriv.observe_other input hs z hz
-  have hw := realRead_observed x s pads rest noise (gOf s pads u) a.2 (visibleOf a) hpriv input z hz
+  have hw := realRead_observed x s pads rest noise (gOf s pads u) a.2 (visibleOf a) hpriv input z
+    (by with_reducible exact hz)
   have hpy := realPrivate_keyedSplit x s pads rest noise (gOf s pads u) _ _ _ _ hpz y hy
   rw [grind_quiet_transport x s pads noise (gOf s pads u) rest _ _ _ _ _ hpz.quiet,
     support_map] at hy
