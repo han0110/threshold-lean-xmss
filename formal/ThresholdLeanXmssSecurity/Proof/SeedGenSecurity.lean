@@ -301,7 +301,7 @@ def seedGenMixedGame (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x
 def SeedGenHiddenDistance (prims : Primitives) : Prop :=
   ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
-    |accepts prims (seedGenCommonEmulatedGame D A x z Z) - accepts prims (seedGenMixedGame D A x z Z)| ≤
+    |accepts prims (setupCommonEmulatedGame .seedGen D A x z Z) - accepts prims (seedGenMixedGame D A x z Z)| ≤
       seedGenHashError C q / 2
 
 /-- Known half: the simulator's programming fixes every exposed coordinate of an accepted output. -/
@@ -331,10 +331,10 @@ theorem seedGenSecurityDistance_of_hybrids (prims : Primitives)
     (hH : SeedGenHiddenDistance (C := C) (E := E) prims) (hK : SeedGenKnownMismatch (C := C) (E := E) prims) :
     SeedGenSecurityDistance (C := C) (E := E) prims := by
   intro D A x z Z q hq
-  rw [← seedGenCommonGame_real_accepts prims D A x z Z]
+  erw [← setupCommonGame_real_accepts .seedGen prims D A x z Z]
   have h₁ := hH D A x z Z q hq
   have h₂ := (abs_accepts_mixed_ideal_le prims D A x z Z).trans (hK D A x z Z q hq)
-  calc _ ≤ |accepts prims (seedGenCommonEmulatedGame D A x z Z) - accepts prims (seedGenMixedGame D A x z Z)| +
+  calc _ ≤ |accepts prims (setupCommonEmulatedGame .seedGen D A x z Z) - accepts prims (seedGenMixedGame D A x z Z)| +
         |accepts prims (seedGenMixedGame D A x z Z) -
           accepts prims (distinguish (idealExecution (fun oa => oa) D FseedGen (seedGenSimulator D A) x z) Z)| :=
         abs_sub_le _ _ _
@@ -385,12 +385,12 @@ theorem seedGenMixedGame_expand (D : C.Coalition) (A : Adversary C E Unit PEmpty
 
 theorem seedGenCommonEmulatedGame_expand' (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) :
-    seedGenCommonEmulatedGame D A x z Z = (do
+    setupCommonEmulatedGame .seedGen D A x z Z = (do
       let st ← (seedGenSimulator D A).start (corruptInputs D x) z
       let d ← free (liftComp (setupDealerSamples .seedGen (C := C)) (LocalSpec C))
       let r ← setupEmulation .seedGen D A st d.1 (seedGenCorruptLeak D d)
       worldRoles.adversary (Z (r.1.adversary, r.2))) := by
-  unfold seedGenCommonEmulatedGame distinguish setupCommonGame setupDealerSamples seedGenCorruptLeak
+  unfold setupCommonEmulatedGame distinguish setupCommonGame setupDealerSamples seedGenCorruptLeak
   simp only [map_bind, map_pure, bind_assoc, pure_bind,
     liftComp_bind, liftComp_pure, free_bind, free_pure, seedGenEmulatedProjection]
   rfl
@@ -540,7 +540,7 @@ theorem evalDist_seedGenMixedGame_hiddenZ (prims : Primitives) (D : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) :
     (simulateQ (worldAnswer prims) (seedGenMixedGame D A x z Z)).run' ∅ =ᵈ
-      (simulateQ (worldAnswer prims) (seedGenCommonEmulatedGame D A x z (seedGenHiddenZ D Z))).run' ∅ := by
+      (simulateQ (worldAnswer prims) (setupCommonEmulatedGame .seedGen D A x z (seedGenHiddenZ D Z))).run' ∅ := by
   rw [seedGenMixedGame_expand, seedGenCommonEmulatedGame_expand']
   unfold seedGenHiddenZ
   simp only [simulateQ_bind, simulateQ_world_sample, simulateQ_world_adversary, simulateQ_local_sample_seedGensecurity]
@@ -564,7 +564,11 @@ theorem seedGenMixedGame_accepts (prims : Primitives) (D : C.Coalition)
     accepts prims (seedGenMixedGame D A x z Z) =
       accepts prims (distinguish (realExecution D A noFunctionality setupRounds
         (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) x z) (seedGenHiddenZ D Z)) := by
-  rw [← seedGenCommonGame_real_accepts, accepts_eq_probOutput, accepts_eq_probOutput,
+  have hreal : accepts prims (distinguish (realExecution D A noFunctionality setupRounds
+      (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) x z) (seedGenHiddenZ D Z)) =
+      accepts prims (setupCommonEmulatedGame .seedGen D A x z (seedGenHiddenZ D Z)) :=
+    (setupCommonGame_real_accepts .seedGen prims D A x z _).symm
+  rw [hreal, accepts_eq_probOutput, accepts_eq_probOutput,
     (evalDist_seedGenMixedGame_hiddenZ prims D A x z Z).prEvent_eq (· = true)]
 
 /-- Hidden half on the real run: the hidden keys of the honest outputs are indistinguishable from
@@ -581,7 +585,7 @@ def SeedGenHiddenFresh (prims : Primitives) : Prop :=
 theorem seedGenHiddenDistance_of_fresh (prims : Primitives) (h : SeedGenHiddenFresh (C := C) (E := E) prims) :
     SeedGenHiddenDistance (C := C) (E := E) prims := by
   intro D A x z Z q hq
-  rw [seedGenCommonGame_real_accepts, seedGenMixedGame_accepts]
+  rw [setupCommonGame_real_accepts, seedGenMixedGame_accepts]
   exact h D A x z Z q hq
 
 /-- The real run as a mixture of fixed-table reference runs, on every oracle domain that covers it. -/

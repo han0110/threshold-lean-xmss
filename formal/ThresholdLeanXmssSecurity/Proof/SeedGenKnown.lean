@@ -83,8 +83,8 @@ def seedGenProgramOk (D : C.Coalition) (parts : C.Party → Parts C) (log : Call
     (pairs : C.Pair → HashOutput) (high : HashOutput) : OracleComp (WorldSpec C) Bool := do
   let view := setupProgramView .seedGen D parts log sent
   let b ← program (seedGenParameterProgrammingInput D view) (seedGenFullParameter high parameter)
-  let bs ← (seedGenKnownCoordinates D).mapM fun T => program (seedGenTermProgrammingInput D view T) (seeds T)
-  let cs ← (seedGenCrossCoordinates D).mapM fun p => program (seedGenPairProgrammingInput D view p) (pairs p)
+  let bs ← (seedGenKnownCoordinates D).mapM fun T => program (setupTermProgrammingInput .seedGen D view T) (seeds T)
+  let cs ← (seedGenCrossCoordinates D).mapM fun p => program (setupPairProgrammingInput .seedGen D view p) (pairs p)
   pure (b && bs.all id && cs.all id)
 
 /-- The last two rounds, with the corrupt reveals and the honest echo data. -/
@@ -226,7 +226,7 @@ theorem simulateQ_seedGenCommonGame_known (D : C.Coalition) (A : Adversary C E U
     show (∅ : CallLog C) = [] from rfl, List.append_nil, WriterT.run_mk]
   refine seedGenKnown_simulateQ_bind_right prims fun r => ?_
   refine seedGenKnown_simulateQ_bind_right prims fun high => ?_
-  rw [seedGenProgramBlock_dealt]
+  rw [setupProgramBlock_dealt]
   simp only [seedGenProgramOk, bind_assoc, pure_bind]
   refine seedGenKnown_simulateQ_bind_right prims fun b => ?_
   refine seedGenKnown_simulateQ_bind_right prims fun bs => ?_
@@ -305,8 +305,8 @@ theorem seedGenProgramOk_support (D : C.Coalition) (parts : C.Party → Parts C)
       (seedGenProgramOk D parts log sent parameter seeds pairs high)).run s)) (hok : z.1 = true) :
     let view := setupProgramView .seedGen D parts log sent
     z.2 (seedGenParameterProgrammingInput D view) = some (seedGenFullParameter high parameter) ∧
-      (∀ T ∈ seedGenKnownCoordinates D, z.2 (seedGenTermProgrammingInput D view T) = some (seeds T)) ∧
-      (∀ p ∈ seedGenCrossCoordinates D, z.2 (seedGenPairProgrammingInput D view p) = some (pairs p)) := by
+      (∀ T ∈ seedGenKnownCoordinates D, z.2 (setupTermProgrammingInput .seedGen D view T) = some (seeds T)) ∧
+      (∀ p ∈ seedGenCrossCoordinates D, z.2 (setupPairProgrammingInput .seedGen D view p) = some (pairs p)) := by
   unfold seedGenProgramOk at hz
   simp only [simulateQ_bind, simulateQ_pure, StateT.run_bind, support_bind, Set.mem_iUnion,
     simulateQ_world_program, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
@@ -395,40 +395,42 @@ theorem seedGenProgramOk_fresh (D : C.Coalition) (parts : C.Party → Parts C) (
     (pairs : C.Pair → HashOutput) (high : HashOutput) (s : HashCache C) (z : Bool × HashCache C)
     (hz : z ∈ support ((simulateQ (worldAnswer prims)
       (seedGenProgramOk D parts log sent parameter seeds pairs high)).run s))
-    (hfresh : ∀ x ∈ seedGenProgrammingInputs D (setupProgramView .seedGen D parts log sent), s x = none)
-    (hnodup : (seedGenProgrammingInputs D (setupProgramView .seedGen D parts log sent)).Nodup) : z.1 = true := by
+    (hfresh : ∀ x ∈ setupProgrammingInputs .seedGen D (setupProgramView .seedGen D parts log sent), s x = none)
+    (hnodup : (setupProgrammingInputs .seedGen D (setupProgramView .seedGen D parts log sent)).Nodup) : z.1 = true := by
   set view := setupProgramView .seedGen D parts log sent
-  have hfixT : ∀ T, ¬ IsFixed (seedGenTermProgrammingInput D view T) := fun T => by
-    simp [IsFixed, seedGenTermProgrammingInput]
-  have hfixP : ∀ p, ¬ IsFixed (seedGenPairProgrammingInput D view p) := fun p => by
-    simp [IsFixed, seedGenPairProgrammingInput]
+  have hfixT : ∀ T, ¬ IsFixed (setupTermProgrammingInput .seedGen D view T) := fun T => by
+    simp [IsFixed, setupTermProgrammingInput]
+  have hfixP : ∀ p, ¬ IsFixed (setupPairProgrammingInput .seedGen D view p) := fun p => by
+    simp [IsFixed, setupPairProgrammingInput]
   unfold seedGenProgramOk at hz
   simp only [simulateQ_bind, simulateQ_pure, StateT.run_bind, support_bind, Set.mem_iUnion,
     simulateQ_world_program, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
   obtain ⟨p₁, hp₁, p₂, hp₂, p₃, hp₃, rfl⟩ := hz
-  simp only [seedGenProgrammingInputs, List.nodup_append, List.nodup_cons] at hnodup
+  simp only [setupProgrammingInputs, setupParameterInputs, ite_true, List.singleton_append, List.nodup_append,
+    List.nodup_cons] at hnodup
   obtain ⟨⟨hPT, hT⟩, hC, hdisj⟩ := hnodup
+  change seedGenParameterProgrammingInput D view ∉ _ at hPT
   have hPC : seedGenParameterProgrammingInput D view ∉ (seedGenCrossCoordinates D).map
-      (seedGenPairProgrammingInput D view) := fun hm => hdisj _ List.mem_cons_self _ hm rfl
-  have hTC : ∀ a ∈ (seedGenKnownCoordinates D).map (seedGenTermProgrammingInput D view),
-      ∀ b ∈ (seedGenCrossCoordinates D).map (seedGenPairProgrammingInput D view), a ≠ b :=
+      (setupPairProgrammingInput .seedGen D view) := fun hm => hdisj _ List.mem_cons_self _ hm rfl
+  have hTC : ∀ a ∈ (seedGenKnownCoordinates D).map (setupTermProgrammingInput .seedGen D view),
+      ∀ b ∈ (seedGenCrossCoordinates D).map (setupPairProgrammingInput .seedGen D view), a ≠ b :=
     fun a ha b hb => hdisj a (List.mem_cons_of_mem _ ha) b hb
-  have hmemP : seedGenParameterProgrammingInput D view ∈ seedGenProgrammingInputs D view :=
+  have hmemP : seedGenParameterProgrammingInput D view ∈ setupProgrammingInputs .seedGen D view :=
     List.mem_append_left _ List.mem_cons_self
   rw [programAnswer_run_fresh (by simp [IsFixed, seedGenParameterProgrammingInput]) s (hfresh _ hmemP)] at hp₁
   simp only [support_pure, Set.mem_singleton_iff] at hp₁
   subst hp₁
-  have h₂ := seedGenPrograms_fresh prims (seedGenKnownCoordinates D) (seedGenTermProgrammingInput D view) seeds hfixT
+  have h₂ := seedGenPrograms_fresh prims (seedGenKnownCoordinates D) (setupTermProgrammingInput .seedGen D view) seeds hfixT
     _ p₂ hp₂ (fun T hT' => by
-      have hne : seedGenTermProgrammingInput D view T ≠ seedGenParameterProgrammingInput D view :=
+      have hne : setupTermProgrammingInput .seedGen D view T ≠ seedGenParameterProgrammingInput D view :=
         fun he => hPT (he ▸ List.mem_map_of_mem hT')
       exact (QueryCache.cacheQuery_of_ne s (seedGenFullParameter high parameter) hne).trans
         (hfresh _ (List.mem_append_left _ (List.mem_cons_of_mem _ (List.mem_map_of_mem hT'))))) hT
-  have h₃ := seedGenPrograms_fresh prims (seedGenCrossCoordinates D) (seedGenPairProgrammingInput D view) pairs hfixP
+  have h₃ := seedGenPrograms_fresh prims (seedGenCrossCoordinates D) (setupPairProgrammingInput .seedGen D view) pairs hfixP
     _ p₃ hp₃ (fun p hp' => by
-      have hm : seedGenPairProgrammingInput D view p ∈ (seedGenCrossCoordinates D).map
-          (seedGenPairProgrammingInput D view) := List.mem_map_of_mem hp'
-      have hne : seedGenPairProgrammingInput D view p ≠ seedGenParameterProgrammingInput D view :=
+      have hm : setupPairProgrammingInput .seedGen D view p ∈ (seedGenCrossCoordinates D).map
+          (setupPairProgrammingInput .seedGen D view) := List.mem_map_of_mem hp'
+      have hne : setupPairProgrammingInput .seedGen D view p ≠ seedGenParameterProgrammingInput D view :=
         fun he => hPC (he ▸ hm)
       exact (h₂.2 _ (fun hmT => hTC _ hmT _ hm rfl)).trans
         ((QueryCache.cacheQuery_of_ne s (seedGenFullParameter high parameter) hne).trans
@@ -490,9 +492,9 @@ theorem seedGenKnown_projection_eq (D : C.Coalition) {σ : Type} (h : Query C �
     (hparameter : h (seedGenParameterProgrammingInput D (setupProgramView .seedGen D r.parts r.log r.sent)) =
       seedGenFullParameter high r.parameter)
     (hterm : ∀ T ∈ seedGenKnownCoordinates D,
-      h (seedGenTermProgrammingInput D (setupProgramView .seedGen D r.parts r.log r.sent) T) = r.seeds T)
+      h (setupTermProgrammingInput .seedGen D (setupProgramView .seedGen D r.parts r.log r.sent) T) = r.seeds T)
     (hpair : ∀ p ∈ seedGenCrossCoordinates D,
-      h (seedGenPairProgrammingInput D (setupProgramView .seedGen D r.parts r.log r.sent) p) = r.pairs p)
+      h (setupPairProgrammingInput .seedGen D (setupProgramView .seedGen D r.parts r.log r.sent) p) = r.pairs p)
     (hpost : r.outputs = (fun _ => none) ∨
       (r.data = seedGenRevealAllFixed prims D h r.parts (seedGenCommitInbox D r.parts r.commitments r.sent)
         r.revealSent ∧ ∃ echoSent : C.Party → Mail C E, r.outputs = seedGenEchoDataOutput D r.data echoSent))
@@ -1307,9 +1309,9 @@ theorem isQueryBoundP_compared_programOk (D : C.Coalition) (parts : C.Party → 
   have h₁ := isQueryBoundP_compared_program D (seedGenParameterProgrammingInput D (setupProgramView .seedGen D parts log sent))
     (seedGenFullParameter high parameter) (hd _ _)
   have h₂ := isQueryBoundP_compared_programs D (seedGenKnownCoordinates D)
-    (seedGenTermProgrammingInput D (setupProgramView .seedGen D parts log sent)) seeds (fun _ => hd _ _)
+    (setupTermProgrammingInput .seedGen D (setupProgramView .seedGen D parts log sent)) seeds (fun _ => hd _ _)
   have h₃ := isQueryBoundP_compared_programs D (seedGenCrossCoordinates D)
-    (seedGenPairProgrammingInput D (setupProgramView .seedGen D parts log sent)) pairs (fun _ => hd _ _)
+    (setupPairProgrammingInput .seedGen D (setupProgramView .seedGen D parts log sent)) pairs (fun _ => hd _ _)
   unfold seedGenProgramOk
   constructor
   · exact isQueryBoundP_bind (m := 0) h₁.1 fun _ _ => isQueryBoundP_bind (m := 0) h₂.1 fun _ _ =>
@@ -1765,12 +1767,13 @@ theorem seedGenCell_commitments (D : C.Coalition) (parts : C.Party → Parts C) 
 
 /-- A programming input of the prefix is a logged query, or two programming inputs are equal. -/
 def SeedGenProgramAlias (D : C.Coalition) {σ : Type} (pre : SeedGenKnownPre C E σ) : Prop :=
-  (∃ x ∈ seedGenProgrammingInputs D (setupProgramView .seedGen D pre.parts pre.log pre.sent), ∃ y, (x, y) ∈ pre.log) ∨
-    ¬ (seedGenProgrammingInputs D (setupProgramView .seedGen D pre.parts pre.log pre.sent)).Nodup
+  (∃ x ∈ setupProgrammingInputs .seedGen D (setupProgramView .seedGen D pre.parts pre.log pre.sent), ∃ y, (x, y) ∈ pre.log) ∨
+    ¬ (setupProgrammingInputs .seedGen D (setupProgramView .seedGen D pre.parts pre.log pre.sent)).Nodup
 
 theorem seedGenProgrammingInputs_derive (D : C.Coalition) (view : C.Party → C.Party → Parts C) (x : Query C)
-    (hx : x ∈ seedGenProgrammingInputs D view) : ∃ kind values, x = .derive .seedGen kind values := by
-  simp only [seedGenProgrammingInputs, List.mem_append, List.mem_cons, List.mem_map] at hx
+    (hx : x ∈ setupProgrammingInputs .seedGen D view) : ∃ kind values, x = .derive .seedGen kind values := by
+  simp only [setupProgrammingInputs, setupParameterInputs, ite_true, List.singleton_append, List.mem_append,
+    List.mem_cons, List.mem_map] at hx
   rcases hx with (rfl | ⟨T, _, rfl⟩) | ⟨p, _, rfl⟩
   · exact ⟨_, _, rfl⟩
   · exact ⟨_, _, rfl⟩
@@ -1797,7 +1800,7 @@ theorem seedGenKnownPrefix_alias_of_fail (D : C.Coalition) (A : Adversary C E Un
   simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hfin
   subst hfin
   simp only at hlog hnodup hok
-  have hfresh : ∀ q ∈ seedGenProgrammingInputs D (setupProgramView .seedGen D p₂.1 (p₀.1.2 ++ p₄.1.2) p₄.1.1.2),
+  have hfresh : ∀ q ∈ setupProgrammingInputs .seedGen D (setupProgramView .seedGen D p₂.1 (p₀.1.2 ++ p₄.1.2) p₄.1.1.2),
       p₅.2 q = none := by
     intro q hq
     obtain ⟨kind, values, rfl⟩ := seedGenProgrammingInputs_derive D _ q hq
