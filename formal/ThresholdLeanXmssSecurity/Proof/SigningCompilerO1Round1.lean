@@ -468,7 +468,7 @@ theorem step_round1 (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
       cases h : breaksOneMessagePerKey (realSigning a) e message
       · rfl
       · exact (hg (Or.inr (Or.inr h))).elim
-    apply TreeCheckKernelCoupling.relTriple_of_support
+    apply relTriple_of_support
     intro ra hra rb hrb
     rw [support_map] at hra hrb
     obtain ⟨z, hz, rfl⟩ := hra

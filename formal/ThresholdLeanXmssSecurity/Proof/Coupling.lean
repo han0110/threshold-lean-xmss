@@ -8,6 +8,13 @@ This module holds small lemmas on couplings and on counted calls.
 
 * `relTriple_of_support_left` gives a coupling from a postcondition that holds on every left output.
   The signing proof uses it.
+* `relTriple_support_left` adds a property of the left support to a coupling.
+  `relTriple_of_support` gives a coupling from a relation that holds on all
+  pairs of the two supports. The round lemmas of the signing compiler use it.
+* `fuse` makes one handler on both states from a handler into a state and an outer handler.
+  `evalDist_truncateHash_uniform` states that a truncated uniform hash output is a uniform digest.
+  `evalDist_simulateQ_state_projection` projects the state of a simulation in distribution. `Tree`
+  and the signing proof use them.
 * `probEvent_uniform_coord_eq` bounds the probability that one coordinate of uniform secret points
   equals a fixed point. `SeedGenAlias` uses it.
 * `WorldCounted`, `isQueryBoundP_adversary`, `isQueryBoundP_free` and `isQueryBoundP_sequenceFin`
@@ -38,6 +45,95 @@ theorem relTriple_of_support_left {oa : ProbComp α} {ob : ProbComp β} {R : α 
     fun _ b hab => hab.1 b
 
 end UpToBad
+
+section Support
+
+variable {α β : Type}
+
+theorem relTriple_support_left {oa : ProbComp α} {ob : ProbComp β} {R : α → β → Prop}
+    {P : α → Prop} (h : RelTriple oa ob R) (hp : ∀ a ∈ support oa, P a) :
+    RelTriple oa ob (fun a b => R a b ∧ P a) := by
+  let : MeasurableSpace α := ⊤
+  let : MeasurableSpace β := ⊤
+  obtain ⟨c, hc⟩ := relTriple_iff_relWP.1 h
+  refine relTriple_iff_relWP.2 ⟨c, ?_⟩
+  filter_upwards [hc, ae_mem_support_prod c] with z hz hmem
+  exact ⟨hz, hp z.1 hmem.1⟩
+
+theorem relTriple_of_support {oa : ProbComp α} {ob : ProbComp β} {R : α → β → Prop}
+    (h : ∀ a ∈ support oa, ∀ b ∈ support ob, R a b) : RelTriple oa ob R := by
+  have left := relTriple_support_left (relTriple_true oa ob) (P := fun a => a ∈ support oa)
+    (fun a ha => ha)
+  have right := relTriple_symm (relTriple_support_left (relTriple_symm left)
+    (P := fun b => b ∈ support ob) (fun b hb => hb))
+  exact relTriple_post_mono right fun a b hab => h a hab.1.2 b hab.2
+
+end Support
+
+/-! ## Handlers and uniform samples -/
+
+section Fuse
+variable {ι κ : Type} {spec : OracleSpec ι} {spec₂ : OracleSpec κ} {σ τ : Type}
+
+/-- One handler into a state over the oracles of an outer handler, as one handler on both states. -/
+def fuse (inner : QueryImpl spec (StateT σ (OracleComp spec₂))) (outer : QueryImpl spec₂ (StateT τ ProbComp)) :
+    QueryImpl spec (StateT (σ × τ) ProbComp) := fun q => StateT.mk fun st =>
+  (fun r => (r.1.1, (r.1.2, r.2))) <$> (simulateQ outer ((inner q).run st.1)).run st.2
+
+end Fuse
+
+section Uniform
+
+def splitHalves (output : HashOutput) : Digest × Digest :=
+  (truncateHash output, output.extractLsb' digestBits digestBits)
+
+theorem splitHalves_bijective : Function.Bijective splitHalves := by
+  apply (Fintype.bijective_iff_injective_and_card _).2
+  refine ⟨fun x y heq => ?_, by simp [Fintype.card_prod, digestBits]⟩
+  have hlow := congrArg Prod.fst heq
+  have hhigh := congrArg Prod.snd heq
+  simp only [splitHalves, truncateHash] at hlow hhigh
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  by_cases hlt : i < digestBits
+  · have := congrArg (fun b : Digest => b.getLsbD i) hlow
+    simpa [BitVec.getLsbD_extractLsb', hlt] using this
+  · have hshift : i - digestBits < digestBits := by simp [digestBits] at hi ⊢; omega
+    have := congrArg (fun b : Digest => b.getLsbD (i - digestBits)) hhigh
+    simp only [BitVec.getLsbD_extractLsb', hshift, decide_true, Bool.true_and] at this
+    rwa [show digestBits + (i - digestBits) = i by omega] at this
+
+theorem evalDist_truncateHash_uniform :
+    (truncateHash <$> ($ᵗ HashOutput : ProbComp HashOutput)) =ᵈ ($ᵗ Digest : ProbComp Digest) := by
+  have hmap : truncateHash <$> ($ᵗ HashOutput : ProbComp HashOutput) =
+      Prod.fst <$> (splitHalves <$> ($ᵗ HashOutput : ProbComp HashOutput)) := by
+    simp [Functor.map_map, splitHalves]
+  rw [hmap]
+  refine ((SampleableType.map_uniformSample_evalDistEq_of_bijective splitHalves_bijective).map Prod.fst).trans ?_
+  rw [SampleableType.uniformSample_prod_eq_bind]
+  simp only [map_bind, map_pure]
+  exact (EvalDistEq.bind_right _ fun a => OracleComp.EvalDistEq.bind_const _ _).trans (by rw [bind_pure])
+
+/-- Distributional state projection, including samplers with different representations. -/
+theorem evalDist_simulateQ_state_projection {ι σ τ α : Type} {spec : OracleSpec ι}
+    (I : QueryImpl spec (StateT σ ProbComp)) (J : QueryImpl spec (StateT τ ProbComp))
+    (π : σ → τ)
+    (hstep : ∀ q s, (Prod.map id π <$> (I q).run s) =ᵈ (J q).run (π s))
+    (game : OracleComp spec α) (s : σ) :
+    (Prod.map id π <$> (simulateQ I game).run s) =ᵈ (simulateQ J game).run (π s) := by
+  induction game using OracleComp.inductionOn generalizing s with
+  | pure a => simp
+  | query_bind q k ih =>
+    simp only [simulateQ_bind, simulateQ_query, OracleQuery.cont_query, OracleQuery.input_query,
+      id_map, StateT.run_bind, map_bind]
+    refine (EvalDistEq.bind_right ((I q).run s) fun p => ih p.1 p.2).trans ?_
+    have he : ((I q).run s >>= fun p => (simulateQ J (k p.1)).run (π p.2)) =
+        (Prod.map id π <$> (I q).run s) >>= fun p => (simulateQ J (k p.1)).run p.2 := by
+      simp only [bind_map_left, Prod.map, id_eq]
+    rw [he]
+    exact (hstep q s).bind_left _
+
+end Uniform
 
 /-! ## Hitting a hidden secret -/
 
@@ -123,3 +219,7 @@ variable {E Ia I O L R α : Type} {C : Committee}
 end World
 
 end ThresholdLeanXmssSecurity
+
+/-- info: 'ThresholdLeanXmssSecurity.relTriple_of_support' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.relTriple_of_support

@@ -279,7 +279,7 @@ theorem local_slot (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top :
         (.inr (.inl (TprfSecurityProof.slotInput x.2.1 x.2.2 z))))) := by
   obtain ⟨hcore, hx, htop, hp⟩ := (syncO1_iff_syncIn prims x s pads u rest noise top a b).1 hs
   have hfields := hcore.1.1
-  apply TreeCheckKernelCoupling.relTriple_of_support
+  apply relTriple_of_support
   intro ra hra rb hrb
   rcases slotRead_sync prims x q s pads u rest noise hkeys true a.1.2 z a b.1.base b.2 hcore ha hb
     hmark ra (no_implicit_lambda% hra) rb hrb with h | h | ⟨⟨hv, -⟩, hsync, hf, -⟩
@@ -417,7 +417,7 @@ theorem step_local (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top :
   rw [realLocal_run, compLocal_run]
   cases hh : SigningCoreProof.hiddenHit x a.1.2.1.1.corrupt t with
   | true =>
-    apply TreeCheckKernelCoupling.relTriple_of_support
+    apply relTriple_of_support
     intro ra hra rb _
     rw [support_map] at hra
     obtain ⟨r, -, rfl⟩ := hra

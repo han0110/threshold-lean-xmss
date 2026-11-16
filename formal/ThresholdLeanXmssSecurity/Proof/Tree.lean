@@ -3,6 +3,7 @@ import ThresholdLeanXmssSecurity.Proof.SeedGen
 import ThresholdLeanXmssSecurity.Proof.Check
 import VCVio.ProgramLogic.Relational.Basic
 import VCVio.OracleComp.SimSemantics.StateT.StateProjection
+import ThresholdLeanXmssSecurity.Proof.Coupling
 
 /-!
 # The ceremonies of a tree
@@ -4051,11 +4052,6 @@ end Reduction
 section Fuse
 variable {ι κ : Type} {spec : OracleSpec ι} {spec₂ : OracleSpec κ} {σ τ : Type}
 
-/-- One handler into a state over the oracles of an outer handler, as one handler on both states. -/
-def fuse (inner : QueryImpl spec (StateT σ (OracleComp spec₂))) (outer : QueryImpl spec₂ (StateT τ ProbComp)) :
-    QueryImpl spec (StateT (σ × τ) ProbComp) := fun q => StateT.mk fun st =>
-  (fun r => (r.1.1, (r.1.2, r.2))) <$> (simulateQ outer ((inner q).run st.1)).run st.2
-
 theorem run_simulateQ_fuse (inner : QueryImpl spec (StateT σ (OracleComp spec₂)))
     (outer : QueryImpl spec₂ (StateT τ ProbComp)) {α : Type} (oa : OracleComp spec α) (s : σ) (t : τ) :
     (simulateQ outer ((simulateQ inner oa).run s)).run t =
@@ -4806,36 +4802,6 @@ open OracleComp.DeferredSampling
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
 
-def splitHalves (output : HashOutput) : Digest × Digest :=
-  (truncateHash output, output.extractLsb' digestBits digestBits)
-
-theorem splitHalves_bijective : Function.Bijective splitHalves := by
-  apply (Fintype.bijective_iff_injective_and_card _).2
-  refine ⟨fun x y heq => ?_, by simp [Fintype.card_prod, digestBits]⟩
-  have hlow := congrArg Prod.fst heq
-  have hhigh := congrArg Prod.snd heq
-  simp only [splitHalves, truncateHash] at hlow hhigh
-  apply BitVec.eq_of_getLsbD_eq
-  intro i hi
-  by_cases hlt : i < digestBits
-  · have := congrArg (fun b : Digest => b.getLsbD i) hlow
-    simpa [BitVec.getLsbD_extractLsb', hlt] using this
-  · have hshift : i - digestBits < digestBits := by simp [digestBits] at hi ⊢; omega
-    have := congrArg (fun b : Digest => b.getLsbD (i - digestBits)) hhigh
-    simp only [BitVec.getLsbD_extractLsb', hshift, decide_true, Bool.true_and] at this
-    rwa [show digestBits + (i - digestBits) = i by omega] at this
-
-theorem evalDist_truncateHash_uniform :
-    (truncateHash <$> ($ᵗ HashOutput : ProbComp HashOutput)) =ᵈ ($ᵗ Digest : ProbComp Digest) := by
-  have hmap : truncateHash <$> ($ᵗ HashOutput : ProbComp HashOutput) =
-      Prod.fst <$> (splitHalves <$> ($ᵗ HashOutput : ProbComp HashOutput)) := by
-    simp [Functor.map_map, splitHalves]
-  rw [hmap]
-  refine ((SampleableType.map_uniformSample_evalDistEq_of_bijective splitHalves_bijective).map Prod.fst).trans ?_
-  rw [SampleableType.uniformSample_prod_eq_bind]
-  simp only [map_bind, map_pure]
-  exact (EvalDistEq.bind_right _ fun a => OracleComp.EvalDistEq.bind_const _ _).trans (by rw [bind_pure])
-
 variable {C : Committee}
 
 def truncateKeyCache (c : FullKeyCache C) : KeyCache C := QueryCache.ofFn fun x => (c x).map truncateHash
@@ -4916,25 +4882,6 @@ theorem jointKeyWorld_false_query_projection (prims : Primitives) (D : C.Coaliti
         keyJointIdealProjection] using h
     · simp only [if_neg hh, onJointHash_idealProjection, StateT.run_mk]
       rfl
-
-/-- Distributional state projection, including samplers with different representations. -/
-theorem evalDist_simulateQ_state_projection {ι σ τ α : Type} {spec : OracleSpec ι}
-    (I : QueryImpl spec (StateT σ ProbComp)) (J : QueryImpl spec (StateT τ ProbComp))
-    (π : σ → τ)
-    (hstep : ∀ q s, (Prod.map id π <$> (I q).run s) =ᵈ (J q).run (π s))
-    (game : OracleComp spec α) (s : σ) :
-    (Prod.map id π <$> (simulateQ I game).run s) =ᵈ (simulateQ J game).run (π s) := by
-  induction game using OracleComp.inductionOn generalizing s with
-  | pure a => simp
-  | query_bind q k ih =>
-    simp only [simulateQ_bind, simulateQ_query, OracleQuery.cont_query, OracleQuery.input_query,
-      id_map, StateT.run_bind, map_bind]
-    refine (EvalDistEq.bind_right ((I q).run s) fun p => ih p.1 p.2).trans ?_
-    have he : ((I q).run s >>= fun p => (simulateQ J (k p.1)).run (π p.2)) =
-        (Prod.map id π <$> (I q).run s) >>= fun p => (simulateQ J (k p.1)).run p.2 := by
-      simp only [bind_map_left, Prod.map, id_eq]
-    rw [he]
-    exact (hstep q s).bind_left _
 
 /-- The ideal monitored handler projects to the previously proved lazy AES-key world. -/
 theorem jointKeyWorld_false_projection (prims : Primitives) (D : C.Coalition) {α : Type}

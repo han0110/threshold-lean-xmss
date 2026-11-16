@@ -1,5 +1,4 @@
 import ThresholdLeanXmssSecurity.Proof.CheckSound
-import ThresholdLeanXmssSecurity.Proof.Coupling
 import VCVio.OracleComp.QueryTracking.Birthday
 
 /-!

@@ -189,9 +189,7 @@ The statement layer is `ThresholdLeanXmss/`. The proofs are in `ThresholdLeanXms
 * `CeremonyHybrid/` holds the claim of one ceremony in the hybrid model.
 * `TreeHybrid/` holds the claim of one tree in the hybrid model.
 * `PrssRand/` holds the claim of the PRSS streams from dealt keys.
-* `Tree` and `Dealer` hold the tree completeness, the dealer and the tree success. `TreeSim` and
-  `TreeCheckKernelCoupling` hold small lemmas on the draw order of a list and on couplings. The
-  signing proof uses them.
+* `Tree` and `Dealer` hold the tree completeness, the dealer and the tree success.
   `CeremonyIndex` holds the position of a batch in a ceremony, for the simulator of the claim that
   is stated and not proved. The end theorem does not use it.
 * `Tprf`, `Signing`, `SigningSecurity`, `SigningCore`, `SeedHit` and `HiddenCore` hold the

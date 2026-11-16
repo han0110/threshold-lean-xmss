@@ -562,18 +562,18 @@ theorem after_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top :
       (w : (Digest × SourceState C) × CompState C) =>
     InPost prims x q s pads u rest noise top ((sig, a.1.2.1.2), a.1.2.2) ((sig, a.1.2.1.2), a.1.2.2)
       a b (fun rb => rb.1.2.revealed) (fun va vb => va = vb) p w) ?_ ?_
-  · apply TreeCheckKernelCoupling.relTriple_of_support
+  · apply relTriple_of_support
     intro p hp w hw
     exact SigningCompilerO1Part.part_frame prims x q s pads u rest noise hkeys top _ _ i J
       (.randomizer bottomLayer e) message a b hs rfl (constrained_bottom_randomizer e)
       (fun _ _ _ h => by cases h) ha hb hmark p (by with_reducible exact hp) w hw
   intro p w hpw
   rcases hpw with h | h | ⟨hv, hsync, hsg, htr, -, -, hm, hcar, -⟩
-  · apply TreeCheckKernelCoupling.relTriple_of_support
+  · apply relTriple_of_support
     intro ra hra rb hrb
     exact Or.inl (SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ p.2 h ra
       (by with_reducible exact hra))
-  · apply TreeCheckKernelCoupling.relTriple_of_support
+  · apply relTriple_of_support
     intro ra hra rb hrb
     rw [mem_support_bind_iff] at hrb
     obtain ⟨r1, hr1, hrb⟩ := hrb
@@ -583,7 +583,7 @@ theorem after_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top :
   simp only [signRound2With, simulateQ_bind, StateT.run_bind,
     SigningCompilerO1ChainRelease.runXO1_bind, runXO1_liftBaseX, bind_map_left, bind_assoc]
   by_cases ha1 : RealStop q p.2
-  · apply TreeCheckKernelCoupling.relTriple_of_support
+  · apply relTriple_of_support
     intro ra hra rb hrb
     rw [mem_support_bind_iff] at hra
     obtain ⟨r1, hr1, hra⟩ := hra
@@ -592,7 +592,7 @@ theorem after_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top :
         (by with_reducible exact hr1)) ra
       (by with_reducible exact hra))
   by_cases hb1 : Stop w.2
-  · apply TreeCheckKernelCoupling.relTriple_of_support
+  · apply relTriple_of_support
     intro ra hra rb hrb
     rw [mem_support_bind_iff] at hrb
     obtain ⟨r1, hr1, hrb⟩ := hrb
@@ -618,7 +618,7 @@ theorem after_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top :
     (combine J (Function.update parts i w.1.1)) p.2 ({ base := w.1.2, starts := b.1.starts }, w.2)
     hsync (by rw [hcar]; exact hreal) rfl hbound hopen ha1 hb1 hm) ?_
   intro c d hcd
-  apply TreeCheckKernelCoupling.relTriple_of_support
+  apply relTriple_of_support
   intro ra hra rb hrb
   rw [mem_support_bind_iff] at hrb
   obtain ⟨r, hr, hrb⟩ := hrb
@@ -715,7 +715,7 @@ theorem step_round2 (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
     SigningCompilerO1Lemmas.realWorld_run_carried prims x s pads u rest _ a z
       (by with_reducible exact hz)
   rcases hzy with h | h | ⟨hval, hsyn, hm, hsg, -, -, htr, -, hbd, -, -, -, -⟩
-  · apply TreeCheckKernelCoupling.relTriple_of_support
+  · apply relTriple_of_support
     intro ra hra rb hrb
     left
     rcases hz1 : z.1.1 with _ | tree <;> rw [hz1] at hra
@@ -730,7 +730,7 @@ theorem step_round2 (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
       exact realStop_withCarried q _ _ (by rw [hcv])
         (SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ z.2 h v
           (by with_reducible exact hv))
-  · apply TreeCheckKernelCoupling.relTriple_of_support
+  · apply relTriple_of_support
     intro ra hra rb hrb
     rw [support_map] at hrb
     obtain ⟨r, hr, rfl⟩ := hrb
@@ -747,7 +747,7 @@ theorem step_round2 (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
     obtain ⟨hcore, hx, htop, hp⟩ := hsyn
     exact ⟨hcore, hx, ⟨htop.topRows, htop.topRun⟩, hp⟩
   · by_cases ha2 : RealStop q za
-    · apply TreeCheckKernelCoupling.relTriple_of_support
+    · apply relTriple_of_support
       intro ra hra rb hrb
       rw [support_map] at hra
       obtain ⟨v, hv, rfl⟩ := hra
@@ -758,7 +758,7 @@ theorem step_round2 (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
         (SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ za ha2 v
           (by with_reducible exact hv)))
     by_cases hb2 : Stop y.2
-    · apply TreeCheckKernelCoupling.relTriple_of_support
+    · apply relTriple_of_support
       intro ra hra rb hrb
       rw [support_map] at hrb
       obtain ⟨r, hr, rfl⟩ := hrb

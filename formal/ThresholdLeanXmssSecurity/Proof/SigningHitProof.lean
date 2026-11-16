@@ -1,9 +1,9 @@
 import ThresholdLeanXmssSecurity.Proof.SigningHitLane
-import ThresholdLeanXmssSecurity.Proof.Tree
 import XmssSecurity.Proof.TopKeygenQueryBound
 import XmssSecurity.Proof.MerkleQueryBound
 import XmssSecurity.Proof.TopStructural
 import ThresholdLeanXmssSecurity.Proof.VendoredExcerpt
+import ThresholdLeanXmssSecurity.Proof.Coupling
 
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000

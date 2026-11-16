@@ -1,4 +1,3 @@
-import ThresholdLeanXmssSecurity.Proof.SigningLaneFinal
 import ThresholdLeanXmssSecurity.Proof.SeedHit
 import ThresholdLeanXmssSecurity.Proof.SigningOwnForger
 

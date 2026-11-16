@@ -776,8 +776,6 @@ theorem advance_openRest {β : Type} (f : (ℕ → Bit) → β) (inbox : Mail C 
   · rfl
   · rfl
 
-theorem mem_terms (T : C.Term) : T ∈ C.terms := Finset.mem_toList.2 (Finset.mem_univ T)
-
 /-- In an honest `OpenRep`, each copy is the shared value. -/
 theorem openCopy_eq (w : Shares C Bit) (vr : C.Party → Shares C Bit)
     (hvr : ∀ i T g, i ∈ C.holders T → g < count → vr i T g = w T g) (ds : C.Party → List HashOutput)

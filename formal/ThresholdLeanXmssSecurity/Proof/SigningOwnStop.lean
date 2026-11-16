@@ -1,4 +1,3 @@
-import ThresholdLeanXmssSecurity.Proof.SigningSignedSeparation
 import ThresholdLeanXmssSecurity.Proof.SigningOwnForger
 import ThresholdLeanXmssSecurity.Proof.SigningOwnR1
 

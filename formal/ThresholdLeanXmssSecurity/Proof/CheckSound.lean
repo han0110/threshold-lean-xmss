@@ -1,5 +1,4 @@
 import ThresholdLeanXmssSecurity.Proof.CheckLast
-import ThresholdLeanXmssSecurity.Proof.Coupling
 
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000

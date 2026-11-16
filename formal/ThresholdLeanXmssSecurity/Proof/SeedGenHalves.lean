@@ -1113,10 +1113,6 @@ def setupStageBRun (phase : Phase) (prims : Primitives) (D : C.Coalition) (A : A
     (Z (w.2.1.1, setupRefMixedOutputs (phase := phase) prims D (seedGenFiniteTotal prims S w.1) (seedGenTableOf u.1 u.2)
       (seedGenTableOf v.1 v.2) parts w.2.1.2))
 
-theorem evalDist_uniform_bind_const {α β : Type} [SampleableType α] (m : ProbComp β) :
-    (($ᵗ α) >>= fun _ => m) =ᵈ m :=
-  OracleComp.EvalDistEq.bind_const _ _
-
 theorem evalDist_seedGenRestrict_bind {β : Type} (F : SeedGenFresh C → ProbComp β) :
     (($ᵗ (KeyName C → HashOutput)) >>= fun t => F (seedGenRestrict t)) =ᵈ (($ᵗ (SeedGenFresh C)) >>= F) := by
   have h := (evalDist_seedGenRestrict (C := C)).bind_left F

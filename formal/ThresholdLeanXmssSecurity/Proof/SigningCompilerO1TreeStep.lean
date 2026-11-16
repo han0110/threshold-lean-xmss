@@ -186,7 +186,7 @@ theorem step_tree (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
   rintro ra rb ⟨hpost, hra, hrb⟩
   have hcarA : ra.2.1.2 = a.1.2 :=
     SigningCompilerO1Lemmas.realWorld_run_carried prims x s pads u rest _ a ra hra
-  apply TreeCheckKernelCoupling.relTriple_of_support
+  apply relTriple_of_support
   intro za hza zb hzb
   obtain ⟨⟨oa, sig1⟩, a1⟩ := ra
   obtain ⟨⟨ob, src1⟩, st1⟩ := rb

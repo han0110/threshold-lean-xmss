@@ -594,15 +594,6 @@ theorem coinRes_honest' (K : Constants C E) (c : ℕ) (known : Shares C E)
 
 end CoinHonest
 
-/-- A fixed term, the first `t - 1` operators. -/
-def someTerm (C : Committee) : C.Term :=
-  ⟨Finset.univ.filter fun l : C.Party => l.val < C.t - 1, by
-    rw [Fin.card_filter_val_lt]; simp only [Committee.n]; omega⟩
-
-theorem evalDist_uniform_bind_const {α β : Type} [SampleableType α] (mx : ProbComp β) :
-    ($ᵗ α >>= fun _ => mx : ProbComp β) =ᵈ mx :=
-  OracleComp.EvalDistEq.bind_const _ _
-
 theorem counted_pure {α : Type} (a : α) : counted (C := C) (pure a) = pure a := rfl
 
 theorem firstInput_honest_const {I : Type} [Inhabited I] (D : C.Coalition) (c : I) :

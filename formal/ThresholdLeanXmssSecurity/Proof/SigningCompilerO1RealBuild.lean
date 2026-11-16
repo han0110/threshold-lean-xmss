@@ -1,5 +1,4 @@
 import ThresholdLeanXmssSecurity.Proof.SigningJointEager
-import ThresholdLeanXmssSecurity.Proof.TreeSim
 
 /-! # The real tree builds in the order of the compiler builds
 

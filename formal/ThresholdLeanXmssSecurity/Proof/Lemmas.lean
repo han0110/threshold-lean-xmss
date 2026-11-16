@@ -97,6 +97,23 @@ theorem mpclan_honest_holder (K : Constants C E) (D : C.Coalition) (T : C.Term) 
     exact ⟨h, hh, hD, fun heq => hD (heq ▸ hown)⟩
   · exact Or.inl hown
 
+theorem mem_terms (T : C.Term) : T ∈ C.terms := Finset.mem_toList.2 (Finset.mem_univ T)
+
+/-- A fixed term, the first `t - 1` operators. -/
+def someTerm (C : Committee) : C.Term :=
+  ⟨Finset.univ.filter fun l : C.Party => l.val < C.t - 1, by
+    rw [Fin.card_filter_val_lt]; simp only [Committee.n]; omega⟩
+
+theorem lackedTerm_empty : ∃ T, lackedTerm (C := C) ∅ = some T := by
+  have ht := C.one_le_t
+  let T : C.Term := ⟨Finset.univ.filter fun l : C.Party => l.val < C.t - 1, by
+    rw [Fin.card_filter_val_lt]; simp only [Committee.n]; omega⟩
+  have hsome : (lackedTerm (C := C) ∅).isSome := by
+    unfold lackedTerm
+    rw [List.find?_isSome]
+    exact ⟨T, by simp [Committee.terms], by simp [KnownTo]⟩
+  exact Option.isSome_iff_exists.mp hsome
+
 /-! ## Sharings -/
 
 omit [Fintype E] [DecidableEq E] in
@@ -563,6 +580,21 @@ theorem prawns_lemma52_guess (game : ProbComp (Bool × C.Term)) [Nonempty C.Term
   refine tsum_congr fun g => ?_
   rw [mul_assoc, hguess]
   split_ifs <;> simp
+
+/-! ## Lists -/
+
+/-- `sequenceFin` and the protocol's list traversal use the same draw order. -/
+theorem treeSim_sequenceFin_mapM {m : Type → Type} [Monad m] [LawfulMonad m] {α : Type}
+    {n : ℕ} (f : Fin n → m α) :
+    List.ofFn <$> OverPermutation.sequenceFin f = (List.finRange n).mapM f := by
+  induction n with
+  | zero => simp [OverPermutation.sequenceFin, List.finRange]
+  | succ n ih =>
+    simp only [OverPermutation.sequenceFin, List.finRange_succ, List.mapM_cons, List.mapM_map,
+      map_bind, map_pure, List.ofFn_succ]
+    rw [← ih]
+    simp only [bind_map_left]
+    rfl
 
 end ThresholdLeanXmssSecurity
 

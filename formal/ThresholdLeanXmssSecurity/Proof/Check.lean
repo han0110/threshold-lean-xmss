@@ -736,16 +736,6 @@ def extendMultShare (K : Constants C E) (i : C.Party) (products : List (Product 
   | some p => productShare K (localContext i) p
   | none => 0
 
-theorem lackedTerm_empty : ∃ T, lackedTerm (C := C) ∅ = some T := by
-  have ht := C.one_le_t
-  let T : C.Term := ⟨Finset.univ.filter fun l : C.Party => l.val < C.t - 1, by
-    rw [Fin.card_filter_val_lt]; simp only [Committee.n]; omega⟩
-  have hsome : (lackedTerm (C := C) ∅).isSome := by
-    unfold lackedTerm
-    rw [List.find?_isSome]
-    exact ⟨T, by simp [Committee.terms], by simp [KnownTo]⟩
-  exact Option.isSome_iff_exists.mp hsome
-
 /-- `F_extendMult` in an honest run gives every operator its held terms of one replicated sharing of
 the products. -/
 theorem support_extendMult [Nonempty C.Party] (K : Constants C E) (products : C.Party → List (Product C E))

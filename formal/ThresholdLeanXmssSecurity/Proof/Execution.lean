@@ -1563,6 +1563,11 @@ theorem evalDist_eq_pure_of_support {α : Type} (mx : ProbComp α) (a : α) (h :
   rw [bind_pure] at hbind
   exact hbind.trans (OracleComp.EvalDistEq.bind_const mx (pure a))
 
+/-- A uniform sample that the next steps do not read does not change the distribution. -/
+theorem evalDist_uniform_bind_const {α β : Type} [SampleableType α] (mx : ProbComp β) :
+    ($ᵗ α >>= fun _ => mx : ProbComp β) =ᵈ mx :=
+  OracleComp.EvalDistEq.bind_const _ _
+
 theorem firstInput_some {α : Type} [Inhabited α] (x : C.Party → α) :
     firstInput (fun i => some (x i)) = default ∨ ∃ p, firstInput (fun i => some (x i)) = x p := by
   unfold firstInput

@@ -2,7 +2,6 @@ import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Build
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1TailChain
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Codeword
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerSyncRows
-import ThresholdLeanXmssSecurity.Proof.TreeCheckKernelCoupling
 
 /-! # The honest signature tail
 
@@ -532,7 +531,7 @@ theorem tail_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
   dsimp only
   rw [simulateQ_bind, StateT.run_bind, runX_bind,
     SigningCompilerSyncBackend.runX_releaseOpening_revealed _ _ _ _ _ _ hopen, pure_bind, runX_bind]
-  refine relTriple_bind (TreeCheckKernelCoupling.relTriple_of_support fun r2a hr2a r2b hr2b =>
+  refine relTriple_bind (relTriple_of_support fun r2a hr2a r2b hr2b =>
     opening_sync prims x q s pads u rest noise hkeys top _ _ a b.1.starts e a1 src1 st1 hi1 ha1 hb1
       r2a (by exact hr2a) r2b hr2b) fun r2a r2b h2 => ?_
   rcases h2 with h2 | h2 | ⟨hv2, hi2, hrev2, -⟩
@@ -569,7 +568,7 @@ theorem tail_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
     exact relTriple_pure_pure (Or.inr (Or.inr ⟨rfl, hc, hfin⟩))
   dsimp only
   rw [simulateQ_bind, StateT.run_bind, runX_bind, simulateQ_sequenceFin]
-  refine relTriple_bind (TreeCheckKernelCoupling.relTriple_of_support fun r4a hr4a r4b hr4b =>
+  refine relTriple_bind (relTriple_of_support fun r4a hr4a r4b hr4b =>
     chains_sync prims x q s pads u rest noise hkeys top _ _ a b.1.starts e encoding _ _ ?_ a3 src3 st3
       hi3 ha3 hb3 r4a hr4a r4b hr4b) fun r4a r4b h4 => ?_
   · intro l
@@ -621,7 +620,7 @@ theorem tail_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
   change path = path' at hv5
   subst hv5
   rw [runX_bind]
-  refine TreeCheckKernelCoupling.relTriple_of_support fun r6a hr6a r6b hr6b => ?_
+  refine relTriple_of_support fun r6a hr6a r6b hr6b => ?_
   rw [simulateQ_pure, StateT.run_pure, mem_support_pure_iff] at hr6a
   rw [mem_support_bind_iff] at hr6b
   obtain ⟨rv, hrv, hr6b⟩ := hr6b

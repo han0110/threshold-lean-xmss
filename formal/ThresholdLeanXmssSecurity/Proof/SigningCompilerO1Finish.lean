@@ -1,6 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Local
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Queries
-import ThresholdLeanXmssSecurity.Proof.TreeCheckKernelCoupling
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Tail
 
 /-! # The verification and the freshness check of the O1 coupling
@@ -101,12 +100,12 @@ theorem finish_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
   refine relTriple_bind hv ?_
   rintro ra rb ⟨hpost, hra, hrb⟩
   by_cases hsa : RealStop q ra.2
-  · apply TreeCheckKernelCoupling.relTriple_of_support
+  · apply relTriple_of_support
     intro za hza zb _
     exact Or.inl
       (SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ ra.2 hsa za hza)
   by_cases hsb : Stop rb.2
-  · apply TreeCheckKernelCoupling.relTriple_of_support
+  · apply relTriple_of_support
     intro za _ zb hzb
     exact Or.inr (Or.inl (SigningCompilerO1ChainRelease.runXO1_stop x q s pads u rest noise _ _ _ hsb
       zb hzb))

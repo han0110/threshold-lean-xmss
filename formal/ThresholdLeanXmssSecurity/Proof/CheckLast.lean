@@ -1,5 +1,4 @@
 import ThresholdLeanXmssSecurity.Proof.CheckFinish
-import ThresholdLeanXmssSecurity.Proof.Coupling
 
 /-!
 # The last stages of the check proof

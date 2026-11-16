@@ -1,5 +1,4 @@
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1ChainRelease
-import ThresholdLeanXmssSecurity.Proof.TreeCheckKernelCoupling
 
 /-! # The corruption handler of the O1 coupling
 
@@ -217,7 +216,7 @@ theorem step_corrupt (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top
           rw [hreleased]
         rw [← hsigners]
         exact hfilter.2
-    apply TreeCheckKernelCoupling.relTriple_of_support
+    apply relTriple_of_support
     intro ra hra rb hrb
     rw [support_pure, Set.mem_singleton_iff] at hra
     subst hra

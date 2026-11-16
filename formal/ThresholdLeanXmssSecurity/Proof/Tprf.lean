@@ -413,6 +413,7 @@ theorem gameOracles_step (b : Bool) (seeds : C.Term → HashOutput) (keys : C.Pa
       change (simulateQ (worldAnswer prims) ((tprfOracles keys seeds b (.challenge x)).run s)).run c = _
       rw [worldAnswer]
       cases b
+      -- With this option `simp` records each `rfl` step, so the kernel does not derive it again.
       · simp -implicitDefEqProofs only [tprfOracles, gameImplWith, StateT.run_bind, StateT.run_get, pure_bind, StateT.run_mk,
           if_false, Bool.false_eq_true]
         split_ifs
@@ -1256,10 +1257,6 @@ theorem fillSlots_update (ω : Slot C → HashOutput) (l : List (Slot C)) (c : S
     simp only [fillSlots]
     rw [ih (fun h => hx (List.mem_cons_of_mem _ h)),
       Function.update_of_ne (by rintro rfl; exact hx (List.mem_cons_self ..))]
-
-theorem evalDist_uniform_bind_const {α : Type} [SampleableType α] {β : Type} (my : ProbComp β) :
-    (($ᵗ α) >>= fun _ => my) =ᵈ my :=
-  OracleComp.EvalDistEq.bind_const _ my
 
 /-- Sampling the slots `l`, fresh in the state, before a run of the symbolic game leaves the result
 unchanged. -/

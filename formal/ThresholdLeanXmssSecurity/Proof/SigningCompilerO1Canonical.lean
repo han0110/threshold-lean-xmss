@@ -1,10 +1,8 @@
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerSyncSuffix
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerSyncTreeControl
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerSyncTrigger
-import ThresholdLeanXmssSecurity.Proof.SigningCompilerSyncBackend
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerSyncRealRead
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Release
-import ThresholdLeanXmssSecurity.Proof.SigningReleasedAlign
 
 /-! # The canonical digit and the gate of the O1 coupling
 
