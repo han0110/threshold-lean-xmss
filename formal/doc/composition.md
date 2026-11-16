@@ -28,7 +28,7 @@ The sketch of that join on the real network has these points.
 
 No theorem connects the Rust proof of concept to the model. In November 2026, two side-by-side readings of the code and the model, the second a check of the first, found these gaps.
 
-- All hash uses call one Keccak function. Tags of 32 bytes separate the uses of the protocol (`doc/dkg.md`, 1.1.4). Lean checks one fact of the tag rule on the byte model of leanVM, that no $\mathrm{Th}$ input starts with such a tag (`thInput_ne_of_no_zero_byte`). No theorem connects the bytes of a hash call to its input in the model, and the $\mathrm{Th}$ domain of the model takes every byte string.
+- All hash uses call one Keccak function. Tags of 32 bytes separate the uses of the protocol (`doc/dkg.md`, 1.1.4). Lean checks the tag rule on a copy of the 17 tag names. Each tag block has 32 bytes and no zero byte, and the tag blocks are different (`tagBlocks_nodup`). So two hash inputs with different tags differ (`tagged_ne_of_ne`), and no $\mathrm{Th}$ input starts with a tag block (`thInput_ne_tagged`). Lean does not check that the encoding of one use is injective. No theorem connects the bytes of a hash call to its input in the model, and the $\mathrm{Th}$ domain of the model takes every byte string.
 - No theorem connects the circuits, the constants or the wire layout of the code to `CircuitsCompute` and `Constants`, and nobody has checked the circuits against `CircuitsCompute`.
 - The code uses acknowledgements where the note assumes consensus for one message per key.
 - The code drops memory without clearing it.

@@ -142,8 +142,8 @@ Each use of $H$ except $\mathrm{Th}$ hashes a tag block of 32 bytes first. The t
 
 - A $\mathrm{Th}$ input is $P \,\Vert\, A \,\Vert\, M$, and bytes 24 to 31 of it are the zero bytes of the address $A$.
 - A tag block has no zero byte, so no $\mathrm{Th}$ input starts with a tag block. A tag of 24 bytes or fewer can be equal to the start of a $\mathrm{Th}$ input, because $P$ is random and the first 8 bytes of $A$ vary.
-- Lean checks on the byte model of leanVM that no $\mathrm{Th}$ input starts with a tag block (`thInput_ne_of_no_zero_byte`).
-- All tag blocks are different. So two uses of $H$ in the protocol never hash the same input. The formal model gives each use its own domain, a constructor of `Query`.
+- Lean checks on the byte model of leanVM that no $\mathrm{Th}$ input starts with a tag block (`thInput_ne_of_no_zero_byte`, `thInput_ne_tagged`).
+- All tag blocks are different. So two uses of $H$ in the protocol never hash the same input. Lean checks this on a copy of the 17 names (`tagBlocks_nodup`, `tagged_ne_of_ne`). The formal model gives each use its own domain, a constructor of `Query`.
 
 The tags of the threshold PRF and of the signing masks are a difference from the note, which defines both with no tag.
 

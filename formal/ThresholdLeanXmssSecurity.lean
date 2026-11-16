@@ -48,6 +48,10 @@ than `2 ^ 128` operators. It is no field of the bundle.
 `thInput_ne_of_no_zero_byte` states that no input of `Th` in the byte model of leanVM starts with a
 block of 32 bytes that has no zero byte. It is no field of the bundle.
 
+`tagged_ne_of_ne` states that two hash inputs with different tags of `tagNames` are different.
+`thInput_ne_tagged` states that no input of `Th` starts with a tag block. They are no fields of the
+bundle.
+
 ## Units and budgets
 
 * The signing claim counts in units of `2^-128`. `signingHashError q = q / 2^127` is two units for
@@ -262,6 +266,14 @@ and `Quot.sound`. -/
 /-- info: 'ThresholdLeanXmssSecurity.thInput_ne_of_no_zero_byte' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms thInput_ne_of_no_zero_byte
+
+/-- info: 'ThresholdLeanXmssSecurity.tagged_ne_of_ne' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms tagged_ne_of_ne
+
+/-- info: 'ThresholdLeanXmssSecurity.thInput_ne_tagged' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms thInput_ne_tagged
 
 /-- info: 'ThresholdLeanXmssSecurity.seedGenSecurity' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
