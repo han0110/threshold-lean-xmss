@@ -174,12 +174,6 @@ theorem support_runWorld {α : Type} (oa : OracleComp (WorldSpec C) α) (r : α 
   subst hrr
   exact ⟨s, support_withCost_run prims _ oa a w s ∅ hmem⟩
 
-/-- The cache `s'` keeps every entry of `s`. -/
-def Extends (s s' : HashCache C) : Prop := ∀ q v, s q = some v → s' q = some v
-
-theorem Extends.trans {s₁ s₂ s₃ : HashCache C} (h₁ : Extends s₁ s₂) (h₂ : Extends s₂ s₃) : Extends s₁ s₃ :=
-  fun q v h => h₂ q v (h₁ q v h)
-
 end Cache
 
 end ThresholdLeanXmssSecurity
@@ -2393,14 +2387,6 @@ theorem mainStatement_of_simulator_distance (prims : Primitives) (K : Constants 
   intro x z Z q hx hq
   exact ⟨mainSimulator_queryBound prims K D A mode jobs x z Z q hq,
     h mode jobs D A x z Z q hx hq⟩
-
-end ThresholdLeanXmssSecurity
-
-namespace ThresholdLeanXmssSecurity
-
-open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
-
-variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
 
 end ThresholdLeanXmssSecurity
 

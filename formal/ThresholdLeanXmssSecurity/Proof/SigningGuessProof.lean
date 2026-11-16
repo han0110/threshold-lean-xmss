@@ -11,9 +11,13 @@ import XmssSecurity.Proof.QueryCounting
 import LeanXmss.Bytes
 
 /-!
-The earlier counterexample below refutes the one-unit GuessPartner route only.
-The current target is SigningCoreProof.HiddenCoreAt, with two units per call.
-Domain separation and a disjoint event partition must preserve that budget.
+# The charged output events of the signing core
+
+This module bounds the charged output events of the signing core by expected source costs. It holds
+the charging lemma `probEvent_le_chargedCost`, the domain separation of the hash inputs, the message
+ledger and the round-2 receipts of the signing oracles, and the canonical commitments and top trees
+of a run. `SigningCoreProof.HiddenCoreAt` uses two units `2 ^ -128` for each call, and the example
+at the end of the module rules out one.
 -/
 
 set_option pp.deepTerms false
@@ -570,58 +574,6 @@ def Observation {β : Type} (v : ShareViewData C) (next : β → ShareViewData C
     TprfSecurityProof.Consistent (next b).records (next b).reads ∅ (fun _ => 0) ω ↔
       TprfSecurityProof.Consistent v.records v.reads ∅ (fun _ => 0) ω ∧ g ω = b
 
-/-- Recording one `Eval'` answer is an observation in the adaptive interface. -/
-def record (v : ShareViewData C) (i : C.Party) (J : C.Quorum) (x : Point)
-    (message : HashSig.Message) (answer : TprfCorrectnessProof.XorDigest) : ShareViewData C :=
-  { v with records := ⟨i, J, x, message, answer⟩ :: v.records }
-
-/-- Recording a raw slot read uses the same observation interface. Its safety
-requires that the key of the slot is already revealed. -/
-def read (v : ShareViewData C) (slot : Slot C) (answer : HashSig.HashOutput) : ShareViewData C :=
-  { v with reads := (slot, answer) :: v.reads }
-
-def Safe.read {v : ShareViewData C} (h : v.Safe) (slot : Slot C)
-    (hslot : Revealed h.corrupt (slotKey slot)) (answer : HashSig.HashOutput) :
-    (v.read slot answer).Safe where
-  corrupt := h.corrupt
-  missing := h.missing
-  subset_missing := h.subset_missing
-  quorum := h.quorum
-  reads_revealed := by
-    intro r hr
-    rcases List.mem_cons.mp hr with rfl | hr
-    · exact hslot
-    · exact h.reads_revealed r hr
-
-/-- Only the queried point/context changes when an `Eval'` answer is recorded. -/
-theorem recordQueriers_record (v : ShareViewData C) (i : C.Party) (J : C.Quorum)
-    (x : Point) (message : HashSig.Message) (answer : TprfCorrectnessProof.XorDigest)
-    (y : Point) (context : HashSig.Message) :
-    recordQueriers (v.record i J x message answer).records y context =
-      if x = y ∧ message = context then insert i (recordQueriers v.records y context)
-      else recordQueriers v.records y context := by
-  simp only [record, recordQueriers, List.filter_cons, decide_eq_true_eq]
-  split_ifs <;> first | rfl | simp only [List.map_cons, List.toFinset_cons]
-
-/-- Record a share after releasing the point if this answer crosses its
-threshold. No threshold condition is imposed on previously released points. -/
-def Safe.record {v : ShareViewData C} (h : v.Safe) (i : C.Party) (J : C.Quorum)
-    (x : Point) (message : HashSig.Message) (answer : TprfCorrectnessProof.XorDigest)
-    (hquorum : x ∉ v.released →
-      (h.corrupt ∪ insert i (recordQueriers v.records x message)).card ≤ C.t - 1) :
-    (v.record i J x message answer).Safe where
-  corrupt := h.corrupt
-  missing := h.missing
-  subset_missing := h.subset_missing
-  quorum := by
-    intro y hy context
-    rw [recordQueriers_record]
-    split_ifs with heq
-    · obtain ⟨rfl, rfl⟩ := heq
-      exact hquorum hy
-    · exact h.quorum y hy context
-  reads_revealed := h.reads_revealed
-
 end ShareViewData
 
 /-- A compositional proof interface for adaptive share observations and
@@ -670,22 +622,6 @@ noncomputable def run (simulated : Bool) (values : Point → TprfCorrectnessProo
 end ShareProgram
 
 end ShareRefresh
-
-section ShareMonitorTransport
-open Classical
-variable {I J : Type} {α : Type}
-
-end ShareMonitorTransport
-
-namespace ShareProgram
-open Classical
-set_option maxRecDepth 100000
-set_option maxHeartbeats 800000
-set_option backward.isDefEq.respectTransparency false
-variable {C : Committee} {points : Finset Point} {α I : Type}
-    [Fintype I] [DecidableEq I]
-
-end ShareProgram
 
 section PrivateForest
 
@@ -958,21 +894,6 @@ open TprfSecurityProof
 variable {C : Committee} (prims : Primitives)
   (seeds : C.Term → HashSig.HashOutput) (pairKeys : C.Pair → HashSig.HashOutput)
 
-/-- Honest forest computations use only hash calls and prescribed PRF values. -/
-abbrev ForestSpec := LeanXmss.HashSpec + (Point →ₒ HashSig.Digest)
-
-def forestHash {α : Type} (oa : OracleComp LeanXmss.HashSpec α) :
-    OracleComp ForestSpec α :=
-  simulateQ (fun input => query (spec := ForestSpec) (.inl input)) oa
-
-def round2ReplyRecords (i : C.Party) (J : C.Quorum) (e : LeanXmss.KeyIndex)
-    (message : HashSig.Message) (encoding : LeanXmss.Encoding)
-    (values : LeanXmss.ChainIndex → Option HashSig.Digest) : List (EvalRecord C) :=
-  (List.finRange LeanXmss.chainCount).filterMap fun chain =>
-    (values chain).map fun answer =>
-      ⟨i, J, .chain LeanXmss.bottomLayer e chain (encoding chain), message,
-        TprfCorrectnessProof.toXor answer⟩
-
 section Round2Receipts
 
 variable {m : Type → Type} [Monad m] [LawfulMonad m]
@@ -1017,9 +938,6 @@ structure Round2Receipt (C : Committee) where
   candidate : HashSig.Digest
   commitment : HashSig.Digest
   values : LeanXmss.ChainIndex → Option HashSig.Digest
-
-def Round2Receipt.records (receipt : Round2Receipt C) : List (EvalRecord C) :=
-  round2ReplyRecords receipt.party receipt.quorum receipt.key receipt.message receipt.encoding receipt.values
 
 /-- The full handler records a receipt only after success. Failed attempts
 keep their tree build, own-share and search effects. -/
@@ -1322,12 +1240,6 @@ theorem presample_signing_slots_observe {α β : Type} (oa : OracleComp (WorldSp
         (pure (observe a p'.1.1 p'.2)))
     simp only [map_eq_bind_pure_comp]
     exact heq
-
-/-- A source-level transcript; the original world still answers every query. -/
-def traceWorld : QueryImpl (WorldSpec C)
-    (StateT (QueryLog (WorldSpec C)) (OracleComp (WorldSpec C))) :=
-  fun t => StateT.mk fun log => (fun answer => (answer, log.logQuery t answer)) <$>
-    OracleComp.lift (OracleSpec.query t)
 
 end SigningPresample
 
@@ -2575,14 +2487,6 @@ theorem E_messageDigest_cache {C : Committee} (prims : Primitives) (cache : Hash
   exact XmssSecurity.Concrete.CacheReplay.eval_encodingHash (SigningDescentProof.thView cache)
     P e message randomness
 
-section CompleteShareView
-
-open Classical TprfSecurityProof
-set_option maxRecDepth 100000
-variable {C : Committee}
-
-end CompleteShareView
-
 /-- Exactly the top-layer branch of `SigningDescentProof.Partner`. Standard
 leanVM places this branch in its output-collision lane, not its bottom encoding
 monitor (`CappedTop.topEncodingCollision_afterKeygen`). -/
@@ -3049,12 +2953,6 @@ theorem encodingInput_ne_randomizerInput (parameter : HashSig.PublicParameter)
     LeanXmss.tweakFields] at ht
 
 end SourceBottomScan
-
-section CachedScanBudget
-set_option maxRecDepth 100000
-set_option maxHeartbeats 800000
-
-end CachedScanBudget
 
 
 section CanonicalTopCompletion
@@ -3983,330 +3881,42 @@ be disjoint internally; the complementary winning event below is disjoint. -/
 def ChargedOutput (prims : Primitives) (x : SigningSecurityProof.Keys3 C) (r : Outcome C) : Prop :=
   WinHit prims x r ∨ AlternativeCommitment x.2.1 x.1 r.2.1 ∨ ∃ key, ResolvedTopPartner x key r.2.1
 
-section ResidualPublicView
-
-set_option maxRecDepth 100000
-
-end ResidualPublicView
-
 end CanonicalTopCompletion
 
 end SigningGuessProof
 
-/-
-COUNTEREXAMPLE TO THE EARLIER ONE-UNIT ROUTE ONLY
+/-!
+## The signing core uses two units for each call, and the example rules out one
 
-Earlier target: guessPartnerLaneBoundClosed (prims : Primitives) (C : Committee) :
-  GuessPartnerLaneBound prims C.
+`hit_bound_structural_cost`, `alternativeCommitment_bound_source` and
+`SigningPartnerLinkProof.resolvedTopPartner_bound_topDigest`, with `source_output_costs_le`, bound
+`ChargedOutput` by one unit `2 ^ -128` for each call. `SigningLinkPaidProof.chargedLane_bound_oneRun`
+also bounds the R1 hit in the same unit. `HiddenCoreAt` has the bound `signingHashError q`.
 
-The following is a mathematical counterexample, not a Lean formalization of
-the adversary or its probability. The generic charging lemmas above are proved.
+The example below is a mathematical counterexample and not a Lean proof. It shows that one unit
+does not bound the guess and partner wins together. Let `N = 2 ^ 128`, `M = 2 ^ 120`, `B = 2 ^ 90`.
 
-Take t = 2 (hence n = 3), corrupt party 0, and use quorum {0, 1} at one
-bottom key e. Fix distinct term/pair keys in the support of keyGen3. Let
-N = 2^128, M = 2^120, B = 2^90, and q = M + 2^113 < 2^127.
+* The setting is `t = 2` with one corrupt operator and distinct supported keys.
+* The forger makes `M` distinct commitment trials `ρ'` against `c_e`. A second preimage of `c_e`
+  also counts, so a match has a probability of at least `(3/2) * M / N`.
+* With `ρ'`, the first digest trials of `B` messages give `m0 ≠ m1` with the same valid digest.
+* In round 2 the corrupt share is `ρ' XOR d1`, with `d1` the honest share. So the combined value is
+  `ρ'`. A matching commitment alone passes only the commitment check of `signCodeword`, and its
+  grind can still fail.
+* The forger outputs the signature of `m0` on `m1`. The digests are equal, so the verification
+  accepts it. Only the corrupt operator signs `m1`, so the forgery is fresh.
+* The top search of the bottom tree and the digest collision each succeed with a conditional
+  probability of at least `7/8`. This gives `(7/8)^2 * (3/2) = 147/128`.
+* The forger makes at most `q = M + 2 ^ 113` counted calls, with the honest work and the
+  verification. So the guess or partner win has a probability of at least `(147/128) * M / N`,
+  but `q / N` is only `(129/128) * M / N`.
 
-On any failed search, return a dummy forgery on an unsigned message. Thus the
-postgame never needs honestSignature for a threshold-authorized message.
+The commitment collision itself is not a structural `SigningDescentProof.Hit`. On the
+different-opening branch, `AlternativeCommitment` covers it.
 
-1. Request the bottom tree, exposing c_e = trunc H(commitmentInput P e rho_e).
-   Among M fixed distinct randomizers, find the first rho' with commitment c_e.
-   These are commitment calls, not digest calls or calls on hidden PRF keys.
-   The probability of finding one is exactly
-     1 - (1 - M/N) * (1 - 1/N)^M >= (3/2) * M/N.
-   The real rho_e contributes M/N; different commitment preimages contribute
-   the additional term. It is essential not to discard this second branch.
-
-2. Before round 1, for B distinct messages m, query randomizerInput with rho'
-   and the first digest trial at the resulting base R_m. Find m0 != m1 with
-   the same valid digest. Both searches select their first trial. The digest
-   inputs are distinct because the messages are distinct.
-   There are K valid digests, with 2^107 <= K <= 2^108 (Scan/Card.lean).
-   For the number X of equal-valid unordered pairs, independence gives
-     mu = E[X] = choose(B,2)*K/N^2 >= 2^29,
-     Var(X) <= mu + B^3*K/N^3.
-   Thus P(X=0) <= 1/mu + 16*N/(B*K) <= 2^-29 + 2^-65 < 1/8.
-
-3. Ask party 1 for round 1 on m0, obtaining its actual part d1. Give round 2
-   parts[0] = rho' XOR d1 and parts[1] = d1. The oracle overwrites only its
-   own part (Ideal.tsigOracles), so combine is rho'. signCodeword accepts
-   this value because its commitment equals c_e. Compute the corrupted
-   party's genuine chain parts on m0 from its revealed keys. Combine with
-   party 1's chain parts and the public cpk to get the honest chain values at
-   the selected digits, exactly as Scheme.assemble does.
-
-4. Output these chain values, the public authentication path and top signature,
-   but message m1 and randomness R_m1. The digest equals that of (m0,R_m0),
-   so verification succeeds. Only party 0 counts as a signer for m1, hence
-   freshness holds. The hidden-key flag is false: hash calls do not set it,
-   and the corrupted party's PRF/mask calls use revealed keys only.
-
-5. This win is ALWAYS in Guess OR Partner, including when rho' != rho_e.
-   The canonical selected input is for the bound message m0 and the true rho_e.
-   If it is absent, bottomOpened is constantly 3 and guess_of_signed applies.
-   If its encoding differs from the forged encoding, exists_forged_lt_signed
-   supplies a smaller forged digit; its forged value is the honest chain value,
-   giving Guess. If the encodings agree, injectivity of successful decoding
-   gives equal digests; the messages differ, giving Partner. In particular,
-   a commitment collision can be a WinGuessPartner. Such a collision is NOT
-   the formal Hit event, which contains only chain/leaf/node collisions.
-
-The bottom tree's top search succeeds with probability at least 7/8: its
-2^32 distinct trials have validity probability K/N >= 2^-21. This bound
-holds conditional on the commitment data. The fresh bottom digest trials in
-step 2 likewise give the 7/8 bound conditional on the earlier history.
-Consequently the winning Guess/Partner probability is at least
-  (7/8)^2 * (3/2) * M/N = (147/128) * M/N,
-whereas the proposed bound is q/N = (129/128) * M/N.
-The query budget includes M commitment calls, 2*B trial calls, the fixed
-tree/verification work and the constant number of signing calls. Even with
-every honest search capped at 2^32, all work other than M is below 2^113.
-
-This does not refute HiddenCoreAt: its bound is 2q/N = (258/128)*M/N.
-Many keys do not multiply the targets of one input: commitmentInput_key_eq,
-randomizerInput_key_eq, randomizerInput_layer_eq and randomizerInput_payload_eq
-identify the key/layer/opening/message. bound_message_unique rules out a second
-bound message at the same key. Commitment trials have one hidden opening and
-one commitment-output target, not a separate target per repeated session.
-
-The split PartnerLaneBound already fails on the true-rho branch, since the
-commitment search is charged to guessCost. The combined target also fails:
-the false-rho branch enters Guess/Partner after spending the hit probability.
-The split GuessLaneBound is not independently refuted by this trace. No
-frozen statement has been changed, and no closed proof of the false target
-is asserted.
-
-REJECTED EXPECTED-COST ROUTE; CURRENT FIXED-CAP ROUTE
-
-The conditional theorem hiddenCoreAt_of_domainBounds is checked, but its
-expected-cost hypotheses are not the active route. Stop the commitment scan
-at its first match. With a = 1 - 1/N, survival after k distinct trials is
-S_k = (1-k/N)a^k and E[T] = sum_{k<M} S_k. The exact algebraic identity
-stoppedOpening_charge_gap proves
-  (1-S_M) - 2 E[T]/N = sum_{k<M} (k-1)a^k / N^2.
-This is positive already at four trials (stoppedOpening_four). At M=2^120
-the gap exceeds 2^-20. Taking B=2^96 in the earlier birthday construction
-makes its failure less than 2^-40; its total extra cost is below 2^100,
-whose normalized charge is at most 2^-28. The top search failure is at most
-exp(-2048), not the earlier coarse 1/8 estimate. Thus the stopped variant
-also refutes GuessPartnerDomainBound. This extension is a mathematical trace,
-not a formal adversary construction. None of these facts refutes HiddenCoreAt.
-opening_fixed_cap proves the correct 2M/N cap inequality for this search.
-
-The replacement route separates hidden-input probes from output matches,
-each with cap q/N. Output matches can use expected domain costs; true opening
-probes belong to the first; different commitment preimages belong to the
-second alongside chain/leaf/node output hits and top digest partners.
-Top partners follow the standard second-lane orientation in
-XmssSecurity.CappedTop.topEncodingCollision_afterKeygen; the existing
-FirstLaneOracleSimulation encoding monitor covers only bottom partners.
-OutputLaneBound and ResidualLaneBound retain the earlier assembly. The active
-route is now hiddenCoreAt_of_uncharged: chargedOutput_bound closes one q/N
-unit, and UnchargedLaneBound is its sole remaining probability hypothesis.
-The weighted hit theorem, rather than the unweighted HitLaneBound alone,
-keeps commitment and digest costs available in that first unit.
-
-Completed protocol bridges: tsigOracles_boundExtends and
-gameOracles_boundExtends make the message ledger write-once;
-signingLoggedOracles_forget preserves the actual game computation;
-signingLoggedOracles_bound reconstructs the bound message from the signing
-transcript (including t=1, where round 1 has no message-dependent hash call);
-selectedOfSigningLog_eq reconstructs the actual selected trial;
-signCodeword_canonical reduces an accepted round-2 opening to the canonical
-grind outside DifferentOpening. run_bottom_commitment_cached proves that
-actual bottom generation caches all canonical PRF terms and commitments;
-run_bottom_commitment_eq identifies each successful tree's commitment in
-every extension of its cache. openingMatch_of_runs combines supported tree
-and accepted codeword subruns into the final OpeningMatch event, without a
-freshness assumption. receiptExposedRun_runs now extracts both witnesses
-from every actual accepted session and preserves them through verification.
-These support facts do not assert hidden-value independence or search freshness.
-
-The successful round-2 release ledger is also reconstructed exactly by
-signingLoggedOracles_released. signingLoggedOracles_successfulRound2 proves
-that every successful transcript entry contributes a signer and retains the
-same bound message in the final state. flaggedOracles_slot_revealed connects
-an actual unflagged adversarial slot read to Revealed; it excludes honest
-internal reads from the public share view. signRound2C_run_full retains the
-actual probabilistic codeword search, identifies the returned selected share
-coordinates, and preserves every internal PRF/mask call in the count.
-round2ReplyRecords_consistent proves the returned records satisfy evalSum;
-signingChainRecords_queriers_subset bounds each recorded chain-coordinate
-querier set by actual signersAt. The causal Round2Receipt instrumentation
-now replaces the arbitrary encodingAt annotations: receiptExposedRun_forget
-preserves the full experiment and counter; receiptExposedRun_receipt_bound
-retains the permanently bound message; receiptExposedRun_selectedEncoding
-identifies every receipt at the forged key with the descent-selected trial
-outside OpeningMatch. TopFacts is derived from the actual initial tree
-without a Good-table hypothesis. receiptExposedRun_chain_safe proves that
-every bottom coordinate below the descent-opened digit remains below
-threshold in the actual receipt view, including unreleased signatures.
-This covers bottom-layer Guess coordinates only; the top-layer Guess branch
-still needs the public-top-signature and chain-programming argument.
-publicReceiptExposedRun now records the actual public request/response log
-jointly with the causal round-2 receipts. Erasure preserves the original
-outcome, final cache and query count. publicShareView includes the round-1
-randomizer replies and public raw-slot reads as well as the chain receipts.
-publicReceiptExposedRun_chain_releaseSafe and
-publicReceiptExposedRun_unbound_releaseSafe prove the threshold and revealed-read
-conditions for bottom coordinates below the opened digit and for unbound
-randomizers. uncharged_chain_releaseSafe discharges the no-opening-match
-premise directly from UnchargedWin. These are share-table refresh conditions;
-they do not assert independence from the public hash forest.
-The full deferred-sampling forest/monitor coupling, selected-trial
-freshness analysis, and residual monitor-cost accounting remain open. In particular,
-no-receipt replay selections are not certified as actual honest trials.
-
-Completed probability bridges: card_consistent_released_mul fixes arbitrary
-earlier releases while imposing the threshold restriction only on disjoint
-hidden points. refreshShareTable_joint_given_view gives an exact reversible
-installation law jointly with any event of the refreshed table and value.
-refreshShareTable_weighted additionally installs a prescribed value while
-preserving arbitrary continuation weights. ShareProgram.balance_real proves
-adaptive composition across share observations, independent randomness and
-later releases. observation_record/observation_read instantiate the actual
-Eval-sum and raw-slot observations; Safe.record and Safe.enlargeCorrupt retain
-the invariant after releasing the coordinates whose thresholds are crossed.
-adaptive_forest_eq couples this simulation jointly with any fixed-function
-forest kernel. It does not assert that an arbitrary such kernel hides F.
-
-ShareProgram.compile now interprets releases, silent probes and bottom
-encoding trials in FirstLaneOracleSimulation.World. simulate_compile checks
-its eager semantics; compile_real_eq/eager_result_eq_real transport the actual
-share result; real_event_le applies the existing fixed-cap q/N monitor bound.
-The finish constructor requires released=points before returning arbitrary
-slot-table data. finishAll drains remaining coordinates by reveal queries;
-real_finishAll proves that this leaves the real terminal result unchanged.
-ShareProgram.compileEmbeddedFromEmpty additionally embeds the PRF coordinates
-into a larger monitor pool and transports them by fixed public XOR masks.
-compileEmbedded_real_eq proves exact result-distribution preservation;
-compileEmbedded_bound preserves the same hazard cap. This accommodates masked
-bottom coordinates and separate top intermediate labels without identifying
-the latter with unused PRF points. embedded_real_event_le supplies the q/N
-bound once the concrete source compiler and event detection are established.
-
-Completed concrete forest bridges: top_rows_programmed couples the ordered
-initial top chains with their entire cache, and referenceTopTree_programmed
-continues through the actual Merkle construction. signing_tree_run_full
-replaces the source interpreter of either tree by fixedForestImpl, retaining
-the full slot table, all non-hash cache entries and every original count.
-signing_top_tree_programmed connects its hash projection to the programmed
-top setup. fixedForestFinalRun_eq performs the replacement inside the complete
-original signing run. fixedForestFinalRun_count_le transports the real cap
-through this exact replacement without a new budget assumption. It does not
-yet bound monitor hazards or the cost of extra ghost computations.
-
-The alternate private-precomputation route can reuse the standard chain
-replay theorem, with a separate cache of actually visited inputs. Unrequested
-failed bottom searches must remain private, rather than aborting the game.
-bottomMask_table_change proves the joint invertible transformation from
-uniform bottom labels to uniform public cpk rows, retaining the labels for
-arbitrary later cache-dependent continuations. It applies to the stated
-uniform sampling, not to arbitrary conditioned labels. Extra commitment and
-randomizer queries still need their own probe/redirect cases, including the
-cached randomizer used to derive topBase. Standard setup's independent topBase
-cannot simply be identified with that source value.
-
-Remaining source-specific work: compile the actual signing computations into
-this interface with a causal programmed forest, prove the source/monitor
-coupling up to a monitored hit, establish the hazard cap from the counted
-source calls, and show that UnchargedWin forces a monitor hit. The arbitrary
-forest kernel in adaptive_forest_eq does NOT discharge these obligations.
-For the forest hop, the existing per-query interface is
-CappedGlobalChainHighReplay.relTriple_programmed_monitoredGlobalAttackerHashQuery_until_hit
-(line 1069 in that module), with setup from
-CappedGlobalChainHighSetup.relTriple_trajectoryProgrammedGlobalChainKeygen_withBaseHigh_stable
-(line 421). Its setup must be adapted to on-demand threshold bottom trees
-and the extra commitment/randomizer domains. Bottom intermediate labels
-translate by public cpk XOR; top intermediate labels need auxiliary monitor
-coordinates or a proved label transport, not identification with unused PRF
-points. These source adaptations remain unproved. The earlier
-StructuralOutputDomainBound route is superseded by chargedOutput_bound;
-unresolved top partners are retained in UnchargedWin.
-exposedRun_eq_presampled moves every share slot before the actual signing
-experiment, retaining the entire Outcome, including the original final cache.
-traceObserved keeps the ordinary cache (including internal PRG hash reads)
-and reconstructs just the visited share slots from the instrumented world log.
-presampled_finalRun_count_le transfers the real cap to every full share table,
-including flagged branches. This instrumented log contains honest internal
-answers: it is not the adversary's share view and need not remain unchanged
-under the next refresh coupling.
-
-The private-prefix route now has an exact raw-oracle lowering of finalRun,
-including internal PRG streamKey reads and the original cost writer.
-privateSigningRun_marginal retains the source-only cache and outcome;
-signingRaw_prefix_raw_cap bounds raw source calls after every supported
-private prefix, without charging that prefix. signingRaw_fresh_output_le
-therefore bounds one fixed fresh-output target per input by q/N.
-rawCommitmentForest_support constructs a prefix containing every canonical
-commitment and no alternative. openingMatch_bound closes the concrete
-noncanonical-opening subevent at q/N for all keys and sessions. This is NOT
-a third additive lane. openingMatch_bound_expected sharpens it to the actual
-expected commitment-domain count. private_prefix_expectedCost preserves this
-count even under adaptive stopping. outputDomainCosts_le proves that this
-charge and the complementary raw-domain charge sum to at most q. All
-tweakable hash domains and PRF/mask slots lie in the complementary domain,
-by rawOtherCall_tweakableHashInput and rawOtherCall_slot.
-outputLaneBound_of_domain closes the assembly from StructuralOutputDomainBound,
-which includes top partners and unopened-tree completion exceptions and is
-not implied by the older unweighted HitLaneBound. The absence clause of
-CanonicalCommitments must be preserved by extra forest queries using domain
-separation; arbitrary cache extension alone does not preserve it.
-
-The closed hit proof now also supplies hit_bound_structural_cost: its
-completion potential charges only structural hash inputs, and its exceptional
-continuations charge their designated top PRF gates. The original supported
-source cap, distinct-key and small-budget hypotheses are unchanged.
-structural_commitment_digest_cost_le proves that this hit charge, commitment
-calls and digest calls jointly spend at most one unit per source call.
-source_output_costs_le transfers that inequality to expected source costs.
-hitOnlyDomainBoundClosed closes the structural half of the earlier split;
-the refuted GuessPartnerDomainBound is not used. CanonicalTopCompletion uses
-the exact source bottomJobs, Merkle root, top randomizer and scan. Its all-key
-completion potential charges at most one unit per digest call, without
-requiring a fresh selected trial. topPartner_resolved proves the bridge for
-successful cached bottom trees, including the exact replayed root.
-alternativeCommitment_bound_source now puts commitment output matches in
-the same source-cost frame. chargedOutput_bound combines these three bounds
-at q/N. The hit proof's auxiliary base-zero top scans are not substituted
-for the source's canonical scans.
-A randomizer base can enter a cached run of failed digest trials; the residual
-proof must charge those earlier trials rather than assume a fresh selected
-codeword conditional on the previous cache.
-
-Still open: UnchargedLaneBound. The actual threshold-share view must be
-coupled to an adaptive silent-probe/reveal experiment, and its selected digest
-must be coupled to the cached randomizer scan. This residual includes top
-partners without a successful resolved bottom tree. The proved
-uncharged_topPartner_no_successful_bottom excludes every supported successful
-subrun whose cache extends into the final cache; failed subruns remain.
-Rho can be installed/revealed after the first binding of the message. Chain
-coordinates must be installed/revealed only at the actual signing threshold,
-including threshold crossings caused by corruption; revealing them at the
-first round-2 answer would invalidate freshness. The target simulator has type
-QueryImpl Source (StateT SimState (OracleComp (FirstLaneOracleSimulation.World Point))):
-private draws use liftProbComp, and silent probes/reveals use the existing
-monitor. Public forest outputs must be included jointly in the coupling,
-not conditioned away by the share-view counting lemma. The top partner
-orientation additionally needs virtual precomputation or an online proof,
-since the standard theorem assumes all top selections precede the forger.
-If the forged bottom
-tree was never requested, its replay may contain default-zero PRF values;
-the descent must instead start with the genuinely cached top layer. The
-current file proves the first lane and the conditional root theorem
-hiddenCoreAt_of_uncharged, but does not claim UnchargedLaneBound or root closure.
-
-Routes checked: the original split is refuted above; simply excluding Hit
-does not fix commitment trials; multi-key/session amplification is prevented
-by the proved input/message equalities; direct fresh-query charging fails for
-hidden inputs already cached by key generation; presampling and indexed-table
-coordinate lemmas still need a coupling for the full signing view; the leanVM
-capped-game results do not directly apply to the threshold share interface.
-The generic charging lemma therefore cannot discharge the residual on its own.
-In particular a noncommitment randomizer query may guess the true opening or
-have a base that coincides with a later canonical base. The choice of the
-selected digest partner must be included in the charging argument; merely
-counting local bad predicates would not justify the proposed one-unit charge.
+Many keys or sessions do not multiply the targets of one input. `commitmentInput_key_eq`,
+`randomizerInput_key_eq`, `randomizerInput_layer_eq` and `randomizerInput_payload_eq` fix the key,
+the layer, the opening and the message of an input. `bound_message_unique` fixes the bound message.
 -/
 
 end ThresholdLeanXmssSecurity

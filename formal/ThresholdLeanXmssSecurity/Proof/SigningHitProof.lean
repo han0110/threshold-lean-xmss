@@ -3075,8 +3075,9 @@ namespace MarkedChain
 
 variable {State : Type} [Fintype State] [DecidableEq State] [Nonempty State]
 
-/-- The row law of leanVM's `PartialChainEndpoint`: cached rows are fixed,
-and uncached rows are uniform. That package is not on this project's import path. -/
+/-- The row law of a marked chain. A cached row is fixed, and an uncached row is uniform. It is
+`rowLaw` of `SphincsBase.Concrete.PartialChainEndpoint` in leanVM at revision `680c9c1c`, file
+`formal/sphincs/SphincsBase/Proof/Chains/PartialChainEndpoint.lean`. -/
 def rowLaw : Option State → PMF State
   | none => PMF.ofFintype (fun _ : State => (Fintype.card State : ℝ≥0∞)⁻¹) (by
       rw [Finset.sum_const, Finset.card_univ, nsmul_eq_mul]
@@ -5157,8 +5158,6 @@ theorem growth_ne_top : growth State ≠ ∞ := ENNReal.ofReal_ne_top
 
 abbrev GraphState (Index State : Type) := (Index → List (State → Option State)) × ℕ
 
-abbrev GraphSpec (Index State : Type) := (Index × Fin 3 × State) →ₒ State
-
 variable [SampleableType State]
 
 /-- Lazy sampling of observed chain edges, counting cached queries too. -/
@@ -5168,9 +5167,6 @@ def step (t : Index × Fin 3 × State) (s : GraphState Index State) :
   | some output => pure (output, s.1, s.2 + 1)
   | none => (fun output => (output,
       Function.update s.1 t.1 (insertEdge (s.1 t.1) t.2.1.val t.2.2 output), s.2 + 1)) <$> ($ᵗ State)
-
-def implementation : QueryImpl (GraphSpec Index State) (StateT (GraphState Index State) ProbComp) :=
-  fun t s => step t s
 
 def Valid (s : GraphState Index State) : Prop := ∀ i, (s.1 i).length = 3
 
@@ -6479,23 +6475,6 @@ theorem hiddenHit_readAllowed (x : SigningSecurityProof.Keys3 C) (D : Finset C.P
       ¬Revealed D (.inl T') from ⟨T, rfl, hn⟩] at hflag
   · trivial
 
-def CacheAllowed (D : Finset C.Party) (challenged : Finset Point) (cache : SlotCache C) : Prop :=
-  ∀ slot, (cache slot).isSome → ReadAllowed D challenged slot
-
-theorem CacheAllowed.mono {D D' : Finset C.Party} (hD : D ⊆ D')
-    {challenged : Finset Point} {cache : SlotCache C} (h : CacheAllowed D challenged cache) :
-    CacheAllowed D' challenged cache := fun slot hs => (h slot hs).mono hD
-
-theorem CacheAllowed.cacheQuery {D : Finset C.Party} {challenged : Finset Point}
-    {cache : SlotCache C} (h : CacheAllowed D challenged cache) (slot : Slot C)
-    (v : HashOutput) (hs : ReadAllowed D challenged slot) :
-    CacheAllowed D challenged (cache.cacheQuery slot v) := by
-  intro other ho
-  by_cases he : other = slot
-  · subst other; exact hs
-  · rw [QueryCache.cacheQuery_of_ne _ _ he] at ho
-    exact h other ho
-
 def ProtectedAllowed (D : Finset C.Party) (challenged : Finset Point) : ProtectedSlot C → Prop
   | .inl slot => ReadAllowed D challenged slot
   | .inr _ => True
@@ -6503,10 +6482,6 @@ def ProtectedAllowed (D : Finset C.Party) (challenged : Finset Point) : Protecte
 def RecordAllowed (D : Finset C.Party) (challenged : Finset Point)
     (record : QueryCache (ProtectedSlot C →ₒ HashOutput)) : Prop :=
   ∀ slot, (record slot).isSome → ProtectedAllowed D challenged slot
-
-theorem RecordAllowed.slots {D : Finset C.Party} {challenged : Finset Point}
-    {record : QueryCache (ProtectedSlot C →ₒ HashOutput)} (h : RecordAllowed D challenged record) :
-    CacheAllowed D challenged (QueryCache.ofFn fun slot => record (.inl slot)) := fun slot hs => h (.inl slot) hs
 
 theorem RecordAllowed.mono {D D' : Finset C.Party} (hD : D ⊆ D')
     {challenged : Finset Point} {record : QueryCache (ProtectedSlot C →ₒ HashOutput)}

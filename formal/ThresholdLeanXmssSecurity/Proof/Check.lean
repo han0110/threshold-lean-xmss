@@ -1263,22 +1263,6 @@ theorem IsShamir.div {f : C.Party → E} {a : E} (hf : IsShamir K f a) (c : E) :
     IsShamir K (fun i => f i / c) (a / c) :=
   (hf.mul_left c⁻¹).congr (fun i => by ring) (by ring)
 
-theorem IsShamir.unique {f : C.Party → E} {a b : E} (hf : IsShamir K f a) (hg : IsShamir K f b) : a = b := by
-  obtain ⟨P, hP, hP0, hPi⟩ := hf
-  obtain ⟨Q, hQ, hQ0, hQi⟩ := hg
-  have ht := C.one_le_t
-  have hPQ : P = Q := by
-    refine Polynomial.eq_of_degree_sub_lt_of_eval_finset_eq (Finset.univ.map K.point) ?_ ?_
-    · rw [card_map, card_univ, Fintype.card_fin]
-      have hPdeg : P.degree < C.t := (degree_le_of_natDegree_le hP).trans_lt (by exact_mod_cast (by omega : C.t - 1 < C.t))
-      have hQdeg : Q.degree < C.t := (degree_le_of_natDegree_le hQ).trans_lt (by exact_mod_cast (by omega : C.t - 1 < C.t))
-      refine (degree_sub_le _ _).trans_lt ((max_lt hPdeg hQdeg).trans_le ?_)
-      exact_mod_cast (by simp only [Committee.n]; omega : C.t ≤ C.n)
-    · intro y hy
-      obtain ⟨j, -, rfl⟩ := Finset.mem_map.mp hy
-      rw [← hPi, ← hQi]
-  rw [← hP0, ← hQ0, hPQ]
-
 theorem conv_congr (i : C.Party) (xv X : Shares C E) (k : ℕ) (h : ∀ T, i ∈ C.holders T → xv T k = X T k) :
     conv K (localContext i) xv k = conv K (localContext i) X k := by
   unfold conv
@@ -3742,30 +3726,6 @@ theorem canonicalCheckSimulator_queryBound (prims : Primitives) (K : Constants C
 end ThresholdLeanXmssSecurity
 end
 
-/-! ## Hybrid -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable inhabitedField
-set_option linter.unusedSectionVars false
-variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
-
-end ThresholdLeanXmssSecurity
-end
-
-/-! ## Soundness -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable inhabitedField
-set_option linter.unusedSectionVars false
-variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
-
-end ThresholdLeanXmssSecurity
-end
-
 /-! ## Delinearization -/
 
 open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset ENNReal
@@ -3857,29 +3817,9 @@ lemma coin_input_injective (K : Constants C E) (tag label : ℕ) :
 end ThresholdLeanXmssSecurity
 end
 
-/-! ## Digest -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset ENNReal
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
-variable {C : Committee}
-
-end ThresholdLeanXmssSecurity
-end
-
 /-! ## Digest program -/
 
 open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset ENNReal
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
-variable {C : Committee}
-
-end ThresholdLeanXmssSecurity
-end
 
 /-! ## Assembly -/
 
@@ -4185,20 +4125,6 @@ lemma FextendMult_run_finish (K : Constants C E) (D : C.Coalition)
 end ThresholdLeanXmssSecurity
 end
 
-/-! ## Network shift -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset Polynomial
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable inhabitedField
-set_option linter.unusedSectionVars false
-variable {C : Committee} {E : Type}
-
-variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
-
-end ThresholdLeanXmssSecurity
-end
-
 /-! ## Inputs -/
 
 open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset Polynomial
@@ -4499,18 +4425,6 @@ lemma honest_sum_sub (D : C.Coalition) (f g : C.Party → E)
   intro i _ hi
   have hiD : i ∈ D.1 := by simpa using hi
   rw [hD i hiD,sub_self]
-
-end ThresholdLeanXmssSecurity
-end
-
-/-! ## Digest local -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
-variable {C : Committee}
 
 end ThresholdLeanXmssSecurity
 end
@@ -5626,18 +5540,6 @@ lemma maskedView_eq (K : Constants C E) (D : C.Coalition) (known : Shares C E)
 end ThresholdLeanXmssSecurity
 end
 
-/-! ## Digest fresh -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
-variable {C : Committee}
-
-end ThresholdLeanXmssSecurity
-end
-
 /-! ## Trace guess -/
 
 open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset ENNReal
@@ -5677,19 +5579,6 @@ theorem independent_salt_trace_bound (trace : ProbComp (List (List Bit))) (q : �
   have h := independent_trace_guess_bound (fun s : Fin 256 → Bit => List.ofFn s)
     List.ofFn_injective trace q htrace
   simpa only [Fintype.card_fun,Fintype.card_fin,ZMod.card,Nat.cast_pow,Nat.cast_ofNat] using h
-
-end ThresholdLeanXmssSecurity
-end
-
-/-! ## Known history -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable inhabitedField
-set_option linter.unusedSectionVars false
-variable {C : Committee} {E : Type}
-variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
 
 end ThresholdLeanXmssSecurity
 end
@@ -6238,14 +6127,6 @@ end
 /-! ## Digest bound -/
 
 open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset ENNReal
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
-variable {C : Committee} {α : Type}
-
-end ThresholdLeanXmssSecurity
-end
 
 /-! ## Digest hide -/
 
@@ -6762,18 +6643,6 @@ theorem executePhase_randBits_missing (K : Constants C E) (D : C.Coalition)
   · intro i hi; rfl
   · obtain ⟨i,hi,hl⟩ := hmissing
     exact ⟨i,hi,if_neg hl⟩
-
-end ThresholdLeanXmssSecurity
-end
-
-/-! ## Local phase -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
-variable {C : Committee} {E I O Ia L R α β : Type} [Inhabited β]
 
 end ThresholdLeanXmssSecurity
 end
@@ -7808,18 +7677,6 @@ theorem localProgram_digest_covered (prims : Primitives) (oa : OracleComp (Local
 end ThresholdLeanXmssSecurity
 end
 
-/-! ## Digest prefix -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
-variable {C : Committee} {α β : Type}
-
-end ThresholdLeanXmssSecurity
-end
-
 /-! ## Digest list -/
 
 open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
@@ -7865,18 +7722,6 @@ lemma saltedDigestProgram_digestBound (history : List Bit)
   unfold saltedDigestProgram
   simpa only [Nat.zero_add] using isQueryBoundP_bind (prob_lift_no_digest ($ᵗ (Fin 256 → Bit))) (fun salt _ =>
     isQueryBoundP_bind (oneDigestQuery_digestBound (List.ofFn salt) history) fun d _ => hq d)
-
-end ThresholdLeanXmssSecurity
-end
-
-/-! ## Digest table -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
-variable {C : Committee} {α : Type}
 
 end ThresholdLeanXmssSecurity
 end
@@ -8913,14 +8758,6 @@ theorem executePhase_afterDigests_round (K : Constants C E) (D : C.Coalition)
 end ThresholdLeanXmssSecurity
 end
 
-
-namespace ThresholdLeanXmssSecurity
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss
-
-variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
-
-end ThresholdLeanXmssSecurity
 
 /-- info: 'ThresholdLeanXmssSecurity.multVerifyCompleteness' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

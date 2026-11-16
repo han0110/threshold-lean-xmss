@@ -73,15 +73,6 @@ theorem SourceKeepsX.mapM {α β γ : Type} {field : SourceState C → γ}
       exact (ih (fun b hb => h b (List.mem_cons_of_mem _ hb))).bind _
         (fun values => SourceKeepsX.pure (value :: values))
 
-theorem SourceKeepsX.simulateQ {ι α β : Type} {spec : OracleSpec ι} {field : SourceState C → β}
-    (impl : QueryImpl spec (SourceMX C)) (step : ∀ t, SourceKeepsX field (impl t))
-    (oa : OracleComp spec α) : SourceKeepsX field (simulateQ impl oa) := by
-  induction oa using OracleComp.inductionOn with
-  | pure value => simpa only [simulateQ_pure] using SourceKeepsX.pure (field := field) value
-  | query_bind t next ih =>
-      simp only [simulateQ_bind, simulateQ_spec_query]
-      exact (step t).bind _ ih
-
 /-- A field property proved for all source answers applies to the actual capped
 interpreter by VCVio's support inclusion for stateful simulation. -/
 theorem SourceKeepsX.run {α β : Type} {field : SourceState C → β} {oa : SourceMX C α}
@@ -210,10 +201,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerSyncTreeControl
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncTreeControl.SourceKeepsX.mapM' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncTreeControl.SourceKeepsX.mapM
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncTreeControl.SourceKeepsX.simulateQ' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncTreeControl.SourceKeepsX.simulateQ
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncTreeControl.SourceKeepsX.run' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

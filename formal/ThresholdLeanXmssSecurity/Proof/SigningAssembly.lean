@@ -5,13 +5,10 @@ import ThresholdLeanXmssSecurity.Proof.SigningLane2Bridge
 /-!
 # The rows of the signing core
 
-This module defines the rows of the bad events of the signing core on `jointRun`, and the split run
-`splitRunAt`.
+This module defines the rows of the bad events of the signing core on `jointRun`.
 
 * `jointRun` holds the result, the opening candidates, the final lazy cache and the call log.
   `jointRun_logged` and `jointRun_verify` give `loggedRun`, `verifyRun` and `exposedRun` exactly.
-* `splitRunAt ρ` is `SigningFlatEagerProof.splitRun` at `P := x.1` and `ρ x`. It holds the R1
-  monitor. Its final cache is the eager cache.
 * `probEvent_core_eq_win` gives the win without the flag of the signing core as `Win` on `jointRun`.
 * `win_cover` splits a win into a charged output event or one of the four rows `InputHitRow`,
   `LazyPartnerRow`, `TopRow` and `AbsentRow`.
@@ -69,19 +66,6 @@ def AbsentRow (x : SigningSecurityProof.Keys3 C) (w : JointOutcome C) : Prop :=
 /-- The three rows of the uncharged lane on the joint run. -/
 def UnchargedRow (x : SigningSecurityProof.Keys3 C) (w : JointOutcome C) : Prop :=
   InputHitRow prims x w ∨ TopRow prims x w ∨ AbsentRow prims x w
-
-/-! ## The rows on the split run -/
-
-/-- The split run at the public parameter of the keys and the randomizer values `ρ x`. -/
-def splitRunAt (ρ : SigningSecurityProof.Keys3 C → KeyIndex → Digest) (A : TsigAdversary C)
-    (x : SigningSecurityProof.Keys3 C) :
-    ProbComp (Result C × ((SigningHitLaneProof.LoggedState C × SigningPartnerBoundProof.Monitor) × Bool) ×
-      (TsigState C × Bool)) :=
-  splitRun prims (XmssSecurity.encodingInputLeafIndex? x.1) x.1 (ρ x) A x
-
-/-- An outcome of the split run. -/
-abbrev SplitOutcome (C : Committee) :=
-  Result C × ((SigningHitLaneProof.LoggedState C × SigningPartnerBoundProof.Monitor) × Bool) × (TsigState C × Bool)
 
 /-! ## The cover of the win on the joint run -/
 

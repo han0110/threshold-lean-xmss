@@ -186,12 +186,6 @@ theorem mapXO1_simulateQ (seeds : C.Term → HashOutput) {ι α : Type} {spec : 
   funext st
   simp [mapXO1, liftBaseX, liftBase, mapX, simulateQ_map]
 
-@[simp] theorem sourceGetO1_ignore {α : Type} (p : SourceMO1 C α) :
-    ((get : SourceMO1 C (SourceStateO1 C)) >>= fun _ => p) = p := by
-  funext st
-  change (pure (st, st) >>= fun z => p.run z.2) = p.run st
-  simp
-
 @[simp] theorem mapXO1_recordStart (seeds : C.Term → HashOutput)
     (e : KeyIndex) (l : ChainIndex) (pos : WinternitzDigit) :
     mapXO1 seeds (recordStartX e l pos) = recordStart e l pos := by
@@ -463,10 +457,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1SourceProof
  Quot.sound] -/
 #guard_msgs in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1SourceProof.mapXO1_liftBaseX
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1SourceProof.sourceGetO1_ignore' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1SourceProof.sourceGetO1_ignore
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1SourceProof.mapXO1_recordStart' depends on axioms: [propext,
  Classical.choice,

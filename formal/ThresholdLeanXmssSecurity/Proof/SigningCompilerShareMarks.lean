@@ -608,47 +608,6 @@ theorem joint_mark (H : QueryImpl (RunSpec C) (StateT (ShareState C) ProbComp))
     simulateQ_pure]
   rfl
 
-def TagSafe {α : Type}
-    (H : QueryImpl (RunSpec C) (StateT (ShareState C) ProbComp))
-    (P : PublicParameter) (seeds : C.Term → HashOutput) (q : ℕ)
-    (s : HiddenKey → Digest) (pads : Point → Digest) (oa : SourceMX C α) : Prop :=
-  ∀ (st : SourceState C) (bm : CappedCompilerState C × Bool) (sh : ShareState C),
-    bm.2 = st.hiddenFlag → TagLe st.hiddenFlag sh →
-    ∀ z ∈ support (jointRun H P seeds q s pads (oa.run st) bm sh),
-      z.1.2.2 = z.1.1.2.hiddenFlag ∧ st.hiddenFlag ≤ z.1.1.2.hiddenFlag ∧
-        TagLe z.1.1.2.hiddenFlag z.2
-
-namespace TagSafe
-variable {α β : Type}
-variable {H : QueryImpl (RunSpec C) (StateT (ShareState C) ProbComp)}
-variable {P : PublicParameter} {seeds : C.Term → HashOutput} {q : ℕ}
-variable {s : HiddenKey → Digest} {pads : Point → Digest}
-
-theorem pure (a : α) : TagSafe H P seeds q s pads (pure a) := by
-  intro st bm sh he ht z hz
-  simp only [StateT.run_pure, jointRun, simulateQ_pure, mem_support_pure_iff] at hz
-  subst z
-  exact ⟨he, le_rfl, ht⟩
-
-theorem bind {oa : SourceMX C α} {f : α → SourceMX C β}
-    (h : TagSafe H P seeds q s pads oa) (hf : ∀ a, TagSafe H P seeds q s pads (f a)) :
-    TagSafe H P seeds q s pads (oa >>= f) := by
-  intro st bm sh he ht z hz
-  rw [StateT.run_bind, jointRun_bind] at hz
-  simp only [mem_support_bind_iff] at hz
-  obtain ⟨mid, hm, hz⟩ := hz
-  have hi := h st bm sh he ht mid hm
-  have hj := hf mid.1.1.1 mid.1.1.2 mid.1.2 mid.2 hi.1 hi.2.2 z hz
-  exact ⟨hj.1, hi.2.1.trans hj.2.1, hj.2.2⟩
-
-theorem map (f : α → β) {oa : SourceMX C α} (h : TagSafe H P seeds q s pads oa) :
-    TagSafe H P seeds q s pads (f <$> oa) := by
-  simpa only [bind_pure_comp] using h.bind (fun a => pure (f a))
-
-end TagSafe
-
-attribute [local irreducible] TagSafe
-
 @[simp] theorem handler_view (τ : CPoint → SigningShareLazy.Digest)
     (draw : C.Term × CPoint → ProbComp SigningShareLazy.HashOutput)
     (finish : C.Term → CPoint → SigningShareLazy.Digest → ShareState C →

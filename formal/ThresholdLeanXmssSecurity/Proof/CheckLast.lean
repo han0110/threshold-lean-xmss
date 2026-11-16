@@ -22,13 +22,6 @@ attribute [local instance] Classical.propDecidable
 
 set_option linter.unusedSectionVars false
 
-section Final
-
-variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
-attribute [local instance] inhabitedField
-
-end Final
-
 /-! ## A route for the split case
 
 When the honest copies disagree, `F_multVerify` rejects, so the ideal run outputs nothing to the

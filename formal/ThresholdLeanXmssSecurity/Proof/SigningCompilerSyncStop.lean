@@ -350,13 +350,6 @@ theorem fuse_stop {ι κ σ : Type} {spec : OracleSpec ι} {mid : OracleSpec κ}
   obtain ⟨a, ha, rfl⟩ := hr
   exact simulateQ_sticky outer Stop hs ((inner t).run st.1) st.2 h a ha
 
-@[simp] theorem eagerRunTag_capTag (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
-    (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
-    (τ : CPoint → Digest) (g : C.Term × CPoint → HashOutput) :
-    eagerRunTag capTag prims A x q s pads τ g = eagerRunC prims A x q s pads τ g := by
-  unfold eagerRunTag eagerRunC eagerHandlerTag eagerHandlerC
-  rfl
-
 abbrev TraceCount (st : SigningLaneUnionProof.TraceState C) : ℕ := st.1.1.1.1.1.2
 abbrev TraceFlag (st : SigningLaneUnionProof.TraceState C) : Bool := st.2.1.2
 

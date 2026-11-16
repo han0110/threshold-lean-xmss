@@ -2209,7 +2209,7 @@ theorem viewInv_init : ViewInv (C := C) symInit [] [] :=
   ⟨fun x hx => by simp [symInit, tprfInit] at hx, fun x ec => rfl, by simp, fun x => by simp [symInit, tprfInit]⟩
 
 set_option maxRecDepth 10000 in
-/-- `hsymbolic`. The symbolic game does not depend on `b`. -/
+/-- The symbolic game does not depend on `b`. -/
 theorem symbolic_balanced (A : OracleComp (LocalSpec C + TprfSpec C) Bool) :
     Pr{let z ← (simulateQ (symImpl prims seeds pairKeys true parameter) A).run symInit}[z.1 = true] =
       Pr{let z ← (simulateQ (symImpl prims seeds pairKeys false parameter) A).run symInit}[z.1 = true] := by

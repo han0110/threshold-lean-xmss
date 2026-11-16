@@ -174,8 +174,8 @@ theorem codeword_core (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (to
     · exact Or.inr (Or.inr ⟨hv, hsrc.trans (hsrc2.trans hsrc1), hs3, hm3⟩)
 
 /-- The codeword search of a signer or of the honest signature on both sides, at a revealed opening.
-Both sides give the same result, and the log cache of the real side resolves the search. It is the
-form of `codeword_mid` for each view and each reveal map. -/
+Both sides give the same result, and the log cache of the real side resolves the search. It holds
+for each view and each reveal map. -/
 theorem codeword_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)
     (rev : HiddenKey → Option Digest) (cCore cTime : Carried C) (commitment : Digest)
     (e : KeyIndex) (message : Message) (ρ : Digest) (a : RealState C)

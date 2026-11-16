@@ -593,7 +593,7 @@ def CallPost (cCore : Carried C) (seen : Query C → Prop) (a : RealState C) (sr
       SyncCore x s pads noise (gOf s pads u) rest (withCarried ra.2 cCore) (rb.1.2, rb.2) ∧
       CallFrame x seen a ra.2 (src, st) (rb.1.2, rb.2) ∧ rb.2.1.2 = false)
 
--- Port of TreeSim.treeSim_relTriple_support, as in `SigningCompilerSyncLocalRead`.
+-- A `RelTriple` also holds the support of each side, as in `SigningCompilerSyncLocalRead`.
 private theorem relTriple_supported {α β : Type} {oa : ProbComp α} {ob : ProbComp β}
     {R : α → β → Prop} (h : RelTriple oa ob R) :
     RelTriple oa ob (fun a b => R a b ∧ a ∈ support oa ∧ b ∈ support ob) := by

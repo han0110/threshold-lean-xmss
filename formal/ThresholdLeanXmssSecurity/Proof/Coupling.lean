@@ -39,23 +39,6 @@ theorem relTriple_of_support_left {oa : ProbComp α} {ob : ProbComp β} {R : α 
 
 end UpToBad
 
-section Lockstep
-
-variable {E : Type} {C : Committee}
-
-variable {C : Committee} {E : Type} {σ₁ σ₂ Ia₁ Ia₂ I₁ I₂ O₁ O₂ L₁ L₂ R₁ R₂ α₁ α₂ : Type}
-  (Ro₁ : Roles C (StateT σ₁ ProbComp)) (Ro₂ : Roles C (StateT σ₂ ProbComp))
-  (D₁ D₂ : C.Coalition) (A₁ : Adversary C E Ia₁ L₁ R₁) (A₂ : Adversary C E Ia₂ L₂ R₂)
-  (F₁ : Functionality C I₁ O₁ L₁ R₁) (F₂ : Functionality C I₂ O₂ L₂ R₂)
-
-end Lockstep
-
-section Shift
-
-variable {M γ δ : Type} [AddGroup M] [SampleableType M]
-
-end Shift
-
 /-! ## Hitting a hidden secret -/
 
 section Hit
@@ -84,15 +67,6 @@ theorem probEvent_uniform_coord_eq {k : ℕ} (j : Fin k) (x : P) :
     (ENNReal.natCast_ne_top _), one_mul]
 
 end Hit
-
-section Transport
-
-variable {E : Type} {κ : Type} {spec : OracleSpec κ} {n : Type → Type} [Monad n] [LawfulMonad n]
-  (impl : QueryImpl spec n)
-
-variable {Ia I O L R α : Type} {C : Committee}
-
-end Transport
 
 /-! ## Acceptance in the world -/
 

@@ -16,7 +16,7 @@ and `units_le` in `SigningOwnForger` use it.
   cached one, and the monitor reads the log.
 * `monitorOf` replays the hash calls of a log with the encoding monitor of leanVM
   (`EncodingMonitor.State`). `seen` holds the called inputs, so a call is fresh if its input is not
-  in `seen`. `Covered` says that each cached input of `H` is in `seen`.
+  in `seen`.
 
 ## The monitor
 
@@ -369,10 +369,6 @@ theorem randomOracle_risk_le (keyOf : XmssSecurity.HashInput → Option XmssSecu
       cases hk : keyOf input <;> simp [queryCost, hk]
   | _ =>
     exact (tsum_probOutput_mul_le_of_const _ _ m.risk fun w _ => le_rfl).trans le_self_add
-
-/-- Every cached input of `H` is seen by the monitor. -/
-def Covered (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) (s : LoggedState C) : Prop :=
-  ∀ input, s.1.1 (.hash input) ≠ none → input ∈ (monitorOf keyOf s.2).seen
 
 theorem loggedImpl_support (t : (WorldSpec C).Domain) (s : LoggedState C)
     (r : (WorldSpec C).Range t × LoggedState C) (hr : r ∈ support ((loggedImpl prims t).run s)) :

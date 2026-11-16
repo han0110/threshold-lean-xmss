@@ -33,12 +33,6 @@ def eagerHandlerC (τ : CPoint → Digest) (g : C.Term × CPoint → HashOutput)
   SigningShareLazy.unifImpl (ShareStateT C (Bool × Bool)) +
     SigningShareLazy.eagerImpl (Tag := Bool × Bool) C.terms τ g
 
-def eagerRunC (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
-    (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
-    (τ : CPoint → Digest) (g : C.Term × CPoint → HashOutput) :
-    ProbComp (CompilerOutcome C × ShareStateT C (Bool × Bool)) :=
-  (simulateQ (eagerHandlerC τ g) (shareRunTag capTag prims A x q s pads)).run SigningShareLazy.init
-
 @[simp] theorem erase_init :
     SigningShareLazy.erase (SigningShareLazy.init : ShareStateT C (Bool × Bool)) =
       (SigningShareLazy.init : FrozenStateC C) := rfl

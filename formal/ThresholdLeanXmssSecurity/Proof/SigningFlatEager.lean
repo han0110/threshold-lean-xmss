@@ -47,8 +47,7 @@ and its R1 monitor on the joint run.
 
 ## The split
 
-* `splitRun` adds a write-only flag to the monitor. `cachedTrial` raises it at a trial on a seen
-  input with a valid digest at an unsigned key.
+* `cachedTrial` tells if a trial is on a seen input with a valid digest at an unsigned key.
 -/
 
 set_option pp.deepTerms false
@@ -228,23 +227,6 @@ variable {C : Committee} (prims : Primitives)
 
 /-- The result of `finalRun`. -/
 abbrev Result (C : Committee) := (Bool × Bool) × Option (TopTree × TsigState C × Forgery)
-
-/-- The stages of `finalRun` over a world handler, a forger handler and a read of the carried
-state. -/
-def gameWith {m : Type → Type} [Monad m] (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
-    (world : QueryImpl (WorldSpec C) m)
-    (forger : Dealt C (OracleComp (WorldSpec C)) → QueryImpl (LocalSpec C + TsigSpec C) m)
-    (carried : m (TsigState C × Bool)) : m (Result C) := do
-  let value := fun p => SigningSecurityProof.liftFree (prfValue x.2.1 p)
-  let r ← simulateQ world (referenceTree (fun oa => SigningSecurityProof.liftFree (tweakable oa)) value x.1 emptyTop .top)
-  match r with
-  | some (.top top) =>
-    let dealt := dealtWith (fun oa => SigningSecurityProof.liftFree oa) x.1 (dealtKeys x.1 x.2.1 x.2.2) top value
-    let a ← simulateQ (forger dealt) (A ⟨dealt.top.root, dealt.parameter⟩ dealt.top)
-    let s ← carried
-    let w ← simulateQ world (SigningCoreProof.tsigFinish dealt (a, s.1))
-    pure ((w.1, s.2), some (top, w.2.1, w.2.2))
-  | _ => pure ((false, false), none)
 
 /-- The read of the carried state. -/
 def getCarried {τ σ : Type} : StateT (τ × σ) ProbComp σ :=
@@ -819,10 +801,6 @@ open SigningPartnerBoundProof ENNReal
 
 variable {C : Committee} (prims : Primitives)
 
-/-- The initial state of the flat eager run with the R1 monitor. -/
-def monitoredInit : (SigningHitLaneProof.LoggedState C × Monitor) × (TsigState C × Bool) :=
-  ((SigningHitLaneProof.loggedInit, Monitor.empty), (SigningCoreProof.tsigInit, false))
-
 /-- The keyed calls of the log of `loggedRun` in expectation are the expected keyed cost. -/
 theorem expected_logKeyed_le (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
     (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
@@ -857,36 +835,6 @@ def cachedTrial (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafInde
   | .hash input => decide (input ∈ m.seen ∧ ∃ e, keyOf input = some e ∧ m.state.signed e = none ∧
       XmssSecurity.TargetSum.ValidDigest (XmssSecurity.truncateHash output))
   | _ => false
-
-/-- `monitoredOracle` with a write-only flag for a cached trial. -/
-def splitOracle (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) :
-    QueryImpl (Query C →ₒ HashOutput) (StateT ((HashCache C × Monitor) × Bool) ProbComp) :=
-  fun q => StateT.mk fun s => (fun w => (w.1, (w.2, s.2 || cachedTrial keyOf s.1.2 q w.1))) <$>
-    (monitoredOracle keyOf q).run s.1
-
-/-- `monitoredWorld` with the flag of a cached trial. -/
-def splitWorld (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
-    (extra : SigningHitLaneProof.LoggedState C × σ → (WorldSpec C).Domain →
-      SigningHitLaneProof.LoggedState C × σ → OracleComp (Query C →ₒ HashOutput) Unit) :
-    QueryImpl (WorldSpec C) (StateT (((SigningHitLaneProof.LoggedState C × Monitor) × Bool) × σ) ProbComp) :=
-  fun t => StateT.mk fun p => (carry (SigningCostProof.loggedImpl prims) t).run (p.1.1.1, p.2) >>= fun z =>
-    (fun y => (z.1, ((((ofRest y.2.1.1 (restOf z.2)).1, y.2.1.2), y.2.2), (ofRest y.2.1.1 (restOf z.2)).2))) <$>
-      (simulateQ (splitOracle keyOf) (extra (p.1.1.1, p.2) t z.2)).run
-        ((z.2.1.1.1, queryEntryStep keyOf p.1.1.2 (hashEntry ⟨t, z.1⟩)), p.1.2)
-
-/-- The flat eager run with the R1 monitor and the flag of a cached trial. -/
-def splitGame (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
-    (extra : FlatState C → (WorldSpec C).Domain → FlatState C → OracleComp (Query C →ₒ HashOutput) Unit)
-    (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    StateT (((SigningHitLaneProof.LoggedState C × Monitor) × Bool) × (TsigState C × Bool)) ProbComp (Result C) :=
-  gameWith A x (splitWorld prims keyOf extra)
-    (fun dealt => flatWith (SigningCoreProof.flaggedOracles x dealt) (splitWorld prims keyOf extra)) getCarried
-
-/-- The flat eager run with the R1 monitor and the flag of a cached trial. -/
-def splitRun (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) (P : PublicParameter)
-    (ρ : KeyIndex → Digest) (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
-    ProbComp (Result C × ((SigningHitLaneProof.LoggedState C × Monitor) × Bool) × (TsigState C × Bool)) :=
-  (splitGame prims keyOf (grindExtra P ρ) A x).run ((monitoredInit.1, false), monitoredInit.2)
 
 end Split
 

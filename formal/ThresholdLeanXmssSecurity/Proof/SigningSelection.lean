@@ -7,17 +7,12 @@ import ThresholdLeanXmssSecurity.Proof.SigningSupport
 This module holds the call bounds at the key `e` of the forgery. The `SigningOwn` modules, for
 example `Proof/SigningOwnStopRun.lean`, use them.
 
-1. `Adds ok l l'` says that a run appends to the log only hash entries that satisfy `ok`.
-2. `NoCall p oa` says that `oa` never calls an index in `p`. It is irreducible, so that unification
+1. `NoCall p oa` says that `oa` never calls an index in `p`. It is irreducible, so that unification
    never unfolds a deep Merkle tree. `AtKey P e` holds for the bottom message digest inputs at `e`.
    The ceremonies, `eval`, `prfValue`, the Merkle path and the top layer never call such an input
    (`referenceTree_bound`, `eval_bound`). `verify_bound` shows that the verification calls only the
    forged digest input among them.
-3. `Selects x top cache e message randomness` says that each accepted search at `e` for `message`
-   selects `randomness`. The search uses a tree of the run, with caches below `cache`. The predicate
-   takes any `message` and any `randomness`, so the bound message and the selected randomness need
-   separate hypotheses.
-4. `message_of_signers` gives the bound message of a key that `t` operators can sign. Fewer than `t`
+2. `message_of_signers` gives the bound message of a key that `t` operators can sign. Fewer than `t`
    are corrupt, and each release is at the bound message (`SigningGuessProof.ReleasedBound`).
 -/
 
@@ -41,26 +36,8 @@ variable {C : Committee} (prims : Primitives)
 
 section Logged
 
-/-- The log grows by new calls, and each new hash entry satisfies `ok`. -/
-def Adds (ok : Entry → Prop) (l l' : LoggedState C) : Prop :=
-  ∃ new : QueryLog (WorldSpec C), l'.2 = l.2 ++ new ∧ ∀ entry ∈ new.filterMap hashEntry, ok entry
-
-theorem Adds.trans {ok : Entry → Prop} {l l' l'' : LoggedState C} (h : Adds ok l l') (h' : Adds ok l' l'') :
-    Adds ok l l'' := by
-  obtain ⟨new, hl, hok⟩ := h
-  obtain ⟨new', hl', hok'⟩ := h'
-  refine ⟨new ++ new', by rw [hl', hl, List.append_assoc], fun entry hentry => ?_⟩
-  rw [List.filterMap_append, List.mem_append] at hentry
-  rcases hentry with hentry | hentry
-  · exact hok entry hentry
-  · exact hok' entry hentry
-
-theorem Adds.mono {ok ok' : Entry → Prop} (hmono : ∀ entry, ok entry → ok' entry) {l l' : LoggedState C}
-    (h : Adds ok l l') : Adds ok' l l' := by
-  obtain ⟨new, hl, hok⟩ := h
-  exact ⟨new, hl, fun entry hentry => hmono entry (hok entry hentry)⟩
-
-/-- The hash inputs at key `e` of the parameter `P`. -/
+/-- The bottom message digest inputs at key `e` of the parameter `P`. These are the encoding inputs
+whose leaf index is `e`. -/
 def AtKey (P : PublicParameter) (e : KeyIndex) (input : XmssSecurity.HashInput) : Prop :=
   XmssSecurity.encodingInputLeafIndex? P input = some e
 
@@ -450,24 +427,6 @@ theorem noCall_liftFree (Q : HashInput → Prop) {α : Type} (oa : OracleComp (R
     exact ht ⟨input, h2, hQ⟩
 
 end World
-
-section Selects
-
-/-- Each accepted search at key `e` for `message` from a tree of the run, with caches below
-`cache`, selects `randomness`. -/
-def Selects (x : SigningSecurityProof.Keys3 C) (top : TopTree) (cache : HashCache C) (e : KeyIndex)
-    (message : Message) (randomness : Randomizer) : Prop :=
-  ∀ (tree : BottomTree) (sTree : HashCache C × ℕ) (rTree : Option TreeOutput × HashCache C × ℕ)
-    (sCode : HashCache C × ℕ) (rCode : Option (Randomizer × Encoding) × HashCache C × ℕ)
-    (candidate : Digest) (r : Randomizer) (encoding : Encoding),
-    rTree ∈ support ((simulateQ (SigningCacheProof.countImpl prims) (SigningSecurityProof.liftFree
-      (referenceTree tweakable (prfValue x.2.1) x.1 top (.bottom (treeOf e))))).run sTree) →
-    rTree.1 = some (.bottom tree) → rTree.2.1 ≤ cache →
-    rCode ∈ support ((simulateQ (SigningCacheProof.countImpl prims) (SigningSecurityProof.liftFree
-      (signCodeword x.1 (tree.commitment e) e message candidate))).run sCode) →
-    rCode.1 = some (r, encoding) → rCode.2.1 ≤ cache → r = randomness
-
-end Selects
 
 section Round2
 

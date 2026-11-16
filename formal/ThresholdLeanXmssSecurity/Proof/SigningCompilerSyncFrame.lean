@@ -364,13 +364,6 @@ theorem ordinary_pendingValid (P : PublicParameter) (seeds : C.Term → HashOutp
     RestAgree x rest (splitRest x.2.1 cs) ↔ RestAgree x rest cs := by
   simp only [RestAgree, splitRest, withCache, erase_rest x.2.1 x.2.2 hi]
 
-@[simp] theorem mergedPendingValid (seeds : C.Term → HashOutput)
-    (cs : CappedCompilerState C) (sh : ShareCache C) :
-    PendingValid (merged seeds cs sh).1.1.data ↔ PendingValid cs.1.1.data := Iff.rfl
-
-@[simp] theorem splitPendingValid (seeds : C.Term → HashOutput) (cs : CappedCompilerState C) :
-    PendingValid (splitRest seeds cs).1.1.data ↔ PendingValid cs.1.1.data := Iff.rfl
-
 /-- Fixed-table resolution of a free-slot read. -/
 theorem freshRestT_run (x : Keys3 C) (noise : ChainNoiseIndex → HashOutput)
     (rest : RestSlot C → HashOutput) (z : RestSlot C) (st : CappedCompilerState C) :

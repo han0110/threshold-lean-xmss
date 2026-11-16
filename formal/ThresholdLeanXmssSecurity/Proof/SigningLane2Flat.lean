@@ -118,13 +118,6 @@ theorem eagerBase_signWithBaseStep (P : PublicParameter) (ρ : Digest) (request 
 
 /-! ## The leanVM trace in the flat state -/
 
-/-- The state of the split run. -/
-abbrev SplitState (C : Committee) :=
-  ((SigningHitLaneProof.LoggedState C × SigningPartnerBoundProof.Monitor) × Bool) × (TsigState C × Bool)
-
-/-- The cache of a state of the split run. -/
-abbrev SplitState.cache (p : SplitState C) : HashCache C := p.1.1.1.1.1
-
 /-- The result of the grind at key `e` read from a cache that holds its trials. -/
 def cachedFound (c : HashCache C) (P : PublicParameter) (e : KeyIndex) (ρ : Digest) (message : Message) :
     Option (Randomizer × Encoding) :=

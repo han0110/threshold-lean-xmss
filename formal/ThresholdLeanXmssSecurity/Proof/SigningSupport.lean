@@ -25,12 +25,6 @@ open HashSig LeanXmss ThresholdLeanXmss SigningOpeningProof
 
 variable {C : Committee}
 
-section BottomPartner
-
-variable (prims : Primitives)
-
-end BottomPartner
-
 section Grows
 
 /-- The state of the signing oracles grows from `st` to `st'`. `bound` is write-once, and the
@@ -73,12 +67,6 @@ theorem honestKey_released (prims : Primitives) (z : SigningDescentProof.FinalSt
     (z.honestKey prims).released = releasedAt z.state z.key := rfl
 
 end CallTime
-
-section Verification
-
-variable (prims : Primitives)
-
-end Verification
 
 end SigningSupportProof
 

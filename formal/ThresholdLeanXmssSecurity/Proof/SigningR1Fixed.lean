@@ -32,8 +32,6 @@ input-side argument of `SigningLinkPaid`.
 
 ## The results
 
-* `splitRun` and `splitRunAt` are the flat eager run of `cachedExtra` with the R1 monitor and the
-  flag of a cached trial.
 * `baseCall_key_eq` says that one call is a base call of at most one key
   (`randomizerInput_key_eq`).
 * `baseGrind_signed_ne` says that a grind at `e` signs no other key. Each trial is a message digest
@@ -83,26 +81,6 @@ theorem baseCall_key_eq {P : PublicParameter} {e f : KeyIndex} {ρ τ : Digest} 
   exact (SigningGuessProof.randomizerInput_key_eq P h).symm
 
 end Trigger
-
-section Split
-
-/-- The flat eager run of `cachedExtra` with the R1 monitor and the flag of a cached trial. -/
-def splitRun (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) (A : TsigAdversary C)
-    (x : SigningSecurityProof.Keys3 C) :
-    ProbComp (Result C × ((SigningHitLaneProof.LoggedState C × Monitor) × Bool) × (TsigState C × Bool)) :=
-  (splitGame prims keyOf (cachedExtra x.2.1 x.1) A x).run ((monitoredInit.1, false), monitoredInit.2)
-
-end Split
-
-section Assembly
-
-open SigningAssemblyProof SigningUnchargedLoggedProof
-
-/-- The split run of `cachedExtra` at the public parameter and the seeds of the keys. -/
-def splitRunAt (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) : ProbComp (SplitOutcome C) :=
-  splitRun prims (XmssSecurity.encodingInputLeafIndex? x.1) A x
-
-end Assembly
 
 section Witness
 

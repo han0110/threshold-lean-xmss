@@ -64,7 +64,7 @@ def ordinaryPrefix (x : Keys3 C) (input : Query C)
     then sourceReleaseOpeningX x.1 x.2.1 e else pure ()
   | _ => pure ()
 
--- Port of TreeSim.treeSim_relTriple_support, avoiding its ceremony imports.
+-- A `RelTriple` also holds the support of each side.
 theorem relTriple_supported {α β : Type} {oa : ProbComp α} {ob : ProbComp β}
     {R : α → β → Prop} (h : RelTriple oa ob R) :
     RelTriple oa ob (fun a b => R a b ∧ a ∈ support oa ∧ b ∈ support ob) := by

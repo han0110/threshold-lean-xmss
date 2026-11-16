@@ -167,19 +167,6 @@ theorem joint_shareOK {α : Type} (P : PublicParameter) (seeds : C.Term → Hash
     (hz : z ∈ support (Marks.jointRun (lazyHandler τ) P seeds q s pads oa bm sh)) :
     Witness.ShareOK τ z.2 := Witness.simulate_shareOK τ _ sh h z hz
 
-def Bnd (seeds : C.Term → HashOutput) (s : HiddenKey → Digest) (pads : Point → Digest)
-    (st : SourceState C) (bm : CappedCompilerState C × Bool) (sh : ShareState C) : Prop :=
-  bm.2 = st.hiddenFlag ∧ Inv seeds bm sh ∧
-    GuardedReleaseInvariant seeds s st (merged seeds bm.1 sh.cache) ∧
-    PadsMatch pads bm.1 ∧ Witness.ShareOK (tau s pads) sh ∧
-    (∀ k l, sh.bad = some (false, k, l) → k = .read ∧ l = true)
-
-def FalseSafe {α : Type} (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest) (oa : SourceMX C α) : Prop :=
-  ∀ st bm sh, Bnd seeds s pads st bm sh →
-    ∀ z ∈ support (Marks.jointRun (lazyHandler (tau s pads)) P seeds q s pads (oa.run st) bm sh),
-      Bnd seeds s pads z.1.1.2 z.1.2 z.2
-
 /-- Non-mark source queries retain the mark independently of existing bad tags. -/
 theorem joint_mark_eq {α : Type} (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest) (τ : CPoint → Digest)
@@ -204,32 +191,7 @@ theorem joint_mark_eq {α : Type} (P : PublicParameter) (seeds : C.Term → Hash
         (Marks.mem_support_of_simulate_run _ _ _ hm')
       exact (ih mid.1.1 (hb.2 mid.1.1) mid.1.2 mid.2 hz).trans he
 
-namespace FalseSafe
-variable {α β : Type} {P : PublicParameter} {seeds : C.Term → HashOutput}
-variable {q : ℕ} {s : HiddenKey → Digest} {pads : Point → Digest}
-
-theorem pure (a : α) : FalseSafe P seeds q s pads (pure a) := by
-  intro st bm sh h z hz
-  simp only [StateT.run_pure, Marks.jointRun, simulateQ_pure, mem_support_pure_iff] at hz
-  subst z
-  exact h
-
-theorem bind {oa : SourceMX C α} {f : α → SourceMX C β}
-    (h : FalseSafe P seeds q s pads oa) (hf : ∀ a, FalseSafe P seeds q s pads (f a)) :
-    FalseSafe P seeds q s pads (oa >>= f) := by
-  intro st bm sh hst z hz
-  rw [StateT.run_bind, Marks.jointRun_bind] at hz
-  simp only [mem_support_bind_iff] at hz
-  obtain ⟨mid, hm, hz⟩ := hz
-  exact hf mid.1.1.1 mid.1.1.2 mid.1.2 mid.2 (h st bm sh hst mid hm) z hz
-
-theorem map (f : α → β) {oa : SourceMX C α} (h : FalseSafe P seeds q s pads oa) :
-    FalseSafe P seeds q s pads (f <$> oa) := by
-  simpa only [bind_pure_comp] using h.bind (fun a => pure (f a))
-
-end FalseSafe
-
-attribute [local irreducible] FalseSafe Queries Safe Marks.Quiet
+attribute [local irreducible] Queries Safe Marks.Quiet
 attribute [local irreducible] sourceProgramX sourceProgram sourceGameX sourceGame
 
 end ThresholdLeanXmssSecurity.SigningCompilerShare.NoFalse

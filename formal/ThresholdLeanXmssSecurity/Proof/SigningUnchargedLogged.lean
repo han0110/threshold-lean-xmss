@@ -75,9 +75,6 @@ section MonitorList
 
 variable (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
 
-/-- A hash entry holds the input, the digest of the answer, and `true` on the free copy. -/
-abbrev Entry := XmssSecurity.HashInput × XmssSecurity.Digest × Bool
-
 variable (e : XmssSecurity.LeafIndex) (forged : XmssSecurity.HashInput) (digest : XmssSecurity.Digest)
 
 /-- A fresh call at another key or at no key keeps the state at `e`. -/

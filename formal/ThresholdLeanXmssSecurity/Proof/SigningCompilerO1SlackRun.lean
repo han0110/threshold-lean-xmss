@@ -101,15 +101,6 @@ theorem sequenceFin {α : Type} (n : ℕ) (oa : Fin n → SourceMO1 C α)
       refine SourcePreservesO1.bind (ih (fun i => oa i.succ) fun i => h i.succ) _ fun tail => ?_
       exact SourcePreservesO1.pure _
 
-theorem simulateQ {ι α : Type} {spec : OracleSpec ι} (impl : QueryImpl spec (SourceMO1 C))
-    (step : ∀ t, SourcePreservesO1 P seeds q s I (impl t)) (oa : OracleComp spec α) :
-    SourcePreservesO1 P seeds q s I (simulateQ impl oa) := by
-  induction oa using OracleComp.inductionOn with
-  | pure value => simpa only [simulateQ_pure] using SourcePreservesO1.pure (I := I) value
-  | query_bind t next ih =>
-      simp only [simulateQ_bind, simulateQ_spec_query]
-      exact SourcePreservesO1.bind (step t) _ ih
-
 /-- A step of the base source keeps an invariant of the O1 source when it keeps the invariant for
 each fixed map of recorded digits. -/
 theorem liftBase {α : Type} {oa : SourceM C α}
@@ -208,12 +199,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1SlackRun
  Quot.sound] -/
 #guard_msgs in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1SlackRun.SourcePreservesO1.sequenceFin
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1SlackRun.SourcePreservesO1.simulateQ' depends on axioms: [propext,
- Classical.choice,
- Quot.sound] -/
-#guard_msgs in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1SlackRun.SourcePreservesO1.simulateQ
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1SlackRun.SourcePreservesO1.liftBase' depends on axioms: [propext,
  Classical.choice,

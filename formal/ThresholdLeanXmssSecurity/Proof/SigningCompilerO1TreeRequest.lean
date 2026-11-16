@@ -150,22 +150,6 @@ theorem TreeFrame.revealed_none {x : Keys3 C} {s : HiddenKey → Digest} {bi : X
   rw [h.kept k hne] at hk
   exact hne hk
 
-/-- The release steps compose. -/
-theorem TreeFrame.trans {x : Keys3 C} {s : HiddenKey → Digest} {bi : XmssSecurity.TopIndex}
-    {tree : DeferredBottomTree} {visible : HashCache C} {b b' b'' : SourceState C × CompState C}
-    (h : TreeFrame x s bi tree visible b b') (h' : TreeFrame x s bi tree visible b' b'') :
-    TreeFrame x s bi tree visible b b'' where
-  toReleaseFrame := h.toReleaseFrame.trans h'.toReleaseFrame
-  kept k hk := (h'.kept k (by rw [h.kept k hk]; exact hk)).trans (h.kept k hk)
-  new k hk hk'' := by
-    by_cases hm : b'.1.revealed k = none
-    · exact h'.new k hm hk''
-    · exact h.new k hk hm
-  reveal := h'.reveal
-  agreement := h'.agreement
-  released := h'.released
-  bad := h'.bad
-
 section TreeRequest
 variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
   (u : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput) (noise : ChainNoiseIndex → HashOutput)
@@ -867,10 +851,6 @@ end ThresholdLeanXmssSecurity.SigningCompilerO1TreeRequest
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1TreeRequest.TreeFrame.revealed_none' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerO1TreeRequest.TreeFrame.revealed_none
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1TreeRequest.TreeFrame.trans' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerO1TreeRequest.TreeFrame.trans
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerO1TreeRequest.syncIn_of_treeFrame' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

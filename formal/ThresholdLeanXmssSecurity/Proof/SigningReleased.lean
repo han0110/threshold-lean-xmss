@@ -29,12 +29,6 @@ open HashSig LeanXmss ThresholdLeanXmss SigningOpeningProof
 
 variable {C : Committee}
 
-section Grind
-
-variable (prims : Primitives)
-
-end Grind
-
 section Receipts
 
 variable (prims : Primitives)
@@ -101,12 +95,6 @@ theorem receiptRun_released (x : SigningSecurityProof.Keys3 C) (top : TopTree) {
   exact ⟨receipt, hreceipt, hae, ham, hruns receipt hreceipt⟩
 
 end Receipts
-
-section Verification
-
-variable (prims : Primitives)
-
-end Verification
 
 end SigningReleasedProof
 

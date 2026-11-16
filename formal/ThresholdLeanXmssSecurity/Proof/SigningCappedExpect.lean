@@ -35,7 +35,7 @@ holds when a run mixes the two sides.
 `XmssSecurity.expectedFinal_le` fixes one handler, and for a fixed `s` the input-side hit is not a
 random step. So the induction here averages over `s` at each step. It reuses
 `XmssSecurity.expectedFinal`, `XmssSecurity.expectedFinal_pure` and
-`XmssSecurity.probEvent_le_expectedFinal`.
+`XmssSecurity.const_mul_probEvent_le_expectedFinal`.
 
 ## The check on the two traces
 

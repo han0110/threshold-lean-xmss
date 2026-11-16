@@ -26,8 +26,6 @@ uses them to prove `CheckCoreDistance`.
 * `CheckSoundStage` (step 2) bounds the honest output probability of the real run when the copies
   agree and a tuple is wrong.
 * `CheckCoupleStage` (step 4) bounds the masked real run against the ideal run when the copies agree.
-
-`SharedBad` is one experiment with one bad flag for the real, the masked and the ideal run.
 -/
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss Finset
@@ -316,25 +314,6 @@ lemma coupleHashError_le (count q : ℕ) : coupleHashError C count q ≤ checkHa
   linarith [soundHashError_nonneg count q]
 
 end Budget
-
-/-! ## One bad event for three games -/
-
-section SharedBad
-
-variable {C : Committee}
-
-/-- One joint experiment for three local games `g₁`, `g₂`, `g₃`, with a bad flag. Its first three
-components have the laws of the outputs of the three games, and off the flag the first agrees with
-the second and the second with the third. Steps 3 and 4 of the plan share this one flag. -/
-def SharedBad (prims : Primitives) (g₁ g₂ g₃ : OracleComp (LocalSpec C) Bool) (ε : ℝ) : Prop :=
-  ∃ J : ProbComp (Bool × Bool × Bool × Bool),
-    Pr{let ω ← J}[ω.1 = true] = Pr{let b ← (simulateQ (localAnswer prims) g₁).run' ∅}[b = true] ∧
-    Pr{let ω ← J}[ω.2.1 = true] = Pr{let b ← (simulateQ (localAnswer prims) g₂).run' ∅}[b = true] ∧
-    Pr{let ω ← J}[ω.2.2.1 = true] = Pr{let b ← (simulateQ (localAnswer prims) g₃).run' ∅}[b = true] ∧
-    (∀ ω ∈ support J, ω.2.2.2 = false → ω.1 = ω.2.1 ∧ ω.2.1 = ω.2.2.1) ∧
-    (Pr{let ω ← J}[ω.2.2.2 = true]).toReal ≤ ε
-
-end SharedBad
 
 /-! ## The stages and the assembly -/
 

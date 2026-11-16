@@ -385,17 +385,6 @@ theorem queries_deferredTopTree (P : PublicParameter) :
     | with_reducible apply safe_sourceRevealDigestX
     | source_step
 
-@[simp] theorem safe_sourceGameX (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) :
-    Safe (sourceGameX prims A x) := by
-  unfold sourceGameX
-  repeat' first
-    | with_reducible apply safe_sourceTopTreeX
-    | with_reducible apply safe_sourceOraclesX
-    | with_reducible apply safe_sourceHashX
-    | with_reducible apply safe_sourceHonestSignatureX
-    | (with_reducible apply Safe.simulate; intro t)
-    | source_step
-
 end ThresholdLeanXmssSecurity.SigningCompilerShare
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerShare.queries_deferredTopTree' depends on axioms: [propext,

@@ -724,13 +724,6 @@ def finish {α : Type} (seeds : C.Term → HashOutput) (r : α × FullState C Ta
 def initial : FullState C Tag :=
   ((((compilerInit, 0), fun _ => none, false), false), SigningShareLazy.init)
 
-def eagerRunTag (tagOf : CappedCompilerState C × Bool → Tag)
-    (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
-    (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
-    (τ : CPoint → Digest) (g : C.Term × CPoint → HashOutput) :
-    ProbComp (CompilerOutcome C × ShareStateT C Tag) :=
-  (simulateQ (eagerHandlerTag τ g) (shareRunTag tagOf prims A x q s pads)).run SigningShareLazy.init
-
 attribute [local irreducible] sourceProgramX
 
 end ThresholdLeanXmssSecurity.SigningCompilerShareTables

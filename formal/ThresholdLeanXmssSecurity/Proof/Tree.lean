@@ -4009,51 +4009,6 @@ theorem costLe_liftComp_ro {σ L R α : Type} (g : QueryImpl (L →ₒ R) (State
     exact (((CostLe.free prims _).bind prims fun _ => CostLe.pure prims _).bind prims
       fun (p : (RoSpec C).Range t × σ) => ih p.1 p.2).mono prims (by simp)
 
-/-- The emulation monad pays what its runs pay from every stream cache. -/
-def CostLeE {α : Type} (x : EmulationM C α) (n : ℕ) : Prop := ∀ s, CostLe prims ((x.run s).run) n
-
-theorem CostLeE.mono {α : Type} {x : EmulationM C α} {n m : ℕ} (h : CostLeE prims x n) (hnm : n ≤ m) :
-    CostLeE prims x m := fun s => (h s).mono prims hnm
-
-theorem CostLeE.bind {α β : Type} {x : EmulationM C α} {f : α → EmulationM C β} {n m : ℕ}
-    (hx : CostLeE prims x n) (hf : ∀ a, CostLeE prims (f a) m) : CostLeE prims (x >>= f) (n + m) := fun s => by
-  rw [StateT.run_bind]
-  exact CostLe.writer_bind prims _ _ (hx s) fun p => hf p.1 p.2
-
-theorem CostLeE.pure {α : Type} (a : α) : CostLeE prims (Pure.pure a : EmulationM C α) 0 := fun _ =>
-  CostLe.writer_pure prims _
-
-theorem CostLeE.lift {α : Type} (w : WriterT (CallLog C) (OracleComp (WorldSpec C)) α) {n : ℕ}
-    (h : CostLe prims w.run n) : CostLeE prims (StateT.lift w : EmulationM C α) n := fun s => by
-  change CostLe prims ((w >>= fun a => Pure.pure (a, s)).run) n
-  exact (CostLe.writer_bind prims _ _ h fun a => CostLe.writer_pure prims _).mono prims (by simp)
-
-theorem CostLeE.simulateQ (impl : QueryImpl (LocalSpec C) (EmulationM C)) (himpl : ∀ t, CostLeE prims (impl t) 0)
-    {α : Type} (oa : OracleComp (LocalSpec C) α) : CostLeE prims (simulateQ impl oa) 0 := by
-  induction oa using OracleComp.inductionOn with
-  | pure x => exact CostLeE.pure prims _
-  | query_bind t k ih =>
-    rw [simulateQ_bind, simulateQ_query]
-    simp only [OracleQuery.cont_query, OracleQuery.input_query, id_map]
-    exact ((himpl t).bind prims fun p => ih p).mono prims (by simp)
-
-/-- The emulated honest operators run on the free copy. -/
-theorem CostLeE.honest (D : C.Coalition) {α : Type} (oa : OracleComp (LocalSpec C) α) :
-    CostLeE prims ((emulatedRoles D).honest oa) 0 := by
-  refine CostLeE.simulateQ prims _ (fun t => ?_) oa
-  rcases t with u | q | x
-  · exact CostLeE.lift prims _ (CostLe.writer_liftM prims _ (CostLe.free prims _))
-  · exact CostLeE.lift prims _ (CostLe.writer_liftM prims _ (CostLe.free prims _))
-  · dsimp only
-    split_ifs
-    · exact fun s => CostLe.writer_liftM prims _ (CostLe.free prims _)
-    · exact CostLeE.lift prims _ (CostLe.writer_liftM prims _ (CostLe.free prims _))
-
-/-- The observed adversary costs what it costs on the counted copy. -/
-theorem CostLeE.adversary (D : C.Coalition) {α : Type} (oa : OracleComp (LocalSpec C) α) (n : ℕ)
-    (h : IsQueryBoundP oa Counted n) : CostLeE prims ((emulatedRoles D).adversary oa) n :=
-  CostLeE.lift prims _ (CostLe.observe prims oa n h)
-
 end TreeQueryBound
 
 end ThresholdLeanXmssSecurity
@@ -4408,11 +4363,6 @@ end ThresholdLeanXmssSecurity
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
 
-end ThresholdLeanXmssSecurity
-
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-
 /-- Inserting a finite table leaves every other coordinate unchanged. -/
 theorem cacheFin_of_not_mem {D R : Type} [DecidableEq D] : ∀ {n : ℕ}
     (addr : Fin n → D) (vals : Fin n → R) (c : (D →ₒ R).QueryCache) (x : D)
@@ -4615,26 +4565,6 @@ theorem tvDist_simulateQ_le_probBad_of_good_outputs
 end BadCoupling
 end ThresholdLeanXmssSecurity
 end GoodOutputCoupling
-
-section SetupVisibility
-open scoped ENNReal
-open OracleComp.ProgramLogic.Relational
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option backward.isDefEq.respectTransparency false
-
-section SetupSecrecy
-variable {C : Committee} (D : C.Coalition)
-
-end SetupSecrecy
-
-section FreshDerivedKeys
-variable {C : Committee} (prims : Primitives)
-
-end FreshDerivedKeys
-
-end ThresholdLeanXmssSecurity
-end SetupVisibility
 
 section HiddenTableReplay
 open scoped ENNReal
@@ -5528,94 +5458,6 @@ theorem keyWorld_coupling (prims : Primitives) (D : C.Coalition)
 end ThresholdLeanXmssSecurity
 end KeyWorldBound
 
-section PrssEchoSecrecy
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option backward.isDefEq.respectTransparency false
-variable {C : Committee} {E : Type}
-
-open OracleComp.ProgramLogic.Relational
-
-end ThresholdLeanXmssSecurity
-end PrssEchoSecrecy
-
-section PrssPhaseConnection
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option backward.isDefEq.respectTransparency false
-variable {C : Committee} {E : Type}
-
-end ThresholdLeanXmssSecurity
-end PrssPhaseConnection
-
-section PrssDerivationConnection
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option backward.isDefEq.respectTransparency false
-variable {C : Committee} {E : Type}
-
-end ThresholdLeanXmssSecurity
-
-end PrssDerivationConnection
-
-section PrssReachablePrefix
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option backward.isDefEq.respectTransparency false
-variable {C : Committee} {E : Type} {ι : Type} {G : OracleSpec ι}
-
-end ThresholdLeanXmssSecurity
-
-end PrssReachablePrefix
-
-section PrssOpeningConnection
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option backward.isDefEq.respectTransparency false
-variable {C : Committee} {E : Type}
-
-variable (prims : Primitives)
-
-variable {prims}
-
-end ThresholdLeanXmssSecurity
-
-end PrssOpeningConnection
-
-section PrssContributionEntropy
-open OracleComp.DeferredSampling
-open scoped ENNReal
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option backward.isDefEq.respectTransparency false
-variable {C : Committee}
-
-end ThresholdLeanXmssSecurity
-
-end PrssContributionEntropy
-
-section PrssContinuationComposition
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option backward.isDefEq.respectTransparency false
-variable {C : Committee} {E α β : Type}
-
-end ThresholdLeanXmssSecurity
-
-end PrssContinuationComposition
-
-section PrssEchoRelabeling
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option backward.isDefEq.respectTransparency false
-variable {C : Committee} {E α : Type}
-
-open scoped ENNReal
-
-end ThresholdLeanXmssSecurity
-
-end PrssEchoRelabeling
-
 section HiddenStreamRelabeling
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -5673,208 +5515,6 @@ namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
 variable {C : Committee} {E α β : Type} {ι : Type} {G : OracleSpec ι}
-
-def roStreamRename (D : C.Coalition) (a b : HashOutput) :
-    QueryImpl (RoSpec C) (OracleComp (RoSpec C)) := fun q => match q with
-  | .inl q => hashQuery q
-  | .inr x => query (spec := RoSpec C) (.inr
-      (x.1, (if Hidden D x.1 then Equiv.swap a b x.2.1 else x.2.1), x.2.2))
-
-def localStreamRename (D : C.Coalition) (a b : HashOutput) :
-    QueryImpl (LocalSpec C) (OracleComp (LocalSpec C)) := fun q => match q with
-  | .inl u => OracleComp.lift (OracleSpec.query (spec := LocalSpec C) (.inl u))
-  | .inr q => liftComp (roStreamRename D a b q) _
-
-def partyStreamRename (D : C.Coalition) (a b : HashOutput) :
-    QueryImpl (PartySpec C E G) (OracleComp (PartySpec C E G)) := fun q => match q with
-  | .inl (.inl q) => liftComp (localStreamRename D a b q) _
-  | .inl (.inr outbox) => OracleComp.lift (OracleSpec.query (spec := PartySpec C E G) (.inl (.inr outbox)))
-  | .inr input => OracleComp.lift (OracleSpec.query (spec := PartySpec C E G) (.inr input))
-
-def renameParty (D : C.Coalition) (a b : HashOutput) (p : PartyM C E G α) : PartyM C E G α :=
-  OptionT.mk (simulateQ (partyStreamRename D a b) p.run)
-
-def renameRun (D : C.Coalition) (a b : HashOutput) (p : RunM C E G α) : RunM C E G α :=
-  fun s => renameParty D a b (p s)
-
-theorem renameParty_pure (D : C.Coalition) (a b : HashOutput) (x : α) :
-    renameParty (E := E) (G := G) D a b (pure x) = pure x := rfl
-
-theorem renameParty_failure (D : C.Coalition) (a b : HashOutput) :
-    renameParty (E := E) (G := G) D a b (failure : PartyM C E G α) = failure := rfl
-
-theorem renameParty_bind (D : C.Coalition) (a b : HashOutput)
-    (p : PartyM C E G α) (k : α → PartyM C E G β) :
-    renameParty D a b (p >>= k) = (renameParty D a b p >>= fun x => renameParty D a b (k x)) := by
-  unfold renameParty
-  apply OptionT.ext
-  simp only [OptionT.run_bind, OptionT.run_mk, Option.elimM, simulateQ_bind]
-  congr 1
-  funext x
-  cases x <;> simp
-
-theorem partyStreamRename_local (D : C.Coalition) (a b : HashOutput)
-    (p : OracleComp (LocalSpec C) α) :
-    simulateQ (partyStreamRename (E := E) (G := G) D a b) (liftComp p _) =
-      liftComp (simulateQ (localStreamRename D a b) p) _ := by
-  induction p using OracleComp.inductionOn with
-  | pure x => simp
-  | query_bind q k ih =>
-    simp only [liftComp_bind, simulateQ_bind, ih]
-    congr 1
-    rw [liftComp_query]
-    simp only [OracleQuery.cont_query, OracleQuery.input_query, id_map]
-    rw [liftM_query_local, simulateQ_spec_query, simulateQ_spec_query]
-    rfl
-
-theorem renameParty_localStep (D : C.Coalition) (a b : HashOutput)
-    (p : OracleComp (LocalSpec C) α) :
-    renameParty (E := E) (G := G) D a b (localStep p) =
-      localStep (simulateQ (localStreamRename D a b) p) := by
-  apply OptionT.ext
-  change simulateQ (partyStreamRename D a b) (liftComp p (PartySpec C E G) >>= pure ∘ some) =
-    liftComp (simulateQ (localStreamRename D a b) p) (PartySpec C E G) >>= pure ∘ some
-  rw [← map_eq_bind_pure_comp, ← map_eq_bind_pure_comp, simulateQ_map, partyStreamRename_local]
-
-theorem localStreamRename_ro (D : C.Coalition) (a b : HashOutput)
-    (p : OracleComp (RoSpec C) α) :
-    simulateQ (localStreamRename D a b) (liftComp p (LocalSpec C)) =
-      liftComp (simulateQ (roStreamRename D a b) p) (LocalSpec C) := by
-  induction p using OracleComp.inductionOn with
-  | pure x => simp
-  | query_bind q k ih =>
-    simp only [liftComp_bind, simulateQ_bind, ih]
-    congr 1
-    change simulateQ (localStreamRename D a b)
-      (OracleComp.lift (OracleSpec.query (spec := LocalSpec C) (.inr q))) =
-      liftComp (simulateQ (roStreamRename D a b) (OracleComp.lift (OracleSpec.query q))) _
-    rw [simulateQ_spec_query, simulateQ_spec_query]
-    rfl
-
-theorem renameParty_oracleStep (D : C.Coalition) (a b : HashOutput)
-    (p : OracleComp (RoSpec C) α) :
-    renameParty (E := E) (G := G) D a b (oracleStep p) =
-      oracleStep (simulateQ (roStreamRename D a b) p) := by
-  rw [oracleStep, renameParty_localStep, localStreamRename_ro]
-  rfl
-
-theorem renameParty_exchange (D : C.Coalition) (a b : HashOutput) (outbox : Mail C E) :
-    renameParty (G := G) D a b (exchange outbox) = exchange outbox := by
-  apply OptionT.ext
-  simp only [renameParty, exchange, OptionT.run_mk, OptionT.run_bind, OptionT.run_lift, Option.elimM,
-    simulateQ_bind, simulateQ_map, simulateQ_spec_query, partyStreamRename]
-  congr 1
-  funext inbox
-  cases inbox with
-  | none => rfl
-  | some inbox => simp only [Option.elim_some]; split <;> rfl
-
-theorem renameParty_require (D : C.Coalition) (a b : HashOutput) (p : Prop) :
-    renameParty (E := E) (G := G) D a b (require p) = require p := by
-  unfold require
-  split <;> rfl
-
-theorem renameRun_bind (D : C.Coalition) (a b : HashOutput)
-    (p : RunM C E G α) (k : α → RunM C E G β) :
-    renameRun D a b (p >>= k) = (renameRun D a b p >>= fun x => renameRun D a b (k x)) := by
-  funext s
-  exact renameParty_bind D a b _ _
-
-theorem renameRun_pure (D : C.Coalition) (a b : HashOutput) (x : α) :
-    renameRun (E := E) (G := G) D a b (pure x) = pure x := rfl
-
-theorem renameRun_lift (D : C.Coalition) (a b : HashOutput) (p : PartyM C E G α) :
-    renameRun D a b (StateT.lift p) = StateT.lift (renameParty D a b p) := by
-  funext s
-  change renameParty D a b (p >>= fun x => pure (x,s)) = _
-  rw [renameParty_bind]
-  rfl
-
-theorem renameRun_freshLabel (D : C.Coalition) (a b : HashOutput) :
-    renameRun (E := E) (G := G) D a b freshLabel = freshLabel := rfl
-
-attribute [local simp] renameParty_bind renameParty_pure renameParty_failure
-  renameParty_localStep renameParty_oracleStep renameParty_exchange renameParty_require
-  renameRun_bind renameRun_pure renameRun_lift renameRun_freshLabel
-
-theorem renameParty_ite (D : C.Coalition) (a b : HashOutput) (p : Prop) [Decidable p]
-    (x y : PartyM C E G α) :
-    renameParty D a b (if p then x else y) = if p then renameParty D a b x else renameParty D a b y := by
-  split <;> rfl
-
-theorem renameRun_ite (D : C.Coalition) (a b : HashOutput) (p : Prop) [Decidable p]
-    (x y : RunM C E G α) :
-    renameRun D a b (if p then x else y) = if p then renameRun D a b x else renameRun D a b y := by
-  split <;> rfl
-
-theorem renameRun_get (D : C.Coalition) (a b : HashOutput) :
-    renameRun (E := E) (G := G) D a b get = get := rfl
-
-theorem renameRun_set (D : C.Coalition) (a b : HashOutput) (s : RunState C) :
-    renameRun (E := E) (G := G) D a b (set s) = set s := rfl
-
-theorem renameRun_modify (D : C.Coalition) (a b : HashOutput) (f : RunState C → RunState C) :
-    renameRun (E := E) (G := G) D a b (modify f) = modify f := rfl
-
-theorem renameRun_foldlM (D : C.Coalition) (a b : HashOutput)
-    (f : β → α → RunM C E G β) (xs : List α) (init : β) :
-    renameRun D a b (xs.foldlM f init) = xs.foldlM (fun x y => renameRun D a b (f x y)) init := by
-  induction xs generalizing init with
-  | nil => rfl
-  | cons x xs ih => simp [List.foldlM_cons, ih]
-
-theorem roStreamRename_hash (D : C.Coalition) (a b : HashOutput) (q : Query C) :
-    simulateQ (roStreamRename D a b) (hashQuery q) = hashQuery q := by
-  simp [hashQuery, roStreamRename]
-
-theorem roStreamRename_findChallenge [Field E] [Algebra Bit E] (K : Constants C E)
-    (D : C.Coalition) (a b key : HashOutput) (tries index : ℕ) :
-    simulateQ (roStreamRename D a b) (findChallenge K key tries index) = findChallenge K key tries index := by
-  induction tries generalizing index with
-  | zero => rfl
-  | succ tries ih =>
-    simp only [findChallenge, simulateQ_bind, roStreamRename_hash]
-    congr 1
-    funext h
-    split <;> simp [ih]
-
-attribute [local simp] renameParty_ite renameRun_ite renameRun_get renameRun_set renameRun_modify
-  renameRun_foldlM roStreamRename_hash roStreamRename_findChallenge
-
-@[local simp] theorem renameParty_map (D : C.Coalition) (a b : HashOutput)
-    (f : α → β) (p : PartyM C E G α) :
-    renameParty D a b (f <$> p) = f <$> renameParty D a b p := by
-  simp only [map_eq_pure_bind, renameParty_bind, renameParty_pure]
-
-@[local simp] theorem renameRun_map (D : C.Coalition) (a b : HashOutput)
-    (f : α → β) (p : RunM C E G α) :
-    renameRun D a b (f <$> p) = f <$> renameRun D a b p := by
-  simp only [map_eq_pure_bind, renameRun_bind, renameRun_pure]
-
-section Protocol
-variable [Field E] [Algebra Bit E] (K : Constants C E) (D : C.Coalition) (a b : HashOutput)
-
-end Protocol
-/-- The pending network interface is retained; only later honest stream queries are renamed. -/
-def renameStep (D : C.Coalition) (a b : HashOutput) : Step C E G α → Step C E G α
-  | .done out => .done out
-  | .wait out resume => .wait out (fun inbox => simulateQ (partyStreamRename D a b) (resume inbox))
-  | .call input resume => .call input (fun r => simulateQ (partyStreamRename D a b) (resume r))
-
-@[local simp] theorem renameStep_outbox (D : C.Coalition) (a b : HashOutput) (s : Step C E G α) :
-    (renameStep D a b s).outbox = s.outbox := by cases s <;> rfl
-
-@[local simp] theorem renameStep_delivered (D : C.Coalition) (a b : HashOutput) (s : Step C E G α) :
-    (renameStep D a b s).delivered = s.delivered := by cases s with
-    | done out => cases out <;> rfl
-    | wait _ _ => rfl
-    | call _ _ => rfl
-
-@[local simp] theorem renameStep_output (D : C.Coalition) (a b : HashOutput) (s : Step C E G α) :
-    (renameStep D a b s).output = s.output := by cases s <;> rfl
-
-@[local simp] theorem renameStep_isDone (D : C.Coalition) (a b : HashOutput) (s : Step C E G α) :
-    (renameStep D a b s).isDone = s.isDone := by cases s <;> rfl
 
 section CeremonyHom
 variable {m n : Type → Type} [Monad m] [Monad n] [LawfulMonad m] [LawfulMonad n]
@@ -5935,50 +5575,8 @@ theorem monadHom_ceremonyOutput (h : m →ᵐ n) (lift : ∀ {α : Type}, Oracle
 
 end CeremonyHom
 
-def renameStateHom (σ : Type) (D : C.Coalition) (a b : HashOutput) :
-    StateT σ (PartyM C E G) →ᵐ StateT σ (PartyM C E G) where
-  toFun _ p := fun s => renameParty D a b (p.run s)
-  toFun_pure' _ := rfl
-  toFun_bind' p k := by funext s; exact renameParty_bind D a b _ _
-
-@[local simp] theorem renameStateHom_lift {σ : Type} (D : C.Coalition) (a b : HashOutput)
-    (p : PartyM C E G α) :
-    renameStateHom σ D a b (StateT.lift p) = StateT.lift (renameParty D a b p) := by
-  funext s
-  change renameParty D a b (p >>= fun x => pure (x,s)) = _
-  rw [renameParty_bind]
-  rfl
-
-@[local simp] theorem renameStateHom_get {σ : Type} (D : C.Coalition) (a b : HashOutput) :
-    renameStateHom (E := E) (G := G) σ D a b get = get := rfl
-
-@[local simp] theorem renameStateHom_set {σ : Type} (D : C.Coalition) (a b : HashOutput) (s : σ) :
-    renameStateHom (E := E) (G := G) σ D a b (set s) = set s := rfl
-
-@[local simp] theorem renameParty_runState {σ : Type} (D : C.Coalition) (a b : HashOutput)
-    (p : StateT σ (PartyM C E G) α) (s : σ) :
-    renameParty D a b (p.run' s) = (renameStateHom σ D a b p).run' s := by
-  simp only [StateT.run'_eq, renameParty_map]
-  rfl
-
-section ActualCeremony
-variable [Field E] [Algebra Bit E] (K : Constants C E)
-
-end ActualCeremony
 end ThresholdLeanXmssSecurity
 end HonestProgramRelabeling
-
-section FullCeremonyRelabeling
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option backward.isDefEq.respectTransparency false
-variable {C : Committee} {E α : Type} {ι : Type} {G : OracleSpec ι}
-attribute [local simp] renameParty_bind renameParty_pure renameParty_failure renameParty_map
-  renameParty_localStep renameParty_oracleStep renameParty_exchange renameParty_require
-  roStreamRename_hash
-
-end ThresholdLeanXmssSecurity
-end FullCeremonyRelabeling
 
 /-! ## Adaptive setup prequeries -/
 
@@ -5988,12 +5586,6 @@ namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
 
 variable {C : Committee}
-
-/-- Underlying hash calls of a local query, including the internal hash of a PRG call. -/
-def prssLocalHashInputs : (LocalSpec C).Domain → Finset (Query C)
-  | .inl _ => ∅
-  | .inr (.inl q) => {q}
-  | .inr (.inr x) => {.streamKey x.2.1}
 
 theorem prssHashAnswer_fixed (prims : Primitives) {input : HashInput} (h : MpcInput input) :
     hashAnswer (C := C) prims (.hash input) = pure (prims.Th input) := by
@@ -6007,59 +5599,14 @@ theorem prssHashAnswer_not_fixed (prims : Primitives) {q : Query C} (h : ¬ IsFi
     simp [hashAnswer, this]
   | _ => rfl
 
-/-- Syntactic coverage of every possible branch by a finite hash-input domain. -/
-inductive PrssLocalCovered (S : Finset (Query C)) {α : Type} : OracleComp (LocalSpec C) α → Prop
-  | pure (a : α) : PrssLocalCovered S (pure a)
-  | query_bind (t : (LocalSpec C).Domain) (k : (LocalSpec C).Range t → OracleComp (LocalSpec C) α)
-      (ht : prssLocalHashInputs t ⊆ S) (hk : ∀ y, PrssLocalCovered S (k y)) :
-      PrssLocalCovered S (OracleComp.lift (OracleSpec.query t) >>= k)
-
-theorem PrssLocalCovered.mono {S T : Finset (Query C)} {α : Type}
-    {oa : OracleComp (LocalSpec C) α} (h : PrssLocalCovered S oa) (hst : S ⊆ T) :
-    PrssLocalCovered T oa := by
-  induction h with
-  | pure a => exact .pure a
-  | query_bind t k ht hk ih => exact .query_bind t k (ht.trans hst) ih
-
 end ThresholdLeanXmssSecurity
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open scoped ENNReal
 noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option backward.isDefEq.respectTransparency false
-variable {C : Committee} {E α : Type}
 
-end ThresholdLeanXmssSecurity
-
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option backward.isDefEq.respectTransparency false
-variable {C : Committee} {E α : Type}
-
-end ThresholdLeanXmssSecurity
-
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option backward.isDefEq.respectTransparency false
-variable {C : Committee} {E α β : Type}
-
-end ThresholdLeanXmssSecurity
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 open OracleComp.DeferredSampling
 noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-
-end ThresholdLeanXmssSecurity
-
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-open scoped ENNReal
-open OracleComp.DeferredSampling
-variable {C : Committee} {E : Type}
-
-end ThresholdLeanXmssSecurity
 
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
@@ -6079,29 +5626,6 @@ theorem prssCountedHashInputs_length (t : (LocalSpec C).Domain) :
   · simp [prssCountedHashInputs, Counted]
   · simp only [prssCountedHashInputs]; split_ifs <;> rfl
   · simp [prssCountedHashInputs, Counted]
-
-end ThresholdLeanXmssSecurity
-
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option backward.isDefEq.respectTransparency false
-open scoped ENNReal
-variable {C : Committee} {E α : Type}
-
-end ThresholdLeanXmssSecurity
-
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option backward.isDefEq.respectTransparency false
-open scoped ENNReal
-variable {C : Committee} {E α : Type}
-
-end ThresholdLeanXmssSecurity
-
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-open scoped ENNReal
-variable {C : Committee} {E : Type}
 
 end ThresholdLeanXmssSecurity
 
@@ -6172,15 +5696,6 @@ theorem prssLocalAnswer_other (prims : Primitives) (t : (LocalSpec C).Domain) (t
 variable {E : Type}
 
 open scoped ENNReal
-
-end ThresholdLeanXmssSecurity
-
-namespace ThresholdLeanXmssSecurity
-
-open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
-
-variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] (prims : Primitives) (K : Constants C E) (circuits : Circuits)
-  (settings : Settings)
 
 end ThresholdLeanXmssSecurity
 

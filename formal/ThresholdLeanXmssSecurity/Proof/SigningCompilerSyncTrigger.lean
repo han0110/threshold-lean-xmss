@@ -183,17 +183,6 @@ theorem _root_.ThresholdLeanXmssSecurity.SigningCompilerSyncRelease.SyncFields.m
     restAgree := h.restAgree, restFree := h.restFree, realPrivate := h.realPrivate,
     frontier := h.frontier, candidatesPaid := h.candidatesPaid, doneCached := h.doneCached }
 
-theorem _root_.ThresholdLeanXmssSecurity.SigningCompilerSyncRelease.LocalFrame.trans {x : Keys3 C} {a a' a'' : RealState C}
-    {b b' b'' : SourceState C × CompState C}
-    (h : LocalFrame x a a' b b') (h' : LocalFrame x a' a'' b' b'') :
-    LocalFrame x a a'' b b'' := by
-  exact ⟨h'.realSigning.trans h.realSigning, h'.realExposed.trans h.realExposed,
-    h.visible.trans h'.visible, h'.signing.trans h.signing, h'.trees.trans h.trees,
-    h'.exposed.trans h.exposed, h'.allocated.trans h.allocated,
-    h'.pending.trans h.pending, h'.virtual.trans h.virtual, h.cache.trans h'.cache,
-    fun k hk => (h'.revealed k hk).trans (h.revealed k hk)⟩
-
-
 /-- The flat trigger ignores counters, logs and the hidden-hit flag. -/
 theorem cachedExtra_at (P : PublicParameter) (seeds : C.Term → HashOutput)
     (before after : SigningFlatProof.FlatState C) (input : HashInput)
@@ -506,7 +495,3 @@ end ThresholdLeanXmssSecurity.SigningCompilerSyncTrigger
 /-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncRelease.SyncFields.mark' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncRelease.SyncFields.mark
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningCompilerSyncRelease.LocalFrame.trans' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningCompilerSyncRelease.LocalFrame.trans
