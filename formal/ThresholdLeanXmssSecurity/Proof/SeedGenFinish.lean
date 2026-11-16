@@ -69,8 +69,8 @@ def SeedGenEchoFreshExt (prims : Primitives) : Prop :=
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
     ∀ (S : Finset (Query C)), (∀ parts name, setupNamedInput .seedGen parts name ∈ S) →
       (∀ i j (f : C.Term → HashOutput), Query.sharedKeys .seedGen ((sharedTerms i j).map f) ∈ S) →
-      (Pr{let r ← seedGenPartsKernel (seedGenStageBSampler prims D A x z S)}[
-        SeedGenEchoIrregular prims D A S r r.2.2.2.1]).toReal ≤
+      (Pr{let r ← seedGenPartsKernel (setupStageBSampler .seedGen prims D A x z S)}[
+        SetupEchoIrregular .seedGen prims D A S r r.2.2.2.1]).toReal ≤
         (seedGenHashError C q / 2 - 2 * seedGenStageAError C q) / 2
 
 theorem seedGenAcceptGap_le_of_ext (hF : SeedGenEchoFreshExt (C := C) (E := E) prims)
@@ -78,19 +78,19 @@ theorem seedGenAcceptGap_le_of_ext (hF : SeedGenEchoFreshExt (C := C) (E := E) p
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ) (hq : IsQueryBounded A Z setupRounds q)
     (S : Finset (Query C)) (hmem : ∀ parts name, setupNamedInput .seedGen parts name ∈ S)
     (hsk : ∀ i j (f : C.Term → HashOutput), Query.sharedKeys .seedGen ((sharedTerms i j).map f) ∈ S) :
-    (Pr{let y ← seedGenPartsKernel (seedGenStageBSampler prims D A x z S)}[SeedGenReceiversGap prims D A S y]).toReal ≤
+    (Pr{let y ← seedGenPartsKernel (setupStageBSampler .seedGen prims D A x z S)}[SetupReceiversGap .seedGen prims D A S y]).toReal ≤
       seedGenHashError C q / 2 - 2 * seedGenStageAError C q := by
   have hb := hF D A x z Z q hq S hmem hsk
-  have hle : Pr{let y ← seedGenPartsKernel (seedGenStageBSampler prims D A x z S)}[SeedGenReceiversGap prims D A S y] ≤
-      Pr{let r ← seedGenPartsKernel (seedGenStageBSampler prims D A x z S)}[
-        SeedGenEchoIrregular prims D A S r r.2.2.2.1] +
-      Pr{let r ← seedGenPartsKernel (seedGenStageBSampler prims D A x z S)}[
-        SeedGenEchoIrregular prims D A S r r.2.2.2.1] :=
-    calc _ ≤ Pr{let r ← seedGenPartsKernel (seedGenStageBSampler prims D A x z S)}[
-          SeedGenEchoIrregular prims D A S r r.2.2.2.1 ∨ SeedGenEchoIrregular prims D A S r r.2.2.2.2] :=
-          prEvent_mono _ _ _ fun r hr => seedGenReceiversGap_irregular prims D A S r hr
+  have hle : Pr{let y ← seedGenPartsKernel (setupStageBSampler .seedGen prims D A x z S)}[SetupReceiversGap .seedGen prims D A S y] ≤
+      Pr{let r ← seedGenPartsKernel (setupStageBSampler .seedGen prims D A x z S)}[
+        SetupEchoIrregular .seedGen prims D A S r r.2.2.2.1] +
+      Pr{let r ← seedGenPartsKernel (setupStageBSampler .seedGen prims D A x z S)}[
+        SetupEchoIrregular .seedGen prims D A S r r.2.2.2.1] :=
+    calc _ ≤ Pr{let r ← seedGenPartsKernel (setupStageBSampler .seedGen prims D A x z S)}[
+          SetupEchoIrregular .seedGen prims D A S r r.2.2.2.1 ∨ SetupEchoIrregular .seedGen prims D A S r r.2.2.2.2] :=
+          prEvent_mono _ _ _ fun r hr => setupReceiversGap_irregular .seedGen prims D A S r hr
       _ ≤ _ := prEvent_or_le _ _ _
-      _ = _ := by rw [probEvent_seedGenEchoIrregular_swap]
+      _ = _ := by rw [probEvent_setupEchoIrregular_swap]
   have ht := ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨(prEvent_ne_top _), (prEvent_ne_top _)⟩) hle
   rw [ENNReal.toReal_add (prEvent_ne_top _) (prEvent_ne_top _)] at ht
   linarith
@@ -100,29 +100,29 @@ theorem seedGenIndepEcho_le_of_ext (hF : SeedGenEchoFreshExt (C := C) (E := E) p
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ) (hq : IsQueryBounded A Z setupRounds q)
     (S : Finset (Query C)) (hmem : ∀ parts name, setupNamedInput .seedGen parts name ∈ S)
     (hsk : ∀ i j (f : C.Term → HashOutput), Query.sharedKeys .seedGen ((sharedTerms i j).map f) ∈ S) :
-    |(Pr{let y ← seedGenIndepMixture prims D A x z Z S}[y = true]).toReal -
-        (Pr{let y ← seedGenIndepMixture prims D A x z (seedGenHiddenZ D Z) S}[y = true]).toReal| ≤
+    |(Pr{let y ← setupIndepMixture .seedGen prims D A x z Z S}[y = true]).toReal -
+        (Pr{let y ← setupIndepMixture .seedGen prims D A x z (seedGenHiddenZ D Z) S}[y = true]).toReal| ≤
       seedGenHashError C q / 2 - 2 * seedGenStageAError C q := by
   refine le_trans ?_ (seedGenAcceptGap_le_of_ext prims hF D A x z Z q hq S hmem hsk)
-  have hZ : Pr{let y ← seedGenIndepMixture prims D A x z Z S}[y = true] =
+  have hZ : Pr{let y ← setupIndepMixture .seedGen prims D A x z Z S}[y = true] =
       Pr{let y ← (OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)) >>= fun parts =>
-        seedGenStageBSampler prims D A x z S parts >>= fun w =>
-          seedGenStageBRun prims D A Z S parts w w.2.2.2 w.2.2.2}[y = true] := by
+        setupStageBSampler .seedGen prims D A x z S parts >>= fun w =>
+          setupStageBRun .seedGen prims D A Z S parts w w.2.2.2 w.2.2.2}[y = true] := by
     exact (EvalDistEq.bind_right _ fun parts =>
-      evalDist_seedGenIndep_Z prims D A x z Z S parts).prEvent_eq (· = true)
-  have hH : Pr{let y ← seedGenIndepMixture prims D A x z (seedGenHiddenZ D Z) S}[y = true] =
+      evalDist_setupIndep_Z .seedGen prims D A x z Z S parts).prEvent_eq (· = true)
+  have hH : Pr{let y ← setupIndepMixture .seedGen prims D A x z (seedGenHiddenZ D Z) S}[y = true] =
       Pr{let y ← (OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)) >>= fun parts =>
-        seedGenStageBSampler prims D A x z S parts >>= fun w =>
-          seedGenStageBRun prims D A Z S parts w w.2.2.1 w.2.2.2}[y = true] := by
+        setupStageBSampler .seedGen prims D A x z S parts >>= fun w =>
+          setupStageBRun .seedGen prims D A Z S parts w w.2.2.1 w.2.2.2}[y = true] := by
     exact (EvalDistEq.bind_right _ fun parts =>
-      evalDist_seedGenIndep_hiddenZ prims D A x z Z S parts).prEvent_eq (· = true)
-  rw [hZ, hH, probEvent_seedGenPartsKernel_eq_tsum (seedGenStageBSampler prims D A x z S)
-    (fun parts w => SeedGenReceiversGap prims D A S (parts, w))]
+      evalDist_setupIndep_hiddenZ .seedGen prims D A x z Z S parts).prEvent_eq (· = true)
+  rw [hZ, hH, probEvent_seedGenPartsKernel_eq_tsum (setupStageBSampler .seedGen prims D A x z S)
+    (fun parts w => SetupReceiversGap .seedGen prims D A S (parts, w))]
   refine abs_probOutput_bind_sub_le _ _ _ _ (fun parts => ?_) (fun parts => ?_) ?_
-  · exact seedGenStageB_parts prims D A x z Z S parts (fun w => w.2.2.2) (fun w => w.2.2.1) fun w hw => Ne.symm hw
-  · exact seedGenStageB_parts prims D A x z Z S parts (fun w => w.2.2.1) (fun w => w.2.2.2) fun w hw => hw
-  · rw [← probEvent_seedGenPartsKernel_eq_tsum (seedGenStageBSampler prims D A x z S)
-      (fun parts w => SeedGenReceiversGap prims D A S (parts, w))]
+  · exact setupStageB_parts .seedGen prims D A x z Z S parts (fun w => w.2.2.2) (fun w => w.2.2.1) fun w hw => Ne.symm hw
+  · exact setupStageB_parts .seedGen prims D A x z Z S parts (fun w => w.2.2.1) (fun w => w.2.2.2) fun w hw => hw
+  · rw [← probEvent_seedGenPartsKernel_eq_tsum (setupStageBSampler .seedGen prims D A x z S)
+      (fun parts w => SetupReceiversGap .seedGen prims D A S (parts, w))]
     exact (prEvent_ne_top _)
 
 theorem seedGenSwapped_le_of_ext (hF : SeedGenEchoFreshExt (C := C) (E := E) prims)
@@ -133,21 +133,21 @@ theorem seedGenSwapped_le_of_ext (hF : SeedGenEchoFreshExt (C := C) (E := E) pri
     |(Pr{let y ← setupSwappedMixture .seedGen prims D A x z Z S hmem}[y = true]).toReal -
         (Pr{let y ← setupSwappedMixture .seedGen prims D A x z (seedGenHiddenZ D Z) S hmem}[y = true]).toReal| ≤
       seedGenHashError C q / 2 := by
-  have hA₁ := seedGenStageA prims D A x z Z S hmem q hq
-  have hA₂ := seedGenStageA prims D A x z (seedGenHiddenZ D Z) S hmem q (isQueryBounded_seedGenHiddenZ D A Z q hq)
+  have hA₁ := setupStageA .seedGen prims D A x z Z S hmem q hq
+  have hA₂ := setupStageA .seedGen prims D A x z (seedGenHiddenZ D Z) S hmem q (isQueryBounded_seedGenHiddenZ D A Z q hq)
   have hb := seedGenIndepEcho_le_of_ext prims hF D A x z Z q hq S hmem hsk
   unfold seedGenStageAError at hb
   calc _ ≤ |(Pr{let y ← setupSwappedMixture .seedGen prims D A x z Z S hmem}[y = true]).toReal -
-          (Pr{let y ← seedGenIndepMixture prims D A x z Z S}[y = true]).toReal| +
-        |(Pr{let y ← seedGenIndepMixture prims D A x z Z S}[y = true]).toReal -
-          (Pr{let y ← seedGenIndepMixture prims D A x z (seedGenHiddenZ D Z) S}[y = true]).toReal| +
-        |(Pr{let y ← seedGenIndepMixture prims D A x z (seedGenHiddenZ D Z) S}[y = true]).toReal -
+          (Pr{let y ← setupIndepMixture .seedGen prims D A x z Z S}[y = true]).toReal| +
+        |(Pr{let y ← setupIndepMixture .seedGen prims D A x z Z S}[y = true]).toReal -
+          (Pr{let y ← setupIndepMixture .seedGen prims D A x z (seedGenHiddenZ D Z) S}[y = true]).toReal| +
+        |(Pr{let y ← setupIndepMixture .seedGen prims D A x z (seedGenHiddenZ D Z) S}[y = true]).toReal -
           (Pr{let y ← setupSwappedMixture .seedGen prims D A x z (seedGenHiddenZ D Z) S hmem}[y = true]).toReal| := by
-        refine (abs_sub_le _ (Pr{let y ← seedGenIndepMixture prims D A x z (seedGenHiddenZ D Z) S}[y = true]).toReal _).trans ?_
+        refine (abs_sub_le _ (Pr{let y ← setupIndepMixture .seedGen prims D A x z (seedGenHiddenZ D Z) S}[y = true]).toReal _).trans ?_
         gcongr
         exact abs_sub_le _ _ _
     _ ≤ _ := by
-        rw [abs_sub_comm ((Pr{let y ← seedGenIndepMixture prims D A x z (seedGenHiddenZ D Z) S}[y = true]).toReal)]
+        rw [abs_sub_comm ((Pr{let y ← setupIndepMixture .seedGen prims D A x z (seedGenHiddenZ D Z) S}[y = true]).toReal)]
         linarith
 
 /-- The hidden half on the real run, from the echo-collision bound on the extended domain. -/
@@ -213,7 +213,7 @@ theorem relTriple_log_bind (h₁ h₂ : Query C → HashOutput) (P : Query C →
 
 variable {E : Type}
 
-/-- `seedGenRefPrefix` with the echo view of the third round as a parameter. -/
+/-- `setupRefPrefix` with the echo view of the third round as a parameter. -/
 def seedGenRefPrefixV (D : C.Coalition) (h : Query C → HashOutput)
     (V : (C.Party → Mail C E) → (C.Party → Mail C E) → C.Party → C.Party → Option (Msg E))
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux) (parts : C.Party → Parts C) :
@@ -228,7 +228,7 @@ def seedGenRefPrefixV (D : C.Coalition) (h : Query C → HashOutput)
 
 theorem seedGenRefPrefix_eq_V (D : C.Coalition) (h : Query C → HashOutput)
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux) (parts : C.Party → Parts C) :
-    seedGenRefPrefix prims D h A x z parts = seedGenRefPrefixV prims D h (seedGenRefVisible prims D h parts) A x z parts :=
+    setupRefPrefix .seedGen prims D h A x z parts = seedGenRefPrefixV prims D h (setupRefVisible .seedGen prims D h parts) A x z parts :=
   rfl
 
 /-- The two echo views of a transcript differ. -/
@@ -290,9 +290,9 @@ theorem seedGenRefVisible_congr (D : C.Coalition) (h₁ h₂ : Query C → HashO
     (parts : C.Party → Parts C) (s rs : C.Party → Mail C E)
     (hpt : ∀ i c, i ∉ D.1 → c ∈ D.1 →
       h₁ (seedGenVisiblePoint prims D h₁ parts rs i c) = h₂ (seedGenVisiblePoint prims D h₁ parts rs i c)) :
-    seedGenRefVisible prims D h₁ parts s rs = seedGenRefVisible prims D h₂ parts s rs := by
+    setupRefVisible .seedGen prims D h₁ parts s rs = setupRefVisible .seedGen prims D h₂ parts s rs := by
   funext c i
-  unfold seedGenRefVisible
+  unfold setupRefVisible
   split_ifs with hci
   · have hactive : setupReferenceActive .seedGen D h₁ s rs i ↔ setupReferenceActive .seedGen D h₂ s rs i := by
       simp only [setupReferenceActive, setupReferenceOpenCheck, hc]
@@ -505,7 +505,7 @@ def seedGenIrr (D : C.Coalition) (h : Query C → HashOutput) (parts : C.Party �
     (u : SeedGenFresh C) : Prop :=
   match π.2 with
   | none => False
-  | some (_, rs, _) => ¬ SeedGenEchoRegularHidden D h
+  | some (_, rs, _) => ¬ SetupEchoRegularHidden .seedGen D h
       (setupReferenceKeys .seedGen prims D h (seedGenTableOf u.1 u.2) parts (fun i j => rs j i))
 
 /-- The echo input of `i` toward `j`, as a cell of the domain. -/
@@ -556,7 +556,7 @@ theorem seedGenIrr_mix_collide (D : C.Coalition) (S : Finset (Query C))
     SeedGenCollide prims D S hsk (seedGenFiniteTotal prims S a) parts π u a' := by
   rcases π with ⟨st, _ | ⟨s, rs, es⟩⟩
   · exact hI.elim
-  simp only [seedGenIrr, SeedGenEchoRegularHidden] at hI
+  simp only [seedGenIrr, SetupEchoRegularHidden] at hI
   push Not at hI
   obtain ⟨i, j, hi, hj, hs, heq, hne⟩ := hI
   have hd : ∀ ph k l, seedGenFiniteTotal prims S (seedGenMix (fun s : S => SeedGenEchoCell D u s.1) a a')
@@ -619,8 +619,8 @@ theorem seedGenHonestHit_of_viewDiff (D : C.Coalition) (S : Finset (Query C)) (p
     (a a' : S → HashOutput) {σ : Type}
     (π : σ × Option ((C.Party → Mail C E) × (C.Party → Mail C E) × (C.Party → Mail C E))) (u : SeedGenFresh C)
     (hv : SeedGenViewDiff
-      (seedGenRefVisible prims D (seedGenFiniteTotal prims S (seedGenMix (fun s : S => SeedGenEchoCell D u s.1) a a')) parts)
-      (seedGenRefVisible prims D (seedGenFiniteTotal prims S a) parts) π) :
+      (setupRefVisible .seedGen prims D (seedGenFiniteTotal prims S (seedGenMix (fun s : S => SeedGenEchoCell D u s.1) a a')) parts)
+      (setupRefVisible .seedGen prims D (seedGenFiniteTotal prims S a) parts) π) :
     SeedGenHonestHit prims D (seedGenFiniteTotal prims S a) parts π u := by
   rcases π with ⟨st, _ | ⟨s, rs, es⟩⟩
   · exact hv.elim
@@ -693,7 +693,7 @@ def seedGenPrefixLog (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x
     ProbComp ((A.State × Option ((C.Party → Mail C E) × (C.Party → Mail C E) × (C.Party → Mail C E))) ×
       List (Query C)) :=
   simulateQ (fixedLocal prims (seedGenFiniteTotal prims S a))
-    (seedGenHashLog (seedGenRefPrefix prims D (seedGenFiniteTotal prims S a) A x z parts))
+    (seedGenHashLog (setupRefPrefix .seedGen prims D (seedGenFiniteTotal prims S a) A x z parts))
 
 /-- The fresh table, the oracle with its independent copy, and the logged prefix. -/
 def seedGenEchoJoint (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
@@ -772,12 +772,12 @@ theorem probEvent_seedGenIrr_mix_le (D : C.Coalition) (A : Adversary C E Unit PE
     (hsk : ∀ i j (f : C.Term → HashOutput), Query.sharedKeys .seedGen ((sharedTerms i j).map f) ∈ S)
     (parts : C.Party → Parts C) (u : SeedGenFresh C) (a a' : S → HashOutput) :
     Pr{let π ← simulateQ (fixedLocal prims (seedGenFiniteTotal prims S (seedGenMix (fun s : S => SeedGenEchoCell D u s.1) a a')))
-        (seedGenRefPrefix prims D (seedGenFiniteTotal prims S (seedGenMix (fun s : S => SeedGenEchoCell D u s.1) a a'))
+        (setupRefPrefix .seedGen prims D (seedGenFiniteTotal prims S (seedGenMix (fun s : S => SeedGenEchoCell D u s.1) a a'))
           A x z parts)}[
       seedGenIrr prims D (seedGenFiniteTotal prims S (seedGenMix (fun s : S => SeedGenEchoCell D u s.1) a a'))
         parts π u] ≤
     Pr{let r ← simulateQ (fixedLocal prims (seedGenFiniteTotal prims S a))
-        (seedGenHashLog (seedGenRefPrefix prims D (seedGenFiniteTotal prims S a) A x z parts))}[
+        (seedGenHashLog (setupRefPrefix .seedGen prims D (seedGenFiniteTotal prims S a) A x z parts))}[
       SeedGenCollide prims D S hsk (seedGenFiniteTotal prims S a) parts r.1 u a' ∨
         (∃ v ∈ r.2, SeedGenEchoCell D u v) ∨ SeedGenHonestHit prims D (seedGenFiniteTotal prims S a) parts r.1 u] := by
   set hm := seedGenFiniteTotal prims S (seedGenMix (fun s : S => SeedGenEchoCell D u s.1) a a') with hhm
@@ -787,7 +787,7 @@ theorem probEvent_seedGenIrr_mix_le (D : C.Coalition) (A : Adversary C E Unit PE
     hoff _ fun hc => by obtain ⟨l', hl'⟩ := seedGenEchoCell_sharedKeys hc; cases hl'
   rw [seedGenRefPrefix_eq_V, seedGenRefPrefixV_congr prims D hm ha hc, seedGenRefPrefix_eq_V]
   have R := relTriple_seedGenRefPrefixV prims D ha hm ha (SeedGenEchoCell D u) hoff
-    (seedGenRefVisible prims D hm parts) (seedGenRefVisible prims D ha parts) A x z parts
+    (setupRefVisible .seedGen prims D hm parts) (setupRefVisible .seedGen prims D ha parts) A x z parts
   refine prEvent_le_of_relTriple (relTriple_symm R) fun y r hry hy => ?_
   rcases hry with hl | hv | he
   · exact Or.inr (Or.inl hl)
@@ -800,7 +800,7 @@ def seedGenRefRun (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : 
     (S : Finset (Query C)) (parts : C.Party → Parts C) (a : S → HashOutput) :
     ProbComp (A.State × Option ((C.Party → Mail C E) × (C.Party → Mail C E) × (C.Party → Mail C E))) :=
   simulateQ (fixedLocal prims (seedGenFiniteTotal prims S a))
-    (seedGenRefPrefix prims D (seedGenFiniteTotal prims S a) A x z parts)
+    (setupRefPrefix .seedGen prims D (seedGenFiniteTotal prims S a) A x z parts)
 
 theorem probOutput_true_map_decide {α : Type} (oa : ProbComp α) (P : α → Prop) :
     Pr{let z ← (fun a => decide (P a)) <$> oa}[z = true] = Pr{let z ← oa}[P z] := by
@@ -835,10 +835,10 @@ theorem probEvent_seedGenIrr_le_u (D : C.Coalition) (A : Adversary C E Unit PEmp
 
 theorem evalDist_seedGenStageBSampler_reorder (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (S : Finset (Query C)) (parts : C.Party → Parts C) :
-    ((fun w => (w.2.2.1, w.1, w.2.1)) <$> seedGenStageBSampler prims D A x z S parts) =ᵈ
+    ((fun w => (w.2.2.1, w.1, w.2.1)) <$> setupStageBSampler .seedGen prims D A x z S parts) =ᵈ
       (($ᵗ (SeedGenFresh C)) >>= fun u => (fun s => (u, s)) <$>
         (($ᵗ (S → HashOutput)) >>= fun a => (fun π => (a, π)) <$> seedGenRefRun prims D A x z S parts a)) := by
-  unfold seedGenStageBSampler seedGenRefRun
+  unfold setupStageBSampler seedGenRefRun
   simp only [map_bind, map_pure]
   refine EvalDistEq.trans ?_ (OracleComp.EvalDistEq.bind_bind_swap _ _ _)
   refine EvalDistEq.bind_right _ fun a => ?_
@@ -863,14 +863,14 @@ theorem probEvent_seedGenEchoIrregular_le_joint (D : C.Coalition) (A : Adversary
     (x : C.Party → Unit) (z : Aux) (S : Finset (Query C))
     (hsk : ∀ i j (f : C.Term → HashOutput), Query.sharedKeys .seedGen ((sharedTerms i j).map f) ∈ S)
     (parts : C.Party → Parts C) :
-    Pr{let w ← seedGenStageBSampler prims D A x z S parts}[SeedGenEchoIrregular prims D A S (parts, w) w.2.2.1] ≤
+    Pr{let w ← setupStageBSampler .seedGen prims D A x z S parts}[SetupEchoIrregular .seedGen prims D A S (parts, w) w.2.2.1] ≤
     Pr{let t ← seedGenEchoJoint prims D A x z S parts}[
       SeedGenCollide prims D S hsk (seedGenFiniteTotal prims S t.2.1.1) parts t.2.2.1 t.1 t.2.1.2 ∨
         (∃ v ∈ t.2.2.2, SeedGenEchoCell D t.1 v) ∨
         SeedGenHonestHit prims D (seedGenFiniteTotal prims S t.2.1.1) parts t.2.2.1 t.1] := by
-  have h1 : Pr{let w ← seedGenStageBSampler prims D A x z S parts}[
-      SeedGenEchoIrregular prims D A S (parts, w) w.2.2.1] =
-      Pr{let t ← (fun w => (w.2.2.1, w.1, w.2.1)) <$> seedGenStageBSampler prims D A x z S parts}[
+  have h1 : Pr{let w ← setupStageBSampler .seedGen prims D A x z S parts}[
+      SetupEchoIrregular .seedGen prims D A S (parts, w) w.2.2.1] =
+      Pr{let t ← (fun w => (w.2.2.1, w.1, w.2.1)) <$> setupStageBSampler .seedGen prims D A x z S parts}[
         seedGenIrr prims D (seedGenFiniteTotal prims S t.2.1) parts t.2.2 t.1] := by
     rw [prEvent_map]
     rfl
@@ -896,10 +896,10 @@ theorem seedGenPrefixLog_length_le (D : C.Coalition) (A : Adversary C E Unit PEm
     (r.2.filter fun v => ¬ IsFixed v).length ≤ q := by
   set h := seedGenFiniteTotal prims S a
   obtain ⟨y, hy⟩ := exists_mem_support_probComp (simulateQ (fixedLocal prims h)
-    (seedGenHashLog (Z (r.1.1, seedGenRefOutputs prims D h (fun _ => 0) parts r.1.2))))
+    (seedGenHashLog (Z (r.1.1, setupRefOutputs .seedGen prims D h (fun _ => 0) parts r.1.2))))
   have hk : (y.1, r.2 ++ y.2) ∈ support (setupReferenceKernel .seedGen prims D h (fun _ => 0) A x z Z parts) := by
     unfold setupReferenceKernel
-    rw [seedGenReferenceLocalGame_eq_prefix, seedGenHashLog_bind]
+    rw [setupReferenceLocalGame_eq_prefix, seedGenHashLog_bind]
     simp only [simulateQ_bind, simulateQ_pure, support_bind, Set.mem_iUnion, support_pure,
       Set.mem_singleton_iff]
     exact ⟨r, hr, y, hy, rfl⟩
@@ -913,7 +913,7 @@ theorem probEvent_seedGenEchoIrregular_parts_le (D : C.Coalition) (A : Adversary
     (hq : IsQueryBounded A Z setupRounds q) (S : Finset (Query C))
     (hsk : ∀ i j (f : C.Term → HashOutput), Query.sharedKeys .seedGen ((sharedTerms i j).map f) ∈ S)
     (parts : C.Party → Parts C) :
-    Pr{let w ← seedGenStageBSampler prims D A x z S parts}[SeedGenEchoIrregular prims D A S (parts, w) w.2.2.1] ≤
+    Pr{let w ← setupStageBSampler .seedGen prims D A x z S parts}[SetupEchoIrregular .seedGen prims D A S (parts, w) w.2.2.1] ≤
       ((1 + q + C.n * C.n : ℕ) : ℝ≥0∞) * ((Fintype.card C.Pair : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹) := by
   refine (probEvent_seedGenEchoIrregular_le_joint prims D A x z S hsk parts).trans ?_
   refine (prEvent_or_le _ _ _).trans ?_
@@ -998,11 +998,11 @@ variable {C : Committee} {E : Type} (prims : Primitives)
 /-- The echo-collision bound on a domain with every echo input. -/
 theorem seedGenEchoFreshExt : SeedGenEchoFreshExt (C := C) (E := E) prims := by
   intro D A x z Z q hq S _ hsk
-  have hb : Pr{let r ← seedGenPartsKernel (seedGenStageBSampler prims D A x z S)}[
-      SeedGenEchoIrregular prims D A S r r.2.2.2.1] ≤
+  have hb : Pr{let r ← seedGenPartsKernel (setupStageBSampler .seedGen prims D A x z S)}[
+      SetupEchoIrregular .seedGen prims D A S r r.2.2.2.1] ≤
       ((1 + q + C.n * C.n : ℕ) : ℝ≥0∞) * ((Fintype.card C.Pair : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹) := by
-    rw [probEvent_seedGenPartsKernel_eq_tsum (seedGenStageBSampler prims D A x z S)
-      (fun parts w => SeedGenEchoIrregular prims D A S (parts, w) w.2.2.1)]
+    rw [probEvent_seedGenPartsKernel_eq_tsum (setupStageBSampler .seedGen prims D A x z S)
+      (fun parts w => SetupEchoIrregular .seedGen prims D A S (parts, w) w.2.2.1)]
     calc _ ≤ ∑' parts, Pr{let z ← OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)}[z = parts] *
           (((1 + q + C.n * C.n : ℕ) : ℝ≥0∞) *
             ((Fintype.card C.Pair : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹)) :=
