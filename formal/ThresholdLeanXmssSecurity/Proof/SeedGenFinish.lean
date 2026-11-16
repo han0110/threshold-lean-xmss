@@ -67,7 +67,7 @@ variable {C : Committee} {E : Type} (prims : Primitives)
 def SeedGenEchoFreshExt (prims : Primitives) : Prop :=
   ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
-    ∀ (S : Finset (Query C)), (∀ parts name, seedGenNamedInput parts name ∈ S) →
+    ∀ (S : Finset (Query C)), (∀ parts name, setupNamedInput .seedGen parts name ∈ S) →
       (∀ i j (f : C.Term → HashOutput), Query.sharedKeys .seedGen ((sharedTerms i j).map f) ∈ S) →
       (Pr{let r ← seedGenPartsKernel (seedGenStageBSampler prims D A x z S)}[
         SeedGenEchoIrregular prims D A S r r.2.2.2.1]).toReal ≤
@@ -76,7 +76,7 @@ def SeedGenEchoFreshExt (prims : Primitives) : Prop :=
 theorem seedGenAcceptGap_le_of_ext (hF : SeedGenEchoFreshExt (C := C) (E := E) prims)
     (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ) (hq : IsQueryBounded A Z setupRounds q)
-    (S : Finset (Query C)) (hmem : ∀ parts name, seedGenNamedInput parts name ∈ S)
+    (S : Finset (Query C)) (hmem : ∀ parts name, setupNamedInput .seedGen parts name ∈ S)
     (hsk : ∀ i j (f : C.Term → HashOutput), Query.sharedKeys .seedGen ((sharedTerms i j).map f) ∈ S) :
     (Pr{let y ← seedGenPartsKernel (seedGenStageBSampler prims D A x z S)}[SeedGenReceiversGap prims D A S y]).toReal ≤
       seedGenHashError C q / 2 - 2 * seedGenStageAError C q := by
@@ -98,7 +98,7 @@ theorem seedGenAcceptGap_le_of_ext (hF : SeedGenEchoFreshExt (C := C) (E := E) p
 theorem seedGenIndepEcho_le_of_ext (hF : SeedGenEchoFreshExt (C := C) (E := E) prims)
     (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ) (hq : IsQueryBounded A Z setupRounds q)
-    (S : Finset (Query C)) (hmem : ∀ parts name, seedGenNamedInput parts name ∈ S)
+    (S : Finset (Query C)) (hmem : ∀ parts name, setupNamedInput .seedGen parts name ∈ S)
     (hsk : ∀ i j (f : C.Term → HashOutput), Query.sharedKeys .seedGen ((sharedTerms i j).map f) ∈ S) :
     |(Pr{let y ← seedGenIndepMixture prims D A x z Z S}[y = true]).toReal -
         (Pr{let y ← seedGenIndepMixture prims D A x z (seedGenHiddenZ D Z) S}[y = true]).toReal| ≤
@@ -128,7 +128,7 @@ theorem seedGenIndepEcho_le_of_ext (hF : SeedGenEchoFreshExt (C := C) (E := E) p
 theorem seedGenSwapped_le_of_ext (hF : SeedGenEchoFreshExt (C := C) (E := E) prims)
     (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ) (hq : IsQueryBounded A Z setupRounds q)
-    (S : Finset (Query C)) (hmem : ∀ parts name, seedGenNamedInput parts name ∈ S)
+    (S : Finset (Query C)) (hmem : ∀ parts name, setupNamedInput .seedGen parts name ∈ S)
     (hsk : ∀ i j (f : C.Term → HashOutput), Query.sharedKeys .seedGen ((sharedTerms i j).map f) ∈ S) :
     |(Pr{let y ← seedGenSwappedMixture prims D A x z Z S hmem}[y = true]).toReal -
         (Pr{let y ← seedGenSwappedMixture prims D A x z (seedGenHiddenZ D Z) S hmem}[y = true]).toReal| ≤
@@ -154,14 +154,14 @@ theorem seedGenSwapped_le_of_ext (hF : SeedGenEchoFreshExt (C := C) (E := E) pri
 theorem seedGenHiddenFresh_of_echoFreshExt (hF : SeedGenEchoFreshExt (C := C) (E := E) prims) :
     SeedGenHiddenFresh (C := C) (E := E) prims := by
   intro D A x z Z q hq
-  obtain ⟨S₁, h₁⟩ := seedGenWorldCovered_exists (free (seedGenNormalizedLocalGame D A x z Z))
-  obtain ⟨S₂, h₂⟩ := seedGenWorldCovered_exists (free (seedGenNormalizedLocalGame D A x z (seedGenHiddenZ D Z)))
+  obtain ⟨S₁, h₁⟩ := seedGenWorldCovered_exists (free (setupNormalizedLocalGame .seedGen D A x z Z))
+  obtain ⟨S₂, h₂⟩ := seedGenWorldCovered_exists (free (setupNormalizedLocalGame .seedGen D A x z (seedGenHiddenZ D Z)))
   let S := S₁ ∪ S₂ ∪ seedGenAllNamedInputs C ∪ seedGenSharedInputs C
-  have hS₁ : SeedGenWorldCovered S (free (seedGenNormalizedLocalGame D A x z Z)) :=
+  have hS₁ : SeedGenWorldCovered S (free (setupNormalizedLocalGame .seedGen D A x z Z)) :=
     h₁.mono fun _ hq => by simp only [S, Finset.mem_union]; tauto
-  have hS₂ : SeedGenWorldCovered S (free (seedGenNormalizedLocalGame D A x z (seedGenHiddenZ D Z))) :=
+  have hS₂ : SeedGenWorldCovered S (free (setupNormalizedLocalGame .seedGen D A x z (seedGenHiddenZ D Z))) :=
     h₂.mono fun _ hq => by simp only [S, Finset.mem_union]; tauto
-  have hmem : ∀ parts name, seedGenNamedInput parts name ∈ S := fun parts name => by
+  have hmem : ∀ parts name, setupNamedInput .seedGen parts name ∈ S := fun parts name => by
     have := seedGenAllNamedInputs_mem parts name
     simp only [S, Finset.mem_union]; tauto
   have hsk : ∀ i j (f : C.Term → HashOutput), Query.sharedKeys .seedGen ((sharedTerms i j).map f) ∈ S :=
@@ -299,7 +299,7 @@ theorem seedGenRefVisible_congr (D : C.Coalition) (h₁ h₂ : Query C → HashO
     rw [seedGenReferenceData_active, seedGenReferenceData_active]
     by_cases ha : seedGenReferenceActive D h₁ s rs i
     · rw [if_pos ha, if_pos (hactive.1 ha)]
-      simp only [seedGenEchoDataStep, Step.outbox, echoOutbox]
+      simp only [setupEchoDataStep, Step.outbox, echoOutbox]
       congr 2
       simp only [echoOf, ite_true, D_sharedQueries_at]
       rw [← seedGenReferenceKeys_congr_derive prims D h₁ h₂ hd]

@@ -51,10 +51,10 @@ dealer's hidden coordinates gives the dealer's keys. -/
 theorem seedGenHiddenOverlay_hybrid (D : C.Coalition) (h : Query C → HashOutput) (parts : C.Party → Parts C)
     (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairs : C.Pair → HashOutput)
     (i : C.Party) (hi : i ∉ D.1) :
-    seedGenHiddenOverlay D i (dealtKeys parameter (seedGenHybridSeeds D h parts seeds)
-      (seedGenHybridPairs D h parts pairs) i) (dealtKeys parameter seeds pairs i) =
+    seedGenHiddenOverlay D i (dealtKeys parameter (setupHybridSeeds .seedGen D h parts seeds)
+      (setupHybridPairs .seedGen D h parts pairs) i) (dealtKeys parameter seeds pairs i) =
       dealtKeys parameter seeds pairs i := by
-  unfold seedGenHiddenOverlay dealtKeys seedGenHybridSeeds seedGenHybridPairs
+  unfold seedGenHiddenOverlay dealtKeys setupHybridSeeds setupHybridPairs
   congr 1
   · funext T
     split_ifs <;> simp_all
@@ -96,16 +96,16 @@ def seedGenPostTraced (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (
     pure (state, fun _ _ => none, fun _ => none, fun _ => none)
   else do
     let (st, sent) ← A.round state fun c i => if c ∈ D.1 ∧ i ∉ D.1 then
-      (seedGenRevealSteps D parts committed i).outbox c else none
-    let data ← seedGenRevealComputations D parts committed sent
-    let r ← seedGenFinishLocal D A st data
+      (setupRevealSteps .seedGen D parts committed i).outbox c else none
+    let data ← setupRevealComputations .seedGen D parts committed sent
+    let r ← setupFinishLocal .seedGen D A st data
     pure (r.1, sent, data, r.2)
 
 theorem seedGenPostTraced_proj (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (state : A.State)
     (parts : C.Party → Parts C) (committed : C.Party → Mail C E) :
     (fun r => (r.1, r.2.2.2)) <$> seedGenPostTraced D A state parts committed =
-      seedGenPostCommitLocal D A state parts committed := by
-  unfold seedGenPostTraced seedGenPostCommitLocal
+      setupPostCommitLocal .seedGen D A state parts committed := by
+  unfold seedGenPostTraced setupPostCommitLocal
   split_ifs
   · simp
   · simp only [map_bind, map_pure]
@@ -139,7 +139,7 @@ def seedGenKnownGame (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x
     commitOutbox i (commitments i) c else none)
   let high ← free (liftComp ($ᵗ HashOutput) (LocalSpec C))
   let ok ← seedGenProgramOk D parts (log ++ calls) sent parameter seeds pairs high
-  let r ← free (seedGenPostTraced D A st parts (seedGenCommitInbox D parts commitments sent))
+  let r ← free (seedGenPostTraced D A st parts (setupCommitInbox .seedGen D parts commitments sent))
   pure ⟨parameter, seeds, pairs, parts, log ++ calls, sent, commitments, ok, r.1, r.2.1, r.2.2.1, r.2.2.2⟩
 
 /-- The output of the common game. -/
@@ -154,7 +154,7 @@ def SeedGenProgramFail {σ : Type} (r : SeedGenKnownTrace C E σ) : Prop := r.ok
 def SeedGenExtractFail (D : C.Coalition) {σ : Type} (r : SeedGenKnownTrace C E σ) : Prop :=
   ∃ i, i ∉ D.1 ∧ (r.data i).isSome ∧ ∃ j, j ∈ D.1 ∧
     extractReveal .seedGen r.log r.sent j i ≠
-      Msg.hashesOf (seedGenRevealInbox D r.parts (seedGenCommitInbox D r.parts r.commitments r.sent) r.revealSent i j)
+      Msg.hashesOf (setupRevealInbox .seedGen D r.parts (setupCommitInbox .seedGen D r.parts r.commitments r.sent) r.revealSent i j)
 
 /-- Two honest operators that reach the echo send equal shared-key hashes of distinct inputs. -/
 def SeedGenEchoCollision (D : C.Coalition) {σ : Type} (r : SeedGenKnownTrace C E σ) : Prop :=
@@ -193,19 +193,19 @@ theorem simulateQ_world_post_seedGen {β : Type} (D : C.Coalition) (A : Adversar
     (f : A.State × (C.Party → Option (Keys C)) → β) :
     simulateQ (worldAnswer prims)
         ((executeRounds observedRoles D A noFunctionality (setupRounds - 1) state
-          (seedGenRevealSteps D parts committed)).run >>= fun r => pure (f r.1)) =
+          (setupRevealSteps .seedGen D parts committed)).run >>= fun r => pure (f r.1)) =
       simulateQ (worldAnswer prims)
         (free (seedGenPostTraced D A state parts committed) >>= fun r => pure (f (r.1, r.2.2.2))) := by
   have hl : ((executeRounds observedRoles D A noFunctionality (setupRounds - 1) state
-      (seedGenRevealSteps D parts committed)).run >>= fun r => pure (f r.1)) =
+      (setupRevealSteps .seedGen D parts committed)).run >>= fun r => pure (f r.1)) =
       seedGenEraseLog (executeRounds observedRoles D A noFunctionality (setupRounds - 1) state
-        (seedGenRevealSteps D parts committed)) >>= fun r => pure (f r) := by
+        (setupRevealSteps .seedGen D parts committed)) >>= fun r => pure (f r) := by
     simp [seedGenEraseLog]
   rw [hl, seedGenEraseLog_executeRounds, simulateQ_bind, simulateQ_world_executeRounds, simulateQ_bind,
     simulateQ_free]
   change simulateQ (localAnswer prims) (executeRounds localRoles D A noFunctionality 2 state
-    (seedGenRevealSteps D parts committed)) >>= _ = _
-  rw [executeRounds_seedGenRevealSteps_two, ← seedGenPostTraced_proj, simulateQ_map, bind_map_left]
+    (setupRevealSteps .seedGen D parts committed)) >>= _ = _
+  rw [executeRounds_setupRevealSteps_two, ← seedGenPostTraced_proj, simulateQ_map, bind_map_left]
 
 theorem simulateQ_seedGenCommonGame_known (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) :
@@ -449,17 +449,17 @@ theorem seedGenPostTraced_fixed_support (D : C.Coalition) (A : Adversary C E Uni
     (state : A.State) (parts : C.Party → Parts C) (committed : C.Party → Mail C E) (h : Query C → HashOutput)
     (z : A.State × (C.Party → Mail C E) × (C.Party → Option (SeedGenEchoData C)) × (C.Party → Option (Keys C)))
     (hz : z ∈ support (simulateQ (fixedLocal prims h) (seedGenPostTraced D A state parts committed))) :
-    z.2.2.2 = (fun _ => none) ∨ (z.2.2.1 = seedGenRevealAllFixed prims D h parts committed z.2.1 ∧
-      ∃ echoSent : C.Party → Mail C E, z.2.2.2 = seedGenEchoDataOutput D z.2.2.1 echoSent) := by
+    z.2.2.2 = (fun _ => none) ∨ (z.2.2.1 = setupRevealAllFixed .seedGen prims D h parts committed z.2.1 ∧
+      ∃ echoSent : C.Party → Mail C E, z.2.2.2 = setupEchoDataOutput .seedGen D z.2.2.1 echoSent) := by
   unfold seedGenPostTraced at hz
   split_ifs at hz
   · simp only [simulateQ_pure, support_pure, Set.mem_singleton_iff] at hz
     subst hz
     exact Or.inl rfl
   · simp only [simulateQ_bind, simulateQ_pure, support_bind, Set.mem_iUnion,
-      simulateQ_fixedLocal_seedGenRevealComputations, support_pure, Set.mem_singleton_iff] at hz
+      simulateQ_fixedLocal_setupRevealComputations, support_pure, Set.mem_singleton_iff] at hz
     obtain ⟨r, _, data, rfl, f, hf, rfl⟩ := hz
-    unfold seedGenFinishLocal at hf
+    unfold setupFinishLocal at hf
     split_ifs at hf
     · simp only [simulateQ_pure, support_pure, Set.mem_singleton_iff] at hf
       subst hf
@@ -474,14 +474,14 @@ theorem seedGenPostTraced_fixed_data (D : C.Coalition) (A : Adversary C E Unit P
     (state : A.State) (parts : C.Party → Parts C) (committed : C.Party → Mail C E) (h : Query C → HashOutput)
     (z : A.State × (C.Party → Mail C E) × (C.Party → Option (SeedGenEchoData C)) × (C.Party → Option (Keys C)))
     (hz : z ∈ support (simulateQ (fixedLocal prims h) (seedGenPostTraced D A state parts committed))) :
-    (∀ i, z.2.2.1 i = none) ∨ z.2.2.1 = seedGenRevealAllFixed prims D h parts committed z.2.1 := by
+    (∀ i, z.2.2.1 i = none) ∨ z.2.2.1 = setupRevealAllFixed .seedGen prims D h parts committed z.2.1 := by
   unfold seedGenPostTraced at hz
   split_ifs at hz
   · simp only [simulateQ_pure, support_pure, Set.mem_singleton_iff] at hz
     subst hz
     exact Or.inl fun _ => rfl
   · simp only [simulateQ_bind, simulateQ_pure, support_bind, Set.mem_iUnion,
-      simulateQ_fixedLocal_seedGenRevealComputations, support_pure, Set.mem_singleton_iff] at hz
+      simulateQ_fixedLocal_setupRevealComputations, support_pure, Set.mem_singleton_iff] at hz
     obtain ⟨r, _, data, rfl, f, _, rfl⟩ := hz
     exact Or.inr rfl
 
@@ -496,8 +496,8 @@ theorem seedGenKnown_projection_eq (D : C.Coalition) {σ : Type} (h : Query C �
     (hpair : ∀ p ∈ seedGenCrossCoordinates D,
       h (setupPairProgrammingInput .seedGen D (setupProgramView .seedGen D r.parts r.log r.sent) p) = r.pairs p)
     (hpost : r.outputs = (fun _ => none) ∨
-      (r.data = seedGenRevealAllFixed prims D h r.parts (seedGenCommitInbox D r.parts r.commitments r.sent)
-        r.revealSent ∧ ∃ echoSent : C.Party → Mail C E, r.outputs = seedGenEchoDataOutput D r.data echoSent))
+      (r.data = setupRevealAllFixed .seedGen prims D h r.parts (setupCommitInbox .seedGen D r.parts r.commitments r.sent)
+        r.revealSent ∧ ∃ echoSent : C.Party → Mail C E, r.outputs = setupEchoDataOutput .seedGen D r.data echoSent))
     (hextract : ¬ SeedGenExtractFail D r) (hcollision : ¬ SeedGenEchoCollision D r) :
     seedGenMixedProjection D r.result = seedGenIdealProjection D r.result := by
   unfold seedGenMixedProjection seedGenIdealProjection SeedGenKnownTrace.result
@@ -508,23 +508,27 @@ theorem seedGenKnown_projection_eq (D : C.Coalition) {σ : Type} (h : Query C �
   · cases hi : r.outputs i with
     | none => simp
     | some key =>
-      set committed := seedGenCommitInbox D r.parts r.commitments r.sent
-      have ho' : seedGenEchoDataOutput D (seedGenRevealAllFixed prims D h r.parts committed r.revealSent)
+      set committed := setupCommitInbox .seedGen D r.parts r.commitments r.sent
+      have ho' : setupEchoDataOutput .seedGen D (setupRevealAllFixed .seedGen prims D h r.parts committed r.revealSent)
           echoSent i = some key := by rw [← hdata, ← ho]; exact hi
-      have hhonest := (seedGenEchoDataOutput_some D _ echoSent i key ho').1
-      have hall := seedGenEchoDataOutput_all_some D _ echoSent i key ho'
-      have hkey := seedGenRevealEcho_output_eq_hybrid prims D h r.parts committed r.revealSent echoSent r.sent
+      have hhonest := (setupEchoDataOutput_some .seedGen D _ echoSent i key ho').1
+      have hall := setupEchoDataOutput_all_some .seedGen D _ echoSent i key ho'
+      have hkey := setupRevealEcho_output_eq_hybrid .seedGen prims D h r.parts committed r.revealSent echoSent r.sent
         r.log r.parameter r.seeds r.pairs high
         (fun k j hk hj => by
           by_contra hne
           exact hextract ⟨k, hk, by rw [hdata]; exact hall k hk, j, hj, hne⟩)
-        hparameter
+        (fun q hq => by
+          simp only [setupParameterInputs, ite_true, List.mem_singleton] at hq
+          rw [hq]
+          exact hparameter)
+        (fun hphase => nomatch hphase)
         (fun T hT => hterm T (List.mem_filter.mpr ⟨Finset.mem_toList.mpr (Finset.mem_univ T), by simpa using hT⟩))
         hpair i key ho'
         (fun j hj hcol => by
           by_contra hne
-          obtain ⟨hsi, _⟩ := seedGenRevealAllFixed_some prims D h r.parts committed r.revealSent i (hall i hhonest)
-          obtain ⟨hsj, _⟩ := seedGenRevealAllFixed_some prims D h r.parts committed r.revealSent j (hall j hj)
+          obtain ⟨hsi, _⟩ := setupRevealAllFixed_some .seedGen prims D h r.parts committed r.revealSent i (hall i hhonest)
+          obtain ⟨hsj, _⟩ := setupRevealAllFixed_some .seedGen prims D h r.parts committed r.revealSent j (hall j hj)
           exact hcollision ⟨i, j, _, _, _, _, hhonest, hj, by rw [hdata]; exact hsi, by rw [hdata]; exact hsj,
             by rw [D_sharedQueries_at, D_sharedQueries_at]; exact hcol, hne⟩)
       rw [Option.map_some, if_pos ⟨hhonest, rfl⟩, hkey,
@@ -594,10 +598,10 @@ def SeedGenFreshOpening (D : C.Coalition) {σ : Type} (r : SeedGenKnownTrace C E
 
 theorem seedGenRevealAllFixed_open (D : C.Coalition) (h : Query C → HashOutput) (parts : C.Party → Parts C)
     (committed sent : C.Party → Mail C E) (i j : C.Party) (hji : j ≠ i)
-    (hs : (seedGenRevealAllFixed prims D h parts committed sent i).isSome) :
-    [h (.commit .seedGen j i (Msg.hashesOf (seedGenRevealInbox D parts committed sent i j)))] =
+    (hs : (setupRevealAllFixed .seedGen prims D h parts committed sent i).isSome) :
+    [h (.commit .seedGen j i (Msg.hashesOf (setupRevealInbox .seedGen D parts committed sent i j)))] =
       Msg.hashesOf (committed i j) := by
-  unfold seedGenRevealAllFixed seedGenRevealDataFixed at hs
+  unfold setupRevealAllFixed setupRevealDataFixed at hs
   split_ifs at hs with h₁ h₂ h₃
   · simp at hs
   · simp at hs
@@ -638,21 +642,21 @@ fresh opening, in the final cache. -/
 theorem seedGenKnown_cacheEvent_of_bad (D : C.Coalition) {σ : Type} (r : SeedGenKnownTrace C E σ)
     (s : HashCache C) (hs : NoMpc s)
     (hdata : ∀ h, Good prims h → Agrees h s → (∀ i, r.data i = none) ∨
-      r.data = seedGenRevealAllFixed prims D h r.parts (seedGenCommitInbox D r.parts r.commitments r.sent)
+      r.data = setupRevealAllFixed .seedGen prims D h r.parts (setupCommitInbox .seedGen D r.parts r.commitments r.sent)
         r.revealSent)
     (hlog : ∀ q y, (q, y) ∈ r.log → ¬ IsFixed q → s q = some y)
     (hbad : SeedGenExtractFail D r ∨ SeedGenEchoCollision D r) :
     SeedGenComparedCollision D s ∨ SeedGenFreshOpening D r s := by
-  set committed := seedGenCommitInbox D r.parts r.commitments r.sent
+  set committed := setupCommitInbox .seedGen D r.parts r.commitments r.sent
   have hfixed (i : C.Party) (hi : r.data i ≠ none) (h : Query C → HashOutput) (hg : Good prims h)
-      (ha : Agrees h s) : r.data = seedGenRevealAllFixed prims D h r.parts committed r.revealSent := by
+      (ha : Agrees h s) : r.data = setupRevealAllFixed .seedGen prims D h r.parts committed r.revealSent := by
     rcases hdata h hg ha with hn | he
     · exact absurd (hn i) hi
     · exact he
   rcases hbad with ⟨i, hi, hsome, j, hj, hne⟩ | ⟨i, j, ki, si, kj, sj, hi, hj, hdi, hdj, hcol, hne⟩
   · have hji : j ≠ i := fun he => hi (he ▸ hj)
     have hdi : r.data i ≠ none := by simpa [Option.isSome_iff_ne_none] using hsome
-    set rv := Msg.hashesOf (seedGenRevealInbox D r.parts committed r.revealSent i j)
+    set rv := Msg.hashesOf (setupRevealInbox .seedGen D r.parts committed r.revealSent i j)
     have hopen (h : Query C → HashOutput) (hg : Good prims h) (ha : Agrees h s) :
         [h (.commit .seedGen j i rv)] = Msg.hashesOf (committed i j) := by
       apply seedGenRevealAllFixed_open prims D h r.parts committed r.revealSent i j hji
@@ -664,7 +668,7 @@ theorem seedGenKnown_cacheEvent_of_bad (D : C.Coalition) {σ : Type} (r : SeedGe
     set c := hashOf prims s (.commit .seedGen j i rv)
     have hsent : Msg.hashesOf (r.sent j i) = [c] := by
       have := hopen _ (good_hashOf prims s) (agrees_hashOf prims hs)
-      simp only [committed, seedGenCommitInbox, roundInbox, if_pos hj] at this
+      simp only [committed, setupCommitInbox, roundInbox, if_pos hj] at this
       exact this.symm
     by_cases hl : ∃ y, (Query.commit (C := C) .seedGen j i rv, y) ∈ r.log
     · obtain ⟨y, hy⟩ := hl
@@ -692,9 +696,9 @@ theorem seedGenKnown_cacheEvent_of_bad (D : C.Coalition) {σ : Type} (r : SeedGe
         (sa : List HashOutput) (hda : r.data a = some (ka, sa)) (h : Query C → HashOutput) (hg : Good prims h)
         (ha : Agrees h s) : sa.getD b.val 0 = h (.sharedKeys .seedGen ((sharedTerms a b).map ka.2.1)) := by
       have hf := hfixed i hdi' h hg ha
-      have hsa : (seedGenRevealAllFixed prims D h r.parts committed r.revealSent a).isSome := by
+      have hsa : (setupRevealAllFixed .seedGen prims D h r.parts committed r.revealSent a).isSome := by
         rw [← hf, hda]; rfl
-      obtain ⟨he, _⟩ := seedGenRevealAllFixed_some prims D h r.parts committed r.revealSent a hsa
+      obtain ⟨he, _⟩ := setupRevealAllFixed_some .seedGen prims D h r.parts committed r.revealSent a hsa
       rw [← hf, hda] at he
       obtain ⟨rfl, rfl⟩ := Prod.ext_iff.mp (Option.some.inj he)
       exact D_sharedQueries_at prims h .seedGen a b _
@@ -713,8 +717,8 @@ theorem seedGenKnownGame_support (D : C.Coalition) (A : Adversary C E Unit PEmpt
     (hw : w ∈ support ((simulateQ (worldAnswer prims) (seedGenKnownGame D A x z)).run ∅)) :
     NoMpc w.2 ∧
       (∀ h, Good prims h → Agrees h w.2 → (∀ i, w.1.data i = none) ∨
-        w.1.data = seedGenRevealAllFixed prims D h w.1.parts
-          (seedGenCommitInbox D w.1.parts w.1.commitments w.1.sent) w.1.revealSent) ∧
+        w.1.data = setupRevealAllFixed .seedGen prims D h w.1.parts
+          (setupCommitInbox .seedGen D w.1.parts w.1.commitments w.1.sent) w.1.revealSent) ∧
       (∀ q y, (q, y) ∈ w.1.log → ¬ IsFixed q → w.2 q = some y) := by
   unfold seedGenKnownGame at hw
   simp only [simulateQ_bind, StateT.run_bind, support_bind, Set.mem_iUnion] at hw
@@ -1220,8 +1224,8 @@ theorem seedGenParties_sum_corrupt (D : C.Coalition) :
 
 theorem isQueryBoundP_compared_revealCompute (D : C.Coalition) (i : C.Party) (own : Parts C)
     (committed revealed : Mail C E) :
-    IsQueryBoundP (seedGenRevealCompute i own committed revealed) (seedGenComparedCall D) (D.1.card + C.n) := by
-  unfold seedGenRevealCompute
+    IsQueryBoundP (setupRevealCompute .seedGen i own committed revealed) (seedGenComparedCall D) (D.1.card + C.n) := by
+  unfold setupRevealCompute
   split
   · trivial
   · refine isQueryBoundP_bind (isQueryBoundP_compared_hashes D _ D.1.card ?_) fun _ _ => ?_
@@ -1242,8 +1246,8 @@ theorem isQueryBoundP_compared_revealCompute (D : C.Coalition) (i : C.Party) (ow
 
 theorem isQueryBoundP_compared_revealComputations (D : C.Coalition) (parts : C.Party → Parts C)
     (committed sent : C.Party → Mail C E) :
-    IsQueryBoundP (seedGenRevealComputations D parts committed sent) (seedGenComparedCall D) (C.n * C.n) := by
-  unfold seedGenRevealComputations
+    IsQueryBoundP (setupRevealComputations .seedGen D parts committed sent) (seedGenComparedCall D) (C.n * C.n) := by
+  unfold setupRevealComputations
   refine (seedGenIsQueryBoundP_sequenceFin_sum _ (fun i => if i ∈ D.1 then 0 else D.1.card + C.n) fun i => ?_).mono ?_
   · split
     · trivial
@@ -1273,7 +1277,7 @@ theorem isQueryBoundP_compared_post (D : C.Coalition) (A : Adversary C E Unit PE
     refine isQueryBoundP_bind (isQueryBoundP_compared_revealComputations D parts committed r.2) fun data _ => ?_
     rw [← Nat.add_zero step]
     refine isQueryBoundP_bind ?_ fun _ _ => trivial
-    unfold seedGenFinishLocal
+    unfold setupFinishLocal
     split
     · trivial
     · rw [← Nat.add_zero step]
@@ -1653,7 +1657,7 @@ def seedGenKnownPrefix (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) 
 theorem seedGenKnownGame_eq_prefix (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) :
     seedGenKnownGame D A x z = seedGenKnownPrefix D A x z >>= fun pre =>
-      free (seedGenPostTraced D A pre.state pre.parts (seedGenCommitInbox D pre.parts pre.commitments pre.sent)) >>=
+      free (seedGenPostTraced D A pre.state pre.parts (setupCommitInbox .seedGen D pre.parts pre.commitments pre.sent)) >>=
         fun r => pure ⟨pre.parameter, pre.seeds, pre.pairs, pre.parts, pre.log, pre.sent, pre.commitments, pre.ok,
           r.1, r.2.1, r.2.2.1, r.2.2.2⟩ := by
   unfold seedGenKnownGame seedGenKnownPrefix

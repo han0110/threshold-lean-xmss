@@ -2456,56 +2456,59 @@ theorem seedGenFirstHonest_holder (coalition : C.Coalition) (T : C.Term) :
 
 /-- When extraction matches the actual corrupt openings, all fields used in an honest derivation
 match the simulator's extracted view. The unused fields need not match. -/
-theorem seedGen_derived_programView (prims : Primitives) (coalition : C.Coalition)
+theorem setup_derived_programView (phase : Phase) (prims : Primitives) (coalition : C.Coalition)
     (parts : C.Party → Parts C) (log : CallLog C) (sent : C.Party → Mail C E)
     (revealed : C.Party → Mail C E) (i : C.Party) (hi : i ∉ coalition.1)
     (hreceived : ∀ i j, j ∉ coalition.1 → j ≠ i →
-      Msg.hashesOf (revealed i j) = revealTo .seedGen (parts j) j i)
-    (hextract : ∀ j, j ∈ coalition.1 → extractReveal .seedGen log sent j i = Msg.hashesOf (revealed i j))
+      Msg.hashesOf (revealed i j) = revealTo phase (parts j) j i)
+    (hextract : ∀ j, j ∈ coalition.1 → extractReveal phase log sent j i = Msg.hashesOf (revealed i j))
     (h : Query C → HashOutput) :
-    D prims h (deriveKeys .seedGen i (setupView .seedGen i (parts i) (revealed i))) =
-      D prims h (deriveKeys .seedGen i (setupProgramView .seedGen coalition parts log sent i)) := by
+    D prims h (deriveKeys phase i (setupView phase i (parts i) (revealed i))) =
+      D prims h (deriveKeys phase i (setupProgramView phase coalition parts log sent i)) := by
   have corrupt (j : C.Party) (hj : j ∈ coalition.1) :
-      setupView .seedGen i (parts i) (revealed i) j = setupProgramView .seedGen coalition parts log sent i j := by
+      setupView phase i (parts i) (revealed i) j = setupProgramView phase coalition parts log sent i j := by
     have hji : j ≠ i := fun he => hi (he ▸ hj)
     simp only [setupView, if_neg hji, setupProgramView, if_pos hj, hextract j hj]
-  have parameter (j : C.Party) :
-      (setupView .seedGen i (parts i) (revealed i) j).parameter =
-        (setupProgramView .seedGen coalition parts log sent i j).parameter := by
+  have parameter (hphase : phase = .seedGen) (j : C.Party) :
+      (setupView phase i (parts i) (revealed i) j).parameter =
+        (setupProgramView phase coalition parts log sent i j).parameter := by
+    subst hphase
     by_cases hj : j ∈ coalition.1
     · rw [corrupt j hj]
     · rw [setupView_honest_sender .seedGen coalition parts revealed hreceived i j hj, honestView_parameter]
       simp [setupProgramView, hj]
   have term (T : C.Term) (hiT : i ∈ C.holders T) (j : C.Party) (hjT : j ∈ C.holders T) :
-      (setupView .seedGen i (parts i) (revealed i) j).term T =
-        (setupProgramView .seedGen coalition parts log sent i j).term T := by
+      (setupView phase i (parts i) (revealed i) j).term T =
+        (setupProgramView phase coalition parts log sent i j).term T := by
     by_cases hj : j ∈ coalition.1
     · rw [corrupt j hj]
-    · rw [setupView_honest_sender .seedGen coalition parts revealed hreceived i j hj,
-        honestView_term .seedGen parts hjT hiT]
+    · rw [setupView_honest_sender phase coalition parts revealed hreceived i j hj,
+        honestView_term phase parts hjT hiT]
       simp [setupProgramView, hj]
   have pair (a b : C.Party) (hab : a = i ∨ b = i) :
-      (setupView .seedGen i (parts i) (revealed i) a).pair b =
-        (setupProgramView .seedGen coalition parts log sent i a).pair b := by
+      (setupView phase i (parts i) (revealed i) a).pair b =
+        (setupProgramView phase coalition parts log sent i a).pair b := by
     by_cases ha : a ∈ coalition.1
     · rw [corrupt a ha]
-    · rw [setupView_honest_sender .seedGen coalition parts revealed hreceived i a ha,
-        honestView_pair .seedGen parts hab]
+    · rw [setupView_honest_sender phase coalition parts revealed hreceived i a ha,
+        honestView_pair phase parts hab]
       simp [setupProgramView, ha]
   rw [D_deriveKeys, D_deriveKeys]
-  simp only [ite_true]
   apply Prod.ext
-  · apply congrArg h
-    apply congrArg (Query.derive .seedGen .parameter)
-    apply List.map_congr_left
-    intro j _
-    exact parameter j
+  · dsimp only
+    split_ifs with hphase
+    · apply congrArg h
+      apply congrArg (Query.derive phase .parameter)
+      apply List.map_congr_left
+      intro j _
+      exact parameter hphase j
+    · rfl
   · apply Prod.ext
     · funext T
       by_cases hiT : i ∈ C.holders T
       · simp only [if_pos hiT]
         apply congrArg h
-        apply congrArg (Query.derive .seedGen .term)
+        apply congrArg (Query.derive phase .term)
         apply List.map_congr_left
         intro j hj
         exact term T hiT j (by simpa using (List.mem_filter.mp hj).2)
@@ -2516,7 +2519,7 @@ theorem seedGen_derived_programView (prims : Primitives) (coalition : C.Coalitio
       · simp only [dif_neg hji]
         have hp := pairOf_left_or_right i j (Ne.symm hji)
         apply congrArg h
-        apply congrArg (Query.derive .seedGen .pair)
+        apply congrArg (Query.derive phase .pair)
         exact congrArg₂ List.cons (pair _ _ hp)
           (congrArg (fun y => [y]) (pair _ _ hp.symm))
 
@@ -2529,15 +2532,16 @@ theorem seedGenCrossCoordinates_cross_mem (coalition : C.Coalition) (i j : C.Par
 
 /-- Successful programming plus the accepting party's honest echo agreements fixes every
 parameter, known term and corrupt--honest pair key to the dealer's value. -/
-theorem seedGen_known_outputs_of_programmed (prims : Primitives) (coalition : C.Coalition)
+theorem setup_known_outputs_of_programmed (phase : Phase) (prims : Primitives) (coalition : C.Coalition)
     (view : C.Party → C.Party → Parts C) (h : Query C → HashOutput)
     (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairs : C.Pair → HashOutput)
     (high : HashOutput)
     (keys : C.Party → HashOutput × (C.Term → HashOutput) × (C.Party → HashOutput))
-    (hderive : ∀ j, j ∉ coalition.1 → keys j = D prims h (deriveKeys .seedGen j (view j)))
-    (hparameter : h (seedGenParameterProgrammingInput coalition view) = seedGenFullParameter high parameter)
-    (hterm : ∀ T, KnownTo coalition.1 T → h (setupTermProgrammingInput .seedGen coalition view T) = seeds T)
-    (hpair : ∀ p ∈ seedGenCrossCoordinates coalition, h (setupPairProgrammingInput .seedGen coalition view p) = pairs p)
+    (hderive : ∀ j, j ∉ coalition.1 → keys j = D prims h (deriveKeys phase j (view j)))
+    (hparameter : ∀ q ∈ setupParameterInputs phase coalition view, h q = seedGenFullParameter high parameter)
+    (hzero : phase = .prss → parameter = 0)
+    (hterm : ∀ T, KnownTo coalition.1 T → h (setupTermProgrammingInput phase coalition view T) = seeds T)
+    (hpair : ∀ p ∈ seedGenCrossCoordinates coalition, h (setupPairProgrammingInput phase coalition view p) = pairs p)
     (i : C.Party) (hi : i ∉ coalition.1)
     (hagree : ∀ j, j ∉ coalition.1 →
       (keys i).1 = (keys j).1 ∧ ∀ T, i ∈ C.holders T → j ∈ C.holders T →
@@ -2549,8 +2553,14 @@ theorem seedGen_known_outputs_of_programmed (prims : Primitives) (coalition : C.
   · have he := (hagree (seedGenFirstHonest coalition Finset.univ) (seedGenFirstHonest_univ coalition)).1
     change truncateHash (keys i).1 = parameter
     rw [he, hderive _ (seedGenFirstHonest_univ coalition), D_deriveKeys]
-    change truncateHash (h (seedGenParameterProgrammingInput coalition view)) = parameter
-    rw [hparameter, truncate_seedGenFullParameter]
+    dsimp only
+    split_ifs with hphase
+    · subst hphase
+      rw [hparameter _ (List.mem_singleton_self _), truncate_seedGenFullParameter]
+    · cases phase
+      · exact absurd rfl hphase
+      · rw [hzero rfl]
+        rfl
   constructor
   · intro T hT
     by_cases hiT : i ∈ C.holders T
@@ -2567,85 +2577,86 @@ theorem seedGen_known_outputs_of_programmed (prims : Primitives) (coalition : C.
     have hji : j ≠ i := fun he => hi (he ▸ hj)
     have hm := seedGenCrossCoordinates_cross_mem coalition i j hj hi
     have hp := hpair (C.pairOf i j (Ne.symm hji)) hm
-    rw [setupPairProgrammingInput_cross .seedGen coalition view i j ⟨hj, hi⟩] at hp
+    rw [setupPairProgrammingInput_cross phase coalition view i j ⟨hj, hi⟩] at hp
     change (keys i).2.2 j = (if h : j = i then 0 else pairs (C.pairOf i j (Ne.symm h)))
     rw [hderive i hi, D_deriveKeys]
     simp only [dif_neg hji]
     exact hp
 
 /-- The derivation input of a pair of honest operators uses just their original pair parts. -/
-theorem seedGen_hiddenPair_input (coalition : C.Coalition) (parts : C.Party → Parts C)
+theorem setup_hiddenPair_input (phase : Phase) (coalition : C.Coalition) (parts : C.Party → Parts C)
     (revealed : C.Party → Mail C E)
     (hreceived : ∀ i j, j ∉ coalition.1 → j ≠ i →
-      Msg.hashesOf (revealed i j) = revealTo .seedGen (parts j) j i)
+      Msg.hashesOf (revealed i j) = revealTo phase (parts j) j i)
     (p : C.Pair) (hp : p.1.1 ∉ coalition.1 ∧ p.1.2 ∉ coalition.1)
     (i : C.Party) (hi : p.1.1 = i ∨ p.1.2 = i) :
-    setupPairViewInput .seedGen parts revealed i p = pairInput .seedGen parts p := by
+    setupPairViewInput phase parts revealed i p = pairInput phase parts p := by
   unfold setupPairViewInput pairInput
   dsimp only
-  rw [setupView_honest_sender .seedGen coalition parts revealed hreceived i p.1.1 hp.1,
-    setupView_honest_sender .seedGen coalition parts revealed hreceived i p.1.2 hp.2,
-    honestView_pair .seedGen parts hi, honestView_pair .seedGen parts hi.symm]
+  rw [setupView_honest_sender phase coalition parts revealed hreceived i p.1.1 hp.1,
+    setupView_honest_sender phase coalition parts revealed hreceived i p.1.2 hp.2,
+    honestView_pair phase parts hi, honestView_pair phase parts hi.symm]
 
 /-- The actual hidden pair key is the oracle value at its canonical raw-parts input. -/
-theorem seedGen_hiddenPair_derived (prims : Primitives) (coalition : C.Coalition)
+theorem setup_hiddenPair_derived (phase : Phase) (prims : Primitives) (coalition : C.Coalition)
     (h : Query C → HashOutput) (parts : C.Party → Parts C)
     (revealed : C.Party → Mail C E)
     (hreceived : ∀ i j, j ∉ coalition.1 → j ≠ i →
-      Msg.hashesOf (revealed i j) = revealTo .seedGen (parts j) j i)
+      Msg.hashesOf (revealed i j) = revealTo phase (parts j) j i)
     (i j : C.Party) (hi : i ∉ coalition.1) (hj : j ∉ coalition.1) (hji : j ≠ i) :
-    (D prims h (deriveKeys .seedGen i (setupView .seedGen i (parts i) (revealed i)))).2.2 j =
-      h (pairInput .seedGen parts (C.pairOf i j (Ne.symm hji))) := by
+    (D prims h (deriveKeys phase i (setupView phase i (parts i) (revealed i)))).2.2 j =
+      h (pairInput phase parts (C.pairOf i j (Ne.symm hji))) := by
   rw [D_deriveKeys]
   simp only [dif_neg hji]
-  change h (setupPairViewInput .seedGen parts revealed i (C.pairOf i j (Ne.symm hji))) = _
+  change h (setupPairViewInput phase parts revealed i (C.pairOf i j (Ne.symm hji))) = _
   apply congrArg h
-  apply seedGen_hiddenPair_input coalition parts revealed hreceived
+  apply setup_hiddenPair_input phase coalition parts revealed hreceived
   · unfold Committee.pairOf
     split_ifs <;> exact ⟨by assumption, by assumption⟩
   · exact pairOf_left_or_right i j (Ne.symm hji)
 
-def seedGenHybridSeeds (coalition : C.Coalition) (h : Query C → HashOutput)
+def setupHybridSeeds (phase : Phase) (coalition : C.Coalition) (h : Query C → HashOutput)
     (parts : C.Party → Parts C) (seeds : C.Term → HashOutput) : C.Term → HashOutput :=
-  fun T => if KnownTo coalition.1 T then seeds T else h (termInput .seedGen parts T)
+  fun T => if KnownTo coalition.1 T then seeds T else h (termInput phase parts T)
 
-def seedGenHybridPairs (coalition : C.Coalition) (h : Query C → HashOutput)
+def setupHybridPairs (phase : Phase) (coalition : C.Coalition) (h : Query C → HashOutput)
     (parts : C.Party → Parts C) (pairs : C.Pair → HashOutput) : C.Pair → HashOutput :=
-  fun p => if p.1.1 ∉ coalition.1 ∧ p.1.2 ∉ coalition.1 then h (pairInput .seedGen parts p) else pairs p
+  fun p => if p.1.1 ∉ coalition.1 ∧ p.1.2 ∉ coalition.1 then h (pairInput phase parts p) else pairs p
 
 /-- Under extraction, successful programming, and the accepting party's honest agreements,
 its entire key is one dealing. Only the hidden seeds and honest--honest pairs still use raw oracle
 values; every exposed coordinate is the dealer's value. -/
-theorem seedGen_output_eq_hybrid_dealing (prims : Primitives) (coalition : C.Coalition)
+theorem setup_output_eq_hybrid_dealing (phase : Phase) (prims : Primitives) (coalition : C.Coalition)
     (parts : C.Party → Parts C) (log : CallLog C) (sent revealed : C.Party → Mail C E)
     (h : Query C → HashOutput) (parameter : PublicParameter)
     (seeds : C.Term → HashOutput) (pairs : C.Pair → HashOutput) (high : HashOutput)
     (keys : C.Party → HashOutput × (C.Term → HashOutput) × (C.Party → HashOutput))
     (hreceived : ∀ i j, j ∉ coalition.1 → j ≠ i →
-      Msg.hashesOf (revealed i j) = revealTo .seedGen (parts j) j i)
+      Msg.hashesOf (revealed i j) = revealTo phase (parts j) j i)
     (hextract : ∀ i j, i ∉ coalition.1 → j ∈ coalition.1 →
-      extractReveal .seedGen log sent j i = Msg.hashesOf (revealed i j))
+      extractReveal phase log sent j i = Msg.hashesOf (revealed i j))
     (hderive : ∀ i, i ∉ coalition.1 →
-      keys i = D prims h (deriveKeys .seedGen i (setupView .seedGen i (parts i) (revealed i))))
-    (hparameter : h (seedGenParameterProgrammingInput coalition (setupProgramView .seedGen coalition parts log sent)) =
-      seedGenFullParameter high parameter)
+      keys i = D prims h (deriveKeys phase i (setupView phase i (parts i) (revealed i))))
+    (hparameter : ∀ q ∈ setupParameterInputs phase coalition (setupProgramView phase coalition parts log sent),
+      h q = seedGenFullParameter high parameter)
+    (hzero : phase = .prss → parameter = 0)
     (hterm : ∀ T, KnownTo coalition.1 T →
-      h (setupTermProgrammingInput .seedGen coalition (setupProgramView .seedGen coalition parts log sent) T) = seeds T)
+      h (setupTermProgrammingInput phase coalition (setupProgramView phase coalition parts log sent) T) = seeds T)
     (hpair : ∀ p ∈ seedGenCrossCoordinates coalition,
-      h (setupPairProgrammingInput .seedGen coalition (setupProgramView .seedGen coalition parts log sent) p) = pairs p)
+      h (setupPairProgrammingInput phase coalition (setupProgramView phase coalition parts log sent) p) = pairs p)
     (i : C.Party) (hi : i ∉ coalition.1)
     (hagree : ∀ j, j ∉ coalition.1 →
       (keys i).1 = (keys j).1 ∧ ∀ T, i ∈ C.holders T → j ∈ C.holders T →
         (keys i).2.1 T = (keys j).2.1 T) :
-    keysOf (keys i) = dealtKeys parameter (seedGenHybridSeeds coalition h parts seeds)
-      (seedGenHybridPairs coalition h parts pairs) i := by
+    keysOf (keys i) = dealtKeys parameter (setupHybridSeeds phase coalition h parts seeds)
+      (setupHybridPairs phase coalition h parts pairs) i := by
   have hprogramView : ∀ j, j ∉ coalition.1 →
-      keys j = D prims h (deriveKeys .seedGen j (setupProgramView .seedGen coalition parts log sent j)) := by
+      keys j = D prims h (deriveKeys phase j (setupProgramView phase coalition parts log sent j)) := by
     intro j hj
-    exact (hderive j hj).trans (seedGen_derived_programView prims coalition parts log sent revealed j hj
+    exact (hderive j hj).trans (setup_derived_programView phase prims coalition parts log sent revealed j hj
       hreceived (fun k hk => hextract j k hj hk) h)
-  have hk := seedGen_known_outputs_of_programmed prims coalition _ h parameter seeds pairs high keys
-    hprogramView hparameter hterm hpair i hi hagree
+  have hk := setup_known_outputs_of_programmed phase prims coalition _ h parameter seeds pairs high keys
+    hprogramView hparameter hzero hterm hpair i hi hagree
   unfold keysOf dealtKeys
   congr 1
   · exact hk.1
@@ -2653,10 +2664,10 @@ theorem seedGen_output_eq_hybrid_dealing (prims : Primitives) (coalition : C.Coa
     by_cases hiT : i ∈ C.holders T
     · simp only [if_pos hiT]
       by_cases hT : KnownTo coalition.1 T
-      · rw [seedGenHybridSeeds, if_pos hT]
+      · rw [setupHybridSeeds, if_pos hT]
         simpa only [keysOf, dealtKeys, if_pos hiT] using hk.2.1 T hT
-      · rw [seedGenHybridSeeds, if_neg hT, hderive i hi]
-        exact setup_hiddenTerm_derived .seedGen prims coalition h parts revealed hreceived T hT i hiT
+      · rw [setupHybridSeeds, if_neg hT, hderive i hi]
+        exact setup_hiddenTerm_derived phase prims coalition h parts revealed hreceived T hT i hiT
     · rw [if_neg hiT, hderive i hi, D_deriveKeys]
       simp [hiT]
   · funext j
@@ -2669,14 +2680,14 @@ theorem seedGen_output_eq_hybrid_dealing (prims : Primitives) (coalition : C.Coa
             (C.pairOf i j (Ne.symm hji)).1.2 ∉ coalition.1) := by
           unfold Committee.pairOf
           split_ifs <;> simp_all
-        rw [seedGenHybridPairs, if_neg hn]
+        rw [setupHybridPairs, if_neg hn]
         simpa only [keysOf, dealtKeys, dif_neg hji] using hk.2.2 j hj
       · have hh : (C.pairOf i j (Ne.symm hji)).1.1 ∉ coalition.1 ∧
             (C.pairOf i j (Ne.symm hji)).1.2 ∉ coalition.1 := by
           unfold Committee.pairOf
           split_ifs <;> exact ⟨by assumption, by assumption⟩
-        rw [seedGenHybridPairs, if_pos hh, hderive i hi]
-        exact seedGen_hiddenPair_derived prims coalition h parts revealed hreceived i j hi hj hji
+        rw [setupHybridPairs, if_pos hh, hderive i hi]
+        exact setup_hiddenPair_derived phase prims coalition h parts revealed hreceived i j hi hj hji
 
 end ThresholdLeanXmssSecurity
 
@@ -2689,16 +2700,16 @@ attribute [local instance] Classical.propDecidable
 variable {C : Committee}
 
 /-- Canonical raw-parts derivation inputs, indexed by the model's existing key names. -/
-def seedGenNamedInput (parts : C.Party → Parts C) : KeyName C → Query C
+def setupNamedInput (phase : Phase) (parts : C.Party → Parts C) : KeyName C → Query C
   | .parameter => parameterInput parts
-  | .term T => termInput .seedGen parts T
-  | .pair p => pairInput .seedGen parts p
+  | .term T => termInput phase parts T
+  | .pair p => pairInput phase parts p
 
 def seedGenNames (C : Committee) : List (KeyName C) := (Finset.univ : Finset (KeyName C)).toList
 
-theorem seedGenNamedInput_not_fixed (parts : C.Party → Parts C) (name : KeyName C) :
-    ¬ IsFixed (seedGenNamedInput parts name) := by
-  cases name <;> simp [seedGenNamedInput, parameterInput, termInput, pairInput, IsFixed]
+theorem setupNamedInput_not_fixed (phase : Phase) (parts : C.Party → Parts C) (name : KeyName C) :
+    ¬ IsFixed (setupNamedInput phase parts name) := by
+  cases name <;> simp [setupNamedInput, parameterInput, termInput, pairInput, IsFixed]
 
 end ThresholdLeanXmssSecurity
 
@@ -2709,42 +2720,42 @@ attribute [local instance] Classical.propDecidable
 variable {C : Committee} {E : Type}
 
 /-- The commit-round continuation only checks abort frames and prepares the reveal. -/
-theorem advance_seedGenCommitResume (i : C.Party) (own : Parts C) (committed : Mail C E) :
-    advance (exchangeResume (setupRound1 .seedGen i own) committed) =
+theorem advance_setupCommitResume (phase : Phase) (i : C.Party) (own : Parts C) (committed : Mail C E) :
+    advance (exchangeResume (setupRound1 phase i own) committed) =
       pure (if C.parties.any (fun j => Msg.isAbort (committed j)) then .done none else
-        .wait (revealOutbox .seedGen i own) (exchangeResume fun revealed =>
-          setupRest .seedGen i own committed revealed >>= fun keys => pure (keysOf keys))) := by
+        .wait (revealOutbox phase i own) (exchangeResume fun revealed =>
+          setupRest phase i own committed revealed >>= fun keys => pure (keysOf keys))) := by
   unfold exchangeResume
   split_ifs
   · rfl
   · exact advance_exchange_bind _ _
 
 /-- The inboxes at the commit boundary, including all corrupt abort frames. -/
-def seedGenCommitInbox (coalition : C.Coalition) (parts : C.Party → Parts C)
+def setupCommitInbox (phase : Phase) (coalition : C.Coalition) (parts : C.Party → Parts C)
     (commitments : C.Party → List HashOutput) (sent : C.Party → Mail C E) : C.Party → Mail C E :=
-  roundInbox coalition sent (setupInitialSteps .seedGen coalition parts commitments)
+  roundInbox coalition sent (setupInitialSteps phase coalition parts commitments)
 
 /-- The actual network state after the commit round. -/
-def seedGenRevealSteps (coalition : C.Coalition) (parts : C.Party → Parts C)
+def setupRevealSteps (phase : Phase) (coalition : C.Coalition) (parts : C.Party → Parts C)
     (committed : C.Party → Mail C E) : C.Party → Step C E RealSpec (Keys C) := fun i =>
   if i ∈ coalition.1 ∨ C.parties.any (fun j => Msg.isAbort (committed i j)) then .done none else
-    .wait (revealOutbox .seedGen i (parts i)) (exchangeResume fun revealed =>
-      setupRest .seedGen i (parts i) (committed i) revealed >>= fun keys => pure (keysOf keys))
+    .wait (revealOutbox phase i (parts i)) (exchangeResume fun revealed =>
+      setupRest phase i (parts i) (committed i) revealed >>= fun keys => pure (keysOf keys))
 
 /-- The first network step computes no hashes after the adversary's commit messages. -/
-theorem stepRound_seedGenInitialSteps (coalition : C.Coalition)
+theorem stepRound_setupInitialSteps (phase : Phase) (coalition : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (state : A.State) (parts : C.Party → Parts C)
     (commitments : C.Party → List HashOutput) :
     stepRound localRoles coalition A noFunctionality state
-        (setupInitialSteps .seedGen coalition parts commitments) = (do
+        (setupInitialSteps phase coalition parts commitments) = (do
       let (st, sent) ← A.round state fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then
         commitOutbox i (commitments i) c else none
-      pure (st, seedGenRevealSteps coalition parts (seedGenCommitInbox coalition parts commitments sent), sent)) := by
+      pure (st, setupRevealSteps phase coalition parts (setupCommitInbox phase coalition parts commitments sent), sent)) := by
   unfold stepRound
   rw [if_neg (by simp only [callInput_real, Option.isSome_none, Bool.false_eq_true,
     and_false, exists_false, false_and, not_false_eq_true])]
   have hmsg : (fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then
-      (setupInitialSteps .seedGen coalition parts commitments (E := E) i).outbox c else none) =
+      (setupInitialSteps phase coalition parts commitments (E := E) i).outbox c else none) =
       (fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then commitOutbox i (commitments i) c else none) := by
     funext c i
     split_ifs with hc
@@ -2755,94 +2766,94 @@ theorem stepRound_seedGenInitialSteps (coalition : C.Coalition)
   rcases r with ⟨st, sent⟩
   dsimp only [localRoles]
   trans (OverPermutation.sequenceFin (fun j =>
-    (pure (seedGenRevealSteps coalition parts (seedGenCommitInbox coalition parts commitments sent) j) :
+    (pure (setupRevealSteps phase coalition parts (setupCommitInbox phase coalition parts commitments sent) j) :
       OracleComp (LocalSpec C) _)) >>= fun steps => pure (st, steps, sent))
   · congr 1
     congr 1
     funext j
     by_cases hj : j ∈ coalition.1
-    · simp [setupInitialSteps, seedGenRevealSteps, hj]
+    · simp [setupInitialSteps, setupRevealSteps, hj]
     · simp only [setupInitialSteps, if_neg hj, setupStart]
-      rw [advance_seedGenCommitResume]
-      simp only [seedGenRevealSteps, hj, false_or, seedGenCommitInbox, roundInbox]
+      rw [advance_setupCommitResume]
+      simp only [setupRevealSteps, hj, false_or, setupCommitInbox, roundInbox]
       rfl
   · rw [sequenceFin_pure, pure_bind]
 
 /-- The inbox before the honest opening checks. -/
-def seedGenRevealInbox (coalition : C.Coalition) (parts : C.Party → Parts C)
+def setupRevealInbox (phase : Phase) (coalition : C.Coalition) (parts : C.Party → Parts C)
     (committed : C.Party → Mail C E) (sent : C.Party → Mail C E) : C.Party → Mail C E :=
-  roundInbox coalition sent (seedGenRevealSteps coalition parts committed)
+  roundInbox coalition sent (setupRevealSteps phase coalition parts committed)
 
 /-- If one honest operator passed the abort-frame check at reveal, all honest operators sent
 reveals in that round. This includes senders that fail their own opening checks afterwards. -/
-theorem seedGenRevealInbox_all_honest (coalition : C.Coalition) (parts : C.Party → Parts C)
+theorem setupRevealInbox_all_honest (phase : Phase) (coalition : C.Coalition) (parts : C.Party → Parts C)
     (committed sent : C.Party → Mail C E) (i : C.Party)
-    (ha : (C.parties.any fun j => Msg.isAbort (seedGenRevealInbox coalition parts committed sent i j)) = false) :
+    (ha : (C.parties.any fun j => Msg.isAbort (setupRevealInbox phase coalition parts committed sent i j)) = false) :
     ∀ k j, j ∉ coalition.1 → j ≠ k →
-      Msg.hashesOf (seedGenRevealInbox coalition parts committed sent k j) = revealTo .seedGen (parts j) j k := by
+      Msg.hashesOf (setupRevealInbox phase coalition parts committed sent k j) = revealTo phase (parts j) j k := by
   intro k j hj hjk
   have hno := List.any_eq_false.mp ha j (List.mem_finRange j)
   by_cases hb : (C.parties.any fun l => Msg.isAbort (committed j l)) = true
-  · have hstep : seedGenRevealSteps coalition parts committed j = .done none := by
-      simp only [seedGenRevealSteps, hb, or_true, if_true]
-    have hr := roundInbox_abort coalition sent (seedGenRevealSteps coalition parts committed) i j hj hstep
-    change ¬ Msg.isAbort (roundInbox coalition sent (seedGenRevealSteps coalition parts committed) i j) = true at hno
+  · have hstep : setupRevealSteps phase coalition parts committed j = .done none := by
+      simp only [setupRevealSteps, hb, or_true, if_true]
+    have hr := roundInbox_abort coalition sent (setupRevealSteps phase coalition parts committed) i j hj hstep
+    change ¬ Msg.isAbort (roundInbox coalition sent (setupRevealSteps phase coalition parts committed) i j) = true at hno
     rw [hr] at hno
     exact (hno rfl).elim
-  · simp only [seedGenRevealInbox, roundInbox, seedGenRevealSteps,
+  · simp only [setupRevealInbox, roundInbox, setupRevealSteps,
       hj, hb, Bool.false_eq_true, false_or, if_false, Step.delivered, revealOutbox, if_neg (Ne.symm hjk), Msg.hashesOf]
 
 abbrev SeedGenEchoData (C : Committee) :=
   (HashOutput × (C.Term → HashOutput) × (C.Party → HashOutput)) × List HashOutput
 
 /-- Everything the honest reveal continuation computes, before waiting for the echo round. -/
-def seedGenRevealCompute (i : C.Party) (own : Parts C) (committed revealed : Mail C E) :
+def setupRevealCompute (phase : Phase) (i : C.Party) (own : Parts C) (committed revealed : Mail C E) :
     OracleComp (LocalSpec C) (Option (SeedGenEchoData C)) := do
   if C.parties.any (fun j => Msg.isAbort (revealed j)) then return none
-  let opens ← liftComp (openQueries .seedGen i revealed) (LocalSpec C)
-  if ¬ openCheck .seedGen i own committed revealed opens then return none
-  let keys ← liftComp (deriveKeys .seedGen i (setupView .seedGen i own revealed)) (LocalSpec C)
-  let shared ← liftComp (sharedQueries .seedGen i keys) (LocalSpec C)
+  let opens ← liftComp (openQueries phase i revealed) (LocalSpec C)
+  if ¬ openCheck phase i own committed revealed opens then return none
+  let keys ← liftComp (deriveKeys phase i (setupView phase i own revealed)) (LocalSpec C)
+  let shared ← liftComp (sharedQueries phase i keys) (LocalSpec C)
   pure (some (keys, shared))
 
 /-- An echo step carrying the actual values and the actual shared-key hash answers. -/
-def seedGenEchoDataStep (i : C.Party) : Option (SeedGenEchoData C) → Step C E RealSpec (Keys C)
+def setupEchoDataStep (phase : Phase) (i : C.Party) : Option (SeedGenEchoData C) → Step C E RealSpec (Keys C)
   | none => .done none
-  | some (keys, shared) => .wait (echoOutbox .seedGen i keys shared) (exchangeResume fun received =>
-      require (echoCheck .seedGen i keys shared received) >>= fun _ => pure (keysOf keys))
+  | some (keys, shared) => .wait (echoOutbox phase i keys shared) (exchangeResume fun received =>
+      require (echoCheck phase i keys shared received) >>= fun _ => pure (keysOf keys))
 
 /-- Exact expansion of the honest reveal continuation, with both abort tests. -/
-theorem advance_seedGenRevealResume (i : C.Party) (own : Parts C) (committed revealed : Mail C E) :
+theorem advance_setupRevealResume (phase : Phase) (i : C.Party) (own : Parts C) (committed revealed : Mail C E) :
     advance (exchangeResume (G := RealSpec) (fun revealed =>
-      setupRest .seedGen i own committed revealed >>= fun keys => pure (keysOf keys)) revealed) =
-      seedGenEchoDataStep i <$> seedGenRevealCompute i own committed revealed := by
-  unfold exchangeResume seedGenRevealCompute
+      setupRest phase i own committed revealed >>= fun keys => pure (keysOf keys)) revealed) =
+      setupEchoDataStep phase i <$> setupRevealCompute phase i own committed revealed := by
+  unfold exchangeResume setupRevealCompute
   split_ifs with ha
   · rfl
   · rw [advance_setupRest]
     simp only [map_bind]
     refine bind_congr fun opens => ?_
     split_ifs with ho
-    · simp only [map_bind, map_pure, seedGenEchoDataStep, pure_bind]
+    · simp only [map_bind, map_pure, setupEchoDataStep, pure_bind]
     · rfl
 
 /-- All honest computations between the reveal and echo boundaries. -/
-def seedGenRevealComputations (coalition : C.Coalition) (parts : C.Party → Parts C)
+def setupRevealComputations (phase : Phase) (coalition : C.Coalition) (parts : C.Party → Parts C)
     (committed sent : C.Party → Mail C E) : OracleComp (LocalSpec C) (C.Party → Option (SeedGenEchoData C)) :=
   OverPermutation.sequenceFin fun i =>
     if i ∈ coalition.1 ∨ C.parties.any (fun j => Msg.isAbort (committed i j)) then pure none else
-      seedGenRevealCompute i (parts i) (committed i) (seedGenRevealInbox coalition parts committed sent i)
+      setupRevealCompute phase i (parts i) (committed i) (setupRevealInbox phase coalition parts committed sent i)
 
 /-- Exact reduction of the second round, retaining all honest echo data. -/
-theorem stepRound_seedGenRevealSteps (coalition : C.Coalition)
+theorem stepRound_setupRevealSteps (phase : Phase) (coalition : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (state : A.State) (parts : C.Party → Parts C)
     (committed : C.Party → Mail C E) :
-    stepRound localRoles coalition A noFunctionality state (seedGenRevealSteps coalition parts committed) =
+    stepRound localRoles coalition A noFunctionality state (setupRevealSteps phase coalition parts committed) =
     (do
       let (st, sent) ← A.round state fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then
-        (seedGenRevealSteps coalition parts committed i).outbox c else none
-      let data ← seedGenRevealComputations coalition parts committed sent
-      pure (st, (fun i => seedGenEchoDataStep i (data i)), sent)) := by
+        (setupRevealSteps phase coalition parts committed i).outbox c else none
+      let data ← setupRevealComputations phase coalition parts committed sent
+      pure (st, (fun i => setupEchoDataStep phase i (data i)), sent)) := by
   unfold stepRound
   rw [if_neg (by simp only [callInput_real, Option.isSome_none, Bool.false_eq_true,
     and_false, exists_false, false_and, not_false_eq_true])]
@@ -2851,36 +2862,36 @@ theorem stepRound_seedGenRevealSteps (coalition : C.Coalition)
   dsimp only [localRoles]
   trans (OverPermutation.sequenceFin (fun i =>
     (if i ∈ coalition.1 ∨ C.parties.any (fun j => Msg.isAbort (committed i j)) then pure none else
-      seedGenRevealCompute i (parts i) (committed i) (seedGenRevealInbox coalition parts committed sent i)) >>=
-      fun v => pure (seedGenEchoDataStep i v)) >>= fun steps => pure (st, steps, sent))
+      setupRevealCompute phase i (parts i) (committed i) (setupRevealInbox phase coalition parts committed sent i)) >>=
+      fun v => pure (setupEchoDataStep phase i v)) >>= fun steps => pure (st, steps, sent))
   · congr 1
     congr 1
     funext i
     by_cases hi : i ∈ coalition.1 ∨ C.parties.any (fun j => Msg.isAbort (committed i j))
-    · simp only [seedGenRevealSteps, if_pos hi, pure_bind, seedGenEchoDataStep]
+    · simp only [setupRevealSteps, if_pos hi, pure_bind, setupEchoDataStep]
     · have hc : i ∉ coalition.1 := fun hh => hi (Or.inl hh)
-      rw [show seedGenRevealSteps coalition parts committed i = _ from if_neg hi]
+      rw [show setupRevealSteps phase coalition parts committed i = _ from if_neg hi]
       simp only [if_neg hi, if_neg hc]
-      change advance (exchangeResume _ (seedGenRevealInbox coalition parts committed sent i)) = _
-      rw [advance_seedGenRevealResume, map_eq_bind_pure_comp]
+      change advance (exchangeResume _ (setupRevealInbox phase coalition parts committed sent i)) = _
+      rw [advance_setupRevealResume, map_eq_bind_pure_comp]
       rfl
   · rw [sequenceFin_bind_pure]
-    simp only [bind_assoc, pure_bind, seedGenRevealComputations]
+    simp only [bind_assoc, pure_bind, setupRevealComputations]
 
 /-- The echo continuation has no free hash queries, even when some operators aborted. -/
-theorem stepRound_seedGenEchoDataSteps (coalition : C.Coalition)
+theorem stepRound_setupEchoDataSteps (phase : Phase) (coalition : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (state : A.State)
     (data : C.Party → Option (SeedGenEchoData C)) :
-    stepRound localRoles coalition A noFunctionality state (fun i => seedGenEchoDataStep i (data i)) =
+    stepRound localRoles coalition A noFunctionality state (fun i => setupEchoDataStep phase i (data i)) =
     (do
       let (st, sent) ← A.round state fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then
-        (seedGenEchoDataStep i (data i)).outbox c else none
+        (setupEchoDataStep phase i (data i)).outbox c else none
       pure (st, (fun i => Step.done (match data i with
         | none => none
         | some (keys, shared) => if i ∈ coalition.1 then none else
-          let inbox := roundInbox coalition sent (fun j => seedGenEchoDataStep j (data j)) i
+          let inbox := roundInbox coalition sent (fun j => setupEchoDataStep phase j (data j)) i
           if C.parties.any (fun j => Msg.isAbort (inbox j)) then none else
-            if echoCheck .seedGen i keys shared inbox then some (keysOf keys) else none)), sent)) := by
+            if echoCheck phase i keys shared inbox then some (keysOf keys) else none)), sent)) := by
   unfold stepRound
   rw [if_neg (by simp only [callInput_real, Option.isSome_none, Bool.false_eq_true,
     and_false, exists_false, false_and, not_false_eq_true])]
@@ -2890,9 +2901,9 @@ theorem stepRound_seedGenEchoDataSteps (coalition : C.Coalition)
   trans (OverPermutation.sequenceFin (fun i => (pure (Step.done (match data i with
         | none => none
         | some (keys, shared) => if i ∈ coalition.1 then none else
-          let inbox := roundInbox coalition sent (fun j => seedGenEchoDataStep j (data j)) i
+          let inbox := roundInbox coalition sent (fun j => setupEchoDataStep phase j (data j)) i
           if C.parties.any (fun j => Msg.isAbort (inbox j)) then none else
-            if echoCheck .seedGen i keys shared inbox then some (keysOf keys) else none)) :
+            if echoCheck phase i keys shared inbox then some (keysOf keys) else none)) :
       OracleComp (LocalSpec C) _)) >>= fun steps => pure (st, steps, sent))
   · congr 1
     congr 1
@@ -2902,109 +2913,109 @@ theorem stepRound_seedGenEchoDataSteps (coalition : C.Coalition)
     | some v =>
       rcases v with ⟨keys, shared⟩
       by_cases hi : i ∈ coalition.1
-      · simp only [seedGenEchoDataStep, if_pos hi]
-      · simp only [seedGenEchoDataStep, if_neg hi]
-        exact advance_setupEchoResume .seedGen i keys shared _
+      · simp only [setupEchoDataStep, if_pos hi]
+      · simp only [setupEchoDataStep, if_neg hi]
+        exact advance_setupEchoResume phase i keys shared _
   · rw [sequenceFin_pure, pure_bind]
 
-def seedGenEchoDataOutput (coalition : C.Coalition) (data : C.Party → Option (SeedGenEchoData C))
+def setupEchoDataOutput (phase : Phase) (coalition : C.Coalition) (data : C.Party → Option (SeedGenEchoData C))
     (sent : C.Party → Mail C E) (i : C.Party) : Option (Keys C) :=
   match data i with
   | none => none
   | some (keys, shared) => if i ∈ coalition.1 then none else
-      let inbox := roundInbox coalition sent (fun j => seedGenEchoDataStep j (data j)) i
+      let inbox := roundInbox coalition sent (fun j => setupEchoDataStep phase j (data j)) i
       if C.parties.any (fun j => Msg.isAbort (inbox j)) then none else
-        if echoCheck .seedGen i keys shared inbox then some (keysOf keys) else none
+        if echoCheck phase i keys shared inbox then some (keysOf keys) else none
 
 /-- The complete last round after its honest work has already been computed. -/
-def seedGenFinishLocal (coalition : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+def setupFinishLocal (phase : Phase) (coalition : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (state : A.State) (data : C.Party → Option (SeedGenEchoData C)) :
     OracleComp (LocalSpec C) (A.State × (C.Party → Option (Keys C))) :=
   if ∀ i, i ∉ coalition.1 → data i = none then pure (state, fun _ => none) else do
     let (st, sent) ← A.round state fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then
-      (seedGenEchoDataStep i (data i)).outbox c else none
-    pure (st, seedGenEchoDataOutput coalition data sent)
+      (setupEchoDataStep phase i (data i)).outbox c else none
+    pure (st, setupEchoDataOutput phase coalition data sent)
 
-theorem executeRounds_seedGenEchoDataSteps_one (coalition : C.Coalition)
+theorem executeRounds_setupEchoDataSteps_one (phase : Phase) (coalition : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (state : A.State)
     (data : C.Party → Option (SeedGenEchoData C)) :
-    executeRounds localRoles coalition A noFunctionality 1 state (fun i => seedGenEchoDataStep i (data i)) =
-      seedGenFinishLocal coalition A state data := by
-  have hd : (∀ i, i ∉ coalition.1 → (seedGenEchoDataStep (E := E) i (data i)).isDone) ↔
+    executeRounds localRoles coalition A noFunctionality 1 state (fun i => setupEchoDataStep phase i (data i)) =
+      setupFinishLocal phase coalition A state data := by
+  have hd : (∀ i, i ∉ coalition.1 → (setupEchoDataStep phase (E := E) i (data i)).isDone) ↔
       ∀ i, i ∉ coalition.1 → data i = none := by
     apply forall_congr'
     intro i
     apply forall_congr'
     intro hi
-    cases data i <;> simp [seedGenEchoDataStep, Step.isDone]
+    cases data i <;> simp [setupEchoDataStep, Step.isDone]
   rw [executeRounds]
-  simp only [hd, seedGenFinishLocal]
+  simp only [hd, setupFinishLocal]
   split_ifs with ha
   · congr 1
     apply congrArg (fun f => (state, f))
     funext i
     cases data i <;> rfl
-  · rw [stepRound_seedGenEchoDataSteps]
+  · rw [stepRound_setupEchoDataSteps]
     simp only [bind_assoc, pure_bind, executeRounds, Step.output]
     rfl
 
 /-- The remaining two rounds, with every early-exit and abort test explicit. -/
-def seedGenPostCommitLocal (coalition : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+def setupPostCommitLocal (phase : Phase) (coalition : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (state : A.State) (parts : C.Party → Parts C) (committed : C.Party → Mail C E) :
     OracleComp (LocalSpec C) (A.State × (C.Party → Option (Keys C))) :=
   if ∀ i, i ∉ coalition.1 → (C.parties.any fun j => Msg.isAbort (committed i j)) = true then
     pure (state, fun _ => none)
   else do
     let (st, sent) ← A.round state fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then
-      (seedGenRevealSteps coalition parts committed i).outbox c else none
-    let data ← seedGenRevealComputations coalition parts committed sent
-    seedGenFinishLocal coalition A st data
+      (setupRevealSteps phase coalition parts committed i).outbox c else none
+    let data ← setupRevealComputations phase coalition parts committed sent
+    setupFinishLocal phase coalition A st data
 
-theorem executeRounds_seedGenRevealSteps_two (coalition : C.Coalition)
+theorem executeRounds_setupRevealSteps_two (phase : Phase) (coalition : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (state : A.State) (parts : C.Party → Parts C)
     (committed : C.Party → Mail C E) :
-    executeRounds localRoles coalition A noFunctionality 2 state (seedGenRevealSteps coalition parts committed) =
-      seedGenPostCommitLocal coalition A state parts committed := by
-  have hd : (∀ i, i ∉ coalition.1 → (seedGenRevealSteps coalition parts committed i).isDone) ↔
+    executeRounds localRoles coalition A noFunctionality 2 state (setupRevealSteps phase coalition parts committed) =
+      setupPostCommitLocal phase coalition A state parts committed := by
+  have hd : (∀ i, i ∉ coalition.1 → (setupRevealSteps phase coalition parts committed i).isDone) ↔
       ∀ i, i ∉ coalition.1 → (C.parties.any fun j => Msg.isAbort (committed i j)) = true := by
     apply forall_congr'
     intro i
     apply forall_congr'
     intro hi
-    simp only [seedGenRevealSteps, hi, false_or]
+    simp only [setupRevealSteps, hi, false_or]
     split_ifs <;> simp_all [Step.isDone]
   rw [executeRounds]
-  simp only [hd, seedGenPostCommitLocal]
+  simp only [hd, setupPostCommitLocal]
   split_ifs with ha
   · congr 1
     apply congrArg (fun f => (state, f))
     funext i
-    unfold seedGenRevealSteps
+    unfold setupRevealSteps
     split_ifs <;> rfl
-  · rw [stepRound_seedGenRevealSteps]
-    simp only [bind_assoc, pure_bind, executeRounds_seedGenEchoDataSteps_one]
+  · rw [stepRound_setupRevealSteps]
+    simp only [bind_assoc, pure_bind, executeRounds_setupEchoDataSteps_one]
 
 /-- A fully split local game: start, commit, reveal, echo and final distinguish. -/
-def seedGenNormalizedLocalGame (coalition : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+def setupNormalizedLocalGame (phase : Phase) (coalition : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) : OracleComp (LocalSpec C) Bool := do
   let state ← A.start (corruptInputs coalition x) z
   let parts ← OverPermutation.sequenceFin fun (_ : C.Party) => liftComp (sampleParts (C := C)) (LocalSpec C)
-  let commitments ← setupInitialCommitments .seedGen coalition parts
+  let commitments ← setupInitialCommitments phase coalition parts
   let (st, sent) ← A.round state fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then
     commitOutbox i (commitments i) c else none
-  let r ← seedGenPostCommitLocal coalition A st parts (seedGenCommitInbox coalition parts commitments sent)
+  let r ← setupPostCommitLocal phase coalition A st parts (setupCommitInbox phase coalition parts commitments sent)
   Z r
 
 /-- The complete real game has the explicit three-round normal form, including arbitrary aborts. -/
-theorem sameRun_seedGenLocal_normalized (prims : Primitives) (coalition : C.Coalition)
+theorem sameRun_setupLocal_normalized (phase : Phase) (prims : Primitives) (coalition : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) :
-    SameRun prims (setupLocalGame .seedGen coalition A x z Z) (seedGenNormalizedLocalGame coalition A x z Z) := by
-  refine (sameRun_setupLocal_split .seedGen prims coalition A x z Z).trans (SameRun.of_eq ?_)
-  simp only [setupLocalCommitPrefix, seedGenLocalPostCommit, seedGenNormalizedLocalGame,
-    stepRound_seedGenInitialSteps, bind_assoc, pure_bind]
+    SameRun prims (setupLocalGame phase coalition A x z Z) (setupNormalizedLocalGame phase coalition A x z Z) := by
+  refine (sameRun_setupLocal_split phase prims coalition A x z Z).trans (SameRun.of_eq ?_)
+  simp only [setupLocalCommitPrefix, seedGenLocalPostCommit, setupNormalizedLocalGame,
+    stepRound_setupInitialSteps, bind_assoc, pure_bind]
   change _ = _
-  simp only [setupRounds, Nat.reduceSub, executeRounds_seedGenRevealSteps_two]
+  simp only [setupRounds, Nat.reduceSub, executeRounds_setupRevealSteps_two]
 
 end ThresholdLeanXmssSecurity
 
@@ -3143,8 +3154,8 @@ attribute [local instance] Classical.propDecidable
 variable {C : Committee}
 
 /-- Only raw derivation inputs of hidden names are excluded. Echo inputs remain unrestricted. -/
-def SeedGenHiddenInput (coalition : C.Coalition) (parts : C.Party → Parts C) (q : Query C) : Prop :=
-  ∃ name, Hidden coalition name ∧ seedGenNamedInput parts name = q
+def SetupHiddenInput (phase : Phase) (coalition : C.Coalition) (parts : C.Party → Parts C) (q : Query C) : Prop :=
+  ∃ name, Hidden coalition name ∧ setupNamedInput phase parts name = q
 
 end ThresholdLeanXmssSecurity
 
@@ -3155,56 +3166,56 @@ attribute [local instance] Classical.propDecidable
 variable {C : Committee} {E : Type}
 
 /-- The deterministic reveal result under a fixed oracle, with both actual abort tests. -/
-def seedGenRevealDataFixed (prims : Primitives) (h : Query C → HashOutput) (i : C.Party)
+def setupRevealDataFixed (phase : Phase) (prims : Primitives) (h : Query C → HashOutput) (i : C.Party)
     (own : Parts C) (committed revealed : Mail C E) : Option (SeedGenEchoData C) :=
   if C.parties.any (fun j => Msg.isAbort (revealed j)) then none else
-    if openCheck .seedGen i own committed revealed (D prims h (openQueries .seedGen i revealed)) then
-      let keys := D prims h (deriveKeys .seedGen i (setupView .seedGen i own revealed))
-      some (keys, D prims h (sharedQueries .seedGen i keys))
+    if openCheck phase i own committed revealed (D prims h (openQueries phase i revealed)) then
+      let keys := D prims h (deriveKeys phase i (setupView phase i own revealed))
+      some (keys, D prims h (sharedQueries phase i keys))
     else none
 
-theorem simulateQ_fixedLocal_seedGenRevealCompute (prims : Primitives) (h : Query C → HashOutput)
+theorem simulateQ_fixedLocal_setupRevealCompute (phase : Phase) (prims : Primitives) (h : Query C → HashOutput)
     (i : C.Party) (own : Parts C) (committed revealed : Mail C E) :
-    simulateQ (fixedLocal prims h) (seedGenRevealCompute i own committed revealed) =
-      pure (seedGenRevealDataFixed prims h i own committed revealed) := by
-  unfold seedGenRevealCompute seedGenRevealDataFixed
+    simulateQ (fixedLocal prims h) (setupRevealCompute phase i own committed revealed) =
+      pure (setupRevealDataFixed phase prims h i own committed revealed) := by
+  unfold setupRevealCompute setupRevealDataFixed
   by_cases ha : (C.parties.any fun j => Msg.isAbort (revealed j)) = true
   · simp only [if_pos ha, simulateQ_pure]
   · simp only [if_neg ha, pure_bind, simulateQ_bind, simulateQ_fixedLocal_liftComp, pure_bind]
-    by_cases ho : openCheck .seedGen i own committed revealed (D prims h (openQueries .seedGen i revealed))
+    by_cases ho : openCheck phase i own committed revealed (D prims h (openQueries phase i revealed))
     · simp only [ho, not_true_eq_false, if_false, if_true, pure_bind, simulateQ_bind,
         simulateQ_fixedLocal_liftComp, simulateQ_pure]
     · simp only [ho, not_false_eq_true, if_true, if_false, simulateQ_pure]
 
-def seedGenRevealAllFixed (prims : Primitives) (coalition : C.Coalition) (h : Query C → HashOutput)
+def setupRevealAllFixed (phase : Phase) (prims : Primitives) (coalition : C.Coalition) (h : Query C → HashOutput)
     (parts : C.Party → Parts C) (committed sent : C.Party → Mail C E) :
     C.Party → Option (SeedGenEchoData C) := fun i =>
   if i ∈ coalition.1 ∨ C.parties.any (fun j => Msg.isAbort (committed i j)) then none else
-    seedGenRevealDataFixed prims h i (parts i) (committed i) (seedGenRevealInbox coalition parts committed sent i)
+    setupRevealDataFixed phase prims h i (parts i) (committed i) (setupRevealInbox phase coalition parts committed sent i)
 
-theorem simulateQ_fixedLocal_seedGenRevealComputations (prims : Primitives) (coalition : C.Coalition)
+theorem simulateQ_fixedLocal_setupRevealComputations (phase : Phase) (prims : Primitives) (coalition : C.Coalition)
     (h : Query C → HashOutput) (parts : C.Party → Parts C) (committed sent : C.Party → Mail C E) :
-    simulateQ (fixedLocal prims h) (seedGenRevealComputations coalition parts committed sent) =
-      pure (seedGenRevealAllFixed prims coalition h parts committed sent) := by
-  rw [seedGenRevealComputations, simulateQ_sequenceFin]
-  trans OverPermutation.sequenceFin (fun i => (pure (seedGenRevealAllFixed prims coalition h parts committed sent i) : ProbComp _))
+    simulateQ (fixedLocal prims h) (setupRevealComputations phase coalition parts committed sent) =
+      pure (setupRevealAllFixed phase prims coalition h parts committed sent) := by
+  rw [setupRevealComputations, simulateQ_sequenceFin]
+  trans OverPermutation.sequenceFin (fun i => (pure (setupRevealAllFixed phase prims coalition h parts committed sent i) : ProbComp _))
   · congr 1
     funext i
-    unfold seedGenRevealAllFixed
+    unfold setupRevealAllFixed
     split_ifs
     · rfl
-    · exact simulateQ_fixedLocal_seedGenRevealCompute prims h i (parts i) (committed i) _
+    · exact simulateQ_fixedLocal_setupRevealCompute phase prims h i (parts i) (committed i) _
   · exact sequenceFin_pure _
 
 /-- A successful echo output supplies the actual inbox checks and its honest key value. -/
-theorem seedGenEchoDataOutput_some (coalition : C.Coalition) (data : C.Party → Option (SeedGenEchoData C))
+theorem setupEchoDataOutput_some (phase : Phase) (coalition : C.Coalition) (data : C.Party → Option (SeedGenEchoData C))
     (sent : C.Party → Mail C E) (i : C.Party) (key : Keys C)
-    (ho : seedGenEchoDataOutput coalition data sent i = some key) :
+    (ho : setupEchoDataOutput phase coalition data sent i = some key) :
     i ∉ coalition.1 ∧ ∃ keys shared,
       data i = some (keys, shared) ∧ key = keysOf keys ∧
-      (C.parties.any fun j => Msg.isAbort (roundInbox coalition sent (fun j => seedGenEchoDataStep j (data j)) i j)) = false ∧
-      echoCheck .seedGen i keys shared (roundInbox coalition sent (fun j => seedGenEchoDataStep j (data j)) i) := by
-  unfold seedGenEchoDataOutput at ho
+      (C.parties.any fun j => Msg.isAbort (roundInbox coalition sent (fun j => setupEchoDataStep phase j (data j)) i j)) = false ∧
+      echoCheck phase i keys shared (roundInbox coalition sent (fun j => setupEchoDataStep phase j (data j)) i) := by
+  unfold setupEchoDataOutput at ho
   cases hd : data i with
   | none => simp only [hd] at ho; contradiction
   | some v =>
@@ -3215,106 +3226,107 @@ theorem seedGenEchoDataOutput_some (coalition : C.Coalition) (data : C.Party →
     exact Bool.eq_false_iff.mpr hb
 
 /-- Every honest operator reached its echo step if any honest output survives. -/
-theorem seedGenEchoDataOutput_all_some (coalition : C.Coalition)
+theorem setupEchoDataOutput_all_some (phase : Phase) (coalition : C.Coalition)
     (data : C.Party → Option (SeedGenEchoData C)) (sent : C.Party → Mail C E)
-    (i : C.Party) (key : Keys C) (ho : seedGenEchoDataOutput coalition data sent i = some key) :
+    (i : C.Party) (key : Keys C) (ho : setupEchoDataOutput phase coalition data sent i = some key) :
     ∀ j, j ∉ coalition.1 → (data j).isSome := by
-  obtain ⟨_, keys, shared, _, _, ha, _⟩ := seedGenEchoDataOutput_some coalition data sent i key ho
+  obtain ⟨_, keys, shared, _, _, ha, _⟩ := setupEchoDataOutput_some phase coalition data sent i key ho
   intro j hj
   cases hd : data j with
   | some v => rfl
   | none =>
     have hn := List.any_eq_false.mp ha j (List.mem_finRange j)
-    simp only [roundInbox, if_neg hj, hd, seedGenEchoDataStep, Step.delivered, Msg.isAbort] at hn
+    simp only [roundInbox, if_neg hj, hd, setupEchoDataStep, Step.delivered, Msg.isAbort] at hn
     exact (hn trivial).elim
 
 /-- A non-aborting deterministic reveal supplies its actual derived keys and shared hashes. -/
-theorem seedGenRevealAllFixed_some (prims : Primitives) (coalition : C.Coalition)
+theorem setupRevealAllFixed_some (phase : Phase) (prims : Primitives) (coalition : C.Coalition)
     (h : Query C → HashOutput) (parts : C.Party → Parts C) (committed sent : C.Party → Mail C E)
-    (i : C.Party) (ha : (seedGenRevealAllFixed prims coalition h parts committed sent i).isSome) :
-    let revealed := seedGenRevealInbox coalition parts committed sent
-    let keys := D prims h (deriveKeys .seedGen i (setupView .seedGen i (parts i) (revealed i)))
-    seedGenRevealAllFixed prims coalition h parts committed sent i =
-      some (keys, D prims h (sharedQueries .seedGen i keys)) ∧
+    (i : C.Party) (ha : (setupRevealAllFixed phase prims coalition h parts committed sent i).isSome) :
+    let revealed := setupRevealInbox phase coalition parts committed sent
+    let keys := D prims h (deriveKeys phase i (setupView phase i (parts i) (revealed i)))
+    setupRevealAllFixed phase prims coalition h parts committed sent i =
+      some (keys, D prims h (sharedQueries phase i keys)) ∧
     (C.parties.any fun j => Msg.isAbort (revealed i j)) = false := by
-  unfold seedGenRevealAllFixed seedGenRevealDataFixed at ha ⊢
+  unfold setupRevealAllFixed setupRevealDataFixed at ha ⊢
   dsimp only
   split_ifs with hi hr hc <;> simp_all
 
 /-- Outside the stated shared-hash collision event, acceptance gives the honest agreements
 required by output identification. -/
-theorem seedGenRevealAllFixed_output_agreement (prims : Primitives) (coalition : C.Coalition)
+theorem setupRevealAllFixed_output_agreement (phase : Phase) (prims : Primitives) (coalition : C.Coalition)
     (h : Query C → HashOutput) (parts : C.Party → Parts C) (committed sent echoSent : C.Party → Mail C E)
     (i : C.Party) (key : Keys C)
-    (ho : seedGenEchoDataOutput coalition (seedGenRevealAllFixed prims coalition h parts committed sent) echoSent i = some key)
+    (ho : setupEchoDataOutput phase coalition (setupRevealAllFixed phase prims coalition h parts committed sent) echoSent i = some key)
     (hn : ∀ j, j ∉ coalition.1 →
-      let revealed := seedGenRevealInbox coalition parts committed sent
-      let ki := D prims h (deriveKeys .seedGen i (setupView .seedGen i (parts i) (revealed i)))
-      let kj := D prims h (deriveKeys .seedGen j (setupView .seedGen j (parts j) (revealed j)))
-      h (.sharedKeys .seedGen ((sharedTerms i j).map ki.2.1)) =
-        h (.sharedKeys .seedGen ((sharedTerms j i).map kj.2.1)) →
-      Query.sharedKeys (C := C) .seedGen ((sharedTerms i j).map ki.2.1) =
-        Query.sharedKeys .seedGen ((sharedTerms j i).map kj.2.1)) :
-    let revealed := seedGenRevealInbox coalition parts committed sent
-    let keys := fun j => D prims h (deriveKeys .seedGen j (setupView .seedGen j (parts j) (revealed j)))
+      let revealed := setupRevealInbox phase coalition parts committed sent
+      let ki := D prims h (deriveKeys phase i (setupView phase i (parts i) (revealed i)))
+      let kj := D prims h (deriveKeys phase j (setupView phase j (parts j) (revealed j)))
+      h (.sharedKeys phase ((sharedTerms i j).map ki.2.1)) =
+        h (.sharedKeys phase ((sharedTerms j i).map kj.2.1)) →
+      Query.sharedKeys (C := C) phase ((sharedTerms i j).map ki.2.1) =
+        Query.sharedKeys phase ((sharedTerms j i).map kj.2.1)) :
+    let revealed := setupRevealInbox phase coalition parts committed sent
+    let keys := fun j => D prims h (deriveKeys phase j (setupView phase j (parts j) (revealed j)))
     i ∉ coalition.1 ∧ key = keysOf (keys i) ∧
-    (∀ k j, j ∉ coalition.1 → j ≠ k → Msg.hashesOf (revealed k j) = revealTo .seedGen (parts j) j k) ∧
+    (∀ k j, j ∉ coalition.1 → j ≠ k → Msg.hashesOf (revealed k j) = revealTo phase (parts j) j k) ∧
     ∀ j, j ∉ coalition.1 → (keys i).1 = (keys j).1 ∧
       ∀ T, i ∈ C.holders T → j ∈ C.holders T → (keys i).2.1 T = (keys j).2.1 T := by
-  let data := seedGenRevealAllFixed prims coalition h parts committed sent
-  let revealed := seedGenRevealInbox coalition parts committed sent
-  let keys := fun j => D prims h (deriveKeys .seedGen j (setupView .seedGen j (parts j) (revealed j)))
-  have hall := seedGenEchoDataOutput_all_some coalition data echoSent i key ho
-  obtain ⟨hi, ki, si, hdi, hkey, _, hcheck⟩ := seedGenEchoDataOutput_some coalition data echoSent i key ho
+  let data := setupRevealAllFixed phase prims coalition h parts committed sent
+  let revealed := setupRevealInbox phase coalition parts committed sent
+  let keys := fun j => D prims h (deriveKeys phase j (setupView phase j (parts j) (revealed j)))
+  have hall := setupEchoDataOutput_all_some phase coalition data echoSent i key ho
+  obtain ⟨hi, ki, si, hdi, hkey, _, hcheck⟩ := setupEchoDataOutput_some phase coalition data echoSent i key ho
   have hdf (j : C.Party) (hj : j ∉ coalition.1) :
-      data j = some (keys j, D prims h (sharedQueries .seedGen j (keys j))) :=
-    (seedGenRevealAllFixed_some prims coalition h parts committed sent j (hall j hj)).1
+      data j = some (keys j, D prims h (sharedQueries phase j (keys j))) :=
+    (setupRevealAllFixed_some phase prims coalition h parts committed sent j (hall j hj)).1
   have he := Option.some.inj (hdi.symm.trans (hdf i hi))
   obtain ⟨rfl, rfl⟩ := Prod.ext_iff.mp he
-  refine ⟨hi, hkey, seedGenRevealInbox_all_honest coalition parts committed sent i
-    (seedGenRevealAllFixed_some prims coalition h parts committed sent i (hall i hi)).2, ?_⟩
+  refine ⟨hi, hkey, setupRevealInbox_all_honest phase coalition parts committed sent i
+    (setupRevealAllFixed_some phase prims coalition h parts committed sent i (hall i hi)).2, ?_⟩
   intro j hj
   by_cases hji : j = i
   · subst j
     exact ⟨rfl, fun _ _ _ => rfl⟩
-  · refine (fun hagree => ⟨hagree.1 rfl, hagree.2⟩)
-      (setup_echoCheck_agreement .seedGen prims h i j hji (keys i) (keys j) _ ?_ hcheck (hn j hj))
-    simp only [roundInbox, if_neg hj, hdf j hj, seedGenEchoDataStep, Step.delivered,
+  · refine (fun hagree => ⟨setup_firstKey_agreement phase prims h i j _ _ hagree.1, hagree.2⟩)
+      (setup_echoCheck_agreement phase prims h i j hji (keys i) (keys j) _ ?_ hcheck (hn j hj))
+    simp only [roundInbox, if_neg hj, hdf j hj, setupEchoDataStep, Step.delivered,
       echoOutbox, if_neg (Ne.symm hji)]
 
 /-- Complete output identification for the concrete reveal and echo execution. The protocol's
 successful output supplies honest delivery, derivation and agreement facts automatically. -/
-theorem seedGenRevealEcho_output_eq_hybrid (prims : Primitives) (coalition : C.Coalition)
+theorem setupRevealEcho_output_eq_hybrid (phase : Phase) (prims : Primitives) (coalition : C.Coalition)
     (h : Query C → HashOutput) (parts : C.Party → Parts C)
     (committed sent echoSent commitSent : C.Party → Mail C E) (log : CallLog C)
     (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairs : C.Pair → HashOutput) (high : HashOutput)
     (hextract : ∀ i j, i ∉ coalition.1 → j ∈ coalition.1 →
-      extractReveal .seedGen log commitSent j i = Msg.hashesOf (seedGenRevealInbox coalition parts committed sent i j))
-    (hparameter : h (seedGenParameterProgrammingInput coalition (setupProgramView .seedGen coalition parts log commitSent)) =
-      seedGenFullParameter high parameter)
+      extractReveal phase log commitSent j i = Msg.hashesOf (setupRevealInbox phase coalition parts committed sent i j))
+    (hparameter : ∀ q ∈ setupParameterInputs phase coalition (setupProgramView phase coalition parts log commitSent),
+      h q = seedGenFullParameter high parameter)
+    (hzero : phase = .prss → parameter = 0)
     (hterm : ∀ T, KnownTo coalition.1 T →
-      h (setupTermProgrammingInput .seedGen coalition (setupProgramView .seedGen coalition parts log commitSent) T) = seeds T)
+      h (setupTermProgrammingInput phase coalition (setupProgramView phase coalition parts log commitSent) T) = seeds T)
     (hpair : ∀ p ∈ seedGenCrossCoordinates coalition,
-      h (setupPairProgrammingInput .seedGen coalition (setupProgramView .seedGen coalition parts log commitSent) p) = pairs p)
+      h (setupPairProgrammingInput phase coalition (setupProgramView phase coalition parts log commitSent) p) = pairs p)
     (i : C.Party) (key : Keys C)
-    (ho : seedGenEchoDataOutput coalition (seedGenRevealAllFixed prims coalition h parts committed sent) echoSent i = some key)
+    (ho : setupEchoDataOutput phase coalition (setupRevealAllFixed phase prims coalition h parts committed sent) echoSent i = some key)
     (hn : ∀ j, j ∉ coalition.1 →
-      let revealed := seedGenRevealInbox coalition parts committed sent
-      let ki := D prims h (deriveKeys .seedGen i (setupView .seedGen i (parts i) (revealed i)))
-      let kj := D prims h (deriveKeys .seedGen j (setupView .seedGen j (parts j) (revealed j)))
-      h (.sharedKeys .seedGen ((sharedTerms i j).map ki.2.1)) =
-        h (.sharedKeys .seedGen ((sharedTerms j i).map kj.2.1)) →
-      Query.sharedKeys (C := C) .seedGen ((sharedTerms i j).map ki.2.1) =
-        Query.sharedKeys .seedGen ((sharedTerms j i).map kj.2.1)) :
-    key = dealtKeys parameter (seedGenHybridSeeds coalition h parts seeds)
-      (seedGenHybridPairs coalition h parts pairs) i := by
+      let revealed := setupRevealInbox phase coalition parts committed sent
+      let ki := D prims h (deriveKeys phase i (setupView phase i (parts i) (revealed i)))
+      let kj := D prims h (deriveKeys phase j (setupView phase j (parts j) (revealed j)))
+      h (.sharedKeys phase ((sharedTerms i j).map ki.2.1)) =
+        h (.sharedKeys phase ((sharedTerms j i).map kj.2.1)) →
+      Query.sharedKeys (C := C) phase ((sharedTerms i j).map ki.2.1) =
+        Query.sharedKeys phase ((sharedTerms j i).map kj.2.1)) :
+    key = dealtKeys parameter (setupHybridSeeds phase coalition h parts seeds)
+      (setupHybridPairs phase coalition h parts pairs) i := by
   obtain ⟨hi, hkey, hreceived, hagree⟩ :=
-    seedGenRevealAllFixed_output_agreement prims coalition h parts committed sent echoSent i key ho hn
+    setupRevealAllFixed_output_agreement phase prims coalition h parts committed sent echoSent i key ho hn
   rw [hkey]
-  exact seedGen_output_eq_hybrid_dealing prims coalition parts log commitSent _ h parameter seeds pairs high
-    (fun j => D prims h (deriveKeys .seedGen j
-      (setupView .seedGen j (parts j) (seedGenRevealInbox coalition parts committed sent j))))
-    hreceived hextract (fun _ _ => rfl) hparameter hterm hpair i hi hagree
+  exact setup_output_eq_hybrid_dealing phase prims coalition parts log commitSent _ h parameter seeds pairs high
+    (fun j => D prims h (deriveKeys phase j
+      (setupView phase j (parts j) (setupRevealInbox phase coalition parts committed sent j))))
+    hreceived hextract (fun _ _ => rfl) hparameter hzero hterm hpair i hi hagree
 
 end ThresholdLeanXmssSecurity
 
@@ -3391,13 +3403,13 @@ theorem probEvent_seedGenPartsKernel_coordinate {α : Type}
   rw [he, huniform.prEvent_eq, SampleableType.prEvent_uniformSample_eq_singleton]
 
 /-- The one-point bound for a transcript sampled adaptively, rather than a fixed proposed query. -/
-theorem probEvent_seedGenHiddenInput_kernel_one {α : Type} (coalition : C.Coalition)
+theorem probEvent_setupHiddenInput_kernel_one (phase : Phase) {α : Type} (coalition : C.Coalition)
     (K : (C.Party → Parts C) → ProbComp α) (hinv : SeedGenPrivateInvariant coalition K)
     (target : α → Query C) :
-    Pr{let p ← seedGenPartsKernel K}[SeedGenHiddenInput coalition p.1 (target p.2)] ≤
+    Pr{let p ← seedGenPartsKernel K}[SetupHiddenInput phase coalition p.1 (target p.2)] ≤
       ((Fintype.card C.Term + Fintype.card C.Pair : ℕ) : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   have ht (T : C.Term) :
-      Pr{let p ← seedGenPartsKernel K}[¬ KnownTo coalition.1 T ∧ termInput .seedGen p.1 T = target p.2] ≤
+      Pr{let p ← seedGenPartsKernel K}[¬ KnownTo coalition.1 T ∧ termInput phase p.1 T = target p.2] ≤
         (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
     by_cases hh : ¬ KnownTo coalition.1 T
     · obtain ⟨a, rest, ha⟩ := exists_first_holder T
@@ -3412,7 +3424,7 @@ theorem probEvent_seedGenHiddenInput_kernel_one {α : Type} (coalition : C.Coali
     · simp [hh]
   have hp (pair : C.Pair) :
       Pr{let p ← seedGenPartsKernel K}[pair.1.1 ∉ coalition.1 ∧ pair.1.2 ∉ coalition.1 ∧
-        pairInput .seedGen p.1 pair = target p.2] ≤ (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
+        pairInput phase p.1 pair = target p.2] ≤ (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
     by_cases hh : pair.1.1 ∉ coalition.1 ∧ pair.1.2 ∉ coalition.1
     · calc
         _ ≤ Pr{let p ← seedGenPartsKernel K}[(p.1 pair.1.1).pair pair.1.2 = seedGenDeriveHead (target p.2)] := by
@@ -3422,13 +3434,13 @@ theorem probEvent_seedGenHiddenInput_kernel_one {α : Type} (coalition : C.Coali
         _ = _ := probEvent_seedGenPartsKernel_coordinate K (fun parts => (parts pair.1.1).pair pair.1.2)
           (fun r => seedGenDeriveHead (target r)) pair.1.1 none (some pair.1.2)
           (fun c parts => by simp [shiftAt, shiftParts]) (hinv.2 pair hh.1 hh.2)
-    · have he : ∀ p : (C.Party → Parts C) × α, ¬ (pair.1.1 ∉ coalition.1 ∧ pair.1.2 ∉ coalition.1 ∧ pairInput .seedGen p.1 pair = target p.2) :=
+    · have he : ∀ p : (C.Party → Parts C) × α, ¬ (pair.1.1 ∉ coalition.1 ∧ pair.1.2 ∉ coalition.1 ∧ pairInput phase p.1 pair = target p.2) :=
         fun _ h => hh ⟨h.1, h.2.1⟩
       simp only [he, prEvent_false, zero_le]
-  have hm : ∀ p : (C.Party → Parts C) × α, SeedGenHiddenInput coalition p.1 (target p.2) →
-      (∃ T ∈ (Finset.univ : Finset C.Term), ¬ KnownTo coalition.1 T ∧ termInput .seedGen p.1 T = target p.2) ∨
+  have hm : ∀ p : (C.Party → Parts C) × α, SetupHiddenInput phase coalition p.1 (target p.2) →
+      (∃ T ∈ (Finset.univ : Finset C.Term), ¬ KnownTo coalition.1 T ∧ termInput phase p.1 T = target p.2) ∨
       (∃ pair ∈ (Finset.univ : Finset C.Pair), pair.1.1 ∉ coalition.1 ∧ pair.1.2 ∉ coalition.1 ∧
-        pairInput .seedGen p.1 pair = target p.2) := by
+        pairInput phase p.1 pair = target p.2) := by
     rintro p ⟨name, hn, he⟩
     cases name with
     | parameter => exact hn.elim
@@ -3932,14 +3944,14 @@ def seedGenCommitAborted (coalition : C.Coalition) (sent : C.Party → Mail C E)
 
 theorem seedGenCommitInbox_aborted (coalition : C.Coalition) (parts : C.Party → Parts C)
     (commitments : C.Party → List HashOutput) (sent : C.Party → Mail C E) (i : C.Party) :
-    (C.parties.any fun j => Msg.isAbort (seedGenCommitInbox coalition parts commitments sent i j)) =
+    (C.parties.any fun j => Msg.isAbort (setupCommitInbox .seedGen coalition parts commitments sent i j)) =
       seedGenCommitAborted coalition sent i := by
   unfold seedGenCommitAborted
   apply congrArg (fun f => C.parties.any f)
   funext j
   by_cases hj : j ∈ coalition.1
-  · simp [seedGenCommitInbox, roundInbox, hj]
-  · simp [seedGenCommitInbox, roundInbox, setupInitialSteps, hj, setupStart,
+  · simp [setupCommitInbox, roundInbox, hj]
+  · simp [setupCommitInbox, roundInbox, setupInitialSteps, hj, setupStart,
       Step.delivered, isAbort_commitOutbox]
 
 /-- The real reveal inbox expressed without private commitment digests. -/
@@ -3951,10 +3963,10 @@ def seedGenReferenceRevealInbox (coalition : C.Coalition) (parts : C.Party → P
 
 theorem seedGenRevealInbox_reference (coalition : C.Coalition) (parts : C.Party → Parts C)
     (commitments : C.Party → List HashOutput) (commitSent revealSent : C.Party → Mail C E) :
-    seedGenRevealInbox coalition parts (seedGenCommitInbox coalition parts commitments commitSent) revealSent =
+    setupRevealInbox .seedGen coalition parts (setupCommitInbox .seedGen coalition parts commitments commitSent) revealSent =
       seedGenReferenceRevealInbox coalition parts commitSent revealSent := by
   funext i j
-  simp only [seedGenRevealInbox, roundInbox, seedGenRevealSteps, seedGenCommitInbox_aborted,
+  simp only [setupRevealInbox, roundInbox, setupRevealSteps, seedGenCommitInbox_aborted,
     seedGenReferenceRevealInbox]
   by_cases hj : j ∈ coalition.1
   · simp [hj]
@@ -3968,7 +3980,7 @@ theorem seedGenOpenCheck_corrupt_iff (prims : Primitives) (coalition : C.Coaliti
     (ha : (C.parties.any fun j => Msg.isAbort
       (seedGenReferenceRevealInbox coalition parts commitSent revealSent i j)) = false) :
     let commitments := fun j => D prims h (commitQueries .seedGen j (parts j))
-    let committed := seedGenCommitInbox coalition parts commitments commitSent
+    let committed := setupCommitInbox .seedGen coalition parts commitments commitSent
     let revealed := seedGenReferenceRevealInbox coalition parts commitSent revealSent
     openCheck .seedGen i (parts i) (committed i) (revealed i)
       (D prims h (openQueries .seedGen i (revealed i))) ↔
@@ -3976,22 +3988,22 @@ theorem seedGenOpenCheck_corrupt_iff (prims : Primitives) (coalition : C.Coaliti
         (Msg.hashesOf (revealSent j i)).length = (revealTo .seedGen (parts i) j i).length ∧
         [h (.commit .seedGen j i (Msg.hashesOf (revealSent j i)))] = Msg.hashesOf (commitSent j i) := by
   dsimp only
-  have hreceived := seedGenRevealInbox_all_honest coalition parts
-    (seedGenCommitInbox coalition parts (fun j => D prims h (commitQueries .seedGen j (parts j))) commitSent)
+  have hreceived := setupRevealInbox_all_honest .seedGen coalition parts
+    (setupCommitInbox .seedGen coalition parts (fun j => D prims h (commitQueries .seedGen j (parts j))) commitSent)
     revealSent i (by simpa only [seedGenRevealInbox_reference] using ha)
   rw [seedGenRevealInbox_reference] at hreceived
   simp only [openCheck, openQueries, D_mapM, D_hashQuery, getD_parties]
   constructor
   · intro ho j hj
     have hji : j ≠ i := fun he => hi (he ▸ hj)
-    simpa only [seedGenReferenceRevealInbox, if_pos hj, seedGenCommitInbox, roundInbox] using ho j hji
+    simpa only [seedGenReferenceRevealInbox, if_pos hj, setupCommitInbox, roundInbox] using ho j hji
   · intro ho j hji
     by_cases hj : j ∈ coalition.1
-    · simpa only [seedGenReferenceRevealInbox, if_pos hj, seedGenCommitInbox, roundInbox] using ho j hj
+    · simpa only [seedGenReferenceRevealInbox, if_pos hj, setupCommitInbox, roundInbox] using ho j hj
     · rw [hreceived i j hj hji]
       constructor
       · simp [revealTo]
-      · simp only [seedGenCommitInbox, roundInbox, if_neg hj, setupInitialSteps, if_neg hj,
+      · simp only [setupCommitInbox, roundInbox, if_neg hj, setupInitialSteps, if_neg hj,
           setupStart, Step.delivered, commitOutbox, if_neg (Ne.symm hji), Msg.hashesOf,
           D_commitQueries, getD_parties]
 
@@ -4172,19 +4184,19 @@ theorem seedGenReferenceData_exposed (prims : Primitives) (coalition : C.Coaliti
 theorem seedGenRevealAllFixed_mask (prims : Primitives) (coalition : C.Coalition)
     (h : Query C → HashOutput) (table : KeyName C → HashOutput)
     (parts : C.Party → Parts C) (commitSent revealSent : C.Party → Mail C E) (i : C.Party) :
-    let committed := seedGenCommitInbox coalition parts
+    let committed := setupCommitInbox .seedGen coalition parts
       (fun j => D prims h (commitQueries .seedGen j (parts j))) commitSent
     Option.map (fun data : SeedGenEchoData C =>
       let keys := seedGenMaskKeys coalition table i data.1
       (keys, D prims h (sharedQueries .seedGen i keys)))
-      (seedGenRevealAllFixed prims coalition h parts committed revealSent i) =
+      (setupRevealAllFixed .seedGen prims coalition h parts committed revealSent i) =
         seedGenReferenceData prims coalition h table parts commitSent revealSent i := by
   dsimp only
-  unfold seedGenRevealAllFixed seedGenReferenceData
+  unfold setupRevealAllFixed seedGenReferenceData
   rw [seedGenCommitInbox_aborted]
   by_cases hi : i ∈ coalition.1 ∨ seedGenCommitAborted coalition commitSent i = true
   · simp only [if_pos hi, Option.map_none]
-  · simp only [if_neg hi, seedGenRevealDataFixed, seedGenRevealInbox_reference,
+  · simp only [if_neg hi, setupRevealDataFixed, seedGenRevealInbox_reference,
       seedGenReferenceRevealInbox_aborted]
     by_cases ha : seedGenReferenceRevealAborted coalition commitSent revealSent i = true
     · simp only [if_pos ha, Option.map_none]
@@ -4203,8 +4215,8 @@ theorem seedGenRevealAllFixed_mask (prims : Primitives) (coalition : C.Coalition
       rw [hc]
       split_ifs with ho
       · simp only [Option.map_some]
-        have hreceived := seedGenRevealInbox_all_honest coalition parts
-          (seedGenCommitInbox coalition parts (fun j => D prims h (commitQueries .seedGen j (parts j))) commitSent)
+        have hreceived := setupRevealInbox_all_honest .seedGen coalition parts
+          (setupCommitInbox .seedGen coalition parts (fun j => D prims h (commitQueries .seedGen j (parts j))) commitSent)
           revealSent i (by simpa only [seedGenRevealInbox_reference] using ha')
         rw [seedGenRevealInbox_reference] at hreceived
         rw [seedGen_derived_corruptView prims coalition parts _ i hi' hreceived h]
@@ -4226,7 +4238,7 @@ theorem seedGenMaskKeys_actual (prims : Primitives) (coalition : C.Coalition)
     (revealed : C.Party → Mail C E)
     (hreceived : ∀ i j, j ∉ coalition.1 → j ≠ i →
       Msg.hashesOf (revealed i j) = revealTo .seedGen (parts j) j i)
-    (htable : ∀ name, Hidden coalition name → table name = h (seedGenNamedInput parts name))
+    (htable : ∀ name, Hidden coalition name → table name = h (setupNamedInput .seedGen parts name))
     (i : C.Party) (hi : i ∉ coalition.1) :
     seedGenMaskKeys coalition table i
       (D prims h (deriveKeys .seedGen i (setupView .seedGen i (parts i) (revealed i)))) =
@@ -4250,7 +4262,7 @@ theorem seedGenMaskKeys_actual (prims : Primitives) (coalition : C.Coalition)
       by_cases hj : j ∈ coalition.1
       · simp [hj]
       · simp only [hi, hj, or_self, if_false]
-        rw [seedGen_hiddenPair_derived prims coalition h parts revealed hreceived i j hi hj hji]
+        rw [setup_hiddenPair_derived .seedGen prims coalition h parts revealed hreceived i j hi hj hji]
         apply htable
         change (C.pairOf i j (Ne.symm hji)).1.1 ∉ coalition.1 ∧
           (C.pairOf i j (Ne.symm hji)).1.2 ∉ coalition.1
@@ -4261,26 +4273,26 @@ theorem seedGenMaskKeys_actual (prims : Primitives) (coalition : C.Coalition)
 hidden derivations. Abort and opening failures are included in the equality. -/
 theorem seedGenRevealAllFixed_reference (prims : Primitives) (coalition : C.Coalition)
     (h : Query C → HashOutput) (table : KeyName C → HashOutput) (parts : C.Party → Parts C)
-    (htable : ∀ name, Hidden coalition name → table name = h (seedGenNamedInput parts name))
+    (htable : ∀ name, Hidden coalition name → table name = h (setupNamedInput .seedGen parts name))
     (commitSent revealSent : C.Party → Mail C E) :
-    seedGenRevealAllFixed prims coalition h parts
-      (seedGenCommitInbox coalition parts (fun j => D prims h (commitQueries .seedGen j (parts j))) commitSent)
+    setupRevealAllFixed .seedGen prims coalition h parts
+      (setupCommitInbox .seedGen coalition parts (fun j => D prims h (commitQueries .seedGen j (parts j))) commitSent)
       revealSent = seedGenReferenceData prims coalition h table parts commitSent revealSent := by
   funext i
   rw [← seedGenRevealAllFixed_mask prims coalition h table parts commitSent revealSent i]
-  let committed := seedGenCommitInbox coalition parts
+  let committed := setupCommitInbox .seedGen coalition parts
     (fun j => D prims h (commitQueries .seedGen j (parts j))) commitSent
-  change seedGenRevealAllFixed prims coalition h parts committed revealSent i = _
-  cases hd : seedGenRevealAllFixed prims coalition h parts committed revealSent i with
+  change setupRevealAllFixed .seedGen prims coalition h parts committed revealSent i = _
+  cases hd : setupRevealAllFixed .seedGen prims coalition h parts committed revealSent i with
   | none => rfl
   | some data =>
     have hi : i ∉ coalition.1 := by
       intro hc
-      simp [seedGenRevealAllFixed, hc] at hd
-    have ha : (seedGenRevealAllFixed prims coalition h parts committed revealSent i).isSome := by
+      simp [setupRevealAllFixed, hc] at hd
+    have ha : (setupRevealAllFixed .seedGen prims coalition h parts committed revealSent i).isSome := by
       simp only [hd, Option.isSome_some]
-    obtain ⟨he, hb⟩ := seedGenRevealAllFixed_some prims coalition h parts committed revealSent i ha
-    have hr := seedGenRevealInbox_all_honest coalition parts committed revealSent i hb
+    obtain ⟨he, hb⟩ := setupRevealAllFixed_some .seedGen prims coalition h parts committed revealSent i ha
+    have hr := setupRevealInbox_all_honest .seedGen coalition parts committed revealSent i hb
     have hv := Option.some.inj (hd.symm.trans he)
     simp only [hv, Option.map_some, seedGenMaskKeys_actual prims coalition h table parts _ hr htable i hi]
 
@@ -4294,12 +4306,12 @@ def seedGenReferenceRevealView (coalition : C.Coalition) (parts : C.Party → Pa
 theorem seedGenRevealSteps_view_reference (coalition : C.Coalition) (parts : C.Party → Parts C)
     (commitments : C.Party → List HashOutput) (commitSent : C.Party → Mail C E) :
     (fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then
-      (seedGenRevealSteps coalition parts (seedGenCommitInbox coalition parts commitments commitSent) i).outbox c
+      (setupRevealSteps .seedGen coalition parts (setupCommitInbox .seedGen coalition parts commitments commitSent) i).outbox c
       else none) = seedGenReferenceRevealView coalition parts commitSent := by
   funext c i
   unfold seedGenReferenceRevealView
   by_cases hc : c ∈ coalition.1 ∧ i ∉ coalition.1
-  · simp only [if_pos hc, seedGenRevealSteps, hc.2, false_or, seedGenCommitInbox_aborted]
+  · simp only [if_pos hc, setupRevealSteps, hc.2, false_or, seedGenCommitInbox_aborted]
     split_ifs <;> rfl
   · simp only [if_neg hc]
 
@@ -4324,7 +4336,7 @@ def seedGenReferencePostCommit (prims : Primitives) (coalition : C.Coalition)
     pure (state, fun _ => none)
   else do
     let (st, sent) ← A.round state (seedGenReferenceRevealView coalition parts commitSent)
-    seedGenFinishLocal coalition A st (seedGenReferenceData prims coalition h table parts commitSent sent)
+    setupFinishLocal .seedGen coalition A st (seedGenReferenceData prims coalition h table parts commitSent sent)
 
 theorem seedGenReferencePostCommit_exposed (prims : Primitives) (coalition : C.Coalition)
     (h : Query C → HashOutput) (table : KeyName C → HashOutput)
@@ -4338,12 +4350,12 @@ theorem seedGenReferencePostCommit_exposed (prims : Primitives) (coalition : C.C
 theorem simulateQ_seedGenPostCommit_reference (prims : Primitives) (coalition : C.Coalition)
     (h : Query C → HashOutput) (table : KeyName C → HashOutput)
     (A : Adversary C E Unit PEmpty PEmpty) (state : A.State) (parts : C.Party → Parts C)
-    (htable : ∀ name, Hidden coalition name → table name = h (seedGenNamedInput parts name))
+    (htable : ∀ name, Hidden coalition name → table name = h (setupNamedInput .seedGen parts name))
     (commitSent : C.Party → Mail C E) :
-    simulateQ (fixedLocal prims h) (seedGenPostCommitLocal coalition A state parts
-      (seedGenCommitInbox coalition parts (fun j => D prims h (commitQueries .seedGen j (parts j))) commitSent)) =
+    simulateQ (fixedLocal prims h) (setupPostCommitLocal .seedGen coalition A state parts
+      (setupCommitInbox .seedGen coalition parts (fun j => D prims h (commitQueries .seedGen j (parts j))) commitSent)) =
       simulateQ (fixedLocal prims h) (seedGenReferencePostCommit prims coalition h table A state parts commitSent) := by
-  simp only [seedGenPostCommitLocal, seedGenCommitInbox_aborted, seedGenReferencePostCommit]
+  simp only [setupPostCommitLocal, seedGenCommitInbox_aborted, seedGenReferencePostCommit]
   split_ifs with ha
   · rfl
   · rw [seedGenRevealSteps_view_reference]
@@ -4351,7 +4363,7 @@ theorem simulateQ_seedGenPostCommit_reference (prims : Primitives) (coalition : 
     apply bind_congr
     intro r
     rcases r with ⟨st, sent⟩
-    rw [simulateQ_fixedLocal_seedGenRevealComputations, pure_bind,
+    rw [simulateQ_fixedLocal_setupRevealComputations, pure_bind,
       seedGenRevealAllFixed_reference prims coalition h table parts htable]
 
 end ThresholdLeanXmssSecurity
@@ -4416,12 +4428,12 @@ theorem seedGenFinishLocal_queryBound (coalition : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (step : ℕ)
     (hr : ∀ state sent, IsQueryBoundP (A.round state sent) Counted step)
     (state : A.State) (data : C.Party → Option (SeedGenEchoData C)) :
-    IsQueryBoundP (seedGenFinishLocal coalition A state data) Counted step := by
-  unfold seedGenFinishLocal
+    IsQueryBoundP (setupFinishLocal .seedGen coalition A state data) Counted step := by
+  unfold setupFinishLocal
   split_ifs
   · exact isQueryBoundP_pure Counted _ step
   · simpa using isQueryBoundP_bind (hr state _) (fun r _ => isQueryBoundP_pure Counted
-      (r.1, seedGenEchoDataOutput coalition data r.2) 0)
+      (r.1, setupEchoDataOutput .seedGen coalition data r.2) 0)
 
 theorem seedGenReferencePostCommit_queryBound (prims : Primitives) (coalition : C.Coalition)
     (h : Query C → HashOutput) (table : KeyName C → HashOutput)
@@ -4595,26 +4607,26 @@ theorem seedGenReferenceKeys_shared_corrupt (prims : Primitives) (coalition : C.
 theorem seedGenReferenceData_echoStep (prims : Primitives) (coalition : C.Coalition)
     (h : Query C → HashOutput) (table : KeyName C → HashOutput)
     (parts : C.Party → Parts C) (commitSent revealSent : C.Party → Mail C E) (i : C.Party) :
-    seedGenEchoDataStep (E := E) i (seedGenReferenceData prims coalition h table parts commitSent revealSent i) =
+    setupEchoDataStep .seedGen (E := E) i (seedGenReferenceData prims coalition h table parts commitSent revealSent i) =
       setupEchoStep .seedGen prims coalition (seedGenReferenceActive coalition h commitSent revealSent) h
         (seedGenReferenceKeys prims coalition h table parts (fun i j => revealSent j i)) i := by
   rw [seedGenReferenceData_active]
   unfold setupEchoStep
   by_cases ha : seedGenReferenceActive coalition h commitSent revealSent i
   · have hi := ha.1
-    simp [ha, hi, seedGenEchoDataStep]
-  · simp [ha, seedGenEchoDataStep]
+    simp [ha, hi, setupEchoDataStep]
+  · simp [ha, setupEchoDataStep]
 
 /-- Corrupt recipients see identical echo messages for every independent hidden table. -/
 theorem seedGenReferenceData_visible (prims : Primitives) (coalition : C.Coalition)
     (h : Query C → HashOutput) (left right : KeyName C → HashOutput)
     (parts : C.Party → Parts C) (commitSent revealSent : C.Party → Mail C E)
     (i c : C.Party) (hc : c ∈ coalition.1) :
-    (seedGenEchoDataStep (E := E) i (seedGenReferenceData prims coalition h left parts commitSent revealSent i)).outbox c =
-      (seedGenEchoDataStep (E := E) i (seedGenReferenceData prims coalition h right parts commitSent revealSent i)).outbox c := by
+    (setupEchoDataStep .seedGen (E := E) i (seedGenReferenceData prims coalition h left parts commitSent revealSent i)).outbox c =
+      (setupEchoDataStep .seedGen (E := E) i (seedGenReferenceData prims coalition h right parts commitSent revealSent i)).outbox c := by
   simp only [seedGenReferenceData_active]
   split_ifs with ha
-  · simp only [seedGenEchoDataStep, Step.outbox, echoOutbox]
+  · simp only [setupEchoDataStep, Step.outbox, echoOutbox]
     congr 2
     simp only [echoOf, ite_true, D_sharedQueries_at]
     rw [seedGenReferenceKeys_shared_corrupt prims coalition h left right parts _ i c hc]
@@ -4638,7 +4650,7 @@ theorem stepRound_seedGenInitialSteps_observed (coalition : C.Coalition)
         (setupInitialSteps .seedGen coalition parts commitments) = (do
       let (st, sent) ← observedRoles.adversary (A.round state fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then
         commitOutbox i (commitments i) c else none)
-      pure (st, seedGenRevealSteps coalition parts (seedGenCommitInbox coalition parts commitments sent), sent)) := by
+      pure (st, setupRevealSteps .seedGen coalition parts (setupCommitInbox .seedGen coalition parts commitments sent), sent)) := by
   unfold stepRound
   rw [if_neg (by simp only [callInput_real, Option.isSome_none, Bool.false_eq_true,
     and_false, exists_false, false_and, not_false_eq_true])]
@@ -4654,16 +4666,16 @@ theorem stepRound_seedGenInitialSteps_observed (coalition : C.Coalition)
   rcases r with ⟨st, sent⟩
   dsimp only [observedRoles]
   trans (OverPermutation.sequenceFin (fun j =>
-    (pure (seedGenRevealSteps coalition parts (seedGenCommitInbox coalition parts commitments sent) j) :
+    (pure (setupRevealSteps .seedGen coalition parts (setupCommitInbox .seedGen coalition parts commitments sent) j) :
       WriterT (CallLog C) (OracleComp (WorldSpec C)) _)) >>= fun steps => pure (st, steps, sent))
   · congr 1
     congr 1
     funext j
     by_cases hj : j ∈ coalition.1
-    · simp [setupInitialSteps, seedGenRevealSteps, hj]
+    · simp [setupInitialSteps, setupRevealSteps, hj]
     · simp only [setupInitialSteps, if_neg hj, setupStart]
-      rw [advance_seedGenCommitResume]
-      simp only [seedGenRevealSteps, hj, false_or, seedGenCommitInbox, roundInbox]
+      rw [advance_setupCommitResume]
+      simp only [setupRevealSteps, hj, false_or, setupCommitInbox, roundInbox]
       simp only [free_pure, liftM_pure]
       rfl
   · rw [sequenceFin_pure, pure_bind]
@@ -4703,10 +4715,10 @@ theorem simulateQ_fixedLocal_seedGenInitialCommitments (prims : Primitives) (coa
 
 theorem seedGenFixedInitialCommitments_inbox (prims : Primitives) (coalition : C.Coalition)
     (h : Query C → HashOutput) (parts : C.Party → Parts C) (sent : C.Party → Mail C E) :
-    seedGenCommitInbox coalition parts (seedGenFixedInitialCommitments prims coalition h parts) sent =
-      seedGenCommitInbox coalition parts (fun j => D prims h (commitQueries .seedGen j (parts j))) sent := by
+    setupCommitInbox .seedGen coalition parts (seedGenFixedInitialCommitments prims coalition h parts) sent =
+      setupCommitInbox .seedGen coalition parts (fun j => D prims h (commitQueries .seedGen j (parts j))) sent := by
   funext i j
-  unfold seedGenCommitInbox roundInbox
+  unfold setupCommitInbox roundInbox
   by_cases hj : j ∈ coalition.1
   · simp only [if_pos hj]
   · simp only [if_neg hj, setupInitialSteps, if_neg hj, seedGenFixedInitialCommitments]
@@ -4727,12 +4739,12 @@ values. The sampling order of `A.start` and honest parts is exchanged only at th
 theorem evalDist_seedGenNormalized_fixed_reference (prims : Primitives) (coalition : C.Coalition)
     (h : Query C → HashOutput) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) :
-    simulateQ (fixedLocal prims h) (seedGenNormalizedLocalGame coalition A x z Z) =ᵈ
+    simulateQ (fixedLocal prims h) (setupNormalizedLocalGame .seedGen coalition A x z Z) =ᵈ
       (do
         let parts ← OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)
         simulateQ (fixedLocal prims h)
-          (seedGenReferenceLocalGame prims coalition h (fun name => h (seedGenNamedInput parts name)) A x z Z parts)) := by
-  simp only [seedGenNormalizedLocalGame, simulateQ_bind, simulateQ_sequenceFin,
+          (seedGenReferenceLocalGame prims coalition h (fun name => h (setupNamedInput .seedGen parts name)) A x z Z parts)) := by
+  simp only [setupNormalizedLocalGame, simulateQ_bind, simulateQ_sequenceFin,
     simulateQ_fixedLocal_private, simulateQ_fixedLocal_seedGenInitialCommitments, pure_bind]
   refine (OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans ?_
   refine EvalDistEq.bind_right _ fun parts => ?_
@@ -4743,7 +4755,7 @@ theorem evalDist_seedGenNormalized_fixed_reference (prims : Primitives) (coaliti
   rintro ⟨st, sent⟩
   dsimp only
   rw [seedGenFixedInitialCommitments_inbox,
-    simulateQ_seedGenPostCommit_reference prims coalition h (fun name => h (seedGenNamedInput parts name))
+    simulateQ_seedGenPostCommit_reference prims coalition h (fun name => h (setupNamedInput .seedGen parts name))
       A st parts (fun _ _ => rfl) sent]
 
 end ThresholdLeanXmssSecurity
@@ -4769,10 +4781,10 @@ def seedGenAllNamedInputs (C : Committee) : Finset (Query C) :=
   letI : Finite (Parts C) := seedGenParts_finite C
   letI : Fintype (C.Party → Parts C) := Fintype.ofFinite _
   Finset.univ.biUnion fun parts : C.Party → Parts C =>
-    (seedGenNames C).toFinset.image (seedGenNamedInput parts)
+    (seedGenNames C).toFinset.image (setupNamedInput .seedGen parts)
 
 theorem seedGenAllNamedInputs_mem (parts : C.Party → Parts C) (name : KeyName C) :
-    seedGenNamedInput parts name ∈ seedGenAllNamedInputs C := by
+    setupNamedInput .seedGen parts name ∈ seedGenAllNamedInputs C := by
   letI : Finite (Parts C) := seedGenParts_finite C
   letI : Fintype (C.Party → Parts C) := Fintype.ofFinite _
   unfold seedGenAllNamedInputs
@@ -4783,10 +4795,10 @@ theorem seedGenAllNamedInputs_mem (parts : C.Party → Parts C) (name : KeyName 
 /-- A canonical input in the enlarged domain reads an actual sampled cell, never the fallback. -/
 theorem seedGenFiniteTotal_named (prims : Primitives) (S : Finset (Query C))
     (h : S → HashOutput) (parts : C.Party → Parts C) (name : KeyName C)
-    (hn : seedGenNamedInput parts name ∈ S) :
-    seedGenFiniteTotal prims S h (seedGenNamedInput parts name) = h ⟨seedGenNamedInput parts name, hn⟩ := by
+    (hn : setupNamedInput .seedGen parts name ∈ S) :
+    seedGenFiniteTotal prims S h (setupNamedInput .seedGen parts name) = h ⟨setupNamedInput .seedGen parts name, hn⟩ := by
   cases name <;>
-    simp [seedGenFiniteTotal, seedGenNamedInput, parameterInput, termInput, pairInput] at hn ⊢ <;>
+    simp [seedGenFiniteTotal, setupNamedInput, parameterInput, termInput, pairInput] at hn ⊢ <;>
     simp [hn]
 
 end ThresholdLeanXmssSecurity
@@ -4801,46 +4813,46 @@ variable {C : Committee}
 /-- Exchange the finite oracle cells at canonical hidden inputs with the independent dealer
 coordinates. Every other oracle cell and every exposed dealer coordinate stays fixed. -/
 def seedGenFiniteHiddenSwap (coalition : C.Coalition) (S : Finset (Query C))
-    (parts : C.Party → Parts C) (hmem : ∀ name, seedGenNamedInput parts name ∈ S)
+    (parts : C.Party → Parts C) (hmem : ∀ name, setupNamedInput .seedGen parts name ∈ S)
     (p : (S → HashOutput) × (KeyName C → HashOutput)) :
     (S → HashOutput) × (KeyName C → HashOutput) :=
-  (fun q => if hh : SeedGenHiddenInput coalition parts q.val then p.2 (Classical.choose hh) else p.1 q,
-   fun name => if Hidden coalition name then p.1 ⟨seedGenNamedInput parts name, hmem name⟩ else p.2 name)
+  (fun q => if hh : SetupHiddenInput .seedGen coalition parts q.val then p.2 (Classical.choose hh) else p.1 q,
+   fun name => if Hidden coalition name then p.1 ⟨setupNamedInput .seedGen parts name, hmem name⟩ else p.2 name)
 
 theorem seedGenFiniteHiddenSwap_cell (coalition : C.Coalition) (S : Finset (Query C))
-    (parts : C.Party → Parts C) (hmem : ∀ name, seedGenNamedInput parts name ∈ S)
-    (hinj : Function.Injective (seedGenNamedInput parts))
+    (parts : C.Party → Parts C) (hmem : ∀ name, setupNamedInput .seedGen parts name ∈ S)
+    (hinj : Function.Injective (setupNamedInput .seedGen parts))
     (p : (S → HashOutput) × (KeyName C → HashOutput)) (name : KeyName C) (hh : Hidden coalition name) :
-    (seedGenFiniteHiddenSwap coalition S parts hmem p).1 ⟨seedGenNamedInput parts name, hmem name⟩ = p.2 name := by
-  have hp : SeedGenHiddenInput coalition parts (seedGenNamedInput parts name) := ⟨name, hh, rfl⟩
+    (seedGenFiniteHiddenSwap coalition S parts hmem p).1 ⟨setupNamedInput .seedGen parts name, hmem name⟩ = p.2 name := by
+  have hp : SetupHiddenInput .seedGen coalition parts (setupNamedInput .seedGen parts name) := ⟨name, hh, rfl⟩
   simp only [seedGenFiniteHiddenSwap, dif_pos hp]
   have he : Classical.choose hp = name := hinj (Classical.choose_spec hp).2
   rw [he]
 
 theorem seedGenFiniteHiddenSwap_off (coalition : C.Coalition) (S : Finset (Query C))
-    (parts : C.Party → Parts C) (hmem : ∀ name, seedGenNamedInput parts name ∈ S)
+    (parts : C.Party → Parts C) (hmem : ∀ name, setupNamedInput .seedGen parts name ∈ S)
     (p : (S → HashOutput) × (KeyName C → HashOutput)) (q : S)
-    (hq : ¬ SeedGenHiddenInput coalition parts q.val) :
+    (hq : ¬ SetupHiddenInput .seedGen coalition parts q.val) :
     (seedGenFiniteHiddenSwap coalition S parts hmem p).1 q = p.1 q := by
   simp only [seedGenFiniteHiddenSwap, dif_neg hq]
 
 theorem seedGenFiniteHiddenSwap_dealer_known (coalition : C.Coalition) (S : Finset (Query C))
-    (parts : C.Party → Parts C) (hmem : ∀ name, seedGenNamedInput parts name ∈ S)
+    (parts : C.Party → Parts C) (hmem : ∀ name, setupNamedInput .seedGen parts name ∈ S)
     (p : (S → HashOutput) × (KeyName C → HashOutput)) (name : KeyName C) (hh : ¬ Hidden coalition name) :
     (seedGenFiniteHiddenSwap coalition S parts hmem p).2 name = p.2 name := by
   simp only [seedGenFiniteHiddenSwap, if_neg hh]
 
 /-- Distinct canonical names make the exchange between oracle and dealer an involution. -/
 theorem seedGenFiniteHiddenSwap_involutive (coalition : C.Coalition) (S : Finset (Query C))
-    (parts : C.Party → Parts C) (hmem : ∀ name, seedGenNamedInput parts name ∈ S)
-    (hinj : Function.Injective (seedGenNamedInput parts)) :
+    (parts : C.Party → Parts C) (hmem : ∀ name, setupNamedInput .seedGen parts name ∈ S)
+    (hinj : Function.Injective (setupNamedInput .seedGen parts)) :
     Function.Involutive (seedGenFiniteHiddenSwap coalition S parts hmem) := by
   intro p
   apply Prod.ext
   · funext q
-    by_cases hq : SeedGenHiddenInput coalition parts q.val
+    by_cases hq : SetupHiddenInput .seedGen coalition parts q.val
     · obtain ⟨name, hh, he⟩ := hq
-      have hq' : q = ⟨seedGenNamedInput parts name, hmem name⟩ := Subtype.ext he.symm
+      have hq' : q = ⟨setupNamedInput .seedGen parts name, hmem name⟩ := Subtype.ext he.symm
       rw [hq', seedGenFiniteHiddenSwap_cell coalition S parts hmem hinj _ name hh]
       simp only [seedGenFiniteHiddenSwap, if_pos hh]
     · rw [seedGenFiniteHiddenSwap_off coalition S parts hmem _ q hq,
@@ -4848,7 +4860,7 @@ theorem seedGenFiniteHiddenSwap_involutive (coalition : C.Coalition) (S : Finset
   · funext name
     by_cases hh : Hidden coalition name
     · change (if Hidden coalition name then
-        (seedGenFiniteHiddenSwap coalition S parts hmem p).1 ⟨seedGenNamedInput parts name, hmem name⟩
+        (seedGenFiniteHiddenSwap coalition S parts hmem p).1 ⟨setupNamedInput .seedGen parts name, hmem name⟩
         else (seedGenFiniteHiddenSwap coalition S parts hmem p).2 name) = p.2 name
       rw [if_pos hh, seedGenFiniteHiddenSwap_cell coalition S parts hmem hinj p name hh]
     · rw [seedGenFiniteHiddenSwap_dealer_known coalition S parts hmem _ name hh,
@@ -4856,8 +4868,8 @@ theorem seedGenFiniteHiddenSwap_involutive (coalition : C.Coalition) (S : Finset
 
 /-- The complete joint law of the eager oracle and independent dealer is preserved. -/
 theorem evalDist_seedGenFiniteHiddenSwap (coalition : C.Coalition) (S : Finset (Query C))
-    (parts : C.Party → Parts C) (hmem : ∀ name, seedGenNamedInput parts name ∈ S)
-    (hinj : Function.Injective (seedGenNamedInput parts)) :
+    (parts : C.Party → Parts C) (hmem : ∀ name, setupNamedInput .seedGen parts name ∈ S)
+    (hinj : Function.Injective (setupNamedInput .seedGen parts)) :
     (seedGenFiniteHiddenSwap coalition S parts hmem <$>
       ($ᵗ ((S → HashOutput) × (KeyName C → HashOutput)))) =ᵈ
       $ᵗ ((S → HashOutput) × (KeyName C → HashOutput)) :=
@@ -4867,9 +4879,9 @@ theorem evalDist_seedGenFiniteHiddenSwap (coalition : C.Coalition) (S : Finset (
 /-- The total oracles agree away from canonical hidden inputs, including all fixed Th calls. -/
 theorem seedGenFiniteHiddenSwap_total_off (prims : Primitives) (coalition : C.Coalition)
     (S : Finset (Query C)) (parts : C.Party → Parts C)
-    (hmem : ∀ name, seedGenNamedInput parts name ∈ S)
+    (hmem : ∀ name, setupNamedInput .seedGen parts name ∈ S)
     (p : (S → HashOutput) × (KeyName C → HashOutput)) (q : Query C)
-    (hq : ¬ SeedGenHiddenInput coalition parts q) :
+    (hq : ¬ SetupHiddenInput .seedGen coalition parts q) :
     seedGenFiniteTotal prims S (seedGenFiniteHiddenSwap coalition S parts hmem p).1 q =
       seedGenFiniteTotal prims S p.1 q := by
   have he (hm : q ∈ S) :
