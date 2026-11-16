@@ -467,11 +467,11 @@ theorem seedGenReferenceKeys_oracle_congr (D : C.Coalition) (h₁ h₂ : Query C
     (table : KeyName C → HashOutput) (parts : C.Party → Parts C) (revealed : C.Party → Mail C E)
     (hc : ¬ SeedGenClash D parts) (hh : ∀ v, ¬ SetupHiddenInput .seedGen D parts v → h₁ v = h₂ v)
     (i : C.Party) (hi : i ∉ D.1) :
-    seedGenReferenceKeys prims D h₁ table parts revealed i = seedGenReferenceKeys prims D h₂ table parts revealed i := by
-  simp only [seedGenReferenceKeys, seedGenMaskKeys, D_deriveKeys, ite_true]
-  have hview : ∀ k, k ∉ D.1 → seedGenCorruptView D parts revealed i k = parts k := by
+    setupReferenceKeys .seedGen prims D h₁ table parts revealed i = setupReferenceKeys .seedGen prims D h₂ table parts revealed i := by
+  simp only [setupReferenceKeys, seedGenMaskKeys, D_deriveKeys, ite_true]
+  have hview : ∀ k, k ∉ D.1 → setupCorruptView .seedGen D parts revealed i k = parts k := by
     intro k hk
-    simp [seedGenCorruptView, hk]
+    simp [setupCorruptView, hk]
   refine Prod.ext (hh _ (not_seedGenHiddenInput_parameter D parts _)) (Prod.ext ?_ ?_)
   · funext T
     dsimp only
@@ -519,11 +519,11 @@ theorem seedGenReferenceData_oracle_congr (D : C.Coalition) (h₁ h₂ : Query C
 
 theorem seedGenFixedCommitView_oracle_congr (D : C.Coalition) (h₁ h₂ : Query C → HashOutput)
     (parts : C.Party → Parts C) (hh : ∀ v, ¬ SetupHiddenInput .seedGen D parts v → h₁ v = h₂ v) :
-    seedGenFixedCommitView (E := E) prims D h₁ parts = seedGenFixedCommitView prims D h₂ parts := by
+    setupFixedCommitView .seedGen (E := E) prims D h₁ parts = setupFixedCommitView .seedGen prims D h₂ parts := by
   have hcommit : ∀ ph a b l, h₁ (.commit ph a b l) = h₂ (.commit ph a b l) := fun ph a b l =>
     hh _ (not_seedGenHiddenInput_of_not_derive D parts fun _ _ he => by cases he)
   funext c i
-  simp only [seedGenFixedCommitView, D_commitQueries, hcommit]
+  simp only [setupFixedCommitView, D_commitQueries, hcommit]
 
 /-- Without a clash, the reference run reads its oracle only away from the canonical hidden inputs,
 apart from the oracle calls of the adversary and the distinguisher. -/
@@ -571,7 +571,7 @@ theorem seedGenStageA_parts (D : C.Coalition) (A : Adversary C E Unit PEmpty PEm
     (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) (S : Finset (Query C))
     (hmem : ∀ parts name, setupNamedInput .seedGen parts name ∈ S) (parts : C.Party → Parts C)
     (hc : ¬ SeedGenClash D parts) (p : (S → HashOutput) × (KeyName C → HashOutput)) :
-    let hs := seedGenFiniteTotal prims S (seedGenFiniteHiddenSwap D S parts (hmem parts) p).1
+    let hs := seedGenFiniteTotal prims S (setupFiniteHiddenSwap .seedGen D S parts (hmem parts) p).1
     let h₀ := seedGenFiniteTotal prims S p.1
     Pr{let y ← simulateQ (fixedLocal prims hs) (seedGenReferenceLocalGame prims D hs p.2 A x z Z parts)}[y = true] ≤
         Pr{let y ← simulateQ (fixedLocal prims h₀) (seedGenReferenceLocalGame prims D h₀ p.2 A x z Z parts)}[y = true] +
@@ -581,7 +581,7 @@ theorem seedGenStageA_parts (D : C.Coalition) (A : Adversary C E Unit PEmpty PEm
           seedGenIndepHit prims D A x z Z S parts p := by
   intro hs h₀
   have hh : ∀ v, ¬ SetupHiddenInput .seedGen D parts v → hs v = h₀ v := fun v hv =>
-    seedGenFiniteHiddenSwap_total_off prims D S parts (hmem parts) p v hv
+    setupFiniteHiddenSwap_total_off .seedGen prims D S parts (hmem parts) p v hv
   rw [seedGenReferenceLocalGame_oracle_congr prims D hs h₀ p.2 A x z Z parts hc hh]
   exact probOutput_fixedLocal_swap_le prims hs h₀ (SetupHiddenInput .seedGen D parts) hh _
 
@@ -657,7 +657,7 @@ theorem seedGenStageA (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     ne_top_of_le_ne_top (ENNReal.mul_ne_top (ENNReal.natCast_ne_top _) (by simp)) hsum
   have hbranch : ∀ parts, ¬ SeedGenClash D parts →
       (∀ p : (S → HashOutput) × (KeyName C → HashOutput),
-        let hs := seedGenFiniteTotal prims S (seedGenFiniteHiddenSwap D S parts (hmem parts) p).1
+        let hs := seedGenFiniteTotal prims S (setupFiniteHiddenSwap .seedGen D S parts (hmem parts) p).1
         let h₀ := seedGenFiniteTotal prims S p.1
         Pr{let y ← simulateQ (fixedLocal prims hs) (seedGenReferenceLocalGame prims D hs p.2 A x z Z parts)}[y = true] ≤
             Pr{let y ← simulateQ (fixedLocal prims h₀) (seedGenReferenceLocalGame prims D h₀ p.2 A x z Z parts)}[y = true] +
@@ -670,7 +670,7 @@ theorem seedGenStageA (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (fun parts => do
       let p ← $ᵗ ((S → HashOutput) × (KeyName C → HashOutput))
       let ht := if Function.Injective (setupNamedInput .seedGen parts) then
-        (seedGenFiniteHiddenSwap D S parts (hmem parts) p).1 else p.1
+        (setupFiniteHiddenSwap .seedGen D S parts (hmem parts) p).1 else p.1
       let h := seedGenFiniteTotal prims S ht
       let table := if Function.Injective (setupNamedInput .seedGen parts) then p.2 else
         fun name => h (setupNamedInput .seedGen parts name)
@@ -761,9 +761,9 @@ def seedGenRefPrefix (D : C.Coalition) (h : Query C → HashOutput) (A : Adversa
     (x : C.Party → Unit) (z : Aux) (parts : C.Party → Parts C) :
     OracleComp (LocalSpec C) (A.State × Option ((C.Party → Mail C E) × (C.Party → Mail C E) × (C.Party → Mail C E))) := do
   let state ← A.start (corruptInputs D x) z
-  let r ← A.round state (seedGenFixedCommitView prims D h parts)
+  let r ← A.round state (setupFixedCommitView .seedGen prims D h parts)
   if ∀ i, i ∉ D.1 → seedGenCommitAborted D r.2 i = true then pure (r.1, none) else do
-    let r' ← A.round r.1 (seedGenReferenceRevealView D parts r.2)
+    let r' ← A.round r.1 (setupReferenceRevealView .seedGen D parts r.2)
     if ∀ i, i ∉ D.1 → ¬ seedGenReferenceActive D h r.2 r'.2 i then pure (r'.1, none) else do
       let r'' ← A.round r'.1 (seedGenRefVisible prims D h parts r.2 r'.2)
       pure (r''.1, some (r.2, r'.2, r''.2))
@@ -815,7 +815,7 @@ def seedGenRefKeysOf (D : C.Coalition) (h : Query C → HashOutput) (table : Key
     (m : Option ((C.Party → Mail C E) × (C.Party → Mail C E) × (C.Party → Mail C E))) (i : C.Party) : Keys C :=
   match m with
   | none => default
-  | some (_, rsent, _) => keysOf (seedGenReferenceKeys prims D h table parts (fun i j => rsent j i) i)
+  | some (_, rsent, _) => keysOf (setupReferenceKeys .seedGen prims D h table parts (fun i j => rsent j i) i)
 
 /-- The receivers of one table with the keys of another. -/
 def seedGenRefMixedOutputs (D : C.Coalition) (h : Query C → HashOutput) (table keys : KeyName C → HashOutput)
@@ -868,7 +868,7 @@ theorem seedGenRefMixedOutputs_overlay (D : C.Coalition) (h : Query C → HashOu
   · have hi := seedGenRefOutputs_honest prims D h table parts m i hs
     rcases m with _ | ⟨sent, rsent, esent⟩
     · simp [seedGenRefOutputs] at hs
-    · simp only [Option.map_some, seedGenRefKeysOf, seedGenReferenceKeys, seedGenMaskKeys, keysOf,
+    · simp only [Option.map_some, seedGenRefKeysOf, setupReferenceKeys, seedGenMaskKeys, keysOf,
         seedGenHiddenOverlay, dealtKeys, Option.some.injEq]
       congr 1
       · funext T
@@ -883,10 +883,10 @@ def seedGenRestrict (τ : KeyName C → HashOutput) : (C.Term → HashOutput) ×
 
 theorem seedGenReferenceKeys_restrict (D : C.Coalition) (h : Query C → HashOutput) (τ : KeyName C → HashOutput)
     (parts : C.Party → Parts C) (revealed : C.Party → Mail C E) :
-    seedGenReferenceKeys prims D h τ parts revealed =
-      seedGenReferenceKeys prims D h (seedGenTableOf (seedGenRestrict τ).1 (seedGenRestrict τ).2) parts revealed := by
+    setupReferenceKeys .seedGen prims D h τ parts revealed =
+      setupReferenceKeys .seedGen prims D h (seedGenTableOf (seedGenRestrict τ).1 (seedGenRestrict τ).2) parts revealed := by
   funext i
-  simp only [seedGenReferenceKeys, seedGenMaskKeys, seedGenTableOf, seedGenRestrict]
+  simp only [setupReferenceKeys, seedGenMaskKeys, seedGenTableOf, seedGenRestrict]
 
 theorem seedGenRefMixedOutputs_restrict (D : C.Coalition) (h : Query C → HashOutput)
     (table keys : KeyName C → HashOutput) (parts : C.Party → Parts C)
@@ -1039,17 +1039,17 @@ honest operators that share a hidden term. -/
 theorem seedGenReferenceData_receivers_hidden (co : C.Coalition)
     (h : Query C → HashOutput) (left right : KeyName C → HashOutput)
     (parts : C.Party → Parts C) (commitSent revealSent echoSent : C.Party → Mail C E)
-    (hl : SeedGenEchoRegularHidden co h (seedGenReferenceKeys prims co h left parts (fun i j => revealSent j i)))
-    (hr : SeedGenEchoRegularHidden co h (seedGenReferenceKeys prims co h right parts (fun i j => revealSent j i)))
+    (hl : SeedGenEchoRegularHidden co h (setupReferenceKeys .seedGen prims co h left parts (fun i j => revealSent j i)))
+    (hr : SeedGenEchoRegularHidden co h (setupReferenceKeys .seedGen prims co h right parts (fun i j => revealSent j i)))
     (i : C.Party) :
     (setupEchoDataOutput .seedGen co (seedGenReferenceData prims co h left parts commitSent revealSent) echoSent i).isSome =
       (setupEchoDataOutput .seedGen co (seedGenReferenceData prims co h right parts commitSent revealSent) echoSent i).isSome := by
   let active := seedGenReferenceActive co h commitSent revealSent
-  let kl := seedGenReferenceKeys prims co h left parts (fun i j => revealSent j i)
-  let kr := seedGenReferenceKeys prims co h right parts (fun i j => revealSent j i)
+  let kl := setupReferenceKeys .seedGen prims co h left parts (fun i j => revealSent j i)
+  let kr := setupReferenceKeys .seedGen prims co h right parts (fun i j => revealSent j i)
   have hsteps (table : KeyName C → HashOutput) :
       (fun j => setupEchoDataStep .seedGen (E := E) j (seedGenReferenceData prims co h table parts commitSent revealSent j)) =
-        setupEchoStep .seedGen prims co active h (seedGenReferenceKeys prims co h table parts (fun i j => revealSent j i)) :=
+        setupEchoStep .seedGen prims co active h (setupReferenceKeys .seedGen prims co h table parts (fun i j => revealSent j i)) :=
     funext fun j => seedGenReferenceData_echoStep prims co h table parts commitSent revealSent j
   unfold setupEchoDataOutput
   rw [seedGenReferenceData_active, seedGenReferenceData_active]
@@ -1063,10 +1063,10 @@ theorem seedGenReferenceData_receivers_hidden (co : C.Coalition)
       funext fun j => setupEchoInbox_isAbort .seedGen prims co active echoSent h h kl kr i j
     have hc := seedGen_echoCheck_invariant_hidden prims co active echoSent h kl kr
       (fun _ _ => rfl)
-      (fun j T _ hT => seedGenReferenceKeys_known prims co h left right parts _ j T hT)
-      (fun j k T _ _ hT hj hk => seedGenReferenceKeys_coherent prims co h left parts _ j k T hT hj hk)
-      (fun j k T _ _ hT hj hk => seedGenReferenceKeys_coherent prims co h right parts _ j k T hT hj hk)
-      (fun j c _ hc => seedGenReferenceKeys_shared_corrupt prims co h left right parts _ j c hc)
+      (fun j T _ hT => setupReferenceKeys_known .seedGen prims co h left right parts _ j T hT)
+      (fun j k T _ _ hT hj hk => setupReferenceKeys_coherent .seedGen prims co h left parts _ j k T hT hj hk)
+      (fun j k T _ _ hT hj hk => setupReferenceKeys_coherent .seedGen prims co h right parts _ j k T hT hj hk)
+      (fun j c _ hc => setupReferenceKeys_shared_corrupt .seedGen prims co h left right parts _ j c hc)
       hl hr i hi
     change (if C.parties.any (fun j => Msg.isAbort (setupEchoInbox .seedGen prims co active echoSent h kl i j)) then none
       else if echoCheck .seedGen i (kl i) (D prims h (sharedQueries .seedGen i (kl i)))
@@ -1246,7 +1246,7 @@ def SeedGenEchoIrregular (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty
   match r.2.2.1.2 with
   | none => False
   | some (_, rsent, _) => ¬ SeedGenEchoRegularHidden D (seedGenFiniteTotal prims S r.2.1)
-      (seedGenReferenceKeys prims D (seedGenFiniteTotal prims S r.2.1) (seedGenTableOf u.1 u.2) r.1
+      (setupReferenceKeys .seedGen prims D (seedGenFiniteTotal prims S r.2.1) (seedGenTableOf u.1 u.2) r.1
         (fun i j => rsent j i))
 
 theorem seedGenReceiversGap_irregular (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (S : Finset (Query C))

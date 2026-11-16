@@ -221,7 +221,7 @@ theorem simulateQ_seedGenCommonGame_known (D : C.Coalition) (A : Adversary C E U
   refine seedGenKnown_simulateQ_bind_right prims fun parts => ?_
   rw [seedGenKnown_simulateQ_bind_left prims (simulateQ_world_startSteps_seedGen prims D parts), bind_map_left]
   refine seedGenKnown_simulateQ_bind_right prims fun commitments => ?_
-  rw [stepRound_seedGenInitialSteps_observed]
+  rw [stepRound_setupInitialSteps_observed]
   simp only [observedRoles, WriterT.run_bind, WriterT.run_pure, map_pure, pure_bind, bind_assoc,
     show (∅ : CallLog C) = [] from rfl, List.append_nil, WriterT.run_mk]
   refine seedGenKnown_simulateQ_bind_right prims fun r => ?_

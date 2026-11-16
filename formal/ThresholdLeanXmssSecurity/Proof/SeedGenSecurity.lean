@@ -647,7 +647,7 @@ theorem seedGenReferenceLocalGame_table_congr (prims : Primitives) (D : C.Coalit
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (parts : C.Party → Parts C) :
     seedGenReferenceLocalGame prims D h t A x z Z parts = seedGenReferenceLocalGame prims D h t' A x z Z parts := by
-  have hk : seedGenReferenceKeys (E := E) prims D h t parts = seedGenReferenceKeys prims D h t' parts := by
+  have hk : setupReferenceKeys .seedGen (E := E) prims D h t parts = setupReferenceKeys .seedGen prims D h t' parts := by
     funext revealed i
     exact seedGenMaskKeys_table_congr D t t' ht i _
   have hd : seedGenReferenceData (E := E) prims D h t parts = seedGenReferenceData prims D h t' parts := by
@@ -663,7 +663,7 @@ def seedGenSwappedMixture (prims : Primitives) (D : C.Coalition) (A : Adversary 
   let parts ← OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)
   let p ← $ᵗ ((S → HashOutput) × (KeyName C → HashOutput))
   let ht := if Function.Injective (setupNamedInput .seedGen parts) then
-    (seedGenFiniteHiddenSwap D S parts (hmem parts) p).1 else p.1
+    (setupFiniteHiddenSwap .seedGen D S parts (hmem parts) p).1 else p.1
   let h := seedGenFiniteTotal prims S ht
   let table := if Function.Injective (setupNamedInput .seedGen parts) then p.2 else
     fun name => h (setupNamedInput .seedGen parts name)
@@ -695,8 +695,8 @@ theorem evalDist_seedGenReferenceMixture_swap (prims : Primitives) (D : C.Coalit
   · simp only [if_pos hinj]
     have hswap : (($ᵗ ((S → HashOutput) × (KeyName C → HashOutput))) >>= fun p => F p.1) =ᵈ
         (($ᵗ ((S → HashOutput) × (KeyName C → HashOutput))) >>= fun p =>
-          F (seedGenFiniteHiddenSwap D S parts (hmem parts) p).1) := by
-      have he := (evalDist_seedGenFiniteHiddenSwap D S parts (hmem parts) hinj).bind_left
+          F (setupFiniteHiddenSwap .seedGen D S parts (hmem parts) p).1) := by
+      have he := (evalDist_setupFiniteHiddenSwap .seedGen D S parts (hmem parts) hinj).bind_left
         (fun p => F p.1)
       rw [bind_map_left] at he
       exact he.symm
@@ -704,11 +704,11 @@ theorem evalDist_seedGenReferenceMixture_swap (prims : Primitives) (D : C.Coalit
     refine EvalDistEq.bind_right _ fun p => ?_
     dsimp only [F]
     have htable : ∀ name, Hidden D name →
-        seedGenFiniteTotal prims S (seedGenFiniteHiddenSwap D S parts (hmem parts) p).1
+        seedGenFiniteTotal prims S (setupFiniteHiddenSwap .seedGen D S parts (hmem parts) p).1
           (setupNamedInput .seedGen parts name) = p.2 name := by
       intro name hh
-      rw [seedGenFiniteTotal_named prims S _ parts name (hmem parts name),
-        seedGenFiniteHiddenSwap_cell D S parts (hmem parts) hinj p name hh]
+      rw [setupFiniteTotal_named .seedGen prims S _ parts name (hmem parts name),
+        setupFiniteHiddenSwap_cell .seedGen D S parts (hmem parts) hinj p name hh]
     rw [seedGenReferenceLocalGame_table_congr prims D _ _ _ htable]
   · simp only [if_neg hinj]
     rfl
