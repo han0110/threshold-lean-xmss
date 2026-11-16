@@ -29,6 +29,7 @@ namespace SigningCacheProof
 open SigningDescentProof
 
 variable {C : Committee} (prims : Primitives)
+attribute [local irreducible] MonadAttach.support
 
 /-! ## The authentication paths of the cache replay
 
@@ -397,7 +398,7 @@ theorem run_liftFree {α : Type} (oa : OracleComp (RoSpec C) α) :
       rw [free] at hp
       erw [liftComp_query, simulateQ_query] at hp
       simp at hp
-      exact hp
+      exact MonadAttach.mem_support.mpr hp
     simp only [countImpl, SeedHitProof.withCount, StateT.run_mk, support_map] at hp'
     obtain ⟨p', hp', rfl⟩ := hp'
     obtain ⟨hle, hd⟩ := roStep_support prims t s.1 p' hp'
@@ -422,7 +423,7 @@ theorem run_hashQuery (q : Query C) (s : HashCache C × ℕ) (p : HashOutput × 
     rw [SigningSecurityProof.liftFree, hashQuery, free] at hp
     erw [liftComp_query, simulateQ_query] at hp
     simp at hp
-    exact hp
+    exact MonadAttach.mem_support.mpr hp
   simp only [countImpl, SeedHitProof.withCount, StateT.run_mk, support_map] at hp'
   obtain ⟨p', hp', rfl⟩ := hp'
   exact (randomOracle_support q s.1 p' hp').2.1
@@ -732,7 +733,6 @@ end Resolved
 
 /-! ## The run of the game -/
 
-set_option maxRecDepth 100000 in
 set_option backward.isDefEq.respectTransparency false in
 theorem exposedRun_facts (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
     (r : ((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) × HashCache C × ℕ)
@@ -1331,7 +1331,6 @@ theorem honestSignatureReplay : HonestSignatureReplay prims C := by
   rw [hhonest, Option.map_some, hv, hp, hsig, hvt, hpt, htopRandomness]
   rfl
 
-set_option maxRecDepth 100000 in
 theorem runHasFinalState (prims : Primitives) (C : Committee) : RunHasFinalState prims C := by
   intro A x r hr hwin
   obtain ⟨top, state, forgery, hsome, hdealt, hres, hfresh⟩ := exposedRun_facts prims A x r hr hwin
@@ -1348,7 +1347,6 @@ theorem runHasFinalState (prims : Primitives) (C : Committee) : RunHasFinalState
     · exact honestSignatureReplay prims ⟨x, top, state, forgery, r.2.1, false⟩ hdealt
 
 
-set_option maxRecDepth 100000 in
 /-- `signing_run_badEvent` with `RunHasFinalState` discharged. -/
 theorem signing_run_badEvent_closed (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
     (r : ((Bool × Bool) × Option (TopTree × TsigState C × Forgery)) × HashCache C × ℕ)

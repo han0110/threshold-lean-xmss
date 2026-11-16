@@ -18,6 +18,7 @@ open SigningHitLaneProof SigningCostProof
 namespace SigningHitProof
 
 variable {C : Committee} (prims : Primitives)
+attribute [local irreducible] MonadAttach.support
 
 /-- Consume one entry of a complete raw-query transcript. -/
 def transcriptNext {α : Type} (oa : OracleComp (WorldSpec C) α)
@@ -553,7 +554,7 @@ theorem noProgramming_query (t : (WorldSpec C).Domain) (ht : ¬IsProgram t) :
     NoProgramming (C := C) prims (query t) := by
   intro s hs z hz
   simp at hz
-  rw [loggedImpl_log prims t s z hz, programmed_logQuery]
+  rw [loggedImpl_log prims t s z (MonadAttach.mem_support.mpr hz), programmed_logQuery]
   exact not_or.mpr ⟨hs, ht⟩
 
 /-- Structural induction through an oracle handler that preserves the log invariant. -/
@@ -630,7 +631,8 @@ theorem flagged_tree_prefix (x : SigningSecurityProof.Keys3 C) (top : TopTree)
       SigningSecurityProof.liftFree (referenceTree tweakable (prfValue x.2.1) x.1 top (.bottom b)) >>= k := by
   simp only [SigningCoreProof.flaggedOracles, StateT.run_mk]
   rw [tsigOracles_free]
-  simp [tsigOracles, bottomOnce, hmiss, dealtWith, liftM, SigningSecurityProof.liftFree, map_bind]
+  simp -implicitDefEqProofs [tsigOracles, bottomOnce, hmiss, dealtWith, liftM,
+    SigningSecurityProof.liftFree, map_bind]
 
 /-- A permitted second-round handler builds the selected bottom tree on its first request. -/
 theorem flagged_round2_prefix (x : SigningSecurityProof.Keys3 C) (top : TopTree)
@@ -644,7 +646,8 @@ theorem flagged_round2_prefix (x : SigningSecurityProof.Keys3 C) (top : TopTree)
       SigningSecurityProof.liftFree (referenceTree tweakable (prfValue x.2.1) x.1 top (.bottom (treeOf e))) >>= k := by
   simp only [SigningCoreProof.flaggedOracles, StateT.run_mk]
   rw [tsigOracles_free]
-  simp [tsigOracles, bottomOnce, hmiss, dealtWith, liftM, SigningSecurityProof.liftFree, map_bind, hguard]
+  simp -implicitDefEqProofs [tsigOracles, bottomOnce, hmiss, dealtWith, liftM,
+    SigningSecurityProof.liftFree, map_bind, hguard]
 
 /-- The freshness comparison's honest signature also begins with a bottom call. -/
 theorem honestSignature_prefix (x : SigningSecurityProof.Keys3 C) (top : TopTree)
@@ -940,6 +943,7 @@ theorem recordReads_preserves_unrecorded {α : Type}
   induction oa using OracleComp.inductionOn with
   | pure a =>
       intro record cache h z hz
+      rw [MonadAttach.mem_support] at hz
       change z ∈ ({((a, record), cache)} : Set _) at hz
       rcases hz with rfl
       exact h
@@ -974,6 +978,7 @@ theorem recordReads_resolves {α : Type} (oa : OracleComp (Query C →ₒ HashOu
   induction oa using OracleComp.inductionOn with
   | pure a =>
       intro record cache hle z hz
+      rw [MonadAttach.mem_support] at hz
       change z ∈ ({((a, record), cache)} : Set _) at hz
       rcases hz with rfl
       exact ⟨le_rfl, le_rfl, hle, .pure a⟩
@@ -1016,6 +1021,7 @@ theorem recordReads_bound_zero {α : Type} (oa : OracleComp (Query C →ₒ Hash
   induction oa using OracleComp.inductionOn with
   | pure a =>
       intro record cache z hz
+      rw [MonadAttach.mem_support] at hz
       change z ∈ ({((a, record), cache)} : Set _) at hz
       rcases hz with rfl
       exact fun _ _ => rfl
@@ -1046,6 +1052,7 @@ theorem recordReads_bound_one {α : Type} (oa : OracleComp (Query C →ₒ HashO
   induction oa using OracleComp.inductionOn with
   | pure a =>
       intro record cache hrecord z hz left right lv rv hl hr hleft hright
+      rw [MonadAttach.mem_support] at hz
       change z ∈ ({((a, record), cache)} : Set _) at hz
       rcases hz with rfl
       simp [hrecord left hl] at hleft
@@ -1296,7 +1303,7 @@ theorem tsigOracles_trees_closed {ι : Type} {spec : OracleSpec ι}
     have hc := bottomOnce_trees_other dealt b b' hclosed st (tree, st') ht
     cases tree with
     | none =>
-        simp only at hr
+        simp only [MonadAttach.mem_support] at hr
         subst r
         exact hc
     | some tree =>
@@ -1323,7 +1330,7 @@ theorem tsigOracles_trees_closed {ι : Type} {spec : OracleSpec ι}
       have hc := bottomOnce_trees_other dealt b (treeOf e) hne st (tree, st') ht
       cases tree with
       | none =>
-          simp only at hr
+          simp only [MonadAttach.mem_support] at hr
           subst r
           exact hc
       | some tree =>
@@ -1406,7 +1413,6 @@ theorem bottomResolved_mono (x : SigningSecurityProof.Keys3 C) (top : TopTree)
     (h : BottomResolved x top b cache) : BottomResolved x top b larger :=
   h.imp (fun _ h => h.mono hle)
 
-set_option maxRecDepth 100000 in
 /-- A set opening bit certifies an actual completed bottom call in the cache. -/
 theorem openedOracles_resolves (x : SigningSecurityProof.Keys3 C) (top : TopTree)
     (b : Fin (2 ^ layerHeight)) (t : (LocalSpec C + TsigSpec C).Domain)
@@ -3437,7 +3443,6 @@ theorem finalRun_gate (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
   · simp only [topJobs, List.mem_flatMap, List.mem_finRange, true_and, List.mem_map]
     exact ⟨b, ⟨0, by decide⟩, rfl⟩
 
-set_option maxRecDepth 100000 in
 /-- Per-key reserves use separate nonstructural PRF calls. The invariant keeps
 their conditional bounds tied to caches actually generated by the transcript. -/
 theorem isHitPotential_of_gated_completion {ι : Type} [Fintype ι]
@@ -3835,7 +3840,6 @@ theorem forestException_witness (x : SigningSecurityProof.Keys3 C)
   exact hno (completedHit_forest_of_completedCollision prims x z.2.1.1 r hr
     domain hdomain input output hc hpos hne heq)
 
-set_option maxRecDepth 100000 in
 /-- The actual top tree resolves every PRF and structural read in the
 final cache. Evaluation alone would not justify stability of its targets. -/
 theorem exposedRun_top_resolves (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
@@ -3865,7 +3869,6 @@ theorem exposedRun_top_resolves (A : TsigAdversary C) (x : SigningSecurityProof.
   rw [← hashEmbed_referenceTree] at hp
   exact hv ▸ (run_hashEmbed_resolves prims _ _ first hp).mono hgrow
 
-set_option maxRecDepth 100000 in
 open SigningCacheProof SigningDescentProof in
 /-- Actual freshness checking either uses fewer than t signers or resolves the
 forgery's bottom tree. This follows the executed finish branch. -/
@@ -3911,7 +3914,6 @@ theorem exposedRun_fresh_or_bottom (A : TsigAdversary C) (x : SigningSecurityPro
     exact ⟨top, q.1.2.1, q.1.1, rfl, Or.inr
       ⟨call.1, (run_hashEmbed_resolves prims _ _ call hc).mono hgrow⟩⟩
 
-set_option maxRecDepth 100000 in
 /-- An exceptional win targets a bottom tree whose structural ceremony has
 never completed in the actual cache, including ceremonies returning `none`. -/
 theorem forestException_unopened (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
@@ -3935,7 +3937,6 @@ theorem forestException_unopened (A : TsigAdversary C) (x : SigningSecurityProof
   exact resolved_ceremonies_noHit prims ⟨x, top, state, forgery, z.2.1.1, false⟩
     r.2 hgrow hno htop output hbottom hhit
 
-set_option maxRecDepth 100000 in
 /-- Exceptional wins use a fresh signing key: the alternative freshness
 comparison would itself execute the forbidden bottom tree. -/
 theorem forestException_fresh (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
@@ -3951,7 +3952,6 @@ theorem forestException_fresh (A : TsigAdversary C) (x : SigningSecurityProof.Ke
   · exact ⟨top, state, forgery, hsome, hfresh⟩
   · exact False.elim (forestException_unopened prims A x z hz hex top state forgery hsome output hresolved)
 
-set_option maxRecDepth 100000 in
 /-- The actual key-generation prefix replays to the same top tree after every
 cache extension, including an honest completion of unopened bottom trees. -/
 theorem exposedRun_top_extension (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
@@ -4090,7 +4090,6 @@ def TopAuthenticOrHit (verifiedCache : HashCache C) (z : SigningDescentProof.Fin
       SigningDescentProof.honestValue (SigningDescentProof.topStep z.cache z.keys.1 z.key)
         (z.honestKey prims).topSecret l (encoding l).val)
 
-set_option maxRecDepth 100000 in
 /-- This descent applies to the actual signing run and every extension of its
 final cache; it does not assume an eager bottom-tree key generation. -/
 theorem exposedRun_top_authentic (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
@@ -4128,7 +4127,6 @@ theorem exposedRun_top_authentic (A : TsigAdversary C) (x : SigningSecurityProof
     (XmssSecurity.Concrete.layerPath (XmssSecurity.Bridge.toModelSig forgery.signature).top)
     (htopRoot.trans hroot.symm) ((hc encoding hencoding).2 topCodeword htopCodeword)
 
-set_option maxRecDepth 100000 in
 set_option backward.isDefEq.respectTransparency false in
 /-- An exceptional winning trace has a supported collision-free completion in
 which every top signature value is authentic. The valid codeword requires total
@@ -8854,7 +8852,6 @@ end CanonicalCompletion
 
 namespace GateProbability
 
-set_option maxRecDepth 100000 in
 set_option backward.isDefEq.respectTransparency false in
 /-- The deterministic transport to the posterior event. Verification must
 resolve in the reset observed cache; private restored cells supply only the
@@ -9431,7 +9428,6 @@ def SupportedException (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
     r = (z.1, (ProtectedRouting.split (protectedInput x b) z.2.1.1).1,
       (ProtectedRouting.split (protectedInput x b) z.2.1.1).2, z.2.1.2)
 
-set_option maxRecDepth 100000 in
 set_option backward.isDefEq.respectTransparency false in
 /-- Every supported restored exception yields the reset posterior event.
 This discharges the source-specific premise of `after_private_bound`. -/
@@ -9581,7 +9577,6 @@ def RawException (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
   ∃ log, (r.1, r.2, log) ∈ support (loggedRun prims A x) ∧
     ForestExceptionAt prims x b (r.1, r.2, log)
 
-set_option maxRecDepth 100000 in
 set_option backward.isDefEq.respectTransparency false in
 theorem raw_block_bound (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
     (b : XmssSecurity.TopIndex) (hno : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
@@ -9709,7 +9704,6 @@ theorem openedTail_resolves (A : TsigAdversary C) (x : SigningSecurityProof.Keys
     subst r
     cases hopen
 
-set_option maxRecDepth 100000 in
 /-- Stopping semantic openings preserves the supported exceptional event even
 from an arbitrary cache; its witness is an actual original exceptional trace. -/
 theorem liveTail_exception_probability (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
@@ -9883,7 +9877,6 @@ def KeyGateBound (prims : Primitives) (C : Committee) : Prop :=
         continuationReserve prims (SigningDescentProof.finalRun A x) (ForestExceptionAt prims x b) r.2) ≤
           (2 ^ 128 : ℝ≥0∞)⁻¹
 
-set_option maxRecDepth 100000 in
 /-- The selected key's first PRF gate funds its entire exceptional winning
 continuation. The private block starts after this gate's preceding prefix. -/
 theorem keyGateBound : KeyGateBound prims C := by
@@ -9911,7 +9904,6 @@ theorem keyGateBound : KeyGateBound prims C := by
   · rw [hresidual]
     exact hbound
 
-set_option maxRecDepth 100000 in
 /-- The concrete per-key route has no unproved deterministic accounting stage:
 gate occurrence, disjoint charges, and terminal coverage are all discharged. -/
 theorem hitPotential_of_keyGates (hgate : KeyGateBound prims C) : HitPotential prims C := by

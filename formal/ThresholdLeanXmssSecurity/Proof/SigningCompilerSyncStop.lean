@@ -12,6 +12,7 @@ open SigningCompilerShareTables SigningCompilerRealTables SigningCompilerShareCa
 open SigningCompilerUntil
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
+attribute [local irreducible] MonadAttach.support
 set_option backward.isDefEq.respectTransparency false
 
 abbrev CompState (C : Committee) := FullState C (Bool × Bool)
@@ -168,7 +169,6 @@ theorem freshRest_cap (P : PublicParameter) (seeds : C.Term → HashOutput)
       exact hashTail_cap P seeds _ st value _ r
         (mem_support_of_mem_support_liftComp (PrivateSpec C) _ _ ha)
 
-set_option maxHeartbeats 1600000 in
 theorem ordinaryRaw_cap (P : PublicParameter) (seeds : C.Term → HashOutput)
     (pairs : C.Pair → HashOutput) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
     (t : DeferredQuery C ⊕ HiddenKey) (st : CappedCompilerState C)
@@ -258,7 +258,8 @@ theorem eagerBackend_stop (P : PublicParameter) (seeds : C.Term → HashOutput)
         simp only [eagerBackend, SigningCompilerUntil.fuse, shareBackendTag] at hr; exact hr)
   · exact hord (.inr k) r (by
       simp only [eagerBackend, SigningCompilerUntil.fuse, shareBackendTag] at hr; exact hr)
-  · simp only [eagerBackend, SigningCompilerUntil.fuse, StateT.run, shareBackendTag, simulateQ_pure] at hr
+  · simp only [eagerBackend, SigningCompilerUntil.fuse, StateT.run, shareBackendTag, simulateQ_pure,
+    MonadAttach.mem_support] at hr
     subst r
     exact h
   · by_cases hp : Constrained p
@@ -273,7 +274,8 @@ theorem eagerBackend_stop (P : PublicParameter) (seeds : C.Term → HashOutput)
       apply (stop_iff _).mpr
       exact eager_badStop τ g st.1.1.2.2 (.complete ⟨p, hp⟩ target (capTag st.1))
         st.2 rfl hbad a ha
-    · simp only [eagerBackend, SigningCompilerUntil.fuse, StateT.run, shareBackendTag, hp] at hr
+    · simp only [eagerBackend, SigningCompilerUntil.fuse, StateT.run, shareBackendTag, hp,
+        MonadAttach.mem_support] at hr
       subst r
       exact h
 

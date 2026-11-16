@@ -32,6 +32,7 @@ namespace ThresholdLeanXmssSecurity
 open ThresholdLeanXmss SigningCostProof
 
 namespace SigningGuessProof
+attribute [local irreducible] MonadAttach.support
 
 /-- A potential that starts at zero and pays at most `ε * cost` at each query
 bounds the probability of any final event that makes it at least one. -/
@@ -86,7 +87,6 @@ theorem logged_expectedCost_eq {C : Committee} (prims : Primitives) {α : Type}
       (Inv := fun _ => True) (fun _ _ _ _ _ => trivial) _ _
       (fun t s _ => (logged_step_cost prims cost t s).le) oa s trivial
 
-set_option maxRecDepth 100000 in
 /-- The signing budget bounds the recursive expected cost of the logged run. -/
 theorem loggedRun_expectedCost_le {C : Committee} (prims : Primitives)
     (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) (q : ℕ)
@@ -1155,7 +1155,7 @@ theorem presampled_signing_local (slot : Slot C) (t : (LocalSpec C).Domain) :
     Presampled₁ slot (SeedHitProof.routedLocal prims seeds pairKeys t) := by
   rcases t with n | q | y
   · exact presampled_onCache slot _
-  · change Presampled₁ slot (if h : ∃ s, slotInput seeds pairKeys s = q then _ else _)
+  · rw [SeedHitProof.routedLocal]
     split_ifs
     · exact presampled_onTable slot (presampled_slotOracle slot _)
     · exact presampled_onCache slot _
@@ -1832,7 +1832,6 @@ def ReceiptRuns (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
         receipt.message receipt.candidate))).run sCode) ∧
     rCode.1 = some (receipt.randomness, receipt.encoding) ∧ rCode.2.1 ≤ cache
 
-set_option maxRecDepth 100000 in
 theorem ReceiptRuns.mono (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (top : TopTree) {cache cache' : HashCache C} (hle : cache ≤ cache')
     (receipt : Round2Receipt C) (hr : ReceiptRuns prims x top cache receipt) :
@@ -1890,7 +1889,6 @@ def StoredTreeRuns (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
           top (.bottom b)))).run start) ∧
       result.1 = some (.bottom tree) ∧ result.2.1 ≤ cache
 
-set_option maxRecDepth 100000 in
 theorem StoredTreeRuns.mono (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (top : TopTree) {cache cache' : HashCache C} {st : TsigState C}
     (hle : cache ≤ cache') (hr : StoredTreeRuns prims x top cache st) :
@@ -1899,7 +1897,6 @@ theorem StoredTreeRuns.mono (prims : Primitives) (x : SigningSecurityProof.Keys3
   obtain ⟨start, result, hs, ho, hc⟩ := hr b tree ht
   exact ⟨start, result, hs, ho, hc.trans hle⟩
 
-set_option maxRecDepth 100000 in
 theorem receiptDealt_bottom_runs (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (top : TopTree) (b : Fin (2 ^ LeanXmss.layerHeight)) (s : HashCache C × ℕ)
     (r : Option BottomTree × HashCache C × ℕ)
@@ -1917,7 +1914,6 @@ theorem receiptDealt_bottom_runs (prims : Primitives) (x : SigningSecurityProof.
   | none => simp [hout] at ht
   | some value => cases value <;> simpa [hout] using ht
 
-set_option maxRecDepth 100000 in
 theorem bottomOnce_storedTreeRuns (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (top : TopTree) (b : Fin (2 ^ LeanXmss.layerHeight)) (st : TsigState C)
     (s : HashCache C × ℕ) (hinv : StoredTreeRuns prims x top s.1 st)
@@ -2013,7 +2009,6 @@ theorem round2WithReceipt_subruns (prims : Primitives)
           subst rTree
           exact Or.inl ⟨built, hb, ht, hTreeLe⟩
 
-set_option maxRecDepth 100000 in
 theorem round2WithReceipt_runs (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (top : TopTree) (st : TsigState C) (i : C.Party) (J : C.Quorum)
     (e : LeanXmss.KeyIndex) (message : HashSig.Message) (parts : C.Party → HashSig.Digest)
@@ -2171,6 +2166,7 @@ theorem signingWithReceipt_storedTreeRuns (prims : Primitives)
       | some tree =>
         simp only [ht, StateT.run_bind, run_liftM_comp, bind_map_left, StateT.run_pure] at ho
         obtain ⟨answer, _, heq⟩ := SigningCacheProof.run_bind_support prims _ _ _ out ho
+        rw [MonadAttach.mem_support] at heq
         change out = ((some (tree, answer.1), mid.1.2), answer.2) at heq
         subst out
         exact hi
@@ -2356,8 +2352,6 @@ theorem receiptDealt_bottom_replay (prims : Primitives) (h : Query C → HashSig
         x.1 (dealtKeys x.1 x.2.1 x.2.2) top (prfValue x.2.1) b)
     _ = _ := D_map h receiptBottomResult _
 
-set_option maxRecDepth 100000 in
-set_option maxHeartbeats 2000000 in
 /-- Actual accepted sessions select exactly the input used by the cache
 replay, once their candidate is known to be the canonical randomizer. -/
 theorem ReceiptRuns.selected (prims : Primitives) (z : SigningDescentProof.FinalState C)
@@ -2386,7 +2380,6 @@ theorem ReceiptRuns.selected (prims : Primitives) (z : SigningDescentProof.Final
 
 end ReceiptCache
 
-set_option maxRecDepth 100000 in
 /-- Supported tree generation followed by an accepted noncanonical opening
 witnesses the final opening event. Both subruns may be followed by arbitrary
 cache-extending work; no freshness of the commitment call is assumed. -/
@@ -2432,7 +2425,6 @@ theorem openingMatch_of_runs {C : Committee} (prims : Primitives)
     candidate, canonicalOutput, candidateOutput, hTreeLe hcanonical,
     hCodeLe hcandidate, hne, heq.trans hcommit⟩
 
-set_option maxRecDepth 100000 in
 /-- At the forged key, the absence of a different opening forces every
 executed receipt to use the canonical randomizer and its actual selected trial. -/
 theorem ReceiptRuns.canonical {C : Committee} (prims : Primitives)
@@ -2520,7 +2512,6 @@ theorem topEncodingInput_cached_of_decode_some
       hc, XmssSecurity.TargetSum.decodeDigest_zero_eq_none] at hdecode
     contradiction
 
-set_option maxRecDepth 100000 in
 /-- On a supported winning run, both sides of a top-partner equality are
 cached. This rules out the apparent free match from two default-zero reads. -/
 theorem topPartner_inputs_cached {C : Committee} (prims : Primitives)
@@ -2693,7 +2684,6 @@ theorem structuralHitPotential_step (prims : Primitives) (A : TsigAdversary C)
     exact add_right_comm (SigningHitProof.completionPotential
       (SigningHitProof.forestRelevant x.1) (SigningHitProof.forestCompletion x) s.1.1) _ _
 
-set_option maxRecDepth 100000 in
 theorem structuralHitPotential_terminal (prims : Primitives) (A : TsigAdversary C)
     (x : SigningSecurityProof.Keys3 C) (T : C.Term)
     (z : ((Bool × Bool) × Option (TopTree × TsigState C × LeanXmss.Forgery)) × LoggedState C)
@@ -2744,7 +2734,6 @@ theorem guarded_domain_step (prims : Primitives) (Inv : LoggedState C → Prop)
     simp only [guarded]
     split_ifs <;> simp
 
-set_option maxRecDepth 100000 in
 /-- A refinement of the closed hit lane under its original hypotheses. The source cost is
 zero on commitment calls and on encoding calls, on both oracle copies. -/
 theorem hit_bound_structural_cost (prims : Primitives) (A : TsigAdversary C)
@@ -2993,6 +2982,7 @@ theorem recordReads_supported {α : Type}
   induction oa using OracleComp.inductionOn with
   | pure a =>
     intro record cache hle z hz
+    rw [MonadAttach.mem_support] at hz
     change z ∈ ({((a, record), cache)} : Set _) at hz
     rcases hz with rfl
     simp
@@ -3437,7 +3427,6 @@ def ResolvedTopPartner (x : SigningSecurityProof.Keys3 C) (key : XmssSecurity.To
     cache (.hash (XmssSecurity.Concrete.CacheView.topEncodingInput x.1 key payload)) = some output ∧
     (root, randomness) ≠ payload ∧ HashSig.truncateHash output = HashSig.truncateHash honestOutput
 
-set_option maxRecDepth 100000 in
 /-- Every supported completion detects a resolved top partner. The proof uses
 only its read record; hostile prior cache entries are not silently excluded. -/
 theorem resolvedTopPartner_completed (x : SigningSecurityProof.Keys3 C) (key : XmssSecurity.TopIndex)
@@ -3561,7 +3550,6 @@ theorem topPartnerPotential_terminal (x : SigningSecurityProof.Keys3 C) (cache :
     SigningHitProof.completionPotential (topDigestInput x.1 b) (canonicalTopCompletion x b) cache)
       (fun _ _ => zero_le) (Finset.mem_univ key)
 
-set_option maxRecDepth 100000 in
 open SigningHitLaneProof in
 /-- A cache potential for a fixed completion can charge its own raw domain in
 the actual signing source. Programming is guarded until the source's proved
@@ -3737,7 +3725,6 @@ theorem resolved_bottom_topSignedInput (prims : Primitives) (z : SigningDescentP
       rw [hb]
       rfl
 
-set_option maxRecDepth 100000 in
 /-- A top partner of a successfully returned, cached bottom tree is one
 of the canonical partners counted by the all-key completion potential. -/
 theorem topPartner_resolved (prims : Primitives) (A : TsigAdversary C)

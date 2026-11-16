@@ -23,6 +23,7 @@ open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
 variable {C : Committee}
 
 attribute [local instance] Classical.propDecidable
+attribute [local irreducible] MonadAttach.support
 
 /-- The actual counted calls of the source alphabet; reveals are uncounted. -/
 def sourceCounted : DeferredQuery C ⊕ HiddenKey → Prop
@@ -705,7 +706,7 @@ theorem completePrf_correct (P : PublicParameter) (seeds : C.Term → HashOutput
       (r.1.1 = true ↔ termSum (cachedTerm seeds r.2.1.1.data p) = target) ∧
       (firstUnmaterialized seeds backend.1.1.data p ≠ none → r.1.1 = true) := by
   simp only [completePrf, liftM_bind, runSource_bind, runSource_snapshot,
-    mem_support_bind_iff] at hr
+    mem_support_bind_iff, mem_support_pure_iff] at hr
   obtain ⟨_, rfl, hr⟩ := hr
   cases hfirst : firstUnmaterialized seeds backend.1.1.data p with
   | none =>
@@ -1479,7 +1480,7 @@ theorem rawAsWorld_routed {α : Type} (prims : Primitives)
         OracleQuery.cont_query, id_map, ih]
       cases t <;> simp only [rawToLocal, HasQuery.instOfMonadLift_query,
         simulateQ_spec_query]
-      all_goals rfl
+      all_goals simp only [routedRaw, SeedHitProof.routedImpl, QueryImpl.add_apply_inl]
 
 /-- Fixed private share slots can be resolved syntactically. The source's
 entire result, including its online visible cache, is retained. -/
@@ -2745,7 +2746,7 @@ theorem completePrf_done_or_missing (P : PublicParameter) (seeds : C.Term → Ha
   rcases h with hd | hm
   · have hf := (firstUnmaterialized_none_iff seeds backend.1.1.data point).mpr hd.1
     simp only [completePrf, liftM_bind, runSource_bind, runSource_snapshot,
-      mem_support_bind_iff] at hr
+      mem_support_bind_iff, mem_support_pure_iff] at hr
     obtain ⟨_, rfl, hr⟩ := hr
     simp only [hf, liftM_pure, runSource_pure, mem_support_pure_iff] at hr
     subst r
@@ -2984,7 +2985,7 @@ theorem completePrf_frame (P : PublicParameter) (seeds : C.Term → HashOutput)
   cases hf : firstUnmaterialized seeds backend.1.1.data point with
   | none =>
       simp only [completePrf, liftM_bind, runSource_bind, runSource_snapshot,
-        mem_support_bind_iff] at hr
+        mem_support_bind_iff, mem_support_pure_iff] at hr
       obtain ⟨_, rfl, hr⟩ := hr
       simp only [hf, liftM_pure, runSource_pure, mem_support_pure_iff] at hr
       subst r
@@ -3108,7 +3109,8 @@ theorem sourcePlant_terminal_frame (P : PublicParameter) (seeds : C.Term → Has
       r.2 = replaceCompilerCache backend r.2.1.1.data.cache ∧
       ∀ seed point, r.2.1.1.data.cache (.prf seed point) =
         backend.1.1.data.cache (.prf seed point) := by
-  simp only [sourcePlant, runSource_bind, runSource_inspect, mem_support_bind_iff] at hr
+  simp only [sourcePlant, runSource_bind, runSource_inspect, mem_support_bind_iff,
+    mem_support_pure_iff] at hr
   obtain ⟨_, rfl, hr⟩ := hr
   cases ha : backend.1.1.data.pending p with
   | none =>
@@ -3415,7 +3417,8 @@ theorem sourcePlant_slack (P : PublicParameter) (seeds : C.Term → HashOutput)
     (r : (Unit × SourceState C) × CappedCompilerState C)
     (hr : r ∈ support (runSource P seeds q s (sourcePlant P p) source backend)) :
     ReleaseSlack seeds s r.1.2 r.2.1.1.data := by
-  simp only [sourcePlant, runSource_bind, runSource_inspect, mem_support_bind_iff] at hr
+  simp only [sourcePlant, runSource_bind, runSource_inspect, mem_support_bind_iff,
+    mem_support_pure_iff] at hr
   obtain ⟨_, rfl, hr⟩ := hr
   cases hp : backend.1.1.data.pending p with
   | none =>
@@ -3752,7 +3755,8 @@ theorem sourcePlant_revealRelation (P : PublicParameter) (seeds : C.Term → Has
     (r : (Unit × SourceState C) × CappedCompilerState C)
     (hr : r ∈ support (runSource P seeds q s (sourcePlant P p) source backend)) :
     RevealRelation s r.1.2 r.2 := by
-  simp only [sourcePlant, runSource_bind, runSource_inspect, mem_support_bind_iff] at hr
+  simp only [sourcePlant, runSource_bind, runSource_inspect, mem_support_bind_iff,
+    mem_support_pure_iff] at hr
   obtain ⟨_, rfl, hr⟩ := hr
   cases hp : backend.1.1.data.pending p with
   | none =>
@@ -4006,7 +4010,7 @@ theorem sourcePending_noBottomOpening (P : PublicParameter) (seeds : C.Term → 
         pure_bind, runSource_pure, mem_support_pure_iff] at ha
       subst a
       exact hn
-    · simp only [hprior] at ha
+    · simp only [hprior, Bool.false_eq_true, ↓reduceIte, runSource_pure, mem_support_pure_iff] at ha
       subst a
       exact hn
   simp only [sourcePending, runSource_bind, runSource_inspect, runSource_get, pure_bind] at hr
@@ -4192,7 +4196,6 @@ theorem storedTopShape_initial : StoredTopShape (sourceInit (C := C)) := by
   intro b tree h
   cases h
 
-set_option maxRecDepth 100000 in
 set_option backward.isDefEq.respectTransparency false in
 /-- D17's actual stored-or-fresh branch returns only values of the established
 shape, including successful memoized results and repeated tree requests. -/
@@ -4514,7 +4517,6 @@ theorem StoredTopShape.of_control {source source' : SourceState C}
   rw [htrees] at ht
   exact ht
 
-set_option maxRecDepth 100000 in
 set_option backward.isDefEq.respectTransparency false in
 /-- D17 preserves the shape of every stored successful signature when it
 inserts a new build or replays a stored success or failure. -/
