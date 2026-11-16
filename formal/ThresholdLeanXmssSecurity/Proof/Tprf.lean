@@ -413,7 +413,7 @@ theorem gameOracles_step (b : Bool) (seeds : C.Term → HashOutput) (keys : C.Pa
       change (simulateQ (worldAnswer prims) ((tprfOracles keys seeds b (.challenge x)).run s)).run c = _
       rw [worldAnswer]
       cases b
-      · simp only [tprfOracles, gameImplWith, StateT.run_bind, StateT.run_get, pure_bind, StateT.run_mk,
+      · simp -implicitDefEqProofs only [tprfOracles, gameImplWith, StateT.run_bind, StateT.run_get, pure_bind, StateT.run_mk,
           if_false, Bool.false_eq_true]
         split_ifs
         · simp
@@ -421,7 +421,7 @@ theorem gameOracles_step (b : Bool) (seeds : C.Term → HashOutput) (keys : C.Pa
             simulateQ_free, Functor.map_map, StateT.run_map, bind_pure_comp,
             map_pure]
           rfl
-      · simp only [tprfOracles, gameImplWith, StateT.run_bind, StateT.run_get, pure_bind, StateT.run_mk, if_true]
+      · simp -implicitDefEqProofs only [tprfOracles, gameImplWith, StateT.run_bind, StateT.run_get, pure_bind, StateT.run_mk, if_true]
         split_ifs
         · simp
         · cases s.random x
@@ -1092,7 +1092,7 @@ theorem presampled_routedAnswer (x : Slot C) (t : (LocalSpec C).Domain) :
     Presampled₁ x (routedAnswer prims seeds pairKeys t) := by
   rcases t with n | u | y
   · exact presampled_onCache x _
-  · show Presampled₁ x (if h : ∃ s, slotInput seeds pairKeys s = u then _ else _)
+  · rw [routedAnswer]
     split_ifs
     · exact presampled_onTable x (presampled_slotOracle x _)
     · exact presampled_onCache x _
@@ -1111,7 +1111,7 @@ theorem presampled_symAdversary (x : Slot C) (D : Finset C.Party) (t : (LocalSpe
   rcases t with n | u | y
   · exact presampled_onCache x _
   · classical
-    show Presampled₁ x (if h : ∃ s, Revealed D (slotKey s) ∧ slotInput seeds pairKeys s = u then _ else _)
+    rw [symAdversary]
     split_ifs
     · exact presampled_onTable x (presampled_slotOracle x _)
     · exact presampled_onCache x _
