@@ -339,20 +339,37 @@ variable {C : Committee} {E : Type} (prims : Primitives)
 def keysOf (keys : HashOutput × (C.Term → HashOutput) × (C.Party → HashOutput)) : Keys C :=
   ⟨truncateHash keys.1, keys.2.1, keys.2.2⟩
 
-/-- The seed generation of operator `i` after the commit round. -/
-def seedGenRound1 (i : C.Party) (own : Parts C) : Mail C E → PartyM C E RealSpec (Keys C) := fun committed =>
-  exchange (revealOutbox .seedGen i own) >>= fun revealed =>
-    setupRest .seedGen i own committed revealed >>= fun keys => pure (keysOf keys)
+/-- A setup of `phase` of operator `i` from its parts, with the keys of the carrier. -/
+def setupWith (phase : Phase) (i : C.Party) (own : Parts C) : PartyM C E RealSpec (Keys C) :=
+  commitRevealEcho phase i own >>= fun keys => pure (keysOf keys)
 
-/-- The step of operator `i` after the start of its seed generation. -/
-def seedGenStart (i : C.Party) (own : Parts C) (commitments : List HashOutput) : Step C E RealSpec (Keys C) :=
-  .wait (commitOutbox i commitments) (exchangeResume (seedGenRound1 i own))
+/-- A setup of `phase` of operator `i`. -/
+def setupKeys (phase : Phase) (i : C.Party) : PartyM C E RealSpec (Keys C) :=
+  localStep (liftComp sampleParts _) >>= fun own => setupWith phase i own
+
+/-- A setup of `phase` after the commit round. -/
+def setupRound1 (phase : Phase) (i : C.Party) (own : Parts C) : Mail C E → PartyM C E RealSpec (Keys C) :=
+  fun committed => exchange (revealOutbox phase i own) >>= fun revealed =>
+    setupRest phase i own committed revealed >>= fun keys => pure (keysOf keys)
+
+/-- The step of operator `i` after the start of its setup. -/
+def setupStart (phase : Phase) (i : C.Party) (own : Parts C) (commitments : List HashOutput) :
+    Step C E RealSpec (Keys C) :=
+  .wait (commitOutbox i commitments) (exchangeResume (setupRound1 phase i own))
+
+theorem advance_setupWith (phase : Phase) (i : C.Party) (parts : Parts C) :
+    advance (setupWith phase i parts : PartyM C E RealSpec (Keys C)).run =
+      liftComp (commitQueries phase i parts) (LocalSpec C) >>= fun commitments =>
+        pure (setupStart phase i parts commitments) := by
+  unfold setupWith
+  rw [advance_setup_start]
+  rfl
 
 theorem advance_seedGen (i : C.Party) :
     advance (seedGen i : PartyM C E RealSpec (Keys C)).run =
       liftComp sampleParts (LocalSpec C) >>= fun own =>
         liftComp (commitQueries .seedGen i own) (LocalSpec C) >>= fun commitments =>
-          pure (seedGenStart i own commitments) := by
+          pure (setupStart .seedGen i own commitments) := by
   have : (seedGen i : PartyM C E RealSpec (Keys C)) =
       localStep (liftComp sampleParts _) >>= fun own =>
         commitRevealEcho .seedGen i own >>= fun keys => pure (keysOf keys) := rfl
@@ -364,7 +381,7 @@ theorem advance_seedGen (i : C.Party) :
 /-- The seed generation after the parts, from the commitments on. -/
 def seedGenRest (parts : C.Party → Parts C) : OracleComp (LocalSpec C) (C.Party → Option (Keys C)) := do
   let commitments ← OverPermutation.sequenceFin fun j => liftComp (commitQueries .seedGen j (parts j)) (LocalSpec C)
-  honestRounds noFunctionality (fun l => l.elim) setupRounds fun j => seedGenStart (E := E) j (parts j) (commitments j)
+  honestRounds noFunctionality (fun l => l.elim) setupRounds fun j => setupStart (E := E) .seedGen j (parts j) (commitments j)
 
 /-- The honest seed generation samples all parts first. -/
 theorem sameRun_seedGen :
@@ -373,7 +390,7 @@ theorem sameRun_seedGen :
       (OverPermutation.sequenceFin (fun _ => liftComp sampleParts (LocalSpec C)) >>= seedGenRest (E := E)) := by
   unfold honestStart seedGenRest
   simp only [advance_seedGen]
-  refine (sameRun_sequenceFin_dep prims _ _ (fun j own commitments => seedGenStart (E := E) j own commitments)).bind
+  refine (sameRun_sequenceFin_dep prims _ _ (fun j own commitments => setupStart (E := E) .seedGen j own commitments)).bind
     (fun steps => SameRun.refl prims _) |>.trans ?_
   simp only [bind_assoc, pure_bind]
   exact SameRun.refl prims _
@@ -401,7 +418,7 @@ theorem simulateQ_fixedLocal_seedGenRest (h : Query C → HashOutput) (parts : C
     simulateQ (fixedLocal prims h) (seedGenRest (E := E) parts) = pure fun i => some (honestKeys h parts i) := by
   set keys := fun x => D prims h (deriveKeys .seedGen x (honestView (E := E) .seedGen parts x)) with hk
   set shared := fun x => D prims h (sharedQueries .seedGen x (keys x)) with hs
-  have h1 : ∀ j, advance (exchangeResume (seedGenRound1 (E := E) j (parts j)) fun k => commitOutbox k (D prims h (commitQueries .seedGen k (parts k))) j) =
+  have h1 : ∀ j, advance (exchangeResume (setupRound1 (E := E) .seedGen j (parts j)) fun k => commitOutbox k (D prims h (commitQueries .seedGen k (parts k))) j) =
       pure (.wait (revealOutbox .seedGen j (parts j)) (exchangeResume fun revealed =>
         setupRest .seedGen j (parts j) (fun k => commitOutbox k (D prims h (commitQueries .seedGen k (parts k))) j) revealed >>=
           fun keys => pure (keysOf keys))) := by
@@ -435,7 +452,7 @@ theorem simulateQ_fixedLocal_seedGenRest (h : Query C → HashOutput) (parts : C
   simp only [simulateQ_fixedLocal_liftComp]
   rw [sequenceFin_pure, pure_bind]
   show simulateQ _ (honestRounds _ _ (2 + 1) _) = _
-  unfold seedGenStart
+  unfold setupStart
   rw [honestRounds_wait]
   simp only [h1]
   rw [sequenceFin_pure, pure_bind, honestRounds_wait, simulateQ_bind, simulateQ_sequenceFin]

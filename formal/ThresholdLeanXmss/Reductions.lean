@@ -3,7 +3,7 @@ import ThresholdLeanXmss.Ideal
 /-!
 # The simulators and the reductions
 
-The explicit simulators of the seed generation and of a ceremony, and the reduction to the AES term.
+The explicit simulators of the setups and of a ceremony, and the reduction to the AES term.
 -/
 
 set_option autoImplicit false
@@ -23,7 +23,9 @@ variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algeb
 /-- A log of the `H` calls of the adversary. -/
 abbrev CallLog (C : Committee) := List (Query C × HashOutput)
 
-/-- A step of the adversary on the counted copy, with its `H` calls (CDG+18, observation). -/
+/-- A step of the adversary on the counted copy, with the log of its `H` calls. The simulator reads
+each call of `A`, as with the local random oracle of CDG+18, Section 3 and Fig. 2(a). It is not the
+`Observe` query of CDG+18, Fig. 10, which gives only the illegitimate calls to a global oracle. -/
 def observe {α : Type} (oa : OracleComp (LocalSpec C) α) : OracleComp (WorldSpec C) (α × CallLog C) :=
   let impl : QueryImpl (LocalSpec C) (WriterT (CallLog C) (OracleComp (WorldSpec C))) := fun t =>
     match t with
@@ -42,12 +44,14 @@ def observedRoles : Roles C (WriterT (CallLog C) (OracleComp (WorldSpec C))) :=
 def program (q : Query C) (value : HashOutput) : OracleComp (WorldSpec C) Bool :=
   counted (OracleComp.lift (OracleSpec.query (spec := SimulatorSpec C) (.inr (q, value))))
 
-/-- The reveal of corrupt operator `j` to `i`, from an observed `H` call that opens the commitment
-that `j` sent to `i` (CDG+18, extraction). -/
-def extractReveal (calls : CallLog C) (sent : C.Party → C.Party → Option (Msg E)) (j i : C.Party) :
+/-- The reveal of corrupt operator `j` to `i` in a setup of `phase`, from an observed `H` call that
+opens the commitment that `j` sent to `i`. The extraction follows the proof of CDG+18, Theorem 6
+(Section 5.3). -/
+def extractReveal (phase : Phase) (calls : CallLog C) (sent : C.Party → C.Party → Option (Msg E)) (j i : C.Party) :
     List HashOutput :=
   (calls.findSome? fun (q, out) => match q with
-    | .commit .seedGen j' i' reveal => if j' = j ∧ i' = i ∧ [out] = Msg.hashesOf (sent j i) then some reveal else none
+    | .commit phase' j' i' reveal =>
+      if phase' = phase ∧ j' = j ∧ i' = i ∧ [out] = Msg.hashesOf (sent j i) then some reveal else none
     | _ => none).getD []
 
 /-- A party, which exists because `n ≥ 1`. -/
@@ -80,43 +84,63 @@ structure SimulatorState (C : Committee) (I σ : Type) where
   log : CallLog C
   corrupt : C.Party → Option I
 
-/-- The simulator of the seed generation (CDG+18). It runs `A` with emulated honest operators on the free copy
+/-- The simulator of a setup of `phase`. It runs `A` with emulated honest operators on the free copy
 and observes every `H` call of `A`. After the commit round, it extracts the corrupt reveals from all
-observed calls. Then it programs `H` so that `P`, the corrupt seeds and the corrupt pair keys are
-those of `F_seedGen`. The receivers are the emulated honest operators that do not abort (GL05). -/
-def seedGenSimulator (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) :
-    Simulator (C := C) (WorldSpec C) Unit (PublicParameter × (C.Party → Option (Keys C))) (Finset C.Party) A.State where
+observed calls, as in the proof of CDG+18, Theorem 6 (Section 5.3). Then it programs `H` so that the
+term keys and the pair keys of the corrupt operators are those of the dealer. This programming is an
+adaptation of this project. The seed generation also programs `P`. The receivers are the emulated
+honest operators that do not abort (GL05). `setup` is the setup of one emulated operator, and `dealt`
+reads the parameter and the corrupt keys from the leak of the dealer. In the seed generation the
+parameter is `P`. In the PRSS setup the leak has no `P`, and `dealt` gives the parameter `0`. -/
+def setupSimulator (phase : Phase) {O L : Type} (setup : C.Party → Parts C → PartyM C E RealSpec O)
+    (dealt : L → PublicParameter × (C.Party → Option (PrssKeys C)))
+    (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) :
+    Simulator (C := C) (WorldSpec C) Unit L (Finset C.Party) A.State where
   State := SimulatorState C Unit A.State
   start corrupt z := do
     let (state, log) ← observe (A.start corrupt z)
     pure ⟨state, log, corrupt⟩
-  answer st := fun (parameter, corrupt) => do
+  answer st := fun l => do
+    let (parameter, corrupt) := dealt l
     let parts ← free (liftComp (OverPermutation.sequenceFin fun (_ : C.Party) => (sampleParts : ProbComp (Parts C))) _)
-    let steps ← startSteps worldRoles D fun i => (seedGenWith i (parts i) : PartyM C E RealSpec (Keys C))
+    let steps ← startSteps worldRoles D fun i => setup i (parts i)
     let ((state, steps, sent), calls) ← (stepRound observedRoles D A noFunctionality st.adversary steps).run
     let log := st.log ++ calls
     let firstHonest := fun (S : Finset C.Party) => (C.parties.find? fun i => i ∈ S ∧ i ∉ D.1).getD (firstParty C)
     let view := fun (i j : C.Party) =>
-      if j ∈ D.1 then readReveal .seedGen (extractReveal log sent j i) i j else parts j
-    let h₀ := firstHonest Finset.univ
-    let high ← free (liftComp ($ᵗ HashOutput) _)
-    let _ ← program (.derive .seedGen .parameter (C.parties.map fun j => (view h₀ j).parameter))
-      (high >>> digestBits <<< digestBits ||| parameter.setWidth 256)
+      if j ∈ D.1 then readReveal phase (extractReveal phase log sent j i) i j else parts j
+    let _ ← (if phase = .seedGen then do
+        let high ← free (liftComp ($ᵗ HashOutput) _)
+        program (.derive phase .parameter (C.parties.map fun j => (view (firstHonest Finset.univ) j).parameter))
+          (high >>> digestBits <<< digestBits ||| parameter.setWidth 256)
+      else pure true)
     let _ ← C.terms.mapM fun T => match (C.parties.find? fun j => j ∈ D.1 ∧ j ∈ C.holders T) with
       | some j =>
         let i := firstHonest (C.holders T)
-        program (.derive .seedGen .term ((C.parties.filter (· ∈ C.holders T)).map fun k => (view i k).term T))
-          (((corrupt j).map (·.seed T)).getD 0)
+        program (.derive phase .term ((C.parties.filter (· ∈ C.holders T)).map fun k => (view i k).term T))
+          (((corrupt j).map (·.term T)).getD 0)
       | none => pure true
     let _ ← C.parties.mapM fun j => C.parties.mapM fun i =>
       if h : j ∈ D.1 ∧ i ∉ D.1 then
         let p := C.pairOf i j (fun e => h.2 (e ▸ h.1))
-        program (.derive .seedGen .pair [(view i p.1.1).pair p.1.2, (view i p.1.2).pair p.1.1])
-          (((corrupt j).map (·.pairKey i)).getD 0)
+        program (.derive phase .pair [(view i p.1.1).pair p.1.2, (view i p.1.2).pair p.1.1])
+          (((corrupt j).map (·.pair i)).getD 0)
       else pure true
     let ((state, keys), rest) ← (executeRounds observedRoles D A noFunctionality (setupRounds - 1) state steps).run
     pure (⟨state, log ++ rest, st.corrupt⟩, Finset.univ.filter fun i => (keys i).isSome)
   output st := pure st.adversary
+
+/-- The simulator of the seed generation. It programs `P`, the corrupt seeds and the corrupt pair
+keys of `F_seedGen`. -/
+def seedGenSimulator (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) :
+    Simulator (C := C) (WorldSpec C) Unit (PublicParameter × (C.Party → Option (Keys C))) (Finset C.Party) A.State :=
+  setupSimulator .seedGen seedGenWith (fun l => (l.1, fun j => (l.2 j).map fun k => ⟨k.seed, k.pairKey⟩)) D A
+
+/-- The simulator of the PRSS setup. It programs the corrupt term keys and pair keys of
+`F_prssKeys`, and no `P`. -/
+def prssSetupSimulator (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) :
+    Simulator (C := C) (WorldSpec C) Unit (C.Party → Option (PrssKeys C)) (Finset C.Party) A.State :=
+  setupSimulator .prss prssSetupWith (fun corrupt => (0, corrupt)) D A
 
 variable (K : Constants C E) (circuits : Circuits) (settings : Settings)
 

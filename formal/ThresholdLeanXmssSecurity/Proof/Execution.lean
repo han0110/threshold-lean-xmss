@@ -249,6 +249,144 @@ theorem simulateQ_world_free {α : Type} (oa : OracleComp (LocalSpec C) α) (s :
 
 end World
 
+/-! ## The map of the outputs of an execution -/
+
+section Map
+
+variable {α β : Type}
+
+/-- A step with the output under `f`. -/
+def Step.map (f : α → β) : Step C E G α → Step C E G β
+  | .done out => .done (out.map f)
+  | .wait outbox resume => .wait outbox fun inbox => Option.map f <$> resume inbox
+  | .call input resume => .call input fun r => Option.map f <$> resume r
+
+theorem advance_map (f : α → β) (oa : OracleComp (PartySpec C E G) (Option α)) :
+    advance (Option.map f <$> oa) = Step.map f <$> advance oa := by
+  induction oa using OracleComp.inductionOn with
+  | pure x => rfl
+  | query_bind t k ih =>
+    rcases t with (t | outbox) | input
+    · have h : ∀ {γ : Type} (g : (LocalSpec C).Range t → OracleComp (PartySpec C E G) (Option γ)),
+          advance (liftM (OracleSpec.query (spec := PartySpec C E G) (Sum.inl (Sum.inl t))) >>= g) =
+            OracleComp.lift (OracleSpec.query (spec := LocalSpec C) t) >>= fun r => advance (g r) :=
+        fun g => rfl
+      rw [map_bind, h, h, map_bind]
+      simp only [ih]
+    · rw [map_bind]
+      rfl
+    · rw [map_bind]
+      rfl
+
+theorem Step.outbox_map (f : α → β) (s : Step C E G α) : (Step.map f s).outbox = s.outbox := by
+  cases s <;> rfl
+
+theorem Step.delivered_map (f : α → β) (s : Step C E G α) : (Step.map f s).delivered = s.delivered := by
+  rcases s with (_ | _) | _ | _ <;> rfl
+
+theorem Step.callInput_map (f : α → β) (s : Step C E G α) : (Step.map f s).callInput = s.callInput := by
+  cases s <;> rfl
+
+theorem Step.isDone_map (f : α → β) (s : Step C E G α) : (Step.map f s).isDone = s.isDone := by
+  cases s <;> rfl
+
+theorem Step.output_map (f : α → β) (s : Step C E G α) : (Step.map f s).output = s.output.map f := by
+  cases s <;> rfl
+
+variable {m : Type → Type} [Monad m] [LawfulMonad m] {I O L R Ia : Type}
+
+theorem startSteps_map (Ro : Roles C m) (hRo : ∀ {γ δ : Type} (g : γ → δ) (oa : OracleComp (LocalSpec C) γ),
+      Ro.honest (g <$> oa) = g <$> Ro.honest oa)
+    (D : C.Coalition) (f : α → β) (program : C.Party → PartyM C E (CallSpec I O) α) :
+    startSteps Ro D (fun i => f <$> program i) = (fun steps i => Step.map f (steps i)) <$> startSteps Ro D program := by
+  unfold startSteps
+  have h : ∀ i : C.Party, (if i ∈ D.1 then pure (Step.done none) else Ro.honest (advance (f <$> program i).run)) =
+      ((if i ∈ D.1 then pure (Step.done none) else Ro.honest (advance (program i).run)) >>=
+        fun s => pure (Step.map f s)) := by
+    intro i
+    split_ifs
+    · simp [Step.map]
+    · rw [OptionT.run_map, advance_map, hRo, map_eq_bind_pure_comp]
+      rfl
+  simp only [h]
+  rw [sequenceFin_bind_pure, map_eq_bind_pure_comp]
+  rfl
+
+theorem sequenceFin_map_bind {γ δ ε : Type} {n : ℕ} (X : Fin n → m γ) (g : γ → δ) (k : (Fin n → δ) → m ε) :
+    (OverPermutation.sequenceFin X >>= fun rs => k fun i => g (rs i)) =
+      OverPermutation.sequenceFin (fun j => g <$> X j) >>= k := by
+  have h' : (fun j => g <$> X j) = fun j => X j >>= fun r => pure (g r) := by
+    funext j
+    rw [map_eq_bind_pure_comp]
+    rfl
+  rw [h', sequenceFin_bind_pure, bind_assoc]
+  simp only [pure_bind]
+
+theorem stepRound_map (Ro : Roles C m) (hRo : ∀ {γ δ : Type} (g : γ → δ) (oa : OracleComp (LocalSpec C) γ),
+      Ro.honest (g <$> oa) = g <$> Ro.honest oa)
+    (D : C.Coalition) (A : Adversary C E Ia L R) (F : Functionality C I O L R) (f : α → β) (state : A.State)
+    (steps : C.Party → Step C E (CallSpec I O) α) :
+    stepRound Ro D A F state (fun i => Step.map f (steps i)) =
+      (fun r => (r.1, (fun i => Step.map f (r.2.1 i)), r.2.2)) <$> stepRound Ro D A F state steps := by
+  unfold stepRound
+  simp only [Step.callInput_map, Step.isDone_map, Step.outbox_map, Step.delivered_map]
+  split_ifs
+  · simp only [map_bind, map_pure]
+    refine bind_congr fun r => ?_
+    rw [sequenceFin_map_bind (g := Step.map f) (k := fun steps' => pure (r.1, steps', fun _ _ => none))]
+    congr 2
+    funext j
+    cases hs : steps j with
+    | done out => simp [Step.map]
+    | wait outbox resume => simp [Step.map]
+    | call input resume =>
+      simp only [Step.map]
+      split_ifs
+      · simp [Step.map]
+      · rw [advance_map, hRo]
+  · simp only [map_bind, map_pure]
+    refine bind_congr fun r => ?_
+    rw [sequenceFin_map_bind (g := Step.map f) (k := fun steps' => pure (r.1, steps', r.2))]
+    congr 2
+    funext j
+    cases hs : steps j with
+    | done out => simp [Step.map]
+    | wait outbox resume =>
+      simp only [Step.map]
+      split_ifs
+      · simp [Step.map]
+      · rw [advance_map, hRo]
+    | call input resume => simp [Step.map]
+
+theorem executeRounds_map (Ro : Roles C m) (hRo : ∀ {γ δ : Type} (g : γ → δ) (oa : OracleComp (LocalSpec C) γ),
+      Ro.honest (g <$> oa) = g <$> Ro.honest oa)
+    (D : C.Coalition) (A : Adversary C E Ia L R) (F : Functionality C I O L R) (f : α → β) :
+    ∀ (fuel : ℕ) (state : A.State) (steps : C.Party → Step C E (CallSpec I O) α),
+    executeRounds Ro D A F fuel state (fun i => Step.map f (steps i)) =
+      (fun r => (r.1, fun i => (r.2 i).map f)) <$> executeRounds Ro D A F fuel state steps
+  | 0, state, steps => by simp [executeRounds, Step.output_map]
+  | fuel + 1, state, steps => by
+    simp only [executeRounds, Step.isDone_map]
+    split_ifs
+    · simp [Step.output_map]
+    · rw [stepRound_map Ro hRo, map_bind, bind_map_left]
+      refine bind_congr fun r => ?_
+      exact executeRounds_map Ro hRo D A F f fuel r.1 r.2.1
+
+/-- The honest role of the world commutes with a map. It is the hypothesis of the map lemmas. -/
+theorem worldRoles_honest_map {γ δ : Type} (g : γ → δ) (oa : OracleComp (LocalSpec C) γ) :
+    (worldRoles (C := C)).honest (g <$> oa) = g <$> (worldRoles (C := C)).honest oa := by
+  simp only [worldRoles, map_eq_bind_pure_comp, free_bind, Function.comp_def, free_pure]
+
+/-- The honest role of the observed run commutes with a map. -/
+theorem observedRoles_honest_map {γ δ : Type} (g : γ → δ) (oa : OracleComp (LocalSpec C) γ) :
+    (observedRoles (C := C)).honest (g <$> oa) = g <$> (observedRoles (C := C)).honest oa := by
+  simp only [observedRoles, map_eq_bind_pure_comp, free_bind, Function.comp_def, free_pure]
+  apply WriterT.ext
+  simp [WriterT.run_liftM]
+
+end Map
+
 /-! ## The lazy random oracle
 
 `H` reorders freely, a repeated query returns the cached answer, and the cache only grows. Each fact

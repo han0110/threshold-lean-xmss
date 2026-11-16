@@ -5,15 +5,19 @@ import VCVio.OracleComp.SimSemantics.Append.Core
 # Secure computation
 
 Read this file second. It holds the notions of the seed generation, ceremony and building-block claims, namely
-secure computation in the simulation framework of Canetti 2000, with the selective abort of GL05
-and the hybrid model of GS20.
+secure computation in the simulation framework of Canetti 2000, with selective abort and the
+hybrid model of GS20.
 
 * A distinguisher with oracle access reads the joint output of the adversary and the honest
   operators. It tells the real execution from the ideal execution with a simulator at most with the
   error of the claim.
-* With selective abort, the adversary names the honest operators that receive each output (GL05).
-* The explicit simulators program `H` as the local programmable random oracle of CDG+18, which has
-  no `IsProgrammed` query.
+* With selective abort, the adversary names the honest operators that receive each output. GL05
+  calls this notion secure computation with abort and no fairness (Definition 5). Selective abort
+  is the name of this project for it.
+* `H` is the local random oracle of Nielsen, which a simulator observes and programs (CDG+18,
+  Section 3). A program call on a point that has a value fails and changes nothing. `G_rpRO` of
+  CDG+18, Fig. 10, ignores such a call only when the value differs. The model has no
+  `IsProgrammed` query of that figure.
 -/
 
 set_option autoImplicit false
@@ -35,8 +39,8 @@ def Counted : (LocalSpec C).Domain → Prop
   | .inr _ => True
   | .inl _ => False
 
-/-- A distinguisher reads the joint output of the adversary and the honest operators, with oracle
-access (GL05 and Canetti 2000). -/
+/-- A distinguisher reads the joint output of the adversary and the honest operators (GL05 and
+Canetti 2000). Its oracle access is the random-oracle form of this model. -/
 abbrev Distinguisher (C : Committee) (σ O : Type) := σ × (C.Party → Option O) → OracleComp (LocalSpec C) Bool
 
 /-- A `q`-query adversary with its distinguisher, in the sense of BR93. For every answer of the

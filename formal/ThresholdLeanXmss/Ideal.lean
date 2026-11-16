@@ -321,7 +321,7 @@ def dealerCeremony (circuits : Circuits) (settings : Settings) (parameter : Publ
 /-- `F_ceremony`, one ceremony of the public job list `jobs` with selective abort. It takes the keys
 of the honest operators, computes each job in the clear with the circuits on the seeds of the honest
 holders, and leaks `P` and every output. It is an adaptation of GS20, Functionality 18, for public
-outputs, with the selective abort of GL05. -/
+outputs, with abort and no fairness of GL05 (Definition 5), which this project calls selective abort. -/
 def Fceremony (circuits : Circuits) (jobs : List Job) :
     Functionality C (Keys C) (List (List Bit)) (PublicParameter × List (List Bit)) (Finset C.Party) where
   run coalition inputs := do
@@ -336,8 +336,8 @@ def Fceremony (circuits : Circuits) (jobs : List Job) :
 /-- `F_tree`, the ceremonies of one tree with selective abort. It takes the keys of the honest
 operators, computes the tree in the clear with the circuits on the seeds of the honest holders, and
 leaks `P` and the openings of each batch. It is an adaptation of GS20, Functionality 18, for public
-outputs, with the selective abort of GL05. The adversary names the receivers one time, after the last
-ceremony of the tree. -/
+outputs, with abort and no fairness of GL05 (Definition 5), which this project calls selective abort.
+The adversary names the receivers one time, after the last ceremony of the tree. -/
 def Ftree (circuits : Circuits) (settings : Settings) (top : TopTree) (tree : Tree) :
     Functionality C (Keys C) TreeOutput (PublicParameter × List (List (List Bit))) (Finset C.Party) where
   run coalition inputs := do

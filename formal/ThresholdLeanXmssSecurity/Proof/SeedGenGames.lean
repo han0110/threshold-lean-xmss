@@ -20,6 +20,49 @@ section SeedGenSecurity
 
 variable {C : Committee} {E : Type} (prims : Primitives)
 
+/-- The start of `seedGenSimulator` observes the start of `A`. -/
+theorem seedGenSimulator_start (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+    (corrupt : C.Party → Option Unit) (z : Aux) :
+    (seedGenSimulator D A).start corrupt z = (do
+      let (state, log) ← observe (A.start corrupt z)
+      pure ⟨state, log, corrupt⟩) := rfl
+
+/-- The answer of `seedGenSimulator` in full. -/
+theorem seedGenSimulator_answer (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+    (st : SimulatorState C Unit A.State) (parameter : PublicParameter) (corrupt : C.Party → Option (Keys C)) :
+    (seedGenSimulator D A).answer st (parameter, corrupt) = (do
+      let parts ← free (liftComp (OverPermutation.sequenceFin fun (_ : C.Party) => (sampleParts : ProbComp (Parts C))) _)
+      let steps ← startSteps worldRoles D fun i => (seedGenWith i (parts i) : PartyM C E RealSpec (Keys C))
+      let ((state, steps, sent), calls) ← (stepRound observedRoles D A noFunctionality st.adversary steps).run
+      let log := st.log ++ calls
+      let firstHonest := fun (S : Finset C.Party) => (C.parties.find? fun i => i ∈ S ∧ i ∉ D.1).getD (firstParty C)
+      let view := fun (i j : C.Party) =>
+        if j ∈ D.1 then readReveal .seedGen (extractReveal .seedGen log sent j i) i j else parts j
+      let h₀ := firstHonest Finset.univ
+      let high ← free (liftComp ($ᵗ HashOutput) _)
+      let _ ← program (.derive .seedGen .parameter (C.parties.map fun j => (view h₀ j).parameter))
+        (high >>> digestBits <<< digestBits ||| parameter.setWidth 256)
+      let _ ← C.terms.mapM fun T => match (C.parties.find? fun j => j ∈ D.1 ∧ j ∈ C.holders T) with
+        | some j =>
+          let i := firstHonest (C.holders T)
+          program (.derive .seedGen .term ((C.parties.filter (· ∈ C.holders T)).map fun k => (view i k).term T))
+            (((corrupt j).map (·.seed T)).getD 0)
+        | none => pure true
+      let _ ← C.parties.mapM fun j => C.parties.mapM fun i =>
+        if h : j ∈ D.1 ∧ i ∉ D.1 then
+          let p := C.pairOf i j (fun e => h.2 (e ▸ h.1))
+          program (.derive .seedGen .pair [(view i p.1.1).pair p.1.2, (view i p.1.2).pair p.1.1])
+            (((corrupt j).map (·.pairKey i)).getD 0)
+        else pure true
+      let ((state, keys), rest) ← (executeRounds observedRoles D A noFunctionality (setupRounds - 1) state steps).run
+      pure (⟨state, log ++ rest, st.corrupt⟩, Finset.univ.filter fun i => (keys i).isSome)) := by
+  simp only [seedGenSimulator, setupSimulator, ite_true, Option.map_map, bind_assoc]
+  rfl
+
+/-- The output of `seedGenSimulator` is the state of `A`. -/
+theorem seedGenSimulator_output (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+    (st : SimulatorState C Unit A.State) : (seedGenSimulator D A).output st = pure st.adversary := rfl
+
 /-- A simulation into the state of the ideal run whose local queries go to the free copy costs
 nothing on a lifted sampling. -/
 theorem costLe_stateT_liftComp {σ L R α : Type}
@@ -49,7 +92,7 @@ theorem costLe_seedGenSimulator_answer (D : C.Coalition) (A : Adversary C E Unit
     CostLe prims ((seedGenSimulator D A).answer st l)
       (step + (1 + (C.terms.length * 1 + (C.parties.length * (C.parties.length * 1) + (setupRounds - 1) * step)))) := by
   rcases l with ⟨parameter, corrupt⟩
-  unfold seedGenSimulator
+  erw [seedGenSimulator_answer]
   dsimp only
   refine ((CostLe.free prims _).bind prims fun parts => ?_).mono prims (Nat.zero_add _).le
   refine ((CostLe.sequenceFin prims _ fun i => ?_).bind prims fun steps => ?_).mono prims (Nat.zero_add _).le
@@ -209,30 +252,28 @@ theorem findSome_eq_of_unique {α β : Type} (f : α → Option β) (l : List α
 
 /-- If the actual opening was observed before the commitment was sent, and no other observed
 opening has the same commitment, extraction returns exactly that opening. -/
-theorem extractReveal_eq_of_unique (calls : CallLog C) (sent : C.Party → Mail C E)
+theorem extractReveal_eq_of_unique (phase : Phase) (calls : CallLog C) (sent : C.Party → Mail C E)
     (j i : C.Party) (reveal : List HashOutput) (value : HashOutput)
-    (hcall : (.commit .seedGen j i reveal, value) ∈ calls)
+    (hcall : (.commit phase j i reveal, value) ∈ calls)
     (hsent : [value] = Msg.hashesOf (sent j i))
-    (hunique : ∀ reveal' value', (.commit .seedGen j i reveal', value') ∈ calls →
+    (hunique : ∀ reveal' value', (.commit phase j i reveal', value') ∈ calls →
       [value'] = Msg.hashesOf (sent j i) → reveal' = reveal) :
-    extractReveal calls sent j i = reveal := by
+    extractReveal phase calls sent j i = reveal := by
   unfold extractReveal
   have h := findSome_eq_of_unique
     (fun (q, out) => match q with
-      | .commit .seedGen j' i' opening =>
-          if j' = j ∧ i' = i ∧ [out] = Msg.hashesOf (sent j i) then some opening else none
+      | .commit phase' j' i' opening =>
+          if phase' = phase ∧ j' = j ∧ i' = i ∧ [out] = Msg.hashesOf (sent j i) then some opening else none
       | _ => none) calls reveal
-    (by exact ⟨(.commit .seedGen j i reveal, value), hcall, by simp [hsent]⟩)
+    (by exact ⟨(.commit phase j i reveal, value), hcall, by simp [hsent]⟩)
     (by
       rintro ⟨q, out⟩ hmem opening hmatch
       cases q <;> simp only at hmatch
       all_goals try contradiction
-      rename_i phase j' i' opening'
-      cases phase <;> simp only at hmatch
-      · split_ifs at hmatch with hm
-        obtain ⟨rfl, rfl, hout⟩ := hm
-        exact (Option.some.inj hmatch).symm.trans (hunique opening' out hmem hout)
-      · contradiction)
+      rename_i phase' j' i' opening'
+      split_ifs at hmatch with hm
+      obtain ⟨rfl, rfl, rfl, hout⟩ := hm
+      exact (Option.some.inj hmatch).symm.trans (hunique opening' out hmem hout))
   exact congrArg (fun o : Option (List HashOutput) => o.getD []) h
 
 /-- Every term has exactly `t` holders. -/
@@ -973,12 +1014,12 @@ def seedGenInitialCommitments (coalition : C.Coalition) (parts : C.Party → Par
 
 def seedGenInitialSteps (coalition : C.Coalition) (parts : C.Party → Parts C)
     (commitments : C.Party → List HashOutput) : C.Party → Step C E RealSpec (Keys C) := fun i =>
-  if i ∈ coalition.1 then .done none else seedGenStart i (parts i) (commitments i)
+  if i ∈ coalition.1 then .done none else setupStart .seedGen i (parts i) (commitments i)
 
 theorem advance_seedGenWith (i : C.Party) (parts : Parts C) :
     advance (seedGenWith i parts : PartyM C E RealSpec (Keys C)).run =
       liftComp (commitQueries .seedGen i parts) (LocalSpec C) >>= fun commitments =>
-        pure (seedGenStart i parts commitments) := by
+        pure (setupStart .seedGen i parts commitments) := by
   change advance (commitRevealEcho .seedGen i parts >>= fun keys => pure (keysOf keys)).run = _
   rw [advance_setup_start]
   rfl
@@ -992,7 +1033,7 @@ theorem startSteps_seedGenWith (coalition : C.Coalition) (parts : C.Party → Pa
       localRoles.honest (advance (seedGenWith i (parts i) : PartyM C E RealSpec (Keys C)).run)) =
       (fun i => (if i ∈ coalition.1 then pure [] else
         liftComp (commitQueries .seedGen i (parts i)) (LocalSpec C)) >>= fun commits =>
-        pure (if i ∈ coalition.1 then Step.done none else seedGenStart i (parts i) commits)) := by
+        pure (if i ∈ coalition.1 then Step.done none else setupStart .seedGen i (parts i) commits)) := by
     funext i
     by_cases hi : i ∈ coalition.1 <;> simp [hi, localRoles, advance_seedGenWith]
   rw [hl]
@@ -1028,7 +1069,7 @@ theorem executeRounds_seedGenInitialSteps (coalition : C.Coalition)
   · intro hd
     obtain ⟨i, hi⟩ := seedGen_exists_honest coalition
     have hh := hd i hi
-    simpa only [seedGenInitialSteps, if_neg hi, seedGenStart, Step.isDone] using hh
+    simpa only [seedGenInitialSteps, if_neg hi, setupStart, Step.isDone] using hh
 
 /-- The real prefix through the commit round, retaining its private parts and corrupt messages. -/
 def seedGenLocalCommitPrefix (coalition : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
@@ -1132,7 +1173,7 @@ theorem idealExecution_FseedGen {σ : Type} (D : C.Coalition)
 
 def seedGenProgramView (D : C.Coalition) (parts : C.Party → Parts C)
     (log : CallLog C) (sent : C.Party → Mail C E) (i j : C.Party) : Parts C :=
-  if j ∈ D.1 then readReveal .seedGen (extractReveal log sent j i) i j else parts j
+  if j ∈ D.1 then readReveal .seedGen (extractReveal .seedGen log sent j i) i j else parts j
 
 def seedGenFirstHonest (D : C.Coalition) (S : Finset C.Party) : C.Party :=
   (C.parties.find? fun i => i ∈ S ∧ i ∉ D.1).getD (firstParty C)
@@ -1182,7 +1223,7 @@ theorem seedGenSimulator_answer_emulation (D : C.Coalition)
     (seedGenSimulator D A).answer st (parameter, corrupt) =
       (fun r => (r.1, Finset.univ.filter fun i => (r.2 i).isSome)) <$>
         seedGenEmulation D A st parameter corrupt := by
-  simp only [seedGenSimulator, seedGenEmulation, seedGenProgramBlock, seedGenProgramView,
+  simp only [seedGenSimulator_answer, seedGenEmulation, seedGenProgramBlock, seedGenProgramView,
     seedGenFirstHonest, seedGenFullParameter, map_bind, map_pure, bind_assoc, pure_bind]
   rfl
 
@@ -2021,7 +2062,7 @@ theorem seedGenCommonEmulatedGame_expand (D : C.Coalition) (A : Adversary C E Un
     seedGenObservedCommit seedGenObservedPost seedGenDealerSamples prawnsKeyGen
   simp only [map_bind, map_pure, bind_map_left, bind_assoc, pure_bind,
     liftComp_bind, liftComp_pure, free_bind, free_pure, seedGenEmulatedProjection]
-  simp only [seedGenSimulator, bind_assoc, pure_bind]
+  simp only [seedGenSimulator, setupSimulator, bind_assoc, pure_bind]
 
 /-- Congruence for output distributions under an arbitrary cache-state prefix. -/
 theorem evalDist_stateT_run'_bind_congr {σ α β : Type} (p : StateT σ ProbComp α)
@@ -2125,7 +2166,7 @@ theorem seedGen_derived_programView (prims : Primitives) (coalition : C.Coalitio
     (revealed : C.Party → Mail C E) (i : C.Party) (hi : i ∉ coalition.1)
     (hreceived : ∀ i j, j ∉ coalition.1 → j ≠ i →
       Msg.hashesOf (revealed i j) = revealTo .seedGen (parts j) j i)
-    (hextract : ∀ j, j ∈ coalition.1 → extractReveal log sent j i = Msg.hashesOf (revealed i j))
+    (hextract : ∀ j, j ∈ coalition.1 → extractReveal .seedGen log sent j i = Msg.hashesOf (revealed i j))
     (h : Query C → HashOutput) :
     D prims h (deriveKeys .seedGen i (setupView .seedGen i (parts i) (revealed i))) =
       D prims h (deriveKeys .seedGen i (seedGenProgramView coalition parts log sent i)) := by
@@ -2288,7 +2329,7 @@ theorem seedGen_output_eq_hybrid_dealing (prims : Primitives) (coalition : C.Coa
     (hreceived : ∀ i j, j ∉ coalition.1 → j ≠ i →
       Msg.hashesOf (revealed i j) = revealTo .seedGen (parts j) j i)
     (hextract : ∀ i j, i ∉ coalition.1 → j ∈ coalition.1 →
-      extractReveal log sent j i = Msg.hashesOf (revealed i j))
+      extractReveal .seedGen log sent j i = Msg.hashesOf (revealed i j))
     (hderive : ∀ i, i ∉ coalition.1 →
       keys i = D prims h (deriveKeys .seedGen i (setupView .seedGen i (parts i) (revealed i))))
     (hparameter : h (seedGenParameterProgrammingInput coalition (seedGenProgramView coalition parts log sent)) =
@@ -2374,7 +2415,7 @@ variable {C : Committee} {E : Type}
 
 /-- The commit-round continuation only checks abort frames and prepares the reveal. -/
 theorem advance_seedGenCommitResume (i : C.Party) (own : Parts C) (committed : Mail C E) :
-    advance (exchangeResume (seedGenRound1 i own) committed) =
+    advance (exchangeResume (setupRound1 .seedGen i own) committed) =
       pure (if C.parties.any (fun j => Msg.isAbort (committed j)) then .done none else
         .wait (revealOutbox .seedGen i own) (exchangeResume fun revealed =>
           setupRest .seedGen i own committed revealed >>= fun keys => pure (keysOf keys))) := by
@@ -2412,7 +2453,7 @@ theorem stepRound_seedGenInitialSteps (coalition : C.Coalition)
       (fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then commitOutbox i (commitments i) c else none) := by
     funext c i
     split_ifs with hc
-    · simp only [seedGenInitialSteps, if_neg hc.2, seedGenStart, Step.outbox]
+    · simp only [seedGenInitialSteps, if_neg hc.2, setupStart, Step.outbox]
     · rfl
   rw [hmsg]
   refine bind_congr fun r => ?_
@@ -2426,7 +2467,7 @@ theorem stepRound_seedGenInitialSteps (coalition : C.Coalition)
     funext j
     by_cases hj : j ∈ coalition.1
     · simp [seedGenInitialSteps, seedGenRevealSteps, hj]
-    · simp only [seedGenInitialSteps, if_neg hj, seedGenStart]
+    · simp only [seedGenInitialSteps, if_neg hj, setupStart]
       rw [advance_seedGenCommitResume]
       simp only [seedGenRevealSteps, hj, false_or, seedGenCommitInbox, roundInbox]
       rfl
@@ -2952,7 +2993,7 @@ theorem seedGenRevealEcho_output_eq_hybrid (prims : Primitives) (coalition : C.C
     (committed sent echoSent commitSent : C.Party → Mail C E) (log : CallLog C)
     (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairs : C.Pair → HashOutput) (high : HashOutput)
     (hextract : ∀ i j, i ∉ coalition.1 → j ∈ coalition.1 →
-      extractReveal log commitSent j i = Msg.hashesOf (seedGenRevealInbox coalition parts committed sent i j))
+      extractReveal .seedGen log commitSent j i = Msg.hashesOf (seedGenRevealInbox coalition parts committed sent i j))
     (hparameter : h (seedGenParameterProgrammingInput coalition (seedGenProgramView coalition parts log commitSent)) =
       seedGenFullParameter high parameter)
     (hterm : ∀ T, KnownTo coalition.1 T →
@@ -3602,7 +3643,7 @@ theorem seedGenCommitInbox_aborted (coalition : C.Coalition) (parts : C.Party �
   funext j
   by_cases hj : j ∈ coalition.1
   · simp [seedGenCommitInbox, roundInbox, hj]
-  · simp [seedGenCommitInbox, roundInbox, seedGenInitialSteps, hj, seedGenStart,
+  · simp [seedGenCommitInbox, roundInbox, seedGenInitialSteps, hj, setupStart,
       Step.delivered, isAbort_commitOutbox]
 
 /-- The real reveal inbox expressed without private commitment digests. -/
@@ -3655,7 +3696,7 @@ theorem seedGenOpenCheck_corrupt_iff (prims : Primitives) (coalition : C.Coaliti
       constructor
       · simp [revealTo]
       · simp only [seedGenCommitInbox, roundInbox, if_neg hj, seedGenInitialSteps, if_neg hj,
-          seedGenStart, Step.delivered, commitOutbox, if_neg (Ne.symm hji), Msg.hashesOf,
+          setupStart, Step.delivered, commitOutbox, if_neg (Ne.symm hji), Msg.hashesOf,
           D_commitQueries, getD_parties]
 
 /-- Honest parts together with the actual corrupt openings, without unused read fields. -/
@@ -4310,7 +4351,7 @@ theorem stepRound_seedGenInitialSteps_observed (coalition : C.Coalition)
       (fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then commitOutbox i (commitments i) c else none) := by
     funext c i
     split_ifs with hc
-    · simp only [seedGenInitialSteps, if_neg hc.2, seedGenStart, Step.outbox]
+    · simp only [seedGenInitialSteps, if_neg hc.2, setupStart, Step.outbox]
     · rfl
   rw [hmsg]
   refine bind_congr fun r => ?_
@@ -4324,7 +4365,7 @@ theorem stepRound_seedGenInitialSteps_observed (coalition : C.Coalition)
     funext j
     by_cases hj : j ∈ coalition.1
     · simp [seedGenInitialSteps, seedGenRevealSteps, hj]
-    · simp only [seedGenInitialSteps, if_neg hj, seedGenStart]
+    · simp only [seedGenInitialSteps, if_neg hj, setupStart]
       rw [advance_seedGenCommitResume]
       simp only [seedGenRevealSteps, hj, false_or, seedGenCommitInbox, roundInbox]
       simp only [free_pure, liftM_pure]

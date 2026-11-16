@@ -110,8 +110,9 @@ the advantage of a reduction is only as strong as that reduction.
   ceremonies (`treeCompleteness`) and the two facts on its dealer (`dealerTreeCorrectness` and
   `dealerTreeSuccess`). No field states the security of a tree on the real network, and `Dkg.lean`
   has no such claim.
-* No field states that the PRSS setup of a ceremony gives the keys of the dealer, and no field
-  joins the building-block claims to the PRSS.
+* No field states that the PRSS setup of a ceremony gives the keys of the dealer. `Dkg.lean` has
+  this claim as `PrssSetupSecurityStatement`, with the simulator `prssSetupSimulator`. It is stated
+  and not proved. No field joins the building-block claims to the PRSS.
 * Only `treeHybridSecurity` joins the two ceremonies of a bottom tree against a corrupt coalition,
   and only in the hybrid model. On the real network, `CeremonySecurityStatement` has no simulator
   and no bound for the ceremony of the tree, the randomizer search, the signature ceremony and the

@@ -40,12 +40,12 @@ The security of a ceremony rests on these ten proved fields. The note has no sec
 
 - `ceremonyHybridSecurity` covers one ceremony with ideal multiplication and check, not on the real network.
 - `coinSecurity`, `multSecurity`, `extendMultSecurity`, `multVerifySecurity` and `mainSecurity` state the security of the building blocks of Goyal and Song. `coinCompleteness`, `multVerifyCompleteness` and `mainCompleteness` are their honest runs.
-- `prssRandSecurity` covers the random sharings from PRSS keys of a dealer. No proved claim covers the PRSS setup.
+- `prssRandSecurity` covers the random sharings from PRSS keys of a dealer. `PrssSetupSecurityStatement` covers the PRSS setup of a ceremony on the real network. It is stated and not proved, and it is no part of the bundle.
 
 ## What is not proved
 
 - No claim covers the security of a tree on the real network. `CeremonySecurityStatement`, for one ceremony on the real network, is stated and not proved, and it is no part of the bundle.
-- No proved claim covers the PRSS setup or joins the building blocks to the PRSS.
+- `PrssSetupSecurityStatement`, for the PRSS setup of a ceremony on the real network, is stated and not proved, and it is no part of the bundle. No claim joins the building blocks to the PRSS.
 - No theorem composes the setup and the signing.
 - [statement.tex](./statement.tex), Section 5, and [doc/composition.md](./doc/composition.md) give the open points.
 
@@ -80,7 +80,7 @@ flowchart TB
     DEALER["dealerTreeCorrectness, dealerTreeSuccess<br/>the dealer of F_tree gives the trees of the signing game,<br/>when the circuits compute Th"]:::proved
     CSEC["CeremonySecurityStatement<br/>one ceremony on the real network"]:::stated
     MPC["MPC layer, 10 fields, each in its hybrid model<br/>ceremonyHybridSecurity, mainSecurity, multVerifySecurity, multSecurity,<br/>extendMultSecurity, coinSecurity, prssRandSecurity,<br/>mainCompleteness, multVerifyCompleteness, coinCompleteness"]:::proved
-    PKEYS["Dealer of the PRSS keys,<br/>given by the PRSS setup"]:::missing
+    PKEYS["PrssSetupSecurityStatement<br/>the PRSS setup gives the dealer of the PRSS keys,<br/>on the real network"]:::stated
   end
 
   style SIG stroke:#999999
@@ -104,7 +104,7 @@ flowchart TB
 
 | Open box | Reason |
 | --- | --- |
-| Dealer of the PRSS keys | The proof of the seed generation, the same protocol, needs a port to the PRSS setup. |
+| `PrssSetupSecurityStatement` | The claim is stated. Its proof is a port of the proof of the seed generation, the same protocol, and the port is in work. |
 | Security of a tree on the real network | It needs `CeremonySecurityStatement` and the join of the layers, and both are open. |
 | `CeremonySecurityStatement` | No composition theorem fits the proved claims, and a direct proof has open steps. |
 | Trusted dealer of the keys and the trees | The composition of the setup and the signing is a sketch. |

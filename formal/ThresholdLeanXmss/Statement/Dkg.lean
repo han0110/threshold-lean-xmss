@@ -136,6 +136,18 @@ def seedGenHashError (C : Committee) (q : ℕ) : ℝ := ((q + seedGenSecrets C) 
 each pair of a corrupt and an honest operator. -/
 def seedGenOverhead (C : Committee) : ℕ := 1 + termCount C + C.n ^ 2
 
+/-- The honest points of `H` in the PRSS setup that a counted call must not hit, namely the parts of
+each operator, the derived keys, and the inputs of the hashes of the shared keys. -/
+def prssSetupSecrets (C : Committee) : ℕ :=
+  C.n * (termCount C + C.n) + termCount C + C.n.choose 2 + C.n ^ 2
+
+/-- The birthday bound of the counted calls and the honest points of the PRSS setup. -/
+def prssSetupHashError (C : Committee) (q : ℕ) : ℝ := ((q + prssSetupSecrets C) ^ 2 : ℕ) / 2 ^ 256
+
+/-- The programming queries of `prssSetupSimulator`, at most one for each term and one for each pair
+of a corrupt and an honest operator. -/
+def prssSetupOverhead (C : Committee) : ℕ := termCount C + C.n ^ 2
+
 /-- The honest points of `H` in a ceremony of `jobs` that a counted call must not hit. The PRSS
 setup has the parts of each operator, the derived keys and the inputs of the hashes of the shared
 keys. Each PRSS key has a stream-key input. Each batch has the history, the digest and the copy hash
@@ -240,10 +252,28 @@ def SeedGenCompletenessStatement (C : Committee) (E : Type) : Prop :=
     (fun l => l.elim) FseedGen (fun _ => Finset.univ) (fun _ _ => True) (derivedKeyCollision C)
 
 /-- The seed generation securely computes `F_seedGen` with selective abort against a static coalition, with the
-simulator `seedGenSimulator` (GL05 and CDG+18). -/
+simulator `seedGenSimulator`. GL05 gives the notion and CDG+18 gives the observation, the extraction
+and the programming, but the setup argument and its bound are an adaptation of this project. -/
 def SeedGenSecurityStatement (C : Committee) (E : Type) : Prop :=
   SimulatedBy prims (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) setupRounds FseedGen
     (fun _ _ => True) seedGenSimulator (seedGenOverhead C) fun _ _ _ _ _ q => seedGenHashError C q
+
+/-- The PRSS setup of a ceremony securely computes `F_prssKeys` with selective abort against a static
+coalition, on the real network, with the simulator `prssSetupSimulator`. The error is
+`(q + prssSetupSecrets C)² / 2^256`. GL05 gives the notion and CDG+18 gives the observation, the
+extraction and the programming, but the setup argument and its bound are an adaptation of this project.
+
+* It has the form of `SeedGenSecurityStatement`. The PRSS setup is the seed generation protocol with
+  the phase `.prss`. `sampleParts` samples the field `parameter` in both phases. The PRSS setup does
+  not reveal this field, derives no `P` from it and does not hash it in the echo.
+* The claim is for one setup from the empty hash cache. A bottom tree runs two setups
+  (`new_bottom_tree` of `src/dkg.rs`), and the second starts from a cache with `.prss` cells of the
+  first. This claim does not cover the second setup.
+* It does not join the setup to the building-block claims or to `PrssRandSecurityStatement`. The
+  library has no composition theorem. -/
+def PrssSetupSecurityStatement (C : Committee) (E : Type) : Prop :=
+  SimulatedBy prims (fun i (_ : Unit) => (prssSetup i : PartyM C E RealSpec (PrssKeys C))) setupRounds FprssKeys
+    (fun _ _ => True) prssSetupSimulator (prssSetupOverhead C) fun _ _ _ _ _ q => prssSetupHashError C q
 
 /-- The honest ceremonies of a tree give the tree of `F_tree`, except when an honest check aborts.
 The program is `newTree`. For a bottom tree it is the ceremony of the tree, the randomizer search,

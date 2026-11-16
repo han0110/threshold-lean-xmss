@@ -153,7 +153,7 @@ def SeedGenProgramFail {σ : Type} (r : SeedGenKnownTrace C E σ) : Prop := r.ok
 /-- An honest operator that reaches the echo has a corrupt opening that the extraction misses. -/
 def SeedGenExtractFail (D : C.Coalition) {σ : Type} (r : SeedGenKnownTrace C E σ) : Prop :=
   ∃ i, i ∉ D.1 ∧ (r.data i).isSome ∧ ∃ j, j ∈ D.1 ∧
-    extractReveal r.log r.sent j i ≠
+    extractReveal .seedGen r.log r.sent j i ≠
       Msg.hashesOf (seedGenRevealInbox D r.parts (seedGenCommitInbox D r.parts r.commitments r.sent) r.revealSent i j)
 
 /-- Two honest operators that reach the echo send equal shared-key hashes of distinct inputs. -/
@@ -214,7 +214,7 @@ theorem simulateQ_seedGenCommonGame_known (D : C.Coalition) (A : Adversary C E U
   unfold seedGenCommonGame seedGenEmulation seedGenKnownGame seedGenDealerSamples prawnsKeyGen
   simp only [map_bind, map_pure, bind_assoc, pure_bind,
     liftComp_bind, liftComp_pure, free_bind, free_pure]
-  simp only [seedGenSimulator, bind_assoc, pure_bind]
+  simp only [seedGenSimulator, setupSimulator, bind_assoc, pure_bind]
   refine seedGenKnown_simulateQ_bind_right prims fun a => ?_
   refine seedGenKnown_simulateQ_bind_right prims fun parameter => ?_
   refine seedGenKnown_simulateQ_bind_right prims fun seeds => ?_
@@ -671,7 +671,7 @@ theorem seedGenKnown_cacheEvent_of_bad (D : C.Coalition) {σ : Type} (r : SeedGe
       subst hyc
       by_contra hno
       apply hne
-      apply extractReveal_eq_of_unique r.log r.sent j i rv _ hy hsent.symm
+      apply extractReveal_eq_of_unique .seedGen r.log r.sent j i rv _ hy hsent.symm
       intro reveal' value' hmem hval
       by_contra hrv
       apply hno

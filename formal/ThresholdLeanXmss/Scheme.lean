@@ -974,7 +974,7 @@ def deriveKeys (phase : Phase) (i : C.Party) (view : C.Party → Parts C) :
   pure (parameter, fun T => term.getD (C.terms.idxOf T) 0, fun j => pair.getD j.val 0)
 
 /-- A setup with commit, reveal and echo (the note, Section 2.1). Operator `i` commits to each reveal
-with a commitment that names its sender and its receiver (CF01). The seed generation echo carries the hash of
+with a commitment that names its sender and its receiver (CF01, Section 2.2.1). The seed generation echo carries the hash of
 all parts of `P`, which is `P` before truncation, and the hash of the shared seeds. The PRSS echo
 carries only the hash of the shared keys. Each operator aborts unless each reveal opens its
 commitment and each hash of each echo matches. -/
@@ -1002,10 +1002,14 @@ def seedGenWith (i : C.Party) (own : Parts C) : PartyM C E G (Keys C) := do
 def seedGen (i : C.Party) : PartyM C E G (Keys C) := do
   seedGenWith i (← localStep (liftComp sampleParts _))
 
+/-- The PRSS setup of operator `i` from its parts. -/
+def prssSetupWith (i : C.Party) (own : Parts C) : PartyM C E G (PrssKeys C) := do
+  let (_, term, pair) ← commitRevealEcho .prss i own
+  pure ⟨term, pair⟩
+
 /-- The PRSS setup of a ceremony gives fresh PRSS keys (`doc/dkg.md` 3.1). -/
 def prssSetup (i : C.Party) : PartyM C E G (PrssKeys C) := do
-  let (_, term, pair) ← commitRevealEcho .prss i (← localStep (liftComp sampleParts _))
-  pure ⟨term, pair⟩
+  prssSetupWith i (← localStep (liftComp sampleParts _))
 
 /-- The rounds of a setup. -/
 def setupRounds : ℕ := 3
@@ -1397,8 +1401,10 @@ random oracle. -/
 def signingLocalAnswer : QueryImpl (LocalSpec C) (StateT (HashCache C) ProbComp) :=
   unifFwdImpl (Query C →ₒ HashOutput) + ((Query C →ₒ HashOutput).randomOracle + prgAnswer (C := C) prims)
 
-/-- The local programmable random oracle sets `H` only at a random-oracle input that no one queried,
-and tells whether it did (CDG+18). -/
+/-- A programming query on the local random oracle. It sets `H` at a random-oracle input that has no
+value, and returns `true`. At a set point or at an input that the MPC evaluates with `Th`, it
+changes nothing and returns `false`. CDG+18 does not define this query or its result. `G_rpRO` of CDG+18, Fig. 10,
+accepts a call on a set point with the same value, and this query rejects each set point. -/
 def programAnswer (x : Query C × HashOutput) : StateT (HashCache C) ProbComp Bool := do
   let cache ← get
   if (∃ input, x.1 = .hash input ∧ MpcInput input) ∨ (cache x.1).isSome then pure false else do
