@@ -2132,11 +2132,6 @@ theorem setupSecurityDistance_of_programAlias (phase : Phase)
     (setupKnownMismatch_of_bounds phase prims (setupProgramFailBound_of_alias phase prims hA)
       (setupExtractEchoBound prims phase))
 
-/-- `SeedGenSecurityStatement` from the guessing bound of the programming inputs. -/
-theorem seedGenSecurityDone_of_programAlias (hA : SetupProgramAliasBound (C := C) (E := E) .seedGen prims) :
-    SeedGenSecurityStatement (C := C) (E := E) prims :=
-  seedGenSecurity_of_setup prims (setupSecurityDistance_of_programAlias prims .seedGen hA)
-
 end Main
 
 end ThresholdLeanXmssSecurity
