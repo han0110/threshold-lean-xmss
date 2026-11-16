@@ -45,8 +45,9 @@ property.
   `ceremonyHybridSecurity` for one ceremony, the security claims `coinSecurity`, `multSecurity`,
   `extendMultSecurity`, `multVerifySecurity` and `mainSecurity` of the GS20 building blocks for
   `F_coin`, `F_mult`, `F_extendMult`, `F_multVerify` and `F_main` with the honest runs
-  `coinCompleteness`, `multVerifyCompleteness` and `mainCompleteness`, and `prssRandSecurity` for
-  the PRSS. The note has no section for this group. It names the MPC in Section 2.1.
+  `coinCompleteness`, `multVerifyCompleteness` and `mainCompleteness`, and `prssRandSecurity` and
+  `prssSetupSecurity` for the PRSS. The note has no section for this group. It names the MPC in
+  Section 2.1.
 
 No group is for Section 2.2 of the note, the setup by a trusted dealer with `n = 3f + 1`. Each
 claim is for `n = 2t - 1`.
@@ -64,9 +65,9 @@ so each completeness field is the honest run of its protocol.
   and `signJobs b encoding` for the signature of a bottom root by its top key. `newTree` is the
   ceremonies of one tree with the local steps between them, and it passes the counters on.
 * The seed generation, each ceremony and each tree are separate claims. Each has a rushing
-  malicious adversary with its own static coalition. The seed generation claims and
-  `CeremonySecurityStatement` run the real network with the real PRSS, and `ceremonyHybridSecurity`
-  and `treeHybridSecurity` are in the hybrid model.
+  malicious adversary with its own static coalition. The seed generation claims,
+  `prssSetupSecurity` and `CeremonySecurityStatement` run the real network with the real PRSS, and
+  `ceremonyHybridSecurity` and `treeHybridSecurity` are in the hybrid model.
 * Each building-block claim is in a hybrid model. `prssRandSecurity` is in the `F_prssKeys`-hybrid
   model. `coinSecurity`, `multSecurity` and `extendMultSecurity` are in the `F_rand`-hybrid model.
   `multVerifySecurity` is in the `{F_coin, F_extendMult, F_rand}`-hybrid model, and `mainSecurity`,
@@ -110,9 +111,9 @@ the advantage of a reduction is only as strong as that reduction.
   ceremonies (`treeCompleteness`) and the two facts on its dealer (`dealerTreeCorrectness` and
   `dealerTreeSuccess`). No field states the security of a tree on the real network, and `Dkg.lean`
   has no such claim.
-* No field states that the PRSS setup of a ceremony gives the keys of the dealer. `Dkg.lean` has
-  this claim as `PrssSetupSecurityStatement`, with the simulator `prssSetupSimulator`. It is stated
-  and not proved. No field joins the building-block claims to the PRSS.
+* `prssSetupSecurity` states that one PRSS setup, from an empty hash cache, gives the keys of the
+  dealer `F_prssKeys`. No field states it for the second PRSS setup of a bottom tree. No field joins
+  it to `prssRandSecurity` and the building-block claims.
 * Only `treeHybridSecurity` joins the two ceremonies of a bottom tree against a corrupt coalition,
   and only in the hybrid model. On the real network, `CeremonySecurityStatement` has no simulator
   and no bound for the ceremony of the tree, the randomizer search, the signature ceremony and the
@@ -222,6 +223,10 @@ structure Theorems (prims : Primitives) (K : Constants C E) (circuits : Circuits
   /-- The PRSS streams from dealt keys securely compute a public list of calls of `F_rand`, with
   selective abort, up to a hash term and a PRF advantage (CDI05, Section 4). -/
   prssRandSecurity : PrssRandSecurityStatement prims K
+  /-- The PRSS setup of a ceremony securely computes `F_prssKeys` with selective abort on the real
+  network, with the simulator `prssSetupSimulator` and the error `(q + prssSetupSecrets C)² / 2^256`
+  (GL05 and CDG+18). -/
+  prssSetupSecurity : PrssSetupSecurityStatement prims C E
 
 /-- The security claim, for every committee, every check field of characteristic `2` with its
 constants, every `Th` and AES-128, every circuit family, and every setting. -/

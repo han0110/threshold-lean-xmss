@@ -30,7 +30,7 @@ import ThresholdLeanXmssSecurity.Proof.TreeHybrid.Security
 
 `thresholdLeanXmss_security` gives `ThresholdLeanXmssSecurityStatement`
 (`ThresholdLeanXmss/Statement/Theorems.lean`). It is the bundle `Theorems`, with one field for each
-of twenty claims about the protocol of `ThresholdLeanXmss/Scheme.lean`. The theorem holds for every
+of twenty-one claims about the protocol of `ThresholdLeanXmss/Scheme.lean`. The theorem holds for every
 committee `n = 2t - 1`, every check field `E` with `2^128` elements, every `Th`, every circuit
 family and every setting. Each claim covers one protocol or one building block alone. No claim
 composes the seed generation, the ceremonies and the signing. `statement.tex` holds the deployment
@@ -175,6 +175,10 @@ budget is a cost function in the one and a predicate in the other.
    (`mpclan_honest_holder`). `mainCompleteness` (`Proof/Main`) is the honest batch.
 6. `prssRandSecurity` (`Proof/PrssRand/Security`) gives `PrssRandSecurityStatement`. The PRSS streams from
    dealt keys securely compute a public list of calls of `F_rand` in the `F_prssKeys`-hybrid model.
+7. `prssSetupSecurity` (`Proof/SeedGenAlias`) gives `PrssSetupSecurityStatement` with
+   `prssSetupSimulator`. `setupSecurityDistance` proves the distance claim of a setup for both phases.
+   `seedGenSecurity` is its instance for the seed generation, and `prssSetupSecurity` is its instance
+   for the PRSS setup. The bad events fit `prssSetupHashError`.
 
 ## Modules
 
@@ -234,7 +238,8 @@ theorem thresholdLeanXmss_security : ThresholdLeanXmss.ThresholdLeanXmssSecurity
     coinCompleteness := coinCompleteness prims K
     multVerifyCompleteness := multVerifyCompleteness prims K
     mainCompleteness := mainCompleteness prims K
-    prssRandSecurity := prssRandSecurity prims K }
+    prssRandSecurity := prssRandSecurity prims K
+    prssSetupSecurity := prssSetupSecurity prims }
 
 /-! The build fails if the axiom footprint of the end theorem changes. -/
 
@@ -260,6 +265,10 @@ and `Quot.sound`. -/
 /-- info: 'ThresholdLeanXmssSecurity.prssRandSecurity' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms prssRandSecurity
+
+/-- info: 'ThresholdLeanXmssSecurity.prssSetupSecurity' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms prssSetupSecurity
 
 /-- info: 'ThresholdLeanXmssSecurity.thInput_ne_of_no_zero_byte' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

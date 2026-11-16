@@ -1006,10 +1006,17 @@ theorem setupSecurityDistance (prims : Primitives) (phase : Phase) :
     SetupSecurityDistance (C := C) (E := E) phase prims :=
   setupSecurityDistance_of_programAlias prims phase (setupProgramAliasBound phase prims)
 
-/-- `SeedGenSecurityStatement`, as the instance of `setupSecurityDistance` for the seed generation. -/
+/-- The seed generation meets `SeedGenSecurityStatement`. The proof is `setupSecurityDistance` at the
+phase `.seedGen`. -/
 theorem seedGenSecurity (prims : Primitives) :
     SeedGenSecurityStatement (C := C) (E := E) prims :=
   seedGenSecurity_of_setup prims (setupSecurityDistance prims .seedGen)
+
+/-- The PRSS setup meets `PrssSetupSecurityStatement`. The proof is `setupSecurityDistance` at the
+phase `.prss`. -/
+theorem prssSetupSecurity (prims : Primitives) :
+    PrssSetupSecurityStatement (C := C) (E := E) prims :=
+  prssSetupSecurity_of_setup prims (setupSecurityDistance prims .prss)
 
 end ThresholdLeanXmssSecurity
 
@@ -1024,3 +1031,7 @@ end ThresholdLeanXmssSecurity
 /-- info: 'ThresholdLeanXmssSecurity.seedGenSecurity' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.seedGenSecurity
+
+/-- info: 'ThresholdLeanXmssSecurity.prssSetupSecurity' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.prssSetupSecurity

@@ -44,7 +44,7 @@ composition needs, and Section~\ref{sec:open} lists what is not proved.
 \paragraph{Where to read it.} The claims to review are in the folder
 \texttt{formal/ThresholdLeanXmss/Statement/}, and its
 entry file is \texttt{Theorems.lean}. The type of the root theorem \lean{thresholdLeanXmss_security}
-is the bundle \lean{Theorems}, a structure with twenty fields, one for each claim. Its axiom guard has only \texttt{propext},
+is the bundle \lean{Theorems}, a structure with twenty-one fields, one for each claim. Its axiom guard has only \texttt{propext},
 \texttt{Classical.choice} and \texttt{Quot.sound}. The proofs reuse lemmas from the security proof of leanVM. Appendix A gives the fields and their sources. This
 document calls a claim proved only if it is such a field.
 
@@ -88,7 +88,7 @@ Corruption & Static. The corrupt operators of each claim are fixed before its pr
 The forger corrupts operators during the game. A corruption reveals only keys, because the setup state is
 erased. \\
 \rowrule
-Network & The seed generation claims and the open ceremony claim use the real network and the real PRSS.
+Network & The seed generation claims, the PRSS setup claim and the open ceremony claim use the real network and the real PRSS.
 The building-block claims, the PRSS streams claim and the hybrid ceremony and tree claims use hybrid models, where
 an ideal functionality replaces a sub-protocol. The PRSS streams claim has the dealer of the PRSS keys. & The forger sends requests for the two signing rounds of a quorum. \\
 \rowrule
@@ -101,14 +101,14 @@ The PRF claims and the claim of signing correctness use the hash model of the se
 
 \paragraph{Hashing.} $H$ is one lazy random oracle, with a separate domain for each use \cite{BR93,BDG20}.
 The PRG is AES-128, keyed by a hash of the key. The bound of the PRSS streams claim and the bound of a ceremony on the real network contain the multi-key PRF advantage
-of this PRG \cite{CDI05}. The simulator of the seed generation programs $H$. The proposed simulator of a
+of this PRG \cite{CDI05}. The simulators of the seed generation and of the PRSS setup program $H$. The proposed simulator of a
 ceremony on the real network does not.
 
 \paragraph{Budgets.} A budget $q$ bounds the calls of $H$ and of the PRG on every path and for every
 oracle answer. The simulation and PRF claims count only the calls of the adversary and of the
 distinguisher. The honest parties and the functionalities call a free copy of the oracles, on the same
 cache. In each simulation claim, the ideal run makes at most $q$ plus a fixed overhead of counted calls.
-An explicit simulator (seed generation, ceremony on the real network) emulates the honest parties for free,
+An explicit simulator (seed generation, PRSS setup, ceremony on the real network) emulates the honest parties for free,
 and only its programming queries count. For an existential simulator (building blocks, PRSS streams,
 ceremony and tree in the hybrid model), the claim only states that it exists, and all its calls count, the
 emulation included \cite{Can00}.
@@ -301,8 +301,8 @@ corruption model of the signing game \\
 \item Ceremony security on the real network is stated and not proved, for each of its three uses. So the
 security of the whole keygen ceremony, and of DKG followed by signing, remains open. Three parts fall
 under the open claim \lean{CeremonySecurityStatement} only. They are the real building blocks in the place of
-the ideal ones, the join of the building blocks to the PRSS (B2), and the PRSS setup with its echo.
-\lean{prssRandSecurity} covers the PRSS streams from dealt keys. The hybrid
+the ideal ones, the join of the building blocks to the PRSS (B2), and the join of the PRSS setup to the batches.
+\lean{prssSetupSecurity} covers one PRSS setup from an empty $H$ cache, and \lean{prssRandSecurity} covers the PRSS streams from dealt keys. The hybrid
 ceremony claim covers the sequence of batches (B6) and the opening of $c_e$ by the MPC (B8), with ideal
 multiplication and check. Rows B2 and B8 are in \lean{formal/doc/differences.md}.
 \item No claim covers liveness, concurrent ceremonies, concurrent batches, or adaptive corruption during
@@ -379,6 +379,7 @@ Field & Lean claim & Source item & State \\
 \lean{multVerifyCompleteness} & \lean{MultVerifyCompletenessStatement} & GS20, Protocol 17, honest run & Proved \\
 \lean{mainCompleteness} & \lean{MainCompletenessStatement} & GS20, Protocol 19, honest run & Proved \\
 \lean{prssRandSecurity} & \lean{PrssRandSecurityStatement} & CDI05, Section 4 & Proved \\
+\lean{prssSetupSecurity} & \lean{PrssSetupSecurityStatement} & CDI05, Section 4 (keys). \cite{GL05,CDG+18} & Proved \\
 \bottomrule
 \end{xltabular}}
 \section{Differences to the sources}\label{sec:diff}
@@ -425,7 +426,7 @@ that the real run does not reach. After a partial abort before the last batch, n
 output. A partial abort at the last opening can leave some honest operators with outputs.
 \lean{CeremonySecurityStatement} is stated and not proved, and it is no field of the bundle. Error $0$ for
 \lean{multSecurity} and \lean{extendMultSecurity} is security up to an additive attack, so a product can be wrong until the
-check. \lean{prssRandSecurity} covers neither the PRSS setup nor a join to the building blocks. For $R$ halving steps,
+check. \lean{prssRandSecurity} covers neither the PRSS setup nor a join to the building blocks, and no claim joins it to \lean{prssSetupSecurity}. For $R$ halving steps,
 \[
  \mathsf{coinFailure}(R)=\tfrac{\mathsf{sliceBits}}{2^{128}}+(R+1)\bigl(\tfrac{2}{2^{128}}\bigr)^{2^{64}},\quad
  \mathsf{abortErrorOf}(R)=\mathsf{coinFailure}(R)+\tfrac{(R+2)^2}{2^{257}}.
@@ -464,6 +465,8 @@ Honest check & \lean{multVerifyCompleteness} & $\Fn{coin},\Fn{extendMult}$, $\Fn
 Honest batch & \lean{mainCompleteness} & $\Fn{mult},\Fn{multVerify}$ & \lean{MainInputs} & $0$ & GS20, Prot.~19 \\
 \rowrule
 PRSS streams & \lean{prssRandSecurity} & dealer $\Fn{prssKeys}$ & a fixed public list of calls & $k(q+k)/2^{256}+A$ & CDI05, Sec.~4 \\
+\rowrule
+PRSS setup & \lean{prssSetupSecurity} & none & all, one setup from an empty $H$ cache & $(q+\mathsf{prssSetupSecrets})^2/2^{256}$ & \cite{GL05,CDG+18} \\
 \bottomrule
 \end{xltabular}}
 {\small
