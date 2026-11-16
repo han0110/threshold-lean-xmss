@@ -1,4 +1,4 @@
-import ThresholdLeanXmss.Statement
+import ThresholdLeanXmss.Statement.SigningBudgets
 
 /-!
 # The position of a batch in a ceremony

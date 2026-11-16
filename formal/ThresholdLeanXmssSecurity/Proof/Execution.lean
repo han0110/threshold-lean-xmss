@@ -1,4 +1,4 @@
-import ThresholdLeanXmss.Statement
+import ThresholdLeanXmss.Statement.SigningBudgets
 import VCVio.OracleComp.QueryTracking.RandomOracle.DeferredSampling
 import VCVio.ProgramLogic.Relational.SimulateQ.UntilBad
 

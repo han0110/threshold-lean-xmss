@@ -1,4 +1,4 @@
-import ThresholdLeanXmss.Statement
+import ThresholdLeanXmss.Statement.SigningBudgets
 import Mathlib.Algebra.MvPolynomial.SchwartzZippel
 import Mathlib.LinearAlgebra.Lagrange
 import VCVio.OracleComp.Constructions.SampleableType.Measure
