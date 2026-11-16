@@ -91,7 +91,7 @@ bundle.
 1. `seedGenSecurity` (`Proof/SeedGenAlias`) gives `SeedGenSecurityStatement` with
    `seedGenSimulator`. The simulator extracts the corrupt reveals from the observed calls and programs
    `H` (CDG+18). Honest commitments become fresh values until a call hits a commitment input.
-   `seedGenProgramAliasBound` pays the programming collisions. The bad events fit `seedGenHashError`.
+   `setupProgramAliasBound` pays the programming collisions. The bad events fit `seedGenHashError`.
 2. `seedGenCompleteness` (`Proof/SeedGen`) gives `SeedGenCompletenessStatement`. The honest run differs
    from `F_seedGen` only when two derived keys collide, at `derivedKeyCollision`.
 

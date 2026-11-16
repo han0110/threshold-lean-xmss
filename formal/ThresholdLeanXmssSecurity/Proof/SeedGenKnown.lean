@@ -1112,7 +1112,7 @@ theorem setupCompared_birthday (phase : Phase) (prims : Primitives) {D : C.Coali
         erw [if_pos hc] at hu
         exact ih u (m - 1) s' (k + 1) hu hpu h₁ h₂
 
-theorem isQueryBoundP_free_compared (phase : Phase) (D : C.Coalition) {β : Type} (oa : OracleComp (LocalSpec C) β) (n : ℕ)
+theorem isQueryBoundP_free_setupCompared (phase : Phase) (D : C.Coalition) {β : Type} (oa : OracleComp (LocalSpec C) β) (n : ℕ)
     (h : IsQueryBoundP oa (setupComparedCall (phase := phase) D) n) :
     IsQueryBoundP (free oa) (setupComparedWorldCall (phase := phase) D) n ∧ IsQueryBoundP (free oa) (setupComparedProgram (phase := phase) D) 0 := by
   induction oa using OracleComp.inductionOn generalizing n with
@@ -1129,7 +1129,7 @@ theorem isQueryBoundP_free_compared (phase : Phase) (D : C.Coalition) {β : Type
     · refine (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl (by simp [setupComparedProgram]), fun u => ?_⟩
       simpa [setupComparedProgram] using (ih u _ (h.2 u)).2
 
-theorem isQueryBoundP_observe_compared (phase : Phase) (D : C.Coalition) {β : Type} (oa : OracleComp (LocalSpec C) β) (n : ℕ)
+theorem isQueryBoundP_observe_setupCompared (phase : Phase) (D : C.Coalition) {β : Type} (oa : OracleComp (LocalSpec C) β) (n : ℕ)
     (h : IsQueryBoundP oa (setupComparedCall (phase := phase) D) n) :
     IsQueryBoundP (observe oa) (setupComparedWorldCall (phase := phase) D) n ∧
       IsQueryBoundP (observe oa) (setupComparedProgram (phase := phase) D) 0 := by
@@ -1193,11 +1193,11 @@ theorem setupComparedCall_counted (phase : Phase) (D : C.Coalition) (t : (LocalS
   · cases q <;> simp_all [setupComparedCall, SetupComparedCell, Counted]
   · exact h.elim
 
-theorem isQueryBoundP_compared_of_counted (phase : Phase) (D : C.Coalition) {β : Type} (oa : OracleComp (LocalSpec C) β) (n : ℕ)
+theorem isQueryBoundP_setupCompared_of_counted (phase : Phase) (D : C.Coalition) {β : Type} (oa : OracleComp (LocalSpec C) β) (n : ℕ)
     (h : IsQueryBoundP oa Counted n) : IsQueryBoundP oa (setupComparedCall (phase := phase) D) n :=
   h.of_imp (setupComparedCall_counted (phase := phase) D)
 
-theorem isQueryBoundP_compared_hash (phase : Phase) (D : C.Coalition) (q : Query C) :
+theorem isQueryBoundP_setupCompared_hash (phase : Phase) (D : C.Coalition) (q : Query C) :
     IsQueryBoundP (liftComp (hashQuery q) (LocalSpec C)) (setupComparedCall (phase := phase) D)
       (if SetupComparedCell (phase := phase) D q then 1 else 0) := by
   have e : liftComp (hashQuery q) (LocalSpec C) =
@@ -1228,13 +1228,13 @@ theorem seedGenIsQueryBoundP_listMapM {κ α β : Type} {spec : OracleSpec κ} {
     rw [List.mapM_cons, List.map_cons, List.sum_cons, ← Nat.add_zero (xs.map k).sum]
     exact isQueryBoundP_bind (h a) fun y _ => isQueryBoundP_bind ih fun _ _ => isQueryBoundP_pure _ _ 0
 
-theorem isQueryBoundP_compared_derive (phase : Phase) (D : C.Coalition) (i : C.Party)
+theorem isQueryBoundP_setupCompared_derive (phase : Phase) (D : C.Coalition) (i : C.Party)
     (view : C.Party → Parts C) :
     IsQueryBoundP (liftComp (deriveKeys phase i view) (LocalSpec C)) (setupComparedCall (phase := phase) D) 0 := by
   have hd (kind : KeyKind) (values : List HashOutput) :
       IsQueryBoundP (liftComp (hashQuery (C := C) (.derive phase kind values)) (LocalSpec C))
         (setupComparedCall (phase := phase) D) 0 := by
-    simpa [SetupComparedCell] using isQueryBoundP_compared_hash (phase := phase) D (.derive phase kind values)
+    simpa [SetupComparedCell] using isQueryBoundP_setupCompared_hash (phase := phase) D (.derive phase kind values)
   have hterm : IsQueryBoundP (liftComp (C.terms.mapM fun T => if i ∈ C.holders T then
       hashQuery (C := C) (.derive phase .term ((C.parties.filter (· ∈ C.holders T)).map fun j => (view j).term T))
       else pure 0) (LocalSpec C)) (setupComparedCall (phase := phase) D) 0 := by
@@ -1275,11 +1275,11 @@ theorem isQueryBoundP_compared_derive (phase : Phase) (D : C.Coalition) (i : C.P
       rw [liftComp_bind, ← Nat.zero_add 0]
       exact isQueryBoundP_bind hpair fun _ _ => by rw [liftComp_pure]; trivial
 
-theorem isQueryBoundP_compared_hashes (phase : Phase) (D : C.Coalition) (qs : C.Party → Query C) (b : ℕ)
+theorem isQueryBoundP_setupCompared_hashes (phase : Phase) (D : C.Coalition) (qs : C.Party → Query C) (b : ℕ)
     (hb : ((C.parties.map fun j => if SetupComparedCell (phase := phase) D (qs j) then 1 else 0).sum) ≤ b) :
     IsQueryBoundP (liftComp (C.parties.mapM fun j => hashQuery (qs j)) (LocalSpec C)) (setupComparedCall (phase := phase) D) b := by
   rw [seedGen_liftComp_mapM]
-  exact (seedGenIsQueryBoundP_listMapM (fun j => isQueryBoundP_compared_hash (phase := phase) D (qs j)) C.parties).mono hb
+  exact (seedGenIsQueryBoundP_listMapM (fun j => isQueryBoundP_setupCompared_hash (phase := phase) D (qs j)) C.parties).mono hb
 
 theorem seedGenParties_sum_le_card (f : C.Party → ℕ) (hf : ∀ j, f j ≤ 1) :
     (C.parties.map f).sum ≤ C.n := by
@@ -1292,13 +1292,13 @@ theorem seedGenParties_sum_corrupt (D : C.Coalition) :
   rw [← Fin.sum_univ_def]
   simp
 
-theorem isQueryBoundP_compared_revealCompute (phase : Phase) (D : C.Coalition) (i : C.Party) (own : Parts C)
+theorem isQueryBoundP_setupCompared_revealCompute (phase : Phase) (D : C.Coalition) (i : C.Party) (own : Parts C)
     (committed revealed : Mail C E) :
     IsQueryBoundP (setupRevealCompute phase i own committed revealed) (setupComparedCall (phase := phase) D) (D.1.card + C.n) := by
   unfold setupRevealCompute
   split
   · trivial
-  · refine isQueryBoundP_bind (isQueryBoundP_compared_hashes (phase := phase) D _ D.1.card ?_) fun _ _ => ?_
+  · refine isQueryBoundP_bind (isQueryBoundP_setupCompared_hashes (phase := phase) D _ D.1.card ?_) fun _ _ => ?_
     · rw [← seedGenParties_sum_corrupt D]
       apply le_of_eq
       congr 1
@@ -1308,13 +1308,13 @@ theorem isQueryBoundP_compared_revealCompute (phase : Phase) (D : C.Coalition) (
     · rw [← Nat.zero_add C.n]
       split
       · trivial
-      · exact isQueryBoundP_bind (isQueryBoundP_compared_derive (phase := phase) D _ _) fun _ _ => by
+      · exact isQueryBoundP_bind (isQueryBoundP_setupCompared_derive (phase := phase) D _ _) fun _ _ => by
           rw [← Nat.add_zero C.n]
           refine isQueryBoundP_bind ?_ fun _ _ => trivial
           unfold sharedQueries
-          exact isQueryBoundP_compared_hashes (phase := phase) D _ C.n (seedGenParties_sum_le_card _ fun j => by split <;> omega)
+          exact isQueryBoundP_setupCompared_hashes (phase := phase) D _ C.n (seedGenParties_sum_le_card _ fun j => by split <;> omega)
 
-theorem isQueryBoundP_compared_revealComputations (phase : Phase) (D : C.Coalition) (parts : C.Party → Parts C)
+theorem isQueryBoundP_setupCompared_revealComputations (phase : Phase) (D : C.Coalition) (parts : C.Party → Parts C)
     (committed sent : C.Party → Mail C E) :
     IsQueryBoundP (setupRevealComputations phase D parts committed sent) (setupComparedCall (phase := phase) D) (C.n * C.n) := by
   unfold setupRevealComputations
@@ -1323,7 +1323,7 @@ theorem isQueryBoundP_compared_revealComputations (phase : Phase) (D : C.Coaliti
     · trivial
     · rename_i h
       rw [if_neg (fun hi => h (Or.inl hi))]
-      exact isQueryBoundP_compared_revealCompute (phase := phase) D i (parts i) (committed i) _
+      exact isQueryBoundP_setupCompared_revealCompute (phase := phase) D i (parts i) (committed i) _
   · rw [Finset.sum_ite, Finset.sum_const_zero, Finset.sum_const, zero_add, smul_eq_mul]
     have hc : (Finset.univ.filter fun i => i ∉ D.1).card = C.n - D.1.card := by
       rw [Finset.filter_not, Finset.card_sdiff_of_subset (Finset.filter_subset _ _)]
@@ -1336,24 +1336,24 @@ theorem isQueryBoundP_compared_revealComputations (phase : Phase) (D : C.Coaliti
     rw [he, Nat.add_sub_cancel_left]
     nlinarith
 
-theorem isQueryBoundP_compared_post (phase : Phase) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (step : ℕ)
+theorem isQueryBoundP_setupCompared_post (phase : Phase) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (step : ℕ)
     (hround : ∀ state sent, IsQueryBoundP (A.round state sent) Counted step) (state : A.State)
     (parts : C.Party → Parts C) (committed : C.Party → Mail C E) :
     IsQueryBoundP (setupPostTraced (phase := phase) D A state parts committed) (setupComparedCall (phase := phase) D) (step + (C.n * C.n + step)) := by
   unfold setupPostTraced
   split
   · trivial
-  · refine isQueryBoundP_bind (isQueryBoundP_compared_of_counted (phase := phase) D _ _ (hround _ _)) fun r _ => ?_
-    refine isQueryBoundP_bind (isQueryBoundP_compared_revealComputations (phase := phase) D parts committed r.2) fun data _ => ?_
+  · refine isQueryBoundP_bind (isQueryBoundP_setupCompared_of_counted (phase := phase) D _ _ (hround _ _)) fun r _ => ?_
+    refine isQueryBoundP_bind (isQueryBoundP_setupCompared_revealComputations (phase := phase) D parts committed r.2) fun data _ => ?_
     rw [← Nat.add_zero step]
     refine isQueryBoundP_bind ?_ fun _ _ => trivial
     unfold setupFinishLocal
     split
     · trivial
     · rw [← Nat.add_zero step]
-      exact isQueryBoundP_bind (isQueryBoundP_compared_of_counted (phase := phase) D _ _ (hround _ _)) fun _ _ => trivial
+      exact isQueryBoundP_bind (isQueryBoundP_setupCompared_of_counted (phase := phase) D _ _ (hround _ _)) fun _ _ => trivial
 
-theorem isQueryBoundP_compared_program (phase : Phase) (D : C.Coalition) (q : Query C) (v : HashOutput)
+theorem isQueryBoundP_setupCompared_program (phase : Phase) (D : C.Coalition) (q : Query C) (v : HashOutput)
     (hq : ¬ SetupComparedCell (phase := phase) D q) :
     IsQueryBoundP (program q v) (setupComparedWorldCall (phase := phase) D) 0 ∧ IsQueryBoundP (program q v) (setupComparedProgram (phase := phase) D) 0 := by
   have e : program q v = (liftM ((WorldSpec C).query (.inl (.inr (q, v)))) : OracleComp (WorldSpec C) _) >>= pure := by
@@ -1363,38 +1363,38 @@ theorem isQueryBoundP_compared_program (phase : Phase) (D : C.Coalition) (q : Qu
   exact ⟨(isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl (by simp [setupComparedWorldCall]), fun _ => trivial⟩,
     (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl (by simpa [setupComparedProgram] using hq), fun _ => trivial⟩⟩
 
-theorem isQueryBoundP_compared_programs (phase : Phase) {ι : Type} (D : C.Coalition) (l : List ι) (q : ι → Query C)
+theorem isQueryBoundP_setupCompared_programs (phase : Phase) {ι : Type} (D : C.Coalition) (l : List ι) (q : ι → Query C)
     (v : ι → HashOutput) (hq : ∀ i, ¬ SetupComparedCell (phase := phase) D (q i)) :
     IsQueryBoundP (l.mapM fun i => program (q i) (v i)) (setupComparedWorldCall (phase := phase) D) 0 ∧
       IsQueryBoundP (l.mapM fun i => program (q i) (v i)) (setupComparedProgram (phase := phase) D) 0 := by
   constructor
   · simpa using seedGenIsQueryBoundP_listMapM (k := fun _ => 0)
-      (fun i => (isQueryBoundP_compared_program (phase := phase) D (q i) (v i) (hq i)).1) l
+      (fun i => (isQueryBoundP_setupCompared_program (phase := phase) D (q i) (v i) (hq i)).1) l
   · simpa using seedGenIsQueryBoundP_listMapM (k := fun _ => 0)
-      (fun i => (isQueryBoundP_compared_program (phase := phase) D (q i) (v i) (hq i)).2) l
+      (fun i => (isQueryBoundP_setupCompared_program (phase := phase) D (q i) (v i) (hq i)).2) l
 
 /-- The programming of `P` makes no compared call and no compared program. -/
-theorem isQueryBoundP_compared_programParameter (phase : Phase) (D : C.Coalition) (q : Query C) (v : HashOutput)
+theorem isQueryBoundP_setupCompared_programParameter (phase : Phase) (D : C.Coalition) (q : Query C) (v : HashOutput)
     (hq : ¬ SetupComparedCell phase D q) :
     IsQueryBoundP (programParameter phase q v) (setupComparedWorldCall phase D) 0 ∧
       IsQueryBoundP (programParameter phase q v) (setupComparedProgram phase D) 0 := by
   cases phase
-  · exact isQueryBoundP_compared_program (phase := .seedGen) D q v hq
+  · exact isQueryBoundP_setupCompared_program (phase := .seedGen) D q v hq
   · exact ⟨trivial, trivial⟩
 
-theorem isQueryBoundP_compared_programOk (phase : Phase) (D : C.Coalition) (parts : C.Party → Parts C) (log : CallLog C)
+theorem isQueryBoundP_setupCompared_programOk (phase : Phase) (D : C.Coalition) (parts : C.Party → Parts C) (log : CallLog C)
     (sent : C.Party → Mail C E) (parameter : PublicParameter) (seeds : C.Term → HashOutput)
     (pairs : C.Pair → HashOutput) (high : HashOutput) :
     IsQueryBoundP (setupProgramOk (phase := phase) D parts log sent parameter seeds pairs high) (setupComparedWorldCall (phase := phase) D) 0 ∧
       IsQueryBoundP (setupProgramOk (phase := phase) D parts log sent parameter seeds pairs high) (setupComparedProgram (phase := phase) D) 0 := by
   have hd (k : KeyKind) (values : List HashOutput) : ¬ SetupComparedCell (phase := phase) D (.derive phase k values) := by
     simp [SetupComparedCell]
-  have h₁ := isQueryBoundP_compared_programParameter phase D (.derive phase .parameter (C.parties.map fun j =>
+  have h₁ := isQueryBoundP_setupCompared_programParameter phase D (.derive phase .parameter (C.parties.map fun j =>
     (setupProgramView phase D parts log sent (seedGenFirstHonest D Finset.univ) j).parameter))
     (seedGenFullParameter high parameter) (hd _ _)
-  have h₂ := isQueryBoundP_compared_programs (phase := phase) D (seedGenKnownCoordinates D)
+  have h₂ := isQueryBoundP_setupCompared_programs (phase := phase) D (seedGenKnownCoordinates D)
     (setupTermProgrammingInput phase D (setupProgramView phase D parts log sent)) seeds (fun _ => hd _ _)
-  have h₃ := isQueryBoundP_compared_programs (phase := phase) D (seedGenCrossCoordinates D)
+  have h₃ := isQueryBoundP_setupCompared_programs (phase := phase) D (seedGenCrossCoordinates D)
     (setupPairProgrammingInput phase D (setupProgramView phase D parts log sent)) pairs (fun _ => hd _ _)
   unfold setupProgramOk
   constructor
@@ -1403,48 +1403,48 @@ theorem isQueryBoundP_compared_programOk (phase : Phase) (D : C.Coalition) (part
   · exact isQueryBoundP_bind (m := 0) h₁.2 fun _ _ => isQueryBoundP_bind (m := 0) h₂.2 fun _ _ =>
       isQueryBoundP_bind (m := 0) h₃.2 fun _ _ => trivial
 
-theorem isQueryBoundP_compared_commitments (phase : Phase) (D : C.Coalition) (parts : C.Party → Parts C) :
+theorem isQueryBoundP_setupCompared_commitments (phase : Phase) (D : C.Coalition) (parts : C.Party → Parts C) :
     IsQueryBoundP (setupInitialCommitments phase D parts) (setupComparedCall (phase := phase) D) 0 := by
   unfold setupInitialCommitments
   refine (seedGenIsQueryBoundP_sequenceFin_sum _ (fun _ => 0) fun i => ?_).mono (by simp)
   split
   · trivial
   · rename_i hi
-    exact isQueryBoundP_compared_hashes (phase := phase) D _ 0 (by simp [SetupComparedCell, hi])
+    exact isQueryBoundP_setupCompared_hashes (phase := phase) D _ 0 (by simp [SetupComparedCell, hi])
 
-theorem isQueryBoundP_compared_sample (phase : Phase) (D : C.Coalition) {β : Type} (p : ProbComp β) :
+theorem isQueryBoundP_setupCompared_sample (phase : Phase) (D : C.Coalition) {β : Type} (p : ProbComp β) :
     IsQueryBoundP (free (liftComp p (LocalSpec C))) (setupComparedWorldCall (phase := phase) D) 0 ∧
       IsQueryBoundP (free (liftComp p (LocalSpec C))) (setupComparedProgram (phase := phase) D) 0 :=
-  isQueryBoundP_free_compared (phase := phase) D _ 0 (isQueryBoundP_compared_of_counted (phase := phase) D _ 0 (isQueryBoundP_liftComp_counted p))
+  isQueryBoundP_free_setupCompared (phase := phase) D _ 0 (isQueryBoundP_setupCompared_of_counted (phase := phase) D _ 0 (isQueryBoundP_liftComp_counted p))
 
-theorem isQueryBoundP_compared_knownGame (phase : Phase) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+theorem isQueryBoundP_setupCompared_knownGame (phase : Phase) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (start step : ℕ)
     (hstart : ∀ x z, IsQueryBoundP (A.start x z) Counted start)
     (hround : ∀ state sent, IsQueryBoundP (A.round state sent) Counted step) :
     IsQueryBoundP (setupKnownGame (phase := phase) D A x z) (setupComparedWorldCall (phase := phase) D) (start + 3 * step + C.n * C.n) ∧
       IsQueryBoundP (setupKnownGame (phase := phase) D A x z) (setupComparedProgram (phase := phase) D) 0 := by
-  have o₁ := isQueryBoundP_observe_compared (phase := phase) D _ _ (isQueryBoundP_compared_of_counted (phase := phase) D _ _ (hstart (corruptInputs D x) z))
+  have o₁ := isQueryBoundP_observe_setupCompared (phase := phase) D _ _ (isQueryBoundP_setupCompared_of_counted (phase := phase) D _ _ (hstart (corruptInputs D x) z))
   unfold setupKnownGame
   constructor
-  · refine (isQueryBoundP_bind o₁.1 fun _ _ => isQueryBoundP_bind (isQueryBoundP_compared_sample (phase := phase) D _).1 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_compared_sample (phase := phase) D _).1 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_free_compared (phase := phase) D _ _ (isQueryBoundP_compared_commitments (phase := phase) D _)).1 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_observe_compared (phase := phase) D _ _
-        (isQueryBoundP_compared_of_counted (phase := phase) D _ _ (hround _ _))).1 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_compared_sample (phase := phase) D _).1 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_compared_programOk (phase := phase) D _ _ _ _ _ _ _).1 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_free_compared (phase := phase) D _ _
-        (isQueryBoundP_compared_post (phase := phase) D A step hround _ _ _)).1 fun _ _ =>
+  · refine (isQueryBoundP_bind o₁.1 fun _ _ => isQueryBoundP_bind (isQueryBoundP_setupCompared_sample (phase := phase) D _).1 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_setupCompared_sample (phase := phase) D _).1 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_free_setupCompared (phase := phase) D _ _ (isQueryBoundP_setupCompared_commitments (phase := phase) D _)).1 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_observe_setupCompared (phase := phase) D _ _
+        (isQueryBoundP_setupCompared_of_counted (phase := phase) D _ _ (hround _ _))).1 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_setupCompared_sample (phase := phase) D _).1 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_setupCompared_programOk (phase := phase) D _ _ _ _ _ _ _).1 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_free_setupCompared (phase := phase) D _ _
+        (isQueryBoundP_setupCompared_post (phase := phase) D A step hround _ _ _)).1 fun _ _ =>
       isQueryBoundP_pure _ _ 0).mono (by ring_nf; omega)
-  · refine (isQueryBoundP_bind o₁.2 fun _ _ => isQueryBoundP_bind (isQueryBoundP_compared_sample (phase := phase) D _).2 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_compared_sample (phase := phase) D _).2 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_free_compared (phase := phase) D _ _ (isQueryBoundP_compared_commitments (phase := phase) D _)).2 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_observe_compared (phase := phase) D _ _
-        (isQueryBoundP_compared_of_counted (phase := phase) D _ _ (hround _ _))).2 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_compared_sample (phase := phase) D _).2 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_compared_programOk (phase := phase) D _ _ _ _ _ _ _).2 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_free_compared (phase := phase) D _ _
-        (isQueryBoundP_compared_post (phase := phase) D A step hround _ _ _)).2 fun _ _ =>
+  · refine (isQueryBoundP_bind o₁.2 fun _ _ => isQueryBoundP_bind (isQueryBoundP_setupCompared_sample (phase := phase) D _).2 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_setupCompared_sample (phase := phase) D _).2 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_free_setupCompared (phase := phase) D _ _ (isQueryBoundP_setupCompared_commitments (phase := phase) D _)).2 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_observe_setupCompared (phase := phase) D _ _
+        (isQueryBoundP_setupCompared_of_counted (phase := phase) D _ _ (hround _ _))).2 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_setupCompared_sample (phase := phase) D _).2 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_setupCompared_programOk (phase := phase) D _ _ _ _ _ _ _).2 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_free_setupCompared (phase := phase) D _ _
+        (isQueryBoundP_setupCompared_post (phase := phase) D A step hround _ _ _)).2 fun _ _ =>
       isQueryBoundP_pure _ _ 0).mono (by simp)
 
 /-- A cell that was empty in `b` holds its target answer in `s`. -/
@@ -1641,7 +1641,7 @@ theorem seedGenObserve_new_logged {α : Type} (oa : OracleComp (LocalSpec C) α)
           rw [this, hq] at hpq
           cases hpq
 
-theorem localAnswer_compared_unchanged (phase : Phase) (prims : Primitives) (D : C.Coalition) (t : (LocalSpec C).Domain)
+theorem localAnswer_setupCompared_unchanged (phase : Phase) (prims : Primitives) (D : C.Coalition) (t : (LocalSpec C).Domain)
     (ht : ¬ setupComparedCall (phase := phase) D t) (s : HashCache C) (p : (LocalSpec C).Range t × HashCache C)
     (hp : p ∈ support ((localAnswer prims t).run s)) (x : Query C) (hx : SetupComparedCell (phase := phase) D x) :
     p.2 x = s x := by
@@ -1696,7 +1696,7 @@ theorem setupCompared_unchanged (phase : Phase) (prims : Primitives) {D : C.Coal
     simp only [if_neg hc, if_neg hpr] at hmu hpu
     rw [ih p.1 hmu hpu p.2 z hz x hx]
     rcases t with (t | y) | t
-    · exact localAnswer_compared_unchanged (phase := phase) prims D t hc s p hp' x hx
+    · exact localAnswer_setupCompared_unchanged (phase := phase) prims D t hc s p hp' x hx
     · have hy : ¬ SetupComparedCell (phase := phase) D y.1 := hpr
       change p ∈ support ((programAnswer y).run s) at hp'
       simp only [programAnswer, StateT.run_bind, StateT.run_get, pure_bind] at hp'
@@ -1706,7 +1706,7 @@ theorem setupCompared_unchanged (phase : Phase) (prims : Primitives) {D : C.Coal
       · simp only [StateT.run_bind, StateT.run_set, StateT.run_pure, pure_bind, support_pure] at hp'
         rw [hp']
         exact QueryCache.cacheQuery_of_ne s _ (fun he => hy (he ▸ hx))
-    · exact localAnswer_compared_unchanged (phase := phase) prims D t hc s p hp' x hx
+    · exact localAnswer_setupCompared_unchanged (phase := phase) prims D t hc s p hp' x hx
 
 /-- The transcript before the last two rounds. -/
 structure SeedGenKnownPre (C : Committee) (E σ : Type) where
@@ -1765,20 +1765,20 @@ theorem setupKnownPrefix_unlogged (phase : Phase) (prims : Primitives) (D : C.Co
     rcases seedGenObserve_new_logged prims _ ∅ p₀ hp₀ _ rfl hne with ⟨y, hy⟩ | h
     · exact hlog y (List.mem_append_left _ hy)
     · exact hns h
-  have u₁ := setupCompared_unchanged (phase := phase) prims _ (isQueryBoundP_compared_sample (phase := phase) D _).1
-    (isQueryBoundP_compared_sample (phase := phase) D _).2 _ p₁ hp₁ _ hx
-  have u₂ := setupCompared_unchanged (phase := phase) prims _ (isQueryBoundP_compared_sample (phase := phase) D _).1
-    (isQueryBoundP_compared_sample (phase := phase) D _).2 _ p₂ hp₂ _ hx
-  have hcm := isQueryBoundP_free_compared (phase := phase) D _ 0 (isQueryBoundP_compared_commitments (phase := phase) D p₂.1)
+  have u₁ := setupCompared_unchanged (phase := phase) prims _ (isQueryBoundP_setupCompared_sample (phase := phase) D _).1
+    (isQueryBoundP_setupCompared_sample (phase := phase) D _).2 _ p₁ hp₁ _ hx
+  have u₂ := setupCompared_unchanged (phase := phase) prims _ (isQueryBoundP_setupCompared_sample (phase := phase) D _).1
+    (isQueryBoundP_setupCompared_sample (phase := phase) D _).2 _ p₂ hp₂ _ hx
+  have hcm := isQueryBoundP_free_setupCompared (phase := phase) D _ 0 (isQueryBoundP_setupCompared_commitments (phase := phase) D p₂.1)
   have u₃ := setupCompared_unchanged (phase := phase) prims _ hcm.1 hcm.2 _ p₃ hp₃ _ hx
   have n₄ : p₄.2 (.commit phase j i reveal) = none := by
     by_contra hne
     rcases seedGenObserve_new_logged prims _ _ p₄ hp₄ _ (by rw [u₃, u₂, u₁, n₀]) hne with ⟨y, hy⟩ | h
     · exact hlog y (List.mem_append_right _ hy)
     · exact hns h
-  have u₅ := setupCompared_unchanged (phase := phase) prims _ (isQueryBoundP_compared_sample (phase := phase) D _).1
-    (isQueryBoundP_compared_sample (phase := phase) D _).2 _ p₅ hp₅ _ hx
-  have hpo := isQueryBoundP_compared_programOk (phase := phase) (E := E) D p₂.1 (p₀.1.2 ++ p₄.1.2) p₄.1.1.2 p₁.1.1 p₁.1.2.1
+  have u₅ := setupCompared_unchanged (phase := phase) prims _ (isQueryBoundP_setupCompared_sample (phase := phase) D _).1
+    (isQueryBoundP_setupCompared_sample (phase := phase) D _).2 _ p₅ hp₅ _ hx
+  have hpo := isQueryBoundP_setupCompared_programOk (phase := phase) (E := E) D p₂.1 (p₀.1.2 ++ p₄.1.2) p₄.1.1.2 p₁.1.1 p₁.1.2.1
     p₁.1.2.2 p₅.1
   have u₆ := setupCompared_unchanged (phase := phase) prims _ hpo.1 hpo.2 _ p₆ hp₆ _ hx
   rw [u₆, u₅, n₄]
@@ -1978,7 +1978,7 @@ theorem setupExtractEchoBound_of_cache (phase : Phase) (prims : Primitives) (hC 
 theorem setupComparedCollisionBound_proof (phase : Phase) (prims : Primitives) : SetupComparedCollisionBound (phase := phase) (C := C) (E := E) prims := by
   intro D A x z Z q hq
   obtain ⟨start, step, final, hsum, hs, hr, _, _⟩ := hq
-  obtain ⟨h₁, h₂⟩ := isQueryBoundP_compared_knownGame (phase := phase) D A x z start step hs hr
+  obtain ⟨h₁, h₂⟩ := isQueryBoundP_setupCompared_knownGame (phase := phase) D A x z start step hs hr
   have h0 : ¬ SetupComparedCollision (phase := phase) D (∅ : HashCache C) := by
     rintro ⟨_, _, _, _, _, _, h, _⟩
     simp at h
@@ -2032,7 +2032,7 @@ theorem setupFreshOpeningBound_proof (phase : Phase) (prims : Primitives) : Setu
     rw [bind_pure_comp, prEvent_map]
     refine (prEvent_mono _ _ _ fun r hf => ?_).trans
       (setupTarget_local (phase := phase) prims (setupOpeningTarget (phase := phase) D w.1.sent) (setupOpeningTarget_compared (phase := phase) D w.1.sent) w.2 _
-        _ w.2 (isQueryBoundP_compared_post (phase := phase) D A step hr _ _ _) ?_)
+        _ w.2 (isQueryBoundP_setupCompared_post (phase := phase) D A step hr _ _ _) ?_)
     · obtain ⟨j, i, rv, c, hj, hi, hc, hsent, hlog⟩ := hf
       refine ⟨.commit phase j i rv, c, ?_, setupKnownPrefix_unlogged (phase := phase) prims D A x z w hw j i rv hj hlog, hc⟩
       simp [setupOpeningTarget, hj, hi, hsent]

@@ -1,12 +1,17 @@
 import ThresholdLeanXmssSecurity.Proof.SeedGen
 
 /-!
-# The games of the seed generation
+# The games of the setups
 
-This module holds the query bounds of `seedGenSimulator` and `prssSetupSimulator` and the games of
-the security proof of the seed generation. `SeedGenSecurityStatement` reduces to its distance half
-`SeedGenSecurityDistance`. `seedGenSimulator_queryBound` gives the query half. The supporting lemmas
-concern the games of that distance (CDG+18).
+This module holds the games of the security proof of a setup. The phase of a game names the setup,
+the seed generation or the PRSS setup. The module also holds the query bounds of `seedGenSimulator`
+and `prssSetupSimulator`, and the two ends of each claim.
+
+* `SeedGenSecurityStatement` reduces to its distance half `SeedGenSecurityDistance`.
+  `seedGenSimulator_queryBound` gives the query half.
+* `setupCommonGame` is the common game of a setup. `setupCommonGame_seedGen_ideal` and
+  `setupCommonGame_prss_ideal` give its ideal end for each phase.
+* The other lemmas concern the games of the distance of a setup (CDG+18).
 -/
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss

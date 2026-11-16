@@ -3,11 +3,11 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 import XmssSecurity.Proof.Seeded.FreshTable
 
 /-!
-# Setup security: aliases of programming inputs
+# The aliases of the programming inputs of a setup
 
 Honest commitments are replaced by fresh uncached values. A coupling preserves the parts and the
 complete observed transcript until a logged query hits an honest commitment input. Distinct sender
-and receiver tags make the commitment inputs distinct; the cache remains equal elsewhere.
+and receiver tags make the commitment inputs distinct. The cache remains equal elsewhere.
 
 In the fresh-commitment prefix the transcript is independent of the parts. A commitment query costs
 one honest pair part, and a derivation query costs at most `K` honest coordinates. These
@@ -486,8 +486,8 @@ theorem probEvent_setupAlias_hybrid_fixed (phase : Phase) (D : C.Coalition) (log
       gcongr
     _ = _ := by push_cast; ring
 
-/-- For a transcript that does not depend on the parts, with at most `q` logged random-oracle
-queries, the bad event of a setup of `phase` has probability at most `(q K + K²) / 2^256`. -/
+/-- The transcript does not depend on the parts and logs at most `q` random-oracle queries. Then the bad
+event of a setup of `phase` has a probability of at most `(q K + K²) / 2^256`. -/
 theorem probEvent_setupAlias_independent (phase : Phase) (D : C.Coalition)
     (transcript : ProbComp (CallLog C × (C.Party → Mail C E))) (q : ℕ)
     (hq : ∀ r ∈ support transcript, (r.1.filter fun v => ¬ IsFixed v.1).length ≤ q) :

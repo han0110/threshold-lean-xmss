@@ -342,7 +342,7 @@ theorem seedGenHiddenOverlay_piecewise (D : C.Coalition) (i : C.Party) (k : Keys
         simp [hij, hk]
 
 /-- The dealer's hidden coordinates can be replaced by those of an independent second dealer. -/
-theorem evalDist_dealer_piecewise (phase : Phase) (D : C.Coalition) {β : Type}
+theorem evalDist_setupDealer_piecewise (phase : Phase) (D : C.Coalition) {β : Type}
     (k : PublicParameter × (C.Term → HashOutput) × (C.Pair → HashOutput) → ProbComp β) :
     (do
       let d ← setupDealerSamples phase (C := C)
@@ -407,7 +407,7 @@ theorem evalDist_setupMixedGame_hiddenZ (phase : Phase) (prims : Primitives) (D 
   simp only [StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind]
   refine EvalDistEq.symm ?_
   refine (EvalDistEq.bind_right _ fun d => evalDist_bind_two_comm _ _ _ _).trans ?_
-  refine EvalDistEq.trans ?_ (evalDist_dealer_piecewise (phase := phase) D _)
+  refine EvalDistEq.trans ?_ (evalDist_setupDealer_piecewise (phase := phase) D _)
   refine EvalDistEq.bind_right _ fun d => ?_
   refine EvalDistEq.bind_right _ fun a => ?_
   refine EvalDistEq.bind_right _ fun b => ?_
