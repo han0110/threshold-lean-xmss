@@ -596,7 +596,7 @@ def seedGenReferenceMixture (prims : Primitives) (D : C.Coalition) (A : Adversar
   let parts ← OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)
   let h := seedGenFiniteTotal prims S ht
   simulateQ (fixedLocal prims h)
-    (seedGenReferenceLocalGame prims D h (fun name => h (setupNamedInput .seedGen parts name)) A x z Z parts)
+    (setupReferenceLocalGame .seedGen prims D h (fun name => h (setupNamedInput .seedGen parts name)) A x z Z parts)
 
 theorem evalDist_seedGenReal_referenceMixture (prims : Primitives) (D : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
@@ -614,7 +614,7 @@ theorem evalDist_seedGenReal_referenceMixture (prims : Primitives) (D : C.Coalit
   refine ((sameRun_setupLocal_normalized .seedGen prims D A x z Z).run'_eq).trans (he.trans ?_)
   unfold seedGenReferenceMixture
   refine EvalDistEq.bind_right _ fun ht => ?_
-  exact evalDist_seedGenNormalized_fixed_reference prims D (seedGenFiniteTotal prims S ht) A x z Z
+  exact evalDist_setupNormalized_fixed_reference .seedGen prims D (seedGenFiniteTotal prims S ht) A x z Z
 
 /-! ### The relabeling of the hidden keys -/
 
@@ -646,14 +646,14 @@ theorem seedGenReferenceLocalGame_table_congr (prims : Primitives) (D : C.Coalit
     (ht : ∀ name, Hidden D name → t name = t' name)
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (parts : C.Party → Parts C) :
-    seedGenReferenceLocalGame prims D h t A x z Z parts = seedGenReferenceLocalGame prims D h t' A x z Z parts := by
+    setupReferenceLocalGame .seedGen prims D h t A x z Z parts = setupReferenceLocalGame .seedGen prims D h t' A x z Z parts := by
   have hk : setupReferenceKeys .seedGen (E := E) prims D h t parts = setupReferenceKeys .seedGen prims D h t' parts := by
     funext revealed i
     exact seedGenMaskKeys_table_congr D t t' ht i _
-  have hd : seedGenReferenceData (E := E) prims D h t parts = seedGenReferenceData prims D h t' parts := by
+  have hd : setupReferenceData .seedGen (E := E) prims D h t parts = setupReferenceData .seedGen prims D h t' parts := by
     funext commitSent revealSent i
-    simp only [seedGenReferenceData, hk]
-  simp only [seedGenReferenceLocalGame, seedGenReferencePostCommit, hd]
+    simp only [setupReferenceData, hk]
+  simp only [setupReferenceLocalGame, setupReferencePostCommit, hd]
 
 /-- The reference mixture after the relabeling: on distinct canonical inputs, the hidden keys are an
 independent dealer table, and the oracle answers the hidden canonical inputs with the dealer's keys. -/
@@ -667,7 +667,7 @@ def seedGenSwappedMixture (prims : Primitives) (D : C.Coalition) (A : Adversary 
   let h := seedGenFiniteTotal prims S ht
   let table := if Function.Injective (setupNamedInput .seedGen parts) then p.2 else
     fun name => h (setupNamedInput .seedGen parts name)
-  simulateQ (fixedLocal prims h) (seedGenReferenceLocalGame prims D h table A x z Z parts)
+  simulateQ (fixedLocal prims h) (setupReferenceLocalGame .seedGen prims D h table A x z Z parts)
 
 theorem evalDist_seedGenReferenceMixture_swap (prims : Primitives) (D : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
@@ -679,7 +679,7 @@ theorem evalDist_seedGenReferenceMixture_swap (prims : Primitives) (D : C.Coalit
   refine EvalDistEq.bind_right _ fun parts => ?_
   let F : (S → HashOutput) → ProbComp Bool := fun ht =>
     simulateQ (fixedLocal prims (seedGenFiniteTotal prims S ht))
-      (seedGenReferenceLocalGame prims D (seedGenFiniteTotal prims S ht)
+      (setupReferenceLocalGame .seedGen prims D (seedGenFiniteTotal prims S ht)
         (fun name => seedGenFiniteTotal prims S ht (setupNamedInput .seedGen parts name)) A x z Z parts)
   have hfst : (($ᵗ ((S → HashOutput) × (KeyName C → HashOutput))) >>= fun p => F p.1) =ᵈ
       (($ᵗ (S → HashOutput)) >>= F) := by

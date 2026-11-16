@@ -222,7 +222,7 @@ def seedGenRefPrefixV (D : C.Coalition) (h : Query C → HashOutput)
   let r ← A.round state (setupFixedCommitView .seedGen prims D h parts)
   if ∀ i, i ∉ D.1 → seedGenCommitAborted D r.2 i = true then pure (r.1, none) else do
     let r' ← A.round r.1 (setupReferenceRevealView .seedGen D parts r.2)
-    if ∀ i, i ∉ D.1 → ¬ seedGenReferenceActive D h r.2 r'.2 i then pure (r'.1, none) else do
+    if ∀ i, i ∉ D.1 → ¬ setupReferenceActive .seedGen D h r.2 r'.2 i then pure (r'.1, none) else do
       let r'' ← A.round r'.1 (V r.2 r'.2)
       pure (r''.1, some (r.2, r'.2, r''.2))
 
@@ -294,10 +294,10 @@ theorem seedGenRefVisible_congr (D : C.Coalition) (h₁ h₂ : Query C → HashO
   funext c i
   unfold seedGenRefVisible
   split_ifs with hci
-  · have hactive : seedGenReferenceActive D h₁ s rs i ↔ seedGenReferenceActive D h₂ s rs i := by
-      simp only [seedGenReferenceActive, seedGenReferenceOpenCheck, hc]
-    rw [seedGenReferenceData_active, seedGenReferenceData_active]
-    by_cases ha : seedGenReferenceActive D h₁ s rs i
+  · have hactive : setupReferenceActive .seedGen D h₁ s rs i ↔ setupReferenceActive .seedGen D h₂ s rs i := by
+      simp only [setupReferenceActive, setupReferenceOpenCheck, hc]
+    rw [setupReferenceData_active, setupReferenceData_active]
+    by_cases ha : setupReferenceActive .seedGen D h₁ s rs i
     · rw [if_pos ha, if_pos (hactive.1 ha)]
       simp only [setupEchoDataStep, Step.outbox, echoOutbox]
       congr 2
@@ -317,9 +317,9 @@ theorem seedGenRefPrefixV_congr (D : C.Coalition) (h₁ h₂ : Query C → HashO
   have hcv : setupFixedCommitView .seedGen (E := E) prims D h₁ parts = setupFixedCommitView .seedGen prims D h₂ parts := by
     funext c i
     simp only [setupFixedCommitView, D_commitQueries, hc]
-  have hactive : ∀ s rs i, seedGenReferenceActive (E := E) D h₁ s rs i ↔ seedGenReferenceActive D h₂ s rs i := by
+  have hactive : ∀ s rs i, setupReferenceActive .seedGen (E := E) D h₁ s rs i ↔ setupReferenceActive .seedGen D h₂ s rs i := by
     intro s rs i
-    simp only [seedGenReferenceActive, seedGenReferenceOpenCheck, hc]
+    simp only [setupReferenceActive, setupReferenceOpenCheck, hc]
   simp only [seedGenRefPrefixV, hcv, hactive]
 
 end LogCoupling
@@ -897,13 +897,13 @@ theorem seedGenPrefixLog_length_le (D : C.Coalition) (A : Adversary C E Unit PEm
   set h := seedGenFiniteTotal prims S a
   obtain ⟨y, hy⟩ := exists_mem_support_probComp (simulateQ (fixedLocal prims h)
     (seedGenHashLog (Z (r.1.1, seedGenRefOutputs prims D h (fun _ => 0) parts r.1.2))))
-  have hk : (y.1, r.2 ++ y.2) ∈ support (seedGenReferenceKernel prims D h (fun _ => 0) A x z Z parts) := by
-    unfold seedGenReferenceKernel
+  have hk : (y.1, r.2 ++ y.2) ∈ support (setupReferenceKernel .seedGen prims D h (fun _ => 0) A x z Z parts) := by
+    unfold setupReferenceKernel
     rw [seedGenReferenceLocalGame_eq_prefix, seedGenHashLog_bind]
     simp only [simulateQ_bind, simulateQ_pure, support_bind, Set.mem_iUnion, support_pure,
       Set.mem_singleton_iff]
     exact ⟨r, hr, y, hy, rfl⟩
-  have := seedGenReferenceKernel_random_length_le prims D h (fun _ => 0) A x z Z q hq parts _ hk
+  have := setupReferenceKernel_random_length_le .seedGen prims D h (fun _ => 0) A x z Z q hq parts _ hk
   simp only [List.filter_append, List.length_append] at this
   omega
 
