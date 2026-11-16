@@ -41,9 +41,7 @@ open XmssSecurity.CappedChain
 open SigningCompilerO1Frame SigningCompilerO1Pre SigningCompilerO1Programs SigningCompilerO1Build
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
 attribute [local irreducible] Queries
 
 /-! ## The Merkle path of a bottom key -/
@@ -451,6 +449,7 @@ theorem tailInv_final (top : TopTree) (vlog : List (HiddenKey × Digest)) (a : R
   ⟨hi.2.2.2.1, syncFinal'_of_syncAt prims x s pads u rest noise top vlog a rev a' (⟨src, starts⟩, st)
     (⟨src, starts⟩, st) hi.1 hi.2.2.2.2 hi.2.2.2.1 rfl⟩
 
+set_option linter.constructorNameAsVariable false in
 /-- The honest signature at a key with `t` signers on both sides. Both sides give the same
 signature. The relation after the tail holds at reveal maps before the last reveals. -/
 theorem tail_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)

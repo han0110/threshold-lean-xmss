@@ -18,8 +18,6 @@ open SigningCompilerSyncReal SigningCompilerUntil
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 10000
-set_option maxHeartbeats 1600000
 attribute [local irreducible] grind SigningFlatEagerProof.baseGrind Queries
   SigningR1FixedProof.cachedExtra SigningOneRunProof.jointCachedExtra
   rawCarriedLogged rawKeyedSplitOracle rawKeyedSplitWorld rawTraceWorld rawTraceFlatWith

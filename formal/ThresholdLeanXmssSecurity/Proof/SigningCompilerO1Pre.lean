@@ -23,8 +23,6 @@ open SigningCompilerO1Sync SigningCompilerO1Frame
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
 
 section Open
 variable (prims : Primitives) (x : Keys3 C) (s : HiddenKey → Digest)

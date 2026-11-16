@@ -21,7 +21,6 @@ open SigningCompilerO1SourceProof SigningCompilerO1Slack
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
 
 section Steps
 variable (P : PublicParameter) (seeds : C.Term → HashOutput) (q : ℕ) (s : HiddenKey → Digest)

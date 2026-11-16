@@ -37,9 +37,6 @@ open SigningCompilerO1SyncHandlers
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
-set_option maxHeartbeats 1600000
 set_option backward.isDefEq.respectTransparency false
 attribute [local irreducible] grind SigningFlatEagerProof.baseGrind
   SigningR1FixedProof.cachedExtra SigningOneRunProof.jointCachedExtra
@@ -265,6 +262,8 @@ theorem local_uniform (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (to
   rw [hnil, List.append_nil, List.append_nil]
   exact hsync.1
 
+set_option linter.constructorNameAsVariable false in
+set_option maxHeartbeats 1600000 in
 /-- A slot read with no hidden hit. The term of the slot is revealed. -/
 theorem local_slot (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)
     (z : TprfSecurityProof.Slot C) (a : RealState C) (b : SourceStateO1 C × CompState C)

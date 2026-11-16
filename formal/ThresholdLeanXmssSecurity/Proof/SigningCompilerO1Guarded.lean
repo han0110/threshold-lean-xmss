@@ -22,7 +22,6 @@ open SigningCompilerO1Marks SigningCompilerO1Runs SigningCompilerO1NoFalse
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
 attribute [local irreducible] sourceProgramO1X sourceProgramO1 sourceGameO1X sourceGameO1
 
 /-- An outcome with the flag down, no failure with a false tag, and a flag up after each failure with

@@ -21,8 +21,6 @@ open SigningCompilerCouplingProof
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 10000
-set_option maxHeartbeats 800000
 
 abbrev FrozenState (C : Committee) :=
   SigningShareLazy.ShareState C.Term CPoint (SigningShareLazy.FrozenBad Bool)

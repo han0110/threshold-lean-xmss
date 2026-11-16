@@ -13,10 +13,8 @@ open SigningCompilerSyncRelease
 variable {C : Committee} {Tag : Type}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
-set_option maxHeartbeats 1600000
-set_option linter.constructorNameAsVariable false
 
+set_option maxHeartbeats 1600000 in
 /-- Port of `completion_cache_sync` to any constrained point with the visible cache fixed. -/
 theorem completion_cache_sync_at (x : Keys3 C)
     (hinj : Function.Injective x.2.1) (s : HiddenKey → Digest)
@@ -181,6 +179,7 @@ theorem sourcePlantX_sync_next (tagOf : CappedCompilerState C × Bool → Tag) (
         subst b
         simp only [hd, QueryCache.cacheQuery_self]
 
+set_option maxHeartbeats 1600000 in
 /-- List port of sourcePlantsX_sync with already revealed next keys. -/
 theorem sourcePlantsX_sync_next (tagOf : CappedCompilerState C × Bool → Tag) (x : Keys3 C)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)

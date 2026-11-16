@@ -21,9 +21,8 @@ variable {C : Committee} (prims : Primitives)
 
 attribute [local instance] Classical.propDecidable
 
-set_option backward.isDefEq.respectTransparency false in
 set_option linter.constructorNameAsVariable false in
-set_option maxRecDepth 4000 in
+set_option backward.isDefEq.respectTransparency false in
 /-- The actual cached trigger adds only bottom-message trial entries. -/
 theorem cachedExtra_frame (seeds : C.Term → HashOutput) (P : PublicParameter)
     (p : FlatState C) (t : (WorldSpec C).Domain) (p' : FlatState C) z
@@ -38,9 +37,8 @@ theorem cachedExtra_frame (seeds : C.Term → HashOutput) (P : PublicParameter)
     subst z
     exact ⟨le_rfl, fun _ _ => rfl⟩
 
-set_option backward.isDefEq.respectTransparency false in
 set_option linter.constructorNameAsVariable false in
-set_option maxRecDepth 4000 in
+set_option backward.isDefEq.respectTransparency false in
 /-- The same cache frame holds with the joint opening state carried alongside it. -/
 theorem jointCachedExtra_frame (seeds : C.Term → HashOutput) (P : PublicParameter)
     (p : FlatJointState C) (t : (WorldSpec C).Domain) (p' : FlatJointState C) z
@@ -51,9 +49,8 @@ theorem jointCachedExtra_frame (seeds : C.Term → HashOutput) (P : PublicParame
     unfold jointCachedExtra at hz
     with_reducible exact cachedExtra_frame seeds P (p.1, p.2.1) t (p'.1, p'.2.1) z hz
 
-set_option backward.isDefEq.respectTransparency false in
 set_option linter.constructorNameAsVariable false in
-set_option maxRecDepth 4000 in
+set_option backward.isDefEq.respectTransparency false in
 /-- One world call preserves the frame, including the extra cached grind. -/
 theorem jointWorld_logAgreement (seeds : C.Term → HashOutput) (P : PublicParameter)
     (t : (WorldSpec C).Domain) (ht : ¬IsProgram t) (p : FlatJointState C)
@@ -68,9 +65,8 @@ theorem jointWorld_logAgreement (seeds : C.Term → HashOutput) (P : PublicParam
   have hf := jointCachedExtra_frame seeds P p t (w.2, p.2) y (by with_reducible exact hy)
   exact ⟨hlog.1.trans hf.1, fun q hq => (hf.2 q hq).trans (hlog.2 q hq)⟩
 
-set_option backward.isDefEq.respectTransparency false in
 set_option linter.constructorNameAsVariable false in
-set_option maxRecDepth 4000 in
+set_option backward.isDefEq.respectTransparency false in
 /-- A logged-state invariant holds through setup, adaptive signing and verification. -/
 theorem jointGame_inv
     (W : QueryImpl (WorldSpec C) (StateT (FlatJointState C) ProbComp))
@@ -110,9 +106,8 @@ theorem jointGame_inv
     rw [hz]
     exact hi
 
-set_option backward.isDefEq.respectTransparency false in
 set_option linter.constructorNameAsVariable false in
-set_option maxRecDepth 4000 in
+set_option backward.isDefEq.respectTransparency false in
 /-- Every supported outcome of the actual one run satisfies the cache frame. -/
 theorem oneRun_logAgreement (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) z
     (hz : z ∈ support (oneRun prims A x)) : LogAgreement x.1 z.2.1 := by
@@ -125,9 +120,8 @@ theorem oneRun_logAgreement (A : TsigAdversary C) (x : SigningSecurityProof.Keys
       · intro q _
         rfl) z (by with_reducible exact hz)
 
-set_option backward.isDefEq.respectTransparency false in
 set_option linter.constructorNameAsVariable false in
-set_option maxRecDepth 4000 in
+set_option backward.isDefEq.respectTransparency false in
 /-- Forgetting only the monitor preserves the actual split-run cache frame. -/
 theorem splitRun_logAgreement (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) z
     (hz : z ∈ support (splitRunAt prims A x)) : LogAgreement x.1 z.2.1.1.1 := by
@@ -142,8 +136,6 @@ def LoggedReleasedRow (x : SigningSecurityProof.Keys3 C)
 
 open SigningGuessProof SigningDescentProof SigningCacheProof
 
-set_option linter.constructorNameAsVariable false in
-set_option maxRecDepth 4000 in
 /-- A successful receipt fixes the entire selected replay on both compatible caches. -/
 theorem receipt_selected_extension (x : SigningSecurityProof.Keys3 C) (top : TopTree)
     (state : TsigState C) (forgery : Forgery) (receipt : Round2Receipt C)
@@ -167,7 +159,6 @@ theorem receipt_selected_extension (x : SigningSecurityProof.Keys3 C) (top : Top
       (ReceiptRuns.mono prims x top hle receipt hr) he hb hc').symm
 
 set_option linter.constructorNameAsVariable false in
-set_option maxRecDepth 4000 in
 /-- A threshold release supplies one canonical receipt from the actual verification prefix. -/
 theorem verifyRun_released_receipt (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
     (r : SigningGuessLinkProof.LoggedOutcome C)
@@ -235,8 +226,6 @@ theorem completeCache_tracked (source destination : HashCache C) (q : Query C) (
     completeCache source destination q = destination q := by
   simp only [completeCache, QueryCache.ofFn_apply, if_pos hq]
 
-set_option linter.constructorNameAsVariable false in
-set_option maxRecDepth 4000 in
 /-- Canonical receipts transport selection through the actual logged-cache frame. -/
 theorem receipt_selected_frame (x : SigningSecurityProof.Keys3 C) (top : TopTree)
     (state : TsigState C) (forgery : Forgery) (receipt : Round2Receipt C)
@@ -266,7 +255,6 @@ theorem receipt_selected_frame (x : SigningSecurityProof.Keys3 C) (top : TopTree
       (completeCache_tracked source destination)
 
 set_option linter.constructorNameAsVariable false in
-set_option maxRecDepth 4000 in
 /-- Each split outcome has a lazy source with the same observable result, counter and log. -/
 theorem splitRun_source (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) z
     (hz : z ∈ support (splitRunAt prims A x)) :
@@ -288,7 +276,6 @@ theorem splitRun_source (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
     congrArg (fun y => y.2.2) he⟩
 
 set_option linter.constructorNameAsVariable false in
-set_option maxRecDepth 4000 in
 /-- Released lazy partners remain partners in the actual eager cache. -/
 theorem splitRun_released_partner (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) z
     (hz : z ∈ support (splitRunAt prims A x))

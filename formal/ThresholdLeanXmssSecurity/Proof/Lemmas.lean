@@ -543,7 +543,7 @@ theorem prawns_lemma52_guess (game : ProbComp (Bool × C.Term)) [Nonempty C.Term
     letI := SampleableType.ofFintype C.Term
     Pr{let r ← (do let g ← game; let T ← $ᵗ C.Term; pure (g, T))}[r.1.1 = true ∧ r.2 = r.1.2] *
         (C.n.choose (C.t - 1) : ℝ≥0∞) = Pr{let g ← game}[g.1 = true] := by
-  letI := SampleableType.ofFintype C.Term
+  let := SampleableType.ofFintype C.Term
   have hcard : (Fintype.card C.Term : ℝ≥0∞) = C.n.choose (C.t - 1) := by
     simp [Committee.Term, Fintype.card_finset_len]
   have hpos : (C.n.choose (C.t - 1) : ℝ≥0∞) ≠ 0 := by

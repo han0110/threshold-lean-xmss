@@ -14,7 +14,6 @@ import ThresholdLeanXmssSecurity.Proof.SigningOwnTop
 
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
-set_option linter.constructorNameAsVariable false
 
 open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
@@ -417,7 +416,6 @@ theorem topFlat_bottomOnce (top : TopTree) (b : Fin (2 ^ layerHeight)) (st : Tsi
     exact topFlat_map prims x _ (topFlat_bottom prims x top b)
 
 set_option backward.isDefEq.respectTransparency false in
-set_option maxRecDepth 100000 in
 /-- A signing oracle does not raise the guarded top partner potential. Its builds are covered by the
 canonical top searches, and its other calls are not top digest calls. -/
 theorem topFlat_tsigOracles (top : TopTree) (q : (TsigSpec C).Domain) (st : TsigState C) :
@@ -454,7 +452,6 @@ theorem topFlat_tsigOracles (top : TopTree) (q : (TsigSpec C).Domain) (st : Tsig
           (signRound2With_top_bound x _ (fun pt => eval_top_bound x _ _ _ _ _) _ _ _ _ _) fun r _ => ?_
         rcases r with _ | values <;> simp
 
-set_option maxRecDepth 100000 in
 /-- The honest signature does not raise the guarded top partner potential. Its build is covered by
 the canonical top searches, and its other calls are not top digest calls. -/
 theorem topFlat_honestSignature (top : TopTree) (e : KeyIndex) (message : Message) :
@@ -571,7 +568,7 @@ theorem topOwn : TopOwn prims (C := C) := by
   refine ENNReal.tsum_le_tsum fun z => ?_
   by_cases hz : z ∈ support (loggedRun prims A x)
   · by_cases hw : ∃ key, SigningGuessProof.ResolvedTopPartner x key z.2.1.1
-    · simp only [Function.comp_apply, hw, if_true, topPotential, guarded,
+    · simp only [hw, if_true, topPotential, guarded,
         if_neg (noProgramQuery prims C A x z hz)]
       simpa only [mul_one] using mul_le_mul_right
         (SigningGuessProof.topPartnerPotential_terminal x z.2.1.1 hw) (Pr{let y ← loggedRun prims A x}[y = z])

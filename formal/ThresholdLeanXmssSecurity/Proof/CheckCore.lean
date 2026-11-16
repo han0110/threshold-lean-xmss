@@ -36,7 +36,6 @@ namespace ThresholdLeanXmssSecurity
 
 attribute [local instance] Classical.propDecidable
 
-set_option linter.unusedSectionVars false
 
 /-! ## The corrupt operators output nothing -/
 
@@ -198,6 +197,7 @@ def MultVerifyAgree (D : C.Coalition) (inputs : C.Party → Option (List (Tuple 
       ((inputs i).bind (·[k]?)).map (fun τ => (τ.x T g, τ.y T g, τ.z T g)) =
         ((inputs j).bind (·[k]?)).map fun τ => (τ.x T g, τ.y T g, τ.z T g)
 
+set_option linter.unusedSectionVars false in
 theorem checkRealLocal_eq (K : Constants C E) (fuel : ℕ) (D : C.Coalition)
     (A : CheckAdversary C E (List (Tuple C))) (x : C.Party → List (Tuple C)) (z : Aux)
     (Z : Distinguisher C A.State Unit) :
@@ -205,6 +205,7 @@ theorem checkRealLocal_eq (K : Constants C E) (fuel : ℕ) (D : C.Coalition)
   rw [checkRealRun, bind_assoc]
   rfl
 
+set_option linter.unusedSectionVars false in
 theorem checkMaskedLocal_eq (K : Constants C E) (fuel : ℕ) (D : C.Coalition)
     (A : CheckAdversary C E (List (Tuple C))) (x : C.Party → List (Tuple C)) (z : Aux)
     (Z : Distinguisher C A.State Unit) :
@@ -212,6 +213,7 @@ theorem checkMaskedLocal_eq (K : Constants C E) (fuel : ℕ) (D : C.Coalition)
       Z (r.1, fun i => if i ∉ D.1 ∧ (multVerifyLeak D (fun i => if i ∈ D.1 then none else some (x i))).2.2 ∧
         r.2 i = some () then some () else none) := rfl
 
+set_option linter.unusedSectionVars false in
 theorem checkRealRun_corrupt_none (K : Constants C E) (fuel : ℕ) (D : C.Coalition)
     (A : CheckAdversary C E (List (Tuple C))) (x : C.Party → List (Tuple C)) (z : Aux) :
     ∀ r ∈ support (checkRealRun K fuel D A x z), ∀ i ∈ D.1, r.2 i = none := by

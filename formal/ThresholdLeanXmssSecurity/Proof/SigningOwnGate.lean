@@ -484,7 +484,7 @@ def RoTop : (RoSpec C).Domain → Prop
 
 theorem tweakable_bound {α : Type} (oa : OracleComp HashSpec α) (n : ℕ)
     (h : oa.IsQueryBoundP (HashTop x b) n) : (tweakable (C := C) oa).IsQueryBoundP (RoTop x b) n := by
-  letI : OracleSpec.UniformAnswerMeasure (RoSpec C) := OracleSpec.UniformAnswerMeasure.ofFiniteNonempty _
+  let : OracleSpec.UniformAnswerMeasure (RoSpec C) := OracleSpec.UniformAnswerMeasure.ofFiniteNonempty _
   apply h.simulateQ_of_step
   · intro input _
     exact (isQueryBoundP_query_iff (spec := RoSpec C) (RoTop x b) (.inl (.hash input)) 1).mpr
@@ -590,8 +590,8 @@ theorem jobs_bound (items : List Job) (cost : ℕ) (h : ∀ job ∈ items, jobCo
     (referenceJob_bound x b job).mono (h job hj)
 
 -- The proof times out unless these recursive programs are irreducible.
-attribute [local irreducible] merkleNode merklePath grind Verification.treeFoldWithHash Verification.chainWalkWithHash in
 set_option maxRecDepth 100000 in
+attribute [local irreducible] merkleNode merklePath grind Verification.treeFoldWithHash Verification.chainWalkWithHash in
 /-- A build of bottom tree `b'` makes `348` chain calls at top key `b` when `b' = b`, and none
 otherwise. -/
 theorem ceremony_bottom_bound (top : TopTree) (b' : XmssSecurity.TopIndex) :
@@ -671,7 +671,7 @@ def WorldTop : (WorldSpec C).Domain → Prop
 theorem liftFree_bound {α : Type} (ro : OracleComp (RoSpec C) α) (n : ℕ)
     (h : ro.IsQueryBoundP (RoTop x b) n) :
     (SigningSecurityProof.liftFree ro).IsQueryBoundP (WorldTop x b) n := by
-  letI : OracleSpec.UniformAnswerMeasure (LocalSpec C) := OracleSpec.UniformAnswerMeasure.ofFiniteNonempty _
+  let : OracleSpec.UniformAnswerMeasure (LocalSpec C) := OracleSpec.UniformAnswerMeasure.ofFiniteNonempty _
   have hl : (liftComp ro (LocalSpec C)).IsQueryBoundP (TopChainCall x b) n := by
     rw [liftComp_def]
     apply h.simulateQ_of_step
@@ -695,7 +695,7 @@ theorem liftFree_bound {α : Type} (ro : OracleComp (RoSpec C) α) (n : ℕ)
 theorem localize_bound {α : Type} (oa : OracleComp (WorldSpec C) α) (n : ℕ)
     (h : oa.IsQueryBoundP (WorldTop x b) n) :
     (simulateQ worldLocalize oa).IsQueryBoundP (TopChainCall x b) n := by
-  letI : OracleSpec.UniformAnswerMeasure (LocalSpec C) := OracleSpec.UniformAnswerMeasure.ofFiniteNonempty _
+  let : OracleSpec.UniformAnswerMeasure (LocalSpec C) := OracleSpec.UniformAnswerMeasure.ofFiniteNonempty _
   apply h.simulateQ_of_step
   · rintro ((t | t) | t) _
     · exact (isQueryBoundP_query_iff (spec := LocalSpec C) (TopChainCall x b) t 1).mpr
@@ -782,7 +782,6 @@ theorem signRound2_bound (top : TopTree) (i : C.Party) (J : C.Quorum) (commitmen
       · exact isQueryBoundP_pure _ _ _
 
 set_option backward.isDefEq.respectTransparency false in
-set_option maxRecDepth 100000 in
 /-- A signing oracle that opens no tree at `b` makes no chain call at top key `b`. -/
 theorem tsig_step_zero (top : TopTree) (q : (TsigSpec C).Domain) (st : TsigState C)
     (hclosed : ¬Opens b st (.inr q)) :
@@ -836,7 +835,6 @@ theorem topChainCall_counted (t : (LocalSpec C).Domain) (h : TopChainCall x b t)
   · trivial
   · exact h.elim
 
-set_option maxRecDepth 100000 in
 theorem flagged_step (top : TopTree) (t : (LocalSpec C + TsigSpec C).Domain) (p : TsigState C × Bool)
     (hclosed : ¬Opens b p.1 t) :
     ((SigningCoreProof.flaggedOracles x (actualDealt x top) t).run p).IsQueryBoundP (WorldTop x b)
@@ -852,7 +850,6 @@ theorem flagged_step (top : TopTree) (t : (LocalSpec C + TsigSpec C).Domain) (p 
     rw [isQueryBoundP_map_iff]
     exact (tsig_step_zero x b top q p.1 hclosed).mono (Nat.zero_le _)
 
-set_option maxRecDepth 100000 in
 /-- The forger in the stopped run makes no more chain calls at top key `b` than own calls. -/
 theorem unopened_bound (top : TopTree) {α : Type} (oa : OracleComp (LocalSpec C + TsigSpec C) α) :
     ∀ (n : ℕ) (p : TsigState C × Bool), oa.IsQueryBoundP SigningOwnCounted n →
@@ -917,7 +914,6 @@ theorem freshness_bound (output : PublicVerification.Output C) :
     · exact (isQueryBoundP_bind (m := 0) (honest_bound x b top _ _) fun _ _ => by simp).mono
         (le_of_eq (Nat.add_zero _))
 
-set_option maxRecDepth 100000 in
 theorem tail_bound (A : TsigAdversary C) (q : ℕ) (hown : HasSigningOwnBound A q)
     (output : Option TreeOutput) :
     (PublicVerification.tail A x b output).IsQueryBoundP (WorldTop x b) (q + 174) := by
@@ -952,7 +948,6 @@ theorem after_jobs_bound (after : List XmssSecurity.TopIndex) (hb : b ∉ after)
 end TopChain
 
 attribute [local irreducible] merkleNode merklePath grind Verification.treeFoldWithHash Verification.chainWalkWithHash in
-set_option maxRecDepth 100000 in
 open Classical in
 /-- The stopped continuation after the selected block makes at most `q + topChainSlack` calls of `H`
 at a chain position of top key `b`, on every path. -/
@@ -1080,7 +1075,6 @@ theorem protectedRun_size_le {α : Type} (x : SigningSecurityProof.Keys3 C) (b :
     · omega
 
 open Classical in
-set_option maxRecDepth 100000 in
 /-- A run of the counted posterior adds at most one edge for each chain call. -/
 theorem run_size_le {α : Type} (x : SigningSecurityProof.Keys3 C) (b : XmssSecurity.TopIndex)
     (hno : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)

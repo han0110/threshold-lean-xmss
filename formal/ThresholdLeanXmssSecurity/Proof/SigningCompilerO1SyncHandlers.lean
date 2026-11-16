@@ -23,7 +23,6 @@ open SigningCompilerSyncSuffix SigningCompilerO1Sync SigningCompilerO1ChainRelea
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
 set_option backward.isDefEq.respectTransparency false
 
 section Handlers

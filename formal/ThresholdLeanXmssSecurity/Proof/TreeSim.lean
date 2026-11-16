@@ -30,7 +30,7 @@ theorem treeSim_sequenceFin_mapM {m : Type → Type} [Monad m] [LawfulMonad m] {
     simp only [OverPermutation.sequenceFin, List.finRange_succ, List.mapM_cons, List.mapM_map,
       map_bind, map_pure, List.ofFn_succ]
     rw [← ih]
-    simp only [bind_map_left, pure_bind]
+    simp only [bind_map_left]
     rfl
 
 end ThresholdLeanXmssSecurity

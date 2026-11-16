@@ -73,8 +73,6 @@ theorem first_failure (V : QueryImpl spec (StateT σ ProbComp)) (P : σ → Prop
 
 end Occurrence
 
-set_option maxRecDepth 100000
-set_option maxHeartbeats 1000000
 
 variable {C : Committee} (prims : Primitives)
 
@@ -177,6 +175,7 @@ theorem world_run_carried (x : SigningSecurityProof.Keys3 C) {α : Type}
   exact SeedHitProof.support_simulateQ_inv _ (fun p : SplitState C => p.2 = s.2)
     (fun t p hp r hr => (world_carried prims x t p r hr).trans hp) source s rfl r hr
 
+set_option maxRecDepth 100000 in
 /-- The exact top-tree, adversary and verification subruns of the split execution. -/
 theorem splitRun_subruns (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
     (z : SplitOutcome C) (hz : z ∈ support (splitRunAt prims A x))
@@ -263,6 +262,7 @@ theorem signers_release (state : TsigState C) (hc : state.corrupt.card ≤ C.t -
   obtain ⟨⟨key, msg, party⟩, ⟨ha, rfl, rfl⟩, -⟩ := hi
   exact ⟨party, ha⟩
 
+set_option maxRecDepth 100000 in
 /-- A release at the forged key occurs in the actual adversary subrun of this split execution. -/
 theorem splitRun_release_occurrence (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
     (z : SplitOutcome C) (hz : z ∈ support (splitRunAt prims A x))
@@ -324,6 +324,7 @@ def SignedCacheSeparation : Prop :=
     XmssSecurity.truncateHash a = digest → XmssSecurity.truncateHash b = digest →
     z.2.1.1.2.hit = true
 
+set_option maxRecDepth 100000 in
 /-- Selection alignment and signed-cache separation imply the original released-partner link. -/
 theorem releasedLink_of_alignment_separation
     (halign : ReleasedSelectionAlignment prims (C := C))

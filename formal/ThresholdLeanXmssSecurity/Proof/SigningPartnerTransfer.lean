@@ -14,7 +14,6 @@ open OracleComp OracleSpec
 open scoped ENNReal
 
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
 
 noncomputable section
 
@@ -200,6 +199,7 @@ theorem canonicalTopSetup_tracked (x : SigningSecurityProof.Keys3 C)
   · intro outputs _
     exact canonicalTopAfterJobs_tracked x key outputs levels
 
+set_option maxRecDepth 100000 in
 theorem canonicalTopGrind_tracked (x : SigningSecurityProof.Keys3 C)
     (key : XmssSecurity.TopIndex) : TrackedOnly (SigningGuessProof.canonicalTopGrind x key) := by
   unfold SigningGuessProof.canonicalTopGrind SigningGuessProof.topGrindAfter TrackedOnly
@@ -222,6 +222,7 @@ theorem resolves_tracked {α : Type} {a b : HashCache C}
     apply ih
     simpa only [TrackedOnly, if_neg (not_not.mpr ht)] using hp.2 answer
 
+set_option maxRecDepth 100000 in
 theorem resolvedTopPartner_congr (x : SigningSecurityProof.Keys3 C) (key : XmssSecurity.TopIndex)
     {a b : HashCache C} (h : ∀ q, Tracked q → a q = b q) :
     SigningGuessProof.ResolvedTopPartner x key a ↔ SigningGuessProof.ResolvedTopPartner x key b := by

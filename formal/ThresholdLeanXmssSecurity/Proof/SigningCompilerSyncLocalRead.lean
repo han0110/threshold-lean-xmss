@@ -22,9 +22,6 @@ open SigningCompilerSyncTrigger SigningCompilerUntil
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 10000
-set_option maxHeartbeats 1600000
-set_option linter.constructorNameAsVariable false
 attribute [local irreducible] grind SigningFlatEagerProof.baseGrind
   SigningR1FixedProof.cachedExtra SigningOneRunProof.jointCachedExtra
   SigningLaneUnionProof.traceStepAt
@@ -148,7 +145,7 @@ theorem cacheQuery_rel (P : PublicParameter) (seeds : C.Term → HashOutput)
     (R := fun a b : HashOutput × HashCache C => a.1 = b.1 ∧
       CacheRelation P seeds s { data with cache := b.2 } a.2)
     hpost
-  simp only [deferredImpl, StateT.run, Functor.map_map, Function.comp_apply] at hm
+  simp only [deferredImpl, StateT.run, Functor.map_map] at hm
   change RelTriple (id <$> _) (id <$> _) _ at hm
   simp only [id_map] at hm
   exact hm
@@ -227,6 +224,7 @@ theorem ordinary_merged_gen (x : Keys3 C) (hinj : Function.Injective x.2.1)
   simp only [merged, withCache]
   exact merge_key x.2.1 hinj st.1.1.1.1.data.cache st.2.cache z
 
+set_option maxHeartbeats 1600000 in
 /-- Splitting the ordinary backend preserves its complete visible read marginal. -/
 theorem compilerRead_view (x : Keys3 C) (hinj : Function.Injective x.2.1)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
@@ -262,8 +260,7 @@ theorem compilerRead_view (x : Keys3 C) (hinj : Function.Injective x.2.1)
     have hm := ordinary_merged_gen x hinj q s input hn st M hM r hr
     exact congrArg pure (Prod.ext rfl (Prod.ext (congrArg (fun z => z.1.1.data.cache) hm) rfl))
   erw [hmap]
-  simp only [SigningCappedExpectProof.cappedHybrid, revealImpl, countImpl,
-    StateT.run_mk, StateT.mk, compilerImpl, deferredImpl, StateT.run, Functor.map_map,
+  simp only [SigningCappedExpectProof.cappedHybrid, revealImpl, countImpl, StateT.mk, compilerImpl, deferredImpl, StateT.run,
     bind_map_left, map_bind, map_pure, cacheRead]
 
 theorem keyedSplit_cache_forget {α : Type}
@@ -293,9 +290,9 @@ theorem cachedExtra_congr (seeds : C.Term → HashOutput) (P : PublicParameter)
   split_ifs with h1 h2 <;> try rfl
   dsimp only
   cases hs : s1.bound h2.choose with
-  | none => simp only [hs]
+  | none => simp only
   | some message =>
-    simp only [hs]
+    simp only
     split <;> simp_all
 
 theorem ordinary_not_suspended (x : Keys3 C) (s : HiddenKey → Digest)
@@ -318,6 +315,8 @@ theorem ordinary_nonhash_quiet (x : Keys3 C) (s : HiddenKey → Digest)
     obtain ⟨edge, he⟩ := realCache_some_chain x s pads noise input value hc
     exact (hh _ he).elim
 
+set_option linter.constructorNameAsVariable false in
+set_option maxHeartbeats 1600000 in
 /-- Every ordinary read preserves the share cells and the source-independent fields. -/
 theorem compilerRead_fields (x : Keys3 C) (hinj : Function.Injective x.2.1)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)

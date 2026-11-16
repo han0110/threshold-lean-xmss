@@ -18,8 +18,6 @@ open SigningCompilerSyncRelease SigningCompilerSyncChain SigningCompilerSyncRows
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 10000
-set_option maxHeartbeats 1000000
 
 /-- Control fields shared by completion and planting frames. -/
 structure ReleaseFrame (x : Keys3 C) (b b' : SourceState C × CompState C) : Prop where
@@ -147,6 +145,7 @@ theorem bottomCompletionX_eq (e : KeyIndex) (l : ChainIndex) (d : XmssSecurity.C
   funext value
   split <;> rfl
 
+set_option maxHeartbeats 1000000 in
 /-- One actual completion preserves its fixed-visible cache relation or stops. -/
 theorem bottomCompletion_post (x : Keys3 C) (hinj : Function.Injective x.2.1)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
@@ -294,6 +293,7 @@ theorem bottom_next_suffix (e : KeyIndex) (l : ChainIndex) (d : XmssSecurity.Cha
     exact ⟨⟨d.val + 1, hnext⟩, by change d.val < d.val + 1; omega, (Option.some.inj hk).symm⟩
   · cases hk
 
+set_option maxHeartbeats 1000000 in
 /-- Both actual loops establish the complete suffix frame and planted-cache facts. -/
 theorem releaseSuffix_post (x : Keys3 C)
     (hkeys : ¬ TprfSecurityProof.KeyCollision x.2.1 x.2.2)

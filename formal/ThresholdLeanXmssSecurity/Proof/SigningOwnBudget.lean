@@ -66,7 +66,6 @@ def ChargedLaneOwnStop : Prop :=
             ¬SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1.1.1.1] ≤
       ((q + chargedSlack : ℕ) : ℝ≥0∞) / 2 ^ 128
 
-set_option maxRecDepth 100000 in
 /-- The charged lane from the four bounds with the own budget. -/
 theorem chargedLaneOwnStop_of_parts (hhit : SigningOwnHitBound.HitOwn prims (C := C))
     (halt : SigningOwnAlt.AltOwn prims (C := C)) (htop : SigningOwnTopBound.TopOwn prims (C := C))

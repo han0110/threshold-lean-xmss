@@ -13,9 +13,6 @@ open SigningCompilerSyncRelease SigningCompilerSyncChain
 variable {C : Committee} {Tag : Type}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
-set_option maxHeartbeats 1600000
-set_option linter.constructorNameAsVariable false
 
 /-- Virtual-row version of deferredImpl_pending_mono. -/
 theorem deferredImpl_virtual_mono (t : DeferredQuery C) (st : DeferredState C)
@@ -122,6 +119,7 @@ theorem ordinary_virtual_mono (P : PublicParameter) (seeds : C.Term → HashOutp
         subst r <;> exact Finset.Subset.refl _
     | _ => exact cap _ r hr
 
+set_option linter.constructorNameAsVariable false in
 /-- Cached-extra calls update the cache and trace, not the virtual-row set. -/
 theorem hashTail_virtual (P : PublicParameter) (seeds : C.Term → HashOutput)
     (input : Query C) (st : CappedCompilerState C) (value : HashOutput) (cache : HashCache C)

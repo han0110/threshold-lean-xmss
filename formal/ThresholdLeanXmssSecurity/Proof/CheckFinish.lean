@@ -28,8 +28,8 @@ namespace ThresholdLeanXmssSecurity
 
 attribute [local instance] Classical.propDecidable
 
-set_option linter.unusedSectionVars false
 
+set_option linter.unusedSectionVars false
 /-! ## The budget of the coupling -/
 
 section Budget
@@ -525,7 +525,7 @@ lemma slice_after {σ' : Type} (K : Constants C E) (D : C.Coalition) (τ : List 
         (hsR i).label + 1 + 1, (hsR i).tag⟩)
       (fun i => ⟨recordHistory K i (hsD i).history (sliceOut K D τ count j xsD ysD pa fresh i) 2,
         (hsD i).label + 1 + 1, (hsD i).tag⟩) := by
-  letI : CharP E 2 := charP_two
+  let : CharP E 2 := charP_two
   obtain ⟨htagR, htagD, hknownHist, hcommonR, hcommonD⟩ := hh
   constructor
   · refine sliceRel_step K D τ count j hj hw hc xsR ysR xsD ysD DR DD hrel r _ _
@@ -713,7 +713,7 @@ lemma sliceRel_halvRel (K : Constants C E) (D : C.Coalition) (τ : List E) (coun
       (∀ i, i ∉ D.1 → conv K (localContext i) (xsR i) = AR i ∧ conv K (localContext i) (ysR i) = BR i ∧
         conv K (localContext i) (xsD i) = AD i ∧ conv K (localContext i) (ysD i) = BD i) ∧
       HalvRel K D (sliceWidth count) AR BR AD BD DR DD := by
-  letI : CharP E 2 := charP_two
+  let : CharP E 2 := charP_two
   obtain ⟨xR, yR, xD, yD, dD, hv, hk, hl, hsum⟩ := h
   refine ⟨fun i => conv K (localContext i) xR, fun i => conv K (localContext i) yR,
     fun i => conv K (localContext i) xD, fun i => conv K (localContext i) yD, ?_, ?_⟩
@@ -1546,7 +1546,7 @@ lemma dummy_known_lifted (D : C.Coalition) (x : C.Party → List (Tuple C)) (i :
 /-- The initial slice relation holds. -/
 theorem checkInitSlice (K : Constants C E) : CheckInitSlice K := by
   intro counts D x hx hpos hagree τ hτ
-  letI : CharP E 2 := charP_two
+  let : CharP E 2 := charP_two
   obtain ⟨T₀, hT₀, -⟩ := lackedTerm_spec D
   choose hd hdT hdD using exists_honest_holder D
   let σR := fun m => tupleAt (fun i => if i ∈ D.1 then none else some (x i)) m

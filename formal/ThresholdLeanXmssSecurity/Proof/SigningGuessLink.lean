@@ -264,7 +264,7 @@ theorem logged_reads (cache : HashCache C) {α : Type} {oa : OracleComp HashSpec
     have hcache : cache (.hash x) = some p.1 :=
       hle (SigningCacheProof.countRun_grows prims _ p.2 z hz hp)
     have hanswer : XmssSecurity.Concrete.CacheReplay.answer (SigningDescentProof.thView cache) x = p.1 := by
-      simp only [XmssSecurity.Concrete.CacheReplay.answer, SigningDescentProof.thView, hcache]
+      simp only [XmssSecurity.Concrete.CacheReplay.answer, SigningDescentProof.thView]
       erw [QueryCache.ofFn_apply, hcache]; rfl
     rw [hanswer] at ih
     exact ih _ p.2 z hz hle c hc

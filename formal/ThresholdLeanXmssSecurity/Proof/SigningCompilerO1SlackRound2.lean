@@ -24,10 +24,7 @@ open SigningCompilerO1SlackRun SigningCompilerO1SlackRead SigningCompilerO1Slack
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 10000
-set_option maxHeartbeats 800000
 
 theorem chainStepDigit_mk (d : WinternitzDigit) (hd : d.val < 3) : chainStepDigit ⟨d.val, hd⟩ = d :=
   Fin.ext rfl

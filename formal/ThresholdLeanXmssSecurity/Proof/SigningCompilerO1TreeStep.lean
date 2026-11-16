@@ -26,8 +26,6 @@ open SigningCompilerO1Sync SigningCompilerO1Frame SigningCompilerO1TreeRequest
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
 section TreeRequest
 variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
   (u : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput) (noise : ChainNoiseIndex → HashOutput)
@@ -123,9 +121,9 @@ theorem sourceTree_eq (top : TopTree) (bi : Fin (2 ^ layerHeight)) (src : Source
   simp only [sourceTsigX, runX_bind]
   refine bind_congr fun r => ?_
   rcases r with ⟨⟨_ | tree, src'⟩, st'⟩
-  · simp [runX_pure]
+  · simp
     rfl
-  · simp [runX_bind, runX_pure, map_eq_bind_pure_comp]
+  · simp [runX_bind, map_eq_bind_pure_comp]
     rfl
 
 /-- A result of a mapped run is the image of a result of the run. -/

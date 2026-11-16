@@ -32,9 +32,6 @@ open SigningCompilerSyncTrigger SigningCompilerSyncLocalRead SigningCompilerSync
 open SigningCompilerO1Reads
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
-set_option maxHeartbeats 1600000
 
 /-- A chain input is no randomizer input. -/
 theorem chainInput_ne_randomizer (P : PublicParameter) (edge : ChainNoiseIndex) (d : Digest)
@@ -113,6 +110,7 @@ theorem syncFields_count (x : Keys3 C) (s : HiddenKey → Digest) (pads : Point 
     restAgree := h.restAgree, restFree := h.restFree, realPrivate := h.realPrivate
     frontier := h.frontier, candidatesPaid := h.candidatesPaid, doneCached := h.doneCached }
 
+set_option maxHeartbeats 1600000 in
 /-- A new pending answer at a chain edge with an unrevealed key keeps the synchronization fields.
 The source allocates the edge. -/
 theorem syncFields_chainPending (x : Keys3 C) (s : HiddenKey → Digest) (pads : Point → Digest)
@@ -191,6 +189,7 @@ theorem backendT_chainPending (edge : ChainNoiseIndex) (st : CompState C)
     simp [incrementCompilerCount, splitRest, withCache, erase_merge_of_restFree _ _ _ hf,
       resolvePrivateTable]
 
+set_option linter.constructorNameAsVariable false in
 /-- A real honest call at a chain input returns the answer of the private cache and observes it.
 It runs no grind. -/
 theorem chainCall_readStep (edge : ChainNoiseIndex) (a : RealState C)
@@ -230,6 +229,8 @@ theorem chainCall_readStep (edge : ChainNoiseIndex) (a : RealState C)
   subst ra
   exact ⟨rfl, rfl, hseen, rfl, rfl, rfl, rfl, _, _, rfl, rfl⟩
 
+set_option linter.constructorNameAsVariable false in
+set_option maxHeartbeats 1600000 in
 /-- A chain call. The real side reads the answer that the private cache holds from the start. The
 compiler side returns the pending answer of the edge. -/
 theorem chainPending_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (cCore : Carried C)

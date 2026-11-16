@@ -105,7 +105,6 @@ theorem topStarts_cached (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C
     (SigningHitProof.exposedRun_top_resolves prims A x r hr hwin top state forgery hsome) b l
   exact resolves_forestValue_cached _ _ _ _ hs
 
-set_option maxRecDepth 100000 in
 /-- A bottom chain start with an absent PRF entry leaves its tree unopened. Each bottom tree
 reads all its chain starts, even when its grind fails. -/
 theorem topUnopened_of_bottomStart (x : SigningSecurityProof.Keys3 C) (cache : HashCache C)

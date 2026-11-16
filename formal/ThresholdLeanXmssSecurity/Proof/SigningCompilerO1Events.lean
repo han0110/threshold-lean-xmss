@@ -23,7 +23,6 @@ open SigningCompilerO1Sync SigningCompilerO1Canonical
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
 
 /-- A bottom chain input, a top chain input and a top digest input are outside the trial
 inputs. So the log cache and the visible cache agree at them. -/
@@ -245,7 +244,6 @@ theorem topRun_D (top : TopTree) (cache : HashCache C) (h : TopRun prims x top c
     (SigningCacheProof.answersOf cache) (SigningCacheProof.agrees_answersOf hle)
   rw [← hval, h1]
 
-set_option maxRecDepth 100000 in
 /-- The setup run below a cache gives the top facts on the answers of the cache. -/
 theorem topFacts_of_topRun (top : TopTree) (cache : HashCache C) (h : TopRun prims x top cache) :
     TopFacts prims (SigningCacheProof.answersOf cache) x.2.1 x.1 top := by
@@ -456,7 +454,6 @@ theorem final_no_top_hit (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     rw [(core cand.2 hsc hb hval rfl).2] at hhit
     cases hhit
 
-set_option maxRecDepth 100000 in
 /-- No bottom chain candidate hits its target. This lemma uses the gate. -/
 theorem final_no_bottom_hit (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (z : RealFinal C) (c : CompFinal C)
@@ -523,7 +520,6 @@ theorem final_no_bottom_hit (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.
     hnone] at hhit
   cases hhit
 
-set_option maxRecDepth 100000 in
 /-- No input-side hit at the end. -/
 theorem final_no_input_hit (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (z : RealFinal C) (c : CompFinal C)

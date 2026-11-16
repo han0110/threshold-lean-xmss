@@ -246,7 +246,7 @@ theorem probEvent_elementOfHash (K : Constants C E) (p : E → Prop) [DecidableP
   have hcard : (Finset.univ.filter fun h => p (elementOfHash K h)).card = (Finset.univ.filter p).card * 2 ^ 128 := by
     rw [← Fintype.card_subtype, ← Fintype.card_subtype,
       Fintype.card_congr ((hashSplit K).subtypeEquiv (p := fun h => p (elementOfHash K h))
-        (q := fun z => p z.1) fun h => by simp [Function.comp, hashSplit_fst]),
+        (q := fun z => p z.1) fun h => by simp [hashSplit_fst]),
       Fintype.card_congr (Equiv.prodSubtypeFstEquivSubtypeProd (p := p))]
     simp
   have hH : Fintype.card HashOutput = Fintype.card E * 2 ^ 128 := by
@@ -335,7 +335,6 @@ theorem probEvent_expand_zero [DecidableEq E] (K : Constants C E) (key : HashOut
       rw [prEvent_map] at this
       simp only [not_not]
       convert this.le using 2
-      all_goals try rfl
       · have : (Finset.univ.filter fun e : E => e = 0) = {0} := by ext; simp
         rw [this]; simp
     · simp only [simulateQ_pure, StateT.run_pure, bind_pure_comp, prEvent_map]
@@ -411,7 +410,7 @@ theorem sameRun_sequenceFin_const {β : Type} (oa : OracleComp (RoSpec C) β) :
     ∀ n : ℕ, SameRun prims (OverPermutation.sequenceFin fun _ : Fin (n + 1) => liftComp oa (LocalSpec C))
       (liftComp oa (LocalSpec C) >>= fun b => pure fun _ => b)
   | 0 => by
-    simp only [OverPermutation.sequenceFin, bind_assoc, pure_bind]
+    simp only [OverPermutation.sequenceFin, pure_bind]
     refine SameRun.bind_right _ fun b => SameRun.of_eq ?_
     congr 1; funext i; cases i using Fin.cases with
     | zero => rfl
@@ -725,7 +724,7 @@ theorem honestFunctionality_coin [Nonempty C.Party] (K : Constants C E) (count :
   have h := firstInput_const (C := C) count
   generalize firstInput (C := C) (fun _ => some count) = N at h ⊢
   subst h
-  simp only [Functor.map_map, map_eq_bind_pure_comp, bind_assoc]
+  simp only [map_eq_bind_pure_comp, bind_assoc]
   refine bind_congr fun v => ?_
   simp [replyImpl, leftReply, checkReply, noCoalition]
   erw [QueryImpl.add_apply_inr]
@@ -765,7 +764,7 @@ theorem support_extendMult [Nonempty C.Party] (K : Constants C E) (products : C.
   erw [simulateQ_query] at hz
   simp only [replyImpl, rightReply, leftReply, checkReply] at hz
   erw [QueryImpl.add_apply_inr] at hz
-  simp only [OracleQuery.cont_query, id_map, pure_bind, simulateQ_pure, support_map, Set.mem_image,
+  simp only [OracleQuery.cont_query, simulateQ_pure, support_map, Set.mem_image,
     support_bind, support_pure, Set.mem_iUnion, Set.mem_singleton_iff, exists_prop] at hz
   obtain ⟨x, ⟨x1, ⟨r, hr, fresh, -, rfl⟩, rfl⟩, rfl⟩ := hz
   obtain rfl : r = (0, 0, 0, Finset.univ) := by simpa using hr
@@ -780,8 +779,8 @@ theorem support_extendMult [Nonempty C.Party] (K : Constants C E) (products : C.
     ring
   · simp only [noCoalition_val, Finset.notMem_empty, false_or, Finset.mem_univ, not_true_eq_false,
       if_false, Option.map_some, hT₀, KnownTo, false_and, exists_false, add_zero, Option.getD_some,
-      Option.some.injEq, Finset.filter_true_of_mem, Option.some_inj]
-    simp only [id, Finset.mem_univ, not_true_eq_false, if_false, Option.map_some, Option.some.injEq,
+      Option.some.injEq]
+    simp only [
       Sum.inl.injEq, Sum.inr.injEq, not_false_eq_true, Pi.zero_apply, add_zero]
     funext T g
     by_cases hT : T = T₀
@@ -800,7 +799,7 @@ theorem support_frand [Nonempty C.Party] {R : Type} [AddCommGroup R] [Sampleable
   erw [simulateQ_query] at hz
   simp only [replyImpl] at hz
   erw [QueryImpl.add_apply_inr] at hz
-  simp only [OracleQuery.cont_query, id_map, pure_bind, simulateQ_pure, support_map, Set.mem_image,
+  simp only [OracleQuery.cont_query, simulateQ_pure,
     support_bind, support_pure, Set.mem_iUnion, Set.mem_singleton_iff, exists_prop] at hz
   obtain ⟨x, hx, fresh, -, freshPair, -, rfl⟩ := hz
   obtain rfl : x = (0, 0) := by simpa using hx
@@ -1515,7 +1514,7 @@ theorem openSh_run' {α : Type} (v : ℕ → E) (f : (ℕ → E) → RunM C E (C
     (StateT.lift (openSh K (localContext i) v 3) >>= f).run' st =
       exchange (openOutbox (E := E) i v) >>= fun inbox =>
         require (OpenAgrees K i v inbox) >>= fun _ => (f (openValue K i v inbox)).run' st := by
-  simp only [openSh, bind_assoc]
+  simp only [openSh]
   simp only [StateT.run'_eq, StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind, map_bind]
   rfl
 
@@ -1837,7 +1836,7 @@ theorem final_bound [Nonempty C.Party] (A B : C.Party → ℕ → E) (D : C.Part
   intro z₆ hz₆ hbad
   obtain ⟨r, hr⟩ := Option.ne_none_iff_exists'.mp hbad
   simp only [hr]
-  haveI := charP_two (E := E)
+  have := charP_two (E := E)
   refine le_of_eq (open_step_zero prims K _ (fun k => match k with
     | 0 => (∑ T, r₁ T 0) + r * ((∑ T, r₁ T 0) + a)
     | 1 => (∑ T, r₁ T 1) + r * ((∑ T, r₁ T 1) + b)
@@ -1961,7 +1960,7 @@ theorem halving_bound [Nonempty C.Party] (width : ℕ) (hwidth : 1 ≤ width) :
     gcongr
   | succ n ih =>
     intro j₀ hj A B D Av Bv hA hB hD h hh L c Ks hKs s hs fuel
-    haveI := charP_two (E := E)
+    have := charP_two (E := E)
     rw [List.range'_succ, show fuel + 2 * (n + 1) + 6 = (fuel + 2 * n + 7) + 1 by ring]
     simp only [List.foldlM_cons, halvingStep, bind_assoc, pure_bind, extendMult_run']
     refine probEvent_honest_call prims _ _ (fuel + 2 * n + 7) _ _ _ s _ ?_
@@ -2125,7 +2124,7 @@ theorem slice_bound [Nonempty C.Party] (τ : List E) (count : ℕ) (hτ : ∀ b 
           honestRounds (checkFunctionalities K) checkReply
             (fuel + 2 * n + 2 * halvingSteps (sliceWidth count) + 6))).run' s}[z ≠ fun _ => some ()] ≤
         chalErr E c (n + halvingSteps (sliceWidth count) + 1) := by
-  haveI := charP_two (E := E)
+  have := charP_two (E := E)
   intro n
   induction n with
   | zero =>
@@ -2475,7 +2474,7 @@ theorem check_honest_bound [Nonempty C.Party] (counts : List ℕ) (x : C.Party �
       (honestStart (fun i => checkProtocol K i (x i)) >>=
         honestRounds (checkFunctionalities K) checkReply (checkRounds counts.sum))).run' ∅}[z ≠ fun _ => some ()] ≤
       sliceBits / Fintype.card E + chalErr E 1 (halvings counts.sum + 1) := by
-  haveI := charP_two (E := E)
+  have := charP_two (E := E)
   have hcnt : ∀ i, ((x i).map (·.count)).sum = counts.sum := fun i => by rw [tupleInputs_count hx.1 i]
   have hne : ∀ i, ((x i).map (·.count)).sum ≠ 0 := fun i => by rw [hcnt i]; exact hpos
   simp only [checkProtocol, check_eq _ _ _ _ (hne _)]
@@ -2582,7 +2581,7 @@ theorem chalErr_toReal_le (R : ℕ) :
 theorem multVerifyCompleteness [SampleableType E] (prims : Primitives) (K : Constants C E) :
     MultVerifyCompletenessStatement prims K := by
   refine multVerifyCompleteness_of_abort_bound prims K fun counts x hx => ?_
-  haveI : Nonempty C.Party := ⟨⟨0, by have := C.one_le_t; unfold Committee.n; omega⟩⟩
+  have : Nonempty C.Party := ⟨⟨0, by have := C.one_le_t; unfold Committee.n; omega⟩⟩
   by_cases hpos : counts.sum = 0
   · have hcnt : ∀ i, ((x i).map (·.count)).sum = 0 := fun i => by rw [tupleInputs_count hx.1 i, hpos]
     have hprog : ∀ i, checkProtocol K i (x i) = pure () := fun i => by
@@ -3038,7 +3037,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {E : Type} {ι : Type} {G : OracleSpec ι} {α β : Type}
 
 /-- The local budget remaining after the next round or hybrid call. -/
@@ -3247,7 +3245,7 @@ lemma executeRounds_queryBound (step : ℕ)
     · refine (stepRound_bind_queryBound D A F step hr hF state steps budget h _ (fuel * step) ?_).mono ?_
       · intro st b hb hs
         exact executeRounds_queryBound step hr hF fuel st.1 st.2.1 b hs
-      · simp [Nat.succ_mul, Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]
+      · simp [Nat.succ_mul, Nat.add_comm, Nat.add_assoc]
 
 lemma executePhase_queryBound (step : ℕ)
     (hr : ∀ state sent, IsQueryBoundP (A.round state sent) Counted step)
@@ -3282,7 +3280,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable inhabitedField
-set_option linter.unusedSectionVars false
 variable {C : Committee} {E : Type}
 
 /-- A structural query budget with natural-number weights. -/
@@ -3650,7 +3647,7 @@ lemma simulateQ_leak_bind_run {L R α σ : Type}
       let out ← (impl (.inr l)).run st
       pure (f out.1, out.2)) := by
   rw [simulateQ_bind, StateT.run_bind]
-  simp [leak, simulateQ_spec_query]
+  simp [leak]
 
 def checkIdealImpl {σ : Type}
     (S : Simulator (C := C) (LocalSpec C) (List (Tuple C))
@@ -3686,7 +3683,7 @@ lemma idealExecution_multVerify_local {σ : Type} (D : C.Coalition)
     pure (out, r.1)) = _
   rw [FmultVerify_run_eq]
   simp only [simulateQ_leak_bind_run, checkIdealImpl_leak_run, bind_assoc, pure_bind]
-  simp only [idealMultVerifyLocal, adversary_bind, adversary_pure, bind_assoc, pure_bind]
+  simp only [idealMultVerifyLocal, adversary_bind, adversary_pure]
 
 lemma distinguish_adversary {σ O : Type} (oa : OracleComp (LocalSpec C) (σ × (C.Party → Option O)))
     (Z : Distinguisher C σ O) :
@@ -3732,7 +3729,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable inhabitedField
-set_option linter.unusedSectionVars false
 variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
 
 /-- GS20 Lemma 8 is at most the de-linearization summand of `checkErrorOf`. -/
@@ -3827,7 +3823,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable inhabitedField
-set_option linter.unusedSectionVars false
 variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
 
 /-- Exactly the distance obligation for the explicit candidate simulator. -/
@@ -3958,7 +3953,7 @@ theorem ShamirDifference.of_conv (K : Constants C E) (D : C.Coalition)
     (hknown : ∀ T, KnownTo D.1 T → ∀ g, delta T g = 0)
     (hdiff : ∀ i, i ∉ D.1 → a i-b i = conv K (localContext i) delta g) :
     ShamirDifference K D a b := by
-  letI : CharP E 2 := charP_two
+  let : CharP E 2 := charP_two
   obtain ⟨P,hP,hP0,hPi⟩ := cdi05_conv_correct K (fun T => delta T g)
   refine ⟨P,hP,?_,?_⟩
   · intro i hi
@@ -4225,8 +4220,6 @@ lemma HiddenDifference.conv (K : Constants C E) (D : C.Coalition)
   obtain ⟨delta,hknown,hdiff⟩ := h
   apply ShamirDifference.of_conv K D _ _ delta g hknown
   intro i hi
-  change ThresholdLeanXmss.conv K (localContext i) (a i) g-ThresholdLeanXmss.conv K (localContext i) (b i) g =
-    ThresholdLeanXmss.conv K (localContext i) delta g
   unfold ThresholdLeanXmss.conv
   rw [← Finset.sum_sub_distrib]
   simp only [← mul_sub]
@@ -4328,7 +4321,7 @@ theorem canonicalDummyTuples_unknown_vectors (K : Constants C E) (counts : List 
               shareValue (tupleAt (checkKnownTuples D x) k).y g -
             ∑ T' ∈ univ.erase T₀,(tupleAt (checkKnownTuples D x) k).z T' g)))
         ((hx.1 i hi).trans (hx.1 j hj).symm)
-    · simp only [if_neg he,knownView_vector_zero D.1 _ _ T hT]
+    · simp only [if_neg he]
       exact map_zipIdx_count_eq (x i) (x j) (·.count)
         (fun n _ => (vector n (fun _ => (0 : Bit)),vector n (fun _ => (0 : Bit)),
           vector n (fun _ => (0 : Bit)))) ((hx.1 i hi).trans (hx.1 j hj).symm)
@@ -4350,7 +4343,6 @@ theorem canonicalDummyTuples_hiddenDifference (K : Constants C E) (counts : List
       · simpa only [List.map_map,Function.comp_def,Prod.map,id_eq] using congrArg (List.map fun p => p.2.1) hv
       · simpa only [List.map_map,Function.comp_def,Prod.map,id_eq] using congrArg (List.map fun p => p.2.2) hv
     funext g
-    try dsimp only
     rw [liftedPart_eq,liftedPart_eq,hp]
   · intro T hT
     exact tupleInputs_unknown_lifted K hx T hT part hpart
@@ -4386,7 +4378,7 @@ lemma final_residual_identity (a b wa wb d e0 e2 r : E) :
     ((wa*wb+e0)+(d+(wa*wb+e0)+((wa+a)*(wb+b)+e2))*r+((wa+a)*(wb+b)+e2)*r^2) -
       (wa+r*(wa+a))*(wb+r*(wb+b)) =
         r*(d-a*b)+(1+r)*e0+r*(1+r)*e2 := by
-  letI : CharP E 2 := charP_two
+  let : CharP E 2 := charP_two
   have two : (2 : E) = 0 := CharTwo.two_eq_zero
   linear_combination (norm := ring_nf) (a*b*r)*two
 
@@ -4435,7 +4427,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee}
 
 lemma sameRun_liftComp_of_evalDist (prims : Primitives) {α : Type} (p q : ProbComp α)
@@ -4680,7 +4671,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee}
 
 /-- One actual two-level salted digest, before it is inserted in the message vector. -/
@@ -4698,7 +4688,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {E I O L R Ia α : Type}
 
 lemma coalition_has_honest (D : C.Coalition) : ∃ i : C.Party,i ∉ D.1 := by
@@ -4838,7 +4827,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {E Ia I₁ O₁ L₁ R₁ I₂ O₂ L₂ R₂ : Type}
 
 @[reducible] def leftAdversary [Inhabited R₁] (A : Adversary C E Ia (L₁ ⊕ L₂) (R₁ ⊕ R₂)) :
@@ -4884,7 +4872,7 @@ lemma runFunctionality_sum_inl [Inhabited R₁] [Inhabited R₂]
     if_neg (not_not.mpr (hfull inputs))]
   simp only [Functionality.sum]
   rw [if_pos hl]
-  simp only [hin, simulateQ_map, StateT.run_map, bind_map_left, map_bind, map_pure,pure_bind]
+  simp only [hin, simulateQ_map, StateT.run_map, bind_map_left, map_bind, map_pure]
   rw [← QueryImpl.simulateQ_compose]
   congr 2
   congr 1
@@ -4897,7 +4885,7 @@ lemma runFunctionality_sum_inl [Inhabited R₁] [Inhabited R₂]
     erw [QueryImpl.add_apply_inr]
     apply StateT.ext
     intro s
-    simp [StateT.run_bind,localRoles,leftAdversary]
+    simp [StateT.run_bind,localRoles]
     erw [QueryImpl.add_apply_inr]
     simp only [StateT.run_mk,map_eq_bind_pure_comp,bind_assoc,Function.comp_def,pure_bind]
     apply bind_congr
@@ -4933,7 +4921,7 @@ lemma runFunctionality_sum_inr [Inhabited R₁] [Inhabited R₂]
     if_neg (not_not.mpr (hfull inputs))]
   simp only [Functionality.sum]
   rw [if_neg hn,if_pos hl]
-  simp only [hin, simulateQ_map, StateT.run_map, bind_map_left, map_bind, map_pure,pure_bind]
+  simp only [hin, simulateQ_map, StateT.run_map, bind_map_left, map_bind, map_pure]
   rw [← QueryImpl.simulateQ_compose]
   congr 2
   congr 1
@@ -4946,7 +4934,7 @@ lemma runFunctionality_sum_inr [Inhabited R₁] [Inhabited R₂]
     erw [QueryImpl.add_apply_inr]
     apply StateT.ext
     intro s
-    simp [StateT.run_bind,localRoles,rightAdversary]
+    simp [StateT.run_bind,localRoles]
     erw [QueryImpl.add_apply_inr]
     simp only [StateT.run_mk,map_eq_bind_pure_comp,bind_assoc,Function.comp_def,pure_bind]
     apply bind_congr
@@ -4962,7 +4950,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {E I O L R Ia α : Type}
 
 lemma startSteps_congr_honest (D : C.Coalition)
@@ -5160,7 +5147,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable inhabitedField
-set_option linter.unusedSectionVars false
 variable {C : Committee} {E Ia α : Type}
 variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
 
@@ -5226,7 +5212,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {E I O L R Ia α : Type}
 
 def optionalExchange (outbox : Option (Mail C E)) (f : Mail C E → PartyM C E (CallSpec I O) α) :
@@ -5307,9 +5292,9 @@ theorem executePhase_optionalExchange (D : C.Coalition) (A : Adversary C E Ia L 
   by_cases hi : i ∈ D.1
   · simp [optionalExchangeSteps,hi]
   · cases he : outbox i with
-    | none => simp only [optionalExchangeSteps,hi,if_false,he,afterExchange,localRoles,advance_run_failure]
+    | none => simp only [optionalExchangeSteps,hi,if_false,he,afterExchange,advance_run_failure]
     | some v =>
-        simp only [optionalExchangeSteps,hi,if_false,he,localRoles]
+        simp only [optionalExchangeSteps,hi,if_false,he]
         change advance (exchangeResume (f i) (fun k => if k ∈ D.1 then p.2 k i else
           (optionalExchangeSteps D outbox f k).delivered i)) = _
         rw [hin]
@@ -5325,7 +5310,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee}
 
 /-- An unobserved local computation can be prefetched, even when it changes the oracle cache. -/
@@ -5375,7 +5359,7 @@ lemma localHybridImpl_sample (A : Adversary C E Ia L R) (p : ProbComp α) :
       have hl {β γ : Type} (oa : OracleComp (LocalSpec C) β) (f : β → OracleComp (LocalSpec C) γ) :
           (StateT.lift (oa >>= f) : StateT A.State _ γ) = StateT.lift oa >>= fun a => StateT.lift (f a) := by
         ext s
-        simp [StateT.lift]
+        simp
       rw [hl]
       congr 1
 
@@ -5396,7 +5380,7 @@ lemma runFunctionality_local (D : C.Coalition) (A : Adversary C E Ia L R)
       (fun p => (p.2,p.1)) <$> ((simulateQ (localHybridImpl A) (F.run D inputs)).run st) := by
   unfold runFunctionality
   rw [if_neg (not_not.mpr h)]
-  simp only [pure_bind]
+  simp only
   exact (map_eq_bind_pure_comp _ _ _).symm
 
 variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
@@ -5518,7 +5502,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable inhabitedField
-set_option linter.unusedSectionVars false
 variable {C : Committee} {E σ τ γ : Type}
 variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
 
@@ -5546,7 +5529,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 
 /-- A uniform secret hits an arbitrary independent query trace with probability at most q/card. -/
 theorem independent_trace_guess_bound {α β : Type} [Fintype α] [Nonempty α] [SampleableType α]
@@ -5557,7 +5539,7 @@ theorem independent_trace_guess_bound {α β : Type} [Fintype α] [Nonempty α] 
       let a ← $ᵗ α
       pure (l,a))}[encode p.2 ∈ p.1] ≤ (q : ℝ≥0∞) / Fintype.card α := by
   classical
-  letI : DecidableEq β := Classical.typeDecidableEq β
+  let : DecidableEq β := Classical.typeDecidableEq β
   refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun l hl => ?_
   have he : (do let a ← $ᵗ α; pure (l,a)) = (fun a => (l,a)) <$> ($ᵗ α) :=
     (map_eq_bind_pure_comp (m := ProbComp) _ _).symm
@@ -5673,7 +5655,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {E I O L R Ia α : Type}
 
 def terminalProgram (out : Option α) : PartyM C E (CallSpec I O) α :=
@@ -5785,7 +5766,7 @@ theorem finalOpen_round (K : Constants C E) (D : C.Coalition) (A : CheckAdversar
       · simp [hb,finalRoundAccept,hi,terminalProgram]
       · have hb' : C.parties.any (fun j => Msg.isAbort (finalInbox D live v p.2 i j)) = false := by
           cases he : C.parties.any (fun j => Msg.isAbort (finalInbox D live v p.2 i j)) <;> simp_all
-        simp only [hb',Bool.false_eq_true,if_false,f,require_require_terminal,finalRoundAccept,
+        simp only [Bool.false_eq_true,if_false,f,require_require_terminal,finalRoundAccept,
           hi,true_and,hb']
         split_ifs <;> rfl
     · simp [afterExchange,out,hi,terminalProgram]
@@ -5813,7 +5794,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {α β γ : Type}
 
 def SameLocalOutput (prims : Primitives) (a b : OracleComp (LocalSpec C) α) : Prop :=
@@ -5843,7 +5823,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {ι σ α : Type} {S : OracleSpec ι}
 
 def flagQueries (impl : QueryImpl S (StateT σ ProbComp)) (bad : ι → Bool) :
@@ -5930,7 +5909,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {ι σ α β : Type} {S : OracleSpec ι}
 
 def projectQueries (impl : QueryImpl S (StateT σ ProbComp)) (project : ι → Option β) :
@@ -5978,7 +5956,7 @@ lemma projectQueries_flag (impl : QueryImpl S (StateT σ ProbComp)) (project : �
     (fun z : α × σ × List β => (z.1,(z.2.1,decide (a ∈ z.2.2)))) <$>
       (simulateQ (projectQueries impl project) oa).run (s,l) =
     (simulateQ (flagQueries impl (fun t => decide (project t=some a))) oa).run (s,decide (a ∈ l)) := by
-  letI : DecidableEq β := Classical.typeDecidableEq β
+  let : DecidableEq β := Classical.typeDecidableEq β
   induction oa using OracleComp.inductionOn generalizing s l with
   | pure x => simp
   | query_bind t k ih =>
@@ -6020,7 +5998,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {α : Type}
 
 lemma hashAnswer_cacheQuery_other (prims : Primitives) (s : HashCache C)
@@ -6134,7 +6111,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {α : Type}
 
 lemma saltedDigestAnswer_fresh (prims : Primitives) (cache : HashCache C)
@@ -6158,7 +6134,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {α : Type}
 
 def digestProgrammedGame (prims : Primitives) (cache : HashCache C) (h : HashOutput)
@@ -6181,7 +6156,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {α : Type}
 
 /-- The adaptive query trace is independent of a freshly chosen hidden salt. -/
@@ -6219,7 +6193,7 @@ theorem digestSaltFlag_boundP (prims : Primitives) (oa : OracleComp (LocalSpec C
       · funext z
         by_cases h : List.ofFn salt ∈ z.2.2 <;> simp only [h,decide_true,decide_false]
     rw [he',prEvent_map]
-    simp only [trace,prEvent_map,Function.comp_def,decide_eq_true_eq]
+    simp only [trace,prEvent_map,decide_eq_true_eq]
   have he : Pr{let z : α × HashCache C × Bool ← (do
       let salt ← $ᵗ (Fin 256 → Bit)
       (simulateQ (flagQueries (localAnswer prims) (digestSaltHit (List.ofFn salt))) oa).run (s,false))}[z.2.2=true] =
@@ -6249,7 +6223,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset ENNReal
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {α : Type}
 
 /-- Programming a digest at an independent hidden salt costs at most q/2^256,
@@ -6382,7 +6355,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable inhabitedField
-set_option linter.unusedSectionVars false
 variable {C : Committee} {E Ia α R : Type}
 variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
 
@@ -6439,7 +6411,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable inhabitedField
-set_option linter.unusedSectionVars false
 variable {C : Committee} {E Ia α : Type}
 variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
 
@@ -6550,7 +6521,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable inhabitedField
-set_option linter.unusedSectionVars false
 variable {C : Committee} {E Ia α : Type}
 variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
 
@@ -6653,7 +6623,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {β : Type}
 
 lemma sequenceFin_select_none {n : ℕ} (oa : OracleComp (LocalSpec C) β) (pick : Fin n → Prop)
@@ -6718,7 +6687,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {α β : Type} {n : ℕ}
 
 def queryColumns (f : Fin n → α → OracleComp (LocalSpec C) β) :
@@ -6796,7 +6764,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {E I O Ia L R α β : Type} 
 
 /-- The honest local oracle computations can precede every honest continuation, with the
@@ -6926,7 +6893,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {E Ia α : Type}
 
 def digestColumnValues (D : C.Coalition) (T : C.Term) (d : HashOutput) : C.Party → HashOutput := fun i =>
@@ -7000,7 +6966,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {I R α : Type} [Fintype I] [DecidableEq I] [Fintype R] [Nonempty R]
   [SampleableType R] [SampleableType (I → R)]
 
@@ -7042,7 +7007,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee}
 
 lemma vector_extend_ofFn {R : Type} [Zero R] (n : ℕ) (v : Fin n → R) :
@@ -7078,7 +7042,7 @@ lemma randShares_isShamir (K : Constants C E) (D : C.Coalition) (known : Shares 
     (w : MaskTable C E) (g : ℕ) :
     IsShamir K (fun i => conv K (localContext i) (randShares D 2 known w i) g)
       (∑ T,multBase D 2 known w T g) := by
-  letI : CharP E 2 := charP_two
+  let : CharP E 2 := charP_two
   exact (isShamir_conv (K := K) (multBase D 2 known w) g).congr
     (fun i => (randShares_conv K D known w i g).symm) rfl
 
@@ -7173,7 +7137,7 @@ lemma honest_shamir_product_difference (K : Constants C E) (D : C.Coalition)
     (hcU : ∀ i ∈ D.1,U i=U' i) (hcV : ∀ i ∈ D.1,V i=V' i) :
     (∑ i ∈ univ.filter (· ∉ D.1),lagrangeAll K i*(U i*V i))-
       (∑ i ∈ univ.filter (· ∉ D.1),lagrangeAll K i*(U' i*V' i))=u*v-u'*v' := by
-  letI : CharP E 2 := charP_two
+  let : CharP E 2 := charP_two
   rw [honest_sum_sub D _ _ (by intro i hi; rw [hcU i hi,hcV i hi])]
   rw [sum_lagrangeAll_shamir K hU hV,sum_lagrangeAll_shamir K hU' hV']
 
@@ -7213,7 +7177,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable inhabitedField
-set_option linter.unusedSectionVars false
 variable {C : Committee} {E : Type}
 variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
 
@@ -7325,7 +7288,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable inhabitedField
-set_option linter.unusedSectionVars false
 variable {C : Committee} {E Ia : Type}
 variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
 
@@ -7385,7 +7347,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable inhabitedField
-set_option linter.unusedSectionVars false
 variable {C : Committee} {E Ia L R : Type}
 variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
 
@@ -7483,7 +7444,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {α : Type}
 
 def DigestSaltsCovered (cache : HashCache C) (seen : Finset (List Bit)) : Prop :=
@@ -7585,7 +7545,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {α : Type}
 
 lemma hashAnswer_digest_entries (prims : Primitives) (q : Query C) (cache : HashCache C)
@@ -7683,7 +7642,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {α : Type}
 
 def DigestQuery (t : (LocalSpec C).Domain) : Prop := (digestSaltProjection t).isSome
@@ -7732,7 +7690,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {α : Type}
 
 abbrev DigestColumn (C : Committee) := C.Party → HashOutput
@@ -7837,7 +7794,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {α : Type}
 
 def mixedTableDigests (D : C.Coalition) (known : C.Term → OracleComp (LocalSpec C) (DigestColumn C))
@@ -7945,7 +7901,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {α : Type}
 
 def digestRows (cols : List (DigestColumn C)) : C.Party → List HashOutput :=
@@ -8070,7 +8025,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {E : Type} {ι : Type} {G : OracleSpec ι} {α β : Type}
 
 def PartyDigest : (PartySpec C E G).Domain → Prop
@@ -8268,7 +8222,7 @@ lemma executeRounds_digestBound (step : ℕ)
     · refine (stepRound_bind_digestBound D A F step hr hF state steps budget h _ (fuel * step) ?_).mono ?_
       · intro st b hb hs
         exact executeRounds_digestBound step hr hF fuel st.1 st.2.1 b hs
-      · simp [Nat.succ_mul, Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]
+      · simp [Nat.succ_mul, Nat.add_comm, Nat.add_assoc]
 
 lemma executePhase_digestBound (step : ℕ)
     (hr : ∀ state sent, IsQueryBoundP (A.round state sent) DigestQuery step)
@@ -8303,7 +8257,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable inhabitedField
-set_option linter.unusedSectionVars false
 variable {C : Committee} {E Ia α : Type}
 variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
 
@@ -8346,7 +8299,6 @@ open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
 noncomputable section
 namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 variable {C : Committee} {α : Type}
 
 lemma sequenceFin_digestBound : ∀ {n : ℕ} (oa : Fin n → OracleComp (LocalSpec C) α) (p : ℕ),
@@ -8750,7 +8702,7 @@ theorem executePhase_afterDigests_round (K : Constants C E) (D : C.Coalition)
     else require (DigestsAgree i (ds i) (digestInbox D ds p.2 i)) >>= fun _ => next i)=_
   by_cases ha : C.parties.any (fun j => Msg.isAbort (digestInbox D ds p.2 i j))
   · simp only [ha,if_true,digestLive,not_true_eq_false,false_and,if_false]
-  · simp only [ha,if_false,digestLive,not_false_eq_true,true_and]
+  · simp only [ha,digestLive]
     by_cases hg : DigestsAgree i (ds i) (digestInbox D ds p.2 i)
     · simp [require,hg]
     · simp [require,hg]

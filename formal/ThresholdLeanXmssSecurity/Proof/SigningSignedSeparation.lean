@@ -402,7 +402,7 @@ theorem invariant_grind_unsigned {C : Committee} (P : PublicParameter) (e : KeyI
     have hnext := invariant_trial_unsigned _ e hk s h hs (answer, cache, monitor) hquery
     cases hdec : Codeword.decode (truncateHash answer) with
     | some encoding =>
-      simp only [hdec, simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hr
+      simp only [hdec, simulateQ_pure, StateT.run_pure] at hr
       subst r
       exact hnext
     | none =>

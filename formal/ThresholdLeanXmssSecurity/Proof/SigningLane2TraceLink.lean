@@ -21,9 +21,6 @@ open SigningFlatProof SigningFlatEagerProof SigningJointEagerProof SigningOneRun
 
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 4000
-set_option maxHeartbeats 1000000
-set_option linter.constructorNameAsVariable false
 
 variable {C : Committee}
 
@@ -301,7 +298,7 @@ theorem grind_unsigned_cached (P : PublicParameter) (e : KeyIndex) (message : Me
     have hmon := keyed_trial_forget _ _ s (answer, (cache, monitor), flags) hquery
     cases hdec : Codeword.decode (truncateHash answer) with
     | some codeword =>
-      simp only [hdec, simulateQ_pure, StateT.run_pure, mem_support_pure_iff] at hr
+      simp only [hdec, simulateQ_pure, StateT.run_pure] at hr
       rw [hr] at hout hn
       obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hout)
       have hv : XmssSecurity.TargetSum.ValidDigest (XmssSecurity.truncateHash answer) :=
@@ -388,7 +385,7 @@ theorem grind_raised (P : PublicParameter) (key : KeyIndex) (message : Message) 
       (base + BitVec.ofNat digestBits trial)
     cases hdec : Codeword.decode (truncateHash answer) with
     | some encoding =>
-      simp only [hdec, simulateQ_pure, StateT.run_pure, mem_support_pure_iff] at hr
+      simp only [hdec, simulateQ_pure, StateT.run_pure] at hr
       rw [hr] at hf ⊢
       obtain ⟨he, _, _, _, hn⟩ := keyed_flag_new _ _ e s (answer, (cache, monitor), flags) hquery hs hf
       exact ⟨Option.some.inj (hk.symm.trans he), _, encoding, rfl, hn⟩
@@ -422,6 +419,7 @@ theorem base_called_support (prims : Primitives)
   rw [← heq, ← hcache]
   exact ⟨raw.1, hraw⟩
 
+set_option linter.constructorNameAsVariable false in
 /-- A canonical base step exposes its actual lazy base query and full keyed grind,
 including the cache, monitor and flags after the same step. -/
 theorem world_base_data (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
@@ -594,6 +592,7 @@ theorem traceWorld_entryRuns (prims : Primitives) (x : SigningSecurityProof.Keys
       · exact hold
   · exact hold
 
+set_option linter.constructorNameAsVariable false in
 /-- Any invariant on the world-side state, preserved by a traced world call,
 is preserved through setup, the adversary and verification. -/
 theorem traceRun_worldInvariant (prims : Primitives) (A : TsigAdversary C)
@@ -639,6 +638,7 @@ theorem traceRun_worldInvariant (prims : Primitives) (A : TsigAdversary C)
       rw [hz]
       exact hf
 
+set_option linter.constructorNameAsVariable false in
 /-- All entries in the actual trace retain their supported signing run and surviving cache. -/
 theorem traceRun_entryRuns (prims : Primitives) (A : TsigAdversary C)
     (x : SigningSecurityProof.Keys3 C) (z : TraceOutcome C)
@@ -786,6 +786,7 @@ theorem called_seenCached (prims : Primitives) (x : SigningSecurityProof.Keys3 C
       · exact ⟨answer, hself⟩
       · exact hold input hi
 
+set_option linter.constructorNameAsVariable false in
 /-- All seen monitor inputs stay cached through the actual dynamic extra grind. -/
 theorem world_seenCached (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (t : (WorldSpec C).Domain) (s : SigningReleasedLinkProof.SplitState C)
@@ -986,6 +987,7 @@ theorem traceWorld_entryUnsigned (prims : Primitives) (x : SigningSecurityProof.
       · exact hold
   · exact hold
 
+set_option linter.constructorNameAsVariable false in
 /-- A newly raised flag identifies its own guarded canonical base call. -/
 theorem world_raised_trigger (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (t : (WorldSpec C).Domain) (s : SigningReleasedLinkProof.SplitState C)
@@ -1191,6 +1193,7 @@ theorem traceForger_run_alignment (prims : Primitives) (x : SigningSecurityProof
   SeedHitProof.support_simulateQ_inv _ (TraceAlignment x)
     (fun t s hs r hr => traceForger_alignment prims x top t s hs r hr) source s hs r hr
 
+set_option linter.constructorNameAsVariable false in
 /-- Every actual trace run identifies an initially cached selection for each flagged key. -/
 theorem traceRun_alignment (prims : Primitives) (A : TsigAdversary C)
     (x : SigningSecurityProof.Keys3 C) (z : TraceOutcome C)
@@ -1229,6 +1232,7 @@ theorem traceRun_alignment (prims : Primitives) (A : TsigAdversary C)
       rw [hz]
       exact hf
 
+set_option linter.constructorNameAsVariable false in
 /-- On the actual trace run, the lane-2 row is a stale base or leanVM's ghost event. -/
 theorem lane2TraceLink (prims : Primitives) : Lane2TraceLink prims (C := C) := by
   intro A x z hz hrow

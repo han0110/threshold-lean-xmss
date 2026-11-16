@@ -22,8 +22,6 @@ open SigningCompilerO1SourceProof SigningCompilerO1Share
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxHeartbeats 1600000
-set_option maxRecDepth 10000
 attribute [local irreducible] sourceProgramX sourceProgram sourceGameX sourceGame
 attribute [local irreducible] sourceProgramO1X sourceGameO1X
 

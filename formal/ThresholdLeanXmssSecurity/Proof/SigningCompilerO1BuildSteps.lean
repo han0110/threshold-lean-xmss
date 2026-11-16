@@ -29,9 +29,7 @@ open SigningCompilerO1Frame SigningCompilerO1Pre SigningCompilerO1Programs Signi
 open SigningCompilerSyncBackend SigningCompilerSyncSuffix
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
 
 /-! ## The reveal map of the source -/
 
@@ -292,6 +290,7 @@ theorem pad_sync (cCore : Carried C) (p : Point) (a : RealState C) (src : Source
     · exact ⟨rfl, le_rfl, fun _ h => Or.inl h, le_rfl, id, rfl, rfl, rfl,
         rfl, rfl, fun _ _ => rfl, fun _ h1 h2 => (h2 h1).elim, fun _ h => h, fun _ _ h => h⟩
 
+set_option linter.constructorNameAsVariable false in
 /-- A chain walk of `n` steps from position `start`. The real side walks from `v`, and the compiler
 side makes the pending calls of `walkCalls`. The last answer gives the real value. -/
 theorem walk_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (cCore : Carried C)
@@ -458,6 +457,7 @@ section Build
 variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
   (u : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput) (noise : ChainNoiseIndex → HashOutput)
 
+set_option linter.constructorNameAsVariable false in
 /-- One row of a build. Both sides give the same row, no key is revealed, and the row has its
 virtual terms and its pending answers. -/
 theorem row_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)

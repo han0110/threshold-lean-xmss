@@ -25,9 +25,6 @@ namespace ThresholdLeanXmssSecurity.SigningReleasedAlignProof
 open HashSig LeanXmss ThresholdLeanXmss SigningFlatProof SigningPartnerBoundProof SigningFlatEagerProof SigningOneRunProof
 
 attribute [local instance] Classical.propDecidable
-set_option maxRecDepth 4000
-set_option maxHeartbeats 1000000
-set_option linter.constructorNameAsVariable false
 
 variable {C : Committee}
 
@@ -185,7 +182,7 @@ theorem grind_unsigned (P : PublicParameter) (e : KeyIndex) (message : Message)
     obtain ⟨answer, cache, monitor, flags, hquery, hr⟩ := hr
     cases hdec : Codeword.decode (truncateHash answer) with
     | some codeword =>
-      simp only [hdec, simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hr
+      simp only [hdec, simulateQ_pure, StateT.run_pure] at hr
       subst r
       obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hout)
       have hvalid : XmssSecurity.TargetSum.ValidDigest (XmssSecurity.truncateHash answer) :=
@@ -240,7 +237,7 @@ theorem grind_newly_signed (P : PublicParameter) (e : KeyIndex) (message : Messa
     obtain ⟨answer, cache, monitor, flags, hquery, hr⟩ := hr
     cases hdec : Codeword.decode (truncateHash answer) with
     | some codeword =>
-      simp only [hdec, simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hr
+      simp only [hdec, simulateQ_pure, StateT.run_pure] at hr
       subst r
       have hvalue := keyed_trial_installed_value (XmssSecurity.encodingInputLeafIndex? P) _ e
         (SigningLane2BridgeProof.encodingInputLeafIndex?_messageInput P e message _) s hs
@@ -317,6 +314,7 @@ theorem baseGrind_subrun (P : PublicParameter) (e : KeyIndex) (message : Message
 
 open SigningReleasedLinkProof SigningJointEagerProof
 
+set_option linter.constructorNameAsVariable false in
 /-- The actual split world only extends its hash cache. -/
 theorem world_cache_le (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (t : (WorldSpec C).Domain) (s : SplitState C) (r : (WorldSpec C).Range t × SplitState C)
@@ -370,6 +368,7 @@ theorem SelectionWitness.mono (x : SigningSecurityProof.Keys3 C)
   rw [← SigningGuessProof.cachedRandomizer_stable x.2.1 cache cache' e hcache hprf]
   exact hcache hbase
 
+set_option linter.constructorNameAsVariable false in
 /-- A newly installed target comes from the guarded canonical base call of its own key. -/
 theorem world_newly_signed_trigger (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (t : (WorldSpec C).Domain) (s : SplitState C)
@@ -430,6 +429,7 @@ theorem world_newly_signed_trigger (prims : Primitives) (x : SigningSecurityProo
   · simp only [jointCachedExtra, SigningR1FixedProof.cachedExtra, if_neg hG] at hg
     exact (hpure hg).elim
 
+set_option linter.constructorNameAsVariable false in
 /-- A new installation retains the successful canonical search that produced its digest. -/
 theorem world_newly_signed_witness (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (t : (WorldSpec C).Domain) (s : SplitState C)
@@ -486,6 +486,7 @@ theorem world_newly_signed_witness (prims : Primitives) (x : SigningSecurityProo
   · change g.2.1.1 ≤ ground.2.1.1
     rw [hgstate]
 
+set_option linter.constructorNameAsVariable false in
 /-- The signed-target or cached-trial record survives every actual split-world call. -/
 theorem world_marked (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (t : (WorldSpec C).Domain) (e : XmssSecurity.LeafIndex) (digest : XmssSecurity.Digest)
@@ -528,6 +529,7 @@ theorem forger_marked (prims : Primitives) (x : SigningSecurityProof.Keys3 C) (t
   obtain ⟨w, hw, rfl⟩ := hr
   exact world_run_marked prims x e digest _ s hs w hw
 
+set_option linter.constructorNameAsVariable false in
 /-- No actual world call overwrites a signed target. -/
 theorem world_signed (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (t : (WorldSpec C).Domain) (e : KeyIndex) (target : Digest)
@@ -599,6 +601,7 @@ theorem forger_run_witnesses (prims : Primitives) (x : SigningSecurityProof.Keys
   exact SeedHitProof.support_simulateQ_inv _ (SelectionWitnesses x)
     (fun t s hs r hr => forger_witnesses prims x top t s hs r hr) source s hs r hr
 
+set_option linter.constructorNameAsVariable false in
 /-- All keys signed by the actual split run retain their canonical completed searches. -/
 theorem splitRun_witnesses (prims : Primitives) (A : TsigAdversary C)
     (x : SigningSecurityProof.Keys3 C) (z : SplitOutcome C)
@@ -693,6 +696,7 @@ theorem SelectionWitness.selected_digest (prims : Primitives) (z : FinalState C)
       erw [SigningLane2BridgeProof.messageInput_eq_partnerInput] at ha
       exact XmssSecurity.Concrete.CacheView.digestAt_eq_of_cache_eq_some ha
 
+set_option linter.constructorNameAsVariable false in
 /-- The metadata signing state is the carried state after verification. -/
 theorem splitRun_state (prims : Primitives) (A : TsigAdversary C)
     (x : SigningSecurityProof.Keys3 C) (z : SplitOutcome C)
@@ -704,6 +708,7 @@ theorem splitRun_state (prims : Primitives) (A : TsigAdversary C)
   have hc := world_run_carried prims x _ middle.2 finished hfinished
   rw [← hf, hc, hstate]
 
+set_option linter.constructorNameAsVariable false in
 /-- A signed key in the actual run already satisfies selection alignment for every forgery at it. -/
 theorem splitRun_signed_selected (prims : Primitives) (A : TsigAdversary C)
     (x : SigningSecurityProof.Keys3 C) (z : SplitOutcome C)
@@ -719,6 +724,7 @@ theorem splitRun_signed_selected (prims : Primitives) (A : TsigAdversary C)
   rw [splitRun_state prims A x z (by with_reducible exact hz) top state forgery hm] at hw
   exact (hw.selected_digest prims _ target pair hsel).symm
 
+set_option linter.constructorNameAsVariable false in
 /-- A canonical base call whose search succeeds in an extending cache records its key. -/
 theorem world_base_marked (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (t : (WorldSpec C).Domain) (s : SplitState C)
@@ -835,6 +841,7 @@ theorem world_run_cache_le (prims : Primitives) (x : SigningSecurityProof.Keys3 
 
 set_option backward.isDefEq.respectTransparency false
 
+set_option linter.constructorNameAsVariable false in
 /-- The original counted call remains an actual subrun of the monitored world step. -/
 theorem world_counted_step (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (t : (WorldSpec C).Domain) (s : SplitState C) (r : (WorldSpec C).Range t × SplitState C)
@@ -1030,6 +1037,7 @@ private theorem run_liftM_comp {ι σ α : Type} {spec : OracleSpec ι}
     (liftM oa : StateT σ (OracleComp spec) α).run s = (fun a => (a, s)) <$> oa := by
   rw [map_eq_bind_pure_comp]; rfl
 
+set_option linter.constructorNameAsVariable false in
 /-- A successful cached-or-new bottom request retains its actual construction before signing. -/
 theorem world_bottomOnce_tree (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (top : TopTree) (b : Fin (2 ^ layerHeight)) (st : TsigState C) (s : SplitState C)
@@ -1070,6 +1078,7 @@ theorem world_bottomOnce_tree (prims : Primitives) (x : SigningSecurityProof.Key
       | top _ => simp [ho] at hout
       | bottom _ => simpa [ho] using hout
 
+set_option linter.constructorNameAsVariable false in
 /-- An accepted codeword after an actual bottom construction is canonical unless a commitment opens twice. -/
 theorem world_tree_codeword_marked (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (top : TopTree) (e : KeyIndex) (message : Message) (candidate : Digest)
@@ -1123,12 +1132,14 @@ def TopRun (prims : Primitives) (x : SigningSecurityProof.Keys3 C) (top : TopTre
     (SigningSecurityProof.liftFree (referenceTree tweakable (prfValue x.2.1) x.1 emptyTop .top))).run initial) ∧
     built.1 = some (.top top) ∧ built.2.1 ≤ cache
 
+set_option linter.constructorNameAsVariable false in
 theorem TopRun.mono {prims : Primitives} {x : SigningSecurityProof.Keys3 C} {top : TopTree}
     {cache cache' : HashCache C} (h : TopRun prims x top cache) (hle : cache ≤ cache') :
     TopRun prims x top cache' := by
   obtain ⟨initial, built, hr, ht, hc⟩ := h
   exact ⟨initial, built, (by with_reducible exact hr), ht, hc.trans hle⟩
 
+set_option linter.constructorNameAsVariable false in
 theorem TopRun.facts {prims : Primitives} {x : SigningSecurityProof.Keys3 C} {top : TopTree}
     {cache : HashCache C} (h : TopRun prims x top cache) :
     TopFacts prims (answersOf cache) x.2.1 x.1 top := by
@@ -1141,6 +1152,7 @@ theorem TopRun.facts {prims : Primitives} {x : SigningSecurityProof.Keys3 C} {to
   rw [← he]
   exact ⟨hchain, hroot⟩
 
+set_option linter.constructorNameAsVariable false in
 /-- Every successful actual round-two handler records its key unless a commitment opens twice. -/
 theorem world_round2_marked (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (top : TopTree) (i : C.Party) (J : C.Quorum) (e : KeyIndex) (message : Message)
@@ -1274,6 +1286,7 @@ theorem forger_run_released_marked (prims : Primitives) (x : SigningSecurityProo
     (fun p : SplitState C => Marked e target ((p.1.1.1.1.1, p.1.1.2), p.1.2))
     (fun t p hp r hr => forger_marked prims x top t e target p hp r hr) hocc hm⟩
 
+set_option linter.constructorNameAsVariable false in
 /-- Every released ledger key in the actual split run has a persistent mark outside commitment collisions. -/
 theorem splitRun_released_marked (prims : Primitives) (A : TsigAdversary C)
     (x : SigningSecurityProof.Keys3 C) (z : SplitOutcome C)
@@ -1338,6 +1351,7 @@ theorem splitRun_released_marked (prims : Primitives) (A : TsigAdversary C)
       exact ⟨target, world_run_marked prims x e target _ middle.2 hm finished
         (by with_reducible exact hfinished)⟩
 
+set_option linter.constructorNameAsVariable false in
 /-- The original released-selection alignment, for every released key of the same actual run. -/
 theorem releasedSelectionAlignment (prims : Primitives) : ReleasedSelectionAlignment prims (C := C) := by
   intro A x z hz top state forgery hmeta keyForgery message i hrel selected hsel

@@ -29,9 +29,7 @@ open SigningCompilerO1Frame SigningCompilerO1Pre SigningCompilerO1Programs Signi
 open SigningCompilerSyncBackend SigningCompilerSyncLocalRead
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
 
 section Build
 variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
@@ -69,6 +67,7 @@ theorem runX_sourceCommitmentX (e : KeyIndex) (src : SourceState C) (st : CompSt
   simp only [runX_pure, map_eq_bind_pure_comp, Function.comp_def]
   rfl
 
+set_option linter.constructorNameAsVariable false in
 /-- One commitment of a build. Both sides give the same commitment. Each term of the key is
 virtual, and the opening of a bound key is revealed. -/
 theorem commitment_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)

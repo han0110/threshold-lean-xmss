@@ -44,8 +44,8 @@ namespace ThresholdLeanXmssSecurity
 
 attribute [local instance] Classical.propDecidable
 
-set_option linter.unusedSectionVars false
 
+set_option linter.unusedSectionVars false
 section Stages
 
 variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
@@ -387,7 +387,7 @@ theorem ghostFinalCoin (prims : Primitives) (K : Constants C E) (D : C.Coalition
           (fun i => afterChallenge K (hsD w q i) (fun r => StateT.lift (finalOpenProgram K i
             (finalMaskVector K D known knownQ attack offset receivers r AD BD VD w q i)))
             (if i ∉ D.1 ∧ i ∈ rec then some v else none)) >>= tail) := by
-  letI : CharP E 2 := charP_two
+  let : CharP E 2 := charP_two
   obtain ⟨delta, deltaD, a, b, a', b', d, d', hknown, hknownD, hA, hB, hA', hB', hCA, hCB, hda, hdb, hdd, herr,
     hlA, hlB, hlD⟩ := hrel
   obtain ⟨T₀, -, hT₀⟩ := lackedTerm_spec D
@@ -1767,7 +1767,7 @@ lemma halv_after {σ' : Type} (K : Constants C E) (D : C.Coalition) (len : ℕ) 
         (hsR i).tag⟩)
       (fun i => ⟨recordHistory K i (hsD i).history (halvOut K D len AD BD pa fresh i) 2, (hsD i).label + 1 + 1,
         (hsD i).tag⟩) := by
-  letI : CharP E 2 := charP_two
+  let : CharP E 2 := charP_two
   obtain ⟨htagR, htagD, hknownHist, hcommonR, hcommonD⟩ := hh
   constructor
   · refine halvRel_step K D len AR BR AD BD DR DD hrel r _ _

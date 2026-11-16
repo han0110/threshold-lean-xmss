@@ -18,7 +18,6 @@ open SigningCompilerO1SlackRun SigningCompilerO1SlackRead
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
 
 section Steps
 variable (P : PublicParameter) (seeds : C.Term → HashOutput) (q : ℕ) (s : HiddenKey → Digest)
@@ -113,7 +112,7 @@ theorem sourcePending_linked (hinj : Function.Injective seeds) (p : PendingInput
   · rename_i priorCopy known next input hknown hnext
     have hhash := sourceHash_linked P seeds q s sig starts hinj (.hash (p.input P input))
         (fun _ _ he => by cases he)
-    simp only [sourceHash, pure_bind] at hhash
+    simp only [sourceHash] at hhash
     refine hhash.bind _ fun value => ?_
     refine (sourceRecord_linked P seeds q s sig starts p value).bind _ fun _ => ?_
     exact (sourceModify_linked P seeds q s sig starts
@@ -155,8 +154,7 @@ theorem sourceHashProgram_linked {α : Type} (hinj : Function.Injective seeds)
   | pure value =>
       exact SourcePreserves.pure value
   | query_bind input next ih =>
-      simp only [simulateQ_bind, backendQuery, simulateQ_query,
-        OracleQuery.input_query, OracleQuery.cont_query, id_map]
+      simp only [backendQuery]
       exact (sourceHash_linked P seeds q s sig starts hinj (.hash input)
         (fun _ _ he => by cases he)).bind _ ih
 

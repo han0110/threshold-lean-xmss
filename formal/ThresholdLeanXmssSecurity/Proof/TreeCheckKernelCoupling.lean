@@ -19,7 +19,6 @@ variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algeb
 
 section Glue
 
-set_option linter.unusedSectionVars false
 
 variable {α β γ : Type} [DecidableEq α] [DecidableEq β] [DecidableEq γ]
 

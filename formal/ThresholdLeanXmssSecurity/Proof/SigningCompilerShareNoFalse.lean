@@ -12,10 +12,7 @@ namespace ThresholdLeanXmssSecurity.SigningCompilerShare.NoFalse
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
 open SigningCompilerCouplingProof
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 10000
-set_option maxHeartbeats 1600000
 variable {C : Committee}
 
 /-- Fixed targets for the four constrained source shapes. -/

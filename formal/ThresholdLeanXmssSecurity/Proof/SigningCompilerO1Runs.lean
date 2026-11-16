@@ -25,9 +25,6 @@ open SigningCompilerO1SourceProof SigningCompilerO1Share SigningCompilerO1Tables
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
-set_option maxHeartbeats 800000
-set_option linter.constructorNameAsVariable false
 
 section FlagRuns
 variable (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest)

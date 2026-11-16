@@ -29,8 +29,6 @@ open XmssSecurity.CappedChain
 open SigningCompilerO1Frame SigningCompilerO1Reads SigningCompilerSyncLocalRead
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
 
 section Verify
 variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
@@ -106,7 +104,7 @@ theorem real_query_bind (sig : TsigState C) (trees : Finset (Fin (2 ^ layerHeigh
         (readCall prims x s pads u rest false (.inl (.hash input))).run a := by
     rw [readCall, if_neg Bool.false_ne_true, hashQuery, free]
     erw [liftComp_query, simulateQ_query]
-    simp only [OracleQuery.input_query, OracleQuery.cont_query]
+    simp only [OracleQuery.input_query]
     erw [id_map]
     rfl
   rw [hq]

@@ -95,7 +95,6 @@ def traceGame (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
   jointGameWith A x (traceWorld prims x)
     (fun dealt => flatWith (SigningOpeningProof.openingOracles x dealt) (traceWorld prims x)) getCarried
 
-set_option maxRecDepth 100000 in
 theorem traceGame_forgets (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
     Forgets (traceGame prims A x)
       (SigningOneRunProof.splitGame prims (XmssSecurity.encodingInputLeafIndex? x.1) (jointCachedExtra x.2.1 x.1) A x) := by

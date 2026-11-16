@@ -24,7 +24,6 @@ open SigningCompilerO1Sync SigningCompilerO1Frame
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
 
 /-- A simulation over a simulation is the fused simulation. The final states come back as a pair
 in the order of the two runs. -/

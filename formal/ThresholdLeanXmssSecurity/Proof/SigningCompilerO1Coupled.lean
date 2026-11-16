@@ -36,8 +36,6 @@ open SigningCompilerO1Sync SigningCompilerO1Frame SigningCompilerO1Verify Signin
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
 
 section Finish
 variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
@@ -84,6 +82,7 @@ theorem realOracles_stop (top : TopTree) {α : Type} (oa : OracleComp (LocalSpec
   simulateQ_sticky _ (RealStop q) (fun t st hst r hr => realStop_adv prims x _ (gOf s pads u) rest q
     t st hst r hr) _ a h r hr
 
+set_option linter.constructorNameAsVariable false in
 /-- The coupling of the two complete runs, for fixed tables. -/
 theorem run_coupled (A : TsigAdversary C) (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) :
     RelTriple (realRunRaw prims A x s pads (gOf s pads u) rest noise)

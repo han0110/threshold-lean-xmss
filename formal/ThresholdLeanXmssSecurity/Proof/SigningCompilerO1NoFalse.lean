@@ -27,10 +27,7 @@ open SigningCompilerO1Invariant SigningCompilerO1Release SigningCompilerShare
 open SigningCompilerO1SourceProof SigningCompilerO1Share SigningCompilerO1Slack
 open SigningCompilerO1SlackGuarded SigningCompilerO1Marks SigningCompilerO1Runs
 attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 10000
-set_option maxHeartbeats 1600000
 variable {C : Committee}
 
 /-- The slack of the O1 source fixes the sum of each fully cached constrained point. -/
@@ -87,6 +84,7 @@ theorem release_noWrongO1 (seeds : C.Term → HashOutput) (hinj : Function.Injec
   rw [merge_key seeds hinj]
   exact hfull T
 
+set_option maxHeartbeats 1600000 in
 /-- A segment of the O1 source over the lazy share backend keeps the share invariant, the guarded
 release invariant and the pad agreement. -/
 theorem segment_guardedO1 {α : Type} (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -255,7 +253,6 @@ end FalseSafeO1
 attribute [local irreducible] FalseSafeO1 Queries SafeO1 QuietO1
 attribute [local irreducible] sourceProgramO1X sourceProgramO1 sourceGameO1X sourceGameO1
 
-set_option maxRecDepth 100000 in
 /-- The setup keeps the boundary invariant. -/
 theorem falseSafe_topO1 (x : Keys3 C) (hinj : Function.Injective x.2.1)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest) :
@@ -288,7 +285,6 @@ theorem falseSafe_verifyO1 (x : Keys3 C) (hinj : Function.Injective x.2.1)
   · exact QuietO1.liftBaseX (Marks.quiet_verify x.1 x.2.1 st input)
   · exact verifyO1_guardedS x q s hinj st input
 
-set_option maxRecDepth 100000 in
 /-- The honest-signature tail keeps the boundary invariant. -/
 theorem falseSafe_honestO1 (prims : Primitives) (x : Keys3 C) (hinj : Function.Injective x.2.1)
     (top : TopTree) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)

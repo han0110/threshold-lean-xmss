@@ -15,9 +15,6 @@ open SigningCompilerSyncBackend
 variable {C : Committee} {Tag : Type}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
-set_option maxHeartbeats 1600000
-set_option linter.constructorNameAsVariable false
 
 /-- Every X-source computation preserves the already allocated domains. -/
 theorem runX_rows {α : Type}
@@ -255,6 +252,7 @@ theorem sourceBottomRowX_rows (tagOf : CappedCompilerState C × Bool → Tag) (x
   · apply pendings
     fin_cases d <;> simp [bottomRowCalls]
 
+set_option maxRecDepth 100000 in
 /-- Every bottom build, including a failed search, establishes its full row domain. -/
 theorem sourceBottomTreeX_rows (tagOf : CappedCompilerState C × Bool → Tag) (x : Keys3 C)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)

@@ -16,9 +16,6 @@ open SigningCompilerSyncRelease SigningCompilerSyncTreeRows
 variable {C : Committee} {Tag : Type}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
-set_option maxHeartbeats 1600000
-set_option linter.constructorNameAsVariable false
 
 def SourceKeepsX {α β : Type} (field : SourceState C → β) (oa : SourceMX C α) : Prop :=
   ∀ source r, r ∈ support (oa.run source) → field r.2 = field source

@@ -27,7 +27,6 @@ open SigningCompilerO1SourceProof
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
 
 /-! ## Definitions -/
 

@@ -13,8 +13,6 @@ open SigningCompilerUntil
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
-set_option maxHeartbeats 1600000
 
 abbrev CompState (C : Committee) := FullState C (Bool × Bool)
 abbrev RealState (C : Committee) := SigningLaneUnionProof.TraceState C × HashCache C
@@ -170,6 +168,7 @@ theorem freshRest_cap (P : PublicParameter) (seeds : C.Term → HashOutput)
       exact hashTail_cap P seeds _ st value _ r
         (mem_support_of_mem_support_liftComp (PrivateSpec C) _ _ ha)
 
+set_option maxHeartbeats 1600000 in
 theorem ordinaryRaw_cap (P : PublicParameter) (seeds : C.Term → HashOutput)
     (pairs : C.Pair → HashOutput) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
     (t : DeferredQuery C ⊕ HiddenKey) (st : CappedCompilerState C)

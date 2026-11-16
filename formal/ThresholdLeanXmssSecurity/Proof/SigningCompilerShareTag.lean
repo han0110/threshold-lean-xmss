@@ -16,8 +16,6 @@ open SigningCompilerCouplingProof SigningCompilerShare
 variable {C : Committee} {Tag Tag' : Type}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxHeartbeats 1600000
-set_option maxRecDepth 10000
 attribute [local irreducible] sourceProgramX sourceProgram sourceGameX sourceGame
 
 abbrev RunSpecT (C : Committee) (Tag : Type) :=

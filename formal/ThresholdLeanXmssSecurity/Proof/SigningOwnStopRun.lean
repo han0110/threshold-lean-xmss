@@ -15,9 +15,6 @@ import ThresholdLeanXmssSecurity.Proof.SigningOwnStopWalk
 
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
-set_option maxHeartbeats 1000000
 
 open OracleComp OracleSpec ENNReal
 
@@ -105,6 +102,7 @@ theorem opening_freeKeyed (x : SigningSecurityProof.Keys3 C) (top : TopTree)
       (SigningSelectionProof.tsigOracles_noCall x top e q
         (fun i J e' message parts h => ht i J e' message parts (h ▸ rfl)) s.1.1))
 
+set_option linter.constructorNameAsVariable false in
 set_option backward.isDefEq.respectTransparency false in
 /-- A round-2 request keeps the ledger paid. The search of the signer is a rerun or runs after the
 stop. -/
@@ -184,6 +182,7 @@ theorem ledger_round2 (x : SigningSecurityProof.Keys3 C) (top : TopTree) (i : C.
         · exact SigningSelectionProof.noCall_pure _ _
     exact ((hpTree.trans hpOwn).trans (hpCode.trans hpAfter)).mono le_rfl
 
+set_option maxRecDepth 100000 in
 /-- The honest signature at a bound key keeps the ledger paid. Its search is a rerun or runs after
 the stop. -/
 theorem ledger_honestSignature (x : SigningSecurityProof.Keys3 C) (top : TopTree) (e : KeyIndex)
@@ -279,6 +278,7 @@ theorem ledger_forger (x : SigningSecurityProof.Keys3 C) (top : TopTree)
   · push Not at hq
     exact ledger_run_bound prims x _ 0 (opening_freeKeyed x top t hq p.2) p z hz
 
+set_option maxRecDepth 100000 in
 /-- The finish adds at most one free unit, the bottom digest call of the verification. -/
 theorem ledger_finish (x : SigningSecurityProof.Keys3 C) (top : TopTree) (forgery : Forgery)
     (p : LedgerState C) (hinv : StopInv prims x top (p.1.1, p.2))
@@ -355,6 +355,7 @@ theorem ledger_forger_inv (x : SigningSecurityProof.Keys3 C) (top : TopTree)
     exact hrel
   · exact SigningGuessProof.tsigOracles_releasedBound _ _ q p.2.1.1 _ hrel hgame
 
+set_option maxRecDepth 100000 in
 /-- On each outcome of the ledger run, the ledger is at most the own keyed calls of the log and one
 unit. The proof joins the dealer, the queries of the forger and the finish. -/
 theorem ledgerRun_paid (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
@@ -468,6 +469,7 @@ theorem expected_logCost_le (c : (WorldSpec C).Domain → ℕ) (A : TsigAdversar
 
 /-! ## The assembly -/
 
+set_option maxRecDepth 100000 in
 /-- `R1OwnSource` from the potential part, the support part and the law. -/
 theorem r1OwnSource : R1OwnSource prims (C := C) := by
   intro A x

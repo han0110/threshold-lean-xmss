@@ -547,7 +547,7 @@ open Classical in
 theorem forestHash_irrelevant {α : Type} (P : PublicParameter) (oa : OracleComp HashSpec α)
     (h : oa.IsQueryBoundP (fun input => forestRelevant (C := C) P (.hash input)) 0) :
     (forestHash (C := C) oa).IsQueryBoundP (forestRelevant P) 0 := by
-  letI : OracleSpec.UniformAnswerMeasure (Query C →ₒ HashOutput) :=
+  let : OracleSpec.UniformAnswerMeasure (Query C →ₒ HashOutput) :=
     OracleSpec.UniformAnswerMeasure.ofFiniteNonempty _
   apply h.simulateQ_of_step
   · intro input _
@@ -616,7 +616,7 @@ theorem forestRun_model (x : SigningSecurityProof.Keys3 C) (cache : HashCache C)
   obtain ⟨secret, topSecret, result, hsecret, htopSecret, hmodel⟩ := forestRun_resolves x cache z hz
   refine ⟨secret, topSecret, result, hsecret, htopSecret, ?_⟩
   rw [hmodel.run_eq_pure]
-  simp only [StateT.run_pure, support_pure]
+  simp only [support_pure]
   exact Set.mem_singleton _
 
 /-- A job of the ceremony of the top tree reads only inputs of the forest completion. -/
@@ -733,7 +733,6 @@ theorem bottomJob_lift (x : SigningSecurityProof.Keys3 C) {forest record target 
     exact isQueryBoundP_bind (n := 0) (m := 0)
       (mapM_bound_zero _ _ _ fun _ => forestValue_irrelevant _ _ _) (fun vs _ => by simp)
 
-set_option maxRecDepth 100000 in
 /-- The Merkle tree of a bottom tree reads only inputs of the forest completion. -/
 theorem bottomMerkle_lift (x : SigningSecurityProof.Keys3 C) {forest record target bound : HashCache C}
     (secret : XmssSecurity.LeafIndex → XmssSecurity.ChainIndex → Digest)
@@ -847,7 +846,6 @@ theorem topPath_lift (x : SigningSecurityProof.Keys3 C) {forest record target bo
     exact DeterministicSigning.Resolves.sequenceFin hus
   exact resolves_transfer (forestHash_resolves _ _ _ hall) hpath hft hfb hrb
 
-set_option maxRecDepth 100000 in
 /-- The check of a top signature reads only inputs of the forest completion and inputs that are not
 relevant to the forest, when the top tree is resolved. -/
 theorem topCheck_lift (x : SigningSecurityProof.Keys3 C) {forest record target bound : HashCache C}

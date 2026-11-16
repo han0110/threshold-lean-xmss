@@ -18,8 +18,6 @@ open OracleComp OracleSpec
 open scoped ENNReal
 
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
-set_option linter.constructorNameAsVariable false
 
 noncomputable section
 
@@ -173,7 +171,7 @@ theorem grind_cache_frame (P : PublicParameter) (e : KeyIndex) (message : Messag
       fun q hq => h.2.2 q (hq.2 _ _)
     cases hdec : Codeword.decode (truncateHash answer) with
     | some encoding =>
-      simp only [hdec, simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
+      simp only [hdec, simulateQ_pure, StateT.run_pure] at hz
       subst z
       exact ⟨h.1, heq⟩
     | none =>
@@ -190,6 +188,7 @@ theorem baseGrind_cache_frame (P : PublicParameter) (e : KeyIndex)
   obtain ⟨y, hy, rfl⟩ := hz
   exact grind_cache_frame P e message _ _ _ cache y hy
 
+set_option linter.constructorNameAsVariable false in
 theorem grindExtra_cache_frame (P : PublicParameter) (ρ : KeyIndex → Digest)
     (p : FlatState C) (t : (WorldSpec C).Domain) (p' : FlatState C) z
     (hz : z ∈ support ((simulateQ (randomOracle (spec := Query C →ₒ HashOutput))

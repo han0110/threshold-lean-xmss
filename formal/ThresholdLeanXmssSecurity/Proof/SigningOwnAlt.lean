@@ -17,7 +17,6 @@ import ThresholdLeanXmssSecurity.Proof.SigningOwnCommit
 
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
-set_option linter.constructorNameAsVariable false
 
 open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
@@ -320,7 +319,6 @@ theorem altRise_bottomOnce (top : TopTree) (b : Fin (2 ^ layerHeight)) (st : Tsi
       (fun _ => altRise_of_bound prims x _ 0 (isQueryBoundP_pure _ _ _)) (by omega)
 
 set_option backward.isDefEq.respectTransparency false in
-set_option maxRecDepth 100000 in
 /-- A signing oracle raises the commitment potential by the one check of `c_e` of a round-2
 request. Its builds are covered by the commitment completion. -/
 theorem altRise_tsigOracles (top : TopTree) (q : (TsigSpec C).Domain) (st : TsigState C) :
@@ -362,7 +360,6 @@ theorem altRise_tsigOracles (top : TopTree) (q : (TsigSpec C).Domain) (st : Tsig
           (by omega)
         rcases r with _ | values <;> simp
 
-set_option maxRecDepth 100000 in
 attribute [local irreducible] merkleNode merklePath grind Verification.treeFoldWithHash Verification.chainWalkWithHash in
 /-- The canonical commitment replay fact. A resolved bottom tree resolves the canonical
 commitment of each of its keys. -/
@@ -498,7 +495,6 @@ theorem alt_dealer_rise (x : Keys3 C) :
   rw [h0, zero_add] at h
   exact h
 
-set_option maxRecDepth 100000 in
 /-- One query of the forger raises the commitment potential by its own commitment call, and a
 round-2 request by its check of `c_e`. -/
 theorem alt_step_rise (x : Keys3 C) (top : TopTree)
@@ -522,7 +518,6 @@ theorem alt_step_rise (x : Keys3 C) (top : TopTree)
     refine (altRise_tsigOracles prims x top q p.2.1 p.1).trans ?_
     simp [ownDomainUnit]
 
-set_option maxRecDepth 100000 in
 /-- The finish does not raise the commitment potential. The verification makes no commitment call,
 and the tail repeats the commitment call of its build. -/
 theorem alt_finish_rise (x : Keys3 C) (top : TopTree) (forgery : Forgery) (st : TsigState C)
@@ -563,7 +558,7 @@ theorem altOwn : AltOwn prims (C := C) := by
   refine ENNReal.tsum_le_tsum fun z => ?_
   by_cases hz : z ∈ support (loggedRun prims A x)
   · by_cases hw : SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1
-    · simp only [Function.comp_apply, hw, if_true, guarded, if_neg (noProgramQuery prims C A x z hz)]
+    · simp only [hw, if_true, guarded, if_neg (noProgramQuery prims C A x z hz)]
       rw [SigningHitProof.completionPotential_terminal _ _ _
         (SigningGuessProof.alternativeCommitment_completed x.2.1 x.1 _ hw), mul_one]
     · simp [hw]

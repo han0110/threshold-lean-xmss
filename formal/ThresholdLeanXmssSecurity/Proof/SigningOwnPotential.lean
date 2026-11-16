@@ -51,8 +51,7 @@ theorem completionPotential_recorded_block_le {α β : Type} (relevant : Query C
   have hpot : ∀ c, completionPotential relevant (recordedCompletion oa target) c =
       Pr{let z ← F.run c}[CompletedHit relevant (T z.1) c] := by
     intro c
-    simp only [completionPotential, recordedCompletion, simulateQ_map, StateT.run_map, prEvent_map,
-      Function.comp_def, F, T]
+    simp only [completionPotential, recordedCompletion, simulateQ_map, StateT.run_map, prEvent_map, F, T]
   have hcomm : Commutes B F := by
     simpa [B, F] using commutes_simulateQ (Query C →ₒ HashOutput).randomOracle
       commutes_randomOracle_randomOracle (recordReads block ∅) (recordReads oa ∅)
@@ -75,7 +74,7 @@ theorem completionPotential_recorded_block_le {α β : Type} (relevant : Query C
             have hrecord := (recordReads_resolves block ∅ cache
               (by intro i v h; cases h) w hw).2.2.1
             simpa only [merged, QueryCache.ofFn_apply, hi] using hrecord hi
-      simp only [hpot, event, hc, StateT.run_map, prEvent_map, Function.comp_def]
+      simp only [hpot, event, hc, StateT.run_map, prEvent_map]
     · simp [prEvent_eq_zero_of_not_mem_support _ hw]
   change (∑' w, Pr{let z ← B.run cache}[z = w] *
     completionPotential relevant (recordedCompletion oa target) w.2) ≤ _

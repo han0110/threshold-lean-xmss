@@ -3,8 +3,8 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
-set_option linter.unusedSectionVars false
 
+set_option linter.unusedSectionVars false
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss Finset
 open scoped ENNReal
 
@@ -138,7 +138,7 @@ theorem slice_effective_card_le_two (K : Constants C E) (D : C.Coalition)
     (univ.filter fun r : E =>
       interpolate K D.1 (fun i => sliceClaim τ j r (V i) (q0 i) (qInf i)) 0 =
         t0 + t1 * r + t2 * r ^ 2).card ≤ 2 := by
-  letI : CharP E 2 := charP_two
+  let : CharP E 2 := charP_two
   simp_rw [interpolate_sliceClaim]
   have h := gruen_slice_step (τ.getD (sliceBits - 1 - j) 0) (interpolate K D.1 V 0)
     t0 t1 t2 (interpolate K D.1 q0 0 - t0) (interpolate K D.1 qInf 0 - t2) hc hwrong
@@ -509,7 +509,6 @@ theorem sound_afterChallenge {Ia : Type} (prims : Primitives) (K : Constants C E
     intro cache
     exact (local_prefetch_output prims _ (pure (p.1, fun _ : C.Party => (none : Option Unit))) cache).symm
 
-set_option maxHeartbeats 1000000 in
 theorem sound_challenge_normalize {Ia : Type} (prims : Primitives) (K : Constants C E) (D : C.Coalition)
     (A : CheckAdversary C E Ia) (fuel : ℕ) (st : A.State) (live : C.Party → Prop) [DecidablePred live]
     (hall : ∀ i, i ∉ D.1 → live i) (hs : C.Party → RunState C) (tag L : ℕ)
@@ -548,7 +547,6 @@ lemma sound_coinReply_bound {Ia : Type} (A : CheckAdversary C E Ia) (step : ℕ)
   simp only [bind_assoc, pure_bind]
   exact (isQueryBoundP_bind (m := 0) (ha st _) (fun _ _ => isQueryBoundP_pure _ _ 0)).mono (by omega)
 
-set_option maxHeartbeats 1000000 in
 theorem sound_challenge_phase {Ia : Type} (prims : Primitives) (K : Constants C E) (D : C.Coalition)
     (A : CheckAdversary C E Ia) (fuel step : ℕ)
     (ha : ∀ st l, IsQueryBoundP (A.answer st l) Counted step)
@@ -601,7 +599,7 @@ theorem sound_halvFold_card (K : Constants C E) (D : C.Coalition) (len : ℕ)
         ∑ k ∈ range (halvedLength len),
           interpolate K D.1 (fun i => halvFold len r (A i) k) 0 *
           interpolate K D.1 (fun i => halvFold len r (B i) k) 0).card ≤ 2 := by
-  letI : CharP E 2 := charP_two
+  let : CharP E 2 := charP_two
   let a := fun k => interpolate K D.1 (fun i => A i k) 0
   let b := fun k => interpolate K D.1 (fun i => B i k) 0
   let hi := fun (v : ℕ → E) k => if k + halvedLength len < len then v (k + halvedLength len) else 0
@@ -803,7 +801,6 @@ lemma soundError_mono (q H m : ℕ) (seen : Finset (Query C)) (keys : Finset Has
   push_cast
   gcongr
 
-set_option maxHeartbeats 1000000 in
 /-- Salts and digest messages leave the final scalar test as the only accepting route. -/
 theorem sound_digest_phase {Ia : Type} (prims : Primitives) (K : Constants C E)
     (D : C.Coalition) (A : CheckAdversary C E Ia) (fuel step q H : ℕ)
@@ -839,7 +836,6 @@ theorem sound_digest_phase {Ia : Type} (prims : Primitives) (K : Constants C E)
     wa wb a b d q0 q2 hwrong cache' seen' keys hc'').trans
     (soundError_mono (E := E) q H 2 seen' keys (by omega) hk)
 
-set_option maxHeartbeats 1000000 in
 theorem sound_salt_phase {Ia : Type} (prims : Primitives) (K : Constants C E)
     (D : C.Coalition) (A : CheckAdversary C E Ia) (fuel step q H : ℕ)
     (hr : ∀ st sent, IsQueryBoundP (A.round st sent) Counted step)
@@ -884,7 +880,6 @@ lemma sound_extendReply_bound {Ia : Type} (A : CheckAdversary C E Ia) (step : �
   simp only [bind_assoc, pure_bind]
   simpa using ha st (.inl (.inr view))
 
-set_option maxHeartbeats 1000000 in
 /-- The complete randomization, salts, digests, challenge, and final opening segment. -/
 theorem sound_finalStep {Ia : Type} (prims : Primitives) (K : Constants C E)
     (D : C.Coalition) (A : CheckAdversary C E Ia) (fuel step q H : ℕ)
@@ -945,7 +940,6 @@ def SoundHalvRest {Ia : Type} (prims : Primitives) (K : Constants C E)
           (fun i => if live i then (halvProg K width n j (A i) (B i) (V i) i).run' (hs i)
             else failure))).run' cache}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤ (n + 1 : ℕ) * soundError E q H 2
 
-set_option maxHeartbeats 500000 in
 theorem sound_halvRest_zero {Ia : Type} (prims : Primitives) (K : Constants C E)
     (D : C.Coalition) (Ad : CheckAdversary C E Ia) (step q H width fuel : ℕ)
     (hr : ∀ st sent, IsQueryBoundP (Ad.round st sent) Counted step)
@@ -957,7 +951,6 @@ theorem sound_halvRest_zero {Ia : Type} (prims : Primitives) (K : Constants C E)
   simpa only [Nat.mul_zero, Nat.add_zero, Nat.zero_add, Nat.cast_one, one_mul, halvProg_zero] using
     sound_finalStep prims K D Ad fuel step q H hr ha st live hs tag L htag A B V hwrong cache seen keys hc hq hk
 
-set_option maxHeartbeats 500000 in
 theorem sound_halvRest_succ {Ia : Type} (prims : Primitives) (K : Constants C E)
     (D : C.Coalition) (Ad : CheckAdversary C E Ia) (step q H width n j F : ℕ)
     (ha : ∀ st l, IsQueryBoundP (Ad.answer st l) Counted step)
@@ -1015,7 +1008,6 @@ theorem sound_halvRest_succ {Ia : Type} (prims : Primitives) (K : Constants C E)
       _ = _ := by push_cast; ring
 
 
-set_option maxHeartbeats 500000 in
 theorem sound_halvRest_all {Ia : Type} (prims : Primitives) (K : Constants C E)
     (D : C.Coalition) (Ad : CheckAdversary C E Ia) (step q H width : ℕ)
     (hr : ∀ st sent, IsQueryBoundP (Ad.round st sent) Counted step)
@@ -1053,7 +1045,7 @@ theorem sound_sliceFold_card (K : Constants C E) (D : C.Coalition) (τ : List E)
       ∑ k ∈ range (sliceLen count (j + 1)), sliceWeight τ count (j + 1) k *
         interpolate K D.1 (fun i => conv K (localContext i) (sliceFold count j r (xs i)) k) 0 *
         interpolate K D.1 (fun i => conv K (localContext i) (sliceFold count j r (ys i)) k) 0).card ≤ 2 := by
-  letI : CharP E 2 := charP_two
+  let : CharP E 2 := charP_two
   let w := sliceBits - 1 - j
   let N := sliceWidth count * 2 ^ w
   let a := fun k => interpolate K D.1 (fun i => conv K (localContext i) (xs i) k) 0
@@ -1107,7 +1099,6 @@ def SoundSliceRest {Ia : Type} (prims : Primitives) (K : Constants C E)
           (fun i => if live i then (sliceProg K τ count n j (xs i) (ys i) (V i) i).run' (hs i)
             else failure))).run' cache}[∃ i, i ∉ D.1 ∧ out.2 i = some ()] ≤ (n + halvingSteps (sliceWidth count) + 1 : ℕ) * soundError E q H 2
 
-set_option maxHeartbeats 500000 in
 theorem sound_sliceRest_zero {Ia : Type} (prims : Primitives) (K : Constants C E)
     (D : C.Coalition) (Ad : CheckAdversary C E Ia) (τ : List E) (step q H count fuel : ℕ)
     (hr : ∀ st sent, IsQueryBoundP (Ad.round st sent) Counted step)
@@ -1123,7 +1114,6 @@ theorem sound_sliceRest_zero {Ia : Type} (prims : Primitives) (K : Constants C E
     (fun i => conv K (localContext i) (xs i)) (fun i => conv K (localContext i) (ys i)) V
     hwrong cache seen keys hc (by simpa only [Nat.zero_add] using hq) hk
 
-set_option maxHeartbeats 500000 in
 theorem sound_sliceRest_succ {Ia : Type} (prims : Primitives) (K : Constants C E)
     (D : C.Coalition) (Ad : CheckAdversary C E Ia) (τ : List E) (step q H count n j F : ℕ)
     (ha : ∀ st l, IsQueryBoundP (Ad.answer st l) Counted step)
@@ -1184,7 +1174,6 @@ theorem sound_sliceRest_succ {Ia : Type} (prims : Primitives) (K : Constants C E
           (le_refl ((n + halvingSteps (sliceWidth count) + 1 : ℕ) * soundError E q H 2))
       _ = _ := by push_cast; ring
 
-set_option maxHeartbeats 500000 in
 theorem sound_sliceRest_all {Ia : Type} (prims : Primitives) (K : Constants C E)
     (D : C.Coalition) (Ad : CheckAdversary C E Ia) (τ : List E) (step q H count : ℕ)
     (hr : ∀ st sent, IsQueryBoundP (Ad.round st sent) Counted step)
@@ -1373,7 +1362,6 @@ lemma soundStartNext_missing {Ia : Type} (K : Constants C E) (D : C.Coalition)
   intro i hi
   exact if_neg (fun h => hmiss ⟨i, hi, h⟩)
 
-set_option maxHeartbeats 500000 in
 theorem sound_afterStart {Ia : Type} (prims : Primitives) (K : Constants C E) (D : C.Coalition)
     (A : CheckAdversary C E Ia) (fuel d : ℕ) (hs : C.Party → RunState C) (tag L : ℕ)
     (htag : ∀ i, i ∉ D.1 → (hs i).tag = tag ∧ (hs i).label = L)
@@ -1400,7 +1388,6 @@ theorem sound_afterStart {Ia : Type} (prims : Primitives) (K : Constants C E) (D
     intro cache
     exact (local_prefetch_output prims _ (pure (p.1, fun _ : C.Party => (none : Option Unit))) cache).symm
 
-set_option maxHeartbeats 500000 in
 theorem sound_start_normalize {Ia : Type} (prims : Primitives) (K : Constants C E) (D : C.Coalition)
     (A : CheckAdversary C E Ia) (fuel d : ℕ) (st : A.State)
     (hs : C.Party → RunState C) (tag L : ℕ)
@@ -1432,7 +1419,6 @@ theorem sound_start_normalize {Ia : Type} (prims : Primitives) (K : Constants C 
   intro cache
   simpa only [leftAdversary, bind_assoc, pure_bind] using (h₁ cache).trans (h₂ cache)
 
-set_option maxHeartbeats 500000 in
 theorem sound_start_phase {Ia : Type} (prims : Primitives) (K : Constants C E) (D : C.Coalition)
     (A : CheckAdversary C E Ia) (fuel step d : ℕ)
     (ha : ∀ st l, IsQueryBoundP (A.answer st l) Counted step)
@@ -1639,7 +1625,7 @@ lemma sound_interpolate_conv (K : Constants C E) (D : C.Coalition)
     (xs : C.Party → Shares C E) (X : Shares C E)
     (hx : ∀ i, i ∉ D.1 → ∀ T, i ∈ C.holders T → xs i T = X T) (k : ℕ) :
     interpolate K D.1 (fun i => conv K (localContext i) (xs i) k) 0 = shareValue X k := by
-  letI : CharP E 2 := charP_two
+  let : CharP E 2 := charP_two
   obtain ⟨P, hP, h0, hPi⟩ := isShamir_conv (K := K) X k
   unfold shareValue
   rw [← h0]
@@ -1823,7 +1809,6 @@ def CheckSoundRoundInduction (prims : Primitives) (K : Constants C E) : Prop :=
       ENNReal.ofReal (checkErrorOf (E := E) (coins counts.sum) (halvings counts.sum) q +
         soundHashError counts.sum q)
 
-set_option maxHeartbeats 1000000 in
 /-- The initial weight draw, all slice and halving steps, and the final segment. -/
 theorem checkSoundRoundInduction (prims : Primitives) (K : Constants C E) : CheckSoundRoundInduction prims K := by
   intro counts D A x step q st cache seen hx hpos hr ha hc hb hagree hwrong

@@ -118,9 +118,6 @@ open SigningCompilerShare SigningCompilerSyncReal SigningCompilerSyncStop Signin
 open SigningCompilerSyncRealRead SigningCompilerSyncLocalRead SigningCompilerSyncHonestRead
 open SigningCompilerO1Sync SigningCompilerUntil SigningCompilerO1Frame
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
-set_option maxHeartbeats 1600000
-set_option linter.constructorNameAsVariable false
 attribute [local irreducible] grind SigningFlatEagerProof.baseGrind
   SigningR1FixedProof.cachedExtra SigningOneRunProof.jointCachedExtra
   SigningLaneUnionProof.traceStepAt
@@ -128,6 +125,8 @@ variable (prims : Primitives) (x : Keys3 C) (s : HiddenKey → Digest) (pads : P
   (u : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput)
   (noise : ChainNoiseIndex → HashOutput)
 
+set_option linter.constructorNameAsVariable false in
+set_option maxHeartbeats 1600000 in
 /-- A grind on the private oracle keeps the private relation at its visible cache. -/
 theorem realPrivate_keyedSplit {β : Type} (g : C.Term × CPoint → HashOutput)
     (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
@@ -153,6 +152,7 @@ theorem realPrivate_keyedSplit {β : Type} (g : C.Term × CPoint → HashOutput)
     obtain ⟨v, hv, rfl⟩ := hw
     exact ih _ _ _ (realPrivate_observe h (.inr t) v hv) r hr
 
+set_option linter.constructorNameAsVariable false in
 /-- The observed answer of a private read is a lazy read of the visible cache. -/
 theorem realRead_observed (g : C.Term × CPoint → HashOutput) (priv vis : HashCache C)
     (h : RealPrivate x s pads noise g rest priv vis) (input : Query C)
@@ -171,6 +171,8 @@ theorem realRead_observed (g : C.Term × CPoint → HashOutput) (priv vis : Hash
       observe_same vis input value hv]
     simp
 
+set_option linter.constructorNameAsVariable false in
+set_option maxHeartbeats 1600000 in
 /-- One honest call of `H` logs its answer and keeps the log agreement, the private relation and
 the carried state. -/
 theorem honest_call (input : Query C) (a : RealState C)
@@ -230,6 +232,7 @@ theorem honest_call (input : Query C) (a : RealState C)
       show SigningCacheLogProof.logCache a.1.1.1.1.1.2 q = some v from hq]
     rfl
 
+set_option linter.constructorNameAsVariable false in
 /-- A hash-only honest computation resolves on the log cache after its real run. The run keeps the
 log agreement, the private relation and the carried state. -/
 theorem honest_resolves {α : Type} (oa : OracleComp (Query C →ₒ HashOutput) α) (a : RealState C)

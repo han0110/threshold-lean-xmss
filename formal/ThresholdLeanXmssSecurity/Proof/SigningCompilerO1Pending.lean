@@ -32,8 +32,6 @@ open SigningCompilerSyncTrigger SigningCompilerSyncLocalRead SigningCompilerSync
 open SigningCompilerO1Reads
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
 
 section Calls
 variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
@@ -280,7 +278,7 @@ theorem realCall_view (query : Query C) (a : RealState C)
   rw [readCall_false] at h
   exact h
 
-set_option maxHeartbeats 1600000 in
+set_option linter.constructorNameAsVariable false in
 /-- The effect of an honest call with no bottom base input on the real state. -/
 theorem realCall_support (query : Query C) (t : (WorldSpec C).Domain)
     (ht : t = .inr (.inr (.inl query))) (a : RealState C)
@@ -327,6 +325,7 @@ theorem realCall_support (query : Query C) (t : (WorldSpec C).Domain)
 
 end Honest
 
+set_option linter.constructorNameAsVariable false in
 set_option maxHeartbeats 1600000 in
 /-- A commitment call or a top base call. With an answer already pending both sides return it. With
 a revealed key the compiler side makes the hash call. Else both sides sample a fresh answer, and

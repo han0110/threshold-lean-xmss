@@ -32,9 +32,7 @@ open XmssSecurity.CappedChain
 open SigningCompilerO1Frame SigningCompilerO1Pre SigningCompilerO1Programs SigningCompilerO1RealBuild
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
 attribute [local irreducible] Queries
 
 /-! ## The programs of one chain end -/
@@ -161,6 +159,7 @@ theorem callPost_seq {α β α' β' : Type} (cCore : Carried C) (seen1 seen2 : Q
   exact Or.inr (Or.inr ⟨⟨hv1, hf2.pending, hv2⟩, hs2,
     CallFrame.trans x seen1 seen2 a r1.2 r2.2 _ _ _ hf1 hf2, hm2⟩)
 
+set_option linter.constructorNameAsVariable false in
 /-- One top chain edge at its secret. The real side reads the truncated hash, and the compiler side
 returns the pending answer of the edge. -/
 theorem topStep_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (cCore : Carried C)
@@ -189,6 +188,7 @@ theorem topStep_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (cCo
   rintro ⟨hv, hp⟩
   exact ⟨by rw [hv]; exact SigningCompilerO1Lemmas.truncateHash_interpret s _, hp⟩
 
+set_option linter.constructorNameAsVariable false in
 /-- One chain end of the setup. Both sides give the same end, and the chain has its pending
 answers. -/
 theorem topEnd_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (cCore : Carried C)
@@ -391,6 +391,8 @@ theorem sourceTopTreeX_eq (P : PublicParameter) (seeds : C.Term → HashOutput) 
   simp only [sourceTopTreeX, deferredTopTree, simulateQ_bind, simulateQ_list_mapM, simulateQ_pure]
   rfl
 
+set_option linter.constructorNameAsVariable false in
+set_option maxRecDepth 100000 in
 /-- The setup at the fixed top tree `emptyTop`. Both sides give the same tree. The relation without
 the top clauses holds, the source keeps its reveal map and its stored trees, and each top chain has
 its pending answers. -/
@@ -477,6 +479,7 @@ def SetupPost (ra : Option TreeOutput × RealState C)
       SyncO1 prims x rb.1.1 s pads noise (gOf s pads u) rest ra.2 (rb.1.2, rb.2) ∧
         PadsFixed x pads rb.2 ∧ rb.2.1.2 = false)
 
+set_option maxRecDepth 100000 in
 /-- The setup, the top tree build of both sides. -/
 theorem setup_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) :
     RelTriple

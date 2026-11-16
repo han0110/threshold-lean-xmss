@@ -40,8 +40,8 @@ namespace ThresholdLeanXmssSecurity
 
 attribute [local instance] Classical.propDecidable
 
-set_option linter.unusedSectionVars false
 
+set_option linter.unusedSectionVars false
 /-! ## The network through one oracle implementation -/
 
 section MapRoles
@@ -77,7 +77,7 @@ theorem simulateQ_runFunctionality_mapRoles (st : A.State) (inputs : C.Party →
   unfold runFunctionality
   by_cases h : ∀ i ∉ D.1, (inputs i).isSome = true
   · rw [if_neg (not_not.mpr h), if_neg (not_not.mpr h)]
-    simp only [simulateQ_pure, pure_bind, simulateQ_bind]
+    simp only [simulateQ_pure, simulateQ_bind]
     rw [simulateQ_stateT_run]
     congr 1
     congr 1

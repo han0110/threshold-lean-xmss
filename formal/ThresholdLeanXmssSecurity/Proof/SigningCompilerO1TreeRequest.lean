@@ -25,8 +25,6 @@ open SigningCompilerSyncChain SigningCompilerSyncSuffix
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
 set_option backward.isDefEq.respectTransparency false
 
 /-- The release of the opening of the top key of a returned tree. -/

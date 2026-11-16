@@ -183,7 +183,7 @@ theorem not_rawCommitment_tweakable (P P' : PublicParameter) (domain : HashDomai
 theorem forestHash_noCall {α : Type} (q : Query C → Prop) (oa : OracleComp HashSpec α)
     (h : NoCall (fun input => q (.hash input)) oa) :
     (SigningHitProof.forestHash (C := C) oa).IsQueryBoundP q 0 := by
-  letI : OracleSpec.UniformAnswerMeasure (Query C →ₒ HashOutput) :=
+  let : OracleSpec.UniformAnswerMeasure (Query C →ₒ HashOutput) :=
     OracleSpec.UniformAnswerMeasure.ofFiniteNonempty _
   rw [noCall_iff] at h
   apply h.simulateQ_of_step

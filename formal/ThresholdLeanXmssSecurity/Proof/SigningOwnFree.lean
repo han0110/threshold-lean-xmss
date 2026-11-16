@@ -29,8 +29,6 @@ variable {C : Committee}
 
 attribute [local instance] Classical.propDecidable
 
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
 
 /-- A hash input with no candidate and no decoding by the lane 2 key. A call on it is never
 charged, in each state. -/

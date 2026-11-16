@@ -12,8 +12,8 @@ salt-hiding bounds together fit `checkHashError`.
 
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
-set_option linter.unusedSectionVars false
 
+set_option linter.unusedSectionVars false
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss Finset
 open scoped ENNReal
 
@@ -1049,7 +1049,7 @@ lemma split_prob_lift_no_digest (p : ProbComp α) :
     change IsQueryBoundP (OracleComp.lift (OracleSpec.query (.inl t)) >>= fun u =>
       liftComp (k u) (LocalSpec C)) (SplitRegionCounted SplitHashDomain) 0
     rw [isQueryBoundP_query_bind_iff]
-    exact ⟨Or.inl (by simp [SplitRegionCounted,splitLocalHashInput, SplitRegionCounted, SplitHashDomain, IsFixed]),fun u => by
+    exact ⟨Or.inl (by simp [SplitRegionCounted,splitLocalHashInput, SplitRegionCounted, SplitHashDomain]),fun u => by
       simpa [SplitRegionCounted,splitLocalHashInput, SplitRegionCounted, SplitHashDomain, IsFixed] using ih u⟩
 
 
@@ -1179,11 +1179,11 @@ lemma split_ghost_bound (D : C.Coalition) (salts : C.Party → Shares C Bit)
     · refine (isQueryBoundP_bind (m := Ts.length * (C.n * 2)) (split_column_bound D T salts hist) (fun col _ => ?_)).mono ?_
       · rw [mixedGhostDigests_bind_pure]
         exact (isQueryBoundP_bind ih (fun cols _ => isQueryBoundP_pure _ (col :: cols) 0)).mono (by omega)
-      · simp [Nat.add_mul] <;> omega
+      · simp [Nat.add_mul]; omega
     · refine (isQueryBoundP_bind (m := Ts.length * (C.n * 2)) (split_prob_lift_no_digest ($ᵗ HashOutput)) (fun d _ => ?_)).mono ?_
       · rw [mixedGhostDigests_bind_pure]
         exact (isQueryBoundP_bind ih (fun cols _ => isQueryBoundP_pure _ (digestColumnValues D T d :: cols) 0)).mono (by omega)
-      · simp [Nat.add_mul] <;> omega
+      · simp [Nat.add_mul]
 
 lemma split_ghost_terms_bound (D : C.Coalition) (salts : C.Party → Shares C Bit)
     (hist : C.Party → C.Term → List Bit) :
@@ -1327,10 +1327,10 @@ theorem splitGhostSalt_tv (prims : Primitives) (K : Constants C E) (D : C.Coalit
           pure (p.1, fun _ => none)) := by
       intro A B V hs w q
       exact split_afterDigests_abort K D Ad (fuel + 1) _ _ _ hstop
-    simp only [← StateT.run'_eq, ← map_bind, ← StateT.run_bind, ← simulateQ_bind]
+    simp only [← StateT.run'_eq]
     simp only [heq]
     simp only [simulateQ_bind, StateT.run_bind, simulateQ_pure, StateT.run_pure,
-      pure_bind, bind_assoc, StateT.run'_eq, map_bind, map_pure, htail, measureTVDist_self, le_refl]
+      pure_bind, bind_assoc, StateT.run'_eq, htail, measureTVDist_self, le_refl]
   · simpa only [add_zero] using splitRegion_birthday_real prims OB (step + termHashes C) k hOB cache hno hk
 
 theorem splitFinalMasked_tv (prims : Primitives) (K : Constants C E) (D : C.Coalition) (Ad : CheckAdversary C E Ia)

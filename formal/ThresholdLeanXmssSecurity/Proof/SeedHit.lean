@@ -20,7 +20,6 @@ key of `Proof/Tprf.lean`.
 
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
-set_option linter.constructorNameAsVariable false
 
 open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
@@ -339,6 +338,7 @@ theorem ffOracles_inv (x : Keys3 C) (dealt : Dealt C (OracleComp (WorldSpec C)))
     obtain ⟨a, -, rfl⟩ := hz
     exact hp
 
+set_option linter.constructorNameAsVariable false in
 theorem ffAfter_support (A : TsigAdversary C) (x : Keys3 C) :
     ∀ r ∈ support (ffAfter A x), r.1.2 = true → r.2.Nonempty := by
   intro r hr
@@ -394,7 +394,7 @@ theorem distinctFlagBound_of_keyHit (h : KeyHitBound prims C) : DistinctFlagBoun
   rw [flaggedRun_eq_ffRun, prEvent_map]
   refine (prEvent_mono_of_support _ _ _ fun z hz hf => ?_).trans ((prEvent_exists_finset_le Finset.univ _
     (fun σ z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ σ ∈ z.2.1.2)).trans ?_)
-  · simp only [Function.comp_apply] at hf
+  · simp only at hf
     unfold ffRun at hz
     simp only [mem_support_bind_iff, support_map, Set.mem_image] at hz
     obtain ⟨x, -, r, hr, rfl⟩ := hz
@@ -638,8 +638,7 @@ theorem hom_tsigOracles (lift : ∀ {α : Type}, OracleComp (RoSpec C) α → m 
   rcases q with i | b | ⟨i, J, e, message⟩ | ⟨i, J, e, message, parts⟩
   · simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind]
     split_ifs <;> simp [Dealt.hmap]
-  · simp only [tsigOracles, StateT.run_bind, StateT.run_monadLift, monadLift_self, MonadHom.mmap_bind,
-      bind_assoc, pure_bind, hom_bottomOnce]
+  · simp only [tsigOracles, StateT.run_bind, MonadHom.mmap_bind, hom_bottomOnce]
     congr 1; funext ⟨o, st⟩
     rcases o with _ | tree
     · simp
@@ -649,13 +648,12 @@ theorem hom_tsigOracles (lift : ∀ {α : Type}, OracleComp (RoSpec C) α → m 
   · simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind]
     split_ifs
     · simp
-    · simp only [StateT.run_bind, StateT.run_monadLift, monadLift_self, MonadHom.mmap_bind,
-        bind_assoc, pure_bind, hom_bottomOnce]
+    · simp only [StateT.run_bind, MonadHom.mmap_bind, hom_bottomOnce]
       congr 1; funext ⟨o, st⟩
       rcases o with _ | tree
       · simp
       · simp only [StateT.run_bind, StateT.run_monadLift, monadLift_self, MonadHom.mmap_bind,
-          bind_assoc, pure_bind, hom_bottomOnce]
+          bind_assoc, pure_bind]
         congr 1; funext own
         have key := hom_signRound2With h lift (fun x => dealt.part i J x message) dealt.parameter J
           (tree.commitment e) e message (Function.update parts i own)
@@ -884,7 +882,6 @@ theorem routedLocal_upd (x : Keys3 C) (σ : KeySlot C) {k k' : HashOutput}
 theorem not_hit_of_not_hitT {σ : KeySlot C} {t : (LocalSpec C).Domain} {k : HashOutput} (h : ¬HitT σ (.inl t) k) :
     ¬Hit σ (.inl t) k := fun ⟨u, hu, hq⟩ => h ⟨u, by cases hu; rfl, hq⟩
 
-set_option maxRecDepth 10000 in
 theorem fusedImpl_upd_eq (x : Keys3 C) (σ : KeySlot C) (top : TopTree) {k k' : HashOutput}
     (hinj : Function.Injective (slotInput (xk x σ k).2.1 (xk x σ k).2.2))
     (hinj' : Function.Injective (slotInput (xk x σ k').2.1 (xk x σ k').2.2))
@@ -943,14 +940,12 @@ theorem bottomOnce_corrupt (dealt : Dealt C (StateT (WState C) ProbComp))
     z.1.2.corrupt = st.corrupt := by
   simp only [bottomOnce, StateT.run_bind, StateT.run_get, pure_bind] at hz
   cases ht : st.trees b <;>
-    simp [ht, StateT.run_bind, StateT.run_monadLift, monadLift_self,
-      mem_support_bind_iff] at hz
+    simp [ht, StateT.run_bind, StateT.run_monadLift, monadLift_self] at hz
   · obtain ⟨value, cache, slots, count, _, rfl⟩ := hz
     rfl
   · subst z
     rfl
 
-set_option maxRecDepth 10000 in
 set_option backward.isDefEq.respectTransparency false in
 theorem tsigOracles_corrupt_cases (lift : ∀ {α : Type}, OracleComp (RoSpec C) α → StateT (WState C) ProbComp α)
     (dealt : Dealt C (StateT (WState C) ProbComp)) (q : (TsigSpec C).Domain) (st : TsigState C) (c : WState C) :
@@ -962,7 +957,7 @@ theorem tsigOracles_corrupt_cases (lift : ∀ {α : Type}, OracleComp (RoSpec C)
     split_ifs at hz
     · simp at hz; subst hz; exact Or.inl rfl
     · simp at hz; subst hz; exact Or.inr ⟨i, rfl, ‹_›, rfl⟩
-  · simp only [tsigOracles, StateT.run_bind, StateT.run_monadLift, monadLift_self, bind_assoc, pure_bind,
+  · simp only [tsigOracles, StateT.run_bind,
       mem_support_bind_iff] at hz
     obtain ⟨w, hw, hz⟩ := hz
     have hc := bottomOnce_corrupt dealt b st c w hw
@@ -985,7 +980,7 @@ theorem tsigOracles_corrupt_cases (lift : ∀ {α : Type}, OracleComp (RoSpec C)
   · simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind] at hz
     split_ifs at hz
     · simp at hz; subst hz; exact Or.inl rfl
-    · simp only [StateT.run_bind, StateT.run_monadLift, monadLift_self, bind_assoc, pure_bind,
+    · simp only [StateT.run_bind,
         mem_support_bind_iff] at hz
       obtain ⟨w, hw, hz⟩ := hz
       have hc := bottomOnce_corrupt dealt (treeOf e) st c w hw
@@ -1133,6 +1128,7 @@ theorem fused_ff_zero (σ : KeySlot C) {α : Type} (oa : OracleComp (LocalSpec C
     · obtain ⟨h1, h2⟩ := fused_frozen prims x top t s hf w hw
       exact ⟨Or.inr h1, h2 ▸ hs.2⟩
 
+set_option linter.constructorNameAsVariable false in
 theorem fused_count_ct (hinj : Function.Injective (slotInput x.2.1 x.2.2)) (t : (LocalSpec C + TsigSpec C).Domain)
     (p : GState C) : ∀ z ∈ support ((fusedImpl prims x top t).run p), p.2.2 + roCost t ≤ z.2.2.2 := by
   intro z hz
@@ -1360,6 +1356,7 @@ theorem dealer_first {m : Type → Type} [Monad m] [LawfulMonad m] (lift : ∀ {
     map_bind, pure_bind]
   exact ⟨pt, _, rfl⟩
 
+set_option linter.constructorNameAsVariable false in
 /-- The top tree of the dealer costs at least the `C(n, t - 1)` calls of its first PRF value. -/
 theorem dealer_count {σ : Type} (I : QueryImpl (WorldSpec C) (StateT σ ProbComp)) (x : Keys3 C) (s : σ × ℕ) :
     ∀ z ∈ support ((simulateQ (withCount I) (referenceTree (fun oa => liftFree (tweakable oa))
@@ -1449,6 +1446,7 @@ theorem split_budget (A : TsigAdversary C) (q : ℕ) (hq : HasSigningQueryBound 
 theorem not_revealed_empty (σ : KeySlot C) : ¬Revealed (∅ : Finset C.Party) σ := by
   rcases σ with T | p <;> simp [Revealed]
 
+set_option linter.constructorNameAsVariable false in
 set_option maxRecDepth 100000 in
 /-- After each top tree of the dealer, the first hits of `σ` over its good values cost at most
 `q - C(n, t - 1)`. -/

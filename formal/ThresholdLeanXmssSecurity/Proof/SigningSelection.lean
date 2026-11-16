@@ -315,7 +315,6 @@ theorem run_bound (seeds : C.Term → HashOutput) (jobs : List Job) :
     NoCall (HashQ (C := C) (AtKey P e)) (some <$> jobs.mapM (referenceJob tweakable (prfValue seeds) P)) :=
   noCall_map _ _ (noCall_mapM _ _ _ fun job => referenceJob_bound P e seeds job)
 
-set_option maxRecDepth 100000 in
 theorem referenceTree_bound (seeds : C.Term → HashOutput) (top : TopTree) (tree : Tree) :
     NoCall (HashQ (C := C) (AtKey P e)) (referenceTree tweakable (prfValue seeds) P top tree) := by
   unfold referenceTree ceremonyOutput
@@ -459,8 +458,6 @@ theorem bottomOnce_noCall (x : SigningSecurityProof.Keys3 C) (top : TopTree)
       StateT.run_pure, pure_bind]
     exact noCall_bind _ (bottom_noCall x top e b) fun _ => noCall_pure _ _
 
-set_option maxHeartbeats 1000000 in
-set_option maxRecDepth 100000 in
 theorem tsigOracles_noCall (x : SigningSecurityProof.Keys3 C) (top : TopTree) (e : KeyIndex)
     (q : (TsigSpec C).Domain) (hq : ∀ i J e' message' parts, q ≠ .round2 i J e' message' parts) (st : TsigState C) :
     NoCall (FreeQ (AtKey x.1 e)) ((tsigOracles (fun oa => SigningCoreProof.honestLift oa)
@@ -470,14 +467,14 @@ theorem tsigOracles_noCall (x : SigningSecurityProof.Keys3 C) (top : TopTree) (e
     simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind]
     split
     · exact noCall_pure _ _
-    · simp only [StateT.run_bind, StateT.run_set, pure_bind, StateT.run_pure]
+    · simp only [StateT.run_bind, StateT.run_set, pure_bind]
       exact noCall_pure _ _
   | tree b =>
     simp only [tsigOracles, StateT.run_bind]
     refine noCall_bind _ (bottomOnce_noCall x top e b st) fun found => ?_
     rcases found with ⟨_ | tree, st'⟩
     · exact noCall_pure _ _
-    · simp only [StateT.run_bind, run_liftM, bind_map_left, StateT.run_pure]
+    · simp only [StateT.run_bind, run_liftM, bind_map_left]
       refine noCall_bind _ ?_ fun _ => noCall_pure _ _
       rw [receiptDealt_value]
       exact noCall_liftFree _ _ (prfValue_bound _ _ _)
@@ -485,7 +482,7 @@ theorem tsigOracles_noCall (x : SigningSecurityProof.Keys3 C) (top : TopTree) (e
     simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind]
     split
     · exact noCall_pure _ _
-    · simp only [StateT.run_bind, StateT.run_set, pure_bind, StateT.run_map, run_liftM, Functor.map_map]
+    · simp only [StateT.run_bind, StateT.run_set, pure_bind]
       erw [StateT.run_map]
       simp only [run_liftM, Functor.map_map]
       refine noCall_map _ _ ?_

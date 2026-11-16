@@ -127,7 +127,6 @@ theorem tsigAdvantage_eq (A : TsigAdversary C) :
   rw [prEvent_map]
 
 set_option maxRecDepth 100000 in
-set_option linter.constructorNameAsVariable false in
 /-- The budget of the game bounds the run after each key of `KeyGen'`. -/
 theorem queryBound_gameAfter (A : TsigAdversary C) (q : ℕ) (hq : HasSigningQueryBound prims (tsigGame A) q) :
     ∀ x ∈ support (keyGen3 (C := C)), ∀ r ∈ support (runSigningWorld prims (gameAfter A x)), r.2 ≤ q := by

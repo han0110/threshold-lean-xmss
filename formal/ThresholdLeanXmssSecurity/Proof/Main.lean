@@ -319,7 +319,7 @@ theorem progAt_nil (p : List (C.Term → List Bit) × List (Tuple C)) (st : RunS
     · simp [StateT.run'_eq, StateT.run_bind]
     · simp [StateT.run'_eq, StateT.run_bind]
     · simp only [pure_bind, hybrid_output]
-      simp [StateT.run'_eq, StateT.run_bind, StateT.run_lift]
+      simp [StateT.run'_eq, StateT.run_lift]
   · simp [StateT.run'_eq, StateT.run_bind]
 
 section Honest
@@ -390,7 +390,7 @@ theorem honest_mult_support (K : Constants C E) (mode : ReshareMode) (X Y : C.Pa
     congr 3
     funext T g
     have h0 : ∀ a : Bit, Add.add a 0 = a := fun a => add_zero a
-    split_ifs <;> simp_all [base, m, Finset.sum_erase_eq_sub, h0]
+    split_ifs <;> simp_all [base, m, Finset.sum_erase_eq_sub]
 
 end Functionalities
 
@@ -425,7 +425,6 @@ theorem reconstruct_of_agree {α : Type} [Inhabited α] (views : C.Party → Opt
     cases hi
     simp [hV]
 
-set_option linter.constructorNameAsVariable false in
 /-- Tuple `τ` agrees with `τ'` on the terms that operator `i` holds. -/
 def TupleAgrees (i : C.Party) (τ τ' : Tuple C) : Prop :=
   (∀ T, i ∈ C.holders T → τ.x T = τ'.x T ∧ τ.y T = τ'.y T ∧ τ.z T = τ'.z T) ∧ τ.count = τ'.count ∧ τ.mode = τ'.mode
@@ -1206,7 +1205,6 @@ theorem honestStep_layer (l : ℕ) (ls : List ℕ) (p : C.Party → List (C.Term
     Set.mem_singleton_iff] at hz
   rw [hz]
 
-set_option linter.constructorNameAsVariable false in
 /-- `F_mult` of `Rerand` in an honest run gives each operator its held terms of one sharing of the product. -/
 theorem honest_rerand_support (X Y : C.Party → Shares C Bit) (n : ℕ) o
     (ho : o ∈ support (simulateQ (replyImpl mainReply) ((mainFunctionalities K mode).run noCoalition
@@ -1214,7 +1212,7 @@ theorem honest_rerand_support (X Y : C.Party → Shares C Bit) (n : ℕ) o
     ∃ z : Shares C Bit, (∀ g, ∑ T, z T g = ∑ i, mulRep K (localContext i) (X i) (Y i) g) ∧
       o = fun i => some (.inl (.inr fun T g => if i ∈ C.holders T ∧ g < n then z T g else 0)) := by
   have hpos : 0 < C.n := by have := C.one_le_t; unfold Committee.n; omega
-  haveI : Nonempty C.Party := ⟨⟨0, hpos⟩⟩
+  have : Nonempty C.Party := ⟨⟨0, hpos⟩⟩
   simp only [mainFunctionalities, Functionality.sum, FmultBit, Fmult, leak, sample, OracleComp.lift] at ho
   simp [noCoalition, simulateQ_bind, simulateQ_query, replyImpl, mainReply] at ho
   dsimp only [HAdd.hAdd, QueryImpl.add] at ho
@@ -1237,9 +1235,8 @@ theorem honest_rerand_support (X Y : C.Party → Shares C Bit) (n : ℕ) o
     congr 3
     funext T g
     have h0 : ∀ a : Bit, Add.add a 0 = a := fun a => add_zero a
-    split_ifs <;> simp_all [base, m, Finset.sum_erase_eq_sub, h0]
+    split_ifs <;> simp_all [base, m, Finset.sum_erase_eq_sub]
 
-set_option linter.constructorNameAsVariable false in
 /-- `F_multVerify` in an honest run accepts tuples that agree and multiply. -/
 theorem honest_verify_support (views : C.Party → List (Tuple C)) (Ts : List (Tuple C))
     (hlen : ∀ i, (views i).length = Ts.length)
@@ -1249,10 +1246,10 @@ theorem honest_verify_support (views : C.Party → List (Tuple C)) (Ts : List (T
       fun i => some (Sum.inr (views i))))) :
     o = fun _ => some (.inr ()) := by
   have hpos : 0 < C.n := by have := C.one_le_t; unfold Committee.n; omega
-  haveI : Nonempty C.Party := ⟨⟨0, hpos⟩⟩
+  have : Nonempty C.Party := ⟨⟨0, hpos⟩⟩
   have hfirst := firstInput_some_pos (C := C) views
   simp only [mainFunctionalities, Functionality.sum, FmultVerify, leak, OracleComp.lift] at ho
-  simp [noCoalition, simulateQ_bind, simulateQ_query, replyImpl, mainReply] at ho
+  simp [noCoalition, simulateQ_query, replyImpl, mainReply] at ho
   dsimp only [HAdd.hAdd, QueryImpl.add] at ho
   simp at ho
   simp [QueryImpl.add] at ho
@@ -1274,7 +1271,6 @@ theorem honest_verify_support (views : C.Party → List (Tuple C)) (Ts : List (T
   · rw [hL, htup] at hτ
     exact hprod τ hτ
 
-set_option linter.constructorNameAsVariable false in
 /-- The step of `Rerand` gives the calls of `F_multVerify`, with one sharing of the outputs. -/
 theorem honestStep_rerand (p : C.Party → List (C.Term → List Bit) × List (Tuple C)) (s : HashCache C) z
     (hz : z ∈ support ((simulateQ (localAnswer prims) (honestStep (mainFunctionalities K mode) mainReply
@@ -1303,7 +1299,7 @@ theorem honestStep_rerand (p : C.Party → List (C.Term → List Bit) × List (T
     (outputsOf jobs).length outs h₁'
   refine ⟨v, hv, ?_⟩
   simp only [callStep] at hz
-  simp only [Option.map_some, advance_call_bind, sequenceFin_pure, simulateQ_pure, StateT.run_pure, support_pure,
+  simp only [advance_call_bind, sequenceFin_pure, simulateQ_pure, StateT.run_pure, support_pure,
     Set.mem_singleton_iff] at hz
   exact ⟨_, fun i => rfl, by rw [hz]⟩
 
@@ -1936,7 +1932,6 @@ theorem mainSimLayer_bound (mode : ReshareMode) (jobs : List Circuit) (l : ℕ) 
   apply IsQueryBoundP.mono (n := step + 0) _ (Nat.add_zero _).le
   refine main_bound_bind (hanswer _ _) fun r => ?_
   try dsimp only
-  try simp only [pure_bind]
   exact main_bound_ite _ (isQueryBoundP_pure Counted _ 0) (isQueryBoundP_pure Counted _ 0)
 
 include hanswer in
@@ -1965,15 +1960,11 @@ theorem mainSimOpen_bound (mode : ReshareMode) (jobs : List Circuit) (st : A.Sta
   refine main_bound_bind (n := C.n * C.terms.length) (by
     refine main_bound_sequenceFin C.terms.length _ (fun i => ?_)
     exact main_bound_ite _ (mainCopyHashes_bound _ _) (isQueryBoundP_pure Counted _ _)) fun ds => ?_
-  try dsimp only
-  try simp only [pure_bind]
   refine main_bound_ite _ (isQueryBoundP_pure Counted _ _) ?_
   refine main_bound_bind (hround _ _) fun r => ?_
-  try dsimp only
   apply IsQueryBoundP.mono (n := C.n * C.terms.length + 0) _ (Nat.add_zero _).le
   refine main_bound_bind (n := C.n * C.terms.length) (by
     refine main_bound_sequenceFin C.terms.length _ (fun i => ?_)
-    try simp only [pure_bind]
     refine main_bound_ite _ (isQueryBoundP_pure Counted _ _) ?_
     refine main_bound_ite _ (isQueryBoundP_pure Counted _ _) ?_
     apply IsQueryBoundP.mono (n := C.terms.length + 0) _ (Nat.add_zero _).le
@@ -1990,11 +1981,8 @@ theorem mainSimTail_bound (mode : ReshareMode) (jobs : List Circuit) (st : A.Sta
   apply IsQueryBoundP.mono (n := step + (step + (step + 2 * C.n * C.terms.length))) _ (by omega)
   refine main_bound_bind (hanswer _ _) fun r => ?_
   try dsimp only
-  try simp only [pure_bind]
   refine main_bound_ite _ (isQueryBoundP_pure Counted _ _) ?_
   refine main_bound_bind (hanswer _ _) fun r' => ?_
-  try dsimp only
-  try simp only [pure_bind]
   exact main_bound_ite _ (isQueryBoundP_pure Counted _ _)
     (mainSimOpen_bound K D A step hround mode jobs _ _ _ _)
 
@@ -2005,7 +1993,7 @@ theorem mainSimulator_answer_bound (mode : ReshareMode) (jobs : List Circuit)
       Counted ((depth jobs + 3) * step + 2 * C.n * C.n.choose (C.t - 1)) := by
   have hterms : C.terms.length = C.n.choose (C.t - 1) := by
     simp only [Committee.terms, Finset.length_toList, Finset.card_univ]
-    simpa using Fintype.card_finset_len (α := C.Party) (C.t - 1)
+    simp
   unfold mainSimulator
   apply IsQueryBoundP.mono (n := (List.range (depth jobs)).length * step +
     (3 * step + 2 * C.n * C.terms.length)) _ (by rw [hterms]; simp [Nat.add_mul, Nat.add_assoc])
@@ -2065,7 +2053,7 @@ theorem mainIdealLocal_eq (K : Constants C E) (D : C.Coalition) (A : MainAdversa
   simp only [idealExecution, Fmain, leak, simulateQ_bind, simulateQ_query, simulateQ_pure,
     OracleQuery.input_query, OracleQuery.cont_query, mainIdealLocal, main_worldRoles_bind]
   dsimp only [HAdd.hAdd, QueryImpl.add]
-  simp only [StateT.run_map, StateT.run_bind, StateT.run_pure, StateT.run_mk,
+  simp only [StateT.run_bind, StateT.run_pure, StateT.run_mk,
     bind_assoc, pure_bind, hs, ho, main_worldRoles_pure, id_map]
   refine bind_congr fun st => bind_congr fun a => ?_
   rfl
@@ -2108,7 +2096,7 @@ theorem main_lacked_exists (D : C.Coalition) : ∃ T : C.Term, lackedTerm D.1 = 
   have hunknown : ¬ KnownTo D.1 (⟨T, hT⟩ : C.Term) := by
     rintro ⟨j, hj, hh⟩
     have hmem := hDT hj
-    simpa [Committee.holders, hmem] using hh
+    simp [Committee.holders, hmem] at hh
   have hsome : (lackedTerm D.1).isSome := by
     rw [lackedTerm, List.find?_isSome]
     exact ⟨⟨T, hT⟩, mem_terms _, by simpa using hunknown⟩
@@ -2127,7 +2115,7 @@ theorem mainKnownMult_matches (K : Constants C E) (D : C.Coalition) (mode : Resh
   by_cases hT : KnownTo D.1 T
   · simp only [knownView, hT, true_and]
     rw [mainMultSharing_known D _ target T hT]
-    simp only [knownView, mainMultBase, mainKnownMult, hT, true_and, if_true]
+    simp only [mainMultBase, mainKnownMult, hT, true_and, if_true]
     split_ifs <;> simp_all
   · simp [knownView, mainKnownMult, hT]
 
@@ -2349,7 +2337,7 @@ theorem main_copy_birthday (prims : Primitives) {α : Type}
       ((n ^ 2 : ℕ) : ℝ) / 2 ^ 256 := by
   have h0 : ¬ CacheHasCollision (∅ : HashCache C) := by
     rintro ⟨q₁, q₂, u₁, u₂, hne, h₁, h₂, heq⟩
-    simpa using h₁
+    simp at h₁
   have hb : MainCacheBound (∅ : HashCache C) 0 := ⟨∅, by simp, by simp⟩
   have hh := (prEvent_mono _ _ _ (fun z hz => mainCopyCollision_implies_cacheCollision z.2 hz)).trans
     (main_local_birthday prims oa n 0 h ∅ h0 hb)

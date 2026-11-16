@@ -35,9 +35,8 @@ variable {C : Committee}
 
 attribute [local instance] Classical.propDecidable
 
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
 
+set_option linter.constructorNameAsVariable false in
 /-- A hash call leaves its answer in the cache. -/
 theorem compilerImpl_hash_cached (P : PublicParameter) (seeds : C.Term → HashOutput) (q : Query C)
     (st : CompilerBackend C) (r : HashOutput × CompilerBackend C)
@@ -50,6 +49,7 @@ theorem compilerImpl_hash_cached (P : PublicParameter) (seeds : C.Term → HashO
   rw [h1, h2]
   exact DeterministicSigning.cache_le_of_run _ a.2.cache b (by with_reducible exact hb) hself
 
+set_option linter.constructorNameAsVariable false in
 /-- A canonical base call at a bound key with each term cached leaves a stale backend, or a cache
 that resolves the search from its answer. The honest search then makes cache hits only. -/
 theorem base_step_trials (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -155,7 +155,7 @@ theorem walk_resolvedHash {α : Type} (oa : OracleComp HashSpec α)
           SearchFree P seeds (liftM (HashSpec.query x) >>= next) st) 0
           (fun a src st => BaseInv P seeds none none src st ∧ SearchFree P seeds (next a) st)
           (sourceHash P seeds (.hash x)) := by
-        simp only [sourceHash, pure_bind]
+        simp only [sourceHash]
         refine Walk.conseq (walk_call P seeds Q s (readyEx := none) (cachedEx := none)
           (.hash (.hash x)) (fun _ st => SearchFree P seeds (liftM (HashSpec.query x) >>= next) st)
           (fun _ _ h => by cases h) (fun _ _ h => by cases h) ?_
@@ -240,7 +240,7 @@ theorem walk_inputCall (input : HashInput) (A : SourceState C → LState C → P
         ∃ x ∈ support ((compilerImpl P seeds (.hash (.hash input))).run st.1.1.1), y = x.1 ∧
           st'.1.1.1 = x.2)
       (sourceHash P seeds (.hash input)) := by
-  simp only [sourceHash, pure_bind]
+  simp only [sourceHash]
   exact walk_call P seeds Q s (.hash (.hash input)) A (fun _ _ h => by cases h)
     (fun _ _ h => by cases h) hcharge
     (fun src st _ _ y hy => ready_plain P seeds _ (fun _ _ h => by cases h)
@@ -911,6 +911,7 @@ theorem walk_honestSignature_of_shape (prims : Primitives) (x : Keys3 C) (Q : �
         Walk.bind (walk_topValues x.1 x.2.1 Q s tree hts) fun _ => Walk.pure _ fun _ _ h => h)
         (fun _ _ h => h) (fun _ _ _ h => h) (by simp)
 
+set_option maxRecDepth 100000 in
 /-- `charges_tail`, when the second build gives a tree of `TopShape`. -/
 theorem charges_tail_of_shape (prims : Primitives) (x : Keys3 C) (Q : ℕ) (s : HiddenKey → Digest)
     (top : TopTree) (e : KeyIndex) (message : Message)

@@ -36,7 +36,6 @@ attribute [local instance] Classical.propDecidable
 
 variable {C : Committee}
 
-set_option linter.constructorNameAsVariable false
 
 /-- The capped lane with the own budget. -/
 def LaneTraceCapOwn (prims : Primitives) : Prop :=
@@ -170,6 +169,7 @@ theorem walkInv_init (P : PublicParameter) (seeds : C.Term → HashOutput) :
   · exact (SigningCompilerO1Slack.guardedReleaseInvariantS_initial (fun _ => 0) seeds).2
   · exact Nat.zero_le _
 
+set_option linter.constructorNameAsVariable false in
 set_option maxRecDepth 100000 in
 /-- The ledger of each run is within `q + capSlack`, and a dirty run has a second opening at its
 end. -/
@@ -184,7 +184,6 @@ theorem ownRun_support (prims : Primitives) (A : TsigAdversary C) (q Q : ℕ) (x
   exact ⟨by simpa [ownInit] using h.2, h.1.dirtySecond⟩
 
 attribute [local irreducible] ownRun in
-set_option maxRecDepth 100000 in
 /-- Leaf L3c from the cap of the run with the ledger. -/
 theorem ownCapClean (prims : Primitives) : OwnCapClean (C := C) prims := by
   intro A q Q x _ _ hown hsmall

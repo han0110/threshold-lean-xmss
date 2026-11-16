@@ -17,8 +17,6 @@ open SigningCompilerO1Invariant SigningCompilerO1Basics XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 10000
-set_option maxHeartbeats 800000
 
 def runSourceO1 {α : Type} (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : ℕ) (s : HiddenKey → Digest) (oa : SourceMO1 C α)

@@ -92,7 +92,6 @@ def monitoredGame (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIn
     (fun dealt => flatWith (SigningOpeningProof.openingOracles x dealt) (monitoredWorld prims keyOf extra))
     getCarried
 
-set_option maxRecDepth 100000 in
 theorem monitoredGame_forgets (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
     (extra : FlatJointState C → (WorldSpec C).Domain → FlatJointState C →
       OracleComp (Query C →ₒ HashOutput) Unit)
@@ -271,7 +270,6 @@ def splitGame (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
     (fun dealt => flatWith (SigningOpeningProof.openingOracles x dealt) (keyedSplitWorld prims keyOf extra))
     getCarried
 
-set_option maxRecDepth 100000 in
 theorem splitGame_forgets (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
     (extra : FlatJointState C → (WorldSpec C).Domain → FlatJointState C →
       OracleComp (Query C →ₒ HashOutput) Unit)

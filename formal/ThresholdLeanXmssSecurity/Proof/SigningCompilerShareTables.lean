@@ -19,8 +19,6 @@ open SigningCompilerRealTables
 variable {C : Committee} {Tag : Type}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
-set_option maxHeartbeats 1600000
 
 abbrev TableIndex (C : Committee) := ChainNoiseIndex ⊕ RestSlot C
 abbrev PrivateSpec (C : Committee) := SigningGuessProof.PrivateRoSpec (TableIndex C) HashOutput

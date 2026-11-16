@@ -56,7 +56,7 @@ theorem jointRun_verify (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
   SigningCoreProof.simulateQ_run_forget _ _ (fun t s b => by simp [loggedImpl, Functor.map_map]) _ _ _
 
 
-set_option maxRecDepth 100000 in
+set_option linter.constructorNameAsVariable false in
 /-- The joint run without the call log and the candidates is `exposedRun`. -/
 theorem mem_exposedRun_of_joint (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) (w : JointOutcome C)
     (hw : w ∈ support (jointRun prims A x)) :
@@ -64,7 +64,7 @@ theorem mem_exposedRun_of_joint (A : TsigAdversary C) (x : SigningSecurityProof.
   rw [← SigningGuessLinkProof.verifyRun_forget, ← jointRun_verify, Functor.map_map, support_map, Set.mem_image]
   with_reducible exact ⟨w, hw, rfl⟩
 
-set_option maxRecDepth 100000 in
+set_option linter.constructorNameAsVariable false in
 theorem mem_verifyRun_of_joint (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) (w : JointOutcome C)
     (hw : w ∈ support (jointRun prims A x)) :
     (w.1, w.2.1) ∈ support (SigningGuessLinkProof.verifyRun prims A x) := by

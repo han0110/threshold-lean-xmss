@@ -15,7 +15,6 @@ import ThresholdLeanXmssSecurity.Proof.SigningOwnGateBlock
 
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
-set_option linter.constructorNameAsVariable false
 
 open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
@@ -71,7 +70,6 @@ theorem hitInv_step (x : Keys3 C) (T : C.Term) (top : TopTree)
   obtain ⟨z, ⟨w, hw, rfl⟩, rfl⟩ := hr
   exact hitInv_run prims x T top _ p.1 hp w hw
 
-set_option maxRecDepth 100000 in
 /-- The dealer asks each top gate. -/
 theorem dealer_gate (x : Keys3 C) (T : C.Term) (b : XmssSecurity.TopIndex) :
     SigningHitProof.EnsuresGate prims (.inr (.inr (.inl (SigningHitProof.topGateInput x T b))))

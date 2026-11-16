@@ -32,10 +32,7 @@ open SigningCompilerSyncLocalRead SigningCompilerSyncLocalSlot SigningCompilerSy
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
-set_option maxHeartbeats 1600000
 
 /-! ## Couplings and caches -/
 

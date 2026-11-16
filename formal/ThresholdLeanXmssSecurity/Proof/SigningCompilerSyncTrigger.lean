@@ -17,9 +17,6 @@ open SigningCompilerSyncRelease
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 4000
-set_option maxHeartbeats 1600000
-set_option linter.constructorNameAsVariable false
 attribute [local irreducible] hiddenCandidate grind SigningFlatEagerProof.baseGrind
 
 /-- Both actual hash routes carry exactly the same base-input predicate. -/
@@ -357,6 +354,8 @@ theorem traceStepAt_sync (P : PublicParameter) (seeds : C.Term → HashOutput)
     simp only [SigningLaneUnionProof.traceStepAt, dif_neg h, dif_neg h']
 
 
+set_option linter.constructorNameAsVariable false in
+set_option maxHeartbeats 1600000 in
 /-- A raw hash takes the ordinary branch, preserving the entire share state.
 The existing capped-hit lemma therefore gives the exact `Stuck` event. -/
 theorem capHit_stuck (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest)

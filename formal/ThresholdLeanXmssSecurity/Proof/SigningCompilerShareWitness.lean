@@ -17,8 +17,6 @@ open SigningCompilerCouplingProof
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxHeartbeats 1600000
-set_option maxRecDepth 10000
 
 def Wrong (τ : CPoint → SigningShareLazy.Digest) (sh : ShareState C) : Prop :=
   ∃ p : CPoint, (∀ T, sh.cache (T, p) ≠ none) ∧ SigningShareLazy.sum C.terms sh p ≠ τ p

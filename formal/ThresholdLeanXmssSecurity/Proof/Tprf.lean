@@ -1151,7 +1151,6 @@ theorem presampled_ite₂ (x : Slot C) {α : Type} (c : TprfState C → Prop) [D
   · exact hA p hp k hk
   · exact hB p hp k hk
 
-set_option maxRecDepth 10000 in
 theorem presampled_gameImplWith (x : Slot C)
     (adversary : Finset C.Party → QueryImpl (LocalSpec C) (StateT (HashCache C × SlotCache C) ProbComp))
     (evalH : C.Party → C.Quorum → Point → Message → StateT (HashCache C × SlotCache C) ProbComp Digest)
@@ -1217,7 +1216,6 @@ theorem presampled_withFired (x : Slot C)
     p.2 || hitFlag seeds pairKeys p.1.1.1.corrupt t))) (fun a s hs => hk a ((s, p.1.2 ∪ firedBy seeds pairKeys
       p.1.1.1.corrupt t), p.2 || hitFlag seeds pairKeys p.1.1.1.corrupt t) hs)
 
-set_option maxRecDepth 100000 in
 theorem presampled_symImpl (x : Slot C) (b : Bool) (parameter : PublicParameter)
     (t : (LocalSpec C + TprfSpec C).Domain) : Presampled₃ x (symImpl prims seeds pairKeys b parameter t) := by
   have h := presampled_gameImplWith x (symAdversary prims seeds pairKeys) evalSlots prfSlots
@@ -1562,8 +1560,8 @@ theorem card_consistent_eq (c c' : Point → XorDigest) :
 theorem card_consistent_mul (c : Point → XorDigest) :
     (univ.filter (Consistent records reads challenged c)).card * (2 ^ digestBits) ^ challenged.card =
       (univ.filter (Consistent records reads ∅ c)).card := by
-  letI : Fintype XorDigest := inferInstanceAs (Fintype Digest)
-  letI : DecidableEq XorDigest := inferInstanceAs (DecidableEq Digest)
+  let : Fintype XorDigest := inferInstanceAs (Fintype Digest)
+  let : DecidableEq XorDigest := inferInstanceAs (DecidableEq Digest)
   let f : (Slot C → HashOutput) → (challenged → XorDigest) := fun ω x => prfSum ω x.1
   rw [Finset.card_eq_sum_card_fiberwise (f := f) (s := univ.filter (Consistent records reads ∅ c))
     (t := univ) (fun _ _ => Finset.mem_univ _)]
@@ -1706,7 +1704,6 @@ theorem balancedAt_observe {R A : Type} [Fintype A] [DecidableEq A] {oa : Oracle
   rw [(hchal a).1] at h
   exact h
 
-set_option maxHeartbeats 1000000 in
 /-- A challenge at a new point. For `b = false` it reads `prfSum ω x`, and for `b = true` it
 samples a uniform value. Each answer adds the point to the challenged points. -/
 theorem balancedAt_challenge_new {R : Type} {oa : OracleComp (LocalSpec C + TprfSpec C) Bool}
@@ -1950,7 +1947,6 @@ theorem symImpl_run_eq (b : Bool) (t : (LocalSpec C + TprfSpec C).Domain) (v : S
         v.2 || hitFlag seeds pairKeys v.1.1.1.corrupt t))) <$>
         (symCore prims seeds pairKeys b parameter t).run (v.1.1.1, v.1.1.2.1, fullTable ω) := rfl
 
-set_option maxRecDepth 10000 in
 theorem symCore_challenge_run (b : Bool) (x : Point) (p : TprfState C × HashCache C × SlotCache C) :
     (symCore prims seeds pairKeys b parameter (.inr (.challenge x))).run p =
       if ∃ ec, C.t ≤ (p.1.corrupt ∪ p.1.queried x ec).card then pure (none, p)
@@ -1962,7 +1958,6 @@ theorem symCore_challenge_run (b : Bool) (x : Point) (p : TprfState C × HashCac
           else (prfSlots x).run p.2) := by
   simp only [gameImplWith, StateT.run_mk]
 
-set_option maxRecDepth 10000 in
 /-- The symbolic game on a full table gives the same weights for both `b`. -/
 theorem balanced_simulateQ (oa : OracleComp (LocalSpec C + TprfSpec C) Bool) :
     Balanced prims seeds pairKeys parameter oa := by
@@ -2208,7 +2203,6 @@ theorem symbolic_eq_average (b : Bool) (A : OracleComp (LocalSpec C + TprfSpec C
 theorem viewInv_init : ViewInv (C := C) symInit [] [] :=
   ⟨fun x hx => by simp [symInit, tprfInit] at hx, fun x ec => rfl, by simp, fun x => by simp [symInit, tprfInit]⟩
 
-set_option maxRecDepth 10000 in
 /-- The symbolic game does not depend on `b`. -/
 theorem symbolic_balanced (A : OracleComp (LocalSpec C + TprfSpec C) Bool) :
     Pr{let z ← (simulateQ (symImpl prims seeds pairKeys true parameter) A).run symInit}[z.1 = true] =
@@ -2285,7 +2279,6 @@ theorem hitQuery_unique {σ : KeySlot C} {u : Query C} {k k' : HashOutput} (h : 
     simp only [Query.mask.injEq] at h'
     exact h'.1
 
-set_option maxRecDepth 10000 in
 theorem gameImplWith_corrupt_mono {σ' : Type}
     (adversary : Finset C.Party → QueryImpl (LocalSpec C) (StateT σ' ProbComp))
     (evalH : C.Party → C.Quorum → Point → Message → StateT σ' ProbComp Digest)
@@ -2423,7 +2416,6 @@ theorem sample_upd (σ : KeySlot C) (k : HashOutput) :
   ext y : 1
   rw [routed_liftComp_run, routed_liftComp_run]
 
-set_option maxRecDepth 10000 in
 theorem symCore_upd (σ : KeySlot C) (b : Bool) (parameter : PublicParameter) (t : (LocalSpec C + TprfSpec C).Domain)
     (x : TprfState C × HashCache C × SlotCache C) (hD : ¬Revealed x.1.corrupt σ) (hrev : ¬RevealsAt σ x.1 t)
     (k : HashOutput) :
@@ -2450,7 +2442,6 @@ theorem symImpl_upd_eq (σ : KeySlot C) (b : Bool) (parameter : PublicParameter)
     show (symCore prims (updSeeds σ k' seeds) (updPairs σ k' pairKeys) b parameter t).run p.1.1 = _ from
       symCore_upd prims seeds pairKeys σ b parameter t p.1.1 hD hrev k']
 
-set_option maxRecDepth 10000 in
 theorem gameImplWith_corrupt_cases {σ' : Type}
     (adversary : Finset C.Party → QueryImpl (LocalSpec C) (StateT σ' ProbComp))
     (evalH : C.Party → C.Quorum → Point → Message → StateT σ' ProbComp Digest)

@@ -27,9 +27,7 @@ open XmssSecurity.CappedChain
 open SigningCompilerO1Frame SigningCompilerO1Pre SigningCompilerO1Programs
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
 
 /-! ## The reveal map of the source -/
 

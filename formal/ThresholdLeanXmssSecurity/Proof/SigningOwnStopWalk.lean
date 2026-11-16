@@ -21,9 +21,6 @@ The lemmas bound the ledger of a run of the ledger world by the own keyed calls 
 
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
-set_option maxHeartbeats 1000000
 
 open OracleComp OracleSpec ENNReal
 
@@ -68,6 +65,7 @@ theorem Paid.mono {x : SigningSecurityProof.Keys3 C} {n m : ℕ} {p r : LedgerSt
   unfold Paid at *
   omega
 
+set_option linter.constructorNameAsVariable false in
 /-- A call of the split world logs the call. -/
 theorem world_log (x : SigningSecurityProof.Keys3 C) (t : (WorldSpec C).Domain) (s : SplitState C)
     (r : (WorldSpec C).Range t × SplitState C)
@@ -359,6 +357,7 @@ bottom tree. -/
 def StopInv (x : SigningSecurityProof.Keys3 C) (top : TopTree) (s : SplitState C) : Prop :=
   TopRun prims x top s.1.1.1.1.1 ∧ SigningGuessProof.StoredTreeRuns prims x top s.1.1.1.1.1 s.2.1.1
 
+set_option linter.constructorNameAsVariable false in
 /-- The transport of the invariant. A bottom tree with a run below the cache agrees with the cache
 at each of its keys. -/
 theorem treeAgrees_of_run (x : SigningSecurityProof.Keys3 C) (top : TopTree) (e : KeyIndex)
@@ -409,6 +408,7 @@ theorem world_check_alternative (x : SigningSecurityProof.Keys3 C) (e : KeyIndex
     hne (h.trans (SigningGuessProof.cachedRandomizer_stable x.2.1 _ _ e hgrow hagree.1).symm)
   exact alternativeCommitment_of_check x _ tree e (hagree.mono hgrow) candidate r.1 hcall hpass hne'
 
+set_option linter.constructorNameAsVariable false in
 /-- A canonical base call of the split world runs the search on the answer of the base input. The
 cache after the call holds the run of the search and the answer. -/
 theorem world_base_grind (x : SigningSecurityProof.Keys3 C) (t : (WorldSpec C).Domain) (s : SplitState C)
@@ -620,6 +620,7 @@ theorem freeKeyed_except_of_atKey {α : Type} (P : PublicParameter) (X : HashInp
   rw [← hpred]
   exact hall
 
+set_option maxRecDepth 100000 in
 /-- The dealer makes no call of the free copy on a bottom digest input. -/
 theorem dealer_freeKeyed (x : SigningSecurityProof.Keys3 C) :
     (referenceTree (fun oa => SigningSecurityProof.liftFree (tweakable oa))

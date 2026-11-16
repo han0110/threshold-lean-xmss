@@ -16,7 +16,6 @@ world.
 
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
-set_option linter.constructorNameAsVariable false
 
 open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
@@ -153,7 +152,7 @@ theorem sum_ff_le_own (x : Keys3 C) (σ : KeySlot C) (top : TopTree) {α : Type}
     refine (add_le_add hhit hrest).trans ?_
     exact_mod_cast hbud
 
-set_option maxRecDepth 100000 in
+set_option linter.constructorNameAsVariable false in
 /-- After each top tree of the dealer, the first hits of `σ` over its good values cost at most the own
 budget `q`. -/
 theorem rest_sum_le_own (A : TsigAdversary C) (q : ℕ) (hown : HasSigningOwnBound A q) (x : Keys3 C)
@@ -175,7 +174,6 @@ theorem rest_sum_le_own (A : TsigAdversary C) (q : ℕ) (hown : HasSigningOwnBou
   · refine le_of_eq_of_le (Finset.sum_eq_zero fun u _ => ?_) zero_le
     simp [restOf]
 
-set_option maxRecDepth 100000 in
 /-- Over all values of the key `σ`, its first hits with distinct keys cost at most the own budget `q`. -/
 theorem core_sum_own (A : TsigAdversary C) (q : ℕ) (hown : HasSigningOwnBound A q) (x : Keys3 C)
     (σ : KeySlot C) :
@@ -198,7 +196,7 @@ theorem core_sum_own (A : TsigAdversary C) (q : ℕ) (hown : HasSigningOwnBound 
       rw [hVdef] at hu
       simpa using hu
     · have hc : ¬KeyCollision (xk x σ u).2.1 (xk x σ u).2.2 := fun h => hu (by rw [hVdef]; simpa using h)
-      simp only [Function.comp_def, hc, not_false_eq_true, true_and]
+      simp only [hc, not_false_eq_true, true_and]
       rw [runSigningWorld_eq_split prims _ _ (hV u hu), prEvent_map, split_ffAfter prims A _ (hV u hu)]
       rfl
   simp only [hterm]
@@ -241,7 +239,7 @@ theorem distinctFlagOwn : SigningOwnClaim.DistinctFlagOwn prims C := by
   rw [flaggedRun_eq_ffRun, prEvent_map]
   refine (prEvent_mono_of_support _ _ _ fun z hz hf => ?_).trans ((prEvent_exists_finset_le Finset.univ _
     (fun σ z => ¬KeyCollision z.1.2.1 z.1.2.2 ∧ σ ∈ z.2.1.2)).trans ?_)
-  · simp only [Function.comp_apply] at hf
+  · simp only at hf
     unfold ffRun at hz
     simp only [mem_support_bind_iff, support_map, Set.mem_image] at hz
     obtain ⟨x, -, r, hr, rfl⟩ := hz

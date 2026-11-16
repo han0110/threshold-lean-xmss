@@ -17,8 +17,6 @@ open SigningLaneHybridCapO1Proof SigningCompilerCouplingProof SigningCompilerSha
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxHeartbeats 1600000
-set_option maxRecDepth 10000
 
 abbrev SourceMXO1 (C : Committee) := StateT (SourceStateO1 C) (OracleComp (SpecX C))
 

@@ -53,7 +53,6 @@ theorem stages_private_unused (prims : Primitives) {α β : Type} (p : ProbComp 
 
 section Sum
 
-set_option linter.unusedSectionVars false
 
 variable {I₁ O₁ L₁ R₁ I₂ O₂ L₂ R₂ : Type} [Inhabited R₁] [Inhabited R₂]
 
@@ -86,6 +85,7 @@ theorem stages_sum_run_right (F₁ : Functionality C I₁ O₁ L₁ R₁) (F₂ 
   rw [this]
   rfl
 
+set_option linter.unusedSectionVars false in
 theorem stages_sumRight_leak (l : L₂) :
     simulateQ (stagesSumRight (C := C) (L₁ := L₁) (R₁ := R₁)) (leak (C := C) (R := R₂) l) =
       leak (C := C) (R := R₁ ⊕ R₂) (Sum.inr l : L₁ ⊕ L₂) >>= fun r =>
@@ -96,6 +96,7 @@ theorem stages_sumRight_leak (l : L₂) :
   rw [simulateQ_query]
   exact id_map _
 
+set_option linter.unusedSectionVars false in
 theorem stages_sumRight_liftComp {α : Type} (p : ProbComp α) :
     simulateQ (stagesSumRight (C := C) (L₁ := L₁) (R₁ := R₁) (L₂ := L₂) (R₂ := R₂))
         (liftComp p (LocalSpec C + (L₂ →ₒ R₂))) = liftComp p _ := by
@@ -146,7 +147,7 @@ theorem stages_run_mult (K : Constants C E) (D : C.Coalition) (A : MainAdversary
         fun z => Sum.inl (Sum.inl z)) := by
   unfold runFunctionality
   rw [if_neg (by simp)]
-  simp only [pure_bind]
+  simp only
   have h1 : (fun i => if i ∈ D.1 then none else some (Sum.inl (Sum.inl (X i, Y i, n)))) =
       fun i => (((if i ∈ D.1 then none else some (X i, Y i, n)) : Option _).map
         (Sum.inl (β := Shares C Bit × Shares C Bit × ℕ))).map (Sum.inl (β := List (Tuple C))) := by
@@ -189,7 +190,7 @@ theorem stages_run_rerand (K : Constants C E) (D : C.Coalition) (A : MainAdversa
         fun z => Sum.inl (Sum.inr z)) := by
   unfold runFunctionality
   rw [if_neg (by simp)]
-  simp only [pure_bind]
+  simp only
   have h1 : (fun i => if i ∈ D.1 then none else some (Sum.inl (Sum.inr (X i, Y i, n)))) =
       fun i => (((if i ∈ D.1 then none else some (X i, Y i, n)) : Option _).map
         (Sum.inr (α := Shares C Bit × Shares C Bit × ℕ))).map (Sum.inl (β := List (Tuple C))) := by
@@ -243,7 +244,7 @@ theorem stages_run_verify (K : Constants C E) (D : C.Coalition) (A : MainAdversa
           i ∈ stagesReplyV b.2 then some (Sum.inr ()) else none) := by
   unfold runFunctionality
   rw [if_neg (by simp)]
-  simp only [pure_bind]
+  simp only
   have h1 : (fun i => if i ∈ D.1 then none else some (Sum.inr (views i))) =
       fun i => (((if i ∈ D.1 then none else some (views i)) : Option _).map
         (Sum.inr (α := (Shares C Bit × Shares C Bit × ℕ) ⊕ (Shares C Bit × Shares C Bit × ℕ)))) := by
@@ -1532,7 +1533,7 @@ theorem stages_simTail_eq (st : A.State) (data : MainSimData C) (outputs : List 
       mainSimOpenX K D A jobs b.1 (stagesReplyV b.2)
         (mainKnownMult K D .peer (outputsOf jobs).length (stagesReplyR a.2)) outputs := by
   unfold mainSimTailX
-  simp only [pure_bind]
+  simp only
   refine bind_congr fun a => ?_
   rcases a with ⟨st', (r | r) | r⟩
   all_goals

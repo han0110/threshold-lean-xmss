@@ -111,7 +111,7 @@ theorem evalDist_run'_append {α β : Type} (X : OracleComp (LocalSpec C) α) (W
   simp only [simulateQ_bind, simulateQ_pure, StateT.run'_eq, StateT.run_bind, map_bind]
   conv_rhs => rw [← bind_pure ((simulateQ (localAnswer prims) X).run s), map_bind]
   refine OracleComp.EvalDistEq.bind_congr_of_support _ fun p _ => ?_
-  simp only [StateT.run_pure, map_pure, map_bind]
+  simp only [StateT.run_pure, map_pure]
   exact evalDist_eq_pure_of_support _ _ fun y hy => by simp at hy; exact hy.2.symm
 
 /-- Two local runs from one cache are within the probability that they differ when the second
@@ -125,13 +125,13 @@ theorem tvDist_le_joint {β : Type} (R I : OracleComp (LocalSpec C) β) (s : Has
   set J := (simulateQ (localAnswer prims) (I >>= fun a => R >>= fun z => pure (z, a))).run' s
   have hR : (simulateQ (localAnswer prims) R).run' s =ᵈ (J >>= fun p => pure p.1) := by
     refine (evalDist_run'_prepend prims I R s).symm.trans ?_
-    simp only [J, simulateQ_bind, simulateQ_pure, StateT.run'_eq, StateT.run_bind, map_bind, bind_assoc,
-      StateT.run_pure, map_pure, pure_bind, bind_map_left, map_eq_bind_pure_comp]
+    simp only [J, simulateQ_bind, simulateQ_pure, StateT.run'_eq, StateT.run_bind, bind_assoc,
+      StateT.run_pure, pure_bind, map_eq_bind_pure_comp]
     rfl
   have hI : (simulateQ (localAnswer prims) I).run' s =ᵈ (J >>= fun p => pure p.2) := by
     refine (evalDist_run'_append prims I R s).symm.trans ?_
     simp only [J, simulateQ_bind, simulateQ_pure, StateT.run'_eq, StateT.run_bind, map_bind, bind_assoc,
-      StateT.run_pure, map_pure, pure_bind, bind_map_left, EvalDistEq.refl]
+      StateT.run_pure, map_pure, pure_bind, EvalDistEq.refl]
   calc measureTVDist ((simulateQ (localAnswer prims) R).run' s) ((simulateQ (localAnswer prims) I).run' s)
       = measureTVDist (J >>= fun p => pure p.1) (J >>= fun p => pure p.2) := by
         unfold measureTVDist; rw [hR.evalDist_eq, hI.evalDist_eq]
@@ -570,7 +570,7 @@ theorem reshare_run {R : Type} [Field R] (ctx : Context C) (codec : Codec C E R)
   unfold reshare
   simp only [StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind]
   refine congrArg (_ >>= ·) (funext fun inbox => ?_)
-  simp only [record, StateT.run_bind, StateT.run_modify, StateT.run_pure, pure_bind]
+  simp only [record, StateT.run_modify, StateT.run_pure, pure_bind]
   rfl
 
 /-- The products of an extended multiplication as additive shares. -/
@@ -597,7 +597,7 @@ theorem realCoin_run (ctx : Context C) (count : ℕ) (st : RunState C) :
   simp only [realCheckBuildingBlocks]
   rw [this]
   refine congrArg (_ >>= ·) (funext fun o => ?_)
-  simp [coinWith, StateT.run_bind, StateT.run_lift]
+  simp [coinWith, StateT.run_lift]
 
 theorem realRand_run {R : Type} [Zero R] (ctx : Context C) (codec : Codec C E R) (idx count : ℕ) (st : RunState C) :
     (prssRandomness (G := G) ctx codec idx count).run st =
@@ -818,7 +818,7 @@ theorem extendMult_step [Nonempty C.Party] (F : Functionality C I O L R) (reply 
     Pr{let z ← (simulateQ (localAnswer prims)
       (honestStart (fun i => ((realCheckBuildingBlocks K (prssCtx keys kT kP i)).extendMult (products i)).run (st i) >>=
         fun p => g i p.1 p.2) >>= honestRounds F reply (fuel + 1))).run' s}[event z] ≤ ε := by
-  haveI := charP_two (E := E)
+  have := charP_two (E := E)
   simp only [realExtendMult_run, hL, hlen, bind_assoc, pure_bind]
   refine draw_step prims F reply (fuel + 1) _ (fun i => FrameR.prssDraw _ _ (FrameR.elementDraw K) _ _ _) _ event s hn ε
     fun h₀ s' _ _ hn' hle hfr => ?_
@@ -917,7 +917,7 @@ theorem coinPart_step [Nonempty C.Party] (F : Functionality C I O L R) (reply : 
       (honestStart (fun i => oracleStep (prssDraw (prssCtx keys kT kP i) (elementCodec K) lab 1 2) >>= fun o =>
         openSh K (prssCtx keys kT kP i) (conv K (prssCtx keys kT kP i) o.1) 2 >>= fun opened =>
           g i (vector 2 opened)) >>= honestRounds F reply (fuel + 1))).run' s}[event z] ≤ ε := by
-  haveI := charP_two (E := E)
+  have := charP_two (E := E)
   simp only [openSh_prssCtx]
   refine draw_step prims F reply (fuel + 1) _ (fun i => FrameR.prssDraw _ _ (FrameR.elementDraw K) _ _ _) _ event s hn ε
     fun h₀ s' _ _ hn' hle hfr => ?_
@@ -1017,7 +1017,7 @@ theorem digest_step [Nonempty C.Party] (F : Functionality C I O L R) (reply : L 
   obtain ⟨hle, hn', -⟩ := localRun_D prims _ s hn z hz
   rw [honestRounds_exchange F reply fuel (fun i => digestOutbox (E := E) i (z.1 i)) _
     fun k j => by unfold digestOutbox; split_ifs <;> rfl]
-  simp only [require_bind_of (digestsAgree_honest z.1 hlen hag _), pure_bind]
+  simp only [require_bind_of (digestsAgree_honest z.1 hlen hag _)]
   exact h z.2 hok hn' hle
 
 end CoinSteps
@@ -1136,7 +1136,7 @@ theorem real_final_bound [Nonempty C.Party] (F : Functionality C I O L R) (reply
           (fun i => (finalStep K (prssCtx keys kT kP i) (realCheckBuildingBlocks K (prssCtx keys kT kP i))
         (A i, B i, D i)).run ⟨hist i, lab, tg⟩ >>= fun p => g i p.2) >>= honestRounds F reply (fuel + 4))).run' s}[event z] ≤
       (Ks.card / 2 ^ 256 + (2 / Fintype.card E) ^ challengeTries) + ε := by
-  haveI := charP_two (E := E)
+  have := charP_two (E := E)
   simp only [finalStep, StateT.run_bind, bind_assoc, realCheckBuildingBlocks_randElements,
       realCheckBuildingBlocks_randBits]
   refine rand_step' prims keys kT kP F reply (fuel + 4) (elementCodec K) (FrameR.elementDraw K) 1 2 _ lab
@@ -1261,7 +1261,7 @@ theorem real_halving_bound [Nonempty C.Party] (F : Functionality C I O L R) (rep
     gcongr
   | succ n ih =>
     intro j₀ hj A B D Av Bv hA hB hD hist hh lab tg Lk c Ks hLk hKs s hn hs fuel g event ε h
-    haveI := charP_two (E := E)
+    have := charP_two (E := E)
     rw [List.range'_succ, show fuel + 2 * (n + 1) + 4 = (fuel + 2 * n + 5) + 1 by ring]
     simp only [List.foldlM_cons, halvingStep, bind_assoc, pure_bind, StateT.run_bind]
     set ℓ := halvedLength^[j₀] width with hℓ
@@ -1358,7 +1358,7 @@ theorem real_slice_bound [Nonempty C.Party] (F : Functionality C I O L R) (reply
               fun q => g i q.2) >>=
           honestRounds F reply (fuel + 2 * n + 2 * halvingSteps (sliceWidth count) + 4))).run' s}[event z] ≤
         chalErr E c (n + halvingSteps (sliceWidth count) + 1) + ε := by
-  haveI := charP_two (E := E)
+  have := charP_two (E := E)
   intro n
   induction n with
   | zero =>
@@ -1491,7 +1491,7 @@ theorem real_check_bound [Nonempty C.Party] (F : Functionality C I O L R) (reply
         (tuples i)).run ⟨hist i, lab, tg⟩ >>= fun p => g i p.2) >>=
           honestRounds F reply (fuel + 2 * halvings cnt + 5))).run' s}[event z] ≤
       (Ks.card / 2 ^ 256 + sliceBits / Fintype.card E) + (chalErr E (c + 1) (halvings cnt + 1) + ε) := by
-  haveI := charP_two (E := E)
+  have := charP_two (E := E)
   have hne : ∀ i, ((tuples i).map (·.count)).sum ≠ 0 := fun i => by rw [hcnt i]; exact hpos
   simp only [check_eq _ _ _ _ (hne _), hcnt, StateT.run_bind, bind_assoc]
   rw [show fuel + 2 * halvings cnt + 5 = (fuel + 2 * halvings cnt + 4) + 1 by ring]
@@ -2210,7 +2210,7 @@ theorem layers_bound [Nonempty C.Party] (F : Functionality C I O L R) (reply : L
     intro l p W Ts hl hinv hTs hist hh lab tg Lk c Ks hLk hKs s hn hs fuel g event ε h
     rw [List.range'_succ, show fuel + (k + 1) * mode.rounds + 1 + checkLabels (tupleCount jobs) + 1 =
       (fuel + k * mode.rounds + 1 + checkLabels (tupleCount jobs) + 1) + mode.rounds by ring]
-    simp only [List.foldlM_cons, layerBody, StateT.run_bind, bind_assoc, StateT.run_pure, pure_bind]
+    simp only [List.foldlM_cons, layerBody, StateT.run_bind, bind_assoc, pure_bind]
     refine mult_step prims K keys kT kP F reply _ mode (fun i => layerX K jobs l (p i).1)
       (fun i => layerY K jobs l (p i).1) (gatesAt jobs l).length _ lab (fun _ => rfl) _ event s hn _
       fun z hz s₁ hn₁ hle₁ hfr₁ => ?_
@@ -2420,7 +2420,7 @@ theorem D_evalJob (h : Query C → HashOutput) (circuits : Circuits) (parameter 
     D prims h (evalJob circuits parameter seeds job) = (circuits parameter job.kind).eval
       ((job.points.map fun x => (C.terms.map fun T => truncateHash (h (.prf (seeds T) x))).foldl (· ^^^ ·) 0).flatMap
         bitsOfDigest) := by
-  simp only [evalJob, prfValue, prf, D_bind, D_pure, D_mapM, D_map, D_hashQuery, List.map_map]
+  simp only [evalJob, prfValue, prf, D_bind, D_pure, D_mapM, D_map, D_hashQuery]
 
 theorem mainOutputs_batch (h : Query C → HashOutput) (seeds : C.Term → HashOutput) (circuits : Circuits)
     (parameter : PublicParameter) (jobs : List Job) :
@@ -2793,7 +2793,7 @@ theorem setup_step [Nonempty C.Party] (F : Functionality C I O L R) (reply : L �
   have hsh' : sh = fun i => D prims h₄ (sharedQueries .prss i (ks i)) := funext (hsh h₄ s₄ hg₄ le_rfl ha₄)
   have hecho : ∀ i, echoCheck .prss i (ks i) (sh i) (fun k => echoOutbox (E := E) .prss k (ks k) (sh k) i) := fun i => by
     rw [hsh', hks']; exact echoCheck_honest prims h₄ .prss parts i
-  simp only [require_bind_of (hecho _), pure_bind]
+  simp only [require_bind_of (hecho _)]
   have hkeys : ∀ i, (⟨(ks i).2.1, (ks i).2.2⟩ : PrssKeys C) =
       prssKeysOf (fun T => h₄ (termInput .prss parts T)) (fun p => h₄ (pairInput .prss parts p)) i := fun i => by
     rw [hks']; simp only [D_deriveKeys_honest]; rfl
@@ -2920,24 +2920,24 @@ theorem map_ceremonyOutput (lift : ∀ {β : Type}, OracleComp HashSpec β → m
   | top =>
     simp only [ceremonyOutput, hbind, id_bind_eq, hrun, hlift]
     cases hr : φ (run topJobs) with
-    | none => simp only [hpure, hr]; rfl
-    | some outputs => simp only [hbind, hpure, hmap, id_bind_eq, id_map_eq, id_pure_eq, hr]
+    | none => simp only [hpure]; rfl
+    | some outputs => simp only [hbind, hpure, id_pure_eq]
   | bottom b =>
     simp only [ceremonyOutput, hbind, id_bind_eq, hrun, hlift]
     cases hr : φ (run (bottomJobs b)) with
-    | none => simp only [hpure, hr]; rfl
+    | none => simp only [hpure]; rfl
     | some outputs =>
-      simp only [hbind, hpure, hmap, id_bind_eq, id_map_eq, id_pure_eq, hr]
+      simp only [hbind, id_pure_eq]
       split
       · rename_i randomness encoding heq
-        simp only [heq, hbind]
+        simp only [hbind]
         cases hv : φ (run (signJobs b encoding)) with
-        | none => simp only [hpure, hv]
+        | none => simp only [hpure]
         | some values =>
-          simp only [hbind, hpure, id_bind_eq, id_pure_eq, hv]
-          split <;> simp only [hpure] <;> rfl
+          simp only [hbind]
+          split <;> simp only [hpure]
       · rename_i heq
-        simp only [heq, hpure]
+        simp only [hpure]
 
 end CeremonyMap
 
@@ -3448,7 +3448,7 @@ theorem newTree_bottom (parameter : PublicParameter) (seeds : C.Term → HashOut
         simp only [StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind, map_bind]
         refine bind_congr fun path => ?_
         refine bind_congr fun topRoot => ?_
-        split_ifs <;> simp only [StateT.run_pure, map_pure, pure_bind] <;> rfl
+        split_ifs <;> simp only [StateT.run_pure, map_pure, pure_bind]; rfl
       · rename_i hne'
         simp only [StateT.run_pure, map_pure, pure_bind]
         split
@@ -3966,7 +3966,7 @@ theorem jointTreeRun_bound [Nonempty C.Party] (top : TopTree) (tree : Tree) (par
 
 /-- The honest ceremonies of each tree agree with the dealer, up to the stated abort bound. -/
 theorem treeCompleteness : TreeCompletenessStatement prims K circuits settings := by
-  letI : Nonempty C.Party := ⟨⟨0, by have := C.one_le_t; simp only [Committee.n]; omega⟩⟩
+  let : Nonempty C.Party := ⟨⟨0, by have := C.one_le_t; simp only [Committee.n]; omega⟩⟩
   refine treeCompleteness_of_joint prims K circuits settings fun hsize top tree parameter seeds pairKeys => ?_
   have hbound := jointTreeRun_bound prims K circuits settings top tree parameter seeds pairKeys hsize
   have hreal := ENNReal.toReal_mono (chunksBudget_ne_top (E := E)
@@ -4123,8 +4123,7 @@ theorem prfIdealExp_prgReduction (D : C.Coalition) (game : OracleComp (WorldSpec
   all_goals congr 1
   all_goals funext st
   case pos h =>
-    simp only [QueryImpl.add_apply_inr, if_pos h, simulateQ_bind, simulateQ_pure,
-      PRFScheme.simulateQ_prfIdealQueryImpl_inr, StateT.run_bind, StateT.run_pure, map_bind]
+    simp only [QueryImpl.add_apply_inr, if_pos h]
     simp [StateT.run_bind]
   case neg h =>
     simp only [QueryImpl.add_apply_inr]
@@ -4738,7 +4737,7 @@ theorem jointKeyWorldCore_eq_of_no_risk (prims : Primitives) (D : C.Coalition)
   · rfl
   · exact jointHash_eq_of_unused prims q s (by
       intro k hk; subst q; simpa [keyJointRisk] using h)
-  · simp only [jointKeyWorldCore, jointLocal, QueryImpl.add_apply_inr, StateT.run_bind]
+  · simp only [jointKeyWorldCore, jointLocal, StateT.run_bind]
     rw [jointHash_eq_of_unused prims (.streamKey x.2.1) s (by
       intro k hk; cases hk; simpa [keyJointRisk] using h)]
   · exact jointProgram_eq_of_unused p s (by
@@ -4752,7 +4751,7 @@ theorem jointKeyWorldCore_eq_of_no_risk (prims : Primitives) (D : C.Coalition)
       rw [jointHidden_eq_of_fresh (x.1, x.2.1) s (by
         intro hk
         simpa [keyJointRisk, hh, hk] using h)]
-    · simp only [jointKeyWorldCore, if_neg hh, jointLocal, QueryImpl.add_apply_inr, StateT.run_bind]
+    · simp only [jointKeyWorldCore, if_neg hh, jointLocal, StateT.run_bind]
       rw [jointHash_eq_of_unused prims (.streamKey x.2.1) s (by
         intro k hk; cases hk; simpa [keyJointRisk, hh] using h)]
 
@@ -4865,15 +4864,14 @@ theorem jointLocal_false (prims : Primitives) (q : (LocalSpec C).Domain) :
   · rfl
   · exact jointHash_false prims q
   · apply StateT.ext; intro s
-    simp only [jointLocal, jointHash_false, StateT.run_bind, onJointHash, StateT.run_mk,
-      bind_map_left, StateT.run_pure, bind_pure_comp, localAnswer, QueryImpl.add_apply_inr,
-      prgAnswer, map_bind, map_pure, StateT.run_map, Functor.map_map]
+    simp only [jointLocal, jointHash_false, onJointHash, StateT.run_mk, bind_pure_comp, localAnswer, QueryImpl.add_apply_inr,
+      prgAnswer, StateT.run_map, Functor.map_map]
 
 theorem onJointHash_idealProjection {α : Type} (m : StateT (HashCache C) ProbComp α)
     (s : KeyJointState C) :
     Prod.map id keyJointIdealProjection <$> (onJointHash m).run s =
       (fun r => (r.1, (r.2, truncateKeyCache s.keys))) <$> m.run s.hash := by
-  simp [onJointHash, Functor.map_map, keyJointIdealProjection, Function.comp_def]
+  simp [onJointHash, Functor.map_map, keyJointIdealProjection]
 
 theorem jointHidden_false_projection (x : KeyName C × HashOutput) (s : KeyJointState C) :
     ((fun r => (truncateHash r.1, keyJointIdealProjection r.2)) <$> (jointHidden false x).run s) =ᵈ
@@ -4889,7 +4887,7 @@ theorem jointHidden_false_projection (x : KeyName C × HashOutput) (s : KeyJoint
       simp [truncateKeyCache, hc])]
     simp only [jointHidden, StateT.run_mk, hc, Bool.false_eq_true, if_false,
       bind_pure_comp, Functor.map_map]
-    simp only [keyJointIdealProjection, truncateKeyCache_cacheQuery, Function.comp_def]
+    simp only [keyJointIdealProjection, truncateKeyCache_cacheQuery]
     have h := evalDist_truncateHash_uniform.map
       (fun v => (v, (s.hash, (truncateKeyCache s.keys).cacheQuery x v)))
     simpa only [Functor.map_map, Function.comp_def, uniformSampleImpl] using h
@@ -4900,23 +4898,23 @@ theorem jointKeyWorld_false_query_projection (prims : Primitives) (D : C.Coaliti
       (lazyKeyWorld prims D q).run (keyJointIdealProjection s) := by
   have hf : Prod.map id keyJointIdealProjection <$> (jointKeyWorld prims D false q).run s =
       Prod.map id keyJointIdealProjection <$> (jointKeyWorldCore prims D false q).run s := by
-    simp [jointKeyWorld, Functor.map_map, Function.comp_def, keyJointIdealProjection, Prod.map]
+    simp [jointKeyWorld, Functor.map_map, keyJointIdealProjection, Prod.map]
     rfl
   rw [hf]
   rcases q with ((u | q | x) | p) | (u | q | x)
   all_goals simp only [jointKeyWorldCore]
   all_goals try simp only [jointLocal_false, jointProgram_false, onJointHash_idealProjection,
-    lazyKeyWorld, StateT.run_mk, keyJointIdealProjection, QueryImpl.add_apply_inl, QueryImpl.add_apply_inr]
+    lazyKeyWorld, StateT.run_mk, keyJointIdealProjection]
   all_goals try rfl
   case inr.inr.inr =>
     by_cases hh : Hidden D x.1
-    · simp only [if_pos hh, StateT.run_bind, StateT.run_pure, bind_pure_comp, StateT.run_map,
+    · simp only [if_pos hh, bind_pure_comp, StateT.run_map,
         Functor.map_map]
       have h := (jointHidden_false_projection (x.1, x.2.1) s).map
         (fun r : Digest × HashCache C × KeyCache C => (prims.aes.eval r.1 x.2.2, r.2))
       simpa only [Functor.map_map, Function.comp_def, Prod.map, id_eq, StateT.run_mk,
         keyJointIdealProjection] using h
-    · simp only [if_neg hh, jointLocal_false, onJointHash_idealProjection, StateT.run_mk]
+    · simp only [if_neg hh, onJointHash_idealProjection, StateT.run_mk]
       rfl
 
 /-- Distributional state projection, including samplers with different representations. -/
@@ -5031,7 +5029,7 @@ theorem realCache_keyJointInsert (s : KeyJointState C) (hs : s.Coherent)
       · rw [hf] at hv; contradiction
       · rw [hf] at hv; cases hv; exact Or.inr rfl
   refine QueryCache.ext fun q => ?_
-  cases q <;> simp only [KeyJointState.realCache, keyJointInsert, QueryCache.cacheQuery, Function.update]
+  cases q <;> simp only [KeyJointState.realCache, keyJointInsert, QueryCache.cacheQuery]
   case streamKey k =>
     change (s.hash (.streamKey k) <|> (keyJointInsert s x v).privateHash k) = _
     rw [hp]
@@ -5127,7 +5125,7 @@ theorem jointHidden_true_projection (x : KeyName C × HashOutput) (s : KeyJointS
     cases hc : s.realCache (.streamKey x.2) with
     | some v =>
       rw [QueryImpl.withCaching_run_some _ hc]
-      simp only [pure_bind, map_pure, Prod.map, id_eq]
+      simp only [map_pure, Prod.map, id_eq]
       rw [realCache_keyJointInsert s hs x v (Or.inr hc)]
       congr 2
       refine QueryCache.ext fun q => ?_
@@ -5176,7 +5174,7 @@ theorem onJointHash_randomOracle_projection (q : Query C) (s : KeyJointState C)
     simp only [Functor.map_map]
     congr 1
     funext v
-    simp only [Function.comp_def, Prod.map, id_eq]
+    simp only [Prod.map, id_eq]
     rw [realCache_hashInsert]
 
 theorem onJointHash_randomOracle_coherent (q : Query C) (s : KeyJointState C) (hs : s.Coherent)
@@ -5213,7 +5211,6 @@ theorem jointHash_true_projection (prims : Primitives) (q : Query C) (s : KeyJoi
     | none =>
       cases hp : s.privateHash k with
       | none =>
-        change Prod.map id KeyJointState.realCache <$> (jointHash prims true (.streamKey k)).run s = _
         simp only [jointHash, StateT.run_mk, if_true, hh, hp]
         exact onJointHash_randomOracle_projection (.streamKey k) s (by simp [KeyJointState.realCache, hh, hp])
       | some v =>
@@ -5256,7 +5253,7 @@ theorem onJointHash_program_projection (x : Query C × HashOutput) (s : KeyJoint
     Prod.map id KeyJointState.realCache <$> (onJointHash (programAnswer x)).run s =
       (programAnswer x).run s.realCache := by
   simp only [onJointHash, programAnswer, StateT.run_mk, StateT.run_bind, StateT.run_get, pure_bind,
-    heq, StateT.run_pure, StateT.run_set, map_pure]
+    heq]
   split_ifs
   · rfl
   · simp [Prod.map, realCache_hashInsert]
@@ -5264,8 +5261,7 @@ theorem onJointHash_program_projection (x : Query C × HashOutput) (s : KeyJoint
 theorem onJointHash_program_coherent (x : Query C × HashOutput) (s : KeyJointState C) (hs : s.Coherent)
     (heq : s.realCache x.1 = s.hash x.1) :
     ∀ r ∈ support ((onJointHash (programAnswer x)).run s), r.2.Coherent := by
-  simp only [onJointHash, programAnswer, StateT.run_mk, StateT.run_bind, StateT.run_get, pure_bind,
-    StateT.run_pure, StateT.run_set, map_pure]
+  simp only [onJointHash, programAnswer, StateT.run_mk, StateT.run_bind, StateT.run_get, pure_bind]
   split_ifs with h
   · simpa using hs
   · have hc : s.hash x.1 = none := by simpa using (not_or.mp h).2
@@ -5302,8 +5298,8 @@ theorem jointLocal_true_projection (prims : Primitives) (q : (LocalSpec C).Domai
     Prod.map id KeyJointState.realCache <$> (jointLocal prims true q).run s =
       (localAnswer prims q).run s.realCache := by
   rcases q with u | q | x
-  · simp [jointLocal, localAnswer, onJointHash, unifFwdImpl, StateT.run_lift,
-      Functor.map_map, Function.comp_def, Prod.map]
+  · simp [jointLocal, localAnswer, onJointHash, unifFwdImpl,
+      Functor.map_map, Prod.map]
   · exact jointHash_true_projection prims q s
   · have h := congrArg (fun p => (fun r : HashOutput × HashCache C => (prims.aes.eval (truncateHash r.1) x.2.2, r.2)) <$> p)
       (jointHash_true_projection prims (.streamKey x.2.1) s)
@@ -5314,7 +5310,7 @@ theorem jointLocal_true_coherent (prims : Primitives) (q : (LocalSpec C).Domain)
     (s : KeyJointState C) (hs : s.Coherent) :
     ∀ r ∈ support ((jointLocal prims true q).run s), r.2.Coherent := by
   rcases q with u | q | x
-  · simp [jointLocal, onJointHash, unifFwdImpl, StateT.run_lift, Functor.map_map, hs]
+  · simp [jointLocal, onJointHash, unifFwdImpl, Functor.map_map, hs]
   · exact jointHash_true_coherent prims q s hs
   · intro r hr
     simp only [jointLocal, bind_pure_comp, StateT.run_map, support_map, Set.mem_image] at hr
@@ -5407,7 +5403,7 @@ theorem jointKeyWorld_true_accepts (prims : Primitives) (D : C.Coalition)
     refine QueryCache.ext fun q => ?_; cases q <;> rfl
   rw [hi]
   rw [← fst_map_runWorld prims game]
-  simp [accepts, prEvent_map]
+  simp [accepts]
 
 theorem jointKeyWorld_false_probability (prims : Primitives) (D : C.Coalition)
     (game : OracleComp (WorldSpec C) Bool) :

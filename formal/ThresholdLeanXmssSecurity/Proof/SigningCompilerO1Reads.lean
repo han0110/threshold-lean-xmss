@@ -34,8 +34,6 @@ open SigningCompilerO1Frame SigningCompilerSyncBackend SigningCompilerSyncRealRe
 open SigningCompilerSyncTrigger SigningCompilerSyncLocalRead SigningCompilerSyncHonestRead
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
 
 section NoBase
 attribute [local irreducible] grind SigningFlatEagerProof.baseGrind
@@ -152,6 +150,7 @@ theorem readCall_view (forger : Bool) (rq : (RoSpec C).Domain) (a : RealState C)
       (fun i hi => hbase i (hashCallAt_read rq _ ht i hi)), Functor.map_map] at hv
     exact hv
 
+set_option linter.constructorNameAsVariable false in
 /-- The effect of a real read with no bottom base input on the real state. -/
 theorem readCall_support (forger : Bool) (rq : (RoSpec C).Domain) (a : RealState C)
     (hr : RealPrivate x s pads noise (gOf s pads u) rest a.2 (visibleOf a))

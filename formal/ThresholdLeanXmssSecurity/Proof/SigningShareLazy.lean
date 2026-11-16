@@ -394,7 +394,7 @@ theorem impl_bad_next (order : List κ) (τ : ι → Digest)
             obtain ⟨st', _, v, _, rfl⟩ := hz
             simp only [erase, setsBad, hd, hs, Option.some_ne_none, false_or,
               not_false_eq_true, true_and]
-            by_cases ht : target = τ p <;> simp [ht] <;> cases st.bad <;> rfl
+            by_cases ht : target = τ p <;> simp [ht]; cases st.bad <;> rfl
   | view =>
       intro z hz
       simp only [impl, StateT.run, support_pure, Set.mem_singleton_iff] at hz
@@ -431,7 +431,7 @@ private theorem impl_frozen_step (order : List κ) (τ : ι → Digest)
         apply map_const_of_support
         intro z hz
         have hz' := impl_bad_next order τ draw finish q st z hz
-        simp only [h, hs, Option.orElse] at hz'
+        simp only [h, hs] at hz'
         simp [observe, hz']
       refine hl.trans ?_
       cases q <;> simp [frozen, StateT.run, h, setsBad_erase, hs, observe]
@@ -497,11 +497,11 @@ theorem impl_frozen_nonbad (order : List κ) (τ : ι → Digest)
   have h₁ : P ∘ observe erase ShareState.bad =
       (fun z : α × ShareState κ ι (ImplBad Tag) => G (z.1, erase z.2) ∧ z.2.bad = none) := by
     funext z
-    cases hb : z.2.bad <;> simp [Function.comp_def, observe, erase, hb, P]
+    cases hb : z.2.bad <;> simp [observe, erase, hb, P]
   have h₂ : P ∘ observe id ShareState.bad =
       (fun z : α × ShareState κ ι (FrozenBad Tag) => G z ∧ z.2.bad = none) := by
     funext z
-    cases hb : z.2.bad <;> simp [Function.comp_def, observe, hb, P]
+    cases hb : z.2.bad <;> simp [observe, hb, P]
   rwa [h₁, h₂] at h
 
 /-- First-bad tag and kind have the same law, without transporting lucky. -/
@@ -521,11 +521,11 @@ theorem impl_frozen_firstbad (order : List κ) (τ : ι → Digest)
   have h₁ : P ∘ observe erase ShareState.bad =
       (fun z : α × ShareState κ ι (ImplBad Tag) => (erase z.2).bad = some r) := by
     funext z
-    cases hb : (erase z.2).bad <;> simp [Function.comp_def, observe, hb, P]
+    cases hb : (erase z.2).bad <;> simp [observe, hb, P]
   have h₂ : P ∘ observe id ShareState.bad =
       (fun z : α × ShareState κ ι (FrozenBad Tag) => z.2.bad = some r) := by
     funext z
-    cases hb : z.2.bad <;> simp [Function.comp_def, observe, hb, P]
+    cases hb : z.2.bad <;> simp [observe, hb, P]
   rwa [h₁, h₂] at h
 
 
@@ -678,17 +678,17 @@ private theorem sticky_split
         (if bad y.2 = none then
           Pr{let z ← (simulateQ I (k y.1)).run y.2}[bad z.2 = some r] else 0) := by
   classical
-  letI : DecidableEq R := Classical.decEq R
+  let : DecidableEq R := Classical.decEq R
   rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_eq_tsum_ite, ← ENNReal.tsum_add]
   apply tsum_congr
   intro y
   cases hb : bad y.2 with
-  | none => simp [hb]
+  | none => simp
   | some r' =>
       rw [sticky_prob I bad sticky (k y.1) y.2 r r' hb]
-      simp only [hb, Option.some.injEq, Option.some_ne_none, ↓reduceIte,
+      simp only [Option.some.injEq, Option.some_ne_none, ↓reduceIte,
         mul_zero, add_zero]
-      split <;> simp_all only [mul_one, mul_zero, ↓reduceIte]
+      split <;> simp_all only [mul_one, mul_zero]
 
 /-- A local ratio for a sticky first-bad record persists through adaptive calls. -/
 theorem sticky_ratio
@@ -742,11 +742,10 @@ private theorem lazy_step_ratio (order : List κ) (hn : order.Nodup)
           by_cases hbad : p ∉ st.done ∧ ∀ a ∈ order, a ≠ b → st.cache (a, p) ≠ none
           · by_cases htag : tag = t
             · subst tag
-              simp only [lazyImpl, impl, StateT.run, hc, setsBad, hbad.1, hbad.2,
-                true_and, and_true, not_false_eq_true, ↓reduceIte, Option.map_some,
+              simp only [lazyImpl, impl, StateT.run, hc, setsBad, hbad.1,
+                true_and, not_false_eq_true,
                 hs, Option.orElse_eq_orElse, Option.orElse, OracleComp.prEvent_bind_eq_tsum,
-                prEvent_pure, Option.some.injEq, Prod.mk.injEq, true_and,
-                decide_eq_false_iff_not, decide_eq_true_eq]
+                prEvent_pure, true_and]
               simp only [if_pos hbad.2, Option.map_some, Option.some.injEq,
                 Prod.mk.injEq, true_and, decide_eq_false_iff_not, decide_eq_true_eq]
               have he := evalDist_sum_put order hn b (hcover b) st p
@@ -804,7 +803,7 @@ theorem lazy_lucky_ratio (order : List κ) (hn : order.Nodup)
           q s r hr z hz
   · intro q s hs
     cases q with
-    | inl n => simp [unifImpl, StateT.run, prEvent_map, Function.comp_def, hs]
+    | inl n => simp [unifImpl, StateT.run, hs]
     | inr q => exact lazy_step_ratio order hn hcover τ q s hs t
 
 
@@ -1125,7 +1124,7 @@ private theorem rowRest_other (order : List κ) (hn : order.Nodup)
   intro t ht
   have hta : t ≠ a := by simpa using (List.mem_filter.mp (List.mem_filter.mp ht).1).2
   have htb : t ≠ b := by simpa using (List.mem_filter.mp ht).2
-  simp [extend, rawTwo, Function.update, hta, htb]
+  simp [extend, Function.update, hta, htb]
 
 /-- Inverting the two-cell shuffle makes the eager slack answer the fresh lazy value. -/
 private theorem slack_read_answer (order : List κ) (hn : order.Nodup)
@@ -1337,7 +1336,7 @@ private theorem fill_table [Finite κ] [Finite ι] [SampleableType (κ × ι →
           simpa only [fillTerms, List.foldlM_cons, fillTerm, hc, pure_bind] using
             ih htail st hs
       | none =>
-          simp only [fillTerms, List.foldlM_cons, fillTerm, hc, map_bind, bind_assoc,
+          simp only [fillTerms, List.foldlM_cons, fillTerm, hc, bind_assoc,
             map_pure, pure_bind]
           change (do let v ← $ᵗ HashOutput
                      let st' ← fillTerms (fun _ => $ᵗ HashOutput) p todo (put st a p v)
@@ -1972,8 +1971,8 @@ private theorem frozen_step [Finite κ] [Finite ι] [SampleableType (κ × ι �
             (fun g => (eagerFrozen order τ g q).run st) y (Φ := Φ)
           · cases q <;> exact hg
           · intro u; cases q <;> rfl
-          · cases q <;> simp [y, st', lazyFrozen, frozen, StateT.run, hb, hs, unerase, erase, hreset]
-          · intro u; cases q <;> simp [y, st', eagerFrozen, frozen, StateT.run, hb, hs, unerase, erase, hreset]
+          · cases q <;> simp [y, st', lazyFrozen, frozen, StateT.run, hb, hs]
+          · intro u; cases q <;> simp [y, st', eagerFrozen, frozen, StateT.run, hb, hs]
       | none =>
           cases q with
           | view =>

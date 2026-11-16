@@ -22,7 +22,6 @@ open SigningCompilerO1SourceProof SigningCompilerO1Slack
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
 
 variable {seeds : C.Term → HashOutput} {s : HiddenKey → Digest} {sig : TsigState C}
   {starts : KeyIndex → ChainIndex → Finset WinternitzDigit}

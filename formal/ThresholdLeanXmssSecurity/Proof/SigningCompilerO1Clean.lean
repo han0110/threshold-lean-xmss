@@ -32,8 +32,6 @@ open SigningCompilerO1Tail SigningCompilerO1Events SigningCompilerO1Coupling
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
 
 /-- A second opening of a commitment in the backend. A cached commitment input at a value other than
 the cached randomizer of its key has the low half of the pending commitment answer of the key. -/
@@ -155,6 +153,7 @@ theorem final_clean (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     hextra.logAgreement.2).mp halt
   exact hnc (Or.inr (Or.inl hlog))
 
+set_option maxRecDepth 100000 in
 /-- For fixed tables, the real event with a count of at most `q` costs at most the clean compiler
 event, an early cap with the flag up, or a share failure with a false tag. A changed copy of
 `SigningCompilerO1Final.real_le_table`. -/

@@ -31,8 +31,6 @@ open SigningCompilerSyncLocalRead SigningCompilerSyncHonestRead
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
 set_option backward.isDefEq.respectTransparency false
 attribute [local irreducible] grind SigningFlatEagerProof.baseGrind
   SigningR1FixedProof.cachedExtra SigningOneRunProof.jointCachedExtra
@@ -45,6 +43,7 @@ variable (prims : Primitives) (x : Keys3 C) (s : HiddenKey → Digest) (pads : P
   (u : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput)
   (noise : ChainNoiseIndex → HashOutput)
 
+set_option linter.constructorNameAsVariable false in
 /-- One real call of `H` on either route. It keeps the log agreement, the private relation and the
 carried state, and it counts once. The trace takes one step. The visible cache grows, and it
 changes only at the input and at the trial inputs. This is `honest_call` of
@@ -403,7 +402,6 @@ theorem relTriple_map_left {α β γ : Type} {oa : ProbComp α} {ob : ProbComp �
     {R : γ → β → Prop} (h : RelTriple oa ob (fun a b => R (f a) b)) : RelTriple (f <$> oa) ob R := by
   simpa only [id_map] using relTriple_map (f := f) (g := id) (R := R) h
 
-set_option maxHeartbeats 1600000 in
 /-- A hash call with no hidden hit. The real read and the compiler read are lazy reads of their
 caches, and the coupling of the two reads gives the same answer, the cache relation and the same
 trace. -/
@@ -478,6 +476,7 @@ theorem baseRead_hit (input : HashInput) (t : (WorldSpec C).Domain)
     change q < ra.2.1.1.1.1.1.1.2
     omega
 
+set_option maxRecDepth 100000 in
 set_option maxHeartbeats 1600000 in
 /-- The call of `baseRead_sync` on one route of the real world, with the compiler hash call. -/
 theorem baseRead_world (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)

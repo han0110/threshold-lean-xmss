@@ -29,7 +29,6 @@ variable {C : Committee}
 
 attribute [local instance] Classical.propDecidable
 
-set_option linter.constructorNameAsVariable false
 
 /-- A run of an O1 source program over the hybrid with the ledger. -/
 def runSourceL {α : Type} (P : PublicParameter) (seeds : C.Term → HashOutput) (Q : ℕ)

@@ -457,7 +457,7 @@ theorem bottom_ideal_acc (hsize : 0 < settings.batchSize) (hx : ∀ i, x i = dea
   refine ObsEq.bind_support _ fun l hl => ?_
   rw [OracleComp.support_liftComp] at hl
   have hlen := evalBatches_length circuits parameter seeds _ l hl
-  simp only [List.take_left' hlen, List.drop_left' hlen, bind_assoc, ite_true, ↓reduceIte]
+  simp only [List.take_left' hlen, List.drop_left' hlen, bind_assoc, ↓reduceIte]
   generalize simBatches K circuits settings.mode D (batchAdversary A) parameter (knownSeed (corruptInputs D x))
     (chunks settings.batchSize (bottomJobs b)) l.flatten (fun _ => some []) st = S1
   conv_rhs => rw [← bind_assoc]

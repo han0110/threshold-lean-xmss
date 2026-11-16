@@ -173,7 +173,7 @@ theorem mainSimOpen_eq (K : Constants C E) (D : C.Coalition) (A : MainAdversary 
   refine bind_congr fun fresh => bind_congr fun ds => ?_
   by_cases h : ∃ i, i ∉ D.1 ∧ i ∈ receivers
   · rw [if_neg (not_not.2 h), if_neg (not_not.2 h)]
-    simp only [map_bind, pure_bind]
+    simp only [map_bind]
     refine bind_congr fun p => ?_
     refine main_seq_isSome _ _ (fun i => ?_) _ _ (fun v => ?_)
     · split_ifs
@@ -219,7 +219,7 @@ theorem mainSimTail_eq (K : Constants C E) (D : C.Coalition) (A : MainAdversary 
   all_goals
     split
     · simp [mainAccepted]
-    · simp only [map_bind, pure_bind]
+    · simp only [map_bind]
       refine bind_congr fun p' => ?_
       split
       · simp [mainAccepted]
@@ -550,7 +550,6 @@ theorem mainSimOpenX_inv (prims : Primitives) (K : Constants C E) (D : C.Coaliti
   · simp [hvr, mainOpenVr, hT, hg]
   · simp [mainOpenInbox, hh, hrecv h hh]
 
-set_option linter.constructorNameAsVariable false in
 theorem mainSimTailX_inv (prims : Primitives) (K : Constants C E) (D : C.Coalition) (A : MainAdversary C E)
     (jobs : List Circuit) (st : A.State) (data : MainSimData C) (outputs : List (List Bit)) :
     MainRunInv prims (fun z s => ¬ MainCopyCollision s →
@@ -689,7 +688,7 @@ theorem main_simulateQ_runFunctionality (st : A.State) (inputs : C.Party → Opt
   unfold runFunctionality
   by_cases h : ∀ i ∉ D.1, (inputs i).isSome = true
   · rw [if_neg (not_not.mpr h), if_neg (not_not.mpr h)]
-    simp only [simulateQ_pure, pure_bind, simulateQ_bind]
+    simp only [simulateQ_pure, simulateQ_bind]
     rw [main_simulateQ_stateT_run]
     congr 1
     congr 1
@@ -1007,7 +1006,6 @@ theorem main_fmultBit_run (K : Constants C E) (D : C.Coalition) (mode : ReshareM
 
 section Sum
 
-set_option linter.unusedSectionVars false
 
 variable {I₁ O₁ L₁ R₁ I₂ O₂ L₂ R₂ : Type} [Inhabited R₁] [Inhabited R₂]
 
@@ -1035,6 +1033,7 @@ theorem main_sum_run_left (F₁ : Functionality C I₁ O₁ L₁ R₁) (F₂ : F
   rw [this]
   rfl
 
+set_option linter.unusedSectionVars false in
 theorem main_sumLeft_leak (l : L₁) :
     simulateQ (mainSumLeft (C := C) (L₂ := L₂) (R₂ := R₂)) (leak (C := C) (R := R₁) l) =
       leak (C := C) (R := R₁ ⊕ R₂) (Sum.inl l : L₁ ⊕ L₂) >>= fun r =>
@@ -1045,6 +1044,7 @@ theorem main_sumLeft_leak (l : L₁) :
   rw [simulateQ_query]
   exact id_map _
 
+set_option linter.unusedSectionVars false in
 theorem main_sumLeft_liftComp {α : Type} (p : ProbComp α) :
     simulateQ (mainSumLeft (C := C) (L₁ := L₁) (R₁ := R₁) (L₂ := L₂) (R₂ := R₂))
         (liftComp p (LocalSpec C + (L₁ →ₒ R₁))) = liftComp p _ := by

@@ -36,9 +36,7 @@ open XmssSecurity.CappedChain
 open SigningCompilerO1Frame SigningCompilerO1Pre SigningCompilerSyncBackend
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
 attribute [local irreducible] grind SigningFlatEagerProof.baseGrind Queries
 
 /-- The signer sets read only the corrupt set and the release records. -/
@@ -415,6 +413,7 @@ theorem chains_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
     | zero => exact hv1
     | succ j => exact congrFun hv2 j
 
+set_option maxRecDepth 100000 in
 /-- The tail of round 2 after a successful codeword search, on both sides. The chains run with the
 timing state widened to the record state. Then the compiler releases the key at `t` signers, and
 both sides append the release record. -/
@@ -528,6 +527,7 @@ theorem tail_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
   obtain ⟨hcore, hx, htop, hp⟩ := hfin
   exact ⟨hcore, hx, ⟨htop.topRows, htop.topRun⟩, hp⟩
 
+set_option linter.constructorNameAsVariable false in
 /-- The rest of round 2 after a successful tree step, on both sides. The real side returns the real
 state of the run. The relation at the return has the signing state with the release record after a
 successful round. -/

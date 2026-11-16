@@ -24,7 +24,6 @@ attribute [local instance] Classical.propDecidable
 section Canonical
 variable (prims : Primitives) (x : Keys3 C)
 
-set_option maxRecDepth 100000 in
 /-- The canonical digit. A successful codeword search below the final cache, at the key of
 the forgery and at its bound message, gives the selected codeword, unless the final cache holds an
 alternative commitment opening. -/
@@ -51,7 +50,6 @@ theorem canonical_digit (r : SigningCostProof.Outcome C) (top : TopTree) (state 
   erw [hsel, Option.bind_some, ← he]
   exact hdecode
 
-set_option maxRecDepth 100000 in
 /-- The gate. At the key of the forgery, a position with `t` signers and a recorded digit
 at or below it is not a chain target. Each recorded digit has a successful codeword search below
 the final cache. -/
@@ -92,7 +90,6 @@ theorem covered_not_target (r : SigningGuessLinkProof.LoggedOutcome C) (top : To
   rw [henc] at hlt'
   omega
 
-set_option maxRecDepth 100000 in
 /-- The gate at the top layer. The resolved bottom tree of the forgery gives
 the top digit. A position at or above it is no target of either kind. -/
 theorem top_covered_not_target (r : SigningGuessLinkProof.LoggedOutcome C) (top : TopTree)

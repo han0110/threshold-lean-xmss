@@ -98,7 +98,7 @@ theorem probEvent_core_eq_win (A : TsigAdversary C) (x : SigningSecurityProof.Ke
   rw [SigningDescentProof.runSigningWorld_flaggedAfter, ← SigningCostProof.loggedRun_forget,
     ← jointRun_logged, Functor.map_map, Functor.map_map, prEvent_map]
   refine prEvent_congr_of_support _ _ _ fun w _ => ?_
-  simp only [Function.comp_apply, Win]
+  simp only [Win]
   constructor
   · intro h
     exact Prod.ext h.2 h.1

@@ -16,8 +16,6 @@ open SigningCompilerCouplingProof SigningCompilerShare
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 10000
-set_option maxHeartbeats 1600000
 
 abbrev RestSlot (C : Committee) :=
   {z : TprfSecurityProof.Slot C // ∀ T (p : CPoint), z ≠ .inl (T, p.val)}

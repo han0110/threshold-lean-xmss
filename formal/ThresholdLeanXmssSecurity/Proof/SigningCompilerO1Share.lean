@@ -19,9 +19,6 @@ open SigningCompilerO1SourceProof
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxHeartbeats 1600000
-set_option maxRecDepth 10000
-set_option linter.constructorNameAsVariable false
 
 section Share
 variable (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest)

@@ -488,7 +488,6 @@ theorem ownCharged_of_inputSide (P : PublicParameter) (seeds : C.Term → HashOu
   exact ⟨input, rfl, Or.inl ⟨c, hcandidate, unrevealed⟩⟩
 
 attribute [local irreducible] sourceProgramO1 in
-set_option maxRecDepth 100000 in
 /-- The cap of the run with the ledger. The cap flag, or the lane 2 event on a state that is not
 dirty, with the ledger within `B`, has probability at most `B / 2^128`. -/
 theorem ownRun_cap (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) (Q B : ℕ)

@@ -195,8 +195,8 @@ theorem hitLane_of_potential (A : TsigAdversary C) (q : ℕ) (x : SigningSecurit
 
 end SigningHitLaneProof
 
-open SigningHitLaneProof SigningCostProof in
 set_option maxRecDepth 100000 in
+open SigningHitLaneProof SigningCostProof in
 /-- `HitLaneBound` from the open stages `HitPotential` and `NoProgramQuery`. -/
 theorem hitLaneBound (prims : Primitives) (C : Committee) (hitPotential : HitPotential prims C)
     (noProgramQuery : NoProgramQuery prims C) : HitLaneBound prims C := by

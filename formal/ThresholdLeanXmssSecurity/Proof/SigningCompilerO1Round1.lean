@@ -34,8 +34,6 @@ open XmssSecurity.CappedChain
 open SigningCompilerO1Frame SigningCompilerSyncBackend
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
 
 /-- The bind of round 1 on the compiler side, with the opening release after it. -/
 def bindX (x : Keys3 C) (st : TsigState C) (e : KeyIndex) (message : Message) : SourceMX C Unit := do
@@ -393,8 +391,8 @@ theorem real_round1 (top : TopTree) (i : C.Party) (J : C.Quorum) (e : KeyIndex) 
       rfl
     · simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind]
       rw [if_neg hg]
-      simp only [StateT.run_bind, StateT.run_set, pure_bind, StateT.run_map, liftM, monadLift,
-        MonadLift.monadLift, StateT.run_lift, bind_pure_comp, Functor.map_map]
+      simp only [StateT.run_bind, StateT.run_set, pure_bind, liftM, monadLift,
+        MonadLift.monadLift]
       erw [StateT.run_map, StateT.run_lift]
       simp only [bind_pure_comp, Functor.map_map]
       rfl

@@ -22,9 +22,6 @@ a commitment, and zero in each other case.
 
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
-set_option maxHeartbeats 1000000
 
 open OracleComp OracleSpec ENNReal
 
@@ -232,6 +229,7 @@ theorem keyedSplitOracle_run_cacheSeen (keyOf : XmssSecurity.HashInput → Optio
     exact ⟨v, hv, rfl⟩
   exact monitoredOracle_run_cacheSeen keyOf ob s.1 hcov _ hv'
 
+set_option linter.constructorNameAsVariable false in
 /-- One call of the ledger world pays its rise of the stopped potential with its charge. -/
 theorem ledgerStep_world (x : SigningSecurityProof.Keys3 C) (t : (WorldSpec C).Domain)
     (ht : ¬SigningHitLaneProof.IsProgram t) : LedgerStep x (ledgerWorld prims x t) := by
@@ -321,6 +319,7 @@ theorem ledgerStep_getCarried (x : SigningSecurityProof.Keys3 C) :
   intro p hp
   exact ledgerStep_pure (C := C) x p.2 p hp
 
+set_option maxRecDepth 100000 in
 /-- The ledger game pays each rise of the stopped potential with the ledger. -/
 theorem ledgerStep_game (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
     LedgerStep x (ledgerGame prims A x) := by

@@ -13,7 +13,6 @@ open OracleComp OracleSpec HashSig LeanXmss ENNReal Finset
 
 noncomputable section
 
-set_option linter.constructorNameAsVariable false
 
 namespace ThresholdLeanXmssSecurity
 
@@ -851,7 +850,7 @@ theorem ceremonyOutput_φ (P : PublicParameter) (run : List Job → OracleComp (
     congr 1; funext r
     rcases r with _ | outputs
     · simp [φ_pure]
-    · simp [φ_bind, φ_pure, φ_map]
+    · simp [φ_map]
   | bottom b =>
     simp only [ceremonyOutput, φ_bind]
     congr 1; funext r
@@ -907,7 +906,7 @@ theorem honestSigning_eq (J : C.Quorum) (e : KeyIndex) (m : Message) :
   · simp [φ_pure]
   swap
   · simp [φ_pure]
-  simp only [pure_bind, dealtWith, referenceTree_φ, φ_bind, φ_map, bind_map_left]
+  simp only [pure_bind, dealtWith, referenceTree_φ, φ_bind, bind_map_left]
   refine bind_congr (m := OracleComp (WorldSpec C)) fun r => ?_
   rcases r with _ | (top' | tree)
   · simp [φ_pure]
@@ -1192,7 +1191,6 @@ theorem probEvent_bind_le_mul_of_cases {α β : Type} {mx : ProbComp α} {f : α
     · rw [if_neg hq, h0 x hx hq]; simp
   · simp [prEvent_eq_zero_of_not_mem_support _ hx]
 
-set_option maxRecDepth 100000 in
 theorem grind_fail (P : PublicParameter) (lay : Layer) (key : KeyIndex) (message : HashInput) (base : Randomizer) :
     ∀ attempts trial (s : HashCache C), trial + attempts ≤ 2 ^ 128 →
       (∀ t, trial ≤ t → t < trial + attempts →
@@ -1222,7 +1220,7 @@ theorem grind_fail (P : PublicParameter) (lay : Layer) (key : KeyIndex) (message
 
 theorem byte23 (P : PublicParameter) (f : TweakFields) (rest : HashInput) :
     (littleEndianBytes 16 P ++ addressBytes f ++ rest)[23]? = (littleEndianBytes 1 (f.step ++ f.tag))[0]? := by
-  simp [addressBytes, List.getElem?_append, littleEndianBytes]
+  simp [addressBytes, littleEndianBytes]
 
 theorem byte23_msg (P : PublicParameter) (lay : Layer) (key : KeyIndex) (payload : HashInput) :
     (tweakableHashInput P (.message lay key) payload)[23]? = some 12 := by

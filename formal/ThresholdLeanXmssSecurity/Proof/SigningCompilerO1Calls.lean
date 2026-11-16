@@ -32,13 +32,11 @@ open SigningCompilerSyncLocalSlot SigningCompilerSyncHonestRead
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
-set_option maxHeartbeats 1600000
 
 /-! ## The real side of one read -/
 
+set_option maxHeartbeats 1600000 in
 /-- The synchronization fields pass to a compiler step that keeps the reveal map, the bound map,
 the trace and the pending map, grows the data cache and adds only seen virtual terms. -/
 theorem syncFields_step (x : Keys3 C) (s : HiddenKey → Digest) (pads : Point → Digest)
@@ -188,6 +186,7 @@ theorem release_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (e :
     rw [hp.backend]
     rfl
 
+set_option maxHeartbeats 1600000 in
 /-- A virtual call adds the term to the virtual set and counts once. It keeps every other part. -/
 theorem backendT_virtual_step (T : C.Term) (p : Point) (st : CompState C)
     (r : Unit × CompState C)
@@ -283,6 +282,7 @@ theorem virtual_cases (T : C.Term) (pt : Point) (src : SourceState C) (st : Comp
     simp only [runX_pure, mem_support_pure_iff] at hr
     exact Or.inl ⟨hr, fun e' he _ => by cases he⟩
 
+set_option maxHeartbeats 1600000 in
 /-- A slot read that returns its value. Both sides return the table value. The compiler side can
 run the opening release before the read. -/
 theorem slotRead_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (forger : Bool)
@@ -415,6 +415,7 @@ theorem slotRead_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (fo
         virtual := fun T p hp => by
           rw [hdata]; change (T, p) ∈ (dataOf x r1.2).virtual; rw [hvirt2]; exact hp }
 
+set_option linter.constructorNameAsVariable false in
 /-- A real honest read of a term at a constrained point returns the table value and observes it. -/
 theorem honestSlot_readStep (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (T : C.Term)
     (p : CPoint) (a : RealState C)
@@ -441,6 +442,8 @@ theorem honestSlot_readStep (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.
   rw [hv]
   rfl
 
+set_option linter.constructorNameAsVariable false in
+set_option maxHeartbeats 1600000 in
 /-- A slot read of a tree build. The real side reads the table value. The compiler side records a
 virtual term and can run the opening release after it. When each term of a bound key is virtual,
 the opening of the key is revealed. -/

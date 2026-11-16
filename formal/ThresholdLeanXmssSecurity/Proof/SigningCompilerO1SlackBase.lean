@@ -22,7 +22,6 @@ open SigningCompilerO1SlackBuild SigningCompilerO1SlackTree
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
 
 section BaseHandlers
 variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest)
@@ -254,7 +253,6 @@ theorem sourcePrfValue_after_QO1 (hinj : Function.Injective x.2.1) (e : KeyIndex
     released.1.2 released.2 hp r hr).1
 
 set_option maxRecDepth 100000 in
-set_option maxHeartbeats 1000000 in
 set_option backward.isDefEq.respectTransparency false in
 /-- The honest-signature tail keeps the linked invariant. -/
 theorem sourceHonestSignature_linked (hinj : Function.Injective x.2.1) (top : TopTree)

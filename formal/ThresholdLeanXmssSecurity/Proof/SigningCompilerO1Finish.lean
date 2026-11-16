@@ -26,8 +26,6 @@ open XmssSecurity.CappedChain
 open SigningCompilerO1Frame SigningCompilerO1Verify SigningCompilerO1Tail
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
 section Finish
 variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
   (u : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput) (noise : ChainNoiseIndex → HashOutput)
@@ -43,6 +41,7 @@ theorem callCandidates_congr (P : PublicParameter) (st st' : TsigState C)
   congr 1
   exact propext (by rw [SigningCompilerSyncTrigger.released_congr st st' trees hb])
 
+set_option linter.constructorNameAsVariable false in
 /-- The verification and the freshness check of both sides, after the forger. The real side returns
 the candidates of the verification calls. -/
 theorem finish_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)

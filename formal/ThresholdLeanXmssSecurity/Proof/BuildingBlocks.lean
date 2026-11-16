@@ -47,7 +47,7 @@ theorem simulateQ_liftComp_prob {σ L R α : Type}
   | query_bind t oa ih =>
     rw [liftComp_bind, liftComp_bind, simulateQ_bind, free_bind]
     simp only [ih]
-    rw [show ∀ {α β : Type} (x : OracleComp (WorldSpec C) α) (f : α → OracleComp (WorldSpec C) β), (StateT.lift (x >>= f) : StateT σ _ β) = StateT.lift x >>= fun a => StateT.lift (f a) from fun x f => by ext s; simp [StateT.lift]]
+    rw [show ∀ {α β : Type} (x : OracleComp (WorldSpec C) α) (f : α → OracleComp (WorldSpec C) β), (StateT.lift (x >>= f) : StateT σ _ β) = StateT.lift x >>= fun a => StateT.lift (f a) from fun x f => by ext s; simp]
     congr 1
     erw [simulateQ_query]
     change (fun x => x) <$> impl (Sum.inl (Sum.inl t)) = _
@@ -154,7 +154,7 @@ theorem executeRounds_wait {Ih Oh Lh Rh α : Type} (D : C.Coalition) (A : Advers
   by_cases hj : j ∈ D.1
   · simp only [hj, if_true]
   · simp only [hj, if_false, worldRoles]
-    congr 3; funext k'; by_cases hk : k' ∈ D.1 <;> simp [hk, hd]
+    congr 3; funext k'; by_cases hk : k' ∈ D.1 <;> simp [hk]
 
 /-- The real run of a protocol with one call to `F_rand` and one round. -/
 theorem realExecution_frand2 (D : C.Coalition) (A : Adversary C E I Unit (Shares C R × (C.Party → C.Party → ℕ → R)))
@@ -288,7 +288,7 @@ theorem conv_poly (K : Constants C E) (y : C.Term → E) :
     ∃ V : Polynomial E, V.natDegree ≤ C.t - 1 ∧ V.eval 0 = ∑ T, y T ∧
       ∀ i, (∑ T ∈ Finset.univ.filter (i ∈ C.holders ·), psi K T i * y T) = V.eval (K.point i) := by
   classical
-  haveI := charTwo (E := E)
+  have := charTwo (E := E)
   refine ⟨∑ T, Polynomial.C (y T) * ∏ j ∈ T.1, (X + Polynomial.C (K.point j)) * Polynomial.C (K.point j)⁻¹,
     ?_, ?_, fun i => ?_⟩
   · refine natDegree_sum_le_of_forall_le _ _ fun T _ =>
@@ -572,7 +572,7 @@ theorem coinRes_honest (K : Constants C E) (c : ℕ) (known : Shares C E)
     · exact absurd h2.symm h1
     · show (vector c _).getD g 0 = _; rw [vector_getD _ _ g hg]; exact hconv j g
   unfold coinRes
-  rw [if_neg (by simp [anyAbort, hD, coinOut, openOut, Msg.isAbort]), openRes_of_poly K _ c V hVdeg _ _ hshare]
+  rw [if_neg (by simp [anyAbort, coinOut, openOut, Msg.isAbort]), openRes_of_poly K _ c V hVdeg _ _ hshare]
   simp only [Option.map_some, vector, List.ofFn_eq_map]
   congr 1
   apply List.ext_getElem
@@ -615,7 +615,7 @@ theorem firstInput_honest_const {I : Type} [Inhabited I] (D : C.Coalition) (c : 
   rw [hl, List.headD_cons]
   have hd : d ∈ C.parties.filterMap (fun i => if i ∈ D.1 then none else some c) := by rw [hl]; simp
   obtain ⟨j, _, hj⟩ := List.mem_filterMap.mp hd
-  split_ifs at hj <;> simp_all
+  split_ifs at hj; simp_all
 
 section CoinRobust
 variable [Field E] [Algebra Bit E]
@@ -640,7 +640,7 @@ theorem card_honest_ge (D : C.Coalition) : C.t ≤ (Finset.univ.filter fun j : C
 theorem poly_eq_of_honest (K : Constants C E) (D : C.Coalition) (P V : Polynomial E)
     (hP : P.degree < C.t) (hV : V.degree < C.t) (h : ∀ j, j ∉ D.1 → P.eval (K.point j) = V.eval (K.point j)) :
     P = V := by
-  haveI : DecidableEq E := Classical.decEq E
+  have : DecidableEq E := Classical.decEq E
   have hs : ((Finset.univ.filter fun j : C.Party => j ∉ D.1).image K.point).card =
       (Finset.univ.filter fun j : C.Party => j ∉ D.1).card :=
     Finset.card_image_of_injective _ K.point.injective
@@ -878,7 +878,7 @@ theorem coinSecurity (prims : Primitives) (K : Constants C E) : CoinSecurityStat
   intro D A
   refine ⟨coinSim K D A, fun x z Z q hx hq => ⟨?_, ?_⟩⟩
   · obtain ⟨start, step, final, hsum, hs, hr, ha, hz⟩ := hq
-    simp only [coinRounds, extendMultRounds, multRounds] at hsum
+    simp only [coinRounds] at hsum
     apply hasHashQueryBound_of_costLe
     unfold distinguish
     rw [idealExecution_Fcoin]
@@ -974,7 +974,7 @@ theorem reshare_run' {ι : Type} {G : OracleSpec ι} {R : Type} [Field R] (K : C
   rw [StateT.run'_eq, StateT.run_bind, StateT.run_lift]
   simp only [bind_assoc, pure_bind, map_bind]
   refine congrArg (_ >>= ·) (funext fun inbox => ?_)
-  simp [record, StateT.run_bind]
+  simp [record]
   unfold reshareZ reshareU
   simp
 
@@ -1133,10 +1133,8 @@ theorem multPeer_of_coupling (prims : Primitives) (K : Constants C E) (h : MultP
     simp only [FmultBit, Fmult, sample, simulateQ_bind, QueryImpl.add_eq_hAdd, simulateQ_leak_add, simulateQ_pure,
       bind_assoc]
     rw [simulateQ_liftComp_prob _ (fun _ => rfl) ($ᵗ _)]
-    simp only [StateT.run_bind, StateT.run_pure, StateT.run_lift, StateT.run_mk, bind_assoc, pure_bind, worldRoles,
-      liftComp_pure, counted_pure, map_bind, bind_map_left]
-    simp only [peerSim, peerSimAnswer, liftComp_bind, counted_bind, bind_assoc, liftComp_pure, counted_pure, pure_bind,
-      map_bind, bind_map_left, map_pure]
+    simp only [StateT.run_bind, StateT.run_pure, StateT.run_lift, StateT.run_mk, bind_assoc, pure_bind, worldRoles]
+    simp only [peerSim, peerSimAnswer, liftComp_bind, counted_bind, bind_assoc, liftComp_pure, counted_pure, pure_bind]
     exact CostLe.mono prims (CostLe.bind prims (CostLe.of_counted prims _ _ (hs _ _)) fun st =>
       CostLe.bind prims (CostLe.of_counted prims _ _ (ha _ _)) fun a =>
       CostLe.bind prims (CostLe.counted_sample prims _) fun f' =>
@@ -1169,16 +1167,14 @@ theorem extendMult_of_coupling (prims : Primitives) (K : Constants C E) (h : Ext
   intro D A
   refine ⟨peerSim K D A (elementCodec K) leakCount, fun x z Z q hx hq => ⟨?_, ?_⟩⟩
   · obtain ⟨start, step, final, hsum, hs, hr, ha, hz⟩ := hq
-    simp only [coinRounds, extendMultRounds, multRounds] at hsum
+    simp only [extendMultRounds] at hsum
     apply hasHashQueryBound_of_costLe
     unfold distinguish idealExecution
     simp only [FextendMult, Fmult, sample, simulateQ_bind, QueryImpl.add_eq_hAdd, simulateQ_leak_add, simulateQ_pure,
       bind_assoc]
     rw [simulateQ_liftComp_prob _ (fun _ => rfl) ($ᵗ _)]
-    simp only [StateT.run_bind, StateT.run_pure, StateT.run_lift, StateT.run_mk, bind_assoc, pure_bind, worldRoles,
-      liftComp_pure, counted_pure, map_bind, bind_map_left]
-    simp only [peerSim, peerSimAnswer, liftComp_bind, counted_bind, bind_assoc, liftComp_pure, counted_pure, pure_bind,
-      map_bind, bind_map_left, map_pure]
+    simp only [StateT.run_bind, StateT.run_pure, StateT.run_lift, StateT.run_mk, bind_assoc, pure_bind, worldRoles]
+    simp only [peerSim, peerSimAnswer, liftComp_bind, counted_bind, bind_assoc, liftComp_pure, counted_pure, pure_bind]
     exact CostLe.mono prims (CostLe.bind prims (CostLe.of_counted prims _ _ (hs _ _)) fun st =>
       CostLe.bind prims (CostLe.of_counted prims _ _ (ha _ _)) fun a =>
       CostLe.bind prims (CostLe.counted_sample prims _) fun f' =>
@@ -1280,9 +1276,9 @@ theorem reshareU_frandShare (K : Constants C E) (D : C.Coalition) {c : ℕ} (kno
 def CodecRoundTrip (codec : Codec C E R) : Prop :=
   ∀ (l : List R) (g : ℕ), codec.unpack (some (codec.pack l)) g = l.getD g 0 ∧ Msg.isAbort (some (codec.pack l)) = false
 
-theorem bitCodec_roundTrip : CodecRoundTrip (C := C) (E := E) bitCodec := fun l g => ⟨rfl, rfl⟩
+theorem bitCodec_roundTrip : CodecRoundTrip (C := C) (E := E) bitCodec := fun _l _g => ⟨rfl, rfl⟩
 
-theorem elementCodec_roundTrip (K : Constants C E) : CodecRoundTrip (elementCodec K) := fun l g => ⟨rfl, rfl⟩
+theorem elementCodec_roundTrip (K : Constants C E) : CodecRoundTrip (elementCodec K) := fun _l _g => ⟨rfl, rfl⟩
 
 theorem reshareZ_frandShare (K : Constants C E) (D : C.Coalition) {c : ℕ} (codec : Codec C E R)
     (hcodec : CodecRoundTrip codec) (known : Shares C R)
@@ -1309,7 +1305,7 @@ theorem reshareZ_frandShare (K : Constants C E) (D : C.Coalition) {c : ℕ} (cod
     · simp only [hji, if_false]
       by_cases hjD : j ∈ D.1
       · simp [hjD]
-      · simp only [hjD, if_false, reshareOut, localContext]
+      · simp only [hjD, if_false, reshareOut]
         rw [if_pos ⟨Ne.symm hji, hjT ▸ h1.1⟩, (hcodec _ g).1, vector_getD _ _ g h1.2]
         exact reshareU_frandShare K D known knownPairs fresh freshPair v j g
   · erw [if_neg h2, if_neg h2]
@@ -1534,8 +1530,7 @@ theorem idealExecution_Fmult {In Lk σ : Type} [Inhabited In] (D : C.Coalition) 
   unfold idealExecution
   simp only [Fmult, sample, simulateQ_bind, QueryImpl.add_eq_hAdd, simulateQ_leak_add]
   rw [simulateQ_liftComp_prob _ (fun _ => rfl) ($ᵗ _)]
-  simp only [StateT.run_bind, StateT.run_pure, StateT.run_lift, StateT.run_mk, bind_assoc, pure_bind, worldRoles,
-    map_bind, bind_map_left]
+  simp only [StateT.run_bind, StateT.run_lift, StateT.run_mk, bind_assoc, pure_bind, worldRoles]
   simp only [simulateQ_pure, StateT.run_pure, pure_bind]
   rfl
 
@@ -1847,8 +1842,7 @@ theorem realOut_shift [CharP R 2] (K : Constants C E) (D : C.Coalition) (codec :
   simp only [Finset.mem_filter, Finset.mem_univ, true_and, anyAbort_reshareOut K D codec hcodec]
   by_cases hab : anyAbort (fun k => if k ∈ D.1 then sent k i else none) = true
   · simp [hi, hab]
-  simp only [hi, if_false, hab, false_or, Finset.mem_filter, Finset.mem_univ, true_and, not_false_eq_true,
-    Bool.not_eq_true, Bool.eq_false_iff.mpr hab, and_self, not_true_eq_false, Option.some.injEq]
+  simp only [hi, if_false, hab, false_or, not_false_eq_true, and_self, not_true_eq_false]
   simp only [Bool.false_eq_true, if_false, Option.some.injEq]
   funext T g
   have href : ∀ T, refHolder D T ∉ D.1 := fun T => (refHolder_spec D T).2
@@ -2081,8 +2075,8 @@ theorem idealOut_empty (K : Constants C E) (D : C.Coalition) (hD : D.1 = ∅) (c
   unfold idealOut peerReply
   dsimp only
   simp only [hd, anyAbort_reshareOut K D codec hcodec]
-  simp only [hab, hmem, hk, false_or, Finset.mem_filter,
-    Finset.mem_univ, true_and, not_false_eq_true, and_self, not_true_eq_false, if_false, false_and,
+  simp only [hmem, hk, false_or, Finset.mem_filter,
+    Finset.mem_univ, true_and, not_false_eq_true, not_true_eq_false, if_false, false_and,
     exists_false, add_zero]
   simp [anyAbort, Msg.isAbort]
 
@@ -2202,7 +2196,7 @@ theorem extendMultCoupling (prims : Primitives) (K : Constants C E) : ExtendMult
   have hlen : ∀ i j, i ∉ D.1 → j ∉ D.1 → (x i).length = (x j).length := fun i j hi hj => by
     simpa using congrArg List.length (hx.1 i j hi hj)
   have hxc : ∀ i, i ∉ D.1 → (x i).length = (x j0).length := fun i hi => hlen i j0 hi hj0
-  haveI : CharP E 2 := charTwo
+  have : CharP E 2 := charTwo
   unfold distinguish
   rw [realExecution_extendMult]
   have hc := firstInput_eq_of_same D (fun i => (x i).length) hlen j0 hj0
@@ -2367,7 +2361,7 @@ theorem executeRounds_round {Ih Oh Lh Rh α : Type} (D : C.Coalition) (A : Adver
   · simp only [hj, true_or, if_true]
   by_cases hab : ab j
   · simp only [hab, or_true, if_true]
-  · simp only [hj, hab, or_self, if_false, worldRoles, Bool.false_eq_true, false_or]
+  · simp only [hj, hab, or_self, if_false, worldRoles, Bool.false_eq_true]
     congr 3; funext k'
     by_cases hk : k' ∈ D.1
     · simp [hk]
@@ -2446,7 +2440,7 @@ theorem realExecution_frand3 (D : C.Coalition) (A : Adversary C E I Unit (Shares
     (fun j => by
       by_cases hj : j ∈ D.1
       · simp only [hj, if_true, true_or]
-      · simp only [hj, if_false, false_or, worldRoles]
+      · simp only [hj, if_false, false_or]
         rw [h3]
         split_ifs <;> rfl)]
   simp only [pure_bind]
@@ -2867,7 +2861,7 @@ theorem colUVal_corrupt (K : Constants C E) (D : C.Coalition) {c : ℕ} (known :
   unfold ownC at hown
   rw [hown]
   have hsum := ownC_sum K D T0 w ⟨g, hg⟩
-  simp only [Fin.val_mk] at hown hsum ⊢
+  simp only at hown hsum ⊢
   by_cases hjp : j = K.owner T0
   · subst hjp
     have hA : ∑ k ∈ Finset.univ.filter (· ∉ D.1), v k g +
@@ -2884,15 +2878,15 @@ theorem colUVal_corrupt (K : Constants C E) (D : C.Coalition) {c : ℕ} (known :
       · simp [δC, hkD, hκ, hkp]
     have h2 := bit_add_self (∑ k ∈ Finset.univ.filter (· ∉ D.1), v k g +
       ∑ T ∈ Finset.univ.filter (fun T => ¬ KnownTo D.1 T ∧ T ≠ T0 ∧ T ≠ (K.collector g).1), w T ⟨g, hg⟩)
-    simp only [if_true, hstar, ne_eq, not_false_eq_true, and_self, γC, Fin.val_mk, hκ, not_true_eq_false,
+    simp only [if_true, hstar, ne_eq, not_false_eq_true, and_self, γC, hκ, not_true_eq_false,
       false_and, if_false, add_zero]
     unfold ownC at hA hsum
-    simp only [Fin.val_mk] at hA hsum
+    simp only at hA hsum
     linear_combination -hA + hsum + h2
   · have hoj : ¬ K.owner T0 = j := fun h => hjp h.symm
-    simp only [hjp, if_false, hoj, and_false, add_zero, δC, Fin.val_mk, hκ, hj, not_false_eq_true, ne_eq, true_and]
+    simp only [hjp, if_false, hoj, and_false, add_zero, δC, hκ, hj, not_false_eq_true, ne_eq, true_and]
     unfold ownC
-    simp only [Fin.val_mk, ite_true, ne_eq]
+    simp only [ite_true, ne_eq]
     have := bit_add_self (v j g + ∑ T ∈ Finset.univ.filter (fun T => T ≠ (K.collector g).1 ∧ K.owner T = j),
       (if KnownTo D.1 T then 0 else Δ0C K D T0 w T ⟨g, hg⟩))
     simp only [ne_eq] at this
@@ -2928,11 +2922,11 @@ theorem colSumVal_honest (K : Constants C E) (D : C.Coalition) {c : ℕ} (known 
     rw [colUVal_shift K D known knownPairs fresh _ freshPair _ hp _ hδ v j (Finset.mem_filter.mp hjm).2 g hg]
     have hown := ownC_ΔC K D T0 hT0 v w j ⟨g, hg⟩
     unfold ownC at hown ⊢
-    simp only [Fin.val_mk] at hown
+    simp only at hown
     rw [hown]
     simp [hδg]
   rw [Finset.sum_congr rfl hj]
-  simp only [Finset.sum_add_distrib, ownC_sum K D T0 w ⟨g, hg⟩, Fin.val_mk]
+  simp only [Finset.sum_add_distrib, ownC_sum K D T0 w ⟨g, hg⟩]
   rw [Finset.sum_ite, Finset.sum_const_zero, add_zero]
   have hfilt : (Finset.univ.filter (· ∉ D.1)).filter (fun j => T0 ≠ (K.collector g).1 ∧ K.owner T0 = j) =
       if T0 ≠ (K.collector g).1 then {K.owner T0} else ∅ := by
@@ -2972,7 +2966,7 @@ theorem termValC_hidden (K : Constants C E) (D : C.Coalition) {c : ℕ} (known :
       termValC K D known knownPairs fresh freshPair v (fun _ _ => none) (fun _ _ => none) i' T g +
         cbC K D sent T ⟨g, hg⟩ := by
   unfold termValC cbC
-  simp only [Fin.val_mk]
+  simp only
   by_cases hs : T = (K.collector g).1
   · have hκ : (K.collector g).2 ∉ D.1 := fun h => hT ⟨_, h, hs ▸ K.collector_held g⟩
     simp only [hs, hκ, if_true, if_false, not_false_eq_true, and_self, colSumVal]
@@ -2997,11 +2991,11 @@ theorem termValC_shift (K : Constants C E) (D : C.Coalition) {c : ℕ} (known : 
     · rw [if_neg hκ, if_neg hκ, colSumVal_honest K D known knownPairs fresh freshPair T0 hT0 hp v w sent g hg hκ]
       have hne : T0 ≠ (K.collector g).1 := fun h => hT (hs.trans h.symm)
       subst hs
-      simp only [if_pos hne, γC, Fin.val_mk, hκ, not_false_eq_true, true_and, Ne.symm hne, and_true]
+      simp only [if_pos hne, γC, hκ, not_false_eq_true, true_and]
       have h2 := bit_add_self (∑ j ∈ Finset.univ.filter (· ∉ D.1), v j g +
         ∑ T ∈ Finset.univ.filter (fun T => ¬ KnownTo D.1 T ∧ T ≠ T0 ∧ T ≠ (K.collector g).1), w T ⟨g, hg⟩)
       by_cases hk : KnownTo D.1 (K.collector g).1
-      · simp only [hk, hT, ne_eq, not_true_eq_false, not_false_eq_true, false_and, true_and, if_false, if_true,
+      · simp only [hk, hT, ne_eq, not_true_eq_false, not_false_eq_true, false_and, if_false, if_true,
           add_zero]
         linear_combination h2
       · simp only [hk, hT, ne_eq, not_false_eq_true, true_and, if_true, if_false]
@@ -3046,7 +3040,7 @@ theorem termValC_shift_T0 (K : Constants C E) (D : C.Coalition) {c : ℕ} (known
     rw [hf, add_zero]
   · rw [if_neg hs, if_neg hs, randVal_add D known fresh _ g hg, if_neg hT0, hsplit]
     unfold ΔC Δ0C γC
-    simp only [Fin.val_mk, ne_eq, not_true_eq_false, and_false, false_and, if_false, zero_add, true_and, hs,
+    simp only [ne_eq, not_true_eq_false, and_false, false_and, if_false, zero_add, true_and, hs,
       not_false_eq_true, if_true]
     by_cases hκ : (K.collector g).2 ∈ D.1
     · have hk : KnownTo D.1 (K.collector g).1 := ⟨_, hκ, K.collector_held g⟩
@@ -3160,8 +3154,7 @@ theorem colMsgs2_shift (K : Constants C E) (D : C.Coalition) {c : ℕ} (known : 
       simp only at e1 e0
       unfold colInbox
       rw [e1, e0, colSumVal_honest K D known knownPairs fresh freshPair T0 hT0 hp v w sent g hgc hκD, if_pos hne]
-      simp only [γC, Fin.val_mk, hκD, hk, not_true_eq_false, false_and, and_false, if_false, add_zero, not_false_eq_true,
-        true_and]
+      simp only [γC, hκD, hk, not_true_eq_false, false_and, and_false, if_false, add_zero, not_false_eq_true]
       have h2 := bit_add_self (∑ j ∈ Finset.univ.filter (· ∉ D.1), v j g +
         ∑ T ∈ Finset.univ.filter (fun T => ¬ KnownTo D.1 T ∧ T ≠ T0 ∧ T ≠ (K.collector g).1), w T ⟨g, hgc⟩)
       linear_combination h2
@@ -3236,8 +3229,8 @@ theorem colOuts_shift (K : Constants C E) (D : C.Coalition) {c : ℕ} (known : S
     unfold anyAbort at hc'
     simp only [hk, if_false, hc', if_true]
     rfl
-  simp only [hi, h1, h2, Bool.false_eq_true, or_self, if_false, Finset.mem_filter, Finset.mem_univ, true_and,
-    not_false_eq_true, Bool.not_eq_true, Bool.eq_false_iff.mpr h1, Bool.eq_false_iff.mpr h2, and_self,
+  simp only [hi, h1, h2, Bool.false_eq_true, or_self, if_false, Finset.mem_filter, Finset.mem_univ,
+    not_false_eq_true, and_self,
     not_true_eq_false, Option.some.injEq]
   funext T g
   have href : ∀ T, refHolder D T ∉ D.1 := fun T => (refHolder_spec D T).2
@@ -3472,7 +3465,7 @@ theorem multCollectorCoupling (prims : Primitives) (K : Constants C E) : MultCol
           fun y => mulRep K (localContext i) y.1 y.2.1 g).getD 0) freshF ans)) (WEq.of_eq prims ?e2))
     case e1 =>
       unfold colRound1 colRest colTail colMsgs1 colMsgs2 colInbox
-      simp only [bind_assoc, counted_liftComp_ite, liftComp_bind, counted_bind, liftComp_pure, counted_pure, pure_bind]
+      simp only [bind_assoc, counted_liftComp_ite, liftComp_bind, counted_bind, liftComp_pure, counted_pure]
     case e2 =>
       simp only [bind_assoc]
 

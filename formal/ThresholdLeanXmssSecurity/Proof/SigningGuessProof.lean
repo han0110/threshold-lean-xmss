@@ -249,7 +249,7 @@ theorem bottomOnce_frame {C : Committee} {ι : Type} {spec : OracleSpec ι}
     r.2.corrupt = st.corrupt ∧ r.2.bound = st.bound ∧ r.2.released = st.released := by
   simp only [bottomOnce, StateT.run_bind, StateT.run_get, pure_bind] at hr
   cases ht : st.trees b <;>
-    simp [ht, StateT.run_bind, run_liftM_comp, bind_map_left] at hr
+    simp [ht, StateT.run_bind] at hr
   · obtain ⟨tree, _, rfl⟩ := hr
     simp
   · subst r
@@ -272,7 +272,7 @@ theorem tsigOracles_boundExtends {C : Committee} {ι : Type} {spec : OracleSpec 
     cases tree with
     | none => simp at hr; erw [StateT.run_pure] at hr; simp at hr; subst hr; simp_all [BoundExtends]
     | some tree =>
-      simp [StateT.run_bind, run_liftM_comp, bind_map_left] at hr
+      simp [StateT.run_bind, bind_map_left] at hr
       obtain ⟨value, _, rfl⟩ := hr
       exact fun _ _ h => hbound ▸ h
   | round1 i J e message =>
@@ -329,7 +329,7 @@ theorem releaseStep_append {C : Committee}
   | inl t => simp [releaseStep]
   | inr t =>
     cases t <;> try simp [releaseStep]
-    cases u <;> simp [releaseStep]
+    cases u <;> simp
 
 theorem tsigOracles_releaseStep {C : Committee} {ι : Type} {spec : OracleSpec ι}
     (lift : ∀ {β : Type}, OracleComp (RoSpec C) β → OracleComp spec β)
@@ -348,7 +348,7 @@ theorem tsigOracles_releaseStep {C : Committee} {ι : Type} {spec : OracleSpec �
     cases tree with
     | none => simp at hr; erw [StateT.run_pure] at hr; simp at hr; subst hr; simp_all [releaseStep]
     | some tree =>
-      simp [StateT.run_bind, run_liftM_comp, bind_map_left] at hr
+      simp [StateT.run_bind, bind_map_left] at hr
       obtain ⟨value, _, rfl⟩ := hr
       exact hrel
   | round1 i J e message =>
@@ -448,7 +448,7 @@ theorem tsigOracles_corrupt_mono {ι : Type} {spec : OracleSpec ι}
     cases tree with
     | none => simp at hr; erw [StateT.run_pure] at hr; simp at hr; subst hr; simp_all
     | some tree =>
-      simp [StateT.run_bind, run_liftM_comp, bind_map_left] at hr
+      simp [StateT.run_bind, bind_map_left] at hr
       obtain ⟨value, _, rfl⟩ := hr
       exact hcorrupt ▸ Finset.Subset.refl _
   | round1 i J e message =>
@@ -539,7 +539,6 @@ structure ShareViewData (C : Committee) where
 
 namespace ShareViewData
 
-set_option maxRecDepth 3000
 
 def release (v : ShareViewData C) (x : Point) : ShareViewData C :=
   { v with released := insert x v.released }
@@ -772,7 +771,7 @@ theorem privateRoObserve_query (input : (PrivateRoSpec D R).Domain)
       (fun result => ((result.1, result.2), result.2)) <$>
         (privateRoImpl input).run cache := by
   rcases input with n | input
-  · simp [privateRoObserve, privateRoImpl, QueryImpl.add, unifFwdImpl]
+  · simp [privateRoObserve, privateRoImpl, unifFwdImpl]
   · have hquery : simulateQ (privateRoImpl (D := D) (R := R))
         (query (spec := PrivateRoSpec D R) (.inr input)) = (D →ₒ R).randomOracle input :=
         (simulateQ_query _ _).trans (id_map _)
@@ -829,7 +828,7 @@ theorem raw_randomOracle_cache_le {α : Type} (source : OracleComp (D →ₒ R) 
   induction source using OracleComp.inductionOn generalizing cache with
   | pure value =>
     have heq : result = (value, cache) := by simpa using hr
-    simpa [heq]
+    simp [heq]
   | query_bind input continuation ih =>
     simp only [simulateQ_bind, simulateQ_spec_query, StateT.run_bind,
       mem_support_bind_iff] at hr
@@ -858,7 +857,6 @@ end PrivateForest
 section CommitmentSimulation
 
 open Classical
-set_option maxRecDepth 3000
 
 /-- A commitment input has one globally selected trial, even with many keys
 and signing sessions. This decoder is independent of the hidden table. -/
@@ -880,7 +878,7 @@ theorem commitmentTrial_eq_some (P : HashSig.PublicParameter) (input : HashSig.H
       have hv : h.choose.2 = rho := SigningCoreProof.commitmentInput_injective P e
         (by simpa only [hk] using h.choose_spec.trans heq.symm)
       exact congrArg some (Prod.ext hk hv)
-  · simp only [Option.noConfusion, false_iff]
+  · simp only [false_iff]
     exact fun heq => h ⟨(e, rho), heq⟩
 
 variable {Index : Type} [Fintype Index] [DecidableEq Index]
@@ -972,7 +970,7 @@ theorem round2WithReceipt_forget
   unfold round2WithReceipt
   simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind]
   split_ifs with hguard
-  · simp only [StateT.run_pure, map_pure]
+  · simp only [map_pure]
     rfl
   · simp only [map_bind, StateT.run_bind]
     congr 1
@@ -983,10 +981,10 @@ theorem round2WithReceipt_forget
       congr 1
       funext own
       rw [← signRound2WithSelection_forget]
-      simp only [map_bind, bind_map_left]
+      simp only [bind_map_left]
       congr 1
       funext selected
-      cases selected <;> simp [StateT.run_bind, StateT.run_set, StateT.run_pure] <;> rfl
+      cases selected <;> simp [StateT.run_bind] <;> rfl
 
 end Round2Receipts
 
@@ -1125,11 +1123,11 @@ theorem flaggedReceiptOracles_step_forget (x : SigningSecurityProof.Keys3 C)
   have h := congrArg (fun run => (fun result =>
     (result.1, (result.2, receiptFlag x st flag input))) <$> run)
       (signingWithReceipt_forget dealt st input)
-  simp only [Functor.map_map, Function.comp_def] at h
-  simp only [flaggedReceiptOracles, StateT.run_mk, Functor.map_map, Function.comp_def]
+  simp only [Functor.map_map] at h
+  simp only [flaggedReceiptOracles, StateT.run_mk, Functor.map_map]
   rw [h]
   cases input <;> simp [SigningCoreProof.flaggedOracles, SigningCoreProof.gameOracles,
-    receiptFlag, QueryImpl.add, Functor.map_map, StateT.run_monadLift]
+    receiptFlag, Functor.map_map]
 
 theorem flaggedReceiptOracles_forget (x : SigningSecurityProof.Keys3 C)
     (dealt : Dealt C (OracleComp (WorldSpec C))) {α : Type}
@@ -1189,7 +1187,6 @@ theorem presampled_signing_adversary (slot : Slot C) {α : Type}
       (presampled_signing_count_step prims seeds pairKeys slot _
         (presampled_signing_local prims seeds pairKeys slot t)) ih
 
-set_option maxRecDepth 100000 in
 theorem signing_tsigOracles_free (x : SigningSecurityProof.Keys3 C) (top : TopTree)
     (q : (TsigSpec C).Domain) (s : TsigState C) :
     (tsigOracles (fun oa => SigningCoreProof.honestLift oa)
@@ -1226,7 +1223,7 @@ theorem presample_signing_slots_observe {α β : Type} (oa : OracleComp (WorldSp
     have hs : s ∉ l := (List.nodup_cons.mp hl).1
     refine (evalDistEq_uniformSample_bind_update (D := Slot C)
       (R := HashSig.HashOutput) s _).symm.trans ?_
-    simp only [bind_assoc, pure_bind, fillSlots, fillSlots_update _ l _ hs, Function.update_self]
+    simp only [fillSlots, fillSlots_update _ l _ hs, Function.update_self]
     refine (OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans ?_
     refine EvalDistEq.trans (EvalDistEq.bind_right _ fun g => ?_)
       (ih (List.nodup_cons.mp hl).2 (fun a ha => hp a (List.mem_cons_of_mem _ ha)))
@@ -1555,14 +1552,12 @@ def CanonicalCommitments (seeds : C.Term → HashSig.HashOutput)
     ∀ candidate, candidate ≠ cachedRandomizer seeds cache e →
       cache (.hash (commitmentInput P e candidate)) = none
 
-set_option maxRecDepth 100000 in
 def commitmentOutputTarget (seeds : C.Term → HashSig.HashOutput)
     (P : HashSig.PublicParameter) (cache : HashCache C) : Query C → HashSig.Digest
   | .hash input => ((commitmentTrial P input).map fun trial => HashSig.truncateHash
       ((cache (.hash (commitmentInput P trial.1 (cachedRandomizer seeds cache trial.1)))).getD 0)).getD 0
   | _ => 0
 
-set_option maxRecDepth 100000 in
 theorem commitmentOutputTarget_eq (seeds : C.Term → HashSig.HashOutput)
     (P : HashSig.PublicParameter) (cache : HashCache C) (input : HashSig.HashInput)
     (e : LeanXmss.KeyIndex) (candidate : HashSig.Digest)
@@ -1590,10 +1585,7 @@ theorem rawRandomizerTerms_support (seeds : C.Term → HashSig.HashOutput)
     subst result
     simp
   | cons T terms ih =>
-    simp only [rawRandomizerTerms, List.mapM_cons, simulateQ_bind, simulateQ_pure,
-      simulateQ_map, simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query,
-      id_map, StateT.run_bind, StateT.run_pure,
-      StateT.run_map, bind_map_left, mem_support_bind_iff, support_pure,
+    simp only [rawRandomizerTerms, List.mapM_cons, simulateQ_bind, simulateQ_pure, StateT.run_bind, StateT.run_pure, bind_map_left, mem_support_bind_iff, support_pure,
       Set.mem_singleton_iff] at hr
     obtain ⟨head, hh, tail, ht, rfl⟩ := hr
     obtain ⟨hvalues, hterms, hhashes⟩ := ih head.2 tail ht
@@ -1670,7 +1662,7 @@ theorem rawCommitment_support (seeds : C.Term → HashSig.HashOutput)
     (hc : CommitmentsCanonical seeds P cache) (result : Unit × HashCache C)
     (hr : result ∈ support ((simulateQ randomOracle (rawCommitment seeds P e)).run cache)) :
     CommitmentsCanonical seeds P result.2 ∧ CommitmentCached seeds P result.2 e := by
-  simp only [rawCommitment, simulateQ_bind, simulateQ_pure, simulateQ_spec_query,
+  simp only [rawCommitment, simulateQ_bind, simulateQ_pure,
     StateT.run_bind, StateT.run_pure, mem_support_bind_iff, support_pure,
     Set.mem_singleton_iff] at hr
   obtain ⟨middle, hm, last, hl, rfl⟩ := hr
@@ -1784,8 +1776,6 @@ end AlternativeCommitments
 
 section ReceiptCache
 
-set_option maxRecDepth 100000
-set_option maxHeartbeats 2000000
 
 variable {C : Committee}
 
@@ -1842,6 +1832,7 @@ def ReceiptRuns (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
         receipt.message receipt.candidate))).run sCode) ∧
     rCode.1 = some (receipt.randomness, receipt.encoding) ∧ rCode.2.1 ≤ cache
 
+set_option maxRecDepth 100000 in
 theorem ReceiptRuns.mono (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (top : TopTree) {cache cache' : HashCache C} (hle : cache ≤ cache')
     (receipt : Round2Receipt C) (hr : ReceiptRuns prims x top cache receipt) :
@@ -1899,6 +1890,7 @@ def StoredTreeRuns (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
           top (.bottom b)))).run start) ∧
       result.1 = some (.bottom tree) ∧ result.2.1 ≤ cache
 
+set_option maxRecDepth 100000 in
 theorem StoredTreeRuns.mono (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (top : TopTree) {cache cache' : HashCache C} {st : TsigState C}
     (hle : cache ≤ cache') (hr : StoredTreeRuns prims x top cache st) :
@@ -1907,6 +1899,7 @@ theorem StoredTreeRuns.mono (prims : Primitives) (x : SigningSecurityProof.Keys3
   obtain ⟨start, result, hs, ho, hc⟩ := hr b tree ht
   exact ⟨start, result, hs, ho, hc.trans hle⟩
 
+set_option maxRecDepth 100000 in
 theorem receiptDealt_bottom_runs (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (top : TopTree) (b : Fin (2 ^ LeanXmss.layerHeight)) (s : HashCache C × ℕ)
     (r : Option BottomTree × HashCache C × ℕ)
@@ -1924,6 +1917,7 @@ theorem receiptDealt_bottom_runs (prims : Primitives) (x : SigningSecurityProof.
   | none => simp [hout] at ht
   | some value => cases value <;> simpa [hout] using ht
 
+set_option maxRecDepth 100000 in
 theorem bottomOnce_storedTreeRuns (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (top : TopTree) (b : Fin (2 ^ LeanXmss.layerHeight)) (st : TsigState C)
     (s : HashCache C × ℕ) (hinv : StoredTreeRuns prims x top s.1 st)
@@ -2019,6 +2013,7 @@ theorem round2WithReceipt_subruns (prims : Primitives)
           subst rTree
           exact Or.inl ⟨built, hb, ht, hTreeLe⟩
 
+set_option maxRecDepth 100000 in
 theorem round2WithReceipt_runs (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (top : TopTree) (st : TsigState C) (i : C.Party) (J : C.Quorum)
     (e : LeanXmss.KeyIndex) (message : HashSig.Message) (parts : C.Party → HashSig.Digest)
@@ -2268,7 +2263,7 @@ theorem tsigOracles_corrupt_le {ι : Type} {spec : OracleSpec ι}
     cases tree with
     | none => simp at hr; erw [StateT.run_pure] at hr; simp at hr; subst hr; simp_all
     | some tree =>
-      simp [StateT.run_bind, run_liftM_comp, bind_map_left] at hr
+      simp [StateT.run_bind, bind_map_left] at hr
       obtain ⟨value, _, rfl⟩ := hr
       exact hcorrupt ▸ hs
   | round1 i J e message =>
@@ -2344,7 +2339,7 @@ theorem dealtWith_bottom_result {m : Type → Type} [Monad m]
     (dealtWith lift P keys top value).bottom b =
       receiptBottomResult <$> referenceTree (fun oa => lift (tweakable oa)) value P top (.bottom b) := rfl
 
-set_option maxHeartbeats 200000 in
+set_option maxRecDepth 100000 in
 theorem receiptDealt_bottom_replay (prims : Primitives) (h : Query C → HashSig.HashOutput)
     (x : SigningSecurityProof.Keys3 C) (top : TopTree) (b : Fin (2 ^ LeanXmss.layerHeight)) :
     (dealtWith (m := Id) (fun oa => D prims h oa) x.1 (dealtKeys x.1 x.2.1 x.2.2) top
@@ -2361,6 +2356,8 @@ theorem receiptDealt_bottom_replay (prims : Primitives) (h : Query C → HashSig
         x.1 (dealtKeys x.1 x.2.1 x.2.2) top (prfValue x.2.1) b)
     _ = _ := D_map h receiptBottomResult _
 
+set_option maxRecDepth 100000 in
+set_option maxHeartbeats 2000000 in
 /-- Actual accepted sessions select exactly the input used by the cache
 replay, once their candidate is known to be the canonical randomizer. -/
 theorem ReceiptRuns.selected (prims : Primitives) (z : SigningDescentProof.FinalState C)
@@ -2574,8 +2571,6 @@ section StructuralCharge
 
 open Classical SigningHitLaneProof
 
-set_option maxRecDepth 100000
-set_option maxHeartbeats 800000
 
 variable {C : Committee}
 
@@ -2923,8 +2918,6 @@ end StructuralCharge
 
 section SourceBottomScan
 
-set_option maxRecDepth 100000
-set_option maxHeartbeats 800000
 set_option backward.isDefEq.respectTransparency false
 
 theorem encodingInput_ne_randomizerInput (parameter : HashSig.PublicParameter)
@@ -2957,8 +2950,6 @@ end SourceBottomScan
 
 section CanonicalTopCompletion
 
-set_option maxRecDepth 100000
-set_option maxHeartbeats 800000
 set_option backward.isDefEq.respectTransparency false
 
 open Classical
@@ -3394,6 +3385,7 @@ theorem canonicalTopSetupForJobs_no_digest (x : SigningSecurityProof.Keys3 C) (k
 def canonicalTopSetup (x : SigningSecurityProof.Keys3 C) (key : XmssSecurity.TopIndex) :=
   canonicalTopSetupForJobs x key (bottomJobs key) LeanXmss.layerHeight
 
+set_option maxRecDepth 100000 in
 theorem canonicalTopSetup_no_digest (x : SigningSecurityProof.Keys3 C) (key : XmssSecurity.TopIndex) :
     (canonicalTopSetup x key).IsQueryBoundP (topDigestAddress x.1 key) 0 :=
   canonicalTopSetupForJobs_no_digest x key (bottomJobs key) LeanXmss.layerHeight
@@ -3402,6 +3394,7 @@ theorem canonicalTopSetup_no_digest (x : SigningSecurityProof.Keys3 C) (key : Xm
 def canonicalTopGrind (x : SigningSecurityProof.Keys3 C) (key : XmssSecurity.TopIndex) :=
   topGrindAfter x.1 key (canonicalTopSetup x key) LeanXmss.randomizerAttemptLimit
 
+set_option maxRecDepth 100000 in
 theorem canonicalTopGrind_record_selected (x : SigningSecurityProof.Keys3 C)
     (key : XmssSecurity.TopIndex) (cache : HashCache C)
     (z : ((HashSig.Digest × Option (HashSig.Randomizer × LeanXmss.Encoding)) × HashCache C) × HashCache C)
@@ -3444,6 +3437,7 @@ def ResolvedTopPartner (x : SigningSecurityProof.Keys3 C) (key : XmssSecurity.To
     cache (.hash (XmssSecurity.Concrete.CacheView.topEncodingInput x.1 key payload)) = some output ∧
     (root, randomness) ≠ payload ∧ HashSig.truncateHash output = HashSig.truncateHash honestOutput
 
+set_option maxRecDepth 100000 in
 /-- Every supported completion detects a resolved top partner. The proof uses
 only its read record; hostile prior cache entries are not silently excluded. -/
 theorem resolvedTopPartner_completed (x : SigningSecurityProof.Keys3 C) (key : XmssSecurity.TopIndex)
@@ -3567,6 +3561,7 @@ theorem topPartnerPotential_terminal (x : SigningSecurityProof.Keys3 C) (cache :
     SigningHitProof.completionPotential (topDigestInput x.1 b) (canonicalTopCompletion x b) cache)
       (fun _ _ => zero_le) (Finset.mem_univ key)
 
+set_option maxRecDepth 100000 in
 open SigningHitLaneProof in
 /-- A cache potential for a fixed completion can charge its own raw domain in
 the actual signing source. Programming is guarded until the source's proved
@@ -3618,7 +3613,7 @@ theorem topDigest_rawCost_le (parameter : HashSig.PublicParameter) (t : (WorldSp
           (XmssSecurity.Concrete.CacheView.topEncodingInput parameter key payload) :=
         Or.inr ⟨parameter, key, payload, rfl⟩
       simp [rawDomainCost, SigningGuessLaneProof.digestCost, SigningGuessLaneProof.DigestCall,
-        he, topDigestInput]
+        he]
       split_ifs <;> omega
     · simp [rawDomainCost, anyTopDigestInput, hd]
   · simp [rawDomainCost, anyTopDigestInput, topDigestInput]
@@ -3630,7 +3625,7 @@ theorem topDigest_rawCost_le (parameter : HashSig.PublicParameter) (t : (WorldSp
           (XmssSecurity.Concrete.CacheView.topEncodingInput parameter key payload) :=
         Or.inr ⟨parameter, key, payload, rfl⟩
       simp [rawDomainCost, SigningGuessLaneProof.digestCost, SigningGuessLaneProof.DigestCall,
-        he, topDigestInput]
+        he]
       split_ifs <;> omega
     · simp [rawDomainCost, anyTopDigestInput, hd]
   · simp [rawDomainCost, anyTopDigestInput, topDigestInput]
@@ -3709,6 +3704,7 @@ theorem bottomSpec_honestRoot (prims : Primitives) (z : SigningDescentProof.Fina
   rw [hs.root, SigningCacheProof.E_eval]
   exact hp.trans ht.symm
 
+set_option maxRecDepth 100000 in
 theorem resolved_bottom_topSignedInput (prims : Primitives) (z : SigningDescentProof.FinalState C)
     (tree : BottomTree)
     (htop : D prims z.answers
@@ -3741,6 +3737,7 @@ theorem resolved_bottom_topSignedInput (prims : Primitives) (z : SigningDescentP
       rw [hb]
       rfl
 
+set_option maxRecDepth 100000 in
 /-- A top partner of a successfully returned, cached bottom tree is one
 of the canonical partners counted by the all-key completion potential. -/
 theorem topPartner_resolved (prims : Primitives) (A : TsigAdversary C)
@@ -3822,7 +3819,7 @@ theorem alternativeCommitment_completed (seeds : C.Term → HashSig.HashOutput)
     (commitmentTrial_eq_some P _ key candidate).mpr rfl
   apply SigningHitProof.completedHit_recordedTargets _ _ _ _ |>.2
   refine ⟨.hash (commitmentInput P key candidate), output, ho, hnone, ?_, ?_, ?_⟩
-  · simp only [RawCommitmentInput, ht, Option.isSome_some, Bool.true_eq]
+  · simp only [RawCommitmentInput, ht, Option.isSome_some]
   · rw [commitmentTargets_eq seeds P record _ key candidate ht]
     intro heq
     exact hn ((SigningCoreProof.commitmentInput_injective P key (Query.hash.inj heq)).trans hs)

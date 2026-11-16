@@ -96,7 +96,7 @@ theorem tsigGameWith_eq (dealt : Dealt C (OracleComp (WorldSpec C))) (A : TsigAd
   obtain ⟨forgery, st⟩ := p
   simp only [forgeryWins, tsigFinish, bind_assoc, pure_bind]
   refine bind_congr fun verified => ?_
-  split <;> simp <;> rfl
+  split <;> simp
 
 /-- A run of the flagged oracles forgets the flag. -/
 theorem simulateQ_run_forget {ι : Type} {spec : OracleSpec ι} {σ τ α : Type} {m : Type → Type} [Monad m]

@@ -29,8 +29,6 @@ open SigningCompilerSyncLocalRead SigningCompilerSyncLocalSlot
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 10000
-set_option maxHeartbeats 1600000
 
 section Read
 attribute [local irreducible] grind SigningFlatEagerProof.baseGrind Queries
@@ -139,7 +137,6 @@ theorem realWorld_slot_route (prims : Primitives) (x : Keys3 C)
 end Slot
 
 section View
-set_option linter.constructorNameAsVariable false
 attribute [local irreducible] grind SigningFlatEagerProof.baseGrind
   SigningR1FixedProof.cachedExtra SigningOneRunProof.jointCachedExtra
   SigningLaneUnionProof.traceStepAt

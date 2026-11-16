@@ -17,8 +17,6 @@ open SigningCompilerSyncRelease
 variable {C : Committee} {Tag : Type}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
-set_option maxHeartbeats 1600000
 
 section Backend
 variable (tagOf : CappedCompilerState C × Bool → Tag) (x : Keys3 C)

@@ -22,8 +22,6 @@ variable {C : Committee}
 def capTag (st : CappedCompilerState C × Bool) : Bool × Bool := (st.2, st.1.2.2)
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
-set_option maxHeartbeats 800000
 
 abbrev FrozenStateC (C : Committee) :=
   SigningShareLazy.ShareState C.Term CPoint (SigningShareLazy.FrozenBad (Bool × Bool))

@@ -243,8 +243,8 @@ theorem reset_size_le (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
   rw [PublicContinuation.rows_empty _ hempty, size_emptyRows] at h
   simpa only [Nat.zero_add] using h
 
-set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 100000 in
+set_option backward.isDefEq.respectTransparency false in
 /-- Every supported restored exception yields `GoodSize` on the reset public run. -/
 theorem restored_exception_good_size (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
     (b : XmssSecurity.TopIndex) (hno : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
@@ -329,8 +329,8 @@ theorem private_afterOutputs_bound_size (A : TsigAdversary C) (x : SigningSecuri
   intro h
   exact restored_exception_good_size prims A x b hno after hb left cache n q hown hempty hallowed h
 
-set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 100000 in
+set_option backward.isDefEq.respectTransparency false in
 theorem raw_block_bound_size (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
     (b : XmssSecurity.TopIndex) (hno : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (after : List XmssSecurity.TopIndex) (hb : b ∉ after) (left : List (List Bit))
@@ -355,7 +355,6 @@ theorem raw_block_bound_size (A : TsigAdversary C) (x : SigningSecurityProof.Key
     simpa only [PublicVerification.block, simulateQ_bind, PublicVerification.localize_liftFree] using
       private_afterOutputs_bound_size prims A x b hno after hb left cache n q hown hsmall hempty hallowed
 
-set_option maxRecDepth 100000 in
 /-- `GateProbability.logged_block_bound` with the own budget. The all-party cap is replaced by the own
 budget and the fixed `topChainSlack`. -/
 theorem logged_block_bound_own (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C)
@@ -371,7 +370,7 @@ theorem logged_block_bound_own (A : TsigAdversary C) (x : SigningSecurityProof.K
       (2 ^ 128 : ℝ≥0∞)⁻¹ := by
   have he := congrArg (fun oa => Pr{let z ← oa}[GateProbability.RawException prims A x b z])
     (logged_forget prims (PublicVerification.block A x b after left) s)
-  simp only [prEvent_map, Function.comp_def] at he
+  simp only [prEvent_map] at he
   apply he.le.trans
   exact raw_block_bound_size prims A x b hno after hb left s.1.1 s.1.2 q hown hsmall hempty hallowed
 

@@ -27,8 +27,6 @@ open SigningCompilerCouplingProof
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxHeartbeats 1600000
-set_option maxRecDepth 10000
 set_option allowUnsafeReducibility true in
 attribute [local reducible] HashSig.digestBits
   XmssSecurity.digestBits XmssSecurity.hashOutputBits
@@ -235,7 +233,7 @@ theorem xorSum_otherTerms (f : C.Term → Digest) (T : C.Term) :
   have hs : ((C.terms.filter (· ≠ T)).map (TprfCorrectnessProof.toXor ∘ f)).sum =
       otherTermSum f T := by
     rw [← List.sum_toFinset _ (terms_nodup.filter _)]
-    simp [otherTermSum, Committee.terms, Function.comp_def, Finset.filter_ne']
+    simp [otherTermSum, Committee.terms, Finset.filter_ne']
   exact h.trans hs
 
 theorem cachedTerm_merge (seeds : C.Term → HashOutput) (hinj : Function.Injective seeds)
@@ -288,8 +286,7 @@ theorem unif_lift {ι σ α : Type} {spec : OracleSpec ι}
   induction oa using OracleComp.inductionOn generalizing st with
   | pure a => simp
   | query_bind t next ih =>
-      simp only [simulateQ_bind, simulateQ_spec_query, StateT.run_bind,
-        SigningShareLazy.unifImpl, bind_map_left, ih, map_bind]
+      simp only [simulateQ_bind, simulateQ_spec_query, StateT.run_bind, ih, map_bind]
       rfl
 
 abbrev ShareState (C : Committee) :=
@@ -435,6 +432,7 @@ theorem ordinary_uncounted (P : PublicParameter) (seeds : C.Term → HashOutput)
   simp only [deferredQuery, HasQuery.instOfMonadLift_query, simulateQ_spec_query]
   rfl
 
+set_option maxHeartbeats 1600000 in
 /-- The source's silent fill and the lazy table's one-cell fill make the same draw. -/
 theorem fillTerm_merge (P : PublicParameter) (seeds : C.Term → HashOutput)
     (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
@@ -632,8 +630,7 @@ theorem fillTerms_merge (P : PublicParameter) (seeds : C.Term → HashOutput)
   | nil => simp [SigningShareLazy.fillTerms]
   | cons T todo ih =>
       simp only [List.mapM_cons, simulateQ_bind, StateT.run_bind, fillTerm_merge P seeds hinj,
-        bind_map_left, ih, simulateQ_pure, StateT.run_pure, bind_pure_comp,
-        Functor.map_map]
+        bind_map_left, bind_pure_comp]
       change _ = _ <$> (SigningShareLazy.fillTerm
         (fun _ => $ᵗ SigningShareLazy.HashOutput) p T share >>=
           SigningShareLazy.fillTerms (fun _ => $ᵗ SigningShareLazy.HashOutput) p todo)
@@ -641,6 +638,7 @@ theorem fillTerms_merge (P : PublicParameter) (seeds : C.Term → HashOutput)
       simp only [simulateQ_map, StateT.run_map, ih, Functor.map_map]
       rfl
 
+set_option maxHeartbeats 1600000 in
 /-- Full lazy completion, including repeat completion, has the actual atomic
 source completion law after merging the cache. Its bad metadata is unrestricted. -/
 theorem complete_merge (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -665,19 +663,17 @@ theorem complete_merge (P : PublicParameter) (seeds : C.Term → HashOutput)
       | none => exact (hdone p hd T hc).elim
       | some v => simp
     rw [← hslack, hn]
-    simp only [simulateQ_pure, StateT.run_pure, SigningShareLazy.lazyImpl,
-      SigningShareLazy.impl, hd, if_true, map_pure, hsum]
+    simp only [simulateQ_pure, StateT.run_pure, hd, if_true, map_pure, hsum]
   · cases hs : SigningShareLazy.slack C.terms share p with
     | none =>
         rw [← hslack, hs]
-        simp only [simulateQ_pure, StateT.run_pure, SigningShareLazy.lazyImpl,
-          SigningShareLazy.impl, hd, if_false, hs, map_pure, hsum]
+        simp only [simulateQ_pure, StateT.run_pure, hd, if_false, map_pure, hsum]
     | some T =>
         rw [← hslack, hs]
         simp only [simulateQ_bind, StateT.run_bind, fillTerms_merge P seeds hinj,
           bind_map_left, ordinary_deferredQuery, ordinary_snapshot, pure_bind,
-          ordinary_sample, SigningShareLazy.lazyImpl, SigningShareLazy.impl,
-          hd, if_false, hs, map_bind, bind_map_left]
+          ordinary_sample,
+          hd, if_false, map_bind, bind_map_left]
         apply bind_congr_of_forall_mem_support
         intro filled hf
         have hm : filled.cache (T, p) = none := by
@@ -689,8 +685,7 @@ theorem complete_merge (P : PublicParameter) (seeds : C.Term → HashOutput)
         have hm' : (merged seeds st filled.cache).1.1.data.cache
             (PlantInput.query (C := C) (.prf (seeds T) p.val)) = none :=
           (merge_key seeds hinj st.1.1.data.cache filled.cache (T, p)).trans hm
-        simp only [ordinary_deferredQuery, ordinary_plant, hm', pure_bind,
-          bind_map_left, map_pure]
+        simp only [map_pure]
         apply bind_congr
         intro high
         have ho := share_others seeds hinj st filled p T
@@ -804,7 +799,7 @@ theorem ordinaryStep_run (P : PublicParameter) (seeds : C.Term → HashOutput)
       (fun r => ((r.1, (splitRest seeds r.2, st.2)), share)) <$>
         ordinary P seeds q s pads t (merged seeds st.1 share.cache) := by
   simp only [ordinaryStep, simulateQ_bind, StateT.run_bind, lazy_view_run, pure_bind,
-    lazy_lift, bind_map_left, simulateQ_pure, StateT.run_pure, bind_pure_comp,
+    lazy_lift, bind_pure_comp,
     simulateQ_map, StateT.run_map, Functor.map_map]
 
 /-- Every forwarded non-share step has the full compiler law after merging. -/
@@ -839,11 +834,10 @@ theorem ordinary_hash_prf (P : PublicParameter) (seeds : C.Term → HashOutput)
       hashTail P seeds (.prf seed p) st r.1 r.2) := by
   simp only [ordinary, SigningCappedExpectProof.cappedHybrid, revealImpl, countImpl,
     deferredCounted, deferredInputSide, deferredCandidate, Option.isSome_none,
-    Bool.false_eq_true, false_and, and_false, or_false, false_or, decide_false,
+    Bool.false_eq_true, false_and, and_false, or_false, decide_false,
     Bool.or_false, if_true, compilerImpl, deferredImpl, StateT.run, StateT.mk,
-    map_bind, bind_map_left, Functor.map_map, map_pure, hashTail]
+    map_bind, bind_map_left, map_pure, hashTail]
 
-set_option maxRecDepth 100000 in
 set_option linter.constructorNameAsVariable false in
 /-- The actual grind suffix frames all constrained PRF entries. -/
 theorem hashTail_frame (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -877,8 +871,7 @@ theorem read_merge (seeds : C.Term → HashOutput) (hinj : Function.Injective se
       simp [SigningShareLazy.lazyImpl, SigningShareLazy.impl, StateT.run, hc]
   | none =>
       rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ (hm.trans hc)]
-      simp only [SigningShareLazy.lazyImpl, SigningShareLazy.impl, StateT.run, hc,
-        map_bind, map_pure, bind_pure_comp, SigningShareLazy.put, Functor.map_map]
+      simp only [SigningShareLazy.lazyImpl, SigningShareLazy.impl, StateT.run, hc, bind_pure_comp, SigningShareLazy.put, Functor.map_map]
       simp only [merge_update seeds hinj]
       rfl
 
@@ -891,12 +884,12 @@ theorem readStep_run (P : PublicParameter) (seeds : C.Term → HashOutput)
       let result ← hashTail P seeds (key seeds (T, p)) (merged seeds st.1 share.cache)
         r.1 (merge seeds st.1.1.1.data.cache r.2.cache)
       pure ((result.1, (splitRest seeds result.2, st.2)), r.2)) := by
-  simp only [readStep, simulateQ_bind, StateT.run_bind, lazy_view_run, pure_bind,
+  simp only [readStep, simulateQ_bind, StateT.run_bind,
     lazy_lift, bind_map_left, simulateQ_pure, StateT.run_pure, lazy_shareQuery]
   simp only [SigningShareLazy.lazyImpl, SigningShareLazy.impl, StateT.run, pure_bind]
 
-set_option maxRecDepth 100000 in
 set_option linter.constructorNameAsVariable false in
+set_option maxHeartbeats 1600000 in
 /-- The constrained read preserves every source-observable compiler field. -/
 theorem readStep_merge (P : PublicParameter) (seeds : C.Term → HashOutput)
     (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
@@ -933,8 +926,7 @@ theorem step_mark (P : PublicParameter) (seeds : C.Term → HashOutput)
     StepLaw P seeds q s pads τ (.inl (.inr mark)) := by
   intro st share hi
   simp only [runShareProgram, simulateQ_spec_query, shareBackend, StateT.run,
-    simulateQ_pure, StateT.run_pure, SigningCompilerCouplingProof.expand, map_pure, projectResult,
-    mem_support_pure_iff]
+    simulateQ_pure, SigningCompilerCouplingProof.expand]
   exact ⟨rfl, fun result he => he ▸ hi⟩
 
 theorem shareBackend_complete_run (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -959,7 +951,7 @@ theorem step_complete (P : PublicParameter) (seeds : C.Term → HashOutput)
       simulateQ_map, StateT.run_map, lazy_shareQuery]
   rw [run]
   constructor
-  · simp only [Functor.map_map, Function.comp_apply, projectResult]
+  · simp only [Functor.map_map, projectResult]
     exact complete_merge P seeds hinj q s pads st.1 share hi.2 τ ⟨p, hp⟩ target st.2
   · intro result hr
     simp only [support_map] at hr

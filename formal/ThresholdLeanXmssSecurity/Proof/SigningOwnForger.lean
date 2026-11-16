@@ -20,7 +20,6 @@ import XmssSecurity.Proof.OwnSecondLane
 
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
-set_option linter.constructorNameAsVariable false
 
 open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
@@ -142,7 +141,7 @@ theorem units_le (x : Keys3 C) (t : (LocalSpec C + TsigSpec C).Domain) :
     have hk : ownDomainUnit (BottomDigestInput x) (.inl (.inr (.inl input))) =
         SigningPartnerBoundProof.keyedCost (C := C) (XmssSecurity.encodingInputLeafIndex? x.1)
           (.inl (.inl (.inr (.inl input)))) := by
-      cases input <;> simp [ownDomainUnit, BottomDigestInput, SigningPartnerBoundProof.keyedCost] <;> congr
+      cases input <;> simp [ownDomainUnit, BottomDigestInput, SigningPartnerBoundProof.keyedCost]; congr
     rw [hk]
     exact h
   · have h := hworld (.inl (.inl (.inr (.inr input)))) le_rfl
@@ -289,7 +288,6 @@ theorem keyedFree_finish (x : Keys3 C) (top : TopTree) (r : Forgery × TsigState
     erw [SigningCacheProof.liftFree_honestSignature]
     exact keyedFree_free x _
 
-set_option maxRecDepth 100000 in
 /-- One query of the forger makes at most one own bottom digest call, and only when the query is an
 own call of `H` on a bottom digest input. -/
 theorem keyed_flaggedOracles (x : Keys3 C) (top : TopTree)

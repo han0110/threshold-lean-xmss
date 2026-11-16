@@ -31,8 +31,6 @@ open SigningCompilerO1HashProgram SigningCompilerO1BaseRead SigningCompilerO1Que
 open SigningCompilerSyncLocalRead
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
 attribute [local irreducible] grind SigningFlatEagerProof.baseGrind Queries
 
 /-- The compiler run of a tweakable program is the run of the hash program. -/
@@ -88,6 +86,7 @@ theorem realHonest_stop {α : Type} (oa : OracleComp HashSpec α) (st : RealStat
   exact simulateQ_sticky _ (RealStop q)
     (fun t st' h' => readCall_stop prims x q s pads u rest (.inl (.hash t)) st' h') oa st h
 
+set_option linter.constructorNameAsVariable false in
 set_option maxHeartbeats 800000 in
 /-- The stop of the compiler side persists over a hash program. -/
 theorem compHash_stop {α : Type} (oa : OracleComp HashSpec α) (src : SourceState C)
@@ -173,6 +172,7 @@ theorem codeword_core (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (to
     · exact Or.inr (Or.inl h)
     · exact Or.inr (Or.inr ⟨hv, hsrc.trans (hsrc2.trans hsrc1), hs3, hm3⟩)
 
+set_option linter.constructorNameAsVariable false in
 /-- The codeword search of a signer or of the honest signature on both sides, at a revealed opening.
 Both sides give the same result, and the log cache of the real side resolves the search. It holds
 for each view and each reveal map. -/

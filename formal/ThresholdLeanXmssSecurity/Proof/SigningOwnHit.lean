@@ -14,7 +14,6 @@ honest calls are outside the structural domain or on cached inputs.
 
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
-set_option linter.constructorNameAsVariable false
 
 open OracleComp OracleSpec HashSig LeanXmss ENNReal
 
@@ -76,7 +75,7 @@ theorem unseenGate_cost_le {ι α : Type} [Fintype ι] (gate : ι → (WorldSpec
       (fun t s => if ∃ i, t = gate i ∧ ¬GateSeen (gate i) s.2 then 1 else 0) oa s ≤
         (Fintype.card ι : ℝ≥0∞) := by
   classical
-  letI : DecidableEq ι := Classical.decEq ι
+  let : DecidableEq ι := Classical.decEq ι
   let f : LoggedState C → ℝ≥0∞ := fun s =>
     ((Finset.univ.filter fun i => GateSeen (gate i) s.2).card : ℝ≥0∞)
   have hstep : ∀ t (s : LoggedState C), True →
@@ -200,7 +199,6 @@ theorem gateSum_step (t : (WorldSpec C).Domain) (s : LoggedState C) (hs : AllSee
     (fun b hb _ => (hb (hs b)).elim)
   simpa only [ite_self, add_zero] using hg
 
-set_option maxRecDepth 100000 in
 /-- The gate part of the hit potential does not rise over a program when each gate is seen. -/
 theorem gateSum_run_le {α : Type} (oa : OracleComp (WorldSpec C) α) (s : LoggedState C)
     (hs : AllSeen x T s) :
@@ -558,7 +556,6 @@ theorem signRound2With_bound (part : Point → OracleComp (RoSpec C) Digest)
     · exact isQueryBoundP_pure _ _ _
 
 set_option backward.isDefEq.respectTransparency false in
-set_option maxRecDepth 100000 in
 /-- A signing oracle does not raise the guarded hit potential. Its builds are covered by the
 forest completion, and its other calls are not structural. -/
 theorem honestFlat_tsigOracles (top : TopTree) (q : (TsigSpec C).Domain) (st : TsigState C) :
@@ -595,7 +592,6 @@ theorem honestFlat_tsigOracles (top : TopTree) (q : (TsigSpec C).Domain) (st : T
           (signRound2With_bound x _ (fun pt => eval_bound x _ _ _ _ _) _ _ _ _ _ _) fun r _ => ?_
         rcases r with _ | values <;> simp
 
-set_option maxRecDepth 100000 in
 /-- A bottom tree that resolves to a tree resolves the Merkle root of the chain ends of that tree. -/
 theorem resolves_bottom_root (cache : HashCache C) (top : TopTree) (b : Fin (2 ^ layerHeight))
     (tree : BottomTree)

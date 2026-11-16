@@ -78,7 +78,6 @@ def ownRun (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) (Q : ℕ) :
     (simulateQ (ownHybrid x.1 x.2.1 Q s) (sourceProgramO1 prims A x)).run ownInit
 
 attribute [local irreducible] sourceProgramO1 in
-set_option maxRecDepth 100000 in
 /-- Without the ledger, the run is `compilerRunO1`. -/
 theorem ownRun_proj (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) (Q : ℕ) :
     Prod.fst <$> ownRun prims A x Q = compilerRunO1 prims A x Q := by

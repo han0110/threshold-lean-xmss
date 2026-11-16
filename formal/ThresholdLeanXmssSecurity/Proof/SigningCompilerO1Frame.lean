@@ -29,8 +29,6 @@ open SigningCompilerO1Sync
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
 
 /-! ## Views of the real state -/
 
@@ -105,6 +103,7 @@ built again. -/
 def PadsFixed (st : CompState C) : Prop :=
   ∀ p v, (dataOf x st).pads p = some v → v = pads p
 
+set_option linter.constructorNameAsVariable false in
 /-- The cached-extra suffix of a read keeps the stored pads. -/
 theorem hashTail_pads (P : PublicParameter) (seeds : C.Term → HashOutput) (input : Query C)
     (st : CappedCompilerState C) (value : HashOutput) (cache : HashCache C)
@@ -136,7 +135,7 @@ theorem ordinary_padsFixed (P : PublicParameter) (seeds : C.Term → HashOutput)
   | inl t =>
     cases t with
     | pad point =>
-      simp only [ordinary, mem_support_pure_iff] at hr
+      simp only [ordinary] at hr
       subst r
       cases hp : st.1.1.data.pads point with
       | some value => simpa only [padStep, hp] using h
@@ -511,6 +510,7 @@ theorem ExtraOpen.frame (seen : Query C → Prop) (openRow openRow' : KeyIndex �
       · exact absurd h1 ho
       · exact Or.inr h1
 
+set_option maxRecDepth 100000 in
 /-- The top clauses pass over a frame. -/
 theorem TopO1.frame (seen : Query C → Prop) (a a' : RealState C)
     (b b' : SourceStateO1 C × CompState C) (ht : TopO1 prims x top a b)

@@ -1180,7 +1180,6 @@ theorem dealt_bottom (z : FinalState C) (b : Fin (2 ^ layerHeight)) (o : Option 
   erw [h, ho]
   rcases o with _ | (_ | _) <;> rfl
 
-set_option maxRecDepth 100000 in
 set_option backward.isDefEq.respectTransparency false in
 theorem honestSignatureReplay : HonestSignatureReplay prims C := by
   intro z hdealt message hbound

@@ -263,13 +263,13 @@ theorem pendingValid_step (q : DeferredQuery C) (st : DeferredState C)
           subst r
           exact hst
       | none =>
-          simp only [deferredImpl, StateT.run, hp, support_map] at hr
+          simp only [deferredImpl, StateT.run, hp] at hr
           erw [support_map] at hr
           obtain ⟨a, ha, rfl⟩ := hr
           intro w v hv
           by_cases hwp : w = p
           · subst w
-            simp only [Function.update_self, Option.some.injEq] at hv
+            simp only [Function.update_self] at hv
             obtain rfl : a = v := Option.some.inj hv
             exact samplePending_valid p a ha
           · simp only [Function.update_of_ne hwp] at hv
@@ -285,7 +285,7 @@ theorem pendingValid_step (q : DeferredQuery C) (st : DeferredState C)
           subst r
           exact hst
       | none =>
-          simp only [deferredImpl, StateT.run, hp, support_map] at hr
+          simp only [deferredImpl, StateT.run, hp] at hr
           erw [support_map] at hr
           obtain ⟨a, _, rfl⟩ := hr
           exact hst
@@ -301,7 +301,7 @@ theorem pendingValid_step (q : DeferredQuery C) (st : DeferredState C)
       subst r
       exact hst
   | sample =>
-      simp only [deferredImpl, StateT.run, support_map] at hr
+      simp only [deferredImpl, StateT.run] at hr
       erw [support_map] at hr
       obtain ⟨a, _, rfl⟩ := hr
       exact hst
@@ -319,7 +319,7 @@ theorem pendingValid_step (q : DeferredQuery C) (st : DeferredState C)
       · simp only [Function.update_of_ne hwp] at hv
         exact hst w v hv
   | uniform n =>
-      simp only [deferredImpl, StateT.run, support_map] at hr
+      simp only [deferredImpl, StateT.run] at hr
       erw [support_map] at hr
       obtain ⟨a, _, rfl⟩ := hr
       exact hst
@@ -971,7 +971,6 @@ theorem CompilerReachable.pendingValid (P : PublicParameter) (seeds : C.Term →
       obtain ⟨a, ha, rfl⟩ := hr
       exact compilerImpl_pendingValid P seeds t st.1 ih a ha
 
-set_option maxRecDepth 100000 in
 /-- Staleness is absorbing for the fixed backend. -/
 theorem compilerImpl_stale (P : PublicParameter) (seeds : C.Term → HashOutput)
     (t : DeferredQuery C) (st : CompilerBackend C) (hs : st.trace.2 = true)
@@ -1098,7 +1097,7 @@ theorem deferredImpl_keptView_uncounted (t : DeferredQuery C)
   | pad p =>
       cases hp : st.pads p with
       | none =>
-          simp only [deferredImpl, StateT.run, hp, support_map] at hr
+          simp only [deferredImpl, StateT.run, hp] at hr
           erw [support_map] at hr
           obtain ⟨a, _, rfl⟩ := hr
           rfl
@@ -1123,12 +1122,12 @@ theorem deferredImpl_keptView_uncounted (t : DeferredQuery C)
           subst r
           rfl
   | sample =>
-      simp only [deferredImpl, StateT.run, support_map] at hr
+      simp only [deferredImpl, StateT.run] at hr
       erw [support_map] at hr
       obtain ⟨a, _, rfl⟩ := hr
       rfl
   | uniform n =>
-      simp only [deferredImpl, StateT.run, support_map] at hr
+      simp only [deferredImpl, StateT.run] at hr
       erw [support_map] at hr
       obtain ⟨a, _, rfl⟩ := hr
       rfl
@@ -1214,7 +1213,7 @@ theorem compilerImpl_view_pending (P : PublicParameter) (seeds : C.Term → Hash
   obtain ⟨a, ha, rfl⟩ := hr
   cases hp : st.data.pending p with
   | none =>
-      simp only [deferredImpl, hp, support_map] at ha
+      simp only [deferredImpl, hp] at ha
       erw [support_map] at ha
       obtain ⟨v, _, rfl⟩ := ha
       exact ⟨rfl, rfl⟩
@@ -1317,7 +1316,6 @@ theorem deferredImpl_keptView_not_hash (t : Query C) (ht : ∀ input, t ≠ .has
       subst a
       rfl
 
-set_option maxRecDepth 100000 in
 /-- A non-`Th` call cannot trigger the eager base grind or its signing trace entry. -/
 theorem compilerImpl_view_not_hash (P : PublicParameter) (seeds : C.Term → HashOutput)
     (call : DeferredQuery C) (hcall : ∃ t, call = .hash t ∧ ∀ input, t ≠ .hash input)
@@ -1396,7 +1394,7 @@ theorem deferredImpl_cache_le (t : DeferredQuery C) (st : DeferredState C)
   | pending p =>
       cases hp : st.pending p with
       | none =>
-          simp only [deferredImpl, StateT.run, hp, support_map] at hr
+          simp only [deferredImpl, StateT.run, hp] at hr
           erw [support_map] at hr
           obtain ⟨a, _, rfl⟩ := hr
           exact le_rfl
@@ -1407,7 +1405,7 @@ theorem deferredImpl_cache_le (t : DeferredQuery C) (st : DeferredState C)
   | pad p =>
       cases hp : st.pads p with
       | none =>
-          simp only [deferredImpl, StateT.run, hp, support_map] at hr
+          simp only [deferredImpl, StateT.run, hp] at hr
           erw [support_map] at hr
           obtain ⟨a, _, rfl⟩ := hr
           exact le_rfl
@@ -1426,12 +1424,12 @@ theorem deferredImpl_cache_le (t : DeferredQuery C) (st : DeferredState C)
           subst r
           exact le_rfl
   | sample =>
-      simp only [deferredImpl, StateT.run, support_map] at hr
+      simp only [deferredImpl, StateT.run] at hr
       erw [support_map] at hr
       obtain ⟨a, _, rfl⟩ := hr
       exact le_rfl
   | uniform n =>
-      simp only [deferredImpl, StateT.run, support_map] at hr
+      simp only [deferredImpl, StateT.run] at hr
       erw [support_map] at hr
       obtain ⟨a, _, rfl⟩ := hr
       exact le_rfl
@@ -1440,7 +1438,6 @@ theorem deferredImpl_cache_le (t : DeferredQuery C) (st : DeferredState C)
       subst r
       exact le_rfl
 
-set_option maxRecDepth 100000 in
 set_option linter.constructorNameAsVariable false in
 /-- The eager adapter also preserves every materialized oracle answer. -/
 theorem compilerImpl_cache_le (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -1500,7 +1497,6 @@ theorem compilerImpl_boundExtends (P : PublicParameter) (seeds : C.Term → Hash
       obtain ⟨a, _, rfl⟩ := hr
       exact fun _ _ h => h
 
-set_option maxRecDepth 100000 in
 set_option linter.constructorNameAsVariable false in
 /-- The compiler maintains the actual trace-entry provenance and unique leaf
 indices using the already-proved dynamic `traceStepAt` invariant. -/

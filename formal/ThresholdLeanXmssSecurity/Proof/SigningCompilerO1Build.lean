@@ -35,8 +35,6 @@ open SigningCompilerO1Queries SigningCompilerSyncBackend SigningCompilerSyncLoca
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
 
 /-- The facts of a complete build that the store and the later releases read. -/
 structure BuildFacts (prims : Primitives) (x : Keys3 C) (s : HiddenKey → Digest) (top : TopTree)
@@ -644,6 +642,8 @@ theorem recover_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top
     · exact hv1
     · exact congrFun hv2 j
 
+set_option linter.constructorNameAsVariable false in
+set_option maxRecDepth 100000 in
 /-- The bottom tree build of both sides in the order of the compiler build, with the facts apart
 from the rows and the counted run. -/
 theorem core_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)
@@ -851,6 +851,7 @@ theorem core_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
       none none _ hs12 hm12 ⟨rfl, hterms st12 hsub, fun h => (h rfl).elim, fun _ h => (by cases h),
         hrevealed src12 hsrc, fun _ h => (by cases h)⟩
 
+set_option maxRecDepth 100000 in
 /-- The bottom tree build of both sides. The real build is the bottom tree of the dealer, and the
 compiler build is `sourceBottomTreeX`. No tree is stored. -/
 theorem bottomTree_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree)

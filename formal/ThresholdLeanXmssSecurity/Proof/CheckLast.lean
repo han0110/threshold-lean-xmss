@@ -20,7 +20,6 @@ namespace ThresholdLeanXmssSecurity
 
 attribute [local instance] Classical.propDecidable
 
-set_option linter.unusedSectionVars false
 
 /-! ## A route for the split case
 
@@ -126,6 +125,7 @@ lemma splitSliceInputs_view (K : Constants C E) (D : C.Coalition) (τ : List E) 
       · simp only [sliceInputs, hi, if_false, Option.bind_some]
         rcases g with _ | _ | g <;> simp [sliceProducts, Product.shamirParts]
 
+set_option linter.unusedSectionVars false in
 /-- A slice step keeps the split relation. -/
 lemma splitSliceRel_fold (D : C.Coalition) (count j : ℕ) (r : E) (xsR ysR xsD ysD : C.Party → Shares C E)
     (h : SplitSliceRel D xsR ysR xsD ysD) :
@@ -137,6 +137,7 @@ lemma splitSliceRel_fold (D : C.Coalition) (count j : ℕ) (r : E) (xsR ysR xsD 
   · obtain ⟨e1, e2, e3, e4⟩ := h.2 T hT i j' hi hj' hiT hjT
     refine ⟨?_, ?_, ?_, ?_⟩ <;> funext k <;> simp only [sliceFold, e1, e2, e3, e4]
 
+set_option linter.unusedSectionVars false in
 /-- The history relation after a slice step, for any honest views. -/
 lemma splitSlice_hist {σ' : Type} (K : Constants C E) (D : C.Coalition) (τ : List E) (count j : ℕ)
     (xsR ysR xsD ysD : C.Party → Shares C E) (tg L : ℕ) (hsR hsD : C.Party → RunState C)

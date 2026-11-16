@@ -34,8 +34,6 @@ variable {C : Committee}
 
 attribute [local instance] Classical.propDecidable
 
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
 
 section Hash
 
@@ -195,7 +193,7 @@ theorem walk_sourceHash (q : Query C) (c : ℕ) (hc : ∀ input, q = .hash input
     split
     · rename_i seed lay e
       have hlay : lay ≠ bottomLayer := fun h => hq ⟨seed, e, by rw [h]⟩
-      simp only [hlay, ↓reduceIte, pure_bind]
+      simp only [hlay, ↓reduceIte]
       exact hjp
     · exact hjp
 

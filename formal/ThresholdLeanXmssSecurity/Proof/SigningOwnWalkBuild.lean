@@ -38,8 +38,6 @@ variable {C : Committee}
 
 attribute [local instance] Classical.propDecidable
 
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
 
 /-- The state of the hybrid with the ledger. -/
 abbrev LState (C : Committee) := CappedCompilerState C × OwnGhost
@@ -1043,7 +1041,7 @@ theorem walk_freeHash {readyEx cachedEx : Option KeyIndex} (input : HashInput)
     (hfree : FreeInput P input) :
     Walk P seeds Q s (BaseInv P seeds readyEx cachedEx) 0
       (fun _ => BaseInv P seeds readyEx cachedEx) (sourceHash P seeds (.hash input)) := by
-  simp only [sourceHash, pure_bind]
+  simp only [sourceHash]
   exact Walk.conseq (walk_call P seeds Q s (.hash (.hash input)) (fun _ _ => True)
     (fun _ _ h => by cases h) (fun _ _ h => by cases h)
     (fun _ st _ _ => free_not_charged P seeds input hfree _ _)
@@ -1060,11 +1058,10 @@ theorem walk_hashProgram {readyEx cachedEx : Option KeyIndex} {α : Type}
       (fun _ => BaseInv P seeds readyEx cachedEx) (sourceHashProgram P seeds oa) := by
   induction h with
   | pure a =>
-      simp only [sourceHashProgram, deferredHash, simulateQ_pure]
+      simp only [sourceHashProgram, deferredHash]
       exact Walk.pure a fun _ _ h => h
   | query x hx next _ ih =>
-      simp only [sourceHashProgram, deferredHash, simulateQ_bind, backendQuery, simulateQ_query,
-        OracleQuery.input_query, OracleQuery.cont_query, id_map]
+      simp only [sourceHashProgram, deferredHash, backendQuery]
       exact Walk.conseq (c := 0 + 0) (Walk.bind (walk_freeHash P seeds Q s x hx) ih)
         (fun _ _ h => h) (fun _ _ _ h => h) le_rfl
 
@@ -1752,6 +1749,7 @@ theorem runL_proj {α : Type} (oa : SourceM C α) (src : SourceState C) (st : LS
   rw [← h, support_map]
   exact ⟨r, hr, rfl⟩
 
+set_option maxRecDepth 100000 in
 /-- `walk_sourceBottomTree`, which also states that a successful tree has `TopShape`. -/
 theorem walk_sourceBottomTree_shape (top : TopTree) (b : XmssSecurity.TopIndex) :
     Walk P seeds Q s (BaseInv P seeds none none) 0

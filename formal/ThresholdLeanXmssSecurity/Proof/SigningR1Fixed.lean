@@ -110,7 +110,7 @@ theorem grind_inv (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIn
     have hmid := hstep _ s hs _ hw
     cases hdec : Codeword.decode (truncateHash a) with
     | some encoding =>
-      simp only [hdec, simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
+      simp only [hdec, simulateQ_pure, StateT.run_pure] at hz
       subst hz
       exact hmid
     | none =>

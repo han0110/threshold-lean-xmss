@@ -27,9 +27,7 @@ open SigningCompilerSyncBackend SigningCompilerSyncRealRead SigningCompilerSyncL
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
 
 section Programs
 variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
@@ -73,6 +71,7 @@ theorem realHonest_read (input : Query C) :
   rw [map_eq_bind_pure_comp, realHonest_bind, realHonest_hashQuery, map_eq_bind_pure_comp]
   simp only [Function.comp_def, realHonest_pure]
 
+set_option linter.constructorNameAsVariable false in
 /-- A result of a real read of a truncated hash is the truncated result of one honest call. -/
 theorem realHonest_read_support (input : Query C) (a : RealState C) (r : Digest × RealState C)
     (hr : r ∈ support ((realHonest prims x s pads u rest
@@ -199,6 +198,7 @@ theorem callPost_bind {α β α' β' : Type} (cCore : Carried C) (seen1 seen2 : 
 
 /-! ## Lists of reads -/
 
+set_option linter.constructorNameAsVariable false in
 /-- The virtual reads of a list of terms at a constrained point. The real side returns the
 truncated table values. Each term becomes virtual. When the list is not empty and each term is
 virtual at the end, a bound key has a revealed opening. -/
@@ -280,6 +280,7 @@ theorem runX_roCons_support {ι β : Type} (k : ι) (l : List ι) (f : ι → Or
   rw [simulateQ_pure, runX_pure, mem_support_pure_iff] at h4
   exact ⟨r1, h1, r2, h3, h4⟩
 
+set_option linter.constructorNameAsVariable false in
 /-- The slot reads of a list of slots on both sides. Both sides return the truncated table
 values. -/
 theorem slotList_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (cCore : Carried C)

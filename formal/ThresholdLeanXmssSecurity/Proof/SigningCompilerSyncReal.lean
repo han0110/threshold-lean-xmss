@@ -16,12 +16,9 @@ open SigningCompilerCouplingProof SigningCompilerRealTables SigningCompilerShare
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 10000
-set_option maxHeartbeats 1600000
 attribute [local irreducible] grind SigningFlatEagerProof.baseGrind Queries
   SigningR1FixedProof.cachedExtra SigningOneRunProof.jointCachedExtra
   rawCarriedLogged rawKeyedSplitOracle rawKeyedSplitWorld rawTraceWorld rawTraceFlatWith
-set_option linter.constructorNameAsVariable false
 
 abbrev IsSlot (x : Keys3 C) (q : Query C) : Prop :=
   ∃ z, TprfSecurityProof.slotInput x.2.1 x.2.2 z = q
@@ -475,6 +472,8 @@ theorem rawCarriedLogged_realPrivate (prims : Primitives) (t : (WorldSpec C).Dom
   obtain ⟨a, ha, rfl⟩ := hr
   exact realPrivate_program (SigningGuessProof.signingRawWorld prims t) h a ha
 
+set_option linter.constructorNameAsVariable false in
+set_option maxHeartbeats 1600000 in
 theorem rawKeyedSplitOracle_realPrivate
     (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) (q : Query C) :
     RealPrivateLaw x s pads noise g rest (fun st => st.1.1) (rawKeyedSplitOracle keyOf q) := by

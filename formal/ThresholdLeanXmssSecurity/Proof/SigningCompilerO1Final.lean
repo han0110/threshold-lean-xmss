@@ -28,13 +28,12 @@ open XmssSecurity.CappedChain
 open SigningCompilerO1Tail SigningCompilerO1Events SigningCompilerO1Runs SigningCompilerO1Tables
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
-set_option linter.constructorNameAsVariable false
-set_option maxRecDepth 100000
 
 section Share
 variable (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest)
   (pads : Point → Digest)
 
+set_option linter.constructorNameAsVariable false in
 /-- Each outcome of the real run over fixed tables is an outcome of the trace run. -/
 theorem realRun_mem_traceRun (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (u : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput)
@@ -54,6 +53,7 @@ theorem realRun_mem_traceRun (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2
   refine ⟨noise, by simp, ?_⟩
   with_reducible exact hr
 
+set_option maxRecDepth 100000 in
 /-- The flag of the result of the real run over fixed tables is the flag of its final state. -/
 theorem realRun_flag (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (u : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput)
@@ -63,6 +63,7 @@ theorem realRun_flag (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
   SigningCompilerO1RealLog.traceRun_flag prims x A r
     (realRun_mem_traceRun prims A x s pads hkeys u rest noise r hr)
 
+set_option maxRecDepth 100000 in
 /-- For fixed tables, the real event with a count of at most `q` costs at most the good compiler
 event, an early cap with the flag up, or a share failure with a false tag. -/
 theorem real_le_table (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)

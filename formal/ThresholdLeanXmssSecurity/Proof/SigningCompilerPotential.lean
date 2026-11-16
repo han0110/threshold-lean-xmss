@@ -66,7 +66,6 @@ theorem deferred_hash_support (q : Query C) (st : DeferredState C)
   exact hraw
 
 set_option linter.constructorNameAsVariable false in
-set_option maxRecDepth 4000 in
 /-- A new trace entry records the grind just executed by the backend. Every
 older entry retains its deterministic replay through conservative cache growth. -/
 theorem compilerImpl_entryTrials (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -312,7 +311,6 @@ theorem compilerView_update (data : DeferredState C) (bound : KeyIndex → Optio
       (keptView IsMsg cache, trace.1) := rfl
 
 set_option linter.constructorNameAsVariable false in
-set_option maxRecDepth 4000 in
 /-- Project the supported hash step before inspecting its canonical base behavior. -/
 theorem compiler_hash_view_support (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : Query C) (st : CompilerBackend C) (r : DeferredSpec C (.hash q) × CompilerBackend C)
@@ -332,7 +330,6 @@ theorem compiler_hash_view_support (P : PublicParameter) (seeds : C.Term → Has
   · exact (congrArg (fun r => compilerView r.2) result).trans (compilerView_update a.2 st.bound _ b.2)
 
 set_option linter.constructorNameAsVariable false in
-set_option maxRecDepth 4000 in
 /-- The message-count ledger freezes a key before its first eager grind, so
 that grind creates no extra counted message inputs in the ledger. -/
 theorem compiler_fresh_base_count (prims : Primitives) (P : PublicParameter)
@@ -381,7 +378,6 @@ theorem compiler_fresh_base_count (prims : Primitives) (P : PublicParameter)
   exact ledger
 
 set_option linter.constructorNameAsVariable false in
-set_option maxRecDepth 4000 in
 /-- A repeated canonical base at a recorded key replays both its raw answer
 and its completed grind, preserving the whole message-cache view. -/
 theorem compiler_traced_base_view (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -812,8 +808,7 @@ theorem compiler_message_stateLaw (prims : Primitives) (publicKey : XmssSecurity
       (countImpl (compilerImpl P seeds) deferredCounted (.hash (.hash input))).run st) =ᵈ
       ((fun r => r.2) <$> (XmssSecurity.Ghost.impl publicKey (laneKey P)
         (.inl (.inr input))).run (compilerView st.1, st.2)) := by
-  simp only [countImpl, StateT.run_mk, compiler_hash_message P seeds input message,
-    Functor.map_map, deferredCounted, if_true]
+  simp only [countImpl, StateT.run_mk, compiler_hash_message P seeds input message, deferredCounted]
   erw [Functor.map_map]
   have law := worldCall_stateLaw_isMsg prims publicKey (laneKey P) message
     st.1.data.cache st.1.trace.1 st.2

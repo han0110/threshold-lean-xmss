@@ -1161,7 +1161,6 @@ def rawTraceGame (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) :
     (fun dealt => rawTraceFlatWith prims x (SigningOpeningProof.openingOracles x dealt))
     (StateT.mk fun st => pure (st.2, st))
 
-set_option linter.constructorNameAsVariable false in
 set_option maxRecDepth 100000 in
 /-- Exact reification of the original trace game, including setup, adaptive
 corruption/signing, candidate logging and final verification. No state field is
@@ -1280,8 +1279,6 @@ def presampledTrace (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C)
   Prod.fst <$> (simulateQ (SeedHitProof.splitWorld prims x.2.1 x.2.2)
     (rawAsWorld (rawTraceProgram prims A x))).run ((∅, TprfSecurityProof.fullTable table), 0)
 
-set_option linter.constructorNameAsVariable false in
-set_option maxRecDepth 100000 in
 /-- Full-table presampling for the exact original guarded trace experiment.
 Unlike a final-cache-only projection, the reified source reconstructs the
 visible cache before every cached-randomizer trigger and trace decision. -/
@@ -1558,7 +1555,7 @@ theorem embedHashCache_cacheQuery (cache : QueryCache HashSpec)
   by_cases h : other = input
   · subst other
     simp
-  · simp [Function.update_of_ne, h, embedHashCache]
+  · simp [Function.update_of_ne, h]
 
 set_option backward.isDefEq.respectTransparency false in
 theorem embedHashCache_stateMap (input : HashInput) :
@@ -2834,7 +2831,6 @@ theorem deferredImpl_prf_frame (t : DeferredQuery C) (st : DeferredState C)
       subst r
       rfl
 
-set_option maxRecDepth 100000 in
 set_option linter.constructorNameAsVariable false in
 set_option backward.isDefEq.respectTransparency false in
 /-- The actual cached-extra grind adds only trial hashes, so the full compiler
@@ -3663,7 +3659,6 @@ theorem runSource_bottomCompletion (P : PublicParameter) (seeds : C.Term → Has
         completed.1.2 completed.2) := by
   by_cases hp : pos.val = 0 <;>
     simp only [sourceBottomCompletion, XmssSecurity.CappedChain.chainStepDigit, hp, ↓reduceIte, runSource_bind]
-  all_goals rfl
 
 set_option backward.isDefEq.respectTransparency false in
 /-- The actual reveal-pad-complete sequence at each Q position returns to a
@@ -4121,8 +4116,6 @@ theorem runSource_sequenceFin_values {α : Type} (P : PublicParameter) (seeds : 
       intro i
       exact Fin.cases hfirst hrest i
 
-set_option maxHeartbeats 1000000 in
-set_option maxRecDepth 100000 in
 set_option linter.constructorNameAsVariable false in
 set_option backward.isDefEq.respectTransparency false in
 /-- Every successful actual bottom build stores a top-signature value of the
@@ -4200,7 +4193,6 @@ theorem storedTopShape_initial : StoredTopShape (sourceInit (C := C)) := by
   cases h
 
 set_option maxRecDepth 100000 in
-set_option linter.constructorNameAsVariable false in
 set_option backward.isDefEq.respectTransparency false in
 /-- D17's actual stored-or-fresh branch returns only values of the established
 shape, including successful memoized results and repeated tree requests. -/
@@ -4523,7 +4515,6 @@ theorem StoredTopShape.of_control {source source' : SourceState C}
   exact ht
 
 set_option maxRecDepth 100000 in
-set_option linter.constructorNameAsVariable false in
 set_option backward.isDefEq.respectTransparency false in
 /-- D17 preserves the shape of every stored successful signature when it
 inserts a new build or replays a stored success or failure. -/
@@ -5901,9 +5892,6 @@ theorem cappedCompiler_eq_padTable (P : PublicParameter) (seeds : C.Term → Has
 
 section EagerPadTransfer
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
-set_option maxHeartbeats 1000000
-set_option linter.constructorNameAsVariable false
 
 /-- Every outcome for a fixed eager pad table is supported by the actual compiler. -/
 theorem compilerProgramPads_support (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -6936,7 +6924,6 @@ theorem mapX_simulateQ (seeds : C.Term → HashOutput) {ι α : Type} {spec : Or
   funext values
   split <;> simp_all
 
-set_option maxHeartbeats 1000000 in
 @[simp] theorem mapX_sourceBottomTree (P : PublicParameter) (seeds : C.Term → HashOutput)
     (top : TopTree) (b : XmssSecurity.TopIndex) :
     mapX seeds (sourceBottomTreeX P seeds top b) = sourceBottomTree P seeds top b := by

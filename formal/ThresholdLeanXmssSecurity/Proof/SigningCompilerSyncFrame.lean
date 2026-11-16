@@ -16,9 +16,6 @@ open SigningCompilerShareTables SigningCompilerRealTables
 variable {C : Committee} {Tag : Type}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-set_option maxRecDepth 100000
-set_option maxHeartbeats 1600000
-set_option linter.constructorNameAsVariable false
 attribute [local irreducible] hashTail
 
 def RestAgree (x : Keys3 C) (rest : RestSlot C → HashOutput)
@@ -111,7 +108,6 @@ theorem deferredImpl_mask_frame (t : DeferredQuery C) (st : DeferredState C)
       subst r
       rfl
 
-set_option maxRecDepth 100000 in
 set_option linter.constructorNameAsVariable false in
 set_option backward.isDefEq.respectTransparency false in
 /-- The actual cached-extra grind adds only trial hashes, so the full compiler
@@ -170,6 +166,7 @@ theorem cappedCompiler_mask_frame (P : PublicParameter) (seeds : C.Term → Hash
       rfl
 
 
+set_option linter.constructorNameAsVariable false in
 /-- Mask port of SigningCompilerShare.hashTail_frame. -/
 theorem hashTail_mask_frame (P : PublicParameter) (seeds : C.Term → HashOutput)
     (query : Query C) (st : CappedCompilerState C) (value : HashOutput) (cache : HashCache C)
@@ -680,6 +677,7 @@ theorem ordinaryT_pendingValid (x : Keys3 C)
       unfold ordinaryT ordinaryRaw at hr; simp only [resolvePrivateTable_lift] at hr
       exact ordinary_pendingValid x.1 x.2.1 q s pads _ st h r hr
 
+set_option maxHeartbeats 1600000 in
 /-- Every query preserves pending validity of the merged backend. -/
 theorem backendT_pendingValid (tagOf : CappedCompilerState C × Bool → Tag) (x : Keys3 C)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
@@ -699,6 +697,7 @@ theorem backendT_pendingValid (tagOf : CappedCompilerState C × Bool → Tag) (x
     intro p v hv; exact h p v (hp ▸ hv)
   · intro cs sh h p target tag a ha; exact h
 
+set_option maxHeartbeats 1600000 in
 /-- Allowed queries preserve the rest table, its disjoint domain, and pending validity. -/
 theorem backendT_frame (tagOf : CappedCompilerState C × Bool → Tag) (x : Keys3 C)
     (hi : Function.Injective (TprfSecurityProof.slotInput x.2.1 x.2.2))
