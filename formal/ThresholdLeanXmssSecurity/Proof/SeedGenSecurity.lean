@@ -1,9 +1,9 @@
-import ThresholdLeanXmssSecurity.Proof.SeedGen
+import ThresholdLeanXmssSecurity.Proof.SeedGenGames
 
 /-!
 # The coupling of the seed generation security
 
-The coupling route relates `SeedGenCoupling` of `Proof/SeedGen.lean` to `SeedGenSecurityStatement`.
+The coupling route relates `SeedGenCoupling` of `Proof/SeedGenGames.lean` to `SeedGenSecurityStatement`.
 
 1. A coupling with a private coin as the bad flag turns any distance bound into an identical-until-bad
    pair. Every probability of a finite computation is rational, so the coin exists.
