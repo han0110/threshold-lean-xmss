@@ -388,7 +388,7 @@ theorem probEvent_seedGenAlias_hit_guess (D : C.Coalition) (log : CallLog C)
       probEvent_seedGenAlias_program_guess D log sent (.derive .seedGen kind values)
   · have he : ∀ parts, q ∉ setupProgrammingInputs .seedGen D (setupProgramView .seedGen D parts log sent) := by
       intro parts hq
-      exact hd (seedGenProgrammingInputs_derive D _ q hq)
+      exact hd (setupProgrammingInputs_derive .seedGen D _ q hq)
     simp only [he, or_false]
     refine (probEvent_seedGenAlias_commit_guess D q).trans ?_
     calc
@@ -820,7 +820,7 @@ def seedGenAliasKnownTail (prims : Primitives) (D : C.Coalition)
     if c ∈ D.1 ∧ i ∉ D.1 then commitOutbox i (com.1 i) c else none))).run com.2
   let high ← $ᵗ HashOutput
   let ok ← (simulateQ (worldAnswer prims)
-    (seedGenProgramOk D parts (st.1.2 ++ r.1.2) r.1.1.2 parameter seeds pairs high)).run r.2
+    (setupProgramOk .seedGen D parts (st.1.2 ++ r.1.2) r.1.1.2 parameter seeds pairs high)).run r.2
   pure (⟨parameter, seeds, pairs, parts, st.1.2 ++ r.1.2, r.1.1.2, com.1, ok.1, r.1.1.1⟩, ok.2)
 
 theorem evalDist_seedGenAlias_fresh_start (prims : Primitives) (D : C.Coalition)
@@ -838,15 +838,15 @@ theorem evalDist_seedGenAlias_fresh_start (prims : Primitives) (D : C.Coalition)
 
 theorem seedGenAlias_known_start (prims : Primitives) (D : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux) :
-    (simulateQ (worldAnswer prims) (seedGenKnownPrefix D A x z)).run ∅ = (do
+    (simulateQ (worldAnswer prims) (setupKnownPrefix .seedGen D A x z)).run ∅ = (do
       let st ← (simulateQ (worldAnswer prims) (observe (A.start (corruptInputs D x) z))).run ∅
       let dealer ← setupDealerSamples .seedGen (C := C)
       let parts ← OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)
       seedGenAliasKnownTail prims D A parts st dealer.1 dealer.2.1 dealer.2.2) := by
-  unfold seedGenKnownPrefix seedGenAliasKnownTail
+  unfold setupKnownPrefix seedGenAliasKnownTail
   simp only [simulateQ_bind, simulateQ_pure, simulateQ_world_sample, StateT.run_bind,
     StateT.run_lift, StateT.run_pure, bind_assoc, pure_bind]
-  simp only [simulateQ_free]
+  simp only [simulateQ_free, setupHighSample]
 
 theorem relTriple_seedGenAlias_support {α β : Type} {oa : ProbComp α} {ob : ProbComp β}
     {R : α → β → Prop} (h : RelTriple oa ob R) :
@@ -901,7 +901,7 @@ def SeedGenAliasPrefixCoupling (prims : Primitives) : Prop :=
     RelTriple
       (seedGenPartsKernel (fun _ =>
         (simulateQ (worldAnswer prims) (seedGenAliasFreshTranscript D A x z)).run' ∅))
-      ((simulateQ (worldAnswer prims) (seedGenKnownPrefix D A x z)).run ∅)
+      ((simulateQ (worldAnswer prims) (setupKnownPrefix .seedGen D A x z)).run ∅)
       (fun p w => (∃ v ∈ p.2.1, SeedGenAliasCommitHit D p.1 v.1) ∨
         (w.1.parts = p.1 ∧ w.1.log = p.2.1 ∧ w.1.sent = p.2.2))
 
@@ -927,10 +927,10 @@ theorem seedGenAliasPrefixCoupling (prims : Primitives) :
     dealer.1 dealer.2.1 dealer.2.2
 
 theorem seedGenProgramAliasBound (prims : Primitives) :
-    SeedGenProgramAliasBound (C := C) (E := E) prims := by
+    SetupProgramAliasBound .seedGen (C := C) (E := E) prims := by
   intro D A x z Z q hq
-  have hc : Pr{let w ← (simulateQ (worldAnswer prims) (seedGenKnownPrefix D A x z)).run ∅}[
-      SeedGenProgramAlias D w.1] ≤
+  have hc : Pr{let w ← (simulateQ (worldAnswer prims) (setupKnownPrefix .seedGen D A x z)).run ∅}[
+      SetupProgramAlias .seedGen D w.1] ≤
       Pr{let p ← seedGenPartsKernel (fun _ =>
           (simulateQ (worldAnswer prims) (seedGenAliasFreshTranscript D A x z)).run' ∅)}[
         SeedGenAliasHybridBad D p.1 p.2.1 p.2.2] := by
@@ -938,7 +938,7 @@ theorem seedGenProgramAliasBound (prims : Primitives) :
     intro w p hp hw
     rcases hp with ⟨v, hv, hh⟩ | ⟨hparts, hlog, hsent⟩
     · exact Or.inl ⟨v, hv, Or.inl hh⟩
-    · unfold SeedGenProgramAlias at hw
+    · unfold SetupProgramAlias at hw
       rw [hparts, hlog, hsent] at hw
       rcases hw with ⟨v, hv, y, hy⟩ | hn
       · exact Or.inl ⟨(v, y), hy, Or.inr hv⟩

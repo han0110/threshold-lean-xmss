@@ -6,8 +6,8 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 
 This file proves the hidden half `SetupHiddenFresh` (`setupHiddenFresh_of_echoFreshExt`) from the
 echo-collision bound `setupEchoFreshExt`. `setupSecurityDistance_of_known` uses it and takes the known half
-`SetupKnownMismatch` as a hypothesis. `seedGenSecurityDone_of_programAlias` of
-`Proof/SeedGenKnown.lean` uses `seedGenSecurityComplete`.
+`SetupKnownMismatch` as a hypothesis. `setupSecurityDistance_of_programAlias` of
+`Proof/SeedGenKnown.lean` uses `setupSecurityDistance_of_known`.
 
 1. Off the domain `S` the finite oracle answers `0`. The proof adds every echo input
    (`setupSharedInputs`) to `S` and proves the bound there (`SetupEchoFreshExt`). The chain of
@@ -1056,11 +1056,6 @@ theorem setupSecurityDistance_of_known (phase : Phase)
     (hK : SetupKnownMismatch (C := C) (E := E) phase prims) : SetupSecurityDistance (C := C) (E := E) phase prims :=
   setupSecurityDistance_of_hybrids phase prims
     (setupHiddenDistance_of_fresh phase prims (setupHiddenFresh prims phase)) hK
-
-/-- `SeedGenSecurityStatement`, from the known half `SetupKnownMismatch`. -/
-theorem seedGenSecurityComplete (hK : SetupKnownMismatch (C := C) (E := E) .seedGen prims) :
-    SeedGenSecurityStatement (C := C) (E := E) prims :=
-  seedGenSecurity_of_setup prims (setupSecurityDistance_of_known prims .seedGen hK)
 
 end Main
 

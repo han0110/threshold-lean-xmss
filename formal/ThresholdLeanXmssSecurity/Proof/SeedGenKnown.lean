@@ -2,26 +2,26 @@ import ThresholdLeanXmssSecurity.Proof.SeedGenFinish
 import ThresholdLeanXmssSecurity.Proof.Coupling
 
 /-!
-# The known half of the seed generation security
+# The known half of the setup security
 
-This module reduces `SetupKnownMismatch`, the known-half hypothesis of `seedGenSecurityComplete`.
+This module reduces `SetupKnownMismatch`, the known-half hypothesis of `setupSecurityDistance_of_known`.
 
-1. `seedGenKnownGame` is the common game in normal form, with its transcript
-   (`simulateQ_seedGenCommonGame_known`).
+1. `setupKnownGame` is the common game in normal form, with its transcript
+   (`simulateQ_setupCommonGame_known`).
 2. A mismatch is a failed programming, a missed extraction or an echo collision
-   (`seedGenKnown_bad_of_mismatch`). Without them, every exposed coordinate of an accepted output is
+   (`setupKnown_bad_of_mismatch`). Without them, every exposed coordinate of an accepted output is
    the dealer's value.
 3. A missed extraction or an echo collision is a collision of two compared cells or a fresh opening
-   (`seedGenKnown_cacheEvent_of_bad`). The compared cells are the shared-key hashes and the
+   (`setupKnown_cacheEvent_of_bad`). The compared cells are the shared-key hashes and the
    commitments of a corrupt sender.
 4. At most `q + n²` calls sample a compared cell. The birthday bound gives `(q + n²)² / 2^257`
-   (`seedGenComparedCollisionBound_proof`), and each fresh opening costs `2^-256`
-   (`seedGenFreshOpeningBound_proof`).
-5. A failed programming means that a programming input of `seedGenKnownPrefix` is a logged query,
-   or that two programming inputs are equal (`seedGenProgramFailBound_of_alias`).
-6. The total fits in half of `seedGenHashError` (`seedGenKnown_arith`).
+   (`setupComparedCollisionBound_proof`), and each fresh opening costs `2^-256`
+   (`setupFreshOpeningBound_proof`).
+5. A failed programming means that a programming input of `setupKnownPrefix` is a logged query,
+   or that two programming inputs are equal (`setupProgramFailBound_of_alias`).
+6. The total fits in half of `setupHashError` (`setupKnown_arith`).
 
-`SeedGenProgramAliasBound` is a hypothesis of `seedGenSecurityDone_of_programAlias`. It
+`SetupProgramAliasBound` is a hypothesis of `setupSecurityDistance_of_programAlias`. It
 needs the hiding of the honest parts by the commitments before the programming (CDG+18).
 
 * The prefix agrees with a prefix whose honest commitments are fresh uncached values, unless a logged
@@ -48,11 +48,11 @@ variable {C : Committee}
 
 /-- The hybrid dealing agrees with the dealer on every exposed coordinate, so the overlay of the
 dealer's hidden coordinates gives the dealer's keys. -/
-theorem seedGenHiddenOverlay_hybrid (D : C.Coalition) (h : Query C → HashOutput) (parts : C.Party → Parts C)
+theorem setupHiddenOverlay_hybrid (phase : Phase) (D : C.Coalition) (h : Query C → HashOutput) (parts : C.Party → Parts C)
     (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairs : C.Pair → HashOutput)
     (i : C.Party) (hi : i ∉ D.1) :
-    seedGenHiddenOverlay D i (dealtKeys parameter (setupHybridSeeds .seedGen D h parts seeds)
-      (setupHybridPairs .seedGen D h parts pairs) i) (dealtKeys parameter seeds pairs i) =
+    seedGenHiddenOverlay D i (dealtKeys parameter (setupHybridSeeds phase D h parts seeds)
+      (setupHybridPairs phase D h parts pairs) i) (dealtKeys parameter seeds pairs i) =
       dealtKeys parameter seeds pairs i := by
   unfold seedGenHiddenOverlay dealtKeys setupHybridSeeds setupHybridPairs
   congr 1
@@ -78,17 +78,19 @@ section Trace
 variable {C : Committee} {E : Type}
 
 /-- The simulator's programming block on the dealt keys, with the conjunction of its results. -/
-def seedGenProgramOk (D : C.Coalition) (parts : C.Party → Parts C) (log : CallLog C)
+def setupProgramOk (phase : Phase) (D : C.Coalition) (parts : C.Party → Parts C) (log : CallLog C)
     (sent : C.Party → Mail C E) (parameter : PublicParameter) (seeds : C.Term → HashOutput)
     (pairs : C.Pair → HashOutput) (high : HashOutput) : OracleComp (WorldSpec C) Bool := do
-  let view := setupProgramView .seedGen D parts log sent
-  let b ← program (seedGenParameterProgrammingInput D view) (seedGenFullParameter high parameter)
-  let bs ← (seedGenKnownCoordinates D).mapM fun T => program (setupTermProgrammingInput .seedGen D view T) (seeds T)
-  let cs ← (seedGenCrossCoordinates D).mapM fun p => program (setupPairProgrammingInput .seedGen D view p) (pairs p)
+  let view := setupProgramView phase D parts log sent
+  let b ← programParameter phase (.derive phase .parameter
+    (C.parties.map fun j => (view (seedGenFirstHonest D Finset.univ) j).parameter))
+    (seedGenFullParameter high parameter)
+  let bs ← (seedGenKnownCoordinates D).mapM fun T => program (setupTermProgrammingInput phase D view T) (seeds T)
+  let cs ← (seedGenCrossCoordinates D).mapM fun p => program (setupPairProgrammingInput phase D view p) (pairs p)
   pure (b && bs.all id && cs.all id)
 
 /-- The last two rounds, with the corrupt reveals and the honest echo data. -/
-def seedGenPostTraced (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (state : A.State)
+def setupPostTraced (phase : Phase) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (state : A.State)
     (parts : C.Party → Parts C) (committed : C.Party → Mail C E) :
     OracleComp (LocalSpec C) (A.State × (C.Party → Mail C E) × (C.Party → Option (SeedGenEchoData C)) ×
       (C.Party → Option (Keys C))) :=
@@ -96,16 +98,16 @@ def seedGenPostTraced (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (
     pure (state, fun _ _ => none, fun _ => none, fun _ => none)
   else do
     let (st, sent) ← A.round state fun c i => if c ∈ D.1 ∧ i ∉ D.1 then
-      (setupRevealSteps .seedGen D parts committed i).outbox c else none
-    let data ← setupRevealComputations .seedGen D parts committed sent
-    let r ← setupFinishLocal .seedGen D A st data
+      (setupRevealSteps phase D parts committed i).outbox c else none
+    let data ← setupRevealComputations phase D parts committed sent
+    let r ← setupFinishLocal phase D A st data
     pure (r.1, sent, data, r.2)
 
-theorem seedGenPostTraced_proj (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (state : A.State)
+theorem setupPostTraced_proj (phase : Phase) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (state : A.State)
     (parts : C.Party → Parts C) (committed : C.Party → Mail C E) :
-    (fun r => (r.1, r.2.2.2)) <$> seedGenPostTraced D A state parts committed =
-      setupPostCommitLocal .seedGen D A state parts committed := by
-  unfold seedGenPostTraced setupPostCommitLocal
+    (fun r => (r.1, r.2.2.2)) <$> setupPostTraced (phase := phase) D A state parts committed =
+      setupPostCommitLocal phase D A state parts committed := by
+  unfold setupPostTraced setupPostCommitLocal
   split_ifs
   · simp
   · simp only [map_bind, map_pure]
@@ -128,18 +130,18 @@ structure SeedGenKnownTrace (C : Committee) (E σ : Type) where
   outputs : C.Party → Option (Keys C)
 
 /-- The common game in normal form, with its transcript. -/
-def seedGenKnownGame (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux) :
+def setupKnownGame (phase : Phase) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux) :
     OracleComp (WorldSpec C) (SeedGenKnownTrace C E A.State) := do
   let (state, log) ← observe (A.start (corruptInputs D x) z)
-  let (parameter, seeds, pairs) ← free (liftComp (setupDealerSamples .seedGen (C := C)) (LocalSpec C))
+  let (parameter, seeds, pairs) ← free (liftComp (setupDealerSamples phase (C := C)) (LocalSpec C))
   let parts ← free (liftComp (OverPermutation.sequenceFin fun (_ : C.Party) => (sampleParts : ProbComp (Parts C)))
     (LocalSpec C))
-  let commitments ← free (setupInitialCommitments .seedGen D parts)
+  let commitments ← free (setupInitialCommitments phase D parts)
   let ((st, sent), calls) ← observe (A.round state fun c i => if c ∈ D.1 ∧ i ∉ D.1 then
     commitOutbox i (commitments i) c else none)
-  let high ← free (liftComp ($ᵗ HashOutput) (LocalSpec C))
-  let ok ← seedGenProgramOk D parts (log ++ calls) sent parameter seeds pairs high
-  let r ← free (seedGenPostTraced D A st parts (setupCommitInbox .seedGen D parts commitments sent))
+  let high ← free (liftComp (setupHighSample phase) (LocalSpec C))
+  let ok ← setupProgramOk (phase := phase) D parts (log ++ calls) sent parameter seeds pairs high
+  let r ← free (setupPostTraced (phase := phase) D A st parts (setupCommitInbox phase D parts commitments sent))
   pure ⟨parameter, seeds, pairs, parts, log ++ calls, sent, commitments, ok, r.1, r.2.1, r.2.2.1, r.2.2.2⟩
 
 /-- The output of the common game. -/
@@ -151,17 +153,17 @@ def SeedGenKnownTrace.result {σ : Type} (r : SeedGenKnownTrace C E σ) :
 def SeedGenProgramFail {σ : Type} (r : SeedGenKnownTrace C E σ) : Prop := r.ok = false
 
 /-- An honest operator that reaches the echo has a corrupt opening that the extraction misses. -/
-def SeedGenExtractFail (D : C.Coalition) {σ : Type} (r : SeedGenKnownTrace C E σ) : Prop :=
+def SetupExtractFail (phase : Phase) (D : C.Coalition) {σ : Type} (r : SeedGenKnownTrace C E σ) : Prop :=
   ∃ i, i ∉ D.1 ∧ (r.data i).isSome ∧ ∃ j, j ∈ D.1 ∧
-    extractReveal .seedGen r.log r.sent j i ≠
-      Msg.hashesOf (setupRevealInbox .seedGen D r.parts (setupCommitInbox .seedGen D r.parts r.commitments r.sent) r.revealSent i j)
+    extractReveal phase r.log r.sent j i ≠
+      Msg.hashesOf (setupRevealInbox phase D r.parts (setupCommitInbox phase D r.parts r.commitments r.sent) r.revealSent i j)
 
 /-- Two honest operators that reach the echo send equal shared-key hashes of distinct inputs. -/
-def SeedGenEchoCollision (D : C.Coalition) {σ : Type} (r : SeedGenKnownTrace C E σ) : Prop :=
+def SetupEchoCollision (phase : Phase) (D : C.Coalition) {σ : Type} (r : SeedGenKnownTrace C E σ) : Prop :=
   ∃ i j ki si kj sj, i ∉ D.1 ∧ j ∉ D.1 ∧ r.data i = some (ki, si) ∧ r.data j = some (kj, sj) ∧
     si.getD j.val 0 = sj.getD i.val 0 ∧
-    Query.sharedKeys (C := C) .seedGen ((sharedTerms i j).map ki.2.1) ≠
-      Query.sharedKeys .seedGen ((sharedTerms j i).map kj.2.1)
+    Query.sharedKeys (C := C) phase ((sharedTerms i j).map ki.2.1) ≠
+      Query.sharedKeys phase ((sharedTerms j i).map kj.2.1)
 
 end Trace
 
@@ -181,45 +183,45 @@ theorem seedGenKnown_simulateQ_bind_right {α β : Type} {a : OracleComp (WorldS
   rw [simulateQ_bind, simulateQ_bind]
   exact bind_congr h
 
-theorem simulateQ_world_startSteps_seedGen (D : C.Coalition) (parts : C.Party → Parts C) :
+theorem simulateQ_world_startSteps_setup (phase : Phase) (prims : Primitives) (D : C.Coalition) (parts : C.Party → Parts C) :
     simulateQ (worldAnswer prims)
-        (startSteps worldRoles D fun i => (setupWith .seedGen i (parts i) : PartyM C E RealSpec (Keys C))) =
-      simulateQ (worldAnswer prims) (setupInitialSteps .seedGen D parts <$> free (setupInitialCommitments .seedGen D parts)) := by
+        (startSteps worldRoles D fun i => (setupWith phase i (parts i) : PartyM C E RealSpec (Keys C))) =
+      simulateQ (worldAnswer prims) (setupInitialSteps phase D parts <$> free (setupInitialCommitments phase D parts)) := by
   rw [simulateQ_startSteps_real, seedGenMapRoles_world, ← simulateQ_startSteps_real, startSteps_setupWith,
     simulateQ_map, simulateQ_map, simulateQ_free]
 
-theorem simulateQ_world_post_seedGen {β : Type} (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+theorem simulateQ_world_post_setup (phase : Phase) (prims : Primitives) {β : Type} (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (state : A.State) (parts : C.Party → Parts C) (committed : C.Party → Mail C E)
     (f : A.State × (C.Party → Option (Keys C)) → β) :
     simulateQ (worldAnswer prims)
         ((executeRounds observedRoles D A noFunctionality (setupRounds - 1) state
-          (setupRevealSteps .seedGen D parts committed)).run >>= fun r => pure (f r.1)) =
+          (setupRevealSteps phase D parts committed)).run >>= fun r => pure (f r.1)) =
       simulateQ (worldAnswer prims)
-        (free (seedGenPostTraced D A state parts committed) >>= fun r => pure (f (r.1, r.2.2.2))) := by
+        (free (setupPostTraced (phase := phase) D A state parts committed) >>= fun r => pure (f (r.1, r.2.2.2))) := by
   have hl : ((executeRounds observedRoles D A noFunctionality (setupRounds - 1) state
-      (setupRevealSteps .seedGen D parts committed)).run >>= fun r => pure (f r.1)) =
+      (setupRevealSteps phase D parts committed)).run >>= fun r => pure (f r.1)) =
       seedGenEraseLog (executeRounds observedRoles D A noFunctionality (setupRounds - 1) state
-        (setupRevealSteps .seedGen D parts committed)) >>= fun r => pure (f r) := by
+        (setupRevealSteps phase D parts committed)) >>= fun r => pure (f r) := by
     simp [seedGenEraseLog]
   rw [hl, seedGenEraseLog_executeRounds, simulateQ_bind, simulateQ_world_executeRounds, simulateQ_bind,
     simulateQ_free]
   change simulateQ (localAnswer prims) (executeRounds localRoles D A noFunctionality 2 state
-    (setupRevealSteps .seedGen D parts committed)) >>= _ = _
-  rw [executeRounds_setupRevealSteps_two, ← seedGenPostTraced_proj, simulateQ_map, bind_map_left]
+    (setupRevealSteps phase D parts committed)) >>= _ = _
+  rw [executeRounds_setupRevealSteps_two, ← setupPostTraced_proj, simulateQ_map, bind_map_left]
 
-theorem simulateQ_seedGenCommonGame_known (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+theorem simulateQ_setupCommonGame_known (phase : Phase) (prims : Primitives) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) :
-    simulateQ (worldAnswer prims) (setupCommonGame .seedGen D A x z) =
-      simulateQ (worldAnswer prims) (SeedGenKnownTrace.result <$> seedGenKnownGame D A x z) := by
-  unfold setupCommonGame setupEmulation seedGenKnownGame setupDealerSamples setupSimulatorStart
+    simulateQ (worldAnswer prims) (setupCommonGame phase D A x z) =
+      simulateQ (worldAnswer prims) (SeedGenKnownTrace.result <$> setupKnownGame (phase := phase) D A x z) := by
+  unfold setupCommonGame setupEmulation setupKnownGame setupDealerSamples setupSimulatorStart
   simp only [map_bind, map_pure, bind_assoc, pure_bind,
-    liftComp_bind, liftComp_pure, free_bind, free_pure, setupHighSample]
+    liftComp_bind, liftComp_pure, free_bind, free_pure]
   refine seedGenKnown_simulateQ_bind_right prims fun a => ?_
   refine seedGenKnown_simulateQ_bind_right prims fun parameter => ?_
   refine seedGenKnown_simulateQ_bind_right prims fun seeds => ?_
   refine seedGenKnown_simulateQ_bind_right prims fun pairs => ?_
   refine seedGenKnown_simulateQ_bind_right prims fun parts => ?_
-  rw [seedGenKnown_simulateQ_bind_left prims (simulateQ_world_startSteps_seedGen prims D parts), bind_map_left]
+  rw [seedGenKnown_simulateQ_bind_left prims (simulateQ_world_startSteps_setup (phase := phase) prims D parts), bind_map_left]
   refine seedGenKnown_simulateQ_bind_right prims fun commitments => ?_
   rw [stepRound_setupInitialSteps_observed]
   simp only [observedRoles, WriterT.run_bind, WriterT.run_pure, map_pure, pure_bind, bind_assoc,
@@ -227,11 +229,11 @@ theorem simulateQ_seedGenCommonGame_known (D : C.Coalition) (A : Adversary C E U
   refine seedGenKnown_simulateQ_bind_right prims fun r => ?_
   refine seedGenKnown_simulateQ_bind_right prims fun high => ?_
   rw [setupProgramBlock_dealt]
-  simp only [seedGenProgramOk, bind_assoc, pure_bind]
+  simp only [setupProgramOk, bind_assoc, pure_bind]
   refine seedGenKnown_simulateQ_bind_right prims fun b => ?_
   refine seedGenKnown_simulateQ_bind_right prims fun bs => ?_
   refine seedGenKnown_simulateQ_bind_right prims fun cs => ?_
-  exact simulateQ_world_post_seedGen prims D A r.1.1 parts _ fun p => (p.1, p.2, dealtKeys parameter seeds pairs)
+  exact simulateQ_world_post_setup (phase := phase) prims D A r.1.1 parts _ fun p => (p.1, p.2, dealtKeys parameter seeds pairs)
 
 end Expand
 
@@ -298,26 +300,42 @@ theorem seedGenPrograms_mapM_support {ι : Type} (l : List ι) (q : ι → Query
 
 
 /-- A successful programming block leaves every programmed value in the cache. -/
-theorem seedGenProgramOk_support (D : C.Coalition) (parts : C.Party → Parts C) (log : CallLog C)
+theorem setupProgramOk_support (phase : Phase) (prims : Primitives) (D : C.Coalition) (parts : C.Party → Parts C) (log : CallLog C)
     (sent : C.Party → Mail C E) (parameter : PublicParameter) (seeds : C.Term → HashOutput)
     (pairs : C.Pair → HashOutput) (high : HashOutput) (s : HashCache C) (z : Bool × HashCache C)
     (hz : z ∈ support ((simulateQ (worldAnswer prims)
-      (seedGenProgramOk D parts log sent parameter seeds pairs high)).run s)) (hok : z.1 = true) :
-    let view := setupProgramView .seedGen D parts log sent
-    z.2 (seedGenParameterProgrammingInput D view) = some (seedGenFullParameter high parameter) ∧
-      (∀ T ∈ seedGenKnownCoordinates D, z.2 (setupTermProgrammingInput .seedGen D view T) = some (seeds T)) ∧
-      (∀ p ∈ seedGenCrossCoordinates D, z.2 (setupPairProgrammingInput .seedGen D view p) = some (pairs p)) := by
-  unfold seedGenProgramOk at hz
-  simp only [simulateQ_bind, simulateQ_pure, StateT.run_bind, support_bind, Set.mem_iUnion,
-    simulateQ_world_program, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
-  obtain ⟨p₁, hp₁, p₂, hp₂, p₃, hp₃, rfl⟩ := hz
-  simp only [Bool.and_eq_true] at hok
-  obtain ⟨⟨hb, hbs⟩, hcs⟩ := hok
-  have g₂ := grows_worldAnswer prims |>.simulateQ _ p₁.2 p₂ hp₂
-  have g₃ := grows_worldAnswer prims |>.simulateQ _ p₂.2 p₃ hp₃
-  refine ⟨g₃ (g₂ ((seedGenProgramAnswer_support _ s p₁ hp₁).2 hb)), fun T hT => g₃ ?_, fun p hp => ?_⟩
-  · exact seedGenPrograms_mapM_support prims _ _ _ p₁.2 p₂ hp₂ hbs T hT
-  · exact seedGenPrograms_mapM_support prims _ _ _ p₂.2 p₃ hp₃ hcs p hp
+      (setupProgramOk (phase := phase) D parts log sent parameter seeds pairs high)).run s)) (hok : z.1 = true) :
+    let view := setupProgramView phase D parts log sent
+    (∀ q ∈ setupParameterInputs phase D view, z.2 q = some (seedGenFullParameter high parameter)) ∧
+      (∀ T ∈ seedGenKnownCoordinates D, z.2 (setupTermProgrammingInput phase D view T) = some (seeds T)) ∧
+      (∀ p ∈ seedGenCrossCoordinates D, z.2 (setupPairProgrammingInput phase D view p) = some (pairs p)) := by
+  cases phase
+  · intro view
+    unfold setupProgramOk at hz
+    simp only [programParameter, simulateQ_bind, simulateQ_pure, StateT.run_bind, support_bind, Set.mem_iUnion,
+      simulateQ_world_program, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
+    obtain ⟨p₁, hp₁, p₂, hp₂, p₃, hp₃, rfl⟩ := hz
+    simp only [Bool.and_eq_true] at hok
+    obtain ⟨⟨hb, hbs⟩, hcs⟩ := hok
+    have g₂ := grows_worldAnswer prims |>.simulateQ _ p₁.2 p₂ hp₂
+    have g₃ := grows_worldAnswer prims |>.simulateQ _ p₂.2 p₃ hp₃
+    refine ⟨fun q hq => ?_, fun T hT => g₃ ?_, fun p hp => ?_⟩
+    · simp only [setupParameterInputs, ite_true, List.mem_singleton] at hq
+      rw [hq]
+      exact g₃ (g₂ ((seedGenProgramAnswer_support _ s p₁ hp₁).2 hb))
+    · exact seedGenPrograms_mapM_support prims _ _ _ p₁.2 p₂ hp₂ hbs T hT
+    · exact seedGenPrograms_mapM_support prims _ _ _ p₂.2 p₃ hp₃ hcs p hp
+  · intro view
+    unfold setupProgramOk at hz
+    simp only [programParameter, pure_bind, simulateQ_bind, simulateQ_pure, StateT.run_bind, support_bind,
+      Set.mem_iUnion, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
+    obtain ⟨p₂, hp₂, p₃, hp₃, rfl⟩ := hz
+    simp only [Bool.true_and, Bool.and_eq_true] at hok
+    obtain ⟨hbs, hcs⟩ := hok
+    have g₃ := grows_worldAnswer prims |>.simulateQ _ p₂.2 p₃ hp₃
+    refine ⟨fun q hq => by simp [setupParameterInputs] at hq, fun T hT => g₃ ?_, fun p hp => ?_⟩
+    · exact seedGenPrograms_mapM_support prims _ _ _ s p₂ hp₂ hbs T hT
+    · exact seedGenPrograms_mapM_support prims _ _ _ p₂.2 p₃ hp₃ hcs p hp
 
 
 /-- Every observed answer of a random-oracle input stays in the cache. -/
@@ -390,53 +408,77 @@ theorem seedGenPrograms_fresh {ι : Type} (l : List ι) (q : ι → Query C) (v 
     exact (hrest x hx.2).trans (QueryCache.cacheQuery_of_ne s _ hx.1)
 
 /-- Programming fresh distinct inputs succeeds. -/
-theorem seedGenProgramOk_fresh (D : C.Coalition) (parts : C.Party → Parts C) (log : CallLog C)
+theorem setupProgramOk_fresh (phase : Phase) (prims : Primitives) (D : C.Coalition) (parts : C.Party → Parts C) (log : CallLog C)
     (sent : C.Party → Mail C E) (parameter : PublicParameter) (seeds : C.Term → HashOutput)
     (pairs : C.Pair → HashOutput) (high : HashOutput) (s : HashCache C) (z : Bool × HashCache C)
     (hz : z ∈ support ((simulateQ (worldAnswer prims)
-      (seedGenProgramOk D parts log sent parameter seeds pairs high)).run s))
-    (hfresh : ∀ x ∈ setupProgrammingInputs .seedGen D (setupProgramView .seedGen D parts log sent), s x = none)
-    (hnodup : (setupProgrammingInputs .seedGen D (setupProgramView .seedGen D parts log sent)).Nodup) : z.1 = true := by
-  set view := setupProgramView .seedGen D parts log sent
-  have hfixT : ∀ T, ¬ IsFixed (setupTermProgrammingInput .seedGen D view T) := fun T => by
-    simp [IsFixed, setupTermProgrammingInput]
-  have hfixP : ∀ p, ¬ IsFixed (setupPairProgrammingInput .seedGen D view p) := fun p => by
-    simp [IsFixed, setupPairProgrammingInput]
-  unfold seedGenProgramOk at hz
-  simp only [simulateQ_bind, simulateQ_pure, StateT.run_bind, support_bind, Set.mem_iUnion,
-    simulateQ_world_program, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
-  obtain ⟨p₁, hp₁, p₂, hp₂, p₃, hp₃, rfl⟩ := hz
-  simp only [setupProgrammingInputs, setupParameterInputs, ite_true, List.singleton_append, List.nodup_append,
-    List.nodup_cons] at hnodup
-  obtain ⟨⟨hPT, hT⟩, hC, hdisj⟩ := hnodup
-  change seedGenParameterProgrammingInput D view ∉ _ at hPT
-  have hPC : seedGenParameterProgrammingInput D view ∉ (seedGenCrossCoordinates D).map
-      (setupPairProgrammingInput .seedGen D view) := fun hm => hdisj _ List.mem_cons_self _ hm rfl
-  have hTC : ∀ a ∈ (seedGenKnownCoordinates D).map (setupTermProgrammingInput .seedGen D view),
-      ∀ b ∈ (seedGenCrossCoordinates D).map (setupPairProgrammingInput .seedGen D view), a ≠ b :=
-    fun a ha b hb => hdisj a (List.mem_cons_of_mem _ ha) b hb
-  have hmemP : seedGenParameterProgrammingInput D view ∈ setupProgrammingInputs .seedGen D view :=
-    List.mem_append_left _ List.mem_cons_self
-  rw [programAnswer_run_fresh (by simp [IsFixed, seedGenParameterProgrammingInput]) s (hfresh _ hmemP)] at hp₁
-  simp only [support_pure, Set.mem_singleton_iff] at hp₁
-  subst hp₁
-  have h₂ := seedGenPrograms_fresh prims (seedGenKnownCoordinates D) (setupTermProgrammingInput .seedGen D view) seeds hfixT
-    _ p₂ hp₂ (fun T hT' => by
-      have hne : setupTermProgrammingInput .seedGen D view T ≠ seedGenParameterProgrammingInput D view :=
-        fun he => hPT (he ▸ List.mem_map_of_mem hT')
-      exact (QueryCache.cacheQuery_of_ne s (seedGenFullParameter high parameter) hne).trans
-        (hfresh _ (List.mem_append_left _ (List.mem_cons_of_mem _ (List.mem_map_of_mem hT'))))) hT
-  have h₃ := seedGenPrograms_fresh prims (seedGenCrossCoordinates D) (setupPairProgrammingInput .seedGen D view) pairs hfixP
-    _ p₃ hp₃ (fun p hp' => by
-      have hm : setupPairProgrammingInput .seedGen D view p ∈ (seedGenCrossCoordinates D).map
-          (setupPairProgrammingInput .seedGen D view) := List.mem_map_of_mem hp'
-      have hne : setupPairProgrammingInput .seedGen D view p ≠ seedGenParameterProgrammingInput D view :=
-        fun he => hPC (he ▸ hm)
-      exact (h₂.2 _ (fun hmT => hTC _ hmT _ hm rfl)).trans
-        ((QueryCache.cacheQuery_of_ne s (seedGenFullParameter high parameter) hne).trans
-        (hfresh _ (List.mem_append_right _ hm)))) hC
-  simp only [Bool.and_eq_true]
-  exact ⟨⟨trivial, h₂.1⟩, h₃.1⟩
+      (setupProgramOk (phase := phase) D parts log sent parameter seeds pairs high)).run s))
+    (hfresh : ∀ x ∈ setupProgrammingInputs phase D (setupProgramView phase D parts log sent), s x = none)
+    (hnodup : (setupProgrammingInputs phase D (setupProgramView phase D parts log sent)).Nodup) : z.1 = true := by
+  cases phase
+  · set view := setupProgramView .seedGen D parts log sent
+    have hfixT : ∀ T, ¬ IsFixed (setupTermProgrammingInput .seedGen D view T) := fun T => by
+      simp [IsFixed, setupTermProgrammingInput]
+    have hfixP : ∀ p, ¬ IsFixed (setupPairProgrammingInput .seedGen D view p) := fun p => by
+      simp [IsFixed, setupPairProgrammingInput]
+    unfold setupProgramOk at hz
+    simp only [programParameter, simulateQ_bind, simulateQ_pure, StateT.run_bind, support_bind, Set.mem_iUnion,
+      simulateQ_world_program, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
+    obtain ⟨p₁, hp₁, p₂, hp₂, p₃, hp₃, rfl⟩ := hz
+    simp only [setupProgrammingInputs, setupParameterInputs, ite_true, List.singleton_append, List.nodup_append,
+      List.nodup_cons] at hnodup
+    obtain ⟨⟨hPT, hT⟩, hC, hdisj⟩ := hnodup
+    change seedGenParameterProgrammingInput D view ∉ _ at hPT
+    have hPC : seedGenParameterProgrammingInput D view ∉ (seedGenCrossCoordinates D).map
+        (setupPairProgrammingInput .seedGen D view) := fun hm => hdisj _ List.mem_cons_self _ hm rfl
+    have hTC : ∀ a ∈ (seedGenKnownCoordinates D).map (setupTermProgrammingInput .seedGen D view),
+        ∀ b ∈ (seedGenCrossCoordinates D).map (setupPairProgrammingInput .seedGen D view), a ≠ b :=
+      fun a ha b hb => hdisj a (List.mem_cons_of_mem _ ha) b hb
+    have hmemP : seedGenParameterProgrammingInput D view ∈ setupProgrammingInputs .seedGen D view :=
+      List.mem_append_left _ List.mem_cons_self
+    change p₁ ∈ support ((programAnswer (seedGenParameterProgrammingInput D view, _)).run s) at hp₁
+    rw [programAnswer_run_fresh (by simp [IsFixed, seedGenParameterProgrammingInput]) s (hfresh _ hmemP)] at hp₁
+    simp only [support_pure, Set.mem_singleton_iff] at hp₁
+    subst hp₁
+    have h₂ := seedGenPrograms_fresh prims (seedGenKnownCoordinates D) (setupTermProgrammingInput .seedGen D view) seeds hfixT
+      _ p₂ hp₂ (fun T hT' => by
+        have hne : setupTermProgrammingInput .seedGen D view T ≠ seedGenParameterProgrammingInput D view :=
+          fun he => hPT (he ▸ List.mem_map_of_mem hT')
+        exact (QueryCache.cacheQuery_of_ne s (seedGenFullParameter high parameter) hne).trans
+          (hfresh _ (List.mem_append_left _ (List.mem_cons_of_mem _ (List.mem_map_of_mem hT'))))) hT
+    have h₃ := seedGenPrograms_fresh prims (seedGenCrossCoordinates D) (setupPairProgrammingInput .seedGen D view) pairs hfixP
+      _ p₃ hp₃ (fun p hp' => by
+        have hm : setupPairProgrammingInput .seedGen D view p ∈ (seedGenCrossCoordinates D).map
+            (setupPairProgrammingInput .seedGen D view) := List.mem_map_of_mem hp'
+        have hne : setupPairProgrammingInput .seedGen D view p ≠ seedGenParameterProgrammingInput D view :=
+          fun he => hPC (he ▸ hm)
+        exact (h₂.2 _ (fun hmT => hTC _ hmT _ hm rfl)).trans
+          ((QueryCache.cacheQuery_of_ne s (seedGenFullParameter high parameter) hne).trans
+          (hfresh _ (List.mem_append_right _ hm)))) hC
+    simp only [Bool.and_eq_true]
+    exact ⟨⟨trivial, h₂.1⟩, h₃.1⟩
+  · have hfixT : ∀ T, ¬ IsFixed (setupTermProgrammingInput .prss D (setupProgramView .prss D parts log sent) T) :=
+      fun T => by simp [IsFixed, setupTermProgrammingInput]
+    have hfixP : ∀ p, ¬ IsFixed (setupPairProgrammingInput .prss D (setupProgramView .prss D parts log sent) p) :=
+      fun p => by simp [IsFixed, setupPairProgrammingInput]
+    unfold setupProgramOk at hz
+    simp only [programParameter, pure_bind, simulateQ_bind, simulateQ_pure, StateT.run_bind, support_bind,
+      Set.mem_iUnion, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
+    obtain ⟨p₂, hp₂, p₃, hp₃, rfl⟩ := hz
+    have hnil : setupParameterInputs .prss D (setupProgramView .prss D parts log sent) = [] := by
+      simp [setupParameterInputs]
+    simp only [setupProgrammingInputs, hnil, List.nil_append] at hnodup hfresh
+    obtain ⟨hT, hC, hdisj⟩ := List.nodup_append.mp hnodup
+    have h₂ := seedGenPrograms_fresh prims (seedGenKnownCoordinates D) _ seeds hfixT
+      _ p₂ hp₂ (fun T hT' => hfresh _ (List.mem_append_left _ (List.mem_map_of_mem hT'))) hT
+    have h₃ := seedGenPrograms_fresh prims (seedGenCrossCoordinates D) _ pairs hfixP
+      _ p₃ hp₃ (fun p hp' => by
+        have hm : setupPairProgrammingInput .prss D (setupProgramView .prss D parts log sent) p ∈
+            (seedGenCrossCoordinates D).map (setupPairProgrammingInput .prss D (setupProgramView .prss D parts log sent)) :=
+          List.mem_map_of_mem hp'
+        exact (h₂.2 _ (fun hmT => hdisj _ hmT _ hm rfl)).trans (hfresh _ (List.mem_append_right _ hm))) hC
+    simp only [Bool.true_and, Bool.and_eq_true]
+    exact ⟨h₂.1, h₃.1⟩
 
 end Support
 
@@ -445,13 +487,13 @@ section Deterministic
 variable {C : Committee} {E : Type} (prims : Primitives)
 
 /-- The fixed-oracle run of the last two rounds gives the reference echo data and outputs. -/
-theorem seedGenPostTraced_fixed_support (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+theorem setupPostTraced_fixed_support (phase : Phase) (prims : Primitives) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (state : A.State) (parts : C.Party → Parts C) (committed : C.Party → Mail C E) (h : Query C → HashOutput)
     (z : A.State × (C.Party → Mail C E) × (C.Party → Option (SeedGenEchoData C)) × (C.Party → Option (Keys C)))
-    (hz : z ∈ support (simulateQ (fixedLocal prims h) (seedGenPostTraced D A state parts committed))) :
-    z.2.2.2 = (fun _ => none) ∨ (z.2.2.1 = setupRevealAllFixed .seedGen prims D h parts committed z.2.1 ∧
-      ∃ echoSent : C.Party → Mail C E, z.2.2.2 = setupEchoDataOutput .seedGen D z.2.2.1 echoSent) := by
-  unfold seedGenPostTraced at hz
+    (hz : z ∈ support (simulateQ (fixedLocal prims h) (setupPostTraced (phase := phase) D A state parts committed))) :
+    z.2.2.2 = (fun _ => none) ∨ (z.2.2.1 = setupRevealAllFixed phase prims D h parts committed z.2.1 ∧
+      ∃ echoSent : C.Party → Mail C E, z.2.2.2 = setupEchoDataOutput phase D z.2.2.1 echoSent) := by
+  unfold setupPostTraced at hz
   split_ifs at hz
   · simp only [simulateQ_pure, support_pure, Set.mem_singleton_iff] at hz
     subst hz
@@ -470,12 +512,12 @@ theorem seedGenPostTraced_fixed_support (D : C.Coalition) (A : Adversary C E Uni
       exact Or.inr ⟨rfl, e.2, rfl⟩
 
 /-- The fixed-oracle run of the last two rounds gives no echo data or the reference echo data. -/
-theorem seedGenPostTraced_fixed_data (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+theorem setupPostTraced_fixed_data (phase : Phase) (prims : Primitives) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (state : A.State) (parts : C.Party → Parts C) (committed : C.Party → Mail C E) (h : Query C → HashOutput)
     (z : A.State × (C.Party → Mail C E) × (C.Party → Option (SeedGenEchoData C)) × (C.Party → Option (Keys C)))
-    (hz : z ∈ support (simulateQ (fixedLocal prims h) (seedGenPostTraced D A state parts committed))) :
-    (∀ i, z.2.2.1 i = none) ∨ z.2.2.1 = setupRevealAllFixed .seedGen prims D h parts committed z.2.1 := by
-  unfold seedGenPostTraced at hz
+    (hz : z ∈ support (simulateQ (fixedLocal prims h) (setupPostTraced (phase := phase) D A state parts committed))) :
+    (∀ i, z.2.2.1 i = none) ∨ z.2.2.1 = setupRevealAllFixed phase prims D h parts committed z.2.1 := by
+  unfold setupPostTraced at hz
   split_ifs at hz
   · simp only [simulateQ_pure, support_pure, Set.mem_singleton_iff] at hz
     subst hz
@@ -487,18 +529,19 @@ theorem seedGenPostTraced_fixed_data (D : C.Coalition) (A : Adversary C E Unit P
 
 /-- Without a failed programming, a missed extraction or an echo collision, the emulated outputs
 are the dealt keys. -/
-theorem seedGenKnown_projection_eq (D : C.Coalition) {σ : Type} (h : Query C → HashOutput)
+theorem setupKnown_projection_eq (phase : Phase) (prims : Primitives) (D : C.Coalition) {σ : Type} (h : Query C → HashOutput)
     (r : SeedGenKnownTrace C E σ) (high : HashOutput)
-    (hparameter : h (seedGenParameterProgrammingInput D (setupProgramView .seedGen D r.parts r.log r.sent)) =
-      seedGenFullParameter high r.parameter)
+    (hparameter : ∀ q ∈ setupParameterInputs phase D (setupProgramView phase D r.parts r.log r.sent),
+      h q = seedGenFullParameter high r.parameter)
+    (hzero : phase = .prss → r.parameter = 0)
     (hterm : ∀ T ∈ seedGenKnownCoordinates D,
-      h (setupTermProgrammingInput .seedGen D (setupProgramView .seedGen D r.parts r.log r.sent) T) = r.seeds T)
+      h (setupTermProgrammingInput phase D (setupProgramView phase D r.parts r.log r.sent) T) = r.seeds T)
     (hpair : ∀ p ∈ seedGenCrossCoordinates D,
-      h (setupPairProgrammingInput .seedGen D (setupProgramView .seedGen D r.parts r.log r.sent) p) = r.pairs p)
+      h (setupPairProgrammingInput phase D (setupProgramView phase D r.parts r.log r.sent) p) = r.pairs p)
     (hpost : r.outputs = (fun _ => none) ∨
-      (r.data = setupRevealAllFixed .seedGen prims D h r.parts (setupCommitInbox .seedGen D r.parts r.commitments r.sent)
-        r.revealSent ∧ ∃ echoSent : C.Party → Mail C E, r.outputs = setupEchoDataOutput .seedGen D r.data echoSent))
-    (hextract : ¬ SeedGenExtractFail D r) (hcollision : ¬ SeedGenEchoCollision D r) :
+      (r.data = setupRevealAllFixed phase prims D h r.parts (setupCommitInbox phase D r.parts r.commitments r.sent)
+        r.revealSent ∧ ∃ echoSent : C.Party → Mail C E, r.outputs = setupEchoDataOutput phase D r.data echoSent))
+    (hextract : ¬ SetupExtractFail (phase := phase) D r) (hcollision : ¬ SetupEchoCollision (phase := phase) D r) :
     seedGenMixedProjection D r.result = seedGenIdealProjection D r.result := by
   unfold seedGenMixedProjection seedGenIdealProjection SeedGenKnownTrace.result
   simp only [Prod.mk.injEq, true_and]
@@ -508,31 +551,27 @@ theorem seedGenKnown_projection_eq (D : C.Coalition) {σ : Type} (h : Query C �
   · cases hi : r.outputs i with
     | none => simp
     | some key =>
-      set committed := setupCommitInbox .seedGen D r.parts r.commitments r.sent
-      have ho' : setupEchoDataOutput .seedGen D (setupRevealAllFixed .seedGen prims D h r.parts committed r.revealSent)
+      set committed := setupCommitInbox phase D r.parts r.commitments r.sent
+      have ho' : setupEchoDataOutput phase D (setupRevealAllFixed phase prims D h r.parts committed r.revealSent)
           echoSent i = some key := by rw [← hdata, ← ho]; exact hi
-      have hhonest := (setupEchoDataOutput_some .seedGen D _ echoSent i key ho').1
-      have hall := setupEchoDataOutput_all_some .seedGen D _ echoSent i key ho'
-      have hkey := setupRevealEcho_output_eq_hybrid .seedGen prims D h r.parts committed r.revealSent echoSent r.sent
+      have hhonest := (setupEchoDataOutput_some phase D _ echoSent i key ho').1
+      have hall := setupEchoDataOutput_all_some phase D _ echoSent i key ho'
+      have hkey := setupRevealEcho_output_eq_hybrid phase prims D h r.parts committed r.revealSent echoSent r.sent
         r.log r.parameter r.seeds r.pairs high
         (fun k j hk hj => by
           by_contra hne
           exact hextract ⟨k, hk, by rw [hdata]; exact hall k hk, j, hj, hne⟩)
-        (fun q hq => by
-          simp only [setupParameterInputs, ite_true, List.mem_singleton] at hq
-          rw [hq]
-          exact hparameter)
-        (fun hphase => nomatch hphase)
+        hparameter hzero
         (fun T hT => hterm T (List.mem_filter.mpr ⟨Finset.mem_toList.mpr (Finset.mem_univ T), by simpa using hT⟩))
         hpair i key ho'
         (fun j hj hcol => by
           by_contra hne
-          obtain ⟨hsi, _⟩ := setupRevealAllFixed_some .seedGen prims D h r.parts committed r.revealSent i (hall i hhonest)
-          obtain ⟨hsj, _⟩ := setupRevealAllFixed_some .seedGen prims D h r.parts committed r.revealSent j (hall j hj)
+          obtain ⟨hsi, _⟩ := setupRevealAllFixed_some phase prims D h r.parts committed r.revealSent i (hall i hhonest)
+          obtain ⟨hsj, _⟩ := setupRevealAllFixed_some phase prims D h r.parts committed r.revealSent j (hall j hj)
           exact hcollision ⟨i, j, _, _, _, _, hhonest, hj, by rw [hdata]; exact hsi, by rw [hdata]; exact hsj,
             by rw [D_sharedQueries_at, D_sharedQueries_at]; exact hcol, hne⟩)
       rw [Option.map_some, if_pos ⟨hhonest, rfl⟩, hkey,
-        seedGenHiddenOverlay_hybrid D h r.parts r.parameter r.seeds r.pairs i hhonest]
+        setupHiddenOverlay_hybrid (phase := phase) D h r.parts r.parameter r.seeds r.pairs i hhonest]
 
 end Deterministic
 
@@ -540,17 +579,40 @@ section Reduction
 
 variable {C : Committee} {E : Type} (prims : Primitives)
 
+/-- The dealer of the PRSS setup has the parameter `0`. The support of the known game gives the
+hypothesis `phase = .prss → parameter = 0` from this normal form. -/
+theorem setupDealerSamples_prss :
+    setupDealerSamples (C := C) .prss = (do
+      let seeds ← $ᵗ (C.Term → HashOutput)
+      let pairs ← $ᵗ (C.Pair → HashOutput)
+      pure ((0 : PublicParameter), seeds, pairs)) := by
+  simp only [setupDealerSamples, setupParameterSample, pure_bind]
+
+/-- The dealer of the PRSS setup has the parameter `0`. -/
+theorem setupDealerSamples_run_zero (phase : Phase) (prims : Primitives) (s : HashCache C)
+    (p : (PublicParameter × (C.Term → HashOutput) × (C.Pair → HashOutput)) × HashCache C)
+    (hp : p ∈ support ((simulateQ (worldAnswer prims)
+      (free (liftComp (setupDealerSamples (C := C) phase) (LocalSpec C)))).run s)) :
+    phase = .prss → p.1.1 = 0 := by
+  intro hphase
+  subst hphase
+  rw [simulateQ_world_sample] at hp
+  simp only [setupDealerSamples, setupParameterSample, pure_bind, StateT.run_lift, support_bind, support_pure,
+    Set.mem_iUnion, Set.mem_singleton_iff] at hp
+  obtain ⟨d, ⟨seeds, -, pairs, -, hd⟩, hpd⟩ := hp
+  rw [hpd, hd]
+
 /-- A mismatch of the common game is a failed programming, a missed extraction or an echo collision. -/
-theorem seedGenKnown_bad_of_mismatch (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+theorem setupKnown_bad_of_mismatch (phase : Phase) (prims : Primitives) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (r : SeedGenKnownTrace C E A.State)
-    (hr : r ∈ support ((simulateQ (worldAnswer prims) (seedGenKnownGame D A x z)).run' ∅))
+    (hr : r ∈ support ((simulateQ (worldAnswer prims) (setupKnownGame (phase := phase) D A x z)).run' ∅))
     (hm : seedGenMixedProjection D r.result ≠ seedGenIdealProjection D r.result) :
-    SeedGenProgramFail r ∨ SeedGenExtractFail D r ∨ SeedGenEchoCollision D r := by
+    SeedGenProgramFail r ∨ SetupExtractFail (phase := phase) D r ∨ SetupEchoCollision (phase := phase) D r := by
   by_contra hbad
   simp only [not_or, SeedGenProgramFail, Bool.not_eq_false] at hbad
   obtain ⟨hok, hextract, hcollision⟩ := hbad
   apply hm
-  unfold seedGenKnownGame at hr
+  unfold setupKnownGame at hr
   simp only [StateT.run'_eq, support_map, Set.mem_image, simulateQ_bind, StateT.run_bind, support_bind,
     Set.mem_iUnion] at hr
   obtain ⟨⟨r', s₈⟩, ⟨p₀, hp₀, p₁, hp₁, p₂, hp₂, p₃, hp₃, p₄, hp₄, p₅, hp₅, p₆, hp₆, p₇, hp₇, hfin⟩, rfl⟩ := hr
@@ -567,12 +629,13 @@ theorem seedGenKnown_bad_of_mismatch (D : C.Coalition) (A : Adversary C E Unit P
   obtain ⟨g₇, n₇, hfix⟩ := localRun_support _ p₆.2 p₇ hp₇
   have hagree := agrees_hashOf prims (n₇ n₆)
   have hsupp := hfix (hashOf prims p₇.2) (good_hashOf prims _) hagree
-  obtain ⟨hP, hT, hp⟩ := seedGenProgramOk_support prims _ _ _ _ _ _ _ _ p₅.2 p₆ hp₆ hok
+  obtain ⟨hP, hT, hp⟩ := setupProgramOk_support (phase := phase) prims _ _ _ _ _ _ _ _ p₅.2 p₆ hp₆ hok
   have hread (q : Query C) (v : HashOutput) (hq : p₆.2 q = some v) : hashOf prims p₇.2 q = v :=
     hagree q v (g₇ hq)
-  exact seedGenKnown_projection_eq prims D (hashOf prims p₇.2) _ p₅.1 (hread _ _ hP)
+  exact setupKnown_projection_eq (phase := phase) prims D (hashOf prims p₇.2) _ p₅.1 (fun q hq => hread _ _ (hP q hq))
+    (setupDealerSamples_run_zero phase prims _ p₁ hp₁)
     (fun T hm => hread _ _ (hT T hm)) (fun q hm => hread _ _ (hp q hm))
-    (seedGenPostTraced_fixed_support prims D A _ _ _ _ _ hsupp) hextract hcollision
+    (setupPostTraced_fixed_support (phase := phase) prims D A _ _ _ _ _ hsupp) hextract hcollision
 
 end Reduction
 
@@ -582,24 +645,24 @@ variable {C : Committee} {E : Type} (prims : Primitives)
 
 /-- The cells whose answers the extraction and the echo compare. These are the shared-key hashes and
 the commitments of a corrupt sender. -/
-def SeedGenComparedCell (D : C.Coalition) : Query C → Prop
-  | .sharedKeys .seedGen _ => True
-  | .commit .seedGen j _ _ => j ∈ D.1
+def SetupComparedCell (phase : Phase) (D : C.Coalition) : Query C → Prop
+  | .sharedKeys phase' _ => phase' = phase
+  | .commit phase' j _ _ => phase' = phase ∧ j ∈ D.1
   | _ => False
 
 /-- Two compared cells of a cache have equal answers. -/
-def SeedGenComparedCollision (D : C.Coalition) (s : HashCache C) : Prop :=
-  ∃ q₁ q₂ u, q₁ ≠ q₂ ∧ SeedGenComparedCell D q₁ ∧ SeedGenComparedCell D q₂ ∧ s q₁ = some u ∧ s q₂ = some u
+def SetupComparedCollision (phase : Phase) (D : C.Coalition) (s : HashCache C) : Prop :=
+  ∃ q₁ q₂ u, q₁ ≠ q₂ ∧ SetupComparedCell (phase := phase) D q₁ ∧ SetupComparedCell (phase := phase) D q₂ ∧ s q₁ = some u ∧ s q₂ = some u
 
 /-- An opening that the adversary never queried before the commit answers its commitment. -/
-def SeedGenFreshOpening (D : C.Coalition) {σ : Type} (r : SeedGenKnownTrace C E σ) (s : HashCache C) : Prop :=
-  ∃ j i reveal c, j ∈ D.1 ∧ i ∉ D.1 ∧ s (.commit .seedGen j i reveal) = some c ∧
-    Msg.hashesOf (r.sent j i) = [c] ∧ ∀ y, (Query.commit (C := C) .seedGen j i reveal, y) ∉ r.log
+def SetupFreshOpening (phase : Phase) (D : C.Coalition) {σ : Type} (r : SeedGenKnownTrace C E σ) (s : HashCache C) : Prop :=
+  ∃ j i reveal c, j ∈ D.1 ∧ i ∉ D.1 ∧ s (.commit phase j i reveal) = some c ∧
+    Msg.hashesOf (r.sent j i) = [c] ∧ ∀ y, (Query.commit (C := C) phase j i reveal, y) ∉ r.log
 
-theorem seedGenRevealAllFixed_open (D : C.Coalition) (h : Query C → HashOutput) (parts : C.Party → Parts C)
+theorem setupRevealAllFixed_open (phase : Phase) (prims : Primitives) (D : C.Coalition) (h : Query C → HashOutput) (parts : C.Party → Parts C)
     (committed sent : C.Party → Mail C E) (i j : C.Party) (hji : j ≠ i)
-    (hs : (setupRevealAllFixed .seedGen prims D h parts committed sent i).isSome) :
-    [h (.commit .seedGen j i (Msg.hashesOf (setupRevealInbox .seedGen D parts committed sent i j)))] =
+    (hs : (setupRevealAllFixed phase prims D h parts committed sent i).isSome) :
+    [h (.commit phase j i (Msg.hashesOf (setupRevealInbox phase D parts committed sent i j)))] =
       Msg.hashesOf (committed i j) := by
   unfold setupRevealAllFixed setupRevealDataFixed at hs
   split_ifs at hs with h₁ h₂ h₃
@@ -639,88 +702,88 @@ theorem seedGen_cached_of_agrees (s : HashCache C) (hs : NoMpc s) (x : Query C) 
 
 /-- A missed extraction or an echo collision of a run is a collision of two compared cells or a
 fresh opening, in the final cache. -/
-theorem seedGenKnown_cacheEvent_of_bad (D : C.Coalition) {σ : Type} (r : SeedGenKnownTrace C E σ)
+theorem setupKnown_cacheEvent_of_bad (phase : Phase) (prims : Primitives) (D : C.Coalition) {σ : Type} (r : SeedGenKnownTrace C E σ)
     (s : HashCache C) (hs : NoMpc s)
     (hdata : ∀ h, Good prims h → Agrees h s → (∀ i, r.data i = none) ∨
-      r.data = setupRevealAllFixed .seedGen prims D h r.parts (setupCommitInbox .seedGen D r.parts r.commitments r.sent)
+      r.data = setupRevealAllFixed phase prims D h r.parts (setupCommitInbox phase D r.parts r.commitments r.sent)
         r.revealSent)
     (hlog : ∀ q y, (q, y) ∈ r.log → ¬ IsFixed q → s q = some y)
-    (hbad : SeedGenExtractFail D r ∨ SeedGenEchoCollision D r) :
-    SeedGenComparedCollision D s ∨ SeedGenFreshOpening D r s := by
-  set committed := setupCommitInbox .seedGen D r.parts r.commitments r.sent
+    (hbad : SetupExtractFail (phase := phase) D r ∨ SetupEchoCollision (phase := phase) D r) :
+    SetupComparedCollision (phase := phase) D s ∨ SetupFreshOpening (phase := phase) D r s := by
+  set committed := setupCommitInbox phase D r.parts r.commitments r.sent
   have hfixed (i : C.Party) (hi : r.data i ≠ none) (h : Query C → HashOutput) (hg : Good prims h)
-      (ha : Agrees h s) : r.data = setupRevealAllFixed .seedGen prims D h r.parts committed r.revealSent := by
+      (ha : Agrees h s) : r.data = setupRevealAllFixed phase prims D h r.parts committed r.revealSent := by
     rcases hdata h hg ha with hn | he
     · exact absurd (hn i) hi
     · exact he
   rcases hbad with ⟨i, hi, hsome, j, hj, hne⟩ | ⟨i, j, ki, si, kj, sj, hi, hj, hdi, hdj, hcol, hne⟩
   · have hji : j ≠ i := fun he => hi (he ▸ hj)
     have hdi : r.data i ≠ none := by simpa [Option.isSome_iff_ne_none] using hsome
-    set rv := Msg.hashesOf (setupRevealInbox .seedGen D r.parts committed r.revealSent i j)
+    set rv := Msg.hashesOf (setupRevealInbox phase D r.parts committed r.revealSent i j)
     have hopen (h : Query C → HashOutput) (hg : Good prims h) (ha : Agrees h s) :
-        [h (.commit .seedGen j i rv)] = Msg.hashesOf (committed i j) := by
-      apply seedGenRevealAllFixed_open prims D h r.parts committed r.revealSent i j hji
+        [h (.commit phase j i rv)] = Msg.hashesOf (committed i j) := by
+      apply setupRevealAllFixed_open (phase := phase) prims D h r.parts committed r.revealSent i j hji
       rw [← hfixed i hdi h hg ha]
       exact hsome
-    have hcached := seedGen_cached_of_agrees prims s hs (.commit .seedGen j i rv) (by simp [IsFixed])
-      (fun h => [h (.commit .seedGen j i rv)] = Msg.hashesOf (committed i j)) hopen
+    have hcached := seedGen_cached_of_agrees prims s hs (.commit phase j i rv) (by simp [IsFixed])
+      (fun h => [h (.commit phase j i rv)] = Msg.hashesOf (committed i j)) hopen
       (fun h h' e e' => by simpa using e.trans e'.symm)
-    set c := hashOf prims s (.commit .seedGen j i rv)
+    set c := hashOf prims s (.commit phase j i rv)
     have hsent : Msg.hashesOf (r.sent j i) = [c] := by
       have := hopen _ (good_hashOf prims s) (agrees_hashOf prims hs)
       simp only [committed, setupCommitInbox, roundInbox, if_pos hj] at this
       exact this.symm
-    by_cases hl : ∃ y, (Query.commit (C := C) .seedGen j i rv, y) ∈ r.log
+    by_cases hl : ∃ y, (Query.commit (C := C) phase j i rv, y) ∈ r.log
     · obtain ⟨y, hy⟩ := hl
       have hyc : y = c := Option.some.inj ((hlog _ y hy (by simp [IsFixed])).symm.trans hcached)
       subst hyc
       by_contra hno
       apply hne
-      apply extractReveal_eq_of_unique .seedGen r.log r.sent j i rv _ hy hsent.symm
+      apply extractReveal_eq_of_unique phase r.log r.sent j i rv _ hy hsent.symm
       intro reveal' value' hmem hval
       by_contra hrv
       apply hno
       left
-      have hv : value' = hashOf prims s (.commit .seedGen j i rv) := by
+      have hv : value' = hashOf prims s (.commit phase j i rv) := by
         have := hval.trans hsent
         simpa using this
       subst hv
-      exact ⟨Query.commit .seedGen j i reveal', Query.commit .seedGen j i rv, _,
-        fun he => hrv (Query.commit.inj he).2.2.2, (hj : SeedGenComparedCell D (.commit .seedGen j i reveal')),
-        (hj : SeedGenComparedCell D (.commit .seedGen j i rv)), hlog _ _ hmem (by simp [IsFixed]), hcached⟩
+      exact ⟨Query.commit phase j i reveal', Query.commit phase j i rv, _,
+        fun he => hrv (Query.commit.inj he).2.2.2, (⟨rfl, hj⟩ : SetupComparedCell (phase := phase) D (.commit phase j i reveal')),
+        (⟨rfl, hj⟩ : SetupComparedCell (phase := phase) D (.commit phase j i rv)), hlog _ _ hmem (by simp [IsFixed]), hcached⟩
     · push Not at hl
       exact Or.inr ⟨j, i, rv, c, hj, hi, hcached, hsent, hl⟩
   · left
     have hdi' : r.data i ≠ none := by rw [hdi]; simp
     have hshared (a b : C.Party) (ka : HashOutput × (C.Term → HashOutput) × (C.Party → HashOutput))
         (sa : List HashOutput) (hda : r.data a = some (ka, sa)) (h : Query C → HashOutput) (hg : Good prims h)
-        (ha : Agrees h s) : sa.getD b.val 0 = h (.sharedKeys .seedGen ((sharedTerms a b).map ka.2.1)) := by
+        (ha : Agrees h s) : sa.getD b.val 0 = h (.sharedKeys phase ((sharedTerms a b).map ka.2.1)) := by
       have hf := hfixed i hdi' h hg ha
-      have hsa : (setupRevealAllFixed .seedGen prims D h r.parts committed r.revealSent a).isSome := by
+      have hsa : (setupRevealAllFixed phase prims D h r.parts committed r.revealSent a).isSome := by
         rw [← hf, hda]; rfl
-      obtain ⟨he, _⟩ := setupRevealAllFixed_some .seedGen prims D h r.parts committed r.revealSent a hsa
+      obtain ⟨he, _⟩ := setupRevealAllFixed_some phase prims D h r.parts committed r.revealSent a hsa
       rw [← hf, hda] at he
       obtain ⟨rfl, rfl⟩ := Prod.ext_iff.mp (Option.some.inj he)
-      exact D_sharedQueries_at prims h .seedGen a b _
+      exact D_sharedQueries_at prims h phase a b _
     have hcache (a b : C.Party) (ka : HashOutput × (C.Term → HashOutput) × (C.Party → HashOutput))
         (sa : List HashOutput) (hda : r.data a = some (ka, sa)) :
-        s (.sharedKeys .seedGen ((sharedTerms a b).map ka.2.1)) = some (sa.getD b.val 0) := by
-      have hc := seedGen_cached_of_agrees prims s hs (.sharedKeys .seedGen ((sharedTerms a b).map ka.2.1))
-        (by simp [IsFixed]) (fun h => sa.getD b.val 0 = h (.sharedKeys .seedGen ((sharedTerms a b).map ka.2.1)))
+        s (.sharedKeys phase ((sharedTerms a b).map ka.2.1)) = some (sa.getD b.val 0) := by
+      have hc := seedGen_cached_of_agrees prims s hs (.sharedKeys phase ((sharedTerms a b).map ka.2.1))
+        (by simp [IsFixed]) (fun h => sa.getD b.val 0 = h (.sharedKeys phase ((sharedTerms a b).map ka.2.1)))
         (hshared a b ka sa hda) (fun h h' e e' => e.symm.trans e')
       rw [hc, ← hshared a b ka sa hda _ (good_hashOf prims s) (agrees_hashOf prims hs)]
-    exact ⟨_, _, _, hne, trivial, trivial, hcache i j ki si hdi, (hcache j i kj sj hdj).trans (by rw [hcol])⟩
+    exact ⟨_, _, _, hne, rfl, rfl, hcache i j ki si hdi, (hcache j i kj sj hdj).trans (by rw [hcol])⟩
 
 /-- The facts of a run that the cache events read. -/
-theorem seedGenKnownGame_support (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+theorem setupKnownGame_support (phase : Phase) (prims : Primitives) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (w : SeedGenKnownTrace C E A.State × HashCache C)
-    (hw : w ∈ support ((simulateQ (worldAnswer prims) (seedGenKnownGame D A x z)).run ∅)) :
+    (hw : w ∈ support ((simulateQ (worldAnswer prims) (setupKnownGame (phase := phase) D A x z)).run ∅)) :
     NoMpc w.2 ∧
       (∀ h, Good prims h → Agrees h w.2 → (∀ i, w.1.data i = none) ∨
-        w.1.data = setupRevealAllFixed .seedGen prims D h w.1.parts
-          (setupCommitInbox .seedGen D w.1.parts w.1.commitments w.1.sent) w.1.revealSent) ∧
+        w.1.data = setupRevealAllFixed phase prims D h w.1.parts
+          (setupCommitInbox phase D w.1.parts w.1.commitments w.1.sent) w.1.revealSent) ∧
       (∀ q y, (q, y) ∈ w.1.log → ¬ IsFixed q → w.2 q = some y) := by
-  unfold seedGenKnownGame at hw
+  unfold setupKnownGame at hw
   simp only [simulateQ_bind, StateT.run_bind, support_bind, Set.mem_iUnion] at hw
   obtain ⟨p₀, hp₀, p₁, hp₁, p₂, hp₂, p₃, hp₃, p₄, hp₄, p₅, hp₅, p₆, hp₆, p₇, hp₇, hfin⟩ := hw
   simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hfin
@@ -737,7 +800,7 @@ theorem seedGenKnownGame_support (D : C.Coalition) (A : Adversary C E Unit PEmpt
   have g₇ := grows_worldAnswer prims |>.simulateQ _ _ p₇ hp₇
   rw [simulateQ_free] at hp₇
   obtain ⟨_, n₇, hfix⟩ := localRun_support _ p₆.2 p₇ hp₇
-  refine ⟨n₇ n₆, fun h hg ha => seedGenPostTraced_fixed_data prims D A _ _ _ h _ (hfix h hg ha), ?_⟩
+  refine ⟨n₇ n₆, fun h hg ha => setupPostTraced_fixed_data (phase := phase) prims D A _ _ _ h _ (hfix h hg ha), ?_⟩
   intro q y hq hq'
   rcases List.mem_append.mp hq with hq | hq
   · exact g₇ (g₆ (g₅ (g₄ (g₃ (g₂ (g₁ (seedGenObserve_log_cached prims _ ∅ p₀ hp₀ q y hq hq')))))))
@@ -760,10 +823,11 @@ theorem seedGenProgrammingCount_le (D : C.Coalition) :
     exact (seedGenCrossCoordinates_nodup D).length_le_card
   omega
 
-/-- The programming, extraction and echo costs fit in half the seed generation error. -/
-theorem seedGenKnown_arith (q K : ℕ) (hK : K ≤ 1 + termCount C + C.n.choose 2) :
-    2 * (q * K + K ^ 2) + ((q + C.n ^ 2) ^ 2 + 2 * (q + C.n ^ 2)) ≤ (q + seedGenSecrets C) ^ 2 := by
+/-- The programming, extraction and echo costs fit in half the error of the PRSS setup. -/
+theorem prssSetupKnown_arith {C : Committee} (q K : ℕ) (hK : K ≤ 1 + termCount C + C.n.choose 2) :
+    2 * (q * K + K ^ 2) + ((q + C.n ^ 2) ^ 2 + 2 * (q + C.n ^ 2)) ≤ (q + prssSetupSecrets C) ^ 2 := by
   have hn : 1 ≤ C.n := by have := C.one_le_t; unfold Committee.n; omega
+  have hT : 1 ≤ termCount C := Nat.choose_pos (by have := C.one_le_t; unfold Committee.n; omega)
   have hP : 2 * C.n.choose 2 ≤ C.n * C.n := by
     rw [Nat.choose_two_right]
     have := Nat.div_mul_le_self (C.n * (C.n - 1)) 2
@@ -772,17 +836,23 @@ theorem seedGenKnown_arith (q K : ℕ) (hK : K ≤ 1 + termCount C + C.n.choose 
   set P := C.n.choose 2
   set T := termCount C
   set n := C.n
-  have hS : seedGenSecrets C = n * (1 + T + n) + 1 + T + P + n ^ 2 := rfl
+  have hS : prssSetupSecrets C = n * (T + n) + T + P + n ^ 2 := rfl
   have hnT : T ≤ n * T := Nat.le_mul_of_pos_left T hn
-  have hq : n ^ 2 + 1 + K ≤ seedGenSecrets C := by
+  have hq : n ^ 2 + 1 + K ≤ prssSetupSecrets C := by
     rw [hS]; nlinarith
-  have h2K : 2 * K ≤ seedGenSecrets C := by
+  have h2K : 2 * K ≤ prssSetupSecrets C := by
     rw [hS]; nlinarith
-  have h2n : 2 * n ^ 2 + K ≤ seedGenSecrets C := by
+  have h2n : 2 * n ^ 2 + K ≤ prssSetupSecrets C := by
     rw [hS]; nlinarith
-  set s := seedGenSecrets C
+  set s := prssSetupSecrets C
   have hn2 : 1 ≤ n ^ 2 := Nat.one_le_pow _ _ hn
   nlinarith [Nat.zero_le (q * K), Nat.zero_le (q * n ^ 2), Nat.mul_le_mul h2K h2n, Nat.mul_le_mul h2n h2n]
+
+/-- The programming, extraction and echo costs fit in half the error of a setup. -/
+theorem setupKnown_arith (phase : Phase) {C : Committee} (q K : ℕ) (hK : K ≤ 1 + termCount C + C.n.choose 2) :
+    2 * (q * K + K ^ 2) + ((q + C.n ^ 2) ^ 2 + 2 * (q + C.n ^ 2)) ≤ (q + setupSecrets phase C) ^ 2 :=
+  (prssSetupKnown_arith q K hK).trans
+    (Nat.pow_le_pow_left (Nat.add_le_add_left (prssSetupSecrets_le phase C) q) 2)
 
 end Arith
 
@@ -791,12 +861,12 @@ section Birthday
 variable {C : Committee} {E : Type} (prims : Primitives)
 
 /-- At most `k` compared cells of a cache are filled. -/
-def SeedGenComparedCount (D : C.Coalition) (s : HashCache C) (k : ℕ) : Prop :=
-  ∃ S : Finset (Query C), S.card ≤ k ∧ ∀ q, SeedGenComparedCell D q → s q ≠ none → q ∈ S
+def SetupComparedCount (phase : Phase) (D : C.Coalition) (s : HashCache C) (k : ℕ) : Prop :=
+  ∃ S : Finset (Query C), S.card ≤ k ∧ ∀ q, SetupComparedCell (phase := phase) D q → s q ≠ none → q ∈ S
 
-theorem seedGenComparedCount_insert {D : C.Coalition} {s : HashCache C} {k : ℕ}
-    (h : SeedGenComparedCount D s k) (q : Query C) (u : HashOutput) :
-    SeedGenComparedCount D (s.cacheQuery q u) (k + 1) := by
+theorem setupComparedCount_insert (phase : Phase) {D : C.Coalition} {s : HashCache C} {k : ℕ}
+    (h : SetupComparedCount (phase := phase) D s k) (q : Query C) (u : HashOutput) :
+    SetupComparedCount (phase := phase) D (s.cacheQuery q u) (k + 1) := by
   obtain ⟨S, hS, hm⟩ := h
   refine ⟨insert q S, (Finset.card_insert_le _ _).trans (Nat.add_le_add_right hS 1), fun q' hc hq' => ?_⟩
   by_cases hq : q' = q
@@ -804,19 +874,19 @@ theorem seedGenComparedCount_insert {D : C.Coalition} {s : HashCache C} {k : ℕ
   · rw [QueryCache.cacheQuery_of_ne s _ hq] at hq'
     exact Finset.mem_insert_of_mem (hm q' hc hq')
 
-theorem seedGenComparedCount_insert_other {D : C.Coalition} {s : HashCache C} {k : ℕ}
-    (h : SeedGenComparedCount D s k) (q : Query C) (hq : ¬ SeedGenComparedCell D q) (u : HashOutput) :
-    SeedGenComparedCount D (s.cacheQuery q u) k := by
+theorem setupComparedCount_insert_other (phase : Phase) {D : C.Coalition} {s : HashCache C} {k : ℕ}
+    (h : SetupComparedCount (phase := phase) D s k) (q : Query C) (hq : ¬ SetupComparedCell (phase := phase) D q) (u : HashOutput) :
+    SetupComparedCount (phase := phase) D (s.cacheQuery q u) k := by
   obtain ⟨S, hS, hm⟩ := h
   refine ⟨S, hS, fun q' hc hq' => hm q' hc ?_⟩
   have hne : q' ≠ q := fun he => hq (he ▸ hc)
   rwa [QueryCache.cacheQuery_of_ne s _ hne] at hq'
 
 /-- A collision after one insertion matches the new answer with an old compared cell. -/
-theorem seedGenComparedCollision_insert {D : C.Coalition} {s : HashCache C}
-    (hs : ¬ SeedGenComparedCollision D s) (q : Query C) (u : HashOutput)
-    (h : SeedGenComparedCollision D (s.cacheQuery q u)) :
-    SeedGenComparedCell D q ∧ ∃ q', q' ≠ q ∧ SeedGenComparedCell D q' ∧ s q' = some u := by
+theorem setupComparedCollision_insert (phase : Phase) {D : C.Coalition} {s : HashCache C}
+    (hs : ¬ SetupComparedCollision (phase := phase) D s) (q : Query C) (u : HashOutput)
+    (h : SetupComparedCollision (phase := phase) D (s.cacheQuery q u)) :
+    SetupComparedCell (phase := phase) D q ∧ ∃ q', q' ≠ q ∧ SetupComparedCell (phase := phase) D q' ∧ s q' = some u := by
   obtain ⟨q₁, q₂, v, hne, hc₁, hc₂, h₁, h₂⟩ := h
   by_cases hq₁ : q₁ = q
   · subst q₁
@@ -833,26 +903,26 @@ theorem seedGenComparedCollision_insert {D : C.Coalition} {s : HashCache C}
         by rwa [QueryCache.cacheQuery_of_ne s _ hq₂] at h₂⟩).elim
 
 /-- A fresh answer collides with one of `k` compared cells with probability at most `k / 2^256`. -/
-theorem probEvent_seedGenComparedCollision_fresh {D : C.Coalition} {s : HashCache C} {k : ℕ}
-    (hs : ¬ SeedGenComparedCollision D s) (hk : SeedGenComparedCount D s k) (q : Query C) :
-    Pr{let u ← $ᵗ HashOutput}[SeedGenComparedCollision D (s.cacheQuery q u)] ≤
+theorem probEvent_setupComparedCollision_fresh (phase : Phase) {D : C.Coalition} {s : HashCache C} {k : ℕ}
+    (hs : ¬ SetupComparedCollision (phase := phase) D s) (hk : SetupComparedCount (phase := phase) D s k) (q : Query C) :
+    Pr{let u ← $ᵗ HashOutput}[SetupComparedCollision (phase := phase) D (s.cacheQuery q u)] ≤
       (k : ℝ≥0∞) / Fintype.card HashOutput := by
   obtain ⟨S, hS, hm⟩ := hk
   have hbad : (Finset.univ.filter fun u : HashOutput =>
-      SeedGenComparedCollision D (s.cacheQuery q u)).card ≤ S.card := by
+      SetupComparedCollision (phase := phase) D (s.cacheQuery q u)).card ≤ S.card := by
     let f : HashOutput → Query C := fun u =>
-      if h : SeedGenComparedCollision D (s.cacheQuery q u) then
-        (seedGenComparedCollision_insert hs q u h).2.choose else q
+      if h : SetupComparedCollision (phase := phase) D (s.cacheQuery q u) then
+        (setupComparedCollision_insert (phase := phase) hs q u h).2.choose else q
     refine Finset.card_le_card_of_injOn f (fun u hu => ?_) (fun u hu v hv heq => ?_)
     · have hc := (Finset.mem_filter.mp hu).2
       rw [show f u = _ from dif_pos hc]
-      have hs' := (seedGenComparedCollision_insert hs q u hc).2.choose_spec
+      have hs' := (setupComparedCollision_insert (phase := phase) hs q u hc).2.choose_spec
       exact hm _ hs'.2.1 (by rw [hs'.2.2]; exact Option.some_ne_none u)
     · have hc := (Finset.mem_filter.mp hu).2
       have hd := (Finset.mem_filter.mp hv).2
       rw [show f u = _ from dif_pos hc, show f v = _ from dif_pos hd] at heq
-      have h₁ := (seedGenComparedCollision_insert hs q u hc).2.choose_spec.2.2
-      have h₂ := (seedGenComparedCollision_insert hs q v hd).2.choose_spec.2.2
+      have h₁ := (setupComparedCollision_insert (phase := phase) hs q u hc).2.choose_spec.2.2
+      have h₂ := (setupComparedCollision_insert (phase := phase) hs q v hd).2.choose_spec.2.2
       rw [heq, h₂] at h₁
       exact (Option.some.inj h₁).symm
   rw [SampleableType.prEvent_uniformSample]
@@ -874,30 +944,30 @@ theorem seedGenBirthdayCost_step (k m : ℕ) (hm : 0 < m) :
   nlinarith
 
 /-- The random-oracle calls of a local computation at a compared cell. -/
-def seedGenComparedCall (D : C.Coalition) : (LocalSpec C).Domain → Prop
-  | .inr (.inl q) => SeedGenComparedCell D q
+def setupComparedCall (phase : Phase) (D : C.Coalition) : (LocalSpec C).Domain → Prop
+  | .inr (.inl q) => SetupComparedCell (phase := phase) D q
   | _ => False
 
 /-- The compared calls of either copy of the world. -/
-def seedGenComparedWorldCall (D : C.Coalition) : (WorldSpec C).Domain → Prop
-  | .inl (.inl t) => seedGenComparedCall D t
+def setupComparedWorldCall (phase : Phase) (D : C.Coalition) : (WorldSpec C).Domain → Prop
+  | .inl (.inl t) => setupComparedCall (phase := phase) D t
   | .inl (.inr _) => False
-  | .inr t => seedGenComparedCall D t
+  | .inr t => setupComparedCall (phase := phase) D t
 
 /-- A programming query at a compared cell. -/
-def seedGenComparedProgram (D : C.Coalition) : (WorldSpec C).Domain → Prop
-  | .inl (.inr x) => SeedGenComparedCell D x.1
+def setupComparedProgram (phase : Phase) (D : C.Coalition) : (WorldSpec C).Domain → Prop
+  | .inl (.inr x) => SetupComparedCell (phase := phase) D x.1
   | _ => False
 
-theorem seedGenCompared_hash_step {D : C.Coalition} {β : Type} (q : Query C) (s : HashCache C) (k m : ℕ)
-    (hs : ¬ SeedGenComparedCollision D s) (hk : SeedGenComparedCount D s k)
+theorem setupCompared_hash_step (phase : Phase) (prims : Primitives) {D : C.Coalition} {β : Type} (q : Query C) (s : HashCache C) (k m : ℕ)
+    (hs : ¬ SetupComparedCollision (phase := phase) D s) (hk : SetupComparedCount (phase := phase) D s k)
     (g : HashOutput → HashCache C → ProbComp (β × HashCache C))
-    (hg : ∀ u s', ¬ SeedGenComparedCollision D s' → SeedGenComparedCount D s' k →
-      Pr{let z ← g u s'}[SeedGenComparedCollision D z.2] ≤ seedGenBirthdayCost k m)
-    (hg' : SeedGenComparedCell D q → 0 < m ∧ ∀ u s', ¬ SeedGenComparedCollision D s' →
-      SeedGenComparedCount D s' (k + 1) →
-      Pr{let z ← g u s'}[SeedGenComparedCollision D z.2] ≤ seedGenBirthdayCost (k + 1) (m - 1)) :
-    Pr{let z ← (hashAnswer prims q).run s >>= fun p => g p.1 p.2}[SeedGenComparedCollision D z.2] ≤
+    (hg : ∀ u s', ¬ SetupComparedCollision (phase := phase) D s' → SetupComparedCount (phase := phase) D s' k →
+      Pr{let z ← g u s'}[SetupComparedCollision (phase := phase) D z.2] ≤ seedGenBirthdayCost k m)
+    (hg' : SetupComparedCell (phase := phase) D q → 0 < m ∧ ∀ u s', ¬ SetupComparedCollision (phase := phase) D s' →
+      SetupComparedCount (phase := phase) D s' (k + 1) →
+      Pr{let z ← g u s'}[SetupComparedCollision (phase := phase) D z.2] ≤ seedGenBirthdayCost (k + 1) (m - 1)) :
+    Pr{let z ← (hashAnswer prims q).run s >>= fun p => g p.1 p.2}[SetupComparedCollision (phase := phase) D z.2] ≤
       seedGenBirthdayCost k m := by
   by_cases hfix : IsFixed q
   · obtain ⟨input, rfl, hi⟩ := hfix
@@ -914,29 +984,29 @@ theorem seedGenCompared_hash_step {D : C.Coalition} {β : Type} (q : Query C) (s
         rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ hsq]
         rfl
       rw [heq, bind_map_left]
-      by_cases hc : SeedGenComparedCell D q
+      by_cases hc : SetupComparedCell (phase := phase) D q
       · obtain ⟨hm, hg''⟩ := hg' hc
         have h := prEvent_bind_le_prEvent_add_of_support ($ᵗ HashOutput)
           (fun u => g u (s.cacheQuery q u))
-          (fun u => SeedGenComparedCollision D (s.cacheQuery q u))
-          (fun z => SeedGenComparedCollision D z.2)
+          (fun u => SetupComparedCollision (phase := phase) D (s.cacheQuery q u))
+          (fun z => SetupComparedCollision (phase := phase) D z.2)
           (ε := seedGenBirthdayCost (k + 1) (m - 1))
-          (fun u _ hu => hg'' u _ hu (seedGenComparedCount_insert hk q u))
-        exact (h.trans (add_le_add (probEvent_seedGenComparedCollision_fresh hs hk q) le_rfl)).trans
+          (fun u _ hu => hg'' u _ hu (setupComparedCount_insert (phase := phase) hk q u))
+        exact (h.trans (add_le_add (probEvent_setupComparedCollision_fresh (phase := phase) hs hk q) le_rfl)).trans
           (seedGenBirthdayCost_step k m hm)
-      · refine prEvent_bind_le_of_forall_le _ _ _ fun u => hg u _ ?_ (seedGenComparedCount_insert_other hk q hc u)
+      · refine prEvent_bind_le_of_forall_le _ _ _ fun u => hg u _ ?_ (setupComparedCount_insert_other (phase := phase) hk q hc u)
         intro hcol
-        exact hc (seedGenComparedCollision_insert hs q u hcol).1
+        exact hc (setupComparedCollision_insert (phase := phase) hs q u hcol).1
 
-theorem seedGenCompared_local_step {D : C.Coalition} {β : Type} (t : (LocalSpec C).Domain) (s : HashCache C)
-    (k m : ℕ) (hs : ¬ SeedGenComparedCollision D s) (hk : SeedGenComparedCount D s k)
+theorem setupCompared_local_step (phase : Phase) (prims : Primitives) {D : C.Coalition} {β : Type} (t : (LocalSpec C).Domain) (s : HashCache C)
+    (k m : ℕ) (hs : ¬ SetupComparedCollision (phase := phase) D s) (hk : SetupComparedCount (phase := phase) D s k)
     (g : (LocalSpec C).Range t → HashCache C → ProbComp (β × HashCache C))
-    (hg : ∀ u s', ¬ SeedGenComparedCollision D s' → SeedGenComparedCount D s' k →
-      Pr{let z ← g u s'}[SeedGenComparedCollision D z.2] ≤ seedGenBirthdayCost k m)
-    (hg' : seedGenComparedCall D t → 0 < m ∧ ∀ u s', ¬ SeedGenComparedCollision D s' →
-      SeedGenComparedCount D s' (k + 1) →
-      Pr{let z ← g u s'}[SeedGenComparedCollision D z.2] ≤ seedGenBirthdayCost (k + 1) (m - 1)) :
-    Pr{let z ← (localAnswer prims t).run s >>= fun p => g p.1 p.2}[SeedGenComparedCollision D z.2] ≤
+    (hg : ∀ u s', ¬ SetupComparedCollision (phase := phase) D s' → SetupComparedCount (phase := phase) D s' k →
+      Pr{let z ← g u s'}[SetupComparedCollision (phase := phase) D z.2] ≤ seedGenBirthdayCost k m)
+    (hg' : setupComparedCall (phase := phase) D t → 0 < m ∧ ∀ u s', ¬ SetupComparedCollision (phase := phase) D s' →
+      SetupComparedCount (phase := phase) D s' (k + 1) →
+      Pr{let z ← g u s'}[SetupComparedCollision (phase := phase) D z.2] ≤ seedGenBirthdayCost (k + 1) (m - 1)) :
+    Pr{let z ← (localAnswer prims t).run s >>= fun p => g p.1 p.2}[SetupComparedCollision (phase := phase) D z.2] ≤
       seedGenBirthdayCost k m := by
   rcases t with n | q | x
   · have heq : (localAnswer (C := C) prims (.inl n)).run s =
@@ -945,19 +1015,19 @@ theorem seedGenCompared_local_step {D : C.Coalition} {β : Type} (t : (LocalSpec
     rw [heq]
     erw [bind_map_left]
     exact prEvent_bind_le_of_forall_le _ _ _ fun u => hg u s hs hk
-  · exact seedGenCompared_hash_step prims q s k m hs hk g hg hg'
+  · exact setupCompared_hash_step (phase := phase) prims q s k m hs hk g hg hg'
   · change Pr{let z ← (prgAnswer prims x).run s >>= fun p => g p.1 p.2}[
-      SeedGenComparedCollision D z.2] ≤ _
+      SetupComparedCollision (phase := phase) D z.2] ≤ _
     simp only [prgAnswer, StateT.run_bind, StateT.run_pure, bind_assoc, pure_bind]
-    exact seedGenCompared_hash_step prims (.streamKey x.2.1) s k m hs hk
+    exact setupCompared_hash_step (phase := phase) prims (.streamKey x.2.1) s k m hs hk
       (fun u s' => g (prims.aes.eval (truncateHash u) x.2.2) s') (fun u s' h₁ h₂ => hg _ s' h₁ h₂)
-      (fun hc => by simp [SeedGenComparedCell] at hc)
+      (fun hc => by simp [SetupComparedCell] at hc)
 
 /-- The birthday bound on the compared cells of a world computation. -/
-theorem seedGenCompared_birthday {D : C.Coalition} {α : Type} (oa : OracleComp (WorldSpec C) α) :
-    ∀ m s k, IsQueryBoundP oa (seedGenComparedWorldCall D) m → IsQueryBoundP oa (seedGenComparedProgram D) 0 →
-      ¬ SeedGenComparedCollision D s → SeedGenComparedCount D s k →
-      Pr{let z ← (simulateQ (worldAnswer prims) oa).run s}[SeedGenComparedCollision D z.2] ≤
+theorem setupCompared_birthday (phase : Phase) (prims : Primitives) {D : C.Coalition} {α : Type} (oa : OracleComp (WorldSpec C) α) :
+    ∀ m s k, IsQueryBoundP oa (setupComparedWorldCall (phase := phase) D) m → IsQueryBoundP oa (setupComparedProgram (phase := phase) D) 0 →
+      ¬ SetupComparedCollision (phase := phase) D s → SetupComparedCount (phase := phase) D s k →
+      Pr{let z ← (simulateQ (worldAnswer prims) oa).run s}[SetupComparedCollision (phase := phase) D z.2] ≤
         seedGenBirthdayCost k m := by
   induction oa using OracleComp.inductionOn with
   | pure a =>
@@ -970,34 +1040,34 @@ theorem seedGenCompared_birthday {D : C.Coalition} {α : Type} (oa : OracleComp 
       StateT.run_bind]
     rcases t with (t | x) | t
     · change Pr{let z ← (localAnswer prims t).run s >>= fun p => (simulateQ (worldAnswer prims) (f p.1)).run p.2}[
-        SeedGenComparedCollision D z.2] ≤ _
-      refine seedGenCompared_local_step prims t s k m hs hk
+        SetupComparedCollision (phase := phase) D z.2] ≤ _
+      refine setupCompared_local_step (phase := phase) prims t s k m hs hk
         (fun u s' => (simulateQ (worldAnswer prims) (f u)).run s') (fun u s' h₁ h₂ => ?_) (fun hc => ?_)
       · have hu := hm.2 u
         have hpu := hp.2 u
-        simp only [seedGenComparedWorldCall, seedGenComparedProgram, ↓reduceIte] at hu hpu
-        by_cases hct : seedGenComparedCall D t
+        simp only [setupComparedWorldCall, setupComparedProgram, ↓reduceIte] at hu hpu
+        by_cases hct : setupComparedCall (phase := phase) D t
         · erw [if_pos hct] at hu
           exact (ih u (m - 1) s' k hu hpu h₁ h₂).trans (by
             unfold seedGenBirthdayCost
             exact ENNReal.div_le_div_right (by gcongr <;> omega) _)
         · erw [if_neg hct] at hu
           exact ih u m s' k hu hpu h₁ h₂
-      · have hm' := hm.1.resolve_left (by simpa [seedGenComparedWorldCall] using hc)
+      · have hm' := hm.1.resolve_left (by simpa [setupComparedWorldCall] using hc)
         refine ⟨hm', fun u s' h₁ h₂ => ?_⟩
         have hu := hm.2 u
         have hpu := hp.2 u
-        simp only [seedGenComparedWorldCall, seedGenComparedProgram, ↓reduceIte] at hu hpu
+        simp only [setupComparedWorldCall, setupComparedProgram, ↓reduceIte] at hu hpu
         erw [if_pos hc] at hu
         exact ih u (m - 1) s' (k + 1) hu hpu h₁ h₂
-    · have hx : ¬ SeedGenComparedCell D x.1 := by
-        simpa [seedGenComparedProgram] using hp.1
+    · have hx : ¬ SetupComparedCell (phase := phase) D x.1 := by
+        simpa [setupComparedProgram] using hp.1
       change Pr{let z ← (programAnswer x).run s >>= fun p => (simulateQ (worldAnswer prims) (f p.1)).run p.2}[
-        SeedGenComparedCollision D z.2] ≤ _
+        SetupComparedCollision (phase := phase) D z.2] ≤ _
       refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun p hpr => ?_
       have hu := hm.2 p.1
       have hpu := hp.2 p.1
-      simp only [seedGenComparedWorldCall, seedGenComparedProgram] at hu hpu
+      simp only [setupComparedWorldCall, setupComparedProgram] at hu hpu
       erw [if_neg not_false] at hu
       erw [if_neg hx] at hpu
       refine ih p.1 m p.2 k hu hpu ?_ ?_
@@ -1010,7 +1080,7 @@ theorem seedGenCompared_birthday {D : C.Coalition} {α : Type} (oa : OracleComp 
             Set.mem_singleton_iff] at hpr
           subst hpr
           intro hcol
-          exact hx (seedGenComparedCollision_insert hs x.1 x.2 hcol).1
+          exact hx (setupComparedCollision_insert (phase := phase) hs x.1 x.2 hcol).1
       · simp only [programAnswer, StateT.run_bind, StateT.run_get, pure_bind] at hpr
         split_ifs at hpr
         · simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff] at hpr
@@ -1019,32 +1089,32 @@ theorem seedGenCompared_birthday {D : C.Coalition} {α : Type} (oa : OracleComp 
         · simp only [StateT.run_bind, StateT.run_set, StateT.run_pure, pure_bind, support_pure,
             Set.mem_singleton_iff] at hpr
           subst hpr
-          exact seedGenComparedCount_insert_other hk x.1 hx x.2
+          exact setupComparedCount_insert_other (phase := phase) hk x.1 hx x.2
     · change Pr{let z ← (localAnswer prims t).run s >>= fun p => (simulateQ (worldAnswer prims) (f p.1)).run p.2}[
-        SeedGenComparedCollision D z.2] ≤ _
-      refine seedGenCompared_local_step prims t s k m hs hk
+        SetupComparedCollision (phase := phase) D z.2] ≤ _
+      refine setupCompared_local_step (phase := phase) prims t s k m hs hk
         (fun u s' => (simulateQ (worldAnswer prims) (f u)).run s') (fun u s' h₁ h₂ => ?_) (fun hc => ?_)
       · have hu := hm.2 u
         have hpu := hp.2 u
-        simp only [seedGenComparedWorldCall, seedGenComparedProgram, ↓reduceIte] at hu hpu
-        by_cases hct : seedGenComparedCall D t
+        simp only [setupComparedWorldCall, setupComparedProgram, ↓reduceIte] at hu hpu
+        by_cases hct : setupComparedCall (phase := phase) D t
         · erw [if_pos hct] at hu
           exact (ih u (m - 1) s' k hu hpu h₁ h₂).trans (by
             unfold seedGenBirthdayCost
             exact ENNReal.div_le_div_right (by gcongr <;> omega) _)
         · erw [if_neg hct] at hu
           exact ih u m s' k hu hpu h₁ h₂
-      · have hm' := hm.1.resolve_left (by simpa [seedGenComparedWorldCall] using hc)
+      · have hm' := hm.1.resolve_left (by simpa [setupComparedWorldCall] using hc)
         refine ⟨hm', fun u s' h₁ h₂ => ?_⟩
         have hu := hm.2 u
         have hpu := hp.2 u
-        simp only [seedGenComparedWorldCall, seedGenComparedProgram, ↓reduceIte] at hu hpu
+        simp only [setupComparedWorldCall, setupComparedProgram, ↓reduceIte] at hu hpu
         erw [if_pos hc] at hu
         exact ih u (m - 1) s' (k + 1) hu hpu h₁ h₂
 
-theorem isQueryBoundP_free_compared (D : C.Coalition) {β : Type} (oa : OracleComp (LocalSpec C) β) (n : ℕ)
-    (h : IsQueryBoundP oa (seedGenComparedCall D) n) :
-    IsQueryBoundP (free oa) (seedGenComparedWorldCall D) n ∧ IsQueryBoundP (free oa) (seedGenComparedProgram D) 0 := by
+theorem isQueryBoundP_free_compared (phase : Phase) (D : C.Coalition) {β : Type} (oa : OracleComp (LocalSpec C) β) (n : ℕ)
+    (h : IsQueryBoundP oa (setupComparedCall (phase := phase) D) n) :
+    IsQueryBoundP (free oa) (setupComparedWorldCall (phase := phase) D) n ∧ IsQueryBoundP (free oa) (setupComparedProgram (phase := phase) D) 0 := by
   induction oa using OracleComp.inductionOn generalizing n with
   | pure a => exact ⟨trivial, trivial⟩
   | query_bind t k ih =>
@@ -1056,13 +1126,13 @@ theorem isQueryBoundP_free_compared (D : C.Coalition) {β : Type} (oa : OracleCo
     rw [e]
     constructor
     · exact (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨h.1, fun u => (ih u _ (h.2 u)).1⟩
-    · refine (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl (by simp [seedGenComparedProgram]), fun u => ?_⟩
-      simpa [seedGenComparedProgram] using (ih u _ (h.2 u)).2
+    · refine (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl (by simp [setupComparedProgram]), fun u => ?_⟩
+      simpa [setupComparedProgram] using (ih u _ (h.2 u)).2
 
-theorem isQueryBoundP_observe_compared (D : C.Coalition) {β : Type} (oa : OracleComp (LocalSpec C) β) (n : ℕ)
-    (h : IsQueryBoundP oa (seedGenComparedCall D) n) :
-    IsQueryBoundP (observe oa) (seedGenComparedWorldCall D) n ∧
-      IsQueryBoundP (observe oa) (seedGenComparedProgram D) 0 := by
+theorem isQueryBoundP_observe_compared (phase : Phase) (D : C.Coalition) {β : Type} (oa : OracleComp (LocalSpec C) β) (n : ℕ)
+    (h : IsQueryBoundP oa (setupComparedCall (phase := phase) D) n) :
+    IsQueryBoundP (observe oa) (setupComparedWorldCall (phase := phase) D) n ∧
+      IsQueryBoundP (observe oa) (setupComparedProgram (phase := phase) D) 0 := by
   unfold observe
   induction oa using OracleComp.inductionOn generalizing n with
   | pure a => exact ⟨trivial, trivial⟩
@@ -1076,67 +1146,67 @@ theorem isQueryBoundP_observe_compared (D : C.Coalition) {β : Type} (oa : Oracl
       rw [adversary_query]
       constructor
       · refine (isQueryBoundP_query_bind_iff _ _ _ _).2
-          ⟨Or.inl (by simp [seedGenComparedWorldCall, seedGenComparedCall]), fun u => ?_⟩
+          ⟨Or.inl (by simp [setupComparedWorldCall, setupComparedCall]), fun u => ?_⟩
         rw [isQueryBoundP_map_iff]
         have hu := (hk u).1
-        simp only [seedGenComparedCall, seedGenComparedWorldCall, ↓reduceIte] at hu ⊢
+        simp only [setupComparedCall, setupComparedWorldCall, ↓reduceIte] at hu ⊢
         exact hu
-      · refine (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl (by simp [seedGenComparedProgram]), fun u => ?_⟩
+      · refine (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl (by simp [setupComparedProgram]), fun u => ?_⟩
         rw [isQueryBoundP_map_iff]
         have hu := (hk u).2
-        simp only [seedGenComparedProgram, ↓reduceIte] at hu ⊢
+        simp only [setupComparedProgram, ↓reduceIte] at hu ⊢
         exact hu
     · simp only [WriterT.run_bind, WriterT.run_liftM, WriterT.run_tell, WriterT.run_pure, bind_assoc,
         bind_map_left, map_pure, pure_bind]
       rw [adversary_hashQuery]
       constructor
       · refine (isQueryBoundP_query_bind_iff _ _ _ _).2
-          ⟨by simpa [seedGenComparedWorldCall, seedGenComparedCall] using h.1, fun u => ?_⟩
+          ⟨by simpa [setupComparedWorldCall, setupComparedCall] using h.1, fun u => ?_⟩
         rw [isQueryBoundP_map_iff]
         have hu := (hk u).1
-        simp only [seedGenComparedCall, seedGenComparedWorldCall] at hu ⊢
+        simp only [setupComparedCall, setupComparedWorldCall] at hu ⊢
         exact hu
-      · refine (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl (by simp [seedGenComparedProgram]), fun u => ?_⟩
+      · refine (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl (by simp [setupComparedProgram]), fun u => ?_⟩
         rw [isQueryBoundP_map_iff]
         have hu := (hk u).2
-        simp only [seedGenComparedProgram, ↓reduceIte] at hu ⊢
+        simp only [setupComparedProgram, ↓reduceIte] at hu ⊢
         exact hu
     · simp only [WriterT.run_liftM, bind_map_left]
       rw [adversary_query]
       constructor
       · refine (isQueryBoundP_query_bind_iff _ _ _ _).2
-          ⟨Or.inl (by simp [seedGenComparedWorldCall, seedGenComparedCall]), fun u => ?_⟩
+          ⟨Or.inl (by simp [setupComparedWorldCall, setupComparedCall]), fun u => ?_⟩
         rw [isQueryBoundP_map_iff]
         have hu := (hk u).1
-        simp only [seedGenComparedCall, seedGenComparedWorldCall, ↓reduceIte] at hu ⊢
+        simp only [setupComparedCall, setupComparedWorldCall, ↓reduceIte] at hu ⊢
         exact hu
-      · refine (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl (by simp [seedGenComparedProgram]), fun u => ?_⟩
+      · refine (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl (by simp [setupComparedProgram]), fun u => ?_⟩
         rw [isQueryBoundP_map_iff]
         have hu := (hk u).2
-        simp only [seedGenComparedProgram, ↓reduceIte] at hu ⊢
+        simp only [setupComparedProgram, ↓reduceIte] at hu ⊢
         exact hu
 
-theorem seedGenComparedCall_counted (D : C.Coalition) (t : (LocalSpec C).Domain)
-    (h : seedGenComparedCall D t) : Counted t := by
+theorem setupComparedCall_counted (phase : Phase) (D : C.Coalition) (t : (LocalSpec C).Domain)
+    (h : setupComparedCall (phase := phase) D t) : Counted t := by
   rcases t with t | (q | x)
   · exact h.elim
-  · cases q <;> simp_all [seedGenComparedCall, SeedGenComparedCell, Counted]
+  · cases q <;> simp_all [setupComparedCall, SetupComparedCell, Counted]
   · exact h.elim
 
-theorem isQueryBoundP_compared_of_counted (D : C.Coalition) {β : Type} (oa : OracleComp (LocalSpec C) β) (n : ℕ)
-    (h : IsQueryBoundP oa Counted n) : IsQueryBoundP oa (seedGenComparedCall D) n :=
-  h.of_imp (seedGenComparedCall_counted D)
+theorem isQueryBoundP_compared_of_counted (phase : Phase) (D : C.Coalition) {β : Type} (oa : OracleComp (LocalSpec C) β) (n : ℕ)
+    (h : IsQueryBoundP oa Counted n) : IsQueryBoundP oa (setupComparedCall (phase := phase) D) n :=
+  h.of_imp (setupComparedCall_counted (phase := phase) D)
 
-theorem isQueryBoundP_compared_hash (D : C.Coalition) (q : Query C) :
-    IsQueryBoundP (liftComp (hashQuery q) (LocalSpec C)) (seedGenComparedCall D)
-      (if SeedGenComparedCell D q then 1 else 0) := by
+theorem isQueryBoundP_compared_hash (phase : Phase) (D : C.Coalition) (q : Query C) :
+    IsQueryBoundP (liftComp (hashQuery q) (LocalSpec C)) (setupComparedCall (phase := phase) D)
+      (if SetupComparedCell (phase := phase) D q then 1 else 0) := by
   have e : liftComp (hashQuery q) (LocalSpec C) =
       (liftM ((LocalSpec C).query (.inr (.inl q))) : OracleComp (LocalSpec C) _) >>= pure := by
     rw [bind_pure]
     rfl
   rw [e]
   refine (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨?_, fun _ => trivial⟩
-  by_cases hc : SeedGenComparedCell D q <;> simp [seedGenComparedCall, hc]
+  by_cases hc : SetupComparedCell (phase := phase) D q <;> simp [setupComparedCall, hc]
 
 theorem seedGenIsQueryBoundP_sequenceFin_sum {κ β : Type} {spec : OracleSpec κ} {p : κ → Prop} [DecidablePred p] :
     ∀ {N : ℕ} (f : Fin N → OracleComp spec β) (b : Fin N → ℕ), (∀ i, IsQueryBoundP (f i) p (b i)) →
@@ -1158,18 +1228,18 @@ theorem seedGenIsQueryBoundP_listMapM {κ α β : Type} {spec : OracleSpec κ} {
     rw [List.mapM_cons, List.map_cons, List.sum_cons, ← Nat.add_zero (xs.map k).sum]
     exact isQueryBoundP_bind (h a) fun y _ => isQueryBoundP_bind ih fun _ _ => isQueryBoundP_pure _ _ 0
 
-theorem isQueryBoundP_compared_derive (D : C.Coalition) (phase : Phase) (i : C.Party)
+theorem isQueryBoundP_compared_derive (phase : Phase) (D : C.Coalition) (i : C.Party)
     (view : C.Party → Parts C) :
-    IsQueryBoundP (liftComp (deriveKeys phase i view) (LocalSpec C)) (seedGenComparedCall D) 0 := by
+    IsQueryBoundP (liftComp (deriveKeys phase i view) (LocalSpec C)) (setupComparedCall (phase := phase) D) 0 := by
   have hd (kind : KeyKind) (values : List HashOutput) :
       IsQueryBoundP (liftComp (hashQuery (C := C) (.derive phase kind values)) (LocalSpec C))
-        (seedGenComparedCall D) 0 := by
-    simpa [SeedGenComparedCell] using isQueryBoundP_compared_hash D (.derive phase kind values)
+        (setupComparedCall (phase := phase) D) 0 := by
+    simpa [SetupComparedCell] using isQueryBoundP_compared_hash (phase := phase) D (.derive phase kind values)
   have hterm : IsQueryBoundP (liftComp (C.terms.mapM fun T => if i ∈ C.holders T then
       hashQuery (C := C) (.derive phase .term ((C.parties.filter (· ∈ C.holders T)).map fun j => (view j).term T))
-      else pure 0) (LocalSpec C)) (seedGenComparedCall D) 0 := by
+      else pure 0) (LocalSpec C)) (setupComparedCall (phase := phase) D) 0 := by
     rw [seedGen_liftComp_mapM]
-    have := seedGenIsQueryBoundP_listMapM (p := seedGenComparedCall D) (k := fun _ => 0)
+    have := seedGenIsQueryBoundP_listMapM (p := setupComparedCall (phase := phase) D) (k := fun _ => 0)
       (f := fun T => liftComp (if i ∈ C.holders T then hashQuery (C := C) (.derive phase .term
         ((C.parties.filter (· ∈ C.holders T)).map fun j => (view j).term T)) else pure 0) (LocalSpec C))
       (fun T => by
@@ -1180,9 +1250,9 @@ theorem isQueryBoundP_compared_derive (D : C.Coalition) (phase : Phase) (i : C.P
   have hpair : IsQueryBoundP (liftComp (C.parties.mapM fun j => if h : j = i then pure 0 else
       hashQuery (C := C) (.derive phase .pair [(view (C.pairOf i j (Ne.symm h)).1.1).pair (C.pairOf i j (Ne.symm h)).1.2,
         (view (C.pairOf i j (Ne.symm h)).1.2).pair (C.pairOf i j (Ne.symm h)).1.1])) (LocalSpec C))
-      (seedGenComparedCall D) 0 := by
+      (setupComparedCall (phase := phase) D) 0 := by
     rw [seedGen_liftComp_mapM]
-    have := seedGenIsQueryBoundP_listMapM (p := seedGenComparedCall D) (k := fun _ => 0)
+    have := seedGenIsQueryBoundP_listMapM (p := setupComparedCall (phase := phase) D) (k := fun _ => 0)
       (f := fun j => liftComp (if h : j = i then pure 0 else hashQuery (C := C) (.derive phase .pair
         [(view (C.pairOf i j (Ne.symm h)).1.1).pair (C.pairOf i j (Ne.symm h)).1.2,
           (view (C.pairOf i j (Ne.symm h)).1.2).pair (C.pairOf i j (Ne.symm h)).1.1])) (LocalSpec C))
@@ -1205,11 +1275,11 @@ theorem isQueryBoundP_compared_derive (D : C.Coalition) (phase : Phase) (i : C.P
       rw [liftComp_bind, ← Nat.zero_add 0]
       exact isQueryBoundP_bind hpair fun _ _ => by rw [liftComp_pure]; trivial
 
-theorem isQueryBoundP_compared_hashes (D : C.Coalition) (qs : C.Party → Query C) (b : ℕ)
-    (hb : ((C.parties.map fun j => if SeedGenComparedCell D (qs j) then 1 else 0).sum) ≤ b) :
-    IsQueryBoundP (liftComp (C.parties.mapM fun j => hashQuery (qs j)) (LocalSpec C)) (seedGenComparedCall D) b := by
+theorem isQueryBoundP_compared_hashes (phase : Phase) (D : C.Coalition) (qs : C.Party → Query C) (b : ℕ)
+    (hb : ((C.parties.map fun j => if SetupComparedCell (phase := phase) D (qs j) then 1 else 0).sum) ≤ b) :
+    IsQueryBoundP (liftComp (C.parties.mapM fun j => hashQuery (qs j)) (LocalSpec C)) (setupComparedCall (phase := phase) D) b := by
   rw [seedGen_liftComp_mapM]
-  exact (seedGenIsQueryBoundP_listMapM (fun j => isQueryBoundP_compared_hash D (qs j)) C.parties).mono hb
+  exact (seedGenIsQueryBoundP_listMapM (fun j => isQueryBoundP_compared_hash (phase := phase) D (qs j)) C.parties).mono hb
 
 theorem seedGenParties_sum_le_card (f : C.Party → ℕ) (hf : ∀ j, f j ≤ 1) :
     (C.parties.map f).sum ≤ C.n := by
@@ -1222,38 +1292,38 @@ theorem seedGenParties_sum_corrupt (D : C.Coalition) :
   rw [← Fin.sum_univ_def]
   simp
 
-theorem isQueryBoundP_compared_revealCompute (D : C.Coalition) (i : C.Party) (own : Parts C)
+theorem isQueryBoundP_compared_revealCompute (phase : Phase) (D : C.Coalition) (i : C.Party) (own : Parts C)
     (committed revealed : Mail C E) :
-    IsQueryBoundP (setupRevealCompute .seedGen i own committed revealed) (seedGenComparedCall D) (D.1.card + C.n) := by
+    IsQueryBoundP (setupRevealCompute phase i own committed revealed) (setupComparedCall (phase := phase) D) (D.1.card + C.n) := by
   unfold setupRevealCompute
   split
   · trivial
-  · refine isQueryBoundP_bind (isQueryBoundP_compared_hashes D _ D.1.card ?_) fun _ _ => ?_
+  · refine isQueryBoundP_bind (isQueryBoundP_compared_hashes (phase := phase) D _ D.1.card ?_) fun _ _ => ?_
     · rw [← seedGenParties_sum_corrupt D]
       apply le_of_eq
       congr 1
       apply List.map_congr_left
       intro j _
-      by_cases hj : j ∈ D.1 <;> simp [SeedGenComparedCell, hj]
+      by_cases hj : j ∈ D.1 <;> simp [SetupComparedCell, hj]
     · rw [← Nat.zero_add C.n]
       split
       · trivial
-      · exact isQueryBoundP_bind (isQueryBoundP_compared_derive D _ _ _) fun _ _ => by
+      · exact isQueryBoundP_bind (isQueryBoundP_compared_derive (phase := phase) D _ _) fun _ _ => by
           rw [← Nat.add_zero C.n]
           refine isQueryBoundP_bind ?_ fun _ _ => trivial
           unfold sharedQueries
-          exact isQueryBoundP_compared_hashes D _ C.n (seedGenParties_sum_le_card _ fun j => by split <;> omega)
+          exact isQueryBoundP_compared_hashes (phase := phase) D _ C.n (seedGenParties_sum_le_card _ fun j => by split <;> omega)
 
-theorem isQueryBoundP_compared_revealComputations (D : C.Coalition) (parts : C.Party → Parts C)
+theorem isQueryBoundP_compared_revealComputations (phase : Phase) (D : C.Coalition) (parts : C.Party → Parts C)
     (committed sent : C.Party → Mail C E) :
-    IsQueryBoundP (setupRevealComputations .seedGen D parts committed sent) (seedGenComparedCall D) (C.n * C.n) := by
+    IsQueryBoundP (setupRevealComputations phase D parts committed sent) (setupComparedCall (phase := phase) D) (C.n * C.n) := by
   unfold setupRevealComputations
   refine (seedGenIsQueryBoundP_sequenceFin_sum _ (fun i => if i ∈ D.1 then 0 else D.1.card + C.n) fun i => ?_).mono ?_
   · split
     · trivial
     · rename_i h
       rw [if_neg (fun hi => h (Or.inl hi))]
-      exact isQueryBoundP_compared_revealCompute D i (parts i) (committed i) _
+      exact isQueryBoundP_compared_revealCompute (phase := phase) D i (parts i) (committed i) _
   · rw [Finset.sum_ite, Finset.sum_const_zero, Finset.sum_const, zero_add, smul_eq_mul]
     have hc : (Finset.univ.filter fun i => i ∉ D.1).card = C.n - D.1.card := by
       rw [Finset.filter_not, Finset.card_sdiff_of_subset (Finset.filter_subset _ _)]
@@ -1266,118 +1336,128 @@ theorem isQueryBoundP_compared_revealComputations (D : C.Coalition) (parts : C.P
     rw [he, Nat.add_sub_cancel_left]
     nlinarith
 
-theorem isQueryBoundP_compared_post (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (step : ℕ)
+theorem isQueryBoundP_compared_post (phase : Phase) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (step : ℕ)
     (hround : ∀ state sent, IsQueryBoundP (A.round state sent) Counted step) (state : A.State)
     (parts : C.Party → Parts C) (committed : C.Party → Mail C E) :
-    IsQueryBoundP (seedGenPostTraced D A state parts committed) (seedGenComparedCall D) (step + (C.n * C.n + step)) := by
-  unfold seedGenPostTraced
+    IsQueryBoundP (setupPostTraced (phase := phase) D A state parts committed) (setupComparedCall (phase := phase) D) (step + (C.n * C.n + step)) := by
+  unfold setupPostTraced
   split
   · trivial
-  · refine isQueryBoundP_bind (isQueryBoundP_compared_of_counted D _ _ (hround _ _)) fun r _ => ?_
-    refine isQueryBoundP_bind (isQueryBoundP_compared_revealComputations D parts committed r.2) fun data _ => ?_
+  · refine isQueryBoundP_bind (isQueryBoundP_compared_of_counted (phase := phase) D _ _ (hround _ _)) fun r _ => ?_
+    refine isQueryBoundP_bind (isQueryBoundP_compared_revealComputations (phase := phase) D parts committed r.2) fun data _ => ?_
     rw [← Nat.add_zero step]
     refine isQueryBoundP_bind ?_ fun _ _ => trivial
     unfold setupFinishLocal
     split
     · trivial
     · rw [← Nat.add_zero step]
-      exact isQueryBoundP_bind (isQueryBoundP_compared_of_counted D _ _ (hround _ _)) fun _ _ => trivial
+      exact isQueryBoundP_bind (isQueryBoundP_compared_of_counted (phase := phase) D _ _ (hround _ _)) fun _ _ => trivial
 
-theorem isQueryBoundP_compared_program (D : C.Coalition) (q : Query C) (v : HashOutput)
-    (hq : ¬ SeedGenComparedCell D q) :
-    IsQueryBoundP (program q v) (seedGenComparedWorldCall D) 0 ∧ IsQueryBoundP (program q v) (seedGenComparedProgram D) 0 := by
+theorem isQueryBoundP_compared_program (phase : Phase) (D : C.Coalition) (q : Query C) (v : HashOutput)
+    (hq : ¬ SetupComparedCell (phase := phase) D q) :
+    IsQueryBoundP (program q v) (setupComparedWorldCall (phase := phase) D) 0 ∧ IsQueryBoundP (program q v) (setupComparedProgram (phase := phase) D) 0 := by
   have e : program q v = (liftM ((WorldSpec C).query (.inl (.inr (q, v)))) : OracleComp (WorldSpec C) _) >>= pure := by
     rw [bind_pure]
     rfl
   rw [e]
-  exact ⟨(isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl (by simp [seedGenComparedWorldCall]), fun _ => trivial⟩,
-    (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl (by simpa [seedGenComparedProgram] using hq), fun _ => trivial⟩⟩
+  exact ⟨(isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl (by simp [setupComparedWorldCall]), fun _ => trivial⟩,
+    (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl (by simpa [setupComparedProgram] using hq), fun _ => trivial⟩⟩
 
-theorem isQueryBoundP_compared_programs {ι : Type} (D : C.Coalition) (l : List ι) (q : ι → Query C)
-    (v : ι → HashOutput) (hq : ∀ i, ¬ SeedGenComparedCell D (q i)) :
-    IsQueryBoundP (l.mapM fun i => program (q i) (v i)) (seedGenComparedWorldCall D) 0 ∧
-      IsQueryBoundP (l.mapM fun i => program (q i) (v i)) (seedGenComparedProgram D) 0 := by
+theorem isQueryBoundP_compared_programs (phase : Phase) {ι : Type} (D : C.Coalition) (l : List ι) (q : ι → Query C)
+    (v : ι → HashOutput) (hq : ∀ i, ¬ SetupComparedCell (phase := phase) D (q i)) :
+    IsQueryBoundP (l.mapM fun i => program (q i) (v i)) (setupComparedWorldCall (phase := phase) D) 0 ∧
+      IsQueryBoundP (l.mapM fun i => program (q i) (v i)) (setupComparedProgram (phase := phase) D) 0 := by
   constructor
   · simpa using seedGenIsQueryBoundP_listMapM (k := fun _ => 0)
-      (fun i => (isQueryBoundP_compared_program D (q i) (v i) (hq i)).1) l
+      (fun i => (isQueryBoundP_compared_program (phase := phase) D (q i) (v i) (hq i)).1) l
   · simpa using seedGenIsQueryBoundP_listMapM (k := fun _ => 0)
-      (fun i => (isQueryBoundP_compared_program D (q i) (v i) (hq i)).2) l
+      (fun i => (isQueryBoundP_compared_program (phase := phase) D (q i) (v i) (hq i)).2) l
 
-theorem isQueryBoundP_compared_programOk (D : C.Coalition) (parts : C.Party → Parts C) (log : CallLog C)
+/-- The programming of `P` makes no compared call and no compared program. -/
+theorem isQueryBoundP_compared_programParameter (phase : Phase) (D : C.Coalition) (q : Query C) (v : HashOutput)
+    (hq : ¬ SetupComparedCell phase D q) :
+    IsQueryBoundP (programParameter phase q v) (setupComparedWorldCall phase D) 0 ∧
+      IsQueryBoundP (programParameter phase q v) (setupComparedProgram phase D) 0 := by
+  cases phase
+  · exact isQueryBoundP_compared_program (phase := .seedGen) D q v hq
+  · exact ⟨trivial, trivial⟩
+
+theorem isQueryBoundP_compared_programOk (phase : Phase) (D : C.Coalition) (parts : C.Party → Parts C) (log : CallLog C)
     (sent : C.Party → Mail C E) (parameter : PublicParameter) (seeds : C.Term → HashOutput)
     (pairs : C.Pair → HashOutput) (high : HashOutput) :
-    IsQueryBoundP (seedGenProgramOk D parts log sent parameter seeds pairs high) (seedGenComparedWorldCall D) 0 ∧
-      IsQueryBoundP (seedGenProgramOk D parts log sent parameter seeds pairs high) (seedGenComparedProgram D) 0 := by
-  have hd (k : KeyKind) (values : List HashOutput) : ¬ SeedGenComparedCell D (.derive .seedGen k values) := by
-    simp [SeedGenComparedCell]
-  have h₁ := isQueryBoundP_compared_program D (seedGenParameterProgrammingInput D (setupProgramView .seedGen D parts log sent))
+    IsQueryBoundP (setupProgramOk (phase := phase) D parts log sent parameter seeds pairs high) (setupComparedWorldCall (phase := phase) D) 0 ∧
+      IsQueryBoundP (setupProgramOk (phase := phase) D parts log sent parameter seeds pairs high) (setupComparedProgram (phase := phase) D) 0 := by
+  have hd (k : KeyKind) (values : List HashOutput) : ¬ SetupComparedCell (phase := phase) D (.derive phase k values) := by
+    simp [SetupComparedCell]
+  have h₁ := isQueryBoundP_compared_programParameter phase D (.derive phase .parameter (C.parties.map fun j =>
+    (setupProgramView phase D parts log sent (seedGenFirstHonest D Finset.univ) j).parameter))
     (seedGenFullParameter high parameter) (hd _ _)
-  have h₂ := isQueryBoundP_compared_programs D (seedGenKnownCoordinates D)
-    (setupTermProgrammingInput .seedGen D (setupProgramView .seedGen D parts log sent)) seeds (fun _ => hd _ _)
-  have h₃ := isQueryBoundP_compared_programs D (seedGenCrossCoordinates D)
-    (setupPairProgrammingInput .seedGen D (setupProgramView .seedGen D parts log sent)) pairs (fun _ => hd _ _)
-  unfold seedGenProgramOk
+  have h₂ := isQueryBoundP_compared_programs (phase := phase) D (seedGenKnownCoordinates D)
+    (setupTermProgrammingInput phase D (setupProgramView phase D parts log sent)) seeds (fun _ => hd _ _)
+  have h₃ := isQueryBoundP_compared_programs (phase := phase) D (seedGenCrossCoordinates D)
+    (setupPairProgrammingInput phase D (setupProgramView phase D parts log sent)) pairs (fun _ => hd _ _)
+  unfold setupProgramOk
   constructor
   · exact isQueryBoundP_bind (m := 0) h₁.1 fun _ _ => isQueryBoundP_bind (m := 0) h₂.1 fun _ _ =>
       isQueryBoundP_bind (m := 0) h₃.1 fun _ _ => trivial
   · exact isQueryBoundP_bind (m := 0) h₁.2 fun _ _ => isQueryBoundP_bind (m := 0) h₂.2 fun _ _ =>
       isQueryBoundP_bind (m := 0) h₃.2 fun _ _ => trivial
 
-theorem isQueryBoundP_compared_commitments (D : C.Coalition) (parts : C.Party → Parts C) :
-    IsQueryBoundP (setupInitialCommitments .seedGen D parts) (seedGenComparedCall D) 0 := by
+theorem isQueryBoundP_compared_commitments (phase : Phase) (D : C.Coalition) (parts : C.Party → Parts C) :
+    IsQueryBoundP (setupInitialCommitments phase D parts) (setupComparedCall (phase := phase) D) 0 := by
   unfold setupInitialCommitments
   refine (seedGenIsQueryBoundP_sequenceFin_sum _ (fun _ => 0) fun i => ?_).mono (by simp)
   split
   · trivial
   · rename_i hi
-    exact isQueryBoundP_compared_hashes D _ 0 (by simp [SeedGenComparedCell, hi])
+    exact isQueryBoundP_compared_hashes (phase := phase) D _ 0 (by simp [SetupComparedCell, hi])
 
-theorem isQueryBoundP_compared_sample (D : C.Coalition) {β : Type} (p : ProbComp β) :
-    IsQueryBoundP (free (liftComp p (LocalSpec C))) (seedGenComparedWorldCall D) 0 ∧
-      IsQueryBoundP (free (liftComp p (LocalSpec C))) (seedGenComparedProgram D) 0 :=
-  isQueryBoundP_free_compared D _ 0 (isQueryBoundP_compared_of_counted D _ 0 (isQueryBoundP_liftComp_counted p))
+theorem isQueryBoundP_compared_sample (phase : Phase) (D : C.Coalition) {β : Type} (p : ProbComp β) :
+    IsQueryBoundP (free (liftComp p (LocalSpec C))) (setupComparedWorldCall (phase := phase) D) 0 ∧
+      IsQueryBoundP (free (liftComp p (LocalSpec C))) (setupComparedProgram (phase := phase) D) 0 :=
+  isQueryBoundP_free_compared (phase := phase) D _ 0 (isQueryBoundP_compared_of_counted (phase := phase) D _ 0 (isQueryBoundP_liftComp_counted p))
 
-theorem isQueryBoundP_compared_knownGame (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+theorem isQueryBoundP_compared_knownGame (phase : Phase) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (start step : ℕ)
     (hstart : ∀ x z, IsQueryBoundP (A.start x z) Counted start)
     (hround : ∀ state sent, IsQueryBoundP (A.round state sent) Counted step) :
-    IsQueryBoundP (seedGenKnownGame D A x z) (seedGenComparedWorldCall D) (start + 3 * step + C.n * C.n) ∧
-      IsQueryBoundP (seedGenKnownGame D A x z) (seedGenComparedProgram D) 0 := by
-  have o₁ := isQueryBoundP_observe_compared D _ _ (isQueryBoundP_compared_of_counted D _ _ (hstart (corruptInputs D x) z))
-  unfold seedGenKnownGame
+    IsQueryBoundP (setupKnownGame (phase := phase) D A x z) (setupComparedWorldCall (phase := phase) D) (start + 3 * step + C.n * C.n) ∧
+      IsQueryBoundP (setupKnownGame (phase := phase) D A x z) (setupComparedProgram (phase := phase) D) 0 := by
+  have o₁ := isQueryBoundP_observe_compared (phase := phase) D _ _ (isQueryBoundP_compared_of_counted (phase := phase) D _ _ (hstart (corruptInputs D x) z))
+  unfold setupKnownGame
   constructor
-  · refine (isQueryBoundP_bind o₁.1 fun _ _ => isQueryBoundP_bind (isQueryBoundP_compared_sample D _).1 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_compared_sample D _).1 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_free_compared D _ _ (isQueryBoundP_compared_commitments D _)).1 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_observe_compared D _ _
-        (isQueryBoundP_compared_of_counted D _ _ (hround _ _))).1 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_compared_sample D _).1 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_compared_programOk D _ _ _ _ _ _ _).1 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_free_compared D _ _
-        (isQueryBoundP_compared_post D A step hround _ _ _)).1 fun _ _ =>
+  · refine (isQueryBoundP_bind o₁.1 fun _ _ => isQueryBoundP_bind (isQueryBoundP_compared_sample (phase := phase) D _).1 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_compared_sample (phase := phase) D _).1 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_free_compared (phase := phase) D _ _ (isQueryBoundP_compared_commitments (phase := phase) D _)).1 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_observe_compared (phase := phase) D _ _
+        (isQueryBoundP_compared_of_counted (phase := phase) D _ _ (hround _ _))).1 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_compared_sample (phase := phase) D _).1 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_compared_programOk (phase := phase) D _ _ _ _ _ _ _).1 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_free_compared (phase := phase) D _ _
+        (isQueryBoundP_compared_post (phase := phase) D A step hround _ _ _)).1 fun _ _ =>
       isQueryBoundP_pure _ _ 0).mono (by ring_nf; omega)
-  · refine (isQueryBoundP_bind o₁.2 fun _ _ => isQueryBoundP_bind (isQueryBoundP_compared_sample D _).2 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_compared_sample D _).2 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_free_compared D _ _ (isQueryBoundP_compared_commitments D _)).2 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_observe_compared D _ _
-        (isQueryBoundP_compared_of_counted D _ _ (hround _ _))).2 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_compared_sample D _).2 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_compared_programOk D _ _ _ _ _ _ _).2 fun _ _ =>
-      isQueryBoundP_bind (isQueryBoundP_free_compared D _ _
-        (isQueryBoundP_compared_post D A step hround _ _ _)).2 fun _ _ =>
+  · refine (isQueryBoundP_bind o₁.2 fun _ _ => isQueryBoundP_bind (isQueryBoundP_compared_sample (phase := phase) D _).2 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_compared_sample (phase := phase) D _).2 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_free_compared (phase := phase) D _ _ (isQueryBoundP_compared_commitments (phase := phase) D _)).2 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_observe_compared (phase := phase) D _ _
+        (isQueryBoundP_compared_of_counted (phase := phase) D _ _ (hround _ _))).2 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_compared_sample (phase := phase) D _).2 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_compared_programOk (phase := phase) D _ _ _ _ _ _ _).2 fun _ _ =>
+      isQueryBoundP_bind (isQueryBoundP_free_compared (phase := phase) D _ _
+        (isQueryBoundP_compared_post (phase := phase) D A step hround _ _ _)).2 fun _ _ =>
       isQueryBoundP_pure _ _ 0).mono (by simp)
 
 /-- A cell that was empty in `b` holds its target answer in `s`. -/
 def SeedGenTargetHit (target : Query C → Option HashOutput) (b s : HashCache C) : Prop :=
   ∃ x c, target x = some c ∧ b x = none ∧ s x = some c
 
-theorem seedGenTarget_hash_step {D : C.Coalition} {β : Type} (target : Query C → Option HashOutput)
-    (htarget : ∀ x, target x ≠ none → SeedGenComparedCell D x) (b : HashCache C) (q : Query C)
+theorem setupTarget_hash_step (phase : Phase) (prims : Primitives) {D : C.Coalition} {β : Type} (target : Query C → Option HashOutput)
+    (htarget : ∀ x, target x ≠ none → SetupComparedCell (phase := phase) D x) (b : HashCache C) (q : Query C)
     (s : HashCache C) (m : ℕ) (hs : ¬ SeedGenTargetHit target b s)
     (g : HashOutput → HashCache C → ProbComp (β × HashCache C))
     (hg : ∀ u s', ¬ SeedGenTargetHit target b s' →
       Pr{let z ← g u s'}[SeedGenTargetHit target b z.2] ≤ (m : ℝ≥0∞) / Fintype.card HashOutput)
-    (hg' : SeedGenComparedCell D q → 0 < m ∧ ∀ u s', ¬ SeedGenTargetHit target b s' →
+    (hg' : SetupComparedCell (phase := phase) D q → 0 < m ∧ ∀ u s', ¬ SeedGenTargetHit target b s' →
       Pr{let z ← g u s'}[SeedGenTargetHit target b z.2] ≤ ((m - 1 : ℕ) : ℝ≥0∞) / Fintype.card HashOutput) :
     Pr{let z ← (hashAnswer prims q).run s >>= fun p => g p.1 p.2}[SeedGenTargetHit target b z.2] ≤
       (m : ℝ≥0∞) / Fintype.card HashOutput := by
@@ -1405,7 +1485,7 @@ theorem seedGenTarget_hash_step {D : C.Coalition} {β : Type} (target : Query C 
         rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ hsq]
         rfl
       rw [heq, bind_map_left]
-      by_cases hc : SeedGenComparedCell D q
+      by_cases hc : SetupComparedCell (phase := phase) D q
       · obtain ⟨hm, hg''⟩ := hg' hc
         have h := prEvent_bind_le_prEvent_add_of_support ($ᵗ HashOutput)
           (fun u => g u (s.cacheQuery q u))
@@ -1436,10 +1516,10 @@ theorem seedGenTarget_hash_step {D : C.Coalition} {β : Type} (target : Query C 
 
 /-- A local computation with at most `m` compared calls fills a target cell with its target answer
 with probability at most `m / 2^256`. -/
-theorem seedGenTarget_local {D : C.Coalition} (target : Query C → Option HashOutput)
-    (htarget : ∀ x, target x ≠ none → SeedGenComparedCell D x) (b : HashCache C) {α : Type}
+theorem setupTarget_local (phase : Phase) (prims : Primitives) {D : C.Coalition} (target : Query C → Option HashOutput)
+    (htarget : ∀ x, target x ≠ none → SetupComparedCell (phase := phase) D x) (b : HashCache C) {α : Type}
     (oa : OracleComp (LocalSpec C) α) :
-    ∀ m s, IsQueryBoundP oa (seedGenComparedCall D) m → ¬ SeedGenTargetHit target b s →
+    ∀ m s, IsQueryBoundP oa (setupComparedCall (phase := phase) D) m → ¬ SeedGenTargetHit target b s →
       Pr{let z ← (simulateQ (localAnswer prims) oa).run s}[SeedGenTargetHit target b z.2] ≤
         (m : ℝ≥0∞) / Fintype.card HashOutput := by
   induction oa using OracleComp.inductionOn with
@@ -1460,31 +1540,31 @@ theorem seedGenTarget_local {D : C.Coalition} (target : Query C → Option HashO
       rw [heq]
       erw [bind_map_left]
       refine prEvent_bind_le_of_forall_le _ _ _ fun u => ih u m s ?_ hs
-      simpa [seedGenComparedCall] using hm.2 u
+      simpa [setupComparedCall] using hm.2 u
     · change Pr{let z ← (hashAnswer prims q).run s >>= fun p => (simulateQ (localAnswer prims) (f p.1)).run p.2}[
         SeedGenTargetHit target b z.2] ≤ _
-      refine seedGenTarget_hash_step prims target htarget b q s m hs
+      refine setupTarget_hash_step (phase := phase) prims target htarget b q s m hs
         (fun u s' => (simulateQ (localAnswer prims) (f u)).run s') (fun u s' h => ?_) (fun hc => ?_)
       · have hu := hm.2 u
-        simp only [seedGenComparedCall] at hu
-        by_cases hct : SeedGenComparedCell D q
+        simp only [setupComparedCall] at hu
+        by_cases hct : SetupComparedCell (phase := phase) D q
         · erw [if_pos hct] at hu
           exact (ih u (m - 1) s' hu h).trans (ENNReal.div_le_div_right (by exact_mod_cast Nat.sub_le m 1) _)
         · erw [if_neg hct] at hu
           exact ih u m s' hu h
-      · have hm' := hm.1.resolve_left (by simpa [seedGenComparedCall] using hc)
+      · have hm' := hm.1.resolve_left (by simpa [setupComparedCall] using hc)
         refine ⟨hm', fun u s' h => ?_⟩
         have hu := hm.2 u
-        simp only [seedGenComparedCall] at hu
+        simp only [setupComparedCall] at hu
         erw [if_pos hc] at hu
         exact ih u (m - 1) s' hu h
     · change Pr{let z ← (prgAnswer prims x).run s >>= fun p => (simulateQ (localAnswer prims) (f p.1)).run p.2}[
         SeedGenTargetHit target b z.2] ≤ _
       simp only [prgAnswer, StateT.run_bind, StateT.run_pure, bind_assoc, pure_bind]
-      refine seedGenTarget_hash_step prims target htarget b (.streamKey x.2.1) s m hs
+      refine setupTarget_hash_step (phase := phase) prims target htarget b (.streamKey x.2.1) s m hs
         (fun u s' => (simulateQ (localAnswer prims) (f (prims.aes.eval (truncateHash u) x.2.2))).run s')
-        (fun u s' h => ih _ m s' ?_ h) (fun hc => by simp [SeedGenComparedCell] at hc)
-      simpa [seedGenComparedCall] using hm.2 _
+        (fun u s' h => ih _ m s' ?_ h) (fun hc => by simp [SetupComparedCell] at hc)
+      simpa [setupComparedCall] using hm.2 _
 
 /-- Every cell that an observed computation fills is logged, except a stream key. -/
 theorem seedGenObserve_new_logged {α : Type} (oa : OracleComp (LocalSpec C) α) :
@@ -1561,9 +1641,9 @@ theorem seedGenObserve_new_logged {α : Type} (oa : OracleComp (LocalSpec C) α)
           rw [this, hq] at hpq
           cases hpq
 
-theorem localAnswer_compared_unchanged (D : C.Coalition) (t : (LocalSpec C).Domain)
-    (ht : ¬ seedGenComparedCall D t) (s : HashCache C) (p : (LocalSpec C).Range t × HashCache C)
-    (hp : p ∈ support ((localAnswer prims t).run s)) (x : Query C) (hx : SeedGenComparedCell D x) :
+theorem localAnswer_compared_unchanged (phase : Phase) (prims : Primitives) (D : C.Coalition) (t : (LocalSpec C).Domain)
+    (ht : ¬ setupComparedCall (phase := phase) D t) (s : HashCache C) (p : (LocalSpec C).Range t × HashCache C)
+    (hp : p ∈ support ((localAnswer prims t).run s)) (x : Query C) (hx : SetupComparedCell (phase := phase) D x) :
     p.2 x = s x := by
   rcases t with n | q | y
   · simp [localAnswer, unifFwdImpl] at hp
@@ -1587,17 +1667,17 @@ theorem localAnswer_compared_unchanged (D : C.Coalition) (t : (LocalSpec C).Doma
     subst hp
     have hxq : x ≠ .streamKey y.2.1 := by
       rintro rfl
-      simp [SeedGenComparedCell] at hx
+      simp [SetupComparedCell] at hx
     have hfix : ¬ IsFixed (Query.streamKey (C := C) y.2.1) := by simp [IsFixed]
     rw [hashAnswer_of_not_isFixed prims hfix] at hp'
     exact (randomOracle_support _ s p' hp').2.2 x hxq
 
 /-- A world computation with no compared call and no compared programming leaves every compared
 cell unchanged. -/
-theorem seedGenCompared_unchanged {D : C.Coalition} {α : Type} (oa : OracleComp (WorldSpec C) α) :
-    IsQueryBoundP oa (seedGenComparedWorldCall D) 0 → IsQueryBoundP oa (seedGenComparedProgram D) 0 →
+theorem setupCompared_unchanged (phase : Phase) (prims : Primitives) {D : C.Coalition} {α : Type} (oa : OracleComp (WorldSpec C) α) :
+    IsQueryBoundP oa (setupComparedWorldCall (phase := phase) D) 0 → IsQueryBoundP oa (setupComparedProgram (phase := phase) D) 0 →
       ∀ s z, z ∈ support ((simulateQ (worldAnswer prims) oa).run s) →
-        ∀ x, SeedGenComparedCell D x → z.2 x = s x := by
+        ∀ x, SetupComparedCell (phase := phase) D x → z.2 x = s x := by
   induction oa using OracleComp.inductionOn with
   | pure a =>
     intro _ _ s z hz x _
@@ -1609,15 +1689,15 @@ theorem seedGenCompared_unchanged {D : C.Coalition} {α : Type} (oa : OracleComp
     simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query, id_map,
       StateT.run_bind, support_bind, Set.mem_iUnion] at hz
     obtain ⟨p, hp', hz⟩ := hz
-    have hc : ¬ seedGenComparedWorldCall D t := fun h => by simpa using hm.1.resolve_left (not_not.mpr h)
-    have hpr : ¬ seedGenComparedProgram D t := fun h => by simpa using hp.1.resolve_left (not_not.mpr h)
+    have hc : ¬ setupComparedWorldCall (phase := phase) D t := fun h => by simpa using hm.1.resolve_left (not_not.mpr h)
+    have hpr : ¬ setupComparedProgram (phase := phase) D t := fun h => by simpa using hp.1.resolve_left (not_not.mpr h)
     have hmu := hm.2 p.1
     have hpu := hp.2 p.1
     simp only [if_neg hc, if_neg hpr] at hmu hpu
     rw [ih p.1 hmu hpu p.2 z hz x hx]
     rcases t with (t | y) | t
-    · exact localAnswer_compared_unchanged prims D t hc s p hp' x hx
-    · have hy : ¬ SeedGenComparedCell D y.1 := hpr
+    · exact localAnswer_compared_unchanged (phase := phase) prims D t hc s p hp' x hx
+    · have hy : ¬ SetupComparedCell (phase := phase) D y.1 := hpr
       change p ∈ support ((programAnswer y).run s) at hp'
       simp only [programAnswer, StateT.run_bind, StateT.run_get, pure_bind] at hp'
       split_ifs at hp'
@@ -1626,7 +1706,7 @@ theorem seedGenCompared_unchanged {D : C.Coalition} {α : Type} (oa : OracleComp
       · simp only [StateT.run_bind, StateT.run_set, StateT.run_pure, pure_bind, support_pure] at hp'
         rw [hp']
         exact QueryCache.cacheQuery_of_ne s _ (fun he => hy (he ▸ hx))
-    · exact localAnswer_compared_unchanged prims D t hc s p hp' x hx
+    · exact localAnswer_compared_unchanged (phase := phase) prims D t hc s p hp' x hx
 
 /-- The transcript before the last two rounds. -/
 structure SeedGenKnownPre (C : Committee) (E σ : Type) where
@@ -1641,66 +1721,66 @@ structure SeedGenKnownPre (C : Committee) (E σ : Type) where
   state : σ
 
 /-- The common game up to the programming block. -/
-def seedGenKnownPrefix (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux) :
-    OracleComp (WorldSpec C) (SeedGenKnownPre C E A.State) := do
+def setupKnownPrefix (phase : Phase) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+    (x : C.Party → Unit) (z : Aux) : OracleComp (WorldSpec C) (SeedGenKnownPre C E A.State) := do
   let (state, log) ← observe (A.start (corruptInputs D x) z)
-  let (parameter, seeds, pairs) ← free (liftComp (setupDealerSamples .seedGen (C := C)) (LocalSpec C))
+  let (parameter, seeds, pairs) ← free (liftComp (setupDealerSamples (C := C) phase) (LocalSpec C))
   let parts ← free (liftComp (OverPermutation.sequenceFin fun (_ : C.Party) => (sampleParts : ProbComp (Parts C)))
     (LocalSpec C))
-  let commitments ← free (setupInitialCommitments .seedGen D parts)
+  let commitments ← free (setupInitialCommitments phase D parts)
   let ((st, sent), calls) ← observe (A.round state fun c i => if c ∈ D.1 ∧ i ∉ D.1 then
     commitOutbox i (commitments i) c else none)
-  let high ← free (liftComp ($ᵗ HashOutput) (LocalSpec C))
-  let ok ← seedGenProgramOk D parts (log ++ calls) sent parameter seeds pairs high
+  let high ← free (liftComp (setupHighSample phase) (LocalSpec C))
+  let ok ← setupProgramOk phase D parts (log ++ calls) sent parameter seeds pairs high
   pure ⟨parameter, seeds, pairs, parts, log ++ calls, sent, commitments, ok, st⟩
 
-theorem seedGenKnownGame_eq_prefix (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+theorem setupKnownGame_eq_prefix (phase : Phase) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) :
-    seedGenKnownGame D A x z = seedGenKnownPrefix D A x z >>= fun pre =>
-      free (seedGenPostTraced D A pre.state pre.parts (setupCommitInbox .seedGen D pre.parts pre.commitments pre.sent)) >>=
+    setupKnownGame (phase := phase) D A x z = setupKnownPrefix (phase := phase) D A x z >>= fun pre =>
+      free (setupPostTraced (phase := phase) D A pre.state pre.parts (setupCommitInbox phase D pre.parts pre.commitments pre.sent)) >>=
         fun r => pure ⟨pre.parameter, pre.seeds, pre.pairs, pre.parts, pre.log, pre.sent, pre.commitments, pre.ok,
           r.1, r.2.1, r.2.2.1, r.2.2.2⟩ := by
-  unfold seedGenKnownGame seedGenKnownPrefix
+  unfold setupKnownGame setupKnownPrefix
   simp only [bind_assoc, pure_bind]
 
 /-- Before the last two rounds, every filled commitment cell of a corrupt sender is logged. -/
-theorem seedGenKnownPrefix_unlogged (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+theorem setupKnownPrefix_unlogged (phase : Phase) (prims : Primitives) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (w : SeedGenKnownPre C E A.State × HashCache C)
-    (hw : w ∈ support ((simulateQ (worldAnswer prims) (seedGenKnownPrefix D A x z)).run ∅))
+    (hw : w ∈ support ((simulateQ (worldAnswer prims) (setupKnownPrefix (phase := phase) D A x z)).run ∅))
     (j i : C.Party) (reveal : List HashOutput) (hj : j ∈ D.1)
-    (hlog : ∀ y, (Query.commit (C := C) .seedGen j i reveal, y) ∉ w.1.log) :
-    w.2 (.commit .seedGen j i reveal) = none := by
-  have hx : SeedGenComparedCell D (.commit .seedGen j i reveal) := hj
-  have hns : ¬ ∃ k, Query.commit (C := C) .seedGen j i reveal = .streamKey k := by
+    (hlog : ∀ y, (Query.commit (C := C) phase j i reveal, y) ∉ w.1.log) :
+    w.2 (.commit phase j i reveal) = none := by
+  have hx : SetupComparedCell (phase := phase) D (.commit phase j i reveal) := ⟨rfl, hj⟩
+  have hns : ¬ ∃ k, Query.commit (C := C) phase j i reveal = .streamKey k := by
     rintro ⟨k, hk⟩
     cases hk
-  unfold seedGenKnownPrefix at hw
+  unfold setupKnownPrefix at hw
   simp only [simulateQ_bind, StateT.run_bind, support_bind, Set.mem_iUnion] at hw
   obtain ⟨p₀, hp₀, p₁, hp₁, p₂, hp₂, p₃, hp₃, p₄, hp₄, p₅, hp₅, p₆, hp₆, hfin⟩ := hw
   simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hfin
   subst hfin
   simp only at hlog ⊢
-  have n₀ : p₀.2 (.commit .seedGen j i reveal) = none := by
+  have n₀ : p₀.2 (.commit phase j i reveal) = none := by
     by_contra hne
     rcases seedGenObserve_new_logged prims _ ∅ p₀ hp₀ _ rfl hne with ⟨y, hy⟩ | h
     · exact hlog y (List.mem_append_left _ hy)
     · exact hns h
-  have u₁ := seedGenCompared_unchanged prims _ (isQueryBoundP_compared_sample D _).1
-    (isQueryBoundP_compared_sample D _).2 _ p₁ hp₁ _ hx
-  have u₂ := seedGenCompared_unchanged prims _ (isQueryBoundP_compared_sample D _).1
-    (isQueryBoundP_compared_sample D _).2 _ p₂ hp₂ _ hx
-  have hcm := isQueryBoundP_free_compared D _ 0 (isQueryBoundP_compared_commitments D p₂.1)
-  have u₃ := seedGenCompared_unchanged prims _ hcm.1 hcm.2 _ p₃ hp₃ _ hx
-  have n₄ : p₄.2 (.commit .seedGen j i reveal) = none := by
+  have u₁ := setupCompared_unchanged (phase := phase) prims _ (isQueryBoundP_compared_sample (phase := phase) D _).1
+    (isQueryBoundP_compared_sample (phase := phase) D _).2 _ p₁ hp₁ _ hx
+  have u₂ := setupCompared_unchanged (phase := phase) prims _ (isQueryBoundP_compared_sample (phase := phase) D _).1
+    (isQueryBoundP_compared_sample (phase := phase) D _).2 _ p₂ hp₂ _ hx
+  have hcm := isQueryBoundP_free_compared (phase := phase) D _ 0 (isQueryBoundP_compared_commitments (phase := phase) D p₂.1)
+  have u₃ := setupCompared_unchanged (phase := phase) prims _ hcm.1 hcm.2 _ p₃ hp₃ _ hx
+  have n₄ : p₄.2 (.commit phase j i reveal) = none := by
     by_contra hne
     rcases seedGenObserve_new_logged prims _ _ p₄ hp₄ _ (by rw [u₃, u₂, u₁, n₀]) hne with ⟨y, hy⟩ | h
     · exact hlog y (List.mem_append_right _ hy)
     · exact hns h
-  have u₅ := seedGenCompared_unchanged prims _ (isQueryBoundP_compared_sample D _).1
-    (isQueryBoundP_compared_sample D _).2 _ p₅ hp₅ _ hx
-  have hpo := isQueryBoundP_compared_programOk (E := E) D p₂.1 (p₀.1.2 ++ p₄.1.2) p₄.1.1.2 p₁.1.1 p₁.1.2.1
+  have u₅ := setupCompared_unchanged (phase := phase) prims _ (isQueryBoundP_compared_sample (phase := phase) D _).1
+    (isQueryBoundP_compared_sample (phase := phase) D _).2 _ p₅ hp₅ _ hx
+  have hpo := isQueryBoundP_compared_programOk (phase := phase) (E := E) D p₂.1 (p₀.1.2 ++ p₄.1.2) p₄.1.1.2 p₁.1.1 p₁.1.2.1
     p₁.1.2.2 p₅.1
-  have u₆ := seedGenCompared_unchanged prims _ hpo.1 hpo.2 _ p₆ hp₆ _ hx
+  have u₆ := setupCompared_unchanged (phase := phase) prims _ hpo.1 hpo.2 _ p₆ hp₆ _ hx
   rw [u₆, u₅, n₄]
 
 /-- The local calls whose random-oracle input is `x`. -/
@@ -1752,17 +1832,17 @@ theorem seedGenCell_unchanged (x : Query C) (hx : ∀ k, x ≠ .streamKey k) {α
       rw [hashAnswer_of_not_isFixed prims hfix] at hp'
       exact (randomOracle_support _ s p' hp').2.2 x (hx _)
 
-theorem seedGenCell_commitments (D : C.Coalition) (parts : C.Party → Parts C) (kind : KeyKind)
+theorem setupCell_commitments (phase : Phase) (D : C.Coalition) (parts : C.Party → Parts C) (kind : KeyKind)
     (values : List HashOutput) :
-    IsQueryBoundP (setupInitialCommitments .seedGen D parts) (seedGenCellCall (.derive .seedGen kind values)) 0 := by
+    IsQueryBoundP (setupInitialCommitments phase D parts) (seedGenCellCall (.derive phase kind values)) 0 := by
   unfold setupInitialCommitments
   refine (seedGenIsQueryBoundP_sequenceFin_sum _ (fun _ => 0) fun i => ?_).mono (by simp)
   split
   · trivial
   · rw [commitQueries, seedGen_liftComp_mapM]
     refine (seedGenIsQueryBoundP_listMapM (k := fun _ => 0) (fun j => ?_) C.parties).mono (by simp)
-    have e : liftComp (hashQuery (C := C) (.commit .seedGen i j (revealTo .seedGen (parts i) i j))) (LocalSpec C) =
-        (liftM ((LocalSpec C).query (.inr (.inl (.commit .seedGen i j (revealTo .seedGen (parts i) i j))))) :
+    have e : liftComp (hashQuery (C := C) (.commit phase i j (revealTo phase (parts i) i j))) (LocalSpec C) =
+        (liftM ((LocalSpec C).query (.inr (.inl (.commit phase i j (revealTo phase (parts i) i j))))) :
           OracleComp (LocalSpec C) _) >>= pure := by
       rw [bind_pure]
       rfl
@@ -1770,16 +1850,18 @@ theorem seedGenCell_commitments (D : C.Coalition) (parts : C.Party → Parts C) 
     exact (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl (by simp [seedGenCellCall]), fun _ => trivial⟩
 
 /-- A programming input of the prefix is a logged query, or two programming inputs are equal. -/
-def SeedGenProgramAlias (D : C.Coalition) {σ : Type} (pre : SeedGenKnownPre C E σ) : Prop :=
-  (∃ x ∈ setupProgrammingInputs .seedGen D (setupProgramView .seedGen D pre.parts pre.log pre.sent), ∃ y, (x, y) ∈ pre.log) ∨
-    ¬ (setupProgrammingInputs .seedGen D (setupProgramView .seedGen D pre.parts pre.log pre.sent)).Nodup
+def SetupProgramAlias (phase : Phase) (D : C.Coalition) {σ : Type} (pre : SeedGenKnownPre C E σ) : Prop :=
+  (∃ x ∈ setupProgrammingInputs phase D (setupProgramView phase D pre.parts pre.log pre.sent), ∃ y, (x, y) ∈ pre.log) ∨
+    ¬ (setupProgrammingInputs phase D (setupProgramView phase D pre.parts pre.log pre.sent)).Nodup
 
-theorem seedGenProgrammingInputs_derive (D : C.Coalition) (view : C.Party → C.Party → Parts C) (x : Query C)
-    (hx : x ∈ setupProgrammingInputs .seedGen D view) : ∃ kind values, x = .derive .seedGen kind values := by
-  simp only [setupProgrammingInputs, setupParameterInputs, ite_true, List.singleton_append, List.mem_append,
-    List.mem_cons, List.mem_map] at hx
-  rcases hx with (rfl | ⟨T, _, rfl⟩) | ⟨p, _, rfl⟩
-  · exact ⟨_, _, rfl⟩
+theorem setupProgrammingInputs_derive (phase : Phase) (D : C.Coalition) (view : C.Party → C.Party → Parts C) (x : Query C)
+    (hx : x ∈ setupProgrammingInputs phase D view) : ∃ kind values, x = .derive phase kind values := by
+  simp only [setupProgrammingInputs, List.mem_append, List.mem_map] at hx
+  rcases hx with (hx | ⟨T, _, rfl⟩) | ⟨p, _, rfl⟩
+  · unfold setupParameterInputs at hx
+    split_ifs at hx
+    · exact ⟨_, _, List.mem_singleton.mp hx⟩
+    · simp at hx
   · exact ⟨_, _, rfl⟩
   · exact ⟨_, _, rfl⟩
 
@@ -1791,27 +1873,27 @@ theorem seedGenWorld_sample_support {β : Type} (p : ProbComp β) (s : HashCache
   rfl
 
 /-- A failed programming of the prefix is an alias of a programming input. -/
-theorem seedGenKnownPrefix_alias_of_fail (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+theorem setupKnownPrefix_alias_of_fail (phase : Phase) (prims : Primitives) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (w : SeedGenKnownPre C E A.State × HashCache C)
-    (hw : w ∈ support ((simulateQ (worldAnswer prims) (seedGenKnownPrefix D A x z)).run ∅))
-    (hok : w.1.ok = false) : SeedGenProgramAlias D w.1 := by
+    (hw : w ∈ support ((simulateQ (worldAnswer prims) (setupKnownPrefix (phase := phase) D A x z)).run ∅))
+    (hok : w.1.ok = false) : SetupProgramAlias (phase := phase) D w.1 := by
   by_contra hA
-  simp only [SeedGenProgramAlias, not_or, not_exists, not_and, not_not] at hA
+  simp only [SetupProgramAlias, not_or, not_exists, not_and, not_not] at hA
   obtain ⟨hlog, hnodup⟩ := hA
-  unfold seedGenKnownPrefix at hw
+  unfold setupKnownPrefix at hw
   simp only [simulateQ_bind, StateT.run_bind, support_bind, Set.mem_iUnion] at hw
   obtain ⟨p₀, hp₀, p₁, hp₁, p₂, hp₂, p₃, hp₃, p₄, hp₄, p₅, hp₅, p₆, hp₆, hfin⟩ := hw
   simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hfin
   subst hfin
   simp only at hlog hnodup hok
-  have hfresh : ∀ q ∈ setupProgrammingInputs .seedGen D (setupProgramView .seedGen D p₂.1 (p₀.1.2 ++ p₄.1.2) p₄.1.1.2),
+  have hfresh : ∀ q ∈ setupProgrammingInputs phase D (setupProgramView phase D p₂.1 (p₀.1.2 ++ p₄.1.2) p₄.1.1.2),
       p₅.2 q = none := by
     intro q hq
-    obtain ⟨kind, values, rfl⟩ := seedGenProgrammingInputs_derive D _ q hq
-    have hns : ¬ ∃ k, Query.derive (C := C) .seedGen kind values = .streamKey k := by
+    obtain ⟨kind, values, rfl⟩ := setupProgrammingInputs_derive (phase := phase) D _ q hq
+    have hns : ¬ ∃ k, Query.derive (C := C) phase kind values = .streamKey k := by
       rintro ⟨k, hk⟩
       cases hk
-    have n₀ : p₀.2 (.derive .seedGen kind values) = none := by
+    have n₀ : p₀.2 (.derive phase kind values) = none := by
       by_contra hne
       rcases seedGenObserve_new_logged prims _ ∅ p₀ hp₀ _ rfl hne with ⟨y, hy⟩ | h
       · exact hlog _ hq y (List.mem_append_left _ hy)
@@ -1819,15 +1901,15 @@ theorem seedGenKnownPrefix_alias_of_fail (D : C.Coalition) (A : Adversary C E Un
     have u₁ := seedGenWorld_sample_support prims _ _ p₁ hp₁
     have u₂ := seedGenWorld_sample_support prims _ _ p₂ hp₂
     rw [simulateQ_free] at hp₃
-    have u₃ := seedGenCell_unchanged prims (.derive .seedGen kind values) (fun k hk => by cases hk) _
-      (seedGenCell_commitments D p₂.1 kind values) _ p₃ hp₃
-    have n₄ : p₄.2 (.derive .seedGen kind values) = none := by
+    have u₃ := seedGenCell_unchanged prims (.derive phase kind values) (fun k hk => by cases hk) _
+      (setupCell_commitments (phase := phase) D p₂.1 kind values) _ p₃ hp₃
+    have n₄ : p₄.2 (.derive phase kind values) = none := by
       by_contra hne
       rcases seedGenObserve_new_logged prims _ _ p₄ hp₄ _ (by rw [u₃, u₂, u₁, n₀]) hne with ⟨y, hy⟩ | h
       · exact hlog _ hq y (List.mem_append_right _ hy)
       · exact hns h
     rw [seedGenWorld_sample_support prims _ _ p₅ hp₅, n₄]
-  have := seedGenProgramOk_fresh prims D _ _ _ _ _ _ _ _ p₆ hp₆ hfresh hnodup
+  have := setupProgramOk_fresh (phase := phase) prims D _ _ _ _ _ _ _ _ p₆ hp₆ hfresh hnodup
   rw [this] at hok
   cases hok
 
@@ -1839,52 +1921,52 @@ variable {C : Committee} {E : Type} (prims : Primitives)
 
 /-- A programming attempt fails only if a counted call before the programming hits an honest part,
 or if two programming inputs coincide (CDG+18). -/
-def SeedGenProgramFailBound : Prop :=
+def SetupProgramFailBound (phase : Phase) (prims : Primitives) : Prop :=
   ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
-    (Pr{let r ← runWorld prims (seedGenKnownGame D A x z)}[SeedGenProgramFail r.1]).toReal ≤
+    (Pr{let r ← runWorld prims (setupKnownGame (phase := phase) D A x z)}[SeedGenProgramFail r.1]).toReal ≤
       ((q * seedGenProgrammingCount D + seedGenProgrammingCount D ^ 2 : ℕ) : ℝ) / 2 ^ 256
 
 /-- A missed extraction or an echo collision needs a collision of two compared answers or a fresh
 opening that hits its earlier commitment. -/
-def SeedGenExtractEchoBound : Prop :=
+def SetupExtractEchoBound (phase : Phase) (prims : Primitives) : Prop :=
   ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
-    (Pr{let r ← runWorld prims (seedGenKnownGame D A x z)}[
-      SeedGenExtractFail D r.1 ∨ SeedGenEchoCollision D r.1]).toReal ≤
+    (Pr{let r ← runWorld prims (setupKnownGame (phase := phase) D A x z)}[
+      SetupExtractFail (phase := phase) D r.1 ∨ SetupEchoCollision (phase := phase) D r.1]).toReal ≤
       (((q + C.n ^ 2) ^ 2 + 2 * (q + C.n ^ 2) : ℕ) : ℝ) / 2 ^ 257
 
 /-- The birthday bound on the compared cells. At most `q` counted calls and `n²` honest shared-key
 hashes and corrupt openings sample them. -/
-def SeedGenComparedCollisionBound : Prop :=
+def SetupComparedCollisionBound (phase : Phase) (prims : Primitives) : Prop :=
   ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
-    (Pr{let w ← (simulateQ (worldAnswer prims) (seedGenKnownGame D A x z)).run ∅}[
-      SeedGenComparedCollision D w.2]).toReal ≤
+    (Pr{let w ← (simulateQ (worldAnswer prims) (setupKnownGame (phase := phase) D A x z)).run ∅}[
+      SetupComparedCollision (phase := phase) D w.2]).toReal ≤
       (((q + C.n ^ 2) ^ 2 : ℕ) : ℝ) / 2 ^ 257
 
 /-- Each of at most `q + n²` openings that are sampled after the commit round hits its commitment
 with probability `2^-256`. -/
-def SeedGenFreshOpeningBound : Prop :=
+def SetupFreshOpeningBound (phase : Phase) (prims : Primitives) : Prop :=
   ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
-    (Pr{let w ← (simulateQ (worldAnswer prims) (seedGenKnownGame D A x z)).run ∅}[
-      SeedGenFreshOpening D w.1 w.2]).toReal ≤
+    (Pr{let w ← (simulateQ (worldAnswer prims) (setupKnownGame (phase := phase) D A x z)).run ∅}[
+      SetupFreshOpening (phase := phase) D w.1 w.2]).toReal ≤
       ((q + C.n ^ 2 : ℕ) : ℝ) / 2 ^ 256
 
-theorem seedGenExtractEchoBound_of_cache (hC : SeedGenComparedCollisionBound (C := C) (E := E) prims)
-    (hF : SeedGenFreshOpeningBound (C := C) (E := E) prims) : SeedGenExtractEchoBound (C := C) (E := E) prims := by
+theorem setupExtractEchoBound_of_cache (phase : Phase) (prims : Primitives) (hC : SetupComparedCollisionBound (phase := phase) (C := C) (E := E) prims)
+    (hF : SetupFreshOpeningBound (phase := phase) (C := C) (E := E) prims) : SetupExtractEchoBound (phase := phase) (C := C) (E := E) prims := by
   intro D A x z Z q hq
-  have hmono : Pr{let r ← runWorld prims (seedGenKnownGame D A x z)}[
-      SeedGenExtractFail D r.1 ∨ SeedGenEchoCollision D r.1] ≤
-      Pr{let w ← (simulateQ (worldAnswer prims) (seedGenKnownGame D A x z)).run ∅}[SeedGenComparedCollision D w.2] +
-      Pr{let w ← (simulateQ (worldAnswer prims) (seedGenKnownGame D A x z)).run ∅}[
-        SeedGenFreshOpening D w.1 w.2] := by
-    rw [probEvent_runWorld_fst prims (seedGenKnownGame D A x z)
-      (fun r => SeedGenExtractFail D r ∨ SeedGenEchoCollision D r), StateT.run'_eq, prEvent_map]
+  have hmono : Pr{let r ← runWorld prims (setupKnownGame (phase := phase) D A x z)}[
+      SetupExtractFail (phase := phase) D r.1 ∨ SetupEchoCollision (phase := phase) D r.1] ≤
+      Pr{let w ← (simulateQ (worldAnswer prims) (setupKnownGame (phase := phase) D A x z)).run ∅}[SetupComparedCollision (phase := phase) D w.2] +
+      Pr{let w ← (simulateQ (worldAnswer prims) (setupKnownGame (phase := phase) D A x z)).run ∅}[
+        SetupFreshOpening (phase := phase) D w.1 w.2] := by
+    rw [probEvent_runWorld_fst prims (setupKnownGame (phase := phase) D A x z)
+      (fun r => SetupExtractFail (phase := phase) D r ∨ SetupEchoCollision (phase := phase) D r), StateT.run'_eq, prEvent_map]
     refine le_trans (prEvent_mono_of_support _ _ _ fun w hw hb => ?_) (prEvent_or_le _ _ _)
-    obtain ⟨hn, hdata, hlog⟩ := seedGenKnownGame_support prims D A x z w hw
-    exact seedGenKnown_cacheEvent_of_bad prims D w.1 w.2 hn hdata hlog hb
+    obtain ⟨hn, hdata, hlog⟩ := setupKnownGame_support (phase := phase) prims D A x z w hw
+    exact setupKnown_cacheEvent_of_bad (phase := phase) prims D w.1 w.2 hn hdata hlog hb
   refine (ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨(prEvent_ne_top _), (prEvent_ne_top _)⟩) hmono).trans ?_
   rw [ENNReal.toReal_add (prEvent_ne_top _) (prEvent_ne_top _)]
   refine (add_le_add (hC D A x z Z q hq) (hF D A x z Z q hq)).trans (le_of_eq ?_)
@@ -1893,15 +1975,15 @@ theorem seedGenExtractEchoBound_of_cache (hC : SeedGenComparedCollisionBound (C 
   push_cast
   field_simp
 
-theorem seedGenComparedCollisionBound_proof : SeedGenComparedCollisionBound (C := C) (E := E) prims := by
+theorem setupComparedCollisionBound_proof (phase : Phase) (prims : Primitives) : SetupComparedCollisionBound (phase := phase) (C := C) (E := E) prims := by
   intro D A x z Z q hq
   obtain ⟨start, step, final, hsum, hs, hr, _, _⟩ := hq
-  obtain ⟨h₁, h₂⟩ := isQueryBoundP_compared_knownGame D A x z start step hs hr
-  have h0 : ¬ SeedGenComparedCollision D (∅ : HashCache C) := by
+  obtain ⟨h₁, h₂⟩ := isQueryBoundP_compared_knownGame (phase := phase) D A x z start step hs hr
+  have h0 : ¬ SetupComparedCollision (phase := phase) D (∅ : HashCache C) := by
     rintro ⟨_, _, _, _, _, _, h, _⟩
     simp at h
-  have hc0 : SeedGenComparedCount D (∅ : HashCache C) 0 := ⟨∅, by simp, by simp⟩
-  have hb := seedGenCompared_birthday prims (seedGenKnownGame D A x z) _ ∅ 0 h₁ h₂ h0 hc0
+  have hc0 : SetupComparedCount (phase := phase) D (∅ : HashCache C) 0 := ⟨∅, by simp, by simp⟩
+  have hb := setupCompared_birthday (phase := phase) prims (setupKnownGame (phase := phase) D A x z) _ ∅ 0 h₁ h₂ h0 hc0
   have hm : start + 3 * step + C.n * C.n ≤ q + C.n ^ 2 := by
     simp only [setupRounds] at hsum
     nlinarith
@@ -1921,39 +2003,39 @@ theorem seedGenComparedCollisionBound_proof : SeedGenComparedCollisionBound (C :
   rw [Nat.cast_pow (2 : ℕ) 256, Nat.cast_ofNat, ← pow_succ']
 
 /-- The commitment that an opening cell of a corrupt sender to an honest receiver must hit. -/
-def seedGenOpeningTarget (D : C.Coalition) (sent : C.Party → Mail C E) : Query C → Option HashOutput
-  | .commit .seedGen j i _ => if j ∈ D.1 ∧ i ∉ D.1 then
+def setupOpeningTarget (phase : Phase) (D : C.Coalition) (sent : C.Party → Mail C E) : Query C → Option HashOutput
+  | .commit phase' j i _ => if phase' = phase ∧ j ∈ D.1 ∧ i ∉ D.1 then
       (match Msg.hashesOf (sent j i) with
         | [c] => some c
         | _ => none) else none
   | _ => none
 
-theorem seedGenOpeningTarget_compared (D : C.Coalition) (sent : C.Party → Mail C E) (x : Query C)
-    (hx : seedGenOpeningTarget D sent x ≠ none) : SeedGenComparedCell D x := by
-  unfold seedGenOpeningTarget at hx
+theorem setupOpeningTarget_compared (phase : Phase) (D : C.Coalition) (sent : C.Party → Mail C E) (x : Query C)
+    (hx : setupOpeningTarget (phase := phase) D sent x ≠ none) : SetupComparedCell (phase := phase) D x := by
+  unfold setupOpeningTarget at hx
   split at hx
   · split_ifs at hx with h
-    · exact h.1
+    · exact ⟨h.1, h.2.1⟩
     · exact absurd rfl hx
   · exact absurd rfl hx
 
-theorem seedGenFreshOpeningBound_proof : SeedGenFreshOpeningBound (C := C) (E := E) prims := by
+theorem setupFreshOpeningBound_proof (phase : Phase) (prims : Primitives) : SetupFreshOpeningBound (phase := phase) (C := C) (E := E) prims := by
   intro D A x z Z q hq
   obtain ⟨start, step, final, hsum, hs, hr, _, _⟩ := hq
-  have hkey : Pr{let w ← (simulateQ (worldAnswer prims) (seedGenKnownGame D A x z)).run ∅}[
-      SeedGenFreshOpening D w.1 w.2] ≤
+  have hkey : Pr{let w ← (simulateQ (worldAnswer prims) (setupKnownGame (phase := phase) D A x z)).run ∅}[
+      SetupFreshOpening (phase := phase) D w.1 w.2] ≤
       ((step + (C.n * C.n + step) : ℕ) : ℝ≥0∞) / Fintype.card HashOutput := by
-    rw [seedGenKnownGame_eq_prefix, simulateQ_bind, StateT.run_bind]
+    rw [setupKnownGame_eq_prefix, simulateQ_bind, StateT.run_bind]
     refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun w hw => ?_
     rw [simulateQ_bind, simulateQ_free, StateT.run_bind]
     simp only [simulateQ_pure, StateT.run_pure]
     rw [bind_pure_comp, prEvent_map]
     refine (prEvent_mono _ _ _ fun r hf => ?_).trans
-      (seedGenTarget_local prims (seedGenOpeningTarget D w.1.sent) (seedGenOpeningTarget_compared D w.1.sent) w.2 _
-        _ w.2 (isQueryBoundP_compared_post D A step hr _ _ _) ?_)
+      (setupTarget_local (phase := phase) prims (setupOpeningTarget (phase := phase) D w.1.sent) (setupOpeningTarget_compared (phase := phase) D w.1.sent) w.2 _
+        _ w.2 (isQueryBoundP_compared_post (phase := phase) D A step hr _ _ _) ?_)
     · obtain ⟨j, i, rv, c, hj, hi, hc, hsent, hlog⟩ := hf
-      refine ⟨.commit .seedGen j i rv, c, ?_, seedGenKnownPrefix_unlogged prims D A x z w hw j i rv hj hlog, hc⟩
-      simp [seedGenOpeningTarget, hj, hi, hsent]
+      refine ⟨.commit phase j i rv, c, ?_, setupKnownPrefix_unlogged (phase := phase) prims D A x z w hw j i rv hj hlog, hc⟩
+      simp [setupOpeningTarget, hj, hi, hsent]
     · rintro ⟨_, _, _, hb, hs'⟩
       rw [hb] at hs'
       cases hs'
@@ -1969,36 +2051,35 @@ theorem seedGenFreshOpeningBound_proof : SeedGenFreshOpeningBound (C := C) (E :=
   ring
 
 /-- The known half from the two probability bounds. -/
-theorem seedGenKnownMismatch_of_bounds (hP : SeedGenProgramFailBound (C := C) (E := E) prims)
-    (hX : SeedGenExtractEchoBound (C := C) (E := E) prims) : SetupKnownMismatch .seedGen (C := C) (E := E) prims := by
+theorem setupKnownMismatch_of_bounds (phase : Phase) (prims : Primitives) (hP : SetupProgramFailBound (phase := phase) (C := C) (E := E) prims)
+    (hX : SetupExtractEchoBound (phase := phase) (C := C) (E := E) prims) : SetupKnownMismatch (phase := phase) (C := C) (E := E) prims := by
   intro D A x z Z q hq
-  have hmono : Pr{let r ← runWorld prims (setupCommonGame .seedGen D A x z)}[
+  have hmono : Pr{let r ← runWorld prims (setupCommonGame phase D A x z)}[
       seedGenMixedProjection D r.1 ≠ seedGenIdealProjection D r.1] ≤
-      Pr{let r ← runWorld prims (seedGenKnownGame D A x z)}[SeedGenProgramFail r.1] +
-      Pr{let r ← runWorld prims (seedGenKnownGame D A x z)}[SeedGenExtractFail D r.1 ∨ SeedGenEchoCollision D r.1] := by
-    rw [probEvent_runWorld_fst prims (setupCommonGame .seedGen D A x z)
+      Pr{let r ← runWorld prims (setupKnownGame (phase := phase) D A x z)}[SeedGenProgramFail r.1] +
+      Pr{let r ← runWorld prims (setupKnownGame (phase := phase) D A x z)}[SetupExtractFail (phase := phase) D r.1 ∨ SetupEchoCollision (phase := phase) D r.1] := by
+    rw [probEvent_runWorld_fst prims (setupCommonGame phase D A x z)
         (fun r => seedGenMixedProjection D r ≠ seedGenIdealProjection D r),
-      probEvent_runWorld_fst prims (seedGenKnownGame D A x z) SeedGenProgramFail,
-      probEvent_runWorld_fst prims (seedGenKnownGame D A x z) (fun r => SeedGenExtractFail D r ∨ SeedGenEchoCollision D r),
-      simulateQ_seedGenCommonGame_known, simulateQ_map, StateT.run'_eq, StateT.run_map, Functor.map_map,
+      probEvent_runWorld_fst prims (setupKnownGame (phase := phase) D A x z) SeedGenProgramFail,
+      probEvent_runWorld_fst prims (setupKnownGame (phase := phase) D A x z) (fun r => SetupExtractFail (phase := phase) D r ∨ SetupEchoCollision (phase := phase) D r),
+      simulateQ_setupCommonGame_known, simulateQ_map, StateT.run'_eq, StateT.run_map, Functor.map_map,
       prEvent_map]
     simp only [StateT.run'_eq, prEvent_map]
     refine le_trans (prEvent_mono_of_support _ _ _ fun p hp hm => ?_) (prEvent_or_le _ _ _)
-    have hr : p.1 ∈ support ((simulateQ (worldAnswer prims) (seedGenKnownGame D A x z)).run' ∅) := by
+    have hr : p.1 ∈ support ((simulateQ (worldAnswer prims) (setupKnownGame (phase := phase) D A x z)).run' ∅) := by
       rw [StateT.run'_eq, support_map]
       exact ⟨p, hp, rfl⟩
-    rcases seedGenKnown_bad_of_mismatch prims D A x z p.1 hr hm with h | h | h
+    rcases setupKnown_bad_of_mismatch (phase := phase) prims D A x z p.1 hr hm with h | h | h
     · exact Or.inl h
     · exact Or.inr (Or.inl h)
     · exact Or.inr (Or.inr h)
   refine (ENNReal.toReal_mono (ENNReal.add_ne_top.mpr ⟨(prEvent_ne_top _), (prEvent_ne_top _)⟩) hmono).trans ?_
   rw [ENNReal.toReal_add (prEvent_ne_top _) (prEvent_ne_top _)]
   refine (add_le_add (hP D A x z Z q hq) (hX D A x z Z q hq)).trans ?_
-  have ha := seedGenKnown_arith (C := C) q (seedGenProgrammingCount D) (seedGenProgrammingCount_le D)
+  have ha := setupKnown_arith (phase := phase) (C := C) q (seedGenProgrammingCount D) (seedGenProgrammingCount_le D)
   have ha' : (2 * (q * seedGenProgrammingCount D + seedGenProgrammingCount D ^ 2) +
-      ((q + C.n ^ 2) ^ 2 + 2 * (q + C.n ^ 2)) : ℝ) ≤ ((q + seedGenSecrets C) ^ 2 : ℕ) := by exact_mod_cast ha
-  rw [setupHashError_seedGen]
-  unfold seedGenHashError
+      ((q + C.n ^ 2) ^ 2 + 2 * (q + C.n ^ 2)) : ℝ) ≤ ((q + setupSecrets (phase := phase) C) ^ 2 : ℕ) := by exact_mod_cast ha
+  unfold setupHashError
   push_cast at ha' ⊢
   rw [div_div, show (2 : ℝ) ^ 256 * 2 = 2 ^ 257 from (pow_succ 2 256).symm]
   have h256 : (2 : ℝ) ^ 257 = 2 * 2 ^ 256 := pow_succ' 2 256
@@ -2009,19 +2090,19 @@ theorem seedGenKnownMismatch_of_bounds (hP : SeedGenProgramFailBound (C := C) (E
 /-- The guessing bound of the programming inputs before the programming (CDG+18). Each counted call
 before the programming hits an honest part of a programming input with probability at most
 `K / 2^256`, and each pair of programming inputs is equal with probability at most `2^-256`. -/
-def SeedGenProgramAliasBound : Prop :=
+def SetupProgramAliasBound (phase : Phase) (prims : Primitives) : Prop :=
   ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
-    (Pr{let w ← (simulateQ (worldAnswer prims) (seedGenKnownPrefix D A x z)).run ∅}[
-      SeedGenProgramAlias D w.1]).toReal ≤
+    (Pr{let w ← (simulateQ (worldAnswer prims) (setupKnownPrefix phase D A x z)).run ∅}[
+      SetupProgramAlias phase D w.1]).toReal ≤
       ((q * seedGenProgrammingCount D + seedGenProgrammingCount D ^ 2 : ℕ) : ℝ) / 2 ^ 256
 
-theorem seedGenProgramFailBound_of_alias (h : SeedGenProgramAliasBound (C := C) (E := E) prims) :
-    SeedGenProgramFailBound (C := C) (E := E) prims := by
+theorem setupProgramFailBound_of_alias (phase : Phase) (prims : Primitives) (h : SetupProgramAliasBound (phase := phase) (C := C) (E := E) prims) :
+    SetupProgramFailBound (phase := phase) (C := C) (E := E) prims := by
   intro D A x z Z q hq
   refine le_trans (ENNReal.toReal_mono (prEvent_ne_top _) ?_) (h D A x z Z q hq)
-  rw [probEvent_runWorld_fst prims (seedGenKnownGame D A x z) SeedGenProgramFail, StateT.run'_eq, prEvent_map,
-    seedGenKnownGame_eq_prefix, simulateQ_bind, StateT.run_bind]
+  rw [probEvent_runWorld_fst prims (setupKnownGame (phase := phase) D A x z) SeedGenProgramFail, StateT.run'_eq, prEvent_map,
+    setupKnownGame_eq_prefix, simulateQ_bind, StateT.run_bind]
   refine (prEvent_bind_le_prEvent_add_of_support _ _
     (fun w : SeedGenKnownPre C E A.State × HashCache C => ¬ w.1.ok = true) _ (ε := 0)
     (fun w _ hok => le_of_eq (prEvent_eq_zero_of_forall_mem_support _ _ fun r hr hf => by
@@ -2031,23 +2112,35 @@ theorem seedGenProgramFailBound_of_alias (h : SeedGenProgramAliasBound (C := C) 
       exact hok (by simpa [SeedGenProgramFail] using hf)))).trans ?_
   rw [add_zero]
   exact prEvent_mono_of_support _ _ _ fun w hw hf =>
-    seedGenKnownPrefix_alias_of_fail prims D A x z w hw (by simpa using hf)
+    setupKnownPrefix_alias_of_fail (phase := phase) prims D A x z w hw (by simpa using hf)
 
 /-- The known half from the programming bound. -/
-theorem seedGenKnownMismatch_of_programFail (hP : SeedGenProgramFailBound (C := C) (E := E) prims) :
-    SetupKnownMismatch .seedGen (C := C) (E := E) prims :=
-  seedGenKnownMismatch_of_bounds prims hP
-    (seedGenExtractEchoBound_of_cache prims (seedGenComparedCollisionBound_proof prims) (seedGenFreshOpeningBound_proof prims))
+theorem setupKnownMismatch_of_programFail (phase : Phase) (prims : Primitives) (hP : SetupProgramFailBound (phase := phase) (C := C) (E := E) prims) :
+    SetupKnownMismatch (phase := phase) (C := C) (E := E) prims :=
+  setupKnownMismatch_of_bounds (phase := phase) prims hP
+    (setupExtractEchoBound_of_cache (phase := phase) prims (setupComparedCollisionBound_proof (phase := phase) prims) (setupFreshOpeningBound_proof (phase := phase) prims))
+
+/-- The extraction and echo bound of a setup. -/
+theorem setupExtractEchoBound (phase : Phase) : SetupExtractEchoBound (C := C) (E := E) phase prims :=
+  setupExtractEchoBound_of_cache phase prims (setupComparedCollisionBound_proof phase prims)
+    (setupFreshOpeningBound_proof phase prims)
+
+/-- The distance claim of a setup from the guessing bound of the programming inputs. -/
+theorem setupSecurityDistance_of_programAlias (phase : Phase)
+    (hA : SetupProgramAliasBound (C := C) (E := E) phase prims) : SetupSecurityDistance (C := C) (E := E) phase prims :=
+  setupSecurityDistance_of_known prims phase
+    (setupKnownMismatch_of_bounds phase prims (setupProgramFailBound_of_alias phase prims hA)
+      (setupExtractEchoBound prims phase))
 
 /-- `SeedGenSecurityStatement` from the guessing bound of the programming inputs. -/
-theorem seedGenSecurityDone_of_programAlias (hA : SeedGenProgramAliasBound (C := C) (E := E) prims) :
+theorem seedGenSecurityDone_of_programAlias (hA : SetupProgramAliasBound (C := C) (E := E) .seedGen prims) :
     SeedGenSecurityStatement (C := C) (E := E) prims :=
-  seedGenSecurityComplete prims (seedGenKnownMismatch_of_programFail prims (seedGenProgramFailBound_of_alias prims hA))
+  seedGenSecurity_of_setup prims (setupSecurityDistance_of_programAlias prims .seedGen hA)
 
 end Main
 
 end ThresholdLeanXmssSecurity
 
-/-- info: 'ThresholdLeanXmssSecurity.seedGenSecurityDone_of_programAlias' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.setupSecurityDistance_of_programAlias' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.seedGenSecurityDone_of_programAlias
+#print axioms ThresholdLeanXmssSecurity.setupSecurityDistance_of_programAlias
