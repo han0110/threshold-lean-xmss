@@ -22,6 +22,7 @@ open SigningCompilerSyncTrigger SigningCompilerUntil
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
+attribute [local irreducible] route
 
 theorem slot_not_hash (x : Keys3 C) (input : Query C) (h : IsSlot x input) :
     ∀ i, input ≠ .hash i := by
@@ -136,7 +137,6 @@ structure ReadPost (x : Keys3 C) (input : Query C) (value : HashOutput)
   · rfl
   · rw [← hg _ _ hc, ← hc, Function.update_eq_self]
 
-set_option maxHeartbeats 1600000 in
 theorem backend_slot_read (x : Keys3 C)
     (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)

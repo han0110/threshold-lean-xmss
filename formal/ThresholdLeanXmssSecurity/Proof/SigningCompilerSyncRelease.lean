@@ -18,6 +18,7 @@ open SigningCompilerSyncFrame SigningCompilerSyncReal SigningCompilerSyncStop
 variable {C : Committee} {Tag : Type}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
+attribute [local irreducible] route
 
 theorem key_opening_next (p : PendingInput) (lay : Layer) (e : KeyIndex)
     (h : p.key = .opening lay e) : p.next = none := by
@@ -374,7 +375,6 @@ theorem eager_complete_outside (τ : CPoint → Digest) (g : C.Term × CPoint �
       have he : y ≠ (T, p) := fun he => hy (congrArg Prod.snd he)
       simpa [SigningShareLazy.put, Function.update_of_ne he] using frames.2.2.2.1 y (Or.inl hy)
 
-set_option maxHeartbeats 1600000 in
 theorem completion_cache_sync (x : Keys3 C)
     (hinj : Function.Injective x.2.1) (s : HiddenKey → Digest)
     (τ : CPoint → Digest) (g : C.Term × CPoint → HashOutput)
@@ -555,7 +555,6 @@ theorem runX_bind {α β : Type}
     runX backend (pure a) src st = pure ((a, src), st) := by
   simp [runX, StateT.run_pure]
 
-set_option maxHeartbeats 1600000 in
 /-- Finite allocated terminal plants preserve all control fields and cover every
 pending in their list. This is the X analogue of `sourcePlants_terminal_slack`. -/
 theorem sourcePlantsX_sync (tagOf : CappedCompilerState C × Bool → Tag) (x : Keys3 C)
@@ -677,7 +676,6 @@ structure ReleasePost (x : Keys3 C) (s : HiddenKey → Digest) (e : KeyIndex)
   randomizer : SigningGuessProof.RandomizerCached x.2.1 (dataOf x st').cache e
   bad : st'.2.bad = none ∨ NullBad st'.2
 
-set_option maxHeartbeats 1600000 in
 theorem releaseOpening_post (x : Keys3 C) (hinj : Function.Injective x.2.1)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
     (τ : CPoint → Digest) (g : C.Term × CPoint → HashOutput)
@@ -839,7 +837,6 @@ theorem chainPending_key_ne_opening (edge : ChainNoiseIndex) (e : KeyIndex) :
     (chainPending edge).key ≠ .opening bottomLayer e := by
   rcases edge with ⟨l, key | b, p⟩ <;> simp [chainPending, PendingInput.key]
 
-set_option maxHeartbeats 1600000 in
 theorem ReleasePost.localFrame (x : Keys3 C) (s : HiddenKey → Digest) (e : KeyIndex)
     (a : RealState C) (src src' : SourceState C) (st st' : CompState C)
     (h : ReleasePost x s e (visibleOf a) src st src' st') :
@@ -855,7 +852,6 @@ theorem ReleasePost.localFrame (x : Keys3 C) (s : HiddenKey → Digest) (e : Key
     rw [h.source]
     exact Function.update_of_ne (hk e) _ _
 
-set_option maxHeartbeats 1600000 in
 theorem ReleasePost.syncFields (x : Keys3 C) (s : HiddenKey → Digest) (pads : Point → Digest)
     (noise : ChainNoiseIndex → HashOutput) (g : C.Term × CPoint → HashOutput)
     (rest : RestSlot C → HashOutput) (e : KeyIndex) (a : RealState C)

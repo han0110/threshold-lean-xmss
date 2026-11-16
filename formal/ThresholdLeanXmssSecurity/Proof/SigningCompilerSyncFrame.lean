@@ -16,7 +16,7 @@ open SigningCompilerShareTables SigningCompilerRealTables
 variable {C : Committee} {Tag : Type}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-attribute [local irreducible] hashTail
+attribute [local irreducible] hashTail route
 
 def RestAgree (x : Keys3 C) (rest : RestSlot C → HashOutput)
     (cs : CappedCompilerState C) : Prop :=
@@ -677,7 +677,6 @@ theorem ordinaryT_pendingValid (x : Keys3 C)
       unfold ordinaryT ordinaryRaw at hr; simp only [resolvePrivateTable_lift] at hr
       exact ordinary_pendingValid x.1 x.2.1 q s pads _ st h r hr
 
-set_option maxHeartbeats 1600000 in
 /-- Every query preserves pending validity of the merged backend. -/
 theorem backendT_pendingValid (tagOf : CappedCompilerState C × Bool → Tag) (x : Keys3 C)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
@@ -697,7 +696,6 @@ theorem backendT_pendingValid (tagOf : CappedCompilerState C × Bool → Tag) (x
     intro p v hv; exact h p v (hp ▸ hv)
   · intro cs sh h p target tag a ha; exact h
 
-set_option maxHeartbeats 1600000 in
 /-- Allowed queries preserve the rest table, its disjoint domain, and pending validity. -/
 theorem backendT_frame (tagOf : CappedCompilerState C × Bool → Tag) (x : Keys3 C)
     (hi : Function.Injective (TprfSecurityProof.slotInput x.2.1 x.2.2))

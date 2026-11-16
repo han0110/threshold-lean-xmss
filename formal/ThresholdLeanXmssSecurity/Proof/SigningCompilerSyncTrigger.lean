@@ -17,7 +17,7 @@ open SigningCompilerSyncRelease
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-attribute [local irreducible] hiddenCandidate grind SigningFlatEagerProof.baseGrind
+attribute [local irreducible] hiddenCandidate grind SigningFlatEagerProof.baseGrind route
 
 /-- Both actual hash routes carry exactly the same base-input predicate. -/
 theorem baseCall_hash_route (P : PublicParameter) (e : KeyIndex) (rho : Digest)
@@ -355,7 +355,6 @@ theorem traceStepAt_sync (P : PublicParameter) (seeds : C.Term → HashOutput)
 
 
 set_option linter.constructorNameAsVariable false in
-set_option maxHeartbeats 1600000 in
 /-- A raw hash takes the ordinary branch, preserving the entire share state.
 The existing capped-hit lemma therefore gives the exact `Stuck` event. -/
 theorem capHit_stuck (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest)
@@ -369,6 +368,7 @@ theorem capHit_stuck (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest)
     (hr : r ∈ support ((shareBackendTagT capTag x.1 x.2.1 x.2.2 q s pads τ g noise rest
       (.inl (.inl (.inl (.hash (.hash input)))))).run st)) : Stuck r.2 := by
   have hrout : route x.2.1 (.hash input) = none := by
+    unfold route
     apply dif_neg
     rintro ⟨z, hz⟩
     cases hz

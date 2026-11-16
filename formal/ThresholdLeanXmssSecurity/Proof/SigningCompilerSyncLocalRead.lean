@@ -22,14 +22,15 @@ open SigningCompilerSyncTrigger SigningCompilerUntil
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-attribute [local irreducible] grind SigningFlatEagerProof.baseGrind
+attribute [local irreducible] grind SigningFlatEagerProof.baseGrind route
   SigningR1FixedProof.cachedExtra SigningOneRunProof.jointCachedExtra
   SigningLaneUnionProof.traceStepAt
 
 theorem ordinary_routes (x : Keys3 C) (input : Query C) (hn : ¬IsSlot x input) :
     route x.2.1 input = none ∧ restRoute x.2.1 x.2.2 input = none := by
   constructor
-  · apply dif_neg
+  · unfold route
+    apply dif_neg
     rintro ⟨⟨T, p⟩, h⟩
     exact hn ⟨.inl (T, p), h.symm⟩
   · apply dif_neg
@@ -224,7 +225,6 @@ theorem ordinary_merged_gen (x : Keys3 C) (hinj : Function.Injective x.2.1)
   simp only [merged, withCache]
   exact merge_key x.2.1 hinj st.1.1.1.1.data.cache st.2.cache z
 
-set_option maxHeartbeats 1600000 in
 /-- Splitting the ordinary backend preserves its complete visible read marginal. -/
 theorem compilerRead_view (x : Keys3 C) (hinj : Function.Injective x.2.1)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
@@ -316,7 +316,6 @@ theorem ordinary_nonhash_quiet (x : Keys3 C) (s : HiddenKey → Digest)
     exact (hh _ he).elim
 
 set_option linter.constructorNameAsVariable false in
-set_option maxHeartbeats 1600000 in
 /-- Every ordinary read preserves the share cells and the source-independent fields. -/
 theorem compilerRead_fields (x : Keys3 C) (hinj : Function.Injective x.2.1)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
