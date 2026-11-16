@@ -968,7 +968,7 @@ theorem seedGen_echo_eq_invariant_pair (co : C.Coalition) (h : Query C → HashO
     (echoOf .seedGen ki' (D prims h (sharedQueries .seedGen i ki')) j =
       echoOf .seedGen kj' (D prims h (sharedQueries .seedGen j kj')) i) := by
   by_cases hs : SeedGenShareHidden co i j
-  · exact seedGen_echo_eq_hidden_invariant prims co h h i j ki kj ki' kj' hpi hpj hki hkj hhidden hhidden'
+  · exact setup_echo_eq_hidden_invariant .seedGen prims co h h i j ki kj ki' kj' hpi hpj hki hkj hhidden hhidden'
       (hreg hs).1 (hreg hs).2
   · have hknown : ∀ T, i ∈ C.holders T → j ∈ C.holders T → KnownTo co.1 T := fun T hi hj =>
       by_contra fun hT => hs ⟨T, hT, hi, hj⟩
@@ -1006,23 +1006,23 @@ theorem seedGen_echoCheck_invariant_hidden (co : C.Coalition)
     (hn : SeedGenEchoRegularHidden co h keys) (hn' : SeedGenEchoRegularHidden co h keys')
     (i : C.Party) (hi : i ∉ co.1) :
     echoCheck .seedGen i (keys i) (D prims h (sharedQueries .seedGen i (keys i)))
-      (seedGenEchoInbox prims co active sent h keys i) ↔
+      (setupEchoInbox .seedGen prims co active sent h keys i) ↔
     echoCheck .seedGen i (keys' i) (D prims h (sharedQueries .seedGen i (keys' i)))
-      (seedGenEchoInbox prims co active sent h keys' i) := by
+      (setupEchoInbox .seedGen prims co active sent h keys' i) := by
   unfold echoCheck
   apply forall_congr'
   intro j
   apply forall_congr'
   intro hji
   by_cases hj : j ∈ co.1
-  · simp only [seedGenEchoInbox, if_pos hj]
+  · simp only [setupEchoInbox, if_pos hj]
     have he : echoOf .seedGen (keys i) (D prims h (sharedQueries .seedGen i (keys i))) j =
         echoOf .seedGen (keys' i) (D prims h (sharedQueries .seedGen i (keys' i))) j := by
       simp only [echoOf, ite_true, List.singleton_append, List.cons.injEq, and_true,
         D_sharedQueries_at]
       exact ⟨hp i hi, hc i j hi hj⟩
     rw [he]
-  · simp only [seedGenEchoInbox, if_neg hj]
+  · simp only [setupEchoInbox, if_neg hj]
     by_cases ha : active j
     · simp only [if_pos ha, echoOutbox, if_neg (Ne.symm hji), Msg.hashesOf]
       apply eq_comm.trans
@@ -1049,7 +1049,7 @@ theorem seedGenReferenceData_receivers_hidden (co : C.Coalition)
   let kr := seedGenReferenceKeys prims co h right parts (fun i j => revealSent j i)
   have hsteps (table : KeyName C → HashOutput) :
       (fun j => seedGenEchoDataStep (E := E) j (seedGenReferenceData prims co h table parts commitSent revealSent j)) =
-        seedGenEchoStep prims co active h (seedGenReferenceKeys prims co h table parts (fun i j => revealSent j i)) :=
+        setupEchoStep .seedGen prims co active h (seedGenReferenceKeys prims co h table parts (fun i j => revealSent j i)) :=
     funext fun j => seedGenReferenceData_echoStep prims co h table parts commitSent revealSent j
   unfold seedGenEchoDataOutput
   rw [seedGenReferenceData_active, seedGenReferenceData_active]
@@ -1057,10 +1057,10 @@ theorem seedGenReferenceData_receivers_hidden (co : C.Coalition)
   · change seedGenReferenceActive co h commitSent revealSent i at ha
     simp only [if_pos ha]
     have hi := ha.1
-    simp only [if_neg hi, hsteps, roundInbox_seedGenEchoStep]
-    have hab : (fun j => Msg.isAbort (seedGenEchoInbox prims co active echoSent h kl i j)) =
-        (fun j => Msg.isAbort (seedGenEchoInbox prims co active echoSent h kr i j)) :=
-      funext fun j => seedGenEchoInbox_isAbort prims co active echoSent h h kl kr i j
+    simp only [if_neg hi, hsteps, roundInbox_setupEchoStep]
+    have hab : (fun j => Msg.isAbort (setupEchoInbox .seedGen prims co active echoSent h kl i j)) =
+        (fun j => Msg.isAbort (setupEchoInbox .seedGen prims co active echoSent h kr i j)) :=
+      funext fun j => setupEchoInbox_isAbort .seedGen prims co active echoSent h h kl kr i j
     have hc := seedGen_echoCheck_invariant_hidden prims co active echoSent h kl kr
       (fun _ _ => rfl)
       (fun j T _ hT => seedGenReferenceKeys_known prims co h left right parts _ j T hT)
@@ -1068,9 +1068,9 @@ theorem seedGenReferenceData_receivers_hidden (co : C.Coalition)
       (fun j k T _ _ hT hj hk => seedGenReferenceKeys_coherent prims co h right parts _ j k T hT hj hk)
       (fun j c _ hc => seedGenReferenceKeys_shared_corrupt prims co h left right parts _ j c hc)
       hl hr i hi
-    change (if C.parties.any (fun j => Msg.isAbort (seedGenEchoInbox prims co active echoSent h kl i j)) then none
+    change (if C.parties.any (fun j => Msg.isAbort (setupEchoInbox .seedGen prims co active echoSent h kl i j)) then none
       else if echoCheck .seedGen i (kl i) (D prims h (sharedQueries .seedGen i (kl i)))
-        (seedGenEchoInbox prims co active echoSent h kl i) then some (keysOf (kl i)) else none).isSome = _
+        (setupEchoInbox .seedGen prims co active echoSent h kl i) then some (keysOf (kl i)) else none).isSome = _
     rw [hab, hc]
     split_ifs <;> rfl
   · change ¬ seedGenReferenceActive co h commitSent revealSent i at ha

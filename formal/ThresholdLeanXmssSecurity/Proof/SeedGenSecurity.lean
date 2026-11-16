@@ -295,7 +295,7 @@ def seedGenMixedProjection {σ : Type} (D : C.Coalition) (r : σ × (C.Party →
 /-- The hybrid game: the common game, and the distinguisher on the mixed outputs. -/
 def seedGenMixedGame (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) : OracleComp (WorldSpec C) Bool :=
-  distinguish (seedGenMixedProjection D <$> seedGenCommonGame D A x z) Z
+  distinguish (seedGenMixedProjection D <$> setupCommonGame .seedGen D A x z) Z
 
 /-- Hidden half: the hidden keys of the real run are indistinguishable from the dealer's. -/
 def SeedGenHiddenDistance (prims : Primitives) : Prop :=
@@ -308,16 +308,16 @@ def SeedGenHiddenDistance (prims : Primitives) : Prop :=
 def SeedGenKnownMismatch (prims : Primitives) : Prop :=
   ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
-    (Pr{let r ← runWorld prims (seedGenCommonGame D A x z)}[
+    (Pr{let r ← runWorld prims (setupCommonGame .seedGen D A x z)}[
       seedGenMixedProjection D r.1 ≠ seedGenIdealProjection D r.1]).toReal ≤ seedGenHashError C q / 2
 
 theorem abs_accepts_mixed_ideal_le (prims : Primitives) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) :
     |accepts prims (seedGenMixedGame D A x z Z) -
         accepts prims (distinguish (idealExecution (fun oa => oa) D FseedGen (seedGenSimulator D A) x z) Z)| ≤
-      (Pr{let r ← runWorld prims (seedGenCommonGame D A x z)}[
+      (Pr{let r ← runWorld prims (setupCommonGame .seedGen D A x z)}[
         seedGenMixedProjection D r.1 ≠ seedGenIdealProjection D r.1]).toReal := by
-  rw [← seedGenCommonGame_ideal]
+  rw [← setupCommonGame_seedGen_ideal]
   unfold seedGenMixedGame distinguish
   simp only [bind_map_left]
   refine (abs_accepts_bind_sub_le_seedGen prims _ _ _).trans ?_
@@ -375,23 +375,25 @@ theorem seedGenMixedGame_expand (D : C.Coalition) (A : Adversary C E Unit PEmpty
     (z : Aux) (Z : Distinguisher C A.State (Keys C)) :
     seedGenMixedGame D A x z Z = (do
       let st ← (seedGenSimulator D A).start (corruptInputs D x) z
-      let d ← free (liftComp (seedGenDealerSamples (C := C)) (LocalSpec C))
-      let r ← seedGenEmulation D A st d.1 (seedGenCorruptLeak D d)
+      let d ← free (liftComp (setupDealerSamples .seedGen (C := C)) (LocalSpec C))
+      let r ← setupEmulation .seedGen D A st d.1 (seedGenCorruptLeak D d)
       worldRoles.adversary (Z (seedGenMixedProjection D (r.1.adversary, r.2, dealtKeys d.1 d.2.1 d.2.2)))) := by
-  unfold seedGenMixedGame distinguish seedGenCommonGame seedGenDealerSamples prawnsKeyGen seedGenCorruptLeak
+  unfold seedGenMixedGame distinguish setupCommonGame setupDealerSamples seedGenCorruptLeak
   simp only [map_bind, map_pure, bind_assoc, pure_bind,
     liftComp_bind, liftComp_pure, free_bind, free_pure]
+  rfl
 
 theorem seedGenCommonEmulatedGame_expand' (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) :
     seedGenCommonEmulatedGame D A x z Z = (do
       let st ← (seedGenSimulator D A).start (corruptInputs D x) z
-      let d ← free (liftComp (seedGenDealerSamples (C := C)) (LocalSpec C))
-      let r ← seedGenEmulation D A st d.1 (seedGenCorruptLeak D d)
+      let d ← free (liftComp (setupDealerSamples .seedGen (C := C)) (LocalSpec C))
+      let r ← setupEmulation .seedGen D A st d.1 (seedGenCorruptLeak D d)
       worldRoles.adversary (Z (r.1.adversary, r.2))) := by
-  unfold seedGenCommonEmulatedGame distinguish seedGenCommonGame seedGenDealerSamples prawnsKeyGen seedGenCorruptLeak
+  unfold seedGenCommonEmulatedGame distinguish setupCommonGame setupDealerSamples seedGenCorruptLeak
   simp only [map_bind, map_pure, bind_assoc, pure_bind,
     liftComp_bind, liftComp_pure, free_bind, free_pure, seedGenEmulatedProjection]
+  rfl
 
 /-- Replace the coordinates in `P` of a uniform table by those of a second uniform table. -/
 theorem evalDist_piecewise_uniform {ι H β : Type} [Fintype ι] [DecidableEq ι] [Fintype H] [Nonempty H]
@@ -486,13 +488,13 @@ theorem seedGenHiddenOverlay_piecewise (D : C.Coalition) (i : C.Party) (k : Keys
 theorem evalDist_dealer_piecewise (D : C.Coalition) {β : Type}
     (k : PublicParameter × (C.Term → HashOutput) × (C.Pair → HashOutput) → ProbComp β) :
     (do
-      let d ← seedGenDealerSamples (C := C)
+      let d ← setupDealerSamples .seedGen (C := C)
       let seeds' ← $ᵗ (C.Term → HashOutput)
       let pairs' ← $ᵗ (C.Pair → HashOutput)
       k (d.1, (fun T => if SeedGenHiddenTerm D T then seeds' T else d.2.1 T),
         (fun p => if SeedGenHiddenPair D p then pairs' p else d.2.2 p))) =ᵈ
-      (seedGenDealerSamples (C := C) >>= k) := by
-  unfold seedGenDealerSamples
+      (setupDealerSamples .seedGen (C := C) >>= k) := by
+  unfold setupDealerSamples
   simp only [bind_assoc, pure_bind]
   refine EvalDistEq.bind_right _ fun parameter => ?_
   have hswap : (do
@@ -604,7 +606,7 @@ theorem evalDist_seedGenReal_referenceMixture (prims : Primitives) (D : C.Coalit
   simp only [worldAnswer, seedGenFiniteWorld, simulateQ_free] at he
   have hc : seedGenRestrictCache S (∅ : HashCache C) = ∅ := rfl
   simp only [hc, seedGenFiniteLocal_eager_fixed, tableExtending_empty] at he
-  rw [simulateQ_seedGenReal_eq_local]
+  erw [simulateQ_setupReal_eq_local]
   refine ((sameRun_seedGenLocal_normalized prims D A x z Z).run'_eq).trans (he.trans ?_)
   unfold seedGenReferenceMixture
   refine EvalDistEq.bind_right _ fun ht => ?_

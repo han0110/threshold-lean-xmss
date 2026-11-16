@@ -41,16 +41,16 @@ def seedGenAliasValue (q : Query C) (k : ℕ) : HashOutput :=
 theorem seedGenAlias_term_coordinate (D : C.Coalition) (log : CallLog C)
     (sent : C.Party → Mail C E) (parts : C.Party → Parts C) (T : C.Term)
     (a : C.Party) (ha : a ∈ C.holders T) (hD : a ∉ D.1) :
-    seedGenAliasValue (seedGenTermProgrammingInput D (seedGenProgramView D parts log sent) T)
+    seedGenAliasValue (seedGenTermProgrammingInput D (setupProgramView .seedGen D parts log sent) T)
       ((C.parties.filter (· ∈ C.holders T)).idxOf a) = (parts a).term T := by
   simp [seedGenTermProgrammingInput, seedGenAliasValue, Committee.parties, ha,
-    seedGenProgramView, hD]
+    setupProgramView, hD]
 
 /-- For a fixed commit transcript, guessing a programmed term input costs one honest part. -/
 theorem probEvent_seedGenAlias_term_guess (D : C.Coalition) (log : CallLog C)
     (sent : C.Party → Mail C E) (T : C.Term) (q : Query C) :
     Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
-      seedGenTermProgrammingInput D (seedGenProgramView D parts log sent) T = q] ≤
+      seedGenTermProgrammingInput D (setupProgramView .seedGen D parts log sent) T = q] ≤
       (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   obtain ⟨a, ha, hD⟩ := seedGen_honest_holder D T
   calc
@@ -68,7 +68,7 @@ theorem probEvent_seedGenAlias_pair_guess (D : C.Coalition) (log : CallLog C)
     (sent : C.Party → Mail C E) (p : C.Pair)
     (hp : p.1.1 ∉ D.1 ∨ p.1.2 ∉ D.1) (q : Query C) :
     Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
-      seedGenPairProgrammingInput D (seedGenProgramView D parts log sent) p = q] ≤
+      seedGenPairProgrammingInput D (setupProgramView .seedGen D parts log sent) p = q] ≤
       (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   rcases hp with ha | hb
   · calc
@@ -77,7 +77,7 @@ theorem probEvent_seedGenAlias_pair_guess (D : C.Coalition) (log : CallLog C)
         apply prEvent_mono
         intro parts he
         rw [← he]
-        simp [seedGenAliasValue, seedGenPairProgrammingInput, seedGenProgramView, ha]
+        simp [seedGenAliasValue, seedGenPairProgrammingInput, setupProgramView, ha]
       _ = _ := probEvent_parts_collision (fun parts => (parts p.1.1).pair p.1.2)
         (fun _ => seedGenAliasValue q 0) p.1.1 none (some p.1.2)
         (fun c parts => by simp [shiftAt, shiftParts]) (fun _ _ => rfl)
@@ -87,7 +87,7 @@ theorem probEvent_seedGenAlias_pair_guess (D : C.Coalition) (log : CallLog C)
         apply prEvent_mono
         intro parts he
         rw [← he]
-        simp [seedGenAliasValue, seedGenPairProgrammingInput, seedGenProgramView, hb]
+        simp [seedGenAliasValue, seedGenPairProgrammingInput, setupProgramView, hb]
       _ = _ := probEvent_parts_collision (fun parts => (parts p.1.2).pair p.1.1)
         (fun _ => seedGenAliasValue q 1) p.1.2 none (some p.1.1)
         (fun c parts => by simp [shiftAt, shiftParts]) (fun _ _ => rfl)
@@ -134,7 +134,7 @@ theorem probEvent_seedGenAlias_parameter_coordinate (a : C.Party) (v : HashOutpu
 theorem probEvent_seedGenAlias_parameter_guess (D : C.Coalition) (log : CallLog C)
     (sent : C.Party → Mail C E) (q : Query C) :
     Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
-      seedGenParameterProgrammingInput D (seedGenProgramView D parts log sent) = q] ≤
+      seedGenParameterProgrammingInput D (setupProgramView .seedGen D parts log sent) = q] ≤
       (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   obtain ⟨a, ha⟩ := seedGen_exists_honest D
   calc
@@ -144,7 +144,7 @@ theorem probEvent_seedGenAlias_parameter_guess (D : C.Coalition) (log : CallLog 
       intro parts he
       rw [← he]
       simp [seedGenParameterProgrammingInput, seedGenAliasValue, Committee.parties,
-        seedGenProgramView, ha]
+        setupProgramView, ha]
     _ = _ := probEvent_seedGenAlias_parameter_coordinate a _
 
 /-- The honest commitments are the protected cells in the cache-erasure hybrid. -/
@@ -194,15 +194,15 @@ private theorem alias_prob_exists_list {α β : Type} (xs : List α) (oa : ProbC
 theorem probEvent_seedGenAlias_program_guess (D : C.Coalition) (log : CallLog C)
     (sent : C.Party → Mail C E) (q : Query C) :
     Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
-      q ∈ seedGenProgrammingInputs D (seedGenProgramView D parts log sent)] ≤
+      q ∈ seedGenProgrammingInputs D (setupProgramView .seedGen D parts log sent)] ≤
       seedGenProgrammingCount D * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   let sd := OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))
-  have he : (fun parts => q ∈ seedGenProgrammingInputs D (seedGenProgramView D parts log sent)) =
-      (fun parts => seedGenParameterProgrammingInput D (seedGenProgramView D parts log sent) = q ∨
+  have he : (fun parts => q ∈ seedGenProgrammingInputs D (setupProgramView .seedGen D parts log sent)) =
+      (fun parts => seedGenParameterProgrammingInput D (setupProgramView .seedGen D parts log sent) = q ∨
         (∃ T ∈ seedGenKnownCoordinates D,
-          seedGenTermProgrammingInput D (seedGenProgramView D parts log sent) T = q) ∨
+          seedGenTermProgrammingInput D (setupProgramView .seedGen D parts log sent) T = q) ∨
         ∃ p ∈ seedGenCrossCoordinates D,
-          seedGenPairProgrammingInput D (seedGenProgramView D parts log sent) p = q) := by
+          seedGenPairProgrammingInput D (setupProgramView .seedGen D parts log sent) p = q) := by
     funext parts
     simp [seedGenProgrammingInputs, eq_comm]
   rw [he]
@@ -218,21 +218,21 @@ theorem probEvent_seedGenAlias_program_guess (D : C.Coalition) (log : CallLog C)
 theorem seedGenAlias_term_shift_other (D : C.Coalition) (log : CallLog C)
     (sent : C.Party → Mail C E) (T U : C.Term) (hTU : T ≠ U)
     (a : C.Party) (c : HashOutput) (parts : C.Party → Parts C) :
-    seedGenTermProgrammingInput D (seedGenProgramView D (shiftAt a (some T) none c parts) log sent) U =
-      seedGenTermProgrammingInput D (seedGenProgramView D parts log sent) U := by
+    seedGenTermProgrammingInput D (setupProgramView .seedGen D (shiftAt a (some T) none c parts) log sent) U =
+      seedGenTermProgrammingInput D (setupProgramView .seedGen D parts log sent) U := by
   unfold seedGenTermProgrammingInput
   congr 1
   apply List.map_congr_left
   intro j _
   by_cases hj : j ∈ D.1 <;> by_cases hja : j = a <;>
-    simp_all [seedGenProgramView, shiftAt, shiftParts]
+    simp_all [setupProgramView, shiftAt, shiftParts]
 
 theorem probEvent_seedGenAlias_term_collision (D : C.Coalition) (log : CallLog C)
     (sent : C.Party → Mail C E) (T U : C.Term) :
     Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
       T ≠ U ∧
-        seedGenTermProgrammingInput D (seedGenProgramView D parts log sent) T =
-          seedGenTermProgrammingInput D (seedGenProgramView D parts log sent) U] ≤
+        seedGenTermProgrammingInput D (setupProgramView .seedGen D parts log sent) T =
+          seedGenTermProgrammingInput D (setupProgramView .seedGen D parts log sent) U] ≤
       (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   by_cases hTU : T = U
   · simp [hTU]
@@ -240,13 +240,13 @@ theorem probEvent_seedGenAlias_term_collision (D : C.Coalition) (log : CallLog C
   calc
     _ ≤ Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
         (parts a).term T =
-        seedGenAliasValue (seedGenTermProgrammingInput D (seedGenProgramView D parts log sent) U)
+        seedGenAliasValue (seedGenTermProgrammingInput D (setupProgramView .seedGen D parts log sent) U)
           ((C.parties.filter (· ∈ C.holders T)).idxOf a)] := by
       apply prEvent_mono
       intro parts he
       rw [← he.2, seedGenAlias_term_coordinate D log sent parts T a ha hD]
     _ = _ := probEvent_parts_collision (fun parts => (parts a).term T)
-      (fun parts => seedGenAliasValue (seedGenTermProgrammingInput D (seedGenProgramView D parts log sent) U)
+      (fun parts => seedGenAliasValue (seedGenTermProgrammingInput D (setupProgramView .seedGen D parts log sent) U)
         ((C.parties.filter (· ∈ C.holders T)).idxOf a)) a (some T) none
       (fun c parts => by simp [shiftAt, shiftParts])
       (fun c parts => by rw [seedGenAlias_term_shift_other D log sent T U hTU a c parts])
@@ -255,8 +255,8 @@ theorem seedGenAlias_pair_shift_other (D : C.Coalition) (log : CallLog C)
     (sent : C.Party → Mail C E) (p r : C.Pair) (hpr : p ≠ r)
     (a b : C.Party) (hab : (a = p.1.1 ∧ b = p.1.2) ∨ (a = p.1.2 ∧ b = p.1.1))
     (c : HashOutput) (parts : C.Party → Parts C) :
-    seedGenPairProgrammingInput D (seedGenProgramView D (shiftAt a none (some b) c parts) log sent) r =
-      seedGenPairProgrammingInput D (seedGenProgramView D parts log sent) r := by
+    seedGenPairProgrammingInput D (setupProgramView .seedGen D (shiftAt a none (some b) c parts) log sent) r =
+      seedGenPairProgrammingInput D (setupProgramView .seedGen D parts log sent) r := by
   have h₁ : ¬ (r.1.1 = a ∧ r.1.2 = b) := by
     rintro ⟨e₁, e₂⟩
     rcases hab with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
@@ -268,18 +268,18 @@ theorem seedGenAlias_pair_shift_other (D : C.Coalition) (log : CallLog C)
     · exact lt_asymm p.2 (by simpa only [e₁, e₂] using r.2)
     · exact hpr (Subtype.ext (Prod.ext e₂.symm e₁.symm))
   have hv (i j k : C.Party) (hjk : ¬ (j = a ∧ k = b)) :
-      (seedGenProgramView D (shiftAt a none (some b) c parts) log sent i j).pair k =
-        (seedGenProgramView D parts log sent i j).pair k := by
+      (setupProgramView .seedGen D (shiftAt a none (some b) c parts) log sent i j).pair k =
+        (setupProgramView .seedGen D parts log sent i j).pair k := by
     by_cases hj : j ∈ D.1 <;> by_cases hja : j = a <;> by_cases hkb : k = b <;>
-      simp_all [seedGenProgramView, shiftAt, shiftParts, eq_comm]
+      simp_all [setupProgramView, shiftAt, shiftParts, eq_comm]
   simp only [seedGenPairProgrammingInput, hv _ _ _ h₁, hv _ _ _ h₂]
 
 theorem probEvent_seedGenAlias_pair_collision (D : C.Coalition) (log : CallLog C)
     (sent : C.Party → Mail C E) (p r : C.Pair) (hp : p.1.1 ∉ D.1 ∨ p.1.2 ∉ D.1) :
     Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
       p ≠ r ∧
-        seedGenPairProgrammingInput D (seedGenProgramView D parts log sent) p =
-          seedGenPairProgrammingInput D (seedGenProgramView D parts log sent) r] ≤
+        seedGenPairProgrammingInput D (setupProgramView .seedGen D parts log sent) p =
+          seedGenPairProgrammingInput D (setupProgramView .seedGen D parts log sent) r] ≤
       (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   by_cases hpr : p = r
   · simp [hpr]
@@ -287,27 +287,27 @@ theorem probEvent_seedGenAlias_pair_collision (D : C.Coalition) (log : CallLog C
   · calc
       _ ≤ Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
           (parts p.1.1).pair p.1.2 = seedGenAliasValue
-          (seedGenPairProgrammingInput D (seedGenProgramView D parts log sent) r) 0] := by
+          (seedGenPairProgrammingInput D (setupProgramView .seedGen D parts log sent) r) 0] := by
         apply prEvent_mono
         intro parts he
         rw [← he.2]
-        simp [seedGenAliasValue, seedGenPairProgrammingInput, seedGenProgramView, ha]
+        simp [seedGenAliasValue, seedGenPairProgrammingInput, setupProgramView, ha]
       _ = _ := probEvent_parts_collision (fun parts => (parts p.1.1).pair p.1.2)
         (fun parts => seedGenAliasValue
-          (seedGenPairProgrammingInput D (seedGenProgramView D parts log sent) r) 0)
+          (seedGenPairProgrammingInput D (setupProgramView .seedGen D parts log sent) r) 0)
         p.1.1 none (some p.1.2) (fun c parts => by simp [shiftAt, shiftParts])
         (fun c parts => by rw [seedGenAlias_pair_shift_other D log sent p r hpr _ _ (Or.inl ⟨rfl, rfl⟩)])
   · calc
       _ ≤ Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
           (parts p.1.2).pair p.1.1 = seedGenAliasValue
-          (seedGenPairProgrammingInput D (seedGenProgramView D parts log sent) r) 1] := by
+          (seedGenPairProgrammingInput D (setupProgramView .seedGen D parts log sent) r) 1] := by
         apply prEvent_mono
         intro parts he
         rw [← he.2]
-        simp [seedGenAliasValue, seedGenPairProgrammingInput, seedGenProgramView, hb]
+        simp [seedGenAliasValue, seedGenPairProgrammingInput, setupProgramView, hb]
       _ = _ := probEvent_parts_collision (fun parts => (parts p.1.2).pair p.1.1)
         (fun parts => seedGenAliasValue
-          (seedGenPairProgrammingInput D (seedGenProgramView D parts log sent) r) 1)
+          (seedGenPairProgrammingInput D (setupProgramView .seedGen D parts log sent) r) 1)
         p.1.2 none (some p.1.1) (fun c parts => by simp [shiftAt, shiftParts])
         (fun c parts => by rw [seedGenAlias_pair_shift_other D log sent p r hpr _ _ (Or.inr ⟨rfl, rfl⟩)])
 
@@ -332,7 +332,7 @@ theorem seedGenAlias_inputs_nodup (D : C.Coalition) (view : C.Party → C.Party 
 theorem probEvent_seedGenAlias_inputs_collision (D : C.Coalition) (log : CallLog C)
     (sent : C.Party → Mail C E) :
     Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
-      ¬ (seedGenProgrammingInputs D (seedGenProgramView D parts log sent)).Nodup] ≤
+      ¬ (seedGenProgrammingInputs D (setupProgramView .seedGen D parts log sent)).Nodup] ≤
       (seedGenProgrammingCount D : ℝ≥0∞) ^ 2 * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   let sd := OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))
   let ε : ℝ≥0∞ := (Fintype.card HashOutput : ℝ≥0∞)⁻¹
@@ -340,11 +340,11 @@ theorem probEvent_seedGenAlias_inputs_collision (D : C.Coalition) (log : CallLog
   let ps := seedGenCrossCoordinates D
   calc
     _ ≤ Pr{let parts ← sd}[(∃ T ∈ ts, ∃ U ∈ ts, T ≠ U ∧
-          seedGenTermProgrammingInput D (seedGenProgramView D parts log sent) T =
-            seedGenTermProgrammingInput D (seedGenProgramView D parts log sent) U) ∨
+          seedGenTermProgrammingInput D (setupProgramView .seedGen D parts log sent) T =
+            seedGenTermProgrammingInput D (setupProgramView .seedGen D parts log sent) U) ∨
         (∃ p ∈ ps, ∃ r ∈ ps, p ≠ r ∧
-          seedGenPairProgrammingInput D (seedGenProgramView D parts log sent) p =
-            seedGenPairProgrammingInput D (seedGenProgramView D parts log sent) r)] := by
+          seedGenPairProgrammingInput D (setupProgramView .seedGen D parts log sent) p =
+            seedGenPairProgrammingInput D (setupProgramView .seedGen D parts log sent) r)] := by
       apply prEvent_mono
       intro parts hbad
       by_contra hn
@@ -373,20 +373,20 @@ are disjoint, so combining them does not increase the coefficient of the query b
 def SeedGenAliasHybridBad (D : C.Coalition) (parts : C.Party → Parts C)
     (log : CallLog C) (sent : C.Party → Mail C E) : Prop :=
   (∃ v ∈ log, SeedGenAliasCommitHit D parts v.1 ∨
-    v.1 ∈ seedGenProgrammingInputs D (seedGenProgramView D parts log sent)) ∨
-  ¬ (seedGenProgrammingInputs D (seedGenProgramView D parts log sent)).Nodup
+    v.1 ∈ seedGenProgrammingInputs D (setupProgramView .seedGen D parts log sent)) ∨
+  ¬ (seedGenProgrammingInputs D (setupProgramView .seedGen D parts log sent)).Nodup
 
 theorem probEvent_seedGenAlias_hit_guess (D : C.Coalition) (log : CallLog C)
     (sent : C.Party → Mail C E) (q : Query C) :
     Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
       SeedGenAliasCommitHit D parts q ∨
-        q ∈ seedGenProgrammingInputs D (seedGenProgramView D parts log sent)] ≤
+        q ∈ seedGenProgrammingInputs D (setupProgramView .seedGen D parts log sent)] ≤
       seedGenProgrammingCount D * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   by_cases hd : ∃ kind values, q = .derive .seedGen kind values
   · obtain ⟨kind, values, rfl⟩ := hd
     simpa only [SeedGenAliasCommitHit, false_or] using
       probEvent_seedGenAlias_program_guess D log sent (.derive .seedGen kind values)
-  · have he : ∀ parts, q ∉ seedGenProgrammingInputs D (seedGenProgramView D parts log sent) := by
+  · have he : ∀ parts, q ∉ seedGenProgrammingInputs D (setupProgramView .seedGen D parts log sent) := by
       intro parts hq
       exact hd (seedGenProgrammingInputs_derive D _ q hq)
     simp only [he, or_false]
@@ -399,7 +399,7 @@ theorem probEvent_seedGenAlias_hit_guess (D : C.Coalition) (log : CallLog C)
 theorem seedGenAlias_hit_not_fixed (D : C.Coalition) (parts : C.Party → Parts C)
     (log : CallLog C) (sent : C.Party → Mail C E) (q : Query C)
     (hq : SeedGenAliasCommitHit D parts q ∨
-      q ∈ seedGenProgrammingInputs D (seedGenProgramView D parts log sent)) : ¬ IsFixed q := by
+      q ∈ seedGenProgrammingInputs D (setupProgramView .seedGen D parts log sent)) : ¬ IsFixed q := by
   rcases hq with hq | hq
   · rintro ⟨input, rfl, _⟩
     exact hq
@@ -415,9 +415,9 @@ theorem probEvent_seedGenAlias_hybrid_fixed (D : C.Coalition) (log : CallLog C)
   let L := log.filter fun v => ¬ IsFixed v.1
   have he (parts : C.Party → Parts C) :
       (∃ v ∈ log, SeedGenAliasCommitHit D parts v.1 ∨
-        v.1 ∈ seedGenProgrammingInputs D (seedGenProgramView D parts log sent)) ↔
+        v.1 ∈ seedGenProgrammingInputs D (setupProgramView .seedGen D parts log sent)) ↔
       (∃ v ∈ L, SeedGenAliasCommitHit D parts v.1 ∨
-        v.1 ∈ seedGenProgrammingInputs D (seedGenProgramView D parts log sent)) := by
+        v.1 ∈ seedGenProgrammingInputs D (setupProgramView .seedGen D parts log sent)) := by
     constructor
     · rintro ⟨v, hv, hh⟩
       exact ⟨v, List.mem_filter.mpr ⟨hv, by simpa using seedGenAlias_hit_not_fixed D parts log sent v.1 hh⟩, hh⟩
@@ -755,7 +755,7 @@ theorem relTriple_seedGenAlias_initial (prims : Primitives) (D : C.Coalition)
     (hfresh : ∀ v, SeedGenAliasCommitHit D parts v → s v = none) :
     RelTriple (OverPermutation.sequenceFin fun i : C.Party =>
         if i ∈ D.1 then pure [] else C.parties.mapM fun _ => ($ᵗ HashOutput))
-      ((simulateQ (localAnswer prims) (seedGenInitialCommitments D parts)).run s)
+      ((simulateQ (localAnswer prims) (setupInitialCommitments .seedGen D parts)).run s)
       (fun a b => a = b.1 ∧ ∀ v, ¬ SeedGenAliasCommitHit D parts v → s v = b.2 v) := by
   have hl : (OverPermutation.sequenceFin fun i : C.Party =>
       (seedGenAliasCommitQueries D parts i).mapM fun _ => ($ᵗ HashOutput)) =
@@ -764,9 +764,9 @@ theorem relTriple_seedGenAlias_initial (prims : Primitives) (D : C.Coalition)
     congr 1
     funext i
     by_cases hi : i ∈ D.1 <;> simp [seedGenAliasCommitQueries, hi, List.mapM_map, Function.comp_def]
-  have hr : simulateQ (localAnswer prims) (seedGenInitialCommitments D parts) =
+  have hr : simulateQ (localAnswer prims) (setupInitialCommitments .seedGen D parts) =
       OverPermutation.sequenceFin fun i : C.Party => (seedGenAliasCommitQueries D parts i).mapM (hashAnswer prims) := by
-    rw [seedGenInitialCommitments, simulateQ_sequenceFin]
+    rw [setupInitialCommitments, simulateQ_sequenceFin]
     congr 1
     funext i
     by_cases hi : i ∈ D.1
@@ -815,7 +815,7 @@ def seedGenAliasKnownTail (prims : Primitives) (D : C.Coalition)
     (st : (A.State × CallLog C) × HashCache C)
     (parameter : PublicParameter) (seeds : C.Term → HashOutput) (pairs : C.Pair → HashOutput) :
     ProbComp (SeedGenKnownPre C E A.State × HashCache C) := do
-  let com ← (simulateQ (localAnswer prims) (seedGenInitialCommitments D parts)).run st.2
+  let com ← (simulateQ (localAnswer prims) (setupInitialCommitments .seedGen D parts)).run st.2
   let r ← (simulateQ (worldAnswer prims) (observe (A.round st.1.1 fun c i =>
     if c ∈ D.1 ∧ i ∉ D.1 then commitOutbox i (com.1 i) c else none))).run com.2
   let high ← $ᵗ HashOutput
@@ -840,7 +840,7 @@ theorem seedGenAlias_known_start (prims : Primitives) (D : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux) :
     (simulateQ (worldAnswer prims) (seedGenKnownPrefix D A x z)).run ∅ = (do
       let st ← (simulateQ (worldAnswer prims) (observe (A.start (corruptInputs D x) z))).run ∅
-      let dealer ← seedGenDealerSamples (C := C)
+      let dealer ← setupDealerSamples .seedGen (C := C)
       let parts ← OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)
       seedGenAliasKnownTail prims D A parts st dealer.1 dealer.2.1 dealer.2.2) := by
   unfold seedGenKnownPrefix seedGenAliasKnownTail

@@ -81,7 +81,7 @@ variable {C : Committee} {E : Type}
 def seedGenProgramOk (D : C.Coalition) (parts : C.Party → Parts C) (log : CallLog C)
     (sent : C.Party → Mail C E) (parameter : PublicParameter) (seeds : C.Term → HashOutput)
     (pairs : C.Pair → HashOutput) (high : HashOutput) : OracleComp (WorldSpec C) Bool := do
-  let view := seedGenProgramView D parts log sent
+  let view := setupProgramView .seedGen D parts log sent
   let b ← program (seedGenParameterProgrammingInput D view) (seedGenFullParameter high parameter)
   let bs ← (seedGenKnownCoordinates D).mapM fun T => program (seedGenTermProgrammingInput D view T) (seeds T)
   let cs ← (seedGenCrossCoordinates D).mapM fun p => program (seedGenPairProgrammingInput D view p) (pairs p)
@@ -131,10 +131,10 @@ structure SeedGenKnownTrace (C : Committee) (E σ : Type) where
 def seedGenKnownGame (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux) :
     OracleComp (WorldSpec C) (SeedGenKnownTrace C E A.State) := do
   let (state, log) ← observe (A.start (corruptInputs D x) z)
-  let (parameter, seeds, pairs) ← free (liftComp (seedGenDealerSamples (C := C)) (LocalSpec C))
+  let (parameter, seeds, pairs) ← free (liftComp (setupDealerSamples .seedGen (C := C)) (LocalSpec C))
   let parts ← free (liftComp (OverPermutation.sequenceFin fun (_ : C.Party) => (sampleParts : ProbComp (Parts C)))
     (LocalSpec C))
-  let commitments ← free (seedGenInitialCommitments D parts)
+  let commitments ← free (setupInitialCommitments .seedGen D parts)
   let ((st, sent), calls) ← observe (A.round state fun c i => if c ∈ D.1 ∧ i ∉ D.1 then
     commitOutbox i (commitments i) c else none)
   let high ← free (liftComp ($ᵗ HashOutput) (LocalSpec C))
@@ -183,9 +183,9 @@ theorem seedGenKnown_simulateQ_bind_right {α β : Type} {a : OracleComp (WorldS
 
 theorem simulateQ_world_startSteps_seedGen (D : C.Coalition) (parts : C.Party → Parts C) :
     simulateQ (worldAnswer prims)
-        (startSteps worldRoles D fun i => (seedGenWith i (parts i) : PartyM C E RealSpec (Keys C))) =
-      simulateQ (worldAnswer prims) (seedGenInitialSteps D parts <$> free (seedGenInitialCommitments D parts)) := by
-  rw [simulateQ_startSteps_real, seedGenMapRoles_world, ← simulateQ_startSteps_real, startSteps_seedGenWith,
+        (startSteps worldRoles D fun i => (setupWith .seedGen i (parts i) : PartyM C E RealSpec (Keys C))) =
+      simulateQ (worldAnswer prims) (setupInitialSteps .seedGen D parts <$> free (setupInitialCommitments .seedGen D parts)) := by
+  rw [simulateQ_startSteps_real, seedGenMapRoles_world, ← simulateQ_startSteps_real, startSteps_setupWith,
     simulateQ_map, simulateQ_map, simulateQ_free]
 
 theorem simulateQ_world_post_seedGen {β : Type} (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
@@ -209,12 +209,11 @@ theorem simulateQ_world_post_seedGen {β : Type} (D : C.Coalition) (A : Adversar
 
 theorem simulateQ_seedGenCommonGame_known (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) :
-    simulateQ (worldAnswer prims) (seedGenCommonGame D A x z) =
+    simulateQ (worldAnswer prims) (setupCommonGame .seedGen D A x z) =
       simulateQ (worldAnswer prims) (SeedGenKnownTrace.result <$> seedGenKnownGame D A x z) := by
-  unfold seedGenCommonGame seedGenEmulation seedGenKnownGame seedGenDealerSamples prawnsKeyGen
+  unfold setupCommonGame setupEmulation seedGenKnownGame setupDealerSamples setupSimulatorStart
   simp only [map_bind, map_pure, bind_assoc, pure_bind,
-    liftComp_bind, liftComp_pure, free_bind, free_pure]
-  simp only [seedGenSimulator, setupSimulator, bind_assoc, pure_bind]
+    liftComp_bind, liftComp_pure, free_bind, free_pure, setupHighSample]
   refine seedGenKnown_simulateQ_bind_right prims fun a => ?_
   refine seedGenKnown_simulateQ_bind_right prims fun parameter => ?_
   refine seedGenKnown_simulateQ_bind_right prims fun seeds => ?_
@@ -304,7 +303,7 @@ theorem seedGenProgramOk_support (D : C.Coalition) (parts : C.Party → Parts C)
     (pairs : C.Pair → HashOutput) (high : HashOutput) (s : HashCache C) (z : Bool × HashCache C)
     (hz : z ∈ support ((simulateQ (worldAnswer prims)
       (seedGenProgramOk D parts log sent parameter seeds pairs high)).run s)) (hok : z.1 = true) :
-    let view := seedGenProgramView D parts log sent
+    let view := setupProgramView .seedGen D parts log sent
     z.2 (seedGenParameterProgrammingInput D view) = some (seedGenFullParameter high parameter) ∧
       (∀ T ∈ seedGenKnownCoordinates D, z.2 (seedGenTermProgrammingInput D view T) = some (seeds T)) ∧
       (∀ p ∈ seedGenCrossCoordinates D, z.2 (seedGenPairProgrammingInput D view p) = some (pairs p)) := by
@@ -396,9 +395,9 @@ theorem seedGenProgramOk_fresh (D : C.Coalition) (parts : C.Party → Parts C) (
     (pairs : C.Pair → HashOutput) (high : HashOutput) (s : HashCache C) (z : Bool × HashCache C)
     (hz : z ∈ support ((simulateQ (worldAnswer prims)
       (seedGenProgramOk D parts log sent parameter seeds pairs high)).run s))
-    (hfresh : ∀ x ∈ seedGenProgrammingInputs D (seedGenProgramView D parts log sent), s x = none)
-    (hnodup : (seedGenProgrammingInputs D (seedGenProgramView D parts log sent)).Nodup) : z.1 = true := by
-  set view := seedGenProgramView D parts log sent
+    (hfresh : ∀ x ∈ seedGenProgrammingInputs D (setupProgramView .seedGen D parts log sent), s x = none)
+    (hnodup : (seedGenProgrammingInputs D (setupProgramView .seedGen D parts log sent)).Nodup) : z.1 = true := by
+  set view := setupProgramView .seedGen D parts log sent
   have hfixT : ∀ T, ¬ IsFixed (seedGenTermProgrammingInput D view T) := fun T => by
     simp [IsFixed, seedGenTermProgrammingInput]
   have hfixP : ∀ p, ¬ IsFixed (seedGenPairProgrammingInput D view p) := fun p => by
@@ -488,12 +487,12 @@ theorem seedGenPostTraced_fixed_data (D : C.Coalition) (A : Adversary C E Unit P
 are the dealt keys. -/
 theorem seedGenKnown_projection_eq (D : C.Coalition) {σ : Type} (h : Query C → HashOutput)
     (r : SeedGenKnownTrace C E σ) (high : HashOutput)
-    (hparameter : h (seedGenParameterProgrammingInput D (seedGenProgramView D r.parts r.log r.sent)) =
+    (hparameter : h (seedGenParameterProgrammingInput D (setupProgramView .seedGen D r.parts r.log r.sent)) =
       seedGenFullParameter high r.parameter)
     (hterm : ∀ T ∈ seedGenKnownCoordinates D,
-      h (seedGenTermProgrammingInput D (seedGenProgramView D r.parts r.log r.sent) T) = r.seeds T)
+      h (seedGenTermProgrammingInput D (setupProgramView .seedGen D r.parts r.log r.sent) T) = r.seeds T)
     (hpair : ∀ p ∈ seedGenCrossCoordinates D,
-      h (seedGenPairProgrammingInput D (seedGenProgramView D r.parts r.log r.sent) p) = r.pairs p)
+      h (seedGenPairProgrammingInput D (setupProgramView .seedGen D r.parts r.log r.sent) p) = r.pairs p)
     (hpost : r.outputs = (fun _ => none) ∨
       (r.data = seedGenRevealAllFixed prims D h r.parts (seedGenCommitInbox D r.parts r.commitments r.sent)
         r.revealSent ∧ ∃ echoSent : C.Party → Mail C E, r.outputs = seedGenEchoDataOutput D r.data echoSent))
@@ -1305,12 +1304,12 @@ theorem isQueryBoundP_compared_programOk (D : C.Coalition) (parts : C.Party → 
       IsQueryBoundP (seedGenProgramOk D parts log sent parameter seeds pairs high) (seedGenComparedProgram D) 0 := by
   have hd (k : KeyKind) (values : List HashOutput) : ¬ SeedGenComparedCell D (.derive .seedGen k values) := by
     simp [SeedGenComparedCell]
-  have h₁ := isQueryBoundP_compared_program D (seedGenParameterProgrammingInput D (seedGenProgramView D parts log sent))
+  have h₁ := isQueryBoundP_compared_program D (seedGenParameterProgrammingInput D (setupProgramView .seedGen D parts log sent))
     (seedGenFullParameter high parameter) (hd _ _)
   have h₂ := isQueryBoundP_compared_programs D (seedGenKnownCoordinates D)
-    (seedGenTermProgrammingInput D (seedGenProgramView D parts log sent)) seeds (fun _ => hd _ _)
+    (seedGenTermProgrammingInput D (setupProgramView .seedGen D parts log sent)) seeds (fun _ => hd _ _)
   have h₃ := isQueryBoundP_compared_programs D (seedGenCrossCoordinates D)
-    (seedGenPairProgrammingInput D (seedGenProgramView D parts log sent)) pairs (fun _ => hd _ _)
+    (seedGenPairProgrammingInput D (setupProgramView .seedGen D parts log sent)) pairs (fun _ => hd _ _)
   unfold seedGenProgramOk
   constructor
   · exact isQueryBoundP_bind (m := 0) h₁.1 fun _ _ => isQueryBoundP_bind (m := 0) h₂.1 fun _ _ =>
@@ -1319,8 +1318,8 @@ theorem isQueryBoundP_compared_programOk (D : C.Coalition) (parts : C.Party → 
       isQueryBoundP_bind (m := 0) h₃.2 fun _ _ => trivial
 
 theorem isQueryBoundP_compared_commitments (D : C.Coalition) (parts : C.Party → Parts C) :
-    IsQueryBoundP (seedGenInitialCommitments D parts) (seedGenComparedCall D) 0 := by
-  unfold seedGenInitialCommitments
+    IsQueryBoundP (setupInitialCommitments .seedGen D parts) (seedGenComparedCall D) 0 := by
+  unfold setupInitialCommitments
   refine (seedGenIsQueryBoundP_sequenceFin_sum _ (fun _ => 0) fun i => ?_).mono (by simp)
   split
   · trivial
@@ -1639,10 +1638,10 @@ structure SeedGenKnownPre (C : Committee) (E σ : Type) where
 def seedGenKnownPrefix (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux) :
     OracleComp (WorldSpec C) (SeedGenKnownPre C E A.State) := do
   let (state, log) ← observe (A.start (corruptInputs D x) z)
-  let (parameter, seeds, pairs) ← free (liftComp (seedGenDealerSamples (C := C)) (LocalSpec C))
+  let (parameter, seeds, pairs) ← free (liftComp (setupDealerSamples .seedGen (C := C)) (LocalSpec C))
   let parts ← free (liftComp (OverPermutation.sequenceFin fun (_ : C.Party) => (sampleParts : ProbComp (Parts C)))
     (LocalSpec C))
-  let commitments ← free (seedGenInitialCommitments D parts)
+  let commitments ← free (setupInitialCommitments .seedGen D parts)
   let ((st, sent), calls) ← observe (A.round state fun c i => if c ∈ D.1 ∧ i ∉ D.1 then
     commitOutbox i (commitments i) c else none)
   let high ← free (liftComp ($ᵗ HashOutput) (LocalSpec C))
@@ -1749,8 +1748,8 @@ theorem seedGenCell_unchanged (x : Query C) (hx : ∀ k, x ≠ .streamKey k) {α
 
 theorem seedGenCell_commitments (D : C.Coalition) (parts : C.Party → Parts C) (kind : KeyKind)
     (values : List HashOutput) :
-    IsQueryBoundP (seedGenInitialCommitments D parts) (seedGenCellCall (.derive .seedGen kind values)) 0 := by
-  unfold seedGenInitialCommitments
+    IsQueryBoundP (setupInitialCommitments .seedGen D parts) (seedGenCellCall (.derive .seedGen kind values)) 0 := by
+  unfold setupInitialCommitments
   refine (seedGenIsQueryBoundP_sequenceFin_sum _ (fun _ => 0) fun i => ?_).mono (by simp)
   split
   · trivial
@@ -1766,8 +1765,8 @@ theorem seedGenCell_commitments (D : C.Coalition) (parts : C.Party → Parts C) 
 
 /-- A programming input of the prefix is a logged query, or two programming inputs are equal. -/
 def SeedGenProgramAlias (D : C.Coalition) {σ : Type} (pre : SeedGenKnownPre C E σ) : Prop :=
-  (∃ x ∈ seedGenProgrammingInputs D (seedGenProgramView D pre.parts pre.log pre.sent), ∃ y, (x, y) ∈ pre.log) ∨
-    ¬ (seedGenProgrammingInputs D (seedGenProgramView D pre.parts pre.log pre.sent)).Nodup
+  (∃ x ∈ seedGenProgrammingInputs D (setupProgramView .seedGen D pre.parts pre.log pre.sent), ∃ y, (x, y) ∈ pre.log) ∨
+    ¬ (seedGenProgrammingInputs D (setupProgramView .seedGen D pre.parts pre.log pre.sent)).Nodup
 
 theorem seedGenProgrammingInputs_derive (D : C.Coalition) (view : C.Party → C.Party → Parts C) (x : Query C)
     (hx : x ∈ seedGenProgrammingInputs D view) : ∃ kind values, x = .derive .seedGen kind values := by
@@ -1798,7 +1797,7 @@ theorem seedGenKnownPrefix_alias_of_fail (D : C.Coalition) (A : Adversary C E Un
   simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hfin
   subst hfin
   simp only at hlog hnodup hok
-  have hfresh : ∀ q ∈ seedGenProgrammingInputs D (seedGenProgramView D p₂.1 (p₀.1.2 ++ p₄.1.2) p₄.1.1.2),
+  have hfresh : ∀ q ∈ seedGenProgrammingInputs D (setupProgramView .seedGen D p₂.1 (p₀.1.2 ++ p₄.1.2) p₄.1.1.2),
       p₅.2 q = none := by
     intro q hq
     obtain ⟨kind, values, rfl⟩ := seedGenProgrammingInputs_derive D _ q hq
@@ -1966,11 +1965,11 @@ theorem seedGenFreshOpeningBound_proof : SeedGenFreshOpeningBound (C := C) (E :=
 theorem seedGenKnownMismatch_of_bounds (hP : SeedGenProgramFailBound (C := C) (E := E) prims)
     (hX : SeedGenExtractEchoBound (C := C) (E := E) prims) : SeedGenKnownMismatch (C := C) (E := E) prims := by
   intro D A x z Z q hq
-  have hmono : Pr{let r ← runWorld prims (seedGenCommonGame D A x z)}[
+  have hmono : Pr{let r ← runWorld prims (setupCommonGame .seedGen D A x z)}[
       seedGenMixedProjection D r.1 ≠ seedGenIdealProjection D r.1] ≤
       Pr{let r ← runWorld prims (seedGenKnownGame D A x z)}[SeedGenProgramFail r.1] +
       Pr{let r ← runWorld prims (seedGenKnownGame D A x z)}[SeedGenExtractFail D r.1 ∨ SeedGenEchoCollision D r.1] := by
-    rw [probEvent_runWorld_fst prims (seedGenCommonGame D A x z)
+    rw [probEvent_runWorld_fst prims (setupCommonGame .seedGen D A x z)
         (fun r => seedGenMixedProjection D r ≠ seedGenIdealProjection D r),
       probEvent_runWorld_fst prims (seedGenKnownGame D A x z) SeedGenProgramFail,
       probEvent_runWorld_fst prims (seedGenKnownGame D A x z) (fun r => SeedGenExtractFail D r ∨ SeedGenEchoCollision D r),
