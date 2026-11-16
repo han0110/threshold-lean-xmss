@@ -578,12 +578,6 @@ section Main
 
 variable {E : Type} (prims : Primitives)
 
-/-- `SeedGenSecurityStatement` from the two hybrid halves. -/
-theorem seedGenSecurity_of_halves (hH : SetupHiddenDistance (C := C) (E := E) .seedGen prims)
-    (hK : SetupKnownMismatch (C := C) (E := E) .seedGen prims) :
-    SeedGenSecurityStatement (C := C) (E := E) prims :=
-  seedGenSecurity_of_setup prims (setupSecurityDistance_of_hybrids .seedGen prims hH hK)
-
 end Main
 
 end ThresholdLeanXmssSecurity

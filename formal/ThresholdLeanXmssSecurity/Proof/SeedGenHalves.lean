@@ -5,8 +5,8 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 # The stages of the hidden half of the setup security
 
 This module holds the stages of the hidden half on the relabeled reference runs
-(`setupSwappedMixture`). `seedGenSwapped_le_of_ext` of `Proof/SeedGenFinish.lean` uses them, and
-`seedGenHiddenFresh_of_echoFreshExt` uses its bound to prove `SetupHiddenFresh`.
+(`setupSwappedMixture`). `setupSwapped_le_of_ext` of `Proof/SeedGenFinish.lean` uses them, and
+`setupHiddenFresh_of_echoFreshExt` uses its bound to prove `SetupHiddenFresh`.
 
 The hidden half is reduced to one echo-collision event, `SetupEchoIrregular`.
 
