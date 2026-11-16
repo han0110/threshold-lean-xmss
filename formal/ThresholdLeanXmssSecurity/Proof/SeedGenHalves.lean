@@ -5,8 +5,8 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 # The stages of the hidden half of the seed generation security
 
 This module holds the stages of the hidden half on the relabeled reference runs
-(`seedGenSwappedMixture`). `seedGenSwapped_le_of_ext` of `Proof/SeedGenFinish.lean` uses them, and
-`seedGenHiddenFresh_of_echoFreshExt` uses its bound to prove `SeedGenHiddenFresh`.
+(`setupSwappedMixture`). `seedGenSwapped_le_of_ext` of `Proof/SeedGenFinish.lean` uses them, and
+`seedGenHiddenFresh_of_echoFreshExt` uses its bound to prove `SetupHiddenFresh`.
 
 The hidden half is reduced to one echo-collision event, `SeedGenEchoIrregular`.
 
@@ -636,7 +636,7 @@ theorem toReal_nat_mul_inv_card (k : ℕ) :
 theorem seedGenStageA (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) (S : Finset (Query C))
     (hmem : ∀ parts name, setupNamedInput .seedGen parts name ∈ S) (q : ℕ) (hq : IsQueryBounded A Z setupRounds q) :
-    |(Pr{let y ← seedGenSwappedMixture prims D A x z Z S hmem}[y = true]).toReal -
+    |(Pr{let y ← setupSwappedMixture .seedGen prims D A x z Z S hmem}[y = true]).toReal -
         (Pr{let y ← seedGenIndepMixture prims D A x z Z S}[y = true]).toReal| ≤
       ((seedGenClashCount C + q * seedGenGuessNames C : ℕ) : ℝ) / 2 ^ 256 := by
   set e : (C.Party → Parts C) → ℝ≥0∞ := fun parts => (if SeedGenClash D parts then 1 else 0) +

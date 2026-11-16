@@ -4,9 +4,9 @@ import ThresholdLeanXmssSecurity.Proof.SeedGen
 # The games of the seed generation
 
 This module holds the query bounds of `seedGenSimulator` and `prssSetupSimulator` and the games of
-the security proof of the seed generation. `SeedGenSecurityStatement` reduces to `SeedGenCoupling`.
-`seedGenSimulator_queryBound` gives the query half. The supporting lemmas concern `SeedGenCoupling`
-(CDG+18).
+the security proof of the seed generation. `SeedGenSecurityStatement` reduces to its distance half
+`SeedGenSecurityDistance`. `seedGenSimulator_queryBound` gives the query half. The supporting lemmas
+concern the games of that distance (CDG+18).
 -/
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
@@ -27,6 +27,18 @@ def setupHashError (phase : Phase) (C : Committee) (q : ℕ) : ℝ := ((q + setu
 
 /-- The programming queries of the simulator of a setup of `phase`. -/
 def setupOverhead (phase : Phase) (C : Committee) : ℕ := parameterCount phase + termCount C + C.n ^ 2
+
+theorem setupSecrets_seedGen (C : Committee) : setupSecrets .seedGen C = seedGenSecrets C := by
+  simp [setupSecrets, parameterCount, seedGenSecrets]
+
+theorem setupSecrets_prss (C : Committee) : setupSecrets .prss C = prssSetupSecrets C := by
+  simp [setupSecrets, parameterCount, prssSetupSecrets]
+
+theorem setupHashError_seedGen (C : Committee) (q : ℕ) : setupHashError .seedGen C q = seedGenHashError C q := by
+  rw [setupHashError, setupSecrets_seedGen, seedGenHashError]
+
+theorem setupHashError_prss (C : Committee) (q : ℕ) : setupHashError .prss C q = prssSetupHashError C q := by
+  rw [setupHashError, setupSecrets_prss, prssSetupHashError]
 
 attribute [local instance] Classical.propDecidable
 
@@ -224,33 +236,6 @@ def SeedGenSecurityDistance (prims : Primitives) : Prop :=
 theorem seedGenSecurity_of_distance (h : SeedGenSecurityDistance (C := C) (E := E) prims) :
     SeedGenSecurityStatement (C := C) (E := E) prims :=
   fun D A x z Z q _ hq => ⟨seedGenSimulator_queryBound prims D A x z Z q hq, h D A x z Z q hq⟩
-
-/-- The coupling of the seed generation run and the ideal run of `seedGenSimulator`, identical until bad. -/
-def SeedGenCoupling : Prop :=
-  ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
-    (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
-    ∃ oa ob : OracleComp (WorldSpec C) (Bool × Bool),
-      accepts prims (Prod.fst <$> oa) = accepts prims (distinguish (realExecution D A noFunctionality setupRounds
-        (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) x z) Z) ∧
-      accepts prims (Prod.fst <$> ob) =
-        accepts prims (distinguish (idealExecution (fun oa => oa) D FseedGen (seedGenSimulator D A) x z) Z) ∧
-      Pr{let r ← runWorld prims oa}[r.1 = (true, false)] = Pr{let r ← runWorld prims ob}[r.1 = (true, false)] ∧
-      Pr{let r ← runWorld prims oa}[r.1.2 = true].toReal ≤ seedGenHashError C q ∧
-      Pr{let r ← runWorld prims ob}[r.1.2 = true].toReal ≤ seedGenHashError C q
-
-/-- `SeedGenSecurityDistance` from the coupling. -/
-theorem seedGenDistance_of_coupling (h : SeedGenCoupling (C := C) (E := E) prims) :
-    SeedGenSecurityDistance (C := C) (E := E) prims := by
-  intro D A x z Z q hq
-  obtain ⟨oa, ob, hoa, hob, heq, hbad₁, hbad₂⟩ := h D A x z Z q hq
-  have hdist := abs_accepts_sub_le_of_eq_until_bad prims oa ob heq
-  rw [hoa, hob] at hdist
-  exact hdist.trans (max_le hbad₁ hbad₂)
-
-/-- `SeedGenSecurityStatement` from the coupling. -/
-theorem seedGenSecurity_of_coupling (h : SeedGenCoupling (C := C) (E := E) prims) :
-    SeedGenSecurityStatement (C := C) (E := E) prims :=
-  seedGenSecurity_of_distance prims (seedGenDistance_of_coupling prims h)
 
 end SeedGenSecurity
 

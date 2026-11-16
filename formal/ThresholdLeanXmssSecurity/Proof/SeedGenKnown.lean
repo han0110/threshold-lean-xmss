@@ -4,7 +4,7 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 /-!
 # The known half of the seed generation security
 
-This module reduces `SeedGenKnownMismatch`, the known-half hypothesis of `seedGenSecurityComplete`.
+This module reduces `SetupKnownMismatch`, the known-half hypothesis of `seedGenSecurityComplete`.
 
 1. `seedGenKnownGame` is the common game in normal form, with its transcript
    (`simulateQ_seedGenCommonGame_known`).
@@ -1970,7 +1970,7 @@ theorem seedGenFreshOpeningBound_proof : SeedGenFreshOpeningBound (C := C) (E :=
 
 /-- The known half from the two probability bounds. -/
 theorem seedGenKnownMismatch_of_bounds (hP : SeedGenProgramFailBound (C := C) (E := E) prims)
-    (hX : SeedGenExtractEchoBound (C := C) (E := E) prims) : SeedGenKnownMismatch (C := C) (E := E) prims := by
+    (hX : SeedGenExtractEchoBound (C := C) (E := E) prims) : SetupKnownMismatch .seedGen (C := C) (E := E) prims := by
   intro D A x z Z q hq
   have hmono : Pr{let r ← runWorld prims (setupCommonGame .seedGen D A x z)}[
       seedGenMixedProjection D r.1 ≠ seedGenIdealProjection D r.1] ≤
@@ -1997,6 +1997,7 @@ theorem seedGenKnownMismatch_of_bounds (hP : SeedGenProgramFailBound (C := C) (E
   have ha := seedGenKnown_arith (C := C) q (seedGenProgrammingCount D) (seedGenProgrammingCount_le D)
   have ha' : (2 * (q * seedGenProgrammingCount D + seedGenProgrammingCount D ^ 2) +
       ((q + C.n ^ 2) ^ 2 + 2 * (q + C.n ^ 2)) : ℝ) ≤ ((q + seedGenSecrets C) ^ 2 : ℕ) := by exact_mod_cast ha
+  rw [setupHashError_seedGen]
   unfold seedGenHashError
   push_cast at ha' ⊢
   rw [div_div, show (2 : ℝ) ^ 256 * 2 = 2 ^ 257 from (pow_succ 2 256).symm]
@@ -2034,7 +2035,7 @@ theorem seedGenProgramFailBound_of_alias (h : SeedGenProgramAliasBound (C := C) 
 
 /-- The known half from the programming bound. -/
 theorem seedGenKnownMismatch_of_programFail (hP : SeedGenProgramFailBound (C := C) (E := E) prims) :
-    SeedGenKnownMismatch (C := C) (E := E) prims :=
+    SetupKnownMismatch .seedGen (C := C) (E := E) prims :=
   seedGenKnownMismatch_of_bounds prims hP
     (seedGenExtractEchoBound_of_cache prims (seedGenComparedCollisionBound_proof prims) (seedGenFreshOpeningBound_proof prims))
 

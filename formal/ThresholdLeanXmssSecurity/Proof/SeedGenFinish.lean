@@ -4,9 +4,9 @@ import ThresholdLeanXmssSecurity.Proof.Coupling
 /-!
 # The hidden half of the seed generation security
 
-This file proves the hidden half `SeedGenHiddenFresh` (`seedGenHiddenFresh_of_echoFreshExt`) from the
+This file proves the hidden half `SetupHiddenFresh` (`seedGenHiddenFresh_of_echoFreshExt`) from the
 echo-collision bound `seedGenEchoFreshExt`. `seedGenSecurityComplete` uses it and takes the known half
-`SeedGenKnownMismatch` as a hypothesis. `seedGenSecurityDone_of_programAlias` of
+`SetupKnownMismatch` as a hypothesis. `seedGenSecurityDone_of_programAlias` of
 `Proof/SeedGenKnown.lean` uses `seedGenSecurityComplete`.
 
 1. Off the domain `S` the finite oracle answers `0`. The proof adds every echo input
@@ -22,7 +22,7 @@ echo-collision bound `seedGenEchoFreshExt`. `seedGenSecurityComplete` uses it an
 4. Otherwise an echo collision is a collision of two distinct cells of `a'`, `|pairs| / 2^256`.
 5. The total `(1 + q + n²) |pairs| / 2^256` fits in the budget (`seedGenEcho_arith`).
 
-`SeedGenKnownMismatch` is a hypothesis of `seedGenSecurityComplete`.
+`SetupKnownMismatch` is a hypothesis of `seedGenSecurityComplete`.
 -/
 
 set_option pp.deepTerms false
@@ -130,19 +130,19 @@ theorem seedGenSwapped_le_of_ext (hF : SeedGenEchoFreshExt (C := C) (E := E) pri
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ) (hq : IsQueryBounded A Z setupRounds q)
     (S : Finset (Query C)) (hmem : ∀ parts name, setupNamedInput .seedGen parts name ∈ S)
     (hsk : ∀ i j (f : C.Term → HashOutput), Query.sharedKeys .seedGen ((sharedTerms i j).map f) ∈ S) :
-    |(Pr{let y ← seedGenSwappedMixture prims D A x z Z S hmem}[y = true]).toReal -
-        (Pr{let y ← seedGenSwappedMixture prims D A x z (seedGenHiddenZ D Z) S hmem}[y = true]).toReal| ≤
+    |(Pr{let y ← setupSwappedMixture .seedGen prims D A x z Z S hmem}[y = true]).toReal -
+        (Pr{let y ← setupSwappedMixture .seedGen prims D A x z (seedGenHiddenZ D Z) S hmem}[y = true]).toReal| ≤
       seedGenHashError C q / 2 := by
   have hA₁ := seedGenStageA prims D A x z Z S hmem q hq
   have hA₂ := seedGenStageA prims D A x z (seedGenHiddenZ D Z) S hmem q (isQueryBounded_seedGenHiddenZ D A Z q hq)
   have hb := seedGenIndepEcho_le_of_ext prims hF D A x z Z q hq S hmem hsk
   unfold seedGenStageAError at hb
-  calc _ ≤ |(Pr{let y ← seedGenSwappedMixture prims D A x z Z S hmem}[y = true]).toReal -
+  calc _ ≤ |(Pr{let y ← setupSwappedMixture .seedGen prims D A x z Z S hmem}[y = true]).toReal -
           (Pr{let y ← seedGenIndepMixture prims D A x z Z S}[y = true]).toReal| +
         |(Pr{let y ← seedGenIndepMixture prims D A x z Z S}[y = true]).toReal -
           (Pr{let y ← seedGenIndepMixture prims D A x z (seedGenHiddenZ D Z) S}[y = true]).toReal| +
         |(Pr{let y ← seedGenIndepMixture prims D A x z (seedGenHiddenZ D Z) S}[y = true]).toReal -
-          (Pr{let y ← seedGenSwappedMixture prims D A x z (seedGenHiddenZ D Z) S hmem}[y = true]).toReal| := by
+          (Pr{let y ← setupSwappedMixture .seedGen prims D A x z (seedGenHiddenZ D Z) S hmem}[y = true]).toReal| := by
         refine (abs_sub_le _ (Pr{let y ← seedGenIndepMixture prims D A x z (seedGenHiddenZ D Z) S}[y = true]).toReal _).trans ?_
         gcongr
         exact abs_sub_le _ _ _
@@ -152,7 +152,7 @@ theorem seedGenSwapped_le_of_ext (hF : SeedGenEchoFreshExt (C := C) (E := E) pri
 
 /-- The hidden half on the real run, from the echo-collision bound on the extended domain. -/
 theorem seedGenHiddenFresh_of_echoFreshExt (hF : SeedGenEchoFreshExt (C := C) (E := E) prims) :
-    SeedGenHiddenFresh (C := C) (E := E) prims := by
+    SetupHiddenFresh .seedGen (C := C) (E := E) prims := by
   intro D A x z Z q hq
   obtain ⟨S₁, h₁⟩ := seedGenWorldCovered_exists (free (setupNormalizedLocalGame .seedGen D A x z Z))
   obtain ⟨S₂, h₂⟩ := seedGenWorldCovered_exists (free (setupNormalizedLocalGame .seedGen D A x z (seedGenHiddenZ D Z)))
@@ -167,10 +167,10 @@ theorem seedGenHiddenFresh_of_echoFreshExt (hF : SeedGenEchoFreshExt (C := C) (E
   have hsk : ∀ i j (f : C.Term → HashOutput), Query.sharedKeys .seedGen ((sharedTerms i j).map f) ∈ S :=
     fun i j f => Finset.mem_union_right _ (seedGenSharedInputs_mem i j f)
   rw [accepts_eq_probOutput, accepts_eq_probOutput,
-    ((evalDist_seedGenReal_referenceMixture prims D A x z Z S hS₁).trans
-      (evalDist_seedGenReferenceMixture_swap prims D A x z Z S hmem)).prEvent_eq (· = true),
-    ((evalDist_seedGenReal_referenceMixture prims D A x z (seedGenHiddenZ D Z) S hS₂).trans
-      (evalDist_seedGenReferenceMixture_swap prims D A x z (seedGenHiddenZ D Z) S hmem)).prEvent_eq (· = true)]
+    ((evalDist_setupReal_referenceMixture .seedGen prims D A x z Z S hS₁).trans
+      (evalDist_setupReferenceMixture_swap .seedGen prims D A x z Z S hmem)).prEvent_eq (· = true),
+    ((evalDist_setupReal_referenceMixture .seedGen prims D A x z (seedGenHiddenZ D Z) S hS₂).trans
+      (evalDist_setupReferenceMixture_swap .seedGen prims D A x z (seedGenHiddenZ D Z) S hmem)).prEvent_eq (· = true)]
   exact seedGenSwapped_le_of_ext prims hF D A x z Z q hq S hmem hsk
 
 end Chain
@@ -1033,11 +1033,11 @@ section Main
 
 variable {C : Committee} {E : Type} (prims : Primitives)
 
-/-- `SeedGenSecurityStatement`, from the known half `SeedGenKnownMismatch`. -/
-theorem seedGenSecurityComplete (hK : SeedGenKnownMismatch (C := C) (E := E) prims) :
+/-- `SeedGenSecurityStatement`, from the known half `SetupKnownMismatch`. -/
+theorem seedGenSecurityComplete (hK : SetupKnownMismatch .seedGen (C := C) (E := E) prims) :
     SeedGenSecurityStatement (C := C) (E := E) prims :=
   seedGenSecurity_of_halves prims
-    (seedGenHiddenDistance_of_fresh prims (seedGenHiddenFresh_of_echoFreshExt prims (seedGenEchoFreshExt prims))) hK
+    (setupHiddenDistance_of_fresh .seedGen prims (seedGenHiddenFresh_of_echoFreshExt prims (seedGenEchoFreshExt prims))) hK
 
 end Main
 

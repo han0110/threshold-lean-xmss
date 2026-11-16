@@ -1,20 +1,20 @@
 import ThresholdLeanXmssSecurity.Proof.SeedGenGames
 
 /-!
-# The coupling of the seed generation security
+# The hybrid halves of the setup security
 
-The coupling route relates `SeedGenCoupling` of `Proof/SeedGenGames.lean` to `SeedGenSecurityStatement`.
+This module reduces the distance claim `SetupSecurityDistance` of a setup to its two hybrid halves.
 
-1. A coupling with a private coin as the bad flag turns any distance bound into an identical-until-bad
-   pair. Every probability of a finite computation is rational, so the coin exists.
-2. The hybrid `seedGenMixedGame` gives the emulated outputs with the dealer's hidden keys. The known
-   half `SeedGenKnownMismatch` bounds the mismatch with the ideal outputs.
-3. In the hidden half, the dealer's hidden keys are independent of the corrupt leak. So the mixed
+1. The hybrid `setupMixedGame` gives the emulated outputs with the dealer's hidden keys. The known
+   half `SetupKnownMismatch` bounds the mismatch with the ideal outputs.
+2. In the hidden half, the dealer's hidden keys are independent of the corrupt leak. So the mixed
    game is the real run whose distinguisher replaces the hidden keys by fresh ones
    (`seedGenHiddenZ`). The real run is a mixture of fixed-table reference runs on a common covering
    domain. On distinct canonical inputs, the hidden oracle cells and an independent dealer table
-   exchange (the relabeling). So the hidden-half hypothesis `SeedGenHiddenFresh` reduces to the
-   relabeled reference runs (`seedGenSwappedMixture`).
+   exchange (the relabeling). So the hidden-half hypothesis `SetupHiddenFresh` reduces to the
+   relabeled reference runs (`setupSwappedMixture`).
+3. `seedGenSecurity_of_setup` and `prssSetupSecurity_of_setup` give the claims of the two setups from
+   the distance claim.
 -/
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
@@ -29,86 +29,7 @@ attribute [local instance] Classical.propDecidable
 set_option pp.deepTerms false
 set_option pp.maxSteps 2000
 
-/-- The probability of every event of a finite computation is a nonnegative rational. -/
-theorem probEvent_rational {α : Type} (oa : ProbComp α) (p : α → Prop) :
-    ∃ r : ℚ, 0 ≤ r ∧ Pr{let z ← oa}[p z] = ENNReal.ofReal r := by
-  classical
-  induction oa using ProbComp.inductionOn with
-  | pure a =>
-    by_cases hp : p a
-    · exact ⟨1, zero_le_one, by simp [hp]⟩
-    · exact ⟨0, le_rfl, by simp [hp]⟩
-  | query_bind n mx ih =>
-    choose r hr hpr using ih
-    refine ⟨∑ m, r m / (n + 1), Finset.sum_nonneg fun m _ => div_nonneg (hr m) (by positivity), ?_⟩
-    rw [prEvent_bind_eq_sum_fintype]
-    push_cast
-    rw [ENNReal.ofReal_sum_of_nonneg (fun m _ => div_nonneg (by exact_mod_cast hr m) (by positivity))]
-    apply Finset.sum_congr rfl
-    intro m _
-    rw [ProbComp.prEvent_uniformFin, hpr m, Finset.filter_eq', if_pos (Finset.mem_univ m),
-      Finset.card_singleton, Nat.cast_one, one_div, div_eq_mul_inv (r m : ℝ),
-      ENNReal.ofReal_mul (by exact_mod_cast hr m)]
-    rw [mul_comm]
-    congr 1
-    rw [ENNReal.ofReal_inv_of_pos (by positivity)]
-    congr 1
-    rw [ENNReal.ofReal_add (by positivity) zero_le_one]
-    simp
-
-/-- A coin with any rational probability. -/
-def ratCoin (a m : ℕ) : ProbComp Bool := (fun u : Fin (m + 1) => decide (u.val < a)) <$> $[0..m]
-
-theorem probOutput_ratCoin_true (a m : ℕ) (ha : a ≤ m + 1) :
-    Pr{let z ← ratCoin a m}[z = true] = (a : ℝ≥0∞) / (m + 1) := by
-  unfold ratCoin
-  rw [prEvent_map]
-  simp only [decide_eq_true_eq]
-  rw [ProbComp.prEvent_uniformFin, Fin.card_filter_val_lt]
-  congr 2
-  omega
-
-/-- A coin with each rational probability in `[0, 1]`. -/
-theorem exists_coin (α : ℚ) (h0 : 0 ≤ α) (h1 : α ≤ 1) :
-    ∃ coin : ProbComp Bool, Pr{let z ← coin}[z = true] = ENNReal.ofReal α ∧
-      Pr{let z ← coin}[z = false] = ENNReal.ofReal (1 - α) := by
-  obtain ⟨a, ha⟩ : ∃ a : ℕ, (a : ℤ) = α.num := ⟨α.num.toNat, Int.toNat_of_nonneg (Rat.num_nonneg.mpr h0)⟩
-  have hden := α.den_pos
-  have hα : (α : ℝ) = (a : ℝ) / α.den := by
-    rw [Rat.cast_def, ← ha]
-    push_cast
-    ring
-  have hle : a ≤ α.den := by
-    have : (a : ℝ) / α.den ≤ 1 := by rw [← hα]; exact_mod_cast h1
-    rw [div_le_one (by exact_mod_cast hden)] at this
-    exact_mod_cast this
-  have hm : α.den - 1 + 1 = α.den := by omega
-  have ht : Pr{let z ← ratCoin a (α.den - 1)}[z = true] = ENNReal.ofReal α := by
-    rw [probOutput_ratCoin_true a _ (by omega), hα, ENNReal.ofReal_div_of_pos (by exact_mod_cast hden)]
-    have hcast : ((α.den - 1 : ℕ) : ℝ≥0∞) + 1 = (α.den : ℝ≥0∞) := by exact_mod_cast hm
-    rw [hcast]
-    simp
-  refine ⟨ratCoin a (α.den - 1), ht, ?_⟩
-  have hs : Pr{let z ← ratCoin a (α.den - 1)}[z = false] =
-      1 - Pr{let z ← ratCoin a (α.den - 1)}[z = true] := by
-    rw [← OracleComp.prEvent_not_eq_one_sub]
-    exact prEvent_congr _ _ _ (by simp)
-  rw [hs, ht, ← ENNReal.ofReal_one, ← ENNReal.ofReal_sub _ (by exact_mod_cast h0)]
-
 variable {C : Committee}
-
-/-- A game whose bad flag is a private coin on its acceptance. -/
-def coinFlagged (g : OracleComp (WorldSpec C) Bool) (coin : ProbComp Bool) :
-    OracleComp (WorldSpec C) (Bool × Bool) :=
-  g >>= fun b => (fun c => (b, b && c)) <$> free (liftComp coin (LocalSpec C))
-
-theorem run_coinFlagged (prims : Primitives) (g : OracleComp (WorldSpec C) Bool) (coin : ProbComp Bool) :
-    (simulateQ (worldAnswer prims) (coinFlagged g coin)).run' ∅ =
-      (simulateQ (worldAnswer prims) g).run' ∅ >>= fun b => (fun c => (b, b && c)) <$> coin := by
-  unfold coinFlagged
-  simp only [simulateQ_bind, simulateQ_map, simulateQ_world_sample, StateT.run'_eq, StateT.run_bind,
-    StateT.run_map, StateT.run_lift, map_bind, bind_map_left, Functor.map_map]
-  simp [map_eq_bind_pure_comp]
 
 theorem probEvent_runWorld_fst (prims : Primitives) {β : Type} (oa : OracleComp (WorldSpec C) β)
     (Q : β → Prop) :
@@ -116,119 +37,10 @@ theorem probEvent_runWorld_fst (prims : Primitives) {β : Type} (oa : OracleComp
   rw [← fst_map_runWorld, prEvent_map]
 
 
-theorem probEvent_flag (P coin : ProbComp Bool) (Q : Bool × Bool → Prop) :
-    Pr{let z ← P >>= fun b => (fun c => (b, b && c)) <$> coin}[Q z] =
-      Pr{let z ← P}[z = true] * Pr{let c ← coin}[Q (true, c)] +
-        Pr{let z ← P}[z = false] * (if Q (false, false) then 1 else 0) := by
-  classical
-  rw [prEvent_bind_eq_sum_fintype, Fintype.sum_bool, prEvent_map, prEvent_map]
-  congr 1
-  by_cases hq : Q (false, false)
-  · simp [hq]
-  · simp [hq]
-
 theorem accepts_eq_probOutput (prims : Primitives) (g : OracleComp (WorldSpec C) Bool) :
     accepts prims g = (Pr{let z ← (simulateQ (worldAnswer prims) g).run' ∅}[z = true]).toReal := by
   unfold accepts
   rw [probEvent_runWorld_fst prims g (fun b => b = true)]
-
-/-- The coin-flagged game keeps the acceptance of its game, and its flag is the coin on acceptance. -/
-theorem coinFlagged_spec (prims : Primitives) (g : OracleComp (WorldSpec C) Bool) (coin : ProbComp Bool) :
-    accepts prims (Prod.fst <$> coinFlagged g coin) = accepts prims g ∧
-      Pr{let r ← runWorld prims (coinFlagged g coin)}[r.1 = (true, false)] =
-        Pr{let z ← (simulateQ (worldAnswer prims) g).run' ∅}[z = true] * Pr{let z ← coin}[z = false] ∧
-      Pr{let r ← runWorld prims (coinFlagged g coin)}[r.1.2 = true] =
-        Pr{let z ← (simulateQ (worldAnswer prims) g).run' ∅}[z = true] * Pr{let z ← coin}[z = true] := by
-  refine ⟨?_, ?_, ?_⟩
-  · rw [accepts_eq_probOutput prims g]
-    unfold accepts
-    rw [runWorld_map, prEvent_map]
-    congr 1
-    have h := probEvent_runWorld_fst prims (coinFlagged g coin) (fun p => p.1 = true)
-    rw [h, run_coinFlagged, probEvent_flag]
-    simp
-  · rw [probEvent_runWorld_fst prims (coinFlagged g coin) (fun p => p = (true, false)), run_coinFlagged,
-      probEvent_flag]
-    simp
-  · rw [probEvent_runWorld_fst prims (coinFlagged g coin) (fun p => p.2 = true), run_coinFlagged,
-      probEvent_flag]
-    simp
-
-/-- The coin of one side: it flags the excess acceptance of this side over the other. -/
-theorem exists_excess_coin (ra rb : ℚ) (ha : 0 ≤ ra) (hb : 0 ≤ rb) :
-    ∃ coin : ProbComp Bool,
-      ENNReal.ofReal ra * Pr{let z ← coin}[z = false] = ENNReal.ofReal ((min ra rb : ℚ) : ℝ) ∧
-      ENNReal.ofReal ra * Pr{let z ← coin}[z = true] = ENNReal.ofReal ((ra - min ra rb : ℚ) : ℝ) := by
-  by_cases h0 : ra = 0
-  · obtain ⟨coin, ht, hf⟩ := exists_coin 0 le_rfl zero_le_one
-    refine ⟨coin, ?_, ?_⟩ <;> simp [h0, min_eq_left hb]
-  · have hpos : 0 < ra := lt_of_le_of_ne ha (Ne.symm h0)
-    set α : ℚ := (ra - min ra rb) / ra with hα
-    have hα0 : 0 ≤ α := div_nonneg (by linarith [min_le_left ra rb]) ha
-    have hα1 : α ≤ 1 := by
-      rw [hα, div_le_one hpos]; linarith [le_min ha hb]
-    obtain ⟨coin, ht, hf⟩ := exists_coin α hα0 hα1
-    refine ⟨coin, ?_, ?_⟩
-    · rw [hf, ← ENNReal.ofReal_mul (by exact_mod_cast ha)]
-      congr 1
-      have : (ra : ℝ) * (1 - (α : ℝ)) = ((ra * (1 - α) : ℚ) : ℝ) := by push_cast; ring
-      rw [this]
-      congr 1
-      rw [hα]
-      field_simp
-      ring
-    · rw [ht, ← ENNReal.ofReal_mul (by exact_mod_cast ha)]
-      congr 1
-      have : (ra : ℝ) * (α : ℝ) = ((ra * α : ℚ) : ℝ) := by push_cast; ring
-      rw [this]
-      congr 1
-      rw [hα]
-      field_simp
-
-/-- Every distance bound between two games gives an identical-until-bad pair with the same bound. -/
-theorem coupling_of_abs_accepts_le (prims : Primitives) (ga gb : OracleComp (WorldSpec C) Bool) (ε : ℝ)
-    (h : |accepts prims ga - accepts prims gb| ≤ ε) :
-    ∃ oa ob : OracleComp (WorldSpec C) (Bool × Bool),
-      accepts prims (Prod.fst <$> oa) = accepts prims ga ∧
-      accepts prims (Prod.fst <$> ob) = accepts prims gb ∧
-      Pr{let r ← runWorld prims oa}[r.1 = (true, false)] =
-        Pr{let r ← runWorld prims ob}[r.1 = (true, false)] ∧
-      Pr{let r ← runWorld prims oa}[r.1.2 = true].toReal ≤ ε ∧
-      Pr{let r ← runWorld prims ob}[r.1.2 = true].toReal ≤ ε := by
-  obtain ⟨ra, ha, hra⟩ := probEvent_rational ((simulateQ (worldAnswer prims) ga).run' ∅) (· = true)
-  obtain ⟨rb, hb, hrb⟩ := probEvent_rational ((simulateQ (worldAnswer prims) gb).run' ∅) (· = true)
-  have hacc_a : accepts prims ga = ra := by
-    rw [accepts_eq_probOutput, hra, ENNReal.toReal_ofReal (by exact_mod_cast ha)]
-  have hacc_b : accepts prims gb = rb := by
-    rw [accepts_eq_probOutput, hrb, ENNReal.toReal_ofReal (by exact_mod_cast hb)]
-  rw [hacc_a, hacc_b] at h
-  obtain ⟨ca, hfa, hta⟩ := exists_excess_coin ra rb ha hb
-  obtain ⟨cb, hfb, htb⟩ := exists_excess_coin rb ra hb ha
-  obtain ⟨sa₁, sa₂, sa₃⟩ := coinFlagged_spec prims ga ca
-  obtain ⟨sb₁, sb₂, sb₃⟩ := coinFlagged_spec prims gb cb
-  refine ⟨coinFlagged ga ca, coinFlagged gb cb, sa₁, sb₁, ?_, ?_, ?_⟩
-  · rw [sa₂, sb₂, hra, hrb, hfa, hfb, min_comm]
-  · have hq : ra - min ra rb ≤ |ra - rb| := by
-      rcases le_total ra rb with hle | hle
-      · rw [min_eq_left hle]; simp
-      · rw [min_eq_right hle]; exact le_abs_self _
-    have hq' : ((ra - min ra rb : ℚ) : ℝ) ≤ ε := le_trans (by exact_mod_cast hq) h
-    rw [sa₃, hra, hta, ENNReal.toReal_ofReal (by exact_mod_cast sub_nonneg.mpr (min_le_left ra rb))]
-    exact hq'
-  · have hq : rb - min rb ra ≤ |ra - rb| := by
-      rcases le_total ra rb with hle | hle
-      · rw [min_eq_right hle, abs_sub_comm]; exact le_abs_self _
-      · rw [min_eq_left hle]; simp
-    have hq' : ((rb - min rb ra : ℚ) : ℝ) ≤ ε := le_trans (by exact_mod_cast hq) h
-    rw [sb₃, hrb, htb, ENNReal.toReal_ofReal (by exact_mod_cast sub_nonneg.mpr (min_le_left rb ra))]
-    exact hq'
-
-/-- The coupling form of the seed generation claim follows from its distance form. -/
-theorem seedGenCoupling_of_distance (prims : Primitives) {E : Type}
-    (h : SeedGenSecurityDistance (C := C) (E := E) prims) :
-    SeedGenCoupling (C := C) (E := E) prims := by
-  intro D A x z Z q hq
-  exact coupling_of_abs_accepts_le prims _ _ _ (h D A x z Z q hq)
 
 /-! ## Two continuations of one game -/
 
@@ -293,32 +105,40 @@ def seedGenMixedProjection {σ : Type} (D : C.Coalition) (r : σ × (C.Party →
   (r.1, fun i => (r.2.1 i).map fun k => seedGenHiddenOverlay D i k (r.2.2 i))
 
 /-- The hybrid game: the common game, and the distinguisher on the mixed outputs. -/
-def seedGenMixedGame (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
-    (Z : Distinguisher C A.State (Keys C)) : OracleComp (WorldSpec C) Bool :=
-  distinguish (seedGenMixedProjection D <$> setupCommonGame .seedGen D A x z) Z
+def setupMixedGame (phase : Phase) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+    (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) : OracleComp (WorldSpec C) Bool :=
+  distinguish (seedGenMixedProjection D <$> setupCommonGame phase D A x z) Z
+
+/-- The distance of the real run and the ideal projection of the common game in a setup of `phase`. -/
+def SetupSecurityDistance (phase : Phase) (prims : Primitives) : Prop :=
+  ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
+    (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
+    |accepts prims (distinguish (realExecution D A noFunctionality setupRounds
+        (fun i (_ : Unit) => (setupKeys phase i : PartyM C E RealSpec (Keys C))) x z) Z) -
+      accepts prims (distinguish (seedGenIdealProjection D <$> setupCommonGame phase D A x z) Z)| ≤
+        setupHashError phase C q
 
 /-- Hidden half: the hidden keys of the real run are indistinguishable from the dealer's. -/
-def SeedGenHiddenDistance (prims : Primitives) : Prop :=
+def SetupHiddenDistance (phase : Phase) (prims : Primitives) : Prop :=
   ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
-    |accepts prims (setupCommonEmulatedGame .seedGen D A x z Z) - accepts prims (seedGenMixedGame D A x z Z)| ≤
-      seedGenHashError C q / 2
+    |accepts prims (setupCommonEmulatedGame phase D A x z Z) - accepts prims (setupMixedGame phase D A x z Z)| ≤
+      setupHashError phase C q / 2
 
 /-- Known half: the simulator's programming fixes every exposed coordinate of an accepted output. -/
-def SeedGenKnownMismatch (prims : Primitives) : Prop :=
+def SetupKnownMismatch (phase : Phase) (prims : Primitives) : Prop :=
   ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
-    (Pr{let r ← runWorld prims (setupCommonGame .seedGen D A x z)}[
-      seedGenMixedProjection D r.1 ≠ seedGenIdealProjection D r.1]).toReal ≤ seedGenHashError C q / 2
+    (Pr{let r ← runWorld prims (setupCommonGame phase D A x z)}[
+      seedGenMixedProjection D r.1 ≠ seedGenIdealProjection D r.1]).toReal ≤ setupHashError phase C q / 2
 
-theorem abs_accepts_mixed_ideal_le (prims : Primitives) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
-    (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) :
-    |accepts prims (seedGenMixedGame D A x z Z) -
-        accepts prims (distinguish (idealExecution (fun oa => oa) D FseedGen (seedGenSimulator D A) x z) Z)| ≤
-      (Pr{let r ← runWorld prims (setupCommonGame .seedGen D A x z)}[
+theorem abs_accepts_setupMixed_ideal_le (phase : Phase) (prims : Primitives) (D : C.Coalition)
+    (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) :
+    |accepts prims (setupMixedGame phase D A x z Z) -
+        accepts prims (distinguish (seedGenIdealProjection D <$> setupCommonGame phase D A x z) Z)| ≤
+      (Pr{let r ← runWorld prims (setupCommonGame phase D A x z)}[
         seedGenMixedProjection D r.1 ≠ seedGenIdealProjection D r.1]).toReal := by
-  rw [← setupCommonGame_seedGen_ideal]
-  unfold seedGenMixedGame distinguish
+  unfold setupMixedGame distinguish
   simp only [bind_map_left]
   refine (abs_accepts_bind_sub_le_seedGen prims _ _ _).trans ?_
   apply ENNReal.toReal_mono (prEvent_ne_top _)
@@ -326,20 +146,59 @@ theorem abs_accepts_mixed_ideal_le (prims : Primitives) (D : C.Coalition) (A : A
   intro r hr he
   exact hr (by rw [he])
 
-/-- The distance half of the seed generation claim from its two hybrid halves. -/
-theorem seedGenSecurityDistance_of_hybrids (prims : Primitives)
-    (hH : SeedGenHiddenDistance (C := C) (E := E) prims) (hK : SeedGenKnownMismatch (C := C) (E := E) prims) :
+/-- The distance claim of a setup from its two hybrid halves. -/
+theorem setupSecurityDistance_of_hybrids (phase : Phase) (prims : Primitives)
+    (hH : SetupHiddenDistance (C := C) (E := E) phase prims) (hK : SetupKnownMismatch (C := C) (E := E) phase prims) :
+    SetupSecurityDistance (C := C) (E := E) phase prims := by
+  intro D A x z Z q hq
+  rw [← setupCommonGame_real_accepts phase prims D A x z Z]
+  have h₁ := hH D A x z Z q hq
+  have h₂ := (abs_accepts_setupMixed_ideal_le phase prims D A x z Z).trans (hK D A x z Z q hq)
+  calc _ ≤ |accepts prims (setupCommonEmulatedGame phase D A x z Z) - accepts prims (setupMixedGame phase D A x z Z)| +
+        |accepts prims (setupMixedGame phase D A x z Z) -
+          accepts prims (distinguish (seedGenIdealProjection D <$> setupCommonGame phase D A x z) Z)| :=
+        abs_sub_le _ _ _
+    _ ≤ setupHashError phase C q / 2 + setupHashError phase C q / 2 := add_le_add h₁ h₂
+    _ = setupHashError phase C q := by ring
+
+/-- The distance half of the seed generation claim from the distance claim of a setup. -/
+theorem seedGenSecurityDistance_of_setup (prims : Primitives) (h : SetupSecurityDistance (C := C) (E := E) .seedGen prims) :
     SeedGenSecurityDistance (C := C) (E := E) prims := by
   intro D A x z Z q hq
-  erw [← setupCommonGame_real_accepts .seedGen prims D A x z Z]
-  have h₁ := hH D A x z Z q hq
-  have h₂ := (abs_accepts_mixed_ideal_le prims D A x z Z).trans (hK D A x z Z q hq)
-  calc _ ≤ |accepts prims (setupCommonEmulatedGame .seedGen D A x z Z) - accepts prims (seedGenMixedGame D A x z Z)| +
-        |accepts prims (seedGenMixedGame D A x z Z) -
-          accepts prims (distinguish (idealExecution (fun oa => oa) D FseedGen (seedGenSimulator D A) x z) Z)| :=
-        abs_sub_le _ _ _
-    _ ≤ seedGenHashError C q / 2 + seedGenHashError C q / 2 := add_le_add h₁ h₂
-    _ = seedGenHashError C q := by ring
+  have hd := h D A x z Z q hq
+  rw [setupCommonGame_seedGen_ideal, setupHashError_seedGen] at hd
+  exact hd
+
+/-- `SeedGenSecurityStatement` from the distance claim of a setup. -/
+theorem seedGenSecurity_of_setup (prims : Primitives) (h : SetupSecurityDistance (C := C) (E := E) .seedGen prims) :
+    SeedGenSecurityStatement (C := C) (E := E) prims :=
+  seedGenSecurity_of_distance prims (seedGenSecurityDistance_of_setup prims h)
+
+/-- `PrssSetupSecurityStatement` from the distance claim of a setup. -/
+theorem prssSetupSecurity_of_setup (prims : Primitives) (h : SetupSecurityDistance (C := C) (E := E) .prss prims) :
+    PrssSetupSecurityStatement (C := C) (E := E) prims := by
+  intro D A x z Z q _ hq
+  refine ⟨prssSetupSimulator_queryBound prims D A x z Z q hq, ?_⟩
+  let Z' : Distinguisher C A.State (Keys C) := fun r => Z (r.1, fun i => (r.2 i).map carrierPrssKeys)
+  have hq' : IsQueryBounded A Z' setupRounds q := by
+    obtain ⟨start, step, final, hsum, hs, hr, ha, hz⟩ := hq
+    exact ⟨start, step, final, hsum, hs, hr, ha, fun r => hz _⟩
+  have hd := h D A x z Z' q hq'
+  rw [setupHashError_prss] at hd
+  have hreal : distinguish (realExecution D A noFunctionality setupRounds
+      (fun i (_ : Unit) => (prssSetup i : PartyM C E RealSpec (PrssKeys C))) x z) Z =
+      distinguish (realExecution D A noFunctionality setupRounds
+        (fun i (_ : Unit) => (setupKeys .prss i : PartyM C E RealSpec (Keys C))) x z) Z' := by
+    rw [realExecution_prssSetup]
+    simp only [distinguish, bind_map_left]
+    rfl
+  have hideal : distinguish (idealExecution (fun oa => oa) D FprssKeys (prssSetupSimulator D A) x z) Z =
+      distinguish (seedGenIdealProjection D <$> setupCommonGame .prss D A x z) Z' := by
+    rw [← setupCommonGame_prss_ideal]
+    simp only [distinguish, bind_map_left]
+    rfl
+  rw [hreal, hideal]
+  exact hd
 
 end Hybrid
 
@@ -371,29 +230,27 @@ def seedGenCorruptLeak (D : C.Coalition) (d : PublicParameter × (C.Term → Has
     C.Party → Option (Keys C) :=
   fun i => if i ∈ D.1 then some (dealtKeys d.1 d.2.1 d.2.2 i) else none
 
-theorem seedGenMixedGame_expand (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit)
+theorem setupMixedGame_expand (phase : Phase) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit)
     (z : Aux) (Z : Distinguisher C A.State (Keys C)) :
-    seedGenMixedGame D A x z Z = (do
-      let st ← (seedGenSimulator D A).start (corruptInputs D x) z
-      let d ← free (liftComp (setupDealerSamples .seedGen (C := C)) (LocalSpec C))
-      let r ← setupEmulation .seedGen D A st d.1 (seedGenCorruptLeak D d)
+    setupMixedGame (phase := phase) D A x z Z = (do
+      let st ← setupSimulatorStart A (corruptInputs D x) z
+      let d ← free (liftComp (setupDealerSamples phase (C := C)) (LocalSpec C))
+      let r ← setupEmulation phase D A st d.1 (seedGenCorruptLeak D d)
       worldRoles.adversary (Z (seedGenMixedProjection D (r.1.adversary, r.2, dealtKeys d.1 d.2.1 d.2.2)))) := by
-  unfold seedGenMixedGame distinguish setupCommonGame setupDealerSamples seedGenCorruptLeak
+  unfold setupMixedGame distinguish setupCommonGame setupDealerSamples seedGenCorruptLeak
   simp only [map_bind, map_pure, bind_assoc, pure_bind,
     liftComp_bind, liftComp_pure, free_bind, free_pure]
-  rfl
 
-theorem seedGenCommonEmulatedGame_expand' (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+theorem setupCommonEmulatedGame_expand' (phase : Phase) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) :
-    setupCommonEmulatedGame .seedGen D A x z Z = (do
-      let st ← (seedGenSimulator D A).start (corruptInputs D x) z
-      let d ← free (liftComp (setupDealerSamples .seedGen (C := C)) (LocalSpec C))
-      let r ← setupEmulation .seedGen D A st d.1 (seedGenCorruptLeak D d)
+    setupCommonEmulatedGame phase D A x z Z = (do
+      let st ← setupSimulatorStart A (corruptInputs D x) z
+      let d ← free (liftComp (setupDealerSamples phase (C := C)) (LocalSpec C))
+      let r ← setupEmulation phase D A st d.1 (seedGenCorruptLeak D d)
       worldRoles.adversary (Z (r.1.adversary, r.2))) := by
   unfold setupCommonEmulatedGame distinguish setupCommonGame setupDealerSamples seedGenCorruptLeak
   simp only [map_bind, map_pure, bind_assoc, pure_bind,
     liftComp_bind, liftComp_pure, free_bind, free_pure, seedGenEmulatedProjection]
-  rfl
 
 /-- Replace the coordinates in `P` of a uniform table by those of a second uniform table. -/
 theorem evalDist_piecewise_uniform {ι H β : Type} [Fintype ι] [DecidableEq ι] [Fintype H] [Nonempty H]
@@ -485,15 +342,15 @@ theorem seedGenHiddenOverlay_piecewise (D : C.Coalition) (i : C.Party) (k : Keys
         simp [hij, hk]
 
 /-- The dealer's hidden coordinates can be replaced by those of an independent second dealer. -/
-theorem evalDist_dealer_piecewise (D : C.Coalition) {β : Type}
+theorem evalDist_dealer_piecewise (phase : Phase) (D : C.Coalition) {β : Type}
     (k : PublicParameter × (C.Term → HashOutput) × (C.Pair → HashOutput) → ProbComp β) :
     (do
-      let d ← setupDealerSamples .seedGen (C := C)
+      let d ← setupDealerSamples phase (C := C)
       let seeds' ← $ᵗ (C.Term → HashOutput)
       let pairs' ← $ᵗ (C.Pair → HashOutput)
       k (d.1, (fun T => if SeedGenHiddenTerm D T then seeds' T else d.2.1 T),
         (fun p => if SeedGenHiddenPair D p then pairs' p else d.2.2 p))) =ᵈ
-      (setupDealerSamples .seedGen (C := C) >>= k) := by
+      (setupDealerSamples phase (C := C) >>= k) := by
   unfold setupDealerSamples
   simp only [bind_assoc, pure_bind]
   refine EvalDistEq.bind_right _ fun parameter => ?_
@@ -536,12 +393,12 @@ theorem evalDist_bind_two_comm {α β γ δ : Type} (m : ProbComp α) (p₁ : Pr
   exact OracleComp.EvalDistEq.bind_bind_swap _ _ _
 
 /-- The mixed game is the emulated game whose distinguisher replaces the hidden keys by fresh ones. -/
-theorem evalDist_seedGenMixedGame_hiddenZ (prims : Primitives) (D : C.Coalition)
+theorem evalDist_setupMixedGame_hiddenZ (phase : Phase) (prims : Primitives) (D : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) :
-    (simulateQ (worldAnswer prims) (seedGenMixedGame D A x z Z)).run' ∅ =ᵈ
-      (simulateQ (worldAnswer prims) (setupCommonEmulatedGame .seedGen D A x z (seedGenHiddenZ D Z))).run' ∅ := by
-  rw [seedGenMixedGame_expand, seedGenCommonEmulatedGame_expand']
+    (simulateQ (worldAnswer prims) (setupMixedGame (phase := phase) D A x z Z)).run' ∅ =ᵈ
+      (simulateQ (worldAnswer prims) (setupCommonEmulatedGame phase D A x z (seedGenHiddenZ D Z))).run' ∅ := by
+  rw [setupMixedGame_expand, setupCommonEmulatedGame_expand']
   unfold seedGenHiddenZ
   simp only [simulateQ_bind, simulateQ_world_sample, simulateQ_world_adversary, simulateQ_local_sample_seedGensecurity]
   apply evalDist_stateT_run'_bind_congr
@@ -550,7 +407,7 @@ theorem evalDist_seedGenMixedGame_hiddenZ (prims : Primitives) (D : C.Coalition)
   simp only [StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind]
   refine EvalDistEq.symm ?_
   refine (EvalDistEq.bind_right _ fun d => evalDist_bind_two_comm _ _ _ _).trans ?_
-  refine EvalDistEq.trans ?_ (evalDist_dealer_piecewise D _)
+  refine EvalDistEq.trans ?_ (evalDist_dealer_piecewise (phase := phase) D _)
   refine EvalDistEq.bind_right _ fun d => ?_
   refine EvalDistEq.bind_right _ fun a => ?_
   refine EvalDistEq.bind_right _ fun b => ?_
@@ -558,63 +415,63 @@ theorem evalDist_seedGenMixedGame_hiddenZ (prims : Primitives) (D : C.Coalition)
   simp only [seedGenMixedProjection, seedGenHiddenOverlay_piecewise]
   rfl
 
-theorem seedGenMixedGame_accepts (prims : Primitives) (D : C.Coalition)
+theorem setupMixedGame_accepts (phase : Phase) (prims : Primitives) (D : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) :
-    accepts prims (seedGenMixedGame D A x z Z) =
+    accepts prims (setupMixedGame (phase := phase) D A x z Z) =
       accepts prims (distinguish (realExecution D A noFunctionality setupRounds
-        (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) x z) (seedGenHiddenZ D Z)) := by
+        (fun i (_ : Unit) => (setupKeys phase i : PartyM C E RealSpec (Keys C))) x z) (seedGenHiddenZ D Z)) := by
   have hreal : accepts prims (distinguish (realExecution D A noFunctionality setupRounds
-      (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) x z) (seedGenHiddenZ D Z)) =
-      accepts prims (setupCommonEmulatedGame .seedGen D A x z (seedGenHiddenZ D Z)) :=
-    (setupCommonGame_real_accepts .seedGen prims D A x z _).symm
+      (fun i (_ : Unit) => (setupKeys phase i : PartyM C E RealSpec (Keys C))) x z) (seedGenHiddenZ D Z)) =
+      accepts prims (setupCommonEmulatedGame phase D A x z (seedGenHiddenZ D Z)) :=
+    (setupCommonGame_real_accepts phase prims D A x z _).symm
   rw [hreal, accepts_eq_probOutput, accepts_eq_probOutput,
-    (evalDist_seedGenMixedGame_hiddenZ prims D A x z Z).prEvent_eq (· = true)]
+    (evalDist_setupMixedGame_hiddenZ (phase := phase) prims D A x z Z).prEvent_eq (· = true)]
 
 /-- Hidden half on the real run: the hidden keys of the honest outputs are indistinguishable from
 fresh uniform keys. -/
-def SeedGenHiddenFresh (prims : Primitives) : Prop :=
+def SetupHiddenFresh (phase : Phase) (prims : Primitives) : Prop :=
   ∀ (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (q : ℕ), IsQueryBounded A Z setupRounds q →
     |accepts prims (distinguish (realExecution D A noFunctionality setupRounds
-        (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) x z) Z) -
+        (fun i (_ : Unit) => (setupKeys phase i : PartyM C E RealSpec (Keys C))) x z) Z) -
       accepts prims (distinguish (realExecution D A noFunctionality setupRounds
-        (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) x z) (seedGenHiddenZ D Z))| ≤
-      seedGenHashError C q / 2
+        (fun i (_ : Unit) => (setupKeys phase i : PartyM C E RealSpec (Keys C))) x z) (seedGenHiddenZ D Z))| ≤
+      setupHashError (phase := phase) C q / 2
 
-theorem seedGenHiddenDistance_of_fresh (prims : Primitives) (h : SeedGenHiddenFresh (C := C) (E := E) prims) :
-    SeedGenHiddenDistance (C := C) (E := E) prims := by
+theorem setupHiddenDistance_of_fresh (phase : Phase) (prims : Primitives) (h : SetupHiddenFresh (phase := phase) (C := C) (E := E) prims) :
+    SetupHiddenDistance (phase := phase) (C := C) (E := E) prims := by
   intro D A x z Z q hq
-  rw [setupCommonGame_real_accepts, seedGenMixedGame_accepts]
+  rw [setupCommonGame_real_accepts, setupMixedGame_accepts]
   exact h D A x z Z q hq
 
 /-- The real run as a mixture of fixed-table reference runs, on every oracle domain that covers it. -/
-def seedGenReferenceMixture (prims : Primitives) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+def setupReferenceMixture (phase : Phase) (prims : Primitives) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) (S : Finset (Query C)) :
     ProbComp Bool := do
   let ht ← $ᵗ (S → HashOutput)
   let parts ← OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)
   let h := seedGenFiniteTotal prims S ht
   simulateQ (fixedLocal prims h)
-    (setupReferenceLocalGame .seedGen prims D h (fun name => h (setupNamedInput .seedGen parts name)) A x z Z parts)
+    (setupReferenceLocalGame (phase := phase) prims D h (fun name => h (setupNamedInput phase parts name)) A x z Z parts)
 
-theorem evalDist_seedGenReal_referenceMixture (prims : Primitives) (D : C.Coalition)
+theorem evalDist_setupReal_referenceMixture (phase : Phase) (prims : Primitives) (D : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (S : Finset (Query C))
-    (hS : SeedGenWorldCovered S (free (setupNormalizedLocalGame .seedGen D A x z Z))) :
+    (hS : SeedGenWorldCovered S (free (setupNormalizedLocalGame phase D A x z Z))) :
     (simulateQ (worldAnswer prims)
         (distinguish (realExecution D A noFunctionality setupRounds
-          (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) x z) Z)).run' ∅ =ᵈ
-      seedGenReferenceMixture prims D A x z Z S := by
-  have he := evalDist_seedGenWorld_eager prims S (free (setupNormalizedLocalGame .seedGen D A x z Z)) hS ∅
+          (fun i (_ : Unit) => (setupKeys phase i : PartyM C E RealSpec (Keys C))) x z) Z)).run' ∅ =ᵈ
+      setupReferenceMixture (phase := phase) prims D A x z Z S := by
+  have he := evalDist_seedGenWorld_eager prims S (free (setupNormalizedLocalGame phase D A x z Z)) hS ∅
   simp only [worldAnswer, seedGenFiniteWorld, simulateQ_free] at he
   have hc : seedGenRestrictCache S (∅ : HashCache C) = ∅ := rfl
   simp only [hc, seedGenFiniteLocal_eager_fixed, tableExtending_empty] at he
   erw [simulateQ_setupReal_eq_local]
-  refine ((sameRun_setupLocal_normalized .seedGen prims D A x z Z).run'_eq).trans (he.trans ?_)
-  unfold seedGenReferenceMixture
+  refine ((sameRun_setupLocal_normalized phase prims D A x z Z).run'_eq).trans (he.trans ?_)
+  unfold setupReferenceMixture
   refine EvalDistEq.bind_right _ fun ht => ?_
-  exact evalDist_setupNormalized_fixed_reference .seedGen prims D (seedGenFiniteTotal prims S ht) A x z Z
+  exact evalDist_setupNormalized_fixed_reference (phase := phase) prims D (seedGenFiniteTotal prims S ht) A x z Z
 
 /-! ### The relabeling of the hidden keys -/
 
@@ -641,46 +498,46 @@ theorem seedGenMaskKeys_table_congr (D : C.Coalition) (t t' : KeyName C → Hash
         exact (seedGenHiddenPair_pairOf D i j (Ne.symm hj)).mpr (not_or.mp hc)
 
 /-- The reference run reads its table only at the hidden names. -/
-theorem seedGenReferenceLocalGame_table_congr (prims : Primitives) (D : C.Coalition)
+theorem setupReferenceLocalGame_table_congr (phase : Phase) (prims : Primitives) (D : C.Coalition)
     (h : Query C → HashOutput) (t t' : KeyName C → HashOutput)
     (ht : ∀ name, Hidden D name → t name = t' name)
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (parts : C.Party → Parts C) :
-    setupReferenceLocalGame .seedGen prims D h t A x z Z parts = setupReferenceLocalGame .seedGen prims D h t' A x z Z parts := by
-  have hk : setupReferenceKeys .seedGen (E := E) prims D h t parts = setupReferenceKeys .seedGen prims D h t' parts := by
+    setupReferenceLocalGame (phase := phase) prims D h t A x z Z parts = setupReferenceLocalGame (phase := phase) prims D h t' A x z Z parts := by
+  have hk : setupReferenceKeys phase (E := E) prims D h t parts = setupReferenceKeys phase prims D h t' parts := by
     funext revealed i
     exact seedGenMaskKeys_table_congr D t t' ht i _
-  have hd : setupReferenceData .seedGen (E := E) prims D h t parts = setupReferenceData .seedGen prims D h t' parts := by
+  have hd : setupReferenceData (phase := phase) (E := E) prims D h t parts = setupReferenceData (phase := phase) prims D h t' parts := by
     funext commitSent revealSent i
     simp only [setupReferenceData, hk]
   simp only [setupReferenceLocalGame, setupReferencePostCommit, hd]
 
 /-- The reference mixture after the relabeling: on distinct canonical inputs, the hidden keys are an
 independent dealer table, and the oracle answers the hidden canonical inputs with the dealer's keys. -/
-def seedGenSwappedMixture (prims : Primitives) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+def setupSwappedMixture (phase : Phase) (prims : Primitives) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
     (x : C.Party → Unit) (z : Aux) (Z : Distinguisher C A.State (Keys C)) (S : Finset (Query C))
-    (hmem : ∀ parts name, setupNamedInput .seedGen parts name ∈ S) : ProbComp Bool := do
+    (hmem : ∀ parts name, setupNamedInput phase parts name ∈ S) : ProbComp Bool := do
   let parts ← OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)
   let p ← $ᵗ ((S → HashOutput) × (KeyName C → HashOutput))
-  let ht := if Function.Injective (setupNamedInput .seedGen parts) then
-    (setupFiniteHiddenSwap .seedGen D S parts (hmem parts) p).1 else p.1
+  let ht := if Function.Injective (setupNamedInput phase parts) then
+    (setupFiniteHiddenSwap phase D S parts (hmem parts) p).1 else p.1
   let h := seedGenFiniteTotal prims S ht
-  let table := if Function.Injective (setupNamedInput .seedGen parts) then p.2 else
-    fun name => h (setupNamedInput .seedGen parts name)
-  simulateQ (fixedLocal prims h) (setupReferenceLocalGame .seedGen prims D h table A x z Z parts)
+  let table := if Function.Injective (setupNamedInput phase parts) then p.2 else
+    fun name => h (setupNamedInput phase parts name)
+  simulateQ (fixedLocal prims h) (setupReferenceLocalGame (phase := phase) prims D h table A x z Z parts)
 
-theorem evalDist_seedGenReferenceMixture_swap (prims : Primitives) (D : C.Coalition)
+theorem evalDist_setupReferenceMixture_swap (phase : Phase) (prims : Primitives) (D : C.Coalition)
     (A : Adversary C E Unit PEmpty PEmpty) (x : C.Party → Unit) (z : Aux)
     (Z : Distinguisher C A.State (Keys C)) (S : Finset (Query C))
-    (hmem : ∀ parts name, setupNamedInput .seedGen parts name ∈ S) :
-    seedGenReferenceMixture prims D A x z Z S =ᵈ seedGenSwappedMixture prims D A x z Z S hmem := by
-  unfold seedGenReferenceMixture seedGenSwappedMixture
+    (hmem : ∀ parts name, setupNamedInput phase parts name ∈ S) :
+    setupReferenceMixture (phase := phase) prims D A x z Z S =ᵈ setupSwappedMixture (phase := phase) prims D A x z Z S hmem := by
+  unfold setupReferenceMixture setupSwappedMixture
   refine (OracleComp.EvalDistEq.bind_bind_swap _ _ _).trans ?_
   refine EvalDistEq.bind_right _ fun parts => ?_
   let F : (S → HashOutput) → ProbComp Bool := fun ht =>
     simulateQ (fixedLocal prims (seedGenFiniteTotal prims S ht))
-      (setupReferenceLocalGame .seedGen prims D (seedGenFiniteTotal prims S ht)
-        (fun name => seedGenFiniteTotal prims S ht (setupNamedInput .seedGen parts name)) A x z Z parts)
+      (setupReferenceLocalGame (phase := phase) prims D (seedGenFiniteTotal prims S ht)
+        (fun name => seedGenFiniteTotal prims S ht (setupNamedInput phase parts name)) A x z Z parts)
   have hfst : (($ᵗ ((S → HashOutput) × (KeyName C → HashOutput))) >>= fun p => F p.1) =ᵈ
       (($ᵗ (S → HashOutput)) >>= F) := by
     rw [← bind_map_left Prod.fst]
@@ -691,12 +548,12 @@ theorem evalDist_seedGenReferenceMixture_swap (prims : Primitives) (D : C.Coalit
       (by rw [bind_pure])
   change (($ᵗ (S → HashOutput)) >>= F) =ᵈ _
   refine hfst.symm.trans ?_
-  by_cases hinj : Function.Injective (setupNamedInput .seedGen parts)
+  by_cases hinj : Function.Injective (setupNamedInput phase parts)
   · simp only [if_pos hinj]
     have hswap : (($ᵗ ((S → HashOutput) × (KeyName C → HashOutput))) >>= fun p => F p.1) =ᵈ
         (($ᵗ ((S → HashOutput) × (KeyName C → HashOutput))) >>= fun p =>
-          F (setupFiniteHiddenSwap .seedGen D S parts (hmem parts) p).1) := by
-      have he := (evalDist_setupFiniteHiddenSwap .seedGen D S parts (hmem parts) hinj).bind_left
+          F (setupFiniteHiddenSwap phase D S parts (hmem parts) p).1) := by
+      have he := (evalDist_setupFiniteHiddenSwap phase D S parts (hmem parts) hinj).bind_left
         (fun p => F p.1)
       rw [bind_map_left] at he
       exact he.symm
@@ -704,12 +561,12 @@ theorem evalDist_seedGenReferenceMixture_swap (prims : Primitives) (D : C.Coalit
     refine EvalDistEq.bind_right _ fun p => ?_
     dsimp only [F]
     have htable : ∀ name, Hidden D name →
-        seedGenFiniteTotal prims S (setupFiniteHiddenSwap .seedGen D S parts (hmem parts) p).1
-          (setupNamedInput .seedGen parts name) = p.2 name := by
+        seedGenFiniteTotal prims S (setupFiniteHiddenSwap phase D S parts (hmem parts) p).1
+          (setupNamedInput phase parts name) = p.2 name := by
       intro name hh
-      rw [setupFiniteTotal_named .seedGen prims S _ parts name (hmem parts name),
-        setupFiniteHiddenSwap_cell .seedGen D S parts (hmem parts) hinj p name hh]
-    rw [seedGenReferenceLocalGame_table_congr prims D _ _ _ htable]
+      rw [setupFiniteTotal_named phase prims S _ parts name (hmem parts name),
+        setupFiniteHiddenSwap_cell phase D S parts (hmem parts) hinj p name hh]
+    rw [setupReferenceLocalGame_table_congr (phase := phase) prims D _ _ _ htable]
   · simp only [if_neg hinj]
     rfl
 
@@ -721,17 +578,11 @@ section Main
 
 variable {E : Type} (prims : Primitives)
 
-/-- `SeedGenCoupling` from the two hybrid halves. -/
-theorem seedGenCoupling_of_halves (hH : SeedGenHiddenDistance (C := C) (E := E) prims)
-    (hK : SeedGenKnownMismatch (C := C) (E := E) prims) :
-    SeedGenCoupling (C := C) (E := E) prims :=
-  seedGenCoupling_of_distance prims (seedGenSecurityDistance_of_hybrids prims hH hK)
-
 /-- `SeedGenSecurityStatement` from the two hybrid halves. -/
-theorem seedGenSecurity_of_halves (hH : SeedGenHiddenDistance (C := C) (E := E) prims)
-    (hK : SeedGenKnownMismatch (C := C) (E := E) prims) :
+theorem seedGenSecurity_of_halves (hH : SetupHiddenDistance (C := C) (E := E) .seedGen prims)
+    (hK : SetupKnownMismatch (C := C) (E := E) .seedGen prims) :
     SeedGenSecurityStatement (C := C) (E := E) prims :=
-  seedGenSecurity_of_coupling prims (seedGenCoupling_of_halves prims hH hK)
+  seedGenSecurity_of_setup prims (setupSecurityDistance_of_hybrids .seedGen prims hH hK)
 
 end Main
 
