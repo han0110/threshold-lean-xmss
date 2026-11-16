@@ -34,6 +34,7 @@ open XmssSecurity.CappedChain
 open SigningCompilerO1Frame SigningCompilerSyncBackend
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
+attribute [local irreducible] SigningCompilerShare.route
 
 /-- The bind of round 1 on the compiler side, with the opening release after it. -/
 def bindX (x : Keys3 C) (st : TsigState C) (e : KeyIndex) (message : Message) : SourceMX C Unit := do

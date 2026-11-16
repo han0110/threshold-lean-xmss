@@ -40,7 +40,7 @@ attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
 attribute [local irreducible] grind SigningFlatEagerProof.baseGrind
   SigningR1FixedProof.cachedExtra SigningOneRunProof.jointCachedExtra
-  SigningLaneUnionProof.traceStepAt
+  SigningLaneUnionProof.traceStepAt MonadAttach.support
 
 section Local
 variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)

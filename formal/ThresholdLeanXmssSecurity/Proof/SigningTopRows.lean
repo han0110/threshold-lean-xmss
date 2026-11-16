@@ -53,6 +53,7 @@ open HashSig LeanXmss ThresholdLeanXmss SigningOpeningProof SigningUnchargedLogg
 attribute [local instance] Classical.propDecidable
 
 variable {C : Committee} (prims : Primitives)
+attribute [local irreducible] MonadAttach.support
 
 /-- Bottom tree `b` does not resolve to a tree in the cache. The game releases the
 top signature of `b` only with a returned tree, so the chain values of top key `b` below the end

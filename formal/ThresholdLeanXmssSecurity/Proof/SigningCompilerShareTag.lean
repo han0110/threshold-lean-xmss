@@ -16,7 +16,7 @@ open SigningCompilerCouplingProof SigningCompilerShare
 variable {C : Committee} {Tag Tag' : Type}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-attribute [local irreducible] sourceProgramX sourceProgram sourceGameX sourceGame
+attribute [local irreducible] sourceProgramX sourceProgram sourceGameX sourceGame SigningCompilerShare.route
 
 abbrev RunSpecT (C : Committee) (Tag : Type) :=
   unifSpec + SigningShareLazy.ShareSpec C.Term CPoint Tag

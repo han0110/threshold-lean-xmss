@@ -32,6 +32,7 @@ open SigningCompilerO1Tail SigningCompilerO1Events SigningCompilerO1Coupling
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
+attribute [local irreducible] SigningCompilerShare.route MonadAttach.support
 
 /-- A second opening of a commitment in the backend. A cached commitment input at a value other than
 the cached randomizer of its key has the low half of the pending commitment answer of the key. -/

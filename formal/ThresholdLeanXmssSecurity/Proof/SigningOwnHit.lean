@@ -25,6 +25,7 @@ open ThresholdLeanXmss TprfSecurityProof SigningSecurityProof SigningCoreProof
 open SigningHitLaneProof SigningCostProof SigningFlatProof SigningOwnForger
 
 variable {C : Committee} (prims : Primitives)
+attribute [local irreducible] MonadAttach.support
 
 section Gate
 

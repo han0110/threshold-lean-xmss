@@ -37,6 +37,7 @@ open HashSig LeanXmss ThresholdLeanXmss SigningOpeningProof
 attribute [local instance] Classical.propDecidable
 
 variable {C : Committee} (prims : Primitives)
+attribute [local irreducible] MonadAttach.support
 
 /-- The PRF entries of the chain start of chain `l` at the key `e` of layer `lay` are all in the
 cache. The start is their XOR, so it is random only when each entry is cached. -/

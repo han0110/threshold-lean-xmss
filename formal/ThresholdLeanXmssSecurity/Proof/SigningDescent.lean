@@ -51,6 +51,7 @@ open ThresholdLeanXmss
 namespace SigningDescentProof
 
 variable {C : Committee}
+attribute [local irreducible] MonadAttach.support
 
 /-- The cache of `Th` inside the cache of `H`, as a cache of leanVM. -/
 def thView (c : HashCache C) : XmssSecurity.HashSpec.QueryCache := QueryCache.ofFn fun x => c.toFn (.hash x)

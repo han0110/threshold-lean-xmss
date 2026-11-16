@@ -37,6 +37,7 @@ open SigningOwnForger SigningOwnGateBlock SigningOwnVerify SigningOwnClaim
 attribute [local instance] Classical.propDecidable
 
 variable {C : Committee} (prims : Primitives)
+attribute [local irreducible] MonadAttach.support
 
 /-- The R1 bound with the own budget, with a stop at the first second opening of a commitment. One
 unit pays the bottom digest call of the verification. -/

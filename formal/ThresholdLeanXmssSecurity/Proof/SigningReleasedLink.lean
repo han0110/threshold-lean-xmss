@@ -21,6 +21,7 @@ open HashSig LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof
   SigningJointEagerProof SigningPartnerBoundProof SigningOneRunProof
 
 attribute [local instance] Classical.propDecidable
+attribute [local irreducible] MonadAttach.support
 
 section Occurrence
 

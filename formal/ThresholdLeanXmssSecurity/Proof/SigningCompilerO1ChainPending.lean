@@ -32,6 +32,7 @@ open SigningCompilerSyncTrigger SigningCompilerSyncLocalRead SigningCompilerSync
 open SigningCompilerO1Reads
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
+attribute [local irreducible] SigningCompilerShare.route MonadAttach.support
 
 /-- A chain input is no randomizer input. -/
 theorem chainInput_ne_randomizer (P : PublicParameter) (edge : ChainNoiseIndex) (d : Digest)

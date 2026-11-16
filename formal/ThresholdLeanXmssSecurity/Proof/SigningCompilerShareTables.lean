@@ -19,6 +19,7 @@ open SigningCompilerRealTables
 variable {C : Committee} {Tag : Type}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
+attribute [local irreducible] SigningCompilerShare.route
 
 abbrev TableIndex (C : Committee) := ChainNoiseIndex ⊕ RestSlot C
 abbrev PrivateSpec (C : Committee) := SigningGuessProof.PrivateRoSpec (TableIndex C) HashOutput

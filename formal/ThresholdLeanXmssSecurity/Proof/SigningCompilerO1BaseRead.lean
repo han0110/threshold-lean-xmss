@@ -34,7 +34,7 @@ attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
 attribute [local irreducible] grind SigningFlatEagerProof.baseGrind
   SigningR1FixedProof.cachedExtra SigningOneRunProof.jointCachedExtra
-  SigningLaneUnionProof.traceStepAt
+  SigningLaneUnionProof.traceStepAt SigningCompilerShare.route
 
 /-! ## The real call -/
 

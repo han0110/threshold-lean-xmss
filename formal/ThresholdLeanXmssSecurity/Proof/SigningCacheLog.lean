@@ -36,6 +36,7 @@ namespace SigningCacheLogProof
 open HashSig LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof SigningHitLaneProof
 
 variable {C : Committee} (prims : Primitives)
+attribute [local irreducible] MonadAttach.support
 
 section CacheFromLog
 

@@ -32,6 +32,7 @@ open HashSig LeanXmss ThresholdLeanXmss SigningUnchargedLoggedProof SigningFlatE
 attribute [local instance] Classical.propDecidable
 
 variable {C : Committee} (prims : Primitives)
+attribute [local irreducible] MonadAttach.support
 
 /-! ## The rows on the joint run -/
 

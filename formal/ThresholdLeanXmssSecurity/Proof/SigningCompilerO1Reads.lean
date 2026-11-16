@@ -34,6 +34,7 @@ open SigningCompilerO1Frame SigningCompilerSyncBackend SigningCompilerSyncRealRe
 open SigningCompilerSyncTrigger SigningCompilerSyncLocalRead SigningCompilerSyncHonestRead
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
+attribute [local irreducible] SigningCompilerShare.route
 
 section NoBase
 attribute [local irreducible] grind SigningFlatEagerProof.baseGrind

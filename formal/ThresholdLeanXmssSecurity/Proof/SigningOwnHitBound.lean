@@ -29,6 +29,7 @@ open SigningOwnGateBlock
 attribute [local instance] Classical.propDecidable
 
 variable {C : Committee} (prims : Primitives)
+attribute [local irreducible] MonadAttach.support
 
 /-- The hit bound with the own budget. `2 ^ 16` units pay the first read of each top gate, and `382`
 units pay the structural calls of the verification. -/

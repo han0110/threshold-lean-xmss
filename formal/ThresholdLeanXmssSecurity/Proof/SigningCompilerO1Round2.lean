@@ -37,7 +37,7 @@ open SigningCompilerO1Frame SigningCompilerO1Pre SigningCompilerSyncBackend
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-attribute [local irreducible] grind SigningFlatEagerProof.baseGrind Queries
+attribute [local irreducible] grind SigningFlatEagerProof.baseGrind Queries SigningCompilerShare.route MonadAttach.support
 
 /-- The signer sets read only the corrupt set and the release records. -/
 theorem signersAt_congr (st st' : TsigState C) (hcorrupt : st.corrupt = st'.corrupt)

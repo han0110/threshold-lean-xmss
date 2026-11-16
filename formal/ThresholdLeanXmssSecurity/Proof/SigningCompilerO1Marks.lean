@@ -23,7 +23,7 @@ variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
 attribute [local irreducible] sourceProgramX sourceProgram sourceGameX sourceGame
-attribute [local irreducible] sourceProgramO1X sourceGameO1X
+attribute [local irreducible] sourceProgramO1X sourceGameO1X SigningCompilerShare.route
 
 /-- A segment of the O1 source that asks no mark and keeps the hidden flag. -/
 def QuietO1 {α : Type} (oa : SourceMXO1 C α) : Prop :=

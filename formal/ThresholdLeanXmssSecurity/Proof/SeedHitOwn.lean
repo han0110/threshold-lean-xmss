@@ -29,6 +29,7 @@ open SigningOwnForger SigningOwnClaim
 attribute [local instance] Classical.propDecidable
 
 variable {C : Committee} (prims : Primitives)
+attribute [local irreducible] MonadAttach.support
 
 /-- A call that can hit a key costs at most one, and it is counted in the own budget. -/
 theorem roCost_counted (t : (LocalSpec C + TsigSpec C).Domain) :

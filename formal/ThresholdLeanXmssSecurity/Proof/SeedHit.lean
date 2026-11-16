@@ -32,6 +32,7 @@ open ThresholdLeanXmss TprfSecurityProof SigningSecurityProof SigningCoreProof
 namespace SeedHitProof
 
 variable {C : Committee} (prims : Primitives)
+attribute [local irreducible] MonadAttach.support
 
 /-! ## The arithmetic -/
 

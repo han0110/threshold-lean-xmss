@@ -13,8 +13,8 @@ open SigningCompilerSyncRelease
 variable {C : Committee} {Tag : Type}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
+attribute [local irreducible] SigningCompilerShare.route
 
-set_option maxHeartbeats 1600000 in
 /-- Port of `completion_cache_sync` to any constrained point with the visible cache fixed. -/
 theorem completion_cache_sync_at (x : Keys3 C)
     (hinj : Function.Injective x.2.1) (s : HiddenKey → Digest)

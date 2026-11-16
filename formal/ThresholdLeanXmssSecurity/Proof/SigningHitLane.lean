@@ -39,6 +39,7 @@ namespace SigningHitLaneProof
 open SigningDescentProof SigningCacheProof SigningCostProof
 
 variable {C : Committee} (prims : Primitives)
+attribute [local irreducible] MonadAttach.support
 
 /-- The state of `loggedRun`. -/
 abbrev LoggedState (C : Committee) := (HashCache C × ℕ) × QueryLog (WorldSpec C)

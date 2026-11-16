@@ -14,6 +14,7 @@ noncomputable section
 namespace ThresholdLeanXmssSecurity.SigningCompilerShareCap
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
 open SigningCompilerCouplingProof SigningCompilerShare SigningCompilerShareTag
+attribute [local irreducible] SigningCompilerShare.route
 
 -- The following frozen-law port is SigningCompilerShareTable:26–124 with
 -- the already generic SigningShareLazy tag specialized to Bool × Bool.

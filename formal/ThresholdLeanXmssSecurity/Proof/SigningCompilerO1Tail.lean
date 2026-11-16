@@ -41,7 +41,7 @@ open SigningCompilerO1Frame SigningCompilerO1Pre SigningCompilerO1Programs Signi
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
-attribute [local irreducible] Queries
+attribute [local irreducible] Queries MonadAttach.support
 
 /-! ## The Merkle path of a bottom key -/
 

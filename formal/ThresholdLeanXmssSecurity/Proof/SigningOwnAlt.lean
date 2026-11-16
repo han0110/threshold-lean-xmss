@@ -30,6 +30,7 @@ open SigningHitLaneProof SigningCostProof SigningFlatProof SigningOwnForger
 attribute [local instance] Classical.propDecidable
 
 variable {C : Committee} (prims : Primitives)
+attribute [local irreducible] MonadAttach.support
 
 /-- The bound of a second opening of a commitment with the own budget. A round-2 request pays one
 unit, the check of `c_e`. The verification makes no commitment call. -/

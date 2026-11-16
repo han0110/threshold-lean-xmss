@@ -29,6 +29,7 @@ open SigningOwnForger SigningOwnGate
 variable {C : Committee} (prims : Primitives)
 
 open Classical
+attribute [local irreducible] MonadAttach.support
 
 theorem size_emptyRows {State : Type} [Fintype State] {Index : Type} [Fintype Index] :
     LayeredGraph.size (LayeredGraph.emptyRows : Index → List (State → Option State)) = 0 := by

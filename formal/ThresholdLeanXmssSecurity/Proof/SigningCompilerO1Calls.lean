@@ -33,6 +33,7 @@ open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
+attribute [local irreducible] SigningCompilerShare.route MonadAttach.support
 
 /-! ## The real side of one read -/
 

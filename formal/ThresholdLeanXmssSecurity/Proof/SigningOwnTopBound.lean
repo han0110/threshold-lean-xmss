@@ -28,6 +28,7 @@ open SigningOwnCommit SigningSelectionProof
 attribute [local instance] Classical.propDecidable
 
 variable {C : Committee} (prims : Primitives)
+attribute [local irreducible] MonadAttach.support
 
 /-- The top partner bound with the own budget. One unit pays the top digest call of the
 verification. -/

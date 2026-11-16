@@ -36,6 +36,7 @@ open SigningCompilerO1Sync SigningCompilerO1Frame SigningCompilerO1Verify Signin
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
+attribute [local irreducible] MonadAttach.support
 
 section Finish
 variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)

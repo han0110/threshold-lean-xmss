@@ -18,6 +18,7 @@ open SigningCompilerSyncRelease SigningCompilerSyncChain SigningCompilerSyncRows
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
+attribute [local irreducible] SigningCompilerShare.route
 
 /-- Control fields shared by completion and planting frames. -/
 structure ReleaseFrame (x : Keys3 C) (b b' : SourceState C × CompState C) : Prop where

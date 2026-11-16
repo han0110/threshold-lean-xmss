@@ -33,6 +33,7 @@ open SigningHitLaneProof SigningCostProof SigningFlatProof
 attribute [local instance] Classical.propDecidable
 
 variable {C : Committee} (prims : Primitives)
+attribute [local irreducible] MonadAttach.support
 
 /-- The unit of one query of the forger, one for each own call of `H` or `PRG` and for each round-2
 request. -/

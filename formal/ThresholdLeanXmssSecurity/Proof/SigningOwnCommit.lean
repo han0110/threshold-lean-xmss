@@ -26,6 +26,7 @@ open SigningOwnCover SigningSelectionProof
 attribute [local instance] Classical.propDecidable
 
 variable {C : Committee}
+attribute [local irreducible] MonadAttach.support
 
 section Cover
 

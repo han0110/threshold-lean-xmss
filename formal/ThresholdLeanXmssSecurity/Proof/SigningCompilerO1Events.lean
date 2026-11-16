@@ -23,6 +23,7 @@ open SigningCompilerO1Sync SigningCompilerO1Canonical
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
+attribute [local irreducible] SigningCompilerShare.route MonadAttach.support
 
 /-- A bottom chain input, a top chain input and a top digest input are outside the trial
 inputs. So the log cache and the visible cache agree at them. -/

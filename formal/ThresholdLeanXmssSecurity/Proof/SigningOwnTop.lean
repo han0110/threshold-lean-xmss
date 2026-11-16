@@ -26,6 +26,7 @@ open SigningOwnCover SigningOwnCommit SigningSelectionProof SigningGuessProof
 attribute [local instance] Classical.propDecidable
 
 variable {C : Committee}
+attribute [local irreducible] MonadAttach.support
 
 /-- No structural tweakable input is at a top digest address. -/
 theorem structural_not_topDigest (P : PublicParameter) (key : XmssSecurity.TopIndex) (domain : HashDomain)

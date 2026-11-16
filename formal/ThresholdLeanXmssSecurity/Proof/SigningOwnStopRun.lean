@@ -30,6 +30,7 @@ open HashSig LeanXmss ThresholdLeanXmss SigningFlatProof SigningFlatEagerProof S
 attribute [local instance] Classical.propDecidable
 
 variable {C : Committee} (prims : Primitives)
+attribute [local irreducible] MonadAttach.support
 
 /-- The R1 bound with the own budget on the source run, in the form of
 `SigningOneRunProof.split_r1Hit_bound`. The keyed calls of the free copy cost nothing before a second

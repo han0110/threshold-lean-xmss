@@ -18,7 +18,7 @@ attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
 attribute [local irreducible] grind SigningFlatEagerProof.baseGrind Queries
   SigningR1FixedProof.cachedExtra SigningOneRunProof.jointCachedExtra
-  rawCarriedLogged rawKeyedSplitOracle rawKeyedSplitWorld rawTraceWorld rawTraceFlatWith
+  rawCarriedLogged rawKeyedSplitOracle rawKeyedSplitWorld rawTraceWorld rawTraceFlatWith MonadAttach.support
 
 abbrev IsSlot (x : Keys3 C) (q : Query C) : Prop :=
   ∃ z, TprfSecurityProof.slotInput x.2.1 x.2.2 z = q

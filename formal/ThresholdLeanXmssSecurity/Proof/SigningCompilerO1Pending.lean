@@ -32,6 +32,7 @@ open SigningCompilerSyncTrigger SigningCompilerSyncLocalRead SigningCompilerSync
 open SigningCompilerO1Reads
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
+attribute [local irreducible] SigningCompilerShare.route MonadAttach.support
 
 section Calls
 variable (prims : Primitives) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)

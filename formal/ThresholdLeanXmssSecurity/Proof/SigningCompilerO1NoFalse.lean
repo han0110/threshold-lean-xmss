@@ -29,6 +29,7 @@ open SigningCompilerO1SlackGuarded SigningCompilerO1Marks SigningCompilerO1Runs
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
 variable {C : Committee}
+attribute [local irreducible] SigningCompilerShare.route
 
 /-- The slack of the O1 source fixes the sum of each fully cached constrained point. -/
 theorem release_full_targetO1 (seeds : C.Term → HashOutput)

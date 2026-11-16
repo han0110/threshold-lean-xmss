@@ -26,6 +26,7 @@ open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
 set_option backward.isDefEq.respectTransparency false
+attribute [local irreducible] SigningCompilerShare.route
 
 /-- The release of the opening of the top key of a returned tree. -/
 def returnOpeningX (P : PublicParameter) (bi : XmssSecurity.TopIndex) : SourceMX C Digest := do

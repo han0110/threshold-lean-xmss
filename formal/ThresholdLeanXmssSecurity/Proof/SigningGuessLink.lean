@@ -69,6 +69,7 @@ open HashSig LeanXmss ThresholdLeanXmss SigningOpeningProof
 attribute [local instance] Classical.propDecidable
 
 variable {C : Committee}
+attribute [local irreducible] MonadAttach.support
 
 /-- The unreleased candidates of a call of `H` on `input`. It is the `hash` row of
 `unreleasedCandidates`. -/
