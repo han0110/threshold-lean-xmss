@@ -173,6 +173,19 @@ theorem simulateQ_sequenceFin {κ : Type} {spec : OracleSpec κ} {m : Type → T
     refine bind_congr fun a => ?_
     rw [simulateQ_sequenceFin impl (fun i : Fin n => f i.succ)]
 
+theorem mem_support_sequenceFin_oc {ι : Type} {spec : OracleSpec ι} {α : Type} :
+    ∀ {n : ℕ} (f : Fin n → OracleComp spec α) (x : Fin n → α), x ∈ support (OverPermutation.sequenceFin f) →
+      ∀ i, x i ∈ support (f i)
+  | 0, f, x, _ => fun i => i.elim0
+  | n + 1, f, x, hx => by
+    simp only [OverPermutation.sequenceFin, support_bind, Set.mem_iUnion, support_pure,
+      Set.mem_singleton_iff] at hx
+    obtain ⟨a, ha, t, ht, rfl⟩ := hx
+    intro i
+    cases i using Fin.cases with
+    | zero => exact ha
+    | succ i => exact mem_support_sequenceFin_oc (fun i : Fin n => f i.succ) t ht i
+
 @[simp] theorem free_pure {α : Type} (a : α) : free (C := C) (pure a) = pure a := simulateQ_pure _ _
 
 @[simp] theorem free_bind {α β : Type} (oa : OracleComp (LocalSpec C) α) (f : α → OracleComp (LocalSpec C) β) :
@@ -1239,6 +1252,14 @@ theorem D_mapM (h : Query C → HashOutput) {α β : Type} (f : α → OracleCom
     ∀ l : List α, D prims h (l.mapM f) = l.map fun a => D prims h (f a)
   | [] => rfl
   | a :: l => by rw [List.mapM_cons, D_bind, D_bind, D_mapM h f l, D_pure, List.map_cons]
+
+theorem D_sequenceFin {h : Query C → HashOutput} {α : Type} : ∀ {n : ℕ} (f : Fin n → OracleComp (RoSpec C) α),
+    D prims h (OverPermutation.sequenceFin f) = fun i => D prims h (f i)
+  | 0, f => by funext i; exact i.elim0
+  | n + 1, f => by
+    rw [OverPermutation.sequenceFin, D_bind, D_bind, D_sequenceFin, D_pure]
+    funext i
+    cases i using Fin.cases <;> rfl
 
 theorem D_map (h : Query C → HashOutput) {α β : Type} (f : α → β) (oa : OracleComp (RoSpec C) α) :
     D prims h (f <$> oa) = f (D prims h oa) := by

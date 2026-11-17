@@ -71,14 +71,6 @@ section Fixed
 
 variable {prims} {h : Query C → HashOutput}
 
-theorem D_sequenceFin {α : Type} : ∀ {n : ℕ} (f : Fin n → OracleComp (RoSpec C) α),
-    D prims h (OverPermutation.sequenceFin f) = fun i => D prims h (f i)
-  | 0, f => by funext i; exact i.elim0
-  | n + 1, f => by
-    rw [OverPermutation.sequenceFin, D_bind, D_bind, D_sequenceFin, D_pure]
-    funext i
-    cases i using Fin.cases <;> rfl
-
 theorem tweakable_bind {α β : Type} (oa : OracleComp HashSpec α) (f : α → OracleComp HashSpec β) :
     tweakable (C := C) (oa >>= f) = tweakable oa >>= fun a => tweakable (f a) := by
   simp [tweakable, simulateQ_bind]

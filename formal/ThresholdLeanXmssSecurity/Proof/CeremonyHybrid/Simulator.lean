@@ -1,5 +1,4 @@
 import ThresholdLeanXmssSecurity.Proof.CeremonyHybrid.Observation
-import ThresholdLeanXmssSecurity.Proof.Signing
 import VCVio.OracleComp.QueryTracking.SubSpec
 
 /-!

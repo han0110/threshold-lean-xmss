@@ -3,7 +3,8 @@ import ThresholdLeanXmss.Ideal
 /-!
 # The simulators and the reductions
 
-The explicit simulators of the setups and of a ceremony, and the reduction to the AES term.
+The explicit simulators of the setups, of a ceremony and of a PRSS setup with its `Rand` calls, and
+the reduction to the AES term.
 -/
 
 set_option autoImplicit false
@@ -175,6 +176,73 @@ def ceremonySimulator (counters : ℕ × ℕ) (jobs : List Job) (D : C.Coalition
       (ceremonyFuel circuits settings) st.adversary fun i =>
         (ceremonyWith K circuits settings buildingBlocks i keys counters jobs : PartyM C E RealSpec (List (List Bit)))).run ∅).run
     pure (⟨state, st.log ++ calls, st.corrupt⟩, Finset.univ.filter fun i => (outputs i).isSome)
+  output st := pure st.adversary
+
+/-- The streams of one call under the keys that the coalition knows and an honest receiver holds, at
+the `count` positions. The terms have a corrupt holder and a holder that is an honest receiver.
+Pair stream `(j, i)` is the stream of a corrupt operator `j` and an honest receiver `i`. -/
+def knownStreams {R : Type} [Zero R] (D : C.Coalition) (receivers : Finset C.Party) (codec : Codec C E R)
+    (term : C.Term → HashOutput) (pair : C.Pair → HashOutput) (ρ idx count : ℕ) :
+    OracleComp (RoSpec C) (Shares C R × (C.Party → C.Party → ℕ → R)) := do
+  let r ← C.terms.mapM fun T =>
+    if KnownTo D.1 T ∧ ∃ i ∈ receivers, i ∉ D.1 ∧ i ∈ C.holders T then
+      codec.draw (.term T) (term T) ρ idx count
+    else pure fun _ => 0
+  let Z ← C.parties.mapM fun j => C.parties.mapM fun i =>
+    if h : j ∈ D.1 ∧ i ∉ D.1 ∧ i ∈ receivers then
+      let p := C.pairOf i j (fun e => h.2.1 (e ▸ h.1))
+      codec.draw (.pair p) (pair p) ρ idx count
+    else pure fun _ => 0
+  pure (fun T g => if g < count then (r.getD (C.terms.idxOf T) fun _ => 0) g else 0,
+    fun j i g => if g < count then ((Z.getD j.val []).getD i.val fun _ => 0) g else 0)
+
+/-- The key of term `T` at the first honest holder that has keys. -/
+def liveTermKey (D : C.Coalition) (out : C.Party → Option (PrssKeys C)) (T : C.Term) : HashOutput :=
+  (C.parties.findSome? fun i => if i ∉ D.1 ∧ i ∈ C.holders T then (out i).map (·.term T) else none).getD 0
+
+/-- The key of pair `p` at its first honest endpoint that has keys. -/
+def livePairKey (D : C.Coalition) (out : C.Party → Option (PrssKeys C)) (p : C.Pair) : HashOutput :=
+  if p.1.1 ∉ D.1 ∧ (out p.1.1).isSome then ((out p.1.1).map (·.pair p.1.2)).getD 0
+  else ((out p.1.2).map (·.pair p.1.1)).getD 0
+
+/-- The state of `prssRealRandSimulator`. It holds the state of the adversary, the keys of the
+emulated operators, the next round label and the calls that `F_rand` did not leak yet. -/
+structure PrssRealRandState (C : Committee) (σ : Type) where
+  adversary : σ
+  keys : C.Party → Option (PrssKeys C)
+  label : ℕ
+  calls : List RandCall
+
+/-- The simulator of `prssRealRandProtocol`. It runs `A` on the counted copy. At the first leak it
+emulates the PRSS setup of the honest operators on the free copy, as the real operators run it, and
+names the emulated operators that have keys. For each call of `F_rand` it replies with the streams
+under the keys of the coalition, on the free copy (CDI05). It makes no programming query and reads no
+call of `A`. -/
+def prssRealRandSimulator (label : ℕ) (calls : List RandCall) (D : C.Coalition)
+    (A : Adversary C E Unit PEmpty PEmpty) :
+    Simulator (C := C) (WorldSpec C) Unit RandLeak (RandReplies C E) A.State where
+  State := PrssRealRandState C A.State
+  start corrupt z := do
+    let state ← worldRoles.adversary (A.start corrupt z)
+    pure ⟨state, fun _ => none, label, calls⟩
+  answer st l :=
+    match l with
+    | .inl () => do
+        let (state, keys) ← executePhase worldRoles D A noFunctionality setupRounds st.adversary fun i =>
+          (prssSetup i : PartyM C E RealSpec (PrssKeys C))
+        pure ({ st with adversary := state, keys := keys }, .inl (Finset.univ.filter fun i => (keys i).isSome))
+    | .inr _ =>
+      let receivers := Finset.univ.filter fun i => (st.keys i).isSome
+      match st.calls with
+      | [] => pure (st, .inr (.inl (0, 0)))
+      | .elements idx count :: rest => do
+          let known ← free (liftComp (knownStreams D receivers (elementCodec K) (liveTermKey D st.keys)
+            (livePairKey D st.keys) st.label idx count) _)
+          pure ({ st with label := st.label + 1, calls := rest }, .inr (.inl known))
+      | .bits idx count :: rest => do
+          let known ← free (liftComp (knownStreams D receivers (bitCodec (E := E)) (liveTermKey D st.keys)
+            (livePairKey D st.keys) st.label idx count) _)
+          pure ({ st with label := st.label + 1, calls := rest }, .inr (.inr known))
   output st := pure st.adversary
 
 /-! ## The reduction to the AES term -/

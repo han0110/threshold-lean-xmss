@@ -292,12 +292,18 @@ theorem stages_executeRounds_done (fuel : ℕ) (st : A.State) (steps : C.Party �
     rw [executeRounds, if_pos (fun i _ => by simp [h, Step.isDone])]
     simp [h, Step.output]
 
-theorem stages_executeRounds_allDone (fuel : ℕ) (st : A.State) (steps : C.Party → Step C E' (CallSpec I O) α)
-    (h : ∀ i, (steps i).isDone) :
-    executeRounds localRoles D A F fuel st steps = pure (st, fun i => (steps i).output) := by
+/-- Rounds from steps that are all done return their outputs, for each pair of roles. -/
+theorem executeRounds_allDone {m : Type → Type} [Monad m] (Ro : Roles C m) (fuel : ℕ) (st : A.State)
+    (steps : C.Party → Step C E' (CallSpec I O) α) (h : ∀ i, (steps i).isDone) :
+    executeRounds Ro D A F fuel st steps = pure (st, fun i => (steps i).output) := by
   cases fuel with
   | zero => rfl
   | succ fuel => rw [executeRounds, if_pos (fun i _ => h i)]
+
+theorem stages_executeRounds_allDone (fuel : ℕ) (st : A.State) (steps : C.Party → Step C E' (CallSpec I O) α)
+    (h : ∀ i, (steps i).isDone) :
+    executeRounds localRoles D A F fuel st steps = pure (st, fun i => (steps i).output) :=
+  executeRounds_allDone D A F localRoles fuel st steps h
 
 /-- A partial abort: some honest operator aborted, and the others call. Then everyone aborts. -/
 theorem stages_executeRounds_abort (fuel : ℕ) (st : A.State) (steps : C.Party → Step C E' (CallSpec I O) α)

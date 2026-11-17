@@ -4,7 +4,7 @@ Lean 4 statements and proofs of security claims of threshold leanXMSS.
 
 ## The two main claims
 
-The root theorem proves the bundle `Theorems`. Its 21 fields serve two main claims.
+The root theorem proves the bundle `Theorems`. Its 22 fields serve two main claims.
 
 - The DKG acts as a trusted dealer of the keys and the trees. This claim is **not complete**. The seed generation is proved. The security of a ceremony and of a tree is proved in a hybrid model. On the real network, the ceremony claim is stated and not proved, and no claim covers the security of a tree.
 - The signing with that dealer is correct and strongly unforgeable. This claim is proved.
@@ -36,17 +36,18 @@ The target is the trusted dealer `KeyGen` of PRAWNS (the note, Section 2.1). The
 
 ### The MPC layer
 
-The security of a ceremony rests on these eleven proved fields. The note has no section for them, and Appendix C of [statement.tex](./statement.tex) states them.
+The security of a ceremony rests on these twelve proved fields. The note has no section for them, and Appendix C of [statement.tex](./statement.tex) states them.
 
 - `ceremonyHybridSecurity` covers one ceremony with ideal multiplication and check, not on the real network.
 - `coinSecurity`, `multSecurity`, `extendMultSecurity`, `multVerifySecurity` and `mainSecurity` state the security of the building blocks of Goyal and Song. `coinCompleteness`, `multVerifyCompleteness` and `mainCompleteness` are their honest runs.
 - `prssRandSecurity` covers the random sharings from PRSS keys of a dealer. `prssSetupSecurity` covers the PRSS setup of a ceremony on the real network, with the dealer `F_prssKeys` of the PRSS keys.
+- `prssRealRandSecurity` joins these two on the real network. One PRSS setup and the `Rand` calls from its keys compute a fixed public list of `F_rand` calls, with no dealer of the PRSS keys.
 
 ## What is not proved
 
 - No claim covers the security of a tree on the real network. `CeremonySecurityStatement`, for one ceremony on the real network, is stated and not proved, and it is no part of the bundle.
 - `prssSetupSecurity` covers one PRSS setup from an empty hash cache. It does not cover the second PRSS setup of a bottom tree, which starts from a cache with cells of the first.
-- No claim joins `prssSetupSecurity`, `prssRandSecurity` and the building blocks.
+- `prssRealRandSecurity` joins `prssSetupSecurity` and `prssRandSecurity` for one setup and one fixed list of calls. No claim joins the PRSS to the building blocks.
 - No theorem composes the setup and the signing.
 - [statement.tex](./statement.tex), Section 5, and [doc/composition.md](./doc/composition.md) give the open points.
 
@@ -82,6 +83,7 @@ flowchart TB
     CSEC["CeremonySecurityStatement<br/>one ceremony on the real network"]:::stated
     MPC["MPC layer, the 10 other fields, each in its hybrid model<br/>ceremonyHybridSecurity, mainSecurity, multVerifySecurity, multSecurity,<br/>extendMultSecurity, coinSecurity, prssRandSecurity,<br/>mainCompleteness, multVerifyCompleteness, coinCompleteness"]:::proved
     PKEYS["prssSetupSecurity<br/>the PRSS setup gives the dealer of the PRSS keys,<br/>on the real network"]:::proved
+    PRAND["prssRealRandSecurity<br/>one PRSS setup and its Rand calls,<br/>on the real network"]:::proved
   end
 
   style SIG stroke:#999999
@@ -100,6 +102,7 @@ flowchart TB
   TSEC -.-> CSEC
   CSEC -.-> MPC
   CSEC -.-> PKEYS
+  CSEC -.-> PRAND
   MPC -->|prssRandSecurity| PKEYS
 ```
 

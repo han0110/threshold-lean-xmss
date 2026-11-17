@@ -317,16 +317,8 @@ theorem stepRound_attach (st : A.State) (steps : C.Party → Step C E (CallSpec 
 
 theorem mem_support_sequenceFin_local {γ : Type} :
     ∀ {n : ℕ} (f : Fin n → OracleComp (LocalSpec C) γ) (x : Fin n → γ),
-      x ∈ support (OverPermutation.sequenceFin f) → ∀ i, x i ∈ support (f i)
-  | 0, f, x, _ => fun i => i.elim0
-  | n + 1, f, x, hx => by
-    simp only [OverPermutation.sequenceFin, support_bind, Set.mem_iUnion, support_pure,
-      Set.mem_singleton_iff] at hx
-    obtain ⟨a, ha, t, ht, rfl⟩ := hx
-    intro i
-    cases i using Fin.cases with
-    | zero => exact ha
-    | succ i => exact mem_support_sequenceFin_local (fun i : Fin n => f i.succ) t ht i
+      x ∈ support (OverPermutation.sequenceFin f) → ∀ i, x i ∈ support (f i) :=
+  fun f x hx => mem_support_sequenceFin_oc f x hx
 
 /-- One step of timed steps gives timed steps with one round less. An operator that calls out of turn
 aborts, and a corrupt operator stays aborted. -/
@@ -430,23 +422,33 @@ theorem startSteps_timed (a : ℕ) (p : C.Party → PartyM C E (CallSpec I O) α
     simp only [hi, ↓reduceIte, localRoles] at h
     exact timed_advance (hp i hi) _ h
 
-/-- The first steps of the next phase, from the last steps of a phase that is over. -/
-theorem startSteps_elim (fin : C.Party → Step C E (CallSpec I O) α)
+/-- The first steps of the next phase, from the last steps of a phase that is over, for each pair of
+roles whose honest role keeps `pure`. -/
+theorem startSteps_elim_of_honest_pure {m : Type → Type} [Monad m] (Ro : Roles C m)
+    (hRo : ∀ {γ : Type} (c : γ), Ro.honest (pure c) = pure c) (fin : C.Party → Step C E (CallSpec I O) α)
     (k : C.Party → α → PartyM C E (CallSpec I O) β) (hD : ∀ i ∈ D.1, fin i = .done none)
     (hd : ∀ i ∉ D.1, (fin i).isDone) :
-    startSteps localRoles D (fun i => ((fin i).output).elim failure (k i)) =
-      OverPermutation.sequenceFin fun i => continueStep (k i) (fin i) := by
+    startSteps Ro D (fun i => ((fin i).output).elim failure (k i)) =
+      OverPermutation.sequenceFin fun i => Ro.honest (continueStep (k i) (fin i)) := by
   unfold startSteps
   congr 1
   funext i
   by_cases hi : i ∈ D.1
   · simp only [hi, ↓reduceIte, hD i hi]
-    rfl
-  · simp only [hi, ↓reduceIte, localRoles]
+    exact (hRo _).symm
+  · simp only [hi, ↓reduceIte]
     cases hs : fin i with
     | done out => cases out <;> rfl
     | wait out resume => exact absurd (hd i hi) (by simp [hs, Step.isDone])
     | call input resume => exact absurd (hd i hi) (by simp [hs, Step.isDone])
+
+/-- The first steps of the next phase, from the last steps of a phase that is over. -/
+theorem startSteps_elim (fin : C.Party → Step C E (CallSpec I O) α)
+    (k : C.Party → α → PartyM C E (CallSpec I O) β) (hD : ∀ i ∈ D.1, fin i = .done none)
+    (hd : ∀ i ∉ D.1, (fin i).isDone) :
+    startSteps localRoles D (fun i => ((fin i).output).elim failure (k i)) =
+      OverPermutation.sequenceFin fun i => continueStep (k i) (fin i) :=
+  startSteps_elim_of_honest_pure D localRoles (fun _ => rfl) fin k hD hd
 
 /-- The honest operators that still run have no output, and a corrupt operator has none. -/
 theorem output_none_of_timed {n : ℕ} {steps : C.Party → Step C E (CallSpec I O) α}

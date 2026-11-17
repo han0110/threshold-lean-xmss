@@ -24,6 +24,10 @@ The sketch of that join on the real network has these points.
 - $`\mathcal F_{\mathrm{ceremony}}`$ opens the chain values of a top key at every codeword it gets. So only rules 1 and 2 limit a top key to one codeword.
 - $`\mathcal F_{\mathrm{tree}}`$ lets the adversary choose the receivers one time, and two calls of $`\mathcal F_{\mathrm{ceremony}}`$ let it choose two times. No simulator and no bound is proved for a join of two calls of $`\mathcal F_{\mathrm{ceremony}}`$ on the real network, and each ceremony adds its own error.
 
+## The work of a simulator
+
+Lean bounds the counted oracle calls of each simulator. It does not bound the local work of a simulator. A claim of the form `SimulatedBy` names its simulator as code in `Reductions.lean`, so a reader sees its work. `prssRealRandSimulator` runs the adversary one time with no rewind, runs the setup code of the honest operators, and computes the streams of the known keys for each call. It also keeps the keys of the emulated operators, the round label and the list of the calls. So its work is the work of the adversary and of one honest run, with this bookkeeping. A claim of the form `SecurelyComputes` states that a simulator exists, and its proof defines that simulator. No text gives the work of those simulators.
+
 ## The Rust code
 
 No theorem connects the Rust proof of concept to the model. In November 2026, two side-by-side readings of the code and the model, the second a check of the first, found these gaps.

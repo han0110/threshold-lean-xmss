@@ -1568,6 +1568,12 @@ def prssRandProtocol (label : ℕ) (calls : List RandCall) (i : C.Party) (_ : Un
   let some prss ← call () | failure
   (calls.mapM (randCall K { localContext i with prss := prss })).run' ⟨fun _ => [], label, 0⟩
 
+/-- One PRSS setup and then the public list `calls` of `Rand` from its keys, on the real network. -/
+def prssRealRandProtocol (label : ℕ) (calls : List RandCall) (i : C.Party) (_ : Unit) :
+    PartyM C E RealSpec (List (RandOutput C E)) := do
+  let prss ← prssSetup i
+  (calls.mapM (randCall K { localContext i with prss := prss })).run' ⟨fun _ => [], label, 0⟩
+
 /-- The steps of the protocol, one call of the dealer. -/
 def prssRandRounds : ℕ := 1
 

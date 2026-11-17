@@ -24,13 +24,14 @@ import ThresholdLeanXmssSecurity.Proof.Constants
 import ThresholdLeanXmssSecurity.Proof.CeremonyHybrid.Security
 import ThresholdLeanXmssSecurity.Proof.TagBlocks
 import ThresholdLeanXmssSecurity.Proof.PrssRand.Security
+import ThresholdLeanXmssSecurity.Proof.PrssRealRand.Security
 import ThresholdLeanXmssSecurity.Proof.TreeHybrid.Security
 
 /-! # The end theorem of threshold leanXMSS
 
 `thresholdLeanXmss_security` gives `ThresholdLeanXmssSecurityStatement`
 (`ThresholdLeanXmss/Statement/Theorems.lean`). It is the bundle `Theorems`, with one field for each
-of twenty-one claims about the protocol of `ThresholdLeanXmss/Scheme.lean`. The theorem holds for every
+of twenty-two claims about the protocol of `ThresholdLeanXmss/Scheme.lean`. The theorem holds for every
 committee `n = 2t - 1`, every check field `E` with `2^128` elements, every `Th`, every circuit
 family and every setting. Each claim covers one protocol or one building block alone. No claim
 composes the seed generation, the ceremonies and the signing. `statement.tex` holds the deployment
@@ -179,6 +180,10 @@ budget is a cost function in the one and a predicate in the other.
    `prssSetupSimulator`. `setupSecurityDistance` proves the distance claim of a setup for both phases.
    `seedGenSecurity` is its instance for the seed generation, and `prssSetupSecurity` is its instance
    for the PRSS setup. The bad events fit `prssSetupHashError`.
+8. `prssRealRandSecurity` (`Proof/PrssRealRand/Security`) gives `PrssRealRandSecurityStatement` with
+   `prssRealRandSimulator`. One PRSS setup and the streams of its keys securely compute a public list
+   of calls of `F_rand` on the real network. `prssRealRand_key` bounds the stream-key event, and
+   `prssRealRand_streamHop` pays the event that the keys of the setup do not agree.
 
 ## Modules
 
@@ -193,6 +198,7 @@ The statement layer is `ThresholdLeanXmss/`. The proofs are in `ThresholdLeanXms
 * `CeremonyHybrid/` holds the claim of one ceremony in the hybrid model.
 * `TreeHybrid/` holds the claim of one tree in the hybrid model.
 * `PrssRand/` holds the claim of the PRSS streams from dealt keys.
+* `PrssRealRand/` holds the claim of one PRSS setup and the streams of its keys.
 * `Tree` and `Dealer` hold the tree completeness, the dealer and the tree success.
   `CeremonyIndex` holds the position of a batch in a ceremony, for the simulator of the claim that
   is stated and not proved. The end theorem does not use it.
@@ -239,7 +245,8 @@ theorem thresholdLeanXmss_security : ThresholdLeanXmss.ThresholdLeanXmssSecurity
     multVerifyCompleteness := multVerifyCompleteness prims K
     mainCompleteness := mainCompleteness prims K
     prssRandSecurity := prssRandSecurity prims K
-    prssSetupSecurity := prssSetupSecurity prims }
+    prssSetupSecurity := prssSetupSecurity prims
+    prssRealRandSecurity := prssRealRandSecurity prims K }
 
 /-! The build fails if the axiom footprint of the end theorem changes. -/
 
@@ -269,6 +276,10 @@ and `Quot.sound`. -/
 /-- info: 'ThresholdLeanXmssSecurity.prssSetupSecurity' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms prssSetupSecurity
+
+/-- info: 'ThresholdLeanXmssSecurity.prssRealRandSecurity' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms prssRealRandSecurity
 
 /-- info: 'ThresholdLeanXmssSecurity.thInput_ne_of_no_zero_byte' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

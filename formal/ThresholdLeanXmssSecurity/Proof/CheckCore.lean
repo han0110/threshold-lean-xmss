@@ -43,19 +43,6 @@ section CorruptNone
 
 variable {C : Committee} {E : Type}
 
-theorem mem_support_sequenceFin_oc {ι : Type} {spec : OracleSpec ι} {α : Type} :
-    ∀ {n : ℕ} (f : Fin n → OracleComp spec α) (x : Fin n → α), x ∈ support (OverPermutation.sequenceFin f) →
-      ∀ i, x i ∈ support (f i)
-  | 0, f, x, _ => fun i => i.elim0
-  | n + 1, f, x, hx => by
-    simp only [OverPermutation.sequenceFin, support_bind, Set.mem_iUnion, support_pure,
-      Set.mem_singleton_iff] at hx
-    obtain ⟨a, ha, t, ht, rfl⟩ := hx
-    intro i
-    cases i using Fin.cases with
-    | zero => exact ha
-    | succ i => exact mem_support_sequenceFin_oc (fun i : Fin n => f i.succ) t ht i
-
 variable {ι : Type} {I O L R Ia α : Type} (D : C.Coalition) (A : Adversary C E Ia L R)
   (F : Functionality C I O L R)
 

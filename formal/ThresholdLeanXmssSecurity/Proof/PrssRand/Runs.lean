@@ -3,9 +3,9 @@ import ThresholdLeanXmssSecurity.Proof.Tree
 /-!
 # The PRSS streams from dealt keys, the simulator and the two runs
 
-* `knownStreams` takes the receivers. It computes only the streams that an honest receiver computes
-  in the real run. So the two runs make the same hash calls on the keys of the coalition.
-* `prssRandSim` keeps the receivers that the adversary names, and gives them to `FrandCalls`.
+* `prssRandSim` keeps the receivers that the adversary names, and gives them to `FrandCalls`. It
+  replies with `knownStreams`, which computes only the streams that an honest receiver computes in
+  the real run. So the two runs make the same hash calls on the keys of the coalition.
 * `honestStreams` is the list of the stream draws of the operators that draw. `advance_randCalls`,
   `realExecution_prssRand` and `idealExecution_FrandCalls` are the normal forms of the two runs.
 * `dealtKey` is the dealt key of a name.
@@ -26,24 +26,6 @@ variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algeb
 attribute [local instance] inhabitedField
 
 /-! ## The simulator -/
-
-/-- The streams of one call under the keys that the coalition knows and an honest receiver holds, at
-the `count` positions. The terms have a corrupt holder and a holder that is an honest receiver.
-Pair stream `(j, i)` is the stream of a corrupt operator `j` and an honest receiver `i`. -/
-def knownStreams {R : Type} [Zero R] (D : C.Coalition) (receivers : Finset C.Party) (codec : Codec C E R)
-    (term : C.Term → HashOutput) (pair : C.Pair → HashOutput) (ρ idx count : ℕ) :
-    OracleComp (RoSpec C) (Shares C R × (C.Party → C.Party → ℕ → R)) := do
-  let r ← C.terms.mapM fun T =>
-    if KnownTo D.1 T ∧ ∃ i ∈ receivers, i ∉ D.1 ∧ i ∈ C.holders T then
-      codec.draw (.term T) (term T) ρ idx count
-    else pure fun _ => 0
-  let Z ← C.parties.mapM fun j => C.parties.mapM fun i =>
-    if h : j ∈ D.1 ∧ i ∉ D.1 ∧ i ∈ receivers then
-      let p := C.pairOf i j (fun e => h.2.1 (e ▸ h.1))
-      codec.draw (.pair p) (pair p) ρ idx count
-    else pure fun _ => 0
-  pure (fun T g => if g < count then (r.getD (C.terms.idxOf T) fun _ => 0) g else 0,
-    fun j i g => if g < count then ((Z.getD j.val []).getD i.val fun _ => 0) g else 0)
 
 /-- The state of the simulator. It holds the state of the adversary, the dealt keys, the receivers,
 the next round label, and the calls that `F_rand` did not leak yet. -/

@@ -375,6 +375,32 @@ def PrssRandSecurityStatement [SampleableType E] : Prop :=
               (PRFScheme.prfAdvantage (hiddenStreams prims.aes) (prgReduction prims D (distinguish
                 (realExecution D A FprssKeys prssRandRounds (prssRandProtocol K label calls) x z) Z))).toReal
 
+/-- The hash error of `prssRealRandProtocol`. The first term is for two honest operators with two
+keys of one term. The other two are for the stream-key event, at the budget of its reduction. -/
+def prssRealRandHashError (C : Committee) (q : ℕ) : ℝ :=
+  prssSetupHashError C q + prssSetupHashError C (q + C.n * (termCount C + C.n)) / 2 +
+    prssRandHashError C (q + C.n * (termCount C + C.n))
+
+/-- One PRSS setup and the `Rand` calls from its keys securely compute a fixed public list of
+`F_rand` calls with selective abort, on the real network, with the simulator
+`prssRealRandSimulator`.
+
+* The coalition is static.
+* The run is one setup from the empty hash cache, and then one fixed public list `calls`. The claim
+  is for every start label.
+* The overhead is `0`. The counted calls of the ideal run are the calls of the adversary and of the
+  distinguisher. The simulator emulates the honest operators on the free copy.
+* The claim joins `prssSetupSecurity` and `prssRandSecurity`. It replaces neither of them.
+  `prssRandSecurity` counts each call of its simulator, and this claim does not. -/
+def PrssRealRandSecurityStatement [SampleableType E] : Prop :=
+  ∀ (label : ℕ) (calls : List RandCall),
+    SimulatedBy prims (prssRealRandProtocol K label calls) setupRounds (FrandCalls calls)
+      (fun _ _ => True) (prssRealRandSimulator K label calls) 0 fun D A x z Z q =>
+        prssRealRandHashError C q +
+          (PRFScheme.prfAdvantage (hiddenStreams prims.aes) (prgReduction prims D
+            (distinguish (realExecution D A noFunctionality setupRounds (prssRealRandProtocol K label calls) x z)
+              Z))).toReal
+
 /-- `Coin` securely computes `F_coin` with selective abort in the `F_rand`-hybrid model, perfectly
 (GS20, Lemma 3). The simulator makes no oracle call of its own. -/
 def CoinSecurityStatement [SampleableType E] : Prop :=

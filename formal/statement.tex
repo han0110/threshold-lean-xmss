@@ -44,7 +44,7 @@ composition needs, and Section~\ref{sec:open} lists what is not proved.
 \paragraph{Where to read it.} The claims to review are in the folder
 \texttt{formal/ThresholdLeanXmss/Statement/}, and its
 entry file is \texttt{Theorems.lean}. The type of the root theorem \lean{thresholdLeanXmss_security}
-is the bundle \lean{Theorems}, a structure with twenty-one fields, one for each claim. Its axiom guard has only \texttt{propext},
+is the bundle \lean{Theorems}, a structure with twenty-two fields, one for each claim. Its axiom guard has only \texttt{propext},
 \texttt{Classical.choice} and \texttt{Quot.sound}. The proofs reuse lemmas from the security proof of leanVM. Appendix A gives the fields and their sources. This
 document calls a claim proved only if it is such a field.
 
@@ -302,7 +302,8 @@ corruption model of the signing game \\
 security of the whole keygen ceremony, and of DKG followed by signing, remains open. Three parts fall
 under the open claim \lean{CeremonySecurityStatement} only. They are the real building blocks in the place of
 the ideal ones, the join of the building blocks to the PRSS (B2), and the join of the PRSS setup to the batches.
-\lean{prssSetupSecurity} covers one PRSS setup from an empty $H$ cache, and \lean{prssRandSecurity} covers the PRSS streams from dealt keys. The hybrid
+\lean{prssSetupSecurity} covers one PRSS setup from an empty $H$ cache, and \lean{prssRandSecurity} covers the PRSS streams from dealt keys.
+\lean{prssRealRandSecurity} joins the two for one setup and one fixed public list of calls. The hybrid
 ceremony claim covers the sequence of batches (B6) and the opening of $c_e$ by the MPC (B8), with ideal
 multiplication and check. Rows B2 and B8 are in \lean{formal/doc/differences.md}.
 \item No claim covers liveness, concurrent ceremonies, concurrent batches, or adaptive corruption during
@@ -380,6 +381,7 @@ Field & Lean claim & Source item & State \\
 \lean{mainCompleteness} & \lean{MainCompletenessStatement} & GS20, Protocol 19, honest run & Proved \\
 \lean{prssRandSecurity} & \lean{PrssRandSecurityStatement} & CDI05, Section 4 & Proved \\
 \lean{prssSetupSecurity} & \lean{PrssSetupSecurityStatement} & CDI05, Section 4 (keys). \cite{GL05,CDG+18} & Proved \\
+\lean{prssRealRandSecurity} & \lean{PrssRealRandSecurityStatement} & CDI05, Section 4. \cite{GL05} & Proved \\
 \bottomrule
 \end{xltabular}}
 \section{Differences to the sources}\label{sec:diff}
@@ -395,7 +397,7 @@ A1 & GS20 Functionalities 5, 16 and 18 have a common abort. & Each operator abor
 each simulation claim has selective abort. Rule 2 is a requirement with no proof. \\
 \rowrule
 A2 & GS20 is information-theoretic. & $H$ is a random oracle and AES-128 is the PRG. The check and batch
-bounds have hash terms. The PRF advantage is only in \lean{prssRandSecurity} and in the open ceremony claim. \\
+bounds have hash terms. The PRF advantage is only in \lean{prssRandSecurity}, in \lean{prssRealRandSecurity} and in the open ceremony claim. \\
 \rowrule
 A3 & Honest Shamir shares fix each sharing. & Honest copies can differ, so the building-block claims hold on
 valid inputs only. $\Fn{mult}$, $\Fn{multVerify}$, $\Fn{main}$ also leak honest copies of terms that corrupt
@@ -426,7 +428,8 @@ that the real run does not reach. After a partial abort before the last batch, n
 output. A partial abort at the last opening can leave some honest operators with outputs.
 \lean{CeremonySecurityStatement} is stated and not proved, and it is no field of the bundle. Error $0$ for
 \lean{multSecurity} and \lean{extendMultSecurity} is security up to an additive attack, so a product can be wrong until the
-check. \lean{prssRandSecurity} covers neither the PRSS setup nor a join to the building blocks, and no claim joins it to \lean{prssSetupSecurity}. For $R$ halving steps,
+check. \lean{prssRandSecurity} covers neither the PRSS setup nor a join to the building blocks. \lean{prssRealRandSecurity} joins it to
+\lean{prssSetupSecurity} for one setup and one fixed public list of calls. No claim joins the PRSS to the building blocks. For $R$ halving steps,
 \[
  \mathsf{coinFailure}(R)=\tfrac{\mathsf{sliceBits}}{2^{128}}+(R+1)\bigl(\tfrac{2}{2^{128}}\bigr)^{2^{64}},\quad
  \mathsf{abortErrorOf}(R)=\mathsf{coinFailure}(R)+\tfrac{(R+2)^2}{2^{257}}.
@@ -434,7 +437,9 @@ check. \lean{prssRandSecurity} covers neither the PRSS setup nor a join to the b
 Let $c=2n\binom n{t-1}$ and $k=\binom n{t-1}+\binom n2$, and let $B$ be the batch count of the job list. The
 term $\mathsf{ceremonyCheckError}$ adds one \lean{checkErrorOf} for each batch, with the maximum coin count
 and halving count over all batches of all ceremonies. In each row, $A$ is the advantage of
-\lean{prgReduction} against \lean{hiddenStreams}, on the real run and the distinguisher of that row. The term
+\lean{prgReduction} against \lean{hiddenStreams}, on the real run and the distinguisher of that row. In the row of
+\lean{prssRealRandSecurity}, $u$ and $v$ are the errors of the rows of the PRSS setup and of the PRSS streams without $A$,
+and $q'=q+n(\binom n{t-1}+n)$. The term
 $s_{\mathrm{ceremony}}$ counts the secret hash inputs of the honest operators. Here ``dealt'' is
 $\mathsf{batchSize}>0$, \lean{DealtInputs} and one of the three job lists.
 {\scriptsize
@@ -467,6 +472,8 @@ Honest batch & \lean{mainCompleteness} & $\Fn{mult},\Fn{multVerify}$ & \lean{Mai
 PRSS streams & \lean{prssRandSecurity} & dealer $\Fn{prssKeys}$ & a fixed public list of calls & $k(q+k)/2^{256}+A$ & CDI05, Sec.~4 \\
 \rowrule
 PRSS setup & \lean{prssSetupSecurity} & none & all, one setup from an empty $H$ cache & $(q+\mathsf{prssSetupSecrets})^2/2^{256}$ & \cite{GL05,CDG+18} \\
+\rowrule
+PRSS joined & \lean{prssRealRandSecurity} & none & a fixed public list of calls, one setup from an empty $H$ cache & $u(q)+\tfrac12u(q')+v(q')+A$ & CDI05, Sec.~4 \\
 \bottomrule
 \end{xltabular}}
 {\small

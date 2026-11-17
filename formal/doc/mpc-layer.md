@@ -72,8 +72,23 @@ No cited paper proves this setup. The setup argument and its bound are an adapta
 
 The claim on random sharings from the PRSS (`PrssRandSecurityStatement`) is this. Take a static coalition and PRSS keys from a trusted dealer $`\mathcal F_{\mathrm{prssKeys}}`$, who can leave an honest operator with no keys. Then for every start label and fixed public list of calls, the PRSS streams securely compute these $`\mathcal F_{\mathrm{rand}}`$ calls with selective abort. A simulator exists that does not program $H$, with at most $q+\mathsf{prssRandOverhead}$ counted calls. The error is $`k(q+k)/2^{256}+\operatorname{Adv}^{\rm prf}_{\mathsf{hiddenStreams}}(\mathsf{prgReduction})`$ for the $`k=\binom n{t-1}+\binom n2`$ PRSS keys. The source is CDI05, Sections 2 and 4, with predistributed keys. It differs in the pair keys, the hash to an AES key, and the use as replicated terms with no Shamir conversion. It covers neither the PRSS setup nor a join of the building blocks to the PRSS. It is not GS20, Lemma 1.
 
+## One PRSS setup with its random sharings
+
+The claim on one PRSS setup with its random sharings (`PrssRealRandSecurityStatement`) is this. Take a static coalition. Then on the real network, one PRSS setup and the `Rand` calls from its keys securely compute a fixed public list of $`\mathcal F_{\mathrm{rand}}`$ calls with selective abort, for every start label. The simulator is the fixed `prssRealRandSimulator`. It runs the setup code of the honest operators against the adversary and names the operators that end with keys. For each call it gives the streams under the keys that the coalition knows. It makes no programming query. The ideal run makes at most $q$ counted calls, because the simulator runs the honest code on the free copy of the oracle. With $`q'=q+n(\binom n{t-1}+n)`$ and the $k$ of the section before, the error is
+
+```math
+\frac{(q+\mathsf{prssSetupSecrets})^2}{2^{256}}+\frac{(q'+\mathsf{prssSetupSecrets})^2}{2^{257}}+\frac{k(q'+k)}{2^{256}}+\operatorname{Adv}^{\rm prf}_{\mathsf{hiddenStreams}}(\mathsf{prgReduction}).
+```
+
+The first term is for two honest operators that hold two keys for one term or one pair. The other two hash terms are for a counted call that hits a hidden key.
+
+The claim is for one setup from an empty hash cache and one public list of calls. It joins the two claims before it and replaces neither of them. `prssRandSecurity` counts each call of its simulator, and this claim does not count the honest code that its simulator runs. It does not join the PRSS to the building blocks.
+
+The papers get such a claim from the composition theorem [Can00, Theorem 5]. The Lean proof is direct. It bounds the event that two honest operators hold two keys with `prssSetupSecurity`. Outside that event, the streams are those of dealt keys.
+
 ## Sources
 
+- [Can00] Ran Canetti. Security and composition of multiparty cryptographic protocols. Journal of Cryptology, 13(1):143-202, 2000. [doi:10.1007/s001459910006](https://doi.org/10.1007/s001459910006).
 - [CDG+18] Jan Camenisch, Manu Drijvers, Tommaso Gagliardoni, Anja Lehmann, and Gregory Neven. The wonderful world of global random oracles. In Advances in Cryptology - EUROCRYPT 2018, pages 280-312. Springer, 2018. [doi:10.1007/978-3-319-78381-9_11](https://doi.org/10.1007/978-3-319-78381-9_11).
 - [CDI05] Ronald Cramer, Ivan Damgard, and Yuval Ishai. Share conversion, pseudorandom secret-sharing and applications to secure computation. In Theory of Cryptography (TCC 2005), pages 342-362. Springer, 2005. [doi:10.1007/978-3-540-30576-7_19](https://doi.org/10.1007/978-3-540-30576-7_19).
 - [GL05] Shafi Goldwasser and Yehuda Lindell. Secure multi-party computation without agreement. Journal of Cryptology, 18(3):247-287, 2005. [doi:10.1007/s00145-005-0319-z](https://doi.org/10.1007/s00145-005-0319-z).

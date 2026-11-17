@@ -69,22 +69,23 @@ private theorem free_prgBits (name : KeyName C) (key : HashOutput) (ρ idx m : �
   rw [hl, List.mapM_map, map_eq_bind_pure_comp]
   rfl
 
+/-- `sequenceFin` in `StateT` of computations that each keep the state. -/
+theorem sequenceFin_run_keep {σ β : Type} {m : Type → Type} [Monad m] [LawfulMonad m] (s : σ) :
+    ∀ {n : ℕ} (g : Fin n → StateT σ m β) (f : Fin n → m β), (∀ i, (g i).run s = (fun a => (a, s)) <$> f i) →
+    (OverPermutation.sequenceFin g).run s = (fun a => (a, s)) <$> OverPermutation.sequenceFin f
+  | 0, g, f, _ => by simp [OverPermutation.sequenceFin]
+  | n + 1, g, f, h => by
+    simp only [OverPermutation.sequenceFin, StateT.run_bind, h, StateT.run_pure, bind_map_left, map_bind]
+    rw [sequenceFin_run_keep s (fun i : Fin n => g i.succ) (fun i => f i.succ) fun i => h i.succ]
+    simp only [bind_map_left, map_pure]
+
 /-- A sequence of steps that each return a fixed value and keep the state returns the table and keeps
 the state. -/
-private theorem sequenceFin_run_pure {σ α : Type} : ∀ {n : ℕ} (f : Fin n → StateT σ ProbComp α)
-    (vals : Fin n → α) (st : σ), (∀ i, (f i).run st = pure (vals i, st)) →
-      (OverPermutation.sequenceFin f).run st = pure (vals, st)
-  | 0, f, vals, st, _ => by
-    simp only [OverPermutation.sequenceFin, StateT.run_pure]
-    congr 2
-    funext i
-    exact i.elim0
-  | n + 1, f, vals, st, h => by
-    simp only [OverPermutation.sequenceFin, StateT.run_bind, h 0, pure_bind]
-    rw [sequenceFin_run_pure (fun i => f i.succ) (fun i => vals i.succ) st (fun i => h i.succ)]
-    simp only [pure_bind, StateT.run_pure]
-    congr 2
-    exact Fin.cons_self_tail vals
+private theorem sequenceFin_run_pure {σ α : Type} {n : ℕ} (f : Fin n → StateT σ ProbComp α)
+    (vals : Fin n → α) (st : σ) (h : ∀ i, (f i).run st = pure (vals i, st)) :
+      (OverPermutation.sequenceFin f).run st = pure (vals, st) := by
+  rw [sequenceFin_run_keep st f (fun i => pure (vals i)) fun i => by rw [h i, map_pure], sequenceFin_pure,
+    map_pure]
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
 /-- The positions of one stream are in the hidden cache. Then a later operator reads them and no

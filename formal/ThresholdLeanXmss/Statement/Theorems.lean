@@ -45,9 +45,9 @@ property.
   `ceremonyHybridSecurity` for one ceremony, the security claims `coinSecurity`, `multSecurity`,
   `extendMultSecurity`, `multVerifySecurity` and `mainSecurity` of the GS20 building blocks for
   `F_coin`, `F_mult`, `F_extendMult`, `F_multVerify` and `F_main` with the honest runs
-  `coinCompleteness`, `multVerifyCompleteness` and `mainCompleteness`, and `prssRandSecurity` and
-  `prssSetupSecurity` for the PRSS. The note has no section for this group. It names the MPC in
-  Section 2.1.
+  `coinCompleteness`, `multVerifyCompleteness` and `mainCompleteness`, and `prssRandSecurity`,
+  `prssSetupSecurity` and `prssRealRandSecurity` for the PRSS. The note has no section for this
+  group. It names the MPC in Section 2.1.
 
 No group is for Section 2.2 of the note, the setup by a trusted dealer with `n = 3f + 1`. Each
 claim is for `n = 2t - 1`.
@@ -66,8 +66,8 @@ so each completeness field is the honest run of its protocol.
   ceremonies of one tree with the local steps between them, and it passes the counters on.
 * The seed generation, each ceremony and each tree are separate claims. Each has a rushing
   malicious adversary with its own static coalition. The seed generation claims,
-  `prssSetupSecurity` and `CeremonySecurityStatement` run the real network with the real PRSS, and
-  `ceremonyHybridSecurity` and `treeHybridSecurity` are in the hybrid model.
+  `prssSetupSecurity`, `prssRealRandSecurity` and `CeremonySecurityStatement` run the real network
+  with the real PRSS, and `ceremonyHybridSecurity` and `treeHybridSecurity` are in the hybrid model.
 * Each building-block claim is in a hybrid model. `prssRandSecurity` is in the `F_prssKeys`-hybrid
   model. `coinSecurity`, `multSecurity` and `extendMultSecurity` are in the `F_rand`-hybrid model.
   `multVerifySecurity` is in the `{F_coin, F_extendMult, F_rand}`-hybrid model, and `mainSecurity`,
@@ -80,8 +80,8 @@ so each completeness field is the honest run of its protocol.
   (`breaksOneMessagePerKey`). The signing game enforces it. The PoC has the exchange of
   acknowledgements of `doc/sign.md` 4.1 for it, and a deployment must enforce it too.
 * `H` is one lazy random oracle on `Query`, with one domain for each constructor. `PRG` is AES-128
-  under a hash of the key. `prssRandSecurity` and `CeremonySecurityStatement` pay its multi-key PRF
-  advantage.
+  under a hash of the key. `prssRandSecurity`, `prssRealRandSecurity` and `CeremonySecurityStatement`
+  pay its multi-key PRF advantage.
 * In the seed generation, ceremony and tree claims, `Th` is one fixed function on the inputs that
   the MPC evaluates, namely the chain steps and the commitment `c_e`. In the signing claim, all of
   `H` is a lazy random oracle, `Th` included. The gap between the two models is the random-oracle
@@ -112,8 +112,9 @@ the advantage of a reduction is only as strong as that reduction.
   `dealerTreeSuccess`). No field states the security of a tree on the real network, and `Dkg.lean`
   has no such claim.
 * `prssSetupSecurity` states that one PRSS setup, from an empty hash cache, gives the keys of the
-  dealer `F_prssKeys`. No field states it for the second PRSS setup of a bottom tree. No field joins
-  it to `prssRandSecurity` and the building-block claims.
+  dealer `F_prssKeys`. No field states it for the second PRSS setup of a bottom tree.
+  `prssRealRandSecurity` joins it to the PRSS streams of `prssRandSecurity`. No field joins it to the
+  building-block claims.
 * Only `treeHybridSecurity` joins the two ceremonies of a bottom tree against a corrupt coalition,
   and only in the hybrid model. On the real network, `CeremonySecurityStatement` has no simulator
   and no bound for the ceremony of the tree, the randomizer search, the signature ceremony and the
@@ -227,6 +228,10 @@ structure Theorems (prims : Primitives) (K : Constants C E) (circuits : Circuits
   network, with the simulator `prssSetupSimulator` and the error `(q + prssSetupSecrets C)² / 2^256`
   (GL05 and CDG+18). -/
   prssSetupSecurity : PrssSetupSecurityStatement prims C E
+  /-- One PRSS setup and the streams of its keys securely compute a public list of calls of
+  `F_rand` with selective abort on the real network, with the simulator `prssRealRandSimulator`, up
+  to `prssRealRandHashError` and a PRF advantage (CDI05, Section 4). -/
+  prssRealRandSecurity : PrssRealRandSecurityStatement prims K
 
 /-- The security claim, for every committee, every check field of characteristic `2` with its
 constants, every `Th` and AES-128, every circuit family, and every setting. -/

@@ -1704,8 +1704,8 @@ theorem seedGenEraseLog_adversary {α : Type} (p : OracleComp (LocalSpec C) α) 
 theorem seedGenEraseLog_honest {α : Type} (p : OracleComp (LocalSpec C) α) :
     seedGenEraseLog (observedRoles.honest p) = worldRoles.honest p := seedGenEraseLog_lift _
 
-theorem seedGenEraseLog_stepRound (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
-    (state : A.State) (steps : C.Party → Step C E RealSpec (Keys C)) :
+theorem seedGenEraseLog_stepRound {α : Type} (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
+    (state : A.State) (steps : C.Party → Step C E RealSpec α) :
     seedGenEraseLog (stepRound observedRoles D A noFunctionality state steps) =
       stepRound worldRoles D A noFunctionality state steps := by
   unfold stepRound
@@ -1725,8 +1725,8 @@ theorem seedGenEraseLog_stepRound (D : C.Coalition) (A : Adversary C E Unit PEmp
     · simp [hj, seedGenEraseLog_honest]
   | call input resume => exact input.elim
 
-theorem seedGenEraseLog_executeRounds (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) :
-    ∀ fuel state (steps : C.Party → Step C E RealSpec (Keys C)),
+theorem seedGenEraseLog_executeRounds {α : Type} (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) :
+    ∀ fuel state (steps : C.Party → Step C E RealSpec α),
       seedGenEraseLog (executeRounds observedRoles D A noFunctionality fuel state steps) =
         executeRounds worldRoles D A noFunctionality fuel state steps
   | 0, state, steps => by simp [executeRounds, seedGenEraseLog_pure]
