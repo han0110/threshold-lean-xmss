@@ -8505,7 +8505,7 @@ theorem executePhase_afterDigests_digestBound {Ia : Type} (K : Constants C E) (D
     (ds : C.Party → List HashOutput) (next : C.Party → PartyM C E (CheckSpec C E) α)
     (hn : ∀ i,i ∉ D.1 → DigestPartyBound (next i) 0)
     (tail : A.State × (C.Party → Option α) → OracleComp (LocalSpec C) β)
-    (q : ℕ) (hq : ∀ out,IsQueryBoundP (tail out) Counted q) :
+    (q : ℕ) (hq : ∀ out,IsQueryBoundP (tail out) DigestQuery q) :
     IsQueryBoundP (executePhase localRoles D A (checkFunctionalities K) fuel st
       (fun i => afterDigests i (ds i) (next i)) >>= tail) DigestQuery (fuel*step+q) := by
   have hb := executePhase_digestBound D A (checkFunctionalities K) step
@@ -8515,7 +8515,7 @@ theorem executePhase_afterDigests_digestBound {Ia : Type} (K : Constants C E) (D
     fuel st (fun i => afterDigests i (ds i) (next i)) (fun _ => 0)
     (fun i hi => afterDigests_no_digest i (ds i) (next i) (hn i hi))
   simpa only [Finset.sum_const_zero,Nat.add_zero] using
-    isQueryBoundP_bind hb (fun out _ => counted_digestBound (hq out))
+    isQueryBoundP_bind hb (fun out _ => hq out)
 
 end ThresholdLeanXmssSecurity
 end
@@ -8592,7 +8592,7 @@ theorem saltDigestPhase_hide (prims : Primitives) (K : Constants C E) (D : C.Coa
     (hhist : ∀ T,¬KnownTo D.1 T → ∀ i,i ∉ D.1 → i ∈ C.holders T → (hs i).history T=hist T)
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen)
     (tail : A.State × (C.Party → Option α) → OracleComp (LocalSpec C) β)
-    (final : ℕ) (hq : ∀ out,IsQueryBoundP (tail out) Counted final) :
+    (final : ℕ) (hq : ∀ out,IsQueryBoundP (tail out) DigestQuery final) :
     letI : MeasurableSpace β := ⊤
     measureTVDist ((simulateQ (localAnswer prims)
       (executePhase localRoles D A (checkFunctionalities K) (fuel+1) st

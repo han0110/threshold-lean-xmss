@@ -747,7 +747,7 @@ theorem sliceRest_zero (prims : Primitives) (K : Constants C E) (D : C.Coalition
     (τ : List E) (count step final fuel : ℕ) (hr : ∀ st sent, IsQueryBoundP (Ad.round st sent) Counted step)
     (ha : ∀ st l, IsQueryBoundP (Ad.answer st l) Counted step) (hw : 0 < sliceWidth count)
     {β : Type} (tail : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
-    (hq : ∀ out, IsQueryBoundP (tail out) Counted final) :
+    (hq : ∀ out, IsQueryBoundP (tail out) DigestQuery final) :
     SliceRest prims K D Ad τ count step final 0 sliceBits
       (fuel + 2 * halvingSteps (sliceWidth count) + 5) tail := by
   intro st live tg L hsR hsD xsR ysR xsD ysD DR DD cache seen hrel hh hc
@@ -776,7 +776,7 @@ theorem sliceRest_all (prims : Primitives) (K : Constants C E) (D : C.Coalition)
     (hr : ∀ st sent, IsQueryBoundP (Ad.round st sent) Counted step)
     (ha : ∀ st l, IsQueryBoundP (Ad.answer st l) Counted step) (hw : 0 < sliceWidth count)
     {β : Type} (tail : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
-    (hq : ∀ out, IsQueryBoundP (tail out) Counted final) :
+    (hq : ∀ out, IsQueryBoundP (tail out) DigestQuery final) :
     ∀ n j fuel, j + n = sliceBits →
       SliceRest prims K D Ad τ count step final n j (fuel + 2 * n + 2 * halvingSteps (sliceWidth count) + 5) tail
   | 0, j, fuel, h => by
@@ -967,7 +967,7 @@ theorem start_tv (prims : Primitives) (K : Constants C E) (D : C.Coalition) (Ad 
     (count step final fuel : ℕ) (hr : ∀ st sent, IsQueryBoundP (Ad.round st sent) Counted step)
     (ha : ∀ st l, IsQueryBoundP (Ad.answer st l) Counted step) (hw : 0 < sliceWidth count)
     {β : Type} (tail : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
-    (hq : ∀ out, IsQueryBoundP (tail out) Counted final) (st : Ad.State) (tg L : ℕ)
+    (hq : ∀ out, IsQueryBoundP (tail out) DigestQuery final) (st : Ad.State) (tg L : ℕ)
     (hsR hsD : C.Party → RunState C) (hh : HistRel D tg L hsR hsD) (XR YR ZR XD YD ZD : C.Party → Shares C E)
     (hrel : ∀ τ : List E, (∀ b < sliceBits, τ.getD b 0 ≠ 0) → SliceRel K D τ count 0
       (fun i T k => wordWeightOf K τ count k * XR i T k) YR (fun i T k => wordWeightOf K τ count k * XD i T k) YD
@@ -1105,7 +1105,7 @@ theorem checkCoupleStage_of_init (prims : Primitives) (K : Constants C E) (hinit
   refine tvDist_prefix prims _ _ _ start (counted_digestBound (hstart _ _)) ∅ ∅ hc0 _ ?_
   intro st cache seen hc hcard
   rw [hfuel]
-  refine (start_tv prims K D A counts.sum step final 2 hr ha (sliceWidth_pos hpos) tail (fun r => hZ _) st 0 0 _ _ hh
+  refine (start_tv prims K D A counts.sum step final 2 hr ha (sliceWidth_pos hpos) tail (fun r => counted_digestBound (hZ _)) st 0 0 _ _ hh
     _ _ _ _ _ _ hrel cache seen hc).trans ?_
   rw [← hfuel]
   refine coupleBound_le_coupleHashError step final seen.card (checkRounds counts.sum) counts.sum q ?_

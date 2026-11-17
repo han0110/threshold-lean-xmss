@@ -907,7 +907,7 @@ theorem finalSalt_hide (prims : Primitives) (K : Constants C E) (D : C.Coalition
     (hcommon : ∀ T, ¬ KnownTo D.1 T → ∀ i j, i ∉ D.1 → j ∉ D.1 → i ∈ C.holders T → j ∈ C.holders T →
       (hs i).history T = (hs j).history T)
     (A B V : C.Party → E) {β : Type} (tail : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
-    (hq : ∀ out, IsQueryBoundP (tail out) Counted final)
+    (hq : ∀ out, IsQueryBoundP (tail out) DigestQuery final)
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen) :
     letI : MeasurableSpace β := ⊤
     measureTVDist ((simulateQ (localAnswer prims) (do
@@ -949,7 +949,7 @@ theorem finalMasked_tv (prims : Primitives) (K : Constants C E) (D : C.Coalition
       (hsD i).history T = (hsD j).history T)
     (AR BR VR AD BD VD : C.Party → E) (hrel : FinalRel K D AR BR VR AD BD VD)
     {β : Type} (tail : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
-    (hq : ∀ out, IsQueryBoundP (tail out) Counted final)
+    (hq : ∀ out, IsQueryBoundP (tail out) DigestQuery final)
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen) :
     letI : MeasurableSpace β := ⊤
     measureTVDist ((simulateQ (localAnswer prims) (do
@@ -1033,7 +1033,7 @@ theorem finalStep_tv (prims : Primitives) (K : Constants C E) (D : C.Coalition) 
     (AvR BvR AvD BvD : C.Party → ℕ → E) (VR VD : C.Party → E)
     (hrel : FinalRel K D (fun j => AvR j 0) (fun j => BvR j 0) VR (fun j => AvD j 0) (fun j => BvD j 0) VD)
     {β : Type} (tail : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
-    (hq : ∀ out, IsQueryBoundP (tail out) Counted final)
+    (hq : ∀ out, IsQueryBoundP (tail out) DigestQuery final)
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen) :
     letI : MeasurableSpace β := ⊤
     measureTVDist ((simulateQ (localAnswer prims)
@@ -1472,7 +1472,7 @@ theorem finalStep_live_tv (prims : Primitives) (K : Constants C E) (D : C.Coalit
     (AvR BvR AvD BvD : C.Party → ℕ → E) (VR VD : C.Party → E)
     (hrel : FinalRel K D (fun j => AvR j 0) (fun j => BvR j 0) VR (fun j => AvD j 0) (fun j => BvD j 0) VD)
     {β : Type} (tail : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
-    (hq : ∀ out, IsQueryBoundP (tail out) Counted final)
+    (hq : ∀ out, IsQueryBoundP (tail out) DigestQuery final)
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen) :
     letI : MeasurableSpace β := ⊤
     measureTVDist ((simulateQ (localAnswer prims)
@@ -1613,7 +1613,7 @@ theorem halvRest_zero (prims : Primitives) (K : Constants C E) (D : C.Coalition)
     (step final width fuel : ℕ) (hr : ∀ st sent, IsQueryBoundP (Ad.round st sent) Counted step)
     (ha : ∀ st l, IsQueryBoundP (Ad.answer st l) Counted step) (hw : 1 ≤ width)
     {β : Type} (tail : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
-    (hq : ∀ out, IsQueryBoundP (tail out) Counted final) :
+    (hq : ∀ out, IsQueryBoundP (tail out) DigestQuery final) :
     HalvRest prims K D Ad step final width 0 (halvingSteps width) (fuel + 5) tail := by
   intro st live tg L hsR hsD AR BR AD BD DR DD cache seen hrel hh hc
   rw [iterate_halvingSteps width hw] at hrel
@@ -2005,7 +2005,7 @@ theorem halvRest_all (prims : Primitives) (K : Constants C E) (D : C.Coalition) 
     (step final width : ℕ) (hr : ∀ st sent, IsQueryBoundP (Ad.round st sent) Counted step)
     (ha : ∀ st l, IsQueryBoundP (Ad.answer st l) Counted step) (hw : 1 ≤ width)
     {β : Type} (tail : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
-    (hq : ∀ out, IsQueryBoundP (tail out) Counted final) :
+    (hq : ∀ out, IsQueryBoundP (tail out) DigestQuery final) :
     ∀ n j fuel, j + n = halvingSteps width →
       HalvRest prims K D Ad step final width n j (fuel + 2 * n + 5) tail
   | 0, j, fuel, h => by

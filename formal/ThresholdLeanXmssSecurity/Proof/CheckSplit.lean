@@ -1348,8 +1348,8 @@ theorem splitFinalMasked_tv (prims : Primitives) (K : Constants C E) (D : C.Coal
     (hsplit : SplitHistories D (fun i => (hsR i).history))
     {β : Type} (tailR tailD : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
     (htail : ∀ st, tailR (st, fun _ => none) = tailD (st, fun _ => none))
-    (hqR : ∀ out, IsQueryBoundP (tailR out) Counted final)
-    (hqD : ∀ out, IsQueryBoundP (tailD out) Counted final)
+    (hqR : ∀ out, IsQueryBoundP (tailR out) DigestQuery final)
+    (hqD : ∀ out, IsQueryBoundP (tailD out) DigestQuery final)
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen)
     (k : ℕ) (hcard : seen.card ≤ k) (hk : SplitCacheBound (splitRegionCache SplitHashDomain cache) k)
     (hno : ¬ CacheHasCollision (splitRegionCache SplitHashDomain cache)) :
@@ -1463,8 +1463,8 @@ theorem splitFinalStep_tv (prims : Primitives) (K : Constants C E) (D : C.Coalit
     (hsplit : SplitHistories D (fun i => (hsR i).history))
     {β : Type} (tailR tailD : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
     (htail : ∀ st, tailR (st, fun _ => none) = tailD (st, fun _ => none))
-    (hqR : ∀ out, IsQueryBoundP (tailR out) Counted final)
-    (hqD : ∀ out, IsQueryBoundP (tailD out) Counted final)
+    (hqR : ∀ out, IsQueryBoundP (tailR out) DigestQuery final)
+    (hqD : ∀ out, IsQueryBoundP (tailD out) DigestQuery final)
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen)
     (k : ℕ) (hcard : seen.card ≤ k) (hk : SplitCacheBound (splitRegionCache SplitHashDomain cache) k)
     (hno : ¬ CacheHasCollision (splitRegionCache SplitHashDomain cache)) :
@@ -1527,8 +1527,8 @@ theorem splitFinalStep_live_tv (prims : Primitives) (K : Constants C E) (D : C.C
     (hsplit : SplitHistories D (fun i => (hsR i).history))
     {β : Type} (tailR tailD : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
     (htail : ∀ st, tailR (st, fun _ => none) = tailD (st, fun _ => none))
-    (hqR : ∀ out, IsQueryBoundP (tailR out) Counted final)
-    (hqD : ∀ out, IsQueryBoundP (tailD out) Counted final)
+    (hqR : ∀ out, IsQueryBoundP (tailR out) DigestQuery final)
+    (hqD : ∀ out, IsQueryBoundP (tailD out) DigestQuery final)
     (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen)
     (k : ℕ) (hcard : seen.card ≤ k) (hk : SplitCacheBound (splitRegionCache SplitHashDomain cache) k)
     (hno : ¬ CacheHasCollision (splitRegionCache SplitHashDomain cache)) :
@@ -1583,8 +1583,8 @@ theorem splitHalvRest_zero (prims : Primitives) (K : Constants C E) (D : C.Coali
     (ha : ∀ st l, IsQueryBoundP (Ad.answer st l) Counted step) (hw : 1 ≤ width)
     {β : Type} (tailR tailD : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
     (htail : ∀ st, tailR (st, fun _ => none) = tailD (st, fun _ => none))
-    (hqR : ∀ out, IsQueryBoundP (tailR out) Counted final)
-    (hqD : ∀ out, IsQueryBoundP (tailD out) Counted final) :
+    (hqR : ∀ out, IsQueryBoundP (tailR out) DigestQuery final)
+    (hqD : ∀ out, IsQueryBoundP (tailD out) DigestQuery final) :
     SplitHalvRest prims K D Ad step final width 0 (halvingSteps width) (fuel + 5) tailR tailD := by
   intro st live tg L hsR hsD AR BR AD BD DR DD cache seen k hrel hh hsplit hc hcard hk hno
   simp only [halvProg_zero]
@@ -1731,8 +1731,8 @@ theorem splitHalvRest_all (prims : Primitives) (K : Constants C E) (D : C.Coalit
     (ha : ∀ st l, IsQueryBoundP (Ad.answer st l) Counted step) (hw : 1 ≤ width)
     {β : Type} (tailR tailD : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
     (htail : ∀ st, tailR (st, fun _ => none) = tailD (st, fun _ => none))
-    (hqR : ∀ out, IsQueryBoundP (tailR out) Counted final)
-    (hqD : ∀ out, IsQueryBoundP (tailD out) Counted final) :
+    (hqR : ∀ out, IsQueryBoundP (tailR out) DigestQuery final)
+    (hqD : ∀ out, IsQueryBoundP (tailD out) DigestQuery final) :
     ∀ n j fuel, j + n = halvingSteps width →
       SplitHalvRest prims K D Ad step final width n j (fuel + 2 * n + 5) tailR tailD
   | 0, j, fuel, h => by
@@ -1875,8 +1875,8 @@ theorem splitSliceRest_zero (prims : Primitives) (K : Constants C E) (D : C.Coal
     (ha : ∀ st l, IsQueryBoundP (Ad.answer st l) Counted step) (hw : 0 < sliceWidth count)
     {β : Type} (tailR tailD : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
     (htail : ∀ st, tailR (st, fun _ => none) = tailD (st, fun _ => none))
-    (hqR : ∀ out, IsQueryBoundP (tailR out) Counted final)
-    (hqD : ∀ out, IsQueryBoundP (tailD out) Counted final) :
+    (hqR : ∀ out, IsQueryBoundP (tailR out) DigestQuery final)
+    (hqD : ∀ out, IsQueryBoundP (tailD out) DigestQuery final) :
     SplitSliceRest prims K D Ad τ count step final 0 sliceBits
       (fuel + 2 * halvingSteps (sliceWidth count) + 5) tailR tailD := by
   intro st live tg L hsR hsD xsR ysR xsD ysD DR DD cache seen k hrel hdiff hh hsplit hc hcard hk hno
@@ -1891,8 +1891,8 @@ theorem splitSliceRest_all (prims : Primitives) (K : Constants C E) (D : C.Coali
     (ha : ∀ st l, IsQueryBoundP (Ad.answer st l) Counted step) (hw : 0 < sliceWidth count)
     {β : Type} (tailR tailD : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
     (htail : ∀ st, tailR (st, fun _ => none) = tailD (st, fun _ => none))
-    (hqR : ∀ out, IsQueryBoundP (tailR out) Counted final)
-    (hqD : ∀ out, IsQueryBoundP (tailD out) Counted final) :
+    (hqR : ∀ out, IsQueryBoundP (tailR out) DigestQuery final)
+    (hqD : ∀ out, IsQueryBoundP (tailD out) DigestQuery final) :
     ∀ n j fuel, j + n = sliceBits →
       SplitSliceRest prims K D Ad τ count step final n j (fuel + 2 * n + 2 * halvingSteps (sliceWidth count) + 5) tailR tailD
   | 0, j, fuel, h => by
@@ -1928,8 +1928,8 @@ theorem splitStart_tv (prims : Primitives) (K : Constants C E) (D : C.Coalition)
     (ha : ∀ st l, IsQueryBoundP (Ad.answer st l) Counted step) (hw : 0 < sliceWidth count)
     {β : Type} (tailR tailD : Ad.State × (C.Party → Option Unit) → OracleComp (LocalSpec C) β)
     (htail : ∀ st, tailR (st, fun _ => none) = tailD (st, fun _ => none))
-    (hqR : ∀ out, IsQueryBoundP (tailR out) Counted final)
-    (hqD : ∀ out, IsQueryBoundP (tailD out) Counted final) (st : Ad.State) (tg L : ℕ)
+    (hqR : ∀ out, IsQueryBoundP (tailR out) DigestQuery final)
+    (hqD : ∀ out, IsQueryBoundP (tailD out) DigestQuery final) (st : Ad.State) (tg L : ℕ)
     (hsR hsD : C.Party → RunState C) (hh : HistRel D tg L hsR hsD) (XR YR ZR XD YD ZD : C.Party → Shares C E)
     (hrel : ∀ τ : List E, SplitSliceRel D
       (fun i T k => wordWeightOf K τ count k * XR i T k) YR
@@ -2106,7 +2106,7 @@ theorem checkSplitDistance (prims : Primitives) (K : Constants C E) :
   simp only [zero_add] at hcard hk
   rw [hfuel]
   exact splitStart_tv prims K D A counts.sum step final 2 hr ha (sliceWidth_pos hpos) Z tailD
-    (by intro st; simp [tailD]) (fun r => hZ _) (fun r => hZ _) st 0 0 _ _ hh
+    (by intro st; simp [tailD]) (fun r => counted_digestBound (hZ _)) (fun r => counted_digestBound (hZ _)) st 0 0 _ _ hh
     _ _ _ _ _ _ (splitInit_sliceRel K counts D x hx) (splitInit_claim K counts D x hx)
     hsplitH cache seen hc start hcard hk hno
 
