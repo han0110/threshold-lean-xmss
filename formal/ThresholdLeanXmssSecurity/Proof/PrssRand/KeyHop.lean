@@ -210,7 +210,7 @@ private theorem isQueryBoundP_free_unallowed (key : KeyName C → HashOutput →
     simpa using ih u (by simpa using h.2 u)
 
 /-- A computation of `H` and `PRG` with no call of `P` keeps this bound in the local oracles. -/
-private theorem isQueryBoundP_liftComp_ro (P : (LocalSpec C).Domain → Prop) [DecidablePred P] {α : Type}
+theorem isQueryBoundP_liftComp_ro (P : (LocalSpec C).Domain → Prop) [DecidablePred P] {α : Type}
     (oa : OracleComp (RoSpec C) α) (h : IsQueryBoundP oa (fun t => P (.inr t)) 0) :
     IsQueryBoundP (liftComp oa (LocalSpec C)) P 0 := by
   induction oa using OracleComp.inductionOn with
@@ -226,47 +226,46 @@ private theorem isQueryBoundP_liftComp_ro (P : (LocalSpec C).Domain → Prop) [D
     refine (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨h.1, fun u => ?_⟩
     simpa using ih u (by simpa using h.2 u)
 
-/-- The bits of a PRG under a key of its name make only allowed calls. -/
-private theorem isQueryBoundP_prgBits_allowed (key : KeyName C → HashOutput → Prop) (name : KeyName C)
-    (k : HashOutput) (hk : key name k) (ρ idx count : ℕ) :
-    IsQueryBoundP (prgBits name k ρ idx count) (fun t => ¬ KeyAllowed key (.inr t)) 0 := by
+/-- The bits of a PRG make no call of `P` when `P` holds at no position of its name and key. -/
+theorem isQueryBoundP_prgBits_zero (P : (RoSpec C).Domain → Prop) [DecidablePred P] (name : KeyName C)
+    (k : HashOutput) (ρ idx count : ℕ) (hP : ∀ position, ¬ P (.inr (name, k, ρ, idx, position))) :
+    IsQueryBoundP (prgBits name k ρ idx count) P 0 := by
   unfold prgBits
   rw [← Nat.zero_add 0]
   refine isQueryBoundP_bind ?_ fun _ _ => isQueryBoundP_pure _ _ 0
-  simpa using queryBound_mapM (fun t => ¬ KeyAllowed key (.inr t)) (fun position =>
+  simpa using queryBound_mapM P (fun position =>
     (query (spec := RoSpec C) (.inr (name, k, ρ, idx, position)) : OracleComp (RoSpec C) Bit)) 0
-    (List.range count) fun position _ =>
-      (isQueryBoundP_query_iff (fun t => ¬ KeyAllowed key (.inr t)) _ _).2 fun h => absurd hk h
+    (List.range count) fun position _ => (isQueryBoundP_query_iff P _ _).2 fun h => absurd h (hP position)
 
-/-- The streams of operator `i` under its dealt keys make only allowed calls. -/
-private theorem isQueryBoundP_prssStreams_allowed {R : Type} [Zero R] (term : C.Term → HashOutput)
-    (pair : C.Pair → HashOutput) (stream : KeyName C → HashOutput → OracleComp (RoSpec C) (ℕ → R))
-    (hs : ∀ name k, DealtKey term pair name k →
-      IsQueryBoundP (stream name k) (fun t => ¬ KeyAllowed (DealtKey term pair) (.inr t)) 0)
-    (i : C.Party) :
-    IsQueryBoundP (prssStreams stream (dealtPrssKeys term pair i) i)
-      (fun t => ¬ KeyAllowed (DealtKey term pair) (.inr t)) 0 := by
+/-- The streams of operator `i` make no call of `P` when each stream that it uses makes none. -/
+theorem isQueryBoundP_prssStreams_zero {R : Type} [Zero R] (P : (RoSpec C).Domain → Prop) [DecidablePred P]
+    (stream : KeyName C → HashOutput → OracleComp (RoSpec C) (ℕ → R)) (prss : PrssKeys C) (i : C.Party)
+    (ht : ∀ T, i ∈ C.holders T → IsQueryBoundP (stream (.term T) (prss.term T)) P 0)
+    (hp : ∀ j (h : j ≠ i), IsQueryBoundP (stream (.pair (C.pairOf i j (Ne.symm h))) (prss.pair j)) P 0) :
+    IsQueryBoundP (prssStreams stream prss i) P 0 := by
   unfold prssStreams
   rw [← Nat.zero_add 0]
   refine isQueryBoundP_bind ?_ fun _ _ => ?_
   · simpa using queryBound_mapM _ _ 0 C.terms fun T _ => by
       split_ifs with hT
-      · exact hs _ _ (by simp [DealtKey, dealtKey, dealtPrssKeys, hT])
+      · exact ht T hT
       · exact isQueryBoundP_pure _ _ 0
   rw [← Nat.zero_add 0]
   refine isQueryBoundP_bind ?_ fun _ _ => isQueryBoundP_pure _ _ 0
   simpa using queryBound_mapM _ _ 0 C.parties fun j _ => by
     split_ifs with hj
     · exact isQueryBoundP_pure _ _ 0
-    · exact hs _ _ (by simp [DealtKey, dealtKey, dealtPrssKeys, hj])
+    · exact hp j hj
 
 omit [Fintype E] [DecidableEq E] in
-/-- The calls of operator `i` under its dealt keys make only allowed calls. -/
-private theorem isQueryBoundP_randStreams_allowed [SampleableType E] (K : Constants C E)
-    (term : C.Term → HashOutput) (pair : C.Pair → HashOutput) (i : C.Party) :
-    ∀ (ρ : ℕ) (calls : List RandCall),
-    IsQueryBoundP (randStreams K prgBits (dealtPrssKeys term pair i) i ρ calls)
-      (fun t => ¬ KeyAllowed (DealtKey term pair) (.inr t)) 0
+/-- The calls of operator `i` make no call of `P` when `P` holds at no position of a key that it
+uses. -/
+theorem isQueryBoundP_randStreams_zero (K : Constants C E) (P : (RoSpec C).Domain → Prop) [DecidablePred P]
+    (prss : PrssKeys C) (i : C.Party)
+    (ht : ∀ T, i ∈ C.holders T → ∀ ρ idx position, ¬ P (.inr (.term T, prss.term T, ρ, idx, position)))
+    (hp : ∀ j (h : j ≠ i), ∀ ρ idx position,
+      ¬ P (.inr (.pair (C.pairOf i j (Ne.symm h)), prss.pair j, ρ, idx, position))) :
+    ∀ (ρ : ℕ) (calls : List RandCall), IsQueryBoundP (randStreams K prgBits prss i ρ calls) P 0
   | _, [] => isQueryBoundP_pure _ _ 0
   | ρ, call :: calls => by
     unfold randStreams
@@ -274,15 +273,27 @@ private theorem isQueryBoundP_randStreams_allowed [SampleableType E] (K : Consta
     refine isQueryBoundP_bind ?_ fun _ _ => ?_
     · cases call with
       | elements idx count =>
-        refine (isQueryBoundP_map_iff _ _ _).2 (isQueryBoundP_prssStreams_allowed term pair _
-          (fun name k hk => (isQueryBoundP_map_iff _ _ _).2
-            (isQueryBoundP_prgBits_allowed _ name k hk ρ idx _)) i)
+        exact (isQueryBoundP_map_iff _ _ _).2 (isQueryBoundP_prssStreams_zero P _ prss i
+          (fun T hT => (isQueryBoundP_map_iff _ _ _).2 (isQueryBoundP_prgBits_zero P _ _ ρ idx _ (ht T hT ρ idx)))
+          fun j hj => (isQueryBoundP_map_iff _ _ _).2 (isQueryBoundP_prgBits_zero P _ _ ρ idx _ (hp j hj ρ idx)))
       | bits idx count =>
-        exact (isQueryBoundP_map_iff _ _ _).2 (isQueryBoundP_prssStreams_allowed term pair _
-          (fun name k hk => isQueryBoundP_prgBits_allowed _ name k hk ρ idx _) i)
+        exact (isQueryBoundP_map_iff _ _ _).2 (isQueryBoundP_prssStreams_zero P _ prss i
+          (fun T hT => isQueryBoundP_prgBits_zero P _ _ ρ idx _ (ht T hT ρ idx))
+          fun j hj => isQueryBoundP_prgBits_zero P _ _ ρ idx _ (hp j hj ρ idx))
     rw [← Nat.zero_add 0]
-    exact isQueryBoundP_bind (isQueryBoundP_randStreams_allowed K term pair i (ρ + 1) calls)
+    exact isQueryBoundP_bind (isQueryBoundP_randStreams_zero K P prss i ht hp (ρ + 1) calls)
       fun _ _ => isQueryBoundP_pure _ _ 0
+
+omit [Fintype E] [DecidableEq E] in
+/-- The calls of operator `i` under its dealt keys make only allowed calls. -/
+private theorem isQueryBoundP_randStreams_allowed [SampleableType E] (K : Constants C E)
+    (term : C.Term → HashOutput) (pair : C.Pair → HashOutput) (i : C.Party) :
+    ∀ (ρ : ℕ) (calls : List RandCall),
+    IsQueryBoundP (randStreams K prgBits (dealtPrssKeys term pair i) i ρ calls)
+      (fun t => ¬ KeyAllowed (DealtKey term pair) (.inr t)) 0 :=
+  isQueryBoundP_randStreams_zero K _ _ i
+    (fun T hT _ _ _ h => h (show DealtKey term pair _ _ by simp [DealtKey, dealtKey, dealtPrssKeys, hT]))
+    fun j hj _ _ _ h => h (show DealtKey term pair _ _ by simp [DealtKey, dealtKey, dealtPrssKeys, hj])
 
 section Keyed
 
@@ -400,12 +411,16 @@ theorem evalDist_lazyKeyWorld_renameName (prims : Primitives) (D : C.Coalition) 
   have hm := EvalDistEq.map_congr (fun r : α × HashCache C × KeyCache C => (r.1, r.2.1)) h
   simpa only [Functor.map_map, Function.comp_def, Prod.map, id_eq] using hm
 
-/-- The swap of `worldNameRename` on the oracles of `H` and `PRG`. -/
-private def roNameRename (n₀ : KeyName C) (a b : HashOutput) :
+/-- The rename `τ` of the name and the key of each `PRG` call. Every call of `H` stays. -/
+def roRename (τ : KeyName C × HashOutput → KeyName C × HashOutput) :
     QueryImpl (RoSpec C) (OracleComp (RoSpec C)) := fun q => match q with
   | .inl q => query (spec := RoSpec C) (.inl q)
-  | .inr x => query (spec := RoSpec C)
-      (.inr ((nameKeySwap n₀ a b (x.1, x.2.1)).1, (nameKeySwap n₀ a b (x.1, x.2.1)).2, x.2.2))
+  | .inr x => query (spec := RoSpec C) (.inr ((τ (x.1, x.2.1)).1, (τ (x.1, x.2.1)).2, x.2.2))
+
+/-- The swap of `worldNameRename` on the oracles of `H` and `PRG`. -/
+private def roNameRename (n₀ : KeyName C) (a b : HashOutput) :
+    QueryImpl (RoSpec C) (OracleComp (RoSpec C)) :=
+  roRename (nameKeySwap n₀ a b)
 
 /-- The swap of `worldNameRename` on the local oracles. -/
 private def localNameRename (n₀ : KeyName C) (a b : HashOutput) :
@@ -448,16 +463,23 @@ private theorem worldNameRename_free (n₀ : KeyName C) (a b : HashOutput) {α :
     simp only [ih]
     rcases t with u | q | x <;> rfl
 
-private theorem roNameRename_prgBits (n₀ : KeyName C) (a b : HashOutput) (name : KeyName C)
+/-- The rename `τ` on the bits of a PRG renames their name and key. -/
+theorem roRename_prgBits (τ : KeyName C × HashOutput → KeyName C × HashOutput) (name : KeyName C)
     (key : HashOutput) (ρ idx count : ℕ) :
-    simulateQ (roNameRename n₀ a b) (prgBits name key ρ idx count) =
-      prgBits (nameKeySwap n₀ a b (name, key)).1 (nameKeySwap n₀ a b (name, key)).2 ρ idx count := by
+    simulateQ (roRename τ) (prgBits name key ρ idx count) =
+      prgBits (τ (name, key)).1 (τ (name, key)).2 ρ idx count := by
   unfold prgBits
   erw [simulateQ_bind, simulateQ_list_mapM]
   rfl
 
+private theorem roNameRename_prgBits (n₀ : KeyName C) (a b : HashOutput) (name : KeyName C)
+    (key : HashOutput) (ρ idx count : ℕ) :
+    simulateQ (roNameRename n₀ a b) (prgBits name key ρ idx count) =
+      prgBits (nameKeySwap n₀ a b (name, key)).1 (nameKeySwap n₀ a b (name, key)).2 ρ idx count :=
+  roRename_prgBits _ name key ρ idx count
+
 /-- The streams of operator `i` agree when each used stream agrees. -/
-private theorem prssStreams_congr {R : Type} [Zero R]
+theorem prssStreams_congr {R : Type} [Zero R]
     (s₁ s₂ : KeyName C → HashOutput → OracleComp (RoSpec C) (ℕ → R)) (p₁ p₂ : PrssKeys C) (i : C.Party)
     (ht : ∀ T, i ∈ C.holders T → s₁ (.term T) (p₁.term T) = s₂ (.term T) (p₂.term T))
     (hp : ∀ j (h : j ≠ i), s₁ (.pair (C.pairOf i j (Ne.symm h))) (p₁.pair j) =
@@ -467,7 +489,7 @@ private theorem prssStreams_congr {R : Type} [Zero R]
 
 omit [Fintype E] [DecidableEq E] in
 /-- The calls of operator `i` agree when each used stream agrees. -/
-private theorem randStreams_congr [SampleableType E] (K : Constants C E)
+theorem randStreams_congr [SampleableType E] (K : Constants C E)
     (b₁ b₂ : KeyName C → HashOutput → ℕ → ℕ → ℕ → OracleComp (RoSpec C) (ℕ → Bit))
     (p₁ p₂ : PrssKeys C) (i : C.Party)
     (ht : ∀ T, i ∈ C.holders T → b₁ (.term T) (p₁.term T) = b₂ (.term T) (p₂.term T))
@@ -492,16 +514,25 @@ private theorem randStreams_congr [SampleableType E] (K : Constants C E)
         p₁ p₂ i (fun T hT => by simp only [ht T hT]) (fun j h => by simp only [hp j h])]
 
 omit [Fintype E] [DecidableEq E] in
+/-- The rename `τ` on the calls of operator `i` renames the key of each stream. -/
+theorem roRename_randStreams (K : Constants C E) (τ : KeyName C × HashOutput → KeyName C × HashOutput)
+    (prss : PrssKeys C) (i : C.Party) :
+    ∀ (ρ : ℕ) (calls : List RandCall),
+    simulateQ (roRename τ) (randStreams K prgBits prss i ρ calls) =
+      randStreams K (fun name key => prgBits (τ (name, key)).1 (τ (name, key)).2) prss i ρ calls
+  | _, [] => by simp [randStreams]
+  | ρ, call :: calls => by
+    cases call <;> simp [randStreams, callStreams, prssStreams, simulateQ_list_mapM, simulateQ_ite,
+      simulateQ_dite, roRename_prgBits, roRename_randStreams K τ prss i (ρ + 1) calls]
+
+omit [Fintype E] [DecidableEq E] in
 /-- The rename on the calls of operator `i` renames the key of each stream. -/
 private theorem roNameRename_randStreams [SampleableType E] (K : Constants C E) (n₀ : KeyName C)
     (a b : HashOutput) (prss : PrssKeys C) (i : C.Party) :
     ∀ (ρ : ℕ) (calls : List RandCall),
     simulateQ (roNameRename n₀ a b) (randStreams K prgBits prss i ρ calls) =
-      randStreams K (fun name key => prgBits (nameKeySwap n₀ a b (name, key)).1 (nameKeySwap n₀ a b (name, key)).2) prss i ρ calls
-  | _, [] => by simp [randStreams]
-  | ρ, call :: calls => by
-    cases call <;> simp [randStreams, callStreams, prssStreams, simulateQ_list_mapM, simulateQ_ite,
-      simulateQ_dite, roNameRename_prgBits, roNameRename_randStreams K n₀ a b prss i (ρ + 1) calls]
+      randStreams K (fun name key => prgBits (nameKeySwap n₀ a b (name, key)).1 (nameKeySwap n₀ a b (name, key)).2) prss i ρ calls :=
+  roRename_randStreams K _ prss i
 
 omit [Fintype E] [DecidableEq E] in
 /-- The rename on the honest streams is the honest streams with the renamed table of keys. -/
@@ -620,11 +651,11 @@ private theorem prssRandRealKeyed_eq_prefix :
       (fun b => (p.2.1, p.2.2, b)) <$> prssRandRealAfter K label calls D A Z p.1 p.2.1 p.2.2 := by
   simp [prssRandRealKeyed, prssRandPrefix, bind_assoc, map_eq_bind_pure_comp]
 
-/-- A private sampling makes only calls of the sampling oracle. -/
-private theorem isQueryBoundP_liftComp_prob (key : KeyName C → HashOutput → Prop) {α : Type}
-    (p : ProbComp α) : IsQueryBoundP (liftComp p (LocalSpec C)) (fun t => ¬ KeyAllowed key t) 0 := by
+/-- A private sample makes no call of `P` when `P` holds at no sample. -/
+theorem isQueryBoundP_liftComp_prob_of_sample (P : (LocalSpec C).Domain → Prop) [DecidablePred P]
+    (hP : ∀ u, ¬ P (.inl u)) {α : Type} (p : ProbComp α) : IsQueryBoundP (liftComp p (LocalSpec C)) P 0 := by
   induction p using OracleComp.inductionOn with
-  | pure a => simp
+  | pure a => trivial
   | query_bind t k ih =>
     have e : liftComp (liftM (OracleSpec.query t) >>= k) (LocalSpec C) =
         (liftM ((LocalSpec C).query (.inl t)) : OracleComp (LocalSpec C) _) >>= fun u =>
@@ -632,8 +663,13 @@ private theorem isQueryBoundP_liftComp_prob (key : KeyName C → HashOutput → 
       rw [liftComp_bind]
       rfl
     rw [e]
-    refine (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl fun h => h trivial, fun u => ?_⟩
-    simpa only [Nat.zero_sub, ite_self] using ih u
+    refine (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl (hP t), fun u => ?_⟩
+    simpa only [hP t, ite_false] using ih u
+
+/-- A private sampling makes only calls of the sampling oracle. -/
+private theorem isQueryBoundP_liftComp_prob (key : KeyName C → HashOutput → Prop) {α : Type}
+    (p : ProbComp α) : IsQueryBoundP (liftComp p (LocalSpec C)) (fun t => ¬ KeyAllowed key t) 0 :=
+  isQueryBoundP_liftComp_prob_of_sample _ (fun _ h => h trivial) p
 
 /-- The relation with no key. -/
 private def NoKey : KeyName C → HashOutput → Prop := fun _ _ => False
@@ -709,14 +745,14 @@ private theorem jointKeyWorld_free_prob {α : Type} (p : ProbComp α) (s : KeyJo
 def streamCells (h : HashCache C) : Finset HashOutput := Finset.univ.filter fun k => h (.streamKey k) ≠ none
 
 /-- The hash inputs that one world call can add to the hash cache of the joint world. -/
-private def worldCells (D : C.Coalition) : (WorldSpec C).Domain → List (Query C)
+def worldCells (D : C.Coalition) : (WorldSpec C).Domain → List (Query C)
   | .inl (.inl u) => prssCountedHashInputs u
   | .inl (.inr x) => [x.1]
   | .inr (.inr (.inr x)) => if Hidden D x.1 then [] else [.streamKey x.2.1]
   | .inr u => prssCountedHashInputs u
 
 /-- One call of the joint world changes the hash cache only at its own inputs. -/
-private theorem jointKeyWorld_query_other (prims : Primitives) (D : C.Coalition) (t : (WorldSpec C).Domain)
+theorem jointKeyWorld_query_other (prims : Primitives) (D : C.Coalition) (t : (WorldSpec C).Domain)
     (s : KeyJointState C) (r : (WorldSpec C).Range t × KeyJointState C)
     (hr : r ∈ support ((jointKeyWorld prims D false t).run s)) (target : Query C)
     (ht : target ∉ worldCells D t) : r.2.hash target = s.hash target := by

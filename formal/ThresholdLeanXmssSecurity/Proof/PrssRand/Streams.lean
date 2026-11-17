@@ -428,7 +428,7 @@ theorem streamWorld_randStreams (prims : Primitives) (K : Constants C E) (D : C.
 /-! ## The world of the streams on the hash cache -/
 
 /-- A run with a count is the run without the count. -/
-private theorem run_withAddCost {κ : Type} {spec : OracleSpec κ} {σ α : Type}
+theorem run_withAddCost {κ : Type} {spec : OracleSpec κ} {σ α : Type}
     (impl : QueryImpl spec (StateT σ ProbComp)) (costFn : spec.Domain → ℕ) (oa : OracleComp spec α) (s : σ) :
     (fun r => (r.1.1, r.2)) <$> (simulateQ (impl.withAddCost costFn) oa).run.run s = (simulateQ impl oa).run s := by
   rw [QueryImpl.withAddCost, ← QueryImpl.fst_map_run_withCost impl (fun t => Multiplicative.ofAdd (costFn t)) oa]
@@ -643,7 +643,7 @@ private theorem touches_prgBits (prims : Primitives) (name : KeyName C) (key : H
   rw [hashAnswer_dup prims _ fun _ b => pure (prims.aes.eval (truncateHash b) (ρ, idx, 0))]
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
-private theorem hidden_pairOf (D : C.Coalition) (i j : C.Party) (h : i ≠ j) :
+theorem hidden_pairOf (D : C.Coalition) (i j : C.Party) (h : i ≠ j) :
     Hidden D (.pair (C.pairOf i j h)) ↔ i ∉ D.1 ∧ j ∉ D.1 := by
   simp only [Hidden, Committee.pairOf]
   split_ifs <;> simp [and_comm]
@@ -1237,7 +1237,7 @@ private theorem tableCalls_congr (K : Constants C E) (D : C.Coalition) (receiver
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
 /-- A computation on the counted copy is the same computation on the free copy, without the count. -/
-private theorem worldAnswer_counted_local (prims : Primitives) {α : Type} (oa : OracleComp (LocalSpec C) α)
+theorem worldAnswer_counted_local (prims : Primitives) {α : Type} (oa : OracleComp (LocalSpec C) α)
     (s : HashCache C) :
     (simulateQ (worldAnswer prims) (counted (liftComp oa (SimulatorSpec C)))).run s =
       (simulateQ (localAnswer prims) oa).run s := by
@@ -1556,7 +1556,7 @@ private theorem streamHop_core [SampleableType E] (prims : Primitives) (K : Cons
 omit [Fintype E] [DecidableEq E] in
 /-- The draws of the honest receivers and the distinguisher in `streamWorld` are the calls of
 `F_rand` and the distinguisher on the hash cache. -/
-private theorem streamHop_tail [SampleableType E] (prims : Primitives) (K : Constants C E) (D : C.Coalition)
+theorem streamHop_tail [SampleableType E] (prims : Primitives) (K : Constants C E) (D : C.Coalition)
     (receivers : Finset C.Party) (term : C.Term → HashOutput) (pair : C.Pair → HashOutput) (label : ℕ)
     (calls : List RandCall) {σ : Type} (Z : σ × (C.Party → Option (List (RandOutput C E))) → OracleComp (LocalSpec C) Bool)
     (st : σ) (s : HashCache C) :

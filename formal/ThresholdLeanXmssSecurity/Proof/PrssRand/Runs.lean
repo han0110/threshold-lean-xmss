@@ -312,26 +312,42 @@ def idealCalls : ℕ → List RandCall → OracleComp (WorldSpec C) (List (C.Par
 variable (label : ℕ) (calls : List RandCall)
   (A : Adversary C E Unit (C.Party → Option (PrssKeys C)) (Finset C.Party)) (x : C.Party → Unit) (z : Aux)
 
-/-- The oracles of the functionality in the ideal run with `prssRandSim`. -/
-private def simImpl : QueryImpl (LocalSpec C + (RandLeak →ₒ RandReplies C E))
-    (StateT (PrssRandSimState C A.State) (OracleComp (WorldSpec C))) :=
+/-- The oracles of the functionality in an ideal run whose simulator has the state `σ` and answers
+each leak with `answer`. The local calls go to the free copy. -/
+def simImplOf {σ : Type} (answer : σ → RandLeak → OracleComp (WorldSpec C) (σ × RandReplies C E)) :
+    QueryImpl (LocalSpec C + (RandLeak →ₒ RandReplies C E)) (StateT σ (OracleComp (WorldSpec C))) :=
   QueryImpl.add ((fun t => (StateT.lift (free (C := C) (OracleComp.lift (OracleSpec.query t))) :
-      StateT (PrssRandSimState C A.State) (OracleComp (WorldSpec C)) _)) :
-        QueryImpl (LocalSpec C) (StateT (PrssRandSimState C A.State) (OracleComp (WorldSpec C))))
+      StateT σ (OracleComp (WorldSpec C)) _)) : QueryImpl (LocalSpec C) (StateT σ (OracleComp (WorldSpec C))))
     ((fun (l : RandLeak) => (StateT.mk fun st => do
-      let (st, r) ← worldRoles.adversary ((prssRandSim K label calls D A).answer st l)
-      pure (r, st) : StateT (PrssRandSimState C A.State) (OracleComp (WorldSpec C)) (RandReplies C E))) :
-        QueryImpl (RandLeak →ₒ RandReplies C E) (StateT (PrssRandSimState C A.State) (OracleComp (WorldSpec C))))
+      let (st, r) ← answer st l
+      pure (r, st) : StateT σ (OracleComp (WorldSpec C)) (RandReplies C E))) :
+        QueryImpl (RandLeak →ₒ RandReplies C E) (StateT σ (OracleComp (WorldSpec C))))
 
-/-- One call of `F_rand` under `simImpl` is `idealCall`. -/
-private theorem simImpl_call (s : PrssRandSimState C A.State) (call : RandCall) (rest : List RandCall)
-    (hs : s.calls = call :: rest) :
-    (simulateQ (simImpl K D label calls A) (simulateQ callLeaks (((Frand E).sum (Frand Bit)).run D
+/-- One call of `F_rand` from the reply `r` of the simulator. `F_rand` samples the fresh values on the
+free copy. A reply of the other kind gives the default known streams. -/
+def idealCallOfReply (r : RandReply C E) : RandCall → OracleComp (WorldSpec C) (C.Party → Option (RandOutput C E))
+  | .elements _ count => do
+      let known := r.elim id fun _ => default
+      let fresh ← free (liftComp ($ᵗ (C.Term → Fin count → E)) (LocalSpec C))
+      let freshPair ← free (liftComp ($ᵗ (C.Pair → Fin count → E)) (LocalSpec C))
+      pure fun i => (frandOut D count known.1 known.2 fresh freshPair i).map Sum.inl
+  | .bits _ count => do
+      let known := r.elim (fun _ => default) id
+      let fresh ← free (liftComp ($ᵗ (C.Term → Fin count → Bit)) (LocalSpec C))
+      let freshPair ← free (liftComp ($ᵗ (C.Pair → Fin count → Bit)) (LocalSpec C))
+      pure fun i => (frandOut D count known.1 known.2 fresh freshPair i).map Sum.inr
+
+omit [Fintype E] [DecidableEq E] [Algebra Bit E] in
+/-- One call of `F_rand` under `simImplOf answer` is the reply of `answer` and then
+`idealCallOfReply`, when `answer` replies to the call with `reply` and moves to the state `s'`. -/
+theorem simImplOf_call {σ : Type} (answer : σ → RandLeak → OracleComp (WorldSpec C) (σ × RandReplies C E))
+    (s s' : σ) (reply : OracleComp (WorldSpec C) (RandReply C E))
+    (hanswer : ∀ l, answer s (.inr l) = (fun r => (s', .inr r)) <$> reply) (call : RandCall) :
+    (simulateQ (simImplOf answer) (simulateQ callLeaks (((Frand E).sum (Frand Bit)).run D
       fun i => Option.map (fun _ => call.input) (if i ∈ D.1 then none else some (x i))))).run s =
-      (fun o => (o, { s with label := s.label + 1, calls := rest })) <$>
-        idealCall K D s.receivers s.term s.pair s.label call := by
-  have hl : ∀ (l : RandLeak), simImpl K D label calls A (.inr l) = StateT.mk fun st =>
-      worldRoles.adversary ((prssRandSim K label calls D A).answer st l) >>= fun p => pure (p.2, p.1) :=
+      (fun o => (o, s')) <$> (reply >>= fun r => idealCallOfReply D r call) := by
+  have hl : ∀ (l : RandLeak), simImplOf answer (.inr l) = StateT.mk fun st =>
+      answer st l >>= fun p => pure (p.2, p.1) :=
     fun _ => rfl
   -- Each case selects its side of the sum. Then both cases run the same steps.
   rcases call with ⟨idx, count⟩ | ⟨idx, count⟩
@@ -344,7 +360,7 @@ private theorem simImpl_call (s : PrssRandSimState C A.State) (call : RandCall) 
         fun i => if i ∈ D.1 then none else some count := by
       funext i; by_cases hi : i ∈ D.1 <;> simp [hi, RandCall.input]
     simp only [Functionality.sum]
-    rw [if_pos hleft]
+    rw [ite_eq_left hleft]
     simp only [hin]
   pick_goal 2
   focus
@@ -360,7 +376,7 @@ private theorem simImpl_call (s : PrssRandSimState C A.State) (call : RandCall) 
         fun i => if i ∈ D.1 then none else some count := by
       funext i; by_cases hi : i ∈ D.1 <;> simp [hi, RandCall.input]
     simp only [Functionality.sum]
-    rw [if_neg hleft, if_pos hright]
+    rw [ite_eq_right hleft, ite_eq_left hright]
     simp only [hin]
   all_goals
     simp only [simulateQ_map, StateT.run_map]
@@ -376,10 +392,34 @@ private theorem simImpl_call (s : PrssRandSimState C A.State) (call : RandCall) 
     simp only [simulateQ_bind, simulateQ_leak, QueryImpl.apply_compose]
     unfold callLeaks
     erw [QueryImpl.add_apply_inr]
-    simp only [simulateQ_bind, simulateQ_leak, hl, StateT.run_bind, StateT.run_mk, prssRandSim, hs, worldRoles,
-      idealCall, liftComp_bind, counted_bind, bind_assoc, liftComp_pure, counted_pure, pure_bind,
-      simulateQ_pure, StateT.run_pure, map_bind, StateT.run_lift, map_pure]
-    rfl
+    simp only [simulateQ_bind, simulateQ_leak, hl, StateT.run_bind, StateT.run_mk, hanswer, idealCallOfReply,
+      bind_assoc, pure_bind, simulateQ_pure, StateT.run_pure, map_bind, bind_map_left, StateT.run_lift, map_pure]
+    refine bind_congr fun r => ?_
+    rcases r with r | r <;> simp only [simulateQ_pure, StateT.run_pure, pure_bind, Sum.elim_inl, Sum.elim_inr, id] <;> rfl
+
+/-- The oracles of the functionality in the ideal run with `prssRandSim`. -/
+private def simImpl : QueryImpl (LocalSpec C + (RandLeak →ₒ RandReplies C E))
+    (StateT (PrssRandSimState C A.State) (OracleComp (WorldSpec C))) :=
+  simImplOf fun st l => worldRoles.adversary ((prssRandSim K label calls D A).answer st l)
+
+/-- One call of `F_rand` under `simImpl` is `idealCall`. -/
+private theorem simImpl_call (s : PrssRandSimState C A.State) (call : RandCall) (rest : List RandCall)
+    (hs : s.calls = call :: rest) :
+    (simulateQ (simImpl K D label calls A) (simulateQ callLeaks (((Frand E).sum (Frand Bit)).run D
+      fun i => Option.map (fun _ => call.input) (if i ∈ D.1 then none else some (x i))))).run s =
+      (fun o => (o, { s with label := s.label + 1, calls := rest })) <$>
+        idealCall K D s.receivers s.term s.pair s.label call := by
+  rcases call with ⟨idx, count⟩ | ⟨idx, count⟩
+  · rw [simImpl, simImplOf_call D x _ s { s with label := s.label + 1, calls := rest } (Sum.inl <$> counted (liftComp (liftComp
+      (knownStreams D s.receivers (elementCodec K) s.term s.pair s.label idx count) (LocalSpec C)) (SimulatorSpec C)))
+      (fun _ => by simp [prssRandSim, hs, worldRoles, map_eq_bind_pure_comp, liftComp_bind, counted_bind,
+        liftComp_pure, counted_pure])]
+    simp [idealCall, idealCallOfReply, map_bind]
+  · rw [simImpl, simImplOf_call D x _ s { s with label := s.label + 1, calls := rest } (Sum.inr <$> counted (liftComp (liftComp
+      (knownStreams D s.receivers (bitCodec (E := E)) s.term s.pair s.label idx count) (LocalSpec C)) (SimulatorSpec C)))
+      (fun _ => by simp [prssRandSim, hs, worldRoles, map_eq_bind_pure_comp, liftComp_bind, counted_bind,
+        liftComp_pure, counted_pure])]
+    simp [idealCall, idealCallOfReply, map_bind]
 
 /-- The calls of `F_rand` under `simImpl` are `idealCalls`. -/
 private theorem simImpl_calls (cs : List RandCall) (s : PrssRandSimState C A.State) (hs : s.calls = cs) :
