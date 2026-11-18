@@ -48,7 +48,7 @@ The security of a ceremony rests on these twelve proved fields. The note has no 
 - No claim covers the security of a tree on the real network. `CeremonySecurityStatement`, for one ceremony on the real network, is stated and not proved, and it is no part of the bundle.
 - `prssSetupSecurity` covers one PRSS setup from an empty hash cache. It does not cover the second PRSS setup of a bottom tree, which starts from a cache with cells of the first.
 - `prssRealRandSecurity` joins `prssSetupSecurity` and `prssRandSecurity` for one setup and one fixed list of calls. No claim joins the PRSS to the building blocks.
-- No theorem composes the setup and the signing.
+- No theorem composes the setup and the signing. The setup claims have static corruption, and the signing claims have adaptive corruption with a trusted dealer. No claim covers adaptive corruption for the DKG followed by signing.
 - [statement.tex](./statement.tex), Section 5, and [doc/composition.md](./doc/composition.md) give the open points.
 
 ## Map of the claims
@@ -69,7 +69,7 @@ flowchart TB
     SUF["stronglyUnforgeable<br/>signing game with adaptive corruption"]:::proved
     SCOR["signingCorrectness<br/>honest quorum"]:::proved
     TPRF["tprfSecurity, tprfCorrectness<br/>threshold PRF"]:::proved
-    DEALT["Trusted dealer of the keys and the trees,<br/>given by the setup"]:::missing
+    DEALT["Trusted dealer of the keys and the trees,<br/>the KeyGen of PRAWNS"]:::assumed
     RULES["Deployment contract<br/>the 4 rules of statement.tex"]:::assumed
     HEUR["Th is a fixed function in the setup<br/>and a random oracle in the signing"]:::assumed
   end
@@ -78,6 +78,7 @@ flowchart TB
     SEED["seedGenSecurity, seedGenCompleteness<br/>seed generation on the real network"]:::proved
     TCOMP["treeCompleteness<br/>honest run of a tree on the real network"]:::proved
     THYB["treeHybridSecurity<br/>one tree with ideal multiplication and check"]:::proved
+    SETUP["The setup acts as the trusted dealer<br/>static corruption, selective abort"]:::missing
     TSEC["Security of a tree<br/>on the real network"]:::missing
     DEALER["dealerTreeCorrectness, dealerTreeSuccess<br/>the dealer of F_tree gives the trees of the signing game,<br/>when the circuits compute Th"]:::proved
     CSEC["CeremonySecurityStatement<br/>one ceremony on the real network"]:::stated
@@ -92,12 +93,13 @@ flowchart TB
   SUF --> DEALT
   SCOR --> DEALT
   SUF -->|rules 1 and 4| RULES
-  DEALT -->|rules 2 and 3| RULES
-  DEALT --> HEUR
-  DEALT -.-> SEED
-  DEALT -.-> DEALER
-  DEALT -.-> TCOMP
-  DEALT -.-> TSEC
+  DEALT -.->|no theorem joins them| SETUP
+  SETUP -->|rules 2 and 3| RULES
+  SETUP --> HEUR
+  SETUP -.-> SEED
+  SETUP -.-> DEALER
+  SETUP -.-> TCOMP
+  SETUP -.-> TSEC
   TSEC -.-> THYB
   TSEC -.-> CSEC
   CSEC -.-> MPC
@@ -110,7 +112,7 @@ flowchart TB
 | --- | --- |
 | Security of a tree on the real network | It needs `CeremonySecurityStatement` and the join of the layers, and both are open. |
 | `CeremonySecurityStatement` | No composition theorem fits the proved claims, and a direct proof has open steps. |
-| Trusted dealer of the keys and the trees | The composition of the setup and the signing is a sketch. |
+| The setup acts as the trusted dealer | It needs the security of a tree on the real network, the join of the setup phases, and a match of the dealers of the setup to the dealer of the signing game. The composition is a sketch for static corruption. |
 
 No open box comes from a known attack.
 

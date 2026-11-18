@@ -39,7 +39,8 @@ proved for a ceremony, and a tree has no such claim. Appendix~\ref{sec:mpc} list
 (Section~\ref{sec:signing}). This claim is proved.
 \end{itemize}
 No theorem composes the setup with the signing. Section~\ref{sec:contract} gives the rules that a
-composition needs, and Section~\ref{sec:open} lists what is not proved.
+composition needs, and Section~\ref{sec:open} lists what is not proved. So the signing claims hold with a
+trusted dealer, and no claim covers adaptive corruption for the DKG followed by signing.
 
 \paragraph{Where to read it.} The claims to review are in the folder
 \texttt{formal/ThresholdLeanXmss/Statement/}, and its
@@ -85,8 +86,8 @@ adversary and the outputs of the honest operators, and it compares the real run 
 The signing game of PRAWNS (Definition 3.2) \\
 \rowrule
 Corruption & Static. The corrupt operators of each claim are fixed before its protocol starts. & Adaptive.
-The forger corrupts operators during the game. A corruption reveals only keys, because the setup state is
-erased. \\
+The forger corrupts operators during the game with the trusted dealer. A corruption reveals only keys, and
+rule 4 of the contract asks a deployment for that. \\
 \rowrule
 Network & The seed generation claims, the PRSS setup claim and the open ceremony claim use the real network and the real PRSS.
 The building-block claims, the PRSS streams claim and the hybrid ceremony and tree claims use hybrid models, where
@@ -267,7 +268,8 @@ Game & Generic game with one signer that has no state & Adaptive corruption and 
 \end{center}
 
 \section{The deployment contract}\label{sec:contract}
-The proposed composition of the setup and the signing needs these four rules.
+The proposed composition of the setup and the signing needs these four rules. They are requirements on a
+deployment. They are not a security theorem.
 {\small
 \begin{xltabular}{\textwidth}{@{}rL{2.9cm}XL{4.1cm}@{}}
 \toprule
@@ -323,12 +325,18 @@ leanXMSS. It is not a theorem.
 composition of Canetti \cite{Can00}, and \lean{formal/doc/composition.md} gives it in full. It first
 replaces the seed generation by its dealer. Then it replaces each ceremony, in order, by its dealer. Last,
 \lean{dealerTreeCorrectness} gives the trees of the signing game, and the signing bound applies through the $\Th$
-heuristic. These points stay open.
+heuristic. The sketch is for one coalition that is fixed before the seed generation and that does not
+change. It gives no claim for adaptive corruption after the DKG. The erasure of rule 4 does not give one,
+because the keys stay. These points stay open.
 \begin{itemize}\itemsep0pt
 \item The replacement of a ceremony needs ceremony security on the real network, which is not proved.
+\item The dealers of the setup are not the dealer of the signing game. $\Fn{seedGen}$ and $\Fn{tree}$ let the
+adversary choose the receivers, and $\Fn{tree}$ leaks its openings first. No claim matches them to
+\lean{dealerKeyGen}.
 \item Each ceremony needs the hash budget of the full system, with the earlier phases and the signing.
 \item The ceremony claim starts with an empty $H$ cache, so the earlier calls need a replay.
-\item The simulator of a ceremony must work beside the emulated signing service.
+\item The simulator of a ceremony must work beside the emulated signing service. Rule 3 allows signing on
+other trees during a tree run, and the sequential composition theorem does not cover such a schedule.
 \item No claim joins the two ceremonies of a bottom tree on the real network. The encoding of the signature
 ceremony comes from the output of the first ceremony, and the ceremony claim fixes it in advance.
 \item In that join, rule 2 gives the honest operators one codeword only up to the error of a ceremony.

@@ -4,17 +4,17 @@ This file holds the sketch of the composition of the setup and the signing with 
 
 ## The composition
 
-The composition is an unreviewed paper sketch that follows the sequential composition of Canetti [Can00]. The seeds enter the ceremonies only through $F$ at tree points. Each ceremony uses fresh PRSS keys. Only the signing masks use the pair keys. A tree with correct outputs is a function of $P$, the seeds and $H$.
+The composition is an unreviewed paper sketch that follows the sequential composition of Canetti [Can00]. It is for one coalition that is fixed before the seed generation and that does not change. It gives no claim for adaptive corruption after the DKG. The erasure of rule 4 limits what a corruption shows, and it does not give that claim, because the keys stay. The seeds enter the ceremonies only through $F$ at tree points. Each ceremony uses fresh PRSS keys. Only the signing masks use the pair keys. A tree with correct outputs is a function of $P$, the seeds and $H$.
 
 1. Replace the seed generation by its dealer, at the cost of its simulation error.
 2. Replace each ceremony, in order, by its dealer, at the cost of its proposed error. Ceremony security on the real network is stated and not proved, so this step is open. For one ceremony, the emulating adversary takes the keys of all operators as auxiliary input. It answers signing requests on other trees and repeats earlier phases.
-3. The claim on dealer trees then shows that the dealer gives the trees of the signing game. The signing bound then applies through the $\mathrm{Th}$ heuristic.
+3. The claim on dealer trees then shows that the dealer gives the trees of the signing game. The signing bound then applies through the $\mathrm{Th}$ heuristic. This step is open too. $`\mathcal F_{\mathrm{seedGen}}`$ and $`\mathcal F_{\mathrm{tree}}`$ let the adversary choose the receivers, and $`\mathcal F_{\mathrm{tree}}`$ leaks its openings first. The key generation of the signing game does neither, and no claim matches them.
 
 Four issues remain in step 2.
 
 - Each ceremony needs the hash budget of the full system, including the earlier phases and the signing. An archived, incomplete proof attempt stopped at this issue.
 - The ceremony claim starts with an empty $H$ cache. So the composition must replay the earlier calls at the start, or the claim must be extended to a starting cache.
-- The simulator of the ceremony must work beside the emulated signing service.
+- The simulator of the ceremony must work beside the emulated signing service. Rule 3 allows signing on other trees during a tree run, and the sequential composition theorem does not cover such a schedule.
 - The job list of a signature ceremony comes from the output of the ceremony before it, but the open claim fixes the job list of one ceremony in advance. So the two ceremonies of a bottom tree need their own composition lemma, with one shared oracle. `treeHybridSecurity` joins them in the hybrid model. No claim joins them on the real network.
 
 The sketch of that join on the real network has these points.
