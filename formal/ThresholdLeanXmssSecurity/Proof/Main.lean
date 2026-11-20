@@ -139,6 +139,24 @@ theorem runJobs_eq (K : Constants C E) (buildingBlocks : RunBuildingBlocks C E G
       (List.range (depth jobs)).foldlM (layerBody K buildingBlocks jobs) (inputs, []) >>= tailBody K buildingBlocks jobs := by
   rfl
 
+variable (K : Constants C E) (mode : ReshareMode) (jobs : List Circuit) (i : C.Party)
+
+theorem layerBody_apply (buildingBlocks : RunBuildingBlocks C E G)
+    (p : List (C.Term → List Bit) × List (Tuple C)) (l : ℕ) :
+    layerBody K buildingBlocks jobs p l = (do
+      let z ← buildingBlocks.mult (layerX K jobs l p.1) (layerY K jobs l p.1) (gatesAt jobs l).length
+      pure (appendLayer jobs l p.1 z,
+        p.2 ++ [⟨layerX K jobs l p.1, layerY K jobs l p.1, z, (gatesAt jobs l).length,
+            buildingBlocks.mode⟩])) := rfl
+
+theorem tailBody_apply (buildingBlocks : RunBuildingBlocks C E G)
+    (p : List (C.Term → List Bit) × List (Tuple C)) :
+    tailBody K buildingBlocks jobs p = (do
+      let v' ← buildingBlocks.rerand (outputShares K jobs p.1) (outputsOf jobs).length
+      buildingBlocks.verify (p.2 ++ [⟨outputShares K jobs p.1, one K, v', (outputsOf jobs).length, .peer⟩])
+      let opened ← buildingBlocks.output v' (outputsOf jobs).length
+      pure (assemble jobs opened)) := rfl
+
 end Program
 
 end ThresholdLeanXmssSecurity

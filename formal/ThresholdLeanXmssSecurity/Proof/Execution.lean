@@ -1786,6 +1786,28 @@ end SeedHitProof
 
 end ThresholdLeanXmssSecurity
 
+namespace ThresholdLeanXmssSecurity
+
+section Counted
+
+attribute [local instance] Classical.propDecidable
+
+variable {C : Committee}
+
+/-- A lifted computation of `ProbComp` makes no counted call. -/
+theorem isQueryBoundP_liftComp_counted {α : Type} (oa : ProbComp α) :
+    IsQueryBoundP (liftComp oa (LocalSpec C)) Counted 0 := by
+  induction oa using OracleComp.inductionOn with
+  | pure a => simp
+  | query_bind t f ih =>
+    rw [liftComp_bind]
+    erw [isQueryBoundP_query_bind_iff]
+    exact ⟨Or.inl (by simp [Counted]), fun u => by simpa only [Nat.zero_sub, ite_self] using ih u⟩
+
+end Counted
+
+end ThresholdLeanXmssSecurity
+
 /-- info: 'ThresholdLeanXmssSecurity.simulateQ_sequenceFin' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.simulateQ_sequenceFin

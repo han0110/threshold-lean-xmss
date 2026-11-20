@@ -1345,3 +1345,7 @@ theorem keyWorld_coupling (prims : Primitives) (D : C.Coalition)
 
 end ThresholdLeanXmssSecurity
 end KeyWorldBound
+
+/-- info: 'ThresholdLeanXmssSecurity.keyWorld_coupling' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.keyWorld_coupling

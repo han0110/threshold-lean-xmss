@@ -16,8 +16,6 @@ attribute [local instance] Classical.propDecidable inhabitedField
 variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E]
   [Algebra Bit E] [SampleableType E]
 
--- Target: checkSoundStage (prims : Primitives) (K : Constants C E) : CheckSoundStage prims K.
-
 /-- An accepted opening fixes the honest shares to one polynomial. -/
 theorem openAgrees_honest_polynomial (K : Constants C E) (D : C.Coalition)
     (v : C.Party → ℕ → E) (i : C.Party) (inbox : Mail C E)

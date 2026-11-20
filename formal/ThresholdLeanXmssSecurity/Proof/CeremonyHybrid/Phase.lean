@@ -623,3 +623,7 @@ theorem executePhase_oracleStep_bind {γ : Type} (d : γ) (fuel : ℕ) (st : A.S
 end Compose
 
 end ThresholdLeanXmssSecurity
+
+/-- info: 'ThresholdLeanXmssSecurity.executePhase_bind' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.executePhase_bind

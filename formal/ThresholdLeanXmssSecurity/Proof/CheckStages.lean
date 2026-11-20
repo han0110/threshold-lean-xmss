@@ -549,3 +549,7 @@ end Stages
 end ThresholdLeanXmssSecurity
 
 end
+
+/-- info: 'ThresholdLeanXmssSecurity.executePhase_afterChallenge_common'' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.executePhase_afterChallenge_common'

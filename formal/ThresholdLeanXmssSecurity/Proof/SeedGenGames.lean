@@ -4898,3 +4898,7 @@ open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 variable {C : Committee} {E : Type} (prims : Primitives)
 
 end ThresholdLeanXmssSecurity
+
+/-- info: 'ThresholdLeanXmssSecurity.seedGenSimulator_queryBound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.seedGenSimulator_queryBound

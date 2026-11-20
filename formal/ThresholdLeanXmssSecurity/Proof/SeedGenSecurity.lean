@@ -581,3 +581,7 @@ variable {E : Type} (prims : Primitives)
 end Main
 
 end ThresholdLeanXmssSecurity
+
+/-- info: 'ThresholdLeanXmssSecurity.seedGenSecurity_of_setup' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.seedGenSecurity_of_setup

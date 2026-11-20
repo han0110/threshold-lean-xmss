@@ -137,3 +137,7 @@ end Abort
 end ThresholdLeanXmssSecurity
 
 end
+
+/-- info: 'ThresholdLeanXmssSecurity.stages_executeRounds_abort' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.stages_executeRounds_abort

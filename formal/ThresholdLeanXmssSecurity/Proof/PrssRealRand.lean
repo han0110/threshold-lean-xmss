@@ -9,7 +9,8 @@ computation with no such call runs in `streamWorld` as in `worldAnswer`, and the
 (`streamWorld_run_of_noHidden`). `executePhase_free` is the frame of a phase on the real network for
 the free calls of a predicate. `probBad_streamKey_le_usedHit` bounds the stream-key event of each game
 by the event `UsedHit` at the end of the ideal joint world. `KeysAgree` and `PairKeysAgree` state that
-two honest operators with keys hold the same keys, and dealt keys agree (`keysAgree_of_dealt`).
+two honest operators with keys hold the same key of each term that both hold and the same key of their
+pair, and dealt keys agree in this sense (`keysAgree_of_dealt`).
 -/
 
 noncomputable section
@@ -639,3 +640,7 @@ theorem accepts_map (prims : Primitives) {α : Type} (oa : OracleComp (WorldSpec
 end ThresholdLeanXmssSecurity
 
 end
+
+/-- info: 'ThresholdLeanXmssSecurity.probBad_streamKey_le_usedHit' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.probBad_streamKey_le_usedHit

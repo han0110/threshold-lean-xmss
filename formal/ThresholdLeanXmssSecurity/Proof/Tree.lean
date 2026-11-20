@@ -5,8 +5,8 @@ import ThresholdLeanXmssSecurity.Proof.Check
 /-!
 # The ceremonies of a tree
 
-`jointTreeRun_toReal_le` bounds the abort of the honest run of the ceremonies of a tree, batch by
-batch. `setup_chunks_step` joins the two ceremonies of a bottom tree. The second PRSS setup keeps the
+`jointTreeRun_toReal_le` bounds the probability that the honest run of the ceremonies of a tree,
+batch by batch, differs from the dealer of the tree. `setup_chunks_step` joins the two ceremonies of a bottom tree. The second PRSS setup keeps the
 cache invariant `CacheOK`, and the counters continue. The dealer claims `DealerTreeCorrectnessStatement` and
 `DealerTreeSuccessStatement` follow from `dealerTreeCorrectness` and `dealerTreeSuccess` in `Dealer`.
 -/

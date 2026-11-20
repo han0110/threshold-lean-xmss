@@ -53,7 +53,7 @@ def dealtKey (term : C.Term → HashOutput) (pair : C.Pair → HashOutput) : Key
   | .pair p => some (pair p)
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
-private theorem oracleStep_map {ι : Type} {G : OracleSpec ι} {α β : Type} (f : α → β)
+theorem oracleStep_map {ι : Type} {G : OracleSpec ι} {α β : Type} (f : α → β)
     (oa : OracleComp (RoSpec C) α) :
     oracleStep (C := C) (E := E) (G := G) (f <$> oa) = f <$> oracleStep oa := by
   simp only [oracleStep, localStep, liftComp_map]
@@ -62,7 +62,7 @@ private theorem oracleStep_map {ι : Type} {G : OracleSpec ι} {α β : Type} (f
 
 omit [Fintype E] [DecidableEq E] in
 /-- One call is one oracle step of `callStreams` at the label of the state, and it moves the label. -/
-private theorem randCall_run {ι : Type} {G : OracleSpec ι} (K : Constants C E) (ctx : Context C)
+theorem randCall_run {ι : Type} {G : OracleSpec ι} (K : Constants C E) (ctx : Context C)
     (call : RandCall) (st : RunState C) :
     (randCall (G := G) K ctx call).run st = (fun o => (o, { st with label := st.label + 1 })) <$>
       oracleStep (callStreams K prgBits ctx.prss ctx.self st.label call) := by
@@ -359,17 +359,17 @@ theorem hidden_pairOf (D : C.Coalition) (i j : C.Party) (h : i ≠ j) :
   split_ifs <;> simp [and_comm]
 
 /-- From the hash cache `s`, the run of `oa` returns `v` and keeps the cache. -/
-private def RunsPure (prims : Primitives) (s : HashCache C) {β : Type} (oa : OracleComp (LocalSpec C) β) (v : β) :
+def RunsPure (prims : Primitives) (s : HashCache C) {β : Type} (oa : OracleComp (LocalSpec C) β) (v : β) :
     Prop :=
   (simulateQ (localAnswer prims) oa).run s = pure (v, s)
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
-private theorem RunsPure.pure (prims : Primitives) (s : HashCache C) {β : Type} (v : β) :
+theorem RunsPure.pure (prims : Primitives) (s : HashCache C) {β : Type} (v : β) :
     RunsPure prims s (pure v) v := by
   simp [RunsPure]
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
-private theorem RunsPure.bind {prims : Primitives} {s : HashCache C} {β γ : Type} {oa : OracleComp (LocalSpec C) β}
+theorem RunsPure.bind {prims : Primitives} {s : HashCache C} {β γ : Type} {oa : OracleComp (LocalSpec C) β}
     {f : β → OracleComp (LocalSpec C) γ} {v : β} {w : γ} (h : RunsPure prims s oa v) (hf : RunsPure prims s (f v) w) :
     RunsPure prims s (oa >>= f) w := by
   simp only [RunsPure, simulateQ_bind, StateT.run_bind] at h hf ⊢
@@ -377,13 +377,13 @@ private theorem RunsPure.bind {prims : Primitives} {s : HashCache C} {β γ : Ty
   exact hf
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
-private theorem RunsPure.map {prims : Primitives} {s : HashCache C} {β γ : Type} {oa : OracleComp (LocalSpec C) β}
+theorem RunsPure.map {prims : Primitives} {s : HashCache C} {β γ : Type} {oa : OracleComp (LocalSpec C) β}
     {v : β} (h : RunsPure prims s oa v) (f : β → γ) : RunsPure prims s (f <$> oa) (f v) := by
   simp only [map_eq_bind_pure_comp]
   exact h.bind (RunsPure.pure prims s _)
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
-private theorem RunsPure.mapM {prims : Primitives} {s : HashCache C} {γ β : Type} {f : γ → OracleComp (RoSpec C) β}
+theorem RunsPure.mapM {prims : Primitives} {s : HashCache C} {γ β : Type} {f : γ → OracleComp (RoSpec C) β}
     {g : γ → β} : ∀ l : List γ, (∀ x ∈ l, RunsPure prims s (liftComp (f x) (LocalSpec C)) (g x)) →
       RunsPure prims s (liftComp (l.mapM f) (LocalSpec C)) (l.map g)
   | [], _ => by simpa using RunsPure.pure prims s ([] : List β)
@@ -393,11 +393,11 @@ private theorem RunsPure.mapM {prims : Primitives} {s : HashCache C} {γ β : Ty
       (RunsPure.pure prims s _))
 
 /-- The bits of `PRG(key, ρ, idx)` at the first `m` positions, from the cached answer of `H` at the key. -/
-private def prgValue (prims : Primitives) (s : HashCache C) (key : HashOutput) (ρ idx m : ℕ) : ℕ → Bit :=
+def prgValue (prims : Primitives) (s : HashCache C) (key : HashOutput) (ρ idx m : ℕ) : ℕ → Bit :=
   fun g => ((List.range m).map fun p => prims.aes.eval (truncateHash ((s (.streamKey key)).getD 0)) (ρ, idx, p)).getD g 0
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
-private theorem runsPure_prgBits (prims : Primitives) (s : HashCache C) (name : KeyName C) (key : HashOutput)
+theorem runsPure_prgBits (prims : Primitives) (s : HashCache C) (name : KeyName C) (key : HashOutput)
     (ρ idx m : ℕ) (hs : 0 < m → (s (.streamKey key)).isSome) :
     RunsPure prims s (liftComp (prgBits name key ρ idx m) (LocalSpec C)) (prgValue prims s key ρ idx m) := by
   unfold prgBits prgValue
@@ -413,7 +413,7 @@ private theorem runsPure_prgBits (prims : Primitives) (s : HashCache C) (name : 
   simp [hu]
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
-private theorem runsPure_knownStreams {prims : Primitives} {s : HashCache C} {R : Type} [Zero R] (D : C.Coalition)
+theorem runsPure_knownStreams {prims : Primitives} {s : HashCache C} {R : Type} [Zero R] (D : C.Coalition)
     (receivers : Finset C.Party) (codec : Codec C E R) (term : C.Term → HashOutput) (pair : C.Pair → HashOutput)
     (ρ idx count : ℕ) (val : KeyName C → HashOutput → ℕ → R)
     (hterm : ∀ T, KnownTo D.1 T ∧ (∃ i ∈ receivers, i ∉ D.1 ∧ i ∈ C.holders T) →
@@ -445,13 +445,13 @@ private theorem runsPure_knownStreams {prims : Primitives} {s : HashCache C} {R 
     exact RunsPure.pure prims s _
 
 /-- The stream bits of `cachedBits` from the hash cache `s`. -/
-private def cachedValue (prims : Primitives) (D : C.Coalition) (c : HiddenCache C) (s : HashCache C) (name : KeyName C)
+def cachedValue (prims : Primitives) (D : C.Coalition) (c : HiddenCache C) (s : HashCache C) (name : KeyName C)
     (key : HashOutput) (ρ idx m : ℕ) : ℕ → Bit :=
   if Hidden D name then fun g => if g < m then (c ((name, key), ρ, idx, g)).getD 0 else 0
   else prgValue prims s key ρ idx m
 
 /-- The hash cache `s` holds every key of a known stream that an honest receiver computes. -/
-private def KeysCached (D : C.Coalition) (receivers : Finset C.Party) (term : C.Term → HashOutput)
+def KeysCached (D : C.Coalition) (receivers : Finset C.Party) (term : C.Term → HashOutput)
     (pair : C.Pair → HashOutput) (s : HashCache C) : Prop :=
   (∀ T, KnownTo D.1 T ∧ (∃ i ∈ receivers, i ∉ D.1 ∧ i ∈ C.holders T) → (s (.streamKey (term T))).isSome) ∧
     ∀ j i (h : j ∈ D.1 ∧ i ∉ D.1 ∧ i ∈ receivers),
@@ -460,7 +460,7 @@ private def KeysCached (D : C.Coalition) (receivers : Finset C.Party) (term : C.
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
 /-- The share of `F_rand` at an honest receiver is the clipped output of its streams. `dec` reads one
 value from the stream bits, and it reads only the first `m` bits for each of the `count` values. -/
-private theorem frandShare_eq_clipOutput {R : Type} [Zero R] (prims : Primitives) (D : C.Coalition)
+theorem frandShare_eq_clipOutput {R : Type} [Zero R] (prims : Primitives) (D : C.Coalition)
     (receivers : Finset C.Party) (term : C.Term → HashOutput) (pair : C.Pair → HashOutput) (c : HiddenCache C)
     (s : HashCache C) (ρ idx count m : ℕ) (dec : (ℕ → Bit) → ℕ → R)
     (hdec : ∀ F g, g < count → dec (fun g' => if g' < m then F g' else 0) g = dec F g) (i : C.Party)
@@ -495,7 +495,7 @@ private theorem frandShare_eq_clipOutput {R : Type} [Zero R] (prims : Primitives
           hi, hdec]
 
 /-- A hidden key name is the name of a hidden term or of a hidden pair. -/
-private def hiddenNameSum (D : C.Coalition) :
+def hiddenNameSum (D : C.Coalition) :
     {name : KeyName C // Hidden D name} ≃ {T : C.Term // Hidden D (.term T)} ⊕ {p : C.Pair // Hidden D (.pair p)} where
   toFun n := match n with
     | ⟨.parameter, h⟩ => h.elim
@@ -507,20 +507,20 @@ private def hiddenNameSum (D : C.Coalition) :
   left_inv n := by rcases n with ⟨_ | T | p, h⟩ <;> first | exact h.elim | rfl
   right_inv q := by rcases q with T | p <;> rfl
 
-private theorem elementPos_lt {count : ℕ} (g : Fin count) (e : Fin elementBits) :
+theorem elementPos_lt {count : ℕ} (g : Fin count) (e : Fin elementBits) :
     elementBits * g.val + e.val < elementBits * count := by
   have := Nat.mul_le_mul_left elementBits (Nat.succ_le_of_lt g.isLt)
   rw [Nat.mul_succ] at this
   omega
 
 /-- The bits of `count` elements of the check field, `elementBits` bits for each element. -/
-private def elementSplit (K : Constants C E) (count : ℕ) : (Fin (elementBits * count) → Bit) ≃ (Fin count → E) :=
+def elementSplit (K : Constants C E) (count : ℕ) : (Fin (elementBits * count) → Bit) ≃ (Fin count → E) :=
   (Equiv.arrowCongr ((finProdFinEquiv (m := count) (n := elementBits)).trans
     (finCongr (Nat.mul_comm count elementBits))).symm (Equiv.refl Bit)).trans
     ((Equiv.curry (Fin count) (Fin elementBits) Bit).trans (Equiv.arrowCongr (Equiv.refl _) K.encode.symm))
 
 omit [Fintype E] [DecidableEq E] in
-private theorem elementSplit_apply (K : Constants C E) (count : ℕ) (b : Fin (elementBits * count) → Bit)
+theorem elementSplit_apply (K : Constants C E) (count : ℕ) (b : Fin (elementBits * count) → Bit)
     (g : Fin count) : elementSplit K count b g = K.encode.symm fun e => b ⟨elementBits * g.val + e.val, elementPos_lt g e⟩ := by
   simp only [elementSplit, Equiv.trans_apply, Equiv.arrowCongr_apply, Equiv.refl_symm,
     Equiv.coe_refl, Function.comp_apply, id_eq, Equiv.curry_apply]
@@ -533,3 +533,7 @@ end Draws
 end ThresholdLeanXmssSecurity
 
 end
+
+/-- info: 'ThresholdLeanXmssSecurity.streamWorld_presample' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.streamWorld_presample

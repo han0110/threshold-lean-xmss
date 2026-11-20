@@ -703,15 +703,6 @@ theorem setupStageA (phase : Phase) (prims : Primitives) (D : C.Coalition) (A : 
   rw [← toReal_nat_mul_inv_card]
   exact ENNReal.toReal_mono (ENNReal.mul_ne_top (ENNReal.natCast_ne_top _) (by simp)) hsum
 
-theorem isQueryBoundP_liftComp_counted {α : Type} (oa : ProbComp α) :
-    IsQueryBoundP (liftComp oa (LocalSpec C)) Counted 0 := by
-  induction oa using OracleComp.inductionOn with
-  | pure a => simp
-  | query_bind t f ih =>
-    rw [liftComp_bind]
-    erw [isQueryBoundP_query_bind_iff]
-    exact ⟨Or.inl (by simp [Counted]), fun u => by simpa only [Nat.zero_sub, ite_self] using ih u⟩
-
 theorem isQueryBoundP_liftComp_bind {α β : Type} (oa : ProbComp α) (k : α → OracleComp (LocalSpec C) β)
     (n : ℕ) (hk : ∀ a, IsQueryBoundP (k a) Counted n) :
     IsQueryBoundP (liftComp oa (LocalSpec C) >>= k) Counted n := by

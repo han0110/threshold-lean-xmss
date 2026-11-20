@@ -651,3 +651,7 @@ theorem executePhase_bind_eq (a b : ℕ) (st : A.State) (p : C.Party → PartyM 
 end Compose
 
 end ThresholdLeanXmssSecurity
+
+/-- info: 'ThresholdLeanXmssSecurity.executePhase_bind_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.executePhase_bind_eq

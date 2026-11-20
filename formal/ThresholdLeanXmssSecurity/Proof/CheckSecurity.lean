@@ -286,3 +286,7 @@ end Assembly
 end ThresholdLeanXmssSecurity
 
 end
+
+/-- info: 'ThresholdLeanXmssSecurity.simulateQ_executePhase_mapRoles' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.simulateQ_executePhase_mapRoles

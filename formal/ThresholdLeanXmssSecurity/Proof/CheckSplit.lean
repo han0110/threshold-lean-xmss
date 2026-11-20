@@ -368,3 +368,7 @@ lemma splitRisk_nonneg (k n : ℕ) : 0 ≤ splitRisk k n := by
 end ThresholdLeanXmssSecurity
 
 end
+
+/-- info: 'ThresholdLeanXmssSecurity.splitHash_insert_birthday' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.splitHash_insert_birthday

@@ -499,8 +499,8 @@ theorem commutes_onHash_onHidden {α β : Type} (x : StateT (HashCache C) ProbCo
   simp only [onHash, onHidden, StateT.run_bind, StateT.run_mk, StateT.run_pure, bind_map_left]
   exact OracleComp.EvalDistEq.bind_bind_swap _ _ _
 
-/-- A step of `streamWorld` is an atom on the hash cache, or a map of one query of the random function
-on the hidden cache. -/
+/-- A free step of `streamWorld` is an atom on the hash cache, or a map of one query of the random
+function on the hidden cache. -/
 def StreamAtom {α : Type} (m : StateT (HashCache C × HiddenCache C) ProbComp α) : Prop :=
   (∃ m', IsAtom m' ∧ m = onHash m') ∨
     ∃ (q : (KeyName C × HashOutput) × ℕ × ℕ × ℕ) (f : Bit → α),

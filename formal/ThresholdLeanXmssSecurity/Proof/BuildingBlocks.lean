@@ -18,6 +18,9 @@ namespace ThresholdLeanXmssSecurity
 variable {C : Committee} {E : Type}
 attribute [local instance] Classical.propDecidable
 
+@[simp] theorem Step.isDone_call {ι : Type} {G : OracleSpec ι} {α : Type} (input : ι) (k) :
+    (Step.call (C := C) (E := E) (G := G) (α := α) input k).isDone = False := rfl
+
 theorem bind_congr' {m : Type → Type} [Monad m] {α β : Type} (x : m α) {f g : α → m β}
     (h : ∀ a, f a = g a) : x >>= f = x >>= g := by rw [funext h]
 
@@ -965,6 +968,18 @@ def peerReply (K : Constants C E) (D : C.Coalition) (codec : Codec C E R) {n : �
   let known' : Shares C R := fun T => zf (refHolder D T) T
   (fun g => ∑ T, known' T g, known', fun i T g => zf i T g - known' T g,
     Finset.univ.filter fun i => i ∉ D.1 ∧ anyAbort (inbox i) = false)
+
+theorem peerSimAnswer_eq {I : Type} [SampleableType R] (K : Constants C E) (D : C.Coalition)
+    (A : Adversary C E I Unit (Shares C R × (C.Party → C.Party → ℕ → R))) (codec : Codec C E R) (n : ℕ)
+    (st : A.State) :
+    peerSimAnswer K D A codec n st = (do
+      let a ← A.answer st ()
+      let fresh ← liftComp ($ᵗ (C.Term → Fin n → R)) (LocalSpec C)
+      let freshPair ← liftComp ($ᵗ (C.Pair → Fin n → R)) (LocalSpec C)
+      let rnd := frandShare D n a.2.1 a.2.2 fresh freshPair
+      let b ← A.round a.1 fun c' i => if c' ∈ D.1 ∧ i ∉ D.1 then
+        reshareOut K (localContext i) codec (rnd i).1 (rnd i).2 (fun _ => 0) n c' else none
+      pure (b.1, peerReply K D codec a.2.1 a.2.2 fresh freshPair b.2)) := rfl
 
 /-- The outputs of `F_mult` with the width `c`. -/
 def idealOut (D : C.Coalition) {c : ℕ} (filled : C.Term → ℕ → Option C.Party) (product : ℕ → R)
