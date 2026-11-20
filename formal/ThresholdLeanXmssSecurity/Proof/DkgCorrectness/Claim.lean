@@ -13,6 +13,7 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Ready.GameHidden
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Records.Keys
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.RunsUnion
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Schedule.Joint
+import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.EndCells
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.EndWorld
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.TopCosts
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.TopLaws
@@ -32,7 +33,7 @@ statements of the route. `UsedHit.hybridEnd_of_statements` gives `HybridEnd`. Th
 `Joint.ceremonyCoupling`, `CeremonyRecords.ceremonyMonitor`, `CeremonyRecords.ceremonyBatch`,
 `CeremonyRecords.ceremonySync`, `EchoRound.ceremonyKeysAgree`, `CeremonyRecords.ceremonyOutputsAgree`,
 `shortFuel`, `soundAtEnd`, `hiddenAtEnd`, `UsedHit.topSlotPartCosts`, `UsedHit.topLawReal`,
-`UsedHit.topLawFresh`, `echoHop`, `reuseHop`, `copyHop` and `splitHop` and the
+`UsedHit.topLawFresh`, `keyProvenance`, `cellsCount`, `echoHop`, `reuseHop`, `copyHop` and `splitHop` and the
 hops `flagFirstHop`, `seedsHop` and `runsUnionHop` give the rest. The error of `UsedHitHop` is
 `setupHybridError`, and with it `part1Error` is `dkgCorrectnessError`.
 -/
@@ -72,7 +73,8 @@ theorem dkgCorrectness_of_leaves (ceremony : CeremonyParts K circuits settings r
       (usedHit.bottomCost prims) (usedHit.bottomReal prims)
       (usedHit.bottomFresh prims) (usedHit.endPoints prims)
       (UsedHit.hybridEnd_of_statements prims K circuits settings runLimit (usedHit.eager prims)
-        (usedHit.keyProvenance prims) usedHit.keyParametric (usedHit.cellsCount prims)))
+        (keyProvenance prims K circuits settings runLimit) usedHit.keyParametric
+        (cellsCount prims K circuits settings runLimit)))
     (reuseHop K circuits settings runLimit) (copyHop K circuits settings runLimit)
     (splitHop K circuits settings runLimit)
     (fun prims => ceremonyBad_of_parts prims K circuits settings runLimit

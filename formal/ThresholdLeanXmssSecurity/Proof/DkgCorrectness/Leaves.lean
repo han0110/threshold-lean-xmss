@@ -44,12 +44,8 @@ structure UsedHitParts : Prop where
   endPoints : ∀ prims, UsedHit.EndPointsAgree K circuits settings runLimit prims
   /-- The hybrid with fresh keys in each slot has the law of the game with a uniform table. -/
   eager : ∀ prims, UsedHit.EagerDraw K circuits settings runLimit prims
-  /-- Each key of the private table at the end of the game with a table is an entry of the table. -/
-  keyProvenance : ∀ prims, UsedHit.KeyProvenance K circuits settings runLimit prims
   /-- The game with a renamed table is the game with the hidden keys of the honest calls renamed. -/
   keyParametric : UsedHit.KeyParametric K circuits settings runLimit
-  /-- The public cache has at most `q` stream cells of the adversary and one for each honest known key. -/
-  cellsCount : ∀ prims, UsedHit.CellsCount K circuits settings runLimit prims
 
 end ThresholdLeanXmssSecurity.DkgCorrectnessProof
 
