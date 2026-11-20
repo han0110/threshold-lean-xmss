@@ -1,6 +1,9 @@
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Ceremony.Glue
+import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Collision.Hops
+import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.CutBounds
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Leaves
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.RunsUnion
+import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.EndWorld
 
 /-!
 # The field `dkgCorrectness` from the leaves of the route
@@ -9,8 +12,10 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.RunsUnion
 `CircuitsCompute circuits prims.Th → DkgCorrectness prims K circuits settings runLimit`. Its premises
 are the four structures of `Leaves.lean`. `ceremonyBad_of_parts`, `provenanceTreeRun_of_parts`,
 `readyHopL_of_ends` and `UsedHit.usedHitHop_of_reductions` join their fields to the statements of the
-route, and `cutDead`, `flagFirstHop`, `seedsHop` and `runsUnionHop` give the rest. The error of
-`UsedHitHop` is `setupHybridError`, and with it `part1Error` is `dkgCorrectnessError`.
+route. `UsedHit.hybridEnd_of_statements` gives `HybridEnd`. The proved leaves `cutDead`, `cutMonotone`,
+`headFuel`, `echoHop`, `reuseHop`, `copyHop` and `splitHop` and the hops `flagFirstHop`, `seedsHop`
+and `runsUnionHop` give the rest. The error of `UsedHitHop` is `setupHybridError`, and with it
+`part1Error` is `dkgCorrectnessError`.
 -/
 
 section
@@ -42,16 +47,20 @@ theorem dkgCorrectness_of_leaves (ceremony : CeremonyParts K circuits settings r
     (fun prims => readyHopL_of_ends prims K circuits settings runLimit (game.sound prims) (game.hidden prims)
       (provenanceTreeRun_of_parts prims K circuits settings (ceremony.treePhase prims)
         (ceremony.monitorProvenance prims)))
-    game.echo
+    (echoHop K circuits settings runLimit)
     (fun prims => UsedHit.usedHitHop_of_reductions K circuits settings runLimit prims (usedHit.topCost prims)
       (usedHit.topReal prims) (usedHit.topFresh prims) (usedHit.bottomCost prims) (usedHit.bottomReal prims)
-      (usedHit.bottomFresh prims) (usedHit.endPoints prims) (usedHit.finish prims))
-    game.reuse game.copy game.split
+      (usedHit.bottomFresh prims) (usedHit.endPoints prims)
+      (UsedHit.hybridEnd_of_statements prims K circuits settings runLimit (usedHit.eager prims)
+        (usedHit.keyProvenance prims) usedHit.keyParametric (usedHit.cellsCount prims)))
+    (reuseHop K circuits settings runLimit) (copyHop K circuits settings runLimit)
+    (splitHop K circuits settings runLimit)
     (fun prims => ceremonyBad_of_parts prims K circuits settings runLimit (ceremony.monitor prims)
       (ceremony.batch prims) (ceremony.abort prims) (ceremony.fresh prims) ceremony.names (ceremony.sync prims)
       (ceremony.interval prims) (ceremony.coupling prims) (ceremony.keysAgree prims) (ceremony.budget prims)
       ceremony.zero (ceremony.short prims) (ceremony.tupleInputs prims))
-    cut.top cut.fuel cut.head cut.state (fun prims => cutDead prims K circuits settings) cut.mono cut.rest
+    cut.top (headFuel circuits settings) cut.head cut.state (fun prims => cutDead prims K circuits settings)
+    (fun prims => cutMonotone prims K circuits settings) cut.rest
     batch runs prims compute D A q bounded
 
 end ThresholdLeanXmssSecurity.DkgCorrectnessProof

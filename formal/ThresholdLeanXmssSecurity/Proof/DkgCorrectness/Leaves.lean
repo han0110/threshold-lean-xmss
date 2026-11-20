@@ -1,6 +1,6 @@
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Ceremony.Statements
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Ready.Glue
-import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.Bottom
+import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.EndTable
 
 /-!
 # The leaves of the proof of `dkgCorrectness`
@@ -8,8 +8,8 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.Bottom
 Four structures name the statements that the landing `dkgCorrectness_of_leaves` takes. Each one is
 a list of hypotheses by group, with no instance. `CeremonyParts` holds the parts of the lemma of one
 ceremony and of the provenance of a run of a tree, `CutStatements` the statements of a run of a tree
-and of its cut, `UsedHitParts` the parts of the hop on the used keys, and `GameHops` the hops of the
-game.
+and of its cut, `UsedHitParts` the parts of the hop on the used keys, and `GameHops` the two bounds
+that give the readiness hop. A statement with a proof in the library is no field.
 -/
 
 section
@@ -61,19 +61,15 @@ structure CeremonyParts : Prop where
   /-- The monitor keeps the provenance of the hidden keys. -/
   monitorProvenance : ∀ prims, MonitorProvenance prims (C := C)
 
-/-- The statements of a run of a tree and of the cut of a bottom tree, other than `CeremonyBad` and
-`CutDead`. -/
+/-- The statements of a run of a tree and of the cut of a bottom tree, other than `CeremonyBad`,
+`CutDead`, `CutMonotone` and `HeadFuel`. -/
 structure CutStatements : Prop where
   /-- A wrong output of the top tree is at most as likely as wrong outputs of its ceremony. -/
   top : ∀ prims, TopCover prims K circuits settings
-  /-- The first ceremony of a bottom tree has its rounds within the fuel of a run. -/
-  fuel : HeadFuel circuits settings
   /-- Wrong first outputs at the cut are at most as likely as wrong outputs of the first ceremony. -/
   head : ∀ prims, HeadCover prims K circuits settings
   /-- The world of the cut is within the ledger and keeps the provenance, and the head results agree. -/
   state : ∀ prims, CutState prims K circuits settings
-  /-- A global event at the cut stays to the end of the run. -/
-  mono : ∀ prims, CutMonotone prims K circuits settings
   /-- A wrong output after the cut is at most as likely as wrong outputs of the second ceremony. -/
   rest : ∀ prims, RestCover prims K circuits settings
 
@@ -93,23 +89,18 @@ structure UsedHitParts : Prop where
   bottomFresh : ∀ prims, UsedHit.BottomLawFresh K circuits settings runLimit prims
   /-- The end points of the fixed and of the old numbering have one probability. -/
   endPoints : ∀ prims, UsedHit.EndPointsAgree K circuits settings runLimit prims
-  /-- The hybrid with fresh hidden keys in each slot has probability at most `freshKeyError`. -/
-  finish : ∀ prims, HybridEnd K circuits settings runLimit prims
+  /-- The hybrid with fresh keys in each slot has the law of the game with a uniform table. -/
+  eager : ∀ prims, UsedHit.EagerDraw K circuits settings runLimit prims
+  /-- Each key of the private table at the end of the game with a table is an entry of the table. -/
+  keyProvenance : ∀ prims, UsedHit.KeyProvenance K circuits settings runLimit prims
+  /-- The game with a renamed table is the game with the hidden keys of the honest calls renamed. -/
+  keyParametric : UsedHit.KeyParametric K circuits settings runLimit
+  /-- The public cache has at most `q` stream cells of the adversary and one for each honest known key. -/
+  cellsCount : ∀ prims, UsedHit.CellsCount K circuits settings runLimit prims
 
-/-- The hops of the game that the library does not prove, and the two bounds at the end of the game
-that give the readiness hop (`readyHopL_of_ends`). The two bounds are on `firstRunWith` at the test
-`RunReady`. -/
+/-- The two bounds at the end of the game that give the readiness hop (`readyHopL_of_ends`). They are
+on `firstRunWith` at the test `RunReady`. -/
 structure GameHops : Prop where
-  /-- At the world of the first bad record, two echo hashes collide with probability at most
-  `echoError`. -/
-  echo : ∀ prims, CollisionHopW prims K circuits settings runLimit EchoDomain (echoError runLimit C)
-  /-- At that world, two derive hashes collide with probability at most `reuseError`. -/
-  reuse : ∀ prims, CollisionHopW prims K circuits settings runLimit DeriveDomain (reuseError runLimit C)
-  /-- At that world, two copy hashes collide with probability at most `copyError`. -/
-  copy : ∀ prims, CollisionHopW prims K circuits settings runLimit CopyDomain (copyError settings runLimit C)
-  /-- At that world, two history or digest cells collide with probability at most `splitError`. -/
-  split : ∀ prims, CollisionHopW prims K circuits settings runLimit SplitHashDomain
-    (splitError settings runLimit C)
   /-- At the end of the game the coin keys and the expansions are within the ledger. -/
   sound : ∀ prims, Ready.SoundAtEnd prims K circuits settings runLimit
   /-- At the end of the game each hidden name has at most `gameSetups` keys. -/
