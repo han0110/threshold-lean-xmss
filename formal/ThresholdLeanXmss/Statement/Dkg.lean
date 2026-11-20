@@ -48,14 +48,18 @@ of `tsigGame` has cost at most `q + dkgOverhead C` on every path. `A` wins `dkgT
 The claim holds for each `prims` with circuits that compute `prims.Th`. `A` keeps its state from the
 setup into the signing phase, as the text after Definition 8 asks.
 
-The reduction is fixed before `prims` and reads only `prims.aes` from it. It can depend on the
-circuits, so it can evaluate the fixed `Th` through the circuits with no oracle cost. Its only limit
-is its query cost. It has no bound on its computation.
+The bundle states the claim for the named reduction `dkgReduction` (`DkgReduction.lean`). It reads
+only `prims.aes` from `prims`. A reviewer reads its code to see that it simulates the honest
+operators and makes no search for a secret. It forwards a signing request when the emulated
+operator holds what it needs. It runs `A.forge` when an honest operator holds a top tree, and it
+outputs `idleForgery` if not. With it, the claim says that the real setup gives an adversary no more
+than `tsigGame` gives that forger, up to the stated errors `dkgError` and `streamAdvantage`. The reduction has no bound on its computation,
+and its query cost is part of the claim.
 
 The claim adapts Definition 8 in these points.
 
-* The forger is explicit, as in the proofs of Lemmas 3 to 5 of the paper (Appendix C). Definition 8
-  has the same adversary on both sides.
+* The forger is explicit, `dkgReduction`, as in the proofs of Lemmas 3 to 5 of the paper
+  (Appendix C). Definition 8 has the same adversary on both sides.
 * The bound is a fixed function of `q`, the forger has a cost bound, and the bound has the PRF
   advantage of the streams. Definition 8 has a negligible term and no cost. No source.
 * The game is a threshold game. The honest operators sign with their own key shares, and the bottom

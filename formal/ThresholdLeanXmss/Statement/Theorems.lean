@@ -1,12 +1,14 @@
 import ThresholdLeanXmss.Statement.Dkg
+import ThresholdLeanXmss.Statement.DkgReduction
 
 /-!
 # The theorems
 
 Each field of `Theorems` is one end claim about the protocol of `Scheme.lean`. The five claims are
 stated with games. `Signing.lean` holds the signing game and the two signing claims. `DkgGame.lean`
-holds the games of the setup, `DkgErrors.lean` their error terms, and `Dkg.lean` the three claims of
-the setup with their adaptations of the papers.
+holds the games of the setup, `DkgErrors.lean` their error terms, `Dkg.lean` the three claims of
+the setup with their adaptations of the papers, and `DkgReduction.lean` the reduction of
+`dkgSecurity`.
 
 * Signing with a trusted dealer is strongly unforgeable with adaptive corruption
   (`stronglyUnforgeable`). The game is `tsigGame`, the game of PRAWNS, Figure 3, with the dealer
@@ -17,13 +19,18 @@ the setup with their adaptations of the papers.
   dealer. `dkgCorrectness` bounds inconsistent seeds and wrong trees against the adversary, and
   `dkgCompleteness` bounds the abort of an honest run and its distance to the dealer.
 
-`dkgSecurity` and a bound of `tsigGame` in `runWorld`, with the fixed `Th`, give a bound of
-`dkgTsigGame`. No field states that bound of `tsigGame`. `stronglyUnforgeable` bounds `tsigGame`
-in the signing world, where `Th` is a random oracle.
+The reduction of `dkgSecurity` is the named forger `dkgReduction`. It reads only `prims.aes` from
+`prims`. A reviewer reads its code to see that it simulates the honest operators and makes no search
+for a secret. It forwards a signing request when the emulated operator holds what it needs. It
+runs `A.forge` when an honest operator holds a top tree, and it outputs `idleForgery` if not. The
+claim then says that the real setup gives an adversary no more than `tsigGame` gives that forger,
+up to the stated errors `dkgError` and `streamAdvantage`.
 
-The reduction of `dkgSecurity` is fixed before `prims` and reads only `prims.aes` from it. It can
-depend on the circuits, so it can evaluate the fixed `Th` through the circuits with no oracle cost.
-Its only limit is its query cost.
+Let `δ` bound the probability that the forger `dkgReduction` of an adversary `A` with budget `q`
+wins `tsigGame` in `runWorld`, with the fixed `Th`. Then `δ + dkgError C q + streamAdvantage` bounds
+the probability that `A` wins `dkgTsigGame`. No field gives such a `δ`. No small `δ` holds for each
+query-bounded adversary with a fixed `Th`, because a search on `Th` costs no call.
+`stronglyUnforgeable` bounds `tsigGame` in the signing world, where `Th` is a random oracle.
 
 ## The world and the preconditions of each claim
 
@@ -109,11 +116,11 @@ structure Theorems (prims : Primitives) (K : Constants C E) (circuits : Circuits
   /-- An honest quorum fails with probability at most `2 (1 - p)^L`, for the two randomizer
   searches, and each signature that it outputs verifies (PRAWNS, Section 3.1, honest run). -/
   signingCorrectness : SigningCorrectnessStatement prims C
-  /-- The setup by DKG preserves the security of the signing (Gurkan and others, Definition 8). A
-  reduction turns each adversary of `dkgTsigGame` with a static coalition and budget `q` into a
-  forger of `tsigGame` with cost `q + dkgOverhead C`. The forger loses at most `dkgError C q` and the
-  PRF advantage of the streams. -/
-  dkgSecurity : ∃ reduction, DkgSecurity K circuits settings runLimit reduction
+  /-- The setup by DKG preserves the security of the signing (Gurkan and others, Definition 8). The
+  named forger `dkgReduction` turns each adversary of `dkgTsigGame` with a static coalition and
+  budget `q` into a forger of `tsigGame` with cost `q + dkgOverhead C`. The adversary wins at most
+  `dkgError C q` and the PRF advantage of the streams more often than that forger. -/
+  dkgSecurity : DkgSecurity K circuits settings runLimit (dkgReduction K circuits settings runLimit)
   /-- Against an adversary with a static coalition and budget `q`, two honest operators hold
   inconsistent seeds, or an honest operator ends a run of a tree with a wrong output, with
   probability at most `dkgCorrectnessError C q` and the PRF advantage of the streams. An abort is no

@@ -10,7 +10,7 @@ The structure `Theorems` in [Statement/Theorems.lean](./ThresholdLeanXmss/Statem
 | --- | --- | --- | --- |
 | `stronglyUnforgeable` | Signing with a trusted dealer is strongly unforgeable with adaptive corruption. | PRAWNS, Definition 3.2 | An earlier proof derived it. |
 | `signingCorrectness` | An honest quorum signs, except for a failed search. | PRAWNS, Section 3.1 | An earlier proof derived it. |
-| `dkgSecurity` | A forger against the signing game with the real DKG gives a forger against the signing game with the dealer. | Gurkan and others, Definition 8 | A target |
+| `dkgSecurity` | An adversary against the signing game with the real DKG wins at most as often as the named forger `dkgReduction` wins the signing game with the dealer, plus a fixed error. | Gurkan and others, Definition 8 | A target |
 | `dkgCorrectness` | Against an adversary, honest operators hold consistent seeds, and each tree output is right or absent. | Gurkan and others, Definition 6 | A target |
 | `dkgCompleteness` | With no corrupt operator, the DKG gives outputs that are near the outputs of the dealer. | None | An earlier proof derived it. |
 
@@ -35,13 +35,13 @@ flowchart TB
   end
 
   subgraph DKG["Setup by DKG on the real network, static coalition"]
-    DSEC["dkgSecurity<br/>dkgTsigGame to tsigGame,<br/>both in world with the fixed Th"]:::target
+    DSEC["dkgSecurity<br/>dkgTsigGame to tsigGame for dkgReduction,<br/>both in world with the fixed Th"]:::target
     DCOR["dkgCorrectness<br/>dkgTreeGame"]:::target
     DCOMP["dkgCompleteness<br/>honestDkg near dealerDkg"]:::derived
   end
 
   E2E["Bound of dkgTsigGame<br/>the end-to-end remark of statement.tex"]:::remark
-  DELTA["A bound of tsigGame in world<br/>for the fixed Th"]:::assumed
+  DELTA["A bound of tsigGame in world for dkgReduction,<br/>with the fixed Th"]:::assumed
   HEUR["Random-oracle heuristic for Th<br/>used one time"]:::assumed
   RULES["Deployment contract<br/>the 4 rules of statement.tex"]:::assumed
 
@@ -58,7 +58,7 @@ flowchart TB
 
 | Box | Reason |
 | --- | --- |
-| Bound of `dkgTsigGame` | It follows from `dkgSecurity` and a bound of `tsigGame` in `world` for the fixed `Th`, at the cost `q + dkgOverhead`. No field states that bound. To take the bound of `stronglyUnforgeable` for it is the random-oracle heuristic for `Th`. |
+| Bound of `dkgTsigGame` | A bound δ on the success of `dkgReduction` in `tsigGame` in `world` with the fixed `Th` gives δ plus `dkgError` plus `streamAdvantage` for `dkgTsigGame`. No field gives such a δ, and no small δ holds for each query-bounded adversary with a fixed `Th`. To take the bound of `stronglyUnforgeable` for δ, for an adversary that makes no search on `Th`, is the random-oracle heuristic for `Th`. |
 
 ## Files
 
@@ -69,6 +69,7 @@ flowchart TB
 | [ThresholdLeanXmss/Statement/DkgGame.lean](./ThresholdLeanXmss/Statement/DkgGame.lean) | `dkgTsigGame`, `dkgTreeGame`, `honestDkg` and `dealerDkg` |
 | [ThresholdLeanXmss/Statement/Dkg.lean](./ThresholdLeanXmss/Statement/Dkg.lean) | `CircuitsCompute` and the three claims of the DKG, with their adaptations of the papers |
 | [ThresholdLeanXmss/Statement/DkgErrors.lean](./ThresholdLeanXmss/Statement/DkgErrors.lean) | The error and cost terms of the three claims of the DKG |
+| [ThresholdLeanXmss/Statement/DkgReduction.lean](./ThresholdLeanXmss/Statement/DkgReduction.lean) | `dkgReduction`, the named forger of `dkgSecurity` |
 | [ThresholdLeanXmss/Statement/RandomOracle.lean](./ThresholdLeanXmss/Statement/RandomOracle.lean) | `world`, `signingWorld` and the count of the calls |
 | [ThresholdLeanXmss/Statement/Execution.lean](./ThresholdLeanXmss/Statement/Execution.lean) | The execution of a protocol on the network |
 | [ThresholdLeanXmss/Scheme.lean](./ThresholdLeanXmss/Scheme.lean) | The protocol, the oracles and the dealer `dealerKeyGen` |

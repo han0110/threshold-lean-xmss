@@ -68,7 +68,8 @@ The model of `dkgSecurity` is Definition 8 of [GJM+21], security preservation. T
 
 | B.3 | Gurkan and others | Here | Source | Claim |
 | --- | --- | --- | --- | --- |
-| G1 | Definition 8 has the same adversary on both sides. | The forger `reduction prims.aes D A` of `tsigGame` is explicit. | The proofs of Lemmas 3 to 5 (Appendix C) build such a forger | `dkgSecurity` |
+| G1 | Definition 8 has the same adversary on both sides. | The forger of `tsigGame` is the named `dkgReduction`, at `prims.aes`, `D` and `A`. | The proofs of Lemmas 3 to 5 (Appendix C) build an explicit forger | `dkgSecurity` |
+| G16 | Definition 8 quantifies over adversaries and states no forger. | The claim names its reduction, because the hash `Th` is a fixed function and the adversary has no bound on its computation. A claim for some forger is empty, because a search on `Th` costs no call. | No source | `dkgSecurity` |
 | G2 | Definition 8 has a negligible term. The lemmas state no cost of the forger. | The bound is the fixed expression `dkgError C q` plus `streamAdvantage`. The forger has the cost bound `q + dkgOverhead C` on every path. Both expressions are targets. | No source | `dkgSecurity` |
 | G3 | Each game has one key pair. The threshold use enters only by the premise $\mathsf{Sign}_{sk}=\mathsf{SignShare}_{sk}$ of Lemma 4. | A threshold game. Honest operators sign with their own key shares, and the bottom trees run during the signing phase. | No source | `dkgSecurity` |
 | G4 | The corruption is static. No game has a corruption oracle. | `dkgTsigGame` has a static coalition, and `tsigGame` has adaptive corruption. | Static, the paper. The mix, no source. | `dkgSecurity` |

@@ -12,13 +12,17 @@ The inner counter of `signingWorld` counts the calls on both copies. The claim `
 
 The claims of the setup hold for each `prims` whose `Th` the circuits compute (`CircuitsCompute`). The MPC evaluates $\mathrm{Th}$ by a circuit, and a random oracle has no circuit. So the claims of the setup need the fixed $\mathrm{Th}$.
 
-The reduction of `dkgSecurity` is fixed before `prims` and reads only `prims.aes` from it. It can depend on the circuits, so it can evaluate the fixed $\mathrm{Th}$ through the circuits with no oracle cost. Its only limit is its query cost, and it has no bound on its computation. Its forger is a valid `TsigAdversary`. `stronglyUnforgeable` bounds the run of that forger in `signingWorld`, and no claim bounds its run in `world` with the fixed $\mathrm{Th}$. So no theorem joins `dkgSecurity` and `stronglyUnforgeable`.
+`dkgSecurity` names its reduction, the forger `dkgReduction` of `Statement/DkgReduction.lean`. It reads only `prims.aes` from `prims`. It runs the adversary and plays the honest operators, with the coalition keys from `corrupt` and an own table for the domains of $H$ that only the setup uses. Its openings are shifted, and outside the bad events of consistency and soundness they give the outputs of the dealer. It sends the tree requests to the dealer. It forwards a signing request when the emulated operator holds keys, a top tree and an output of the bottom tree. It runs the forger of the adversary when an honest operator holds a top tree and outputs `idleForgery` if not.
 
-`dkgSecurity` and a bound $\delta$ of `tsigGame` in `world` for the fixed $\mathrm{Th}$, at the cost $q + \mathsf{dkgOverhead}$, give a bound of `dkgTsigGame`.
+The claim names the forger because $\mathrm{Th}$ is fixed and an adversary has no bound on its computation. A search on $\mathrm{Th}$ costs no call, so a claim that some forger exists is empty.
 
-$$\Pr[A \text{ wins } \mathsf{dkgTsigGame}] \le \delta(q + \mathsf{dkgOverhead}) + \mathsf{dkgError}(q) + \mathsf{streamAdvantage}$$
+With the named forger, the claim says that the real setup gives an adversary no more than `tsigGame` gives `dkgReduction`, up to the stated errors `dkgError` and `streamAdvantage`. It is a relative claim and no bound on a forgery. [statement.tex](../statement.tex), Section 3.2, lists what a reader checks in its code and the four points where it differs from the game. Each of those points is an obligation of a proof.
 
-No field of `Theorems` states $\delta$. To take the bound of `stronglyUnforgeable` for $\delta$ is the random-oracle heuristic for $\mathrm{Th}$, used one time.
+Let $\delta$ bound the probability that `dkgReduction` of an adversary $A$ wins `tsigGame` in `world` with the fixed $\mathrm{Th}$. Then `dkgSecurity` gives a bound of `dkgTsigGame`.
+
+$$\Pr[A \text{ wins } \mathsf{dkgTsigGame}] \le \delta + \mathsf{dkgError}(q) + \mathsf{streamAdvantage}$$
+
+No field of `Theorems` gives such a $\delta$. No small $\delta$ holds for each query-bounded adversary with a fixed $\mathrm{Th}$, because a search on $\mathrm{Th}$ costs no call. `stronglyUnforgeable` bounds `tsigGame` in `signingWorld`. To take its bound for $\delta$, for an adversary that makes no search on $\mathrm{Th}$, is the random-oracle heuristic for $\mathrm{Th}$. So no theorem joins `dkgSecurity` and `stronglyUnforgeable`.
 
 ## 2. The game with the real setup
 

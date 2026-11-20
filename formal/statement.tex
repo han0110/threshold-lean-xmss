@@ -46,8 +46,9 @@ structure \lean{Theorems} has five fields, one for each claim, and
 \lean{ThresholdLeanXmssSecurityStatement} quantifies it over all parameters. Read
 \texttt{Theorems.lean} first. Its module doc has a table of the world, the preconditions and the
 trivial cases of each claim. Then read \texttt{Signing.lean} (the signing game and its two claims),
-\texttt{DkgGame.lean} (the games of the setup), \texttt{Dkg.lean} (the three claims of the setup)
-and \texttt{DkgErrors.lean} (their error and cost terms). \texttt{RandomOracle.lean} defines the two
+\texttt{DkgGame.lean} (the games of the setup), \texttt{Dkg.lean} (the three claims of the setup),
+\texttt{DkgErrors.lean} (their error and cost terms) and \texttt{DkgReduction.lean} (the forger
+\lean{dkgReduction} of \lean{dkgSecurity}). \texttt{RandomOracle.lean} defines the two
 worlds, and \texttt{Execution.lean} the execution of a protocol on the network. \texttt{Scheme.lean} and
 \texttt{Ideal.lean} define the protocol, the dealer and the signing game, and \texttt{Reductions.lean}
 defines the fixed reduction of the PRF term. The folder \lean{formal/doc/} holds the detail. The file
@@ -118,7 +119,7 @@ these \lean{prims}. Each claim of the setup holds for every \lean{prims} with ci
 most $t-1$ operators, and the empty coalition is one of them. The check field $E$ has characteristic two and exactly $2^{128}$
 elements. No claim states that the constants of the implementation are a value of
 \lean{Constants}. Each bound is a fixed expression where the sources write ``negligible''. The prover
-chooses no error, no adversary class and no advantage.
+chooses no error, no adversary class, no advantage and no reduction.
 
 \section{The game with the real setup}\label{sec:game}
 
@@ -256,16 +257,54 @@ $\mathsf{runLimit}=0$ \\
 \bottomrule
 \end{xltabular}}
 
-\paragraph{Security preservation} (\lean{DkgSecurity}). The field states that a reduction exists for
-which \lean{DkgSecurity} holds. The reduction is fixed before \lean{prims} and reads only
-\lean{prims.aes} from it. It can depend on the circuits, so it can evaluate the fixed $\Th$ through the
-circuits with no oracle cost. Its only limit is its query cost, and it has no bound on its
-computation. It gives a forger $B_A$ of \lean{tsigGame} with cost at most $q+\mathsf{dkgOverhead}$ on
+\paragraph{Security preservation} (\lean{DkgSecurity}). The field is \lean{DkgSecurity} for the
+named reduction \lean{dkgReduction} of \texttt{DkgReduction.lean}. For each adversary $A$, the forger
+$B_A$, which is \lean{dkgReduction} at \lean{prims.aes}, $D$ and $A$, has cost at most $q+\mathsf{dkgOverhead}$ on
 every path, and
 \[
  \Pr[A\text{ wins }\mathsf{dkgTsigGame}]\le\Pr[B_A\text{ wins }\mathsf{tsigGame}]
  +\mathsf{dkgError}(q)+\mathsf{adv}(\mathsf{dkgTsigGame}).
 \]
+The claim names its reduction because $\Th$ is a fixed function and an adversary has no bound on its
+computation. A search on $\Th$ costs no call. So a claim that some forger exists is empty, because a
+forger that searches wins the dealer game with no help from $A$.
+
+With the named forger, the claim says that the real setup gives an adversary no more than
+\lean{tsigGame} gives \lean{dkgReduction}, up to the stated errors $\mathsf{dkgError}$ and
+$\mathsf{adv}$. It is a relative claim, and it is no bound on a forgery.
+
+\paragraph{The forger.} The forger is \lean{dkgReduction}. It runs $A$ and plays the honest
+operators toward it. It asks \lean{corrupt} for the operators of $D$ and takes their keys. It
+emulates the seed generation with fresh parts of the honest operators. It answers each call in a
+domain of $H$ that only the setup uses from its own table.
+
+In each run of a tree, the opening of each batch shifts the first term that $D$ lacks. Outside the
+bad events of consistency and soundness, the shifted opening gives the outputs of the dealer. The
+forger asks \lean{tree}~$b$ for the outputs of bottom tree $b$. It forwards a signing request of $A$
+to the dealer when the emulated operator holds keys, a top tree and an output of that bottom tree.
+When an honest operator holds a top tree, it runs \lean{forge} of $A$ and outputs its forgery with no
+change. Otherwise it outputs \lean{idleForgery}.
+
+A reader of its code checks four points.
+\begin{itemize}\itemsep0pt
+\item It is a fixed definition with no parameter for a step.
+\item It makes no search for a secret.
+\item It reads no seed of the dealer that $D$ lacks.
+\item Its table answers only the setup domains.
+\end{itemize}
+The forger differs from the game in four points. Each point is an obligation of a proof, and each
+needs a coupling or a bad event with a bound. No error term is named for them yet.
+\begin{itemize}\itemsep0pt
+\item It gives \lean{forge} the public key and the top tree of the dealer, not those of the first
+honest operator that holds a top tree.
+\item When the randomizer search of the dealer fails, \lean{tree}~$b$ gives no tree and the forger
+runs no tree run, but the state of the dealer game changed. The bound must cover the first
+divergence that the adversary can see.
+\item It asks \lean{tree}~$b$ also when no run is allowed, so the dealer builds that bottom tree
+earlier than the game does. The planned way is a coupling by lazy sampling.
+\item A signing request to an emulated operator with an output of the bottom tree goes to the
+dealer, also when the emulated output of that operator is wrong.
+\end{itemize}
 Both sides run in \lean{world}, with the same fixed $\Th$. The model is Definition~8 of
 \cite{GJM+21}. The explicit forger with an additive term is the form of the proofs of its Lemmas 3
 to 5 (Appendix C of the full version). The static coalition is as in the paper. The oracle is a random
@@ -273,6 +312,8 @@ oracle \cite{BR93}. The network has private links and no broadcast channel, as i
 The adaptations in the list below have no source.
 \begin{itemize}\itemsep0pt
 \item The bound is a fixed expression, and the forger has a cost bound.
+\item The claim names its reduction, because $\Th$ is a fixed function and the adversary has no bound
+on its computation.
 \item The adversaries are bounded only by their queries, with no bound on their computation. The paper
 and \cite{BR93} take polynomial-time adversaries.
 \item The game is a threshold game with key shares, and the bottom trees run during the signing phase.
@@ -286,8 +327,8 @@ them.
 \end{itemize}
 $\mathsf{dkgError}$ pays the seed generation, the PRSS setups, the checks, the copy hashes, the honest
 aborts and a failed randomizer search, for $\mathsf{runLimit}$ runs of each tree. $\mathsf{dkgOverhead}$
-counts the calls of the reduction in the domains that the setup and the signing share. Both are
-targets, and no reduction exists as code.
+counts the calls of \lean{dkgReduction} in the domains that the setup and the signing share. Both
+are targets, and no proof checks them yet.
 
 \paragraph{Correctness with abort} (\lean{DkgCorrectness}). Against $A$, two honest operators hold
 inconsistent seeds, or an honest operator ends a run of a tree with an output that is not the output
@@ -325,18 +366,16 @@ is the sum of the errors of the single runs, which has no explicit account of th
 runs share.
 
 \subsection{The chain to the full system}\label{sec:chain}
-\lean{dkgSecurity} and a bound $\delta$ of \lean{tsigGame} in \lean{world}, for the fixed $\Th$ and
-for forgers of cost $q'$, give
+Let $\delta$ bound the probability that \lean{dkgReduction} of $A$ wins \lean{tsigGame} in
+\lean{world}, with the fixed $\Th$. Then \lean{dkgSecurity} gives
 \[
- \Pr[A\text{ wins }\mathsf{dkgTsigGame}]\le\delta(q+\mathsf{dkgOverhead})+\mathsf{dkgError}(q)
- +\mathsf{adv}(\mathsf{dkgTsigGame}).
+ \Pr[A\text{ wins }\mathsf{dkgTsigGame}]\le\delta+\mathsf{dkgError}(q)+\mathsf{adv}(\mathsf{dkgTsigGame}).
 \]
-No field states $\delta$, and this step has no Lean text. \lean{stronglyUnforgeable} bounds
-\lean{tsigGame} in \lean{signingWorld}, where $\Th$ is part of the random oracle. To take its bound
-for $\delta$ is the random-oracle heuristic for Keccak, used one time, as in leanXMSS. It is not a
-theorem. The forger of the reduction is a valid \lean{TsigAdversary}. It can depend on the circuits,
-and the circuits depend on $\Th$. \lean{stronglyUnforgeable} bounds its run in \lean{signingWorld},
-and no claim bounds its run in \lean{world} with the fixed $\Th$. So no proof joins
+No field gives such a $\delta$, and this step has no Lean text. No small $\delta$ holds for each
+query-bounded adversary with a fixed $\Th$, because a search on $\Th$ costs no call.
+\lean{stronglyUnforgeable} bounds \lean{tsigGame} in \lean{signingWorld}, where $\Th$ is part of the
+random oracle. To take its bound for $\delta$, for an adversary that makes no search on $\Th$, is the
+random-oracle heuristic for Keccak, as in leanXMSS. It is not a theorem. So no proof joins
 \lean{dkgSecurity} and \lean{stronglyUnforgeable}.
 
 \section{The deployment contract}\label{sec:contract}
@@ -402,7 +441,7 @@ with strong unforgeability as in leanXMSS & Derived by an earlier proof \\
 \lean{signingCorrectness} & \lean{SigningCorrectnessStatement} & PRAWNS, Section 3.1, honest run &
 Derived by an earlier proof \\
 \rowrule
-\lean{dkgSecurity} & \lean{DkgSecurity}, with an existential reduction & \cite{GJM+21}, Definition 8,
+\lean{dkgSecurity} & \lean{DkgSecurity} for \lean{dkgReduction} & \cite{GJM+21}, Definition 8,
 and the form of Lemmas 3 to 5 & Target \\
 \rowrule
 \lean{dkgCorrectness} & \lean{DkgCorrectness} & \cite{GJM+21}, Definition 6, first clause & Target \\
@@ -498,9 +537,15 @@ $s_{\mathsf T}=1$ and $r_{\mathsf T}=0$ for the top tree, and $s_{\mathsf T}=2$ 
 \end{align*}}
 Here $q'=q+n(k_T+n)$. $\mathsf{treeHybridError}(q)$ is $(q+B_1h)^2/2^{256}$ for the top tree and
 $(q+B_1h)^2/2^{256}+(q+Bh)^2/2^{256}$ for a bottom tree, where $B_1$ counts the batches of the first
-ceremony. $\mathsf{dkgOverhead}$ is $\mathsf{runLimit}$ times the sum of \lean{treeSigningCalls}. For the top
-tree, it is $k_T$ times the PRF points of its jobs. For a bottom tree, it is $k_T$ times the sum of the PRF points
-of its jobs and \lean{chainCount}, plus $2^{\mathsf{layerHeight}+1}+\mathsf{randomizerAttemptLimit}$.
+ceremony. $\mathsf{dkgOverhead}$ is $\mathsf{runLimit}$ times the sum of \lean{treeReductionCalls} over the top
+tree and each bottom tree. With $P_{\mathsf T}=\mathsf{treePoints}(\mathsf T)$, $\ell_h=\mathsf{layerHeight}$,
+$c=\mathsf{chainCount}$ and $L=\mathsf{randomizerAttemptLimit}$,
+\[
+ \mathsf{treeReductionCalls}(\mathrm{top})=n\bigl(2k_TP_{\mathrm{top}}+2^{\ell_h+1}-1\bigr),\quad
+ \mathsf{treeReductionCalls}(b)=n\bigl(2k_TP_b+2^{\ell_h+2}+L+3c\bigr).
+\]
+$P_{\mathrm{top}}$ is the number of PRF points of the jobs of the top tree, and $P_b$ is that number
+for the jobs of bottom tree $b$ plus $c$.
 
 \paragraph{Correctness.} Let $S=\mathsf{runLimit}(1+2\cdot2^{\mathsf{layerHeight}})$ be the PRSS setups of a
 game, $G=\mathsf{runLimit}\sum_{\mathsf T}B(\mathsf T)$ its batches, $K=Gn(R^*+2)$ its honest coin keys, and
@@ -555,6 +600,8 @@ $(B(R^*+2))^2/2^{257}$ & \lean{coinKeyCollision} &
 $\ell$ & \lean{C.terms.length} \\
 $p$, $L$ & \lean{codewordProbability}, \lean{randomizerAttemptLimit} (leanVM at the pinned revision, \lean{formal/Statement/LeanXmss.lean}) &
 $\mathsf{adv}$ & \lean{streamAdvantage} \\
+$P_{\mathsf T}$, $c$, $\ell_h$ & \lean{treePoints}, \lean{chainCount}, \lean{layerHeight} &
+$B_A$ & \lean{dkgReduction} in \texttt{Statement/DkgReduction.lean} \\
 \bottomrule
 \end{xltabular}}
 
