@@ -52,7 +52,7 @@ trivial cases of each claim. Then read \texttt{Signing.lean} (the signing game a
 worlds, and \texttt{Execution.lean} the execution of a protocol on the network. \texttt{Scheme.lean} and
 \texttt{Ideal.lean} define the protocol, the dealer and the signing game, and \texttt{Reductions.lean}
 defines the fixed reduction of the PRF term. The folder \lean{formal/doc/} holds the detail. The file
-\lean{game-model.md} describes the model, and \lean{differences.md} lists all differences to the
+\lean{model.md} describes the model, and \lean{differences.md} lists all differences to the
 sources. No claim is about Section 2.2 of the note, the setup with $n=3f+1$.
 
 \section{The setting}\label{sec:setting}
@@ -113,9 +113,10 @@ verification do not count. A budget counts calls and not time. An adversary has 
 computation. \cite{BR93} has polynomial-time adversaries, so this point has no source.
 
 \paragraph{Quantification.} \lean{Theorems} takes \lean{prims}, the constants \lean{K}, the circuit
-family, the settings (batch size and reshare mode) and \lean{runLimit}. The signing claims hold for
-these \lean{prims}. Each claim of the setup holds for every \lean{prims} with circuits that compute
-\lean{prims.Th}. Section~\ref{sec:claims} gives the preconditions of each claim. A coalition has at
+family, the settings (batch size and reshare mode) and \lean{runLimit}. All five claims hold for
+these \lean{prims}. Each field of the setup has the premise \texttt{CircuitsCompute circuits prims.Th}.
+\lean{ThresholdLeanXmssSecurityStatement} quantifies over each \lean{prims}, so the claims of the
+setup hold for each $\Th$ that the circuits compute. Section~\ref{sec:claims} gives the preconditions of each claim. A coalition has at
 most $t-1$ operators, and the empty coalition is one of them. The check field $E$ has characteristic two and exactly $2^{128}$
 elements. No claim states that the constants of the implementation are a value of
 \lean{Constants}. Each bound is a fixed expression where the sources write ``negligible''. The prover
@@ -244,21 +245,22 @@ Claim & World & Preconditions & Trivial cases \\
 \rowrule
 \lean{signingCorrectness} & \lean{world} & None, for each quorum, key and message & None \\
 \rowrule
-\lean{dkgSecurity} & \lean{world} & $\mathsf{batchSize}>0$, \lean{CircuitsCompute}, budget $q$ of $A$ &
+\lean{dkgSecurity} & \lean{world} & Premise \lean{CircuitsCompute} of the field, $\mathsf{batchSize}>0$, budget $q$ of $A$ &
 Vacuous at $\mathsf{batchSize}=0$. At $\mathsf{runLimit}=0$ no top tree exists, so $A$ never wins. \\
 \rowrule
-\lean{dkgCorrectness} & \lean{world} & $\mathsf{batchSize}>0$, $\mathsf{runLimit}>0$,
-\lean{CircuitsCompute}, budget $q$ of $A$ & Vacuous at $\mathsf{batchSize}=0$ and at
+\lean{dkgCorrectness} & \lean{world} & Premise \lean{CircuitsCompute} of the field,
+$\mathsf{batchSize}>0$, $\mathsf{runLimit}>0$, budget $q$ of $A$ & Vacuous at $\mathsf{batchSize}=0$ and at
 $\mathsf{runLimit}=0$ \\
 \rowrule
-\lean{dkgCompleteness} & \lean{world}, no corrupt operator & $\mathsf{batchSize}>0$,
-$\mathsf{runLimit}>0$, \lean{CircuitsCompute} & Vacuous at $\mathsf{batchSize}=0$ and at
+\lean{dkgCompleteness} & \lean{world}, no corrupt operator & Premise \lean{CircuitsCompute} of the
+field, $\mathsf{batchSize}>0$, $\mathsf{runLimit}>0$ & Vacuous at $\mathsf{batchSize}=0$ and at
 $\mathsf{runLimit}=0$ \\
 \bottomrule
 \end{xltabular}}
 
-\paragraph{Security preservation} (\lean{DkgSecurity}). The field is \lean{DkgSecurity} for the
-named reduction \lean{dkgReduction} of \texttt{DkgReduction.lean}. For each adversary $A$, the forger
+\paragraph{Security preservation} (\lean{DkgSecurity}). The field takes the premise
+\texttt{CircuitsCompute circuits prims.Th} and gives \lean{DkgSecurity} at \lean{prims} for the named
+reduction \lean{dkgReduction} of \texttt{DkgReduction.lean}. For each adversary $A$, the forger
 $B_A$, which is \lean{dkgReduction} at \lean{prims.aes}, $D$ and $A$, has cost at most $q+\mathsf{dkgOverhead}$ on
 every path, and
 \[
@@ -280,7 +282,9 @@ domain of $H$ that only the setup uses from its own table.
 
 In each run of a tree, the opening of each batch shifts the first term that $D$ lacks. Outside the
 bad events of consistency and soundness, the shifted opening gives the outputs of the dealer. The
-forger asks \lean{tree}~$b$ for the outputs of bottom tree $b$. It forwards a signing request of $A$
+forger asks \lean{tree}~$b$ for the outputs of bottom tree $b$. Its emulated operators make no
+randomizer search. They take the randomizer of the top signature from the answer of \lean{tree}~$b$
+and get the codeword from one hash. It forwards a signing request of $A$
 to the dealer when the emulated operator holds keys, a top tree and an output of that bottom tree.
 When an honest operator holds a top tree, it runs \lean{forge} of $A$ and outputs its forgery with no
 change. Otherwise it outputs \lean{idleForgery}.
@@ -292,7 +296,7 @@ A reader of its code checks four points.
 \item It reads no seed of the dealer that $D$ lacks.
 \item Its table answers only the setup domains.
 \end{itemize}
-The forger differs from the game in four points. Each point is an obligation of a proof, and each
+The forger differs from the game in five points. Each point is an obligation of a proof, and each
 needs a coupling or a bad event with a bound. No error term is named for them yet.
 \begin{itemize}\itemsep0pt
 \item It gives \lean{forge} the public key and the top tree of the dealer, not those of the first
@@ -302,6 +306,10 @@ runs no tree run, but the state of the dealer game changed. The bound must cover
 divergence that the adversary can see.
 \item It asks \lean{tree}~$b$ also when no run is allowed, so the dealer builds that bottom tree
 earlier than the game does. The planned way is a coupling by lazy sampling.
+\item An emulated operator of a bottom run makes no randomizer search. With the same public
+parameter and the same hash oracle, when the outputs of the first ceremony are those of the dealer,
+the result of the dealer is the result that the search of the game gives. The outputs agree outside
+the bad events of consistency and soundness.
 \item A signing request to an emulated operator with an output of the bottom tree goes to the
 dealer, also when the emulated output of that operator is wrong.
 \end{itemize}
@@ -377,6 +385,15 @@ query-bounded adversary with a fixed $\Th$, because a search on $\Th$ costs no c
 random oracle. To take its bound for $\delta$, for an adversary that makes no search on $\Th$, is the
 random-oracle heuristic for Keccak, as in leanXMSS. It is not a theorem. So no proof joins
 \lean{dkgSecurity} and \lean{stronglyUnforgeable}.
+
+\paragraph{An illustration, not a claim.} Take $t=3$, $n=5$ and $\mathsf{runLimit}=1$. Then
+$\mathsf{dkgOverhead}=75\,248\,651\,468\,795\approx2^{46.10}$. The first term of the signing bound,
+$(q+2^{15}+384)/2^{127}$, is linear in the cost. At the cost $q+\mathsf{dkgOverhead}$ of the forger it
+is about $2^{-80.9}$ for an adversary with few calls. The overhead and the cost of the adversary
+are equal near $2^{46.1}$ calls. For a much larger $q$ the overhead has no weight, for example the
+term is $2^{-63.0}$ at $2^{64}$ calls. The floor near $2^{-81}$ is a
+property of the bound, because the signing claim counts each hash call of the forger, also its
+honest PRF calls. It is no attack.
 
 \section{The deployment contract}\label{sec:contract}
 The games assume these four rules, and \lean{dkgTsigGame} has them as code. They are requirements on
@@ -539,10 +556,10 @@ Here $q'=q+n(k_T+n)$. $\mathsf{treeHybridError}(q)$ is $(q+B_1h)^2/2^{256}$ for 
 $(q+B_1h)^2/2^{256}+(q+Bh)^2/2^{256}$ for a bottom tree, where $B_1$ counts the batches of the first
 ceremony. $\mathsf{dkgOverhead}$ is $\mathsf{runLimit}$ times the sum of \lean{treeReductionCalls} over the top
 tree and each bottom tree. With $P_{\mathsf T}=\mathsf{treePoints}(\mathsf T)$, $\ell_h=\mathsf{layerHeight}$,
-$c=\mathsf{chainCount}$ and $L=\mathsf{randomizerAttemptLimit}$,
+and $c=\mathsf{chainCount}$,
 \[
  \mathsf{treeReductionCalls}(\mathrm{top})=n\bigl(2k_TP_{\mathrm{top}}+2^{\ell_h+1}-1\bigr),\quad
- \mathsf{treeReductionCalls}(b)=n\bigl(2k_TP_b+2^{\ell_h+2}+L+3c\bigr).
+ \mathsf{treeReductionCalls}(b)=n\bigl(2k_TP_b+2^{\ell_h+2}+3c\bigr).
 \]
 $P_{\mathrm{top}}$ is the number of PRF points of the jobs of the top tree, and $P_b$ is that number
 for the jobs of bottom tree $b$ plus $c$.

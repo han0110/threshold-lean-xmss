@@ -43,11 +43,12 @@ and every other input of `H` with a lazy random oracle. The signing world answer
 | --- | --- | --- | --- |
 | `stronglyUnforgeable` | signing world (`signingAccepts`) | own cost of the forger at most `q` | none |
 | `signingCorrectness` | `runWorld` | none, for each quorum, key and message | none |
-| `dkgSecurity` | `runWorld` (`accepts`) | `0 < batchSize`, `CircuitsCompute circuits prims.Th`, budget `q` of the adversary | vacuous at `batchSize = 0`, and `A` never wins at `runLimit = 0`, because no top tree exists |
-| `dkgCorrectness` | `runWorld` (`accepts`) | `0 < batchSize`, `0 < runLimit`, `CircuitsCompute circuits prims.Th`, budget `q` of the adversary | vacuous at `batchSize = 0` and at `runLimit = 0` |
-| `dkgCompleteness` | `runWorld`, no corrupt operator | `0 < batchSize`, `0 < runLimit`, `CircuitsCompute circuits prims.Th` | vacuous at `batchSize = 0` and at `runLimit = 0` |
+| `dkgSecurity` | `runWorld` (`accepts`) | `CircuitsCompute circuits prims.Th` (premise of the field), `0 < batchSize`, budget `q` of the adversary | vacuous at `batchSize = 0`, and `A` never wins at `runLimit = 0`, because no top tree exists |
+| `dkgCorrectness` | `runWorld` (`accepts`) | `CircuitsCompute circuits prims.Th` (premise of the field), `0 < batchSize`, `0 < runLimit`, budget `q` of the adversary | vacuous at `batchSize = 0` and at `runLimit = 0` |
+| `dkgCompleteness` | `runWorld`, no corrupt operator | `CircuitsCompute circuits prims.Th` (premise of the field), `0 < batchSize`, `0 < runLimit` | vacuous at `batchSize = 0` and at `runLimit = 0` |
 
-For circuits that compute no `Th`, the three claims of the setup say nothing. A bound of `1` or more
+The three fields of the setup take `CircuitsCompute circuits prims.Th` as a premise, for the `prims`
+of the bundle. For `prims` whose `Th` the circuits do not compute, they say nothing. A bound of `1` or more
 says nothing for the inequality on the probability. The cost bound of the reduction and the validity
 of an output signature stay meaningful.
 
@@ -103,9 +104,9 @@ namespace ThresholdLeanXmss
 
 variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
 
-/-- The end claims, for one committee, one check field with its constants, one `Th` with AES-128
-for the signing claims, one circuit family, one setting and one run limit. The claims of the setup
-hold for each `Th` that the circuits compute. -/
+/-- The end claims, for one committee, one check field with its constants, one `Th` with AES-128,
+one circuit family, one setting and one run limit. Each claim of the setup has the premise that the
+circuits compute `prims.Th`. -/
 structure Theorems (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings)
     (runLimit : ℕ) : Prop where
   /-- Signing with the trusted dealer is strongly unforgeable with adaptive corruption, in the
@@ -120,19 +121,21 @@ structure Theorems (prims : Primitives) (K : Constants C E) (circuits : Circuits
   named forger `dkgReduction` turns each adversary of `dkgTsigGame` with a static coalition and
   budget `q` into a forger of `tsigGame` with cost `q + dkgOverhead C`. The adversary wins at most
   `dkgError C q` and the PRF advantage of the streams more often than that forger. -/
-  dkgSecurity : DkgSecurity K circuits settings runLimit (dkgReduction K circuits settings runLimit)
+  dkgSecurity : CircuitsCompute circuits prims.Th →
+    DkgSecurity prims K circuits settings runLimit (dkgReduction K circuits settings runLimit)
   /-- Against an adversary with a static coalition and budget `q`, two honest operators hold
   inconsistent seeds, or an honest operator ends a run of a tree with a wrong output, with
   probability at most `dkgCorrectnessError C q` and the PRF advantage of the streams. An abort is no
   win (Gurkan and others, Definition 6, agreement clause, adapted). -/
-  dkgCorrectness : DkgCorrectness K circuits settings runLimit
+  dkgCorrectness : CircuitsCompute circuits prims.Th → DkgCorrectness prims K circuits settings runLimit
   /-- With no corrupt operator, each operator ends with its keys, the top tree and bottom tree `b`
   except with probability at most `dkgAbortError C b`. The outputs of all operators are within
   `dkgCompletenessError C b` of the outputs of `dealerKeyGen` in statistical distance. -/
-  dkgCompleteness : DkgCompleteness K circuits settings runLimit
+  dkgCompleteness : CircuitsCompute circuits prims.Th → DkgCompleteness prims K circuits settings runLimit
 
 /-- The security claim, for every committee, every check field of characteristic `2` with its
-constants, every `Th` and AES-128, every circuit family, every setting and every run limit. -/
+constants, every `Th` and AES-128, every circuit family, every setting and every run limit. So the
+claims of the setup hold for each `Th` that the circuits compute. -/
 abbrev ThresholdLeanXmssSecurityStatement : Prop :=
   ∀ (C : Committee) (E : Type) [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
     (K : Constants C E) (prims : Primitives) (circuits : Circuits) (settings : Settings) (runLimit : ℕ),

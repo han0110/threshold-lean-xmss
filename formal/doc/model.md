@@ -10,13 +10,17 @@ This file describes the model of the five claims of the bundle `Theorems`. Each 
 
 The inner counter of `signingWorld` counts the calls on both copies. The claim `stronglyUnforgeable` does not read that counter. Its budget $q$ counts only the own calls and the round-2 requests of the forger (`adversaryCost`, `QueryCostAtMost`).
 
-The claims of the setup hold for each `prims` whose `Th` the circuits compute (`CircuitsCompute`). The MPC evaluates $\mathrm{Th}$ by a circuit, and a random oracle has no circuit. So the claims of the setup need the fixed $\mathrm{Th}$.
+Each field of the setup has the premise `CircuitsCompute circuits prims.Th` for the `prims` of the bundle, and `ThresholdLeanXmssSecurityStatement` quantifies over each `prims`. The MPC evaluates $\mathrm{Th}$ by a circuit, and a random oracle has no circuit. So the claims of the setup need the fixed $\mathrm{Th}$.
 
-`dkgSecurity` names its reduction, the forger `dkgReduction` of `Statement/DkgReduction.lean`. It reads only `prims.aes` from `prims`. It runs the adversary and plays the honest operators, with the coalition keys from `corrupt` and an own table for the domains of $H$ that only the setup uses. Its openings are shifted, and outside the bad events of consistency and soundness they give the outputs of the dealer. It sends the tree requests to the dealer. It forwards a signing request when the emulated operator holds keys, a top tree and an output of the bottom tree. It runs the forger of the adversary when an honest operator holds a top tree and outputs `idleForgery` if not.
+`dkgSecurity` names its reduction, the forger `dkgReduction` of `Statement/DkgReduction.lean`. It reads only `prims.aes` from `prims`. It runs the adversary and plays the honest operators, with the coalition keys from `corrupt` and an own table for the domains of $H$ that only the setup uses. Its openings are shifted, and outside the bad events of consistency and soundness they give the outputs of the dealer. It sends the tree requests to the dealer.
+
+Its emulated operators make no randomizer search. They take the randomizer of the top signature from the answer of `tree b` and get the codeword from one hash.
+
+The forger forwards a signing request when the emulated operator holds keys, a top tree and an output of the bottom tree. It runs the forger of the adversary when an honest operator holds a top tree and outputs `idleForgery` if not.
 
 The claim names the forger because $\mathrm{Th}$ is fixed and an adversary has no bound on its computation. A search on $\mathrm{Th}$ costs no call, so a claim that some forger exists is empty.
 
-With the named forger, the claim says that the real setup gives an adversary no more than `tsigGame` gives `dkgReduction`, up to the stated errors `dkgError` and `streamAdvantage`. It is a relative claim and no bound on a forgery. [statement.tex](../statement.tex), Section 3.2, lists what a reader checks in its code and the four points where it differs from the game. Each of those points is an obligation of a proof.
+With the named forger, the claim says that the real setup gives an adversary no more than `tsigGame` gives `dkgReduction`, up to the stated errors `dkgError` and `streamAdvantage`. It is a relative claim and no bound on a forgery. [statement.tex](../statement.tex), Section 3.2, lists what a reader checks in its code and the five points where it differs from the game. Each of those points is an obligation of a proof.
 
 Let $\delta$ bound the probability that `dkgReduction` of an adversary $A$ wins `tsigGame` in `world` with the fixed $\mathrm{Th}$. Then `dkgSecurity` gives a bound of `dkgTsigGame`.
 

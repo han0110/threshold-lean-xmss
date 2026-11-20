@@ -200,13 +200,12 @@ def treePoints : Tree → ℕ
 for its input shares, and one `.prf` call for each term and each point for the clear outputs of the
 shift of its openings. It also makes the `.hash` calls of the local steps of `ceremonyOutput`. For
 the top tree these are the `2 ^ (layerHeight + 1) - 1` hashes of the root. For a bottom tree these
-are the hashes of the root, the start and the trials of the randomizer search, the hashes of the path
-of the top key and the hashes of the root of the top signature, at most
-`2 ^ (layerHeight + 2) + randomizerAttemptLimit + 3 * chainCount` in all. -/
+are the hashes of the root, the one message digest that gives the codeword from the randomizer of
+the dealer, the hashes of the path of the top key and the hashes of the root of the top signature,
+at most `2 ^ (layerHeight + 2) + 3 * chainCount` in all. The forger makes no randomizer search. -/
 def treeReductionCalls (C : Committee) : Tree → ℕ
   | .top => C.n * (2 * termCount C * treePoints .top + 2 ^ (layerHeight + 1) - 1)
-  | .bottom b => C.n * (2 * termCount C * treePoints (.bottom b) + 2 ^ (layerHeight + 2) +
-      randomizerAttemptLimit + 3 * chainCount)
+  | .bottom b => C.n * (2 * termCount C * treePoints (.bottom b) + 2 ^ (layerHeight + 2) + 3 * chainCount)
 
 /-- The budget that is planned for the calls of `dkgReduction` beyond the calls of the adversary,
 for `runLimit` runs of each tree. Its other requests to the oracles of `tsigGame` are `corrupt` and

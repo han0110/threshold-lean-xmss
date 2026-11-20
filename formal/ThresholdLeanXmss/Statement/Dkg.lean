@@ -5,7 +5,8 @@ import ThresholdLeanXmss.Statement.DkgErrors
 # The claims of the setup
 
 The three claims of the setup by DKG, on the games of `DkgGame.lean`, with the error terms of
-`DkgErrors.lean`. A claim holds for each `prims` with circuits that compute `prims.Th`.
+`DkgErrors.lean`. Each claim takes the fixed functions `prims` as a parameter. `Theorems.lean`
+states each claim for `prims` whose `Th` the circuits compute (`CircuitsCompute`).
 
 * `DkgSecurity` is the security preservation of Gurkan and others, Definition 8. A forger against
   the signing game with the real setup gives a forger against `tsigGame`, which has the trusted
@@ -28,7 +29,7 @@ variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algeb
 
 attribute [local instance] inhabitedField
 
-variable (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
+variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
 
 /-! ## The precondition on the circuits -/
 
@@ -45,16 +46,16 @@ def CircuitsCompute (Th : HashInput → HashOutput) : Prop :=
 each static coalition `D` and each adversary `A` of budget `q`, the forger `reduction prims.aes D A`
 of `tsigGame` has cost at most `q + dkgOverhead C` on every path. `A` wins `dkgTsigGame` at most
 `dkgError C q` plus the PRF advantage of the streams more often than the forger wins `tsigGame`.
-The claim holds for each `prims` with circuits that compute `prims.Th`. `A` keeps its state from the
-setup into the signing phase, as the text after Definition 8 asks.
+The bundle states the claim for `prims` whose `Th` the circuits compute. `A` keeps its state from
+the setup into the signing phase, as the text after Definition 8 asks.
 
 The bundle states the claim for the named reduction `dkgReduction` (`DkgReduction.lean`). It reads
 only `prims.aes` from `prims`. A reviewer reads its code to see that it simulates the honest
 operators and makes no search for a secret. It forwards a signing request when the emulated
 operator holds what it needs. It runs `A.forge` when an honest operator holds a top tree, and it
 outputs `idleForgery` if not. With it, the claim says that the real setup gives an adversary no more
-than `tsigGame` gives that forger, up to the stated errors `dkgError` and `streamAdvantage`. The reduction has no bound on its computation,
-and its query cost is part of the claim.
+than `tsigGame` gives that forger, up to the stated errors `dkgError` and `streamAdvantage`. The
+reduction has no bound on its computation, and its query cost is part of the claim.
 
 The claim adapts Definition 8 in these points.
 
@@ -81,7 +82,7 @@ The claim adapts Definition 8 in these points.
 * The network has private authenticated links and no broadcast channel, as in GS20, Section 3.1.
   Gurkan and others assume a broadcast channel. -/
 def DkgSecurity (reduction : Aes → C.Coalition → DkgTsigAdversary C E → TsigAdversary C) : Prop :=
-  0 < settings.batchSize → ∀ prims : Primitives, CircuitsCompute circuits prims.Th →
+  0 < settings.batchSize →
     ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ), DkgTsigBounded circuits settings runLimit A q →
       (∀ pk top, QueryCostAtMost (reduction prims.aes D A pk top) adversaryCost (q + dkgOverhead runLimit C)) ∧
         accepts prims (dkgTsigGame K circuits settings runLimit D A) ≤
@@ -92,7 +93,7 @@ def DkgSecurity (reduction : Aes → C.Coalition → DkgTsigAdversary C E → Ts
 adversary `A` of budget `q`, two honest operators hold inconsistent seeds, or an honest operator ends
 a run of a tree with an output that is not `referenceTree` on the seeds of the game, with a
 probability that `dkgCorrectnessError C q` plus the PRF advantage of the streams bounds. An abort is
-no win. The claim holds for each `prims` with circuits that compute `prims.Th`.
+no win. The bundle states the claim for `prims` whose `Th` the circuits compute.
 
 Its nearest model is the first clause of robustness (Gurkan and others, Definition 6), by which all
 honest parties agree on the public key. The claim adapts that clause in these points.
@@ -116,7 +117,7 @@ honest parties agree on the public key. The claim adapts that clause in these po
 * The network has private authenticated links and no broadcast channel, as in GS20, Section 3.1.
   Gurkan and others assume a broadcast channel. -/
 def DkgCorrectness : Prop :=
-  0 < settings.batchSize → 0 < runLimit → ∀ prims : Primitives, CircuitsCompute circuits prims.Th →
+  0 < settings.batchSize → 0 < runLimit →
     ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ), DkgTsigBounded circuits settings runLimit A q →
       accepts prims (dkgTreeGame K circuits settings runLimit D A) ≤
         dkgCorrectnessError (E := E) circuits settings runLimit C q +
@@ -128,7 +129,7 @@ and at most `runLimit` runs of bottom tree `b`. It stops the runs of a tree when
 an output of it. The probability that some operator lacks its keys, the top tree
 or bottom tree `b` is at most `dkgAbortError C b`. The claim compares the outputs of all operators
 with the outputs of `dealerKeyGen`, and their distance is at most `dkgCompletenessError C b`. The
-claim holds for each `prims` with circuits that compute `prims.Th`.
+bundle states the claim for `prims` whose `Th` the circuits compute.
 
 No definition of GS20 or of Gurkan and others is its model. GS20 states no completeness lemma, and
 security with abort alone allows a protocol that always aborts. The bound on the abort has the form
@@ -139,7 +140,7 @@ The claim is about an honest run only. It is not robustness under faults. A corr
 make each honest operator abort, and no claim excludes that. Each operator keeps the first output of
 its runs of a tree, as in `DkgSecurity`. No source. -/
 def DkgCompleteness : Prop :=
-  0 < settings.batchSize → 0 < runLimit → ∀ prims : Primitives, CircuitsCompute circuits prims.Th →
+  0 < settings.batchSize → 0 < runLimit →
     ∀ b : Fin (2 ^ layerHeight),
       (Pr{let r ← runWorld prims (honestDkg K circuits settings runLimit b)}[∃ i,
           (r.1 i).1 = none ∨ (r.1 i).2.1 = none ∨ (r.1 i).2.2 = none]).toReal ≤

@@ -76,7 +76,7 @@ flowchart TB
 | [ThresholdLeanXmss/Ideal.lean](./ThresholdLeanXmss/Ideal.lean) | The oracles of the signing game and its win test |
 | [ThresholdLeanXmss/Reductions.lean](./ThresholdLeanXmss/Reductions.lean) | `prgReduction`, the fixed reduction of the PRF term |
 | [statement.tex](./statement.tex) | The guide to the claims, about 10 pages |
-| [doc/game-model.md](./doc/game-model.md) | The model of the five claims |
+| [doc/model.md](./doc/model.md) | The model of the five claims |
 | [doc/differences.md](./doc/differences.md) | Each difference to GS20, PRAWNS, the note, leanXMSS and Gurkan and others |
 
 ## Build
