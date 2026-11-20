@@ -32,12 +32,8 @@ structure CeremonyParts : Prop where
   monitor : ∀ prims, CeremonyMonitor prims K circuits settings
   /-- A wrong recorded batch has a bad check, or an honest operator did not record its start. -/
   batch : ∀ prims, CeremonyBatch prims K circuits settings
-  /-- An honest operator holds one old key under a hidden name with probability at most `2^-256`. -/
-  fresh : ∀ prims, FreshOne prims K circuits settings
   /-- The honest operators record the same modes, circuits, labels and tags at the checks. -/
   sync : ∀ prims, CeremonySync prims K circuits settings
-  /-- The streams are fresh at the label of a joint start of a check. -/
-  interval : ∀ prims, CeremonyInterval prims K circuits settings
   /-- At a joint start of a check the honest PRSS keys agree, or two echo hashes collide. -/
   keysAgree : ∀ prims, CeremonyKeysAgree prims K circuits settings
   /-- A joint start of a check with a positive count fits the budget of the game. -/

@@ -2,6 +2,8 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Ceremony.Glue
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Collision.Hops
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Cover.Glue
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.CutBounds
+import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Draws.Fresh
+import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Draws.Interval
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Draws.OneKey
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.HeadCut
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Ledger.Cells
@@ -23,7 +25,8 @@ are the three structures of `Leaves.lean`. `ceremonyBad_of_parts`, `provenanceTr
 statements of the route. `UsedHit.hybridEnd_of_statements` gives `HybridEnd`. The proved leaves
 `cutDead`, `cutMonotone`, `headFuel`, `headCover`, `treePhaseProvenance`, `hiddenNames`,
 `ledgerHidden`, `ceremonyProvenance`, `ledgerSplit`, `ledgerSalts`, `ledgerSound`, `ceremonyCounters`,
-`zeroCheck`, `monitorProvenance`, `ceremonyStarted`, `ceremonyAbort`, `Joint.ceremonyCoupling`,
+`zeroCheck`, `freshOne`, `ceremonyInterval`, `monitorProvenance`, `ceremonyStarted`, `ceremonyAbort`,
+`Joint.ceremonyCoupling`,
 `shortFuel`, `soundAtEnd`, `hiddenAtEnd`, `echoHop`, `reuseHop`, `copyHop` and `splitHop` and the
 hops `flagFirstHop`, `seedsHop` and `runsUnionHop` give the rest. The error of `UsedHitHop` is
 `setupHybridError`, and with it `part1Error` is `dkgCorrectnessError`.
@@ -67,8 +70,8 @@ theorem dkgCorrectness_of_leaves (ceremony : CeremonyParts K circuits settings r
     (reuseHop K circuits settings runLimit) (copyHop K circuits settings runLimit)
     (splitHop K circuits settings runLimit)
     (fun prims => ceremonyBad_of_parts prims K circuits settings runLimit (ceremony.monitor prims)
-      (ceremony.batch prims) (ceremonyAbort prims K circuits settings) (ceremony.fresh prims)
-      (hiddenNames (C := C)) (ceremony.sync prims) (ceremony.interval prims)
+      (ceremony.batch prims) (ceremonyAbort prims K circuits settings) (freshOne prims K circuits settings)
+      (hiddenNames (C := C)) (ceremony.sync prims) (ceremonyInterval prims K circuits settings)
       (Joint.ceremonyCoupling prims K circuits settings) (ceremony.keysAgree prims) (ceremony.budget prims)
       (zeroCheck (C := C) (E := E)) (shortFuel prims K circuits settings) (ceremony.tupleInputs prims))
     (fun prims => topCover_of_started prims K circuits settings (ceremonyStarted prims K circuits settings))
