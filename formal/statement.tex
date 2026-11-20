@@ -23,7 +23,7 @@
 \begin{document}
 \maketitle
 
-\noindent This document states the claims of the Lean~4 statement layer of threshold leanXMSS, and it
+\noindent This document states the claims of the Lean~4 formalization of threshold leanXMSS, and it
 compares each claim with four sources. The sources are the leanXMSS note \cite{Wam26}, PRAWNS
 \cite{BBD+26}, GS20, the paper of Goyal and Song \cite{GS20}, and the paper of Gurkan and others on
 the security of a DKG \cite{GJM+21}. The five claims are games in one game-based model.
@@ -34,9 +34,15 @@ quorum signs (Section~\ref{sec:signing}).
 signing game. It gives consistent seeds and correct trees against the adversary, and its honest run is
 near the trusted dealer (Section~\ref{sec:setup}).
 \end{itemize}
-Each claim is stated in this tree, and no claim is proved in it. An earlier proof of this project
-derived the bounds of the two signing claims and of \lean{dkgCompleteness}, for the same statements.
-That proof is not in this tree. The bounds of \lean{dkgSecurity} and \lean{dkgCorrectness} are
+The two signing claims are proved in this tree. The proofs are the two theorems below, in
+the namespace \lean{ThresholdLeanXmssSecurity}.
+\begin{itemize}\itemsep0pt
+\item \lean{SigningStronglyUnforgeable.stronglyUnforgeable} proves \lean{stronglyUnforgeable}.
+\item \lean{signingCorrectness} proves \lean{signingCorrectness}.
+\end{itemize}
+The three claims of the setup are stated, and
+no proof of them is in this tree. A proof of an earlier tree derived the bounds of
+\lean{dkgCompleteness}, for the same statement. The bounds of \lean{dkgSecurity} and \lean{dkgCorrectness} are
 targets. No proof accounts for the whole game yet, and a proof can change them. Section~\ref{sec:chain} explains why the five claims give a
 bound of the full system only with one more premise.
 
@@ -48,7 +54,9 @@ structure \lean{Theorems} has five fields, one for each claim, and
 trivial cases of each claim. Then read \texttt{Signing.lean} (the signing game and its two claims),
 \texttt{DkgGame.lean} (the games of the setup), \texttt{Dkg.lean} (the three claims of the setup),
 \texttt{DkgErrors.lean} (their error and cost terms) and \texttt{DkgReduction.lean} (the forger
-\lean{dkgReduction} of \lean{dkgSecurity}). \texttt{RandomOracle.lean} defines the two
+\lean{dkgReduction} of \lean{dkgSecurity}). The proofs are in \texttt{formal/ThresholdLeanXmssSecurity/},
+and the root module \texttt{ThresholdLeanXmssSecurity.lean} checks the axioms of each proved theorem.
+\texttt{RandomOracle.lean} defines the two
 worlds, and \texttt{Execution.lean} the execution of a protocol on the network. \texttt{Scheme.lean} and
 \texttt{Ideal.lean} define the protocol, the dealer and the signing game, and \texttt{Reductions.lean}
 defines the fixed reduction of the PRF term. The folder \lean{formal/doc/} holds the detail. The file
@@ -197,7 +205,7 @@ one-time unforgeability of PRAWNS (Definition 3.2).
 honest quorum, key index and message, each output signature verifies. The quorum fails with
 probability at most $2(1-p)^L$, for the search of the top signature and the signing search. Here
 $p=\mathsf{codewordProbability}$ is the probability that a uniform digest is a codeword, and $L$ is the
-limit of attempts. An earlier proof derived this bound.
+limit of attempts. The theorem \lean{signingCorrectness} of the proof library proves this claim.
 
 \paragraph{Strong unforgeability} (\lean{ThresholdLeanXmssStronglyUnforgeable}, in
 \lean{signingWorld}). Take an adaptive forger whose own calls of $H$ and of the PRG, plus its round-2
@@ -207,8 +215,8 @@ requests, are at most $q$ in total. Then the forger wins with probability at mos
 \]
 Rejected round-2 requests also count. The fixed slack $2^{15}+384$ pays the security loss from the
 uncounted calls and does not limit their number. A committee with $n\le 33$ has $N<2^{32}$. For such a
-committee, the two last terms are less than $2^{-80}$ times the first term. An earlier proof derived
-this bound. The comparison with leanXMSS is in the table.
+committee, the two last terms are less than $2^{-80}$ times the first term. The theorem
+\lean{SigningStronglyUnforgeable.stronglyUnforgeable} of the proof library proves this claim. The comparison with leanXMSS is in the table.
 \begin{center}\small
 \begin{tabularx}{\textwidth}{@{}lXX@{}}
 \toprule
@@ -363,7 +371,8 @@ is only in the first bound. The claim adds no PRF advantage. It is about an hone
 robustness under faults. A corrupt operator can make each honest operator abort. No definition of
 GS20 or of \cite{GJM+21} is its model. The abort bound has the form of Lemma 1 of
 \cite{GJM+21}, which bounds the probability that some nonfaulty party has no transcript. Lemma 2 of
-the paper is about one broadcast of a verifying transcript and is no model of this bound. The distance to \lean{dealerKeyGen} has no source. An earlier proof derived both bounds.
+the paper is about one broadcast of a verifying transcript and is no model of this bound. The distance to \lean{dealerKeyGen} has no source. A proof of an earlier tree derived both bounds.
+No proof of them is in this tree yet.
 
 \paragraph{The state of the targets.} No proof accounts for the whole game for the bounds of
 \lean{dkgSecurity} and \lean{dkgCorrectness} yet. Two terms are the most likely to change. In
@@ -453,10 +462,10 @@ Field & Lean claim & Source item & Bound \\
 \midrule
 \endhead
 \lean{stronglyUnforgeable} & \lean{ThresholdLeanXmssStronglyUnforgeable} & PRAWNS, Definition 3.2,
-with strong unforgeability as in leanXMSS & Derived by an earlier proof \\
+with strong unforgeability as in leanXMSS & Proved \\
 \rowrule
 \lean{signingCorrectness} & \lean{SigningCorrectnessStatement} & PRAWNS, Section 3.1, honest run &
-Derived by an earlier proof \\
+Proved \\
 \rowrule
 \lean{dkgSecurity} & \lean{DkgSecurity} for \lean{dkgReduction} & \cite{GJM+21}, Definition 8,
 and the form of Lemmas 3 to 5 & Target \\
@@ -464,7 +473,7 @@ and the form of Lemmas 3 to 5 & Target \\
 \lean{dkgCorrectness} & \lean{DkgCorrectness} & \cite{GJM+21}, Definition 6, first clause & Target \\
 \rowrule
 \lean{dkgCompleteness} & \lean{DkgCompleteness} & No model. The abort bound has the form of
-\cite{GJM+21}, Lemma 1. & Derived by an earlier proof \\
+\cite{GJM+21}, Lemma 1. & Stated, derived in an earlier tree \\
 \bottomrule
 \end{xltabular}}
 
