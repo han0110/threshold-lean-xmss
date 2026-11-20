@@ -1,76 +1,72 @@
-//! This module implements the replicated secret sharing of [Cramer, Damgard and Ishai](https://doi.org/10.1007/978-3-540-30576-7_19) among `n = 2t - 1` operators, and the building blocks of `doc/dkg.md` on it. It follows [`structure.rs`](https://github.com/TomWambsgans/sphincs.art/blob/df77d5671f70ba4959264183296777bdddec778d/crates/rss/src/structure.rs), [`engine.rs`](https://github.com/TomWambsgans/sphincs.art/blob/df77d5671f70ba4959264183296777bdddec778d/crates/rss/src/engine.rs) and [`setup.rs`](https://github.com/TomWambsgans/sphincs.art/blob/df77d5671f70ba4959264183296777bdddec778d/crates/rss/src/setup.rs) of the leanSPHINCS prototype.
+//! This module implements the replicated secret sharing of [Cramer, Damgard and Ishai] among `n = 2t - 1` operators,
+//! and the building blocks of `doc/dkg.md` on it. It follows [`structure.rs`], [`engine.rs`] and [`setup.rs`] of the
+//! leanSPHINCS prototype.
 //!
-//! - The terms are the sets of `t - 1` operators, and an operator holds each term that does not
-//!   contain it.
-//! - A block of shares holds the public part first and then one part for each held term, in the
-//!   order of `held`.
+//! - The terms are the sets of `t - 1` operators, and an operator holds each term that does not contain it.
+//! - A block of shares holds the public part first and then one part for each held term, in the order of `held`.
 //! - `rand`, `mul` and `conv` send nothing.
 //!   - `rand` gives each holder of a term `T` its pseudorandom value `r_T`.
 //!   - `conv` gives the Shamir share of a replicated value.
-//! - At an AND gate, `mul` gives operator `i` the XOR `v_i` of `a_A & b_B` over its pairs of terms
-//!   `(A, B)`.
+//! - At an AND gate, `mul` gives operator `i` the XOR `v_i` of `a_A & b_B` over its pairs of terms `(A, B)`.
 //! - Then `reshare` adds the share `zeta_i` of a pairwise zero sharing.
-//! - In collector mode, a rotation gives each gate a term `T*` and a collector `kappa` in
-//!   `Hold(T*)`. Every other term is `z_T = r_T`.
-//!   - Each `i != kappa` sends `u_i = v_i ^ zeta_i ^ XOR_{T != T*, owner(T) = i} r_T` to `kappa`.
-//!     Then `kappa` sends `z_T* = XOR_i u_i` to `Hold(T*) \ {kappa}`.
-//! - In peer mode, operator `i` fills the term `T_i` of the operators `i + 1` to `i + t - 1` modulo
-//!   `n`.
+//! - In collector mode, a rotation gives each gate a term `T*` and a collector `kappa` in `Hold(T*)`. Every other term
+//!   is `z_T = r_T`.
+//!   - Each `i != kappa` sends `u_i = v_i ^ zeta_i ^ XOR_{T != T*, owner(T) = i} r_T` to `kappa`. Then `kappa` sends
+//!     `z_T* = XOR_i u_i` to `Hold(T*) \ {kappa}`.
+//! - In peer mode, operator `i` fills the term `T_i` of the operators `i + 1` to `i + t - 1` modulo `n`.
 //!   - These terms form `C`, and every other term is `z_T = r_T`.
-//!   - Each `i` sends `u_i = v_i ^ zeta_i ^ XOR_{T not in C, owner(T) = i} r_T` to `Hold(T_i) \
-//!     {i}`. Then `z_T_i = u_i`, and the gate takes one round in place of two.
-//!   - For `n = 3`, `C` contains all three terms, and peer mode is the multiplication of [Araki et al. CCS'16](https://eprint.iacr.org/2016/768).
-//! - The generalization of peer mode to `n > 3` comes from this code. A coalition `D` of `t - 1`
-//!   operators lacks only the term `D`.
-//!   - If `D` is not in `C`, then `z_D = r_D`, and the honest `u_i` that `D` sees have masks of
-//!     full rank.
-//!   - If `D = T_i`, then `u_i` goes only to honest holders, and the other honest values are
-//!     independent.
+//!   - Each `i` sends `u_i = v_i ^ zeta_i ^ XOR_{T not in C, owner(T) = i} r_T` to `Hold(T_i) \ {i}`. Then `z_T_i =
+//!     u_i`, and the gate takes one round in place of two.
+//!   - For `n = 3`, `C` contains all three terms, and peer mode is the multiplication of [Araki et al. CCS'16].
+//! - The generalization of peer mode to `n > 3` comes from this code. A coalition `D` of `t - 1` operators lacks only
+//!   the term `D`.
+//!   - If `D` is not in `C`, then `z_D = r_D`, and the honest `u_i` that `D` sees have masks of full rank.
+//!   - If `D = T_i`, then `u_i` goes only to honest holders, and the other honest values are independent.
 //! - Each holder of a filled term adds its new values to the running hash `h_T` of the term.
-//! - `establish` derives fresh PRSS keys `prss_T` and `prss_ij` in each ceremony, with the
-//!   commit-reveal-echo of the keygen of the note.
-//!   - All streams of `rand` and of the zero sharing use only these keys, as the pseudorandom
-//!     sharings of Cramer, Damgard and Ishai.
-//!   - So no stream depends on the seeds `seed_T` or the pair keys `K_ij` that the ceremony outputs
-//!     to signing.
-//! - At the end of each ceremony, a production implementation erases its private ceremony state, as
-//!   `doc/dkg.md`, Section 3.3, states.
+//! - `establish` derives fresh PRSS keys `prss_T` and `prss_ij` in each ceremony, with the commit-reveal-echo of the
+//!   keygen of the note.
+//!   - All streams of `rand` and of the zero sharing use only these keys, as the pseudorandom sharings of Cramer,
+//!     Damgard and Ishai.
+//!   - So no stream depends on the seeds `seed_T` or the pair keys `K_ij` that the ceremony outputs to signing.
+//! - At the end of each ceremony, a production implementation erases its private ceremony state, as `doc/dkg.md`,
+//!   Section 3.3, states.
 //! - `rerand` reshares each output before it opens, and the check verifies the reshare.
 //!   - So `open` reveals only a fresh sharing of the output value.
-//! - A coin is a pseudorandom sharing that opens robustly in the round after the messages that it
-//!   checks.
+//! - A coin is a pseudorandom sharing that opens robustly in the round after the messages that it checks.
 //!   - As in the paper and the prototype, this assumes synchronous rounds.
 //!
 //! The module differs from the prototype in these points.
 //!
 //! - The Shamir shares use GF(2^128) as the leanVM field `F128 = F64[y]/(y^2 + x y + 1)`.
-//! - A gate covers one 64-bit lane of a circuit layer for all instances of the batch. A `Word`
-//!   holds this lane for four instances.
+//! - A gate covers one 64-bit lane of a circuit layer for all instances of the batch. A `Word` holds this lane for four
+//!   instances.
 //! - The pseudorandom streams use AES-128 in place of Keccak-256 with labeled tags.
 //!   - The AES key hashes the tag `rss-prss` and a PRSS key.
-//!   - A stream depends on the channel, its round and an index, and a coin key hashes the channel
-//!     tag, the round and two opened values.
-//! - The prototype derives its PRSS keys once, in its keygen. Here each ceremony derives fresh PRSS
-//!   keys in its first three rounds.
-//! - The prototype gives each pair to the least loaded holder in one pass and each term to its
-//!   first holder.
-//!   - Here `balance` adds a local search, so the loads of the operators differ by at most one in
-//!     both tables.
+//!   - A stream depends on the channel, its round and an index, and a coin key hashes the channel tag, the round and
+//!     two opened values.
+//! - The prototype derives its PRSS keys once, in its keygen. Here each ceremony derives fresh PRSS keys in its first
+//!   three rounds.
+//! - The prototype gives each pair to the least loaded holder in one pass and each term to its first holder.
+//!   - Here `balance` adds a local search, so the loads of the operators differ by at most one in both tables.
 //! - The prototype has only collector mode.
-//!   - The first message of `establish` also carries the mode and the batch size, so operators with
-//!     different values abort before the first gate.
+//!   - The first message of `establish` also carries the mode and the batch size, so operators with different values
+//!     abort before the first gate.
 //! - The prototype sends the digest of a term only to the other holders of the term.
-//!   - Here every operator receives the salted digest of every term, so a split copy stops every
-//!     honest operator.
-//! - The prototype opens an output through a king, a coin with digests, a random linear combination
-//!   and a vote, in 5 rounds.
+//!   - Here every operator receives the salted digest of every term, so a split copy stops every honest operator.
+//! - The prototype opens an output through a king, a coin with digests, a random linear combination and a vote, in 5
+//!   rounds.
 //!   - Here `rerand` takes 1 round before the check, and `open` takes 1 round after it.
-//! - The prototype ends each opening with a vote. Here each operator decides alone, as in Goyal and
-//!   Song.
+//! - The prototype ends each opening with a vote. Here each operator decides alone, as in Goyal and Song.
 //! - The caller checks the tuples before it opens outputs, and it stops at the first error.
 //!   - The prototype enforces both with the provenance of the shares and a failed state.
 //! - `reshare` and `open` pad a short message with zeros and truncate a long message.
 //!   - This gives an additive error or different hashes, where the prototype aborts.
+//!
+//! [Cramer, Damgard and Ishai]: https://doi.org/10.1007/978-3-540-30576-7_19
+//! [`structure.rs`]: https://github.com/TomWambsgans/sphincs.art/blob/df77d5671f70ba4959264183296777bdddec778d/crates/rss/src/structure.rs
+//! [`engine.rs`]: https://github.com/TomWambsgans/sphincs.art/blob/df77d5671f70ba4959264183296777bdddec778d/crates/rss/src/engine.rs
+//! [`setup.rs`]: https://github.com/TomWambsgans/sphincs.art/blob/df77d5671f70ba4959264183296777bdddec778d/crates/rss/src/setup.rs
+//! [Araki et al. CCS'16]: https://eprint.iacr.org/2016/768
 
 use std::array::from_fn;
 use std::fmt::Debug;
@@ -181,9 +177,7 @@ fn lagrange(node: F128, others: impl Iterator<Item = F128>, at: F128) -> F128 {
 
 /// Gives each item to one of its eligible operators, and returns the operator of each item.
 fn balance(n: usize, eligible: &[Vec<usize>]) -> Vec<usize> {
-    let least_loaded = |load: &[usize], operators: &[usize]| {
-        *operators.iter().min_by_key(|&&i| (load[i], i)).unwrap()
-    };
+    let least_loaded = |load: &[usize], operators: &[usize]| *operators.iter().min_by_key(|&&i| (load[i], i)).unwrap();
     let mut load = vec![0; n];
     // The first pass gives each item to its least loaded eligible operator, and the lowest index on
     // a tie.
@@ -238,13 +232,10 @@ impl Group {
                 assigned.map(|(&pair, _)| pair).collect()
             })
             .collect();
-        let term_holders: Vec<Vec<usize>> =
-            (0..terms.len()).map(|k| holders(k).collect()).collect();
+        let term_holders: Vec<Vec<usize>> = (0..terms.len()).map(|k| holders(k).collect()).collect();
         let owner = balance(n, &term_holders);
         let collectors = (0..t)
-            .flat_map(|round| {
-                (0..terms.len()).map(move |k| (k, holders(k).nth((round + k) % t).unwrap()))
-            })
+            .flat_map(|round| (0..terms.len()).map(move |k| (k, holders(k).nth((round + k) % t).unwrap())))
             .collect();
         let peer_terms = (0..n)
             .map(|i| {
@@ -257,18 +248,11 @@ impl Group {
             .map(|i| {
                 let members = |k: usize| (0..n).filter(move |&j| !holds(j, k)).map(alpha);
                 let held = (0..terms.len()).filter(|&k| holds(i, k));
-                held.map(|k| lagrange(F128::ZERO, members(k), alpha(i)))
-                    .collect()
+                held.map(|k| lagrange(F128::ZERO, members(k), alpha(i))).collect()
             })
             .collect();
-        let lambda = (0..n)
-            .map(|i| lagrange(alpha(i), others(n, i), F128::ZERO))
-            .collect();
-        let basis = |at: F128| -> Vec<F128> {
-            (0..t)
-                .map(|k| lagrange(alpha(k), others(t, k), at))
-                .collect()
-        };
+        let lambda = (0..n).map(|i| lagrange(alpha(i), others(n, i), F128::ZERO)).collect();
+        let basis = |at: F128| -> Vec<F128> { (0..t).map(|k| lagrange(alpha(k), others(t, k), at)).collect() };
         Group {
             n,
             t,
@@ -288,19 +272,12 @@ impl Group {
     }
 
     pub fn held(&self, i: usize) -> Vec<usize> {
-        (0..self.terms.len())
-            .filter(|&k| self.holds(i, k))
-            .collect()
+        (0..self.terms.len()).filter(|&k| self.holds(i, k)).collect()
     }
 
     /// The secret of the shares, if all shares lie on the polynomial of the first `t` shares.
     fn reconstruct(&self, shares: &[F128]) -> Option<F128> {
-        let at = |basis: &[F128]| {
-            basis
-                .iter()
-                .zip(shares)
-                .fold(F128::ZERO, |sum, (&b, &s)| sum + b * s)
-        };
+        let at = |basis: &[F128]| basis.iter().zip(shares).fold(F128::ZERO, |sum, (&b, &s)| sum + b * s);
         let (secret, others) = self.interpolation.split_last().unwrap();
         let consistent = others
             .iter()
@@ -408,11 +385,7 @@ pub struct Tuples {
 impl Tuples {
     /// Empty tuples with room for `words` tuple words in each copy.
     pub fn new(party: &Party, words: usize) -> Tuples {
-        let copies = || -> Vec<Vec<u64>> {
-            (0..party.held.len())
-                .map(|_| Vec::with_capacity(words))
-                .collect()
-        };
+        let copies = || -> Vec<Vec<u64>> { (0..party.held.len()).map(|_| Vec::with_capacity(words)).collect() };
         Tuples {
             x: copies(),
             y: copies(),
@@ -425,14 +398,14 @@ impl Tuples {
 /// `mul` of replicated sharings, the additive share of this operator. It XORs `x_A & y_B` over the
 /// pairs `(A, B)` of `pairs`.
 pub fn mul(pairs: &[(usize, usize)], x: impl Fn(usize) -> Word, y: impl Fn(usize) -> Word) -> Word {
-    pairs
-        .iter()
-        .fold(Word::ZERO, |sum, &(a, b)| sum ^ (x(a) & y(b)))
+    pairs.iter().fold(Word::ZERO, |sum, &(a, b)| sum ^ (x(a) & y(b)))
 }
 
 /// The commitment `H(tag || u8(i) || u8(j) || reveal)` of operator `i` to its reveal to operator
 /// `j`. It names the sender and the receiver, so an operator cannot copy the commitment of another,
-/// as in [CF01](https://eprint.iacr.org/2001/055).
+/// as in [CF01].
+///
+/// [CF01]: https://eprint.iacr.org/2001/055
 pub fn commitment(tag: &Tag, i: usize, j: usize, reveal: &[u8]) -> Key {
     tagged_hash(tag, &[&[i as u8, j as u8], reveal])
 }
@@ -464,14 +437,10 @@ async fn reveal(
     outgoing: Vec<Vec<u8>>,
 ) -> Result<Vec<Vec<u8>>, String> {
     let revealed = channel.exchange_bytes(outgoing.clone()).await?;
-    let honest = |j: usize| {
-        revealed[j].len() == outgoing[j].len()
-            && commitment(tag, j, id, &revealed[j])[..] == commitments[j]
-    };
+    let honest =
+        |j: usize| revealed[j].len() == outgoing[j].len() && commitment(tag, j, id, &revealed[j])[..] == commitments[j];
     match (0..outgoing.len()).find(|&j| j != id && !honest(j)) {
-        Some(j) => Err(format!(
-            "operator {j} reveals a value that differs from its commitment"
-        )),
+        Some(j) => Err(format!("operator {j} reveals a value that differs from its commitment")),
         None => Ok(revealed),
     }
 }
@@ -495,19 +464,15 @@ impl Parts {
     /// order and then the pair part for `j`.
     pub fn reveal(&self, group: &Group, i: usize, j: usize) -> Vec<u8> {
         let shared = shared(group, i, j).into_iter().map(|k| &self.terms[k][..]);
-        shared
-            .chain([&self.pairs[j][..]])
-            .collect::<Vec<_>>()
-            .concat()
+        shared.chain([&self.pairs[j][..]]).collect::<Vec<_>>().concat()
     }
 
     /// The term keys and the pair keys of operator `id` from its own parts and the reveal of each
     /// other operator.
     ///
-    /// - The key of a held term hashes `term_tag` and the parts of all its holders in operator
-    ///   order.
-    /// - The pair key with `j` hashes `pair_tag`, the part of the lower operator and then the part
-    ///   of the higher operator. It is zero at `j = id`.
+    /// - The key of a held term hashes `term_tag` and the parts of all its holders in operator order.
+    /// - The pair key with `j` hashes `pair_tag`, the part of the lower operator and then the part of the higher
+    ///   operator. It is zero at `j = id`.
     pub fn keys(
         &self,
         group: &Group,
@@ -529,10 +494,7 @@ impl Parts {
             .into_iter()
             .map(|k| {
                 let holders = (0..group.n).filter(|&j| group.holds(j, k));
-                tagged_hash(
-                    term_tag,
-                    &holders.map(|j| term_part(j, k)).collect::<Vec<_>>(),
-                )
+                tagged_hash(term_tag, &holders.map(|j| term_part(j, k)).collect::<Vec<_>>())
             })
             .collect();
         let pairs = (0..group.n)
@@ -579,8 +541,7 @@ const PRSS_ECHO: &Tag = &tag(b"thlxmss-prss-echo");
 /// `establish` in three rounds, with the PRSS setup of the ceremony. It returns the PRSS keys of
 /// the held terms and the PRSS pair keys.
 ///
-/// 1. Each operator sends `[mode || batch_size]` and its PRSS commitment to `j` to each operator
-///    `j`.
+/// 1. Each operator sends `[mode || batch_size]` and its PRSS commitment to `j` to each operator `j`.
 /// 2. Each operator reveals its fresh PRSS parts.
 /// 3. Each operator echoes the hash of the PRSS term keys that it shares with the receiver.
 ///
@@ -620,16 +581,11 @@ async fn establish(
         Some((mode, size as usize))
     };
     let (modes, batch_sizes): (Vec<Reshare>, Vec<usize>) = (0..n)
-        .map(|j| {
-            parse(&received[j]).ok_or_else(|| format!("operator {j} sends malformed parameters"))
-        })
+        .map(|j| parse(&received[j]).ok_or_else(|| format!("operator {j} sends malformed parameters")))
         .collect::<Result<_, _>>()?;
     same("reshare modes", &modes)?;
     same("batch sizes", &batch_sizes)?;
-    let commitments: Vec<Vec<u8>> = received
-        .iter()
-        .map(|words| cast_slice(&words[2..]).to_vec())
-        .collect();
+    let commitments: Vec<Vec<u8>> = received.iter().map(|words| cast_slice(&words[2..]).to_vec()).collect();
     let revealed = reveal(&mut channel, id, PRSS_COMMIT, &commitments, reveals).await?;
     let revealed: Vec<&[u8]> = revealed.iter().map(Vec::as_slice).collect();
     let (terms, pairs) = parts.keys(group, id, &revealed, [PRSS_TERM, PRSS_PAIR]);
@@ -766,23 +722,17 @@ impl Party {
         Additive::values(products.iter().map(|&product| lambda * product))
     }
 
-    /// Values `index` to `index + count - 1` of the expansion of a coin key. Value `k` is the first 128 bits of `H(EXPAND || key || k)`.
+    /// Values `index` to `index + count - 1` of the expansion of a coin key. Value `k` is the first 128 bits of
+    /// `H(EXPAND || key || k)`.
     pub fn expand(&self, key: &Key, index: u64, count: usize) -> Vec<F128> {
         let value = |k: u64| cast_slice(&digest(EXPAND, &[key, &k.to_le_bytes()])[..2])[0];
-        (0..count as u64)
-            .map(|offset| value(index + offset))
-            .collect()
+        (0..count as u64).map(|offset| value(index + offset)).collect()
     }
 
     /// The masks `rand(0)` of a reshare of `additive` that fills the held terms of `filled` at each
     /// gate. A held term that the reshare fills at every gate, as each held term of `C` in peer
     /// mode, draws no stream.
-    pub fn reshare_masks(
-        &self,
-        channel: &Channel,
-        filled: &[Vec<usize>],
-        additive: &Additive,
-    ) -> Terms {
+    pub fn reshare_masks(&self, channel: &Channel, filled: &[Vec<usize>], additive: &Additive) -> Terms {
         let drawn = |k: usize| !filled.iter().all(|terms| terms.contains(&k));
         let keys = self.prss_terms.iter().enumerate();
         let words = keys.map(|(k, key)| match drawn(k) {
@@ -819,15 +769,10 @@ impl Party {
         }
         match mode {
             Reshare::Collector => {
-                let stars: Vec<(usize, usize)> = gates
-                    .map(|gate| collectors[gate % collectors.len()])
-                    .collect();
+                let stars: Vec<(usize, usize)> = gates.map(|gate| collectors[gate % collectors.len()]).collect();
                 self.collect(channel, &stars, additive, &mut terms).await?
             }
-            Reshare::Peer => {
-                self.send_to_co_holders(channel, additive.words, &mut terms)
-                    .await?
-            }
+            Reshare::Peer => self.send_to_co_holders(channel, additive.words, &mut terms).await?,
         }
         for (c, filled) in filled.iter().enumerate() {
             for &k in filled {
@@ -891,11 +836,8 @@ impl Party {
         terms: &mut Terms,
     ) -> Result<(), String> {
         let (group, id, n, length) = (&self.group, self.id, self.group.n, additive.length);
-        let collected_by = |collector: usize| -> Vec<usize> {
-            (0..stars.len())
-                .filter(|&c| stars[c].1 == collector)
-                .collect()
-        };
+        let collected_by =
+            |collector: usize| -> Vec<usize> { (0..stars.len()).filter(|&c| stars[c].1 == collector).collect() };
         let held_by = |j: usize, gates: &[usize]| -> Vec<usize> {
             let gates = gates.iter().copied();
             gates.filter(|&c| group.holds(j, stars[c].0)).collect()
@@ -948,13 +890,15 @@ impl Party {
     }
 
     /// `Rerand` of the outputs `[[out]]`, one peer `reshare` of their additive form, as in
-    /// [BBY23](https://eprint.iacr.org/2020/1577) (Section 4.3).
+    /// [BBY23] (Section 4.3).
     ///
-    /// - Each operator reshares the sum of the held terms that it owns. The public part moves into
-    ///   term 0, so the owner of term 0 also adds it.
-    /// - The tuple `([[out]], [[1]], [[out']])` joins `tuples`, so the check verifies the reshare
-    ///   as a multiplication by the public constant 1, as in Protocol 19 of Goyal and Song.
+    /// - Each operator reshares the sum of the held terms that it owns. The public part moves into term 0, so the owner
+    ///   of term 0 also adds it.
+    /// - The tuple `([[out]], [[1]], [[out']])` joins `tuples`, so the check verifies the reshare as a multiplication
+    ///   by the public constant 1, as in Protocol 19 of Goyal and Song.
     /// - It returns `[[out']]`, which has no public part.
+    ///
+    /// [BBY23]: https://eprint.iacr.org/2020/1577
     pub async fn rerand<const W: usize>(
         &self,
         channel: &mut Channel,
@@ -997,12 +941,14 @@ impl Party {
         Ok(reshared)
     }
 
-    /// `open` of a replicated sharing in one round, as in [MPClan](https://eprint.iacr.org/2022/675) (App. B).
+    /// `open` of a replicated sharing in one round, as in [MPClan] (App. B).
     ///
-    /// 1. For each term `T` and each operator `j` in `T`, `owner(T)` sends `v_T` to `j` and each
-    ///    other holder sends `H(v_T)`.
+    /// 1. For each term `T` and each operator `j` in `T`, `owner(T)` sends `v_T` to `j` and each other holder sends
+    ///    `H(v_T)`.
     /// 2. The receiver aborts unless the hash of each copy equals every received hash.
     /// 3. The value is the public part plus all terms.
+    ///
+    /// [MPClan]: https://eprint.iacr.org/2022/675
     pub async fn open<const W: usize>(
         &self,
         channel: &mut Channel,
@@ -1016,17 +962,10 @@ impl Party {
         // The message from `i` to `j` has a segment for each term that `i` holds and `j` lacks, in
         // term order. The segment is the copy if `i` owns the term and its hash otherwise.
         let segments = |i: usize, j: usize| -> Vec<(usize, Range<usize>)> {
-            let sent = group
-                .held(i)
-                .into_iter()
-                .filter(|&term| !group.holds(j, term));
+            let sent = group.held(i).into_iter().filter(|&term| !group.holds(j, term));
             let next = |end: &mut usize, term: usize| {
                 let start = *end;
-                *end += if group.owner[term] == i {
-                    length
-                } else {
-                    HASH_WORDS
-                };
+                *end += if group.owner[term] == i { length } else { HASH_WORDS };
                 Some((term, start..*end))
             };
             sent.scan(0, next).collect()
@@ -1061,9 +1000,7 @@ impl Party {
             let (_, range) = incoming[i].iter().find(|&&(k, _)| k == term).unwrap();
             &received[i][range.clone()]
         };
-        let lacked: Vec<usize> = (0..group.terms.len())
-            .filter(|&term| !group.holds(id, term))
-            .collect();
+        let lacked: Vec<usize> = (0..group.terms.len()).filter(|&term| !group.holds(id, term)).collect();
         let consistent = |term: usize| {
             let copy = copy_hash(segment(group.owner[term], term));
             let mut others = (0..n).filter(|&i| i != group.owner[term] && group.holds(i, term));
@@ -1118,19 +1055,13 @@ impl Party {
             .map(|v| self.group.reconstruct(&column(v)))
             .collect::<Option<Vec<F128>>>()
             .ok_or("an opened value has shares off one polynomial")?;
-        let payloads = received
-            .iter()
-            .map(|words| words[length.min(words.len())..].to_vec());
+        let payloads = received.iter().map(|words| words[length.min(words.len())..].to_vec());
         Ok((opened, payloads.collect()))
     }
 
     /// `coin(payload)`, the hash of the channel tag, the round and `open_shamir(conv(rand(1)),
     /// payload)` of two values of `rand(1)`. It also returns the payload of each operator.
-    pub async fn coin(
-        &self,
-        channel: &mut Channel,
-        payload: &[u64],
-    ) -> Result<(Key, Vec<Vec<u64>>), String> {
+    pub async fn coin(&self, channel: &mut Channel, payload: &[u64]) -> Result<(Key, Vec<Vec<u64>>), String> {
         let position = [channel.tag, channel.rounds];
         let random = self.rand(channel, 1, 4);
         let shares = [0, 1].map(|v| self.conv(random.value(v)));
@@ -1139,16 +1070,20 @@ impl Party {
         Ok((key, payloads))
     }
 
-    /// The digest `d_T = H(s_T || h_T)` of each held term, with the salt `s_T` of `rand(2)` in this round and the running hash `h_T`. The salt hides `h_T` from the operators that lack `T`, as in [GRW18](https://eprint.iacr.org/2018/216) (Section 5).
+    /// The digest `d_T = H(s_T || h_T)` of each held term, with the salt `s_T` of `rand(2)` in this round and the
+    /// running hash `h_T`. The salt hides `h_T` from the operators that lack `T`, as in [GRW18] (Section 5).
+    ///
+    /// [GRW18]: https://eprint.iacr.org/2018/216
     pub fn digests(&self, channel: &Channel, hashes: &[Hasher]) -> Vec<u64> {
         let salts = self.rand(channel, 2, HASH_WORDS);
-        let salted = |(salt, running): (&Vec<u64>, &Hasher)| {
-            digest(DIGEST, &[cast_slice(salt), &running.finalize()])
-        };
+        let salted = |(salt, running): (&Vec<u64>, &Hasher)| digest(DIGEST, &[cast_slice(salt), &running.finalize()]);
         salts.words.iter().zip(hashes).flat_map(salted).collect()
     }
 
-    /// Fails unless all holders of each term send the same digest, as in [CGH+18](https://eprint.iacr.org/2018/570) (Prot. 3.3) and MPClan. `own` holds the digests of this operator and `received` the digests of each other operator.
+    /// Fails unless all holders of each term send the same digest, as in [CGH+18] (Prot. 3.3) and MPClan. `own` holds
+    /// the digests of this operator and `received` the digests of each other operator.
+    ///
+    /// [CGH+18]: https://eprint.iacr.org/2018/570
     pub fn compare_digests(&self, own: &[u64], received: &[Vec<u64>]) -> Result<(), String> {
         #[cfg(test)]
         if self.ignores_digests {
@@ -1162,9 +1097,7 @@ impl Party {
             words.as_chunks::<HASH_WORDS>().0.get(position)
         };
         let consistent = |term: usize| {
-            let mut digests = (0..group.n)
-                .filter(|&j| group.holds(j, term))
-                .map(|j| digest(j, term));
+            let mut digests = (0..group.n).filter(|&j| group.holds(j, term)).map(|j| digest(j, term));
             let first = digests.next().unwrap();
             first.is_some() && digests.all(|other| other == first)
         };
@@ -1179,9 +1112,8 @@ fn prg(seed: &Key, stream: u64, target: &mut [u64]) {
     let key = tagged_hash(RSS_PRSS, &[seed]);
     let cipher = Aes128::new(&Array(key[..16].try_into().unwrap()));
     for (counter, words) in target.chunks_mut(16).enumerate() {
-        let mut blocks: [Block; 8] = from_fn(|block| {
-            Array(((stream as u128) << 64 | (8 * counter + block) as u128).to_le_bytes())
-        });
+        let mut blocks: [Block; 8] =
+            from_fn(|block| Array(((stream as u128) << 64 | (8 * counter + block) as u128).to_le_bytes()));
         cipher.encrypt_blocks(&mut blocks);
         for (w, word) in words.iter_mut().enumerate() {
             *word = u64::from_le_bytes(blocks[w / 2][8 * (w % 2)..][..8].try_into().unwrap());
@@ -1199,7 +1131,10 @@ fn digest(tag: &Tag, parts: &[&[u8]]) -> [u64; HASH_WORDS] {
 /// A tag block, the first 32 bytes of each input of `H` except `Th`.
 pub type Tag = [u8; 32];
 
-/// The tag block of `name`, the ASCII name padded on the right with `_` to 32 bytes. Bytes 24 to 31 of each `Th` input `P || A || payload` are the zero bytes of the address `A`. A tag block has no zero byte, so no `Th` input starts with a tag block. A tag of 24 bytes or fewer can be equal to the start of a `Th` input, so a tag block is as long as `P || A`.
+/// The tag block of `name`, the ASCII name padded on the right with `_` to 32 bytes. Bytes 24 to 31 of each `Th` input
+/// `P || A || payload` are the zero bytes of the address `A`. A tag block has no zero byte, so no `Th` input starts
+/// with a tag block. A tag of 24 bytes or fewer can be equal to the start of a `Th` input, so a tag block is as long as
+/// `P || A`.
 pub const fn tag(name: &[u8]) -> Tag {
     assert!(name.len() <= 32, "a tag name has more than 32 bytes");
     let mut block = [b'_'; 32];
@@ -1244,11 +1179,10 @@ pub mod tests {
 
     use tokio::runtime::Runtime;
 
-    use crate::check;
     use crate::circuit::{Keccak, evaluate};
     use crate::dkg::BATCH_SIZE;
     use crate::mpc::*;
-    use crate::prawns;
+    use crate::{check, prawns};
 
     pub fn local_parties<T: Send>(
         t: usize,
@@ -1290,11 +1224,7 @@ pub mod tests {
     ) -> Vec<T> {
         local_networks(t, async |network, all_seeds| {
             let group = Group::new(t);
-            let seeds = group
-                .held(network.id)
-                .iter()
-                .map(|&k| all_seeds[k])
-                .collect();
+            let seeds = group.held(network.id).iter().map(|&k| all_seeds[k]).collect();
             let (reshare, batch_size) = parameters[network.id];
             let party = Party::new(group, seeds, network, reshare, batch_size);
             run(party.await, all_seeds).await
@@ -1302,19 +1232,13 @@ pub mod tests {
     }
 
     /// Each operator runs `run` with its network and random seeds of all terms.
-    pub fn local_networks<T: Send>(
-        t: usize,
-        run: impl AsyncFn(Arc<Network>, Vec<Key>) -> T + Sync,
-    ) -> Vec<T> {
+    pub fn local_networks<T: Send>(t: usize, run: impl AsyncFn(Arc<Network>, Vec<Key>) -> T + Sync) -> Vec<T> {
         let group = Group::new(t);
         let (all_seeds, _) = random_keys(&group);
         let listeners: Vec<TcpListener> = (0..group.n)
             .map(|_| TcpListener::bind("127.0.0.1:0").unwrap())
             .collect();
-        let addresses: Vec<String> = listeners
-            .iter()
-            .map(|l| l.local_addr().unwrap().to_string())
-            .collect();
+        let addresses: Vec<String> = listeners.iter().map(|l| l.local_addr().unwrap().to_string()).collect();
         thread::scope(|s| {
             let handles: Vec<_> = listeners
                 .into_iter()
@@ -1370,11 +1294,7 @@ pub mod tests {
         };
         let whole = words([2, 3], 4, 40);
         assert_eq!(words([2, 3], 4, 17), whole[..17]);
-        for other in [
-            words([5, 3], 4, 40),
-            words([2, 5], 4, 40),
-            words([2, 3], 5, 40),
-        ] {
+        for other in [words([5, 3], 4, 40), words([2, 5], 4, 40), words([2, 3], 5, 40)] {
             assert!(other.iter().zip(&whole).all(|(a, b)| a != b));
         }
     }
@@ -1446,37 +1366,18 @@ pub mod tests {
                         party.prss_terms[0][0] ^= 1;
                     }
                     let mut channel = party.network.channel();
-                    let (mut blocks, mut tuples) =
-                        (Replicated::new(&party, 1), Tuples::new(&party, 0));
+                    let (mut blocks, mut tuples) = (Replicated::new(&party, 1), Tuples::new(&party, 0));
                     let circuit = Keccak { outputs: 25 };
-                    let evaluation = evaluate(
-                        &party,
-                        &circuit,
-                        &mut channel,
-                        &mut blocks,
-                        [true; 25],
-                        &mut tuples,
-                    );
+                    let evaluation = evaluate(&party, &circuit, &mut channel, &mut blocks, [true; 25], &mut tuples);
                     evaluation.await.unwrap();
                     let outcome = match corrupt && short {
-                        true => channel
-                            .exchange(vec![vec![0; 2]; party.group.n])
-                            .await
-                            .map(|_| ()),
+                        true => channel.exchange(vec![vec![0; 2]; party.group.n]).await.map(|_| ()),
                         false => check::mult_verification(&party, &mut channel, tuples).await,
                     };
                     (outcome, channel.rounds)
                 });
-                for (id, outcome) in outcomes
-                    .into_iter()
-                    .enumerate()
-                    .filter(|&(id, _)| !short || id != 1)
-                {
-                    assert_eq!(
-                        outcome,
-                        (Err(error.to_string()), 25),
-                        "operator {id} at t = {t}"
-                    );
+                for (id, outcome) in outcomes.into_iter().enumerate().filter(|&(id, _)| !short || id != 1) {
+                    assert_eq!(outcome, (Err(error.to_string()), 25), "operator {id} at t = {t}");
                 }
             }
         }
@@ -1507,8 +1408,7 @@ pub mod tests {
     }
 
     #[test]
-    fn an_opening_gives_the_public_part_plus_all_terms_and_a_wrong_copy_or_hash_aborts_its_receivers()
-     {
+    fn an_opening_gives_the_public_part_plus_all_terms_and_a_wrong_copy_or_hash_aborts_its_receivers() {
         // The public part is part 0, and term `k` is part `k + 1`.
         let part = |part: usize, word: usize| -> [Word; 2] {
             from_fn(|l| Word(from_fn(|s| (part * 1000 + word * 100 + l * 10 + s) as u64)))
@@ -1520,9 +1420,7 @@ pub mod tests {
             let expected: Vec<[Word; 2]> = (0..3)
                 .map(|word| {
                     let add = |sum: [Word; 2], part: [Word; 2]| from_fn(|l| sum[l] ^ part[l]);
-                    (0..=terms)
-                        .map(|p| part(p, word))
-                        .fold([Word::ZERO; 2], add)
+                    (0..=terms).map(|p| part(p, word)).fold([Word::ZERO; 2], add)
                 })
                 .collect();
             // Operator `flipped` changes its copy of term 0, so the owner sends a wrong copy and
@@ -1545,15 +1443,10 @@ pub mod tests {
                 for (id, outcome) in outcomes.into_iter().enumerate() {
                     let expected = match (flipped, group.holds(id, 0)) {
                         (Some(j), _) if j == id => continue,
-                        (Some(_), false) => {
-                            Err("the holders of term 0 send different copies".into())
-                        }
+                        (Some(_), false) => Err("the holders of term 0 send different copies".into()),
                         _ => Ok(expected.clone()),
                     };
-                    assert_eq!(
-                        outcome, expected,
-                        "operator {id} at t = {t}, flipped {flipped:?}"
-                    );
+                    assert_eq!(outcome, expected, "operator {id} at t = {t}, flipped {flipped:?}");
                 }
             }
         }

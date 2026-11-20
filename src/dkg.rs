@@ -3,32 +3,26 @@
 //! - `e` is the index of a one-time key in its layer.
 //! - `x_0` holds the PRF inputs `X_0` of the chain starts.
 //! - `cpk` holds the published rows of the chains, as in PRAWNS, and `pk` is the public key.
-//! - A ceremony splits the chains into chain batches of the batch size, and each batch runs on its
-//!   own channel.
+//! - A ceremony splits the chains into chain batches of the batch size, and each batch runs on its own channel.
 //! - A batch takes its inputs from the threshold PRF and hashes its chain steps in MPC.
-//! - Then `rerand` reshares its outputs, `mult_verification` checks its AND tuples and the reshare,
-//!   and `open` opens the reshared outputs.
-//! - Each ceremony starts with its own `Party`, which derives fresh PRSS keys and drops them at the
-//!   end.
-//! - A retry of the top ceremony reuses the `operator` file. The operators delete that file
-//!   together only when the key generation itself failed at an operator.
-//! - Each operator starts the batches in batch order and runs at most `concurrency` of them at the
-//!   same time.
+//! - Then `rerand` reshares its outputs, `mult_verification` checks its AND tuples and the reshare, and `open` opens
+//!   the reshared outputs.
+//! - Each ceremony starts with its own `Party`, which derives fresh PRSS keys and drops them at the end.
+//! - A retry of the top ceremony reuses the `operator` file. The operators delete that file together only when the key
+//!   generation itself failed at an operator.
+//! - Each operator starts the batches in batch order and runs at most `concurrency` of them at the same time.
 //!   - So operators with different concurrencies do not deadlock.
-//! - The top tree opens the chain ends. A bottom tree also opens the masked middle values, so that
-//!   a quorum signs with no MPC.
-//! - The top key of a bottom tree signs its root in MPC, because the top tree stores no masked
-//!   values.
-//!   - This signature run starts its own `Party` after the randomizer search on the root, so it
-//!     uses fresh PRSS keys as a second ceremony does.
-//! - A bottom tree also opens the commitment `c_e` of each key `e`, in commitment batches of the
-//!   batch size.
+//! - The top tree opens the chain ends. A bottom tree also opens the masked middle values, so that a quorum signs with
+//!   no MPC.
+//! - The top key of a bottom tree signs its root in MPC, because the top tree stores no masked values.
+//!   - This signature run starts its own `Party` after the randomizer search on the root, so it uses fresh PRSS keys as
+//!     a second ceremony does.
+//! - A bottom tree also opens the commitment `c_e` of each key `e`, in commitment batches of the batch size.
 //!   - The commitment hashes `F(A_rnd(e))` once, at `A_rnd(e)` with step 1.
-//!   - The last commitment batch also opens the randomizer value `F(A_rnd)` of the top key, but not
-//!     its hash output.
+//!   - The last commitment batch also opens the randomizer value `F(A_rnd)` of the top key, but not its hash output.
 //!   - The input of this value does not depend on the root, so it needs no batch of its own.
-//!   - The commitment is an addition to the note. A top key needs none, because the last commitment
-//!     batch opens its `F(A_rnd(e))` after the check.
+//!   - The commitment is an addition to the note. A top key needs none, because the last commitment batch opens its
+//!     `F(A_rnd(e))` after the check.
 
 use std::fs::{self, DirBuilder, File, OpenOptions};
 use std::io::Write;
@@ -48,21 +42,15 @@ use crate::circuit::{self, HashPublic};
 use crate::mpc::{Group, LANES, Party, Replicated, Reshare, Tuples, Word};
 use crate::net::{Channel, Network};
 use crate::prawns::{self, ChainRow, Operator, digest_lanes};
-use crate::xmss::{
-    self, Digest, KEYS, LAYER_HEIGHT, LAYER_SIG_SIZE, Layer, TWEAK_CHAIN, TWEAK_RANDOMIZER, V,
-    layer_address, prf_address,
+use crate::wots::{
+    self, Digest, KEYS, LAYER_HEIGHT, LAYER_SIG_SIZE, Layer, TWEAK_CHAIN, TWEAK_RANDOMIZER, V, layer_address,
+    prf_address,
 };
 
 /// The default chains or keys of a batch, in 32 words of `LANES` instances.
 pub const BATCH_SIZE: usize = 32 * LANES;
 
-fn hash_public(
-    public_parameter: &Digest,
-    layer: Layer,
-    e: u32,
-    chain: usize,
-    step: usize,
-) -> HashPublic {
+fn hash_public(public_parameter: &Digest, layer: Layer, e: u32, chain: usize, step: usize) -> HashPublic {
     let [p0, p1] = digest_lanes(public_parameter);
     let [a0, a1] = digest_lanes(&layer_address(TWEAK_CHAIN, layer, 0, e, step));
     ([p0, p1, a0, a1], [chain as u64, 0])
@@ -89,8 +77,7 @@ async fn open_chains(
             let slots = (0..LANES).filter(|&slot| x_0.get(LANES * word + slot).is_some());
             for slot in slots.filter(|&slot| position(LANES * word + slot) == step) {
                 for (selected, lanes) in selected.iter_mut().zip(lanes) {
-                    (selected[0].0[slot], selected[1].0[slot]) =
-                        (lanes[0].0[slot], lanes[1].0[slot]);
+                    (selected[0].0[slot], selected[1].0[slot]) = (lanes[0].0[slot], lanes[1].0[slot]);
                 }
             }
         }
@@ -108,9 +95,7 @@ async fn open_chains(
     let values = checked_open(party, channel, &selected, tuples)
         .await?
         .iter()
-        .flat_map(|opened| {
-            (0..LANES).map(move |slot| prawns::lanes_digest(opened[0].0[slot], opened[1].0[slot]))
-        })
+        .flat_map(|opened| (0..LANES).map(move |slot| prawns::lanes_digest(opened[0].0[slot], opened[1].0[slot])))
         .take(x_0.len())
         .collect();
     Ok((values, ands))
@@ -159,12 +144,7 @@ async fn masked_batch(
             }
         }
         if step < 2 {
-            prawns::prf_inputs(
-                party,
-                &addresses(step + 1),
-                &mut published,
-                [2 * step, 2 * step + 1],
-            );
+            prawns::prf_inputs(party, &addresses(step + 1), &mut published, [2 * step, 2 * step + 1]);
         }
     }
     let cpk = checked_open(party, channel, &published, tuples)
@@ -172,8 +152,7 @@ async fn masked_batch(
         .iter()
         .flat_map(|opened| {
             (0..LANES).map(move |slot| {
-                [0, 1, 2]
-                    .map(|p| prawns::lanes_digest(opened[2 * p].0[slot], opened[2 * p + 1].0[slot]))
+                [0, 1, 2].map(|p| prawns::lanes_digest(opened[2 * p].0[slot], opened[2 * p + 1].0[slot]))
             })
         })
         .take(x_0.len())
@@ -212,26 +191,14 @@ async fn top_signature<P: Deref<Target = Party>>(
     secret: Digest,
 ) -> Result<Vec<u8>, String> {
     let reveal = async |digits: &[usize; V]| {
-        let x_0: Vec<Digest> = (0..V)
-            .map(|chain| prf_address(Layer::Top, bottom, chain, 0))
-            .collect();
-        let public = |step, chain| {
-            (chain < V).then(|| hash_public(&public_parameter, Layer::Top, bottom, chain, step))
-        };
+        let x_0: Vec<Digest> = (0..V).map(|chain| prf_address(Layer::Top, bottom, chain, 0)).collect();
+        let public = |step, chain| (chain < V).then(|| hash_public(&public_parameter, Layer::Top, bottom, chain, step));
         let party = party().await?;
         let mut channel = party.network.channel();
         let opened = open_chains(&party, &mut channel, &x_0, public, |chain| digits[chain]);
         Ok(opened.await?.0)
     };
-    xmss::wots_sign(
-        &public_parameter,
-        Layer::Top,
-        bottom,
-        &root,
-        &secret,
-        reveal,
-    )
-    .await
+    wots::wots_sign(&public_parameter, &secret, Layer::Top, bottom, &root, reveal).await
 }
 
 /// The tuple words of each held term in a batch of `instances` instances that hash `hashes` times
@@ -269,8 +236,7 @@ fn peak_rss() -> u64 {
 
 /// Runs the MPC for all chains of `keys`, with at most `concurrency` batches in flight.
 ///
-/// - A bottom tree also opens the commitments of its keys and then the randomizer value of its top
-///   key.
+/// - A bottom tree also opens the commitments of its keys and then the randomizer value of its top key.
 /// - The rounds are the most rounds of a chain batch and of a commitment batch.
 async fn ceremony(
     party: &Arc<Party>,
@@ -278,27 +244,14 @@ async fn ceremony(
     layer: Layer,
     keys: &[u32],
     concurrency: usize,
-) -> Result<
-    (
-        Vec<Digest>,
-        Vec<ChainRow>,
-        Vec<Digest>,
-        Option<Digest>,
-        u64,
-        [u64; 2],
-    ),
-    String,
-> {
+) -> Result<(Vec<Digest>, Vec<ChainRow>, Vec<Digest>, Option<Digest>, u64, [u64; 2]), String> {
     let bottom = keys[0] >> LAYER_HEIGHT;
     let tree = match layer {
         Layer::Top => "top".to_string(),
         Layer::Bottom => format!("bottom {bottom}"),
     };
-    let chains: Arc<Vec<(u32, usize)>> = Arc::new(
-        keys.iter()
-            .flat_map(|&e| (0..V).map(move |chain| (e, chain)))
-            .collect(),
-    );
+    let chains: Arc<Vec<(u32, usize)>> =
+        Arc::new(keys.iter().flat_map(|&e| (0..V).map(move |chain| (e, chain))).collect());
     let committed: Arc<Vec<u32>> = Arc::new(match layer {
         Layer::Top => vec![],
         Layer::Bottom => keys.to_vec(),
@@ -322,12 +275,10 @@ async fn ceremony(
             let (party, chains, committed) = (party.clone(), chains.clone(), committed.clone());
             tokio::spawn(async move {
                 if let Some(k) = b.checked_sub(chain_batches) {
-                    let keys =
-                        &committed[k * batch_size..committed.len().min((k + 1) * batch_size)];
+                    let keys = &committed[k * batch_size..committed.len().min((k + 1) * batch_size)];
                     let top_key = ((k + 1) * batch_size >= committed.len()).then_some(bottom);
                     let (commitments, ands) =
-                        commitment_batch(&party, &mut channel, &public_parameter, keys, top_key)
-                            .await?;
+                        commitment_batch(&party, &mut channel, &public_parameter, keys, top_key).await?;
                     return Ok((b, commitments, vec![], ands, channel.rounds));
                 }
                 let chains = &chains[b * batch_size..chains.len().min((b + 1) * batch_size)];
@@ -342,8 +293,7 @@ async fn ceremony(
                     Some(hash_public(&public_parameter, layer, e, chain, step))
                 };
                 let (ends, cpk, ands) = if layer == Layer::Top {
-                    let (ends, ands) =
-                        open_chains(&party, &mut channel, &addresses(0), public, |_| 3).await?;
+                    let (ends, ands) = open_chains(&party, &mut channel, &addresses(0), public, |_| 3).await?;
                     (ends, vec![], ands)
                 } else {
                     let (cpk, ands) = masked_batch(&party, &mut channel, addresses, public).await?;
@@ -359,8 +309,7 @@ async fn ceremony(
     batches.sort_by_key(|batch| batch.0);
     let ands = batches.iter().map(|batch| batch.3).sum();
     let commitment_batches = batches.split_off(chain_batches);
-    let rounds = [&batches, &commitment_batches]
-        .map(|batches| batches.iter().map(|batch| batch.4).max().unwrap_or(0));
+    let rounds = [&batches, &commitment_batches].map(|batches| batches.iter().map(|batch| batch.4).max().unwrap_or(0));
     let elapsed = start.elapsed();
     info!(
         "{tree}: {} keys in {elapsed:.1?} at {:.1} batches per second, {} batches of {batch_size} chains in {} rounds, {} batches of {batch_size} keys in {} rounds, {ands} ANDs, {} bytes sent, {} bytes of peak RSS",
@@ -373,27 +322,14 @@ async fn ceremony(
         party.network.sent.load(Ordering::Relaxed) - sent,
         peak_rss()
     );
-    let ends: Vec<Digest> = batches
-        .iter()
-        .flat_map(|batch| batch.1.iter().copied())
-        .collect();
+    let ends: Vec<Digest> = batches.iter().flat_map(|batch| batch.1.iter().copied()).collect();
     let cpk: Vec<ChainRow> = batches.into_iter().flat_map(|batch| batch.2).collect();
-    let mut commitments: Vec<Digest> = commitment_batches
-        .into_iter()
-        .flat_map(|batch| batch.1)
-        .collect();
+    let mut commitments: Vec<Digest> = commitment_batches.into_iter().flat_map(|batch| batch.1).collect();
     let randomizer = (layer == Layer::Bottom).then(|| commitments.pop().unwrap());
     let leaves = ends
         .chunks(V)
         .zip(keys)
-        .map(|(ends, &e)| {
-            xmss::wots_leaf_hash(
-                &public_parameter,
-                layer as usize,
-                e,
-                ends.try_into().unwrap(),
-            )
-        })
+        .map(|(ends, &e)| wots::wots_leaf_hash(&public_parameter, layer as usize, e, ends.try_into().unwrap()))
         .collect();
     Ok((leaves, cpk, commitments, randomizer, ands, rounds))
 }
@@ -405,13 +341,7 @@ async fn party(
     reshare: Reshare,
     batch_size: usize,
 ) -> Result<Arc<Party>, String> {
-    let party = Party::new(
-        group,
-        operator.sk.clone(),
-        network.clone(),
-        reshare,
-        batch_size,
-    );
+    let party = Party::new(group, operator.sk.clone(), network.clone(), reshare, batch_size);
     Ok(Arc::new(party.await?))
 }
 
@@ -427,11 +357,7 @@ pub async fn new_top_tree(
         false => {
             let group = Group::new(network.n.div_ceil(2));
             let operator = prawns::seed_gen(&group, network).await?;
-            DirBuilder::new()
-                .recursive(true)
-                .mode(0o700)
-                .create(dir)
-                .unwrap();
+            DirBuilder::new().recursive(true).mode(0o700).create(dir).unwrap();
             OpenOptions::new()
                 .write(true)
                 .create(true)
@@ -445,16 +371,9 @@ pub async fn new_top_tree(
     };
     let party = party(group, &operator, network, reshare, batch_size).await?;
     let keys: Vec<u32> = (0..KEYS as u32).collect();
-    let (leaves, ..) = ceremony(
-        &party,
-        operator.public_parameter,
-        Layer::Top,
-        &keys,
-        concurrency,
-    )
-    .await?;
+    let (leaves, ..) = ceremony(&party, operator.public_parameter, Layer::Top, &keys, concurrency).await?;
     let pk = [
-        xmss::levels(&operator.public_parameter, Layer::Top, 0, leaves.clone())[LAYER_HEIGHT][0],
+        wots::levels(&operator.public_parameter, Layer::Top, 0, leaves.clone())[LAYER_HEIGHT][0],
         operator.public_parameter,
     ]
     .concat();
@@ -473,16 +392,14 @@ pub async fn new_bottom_tree(
 ) -> Result<(), String> {
     let (group, operator) = Operator::load(dir);
     let public_parameter = operator.public_parameter;
-    let keys: Vec<u32> = (0..KEYS as u32)
-        .map(|k| bottom << LAYER_HEIGHT | k)
-        .collect();
+    let keys: Vec<u32> = (0..KEYS as u32).map(|k| bottom << LAYER_HEIGHT | k).collect();
     let (leaves, cpk, commitments, randomizer, ..) = {
         let party = party(group.clone(), &operator, network, reshare, batch_size).await?;
         ceremony(&party, public_parameter, Layer::Bottom, &keys, concurrency).await?
     };
-    let levels = xmss::levels(&public_parameter, Layer::Bottom, bottom, leaves);
+    let levels = wots::levels(&public_parameter, Layer::Bottom, bottom, leaves);
     let root = levels[LAYER_HEIGHT][0];
-    let top = xmss::levels(
+    let top = wots::levels(
         &public_parameter,
         Layer::Top,
         0,
@@ -491,10 +408,8 @@ pub async fn new_bottom_tree(
     let new_party = async || party(group, &operator, network, reshare, batch_size).await;
     let secret = randomizer.unwrap();
     let top_signature = top_signature(new_party, public_parameter, bottom, root, secret).await?;
-    let top_signature = [top_signature, xmss::path(&top, bottom as usize)].concat();
-    if xmss::layer_root(&public_parameter, Layer::Top, bottom, &root, &top_signature)
-        != Some(top[LAYER_HEIGHT][0])
-    {
+    let top_signature = [top_signature, wots::path(&top, bottom as usize)].concat();
+    if wots::layer_root(&public_parameter, Layer::Top, bottom, &root, &top_signature) != Some(top[LAYER_HEIGHT][0]) {
         return Err("the top signature does not lead to the top root".into());
     }
     BottomTree::write(dir, bottom, &levels, &cpk, &top_signature, &commitments);
@@ -577,14 +492,14 @@ mod tests {
     use std::array::from_fn;
     use std::env;
 
-    use signatures::lean_xmss::{codeword, message_digest};
+    use lean_xmss::internals::{codeword, message_digest};
 
     use crate::dkg::*;
     use crate::mpc::Key;
     use crate::mpc::tests::{local_networks, local_operators, local_parties, random_keys};
     use crate::net::pack;
     use crate::serve;
-    use crate::xmss::{truncated_hash, xor};
+    use crate::wots::{truncated_hash, xor};
 
     /// The threshold PRF `F(x)` from the seeds of all terms.
     fn prf(all_seeds: &[Key], x: Digest) -> Digest {
@@ -608,22 +523,8 @@ mod tests {
             .flat_map(|&e| (0..V).map(move |chain| (e, chain)))
             .map(|(e, chain)| {
                 let address = |position| prf_address(layer, e, chain, position);
-                let value = |steps| {
-                    xmss::chain(
-                        &public_parameter,
-                        layer as usize,
-                        e,
-                        chain,
-                        0,
-                        steps,
-                        f(address(0)),
-                    )
-                };
-                [
-                    xor(value(1), f(address(1))),
-                    xor(value(2), f(address(2))),
-                    value(3),
-                ]
+                let value = |steps| wots::chain(&public_parameter, layer as usize, e, chain, 0, steps, f(address(0)));
+                [xor(value(1), f(address(1))), xor(value(2), f(address(2))), value(3)]
             })
             .collect();
         let leaves = cpk
@@ -631,7 +532,7 @@ mod tests {
             .zip(keys)
             .map(|(cpk, &e)| {
                 let ends = from_fn(|chain| cpk[chain][2]);
-                xmss::wots_leaf_hash(&public_parameter, layer as usize, e, &ends)
+                wots::wots_leaf_hash(&public_parameter, layer as usize, e, &ends)
             })
             .collect();
         let commitments = match layer {
@@ -640,7 +541,7 @@ mod tests {
                 .iter()
                 .map(|&e| {
                     let value = f(layer_address(TWEAK_RANDOMIZER, layer, 0, e, 0));
-                    xmss::commitment(&public_parameter, e, value)
+                    wots::commitment(&public_parameter, e, value)
                 })
                 .collect(),
         };
@@ -671,15 +572,13 @@ mod tests {
         });
         outcomes
             .into_iter()
-            .map(
-                |((leaves, cpk, commitments, randomizer, ands, rounds), all_seeds)| {
-                    let dealt = trusted_dealer(&all_seeds, public_parameter, layer, &keys);
-                    assert_eq!(leaves, dealt.0);
-                    assert!(layer == Layer::Top || cpk == dealt.1);
-                    assert_eq!((commitments, randomizer), (dealt.2, dealt.3));
-                    (ands, rounds)
-                },
-            )
+            .map(|((leaves, cpk, commitments, randomizer, ands, rounds), all_seeds)| {
+                let dealt = trusted_dealer(&all_seeds, public_parameter, layer, &keys);
+                assert_eq!(leaves, dealt.0);
+                assert!(layer == Layer::Top || cpk == dealt.1);
+                assert_eq!((commitments, randomizer), (dealt.2, dealt.3));
+                (ands, rounds)
+            })
             .collect()
     }
 
@@ -697,22 +596,16 @@ mod tests {
         let modes = [Reshare::Collector, Reshare::Peer];
         let trees = [(2, Layer::Bottom), (3, Layer::Bottom), (2, Layer::Top)];
         for batch_size in [4, 64, 128, 256] {
-            for ((t, layer), reshare) in trees
-                .into_iter()
-                .flat_map(|tree| modes.map(|mode| (tree, mode)))
-            {
-                let expected_rounds =
-                    expected_rounds(reshare, batch_size).map(|[chain, commitment]| match layer {
-                        Layer::Top => [chain, 0],
-                        Layer::Bottom => [chain, commitment],
-                    });
+            for ((t, layer), reshare) in trees.into_iter().flat_map(|tree| modes.map(|mode| (tree, mode))) {
+                let expected_rounds = expected_rounds(reshare, batch_size).map(|[chain, commitment]| match layer {
+                    Layer::Top => [chain, 0],
+                    Layer::Bottom => [chain, commitment],
+                });
                 // Each of the two keys hashes its chains 3 times. A word holds `LANES` instances,
                 // so the commitments of the two keys take the hashes of one word.
                 let hashes = 2 * V * 3 + if layer == Layer::Bottom { LANES } else { 0 };
                 // The operators run different concurrencies, which must not deadlock.
-                let operators: Vec<_> = (0..2 * t - 1)
-                    .map(|id| (reshare, batch_size, 2 << id))
-                    .collect();
+                let operators: Vec<_> = (0..2 * t - 1).map(|id| (reshare, batch_size, 2 << id)).collect();
                 for (ands, rounds) in local_ceremony(layer, &operators) {
                     assert_eq!(ands, hashes as u64 * 36_288);
                     if let Some(expected_rounds) = expected_rounds {
@@ -724,8 +617,7 @@ mod tests {
     }
 
     #[test]
-    fn the_rerand_the_check_and_the_opening_of_a_bottom_chain_batch_send_the_same_bytes_in_both_modes()
-     {
+    fn the_rerand_the_check_and_the_opening_of_a_bottom_chain_batch_send_the_same_bytes_in_both_modes() {
         // The bytes that each operator sends in the rerand of the six lanes of 128 chains, in the
         // check and in the opening.
         for (t, expected) in [(2, (6_144, 2_688, 6_176)), (3, (12_288, 5_888, 24_832))] {
@@ -735,28 +627,18 @@ mod tests {
                     let mut state = Replicated::new(&party, words);
                     let mut tuples = Tuples::new(&party, padded_words(BATCH_SIZE, 3, 6));
                     for _ in 0..3 {
-                        let hash =
-                            circuit::hash(&party, &mut channel, &mut state, |_| None, &mut tuples);
+                        let hash = circuit::hash(&party, &mut channel, &mut state, |_| None, &mut tuples);
                         hash.await.unwrap();
                     }
                     let sent = || party.network.sent.load(Ordering::Relaxed);
                     let start = sent();
                     let rows = Replicated::<6>::new(&party, words);
-                    let reshared = party
-                        .rerand(&mut channel, &rows, &mut tuples)
-                        .await
-                        .unwrap();
+                    let reshared = party.rerand(&mut channel, &rows, &mut tuples).await.unwrap();
                     let rerandomized = sent();
-                    check::mult_verification(&party, &mut channel, tuples)
-                        .await
-                        .unwrap();
+                    check::mult_verification(&party, &mut channel, tuples).await.unwrap();
                     let checked = sent();
                     party.open(&mut channel, &reshared).await.unwrap();
-                    (
-                        rerandomized - start,
-                        checked - rerandomized,
-                        sent() - checked,
-                    )
+                    (rerandomized - start, checked - rerandomized, sent() - checked)
                 });
                 assert_eq!(sent, vec![expected; 2 * t - 1], "t = {t}, {reshare:?}");
             }
@@ -764,8 +646,7 @@ mod tests {
     }
 
     #[test]
-    fn a_tampered_contribution_to_an_and_gate_or_to_the_rerand_in_batch_3_fails_the_check_at_every_operator()
-     {
+    fn a_tampered_contribution_to_an_and_gate_or_to_the_rerand_in_batch_3_fails_the_check_at_every_operator() {
         // `establish` in `Party::new` takes channel 1, so batch `b` has the tag `2 + b`. Round 0 is
         // the first AND layer, and round 144 is the rerand after the 72 AND layers of 2 rounds.
         // Operator 0 flips every message of the round and the copy that it keeps, so the holders
@@ -809,10 +690,7 @@ mod tests {
         dirs.iter().for_each(|dir| fs::remove_dir_all(dir).unwrap());
     }
 
-    fn flip_in_batch_3<const ROUND: u64>(
-        channel: &Channel,
-        mut outgoing: Vec<Vec<u64>>,
-    ) -> Vec<Vec<u64>> {
+    fn flip_in_batch_3<const ROUND: u64>(channel: &Channel, mut outgoing: Vec<Vec<u64>>) -> Vec<Vec<u64>> {
         if channel.tag == 2 + 3 && channel.rounds == ROUND {
             let messages = outgoing.iter_mut().filter(|words| !words.is_empty());
             messages.for_each(|words| words[0] ^= 1);
@@ -827,23 +705,15 @@ mod tests {
         let path: Vec<u8> = (0..LAYER_HEIGHT * 16).map(|byte| byte as u8).collect();
         let leads_to_root = |layer, message: &[u8], signature: Vec<u8>, leaf| {
             let signature = [signature, path.clone()].concat();
-            let root = xmss::layer_root(&public_parameter, layer, 9, message, &signature);
-            assert_eq!(
-                root,
-                Some(xmss::tests::fold(&public_parameter, layer, 9, leaf, &path))
-            );
+            let root = wots::layer_root(&public_parameter, layer, 9, message, &signature);
+            assert_eq!(root, Some(wots::tests::fold(&public_parameter, layer, 9, leaf, &path)));
         };
         let (_, all_pairs) = random_keys(&Group::new(2));
         local_parties(2, Reshare::Collector, async |party, all_seeds| {
-            let (leaves, cpk, commitments, _) =
-                trusted_dealer(&all_seeds, public_parameter, Layer::Bottom, &[9]);
+            let (leaves, cpk, commitments, _) = trusted_dealer(&all_seeds, public_parameter, Layer::Bottom, &[9]);
             let (top_leaves, ..) = trusted_dealer(&all_seeds, public_parameter, Layer::Top, &[9]);
-            let secret = prf(
-                &all_seeds,
-                layer_address(TWEAK_RANDOMIZER, Layer::Top, 0, 9, 0),
-            );
-            let signature =
-                top_signature(async || Ok(&party), public_parameter, 9, leaves[0], secret).await;
+            let secret = prf(&all_seeds, layer_address(TWEAK_RANDOMIZER, Layer::Top, 0, 9, 0));
+            let signature = top_signature(async || Ok(&party), public_parameter, 9, leaves[0], secret).await;
             leads_to_root(Layer::Top, &leaves[0], signature.unwrap(), top_leaves[0]);
             let quorum = [1, 2];
             if !quorum.contains(&party.id) {
@@ -866,35 +736,19 @@ mod tests {
                     &message,
                     (cpk, c_e),
                 );
-                (
-                    outcome.await,
-                    party.network.sent.load(Ordering::Relaxed) - sent,
-                )
+                (outcome.await, party.network.sent.load(Ordering::Relaxed) - sent)
             };
             let signature = sign(&cpk, &commitments[0]).await.0.unwrap();
             let randomizer = signature[..16].try_into().unwrap();
-            let digits = codeword(&message_digest(
-                &public_parameter,
-                0,
-                9,
-                &randomizer,
-                &message,
-            ));
+            let digits = codeword(&message_digest(&public_parameter, 0, 9, &randomizer, &message));
             leads_to_root(Layer::Bottom, &message, signature, leaves[0]);
             // The signing grinds to the same digits again. Only the row of the last chain below
             // position 3 changes, so every chain must be checked.
-            let chain = digits
-                .unwrap()
-                .iter()
-                .rposition(|&digit| digit < 3)
-                .unwrap();
+            let chain = digits.unwrap().iter().rposition(|&digit| digit < 3).unwrap();
             let mut tampered_rows = cpk.clone();
             tampered_rows[chain] = tampered_rows[chain].map(|digest| xor(digest, [1; 16]));
             let outcome = sign(&tampered_rows, &commitments[0]).await.0;
-            assert_eq!(
-                outcome,
-                Err(format!("chain {chain} does not lead to its end"))
-            );
+            assert_eq!(outcome, Err(format!("chain {chain} does not lead to its end")));
             // Each signer sends only its part of `F(A_rnd(e))` to its co-signer, so `reveal` never
             // runs.
             let tampered_commitment = xor(commitments[0], [1; 16]);
@@ -915,23 +769,12 @@ mod tests {
         let (_, all_pairs) = random_keys(&Group::new(2));
         let outcomes = local_parties(2, Reshare::Collector, async |party, all_seeds| {
             // Leaf 9 is key 9 of bottom tree 0, and top key 0 signs the root of that tree.
-            let (leaves, cpk, commitments, _) =
-                trusted_dealer(&all_seeds, public_parameter, Layer::Bottom, &[9]);
+            let (leaves, cpk, commitments, _) = trusted_dealer(&all_seeds, public_parameter, Layer::Bottom, &[9]);
             let (top_leaves, ..) = trusted_dealer(&all_seeds, public_parameter, Layer::Top, &[0]);
-            let fold = |layer, e, leaf| xmss::tests::fold(&public_parameter, layer, e, leaf, &path);
-            let secret = prf(
-                &all_seeds,
-                layer_address(TWEAK_RANDOMIZER, Layer::Top, 0, 0, 0),
-            );
+            let fold = |layer, e, leaf| wots::tests::fold(&public_parameter, layer, e, leaf, &path);
+            let secret = prf(&all_seeds, layer_address(TWEAK_RANDOMIZER, Layer::Top, 0, 0, 0));
             let bottom_root = fold(Layer::Bottom, 9, leaves[0]);
-            let top = top_signature(
-                async || Ok(&party),
-                public_parameter,
-                0,
-                bottom_root,
-                secret,
-            )
-            .await;
+            let top = top_signature(async || Ok(&party), public_parameter, 0, bottom_root, secret).await;
             if !quorum.contains(&party.id) {
                 return None;
             }
@@ -954,7 +797,7 @@ mod tests {
             let public_key = [fold(Layer::Top, 0, top_leaves[0]), public_parameter].concat();
             let leaf = 9u32.to_le_bytes();
             let signature = [&leaf[..], &bottom, &path, &top.unwrap(), &path].concat();
-            Some(xmss::verify(&public_key, &message, &signature))
+            Some(wots::verify(&public_key, &message, &signature))
         });
         assert_eq!(outcomes, vec![None, Some(true), Some(true)]);
     }
@@ -966,11 +809,7 @@ mod tests {
         let group = Group::new(2);
         let outcomes = local_networks(2, async |network, all_seeds| {
             let new_party = async || {
-                let seeds = group
-                    .held(network.id)
-                    .iter()
-                    .map(|&k| all_seeds[k])
-                    .collect();
+                let seeds = group.held(network.id).iter().map(|&k| all_seeds[k]).collect();
                 let party = Party::new(group.clone(), seeds, network.clone(), Reshare::Peer, 4);
                 Arc::new(party.await.unwrap())
             };
@@ -980,7 +819,7 @@ mod tests {
                 let outcome = ceremony(&party, public_parameter, Layer::Bottom, &[9], 1).await;
                 outcome.unwrap()
             };
-            let fold = |layer, e, leaf| xmss::tests::fold(&public_parameter, layer, e, leaf, &path);
+            let fold = |layer, e, leaf| wots::tests::fold(&public_parameter, layer, e, leaf, &path);
             let bottom_root = fold(Layer::Bottom, 9, leaves[0]);
             let signature = top_signature(
                 async || Ok(new_party().await),
@@ -990,7 +829,7 @@ mod tests {
                 randomizer.unwrap(),
             );
             let signature = [signature.await.unwrap(), path.clone()].concat();
-            let root = xmss::layer_root(&public_parameter, Layer::Top, 0, &bottom_root, &signature);
+            let root = wots::layer_root(&public_parameter, Layer::Top, 0, &bottom_root, &signature);
             let (top_leaves, ..) = trusted_dealer(&all_seeds, public_parameter, Layer::Top, &[0]);
             root == Some(fold(Layer::Top, 0, top_leaves[0]))
         });
@@ -1007,16 +846,11 @@ mod tests {
         let outcomes = local_networks(2, async |network, all_seeds| {
             let dir = env::temp_dir().join(format!("threshold-lean-xmss-{run}-{}", network.id));
             fs::create_dir(&dir).unwrap();
-            let (leaves, cpk, commitments, _) =
-                trusted_dealer(&all_seeds, public_parameter, Layer::Bottom, &[9]);
+            let (leaves, cpk, commitments, _) = trusted_dealer(&all_seeds, public_parameter, Layer::Bottom, &[9]);
             let operator = Operator {
                 id: network.id,
                 public_parameter,
-                sk: group
-                    .held(network.id)
-                    .iter()
-                    .map(|&k| all_seeds[k])
-                    .collect(),
+                sk: group.held(network.id).iter().map(|&k| all_seeds[k]).collect(),
                 k_ij: all_pairs[network.id].clone(),
             };
             // Each request runs its two sessions on their own networks, as an operator does.
@@ -1028,23 +862,16 @@ mod tests {
                 serve::certified(&dir, 9, &message)?;
                 let cpk = (&cpk[..], &commitments[0]);
                 let network = network.session(session + 1);
-                let signature =
-                    prawns::sign(&network, &group, &operator, &quorum, 9, &message, cpk).await?;
-                let root = xmss::layer_root(
+                let signature = prawns::sign(&network, &group, &operator, &quorum, 9, &message, cpk).await?;
+                let root = wots::layer_root(
                     &public_parameter,
                     Layer::Bottom,
                     9,
                     &message,
                     &[signature.clone(), path.clone()].concat(),
                 );
-                let leads_to_root = root
-                    == Some(xmss::tests::fold(
-                        &public_parameter,
-                        Layer::Bottom,
-                        9,
-                        leaves[0],
-                        &path,
-                    ));
+                let leads_to_root =
+                    root == Some(wots::tests::fold(&public_parameter, Layer::Bottom, 9, leaves[0], &path));
                 Ok::<_, String>(Some((signature, leads_to_root)))
             };
             let outcome = (request(1).await, request(3).await);

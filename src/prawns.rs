@@ -1,48 +1,46 @@
-//! This module implements the setup and the quorum signing of the leanXMSS note, with the threshold PRF of [PRAWNS](https://eprint.iacr.org/2026/2142).
+//! This module implements the setup and the quorum signing of the leanXMSS note, with the threshold PRF of [PRAWNS].
 //!
-//! - `F(x)` is the XOR of `H16(PRF || k_T || x)` over all terms `T`, so the holders of the terms
-//!   share `F(x)` with no messages.
+//! - `F(x)` is the XOR of `H16(PRF || k_T || x)` over all terms `T`, so the holders of the terms share `F(x)` with no
+//!   messages.
 //! - `seed_gen` derives `P` from a contribution of each operator.
 //!   - It derives each term seed from the parts of all its holders.
 //!   - It derives each pair key from the parts of both operators.
 //! - One commit-reveal carries all contributions and parts, as Section 2.1 of the note asks.
 //!   - A commitment hashes the tag `thlxmss-commit`, the sender, the receiver and the reveal.
-//!   - Naming both operators is an addition to the note, so a corrupt operator cannot copy a
-//!     commitment.
+//!   - Naming both operators is an addition to the note, so a corrupt operator cannot copy a commitment.
 //!   - An echo then carries the hash of all contributions and a hash of the shared seeds.
 //!   - An operator aborts on a mismatch.
 //!   - The keygen of the prototype sends the parts in one round with no commitments.
-//! - `seed_T` keys only the PRF, and `k_ij` keys only the signing masks. The ceremonies use fresh
-//!   PRSS keys of their own.
-//! - A quorum of `t` operators holds every term, because a term contains only `t - 1` operators.
-//!   Each term goes to its first holder in the quorum.
+//! - `seed_T` keys only the PRF, and `k_ij` keys only the signing masks. The ceremonies use fresh PRSS keys of their
+//!   own.
+//! - A quorum of `t` operators holds every term, because a term contains only `t - 1` operators. Each term goes to its
+//!   first holder in the quorum.
 //! - A signer masks its part with `H16(MASK || k_ij || x || m || J)` for each co-signer `j`.
 //!   - The masks cancel only among parts with the same `x`, `m` and `J`.
 //!   - So parts of signings that differ in one of them do not combine.
-//! - The tag blocks `PRF` and `MASK` are a difference from the note, which hashes the key first.
-//!   They keep the PRF and the masks apart from the other uses of `H`.
-//! - Before it grinds, a signer checks the opened `F(A_rnd(e))` against the commitment `c_e` that
-//!   the bottom tree stores.
+//! - The tag blocks `PRF` and `MASK` are a difference from the note, which hashes the key first. They keep the PRF and
+//!   the masks apart from the other uses of `H`.
+//! - Before it grinds, a signer checks the opened `F(A_rnd(e))` against the commitment `c_e` that the bottom tree
+//!   stores.
 //!   - So a corrupt signer cannot change the value and steer the codeword.
 //!   - The commitment is an addition to the note.
-//!   - In PRAWNS terms, `F(A_rnd(e))` starts one more chain of length one, as for FORS, and `c_e`
-//!     is its end in `cpk`.
-//! - As the note asks, each pair of operators has one key `k_ij`, and a signer adds one mask for
-//!   each co-signer.
+//!   - In PRAWNS terms, `F(A_rnd(e))` starts one more chain of length one, as for FORS, and `c_e` is its end in `cpk`.
+//! - As the note asks, each pair of operators has one key `k_ij`, and a signer adds one mask for each co-signer.
 //!   - PRAWNS uses the keys `k_{i,j}`, `k_{j,i}` and the masks `mask_{i,1}`, `mask_{i,2}`.
+//!
+//! [PRAWNS]: https://eprint.iacr.org/2026/2142
 
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
 use primitives::load_at;
-use tracing::{Instrument, info_span};
+use tracing::instrument;
 
 use crate::mpc::{self, Group, Key, LANES, Party, Replicated, Tag, tag};
 use crate::net::{Channel, Network};
-use crate::xmss::{
-    self, CHAIN_LEN, Digest, Layer, TWEAK_RANDOMIZER, V, layer_address, prf_address,
-    truncated_hash, xor,
+use crate::wots::{
+    self, CHAIN_LEN, Digest, Layer, TWEAK_RANDOMIZER, V, layer_address, prf_address, truncated_hash, xor,
 };
 
 /// One row of `cpk`, the published values of one chain, `y_1 XOR F(X_1)`, `y_2 XOR F(X_2)` and the
@@ -76,10 +74,7 @@ impl Operator {
         let group = Group::new(bytes[0] as usize);
         let held = group.held(bytes[1] as usize).len();
         assert_eq!(bytes.len(), 18 + 32 * (held + group.n));
-        let keys: Vec<Key> = bytes[18..]
-            .chunks(32)
-            .map(|k| k.try_into().unwrap())
-            .collect();
+        let keys: Vec<Key> = bytes[18..].chunks(32).map(|k| k.try_into().unwrap()).collect();
         let operator = Operator {
             id: bytes[1] as usize,
             public_parameter: bytes[2..18].try_into().unwrap(),
@@ -125,16 +120,11 @@ pub async fn seed_gen(group: &Group, network: &Arc<Network>) -> Result<Operator,
         })
         .collect();
     let contributions_hash = mpc::tagged_hash(PARAMETER, &[&contributions]);
-    let revealed: Vec<&[u8]> = received
-        .iter()
-        .map(|bytes| &bytes[32.min(bytes.len())..])
-        .collect();
+    let revealed: Vec<&[u8]> = received.iter().map(|bytes| &bytes[32.min(bytes.len())..]).collect();
     let (sk, k_ij) = parts.keys(group, id, &revealed, [KEYGEN_TERM, KEYGEN_PAIR]);
     let seed_digest = |j: usize| mpc::shared_keys_hash(group, KEYGEN_ECHO, id, j, &sk);
     let echo = |j: usize| [&contributions_hash[..], &seed_digest(j)].concat();
-    let echoes = channel
-        .exchange_bytes((0..group.n).map(echo).collect())
-        .await?;
+    let echoes = channel.exchange_bytes((0..group.n).map(echo).collect()).await?;
     let others = || (0..group.n).filter(|&j| j != id);
     if let Some(j) = others().find(|&j| !echoes[j].starts_with(&contributions_hash)) {
         return Err(format!("operator {j} received other contributions"));
@@ -160,12 +150,7 @@ pub fn lanes_digest(low: u64, high: u64) -> Digest {
 
 /// Adds the shares of `F(x)` for each instance into the lanes `lanes` of the held terms. The public
 /// part does not change.
-pub fn prf_inputs<const W: usize>(
-    party: &Party,
-    xs: &[Digest],
-    blocks: &mut Replicated<W>,
-    lanes: [usize; 2],
-) {
+pub fn prf_inputs<const W: usize>(party: &Party, xs: &[Digest], blocks: &mut Replicated<W>, lanes: [usize; 2]) {
     for (block, xs) in blocks.blocks_mut().zip(xs.chunks(LANES)) {
         for (slot, x) in xs.iter().enumerate() {
             for (seed, words) in party.seeds.iter().zip(&mut block[1..]) {
@@ -198,6 +183,7 @@ pub fn eval(group: &Group, operator: &Operator, quorum: &[usize], x: &Digest, ec
 
 /// Opens `F` at each `x` among the quorum in one round. Each signer sends its `eval` part to the
 /// others and runs `Combine` itself, because the note has no separate combiner.
+#[instrument(skip_all, fields(values = xs.len()))]
 pub async fn combine(
     channel: &mut Channel,
     group: &Group,
@@ -206,10 +192,7 @@ pub async fn combine(
     xs: &[Digest],
     ec: &[u8],
 ) -> Result<Vec<Digest>, String> {
-    let own: Vec<Digest> = xs
-        .iter()
-        .map(|x| eval(group, operator, quorum, x, ec))
-        .collect();
+    let own: Vec<Digest> = xs.iter().map(|x| eval(group, operator, quorum, x, ec)).collect();
     let received = channel.exchange_bytes(vec![own.concat(); group.n]).await?;
     Ok((0..xs.len())
         .map(|k| {
@@ -227,10 +210,8 @@ pub async fn combine(
 
 /// Signs the message `m` at the bottom key `e` with a quorum, in two rounds and with no MPC.
 ///
-/// - It runs PRAWNS `Sign` and `Combine` at each signer and returns the full signature, not a
-///   share.
-/// - `cpk` holds the published rows of the chains of key `e`, and `c_e` is the commitment of
-///   `F(A_rnd(e))`.
+/// - It runs PRAWNS `Sign` and `Combine` at each signer and returns the full signature, not a share.
+/// - `cpk` holds the published rows of the chains of key `e`, and `c_e` is the commitment of `F(A_rnd(e))`.
 pub async fn sign(
     network: &Arc<Network>,
     group: &Group,
@@ -250,9 +231,8 @@ pub async fn sign(
         &[layer_address(TWEAK_RANDOMIZER, layer, 0, e, 0)],
         m,
     )
-    .instrument(info_span!("randomizer"))
     .await?[0];
-    if xmss::commitment(&operator.public_parameter, e, secret) != *c_e {
+    if wots::commitment(&operator.public_parameter, e, secret) != *c_e {
         return Err("the randomizer value does not match its commitment".into());
     }
     let reveal = async |digits: &[usize; V]| {
@@ -261,7 +241,6 @@ pub async fn sign(
             .map(|chain| prf_address(layer, e, chain, digits[chain]))
             .collect();
         let mut opened = combine(&mut channel, group, operator, quorum, &xs, m)
-            .instrument(info_span!("reveal", values = xs.len()))
             .await?
             .into_iter();
         // `sigma` holds the WOTS signature, one chain value for each chain. Position 3 is the
@@ -277,7 +256,7 @@ pub async fn sign(
         let public_parameter = &operator.public_parameter;
         match (0..V).find(|&chain| {
             let steps = CHAIN_LEN - 1 - digits[chain];
-            xmss::chain(
+            wots::chain(
                 public_parameter,
                 layer as usize,
                 e,
@@ -291,7 +270,7 @@ pub async fn sign(
             None => Ok(sigma),
         }
     };
-    xmss::wots_sign(&operator.public_parameter, layer, e, m, &secret, reveal).await
+    wots::wots_sign(&operator.public_parameter, &secret, layer, e, m, reveal).await
 }
 
 #[cfg(test)]
@@ -302,7 +281,7 @@ mod tests {
     use crate::mpc::tests::{local_networks, random_keys};
     use crate::mpc::{PRSS_COMMIT, Reshare, commitment};
     use crate::prawns::*;
-    use crate::xmss::{address, tweak};
+    use crate::wots::{address, tweak};
 
     #[derive(Clone, Copy, Debug)]
     enum Setup {
@@ -318,13 +297,7 @@ mod tests {
     type Echo = fn(Key) -> Vec<u8>;
 
     /// Operator 2 runs the rounds of a setup by hand. All its parts are 7.
-    async fn corrupt_setup(
-        network: &Arc<Network>,
-        t: usize,
-        setup: Setup,
-        commit: Commit,
-        echo: Echo,
-    ) {
+    async fn corrupt_setup(network: &Arc<Network>, t: usize, setup: Setup, commit: Commit, echo: Echo) {
         let group = Group::new(t);
         let n = group.n;
         let (tag, prefix) = match setup {
@@ -333,9 +306,7 @@ mod tests {
         };
         let shared = |j: usize| {
             let terms = 0..group.terms.len();
-            terms
-                .filter(|&k| group.holds(2, k) && group.holds(j, k))
-                .count()
+            terms.filter(|&k| group.holds(2, k) && group.holds(j, k)).count()
         };
         let (commitments, reveals): (Vec<Key>, Vec<Vec<u8>>) = (0..n)
             .map(|j| commit(tag, j, vec![7; prefix + 32 * (shared(j) + 1)]))
@@ -369,30 +340,20 @@ mod tests {
     #[test]
     fn seed_gen_gives_each_key_to_its_holders_in_a_file_that_loads_back() {
         let group = Group::new(2);
-        let operators = local_networks(2, async |network, _| {
-            seed_gen(&Group::new(2), &network).await.unwrap()
-        });
+        let operators = local_networks(2, async |network, _| seed_gen(&Group::new(2), &network).await.unwrap());
         let seed = |i: usize, term: usize| {
             let local = group.held(i).iter().position(|&k| k == term).unwrap();
             operators[i].sk[local]
         };
         for term in 0..group.terms.len() {
             let holders: Vec<usize> = (0..group.n).filter(|&i| group.holds(i, term)).collect();
-            assert!(
-                holders
-                    .iter()
-                    .all(|&i| seed(i, term) == seed(holders[0], term))
-            );
+            assert!(holders.iter().all(|&i| seed(i, term) == seed(holders[0], term)));
         }
         for (i, j) in [(0, 1), (0, 2), (1, 2)] {
             assert_eq!(operators[i].k_ij[j], operators[j].k_ij[i]);
         }
         let public_parameter = operators[0].public_parameter;
-        assert!(
-            operators
-                .iter()
-                .all(|o| o.public_parameter == public_parameter)
-        );
+        assert!(operators.iter().all(|o| o.public_parameter == public_parameter));
         let dir = env::temp_dir().join(format!("threshold-lean-xmss-{}", rand::random::<u64>()));
         fs::create_dir(&dir).unwrap();
         for operator in &operators {
@@ -433,11 +394,7 @@ mod tests {
                 |p| [&p[..], &[0; 32]].concat(),
                 "operator 2 holds other seeds",
             ),
-            (
-                Setup::Prss,
-                |_| vec![0; 32],
-                "operator 2 holds other PRSS keys",
-            ),
+            (Setup::Prss, |_| vec![0; 32], "operator 2 holds other PRSS keys"),
         ];
         // At t = 3, operator 2 gives each receiver other term parts with a matching commitment.
         // So the holders of a term with operator 2 derive different keys, and only the echo
@@ -447,13 +404,7 @@ mod tests {
             (commitment(tag, 2, j, &reveal), reveal)
         };
         let other_keys = |j: usize| Some(format!("operator {j} holds other PRSS keys"));
-        let split_outcomes = vec![
-            other_keys(1),
-            other_keys(0),
-            None,
-            other_keys(0),
-            other_keys(0),
-        ];
+        let split_outcomes = vec![other_keys(1), other_keys(0), None, other_keys(0), other_keys(0)];
         let faults = [Setup::SeedGen, Setup::Prss]
             .into_iter()
             .flat_map(|setup| {
@@ -470,8 +421,7 @@ mod tests {
                 }
                 (_, Setup::SeedGen) => seed_gen(&Group::new(t), &network).await.err(),
                 (_, Setup::Prss) => {
-                    let party =
-                        Party::new(Group::new(t), vec![], network, Reshare::Peer, BATCH_SIZE);
+                    let party = Party::new(Group::new(t), vec![], network, Reshare::Peer, BATCH_SIZE);
                     party.await.err()
                 }
             });

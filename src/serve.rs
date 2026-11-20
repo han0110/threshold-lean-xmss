@@ -1,17 +1,15 @@
 //! This module runs an operator. An admin command starts a session, and the operator announces the
 //! session to the other operators of the session.
 //!
-//! - An admin sign request first runs the agreement on `(leaf, message)` with all operators, and
-//!   then the 2 signing rounds with the quorum. The note assumes this agreement by consensus.
-//! - The PoC does the agreement with one exchange of acknowledgements. A signer signs only a
-//!   message that `Q = ⌊(n + f)/2⌋ + 1` operators acknowledged, and each operator acknowledges one
-//!   message for each leaf.
-//! - Without the agreement, two quorums that share only corrupt operators can sign two messages at
-//!   one key.
-//! - The count follows the condition `t > (n + f)/2` of PRAWNS (ePrint 2026/2142), applied to the
-//!   acknowledgements. The exchange is not in PRAWNS or in the leanSPHINCS prototype.
-//! - An operator runs the acknowledgement session of a peer to its end before it takes the next
-//!   announcement of that peer, so the signing session that follows finds the certificate.
+//! - An admin sign request first runs the agreement on `(leaf, message)` with all operators, and then the 2 signing
+//!   rounds with the quorum. The note assumes this agreement by consensus.
+//! - The PoC does the agreement with one exchange of acknowledgements. A signer signs only a message that `Q = ⌊(n +
+//!   f)/2⌋ + 1` operators acknowledged, and each operator acknowledges one message for each leaf.
+//! - Without the agreement, two quorums that share only corrupt operators can sign two messages at one key.
+//! - The count follows the condition `t > (n + f)/2` of PRAWNS (ePrint 2026/2142), applied to the acknowledgements. The
+//!   exchange is not in PRAWNS or in the leanSPHINCS prototype.
+//! - An operator runs the acknowledgement session of a peer to its end before it takes the next announcement of that
+//!   peer, so the signing session that follows finds the certificate.
 
 use std::fs::{File, OpenOptions};
 use std::io::Write;
@@ -23,13 +21,13 @@ use std::{fs, future};
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tokio::task;
-use tracing::{Instrument, info, info_span};
+use tracing::{info, instrument};
 
 use crate::dkg::{self, BottomTree};
-use crate::mpc::Reshare;
+use crate::mpc::{Group, Reshare};
 use crate::net::{self, Network};
-use crate::prawns::{self, Operator};
-use crate::xmss::{self, KEYS};
+use crate::prawns::{self, ChainRow, Operator};
+use crate::wots::{self, Digest, KEYS};
 
 pub type Outcome = Result<Vec<u8>, String>;
 
@@ -61,11 +59,7 @@ impl Session {
         let (kind, number, message) = match self {
             Session::NewTopTree => (0, 0, vec![]),
             Session::NewBottomTree { bottom } => (1, *bottom, vec![]),
-            Session::Sign {
-                leaf,
-                quorum,
-                message,
-            } => (2, *leaf, [members(quorum), message.clone()].concat()),
+            Session::Sign { leaf, quorum, message } => (2, *leaf, [members(quorum), message.clone()].concat()),
             Session::Acknowledge { leaf, message } => (3, *leaf, message.clone()),
         };
         [&[kind][..], &number.to_le_bytes(), &message].concat()
@@ -93,11 +87,7 @@ impl Session {
 }
 
 fn members(ids: &[usize]) -> Vec<u8> {
-    [
-        vec![ids.len() as u8],
-        ids.iter().map(|&j| j as u8).collect(),
-    ]
-    .concat()
+    [vec![ids.len() as u8], ids.iter().map(|&j| j as u8).collect()].concat()
 }
 
 fn parse_members(bytes: &[u8]) -> (Vec<usize>, &[u8]) {
@@ -160,16 +150,12 @@ impl Server {
                 Err(format!("bottom tree {bottom} exists"))
             }
             Session::NewBottomTree { bottom } => Ok(Session::NewBottomTree { bottom }),
-            Session::Sign { ref message, .. } if message.len() != 32 => {
-                Err("the message must be 32 bytes".into())
-            }
-            Session::Sign { leaf, .. }
-                if !dkg::tree_file(&self.dir, xmss::layer_index(leaf, 1)).exists() =>
-            {
+            Session::Sign { ref message, .. } if message.len() != 32 => Err("the message must be 32 bytes".into()),
+            Session::Sign { leaf, .. } if !dkg::tree_file(&self.dir, wots::layer_index(leaf, 1)).exists() => {
                 Err(format!(
                     "no bottom tree {}, run dkg --bottom {} first",
-                    xmss::layer_index(leaf, 1),
-                    xmss::layer_index(leaf, 1)
+                    wots::layer_index(leaf, 1),
+                    wots::layer_index(leaf, 1)
                 ))
             }
             Session::Sign {
@@ -186,9 +172,7 @@ impl Server {
                 quorum.sort();
                 quorum.dedup();
                 if quorum.len() != t || quorum.iter().any(|&j| j >= n) {
-                    return Err(format!(
-                        "the quorum must be {t} distinct operators below {n}"
-                    ));
+                    return Err(format!("the quorum must be {t} distinct operators below {n}"));
                 }
                 if !quorum.contains(&self.id) {
                     return Err(format!(
@@ -202,9 +186,7 @@ impl Server {
                     message: message.clone(),
                 })
             }
-            Session::Acknowledge { .. } => {
-                Err("an admin request is a dkg or a sign request".into())
-            }
+            Session::Acknowledge { .. } => Err("an admin request is a dkg or a sign request".into()),
         }
     }
 
@@ -213,14 +195,7 @@ impl Server {
         match session {
             Session::NewTopTree if self.dir.join("pk").exists() => Err("the key exists".into()),
             Session::NewTopTree => {
-                dkg::new_top_tree(
-                    &self.dir,
-                    &network,
-                    self.reshare,
-                    self.batch_size,
-                    self.concurrency,
-                )
-                .await
+                dkg::new_top_tree(&self.dir, &network, self.reshare, self.batch_size, self.concurrency).await
             }
             Session::NewBottomTree { bottom } => {
                 dkg::new_bottom_tree(
@@ -234,20 +209,8 @@ impl Server {
                 .await?;
                 Ok(fs::read(self.dir.join("pk")).unwrap())
             }
-            Session::Sign {
-                leaf,
-                quorum,
-                message,
-            } => {
-                sign(&self.dir, &network, *leaf, quorum, message)
-                    .instrument(info_span!("sign", leaf))
-                    .await
-            }
-            Session::Acknowledge { leaf, message } => {
-                acknowledge(&self.dir, &network, *leaf, message)
-                    .instrument(info_span!("acknowledge", leaf))
-                    .await
-            }
+            Session::Sign { leaf, quorum, message } => sign(&self.dir, &network, *leaf, quorum, message).await,
+            Session::Acknowledge { leaf, message } => acknowledge(&self.dir, &network, *leaf, message).await,
         }
     }
 }
@@ -265,16 +228,9 @@ pub async fn serve(
     // Each operator takes the rank of its address among all addresses, in string order, as its
     // number.
     addresses.sort();
-    let (id, n) = (
-        addresses.iter().position(|a| a == address).unwrap(),
-        addresses.len(),
-    );
+    let (id, n) = (addresses.iter().position(|a| a == address).unwrap(), addresses.len());
     if dir.join("operator").exists() {
-        assert_eq!(
-            Operator::load(&dir).1.id,
-            id,
-            "the key belongs to another operator"
-        );
+        assert_eq!(Operator::load(&dir).1.id, id, "the key belongs to another operator");
     }
     let listener = std::net::TcpListener::bind(address).unwrap();
     let network = task::spawn_blocking(move || net::connect(id, listener, addresses))
@@ -333,38 +289,32 @@ pub async fn serve(
     }
 }
 
-async fn sign(
-    dir: &Path,
-    network: &Arc<Network>,
-    leaf: u32,
-    quorum: &[usize],
-    message: &[u8],
-) -> Outcome {
-    certified(dir, leaf, message)?;
-    let load = info_span!("load").entered();
+/// The key share of the operator, the public key, the rows and the commitment of `leaf`, and the
+/// part of the signature after the bottom layer signature.
+#[instrument(skip_all)]
+fn load(dir: &Path, leaf: u32) -> (Group, Operator, Vec<u8>, Vec<ChainRow>, Digest, Vec<u8>) {
     let (group, operator) = Operator::load(dir);
     let pk = fs::read(dir.join("pk")).unwrap();
-    let tree = BottomTree::open(dir, xmss::layer_index(leaf, 1));
-    let tree_leaf = leaf as usize % xmss::KEYS;
-    let (cpk, commitment, path, top) = (
+    let tree = BottomTree::open(dir, wots::layer_index(leaf, 1));
+    let tree_leaf = leaf as usize % wots::KEYS;
+    let rest = [tree.path(tree_leaf), tree.top_signature()].concat();
+    (
+        group,
+        operator,
+        pk,
         tree.cpk(tree_leaf),
         tree.commitment(tree_leaf),
-        tree.path(tree_leaf),
-        tree.top_signature(),
-    );
-    load.exit();
-    let bottom = prawns::sign(
-        network,
-        &group,
-        &operator,
-        quorum,
-        leaf,
-        message,
-        (&cpk, &commitment),
+        rest,
     )
-    .await?;
-    let signature = [&leaf.to_le_bytes()[..], &bottom, &path, &top].concat();
-    match info_span!("verify").in_scope(|| xmss::verify(&pk, message, &signature)) {
+}
+
+#[instrument(skip_all, fields(leaf = leaf))]
+async fn sign(dir: &Path, network: &Arc<Network>, leaf: u32, quorum: &[usize], message: &[u8]) -> Outcome {
+    certified(dir, leaf, message)?;
+    let (group, operator, pk, cpk, commitment, rest) = load(dir, leaf);
+    let bottom = prawns::sign(network, &group, &operator, quorum, leaf, message, (&cpk, &commitment)).await?;
+    let signature = [&leaf.to_le_bytes()[..], &bottom, &rest].concat();
+    match wots::verify(&pk, message, &signature) {
         true => Ok(signature),
         false => Err("the signature does not verify".into()),
     }
@@ -372,6 +322,7 @@ async fn sign(
 
 /// The exchange of acknowledgements. It certifies `(leaf, message)` when `Q` operators acknowledge
 /// exactly this pair.
+#[instrument(skip_all, fields(leaf = leaf))]
 pub async fn acknowledge(dir: &Path, network: &Arc<Network>, leaf: u32, message: &[u8]) -> Outcome {
     let (n, f) = (network.n, network.n / 2);
     let q = (n + f) / 2 + 1;
@@ -386,14 +337,9 @@ pub async fn acknowledge(dir: &Path, network: &Arc<Network>, leaf: u32, message:
         Ok(()) => pair.clone(),
         Err(_) => vec![],
     };
-    let received = network
-        .channel()
-        .exchange_bytes(vec![acknowledgement; n])
-        .await?;
+    let received = network.channel().exchange_bytes(vec![acknowledgement; n]).await?;
     own?;
-    let count = (0..n)
-        .filter(|&j| j == network.id || received[j] == pair)
-        .count();
+    let count = (0..n).filter(|&j| j == network.id || received[j] == pair).count();
     if count < q {
         return Err(format!("{count} of the {q} needed operators acknowledge"));
     }
@@ -419,9 +365,7 @@ fn record(dir: &Path, name: &str, message: &[u8]) -> Result<(), String> {
             File::open(dir).unwrap().sync_all().unwrap();
             Ok(())
         }
-        Err(_) => Err(format!(
-            "{name} holds another message or an incomplete record"
-        )),
+        Err(_) => Err(format!("{name} holds another message or an incomplete record")),
     }
 }
 
@@ -429,9 +373,7 @@ fn record(dir: &Path, name: &str, message: &[u8]) -> Result<(), String> {
 /// `message`. The acknowledgement is durable before it goes out, so a certificate that a crash
 /// damaged cannot name another message.
 pub fn certified(dir: &Path, leaf: u32, message: &[u8]) -> Result<(), String> {
-    let holds = |name: &str| {
-        fs::read(dir.join(format!("{name}{leaf}"))).is_ok_and(|bytes| bytes == message)
-    };
+    let holds = |name: &str| fs::read(dir.join(format!("{name}{leaf}"))).is_ok_and(|bytes| bytes == message);
     match holds("acknowledgement") && holds("certificate") {
         true => Ok(()),
         false => Err(format!("leaf {leaf} has no certificate for this message")),
@@ -474,18 +416,10 @@ mod tests {
         record(&dir, "certificate7", &[2; 32]).unwrap();
         let alone = certified(&dir, 7, &[2; 32]);
         record(&dir, "acknowledgement7", &[1; 32]).unwrap();
-        let outcomes = (
-            alone,
-            certified(&dir, 7, &[1; 32]),
-            certified(&dir, 7, &[2; 32]),
-        );
+        let outcomes = (alone, certified(&dir, 7, &[1; 32]), certified(&dir, 7, &[2; 32]));
         fs::remove_dir_all(&dir).unwrap();
-        let uncertified: Result<(), String> =
-            Err("leaf 7 has no certificate for this message".into());
-        assert_eq!(
-            outcomes,
-            (uncertified.clone(), uncertified.clone(), uncertified)
-        );
+        let uncertified: Result<(), String> = Err("leaf 7 has no certificate for this message".into());
+        assert_eq!(outcomes, (uncertified.clone(), uncertified.clone(), uncertified));
     }
 
     #[test]
@@ -534,10 +468,7 @@ mod tests {
         let short = Err("3 of the 4 needed operators acknowledge".into());
         let refused = Err("acknowledgement7 holds another message or an incomplete record".into());
         let uncertified = Err("leaf 7 has no certificate for this message".to_string());
-        let expected = [
-            vec![(short, uncertified.clone()); 3],
-            vec![(refused, uncertified); 2],
-        ];
+        let expected = [vec![(short, uncertified.clone()); 3], vec![(refused, uncertified); 2]];
         assert_eq!(outcomes, expected.concat());
     }
 
@@ -556,10 +487,7 @@ mod tests {
         });
         let short = |count| Err(format!("{count} of the 3 needed operators acknowledge"));
         let uncertified = |leaf| Err(format!("leaf {leaf} has no certificate for this message"));
-        let expected = [
-            vec![(short(1), uncertified(8))],
-            vec![(short(2), uncertified(7)); 2],
-        ];
+        let expected = [vec![(short(1), uncertified(8))], vec![(short(2), uncertified(7)); 2]];
         assert_eq!(outcomes, expected.concat());
     }
 

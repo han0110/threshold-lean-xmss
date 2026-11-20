@@ -3,3 +3,4 @@ imports_granularity = "Module"
 unstable_features = true
 wrap_comments = true
 comment_width = 120
+max_width = 120

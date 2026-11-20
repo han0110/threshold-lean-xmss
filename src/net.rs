@@ -1,10 +1,9 @@
 //! This module implements tagged channels between the operators over TCP.
 //!
 //! - A frame is a tag and a length in words, and then the words.
-//! - A read thread for each peer routes each frame to the channel of its tag, and a write thread
-//!   for each peer sends the frames.
-//! - A dropped channel sends an abort frame to its members, in place of the disconnection of the
-//!   leanSPHINCS prototype.
+//! - A read thread for each peer routes each frame to the channel of its tag, and a write thread for each peer sends
+//!   the frames.
+//! - A dropped channel sends an abort frame to its members, in place of the disconnection of the leanSPHINCS prototype.
 //! - A receive on the channel then fails after the frames that arrived before the abort frame.
 //! - The reader ignores an abort frame for a channel that it does not know yet.
 
@@ -23,10 +22,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tracing::info;
 
 /// The sender that the read thread uses, and the receiver until a channel takes it.
-type Route = (
-    UnboundedSender<Vec<u64>>,
-    Option<UnboundedReceiver<Vec<u64>>>,
-);
+type Route = (UnboundedSender<Vec<u64>>, Option<UnboundedReceiver<Vec<u64>>>);
 type Frame = (u64, Vec<u64>);
 type Routes = Arc<Mutex<Option<HashMap<u64, Route>>>>;
 
@@ -67,9 +63,7 @@ pub fn connect(id: usize, listener: TcpListener, addresses: Vec<String>) -> Arc<
         streams[peer[0] as usize] = Some(stream);
         connected(count);
     }
-    let routes: Vec<Routes> = (0..n)
-        .map(|_| Arc::new(Mutex::new(Some(HashMap::new()))))
-        .collect();
+    let routes: Vec<Routes> = (0..n).map(|_| Arc::new(Mutex::new(Some(HashMap::new())))).collect();
     let writers = streams
         .into_iter()
         .zip(&routes)
@@ -123,9 +117,7 @@ fn write(stream: TcpStream, mut queue: UnboundedReceiver<Frame>) {
     while let Some(mut frame) = queue.blocking_recv() {
         loop {
             let header = [frame.0, frame.1.len() as u64];
-            if writer.write_all(cast_slice(&header)).is_err()
-                || writer.write_all(cast_slice(&frame.1)).is_err()
-            {
+            if writer.write_all(cast_slice(&header)).is_err() || writer.write_all(cast_slice(&frame.1)).is_err() {
                 return;
             }
             match queue.try_recv() {
@@ -177,13 +169,8 @@ impl Network {
     }
 
     pub fn send(&self, peer: usize, tag: u64, words: Vec<u64>) {
-        self.sent
-            .fetch_add(8 * words.len() as u64, Ordering::Relaxed);
-        self.writers[peer]
-            .as_ref()
-            .unwrap()
-            .send((tag, words))
-            .unwrap();
+        self.sent.fetch_add(8 * words.len() as u64, Ordering::Relaxed);
+        self.writers[peer].as_ref().unwrap().send((tag, words)).unwrap();
     }
 }
 
@@ -198,9 +185,7 @@ impl Channel {
     fn new(network: &Arc<Network>, tag: u64, members: &[usize]) -> Channel {
         Channel {
             receivers: (0..network.n)
-                .map(|j| {
-                    (j != network.id && members.contains(&j)).then(|| network.receiver(j, tag))
-                })
+                .map(|j| (j != network.id && members.contains(&j)).then(|| network.receiver(j, tag)))
                 .collect(),
             network: network.clone(),
             tag,
@@ -215,19 +200,12 @@ impl Channel {
                 self.network.send(j, self.tag, words);
             }
         }
-        let receives = self
-            .receivers
-            .iter_mut()
-            .enumerate()
-            .map(|(j, receiver)| async move {
-                match receiver {
-                    Some(receiver) => receiver
-                        .recv()
-                        .await
-                        .ok_or_else(|| format!("operator {j} aborts")),
-                    None => Ok(vec![]),
-                }
-            });
+        let receives = self.receivers.iter_mut().enumerate().map(|(j, receiver)| async move {
+            match receiver {
+                Some(receiver) => receiver.recv().await.ok_or_else(|| format!("operator {j} aborts")),
+                None => Ok(vec![]),
+            }
+        });
         let received = try_join_all(receives).await?;
         self.rounds += 1;
         Ok(received)
@@ -263,9 +241,9 @@ pub fn pack(bytes: &[u8]) -> Vec<u64> {
 }
 
 pub fn unpack(words: &[u64]) -> Vec<u8> {
-    words.first().map_or(vec![], |&length| {
-        cast_slice(&words[1..])[..length as usize].to_vec()
-    })
+    words
+        .first()
+        .map_or(vec![], |&length| cast_slice(&words[1..])[..length as usize].to_vec())
 }
 
 pub async fn write_frame(stream: &mut (impl AsyncWrite + Unpin), bytes: &[u8]) {

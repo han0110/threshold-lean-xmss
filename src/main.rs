@@ -6,7 +6,7 @@ mod mpc;
 mod net;
 mod prawns;
 mod serve;
-mod xmss;
+mod wots;
 
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
@@ -30,12 +30,15 @@ use tracing_subscriber::{EnvFilter, Registry};
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
-// Vendored from https://github.com/leanEthereum/leanVM/blob/1acdff19dffcaaf1642e88a9e9b522b415425168/crates/bench/src/allocator.rs
 /// jemalloc's configuration, which it reads before its first allocation.
 ///
 /// - Dirty pages never decay, so freed memory never returns to the kernel.
 /// - jemalloc reads a C string pointer here.
 /// - A reference to a byte array is that pointer, with no length beside it.
+///
+/// This item is a copy of the one in [`allocator.rs`] of leanVM.
+///
+/// [`allocator.rs`]: https://github.com/leanEthereum/leanVM/blob/1acdff19dffcaaf1642e88a9e9b522b415425168/crates/bench/src/allocator.rs
 #[unsafe(export_name = "_rjem_malloc_conf")]
 static MALLOC_CONF: &[u8; 18] = b"dirty_decay_ms:-1\0";
 
@@ -46,10 +49,7 @@ enum Command {
     Serve {
         #[arg(long, help = "The host:port of this operator for the other operators")]
         addr: String,
-        #[arg(
-            long,
-            help = "The host:port of this operator for admin commands, none if not given"
-        )]
+        #[arg(long, help = "The host:port of this operator for admin commands, none if not given")]
         admin: Option<String>,
         #[arg(
             long,
@@ -80,9 +80,7 @@ enum Command {
         )]
         concurrency: NonZeroUsize,
     },
-    #[command(
-        about = "Generates the key and its top tree, or one bottom tree, and prints the public key"
-    )]
+    #[command(about = "Generates the key and its top tree, or one bottom tree, and prints the public key")]
     #[command(group = ArgGroup::new("tree").required(true).args(["top", "bottom"]))]
     Dkg {
         #[arg(long, help = "The admin host:port of an operator")]
@@ -139,10 +137,7 @@ async fn main() {
                 .with_default_directive(tracing::Level::INFO.into())
                 .from_env_lossy(),
         )
-        .with(ForestLayer::new(
-            PrettyPrinter::new().writer(MakeStderr),
-            NoTag,
-        ))
+        .with(ForestLayer::new(PrettyPrinter::new().writer(MakeStderr), NoTag))
         .init();
     match Command::parse() {
         Command::Serve {
@@ -194,7 +189,7 @@ async fn main() {
             )
         }
         Command::Verify { pk, msg, sig } => {
-            let valid = xmss::verify(&pk.0, &msg.0, &sig.0);
+            let valid = wots::verify(&pk.0, &msg.0, &sig.0);
             println!("{valid}");
             exit(!valid as i32);
         }
