@@ -14,6 +14,8 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Records.Keys
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.RunsUnion
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Schedule.Joint
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.EndWorld
+import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.TopCosts
+import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.TopLaws
 
 /-!
 # The field `dkgCorrectness` from the leaves of the route
@@ -29,7 +31,8 @@ statements of the route. `UsedHit.hybridEnd_of_statements` gives `HybridEnd`. Th
 `zeroCheck`, `freshOne`, `ceremonyInterval`, `monitorProvenance`, `ceremonyStarted`, `ceremonyAbort`,
 `Joint.ceremonyCoupling`, `CeremonyRecords.ceremonyMonitor`, `CeremonyRecords.ceremonyBatch`,
 `CeremonyRecords.ceremonySync`, `EchoRound.ceremonyKeysAgree`, `CeremonyRecords.ceremonyOutputsAgree`,
-`shortFuel`, `soundAtEnd`, `hiddenAtEnd`, `echoHop`, `reuseHop`, `copyHop` and `splitHop` and the
+`shortFuel`, `soundAtEnd`, `hiddenAtEnd`, `UsedHit.topSlotPartCosts`, `UsedHit.topLawReal`,
+`UsedHit.topLawFresh`, `echoHop`, `reuseHop`, `copyHop` and `splitHop` and the
 hops `flagFirstHop`, `seedsHop` and `runsUnionHop` give the rest. The error of `UsedHitHop` is
 `setupHybridError`, and with it `part1Error` is `dkgCorrectnessError`.
 -/
@@ -63,8 +66,10 @@ theorem dkgCorrectness_of_leaves (ceremony : CeremonyParts K circuits settings r
       (provenanceTreeRun_of_parts prims K circuits settings (treePhaseProvenance prims K circuits settings)
         (monitorProvenance prims (C := C))))
     (echoHop K circuits settings runLimit)
-    (fun prims => UsedHit.usedHitHop_of_reductions K circuits settings runLimit prims (usedHit.topCost prims)
-      (usedHit.topReal prims) (usedHit.topFresh prims) (usedHit.bottomCost prims) (usedHit.bottomReal prims)
+    (fun prims => UsedHit.usedHitHop_of_reductions K circuits settings runLimit prims
+      (UsedHit.topSlotPartCosts K circuits settings runLimit prims)
+      (UsedHit.topLawReal K circuits settings runLimit prims) (UsedHit.topLawFresh K circuits settings runLimit prims)
+      (usedHit.bottomCost prims) (usedHit.bottomReal prims)
       (usedHit.bottomFresh prims) (usedHit.endPoints prims)
       (UsedHit.hybridEnd_of_statements prims K circuits settings runLimit (usedHit.eager prims)
         (usedHit.keyProvenance prims) usedHit.keyParametric (usedHit.cellsCount prims)))

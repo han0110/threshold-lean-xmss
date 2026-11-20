@@ -34,12 +34,6 @@ structure CeremonyParts : Prop where
 
 /-- The parts of `UsedHitHop` at the error `setupHybridError` (`UsedHit.usedHitHop_of_reductions`). -/
 structure UsedHitParts : Prop where
-  /-- Each part of the reduction of a top slot has its cost in the class `prssSetup`. -/
-  topCost : ∀ prims, UsedHit.TopSlotPartCosts K circuits settings runLimit prims
-  /-- The reduction of a top slot with the real challenger has the law of hybrid `j`. -/
-  topReal : ∀ prims, UsedHit.TopLawReal K circuits settings runLimit prims
-  /-- The reduction of a top slot with fresh hidden keys has the law of hybrid `j + 1`. -/
-  topFresh : ∀ prims, UsedHit.TopLawFresh K circuits settings runLimit prims
   /-- Each part of the reduction of a bottom slot has its cost in the class `prssSetup`. -/
   bottomCost : ∀ prims, UsedHit.BottomSlotPartCosts K circuits settings runLimit prims
   /-- The reduction of a bottom slot with the real challenger has the law of its hybrid. -/
