@@ -12,7 +12,7 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::process::exit;
 use std::str::FromStr;
-use std::thread;
+use std::{io, thread};
 
 use clap::{ArgGroup, Parser};
 use dkg::BATCH_SIZE;
@@ -23,9 +23,11 @@ use tokio::net::TcpStream;
 use tracing_forest::ForestLayer;
 use tracing_forest::printer::{MakeStderr, PrettyPrinter};
 use tracing_forest::tag::NoTag;
+use tracing_subscriber::filter::filter_fn;
+use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{EnvFilter, Registry};
+use tracing_subscriber::{EnvFilter, Layer, Registry, fmt};
 
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
@@ -138,6 +140,15 @@ async fn main() {
                 .from_env_lossy(),
         )
         .with(ForestLayer::new(PrettyPrinter::new().writer(MakeStderr), NoTag))
+        // The forest printer gives a span only the time in which it runs. This layer prints the
+        // busy time and the idle time of each span when it closes, and their sum is the elapsed
+        // time.
+        .with(
+            fmt::layer()
+                .with_span_events(FmtSpan::CLOSE)
+                .with_writer(io::stderr)
+                .with_filter(filter_fn(|metadata| metadata.is_span())),
+        )
         .init();
     match Command::parse() {
         Command::Serve {
