@@ -6,129 +6,14 @@ import Mathlib.Algebra.CharP.Algebra
 /-!
 # The check
 
-`MultVerifyCompletenessStatement` follows from the honest run of the check. `MultVerifySecurityStatement`
-(GS20, Lemmas 8 to 11, and CGH+18) reduces to its distance half `MultVerifyDistance`.
-`canonicalCheckSimulator_queryBound` gives the query half. The supporting lemmas concern
-the executions and estimates of `MultVerifyDistance`.
+The honest run of the check, step by step, through its coins, its slices, its halvings and its
+final phase. The later lemmas bound the queries of a run, the soundness of one challenge and the
+digests, the masks and the phases of a check on the network with a coalition.
 -/
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
 
 noncomputable section
-
-/-! ## Completeness, the ideal side and the reduction -/
-
-namespace ThresholdLeanXmssSecurity
-
-open OracleComp OracleSpec ThresholdLeanXmss
-
-noncomputable section
-
-attribute [local instance] Classical.propDecidable
-
-variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
-
-attribute [local instance] inhabitedField
-
-theorem getElem?_vector {R : Type} (c : ℕ) (f : ℕ → R) {g : ℕ} (hg : g < c) :
-    (vector c f)[g]? = some (f g) := by
-  simp [vector, hg]
-
-omit [Fintype E] [DecidableEq E] in
-/-- On valid correct tuples with no corrupt operator, `F_multVerify` accepts at every operator. -/
-theorem fmultVerify_honest (K : Constants C E) (counts : List ℕ) (x : C.Party → List (Tuple C))
-    (hx : TupleInputs K counts noCoalition x ∧ CorrectTuples x) :
-    simulateQ (replyImpl (C := C) (fun _ => (Finset.univ : Finset C.Party)))
-      ((FmultVerify (C := C)).run noCoalition fun i => some (x i)) = pure fun _ => some () := by
-  obtain ⟨⟨hcount, -, hcons⟩, hcorrect⟩ := hx
-  have hF : (firstInput fun i => some (x i)).map (·.count) = counts ∨ firstInput (fun i => some (x i)) = [] := by
-    rcases firstInput_some x with h | ⟨p, h⟩
-    · exact Or.inr h
-    · exact Or.inl (h ▸ hcount p (by simp [noCoalition]))
-  simp [FmultVerify, leak, replyImpl]
-  erw [QueryImpl.add_apply_inr]
-  rw [map_pure]
-  refine congrArg (pure (f := OracleComp (LocalSpec C))) (funext fun i => ?_)
-  rw [if_pos]
-  refine ⟨⟨?_, ?_⟩, Finset.mem_univ _⟩
-  · intro k hk a b i hi j hj g hg
-    have hFk : (firstInput fun i => some (x i))[k]?.map (·.count) = counts[k]? := by
-      rcases hF with h | h
-      · rw [← h, List.getElem?_map]
-      · simp [h] at hk
-    have hk' : k < counts.length := by
-      rcases hF with h | h
-      · rw [← h, List.length_map]; exact hk
-      · simp [h] at hk
-    have hlen : ∀ i, k < (x i).length := fun i => by
-      rw [← List.length_map (f := (·.count)), hcount i (by simp [noCoalition])]; exact hk'
-    have hc : ∀ i, ((x i)[k]'(hlen i)).count = counts[k] := fun i => by
-      have := congrArg (·[k]?) (hcount i (by simp [noCoalition]))
-      simp only [List.getElem?_map, List.getElem?_eq_getElem (hlen i), List.getElem?_eq_getElem hk',
-        Option.map_some, Option.some.injEq] at this
-      exact this
-    have hg' : g < counts[k] := by
-      simp only [List.getElem?_range hk, Option.map_some, Option.getD_some] at hg
-      have : (tupleAt (fun i => some (x i)) k).count = counts[k] := by
-        simp only [tupleAt, hFk, List.getElem?_eq_getElem hk', Option.getD_some]
-      omega
-    have hprem : ConsistentAt noCoalition (fun i T => (x i).map fun τ => vector τ.count fun g =>
-        if ∃ j ∈ (noCoalition (C := C)).1, filler K τ.mode T g = some j then τ.z T g else 0) ⟨a, b⟩ := by
-      intro i _ j _ _ _
-      have h0 : ∀ i, (x i).map (fun τ => vector τ.count fun g =>
-          if ∃ j ∈ (noCoalition (C := C)).1, filler K τ.mode ⟨a, b⟩ g = some j then τ.z ⟨a, b⟩ g else 0) =
-            counts.map (fun c => vector c fun _ => (0 : Bit)) := fun i => by
-        rw [← hcount i (by simp [noCoalition]), List.map_map]
-        simp [noCoalition, Function.comp_def]
-      exact (h0 i).trans (h0 j).symm
-    have h := congrArg (·[k]?) (hcons ⟨a, b⟩ hprem i hi j hj (by simp [noCoalition]) (by simp [noCoalition]))
-    simp only [List.getElem?_map, List.getElem?_eq_getElem (hlen i), List.getElem?_eq_getElem (hlen j),
-      Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨h1, h2, h3⟩ := h
-    rw [List.getElem?_eq_getElem (hlen i), List.getElem?_eq_getElem (hlen j)]
-    simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq]
-    have e := fun (f : Tuple C → C.Term → ℕ → Bit) (h : vector ((x i)[k]'(hlen i)).count (f ((x i)[k]'(hlen i)) ⟨a, b⟩) =
-        vector ((x j)[k]'(hlen j)).count (f ((x j)[k]'(hlen j)) ⟨a, b⟩)) => by
-      have := congrArg (·[g]?) h
-      rwa [getElem?_vector _ _ (hc i ▸ hg'), getElem?_vector _ _ (hc j ▸ hg'), Option.some.injEq] at this
-    exact ⟨e (·.x) h1, e (·.y) h2, e (·.z) h3⟩
-  · exact hcorrect
-
-/-- A distribution is within its probability of missing `a` of the point `a`. -/
-theorem tvDist_pure_le {α : Type} (mx : ProbComp α) (a : α) :
-    letI : MeasurableSpace α := ⊤
-    measureTVDist mx (pure a) ≤ Pr{let z ← mx}[z ≠ a].toReal := by
-  let : MeasurableSpace α := ⊤
-  have h2 : (mx >>= fun _ => pure a) =ᵈ (pure a : ProbComp α) := OracleComp.EvalDistEq.bind_const _ _
-  have hR : measureTVDist mx (pure a) = measureTVDist (mx >>= pure) (mx >>= fun _ => pure a) := by
-    unfold measureTVDist
-    rw [h2.evalDist_eq, bind_pure]
-  rw [hR]
-  exact measureTVDist_bind_left_le_prEvent_of_evalDistEq mx pure (fun _ => pure a) (· ≠ a) fun b hb => by
-    rw [not_not] at hb
-    rw [hb]
-
-omit [DecidableEq E] in
-/-- `MultVerifyCompletenessStatement` follows from the bound on the aborts of the honest network. -/
-theorem multVerifyCompleteness_of_abort_bound (prims : Primitives) (K : Constants C E)
-    [SampleableType E]
-    (h : ∀ (counts : List ℕ) (x : C.Party → List (Tuple C)),
-      TupleInputs K counts noCoalition x ∧ CorrectTuples x →
-      Pr{let z ← (simulateQ (localAnswer prims)
-          (honestStart (fun i => checkProtocol K i (x i)) >>=
-            honestRounds (checkFunctionalities K) checkReply (checkRounds counts.sum))).run' ∅}[z ≠ fun _ => some ()].toReal ≤
-        abortErrorOf (E := E) (halvings counts.sum)) :
-    MultVerifyCompletenessStatement prims K := by
-  intro counts
-  rw [completes_iff]
-  intro x hx
-  rw [fmultVerify_honest K counts x hx, simulateQ_pure]
-  refine (tvDist_pure_le _ _).trans ?_
-  convert h counts x hx using 3
-
-end
-
-end ThresholdLeanXmssSecurity
 
 /-! ## Lockstep steps of the honest network -/
 
@@ -141,23 +26,6 @@ noncomputable section
 attribute [local instance] Classical.propDecidable
 
 variable {C : Committee} {E : Type} {I O L R α : Type}
-
-/-- Every operator calls the functionality in the same step. -/
-theorem honestRounds_call [Nonempty C.Party] (F : Functionality C I O L R) (reply : L → R) (fuel : ℕ)
-    (input : C.Party → I) (f : (i : C.Party) → Option O → PartyM C E (CallSpec I O) α) :
-    honestStart (fun i => call (input i) >>= f i) >>= honestRounds F reply (fuel + 1) =
-      honestFunctionality F reply (fun i => some (input i)) >>= fun outputs =>
-        honestStart (fun i => f i (outputs i)) >>= honestRounds F reply fuel := by
-  have hstart : honestStart (fun i => call (input i) >>= f i) =
-      pure fun i => (Step.call (input i) fun r => (f i r).run : Step C E (CallSpec I O) α) := by
-    unfold honestStart
-    simp only [advance_call_bind]
-    exact sequenceFin_pure _
-  rw [hstart, pure_bind, honestRounds_succ]
-  · unfold honestStep
-    rw [if_pos ⟨⟨Classical.arbitrary _, rfl⟩, fun _ => Or.inl rfl⟩, bind_assoc]
-    rfl
-  · exact fun h => h (Classical.arbitrary _)
 
 /-- Every operator exchanges in the same round, and no message is an abort frame. -/
 theorem honestRounds_exchange (F : Functionality C I O L R) (reply : L → R) (fuel : ℕ)
@@ -492,21 +360,6 @@ theorem sameRun_sequenceFin_common_pos {β γ : Type} : ∀ {n : ℕ} (_ : 0 < n
       (liftComp oa (LocalSpec C) >>= fun b => OverPermutation.sequenceFin fun j => B j b)
   | _ + 1, _, oa, B => sameRun_sequenceFin_common prims oa B
 
-/-- The honest network after a call of all operators meets an event with probability at most `ε`
-when it does so from every answer of the functionality. -/
-theorem probEvent_honest_call [Nonempty C.Party] (F : Functionality C I O L R) (reply : L → R) (fuel : ℕ)
-    (input : C.Party → I) (f : (i : C.Party) → Option O → PartyM C E (CallSpec I O) α)
-    (event : (C.Party → Option α) → Prop) (s : HashCache C) (ε : ℝ≥0∞)
-    (h : ∀ z ∈ support ((simulateQ (localAnswer prims) (honestFunctionality F reply fun i => some (input i))).run s),
-      Pr{let y ← (simulateQ (localAnswer prims)
-        (honestStart (fun i => f i (z.1 i)) >>= honestRounds F reply fuel)).run' z.2}[event y] ≤ ε) :
-    Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => call (input i) >>= f i) >>= honestRounds F reply (fuel + 1))).run' s}[event z] ≤ ε := by
-  rw [honestRounds_call, simulateQ_bind, StateT.run'_eq, StateT.run_bind, map_bind]
-  exact prEvent_bind_le_of_forall_le_of_support _ _ _ fun z hz => by
-    have := h z hz
-    rwa [StateT.run'_eq] at this
-
 /-- The honest network after a computation `oa` of `H` and `PRG` that every operator runs. A bad
 result of `oa` costs its probability, and each other result costs at most `ε`. -/
 theorem probEvent_honest_common [Nonempty C.Party] {β : Type} (F : Functionality C I O L R) (reply : L → R)
@@ -658,174 +511,15 @@ def rightReply {L₁ L₂ R₁ R₂ : Type} [Inhabited R₂] (reply : L₁ ⊕ L
   | .inr r => r
   | .inl _ => default
 
-theorem honestFunctionality_sum_inl {I₁ O₁ L₁ R₁ I₂ O₂ L₂ R₂ : Type} [Inhabited R₁] [Inhabited R₂]
-    (F₁ : Functionality C I₁ O₁ L₁ R₁) (F₂ : Functionality C I₂ O₂ L₂ R₂) (reply : L₁ ⊕ L₂ → R₁ ⊕ R₂)
-    (inputs : C.Party → I₁) :
-    honestFunctionality (F₁.sum F₂) reply (fun i => some (Sum.inl (inputs i))) =
-      (fun out i => (out i).map Sum.inl) <$> honestFunctionality F₁ (leftReply reply) fun i => some (inputs i) := by
-  simp only [honestFunctionality, Option.isSome_some, implies_true, not_true_eq_false, if_false,
-    Functionality.sum, Option.mem_def, Option.some.injEq, forall_eq', Sum.isLeft_inl, Option.bind_some,
-    Sum.getLeft?_inl]
-  rw [if_pos trivial, simulateQ_map, ← QueryImpl.simulateQ_compose]
-  congr 2
-  funext t
-  rcases t with t | l
-  · rfl
-  · simp only [QueryImpl.apply_compose]
-    erw [QueryImpl.add_apply_inr]
-    simp [leak, replyImpl, leftReply]
-    erw [QueryImpl.add_apply_inr, QueryImpl.add_apply_inr, pure_bind]
-    split <;> rename_i h <;> simp [h]
-
-theorem honestFunctionality_sum_inr {I₁ O₁ L₁ R₁ I₂ O₂ L₂ R₂ : Type} [Inhabited R₁] [Inhabited R₂]
-    (F₁ : Functionality C I₁ O₁ L₁ R₁) (F₂ : Functionality C I₂ O₂ L₂ R₂) (reply : L₁ ⊕ L₂ → R₁ ⊕ R₂)
-    [Nonempty C.Party] (inputs : C.Party → I₂) :
-    honestFunctionality (F₁.sum F₂) reply (fun i => some (Sum.inr (inputs i))) =
-      (fun out i => (out i).map Sum.inr) <$> honestFunctionality F₂ (rightReply reply) fun i => some (inputs i) := by
-  simp only [honestFunctionality, Option.isSome_some, implies_true, not_true_eq_false, if_false,
-    Functionality.sum, Option.mem_def, Option.some.injEq, forall_eq', Sum.isLeft_inr, Sum.isRight_inr, Option.bind_some,
-    Sum.getRight?_inr]
-  rw [if_neg (fun h => by simpa using h (Classical.arbitrary _)), if_pos trivial, simulateQ_map, ← QueryImpl.simulateQ_compose]
-  congr 2
-  funext t
-  rcases t with t | l
-  · rfl
-  · simp only [QueryImpl.apply_compose]
-    erw [QueryImpl.add_apply_inr]
-    simp [leak, replyImpl, rightReply]
-    erw [QueryImpl.add_apply_inr, QueryImpl.add_apply_inr, pure_bind]
-    split <;> rename_i h <;> simp [h]
-
 variable {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
 
 attribute [local instance] inhabitedField
-
-theorem firstInput_const [Nonempty C.Party] {I : Type} [Inhabited I] (a : I) :
-    firstInput (C := C) (fun _ => some a) = a := by
-  unfold firstInput
-  have : C.parties ≠ [] := by
-    intro h
-    have hp := Fin.pos (Classical.arbitrary C.Party)
-    simp only [Committee.parties, List.finRange_eq_nil_iff] at h
-    omega
-  obtain ⟨p, l, hl⟩ := List.exists_cons_of_ne_nil this
-  rw [hl]
-  rfl
-
-/-- `F_coin` in an honest run gives the same values to every operator. -/
-theorem honestFunctionality_coin [Nonempty C.Party] (K : Constants C E) (count : ℕ) :
-    honestFunctionality (checkFunctionalities K) checkReply (fun _ => some (.inl (.inl count))) =
-      (fun v (_ : C.Party) => some (Sum.inl (Sum.inl (List.ofFn v)))) <$>
-        liftComp ($ᵗ (Fin count → E)) (LocalSpec C) := by
-  unfold checkFunctionalities
-  rw [honestFunctionality_sum_inl, honestFunctionality_sum_inl]
-  simp only [honestFunctionality, Option.isSome_some, implies_true, not_true_eq_false, if_false, Fcoin, sample, leak]
-  rw [simulateQ_bind, simulateQ_replyImpl_liftComp_prob]
-  have h := firstInput_const (C := C) count
-  generalize firstInput (C := C) (fun _ => some count) = N at h ⊢
-  subst h
-  simp only [map_eq_bind_pure_comp, bind_assoc]
-  refine bind_congr fun v => ?_
-  simp [replyImpl, leftReply, checkReply, noCoalition]
-  erw [QueryImpl.add_apply_inr]
-  simp
 
 /-- The additive share of operator `i` of product `g` in `F_extendMult`. -/
 def extendMultShare (K : Constants C E) (i : C.Party) (products : List (Product C E)) (g : ℕ) : E :=
   match products[g]? with
   | some p => productShare K (localContext i) p
   | none => 0
-
-/-- `F_extendMult` in an honest run gives every operator its held terms of one replicated sharing of
-the products. -/
-theorem support_extendMult [Nonempty C.Party] (K : Constants C E) (products : C.Party → List (Product C E))
-    (z : C.Party → Option ((List E ⊕ Shares C E) ⊕ (PrssOutput C E ⊕ PrssOutput C Bit)))
-    (hz : z ∈ support (honestFunctionality (checkFunctionalities K) checkReply
-      (fun i => some (.inl (.inr (products i)))))) :
-    ∃ Z : Shares C E, (∀ g < (firstInput fun i => some (products i)).length,
-        ∑ T, Z T g = ∑ i, extendMultShare K i (products i) g) ∧
-      ∀ i, z i = some (.inl (.inr fun T g =>
-        if i ∈ C.holders T ∧ g < (firstInput fun i => some (products i)).length then Z T g else 0)) := by
-  unfold checkFunctionalities at hz
-  rw [honestFunctionality_sum_inl, honestFunctionality_sum_inr] at hz
-  simp only [honestFunctionality, Option.isSome_some, implies_true, not_true_eq_false, if_false,
-    FextendMult, Fmult, sample, leak] at hz
-  simp only [simulateQ_bind, simulateQ_replyImpl_liftComp_prob] at hz
-  erw [simulateQ_query] at hz
-  simp only [replyImpl, rightReply, leftReply, checkReply] at hz
-  erw [QueryImpl.add_apply_inr] at hz
-  simp only [OracleQuery.cont_query, simulateQ_pure, support_map, Set.mem_image,
-    support_bind, support_pure, Set.mem_iUnion, Set.mem_singleton_iff, exists_prop] at hz
-  obtain ⟨x, ⟨x1, ⟨r, hr, fresh, -, rfl⟩, rfl⟩, rfl⟩ := hz
-  obtain rfl : r = (0, 0, 0, Finset.univ) := by simpa using hr
-  obtain ⟨T₀, hT₀⟩ := lackedTerm_empty (C := C)
-  let base : Shares C E := fun T g =>
-    if h : g < (firstInput fun i => some (products i)).length then fresh T ⟨g, h⟩ else 0
-  refine ⟨fun T g => if T = T₀ then ∑ i, extendMultShare K i (products i) g - ∑ T' ∈ Finset.univ.erase T, base T' g
-    else base T g, fun g hg => ?_, fun i => ?_⟩
-  · rw [← Finset.add_sum_erase _ _ (Finset.mem_univ T₀)]
-    dsimp only
-    rw [if_pos rfl, Finset.sum_congr rfl fun T hT => if_neg (Finset.ne_of_mem_erase hT)]
-    ring
-  · simp only [noCoalition_val, Finset.notMem_empty, false_or, Finset.mem_univ, not_true_eq_false,
-      if_false, Option.map_some, hT₀, KnownTo, false_and, exists_false, add_zero, Option.getD_some,
-      Option.some.injEq]
-    simp only [
-      Sum.inl.injEq, Sum.inr.injEq, not_false_eq_true, Pi.zero_apply, add_zero]
-    funext T g
-    by_cases hT : T = T₀
-    · subst hT; simp only [extendMultShare, base]; simp; rfl
-    · simp [hT, Ne.symm hT, base]
-
-/-- `F_rand` in an honest run gives every operator its held terms of one replicated sharing. -/
-theorem support_frand [Nonempty C.Party] {R : Type} [AddCommGroup R] [SampleableType R] (count : ℕ)
-    (z : C.Party → Option (PrssOutput C R))
-    (hz : z ∈ support (honestFunctionality (C := C) (Frand R) (fun _ => (0, 0)) (fun _ => some count))) :
-    ∃ (r : Shares C R) (Z : C.Party → C.Party → ℕ → R), ∀ i,
-      z i = some ((fun T => if i ∈ C.holders T then r T else fun _ => 0, Z i) : PrssOutput C R) := by
-  simp only [honestFunctionality, Option.isSome_some, implies_true, not_true_eq_false, if_false,
-    Frand, sample, leak] at hz
-  simp only [simulateQ_bind, simulateQ_replyImpl_liftComp_prob] at hz
-  erw [simulateQ_query] at hz
-  simp only [replyImpl] at hz
-  erw [QueryImpl.add_apply_inr] at hz
-  simp only [OracleQuery.cont_query, simulateQ_pure,
-    support_bind, support_pure, Set.mem_iUnion, Set.mem_singleton_iff, exists_prop] at hz
-  obtain ⟨x, hx, fresh, -, freshPair, -, rfl⟩ := hz
-  obtain rfl : x = (0, 0) := by simpa using hx
-  refine ⟨fun T g => if h : g < firstInput (C := C) (fun _ => some count) then fresh T ⟨g, h⟩ else 0,
-    fun i j => if h : i = j then fun _ => 0 else fun g =>
-      if h' : g < firstInput (C := C) (fun _ => some count) then freshPair (C.pairOf i j h) ⟨g, h'⟩ else 0,
-    fun i => ?_⟩
-  simp [KnownTo]
-
-theorem honestFunctionality_rand_elements [Nonempty C.Party] (K : Constants C E) (count : ℕ) :
-    honestFunctionality (checkFunctionalities K) checkReply (fun _ => some (.inr (.inl count))) =
-      (fun out i => (out i).map fun o => Sum.inr (Sum.inl o)) <$>
-        honestFunctionality (C := C) (Frand E) (fun _ => (0, 0)) (fun _ => some count) := by
-  unfold checkFunctionalities
-  rw [honestFunctionality_sum_inr, honestFunctionality_sum_inl]
-  have : leftReply (rightReply (checkReply (C := C) (E := E))) = fun _ => (0, 0) := by
-    funext l; rfl
-  rw [this, Functor.map_map]
-  congr 1
-  funext out i
-  rw [Option.map_map]
-  rfl
-
-theorem honestFunctionality_rand_bits [Nonempty C.Party] (K : Constants C E) (count : ℕ) :
-    honestFunctionality (checkFunctionalities K) checkReply (fun _ => some (.inr (.inr count))) =
-      (fun out i => (out i).map fun o => Sum.inr (Sum.inr o)) <$>
-        honestFunctionality (C := C) (Frand Bit) (fun _ => (0, 0)) (fun _ => some count) := by
-  unfold checkFunctionalities
-  rw [honestFunctionality_sum_inr, honestFunctionality_sum_inr]
-  have : rightReply (rightReply (checkReply (C := C) (E := E))) = fun _ => (0, 0) := by
-    funext l; rfl
-  rw [this, Functor.map_map]
-  congr 1
-  funext out i
-  rw [Option.map_map]
-  rfl
 
 end
 
@@ -1065,20 +759,7 @@ theorem require_bind_of {ι : Type} {G : OracleSpec ι} {c : Prop} (hc : c) (f :
 /-- A computation in the local oracles that only samples. -/
 def IsLocalProb {β : Type} (oa : OracleComp (LocalSpec C) β) : Prop := ∃ p : ProbComp β, oa = liftComp p _
 
-theorem IsLocalProb.pure {β : Type} (b : β) : IsLocalProb (C := C) (pure b) := ⟨Pure.pure b, by simp⟩
-
 theorem IsLocalProb.liftComp {β : Type} (p : ProbComp β) : IsLocalProb (C := C) (liftComp p _) := ⟨p, rfl⟩
-
-theorem IsLocalProb.bind {β γ : Type} {oa : OracleComp (LocalSpec C) β} {f : β → OracleComp (LocalSpec C) γ}
-    (h : IsLocalProb oa) (hf : ∀ b, IsLocalProb (f b)) : IsLocalProb (oa >>= f) := by
-  obtain ⟨p, rfl⟩ := h
-  choose q hq using hf
-  exact ⟨p >>= q, by rw [liftComp_bind]; exact bind_congr hq⟩
-
-theorem IsLocalProb.map {β γ : Type} {oa : OracleComp (LocalSpec C) β} (f : β → γ)
-    (h : IsLocalProb oa) : IsLocalProb (f <$> oa) := by
-  rw [map_eq_bind_pure_comp]
-  exact h.bind fun b => IsLocalProb.pure _
 
 theorem run_liftComp_prob {β : Type} (p : ProbComp β) (s : HashCache C) :
     (simulateQ (localAnswer prims) (liftComp p (LocalSpec C))).run s = (fun b => (b, s)) <$> p := by
@@ -1100,108 +781,6 @@ theorem IsLocalProb.support_run {β : Type} {oa : OracleComp (LocalSpec C) β} (
   exact ⟨rfl, by rw [support_liftComp]; exact hb⟩
 
 end NetworkSteps
-
-end
-
-end ThresholdLeanXmssSecurity
-
-/-! ## The functionalities of the check keep the cache -/
-
-namespace ThresholdLeanXmssSecurity
-
-open OracleComp OracleSpec ThresholdLeanXmss ENNReal
-
-noncomputable section
-
-section FunctionalityCache
-
-variable {C : Committee} {L R : Type}
-
-variable {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
-  (prims : Primitives)
-
-attribute [local instance] inhabitedField
-
-theorem isLocalProb_frand [Nonempty C.Party] {R : Type} [AddCommGroup R] [SampleableType R] (count : ℕ) :
-    IsLocalProb (honestFunctionality (C := C) (Frand R) (fun _ => (0, 0)) (fun _ => some count)) := by
-  simp only [honestFunctionality, Option.isSome_some, implies_true, not_true_eq_false, if_false, Frand]
-  simp only [simulateQ_bind, simulateQ_replyImpl_leak, simulateQ_replyImpl_sample, pure_bind, simulateQ_pure]
-  exact IsLocalProb.bind (IsLocalProb.liftComp _) fun _ => IsLocalProb.bind (IsLocalProb.liftComp _) fun _ =>
-    IsLocalProb.pure _
-
-theorem isLocalProb_extendMult [Nonempty C.Party] (K : Constants C E) (products : C.Party → List (Product C E)) :
-    IsLocalProb (honestFunctionality (checkFunctionalities K) checkReply
-      (fun i => some (.inl (.inr (products i))))) := by
-  unfold checkFunctionalities
-  rw [honestFunctionality_sum_inl, honestFunctionality_sum_inr]
-  refine IsLocalProb.map _ (IsLocalProb.map _ ?_)
-  simp only [honestFunctionality, Option.isSome_some, implies_true, not_true_eq_false, if_false,
-    FextendMult, Fmult]
-  simp only [simulateQ_bind, simulateQ_replyImpl_leak, simulateQ_replyImpl_sample, pure_bind, simulateQ_pure]
-  exact IsLocalProb.bind (IsLocalProb.liftComp _) fun _ => IsLocalProb.pure _
-
-theorem firstInput_some_of_nonempty [Nonempty C.Party] {I : Type} [Inhabited I] (x : C.Party → I) :
-    ∃ p, firstInput (fun i => some (x i)) = x p := by
-  unfold firstInput
-  have : C.parties ≠ [] := by
-    intro h
-    have hp := Fin.pos (Classical.arbitrary C.Party)
-    simp only [Committee.parties, List.finRange_eq_nil_iff] at h
-    omega
-  obtain ⟨p, l, hl⟩ := List.exists_cons_of_ne_nil this
-  exact ⟨p, by rw [hl]; rfl⟩
-
-theorem check_coin_support [Nonempty C.Party] (K : Constants C E) (count : ℕ) (s : HashCache C) z
-    (hz : z ∈ support ((simulateQ (localAnswer prims) (honestFunctionality (checkFunctionalities K) checkReply
-      (fun _ => some (.inl (.inl count))))).run s)) :
-    z.2 = s ∧ ∃ v : List E, z.1 = fun _ => some (.inl (.inl v)) := by
-  rw [honestFunctionality_coin] at hz
-  obtain ⟨h1, h2⟩ := IsLocalProb.support_run prims (IsLocalProb.map _ (IsLocalProb.liftComp _)) s z hz
-  refine ⟨h1, ?_⟩
-  rw [support_map] at h2
-  obtain ⟨v, -, hv⟩ := h2
-  exact ⟨List.ofFn v, hv.symm⟩
-
-theorem check_extendMult_support [Nonempty C.Party] (K : Constants C E) (products : C.Party → List (Product C E))
-    (n : ℕ) (hlen : ∀ i, (products i).length = n) (s : HashCache C) z
-    (hz : z ∈ support ((simulateQ (localAnswer prims) (honestFunctionality (checkFunctionalities K) checkReply
-      (fun i => some (.inl (.inr (products i)))))).run s)) :
-    z.2 = s ∧ ∃ Z : Shares C E, (∀ g < n, ∑ T, Z T g = ∑ i, extendMultShare K i (products i) g) ∧
-      ∀ i, z.1 i = some (.inl (.inr fun T g => if i ∈ C.holders T ∧ g < n then Z T g else 0)) := by
-  obtain ⟨h1, h2⟩ := IsLocalProb.support_run prims (isLocalProb_extendMult K products) s z hz
-  obtain ⟨p, hp⟩ := firstInput_some_of_nonempty products
-  have hn : (firstInput fun i => some (products i)).length = n := by rw [hp, hlen]
-  obtain ⟨Z, hZ, hz1⟩ := support_extendMult K products z.1 h2
-  rw [hn] at hZ hz1
-  exact ⟨h1, Z, hZ, hz1⟩
-
-theorem check_rand_elements_support [Nonempty C.Party] (K : Constants C E) (count : ℕ) (s : HashCache C) z
-    (hz : z ∈ support ((simulateQ (localAnswer prims) (honestFunctionality (checkFunctionalities K) checkReply
-      (fun _ => some (.inr (.inl count))))).run s)) :
-    z.2 = s ∧ ∃ (r : Shares C E) (Zp : C.Party → C.Party → ℕ → E), ∀ i,
-      z.1 i = some (.inr (.inl (fun T => if i ∈ C.holders T then r T else fun _ => 0, Zp i))) := by
-  rw [honestFunctionality_rand_elements] at hz
-  obtain ⟨h1, h2⟩ := IsLocalProb.support_run prims (IsLocalProb.map _ (isLocalProb_frand count)) s z hz
-  refine ⟨h1, ?_⟩
-  rw [support_map] at h2
-  obtain ⟨o, ho, hoz⟩ := h2
-  obtain ⟨r, Zp, hr⟩ := support_frand count o ho
-  exact ⟨r, Zp, fun i => by rw [← hoz]; simp [hr i]⟩
-
-theorem check_rand_bits_support [Nonempty C.Party] (K : Constants C E) (count : ℕ) (s : HashCache C) z
-    (hz : z ∈ support ((simulateQ (localAnswer prims) (honestFunctionality (checkFunctionalities K) checkReply
-      (fun _ => some (.inr (.inr count))))).run s)) :
-    z.2 = s ∧ ∃ (r : Shares C Bit) (Zp : C.Party → C.Party → ℕ → Bit), ∀ i,
-      z.1 i = some (.inr (.inr (fun T => if i ∈ C.holders T then r T else fun _ => 0, Zp i))) := by
-  rw [honestFunctionality_rand_bits] at hz
-  obtain ⟨h1, h2⟩ := IsLocalProb.support_run prims (IsLocalProb.map _ (isLocalProb_frand count)) s z hz
-  refine ⟨h1, ?_⟩
-  rw [support_map] at h2
-  obtain ⟨o, ho, hoz⟩ := h2
-  obtain ⟨r, Zp, hr⟩ := support_frand count o ho
-  exact ⟨r, Zp, fun i => by rw [← hoz]; simp [hr i]⟩
-
-end FunctionalityCache
 
 end
 
@@ -1410,43 +989,6 @@ theorem challengeQuery_cache (tag ρ : ℕ) (v : List E) (Ks : Finset HashOutput
     · exact ⟨fun k idx hk => (by cases hk), fun tag' ρ' v' hk => by cases hk; omega⟩
   · exact ⟨fun k idx hk => by cases hk; exact Finset.mem_insert_self _ _, fun tag' ρ' v' hk => by cases hk⟩
 
-/-- The coins `τ` of a fresh key start with `m` nonzero values, except with probability `m / |E|`. -/
-theorem tauQuery_zero_le (tag ρ : ℕ) (v : List E) (count m : ℕ) (hm : m ≤ count) (L : ℕ) (hρ : L ≤ ρ)
-    (s : HashCache C) (hs : CacheOK ∅ L s) :
-    Pr{let z ←
-      (simulateQ (localAnswer prims) (liftComp (tauQuery K tag ρ v count) (LocalSpec C))).run s}[¬ ∀ b < m, z.1.getD b 0 ≠ 0] ≤
-      m / Fintype.card E := by
-  rw [simulateQ_localAnswer_liftComp, tauQuery, simulateQ_bind, StateT.run_bind]
-  have hq : ¬ IsFixed (C := C) (.coinKey tag ρ (v.flatMap fun v => List.ofFn (K.encode v))) := by
-    rintro ⟨_, h, _⟩; cases h
-  refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun z hz => ?_
-  rw [List.range_eq_range']
-  refine probEvent_expand_zero prims K z.1 count 0 m z.2 hm fun i _ => ?_
-  by_contra hne
-  rcases support_hashQuery_entries prims hq s z hz _ hne with h | h
-  · exact Finset.notMem_empty _ ((hs _ h).1 _ i rfl)
-  · cases h
-
-/-- After the coins `τ`, the cache holds expansions of one key. -/
-theorem tauQuery_cache (tag ρ : ℕ) (v : List E) (count L : ℕ) (hρ : L ≤ ρ) (s : HashCache C)
-    (hs : CacheOK ∅ L s) z
-    (hz : z ∈ support ((simulateQ (localAnswer prims) (liftComp (tauQuery K tag ρ v count) (LocalSpec C))).run s)) :
-    ∃ k, CacheOK {k} (ρ + 1) z.2 := by
-  rw [simulateQ_localAnswer_liftComp, tauQuery, simulateQ_bind, StateT.run_bind, mem_support_bind_iff] at hz
-  obtain ⟨⟨key, s₁⟩, h₁, hz⟩ := hz
-  have hq : ¬ IsFixed (C := C) (.coinKey tag ρ (v.flatMap fun v => List.ofFn (K.encode v))) := by
-    rintro ⟨_, h, _⟩; cases h
-  have hs₁ := support_hashQuery_entries prims hq s _ h₁
-  have hs₂ := support_expand_entries prims K key _ _ _ hz
-  refine ⟨key, fun q hq' => ?_⟩
-  rcases hs₂ q hq' with h | ⟨i, rfl⟩
-  · rcases hs₁ q h with h | rfl
-    · obtain ⟨h1, h2⟩ := hs q h
-      exact ⟨fun k idx hk => absurd (h1 k idx hk) (Finset.notMem_empty _), fun tag' ρ' v' hk => by
-        have := h2 tag' ρ' v' hk; omega⟩
-    · exact ⟨fun k idx hk => (by cases hk), fun tag' ρ' v' hk => by cases hk; omega⟩
-  · exact ⟨fun k idx hk => by cases hk; exact Finset.mem_singleton_self _, fun tag' ρ' v' hk => by cases hk⟩
-
 end CoinSteps
 
 end
@@ -1499,14 +1041,6 @@ def OpenAgrees (v : ℕ → E) (inbox : Mail C E) : Prop :=
 
 def openValue (v : ℕ → E) (inbox : Mail C E) : ℕ → E := fun g =>
   ∑ l ∈ Finset.univ.filter (fun l : C.Party => l.val < C.t), lagrangeFirst K 0 l * openShare i v inbox l g
-
-theorem openSh_run' {α : Type} (v : ℕ → E) (f : (ℕ → E) → RunM C E (CheckSpec C E) α) (st : RunState C) :
-    (StateT.lift (openSh K (localContext i) v 3) >>= f).run' st =
-      exchange (openOutbox (E := E) i v) >>= fun inbox =>
-        require (OpenAgrees K i v inbox) >>= fun _ => (f (openValue K i v inbox)).run' st := by
-  simp only [openSh]
-  simp only [StateT.run'_eq, StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind, map_bind]
-  rfl
 
 end DigestSteps
 
@@ -1691,27 +1225,6 @@ theorem digestsAgree_honest (ds : C.Party → List HashOutput) (hlen : ∀ i, (d
   rw [List.getElem?_eq_getElem (by rw [hlen]; exact idxOf_terms_lt T)]
   rfl
 
-theorem openShare_honest (v : C.Party → ℕ → E) (i j : C.Party) (g : ℕ) (hg : g < 3) :
-    openShare i (v i) (fun k => openOutbox (E := E) k (v k) i) j g = v j g := by
-  unfold openShare
-  by_cases hj : j = i
-  · subst hj; simp
-  · simp [hj, openOutbox, Ne.symm hj, Msg.elementAt, vector, hg]
-
-theorem openSh_honest (v : C.Party → ℕ → E) (vals : ℕ → E) (hv : ∀ g < 3, IsShamir K (fun i => v i g) (vals g))
-    (i : C.Party) :
-    OpenAgrees K i (v i) (fun k => openOutbox (E := E) k (v k) i) ∧
-      ∀ g < 3, openValue K i (v i) (fun k => openOutbox (E := E) k (v k) i) g = vals g := by
-  constructor
-  · intro j g hg
-    obtain ⟨P, hP, -, hPi⟩ := hv g hg
-    simp only [openShare_honest v i _ g hg, hPi]
-    exact (sum_lagrangeFirst_mul_eval K P hP _).symm
-  · intro g hg
-    obtain ⟨P, hP, hP0, hPi⟩ := hv g hg
-    simp only [openValue, openShare_honest v i _ g hg, hPi]
-    rw [sum_lagrangeFirst_mul_eval K P hP, hP0]
-
 theorem sum_lagrangeAll_shamir [CharP E 2] {f g : C.Party → E} {a b : E} (hf : IsShamir K f a)
     (hg : IsShamir K g b) : ∑ i, lagrangeAll K i * (f i * g i) = a * b := by
   obtain ⟨P, hP, hP0, hPi⟩ := hf
@@ -1751,115 +1264,6 @@ variable {K} in
 theorem IsShamir.mul_right {f : C.Party → E} {a : E} (hf : IsShamir K f a) (c : E) :
     IsShamir K (fun i => f i * c) (a * c) :=
   (hf.mul_left c).congr (fun i => by ring) (by ring)
-
-theorem require_of {ι : Type} {G : OracleSpec ι} {c : Prop} (hc : c) :
-    (require c : PartyM C E G Unit) = pure () := by
-  simp [require, hc]
-
-theorem final_identity [CharP E 2] (α β a b r : E) :
-    (α + r * (α + a)) * (β + r * (β + b)) =
-      α * β + (a * b + α * β + (α + a) * (β + b)) * r + (α + a) * (β + b) * r ^ 2 := by
-  have two : (2 : E) = 0 := CharTwo.two_eq_zero
-  linear_combination (-(a * b * r)) * two
-
-/-- The opening of an honest check, whose test holds. -/
-theorem open_step_zero [Nonempty C.Party] (v : C.Party → ℕ → E) (vals : ℕ → E)
-    (hv : ∀ g < 3, IsShamir K (fun i => v i g) (vals g)) (hfinal : vals 0 * vals 1 = vals 2)
-    (st : C.Party → RunState C) (fuel : ℕ) (s : HashCache C) :
-    Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun j => (StateT.lift (openSh K (localContext j) (v j) 3) >>= fun opened =>
-        (StateT.lift (require (opened 0 * opened 1 = opened 2)) : RunM C E (CheckSpec C E) Unit)).run' (st j)) >>=
-        honestRounds (checkFunctionalities K) checkReply (fuel + 1))).run' s}[z ≠ fun _ => some ()] = 0 := by
-  simp only [openSh_run']
-  rw [honestRounds_exchange]
-  swap
-  · intro k j; unfold openOutbox; split_ifs <;> rfl
-  have hc : ∀ j, openValue K j (v j) (fun k => openOutbox (E := E) k (v k) j) 0 *
-      openValue K j (v j) (fun k => openOutbox (E := E) k (v k) j) 1 =
-      openValue K j (v j) (fun k => openOutbox (E := E) k (v k) j) 2 := fun j => by
-    obtain ⟨-, hval⟩ := openSh_honest K v vals hv j
-    rw [hval 0 (by norm_num), hval 1 (by norm_num), hval 2 (by norm_num), hfinal]
-  simp only [require_bind_of (openSh_honest K v vals hv _).1, require_of (hc _), StateT.run'_eq,
-    StateT.run_lift, pure_bind, map_pure]
-  rw [honestRounds_pure]
-  simp
-
-theorem final_bound [Nonempty C.Party] (A B : C.Party → ℕ → E) (D : C.Party → E) (a b : E)
-    (hA : IsShamir K (fun i => A i 0) a) (hB : IsShamir K (fun i => B i 0) b) (hD : IsShamir K D (a * b))
-    (h : C.Party → C.Term → List Bit) (hh : HistAgree h) (L : ℕ) (Ks : Finset HashOutput) (s : HashCache C)
-    (hs : CacheOK Ks L s) (fuel : ℕ) :
-    Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart
-          (fun i => (finalStep K (localContext i) (hybridCheckBuildingBlocks K i) (A i, B i, D i)).run'
-        ⟨h i, L, 0⟩) >>= honestRounds (checkFunctionalities K) checkReply (fuel + 6))).run' s}[z ≠ fun _ => some ()] ≤
-      Ks.card / 2 ^ 256 + (2 / Fintype.card E) ^ challengeTries := by
-  simp only [finalStep, randElements_run']
-  refine probEvent_honest_call prims _ _ (fuel + 5) (fun _ => Sum.inr (Sum.inl 2)) _ _ s _ ?_
-  intro z₁ hz₁
-  obtain ⟨hs₁, r₁, Zp₁, hz₁⟩ := check_rand_elements_support prims K 2 s z₁ hz₁
-  simp only [hz₁, hs₁, extendMult_run']
-  refine probEvent_honest_call prims _ _ (fuel + 4) _ _ _ s _ ?_
-  intro z₂ hz₂
-  obtain ⟨hs₂, Z₂, hZ₂, hz₂⟩ := check_extendMult_support prims K _ 2 (fun i => rfl) s z₂ hz₂
-  simp only [hz₂, hs₂, randBits_run']
-  refine probEvent_honest_call prims _ _ (fuel + 3) (fun _ => Sum.inr (Sum.inr 256)) _ _ s _ ?_
-  intro z₃ hz₃
-  obtain ⟨hs₃, r₃, Zp₃, hz₃⟩ := check_rand_bits_support prims K 256 s z₃ hz₃
-  simp only [hz₃, hs₃, compareDigests_run']
-  refine probEvent_honest_local prims _ _ (fuel + 3) _ _ _ s _ ?_
-  intro z₄ hz₄
-  simp only [List.length_cons, List.length_nil, zero_add, Nat.reduceAdd] at hz₄ ⊢
-  have hh₄ := histAgree_record K h hh (fun i T g => if i ∈ C.holders T ∧ g < 2 then Z₂ T g else 0) Z₂ 2
-    (fun i T g hi hg => by simp [hi, hg])
-  obtain ⟨hok₄, hlen₄, hag₄⟩ := digests_agree prims _ r₃ (fun i T hi => by simp [hi]) _ hh₄ Ks L s hs z₄ hz₄
-  rw [show fuel + 3 = (fuel + 2) + 1 from rfl, honestRounds_exchange]
-  swap
-  · intro k j; unfold digestOutbox; split_ifs <;> rfl
-  simp only [require_bind_of (digestsAgree_honest z₄.1 hlen₄ hag₄ _), challenge_run']
-  refine probEvent_honest_call prims _ _ (fuel + 1) (fun _ => Sum.inl (Sum.inl 2)) _ _ z₄.2 _ ?_
-  intro z₅ hz₅
-  obtain ⟨hs₅, v₅, hz₅⟩ := check_coin_support prims K 2 z₄.2 z₅ hz₅
-  simp only [hz₅, hs₅]
-  have hbound := challengeQuery_none_le prims K 0 (L + 1 + 1 + 1) v₅ Ks L (by omega) z₄.2 hok₄
-  refine (probEvent_honest_common prims _ _ (fuel + 1) (challengeQuery K 0 (L + 1 + 1 + 1) v₅) _ _
-    (fun z => z.1 = none) z₄.2 0 ?_).trans (by rw [add_zero]; exact hbound)
-  intro z₆ hz₆ hbad
-  obtain ⟨r, hr⟩ := Option.ne_none_iff_exists'.mp hbad
-  simp only [hr]
-  have := charP_two (E := E)
-  refine le_of_eq (open_step_zero prims K _ (fun k => match k with
-    | 0 => (∑ T, r₁ T 0) + r * ((∑ T, r₁ T 0) + a)
-    | 1 => (∑ T, r₁ T 1) + r * ((∑ T, r₁ T 1) + b)
-    | _ => (∑ T, r₁ T 0) * (∑ T, r₁ T 1) +
-        (a * b + (∑ T, r₁ T 0) * (∑ T, r₁ T 1) + ((∑ T, r₁ T 0) + a) * ((∑ T, r₁ T 1) + b)) * r +
-        ((∑ T, r₁ T 0) + a) * ((∑ T, r₁ T 1) + b) * r ^ 2) ?_ ?_ _ fuel _)
-  · intro g hg
-    have hwa : IsShamir K (fun i => conv K (localContext i) (fun T => if i ∈ C.holders T then r₁ T else fun _ => 0) 0)
-        (∑ T, r₁ T 0) := (isShamir_conv r₁ 0).congr (fun i => (conv_congr i _ _ 0 fun T hT => by simp [hT]).symm) rfl
-    have hwb : IsShamir K (fun i => conv K (localContext i) (fun T => if i ∈ C.holders T then r₁ T else fun _ => 0) 1)
-        (∑ T, r₁ T 1) := (isShamir_conv r₁ 1).congr (fun i => (conv_congr i _ _ 1 fun T hT => by simp [hT]).symm) rfl
-    have hq : ∀ k < 2, IsShamir K (fun i => conv K (localContext i)
-        (fun T g => if i ∈ C.holders T ∧ g < 2 then Z₂ T g else 0) k) (∑ T, Z₂ T k) := fun k hk =>
-      (isShamir_conv Z₂ k).congr (fun i => (conv_congr i _ _ k fun T hT => by simp [hT, hk]).symm) rfl
-    have hq0 : ∑ T, Z₂ T 0 = (∑ T, r₁ T 0) * (∑ T, r₁ T 1) := by
-      rw [hZ₂ 0 (by norm_num)]
-      simp only [extendMultShare, List.getElem?_cons_zero, productShare, mulSh, localContext,
-        Finset.sum_range_one]
-      exact sum_lagrangeAll_shamir K hwa hwb
-    have hq1 : ∑ T, Z₂ T 1 = ((∑ T, r₁ T 0) + a) * ((∑ T, r₁ T 1) + b) := by
-      rw [hZ₂ 1 (by norm_num)]
-      simp only [extendMultShare, List.getElem?_cons_succ, List.getElem?_cons_zero, productShare, mulSh,
-        localContext, Finset.sum_range_one]
-      exact sum_lagrangeAll_shamir K (hwa.add hA) (hwb.add hB)
-    interval_cases g
-    · exact (hwa.add ((hwa.add hA).mul_left r)).congr (fun i => rfl) rfl
-    · exact (hwb.add ((hwb.add hB).mul_left r)).congr (fun i => rfl) rfl
-    · have h0 := hq 0 (by norm_num)
-      have h1 := hq 1 (by norm_num)
-      refine ((h0.add (((hD.add h0).add h1).mul_right r)).add (h1.mul_right (r ^ 2))).congr (fun i => rfl) ?_
-      rw [hq0, hq1]
-      rfl
-  · exact final_identity _ _ _ _ _
 
 end FinalPhase
 
@@ -1925,83 +1329,6 @@ theorem iterate_halvingSteps : ∀ (w : ℕ), 1 ≤ w → halvedLength^[halvingS
       refine ih _ ?_ (by omega)
       unfold halvedLength; split_ifs <;> omega
     · simp; omega
-
-theorem halving_bound [Nonempty C.Party] (width : ℕ) (hwidth : 1 ≤ width) :
-    ∀ (n j₀ : ℕ), j₀ + n = halvingSteps width → ∀ (A B : C.Party → ℕ → E) (D : C.Party → E) (Av Bv : ℕ → E),
-      (∀ k, IsShamir K (fun i => A i k) (Av k)) → (∀ k, IsShamir K (fun i => B i k) (Bv k)) →
-      IsShamir K D (∑ k ∈ range (halvedLength^[j₀] width), Av k * Bv k) →
-      ∀ (h : C.Party → C.Term → List Bit), HistAgree h → ∀ (L c : ℕ) (Ks : Finset HashOutput), Ks.card ≤ c →
-      ∀ (s : HashCache C), CacheOK Ks L s → ∀ fuel : ℕ,
-      Pr{let z ← (simulateQ (localAnswer prims)
-        (honestStart (fun i => ((List.range' j₀ n).foldlM (halvingStep K (localContext i) (hybridCheckBuildingBlocks K i) width)
-          (A i, B i, D i) >>= finalStep K (localContext i) (hybridCheckBuildingBlocks K i)).run'
-              ⟨h i, L, 0⟩) >>=
-          honestRounds (checkFunctionalities K) checkReply (fuel + 2 * n + 6))).run' s}[z ≠ fun _ => some ()] ≤ chalErr E c (n + 1) := by
-  intro n
-  induction n with
-  | zero =>
-    intro j₀ hj A B D Av Bv hA hB hD h hh L c Ks hKs s hs fuel
-    simp only [List.range'_zero, List.foldlM_nil, pure_bind, Nat.mul_zero, Nat.add_zero]
-    rw [Nat.add_zero] at hj
-    subst hj
-    rw [iterate_halvingSteps width hwidth, Finset.sum_range_one] at hD
-    refine (final_bound prims K A B D (Av 0) (Bv 0) (hA 0) (hB 0) hD h hh L Ks s hs fuel).trans ?_
-    simp only [chalErr, zero_add, Finset.sum_range_one, Nat.add_zero]
-    gcongr
-  | succ n ih =>
-    intro j₀ hj A B D Av Bv hA hB hD h hh L c Ks hKs s hs fuel
-    have := charP_two (E := E)
-    rw [List.range'_succ, show fuel + 2 * (n + 1) + 6 = (fuel + 2 * n + 7) + 1 by ring]
-    simp only [List.foldlM_cons, halvingStep, bind_assoc, pure_bind, extendMult_run']
-    refine probEvent_honest_call prims _ _ (fuel + 2 * n + 7) _ _ _ s _ ?_
-    intro z₁ hz₁
-    obtain ⟨hs₁, Z₁, hZ₁, hz₁⟩ := check_extendMult_support prims K _ 2 (fun i => rfl) s z₁ hz₁
-    simp only [hz₁, hs₁, challenge_run', List.length_cons, List.length_nil, zero_add, Nat.reduceAdd]
-    rw [show fuel + 2 * n + 7 = (fuel + 2 * n + 6) + 1 by ring]
-    refine probEvent_honest_call prims _ _ (fuel + 2 * n + 6) (fun _ => Sum.inl (Sum.inl 2)) _ _ s _ ?_
-    intro z₂ hz₂
-    obtain ⟨hs₂, v₂, hz₂⟩ := check_coin_support prims K 2 s z₂ hz₂
-    simp only [hz₂, hs₂]
-    rw [chalErr_succ]
-    refine (probEvent_honest_common prims _ _ _ (challengeQuery K 0 (L + 1) v₂) _ _
-      (fun z => z.1 = none) s _ ?_).trans (add_le_add ((challengeQuery_none_le prims K 0 (L + 1) v₂ Ks L
-        (by omega) s hs).trans (by gcongr)) le_rfl)
-    intro z₃ hz₃ hbad
-    obtain ⟨k₃, hok₃⟩ := challengeQuery_cache prims K 0 (L + 1) v₂ Ks L (by omega) s hs z₃ hz₃
-    rcases z₃ with ⟨_ | r, s₃⟩
-    · exact absurd rfl hbad
-    dsimp only at hok₃ ⊢
-    set ℓ := halvedLength^[j₀] width with hℓ
-    set half := halvedLength ℓ with hhalf
-    let hiv := fun (v : ℕ → E) k => if k + half < ℓ then v (k + half) else 0
-    have hhi : ∀ (f : C.Party → ℕ → E) (a : ℕ → E), (∀ k, IsShamir K (fun i => f i k) (a k)) →
-        ∀ k, IsShamir K (fun i => hiv (f i) k) (hiv a k) := fun f a hf k => (hf (k + half)).ite K _
-    have hfold : ∀ (f : C.Party → ℕ → E) (a : ℕ → E), (∀ k, IsShamir K (fun i => f i k) (a k)) →
-        ∀ k, IsShamir K (fun i => f i k + r * (f i k + hiv (f i) k)) (a k + r * (a k + hiv a k)) :=
-      fun f a hf k => (hf k).add (((hf k).add (hhi f a hf k)).mul_left r)
-    have hsum : ∀ (f : C.Party → ℕ → E) (a : ℕ → E), (∀ k, IsShamir K (fun i => f i k) (a k)) →
-        ∀ k, IsShamir K (fun i => f i k + hiv (f i) k) (a k + hiv a k) :=
-      fun f a hf k => (hf k).add (hhi f a hf k)
-    have hq : ∀ k < 2, IsShamir K (fun i => conv K (localContext i)
-        (fun T g => if i ∈ C.holders T ∧ g < 2 then Z₁ T g else 0) k) (∑ T, Z₁ T k) := fun k hk =>
-      (isShamir_conv Z₁ k).congr (fun i => (conv_congr i _ _ k fun T hT => by simp [hT, hk]).symm) rfl
-    have hq0 : ∑ T, Z₁ T 0 = ∑ k ∈ range half, Av k * Bv k := by
-      rw [hZ₁ 0 (by norm_num)]
-      simp only [extendMultShare, List.getElem?_cons_zero, productShare, mulSh, localContext]
-      exact sum_lagrangeAll_shamir_sum K hA hB half
-    have hq1 : ∑ T, Z₁ T 1 = ∑ k ∈ range half, (Av k + hiv Av k) * (Bv k + hiv Bv k) := by
-      rw [hZ₁ 1 (by norm_num)]
-      simp only [extendMultShare, List.getElem?_cons_succ, List.getElem?_cons_zero, productShare, mulSh,
-        localContext]
-      exact sum_lagrangeAll_shamir_sum K (hsum A Av hA) (hsum B Bv hB) half
-    refine ih (j₀ + 1) (by omega) _ _ _ (fun k => Av k + r * (Av k + hiv Av k))
-      (fun k => Bv k + r * (Bv k + hiv Bv k)) (hfold A Av hA) (hfold B Bv hB) ?_ _
-      (histAgree_record K h hh _ Z₁ 2 fun i T g hi hg => by simp [hi, hg]) (L + 1 + 1) (c + 1) (insert k₃ Ks)
-      ((Finset.card_insert_le _ _).trans (by omega)) s₃ hok₃ fuel
-    have h0 := hq 0 (by norm_num)
-    have h1 := hq 1 (by norm_num)
-    refine ((h0.add ((hD.add h1).mul_right r)).add (h1.mul_right (r ^ 2))).congr (fun i => rfl) ?_
-    rw [hq0, hq1, Function.iterate_succ_apply', ← hℓ, ← hhalf, sum_range_halving_fold, sum_range_padded Av Bv ℓ]
 
 end HalvingPhase
 
@@ -2076,130 +1403,6 @@ theorem sum_productShare_replicated (xv yv : C.Party → Shares C E) (X Y : Shar
     Finset.univ_product_univ]
 
 end SliceAlgebra
-
-end
-
-end ThresholdLeanXmssSecurity
-
-namespace ThresholdLeanXmssSecurity
-
-open OracleComp OracleSpec ThresholdLeanXmss ENNReal Finset
-
-noncomputable section
-
-attribute [local instance] Classical.propDecidable
-
-section SlicePhase
-
-variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
-  (prims : Primitives) (K : Constants C E)
-
-attribute [local instance] inhabitedField
-
-theorem slice_bound [Nonempty C.Party] (τ : List E) (count : ℕ) (hτ : ∀ b < sliceBits, τ.getD b 0 ≠ 0)
-    (hwidth : 0 < sliceWidth count) :
-    ∀ (n j₀ : ℕ), j₀ + n = sliceBits → ∀ (xs ys : C.Party → Shares C E) (D : C.Party → E) (XS YS : Shares C E),
-      (∀ i T, i ∈ C.holders T → xs i T = XS T ∧ ys i T = YS T) →
-      IsShamir K D (∑ k ∈ range (sliceWidth count * 2 ^ (sliceBits - j₀)),
-        coinProduct τ 0 (sliceBits - j₀) (k / sliceWidth count) * (∑ T, XS T k) * ∑ T, YS T k) →
-      ∀ (h : C.Party → C.Term → List Bit), HistAgree h → ∀ (L c : ℕ) (Ks : Finset HashOutput), Ks.card ≤ c →
-      ∀ (s : HashCache C), CacheOK Ks L s → ∀ fuel : ℕ,
-      Pr{let z ← (simulateQ (localAnswer prims)
-        (honestStart (fun i => ((List.range' j₀ n).foldlM (sliceStep K (localContext i) (hybridCheckBuildingBlocks K i) τ count)
-          (xs i, ys i, D i) >>= fun p =>
-            (List.range (halvingSteps (sliceWidth count))).foldlM
-              (halvingStep K (localContext i) (hybridCheckBuildingBlocks K i) (sliceWidth count))
-              (conv K (localContext i) p.1, conv K (localContext i) p.2.1, p.2.2) >>=
-            finalStep K (localContext i) (hybridCheckBuildingBlocks K i)).run' ⟨h i, L, 0⟩) >>=
-          honestRounds (checkFunctionalities K) checkReply
-            (fuel + 2 * n + 2 * halvingSteps (sliceWidth count) + 6))).run' s}[z ≠ fun _ => some ()] ≤
-        chalErr E c (n + halvingSteps (sliceWidth count) + 1) := by
-  have := charP_two (E := E)
-  intro n
-  induction n with
-  | zero =>
-    intro j₀ hj xs ys D XS YS hxy hD h hh L c Ks hKs s hs fuel
-    simp only [List.range'_zero, List.foldlM_nil, pure_bind, Nat.mul_zero, Nat.add_zero, zero_add]
-    rw [Nat.add_zero] at hj
-    subst hj
-    rw [List.range_eq_range']
-    refine halving_bound prims K (sliceWidth count) hwidth _ 0 (by omega) _ _ D (fun k => ∑ T, XS T k)
-      (fun k => ∑ T, YS T k) (fun k => (isShamir_conv XS k).congr (fun i =>
-        (conv_congr i _ _ k fun T hT => by rw [(hxy i T hT).1]).symm) rfl)
-      (fun k => (isShamir_conv YS k).congr (fun i =>
-        (conv_congr i _ _ k fun T hT => by rw [(hxy i T hT).2]).symm) rfl) ?_ h hh L c Ks hKs s hs fuel
-    refine hD.congr (fun i => rfl) ?_
-    simp only [Nat.sub_self, pow_zero, mul_one, Function.iterate_zero, id, coinProduct_zero_width, one_mul]
-  | succ n ih =>
-    intro j₀ hj xs ys D XS YS hxy hD h hh L c Ks hKs s hs fuel
-    rw [List.range'_succ, show fuel + 2 * (n + 1) + 2 * halvingSteps (sliceWidth count) + 6 =
-      (fuel + 2 * n + 2 * halvingSteps (sliceWidth count) + 7) + 1 by ring]
-    simp only [List.foldlM_cons, sliceStep, bind_assoc, pure_bind, extendMult_run']
-    refine probEvent_honest_call prims _ _ _ _ _ _ s _ ?_
-    intro z₁ hz₁
-    obtain ⟨hs₁, Z₁, hZ₁, hz₁⟩ := check_extendMult_support prims K _ 2 (fun i => rfl) s z₁ hz₁
-    simp only [hz₁, hs₁, challenge_run', List.length_cons, List.length_nil, zero_add, Nat.reduceAdd]
-    rw [show fuel + 2 * n + 2 * halvingSteps (sliceWidth count) + 7 =
-      (fuel + 2 * n + 2 * halvingSteps (sliceWidth count) + 6) + 1 by ring]
-    refine probEvent_honest_call prims _ _ _ (fun _ => Sum.inl (Sum.inl 2)) _ _ s _ ?_
-    intro z₂ hz₂
-    obtain ⟨hs₂, v₂, hz₂⟩ := check_coin_support prims K 2 s z₂ hz₂
-    simp only [hz₂, hs₂]
-    rw [show n + 1 + halvingSteps (sliceWidth count) + 1 = (n + halvingSteps (sliceWidth count) + 1) + 1 by ring,
-      chalErr_succ]
-    refine (probEvent_honest_common prims _ _ _ (challengeQuery K 0 (L + 1) v₂) _ _
-      (fun z => z.1 = none) s _ ?_).trans (add_le_add ((challengeQuery_none_le prims K 0 (L + 1) v₂ Ks L
-        (by omega) s hs).trans (by gcongr)) le_rfl)
-    intro z₃ hz₃ hbad
-    obtain ⟨k₃, hok₃⟩ := challengeQuery_cache prims K 0 (L + 1) v₂ Ks L (by omega) s hs z₃ hz₃
-    rcases z₃ with ⟨_ | r, s₃⟩
-    · exact absurd rfl hbad
-    dsimp only at hok₃ ⊢
-    have hw : sliceBits - 1 - j₀ = n := by omega
-    set width := sliceWidth count with hwidth_def
-    set half := width * 2 ^ (sliceBits - 1 - j₀) with hhalf
-    set rest := fun k => coinProduct τ 0 (sliceBits - 1 - j₀) (k / width) with hrest
-    set cc := τ.getD (sliceBits - 1 - j₀) 0 with hcc
-    have hc : cc ≠ 0 := hτ _ (by omega)
-    let Xv := fun k => ∑ T, XS T k
-    let Yv := fun k => ∑ T, YS T k
-    have hq : ∀ k < 2, IsShamir K (fun i => conv K (localContext i)
-        (fun T g => if i ∈ C.holders T ∧ g < 2 then Z₁ T g else 0) k) (∑ T, Z₁ T k) := fun k hk =>
-      (isShamir_conv Z₁ k).congr (fun i => (conv_congr i _ _ k fun T hT => by simp [hT, hk]).symm) rfl
-    have hq0 : ∑ T, Z₁ T 0 = ∑ k ∈ range half, rest k * Xv k * Yv k := by
-      rw [hZ₁ 0 (by norm_num)]
-      simp only [extendMultShare, List.getElem?_cons_zero]
-      rw [sum_productShare_replicated K _ _ (fun T k => rest k * XS T k) YS half
-        (fun i T hT => by funext k; rw [(hxy i T hT).1]) (fun i T hT => (hxy i T hT).2)]
-      refine Finset.sum_congr rfl fun k _ => ?_
-      simp only [Xv, Yv, ← Finset.mul_sum]
-    have hq1 : ∑ T, Z₁ T 1 = ∑ k ∈ range half, rest k * (Xv k + Xv (k + half)) * (Yv k + Yv (k + half)) := by
-      rw [hZ₁ 1 (by norm_num)]
-      simp only [extendMultShare, List.getElem?_cons_succ, List.getElem?_cons_zero]
-      rw [sum_productShare_replicated K _ _ (fun T k => rest k * (XS T k + XS T (k + half)))
-        (fun T k => YS T k + YS T (k + half)) half
-        (fun i T hT => by funext k; rw [(hxy i T hT).1]) (fun i T hT => by funext k; rw [(hxy i T hT).2])]
-      refine Finset.sum_congr rfl fun k _ => ?_
-      simp only [Xv, Yv, ← Finset.mul_sum, Finset.sum_add_distrib]
-    have hsplit := slice_sum_split τ width (sliceBits - 1 - j₀) hwidth Xv Yv
-    rw [show sliceBits - 1 - j₀ + 1 = sliceBits - j₀ by omega] at hsplit
-    have hDv := hsplit
-    refine ih (j₀ + 1) (by omega) _ _ _ (fun T k => XS T k + r * (XS T k + XS T (k + half)))
-      (fun T k => YS T k + r * (YS T k + YS T (k + half)))
-      (fun i T hT => ⟨by funext k; rw [(hxy i T hT).1], by funext k; rw [(hxy i T hT).2]⟩) ?_ _
-      (histAgree_record K h hh _ Z₁ 2 fun i T g hi hg => by simp [hi, hg]) (L + 1 + 1) (c + 1) (insert k₃ Ks)
-      ((Finset.card_insert_le _ _).trans (by omega)) s₃ hok₃ fuel
-    have h0 := hq 0 (by norm_num)
-    have h1 := hq 1 (by norm_num)
-    refine (((h0.mul_left (1 + r)).add (((hD.add h0).div cc).mul_left r)).add (h1.mul_left (r * (1 + r)))).congr
-      (fun i => rfl) ?_
-    rw [hq0, hq1, show sliceBits - (j₀ + 1) = sliceBits - 1 - j₀ by omega]
-    rw [sum_range_slice_fold rest Xv Yv half r cc _ hc hDv]
-    refine Finset.sum_congr rfl fun k _ => ?_
-    simp only [Xv, Yv, Finset.sum_add_distrib, ← Finset.mul_sum]
-    rfl
-
-end SlicePhase
 
 end
 
@@ -2303,90 +1506,7 @@ theorem getD_flatMap_vector_pos {R : Type} [Zero R] (F : Tuple C → ℕ → R) 
       rw [ih]
       rcases flatPos (L.map (·.count)) (k - τ.count) with _ | ⟨m, g⟩ <;> simp
 
-theorem liftedPart_eq (tuples : List (Tuple C)) (part : Tuple C → Shares C Bit) (T : C.Term) (k : ℕ) :
-    liftedPart tuples part T k =
-      ((tuples.map fun τ => vector τ.count (part τ T)).flatMap (List.map (algebraMap Bit E))).getD k 0 := by
-  unfold liftedPart
-  rw [List.flatMap_map]
-  congr 2
-  funext τ
-  simp [vector, List.map_map, Function.comp_def]
-
 variable {K}
-
-theorem tupleInputs_count {counts : List ℕ} {x : C.Party → List (Tuple C)}
-    (hx : TupleInputs K counts noCoalition x) (i : C.Party) : (x i).map (·.count) = counts :=
-  hx.1 i (by simp)
-
-theorem tupleInputs_vectors {counts : List ℕ} {x : C.Party → List (Tuple C)}
-    (hx : TupleInputs K counts noCoalition x) (T : C.Term) (i j : C.Party) (hi : i ∈ C.holders T)
-    (hj : j ∈ C.holders T) :
-    (x i).map (fun τ => (vector τ.count (τ.x T), vector τ.count (τ.y T), vector τ.count (τ.z T))) =
-      (x j).map (fun τ => (vector τ.count (τ.x T), vector τ.count (τ.y T), vector τ.count (τ.z T))) := by
-  refine hx.2.2 T ?_ i hi j hj (by simp) (by simp)
-  intro i _ j _ _ _
-  have h0 : ∀ i, (x i).map (fun τ => vector τ.count fun g =>
-      if ∃ j ∈ (noCoalition (C := C)).1, filler K τ.mode T g = some j then τ.z T g else 0) =
-        counts.map (fun c => vector c fun _ => (0 : Bit)) := fun i => by
-    rw [← tupleInputs_count hx i, List.map_map]
-    simp [noCoalition, Function.comp_def]
-  exact (h0 i).trans (h0 j).symm
-
-theorem tupleInputs_part {counts : List ℕ} {x : C.Party → List (Tuple C)}
-    (hx : TupleInputs K counts noCoalition x) (T : C.Term) (i j : C.Party) (hi : i ∈ C.holders T)
-    (hj : j ∈ C.holders T) (part : Tuple C → Shares C Bit) (hpart : part = (·.x) ∨ part = (·.y) ∨ part = (·.z)) :
-    (x i).map (fun τ => vector τ.count (part τ T)) = (x j).map (fun τ => vector τ.count (part τ T)) := by
-  have h := tupleInputs_vectors hx T i j hi hj
-  rcases hpart with rfl | rfl | rfl
-  · have := congrArg (List.map Prod.fst) h; simpa [List.map_map, Function.comp_def] using this
-  · have := congrArg (List.map fun p => p.2.1) h; simpa [List.map_map, Function.comp_def] using this
-  · have := congrArg (List.map fun p => p.2.2) h; simpa [List.map_map, Function.comp_def] using this
-
-theorem liftedPart_agree {counts : List ℕ} {x : C.Party → List (Tuple C)}
-    (hx : TupleInputs K counts noCoalition x) (T : C.Term) (i j : C.Party) (hi : i ∈ C.holders T)
-    (hj : j ∈ C.holders T) (part : Tuple C → Shares C Bit) (hpart : part = (·.x) ∨ part = (·.y) ∨ part = (·.z)) :
-    liftedPart (E := E) (x i) part T = liftedPart (x j) part T := by
-  funext k
-  rw [liftedPart_eq, liftedPart_eq, tupleInputs_part hx T i j hi hj part hpart]
-
-theorem histAgree_filled {counts : List ℕ} {x : C.Party → List (Tuple C)}
-    (hx : TupleInputs K counts noCoalition x) : HistAgree (fun i => filledHistory K i (x i)) := by
-  intro T i hi j hj
-  simp only [filledHistory, if_pos hi, if_pos hj]
-  let F : ReshareMode × List Bit → List Bit := fun p =>
-    ((List.range p.2.length).filter fun g => (filler K p.1 T g).isSome).map fun g => p.2.getD g 0
-  have hF : ∀ τ : Tuple C, ((List.range τ.count).filter fun g => (filler K τ.mode T g).isSome).map (τ.z T) =
-      F (τ.mode, vector τ.count (τ.z T)) := fun τ => by
-    simp only [F, vector, List.length_map, List.length_range]
-    refine List.map_congr_left fun g hg => ?_
-    have hg' : g < τ.count := List.mem_range.1 (List.mem_filter.1 hg).1
-    simp [List.getD_eq_getElem?_getD, hg']
-  have hmap : ∀ l : List (Tuple C), l.flatMap (fun τ =>
-      ((List.range τ.count).filter fun g => (filler K τ.mode T g).isSome).map (τ.z T)) =
-      (l.map fun τ => (τ.mode, vector τ.count (τ.z T))).flatMap F := fun l => by
-    rw [List.flatMap_map]
-    exact List.flatMap_congr fun τ _ => hF τ
-  rw [hmap, hmap]
-  congr 1
-  rw [← List.zip_map', ← List.zip_map', hx.2.1 i j (by simp) (by simp),
-    tupleInputs_part hx T i j hi hj (·.z) (Or.inr (Or.inr rfl))]
-
-theorem reconstruct_eq_view {α : Type} [Inhabited α] (views : C.Party → Option (C.Term → α)) (T : C.Term)
-    (h : ∀ i, (views i).isSome) : ∃ i ∈ C.holders T, ∃ f, views i = some f ∧ reconstruct views T = f T := by
-  obtain ⟨i₀, hi₀⟩ := exists_holder T
-  unfold reconstruct
-  rcases hl : (C.parties.filterMap fun i => if i ∈ C.holders T then views i else none) with _ | ⟨f, rest⟩
-  · exfalso
-    obtain ⟨f, hf⟩ := Option.isSome_iff_exists.1 (h i₀)
-    have : f ∈ (C.parties.filterMap fun i => if i ∈ C.holders T then views i else none) :=
-      List.mem_filterMap.2 ⟨i₀, List.mem_finRange i₀, by simp [hi₀, hf]⟩
-    rw [hl] at this
-    simp at this
-  · have hmem : f ∈ (C.parties.filterMap fun i => if i ∈ C.holders T then views i else none) := by
-      rw [hl]; exact List.mem_cons_self
-    obtain ⟨i, -, hi⟩ := List.mem_filterMap.1 hmem
-    split_ifs at hi with hiT
-    exact ⟨i, hiT, f, hi, by simp⟩
 
 theorem vector_point {R : Type} {c c' : ℕ} {f f' : ℕ → R} (h : vector c f = vector c' f') {g : ℕ} (hg : g < c) :
     f g = f' g := by
@@ -2396,196 +1516,7 @@ theorem vector_point {R : Type} {c c' : ℕ} {f f' : ℕ → R} (h : vector c f 
   simp only [vector, List.getElem?_map, List.getElem?_range hg, Option.map_some, Option.some.injEq] at this
   exact this
 
-/-- On correct tuples, the lifted vectors of the owners of the terms multiply at every position. -/
-theorem lifted_product [Nonempty C.Party] {counts : List ℕ} {x : C.Party → List (Tuple C)}
-    (hx : TupleInputs K counts noCoalition x ∧ CorrectTuples x) (k : ℕ) :
-    ∑ T, liftedPart (E := E) (x (K.owner T)) (·.z) T k =
-      (∑ T, liftedPart (E := E) (x (K.owner T)) (·.x) T k) * ∑ T, liftedPart (E := E) (x (K.owner T)) (·.y) T k := by
-  obtain ⟨hx, hcorrect⟩ := hx
-  have hpos : ∀ (part : Tuple C → Shares C Bit) T, liftedPart (E := E) (x (K.owner T)) part T k =
-      match flatPos counts k with
-      | some (m, g) => (((x (K.owner T))[m]?).map fun τ => algebraMap Bit E (part τ T g)).getD 0
-      | none => 0 := fun part T => by
-    unfold liftedPart
-    rw [getD_flatMap_vector_pos, tupleInputs_count hx]
-  simp only [hpos]
-  rcases hk : flatPos counts k with _ | ⟨m, g⟩
-  · simp
-  obtain ⟨hm, hg⟩ := flatPos_spec counts k m g hk
-  have hlen : ∀ i, m < (x i).length := fun i => by
-    rw [← List.length_map (f := (·.count)), tupleInputs_count hx i]; exact hm
-  have hcount : ∀ i, ((x i)[m]'(hlen i)).count = counts.getD m 0 := fun i => by
-    have := congrArg (·.getD m 0) (tupleInputs_count hx i)
-    simpa [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (hlen i)] using this
-  simp only [List.getElem?_eq_getElem (hlen _), Option.map_some, Option.getD_some]
-  obtain ⟨p, hp⟩ := firstInput_some_of_nonempty (C := C) (I := List (Tuple C)) (fun i => x i)
-  have hfl : m < (firstInput fun i => some (x i)).length := by rw [hp]; exact hlen p
-  have hτc : (tupleAt (fun i => some (x i)) m).count = counts.getD m 0 := by
-    simp only [tupleAt, hp, List.getElem?_eq_getElem (hlen p), Option.map_some, Option.getD_some, hcount]
-  have hrec : ∀ (part : Tuple C → Shares C Bit), (part = (·.x) ∨ part = (·.y) ∨ part = (·.z)) → ∀ T,
-      reconstruct (fun i => ((some (x i)).bind (·[m]?)).map part) T g = part ((x (K.owner T))[m]'(hlen _)) T g := by
-    intro part hpart T
-    obtain ⟨i, hi, f, hf, hrf⟩ := reconstruct_eq_view (fun i => ((some (x i)).bind (·[m]?)).map part) T
-      (fun i => by simp [List.getElem?_eq_getElem (hlen i)])
-    simp only [Option.bind_some, List.getElem?_eq_getElem (hlen i), Option.map_some, Option.some.injEq] at hf
-    rw [hrf, ← hf]
-    have h := congrArg (·[m]?) (tupleInputs_part hx T i (K.owner T) hi (K.owner_held T) part hpart)
-    simp only [List.getElem?_map, List.getElem?_eq_getElem (hlen _), Option.map_some, Option.some.injEq] at h
-    exact vector_point h (by rw [hcount]; exact hg)
-  have hc := hcorrect m hfl g (by rw [hτc]; exact hg)
-  simp only [shareValue, tupleAt] at hc
-  simp only [hrec (·.x) (Or.inl rfl), hrec (·.y) (Or.inr (Or.inl rfl)), hrec (·.z) (Or.inr (Or.inr rfl))] at hc
-  rw [← map_sum, hc, map_mul, map_sum, map_sum]
-
 end TupleFacts
-
-end
-
-end ThresholdLeanXmssSecurity
-
-namespace ThresholdLeanXmssSecurity
-
-open OracleComp OracleSpec ThresholdLeanXmss ENNReal Finset
-
-noncomputable section
-
-attribute [local instance] Classical.propDecidable
-
-section HonestCheck
-
-variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
-  (prims : Primitives) (K : Constants C E)
-
-attribute [local instance] inhabitedField
-
-theorem check_honest_bound [Nonempty C.Party] (counts : List ℕ) (x : C.Party → List (Tuple C))
-    (hx : TupleInputs K counts noCoalition x ∧ CorrectTuples x) (hpos : counts.sum ≠ 0) :
-    Pr{let z ← (simulateQ (localAnswer prims)
-      (honestStart (fun i => checkProtocol K i (x i)) >>=
-        honestRounds (checkFunctionalities K) checkReply (checkRounds counts.sum))).run' ∅}[z ≠ fun _ => some ()] ≤
-      sliceBits / Fintype.card E + chalErr E 1 (halvings counts.sum + 1) := by
-  have := charP_two (E := E)
-  have hcnt : ∀ i, ((x i).map (·.count)).sum = counts.sum := fun i => by rw [tupleInputs_count hx.1 i]
-  have hne : ∀ i, ((x i).map (·.count)).sum ≠ 0 := fun i => by rw [hcnt i]; exact hpos
-  simp only [checkProtocol, check_eq _ _ _ _ (hne _)]
-  simp only [hcnt, coinKey_expand_run']
-  rw [show checkRounds counts.sum = (2 * halvings counts.sum + 7) + 1 by unfold checkRounds; ring]
-  refine probEvent_honest_call prims _ _ _ (fun _ => Sum.inl (Sum.inl 2)) _ _ ∅ _ ?_
-  intro z₁ hz₁
-  obtain ⟨hs₁, v₁, hz₁⟩ := check_coin_support prims K 2 ∅ z₁ hz₁
-  simp only [hz₁, hs₁]
-  have hok₀ : CacheOK (C := C) ∅ 0 ∅ := fun q h => absurd rfl h
-  refine (probEvent_honest_common prims _ _ _ (tauQuery K 0 0 v₁ (coins counts.sum)) _ _
-    (fun z => ¬ ∀ b < sliceBits, z.1.getD b 0 ≠ 0) ∅ _ ?_).trans (add_le_add
-      (tauQuery_zero_le prims K 0 0 v₁ (coins counts.sum) sliceBits (sliceBits_le_coins hpos) 0 le_rfl ∅ hok₀)
-      le_rfl)
-  intro z₂ hz₂ hτ
-  rw [not_not] at hτ
-  obtain ⟨k₂, hok₂⟩ := tauQuery_cache prims K 0 0 v₁ (coins counts.sum) 0 le_rfl ∅ hok₀ z₂ hz₂
-  simp only [run'_lift_bind, require_bind_of hτ]
-  have hR : halvings counts.sum = sliceBits + halvingSteps (sliceWidth counts.sum) := rfl
-  rw [show List.range sliceBits = List.range' 0 sliceBits from List.range_eq_range',
-    show halvings counts.sum - sliceBits = halvingSteps (sliceWidth counts.sum) by omega,
-    show 2 * halvings counts.sum + 7 = 1 + 2 * sliceBits + 2 * halvingSteps (sliceWidth counts.sum) + 6 by omega,
-    show halvings counts.sum + 1 = sliceBits + halvingSteps (sliceWidth counts.sum) + 1 by omega]
-  let LX : Shares C E := fun T => liftedPart (x (K.owner T)) (·.x) T
-  let LY : Shares C E := fun T => liftedPart (x (K.owner T)) (·.y) T
-  let LZ : Shares C E := fun T => liftedPart (x (K.owner T)) (·.z) T
-  have hag : ∀ i T, i ∈ C.holders T → ∀ (part : Tuple C → Shares C Bit),
-      (part = (·.x) ∨ part = (·.y) ∨ part = (·.z)) → liftedPart (E := E) (x i) part T = liftedPart (x (K.owner T)) part T :=
-    fun i T hT part hpart => liftedPart_agree hx.1 T i (K.owner T) hT (K.owner_held T) part hpart
-  refine slice_bound prims K z₂.1 counts.sum hτ (sliceWidth_pos hpos) sliceBits 0 (by simp) _ _ _
-    (fun T k => wordWeightOf K z₂.1 counts.sum k * LX T k) LY
-    (fun i T hT => ⟨by funext k; simp only [LX, hag i T hT (·.x) (Or.inl rfl)],
-      hag i T hT (·.y) (Or.inr (Or.inl rfl))⟩) ?_ _ (histAgree_filled hx.1) 1 1 {k₂} (by simp) z₂.2 hok₂ 1
-  refine (isShamir_conv (claimOf K z₂.1 counts.sum LZ) 0).congr (fun i => (conv_congr i _ _ 0 fun T hT => by
-    simp only [claimOf, LZ, hag i T hT (·.z) (Or.inr (Or.inr rfl))]).symm) ?_
-  simp only [claimOf, Nat.sub_zero]
-  rw [Finset.sum_comm, mul_comm (sliceWidth counts.sum)]
-  refine Finset.sum_congr rfl fun k _ => ?_
-  rw [← Finset.mul_sum, lifted_product hx k, ← Finset.mul_sum]
-  simp only [sliceOf, LX, LY]
-  ring
-
-end HonestCheck
-
-end
-
-end ThresholdLeanXmssSecurity
-
-namespace ThresholdLeanXmssSecurity
-
-open OracleComp OracleSpec ThresholdLeanXmss ENNReal Finset
-
-noncomputable section
-
-attribute [local instance] Classical.propDecidable
-
-section Completeness
-
-variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
-
-attribute [local instance] inhabitedField
-
-theorem two_mul_sum_range_succ : ∀ n : ℕ, 2 * ∑ j ∈ range n, (1 + j) = n * (n + 1)
-  | 0 => by simp
-  | n + 1 => by rw [Finset.sum_range_succ, mul_add, two_mul_sum_range_succ n]; ring
-
-omit [DecidableEq E] [Algebra Bit E] in
-theorem chalErr_toReal_le (R : ℕ) :
-    ((sliceBits : ℝ≥0∞) / Fintype.card E + chalErr E 1 (R + 1)).toReal ≤ abortErrorOf (E := E) R := by
-  have hE : (0 : ℝ) < Fintype.card E := by exact_mod_cast Fintype.card_pos_iff.2 ⟨0⟩
-  have hE' : (Fintype.card E : ℝ≥0∞) ≠ 0 := by exact_mod_cast (Fintype.card_pos_iff.2 ⟨(0 : E)⟩).ne'
-  have hfin : ∀ j : ℕ, (((1 + j : ℕ) : ℝ≥0∞) / 2 ^ 256 + (2 / Fintype.card E) ^ challengeTries) ≠ ⊤ := fun j =>
-    ENNReal.add_ne_top.2 ⟨ENNReal.div_ne_top (by simp) (by simp),
-      ENNReal.pow_ne_top (ENNReal.div_ne_top (by simp) hE')⟩
-  unfold chalErr abortErrorOf coinFailure coinKeyCollision
-  rw [ENNReal.toReal_add (ENNReal.div_ne_top (by simp) hE') (ENNReal.sum_ne_top.2 fun j _ => hfin j),
-    ENNReal.toReal_sum fun j _ => hfin j]
-  have hterm : ∀ j : ℕ, (((1 + j : ℕ) : ℝ≥0∞) / 2 ^ 256 + (2 / Fintype.card E) ^ challengeTries).toReal =
-      ((1 + j : ℕ) : ℝ) / 2 ^ 256 + (2 / (Fintype.card E : ℝ)) ^ challengeTries := fun j => by
-    rw [ENNReal.toReal_add (ENNReal.div_ne_top (by simp) (by simp))
-      (ENNReal.pow_ne_top (ENNReal.div_ne_top (by simp) hE'))]
-    rw [ENNReal.toReal_div, ENNReal.toReal_natCast, ENNReal.toReal_pow, ENNReal.toReal_pow, ENNReal.toReal_div,
-      ENNReal.toReal_natCast]
-    norm_num
-  rw [Finset.sum_congr rfl fun j _ => hterm j]
-  simp only [ENNReal.toReal_div, ENNReal.toReal_natCast]
-  rw [Finset.sum_add_distrib, Finset.sum_const, Finset.card_range, nsmul_eq_mul, ← Finset.sum_div]
-  have hsum : (∑ j ∈ range (R + 1), ((1 + j : ℕ) : ℝ)) ≤ ((R + 2) ^ 2 : ℕ) / 2 := by
-    have h := two_mul_sum_range_succ (R + 1)
-    have h' : (2 : ℝ) * ∑ j ∈ range (R + 1), ((1 + j : ℕ) : ℝ) = ((R + 1) * (R + 1 + 1) : ℕ) := by
-      rw [← h]; push_cast; rfl
-    rw [le_div_iff₀ (by norm_num), mul_comm, h']
-    push_cast
-    nlinarith
-  have h256 : (0 : ℝ) < 2 ^ 256 := by positivity
-  have : (∑ j ∈ range (R + 1), ((1 + j : ℕ) : ℝ)) / 2 ^ 256 ≤ (((R + 2) ^ 2 : ℕ) : ℝ) / 2 ^ 257 :=
-    calc (∑ j ∈ range (R + 1), ((1 + j : ℕ) : ℝ)) / 2 ^ 256
-        ≤ ((((R + 2) ^ 2 : ℕ) : ℝ) / 2) / 2 ^ 256 := by gcongr
-      _ = (((R + 2) ^ 2 : ℕ) : ℝ) / 2 ^ 257 := by rw [div_div, show (2 : ℝ) * 2 ^ 256 = 2 ^ 257 from (pow_succ' 2 256).symm]
-  push_cast at this ⊢
-  linarith
-
-/-- An honest check accepts correct tuples, except when it aborts on a coin. -/
-theorem multVerifyCompleteness [SampleableType E] (prims : Primitives) (K : Constants C E) :
-    MultVerifyCompletenessStatement prims K := by
-  refine multVerifyCompleteness_of_abort_bound prims K fun counts x hx => ?_
-  have : Nonempty C.Party := ⟨⟨0, by have := C.one_le_t; unfold Committee.n; omega⟩⟩
-  by_cases hpos : counts.sum = 0
-  · have hcnt : ∀ i, ((x i).map (·.count)).sum = 0 := fun i => by rw [tupleInputs_count hx.1 i, hpos]
-    have hprog : ∀ i, checkProtocol K i (x i) = pure () := fun i => by
-      simp [checkProtocol, check, hcnt i, StateT.run'_eq]
-    simp only [hprog, honestRounds_pure, simulateQ_pure, StateT.run'_eq, StateT.run_pure, map_pure,
-      prEvent_pure_prop, ne_eq, not_true_eq_false, if_false, ENNReal.toReal_zero]
-    unfold abortErrorOf coinFailure coinKeyCollision
-    positivity
-  · refine (ENNReal.toReal_mono ?_ (check_honest_bound prims K counts x hx hpos)).trans (chalErr_toReal_le _)
-    refine ENNReal.add_ne_top.2 ⟨ENNReal.div_ne_top (by simp) ?_, ENNReal.sum_ne_top.2 fun j _ =>
-      ENNReal.add_ne_top.2 ⟨ENNReal.div_ne_top (by simp) (by simp), ENNReal.pow_ne_top (ENNReal.div_ne_top (by simp) ?_)⟩⟩
-    all_goals exact_mod_cast (Fintype.card_pos_iff.2 ⟨(0 : E)⟩).ne'
-
-end Completeness
 
 end
 
@@ -2674,30 +1605,6 @@ end ThresholdLeanXmssSecurity
 
 open OracleComp OracleSpec ThresholdLeanXmss Finset
 
-noncomputable section
-
-namespace ThresholdLeanXmssSecurity
-
-attribute [local instance] Classical.propDecidable
-
-variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
-
-attribute [local instance] inhabitedField
-
-/-- The dummy inputs of the honest operators. They keep the leaked views of the known terms, and the
-first lacked term carries the leaked difference of each tuple. -/
-def dummyTuples (D : C.Coalition) (known : C.Party → Option (List (Tuple C))) (differences : List (ℕ → Bit))
-    (i : C.Party) : List (Tuple C) :=
-  ((known i).getD []).zipIdx.map fun (τ, k) =>
-    match lackedTerm D.1 with
-    | some T₀ => ⟨τ.x, τ.y, fun T g => if T = T₀ then
-        (differences.getD k fun _ => 0) g + shareValue τ.x g * shareValue τ.y g - ∑ T' ∈ univ.erase T₀, τ.z T' g
-        else τ.z T g, τ.count, τ.mode⟩
-    | none => τ
-
-end ThresholdLeanXmssSecurity
-
-end
 end
 
 /-! ## Query -/
@@ -2708,25 +1615,6 @@ namespace ThresholdLeanXmssSecurity
 attribute [local instance] Classical.propDecidable
 set_option linter.unusedSectionVars false
 variable {C : Committee} {E : Type} [Field E] [Algebra Bit E]
-
-/-- Every path through the challenge search uses at most its number of tries. -/
-theorem findChallenge_queryBound (K : Constants C E) (key : HashOutput) :
-    ∀ tries index, IsQueryBoundP (findChallenge K key tries index) (fun _ => True) tries := by
-  intro tries
-  induction tries with
-  | zero => intro index; simp [findChallenge]
-  | succ tries ih =>
-    intro index
-    unfold findChallenge
-    change IsQueryBoundP (OracleComp.lift (OracleSpec.query (spec := RoSpec C) (.inl (.expand key index))) >>= _) _ _
-    rw [isQueryBoundP_query_bind_iff]
-    constructor
-    · simp
-    · intro u
-      simp only [if_pos trivial, Nat.add_sub_cancel]
-      split
-      · simp
-      · simpa using ih (index + 1)
 
 /-- Mapping a list costs at most its length times the per-entry bound. -/
 theorem queryBound_mapM {ι α β : Type} {S : OracleSpec ι} (p : ι → Prop) [DecidablePred p]
@@ -2866,11 +1754,6 @@ lemma oracleStep_queryBound {oa : OracleComp (RoSpec C) α} {n : ℕ}
     erw [isQueryBoundP_query_bind_iff]
     simpa [PartyCounted] using And.intro (h.1) (fun u => ih u (h.2 u))
 
-lemma RunBound.run' {p : RunM C E G α} {n : ℕ} (h : RunBound p n) (st : RunState C) :
-    PartyBound (p.run' st) n := by
-  unfold StateT.run'
-  exact (PartyBound.bind (h st) (fun a => PartyBound.pure a.1)).mono (by omega)
-
 lemma RunBound.openSh (K : Constants C E) (ctx : Context C) (v : ℕ → E) (count : ℕ) :
     PartyBound (openSh K ctx v count : PartyM C E G _) 0 := by
   unfold ThresholdLeanXmss.openSh
@@ -2916,41 +1799,6 @@ lemma hybrid_randElements_queryBound (count : ℕ) :
   · exact RunBound.pure _
   · exact RunBound.lift PartyBound.failure
 
-lemma hybrid_randBits_queryBound (count : ℕ) :
-    RunBound ((hybridCheckBuildingBlocks K i).randBits count) 0 := by
-  unfold hybridCheckBuildingBlocks
-  apply (RunBound.bind (m := 0) RunBound.freshLabel (fun _ => ?_)).mono (by omega)
-  apply (RunBound.bind (m := 0) (RunBound.lift (PartyBound.call _)) (fun out => ?_)).mono (by omega)
-  split
-  · exact RunBound.pure _
-  · exact RunBound.lift PartyBound.failure
-
-lemma hybrid_coinKey_queryBound :
-    RunBound (coinKey K (hybridCheckBuildingBlocks K i)) 1 := by
-  unfold coinKey
-  exact ((RunBound.get).bind (fun st =>
-    (hybrid_coin_queryBound K i 2).bind (fun values =>
-      RunBound.lift (oracleStep_queryBound (hashQuery_queryBound _))))).mono (by omega)
-
-lemma expand_queryBound {ι : Type} {G : OracleSpec ι} (key : HashOutput) (count : ℕ) :
-    RunBound (expand K key count : RunM C E G (List E)) count := by
-  unfold expand
-  apply RunBound.lift
-  apply oracleStep_queryBound
-  simpa using queryBound_mapM (fun _ => True)
-    (fun k => elementOfHash K <$> hashQuery (C := C) (.expand key k)) 1 (List.range count)
-    (fun k _ => (isQueryBoundP_map_iff ..).2 (hashQuery_queryBound _))
-
-lemma hybrid_challenge_queryBound :
-    RunBound (challenge K (hybridCheckBuildingBlocks K i)) (1 + challengeTries) := by
-  unfold challenge
-  refine ((hybrid_coinKey_queryBound K i).bind (fun key =>
-    (RunBound.lift (oracleStep_queryBound (findChallenge_queryBound K key challengeTries 0))).bind
-      (m := 0) (fun out => ?_))).mono (by omega)
-  split
-  · exact RunBound.pure _
-  · exact RunBound.lift PartyBound.failure
-
 lemma compareDigests_queryBound {ι : Type} {G : OracleSpec ι} (salts : Shares C Bit) :
     RunBound (compareDigests (localContext i) salts : RunM C E G Unit) (2 * C.terms.length) := by
   unfold compareDigests
@@ -2958,63 +1806,6 @@ lemma compareDigests_queryBound {ι : Type} {G : OracleSpec ι} (salts : Shares 
     (RunBound.lift (oracleStep_queryBound (digestQuery_queryBound i salts st.history))).bind (fun ds =>
       (RunBound.lift (PartyBound.exchange _)).bind (fun inbox =>
         RunBound.lift (PartyBound.require _))))).mono (by omega)
-
-lemma sliceStep_queryBound (τ : List E) (count : ℕ) (v : Shares C E × Shares C E × E) (j : ℕ) :
-    RunBound (sliceStep K (localContext i) (hybridCheckBuildingBlocks K i) τ count v j)
-        (1 + challengeTries) := by
-  rcases v with ⟨xs, ys, D⟩
-  unfold sliceStep
-  exact ((hybrid_extendMult_queryBound K i _).bind (fun t =>
-    (hybrid_challenge_queryBound K i).bind (fun r => RunBound.pure _))).mono (by omega)
-
-lemma halvingStep_queryBound (width : ℕ) (v : (ℕ → E) × (ℕ → E) × E) (j : ℕ) :
-    RunBound (halvingStep K (localContext i) (hybridCheckBuildingBlocks K i) width v j)
-        (1 + challengeTries) := by
-  rcases v with ⟨A, B, D⟩
-  unfold halvingStep
-  exact ((hybrid_extendMult_queryBound K i _).bind (fun t =>
-    (hybrid_challenge_queryBound K i).bind (fun r => RunBound.pure _))).mono (by omega)
-
-lemma finalStep_queryBound (v : (ℕ → E) × (ℕ → E) × E) :
-    RunBound (finalStep K (localContext i) (hybridCheckBuildingBlocks K i) v)
-      (2 * C.terms.length + (1 + challengeTries)) := by
-  rcases v with ⟨A, B, D⟩
-  unfold finalStep
-  exact ((hybrid_randElements_queryBound K i 2).bind (fun w =>
-    (hybrid_extendMult_queryBound K i _).bind (fun q =>
-      (hybrid_randBits_queryBound K i 256).bind (fun salts =>
-        (compareDigests_queryBound i salts.1).bind (fun _ =>
-          (hybrid_challenge_queryBound K i).bind (fun r =>
-            (RunBound.lift (RunBound.openSh K _ _ _)).bind (fun opened =>
-              RunBound.lift (PartyBound.require _)))))))).mono (by omega)
-
-/-- The query budget of one operator, including all branches that abort early. -/
-theorem check_queryBound (tuples : List (Tuple C)) :
-    RunBound (check K (localContext i) (hybridCheckBuildingBlocks K i) tuples)
-      (halvings (tuples.map (·.count)).sum + 2 + coins (tuples.map (·.count)).sum +
-        (halvings (tuples.map (·.count)).sum + 1) * challengeTries + 2 * C.terms.length) := by
-  by_cases hz : (tuples.map (·.count)).sum = 0
-  · simp only [check, hz, ↓reduceIte]
-    exact (RunBound.pure ()).mono (Nat.zero_le _)
-  · rw [check_eq _ _ _ _ hz]
-    refine ((hybrid_coinKey_queryBound K i).bind (fun key =>
-      (expand_queryBound K key _).bind (fun τ =>
-        (RunBound.lift (PartyBound.require _)).bind (fun _ =>
-          (RunBound.foldlM _ _ (sliceStep_queryBound K i τ _) _ _).bind (fun v =>
-            (RunBound.foldlM _ _ (halvingStep_queryBound K i _) _ _).bind (fun v' =>
-              finalStep_queryBound K i v')))))).mono ?_
-    simp only [List.length_range]
-    have hs : sliceBits ≤ halvings (tuples.map (·.count)).sum := by unfold halvings; omega
-    have he : sliceBits + (halvings (tuples.map (·.count)).sum - sliceBits) =
-        halvings (tuples.map (·.count)).sum := by omega
-    nlinarith [congrArg (fun n => n * (1 + challengeTries)) he]
-
-/-- The protocol wrapper only initializes the local history and round label. -/
-theorem checkProtocol_queryBound (tuples : List (Tuple C)) :
-    PartyBound (checkProtocol K i tuples)
-      (halvings (tuples.map (·.count)).sum + 2 + coins (tuples.map (·.count)).sum +
-        (halvings (tuples.map (·.count)).sum + 1) * challengeTries + 2 * C.terms.length) :=
-  (check_queryBound K i tuples).run' _
 
 end CheckBounds
 
@@ -3035,80 +1826,6 @@ def StepBound (st : Step C E G α) (n : ℕ) : Prop :=
   | .done _ => True
   | .wait _ k => ∀ inbox, IsQueryBoundP (k inbox) (PartyCounted (E := E) (G := G)) n
   | .call _ k => ∀ out, IsQueryBoundP (k out) (PartyCounted (E := E) (G := G)) n
-
-/-- Advancing a party spends only its local budget, leaving the residual budget for its continuation. -/
-theorem advance_bind_queryBound (oa : OracleComp (PartySpec C E G) (Option α))
-    (k : Step C E G α → OracleComp (LocalSpec C) β) (extra : ℕ) :
-    ∀ n, IsQueryBoundP oa (PartyCounted (E := E) (G := G)) n →
-      (∀ st b, b ≤ n → StepBound st b → IsQueryBoundP (k st) Counted (extra + b)) →
-      IsQueryBoundP (advance oa >>= k) Counted (extra + n) := by
-  induction oa using OracleComp.inductionOn with
-  | pure a =>
-    intro n _ hk
-    rw [advance_pure, pure_bind]
-    exact hk (.done a) n le_rfl trivial
-  | query_bind t f ih =>
-    intro n h hk
-    rw [isQueryBoundP_query_bind_iff] at h
-    rcases t with (q | outbox) | input
-    · rw [advance_query_bind, bind_assoc, isQueryBoundP_query_bind_iff]
-      have hcp : Counted q → PartyCounted (E := E) (G := G) (.inl (.inl q)) := by
-        rcases q with u | v <;> simp [Counted, PartyCounted]
-      constructor
-      · by_cases hc : Counted q
-        · right
-          have hn := h.1.resolve_left (not_not.mpr (hcp hc))
-          omega
-        · exact Or.inl hc
-      · intro u
-        have hb : (if PartyCounted (E := E) (G := G) (.inl (.inl q)) then n - 1 else n) ≤ n := by
-          split_ifs <;> omega
-        have hi := ih u _ (h.2 u) (fun st b hb' hs => hk st b (hb'.trans hb) hs)
-        apply hi.mono
-        by_cases hp : PartyCounted (E := E) (G := G) (.inl (.inl q))
-        · by_cases hc : Counted q
-          · simp only [if_pos hp, if_pos hc]
-            have hn := h.1.resolve_left (not_not.mpr hp)
-            omega
-          · simp only [if_pos hp, if_neg hc]
-            omega
-        · have hc : ¬ Counted q := fun hc => hp (hcp hc)
-          simp only [if_neg hp, if_neg hc]
-          exact le_rfl
-    · change IsQueryBoundP (k (.wait outbox f)) Counted (extra + n)
-      apply hk _ n le_rfl
-      simpa [StepBound, PartyCounted] using h.2
-    · change IsQueryBoundP (k (.call input f)) Counted (extra + n)
-      apply hk _ n le_rfl
-      simpa [StepBound, PartyCounted] using h.2
-
-/-- Advance the parties sequentially while accounting for each residual budget. -/
-theorem sequenceFin_advance_bind_queryBound : ∀ {N : ℕ}
-    (oa : Fin N → OracleComp (PartySpec C E G) (Option α)) (budget : Fin N → ℕ)
-    (h : ∀ i, IsQueryBoundP (oa i) (PartyCounted (E := E) (G := G)) (budget i))
-    (k : (Fin N → Step C E G α) → OracleComp (LocalSpec C) β) (extra : ℕ),
-    (∀ st (b : Fin N → ℕ), (∀ i, b i ≤ budget i) → (∀ i, StepBound (st i) (b i)) →
-      IsQueryBoundP (k st) Counted (extra + ∑ i, b i)) →
-    IsQueryBoundP ((OverPermutation.sequenceFin fun i => advance (oa i)) >>= k) Counted
-      (extra + ∑ i, budget i)
-  | 0, oa, budget, h, k, extra, hk => by
-    simp only [OverPermutation.sequenceFin, pure_bind, Fin.sum_univ_zero, Nat.add_zero]
-    simpa using hk Fin.elim0 Fin.elim0 (fun i => Fin.elim0 i) (fun i => Fin.elim0 i)
-  | N + 1, oa, budget, h, k, extra, hk => by
-    simp only [OverPermutation.sequenceFin, bind_assoc, pure_bind]
-    rw [Fin.sum_univ_succ]
-    have he : extra + (budget 0 + ∑ i : Fin N, budget i.succ) =
-        (extra + ∑ i : Fin N, budget i.succ) + budget 0 := by omega
-    rw [he]
-    refine advance_bind_queryBound (oa 0) _ _ (budget 0) (h 0) (fun st0 b0 hb0 hs0 => ?_)
-    have he' : (extra + ∑ i : Fin N, budget i.succ) + b0 =
-        (extra + b0) + ∑ i : Fin N, budget i.succ := by omega
-    rw [he']
-    refine sequenceFin_advance_bind_queryBound (fun i : Fin N => oa i.succ) (fun i => budget i.succ)
-      (fun i => h i.succ) (fun st => k (Fin.cases st0 st)) (extra + b0) (fun st b hb hs => ?_)
-    have hp := hk (Fin.cases st0 st) (Fin.cases b0 b)
-      (fun i => Fin.cases hb0 hb i) (fun i => Fin.cases hs0 hs i)
-    simpa [Fin.sum_univ_succ, Nat.add_assoc] using hp
 
 section NetworkBound
 variable {I O Ia L R : Type} (D : C.Coalition) (A : Adversary C E Ia L R)
@@ -3131,133 +1848,6 @@ def callResume (outputs : C.Party → Option O)
   | .done out => pure out
   | .wait outbox resume => OracleComp.lift (OracleSpec.query
       (spec := PartySpec C E (CallSpec I O)) (.inl (.inr outbox))) >>= resume
-
-lemma roundResume_bound (sent : C.Party → C.Party → Option (Msg E))
-    (steps : C.Party → Step C E (CallSpec I O) α) (budget : C.Party → ℕ)
-    (h : ∀ j, StepBound (steps j) (budget j)) (j : C.Party) :
-    IsQueryBoundP (roundResume D sent steps j) (PartyCounted (E := E) (G := CallSpec I O)) (budget j) := by
-  have hj := h j
-  unfold roundResume
-  cases hs : steps j with
-  | done out => exact isQueryBoundP_pure _ _ _
-  | call input k => exact isQueryBoundP_pure _ _ _
-  | wait out k =>
-    split_ifs
-    · exact isQueryBoundP_pure _ _ _
-    · simp only [StepBound, hs] at hj
-      exact hj _
-
-lemma callResume_bound (out : C.Party → Option O)
-    (steps : C.Party → Step C E (CallSpec I O) α) (budget : C.Party → ℕ)
-    (h : ∀ j, StepBound (steps j) (budget j)) (j : C.Party) :
-    IsQueryBoundP (callResume D out steps j) (PartyCounted (E := E) (G := CallSpec I O)) (budget j) := by
-  have hj := h j
-  unfold callResume
-  cases hs : steps j with
-  | done out => exact isQueryBoundP_pure _ _ _
-  | call input k =>
-    split_ifs
-    · exact isQueryBoundP_pure _ _ _
-    · simp only [StepBound, hs] at hj
-      exact hj _
-  | wait out k =>
-    rw [isQueryBoundP_query_bind_iff]
-    constructor
-    · exact Or.inl (by simp [PartyCounted])
-    · simpa [StepBound, hs, PartyCounted] using hj
-
-lemma stepRound_bind_queryBound (step : ℕ)
-    (hr : ∀ state sent, IsQueryBoundP (A.round state sent) Counted step)
-    (hF : ∀ state inputs, IsQueryBoundP (runFunctionality localRoles D A F state inputs) Counted step)
-    (state : A.State) (steps : C.Party → Step C E (CallSpec I O) α) (budget : C.Party → ℕ)
-    (h : ∀ j, StepBound (steps j) (budget j))
-    (k : (A.State × (C.Party → Step C E (CallSpec I O) α) × (C.Party → C.Party → Option (Msg E))) →
-      OracleComp (LocalSpec C) β) (extra : ℕ)
-    (hk : ∀ st (b : C.Party → ℕ), (∀ j, b j ≤ budget j) → (∀ j, StepBound (st.2.1 j) (b j)) →
-      IsQueryBoundP (k st) Counted (extra + ∑ j, b j)) :
-    IsQueryBoundP (stepRound localRoles D A F state steps >>= k) Counted (step + extra + ∑ j, budget j) := by
-  unfold stepRound
-  split_ifs
-  · simp only [bind_assoc, pure_bind]
-    apply (isQueryBoundP_bind (m := extra + ∑ j, budget j) (hF _ _) (fun result _ => ?_)).mono (by omega)
-    have he : (fun j => match steps j with
-        | .call _ resume => if j ∈ D.1 then pure (Step.done none) else advance (resume (result.2 j))
-        | st => pure st) = fun j => advance (callResume D result.2 steps j) := by
-      funext j
-      cases hs : steps j with
-      | done out => simp only [callResume, hs]; rfl
-      | wait out k => simp only [callResume, hs]; rfl
-      | call input k => simp only [callResume, hs]; split_ifs <;> rfl
-    have hseq := sequenceFin_advance_bind_queryBound
-      (fun j => callResume D result.2 steps j) budget (callResume_bound D result.2 steps budget h)
-      (fun st => k (result.1, st, fun _ _ => none)) extra
-      (fun st b hb hs => hk (result.1, st, fun _ _ => none) b hb hs)
-    convert (congrArg (fun f : C.Party → OracleComp (LocalSpec C) (Step C E (CallSpec I O) α) =>
-      IsQueryBoundP (OverPermutation.sequenceFin f >>= fun st => k (result.1, st, fun _ _ => none))
-        Counted (extra + ∑ j, budget j)) he).mpr hseq using 1
-    congr 2
-    funext j
-    cases steps j <;> rfl
-  · simp only [localRoles, bind_assoc, pure_bind]
-    apply (isQueryBoundP_bind (m := extra + ∑ j, budget j) (hr _ _) (fun result _ => ?_)).mono (by omega)
-    have he : (fun j => match steps j with
-        | .done out => pure (Step.done out)
-        | .wait _ resume => if j ∈ D.1 then pure (Step.done none) else
-            advance (resume fun k => if k ∈ D.1 then result.2 k j else (steps k).delivered j)
-        | .call _ _ => pure (Step.done none)) = fun j => advance (roundResume D result.2 steps j) := by
-      funext j
-      cases hs : steps j with
-      | done out => simp only [roundResume, hs]; rfl
-      | call input k => simp only [roundResume, hs]; rfl
-      | wait out k => simp only [roundResume, hs]; split_ifs <;> rfl
-    have hseq := sequenceFin_advance_bind_queryBound
-      (fun j => roundResume D result.2 steps j) budget (roundResume_bound D result.2 steps budget h)
-      (fun st => k (result.1, st, result.2)) extra
-      (fun st b hb hs => hk (result.1, st, result.2) b hb hs)
-    convert (congrArg (fun f : C.Party → OracleComp (LocalSpec C) (Step C E (CallSpec I O) α) =>
-      IsQueryBoundP (OverPermutation.sequenceFin f >>= fun st => k (result.1, st, result.2))
-        Counted (extra + ∑ j, budget j)) he).mpr hseq using 1
-    congr 2
-    funext j
-    cases steps j <;> rfl
-
-lemma executeRounds_queryBound (step : ℕ)
-    (hr : ∀ state sent, IsQueryBoundP (A.round state sent) Counted step)
-    (hF : ∀ state inputs, IsQueryBoundP (runFunctionality localRoles D A F state inputs) Counted step) :
-    ∀ fuel state (steps : C.Party → Step C E (CallSpec I O) α) (budget : C.Party → ℕ),
-      (∀ j, StepBound (steps j) (budget j)) →
-      IsQueryBoundP (executeRounds localRoles D A F fuel state steps) Counted (fuel * step + ∑ j, budget j)
-  | 0, state, steps, budget, h => isQueryBoundP_pure _ _ _
-  | fuel + 1, state, steps, budget, h => by
-    unfold executeRounds
-    split_ifs
-    · exact isQueryBoundP_pure _ _ _
-    · refine (stepRound_bind_queryBound D A F step hr hF state steps budget h _ (fuel * step) ?_).mono ?_
-      · intro st b hb hs
-        exact executeRounds_queryBound step hr hF fuel st.1 st.2.1 b hs
-      · simp [Nat.succ_mul, Nat.add_comm, Nat.add_assoc]
-
-lemma executePhase_queryBound (step : ℕ)
-    (hr : ∀ state sent, IsQueryBoundP (A.round state sent) Counted step)
-    (hF : ∀ state inputs, IsQueryBoundP (runFunctionality localRoles D A F state inputs) Counted step)
-    (fuel : ℕ) (state : A.State) (program : C.Party → PartyM C E (CallSpec I O) α)
-    (budget : C.Party → ℕ) (hp : ∀ j, j ∉ D.1 → PartyBound (program j) (budget j)) :
-    IsQueryBoundP (executePhase localRoles D A F fuel state program) Counted (fuel * step + ∑ j, budget j) := by
-  unfold executePhase startSteps
-  simp only [localRoles]
-  have he : (fun i => if i ∈ D.1 then pure (Step.done none) else advance (program i).run) =
-      fun i => advance (if i ∈ D.1 then pure none else (program i).run) := by
-    funext i
-    split_ifs <;> rfl
-  change IsQueryBoundP ((OverPermutation.sequenceFin _) >>= _) _ _
-  rw [he]
-  apply sequenceFin_advance_bind_queryBound _ budget
-  · intro j
-    split_ifs with hj
-    · exact isQueryBoundP_pure _ _ _
-    · exact hp j hj
-  · intro st b hb hs
-    exact executeRounds_queryBound D A F step hr hF fuel state st b hs
 
 end NetworkBound
 
@@ -3415,117 +2005,7 @@ lemma checkFunctionalities_queryBound [Field E] [Fintype E] [DecidableEq E] [Alg
     · exact Frand_queryBound
     · exact Frand_queryBound
 
-lemma runFunctionality_queryBound {Ia : Type} (D : C.Coalition) (A : Adversary C E Ia L R)
-    (F : Functionality C I O L R) (step : ℕ)
-    (hF : ∀ inputs, WeightedBound (F.run D inputs) (hybridWeight step) step)
-    (hA : ∀ st l, IsQueryBoundP (A.answer st l) Counted step)
-    (st : A.State) (inputs : C.Party → Option I) :
-    IsQueryBoundP (runFunctionality localRoles D A F st inputs) Counted step := by
-  let impl : QueryImpl (LocalSpec C + (L →ₒ R)) (StateT A.State (OracleComp (LocalSpec C))) :=
-    (fun (t : (LocalSpec C).Domain) =>
-      (StateT.lift (OracleComp.lift (OracleSpec.query t)) : StateT A.State (OracleComp (LocalSpec C)) _)) +
-    (fun l => StateT.mk fun s => do
-      let a ← A.answer s l
-      pure (a.2, a.1))
-  have hi : ∀ t s, IsQueryBoundP ((impl t).run s) Counted (hybridWeight step t) := by
-    intro t s
-    rcases t with t | l
-    · change IsQueryBoundP ((fun a => (a, s)) <$> (liftM (OracleSpec.query (spec := LocalSpec C) t) : OracleComp _ _))
-        Counted (hybridWeight (L := L) step (.inl t))
-      rw [isQueryBoundP_map_iff, isQueryBoundP_query_iff]
-      rcases t with u | v
-      · simp [hybridWeight, Counted]
-      · simp [hybridWeight]
-    · change IsQueryBoundP (A.answer s l >>= fun a => pure (a.2, a.1)) Counted step
-      exact (isQueryBoundP_bind (hA s l) (fun a _ => isQueryBoundP_pure _ _ 0)).mono (by omega)
-  have hrun := WeightedBound.simulateQ_state impl hi (hF inputs) st
-  have hswap := isQueryBoundP_bind hrun (fun out _ => isQueryBoundP_pure Counted (out.2, out.1) 0)
-  unfold runFunctionality
-  split_ifs <;> (try dsimp only) <;> try simp only [pure_bind]
-  all_goals first
-    | exact isQueryBoundP_pure Counted _ step
-    | simpa only [Nat.add_zero, impl, localRoles] using hswap
-
 end HybridBounds
-end ThresholdLeanXmssSecurity
-end
-
-/-! ## Simulation -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-set_option linter.unusedSectionVars false
-variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
-attribute [local instance] inhabitedField
-
-/-- Fill the hidden term from the reconstructed known tuple, independently of unheld local entries. -/
-def canonicalDummyTuples (D : C.Coalition) (known : C.Party → Option (List (Tuple C)))
-    (differences : List (ℕ → Bit)) (i : C.Party) : List (Tuple C) :=
-  ((known i).getD []).zipIdx.map fun (τ, k) =>
-    let σ := tupleAt known k
-    match lackedTerm D.1 with
-    | some T₀ => ⟨τ.x, τ.y, fun T g => if T = T₀ then
-        (differences.getD k fun _ => 0) g + shareValue σ.x g * shareValue σ.y g -
-          ∑ T' ∈ univ.erase T₀, σ.z T' g
-        else τ.z T g, τ.count, τ.mode⟩
-    | none => τ
-
-lemma canonicalDummyTuples_counts (D : C.Coalition) (known : C.Party → Option (List (Tuple C)))
-    (differences : List (ℕ → Bit)) (i : C.Party) :
-    (canonicalDummyTuples D known differences i).map (·.count) = ((known i).getD []).map (·.count) := by
-  unfold canonicalDummyTuples
-  rw [List.map_map]
-  calc
-    _ = ((known i).getD []).zipIdx.map (fun p => p.1.count) := by
-      apply congrArg (fun f => List.map f (((known i).getD []).zipIdx))
-      funext ⟨τ, k⟩
-      dsimp only [Function.comp_apply]
-      split <;> rfl
-    _ = _ := by
-      change List.map ((fun τ : Tuple C => τ.count) ∘ Prod.fst) _ = _
-      rw [← List.map_map]
-      simp
-
-/-- Replacing one term sets the prescribed difference of a reconstructed tuple. -/
-lemma replace_hidden_difference (τ : Tuple C) (T₀ : C.Term) (d : ℕ → Bit) (g : ℕ) :
-    shareValue (fun T k => if T = T₀ then
-      d k + shareValue τ.x k * shareValue τ.y k - ∑ T' ∈ univ.erase T₀, τ.z T' k
-      else τ.z T k) g - shareValue τ.x g * shareValue τ.y g = d g := by
-  let z : C.Term → Bit := fun T => if T = T₀ then
-    d g + shareValue τ.x g * shareValue τ.y g - ∑ T' ∈ univ.erase T₀, τ.z T' g else τ.z T g
-  change (∑ T, z T) - shareValue τ.x g * shareValue τ.y g = d g
-  rw [← Finset.sum_erase_add _ z (Finset.mem_univ T₀)]
-  have hz : ∑ T ∈ univ.erase T₀, z T = ∑ T ∈ univ.erase T₀, τ.z T g := by
-    apply Finset.sum_congr rfl
-    intro T hT
-    exact if_neg (Finset.mem_erase.mp hT).1
-  rw [hz]
-  simp only [z, if_pos rfl]
-  ring
-
-/-- The pointwise shift required when the final challenge is fixed. -/
-lemma final_mask_shift (w a a' r : E) (hr : 1 + r ≠ 0) :
-    (w + r / (1 + r) * (a - a')) + r * ((w + r / (1 + r) * (a - a')) + a') =
-      w + r * (w + a) := by
-  field_simp
-  ring
-
-def canonicalCheckSimulator (K : Constants C E) (fuel : ℕ) (D : C.Coalition)
-    (A : Adversary C E (List (Tuple C)) ((List E ⊕ (C.Party → List (Product C E))) ⊕ (Unit ⊕ Unit))
-      ((Finset C.Party ⊕ ((ℕ → E) × Shares C E × (C.Party → Shares C E) × Finset C.Party)) ⊕
-        ((Shares C E × (C.Party → C.Party → ℕ → E)) ⊕ (Shares C Bit × (C.Party → C.Party → ℕ → Bit))))) :
-    Simulator (C := C) (LocalSpec C) (List (Tuple C))
-      ((C.Party → Option (List (Tuple C))) × List (ℕ → Bit) × Bool) (Finset C.Party) A.State where
-  State := A.State
-  start x z := A.start x z
-  answer st leak := do
-    let r ← executePhase localRoles D A (checkFunctionalities K) fuel st
-      fun i => checkProtocol K i (canonicalDummyTuples D leak.1 leak.2.1 i)
-    pure (r.1, univ.filter fun i => r.2 i = some ())
-  output st := pure st
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -3538,7 +2018,7 @@ attribute [local instance] Classical.propDecidable inhabitedField
 set_option linter.unusedSectionVars false
 variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
 
-/-- Cardinality of the term enumeration, as used by `checkOverhead`. -/
+/-- The number of terms. -/
 lemma check_terms_length : C.terms.length = C.n.choose (C.t - 1) := by
   rw [Committee.terms, Finset.length_toList, Finset.card_univ]
   convert Fintype.card_finset_len (α := C.Party) (C.t - 1) using 1
@@ -3561,54 +2041,6 @@ def multVerifyLeak (D : C.Coalition) (inputs : C.Party → Option (List (Tuple C
       τ.count, τ.mode⟩ : Tuple C)
   (known, (if agree then differences else []), accept)
 
-lemma FmultVerify_run_eq (D : C.Coalition) (inputs : C.Party → Option (List (Tuple C))) :
-    FmultVerify.run D inputs = (do
-      let receivers ← leak (multVerifyLeak D inputs)
-      pure fun i => if i ∉ D.1 ∧ (multVerifyLeak D inputs).2.2 ∧ i ∈ receivers then some () else none) := rfl
-
-lemma canonicalDummyTuples_leak_counts (K : Constants C E) (counts : List ℕ) (D : C.Coalition)
-    (x : C.Party → List (Tuple C)) (hx : TupleInputs K counts D x) (i : C.Party) (hi : i ∉ D.1) :
-    let l := multVerifyLeak D (fun j => if j ∈ D.1 then none else some (x j))
-    (canonicalDummyTuples D l.1 l.2.1 i).map (·.count) = counts := by
-  dsimp only
-  rw [canonicalDummyTuples_counts]
-  simpa [multVerifyLeak, hi, List.map_map, Function.comp_def] using hx.1 i hi
-
-lemma canonicalCheckSimulator_answer_queryBound (K : Constants C E) (fuel step : ℕ) (D : C.Coalition)
-    (A : Adversary C E (List (Tuple C)) ((List E ⊕ (C.Party → List (Product C E))) ⊕ (Unit ⊕ Unit))
-      ((Finset C.Party ⊕ ((ℕ → E) × Shares C E × (C.Party → Shares C E) × Finset C.Party)) ⊕
-        ((Shares C E × (C.Party → C.Party → ℕ → E)) ⊕ (Shares C Bit × (C.Party → C.Party → ℕ → Bit)))))
-    (hr : ∀ st sent, IsQueryBoundP (A.round st sent) Counted step)
-    (ha : ∀ st l, IsQueryBoundP (A.answer st l) Counted step)
-    (counts : List ℕ) (l : (C.Party → Option (List (Tuple C))) × List (ℕ → Bit) × Bool)
-    (hc : ∀ i, i ∉ D.1 → ((l.1 i).getD []).map (·.count) = counts) (state : A.State) :
-    IsQueryBoundP ((canonicalCheckSimulator K fuel D A).answer state l) Counted
-      (fuel * step + checkOverhead C counts.sum) := by
-  let H := halvings counts.sum + 2 + coins counts.sum + (halvings counts.sum + 1) * challengeTries +
-    2 * C.terms.length
-  have hp : ∀ i, i ∉ D.1 → PartyBound (checkProtocol K i (canonicalDummyTuples D l.1 l.2.1 i)) H := by
-    intro i hi
-    have hcount : (canonicalDummyTuples D l.1 l.2.1 i).map (·.count) = counts :=
-      (canonicalDummyTuples_counts ..).trans (hc i hi)
-    simpa only [hcount] using checkProtocol_queryBound K i (canonicalDummyTuples D l.1 l.2.1 i)
-  have he := executePhase_queryBound D A (checkFunctionalities K) step hr
-    (fun st inputs => runFunctionality_queryBound D A (checkFunctionalities K) step
-      (fun inputs => checkFunctionalities_queryBound K D inputs step) ha st inputs)
-    fuel state (fun i => checkProtocol K i (canonicalDummyTuples D l.1 l.2.1 i)) (fun _ => H) hp
-  unfold canonicalCheckSimulator
-  refine (isQueryBoundP_bind he (fun out _ => isQueryBoundP_pure _ _ 0)).mono ?_
-  simp [H, checkOverhead, check_terms_length, termCount]
-
-lemma hasHashQueryBound_adversary (prims : Primitives) {α : Type}
-    (oa : OracleComp (LocalSpec C) α) (n : ℕ) (h : IsQueryBoundP oa Counted n) :
-    HasHashQueryBound (runWorld prims (worldRoles.adversary oa)) n := by
-  intro r hr
-  unfold runWorld at hr
-  rw [StateT.run'_eq] at hr
-  erw [support_map] at hr
-  obtain ⟨r', hr', rfl⟩ := hr
-  exact cost_counted prims oa n h ∅ r' hr'
-
 lemma adversary_bind {α β : Type} (oa : OracleComp (LocalSpec C) α)
     (k : α → OracleComp (LocalSpec C) β) :
     worldRoles.adversary (oa >>= k) = worldRoles.adversary oa >>= fun a => worldRoles.adversary (k a) := by
@@ -3619,96 +2051,6 @@ lemma adversary_bind {α β : Type} (oa : OracleComp (LocalSpec C) α)
 lemma adversary_pure {α : Type} (a : α) :
     worldRoles.adversary (pure a : OracleComp (LocalSpec C) α) = pure a := by
   rfl
-
-def idealMultVerifyLocal {σ : Type} (D : C.Coalition)
-    (S : Simulator (C := C) (LocalSpec C) (List (Tuple C))
-      ((C.Party → Option (List (Tuple C))) × List (ℕ → Bit) × Bool) (Finset C.Party) σ)
-    (x : C.Party → List (Tuple C)) (z : Aux) : OracleComp (LocalSpec C) (σ × (C.Party → Option Unit)) := do
-  let st ← S.start (corruptInputs D x) z
-  let l := multVerifyLeak D (fun i => if i ∈ D.1 then none else some (x i))
-  let result ← S.answer st l
-  let out ← S.output result.1
-  pure (out, fun i => if i ∉ D.1 ∧ l.2.2 ∧ i ∈ result.2 then some () else none)
-
-lemma simulateQ_leak_bind_run {L R α σ : Type}
-    (impl : QueryImpl (LocalSpec C + (L →ₒ R)) (StateT σ (OracleComp (WorldSpec C))))
-    (l : L) (f : R → α) (st : σ) :
-    (simulateQ impl (leak l >>= fun r => pure (f r))).run st = (do
-      let out ← (impl (.inr l)).run st
-      pure (f out.1, out.2)) := by
-  rw [simulateQ_bind, StateT.run_bind]
-  simp [leak]
-
-def checkIdealImpl {σ : Type}
-    (S : Simulator (C := C) (LocalSpec C) (List (Tuple C))
-      ((C.Party → Option (List (Tuple C))) × List (ℕ → Bit) × Bool) (Finset C.Party) σ) :
-    QueryImpl (LocalSpec C + (((C.Party → Option (List (Tuple C))) × List (ℕ → Bit) × Bool) →ₒ Finset C.Party))
-      (StateT S.State (OracleComp (WorldSpec C))) :=
-  QueryImpl.add ((fun (t : (LocalSpec C).Domain) =>
-    (StateT.lift (free (OracleComp.lift (OracleSpec.query t))) : StateT S.State (OracleComp (WorldSpec C)) _)) :
-      QueryImpl (LocalSpec C) (StateT S.State (OracleComp (WorldSpec C))))
-  ((fun l => StateT.mk fun st => do
-    let (st, r) ← worldRoles.adversary (S.answer st l)
-    pure (r, st)) :
-      QueryImpl (((C.Party → Option (List (Tuple C))) × List (ℕ → Bit) × Bool) →ₒ Finset C.Party)
-        (StateT S.State (OracleComp (WorldSpec C))))
-
-lemma checkIdealImpl_leak_run {σ : Type}
-    (S : Simulator (C := C) (LocalSpec C) (List (Tuple C))
-      ((C.Party → Option (List (Tuple C))) × List (ℕ → Bit) × Bool) (Finset C.Party) σ)
-    (l : (C.Party → Option (List (Tuple C))) × List (ℕ → Bit) × Bool) (st : S.State) :
-    ((checkIdealImpl S) (.inr l)).run st =
-      (worldRoles.adversary (S.answer st l) >>= fun r => pure (r.2, r.1)) := rfl
-
-lemma idealExecution_multVerify_local {σ : Type} (D : C.Coalition)
-    (S : Simulator (C := C) (LocalSpec C) (List (Tuple C))
-      ((C.Party → Option (List (Tuple C))) × List (ℕ → Bit) × Bool) (Finset C.Party) σ)
-    (x : C.Party → List (Tuple C)) (z : Aux) :
-    idealExecution worldRoles.adversary D FmultVerify S x z =
-      worldRoles.adversary (idealMultVerifyLocal D S x z) := by
-  change (do
-    let st ← worldRoles.adversary (S.start (corruptInputs D x) z)
-    let r ← (simulateQ (checkIdealImpl S) (FmultVerify.run D (fun i => if i ∈ D.1 then none else some (x i)))).run st
-    let out ← worldRoles.adversary (S.output r.2)
-    pure (out, r.1)) = _
-  rw [FmultVerify_run_eq]
-  simp only [simulateQ_leak_bind_run, checkIdealImpl_leak_run, bind_assoc, pure_bind]
-  simp only [idealMultVerifyLocal, adversary_bind, adversary_pure]
-
-lemma distinguish_adversary {σ O : Type} (oa : OracleComp (LocalSpec C) (σ × (C.Party → Option O)))
-    (Z : Distinguisher C σ O) :
-    distinguish (worldRoles.adversary oa) Z = worldRoles.adversary (oa >>= Z) := by
-  rw [adversary_bind]
-  rfl
-
-theorem canonicalCheckSimulator_queryBound (prims : Primitives) (K : Constants C E) (counts : List ℕ)
-    (D : C.Coalition)
-    (A : Adversary C E (List (Tuple C)) ((List E ⊕ (C.Party → List (Product C E))) ⊕ (Unit ⊕ Unit))
-      ((Finset C.Party ⊕ ((ℕ → E) × Shares C E × (C.Party → Shares C E) × Finset C.Party)) ⊕
-        ((Shares C E × (C.Party → C.Party → ℕ → E)) ⊕ (Shares C Bit × (C.Party → C.Party → ℕ → Bit)))))
-    (x : C.Party → List (Tuple C)) (z : Aux) (Z : Distinguisher C A.State Unit) (q : ℕ)
-    (hx : TupleInputs K counts D x) (hq : IsQueryBounded A Z (2 * halvings counts.sum + 8) q) :
-    HasHashQueryBound (runWorld prims (distinguish
-      (idealExecution worldRoles.adversary D FmultVerify
-        (canonicalCheckSimulator K (2 * halvings counts.sum + 8) D A) x z) Z))
-      (q + checkOverhead C counts.sum) := by
-  obtain ⟨start, step, final, hbudget, hstart, hround, hanswer, hfinal⟩ := hq
-  rw [idealExecution_multVerify_local, distinguish_adversary]
-  apply hasHashQueryBound_adversary
-  let l := multVerifyLeak D (fun i => if i ∈ D.1 then none else some (x i))
-  have hc : ∀ i, i ∉ D.1 → ((l.1 i).getD []).map (·.count) = counts := by
-    intro i hi
-    simpa [l, multVerifyLeak, hi, List.map_map, Function.comp_def] using hx.1 i hi
-  have he := fun st => canonicalCheckSimulator_answer_queryBound K (2 * halvings counts.sum + 8)
-    step D A hround hanswer counts l hc st
-  unfold idealMultVerifyLocal
-  simp only [bind_assoc]
-  refine (isQueryBoundP_bind (hstart _ _) (fun st _ =>
-    isQueryBoundP_bind (m := final) (he st) (fun result _ => ?_))).mono ?_
-  · change IsQueryBoundP ((pure result.1 : OracleComp (LocalSpec C) _) >>= _) Counted final
-    simp only [pure_bind]
-    exact hfinal _
-  · omega
 
 end ThresholdLeanXmssSecurity
 end
@@ -3799,45 +2141,6 @@ lemma coin_input_injective (K : Constants C E) (tag label : ℕ) :
   fin_cases i
   · exact K.encode.injective (List.ofFn_injective h0)
   · exact K.encode.injective (List.ofFn_injective h1)
-
-end ThresholdLeanXmssSecurity
-end
-
-/-! ## Digest program -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset ENNReal
-
-/-! ## Assembly -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable inhabitedField
-variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
-
-/-- Exactly the distance obligation for the explicit candidate simulator. -/
-def MultVerifyDistance (prims : Primitives) (K : Constants C E) : Prop :=
-  ∀ (counts : List ℕ)
-    (D : C.Coalition)
-    (A : Adversary C E (List (Tuple C)) ((List E ⊕ (C.Party → List (Product C E))) ⊕ (Unit ⊕ Unit))
-      ((Finset C.Party ⊕ ((ℕ → E) × Shares C E × (C.Party → Shares C E) × Finset C.Party)) ⊕
-        ((Shares C E × (C.Party → C.Party → ℕ → E)) ⊕ (Shares C Bit × (C.Party → C.Party → ℕ → Bit)))))
-    (x : C.Party → List (Tuple C)) (z : Aux) (Z : Distinguisher C A.State Unit) (q : ℕ),
-    TupleInputs K counts D x → IsQueryBounded A Z (checkRounds counts.sum) q →
-    |accepts prims (distinguish (realExecution D A (checkFunctionalities K)
-        (checkRounds counts.sum) (checkProtocol K) x z) Z) -
-      accepts prims (distinguish (idealExecution worldRoles.adversary D FmultVerify
-        (canonicalCheckSimulator K (checkRounds counts.sum) D A) x z) Z)| ≤
-      checkErrorOf (E := E) (coins counts.sum) (halvings counts.sum) q + checkHashError C counts.sum q
-
-/-- Assembly without changing either bound or any quantifier of `MultVerifySecurityStatement`. -/
-theorem multVerifyStatement_of_distance (prims : Primitives) (K : Constants C E)
-    (h : MultVerifyDistance prims K) : MultVerifySecurityStatement prims K := by
-  intro counts D A
-  refine ⟨canonicalCheckSimulator K (2 * halvings counts.sum + 8) D A, ?_⟩
-  intro x z Z q hx hq
-  exact ⟨canonicalCheckSimulator_queryBound prims K counts D A x z Z q hx hq,
-    h counts D A x z Z q hx hq⟩
 
 end ThresholdLeanXmssSecurity
 end
@@ -4157,51 +2460,10 @@ theorem tupleInputs_unknown_vectors (K : Constants C E) {counts : List ℕ} {D :
     simp only [Function.comp_def,if_neg (unknown_no_corrupt_filler K D T hT _ _)]
   exact (hzero i hi).trans (hzero j hj).symm
 
-theorem tupleInputs_unknown_part (K : Constants C E) {counts : List ℕ} {D : C.Coalition}
-    {x : C.Party → List (Tuple C)} (hx : TupleInputs K counts D x) (T : C.Term)
-    (hT : ¬ KnownTo D.1 T) (part : Tuple C → Shares C Bit)
-    (hpart : part = (·.x) ∨ part = (·.y) ∨ part = (·.z)) :
-    ConsistentAt D (fun i T => (x i).map fun τ => vector τ.count (part τ T)) T := by
-  intro i hi j hj hiD hjD
-  have h := tupleInputs_unknown_vectors K hx T hT i hi j hj hiD hjD
-  rcases hpart with rfl | rfl | rfl
-  · simpa only [List.map_map,Function.comp_def] using congrArg (List.map Prod.fst) h
-  · simpa only [List.map_map,Function.comp_def] using congrArg (List.map fun p => p.2.1) h
-  · simpa only [List.map_map,Function.comp_def] using congrArg (List.map fun p => p.2.2) h
-
-theorem tupleInputs_unknown_lifted (K : Constants C E) {counts : List ℕ} {D : C.Coalition}
-    {x : C.Party → List (Tuple C)} (hx : TupleInputs K counts D x) (T : C.Term)
-    (hT : ¬ KnownTo D.1 T) (part : Tuple C → Shares C Bit)
-    (hpart : part = (·.x) ∨ part = (·.y) ∨ part = (·.z)) :
-    ConsistentAt D (fun i T => liftedPart (E := E) (x i) part T) T := by
-  intro i hi j hj hiD hjD
-  funext k
-  dsimp only
-  have h := tupleInputs_unknown_part K hx T hT part hpart i hi j hj hiD hjD
-  dsimp only at h
-  rw [liftedPart_eq,liftedPart_eq,h]
-
 /-- Common differences on unknown terms, with zero difference on every known term. -/
 def HiddenDifference (D : C.Coalition) (a b : C.Party → Shares C E) : Prop :=
   ∃ delta : Shares C E, (∀ T, KnownTo D.1 T → ∀ g, delta T g = 0) ∧
     ∀ i, i ∉ D.1 → ∀ T, i ∈ C.holders T → ∀ g, a i T g-b i T g = delta T g
-
-lemma HiddenDifference.of_consistent (K : Constants C E) (D : C.Coalition)
-    (a b : C.Party → Shares C E)
-    (hknown : ∀ T, KnownTo D.1 T → ∀ i, i ∉ D.1 → i ∈ C.holders T → a i T = b i T)
-    (ha : ∀ T, ¬ KnownTo D.1 T → ConsistentAt D a T)
-    (hb : ∀ T, ¬ KnownTo D.1 T → ConsistentAt D b T) : HiddenDifference D a b := by
-  have hh := exists_honest_holder (C := C) D
-  let j := fun T => Classical.choose (hh T)
-  have hj := fun T => Classical.choose_spec (hh T)
-  refine ⟨fun T g => if KnownTo D.1 T then 0 else a (j T) T g-b (j T) T g,?_,?_⟩
-  · intro T hT g; simp only [if_pos hT]
-  · intro i hi T hiT g
-    by_cases hT : KnownTo D.1 T
-    · simp only [if_pos hT,hknown T hT i hi hiT,sub_self]
-    · dsimp only
-      rw [if_neg hT,ha T hT i hiT (j T) (hj T).1 hi (hj T).2,
-        hb T hT i hiT (j T) (hj T).1 hi (hj T).2]
 
 lemma HiddenDifference.conv (K : Constants C E) (D : C.Coalition)
     {a b : C.Party → Shares C E} (h : HiddenDifference D a b) (g : ℕ) :
@@ -4216,140 +2478,6 @@ lemma HiddenDifference.conv (K : Constants C E) (D : C.Coalition)
   apply Finset.sum_congr rfl
   intro T hT
   rw [hdiff i hi T (by simpa [localContext] using (Finset.mem_filter.mp hT).2)]
-
-end ThresholdLeanXmssSecurity
-end
-
-/-! ## Dummy relation -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset Polynomial
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable inhabitedField
-set_option linter.unusedSectionVars false
-variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
-
-def checkKnownTuples (D : C.Coalition) (x : C.Party → List (Tuple C)) :
-    C.Party → Option (List (Tuple C)) :=
-  (multVerifyLeak D (fun i => if i ∈ D.1 then none else some (x i))).1
-
-lemma checkKnownTuples_honest (D : C.Coalition) (x : C.Party → List (Tuple C))
-    (i : C.Party) (hi : i ∉ D.1) :
-    checkKnownTuples D x i = some ((x i).map fun τ =>
-      (⟨knownView D.1 τ.count τ.x,knownView D.1 τ.count τ.y,knownView D.1 τ.count τ.z,
-        τ.count,τ.mode⟩ : Tuple C)) := by
-  simp [checkKnownTuples,multVerifyLeak,hi]
-
-lemma knownView_vector (D : Finset C.Party) (n : ℕ) (v : Shares C Bit) (T : C.Term)
-    (hT : KnownTo D T) : vector n (knownView D n v T) = vector n (v T) := by
-  unfold vector
-  apply List.map_congr_left
-  intro g hg
-  simp [knownView,hT,List.mem_range.mp hg]
-
-lemma knownView_vector_zero (D : Finset C.Party) (n : ℕ) (v : Shares C Bit) (T : C.Term)
-    (hT : ¬ KnownTo D T) : knownView D n v T = fun _ => 0 := by
-  funext g
-  simp [knownView,hT]
-
-/-- All corrupt-known input vectors are reproduced exactly by the dummy input. -/
-theorem canonicalDummyTuples_known_vectors (D : C.Coalition) (x : C.Party → List (Tuple C))
-    (differences : List (ℕ → Bit)) (i : C.Party) (hi : i ∉ D.1) (T : C.Term)
-    (hT : KnownTo D.1 T) :
-    (canonicalDummyTuples D (checkKnownTuples D x) differences i).map
-      (fun τ => (vector τ.count (τ.x T),vector τ.count (τ.y T),vector τ.count (τ.z T))) =
-    (x i).map (fun τ => (vector τ.count (τ.x T),vector τ.count (τ.y T),vector τ.count (τ.z T))) := by
-  unfold canonicalDummyTuples
-  rw [checkKnownTuples_honest D x i hi]
-  simp only [Option.getD_some,List.zipIdx_map,List.map_map]
-  cases ht : lackedTerm D.1 with
-  | none =>
-    simp only [Function.comp_def,Prod.map,id_eq,knownView_vector D.1 _ _ T hT]
-    change List.map ((fun τ : Tuple C =>
-      (vector τ.count (τ.x T),vector τ.count (τ.y T),vector τ.count (τ.z T))) ∘ Prod.fst) _ = _
-    rw [← List.map_map]
-    simp
-  | some T₀ =>
-    have hne : T ≠ T₀ := by intro he; subst T₀; exact lackedTerm_unknown D T ht hT
-    simp only [Function.comp_def,Prod.map,id_eq,if_neg hne,knownView_vector D.1 _ _ T hT]
-    change List.map ((fun τ : Tuple C =>
-      (vector τ.count (τ.x T),vector τ.count (τ.y T),vector τ.count (τ.z T))) ∘ Prod.fst) _ = _
-    rw [← List.map_map]
-    simp
-
-lemma map_zipIdx_count_eq {α β : Type} (a b : List α) (n : α → ℕ) (F : ℕ → ℕ → β)
-    (h : a.map n = b.map n) :
-    a.zipIdx.map (fun p => F (n p.1) p.2) = b.zipIdx.map (fun p => F (n p.1) p.2) := by
-  have hh := congrArg (fun l : List ℕ => l.zipIdx.map fun p => F p.1 p.2) h
-  simpa only [List.zipIdx_map,List.map_map,Function.comp_def,Prod.map,id_eq] using hh
-
-/-- Unknown dummy terms are common across honest holders, even when known terms are split. -/
-theorem canonicalDummyTuples_unknown_vectors (K : Constants C E) (counts : List ℕ)
-    (D : C.Coalition) (x : C.Party → List (Tuple C)) (hx : TupleInputs K counts D x)
-    (differences : List (ℕ → Bit)) (T : C.Term) (hT : ¬ KnownTo D.1 T) :
-    ConsistentAt D (fun i T => (canonicalDummyTuples D (checkKnownTuples D x) differences i).map
-      (fun τ => (vector τ.count (τ.x T),vector τ.count (τ.y T),vector τ.count (τ.z T)))) T := by
-  intro i _ j _ hi hj
-  dsimp only
-  unfold canonicalDummyTuples
-  rw [checkKnownTuples_honest D x i hi,checkKnownTuples_honest D x j hj]
-  simp only [Option.getD_some,List.zipIdx_map,List.map_map]
-  cases ht : lackedTerm D.1 with
-  | none =>
-    simp only [Function.comp_def,Prod.map,id_eq,knownView_vector_zero D.1 _ _ T hT]
-    exact map_zipIdx_count_eq (x i) (x j) (·.count)
-      (fun n _ => (vector n (fun _ => (0 : Bit)),vector n (fun _ => (0 : Bit)),
-        vector n (fun _ => (0 : Bit)))) ((hx.1 i hi).trans (hx.1 j hj).symm)
-  | some T₀ =>
-    simp only [Function.comp_def,Prod.map,id_eq,knownView_vector_zero D.1 _ _ T hT]
-    by_cases he : T = T₀
-    · simp only [if_pos he]
-      exact map_zipIdx_count_eq (x i) (x j) (·.count)
-        (fun n k => (vector n (fun _ => (0 : Bit)),vector n (fun _ => (0 : Bit)),
-          vector n (fun g => (differences.getD k (fun _ => 0)) g +
-            shareValue (tupleAt (checkKnownTuples D x) k).x g *
-              shareValue (tupleAt (checkKnownTuples D x) k).y g -
-            ∑ T' ∈ univ.erase T₀,(tupleAt (checkKnownTuples D x) k).z T' g)))
-        ((hx.1 i hi).trans (hx.1 j hj).symm)
-    · simp only [if_neg he]
-      exact map_zipIdx_count_eq (x i) (x j) (·.count)
-        (fun n _ => (vector n (fun _ => (0 : Bit)),vector n (fun _ => (0 : Bit)),
-          vector n (fun _ => (0 : Bit)))) ((hx.1 i hi).trans (hx.1 j hj).symm)
-
-/-- The simulator's input and the real input begin with a common hidden-term difference. -/
-theorem canonicalDummyTuples_hiddenDifference (K : Constants C E) (counts : List ℕ)
-    (D : C.Coalition) (x : C.Party → List (Tuple C)) (hx : TupleInputs K counts D x)
-    (differences : List (ℕ → Bit)) (part : Tuple C → Shares C Bit)
-    (hpart : part = (·.x) ∨ part = (·.y) ∨ part = (·.z)) :
-    HiddenDifference D (fun i => liftedPart (E := E) (x i) part)
-      (fun i => liftedPart (canonicalDummyTuples D (checkKnownTuples D x) differences i) part) := by
-  apply HiddenDifference.of_consistent K D
-  · intro T hT i hi _
-    have hv := canonicalDummyTuples_known_vectors D x differences i hi T hT
-    have hp : (canonicalDummyTuples D (checkKnownTuples D x) differences i).map
-        (fun τ => vector τ.count (part τ T)) = (x i).map (fun τ => vector τ.count (part τ T)) := by
-      rcases hpart with rfl | rfl | rfl
-      · simpa only [List.map_map,Function.comp_def,Prod.map,id_eq] using congrArg (List.map Prod.fst) hv
-      · simpa only [List.map_map,Function.comp_def,Prod.map,id_eq] using congrArg (List.map fun p => p.2.1) hv
-      · simpa only [List.map_map,Function.comp_def,Prod.map,id_eq] using congrArg (List.map fun p => p.2.2) hv
-    funext g
-    rw [liftedPart_eq,liftedPart_eq,hp]
-  · intro T hT
-    exact tupleInputs_unknown_lifted K hx T hT part hpart
-  · intro T hT i hi j hj hiD hjD
-    have hv := canonicalDummyTuples_unknown_vectors K counts D x hx differences T hT i hi j hj hiD hjD
-    dsimp only at hv
-    have hp : (canonicalDummyTuples D (checkKnownTuples D x) differences i).map
-        (fun τ => vector τ.count (part τ T)) =
-      (canonicalDummyTuples D (checkKnownTuples D x) differences j).map
-        (fun τ => vector τ.count (part τ T)) := by
-      rcases hpart with rfl | rfl | rfl
-      · simpa only [List.map_map,Function.comp_def,Prod.map,id_eq] using congrArg (List.map Prod.fst) hv
-      · simpa only [List.map_map,Function.comp_def,Prod.map,id_eq] using congrArg (List.map fun p => p.2.1) hv
-      · simpa only [List.map_map,Function.comp_def,Prod.map,id_eq] using congrArg (List.map fun p => p.2.2) hv
-    funext g
-    try dsimp only
-    rw [liftedPart_eq,liftedPart_eq,hp]
 
 end ThresholdLeanXmssSecurity
 end
@@ -4372,42 +2500,6 @@ lemma final_residual_identity (a b wa wb d e0 e2 r : E) :
   have two : (2 : E) = 0 := CharTwo.two_eq_zero
   linear_combination (norm := ring_nf) (a*b*r)*two
 
-/-- Matching the residual and the first two openings matches the third one too. -/
-theorem final_three_openings (a b a' b' wa wb wa' wb' d d' e0 e2 r : E)
-    (herror : d-a*b = d'-a'*b')
-    (ha : wa+r*(wa+a) = wa'+r*(wa'+a'))
-    (hb : wb+r*(wb+b) = wb'+r*(wb'+b')) :
-    ((wa*wb+e0)+(d+(wa*wb+e0)+((wa+a)*(wb+b)+e2))*r+((wa+a)*(wb+b)+e2)*r^2) =
-      ((wa'*wb'+e0)+(d'+(wa'*wb'+e0)+((wa'+a')*(wb'+b')+e2))*r+
-        ((wa'+a')*(wb'+b')+e2)*r^2) := by
-  have h := final_residual_identity a b wa wb d e0 e2 r
-  have h' := final_residual_identity a' b' wa' wb' d' e0 e2 r
-  rw [herror,ha,hb] at h
-  linear_combination h-h'
-
-end ThresholdLeanXmssSecurity
-end
-
-/-! ## Errors -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset Polynomial
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable inhabitedField
-set_option linter.unusedSectionVars false
-variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
-
-/-- Equal corrupt additive shares cancel from the difference of honest contributions. -/
-lemma honest_sum_sub (D : C.Coalition) (f g : C.Party → E)
-    (hD : ∀ i ∈ D.1, f i = g i) :
-    (∑ i ∈ univ.filter (· ∉ D.1),f i) - (∑ i ∈ univ.filter (· ∉ D.1),g i) =
-      (∑ i,f i) - ∑ i,g i := by
-  simp only [← Finset.sum_sub_distrib]
-  apply Finset.sum_subset (Finset.filter_subset _ _)
-  intro i _ hi
-  have hiD : i ∈ D.1 := by simpa using hi
-  rw [hD i hiD,sub_self]
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -4425,232 +2517,6 @@ lemma sameRun_liftComp_of_evalDist (prims : Primitives) {α : Type} (p q : ProbC
   intro s
   rw [run_liftComp_prob,run_liftComp_prob]
   exact h.map _
-
-theorem sameRun_uniform_equiv (prims : Primitives) {α : Type} [Fintype α] [SampleableType α]
-    (e : α ≃ α) :
-    SameRun (C := C) prims (e <$> liftComp ($ᵗ α) (LocalSpec C)) (liftComp ($ᵗ α) (LocalSpec C)) := by
-  have he : e <$> ($ᵗ α) =ᵈ $ᵗ α :=
-    SampleableType.map_uniformSample_evalDistEq_of_bijective e.bijective
-  simpa only [liftComp_map] using sameRun_liftComp_of_evalDist (C := C) prims _ _ he
-
-end ThresholdLeanXmssSecurity
-end
-
-/-! ## Output terms -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable inhabitedField
-set_option linter.unusedSectionVars false
-variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
-
-lemma correctedTerms_translate (T₀ : C.Term) (u v delta : C.Term → E) (result result' : E)
-    (hsum : ∑ T,delta T = result-result')
-    (hbase : ∀ T,T ≠ T₀ → u T = v T+delta T) (T : C.Term) :
-    (if T = T₀ then result-∑ T' ∈ univ.erase T₀,u T' else u T) =
-    (if T = T₀ then result'-∑ T' ∈ univ.erase T₀,v T' else v T)+delta T := by
-  by_cases hT : T = T₀
-  · subst T
-    simp only [ite_true]
-    have he : (∑ T ∈ univ.erase T₀,u T) =
-        (∑ T ∈ univ.erase T₀,v T)+(∑ T ∈ univ.erase T₀,delta T) := by
-      rw [← Finset.sum_add_distrib]
-      exact Finset.sum_congr rfl fun T hT => hbase T (mem_erase.mp hT).1
-    have hd : (∑ T ∈ univ.erase T₀,delta T)+delta T₀ = result-result' :=
-      (sum_erase_add _ _ (mem_univ T₀)).trans hsum
-    rw [he]
-    linear_combination -hd
-  · simp only [if_neg hT,hbase T hT]
-
-def multBase (D : C.Coalition) (width : ℕ) (known : Shares C E)
-    (fresh : C.Term → Fin width → E) : Shares C E :=
-  fun T g => if KnownTo D.1 T then known T g else if h : g < width then fresh T ⟨g,h⟩ else 0
-
-def multTerms (D : C.Coalition) (width : ℕ) (result : ℕ → E) (known : Shares C E)
-    (fresh : C.Term → Fin width → E) : Shares C E :=
-  fun T g => if lackedTerm D.1 = some T then
-    result g-∑ T' ∈ univ.erase T,multBase D width known fresh T' g else multBase D width known fresh T g
-
-/-- Translating all unobserved fresh terms translates the corrected sharing by `delta`. -/
-theorem multTerms_translate (D : C.Coalition) (width : ℕ) (result result' : ℕ → E)
-    (known delta : Shares C E) (fresh : C.Term → Fin width → E)
-    (hknown : ∀ T,KnownTo D.1 T → ∀ g,delta T g = 0)
-    (hsum : ∀ g < width,∑ T,delta T g = result g-result' g) (T : C.Term) (g : ℕ) (hg : g < width) :
-    multTerms D width result known fresh T g =
-      multTerms D width result' known (fun T k => fresh T k-delta T k) T g+delta T g := by
-  obtain ⟨T₀,hT₀,-⟩ := lackedTerm_spec D
-  have hb : ∀ T,multBase D width known fresh T g =
-      multBase D width known (fun T k => fresh T k-delta T k) T g+delta T g := by
-    intro T
-    by_cases hT : KnownTo D.1 T
-    · simp [multBase,hT,hknown T hT]
-    · simp [multBase,hT,hg]
-  have hh := correctedTerms_translate T₀ (fun T => multBase D width known fresh T g)
-    (fun T => multBase D width known (fun T k => fresh T k-delta T k) T g)
-    (fun T => delta T g) (result g) (result' g) (hsum g hg) (fun T _ => hb T) T
-  unfold multTerms
-  rw [hT₀]
-  by_cases hT : T = T₀
-  · subst T
-    simpa only [if_pos rfl] using hh
-  · have hne : some T₀ ≠ some T := by simpa using Ne.symm hT
-    simpa only [if_neg hne,if_neg hT] using hh
-
-def addSharedOutput (D : C.Coalition) (width : ℕ) (delta : Shares C E)
-    (out : C.Party → Option (Shares C E)) : C.Party → Option (Shares C E) :=
-  fun i => (out i).map fun z T g => z T g+if i ∈ C.holders T ∧ g < width then delta T g else 0
-
-/-- A translation of output shares is realized by a bijection of `F_mult`'s sampled table. -/
-theorem multFinish_translate (D : C.Coalition) (width : ℕ) (filled : C.Term → ℕ → Option C.Party)
-    (result result' : ℕ → E) (known delta : Shares C E) (offset : C.Party → Shares C E)
-    (receivers : Finset C.Party) (fresh : C.Term → Fin width → E)
-    (hknown : ∀ T,KnownTo D.1 T → ∀ g,delta T g = 0)
-    (hsum : ∀ g < width,∑ T,delta T g = result g-result' g) :
-    multFinish D width filled result known offset receivers fresh =
-      addSharedOutput D width delta
-        (multFinish D width filled result' known offset receivers (fun T k => fresh T k-delta T k)) := by
-  funext i
-  change (if i ∈ D.1 ∨ i ∉ receivers then none else some fun T g =>
-    if i ∈ C.holders T ∧ g < width then multTerms D width result known fresh T g+
-      (if ∃ j ∈ D.1,filled T g = some j then offset i T g else 0) else 0) = _
-  by_cases hi : i ∈ D.1 ∨ i ∉ receivers
-  · simp [multFinish,addSharedOutput,hi]
-  · simp only [addSharedOutput,multFinish,if_neg hi,Option.map_some]
-    change (some fun T g => if i ∈ C.holders T ∧ g < width then
-      multTerms D width result known fresh T g+(if ∃ j ∈ D.1,filled T g = some j then offset i T g else 0)
-      else 0) = some (fun T g =>
-        (if i ∈ C.holders T ∧ g < width then
-          multTerms D width result' known (fun T k => fresh T k-delta T k) T g+
-            (if ∃ j ∈ D.1,filled T g = some j then offset i T g else 0) else 0)+
-          if i ∈ C.holders T ∧ g < width then delta T g else 0)
-    congr 1
-    funext T g
-    by_cases hT : i ∈ C.holders T ∧ g < width
-    · simp only [if_pos hT]
-      rw [multTerms_translate D width result result' known delta fresh hknown hsum T g hT.2]
-      ring
-    · simp only [if_neg hT,add_zero]
-
-end ThresholdLeanXmssSecurity
-end
-
-/-! ## Final terms -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable inhabitedField
-set_option linter.unusedSectionVars false
-variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
-
-def balanceTerm (T₀ : C.Term) (total : E) (base : C.Term → E) : C.Term → E :=
-  fun T => if T = T₀ then total-∑ T' ∈ univ.erase T₀,base T' else base T
-
-lemma balanceTerm_sum (T₀ : C.Term) (total : E) (base : C.Term → E) :
-    ∑ T,balanceTerm T₀ total base T = total := by
-  rw [← sum_erase_add _ _ (mem_univ T₀)]
-  have he : (∑ T ∈ univ.erase T₀,balanceTerm T₀ total base T) = ∑ T ∈ univ.erase T₀,base T := by
-    apply Finset.sum_congr rfl
-    intro T hT
-    exact if_neg (mem_erase.mp hT).1
-  rw [he]
-  simp [balanceTerm]
-
-lemma balanceTerm_known (D : C.Coalition) (T₀ : C.Term) (hT₀ : ¬ KnownTo D.1 T₀)
-    (total : E) (base : C.Term → E) (hbase : ∀ T,KnownTo D.1 T → base T = 0)
-    (T : C.Term) (hT : KnownTo D.1 T) : balanceTerm T₀ total base T = 0 := by
-  have hne : T ≠ T₀ := by intro he; subst T; exact hT₀ hT
-  simp [balanceTerm,hne,hbase T hT]
-
-/-- The necessary changes to the two final multiplication outputs, at the term level. -/
-def finalOutputDelta (T₀ : C.Term) (r q0 q2 : E) (d : C.Term → E) : Shares C E :=
-  fun T g => if g = 0 then balanceTerm T₀ q0 (fun T => -(r/(1+r))*d T) T
-    else if g = 1 then balanceTerm T₀ q2 (fun _ => 0) T else 0
-
-lemma finalOutputDelta_sum (T₀ : C.Term) (r q0 q2 : E) (d : C.Term → E) :
-    (∑ T,finalOutputDelta T₀ r q0 q2 d T 0) = q0 ∧
-      (∑ T,finalOutputDelta T₀ r q0 q2 d T 1) = q2 := by
-  simp only [finalOutputDelta,ite_true,one_ne_zero,if_false]
-  exact ⟨balanceTerm_sum T₀ q0 _,balanceTerm_sum T₀ q2 _⟩
-
-lemma finalOutputDelta_known (D : C.Coalition) (T₀ : C.Term) (hT₀ : ¬ KnownTo D.1 T₀)
-    (r q0 q2 : E) (d : C.Term → E) (hd : ∀ T,KnownTo D.1 T → d T = 0)
-    (T : C.Term) (hT : KnownTo D.1 T) (g : ℕ) : finalOutputDelta T₀ r q0 q2 d T g = 0 := by
-  unfold finalOutputDelta
-  split_ifs
-  · exact balanceTerm_known D T₀ hT₀ q0 _ (fun T hT => by rw [hd T hT,mul_zero]) T hT
-  · exact balanceTerm_known D T₀ hT₀ q2 _ (fun _ _ => rfl) T hT
-  · rfl
-
-/-- Scalar compatibility suffices to cancel the third opening at every replicated term. -/
-theorem finalOutputDelta_cancel (T₀ : C.Term) (r q0 q2 : E) (d : C.Term → E) (hr : 1+r ≠ 0)
-    (htotal : (1+r)*q0+r*(∑ T,d T)+r*(1+r)*q2 = 0) (T : C.Term) :
-    (1+r)*finalOutputDelta T₀ r q0 q2 d T 0+r*d T+
-      r*(1+r)*finalOutputDelta T₀ r q0 q2 d T 1 = 0 := by
-  let residual : C.Term → E := fun T => (1+r)*finalOutputDelta T₀ r q0 q2 d T 0+r*d T+
-    r*(1+r)*finalOutputDelta T₀ r q0 q2 d T 1
-  have hnot : ∀ T,T ≠ T₀ → residual T = 0 := by
-    intro T hT
-    dsimp only [residual,finalOutputDelta]
-    simp only [ite_true,one_ne_zero,if_false,balanceTerm,if_neg hT,mul_zero,add_zero]
-    field_simp
-    ring
-  have hsum : ∑ T,residual T = 0 := by
-    dsimp only [residual]
-    rw [Finset.sum_add_distrib,Finset.sum_add_distrib,← Finset.mul_sum,
-      ← Finset.mul_sum,← Finset.mul_sum,
-      (finalOutputDelta_sum T₀ r q0 q2 d).1,(finalOutputDelta_sum T₀ r q0 q2 d).2]
-    exact htotal
-  change residual T = 0
-  by_cases hT : T = T₀
-  · subst T
-    rw [← sum_erase_add _ residual (mem_univ T₀),Finset.sum_eq_zero (fun T hT => hnot T (mem_erase.mp hT).1),
-      zero_add] at hsum
-    exact hsum
-  · exact hnot T hT
-
-/-- The corresponding shifts preserve each operator's third opened Shamir share. -/
-theorem finalOutputDelta_conv_cancel (K : Constants C E) (T₀ : C.Term) (r q0 q2 : E)
-    (d : C.Term → E) (hr : 1+r ≠ 0)
-    (htotal : (1+r)*q0+r*(∑ T,d T)+r*(1+r)*q2 = 0) (i : C.Party) :
-    (1+r)*conv K (localContext i) (finalOutputDelta T₀ r q0 q2 d) 0+
-      r*conv K (localContext i) (fun T _ => d T) 0+
-      r*(1+r)*conv K (localContext i) (finalOutputDelta T₀ r q0 q2 d) 1 = 0 := by
-  simp only [conv,localContext,Finset.mul_sum,← Finset.sum_add_distrib]
-  apply Finset.sum_eq_zero
-  intro T _
-  have h := finalOutputDelta_cancel T₀ r q0 q2 d hr htotal T
-  linear_combination psi K T i*h
-
-/-- The scalar condition needed by the term translation follows from the three-opening identity. -/
-theorem finalOutputDelta_compatible (a b a' b' wa wb d d' e0 e2 r : E)
-    (hr : 1+r ≠ 0) (herror : d-a*b = d'-a'*b') :
-    let wa' := wa+r/(1+r)*(a-a')
-    let wb' := wb+r/(1+r)*(b-b')
-    let q0 := (wa*wb+e0)-(wa'*wb'+e0)
-    let q2 := ((wa+a)*(wb+b)+e2)-((wa'+a')*(wb'+b')+e2)
-    (1+r)*q0+r*(d-d')+r*(1+r)*q2 = 0 := by
-  dsimp only
-  have ha := (final_mask_shift wa a a' r hr).symm
-  have hb := (final_mask_shift wb b b' r hr).symm
-  have h := final_three_openings a b a' b' wa wb _ _ d d' e0 e2 r herror ha hb
-  linear_combination h
-
-/-- Two consecutive fresh tables allow a triangular bijection: the second shift may depend on the first. -/
-theorem sameRun_uniform_two_equivs (prims : Primitives) {α β γ : Type}
-    [Fintype α] [SampleableType α] [Fintype β] [SampleableType β]
-    (e : α ≃ α) (f : α → β ≃ β) (k : α → β → OracleComp (LocalSpec C) γ) :
-    SameRun prims
-      (do let a ← liftComp ($ᵗ α) (LocalSpec C); let b ← liftComp ($ᵗ β) (LocalSpec C); k (e a) (f a b))
-      (do let a ← liftComp ($ᵗ α) (LocalSpec C); let b ← liftComp ($ᵗ β) (LocalSpec C); k a b) := by
-  refine (SameRun.bind_right (g := fun a => liftComp ($ᵗ β) (LocalSpec C) >>= k (e a))
-    (liftComp ($ᵗ α) (LocalSpec C)) fun a => ?_).trans ?_
-  · simpa only [bind_map_left] using
-      (sameRun_uniform_equiv (C := C) prims (f a)).bind (fun b => SameRun.refl prims (k (e a) b))
-  · simpa only [bind_map_left] using
-      (sameRun_uniform_equiv (C := C) prims e).bind
-        (fun a => SameRun.refl prims (liftComp ($ᵗ β) (LocalSpec C) >>= k a))
 
 end ThresholdLeanXmssSecurity
 end
@@ -5570,48 +3436,10 @@ def finalOpenVector (wa wb a b d q0 q2 r : E) : ℕ → E := fun k => match k wi
   | 1 => wb+r*(wb+b)
   | _ => q0+(d+q0+q2)*r+q2*r^2
 
-/-- The term-level translation preserves the exact three shares each honest party sends. -/
-theorem finalOpenVector_shift (K : Constants C E) (T₀ : C.Term) (i : C.Party)
-    (r d0 d2 : E) (deltaD : C.Term → E) (hr : 1+r ≠ 0)
-    (hcompat : (1+r)*d0+r*(∑ T,deltaD T)+r*(1+r)*d2=0)
-    (wa wb a b d q0 q2 a' b' d' q0' q2' : E)
-    (hd : d-d'=conv K (localContext i) (fun T _ => deltaD T) 0)
-    (hq0 : q0-q0'=conv K (localContext i) (finalOutputDelta T₀ r d0 d2 deltaD) 0)
-    (hq2 : q2-q2'=conv K (localContext i) (finalOutputDelta T₀ r d0 d2 deltaD) 1) :
-    finalOpenVector wa wb a b d q0 q2 r =
-      finalOpenVector (wa+r/(1+r)*(a-a')) (wb+r/(1+r)*(b-b')) a' b' d' q0' q2' r := by
-  funext k
-  cases k with
-  | zero => exact (final_mask_shift wa a a' r hr).symm
-  | succ k =>
-      cases k with
-      | zero => exact (final_mask_shift wb b b' r hr).symm
-      | succ k =>
-          change q0+(d+q0+q2)*r+q2*r^2 = q0'+(d'+q0'+q2')*r+q2'*r^2
-          have hc := finalOutputDelta_conv_cancel K T₀ r d0 d2 deltaD hr hcompat i
-          rw [← hd,← hq0,← hq2] at hc
-          linear_combination hc
-
 def finalOpenProgram (K : Constants C E) (i : C.Party) (v : ℕ → E) :
     PartyM C E (CheckSpec C E) Unit := do
   let opened ← openSh K (localContext i) v 3
   require (opened 0*opened 1=opened 2)
-
-/-- The last network phase agrees with any rushing adversary, including partial aborts. -/
-theorem finalOpen_network_congr (K : Constants C E) (D : C.Coalition)
-    {L R : Type} (A : Adversary C E Ia L R)
-    (F : Functionality C ((ℕ ⊕ List (Product C E)) ⊕ (ℕ ⊕ ℕ))
-      ((List E ⊕ Shares C E) ⊕ (PrssOutput C E ⊕ PrssOutput C Bit)) L R)
-    (fuel : ℕ) (st : A.State) (live : C.Party → Prop) (v v' : C.Party → ℕ → E)
-    (hv : ∀ i,i ∉ D.1 → live i → v i=v' i) :
-    executePhase localRoles D A F fuel st
-      (fun i => if live i then finalOpenProgram K i (v i) else failure) =
-    executePhase localRoles D A F fuel st
-      (fun i => if live i then finalOpenProgram K i (v' i) else failure) := by
-  apply executePhase_congr_honest
-  intro i hi
-  by_cases hl : live i <;> simp only [hl,if_true,if_false]
-  rw [hv i hi hl]
 
 end ThresholdLeanXmssSecurity
 end
@@ -6090,10 +3918,6 @@ theorem digest_programming_until_salt (prims : Primitives) (s : HashCache C)
 
 end ThresholdLeanXmssSecurity
 end
-
-/-! ## Digest bound -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset ENNReal
 
 /-! ## Digest hide -/
 
@@ -6714,37 +4538,6 @@ def honestDigestColumn (T : C.Term) (salts : C.Party → Shares C Bit)
     liftComp (oneDigestQuery (C := C) (vector 256 (salts i T)) (history i T)) (LocalSpec C)
   else pure 0
 
-/-- All honest holders of an agreeing term use one two-level digest, even though each sends a copy. -/
-theorem honestDigestColumn_common (prims : Primitives) (T : C.Term)
-    (salts : C.Party → Shares C Bit) (history : C.Party → C.Term → List Bit)
-    (salt hist : List Bit)
-    (hs : ∀ i,i ∉ D.1 → i ∈ C.holders T → vector 256 (salts i T)=salt)
-    (hh : ∀ i,i ∉ D.1 → i ∈ C.holders T → history i T=hist) :
-    SameRun prims (OverPermutation.sequenceFin (honestDigestColumn D T salts history))
-      (do
-        let d ← liftComp (oneDigestQuery (C := C) salt hist) (LocalSpec C)
-        pure (fun i => if i ∉ D.1 ∧ i ∈ C.holders T then d else 0)) := by
-  have hc : honestDigestColumn D T salts history =
-      (fun i => if i ∉ D.1 ∧ i ∈ C.holders T then
-        liftComp (oneDigestQuery (C := C) salt hist) (LocalSpec C) else pure 0) := by
-    funext i
-    unfold honestDigestColumn
-    by_cases hi : i ∉ D.1 ∧ i ∈ C.holders T
-    · simp only [if_pos hi,hs i hi.1 hi.2,hh i hi.1 hi.2]
-    · simp only [if_neg hi]
-  rw [hc]
-  have ha : ∃ i,i ∉ D.1 ∧ i ∈ C.holders T := by
-    obtain ⟨i,hi,ht⟩ := exists_honest_holder D T
-    exact ⟨i,ht,hi⟩
-  convert sameRun_sequenceFin_selected prims (oneDigestQuery (C := C) salt hist) 0
-    (fun i => i ∉ D.1 ∧ i ∈ C.holders T) ha using 1 <;> congr
-  · funext i
-    split_ifs <;> rfl
-  · funext d
-    congr 1
-    funext i
-    split_ifs <;> rfl
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -6888,65 +4681,6 @@ variable {C : Committee} {E Ia α : Type}
 def digestColumnValues (D : C.Coalition) (T : C.Term) (d : HashOutput) : C.Party → HashOutput := fun i =>
   if i ∉ D.1 ∧ i ∈ C.holders T then d else 0
 
-def commonDigestColumn (D : C.Coalition) (salts : C.Party → Shares C Bit)
-    (history : C.Party → C.Term → List Bit) (salt hist : C.Term → List Bit) (T : C.Term) :
-    OracleComp (LocalSpec C) (C.Party → HashOutput) :=
-  if KnownTo D.1 T then OverPermutation.sequenceFin (honestDigestColumn D T salts history) else do
-    let d ← liftComp (oneDigestQuery (C := C) (salt T) (hist T)) (LocalSpec C)
-    pure (digestColumnValues D T d)
-
-def digestColumnsRun (column : C.Term → OracleComp (LocalSpec C) (C.Party → HashOutput)) :
-    List C.Term → OracleComp (LocalSpec C) (C.Party → List HashOutput)
-  | [] => pure (fun _ => [])
-  | T::Ts => do
-    let head ← column T
-    let tail ← digestColumnsRun column Ts
-    pure (fun i => head i::tail i)
-
-/-- Unknown terms with agreeing honest copies require only one real hash pair per term. -/
-theorem digestColumns_common (prims : Primitives) (D : C.Coalition)
-    (salts : C.Party → Shares C Bit) (history : C.Party → C.Term → List Bit)
-    (salt hist : C.Term → List Bit)
-    (hs : ∀ T,¬KnownTo D.1 T → ∀ i,i ∉ D.1 → i ∈ C.holders T → vector 256 (salts i T)=salt T)
-    (hh : ∀ T,¬KnownTo D.1 T → ∀ i,i ∉ D.1 → i ∈ C.holders T → history i T=hist T)
-    (ts : List C.Term) :
-    SameRun prims (queryColumns (fun i T => honestDigestColumn D T salts history i) ts)
-      (digestColumnsRun (commonDigestColumn D salts history salt hist) ts) := by
-  induction ts with
-  | nil => exact SameRun.refl prims _
-  | cons T ts ih =>
-    simp only [queryColumns,digestColumnsRun]
-    have hc : SameRun prims (OverPermutation.sequenceFin (honestDigestColumn D T salts history))
-        (commonDigestColumn D salts history salt hist T) := by
-      unfold commonDigestColumn
-      by_cases ht : KnownTo D.1 T
-      · rw [if_pos ht]; exact SameRun.refl prims _
-      · rw [if_neg ht]
-        exact honestDigestColumn_common D prims T salts history (salt T) (hist T) (hs T ht) (hh T ht)
-    exact hc.bind (fun head => ih.bind (fun tail => SameRun.refl prims (pure (fun i => head i::tail i))))
-
-variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
-attribute [local instance] inhabitedField
-
-/-- The complete actual digest phase exposes exactly one common unknown digest per term;
-its recipient messages, rushing reply, and adaptive continuation are preserved. -/
-theorem executePhase_digestCommon (prims : Primitives) (K : Constants C E) (D : C.Coalition)
-    (A : CheckAdversary C E Ia) (fuel : ℕ) (st : A.State) (salts : C.Party → Shares C Bit)
-    (hs : C.Party → RunState C) (f : C.Party → Unit → RunM C E (CheckSpec C E) α)
-    (salt hist : C.Term → List Bit)
-    (hsalt : ∀ T,¬KnownTo D.1 T → ∀ i,i ∉ D.1 → i ∈ C.holders T → vector 256 (salts i T)=salt T)
-    (hhist : ∀ T,¬KnownTo D.1 T → ∀ i,i ∉ D.1 → i ∈ C.holders T → (hs i).history T=hist T) :
-    SameRun prims
-      (executePhase localRoles D A (checkFunctionalities K) fuel st
-        (fun i => (compareDigests (localContext i) (salts i) >>= f i).run' (hs i)))
-      (do
-        let ds ← digestColumnsRun (commonDigestColumn D salts (fun j => (hs j).history) salt hist) C.terms
-        executePhase localRoles D A (checkFunctionalities K) fuel st
-          (fun i => afterDigests i (ds i) ((f i ()).run' (hs i)))) := by
-  refine (executePhase_digestColumns prims K D A fuel st salts hs f).trans ?_
-  exact (digestColumns_common prims D salts (fun j => (hs j).history) salt hist hsalt hhist C.terms).bind
-    (fun ds => SameRun.refl prims _)
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -6991,97 +4725,6 @@ theorem sameRun_uniform_coordinate (prims : Primitives) (i : I)
 end ThresholdLeanXmssSecurity
 end
 
-/-! ## Salt coordinate -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-variable {C : Committee}
-
-lemma vector_extend_ofFn {R : Type} [Zero R] (n : ℕ) (v : Fin n → R) :
-    vector n (fun g => if h : g < n then v ⟨g,h⟩ else 0)=List.ofFn v := by
-  apply List.ext_getElem
-  · simp [vector]
-  · intro k h₁ h₂
-    have hk : k < n := by simpa [vector] using h₁
-    simp [vector,hk]
-
-end ThresholdLeanXmssSecurity
-end
-
-/-! ## Mask translation -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset Polynomial
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable inhabitedField
-set_option linter.unusedSectionVars false
-variable {C : Committee} {E : Type}
-variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
-
-lemma randShares_conv (K : Constants C E) (D : C.Coalition) (known : Shares C E)
-    (w : MaskTable C E) (i : C.Party) (g : ℕ) :
-    conv K (localContext i) (randShares D 2 known w i) g =
-      conv K (localContext i) (multBase D 2 known w) g := by
-  apply conv_congr
-  intro T ht
-  simp [randShares,multBase,ht]
-
-lemma randShares_isShamir (K : Constants C E) (D : C.Coalition) (known : Shares C E)
-    (w : MaskTable C E) (g : ℕ) :
-    IsShamir K (fun i => conv K (localContext i) (randShares D 2 known w i) g)
-      (∑ T,multBase D 2 known w T g) := by
-  let : CharP E 2 := charP_two
-  exact (isShamir_conv (K := K) (multBase D 2 known w) g).congr
-    (fun i => (randShares_conv K D known w i g).symm) rfl
-
-def maskTableEquiv (r : E) (delta : MaskTable C E) : MaskTable C E ≃ MaskTable C E :=
-  Equiv.addRight (fun T g => r/(1+r)*delta T g)
-
-lemma maskTableEquiv_apply (r : E) (delta w : MaskTable C E) (T : C.Term) (g : Fin 2) :
-    maskTableEquiv r delta w T g=w T g+r/(1+r)*delta T g := rfl
-
-lemma multBase_maskTableEquiv (D : C.Coalition) (known : Shares C E) (w delta : MaskTable C E)
-    (r : E) (hd : ∀ T,KnownTo D.1 T → ∀ g,delta T g=0) (T : C.Term) (g : Fin 2) :
-    multBase D 2 known (maskTableEquiv r delta w) T g =
-      multBase D 2 known w T g+r/(1+r)*delta T g := by
-  by_cases ht : KnownTo D.1 T
-  · simp [multBase,ht,hd T ht]
-  · simp [multBase,ht,g.isLt,maskTableEquiv_apply]
-
-/-- The concrete raw-mask bijection shifts every honest Shamir share by its hidden coefficient difference. -/
-theorem randShares_maskTableEquiv (K : Constants C E) (D : C.Coalition) (known : Shares C E)
-    (w delta : MaskTable C E) (r : E) (hd : ∀ T,KnownTo D.1 T → ∀ g,delta T g=0)
-    (i : C.Party) (g : Fin 2) :
-    conv K (localContext i) (randShares D 2 known (maskTableEquiv r delta w) i) g =
-      conv K (localContext i) (randShares D 2 known w i) g+
-        r/(1+r)*conv K (localContext i) (fun T _ => delta T g) 0 := by
-  rw [randShares_conv,randShares_conv]
-  simp only [conv,multBase_maskTableEquiv D known w delta r hd,mul_add,Finset.sum_add_distrib,Finset.mul_sum]
-  congr 1
-  apply Finset.sum_congr rfl
-  intro T hT
-  ring
-
-lemma maskValue_maskTableEquiv (D : C.Coalition) (known : Shares C E)
-    (w delta : MaskTable C E) (r : E) (hd : ∀ T,KnownTo D.1 T → ∀ g,delta T g=0) (g : Fin 2) :
-    (∑ T,multBase D 2 known (maskTableEquiv r delta w) T g) =
-      (∑ T,multBase D 2 known w T g)+r/(1+r)*(∑ T,delta T g) := by
-  simp only [multBase_maskTableEquiv D known w delta r hd,Finset.sum_add_distrib,Finset.mul_sum]
-
-/-- The same concrete bijection leaves every corrupt evaluation unchanged. -/
-theorem randShares_maskTableEquiv_corrupt (K : Constants C E) (D : C.Coalition) (known : Shares C E)
-    (w delta : MaskTable C E) (r : E) (hd : ∀ T,KnownTo D.1 T → ∀ g,delta T g=0)
-    (i : C.Party) (hi : i ∈ D.1) (g : Fin 2) :
-    conv K (localContext i) (randShares D 2 known (maskTableEquiv r delta w) i) g =
-      conv K (localContext i) (randShares D 2 known w i) g := by
-  rw [randShares_maskTableEquiv K D known w delta r hd]
-  rw [conv_hidden_zero K D (fun T _ => delta T g) (fun T ht _ => hd T ht g) i hi 0,mul_zero,add_zero]
-
-end ThresholdLeanXmssSecurity
-end
-
 /-! ## Mask totals -/
 
 open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset Polynomial
@@ -7092,107 +4735,9 @@ set_option linter.unusedSectionVars false
 variable {C : Committee} {E : Type}
 variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
 
-def maskValue (D : C.Coalition) (known : Shares C E) (w : MaskTable C E) (g : ℕ) : E :=
-  ∑ T,multBase D 2 known w T g
-
 def maskShare (K : Constants C E) (D : C.Coalition) (known : Shares C E)
     (w : MaskTable C E) (g : ℕ) (i : C.Party) : E :=
   conv K (localContext i) (randShares D 2 known w i) g
-
-lemma maskedTotal_zero (K : Constants C E) (D : C.Coalition) (known : Shares C E)
-    (w : MaskTable C E) (A B : C.Party → E) :
-    extendTotal K D (maskedInputs K D known w A B) 0 =
-      ∑ i ∈ univ.filter (· ∉ D.1),lagrangeAll K i*(maskShare K D known w 0 i*maskShare K D known w 1 i) := by
-  unfold extendTotal
-  apply Finset.sum_congr rfl
-  intro i hi
-  have hiD := (mem_filter.mp hi).2
-  simp [maskedInputs,hiD,maskedProducts,productShare,mulSh,localContext,maskShare]
-
-lemma maskedTotal_one (K : Constants C E) (D : C.Coalition) (known : Shares C E)
-    (w : MaskTable C E) (A B : C.Party → E) :
-    extendTotal K D (maskedInputs K D known w A B) 1 =
-      ∑ i ∈ univ.filter (· ∉ D.1),lagrangeAll K i*
-        ((maskShare K D known w 0 i+A i)*(maskShare K D known w 1 i+B i)) := by
-  unfold extendTotal
-  apply Finset.sum_congr rfl
-  intro i hi
-  have hiD := (mem_filter.mp hi).2
-  simp [maskedInputs,hiD,maskedProducts,productShare,mulSh,localContext,maskShare]
-
-lemma honest_shamir_product_difference (K : Constants C E) (D : C.Coalition)
-    {U V U' V' : C.Party → E} {u v u' v' : E}
-    (hU : IsShamir K U u) (hV : IsShamir K V v)
-    (hU' : IsShamir K U' u') (hV' : IsShamir K V' v')
-    (hcU : ∀ i ∈ D.1,U i=U' i) (hcV : ∀ i ∈ D.1,V i=V' i) :
-    (∑ i ∈ univ.filter (· ∉ D.1),lagrangeAll K i*(U i*V i))-
-      (∑ i ∈ univ.filter (· ∉ D.1),lagrangeAll K i*(U' i*V' i))=u*v-u'*v' := by
-  let : CharP E 2 := charP_two
-  rw [honest_sum_sub D _ _ (by intro i hi; rw [hcU i hi,hcV i hi])]
-  rw [sum_lagrangeAll_shamir K hU hV,sum_lagrangeAll_shamir K hU' hV']
-
-/-- The two actual masked multiplication totals change by the corresponding true products.
-This keeps the corrupt additive attack identical in the two coupled runs. -/
-theorem maskedTotal_difference (K : Constants C E) (D : C.Coalition) (known : Shares C E)
-    (w w' : MaskTable C E) (A B A' B' : C.Party → E) (a b a' b' : E)
-    (hA : IsShamir K A a) (hB : IsShamir K B b)
-    (hA' : IsShamir K A' a') (hB' : IsShamir K B' b')
-    (hWA : ∀ i ∈ D.1,maskShare K D known w 0 i=maskShare K D known w' 0 i)
-    (hWB : ∀ i ∈ D.1,maskShare K D known w 1 i=maskShare K D known w' 1 i)
-    (hCA : ∀ i ∈ D.1,A i=A' i) (hCB : ∀ i ∈ D.1,B i=B' i) :
-    (extendTotal K D (maskedInputs K D known w A B) 0-
-      extendTotal K D (maskedInputs K D known w' A' B') 0=
-        maskValue D known w 0*maskValue D known w 1-maskValue D known w' 0*maskValue D known w' 1) ∧
-    (extendTotal K D (maskedInputs K D known w A B) 1-
-      extendTotal K D (maskedInputs K D known w' A' B') 1=
-        (maskValue D known w 0+a)*(maskValue D known w 1+b)-
-          (maskValue D known w' 0+a')*(maskValue D known w' 1+b')) := by
-  have hW0 := randShares_isShamir K D known w 0
-  have hW1 := randShares_isShamir K D known w 1
-  have hW0' := randShares_isShamir K D known w' 0
-  have hW1' := randShares_isShamir K D known w' 1
-  constructor
-  · rw [maskedTotal_zero,maskedTotal_zero]
-    exact honest_shamir_product_difference K D hW0 hW1 hW0' hW1' hWA hWB
-  · rw [maskedTotal_one,maskedTotal_one]
-    exact honest_shamir_product_difference K D (hW0.add hA) (hW1.add hB) (hW0'.add hA') (hW1'.add hB')
-      (by intro i hi; rw [hWA i hi,hCA i hi]) (by intro i hi; rw [hWB i hi,hCB i hi])
-
-end ThresholdLeanXmssSecurity
-end
-
-/-! ## Output conv -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable inhabitedField
-variable {C : Committee} {E : Type}
-variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
-
-/-- A translated actual multiplication table produces the prescribed difference in every
-received Shamir conversion, including adversarially chosen known terms and offsets. -/
-theorem multFinish_conv_translate (K : Constants C E) (D : C.Coalition) (width : ℕ)
-    (result result' : ℕ → E) (known delta : Shares C E) (offset : C.Party → Shares C E)
-    (receivers : Finset C.Party) (fresh : C.Term → Fin width → E)
-    (hknown : ∀ T,KnownTo D.1 T → ∀ g,delta T g=0)
-    (hsum : ∀ g < width,∑ T,delta T g=result g-result' g)
-    (i : C.Party) (hi : i ∉ D.1) (hr : i ∈ receivers) (g : ℕ) (hg : g < width) :
-    conv K (localContext i)
-        ((multFinish D width (filler K .peer) result known offset receivers fresh i).getD (fun _ _ => 0)) g -
-      conv K (localContext i)
-        ((multFinish D width (filler K .peer) result' known offset receivers
-          (fun T k => fresh T k-delta T k) i).getD (fun _ _ => 0)) g =
-      conv K (localContext i) delta g := by
-  rw [multFinish_translate D width (filler K .peer) result result' known delta offset receivers fresh hknown hsum]
-  have hrec : ¬(i ∈ D.1 ∨ i ∉ receivers) := by simp [hi,hr]
-  simp only [addSharedOutput,multFinish,if_neg hrec,Option.map_some,Option.getD_some]
-  simp only [conv,localContext,← Finset.sum_sub_distrib]
-  apply Finset.sum_congr rfl
-  intro T hT
-  have ht : i ∈ C.holders T := (mem_filter.mp hT).2
-  simp only [ht,hg,and_self,if_true]
-  ring
 
 end ThresholdLeanXmssSecurity
 end
@@ -7210,220 +4755,6 @@ variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E
 def maskedResult (K : Constants C E) (D : C.Coalition) (known : Shares C E)
     (attack : ℕ → E) (w : MaskTable C E) (A B : C.Party → E) (g : ℕ) : E :=
   extendTotal K D (maskedInputs K D known w A B) g+attack g
-
-def maskedResultDelta (K : Constants C E) (D : C.Coalition) (known : Shares C E)
-    (attack : ℕ → E) (r : E) (delta w : MaskTable C E) (A B A' B' : C.Party → E) : ℕ → E :=
-  fun g => maskedResult K D known attack w A B g-
-    maskedResult K D known attack (maskTableEquiv r delta w) A' B' g
-
-/-- The actual functionality totals satisfy precisely the scalar constraint required for the
-last opening. The adversary's additive attack cancels without any restriction on it. -/
-theorem maskedResultDelta_compatible (K : Constants C E) (D : C.Coalition)
-    (known : Shares C E) (attack : ℕ → E) (r : E) (delta w : MaskTable C E)
-    (A B A' B' : C.Party → E) (a b a' b' d d' : E) (deltaD : C.Term → E)
-    (hr : 1+r ≠ 0) (hknown : ∀ T,KnownTo D.1 T → ∀ g,delta T g=0)
-    (hA : IsShamir K A a) (hB : IsShamir K B b)
-    (hA' : IsShamir K A' a') (hB' : IsShamir K B' b')
-    (hCA : ∀ i ∈ D.1,A i=A' i) (hCB : ∀ i ∈ D.1,B i=B' i)
-    (hda : ∑ T,delta T 0=a-a') (hdb : ∑ T,delta T 1=b-b')
-    (hdd : ∑ T,deltaD T=d-d') (herr : d-a*b=d'-a'*b') :
-    (1+r)*maskedResultDelta K D known attack r delta w A B A' B' 0+
-      r*(∑ T,deltaD T)+r*(1+r)*maskedResultDelta K D known attack r delta w A B A' B' 1=0 := by
-  have ht := maskedTotal_difference K D known w (maskTableEquiv r delta w) A B A' B' a b a' b'
-    hA hB hA' hB'
-    (fun i hi => (randShares_maskTableEquiv_corrupt K D known w delta r hknown i hi 0).symm)
-    (fun i hi => (randShares_maskTableEquiv_corrupt K D known w delta r hknown i hi 1).symm)
-    hCA hCB
-  have hw0 : maskValue D known (maskTableEquiv r delta w) 0=
-      maskValue D known w 0+r/(1+r)*(a-a') := by
-    simpa [maskValue,hda] using maskValue_maskTableEquiv D known w delta r hknown 0
-  have hw1 : maskValue D known (maskTableEquiv r delta w) 1=
-      maskValue D known w 1+r/(1+r)*(b-b') := by
-    simpa [maskValue,hdb] using maskValue_maskTableEquiv D known w delta r hknown 1
-  have hc := finalOutputDelta_compatible a b a' b' (maskValue D known w 0)
-    (maskValue D known w 1) d d' 0 0 r hr herr
-  dsimp only at hc
-  simp only [add_zero] at hc
-  simp only [maskedResultDelta,maskedResult,add_sub_add_right_eq_sub]
-  rw [ht.1,ht.2,hw0,hw1,hdd]
-  exact hc
-
-def finalTableEquiv (T₀ : C.Term) (r : E) (deltaResult : ℕ → E)
-    (deltaD : C.Term → E) : MaskTable C E ≃ MaskTable C E :=
-  Equiv.addRight (fun T g => -finalOutputDelta T₀ r (deltaResult 0) (deltaResult 1) deltaD T g)
-
-lemma finalTableEquiv_apply (T₀ : C.Term) (r : E) (deltaResult : ℕ → E)
-    (deltaD : C.Term → E) (q : MaskTable C E) :
-    finalTableEquiv T₀ r deltaResult deltaD q=
-      fun T g => q T g-finalOutputDelta T₀ r (deltaResult 0) (deltaResult 1) deltaD T g := by
-  funext T g
-  simp [finalTableEquiv,sub_eq_add_neg]
-
-/-- Both fresh output columns have exactly the change in total required by `F_mult`. -/
-lemma finalTableEquiv_sum (T₀ : C.Term) (r : E) (result result' : ℕ → E)
-    (deltaD : C.Term → E) (g : ℕ) (hg : g < 2) :
-    ∑ T,finalOutputDelta T₀ r (result 0-result' 0) (result 1-result' 1) deltaD T g=
-      result g-result' g := by
-  have h := finalOutputDelta_sum T₀ r (result 0-result' 0) (result 1-result' 1) deltaD
-  rcases (by omega : g=0 ∨ g=1) with rfl|rfl
-  · exact h.1
-  · exact h.2
-
-end ThresholdLeanXmssSecurity
-end
-
-/-! ## Final vector -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable inhabitedField
-variable {C : Committee} {E Ia : Type}
-variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
-
-def finalMaskVector (K : Constants C E) (D : C.Coalition) (known knownQ : Shares C E)
-    (attack : ℕ → E) (offset : C.Party → Shares C E) (receivers : Finset C.Party)
-    (r : E) (A B V : C.Party → E) (w q : MaskTable C E) (i : C.Party) : ℕ → E :=
-  let output := (multFinish D 2 (filler K .peer) (maskedResult K D known attack w A B)
-    knownQ offset receivers q i).getD (fun _ _ => 0)
-  finalOpenVector (maskShare K D known w 0 i) (maskShare K D known w 1 i)
-    (A i) (B i) (V i) (conv K (localContext i) output 0) (conv K (localContext i) output 1) r
-
-/-- The concrete mask and output table bijections preserve the exact final vector sent by
-an honest recipient. This also permits split known shares chosen by the adversary. -/
-theorem finalMaskVector_bijection (K : Constants C E) (D : C.Coalition)
-    (known knownQ : Shares C E) (attack : ℕ → E) (offset : C.Party → Shares C E)
-    (receivers : Finset C.Party) (T₀ : C.Term) (hT₀ : ¬ KnownTo D.1 T₀)
-    (r : E) (delta : MaskTable C E) (deltaD : C.Term → E)
-    (A B V A' B' V' : C.Party → E) (w q : MaskTable C E)
-    (hr : 1+r ≠ 0) (hknown : ∀ T,KnownTo D.1 T → ∀ g,delta T g=0)
-    (hknownD : ∀ T,KnownTo D.1 T → deltaD T=0)
-    (hcompat : (1+r)*maskedResultDelta K D known attack r delta w A B A' B' 0+
-      r*(∑ T,deltaD T)+r*(1+r)*maskedResultDelta K D known attack r delta w A B A' B' 1=0)
-    (i : C.Party) (hi : i ∉ D.1) (hrec : i ∈ receivers)
-    (hlocalA : A i-A' i=conv K (localContext i) (fun T _ => delta T 0) 0)
-    (hlocalB : B i-B' i=conv K (localContext i) (fun T _ => delta T 1) 0)
-    (hlocalD : V i-V' i=conv K (localContext i) (fun T _ => deltaD T) 0) :
-    finalMaskVector K D known knownQ attack offset receivers r A B V w q i=
-      finalMaskVector K D known knownQ attack offset receivers r A' B' V'
-        (maskTableEquiv r delta w)
-        (finalTableEquiv T₀ r (maskedResultDelta K D known attack r delta w A B A' B') deltaD q) i := by
-  let result := maskedResult K D known attack w A B
-  let result' := maskedResult K D known attack (maskTableEquiv r delta w) A' B'
-  let deltaQ := finalOutputDelta T₀ r (result 0-result' 0) (result 1-result' 1) deltaD
-  have hdq : ∀ T,KnownTo D.1 T → ∀ g,deltaQ T g=0 :=
-    finalOutputDelta_known D T₀ hT₀ r _ _ deltaD hknownD
-  have hs : ∀ g < 2,∑ T,deltaQ T g=result g-result' g :=
-    finalTableEquiv_sum T₀ r result result' deltaD
-  have hq0 := multFinish_conv_translate K D 2 result result' knownQ deltaQ offset receivers q hdq hs i hi hrec 0 (by omega)
-  have hq1 := multFinish_conv_translate K D 2 result result' knownQ deltaQ offset receivers q hdq hs i hi hrec 1 (by omega)
-  have hwa : maskShare K D known (maskTableEquiv r delta w) 0 i=
-      maskShare K D known w 0 i+r/(1+r)*(A i-A' i) := by
-    simpa [maskShare,← hlocalA] using randShares_maskTableEquiv K D known w delta r hknown i 0
-  have hwb : maskShare K D known (maskTableEquiv r delta w) 1 i=
-      maskShare K D known w 1 i+r/(1+r)*(B i-B' i) := by
-    simpa [maskShare,← hlocalB] using randShares_maskTableEquiv K D known w delta r hknown i 1
-  dsimp only [finalMaskVector]
-  rw [finalTableEquiv_apply,hwa,hwb]
-  exact finalOpenVector_shift K T₀ i r (result 0-result' 0) (result 1-result' 1) deltaD hr hcompat
-    _ _ _ _ _ _ _ _ _ _ _ _ hlocalD hq0 hq1
-
-end ThresholdLeanXmssSecurity
-end
-
-/-! ## Final distribution -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable inhabitedField
-variable {C : Committee} {E Ia L R : Type}
-variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
-
-def finalMaskNetwork (K : Constants C E) (D : C.Coalition) (Adv : Adversary C E Ia L R)
-    (F : Functionality C ((ℕ ⊕ List (Product C E)) ⊕ (ℕ ⊕ ℕ))
-      ((List E ⊕ Shares C E) ⊕ (PrssOutput C E ⊕ PrssOutput C Bit)) L R)
-    (fuel : ℕ) (st : Adv.State) (live : C.Party → Prop)
-    (known knownQ : Shares C E) (attack : ℕ → E) (offset : C.Party → Shares C E)
-    (receivers : Finset C.Party) (r : E) (A B V : C.Party → E) (w q : MaskTable C E) :=
-  executePhase localRoles D Adv F fuel st (fun i => if live i then
-    finalOpenProgram K i (finalMaskVector K D known knownQ attack offset receivers r A B V w q i)
-    else failure)
-
-/-- After a common challenge, the triangular translation couples the complete last network
-round pointwise, with the same adversary state and any pattern of honest aborts. -/
-theorem finalMaskNetwork_bijection (K : Constants C E) (D : C.Coalition)
-    (Adv : Adversary C E Ia L R)
-    (F : Functionality C ((ℕ ⊕ List (Product C E)) ⊕ (ℕ ⊕ ℕ))
-      ((List E ⊕ Shares C E) ⊕ (PrssOutput C E ⊕ PrssOutput C Bit)) L R)
-    (fuel : ℕ) (st : Adv.State) (live : C.Party → Prop)
-    (known knownQ : Shares C E) (attack : ℕ → E) (offset : C.Party → Shares C E)
-    (receivers : Finset C.Party) (T₀ : C.Term) (hT₀ : ¬ KnownTo D.1 T₀)
-    (r : E) (delta : MaskTable C E) (deltaD : C.Term → E)
-    (A B V A' B' V' : C.Party → E) (w q : MaskTable C E)
-    (hr : 1+r ≠ 0) (hknown : ∀ T,KnownTo D.1 T → ∀ g,delta T g=0)
-    (hknownD : ∀ T,KnownTo D.1 T → deltaD T=0)
-    (hcompat : (1+r)*maskedResultDelta K D known attack r delta w A B A' B' 0+
-      r*(∑ T,deltaD T)+r*(1+r)*maskedResultDelta K D known attack r delta w A B A' B' 1=0)
-    (hrec : ∀ i,i ∉ D.1 → live i → i ∈ receivers)
-    (hlocalA : ∀ i,i ∉ D.1 → live i → A i-A' i=conv K (localContext i) (fun T _ => delta T 0) 0)
-    (hlocalB : ∀ i,i ∉ D.1 → live i → B i-B' i=conv K (localContext i) (fun T _ => delta T 1) 0)
-    (hlocalD : ∀ i,i ∉ D.1 → live i → V i-V' i=conv K (localContext i) (fun T _ => deltaD T) 0) :
-    finalMaskNetwork K D Adv F fuel st live known knownQ attack offset receivers r A B V w q=
-      finalMaskNetwork K D Adv F fuel st live known knownQ attack offset receivers r A' B' V'
-        (maskTableEquiv r delta w)
-        (finalTableEquiv T₀ r (maskedResultDelta K D known attack r delta w A B A' B') deltaD q) := by
-  apply finalOpen_network_congr
-  intro i hi hl
-  exact finalMaskVector_bijection K D known knownQ attack offset receivers T₀ hT₀ r delta deltaD
-    A B V A' B' V' w q hr hknown hknownD hcompat i hi (hrec i hi hl)
-    (hlocalA i hi hl) (hlocalB i hi hl) (hlocalD i hi hl)
-
-/-- The actual last-round distribution agrees for equal residuals once the challenge and
-public transcript are fixed independently of the two hidden tables. -/
-theorem finalMaskNetwork_sameRun (prims : Primitives) (K : Constants C E) (D : C.Coalition)
-    (Adv : Adversary C E Ia L R)
-    (F : Functionality C ((ℕ ⊕ List (Product C E)) ⊕ (ℕ ⊕ ℕ))
-      ((List E ⊕ Shares C E) ⊕ (PrssOutput C E ⊕ PrssOutput C Bit)) L R)
-    (fuel : ℕ) (st : Adv.State) (live : C.Party → Prop)
-    (known knownQ : Shares C E) (attack : ℕ → E) (offset : C.Party → Shares C E)
-    (receivers : Finset C.Party) (T₀ : C.Term) (hT₀ : ¬ KnownTo D.1 T₀)
-    (r : E) (delta : MaskTable C E) (deltaD : C.Term → E)
-    (A B V A' B' V' : C.Party → E) (a b a' b' d d' : E)
-    (hr : 1+r ≠ 0) (hknown : ∀ T,KnownTo D.1 T → ∀ g,delta T g=0)
-    (hknownD : ∀ T,KnownTo D.1 T → deltaD T=0)
-    (hA : IsShamir K A a) (hB : IsShamir K B b)
-    (hA' : IsShamir K A' a') (hB' : IsShamir K B' b')
-    (hCA : ∀ i ∈ D.1,A i=A' i) (hCB : ∀ i ∈ D.1,B i=B' i)
-    (hda : ∑ T,delta T 0=a-a') (hdb : ∑ T,delta T 1=b-b')
-    (hdd : ∑ T,deltaD T=d-d') (herr : d-a*b=d'-a'*b')
-    (hrec : ∀ i,i ∉ D.1 → live i → i ∈ receivers)
-    (hlocalA : ∀ i,i ∉ D.1 → live i → A i-A' i=conv K (localContext i) (fun T _ => delta T 0) 0)
-    (hlocalB : ∀ i,i ∉ D.1 → live i → B i-B' i=conv K (localContext i) (fun T _ => delta T 1) 0)
-    (hlocalD : ∀ i,i ∉ D.1 → live i → V i-V' i=conv K (localContext i) (fun T _ => deltaD T) 0) :
-    SameRun prims
-      (do let w ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
-          let q ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
-          finalMaskNetwork K D Adv F fuel st live known knownQ attack offset receivers r A B V w q)
-      (do let w ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
-          let q ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
-          finalMaskNetwork K D Adv F fuel st live known knownQ attack offset receivers r A' B' V' w q) := by
-  let e := maskTableEquiv r delta
-  let f := fun w => finalTableEquiv T₀ r (maskedResultDelta K D known attack r delta w A B A' B') deltaD
-  let k := finalMaskNetwork K D Adv F fuel st live known knownQ attack offset receivers r A' B' V'
-  refine SameRun.trans (ob := (do
-    let w ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
-    let q ← liftComp ($ᵗ (MaskTable C E)) (LocalSpec C)
-    k (e w) (f w q))) ?_ (sameRun_uniform_two_equivs prims e f k)
-  apply SameRun.bind_right
-  intro w
-  apply SameRun.bind_right
-  intro q
-  apply SameRun.of_eq
-  exact finalMaskNetwork_bijection K D Adv F fuel st live known knownQ attack offset receivers T₀ hT₀
-    r delta deltaD A B V A' B' V' w q hr hknown hknownD
-    (maskedResultDelta_compatible K D known attack r delta w A B A' B' a b a' b' d d' deltaD
-      hr hknown hA hB hA' hB' hCA hCB hda hdb hdd herr) hrec hlocalA hlocalB hlocalD
 
 end ThresholdLeanXmssSecurity
 end
@@ -7896,116 +5227,6 @@ variable {C : Committee} {α : Type}
 def digestRows (cols : List (DigestColumn C)) : C.Party → List HashOutput :=
   fun i => cols.map (fun col => col i)
 
-lemma digestColumnsRun_mixedTable (D : C.Coalition)
-    (salts : C.Party → Shares C Bit) (history : C.Party → C.Term → List Bit)
-    (hist : C.Term → List Bit) (table : C.Term → Fin 256 → Bit)
-    (known : C.Term → OracleComp (LocalSpec C) (DigestColumn C))
-    (hknown : ∀ T,KnownTo D.1 T → OverPermutation.sequenceFin (honestDigestColumn D T salts history)=known T)
-    (Ts : List C.Term) (k : (C.Party → List HashOutput) → OracleComp (LocalSpec C) α) :
-    (digestColumnsRun (commonDigestColumn D salts history (fun T => List.ofFn (table T)) hist) Ts >>= k)=
-      mixedTableDigests D known hist table Ts (fun cols => k (digestRows cols)) := by
-  induction Ts generalizing k with
-  | nil => simp only [digestColumnsRun,mixedTableDigests,pure_bind]; rfl
-  | cons T Ts ih =>
-    simp only [digestColumnsRun,bind_assoc,pure_bind,commonDigestColumn,mixedTableDigests]
-    by_cases hT : KnownTo D.1 T
-    · simp only [if_pos hT,hknown T hT]
-      apply bind_congr
-      intro col
-      rw [ih]
-      rfl
-    · simp only [if_neg hT,bind_assoc,pure_bind]
-      apply bind_congr
-      intro d
-      rw [ih]
-      rfl
-
-lemma mixedTableDigests_bind {β : Type} (D : C.Coalition)
-    (known : C.Term → OracleComp (LocalSpec C) (DigestColumn C))
-    (hist : C.Term → List Bit) (table : C.Term → Fin 256 → Bit)
-    (Ts : List C.Term) (k : List (DigestColumn C) → OracleComp (LocalSpec C) α)
-    (tail : α → OracleComp (LocalSpec C) β) :
-    (mixedTableDigests D known hist table Ts k >>= tail)=
-      mixedTableDigests D known hist table Ts (fun cs => k cs >>= tail) := by
-  induction Ts generalizing k with
-  | nil => rfl
-  | cons T Ts ih =>
-    simp only [mixedTableDigests]
-    by_cases hT : KnownTo D.1 T <;> simp only [hT,if_true,if_false,bind_assoc]
-    all_goals
-      apply bind_congr
-      intro col
-      exact ih _
-
-variable {E Ia : Type}
-variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
-attribute [local instance] inhabitedField
-
-/-- The real compare-digests phase, including its network round and arbitrary tail, has the
-mixed-table form used by the hiding theorem. -/
-theorem executePhase_digestTables (prims : Primitives) (K : Constants C E) (D : C.Coalition)
-    (A : CheckAdversary C E Ia) (fuel : ℕ) (st : A.State)
-    (salts : (C.Term → Fin 256 → Bit) → C.Party → Shares C Bit)
-    (hs : C.Party → RunState C) (f : C.Party → Unit → RunM C E (CheckSpec C E) α)
-    (hist : C.Term → List Bit) (known : C.Term → OracleComp (LocalSpec C) (DigestColumn C))
-    (hsalt : ∀ table T,¬KnownTo D.1 T → ∀ i,i ∉ D.1 → i ∈ C.holders T →
-      vector 256 (salts table i T)=List.ofFn (table T))
-    (hhist : ∀ T,¬KnownTo D.1 T → ∀ i,i ∉ D.1 → i ∈ C.holders T → (hs i).history T=hist T)
-    (hknown : ∀ table T,KnownTo D.1 T →
-      OverPermutation.sequenceFin (honestDigestColumn D T (salts table) (fun j => (hs j).history))=known T) :
-    SameRun prims
-      (do let table ← liftComp ($ᵗ (C.Term → Fin 256 → Bit)) (LocalSpec C)
-          executePhase localRoles D A (checkFunctionalities K) fuel st
-            (fun i => (compareDigests (localContext i) (salts table i) >>= f i).run' (hs i)))
-      (do let table ← liftComp ($ᵗ (C.Term → Fin 256 → Bit)) (LocalSpec C)
-          mixedTableDigests D known hist table C.terms fun cols =>
-            executePhase localRoles D A (checkFunctionalities K) fuel st
-              (fun i => afterDigests i (digestRows cols i) ((f i ()).run' (hs i)))) := by
-  apply SameRun.bind_right
-  intro table
-  refine (executePhase_digestCommon prims K D A fuel st (salts table) hs f
-    (fun T => List.ofFn (table T)) hist (hsalt table) hhist).trans ?_
-  apply SameRun.of_eq
-  exact digestColumnsRun_mixedTable D (salts table) (fun j => (hs j).history) hist table known (hknown table) C.terms _
-
-/-- The actual network digest phase can replace all hidden digests by independent tokens.
-The bound concerns the full continuation, so it includes adaptive challenge calls and Z. -/
-theorem executePhase_digestHide (prims : Primitives) (K : Constants C E) (D : C.Coalition)
-    (A : CheckAdversary C E Ia) (fuel : ℕ) (st : A.State)
-    (salts : (C.Term → Fin 256 → Bit) → C.Party → Shares C Bit)
-    (hs : C.Party → RunState C) (f : C.Party → Unit → RunM C E (CheckSpec C E) α)
-    (hist : C.Term → List Bit) (known : C.Term → OracleComp (LocalSpec C) (DigestColumn C))
-    (hsalt : ∀ table T,¬KnownTo D.1 T → ∀ i,i ∉ D.1 → i ∈ C.holders T →
-      vector 256 (salts table i T)=List.ofFn (table T))
-    (hhist : ∀ T,¬KnownTo D.1 T → ∀ i,i ∉ D.1 → i ∈ C.holders T → (hs i).history T=hist T)
-    (hknown : ∀ table T,KnownTo D.1 T →
-      OverPermutation.sequenceFin (honestDigestColumn D T (salts table) (fun j => (hs j).history))=known T)
-    (p : ℕ) (hbound : ∀ T,KnownTo D.1 T → IsQueryBoundP (known T) DigestQuery p)
-    (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen)
-    {β : Type} (tail : (A.State × (C.Party → Option α)) → OracleComp (LocalSpec C) β)
-    (q : ℕ) (hq : ∀ cols,IsQueryBoundP
-      (executePhase localRoles D A (checkFunctionalities K) fuel st
-        (fun i => afterDigests i (digestRows cols i) ((f i ()).run' (hs i))) >>= tail) DigestQuery q) :
-    letI : MeasurableSpace β := ⊤
-    measureTVDist ((simulateQ (localAnswer prims) (do
-        let table ← liftComp ($ᵗ (C.Term → Fin 256 → Bit)) (LocalSpec C)
-        let out ← executePhase localRoles D A (checkFunctionalities K) fuel st
-          (fun i => (compareDigests (localContext i) (salts table i) >>= f i).run' (hs i))
-        tail out)).run' cache)
-      ((simulateQ (localAnswer prims) (mixedGhostDigests D known C.terms fun cols =>
-        executePhase localRoles D A (checkFunctionalities K) fuel st
-          (fun i => afterDigests i (digestRows cols i) ((f i ()).run' (hs i))) >>= tail)).run' cache) ≤
-      ((C.terms.length*(seen.card+q+(p+1)*C.terms.length) : ℕ) : ℝ)/2^256 := by
-  let : MeasurableSpace β := ⊤
-  have he := (executePhase_digestTables prims K D A fuel st salts hs f hist known hsalt hhist hknown).bind
-    (fun out => SameRun.refl prims (tail out)) cache
-  simp only [bind_assoc,mixedTableDigests_bind] at he
-  have he' := he.map Prod.fst
-  simp only [← StateT.run'_eq] at he'
-  rw [measureTVDist,he'.evalDist_eq]
-  have hnodup : C.terms.Nodup := Finset.nodup_toList _
-  exact mixedTableDigests_hide prims D known hist p hbound C.terms hnodup cache seen hc _ q hq
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -8283,96 +5504,6 @@ theorem executePhase_randBits_first (prims : Primitives) (K : Constants C E)
 end ThresholdLeanXmssSecurity
 end
 
-/-! ## Digest known -/
-
-open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
-noncomputable section
-namespace ThresholdLeanXmssSecurity
-attribute [local instance] Classical.propDecidable
-variable {C : Committee} {α : Type}
-
-lemma sequenceFin_digestBound : ∀ {n : ℕ} (oa : Fin n → OracleComp (LocalSpec C) α) (p : ℕ),
-    (∀ i,IsQueryBoundP (oa i) DigestQuery p) →
-      IsQueryBoundP (OverPermutation.sequenceFin oa) DigestQuery (n*p)
-  | 0,oa,p,h => isQueryBoundP_pure _ _ _
-  | n+1,oa,p,h => by
-    simp only [OverPermutation.sequenceFin]
-    have hb := isQueryBoundP_bind (h 0) (fun a _ =>
-      isQueryBoundP_bind (sequenceFin_digestBound (fun i : Fin n => oa i.succ) p (fun i => h i.succ))
-        (fun b _ => isQueryBoundP_pure DigestQuery (Fin.cases (motive := fun _ => α) a b) 0))
-    simpa [Nat.succ_mul,Nat.add_comm] using hb
-
-lemma honestDigestColumn_digestBound (D : C.Coalition) (T : C.Term)
-    (salts : C.Party → Shares C Bit) (history : C.Party → C.Term → List Bit) :
-    IsQueryBoundP (OverPermutation.sequenceFin (honestDigestColumn D T salts history)) DigestQuery C.n := by
-  simpa only [Nat.mul_one] using sequenceFin_digestBound (honestDigestColumn D T salts history) 1 (by
-    intro i
-    unfold honestDigestColumn
-    split_ifs
-    · exact oneDigestQuery_digestBound _ _
-    · exact isQueryBoundP_pure _ _ _)
-
-lemma randShares_salt_vector (D : C.Coalition) (known : Shares C Bit)
-    (table : C.Term → Fin 256 → Bit) (T : C.Term) (hT : ¬ KnownTo D.1 T)
-    (i : C.Party) (hi : i ∈ C.holders T) :
-    vector 256 (randShares D 256 known table i T)=List.ofFn (table T) := by
-  have he : randShares D 256 known table i T=(fun g => if h : g < 256 then table T ⟨g,h⟩ else 0) := by
-    funext g
-    simp [randShares,hi,hT]
-  rw [he]
-  exact vector_extend_ofFn 256 (table T)
-
-lemma honestDigestColumn_randShares_known (D : C.Coalition) (T : C.Term) (hT : KnownTo D.1 T)
-    (known : Shares C Bit) (table table' : C.Term → Fin 256 → Bit)
-    (history : C.Party → C.Term → List Bit) :
-    honestDigestColumn D T (randShares D 256 known table) history=
-      honestDigestColumn D T (randShares D 256 known table') history := by
-  funext i
-  simp only [honestDigestColumn]
-  by_cases hi : i ∉ D.1 ∧ i ∈ C.holders T
-  · simp only [if_pos hi]
-    have he : ∀ tab : C.Term → Fin 256 → Bit,randShares D 256 known tab i T=known T := by
-      intro tab
-      funext g
-      simp [randShares,hi.2,hT]
-    rw [he,he]
-  · simp only [if_neg hi]
-
-variable {E Ia : Type}
-variable [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
-attribute [local instance] inhabitedField
-
-/-- For the actual salt building block, known columns consume at most one outer digest per party;
-all hypotheses about salt independence are discharged by its sampled-table definition. -/
-theorem executePhase_digestHide_randShares (prims : Primitives) (K : Constants C E) (D : C.Coalition)
-    (A : CheckAdversary C E Ia) (fuel : ℕ) (st : A.State) (knownSalt : Shares C Bit)
-    (hs : C.Party → RunState C) (f : C.Party → Unit → RunM C E (CheckSpec C E) α)
-    (hist : C.Term → List Bit)
-    (hhist : ∀ T,¬KnownTo D.1 T → ∀ i,i ∉ D.1 → i ∈ C.holders T → (hs i).history T=hist T)
-    (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen)
-    {β : Type} (tail : (A.State × (C.Party → Option α)) → OracleComp (LocalSpec C) β)
-    (q : ℕ) (hq : ∀ cols,IsQueryBoundP
-      (executePhase localRoles D A (checkFunctionalities K) fuel st
-        (fun i => afterDigests i (digestRows cols i) ((f i ()).run' (hs i))) >>= tail) DigestQuery q) :
-    letI : MeasurableSpace β := ⊤
-    measureTVDist ((simulateQ (localAnswer prims) (do
-        let table ← liftComp ($ᵗ (C.Term → Fin 256 → Bit)) (LocalSpec C)
-        let out ← executePhase localRoles D A (checkFunctionalities K) fuel st
-          (fun i => (compareDigests (localContext i) (randShares D 256 knownSalt table i) >>= f i).run' (hs i))
-        tail out)).run' cache)
-      ((simulateQ (localAnswer prims) (mixedGhostDigests D
-        (fun T => OverPermutation.sequenceFin (honestDigestColumn D T (randShares D 256 knownSalt 0) (fun j => (hs j).history)))
-        C.terms fun cols => executePhase localRoles D A (checkFunctionalities K) fuel st
-          (fun i => afterDigests i (digestRows cols i) ((f i ()).run' (hs i))) >>= tail)).run' cache) ≤
-      ((C.terms.length*(seen.card+q+(C.n+1)*C.terms.length) : ℕ) : ℝ)/2^256 := by
-  apply executePhase_digestHide prims K D A fuel st (fun table => randShares D 256 knownSalt table) hs f hist _
-    (fun table T hT i _ hi => randShares_salt_vector D knownSalt table T hT i hi) hhist
-    (fun table T hT => congrArg OverPermutation.sequenceFin (honestDigestColumn_randShares_known D T hT knownSalt table 0 _))
-    C.n (fun T _ => honestDigestColumn_digestBound D T _ _) cache seen hc tail q hq
-
-end ThresholdLeanXmssSecurity
-end
-
 /-! ## Digest tail -/
 
 open OracleComp OracleSpec LeanXmss ThresholdLeanXmss Finset
@@ -8424,10 +5555,6 @@ lemma DigestRunBound.lift {p : PartyM C E G α} (h : DigestPartyBound p 0) :
   intro hs
   change DigestPartyBound (p >>= fun a => Pure.pure (a,hs)) 0
   exact DigestPartyBound.bind h (fun _ => DigestPartyBound.pure _)
-
-lemma DigestRunBound.run' {p : RunM C E G α} (h : DigestRunBound p) (hs : RunState C) :
-    DigestPartyBound (p.run' hs) 0 :=
-  DigestPartyBound.bind (h hs) (fun _ => DigestPartyBound.pure _)
 
 lemma localStep_digestBound {oa : OracleComp (LocalSpec C) α} {n : ℕ}
     (h : IsQueryBoundP oa DigestQuery n) : DigestPartyBound (localStep oa : PartyM C E G α) n := by
@@ -8484,39 +5611,6 @@ lemma hybrid_challenge_no_digest (K : Constants C E) (i : C.Party) :
   · exact DigestRunBound.of_zero (RunBound.pure _)
   · exact DigestRunBound.of_zero (RunBound.lift PartyBound.failure)
 
-lemma finalOpenProgram_no_digest (K : Constants C E) (i : C.Party) (v : ℕ → E) :
-    DigestPartyBound (finalOpenProgram K i v) 0 := by
-  unfold finalOpenProgram
-  exact (PartyBound.bind (RunBound.openSh K _ _ _) (fun _ => PartyBound.require _)).to_digest
-
-lemma afterDigests_no_digest (i : C.Party) (ds : List HashOutput)
-    (next : PartyM C E (CheckSpec C E) α) (hn : DigestPartyBound next 0) :
-    DigestPartyBound (afterDigests i ds next) 0 := by
-  unfold afterDigests
-  exact DigestPartyBound.bind (PartyBound.exchange _).to_digest fun _ =>
-    DigestPartyBound.bind (PartyBound.require _).to_digest fun _ => hn
-
-/-- The actual post-digest network consumes only the adversary's outer-digest budget.
-Honest challenge expansion, however long it runs, contributes zero to this bound. -/
-theorem executePhase_afterDigests_digestBound {Ia : Type} (K : Constants C E) (D : C.Coalition)
-    (A : CheckAdversary C E Ia) (fuel step : ℕ) (st : A.State)
-    (hr : ∀ st sent,IsQueryBoundP (A.round st sent) Counted step)
-    (ha : ∀ st l,IsQueryBoundP (A.answer st l) Counted step)
-    (ds : C.Party → List HashOutput) (next : C.Party → PartyM C E (CheckSpec C E) α)
-    (hn : ∀ i,i ∉ D.1 → DigestPartyBound (next i) 0)
-    (tail : A.State × (C.Party → Option α) → OracleComp (LocalSpec C) β)
-    (q : ℕ) (hq : ∀ out,IsQueryBoundP (tail out) DigestQuery q) :
-    IsQueryBoundP (executePhase localRoles D A (checkFunctionalities K) fuel st
-      (fun i => afterDigests i (ds i) (next i)) >>= tail) DigestQuery (fuel*step+q) := by
-  have hb := executePhase_digestBound D A (checkFunctionalities K) step
-    (fun st sent => counted_digestBound (hr st sent))
-    (fun st inputs => counted_digestBound (runFunctionality_queryBound D A (checkFunctionalities K) step
-      (fun inputs => checkFunctionalities_queryBound K D inputs step) ha st inputs))
-    fuel st (fun i => afterDigests i (ds i) (next i)) (fun _ => 0)
-    (fun i hi => afterDigests_no_digest i (ds i) (next i) (hn i hi))
-  simpa only [Finset.sum_const_zero,Nat.add_zero] using
-    isQueryBoundP_bind hb (fun out _ => hq out)
-
 end ThresholdLeanXmssSecurity
 end
 
@@ -8535,41 +5629,6 @@ def finalAfterDigests (K : Constants C E) (i : C.Party) (wa wb a b d q0 q2 : E) 
   let r ← challenge K (hybridCheckBuildingBlocks K i)
   StateT.lift (finalOpenProgram K i (finalOpenVector wa wb a b d q0 q2 r))
 
-/-- The remaining source program after the digest comparison has no honest outer-digest calls. -/
-theorem finalAfterDigests_no_digest (K : Constants C E) (i : C.Party) (wa wb a b d q0 q2 : E) :
-    DigestRunBound (finalAfterDigests K i wa wb a b d q0 q2) := by
-  apply (hybrid_challenge_no_digest K i).bind
-  intro r
-  exact DigestRunBound.lift (finalOpenProgram_no_digest K i _)
-
-def afterSalt (hs : RunState C) : RunState C := ⟨hs.history,hs.label+1,hs.tag⟩
-
-abbrev SaltReply (A : CheckAdversary C E Ia) := A.State × Shares C Bit × (C.Party → C.Party → ℕ → Bit)
-
-def saltActualContinuation (K : Constants C E) (D : C.Coalition) (A : CheckAdversary C E Ia)
-    (fuel : ℕ) (hs : C.Party → RunState C) (f : C.Party → Unit → RunM C E (CheckSpec C E) α)
-    (tail : A.State × (C.Party → Option α) → OracleComp (LocalSpec C) β)
-    (p : SaltReply A) : OracleComp (LocalSpec C) β := do
-  let table ← liftComp ($ᵗ (C.Term → Fin 256 → Bit)) (LocalSpec C)
-  let out ← executePhase localRoles D A (checkFunctionalities K) fuel p.1
-    (fun i => (compareDigests (localContext i) (randShares D 256 p.2.1 table i) >>= f i).run' (afterSalt (hs i)))
-  tail out
-
-def saltGhostContinuation (K : Constants C E) (D : C.Coalition) (A : CheckAdversary C E Ia)
-    (fuel : ℕ) (hs : C.Party → RunState C) (f : C.Party → Unit → RunM C E (CheckSpec C E) α)
-    (tail : A.State × (C.Party → Option α) → OracleComp (LocalSpec C) β)
-    (p : SaltReply A) : OracleComp (LocalSpec C) β :=
-  mixedGhostDigests D
-    (fun T => OverPermutation.sequenceFin (honestDigestColumn D T (randShares D 256 p.2.1 0) (fun j => (hs j).history)))
-    C.terms fun cols => executePhase localRoles D A (checkFunctionalities K) fuel p.1
-      (fun i => afterDigests i (digestRows cols i) ((f i ()).run' (afterSalt (hs i)))) >>= tail
-
-def saltGhostPhase (K : Constants C E) (D : C.Coalition) (A : CheckAdversary C E Ia)
-    (fuel : ℕ) (st : A.State) (hs : C.Party → RunState C)
-    (f : C.Party → Unit → RunM C E (CheckSpec C E) α)
-    (tail : A.State × (C.Party → Option α) → OracleComp (LocalSpec C) β) : OracleComp (LocalSpec C) β :=
-  (rightAdversary (rightAdversary A)).answer st () >>= saltGhostContinuation K D A fuel hs f tail
-
 /-- Both projected replies preserve the caller's query bound. -/
 lemma saltReply_queryBound (A : CheckAdversary C E Ia) (st : A.State) (step : ℕ)
     (ha : ∀ st l,IsQueryBoundP (A.answer st l) Counted step) :
@@ -8578,70 +5637,6 @@ lemma saltReply_queryBound (A : CheckAdversary C E Ia) (st : A.State) (step : �
   simp only [bind_assoc,pure_bind]
   exact (isQueryBoundP_bind (m := 0) (ha st (.inr (.inr ())))
     (fun _ _ => isQueryBoundP_pure _ _ 0)).mono (by omega)
-
-/-- The complete salt-generation and digest phase can use independent hidden tokens.
-The callback, digest network round, challenge phase, final opening, and distinguisher are
-all included; only actual outer-digest queries enter the hiding bound. -/
-theorem saltDigestPhase_hide (prims : Primitives) (K : Constants C E) (D : C.Coalition)
-    (A : CheckAdversary C E Ia) (fuel step : ℕ) (st : A.State)
-    (hr : ∀ st sent,IsQueryBoundP (A.round st sent) Counted step)
-    (ha : ∀ st l,IsQueryBoundP (A.answer st l) Counted step)
-    (hs : C.Party → RunState C) (f : C.Party → Unit → RunM C E (CheckSpec C E) α)
-    (hf : ∀ i,i ∉ D.1 → DigestRunBound (f i ()))
-    (hist : C.Term → List Bit)
-    (hhist : ∀ T,¬KnownTo D.1 T → ∀ i,i ∉ D.1 → i ∈ C.holders T → (hs i).history T=hist T)
-    (cache : HashCache C) (seen : Finset (List Bit)) (hc : DigestSaltsCovered cache seen)
-    (tail : A.State × (C.Party → Option α) → OracleComp (LocalSpec C) β)
-    (final : ℕ) (hq : ∀ out,IsQueryBoundP (tail out) DigestQuery final) :
-    letI : MeasurableSpace β := ⊤
-    measureTVDist ((simulateQ (localAnswer prims)
-      (executePhase localRoles D A (checkFunctionalities K) (fuel+1) st
-        (fun i => ((hybridCheckBuildingBlocks K i).randBits 256 >>= fun salts =>
-          compareDigests (localContext i) salts.1 >>= f i).run' (hs i)) >>= tail)).run' cache)
-      ((simulateQ (localAnswer prims) (saltGhostPhase K D A fuel st hs f tail)).run' cache) ≤
-      ((C.terms.length*(seen.card+(fuel+1)*step+final+(C.n+1)*C.terms.length) : ℕ) : ℝ)/2^256 := by
-  let : MeasurableSpace β := ⊤
-  have hsame : SameRun prims
-      (executePhase localRoles D A (checkFunctionalities K) (fuel+1) st
-        (fun i => ((hybridCheckBuildingBlocks K i).randBits 256 >>= fun salts =>
-          compareDigests (localContext i) salts.1 >>= f i).run' (hs i)) >>= tail)
-      ((rightAdversary (rightAdversary A)).answer st () >>= saltActualContinuation K D A fuel hs f tail) := by
-    have hh := (executePhase_randBits_first prims K D A fuel st 256 hs
-      (fun i salts => compareDigests (localContext i) salts >>= f i)).bind
-        (fun out => SameRun.refl prims (tail out))
-    simpa only [saltActualContinuation,afterSalt,bind_assoc,pure_bind] using hh
-  have he := hsame cache
-  have he' := he.map Prod.fst
-  simp only [← StateT.run'_eq] at he'
-  rw [measureTVDist,he'.evalDist_eq]
-  change measureTVDist ((simulateQ (localAnswer prims)
-      ((rightAdversary (rightAdversary A)).answer st () >>= saltActualContinuation K D A fuel hs f tail)).run' cache)
-    ((simulateQ (localAnswer prims)
-      ((rightAdversary (rightAdversary A)).answer st () >>= saltGhostContinuation K D A fuel hs f tail)).run' cache) ≤ _
-  simp only [simulateQ_bind,StateT.run'_eq,StateT.run_bind,map_bind]
-  refine le_of_eq_of_le (congrArg₂ measureTVDist (bind_eq_attach_bind _ _) (bind_eq_attach_bind _ _))
-    (measureTVDist_bind_left_le_of_forall_le _ _ _ (by positivity) fun z => ?_)
-  obtain ⟨z,hz⟩ := z
-  replace hz := MonadAttach.mem_support.2 hz
-  have hz' : z ∈ support ((simulateQ (localAnswer prims)
-      ((rightAdversary (rightAdversary A)).answer st ())).run cache) := by
-    simpa only [rightAdversary,simulateQ_bind,StateT.run_bind] using hz
-  obtain ⟨seen',hc',hcard⟩ := localProgram_digest_covered prims
-    ((rightAdversary (rightAdversary A)).answer st ()) DigestQuery (fun _ ht => ht)
-    step (counted_digestBound (saltReply_queryBound A st step ha)) cache seen hc z hz'
-  have htail : ∀ cols,IsQueryBoundP
-      (executePhase localRoles D A (checkFunctionalities K) fuel z.1.1
-        (fun i => afterDigests i (digestRows cols i) ((f i ()).run' (afterSalt (hs i)))) >>= tail)
-      DigestQuery (fuel*step+final) := fun cols => executePhase_afterDigests_digestBound K D A fuel step z.1.1 hr ha
-        (digestRows cols) (fun i => (f i ()).run' (afterSalt (hs i)))
-        (fun i hi => (hf i hi).run' _) tail final hq
-  have hb := executePhase_digestHide_randShares prims K D A fuel z.1.1 z.1.2.1
-    (fun i => afterSalt (hs i)) f hist hhist z.2 seen' hc' tail (fuel*step+final) htail
-  refine hb.trans ?_
-  apply div_le_div_of_nonneg_right _ (by positivity)
-  exact_mod_cast Nat.mul_le_mul_left C.terms.length (show
-    seen'.card+(fuel*step+final)+(C.n+1)*C.terms.length ≤
-      seen.card+(fuel+1)*step+final+(C.n+1)*C.terms.length by nlinarith)
 
 end ThresholdLeanXmssSecurity
 end
@@ -8699,8 +5694,3 @@ theorem executePhase_afterDigests_round (K : Constants C E) (D : C.Coalition)
 
 end ThresholdLeanXmssSecurity
 end
-
-
-/-- info: 'ThresholdLeanXmssSecurity.multVerifyCompleteness' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.multVerifyCompleteness
