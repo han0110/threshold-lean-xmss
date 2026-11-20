@@ -1,15 +1,15 @@
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Ceremony.Statements
-import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Ready.Glue
+import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Cover.Statements
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.EndTable
 
 /-!
 # The leaves of the proof of `dkgCorrectness`
 
-Five structures name the statements that the landing `dkgCorrectness_of_leaves` takes. Each one is
+Four structures name the statements that the landing `dkgCorrectness_of_leaves` takes. Each one is
 a list of hypotheses by group, with no instance. `CeremonyParts` holds the parts of the lemma of one
-ceremony and of the provenance of a run of a tree, `SupportParts` the parts of the support lemma of
-one ceremony, `CutStatements` the covers of a run of a tree, `UsedHitParts` the parts of the hop on the used keys, and `GameHops` the two bounds
-that give the readiness hop. A statement with a proof in the library is no field.
+ceremony, `SupportParts` the part of the support lemma of one ceremony, `CutStatements` the lock step
+of one ceremony that gives the covers of a run of a tree, and `UsedHitParts` the parts of the hop on
+the used keys. A statement with a proof in the library is no field.
 -/
 
 section
@@ -59,12 +59,11 @@ structure SupportParts : Prop where
   /-- With no global event at the end, two honest results have the same opened outputs. -/
   outputsAgree : ∀ prims, CeremonyOutputsAgree prims K circuits settings
 
-/-- The covers of a run of the top tree and of the rest of a bottom tree after the cut. -/
+/-- The statement of a run of a tree that gives `TopCover` and `RestCover` (`topCover_of_started`,
+`restCover_of_started`). -/
 structure CutStatements : Prop where
-  /-- A wrong output of the top tree is at most as likely as wrong outputs of its ceremony. -/
-  top : ∀ prims, TopCover prims K circuits settings
-  /-- A wrong output after the cut is at most as likely as wrong outputs of the second ceremony. -/
-  rest : ∀ prims, RestCover prims K circuits settings
+  /-- Each honest operator records the start of each check of a ceremony that an honest operator ends. -/
+  started : ∀ prims, CeremonyStarted prims K circuits settings
 
 /-- The parts of `UsedHitHop` at the error `setupHybridError` (`UsedHit.usedHitHop_of_reductions`). -/
 structure UsedHitParts : Prop where
@@ -90,14 +89,6 @@ structure UsedHitParts : Prop where
   keyParametric : UsedHit.KeyParametric K circuits settings runLimit
   /-- The public cache has at most `q` stream cells of the adversary and one for each honest known key. -/
   cellsCount : ∀ prims, UsedHit.CellsCount K circuits settings runLimit prims
-
-/-- The two bounds at the end of the game that give the readiness hop (`readyHopL_of_ends`). They are
-on `firstRunWith` at the test `RunReady`. -/
-structure GameHops : Prop where
-  /-- At the end of the game the coin keys and the expansions are within the ledger. -/
-  sound : ∀ prims, Ready.SoundAtEnd prims K circuits settings runLimit
-  /-- At the end of the game each hidden name has at most `gameSetups` keys. -/
-  hidden : ∀ prims, HiddenAtEnd prims K circuits settings runLimit
 
 end ThresholdLeanXmssSecurity.DkgCorrectnessProof
 
