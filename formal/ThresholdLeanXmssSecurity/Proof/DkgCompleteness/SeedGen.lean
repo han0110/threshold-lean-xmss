@@ -221,12 +221,6 @@ section Games
 variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
   (b : Fin (2 ^ layerHeight))
 
-/-- `free` of `liftComp`, as a monad map. -/
-def freeHom : OracleComp (RoSpec C) →ᵐ OracleComp (WorldSpec C) where
-  toFun _ oa := free (liftComp oa _)
-  toFun_pure' _ := rfl
-  toFun_bind' _ _ := by simp only [liftComp_bind, free_bind]
-
 /-- The trees of `referenceDkg` on the tree cells, from the keys of the seed generation. -/
 def gameTrees (keys : C.Party → Option (Keys C)) : OracleComp TreeSpec (SetupOutputs C) := do
   let top ← if ∀ i, (keys i).isSome then

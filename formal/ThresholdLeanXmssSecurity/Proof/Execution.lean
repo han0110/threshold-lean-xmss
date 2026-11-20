@@ -1808,6 +1808,22 @@ end Counted
 
 end ThresholdLeanXmssSecurity
 
+namespace ThresholdLeanXmssSecurity.DkgCompletenessProof
+
+section FreeHom
+
+variable {C : Committee}
+
+/-- `free` of `liftComp`, as a monad map. -/
+def freeHom : OracleComp (RoSpec C) →ᵐ OracleComp (WorldSpec C) where
+  toFun _ oa := free (liftComp oa _)
+  toFun_pure' _ := rfl
+  toFun_bind' _ _ := by simp only [liftComp_bind, free_bind]
+
+end FreeHom
+
+end ThresholdLeanXmssSecurity.DkgCompletenessProof
+
 /-- info: 'ThresholdLeanXmssSecurity.simulateQ_sequenceFin' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.simulateQ_sequenceFin
