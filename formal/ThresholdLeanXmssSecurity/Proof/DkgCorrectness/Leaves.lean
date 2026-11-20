@@ -5,10 +5,10 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.EndTable
 /-!
 # The leaves of the proof of `dkgCorrectness`
 
-Four structures name the statements that the landing `dkgCorrectness_of_leaves` takes. Each one is
+Five structures name the statements that the landing `dkgCorrectness_of_leaves` takes. Each one is
 a list of hypotheses by group, with no instance. `CeremonyParts` holds the parts of the lemma of one
-ceremony and of the provenance of a run of a tree, `CutStatements` the statements of a run of a tree
-and of its cut, `UsedHitParts` the parts of the hop on the used keys, and `GameHops` the two bounds
+ceremony and of the provenance of a run of a tree, `SupportParts` the parts of the support lemma of
+one ceremony, `CutStatements` the covers of a run of a tree, `UsedHitParts` the parts of the hop on the used keys, and `GameHops` the two bounds
 that give the readiness hop. A statement with a proof in the library is no field.
 -/
 
@@ -61,15 +61,28 @@ structure CeremonyParts : Prop where
   /-- The monitor keeps the provenance of the hidden keys. -/
   monitorProvenance : ∀ prims, MonitorProvenance prims (C := C)
 
-/-- The statements of a run of a tree and of the cut of a bottom tree, other than `CeremonyBad`,
-`CutDead`, `CutMonotone` and `HeadFuel`. -/
+/-- The parts of `CeremonySupport` (`ceremonySupport_of_parts`), which gives `CutState`
+(`cutState_of_supports`). -/
+structure SupportParts : Prop where
+  /-- Each honest result of one ceremony has the end counters of the job list. -/
+  counters : ∀ prims, CeremonyCounters prims K circuits settings
+  /-- With no global event at the end, two honest results have the same opened outputs. -/
+  outputsAgree : ∀ prims, CeremonyOutputsAgree prims K circuits settings
+  /-- One ceremony adds at most its share of history and digest cells to the ledger. -/
+  split : ∀ prims, LedgerSplit prims K circuits settings
+  /-- One ceremony adds at most its share of coin inputs and expansion keys to the ledger. -/
+  sound : ∀ prims, LedgerSound prims K circuits settings
+  /-- One ceremony adds at most its share of digest salts to the ledger. -/
+  salts : ∀ prims, LedgerSalts prims K circuits settings
+  /-- One ceremony adds at most one key under each hidden name. -/
+  hidden : ∀ prims, LedgerHidden prims K circuits settings
+  /-- One ceremony keeps the provenance of the hidden keys, also when an operator aborts. -/
+  provenance : ∀ prims, CeremonyProvenance prims K circuits settings
+
+/-- The covers of a run of the top tree and of the rest of a bottom tree after the cut. -/
 structure CutStatements : Prop where
   /-- A wrong output of the top tree is at most as likely as wrong outputs of its ceremony. -/
   top : ∀ prims, TopCover prims K circuits settings
-  /-- Wrong first outputs at the cut are at most as likely as wrong outputs of the first ceremony. -/
-  head : ∀ prims, HeadCover prims K circuits settings
-  /-- The world of the cut is within the ledger and keeps the provenance, and the head results agree. -/
-  state : ∀ prims, CutState prims K circuits settings
   /-- A wrong output after the cut is at most as likely as wrong outputs of the second ceremony. -/
   rest : ∀ prims, RestCover prims K circuits settings
 

@@ -1,6 +1,7 @@
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Ceremony.Glue
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Collision.Hops
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.CutBounds
+import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.HeadCut
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Leaves
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.RunsUnion
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.EndWorld
@@ -10,12 +11,13 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.EndWorld
 
 `dkgCorrectness_of_leaves` gives the field `dkgCorrectness` of `Theorems`,
 `CircuitsCompute circuits prims.Th → DkgCorrectness prims K circuits settings runLimit`. Its premises
-are the four structures of `Leaves.lean`. `ceremonyBad_of_parts`, `provenanceTreeRun_of_parts`,
-`readyHopL_of_ends` and `UsedHit.usedHitHop_of_reductions` join their fields to the statements of the
-route. `UsedHit.hybridEnd_of_statements` gives `HybridEnd`. The proved leaves `cutDead`, `cutMonotone`,
-`headFuel`, `echoHop`, `reuseHop`, `copyHop` and `splitHop` and the hops `flagFirstHop`, `seedsHop`
-and `runsUnionHop` give the rest. The error of `UsedHitHop` is `setupHybridError`, and with it
-`part1Error` is `dkgCorrectnessError`.
+are the five structures of `Leaves.lean`. `ceremonyBad_of_parts`, `provenanceTreeRun_of_parts`,
+`readyHopL_of_ends`, `UsedHit.usedHitHop_of_reductions`, and `ceremonySupport_of_parts` with
+`cutState_of_supports` join their fields to the statements of the route.
+`UsedHit.hybridEnd_of_statements` gives `HybridEnd`. The proved leaves `cutDead`, `cutMonotone`,
+`headFuel`, `headCover`, `echoHop`, `reuseHop`, `copyHop` and `splitHop` and the hops `flagFirstHop`,
+`seedsHop` and `runsUnionHop` give the rest. The error of `UsedHitHop` is `setupHybridError`, and with
+it `part1Error` is `dkgCorrectnessError`.
 -/
 
 section
@@ -34,9 +36,9 @@ variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algeb
 variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
 
 omit [DecidableEq E] in
-/-- The field `dkgCorrectness` from the four groups of leaves. -/
+/-- The field `dkgCorrectness` from the five groups of leaves. -/
 theorem dkgCorrectness_of_leaves (ceremony : CeremonyParts K circuits settings runLimit)
-    (cut : CutStatements K circuits settings) (usedHit : UsedHitParts K circuits settings runLimit)
+    (support : SupportParts K circuits settings) (cut : CutStatements K circuits settings) (usedHit : UsedHitParts K circuits settings runLimit)
     (game : GameHops K circuits settings runLimit) :
     CircuitsCompute circuits prims.Th → ThresholdLeanXmss.DkgCorrectness prims K circuits settings runLimit := by
   intro compute batch runs D A q bounded
@@ -59,7 +61,11 @@ theorem dkgCorrectness_of_leaves (ceremony : CeremonyParts K circuits settings r
       (ceremony.batch prims) (ceremony.abort prims) (ceremony.fresh prims) ceremony.names (ceremony.sync prims)
       (ceremony.interval prims) (ceremony.coupling prims) (ceremony.keysAgree prims) (ceremony.budget prims)
       ceremony.zero (ceremony.short prims) (ceremony.tupleInputs prims))
-    cut.top (headFuel circuits settings) cut.head cut.state (fun prims => cutDead prims K circuits settings)
+    cut.top (headFuel circuits settings) (fun prims => headCover prims K circuits settings)
+    (cutState_of_supports K circuits settings fun prims => ceremonySupport_of_parts prims K circuits settings
+      (support.counters prims) (support.outputsAgree prims) (support.split prims) (support.sound prims)
+      (support.salts prims) (support.hidden prims) (support.provenance prims))
+    (fun prims => cutDead prims K circuits settings)
     (fun prims => cutMonotone prims K circuits settings) cut.rest
     batch runs prims compute D A q bounded
 
