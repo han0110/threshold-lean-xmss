@@ -5,7 +5,9 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Walk
 # The rounds of a batch and of a ceremony, and the abort after a partial output
 
 `runTimed_realBatch_exact` and `runTimed_ceremonyRun_exact` give the exact round count of a batch and
-of a ceremony from the public data, on each path that ends with no abort. After a partial abort, when
+of a ceremony from the public data, on each path that ends with no abort. `treeProgram_bottom` cuts
+the program of a bottom tree at its second PRSS setup, and `timed_bottomHead` gives the round count
+of the part before the cut. After a partial abort, when
 each honest operator is done or at the first step of a program that starts with a round, each honest
 operator at such a step ends with no output (`executeRounds_cut_noOutput`).
 `startsWithRound_verify_output` gives one such program. `tupleInputs_batchTuples` states that the
@@ -115,6 +117,15 @@ def ceremonyRounds (parameter : PublicParameter) (jobs : List Job) : ℕ :=
   setupRounds + ((chunks settings.batchSize jobs).map fun batch =>
     exactBatchRounds settings.mode (batch.map (circuits parameter ·.kind))).sum
 
+/-- The jobs of the first ceremony of a tree. -/
+def firstJobs : Tree → List Job
+  | .top => topJobs
+  | .bottom b => bottomJobs b
+
+/-- The rounds of the first ceremony of a tree under `parameter`. -/
+def firstRounds (parameter : PublicParameter) (tree : Tree) : ℕ :=
+  ceremonyRounds circuits settings parameter (firstJobs tree)
+
 omit [Field E] [Algebra Bit E] [Fintype E] [DecidableEq E] in
 theorem batchesRounds_eq (parameter : PublicParameter) (jobs : List Job) :
     setupRounds + Fuel.batchesRounds circuits settings parameter jobs = ceremonyRounds circuits settings parameter jobs := by
@@ -131,7 +142,135 @@ theorem runTimed_ceremonyRun_exact (i : C.Party) (keys : Keys C) (jobs : List Jo
   (Fuel.runTimed_ceremonyRun K circuits settings i keys jobs).of_eq
     (batchesRounds_eq circuits settings keys.parameter jobs)
 
+/-- The first ceremony of a tree takes `firstRounds` rounds under the parameter of the keys. -/
+theorem runTimed_firstCeremony (i : C.Party) (keys : Keys C) (tree : Tree) :
+    RunTimed (firstRounds circuits settings keys.parameter tree)
+      (ceremonyRun K circuits settings (fun ctx _ _ => realRunBuildingBlocks K ctx settings.mode) i keys
+        (firstJobs tree) : StateT (ℕ × ℕ) (PartyM C E RealSpec) _) :=
+  runTimed_ceremonyRun_exact K circuits settings i keys (firstJobs tree)
+
 end Ceremony
+
+/-! ## The cut of a bottom tree at its second PRSS setup -/
+
+section BottomCut
+
+variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] [Fintype E] [DecidableEq E]
+  (K : Constants C E) (circuits : Circuits) (settings : Settings)
+
+/-- The first ceremony of bottom tree `b` and the local randomizer search, on the counters. It gives
+the outputs of the first ceremony, the root of the bottom tree, the randomizer and the encoding. -/
+def firstPart (i : C.Party) (keys : Keys C) (b : Fin (2 ^ layerHeight)) :
+    StateT (ℕ × ℕ) (PartyM C E RealSpec) (Option (List (List Bit) × Digest × Randomizer × Encoding)) := do
+  let some outputs ← ceremonyRun K circuits settings (fun ctx _ _ => realRunBuildingBlocks K ctx settings.mode) i keys
+      (bottomJobs b) | pure none
+  let root ← StateT.lift (oracleStep (tweakable
+    (merkleNode keys.parameter bottomLayer (fun e l => (bCpk b outputs e l).2.2) layerHeight b.val)))
+  let base ← StateT.lift (oracleStep (tweakable (truncateHash <$> Verification.oracleHashWithHash
+    (randomizerInput keys.parameter topLayer (topKey b) (bRho b outputs) (littleEndianBytes 16 root)))))
+  let some (randomness, encoding) ← StateT.lift (oracleStep (tweakable
+      (grind keys.parameter topLayer (topKey b) (littleEndianBytes 16 root) base randomizerAttemptLimit 0))) | pure none
+  pure (some (outputs, root, randomness, encoding))
+
+/-- The signature ceremony of bottom tree `b` at the encoding of `x` and the local end, on the
+counters. -/
+def secondPart (i : C.Party) (keys : Keys C) (top : TopTree) (b : Fin (2 ^ layerHeight))
+    (x : List (List Bit) × Digest × Randomizer × Encoding) :
+    StateT (ℕ × ℕ) (PartyM C E RealSpec) (Option TreeOutput) := do
+  let some values ← ceremonyRun K circuits settings (fun ctx _ _ => realRunBuildingBlocks K ctx settings.mode) i keys
+      (signJobs b x.2.2.2) | pure none
+  let path ← StateT.lift (oracleStep (tweakable (merklePath keys.parameter topLayer top.chainEnd (topKey b))))
+  let signature : LayerSignature := ⟨x.2.2.1, fun l => digestAt (values.getD l.val []) 0, path⟩
+  let topRoot ← StateT.lift (oracleStep (tweakable
+    (Verification.layerRootWithHash keys.parameter topLayer (topKey b) (littleEndianBytes 16 x.2.1) signature)))
+  if topRoot ≠ some top.root then pure none else
+  pure (some (.bottom ⟨bCpk b x.1, bCommitment b x.1, x.2.1, signature⟩))
+
+omit [Fintype E] [DecidableEq E] in
+theorem ceremonyOutput_bottom (i : C.Party) (keys : Keys C) (top : TopTree) (b : Fin (2 ^ layerHeight)) :
+    ceremonyOutput (m := StateT (ℕ × ℕ) (PartyM C E RealSpec)) (fun oa => StateT.lift (oracleStep (tweakable oa)))
+        keys.parameter (ceremonyRun K circuits settings (fun ctx _ _ => realRunBuildingBlocks K ctx settings.mode) i keys)
+        top (.bottom b) =
+      firstPart K circuits settings i keys b >>= fun o => o.elim (pure none) (secondPart K circuits settings i keys top b) := by
+  simp only [ceremonyOutput, firstPart, bind_assoc]
+  refine bind_congr fun o => ?_
+  rcases o with _ | outputs
+  · simp only [pure_bind, Option.elim]
+  · simp only [bind_assoc, bCpk, bRho, bottomKeys]
+    refine bind_congr fun root => bind_congr fun base => bind_congr fun g => ?_
+    rcases g with _ | ⟨randomness, encoding⟩
+    · simp only [pure_bind, Option.elim]
+    · simp only [pure_bind, Option.elim, secondPart]
+      rfl
+
+/-- The first ceremony and the local search take the rounds of the first ceremony. The search makes
+local calls only. -/
+theorem runTimed_firstPart (i : C.Party) (keys : Keys C) (b : Fin (2 ^ layerHeight)) :
+    RunTimed (firstRounds circuits settings keys.parameter (.bottom b)) (firstPart K circuits settings i keys b) := by
+  unfold firstPart
+  refine ((runTimed_firstCeremony K circuits settings i keys (.bottom b)).bind (n := 0) fun o => ?_).of_eq
+    (Nat.add_zero _)
+  rcases o with _ | outputs
+  · exact runTimed_pure _
+  refine RunTimed.bind (m := 0) (n := 0) (RunTimed.lift (timed_oracleStep _)) fun root => ?_
+  refine RunTimed.bind (m := 0) (n := 0) (RunTimed.lift (timed_oracleStep _)) fun base => ?_
+  refine RunTimed.bind (m := 0) (n := 0) (RunTimed.lift (timed_oracleStep _)) fun g => ?_
+  rcases g with _ | ⟨randomness, encoding⟩
+  · exact runTimed_pure _
+  · exact runTimed_pure _
+
+/-- The program of operator `i` for bottom tree `b` up to its second PRSS setup. It is the first
+ceremony and the local randomizer search. An operator without keys or without a top tree, or with
+no encoding, aborts. -/
+def bottomHead (i : C.Party) (operator : OperatorState C) (b : Fin (2 ^ layerHeight)) :
+    PartyM C E RealSpec ((List (List Bit) × Digest × Randomizer × Encoding) × (ℕ × ℕ)) :=
+  match operator.keys, operator.top with
+  | some keys, some _ => (firstPart K circuits settings i keys b).run (0, 0) >>= fun p =>
+      p.1.elim failure fun x => pure (x, p.2)
+  | _, _ => failure
+
+/-- The program of operator `i` for bottom tree `b` from its second PRSS setup, after the result `r`
+of `bottomHead`. -/
+def bottomTail (i : C.Party) (operator : OperatorState C) (b : Fin (2 ^ layerHeight))
+    (r : (List (List Bit) × Digest × Randomizer × Encoding) × (ℕ × ℕ)) : PartyM C E RealSpec TreeOutput :=
+  match operator.keys, operator.top with
+  | some keys, some top => (secondPart K circuits settings i keys top b r.1).run r.2 >>= fun p =>
+      p.1.elim failure pure
+  | _, _ => failure
+
+omit [Fintype E] [DecidableEq E] in
+/-- The program of a bottom tree is `bottomHead` and then `bottomTail`. -/
+theorem treeProgram_bottom (i : C.Party) (operator : OperatorState C) (b : Fin (2 ^ layerHeight)) :
+    treeProgram K circuits settings i operator (.bottom b) =
+      bottomHead K circuits settings i operator b >>= bottomTail K circuits settings i operator b := by
+  unfold treeProgram bottomHead bottomTail
+  rcases operator.keys with _ | keys <;> rcases operator.top with _ | top <;> simp only [failure_bind]
+  unfold newTree
+  rw [ceremonyOutput_bottom]
+  simp only [StateT.run'_eq, StateT.run_bind, map_bind, bind_assoc]
+  refine bind_congr fun p => ?_
+  rcases p with ⟨_ | x, st⟩
+  · simp [Option.elim]
+  · simp only [Option.elim, pure_bind, bind_map_left]
+    refine bind_congr fun q => ?_
+    rcases q with ⟨_ | out, st'⟩ <;> rfl
+
+/-- The part before the second PRSS setup takes `firstRounds … (.bottom b)` rounds under the
+parameter of the keys of the operator. -/
+theorem timed_bottomHead (parameter : PublicParameter) (i : C.Party) (operator : OperatorState C)
+    (b : Fin (2 ^ layerHeight)) (h : ∀ keys, operator.keys = some keys → keys.parameter = parameter) :
+    Timed (firstRounds circuits settings parameter (.bottom b)) (bottomHead K circuits settings i operator b).run := by
+  unfold bottomHead
+  split
+  · rename_i keys _ hk _
+    rw [← h keys hk, ← Nat.add_zero (firstRounds circuits settings keys.parameter (.bottom b))]
+    refine (runTimed_firstPart K circuits settings i keys b (0, 0)).bind fun p => ?_
+    rcases p with ⟨_ | x, st⟩
+    · exact timed_failure 0
+    · exact timed_pure _
+  · exact timed_failure _
+
+end BottomCut
 
 end CheckTiming
 

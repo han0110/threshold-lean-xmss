@@ -4,10 +4,10 @@ import ThresholdLeanXmssSecurity.Proof.SeedGenAlias
 /-!
 # The hops of the flag and of the seeds
 
-`flagFirstHop` proves `FlagFirstHop`. When the flag of `dkgTreeGame` is set, `firstRun` has a first
-bad record (`FlagRecorded`). The converse does not hold, because a start that is not ready makes a
-record while the flag stays false. `seedsHop` proves `SeedsHop`. The seeds differ after the seed
-generation with probability at most `seedGenHashError C q`.
+`flagFirstHop` proves `FlagFirstHopW`. When the flag of `dkgTreeGame` is set, `firstRunWith` has a
+first bad record (`FlagRecorded`), for each readiness test. The converse does not hold, because a start
+that is not ready makes a record while the flag stays false. `seedsHop` proves `SeedsHopW`. The seeds
+differ after the seed generation with probability at most `seedGenHashError C q`.
 -/
 
 section
@@ -28,7 +28,6 @@ variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algeb
 attribute [local instance] inhabitedField
 
 variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
-  (budget : StartBudget)
 
 /-! ## The relation of the two games -/
 
@@ -92,14 +91,15 @@ theorem tracks_map_get (D : C.Coalition) {σ α : Type} (f : RealState C σ → 
 /-! ## The runs of a tree -/
 
 omit [Fintype E] [DecidableEq E] in
-theorem tracks_treeRun (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree) :
+theorem tracks_treeRun (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (ready : RealState C net.State → StreamState C → Prop) (tree : Tree) :
     Tracks prims D (treeRun K circuits settings (wrongOutput D) D net tree)
-      (firstTreeRun prims K circuits settings budget D net tree) := by
+      (firstTreeRunWith prims K circuits settings D net ready tree) := by
   intro s
   constructor
-  · simp [treeRun, firstTreeRun, streamTreeRun]
+  · simp [treeRun, firstTreeRunWith, streamTreeRun]
   · intro w hs z hz
-    simp [firstTreeRun] at hz
+    simp [firstTreeRunWith] at hz
     obtain ⟨_, _, ⟨_, _, -, rfl⟩ | ⟨_, _, -, rfl⟩⟩ := hz
     · intro hflag
       cases hfirst : s.first with
@@ -108,16 +108,17 @@ theorem tracks_treeRun (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty
     · simp [FlagRecorded]
 
 omit [Fintype E] [DecidableEq E] in
-theorem tracks_treeRuns (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree) (count : ℕ) :
+theorem tracks_treeRuns (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (ready : RealState C net.State → StreamState C → Prop) (tree : Tree) (count : ℕ) :
     Tracks prims D (treeRuns K circuits settings runLimit (wrongOutput D) D net tree count)
-      (firstTreeRuns prims K circuits settings runLimit budget D net tree count) := by
+      (firstTreeRunsWith prims K circuits settings runLimit D net ready tree count) := by
   induction count with
   | zero => exact tracks_pure prims D ()
   | succ count ih =>
     refine tracks_get_bind prims D fun s => ?_
     by_cases h : mayRun runLimit D s.real tree
     · simp only [h, ↓reduceIte]
-      exact tracks_bind prims D (tracks_treeRun prims K circuits settings budget D net tree) (fun _ => ih) s
+      exact tracks_bind prims D (tracks_treeRun prims K circuits settings D net ready tree) (fun _ => ih) s
     · simp only [h, ↓reduceIte]
       exact tracks_pure prims D () s
 
@@ -129,7 +130,7 @@ def realHom (σ : Type) : OracleComp (WorldSpec C) →ᵐ RealM C σ where
   toFun_pure' a := by ext; simp
   toFun_bind' _ _ := by ext; simp
 
-/-- A computation of the world on the state of `firstRun`, answered by `streamWorld`. -/
+/-- A computation of the world on the state of `firstRunWith`, answered by `streamWorld`. -/
 def firstHom (D : C.Coalition) (σ : Type) : OracleComp (WorldSpec C) →ᵐ FirstM C σ where
   toFun _ oa := inStream prims D oa
   toFun_pure' a := by ext; simp [inStream]
@@ -263,10 +264,11 @@ theorem tracksSign_simulateQ (D : C.Coalition) {σ ι α : Type} {spec : OracleS
     exact tracksSign_bind prims D (by simpa using h t) ih
 
 omit [Fintype E] [DecidableEq E] in
-theorem tracks_treeRequest (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (b : Fin (2 ^ layerHeight)) :
+theorem tracks_treeRequest (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (ready : RealState C net.State → StreamState C → Prop) (b : Fin (2 ^ layerHeight)) :
     Tracks prims D (treeRequest K circuits settings runLimit (wrongOutput D) D net b)
-      (firstTreeRequest prims K circuits settings runLimit budget D net b) := by
-  refine tracks_bind prims D (tracks_treeRuns prims K circuits settings runLimit budget D net _ 1) fun _ => ?_
+      (firstTreeRequestWith prims K circuits settings runLimit D net ready b) := by
+  refine tracks_bind prims D (tracks_treeRuns prims K circuits settings runLimit D net ready _ 1) fun _ => ?_
   refine tracks_get_bind prims D fun s => ?_
   rcases heldBottom D s.real.operators b with _ | tree
   · exact tracks_pure prims D _ s
@@ -285,18 +287,20 @@ theorem tracksSign_signRequest (D : C.Coalition) {σ : Type} (i : C.Party) (e : 
   exact key
 
 omit [Fintype E] [DecidableEq E] in
-theorem tracksSign_oracles (D : C.Coalition) (A : DkgTsigAdversary C E) (q : TsigQuery C) :
+theorem tracksSign_oracles (D : C.Coalition) (A : DkgTsigAdversary C E)
+    (ready : RealState C A.net.State → StreamState C → Prop) (q : TsigQuery C) :
     TracksSign prims D (realOracles K circuits settings runLimit (wrongOutput D) D A q)
-      (firstOracles prims K circuits settings runLimit budget D A q) := by
+      (firstOraclesWith prims K circuits settings runLimit D A ready q) := by
   rcases q with i | b | ⟨i, J, e, message⟩ | ⟨i, J, e, message, parts⟩
   · exact tracksSign_pure prims D _
-  · exact tracksSign_lift prims D (tracks_treeRequest prims K circuits settings runLimit budget D A.net b)
+  · exact tracksSign_lift prims D (tracks_treeRequest prims K circuits settings runLimit D A.net ready b)
   · exact tracksSign_signRequest prims D i e _
   · exact tracksSign_signRequest prims D i e _
 
 omit [Fintype E] [DecidableEq E] in
-/-- The run of `A.forge` in `dkgSigning` and in `firstSigning`. -/
-theorem tracksSign_forge (D : C.Coalition) (A : DkgTsigAdversary C E) (pk : PublicKey) (top : TopTree) :
+/-- The run of `A.forge` in `dkgSigning` and in `firstSigningWith`. -/
+theorem tracksSign_forge (D : C.Coalition) (A : DkgTsigAdversary C E)
+    (ready : RealState C A.net.State → StreamState C → Prop) (pk : PublicKey) (top : TopTree) :
     TracksSign prims D
       (simulateQ ((fun t => StateT.lift (StateT.lift (worldRoles.adversary (OracleComp.lift (OracleSpec.query t))))
           : QueryImpl (LocalSpec C) (StateT (TsigState C) (RealM C A.net.State))) +
@@ -308,7 +312,7 @@ theorem tracksSign_forge (D : C.Coalition) (A : DkgTsigAdversary C E) (pk : Publ
         (A.forge pk top))
       (simulateQ ((fun t => StateT.lift (inStream prims D (worldRoles.adversary (OracleComp.lift (OracleSpec.query t))))
           : QueryImpl (LocalSpec C) (StateT (TsigState C) (FirstM C A.net.State))) +
-        (firstOracles prims K circuits settings runLimit budget D A +
+        (firstOraclesWith prims K circuits settings runLimit D A ready +
           (fun q => match q with
             | .read => StateT.lift ((·.real.adversary) <$> (get : FirstM C A.net.State _))
             | .write state => StateT.lift (modify fun s : FirstState C A.net.State =>
@@ -318,7 +322,7 @@ theorem tracksSign_forge (D : C.Coalition) (A : DkgTsigAdversary C E) (pk : Publ
   refine tracksSign_simulateQ prims D _ _ (fun t => ?_) _
   rcases t with t | q | q
   · exact tracksSign_lift prims D (tracks_lift prims D _)
-  · exact tracksSign_oracles prims K circuits settings runLimit budget D A q
+  · exact tracksSign_oracles prims K circuits settings runLimit D A ready q
   · rcases q with _ | state
     · exact tracksSign_lift prims D (tracks_map_get prims D (·.adversary))
     · exact tracksSign_lift prims D (tracks_modify prims D _ _ (fun _ => rfl) fun s hs => hs)
@@ -343,26 +347,28 @@ theorem drop_winTest (D : C.Coalition) {σ β : Type} (fs : FirstState C σ) (w 
 omit [Fintype E] [DecidableEq E] in
 /-- The signing phase without the win test keeps the law of the flag. The win test only reads the
 real state. -/
-theorem signing_flag (D : C.Coalition) (A : DkgTsigAdversary C E) (fs : FirstState C A.net.State)
+theorem signing_flag (D : C.Coalition) (A : DkgTsigAdversary C E)
+    (ready : RealState C A.net.State → StreamState C → Prop) (fs : FirstState C A.net.State)
     (w : StreamState C) :
-    (fun r => r.1.2.real.flag) <$> ((firstSigning prims K circuits settings runLimit budget D A).run fs).run w =ᵈ
+    (fun r => r.1.2.real.flag) <$> ((firstSigningWith prims K circuits settings runLimit D A ready).run fs).run w =ᵈ
       (fun r => r.1.2.flag) <$> (simulateQ (streamWorld prims D)
         ((dkgSigning K circuits settings runLimit (wrongOutput D) D A).run fs.real)).run w := by
-  unfold firstSigning dkgSigning
+  unfold firstSigningWith dkgSigning
   simp only [StateT.run_bind, StateT.run_get, pure_bind]
   rcases topHolder D fs.real.operators with _ | ⟨keys, top⟩
   · simp
   · simp only [forgeryWins_canonicalDealt]
-    exact drop_winTest prims D fs w (tracksSign_forge prims K circuits settings runLimit budget D A
+    exact drop_winTest prims D fs w (tracksSign_forge prims K circuits settings runLimit D A ready
       ⟨top.root, keys.parameter⟩ top ⟨D.1, fun _ => none, [], fun _ => none⟩ fs).1 _
 
 omit [Fintype E] [DecidableEq E] in
 /-- The signing phase without the win test keeps `FlagRecorded`. -/
-theorem signing_recorded (D : C.Coalition) (A : DkgTsigAdversary C E) (fs : FirstState C A.net.State)
+theorem signing_recorded (D : C.Coalition) (A : DkgTsigAdversary C E)
+    (ready : RealState C A.net.State → StreamState C → Prop) (fs : FirstState C A.net.State)
     (w : StreamState C) (hs : FlagRecorded fs) :
-    ∀ z ∈ support (((firstSigning prims K circuits settings runLimit budget D A).run fs).run w),
+    ∀ z ∈ support (((firstSigningWith prims K circuits settings runLimit D A ready).run fs).run w),
       FlagRecorded z.1.2 := by
-  unfold firstSigning
+  unfold firstSigningWith
   simp only [StateT.run_bind, StateT.run_get, pure_bind]
   rcases topHolder D fs.real.operators with _ | ⟨keys, top⟩
   · intro z hz
@@ -374,16 +380,17 @@ theorem signing_recorded (D : C.Coalition) (A : DkgTsigAdversary C E) (fs : Firs
     obtain ⟨u, hu, hz⟩ := hz
     simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
     rw [hz]
-    exact (tracksSign_forge prims K circuits settings runLimit budget D A ⟨top.root, keys.parameter⟩ top
+    exact (tracksSign_forge prims K circuits settings runLimit D A ready ⟨top.root, keys.parameter⟩ top
       ⟨D.1, fun _ => none, [], fun _ => none⟩ fs).2 w hs u hu
 
 omit [Fintype E] [DecidableEq E] in
 /-- The runs of the top tree and the signing phase keep the law of the flag. -/
-theorem afterSetup_flag (D : C.Coalition) (A : DkgTsigAdversary C E) (fs : FirstState C A.net.State)
+theorem afterSetup_flag (D : C.Coalition) (A : DkgTsigAdversary C E)
+    (ready : RealState C A.net.State → StreamState C → Prop) (fs : FirstState C A.net.State)
     (w : StreamState C) :
     (do
-      let x ← ((firstTreeRuns prims K circuits settings runLimit budget D A.net .top runLimit).run fs).run w
-      let a ← ((firstSigning prims K circuits settings runLimit budget D A).run x.1.2).run x.2
+      let x ← ((firstTreeRunsWith prims K circuits settings runLimit D A.net ready .top runLimit).run fs).run w
+      let a ← ((firstSigningWith prims K circuits settings runLimit D A ready).run x.1.2).run x.2
       pure a.1.2.real.flag) =ᵈ
     (do
       let x ← (simulateQ (streamWorld prims D)
@@ -391,45 +398,45 @@ theorem afterSetup_flag (D : C.Coalition) (A : DkgTsigAdversary C E) (fs : First
       let a ← (simulateQ (streamWorld prims D)
         ((dkgSigning K circuits settings runLimit (wrongOutput D) D A).run x.1.2)).run x.2
       pure a.1.2.flag) := by
-  rw [(tracks_treeRuns prims K circuits settings runLimit budget D A.net .top runLimit fs).1]
+  rw [(tracks_treeRuns prims K circuits settings runLimit D A.net ready .top runLimit fs).1]
   simp only [StateT.run_map, bind_map_left, bind_pure_comp]
   exact EvalDistEq.bind_right _ fun a =>
-    signing_flag prims K circuits settings runLimit budget D A a.1.2 a.2
+    signing_flag prims K circuits settings runLimit D A ready a.1.2 a.2
 
 /-! ## The hop -/
 
 omit [Fintype E] [DecidableEq E] in
-/-- The flag of `dkgTreeGame` in `streamWorld` comes with a first bad record of `firstRun`. -/
-theorem flagFirstHop : FlagFirstHop prims K circuits settings runLimit budget (C := C) (E := E) := by
-  intro D A
+/-- The flag of `dkgTreeGame` in `streamWorld` comes with a first bad record of `firstRunWith`. -/
+theorem flagFirstHop : FlagFirstHopW prims K circuits settings runLimit (C := C) (E := E) := by
+  intro D A ready
   have law : Pr{let r ← (simulateQ (streamWorld prims D) (dkgTreeGame K circuits settings runLimit D A)).run (∅, ∅)}[
-      r.1 = true] = Pr{let r ← firstRun prims K circuits settings runLimit budget D A}[r.1.real.flag = true] := by
-    have hd : (fun r => r.1.real.flag) <$> firstRun prims K circuits settings runLimit budget D A =ᵈ
+      r.1 = true] = Pr{let r ← firstRunWith prims K circuits settings runLimit D A ready}[r.1.real.flag = true] := by
+    have hd : (fun r => r.1.real.flag) <$> firstRunWith prims K circuits settings runLimit D A ready =ᵈ
         (fun r => r.1) <$>
           (simulateQ (streamWorld prims D) (dkgTreeGame K circuits settings runLimit D A)).run (∅, ∅) := by
-      unfold firstRun dkgTreeGame dkgTsigRun
+      unfold firstRunWith dkgTreeGame dkgTsigRun
       simp only [simulateQ_map, simulateQ_bind, StateT.run_bind, StateT.run_map, map_bind]
       refine EvalDistEq.bind_right _ fun u => ?_
       simp only [StateT.run_get, pure_bind, StateT.run_pure, map_pure, simulateQ_pure, bind_assoc]
-      exact afterSetup_flag prims K circuits settings runLimit budget D A _ u.2
+      exact afterSetup_flag prims K circuits settings runLimit D A ready _ u.2
     have h := hd.prEvent_eq (· = true)
     rw [prEvent_map, prEvent_map] at h
     exact h.symm
-  have mono : Pr{let r ← firstRun prims K circuits settings runLimit budget D A}[r.1.real.flag = true] ≤
-      Pr{let r ← firstRun prims K circuits settings runLimit budget D A}[r.1.first ≠ none] := by
+  have mono : Pr{let r ← firstRunWith prims K circuits settings runLimit D A ready}[r.1.real.flag = true] ≤
+      Pr{let r ← firstRunWith prims K circuits settings runLimit D A ready}[r.1.first ≠ none] := by
     refine prEvent_mono_of_support _ _ _ fun r hr hflag => ?_
-    unfold firstRun at hr
+    unfold firstRunWith at hr
     simp only [StateT.run_bind, support_bind, Set.mem_iUnion] at hr
     obtain ⟨u, -, v, hv, x, ⟨y, hy, hx⟩, hr⟩ := hr
     simp only [StateT.run_get, support_pure, Set.mem_singleton_iff] at hv
     simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff] at hr
     subst hv hr
-    refine signing_recorded prims K circuits settings runLimit budget D A y.1.2 y.2
-      ((tracks_treeRuns prims K circuits settings runLimit budget D A.net .top runLimit _).2 _ ?_ y hy) x hx hflag
+    refine signing_recorded prims K circuits settings runLimit D A ready y.1.2 y.2
+      ((tracks_treeRuns prims K circuits settings runLimit D A.net ready .top runLimit _).2 _ ?_ y hy) x hx hflag
     intro hstart
     simp only at hstart
     simp [hstart]
-  unfold firstProb
+  unfold firstProbWith
   rw [law]
   exact ENNReal.toReal_mono (prEvent_ne_top _) mono
 
@@ -700,11 +707,11 @@ variable {C : Committee} {E : Type} [Field E] [Algebra Bit E]
 attribute [local instance] inhabitedField
 
 variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
-  (budget : StartBudget)
 
-theorem firstTreeRun_keepsFree (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree) :
-    KeepsFree (firstTreeRun prims K circuits settings budget D net tree) := by
-  unfold firstTreeRun
+theorem firstTreeRun_keepsFree (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (ready : RealState C net.State → StreamState C → Prop) (tree : Tree) :
+    KeepsFree (firstTreeRunWith prims K circuits settings D net ready tree) := by
+  unfold firstTreeRunWith
   refine keepsFree_get_bind fun s hs => keepsFree_bind (keepsFree_lift _) fun before =>
     keepsFree_bind (keepsFree_lift _) fun r => ?_
   rcases r with ⟨⟨state, outputs⟩, bad⟩
@@ -719,22 +726,24 @@ theorem firstTreeRun_keepsFree (D : C.Coalition) (net : Adversary C E Unit PEmpt
       cases h
     · exact seedsFree_none
 
-theorem firstTreeRuns_keepsFree (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree) :
-    ∀ count, KeepsFree (firstTreeRuns prims K circuits settings runLimit budget D net tree count)
+theorem firstTreeRuns_keepsFree (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (ready : RealState C net.State → StreamState C → Prop) (tree : Tree) :
+    ∀ count, KeepsFree (firstTreeRunsWith prims K circuits settings runLimit D net ready tree count)
   | 0 => keepsFree_pure _
   | count + 1 => by
-    unfold firstTreeRuns
+    unfold firstTreeRunsWith
     refine keepsFree_get_bind fun s _ => ?_
     split_ifs
-    · exact keepsFree_bind (firstTreeRun_keepsFree prims K circuits settings budget D net tree) fun _ =>
-        firstTreeRuns_keepsFree D net tree count
+    · exact keepsFree_bind (firstTreeRun_keepsFree prims K circuits settings D net ready tree) fun _ =>
+        firstTreeRuns_keepsFree D net ready tree count
     · exact keepsFree_pure _
 
 theorem firstTreeRequest_keepsFree (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (ready : RealState C net.State → StreamState C → Prop)
     (b : Fin (2 ^ layerHeight)) :
-    KeepsFree (firstTreeRequest prims K circuits settings runLimit budget D net b) := by
-  unfold firstTreeRequest
-  refine keepsFree_bind (firstTreeRuns_keepsFree prims K circuits settings runLimit budget D net _ 1) fun _ =>
+    KeepsFree (firstTreeRequestWith prims K circuits settings runLimit D net ready b) := by
+  unfold firstTreeRequestWith
+  refine keepsFree_bind (firstTreeRuns_keepsFree prims K circuits settings runLimit D net ready _ 1) fun _ =>
     keepsFree_get_bind fun s _ => ?_
   split
   · exact keepsFree_bind (keepsFree_lift _) fun _ => keepsFree_pure _
@@ -784,23 +793,25 @@ theorem firstSignRequest_keepsFree (D : C.Coalition) {σ : Type} (i : C.Party) (
     keepsFreeT_bind (keepsFreeT_lift keepsFree_get) fun s => ?_
   exact operatorAnswer_keepsFree prims D _ _ e q
 
-theorem firstOracles_keepsFree (D : C.Coalition) (A : DkgTsigAdversary C E) (q : TsigQuery C) :
-    KeepsFreeT (firstOracles prims K circuits settings runLimit budget D A q) := by
+theorem firstOracles_keepsFree (D : C.Coalition) (A : DkgTsigAdversary C E)
+    (ready : RealState C A.net.State → StreamState C → Prop) (q : TsigQuery C) :
+    KeepsFreeT (firstOraclesWith prims K circuits settings runLimit D A ready q) := by
   rcases q with i | b | ⟨i, J, e, message⟩ | ⟨i, J, e, message, parts⟩
   · exact fun t => keepsFree_pure _
-  · exact keepsFreeT_lift (firstTreeRequest_keepsFree prims K circuits settings runLimit budget D A.net b)
+  · exact keepsFreeT_lift (firstTreeRequest_keepsFree prims K circuits settings runLimit D A.net ready b)
   · exact firstSignRequest_keepsFree prims D i e _
   · exact firstSignRequest_keepsFree prims D i e _
 
-theorem firstSigning_keepsFree (D : C.Coalition) (A : DkgTsigAdversary C E) :
-    KeepsFree (firstSigning prims K circuits settings runLimit budget D A) := by
-  unfold firstSigning
+theorem firstSigning_keepsFree (D : C.Coalition) (A : DkgTsigAdversary C E)
+    (ready : RealState C A.net.State → StreamState C → Prop) :
+    KeepsFree (firstSigningWith prims K circuits settings runLimit D A ready) := by
+  unfold firstSigningWith
   refine keepsFree_get_bind fun s _ => ?_
   split
   · refine keepsFree_bind (keepsFreeT_simulateQ _ (fun q => ?_) _ _) fun _ => keepsFree_pure _
     rcases q with t | q | q
     · exact keepsFreeT_lift (keepsFree_lift _)
-    · exact firstOracles_keepsFree prims K circuits settings runLimit budget D A q
+    · exact firstOracles_keepsFree prims K circuits settings runLimit D A ready q
     · rcases q with _ | state
       · exact keepsFreeT_lift (keepsFree_bind keepsFree_get fun _ => keepsFree_pure _)
       · exact keepsFreeT_lift (keepsFree_modify _ fun s hs => hs)
@@ -817,7 +828,6 @@ variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algeb
 attribute [local instance] inhabitedField
 
 variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
-  (budget : StartBudget)
 
 /-- An event after a continuation that needs the event `q` of the first draw has probability at most
 that of `q`. -/
@@ -830,9 +840,9 @@ theorem prEvent_bind_le_of_imp {α β : Type} (mx : ProbComp α) (f : α → Pro
     exact bot_le
 
 omit [Fintype E] [DecidableEq E] in
-/-- The first bad event of `firstRun` is the seeds with probability at most `seedGenHashError`. -/
-theorem seedsHop : SeedsHop prims K circuits settings runLimit budget := by
-  intro D A q bounded
+/-- The first bad event of `firstRunWith` is the seeds with probability at most `seedGenHashError`. -/
+theorem seedsHop : SeedsHopW prims K circuits settings runLimit (C := C) (E := E) := by
+  intro D A q ready bounded
   obtain ⟨start, step, forge, hsum, hstart, hround, -⟩ := bounded
   have hrounds : setupRounds * step ≤ dkgTsigRounds circuits settings runLimit * step :=
     Nat.mul_le_mul_right _ (Nat.le_add_right _ _)
@@ -846,7 +856,7 @@ theorem seedsHop : SeedsHop prims K circuits settings runLimit budget := by
   have hc := seedGenConsistent (E := E) prims D A.net (fun _ => ()) [] q hq
   rw [probEvent_runWorld_fst prims _ (fun r : A.net.State × (C.Party → Option (Keys C)) =>
     seedsDiffer D r.2 = true), StateT.run'_eq, prEvent_map] at hc
-  unfold firstProb firstRun
+  unfold firstProbWith firstRunWith
   rw [StateT.run_bind]
   refine (ENNReal.toReal_mono (prEvent_ne_top _) (prEvent_bind_le_of_imp _ _ _
     (fun a => seedsDiffer D a.1.2 = true) ?_)).trans ?_
@@ -858,9 +868,9 @@ theorem seedsHop : SeedsHop prims K circuits settings runLimit budget := by
     simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
     subst hz
     obtain ⟨x, hx, hy⟩ := hy
-    have hruns := firstTreeRuns_keepsFree prims K circuits settings runLimit budget D A.net .top runLimit _ world
+    have hruns := firstTreeRuns_keepsFree prims K circuits settings runLimit D A.net ready .top runLimit _ world
       seedsFree_none x hx
-    exact fun ⟨w, hw⟩ => firstSigning_keepsFree prims K circuits settings runLimit budget D A _ _ hruns y hy w hw
+    exact fun ⟨w, hw⟩ => firstSigning_keepsFree prims K circuits settings runLimit D A ready _ _ hruns y hy w hw
   · rw [streamWorld_seedGen, prEvent_map]
     exact hc
 

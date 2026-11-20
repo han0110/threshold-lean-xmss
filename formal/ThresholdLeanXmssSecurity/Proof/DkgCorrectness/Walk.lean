@@ -6,7 +6,8 @@ import ThresholdLeanXmssSecurity.Proof.Pilot.Outputs
 
 A run in `streamWorld` only adds cells to its two caches (`streamWorld_le`, `simulateQ_le`), and
 `Keeps` is the form of a step that keeps a property of the world. Two reads of one stream cell agree
-in `streamWorld`. `headCounts` gives the counts of the head of a check.
+in `streamWorld`. `headCounts` gives the counts of the head of a check, and `batchLabel` and
+`jobLabel` give the label that one full batch adds.
 -/
 
 section
@@ -533,6 +534,14 @@ variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] (K : Constants C E
 AND layer and one for `Rerand`. -/
 def headCounts (jobs : List Circuit) : List ℕ :=
   (List.range (depth jobs)).map (fun l => (gatesAt jobs l).length) ++ [(outputsOf jobs).length]
+
+/-- The label that one full real batch of the circuits `jobs` adds. It is the number of the tuples of
+its head and the labels of its check, a function of the counts `headCounts jobs`. -/
+def batchLabel (jobs : List Circuit) : ℕ := (headCounts jobs).length + checkLabels (headCounts jobs).sum
+
+/-- The label that one full real batch of the jobs `js` adds under the public parameter `parameter`. -/
+def jobLabel (circuits : Circuits) (parameter : PublicParameter) (js : List Job) : ℕ :=
+  batchLabel (js.map (circuits parameter ·.kind))
 
 end Head
 

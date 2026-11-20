@@ -5,7 +5,7 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Walk
 # The count of the cells of the first run by class
 
 `Within c cache k` states that the cells of class `c` of a hash cache lie in a set of at most `k`
-inputs. `firstRun_within` and `firstCount_of` count the cells of `firstRun` by class, and
+inputs. `firstRun_within` and `firstCount_of` count the cells of `firstRunWith` by class, and
 `recordedBelow` states that the world of the first bad record is below the final world.
 -/
 
@@ -444,7 +444,7 @@ theorem moves_modify (f : FirstState C σ → FirstState C σ) (h : ∀ k s w, I
 
 end Moves
 
-/-! ## The cells of a class through `firstRun` -/
+/-! ## The cells of a class through `firstRunWith` -/
 
 section Game
 
@@ -453,7 +453,7 @@ variable {C : Committee} {E : Type} [Field E] [Algebra Bit E]
 attribute [local instance] inhabitedField
 
 variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
-  (budget : StartBudget) (c : HashClass) (cost : Tree → ℕ)
+  (c : HashClass) (cost : Tree → ℕ)
 
 /-- The budget of the runs that remain, with the cost `cost tree` for each run of `tree`. -/
 def remaining (runs : Tree → ℕ) : ℕ :=
@@ -529,14 +529,15 @@ theorem mayRun_lt {σ : Type} {D : C.Coalition} {s : RealState C σ} {tree : Tre
 
 /-- A run of `tree` that the game allows keeps the potential, when the computation of its world has at
 most `cost tree` calls of `Adds c`. -/
-theorem firstTreeRun_pot (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree)
+theorem firstTreeRun_pot (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (ready : RealState C net.State → StreamState C → Prop) (tree : Tree)
     (hblock : ∀ s, GameCount.Bound (Adds c) (treeBlock K circuits settings D net tree s) (cost tree))
     (k : ℕ) (s : FirstState C net.State) (w : StreamState C) (hs : Pot runLimit c cost k s w)
     (hrun : s.real.runs tree < runLimit) :
-    ∀ z ∈ support (((firstTreeRun prims K circuits settings budget D net tree).run s).run w),
+    ∀ z ∈ support (((firstTreeRunWith prims K circuits settings D net ready tree).run s).run w),
       Pot runLimit c cost k z.1.2 z.2 := by
   intro z hz
-  unfold firstTreeRun at hz
+  unfold firstTreeRunWith at hz
   simp only [StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, mem_support_bind_iff, StateT.run_set,
     StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
   obtain ⟨_, ⟨x, hx, rfl⟩, rfl⟩ := hz
@@ -547,30 +548,32 @@ theorem firstTreeRun_pot (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmp
   change k' + cost tree + remaining runLimit cost (Function.update s.real.runs tree (s.real.runs tree + 1)) ≤ k
   omega
 
-theorem firstTreeRuns_moves (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree)
+theorem firstTreeRuns_moves (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (ready : RealState C net.State → StreamState C → Prop) (tree : Tree)
     (hblock : ∀ s, GameCount.Bound (Adds c) (treeBlock K circuits settings D net tree s) (cost tree)) :
-    ∀ count, Moves (Pot runLimit c cost) 0 (firstTreeRuns prims K circuits settings runLimit budget D net tree count)
+    ∀ count, Moves (Pot runLimit c cost) 0 (firstTreeRunsWith prims K circuits settings runLimit D net ready tree count)
   | 0 => moves_pure _
   | count + 1 => by
     intro k s w hs z hz
-    unfold firstTreeRuns at hz
+    unfold firstTreeRunsWith at hz
     simp only [StateT.run_bind, StateT.run_get, pure_bind] at hz
     split_ifs at hz with hmay
     · simp only [StateT.run_bind, mem_support_bind_iff] at hz
       obtain ⟨y, hy, hz⟩ := hz
-      exact firstTreeRuns_moves D net tree hblock count k y.1.2 y.2
-        (firstTreeRun_pot prims K circuits settings runLimit budget c cost D net tree hblock k s w hs
+      exact firstTreeRuns_moves D net ready tree hblock count k y.1.2 y.2
+        (firstTreeRun_pot prims K circuits settings runLimit c cost D net ready tree hblock k s w hs
           (mayRun_lt runLimit hmay) y hy) z hz
     · simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
       subst hz
       exact hs
 
 theorem firstTreeRequest_moves (hc : c ≠ .signing) (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (ready : RealState C net.State → StreamState C → Prop)
     (b : Fin (2 ^ layerHeight))
     (hblock : ∀ s, GameCount.Bound (Adds c) (treeBlock K circuits settings D net (.bottom b) s) (cost (.bottom b))) :
-    Moves (Pot runLimit c cost) 0 (firstTreeRequest prims K circuits settings runLimit budget D net b) := by
-  unfold firstTreeRequest
-  refine moves_bind (n := 0) (l := 0) (firstTreeRuns_moves prims K circuits settings runLimit budget c cost D net _
+    Moves (Pot runLimit c cost) 0 (firstTreeRequestWith prims K circuits settings runLimit D net ready b) := by
+  unfold firstTreeRequestWith
+  refine moves_bind (n := 0) (l := 0) (firstTreeRuns_moves prims K circuits settings runLimit c cost D net ready _
     hblock 1) fun _ => moves_get_bind fun s => ?_
   split
   · exact moves_bind (n := 0) (l := 0) (inStream_moves prims runLimit c cost D _ 0
@@ -631,12 +634,13 @@ theorem firstSignRequest_moves (hsign : SignQuiet (C := C) c) {σ : Type} (D : C
     movesT_bind (n := 0) (l := 0) (movesT_lift moves_get) fun s => ?_
   exact operatorAnswer_moves prims runLimit c cost hsign D _ _ _ _
 
-theorem firstSigning_moves (hc : c ≠ .signing) (D : C.Coalition) (A : DkgTsigAdversary C E) (forge : ℕ)
+theorem firstSigning_moves (hc : c ≠ .signing) (D : C.Coalition) (A : DkgTsigAdversary C E)
+    (ready : RealState C A.net.State → StreamState C → Prop) (forge : ℕ)
     (hforge : ∀ pk top, IsQueryBoundP (A.forge pk top) (ForgeInClass c) forge)
     (hblock : ∀ tree s, GameCount.Bound (Adds c) (treeBlock K circuits settings D A.net tree s) (cost tree))
     (hsign : SignQuiet (C := C) c) :
-    Moves (Pot runLimit c cost) forge (firstSigning prims K circuits settings runLimit budget D A) := by
-  unfold firstSigning
+    Moves (Pot runLimit c cost) forge (firstSigningWith prims K circuits settings runLimit D A ready) := by
+  unfold firstSigningWith
   refine moves_get_bind fun s => ?_
   split
   · refine moves_mono (pot_mono runLimit c cost) (moves_bind (l := 0) (movesT_simulateQ (pot_mono runLimit c cost)
@@ -653,7 +657,7 @@ theorem firstSigning_moves (hc : c ≠ .signing) (D : C.Coalition) (A : DkgTsigA
     · simp only [ForgeInClass, ↓reduceIte]
       rcases q with i | b | ⟨i, J, e, message⟩ | ⟨i, J, e, message, parts⟩
       · exact fun t => moves_pure _
-      · exact movesT_lift (firstTreeRequest_moves prims K circuits settings runLimit budget c cost hc D A.net b
+      · exact movesT_lift (firstTreeRequest_moves prims K circuits settings runLimit c cost hc D A.net ready b
           (hblock _))
       all_goals exact firstSignRequest_moves prims runLimit c cost hsign D i e _
     · simp only [ForgeInClass, ↓reduceIte]
@@ -662,18 +666,19 @@ theorem firstSigning_moves (hc : c ≠ .signing) (D : C.Coalition) (A : DkgTsigA
       · exact movesT_lift (moves_modify _ fun k s w hs => hs)
   · exact moves_mono (pot_mono runLimit c cost) (moves_pure _) (Nat.zero_le _)
 
-/-- The cells of class `c` at the end of `firstRun` lie within the calls of `Adds c` of the seed
+/-- The cells of class `c` at the end of `firstRunWith` lie within the calls of `Adds c` of the seed
 generation, of `runLimit` runs of each tree and of `forge`. -/
-theorem firstRun_within (hc : c ≠ .signing) (D : C.Coalition) (A : DkgTsigAdversary C E) (seed forge : ℕ)
+theorem firstRun_within (hc : c ≠ .signing) (D : C.Coalition) (A : DkgTsigAdversary C E)
+    (ready : RealState C A.net.State → StreamState C → Prop) (seed forge : ℕ)
     (hseed : GameCount.Bound (Adds c) (realExecution D A.net noFunctionality setupRounds
       (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) (fun _ => ()) []) seed)
     (hforge : ∀ pk top, IsQueryBoundP (A.forge pk top) (ForgeInClass c) forge)
     (hblock : ∀ tree s, GameCount.Bound (Adds c) (treeBlock K circuits settings D A.net tree s) (cost tree))
     (hsign : SignQuiet (C := C) c) :
-    ∀ r ∈ support (firstRun prims K circuits settings runLimit budget D A),
+    ∀ r ∈ support (firstRunWith prims K circuits settings runLimit D A ready),
       Within c r.2.1 (seed + remaining runLimit cost (fun _ => 0) + forge) := by
   intro r hr
-  unfold firstRun at hr
+  unfold firstRunWith at hr
   simp only [StateT.run_bind, mem_support_bind_iff] at hr
   obtain ⟨y, hy, hr⟩ := hr
   rcases y with ⟨⟨state, keys⟩, world⟩
@@ -685,8 +690,8 @@ theorem firstRun_within (hc : c ≠ .signing) (D : C.Coalition) (A : DkgTsigAdve
       (⟨startState D state keys, if (startState D state keys).flag then some (.seeds, world) else none⟩ :
         FirstState C A.net.State) world :=
     ⟨seed, hw.mono (by omega), le_rfl⟩
-  obtain ⟨k', hw', hk'⟩ := moves_bind (firstTreeRuns_moves prims K circuits settings runLimit budget c cost D A.net
-    .top (hblock .top) runLimit) (fun _ => firstSigning_moves prims K circuits settings runLimit budget c cost hc D A
+  obtain ⟨k', hw', hk'⟩ := moves_bind (firstTreeRuns_moves prims K circuits settings runLimit c cost D A.net ready
+    .top (hblock .top) runLimit) (fun _ => firstSigning_moves prims K circuits settings runLimit c cost hc D A ready
       forge hforge hblock hsign) _ _ world hstart x
     (by rw [StateT.run_bind, StateT.run_bind, mem_support_bind_iff]; exact ⟨z, hz, hx⟩)
   exact hw'.mono (by omega)
@@ -736,13 +741,14 @@ theorem treeBlock_bound (hc : c ≠ .signing) (D : C.Coalition) (net : Adversary
     (GameCount.wrongOutput_noCall D (Adds c) (fun _ ht => monitorCall_not_adds hc ht) _ _ _))
     fun _ => GameCount.bound_pure _ _) le_rfl
 
-/-- The count of class `c` at the end of `firstRun`. For each recording budget, coalition and
+/-- The count of class `c` at the end of `firstRunWith`. For each readiness test, coalition and
 adversary with the class budget `own`, the final hash cache has the cells of class `c` within
 `own c + honest`. -/
 def FirstCount (honest : ℕ) : Prop :=
-  ∀ (budget : StartBudget) (D : C.Coalition) (A : DkgTsigAdversary C E) (own : HashClass → ℕ),
+  ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (ready : RealState C A.net.State → StreamState C → Prop)
+    (own : HashClass → ℕ),
     DkgTsigClassBounded circuits settings runLimit A own →
-      ∀ r ∈ support (firstRun prims K circuits settings runLimit budget D A), Within c r.2.1 (own c + honest)
+      ∀ r ∈ support (firstRunWith prims K circuits settings runLimit D A ready), Within c r.2.1 (own c + honest)
 
 /-- The count of class `c` from the honest calls of the seed generation and of one run of each tree,
 and from the answers of the signing requests. -/
@@ -750,10 +756,10 @@ theorem firstCount_of (hc : c ≠ .signing) (seed : ℕ) (honestRun : Tree → �
     (htree : TreeHonest K circuits settings c honestRun) (hsign : SignQuiet (C := C) c) :
     FirstCount prims K circuits settings runLimit c
       (seed + runLimit * (honestRun .top + ∑ b : Fin (2 ^ layerHeight), honestRun (.bottom b))) := by
-  intro budget D A own hA r hr
+  intro D A ready own hA r hr
   obtain ⟨start, step, forge, hsum, hs, hround, hf⟩ := hA c
-  have h := firstRun_within prims K circuits settings runLimit budget c
-    (fun tree => treeFuel circuits settings * step + honestRun tree) hc D A (start + setupRounds * step + seed)
+  have h := firstRun_within prims K circuits settings runLimit c
+    (fun tree => treeFuel circuits settings * step + honestRun tree) hc D A ready (start + setupRounds * step + seed)
     forge (seedBlock_bound c D A.net start step seed hs hround hseed) hf
     (treeBlock_bound K circuits settings c hc D A.net step hround honestRun htree) hsign r hr
   have e : remaining runLimit (fun tree => treeFuel circuits settings * step + honestRun tree) (fun _ => 0) =
@@ -781,10 +787,10 @@ attribute [local instance] inhabitedField
 
 variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
 
-/-- Each world that `firstRun` records with the first bad event is below the final world. -/
+/-- Each world that `firstRunWith` records with the first bad event is below the final world. -/
 def RecordedBelow : Prop :=
-  ∀ (budget : StartBudget) (D : C.Coalition) (A : DkgTsigAdversary C E),
-    ∀ r ∈ support (firstRun prims K circuits settings runLimit budget D A),
+  ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (ready : RealState C A.net.State → StreamState C → Prop),
+    ∀ r ∈ support (firstRunWith prims K circuits settings runLimit D A ready),
       ∀ stage w, r.1.first = some (stage, w) → w ≤ r.2
 
 end Count
@@ -822,7 +828,6 @@ variable {C : Committee} {E : Type} [Field E] [Algebra Bit E]
 attribute [local instance] inhabitedField
 
 variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
-  (budget : StartBudget)
 
 /-- The world of the first bad record of `s` is below `world`. -/
 def Below {σ : Type} (s : FirstState C σ) (world : StreamState C) : Prop :=
@@ -832,16 +837,17 @@ theorem below_grow {σ : Type} (s : FirstState C σ) (w w' : StreamState C) (h :
     Below s w' :=
   fun stage w₁ hw => le_trans (h stage w₁ hw) hle
 
-theorem firstTreeRun_below (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree) :
-    Keeps Below (firstTreeRun prims K circuits settings budget D net tree) := by
+theorem firstTreeRun_below (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (ready : RealState C net.State → StreamState C → Prop) (tree : Tree) :
+    Keeps Below (firstTreeRunWith prims K circuits settings D net ready tree) := by
   intro s world hs z hz
-  unfold firstTreeRun at hz
+  unfold firstTreeRunWith at hz
   simp only [StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, mem_support_bind_iff, StateT.run_set,
     StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
   obtain ⟨_, ⟨x, hx, rfl⟩, rfl⟩ := hz
   have hgrow : world ≤ x.2 := Ready.streamTreeRun_le prims K circuits settings D net tree s.real world x hx
   intro stage w hw
-  change ((s.first <|> if RunReady prims budget D s.real world then none
+  change ((s.first <|> if ready s.real world then none
     else some (.unready tree (s.real.runs tree), world)) <|>
       if x.1.2 then some (.run tree (s.real.runs tree), x.2) else none) = some (stage, w) at hw
   cases hfirst : s.first with
@@ -850,7 +856,7 @@ theorem firstTreeRun_below (D : C.Coalition) (net : Adversary C E Unit PEmpty PE
     exact le_trans (hs stage w (hfirst.trans hw)) hgrow
   | none =>
     rw [hfirst, Ready.none_orElse] at hw
-    by_cases hready : RunReady prims budget D s.real world
+    by_cases hready : ready s.real world
     · rw [ite_eq_left hready, Ready.none_orElse] at hw
       split_ifs at hw
       · obtain ⟨-, rfl⟩ := Prod.mk.inj (Option.some.inj hw)
@@ -864,22 +870,24 @@ theorem inStream_below (D : C.Coalition) {σ β : Type} (oa : OracleComp (WorldS
     Keeps Below (inStream (σ := σ) prims D oa) :=
   keeps_lift below_grow (Ready.simulateQ_le prims D oa)
 
-theorem firstTreeRuns_below (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree) :
-    ∀ count, Keeps Below (firstTreeRuns prims K circuits settings runLimit budget D net tree count)
+theorem firstTreeRuns_below (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (ready : RealState C net.State → StreamState C → Prop) (tree : Tree) :
+    ∀ count, Keeps Below (firstTreeRunsWith prims K circuits settings runLimit D net ready tree count)
   | 0 => keeps_pure _
   | count + 1 => by
-    unfold firstTreeRuns
+    unfold firstTreeRunsWith
     refine keeps_get_bind fun s => ?_
     split_ifs
-    · exact keeps_bind (firstTreeRun_below prims K circuits settings budget D net tree) fun _ =>
-        firstTreeRuns_below D net tree count
+    · exact keeps_bind (firstTreeRun_below prims K circuits settings D net ready tree) fun _ =>
+        firstTreeRuns_below D net ready tree count
     · exact keeps_pure _
 
 theorem firstTreeRequest_below (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (ready : RealState C net.State → StreamState C → Prop)
     (b : Fin (2 ^ layerHeight)) :
-    Keeps Below (firstTreeRequest prims K circuits settings runLimit budget D net b) := by
-  unfold firstTreeRequest
-  refine keeps_bind (firstTreeRuns_below prims K circuits settings runLimit budget D net _ 1) fun _ =>
+    Keeps Below (firstTreeRequestWith prims K circuits settings runLimit D net ready b) := by
+  unfold firstTreeRequestWith
+  refine keeps_bind (firstTreeRuns_below prims K circuits settings runLimit D net ready _ 1) fun _ =>
     keeps_get_bind fun s => ?_
   split
   · exact keeps_bind (inStream_below prims D _) fun _ => keeps_pure _
@@ -926,32 +934,34 @@ theorem firstSignRequest_below (D : C.Coalition) {σ : Type} (i : C.Party) (e : 
     keepsT_bind (keepsT_lift keeps_get) fun s => ?_
   exact operatorAnswer_below prims D _ _ e q
 
-theorem firstOracles_below (D : C.Coalition) (A : DkgTsigAdversary C E) (q : TsigQuery C) :
-    KeepsT Below (firstOracles prims K circuits settings runLimit budget D A q) := by
+theorem firstOracles_below (D : C.Coalition) (A : DkgTsigAdversary C E)
+    (ready : RealState C A.net.State → StreamState C → Prop) (q : TsigQuery C) :
+    KeepsT Below (firstOraclesWith prims K circuits settings runLimit D A ready q) := by
   rcases q with i | b | ⟨i, J, e, message⟩ | ⟨i, J, e, message, parts⟩
   · exact fun t => keeps_pure _
-  · exact keepsT_lift (firstTreeRequest_below prims K circuits settings runLimit budget D A.net b)
+  · exact keepsT_lift (firstTreeRequest_below prims K circuits settings runLimit D A.net ready b)
   · exact firstSignRequest_below prims D i e _
   · exact firstSignRequest_below prims D i e _
 
-theorem firstSigning_below (D : C.Coalition) (A : DkgTsigAdversary C E) :
-    Keeps Below (firstSigning prims K circuits settings runLimit budget D A) := by
-  unfold firstSigning
+theorem firstSigning_below (D : C.Coalition) (A : DkgTsigAdversary C E)
+    (ready : RealState C A.net.State → StreamState C → Prop) :
+    Keeps Below (firstSigningWith prims K circuits settings runLimit D A ready) := by
+  unfold firstSigningWith
   refine keeps_get_bind fun s => ?_
   split
   · refine keeps_bind (keepsT_simulateQ _ (fun q => ?_) _ _) fun _ => keeps_pure _
     rcases q with t | q | q
     · exact keepsT_lift (inStream_below prims D _)
-    · exact firstOracles_below prims K circuits settings runLimit budget D A q
+    · exact firstOracles_below prims K circuits settings runLimit D A ready q
     · rcases q with _ | state
       · exact keepsT_lift (keeps_bind keeps_get fun _ => keeps_pure _)
       · exact keepsT_lift (keeps_modify _ fun s w hs => hs)
   · exact keeps_pure _
 
-/-- Each world that `firstRun` records with the first bad event is below the final world. -/
+/-- Each world that `firstRunWith` records with the first bad event is below the final world. -/
 theorem recordedBelow : FirstCounts.RecordedBelow prims K circuits settings runLimit := by
-  intro budget D A r hr
-  unfold firstRun at hr
+  intro D A ready r hr
+  unfold firstRunWith at hr
   simp only [StateT.run_bind, mem_support_bind_iff] at hr
   obtain ⟨y, -, hr⟩ := hr
   rcases y with ⟨⟨state, keys⟩, world⟩
@@ -963,8 +973,8 @@ theorem recordedBelow : FirstCounts.RecordedBelow prims K circuits settings runL
     split_ifs at hw
     obtain ⟨-, rfl⟩ := Prod.mk.inj (Option.some.inj hw)
     exact le_refl _
-  exact keeps_bind (firstTreeRuns_below prims K circuits settings runLimit budget D A.net .top runLimit)
-    (fun _ => firstSigning_below prims K circuits settings runLimit budget D A) _ world hstart x
+  exact keeps_bind (firstTreeRuns_below prims K circuits settings runLimit D A.net ready .top runLimit)
+    (fun _ => firstSigning_below prims K circuits settings runLimit D A ready) _ world hstart x
     (by rw [StateT.run_bind, StateT.run_bind, mem_support_bind_iff]; exact ⟨z, hz, hx⟩)
 
 end Game

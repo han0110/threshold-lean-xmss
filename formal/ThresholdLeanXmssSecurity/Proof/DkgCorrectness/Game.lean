@@ -6,12 +6,12 @@ import ThresholdLeanXmssSecurity.Proof.SigningSelection
 /-!
 # The game after the PRF hop and the statements of its hops
 
-`firstRun` runs `dkgTreeGame` in the state of `streamWorld`, where each stream under a hidden key is a
-random function, and it records the first bad event. `RunReady` is the readiness of a state at the
-start of a run, and `HiddenKeyBound` bounds the keys of the hidden streams. `StreamHop`, `FlagFirstHop`,
-`SeedsHop`, `EchoHop`, `ReuseHop`, `CopyHop`, `SplitHop` and `UsedHitHop` state the hops of the game
-with their error terms, and `streamHop` proves `StreamHop`. The last part counts the calls of the game
-by class.
+`firstRunWith` runs `dkgTreeGame` in the state of `streamWorld`, where each stream under a hidden key
+is a random function, and it records the first bad event. Its parameter `ready` is the readiness test
+at the start of a run. `RunReady` is one such test, and `HiddenKeyBound` bounds the keys of the hidden
+streams. `StreamHop`, `FlagFirstHopW`, `SeedsHopW`, `RunsUnionHopW`, `CollisionHopW` and `UsedHitHop`
+state the hops of the game with their error terms, and `streamHop` proves `StreamHop`.
+`part1_of_hopsW` gives `Part1With` from the hops. The last part counts the calls of the game by class.
 -/
 
 section
@@ -151,13 +151,14 @@ def streamTreeRun (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (tr
     let bad ← wrongOutput D (fun i => (s.operators i).keys) tree r.2
     pure (r, bad))
 
-/-- One run of `tree`. It is `treeRun` with `wrongOutput`. The game first records a start that is not
-`RunReady`, and then a run that sets the flag, each with the state of the world. -/
-def firstTreeRun (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree) :
-    FirstM C net.State Unit := do
+/-- One run of `tree`. It is `treeRun` with `wrongOutput`. The game first records a start that does
+not pass the readiness test `ready`, and then a run that sets the flag, each with the state of the
+world. -/
+def firstTreeRunWith (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (ready : RealState C net.State → StreamState C → Prop) (tree : Tree) : FirstM C net.State Unit := do
   let s ← get
   let before ← StateT.lift get
-  let first := s.first <|> if RunReady prims budget D s.real before then none
+  let first := s.first <|> if ready s.real before then none
     else some (.unready tree (s.real.runs tree), before)
   let ((state, outputs), bad) ← StateT.lift (streamTreeRun prims K circuits settings D net tree s.real)
   let after ← StateT.lift get
@@ -167,18 +168,19 @@ def firstTreeRun (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (tre
     first <|> if bad then some (.run tree (s.real.runs tree), after) else none⟩ : FirstState C net.State)
 
 /-- At most `count` runs of `tree`, each while a run is allowed. -/
-def firstTreeRuns (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree) :
-    ℕ → FirstM C net.State Unit
+def firstTreeRunsWith (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (ready : RealState C net.State → StreamState C → Prop) (tree : Tree) : ℕ → FirstM C net.State Unit
   | 0 => pure ()
   | count + 1 => do
     if mayRun runLimit D (← get).real tree then
-      firstTreeRun prims K circuits settings budget D net tree
-      firstTreeRuns D net tree count
+      firstTreeRunWith prims K circuits settings D net ready tree
+      firstTreeRunsWith D net ready tree count
 
 /-- A request of bottom tree `b`, as `treeRequest`. -/
-def firstTreeRequest (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (b : Fin (2 ^ layerHeight)) :
+def firstTreeRequestWith (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (ready : RealState C net.State → StreamState C → Prop) (b : Fin (2 ^ layerHeight)) :
     FirstM C net.State (Option (BottomTree × Digest)) := do
-  firstTreeRuns prims K circuits settings runLimit budget D net (.bottom b) 1
+  firstTreeRunsWith prims K circuits settings runLimit D net ready (.bottom b) 1
   let s ← get
   match heldBottom D s.real.operators b with
   | some tree => pure (some (tree, ← firstValue prims D s.real.operators (.randomizer topLayer (topKey b))))
@@ -193,17 +195,19 @@ def firstSignRequest (D : C.Coalition) {σ : Type} (i : C.Party) (e : KeyIndex) 
   operatorAnswer (firstLift prims D) (firstValue prims D s.real.operators) (s.real.operators i) e q
 
 /-- The signing oracles, as `realOracles`. -/
-def firstOracles (D : C.Coalition) (A : DkgTsigAdversary C E) :
+def firstOraclesWith (D : C.Coalition) (A : DkgTsigAdversary C E)
+    (ready : RealState C A.net.State → StreamState C → Prop) :
     QueryImpl (TsigSpec C) (StateT (TsigState C) (FirstM C A.net.State)) := fun q =>
   match q with
   | .corrupt i => pure (noAnswer (.corrupt i))
-  | .tree b => StateT.lift (firstTreeRequest prims K circuits settings runLimit budget D A.net b)
+  | .tree b => StateT.lift (firstTreeRequestWith prims K circuits settings runLimit D A.net ready b)
   | .round1 i J e message => firstSignRequest prims D i e (.round1 i J e message)
   | .round2 i J e message parts => firstSignRequest prims D i e (.round2 i J e message parts)
 
 /-- The signing phase, as `dkgSigning` without the win test. The win test comes after the last run,
 so it does not change the flag. -/
-def firstSigning (D : C.Coalition) (A : DkgTsigAdversary C E) : FirstM C A.net.State Unit := do
+def firstSigningWith (D : C.Coalition) (A : DkgTsigAdversary C E)
+    (ready : RealState C A.net.State → StreamState C → Prop) : FirstM C A.net.State Unit := do
   let s ← get
   let some (keys, top) := topHolder D s.real.operators | pure ()
   let forger : QueryImpl (LocalSpec C) (StateT (TsigState C) (FirstM C A.net.State)) :=
@@ -213,20 +217,22 @@ def firstSigning (D : C.Coalition) (A : DkgTsigAdversary C E) : FirstM C A.net.S
     | .read => StateT.lift ((·.real.adversary) <$> (get : FirstM C A.net.State _))
     | .write state => StateT.lift (modify fun s : FirstState C A.net.State =>
         { s with real := { s.real with adversary := state } })
-  let _ ← (simulateQ (forger + (firstOracles prims K circuits settings runLimit budget D A + cell))
+  let _ ← (simulateQ (forger + (firstOraclesWith prims K circuits settings runLimit D A ready + cell))
     (A.forge ⟨top.root, keys.parameter⟩ top)).run ⟨D.1, fun _ => none, [], fun _ => none⟩
 
-/-- The run of `dkgTreeGame` after the PRF hop, from the empty caches. It gives the final state of
-the game and of the world. -/
-def firstRun (D : C.Coalition) (A : DkgTsigAdversary C E) : ProbComp (FirstState C A.net.State × StreamState C) :=
+/-- The run of `dkgTreeGame` after the PRF hop, from the empty caches, with the readiness test
+`ready` at the start of each run. It gives the final state of the game and of the world. -/
+def firstRunWith (D : C.Coalition) (A : DkgTsigAdversary C E)
+    (ready : RealState C A.net.State → StreamState C → Prop) :
+    ProbComp (FirstState C A.net.State × StreamState C) :=
   (do
     let (state, keys) ← simulateQ (streamWorld prims D) (realExecution D A.net noFunctionality setupRounds
       (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) (fun _ => ()) [])
     let world ← get
     let start := startState D state keys
     let (_, s) ← (do
-        firstTreeRuns prims K circuits settings runLimit budget D A.net .top runLimit
-        firstSigning prims K circuits settings runLimit budget D A).run
+        firstTreeRunsWith prims K circuits settings runLimit D A.net ready .top runLimit
+        firstSigningWith prims K circuits settings runLimit D A ready).run
       ⟨start, if start.flag then some (.seeds, world) else none⟩
     pure s).run (∅, ∅)
 
@@ -257,17 +263,40 @@ def GlobalEvent (world : StreamState C) : Prop :=
   DomainCollision EchoDomain world.1 ∨ DomainCollision DeriveDomain world.1 ∨
     DomainCollision CopyDomain world.1 ∨ DomainCollision SplitHashDomain world.1
 
-/-- The probability of `event` on the final state of `firstRun`. -/
-def firstProb (D : C.Coalition) (A : DkgTsigAdversary C E)
+/-- The probability of `event` on the final state of `firstRunWith`. -/
+def firstProbWith (D : C.Coalition) (A : DkgTsigAdversary C E)
+    (ready : RealState C A.net.State → StreamState C → Prop)
     (event : FirstState C A.net.State × StreamState C → Prop) : ℝ :=
-  (Pr{let r ← firstRun prims K circuits settings runLimit budget D A}[event r]).toReal
+  (Pr{let r ← firstRunWith prims K circuits settings runLimit D A ready}[event r]).toReal
 
 /-- The probability that the first bad event has a world state with a collision in the domain `P`. -/
-def firstCollision (D : C.Coalition) (A : DkgTsigAdversary C E) (P : Query C → Prop) : ℝ :=
-  firstProb prims K circuits settings runLimit budget D A fun r =>
+def firstCollisionWith (D : C.Coalition) (A : DkgTsigAdversary C E)
+    (ready : RealState C A.net.State → StreamState C → Prop) (P : Query C → Prop) : ℝ :=
+  firstProbWith prims K circuits settings runLimit D A ready fun r =>
     ∃ stage world, r.1.first = some (stage, world) ∧ DomainCollision P world.1
 
 /-! ## The counts and the error terms -/
+
+/-- The bounds at the start of each run for an adversary of budget `q`. The adversary makes at most
+`q` calls, and the honest operators of the game add at most `gameBatches * termHashes C` history and
+digest cells, `gameCoinKeys` coin keys and expansion keys, and one key under each name in each
+setup. -/
+def startBudget (C : Committee) (q : ℕ) : StartBudget :=
+  ⟨splitBudget settings runLimit C q, q + gameCoinKeys circuits settings runLimit C,
+    gameCoinKeys circuits settings runLimit C, splitBudget settings runLimit C q, gameSetups runLimit⟩
+
+/-- The error of the proof of `DkgCorrectness`. It is the sum of the hop terms. `usedHit` is the bound of the stream-key
+event of the game. -/
+def part1Error (C : Committee) (usedHit : ℕ → ℝ) (q : ℕ) : ℝ :=
+  seedGenHashError C q + usedHit q + echoError runLimit C q + reuseError runLimit C q +
+    copyError settings runLimit C q + splitError settings runLimit C q +
+    runLimit * (runError (E := E) circuits settings runLimit C q .top +
+      ∑ b : Fin (2 ^ layerHeight), runError (E := E) circuits settings runLimit C q (.bottom b))
+
+/-- The error of `UsedHitHop` from the hybrid. Each slot adds the hidden half of one PRSS setup at
+budget `2 * q + honestSetupCalls`, and the last hybrid adds `freshKeyError`. -/
+def setupHybridError (C : Committee) (q : ℕ) : ℝ :=
+  gameSetups runLimit * (prssSetupHashError C (2 * q + honestSetupCalls runLimit C) / 2) + freshKeyError runLimit C q
 
 /-- The PRF hop for each game. The streams under the hidden keys become a random function, with
 the stream-key event and the PRF advantage. The right side keeps the final state of `streamWorld`. -/
@@ -277,24 +306,46 @@ def StreamHop (D : C.Coalition) : Prop :=
       (Pr{let r ← (simulateQ (streamWorld prims D) game).run (∅, ∅)}[r.1 = true]).toReal +
         probBad_streamKey prims D game + streamAdvantage prims D game
 
-/-- The flag of `dkgTreeGame` in `streamWorld` comes with a first bad event of `firstRun`. -/
-def FlagFirstHop : Prop :=
-  ∀ (D : C.Coalition) (A : DkgTsigAdversary C E),
+/-- The flag of `dkgTreeGame` in `streamWorld` comes with a first bad event of `firstRunWith`, for
+each readiness test. -/
+def FlagFirstHopW : Prop :=
+  ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (ready : RealState C A.net.State → StreamState C → Prop),
     (Pr{let r ← (simulateQ (streamWorld prims D) (dkgTreeGame K circuits settings runLimit D A)).run (∅, ∅)}[
         r.1 = true]).toReal ≤
-      firstProb prims K circuits settings runLimit budget D A fun r => r.1.first ≠ none
+      firstProbWith prims K circuits settings runLimit D A ready fun r => r.1.first ≠ none
 
-/-- The seeds differ after the seed generation with probability at most `seedGenHashError`. -/
-def SeedsHop : Prop :=
-  ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ), DkgTsigBounded circuits settings runLimit A q →
-    firstProb prims K circuits settings runLimit budget D A (fun r => ∃ world, r.1.first = some (.seeds, world)) ≤
+/-- The seeds differ after the seed generation with probability at most `seedGenHashError`, for each
+readiness test. -/
+def SeedsHopW : Prop :=
+  ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ)
+    (ready : RealState C A.net.State → StreamState C → Prop), DkgTsigBounded circuits settings runLimit A q →
+    firstProbWith prims K circuits settings runLimit D A ready (fun r => ∃ world, r.1.first = some (.seeds, world)) ≤
       seedGenHashError C q
 
-/-- At the world of the first bad record, two echo hashes of the PRSS setups collide with probability at
-most `echoError`. -/
-def EchoHop : Prop :=
-  ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ), DkgTsigBounded circuits settings runLimit A q →
-    firstCollision prims K circuits settings runLimit budget D A EchoDomain ≤ echoError runLimit C q
+/-- The bound `ε tree` of a run of `tree` that sets the flag with no global event at its end, from each
+start that passes the readiness test `ready` and has no flag. -/
+def RunBadW (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (ready : RealState C net.State → StreamState C → Prop) (ε : Tree → ℝ) : Prop :=
+  ∀ (tree : Tree) (s : RealState C net.State) (world : StreamState C), ready s world → s.flag = false →
+    (Pr{let r ← (streamTreeRun prims K circuits settings D net tree s).run world}[
+        r.1.2 = true ∧ ¬ GlobalEvent r.2]).toReal ≤ ε tree
+
+/-- The union over the runs. A first bad record of a run with no global event at its world has
+probability at most `runLimit` times the sum of the bounds of one run, for each readiness test and
+bounds that are not negative. -/
+def RunsUnionHopW : Prop :=
+  ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (ready : RealState C A.net.State → StreamState C → Prop)
+    (ε : Tree → ℝ), (∀ tree, 0 ≤ ε tree) → RunBadW prims K circuits settings D A.net ready ε →
+    firstProbWith prims K circuits settings runLimit D A ready (fun r =>
+        ∃ tree index world, r.1.first = some (.run tree index, world) ∧ ¬ GlobalEvent world) ≤
+      runLimit * (ε .top + ∑ b : Fin (2 ^ layerHeight), ε (.bottom b))
+
+/-- At the world of the first bad record, two cells of the domain `P` collide with probability at most
+`error q`, for each readiness test. -/
+def CollisionHopW (P : Query C → Prop) (error : ℕ → ℝ) : Prop :=
+  ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ)
+    (ready : RealState C A.net.State → StreamState C → Prop), DkgTsigBounded circuits settings runLimit A q →
+    firstCollisionWith prims K circuits settings runLimit D A ready P ≤ error q
 
 /-- The probability of `UsedHit` at the end of `game` in the world with the joint keys and
 independent AES keys. -/
@@ -307,23 +358,13 @@ def UsedHitHop (usedHit : ℕ → ℝ) : Prop :=
   ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ), DkgTsigBounded circuits settings runLimit A q →
     usedHitProb prims D (dkgTreeGame K circuits settings runLimit D A) ≤ usedHit q
 
-/-- At the world of the first bad record, two PRSS setups derive one hidden key under one name with
-probability at most `reuseError`. -/
-def ReuseHop : Prop :=
-  ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ), DkgTsigBounded circuits settings runLimit A q →
-    firstCollision prims K circuits settings runLimit budget D A DeriveDomain ≤ reuseError runLimit C q
-
-/-- At the world of the first bad record, two copy hashes collide with probability at most `copyError`.
--/
-def CopyHop : Prop :=
-  ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ), DkgTsigBounded circuits settings runLimit A q →
-    firstCollision prims K circuits settings runLimit budget D A CopyDomain ≤ copyError settings runLimit C q
-
-/-- At the world of the first bad record, two history or digest cells collide with probability at most
-`splitError`, one time for the game. -/
-def SplitHop : Prop :=
-  ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ), DkgTsigBounded circuits settings runLimit A q →
-    firstCollision prims K circuits settings runLimit budget D A SplitHashDomain ≤ splitError settings runLimit C q
+/-- The claim of `DkgCorrectness` with the error `error`, for each `prims` whose `Th` the circuits
+compute. -/
+def Part1With (error : ℕ → ℝ) : Prop :=
+  0 < settings.batchSize → 0 < runLimit → ∀ prims : Primitives, CircuitsCompute circuits prims.Th →
+    ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ), DkgTsigBounded circuits settings runLimit A q →
+      accepts prims (dkgTreeGame K circuits settings runLimit D A) ≤
+        error q + streamAdvantage prims D (dkgTreeGame K circuits settings runLimit D A)
 
 /-- `StreamHop` holds for each game. It joins `keyWorld_coupling` with the two experiments of `prgReduction`. -/
 theorem streamHop (D : C.Coalition) : StreamHop prims D := by
@@ -348,6 +389,127 @@ theorem streamHop (D : C.Coalition) : StreamHop prims D := by
   linarith
 
 /-! ## The assembly -/
+
+omit [Fintype E] [DecidableEq E] in
+theorem prReal_mono {α : Type} (mx : ProbComp α) (p q : α → Prop) (h : ∀ a ∈ support mx, p a → q a) :
+    (Pr{let a ← mx}[p a]).toReal ≤ (Pr{let a ← mx}[q a]).toReal :=
+  ENNReal.toReal_mono (prEvent_ne_top _) (prEvent_mono_of_support _ _ _ h)
+
+omit [Fintype E] [DecidableEq E] in
+theorem prReal_or_le {α : Type} (mx : ProbComp α) (p q : α → Prop) :
+    (Pr{let a ← mx}[p a ∨ q a]).toReal ≤ (Pr{let a ← mx}[p a]).toReal + (Pr{let a ← mx}[q a]).toReal := by
+  rw [← ENNReal.toReal_add (prEvent_ne_top _) (prEvent_ne_top _)]
+  exact ENNReal.toReal_mono (ENNReal.add_ne_top.2 ⟨prEvent_ne_top _, prEvent_ne_top _⟩) (prEvent_or_le _ _ _)
+
+omit [Fintype E] [DecidableEq E] in
+theorem prReal_or7_le {α : Type} (mx : ProbComp α) (p₁ p₂ p₃ p₄ p₅ p₆ p₇ : α → Prop) :
+    (Pr{let a ← mx}[p₁ a ∨ p₂ a ∨ p₃ a ∨ p₄ a ∨ p₅ a ∨ p₆ a ∨ p₇ a]).toReal ≤
+      (Pr{let a ← mx}[p₁ a]).toReal + (Pr{let a ← mx}[p₂ a]).toReal + (Pr{let a ← mx}[p₃ a]).toReal +
+        (Pr{let a ← mx}[p₄ a]).toReal + (Pr{let a ← mx}[p₅ a]).toReal + (Pr{let a ← mx}[p₆ a]).toReal +
+        (Pr{let a ← mx}[p₇ a]).toReal := by
+  have u₁ := prReal_or_le mx p₁ fun a => p₂ a ∨ p₃ a ∨ p₄ a ∨ p₅ a ∨ p₆ a ∨ p₇ a
+  have u₂ := prReal_or_le mx p₂ fun a => p₃ a ∨ p₄ a ∨ p₅ a ∨ p₆ a ∨ p₇ a
+  have u₃ := prReal_or_le mx p₃ fun a => p₄ a ∨ p₅ a ∨ p₆ a ∨ p₇ a
+  have u₄ := prReal_or_le mx p₄ fun a => p₅ a ∨ p₆ a ∨ p₇ a
+  have u₅ := prReal_or_le mx p₅ fun a => p₆ a ∨ p₇ a
+  have u₆ := prReal_or_le mx p₆ p₇
+  linarith
+
+omit [Field E] [DecidableEq E] [Algebra Bit E] in
+theorem checkErrorMax_nonneg (q : ℕ) : 0 ≤ checkErrorMax (E := E) circuits settings runLimit C q :=
+  NNReal.coe_nonneg _
+
+omit [Fintype E] [DecidableEq E] in
+/-- The first bad record splits into the seeds, a start that does not pass the test, a run that sets
+the flag, and the four collisions at its world. -/
+theorem firstProbWith_le (D : C.Coalition) (A : DkgTsigAdversary C E)
+    (ready : RealState C A.net.State → StreamState C → Prop) :
+    firstProbWith prims K circuits settings runLimit D A ready (fun r => r.1.first ≠ none) ≤
+      firstProbWith prims K circuits settings runLimit D A ready (fun r => ∃ world, r.1.first = some (.seeds, world)) +
+      firstProbWith prims K circuits settings runLimit D A ready
+        (fun r => ∃ tree index world, r.1.first = some (.unready tree index, world) ∧ ¬ GlobalEvent world) +
+      firstProbWith prims K circuits settings runLimit D A ready (fun r =>
+        ∃ tree index world, r.1.first = some (.run tree index, world) ∧ ¬ GlobalEvent world) +
+      (firstCollisionWith prims K circuits settings runLimit D A ready EchoDomain +
+        firstCollisionWith prims K circuits settings runLimit D A ready DeriveDomain +
+        firstCollisionWith prims K circuits settings runLimit D A ready CopyDomain +
+        firstCollisionWith prims K circuits settings runLimit D A ready SplitHashDomain) := by
+  unfold firstCollisionWith firstProbWith
+  set mx := firstRunWith prims K circuits settings runLimit D A ready
+  have cover := prReal_mono mx (fun r => r.1.first ≠ none) (fun r =>
+      (∃ world, r.1.first = some (.seeds, world)) ∨
+      ((∃ tree index world, r.1.first = some (.unready tree index, world) ∧ ¬ GlobalEvent world) ∨
+      ((∃ tree index world, r.1.first = some (.run tree index, world) ∧ ¬ GlobalEvent world) ∨
+      ((∃ stage world, r.1.first = some (stage, world) ∧ DomainCollision EchoDomain world.1) ∨
+      ((∃ stage world, r.1.first = some (stage, world) ∧ DomainCollision DeriveDomain world.1) ∨
+      ((∃ stage world, r.1.first = some (stage, world) ∧ DomainCollision CopyDomain world.1) ∨
+      (∃ stage world, r.1.first = some (stage, world) ∧ DomainCollision SplitHashDomain world.1)))))))
+    (by
+      intro r _ hfirst
+      obtain ⟨⟨stage, world⟩, hsome⟩ := Option.ne_none_iff_exists'.mp hfirst
+      cases stage with
+      | seeds => exact Or.inl ⟨world, hsome⟩
+      | unready tree index =>
+        by_cases hglobal : GlobalEvent world
+        · rcases hglobal with h | h | h | h
+          · exact Or.inr (Or.inr (Or.inr (Or.inl ⟨_, world, hsome, h⟩)))
+          · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨_, world, hsome, h⟩))))
+          · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨_, world, hsome, h⟩)))))
+          · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨_, world, hsome, h⟩)))))
+        · exact Or.inr (Or.inl ⟨tree, index, world, hsome, hglobal⟩)
+      | run tree index =>
+        by_cases hglobal : GlobalEvent world
+        · rcases hglobal with h | h | h | h
+          · exact Or.inr (Or.inr (Or.inr (Or.inl ⟨_, world, hsome, h⟩)))
+          · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨_, world, hsome, h⟩))))
+          · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨_, world, hsome, h⟩)))))
+          · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨_, world, hsome, h⟩)))))
+        · exact Or.inr (Or.inr (Or.inl ⟨tree, index, world, hsome, hglobal⟩)))
+  refine cover.trans ((prReal_or7_le mx _ _ _ _ _ _ _).trans ?_)
+  linarith
+
+omit [DecidableEq E] in
+/-- `Part1With` with `part1Error` from the hops. `ready prims q D A` is the readiness test of the game
+for the budget `q`. The hops of the game hold for each test, the readiness hop and the bound of a run
+are at the test `ready`, and `UsedHitHop` is on another game and has no test. -/
+theorem part1_of_hopsW (usedHit : ℕ → ℝ)
+    (ready : Primitives → ℕ → C.Coalition → ∀ A : DkgTsigAdversary C E,
+      RealState C A.net.State → StreamState C → Prop)
+    (flagFirst : ∀ prims, FlagFirstHopW prims K circuits settings runLimit)
+    (seeds : ∀ prims, SeedsHopW prims K circuits settings runLimit)
+    (runsUnion : ∀ prims, RunsUnionHopW prims K circuits settings runLimit)
+    (readyHop : ∀ prims (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ),
+      DkgTsigBounded circuits settings runLimit A q →
+      firstProbWith prims K circuits settings runLimit D A (ready prims q D A)
+        (fun r => ∃ tree index world, r.1.first = some (.unready tree index, world) ∧ ¬ GlobalEvent world) = 0)
+    (echo : ∀ prims, CollisionHopW prims K circuits settings runLimit EchoDomain (echoError runLimit C))
+    (usedHitHop : ∀ prims, UsedHitHop prims K circuits settings runLimit usedHit)
+    (reuse : ∀ prims, CollisionHopW prims K circuits settings runLimit DeriveDomain (reuseError runLimit C))
+    (copy : ∀ prims, CollisionHopW prims K circuits settings runLimit CopyDomain (copyError settings runLimit C))
+    (split : ∀ prims, CollisionHopW prims K circuits settings runLimit SplitHashDomain (splitError settings runLimit C))
+    (run : 0 < settings.batchSize → ∀ prims, CircuitsCompute circuits prims.Th →
+      ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ), DkgTsigBounded circuits settings runLimit A q →
+        RunBadW prims K circuits settings D A.net (ready prims q D A)
+          (runError (E := E) circuits settings runLimit C q)) :
+    Part1With K circuits settings runLimit (part1Error (E := E) circuits settings runLimit C usedHit) := by
+  intro batch _ prims compute D A q bounded
+  have h₀ := streamHop prims D (dkgTreeGame K circuits settings runLimit D A)
+  have h₆ := (probBad_streamKey_le_usedHit prims D (dkgTreeGame K circuits settings runLimit D A)).trans
+    (usedHitHop prims D A q bounded)
+  have h₁ := flagFirst prims D A (ready prims q D A)
+  have hsplit := firstProbWith_le prims K circuits settings runLimit D A (ready prims q D A)
+  have h₂ := seeds prims D A q (ready prims q D A) bounded
+  have hsign : ∀ tree, 0 ≤ runError (E := E) circuits settings runLimit C q tree := fun tree =>
+    add_nonneg (mul_nonneg (Nat.cast_nonneg _) (checkErrorMax_nonneg circuits settings runLimit q))
+      (by unfold freshError; positivity)
+  have h₃ := runsUnion prims D A (ready prims q D A) _ hsign (run batch prims compute D A q bounded)
+  have h₄ := readyHop prims D A q bounded
+  have h₅ := echo prims D A q (ready prims q D A) bounded
+  have h₇ := reuse prims D A q (ready prims q D A) bounded
+  have h₈ := copy prims D A q (ready prims q D A) bounded
+  have h₉ := split prims D A q (ready prims q D A) bounded
+  unfold part1Error
+  linarith
 
 end ThresholdLeanXmssSecurity.DkgCorrectnessProof
 
@@ -565,3 +727,7 @@ end
 /-- info: 'ThresholdLeanXmssSecurity.DkgCorrectnessProof.streamHop' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.DkgCorrectnessProof.streamHop
+
+/-- info: 'ThresholdLeanXmssSecurity.DkgCorrectnessProof.part1_of_hopsW' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.DkgCorrectnessProof.part1_of_hopsW
