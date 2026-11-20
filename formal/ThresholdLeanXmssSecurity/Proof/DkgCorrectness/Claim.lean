@@ -10,6 +10,7 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Ledger.Cells
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Ledger.Parts
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Leaves
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Ready.GameHidden
+import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Records.Keys
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.RunsUnion
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Schedule.Joint
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.EndWorld
@@ -19,14 +20,15 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.EndWorld
 
 `dkgCorrectness_of_leaves` gives the field `dkgCorrectness` of `Theorems`,
 `CircuitsCompute circuits prims.Th → DkgCorrectness prims K circuits settings runLimit`. Its premises
-are the three structures of `Leaves.lean`. `ceremonyBad_of_parts`, `provenanceTreeRun_of_parts`,
+are the two structures of `Leaves.lean`. `ceremonyBad_of_parts`, `provenanceTreeRun_of_parts`,
 `readyHopL_of_ends`, `UsedHit.usedHitHop_of_reductions`, `ceremonySupport_of_parts` with
 `cutState_of_supports`, and `topCover_of_started` and `restCover_of_started` join their fields to the
 statements of the route. `UsedHit.hybridEnd_of_statements` gives `HybridEnd`. The proved leaves
 `cutDead`, `cutMonotone`, `headFuel`, `headCover`, `treePhaseProvenance`, `hiddenNames`,
 `ledgerHidden`, `ceremonyProvenance`, `ledgerSplit`, `ledgerSalts`, `ledgerSound`, `ceremonyCounters`,
 `zeroCheck`, `freshOne`, `ceremonyInterval`, `monitorProvenance`, `ceremonyStarted`, `ceremonyAbort`,
-`Joint.ceremonyCoupling`,
+`Joint.ceremonyCoupling`, `CeremonyRecords.ceremonyMonitor`, `CeremonyRecords.ceremonyBatch`,
+`CeremonyRecords.ceremonySync`, `EchoRound.ceremonyKeysAgree`, `CeremonyRecords.ceremonyOutputsAgree`,
 `shortFuel`, `soundAtEnd`, `hiddenAtEnd`, `echoHop`, `reuseHop`, `copyHop` and `splitHop` and the
 hops `flagFirstHop`, `seedsHop` and `runsUnionHop` give the rest. The error of `UsedHitHop` is
 `setupHybridError`, and with it `part1Error` is `dkgCorrectnessError`.
@@ -47,9 +49,8 @@ variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algeb
 
 variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
 
-/-- The field `dkgCorrectness` from the three groups of leaves. -/
+/-- The field `dkgCorrectness` from the two groups of leaves. -/
 theorem dkgCorrectness_of_leaves (ceremony : CeremonyParts K circuits settings runLimit)
-    (support : SupportParts K circuits settings)
     (usedHit : UsedHitParts K circuits settings runLimit) :
     CircuitsCompute circuits prims.Th → ThresholdLeanXmss.DkgCorrectness prims K circuits settings runLimit := by
   intro compute batch runs D A q bounded
@@ -69,16 +70,20 @@ theorem dkgCorrectness_of_leaves (ceremony : CeremonyParts K circuits settings r
         (usedHit.keyProvenance prims) usedHit.keyParametric (usedHit.cellsCount prims)))
     (reuseHop K circuits settings runLimit) (copyHop K circuits settings runLimit)
     (splitHop K circuits settings runLimit)
-    (fun prims => ceremonyBad_of_parts prims K circuits settings runLimit (ceremony.monitor prims)
-      (ceremony.batch prims) (ceremonyAbort prims K circuits settings) (freshOne prims K circuits settings)
-      (hiddenNames (C := C)) (ceremony.sync prims) (ceremonyInterval prims K circuits settings)
-      (Joint.ceremonyCoupling prims K circuits settings) (ceremony.keysAgree prims) (ceremony.budget prims)
+    (fun prims => ceremonyBad_of_parts prims K circuits settings runLimit
+      (CeremonyRecords.ceremonyMonitor prims K circuits settings)
+      (CeremonyRecords.ceremonyBatch prims K circuits settings) (ceremonyAbort prims K circuits settings)
+      (freshOne prims K circuits settings) (hiddenNames (C := C))
+      (CeremonyRecords.ceremonySync prims K circuits settings) (ceremonyInterval prims K circuits settings)
+      (Joint.ceremonyCoupling prims K circuits settings) (EchoRound.ceremonyKeysAgree prims K circuits settings)
+      (ceremony.budget prims)
       (zeroCheck (C := C) (E := E)) (shortFuel prims K circuits settings) (ceremony.tupleInputs prims))
     (fun prims => topCover_of_started prims K circuits settings (ceremonyStarted prims K circuits settings))
     (headFuel circuits settings)
     (fun prims => headCover prims K circuits settings)
     (cutState_of_supports K circuits settings fun prims => ceremonySupport_of_parts prims K circuits settings
-      (ceremonyCounters prims K circuits settings) (support.outputsAgree prims)
+      (ceremonyCounters prims K circuits settings)
+      (CeremonyRecords.ceremonyOutputsAgree prims K circuits settings)
       (ledgerSplit prims K circuits settings) (ledgerSound prims K circuits settings)
       (ledgerSalts prims K circuits settings) (ledgerHidden prims K circuits settings)
       (ceremonyProvenance prims K circuits settings))

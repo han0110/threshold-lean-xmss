@@ -4,10 +4,9 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.EndTable
 /-!
 # The leaves of the proof of `dkgCorrectness`
 
-Three structures name the statements that the landing `dkgCorrectness_of_leaves` takes. Each one
+Two structures name the statements that the landing `dkgCorrectness_of_leaves` takes. Each one
 is a list of hypotheses by group, with no instance. `CeremonyParts` holds the parts of the lemma of
-one ceremony, `SupportParts` the part of the support lemma of one ceremony, and `UsedHitParts` the
-parts of the hop on the used keys. A statement with a proof in the library is no field.
+one ceremony, and `UsedHitParts` the parts of the hop on the used keys. A statement with a proof in the library is no field.
 -/
 
 section
@@ -28,24 +27,10 @@ variable (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLim
 /-- The parts of `CeremonyBad` (`ceremonyBad_of_parts`) and of `ProvenanceTreeRun`
 (`provenanceTreeRun_of_parts`). -/
 structure CeremonyParts : Prop where
-  /-- Wrong opened outputs of an honest operator have a wrong recorded batch. -/
-  monitor : ∀ prims, CeremonyMonitor prims K circuits settings
-  /-- A wrong recorded batch has a bad check, or an honest operator did not record its start. -/
-  batch : ∀ prims, CeremonyBatch prims K circuits settings
-  /-- The honest operators record the same modes, circuits, labels and tags at the checks. -/
-  sync : ∀ prims, CeremonySync prims K circuits settings
-  /-- At a joint start of a check the honest PRSS keys agree, or two echo hashes collide. -/
-  keysAgree : ∀ prims, CeremonyKeysAgree prims K circuits settings
   /-- A joint start of a check with a positive count fits the budget of the game. -/
   budget : ∀ prims, CeremonyBudget prims K circuits settings runLimit
   /-- The tuples of a joint start of a check have `TupleInputs` when the PRSS keys agree. -/
   tupleInputs : ∀ prims, CeremonyTupleInputs prims K circuits settings
-
-/-- The parts of `CeremonySupport` (`ceremonySupport_of_parts`), which gives `CutState`
-(`cutState_of_supports`). -/
-structure SupportParts : Prop where
-  /-- With no global event at the end, two honest results have the same opened outputs. -/
-  outputsAgree : ∀ prims, CeremonyOutputsAgree prims K circuits settings
 
 /-- The parts of `UsedHitHop` at the error `setupHybridError` (`UsedHit.usedHitHop_of_reductions`). -/
 structure UsedHitParts : Prop where
