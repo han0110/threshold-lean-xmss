@@ -13,8 +13,8 @@ import VCVio.EvalDist.MeasureTVDist.Basic
 The key generation of `doc/dkg.md` and the signing of `doc/sign.md`, as programs of one operator, at
 the level of GS20 and PRAWNS. The end of the file holds the oracles of the world, the execution
 model, the programs in the hybrid models of GS20, and the honest runs that the claims compare.
-`Statement/RandomOracle.lean` holds the counted world, and `Statement/SecureComputation.lean` holds
-the notions of secure computation.
+`Statement/RandomOracle.lean` holds the counted world, and `Statement/Execution.lean` holds the
+execution of a protocol on the network.
 
 * An operator program is an `OracleComp` with private sampling, the oracle `H` and one query
   `exchange` for each synchronous round. A program that returns `none` aborts.
