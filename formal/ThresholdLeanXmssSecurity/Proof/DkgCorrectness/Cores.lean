@@ -149,6 +149,17 @@ theorem runTimed_firstCeremony (i : C.Party) (keys : Keys C) (tree : Tree) :
         (firstJobs tree) : StateT (ℕ × ℕ) (PartyM C E RealSpec) _) :=
   runTimed_ceremonyRun_exact K circuits settings i keys (firstJobs tree)
 
+omit [Fintype E] [DecidableEq E] in
+/-- A ceremony on any keys starts with its PRSS setup. -/
+theorem ceremonyRun_run_keys (i : C.Party) (keys : Keys C) (jobs : List Job) (st : ℕ × ℕ) :
+    (ceremonyRun K circuits settings (fun ctx _ _ => realRunBuildingBlocks K ctx settings.mode) i keys jobs :
+        StateT (ℕ × ℕ) (PartyM C E RealSpec) _).run st =
+      prssSetup i >>= fun prss => ((chunks settings.batchSize jobs).mapM (realBatch K circuits settings.mode
+        ⟨i, keys, prss⟩ keys.parameter)).run st >>= fun p =>
+          pure (p.1.foldlM (fun acc batch => batch.map (acc ++ ·)) [], p.2) := by
+  simp only [ceremonyRun, batched, StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind, StateT.run_pure]
+  rfl
+
 end Ceremony
 
 /-! ## The cut of a bottom tree at its second PRSS setup -/
@@ -269,6 +280,15 @@ theorem timed_bottomHead (parameter : PublicParameter) (i : C.Party) (operator :
     · exact timed_failure 0
     · exact timed_pure _
   · exact timed_failure _
+
+omit [Fintype E] [DecidableEq E] in
+/-- The part after the cut starts with the second PRSS setup. -/
+theorem bottomTail_prssSetup (i : C.Party) (operator : OperatorState C) (b : Fin (2 ^ layerHeight))
+    (keys : Keys C) (top : TopTree) (hk : operator.keys = some keys) (ht : operator.top = some top)
+    (r : (List (List Bit) × Digest × Randomizer × Encoding) × (ℕ × ℕ)) :
+    ∃ k, bottomTail K circuits settings i operator b r = prssSetup i >>= k := by
+  simp only [bottomTail, hk, ht, secondPart, StateT.run_bind, ceremonyRun_run_keys, bind_assoc]
+  exact ⟨_, rfl⟩
 
 end BottomCut
 
@@ -873,3 +893,7 @@ end
 /-- info: 'ThresholdLeanXmssSecurity.DkgCorrectnessProof.KnownTupleInputs.tupleInputs_batchTuples' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.DkgCorrectnessProof.KnownTupleInputs.tupleInputs_batchTuples
+
+/-- info: 'ThresholdLeanXmssSecurity.DkgCorrectnessProof.CheckTiming.bottomTail_prssSetup' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.DkgCorrectnessProof.CheckTiming.bottomTail_prssSetup

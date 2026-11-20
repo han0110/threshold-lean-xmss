@@ -555,6 +555,24 @@ theorem setupPhaseAgree : SetupPhaseAgree (E := E) prims D := by
 
 end Network
 
+/-! ## The assembly -/
+
+section Assembly
+
+/-- A collision of a domain stays in a larger cache. -/
+theorem domainCollision_mono {P : Query C → Prop} {c c' : HashCache C} (hle : c ≤ c')
+    (h : DomainCollision P c) : DomainCollision P c' := by
+  obtain ⟨t₁, t₂, u₁, u₂, hne, h₁, h₂, heq⟩ := h
+  refine ⟨t₁, t₂, u₁, u₂, hne, ?_, ?_, heq⟩
+  · simp only [splitRegionCache, QueryCache.ofFn_apply] at h₁ ⊢
+    split_ifs at h₁ ⊢ with hp
+    exact hle h₁
+  · simp only [splitRegionCache, QueryCache.ofFn_apply] at h₂ ⊢
+    split_ifs at h₂ ⊢ with hp
+    exact hle h₂
+
+end Assembly
+
 end SetupAgree
 
 end ThresholdLeanXmssSecurity.DkgCorrectnessProof
@@ -826,3 +844,7 @@ end
 /-- info: 'ThresholdLeanXmssSecurity.DkgCorrectnessProof.SetupParameter.seedParameterAgree' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.DkgCorrectnessProof.SetupParameter.seedParameterAgree
+
+/-- info: 'ThresholdLeanXmssSecurity.DkgCorrectnessProof.SetupAgree.domainCollision_mono' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.DkgCorrectnessProof.SetupAgree.domainCollision_mono
