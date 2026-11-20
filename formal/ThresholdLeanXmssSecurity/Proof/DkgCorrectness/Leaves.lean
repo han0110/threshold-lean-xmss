@@ -1,12 +1,11 @@
-import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Ceremony.Statements
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.EndTable
 
 /-!
 # The leaves of the proof of `dkgCorrectness`
 
-Two structures name the statements that the landing `dkgCorrectness_of_leaves` takes. Each one
-is a list of hypotheses by group, with no instance. `CeremonyParts` holds the parts of the lemma of
-one ceremony, and `UsedHitParts` the parts of the hop on the used keys. A statement with a proof in the library is no field.
+The structure `UsedHitParts` names the statements that the landing `dkgCorrectness_of_leaves`
+takes. It is a list of hypotheses for the parts of the hop on the used keys, with no instance. A
+statement with a proof in the library is no field.
 -/
 
 section
@@ -23,14 +22,6 @@ namespace ThresholdLeanXmssSecurity.DkgCorrectnessProof
 variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
 
 variable (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
-
-/-- The parts of `CeremonyBad` (`ceremonyBad_of_parts`) and of `ProvenanceTreeRun`
-(`provenanceTreeRun_of_parts`). -/
-structure CeremonyParts : Prop where
-  /-- A joint start of a check with a positive count fits the budget of the game. -/
-  budget : ∀ prims, CeremonyBudget prims K circuits settings runLimit
-  /-- The tuples of a joint start of a check have `TupleInputs` when the PRSS keys agree. -/
-  tupleInputs : ∀ prims, CeremonyTupleInputs prims K circuits settings
 
 /-- The parts of `UsedHitHop` at the error `setupHybridError` (`UsedHit.usedHitHop_of_reductions`). -/
 structure UsedHitParts : Prop where

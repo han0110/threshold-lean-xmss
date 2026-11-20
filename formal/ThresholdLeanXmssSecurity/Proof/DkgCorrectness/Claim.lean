@@ -2,6 +2,8 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Ceremony.Glue
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Collision.Hops
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Cover.Glue
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.CutBounds
+import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.CutCheck.Budget
+import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.CutCheck.Tuples
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Draws.Fresh
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Draws.Interval
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Draws.OneKey
@@ -22,14 +24,15 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.TopLaws
 # The field `dkgCorrectness` from the leaves of the route
 
 `dkgCorrectness_of_leaves` gives the field `dkgCorrectness` of `Theorems`,
-`CircuitsCompute circuits prims.Th → DkgCorrectness prims K circuits settings runLimit`. Its premises
-are the two structures of `Leaves.lean`. `ceremonyBad_of_parts`, `provenanceTreeRun_of_parts`,
+`CircuitsCompute circuits prims.Th → DkgCorrectness prims K circuits settings runLimit`. Its premise
+is the structure `UsedHitParts` of `Leaves.lean`. `ceremonyBad_of_parts`, `provenanceTreeRun_of_parts`,
 `readyHopL_of_ends`, `UsedHit.usedHitHop_of_reductions`, `ceremonySupport_of_parts` with
 `cutState_of_supports`, and `topCover_of_started` and `restCover_of_started` join their fields to the
 statements of the route. `UsedHit.hybridEnd_of_statements` gives `HybridEnd`. The proved leaves
 `cutDead`, `cutMonotone`, `headFuel`, `headCover`, `treePhaseProvenance`, `hiddenNames`,
 `ledgerHidden`, `ceremonyProvenance`, `ledgerSplit`, `ledgerSalts`, `ledgerSound`, `ceremonyCounters`,
-`zeroCheck`, `freshOne`, `ceremonyInterval`, `monitorProvenance`, `ceremonyStarted`, `ceremonyAbort`,
+`zeroCheck`, `CutBudget.ceremonyBudget`, `CutBudget.ceremonyTupleInputs`, `freshOne`,
+`ceremonyInterval`, `monitorProvenance`, `ceremonyStarted`, `ceremonyAbort`,
 `Joint.ceremonyCoupling`, `CeremonyRecords.ceremonyMonitor`, `CeremonyRecords.ceremonyBatch`,
 `CeremonyRecords.ceremonySync`, `EchoRound.ceremonyKeysAgree`, `CeremonyRecords.ceremonyOutputsAgree`,
 `shortFuel`, `soundAtEnd`, `hiddenAtEnd`, `UsedHit.topSlotPartCosts`, `UsedHit.topLawReal`,
@@ -53,9 +56,8 @@ variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algeb
 
 variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
 
-/-- The field `dkgCorrectness` from the two groups of leaves. -/
-theorem dkgCorrectness_of_leaves (ceremony : CeremonyParts K circuits settings runLimit)
-    (usedHit : UsedHitParts K circuits settings runLimit) :
+/-- The field `dkgCorrectness` from the parts of the hop on the used keys. -/
+theorem dkgCorrectness_of_leaves (usedHit : UsedHitParts K circuits settings runLimit) :
     CircuitsCompute circuits prims.Th → ThresholdLeanXmss.DkgCorrectness prims K circuits settings runLimit := by
   intro compute batch runs D A q bounded
   exact part1L_of_route K circuits settings runLimit (setupHybridError runLimit C)
@@ -83,8 +85,8 @@ theorem dkgCorrectness_of_leaves (ceremony : CeremonyParts K circuits settings r
       (freshOne prims K circuits settings) (hiddenNames (C := C))
       (CeremonyRecords.ceremonySync prims K circuits settings) (ceremonyInterval prims K circuits settings)
       (Joint.ceremonyCoupling prims K circuits settings) (EchoRound.ceremonyKeysAgree prims K circuits settings)
-      (ceremony.budget prims)
-      (zeroCheck (C := C) (E := E)) (shortFuel prims K circuits settings) (ceremony.tupleInputs prims))
+      (CutBudget.ceremonyBudget prims K circuits settings runLimit)
+      (zeroCheck (C := C) (E := E)) (shortFuel prims K circuits settings) (CutBudget.ceremonyTupleInputs prims K circuits settings))
     (fun prims => topCover_of_started prims K circuits settings (ceremonyStarted prims K circuits settings))
     (headFuel circuits settings)
     (fun prims => headCover prims K circuits settings)
