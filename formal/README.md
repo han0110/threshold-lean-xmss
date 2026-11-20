@@ -123,6 +123,7 @@ No open box comes from a known attack.
 | [doc/differences.md](./doc/differences.md) | Each difference to GS20, PRAWNS, the note and leanXMSS |
 | [doc/mpc-layer.md](./doc/mpc-layer.md) | The ceremony claims, the building blocks of GS20, the PRSS setup and the PRSS streams |
 | [doc/composition.md](./doc/composition.md) | The sketch of the composition and the gaps of the Rust code |
+| [doc/game-rework.md](./doc/game-rework.md) | The design of a game-based form of the DKG claims. Its Lean code is in `Sketch/`, outside the build targets. |
 
 ## Key files
 
