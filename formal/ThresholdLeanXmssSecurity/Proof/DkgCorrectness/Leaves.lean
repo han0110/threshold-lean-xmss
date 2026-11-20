@@ -38,8 +38,6 @@ structure CeremonyParts : Prop where
   abort : ∀ prims, CeremonyAbort prims K circuits settings
   /-- An honest operator holds one old key under a hidden name with probability at most `2^-256`. -/
   fresh : ∀ prims, FreshOne prims K circuits settings
-  /-- The hidden names are at most the PRSS keys of one setup. -/
-  names : HiddenNames C
   /-- The honest operators record the same modes, circuits, labels and tags at the checks. -/
   sync : ∀ prims, CeremonySync prims K circuits settings
   /-- The streams are fresh at the label of a joint start of a check. -/
@@ -56,8 +54,6 @@ structure CeremonyParts : Prop where
   short : ∀ prims, ShortFuel prims K circuits settings
   /-- The tuples of a joint start of a check have `TupleInputs` when the PRSS keys agree. -/
   tupleInputs : ∀ prims, CeremonyTupleInputs prims K circuits settings
-  /-- The phase of a run of a tree keeps the provenance of the hidden keys. -/
-  treePhase : ∀ prims, TreePhaseProvenance prims K circuits settings
   /-- The monitor keeps the provenance of the hidden keys. -/
   monitorProvenance : ∀ prims, MonitorProvenance prims (C := C)
 
@@ -74,10 +70,6 @@ structure SupportParts : Prop where
   sound : ∀ prims, LedgerSound prims K circuits settings
   /-- One ceremony adds at most its share of digest salts to the ledger. -/
   salts : ∀ prims, LedgerSalts prims K circuits settings
-  /-- One ceremony adds at most one key under each hidden name. -/
-  hidden : ∀ prims, LedgerHidden prims K circuits settings
-  /-- One ceremony keeps the provenance of the hidden keys, also when an operator aborts. -/
-  provenance : ∀ prims, CeremonyProvenance prims K circuits settings
 
 /-- The covers of a run of the top tree and of the rest of a bottom tree after the cut. -/
 structure CutStatements : Prop where
