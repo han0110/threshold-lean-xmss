@@ -3,6 +3,8 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Collision.Hops
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.CutBounds
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Draws.OneKey
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.HeadCut
+import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Ledger.Cells
+import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Ledger.Parts
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Leaves
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.RunsUnion
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.EndWorld
@@ -17,6 +19,7 @@ are the five structures of `Leaves.lean`. `ceremonyBad_of_parts`, `provenanceTre
 `cutState_of_supports` join their fields to the statements of the route.
 `UsedHit.hybridEnd_of_statements` gives `HybridEnd`. The proved leaves `cutDead`, `cutMonotone`,
 `headFuel`, `headCover`, `treePhaseProvenance`, `hiddenNames`, `ledgerHidden`, `ceremonyProvenance`,
+`ledgerSplit`, `ledgerSalts`, `ledgerSound`, `ceremonyCounters`, `zeroCheck`, `monitorProvenance`,
 `echoHop`, `reuseHop`, `copyHop` and `splitHop` and the hops `flagFirstHop`, `seedsHop` and
 `runsUnionHop` give the rest. The error of `UsedHitHop` is `setupHybridError`, and with it
 `part1Error` is `dkgCorrectnessError`.
@@ -37,7 +40,6 @@ variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algeb
 
 variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
 
-omit [DecidableEq E] in
 /-- The field `dkgCorrectness` from the five groups of leaves. -/
 theorem dkgCorrectness_of_leaves (ceremony : CeremonyParts K circuits settings runLimit)
     (support : SupportParts K circuits settings) (cut : CutStatements K circuits settings) (usedHit : UsedHitParts K circuits settings runLimit)
@@ -50,7 +52,7 @@ theorem dkgCorrectness_of_leaves (ceremony : CeremonyParts K circuits settings r
     (fun prims => RunsUnion.runsUnionHop prims K circuits settings runLimit)
     (fun prims => readyHopL_of_ends prims K circuits settings runLimit (game.sound prims) (game.hidden prims)
       (provenanceTreeRun_of_parts prims K circuits settings (treePhaseProvenance prims K circuits settings)
-        (ceremony.monitorProvenance prims)))
+        (monitorProvenance prims (C := C))))
     (echoHop K circuits settings runLimit)
     (fun prims => UsedHit.usedHitHop_of_reductions K circuits settings runLimit prims (usedHit.topCost prims)
       (usedHit.topReal prims) (usedHit.topFresh prims) (usedHit.bottomCost prims) (usedHit.bottomReal prims)
@@ -62,11 +64,12 @@ theorem dkgCorrectness_of_leaves (ceremony : CeremonyParts K circuits settings r
     (fun prims => ceremonyBad_of_parts prims K circuits settings runLimit (ceremony.monitor prims)
       (ceremony.batch prims) (ceremony.abort prims) (ceremony.fresh prims) (hiddenNames (C := C)) (ceremony.sync prims)
       (ceremony.interval prims) (ceremony.coupling prims) (ceremony.keysAgree prims) (ceremony.budget prims)
-      ceremony.zero (ceremony.short prims) (ceremony.tupleInputs prims))
+      (zeroCheck (C := C) (E := E)) (ceremony.short prims) (ceremony.tupleInputs prims))
     cut.top (headFuel circuits settings) (fun prims => headCover prims K circuits settings)
     (cutState_of_supports K circuits settings fun prims => ceremonySupport_of_parts prims K circuits settings
-      (support.counters prims) (support.outputsAgree prims) (support.split prims) (support.sound prims)
-      (support.salts prims) (ledgerHidden prims K circuits settings) (ceremonyProvenance prims K circuits settings))
+      (ceremonyCounters prims K circuits settings) (support.outputsAgree prims)
+      (ledgerSplit prims K circuits settings) (ledgerSound prims K circuits settings)
+      (ledgerSalts prims K circuits settings) (ledgerHidden prims K circuits settings) (ceremonyProvenance prims K circuits settings))
     (fun prims => cutDead prims K circuits settings)
     (fun prims => cutMonotone prims K circuits settings) cut.rest
     batch runs prims compute D A q bounded

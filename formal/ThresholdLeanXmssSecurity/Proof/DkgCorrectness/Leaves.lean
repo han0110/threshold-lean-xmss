@@ -48,28 +48,16 @@ structure CeremonyParts : Prop where
   keysAgree : ∀ prims, CeremonyKeysAgree prims K circuits settings
   /-- A joint start of a check with a positive count fits the budget of the game. -/
   budget : ∀ prims, CeremonyBudget prims K circuits settings runLimit
-  /-- A check with the count `0` is never bad. -/
-  zero : ZeroCheck (C := C) (E := E)
   /-- No honest operator ends a ceremony in a phase with fewer rounds than the ceremony has. -/
   short : ∀ prims, ShortFuel prims K circuits settings
   /-- The tuples of a joint start of a check have `TupleInputs` when the PRSS keys agree. -/
   tupleInputs : ∀ prims, CeremonyTupleInputs prims K circuits settings
-  /-- The monitor keeps the provenance of the hidden keys. -/
-  monitorProvenance : ∀ prims, MonitorProvenance prims (C := C)
 
 /-- The parts of `CeremonySupport` (`ceremonySupport_of_parts`), which gives `CutState`
 (`cutState_of_supports`). -/
 structure SupportParts : Prop where
-  /-- Each honest result of one ceremony has the end counters of the job list. -/
-  counters : ∀ prims, CeremonyCounters prims K circuits settings
   /-- With no global event at the end, two honest results have the same opened outputs. -/
   outputsAgree : ∀ prims, CeremonyOutputsAgree prims K circuits settings
-  /-- One ceremony adds at most its share of history and digest cells to the ledger. -/
-  split : ∀ prims, LedgerSplit prims K circuits settings
-  /-- One ceremony adds at most its share of coin inputs and expansion keys to the ledger. -/
-  sound : ∀ prims, LedgerSound prims K circuits settings
-  /-- One ceremony adds at most its share of digest salts to the ledger. -/
-  salts : ∀ prims, LedgerSalts prims K circuits settings
 
 /-- The covers of a run of the top tree and of the rest of a bottom tree after the cut. -/
 structure CutStatements : Prop where
