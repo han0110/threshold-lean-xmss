@@ -128,8 +128,8 @@ claim holds for each `prims` with circuits that compute `prims.Th`.
 
 No definition of GS20 or of Gurkan and others is its model. GS20 states no completeness lemma, and
 security with abort alone allows a protocol that always aborts. The bound on the abort has the form
-of Lemmas 1 and 2 of Gurkan and others, a bound on the probability that an honest party ends with no
-output. The distance to `dealerKeyGen` has no source.
+of Lemma 1 of Gurkan and others, by which all nonfaulty parties get a transcript except with a
+bounded probability. The distance to `dealerKeyGen` has no source.
 
 The claim is about an honest run only. It is not robustness under faults. A corrupt operator can
 make each honest operator abort, and no claim excludes that. Each operator keeps the first output of

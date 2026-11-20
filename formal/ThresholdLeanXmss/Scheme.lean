@@ -35,8 +35,9 @@ execution of a protocol on the network.
 * The AND gates reshare in peer mode or in collector mode. `Rerand` and the check use peer mode.
 * The digests travel in their own round before the last coin. The implementation sends them with
   that coin, which saves one round and changes no message.
-* The session nonces and the commitment of the PRSS setup in the nonce round are not modeled. Fresh
-  PRSS parts in each ceremony separate the sessions.
+* The first round of the PRSS setup of the implementation also carries the reshare mode and the
+  batch size, and an operator aborts unless both equal its own. The model takes them as public
+  settings. Fresh PRSS parts in each ceremony separate the sessions.
 -/
 
 set_option autoImplicit false

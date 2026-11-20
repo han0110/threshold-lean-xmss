@@ -361,8 +361,8 @@ def honestNet : Adversary C E Unit PEmpty PEmpty := honestAdversary fun l => l.e
 bottom tree. -/
 abbrev SetupOutputs (C : Committee) := C.Party → Option (Keys C) × Option TopTree × Option BottomTree
 
-/-- The honest run of the setup and of bottom tree `b`, with no corrupt operator and with `runLimit`
-runs of each tree. -/
+/-- The honest run of the setup and of bottom tree `b`, with no corrupt operator and with at most
+`runLimit` runs of each tree. -/
 def honestDkg (b : Fin (2 ^ layerHeight)) : OracleComp (WorldSpec C) (SetupOutputs C) := do
   let (state, keys) ← realExecution noCoalition honestNet noFunctionality setupRounds
     (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) (fun _ => ()) []

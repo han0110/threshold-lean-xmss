@@ -540,7 +540,7 @@ Symbol & Lean & Symbol & Lean \\
 $k_T$, $k$, $h$ & \lean{termCount}, \lean{prssKeyCount}, \lean{termHashes} &
 $s_{\mathrm{kg}}$, $s_{\mathrm p}$ & \lean{seedGenSecrets}, \lean{prssSetupSecrets} \\
 $B$, $B_1$ & \lean{treeBatches}, the first summand of \lean{treeBatches} &
-$d^*$, $R^*$, $c^*$ & \lean{maxBatch} of \lean{coins}, \lean{halvings} and \lean{tupleCount} \\
+$d^*$, $R^*$, $c^*$ & \lean{maxBatch} (\texttt{Scheme.lean}) of \lean{coins}, \lean{halvings} and \lean{tupleCount} \\
 $s_{\mathsf T}$, $r_{\mathsf T}$ & \lean{treeSetups}, \lean{treeSearches} &
 $S$, $G$, $K$, $u$ & \lean{gameSetups}, \lean{gameBatches}, \lean{gameCoinKeys}, \lean{splitBudget} \\
 $Sn(4n+k_T)$ & \lean{honestSetupCalls} &
@@ -553,7 +553,7 @@ $(R_c+2)(\dots)/2^{256}$ & \lean{soundHashError} &
 $(q+h+\dots)^2/2^{256}$ & \lean{checkHashError} \\
 $(B(R^*+2))^2/2^{257}$ & \lean{coinKeyCollision} &
 $\ell$ & \lean{C.terms.length} \\
-$p$, $L$ & \lean{codewordProbability}, \lean{randomizerAttemptLimit} &
+$p$, $L$ & \lean{codewordProbability}, \lean{randomizerAttemptLimit} (leanVM at the pinned revision, \lean{formal/Statement/LeanXmss.lean}) &
 $\mathsf{adv}$ & \lean{streamAdvantage} \\
 \bottomrule
 \end{xltabular}}

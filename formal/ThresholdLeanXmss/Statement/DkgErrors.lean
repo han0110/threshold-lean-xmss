@@ -188,18 +188,18 @@ def dkgError (C : Committee) (q : ℕ) : ℝ :=
     runLimit * (treeRunError (E := E) (C := C) circuits settings .top q +
       ∑ b : Fin (2 ^ layerHeight), treeRunError (E := E) (C := C) circuits settings (.bottom b) q)
 
-/-- The calls that a reduction makes in `.hash` and `.prf` for one run of `tree`. They are the input
-terms that the coalition holds, one `.prf` call for each term and each point, and for a bottom tree
-the nodes of the codeword of the root and the randomizer search. The term takes that a reduction
-answers each other domain of the setup from its own table. -/
+/-- The budget that is planned for the calls of a reduction in `.hash` and `.prf` for one run of
+`tree`. It counts the input terms that the coalition holds, one `.prf` call for each term and each
+point, and for a bottom tree the nodes of the codeword of the root and the randomizer search. The
+plan is that a reduction answers each other domain of the setup from its own table. -/
 def treeSigningCalls (C : Committee) : Tree → ℕ
   | .top => (topJobs.map (·.points.length)).sum * termCount C
   | .bottom b => (((bottomJobs b).map (·.points.length)).sum + chainCount) * termCount C +
       (2 ^ (layerHeight + 1) + randomizerAttemptLimit)
 
-/-- The calls that a reduction makes beyond the calls of the adversary, for `runLimit` runs of each
-tree. The term takes that the requests of a reduction to the oracles of `tsigGame` are only
-`corrupt` and `tree`, which cost nothing. -/
+/-- The budget that is planned for the calls of a reduction beyond the calls of the adversary, for
+`runLimit` runs of each tree. The plan is that the requests of a reduction to the oracles of
+`tsigGame` are only `corrupt` and `tree`, which cost nothing. -/
 def dkgOverhead (C : Committee) : ℕ :=
   runLimit * (treeSigningCalls C .top + ∑ b : Fin (2 ^ layerHeight), treeSigningCalls C (.bottom b))
 
