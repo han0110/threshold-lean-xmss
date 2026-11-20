@@ -1,10 +1,15 @@
-import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Coupling
+import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Events
+import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Cap
+import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Guarded
+import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1RealLog
+import ThresholdLeanXmssSecurity.Proof.SigningCompilerPotential
+import ThresholdLeanXmssSecurity.Proof.SigningLaneFinal
+import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Final
 
 /-! # The clean O1 compiler coupling
 
-`compilerCouplingClean` couples the real trace run and the O1 compiler run for each cap `q`, as
-`compilerCouplingAny` does. Its right event also states that the final backend has no second opening
-of a commitment.
+`compilerCouplingClean` couples the real trace run and the O1 compiler run for each cap `q`. Its
+right event also states that the final backend has no second opening of a commitment.
 
 - `final_clean` states that at the end of two runs that did not stop, a real run with the flag down
   and with no charged event gives a compiler backend with no second opening. A second opening on the
@@ -12,7 +17,7 @@ of a commitment.
   constrained, so the cached randomizer is the secret, and the pending commitment answer is the
   canonical commitment hash. This gives `AlternativeCommitment` on the log cache.
 - `real_le_table_clean` is `real_le_table` with the clean event.
-- `tableRunCO1_le_clean` is `tableRunCO1_le_guarded` with the clean event.
+- `tableRunCO1_le_clean` bounds the table run by the clean event of the pad run.
 -/
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
@@ -28,7 +33,7 @@ open SigningCompilerSyncRelease SigningCompilerSyncTreeControl SigningCompilerSy
 open SigningCompilerO1SourceProof SigningCompilerO1Basics SigningCompilerUntil
 open SigningCompilerO1Sync SigningCompilerO1Tables SigningCompilerO1Runs
 open SigningCompilerO1Share SigningCompilerO1Guarded SigningCompilerO1Cap
-open SigningCompilerO1Tail SigningCompilerO1Events SigningCompilerO1Coupling
+open SigningCompilerO1Tail SigningCompilerO1Events
 open XmssSecurity.CappedChain
 variable {C : Committee}
 attribute [local instance] Classical.propDecidable
@@ -44,9 +49,9 @@ def SecondOpening (P : PublicParameter) (seeds : C.Term → HashOutput) (data : 
     SigningGuessProof.RandomizerCached seeds data.cache e ∧
     ρ ≠ SigningGuessProof.cachedRandomizer seeds data.cache e
 
-/-- The event of the compiler run that the leaf bounds. It is `GuardedCompilerEvent` with one more
-condition on the lane 2 event, that the final backend has no second opening. The cap flag has no
-such condition. -/
+/-- The event of the compiler run that the leaf bounds. With the hidden-key flag down it is the cap
+flag or the lane 2 event with a final backend that has no second opening. With the flag up it is the
+cap flag alone. -/
 def CleanCompilerEvent (x : Keys3 C) (q : ℕ) (r : CompilerOutcomeO1 C) : Prop :=
   (r.1.2.base.hiddenFlag = false ∧ (r.2.2.2 = true ∨
       (compilerEvent x.1 q r.2.1 ∧ ¬SecondOpening x.1 x.2.1 r.2.1.1.data))) ∨
@@ -204,8 +209,7 @@ theorem real_le_table_clean (A : TsigAdversary C) (q : ℕ)
 
 end Final
 
-/-- A pointwise bound of two continuations bounds the two binds. A copy of the private lemma
-`probEvent_bind_le_bind` of `SigningCompilerO1Coupling.lean`. -/
+/-- A pointwise bound of two continuations bounds the two binds. -/
 private theorem probEvent_bind_le_bind {α β γ : Type} (oa : ProbComp α) (f : α → ProbComp β)
     (g : α → ProbComp γ) (P : β → Prop) (Q : γ → Prop) (h : ∀ a, Pr{let z ← f a}[P z] ≤ Pr{let z ← g a}[Q z]) :
     Pr{let z ← oa >>= f}[P z] ≤ Pr{let z ← oa >>= g}[Q z] := by
@@ -213,8 +217,7 @@ private theorem probEvent_bind_le_bind {α β γ : Type} (oa : ProbComp α) (f :
   exact ENNReal.tsum_le_tsum fun a => mul_le_mul' le_rfl (h a)
 
 /-- For fixed hidden labels and pads, the right event of `real_le_table_clean` over the table run
-costs at most the clean event of the pad run. A changed copy of
-`SigningCompilerO1Coupling.tableRunCO1_le_guarded`. -/
+costs at most the clean event of the pad run. -/
 theorem tableRunCO1_le_clean (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) (q : ℕ)
     (s : HiddenKey → Digest) (pads : Point → Digest) (hinj : Function.Injective x.2.1) :
     Pr{let z ←

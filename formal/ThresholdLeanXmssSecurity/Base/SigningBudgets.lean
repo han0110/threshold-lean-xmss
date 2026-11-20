@@ -10,8 +10,7 @@ The forms of the signing claim that the proofs use. No field of `Theorems` is in
   (`IsQueryBoundP` of VCVio). `SigningOwnBudget.signingOwnBudget` proves it, and
   `SigningStronglyUnforgeable.stronglyUnforgeable_iff` proves that the two are equivalent.
 * `SigningSecurityStatement` is the same game with the budget of every party, as leanXMSS stated it at
-  the revision `1acdff19` of leanVM. `signingSecurityClosed`
-  (`Proof/SigningCompilerO1Coupling.lean`) proves it, with a proof of its own.
+  the revision `1acdff19` of leanVM.
 * For a fixed `q`, the two budgets give different classes of forgers. A forger with a small count on
   the support of the game can have a large count on every path. So neither claim replaces the other.
 -/

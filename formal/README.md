@@ -1,6 +1,6 @@
 # formal
 
-Lean 4 statements and proofs of the security claims of threshold leanXMSS. The two signing claims are proved. The three claims of the DKG are stated, and no proof of them is in this tree.
+Lean 4 statements and proofs of the security claims of threshold leanXMSS. The two signing claims and `dkgCompleteness` are proved. The claims `dkgSecurity` and `dkgCorrectness` are stated, and no proof of them is in this tree.
 
 ## The claims
 
@@ -12,20 +12,19 @@ The structure `Theorems` in [Statement/Theorems.lean](./ThresholdLeanXmss/Statem
 | `signingCorrectness` | An honest quorum signs, except for a failed search. | PRAWNS, Section 3.1 | Proved, `signingCorrectness` |
 | `dkgSecurity` | An adversary against the signing game with the real DKG wins at most as often as the named forger `dkgReduction` wins the signing game with the dealer, plus a fixed error. | Gurkan and others, Definition 8 | A target |
 | `dkgCorrectness` | Against an adversary, honest operators hold consistent seeds, and each tree output is right or absent. | Gurkan and others, Definition 6 | A target |
-| `dkgCompleteness` | With no corrupt operator, the DKG gives outputs that are near the outputs of the dealer. | None | Stated. A proof of an earlier tree derived it. |
+| `dkgCompleteness` | With no corrupt operator, the DKG gives outputs that are near the outputs of the dealer. | None | Proved, `dkgCompleteness` |
 
-The two proved theorems are in the namespace `ThresholdLeanXmssSecurity`. The bounds of `dkgSecurity` and `dkgCorrectness` are targets with no proof for the whole game yet, so a proof can change them. The coalition of the DKG is static, and the signing game has adaptive corruption. The claims of the DKG fix the function `Th`, and `stronglyUnforgeable` has `Th` in the random oracle.
+The three proved theorems are in the namespace `ThresholdLeanXmssSecurity`. The bounds of `dkgSecurity` and `dkgCorrectness` are targets with no proof for the whole game yet, so a proof can change them. The coalition of the DKG is static, and the signing game has adaptive corruption. The claims of the DKG fix the function `Th`, and `stronglyUnforgeable` has `Th` in the random oracle.
 
 ## Map of the claims
 
 <!-- Update this map when a field of the bundle changes or a claim is proved. -->
 
-Green is proved in this tree. Yellow is stated with a bound that a proof of an earlier tree derived. Orange is stated with a target bound. Grey is an assumption. The dashed box has no Lean statement.
+Green is proved in this tree. Orange is stated with a target bound. Grey is an assumption. The dashed box has no Lean statement.
 
 ```mermaid
 flowchart TB
   classDef proved fill:#d4edda,stroke:#2e7d32,color:#000
-  classDef derived fill:#fff3cd,stroke:#b8860b,color:#000
   classDef target fill:#ffe0b2,stroke:#e65100,color:#000
   classDef assumed fill:#e9ecef,stroke:#6c757d,color:#000
   classDef remark fill:#ffffff,stroke:#6c757d,stroke-dasharray:5 5,color:#000
@@ -38,7 +37,7 @@ flowchart TB
   subgraph DKG["Setup by DKG on the real network, static coalition"]
     DSEC["dkgSecurity<br/>dkgTsigGame to tsigGame for dkgReduction,<br/>both in world with the fixed Th"]:::target
     DCOR["dkgCorrectness<br/>dkgTreeGame"]:::target
-    DCOMP["dkgCompleteness<br/>honestDkg near dealerDkg"]:::derived
+    DCOMP["dkgCompleteness<br/>honestDkg near dealerDkg"]:::proved
   end
 
   E2E["Bound of dkgTsigGame<br/>the end-to-end remark of statement.tex"]:::remark
@@ -76,7 +75,7 @@ flowchart TB
 | [ThresholdLeanXmss/Scheme.lean](./ThresholdLeanXmss/Scheme.lean) | The protocol, the oracles and the dealer `dealerKeyGen` |
 | [ThresholdLeanXmss/Ideal.lean](./ThresholdLeanXmss/Ideal.lean) | The oracles of the signing game and its win test |
 | [ThresholdLeanXmss/Reductions.lean](./ThresholdLeanXmss/Reductions.lean) | `prgReduction`, the fixed reduction of the PRF term |
-| [ThresholdLeanXmssSecurity.lean](./ThresholdLeanXmssSecurity.lean) | The root of the proof library. It imports the proofs of the two signing claims and checks the axioms of each proved theorem with `#guard_msgs`. |
+| [ThresholdLeanXmssSecurity.lean](./ThresholdLeanXmssSecurity.lean) | The root of the proof library. It imports the proof of each proved field and checks the axioms of each proved theorem with `#guard_msgs`. |
 | [ThresholdLeanXmssSecurity/Proof/](./ThresholdLeanXmssSecurity/Proof/) | The proofs |
 | [ThresholdLeanXmssSecurity/Base/](./ThresholdLeanXmssSecurity/Base/) | The definitions that the proofs use and that the statement layer does not hold |
 | [statement.tex](./statement.tex) | The guide to the claims, about 12 pages |

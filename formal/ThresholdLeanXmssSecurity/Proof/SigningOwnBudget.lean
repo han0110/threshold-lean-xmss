@@ -5,7 +5,6 @@ import ThresholdLeanXmssSecurity.Proof.SigningOwnTopBound
 import ThresholdLeanXmssSecurity.Proof.SigningOwnStopRun
 import ThresholdLeanXmssSecurity.Proof.SigningOwnCap
 import ThresholdLeanXmssSecurity.Proof.SeedHitOwn
-import ThresholdLeanXmssSecurity.Proof.SeedGen
 
 /-! # The signing claim with the budget of the forger alone, from its first stage
 

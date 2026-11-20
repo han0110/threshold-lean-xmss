@@ -858,10 +858,6 @@ theorem probEvent_parts_collision (X Y : (C.Party → Parts C) → HashOutput) (
     exact prEvent_congr _ _ _ fun parts => BitVec.xor_eq_zero_iff.symm
   rw [this, huniform.prEvent_eq, SampleableType.prEvent_uniformSample_eq_singleton]
 
-theorem card_term (C : Committee) : Fintype.card C.Term = C.n.choose (C.t - 1) := by
-  convert Fintype.card_finset_len (α := C.Party) (C.t - 1)
-  simp
-
 theorem card_pair_le (C : Committee) : Fintype.card C.Pair ≤ C.n.choose 2 := by
   have hinj : Function.Injective fun p : C.Pair =>
       (⟨{p.1.1, p.1.2}, Finset.card_pair (ne_of_lt p.2)⟩ : {s : Finset C.Party // s.card = 2}) := by

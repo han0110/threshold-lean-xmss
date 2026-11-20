@@ -1672,6 +1672,120 @@ def localRoles {C : Committee} : Roles C (OracleComp (LocalSpec C)) := ⟨fun oa
 
 end ThresholdLeanXmssSecurity
 
+namespace ThresholdLeanXmssSecurity
+
+open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss
+
+namespace SeedHitProof
+
+/-! ## The honest computations under a monad map -/
+
+section Hom
+
+variable {C : Committee} {m n : Type → Type} [Monad m] [Monad n] [LawfulMonad m] [LawfulMonad n] (h : m →ᵐ n)
+
+theorem hom_map {α β : Type} (f : α → β) (x : m α) : h (f <$> x) = f <$> h x := by
+  rw [map_eq_bind_pure_comp, map_eq_bind_pure_comp, MonadHom.mmap_bind]
+  simp only [Function.comp_def, MonadHom.mmap_pure]
+
+theorem hom_mapM {α β : Type} (f : α → m β) (xs : List α) :
+    h (xs.mapM f) = xs.mapM (fun x => h (f x)) := by
+  induction xs with
+  | nil => exact h.toFun_pure' _
+  | cons x xs ih => simp only [List.mapM_cons, MonadHom.mmap_bind, MonadHom.mmap_pure, ih]
+
+omit [LawfulMonad m] [LawfulMonad n] in
+theorem hom_sequenceFin {α : Type} : ∀ {k : ℕ} (f : Fin k → m α),
+    h (OverPermutation.sequenceFin f) = OverPermutation.sequenceFin fun i => h (f i)
+  | 0, f => by simp [OverPermutation.sequenceFin]
+  | k + 1, f => by
+    simp only [OverPermutation.sequenceFin, MonadHom.mmap_bind, MonadHom.mmap_pure]
+    congr 1; funext a
+    exact congrArg (· >>= _) (hom_sequenceFin (k := k) _)
+
+omit [LawfulMonad m] [LawfulMonad n] in
+theorem hom_ceremonyOutput (lift : ∀ {α : Type}, OracleComp HashSpec α → m α)
+    (parameter : PublicParameter) (run : List Job → m (Option (List (List Bit))))
+    (top : TopTree) (tree : Tree) :
+    h (ceremonyOutput lift parameter run top tree) =
+      ceremonyOutput (fun oa => h (lift oa)) parameter (fun js => h (run js)) top tree := by
+  cases tree with
+  | top =>
+    simp only [ceremonyOutput, MonadHom.mmap_bind]
+    congr 1
+    funext out
+    cases out <;> simp only [MonadHom.mmap_pure, MonadHom.mmap_bind]
+  | bottom b =>
+    simp only [ceremonyOutput, MonadHom.mmap_bind]
+    congr 1
+    funext out
+    cases out with
+    | none => exact h.toFun_pure' _
+    | some outputs =>
+      simp only [MonadHom.mmap_bind]
+      congr 1
+      funext root
+      congr 1
+      funext base
+      congr 1
+      funext result
+      cases result with
+      | none => exact h.toFun_pure' _
+      | some pair =>
+        rcases pair with ⟨randomness, encoding⟩
+        simp only [MonadHom.mmap_bind]
+        congr 1
+        funext values
+        cases values with
+        | none => exact h.toFun_pure' _
+        | some vals =>
+          simp only [MonadHom.mmap_bind]
+          congr 1
+          funext path
+          congr 1
+          funext topRoot
+          split <;> exact h.toFun_pure' _
+
+theorem hom_referenceJob (lift : ∀ {α : Type}, OracleComp HashSpec α → m α) (F : Point → m Digest)
+    (P : PublicParameter) (job : Job) :
+    h (referenceJob lift F P job) = referenceJob (fun oa => h (lift oa)) (fun x => h (F x)) P job := by
+  unfold referenceJob
+  rw [MonadHom.mmap_bind, hom_mapM]
+  congr 1; funext values
+  split <;> simp
+
+theorem hom_referenceTree (lift : ∀ {α : Type}, OracleComp HashSpec α → m α) (F : Point → m Digest)
+    (P : PublicParameter) (top : TopTree) (tree : Tree) :
+    h (referenceTree lift F P top tree) = referenceTree (fun oa => h (lift oa)) (fun x => h (F x)) P top tree := by
+  unfold referenceTree
+  rw [hom_ceremonyOutput]
+  congr 1; funext jobs
+  rw [hom_map, hom_mapM]
+  congr 2; funext job
+  exact hom_referenceJob h lift F P job
+
+theorem hom_signRound2With (lift : ∀ {α : Type}, OracleComp (RoSpec C) α → m α) (part : Point → m Digest)
+    (P : PublicParameter) (J : C.Quorum) (commitment : Digest) (e : KeyIndex) (message : Message)
+    (parts : C.Party → Digest) :
+    h (signRound2With lift part P J commitment e message parts) =
+      signRound2With (fun oa => h (lift oa)) (fun x => h (part x)) P J commitment e message parts := by
+  unfold signRound2With
+  rw [MonadHom.mmap_bind]
+  congr 1; funext r
+  rcases r with _ | ⟨_, encoding⟩
+  · exact h.toFun_pure' _
+  · simp only [MonadHom.mmap_bind, hom_sequenceFin, MonadHom.mmap_pure]
+    congr 2
+    funext l; split_ifs
+    · exact hom_map h _ _
+    · exact h.toFun_pure' _
+
+end Hom
+
+end SeedHitProof
+
+end ThresholdLeanXmssSecurity
+
 /-- info: 'ThresholdLeanXmssSecurity.simulateQ_sequenceFin' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.simulateQ_sequenceFin

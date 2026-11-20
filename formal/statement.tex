@@ -34,16 +34,15 @@ quorum signs (Section~\ref{sec:signing}).
 signing game. It gives consistent seeds and correct trees against the adversary, and its honest run is
 near the trusted dealer (Section~\ref{sec:setup}).
 \end{itemize}
-The two signing claims are proved in this tree. The proofs are the two theorems below, in
-the namespace \lean{ThresholdLeanXmssSecurity}.
+The two signing claims and the completeness of the setup are proved in this tree. The proofs are the
+three theorems below, in the namespace \lean{ThresholdLeanXmssSecurity}.
 \begin{itemize}\itemsep0pt
 \item \lean{SigningStronglyUnforgeable.stronglyUnforgeable} proves \lean{stronglyUnforgeable}.
 \item \lean{signingCorrectness} proves \lean{signingCorrectness}.
+\item \lean{dkgCompleteness} proves \lean{dkgCompleteness}.
 \end{itemize}
-The three claims of the setup are stated, and
-no proof of them is in this tree. A proof of an earlier tree derived the bounds of
-\lean{dkgCompleteness}, for the same statement. The bounds of \lean{dkgSecurity} and \lean{dkgCorrectness} are
-targets. No proof accounts for the whole game yet, and a proof can change them. Section~\ref{sec:chain} explains why the five claims give a
+The claims \lean{dkgSecurity} and \lean{dkgCorrectness} are stated, and no proof of them is in this
+tree. Their bounds are targets. No proof accounts for the whole game yet, and a proof can change them. Section~\ref{sec:chain} explains why the five claims give a
 bound of the full system only with one more premise.
 
 \paragraph{Where to read it.} The claims are in the folder
@@ -371,8 +370,8 @@ is only in the first bound. The claim adds no PRF advantage. It is about an hone
 robustness under faults. A corrupt operator can make each honest operator abort. No definition of
 GS20 or of \cite{GJM+21} is its model. The abort bound has the form of Lemma 1 of
 \cite{GJM+21}, which bounds the probability that some nonfaulty party has no transcript. Lemma 2 of
-the paper is about one broadcast of a verifying transcript and is no model of this bound. The distance to \lean{dealerKeyGen} has no source. A proof of an earlier tree derived both bounds.
-No proof of them is in this tree yet.
+the paper is about one broadcast of a verifying transcript and is no model of this bound. The distance to \lean{dealerKeyGen} has no source. The theorem
+\lean{dkgCompleteness} proves both bounds.
 
 \paragraph{The state of the targets.} No proof accounts for the whole game for the bounds of
 \lean{dkgSecurity} and \lean{dkgCorrectness} yet. Two terms are the most likely to change. In
@@ -473,7 +472,7 @@ and the form of Lemmas 3 to 5 & Target \\
 \lean{dkgCorrectness} & \lean{DkgCorrectness} & \cite{GJM+21}, Definition 6, first clause & Target \\
 \rowrule
 \lean{dkgCompleteness} & \lean{DkgCompleteness} & No model. The abort bound has the form of
-\cite{GJM+21}, Lemma 1. & Stated, derived in an earlier tree \\
+\cite{GJM+21}, Lemma 1. & Proved \\
 \bottomrule
 \end{xltabular}}
 

@@ -114,6 +114,10 @@ theorem lackedTerm_empty : ∃ T, lackedTerm (C := C) ∅ = some T := by
     exact ⟨T, by simp [Committee.terms], by simp [KnownTo]⟩
   exact Option.isSome_iff_exists.mp hsome
 
+theorem card_term (C : Committee) : Fintype.card C.Term = C.n.choose (C.t - 1) := by
+  convert Fintype.card_finset_len (α := C.Party) (C.t - 1)
+  simp
+
 /-! ## Sharings -/
 
 omit [Fintype E] [DecidableEq E] in

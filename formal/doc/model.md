@@ -1,6 +1,6 @@
 # The game model
 
-This file describes the model of the five claims of the bundle `Theorems`. Each claim is a game with a fixed error expression. No claim uses a simulation definition or a composition theorem. The two signing claims are proved in this tree. The three claims of the setup are stated, and no proof of them is in this tree.
+This file describes the model of the five claims of the bundle `Theorems`. Each claim is a game with a fixed error expression. No claim uses a simulation definition or a composition theorem. The two signing claims and `dkgCompleteness` are proved in this tree. The claims `dkgSecurity` and `dkgCorrectness` are stated, and no proof of them is in this tree.
 
 [statement.tex](../statement.tex) has the tables of the claims, of their worlds, preconditions and trivial cases (Section 1 and Section 3.2), of the state of each bound (Appendix A), and of the error terms with their Lean names (Appendix C). The adaptations of the published definitions are in [differences.md](./differences.md), Table B.3, and in the doc comment of each claim.
 

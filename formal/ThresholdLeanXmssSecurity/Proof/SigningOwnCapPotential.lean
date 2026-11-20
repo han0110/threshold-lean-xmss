@@ -28,7 +28,7 @@ open ThresholdLeanXmss
 namespace SigningOwnCapPotential
 
 open SigningOpeningProof SigningSecurityProof SigningLaneHybridCapProof
-open SigningLaneHybridCapO1Proof SigningCompilerO1Coupling
+open SigningLaneHybridCapO1Proof
 open SigningCompilerCouplingProof SigningCompilerO1Release
 open SigningLedgerExpect SigningCompilerO1Clean SigningOwnLedger
 
