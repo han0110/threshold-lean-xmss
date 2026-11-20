@@ -1,0 +1,96 @@
+# Differences to the sources
+
+This file lists each difference of the model to GS20 [GS20], PRAWNS [BBD+26], the note [Wam26], leanXMSS [lea26] and the paper of Gurkan and others [GJM+21], with the row ids. [statement.tex](../statement.tex) is the guide, and its Appendix B keeps only the rows that change the meaning of a claim.
+
+Table B.1 lists the basic differences in the model and in the assumptions. Table B.2 lists the adaptations of the protocol and the differences between the model and the implementation. Table B.3 lists the adaptations of the definitions of Gurkan and others. The last column names the claims of the bundle `Theorems` that each row touches. Each claim is stated in this tree, and no claim is proved in it. The module docs of `Statement/` also list the deviations. The rules 1 to 4 are the rules of the deployment contract in Section 4 of `statement.tex`. The two points below are not differences.
+
+- GS20 has $t$ corrupt parties among $n=2t+1$, and this model has $t-1$ among $n=2t-1$.
+- The adversary is rushing. GS20 has malicious parties and synchronous channels (its Section 3.1), but it does not name a rushing adversary.
+
+## Table B.1
+
+| B.1 | Source | This model | Effect on the claim |
+| --- | --- | --- | --- |
+| A1 | GS20 aborts locally in Protocol 15, step 8. Its Functionalities 5, 16 and 18 have a common abort. | Each operator aborts alone [GL05], because the network has no broadcast. | In `dkgTsigGame` each honest operator acts only on the outputs that it holds. `dkgCorrectness` counts an abort as no win. Rule 2 of the contract is code of the game. |
+| A2 | GS20 is information-theoretic, with a statistical error of the check. | $H$ is a random oracle for digests, coin keys and challenges. AES-128 is the PRG. | The bounds of `dkgSecurity` and `dkgCorrectness` depend on the call count $q$ and add `streamAdvantage`, the multi-key PRF advantage of AES-128. |
+| A3 | Honest Shamir shares fix each sharing (GS20, Section 3.2). | Honest copies of a replicated share can differ. The check also compares hash digests of the copies. | `dkgCorrectnessError` pays a collision of these hashes with `copyError` and `splitError`. |
+| A4 | GS20, Theorem 2, covers the full protocol in the $`\{\mathcal F_{\mathrm{mult}},\mathcal F_{\mathrm{multVerify}}\}`$-hybrid model. | The games run the real network, the real PRSS setups and the real checks. No functionality replaces a sub-protocol. | The three claims of the setup are on the real network. No claim of this tree is in a hybrid model. |
+| A5 | PRAWNS, Figure 3, line 8, requires $`t>(n+\lvert D\rvert)/2`$ for signers that do not coordinate. Its Section 1 explains that coordination removes it. | Line 8 fails for $n=2t-1$ with one corrupt operator. The first accepted round-1 request fixes the message of its key for all honest operators. | `stronglyUnforgeable` holds under rule 1 in place of line 8, also in a stopped run. The note assumes this agreement too. |
+| A6 | The note signs for both setups and every $t$. Its trusted dealer has $n=3f+1$ and $t=2f+1$. | Each claim is for $n=2t-1$. | No claim covers the committee of the trusted dealer. |
+| A7 | leanXMSS ends in the random-permutation model, with a random-oracle step for $q$ own calls of the adversary. | `stronglyUnforgeable` is in the random-oracle model. | The claim is at the level of the leanXMSS step `leanXmss_rom_adversary_bound`, whose bound is $(q+2^{10}-1)/2^{127}$. |
+| A8 | leanXMSS has one model of Keccak for all claims. | The world `world` fixes $\mathrm{Th}$, which the MPC computes by a circuit. The world `signingWorld` has $\mathrm{Th}$ in the random oracle. | `stronglyUnforgeable` runs in `signingWorld`. `signingCorrectness` and the three claims of the setup run in `world`. No theorem connects the two worlds. The step is the random-oracle heuristic for Keccak. |
+| A9 | GS20 and Gurkan and others have static corruption. PRAWNS has adaptive corruption. | In `dkgTsigGame` the coalition is corrupt from the start and stays the same for the whole life of the keys. `tsigGame` has adaptive corruption. | No claim covers adaptive corruption of the system with the real setup. |
+| A10 | The note builds a bottom tree when it needs it, between signing sessions. | In `dkgTsigGame` each run of a tree is atomic. Each tree has at most `runLimit` runs, and all runs of a tree end before the first signing request on it. | The claims of the setup cover only this schedule (rule 3). |
+
+## Table B.2
+
+### The adaptations of GS20
+
+| B.2 | Source | Here | Reason | Claim |
+| --- | --- | --- | --- | --- |
+| B1 | Shamir sharing. | Replicated sharing [CDI05]. The check also compares hash digests of the copies. | Note's choice | `dkgCorrectness` with `copyError` and `splitError`, `dkgSecurity` with `treeCheckError` (history and digest of the check) and `treeHybridError` (copy hashes) |
+| B2 | Protocol 8 uses $`\mathcal F_{\mathrm{doubleRand}}`$ (Lemmas 4, 5). Lemma 11 has $`\mathcal F_{\mathrm{coin}}`$, $`\mathcal F_{\mathrm{mult}}`$, $`\mathcal F_{\mathrm{extendMult}}`$. Protocol 15 also calls $`\mathcal F_{\mathrm{rand}}`$. | A local product and a reshare on PRSS outputs (`mulRep`, `reshare`). In the last step of the check, a length-one inner product replaces the multiplication. The streams of a real PRSS setup [CDI05] give the random sharings. | Replicated sharing | `dkgSecurity` with `prssRealRandHashError` and `streamKeyError`, `dkgCorrectness` with the terms of the PRSS setups and `freshKeyError` |
+| B3 | Powers of one coin (Protocol 13). Halving by Protocol 14. | Products of $d$ coins and public bit weights $x^j$. The first seven halving steps differ, still of degree 2. | Performance | `checkErrorOf` in `dkgSecurity` and `dkgCorrectness`, for weights independent over $`\mathbb F_2`$ and any basis |
+| B4 | Each challenge is a $`\mathcal F_{\mathrm{coin}}`$ value. Protocol 12 aborts on a challenge in $[m]$. | $H$ expands a hash of two coin values (`coinKey`, `expand`). A halving challenge is the first expanded value outside $`\{0,1\}`$ among at most $2^{64}$ (`challenge`). | Fewer openings | `checkErrorOf` with $\lvert E\rvert-2$, `coinFailure` in `treeAbortError` |
+| B5 | Arithmetic circuits over $\mathbb F$ with $`\lvert\mathbb F\rvert\ge n+1`$ and random gates, and an extension field for the check. | Layered Boolean circuits of products and sums of wires and a constant. No random gate. The check field has the role of the extension field. | Keccak on bits | The claims of the setup, for each circuit family with `CircuitsCompute` |
+| B6 | Clients give inputs and get outputs. The adversary gets corrupt-client outputs (Protocol 19, Functionality 18). | No client, pre-shared inputs. A batch reshares the outputs, checks every tuple and opens them to all, the adversary too. | Public outputs | The claims of the setup |
+| B15 | Protocol 19 evaluates one circuit with one check. | A ceremony splits its jobs into batches of `batchSize` jobs. Each batch is one run of Protocol 19, with its own check and fresh running digests. | Memory and performance | The claims of the setup, with `treeBatches` in each term of a check |
+
+### The adaptations of the note, PRAWNS and leanXMSS
+
+| B.2 | Source | Here | Reason | Claim |
+| --- | --- | --- | --- | --- |
+| B7 | The note has a commit and a reveal. | One more round, the echo, compares a hash of $P$ and a hash of the shared seeds. | Seed agreement | `seedGenHashError` in `dkgSecurity` and `dkgCorrectness`, `derivedKeyCollision` in `dkgCompleteness` |
+| B8 | The note has no commitment to the randomizer value and no round-1 check. | The ceremony of a bottom tree opens a commitment $c_e$ to each randomizer value. Round 2 checks the sum of the round-1 parts against it. | Fixed randomizer value | `stronglyUnforgeable`, `signingCorrectness` |
+| B9 | $\mathsf{OSign}$ (PRAWNS, Figure 3) has one round and one request for each party. | Two rounds (`TsigQuery`) as in the note, Section 2.3, with quorum input as PRAWNS, Section 4, allows. Same-message repeats help the forger. | Randomizer round | `stronglyUnforgeable` |
+| B10 | $\mathsf{OCorrupt}$ of PRAWNS has no limit. Line 7 rejects a forgery when $`\lvert D\cup Q[m]\rvert\ge t`$. | $\mathsf{OCorrupt}$ stops at $t-1$ operators, as in the note. A forgery also wins when it differs from the signature of the dealer, which is strong unforgeability. | Note's limit | `stronglyUnforgeable` |
+| B11 | PRAWNS gives the forger the public key and the key of the combiner. | Public key, top tree, and on request a bottom tree with the opened randomizer value of its top key. | leanXMSS trees | `stronglyUnforgeable`, `dkgSecurity` |
+| B12 | leanXMSS has one signer with no state, separate limits for calls and signing requests, and the slack $2^{10}$. | Adaptive corruption, state, one budget for own calls and round-2 requests, two more terms, and the slack $2^{15}+384$. | Threshold game | `stronglyUnforgeable` |
+| B13 | The note has one ceremony for each bottom tree, which also opens the signature of its root. | The signature is a second ceremony with its own PRSS setup, after the local search. | One protocol | The claims of the setup, with `treeSetups` and `treeSearches` |
+| B14 | The note defines the PRF and the masks with no tag. | Each use of $H$ except $\mathrm{Th}$ hashes its own tag of 32 bytes first. | Separate domains | All claims, with one domain of $H$ for each use |
+| B16 | PRAWNS, Section 5, builds the threshold PRF from a secure PRF. | $F(x)$ is the sum of the hashes of $x$ under the seeds, with $H$ a random oracle, as in the note. | Note's choice | `stronglyUnforgeable` with `seedHitError` and `seedCollisionError`, the claims of the setup |
+| B17 | $\mathsf{Eval}'$ of PRAWNS, Section 5.1, adds two masks under $k_{ij}$ and $k_{ji}$. | One mask under the common key $K_{ij}$, as in the note. The masks still cancel in pairs. | Note's choice | `stronglyUnforgeable`, `signingCorrectness` |
+| B18 | PRAWNS lets the adversary choose $n$ and $t$. | The committee is a parameter of each claim. | Fixed committee | All claims |
+
+### The model and the implementation
+
+| B.2 | Implementation | Model | Reason | Claim |
+| --- | --- | --- | --- | --- |
+| B19 | The implementation sizes chain batches and commitment batches apart, and it puts the top randomizer value in the last commitment batch. It runs the signature ceremony as one batch of all its jobs. | Each ceremony splits its jobs into batches of `batchSize` jobs. | One batch rule | The claims of the setup, with `treeBatches` |
+| B20 | The channel numbers continue over the ceremonies of a tree, and the implementation counts the rounds of each batch. | A ceremony takes the start of its counters as a public input. The signature ceremony continues the counters of the ceremony before it, and the model counts the labels over the ceremonies of a tree. | Public counters | The claims of the setup |
+| B21 | Each PRSS setup hashes in the same domains of $H$ with no name of its ceremony. | The same. The counters start again for each tree, so the model does not separate the hash inputs of two ceremonies by a domain. | Same as the implementation | `dkgCorrectness` with `freshError`, `echoError` and `reuseError`, `dkgSecurity` with the terms of the PRSS setups |
+| B22 | The digests travel with the last coin. | The digests travel in their own round before the last coin. No message changes. | Simpler rounds | The round count `treeFuel` of the claims of the setup |
+| B23 | Each ceremony has session nonces and a commitment of the PRSS setup in the nonce round. | The model has neither. Fresh PRSS parts in each ceremony separate the sessions. | Smaller model | The claims of the setup |
+
+## Table B.3
+
+The model of `dkgSecurity` is Definition 8 of [GJM+21], security preservation. The model of `dkgCorrectness` is the first clause of Definition 6, robustness. `dkgCompleteness` has no model in the paper. The doc comment of each claim in `Statement/Dkg.lean` names the same points. The reduction of `dkgSecurity` reads only `prims.aes` from `prims`. It can depend on the circuits, so it can evaluate the fixed $\mathrm{Th}$ through the circuits with no oracle cost. Its only limit is its query cost.
+
+| B.3 | Gurkan and others | Here | Source | Claim |
+| --- | --- | --- | --- | --- |
+| G1 | Definition 8 has the same adversary on both sides. | The forger `reduction prims.aes D A` of `tsigGame` is explicit. | The proofs of Lemmas 3 to 5 (Appendix C) build such a forger | `dkgSecurity` |
+| G2 | Definition 8 has a negligible term. The lemmas state no cost of the forger. | The bound is the fixed expression `dkgError C q` plus `streamAdvantage`. The forger has the cost bound `q + dkgOverhead C` on every path. Both expressions are targets. | No source | `dkgSecurity` |
+| G3 | Each game has one key pair. The threshold use enters only by the premise $\mathsf{Sign}_{sk}=\mathsf{SignShare}_{sk}$ of Lemma 4. | A threshold game. Honest operators sign with their own key shares, and the bottom trees run during the signing phase. | No source | `dkgSecurity` |
+| G4 | The corruption is static. No game has a corruption oracle. | `dkgTsigGame` has a static coalition, and `tsigGame` has adaptive corruption. | Static, the paper. The mix, no source. | `dkgSecurity` |
+| G5 | The DKG ends, by synchrony. The paper has no abort. | The abort is selective. Each honest operator acts on what it holds. | No source | `dkgSecurity`, `dkgCorrectness` |
+| G6 | The paper uses a programmable random oracle. | $\mathrm{Th}$ is a fixed function, and the circuits compute it. | No source | The claims of the setup |
+| G7 | The DKG runs one time. | Each tree has at most `runLimit` runs, and each run is atomic. Each operator keeps the first output of its runs of a tree. The top tree runs again while an honest operator has no top tree, and the first signing request on a bottom tree ends its runs. | No source | The claims of the setup |
+| G8 | Definition 6 asks that all honest parties agree on one public key. | Honest operators hold consistent seeds, and each output of a tree is the output of `referenceTree`. | No source | `dkgCorrectness` |
+| G9 | Definition 6 states no error. | The bound is the fixed expression `dkgCorrectnessError C q` plus `streamAdvantage`. The expression is a target. | No source | `dkgCorrectness` |
+| G10 | Lemma 1 bounds the probability that some nonfaulty party has no transcript with $t+1$ contributions. Lemma 2 bounds the probability that no nonfaulty party broadcasts a verifying transcript. | `dkgAbortError C b` bounds the probability that some honest operator ends with no output. | The form of Lemma 1 | `dkgCompleteness` |
+| G11 | The paper has no property of the honest run against the dealer. | The outputs of the honest run are within `dkgCompletenessError C b` of the outputs of `dealerKeyGen`. The claim is about an honest run only and is no robustness under faults. | No source | `dkgCompleteness` |
+| G12 | The game has one key line. | The public key and the trees of the win test are those of the first honest operator that holds them (`topHolder`, `canonicalDealt`). The seeds of `dkgTreeGame` are those of the first honest holder of each term (`gameSeeds`). | No source | `dkgSecurity`, `dkgCorrectness` |
+| G13 | The adversaries are PPT. | The adversaries and the forger are bounded only by their queries, with no bound on their computation. | No source. [BR93] is the source of the random oracle and has polynomial-time adversaries. | `dkgSecurity`, `dkgCorrectness` |
+| G14 | The network has a broadcast channel. | The links are private and authenticated, with no broadcast channel. | GS20, Section 3.1 | `dkgSecurity`, `dkgCorrectness` |
+| G15 | Definition 6 also asks that $t+1$ honest shares reconstruct the secret key of the public key. | `dkgCorrectness` omits this clause. | No source | `dkgCorrectness` |
+
+## Sources
+
+- [BR93] Mihir Bellare and Phillip Rogaway. Random oracles are practical: A paradigm for designing efficient protocols. In Proceedings of the 1st ACM Conference on Computer and Communications Security (CCS '93), pages 62-73. ACM, 1993. [doi:10.1145/168588.168596](https://doi.org/10.1145/168588.168596).
+- [CDI05] Ronald Cramer, Ivan Damgard, and Yuval Ishai. Share conversion, pseudorandom secret-sharing and applications to secure computation. In Theory of Cryptography (TCC 2005), pages 342-362. Springer, 2005. [doi:10.1007/978-3-540-30576-7_19](https://doi.org/10.1007/978-3-540-30576-7_19).
+- [GJM+21] Kobi Gurkan, Philipp Jovanovic, Mary Maller, Sarah Meiklejohn, Gilad Stern, and Alin Tomescu. Aggregatable distributed key generation. Cryptology ePrint Archive, Paper 2021/005, 2021. <https://eprint.iacr.org/2021/005>.
+- [GL05] Shafi Goldwasser and Yehuda Lindell. Secure multi-party computation without agreement. Journal of Cryptology, 18(3):247-287, 2005. [doi:10.1007/s00145-005-0319-z](https://doi.org/10.1007/s00145-005-0319-z).
+- [GS20] Vipul Goyal and Yifan Song. Malicious security comes free in honest-majority MPC. Cryptology ePrint Archive, Paper 2020/134, 2020. <https://eprint.iacr.org/2020/134>.
+- [BBD+26] Dan Boneh, Benedikt Bunz, Justin D., Yavor Litchev, and Kamilla Nazirkhanova. PRAWNS: Threshold hash-based signatures from threshold PRFs. Cryptology ePrint Archive, Paper 2026/2142, 2026. <https://eprint.iacr.org/2026/2142>.
+- [lea26] leanEthereum. leanVM. Software repository, 2026. The Lean proof of leanXMSS, with its SUF-CMA and leanXMSS statements, at the revision of the dependency manifest. <https://github.com/leanEthereum/leanVM>.
+- [Wam26] Tom Wambsgans. leanXMSS candidate (WIP). Note, 2026. A copy is in the repository at `doc/leanXMSS.pdf`. <https://github.com/TomWambsgans/sphincs.art/blob/9a528527d2d0ea41d2b3b322d2548c0828569a6d/leanXMSS.tex>.

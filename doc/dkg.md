@@ -142,8 +142,7 @@ Each use of $H$ except $\mathrm{Th}$ hashes a tag block of 32 bytes first. The t
 
 - A $\mathrm{Th}$ input is $P \,\Vert\, A \,\Vert\, M$, and bytes 24 to 31 of it are the zero bytes of the address $A$.
 - A tag block has no zero byte, so no $\mathrm{Th}$ input starts with a tag block. A tag of 24 bytes or fewer can be equal to the start of a $\mathrm{Th}$ input, because $P$ is random and the first 8 bytes of $A$ vary.
-- Lean checks on the byte model of leanVM that no $\mathrm{Th}$ input starts with a tag block (`thInput_ne_of_no_zero_byte`, `thInput_ne_tagged`).
-- All tag blocks are different. So two uses of $H$ in the protocol never hash the same input. Lean checks this on a copy of the 17 names (`tagBlocks_nodup`, `tagged_ne_of_ne`). The formal model gives each use its own domain, a constructor of `Query`.
+- All tag blocks are different. So two uses of $H$ in the protocol never hash the same input. The formal model gives each use its own domain, a constructor of `Query`.
 
 The tags of the threshold PRF and of the signing masks are a difference from the note, which defines both with no tag.
 
@@ -828,11 +827,11 @@ A bottom tree is $2^{16} \cdot 58$ chains, 29,696 chain batches. Signing takes 2
 
 ### 3.3 Security
 
-The key generation targets the property of [GS20, Thm. 2](https://eprint.iacr.org/2020/134). The target is that it securely computes the trusted dealer of $\mathsf{KeyGen}$ [BBDLN26](https://eprint.iacr.org/2026/2142) with abort, against a malicious adversary that statically corrupts up to $t - 1$ of the $n = 2t - 1$ operators. The Lean proof in `formal/` proves this for the seed generation. It proves each building block secure for its own functionality, in the hybrid model of that building block. It proves it for one ceremony in the $`\{F_{\mathrm{mult}}, F_{\mathrm{multVerify}}\}`$-hybrid model (`ceremonyHybridSecurity`). In the same hybrid model, the run of one tree securely computes the tree functionality $`F_{\mathrm{tree}}`$, with both ceremonies and the local steps of a bottom tree (`treeHybridSecurity`). $`F_{\mathrm{tree}}`$ leaks the openings of all batches of its dealer, and `dealerTreeCorrectness` links that dealer to $\mathsf{KeyGen}$ when the circuits compute $\mathrm{Th}$. It does not prove it for a ceremony on the real network. That claim is `CeremonySecurityStatement`, and it is stated and not proved. Lean proves that the PRSS streams from dealt keys give the random sharings (`prssRandSecurity`). It also proves that one PRSS setup from an empty hash cache securely computes the dealer of these keys on the real network (`prssSetupSecurity`). `prssRealRandSecurity` joins the two on the real network, for one setup and one fixed public list of calls. No Lean theorem composes the seed generation, the ceremonies and the signing.
+The key generation targets the security of the trusted dealer of $\mathsf{KeyGen}$ [BBDLN26](https://eprint.iacr.org/2026/2142), with selective abort, against a malicious adversary that statically corrupts up to $t - 1$ of the $n = 2t - 1$ operators. The Lean statements in `formal/` state three claims for it, as games on the real network. `dkgSecurity` states that a forger against the signing game with the real key generation gives a forger against the signing game with the dealer, as in the security preservation of [GJM+21, Def. 8](https://eprint.iacr.org/2021/005). `dkgCorrectness` bounds inconsistent seeds and wrong tree outputs against the adversary. `dkgCompleteness` bounds the abort of an honest run and its distance to the dealer. The three claims are stated and not proved in `formal/`. The bounds of `dkgSecurity` and `dkgCorrectness` are targets, and a proof can change them.
 
 The claims cover only $n = 2t - 1$ and a classical adversary. The "Model" section of [`formal/ThresholdLeanXmss/Statement/Theorems.lean`](../formal/ThresholdLeanXmss/Statement/Theorems.lean) gives the full model.
 
-The proof follows the steps of [GS20](https://eprint.iacr.org/2020/134).
+The security argument follows the steps of [GS20](https://eprint.iacr.org/2020/134).
 
 | step      | statement                                                                                                               | source                                             |
 | --------- | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
@@ -845,9 +844,9 @@ The check misses a wrong tuple with probability at most $(d + 2(m+1)) / (2^{128}
 
 Two PRSS keys give the same 128-bit AES key with probability at most $k^2 / 2^{129}$, for the $k$ PRSS keys of a ceremony.
 
-The ceremony claim on the real network assumes that AES-128 is a multi-key PRF on the hidden PRSS keys, and its advantage is a term of the bound. The budget $q$ counts oracle calls, not time.
+`dkgSecurity` and `dkgCorrectness` assume that AES-128 is a multi-key PRF on the hidden PRSS keys, and its advantage `streamAdvantage` is a term of their target bounds. The budget $q$ counts oracle calls, not time.
 
-The building-block claims are internal lemmas. Their functionalities leak more than those of [GS20](https://eprint.iacr.org/2020/134) on some inputs, and `TupleInputs`, `MainInputs` and `ShamirInputs` restrict their inputs. The seed generation claims, `prssSetupSecurity`, `prssRealRandSecurity` and `CeremonySecurityStatement` run the real network, so they do not depend on these interfaces.
+The three claims run the real network, with the real PRSS setups and the real checks. No claim is in a hybrid model.
 
 The protocol differs from [GS20](https://eprint.iacr.org/2020/134) in three points, and each point needs its own argument.
 
@@ -864,7 +863,7 @@ The fresh PRSS keys and the named commitments of 3.1 are not in the note [Wam26]
 
 A failed run of a tree is run again. Correct outputs give the same tree, because a tree is a function of the public parameter, the seeds and the hash.
 
-Each claim covers the static coalition of one ceremony or one tree, corrupted before it. At most $t - 1$ operators are corrupted over the lifetime of the key. These separate claims give no end-to-end claim, which needs a composition as in [Can00](https://eprint.iacr.org/1998/018). Only `treeHybridSecurity` joins the two ceremonies of a bottom tree, in the hybrid model. [`formal/statement.tex`](../formal/statement.tex) holds the deployment contract and a sketch of the composition, with its open points.
+Each claim covers one static coalition, corrupted before the seed generation and fixed for the lifetime of the key. At most $t - 1$ operators are corrupted. `dkgSecurity` states a reduction from the key generation to the signing game with the dealer, with the fixed $\mathrm{Th}$. A bound of the full system also needs a bound of that signing game with the fixed $\mathrm{Th}$. No theorem gives it. The random-oracle heuristic for Keccak is the step to it. [`formal/statement.tex`](../formal/statement.tex) holds the deployment contract and this step.
 
 The claims cover ceremonies that run one at a time. A ceremony that runs during another ceremony or during a signing session is outside the claims. So production must build each bottom tree with no ceremony of another tree and no open signing session.
 
@@ -884,6 +883,7 @@ At the end of each ceremony, also on abort, an operator must erase its private c
 | [CDG+18](https://eprint.iacr.org/2018/165)                                                                      | J. Camenisch, M. Drijvers, T. Gagliardoni, A. Lehmann, G. Neven. The Wonderful World of Global Random Oracles. EUROCRYPT 2018. [ePrint 2018/165](https://eprint.iacr.org/2018/165)                                |
 | [CF01](https://eprint.iacr.org/2001/055)                                                                        | R. Canetti, M. Fischlin. Universally Composable Commitments. CRYPTO 2001. [ePrint 2001/055](https://eprint.iacr.org/2001/055)                                                                                     |
 | [CGH+18](https://eprint.iacr.org/2018/570)                                                                      | K. Chida, D. Genkin, K. Hamada, D. Ikarashi, R. Kikuchi, Y. Lindell, A. Nof. Fast Large-Scale Honest-Majority MPC for Malicious Adversaries. CRYPTO 2018. [ePrint 2018/570](https://eprint.iacr.org/2018/570)     |
+| [GJM+21](https://eprint.iacr.org/2021/005)                                                                      | K. Gurkan, P. Jovanovic, M. Maller, S. Meiklejohn, G. Stern, A. Tomescu. Aggregatable Distributed Key Generation. [ePrint 2021/005](https://eprint.iacr.org/2021/005)                                             |
 | [GL05](https://eprint.iacr.org/2002/040)                                                                        | S. Goldwasser, Y. Lindell. Secure Multi-Party Computation without Agreement. Journal of Cryptology 2005. [ePrint 2002/040](https://eprint.iacr.org/2002/040)                                                      |
 | [GRW18](https://eprint.iacr.org/2018/216)                                                                       | S. D. Gordon, S. Ranellucci, X. Wang. Secure Computation with Low Communication from Cross-Checking. ASIACRYPT 2018. [ePrint 2018/216](https://eprint.iacr.org/2018/216)                                          |
 | [GS20](https://eprint.iacr.org/2020/134)                                                                        | V. Goyal, Y. Song. Malicious Security Comes Free in Honest-Majority MPC. [ePrint 2020/134](https://eprint.iacr.org/2020/134)                                                                                      |

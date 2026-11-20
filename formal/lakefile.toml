@@ -1,0 +1,17 @@
+name = "threshold-lean-xmss-security"
+version = "0.1.0"
+defaultTargets = ["ThresholdLeanXmss"]
+
+[[require]]
+name = "VCVio"
+git = "https://github.com/Verified-zkEVM/VCVio.git"
+rev = "5f9baf12d29d25ef7e754765d28030d53e728aac"
+
+[[require]]
+name = "lean-xmss-security"
+git = "https://github.com/leanEthereum/leanVM.git"
+rev = "f5f3672f2b72d3f89dbbaeff18a53a73c975d620"
+subDir = "formal/lean_xmss"
+
+[[lean_lib]]
+name = "ThresholdLeanXmss"
