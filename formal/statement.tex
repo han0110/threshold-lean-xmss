@@ -376,7 +376,10 @@ the paper is about one broadcast of a verifying transcript and is no model of th
 \lean{dkgCompleteness} proves both bounds.
 
 \paragraph{The state of the target.} No proof accounts for the whole game for the bound of
-\lean{dkgSecurity} on the win probability yet. The term of $\mathsf{dkgError}$ that is the most likely to
+\lean{dkgSecurity} on the win probability yet. The theorem \lean{DkgSecurityProof.dkgSecurity_of_leaves}
+gives the field from four hops that have no proof yet (\lean{SharedBadBound}, \lean{SharedRefDealer},
+\lean{SharedHit}, \lean{SharedStep}) and from the inequality between the error of its chain of hops,
+\lean{sharedError}, and $\mathsf{dkgError}$. Eight hops of the chain have proofs. The term of $\mathsf{dkgError}$ that is the most likely to
 change is the sum of the errors of the single runs, which has no explicit account of the cache that
 the runs share.
 
