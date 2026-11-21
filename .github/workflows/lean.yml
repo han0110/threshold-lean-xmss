@@ -48,9 +48,11 @@ jobs:
           { echo 'import ThresholdLeanXmssSecurity'; for t in $theorems; do echo "#print axioms ThresholdLeanXmssSecurity.$t"; done; } \
             > "$RUNNER_TEMP/axioms.lean"
           lake env lean "$RUNNER_TEMP/axioms.lean" | tee "$RUNNER_TEMP/axioms.txt"
+          # Lean wraps a long line, so the check reads the output with each run of white space as one space.
+          tr -s '[:space:]' ' ' < "$RUNNER_TEMP/axioms.txt" > "$RUNNER_TEMP/axioms-flat.txt"
           for t in $theorems; do
             grep -qF "'ThresholdLeanXmssSecurity.$t' depends on axioms: [propext, Classical.choice, Quot.sound]" \
-              "$RUNNER_TEMP/axioms.txt"
+              "$RUNNER_TEMP/axioms-flat.txt"
           done
       - uses: actions/upload-artifact@v7
         with:
