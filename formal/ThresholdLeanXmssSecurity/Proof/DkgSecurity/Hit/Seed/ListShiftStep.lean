@@ -216,21 +216,13 @@ attribute [local instance] inhabitedField
 
 variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
 
-/-- The rest of the game after the seed generation of the list program with the result `p`. -/
-def listRest (D : C.Coalition) (A : DkgTsigAdversary C E) (x : PrefixOut C A.net.State)
-    (p : A.net.State × (C.Party → Option (Keys C))) : OracleComp (WorldSpec C) (RunOut C) := do
-  let keys := fun i => (p.2 i).map fun _ => x.2.1.2.2 i
-  let win ← (secRest K circuits settings runLimit ⟨true, fun _ => 0⟩ D A x.2.1.1 x.2.1.2.1 x.2.1.2.2 p.2).run'
-    (startState D p.1 keys)
-  pure (win, x.2.1.1, x.2.1.2.1, x.2.1.2.2, p.2)
-
 omit [Fintype E] [DecidableEq E] in
 theorem listSuffix_split (D : C.Coalition) (A : DkgTsigAdversary C E) (x : PrefixOut C A.net.State)
     (adj : C.Party → Mail C E → (HashOutput × (C.Term → HashOutput) × (C.Party → HashOutput)) →
       HashOutput × (C.Term → HashOutput) × (C.Party → HashOutput)) :
     listSuffix K circuits settings runLimit D A x adj =
       listPre D A.net x.1.1 x.1.2 x.2.1.1 x.2.1.2.2 x.2.2 >>= fun w =>
-        listPost D A.net x.2.2 adj w >>= listRest K circuits settings runLimit D A x := by
+        listPost D A.net x.2.2 adj w >>= restOf K circuits settings runLimit D A x := by
   unfold listSuffix
   rw [seedGenList_split, bind_assoc]
   refine bind_congr fun w => bind_congr fun p => ?_
@@ -256,7 +248,7 @@ def listTail (D : C.Coalition) (A : DkgTsigAdversary C E)
     (m : (PrefixOut C A.net.State × LogState C) × (C.Term → HashOutput) × (ListMid C E A.net.State × LogState C)) :
     ProbComp ((C.Party → Parts C) × (C.Term → HashOutput) × LogState C) := do
   let z ← (simulateQ (compWorld prims D m.1.1.2.2 m.2.1)
-    (listPost D A.net m.1.1.2.2 (adj m.1.1.2.2) m.2.2.1 >>= listRest K circuits settings runLimit D A m.1.1)).run
+    (listPost D A.net m.1.1.2.2 (adj m.1.1.2.2) m.2.2.1 >>= restOf K circuits settings runLimit D A m.1.1)).run
       m.2.2.2
   pure (m.1.1.2.2, m.2.1, z.2)
 

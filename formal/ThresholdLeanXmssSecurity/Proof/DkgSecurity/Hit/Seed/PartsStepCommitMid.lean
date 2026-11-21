@@ -8,7 +8,7 @@ import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.PartsStepCommitWalk
 
 * An answer of a free call at a commit cell between two honest operators goes in `listPreAt` only into
   the commitments, which the round-2 mail reads only at corrupt receivers and through abort tags. So
-  the answer can be replaced by zero (`listPreAt_mask`).
+  the answer can be replaced by zero (`listPreAt_eq_rest`, `restMid_mask`).
 * A free call whose answer is not used, at a commit cell that no later call programs, drops in
   `loggedWorld` with no change of the law of the result (`wp_loggedWorld_drop`, from `wp_dropWrite`).
   A later read of the cell samples it then, as a corrupt receiver cell that aliases the cell does.

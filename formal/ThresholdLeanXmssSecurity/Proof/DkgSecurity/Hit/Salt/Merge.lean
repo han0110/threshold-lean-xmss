@@ -349,13 +349,6 @@ theorem hashAnswer_digest (salt : List Bit) (history : HashOutput) :
     hashAnswer (C := C) prims (.digest salt history) = (Query C →ₒ HashOutput).randomOracle (.digest salt history) :=
   rfl
 
-theorem loggedWorld_log (D : C.Coalition) (t : (WorldSpec C).Domain) (st : LogState C) :
-    ∀ z ∈ support ((loggedWorld prims D t).run st), z.2.2 = st.2 ++ countedCells t := by
-  intro z hz
-  simp only [loggedWorld, StateT.run_mk, support_map, Set.mem_image] at hz
-  obtain ⟨w, _, rfl⟩ := hz
-  rfl
-
 end ThresholdLeanXmssSecurity.DkgSecurityProof
 
 /-- info: 'ThresholdLeanXmssSecurity.DkgSecurityProof.loggedWorld_merge' depends on axioms: [propext, Classical.choice, Quot.sound] -/

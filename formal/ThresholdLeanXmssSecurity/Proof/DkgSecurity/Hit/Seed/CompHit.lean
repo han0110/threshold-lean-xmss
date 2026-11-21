@@ -1,4 +1,4 @@
-import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.Touch
+import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.SeedTouch
 
 /-!
 # The steps from the seeds of the hidden terms to `CompHit`
@@ -207,6 +207,14 @@ variable {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
 attribute [local instance] inhabitedField
 
 variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
+
+/-- The rest of the game after the seed generation with the output `y`. -/
+def restOf (D : C.Coalition) (A : DkgTsigAdversary C E) (x : PrefixOut C A.net.State)
+    (y : A.net.State × (C.Party → Option (Keys C))) : OracleComp (WorldSpec C) (RunOut C) := do
+  let keys := fun i => (y.2 i).map fun _ => x.2.1.2.2 i
+  let win ← (secRest K circuits settings runLimit ⟨true, fun _ => 0⟩ D A x.2.1.1 x.2.1.2.1 x.2.1.2.2 y.2).run'
+    (startState D y.1 keys)
+  pure (win, x.2.1.1, x.2.1.2.1, x.2.1.2.2, y.2)
 
 /-- The suffix of the game with the list program, with the change `adj` of the keys. -/
 def listSuffix (D : C.Coalition) (A : DkgTsigAdversary C E) (x : PrefixOut C A.net.State)

@@ -1,4 +1,4 @@
-import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.Cells
+import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Clash
 
 /-!
 # The full vector of the honest parts of a hidden term
@@ -77,11 +77,23 @@ theorem card_holders (T : C.Term) : Fintype.card {k // k ∈ C.holders T} = C.t 
   have := C.one_le_t
   omega
 
+theorem holdersList_ne_nil (T : C.Term) : seedGenHolderList T ≠ [] := by
+  intro h
+  have hc := card_holders T
+  have hpos : 0 < (C.holders T).card := by
+    rw [Fintype.card_coe] at hc
+    have := C.one_le_t
+    omega
+  obtain ⟨k, hk⟩ := Finset.card_pos.1 hpos
+  have : k ∈ seedGenHolderList T := by simp [seedGenHolderList, hk, Committee.parties]
+  rw [h] at this
+  exact List.not_mem_nil this
+
 theorem holderParts_of_hiddenInput {T : C.Term} {parts parts' : C.Party → Parts C}
     (h : hiddenInput parts T = hiddenInput parts' T) : holderParts T parts = holderParts T parts' := by
   funext k
   simp only [hiddenInput, Query.derive.injEq, true_and] at h
-  have hk : k.1 ∈ holdersList T := by simp [holdersList, Committee.parties, k.2]
+  have hk : k.1 ∈ seedGenHolderList T := by simp [seedGenHolderList, Committee.parties, k.2]
   exact List.map_inj_left.1 h k.1 hk
 
 /-- The derive input of a term on fresh parts meets a fixed cell with probability at most

@@ -137,14 +137,6 @@ attribute [local instance] inhabitedField
 
 variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
 
-/-- The rest of the game after the seed generation with the output `y`. -/
-def restOf (D : C.Coalition) (A : DkgTsigAdversary C E) (x : PrefixOut C A.net.State)
-    (y : A.net.State × (C.Party → Option (Keys C))) : OracleComp (WorldSpec C) (RunOut C) := do
-  let keys := fun i => (y.2 i).map fun _ => x.2.1.2.2 i
-  let win ← (secRest K circuits settings runLimit ⟨true, fun _ => 0⟩ D A x.2.1.1 x.2.1.2.1 x.2.1.2.2 y.2).run'
-    (startState D y.1 keys)
-  pure (win, x.2.1.1, x.2.1.2.1, x.2.1.2.2, y.2)
-
 /-- The result of `preRun`, namely the prefix with its world state, the seeds, and the end of round 2
 with its world state. -/
 abbrev PreOut (C : Committee) (σ : Type) :=
@@ -214,11 +206,6 @@ theorem sharesHidden_symm (D : C.Coalition) {i j : C.Party} (hi : i ∉ D.1) (h 
 theorem isAbort_outList (D : C.Coalition) (i : C.Party) (x : SeedGenEchoData C) (j : C.Party) :
     Msg.isAbort (outList (E := E) D i x j) = false := by
   unfold outList echoOutbox
-  split_ifs <;> rfl
-
-theorem isAbort_echoOutbox (i : C.Party) (x : SeedGenEchoData C) (j : C.Party) :
-    Msg.isAbort (echoOutbox (E := E) .seedGen i x.1 x.2 j) = false := by
-  unfold echoOutbox
   split_ifs <;> rfl
 
 variable (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)

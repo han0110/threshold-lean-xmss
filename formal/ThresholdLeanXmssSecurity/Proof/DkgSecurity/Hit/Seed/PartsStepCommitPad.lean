@@ -9,7 +9,7 @@ import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.PartsStepCommitCore
   the cell plus `π ι`. Each `π ι` is read at most once, at the first designated read of `cell ι`. So
   `writeWorld` is `padWorld` on a uniform `π` (`wp_writeWorld_eq_pad`, hop B).
 * `padCells cell π` adds `π ι` to the answer of each free call at `cell ι`. `padWorld` on a program is
-  the shared world on the padded program (`wp_padWorld_eq`, hop C), since the private value of
+  the shared world on the padded program (`padWorld_step`, hop C), since the private value of
   `cell ι` is always the shared value plus `π ι`.
 * `wp_shared_eq_des` joins the three hops. For a program that the pad does not change and that makes
   no programming call at a designated cell, the shared world and `desWorld` give one law of the result
@@ -343,7 +343,7 @@ theorem padWorld_step (π : ι → HashOutput) (hcell : Function.Injective cell)
       rw [h1] at ha
       exact ⟨a, (loggedWorld_grows prims D _ _ r hr).1 _ a ha, rfl⟩
 
-/-- The general lemma. For a program that a pad per designated cell does not change and that makes no
+/-- For a program that a pad per designated cell does not change and that makes no
 programming call at a designated cell, the shared world and `desWorld` of the designated cells give one
 law of the result and of the flag, from each world state. -/
 theorem wp_shared_eq_des [Fintype ι] [DecidableEq ι] [SampleableType (ι → HashOutput)]

@@ -138,7 +138,7 @@ theorem dealtParts_bound (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ)
     (bounded : DkgTsigBounded circuits settings runLimit A q) :
     IsQueryBoundP (dealtPrefix D A >>= fun x =>
       (fun y => (x.2.2, y)) <$> dealtSuffix K circuits settings runLimit ⟨true, fun _ => 0⟩ D A x) Logged q := by
-  have h := logged_dealtRun K circuits settings runLimit D ⟨true, fun _ => 0⟩ (fun _ => rfl) A q bounded
+  have h := LoggedCount.logged_dealtRun K circuits settings runLimit D ⟨true, fun _ => 0⟩ (fun _ => rfl) A q bounded
   rw [← snd_dealtPartsRun, isQueryBoundP_map_iff, dealtPartsRun_split] at h
   simpa only [map_eq_bind_pure_comp, Function.comp_def] using h
 
@@ -290,7 +290,7 @@ theorem logged_suffixOf (D : C.Coalition) (A : DkgTsigAdversary C E) (step forge
   rw [← cost_callCharge_le_iff]
   refine (cost_bind_le_add (m := 0) ?_ fun _ => cost_pure_le _ _ _).trans (le_of_eq (add_zero _))
   rw [StateT.run'_eq, cost_map_eq]
-  have h := rcost_secRest K circuits settings runLimit D step ⟨true, fun _ => 0⟩ (fun _ => rfl) A hround forge
+  have h := LoggedCount.rcost_secRest K circuits settings runLimit D step ⟨true, fun _ => 0⟩ (fun _ => rfl) A hround forge
     hforge x.2.1.1 x.2.1.2.1 x.2.1.2.2 p.2 (startState D p.1 fun i => (p.2 i).map fun _ => x.2.1.2.2 i)
   refine h.trans (le_of_eq ?_)
   change (forge : ℕ∞) + ((FirstCounts.remaining runLimit (fun _ => treeFuel circuits settings * step)
@@ -303,7 +303,7 @@ omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
 theorem round_bound (A : DkgTsigAdversary C E) (step : ℕ)
     (hround : ∀ st sent, QueryCostAtMost (A.net.round st sent) ownCost step) :
     ∀ st sent, IsQueryBoundP (A.net.round st sent) HashCall step := fun st sent =>
-  isQueryBoundP_of_queryCostAtMost (hround st sent) SeedCompare.hashCall_ownCost
+  isQueryBoundP_of_queryCostAtMost (hround st sent) LoggedCount.hashCall_ownCost
 
 omit [Fintype E] [DecidableEq E] in
 /-- The prefix and a suffix with a seed generation of at most `setupRounds * step` counted calls make
@@ -317,10 +317,10 @@ theorem logged_prefix_suffixOf (D : C.Coalition) (A : DkgTsigAdversary C E) (q :
       suffixOf K circuits settings runLimit ⟨true, fun _ => 0⟩ D A x (sg x)) Logged q := by
   obtain ⟨start, step, forge, hsum, hstart, hround, hforge⟩ := bounded
   have hstart' : ∀ x z, IsQueryBoundP (A.net.start x z) HashCall start := fun x z =>
-    isQueryBoundP_of_queryCostAtMost (hstart x z) SeedCompare.hashCall_ownCost
+    isQueryBoundP_of_queryCostAtMost (hstart x z) LoggedCount.hashCall_ownCost
   have hround' := round_bound A step hround
   have hforge' : ∀ pk top, cost (forgeCharge (callCharge HashCall)) (A.forge pk top) ≤ (forge : ℕ∞) :=
-    fun pk top => (PFunctor.FreeM.cost_mono SeedCompare.forgeCharge_le_forgeCost _).trans
+    fun pk top => (PFunctor.FreeM.cost_mono LoggedCount.forgeCharge_le_forgeCost _).trans
       ((queryCostAtMost_iff_cost_le _ _ _).1 (hforge pk top))
   unfold dealtPrefix
   simp only [bind_assoc, pure_bind]

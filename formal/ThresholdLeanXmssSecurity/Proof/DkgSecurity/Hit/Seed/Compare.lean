@@ -1,8 +1,5 @@
-import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.Defs
-import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.Count
-import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.Cells
-import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.Event
-import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.Arith
+import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.CellHit
+import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.CompareErrors
 
 /-!
 # The comparison game with one independent seed for each hidden term
@@ -138,7 +135,7 @@ theorem cellHit_of_compare (close : SeedClose prims K circuits settings runLimit
   intro D A q bounded
   rcases Nat.eq_zero_or_pos q with rfl | hq
   · have hlog : IsQueryBoundP (dealtPartsRun K circuits settings runLimit ⟨true, fun _ => 0⟩ D A) Logged 0 := by
-      have h := logged_dealtRun K circuits settings runLimit D ⟨true, fun _ => 0⟩ (fun _ => rfl) A 0 bounded
+      have h := LoggedCount.logged_dealtRun K circuits settings runLimit D ⟨true, fun _ => 0⟩ (fun _ => rfl) A 0 bounded
       rw [← snd_dealtPartsRun] at h
       exact (isQueryBoundP_map_iff _ _ _).1 h
     have h0 : Pr{let z ← (simulateQ (loggedWorld prims D)

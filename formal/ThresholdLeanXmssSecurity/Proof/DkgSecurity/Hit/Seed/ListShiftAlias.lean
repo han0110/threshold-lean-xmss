@@ -78,14 +78,6 @@ theorem midAlias_imp (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) 
     refine termAddress_inbox D parts j _ _ T fun k hk => ?_
     simp [levelInbox, hk]
 
-/-- The term part of `T` does not move under a shift of the term parts of `T' ≠ T`. -/
-theorem shiftAll_term_ne {T T' : C.Term} (hne : T ≠ T') (c : C.Party → HashOutput) (parts : C.Party → Parts C)
-    (k : C.Party) : (shiftAll T' c parts k).term T = (parts k).term T := by
-  simp only [shiftAll, shiftParts, Option.some.injEq]
-  split_ifs with e
-  · exact absurd e.symm hne
-  · rfl
-
 theorem hiddenInput_shiftAll_comm (T' : C.Term) (parts parts' : C.Party → Parts C) :
     hiddenInput (shiftAll T' (fun k => (parts' k).term T') parts) T' =
       hiddenInput (shiftAll T' (fun k => (parts k).term T') parts') T' := by
@@ -152,7 +144,7 @@ theorem probEvent_aliasAt_le (law : MidShiftLaw (C := C) (E := E) prims) (D : C.
       subst hs'
       rw [← heq]
       exact termAddress_congr D _ _ j _ T fun k _ _ =>
-        (shiftAll_term_ne hne (fun k => (parts' k).term T') m.1.1.2.2 k).symm
+        (SeedNormal.shiftAll_term_ne _ _ (fun k => (parts' k).term T') m.1.1.2.2 k hne).symm
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
 /-- `MidShiftLaw` gives `ListAliasBound`. -/

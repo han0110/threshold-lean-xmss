@@ -1,4 +1,4 @@
-import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.CommitPad
+import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.UpToTouch
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.NormalShift
 
 /-!

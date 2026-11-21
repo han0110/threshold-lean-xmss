@@ -291,18 +291,6 @@ theorem suffixAt_cellRw (D : C.Coalition) (A : DkgTsigAdversary C E) (x : Prefix
 /-- The cell `X` in the place of `markCell`. -/
 def markTo (X : Query C) (q : Query C) : Query C := if q = markCell then X else q
 
-theorem holdersList_ne_nil (T : C.Term) : holdersList T ≠ [] := by
-  intro h
-  have hc := card_holders T
-  have hpos : 0 < (C.holders T).card := by
-    rw [Fintype.card_coe] at hc
-    have := C.one_le_t
-    omega
-  obtain ⟨k, hk⟩ := Finset.card_pos.1 hpos
-  have : k ∈ holdersList T := by simp [holdersList, hk, Committee.parties]
-  rw [h] at this
-  exact List.not_mem_nil this
-
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
 theorem termAddress_ne_markCell (D : C.Coalition) (parts : C.Party → Parts C) (i : C.Party) (inbox : Mail C E)
     (T : C.Term) : termAddress D parts i inbox T ≠ markCell := by

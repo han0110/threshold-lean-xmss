@@ -78,7 +78,7 @@ theorem passTwo_split (j : C.Party) (k : Option (HashOutput × (C.Term → HashO
     simp [passTwo, passTwoList, discOne]
   · have h := mapM_split prims D parts seed (SharesHidden D j) (fun l => sharedAddress j l keys.2.1) C.parties
       (fun sh => pure (some (keys, sh)))
-    simp only [passTwo, passTwoList, discOne, liftComp_mapM, bind_assoc, pure_bind, Option.map_some, zeroShared]
+    simp only [passTwo, passTwoList, discOne, seedGen_liftComp_mapM, bind_assoc, pure_bind, Option.map_some, zeroShared]
     exact h
 
 /-- `BlockLaw` holds. -/

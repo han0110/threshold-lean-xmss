@@ -1,4 +1,4 @@
-import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.Touch
+import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.SeedTouch
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.RestEmu
 
 /-!

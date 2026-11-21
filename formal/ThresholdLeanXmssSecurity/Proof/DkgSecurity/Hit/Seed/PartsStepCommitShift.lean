@@ -3,7 +3,7 @@ import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.PartsStepRename
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Salt.CountProgram
 
 /-!
-# The commit side from the general lemma
+# The commit side `CommitShift` from the pad of the honest pair cells
 
 The family of the honest pair cells of the suffix `suffixAt x commitAt termAt` is `pairFamily D commitAt`.
 Its index `(i, j, b)` has two honest operators. With `b = false` it is the commit cell `commitAt i j`, and
@@ -11,7 +11,7 @@ with `b = true` it is the open cell `.commit i j []` of an operator for itself.
 
 * `noCall_suffixAt` states that the suffix makes no programming call at a cell of the family and no
   free call at a commitment cell between two honest operators off the family.
-* `desWorld_family_eq` states that on such a program `desWorld` of the family is `pairWorld`.
+* `desWorld_family` states that on such a program `desWorld` of the family is `pairWorld`.
 * `commitShift_of_pad` gives `CommitShift` from `wp_shared_eq_des` and the pad invariance of the
   suffix on the shifted parts.
 -/
@@ -215,18 +215,6 @@ theorem noCall_or {ι' α : Type} {spec : OracleSpec ι'} (p q : ι' → Prop) (
     have h := ih u (by simpa [hp'] using hp.2 u) (by simpa [hq'] using hq.2 u)
     simpa [hp', hq'] using h
 
-theorem simulateQ_congr_noCall {ι' σ α : Type} {spec : OracleSpec ι'} (Q : ι' → Prop)
-    (impl₁ impl₂ : QueryImpl spec (StateT σ ProbComp)) (h : ∀ t, ¬ Q t → impl₁ t = impl₂ t)
-    (oa : OracleComp spec α) (hoa : NoCall Q oa) : simulateQ impl₁ oa = simulateQ impl₂ oa := by
-  rw [noCall_iff] at hoa
-  induction oa using OracleComp.inductionOn with
-  | pure a => simp
-  | query_bind t k ih =>
-    rw [isQueryBoundP_query_bind_iff] at hoa
-    have ht : ¬ Q t := hoa.1.resolve_right (by omega)
-    simp only [simulateQ_query_bind, OracleQuery.input_query, OracleQuery.cont_query, h t ht]
-    exact bind_congr fun u => ih u (by simpa [ht] using hoa.2 u)
-
 end Calls
 
 section Suffix
@@ -427,7 +415,7 @@ theorem commitShift_of_pad (pad : ShiftPad K circuits settings runLimit) :
       (simulateQ (desWorld prims D (fun _ => False) (TouchAt X)) Pr').run ((x.2, ∅, b) : PairState C) =
       (simulateQ (flagAt prims D X) Pr').run (x.2, b) := hmap
   rw [prEvent_eq_wp_indicator, prEvent_eq_wp_indicator, ← hmap', wp_map, pairWorld_eq_desWorld,
-    ← simulateQ_congr_noCall _ _ _ (fun t ht => desWorld_family prims D _
+    ← simulateQ_congr_of_noCall _ _ _ (fun t ht => desWorld_family prims D _
       (fun q ⟨p, hp⟩ => hp ▸ pairFamily_pairCell D _ hshape p) (TouchAt X) t ht) Pr' hnc]
   exact wp_shared_eq_des prims D (pairFamily D _) (TouchAt X) (pairFamily_injective D hshape) hfix hstream
     (fun _ f => if f = true then 1 else 0) Pr'

@@ -130,22 +130,14 @@ theorem cellPot_of_eq {L : Query C} {s : HashOutput} {c : HashCache C} (h : c L 
 
 /-! ## The aliases of a hidden derive input -/
 
-
-/-- The holders of `T` in operator order. -/
-def holdersList (T : C.Term) : List C.Party := C.parties.filter (· ∈ C.holders T)
-
 /-- The derive input of the term `T` on the parts `parts`. -/
 def hiddenInput (parts : C.Party → Parts C) (T : C.Term) : Query C :=
-  .derive .seedGen .term ((holdersList T).map fun k => (parts k).term T)
-
-/-- The first honest operator in `S`, as `worldSeedGen` picks it. -/
-def firstHonestOf (D : C.Coalition) (S : Finset C.Party) : C.Party :=
-  (C.parties.find? fun i => i ∈ S ∧ i ∉ D.1).getD (firstParty C)
+  .derive .seedGen .term ((seedGenHolderList T).map fun k => (parts k).term T)
 
 theorem firstHonestOf_spec (D : C.Coalition) (T : C.Term) :
-    firstHonestOf D (C.holders T) ∈ C.holders T ∧ firstHonestOf D (C.holders T) ∉ D.1 := by
+    seedGenFirstHonest D (C.holders T) ∈ C.holders T ∧ seedGenFirstHonest D (C.holders T) ∉ D.1 := by
   obtain ⟨a, ha, hD⟩ := exists_honest_holder D T
-  unfold firstHonestOf
+  unfold seedGenFirstHonest
   rcases hf : C.parties.find? (fun i => i ∈ C.holders T ∧ i ∉ D.1) with _ | k
   · rw [List.find?_eq_none] at hf
     exact absurd (hf a (by simp [Committee.parties])) (by simp [ha, hD])
@@ -154,12 +146,12 @@ theorem firstHonestOf_spec (D : C.Coalition) (T : C.Term) :
 
 /-- The holder of `T` at the place of the first honest holder of `T'`. -/
 def aliasPartner (D : C.Coalition) (T T' : C.Term) : Option C.Party :=
-  (holdersList T)[(holdersList T').idxOf (firstHonestOf D (C.holders T'))]?
+  (seedGenHolderList T)[(seedGenHolderList T').idxOf (seedGenFirstHonest D (C.holders T'))]?
 
 /-- The honest coordinate of the programming input of `T'` meets the coordinate of the derive input
 of `T` at its place. -/
 def AliasPair (D : C.Coalition) (parts : C.Party → Parts C) (T T' : C.Term) : Prop :=
-  ∃ h, aliasPartner D T T' = some h ∧ (parts h).term T = (parts (firstHonestOf D (C.holders T'))).term T'
+  ∃ h, aliasPartner D T T' = some h ∧ (parts h).term T = (parts (seedGenFirstHonest D (C.holders T'))).term T'
 
 /-- Some hidden term meets some known term. -/
 def AnyAlias (D : C.Coalition) (parts : C.Party → Parts C) : Prop :=
@@ -171,17 +163,17 @@ theorem probEvent_aliasPair (D : C.Coalition) {T T' : C.Term} (hne : T ≠ T') :
   rcases hp : aliasPartner D T T' with _ | h
   · simp [AliasPair, hp]
   · calc _ ≤ Pr{let parts ← OverPermutation.sequenceFin (fun _ : C.Party => sampleParts (C := C))}[
-          (parts h).term T = (parts (firstHonestOf D (C.holders T'))).term T'] :=
+          (parts h).term T = (parts (seedGenFirstHonest D (C.holders T'))).term T'] :=
           prEvent_mono _ _ _ fun parts hx => by
             obtain ⟨h', hh', e⟩ := hx
             rw [hp] at hh'
             cases hh'
             exact e
       _ = _ := probEvent_parts_collision (fun parts => (parts h).term T)
-          (fun parts => (parts (firstHonestOf D (C.holders T'))).term T') h (some T) none
+          (fun parts => (parts (seedGenFirstHonest D (C.holders T'))).term T') h (some T) none
           (fun c parts => by simp [shiftAt, shiftParts])
           (fun c parts => by
-            by_cases e : firstHonestOf D (C.holders T') = h
+            by_cases e : seedGenFirstHonest D (C.holders T') = h
             · simp [shiftAt, shiftParts, e, fun h : T = T' => hne h]
             · simp [shiftAt, e])
 
@@ -283,12 +275,12 @@ theorem programOff_seedGenRest (D : C.Coalition) (net : Adversary C E Unit PEmpt
         exact ⟨j, this.1, this.2⟩
       refine hno T' hk ?_
       obtain ⟨hk0, hk0D⟩ := firstHonestOf_spec D T'
-      have hmem : firstHonestOf D (C.holders T') ∈ holdersList T' := by
-        simp [holdersList, Committee.parties, hk0]
+      have hmem : seedGenFirstHonest D (C.holders T') ∈ seedGenHolderList T' := by
+        simp [seedGenHolderList, Committee.parties, hk0]
       have hlt := List.idxOf_lt_length_of_mem hmem
       simp only [hiddenInput, Query.derive.injEq, true_and] at e
-      have e2 := congrArg (fun l => l[(holdersList T').idxOf (firstHonestOf D (C.holders T'))]?) e
-      change ((holdersList T').map _)[_]? = ((holdersList T).map _)[_]? at e2
+      have e2 := congrArg (fun l => l[(seedGenHolderList T').idxOf (seedGenFirstHonest D (C.holders T'))]?) e
+      change ((seedGenHolderList T').map _)[_]? = ((seedGenHolderList T).map _)[_]? at e2
       rw [List.getElem?_map, List.getElem?_map, List.getElem?_eq_getElem hlt, List.getElem_idxOf] at e2
       rcases hp : aliasPartner D T T' with _ | h
       · simp only [aliasPartner] at hp
@@ -708,7 +700,7 @@ theorem termCached_stream (D : C.Coalition) (net : Adversary C E Unit PEmpty PEm
   have hc := term_cached_seedGen i _ keys' hkeys' T hiT
   have hview : ((C.parties.filter (· ∈ C.holders T)).map fun j =>
       (setupView .seedGen i (parts i) (roundInbox D q2.1.2.2 r1.1.1.2.1 i) j).term T) =
-      (holdersList T).map fun j => (parts j).term T := by
+      (seedGenHolderList T).map fun j => (parts j).term T := by
     refine List.map_congr_left fun j hj => ?_
     have hjT : j ∈ C.holders T := by simpa using (List.mem_filter.1 hj).2
     have hjD : j ∉ D.1 := fun h => hT ⟨j, h, hjT⟩

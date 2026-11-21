@@ -11,9 +11,6 @@ the hidden salt is in the hands of the program, and a statement on the world alo
 stays hidden. This file states the program fact as an equality of two programs and puts each other
 step on the world.
 
-* `prEvent_le_of_shiftMean` is the mean over a shift. A probability that is at most the probability of
-  `δ ∈ named` for each shift `δ`, with at most `N` named shifts at the end of each run, is at most
-  `N / card`.
 * `saltShift D δ` adds `δ` to the 256 cells at the stream index 2 of each place of a hidden term.
   `shiftQ_run` moves this shift from the hidden table to the answers that the program reads.
 * `provShift D δ` is a rewrite of the calls of a program. It keeps a queue of the salt reads. A free
@@ -42,27 +39,6 @@ noncomputable section
 namespace ThresholdLeanXmssSecurity.DkgSecurityProof
 
 attribute [local instance] Classical.propDecidable
-
-/-! ## The mean over a shift -/
-
-/-- A probability `p` that is at most the probability of `δ ∈ named` in one run for each `δ`, with at
-most `N` named values at the end of each run, is at most `N` over the number of the values. The bound
-is a mean over the run and over `δ`. -/
-theorem prEvent_le_of_shiftMean {V Y : Type} [Fintype V] [SampleableType V] (p : ℝ≥0∞) (run : ProbComp Y)
-    (named : Y → Finset V) (N : ℕ) (step : ∀ δ, p ≤ Pr{let y ← run}[δ ∈ named y])
-    (count : ∀ y ∈ support run, (named y).card ≤ N) : p ≤ (N : ℝ≥0∞) / (Fintype.card V : ℝ≥0∞) := by
-  have h₁ : p ≤ wp ($ᵗ V) (fun δ => wp run (fun y => if δ ∈ named y then 1 else 0)) := by
-    calc p = wp ($ᵗ V) (fun _ => p) := (wp_const _ p).symm
-      _ ≤ _ := wp_mono _ fun δ => (step δ).trans_eq (prEvent_eq_wp_indicator _ _)
-  refine h₁.trans ?_
-  rw [DkgSecurityProof.wp_swap]
-  refine (wp_mono_of_support run fun y hy => ?_).trans_eq (wp_const run _)
-  rw [← prEvent_eq_wp_indicator, SampleableType.prEvent_uniformSample]
-  refine ENNReal.div_le_div_right ?_ _
-  have hc : (Finset.univ.filter fun δ => δ ∈ named y).card ≤ N := by
-    rw [Finset.filter_mem_eq_inter, Finset.univ_inter]
-    exact count y hy
-  exact_mod_cast hc
 
 variable {C : Committee}
 
@@ -273,10 +249,6 @@ theorem hitSalt_of_prov (full : SaltFullLogged prims K circuits settings runLimi
   exact hreal
 
 end ThresholdLeanXmssSecurity.DkgSecurityProof
-
-/-- info: 'ThresholdLeanXmssSecurity.DkgSecurityProof.prEvent_le_of_shiftMean' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.DkgSecurityProof.prEvent_le_of_shiftMean
 
 /-- info: 'ThresholdLeanXmssSecurity.DkgSecurityProof.hitSalt_of_prov' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

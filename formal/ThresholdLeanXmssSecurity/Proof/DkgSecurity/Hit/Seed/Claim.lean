@@ -1,5 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Parts
-import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.Close
+import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.UpToTouch
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.CountsWalk
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.EchoLaw
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.ListShiftLaw

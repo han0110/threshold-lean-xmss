@@ -97,20 +97,20 @@ variable (D : C.Coalition) (T : C.Term) (parts : C.Party → Parts C)
 
 /-- The hidden cell of `T` on the parts shifted by `δ` at the holders of `T`. -/
 def shiftCell (δ : {k // k ∈ C.holders T} → HashOutput) : Query C :=
-  SeedCompare.hiddenInput (SeedCompare.shiftAll T (extendShift T δ) parts) T
+  hiddenInput (SeedCompare.shiftAll T (extendShift T δ) parts) T
 
 theorem shiftCell_eq (δ : {k // k ∈ C.holders T} → HashOutput) :
     shiftCell T parts δ =
-      .derive .seedGen .term ((SeedCompare.holdersList T).map fun k => (parts k).term T ^^^ extendShift T δ k) := by
-  simp [shiftCell, SeedCompare.hiddenInput, SeedCompare.shiftAll, shiftParts]
+      .derive .seedGen .term ((seedGenHolderList T).map fun k => (parts k).term T ^^^ extendShift T δ k) := by
+  simp [shiftCell, hiddenInput, SeedCompare.shiftAll, shiftParts]
 
 theorem shiftCell_injective : Function.Injective (shiftCell T parts) := by
   intro δ δ' h
   rw [shiftCell_eq, shiftCell_eq] at h
   simp only [Query.derive.injEq, true_and] at h
   funext k
-  have hmem : k.1 ∈ SeedCompare.holdersList T := by
-    simp [SeedCompare.holdersList, Committee.parties, k.2]
+  have hmem : k.1 ∈ seedGenHolderList T := by
+    simp [seedGenHolderList, Committee.parties, k.2]
   have hk := (List.map_inj_left.1 h) k.1 hmem
   simp only [extendShift, k.2, ↓reduceDIte] at hk
   have hk' := congrArg (fun v => (parts k.1).term T ^^^ v) hk
@@ -123,7 +123,7 @@ theorem shiftCell_ne_streamKey (δ : {k // k ∈ C.holders T} → HashOutput) (k
   exact fun h => by cases h
 
 /-- The cell `Y` is the hidden cell of a hidden term other than `T`. -/
-def OtherHidden (Y : Query C) : Prop := ∃ T', T' ≠ T ∧ ¬ KnownTo D.1 T' ∧ Y = SeedCompare.hiddenInput parts T'
+def OtherHidden (Y : Query C) : Prop := ∃ T', T' ≠ T ∧ ¬ KnownTo D.1 T' ∧ Y = hiddenInput parts T'
 
 /-- The shifts whose cell is the hidden cell of another hidden term. -/
 def hiddenShifts : Set ({k // k ∈ C.holders T} → HashOutput) := {δ | OtherHidden D T parts (shiftCell T parts δ)}
@@ -132,7 +132,7 @@ theorem encard_hiddenShifts (hT : ¬ KnownTo D.1 T) :
     (hiddenShifts D T parts).encard ≤ (((hiddenTerms D).card - 1 : ℕ) : ℕ∞) := by
   rw [← (shiftCell_injective T parts).injOn.encard_image]
   have hsub : shiftCell T parts '' hiddenShifts D T parts ⊆
-      SeedCompare.hiddenInput parts '' ↑((hiddenTerms D).erase T) := by
+      hiddenInput parts '' ↑((hiddenTerms D).erase T) := by
     rintro _ ⟨δ, ⟨T', hne, hk, he⟩, rfl⟩
     exact ⟨T', by simp [hiddenTerms, hne, hk], he.symm⟩
   refine (Set.encard_le_encard hsub).trans ((Set.encard_image_le _ _).trans ?_)
@@ -227,11 +227,11 @@ theorem partsWorld_gauge (t : (WorldSpec C).Domain) (s : PartsState C) :
   fun z hz => gauge_step D T parts (partsWorld_named D T parts prims t s z hz)
 
 /-- A free call or a programming call of `ShiftCharged`. -/
-def FreeCharged (t : (WorldSpec C).Domain) : Prop := ShiftCharged D T parts t ∧ ¬ SeedCompare.Logged t
+def FreeCharged (t : (WorldSpec C).Domain) : Prop := ShiftCharged D T parts t ∧ ¬ DkgSecurityProof.Logged t
 
 theorem shiftCharged_cases (t : (WorldSpec C).Domain) (h : ShiftCharged D T parts t) :
-    SeedCompare.Logged t ∨ FreeCharged D T parts t := by
-  by_cases hl : SeedCompare.Logged t
+    DkgSecurityProof.Logged t ∨ FreeCharged D T parts t := by
+  by_cases hl : DkgSecurityProof.Logged t
   · exact Or.inl hl
   · exact Or.inr ⟨h, hl⟩
 
@@ -286,11 +286,11 @@ theorem partsCount_of_walk (walk : PartsWalk K circuits settings runLimit) :
     PartsCount prims K circuits settings runLimit := by
   intro D A q bounded T hT r hr
   obtain ⟨start, step, forge, hsum, hstart, hround, hforge⟩ := bounded
-  have hstart' : ∀ x z, IsQueryBoundP (A.net.start x z) SeedCompare.HashCall start := fun x z =>
-    isQueryBoundP_of_queryCostAtMost (hstart x z) SeedCompare.hashCall_ownCost
+  have hstart' : ∀ x z, IsQueryBoundP (A.net.start x z) DkgSecurityProof.HashCall start := fun x z =>
+    isQueryBoundP_of_queryCostAtMost (hstart x z) LoggedCount.hashCall_ownCost
   have hround' := round_bound A step hround
-  have hforge' : ∀ pk top, cost (forgeCharge (callCharge SeedCompare.HashCall)) (A.forge pk top) ≤ (forge : ℕ∞) :=
-    fun pk top => (PFunctor.FreeM.cost_mono SeedCompare.forgeCharge_le_forgeCost _).trans
+  have hforge' : ∀ pk top, cost (forgeCharge (callCharge DkgSecurityProof.HashCall)) (A.forge pk top) ≤ (forge : ℕ∞) :=
+    fun pk top => (PFunctor.FreeM.cost_mono LoggedCount.forgeCharge_le_forgeCost _).trans
       ((queryCostAtMost_iff_cost_le _ _ _).1 (hforge pk top))
   simp only [partsRef, prefix_run, bind_assoc, pure_bind, mem_support_bind_iff, support_pure,
     Set.mem_singleton_iff] at hr
@@ -298,9 +298,9 @@ theorem partsCount_of_walk (walk : PartsWalk K circuits settings runLimit) :
   have hpre := measure_le (loggedWorld prims D) (fun w => gauge D T parts w.1.1 []) (ShiftCharged D T parts)
     (loggedWorld_gauge D T parts prims) _ start
     ((FirstCounts.isQueryBoundP_add (shiftCharged_cases D T parts) _ start 0
-      (SeedCompare.logged_observe _ _ (hstart' _ _)) (noFree_observe D T parts _)).mono (Nat.add_zero _).le) _ a ha
+      (DkgSecurityProof.logged_observe _ _ (hstart' _ _)) (noFree_observe D T parts _)).mono (Nat.add_zero _).le) _ a ha
   have hsg : IsQueryBoundP (seedGenAt D A.net a.1.1 a.1.2 b.1 b.2.2 parts (commitAddress parts)
-      (termMark D parts T)) SeedCompare.Logged (setupRounds * step) :=
+      (termMark D parts T)) DkgSecurityProof.Logged (setupRounds * step) :=
     logged_seedGenShape D A.net step hround' a.1.1 a.1.2 b.1 b.2.2 parts _
       (noLogged_commitDrawsAt D (commitAddress parts)) _ _ _
   have hlog := logged_suffixOf K circuits settings runLimit D A step forge hround' hforge' ((a.1, b, parts)) _ hsg

@@ -10,8 +10,7 @@ import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.EchoCollide
 * `localBlock_noStream` and `passOne_avoid` state that the block makes no stream call and that pass 1
   asks no shared key cell of the seed generation.
 * The support facts. A run of `compLocal` only adds values to the cache (`compLocal_run_mono`). A run with
-  no call at a cell keeps its value (`compLocal_run_keep`). A shared key call stores its answer
-  (`passTwo_cached`). The seed of a hidden term in the keys of pass 1 is `heldSeed` (`passOne_hidden`).
+  no call at a cell keeps its value (`compLocal_run_keep`).
 -/
 
 set_option autoImplicit false
@@ -206,24 +205,6 @@ end Calls
 /-! ## The support facts -/
 
 section Support
-
-theorem liftComp_mapM {β γ : Type} (f : β → OracleComp (RoSpec C) γ) :
-    ∀ xs : List β, liftComp (xs.mapM f) (LocalSpec C) = xs.mapM fun x => liftComp (f x) (LocalSpec C)
-  | [] => by simp
-  | x :: xs => by
-    simp only [List.mapM_cons, liftComp_bind, liftComp_pure]
-    rw [liftComp_mapM f xs]
-
-theorem forall₂_finRange_getD {β : Type} {n : ℕ} (R : Fin n → β → Prop) (ys : List β) (d : β)
-    (h : List.Forall₂ R (List.finRange n) ys) (l : Fin n) : R l (ys.getD l.val d) := by
-  rw [List.forall₂_iff_get] at h
-  obtain ⟨hlen, hget⟩ := h
-  have hl : l.val < (List.finRange n).length := by simp
-  have hl' : l.val < ys.length := hlen ▸ hl
-  have e := hget l.val hl hl'
-  simp only [List.get_eq_getElem, List.getElem_finRange] at e
-  rw [List.getD_eq_getElem _ _ hl']
-  exact e
 
 theorem forall₂_getD_idxOf {α β : Type} [BEq α] [LawfulBEq α] (R : α → β → Prop) (xs : List α) (ys : List β)
     (h : List.Forall₂ R xs ys) (x : α) (hx : x ∈ xs) (d : β) : R x (ys.getD (xs.idxOf x) d) := by

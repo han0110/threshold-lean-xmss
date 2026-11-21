@@ -1,4 +1,6 @@
-import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.PadSeed
+import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.ZipWith
+import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.UpToTouch
+import ThresholdLeanXmssSecurity.Proof.DkgSecurity.SeedTable.IdealCoupling
 
 /-!
 # The rest of the game asks no free cell of the seed generation
@@ -20,7 +22,7 @@ open OracleComp OracleSpec HashSig LeanXmss ENNReal ThresholdLeanXmss ThresholdL
 open ThresholdLeanXmssSecurity.DkgCorrectnessProof
 open ThresholdLeanXmssSecurity.SigningSelectionProof (NoCall noCall_iff noCall_mono)
 open PFunctor.FreeM (costWith cost costWith_mono)
-open ThresholdLeanXmssSecurity.DkgSecurityProof.SeedCompare (RCost RCostT)
+open ThresholdLeanXmssSecurity.DkgSecurityProof (RCost RCostT)
 
 noncomputable section
 

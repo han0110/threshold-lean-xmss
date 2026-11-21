@@ -112,23 +112,11 @@ theorem freeCharged_program (x : Query C × HashOutput) :
   · rintro ⟨δ, he, hδ⟩
     exact ⟨⟨δ, by rw [← he]; rfl, hδ⟩, fun h => h⟩
 
-theorem holdersList_ne_nil_of_t : SeedCompare.holdersList T ≠ [] := by
-  have hc := SeedCompare.card_holders T
-  have hpos : 0 < Fintype.card {k // k ∈ C.holders T} := by
-    have := C.one_le_t
-    omega
-  obtain ⟨⟨k, hk⟩⟩ := Fintype.card_pos_iff.1 hpos
-  intro h
-  have hmem : k ∈ SeedCompare.holdersList T := by
-    simp [SeedCompare.holdersList, Committee.parties, hk]
-  rw [h] at hmem
-  exact List.not_mem_nil hmem
-
 /-- A charged cell is a term cell of the seed generation with a list that is not empty. -/
 theorem charges_shape {Y : Query C} (h : Charges D T parts Y) : ∃ L, Y = .derive .seedGen .term L ∧ L ≠ [] := by
   obtain ⟨δ, rfl, -⟩ := h
   rw [shiftCell_eq]
-  exact ⟨_, rfl, by simpa using holdersList_ne_nil_of_t T⟩
+  exact ⟨_, rfl, by simpa using SeedCompare.holdersList_ne_nil T⟩
 
 theorem not_charges_markCell : ¬ Charges D T parts markCell := by
   intro h
@@ -137,7 +125,7 @@ theorem not_charges_markCell : ¬ Charges D T parts markCell := by
   exact hne hL.symm
 
 theorem not_charges_hidden {T' : C.Term} (hne : T' ≠ T) (hT' : ¬ KnownTo D.1 T') :
-    ¬ Charges D T parts (SeedCompare.hiddenInput parts T') := by
+    ¬ Charges D T parts (hiddenInput parts T') := by
   rintro ⟨δ, he, hδ⟩
   exact hδ ⟨T', hne, hT', he.symm⟩
 

@@ -36,21 +36,6 @@ attribute [local irreducible] MonadAttach.support
 
 variable {C : Committee} {E : Type}
 
-/-! ## Worlds that agree off a set of calls -/
-
-/-- Two worlds that agree off the set `P` run a program with no call in `P` the same way. -/
-theorem simulateQ_congr_of_noCall {ι : Type} {spec : OracleSpec ι} {m : Type → Type} [Monad m] [LawfulMonad m]
-    (P : ι → Prop) (impl impl' : QueryImpl spec m) (h : ∀ t, ¬ P t → impl t = impl' t) {α : Type}
-    (X : OracleComp spec α) (hX : NoCall P X) : simulateQ impl X = simulateQ impl' X := by
-  rw [noCall_iff] at hX
-  induction X using OracleComp.inductionOn with
-  | pure a => simp
-  | query_bind t k ih =>
-    rw [isQueryBoundP_query_bind_iff] at hX
-    have ht : ¬ P t := hX.1.resolve_right (by omega)
-    rw [simulateQ_bind, simulateQ_bind, simulateQ_spec_query, simulateQ_spec_query, h t ht]
-    exact bind_congr fun u => ih u (by simpa [ht] using hX.2 u)
-
 section Hidden
 
 variable (D : C.Coalition) (parts : C.Party → Parts C)

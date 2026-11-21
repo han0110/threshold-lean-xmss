@@ -20,7 +20,7 @@ set_option autoImplicit false
 
 open OracleComp OracleSpec HashSig LeanXmss ENNReal ThresholdLeanXmss ThresholdLeanXmssSecurity
 open ThresholdLeanXmssSecurity.DkgCorrectnessProof
-open ThresholdLeanXmssSecurity.DkgSecurityProof.SeedCompare (hiddenInput shiftAll)
+open ThresholdLeanXmssSecurity.DkgSecurityProof.SeedCompare (shiftAll)
 
 noncomputable section
 

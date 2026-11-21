@@ -4,14 +4,16 @@ import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Table.Move
 /-!
 # The counted calls of the game with the keys of the dealer
 
-`Logged` is a call of `H` on the counted copy, the only call that `loggedWorld` logs.
+`Logged` is a call of `H` on the counted copy, the only call that `loggedWorld` logs. A world program
+with at most `n` such calls adds at most `n` cells to the log (`log_length_le`).
 
 `LoggedCount.logged_dealtRun` counts the calls of `Logged` in `dealtRun` with no emulated run. The
 start and each round of the adversary count their calls of `H`, and `forge` counts its calls of `H` by
 `forgeCost`. So a game of an adversary with the budget `q` makes at most `q` such calls. The runs pay
 from the potential `LoggedCount.runsLeft` of the runs that remain, as in `RestCost.lean`. `RCost` and
 `RCostT` are the cost calculus `GameCost` of `RestCost.lean` on the state of the game over the world
-programs.
+programs. `simulateQ_congr_of_noCall` states that two worlds that agree off a set of calls run a program
+with no call in that set the same way.
 -/
 
 set_option autoImplicit false
@@ -41,6 +43,50 @@ def HashCall : (LocalSpec C).Domain → Prop
 def Logged : (WorldSpec C).Domain → Prop
   | .inl (.inl t) => HashCall t
   | _ => False
+
+theorem countedCells_length_le (t : (WorldSpec C).Domain) :
+    (countedCells t).length ≤ if Logged t then 1 else 0 := by
+  rcases t with ((n | q | x) | y) | u <;> simp [countedCells, Logged, HashCall]
+
+/-! ## The log of a world program -/
+
+section Log
+
+variable (prims : Primitives) (D : C.Coalition)
+
+theorem loggedWorld_log (t : (WorldSpec C).Domain) (w : LogState C) :
+    ∀ r ∈ support ((loggedWorld prims D t).run w), r.2.2 = w.2 ++ countedCells t := by
+  intro r hr
+  simp only [loggedWorld, StateT.run_mk, support_map, Set.mem_image] at hr
+  obtain ⟨r', -, rfl⟩ := hr
+  rfl
+
+/-- A world program with at most `n` calls of `Logged` adds at most `n` cells to the log. -/
+theorem log_length_le {α : Type} (oa : OracleComp (WorldSpec C) α) :
+    ∀ (n : ℕ), IsQueryBoundP oa Logged n → ∀ (w : LogState C),
+      ∀ z ∈ support ((simulateQ (loggedWorld prims D) oa).run w), z.2.2.length ≤ w.2.length + n := by
+  induction oa using OracleComp.inductionOn with
+  | pure a =>
+    intro n _ w z hz
+    simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
+    subst hz
+    exact Nat.le_add_right _ _
+  | query_bind t k ih =>
+    intro n hn w z hz
+    rw [isQueryBoundP_query_bind_iff] at hn
+    rw [simulateQ_bind, simulateQ_spec_query, StateT.run_bind, mem_support_bind_iff] at hz
+    obtain ⟨r, hr, hz⟩ := hz
+    have h1 := ih r.1 _ (hn.2 r.1) r.2 z hz
+    have hc := countedCells_length_le t
+    rw [loggedWorld_log prims D t w r hr, List.length_append] at h1
+    by_cases ht : Logged t
+    · simp only [ht, ↓reduceIte] at hc h1
+      have := hn.1.resolve_left (not_not.2 ht)
+      omega
+    · simp only [ht, ↓reduceIte] at hc h1
+      omega
+
+end Log
 
 /-! ## The calls of the network -/
 
@@ -188,6 +234,21 @@ theorem logged_worldSeedGen (D : C.Coalition) (net : Adversary C E Unit PEmpty P
   exact (noCall_iff _ _).1 (noCall_pure _ _)
 
 end Network
+
+/-! ## Worlds that agree off a set of calls -/
+
+/-- Two worlds that agree off the set `P` run a program with no call in `P` the same way. -/
+theorem simulateQ_congr_of_noCall {ι : Type} {spec : OracleSpec ι} {m : Type → Type} [Monad m] [LawfulMonad m]
+    (P : ι → Prop) (impl impl' : QueryImpl spec m) (h : ∀ t, ¬ P t → impl t = impl' t) {α : Type}
+    (X : OracleComp spec α) (hX : NoCall P X) : simulateQ impl X = simulateQ impl' X := by
+  rw [noCall_iff] at hX
+  induction X using OracleComp.inductionOn with
+  | pure a => simp
+  | query_bind t k ih =>
+    rw [isQueryBoundP_query_bind_iff] at hX
+    have ht : ¬ P t := hX.1.resolve_right (by omega)
+    rw [simulateQ_bind, simulateQ_bind, simulateQ_spec_query, simulateQ_spec_query, h t ht]
+    exact bind_congr fun u => ih u (by simpa [ht] using hX.2 u)
 
 /-! ## A cost calculus on the state of the game -/
 

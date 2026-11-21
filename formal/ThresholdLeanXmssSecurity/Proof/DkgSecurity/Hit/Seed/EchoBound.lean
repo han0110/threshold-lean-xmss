@@ -83,14 +83,14 @@ theorem passTwo_good (j : C.Party) (k : Option (HashOutput × (C.Term → HashOu
   · simp only [passTwo, simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
     rw [hz]
     rfl
-  · simp only [passTwo, liftComp_mapM, simulateQ_bind, StateT.run_bind, simulateQ_pure, StateT.run_pure,
+  · simp only [passTwo, seedGen_liftComp_mapM, simulateQ_bind, StateT.run_bind, simulateQ_pure, StateT.run_pure,
       support_bind, Set.mem_iUnion, support_pure, Set.mem_singleton_iff] at hz
     obtain ⟨p, hp, rfl⟩ := hz
     refine ⟨p.1, rfl, fun l => ?_⟩
     have hF := compLocal_mapM_support prims D parts seed _
       (fun l v c => c (sharedAddress j l keys.2.1) = some v) (fun _ _ _ _ h hv => h hv)
       (fun l c z hz => shared_run prims D parts seed _ c z hz) C.parties c p hp
-    exact forall₂_finRange_getD (fun l v => p.2 (sharedAddress j l keys.2.1) = some v) p.1 0 hF l
+    exact SigningOwnWalkBuild.forall₂_finRange (R := fun l v => p.2 (sharedAddress j l keys.2.1) = some v) 0 hF l
 
 /-- The support fact of pass 1 of operator `j`. -/
 def PassOneGood (j : C.Party) (a : Option (HashOutput × (C.Term → HashOutput) × (C.Party → HashOutput))) : Prop :=
@@ -101,7 +101,7 @@ theorem derive_hidden {E : Type} (j : C.Party) (inbox : Mail C E) (c : HashCache
       (liftComp (deriveKeys .seedGen j (normView D parts j inbox)) (LocalSpec C))).run c),
       ∀ T, ¬ KnownTo D.1 T → j ∈ C.holders T → z.1.2.1 T = heldSeed D parts seed T := by
   rw [deriveKeys_normView]
-  simp only [liftComp_bind, liftComp_pure, liftComp_mapM]
+  simp only [liftComp_bind, liftComp_pure, seedGen_liftComp_mapM]
   intro z hz T hT hj
   simp only [simulateQ_bind, StateT.run_bind, simulateQ_pure, StateT.run_pure, support_bind, Set.mem_iUnion,
     support_pure, Set.mem_singleton_iff] at hz

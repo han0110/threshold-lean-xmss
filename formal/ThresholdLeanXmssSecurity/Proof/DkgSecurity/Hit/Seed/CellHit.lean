@@ -1,6 +1,5 @@
-import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.Defs
-import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.Count
-import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.Cells
+import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Salt.Cache
+import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Clash
 
 /-!
 # The first hit under an emulated seed as a hit of a hidden cell
@@ -106,7 +105,7 @@ theorem hitSeed_of_cellHit (cell : CellHit prims K circuits settings runLimit) :
   refine le_trans ?_ (cell D A q bounded)
   unfold dealtProb
   have e₁ := congrArg (fun x => StateT.run x (((∅, ∅), []) : LogState C))
-    (sharedDealt_erase K circuits settings runLimit D prims ⟨true, fun _ => 0⟩ A)
+    (sharedDealt_erase prims D K circuits settings runLimit ⟨true, fun _ => 0⟩ A)
   have e₂ := congrArg (fun x => StateT.run (simulateQ (loggedWorld prims D) x) (((∅, ∅), []) : LogState C))
     (snd_dealtPartsRun K circuits settings runLimit ⟨true, fun _ => 0⟩ D A)
   simp only [StateT.run_map, simulateQ_map] at e₁ e₂

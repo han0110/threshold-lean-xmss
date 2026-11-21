@@ -1,4 +1,4 @@
-import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.Cells
+import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Clash
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.Rounds
 
 /-!
@@ -29,7 +29,6 @@ set_option autoImplicit false
 
 open OracleComp OracleSpec HashSig LeanXmss ENNReal ThresholdLeanXmss ThresholdLeanXmssSecurity
 open ThresholdLeanXmssSecurity.DkgCorrectnessProof
-open ThresholdLeanXmssSecurity.DkgSecurityProof.SeedCompare (holdersList hiddenInput)
 
 noncomputable section
 
@@ -63,7 +62,7 @@ def normView (D : C.Coalition) (parts : C.Party → Parts C) (i : C.Party) (inbo
 /-- The derive cell of the term `T` at operator `i`. -/
 def termAddress (D : C.Coalition) (parts : C.Party → Parts C) (i : C.Party) (inbox : Mail C E) (T : C.Term) :
     Query C :=
-  .derive .seedGen .term ((holdersList T).map fun k => (normView D parts i inbox k).term T)
+  .derive .seedGen .term ((seedGenHolderList T).map fun k => (normView D parts i inbox k).term T)
 
 /-- The shared key cell of operator `i` for operator `j`, from the seeds `seeds` of `i`. -/
 def sharedAddress (i j : C.Party) (seeds : C.Term → HashOutput) : Query C :=
@@ -276,9 +275,9 @@ theorem eraseLog_run {α β : Type} (p : WriterT (CallLog C) (OracleComp (WorldS
 /-- The closed form of `seedGenRest` with the local step `revealBody` of the library after round 2. -/
 theorem seedGenRest_eq_raw (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (state : net.State)
     (early : CallLog C) (parameter : PublicParameter) (dealt : C.Party → Keys C) (parts : C.Party → Parts C) :
-    SeedCompare.seedGenRest D net state early parameter dealt parts =
+    seedGenRest D net state early parameter dealt parts =
       seedGenNormalWith D net state early parameter dealt parts (revealBody parts) := by
-  unfold SeedCompare.seedGenRest seedGenNormalWith
+  unfold seedGenRest seedGenNormalWith
   rw [startSteps_seedGen]
   simp only [bind_assoc, pure_bind]
   refine bind_congr fun commitments => ?_
@@ -408,7 +407,7 @@ theorem seedGenNormalWith_body_eq_next (D : C.Coalition) (net : Adversary C E Un
 /-- The normal form of `seedGenRest`, for each coalition, each adversary and each pattern of aborts. -/
 theorem seedGenRest_eq_normal (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (state : net.State)
     (early : CallLog C) (parameter : PublicParameter) (dealt : C.Party → Keys C) (parts : C.Party → Parts C) :
-    SeedCompare.seedGenRest D net state early parameter dealt parts =
+    seedGenRest D net state early parameter dealt parts =
       seedGenNormal D net state early parameter dealt parts :=
   (seedGenRest_eq_raw D net state early parameter dealt parts).trans
     (seedGenNormalWith_body_eq_next D net state early parameter dealt parts)
@@ -442,7 +441,7 @@ theorem termAddress_hidden (D : C.Coalition) (parts : C.Party → Parts C) (i : 
   unfold termAddress hiddenInput
   congr 1
   refine List.map_congr_left fun k hk => ?_
-  have hkT : k ∈ C.holders T := by simpa [holdersList] using (List.mem_filter.1 hk).2
+  have hkT : k ∈ C.holders T := by simpa [seedGenHolderList] using (List.mem_filter.1 hk).2
   have hkD : k ∉ D.1 := fun h => hT ⟨k, h, hkT⟩
   simp [normView, hkD]
 
@@ -453,7 +452,7 @@ theorem termAddress_congr (D : C.Coalition) (parts parts' : C.Party → Parts C)
   unfold termAddress
   congr 1
   refine List.map_congr_left fun k hk => ?_
-  have hkT : k ∈ C.holders T := by simpa [holdersList] using (List.mem_filter.1 hk).2
+  have hkT : k ∈ C.holders T := by simpa [seedGenHolderList] using (List.mem_filter.1 hk).2
   by_cases hkD : k ∈ D.1
   · simp [normView, hkD]
   · simp [normView, hkD, h k hkD hkT]
