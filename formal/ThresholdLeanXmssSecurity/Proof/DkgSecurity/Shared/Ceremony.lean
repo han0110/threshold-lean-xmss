@@ -8,6 +8,7 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Draws.OneKey
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Draws.Interval
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Draws.Fresh
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Schedule.Coupling
+import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Schedule.Joint
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Schedule.Rounds
 
 /-!
@@ -16,8 +17,10 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Schedule.Rounds
 `passCeremony` is the program of one ceremony with the record of a pass (`passRun` with
 `plainShares`), and `passGhost` is its run on the ghost executor.
 
-* `PassLaw` is a statement. From a ready start, it gives a joint law of the cut at check `k` and of
+* `PassLaw` states that from a ready start there is a joint law of the cut at check `k` and of
   `passGhost` whose support has `PassLink`, the link of `CutLink` with no premise on an honest output.
+  `passLaw` proves it. The program of a pass is `recCeremonyAt` of the library at
+  `early = true` (`ghostCeremonyAt_true`), so `PassLaw` is `couplingLawWith` at `early = true`.
   `passCoupling_of_law` gives from it the coupling of a bad check of the records to a bad check of
   the cut.
 * `passFresh` proves `PassFresh`, the bound of one old key on `passGhost`. With the events
@@ -437,6 +440,24 @@ theorem dropOpenedS_passRun [Fintype E] [DecidableEq E] (i : C.Party) (keys : Ke
   unfold passRun recRun
   simp only [MonadHom.mmap_bind, dropOpenedS_liftS, monadHom_batched, dropOpenedS_passBatch]
 
+/-- The check of a pass is `recCheckOpenWith` of the library at `early = true`. -/
+theorem recCheckOpenWith_true (b : BatchStart C) (k : ℕ) :
+    recCheckOpenWith K true b k = passCheckOpen K plainShares b k := by
+  simp only [recCheckOpenWith, passCheckOpen, plainShares, ↓reduceIte, Bool.not_true, Bool.false_eq_true,
+    liftS_lift_pure, pure_bind]
+
+theorem recBatchAt_true (ctx : Context C) (parameter : PublicParameter) :
+    recBatchAt K circuits settings true ctx parameter = passBatch K circuits settings plainShares ctx parameter := by
+  funext jobs
+  unfold recBatchAt passBatch
+  simp only [recCheckOpenWith_true]
+
+theorem recRunAt_true (i : C.Party) (keys : Keys C) :
+    recRunAt K circuits settings true i keys = passRun K circuits settings plainShares i keys := by
+  funext jobs
+  unfold recRunAt passRun
+  simp only [recBatchAt_true]
+
 end Program
 
 /-! ## The fresh part by the erasure of the opening records -/
@@ -522,11 +543,51 @@ theorem passFresh : PassFresh prims K circuits settings := by
 
 end Erasure
 
+/-! ## The joint law of a pass -/
+
+section Law
+
+variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
+
+attribute [local instance] inhabitedField
+
+variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings)
+
+omit [Fintype E] [DecidableEq E] in
+theorem recCeremonyAt_true (i : C.Party) {σ : Type} (c : CeremonyStart C σ) :
+    recCeremonyAt K circuits settings true i c = passCeremony K circuits settings i c := by
+  unfold recCeremonyAt passCeremony
+  cases c.keys i <;> simp only [recRunAt_true]
+
+omit [Fintype E] [DecidableEq E] in
+/-- The ghost run with the record of a pass is `ghostCeremonyAt` of the library at `early = true`. -/
+theorem ghostCeremonyAt_true (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (rounds : ℕ)
+    (c : CeremonyStart C net.State) :
+    Joint.ghostCeremonyAt prims K circuits settings D net true rounds c =
+      passGhost prims K circuits settings D net rounds c := by
+  unfold Joint.ghostCeremonyAt passGhost
+  simp only [recCeremonyAt_true]
+
+/-- `PassLaw` holds. It is `couplingLawWith` of the library at `early = true`, whose link
+`CutLinkFree` has the text of `PassLink`. -/
+theorem passLaw : PassLaw prims K circuits settings := by
+  intro D net rounds ℓ c world hready hfuel k hk
+  obtain ⟨J, h1, h2, h3⟩ :=
+    Joint.couplingLawWith prims K circuits settings true D net rounds ℓ c world hready hfuel k hk
+  rw [ghostCeremonyAt_true] at h2
+  exact ⟨J, h1, h2, h3⟩
+
+end Law
+
 end ThresholdLeanXmssSecurity.DkgSecurityProof
 
 /-- info: 'ThresholdLeanXmssSecurity.DkgSecurityProof.passFresh' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.DkgSecurityProof.passFresh
+
+/-- info: 'ThresholdLeanXmssSecurity.DkgSecurityProof.passLaw' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.DkgSecurityProof.passLaw
 
 /-- info: 'ThresholdLeanXmssSecurity.DkgSecurityProof.passCeremonyBad' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

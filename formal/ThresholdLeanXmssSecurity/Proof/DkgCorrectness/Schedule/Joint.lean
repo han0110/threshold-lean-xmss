@@ -18,6 +18,12 @@ the starts of the checks (`view1_eq_prefix`), and the second phase has the law o
 pilot from the joint start (`phase2_eq_check`). On the support of the three phases, the cut outcome
 is linked to the end of the ghost run (`cutLink_phases`). So `couplingLaw` proves `CouplingLaw`, and
 `ceremonyCoupling` proves the leaf `CeremonyCoupling`.
+
+Each program of a phase has a twin with the suffix `At` and the place `early` of the opening record
+(`recCheckOpenWith`). At `early = false` the twin is the program itself, and each lemma above is the
+instance at `false` of its general form. `couplingLawWith` states the joint law at both places, with
+the link `CutLinkFree`. That link needs no honest output, because the bound of the coalition gives an
+honest operator (`exists_honest`).
 -/
 
 section
@@ -54,12 +60,26 @@ abbrev PreOut (C : Committee) := (PrssKeys C × List (Option (List (List Bit))) 
 /-- The result of the check part. -/
 abbrev ChkOut (C : Committee) := (Unit × RunState C) × (ℕ × ℕ)
 
+/-- `pre1` with the record of the opening at its place for `early`. -/
+def pre1At (early : Bool) (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ) :
+    OracleComp (PartySpec C E RealSpec) (Option (PreOut C) × Record C E) :=
+  match c.keys i with
+  | some keys => ((recPrefixAt K circuits settings early k i keys c.jobs).run c.counters).run.run
+  | none => pure (none, [])
+
 /-- The program of the first phase, the recorded prefix up to the start of the check of batch `k`. -/
 def pre1 (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ) :
     OracleComp (PartySpec C E RealSpec) (Option (PreOut C) × Record C E) :=
   match c.keys i with
   | some keys => ((recPrefix K circuits settings k i keys c.jobs).run c.counters).run.run
   | none => pure (none, [])
+
+/-- `cont1` with the record of the opening at its place for `early`. -/
+def cont1At (early : Bool) (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ) :
+    Option (PreOut C) × Record C E → OracleComp (PartySpec C E RealSpec) (Option CeremonyResult × Record C E) :=
+  match c.keys i with
+  | some keys => recCont (recFinishAt K circuits settings early k i keys c.jobs)
+  | none => fun x => pure (none, x.2)
 
 /-- The rest after the first phase. -/
 def cont1 (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ) :
@@ -75,6 +95,14 @@ def chk2 (i : C.Party) {σ : Type} (c : CeremonyStart C σ) (x : Option (PreOut 
   | some _, some p => (fun y => (y.1, x.2 ++ y.2)) <$> (recCheck K p.1.2.2.1 p.2).run.run
   | _, _ => pure (none, x.2)
 
+/-- `cont2` with the record of the opening at its place for `early`. -/
+def cont2At (early : Bool) (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ)
+    (x : Option (PreOut C) × Record C E) :
+    Option (ChkOut C) × Record C E → OracleComp (PartySpec C E RealSpec) (Option CeremonyResult × Record C E) :=
+  match c.keys i, x.1 with
+  | some keys, some p => recCont (finRestAt K circuits settings early k i keys c.jobs p)
+  | _, _ => fun y => pure (none, y.2)
+
 /-- The program of the third phase, the rest after the check. -/
 def cont2 (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ) (x : Option (PreOut C) × Record C E) :
     Option (ChkOut C) × Record C E → OracleComp (PartySpec C E RealSpec) (Option CeremonyResult × Record C E) :=
@@ -83,33 +111,57 @@ def cont2 (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ) (x : Opti
   | _, _ => fun y => pure (none, y.2)
 
 omit [Fintype E] [DecidableEq E] in
-theorem recCeremony_split (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ)
+theorem recCeremonyAt_split (early : Bool) (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ)
     (hk : k < (chunks settings.batchSize c.jobs).length) :
-    (recCeremony K circuits settings i c).run.run = pre1 K circuits settings k i c >>= cont1 K circuits settings k i c := by
+    (recCeremonyAt K circuits settings early i c).run.run =
+      pre1At K circuits settings early k i c >>= cont1At K circuits settings early k i c := by
   cases hkeys : c.keys i with
   | none =>
-    simp only [recCeremony, pre1, cont1, hkeys, pure_bind]
+    simp only [recCeremonyAt, pre1At, cont1At, hkeys, pure_bind]
     exact run_recFailure
   | some keys =>
-    simp only [pre1, cont1, hkeys]
-    exact recCeremony_eq K circuits settings k i c keys hkeys hk
+    simp only [pre1At, cont1At, hkeys]
+    exact recCeremonyAt_eq K circuits settings early k i c keys hkeys hk
+
+omit [Fintype E] [DecidableEq E] in
+theorem recCeremony_split (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ)
+    (hk : k < (chunks settings.batchSize c.jobs).length) :
+    (recCeremony K circuits settings i c).run.run = pre1 K circuits settings k i c >>= cont1 K circuits settings k i c :=
+  recCeremonyAt_split K circuits settings false k i c hk
+
+omit [Fintype E] [DecidableEq E] in
+theorem cont1At_split (early : Bool) (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ)
+    (x : Option (PreOut C) × Record C E) :
+    cont1At K circuits settings early k i c x = chk2 K i c x >>= cont2At K circuits settings early k i c x := by
+  rcases x with ⟨_ | p, w⟩ <;> cases hkeys : c.keys i <;>
+    simp only [cont1At, chk2, cont2At, hkeys, recCont, pure_bind]
+  rw [recFinishAt_eq, run_recBind, map_prepend_recCont]
 
 omit [Fintype E] [DecidableEq E] in
 theorem cont1_split (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ) (x : Option (PreOut C) × Record C E) :
-    cont1 K circuits settings k i c x = chk2 K i c x >>= cont2 K circuits settings k i c x := by
-  rcases x with ⟨_ | p, w⟩ <;> cases hkeys : c.keys i <;>
-    simp only [cont1, chk2, cont2, hkeys, recCont, pure_bind]
-  rw [recFinish_eq, run_recBind, map_prepend_recCont]
+    cont1 K circuits settings k i c x = chk2 K i c x >>= cont2 K circuits settings k i c x :=
+  cont1At_split K circuits settings false k i c x
+
+omit [Fintype E] [DecidableEq E] in
+theorem cont1At_none (early : Bool) (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ) (w : Record C E) :
+    cont1At K circuits settings early k i c (none, w) = pure (none, w) := by
+  cases hkeys : c.keys i <;> simp only [cont1At, hkeys, recCont]
 
 omit [Fintype E] [DecidableEq E] in
 theorem cont1_none (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ) (w : Record C E) :
-    cont1 K circuits settings k i c (none, w) = pure (none, w) := by
-  cases hkeys : c.keys i <;> simp only [cont1, hkeys, recCont]
+    cont1 K circuits settings k i c (none, w) = pure (none, w) :=
+  cont1At_none K circuits settings false k i c w
+
+omit [Fintype E] [DecidableEq E] in
+theorem cont2At_none (early : Bool) (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ)
+    (x : Option (PreOut C) × Record C E) (w : Record C E) :
+    cont2At K circuits settings early k i c x (none, w) = pure (none, w) := by
+  rcases x with ⟨_ | p, w'⟩ <;> cases hkeys : c.keys i <;> simp only [cont2At, hkeys, recCont]
 
 omit [Fintype E] [DecidableEq E] in
 theorem cont2_none (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ) (x : Option (PreOut C) × Record C E)
-    (w : Record C E) : cont2 K circuits settings k i c x (none, w) = pure (none, w) := by
-  rcases x with ⟨_ | p, w'⟩ <;> cases hkeys : c.keys i <;> simp only [cont2, hkeys, recCont]
+    (w : Record C E) : cont2 K circuits settings k i c x (none, w) = pure (none, w) :=
+  cont2At_none K circuits settings false k i c x w
 
 end Programs
 
@@ -154,26 +206,36 @@ theorem executePhaseR_out_mem {Ia L R O α ρ : Type} (D : C.Coalition) (A : Adv
   | call input resume => exact input.elim
 
 omit [Fintype E] [DecidableEq E] in
+/-- The first phase takes the rounds of the prefix under the parameter of the game, at both places of
+the opening record. -/
+theorem timedR_pre1At (early : Bool) (k : ℕ) (D : C.Coalition) {σ : Type} (c : CeremonyStart C σ)
+    (hseeds : seedsDiffer D c.keys = false) (hk : k < (chunks settings.batchSize c.jobs).length) (i : C.Party)
+    (hi : i ∉ D.1) :
+    TimedR (prefixRounds circuits settings (gameParameter D c.keys) c.jobs k)
+      (pre1At K circuits settings early k i c) := by
+  cases hkeys : c.keys i with
+  | none =>
+    simp only [pre1At, hkeys]
+    exact TimedLog.stop _ _ rfl
+  | some keys =>
+    simp only [pre1At, hkeys]
+    rw [← parameter_eq_gameParameter D c.keys hseeds i hi keys hkeys]
+    exact (timedLog_recPrefixAt K circuits settings early k i keys c.jobs hk c.counters).mono' (fun x hx => hx.1)
+      fun x hx => by rw [hx.1]
+
+omit [Fintype E] [DecidableEq E] in
 /-- The first phase takes the rounds of the prefix under the parameter of the game. -/
 theorem timedR_pre1 (k : ℕ) (D : C.Coalition) {σ : Type} (c : CeremonyStart C σ)
     (hseeds : seedsDiffer D c.keys = false) (hk : k < (chunks settings.batchSize c.jobs).length) (i : C.Party)
     (hi : i ∉ D.1) :
-    TimedR (prefixRounds circuits settings (gameParameter D c.keys) c.jobs k) (pre1 K circuits settings k i c) := by
-  cases hkeys : c.keys i with
-  | none =>
-    simp only [pre1, hkeys]
-    exact TimedLog.stop _ _ rfl
-  | some keys =>
-    simp only [pre1, hkeys]
-    rw [← parameter_eq_gameParameter D c.keys hseeds i hi keys hkeys]
-    exact (timedLog_recPrefix K circuits settings k i keys c.jobs hk c.counters).mono' (fun x hx => hx.1)
-      fun x hx => by rw [hx.1]
+    TimedR (prefixRounds circuits settings (gameParameter D c.keys) c.jobs k) (pre1 K circuits settings k i c) :=
+  timedR_pre1At K circuits settings false k D c hseeds hk i hi
 
 /-- The second phase takes the check rounds of the head of batch `k`, from each result of the first
-phase. -/
-theorem timedR_chk2 (k : ℕ) (D : C.Coalition) {σ : Type} (c : CeremonyStart C σ)
+phase, at both places of the opening record. -/
+theorem timedR_chk2At (early : Bool) (k : ℕ) (D : C.Coalition) {σ : Type} (c : CeremonyStart C σ)
     (hseeds : seedsDiffer D c.keys = false) (hk : k < (chunks settings.batchSize c.jobs).length) (i : C.Party)
-    (hi : i ∉ D.1) (x : Option (PreOut C) × Record C E) (hx : x ∈ support (pre1 K circuits settings k i c)) :
+    (hi : i ∉ D.1) (x : Option (PreOut C) × Record C E) (hx : x ∈ support (pre1At K circuits settings early k i c)) :
     TimedR (checkLabels (headCounts (((chunks settings.batchSize c.jobs).getD k []).map
       (circuits (gameParameter D c.keys) ·.kind))).sum) (chk2 K i c x) := by
   rcases x with ⟨_ | p, w⟩
@@ -182,14 +244,23 @@ theorem timedR_chk2 (k : ℕ) (D : C.Coalition) {σ : Type} (c : CeremonyStart C
   | none => simp only [chk2, hkeys]; exact TimedLog.stop _ _ rfl
   | some keys =>
     simp only [chk2, hkeys]
-    simp only [pre1, hkeys] at hx
-    obtain ⟨prss, hpoint⟩ := recPrefix_pointAt K circuits settings k i c keys hkeys hk _ hx p rfl
+    simp only [pre1At, hkeys] at hx
+    obtain ⟨prss, hpoint⟩ := recPrefixAt_pointAt K circuits settings early k i c keys hkeys hk _ hx p rfl
     have hcount : tupleCount p.1.2.2.1.circuits = (headCounts (((chunks settings.batchSize c.jobs).getD k []).map
         (circuits (gameParameter D c.keys) ·.kind))).sum := by
       rw [← sum_batchTuples K p.1.2.2.1, ← parameter_eq_gameParameter D c.keys hseeds i hi keys hkeys, ← hpoint.2.1]
       rfl
     rw [← hcount]
     exact (timedLog_recCheck K p.1.2.2.1 p.2).map _ (fun y hy => hy.1) fun y hy => hy.1
+
+/-- The second phase takes the check rounds of the head of batch `k`, from each result of the first
+phase. -/
+theorem timedR_chk2 (k : ℕ) (D : C.Coalition) {σ : Type} (c : CeremonyStart C σ)
+    (hseeds : seedsDiffer D c.keys = false) (hk : k < (chunks settings.batchSize c.jobs).length) (i : C.Party)
+    (hi : i ∉ D.1) (x : Option (PreOut C) × Record C E) (hx : x ∈ support (pre1 K circuits settings k i c)) :
+    TimedR (checkLabels (headCounts (((chunks settings.batchSize c.jobs).getD k []).map
+      (circuits (gameParameter D c.keys) ·.kind))).sum) (chk2 K i c x) :=
+  timedR_chk2At K circuits settings false k D c hseeds hk i hi x hx
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
 /-- A ghost phase of timed programs with exactly their rounds ends with each honest step done. -/
@@ -221,6 +292,12 @@ variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (setting
 def outOf {α : Type} (steps : C.Party → RStep C E RealSpec α (Record C E)) (i : C.Party) : Option α × Record C E :=
   ((steps i).output, (steps i).record [])
 
+/-- `phase1` with the record of the opening at its place for `early`. -/
+def phase1At (early : Bool) (k a : ℕ) (c : CeremonyStart C net.State) (world : StreamState C) :
+    ProbComp ((net.State × (C.Party → RStep C E RealSpec (PreOut C) (Record C E))) × StreamState C) :=
+  (simulateQ (streamWorld prims D) (executePhaseR worldRoles D net noFunctionality ([] : Record C E) a c.adversary
+    fun i => pre1At K circuits settings early k i c)).run world
+
 /-- The first phase, the recorded prefix. -/
 def phase1 (k a : ℕ) (c : CeremonyStart C net.State) (world : StreamState C) :
     ProbComp ((net.State × (C.Party → RStep C E RealSpec (PreOut C) (Record C E))) × StreamState C) :=
@@ -234,6 +311,14 @@ def phase2 (cc : ℕ) (c : CeremonyStart C net.State)
   (simulateQ (streamWorld prims D) (executePhaseR worldRoles D net noFunctionality ([] : Record C E) cc y1.1.1
     fun i => chk2 K i c (outOf y1.1.2 i))).run y1.2
 
+/-- `phase3` with the record of the opening at its place for `early`. -/
+def phase3At (early : Bool) (k r3 : ℕ) (c : CeremonyStart C net.State)
+    (y1 : (net.State × (C.Party → RStep C E RealSpec (PreOut C) (Record C E))) × StreamState C)
+    (y2 : (net.State × (C.Party → RStep C E RealSpec (ChkOut C) (Record C E))) × StreamState C) :
+    ProbComp ((net.State × CeremonySteps C E) × StreamState C) :=
+  (simulateQ (streamWorld prims D) (executePhaseR worldRoles D net noFunctionality ([] : Record C E) r3 y2.1.1
+    fun i => cont2At K circuits settings early k i c (outOf y1.1.2 i) (outOf y2.1.2 i))).run y2.2
+
 /-- The third phase, the rest. -/
 def phase3 (k r3 : ℕ) (c : CeremonyStart C net.State)
     (y1 : (net.State × (C.Party → RStep C E RealSpec (PreOut C) (Record C E))) × StreamState C)
@@ -241,6 +326,54 @@ def phase3 (k r3 : ℕ) (c : CeremonyStart C net.State)
     ProbComp ((net.State × CeremonySteps C E) × StreamState C) :=
   (simulateQ (streamWorld prims D) (executePhaseR worldRoles D net noFunctionality ([] : Record C E) r3 y2.1.1
     fun i => cont2 K circuits settings k i c (outOf y1.1.2 i) (outOf y2.1.2 i))).run y2.2
+
+/-- `ghostCeremony` with the record of the opening at its place for `early`. -/
+def ghostCeremonyAt (early : Bool) (rounds : ℕ) (c : CeremonyStart C net.State) :
+    StateT (StreamState C) ProbComp (net.State × CeremonySteps C E) :=
+  simulateQ (streamWorld prims D) (executePhaseR worldRoles D net noFunctionality ([] : Record C E) rounds
+    c.adversary fun i => (recCeremonyAt K circuits settings early i c).run.run)
+
+/-- The ghost run of one ceremony has the law of its three phases, at both places of the opening
+record. -/
+theorem ghost_eq_phasesAt (early : Bool) (k rounds r3 : ℕ) (c : CeremonyStart C net.State) (world : StreamState C)
+    (hseeds : seedsDiffer D c.keys = false) (hk : k < (chunks settings.batchSize c.jobs).length)
+    (hrounds : rounds = prefixRounds circuits settings (gameParameter D c.keys) c.jobs k +
+      (checkLabels (headCounts (((chunks settings.batchSize c.jobs).getD k []).map
+        (circuits (gameParameter D c.keys) ·.kind))).sum + r3)) :
+    (ghostCeremonyAt prims K circuits settings D net early rounds c).run world =ᵈ
+      (phase1At prims K circuits settings D net early k
+          (prefixRounds circuits settings (gameParameter D c.keys) c.jobs k) c world >>= fun y1 =>
+        phase2 prims K D net (checkLabels (headCounts (((chunks settings.batchSize c.jobs).getD k []).map
+          (circuits (gameParameter D c.keys) ·.kind))).sum) c y1 >>= fun y2 =>
+          phase3At prims K circuits settings D net early k r3 c y1 y2) := by
+  unfold ghostCeremonyAt
+  have hprog : (fun i => (recCeremonyAt K circuits settings early i c).run.run) =
+      fun i => pre1At K circuits settings early k i c >>= cont1At K circuits settings early k i c :=
+    funext fun i => recCeremonyAt_split K circuits settings early k i c hk
+  rw [hprog, hrounds]
+  refine (GhostSplit.executePhaseR_bind_world D net noFunctionality ([] : Record C E)
+    (fun i => cont1At K circuits settings early k i c) (WorldSplit.streamWorld_freeCommute prims D)
+    (fun i w => cont1At_none K circuits settings early k i c w) _ _ c.adversary _
+    (fun i hi => timedR_pre1At K circuits settings early k D c hseeds hk i hi) world).trans ?_
+  rw [simulateQ_bind, StateT.run_bind]
+  refine EvalDistEq.bind_congr_of_support _ fun y1 hy1 => ?_
+  have hy1' := mem_support_phase prims D _ world y1 hy1
+  have hdone := executePhaseR_timed_done D net noFunctionality ([] : Record C E) _ c.adversary _
+    (fun i hi => timedR_pre1At K circuits settings early k D c hseeds hk i hi) y1.1 hy1'
+  have hprog2 : (fun i => cont1At K circuits settings early k i c (outOf y1.1.2 i)) =
+      fun i => chk2 K i c (outOf y1.1.2 i) >>= cont2At K circuits settings early k i c (outOf y1.1.2 i) :=
+    funext fun i => cont1At_split K circuits settings early k i c _
+  change (simulateQ (streamWorld prims D) (executePhaseR worldRoles D net noFunctionality ([] : Record C E) _ y1.1.1
+    fun i => cont1At K circuits settings early k i c (outOf y1.1.2 i))).run y1.2 =ᵈ _
+  rw [hprog2]
+  refine (GhostSplit.executePhaseR_bind_world D net noFunctionality ([] : Record C E)
+    (fun i => cont2At K circuits settings early k i c (outOf y1.1.2 i)) (WorldSplit.streamWorld_freeCommute prims D)
+    (fun i w => cont2At_none K circuits settings early k i c _ w) _ r3 y1.1.1 _
+    (fun i hi => timedR_chk2At K circuits settings early k D c hseeds hk i hi _
+      (executePhaseR_out_mem D net noFunctionality ([] : Record C E) _ c.adversary _ y1.1 hy1' i hi
+        (hdone i hi))) y1.2).trans ?_
+  rw [simulateQ_bind, StateT.run_bind]
+  exact EvalDistEq.rfl
 
 /-- The ghost run of one ceremony has the law of its three phases. -/
 theorem ghost_eq_phases (k rounds r3 : ℕ) (c : CeremonyStart C net.State) (world : StreamState C)
@@ -253,35 +386,8 @@ theorem ghost_eq_phases (k rounds r3 : ℕ) (c : CeremonyStart C net.State) (wor
           c world >>= fun y1 =>
         phase2 prims K D net (checkLabels (headCounts (((chunks settings.batchSize c.jobs).getD k []).map
           (circuits (gameParameter D c.keys) ·.kind))).sum) c y1 >>= fun y2 =>
-          phase3 prims K circuits settings D net k r3 c y1 y2) := by
-  unfold ghostCeremony
-  have hprog : (fun i => (recCeremony K circuits settings i c).run.run) =
-      fun i => pre1 K circuits settings k i c >>= cont1 K circuits settings k i c :=
-    funext fun i => recCeremony_split K circuits settings k i c hk
-  rw [hprog, hrounds]
-  refine (GhostSplit.executePhaseR_bind_world D net noFunctionality ([] : Record C E)
-    (fun i => cont1 K circuits settings k i c) (WorldSplit.streamWorld_freeCommute prims D)
-    (fun i w => cont1_none K circuits settings k i c w) _ _ c.adversary _
-    (fun i hi => timedR_pre1 K circuits settings k D c hseeds hk i hi) world).trans ?_
-  rw [simulateQ_bind, StateT.run_bind]
-  refine EvalDistEq.bind_congr_of_support _ fun y1 hy1 => ?_
-  have hy1' := mem_support_phase prims D _ world y1 hy1
-  have hdone := executePhaseR_timed_done D net noFunctionality ([] : Record C E) _ c.adversary _
-    (fun i hi => timedR_pre1 K circuits settings k D c hseeds hk i hi) y1.1 hy1'
-  have hprog2 : (fun i => cont1 K circuits settings k i c (outOf y1.1.2 i)) =
-      fun i => chk2 K i c (outOf y1.1.2 i) >>= cont2 K circuits settings k i c (outOf y1.1.2 i) :=
-    funext fun i => cont1_split K circuits settings k i c _
-  change (simulateQ (streamWorld prims D) (executePhaseR worldRoles D net noFunctionality ([] : Record C E) _ y1.1.1
-    fun i => cont1 K circuits settings k i c (outOf y1.1.2 i))).run y1.2 =ᵈ _
-  rw [hprog2]
-  refine (GhostSplit.executePhaseR_bind_world D net noFunctionality ([] : Record C E)
-    (fun i => cont2 K circuits settings k i c (outOf y1.1.2 i)) (WorldSplit.streamWorld_freeCommute prims D)
-    (fun i w => cont2_none K circuits settings k i c _ w) _ r3 y1.1.1 _
-    (fun i hi => timedR_chk2 K circuits settings k D c hseeds hk i hi _
-      (executePhaseR_out_mem D net noFunctionality ([] : Record C E) _ c.adversary _ y1.1 hy1' i hi
-        (hdone i hi))) y1.2).trans ?_
-  rw [simulateQ_bind, StateT.run_bind]
-  exact EvalDistEq.rfl
+          phase3 prims K circuits settings D net k r3 c y1 y2) :=
+  ghost_eq_phasesAt prims K circuits settings D net false k rounds r3 c world hseeds hk hrounds
 
 end Law
 
@@ -388,6 +494,41 @@ theorem view1_eq_prefix (k rounds : ℕ) (c : CeremonyStart C net.State) (world 
     fun i _ => stopF_cutCeremony K circuits settings k i c hk
   rw [hc]
 
+/-- With its record dropped, the program of the first phase is the same at both places of the
+opening record. -/
+theorem dropRecord_pre1At (early : Bool) (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ) :
+    dropRecord (pre1At K circuits settings early k i c) = dropRecord (pre1 K circuits settings k i c) := by
+  cases hkeys : c.keys i with
+  | none => simp only [pre1At, pre1, hkeys]
+  | some keys =>
+    simp only [pre1At, pre1, hkeys]
+    exact congrArg (fun x : StateT (ℕ × ℕ) (PartyM C E RealSpec) _ => OptionT.mk (x.run c.counters).run)
+      (dropRecS_recPrefixAt K circuits settings early k i keys c.jobs)
+
+/-- The view of the first phase is the same at both places of the opening record. -/
+theorem view1_phase1At (early : Bool) (k a : ℕ) (c : CeremonyStart C net.State) (world : StreamState C) :
+    view1 K net <$> phase1At prims K circuits settings D net early k a c world =
+      view1 K net <$> phase1 prims K circuits settings D net k a c world := by
+  have h1 := ghostPhase_erase prims D net a c.adversary (fun i => pre1At K circuits settings early k i c) world
+  have h2 := ghostPhase_erase prims D net a c.adversary (fun i => pre1 K circuits settings k i c) world
+  simp only [dropRecord_pre1At] at h1
+  rw [← h2] at h1
+  have h := congrArg (Functor.map fun w : (net.State × (C.Party → Option (PreOut C))) × StreamState C =>
+    (w.1.1, fun i => (w.1.2 i).map fun p => some (pointOf K p.1.2.2.1), w.2)) h1
+  rw [Functor.map_map, Functor.map_map] at h
+  exact h
+
+/-- The first phase has the law of the prefix of the cut, on the view of each, at both places of the
+opening record. -/
+theorem view1_eq_prefixAt (early : Bool) (k rounds : ℕ) (c : CeremonyStart C net.State) (world : StreamState C)
+    (hseeds : seedsDiffer D c.keys = false) (hk : k < (chunks settings.batchSize c.jobs).length)
+    (hfuel : prefixRounds circuits settings (gameParameter D c.keys) c.jobs k ≤ rounds) :
+    view1 K net <$> phase1At prims K circuits settings D net early k
+        (prefixRounds circuits settings (gameParameter D c.keys) c.jobs k) c world =ᵈ
+      viewCut net <$> (ceremonyPrefix prims K circuits settings D net rounds k c).run world := by
+  rw [view1_phase1At]
+  exact view1_eq_prefix prims K circuits settings D net k rounds c world hseeds hk hfuel
+
 end Prefix
 
 /-! ## The joint start from a view -/
@@ -459,15 +600,16 @@ variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (setting
 
 omit [Fintype E] [DecidableEq E] in
 /-- At a joint start of the first phase, each honest operator has keys and stopped at the start of
-the check of its recorded prefix, with that start in the support of its program. -/
-theorem honest_stop (k : ℕ) (c : CeremonyStart C net.State) (world : StreamState C)
+the check of its recorded prefix, with that start in the support of its program. It holds at both
+places of the opening record. -/
+theorem honest_stopAt (early : Bool) (k : ℕ) (c : CeremonyStart C net.State) (world : StreamState C)
     (y1 : (net.State × (C.Party → RStep C E RealSpec (PreOut C) (Record C E))) × StreamState C)
-    (hy1 : y1 ∈ support (phase1 prims K circuits settings D net k
+    (hy1 : y1 ∈ support (phase1At prims K circuits settings D net early k
       (prefixRounds circuits settings (gameParameter D c.keys) c.jobs k) c world))
     (start : CheckStart C net.State) (hj : jointStopV (E := E) D (view1 K net y1) = some start) (i : C.Party)
     (hi : i ∉ D.1) :
     ∃ keys p, c.keys i = some keys ∧ (y1.1.2 i).output = some p ∧
-      outOf y1.1.2 i ∈ support (pre1 K circuits settings k i c) ∧
+      outOf y1.1.2 i ∈ support (pre1At K circuits settings early k i c) ∧
       stopPoint i (ofView (E := E) ((view1 K net y1).2.1 i)) = pointOf K p.1.2.2.1 := by
   obtain ⟨hall, -⟩ := jointStop_some D _ _ start hj
   obtain ⟨point, rest, hpt⟩ := hall i hi
@@ -485,7 +627,7 @@ theorem honest_stop (k : ℕ) (c : CeremonyStart C net.State) (world : StreamSta
     (mem_support_phase prims D _ world y1 hy1) i hi hdone
   cases hkeys : c.keys i with
   | none =>
-    simp only [pre1, hkeys, support_pure, Set.mem_singleton_iff] at hmem
+    simp only [pre1At, hkeys, support_pure, Set.mem_singleton_iff] at hmem
     have h1 := congrArg Prod.fst hmem
     simp only at h1
     rw [hp] at h1
@@ -494,12 +636,26 @@ theorem honest_stop (k : ℕ) (c : CeremonyStart C net.State) (world : StreamSta
     refine ⟨keys, p, rfl, hp, hmem, ?_⟩
     simp [view1, ofView, hp, stopPoint]
 
-/-- The second phase from a joint start, with the records dropped and the results forgotten, has the
-law of the check of the pilot from that start. -/
-theorem phase2_eq_check (k : ℕ) (c : CeremonyStart C net.State) (world : StreamState C)
-    (hseeds : seedsDiffer D c.keys = false) (hk : k < (chunks settings.batchSize c.jobs).length)
+omit [Fintype E] [DecidableEq E] in
+/-- At a joint start of the first phase, each honest operator has keys and stopped at the start of
+the check of its recorded prefix, with that start in the support of its program. -/
+theorem honest_stop (k : ℕ) (c : CeremonyStart C net.State) (world : StreamState C)
     (y1 : (net.State × (C.Party → RStep C E RealSpec (PreOut C) (Record C E))) × StreamState C)
     (hy1 : y1 ∈ support (phase1 prims K circuits settings D net k
+      (prefixRounds circuits settings (gameParameter D c.keys) c.jobs k) c world))
+    (start : CheckStart C net.State) (hj : jointStopV (E := E) D (view1 K net y1) = some start) (i : C.Party)
+    (hi : i ∉ D.1) :
+    ∃ keys p, c.keys i = some keys ∧ (y1.1.2 i).output = some p ∧
+      outOf y1.1.2 i ∈ support (pre1 K circuits settings k i c) ∧
+      stopPoint i (ofView (E := E) ((view1 K net y1).2.1 i)) = pointOf K p.1.2.2.1 :=
+  honest_stopAt prims K circuits settings D net false k c world y1 hy1 start hj i hi
+
+/-- The second phase from a joint start, with the records dropped and the results forgotten, has the
+law of the check of the pilot from that start, at both places of the opening record. -/
+theorem phase2_eq_checkAt (early : Bool) (k : ℕ) (c : CeremonyStart C net.State) (world : StreamState C)
+    (hseeds : seedsDiffer D c.keys = false) (hk : k < (chunks settings.batchSize c.jobs).length)
+    (y1 : (net.State × (C.Party → RStep C E RealSpec (PreOut C) (Record C E))) × StreamState C)
+    (hy1 : y1 ∈ support (phase1At prims K circuits settings D net early k
       (prefixRounds circuits settings (gameParameter D c.keys) c.jobs k) c world))
     (start : CheckStart C net.State) (hj : jointStopV (E := E) D (view1 K net y1) = some start) :
     (fun y2 => ((y2.1.1, fun i => (y2.1.2 i).output.map fun _ => ()), y2.2)) <$>
@@ -507,7 +663,7 @@ theorem phase2_eq_check (k : ℕ) (c : CeremonyStart C net.State) (world : Strea
           (circuits (gameParameter D c.keys) ·.kind))).sum) c y1 =ᵈ
       checkFrom prims K D net start := by
   obtain ⟨-, j, hjD, hkeysS, hprssS, hcounts, hx, hL, htg, hst, hworld⟩ := jointStop_some D _ _ start hj
-  have hfacts := fun i hi => honest_stop prims K circuits settings D net k c world y1 hy1 start hj i hi
+  have hfacts := fun i hi => honest_stopAt prims K circuits settings D net early k c world y1 hy1 start hj i hi
   have hpoint : ∀ i, i ∉ D.1 → ∃ keys p prss, c.keys i = some keys ∧ (y1.1.2 i).output = some p ∧
       stopPoint i (ofView (E := E) ((view1 K net y1).2.1 i)) = pointOf K p.1.2.2.1 ∧
       PointAt K i ⟨i, keys, prss⟩ (headCounts (((chunks settings.batchSize c.jobs).getD k []).map
@@ -516,8 +672,8 @@ theorem phase2_eq_check (k : ℕ) (c : CeremonyStart C net.State) (world : Strea
           (jobLabel circuits (gameParameter D c.keys))).sum) (c.counters.2 + k) (pointOf K p.1.2.2.1) := by
     intro i hi
     obtain ⟨keys, p, hkeys, hp, hmem, hstop⟩ := hfacts i hi
-    simp only [pre1, hkeys] at hmem
-    obtain ⟨prss, hpa⟩ := recPrefix_pointAt K circuits settings k i c keys hkeys hk _ hmem p hp
+    simp only [pre1At, hkeys] at hmem
+    obtain ⟨prss, hpa⟩ := recPrefixAt_pointAt K circuits settings early k i c keys hkeys hk _ hmem p hp
     rw [parameter_eq_gameParameter D c.keys hseeds i hi keys hkeys] at hpa
     exact ⟨keys, p, prss, hkeys, hp, hstop, hpa⟩
   obtain ⟨keysj, pj, prssj, -, -, hstopj, hpaj⟩ := hpoint j hjD
@@ -613,6 +769,20 @@ theorem phase2_eq_check (k : ℕ) (c : CeremonyStart C net.State) (world : Strea
     rw [StateT.run'_eq]
     exact Timed.map _ ht
 
+/-- The second phase from a joint start, with the records dropped and the results forgotten, has the
+law of the check of the pilot from that start. -/
+theorem phase2_eq_check (k : ℕ) (c : CeremonyStart C net.State) (world : StreamState C)
+    (hseeds : seedsDiffer D c.keys = false) (hk : k < (chunks settings.batchSize c.jobs).length)
+    (y1 : (net.State × (C.Party → RStep C E RealSpec (PreOut C) (Record C E))) × StreamState C)
+    (hy1 : y1 ∈ support (phase1 prims K circuits settings D net k
+      (prefixRounds circuits settings (gameParameter D c.keys) c.jobs k) c world))
+    (start : CheckStart C net.State) (hj : jointStopV (E := E) D (view1 K net y1) = some start) :
+    (fun y2 => ((y2.1.1, fun i => (y2.1.2 i).output.map fun _ => ()), y2.2)) <$>
+        phase2 prims K D net (checkLabels (headCounts (((chunks settings.batchSize c.jobs).getD k []).map
+          (circuits (gameParameter D c.keys) ·.kind))).sum) c y1 =ᵈ
+      checkFrom prims K D net start :=
+  phase2_eq_checkAt prims K circuits settings D net false k c world hseeds hk y1 hy1 start hj
+
 end Check
 
 /-! ## The first part of the joint law -/
@@ -641,15 +811,16 @@ def checkCont (v : net.State × (C.Party → Option (Option (CheckPoint C))) × 
   | some start => (fun out => (some start, some out)) <$> checkFrom prims K D net start
   | none => pure (none, none)
 
-/-- The first two phases, read as the cut at check `k`, have the law of `ceremonyCheckAt`. -/
-theorem cutOutcome_eq (k rounds r3 : ℕ) (c : CeremonyStart C net.State) (world : StreamState C)
+/-- The first two phases, read as the cut at check `k`, have the law of `ceremonyCheckAt`, at both
+places of the opening record. -/
+theorem cutOutcome_eqAt (early : Bool) (k rounds r3 : ℕ) (c : CeremonyStart C net.State) (world : StreamState C)
     (hseeds : seedsDiffer D c.keys = false) (hk : k < (chunks settings.batchSize c.jobs).length)
     (hfuel : prefixRounds circuits settings (gameParameter D c.keys) c.jobs k ≤ rounds) :
-    (phase1 prims K circuits settings D net k (prefixRounds circuits settings (gameParameter D c.keys) c.jobs k)
+    (phase1At prims K circuits settings D net early k (prefixRounds circuits settings (gameParameter D c.keys) c.jobs k)
         c world >>= fun y1 =>
       phase2 prims K D net (checkLabels (headCounts (((chunks settings.batchSize c.jobs).getD k []).map
         (circuits (gameParameter D c.keys) ·.kind))).sum) c y1 >>= fun y2 =>
-        phase3 prims K circuits settings D net k r3 c y1 y2 >>= fun _ => pure (cutOutcome K D net y1 y2)) =ᵈ
+        phase3At prims K circuits settings D net early k r3 c y1 y2 >>= fun _ => pure (cutOutcome K D net y1 y2)) =ᵈ
       ceremonyCheckAt prims K circuits settings D net rounds k c world := by
   refine (EvalDistEq.bind_right _ fun y1 => EvalDistEq.bind_right _ fun y2 =>
     EvalDistEq.bind_const _ _).trans ?_
@@ -661,13 +832,13 @@ theorem cutOutcome_eq (k rounds r3 : ℕ) (c : CeremonyStart C net.State) (world
       exact EvalDistEq.bind_const _ _
     | some start =>
       simp only [cutOutcome, checkCont, hj]
-      have h := phase2_eq_check prims K circuits settings D net k c world hseeds hk y1 hy1 start hj
+      have h := phase2_eq_checkAt prims K circuits settings D net early k c world hseeds hk y1 hy1 start hj
       have h' := h.map fun out => (some start, some out)
       rw [Functor.map_map] at h'
       rw [← bind_pure_comp] at h'
       exact h'
   · rw [← bind_map_left (view1 K net) _ (checkCont prims K D net)]
-    refine (EvalDistEq.bind (view1_eq_prefix prims K circuits settings D net k rounds c world hseeds hk hfuel)
+    refine (EvalDistEq.bind (view1_eq_prefixAt prims K circuits settings D net early k rounds c world hseeds hk hfuel)
       fun _ => EvalDistEq.rfl).trans ?_
     rw [bind_map_left]
     unfold ceremonyCheckAt
@@ -675,6 +846,18 @@ theorem cutOutcome_eq (k rounds r3 : ℕ) (c : CeremonyStart C net.State) (world
     simp only [checkCont, viewCut]
     rw [jointStop_viewCut]
     exact EvalDistEq.rfl
+
+/-- The first two phases, read as the cut at check `k`, have the law of `ceremonyCheckAt`. -/
+theorem cutOutcome_eq (k rounds r3 : ℕ) (c : CeremonyStart C net.State) (world : StreamState C)
+    (hseeds : seedsDiffer D c.keys = false) (hk : k < (chunks settings.batchSize c.jobs).length)
+    (hfuel : prefixRounds circuits settings (gameParameter D c.keys) c.jobs k ≤ rounds) :
+    (phase1 prims K circuits settings D net k (prefixRounds circuits settings (gameParameter D c.keys) c.jobs k)
+        c world >>= fun y1 =>
+      phase2 prims K D net (checkLabels (headCounts (((chunks settings.batchSize c.jobs).getD k []).map
+        (circuits (gameParameter D c.keys) ·.kind))).sum) c y1 >>= fun y2 =>
+        phase3 prims K circuits settings D net k r3 c y1 y2 >>= fun _ => pure (cutOutcome K D net y1 y2)) =ᵈ
+      ceremonyCheckAt prims K circuits settings D net rounds k c world :=
+  cutOutcome_eqAt prims K circuits settings D net false k rounds r3 c world hseeds hk hfuel
 
 end First
 
@@ -782,28 +965,29 @@ theorem jointStop_isSome {σ α : Type} (r : σ × (C.Party → Option (CutOf C 
     exact absurd this hi
 
 /-- On the support of the three phases, the cut outcome of the first two phases is linked to the end
-of the third. -/
-theorem cutLink_phases (k r3 : ℕ) (c : CeremonyStart C net.State) (world : StreamState C)
+of the third by `CutLinkFree`, at both places of the opening record. An honest index comes from the
+bound of the coalition, so the link needs no honest output. -/
+theorem cutLink_phasesAt (early : Bool) (k r3 : ℕ) (c : CeremonyStart C net.State) (world : StreamState C)
     (hseeds : seedsDiffer D c.keys = false) (hk : k < (chunks settings.batchSize c.jobs).length)
     (y1 : (net.State × (C.Party → RStep C E RealSpec (PreOut C) (Record C E))) × StreamState C)
-    (hy1 : y1 ∈ support (phase1 prims K circuits settings D net k
+    (hy1 : y1 ∈ support (phase1At prims K circuits settings D net early k
       (prefixRounds circuits settings (gameParameter D c.keys) c.jobs k) c world))
     (y2 : (net.State × (C.Party → RStep C E RealSpec (ChkOut C) (Record C E))) × StreamState C)
     (hy2 : y2 ∈ support (phase2 prims K D net (checkLabels (headCounts (((chunks settings.batchSize c.jobs).getD k []).map
         (circuits (gameParameter D c.keys) ·.kind))).sum) c y1))
     (y3 : (net.State × CeremonySteps C E) × StreamState C)
-    (hy3 : y3 ∈ support (phase3 prims K circuits settings D net k r3 c y1 y2)) :
-    CutLink K D k (cutOutcome K D net y1 y2) y3 := by
-  intro hstart hhonest hglobal
+    (hy3 : y3 ∈ support (phase3At prims K circuits settings D net early k r3 c y1 y2)) :
+    CutLinkFree K D k (cutOutcome K D net y1 y2) y3 := by
+  intro hstart hglobal
   have hy1' := mem_support_phase prims D _ world y1 hy1
   have hy2' := mem_support_phase prims D _ y1.2 y2 hy2
   have hy3' := mem_support_phase prims D _ y2.2 y3 hy3
   have hdone1 := executePhaseR_timed_done D net noFunctionality ([] : Record C E) _ c.adversary _
-    (fun i hi => timedR_pre1 K circuits settings k D c hseeds hk i hi) y1.1 hy1'
-  have hmem1 : ∀ i, i ∉ D.1 → outOf y1.1.2 i ∈ support (pre1 K circuits settings k i c) := fun i hi =>
+    (fun i hi => timedR_pre1At K circuits settings early k D c hseeds hk i hi) y1.1 hy1'
+  have hmem1 : ∀ i, i ∉ D.1 → outOf y1.1.2 i ∈ support (pre1At K circuits settings early k i c) := fun i hi =>
     executePhaseR_out_mem D net noFunctionality ([] : Record C E) _ c.adversary _ y1.1 hy1' i hi (hdone1 i hi)
   have hdone2 := executePhaseR_timed_done D net noFunctionality ([] : Record C E) _ y1.1.1 _
-    (fun i hi => timedR_chk2 K circuits settings k D c hseeds hk i hi _ (hmem1 i hi)) y2.1 hy2'
+    (fun i hi => timedR_chk2At K circuits settings early k D c hseeds hk i hi _ (hmem1 i hi)) y2.1 hy2'
   have hmem2 : ∀ i, i ∉ D.1 → outOf y2.1.2 i ∈ support (chk2 K i c (outOf y1.1.2 i)) := fun i hi =>
     executePhaseR_out_mem D net noFunctionality ([] : Record C E) _ y1.1.1 _ y2.1 hy2' i hi (hdone2 i hi)
   have hrec3 := fun i hi => executePhaseR_record D net _ y2.1.1 _ y3.1 hy3' i hi
@@ -819,12 +1003,12 @@ theorem cutLink_phases (k r3 : ℕ) (c : CeremonyStart C net.State) (world : Str
       unfold outOf at hm
       cases hkeys : c.keys i with
       | none =>
-        simp only [pre1, hkeys, support_pure, Set.mem_singleton_iff, Prod.mk.injEq] at hm
+        simp only [pre1At, hkeys, support_pure, Set.mem_singleton_iff, Prod.mk.injEq] at hm
         rw [hm.2]
         simp [startsOf]
       | some keys =>
-        simp only [pre1, hkeys] at hm
-        exact leafStarts_recPrefix K circuits settings k i keys c.jobs c.counters _ hm
+        simp only [pre1At, hkeys] at hm
+        exact leafStarts_recPrefixAt K circuits settings early k i keys c.jobs c.counters _ hm
     have h2 : outOf y2.1.2 i = (none, (y1.1.2 i).record []) := by
       have hm := hmem2 i hi
       have hx : outOf y1.1.2 i = (none, (y1.1.2 i).record []) := by unfold outOf; rw [hnone']
@@ -836,7 +1020,8 @@ theorem cutLink_phases (k r3 : ℕ) (c : CeremonyStart C net.State) (world : Str
       · right
         have hx : outOf y1.1.2 i = (none, (y1.1.2 i).record []) := by unfold outOf; rw [hnone']
         rw [hx, h2] at h
-        cases hkeys : c.keys i <;> simp only [cont2, hkeys, support_pure, Set.mem_singleton_iff, Prod.mk.injEq] at h <;>
+        cases hkeys : c.keys i <;>
+          simp only [cont2At, hkeys, support_pure, Set.mem_singleton_iff, Prod.mk.injEq] at h <;>
           exact h.2
     have hs := hstart i hi
     rcases hrec with h | h
@@ -844,7 +1029,7 @@ theorem cutLink_phases (k r3 : ℕ) (c : CeremonyStart C net.State) (world : Str
       simp [startsOf] at hs
     · rw [h, List.getElem?_eq_none hw] at hs
       simp at hs
-  obtain ⟨i0, hi0, -⟩ := hhonest
+  obtain ⟨i0, hi0⟩ := exists_honest D
   have hAll : AllStop D (fun i => ofView (E := E) ((view1 K net y1).2.1 i)) := fun i hi => by
     obtain ⟨p, hp⟩ := hall i hi
     exact ⟨pointOf K p.1.2.2.1, fun _ => failure, by simp [view1, ofView, hp]⟩
@@ -859,11 +1044,12 @@ theorem cutLink_phases (k r3 : ℕ) (c : CeremonyStart C net.State) (world : Str
       ((y2.1.2 i).output = none →
         ceremonyRecord y3.1.2 i = [] ∨ ceremonyRecord y3.1.2 i = (y1.1.2 i).record [] ++ [.start p.1.2.2.1]) := by
     intro i hi
-    obtain ⟨keys, p, hkeys, hp, hmem, hstop⟩ := honest_stop prims K circuits settings D net k c world y1 hy1 start hjV i hi
+    obtain ⟨keys, p, hkeys, hp, hmem, hstop⟩ :=
+      honest_stopAt prims K circuits settings D net early k c world y1 hy1 start hjV i hi
     have hx1 : outOf y1.1.2 i = (some p, (y1.1.2 i).record []) := by unfold outOf; rw [hp]
     rw [hx1] at hmem
-    simp only [pre1, hkeys] at hmem
-    have hfull := timedLog_mem (timedLog_recPrefix K circuits settings k i keys c.jobs hk c.counters) _ hmem
+    simp only [pre1At, hkeys] at hmem
+    have hfull := timedLog_mem (timedLog_recPrefixAt K circuits settings early k i keys c.jobs hk c.counters) _ hmem
     rcases hfull with ⟨hn, -⟩ | ⟨-, hs1, ho1⟩
     · cases hn
     have hm2 := hmem2 i hi
@@ -881,10 +1067,10 @@ theorem cutLink_phases (k r3 : ℕ) (c : CeremonyStart C net.State) (world : Str
         rw [hx1, ← hy2e] at h
         rcases hyo : y.1 with _ | r
         · rw [hyo] at h
-          simp only [cont2, hkeys, recCont, support_pure, Set.mem_singleton_iff, Prod.mk.injEq] at h
+          simp only [cont2At, hkeys, recCont, support_pure, Set.mem_singleton_iff, Prod.mk.injEq] at h
           exact ⟨[], by unfold ceremonyRecord; rw [h.2, hyrec]⟩
         · rw [hyo] at h
-          simp only [cont2, hkeys, recCont, support_map, Set.mem_image] at h
+          simp only [cont2At, hkeys, recCont, support_map, Set.mem_image] at h
           obtain ⟨z, -, hz⟩ := h
           refine ⟨z.2, ?_⟩
           have := congrArg Prod.snd hz
@@ -902,7 +1088,7 @@ theorem cutLink_phases (k r3 : ℕ) (c : CeremonyStart C net.State) (world : Str
           rw [this]
           exact hnone
         rw [hx1, ← hy2e, hy1o] at h
-        simp only [cont2, hkeys, recCont, support_pure, Set.mem_singleton_iff, Prod.mk.injEq] at h
+        simp only [cont2At, hkeys, recCont, support_pure, Set.mem_singleton_iff, Prod.mk.injEq] at h
         unfold ceremonyRecord
         rw [h.2, hyrec]
   have hrecK : ∀ i, i ∉ D.1 → ∃ p : PreOut C, stopPoint i (ofView (E := E) ((view1 K net y1).2.1 i)) =
@@ -946,6 +1132,22 @@ theorem cutLink_phases (k r3 : ℕ) (c : CeremonyStart C net.State) (world : Str
     exact (streamWorld_run_mono prims D _ y1.2 y2 hy2).trans (streamWorld_run_mono prims D _ y2.2 y3 hy3)
   · exact streamWorld_run_mono prims D _ y2.2 y3 hy3
 
+/-- On the support of the three phases, the cut outcome of the first two phases is linked to the end
+of the third. -/
+theorem cutLink_phases (k r3 : ℕ) (c : CeremonyStart C net.State) (world : StreamState C)
+    (hseeds : seedsDiffer D c.keys = false) (hk : k < (chunks settings.batchSize c.jobs).length)
+    (y1 : (net.State × (C.Party → RStep C E RealSpec (PreOut C) (Record C E))) × StreamState C)
+    (hy1 : y1 ∈ support (phase1 prims K circuits settings D net k
+      (prefixRounds circuits settings (gameParameter D c.keys) c.jobs k) c world))
+    (y2 : (net.State × (C.Party → RStep C E RealSpec (ChkOut C) (Record C E))) × StreamState C)
+    (hy2 : y2 ∈ support (phase2 prims K D net (checkLabels (headCounts (((chunks settings.batchSize c.jobs).getD k []).map
+        (circuits (gameParameter D c.keys) ·.kind))).sum) c y1))
+    (y3 : (net.State × CeremonySteps C E) × StreamState C)
+    (hy3 : y3 ∈ support (phase3 prims K circuits settings D net k r3 c y1 y2)) :
+    CutLink K D k (cutOutcome K D net y1 y2) y3 :=
+  fun hstart _ hglobal =>
+    cutLink_phasesAt prims K circuits settings D net false k r3 c world hseeds hk y1 hy1 y2 hy2 y3 hy3 hstart hglobal
+
 end Link
 
 /-! ## `CouplingLaw` and `CeremonyCoupling` -/
@@ -958,29 +1160,45 @@ attribute [local instance] inhabitedField
 
 variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings)
 
-/-- The proof of `CouplingLaw`. The joint law is the three phases with the cut outcome of the first
-two. Its first part has the law of `ceremonyCheckAt` (`cutOutcome_eq`), its second part has the law
-of the ghost run (`ghost_eq_phases`), and its support has the link (`cutLink_phases`). -/
-theorem couplingLaw : CouplingLaw prims K circuits settings := by
-  intro _ D net rounds ℓ c world hready hfuel k hk
+/-- The joint law of the cut at check `k` and the ghost run, at both places of the opening record,
+with `CutLinkFree` on its support. The joint law is the three phases with the cut outcome of the
+first two. Its first part has the law of `ceremonyCheckAt` (`cutOutcome_eqAt`), its second part has
+the law of the ghost run (`ghost_eq_phasesAt`), and its support has the link (`cutLink_phasesAt`). -/
+theorem couplingLawWith (early : Bool) (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (rounds : ℕ)
+    (ℓ : StartBudget) (c : CeremonyStart C net.State) (world : StreamState C) (hready : CeremonyReady D ℓ c world)
+    (hfuel : CheckTiming.ceremonyRounds circuits settings (gameParameter D c.keys) c.jobs ≤ rounds) (k : ℕ)
+    (hk : k < (chunks settings.batchSize c.jobs).length) :
+    ∃ J : ProbComp ((Option (CheckStart C net.State) ×
+        Option ((net.State × (C.Party → Option Unit)) × StreamState C)) ×
+        ((net.State × CeremonySteps C E) × StreamState C)),
+      (Prod.fst <$> J) =ᵈ ceremonyCheckAt prims K circuits settings D net rounds k c world ∧
+      (Prod.snd <$> J) =ᵈ (ghostCeremonyAt prims K circuits settings D net early rounds c).run world ∧
+      ∀ x ∈ support J, CutLinkFree K D k x.1 x.2 := by
   have hseeds : seedsDiffer D c.keys = false := hready.1
   have hle := prefix_add_check_le circuits settings (gameParameter D c.keys) c.jobs k hk
-  refine ⟨phase1 prims K circuits settings D net k (prefixRounds circuits settings (gameParameter D c.keys) c.jobs k)
-      c world >>= fun y1 =>
+  refine ⟨phase1At prims K circuits settings D net early k
+      (prefixRounds circuits settings (gameParameter D c.keys) c.jobs k) c world >>= fun y1 =>
     phase2 prims K D net (checkLabels (headCounts (((chunks settings.batchSize c.jobs).getD k []).map
       (circuits (gameParameter D c.keys) ·.kind))).sum) c y1 >>= fun y2 =>
-      phase3 prims K circuits settings D net k (rounds - (prefixRounds circuits settings (gameParameter D c.keys)
-        c.jobs k + checkLabels (headCounts (((chunks settings.batchSize c.jobs).getD k []).map
-          (circuits (gameParameter D c.keys) ·.kind))).sum)) c y1 y2 >>= fun y3 =>
+      phase3At prims K circuits settings D net early k
+        (rounds - (prefixRounds circuits settings (gameParameter D c.keys) c.jobs k +
+          checkLabels (headCounts (((chunks settings.batchSize c.jobs).getD k []).map
+            (circuits (gameParameter D c.keys) ·.kind))).sum)) c y1 y2 >>= fun y3 =>
         pure (cutOutcome K D net y1 y2, y3), ?_, ?_, ?_⟩
   · simp only [map_bind, map_pure]
-    exact cutOutcome_eq prims K circuits settings D net k rounds _ c world hseeds hk (by omega)
+    exact cutOutcome_eqAt prims K circuits settings D net early k rounds _ c world hseeds hk (by omega)
   · simp only [map_bind, map_pure, bind_pure]
-    exact (ghost_eq_phases prims K circuits settings D net k rounds _ c world hseeds hk (by omega)).symm
+    exact (ghost_eq_phasesAt prims K circuits settings D net early k rounds _ c world hseeds hk (by omega)).symm
   · intro x hx
     simp only [mem_support_bind_iff, support_pure, Set.mem_singleton_iff] at hx
     obtain ⟨y1, hy1, y2, hy2, y3, hy3, rfl⟩ := hx
-    exact cutLink_phases prims K circuits settings D net k _ c world hseeds hk y1 hy1 y2 hy2 y3 hy3
+    exact cutLink_phasesAt prims K circuits settings D net early k _ c world hseeds hk y1 hy1 y2 hy2 y3 hy3
+
+/-- The proof of `CouplingLaw`, as `couplingLawWith` at `early = false`. -/
+theorem couplingLaw : CouplingLaw prims K circuits settings := by
+  intro _ D net rounds ℓ c world hready hfuel k hk
+  obtain ⟨J, h1, h2, h3⟩ := couplingLawWith prims K circuits settings false D net rounds ℓ c world hready hfuel k hk
+  exact ⟨J, h1, h2, fun x hx hs _ hg => h3 x hx hs hg⟩
 
 /-- `couplingLaw` and `ceremonyCoupling_of_law` give `CeremonyCoupling`. -/
 theorem ceremonyCoupling : CeremonyCoupling prims K circuits settings :=
@@ -999,3 +1217,7 @@ end
 /-- info: 'ThresholdLeanXmssSecurity.DkgCorrectnessProof.Joint.ceremonyCoupling' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.DkgCorrectnessProof.Joint.ceremonyCoupling
+
+/-- info: 'ThresholdLeanXmssSecurity.DkgCorrectnessProof.Joint.couplingLawWith' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.DkgCorrectnessProof.Joint.couplingLawWith

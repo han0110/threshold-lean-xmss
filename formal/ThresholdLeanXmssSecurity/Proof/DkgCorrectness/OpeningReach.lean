@@ -6,7 +6,8 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.RecordedRun
 The section `LiveRounds` follows one step of each honest operator on the recorded run (`Reach`,
 `StepReach`, `FreePath`) and states the wait for the open frames (`OpenWait`). The section
 `RecordedOpening` counts the rounds of a recorded batch (`TimedLog`) and gives the place of each
-start and each opening in the log (`WaitAt`).
+start and each opening in the log (`WaitAt`). The counts of a batch hold at both places of the
+opening record (`timedLog_recBatchAt`).
 -/
 
 section
@@ -680,61 +681,61 @@ theorem sum_batchTuples (b : BatchStart C) :
   simp only [List.map_map, Function.comp_def, List.map_append, List.map_cons, List.map_nil] at hs
   rw [hs, tupleCount_eq, List.sum_append, List.sum_singleton]
 
+omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
+/-- A record of one event and then a timed recorded continuation. The event adds its start and its
+opening to the counts. -/
+theorem timedLog_record_bind {β : Type} {f : PUnit → RecM C E β} {n a s o a' s' o' : ℕ} (e : RecEvent C E)
+    (hf : TimedLog (Stop a) (Full s o) n (f PUnit.unit).run.run) (ha : (openingsOf [e]).length + a ≤ a')
+    (hs : (startsOf [e]).length + s = s') (ho : (openingsOf [e]).length + o = o') :
+    TimedLog (Stop a') (Full s' o') n (RecM.record [e] >>= f).run.run := by
+  rw [run_recRecord_bind]
+  refine hf.map _ (fun z hz => ⟨hz.1, ?_⟩) fun z hz => ⟨hz.1, ?_, ?_⟩
+  · have := hz.2
+    rw [length_openingsOf_append]
+    omega
+  · rw [length_startsOf_append, hz.2.1, hs]
+  · rw [length_openingsOf_append, hz.2.2, ho]
+
+omit [Fintype E] [DecidableEq E] in
+/-- The check and the opening of a recorded start take the check rounds and one round, at both
+places of the opening record. An abort keeps at most one opening, and a result has one start and one
+opening. -/
+theorem timedLog_recCheckOpenWith (early : Bool) (b : BatchStart C) (k : ℕ) (st : ℕ × ℕ) :
+    TimedLog (Stop 1) (Full 1 1) (checkLabels (tupleCount b.circuits) + 1)
+      ((recCheckOpenWith K early b k).run st).run.run := by
+  have hcheck := runTimed_realCheck (G := RealSpec) K b.ctx (batchTuples K b.mode b.circuits b.inputs b.zs b.v')
+    b.state
+  rw [sum_batchTuples] at hcheck
+  rw [show checkLabels (tupleCount b.circuits) + 1 = checkLabels (tupleCount b.circuits) + (0 + (1 + 0)) by omega]
+  cases early <;>
+  simp only [recCheckOpenWith, StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind, RecM.liftS, StateT.run_mk,
+    StateT.run_set, StateT.run_pure, Bool.false_eq_true, ↓reduceIte, Bool.not_false, Bool.not_true] <;>
+  refine timedLog_record_bind (a := 1) (s := 0) (o := 1) _ ?_ (by simp [openingsOf]) rfl rfl <;>
+  refine timedLog_lift_bind (timed_pair hcheck st) ⟨rfl, by simp [openingsOf]⟩ fun p => ?_
+  · refine timedLog_lift_bind (timed_pair (timed_oracleStep _) _) ⟨rfl, by simp [openingsOf]⟩ fun p₁ => ?_
+    refine timedLog_lift_bind (timed_pair (timed_exchange _) _) ⟨rfl, by simp [openingsOf]⟩ fun p₂ => ?_
+    refine timedLog_record_bind (a := 0) (s := 0) (o := 0) _ ?_ le_rfl rfl rfl
+    rw [← Nat.add_zero 0]
+    refine timedLog_lift_bind (timed_pair (timed_repRest K _ _ _ _) _) ⟨rfl, by simp [openingsOf]⟩ fun p₃ => ?_
+    refine timedLog_record_bind (a := 0) (s := 0) (o := 0) _ ?_ le_rfl rfl rfl
+    rw [run_recPure]
+    exact TimedLog.done _ ⟨rfl, rfl, rfl⟩
+  · refine timedLog_record_bind (a := 0) (s := 0) (o := 0) _ ?_ le_rfl rfl rfl
+    refine timedLog_lift_bind (timed_pair (timed_oracleStep _) _) ⟨rfl, by simp [openingsOf]⟩ fun p₁ => ?_
+    refine timedLog_lift_bind (timed_pair (timed_exchange _) _) ⟨rfl, by simp [openingsOf]⟩ fun p₂ => ?_
+    rw [← Nat.add_zero 0]
+    refine timedLog_lift_bind (timed_pair (timed_repRest K _ _ _ _) _) ⟨rfl, by simp [openingsOf]⟩ fun p₃ => ?_
+    refine timedLog_record_bind (a := 0) (s := 0) (o := 0) _ ?_ le_rfl rfl rfl
+    rw [run_recPure]
+    exact TimedLog.done _ ⟨rfl, rfl, rfl⟩
+
 omit [Fintype E] [DecidableEq E] in
 /-- The check and the opening of a recorded start take the check rounds and one round. An abort
 keeps at most one opening, and a result has one start and one opening. -/
 theorem timedLog_recCheckOpen (b : BatchStart C) (k : ℕ) (st : ℕ × ℕ) :
     TimedLog (Stop 1) (Full 1 1) (checkLabels (tupleCount b.circuits) + 1)
-      ((recCheckOpen K b k).run st).run.run := by
-  simp only [recCheckOpen, StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind, RecM.liftS, StateT.run_mk,
-    StateT.run_set, StateT.run_pure]
-  rw [run_recRecord_bind]
-  refine TimedLog.map _ (A := Stop 1) (B := Full 0 1) ?_ (fun z hz => ⟨hz.1, ?_⟩) fun z hz => ⟨hz.1, ?_, ?_⟩
-  rotate_left
-  · have := hz.2
-    simp only [length_openingsOf_append, length_openingsOf_event]
-    omega
-  · have := hz.2.1
-    simp only [length_startsOf_append, length_startsOf_event]
-    omega
-  · have := hz.2.2
-    simp only [length_openingsOf_append, length_openingsOf_event]
-    omega
-  have hcheck := runTimed_realCheck (G := RealSpec) K b.ctx (batchTuples K b.mode b.circuits b.inputs b.zs b.v')
-    b.state
-  rw [sum_batchTuples] at hcheck
-  rw [show checkLabels (tupleCount b.circuits) + 1 = checkLabels (tupleCount b.circuits) + (0 + (1 + 0)) by omega]
-  refine timedLog_lift_bind (timed_pair hcheck st) ⟨rfl, by simp [openingsOf]⟩ fun p => ?_
-  refine timedLog_lift_bind (timed_pair (timed_oracleStep _) _) ⟨rfl, by simp [openingsOf]⟩ fun p₁ => ?_
-  refine timedLog_lift_bind (timed_pair (timed_exchange _) _) ⟨rfl, by simp [openingsOf]⟩ fun p₂ => ?_
-  rw [run_recRecord_bind]
-  refine TimedLog.map _ (A := Stop 0) (B := Full 0 0) ?_ (fun z hz => ⟨hz.1, ?_⟩) fun z hz => ⟨hz.1, ?_, ?_⟩
-  rotate_left
-  · have := hz.2
-    simp only [length_openingsOf_append, length_openingsOf_event]
-    omega
-  · have := hz.2.1
-    simp only [length_startsOf_append, length_startsOf_event]
-    omega
-  · have := hz.2.2
-    simp only [length_openingsOf_append, length_openingsOf_event]
-    omega
-  rw [← Nat.add_zero 0]
-  refine timedLog_lift_bind (timed_pair (timed_repRest K _ _ _ _) _) ⟨rfl, by simp [openingsOf]⟩ fun p₃ => ?_
-  rw [run_recRecord_bind]
-  refine TimedLog.map _ (A := Stop 0) (B := Full 0 0) ?_ (fun z hz => ⟨hz.1, ?_⟩) fun z hz => ⟨hz.1, ?_, ?_⟩
-  rotate_left
-  · have := hz.2
-    simp only [length_openingsOf_append, length_openingsOf_event]
-    omega
-  · have := hz.2.1
-    simp only [length_startsOf_append, length_startsOf_event]
-    omega
-  · have := hz.2.2
-    simp only [length_openingsOf_append, length_openingsOf_event]
-    omega
-  rw [run_recPure]
-  exact TimedLog.done _ ⟨rfl, rfl, rfl⟩
+      ((recCheckOpen K b k).run st).run.run :=
+  timedLog_recCheckOpenWith K false b k st
 
 omit [Fintype E] [DecidableEq E] in
 /-- The check and the opening of a recorded start at operator `j` reach the exchange of `OpenRep`
@@ -805,13 +806,14 @@ theorem runTimed_recLayers (ctx : Context C) (mode : ReshareMode) (cs : List Cir
   exact (runTimed_realMult K ctx mode _ _ _).bind fun z => runTimed_pure _
 
 omit [Fintype E] [DecidableEq E] in
-/-- A full recorded batch takes `exactBatchRounds`. An abort keeps at most one opening, and a result
-has one start and one opening. -/
-theorem timedLog_recBatch (ctx : Context C) (parameter : PublicParameter) (jobs : List Job) (st : ℕ × ℕ) :
+/-- A full recorded batch takes `exactBatchRounds`, at both places of the opening record. An abort
+keeps at most one opening, and a result has one start and one opening. -/
+theorem timedLog_recBatchAt (early : Bool) (ctx : Context C) (parameter : PublicParameter) (jobs : List Job)
+    (st : ℕ × ℕ) :
     TimedLog (Stop 1) (Full 1 1) (CheckTiming.exactBatchRounds settings.mode (jobs.map (circuits parameter ·.kind)))
-      ((recBatch K circuits settings ctx parameter jobs).run st).run.run := by
+      ((recBatchAt K circuits settings early ctx parameter jobs).run st).run.run := by
   obtain ⟨label, k⟩ := st
-  simp only [recBatch, StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, RecM.liftS, StateT.run_mk]
+  simp only [recBatchAt, StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, RecM.liftS, StateT.run_mk]
   have harith : CheckTiming.exactBatchRounds settings.mode (jobs.map (circuits parameter ·.kind)) =
       0 + (depth (jobs.map (circuits parameter ·.kind)) * settings.mode.rounds +
         (1 + (checkLabels (tupleCount (jobs.map (circuits parameter ·.kind))) + 1))) := by
@@ -823,8 +825,16 @@ theorem timedLog_recBatch (ctx : Context C) (parameter : PublicParameter) (jobs 
     ⟨rfl, by simp [openingsOf]⟩ fun p₁ => ?_
   refine timedLog_lift_bind (timed_pair (runTimed_realRerand K ctx settings.mode _ _ _) _)
     ⟨rfl, by simp [openingsOf]⟩ fun p₂ => ?_
-  exact timedLog_recCheckOpen K ⟨(realRunBuildingBlocks K ctx settings.mode).mode, jobs, parameter,
+  exact timedLog_recCheckOpenWith K early ⟨(realRunBuildingBlocks K ctx settings.mode).mode, jobs, parameter,
     jobs.map (circuits parameter ·.kind), p.1, p₁.1.1, p₂.1.1, ctx, p₂.1.2⟩ k p₂.2
+
+omit [Fintype E] [DecidableEq E] in
+/-- A full recorded batch takes `exactBatchRounds`. An abort keeps at most one opening, and a result
+has one start and one opening. -/
+theorem timedLog_recBatch (ctx : Context C) (parameter : PublicParameter) (jobs : List Job) (st : ℕ × ℕ) :
+    TimedLog (Stop 1) (Full 1 1) (CheckTiming.exactBatchRounds settings.mode (jobs.map (circuits parameter ·.kind)))
+      ((recBatch K circuits settings ctx parameter jobs).run st).run.run :=
+  timedLog_recBatchAt K circuits settings false ctx parameter jobs st
 
 omit [Fintype E] [DecidableEq E] in
 /-- A recorded batch at operator `ctx.self` reaches its exchange of `OpenRep` one round before its
@@ -850,26 +860,37 @@ theorem reach_recBatch (ctx : Context C) (parameter : PublicParameter) (jobs : L
     jobs.map (circuits parameter ·.kind), p.1, p₁.1.1, p₂.1.1, ctx, p₂.1.2⟩ rfl k p₂.2
 
 omit [Fintype E] [DecidableEq E] in
-/-- Full recorded batches take the sum of their rounds. An abort keeps at most one opening for each
-batch, and a result has one start and one opening for each batch. -/
-theorem timedLog_recBatches (ctx : Context C) (parameter : PublicParameter) :
+/-- Full recorded batches take the sum of their rounds, at both places of the opening record. An
+abort keeps at most one opening for each batch, and a result has one start and one opening for each
+batch. -/
+theorem timedLog_recBatchesAt (early : Bool) (ctx : Context C) (parameter : PublicParameter) :
     ∀ (js : List (List Job)) (st : ℕ × ℕ),
       TimedLog (Stop js.length) (Full js.length js.length)
         ((js.map fun batch => CheckTiming.exactBatchRounds settings.mode (batch.map (circuits parameter ·.kind))).sum)
-        ((js.mapM (recBatch K circuits settings ctx parameter)).run st).run.run
+        ((js.mapM (recBatchAt K circuits settings early ctx parameter)).run st).run.run
   | [], st => by
     simp only [List.mapM_nil, StateT.run_pure, run_recPure, List.map_nil, List.sum_nil, List.length_nil]
     exact TimedLog.done _ ⟨rfl, rfl, rfl⟩
   | jobs :: js, st => by
     rw [List.mapM_cons, StateT.run_bind, List.map_cons, List.sum_cons, List.length_cons]
     refine timedLog_recBind (a₂ := js.length) (s₂ := js.length) (o₂ := js.length)
-      (timedLog_recBatch K circuits settings ctx parameter jobs st) (fun c => ?_)
+      (timedLog_recBatchAt K circuits settings early ctx parameter jobs st) (fun c => ?_)
       (by omega) (by omega) (by omega) (by omega)
     rw [StateT.run_bind, ← Nat.add_zero (List.sum _)]
     refine timedLog_recBind (a₂ := 0) (s₂ := 0) (o₂ := 0) (n := 0)
-      (timedLog_recBatches ctx parameter js c.2) (fun q => ?_) (le_refl _) (by omega) (by omega) (by omega)
+      (timedLog_recBatchesAt early ctx parameter js c.2) (fun q => ?_) (le_refl _) (by omega) (by omega) (by omega)
     rw [StateT.run_pure, run_recPure]
     exact TimedLog.done _ ⟨rfl, rfl, rfl⟩
+
+omit [Fintype E] [DecidableEq E] in
+/-- Full recorded batches take the sum of their rounds. An abort keeps at most one opening for each
+batch, and a result has one start and one opening for each batch. -/
+theorem timedLog_recBatches (ctx : Context C) (parameter : PublicParameter) :
+    ∀ (js : List (List Job)) (st : ℕ × ℕ),
+      TimedLog (Stop js.length) (Full js.length js.length)
+        ((js.map fun batch => CheckTiming.exactBatchRounds settings.mode (batch.map (circuits parameter ·.kind))).sum)
+        ((js.mapM (recBatch K circuits settings ctx parameter)).run st).run.run :=
+  timedLog_recBatchesAt K circuits settings false ctx parameter
 
 omit [Fintype E] [DecidableEq E] in
 /-- The batches of a recorded ceremony at operator `ctx.self` reach the exchange of `OpenRep` of

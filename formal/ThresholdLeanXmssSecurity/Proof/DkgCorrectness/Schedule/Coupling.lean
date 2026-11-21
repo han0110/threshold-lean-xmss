@@ -6,7 +6,8 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.CutBounds
 
 `CeremonyCoupling` compares the ghost run of one ceremony, which keeps the records, with
 `ceremonyCheckAt`, which is the plain prefix of the ceremony and then the real check from the joint
-start. `CutLink` is the link of one outcome of each run at check `k`. `CouplingLaw` states a joint law
+start. `CutLink` is the link of one outcome of each run at check `k`, and `CutLinkFree` is the same
+link with no premise on an honest output. `CouplingLaw` states a joint law
 of the two runs with the link on its support. `ceremonyCoupling_of_law` proves `CeremonyCoupling` from
 `CouplingLaw`. The pointwise step `checkBad_of_link` gives `CheckBad` from the link, with the fresh
 streams of `CeremonyInterval`.
@@ -43,6 +44,17 @@ def CutLink (D : C.Coalition) (k : ℕ) {σ : Type}
     (r : Option (CheckStart C σ) × Option ((σ × (C.Party → Option Unit)) × StreamState C))
     (ω : (σ × CeremonySteps C E) × StreamState C) : Prop :=
   StartedAt D k ω.1.2 → HonestOutput D (ceremonyOutputs ω.1.2) → ¬ GlobalEvent ω.2 →
+    ∃ start out, r = (some start, some out) ∧
+      (∀ i, i ∉ D.1 → start.x i = ceremonyTuplesAt K k ω.1.2 i ∧
+        ∀ b, (startsOf (ceremonyRecord ω.1.2 i))[k]? = some b → b.ctx.prss = start.prss i) ∧
+      (∀ i, i ∉ D.1 → k < (openingsOf (ceremonyRecord ω.1.2 i)).length → out.1.2 i = some ()) ∧
+      start.world.1 ≤ ω.2.1 ∧ out.2.1 ≤ ω.2.1
+
+/-- `CutLink` with no premise on an honest output. -/
+def CutLinkFree (D : C.Coalition) (k : ℕ) {σ : Type}
+    (r : Option (CheckStart C σ) × Option ((σ × (C.Party → Option Unit)) × StreamState C))
+    (ω : (σ × CeremonySteps C E) × StreamState C) : Prop :=
+  StartedAt D k ω.1.2 → ¬ GlobalEvent ω.2 →
     ∃ start out, r = (some start, some out) ∧
       (∀ i, i ∉ D.1 → start.x i = ceremonyTuplesAt K k ω.1.2 i ∧
         ∀ b, (startsOf (ceremonyRecord ω.1.2 i))[k]? = some b → b.ctx.prss = start.prss i) ∧

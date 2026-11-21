@@ -5,8 +5,9 @@ import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Shared.Cover
 
 `sharedBadBound_of_parts` proves `SharedBadBound`, the bound `flagError` of the flag of the real
 game with the shared event, from three statements. `PassLaw` is the joint law of the cut and of one
-ceremony with the record of a pass. `PassReadyHop` states that each start up to the first record
-passes the test `PassReady`. `PassFlagFirst` states that the flag comes with a first record.
+ceremony with the record of a pass, and `passLaw` proves it. `PassReadyHop` states that each start
+up to the first record passes the test `PassReady`. `PassFlagFirst` states that the flag comes with a
+first record. `sharedBadBound_of_ready` proves `SharedBadBound` from these two statements.
 
 * `first_le` splits a first record into the seeds, a start that does not pass the test, a run with
   its event, and the four collisions at its world, as `firstProbWith_le`.
@@ -182,8 +183,19 @@ theorem sharedBadBound_of_parts (law : PassLaw prims K circuits settings)
       (passTopCover prims K circuits settings)
       (passBottomBound prims K circuits settings runLimit law (passFresh prims K circuits settings)))
 
+/-- `SharedBadBound` from the two statements `PassReadyHop` and `PassFlagFirst`, by
+`sharedBadBound_of_parts` with `passLaw`. -/
+theorem sharedBadBound_of_ready (ready : PassReadyHop prims K circuits settings runLimit)
+    (flagFirst : PassFlagFirst prims K circuits settings runLimit) :
+    SharedBadBound prims K circuits settings runLimit :=
+  sharedBadBound_of_parts prims K circuits settings runLimit (passLaw prims K circuits settings) ready flagFirst
+
 end ThresholdLeanXmssSecurity.DkgSecurityProof
 
 /-- info: 'ThresholdLeanXmssSecurity.DkgSecurityProof.sharedBadBound_of_parts' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.DkgSecurityProof.sharedBadBound_of_parts
+
+/-- info: 'ThresholdLeanXmssSecurity.DkgSecurityProof.sharedBadBound_of_ready' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.DkgSecurityProof.sharedBadBound_of_ready

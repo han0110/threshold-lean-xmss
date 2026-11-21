@@ -6,7 +6,10 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Cores
 
 `executePhaseR` is `executePhase` with a record for each party. `recRun` is the ceremony program that records the start, the opened outputs and the tuples
 of each batch (`RecEvent`), and `dropRecS_recRun` states that it is `ceremonyRun` with the record
-dropped. `startsOf`, `openingsOf` and `batchOutputsOf` read the record. The section `Fuel` bounds
+dropped. `recCheckOpenWith`, `recBatchAt` and `recRunAt` take the place of the opening record as
+an argument `early`. With `early` the pass of a check is recorded before the exchange of `OpenRep`,
+and with `early = false` they are `recCheckOpen`, `recBatch` and `recRun`. `startsOf`, `openingsOf`
+and `batchOutputsOf` read the record. The section `Fuel` bounds
 the rounds that an honest program uses (`Within`, `RunWithin`, `within_newTree`).
 -/
 
@@ -382,6 +385,24 @@ def recCheckOpen (b : BatchStart C) (k : ℕ) : StateT (ℕ × ℕ) (RecM C E) (
   set (s3.label, k + 1)
   pure (some (ThresholdLeanXmssSecurity.assemble b.circuits opened))
 
+/-- The check and the opening of a recorded batch with the record of the opening at one of two
+places. With `early` it records the pass right after the check with no inbox, before the copy hashes
+and the exchange of `OpenRep`. With `early = false` it is `recCheckOpen`. -/
+def recCheckOpenWith (early : Bool) (b : BatchStart C) (k : ℕ) :
+    StateT (ℕ × ℕ) (RecM C E) (Option (List (List Bit))) := do
+  StateT.lift (RecM.record [.start b])
+  let (_, s3) ← RecM.liftS (StateT.lift (((realRunBuildingBlocks (G := RealSpec) K b.ctx b.mode).verify
+    (batchTuples K b.mode b.circuits b.inputs b.zs b.v')).run b.state))
+  if early then StateT.lift (RecM.record [.opened b.v' fun _ => none])
+  let digests ← RecM.liftS (StateT.lift (oracleStep (C.terms.mapM fun T =>
+    hashQuery (.copy (vector (outputsOf b.circuits).length (b.v' T))))))
+  let inbox ← RecM.liftS (StateT.lift (exchange (repOutbox K b.ctx.self b.v' (outputsOf b.circuits).length digests)))
+  if !early then StateT.lift (RecM.record [.opened b.v' inbox])
+  let opened ← RecM.liftS (StateT.lift (repRest K b.ctx.self b.v' (outputsOf b.circuits).length inbox))
+  StateT.lift (RecM.record [.output (ThresholdLeanXmssSecurity.assemble b.circuits opened)])
+  set (s3.label, k + 1)
+  pure (some (ThresholdLeanXmssSecurity.assemble b.circuits opened))
+
 /-- One batch of a ceremony at operator `ctx.self` with its record. It is `realBatch` with the
 products of the AND layers in `recLayers`, then `recCheckOpen` of the start of its check. -/
 def recBatch (ctx : Context C) (parameter : PublicParameter) (jobs : List Job) :
@@ -394,6 +415,19 @@ def recBatch (ctx : Context C) (parameter : PublicParameter) (jobs : List Job) :
   let (v', s2) ← RecM.liftS (StateT.lift ((B.rerand (outputShares K cs
     (layerPrefix K B.mode cs inputs zs (depth cs)).1) (outputsOf cs).length).run s1))
   recCheckOpen K ⟨B.mode, jobs, parameter, cs, inputs, zs, v', ctx, s2⟩ k
+
+/-- One recorded batch with the record of the opening at its place for `early`, as `recBatch`. With
+`early = false` it is `recBatch`. -/
+def recBatchAt (early : Bool) (ctx : Context C) (parameter : PublicParameter) (jobs : List Job) :
+    StateT (ℕ × ℕ) (RecM C E) (Option (List (List Bit))) := do
+  let (label, k) ← get
+  let cs := jobs.map (circuits parameter ·.kind)
+  let B := realRunBuildingBlocks (G := RealSpec) K ctx settings.mode
+  let inputs ← RecM.liftS (StateT.lift (jobs.mapM (inputShares ctx)))
+  let (zs, s1) ← RecM.liftS (StateT.lift ((recLayers K B cs inputs (depth cs)).run ⟨fun _ => [], label, k⟩))
+  let (v', s2) ← RecM.liftS (StateT.lift ((B.rerand (outputShares K cs
+    (layerPrefix K B.mode cs inputs zs (depth cs)).1) (outputsOf cs).length).run s1))
+  recCheckOpenWith K early ⟨B.mode, jobs, parameter, cs, inputs, zs, v', ctx, s2⟩ k
 
 /-- With its record dropped, `recBatch` is `realBatch`. -/
 theorem dropRecS_recBatch [Fintype E] [DecidableEq E] (ctx : Context C) (parameter : PublicParameter) (jobs : List Job) :
@@ -422,6 +456,18 @@ theorem dropRecS_recBatch [Fintype E] [DecidableEq E] (ctx : Context C) (paramet
   rw [StateT.run_lift, hopen]
   simp only [bind_assoc, pure_bind, StateT.run_pure]
 
+/-- With its record dropped, `recBatchAt` is `realBatch` at both places of the opening record. -/
+theorem dropRecS_recBatchAt [Fintype E] [DecidableEq E] (early : Bool) (ctx : Context C)
+    (parameter : PublicParameter) (jobs : List Job) :
+    dropRecS (recBatchAt K circuits settings early ctx parameter jobs) =
+      realBatch K circuits settings.mode ctx parameter jobs := by
+  rw [← dropRecS_recBatch]
+  cases early
+  · rfl
+  unfold recBatchAt recBatch recCheckOpenWith recCheckOpen
+  simp only [MonadHom.mmap_bind, MonadHom.mmap_pure, dropRecS_get, dropRecS_set, dropRecS_liftS, dropRecS_record,
+    pure_bind, ↓reduceIte, Bool.not_true, Bool.false_eq_true]
+
 end Batch
 
 /-! ## The recorded tree -/
@@ -435,6 +481,12 @@ variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algeb
 def recRun (i : C.Party) (keys : Keys C) (jobs : List Job) : StateT (ℕ × ℕ) (RecM C E) (Option (List (List Bit))) := do
   let prss ← RecM.liftS (StateT.lift (prssSetup i))
   batched settings.batchSize (recBatch K circuits settings ⟨i, keys, prss⟩ keys.parameter) jobs
+
+/-- One recorded ceremony with the record of the opening at its place for `early`, as `recRun`. -/
+def recRunAt (early : Bool) (i : C.Party) (keys : Keys C) (jobs : List Job) :
+    StateT (ℕ × ℕ) (RecM C E) (Option (List (List Bit))) := do
+  let prss ← RecM.liftS (StateT.lift (prssSetup i))
+  batched settings.batchSize (recBatchAt K circuits settings early ⟨i, keys, prss⟩ keys.parameter) jobs
 
 theorem dropRecS_recRun (i : C.Party) (keys : Keys C) (jobs : List Job) :
     dropRecS (recRun K circuits settings i keys jobs) =
