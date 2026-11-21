@@ -32,18 +32,6 @@ use tracing_subscriber::{EnvFilter, Layer, Registry, fmt};
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
-/// jemalloc's configuration, which it reads before its first allocation.
-///
-/// - Dirty pages never decay, so freed memory never returns to the kernel.
-/// - jemalloc reads a C string pointer here.
-/// - A reference to a byte array is that pointer, with no length beside it.
-///
-/// This item is a copy of the one in [`allocator.rs`] of leanVM.
-///
-/// [`allocator.rs`]: https://github.com/leanEthereum/leanVM/blob/1acdff19dffcaaf1642e88a9e9b522b415425168/crates/bench/src/allocator.rs
-#[unsafe(export_name = "_rjem_malloc_conf")]
-static MALLOC_CONF: &[u8; 18] = b"dirty_decay_ms:-1\0";
-
 #[derive(Parser)]
 #[command(about = "A t-of-(2t - 1) threshold leanXMSS key (EIP-8450)")]
 enum Command {
