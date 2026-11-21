@@ -379,9 +379,9 @@ the paper is about one broadcast of a verifying transcript and is no model of th
 
 \paragraph{The state of the target.} No proof accounts for the whole game for the bound of
 \lean{dkgSecurity} on the win probability yet. The theorem \lean{DkgSecurityProof.dkgSecurity_of_leaves}
-gives the field from one hop that has no proof yet (\lean{SharedStep}) and from two parts of the
-hop \lean{SharedHit} that have no proof yet (\lean{HitSeed}, \lean{HitSalt}). Eleven of the 13
-hops of the chain have proofs, and two of the four parts of \lean{SharedHit}.
+gives the field from one hop that has no proof yet (\lean{SharedStep}) and from one part of the
+hop \lean{SharedHit} that has no proof yet (\lean{HitSeed}). Eleven of the 13
+hops of the chain have proofs, and three of the four parts of \lean{SharedHit}.
 $\mathsf{dkgError}$ is the sum of the errors of the 13 hops, so it is the error of this proof and no
 tight bound. Through $\mathsf{dkgCorrectnessError}$ it grows with the third power of the run limit,
 which comes from the proof method for the PRSS setups. The two privacy terms

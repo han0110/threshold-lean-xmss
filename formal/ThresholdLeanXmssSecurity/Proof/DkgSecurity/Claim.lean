@@ -1,5 +1,6 @@
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Clash
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Mismatch
+import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Salt.Claim
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.RefDealer.Claim
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Shared.BadBound
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Shared.End
@@ -26,10 +27,10 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.TopLaws
 `monitorErase`, the hop `UsedHitHop` at the error `setupHybridError` from the proof of
 `dkgCorrectness`, `sharedStart`, `sharedRefDealer`, `sharedSeedBound`, `sharedSeedReal`,
 `sharedSeedIdeal`, `sharedSearch`, `sharedEnd`, `tableHop` and `sharedBadBound`. The premises are the
-hop `SharedStep` and the two parts `HitSeed` and `HitSalt` of the first hit, as propositions.
-`sharedHit_of_seedSalt` gives the hop `SharedHit` at the error `privacyHitError` from `HitSeed`,
-`HitSalt` and the proved parts `hitClash` and `hitMismatch`. With the errors
-`privacyHitError` and `privacyStepError` the error `sharedError` is `dkgError` by definition.
+hop `SharedStep` and the part `HitSeed` of the first hit, as propositions. `sharedHit_of_seedSalt`
+gives the hop `SharedHit` at the error `privacyHitError` from `HitSeed`, the proved part `hitSalt`
+and the proved parts `hitClash` and `hitMismatch`. With the errors `privacyHitError` and
+`privacyStepError` the error `sharedError` is `dkgError` by definition.
 -/
 
 set_option autoImplicit false
@@ -57,11 +58,11 @@ theorem sharedHit_of_seedSalt (seed : HitSeed prims K circuits settings runLimit
   exact (sharedHit_of_parts prims K circuits settings runLimit seed salt (hitClash prims K circuits settings runLimit)
     (hitMismatch prims K circuits settings runLimit) D A q bounded).trans (hitError_eq settings runLimit C q).le
 
-/-- The field `dkgSecurity` from the hop `SharedStep` and the parts `HitSeed` and `HitSalt` of the
-first hit, as propositions. The error `dkgError` is `sharedError` at `privacyHitError` and
-`privacyStepError` by definition. -/
+/-- The field `dkgSecurity` from the hop `SharedStep` and the part `HitSeed` of the first hit, as
+propositions. The error `dkgError` is `sharedError` at `privacyHitError` and `privacyStepError` by
+definition. -/
 theorem dkgSecurity_of_leaves
-    (seed : HitSeed prims K circuits settings runLimit) (salt : HitSalt prims K circuits settings runLimit)
+    (seed : HitSeed prims K circuits settings runLimit)
     (step : SharedStep prims K circuits settings runLimit (privacyStepError settings runLimit C)) :
     CircuitsCompute circuits prims.Th →
       ThresholdLeanXmss.DkgSecurity prims K circuits settings runLimit (dkgReduction K circuits settings runLimit) :=
@@ -83,7 +84,8 @@ theorem dkgSecurity_of_leaves
     (sharedRefDealer prims K circuits settings runLimit) (sharedSeedBound K circuits settings runLimit prims)
     (sharedSeedReal K circuits settings runLimit prims) (sharedSeedIdeal K circuits settings runLimit prims)
     (sharedSearch prims K circuits settings runLimit)
-    (sharedHit_of_seedSalt prims K circuits settings runLimit seed salt) step
+    (sharedHit_of_seedSalt prims K circuits settings runLimit seed
+      (hitSalt prims K circuits settings runLimit)) step
     (sharedEnd prims K circuits settings runLimit)
     (tableHop prims K circuits settings runLimit) fun _ _ => le_refl _
 
