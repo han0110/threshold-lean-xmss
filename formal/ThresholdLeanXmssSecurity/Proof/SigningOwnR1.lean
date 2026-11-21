@@ -79,8 +79,8 @@ theorem logged_query_stopRisk_le (x : Keys3 C)
       simp only [loggedImpl, StateT.run_mk, support_map, Set.mem_image] at hz
       obtain ⟨y, hy, rfl⟩ := hz
       exact SigningCacheProof.countImpl_grows prims t l.1 y hy
-    simp only [stopRisk, if_pos (SigningGuessProof.alternativeCommitment_mono _ _ _ _ hle halt), le_refl]
-  rw [stopRisk, if_neg halt]
+    simp only [stopRisk, ite_eq_left (SigningGuessProof.alternativeCommitment_mono _ _ _ _ hle halt), le_refl]
+  rw [stopRisk, ite_eq_right halt]
   have hpt : ∀ (cache : HashCache C) (n : SigningPartnerBoundProof.Monitor), stopRisk x cache n ≤ n.risk := by
     intro cache n
     unfold stopRisk

@@ -133,9 +133,9 @@ theorem own_count_le (prims : Primitives) (P : PublicParameter) (seeds : C.Term 
   by_cases charged : ownCharged P seeds t (st, stored) g
   · have bound := SigningCompilerPotential.compiler_count_le prims P seeds st.1 bases trials t r
       run nextLive
-    rw [if_pos charged]
+    rw [ite_eq_left charged]
     split_ifs at bound <;> omega
-  rw [if_neg charged, Nat.add_zero]
+  rw [ite_eq_right charged, Nat.add_zero]
   have same : compilerView r.2 = compilerView st.1 →
       XmssSecurity.Ghost.nCount P (compilerView r.2).1 (compilerView r.2).2 ≤
         XmssSecurity.Ghost.nCount P (compilerView st.1).1 (compilerView st.1).2 := by
@@ -280,7 +280,7 @@ theorem ownPotential_step (prims : Primitives) (x : Keys3 C) (B : ℕ) (hB : B <
     simp only [countImpl, StateT.run_mk, support_map, Set.mem_image] at hr
     obtain ⟨a, ha, rfl⟩ := hr
     simp only [ownPotential]
-    rw [if_pos]
+    rw [ite_eq_left]
     rcases zero with zero | zero | zero
     · exact Or.inl (compilerImpl_stale x.1 x.2.1 t st.1 zero a ha)
     · exact Or.inr (Or.inl zero)
@@ -298,7 +298,7 @@ theorem ownPotential_step (prims : Primitives) (x : Keys3 C) (B : ℕ) (hB : B <
     have hz : ¬(st.1.trace.2 = true ∨ g.dirty = true ∨ B < g.ledger) := by
       simp only [live, clean, Bool.false_eq_true, false_or, not_lt]
       exact within
-    rw [ownPotential, if_neg hz]
+    rw [ownPotential, ite_eq_right hz]
   have inv : XmssSecurity.Ghost.Inv (SigningLane2FlatProof.laneKey x.1)
       (compilerView st.1, g.ledger) := by
     rcases h.2 with h' | h' | h'
@@ -315,7 +315,7 @@ theorem ownPotential_step (prims : Primitives) (x : Keys3 C) (B : ℕ) (hB : B <
     intro hp
     refine XmssSecurity.Ghost.tsum_le_of_support _ _ _ fun r hr => ?_
     cases nl : r.2.trace.2 with
-    | true => simp only [ownPotential, nl, true_or, if_true]; exact zero_le
+    | true => simp only [ownPotential, nl, true_or, ite_true]; exact zero_le
     | false =>
       rw [pre]
       exact (ownPotential_le x.1 B (r.2, st.2 + if deferredCounted t then 1 else 0) g' g.ledger
@@ -359,27 +359,27 @@ theorem ownPotential_step (prims : Primitives) (x : Keys3 C) (B : ℕ) (hB : B <
       · have hc : ownCharged x.1 x.2.1 (.hash (.hash input)) (st, stored) g :=
           ⟨input, rfl, Or.inr ⟨hmsg, fresh.1, fresh.2, live, clean, single⟩⟩
         have room : g.ledger < B := by
-          rw [hledger, if_pos hc] at room'
+          rw [hledger, ite_eq_left hc] at room'
           omega
         have side : ¬(deferredInputSide x.1 (C := C) (.hash (.hash input)) ∧
             stored (deferredKey x.1 (C := C) (.hash (.hash input))) = none) := by
           rintro ⟨hs, -⟩
           simp [deferredInputSide, deferredCandidate,
             hiddenCandidate_none_of_isMsg x.1 input hmsg] at hs
-        rw [if_pos (And.intro hc (And.intro room side))]
+        rw [ite_eq_left (And.intro hc (And.intro room side))]
         have sum := (tsum_countImpl x.1 x.2.1 _ (st.1, g.ledger)
           (fun s => SigningCompilerPotential.viewSum x.1 B (compilerView s.1, s.2))).symm.le.trans
           (SigningCompilerPotential.compiler_message_sum_le prims ⟨0, x.1⟩ x.1 x.2.1 B hB input
             hmsg (st.1, g.ledger) inv room)
         simp only [deferredCounted] at sum
-        erw [if_pos trivial] at sum
+        erw [ite_eq_left trivial] at sum
         rw [pre]
         calc _ ≤ ∑' r, Pr{let z ← (compilerImpl x.1 x.2.1 (.hash (.hash input))).run st.1}[z = r] *
               (SigningCompilerPotential.viewSum x.1 B (compilerView r.2, g.ledger + 1) *
                 ((2 ^ 128 : ℝ≥0∞) * 2 ^ 128)⁻¹) :=
               ENNReal.tsum_le_tsum fun r => mul_le_mul_right (ownPotential_le x.1 B
                 (r.2, st.2 + if deferredCounted (C := C) (.hash (.hash input)) then 1 else 0) g'
-                (g.ledger + 1) (by rw [hledger, if_pos hc]) (by omega)) _
+                (g.ledger + 1) (by rw [hledger, ite_eq_left hc]) (by omega)) _
           _ = (∑' r, Pr{let z ← (compilerImpl x.1 x.2.1 (.hash (.hash input))).run st.1}[z = r] *
               SigningCompilerPotential.viewSum x.1 B (compilerView r.2, g.ledger + 1)) *
                 ((2 ^ 128 : ℝ≥0∞) * 2 ^ 128)⁻¹ := by
@@ -402,7 +402,7 @@ theorem ownPotential_step (prims : Primitives) (x : Keys3 C) (B : ℕ) (hB : B <
           | some p => exact absurd ⟨by rw [hd]; rfl, cached⟩ fresh
         rw [view]
         exact (viewSum_closed x.1 B _ _ _ input u
-          (by simp only [compilerView, SigningLane2BridgeProof.keptView, QueryCache.ofFn_apply]; erw [if_pos hmsg]; exact cached)
+          (by simp only [compilerView, SigningLane2BridgeProof.keptView, QueryCache.ofFn_apply]; erw [ite_eq_left hmsg]; exact cached)
           hdec).le
     by_cases trigger : ∃ e, SigningGuessProof.RandomizerCached x.2.1 st.1.data.cache e ∧
         SigningFlatProof.BaseCall x.1 e (SigningGuessProof.cachedRandomizer x.2.1 st.1.data.cache e)
@@ -451,12 +451,12 @@ theorem ownPotential_event (P : PublicParameter) (Q B : ℕ) (st : CompilerBacke
     rcases he with he | he
     · refine le_trans ?_ le_self_add
       unfold XmssSecurity.Ghost.f1
-      rw [if_pos he, mul_one, hN]
+      rw [ite_eq_left he, mul_one, hN]
       exact le_self_add
     · refine le_trans ?_ le_add_self
       unfold XmssSecurity.Ghost.f4 XmssSecurity.Ghost.postPot
-      rw [if_pos he, mul_one, hN]
-  rw [ownPotential, if_neg (by simp only [hs, hd, Bool.false_eq_true, false_or, not_lt]; exact hB),
+      rw [ite_eq_left he, mul_one, hN]
+  rw [ownPotential, ite_eq_right (by simp only [hs, hd, Bool.false_eq_true, false_or, not_lt]; exact hB),
     SigningCompilerPotential.viewSum, SigningLane2Proof.lane2Sum]
   calc (1 : ℝ≥0∞) = (2 ^ 128 * 2 ^ 128) * (2 ^ 128 * 2 ^ 128)⁻¹ :=
       (ENNReal.mul_inv_cancel (by norm_num) (by norm_num)).symm
@@ -504,7 +504,7 @@ theorem ownRun_cap (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) (Q B
   have hf₀ : ownPotential x.1 B ((compilerInit (C := C), 0), ⟨0, false⟩) = 0 := by
     have h0 := compilerPotential_initial (C := C) x.1 B
     rw [SigningCompilerPotential.compilerPotential_eq_sum x.1 B _ live (Nat.zero_le _)] at h0
-    rw [ownPotential, if_neg (by simp [live])]
+    rw [ownPotential, ite_eq_right (by simp [live])]
     exact h0
   have main := probEvent_ledger_expect_le (impl := countImpl (compilerImpl x.1 x.2.1) deferredCounted)
     (counted := cappedCall deferredCounted Q) (inputSide := deferredInputSide x.1)

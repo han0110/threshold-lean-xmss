@@ -51,8 +51,8 @@ theorem keyed_trial_valid (keyOf : XmssSecurity.HashInput → Option XmssSecurit
   · left
     simp [cachedTrialAt, cachedTrial, hseen, hk, hs, hv]
   · right
-    simp only [trialStep, if_neg hseen, trialFresh, hk, Option.bind_some, hs]
-    rw [Monitor.fresh_unsigned keyOf s.1.2 input _ true e hk hs, if_pos hv]
+    simp only [trialStep, ite_eq_right hseen, trialFresh, hk, Option.bind_some, hs]
+    rw [Monitor.fresh_unsigned keyOf s.1.2 input _ true e hk hs, ite_eq_left hv]
     simp [XmssSecurity.EncodingMonitor.State.install]
 
 /-- If this trial installs a target, that target is exactly its returned digest. -/
@@ -66,16 +66,16 @@ theorem keyed_trial_installed_value (keyOf : XmssSecurity.HashInput → Option X
   simp only [keyedSplitOracle, monitoredOracle, StateT.run_mk, support_map, Set.mem_image] at hr
   obtain ⟨w, ⟨a, ha, rfl⟩, rfl⟩ := hr
   by_cases hseen : input ∈ s.1.2.seen
-  · simp only [trialStep, if_pos hseen, hs] at ht
+  · simp only [trialStep, ite_eq_left hseen, hs] at ht
     contradiction
-  · simp only [trialStep, if_neg hseen, trialFresh, hk, Option.bind_some, hs] at ht
+  · simp only [trialStep, ite_eq_right hseen, trialFresh, hk, Option.bind_some, hs] at ht
     rw [Monitor.fresh_unsigned keyOf s.1.2 input _ true e hk hs] at ht
     by_cases hv : XmssSecurity.TargetSum.ValidDigest (XmssSecurity.truncateHash a.1)
-    · rw [if_pos hv, if_pos rfl] at ht
+    · rw [ite_eq_left hv, ite_eq_left rfl] at ht
       have h : some (XmssSecurity.truncateHash a.1) = some target := by
         simpa only [XmssSecurity.EncodingMonitor.State.install, Function.update_self] using ht
       exact (Option.some.inj h).symm
-    · rw [if_neg hv] at ht
+    · rw [ite_eq_right hv] at ht
       have h : (none : Option XmssSecurity.Digest) = some target := hs.symm.trans ht
       contradiction
 
@@ -90,9 +90,9 @@ theorem keyed_trial_invalid (keyOf : XmssSecurity.HashInput → Option XmssSecur
   simp only [keyedSplitOracle, monitoredOracle, StateT.run_mk, support_map, Set.mem_image] at hr
   obtain ⟨w, ⟨a, ha, rfl⟩, rfl⟩ := hr
   by_cases hseen : input ∈ s.1.2.seen
-  · simpa only [trialStep, if_pos hseen] using hs
-  · simp only [trialStep, if_neg hseen, trialFresh, hk, Option.bind_some, hs]
-    rw [Monitor.fresh_unsigned keyOf s.1.2 input _ true e hk hs, if_neg hv]
+  · simpa only [trialStep, ite_eq_left hseen] using hs
+  · simp only [trialStep, ite_eq_right hseen, trialFresh, hk, Option.bind_some, hs]
+    rw [Monitor.fresh_unsigned keyOf s.1.2 input _ true e hk hs, ite_eq_right hv]
     exact hs
 
 /-- A fresh query or trial never replaces an installed target. -/
@@ -394,7 +394,7 @@ theorem world_newly_signed_trigger (prims : Primitives) (x : SigningSecurityProo
     cases ht
   by_cases hG : ∃ g, SigningGuessProof.RandomizerCached x.2.1 s.1.1.1.1.1 g ∧
       BaseCall x.1 g (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 g) s.2.1.1 t
-  · simp only [jointCachedExtra, SigningR1FixedProof.cachedExtra, if_pos hG] at hg
+  · simp only [jointCachedExtra, SigningR1FixedProof.cachedExtra, ite_eq_left hG] at hg
     unfold grindExtra at hg
     split_ifs at hg with hb
     · cases hbound : s.2.1.1.bound hb.choose with
@@ -426,7 +426,7 @@ theorem world_newly_signed_trigger (prims : Primitives) (x : SigningSecurityProo
             rw [hn, SigningR1FixedProof.queryEntryStep_signed, hs] at ht
             contradiction
     · exact (hpure hg).elim
-  · simp only [jointCachedExtra, SigningR1FixedProof.cachedExtra, if_neg hG] at hg
+  · simp only [jointCachedExtra, SigningR1FixedProof.cachedExtra, ite_eq_right hG] at hg
     exact (hpure hg).elim
 
 set_option linter.constructorNameAsVariable false in
@@ -996,7 +996,7 @@ theorem world_codeword_marked (prims : Primitives) (x : SigningSecurityProof.Key
   have hopenedGrow := world_run_cache_le prims x _ s opened hopened
   have hopenedCarried := world_run_carried prims x _ s opened hopened
   by_cases hbad : truncateHash opened.1 ≠ commitment
-  · rw [if_pos hbad] at hr
+  · rw [ite_eq_left hbad] at hr
     simp only [tweakable_pure, MonadHom.mmap_pure,
       simulateQ_pure, StateT.run_pure, mem_support_pure_iff] at hr
     rw [hr] at hout

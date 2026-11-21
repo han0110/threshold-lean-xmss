@@ -419,12 +419,12 @@ theorem impl_tagLe (τ : CPoint → SigningShareLazy.Digest)
       change tag = m at ht
       subst tag
       by_cases hd : p ∈ sh.done
-      · simp only [SigningShareLazy.impl, StateT.run, hd, if_true, mem_support_pure_iff] at hz
+      · simp only [SigningShareLazy.impl, StateT.run, hd, ite_true, mem_support_pure_iff] at hz
         subst z
         exact h
       · cases hs : SigningShareLazy.slack C.terms sh p with
         | none =>
-            simp only [SigningShareLazy.impl, StateT.run, hd, if_false, hs,
+            simp only [SigningShareLazy.impl, StateT.run, hd, ite_false, hs,
               mem_support_pure_iff] at hz
             subst z
             apply tagLe_update m sh h _ _ _ rfl
@@ -432,7 +432,7 @@ theorem impl_tagLe (τ : CPoint → SigningShareLazy.Digest)
             cases hb
             exact le_rfl
         | some T =>
-            simp only [SigningShareLazy.impl, StateT.run, hd, if_false, hs,
+            simp only [SigningShareLazy.impl, StateT.run, hd, ite_false, hs,
               mem_support_bind_iff, mem_support_pure_iff] at hz
             obtain ⟨filled, _, value, _, rfl⟩ := hz
             apply tagLe_update m sh h _ _ _ rfl

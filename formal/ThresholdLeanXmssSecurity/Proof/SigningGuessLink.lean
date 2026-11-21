@@ -296,7 +296,7 @@ theorem reads_chainWalk (P : XmssSecurity.PublicParameter) (e : XmssSecurity.Lea
   | 0 => by
     unfold XmssSecurity.Concrete.chainWalk
     refine Reads.bind_right _ _ ?_
-    simp only [XmssSecurity.Concrete.chainWalk, evalWithAnswerFn_pure, Nat.add_zero, hp, dif_pos]
+    simp only [XmssSecurity.Concrete.chainWalk, evalWithAnswerFn_pure, Nat.add_zero, hp, dite_eq_left]
     exact Reads.bind_left (.here _ _) _
   | steps + 1 => by
     unfold XmssSecurity.Concrete.chainWalk
@@ -330,7 +330,7 @@ theorem reads_topChainWalk (P : XmssSecurity.PublicParameter) (b : XmssSecurity.
   | 0 => by
     unfold XmssSecurity.Concrete.topChainWalk
     refine Reads.bind_right _ _ ?_
-    simp only [XmssSecurity.Concrete.topChainWalk, evalWithAnswerFn_pure, Nat.add_zero, hp, dif_pos]
+    simp only [XmssSecurity.Concrete.topChainWalk, evalWithAnswerFn_pure, Nat.add_zero, hp, dite_eq_left]
     exact Reads.bind_left (.here _ _) _
   | steps + 1 => by
     unfold XmssSecurity.Concrete.topChainWalk
@@ -417,17 +417,17 @@ theorem hiddenCandidate_chainInput (P : PublicParameter) (e : XmssSecurity.LeafI
     (l : XmssSecurity.ChainIndex) (p : XmssSecurity.ChainStep) (v : Digest) :
     hiddenCandidate P (XmssSecurity.Concrete.CacheView.chainInput P e l p v) = some (.bottomChain e l p, v) := by
   unfold hiddenCandidate
-  rw [dif_neg (by
+  rw [dite_eq_right (by
     rintro ⟨f, ρ, h⟩
     rw [chainInput_eq_bridge] at h
     exact SigningGuessProof.commitmentInput_ne_tweakableHashInput _ _ _ _ _ _ h.symm)]
-  rw [dif_neg (by
+  rw [dite_eq_right (by
     rintro ⟨lay, f, ρ, m, h⟩
     rw [chainInput_eq_bridge] at h
     exact randomizerInput_ne_tweakableHashInput _ _ _ _ _ _ _ _ h.symm)]
   have hex : ∃ e' l' p' v', XmssSecurity.Concrete.CacheView.chainInput P e l p v =
       XmssSecurity.Concrete.CacheView.chainInput P e' l' p' v' := ⟨e, l, p, v, rfl⟩
-  rw [dif_pos hex]
+  rw [dite_eq_left hex]
   have hspec := hex.choose_spec.choose_spec.choose_spec.choose_spec
   have hd := XmssSecurity.domain_eq_of_tweakableHashInput_eq P hspec
   simp only [XmssSecurity.HashDomain.chain.injEq] at hd
@@ -442,21 +442,21 @@ theorem hiddenCandidate_topChainInput (P : PublicParameter) (b : XmssSecurity.To
     (l : XmssSecurity.ChainIndex) (p : XmssSecurity.ChainStep) (v : Digest) :
     hiddenCandidate P (XmssSecurity.Concrete.CacheView.topChainInput P b l p v) = some (.topChain b l p, v) := by
   unfold hiddenCandidate
-  rw [dif_neg (by
+  rw [dite_eq_right (by
     rintro ⟨f, ρ, h⟩
     rw [topChainInput_eq_bridge] at h
     exact SigningGuessProof.commitmentInput_ne_tweakableHashInput _ _ _ _ _ _ h.symm)]
-  rw [dif_neg (by
+  rw [dite_eq_right (by
     rintro ⟨lay, f, ρ, m, h⟩
     rw [topChainInput_eq_bridge] at h
     exact randomizerInput_ne_tweakableHashInput _ _ _ _ _ _ _ _ h.symm)]
-  rw [dif_neg (by
+  rw [dite_eq_right (by
     rintro ⟨e, l', p', v', h⟩
     have hd := XmssSecurity.domain_eq_of_tweakableHashInput_eq P h
     cases hd)]
   have hex : ∃ b' l' p' v', XmssSecurity.Concrete.CacheView.topChainInput P b l p v =
       XmssSecurity.Concrete.CacheView.topChainInput P b' l' p' v' := ⟨b, l, p, v, rfl⟩
-  rw [dif_pos hex]
+  rw [dite_eq_left hex]
   have hspec := hex.choose_spec.choose_spec.choose_spec.choose_spec
   have hd := XmssSecurity.domain_eq_of_tweakableHashInput_eq P hspec
   simp only [XmssSecurity.HashDomain.topChain.injEq] at hd
@@ -652,7 +652,7 @@ theorem guess_hiddenInputHit (A : TsigAdversary C) (x : SigningSecurityProof.Key
       exact List.mem_singleton_self _
     refine ⟨_, hlog ▸ List.mem_append_right adversaryLog hc, ?_⟩
     simp only [hiddenTarget, chainTarget, hm]
-    rw [if_pos ⟨rfl, hlt⟩]
+    rw [ite_eq_left ⟨rfl, hlt⟩]
     exact congrArg some hvalue.symm
   · obtain ⟨l, hlt, hvalue⟩ := htopGuess
     have hd : (topCodeword l).val < XmssSecurity.chainLength - 1 :=
@@ -669,7 +669,7 @@ theorem guess_hiddenInputHit (A : TsigAdversary C) (x : SigningSecurityProof.Key
       exact List.mem_singleton_self _
     refine ⟨_, hlog ▸ List.mem_append_right adversaryLog hc, ?_⟩
     simp only [hiddenTarget, chainTarget, hm]
-    rw [if_pos ⟨rfl, hlt⟩]
+    rw [ite_eq_left ⟨rfl, hlt⟩]
     exact congrArg some hvalue.symm
 
 end Target

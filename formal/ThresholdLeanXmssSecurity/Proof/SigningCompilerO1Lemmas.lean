@@ -194,7 +194,7 @@ theorem chainWalk_step {m : Type → Type} [Monad m] [HasQuery HashSpec m] (P : 
       Verification.chainWalkWithHash P lay key l start n v >>= fun previous =>
         Verification.tweakableHashWithHash P (.chain lay key ⟨start + n, h⟩) (Verification.chainPayload l previous) := by
   rw [Verification.chainWalk_eq_succ]
-  simp only [dif_pos h]
+  simp only [dite_eq_left h]
 
 /-- One step of `Th` on the domain of `H` is the truncated answer of one query. -/
 theorem tweakable_tweakableHash (P : PublicParameter) (domain : HashDomain) (payload : HashInput) :

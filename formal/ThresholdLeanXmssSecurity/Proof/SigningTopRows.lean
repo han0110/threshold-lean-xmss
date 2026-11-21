@@ -163,7 +163,7 @@ theorem unopened_hit (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) (w
   refine ⟨_, hlog ▸ List.mem_append_right adversaryLog hcand, ?_⟩
   have hm' : w.1.1.2 = some (top, state, forgery) := hsome
   simp only [hiddenTarget, unopenedTopTarget, hm']
-  rw [if_pos ⟨rfl, hopen top state forgery hsome,
+  rw [ite_eq_left ⟨rfl, hopen top state forgery hsome,
     topStarts_cached prims A x _ ho hwin top state forgery hsome _ l⟩]
   exact congrArg some hvalue.symm
 

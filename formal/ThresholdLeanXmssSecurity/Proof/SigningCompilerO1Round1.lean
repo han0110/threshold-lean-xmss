@@ -269,7 +269,7 @@ theorem bind_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
     (e : KeyIndex) (message : Message) (a : RealState C) (b : SourceStateO1 C × CompState C)
     (hs : SyncO1 prims x top s pads noise (gOf s pads u) rest a b ∧ PadsFixed x pads b.2)
     (hfree : breaksOneMessagePerKey (realSigning a) e message = false)
-    (hb : ¬Stop b.2) (hmark : b.2.1.2 = false)
+    (_hb : ¬Stop b.2) (hmark : b.2.1.2 = false)
     (r : (Unit × SourceState C) × CompState C)
     (hr : r ∈ support (runX (compBackend x q s pads u rest noise)
       (bindX x b.1.base.signing e message) b.1.base b.2)) :
@@ -302,7 +302,7 @@ theorem bind_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
     exact h0
   by_cases hready : OpeningReady x.2.1 (dataOf x (boundState b.2 e message))
       (boundSource b.1.base e message).signing e
-  · rw [if_pos hready] at hr
+  · rw [ite_eq_left hready] at hr
     by_cases hrev : b.1.base.revealed (.opening bottomLayer e) = none
     · have hinj : Function.Injective x.2.1 := not_not.mp (not_or.mp hkeys).1
       have hready' : ReadyAfter x.2.1 (dataOf x (boundState b.2 e message))
@@ -360,7 +360,7 @@ theorem bind_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
       subst r
       exact Or.inr ⟨hpost _ _ hcore1 hsig rfl rfl (fun _ _ => rfl) (fun _ hk h => absurd hk h)
         rfl rfl (fun _ => hrev) hpads, hmark⟩
-  · rw [if_neg hready, runX_pure, mem_support_pure_iff] at hr
+  · rw [ite_eq_right hready, runX_pure, mem_support_pure_iff] at hr
     subst r
     exact Or.inr ⟨hpost _ _ hcore1 hsig rfl rfl (fun _ _ => rfl) (fun _ hk h => absurd hk h)
       rfl rfl (fun ht => absurd (htreeReady ht) hready) hpads, hmark⟩
@@ -388,10 +388,10 @@ theorem real_round1 (top : TopTree) (i : C.Party) (J : C.Quorum) (e : KeyIndex) 
     intro st
     split_ifs with hg
     · simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind]
-      rw [if_pos hg]
+      rw [ite_eq_left hg]
       rfl
     · simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind]
-      rw [if_neg hg]
+      rw [ite_eq_right hg]
       simp only [StateT.run_bind, StateT.run_set, pure_bind, liftM, monadLift,
         MonadLift.monadLift]
       erw [StateT.run_map, StateT.run_lift]
@@ -462,9 +462,9 @@ theorem step_round1 (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
   rw [real_round1, comp_round1, round1X_eq, hflag, runX_bind, runX_get, pure_bind]
   by_cases hg : i ∈ (realSigning a).corrupt ∨ i ∉ J.1 ∨
       breaksOneMessagePerKey (realSigning a) e message = true
-  · rw [if_pos hg, if_pos (hguard.2 hg), runX_pure, map_pure]
+  · rw [ite_eq_left hg, ite_eq_left (hguard.2 hg), runX_pure, map_pure]
     exact relTriple_pure_pure (Or.inr (Or.inr ⟨rfl, hmarked, hs.2⟩))
-  · rw [if_neg hg, if_neg (fun h => hg (hguard.1 h))]
+  · rw [ite_eq_right hg, ite_eq_right (fun h => hg (hguard.1 h))]
     have hfree : breaksOneMessagePerKey (realSigning a) e message = false := by
       cases h : breaksOneMessagePerKey (realSigning a) e message
       · rfl

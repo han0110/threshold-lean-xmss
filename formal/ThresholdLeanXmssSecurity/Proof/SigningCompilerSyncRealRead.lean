@@ -107,9 +107,9 @@ theorem realRead_hit (x : Keys3 C) (s : HiddenKey → Digest) (pads : Point → 
     ((realImpl x g rest) (.inr q)).run priv = pure (v, priv) := by
   have he := h.visible q v hv
   by_cases hs : IsSlot x q
-  · rw [dif_pos hs] at he
+  · rw [dite_eq_left hs] at he
     rw [realImpl_slot x g rest q hs, Option.some.inj he]
-  · rw [dif_neg hs] at he
+  · rw [dite_eq_right hs] at he
     rw [realImpl_other x g rest q hs]
     exact QueryImpl.withCaching_run_some _ he
 
@@ -173,7 +173,7 @@ theorem nonhash_cachedExtra (seeds : C.Term → HashOutput) (P : PublicParameter
     (ht : ∀ i, ¬SigningFlatProof.HashCallAt i t) :
     SigningR1FixedProof.cachedExtra seeds P before t after = pure () := by
   unfold SigningR1FixedProof.cachedExtra
-  apply if_neg
+  apply ite_eq_right
   rintro ⟨e, _, i, _, hi⟩
   exact ht i hi
 
@@ -184,7 +184,7 @@ theorem nonhash_traceStepAt (seeds : C.Term → HashOutput) (P : PublicParameter
     (ht : ∀ i, ¬SigningFlatProof.HashCallAt i t) :
     SigningLaneUnionProof.traceStepAt seeds P before st t after aux = aux := by
   unfold SigningLaneUnionProof.traceStepAt
-  apply dif_neg
+  apply dite_eq_right
   rintro ⟨e, _, i, _, hi⟩
   exact ht i hi
 

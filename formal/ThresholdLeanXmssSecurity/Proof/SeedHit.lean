@@ -172,7 +172,7 @@ theorem mergeCache_splitCache (g : HashCache C) : mergeCache seeds pairKeys (spl
   split_ifs with h
   · show g (slotInput seeds pairKeys h.choose) = g u
     rw [h.choose_spec]
-  · simp only [splitCache, QueryCache.toFn_ofFn, if_neg h]
+  · simp only [splitCache, QueryCache.toFn_ofFn, ite_eq_right h]
 
 /-- Programming on the merged cache. The game never programs. -/
 def routedProgram : QueryImpl (ProgramSpec C) (StateT (HashCache C × SlotCache C) ProbComp) := fun x =>
@@ -208,13 +208,13 @@ theorem stateMap_routedLocal (hinj : Function.Injective (slotInput seeds pairKey
         hinj (Exists.choose_spec (⟨s₀, rfl⟩ : ∃ s, slotInput seeds pairKeys s = slotInput seeds pairKeys s₀))
       have e : routedLocal prims seeds pairKeys (.inr (.inl (slotInput seeds pairKeys s₀))) =
           onTable (slotOracle s₀) := by
-        simp only [routedLocal, dif_pos (⟨s₀, rfl⟩ : ∃ s, slotInput seeds pairKeys s = slotInput seeds pairKeys s₀), hc]
+        simp only [routedLocal, dite_eq_left (⟨s₀, rfl⟩ : ∃ s, slotInput seeds pairKeys s = slotInput seeds pairKeys s₀), hc]
       rw [e]
       have h2 := stateMap_hash_slot prims seeds pairKeys hinj s₀
       rwa [hashAnswer_eq_randomOracle prims fun input h => absurd h (slotInput_ne_hash seeds pairKeys s₀ input)] at h2
     · have e : routedLocal prims seeds pairKeys (.inr (.inl u)) =
           onCache ((Query C →ₒ HashOutput).randomOracle u) := by
-        simp only [routedLocal, dif_neg h]
+        simp only [routedLocal, dite_eq_right h]
       rw [e]
       exact stateMap_ro_of_not_slot seeds pairKeys fun s hs => h ⟨s, hs⟩
   · exact stateMap_routedAnswer prims seeds pairKeys hinj (.inr (.inr x))
@@ -331,9 +331,9 @@ theorem ffOracles_inv (x : Keys3 C) (dealt : Dealt C (OracleComp (WorldSpec C)))
     obtain ⟨a, -, rfl⟩ := hz
     intro hf
     by_cases h1 : p.1.2 = true
-    · simp only [h1, if_true]
+    · simp only [h1, ite_true]
       exact hp h1
-    · simp only [h1, Bool.false_eq_true, if_false, Bool.false_or] at hf ⊢
+    · simp only [h1, Bool.false_eq_true, ite_false, Bool.false_or] at hf ⊢
       exact (hiddenHit_fired x _ t hf).mono Finset.subset_union_right
   · simp only [ffOracles, StateT.run_mk, support_map, Set.mem_image] at hz
     obtain ⟨a, -, rfl⟩ := hz
@@ -458,7 +458,7 @@ theorem freeRo_hash (input : HashInput) :
   have h : ¬∃ s, slotInput seeds pairKeys s = .hash input := fun ⟨s, hs⟩ => slotInput_ne_hash seeds pairKeys s input hs
   have e : routedLocal prims seeds pairKeys (.inr (.inl (.hash input))) =
       onCache ((Query C →ₒ HashOutput).randomOracle (.hash input)) := by
-    simp only [routedLocal, dif_neg h]
+    simp only [routedLocal, dite_eq_right h]
   rw [freeRo_eq, e]
   rfl
 
@@ -468,7 +468,7 @@ theorem freeRo_slot (hinj : Function.Injective (slotInput seeds pairKeys)) (s₀
   have hc : hex.choose = s₀ := hinj hex.choose_spec
   have e : routedLocal prims seeds pairKeys (.inr (.inl (slotInput seeds pairKeys s₀))) =
       onTable (slotOracle s₀) := by
-    simp only [routedLocal, dif_pos hex, hc]
+    simp only [routedLocal, dite_eq_left hex, hc]
   rw [freeRo_eq, e]
   rfl
 
@@ -501,7 +501,7 @@ theorem freeRo_eval (hinj : Function.Injective (slotInput seeds pairKeys)) (para
       simulateQ (freeRo prims seeds pairKeys) (prf ((dealtKeys parameter seeds pairKeys i).seed T) x) =
       truncateHash <$> slotC (.inl (T, x)) := fun T hT => by
     rw [List.mem_filter] at hT
-    simp only [prf, simulateQ_map, dealtKeys, if_pos (mem_holders_of_mem_L (of_decide_eq_true hT.2))]
+    simp only [prf, simulateQ_map, dealtKeys, ite_eq_left (mem_holders_of_mem_L (of_decide_eq_true hT.2))]
     exact congrArg _ ((freeRo_hashQuery prims seeds pairKeys _).trans
       (freeRo_slot prims seeds pairKeys hinj (.inl (T, x))))
   have hmasks : ∀ j ∈ C.parties.filter (fun j => j ∈ J.1 ∧ j ≠ i),
@@ -511,8 +511,8 @@ theorem freeRo_eval (hinj : Function.Injective (slotInput seeds pairKeys)) (para
     fun j hj => by
     rw [List.mem_filter] at hj
     have hji : j ≠ i := (of_decide_eq_true hj.2).2
-    rw [dif_neg hji, simulateQ_map]
-    simp only [dealtKeys, dif_neg hji]
+    rw [dite_eq_right hji, simulateQ_map]
+    simp only [dealtKeys, dite_eq_right hji]
     exact congrArg _ ((freeRo_hashQuery prims seeds pairKeys _).trans
       (freeRo_slot prims seeds pairKeys hinj (.inr (C.pairOf i j (Ne.symm hji), x, ec, J))))
   simp only [eval, simulateQ_bind, simulateQ_list_mapM, simulateQ_pure, evalC]
@@ -778,10 +778,10 @@ theorem routedLocal_upd (x : Keys3 C) (σ : KeySlot C) {k k' : HashOutput}
       obtain ⟨-, hs'⟩ := slot_iff_upd x.2.1 x.2.2 σ u hu (k' := k') s hs
       have e₁ : ∃ s, slotInput (updSeeds σ k x.2.1) (updPairs σ k x.2.2) s = u := ⟨s, hs⟩
       have e₂ : ∃ s, slotInput (updSeeds σ k' x.2.1) (updPairs σ k' x.2.2) s = u := ⟨s, hs'⟩
-      rw [dif_pos e₁, dif_pos e₂, hinj (e₁.choose_spec.trans hs.symm), hinj' (e₂.choose_spec.trans hs'.symm)]
+      rw [dite_eq_left e₁, dite_eq_left e₂, hinj (e₁.choose_spec.trans hs.symm), hinj' (e₂.choose_spec.trans hs'.symm)]
     · have h₂ : ¬∃ s, slotInput (updSeeds σ k' x.2.1) (updPairs σ k' x.2.2) s = u := fun ⟨s, hs⟩ =>
         h₁ ⟨s, (slot_iff_upd x.2.1 x.2.2 σ u hu' (k' := k) s hs).2⟩
-      rw [dif_neg h₁, dif_neg h₂]
+      rw [dite_eq_right h₁, dite_eq_right h₂]
   · rfl
 
 theorem not_hit_of_not_hitT {σ : KeySlot C} {t : (LocalSpec C).Domain} {k : HashOutput} (h : ¬HitT σ (.inl t) k) :
@@ -985,7 +985,7 @@ theorem fused_reveals (σ : KeySlot C) (t : (LocalSpec C + TsigSpec C).Domain) (
   have hc : z.2.1.1.1.corrupt = insert i p.1.1.1.corrupt := by
     simp only [fusedImpl, StateT.run_mk, support_map, Set.mem_image] at hz
     obtain ⟨w, hw, rfl⟩ := hz
-    simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind, if_neg hacc] at hw
+    simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind, ite_eq_right hacc] at hw
     simp at hw
     subst hw
     rfl
@@ -1325,9 +1325,9 @@ theorem probEvent_bind_le_of_imp {α β : Type} (m : ProbComp α) (g : α → Pr
   refine ENNReal.tsum_le_tsum fun a => ?_
   by_cases ha : a ∈ support m
   · by_cases hE : E' a
-    · rw [if_pos hE]
+    · rw [ite_eq_left hE]
       exact mul_le_of_le_one_right' (prEvent_le_one _)
-    · rw [if_neg hE, prEvent_eq_zero_of_forall_mem_support _ _ fun b hb hb' => hE (h a ha b hb hb'), mul_zero]
+    · rw [ite_eq_right hE, prEvent_eq_zero_of_forall_mem_support _ _ fun b hb hb' => hE (h a ha b hb hb'), mul_zero]
   · rw [prEvent_eq_zero_of_not_mem_support _ ha, zero_mul]
     exact zero_le
 

@@ -305,7 +305,7 @@ theorem runSource_deferredQuery_uncounted (P : PublicParameter) (seeds : C.Term 
   simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query,
     OracleQuery.cont_query, id_map, StateT.run_bind, simulateQ_pure, StateT.run_pure,
     SigningCappedExpectProof.cappedHybrid, revealImpl, countImpl, StateT.run_mk,
-    cappedCall, ht, false_and, decide_false, Bool.or_false, if_false, Nat.add_zero,
+    cappedCall, ht, false_and, decide_false, Bool.or_false, ite_false, Nat.add_zero,
     bind_map_left, Functor.map_map]
   rw [map_eq_bind_pure_comp]
   rfl
@@ -530,9 +530,9 @@ theorem CacheRelation.keptView {P : PublicParameter} {seeds : C.Term → HashOut
   refine QueryCache.ext fun input => ?_
   simp only [SigningLane2BridgeProof.keptView, QueryCache.ofFn_apply]
   by_cases hm : IsMsg input
-  · erw [if_pos hm, if_pos hm]
+  · erw [ite_eq_left hm, ite_eq_left hm]
     exact h.message input hm
-  · erw [if_neg hm, if_neg hm]
+  · erw [ite_eq_right hm, ite_eq_right hm]
 
 theorem runSource_snapshot (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : ℕ) (s : HiddenKey → Digest)
@@ -574,9 +574,9 @@ theorem runSource_fillTerm (P : PublicParameter) (seeds : C.Term → HashOutput)
     else pure ())) source backend = _
   cases hc : backend.1.1.data.cache (.prf (seeds T) p) with
   | some prior =>
-      simp only [Option.isNone_some, Bool.false_eq_true, if_false, liftM_pure, runSource_pure]
+      simp only [Option.isNone_some, Bool.false_eq_true, ite_false, liftM_pure, runSource_pure]
   | none =>
-      simp only [Option.isNone_none, if_true, liftM_bind, liftM_pure,
+      simp only [Option.isNone_none, ite_true, liftM_bind, liftM_pure,
         runSource_bind, runSource_sample, bind_map_left,
         runSource_plant, deferredImpl, StateT.run, PlantInput.query, runSource_pure]
       simp only [map_eq_bind_pure_comp, pure_bind, hc]
@@ -860,7 +860,7 @@ digest, independently of the existential witnesses used by the parser. -/
 theorem hiddenCandidate_commitmentInput (P : PublicParameter) (e : KeyIndex) (value : Digest) :
     hiddenCandidate P (commitmentInput P e value) = some (.opening bottomLayer e, value) := by
   have hex : ∃ f v, commitmentInput P e value = commitmentInput P f v := ⟨e, value, rfl⟩
-  rw [hiddenCandidate, dif_pos hex]
+  rw [hiddenCandidate, dite_eq_left hex]
   have hkey := SigningGuessProof.commitmentInput_key_eq P hex.choose_spec.choose_spec
   have hvalue : value = hex.choose_spec.choose := by
     apply SigningCoreProof.commitmentInput_injective P e
@@ -877,7 +877,7 @@ theorem hiddenCandidate_randomizerInput (P : PublicParameter) (lay : Layer)
     exact SigningGuessProof.commitmentInput_ne_randomizerInput P f e lay v value message he.symm
   have hex : ∃ lay' f v m, randomizerInput P lay e value message =
       randomizerInput P lay' f v m := ⟨lay, e, value, message, rfl⟩
-  rw [hiddenCandidate, dif_neg hn, dif_pos hex]
+  rw [hiddenCandidate, dite_eq_right hn, dite_eq_left hex]
   have he := hex.choose_spec.choose_spec.choose_spec.choose_spec
   have hlayer := SigningGuessProof.randomizerInput_layer_eq P he
   have hkey := SigningGuessProof.randomizerInput_key_eq P he
@@ -1457,11 +1457,11 @@ theorem resolveSlots_stateMap (prims : Primitives) (seeds : C.Term → HashOutpu
       rfl
   | inr input =>
       by_cases h : ∃ slot, TprfSecurityProof.slotInput seeds pairKeys slot = input
-      · simp only [resolveSlots, dif_pos h, simulateQ_pure, routedRaw,
+      · simp only [resolveSlots, dite_eq_left h, simulateQ_pure, routedRaw,
           SeedHitProof.routedLocal, TprfSecurityProof.onTable_run,
           StateT.run_pure, map_pure]
         rfl
-      · simp only [resolveSlots, dif_neg h, HasQuery.instOfMonadLift_query,
+      · simp only [resolveSlots, dite_eq_right h, HasQuery.instOfMonadLift_query,
           simulateQ_spec_query, routedRaw,
           SeedHitProof.routedLocal, TprfSecurityProof.onCache_run]
         rfl
@@ -1718,15 +1718,15 @@ theorem refreshChainStarts_value (F : Point → Digest)
   funext key chain
   rw [prfChainStarts_point _ (key, chain)]
   have h : ∃ index, chainStartPoint index = chainStartPoint (key, chain) := ⟨(key, chain), rfl⟩
-  simp only [refreshChainStarts, dif_pos h, chainStartPoint_injective h.choose_spec]
+  simp only [refreshChainStarts, dite_eq_left h, chainStartPoint_injective h.choose_spec]
 
 theorem refreshChainStarts_twice (F : Point → Digest)
     (start : XmssSecurity.ChainKey → ChainIndex → Digest) :
     refreshChainStarts (refreshChainStarts F start) (prfChainStarts F) = F := by
   funext point
   by_cases h : ∃ index, chainStartPoint index = point
-  · simp only [refreshChainStarts, dif_pos h, prfChainStarts_point, h.choose_spec]
-  · simp only [refreshChainStarts, dif_neg h]
+  · simp only [refreshChainStarts, dite_eq_left h, prfChainStarts_point, h.choose_spec]
+  · simp only [refreshChainStarts, dite_eq_right h]
 
 def refreshChainPair (pair : (Point → Digest) × (XmssSecurity.ChainKey → ChainIndex → Digest)) :
     (Point → Digest) × (XmssSecurity.ChainKey → ChainIndex → Digest) :=
@@ -1851,7 +1851,7 @@ theorem privateChainColumn_queryBound (P : PublicParameter)
       (if chain = targetChain then 1 else 0) := by
   by_cases hc : chain = targetChain
   · subst targetChain
-    simp only [if_true]
+    simp only [ite_true]
     have hbound := isQueryBoundP_listMapM
       (k := fun key : XmssSecurity.ChainKey => if key = target then 1 else 0)
       (f := fun key => XmssSecurity.Concrete.chainTrajectory P key chain 0
@@ -1859,15 +1859,15 @@ theorem privateChainColumn_queryBound (P : PublicParameter)
       (p := XmssSecurity.AtHashAddress P (target.chainDomain chain step)) (fun key => ?_)
       XmssSecurity.allChainKeys
     · simpa only [privateChainColumn, XmssSecurity.allChainKeys, Finset.sum_map_toList,
-        Finset.sum_ite_eq', Finset.mem_univ, if_true] using hbound
+        Finset.sum_ite_eq', Finset.mem_univ, ite_true] using hbound
     · by_cases hk : key = target
-      · simp only [hk, if_true]
+      · simp only [hk, ite_true]
         exact chainTrajectory_queryBound_address P target chain (start target chain) _
-      · simp only [hk, if_false]
+      · simp only [hk, ite_false]
         apply XmssSecurity.Concrete.chainTrajectory_queryBound_zero_of_avoids
         intro offset hoffset hvalid heq
         exact hk (XmssSecurity.ChainKey.chainDomain_injective heq).1
-  · simp only [hc, if_false]
+  · simp only [hc, ite_false]
     have hbound := isQueryBoundP_listMapM_const
       (k := 0) (f := fun key : XmssSecurity.ChainKey =>
         XmssSecurity.Concrete.chainTrajectory P key chain 0 (chainLength - 1) (start key chain))
@@ -1908,7 +1908,7 @@ theorem chainMaterial_unique_address (P : PublicParameter)
   have hbound : IsQueryBoundP (privateChains P material.1 XmssSecurity.CappedChain.allChains)
       (XmssSecurity.AtHashAddress P (key.chainDomain chain step)) 1 := by
     simpa only [XmssSecurity.CappedChain.allChains, Finset.sum_map_toList,
-      Finset.sum_ite_eq', Finset.mem_univ, if_true] using
+      Finset.sum_ite_eq', Finset.mem_univ, ite_true] using
       privateChains_queryBound P material.1 XmssSecurity.CappedChain.allChains key chain step
   have hrun := XmssSecurity.CappedChain.programmedGlobalChainTrajectoryMaterial_support_as_actual
     P material hm
@@ -2580,7 +2580,7 @@ theorem cappedCompiler_pending_run (P : PublicParameter) (seeds : C.Term → Has
             backend.1.2 + 1), backend.2))) <$> ($ᵗ HashOutput) := by
   simp only [SigningCappedExpectProof.cappedHybrid, revealImpl, countImpl, 
     deferredInputSide, deferredCandidate, Option.isSome_none, Bool.false_eq_true,
-    and_false, false_and, false_or, decide_false, Bool.or_false, deferredCounted, if_true,
+    and_false, false_and, false_or, decide_false, Bool.or_false, deferredCounted, ite_true,
     compilerImpl, deferredImpl, StateT.run, StateT.mk]
   cases hp : backend.1.1.data.pending p with
   | some answer => simp only [map_pure]; rfl
@@ -3325,7 +3325,7 @@ theorem runSource_virtual (P : PublicParameter) (seeds : C.Term → HashOutput)
         { backend.1.1.data with virtual := insert (T, point) backend.1.1.data.virtual } },
         backend.1.2 + 1), backend.2)) := by
   rw [runSource_deferredQuery_no_candidate P seeds q s (.virtual T point) rfl]
-  simp only [compilerImpl, deferredImpl, StateT.run, map_pure, deferredCounted, if_true]
+  simp only [compilerImpl, deferredImpl, StateT.run, map_pure, deferredCounted, ite_true]
 
 /-- Recording a reveal preserves slack when any bottom opening it exposes is
 already complete. Reveals of chain coordinates need no additional condition. -/
@@ -5606,7 +5606,7 @@ theorem cappedCompiler_pad_run (P : PublicParameter) (seeds : C.Term → HashOut
             backend.1.2), backend.2))) <$> ($ᵗ Digest) := by
   simp only [SigningCappedExpectProof.cappedHybrid, revealImpl, countImpl,
     deferredInputSide, deferredCandidate, Option.isSome_none, Bool.false_eq_true,
-    and_false, false_and, false_or, decide_false, Bool.or_false, deferredCounted, if_false,
+    and_false, false_and, false_or, decide_false, Bool.or_false, deferredCounted, ite_false,
     compilerImpl, deferredImpl, StateT.run, StateT.mk]
   cases hp : backend.1.1.data.pads point with
   | some value => simp only [map_pure]; rfl

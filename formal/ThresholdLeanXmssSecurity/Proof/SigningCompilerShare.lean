@@ -399,7 +399,7 @@ theorem ordinary_uncounted (P : PublicParameter) (seeds : C.Term → HashOutput)
     exact (hpad _ rfl).elim
   rw [he]
   simp only [SigningCappedExpectProof.cappedHybrid, revealImpl, countImpl, StateT.run_mk,
-    cappedCall, ht, false_and, decide_false, Bool.or_false, if_false, Nat.add_zero,
+    cappedCall, ht, false_and, decide_false, Bool.or_false, ite_false, Nat.add_zero,
     Functor.map_map]
 
 @[simp] theorem ordinary_snapshot (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -455,10 +455,10 @@ theorem fillTerm_merge (P : PublicParameter) (seeds : C.Term → HashOutput)
   erw [merge_key seeds hinj]
   cases hc : share.cache (T, p) with
   | some value =>
-      simp only [Option.isNone_some, Bool.false_eq_true, if_false, simulateQ_pure,
+      simp only [Option.isNone_some, Bool.false_eq_true, ite_false, simulateQ_pure,
         StateT.run_pure, SigningShareLazy.fillTerm, hc, map_pure]
   | none =>
-      simp only [Option.isNone_none, if_true, simulateQ_bind,
+      simp only [Option.isNone_none, ite_true, simulateQ_bind,
         ordinary_deferredQuery, StateT.run_bind, ordinary_sample, bind_map_left,
         ordinary_plant, simulateQ_pure, StateT.run_pure, SigningShareLazy.fillTerm,
         hc, Functor.map_map]
@@ -595,12 +595,12 @@ theorem doneCached_lazy (τ : CPoint → SigningShareLazy.Digest)
       · cases hs : SigningShareLazy.slack C.terms share p with
         | none =>
             simp only [SigningShareLazy.lazyImpl, SigningShareLazy.impl, StateT.run, hd,
-              if_false, hs, mem_support_pure_iff] at hr
+              ite_false, hs, mem_support_pure_iff] at hr
             subst result
             exact h
         | some T =>
             simp only [SigningShareLazy.lazyImpl, SigningShareLazy.impl, StateT.run, hd,
-              if_false, hs, mem_support_bind_iff, support_map, mem_support_pure_iff] at hr
+              ite_false, hs, mem_support_bind_iff, support_map, mem_support_pure_iff] at hr
             obtain ⟨filled, hf, value, ⟨high, _, rfl⟩, rfl⟩ := hr
             have frames := fillTerms_frame (fun _ => $ᵗ SigningShareLazy.HashOutput)
               p (C.terms.filter (· ≠ T)) share filled hf
@@ -664,17 +664,17 @@ theorem complete_merge (P : PublicParameter) (seeds : C.Term → HashOutput)
       | none => exact (hdone p hd T hc).elim
       | some v => simp
     rw [← hslack, hn]
-    simp only [simulateQ_pure, StateT.run_pure, hd, if_true, map_pure, hsum]
+    simp only [simulateQ_pure, StateT.run_pure, hd, ite_true, map_pure, hsum]
   · cases hs : SigningShareLazy.slack C.terms share p with
     | none =>
         rw [← hslack, hs]
-        simp only [simulateQ_pure, StateT.run_pure, hd, if_false, map_pure, hsum]
+        simp only [simulateQ_pure, StateT.run_pure, hd, ite_false, map_pure, hsum]
     | some T =>
         rw [← hslack, hs]
         simp only [simulateQ_bind, StateT.run_bind, fillTerms_merge P seeds hinj,
           bind_map_left, ordinary_deferredQuery, ordinary_snapshot, pure_bind,
           ordinary_sample,
-          hd, if_false, map_bind, bind_map_left]
+          hd, ite_false, map_bind, bind_map_left]
         apply bind_congr_of_forall_mem_support
         intro filled hf
         have hm : filled.cache (T, p) = none := by
@@ -836,7 +836,7 @@ theorem ordinary_hash_prf (P : PublicParameter) (seeds : C.Term → HashOutput)
   simp only [ordinary, SigningCappedExpectProof.cappedHybrid, revealImpl, countImpl,
     deferredCounted, deferredInputSide, deferredCandidate, Option.isSome_none,
     Bool.false_eq_true, false_and, and_false, or_false, decide_false,
-    Bool.or_false, if_true, compilerImpl, deferredImpl, StateT.run, StateT.mk,
+    Bool.or_false, ite_true, compilerImpl, deferredImpl, StateT.run, StateT.mk,
     map_bind, bind_map_left, map_pure, hashTail]
 
 set_option linter.constructorNameAsVariable false in
@@ -934,7 +934,7 @@ theorem shareBackend_complete_run (P : PublicParameter) (seeds : C.Term → Hash
     (p : Point) (target : Digest) (hp : Constrained p) (st : CappedCompilerState C × Bool) :
     (shareBackend P seeds q s pads (.inr (p, target))).run st =
       (fun a => (a, st)) <$> shareQuery (.complete ⟨p, hp⟩ target st.2) := by
-  simp only [shareBackend, dif_pos hp]
+  simp only [shareBackend, dite_eq_left hp]
   rfl
 
 theorem step_complete (P : PublicParameter) (seeds : C.Term → HashOutput)

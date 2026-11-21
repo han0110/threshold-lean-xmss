@@ -217,14 +217,14 @@ theorem le_completeCache {source logged destination : HashCache C}
     source ≤ completeCache source destination := by
   intro q answer ha
   by_cases hq : Tracked q
-  · simp only [completeCache, QueryCache.ofFn_apply, if_pos hq]
+  · simp only [completeCache, QueryCache.ofFn_apply, ite_eq_left hq]
     exact hle (by rw [← hlog q hq]; exact ha)
-  · simpa only [completeCache, QueryCache.ofFn_apply, if_neg hq] using ha
+  · simpa only [completeCache, QueryCache.ofFn_apply, ite_eq_right hq] using ha
 
 /-- The completed cache reads every tracked query exactly as the destination does. -/
 theorem completeCache_tracked (source destination : HashCache C) (q : Query C) (hq : Tracked q) :
     completeCache source destination q = destination q := by
-  simp only [completeCache, QueryCache.ofFn_apply, if_pos hq]
+  simp only [completeCache, QueryCache.ofFn_apply, ite_eq_left hq]
 
 /-- Canonical receipts transport selection through the actual logged-cache frame. -/
 theorem receipt_selected_frame (x : SigningSecurityProof.Keys3 C) (top : TopTree)

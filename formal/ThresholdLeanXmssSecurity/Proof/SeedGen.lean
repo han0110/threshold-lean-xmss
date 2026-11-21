@@ -202,7 +202,7 @@ theorem honestView_term (phase : Phase) (parts : C.Party → Parts C) {x k : C.P
     have hT : T ∈ sharedTerms k x := by simp [sharedTerms, hk, hx, Committee.terms]
     have hlt := List.idxOf_lt_length_of_mem hT
     cases phase <;>
-      simp [readReveal, revealTo, List.getD_eq_getElem?_getD, List.getElem?_append_left, List.getElem?_append_right,
+      simp [readReveal, revealTo, List.getD_eq_getElem?_getD, List.getElem?_append_left, 
         hlt, List.getElem_idxOf, Nat.add_comm 1]
 
 theorem honestView_pair (phase : Phase) (parts : C.Party → Parts C) {x a b : C.Party} (h : a = x ∨ b = x) :
@@ -213,7 +213,7 @@ theorem honestView_pair (phase : Phase) (parts : C.Party → Parts C) {x a b : C
     subst hb
     rw [honestView_ne _ _ hax]
     cases phase <;>
-      simp [readReveal, revealTo, List.getD_eq_getElem?_getD, List.getElem?_append_right, Nat.add_comm 1]
+      simp [readReveal, revealTo, List.getD_eq_getElem?_getD, Nat.add_comm 1]
 
 theorem pairOf_left_or_right (i j : C.Party) (h : i ≠ j) : (C.pairOf i j h).1.1 = i ∨ (C.pairOf i j h).1.2 = i := by
   unfold Committee.pairOf
@@ -300,14 +300,14 @@ theorem openCheck_honest (h : Query C → HashOutput) (phase : Phase) (parts : C
   refine ⟨by cases phase <;> simp [revealTo], ?_⟩
   simp only [openQueries, D_mapM, D_hashQuery, getD_parties]
   rw [hashesOf_honestReveals phase parts hj]
-  simp only [commitOutbox, Ne.symm hj, if_false, Msg.hashesOf, D_commitQueries, getD_parties]
+  simp only [commitOutbox, Ne.symm hj, ite_false, Msg.hashesOf, D_commitQueries, getD_parties]
 
 theorem echoCheck_honest (h : Query C → HashOutput) (phase : Phase) (parts : C.Party → Parts C) (i : C.Party) :
     let keys := fun x => D prims h (deriveKeys phase x (honestView (E := E) phase parts x))
     let shared := fun x => D prims h (sharedQueries phase x (keys x))
     echoCheck phase i (keys i) (shared i) (fun k => echoOutbox (E := E) phase k (keys k) (shared k) i) := by
   intro keys shared j hj
-  simp only [echoOutbox, Ne.symm hj, if_false, Msg.hashesOf]
+  simp only [echoOutbox, Ne.symm hj, ite_false, Msg.hashesOf]
   have hshared : ∀ x y, (shared x).getD y.val 0 =
       h (.sharedKeys phase ((sharedTerms x y).map fun T =>
         if x ∈ C.holders T then h (termInput phase parts T) else 0)) := by
@@ -593,7 +593,7 @@ theorem evalDist_fresh_mapM (qs : List (Query C)) :
     rw [hashAnswer_of_not_isFixed prims (hfix q (List.mem_cons_self ..)), OracleSpec.randomOracle,
       QueryImpl.withCaching_run_none _ (hfresh q (List.mem_cons_self ..)), bind_map_left]
     refine EvalDistEq.bind_right _ fun u => ?_
-    simp only [StateT.run_bind, map_bind, StateT.run_pure, map_pure]
+    simp only [StateT.run_pure, map_pure]
     have hne : ∀ q' ∈ qs, q' ≠ q := fun q' hq' e => hnd.1 (e ▸ hq')
     have := ih (s.cacheQuery q u) hnd.2 (fun q' hq' => by
         rw [QueryCache.cacheQuery_of_ne _ _ (hne q' hq')]
@@ -632,7 +632,7 @@ theorem seedGen_ideal :
     rw [map_eq_bind_pure_comp]
     refine bind_congr fun r => ?_
     rcases r with ⟨parameter, seeds, keys⟩
-    simp only [simulateQ_bind, simulateQ_replyImpl_leak, pure_bind, simulateQ_pure, Function.comp]
+    simp only [simulateQ_replyImpl_leak, pure_bind, simulateQ_pure, Function.comp]
     congr 1
     funext i
     simp [noCoalition]
@@ -818,10 +818,10 @@ theorem evalDist_shiftAt (a : C.Party) (term : Option C.Term) (pair : Option C.P
   rw [this, ← h]
   refine evalDist_sequenceFin_congr _ _ fun i => ?_
   by_cases hi : i = a
-  · simp only [hi, if_true]
+  · simp only [hi, ite_true]
     rw [bind_pure_comp]
     exact evalDist_shift_sampleParts _ _ _
-  · simp only [hi, if_false, bind_pure, EvalDistEq.refl]
+  · simp only [hi, ite_false, bind_pure, EvalDistEq.refl]
 
 /-- Two different coordinates of the parts collide with probability `2^-256`. -/
 theorem probEvent_parts_collision (X Y : (C.Party → Parts C) → HashOutput) (a : C.Party) (term : Option C.Term)
@@ -940,7 +940,7 @@ theorem probEvent_pairInput_eq (p p' : C.Pair) :
           by_cases h1 : p'.1.1 = p.1.1
           · have h2 : p'.1.2 ≠ p.1.2 := fun h2 => hne ⟨h1, h2⟩
             simp [shiftAt, shiftParts, h1, Ne.symm h2]
-          · simp [shiftAt, shiftParts, h1])
+          · simp [shiftAt, h1])
 
 /-- Two derivations of one kind collide with probability at most `derivedKeyCollision`. -/
 theorem probEvent_seedGen_collision :
@@ -952,7 +952,7 @@ theorem probEvent_seedGen_collision :
         (∃ p ∈ Finset.univ, ∃ p' ∈ Finset.univ, p ≠ p' ∧ pairInput .seedGen parts p = pairInput .seedGen parts p')] := by
         refine prEvent_mono _ _ _ fun parts hbad => ?_
         by_contra hgood
-        push_neg at hgood
+        push Not at hgood
         exact hbad (nodup_seedGenInputs parts (fun T T' h => by_contra fun hne => hgood.1 T (by simp) T' (by simp) hne h)
           fun p p' h => by_contra fun hne => hgood.2 p (by simp) p' (by simp) hne h)
     _ ≤ _ := prEvent_or_le _ _ _

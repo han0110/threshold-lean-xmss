@@ -142,9 +142,9 @@ theorem codeword_core (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (to
       Or.inr (Or.inl (compHash_stop x q s pads u rest noise _ _ _ hb1 c hc))
   rw [hv1]
   by_cases hc : truncateHash r1b.1.1 ≠ commitment
-  · rw [if_pos hc, realHonest_tweakable, simulateQ_pure, StateT.run_pure]
+  · rw [ite_eq_left hc, realHonest_tweakable, simulateQ_pure, StateT.run_pure]
     exact relTriple_pure_pure (Or.inr (Or.inr ⟨rfl, hsrc1, hs1, hm1⟩))
-  · simp only [hc, if_false]
+  · simp only [hc, ite_false]
     rw [realHonest_bind, sourceHashProgramX_bind, runX_bind, realHonest_oracleHash,
       sourceHashProgramX_oracleHash]
     refine relTriple_bind (baseRead_sync prims x q s pads u rest noise hkeys false top rev cCore cTime
@@ -180,8 +180,8 @@ theorem codeword_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (to
     (b : SourceStateO1 C × CompState C)
     (hs : SyncAt prims x s pads u rest noise top rev (fun _ _ => False) cCore cTime a b)
     (hsig : a.1.2.1.1.bound = cCore.1.1.bound) (htime : cTime.1.1.bound = cCore.1.1.bound)
-    (hbound : cCore.1.1.bound e = some message)
-    (hopen : b.1.base.revealed (.opening bottomLayer e) ≠ none)
+    (_hbound : cCore.1.1.bound e = some message)
+    (_hopen : b.1.base.revealed (.opening bottomLayer e) ≠ none)
     (ha : ¬RealStop q a) (hb : ¬Stop b.2) (hmark : b.2.1.2 = false) :
     RelTriple
       ((realHonest prims x s pads u rest (signCodeword x.1 commitment e message ρ)).run a)

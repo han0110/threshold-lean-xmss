@@ -86,7 +86,7 @@ theorem invariant_install
     CacheInvariant keyOf (Function.update table input (some digest))
       (monitor.fresh keyOf input digest true) := by
   rw [monitor.fresh_unsigned keyOf input digest true e hk hs]
-  simp only [hv, if_true]
+  simp only [hv, ite_true]
   constructor
   · exact seen_update h.seen input digest
   · intro query value f hcache hkey hunsigned hvalid
@@ -171,7 +171,7 @@ theorem invariant_query_unsigned
   rw [monitor.fresh_unsigned keyOf input digest honest e hk hs]
   by_cases hv : XmssSecurity.TargetSum.ValidDigest digest
   · have hh : honest = false := hn.resolve_right (not_not_intro hv)
-    simp only [hv, hh, if_true, Bool.false_eq_true, if_false]
+    simp only [hv, hh, ite_true, Bool.false_eq_true, ite_false]
     constructor
     · exact seen_update h.seen input digest
     · intro query value f hc hq hu hvalid
@@ -189,7 +189,7 @@ theorem invariant_query_unsigned
           simpa [XmssSecurity.EncodingMonitor.State.addPending] using Or.inr hp
         · simpa [XmssSecurity.EncodingMonitor.State.addPending, hfe] using hp
     · exact unsigned_owner_update h input e digest hk hs
-  · simp only [hv, if_false]
+  · simp only [hv, ite_false]
     constructor
     · exact seen_update h.seen input digest
     · intro query value f hc hq hu hvalid
@@ -327,12 +327,12 @@ theorem invariant_query_hash {C : Committee}
     have heq := (mem_support_pure_iff _ _).1 hr
     subst r
     have hseen := h.cacheSeen input (by rw [hc]; exact Option.some_ne_none _)
-    simpa only [Monitor.step, if_pos hseen] using h
+    simpa only [Monitor.step, ite_eq_left hseen] using h
   | none =>
     have hn : digestCache cache input = none := (digestCache_none_iff cache input).2 hc
     have hseen : input ∉ monitor.seen := fun hs => (h.seen input).1 hs hn
     unfold Monitor.step
-    rw [if_neg hseen, digestCache_query input cache r hr]
+    rw [ite_eq_right hseen, digestCache_query input cache r hr]
     exact invariant_fresh h input _ hn false
 
 /-- An unsigned-key trial preserves the invariant, including its possible installation. -/
@@ -351,11 +351,11 @@ theorem invariant_trial_unsigned {C : Committee}
     have heq := (mem_support_pure_iff _ _).1 hw
     subst w
     have hseen := h.cacheSeen input (by rw [hc]; exact Option.some_ne_none _)
-    simpa only [trialStep, if_pos hseen] using h
+    simpa only [trialStep, ite_eq_left hseen] using h
   | none =>
     have hn : digestCache s.1 input = none := (digestCache_none_iff s.1 input).2 hc
     have hseen : input ∉ s.2.seen := fun hi => (h.seen input).1 hi hn
-    simp only [trialStep, if_neg hseen, trialFresh, hk, Option.bind, hs]
+    simp only [trialStep, ite_eq_right hseen, trialFresh, hk, Option.bind, hs]
     rw [digestCache_query input s.1 w hw]
     exact invariant_fresh h input _ hn true
 
@@ -373,7 +373,7 @@ theorem trial_unsigned_invalid {C : Committee}
   split_ifs with hseen
   · exact hs
   · simp only [trialFresh, hk, Option.bind, hs]
-    rw [Monitor.fresh_unsigned keyOf s.2 input _ true e hk hs, if_neg hv]
+    rw [Monitor.fresh_unsigned keyOf s.2 input _ true e hk hs, ite_eq_right hv]
     exact hs
 
 /-- A grind starting unsigned stops at its first installation, so all of its trials preserve

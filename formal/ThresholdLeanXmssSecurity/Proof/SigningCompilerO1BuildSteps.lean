@@ -69,7 +69,7 @@ theorem walkCalls_eq_map (side : XmssSecurity.LeafIndex ⊕ XmssSecurity.TopInde
       simp only [Fin.val_last] at h1
       omega
     have hlast : pos (Fin.last n) = ⟨start + n, hlt⟩ := Fin.ext (hpos _)
-    rw [walkCalls, dif_pos hlt, ih (fun i => pos i.castSucc) (fun i => hpos i.castSucc),
+    rw [walkCalls, dite_eq_left hlt, ih (fun i => pos i.castSucc) (fun i => hpos i.castSucc),
       List.finRange_succ_last, List.map_append, List.map_map, List.map_singleton, hlast]
     rfl
 
@@ -144,7 +144,7 @@ theorem tau_row_start (s : HiddenKey → Digest) (pads : Point → Digest) (e : 
     tauOf s pads ⟨.chain bottomLayer e l (chainStepDigit d), constrained_bottom_chain e l _ d.isLt⟩ =
       s (.bottomChain e l d) := by
   refine (SigningCompilerShare.NoFalse.tau_bottom_chain s pads e l d).trans ?_
-  rw [if_pos hd]
+  rw [ite_eq_left hd]
   exact BitVec.xor_zero
 
 /-- The fixed target of an inner bottom chain point is its secret with the pad. -/
@@ -153,7 +153,7 @@ theorem tau_row_pad (s : HiddenKey → Digest) (pads : Point → Digest) (e : Ke
     tauOf s pads ⟨.chain bottomLayer e l (chainStepDigit d), constrained_bottom_chain e l _ d.isLt⟩ =
       s (.bottomChain e l d) ^^^ pads (.chain bottomLayer e l (chainStepDigit d)) := by
   refine (SigningCompilerShare.NoFalse.tau_bottom_chain s pads e l d).trans ?_
-  rw [if_neg hd]
+  rw [ite_eq_right hd]
 
 /-- The six pending calls of a row are the three walks from position 0. -/
 theorem bottomRowCalls_walks (e : KeyIndex) (l : ChainIndex) :
@@ -332,7 +332,7 @@ theorem walk_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (cCore 
     have hlt : start + n < chainLength - 1 := by omega
     have hcalls : walkCalls side l start (n + 1) =
         walkCalls side l start n ++ [chainPending (l, side, ⟨start + n, hlt⟩)] := by
-      simp only [walkCalls, dif_pos hlt]
+      simp only [walkCalls, dite_eq_left hlt]
     rw [SigningCompilerO1Lemmas.chainWalk_step _ _ _ _ _ _ _ hlt, tweakable_bind, realHonest_bind,
       StateT.run_bind, mem_support_bind_iff] at hra
     obtain ⟨r1, h1, h2⟩ := hra
@@ -465,7 +465,7 @@ theorem row_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : T
     (cCore cTime : Carried C) (e : KeyIndex) (l : ChainIndex) (a : RealState C)
     (b : SourceStateO1 C × CompState C)
     (hs : SyncIn prims x s pads u rest noise top cCore cTime a b)
-    (htime : cTime.1.1.bound = cCore.1.1.bound)
+    (_htime : cTime.1.1.bound = cCore.1.1.bound)
     (ha : ¬RealStop q a) (hb : ¬Stop b.2) (hmark : b.2.1.2 = false)
     (ra : (Digest × Digest × Digest) × RealState C)
     (hra : ra ∈ support ((simulateQ (realWorld prims x s pads u rest) (realRow x.1 x.2.1 e l)).run a))
@@ -632,7 +632,7 @@ theorem topValue_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (to
     (cCore cTime : Carried C) (bi : Fin (2 ^ layerHeight)) (l : ChainIndex) (p : WinternitzDigit)
     (a : RealState C) (b : SourceStateO1 C × CompState C)
     (hs : SyncIn prims x s pads u rest noise top cCore cTime a b)
-    (htime : cTime.1.1.bound = cCore.1.1.bound)
+    (_htime : cTime.1.1.bound = cCore.1.1.bound)
     (ha : ¬RealStop q a) (hb : ¬Stop b.2) (hmark : b.2.1.2 = false)
     (ra : Digest × RealState C)
     (hra : ra ∈ support ((simulateQ (realWorld prims x s pads u rest)
@@ -730,8 +730,8 @@ theorem topRecover_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (
     (hend : p.val = 3 → ∃ w, dv = .known w)
     (a : RealState C) (b : SourceStateO1 C × CompState C)
     (hs : SyncIn prims x s pads u rest noise top cCore cTime a b)
-    (htime : cTime.1.1.bound = cCore.1.1.bound)
-    (ha : ¬RealStop q a) (hb : ¬Stop b.2) (hmark : b.2.1.2 = false)
+    (_htime : cTime.1.1.bound = cCore.1.1.bound)
+    (_ha : ¬RealStop q a) (_hb : ¬Stop b.2) (hmark : b.2.1.2 = false)
     (ra : Digest × RealState C)
     (hra : ra ∈ support ((realHonest prims x s pads u rest
       (tweakable (Verification.recoverChainWithHash x.1 topLayer (topKey bi) l p v))).run a))

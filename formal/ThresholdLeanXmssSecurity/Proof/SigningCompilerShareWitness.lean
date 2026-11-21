@@ -111,7 +111,7 @@ theorem read_missing (τ : CPoint → SigningShareLazy.Digest) (sh : ShareState 
       intro ha
       have hlast : sh.cache (b, p) = none ∧ p ∉ sh.done ∧
           ∀ a ∈ C.terms, a ≠ b → sh.cache (a, p) ≠ none := ⟨hc, hp', ha⟩
-      simp only [SigningShareLazy.setsBad, if_pos hlast, Option.some_ne_none] at hsets
+      simp only [SigningShareLazy.setsBad, ite_eq_left hlast, Option.some_ne_none] at hsets
     push Not at hn
     obtain ⟨a, _, hab, ha⟩ := hn
     exact ⟨a, by simp [SigningShareLazy.put, Function.update, hab, ha]⟩
@@ -285,18 +285,18 @@ theorem lazy_shareOK (τ : CPoint → SigningShareLazy.Digest)
   | complete p target tag =>
       by_cases hd : p ∈ sh.done
       · simp only [SigningShareLazy.lazyImpl, SigningShareLazy.impl, StateT.run,
-          hd, if_true, mem_support_pure_iff] at hz
+          hd, ite_true, mem_support_pure_iff] at hz
         subst z
         exact h
       · cases hs : SigningShareLazy.slack C.terms sh p with
         | none =>
             simp only [SigningShareLazy.lazyImpl, SigningShareLazy.impl, StateT.run,
-              hd, if_false, hs, mem_support_pure_iff] at hz
+              hd, ite_false, hs, mem_support_pure_iff] at hz
             subst z
             exact noSlack_shareOK τ sh h p tag hd hs
         | some b =>
             simp only [SigningShareLazy.lazyImpl, SigningShareLazy.impl, StateT.run,
-              hd, if_false, hs, mem_support_bind_iff, mem_support_pure_iff] at hz
+              hd, ite_false, hs, mem_support_bind_iff, mem_support_pure_iff] at hz
             obtain ⟨filled, hf, value, hv, rfl⟩ := hz
             obtain ⟨hi, _, rfl⟩ := mem_support_map_peel _ _ hv
             exact complete_shareOK τ sh filled h b p target hi tag hs hf
@@ -371,12 +371,12 @@ theorem impl_tagFrom (τ : CPoint → SigningShareLazy.Digest)
       change tag = m at ht
       subst tag
       by_cases hd : p ∈ sh.done
-      · simp only [SigningShareLazy.impl, StateT.run, hd, if_true, mem_support_pure_iff] at hz
+      · simp only [SigningShareLazy.impl, StateT.run, hd, ite_true, mem_support_pure_iff] at hz
         subst z
         exact fun _ h => Or.inl h
       · cases hs : SigningShareLazy.slack C.terms sh p with
         | none =>
-            simp only [SigningShareLazy.impl, StateT.run, hd, if_false, hs,
+            simp only [SigningShareLazy.impl, StateT.run, hd, ite_false, hs,
               mem_support_pure_iff] at hz
             subst z
             apply badFrom_update m sh _ _ _ rfl
@@ -384,7 +384,7 @@ theorem impl_tagFrom (τ : CPoint → SigningShareLazy.Digest)
             cases hb
             rfl
         | some b =>
-            simp only [SigningShareLazy.impl, StateT.run, hd, if_false, hs,
+            simp only [SigningShareLazy.impl, StateT.run, hd, ite_false, hs,
               mem_support_bind_iff, mem_support_pure_iff] at hz
             obtain ⟨filled, _, value, _, rfl⟩ := hz
             apply badFrom_update m sh _ _ _ rfl

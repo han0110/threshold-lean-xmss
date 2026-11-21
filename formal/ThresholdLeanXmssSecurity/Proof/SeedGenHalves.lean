@@ -515,10 +515,10 @@ theorem setupReferenceData_oracle_congr (phase : Phase) (prims : Primitives) (D 
   funext i
   rw [setupReferenceData_active, setupReferenceData_active]
   by_cases ha : setupReferenceActive (phase := phase) D h₁ commitSent revealSent i
-  · rw [if_pos ha, if_pos ((hactive i).1 ha)]
+  · rw [ite_eq_left ha, ite_eq_left ((hactive i).1 ha)]
     rw [setupReferenceKeys_oracle_congr (phase := phase) prims D h₁ h₂ table parts _ hc hh i ha.1]
     simp only [sharedQueries, D_mapM, D_hashQuery, hshared]
-  · rw [if_neg ha, if_neg (fun h => ha ((hactive i).2 h))]
+  · rw [ite_eq_right ha, ite_eq_right (fun h => ha ((hactive i).2 h))]
 
 theorem setupFixedCommitView_oracle_congr (phase : Phase) (prims : Primitives) (D : C.Coalition) (h₁ h₂ : Query C → HashOutput)
     (parts : C.Party → Parts C) (hh : ∀ v, ¬ SetupHiddenInput phase D parts v → h₁ v = h₂ v) :
@@ -686,7 +686,7 @@ theorem setupStageA (phase : Phase) (prims : Primitives) (D : C.Coalition) (A : 
       by_cases hc : SeedGenClash D parts
       · exact le_trans (prEvent_le_one _) (le_add_left (by simp [he, hc]))
       · have hinj := setupNamedInput_injective_of_clash (phase := phase) D parts hc
-        simp only [if_pos hinj]
+        simp only [ite_eq_left hinj]
         refine (probOutput_bind_le_add_tsum _ _ _ _ fun p => (hbranch parts hc p).1).trans ?_
         gcongr
         simp [he, hc])
@@ -694,7 +694,7 @@ theorem setupStageA (phase : Phase) (prims : Primitives) (D : C.Coalition) (A : 
       by_cases hc : SeedGenClash D parts
       · exact le_trans (prEvent_le_one _) (le_add_left (by simp [he, hc]))
       · have hinj := setupNamedInput_injective_of_clash (phase := phase) D parts hc
-        simp only [if_pos hinj]
+        simp only [ite_eq_left hinj]
         refine (probOutput_bind_le_add_tsum _ _ _ _ fun p => (hbranch parts hc p).2).trans ?_
         gcongr
         simp [he, hc])
@@ -1009,14 +1009,14 @@ theorem setup_echoCheck_invariant_hidden (phase : Phase) (prims : Primitives) (c
   apply forall_congr'
   intro hji
   by_cases hj : j ∈ co.1
-  · simp only [setupEchoInbox, if_pos hj]
+  · simp only [setupEchoInbox, ite_eq_left hj]
     have he : echoOf phase (keys i) (D prims h (sharedQueries phase i (keys i))) j =
         echoOf phase (keys' i) (D prims h (sharedQueries phase i (keys' i))) j := by
       simp only [echoOf, D_sharedQueries_at, hp i hi, hc i j hi hj]
     rw [he]
-  · simp only [setupEchoInbox, if_neg hj]
+  · simp only [setupEchoInbox, ite_eq_right hj]
     by_cases ha : active j
-    · simp only [if_pos ha, echoOutbox, if_neg (Ne.symm hji), Msg.hashesOf]
+    · simp only [ite_eq_left ha, echoOutbox, ite_eq_right (Ne.symm hji), Msg.hashesOf]
       apply eq_comm.trans
       apply Iff.trans _ eq_comm
       exact setup_echo_eq_invariant_pair (phase := phase) prims co h i j
@@ -1047,9 +1047,9 @@ theorem setupReferenceData_receivers_hidden (phase : Phase) (prims : Primitives)
   rw [setupReferenceData_active, setupReferenceData_active]
   by_cases ha : active i
   · change setupReferenceActive (phase := phase) co h commitSent revealSent i at ha
-    simp only [if_pos ha]
+    simp only [ite_eq_left ha]
     have hi := ha.1
-    simp only [if_neg hi, hsteps, roundInbox_setupEchoStep]
+    simp only [ite_eq_right hi, hsteps, roundInbox_setupEchoStep]
     have hab : (fun j => Msg.isAbort (setupEchoInbox phase prims co active echoSent h kl i j)) =
         (fun j => Msg.isAbort (setupEchoInbox phase prims co active echoSent h kr i j)) :=
       funext fun j => setupEchoInbox_isAbort phase prims co active echoSent h h kl kr i j
@@ -1066,7 +1066,7 @@ theorem setupReferenceData_receivers_hidden (phase : Phase) (prims : Primitives)
     rw [hab, hc]
     split_ifs <;> rfl
   · change ¬ setupReferenceActive (phase := phase) co h commitSent revealSent i at ha
-    simp only [if_neg ha, Option.isSome_none]
+    simp only [ite_eq_right ha, Option.isSome_none]
 
 end Receivers
 

@@ -873,7 +873,7 @@ theorem runFunctionality_honest {Ia : Type} (F : Functionality C I O L R) (reply
   unfold runFunctionality honestFunctionality
   by_cases h : ∀ i, (inputs i).isSome
   · simp only [noCoalition_val, Finset.notMem_empty, not_false_eq_true, forall_const, h, implies_true,
-      not_true_eq_false, if_false]
+      not_true_eq_false, ite_false]
     rw [simulateQ_run_of_reply reply _ _ ?_ ?_]
     · simp only [bind_map_left]
       exact (map_eq_bind_pure_comp _ _ _).symm
@@ -906,8 +906,8 @@ theorem stepRound_honest (F : Functionality C I O L R) (reply : L → R)
       (fun s => (state, s, fun _ _ => none)) <$> free (honestStep F reply steps) := by
   unfold stepRound honestStep
   by_cases h : (∃ i, (steps i).callInput.isSome) ∧ ∀ i, (steps i).callInput.isSome ∨ (steps i).isDone
-  · rw [if_pos (by simpa using h), if_pos h]
-    simp only [noCoalition_val, Finset.notMem_empty, if_false]
+  · rw [ite_eq_left (by simpa using h), ite_eq_left h]
+    simp only [noCoalition_val, Finset.notMem_empty, ite_false]
     rw [runFunctionality_honest]
     simp only [free_bind, free_sequenceFin, map_bind, bind_map_left]
     refine bind_congr fun outputs => ?_
@@ -915,8 +915,8 @@ theorem stepRound_honest (F : Functionality C I O L R) (reply : L → R)
     congr 2
     funext j
     cases steps j <;> rfl
-  · rw [if_neg (by simpa using h), if_neg h]
-    simp only [honestAdversary_round, free_sequenceFin, noCoalition_val, Finset.notMem_empty, if_false]
+  · rw [ite_eq_right (by simpa using h), ite_eq_right h]
+    simp only [honestAdversary_round, free_sequenceFin, noCoalition_val, Finset.notMem_empty, ite_false]
     erw [worldRoles_adversary_pure, pure_bind]
     rw [map_eq_bind_pure_comp]
     congr 2
@@ -933,9 +933,9 @@ theorem executeRounds_honest (F : Functionality C I O L R) (reply : L → R)
   | fuel + 1, steps => by
     unfold executeRounds honestRounds
     by_cases h : ∀ i, (steps i).isDone
-    · rw [if_pos (by simpa using h), if_pos h]
+    · rw [ite_eq_left (by simpa using h), ite_eq_left h]
       simp
-    · rw [if_neg (by simpa using h), if_neg h, stepRound_honest]
+    · rw [ite_eq_right (by simpa using h), ite_eq_right h, stepRound_honest]
       simp only [bind_map_left, free_bind, map_bind]
       exact bind_congr fun steps' => executeRounds_honest F reply state fuel steps'
 
@@ -958,7 +958,7 @@ theorem idealExecution_honest (F : Functionality C I O L R) (reply : L → R) (x
     idealExecution (fun oa => oa) noCoalition F (honestSimulator (S := WorldSpec C) reply) x [] =
       (fun o => ((), o)) <$> free (simulateQ (replyImpl reply) (F.run noCoalition fun i => some (x i))) := by
   unfold idealExecution
-  simp only [noCoalition_val, Finset.notMem_empty, if_false]
+  simp only [noCoalition_val, Finset.notMem_empty, ite_false]
   erw [pure_bind]
   erw [simulateQ_run_of_reply reply _ _ ?_ ?_]
   · simp only [map_eq_bind_pure_comp, bind_assoc, Function.comp, pure_bind]
@@ -1006,7 +1006,7 @@ theorem honestStep_of_no_call (F : Functionality C I O L R) (reply : L → R)
       | .wait _ resume => advance (resume fun k => (steps k).delivered j)
       | .call _ _ => pure (Step.done none) := by
   unfold honestStep
-  rw [if_neg]
+  rw [ite_eq_right]
   rintro ⟨⟨i, hi⟩, -⟩
   simp [h i] at hi
 
@@ -1305,7 +1305,6 @@ theorem world_inr_inl (prims : Primitives) (t : unifSpec.Domain) (s : HashCache 
       (fun a => ((a, 1), s)) <$> (liftM (unifSpec.query t) : ProbComp _) := by
   rw [simulateQ_query]
   simp [world, localAnswer, unifFwdImpl]
-  done
 
 theorem world_free_liftComp (prims : Primitives) {α : Type} (p : ProbComp α) (s : HashCache C) :
     (simulateQ (world prims) (free (C := C) (liftComp p (LocalSpec C)))).run.run s =
@@ -1535,7 +1534,7 @@ theorem CostLe.stepRound_observed {Ia α : Type} (D : C.Coalition) (A : Adversar
     (steps : C.Party → Step C E RealSpec α) :
     CostLe prims (stepRound observedRoles D A noFunctionality state steps).run step := by
   unfold stepRound
-  rw [if_neg (by simp [callInput_real])]
+  rw [ite_eq_right (by simp [callInput_real])]
   refine (CostLe.writer_bind prims _ _ (CostLe.observe prims _ step (hround _ _)) fun p =>
     (CostLe.writer_bind prims _ _ (CostLe.writer_sequenceFin prims _ fun j => ?_) fun steps' =>
       CostLe.writer_pure prims _)).mono prims (by simp)

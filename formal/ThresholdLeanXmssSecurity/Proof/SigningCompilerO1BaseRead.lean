@@ -177,7 +177,7 @@ theorem trace_clauses (input : HashInput) (t : (WorldSpec C).Domain)
     rw [hvalue e0 hp] at hi
     rw [traceStepAt_at x.1 x.2.1 cache cache' signing input t hcall aux e0 m0 hp hb hm0]
     by_cases hc : cache (.hash input) = none
-    · rw [if_pos hc]
+    · rw [ite_eq_left hc]
       refine ⟨hstale, ?_⟩
       intro e message hm h'
       simp only [XmssSecurity.SigningCacheTrace.leafIndices, List.map_append, List.map_cons,
@@ -185,7 +185,7 @@ theorem trace_clauses (input : HashInput) (t : (WorldSpec C).Domain)
       rcases hnew e message h' with h1 | h1
       · exact Or.inl (htraced e message hm h1)
       · exact Or.inr (randomizerInput_key x.1 e e0 _ _ _ _ (h1.trans hi)).1
-    · rw [if_neg hc]
+    · rw [ite_eq_right hc]
       have hin : e0 ∈ aux.1.leafIndices :=
         htraced e0 m0 (hbound ▸ hm0) (by rw [← hi]; exact hc)
       refine ⟨by simp [hstale, hin], ?_⟩
@@ -195,7 +195,7 @@ theorem trace_clauses (input : HashInput) (t : (WorldSpec C).Domain)
       · exact htraced e message hm (by rw [h1]; exact hc)
   · have heq : SigningLaneUnionProof.traceStepAt x.2.1 x.1 cache signing t cache' aux = aux := by
       unfold SigningLaneUnionProof.traceStepAt
-      exact dif_neg h
+      exact dite_eq_right h
     rw [heq]
     refine ⟨hstale, ?_⟩
     intro e message hm h'
@@ -563,7 +563,7 @@ theorem baseRead_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (fo
     (ρ : Digest) (message : HashInput) (a : RealState C) (b : SourceStateO1 C × CompState C)
     (hs : SyncAt prims x s pads u rest noise top rev (fun _ _ => False) cCore cTime a b)
     (hsig : a.1.2.1.1.bound = cCore.1.1.bound) (htime : cTime.1.1.bound = cCore.1.1.bound)
-    (ha : ¬RealStop q a) (hb : ¬Stop b.2) (hmark : b.2.1.2 = false) :
+    (ha : ¬RealStop q a) (_hb : ¬Stop b.2) (hmark : b.2.1.2 = false) :
     RelTriple
       ((readCall prims x s pads u rest forger
         (.inl (.hash (randomizerInput x.1 bottomLayer e ρ message)))).run a)

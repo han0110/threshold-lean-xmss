@@ -338,7 +338,7 @@ theorem openingPending_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.
     (hs : SyncCore x s pads noise (gOf s pads u) rest (withCarried a cCore) (src, st))
     (hfree : src.revealed p.key = none → (dataOf x st).pending p = none →
       visibleOf a (.hash (p.input x.1 (s p.key))) = none)
-    (ha : ¬RealStop q a) (hb : ¬Stop st) (hmark : st.1.2 = false) :
+    (_ha : ¬RealStop q a) (_hb : ¬Stop st) (hmark : st.1.2 = false) :
     RelTriple ((realCall prims x s pads u rest (.hash (p.input x.1 (s p.key)))).run a)
       (runX (compBackend x q s pads u rest noise) (sourcePendingX x.1 p) src st)
       (fun ra rb => CallPost x q s pads u rest noise cCore

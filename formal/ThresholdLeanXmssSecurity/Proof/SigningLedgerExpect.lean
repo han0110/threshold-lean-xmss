@@ -182,7 +182,7 @@ theorem expectedFinal_ledger_le_aux (charged : κ → σ × (K → Option T) →
     simp only [XmssSecurity.expectedFinal_pure]
     rw [ENNReal.tsum_mul_right]
     refine (mul_le_of_le_one_left' (OracleComp.tsum_prEvent_le_one _)).trans (le_trans ?_ le_self_add)
-    simp only [ledgerPotential, Bool.false_eq_true, if_false, zero_add]
+    simp only [ledgerPotential, Bool.false_eq_true, ite_false, zero_add]
     split_ifs <;> simp
   | query_bind t k ih =>
     intro σ₀ stored g hst
@@ -212,13 +212,13 @@ theorem expectedFinal_ledger_le_aux (charged : κ → σ × (K → Option T) →
       have hflagle : ∀ s x, G' s x (decide (P s)) ≤ (if P s then c else 0) + G' s x false := by
         intro s x
         by_cases h : P s
-        · simp only [h, decide_true, if_true, hGdef]
+        · simp only [h, decide_true, ite_true, hGdef]
           exact expectedFinal_ledger_flag_le impl counted inputSide keyOf point aux charged ledger B
             f hledger s (k x.1) x.2 stored false g'
         · simp [h]
       have hhit : ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * (if P s then c else 0) ≤ A := by
         by_cases hc' : counted t σ₀ ∧ inputSide t ∧ stored (keyOf t) = none
-        · rw [hA, if_pos hc']
+        · rw [hA, ite_eq_left hc']
           calc _ = ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * (if P s then 1 else 0) * c := by
                 refine tsum_congr fun s => ?_
                 split_ifs <;> simp
@@ -230,7 +230,7 @@ theorem expectedFinal_ledger_le_aux (charged : κ → σ × (K → Option T) →
                 rw [← OracleComp.prEvent_eq_tsum_ite]
                 exact (prEvent_mono_of_support _ _ _ fun s _ h => h.2.2.2).trans
                   (le_of_eq (probEvent_uniform_key_eq (keyOf t) (point t)))
-        · rw [hA, if_neg hc']
+        · rw [hA, ite_eq_right hc']
           have : ∀ s, ¬P s := fun s h => hc' ⟨h.1, h.2.1, h.2.2.1⟩
           simp [this]
       have hcont : ∑' x, Pr{let z ← mx}[z = x] * ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * G' s x false ≤
@@ -252,9 +252,9 @@ theorem expectedFinal_ledger_le_aux (charged : κ → σ × (K → Option T) →
         have hl' : ledger g' = ledger g + if charged t (σ₀, stored) g then 1 else 0 :=
           hledger _ _ _
         by_cases hch : charged t (σ₀, stored) g
-        · rw [if_pos hch] at hl'
+        · rw [ite_eq_left hch] at hl'
           by_cases hlB : ledger g < B
-          · have hc1 : c = 1 := by rw [hc, if_pos (by omega)]
+          · have hc1 : c = 1 := by rw [hc, ite_eq_left (by omega)]
             have hAD : A + D ≤ ε := by
               rw [hA, hD, hc1, one_mul]
               split_ifs with h1 h2 h2
@@ -266,14 +266,14 @@ theorem expectedFinal_ledger_le_aux (charged : κ → σ × (K → Option T) →
                   congr 1
                   rw [hl']
                   exact_mod_cast (by omega : 1 + (B - (ledger g + 1)) = B - ledger g)
-          · have hc0 : c = 0 := by rw [hc, if_neg (by omega)]
+          · have hc0 : c = 0 := by rw [hc, ite_eq_right (by omega)]
             rw [hA, hD, hc0, zero_mul, ite_self,
-              if_neg (fun h : _ ∧ ledger g < B ∧ _ => hlB h.2.1), hl', add_zero, zero_add]
+              ite_eq_right (fun h : _ ∧ ledger g < B ∧ _ => hlB h.2.1), hl', add_zero, zero_add]
             gcongr
             omega
-        · rw [if_neg hch, add_zero] at hl'
-          rw [hA, hD, if_neg (fun h => hch (hflag t σ₀ stored g h.1 h.2.1 h.2.2)),
-            if_neg (fun h => hch h.1), hl']
+        · rw [ite_eq_right hch, add_zero] at hl'
+          rw [hA, hD, ite_eq_right (fun h => hch (hflag t σ₀ stored g h.1 h.2.1 h.2.2)),
+            ite_eq_right (fun h => hch h.1), hl']
           simp
       calc _ = ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * ∑' x, Pr{let z ← mx}[z = x] * G' s x (decide (P s)) := by
             exact tsum_congr fun s => congrArg _ (hrun s)
@@ -351,7 +351,7 @@ theorem probEvent_ledger_expect_le (charged : κ → σ × (K → Option T) → 
         1 ≤ ledgerPotential ledger B f st := by
     rintro st ⟨h | h, hB⟩
     · simp [ledgerPotential, h, hB]
-    · rw [ledgerPotential, if_pos hB]
+    · rw [ledgerPotential, ite_eq_left hB]
       exact (hE _ _ h hB).trans le_add_self
   rw [OracleComp.prEvent_bind_eq_tsum]
   calc _ ≤ ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * XmssSecurity.expectedFinal

@@ -263,7 +263,7 @@ theorem eagerBackend_stop (P : PublicParameter) (seeds : C.Term → HashOutput)
     subst r
     exact h
   · by_cases hp : Constrained p
-    · simp only [eagerBackend, SigningCompilerUntil.fuse, shareBackendTag, hp, dif_pos] at hr
+    · simp only [eagerBackend, SigningCompilerUntil.fuse, shareBackendTag, hp, dite_eq_left] at hr
       change r ∈ support ((fun z => (z.1.1, (z.1.2, z.2))) <$>
         (simulateQ (eagerHandlerTag τ g) (do
           let value ← shareQueryTag (.complete ⟨p, hp⟩ target (capTag st.1))

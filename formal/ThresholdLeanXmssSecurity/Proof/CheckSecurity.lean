@@ -53,7 +53,7 @@ theorem simulateQ_runFunctionality_mapRoles (st : A.State) (inputs : C.Party →
       runFunctionality (mapRoles φ Ro) D A F st inputs := by
   unfold runFunctionality
   by_cases h : ∀ i ∉ D.1, (inputs i).isSome = true
-  · rw [if_neg (not_not.mpr h), if_neg (not_not.mpr h)]
+  · rw [ite_eq_right (not_not.mpr h), ite_eq_right (not_not.mpr h)]
     simp only [simulateQ_pure, simulateQ_bind]
     rw [simulateQ_stateT_run]
     congr 1
@@ -193,7 +193,7 @@ theorem executePhase_pure {I O L R Ia α : Type} (D : C.Coalition) (A : Adversar
   cases fuel with
   | zero => simp only [executeRounds, ho]
   | succ fuel =>
-    rw [executeRounds, if_pos (fun i _ => by split_ifs; trivial), ho]
+    rw [executeRounds, ite_eq_left (fun i _ => by split_ifs; trivial), ho]
 
 end Zero
 

@@ -303,7 +303,7 @@ theorem seedGenCorruptLeak_piecewise (D : C.Coalition) (parameter : PublicParame
   funext j
   unfold seedGenCorruptLeak
   by_cases hj : j ∈ D.1
-  · simp only [if_pos hj, dealtKeys, Option.some.injEq, Keys.mk.injEq, true_and]
+  · simp only [ite_eq_left hj, dealtKeys, Option.some.injEq, Keys.mk.injEq, true_and]
     constructor
     · funext T
       by_cases hT : j ∈ C.holders T
@@ -334,7 +334,7 @@ theorem seedGenHiddenOverlay_piecewise (D : C.Coalition) (i : C.Party) (k : Keys
   · funext j
     by_cases hc : i ∈ D.1 ∨ j ∈ D.1
     · simp [hc]
-    · simp only [if_neg hc]
+    · simp only [ite_eq_right hc]
       by_cases hij : j = i
       · simp [hij]
       · have hk : SeedGenHiddenPair D (C.pairOf i j (Ne.symm hij)) := by
@@ -484,15 +484,15 @@ theorem seedGenMaskKeys_table_congr (D : C.Coalition) (t t' : KeyName C → Hash
   · funext T
     by_cases hT : KnownTo D.1 T
     · simp [hT]
-    · simp only [if_neg hT]
+    · simp only [ite_eq_right hT]
       rw [ht (.term T) hT]
   · funext j
     by_cases hj : j = i
     · simp [hj]
-    · simp only [dif_neg hj]
+    · simp only [dite_eq_right hj]
       by_cases hc : i ∈ D.1 ∨ j ∈ D.1
       · simp [hc]
-      · simp only [if_neg hc]
+      · simp only [ite_eq_right hc]
         apply ht
         change (C.pairOf i j (Ne.symm hj)).1.1 ∉ D.1 ∧ (C.pairOf i j (Ne.symm hj)).1.2 ∉ D.1
         exact (seedGenHiddenPair_pairOf D i j (Ne.symm hj)).mpr (not_or.mp hc)
@@ -549,7 +549,7 @@ theorem evalDist_setupReferenceMixture_swap (phase : Phase) (prims : Primitives)
   change (($ᵗ (S → HashOutput)) >>= F) =ᵈ _
   refine hfst.symm.trans ?_
   by_cases hinj : Function.Injective (setupNamedInput phase parts)
-  · simp only [if_pos hinj]
+  · simp only [ite_eq_left hinj]
     have hswap : (($ᵗ ((S → HashOutput) × (KeyName C → HashOutput))) >>= fun p => F p.1) =ᵈ
         (($ᵗ ((S → HashOutput) × (KeyName C → HashOutput))) >>= fun p =>
           F (setupFiniteHiddenSwap phase D S parts (hmem parts) p).1) := by
@@ -567,7 +567,7 @@ theorem evalDist_setupReferenceMixture_swap (phase : Phase) (prims : Primitives)
       rw [setupFiniteTotal_named phase prims S _ parts name (hmem parts name),
         setupFiniteHiddenSwap_cell phase D S parts (hmem parts) hinj p name hh]
     rw [setupReferenceLocalGame_table_congr (phase := phase) prims D _ _ _ htable]
-  · simp only [if_neg hinj]
+  · simp only [ite_eq_right hinj]
     rfl
 
 end RealHidden

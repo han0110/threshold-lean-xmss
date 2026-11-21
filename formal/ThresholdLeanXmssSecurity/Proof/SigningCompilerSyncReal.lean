@@ -74,7 +74,7 @@ theorem noise_interpret (x : Keys3 C) (s : HiddenKey → Digest) (pads : Point �
       (installed s pads noise).2 a =
         XmssSecurity.CappedChain.globalChainTableEdgeInput x.1 (installed s pads noise).2 e := ⟨e, rfl⟩
   unfold chainTableCache
-  rw [QueryCache.ofFn_apply, dif_pos hex, edge_input_injective x.1 (installed s pads noise).2 hex.choose_spec]
+  rw [QueryCache.ofFn_apply, dite_eq_left hex, edge_input_injective x.1 (installed s pads noise).2 hex.choose_spec]
   congr 1
   rcases e with ⟨l, e | b, p⟩ <;> fin_cases p <;> rfl
 
@@ -98,7 +98,7 @@ theorem RealPrivate.observe_slot (h : RealPrivate x s pads noise g rest priv vis
     · subst z
       simp only [QueryCache.cacheQuery_self, Option.some.injEq] at hv
       subst v
-      rw [dif_pos hs]
+      rw [dite_eq_left hs]
     · rw [QueryCache.cacheQuery_of_ne _ _ he] at hv
       exact h.visible z v hv
 
@@ -118,7 +118,7 @@ theorem RealPrivate.observe_other (h : RealPrivate x s pads noise g rest priv vi
     · subst z
       simp only [QueryCache.cacheQuery_self, Option.some.injEq] at hv
       subst v
-      rw [dif_neg hs]
+      rw [dite_eq_right hs]
       exact hq
     · rw [QueryCache.cacheQuery_of_ne _ _ he] at hv
       have hold := h.visible z v hv
@@ -302,7 +302,7 @@ theorem quiet_message (x : Keys3 C) (s : HiddenKey → Digest) (pads : Point →
   simp only [realCache, embedHashCache, QueryCache.ofFn_apply]
   unfold chainTableCache
   rw [QueryCache.ofFn_apply]
-  apply dif_neg
+  apply dite_eq_right
   rintro ⟨e, he⟩
   rw [installed_input] at he
   exact PendingInput.not_isMsg x.1 (chainPending e) (s (chainPending e).key) (he ▸ hi)
@@ -374,7 +374,7 @@ theorem realPrivate_slotValue (x : Keys3 C)
   have hi := TprfSecurityProof.slotInput_injective (not_not.mp (not_or.mp hkeys).1) (not_not.mp (not_or.mp hkeys).2)
   have hs : IsSlot x (TprfSecurityProof.slotInput x.2.1 x.2.2 z) := ⟨z, rfl⟩
   have he := h.visible _ v hv
-  rw [dif_pos hs, hi hs.choose_spec] at he
+  rw [dite_eq_left hs, hi hs.choose_spec] at he
   exact (Option.some.inj he).symm
 
 /-- The opening value requires the explicit row-sum law of the chosen table. -/

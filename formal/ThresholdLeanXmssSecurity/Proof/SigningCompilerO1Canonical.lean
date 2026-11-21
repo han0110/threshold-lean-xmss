@@ -80,7 +80,7 @@ theorem covered_not_target (r : SigningGuessLinkProof.LoggedOutcome C) (top : To
   have hopen := SigningDescentProof.bottomOpened_of_released r.2.1 x.1
     forgery.signature.leafIndex _ hrel hsel
   simp only [SigningGuessLinkProof.chainTarget, hm]
-  rw [if_neg]
+  rw [ite_eq_right]
   rintro ⟨-, hlt⟩
   change p.val < SigningDescentProof.bottomOpened r.2.1 x.1 forgery.signature.leafIndex _ l at hlt
   rw [hopen] at hlt
@@ -121,14 +121,14 @@ theorem top_covered_not_target (r : SigningGuessLinkProof.LoggedOutcome C) (top 
   have hopen := SigningDescentProof.topOpened_of r.2.1 x.1 forgery.signature.leafIndex _ henc
   constructor
   · simp only [SigningGuessLinkProof.chainTarget, hm]
-    rw [if_neg]
+    rw [ite_eq_right]
     rintro ⟨-, hlt⟩
     change p.val < SigningDescentProof.topOpened r.2.1 x.1 forgery.signature.leafIndex _ l at hlt
     rw [hopen] at hlt
     have hlt' : p.val < (encoding l).val := hlt
     omega
   · simp only [SigningTopRowsProof.unopenedTopTarget, hm]
-    rw [if_neg]
+    rw [ite_eq_right]
     rintro ⟨-, hun, -⟩
     exact hun ⟨tree, hres⟩
 

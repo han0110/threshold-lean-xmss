@@ -619,6 +619,7 @@ theorem cutStop_cutBatch {β : Type} (ctx : Context C) (parameter : PublicParame
   · simp [cutStop]
   · simp [cutStop, pointOf, batchTuples]
 
+omit [Fintype E] [DecidableEq E] in
 /-- The batches of a ceremony that stops at the tag `k'`, from the tag `k' - pre.length`, stop at the
 start of the check of the recorded head of the batch after `pre`. -/
 theorem cutStop_batches {β : Type} (k' : ℕ) (i : C.Party) (keys : Keys C) (prss : PrssKeys C) (js : List Job)

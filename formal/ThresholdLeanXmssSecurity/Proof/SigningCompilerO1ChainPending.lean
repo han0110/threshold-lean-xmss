@@ -207,7 +207,7 @@ theorem chainCall_readStep (edge : ChainNoiseIndex) (a : RealState C)
       some w → w = (pendingOutput (chainPending edge) (noise edge)).interpret s := by
     intro w hw
     have h1 := hpriv.visible _ w hw
-    rw [dif_neg (not_isSlot_hash x _), hpre] at h1
+    rw [dite_eq_right (not_isSlot_hash x _), hpre] at h1
     exact (Option.some.inj h1).symm
   have hb : ∀ i, SigningFlatProof.HashCallAt i ((.inr (.inr (.inl (.hash ((chainPending edge).input
       x.1 (s (chainPending edge).key)))))) : (WorldSpec C).Domain) →
@@ -237,7 +237,7 @@ compiler side returns the pending answer of the edge. -/
 theorem chainPending_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (cCore : Carried C)
     (edge : ChainNoiseIndex) (a : RealState C) (src : SourceState C) (st : CompState C)
     (hs : SyncCore x s pads noise (gOf s pads u) rest (withCarried a cCore) (src, st))
-    (ha : ¬RealStop q a) (hb : ¬Stop st) (hmark : st.1.2 = false)
+    (_ha : ¬RealStop q a) (_hb : ¬Stop st) (hmark : st.1.2 = false)
     (ra : HashOutput × RealState C)
     (hra : ra ∈ support ((realCall prims x s pads u rest
       (.hash ((chainPending edge).input x.1 (s (chainPending edge).key)))).run a))

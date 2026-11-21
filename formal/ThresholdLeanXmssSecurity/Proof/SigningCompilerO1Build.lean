@@ -295,7 +295,7 @@ theorem keepsRevealed_topVirtual (P : PublicParameter) (seeds : C.Term → HashO
       (sourceVirtualX P seeds T (.randomizer topLayer e)) := by
   unfold sourceVirtualX
   exact (SourceKeepsX.lift _).bind _ fun _ => by
-    simp only [show (topLayer = bottomLayer) = False by decide, if_false]
+    simp only [show (topLayer = bottomLayer) = False by decide, ite_false]
     exact SourceKeepsX.pure ()
 
 /-- The rows of a build. Both sides give the same rows, and no key is revealed. -/
@@ -787,7 +787,7 @@ theorem core_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
   have hdec : Codeword.decode digest = some encoding :=
     decode_of_resolves prims (realLog a9) x.1 topLayer (topKey bi) _ _ randomness encoding digest
       (hres6.mono (hl7.trans (hl8.trans hl9))) hres9
-  simp only [hdec, ne_eq, not_true_eq_false, if_false]
+  simp only [hdec, ne_eq, not_true_eq_false, ite_false]
   refine inPost_bind prims x q s pads u rest noise top cCore cTime a9 (⟨src9, b.1.starts⟩, st9)
     _ _ _ _ _ _ (recover_sync prims x q s pads u rest noise hkeys top cCore cTime htime bi _
       (fun l => l) encoding values dvalues (fun l => (hval7 l).1) (fun l => (hval7 l).2.1)
@@ -832,7 +832,7 @@ theorem core_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
     rw [hsrc12, hsrc11, hrev10, hsrc9, hsrc8, hrev7]
     exact hk
   by_cases hroot : topRoot = top.root
-  · simp only [hroot, not_true_eq_false, if_false]
+  · simp only [hroot, not_true_eq_false, ite_false]
     refine inPost_pure prims x q s pads u rest noise top cCore cTime a12 (⟨src12, b.1.starts⟩, st12)
       _ _ _ hs12 hm12 ⟨?_, hterms st12 hsub, fun _ T l => hsub12 (hsub11 (hsub10 (hsub9 (hsub8
         ((hval7 l).2.2.2 T))))), fun tree htree l => ?_, hrevealed src12 hsrc, fun tree htree => ?_⟩
@@ -846,7 +846,7 @@ theorem core_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
     · cases htree
       exact topDigit_of_resolves (realLog a12) x.1 bi rb4.1.1 randomness digest encoding
         (hres9.mono (hl10.trans (hl11.trans hl12))) hdec
-  · simp only [hroot, not_false_eq_true, if_true]
+  · simp only [hroot, not_false_eq_true, ite_true]
     exact inPost_pure prims x q s pads u rest noise top cCore cTime a12 (⟨src12, b.1.starts⟩, st12)
       none none _ hs12 hm12 ⟨rfl, hterms st12 hsub, fun h => (h rfl).elim, fun _ h => (by cases h),
         hrevealed src12 hsrc, fun _ h => (by cases h)⟩

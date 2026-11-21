@@ -110,7 +110,7 @@ theorem theta_free (s : HiddenKey → Digest) (F : Point → Digest)
     theta s F n p = freeTarget s F p := by
   have hn : ¬∃ i, chainStartPoint i = p := by
     rintro ⟨i, rfl⟩; exact hp (chainStart_constrained i)
-  simp only [theta, refreshChainStarts, dif_neg hn]
+  simp only [theta, refreshChainStarts, dite_eq_right hn]
   cases p with
   | randomizer lay e => rfl
   | chain lay e l d =>

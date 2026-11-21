@@ -261,8 +261,8 @@ theorem keyed_valid_cached (keyOf : HashInput → Option KeyIndex) (input : Hash
   obtain ⟨w, ⟨a, ha, rfl⟩, rfl⟩ := hr
   have hseen : input ∈ s.1.2.seen := by
     by_contra hno
-    simp only [trialStep, if_neg hno, trialFresh, hk, Option.bind_some, hs] at hn
-    rw [Monitor.fresh_unsigned keyOf s.1.2 input _ true e hk hs, if_pos hv] at hn
+    simp only [trialStep, ite_eq_right hno, trialFresh, hk, Option.bind_some, hs] at hn
+    rw [Monitor.fresh_unsigned keyOf s.1.2 input _ true e hk hs, ite_eq_left hv] at hn
     simp [XmssSecurity.EncodingMonitor.State.install] at hn
   obtain ⟨answer, hans⟩ := hinv input hseen
   have hraw := randomOracle_support _ s.1.1 a ha
@@ -349,7 +349,7 @@ theorem keyed_flag_new (keyOf : HashInput → Option KeyIndex) (input : HashInpu
   have heq : key = e := Option.some.inj (hk.symm.trans he)
   subst key
   refine ⟨he, hunsigned, hseen, hvalid, ?_⟩
-  simp only [trialStep, if_pos hseen]
+  simp only [trialStep, ite_eq_left hseen]
   exact hunsigned
 
 /-- Invalid trials cannot raise a per-key cached-selection flag. -/
@@ -715,7 +715,7 @@ theorem keptView_encodingInput (cache : HashCache C) (P : PublicParameter) (e : 
     change IsMsg (XmssSecurity.Partner.input P e (message, randomness))
     rw [← messageInput_eq_partnerInput]
     exact byte23_msg _ _ _ _
-  simp only [keptView, QueryCache.ofFn_apply, if_pos hi]
+  simp only [keptView, QueryCache.ofFn_apply, ite_eq_left hi]
   rfl
 
 /-- The final partner equality becomes a collision for a trace entry whose initial cache
@@ -1009,7 +1009,7 @@ theorem world_raised_trigger (prims : Primitives) (x : SigningSecurityProof.Keys
     cases hf
   by_cases hG : ∃ g, SigningGuessProof.RandomizerCached x.2.1 s.1.1.1.1.1 g ∧
       BaseCall x.1 g (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 g) s.2.1.1 t
-  · simp only [jointCachedExtra, SigningR1FixedProof.cachedExtra, if_pos hG] at hg
+  · simp only [jointCachedExtra, SigningR1FixedProof.cachedExtra, ite_eq_left hG] at hg
     unfold grindExtra at hg
     split_ifs at hg with hb
     · cases hbound : s.2.1.1.bound hb.choose with
@@ -1033,7 +1033,7 @@ theorem world_raised_trigger (prims : Primitives) (x : SigningSecurityProof.Keys
           subst key
           exact ⟨hprf, hbase⟩
     · exact (hpure hg).elim
-  · simp only [jointCachedExtra, SigningR1FixedProof.cachedExtra, if_neg hG] at hg
+  · simp only [jointCachedExtra, SigningR1FixedProof.cachedExtra, ite_eq_right hG] at hg
     exact (hpure hg).elim
 
 /-- Raising a flag gives a successful canonical selection and leaves its key unsigned. -/
@@ -1119,14 +1119,14 @@ theorem traceWorld_flaggedEntries (prims : Primitives) (x : SigningSecurityProof
         BaseCall x.1 key (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1.1 key) s.2.1.1 t :=
       ⟨e, hprf, hbase⟩
     have hkey : hG.choose = e := SigningR1FixedProof.baseCall_key_eq hG.choose_spec.2 hbase
-    simp only [traceStepAt, dif_pos hG, hkey, hbound]
+    simp only [traceStepAt, dite_eq_left hG, hkey, hbound]
     split
     · let entry : XmssSecurity.SigningCacheEntry := ⟨⟨e, message⟩,
         signOf (laneKey x.1) e (cachedFound step.2.1.1.1.1.1 x.1 e
           (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1.1 e) message),
         keptView IsMsg s.1.1.1.1.1.1, keptView IsMsg step.2.1.1.1.1.1⟩
       have he : entry ∈ (traceStepAt x.2.1 x.1 s.1.1.1.1.1.1 s.2.1.1 t step.2.1.1.1.1.1 s.1.2).1 := by
-        simp only [traceStepAt, dif_pos hG, hkey, hbound]
+        simp only [traceStepAt, dite_eq_left hG, hkey, hbound]
         split <;> simp_all [entry]
       exact Or.inr ⟨entry, by simp [entry], rfl, signature, hsig,
         hunsigned entry he hn signature hsig⟩

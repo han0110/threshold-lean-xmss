@@ -103,7 +103,7 @@ theorem real_query_bind (sig : TsigState C) (trees : Finset (Fin (2 ^ layerHeigh
   have hq : (simulateQ (realWorld prims x s pads u rest)
       (free ((hashQuery (C := C) (.hash input)).liftComp (LocalSpec C)))).run a =
         (readCall prims x s pads u rest false (.inl (.hash input))).run a := by
-    rw [readCall, if_neg Bool.false_ne_true, hashQuery, free]
+    rw [readCall, ite_eq_right Bool.false_ne_true, hashQuery, free]
     erw [liftComp_query, simulateQ_query]
     simp only [OracleQuery.input_query]
     erw [id_map]

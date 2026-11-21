@@ -573,7 +573,7 @@ theorem tail_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
       hi3 ha3 hb3 r4a hr4a r4b hr4b) fun r4a r4b h4 => ?_
   · intro l
     have hpatch : (interpretTree s (treeOf e) tree).cpk e l = tree.cpk e l := by
-      simp only [interpretTree, patchCpk, if_true]
+      simp only [interpretTree, patchCpk, ite_true]
     simp only [hpatch]
     generalize encoding l = d
     obtain ⟨n, hn⟩ := d
@@ -599,7 +599,7 @@ theorem tail_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
   have hpath : merklePath (SigningJointEagerProof.dealtOf x top).parameter bottomLayer
       (fun e' l => ((interpretTree s (treeOf e) tree).cpk e' l).2.2) e =
       merklePath x.1 bottomLayer (fun key l => (tree.cpk key l).2.2) e :=
-    merklePath_congr x.1 _ _ e fun key hk => by simp only [interpretTree, patchCpk, hk, if_true]
+    merklePath_congr x.1 _ _ e fun key hk => by simp only [interpretTree, patchCpk, hk, ite_true]
   rw [simulateQ_bind, StateT.run_bind, runX_bind, hpath]
   have hbase := SigningCompilerO1Queries.queries_noBase x.1 _
     (SigningCompilerO1Queries.queries_merklePath x.1 bottomLayer (fun key l => (tree.cpk key l).2.2) e)

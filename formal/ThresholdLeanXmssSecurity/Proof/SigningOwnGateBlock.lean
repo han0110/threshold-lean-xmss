@@ -56,7 +56,7 @@ theorem inner_bound_size (b : XmssSecurity.TopIndex) (target : ChainIndex → Di
       then ((2 ^ 128 : ℝ≥0∞) ^ 58)⁻¹ else 0 := by
   classical
   by_cases ht : LayeredGraph.SizeTerminal target q (PublicContinuation.rows r.2.1)
-  · rw [if_pos ht]
+  · rw [ite_eq_left ht]
     by_cases ha : ∃ D : Finset C.Party, D.card ≤ C.t - 1 ∧
         UnopenedPrivacy.RecordAllowed D (UnopenedPrivacy.topStarts b) r.2.1
     · obtain ⟨D, hD, hallowed⟩ := ha
@@ -65,7 +65,7 @@ theorem inner_bound_size (b : XmssSecurity.TopIndex) (target : ChainIndex → Di
       exact PosteriorCompletion.marked_density D hD b r.2.1 hallowed (List.finRange 3)
         (List.nodup_finRange 3) target
     · exact le_of_eq_of_le (prEvent_eq_zero_of_forall_mem_support _ _ fun h _ hg => ha hg.1) zero_le
-  · rw [if_neg ht]
+  · rw [ite_eq_right ht]
     exact le_of_eq (prEvent_eq_zero_of_forall_mem_support _ _ fun h _ hg => ht hg.2.2)
 
 set_option backward.isDefEq.respectTransparency false in

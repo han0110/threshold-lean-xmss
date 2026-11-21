@@ -146,7 +146,7 @@ theorem forestHash_tracked {α : Type} (p : OracleComp HashSpec α) :
     rw [isQueryBoundP_query_bind_iff]
     exact ⟨Or.inl (not_not.mpr (tracked_hash q)), fun a => by
       simpa only [TrackedOnly, SigningHitProof.forestHash,
-        if_neg (not_not.mpr (tracked_hash q))] using ih a⟩
+        ite_eq_right (not_not.mpr (tracked_hash q))] using ih a⟩
 
 theorem forestValue_tracked (seeds : C.Term → HashOutput) (point : Point) :
     TrackedOnly (SigningHitProof.forestValue seeds point) := by
@@ -220,7 +220,7 @@ theorem resolves_tracked {α : Type} {a b : HashCache C}
     have ht : Tracked input := Classical.not_not.mp (hp.1.resolve_right (by omega))
     apply DeterministicSigning.Resolves.query input answer ((h input ht) ▸ ha) next value
     apply ih
-    simpa only [TrackedOnly, if_neg (not_not.mpr ht)] using hp.2 answer
+    simpa only [TrackedOnly, ite_eq_right (not_not.mpr ht)] using hp.2 answer
 
 set_option maxRecDepth 100000 in
 theorem resolvedTopPartner_congr (x : SigningSecurityProof.Keys3 C) (key : XmssSecurity.TopIndex)

@@ -325,6 +325,7 @@ theorem headAt_timed (K : Constants C E) (counts : List ℕ) (L tg : ℕ) (x : C
   rw [hx] at h
   exact h
 
+omit [Fintype E] [DecidableEq E] in
 /-- The check in the hybrid model is its head and then its rest. -/
 theorem hybridCut (prims : Primitives) (K : Constants C E) (D : C.Coalition) : HybridCutStatement prims K D := by
   intro Ia A counts L tg x st hsum hx

@@ -56,7 +56,7 @@ theorem sum_affine_share (a : Affine) (w : C.Term → List Bit) (publicTerm : C.
     (hplain : ∀ k, plain.getD k 0 = ∑ T, (w T).getD k 0) :
     ∑ T, a.share w publicTerm T = a.eval plain := by
   simp only [Affine.share, Affine.eval, Finset.sum_add_distrib, Finset.sum_ite_eq', Finset.mem_univ,
-    if_true, hplain]
+    ite_true, hplain]
   congr 1
   induction a.wires with
   | nil => simp
@@ -247,17 +247,17 @@ theorem filter_zipIdx_flatIdx (L : List (List β)) (s t k : ℕ) :
     · subst hsk
       have h1 : List.filter (fun p => decide (p.1.1 = s)) (List.map (Prod.map (fun b => (s, b)) id) (xs.zipIdx t)) =
           List.map (Prod.map (fun b => (s, b)) id) (xs.zipIdx t) := List.filter_eq_self.2 (by simp; intros; simp_all)
-      rw [h1, if_neg (by omega), if_pos le_rfl, List.zipIdx_eq_map_add]
+      rw [h1, ite_eq_right (by omega), ite_eq_left le_rfl, List.zipIdx_eq_map_add]
       simp [Function.comp_def]
     · have h1 : List.filter (fun p => decide (p.1.1 = k)) (List.map (Prod.map (fun b => (s, b)) id) (xs.zipIdx t)) =
           [] := List.filter_eq_nil_iff.2 (by simp; omega)
       rw [h1, List.nil_append]
       by_cases hle : s ≤ k
-      · rw [if_pos (by omega), if_pos hle]
+      · rw [ite_eq_left (by omega), ite_eq_left hle]
         obtain ⟨d, hd⟩ : ∃ d, k - s = d + 1 := ⟨k - s - 1, by omega⟩
         rw [hd, show k - (s + 1) = d by omega]
         simp [Nat.add_assoc]
-      · rw [if_neg (by omega), if_neg hle]
+      · rw [ite_eq_right (by omega), ite_eq_right hle]
 
 theorem filterMap_zip_idxOf {α : Type} [BEq α] [LawfulBEq α] (L : List α) (hL : L.Nodup) (P : α → Prop) [DecidablePred P]
     (ds : List β) (hds : ds.length = L.length) (T : α) (hT : T ∈ L) (hP : P T) :
@@ -356,7 +356,7 @@ theorem openCopy_eq (w : Shares C Bit) (vr : C.Party → Shares C Bit)
   split_ifs with hi
   · exact hvr i T g hi hg
   · have hne : i ≠ K.owner T := fun h => hi (h ▸ K.owner_held T)
-    simp only [repOutbox, if_neg hne, Msg.part, List.getElem?_cons_zero, Msg.bitAt]
+    simp only [repOutbox, ite_eq_right hne, Msg.part, List.getElem?_cons_zero, Msg.bitAt]
     rw [getD_flatMap_vector _ _ _ T (List.mem_filter.2 ⟨mem_terms T, by simp [hi]⟩)
       (terms_nodup.filter _) g hg]
     exact hvr _ T g (K.owner_held T) hg
@@ -368,7 +368,7 @@ theorem repCheck_honest (vr : C.Party → Shares C Bit) (ds : C.Party → List H
     repCheck K i (fun k => repOutbox (E := E) K k (vr k) count (ds k) i) (C.terms.map val) := by
   intro T hiT h hh hown
   have hne : i ≠ h := fun e => hiT (e ▸ hh)
-  simp only [repOutbox, if_neg hne, Msg.part, List.getElem?_cons_succ, List.getElem?_cons_zero, Msg.hashesOf]
+  simp only [repOutbox, ite_eq_right hne, Msg.part, List.getElem?_cons_succ, List.getElem?_cons_zero, Msg.hashesOf]
   have h1 := filterMap_zip_idxOf C.terms terms_nodup
     (fun T' => i ∉ C.holders T' ∧ h ∈ C.holders T' ∧ K.owner T' ≠ h) (ds h) (hlen h) T (mem_terms T) ⟨hiT, hh, Ne.symm hown⟩
   rw [lookup_zip_idxOf C.terms (C.terms.map val) (by simp) T (mem_terms T)]
@@ -417,7 +417,7 @@ def gateOffset (l k : ℕ) : ℕ := (((jobs.map fun job => job.layers.getD l [])
 theorem newWires_eq (l k : ℕ) (hk : k < jobs.length) (z : Shares C Bit) (T : C.Term) :
     newWires jobs l k z T = (List.range (jobs[k].layers.getD l []).length).map fun j => z T (gateOffset jobs l k + j) := by
   unfold newWires
-  rw [gatesAt_eq, filter_zipIdx_flatIdx, if_pos (Nat.zero_le k)]
+  rw [gatesAt_eq, filter_zipIdx_flatIdx, ite_eq_left (Nat.zero_le k)]
   simp only [Nat.sub_zero, List.map_map]
   rw [List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_eq_getElem hk]
   simp only [Option.map_some, Option.getD_some]
@@ -536,18 +536,18 @@ theorem layerInv_step (mode : ReshareMode) (l : ℕ) (p : C.Party → List (C.Te
     split_ifs with hk
     · simp only [hinv.agree i T hi k, newWires, hi, true_and]
     · rfl
-  · rw [getD_appendLayer, hinv.length_W, if_pos hk, plainAt_succ, plainLayer]
+  · rw [getD_appendLayer, hinv.length_W, ite_eq_left hk, plainAt_succ, plainLayer]
     have := hinv.length_plain k hk T
     rw [List.getD_eq_getElem?_getD] at this
     simp [this, newWires_eq jobs l k hk]
-  · rw [getD_appendLayer, hinv.length_W, if_pos hk, plainAt_succ, plainLayer]
+  · rw [getD_appendLayer, hinv.length_W, ite_eq_left hk, plainAt_succ, plainLayer]
     simp only [newWires_eq jobs l k hk]
     set w := plainAt jobs[k] (plainInput x k) l with hw
     by_cases hg : g < w.length
     · rw [getD_append_of_lt _ _ _ _ hg, hplain k hk g]
       refine Finset.sum_congr rfl fun T _ => ?_
       rw [getD_append_of_lt _ _ _ _ (by rw [hinv.length_plain k hk T]; exact hg)]
-    · push_neg at hg
+    · push Not at hg
       obtain ⟨j, rfl⟩ : ∃ j, g = w.length + j := ⟨g - w.length, by omega⟩
       rw [getD_append_of_le _ _ _ _ (by omega)]
       have hT : ∀ T, ((W.getD k fun _ => []) T ++ (List.range (jobs[k].layers.getD l []).length).map
@@ -594,7 +594,7 @@ theorem layerInv_step (mode : ReshareMode) (l : ℕ) (p : C.Party → List (C.Te
     · simp only [List.mem_singleton] at hτ
       subst hτ
       intro g hg
-      simp only [shareValue, if_pos hg]
+      simp only [shareValue, ite_eq_left hg]
       exact hprod g
 
 theorem le_foldl_max (l : List ℕ) : ∀ init, init ≤ l.foldl max init ∧ ∀ a ∈ l, a ≤ l.foldl max init := by
@@ -619,7 +619,7 @@ theorem foldl_max_const (l : List ℕ) (w : ℕ) (hl : l ≠ []) (h : ∀ a ∈ 
       subst hb
       rw [List.foldl_cons, ih _ fun a ha => h a (List.mem_cons_of_mem _ ha)]
       split_ifs <;> simp_all
-  rw [key l 0 h, if_neg hl]
+  rw [key l 0 h, ite_eq_right hl]
   simp
 
 theorem plainAt_of_le (job : Circuit) (w : List Bit) : ∀ d, job.layers.length ≤ d →
@@ -756,7 +756,7 @@ theorem main_open_hash_sent (K : Constants C E) (i h : C.Party) (v : Shares C Bi
       (C.terms.filter fun T' => i ∉ C.holders T' ∧ h ∈ C.holders T' ∧ K.owner T' ≠ h).idxOf T]? =
       ds[C.terms.idxOf T]? := by
   have hne : i ≠ h := fun e => hiT (e ▸ hhT)
-  simp only [repOutbox, if_neg hne, Msg.part, List.getElem?_cons_succ,
+  simp only [repOutbox, ite_eq_right hne, Msg.part, List.getElem?_cons_succ,
     List.getElem?_cons_zero, Msg.hashesOf]
   exact filterMap_zip_idxOf C.terms terms_nodup
     (fun T' => i ∉ C.holders T' ∧ h ∈ C.holders T' ∧ K.owner T' ≠ h)

@@ -321,7 +321,7 @@ theorem slotList_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (cC
       (by with_reducible exact h1)
     obtain ⟨rb0, hb0, rfl⟩ := runX_read_support prims x q s pads u rest noise _ src st rb1 hb1
     have hv0 := slotRead_sync prims x q s pads u rest noise hkeys false cCore (slot k) a src st hs ha
-      hb hmark r0 (by rw [readCall, if_neg Bool.false_ne_true]; with_reducible exact h0) rb0 hb0
+      hb hmark r0 (by rw [readCall, ite_eq_right Bool.false_ne_true]; with_reducible exact h0) rb0 hb0
     have hv := callPost_map x q s pads u rest noise cCore _ a src st _
       (fun (va vb : Digest) => va = vb ∧
         va = truncateHash (realTable (gOf s pads u) rest (slot k)))
@@ -478,7 +478,7 @@ theorem eval_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (cCore 
       have hL := of_decide_eq_true (List.mem_filter.1 hT).2
       show truncateHash <$> hashQuery (.prf ((dealtKeys x.1 x.2.1 x.2.2 i).seed T) p) = _
       rw [show (dealtKeys x.1 x.2.1 x.2.2 i).seed T = x.2.1 T from
-        if_pos (TprfCorrectnessProof.mem_holders_of_mem_L hL)]
+        ite_eq_left (TprfCorrectnessProof.mem_holders_of_mem_L hL)]
       rfl)
     (fun query => (∃ T, query = .prf (x.2.1 T) p) ∨ ∃ seed J', query = .mask seed p message J')
     (fun T _ => Or.inl ⟨T, rfl⟩) a src st hs ha hb hmark r1 (by with_reducible exact h1) rb1 hb1
@@ -487,11 +487,11 @@ theorem eval_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (cCore 
   have hmasks := fun hs1 ha1 hb1' hm1 => slotList_sync prims x q s pads u rest noise hkeys cCore _
     slot _ (fun j hj => by
       have hji := (of_decide_eq_true (List.mem_filter.1 hj).2).2
-      simp only [slot, dealtKeys, dif_neg hji, TprfSecurityProof.slotInput])
+      simp only [slot, dealtKeys, dite_eq_right hji, TprfSecurityProof.slotInput])
     (fun query => (∃ T, query = .prf (x.2.1 T) p) ∨ ∃ seed J', query = .mask seed p message J')
     (fun j hj => by
       have hji := (of_decide_eq_true (List.mem_filter.1 hj).2).2
-      simp only [slot, dif_neg hji, TprfSecurityProof.slotInput]
+      simp only [slot, dite_eq_right hji, TprfSecurityProof.slotInput]
       exact Or.inr ⟨_, _, rfl⟩)
     r1.2 rb1.1.2 rb1.2 hs1 ha1 hb1' hm1 r2 (by with_reducible exact h2) rb2 hb2
   have hc := callPost_bind x q s pads u rest noise cCore _ _ a src st _ _ r1 rb1 r2 rb2 hterms

@@ -549,9 +549,9 @@ theorem seedGenAlias_observe_length {α : Type} (oa : OracleComp (LocalSpec C) �
     simp only [List.filter_append, List.length_append]
     by_cases ht : Counted t
     · have hn0 : 0 < n := hn.1.resolve_left (not_not.mpr ht)
-      simp only [if_pos ht] at hrest hcall
+      simp only [ite_eq_left ht] at hrest hcall
       omega
-    · simp only [if_neg ht] at hrest hcall
+    · simp only [ite_eq_right ht] at hrest hcall
       omega
 
 /-- The independent transcript uses fresh uncached honest commitments. -/
@@ -824,7 +824,7 @@ theorem relTriple_setupAlias_initial (phase : Phase) (prims : Primitives) (D : C
     funext i
     by_cases hi : i ∈ D.1
     · simp [hi, setupAliasCommitQueries]
-    · simp only [hi, if_false, setupAliasCommitQueries]
+    · simp only [hi, ite_false, setupAliasCommitQueries]
       have he : commitQueries phase i (parts i) =
           (C.parties.map fun j => setupAliasCommitCell (phase := phase) parts (i, j)).mapM hashQuery := by
         simp [commitQueries, List.mapM_map, setupAliasCommitCell, Function.comp_def]
@@ -835,7 +835,7 @@ theorem relTriple_setupAlias_initial (phase : Phase) (prims : Primitives) (D : C
   · intro i
     by_cases hi : i ∈ D.1
     · simp [setupAliasCommitQueries, hi]
-    · simp only [setupAliasCommitQueries, hi, if_false]
+    · simp only [setupAliasCommitQueries, hi, ite_false]
       exact (List.nodup_finRange C.n).map (fun j k he =>
         (Prod.mk.inj (setupAliasCommitCell_injective (phase := phase) parts he)).2)
   · intro i j hij q hqi hqj

@@ -109,7 +109,7 @@ theorem hashAnswer_keptView {x : HashInput} (hK : K x) (hx : ¬MpcInput x) (c : 
     (fun p => (p.1, keptView K p.2)) <$> (hashAnswer prims (.hash x)).run c =
       (XmssSecurity.romImpl (.inr x)).run (keptView K c) := by
   dsimp only [hashAnswer]
-  rw [if_neg hx]
+  rw [ite_eq_right hx]
   change _ = (OracleSpec.randomOracle (spec := XmssSecurity.HashSpec) x).run (keptView K c)
   have hc : keptView K c x = c (.hash x) := by simp [keptView, hK]
   cases h : c (.hash x) with
@@ -134,7 +134,7 @@ theorem worldCall_stateLaw (publicKey : XmssSecurity.PublicKey) (secretKey : Xms
   refine EvalDistEq.of_eq ?_
   rw [XmssSecurity.Ghost.impl_run, XmssSecurity.Ghost.simulateQ_source_world, ← hashAnswer_keptView prims hK hx c]
   simp only [Functor.map_map, XmssSecurity.signingCacheTraceUpdate, XmssSecurity.Ghost.tick,
-    XmssSecurity.Ghost.IsAdvHash, if_true]
+    XmssSecurity.Ghost.IsAdvHash, ite_true]
 
 /-- A computation of leanVM that queries only kept inputs outside the MPC runs in the world as the
 random oracle of leanVM on the view. -/
@@ -333,7 +333,7 @@ theorem evalDist_baseCall
       (randomOracle : QueryImpl XmssSecurity.HashSpec (StateT XmssSecurity.HashSpec.QueryCache ProbComp))
       XmssSecurity.Concrete.signingRandomness _
   rw [SigningLane2Proof.signWithBase, simulateQ_bind, StateT.run_bind, hsample, bind_map_left]
-  simp only [htop, if_true]
+  simp only [htop, ite_true]
   change _ =ᵈ (XmssSecurity.Concrete.signingRandomness >>= grindRun secretKey key message (keptView K c))
   have ht : (truncateHash <$> ($ᵗ HashOutput) : ProbComp Randomizer) =ᵈ
       XmssSecurity.Concrete.signingRandomness := by

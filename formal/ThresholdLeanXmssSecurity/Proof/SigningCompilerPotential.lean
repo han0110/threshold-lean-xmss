@@ -51,8 +51,8 @@ theorem cachedExtra_base (seeds : C.Term → HashOutput) (P : PublicParameter)
   have base : ∃ e, BaseCall P e (SigningGuessProof.cachedRandomizer seeds before.1.1.1 e) before.2.1 t :=
     ⟨e, hcall⟩
   have chosen := SigningR1FixedProof.baseCall_key_eq base.choose_spec hcall
-  rw [SigningR1FixedProof.cachedExtra, if_pos ⟨e, hprf, hcall⟩,
-    grindExtra, dif_pos base, chosen]
+  rw [SigningR1FixedProof.cachedExtra, ite_eq_left ⟨e, hprf, hcall⟩,
+    grindExtra, dite_eq_left base, chosen]
   simp only [bound, cached]
 
 
@@ -163,7 +163,7 @@ theorem compiler_hash_no_trigger (P : PublicParameter) (seeds : C.Term → HashO
       (fun r => (r.1, { st with data := { st.data with cache := r.2 } })) <$>
         (((Query C →ₒ HashOutput).randomOracle q).run st.data.cache) := by
   simp only [compilerImpl, deferredImpl, StateT.run, bind_map_left,
-    SigningR1FixedProof.cachedExtra, noBase, if_false, simulateQ_pure, SigningLaneUnionProof.traceStepAt]
+    SigningR1FixedProof.cachedExtra, noBase, ite_false, simulateQ_pure, SigningLaneUnionProof.traceStepAt]
   rw [map_eq_bind_pure_comp]
   rfl
 
@@ -206,7 +206,7 @@ theorem raw_hash_count_le (P : PublicParameter) (input : HashInput) (cache : Has
       · rw [keptView_cacheQuery_of_kept hmsg]
         have empty : keptView IsMsg cache input = none := by
           change (if IsMsg input then cache (.hash input) else none) = none
-          rw [if_pos hmsg]
+          rw [ite_eq_left hmsg]
           exact hc
         exact XmssSecurity.Ghost.counts_fresh_le empty value
       · rw [keptView_cacheQuery_of_not (K := IsMsg) (fun x he => by cases he; exact hmsg)]
@@ -232,8 +232,8 @@ theorem traceStepAt_traced_base (P : PublicParameter) (seeds : C.Term → HashOu
       BaseCall P e (SigningGuessProof.cachedRandomizer seeds cache e) state call := ⟨e, hprf, base⟩
   have chosen := SigningR1FixedProof.baseCall_key_eq trigger.choose_spec.2 base
   change SigningLaneUnionProof.traceStepAt seeds P cache state call completed trace = trace
-  rw [SigningLaneUnionProof.traceStepAt, dif_pos trigger, chosen]
-  simp only [bound, cached, reduceCtorEq, if_false, recorded, not_true_eq_false,
+  rw [SigningLaneUnionProof.traceStepAt, dite_eq_left trigger, chosen]
+  simp only [bound, cached, reduceCtorEq, ite_false, recorded, not_true_eq_false,
     decide_false, Bool.or_false]
 
 /-- At a traced key, the same bound message and completed grind are available
@@ -287,8 +287,8 @@ theorem traceStepAt_fresh_base (P : PublicParameter) (seeds : C.Term → HashOut
       BaseCall P e (SigningGuessProof.cachedRandomizer seeds cache e) state call := ⟨e, hprf, base⟩
   have chosen := SigningR1FixedProof.baseCall_key_eq trigger.choose_spec.2 base
   change SigningLaneUnionProof.traceStepAt seeds P cache state call completed trace = _
-  rw [SigningLaneUnionProof.traceStepAt, dif_pos trigger, chosen]
-  simp only [bound, fresh, if_true]
+  rw [SigningLaneUnionProof.traceStepAt, dite_eq_left trigger, chosen]
+  simp only [bound, fresh, ite_true]
 
 /-- The two cache operations of a concrete hash step retain their supported intermediate values. -/
 theorem compiler_hash_support (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -452,7 +452,7 @@ theorem traceStepAt_stale_base (P : PublicParameter) (seeds : C.Term → HashOut
       BaseCall P e (SigningGuessProof.cachedRandomizer seeds cache e) state call := ⟨e, hprf, base⟩
   have chosen := SigningR1FixedProof.baseCall_key_eq trigger.choose_spec.2 base
   change (SigningLaneUnionProof.traceStepAt seeds P cache state call completed trace).2 = true
-  rw [SigningLaneUnionProof.traceStepAt, dif_pos trigger, chosen]
+  rw [SigningLaneUnionProof.traceStepAt, dite_eq_left trigger, chosen]
   simp [bound, cached, unrecorded]
 
 /-- The actual compiler marks a cached, unrecorded canonical base as stale. -/
@@ -520,8 +520,8 @@ theorem compiler_count_le (prims : Primitives) (P : PublicParameter)
         if deferredCounted t then 1 else 0 := by
   by_cases counted : deferredCounted t
   swap
-  · rw [(compilerImpl_view_uncounted P seeds t counted st r run).1, if_neg counted, Nat.add_zero]
-  rw [if_pos counted]
+  · rw [(compilerImpl_view_uncounted P seeds t counted st r run).1, ite_eq_right counted, Nat.add_zero]
+  rw [ite_eq_left counted]
   have same : compilerView r.2 = compilerView st →
       XmssSecurity.Ghost.nCount P (compilerView r.2).1 (compilerView r.2).2 ≤
         XmssSecurity.Ghost.nCount P (compilerView st).1 (compilerView st).2 + 1 := by
@@ -637,7 +637,7 @@ theorem viewSum_step (publicKey : XmssSecurity.PublicKey) (P : PublicParameter) 
       ENNReal.ofReal (XmssSecurity.Partner.momentA XmssSecurity.Ghost.pReal q) *
         XmssSecurity.Ghost.openCost (laneKey P) input s := by
     rw [XmssSecurity.Ghost.cost3, XmssSecurity.Ghost.overBudget,
-      if_neg (fun h => Nat.not_le_of_gt (room h.1) h.2), zero_add]
+      ite_eq_right (fun h => Nat.not_le_of_gt (room h.1) h.2), zero_add]
     rfl
   exact SigningLane2Proof.lane2Sum_step (2 ^ 128) XmssSecurity.Partner.landing
     (ENNReal.ofReal (XmssSecurity.Partner.momentA XmssSecurity.Ghost.pReal q))
@@ -676,8 +676,8 @@ theorem compilerPotential_eq_sum (P : PublicParameter) (q : ℕ) (st : CompilerB
     (live : st.1.trace.2 = false) (hk : st.2 ≤ q) :
     compilerPotential P q st = viewSum P q (compilerView st.1, st.2) *
       ((2 ^ 128 : ℝ≥0∞) * 2 ^ 128)⁻¹ := by
-  simp only [compilerPotential, live, Bool.false_eq_true, if_false,
-    SigningLane2Proof.lane2Potential, if_pos hk, viewSum, SigningLane2Proof.lane2Sum]
+  simp only [compilerPotential, live, Bool.false_eq_true, ite_false,
+    SigningLane2Proof.lane2Potential, ite_eq_left hk, viewSum, SigningLane2Proof.lane2Sum]
 
 /-- Stopping can only decrease the scaled compensated sum. -/
 theorem compilerPotential_le_sum (P : PublicParameter) (q : ℕ) (st : CompilerBackend C × ℕ)
@@ -686,7 +686,7 @@ theorem compilerPotential_le_sum (P : PublicParameter) (q : ℕ) (st : CompilerB
       ((2 ^ 128 : ℝ≥0∞) * 2 ^ 128)⁻¹ := by
   cases live : st.1.trace.2 with
   | false => exact (compilerPotential_eq_sum P q st live hk).le
-  | true => simp only [compilerPotential, live, if_true]; exact zero_le
+  | true => simp only [compilerPotential, live, ite_true]; exact zero_le
 
 /-- Once the next count exceeds the cap, every counted successor has zero potential. -/
 theorem compilerPotential_over_cap (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -698,8 +698,8 @@ theorem compilerPotential_over_cap (P : PublicParameter) (seeds : C.Term → Has
   intro r
   by_cases hr : r ∈ support ((countImpl (compilerImpl P seeds) deferredCounted t).run st)
   · have count := SigningLane2Proof.countImpl_support_count (compilerImpl P seeds) deferredCounted t st r hr
-    have past : ¬ r.2.2 ≤ q := by rw [count, if_pos counted]; omega
-    simp only [compilerPotential, SigningLane2Proof.lane2Potential, if_neg past, ite_self, mul_zero]
+    have past : ¬ r.2.2 ≤ q := by rw [count, ite_eq_left counted]; omega
+    simp only [compilerPotential, SigningLane2Proof.lane2Potential, ite_eq_right past, ite_self, mul_zero]
   · simp [prEvent_eq_zero_of_not_mem_support _ hr]
 
 /-- The count tick and stopping are harmless when bounding by the previous-count sum. -/
@@ -712,7 +712,7 @@ theorem counted_potential_le_previousSum (P : PublicParameter) (seeds : C.Term �
         viewSum P q (compilerView r.2, st.2)) * ((2 ^ 128 : ℝ≥0∞) * 2 ^ 128)⁻¹ := by
   simp only [countImpl, StateT.run_mk]
   rw [OracleComp.tsum_prEvent_map_mul]
-  simp only [if_pos counted]
+  simp only [ite_eq_left counted]
   rw [← ENNReal.tsum_mul_right]
   apply ENNReal.tsum_le_tsum
   intro r
@@ -767,7 +767,7 @@ theorem compilerPotential_same_live_view (P : PublicParameter) (seeds : C.Term �
   obtain ⟨a, ha, eq⟩ := hr
   rw [← eq]
   cases after : a.2.trace.2 with
-  | true => simp only [compilerPotential, after, if_true]; exact zero_le
+  | true => simp only [compilerPotential, after, ite_true]; exact zero_le
   | false =>
     have view := same a ha after
     rw [compilerPotential_congr P q _ (st.1, st.2 + 1) view
@@ -812,7 +812,7 @@ theorem compiler_message_stateLaw (prims : Primitives) (publicKey : XmssSecurity
   erw [Functor.map_map]
   have law := worldCall_stateLaw_isMsg prims publicKey (laneKey P) message
     st.1.data.cache st.1.trace.1 st.2
-  simp only [hashAnswer, if_neg (fun h => not_isMsg_of_mpc h message)] at law
+  simp only [hashAnswer, ite_eq_right (fun h => not_isMsg_of_mpc h message)] at law
   refine EvalDistEq.trans (EvalDistEq.of_eq ?_) law
   erw [Functor.map_map]
   refine congrArg (· <$> _) (funext fun a => ?_)
@@ -855,7 +855,7 @@ theorem counted_potential_le_nextSum (P : PublicParameter) (seeds : C.Term → H
   rw [mul_assoc]
   by_cases run : r ∈ support ((countImpl (compilerImpl P seeds) deferredCounted t).run st)
   · have count := SigningLane2Proof.countImpl_support_count (compilerImpl P seeds) deferredCounted t st r run
-    exact mul_le_mul_right (compilerPotential_le_sum P q r.2 (by rw [count, if_pos counted]; omega)) _
+    exact mul_le_mul_right (compilerPotential_le_sum P q r.2 (by rw [count, ite_eq_left counted]; omega)) _
   · simp only [prEvent_eq_zero_of_not_mem_support _ run, zero_mul, le_refl]
 
 /-- A message query pays at most one inverse digest space in stopped potential. -/
@@ -886,7 +886,7 @@ theorem compilerPotentialStep (prims : Primitives) : CompilerPotentialStep (C :=
         simp only [deferredInputSide, deferredCandidate,
           hiddenCandidate_none_of_isMsg x.1 input message, Option.isSome_none,
           Bool.false_eq_true, not_false_eq_true]
-      rw [if_pos ⟨⟨trivial, room⟩, side⟩]
+      rw [ite_eq_left ⟨⟨trivial, room⟩, side⟩]
       exact compilerPotential_message prims ⟨0, x.1⟩ x.1 x.2.1 q hq input message st inv live room
     · suffices step : ∑' r, Pr{let z ← ((countImpl (compilerImpl x.1 x.2.1) deferredCounted
           (.hash (.hash input))).run st)}[z = r] * compilerPotential x.1 q r.2 ≤

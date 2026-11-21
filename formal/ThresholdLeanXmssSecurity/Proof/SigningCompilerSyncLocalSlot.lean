@@ -143,7 +143,7 @@ theorem backend_slot_read (x : Keys3 C)
     (τ : CPoint → Digest) (g : C.Term × CPoint → HashOutput)
     (noise : ChainNoiseIndex → HashOutput) (rest : RestSlot C → HashOutput)
     (input : Query C) (hs : IsSlot x input) (st : CompState C)
-    (hg : ShareG g st.2) (hf : RestFree x.2.1 st.1.1.1.1.data.cache)
+    (hg : ShareG g st.2) (_hf : RestFree x.2.1 st.1.1.1.1.data.cache)
     (ha : RestAgree x rest st.1.1) (hb : st.2.bad = none) (hm : st.1.2 = false)
     (r : HashOutput × CompState C)
     (hr : r ∈ support ((shareBackendTagT capTag x.1 x.2.1 x.2.2 q s pads τ g noise rest

@@ -65,7 +65,7 @@ theorem randomOracle_run_eq_roRun {α : Type} {oa : OracleComp HashSpec α}
     change _ = roRun prims (tweakable (Verification.oracleHashWithHash x) >>= _) c
     rw [tweakable_oracleHash, roRun_bind, roRun_hashQuery]
     simp only [simulateQ_bind, StateT.run_bind]
-    simp only [simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query, id_map, hashAnswer, if_neg hx]
+    simp only [simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query, id_map, hashAnswer, ite_eq_right hx]
     erw [simulateQ_spec_query]
     exact bind_congr fun (p : HashOutput × HashCache C) => ih p.1 p.2
 
@@ -88,7 +88,7 @@ theorem eagerBase_eq_roRun (P : PublicParameter) (e : KeyIndex) (ρ : Digest) (m
       roRun prims (tweakable (baseCall (laneKey P) e ρ message)) c := by
   unfold baseCall
   rw [tweakable_bind, tweakable_oracleHash, roRun_bind, roRun_hashQuery]
-  simp only [hashAnswer, if_neg (randomizerInput_not_mpc (laneKey P).parameter bottomLayer e ρ
+  simp only [hashAnswer, ite_eq_right (randomizerInput_not_mpc (laneKey P).parameter bottomLayer e ρ
     (littleEndianBytes 32 message))]
   refine bind_congr fun p => ?_
   rw [tweakable_bind, roRun_bind]

@@ -209,7 +209,7 @@ theorem hashProgram_core (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) 
       input ≠ randomizerInput x.1 bottomLayer e ρ message) oa)
     (a : RealState C) (b : SourceStateO1 C × CompState C)
     (hs : SyncPre prims x s pads u rest noise top rev (fun _ _ => False) cCore cTime a b)
-    (ha : ¬RealStop q a) (hb : ¬Stop b.2) (hmark : b.2.1.2 = false) :
+    (_ha : ¬RealStop q a) (_hb : ¬Stop b.2) (hmark : b.2.1.2 = false) :
     RelTriple ((realHonest prims x s pads u rest (tweakable oa)).run a)
       (runX (compBackend x q s pads u rest noise) (sourceHashProgramX x.1 x.2.1 oa) b.1.base b.2)
       (fun ra rb => RealStop q ra.2 ∨ Stop rb.2 ∨

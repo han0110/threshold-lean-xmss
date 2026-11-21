@@ -77,7 +77,7 @@ theorem hiddenInputHit_partial (x : SigningSecurityProof.Keys3 C) (r : SigningGu
   | opening lay e => exact ht
   | bottomChain e l p =>
     simp only [hiddenTarget, partialChainTarget] at ht ⊢
-    rw [if_pos]
+    rw [ite_eq_left]
     · exact ht
     obtain ⟨⟨top, state, forgery⟩, hm⟩ : ∃ v, r.1.1.2 = some v := by
       cases hm : r.1.1.2 with
@@ -90,7 +90,7 @@ theorem hiddenInputHit_partial (x : SigningSecurityProof.Keys3 C) (r : SigningGu
     exact hcached ⟨top, state, forgery, hm, l, Or.inl hn⟩
   | topChain b l p =>
     simp only [hiddenTarget, partialChainTarget] at ht ⊢
-    rw [if_pos]
+    rw [ite_eq_left]
     · exact ht
     obtain ⟨⟨top, state, forgery⟩, hm⟩ : ∃ v, r.1.1.2 = some v := by
       cases hm : r.1.1.2 with

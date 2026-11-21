@@ -220,7 +220,7 @@ theorem opened_randomizer_hit {h : Query C → HashOutput} (P : PublicParameter)
   apply hs
   unfold signCodeword
   change E prims h _ = none
-  rw [E_bind, E_oracleHash, if_pos (by rw [hc]; exact hne'), E_pure]
+  rw [E_bind, E_oracleHash, ite_eq_left (by rw [hc]; exact hne'), E_pure]
 
 /-! ## The stage interfaces -/
 

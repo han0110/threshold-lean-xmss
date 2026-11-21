@@ -279,6 +279,7 @@ theorem pins_inputQuery (ctx : Context C) (job : Job) : Pins (E := E) h prims (i
   · exact pins_pure h prims _
 
 include prims in
+omit [Fintype E] [DecidableEq E] in
 /-- The input sharings of a batch with `H` fixed to `h` are `batchInputs`. -/
 theorem holds_inputs (ctx : Context C) (jobs : List Job) :
     Holds (E := E) h (· = batchInputs h ctx.keys.seed jobs ctx.self) (jobs.mapM (inputShares (G := RealSpec) ctx)) := by

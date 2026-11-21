@@ -202,9 +202,9 @@ theorem keyedSplitOracle_run_stopRisk_le (x : SigningSecurityProof.Keys3 C)
   by_cases halt : SigningGuessProof.AlternativeCommitment x.2.1 x.1 s.1.1
   · refine (SigningPartnerBoundProof.tsum_probOutput_mul_le_of_const _ _ 0 fun r hr => ?_).trans zero_le
     have hle := SigningReleasedAlignProof.keyed_run_cache_le keyOf ob s r hr
-    simp only [SigningOwnR1.stopRisk, if_pos (SigningGuessProof.alternativeCommitment_mono _ _ _ _ hle halt),
+    simp only [SigningOwnR1.stopRisk, ite_eq_left (SigningGuessProof.alternativeCommitment_mono _ _ _ _ hle halt),
       le_refl]
-  rw [SigningOwnR1.stopRisk, if_neg halt]
+  rw [SigningOwnR1.stopRisk, ite_eq_right halt]
   have hpt : ∀ (cache : HashCache C) (n : Monitor), SigningOwnR1.stopRisk x cache n ≤ n.risk := by
     intro cache n
     unfold SigningOwnR1.stopRisk
@@ -262,9 +262,9 @@ theorem ledgerStep_world (x : SigningSecurityProof.Keys3 C) (t : (WorldSpec C).D
   by_cases halt : SigningGuessProof.AlternativeCommitment x.2.1 x.1 p.1.1.1.1.1.1
   · refine (SigningPartnerBoundProof.tsum_probOutput_mul_le_of_const _ _ 0 fun z hz => ?_).trans zero_le
     have hle := world_cache_le prims x t (p.1.1, p.2) _ (ledgerWorld_support prims x t p z hz).1
-    simp only [SigningOwnR1.stopRisk, if_pos (SigningGuessProof.alternativeCommitment_mono _ _ _ _ hle halt),
+    simp only [SigningOwnR1.stopRisk, ite_eq_left (SigningGuessProof.alternativeCommitment_mono _ _ _ _ hle halt),
       le_refl]
-  rw [stopCharge, if_neg halt]
+  rw [stopCharge, ite_eq_right halt]
   simp only [ledgerWorld, StateT.run_mk, OracleComp.tsum_prEvent_map_mul]
   simp only [SigningReleasedLinkProof.world, SigningOneRunProof.keyedSplitWorld, StateT.run_mk,
     OracleComp.tsum_prEvent_bind_mul,

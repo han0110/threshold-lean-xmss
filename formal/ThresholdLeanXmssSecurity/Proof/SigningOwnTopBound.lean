@@ -110,7 +110,7 @@ theorem top_block_le {β : Type} (block : OracleComp (Query C →ₒ HashOutput)
       (liftFree (SigningHitProof.hashEmbed block))).run s)
     · simp [guarded, SigningOwnHit.programmed_run prims _ s hp r hr]
     · simp [prEvent_eq_zero_of_not_mem_support _ hr]
-  rw [topPotential, guarded, if_neg hp]
+  rw [topPotential, guarded, ite_eq_right hp]
   calc _ ≤ ∑' r, Pr{let z ← ((simulateQ (loggedImpl prims)
         (liftFree (SigningHitProof.hashEmbed block))).run s)}[z = r] *
           SigningGuessProof.topPartnerPotential x r.2.1.1 := by
@@ -569,8 +569,8 @@ theorem topOwn : TopOwn prims (C := C) := by
   refine ENNReal.tsum_le_tsum fun z => ?_
   by_cases hz : z ∈ support (loggedRun prims A x)
   · by_cases hw : ∃ key, SigningGuessProof.ResolvedTopPartner x key z.2.1.1
-    · simp only [hw, if_true, topPotential, guarded,
-        if_neg (noProgramQuery prims C A x z hz)]
+    · simp only [hw, ite_true, topPotential, guarded,
+        ite_eq_right (noProgramQuery prims C A x z hz)]
       simpa only [mul_one] using mul_le_mul_right
         (SigningGuessProof.topPartnerPotential_terminal x z.2.1.1 hw) (Pr{let y ← loggedRun prims A x}[y = z])
     · simp [hw]

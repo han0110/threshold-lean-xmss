@@ -348,6 +348,7 @@ def checkRest (K : Constants C E) (i : C.Party) (v : E × E × E × Shares C E �
     RunM C E (CheckSpec C E) Unit :=
   finalRest K i v.1 v.2.1 v.2.2.1 v.2.2.2.1 v.2.2.2.2
 
+omit [Fintype E] [DecidableEq E] [SampleableType E] in
 /-- A check with a tuple is its head and then its rest. -/
 theorem check_head_rest (K : Constants C E) (i : C.Party) (tuples : List (Tuple C))
     (h : (tuples.map (·.count)).sum ≠ 0) :

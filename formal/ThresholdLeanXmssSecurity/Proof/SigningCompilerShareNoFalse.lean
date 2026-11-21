@@ -56,7 +56,7 @@ theorem tau_top_start (s : HiddenKey → Digest) (pads : Point → Digest)
   have layers : topLayer ≠ bottomLayer := by decide
   simp only [tau, layers, false_and, ↓reduceDIte]
   have hb : ∃ b', topKey b = topKey b' := ⟨b, rfl⟩
-  rw [dif_pos hb]
+  rw [dite_eq_left hb]
   rw [← topKey_injective (Classical.choose_spec hb)]
 
 /-- The compiler's visible pad map agrees with the fixed private table. -/

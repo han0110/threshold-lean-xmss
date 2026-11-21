@@ -89,9 +89,9 @@ theorem completionPotential_recorded_block_le {α β : Type} (relevant : Query C
         simp only [StateT.run_map, prEvent_map]
         change Pr{let w ← B.run r.2}[CompletedHit relevant (T r.1) (merged w.1.2)] ≤ _
         by_cases hbad : CompletedHit relevant (T r.1) cache
-        · rw [if_pos hbad]
+        · rw [ite_eq_left hbad]
           exact (prEvent_le_one _)
-        · rw [if_neg hbad]
+        · rw [ite_eq_right hbad]
           calc
             _ ≤ Pr{let _ ← B.run r.2}[False] := by
               apply prEvent_mono_of_support _ _ _

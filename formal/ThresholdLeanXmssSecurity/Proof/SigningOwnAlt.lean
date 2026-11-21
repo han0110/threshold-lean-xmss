@@ -135,7 +135,7 @@ theorem altLe_block {β : Type} (block : OracleComp (Query C →ₒ HashOutput) 
       (liftFree (SigningHitProof.hashEmbed block))).run s)
     · simp [guarded, SigningOwnHit.programmed_run prims _ s hp r hr]
     · simp [prEvent_eq_zero_of_not_mem_support _ hr]
-  conv_rhs => rw [altPotential, guarded, if_neg hp]
+  conv_rhs => rw [altPotential, guarded, ite_eq_right hp]
   have hc := SigningOwnPotential.logged_block_potential_le prims
     (SigningGuessProof.RawCommitmentInput x.1) (SigningGuessProof.rawCommitmentForest x.2.1 x.1)
     (fun _ => SigningGuessProof.commitmentTargets x.2.1 x.1) block s hcovered
@@ -559,7 +559,7 @@ theorem altOwn : AltOwn prims (C := C) := by
   refine ENNReal.tsum_le_tsum fun z => ?_
   by_cases hz : z ∈ support (loggedRun prims A x)
   · by_cases hw : SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1
-    · simp only [hw, if_true, guarded, if_neg (noProgramQuery prims C A x z hz)]
+    · simp only [hw, ite_true, guarded, ite_eq_right (noProgramQuery prims C A x z hz)]
       rw [SigningHitProof.completionPotential_terminal _ _ _
         (SigningGuessProof.alternativeCommitment_completed x.2.1 x.1 _ hw), mul_one]
     · simp [hw]

@@ -123,7 +123,7 @@ theorem sliceExtend_local (K : Constants C E) (D : C.Coalition) (Ad : CheckAdver
     funext i; rw [sliceProg_succ]; rfl
   rw [hp, executePhase_extend_live K D Ad F st live hs
     (fun i => sliceProducts τ count j (xs i) (ys i)) (fun i => sliceNext K τ count n j (xs i) (ys i) (V i) i),
-    if_pos hall]
+    ite_eq_left hall]
   change (runFunctionality localRoles D (rightAdversary (leftAdversary Ad)) (FextendMult K) st
     (sliceInputs D τ count j xs ys) >>= _) = _
   rw [runFunctionality_extend_local K D (rightAdversary (leftAdversary Ad)) st _ (sliceInputs_some D τ count j xs ys)]
@@ -146,7 +146,7 @@ theorem sliceExtend_missing (K : Constants C E) (D : C.Coalition) (Ad : CheckAdv
           ((hybridCheckBuildingBlocks K i).extendMult (sliceProducts τ count j (xs i) (ys i))
         >>= sliceNext K τ count n j (xs i) (ys i) (V i) i).run' (hs i) else failure) := by
     funext i; rw [sliceProg_succ]; rfl
-  rw [hp, executePhase_extend_live K D Ad F st live hs _ _, if_neg hmiss]
+  rw [hp, executePhase_extend_live K D Ad F st live hs _ _, ite_eq_right hmiss]
 
 /-- The output share of the multiplication of a slice step at an honest receiver. -/
 def sliceOut {σ' : Type} (K : Constants C E) (D : C.Coalition) (τ : List E) (count j : ℕ) (xs ys : C.Party → Shares C E)
@@ -155,6 +155,7 @@ def sliceOut {σ' : Type} (K : Constants C E) (D : C.Coalition) (τ : List E) (c
   (multFinish D 2 (filler K .peer) (fun g => extendTotal K D (sliceInputs D τ count j xs ys) g + pa.2.1 g)
     pa.2.2.1 pa.2.2.2.1 pa.2.2.2.2 fresh i).getD 0
 
+omit [Fintype E] [DecidableEq E] in
 /-- The programs after the multiplication of a slice step. -/
 lemma sliceAfter_form (K : Constants C E) (D : C.Coalition) (Ad : CheckAdversary C E Ia) (F' : ℕ) (st : Ad.State)
     (hs : C.Party → RunState C) (τ : List E) (count n j : ℕ) (xs ys : C.Party → Shares C E) (V : C.Party → E)
@@ -178,8 +179,8 @@ lemma sliceAfter_form (K : Constants C E) (D : C.Coalition) (Ad : CheckAdversary
   intro i hi
   rw [multFinish_honest D 2 _ _ _ _ _ _ i hi]
   by_cases hr : i ∈ pa.2.2.2.2
-  · simp only [hr, if_true, afterExtend, sliceOut, sliceNext]
-  · simp only [hr, if_false, afterExtend]
+  · simp only [hr, ite_true, afterExtend, sliceOut, sliceNext]
+  · simp only [hr, ite_false, afterExtend]
 
 /-- The challenge continuation of a slice step. -/
 def sliceCont (K : Constants C E) (τ : List E) (count n j : ℕ) (xs ys : C.Party → Shares C E) (V : C.Party → E)
@@ -280,7 +281,7 @@ theorem executePhase_afterStart_common {α : Type} (prims : Primitives) (K : Con
     by_cases hi : i ∉ D.1 ∧ i ∈ rec
     · simp only [hi, afterStart, oa, f, oracleStep, (htag i hi.1).1, (htag i hi.1).2]
       rfl
-    · simp only [hi, if_false, afterStart, oa, f, localStep_pure', pure_bind]
+    · simp only [hi, ite_false, afterStart, oa, f, localStep_pure', pure_bind]
   rw [hp]
   refine (executePhase_local_fallback prims D Ad _ fuel st oa (fun _ => []) f).trans ?_
   have hsel : SameRun prims (OverPermutation.sequenceFin (fun i => if i ∈ D.1 then pure [] else oa i))
@@ -489,7 +490,7 @@ lemma tupleAt_part (K : Constants C E) {counts : List ℕ} {D : C.Coalition} {x 
   rcases hpart with rfl | rfl | rfl
   · obtain ⟨j, hjT, hj, f, hf, hr⟩ := hviews (·.x)
     rw [key j hjT (by exact hj)]
-    simp only [hj, if_false, Option.bind_some] at hf
+    simp only [hj, ite_false, Option.bind_some] at hf
     obtain ⟨τ, hτ, -⟩ := getElem?_some_of_lt K hx j hj m hm
     rw [hτ] at hf ⊢
     simp only [Option.map_some, Option.some.injEq] at hf ⊢
@@ -497,7 +498,7 @@ lemma tupleAt_part (K : Constants C E) {counts : List ℕ} {D : C.Coalition} {x 
     rw [e, ← hf]
   · obtain ⟨j, hjT, hj, f, hf, hr⟩ := hviews (·.y)
     rw [key j hjT (by exact hj)]
-    simp only [hj, if_false, Option.bind_some] at hf
+    simp only [hj, ite_false, Option.bind_some] at hf
     obtain ⟨τ, hτ, -⟩ := getElem?_some_of_lt K hx j hj m hm
     rw [hτ] at hf ⊢
     simp only [Option.map_some, Option.some.injEq] at hf ⊢
@@ -505,7 +506,7 @@ lemma tupleAt_part (K : Constants C E) {counts : List ℕ} {D : C.Coalition} {x 
     rw [e, ← hf]
   · obtain ⟨j, hjT, hj, f, hf, hr⟩ := hviews (·.z)
     rw [key j hjT (by exact hj)]
-    simp only [hj, if_false, Option.bind_some] at hf
+    simp only [hj, ite_false, Option.bind_some] at hf
     obtain ⟨τ, hτ, -⟩ := getElem?_some_of_lt K hx j hj m hm
     rw [hτ] at hf ⊢
     simp only [Option.map_some, Option.some.injEq] at hf ⊢

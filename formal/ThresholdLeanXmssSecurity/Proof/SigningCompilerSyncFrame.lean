@@ -547,7 +547,7 @@ theorem backendT_preserves (permit : (SpecX C).Domain → Prop)
     subst r; exact h
   · by_cases hp : Constrained p
     · simp only [shareBackendTagT, backendRaw, resolvePrivateTable_lift,
-        eagerBackend, SigningCompilerUntil.fuse, shareBackendTag, hp, dif_pos] at hr
+        eagerBackend, SigningCompilerUntil.fuse, shareBackendTag, hp, dite_eq_left] at hr
       change r ∈ support ((fun z => (z.1.1, (z.1.2, z.2))) <$>
         (simulateQ (eagerHandlerTag τ g) (do
           let value ← shareQueryTag (.complete ⟨p, hp⟩ target (tagOf st.1))

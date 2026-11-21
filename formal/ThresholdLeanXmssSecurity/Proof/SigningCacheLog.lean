@@ -84,7 +84,7 @@ theorem cacheFromLog_hash (q : Query C) (s : LoggedState C) (hs : CacheFromLog s
   rw [hlog q', ← hs q' hq']
   by_cases he : q = q'
   · subst he
-    rw [if_pos rfl, hself]
+    rw [ite_eq_left rfl, hself]
     cases hc : s.1.1 q with
     | none => rfl
     | some v =>
@@ -92,7 +92,7 @@ theorem cacheFromLog_hash (q : Query C) (s : LoggedState C) (hs : CacheFromLog s
       rw [hself] at this
       rw [this]
       rfl
-  · rw [if_neg he, hother q' (Ne.symm he)]
+  · rw [ite_eq_right he, hother q' (Ne.symm he)]
     cases s.1.1 q' <;> rfl
 
 /-- Each world call other than a programming query keeps `CacheFromLog`. -/
@@ -173,7 +173,7 @@ theorem monitoredOracle_run_cached (keyOf : XmssSecurity.HashInput → Option Xm
   cases q with
   | hash input =>
     have hseen : input ∈ m.seen := hcov input (by rw [ho]; exact Option.some_ne_none _)
-    simp only [trialStep, if_pos hseen]
+    simp only [trialStep, ite_eq_left hseen]
   | _ => rfl
 
 /-- `XmssSecurity.Concrete.CacheReplay.randomOracle_rerun_largerCache_eq_pure_of_mem_support` of

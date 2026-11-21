@@ -157,8 +157,8 @@ theorem sum_sum_pairs {R : Type} [AddCommMonoid R] (K : Constants C E)
   rw [Finset.sum_comm]
   refine Finset.sum_congr rfl fun AB _ => ?_
   obtain ⟨i, hi, hunique⟩ := K.pairs_unique AB
-  rw [Finset.sum_eq_single i (fun j _ hj => if_neg fun hj' => hj (hunique j hj')) (by simp)]
-  exact if_pos hi
+  rw [Finset.sum_eq_single i (fun j _ hj => ite_eq_right fun hj' => hj (hunique j hj')) (by simp)]
+  exact ite_eq_left hi
 
 omit [Fintype E] [DecidableEq E] in
 /-- The shares of `MulRep` sum to the product. This is a local ingredient of CDI05, Section 4, and
@@ -413,18 +413,18 @@ theorem coinProductExponent_apply (d offset width a : ℕ) (i : Fin d) :
     by_cases hab : a.testBit b
     · by_cases hbi : offset + b = i.val
       · simp [coinExponent, hab, hbi, i.2]
-      · simp only [coinExponent, hab, if_true, hbi, and_false, if_false]
+      · simp only [coinExponent, hab, ite_true, hbi, and_false, ite_false]
         split_ifs with h
-        · rw [Finsupp.single_apply, if_neg]; intro hc; exact hbi (by rw [← hc])
+        · rw [Finsupp.single_apply, ite_eq_right]; intro hc; exact hbi (by rw [← hc])
         · rfl
     · simp [hab]
   simp_rw [hterm]
   by_cases hmem : offset ≤ i.val ∧ i.val < offset + width
   · rw [Finset.sum_eq_single_of_mem (i.val - offset) (by simp; omega)]
     · by_cases hbit : a.testBit (i.val - offset) <;> simp [hbit, hmem]
-    · intro b _ hb; rw [if_neg]; omega
-  · rw [Finset.sum_eq_zero, if_neg (by tauto)]
-    intro b hb; simp at hb; rw [if_neg]; omega
+    · intro b _ hb; rw [ite_eq_right]; omega
+  · rw [Finset.sum_eq_zero, ite_eq_right (by tauto)]
+    intro b hb; simp at hb; rw [ite_eq_right]; omega
 
 theorem coinProductExponent_injective (d : ℕ) {a a' : ℕ} (ha : a < 2 ^ d) (ha' : a' < 2 ^ d)
     (h : coinProductExponent d 0 d a = coinProductExponent d 0 d a') : a = a' := by
@@ -436,6 +436,7 @@ theorem coinProductExponent_injective (d : ℕ) {a a' : ℕ} (ha : a < 2 ^ d) (h
   · have hle : 2 ^ d ≤ 2 ^ j := Nat.pow_le_pow_right two_pos (by omega)
     rw [Nat.testBit_lt_two_pow (ha.trans_le hle), Nat.testBit_lt_two_pow (ha'.trans_le hle)]
 
+omit [Algebra Bit E] in
 /-- The de-linearization keeps a wrong tuple, except with probability `s / (|E| - 1) + (d - s) / |E|`
 over its coins. The weight `τ^a` of word `a < 2^d` is multilinear in the `d` coins. The first `s`
 coins are the slice coins, which are nonzero because the check aborts on a zero slice coin, and the
@@ -463,10 +464,10 @@ theorem gs20_lemma8_delinearization (s d : ℕ) (hs : s ≤ d) (δ : ℕ → E) 
     intro hP
     have h := congrArg (fun q => q.coeff (e a₀)) hP
     simp only [P, coeff_sum, coeff_monomial, AddMonoidAlgebra.coeff_zero, Finsupp.coe_zero, Pi.zero_apply] at h
-    rw [Finset.sum_eq_single_of_mem a₀ (by simpa using ha₀), if_pos rfl] at h
+    rw [Finset.sum_eq_single_of_mem a₀ (by simpa using ha₀), ite_eq_left rfl] at h
     · exact hne h
     · intro a ha hne'
-      rw [if_neg fun heq => hne' (coinProductExponent_injective d (by simpa using ha) ha₀ heq)]
+      rw [ite_eq_right fun heq => hne' (coinProductExponent_injective d (by simpa using ha) ha₀ heq)]
   have hdegree : ∀ i, P.degreeOf i ≤ 1 := by
     intro i
     rw [degreeOf_le_iff]
@@ -526,8 +527,8 @@ theorem gs20_lemma8_delinearization (s d : ℕ) (hs : s ≤ d) (δ : ℕ → E) 
     simp_rw [hS]
     rw [Fin.prod_univ_eq_prod_range (fun i => if i < s then ((N - 1 : ℕ) : ℚ≥0) else (N : ℚ≥0)) d,
       show d = s + (d - s) by omega, Finset.prod_range_add]
-    rw [Finset.prod_congr rfl (fun i hi => if_pos (mem_range.mp hi)),
-      Finset.prod_congr rfl (fun i _ => if_neg (by omega))]
+    rw [Finset.prod_congr rfl (fun i hi => ite_eq_left (mem_range.mp hi)),
+      Finset.prod_congr rfl (fun i _ => ite_eq_right (by omega))]
     simp
   have hsum : ∑ i, (P.degreeOf i / #(S i) : ℚ≥0) ≤
       (s : ℚ≥0) / ((N - 1 : ℕ) : ℚ≥0) + ((d - s : ℕ) : ℚ≥0) / (N : ℚ≥0) := by
@@ -539,10 +540,10 @@ theorem gs20_lemma8_delinearization (s d : ℕ) (hs : s ≤ d) (δ : ℕ → E) 
             show d = s + (d - s) by omega, Finset.sum_range_add]
           have h1 : ∑ i ∈ range s, (1 / if i < s then ((N - 1 : ℕ) : ℚ≥0) else (N : ℚ≥0)) =
               ∑ _i ∈ range s, 1 / ((N - 1 : ℕ) : ℚ≥0) :=
-            Finset.sum_congr rfl fun i hi => by rw [if_pos (mem_range.mp hi)]
+            Finset.sum_congr rfl fun i hi => by rw [ite_eq_left (mem_range.mp hi)]
           have h2 : ∑ i ∈ range (d - s), (1 / if s + i < s then ((N - 1 : ℕ) : ℚ≥0) else (N : ℚ≥0)) =
               ∑ _i ∈ range (d - s), 1 / (N : ℚ≥0) :=
-            Finset.sum_congr rfl fun i _ => by rw [if_neg (by omega)]
+            Finset.sum_congr rfl fun i _ => by rw [ite_eq_right (by omega)]
           rw [h1, h2]
           simp [div_eq_mul_inv]
   rw [hprod] at hsz
@@ -575,7 +576,7 @@ theorem prawns_lemma52_guess (game : ProbComp (Bool × C.Term)) [Nonempty C.Term
     intro g
     rw [prEvent_map]
     by_cases hg : g.1 = true
-    · simp only [hg, true_and, if_true]
+    · simp only [hg, true_and, ite_true]
       rw [SampleableType.prEvent_uniformSample_eq_singleton, hcard]
       exact ENNReal.inv_mul_cancel hpos (ENNReal.natCast_ne_top _)
     · simp [hg]

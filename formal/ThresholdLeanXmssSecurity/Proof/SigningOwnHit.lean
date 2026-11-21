@@ -59,7 +59,7 @@ theorem gatedContinuation_sum_step_unseen {ι α : Type} [Fintype ι]
         rw [Finset.sum_eq_single i]
         · by_cases hs : GateSeen (gate i) s.2
           · simp [hs]
-          · rw [if_pos ⟨hs, hi⟩, if_pos ⟨i, hi, hs⟩]
+          · rw [ite_eq_left ⟨hs, hi⟩, ite_eq_left ⟨i, hi, hs⟩]
         · intro j _ hji
           have hne : t ≠ gate j := fun h => hji (hinj (h.symm.trans hi))
           simp [hne]
@@ -71,7 +71,7 @@ open Classical in
 /-- The expected number of calls on a gate that is not seen is at most the number of the gates.
 Each such call makes its gate seen. -/
 theorem unseenGate_cost_le {ι α : Type} [Fintype ι] (gate : ι → (WorldSpec C).Domain)
-    (hinj : Function.Injective gate) (oa : OracleComp (WorldSpec C) α) (s : LoggedState C) :
+    (_hinj : Function.Injective gate) (oa : OracleComp (WorldSpec C) α) (s : LoggedState C) :
     XmssSecurity.expectedSimulatedCost (loggedImpl prims)
       (fun t s => if ∃ i, t = gate i ∧ ¬GateSeen (gate i) s.2 then 1 else 0) oa s ≤
         (Fintype.card ι : ℝ≥0∞) := by
@@ -304,7 +304,7 @@ theorem hit_block_le {β : Type} (block : OracleComp (Query C →ₒ HashOutput)
       (liftFree (SigningHitProof.hashEmbed block))).run s)
     · simp [guarded, programmed_run prims _ s hp r hr]
     · simp [prEvent_eq_zero_of_not_mem_support _ hr]
-  rw [guarded, if_neg hp]
+  rw [guarded, ite_eq_right hp]
   have hc := SigningOwnPotential.logged_block_potential_le prims (SigningHitProof.forestRelevant x.1)
     (SigningHitProof.forestRun x) (fun _ record => SigningHitProof.forestTargets x.1 record) block s
     hcovered
@@ -683,7 +683,7 @@ theorem bound_of_calls {α : Type} {oa : OracleComp HashSpec α} {n : ℕ}
   | query_bind t k ih =>
     unfold SigningOwnVerify.Calls at h ih
     rw [isQueryBoundP_query_bind_iff] at h ⊢
-    simp only [not_true_eq_false, false_or, if_true] at h
+    simp only [not_true_eq_false, false_or, ite_true] at h
     refine ⟨Or.inr h.1, fun u => ?_⟩
     split_ifs
     · exact ih u (h.2 u)
@@ -894,9 +894,9 @@ theorem hit_dealer_rise (A : TsigAdversary C) (x : Keys3 C) (T : C.Term)
     by_cases hb : Programmed s.2 ∨ IsProgram t
     · refine le_trans (le_of_eq (OracleComp.tsum_prEvent_mul_of_const_on_support _ (c := 0)
         (fun r hr => ?_))) zero_le
-      rw [guarded, if_pos (by rw [loggedImpl_log prims t s r hr, programmed_logQuery]; exact hb)]
+      rw [guarded, ite_eq_left (by rw [loggedImpl_log prims t s r hr, programmed_logQuery]; exact hb)]
     push Not at hb
-    rw [guarded, if_neg hb.1]
+    rw [guarded, ite_eq_right hb.1]
     have h1 := gatedContinuation_sum_step_unseen prims (SigningDescentProof.finalRun A x)
       (SigningHitProof.ForestExceptionAt prims x) gate (topGate_injective x T) t s ε
       (fun b hb' he => by subst he; exact hgate b s (hs hb.1) hb')
@@ -913,9 +913,9 @@ theorem hit_dealer_rise (A : TsigAdversary C) (x : Keys3 C) (T : C.Term)
   rw [XmssSecurity.expectedSimulatedCost_const_mul] at hG
   have hcost := unseenGate_cost_le prims gate (topGate_injective x T) prog loggedInit
   have hG0 : guarded G loggedInit = 0 := by
-    rw [guarded, if_neg (by simp [loggedInit, Programmed])]
+    rw [guarded, ite_eq_right (by simp [loggedInit, Programmed])]
     exact Finset.sum_eq_zero fun b _ =>
-      if_neg (by simp [SigningHitProof.GateSeen, loggedInit])
+      ite_eq_right (by simp [SigningHitProof.GateSeen, loggedInit])
   have hc := SigningOwnPotential.logged_block_potential_le prims (SigningHitProof.forestRelevant x.1)
     (SigningHitProof.forestRun x) (fun _ record => SigningHitProof.forestTargets x.1 record)
     (referenceTree SigningHitProof.forestHash (SigningHitProof.forestValue x.2.1) x.1 emptyTop .top)

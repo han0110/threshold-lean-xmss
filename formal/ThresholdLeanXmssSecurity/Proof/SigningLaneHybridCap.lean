@@ -52,7 +52,7 @@ theorem hiddenCandidate_none_of_isMsg (P : PublicParameter) (input : HashInput)
     rintro ⟨b, l, p, v, rfl⟩
     erw [SigningGuessLinkProof.topChainInput_eq_bridge] at h
     exact byte23_chain _ _ _ _ _ h
-  simp only [hiddenCandidate, dif_neg hc, dif_neg hr, dif_neg hb, dif_neg ht]
+  simp only [hiddenCandidate, dite_eq_right hc, dite_eq_right hr, dite_eq_right hb, dite_eq_right ht]
 
 variable {C : Committee}
 
@@ -1006,7 +1006,7 @@ theorem compilerPotential_step_stale (P : PublicParameter) (seeds : C.Term → H
     intro r hr
     simp only [countImpl, StateT.run_mk, support_map] at hr
     obtain ⟨a, ha, rfl⟩ := hr
-    simp only [compilerPotential, if_pos (compilerImpl_stale P seeds t st.1 hs a ha)]
+    simp only [compilerPotential, ite_eq_left (compilerImpl_stale P seeds t st.1 hs a ha)]
   rw [SigningLane2Proof.tsum_congr_support _ _ (fun _ => 0) hz]
   simp only [mul_zero, tsum_zero]
   exact zero_le
@@ -1026,8 +1026,8 @@ theorem compilerPotential_initial (P : PublicParameter) (q : ℕ) :
     fun _ _ => rfl
   have h1 := XmssSecurity.Ghost.f1_initial (SigningLane2FlatProof.laneKey P) hc
   have h3 := XmssSecurity.Ghost.f3_initial (SigningLane2FlatProof.laneKey P) hc q
-  rw [compilerPotential, if_neg (by simp [compilerInit]), SigningLane2Proof.lane2Potential,
-    if_pos (Nat.zero_le q), SigningLane2Proof.lane2Sum]
+  rw [compilerPotential, ite_eq_right (by simp [compilerInit]), SigningLane2Proof.lane2Potential,
+    ite_eq_left (Nat.zero_le q), SigningLane2Proof.lane2Sum]
   simp only [compilerView_initial, h1, h3, zero_tsub, zero_add]
   simp [XmssSecurity.Ghost.f4, XmssSecurity.Ghost.postPot_nil]
 
@@ -1043,13 +1043,13 @@ theorem compilerEvent_le_potential (P : PublicParameter) (q : ℕ) (st : Compile
     rcases he with he | he
     · refine le_trans ?_ le_self_add
       unfold XmssSecurity.Ghost.f1
-      rw [if_pos he, mul_one, hN]
+      rw [ite_eq_left he, mul_one, hN]
       exact le_self_add
     · refine le_trans ?_ le_add_self
       unfold XmssSecurity.Ghost.f4 XmssSecurity.Ghost.postPot
-      rw [if_pos he, mul_one, hN]
-  rw [compilerPotential, if_neg (by simp [hs]), SigningLane2Proof.lane2Potential,
-    if_pos hq, SigningLane2Proof.lane2Sum]
+      rw [ite_eq_left he, mul_one, hN]
+  rw [compilerPotential, ite_eq_right (by simp [hs]), SigningLane2Proof.lane2Potential,
+    ite_eq_left hq, SigningLane2Proof.lane2Sum]
   calc (1 : ℝ≥0∞) = (2 ^ 128 * 2 ^ 128) * (2 ^ 128 * 2 ^ 128)⁻¹ :=
       (ENNReal.mul_inv_cancel (by norm_num) (by norm_num)).symm
     _ ≤ _ := by
@@ -1187,10 +1187,10 @@ potential. The moment term decreases with the remaining budget. -/
 theorem compilerPotential_tick (P : PublicParameter) (q : ℕ) (st : CompilerBackend C)
     (k : ℕ) : compilerPotential P q (st, k + 1) ≤ compilerPotential P q (st, k) := by
   by_cases hs : st.trace.2 = true
-  · simp only [compilerPotential, if_pos hs, le_refl]
-  simp only [compilerPotential, if_neg hs, SigningLane2Proof.lane2Potential]
+  · simp only [compilerPotential, ite_eq_left hs, le_refl]
+  simp only [compilerPotential, ite_eq_right hs, SigningLane2Proof.lane2Potential]
   by_cases hk : k + 1 ≤ q
-  · rw [if_pos hk, if_pos (by omega : k ≤ q)]
+  · rw [ite_eq_left hk, ite_eq_left (by omega : k ≤ q)]
     dsimp only [SigningLane2Proof.lane2Sum]
     have h3 : XmssSecurity.Ghost.f3 (SigningLane2FlatProof.laneKey P) q
         (compilerView st, k + 1) ≤
@@ -1200,7 +1200,7 @@ theorem compilerPotential_tick (P : PublicParameter) (q : ℕ) (st : CompilerBac
     refine add_le_add ?_ le_rfl
     refine add_le_add le_rfl ?_
     exact tsub_le_tsub_right h3 _
-  · rw [if_neg hk]
+  · rw [ite_eq_right hk]
     exact zero_le
 
 /-- A pending hash answer changes only the symbolic table. -/
@@ -1334,7 +1334,7 @@ theorem compilerImpl_view_not_hash (P : PublicParameter) (seeds : C.Term → Has
     · cases hcall
       exact ht input rfl
   simp only [compilerImpl, StateT.run, SigningR1FixedProof.cachedExtra,
-    if_neg (hn st.data.cache (compilerSigning st)), simulateQ_pure] at hr
+    ite_eq_right (hn st.data.cache (compilerSigning st)), simulateQ_pure] at hr
   change r ∈ support (do
     let a ← (deferredImpl (.hash t)).run st.data
     pure (a.1, { st with data := a.2, trace := (
@@ -1343,7 +1343,7 @@ theorem compilerImpl_view_not_hash (P : PublicParameter) (seeds : C.Term → Has
   simp only [mem_support_bind_iff, mem_support_pure_iff] at hr
   obtain ⟨a, ha, rfl⟩ := hr
   simp only [compilerView, SigningLaneUnionProof.traceStepAt,
-    dif_neg (hn st.data.cache (compilerSigning st))]
+    dite_eq_right (hn st.data.cache (compilerSigning st))]
   exact ⟨Prod.ext (deferredImpl_keptView_not_hash t ht st.data a ha) rfl, trivial⟩
 
 /-- All concrete non-`Th` cases of the local contract have zero potential increase. -/
@@ -1484,14 +1484,14 @@ theorem compilerImpl_boundExtends (P : PublicParameter) (seeds : C.Term → Hash
       change (if st.bound e = none then Function.update st.bound e (some message)
         else st.bound) f = some old
       by_cases he : st.bound e = none
-      · rw [if_pos he]
+      · rw [ite_eq_left he]
         have hfe : f ≠ e := by
           intro h
           subst f
           rw [he] at hb
           cases hb
         simpa only [Function.update_of_ne hfe] using hb
-      · simpa only [if_neg he] using hb
+      · simpa only [ite_eq_right he] using hb
   | _ =>
       simp only [compilerImpl, StateT.run, support_map] at hr
       obtain ⟨a, _, rfl⟩ := hr

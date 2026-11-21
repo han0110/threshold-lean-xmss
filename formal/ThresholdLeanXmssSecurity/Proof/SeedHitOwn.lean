@@ -92,10 +92,10 @@ theorem sum_ff_le_own (x : Keys3 C) (σ : KeySlot C) (top : TopTree) {α : Type}
     have hbud : ct + n' ≤ n := by
       obtain ⟨h1, h2⟩ := roCost_counted t
       by_cases hc : SigningOwnCounted t
-      · rw [if_pos hc] at hn'
+      · rw [ite_eq_left hc] at hn'
         have := hq.1.resolve_left (not_not.mpr hc)
         omega
-      · rw [if_neg hc] at hn'
+      · rw [ite_eq_right hc] at hn'
         have : roCost t = 0 := by by_contra h; exact hc (h2 h)
         omega
     -- the hit part

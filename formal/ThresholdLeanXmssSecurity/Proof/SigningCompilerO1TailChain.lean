@@ -144,7 +144,7 @@ theorem tailChain_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (t
     (hrows : ∀ d' : XmssSecurity.ChainStep,
       (∀ T, (T, Point.chain bottomLayer e l (chainStepDigit d')) ∈ (dataOf x b.2).virtual) ∧
         (dataOf x b.2).pending (.bottom e l d') ≠ none)
-    (ha : ¬RealStop q a) (hb : ¬Stop b.2) (hmark : b.2.1.2 = false)
+    (ha : ¬RealStop q a) (_hb : ¬Stop b.2) (hmark : b.2.1.2 = false)
     (ra : Digest × RealState C)
     (hra : ra ∈ support ((realHonest prims x s pads u rest
       (prfValue x.2.1 (.chain bottomLayer e l d))).run a))

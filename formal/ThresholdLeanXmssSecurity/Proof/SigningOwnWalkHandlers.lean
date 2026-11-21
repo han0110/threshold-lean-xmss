@@ -245,8 +245,8 @@ theorem baseInv_bind {src : SourceState C} {st : LState C} (h : BaseInv P seeds 
       else st.1.1.1.bound) = _
     rw [h.bound]
     rcases hfree with hb | hb
-    · rw [if_pos hb]
-    · rw [if_neg (by rw [hb]; simp)]
+    · rw [ite_eq_left hb]
+    · rw [ite_eq_right (by rw [hb]; simp)]
       funext e'
       by_cases he : e' = e
       · subst he

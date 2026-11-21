@@ -1107,7 +1107,7 @@ theorem walk_sourceVirtual_other {readyEx cachedEx : Option KeyIndex} (T : C.Ter
       have hlay : lay ≠ bottomLayer := by
         rintro rfl
         exact hpoint e rfl
-      simp only [hlay, if_false]
+      simp only [hlay, ite_false]
       exact Walk.pure _ fun _ _ h => h
 
 theorem walk_sourceTopEnd (b : XmssSecurity.TopIndex) (l : ChainIndex) :
@@ -1537,7 +1537,7 @@ theorem walk_sourceVirtual (T : C.Term) (point : Point) :
     unfold sourceVirtual
     refine Walk.conseq (c := 0 + (0 + (0 + 0))) (Walk.bind (walk_virtualCall_bottom P seeds Q s T e)
       fun _ => ?_) (fun _ _ h => h) (fun _ _ _ h => h) le_rfl
-    simp only [if_true]
+    simp only [ite_true]
     refine Walk.bind (walk_snapshot P seeds Q s (fun _ st => M st) (fun _ => hM)) fun y =>
       Walk.bind Walk.get fun src0 => ?_
     split

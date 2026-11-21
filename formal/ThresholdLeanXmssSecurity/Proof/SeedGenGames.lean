@@ -153,8 +153,8 @@ theorem costLe_setupSimulator_answer (phase : Phase) {O L : Type}
   refine (CostLe.mapM prims _ (C.parties.length * 1) C.parties fun j _ =>
     CostLe.mapM prims _ 1 C.parties fun i _ => ?_).bind prims fun _ => ?_
   · by_cases hji : j ∈ D.1 ∧ i ∉ D.1
-    · rw [dif_pos hji]; exact CostLe.program prims _ _
-    · rw [dif_neg hji]; exact (CostLe.pure prims _).mono prims (Nat.zero_le _)
+    · rw [dite_eq_left hji]; exact CostLe.program prims _ _
+    · rw [dite_eq_right hji]; exact (CostLe.pure prims _).mono prims (Nat.zero_le _)
   refine ((CostLe.executeRounds_observed prims D A step hround (setupRounds - 1) _ _).bind prims fun r => ?_).mono
     prims (Nat.add_zero _).le
   rcases r with ⟨⟨state, keys⟩, rest⟩
@@ -345,7 +345,7 @@ theorem setupView_honest_sender (phase : Phase) (D : C.Coalition) (parts : C.Par
   by_cases hji : j = i
   · subst j; simp [setupView, honestView]
   · rw [honestView_ne _ _ hji]
-    simp only [setupView, if_neg hji, hreceived i j hj hji]
+    simp only [setupView, ite_eq_right hji, hreceived i j hj hji]
 
 def setupPairViewInput (phase : Phase) (parts : C.Party → Parts C) (revealed : C.Party → Mail C E)
     (i : C.Party) (p : C.Pair) : Query C :=
@@ -564,7 +564,7 @@ theorem setup_hiddenTerm_derived (phase : Phase) (prims : Primitives) (coalition
     (D prims h (deriveKeys phase i (setupView phase i (parts i) (revealed i)))).2.1 T =
       h (termInput phase parts T) := by
   rw [D_deriveKeys]
-  simp only [hi, if_true]
+  simp only [hi, ite_true]
   rw [setup_hiddenTerm_input phase coalition parts revealed hreceived T hhidden i hi]
 
 /-- The echo-round inbox, including the abort frame of any honest operator that failed earlier. -/
@@ -588,8 +588,8 @@ theorem advance_setupEchoResume (phase : Phase) (i : C.Party)
   unfold exchangeResume
   split_ifs with ha hc
   · rfl
-  · rw [advance_require_bind, if_pos hc, advance_run_pure]
-  · rw [advance_require_bind, if_neg hc]
+  · rw [advance_require_bind, ite_eq_left hc, advance_run_pure]
+  · rw [advance_require_bind, ite_eq_right hc]
 
 /-- Aborts in the last inbox do not depend on the keys or the oracle table. -/
 theorem setupEchoInbox_isAbort (phase : Phase) (prims : Primitives) (coalition : C.Coalition)
@@ -623,8 +623,8 @@ theorem roundInbox_setupEchoStep (phase : Phase) (prims : Primitives) (coalition
   funext j
   unfold roundInbox setupEchoStep setupEchoInbox
   by_cases hj : j ∈ coalition.1
-  · simp only [hj, if_true]
-  · simp only [hj, false_or, if_false]
+  · simp only [hj, ite_true]
+  · simp only [hj, false_or, ite_false]
     by_cases ha : active j <;> simp [ha, Step.delivered]
 
 /-- The possible output of the final local step. -/
@@ -654,7 +654,7 @@ theorem stepRound_setupEchoStep (phase : Phase) (prims : Primitives) (coalition 
   have hc : ¬ (∃ i, i ∉ coalition.1 ∧
       (setupEchoStep phase prims coalition active h keys (E := E) i).callInput.isSome) := by
     simp only [callInput_real, Option.isSome_none, Bool.false_eq_true, and_false, exists_false, not_false_eq_true]
-  rw [if_neg (fun h => hc h.1)]
+  rw [ite_eq_right (fun h => hc h.1)]
   refine bind_congr fun r => ?_
   rcases r with ⟨st, sent⟩
   dsimp only
@@ -665,14 +665,14 @@ theorem stepRound_setupEchoStep (phase : Phase) (prims : Primitives) (coalition 
     congr 1
     funext i
     by_cases hi : i ∈ coalition.1 ∨ ¬ active i
-    · simp only [setupEchoStep, if_pos hi, setupEchoOutput]
+    · simp only [setupEchoStep, ite_eq_left hi, setupEchoOutput]
     · have hih : i ∉ coalition.1 := fun hh => hi (Or.inl hh)
-      rw [show setupEchoStep phase prims coalition active h keys (E := E) i = _ from if_neg hi]
-      simp only [if_neg hih]
+      rw [show setupEchoStep phase prims coalition active h keys (E := E) i = _ from ite_eq_right hi]
+      simp only [ite_eq_right hih]
       change worldRoles.honest (advance (exchangeResume _
         (roundInbox coalition sent (setupEchoStep phase prims coalition active h keys) i))) = _
       rw [roundInbox_setupEchoStep, advance_setupEchoResume]
-      simp only [worldRoles, free, setupEchoOutput, if_neg hi]
+      simp only [worldRoles, free, setupEchoOutput, ite_eq_right hi]
       exact simulateQ_pure _ _
   · rw [sequenceFin_pure, pure_bind]
 
@@ -796,7 +796,7 @@ theorem truncate_seedGenFullParameter (high : HashOutput) (parameter : PublicPar
   simp only [truncateHash, BitVec.getLsbD_extractLsb', Nat.zero_add]
   rw [seedGenFullParameter_getLsbD high parameter i (by
     unfold digestBits at hi; omega)]
-  simp only [hi, if_pos, decide_true, Bool.true_and]
+  simp only [hi, ite_eq_left, decide_true, Bool.true_and]
   rfl
 
 theorem seedGenFullParameter_restore (high : HashOutput) (parameter : PublicParameter) :
@@ -805,10 +805,10 @@ theorem seedGenFullParameter_restore (high : HashOutput) (parameter : PublicPara
   intro i hi
   refine (seedGenFullParameter_getLsbD _ _ i hi).trans ?_
   by_cases hl : i < digestBits
-  · rw [if_pos hl]
+  · rw [ite_eq_left hl]
     change (BitVec.extractLsb' 0 digestBits high).getLsbD i = high.getLsbD i
     simp only [BitVec.getLsbD_extractLsb', Nat.zero_add, hl, decide_true, Bool.true_and]
-  · rw [if_neg hl, seedGenFullParameter_getLsbD high parameter i hi, if_neg hl]
+  · rw [ite_eq_right hl, seedGenFullParameter_getLsbD high parameter i hi, ite_eq_right hl]
 
 /-- The parameter encoding swaps the low halves of a pair of uniform samples. -/
 def seedGenParameterSwap (p : HashOutput × PublicParameter) : HashOutput × PublicParameter :=
@@ -908,7 +908,7 @@ theorem simulateQ_stepRound_real {ι : Type} {spec : OracleSpec ι} {m : Type �
     simulateQ impl (stepRound roles coalition A noFunctionality state steps) =
       stepRound (seedGenMapRoles impl roles) coalition A noFunctionality state steps := by
   simp only [stepRound, callInput_real, Option.isSome_none, Bool.false_eq_true, and_false,
-    exists_false, false_and, if_false]
+    exists_false, false_and, ite_false]
   rw [simulateQ_bind]
   refine bind_congr fun r => ?_
   rcases r with ⟨st, sent⟩
@@ -1058,9 +1058,9 @@ theorem sameRun_startSteps_setup_parts (phase : Phase) (prims : Primitives) (coa
       (draws i >>= next i) := by
     intro i
     by_cases hi : i ∈ coalition.1
-    · simpa only [draws, next, if_pos hi] using
+    · simpa only [draws, next, ite_eq_left hi] using
         (sameRun_private_unused prims (sampleParts (C := C)) (Step.done (C := C) (E := E) (G := RealSpec) (none : Option (Keys C)))).symm
-    · simp only [draws, next, if_neg hi, advance_setupKeys_sampling]
+    · simp only [draws, next, ite_eq_right hi, advance_setupKeys_sampling]
       exact SameRun.refl prims _
   have hseq := SameRun.sequenceFin prims _ _ hlocal
   change SameRun prims (OverPermutation.sequenceFin _) _
@@ -1130,12 +1130,12 @@ theorem executeRounds_setupInitialSteps (phase : Phase) (coalition : C.Coalition
         (setupInitialSteps phase coalition parts commitments)
       executeRounds localRoles coalition A noFunctionality (setupRounds - 1) state steps) := by
   change executeRounds localRoles coalition A noFunctionality (2 + 1) state _ = _
-  rw [executeRounds, if_neg]
+  rw [executeRounds, ite_eq_right]
   · rfl
   · intro hd
     obtain ⟨i, hi⟩ := seedGen_exists_honest coalition
     have hh := hd i hi
-    simpa only [setupInitialSteps, if_neg hi, setupStart, Step.isDone] using hh
+    simpa only [setupInitialSteps, ite_eq_right hi, setupStart, Step.isDone] using hh
 
 /-- The real prefix through the commit round, retaining its private parts and corrupt messages. -/
 def setupLocalCommitPrefix (phase : Phase) (coalition : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
@@ -1518,7 +1518,7 @@ def seedGenCrossList (D : C.Coalition) : List (C.Party × C.Party) :=
 theorem seedGenCrossList_mem (D : C.Coalition) (p : C.Party × C.Party) :
     p ∈ seedGenCrossList D ↔ p.1 ∈ D.1 ∧ p.2 ∉ D.1 := by
   rcases p with ⟨j, i⟩
-  simp [seedGenCrossList, Committee.parties, List.mem_product, List.mem_finRange]
+  simp [seedGenCrossList, Committee.parties, List.mem_finRange]
 
 def seedGenCrossPair (D : C.Coalition) (p : {p // p ∈ seedGenCrossList D}) : C.Pair :=
   C.pairOf p.1.2 p.1.1 (fun e => (seedGenCrossList_mem D p.1).mp p.2 |>.2
@@ -1560,7 +1560,7 @@ theorem seedGenDealer_cross_value (D : C.Coalition) (parameter : PublicParameter
     (((if j ∈ D.1 then some (dealtKeys parameter seeds pairs j) else none).map (·.pairKey i)).getD 0) =
       pairs (C.pairOf i j (fun e => h.2 (e ▸ h.1))) := by
   have hij : i ≠ j := fun e => h.2 (e ▸ h.1)
-  simp only [if_pos h.1, Option.map_some, Option.getD_some, dealtKeys, dif_neg hij]
+  simp only [ite_eq_left h.1, Option.map_some, Option.getD_some, dealtKeys, dite_eq_right hij]
   congr 1
   unfold Committee.pairOf
   split_ifs with hji hijlt hijlt
@@ -1710,7 +1710,7 @@ theorem seedGenEraseLog_stepRound {α : Type} (D : C.Coalition) (A : Adversary C
     seedGenEraseLog (stepRound observedRoles D A noFunctionality state steps) =
       stepRound worldRoles D A noFunctionality state steps := by
   unfold stepRound
-  rw [if_neg (by simp [callInput_real]), if_neg (by simp [callInput_real])]
+  rw [ite_eq_right (by simp [callInput_real]), ite_eq_right (by simp [callInput_real])]
   simp only [seedGenEraseLog_bind, seedGenEraseLog_adversary, seedGenEraseLog_pure,
     seedGenEraseLog_sequenceFin]
   apply bind_congr
@@ -1833,14 +1833,14 @@ theorem setupProgramTerms_dealt (phase : Phase) (D : C.Coalition) (view : C.Part
     | some j =>
       have hj : j ∈ D.1 ∧ j ∈ C.holders T := by
         simpa only [decide_eq_true_eq] using List.find?_some hf
-      simp only [if_pos (show KnownTo D.1 T from ⟨j, hj⟩),
+      simp only [ite_eq_left (show KnownTo D.1 T from ⟨j, hj⟩),
         seedGenDealer_known_value D parameter seeds pairs T j hj.1 hj.2]
   rw [he, discard_mapM_filter C.terms (fun T => decide (KnownTo D.1 T)) _ true
     (by intro T _ h; simp_all)]
   congr 1
   apply seedGen_mapM_congr
   intro T hT
-  exact if_pos (by simpa only [List.mem_filter, decide_eq_true_eq] using (List.mem_filter.mp hT).2)
+  exact ite_eq_left (by simpa only [List.mem_filter, decide_eq_true_eq] using (List.mem_filter.mp hT).2)
 
 theorem setupProgramPairs_coordinates (phase : Phase) (D : C.Coalition)
     (view : C.Party → C.Party → Parts C) (pairs : C.Pair → HashOutput) :
@@ -1868,7 +1868,7 @@ theorem setupProgramPairs_coordinates (phase : Phase) (D : C.Coalition)
     rw [List.mapM_subtype (g := f) (by
       intro p hp
       have hd := (seedGenCrossList_mem D p).mp hp
-      simp only [f, dif_pos hd, seedGenCrossPair])]
+      simp only [f, dite_eq_left hd, seedGenCrossPair])]
     simp
   change ((seedGenCrossList D).mapM f >>= fun _ => pure ()) = _
   simpa only [Function.comp_def] using congrArg (fun p : OracleComp (WorldSpec C) (List Bool) => p >>= fun _ => pure ()) hm.symm
@@ -1910,9 +1910,9 @@ theorem setupProgramBlock_dealt (phase : Phase) (D : C.Coalition) (parts : C.Par
     apply seedGen_mapM_congr
     intro i _
     by_cases h : j ∈ D.1 ∧ i ∉ D.1
-    · simp only [dif_pos h, seedGenDealer_cross_value D parameter seeds pairs i j h,
+    · simp only [dite_eq_left h, seedGenDealer_cross_value D parameter seeds pairs i j h,
         setupPairProgrammingInput_cross phase D view i j h]
-    · simp only [dif_neg h]
+    · simp only [dite_eq_right h]
   change (_ >>= fun _ => _ ) = (_ >>= fun _ => _)
   conv_lhs => arg 2; ext; rw [hpair]
   have ht := setupProgramTerms_dealt phase D view parameter seeds pairs
@@ -2269,7 +2269,7 @@ theorem setupPartsWorldGame_accepts (phase : Phase) (prims : Primitives) (D : C.
   have he := (sameRun_setupLocal_split phase prims D A x z Z).run'_eq
   exact (congrArg ENNReal.toReal (he.symm.prEvent_eq _)).trans (setupLocalGame_accepts phase prims D A x z Z)
 
-abbrev SeedGenObservedCommitData (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) :=
+abbrev SeedGenObservedCommitData (_D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) :=
   (C.Party → Parts C) × A.State × (C.Party → Step C E RealSpec (Keys C)) × (C.Party → Mail C E) × CallLog C
 
 def setupObservedCommit (phase : Phase) (D : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty) (state : A.State) :
@@ -2347,7 +2347,7 @@ theorem setupCommonEmulatedGame_expand (phase : Phase) (D : C.Coalition) (A : Ad
       seedGenObservedPost D A Z r.2.1 r.2.2.1) := by
   unfold setupCommonEmulatedGame distinguish setupCommonGame setupEmulation
     setupObservedCommit seedGenObservedPost setupDealerSamples setupSimulatorStart
-  simp only [map_bind, map_pure, bind_map_left, bind_assoc, pure_bind,
+  simp only [map_bind, map_pure, bind_assoc, pure_bind,
     liftComp_bind, liftComp_pure, free_bind, free_pure, seedGenEmulatedProjection]
 
 /-- Congruence for output distributions under an arbitrary cache-state prefix. -/
@@ -2459,7 +2459,7 @@ theorem setup_derived_programView (phase : Phase) (prims : Primitives) (coalitio
   have corrupt (j : C.Party) (hj : j ∈ coalition.1) :
       setupView phase i (parts i) (revealed i) j = setupProgramView phase coalition parts log sent i j := by
     have hji : j ≠ i := fun he => hi (he ▸ hj)
-    simp only [setupView, if_neg hji, setupProgramView, if_pos hj, hextract j hj]
+    simp only [setupView, ite_eq_right hji, setupProgramView, ite_eq_left hj, hextract j hj]
   have parameter (hphase : phase = .seedGen) (j : C.Party) :
       (setupView phase i (parts i) (revealed i) j).parameter =
         (setupProgramView phase coalition parts log sent i j).parameter := by
@@ -2497,7 +2497,7 @@ theorem setup_derived_programView (phase : Phase) (prims : Primitives) (coalitio
   · apply Prod.ext
     · funext T
       by_cases hiT : i ∈ C.holders T
-      · simp only [if_pos hiT]
+      · simp only [ite_eq_left hiT]
         apply congrArg h
         apply congrArg (Query.derive phase .term)
         apply List.map_congr_left
@@ -2507,7 +2507,7 @@ theorem setup_derived_programView (phase : Phase) (prims : Primitives) (coalitio
     · funext j
       by_cases hji : j = i
       · simp [hji]
-      · simp only [dif_neg hji]
+      · simp only [dite_eq_right hji]
         have hp := pairOf_left_or_right i j (Ne.symm hji)
         apply congrArg h
         apply congrArg (Query.derive phase .pair)
@@ -2558,8 +2558,8 @@ theorem setup_known_outputs_of_programmed (phase : Phase) (prims : Primitives) (
     · have href := seedGenFirstHonest_holder coalition T
       have he := (hagree (seedGenFirstHonest coalition (C.holders T)) href.2).2 T hiT href.1
       change (keys i).2.1 T = (if i ∈ C.holders T then seeds T else 0)
-      rw [if_pos hiT, he, hderive _ href.2, D_deriveKeys]
-      simp only [if_pos href.1]
+      rw [ite_eq_left hiT, he, hderive _ href.2, D_deriveKeys]
+      simp only [ite_eq_left href.1]
       exact hterm T hT
     · change (keys i).2.1 T = (if i ∈ C.holders T then seeds T else 0)
       rw [hderive i hi, D_deriveKeys]
@@ -2571,7 +2571,7 @@ theorem setup_known_outputs_of_programmed (phase : Phase) (prims : Primitives) (
     rw [setupPairProgrammingInput_cross phase coalition view i j ⟨hj, hi⟩] at hp
     change (keys i).2.2 j = (if h : j = i then 0 else pairs (C.pairOf i j (Ne.symm h)))
     rw [hderive i hi, D_deriveKeys]
-    simp only [dif_neg hji]
+    simp only [dite_eq_right hji]
     exact hp
 
 /-- The derivation input of a pair of honest operators uses just their original pair parts. -/
@@ -2598,7 +2598,7 @@ theorem setup_hiddenPair_derived (phase : Phase) (prims : Primitives) (coalition
     (D prims h (deriveKeys phase i (setupView phase i (parts i) (revealed i)))).2.2 j =
       h (pairInput phase parts (C.pairOf i j (Ne.symm hji))) := by
   rw [D_deriveKeys]
-  simp only [dif_neg hji]
+  simp only [dite_eq_right hji]
   change h (setupPairViewInput phase parts revealed i (C.pairOf i j (Ne.symm hji))) = _
   apply congrArg h
   apply setup_hiddenPair_input phase coalition parts revealed hreceived
@@ -2653,31 +2653,31 @@ theorem setup_output_eq_hybrid_dealing (phase : Phase) (prims : Primitives) (coa
   · exact hk.1
   · funext T
     by_cases hiT : i ∈ C.holders T
-    · simp only [if_pos hiT]
+    · simp only [ite_eq_left hiT]
       by_cases hT : KnownTo coalition.1 T
-      · rw [setupHybridSeeds, if_pos hT]
-        simpa only [keysOf, dealtKeys, if_pos hiT] using hk.2.1 T hT
-      · rw [setupHybridSeeds, if_neg hT, hderive i hi]
+      · rw [setupHybridSeeds, ite_eq_left hT]
+        simpa only [keysOf, dealtKeys, ite_eq_left hiT] using hk.2.1 T hT
+      · rw [setupHybridSeeds, ite_eq_right hT, hderive i hi]
         exact setup_hiddenTerm_derived phase prims coalition h parts revealed hreceived T hT i hiT
-    · rw [if_neg hiT, hderive i hi, D_deriveKeys]
+    · rw [ite_eq_right hiT, hderive i hi, D_deriveKeys]
       simp [hiT]
   · funext j
     by_cases hji : j = i
     · rw [hderive i hi, D_deriveKeys]
       simp [hji]
-    · simp only [dif_neg hji]
+    · simp only [dite_eq_right hji]
       by_cases hj : j ∈ coalition.1
       · have hn : ¬ ((C.pairOf i j (Ne.symm hji)).1.1 ∉ coalition.1 ∧
             (C.pairOf i j (Ne.symm hji)).1.2 ∉ coalition.1) := by
           unfold Committee.pairOf
           split_ifs <;> simp_all
-        rw [setupHybridPairs, if_neg hn]
-        simpa only [keysOf, dealtKeys, dif_neg hji] using hk.2.2 j hj
+        rw [setupHybridPairs, ite_eq_right hn]
+        simpa only [keysOf, dealtKeys, dite_eq_right hji] using hk.2.2 j hj
       · have hh : (C.pairOf i j (Ne.symm hji)).1.1 ∉ coalition.1 ∧
             (C.pairOf i j (Ne.symm hji)).1.2 ∉ coalition.1 := by
           unfold Committee.pairOf
           split_ifs <;> exact ⟨by assumption, by assumption⟩
-        rw [setupHybridPairs, if_pos hh, hderive i hi]
+        rw [setupHybridPairs, ite_eq_left hh, hderive i hi]
         exact setup_hiddenPair_derived phase prims coalition h parts revealed hreceived i j hi hj hji
 
 end ThresholdLeanXmssSecurity
@@ -2743,14 +2743,14 @@ theorem stepRound_setupInitialSteps (phase : Phase) (coalition : C.Coalition)
         commitOutbox i (commitments i) c else none
       pure (st, setupRevealSteps phase coalition parts (setupCommitInbox phase coalition parts commitments sent), sent)) := by
   unfold stepRound
-  rw [if_neg (by simp only [callInput_real, Option.isSome_none, Bool.false_eq_true,
+  rw [ite_eq_right (by simp only [callInput_real, Option.isSome_none, Bool.false_eq_true,
     and_false, exists_false, false_and, not_false_eq_true])]
   have hmsg : (fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then
       (setupInitialSteps phase coalition parts commitments (E := E) i).outbox c else none) =
       (fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then commitOutbox i (commitments i) c else none) := by
     funext c i
     split_ifs with hc
-    · simp only [setupInitialSteps, if_neg hc.2, setupStart, Step.outbox]
+    · simp only [setupInitialSteps, ite_eq_right hc.2, setupStart, Step.outbox]
     · rfl
   rw [hmsg]
   refine bind_congr fun r => ?_
@@ -2764,7 +2764,7 @@ theorem stepRound_setupInitialSteps (phase : Phase) (coalition : C.Coalition)
     funext j
     by_cases hj : j ∈ coalition.1
     · simp [setupInitialSteps, setupRevealSteps, hj]
-    · simp only [setupInitialSteps, if_neg hj, setupStart]
+    · simp only [setupInitialSteps, ite_eq_right hj, setupStart]
       rw [advance_setupCommitResume]
       simp only [setupRevealSteps, hj, false_or, setupCommitInbox, roundInbox]
       rfl
@@ -2786,13 +2786,13 @@ theorem setupRevealInbox_all_honest (phase : Phase) (coalition : C.Coalition) (p
   have hno := List.any_eq_false.mp ha j (List.mem_finRange j)
   by_cases hb : (C.parties.any fun l => Msg.isAbort (committed j l)) = true
   · have hstep : setupRevealSteps phase coalition parts committed j = .done none := by
-      simp only [setupRevealSteps, hb, or_true, if_true]
+      simp only [setupRevealSteps, hb, or_true, ite_true]
     have hr := roundInbox_abort coalition sent (setupRevealSteps phase coalition parts committed) i j hj hstep
     change ¬ Msg.isAbort (roundInbox coalition sent (setupRevealSteps phase coalition parts committed) i j) = true at hno
     rw [hr] at hno
     exact (hno rfl).elim
   · simp only [setupRevealInbox, roundInbox, setupRevealSteps,
-      hj, hb, Bool.false_eq_true, false_or, if_false, Step.delivered, revealOutbox, if_neg (Ne.symm hjk), Msg.hashesOf]
+      hj, hb, Bool.false_eq_true, false_or, ite_false, Step.delivered, revealOutbox, ite_eq_right (Ne.symm hjk), Msg.hashesOf]
 
 abbrev SeedGenEchoData (C : Committee) :=
   (HashOutput × (C.Term → HashOutput) × (C.Party → HashOutput)) × List HashOutput
@@ -2825,7 +2825,7 @@ theorem advance_setupRevealResume (phase : Phase) (i : C.Party) (own : Parts C) 
     simp only [map_bind]
     refine bind_congr fun opens => ?_
     split_ifs with ho
-    · simp only [map_bind, map_pure, setupEchoDataStep, pure_bind]
+    · simp only [map_bind, map_pure, setupEchoDataStep]
     · rfl
 
 /-- All honest computations between the reveal and echo boundaries. -/
@@ -2846,7 +2846,7 @@ theorem stepRound_setupRevealSteps (phase : Phase) (coalition : C.Coalition)
       let data ← setupRevealComputations phase coalition parts committed sent
       pure (st, (fun i => setupEchoDataStep phase i (data i)), sent)) := by
   unfold stepRound
-  rw [if_neg (by simp only [callInput_real, Option.isSome_none, Bool.false_eq_true,
+  rw [ite_eq_right (by simp only [callInput_real, Option.isSome_none, Bool.false_eq_true,
     and_false, exists_false, false_and, not_false_eq_true])]
   refine bind_congr fun r => ?_
   rcases r with ⟨st, sent⟩
@@ -2859,10 +2859,10 @@ theorem stepRound_setupRevealSteps (phase : Phase) (coalition : C.Coalition)
     congr 1
     funext i
     by_cases hi : i ∈ coalition.1 ∨ C.parties.any (fun j => Msg.isAbort (committed i j))
-    · simp only [setupRevealSteps, if_pos hi, pure_bind, setupEchoDataStep]
+    · simp only [setupRevealSteps, ite_eq_left hi, pure_bind, setupEchoDataStep]
     · have hc : i ∉ coalition.1 := fun hh => hi (Or.inl hh)
-      rw [show setupRevealSteps phase coalition parts committed i = _ from if_neg hi]
-      simp only [if_neg hi, if_neg hc]
+      rw [show setupRevealSteps phase coalition parts committed i = _ from ite_eq_right hi]
+      simp only [ite_eq_right hi, ite_eq_right hc]
       change advance (exchangeResume _ (setupRevealInbox phase coalition parts committed sent i)) = _
       rw [advance_setupRevealResume, map_eq_bind_pure_comp]
       rfl
@@ -2884,7 +2884,7 @@ theorem stepRound_setupEchoDataSteps (phase : Phase) (coalition : C.Coalition)
           if C.parties.any (fun j => Msg.isAbort (inbox j)) then none else
             if echoCheck phase i keys shared inbox then some (keysOf keys) else none)), sent)) := by
   unfold stepRound
-  rw [if_neg (by simp only [callInput_real, Option.isSome_none, Bool.false_eq_true,
+  rw [ite_eq_right (by simp only [callInput_real, Option.isSome_none, Bool.false_eq_true,
     and_false, exists_false, false_and, not_false_eq_true])]
   refine bind_congr fun r => ?_
   rcases r with ⟨st, sent⟩
@@ -2904,8 +2904,8 @@ theorem stepRound_setupEchoDataSteps (phase : Phase) (coalition : C.Coalition)
     | some v =>
       rcases v with ⟨keys, shared⟩
       by_cases hi : i ∈ coalition.1
-      · simp only [setupEchoDataStep, if_pos hi]
-      · simp only [setupEchoDataStep, if_neg hi]
+      · simp only [setupEchoDataStep, ite_eq_left hi]
+      · simp only [setupEchoDataStep, ite_eq_right hi]
         exact advance_setupEchoResume phase i keys shared _
   · rw [sequenceFin_pure, pure_bind]
 
@@ -3171,12 +3171,12 @@ theorem simulateQ_fixedLocal_setupRevealCompute (phase : Phase) (prims : Primiti
       pure (setupRevealDataFixed phase prims h i own committed revealed) := by
   unfold setupRevealCompute setupRevealDataFixed
   by_cases ha : (C.parties.any fun j => Msg.isAbort (revealed j)) = true
-  · simp only [if_pos ha, simulateQ_pure]
-  · simp only [if_neg ha, pure_bind, simulateQ_bind, simulateQ_fixedLocal_liftComp, pure_bind]
+  · simp only [ite_eq_left ha, simulateQ_pure]
+  · simp only [ite_eq_right ha, pure_bind, simulateQ_bind, simulateQ_fixedLocal_liftComp, pure_bind]
     by_cases ho : openCheck phase i own committed revealed (D prims h (openQueries phase i revealed))
-    · simp only [ho, not_true_eq_false, if_false, if_true, pure_bind, simulateQ_bind,
+    · simp only [ho, not_true_eq_false, ite_false, ite_true, pure_bind, simulateQ_bind,
         simulateQ_fixedLocal_liftComp, simulateQ_pure]
-    · simp only [ho, not_false_eq_true, if_true, if_false, simulateQ_pure]
+    · simp only [ho, not_false_eq_true, ite_true, ite_false, simulateQ_pure]
 
 def setupRevealAllFixed (phase : Phase) (prims : Primitives) (coalition : C.Coalition) (h : Query C → HashOutput)
     (parts : C.Party → Parts C) (committed sent : C.Party → Mail C E) :
@@ -3227,7 +3227,7 @@ theorem setupEchoDataOutput_all_some (phase : Phase) (coalition : C.Coalition)
   | some v => rfl
   | none =>
     have hn := List.any_eq_false.mp ha j (List.mem_finRange j)
-    simp only [roundInbox, if_neg hj, hd, setupEchoDataStep, Step.delivered, Msg.isAbort] at hn
+    simp only [roundInbox, ite_eq_right hj, hd, setupEchoDataStep, Step.delivered, Msg.isAbort] at hn
     exact (hn trivial).elim
 
 /-- A non-aborting deterministic reveal supplies its actual derived keys and shared hashes. -/
@@ -3281,8 +3281,8 @@ theorem setupRevealAllFixed_output_agreement (phase : Phase) (prims : Primitives
     exact ⟨rfl, fun _ _ _ => rfl⟩
   · refine (fun hagree => ⟨setup_firstKey_agreement phase prims h i j _ _ hagree.1, hagree.2⟩)
       (setup_echoCheck_agreement phase prims h i j hji (keys i) (keys j) _ ?_ hcheck (hn j hj))
-    simp only [roundInbox, if_neg hj, hdf j hj, setupEchoDataStep, Step.delivered,
-      echoOutbox, if_neg (Ne.symm hji)]
+    simp only [roundInbox, ite_eq_right hj, hdf j hj, setupEchoDataStep, Step.delivered,
+      echoOutbox, ite_eq_right (Ne.symm hji)]
 
 /-- Complete output identification for the concrete reveal and echo execution. The protocol's
 successful output supplies honest delivery, derivation and agreement facts automatically. -/
@@ -3544,7 +3544,7 @@ theorem evalDist_seedGenFiniteEager {Ω α : Type} [Finite Ω] [DecidableEq Ω]
         simp only [randomOracle, QueryImpl.withCaching_run_some _ hc, pure_bind]
         exact ih y cache
       | none =>
-        simp only [randomOracle, QueryImpl.withCaching_run_none _ hc, bind_map_left, map_pure, pure_bind]
+        simp only [randomOracle, QueryImpl.withCaching_run_none _ hc, map_pure, pure_bind]
         change (($ᵗ HashOutput) >>= fun y => (simulateQ seedGenFiniteLazy (k y)).run (cache.cacheQuery q y)) =ᵈ _
         refine (EvalDistEq.bind_right _ fun y => ih y (cache.cacheQuery q y)).trans ?_
         let cont := fun h : Ω → HashOutput =>
@@ -3604,7 +3604,7 @@ theorem seedGenWorldCovered_exists {α : Type} (oa : OracleComp (WorldSpec C) α
   | query_bind t k ih =>
     have hi : Finite ((WorldSpec C).Range t) := by
       rcases t with (n | q | x) | x | (n | q | x) <;> infer_instance
-    letI := Fintype.ofFinite ((WorldSpec C).Range t)
+    let := Fintype.ofFinite ((WorldSpec C).Range t)
     choose S hS using ih
     refine ⟨seedGenWorldHashInputs t ∪ Finset.univ.biUnion S, .query_bind t k ?_ ?_⟩
     · exact Finset.subset_union_left
@@ -3708,7 +3708,7 @@ theorem seedGenFiniteProgramming_run (S : Finset (Query C))
   unfold seedGenFiniteProgramming programCache
   by_cases hf : IsFixed x.1
   · simp [hf]
-  · simp only [hf, false_or, if_false, dif_pos hx]
+  · simp only [hf, false_or, ite_false, dite_eq_left hx]
     erw [simulateQ_spec_query]
     change _ = seedGenFiniteProgram (⟨x.1, hx⟩, x.2) (seedGenRestrictCache S cache)
     unfold seedGenFiniteProgram
@@ -3804,7 +3804,7 @@ theorem seedGenFiniteHash_eager_step (prims : Primitives) (S : Finset (Query C))
       cases q <;> simp_all [seedGenFiniteTotal, IsFixed]
     rw [hred, hv]
     by_cases hq : q ∈ S
-    · rw [dif_pos hq, dif_pos hq]
+    · rw [dite_eq_left hq, dite_eq_left hq]
       erw [simulateQ_spec_query]
       change ∃ cache',
         (QueryImpl.withCaching (fun q => pure (h q) : QueryImpl (S →ₒ HashOutput) ProbComp)
@@ -3893,37 +3893,37 @@ theorem seedGenExposedParts_privateInvariant (coalition : C.Coalition) :
     funext i
     change Parts.mk _ _ _ = Parts.mk _ _ _
     congr 1
-    · simp only [seedGenExposedParts, shiftAt]
+    · simp only [shiftAt]
       split_ifs <;> rfl
     · funext U
       by_cases hU : KnownTo coalition.1 U
       · have hne : T ≠ U := fun he => hh (he ▸ hU)
         by_cases hi : i = a <;> simp [hU, shiftAt, shiftParts, hne, hi]
-      · simp [seedGenExposedParts, hU]
+      · simp [hU]
     · funext j
-      simp only [seedGenExposedParts, shiftAt]
+      simp only [shiftAt]
       split_ifs <;> rfl
   · intro p ha hb c parts
     funext i
     change Parts.mk _ _ _ = Parts.mk _ _ _
     congr 1
-    · simp only [seedGenExposedParts, shiftAt]
+    · simp only [shiftAt]
       split_ifs <;> rfl
     · funext T
-      simp only [seedGenExposedParts, shiftAt]
+      simp only [shiftAt]
       split_ifs <;> rfl
     · funext j
       by_cases hi : i = p.1.1
       · subst i
         by_cases hj : j = p.1.2
-        · subst j; simp [seedGenExposedParts, ha, hb]
-        · simp [seedGenExposedParts, shiftAt, shiftParts, Ne.symm hj]
-      · simp [seedGenExposedParts, shiftAt, hi]
+        · subst j; simp [ha, hb]
+        · simp [shiftAt, shiftParts, Ne.symm hj]
+      · simp [shiftAt, hi]
 
 theorem setupExposedParts_reveal (phase : Phase) (coalition : C.Coalition) (parts : C.Party → Parts C)
     (i j : C.Party) (hj : j ∈ coalition.1) :
     revealTo phase (seedGenExposedParts coalition parts i) i j = revealTo phase (parts i) i j := by
-  simp only [revealTo, seedGenExposedParts, hj, or_true, if_true]
+  simp only [revealTo, seedGenExposedParts, hj, or_true, ite_true]
   congr 2
   apply List.map_congr_left
   intro T hT
@@ -3961,7 +3961,7 @@ theorem setupRevealInbox_reference (phase : Phase) (coalition : C.Coalition) (pa
     setupReferenceRevealInbox]
   by_cases hj : j ∈ coalition.1
   · simp [hj]
-  · simp only [hj, false_or, if_false]
+  · simp only [hj, false_or, ite_false]
     split_ifs <;> rfl
 
 /-- Once the reveal round has no abort, only corrupt openings need checking. -/
@@ -3987,15 +3987,15 @@ theorem setupOpenCheck_corrupt_iff (phase : Phase) (prims : Primitives) (coaliti
   constructor
   · intro ho j hj
     have hji : j ≠ i := fun he => hi (he ▸ hj)
-    simpa only [setupReferenceRevealInbox, if_pos hj, setupCommitInbox, roundInbox] using ho j hji
+    simpa only [setupReferenceRevealInbox, ite_eq_left hj, setupCommitInbox, roundInbox] using ho j hji
   · intro ho j hji
     by_cases hj : j ∈ coalition.1
-    · simpa only [setupReferenceRevealInbox, if_pos hj, setupCommitInbox, roundInbox] using ho j hj
+    · simpa only [setupReferenceRevealInbox, ite_eq_left hj, setupCommitInbox, roundInbox] using ho j hj
     · rw [hreceived i j hj hji]
       constructor
       · cases phase <;> simp [revealTo]
-      · simp only [setupCommitInbox, roundInbox, if_neg hj, setupInitialSteps, if_neg hj,
-          setupStart, Step.delivered, commitOutbox, if_neg (Ne.symm hji), Msg.hashesOf,
+      · simp only [setupCommitInbox, roundInbox, setupInitialSteps, ite_eq_right hj,
+          setupStart, Step.delivered, commitOutbox, ite_eq_right (Ne.symm hji), Msg.hashesOf,
           D_commitQueries, getD_parties]
 
 /-- Honest parts together with the actual corrupt openings, without unused read fields. -/
@@ -4014,7 +4014,7 @@ theorem setup_derived_corruptView (phase : Phase) (prims : Primitives) (coalitio
   have corrupt (j : C.Party) (hj : j ∈ coalition.1) :
       setupView phase i (parts i) (revealed i) j = setupCorruptView phase coalition parts revealed i j := by
     have hji : j ≠ i := fun he => hi (he ▸ hj)
-    simp only [setupView, if_neg hji, setupCorruptView, if_pos hj]
+    simp only [setupView, ite_eq_right hji, setupCorruptView, ite_eq_left hj]
   have parameter (hphase : phase = .seedGen) (j : C.Party) :
       (setupView phase i (parts i) (revealed i) j).parameter =
         (setupCorruptView phase coalition parts revealed i j).parameter := by
@@ -4052,7 +4052,7 @@ theorem setup_derived_corruptView (phase : Phase) (prims : Primitives) (coalitio
   · apply Prod.ext
     · funext T
       by_cases hiT : i ∈ C.holders T
-      · simp only [if_pos hiT]
+      · simp only [ite_eq_left hiT]
         apply congrArg h
         apply congrArg (Query.derive phase .term)
         apply List.map_congr_left
@@ -4062,7 +4062,7 @@ theorem setup_derived_corruptView (phase : Phase) (prims : Primitives) (coalitio
     · funext j
       by_cases hji : j = i
       · simp [hji]
-      · simp only [dif_neg hji]
+      · simp only [dite_eq_right hji]
         have hp := pairOf_left_or_right i j (Ne.symm hji)
         apply congrArg h
         apply congrArg (Query.derive phase .pair)
@@ -4112,20 +4112,20 @@ theorem setupReferenceKeys_exposed (phase : Phase) (prims : Primitives) (coaliti
   · apply Prod.ext
     · funext T
       by_cases hT : KnownTo coalition.1 T
-      · simp only [if_pos hT, ht T hT]
-      · simp only [if_neg hT]
+      · simp only [ite_eq_left hT, ht T hT]
+      · simp only [ite_eq_right hT]
     · funext j
       by_cases hj : j = i
       · simp [hj]
-      · simp only [dif_neg hj]
+      · simp only [dite_eq_right hj]
         by_cases hc : i ∈ coalition.1 ∨ j ∈ coalition.1
-        · simp only [if_pos hc]
+        · simp only [ite_eq_left hc]
           have hab : (C.pairOf i j (Ne.symm hj)).1.1 ∈ coalition.1 ∨
               (C.pairOf i j (Ne.symm hj)).1.2 ∈ coalition.1 := by
             unfold Committee.pairOf
             split_ifs <;> simp_all [or_comm]
           simp only [hpair _ _ hab, hpair _ _ hab.symm]
-        · simp only [if_neg hc]
+        · simp only [ite_eq_right hc]
 
 /-- The reveal abort test, independent of every honest private part. -/
 def seedGenReferenceRevealAborted (coalition : C.Coalition)
@@ -4143,9 +4143,9 @@ theorem setupReferenceRevealInbox_aborted (phase : Phase) (coalition : C.Coaliti
   unfold setupReferenceRevealInbox
   by_cases hj : j ∈ coalition.1
   · simp [hj]
-  · simp only [if_neg hj]
+  · simp only [ite_eq_right hj]
     cases hb : seedGenCommitAborted coalition commitSent j <;>
-      simp [hb, revealOutbox, Msg.isAbort]
+      simp [revealOutbox, Msg.isAbort]
 
 /-- The length of a reveal. It has the part of `P` only in the seed generation. -/
 theorem length_revealTo (phase : Phase) (c : Parts C) (i j : C.Party) :
@@ -4194,12 +4194,12 @@ theorem setupRevealAllFixed_mask (phase : Phase) (prims : Primitives) (coalition
   unfold setupRevealAllFixed setupReferenceData
   rw [setupCommitInbox_aborted]
   by_cases hi : i ∈ coalition.1 ∨ seedGenCommitAborted coalition commitSent i = true
-  · simp only [if_pos hi, Option.map_none]
-  · simp only [if_neg hi, setupRevealDataFixed, setupRevealInbox_reference,
+  · simp only [ite_eq_left hi, Option.map_none]
+  · simp only [ite_eq_right hi, setupRevealDataFixed, setupRevealInbox_reference,
       setupReferenceRevealInbox_aborted]
     by_cases ha : seedGenReferenceRevealAborted coalition commitSent revealSent i = true
-    · simp only [if_pos ha, Option.map_none]
-    · simp only [if_neg ha]
+    · simp only [ite_eq_left ha, Option.map_none]
+    · simp only [ite_eq_right ha]
       have hi' : i ∉ coalition.1 := fun hh => hi (Or.inl hh)
       have ha' : (C.parties.any fun j => Msg.isAbort
           (setupReferenceRevealInbox phase coalition parts commitSent revealSent i j)) = false := by
@@ -4225,7 +4225,7 @@ theorem setupRevealAllFixed_mask (phase : Phase) (prims : Primitives) (coalition
           funext j
           unfold setupCorruptView
           split_ifs with hj
-          · simp only [setupReferenceRevealInbox, if_pos hj]
+          · simp only [setupReferenceRevealInbox, ite_eq_left hj]
           · rfl
         rw [hv]
         rfl
@@ -4248,19 +4248,19 @@ theorem setupMaskKeys_actual (phase : Phase) (prims : Primitives) (coalition : C
   · funext T
     by_cases hT : KnownTo coalition.1 T
     · simp [seedGenMaskKeys, hT]
-    · simp only [seedGenMaskKeys, if_neg hT]
+    · simp only [seedGenMaskKeys, ite_eq_right hT]
       by_cases hiT : i ∈ C.holders T
-      · rw [if_pos hiT, htable (.term T) hT,
+      · rw [ite_eq_left hiT, htable (.term T) hT,
           setup_hiddenTerm_derived phase prims coalition h parts revealed hreceived T hT i hiT]
         rfl
       · simp [hiT, D_deriveKeys]
   · funext j
     by_cases hji : j = i
     · subst j; simp [seedGenMaskKeys, D_deriveKeys]
-    · simp only [seedGenMaskKeys, dif_neg hji]
+    · simp only [seedGenMaskKeys, dite_eq_right hji]
       by_cases hj : j ∈ coalition.1
       · simp [hj]
-      · simp only [hi, hj, or_self, if_false]
+      · simp only [hi, hj, or_self, ite_false]
         rw [setup_hiddenPair_derived phase prims coalition h parts revealed hreceived i j hi hj hji]
         apply htable
         change (C.pairOf i j (Ne.symm hji)).1.1 ∉ coalition.1 ∧
@@ -4310,9 +4310,9 @@ theorem setupRevealSteps_view_reference (phase : Phase) (coalition : C.Coalition
   funext c i
   unfold setupReferenceRevealView
   by_cases hc : c ∈ coalition.1 ∧ i ∉ coalition.1
-  · simp only [if_pos hc, setupRevealSteps, hc.2, false_or, setupCommitInbox_aborted]
+  · simp only [setupRevealSteps, hc.2, false_or, setupCommitInbox_aborted]
     split_ifs <;> rfl
-  · simp only [if_neg hc]
+  · simp only [ite_eq_right hc]
 
 theorem setupReferenceRevealView_exposed (phase : Phase) (coalition : C.Coalition) (parts : C.Party → Parts C)
     (commitSent : C.Party → Mail C E) :
@@ -4387,9 +4387,9 @@ theorem setupFixedCommitView_exposed (phase : Phase) (prims : Primitives) (coali
   funext c i
   unfold setupFixedCommitView
   by_cases hc : c ∈ coalition.1 ∧ i ∉ coalition.1
-  · simp only [if_pos hc, commitOutbox, D_commitQueries, getD_parties,
+  · simp only [ite_eq_left hc, commitOutbox, D_commitQueries, getD_parties,
       setupExposedParts_reveal phase coalition parts i c hc.1]
-  · simp only [if_neg hc]
+  · simp only [ite_eq_right hc]
 
 /-- Full reference execution, with the original adversary, distinguisher, and abort behavior. -/
 def setupReferenceLocalGame (phase : Phase) (prims : Primitives) (coalition : C.Coalition)
@@ -4467,7 +4467,7 @@ theorem seedGenHashLog_query (t : (LocalSpec C).Domain) :
     seedGenHashLog (OracleComp.lift ((LocalSpec C).query t)) =
       (fun u => (u, seedGenLocalHashInputs t)) <$> OracleComp.lift ((LocalSpec C).query t) := by
   simp only [seedGenHashLog, simulateQ_query, OracleQuery.cont_query, OracleQuery.input_query, id_map]
-  simp [QueryImpl.withTraceAppend_apply, QueryImpl.id', WriterT.run_bind, map_eq_bind_pure_comp]
+  simp [QueryImpl.id', WriterT.run_bind, map_eq_bind_pure_comp]
 
 /-- Random inputs in the transcript correspond exactly to counted calls, including PRG. -/
 theorem seedGenLocalHashInputs_counted (t : (LocalSpec C).Domain) :
@@ -4477,7 +4477,7 @@ theorem seedGenLocalHashInputs_counted (t : (LocalSpec C).Domain) :
   · cases q with
     | hash input =>
       have hf : IsFixed (Query.hash (C := C) input) ↔ MpcInput input := by simp [IsFixed]
-      by_cases hm : MpcInput input <;> simp [seedGenLocalHashInputs, Counted, List.filter_cons, hf, hm]
+      by_cases hm : MpcInput input <;> simp [seedGenLocalHashInputs, Counted, hf, hm]
     | _ => simp [seedGenLocalHashInputs, Counted, IsFixed]
   · simp [seedGenLocalHashInputs, Counted, IsFixed]
 
@@ -4581,7 +4581,7 @@ theorem setupReferenceKeys_known (phase : Phase) (prims : Primitives) (coalition
     (hT : KnownTo coalition.1 T) :
     (setupReferenceKeys phase prims coalition h left parts revealed i).2.1 T =
       (setupReferenceKeys phase prims coalition h right parts revealed i).2.1 T := by
-  simp only [setupReferenceKeys, seedGenMaskKeys, if_pos hT]
+  simp only [setupReferenceKeys, seedGenMaskKeys, ite_eq_left hT]
 
 theorem setupReferenceKeys_coherent (phase : Phase) (prims : Primitives) (coalition : C.Coalition)
     (h : Query C → HashOutput) (table : KeyName C → HashOutput)
@@ -4589,7 +4589,7 @@ theorem setupReferenceKeys_coherent (phase : Phase) (prims : Primitives) (coalit
     (hT : ¬ KnownTo coalition.1 T) (hi : i ∈ C.holders T) (hj : j ∈ C.holders T) :
     (setupReferenceKeys phase prims coalition h table parts revealed i).2.1 T =
       (setupReferenceKeys phase prims coalition h table parts revealed j).2.1 T := by
-  simp only [setupReferenceKeys, seedGenMaskKeys, if_neg hT, if_pos hi, if_pos hj]
+  simp only [setupReferenceKeys, seedGenMaskKeys, ite_eq_right hT, ite_eq_left hi, ite_eq_left hj]
 
 theorem setupReferenceKeys_shared_corrupt (phase : Phase) (prims : Primitives) (coalition : C.Coalition)
     (h : Query C → HashOutput) (left right : KeyName C → HashOutput)
@@ -4652,14 +4652,14 @@ theorem stepRound_setupInitialSteps_observed (phase : Phase) (coalition : C.Coal
         commitOutbox i (commitments i) c else none)
       pure (st, setupRevealSteps phase coalition parts (setupCommitInbox phase coalition parts commitments sent), sent)) := by
   unfold stepRound
-  rw [if_neg (by simp only [callInput_real, Option.isSome_none, Bool.false_eq_true,
+  rw [ite_eq_right (by simp only [callInput_real, Option.isSome_none, Bool.false_eq_true,
     and_false, exists_false, false_and, not_false_eq_true])]
   have hmsg : (fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then
       (setupInitialSteps phase coalition parts commitments (E := E) i).outbox c else none) =
       (fun c i => if c ∈ coalition.1 ∧ i ∉ coalition.1 then commitOutbox i (commitments i) c else none) := by
     funext c i
     split_ifs with hc
-    · simp only [setupInitialSteps, if_neg hc.2, setupStart, Step.outbox]
+    · simp only [setupInitialSteps, ite_eq_right hc.2, setupStart, Step.outbox]
     · rfl
   rw [hmsg]
   refine bind_congr fun r => ?_
@@ -4673,10 +4673,10 @@ theorem stepRound_setupInitialSteps_observed (phase : Phase) (coalition : C.Coal
     funext j
     by_cases hj : j ∈ coalition.1
     · simp [setupInitialSteps, setupRevealSteps, hj]
-    · simp only [setupInitialSteps, if_neg hj, setupStart]
+    · simp only [setupInitialSteps, ite_eq_right hj, setupStart]
       rw [advance_setupCommitResume]
       simp only [setupRevealSteps, hj, false_or, setupCommitInbox, roundInbox]
-      simp only [free_pure, liftM_pure]
+      simp only [free_pure]
       rfl
   · rw [sequenceFin_pure, pure_bind]
 
@@ -4720,8 +4720,8 @@ theorem setupFixedInitialCommitments_inbox (phase : Phase) (prims : Primitives) 
   funext i j
   unfold setupCommitInbox roundInbox
   by_cases hj : j ∈ coalition.1
-  · simp only [if_pos hj]
-  · simp only [if_neg hj, setupInitialSteps, if_neg hj, setupFixedInitialCommitments]
+  · simp only [ite_eq_left hj]
+  · simp only [setupInitialSteps, ite_eq_right hj, setupFixedInitialCommitments]
 
 theorem setupFixedInitialCommitments_view (phase : Phase) (prims : Primitives) (coalition : C.Coalition)
     (h : Query C → HashOutput) (parts : C.Party → Parts C) :
@@ -4731,8 +4731,8 @@ theorem setupFixedInitialCommitments_view (phase : Phase) (prims : Primitives) (
   funext c i
   unfold setupFixedCommitView
   by_cases hc : c ∈ coalition.1 ∧ i ∉ coalition.1
-  · simp only [if_pos hc, setupFixedInitialCommitments, if_neg hc.2]
-  · simp only [if_neg hc]
+  · simp only [ite_eq_left hc, setupFixedInitialCommitments, ite_eq_right hc.2]
+  · simp only [ite_eq_right hc]
 
 /-- The whole normalized game equals the concrete reference with the actual hidden oracle
 values. The sampling order of `A.start` and honest parts is exchanged only at the distribution level. -/
@@ -4785,8 +4785,8 @@ def setupAllNamedInputs (phase : Phase) (C : Committee) : Finset (Query C) :=
 
 theorem setupAllNamedInputs_mem (phase : Phase) (parts : C.Party → Parts C) (name : KeyName C) :
     setupNamedInput phase parts name ∈ setupAllNamedInputs phase C := by
-  letI : Finite (Parts C) := seedGenParts_finite C
-  letI : Fintype (C.Party → Parts C) := Fintype.ofFinite _
+  let : Finite (Parts C) := seedGenParts_finite C
+  let : Fintype (C.Party → Parts C) := Fintype.ofFinite _
   unfold setupAllNamedInputs
   apply Finset.mem_biUnion.mpr
   refine ⟨parts, Finset.mem_univ _, Finset.mem_image.mpr ⟨name, ?_, rfl⟩⟩
@@ -4825,7 +4825,7 @@ theorem setupFiniteHiddenSwap_cell (phase : Phase) (coalition : C.Coalition) (S 
     (p : (S → HashOutput) × (KeyName C → HashOutput)) (name : KeyName C) (hh : Hidden coalition name) :
     (setupFiniteHiddenSwap phase coalition S parts hmem p).1 ⟨setupNamedInput phase parts name, hmem name⟩ = p.2 name := by
   have hp : SetupHiddenInput phase coalition parts (setupNamedInput phase parts name) := ⟨name, hh, rfl⟩
-  simp only [setupFiniteHiddenSwap, dif_pos hp]
+  simp only [setupFiniteHiddenSwap, dite_eq_left hp]
   have he : Classical.choose hp = name := hinj (Classical.choose_spec hp).2
   rw [he]
 
@@ -4834,13 +4834,13 @@ theorem setupFiniteHiddenSwap_off (phase : Phase) (coalition : C.Coalition) (S :
     (p : (S → HashOutput) × (KeyName C → HashOutput)) (q : S)
     (hq : ¬ SetupHiddenInput phase coalition parts q.val) :
     (setupFiniteHiddenSwap phase coalition S parts hmem p).1 q = p.1 q := by
-  simp only [setupFiniteHiddenSwap, dif_neg hq]
+  simp only [setupFiniteHiddenSwap, dite_eq_right hq]
 
 theorem setupFiniteHiddenSwap_dealer_known (phase : Phase) (coalition : C.Coalition) (S : Finset (Query C))
     (parts : C.Party → Parts C) (hmem : ∀ name, setupNamedInput phase parts name ∈ S)
     (p : (S → HashOutput) × (KeyName C → HashOutput)) (name : KeyName C) (hh : ¬ Hidden coalition name) :
     (setupFiniteHiddenSwap phase coalition S parts hmem p).2 name = p.2 name := by
-  simp only [setupFiniteHiddenSwap, if_neg hh]
+  simp only [setupFiniteHiddenSwap, ite_eq_right hh]
 
 /-- Distinct canonical names make the exchange between oracle and dealer an involution. -/
 theorem setupFiniteHiddenSwap_involutive (phase : Phase) (coalition : C.Coalition) (S : Finset (Query C))
@@ -4854,7 +4854,7 @@ theorem setupFiniteHiddenSwap_involutive (phase : Phase) (coalition : C.Coalitio
     · obtain ⟨name, hh, he⟩ := hq
       have hq' : q = ⟨setupNamedInput phase parts name, hmem name⟩ := Subtype.ext he.symm
       rw [hq', setupFiniteHiddenSwap_cell phase coalition S parts hmem hinj _ name hh]
-      simp only [setupFiniteHiddenSwap, if_pos hh]
+      simp only [setupFiniteHiddenSwap, ite_eq_left hh]
     · rw [setupFiniteHiddenSwap_off phase coalition S parts hmem _ q hq,
         setupFiniteHiddenSwap_off phase coalition S parts hmem _ q hq]
   · funext name
@@ -4862,7 +4862,7 @@ theorem setupFiniteHiddenSwap_involutive (phase : Phase) (coalition : C.Coalitio
     · change (if Hidden coalition name then
         (setupFiniteHiddenSwap phase coalition S parts hmem p).1 ⟨setupNamedInput phase parts name, hmem name⟩
         else (setupFiniteHiddenSwap phase coalition S parts hmem p).2 name) = p.2 name
-      rw [if_pos hh, setupFiniteHiddenSwap_cell phase coalition S parts hmem hinj p name hh]
+      rw [ite_eq_left hh, setupFiniteHiddenSwap_cell phase coalition S parts hmem hinj p name hh]
     · rw [setupFiniteHiddenSwap_dealer_known phase coalition S parts hmem _ name hh,
         setupFiniteHiddenSwap_dealer_known phase coalition S parts hmem _ name hh]
 

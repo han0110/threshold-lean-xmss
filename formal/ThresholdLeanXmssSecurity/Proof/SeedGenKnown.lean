@@ -61,7 +61,7 @@ theorem setupHiddenOverlay_hybrid (phase : Phase) (D : C.Coalition) (h : Query C
   · funext j
     by_cases hj : j = i
     · simp [hj]
-    · simp only [dif_neg hj]
+    · simp only [dite_eq_right hj]
       split_ifs with h1 h2
       · exfalso
         rcases h1 with h1 | h1
@@ -570,7 +570,7 @@ theorem setupKnown_projection_eq (phase : Phase) (prims : Primitives) (D : C.Coa
           obtain ⟨hsj, _⟩ := setupRevealAllFixed_some phase prims D h r.parts committed r.revealSent j (hall j hj)
           exact hcollision ⟨i, j, _, _, _, _, hhonest, hj, by rw [hdata]; exact hsi, by rw [hdata]; exact hsj,
             by rw [D_sharedQueries_at, D_sharedQueries_at]; exact hcol, hne⟩)
-      rw [Option.map_some, if_pos ⟨hhonest, rfl⟩, hkey,
+      rw [Option.map_some, ite_eq_left ⟨hhonest, rfl⟩, hkey,
         setupHiddenOverlay_hybrid (phase := phase) D h r.parts r.parameter r.seeds r.pairs i hhonest]
 
 end Deterministic
@@ -731,7 +731,7 @@ theorem setupKnown_cacheEvent_of_bad (phase : Phase) (prims : Primitives) (D : C
     set c := hashOf prims s (.commit phase j i rv)
     have hsent : Msg.hashesOf (r.sent j i) = [c] := by
       have := hopen _ (good_hashOf prims s) (agrees_hashOf prims hs)
-      simp only [committed, setupCommitInbox, roundInbox, if_pos hj] at this
+      simp only [committed, setupCommitInbox, roundInbox, ite_eq_left hj] at this
       exact this.symm
     by_cases hl : ∃ y, (Query.commit (C := C) phase j i rv, y) ∈ r.log
     · obtain ⟨y, hy⟩ := hl
@@ -915,12 +915,12 @@ theorem probEvent_setupComparedCollision_fresh (phase : Phase) {D : C.Coalition}
         (setupComparedCollision_insert (phase := phase) hs q u h).2.choose else q
     refine Finset.card_le_card_of_injOn f (fun u hu => ?_) (fun u hu v hv heq => ?_)
     · have hc := (Finset.mem_filter.mp hu).2
-      rw [show f u = _ from dif_pos hc]
+      rw [show f u = _ from dite_eq_left hc]
       have hs' := (setupComparedCollision_insert (phase := phase) hs q u hc).2.choose_spec
       exact hm _ hs'.2.1 (by rw [hs'.2.2]; exact Option.some_ne_none u)
     · have hc := (Finset.mem_filter.mp hu).2
       have hd := (Finset.mem_filter.mp hv).2
-      rw [show f u = _ from dif_pos hc, show f v = _ from dif_pos hd] at heq
+      rw [show f u = _ from dite_eq_left hc, show f v = _ from dite_eq_left hd] at heq
       have h₁ := (setupComparedCollision_insert (phase := phase) hs q u hc).2.choose_spec.2.2
       have h₂ := (setupComparedCollision_insert (phase := phase) hs q v hd).2.choose_spec.2.2
       rw [heq, h₂] at h₁
@@ -1047,18 +1047,18 @@ theorem setupCompared_birthday (phase : Phase) (prims : Primitives) {D : C.Coali
         have hpu := hp.2 u
         simp only [setupComparedWorldCall, setupComparedProgram, ↓reduceIte] at hu hpu
         by_cases hct : setupComparedCall (phase := phase) D t
-        · erw [if_pos hct] at hu
+        · erw [ite_eq_left hct] at hu
           exact (ih u (m - 1) s' k hu hpu h₁ h₂).trans (by
             unfold seedGenBirthdayCost
             exact ENNReal.div_le_div_right (by gcongr <;> omega) _)
-        · erw [if_neg hct] at hu
+        · erw [ite_eq_right hct] at hu
           exact ih u m s' k hu hpu h₁ h₂
       · have hm' := hm.1.resolve_left (by simpa [setupComparedWorldCall] using hc)
         refine ⟨hm', fun u s' h₁ h₂ => ?_⟩
         have hu := hm.2 u
         have hpu := hp.2 u
         simp only [setupComparedWorldCall, setupComparedProgram, ↓reduceIte] at hu hpu
-        erw [if_pos hc] at hu
+        erw [ite_eq_left hc] at hu
         exact ih u (m - 1) s' (k + 1) hu hpu h₁ h₂
     · have hx : ¬ SetupComparedCell (phase := phase) D x.1 := by
         simpa [setupComparedProgram] using hp.1
@@ -1068,8 +1068,8 @@ theorem setupCompared_birthday (phase : Phase) (prims : Primitives) {D : C.Coali
       have hu := hm.2 p.1
       have hpu := hp.2 p.1
       simp only [setupComparedWorldCall, setupComparedProgram] at hu hpu
-      erw [if_neg not_false] at hu
-      erw [if_neg hx] at hpu
+      erw [ite_eq_right not_false] at hu
+      erw [ite_eq_right hx] at hpu
       refine ih p.1 m p.2 k hu hpu ?_ ?_
       · simp only [programAnswer, StateT.run_bind, StateT.run_get, pure_bind] at hpr
         split_ifs at hpr
@@ -1098,18 +1098,18 @@ theorem setupCompared_birthday (phase : Phase) (prims : Primitives) {D : C.Coali
         have hpu := hp.2 u
         simp only [setupComparedWorldCall, setupComparedProgram, ↓reduceIte] at hu hpu
         by_cases hct : setupComparedCall (phase := phase) D t
-        · erw [if_pos hct] at hu
+        · erw [ite_eq_left hct] at hu
           exact (ih u (m - 1) s' k hu hpu h₁ h₂).trans (by
             unfold seedGenBirthdayCost
             exact ENNReal.div_le_div_right (by gcongr <;> omega) _)
-        · erw [if_neg hct] at hu
+        · erw [ite_eq_right hct] at hu
           exact ih u m s' k hu hpu h₁ h₂
       · have hm' := hm.1.resolve_left (by simpa [setupComparedWorldCall] using hc)
         refine ⟨hm', fun u s' h₁ h₂ => ?_⟩
         have hu := hm.2 u
         have hpu := hp.2 u
         simp only [setupComparedWorldCall, setupComparedProgram, ↓reduceIte] at hu hpu
-        erw [if_pos hc] at hu
+        erw [ite_eq_left hc] at hu
         exact ih u (m - 1) s' (k + 1) hu hpu h₁ h₂
 
 theorem isQueryBoundP_free_setupCompared (phase : Phase) (D : C.Coalition) {β : Type} (oa : OracleComp (LocalSpec C) β) (n : ℕ)
@@ -1244,8 +1244,8 @@ theorem isQueryBoundP_setupCompared_derive (phase : Phase) (D : C.Coalition) (i 
         ((C.parties.filter (· ∈ C.holders T)).map fun j => (view j).term T)) else pure 0) (LocalSpec C))
       (fun T => by
         by_cases hT : i ∈ C.holders T
-        · rw [if_pos hT]; exact hd _ _
-        · rw [if_neg hT, liftComp_pure]; trivial) C.terms
+        · rw [ite_eq_left hT]; exact hd _ _
+        · rw [ite_eq_right hT, liftComp_pure]; trivial) C.terms
     simpa using this
   have hpair : IsQueryBoundP (liftComp (C.parties.mapM fun j => if h : j = i then pure 0 else
       hashQuery (C := C) (.derive phase .pair [(view (C.pairOf i j (Ne.symm h)).1.1).pair (C.pairOf i j (Ne.symm h)).1.2,
@@ -1258,19 +1258,19 @@ theorem isQueryBoundP_setupCompared_derive (phase : Phase) (D : C.Coalition) (i 
           (view (C.pairOf i j (Ne.symm h)).1.2).pair (C.pairOf i j (Ne.symm h)).1.1])) (LocalSpec C))
       (fun j => by
         by_cases hj : j = i
-        · rw [dif_pos hj, liftComp_pure]; trivial
-        · rw [dif_neg hj]; exact hd _ _) C.parties
+        · rw [dite_eq_left hj, liftComp_pure]; trivial
+        · rw [dite_eq_right hj]; exact hd _ _) C.parties
     simpa using this
   unfold deriveKeys
   dsimp only
   by_cases hp : phase = .seedGen
-  · rw [if_pos hp, liftComp_bind, ← Nat.zero_add 0]
+  · rw [ite_eq_left hp, liftComp_bind, ← Nat.zero_add 0]
     refine isQueryBoundP_bind (hd _ _) fun _ _ => ?_
     rw [liftComp_bind, ← Nat.zero_add 0]
     exact isQueryBoundP_bind hterm fun _ _ => by
       rw [liftComp_bind, ← Nat.zero_add 0]
       exact isQueryBoundP_bind hpair fun _ _ => by rw [liftComp_pure]; trivial
-  · rw [if_neg hp, pure_bind, liftComp_bind, ← Nat.zero_add 0]
+  · rw [ite_eq_right hp, pure_bind, liftComp_bind, ← Nat.zero_add 0]
     exact isQueryBoundP_bind hterm fun _ _ => by
       rw [liftComp_bind, ← Nat.zero_add 0]
       exact isQueryBoundP_bind hpair fun _ _ => by rw [liftComp_pure]; trivial
@@ -1283,7 +1283,7 @@ theorem isQueryBoundP_setupCompared_hashes (phase : Phase) (D : C.Coalition) (qs
 
 theorem seedGenParties_sum_le_card (f : C.Party → ℕ) (hf : ∀ j, f j ≤ 1) :
     (C.parties.map f).sum ≤ C.n := by
-  have h := List.sum_le_card_nsmul (C.parties.map f) 1 (by simpa using fun j _ => hf j)
+  have h := List.sum_le_length_nsmul (C.parties.map f) 1 (by simpa using fun j _ => hf j)
   simpa [Committee.parties] using h
 
 theorem seedGenParties_sum_corrupt (D : C.Coalition) :
@@ -1322,7 +1322,7 @@ theorem isQueryBoundP_setupCompared_revealComputations (phase : Phase) (D : C.Co
   · split
     · trivial
     · rename_i h
-      rw [if_neg (fun hi => h (Or.inl hi))]
+      rw [ite_eq_right (fun hi => h (Or.inl hi))]
       exact isQueryBoundP_setupCompared_revealCompute (phase := phase) D i (parts i) (committed i) _
   · rw [Finset.sum_ite, Finset.sum_const_zero, Finset.sum_const, zero_add, smul_eq_mul]
     have hc : (Finset.univ.filter fun i => i ∉ D.1).card = C.n - D.1.card := by
@@ -1548,15 +1548,15 @@ theorem setupTarget_local (phase : Phase) (prims : Primitives) {D : C.Coalition}
       · have hu := hm.2 u
         simp only [setupComparedCall] at hu
         by_cases hct : SetupComparedCell (phase := phase) D q
-        · erw [if_pos hct] at hu
+        · erw [ite_eq_left hct] at hu
           exact (ih u (m - 1) s' hu h).trans (ENNReal.div_le_div_right (by exact_mod_cast Nat.sub_le m 1) _)
-        · erw [if_neg hct] at hu
+        · erw [ite_eq_right hct] at hu
           exact ih u m s' hu h
       · have hm' := hm.1.resolve_left (by simpa [setupComparedCall] using hc)
         refine ⟨hm', fun u s' h => ?_⟩
         have hu := hm.2 u
         simp only [setupComparedCall] at hu
-        erw [if_pos hc] at hu
+        erw [ite_eq_left hc] at hu
         exact ih u (m - 1) s' hu h
     · change Pr{let z ← (prgAnswer prims x).run s >>= fun p => (simulateQ (localAnswer prims) (f p.1)).run p.2}[
         SeedGenTargetHit target b z.2] ≤ _
@@ -1693,7 +1693,7 @@ theorem setupCompared_unchanged (phase : Phase) (prims : Primitives) {D : C.Coal
     have hpr : ¬ setupComparedProgram (phase := phase) D t := fun h => by simpa using hp.1.resolve_left (not_not.mpr h)
     have hmu := hm.2 p.1
     have hpu := hp.2 p.1
-    simp only [if_neg hc, if_neg hpr] at hmu hpu
+    simp only [ite_eq_right hc, ite_eq_right hpr] at hmu hpu
     rw [ih p.1 hmu hpu p.2 z hz x hx]
     rcases t with (t | y) | t
     · exact localAnswer_setupCompared_unchanged (phase := phase) prims D t hc s p hp' x hx
@@ -1806,7 +1806,7 @@ theorem seedGenCell_unchanged (x : Query C) (hx : ∀ k, x ≠ .streamKey k) {α
     obtain ⟨p, hp, hz⟩ := hz
     have hc : ¬ seedGenCellCall x t := fun h => by simpa using hm.1.resolve_left (not_not.mpr h)
     have hmu := hm.2 p.1
-    simp only [if_neg hc] at hmu
+    simp only [ite_eq_right hc] at hmu
     rw [ih p.1 hmu p.2 z hz]
     rcases t with n | q | y
     · simp [localAnswer, unifFwdImpl] at hp

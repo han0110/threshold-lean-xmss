@@ -118,9 +118,9 @@ theorem guarded_step (Inv : LoggedState C → Prop) (f : LoggedState C → ℝ�
   by_cases hbad : Programmed s.2 ∨ IsProgram t
   · refine le_trans (le_of_eq (OracleComp.tsum_prEvent_mul_of_const_on_support _ (c := 0) (fun r hr => ?_)))
       zero_le
-    rw [guarded, if_pos (by rw [loggedImpl_log prims t s r hr, programmed_logQuery]; exact hbad)]
+    rw [guarded, ite_eq_left (by rw [loggedImpl_log prims t s r hr, programmed_logQuery]; exact hbad)]
   · push Not at hbad
-    rw [guarded, if_neg hbad.1]
+    rw [guarded, ite_eq_right hbad.1]
     refine le_trans (ENNReal.tsum_le_tsum fun r => ?_) (hstep t s (hs hbad.1) hbad.1 hbad.2)
     gcongr
     unfold guarded
@@ -154,7 +154,7 @@ theorem hitLane_of_potential (A : TsigAdversary C) (q : ℕ) (x : SigningSecurit
   rw [winHit_logged, hrun]
   rw [hrun] at hwin hcount hprogram
   have hguardedInit : guarded f loggedInit = 0 := by
-    rw [guarded, if_neg (by simp [loggedInit, Programmed]), hzero]
+    rw [guarded, ite_eq_right (by simp [loggedInit, Programmed]), hzero]
   calc Pr{let z ← (simulateQ (loggedImpl prims) (finalRun A x)).run loggedInit}[WinHit prims x (z.1, z.2.1)]
       ≤ XmssSecurity.expectedFinal (loggedImpl prims) (guarded f) (finalRun A x) loggedInit := by
         rw [OracleComp.prEvent_eq_tsum_ite]
@@ -164,7 +164,7 @@ theorem hitLane_of_potential (A : TsigAdversary C) (q : ℕ) (x : SigningSecurit
           · calc _ = Pr{let y ← (simulateQ (loggedImpl prims) (finalRun A x)).run loggedInit}[y = z] * 1 := (mul_one _).symm
               _ ≤ _ := by
                 gcongr
-                rw [guarded, if_neg (hprogram z hs)]
+                rw [guarded, ite_eq_right (hprogram z hs)]
                 exact hwin z hs hz
           · rw [prEvent_eq_zero_of_not_mem_support _ hs, zero_mul]
         · exact zero_le

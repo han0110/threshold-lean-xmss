@@ -181,7 +181,7 @@ theorem E_merkle_ascent (P : PublicParameter) (lay : Layer) (f : KeyIndex → Ch
       E prims h (merkleNode P lay f n (key.val / 2 ^ n))
   | 0, _ => by rw [Verification.treeFold_eq_zero, E_pure, pow_zero, Nat.div_one]
   | n + 1, hn => by
-    rw [E_treeFold_succ, E_merkle_ascent P lay f key n (by omega), E_merkleNode_succ, dif_pos (by omega)]
+    rw [E_treeFold_succ, E_merkle_ascent P lay f key n (by omega), E_merkleNode_succ, dite_eq_left (by omega)]
     have hdiv : key.val / 2 ^ (n + 1) = key.val / 2 ^ n / 2 := by
       rw [pow_succ, Nat.div_div_eq_div_mul]
     have hbit : key.val.testBit n = (key.val / 2 ^ n).testBit 0 := by
@@ -193,12 +193,12 @@ theorem E_merkle_ascent (P : PublicParameter) (lay : Layer) (f : KeyIndex → Ch
         rw [Nat.testBit_zero]; simp [Nat.even_iff.mp hq]
       have hx : Nat.xor q 1 = 2 * (q / 2) + 1 := by
         rw [show Nat.xor q 1 = q ^^^ 1 from rfl, Nat.xor_one_of_even hq]; have := Nat.even_iff.mp hq; omega
-      rw [h0, if_neg (by simp), hx, show 2 * (q / 2) = q by have := Nat.even_iff.mp hq; omega]
+      rw [h0, ite_eq_right (by simp), hx, show 2 * (q / 2) = q by have := Nat.even_iff.mp hq; omega]
     · have h1 : q.testBit 0 = true := by
         rw [Nat.testBit_zero]; simp [Nat.odd_iff.mp hq]
       have hx : Nat.xor q 1 = 2 * (q / 2) := by
         rw [show Nat.xor q 1 = q ^^^ 1 from rfl, Nat.xor_one_of_odd hq]; have := Nat.odd_iff.mp hq; omega
-      rw [h1, if_pos rfl, hx, show 2 * (q / 2) + 1 = q by have := Nat.odd_iff.mp hq; omega]
+      rw [h1, ite_eq_left rfl, hx, show 2 * (q / 2) + 1 = q by have := Nat.odd_iff.mp hq; omega]
 
 theorem E_merkleNode_zero (P : PublicParameter) (lay : Layer) (f : KeyIndex → ChainIndex → Digest) (key : KeyIndex) :
     E prims h (merkleNode P lay f 0 key.val) = E prims h (Verification.leafHashWithHash P lay key (f key)) := by
@@ -392,7 +392,7 @@ theorem sum_L (J : C.Quorum) (g : C.Term → XorDigest) : ∑ i ∈ J.1, ∑ T �
   rw [← Finset.coe_min' hne]
   simp only [WithTop.coe_eq_coe]
   rw [Finset.sum_ite_eq]
-  rw [if_pos (Finset.mem_sdiff.mp (Finset.min'_mem _ hne)).1]
+  rw [ite_eq_left (Finset.mem_sdiff.mp (Finset.min'_mem _ hne)).1]
 
 section Fixed
 
@@ -415,7 +415,7 @@ theorem D_combine (P : PublicParameter) (seeds : C.Term → HashOutput) (pairKey
   intro i j
   by_cases hij : i = j
   · rw [hij]
-  · simp only [dealtKeys, dif_neg hij, dif_neg (Ne.symm hij), pairOf_comm i j hij]
+  · simp only [dealtKeys, dite_eq_right hij, dite_eq_right (Ne.symm hij), pairOf_comm i j hij]
 
 end Fixed
 
@@ -602,7 +602,7 @@ theorem D_refBottom (P : PublicParameter) (seeds : C.Term → HashOutput) (top :
     have hT := topRoot_eq (prims := prims) (h := h) seeds P top htopChain htopRoot b _ r1 e1
       (E_grind_spec _ _ _ _ _ _ _ _ _ hG)
     unfold E at hT
-    rw [hT, if_neg (not_not.mpr rfl), D_pure]
+    rw [hT, ite_eq_right (not_not.mpr rfl), D_pure]
     refine Or.inr ⟨_, rfl, ⟨fun k l => ?_, fun k => ?_, ?_, ?_⟩⟩
     rotate_left 2
     · dsimp only
@@ -620,7 +620,7 @@ theorem D_signCodeword (P : PublicParameter) (commitment : Digest) (e : KeyIndex
         (truncateHash (h (.hash (randomizerInput P bottomLayer e ρ (littleEndianBytes 32 message))))) randomizerAttemptLimit 0) := by
   unfold signCodeword
   change E prims h _ = _
-  rw [E_bind, E_oracleHash, if_neg (by rw [hc]; exact not_not.mpr rfl), E_bind, E_oracleHash]
+  rw [E_bind, E_oracleHash, ite_eq_right (by rw [hc]; exact not_not.mpr rfl), E_bind, E_oracleHash]
 
 theorem D_signRound2With (part : Point → OracleComp (RoSpec C) Digest) (P : PublicParameter) (J : C.Quorum)
     (commitment : Digest) (e : KeyIndex) (message : Message) (parts : C.Party → Digest) (randomness : Randomizer)
@@ -663,7 +663,7 @@ theorem D_assemble (P : PublicParameter) (tree : BottomTree) (e : KeyIndex) (mes
   dsimp only
   change E prims h _ = _
   rw [E_bind, E_sequenceFin]
-  rw [if_neg (by push Not; exact hends)]
+  rw [ite_eq_right (by push Not; exact hends)]
   rw [E_bind, E_pure]
   rfl
 
@@ -717,7 +717,7 @@ theorem D_honestRo (P : PublicParameter) (seeds : C.Term → HashOutput) (pairKe
   set parts := fun i => D prims h (if i ∈ J.1 then eval (dealtKeys P seeds pairKeys i) i J
     (.randomizer bottomLayer e) m else pure 0) with hparts
   have hρ : combine J parts = D prims h (prfValue seeds (.randomizer bottomLayer e)) :=
-    D_combine P seeds pairKeys J _ m parts fun i hi => by rw [hparts]; dsimp only; rw [if_pos hi]
+    D_combine P seeds pairKeys J _ m parts fun i hi => by rw [hparts]; dsimp only; rw [ite_eq_left hi]
   have hc : tree.commitment e = truncateHash (h (.hash (commitmentInput P e (combine J parts)))) := by
     have := hspec.commitment ⟨e.val % 2 ^ layerHeight, Nat.mod_lt _ (by decide)⟩
     rw [bottomKey_treeOf] at this
@@ -743,7 +743,7 @@ theorem D_honestRo (P : PublicParameter) (seeds : C.Term → HashOutput) (pairKe
     refine assembled_ends P tree e J chainParts encB l
       (fun p => D prims h (prfValue seeds (.chain bottomLayer e l p))) hcpk' fun p hp hep => ?_
     refine D_combine P seeds pairKeys J _ m _ fun i _ => ?_
-    simp only [hchainParts, hep, if_pos hp, Option.getD_some]
+    simp only [hchainParts, hep, ite_eq_left hp, Option.getD_some]
   have hdecB := E_grind_spec (prims := prims) (h := h) _ _ _ _ _ _ _ _ _ hG
   rw [D_assemble _ _ _ _ _ _ _ randB encB hsc hends]
   dsimp only
@@ -751,7 +751,7 @@ theorem D_honestRo (P : PublicParameter) (seeds : C.Term → HashOutput) (pairKe
   change some (E prims h (Verification.verifyWithHash _ m _)) ≠ some false
   unfold Verification.verifyWithHash
   dsimp only
-  rw [if_pos rfl, if_neg (by decide), keyAt_bottom, keyAt_top, E_bind]
+  rw [ite_eq_left rfl, ite_eq_right (by decide), keyAt_bottom, keyAt_top, E_bind]
   have hroot' : tree.root = E prims h (merkleNode P bottomLayer
       (fun e l => (tree.cpk e l).2.2) layerHeight (e.val / 2 ^ layerHeight)) := by
     rw [hspec.root, show ((treeOf e) : ℕ) = e.val / 2 ^ layerHeight from rfl]
@@ -1074,7 +1074,7 @@ theorem encoding_pack (x : Encoding) : (digestDigits (pack x) : Encoding) = x :=
   apply Fin.ext
   rw [show (digestDigits (pack x) i).val = _ from digit_val (pack x) i.val, toNat_pack, packNat,
     digit_of_sum 4 (by decide) (wordDigit x) (wordDigit_lt x) chainCount i.val i.isLt,
-    wordDigit, dif_pos i.isLt]
+    wordDigit, dite_eq_left i.isLt]
 
 theorem valid_pack {x : Encoding} (hx : Codeword.sum x = targetSum) : Codeword.Valid (pack x) := by
   refine ⟨?_, by rw [encoding_pack]; exact hx⟩
@@ -1092,7 +1092,7 @@ theorem pack_encoding {d : Digest} (hd : Codeword.Valid d) : pack (digestDigits 
   rw [← sum_digits_eq 4 (by decide) chainCount d.toNat hlt, packNat]
   apply Finset.sum_congr rfl
   intro j hj
-  rw [wordDigit, dif_pos (Finset.mem_range.mp hj)]
+  rw [wordDigit, dite_eq_left (Finset.mem_range.mp hj)]
   exact congrArg (· * 4 ^ j) (digit_val d j)
 
 set_option maxRecDepth 100000 in
@@ -1155,7 +1155,7 @@ theorem roRun_fresh (x : HashInput) (hx : ¬MpcInput x) (s : HashCache C) (hs : 
   rw [h1]
   change (hashAnswer prims (.hash x)).run s = _
   dsimp only [hashAnswer]
-  rw [if_neg hx, OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ hs]
+  rw [ite_eq_right hx, OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ hs]
   rfl
 
 /-- The `t`-th trial input of a randomizer search. -/
@@ -1179,8 +1179,8 @@ theorem probEvent_bind_le_mul_of_cases {α β : Type} {mx : ProbComp α} {f : α
   refine ENNReal.tsum_le_tsum fun x => ?_
   by_cases hx : x ∈ support mx
   · by_cases hq : Q x
-    · rw [if_pos hq]; exact mul_le_mul' le_rfl (h1 x hx hq)
-    · rw [if_neg hq, h0 x hx hq]; simp
+    · rw [ite_eq_left hq]; exact mul_le_mul' le_rfl (h1 x hx hq)
+    · rw [ite_eq_right hq, h0 x hx hq]; simp
   · simp [prEvent_eq_zero_of_not_mem_support _ hx]
 
 theorem grind_fail (P : PublicParameter) (lay : Layer) (key : KeyIndex) (message : HashInput) (base : Randomizer) :
@@ -1199,7 +1199,7 @@ theorem grind_fail (P : PublicParameter) (lay : Layer) (key : KeyIndex) (message
     rw [pow_succ']
     conv_rhs => arg 1; rw [← probEvent_invalid_trunc]
     refine probEvent_bind_le_mul_of_cases (fun u _ hu => ?_) (fun u _ hu => ?_)
-    · simp only [Codeword.decode, if_neg hu]
+    · simp only [Codeword.decode, ite_eq_right hu]
       refine grind_fail P lay key message base attempts (trial + 1) _ (by omega) fun t ht1 ht2 => ?_
       obtain ⟨hm, hn⟩ := hfresh t (by omega) (by omega)
       refine ⟨hm, ?_⟩
@@ -1207,7 +1207,7 @@ theorem grind_fail (P : PublicParameter) (lay : Layer) (key : KeyIndex) (message
         fun heq => by have := trialInput_inj (by omega) (by omega) heq; omega
       rw [QueryCache.cacheQuery_of_ne _ _ (fun heq => hne (Query.hash.inj heq))]
       exact hn
-    · simp only [Codeword.decode, if_pos (not_not.mp hu), tweakable_pure, roRun_pure]
+    · simp only [Codeword.decode, ite_eq_left (not_not.mp hu), tweakable_pure, roRun_pure]
       simp
 
 theorem byte23 (P : PublicParameter) (f : TweakFields) (rest : HashInput) :
@@ -1398,9 +1398,9 @@ theorem Pres_treeFold (P : PublicParameter) (lay : Layer) (key : KeyIndex) (path
     refine Pres_bind prims B (Pres_treeFold P lay key path n v) fun _ => ?_
     dsimp only
     by_cases hb : key.val.testBit n = true
-    · rw [if_pos hb]
+    · rw [ite_eq_left hb]
       exact Pres_tweakableHash prims B _ _ _ fun h => absurd (byte23_node _ _ _ _ _) (by rw [hB _ h]; decide)
-    · rw [if_neg hb]
+    · rw [ite_eq_right hb]
       exact Pres_tweakableHash prims B _ _ _ fun h => absurd (byte23_node _ _ _ _ _) (by rw [hB _ h]; decide)
 
 end Msg
@@ -1606,7 +1606,7 @@ theorem bottomRest_fail (seeds : C.Term → HashOutput) (P : PublicParameter) (t
   have htr : topRoot = some top.root := by
     rw [hd8 h hg ha, hd7 h hg ha7, hvals h hg ha6]
     exact hT
-  rw [if_neg (by rw [htr]; exact not_not.mpr rfl), roRun_pure]
+  rw [ite_eq_right (by rw [htr]; exact not_not.mpr rfl), roRun_pure]
   simp
 
 theorem refBottom_fail (seeds : C.Term → HashOutput) (P : PublicParameter) (top : TopTree)
@@ -1638,7 +1638,7 @@ theorem signCodeword_fail (P : PublicParameter) (commitment : Digest) (e : KeyIn
   have ho : truncateHash o = commitment := by
     rw [hd1 h hg ha, hc h hg (ha.mono hle1), tweakable_oracleHash, D_hashQuery]
   dsimp only
-  rw [if_neg (by rw [ho]; exact not_not.mpr rfl), tweakable_bind]
+  rw [ite_eq_right (by rw [ho]; exact not_not.mpr rfl), tweakable_bind]
   refine step prims _ _ _ _ _ hn1 fun base s2 hle2 hn2 hd2 hp2 => ?_
   have hm2 := hp2 IsMsg80 (Pres_oracleHash prims IsMsg80 _ fun h => absurd h.1 (by
     rw [byte23_randomizer]; decide)) hm1
@@ -1717,7 +1717,7 @@ theorem honestRo_fail (P : PublicParameter) (seeds : C.Term → HashOutput) (pai
       have hc := (hspec h hg (ha.mono hle3)).commitment ⟨e.val % 2 ^ layerHeight, Nat.mod_lt _ (by decide)⟩
       rw [bottomKey_treeOf] at hc
       rw [hc, D_combine P seeds pairKeys J _ m parts fun i hi => by
-        rw [hd3 h hg ha, D_sequenceFin]; dsimp only; rw [if_pos hi]])
+        rw [hd3 h hg ha, D_sequenceFin]; dsimp only; rw [ite_eq_left hi]])
   rcases r4 with _ | sc
   · exact absurd rfl hr4
   dsimp only

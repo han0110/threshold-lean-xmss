@@ -53,7 +53,7 @@ theorem dec_eq_none (P : PublicParameter) (input : HashInput)
     (h : ∀ e payload, input ≠ tweakableHashInput P (.message bottomLayer e) payload) :
     XmssSecurity.Ghost.dec (SigningLane2FlatProof.laneKey P).parameter input = none := by
   unfold XmssSecurity.Ghost.dec
-  rw [dif_neg]
+  rw [dite_eq_right]
   rintro ⟨⟨e, message, randomness⟩, hy⟩
   refine h e (littleEndianBytes 32 message ++ littleEndianBytes 16 randomness) ?_
   rw [← hy]
@@ -85,7 +85,7 @@ theorem hiddenCandidate_leafNode (P : PublicParameter) (domain : HashDomain) (pa
     rintro ⟨b, l, p, v, h⟩
     rw [SigningGuessLinkProof.topChainInput_eq_bridge P b l p v] at h
     exact hchain _ _ _ (tweakableInput_injective h).1
-  simp only [hiddenCandidate, dif_neg hc, dif_neg hr, dif_neg hb, dif_neg ht]
+  simp only [hiddenCandidate, dite_eq_right hc, dite_eq_right hr, dite_eq_right hb, dite_eq_right ht]
 
 /-- A tweakable input whose byte 23 is not that of a message digest input is decoded by no key. -/
 theorem dec_eq_none_of_byte23 (P : PublicParameter) (domain : HashDomain) (payload : HashInput)

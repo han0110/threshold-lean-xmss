@@ -298,7 +298,7 @@ theorem setupRefVisible_congr (phase : Phase) (prims : Primitives) (D : C.Coalit
       simp only [setupReferenceActive, setupReferenceOpenCheck, hc]
     rw [setupReferenceData_active, setupReferenceData_active]
     by_cases ha : setupReferenceActive (phase := phase) D h₁ s rs i
-    · rw [if_pos ha, if_pos (hactive.1 ha)]
+    · rw [ite_eq_left ha, ite_eq_left (hactive.1 ha)]
       simp only [setupEchoDataStep, Step.outbox, echoOutbox]
       congr 2
       simp only [echoOf, D_sharedQueries_at]
@@ -306,7 +306,7 @@ theorem setupRefVisible_congr (phase : Phase) (prims : Primitives) (D : C.Coalit
       have := hpt i c hci.2 hci.1
       unfold setupVisiblePoint at this
       rw [this]
-    · rw [if_neg ha, if_neg (fun h => ha (hactive.2 h))]
+    · rw [ite_eq_right ha, ite_eq_right (fun h => ha (hactive.2 h))]
   · rfl
 
 theorem setupRefPrefixV_congr (phase : Phase) (prims : Primitives) (D : C.Coalition) (h₁ h₂ : Query C → HashOutput)
@@ -451,7 +451,7 @@ theorem probEvent_setupEchoCell_le (phase : Phase) (D : C.Coalition) (v : Query 
           obtain ⟨hs', -, -, l, rfl, hl⟩ := hu
           rw [← hl]
           rfl
-        · refine le_trans (le_of_eq ?_) (zero_le')
+        · refine le_trans (le_of_eq ?_) (zero_le)
           refine prEvent_eq_zero_of_forall_mem_support _ _ fun u _ hu => ?_
           exact hs hu.1
     _ = _ := by simp
@@ -600,7 +600,7 @@ theorem probEvent_setupCollide_le (phase : Phase) (prims : Primitives) (D : C.Co
     _ ≤ ∑ _p : C.Pair, (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
         refine Finset.sum_le_sum fun p _ => ?_
         by_cases hne : pt p.1.1 p.1.2 = pt p.1.2 p.1.1
-        · refine le_trans (le_of_eq ?_) (zero_le')
+        · refine le_trans (le_of_eq ?_) (zero_le)
           refine prEvent_eq_zero_of_forall_mem_support _ _ fun a' _ ha' => ?_
           exact ha'.1 hne
         · rw [← probEvent_fun_collide hne]

@@ -127,7 +127,7 @@ theorem hitOwn_of_gate (hgate : KeyGateBoundOwn prims C) : HitOwn prims (C := C)
   refine ENNReal.tsum_le_tsum fun z => ?_
   by_cases hz : z ∈ support (loggedRun prims A x)
   · by_cases hw : WinHit prims x (z.1, z.2.1)
-    · simp only [hw, if_true, guarded, if_neg (noProgramQuery prims C A x z hz)]
+    · simp only [hw, ite_true, guarded, ite_eq_right (noProgramQuery prims C A x z hz)]
       simpa only [mul_one] using mul_le_mul_right
         (SigningGuessProof.structuralHitPotential_terminal prims A x T z hz hw) (Pr{let y ← loggedRun prims A x}[y = z])
     · simp [hw]

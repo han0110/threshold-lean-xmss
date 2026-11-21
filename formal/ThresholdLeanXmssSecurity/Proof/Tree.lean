@@ -85,6 +85,7 @@ def pairDraws {R : Type} [Zero R] (ctx : Context C) (codec : Codec C E R) (ρ id
   C.parties.mapM fun j => if h : j = ctx.self then pure fun _ => 0
     else codec.draw (.pair (C.pairOf ctx.self j (Ne.symm h))) (ctx.prss.pair j) ρ idx count
 
+omit [Field E] [Algebra Bit E] in
 theorem prssRandomness_eq {R : Type} [Zero R] (ctx : Context C) (codec : Codec C E R) (idx count : ℕ) :
     (prssRandomness (G := G) ctx codec idx count) = (do
       let ρ ← freshLabel
@@ -128,10 +129,10 @@ theorem sum_honestShare [CharP R 2] (hctx : ∀ i, (ctx i).self = i) (g : ℕ) :
     rw [← this]
     refine Finset.sum_congr rfl fun i _ => ?_
     conv_rhs => rw [← Finset.sum_erase_add _ _ (Finset.mem_univ i)]
-    rw [dif_pos rfl, add_zero, hctx]
+    rw [dite_eq_left rfl, add_zero, hctx]
     refine Finset.sum_congr rfl fun k hk => ?_
     have hki : k ≠ i := Finset.ne_of_mem_erase hk
-    simp only [honestZ, dif_neg hki, dif_neg (Ne.symm hki)]
+    simp only [honestZ, dite_eq_right hki, dite_eq_right (Ne.symm hki)]
   have hown : ∑ j : C.Party, ∑ T ∈ Finset.univ.filter (fun T => T ∉ filledTerms K ∧ K.owner T = (ctx j).self),
       honestR rr j T g = ∑ T ∈ Finset.univ.filter (· ∉ filledTerms K), rr T g := by
     rw [← Finset.sum_fiberwise_of_maps_to (s := Finset.univ.filter (· ∉ filledTerms K))
@@ -140,7 +141,7 @@ theorem sum_honestShare [CharP R 2] (hctx : ∀ i, (ctx i).self = i) (g : ℕ) :
     rw [hctx, Finset.filter_filter]
     refine Finset.sum_congr rfl fun T hT => ?_
     have hT' := (Finset.mem_filter.mp hT).2
-    simp only [honestR, if_pos (hT'.2 ▸ K.owner_held T)]
+    simp only [honestR, ite_eq_left (hT'.2 ▸ K.owner_held T)]
   have hu : ∑ j, u j = ∑ i, v i g + ∑ T ∈ Finset.univ.filter (· ∉ filledTerms K), rr T g := by
     simp only [u, reshareU, Finset.sum_add_distrib, hpairs, add_zero, hown]
   unfold honestShare
@@ -158,21 +159,21 @@ theorem reshareZ_honest (codec : Codec C E R) (hcodec : CodecRoundTrip codec) (h
   by_cases hiT : i ∈ C.holders T
   · by_cases hg : g < count
     · have h1 : ¬ (i ∉ C.holders T ∨ count ≤ g) := by simp [hiT]; omega
-      rw [if_neg h1, if_pos (show i ∈ C.holders T ∧ g < count from ⟨hiT, hg⟩)]
+      rw [ite_eq_right h1, ite_eq_left (show i ∈ C.holders T ∧ g < count from ⟨hiT, hg⟩)]
       by_cases hT : T ∈ filledTerms K
-      · simp only [hT, if_true]
+      · simp only [hT, ite_true]
         refine Finset.sum_congr rfl fun j hj => ?_
         have hjT : K.filled j = T := (Finset.mem_filter.mp hj).2
         by_cases hji : j = i
-        · rw [if_pos hji, hji]
-        · rw [if_neg hji]
+        · rw [ite_eq_left hji, hji]
+        · rw [ite_eq_right hji]
           have h2 : j ≠ (ctx j).self → False := fun h => h (hctx j).symm
-          simp only [reshareOut, hctx, ne_eq, Ne.symm hji, not_false_eq_true, hjT, hiT, and_self, if_true]
+          simp only [reshareOut, hctx, ne_eq, Ne.symm hji, not_false_eq_true, hjT, hiT, and_self, ite_true]
           rw [(hcodec _ g).1, List.getD_eq_getElem?_getD, vector, List.getElem?_map, List.getElem?_range hg]
           rfl
       · simp [hT, honestR, hiT]
-    · rw [if_pos (Or.inr (by omega)), if_neg (by tauto)]
-  · rw [if_pos (Or.inl hiT), if_neg (by tauto)]
+    · rw [ite_eq_left (Or.inr (by omega)), ite_eq_right (by tauto)]
+  · rw [ite_eq_left (Or.inl hiT), ite_eq_right (by tauto)]
 
 end HonestReshare
 
@@ -359,6 +360,7 @@ def prssDraw {R : Type} [Zero R] (ctx : Context C) (codec : Codec C E R) (ρ idx
   let Z ← pairDraws ctx codec ρ idx count
   pure (fun T => r.getD (C.terms.idxOf T) fun _ => 0, fun j => Z.getD j.val fun _ => 0)
 
+omit [Field E] [Algebra Bit E] in
 @[simp] theorem oracleStep_pure {α : Type} (a : α) :
     (oracleStep (C := C) (E := E) (G := G) (pure a : OracleComp (RoSpec C) α)) = pure a := by
   simp [oracleStep, localStep]
@@ -366,6 +368,7 @@ def prssDraw {R : Type} [Zero R] (ctx : Context C) (codec : Codec C E R) (ρ idx
 /-- The state after one round label. -/
 def nextLabel (st : RunState C) : RunState C := ⟨st.history, st.label + 1, st.tag⟩
 
+omit [Field E] [Algebra Bit E] in
 theorem prssRandomness_run {R : Type} [Zero R] (ctx : Context C) (codec : Codec C E R) (idx count : ℕ)
     {α : Type} (f : PrssOutput C R → RunM C E G α) (st : RunState C) :
     (prssRandomness ctx codec idx count >>= f).run st =
@@ -387,6 +390,7 @@ theorem openSh_eqN (ctx : Context C) (v : ℕ → E) (count : ℕ) :
     (openSh (G := G) K ctx v count) = exchange (openOut ctx.self v count) >>= fun inbox =>
       require (OpenAgreesN K ctx.self v count inbox) >>= fun _ => pure (openValueN K ctx.self v inbox) := rfl
 
+omit [Algebra Bit E] in
 theorem openShareN_honest (v : C.Party → ℕ → E) (count : ℕ) (i j : C.Party) (g : ℕ) (hg : g < count) :
     openShareN i (v i) (fun k => openOut (E := E) k (v k) count i) j g = v j g := by
   unfold openShareN
@@ -408,6 +412,7 @@ theorem openShN_honest (v : C.Party → ℕ → E) (vals : ℕ → E) (count : �
     simp only [openValueN, openShareN_honest v count i _ g hg, hPi]
     rw [sum_lagrangeFirst_mul_eval K P hP, hP0]
 
+omit [Field E] [Algebra Bit E] in
 theorem isAbort_openOutboxN (k : C.Party) (v : ℕ → E) (count : ℕ) (j : C.Party) :
     Msg.isAbort (openOut (E := E) k v count j) = false := by
   unfold openOut; split_ifs <;> rfl
@@ -529,6 +534,7 @@ def prssCtx (keys : C.Party → Keys C) (kT : C.Term → HashOutput) (kP : C.Pai
   ⟨i, keys i, ⟨fun T => if i ∈ C.holders T then kT T else 0,
     fun j => if hj : j = i then 0 else kP (C.pairOf i j (Ne.symm hj))⟩⟩
 
+omit [Field E] [Algebra Bit E] in
 theorem D_prssDraw {R : Type} [Field R] (h : Query C → HashOutput) (keys : C.Party → Keys C)
     (kT : C.Term → HashOutput) (kP : C.Pair → HashOutput) (i : C.Party) (codec : Codec C E R) (ρ idx count : ℕ) :
     D prims h (prssDraw (prssCtx keys kT kP i) codec ρ idx count) =
@@ -557,6 +563,7 @@ theorem FrameR.prgBits (name : KeyName C) (key : HashOutput) (ρ idx count : ℕ
   unfold ThresholdLeanXmss.prgBits
   exact (FrameR.mapM _ (fun position => FrameR.prg (name, key, ρ, idx, position)) _).bind fun _ => FrameR.pure _
 
+omit [Field E] [Algebra Bit E] in
 theorem FrameR.bitDraw (name : KeyName C) (key : HashOutput) (ρ idx count : ℕ) :
     FrameR prims ((bitCodec (C := C) (E := E)).draw name key ρ idx count) := FrameR.prgBits _ _ _ _ _
 
@@ -564,6 +571,7 @@ theorem FrameR.elementDraw (K : Constants C E) (name : KeyName C) (key : HashOut
     FrameR prims ((elementCodec K).draw name key ρ idx count) :=
   (FrameR.prgBits _ _ _ _ _).bind fun _ => FrameR.pure _
 
+omit [Field E] [Algebra Bit E] in
 theorem FrameR.prssDraw {R : Type} [Zero R] (ctx : Context C) (codec : Codec C E R)
     (hdraw : ∀ name key ρ idx count, FrameR prims (codec.draw name key ρ idx count)) (ρ idx count : ℕ) :
     FrameR prims (prssDraw ctx codec ρ idx count) := by
@@ -776,6 +784,7 @@ theorem tauQuery_zero_le_Ks (tag ρ : ℕ) (v : List E) (count m : ℕ) (hm : m 
     · exact hkey ((hs _ h).1 _ i rfl)
     · cases h
 
+omit [Fintype E] [DecidableEq E] in
 /-- After the coins `τ`, the cache holds expansions of one more key. -/
 theorem tauQuery_cache_Ks (tag ρ : ℕ) (v : List E) (count : ℕ) (Ks : Finset HashOutput) (L : ℕ) (hρ : L ≤ ρ)
     (s : HashCache C) (hs : CacheOK Ks L s) z
@@ -804,6 +813,7 @@ variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] [Fintype E] [Decid
   (prims : Primitives) (K : Constants C E) (keys : C.Party → Keys C) (kT : C.Term → HashOutput)
   (kP : C.Pair → HashOutput)
 
+omit [Fintype E] [DecidableEq E] in
 /-- The coin part of a challenge or of the coins `τ`, up to the common query of `H`. -/
 theorem coinPart_step [Nonempty C.Party] (F : Functionality C I O L R) (reply : L → R) (fuel : ℕ) (lab : ℕ)
     (g : C.Party → List E → PartyM C E (CallSpec I O) α) (event : (C.Party → Option α) → Prop)
@@ -879,7 +889,7 @@ theorem tau_step [Nonempty C.Party] (F : Functionality C I O L R) (reply : L →
     (hd : sliceBits ≤ d)
     (st : C.Party → RunState C) (lab tg : ℕ) (hL : ∀ i, (st i).label = lab) (hT : ∀ i, (st i).tag = tg)
     (g : C.Party → List E → RunState C → PartyM C E (CallSpec I O) α) (event : (C.Party → Option α) → Prop)
-    (δ : ℝ≥0∞) (hδ : event (fun _ => none) → 1 ≤ δ)
+    (δ : ℝ≥0∞) (_hδ : event (fun _ => none) → 1 ≤ δ)
     (s : HashCache C) (hn : NoMpc s) (Ks : Finset HashOutput) (Lk : ℕ) (hLk : Lk ≤ lab) (hs : CacheOK Ks Lk s)
     (ε : ℝ≥0∞)
     (h : ∀ (τ : List E), (1 ≤ δ → ∀ b < sliceBits, τ.getD b 0 ≠ 0) →
@@ -913,6 +923,7 @@ theorem tau_step [Nonempty C.Party] (F : Functionality C I O L R) (reply : L →
 
 @[simp] theorem prssCtx_self (i : C.Party) : (prssCtx keys kT kP i).self = i := rfl
 
+omit [Field E] [Algebra Bit E] [Fintype E] [DecidableEq E] in
 theorem compareDigests_run {ι : Type} {G : OracleSpec ι} (ctx : Context C) (salts : Shares C Bit) (st : RunState C) :
     (compareDigests (G := G) ctx salts).run st =
       oracleStep (digestQuery ctx.self salts st.history) >>= fun ds =>
@@ -921,6 +932,7 @@ theorem compareDigests_run {ι : Type} {G : OracleSpec ι} (ctx : Context C) (sa
   simp only [compareDigests, StateT.run_bind, StateT.run_lift, StateT.run_get, bind_assoc, pure_bind]
   rfl
 
+omit [Field E] [Algebra Bit E] [Fintype E] [DecidableEq E] in
 /-- Honest digests, whose comparison passes. -/
 theorem digest_step [Nonempty C.Party] (F : Functionality C I O L R) (reply : L → R) (fuel : ℕ)
     (st : C.Party → RunState C) (hh : HistAgree fun i => (st i).history)
@@ -961,12 +973,15 @@ variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] [Fintype E] [Decid
   (prims : Primitives) (K : Constants C E) (keys : C.Party → Keys C) (kT : C.Term → HashOutput)
   (kP : C.Pair → HashOutput)
 
+omit [Fintype E] [DecidableEq E] in
 @[simp] theorem realCheckBuildingBlocks_randElements {ι : Type} {G : OracleSpec ι} (ctx : Context C) (c : ℕ) :
     (realCheckBuildingBlocks (G := G) K ctx).randElements c = prssRandomness ctx (elementCodec K) 1 c := rfl
 
+omit [Fintype E] [DecidableEq E] in
 @[simp] theorem realCheckBuildingBlocks_randBits {ι : Type} {G : OracleSpec ι} (ctx : Context C) (c : ℕ) :
     (realCheckBuildingBlocks (G := G) K ctx).randBits c = prssRandomness ctx bitCodec 2 c := rfl
 
+omit [Fintype E] [DecidableEq E] in
 theorem rand_step' {R' : Type} [Field R'] (F : Functionality C I O L R) (reply : L → R) (fuel : ℕ)
     (codec : Codec C E R') (hdraw : ∀ name key ρ idx count, FrameR prims (codec.draw name key ρ idx count))
     (idx count : ℕ) (st : C.Party → RunState C) (lab : ℕ) (hL : ∀ i, (st i).label = lab)
@@ -982,6 +997,7 @@ theorem rand_step' {R' : Type} [Field R'] (F : Functionality C I O L R) (reply :
         honestRounds F reply fuel)).run' s}[event z] ≤ ε :=
   rand_step prims keys kT kP F reply fuel codec hdraw idx count st lab hL (fun i a b => g i (a, b)) event s hn ε h
 
+omit [Fintype E] [DecidableEq E] in
 theorem extendMult_step' [Nonempty C.Party] (F : Functionality C I O L R) (reply : L → R) (fuel : ℕ)
     (products : C.Party → List (Product C E)) (n : ℕ) (hlen : ∀ i, (products i).length = n)
     (st : C.Party → RunState C) (lab : ℕ) (hL : ∀ i, (st i).label = lab)
@@ -1394,6 +1410,7 @@ variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] [Fintype E] [Decid
   (prims : Primitives) (K : Constants C E) (keys : C.Party → Keys C) (kT : C.Term → HashOutput)
   (kP : C.Pair → HashOutput)
 
+omit [Fintype E] [DecidableEq E] in
 theorem tau_split {ι : Type} {G : OracleSpec ι} {β : Type} (ctx : Context C) (d : ℕ) (st : RunState C)
     (f : List E × RunState C → PartyM C E G β) :
     ((coinKey K (realCheckBuildingBlocks (G := G) K ctx)).run st >>= fun x => (expand K x.1 d).run x.2 >>=
@@ -1514,10 +1531,10 @@ theorem sum_colShare (g : ℕ) : ∑ T, colShare K rr zz v T g = ∑ i, v i g :=
     rw [← this]
     refine Finset.sum_congr rfl fun i _ => ?_
     conv_rhs => rw [← Finset.sum_erase_add _ _ (Finset.mem_univ i)]
-    rw [dif_pos rfl, add_zero]
+    rw [dite_eq_left rfl, add_zero]
     refine Finset.sum_congr rfl fun k hk => ?_
     have hki : k ≠ i := Finset.ne_of_mem_erase hk
-    simp only [honestZ, dif_neg hki, dif_neg (Ne.symm hki)]
+    simp only [honestZ, dite_eq_right hki, dite_eq_right (Ne.symm hki)]
   have hown : ∑ j : C.Party, ∑ T ∈ Finset.univ.filter (fun T => T ≠ star ∧ K.owner T = j), honestR rr j T g =
       ∑ T ∈ Finset.univ.filter (· ≠ star), rr T g := by
     rw [← Finset.sum_fiberwise_of_maps_to (s := Finset.univ.filter (· ≠ star))
@@ -1526,13 +1543,13 @@ theorem sum_colShare (g : ℕ) : ∑ T, colShare K rr zz v T g = ∑ i, v i g :=
     rw [Finset.filter_filter]
     refine Finset.sum_congr rfl fun T hT => ?_
     have hT' := (Finset.mem_filter.mp hT).2
-    simp only [honestR, if_pos (hT'.2 ▸ K.owner_held T)]
+    simp only [honestR, ite_eq_left (hT'.2 ▸ K.owner_held T)]
   have hu : ∑ j, colU K j (honestR rr j) (honestZ zz j) (v j) g =
       ∑ i, v i g + ∑ T ∈ Finset.univ.filter (· ≠ star), rr T g := by
     simp only [colU, Finset.sum_add_distrib, hpairs, add_zero]
     exact congrArg (_ + ·) hown
   unfold colShare
-  rw [Finset.sum_ite, Finset.filter_eq' Finset.univ star, if_pos (Finset.mem_univ _), Finset.sum_singleton, hu,
+  rw [Finset.sum_ite, Finset.filter_eq' Finset.univ star, ite_eq_left (Finset.mem_univ _), Finset.sum_singleton, hu,
     add_assoc, CharTwo.add_self_eq_zero, add_zero]
 
 /-- Each honest operator gets its held terms of `colShare`. -/
@@ -1553,27 +1570,27 @@ theorem colZ_honest (count : ℕ) (i : C.Party) (T : C.Term) (g : ℕ) :
     congr 1
     refine Finset.sum_congr rfl fun j hj => ?_
     have hjκ : j ≠ κ := Finset.ne_of_mem_erase hj
-    simp only [colOut1, ne_eq, Ne.symm hjκ, not_false_eq_true, if_true, Msg.bitAt]
+    simp only [colOut1, ne_eq, Ne.symm hjκ, not_false_eq_true, ite_true, Msg.bitAt]
     exact getD_map_idxOf' hmem _
   unfold colZ
   by_cases hiT : i ∈ C.holders T
   · by_cases hg : g < count
     · have h1 : ¬ (i ∉ C.holders T ∨ count ≤ g) := by simp [hiT]; omega
-      rw [if_neg h1, if_pos (show i ∈ C.holders T ∧ g < count from ⟨hiT, hg⟩)]
+      rw [ite_eq_right h1, ite_eq_left (show i ∈ C.holders T ∧ g < count from ⟨hiT, hg⟩)]
       unfold colShare
       by_cases hT : T = (K.collector g).1
-      · rw [if_pos hT, if_pos hT]
+      · rw [ite_eq_left hT, ite_eq_left hT]
         by_cases hκ : (K.collector g).2 = i
-        · rw [if_pos hκ, hsum i g hg hκ]
-        · rw [if_neg hκ]
+        · rw [ite_eq_left hκ, hsum i g hg hκ]
+        · rw [ite_eq_right hκ]
           have hmem : g ∈ forwardedTo K count (K.collector g).2 i :=
             List.mem_filter.2 ⟨List.mem_filter.2 ⟨List.mem_range.2 hg, by simp⟩, by simpa [← hT] using hiT⟩
-          simp only [colOut2, ne_eq, Ne.symm hκ, not_false_eq_true, if_true, Msg.bitAt]
+          simp only [colOut2, ne_eq, Ne.symm hκ, not_false_eq_true, ite_true, Msg.bitAt]
           rw [getD_map_idxOf' hmem, hsum _ g hg rfl]
-      · rw [if_neg hT, if_neg hT]
+      · rw [ite_eq_right hT, ite_eq_right hT]
         simp [honestR, hiT]
-    · rw [if_pos (Or.inr (by omega)), if_neg (by tauto)]
-  · rw [if_pos (Or.inl hiT), if_neg (by tauto)]
+    · rw [ite_eq_left (Or.inr (by omega)), ite_eq_right (by tauto)]
+  · rw [ite_eq_left (Or.inl hiT), ite_eq_right (by tauto)]
 
 theorem isAbort_colOut1 (i : C.Party) (r : Shares C Bit) (Zs : C.Party → ℕ → Bit) (v' : ℕ → Bit) (count : ℕ)
     (j : C.Party) : Msg.isAbort (colOut1 (E := E) K i r Zs v' count j) = false := by
@@ -1935,6 +1952,7 @@ variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] [Fintype E] [Decid
   (prims : Primitives) (K : Constants C E) (keys : C.Party → Keys C) (kT : C.Term → HashOutput)
   (kP : C.Pair → HashOutput)
 
+omit [Fintype E] [DecidableEq E] in
 theorem check_zero_run {ι : Type} {G : OracleSpec ι} (ctx : Context C)
     (buildingBlocks : CheckBuildingBlocks C E G)
     (tuples : List (Tuple C)) (h0 : (tuples.map (·.count)).sum = 0) (st : RunState C) :
@@ -1964,10 +1982,10 @@ theorem real_check_any [Nonempty C.Party] (F : Functionality C I O L R) (reply :
           honestRounds F reply (fuel + checkLabels cnt))).run' s}[event z] ≤ δ * checkCost E c cnt Ks.card + ε := by
   by_cases hpos : cnt = 0
   · have h0 : ∀ i, ((tuples i).map (·.count)).sum = 0 := fun i => by rw [hcnt i, hpos]
-    simp only [check_zero_run _ _ _ _ (h0 _), pure_bind, checkCost, checkLabels, checkKeys, if_pos hpos, mul_zero, zero_add,
+    simp only [check_zero_run _ _ _ _ (h0 _), pure_bind, checkCost, checkLabels, checkKeys, ite_eq_left hpos, mul_zero, zero_add,
       Nat.add_zero] at h ⊢
     exact h hist Ks s (by omega) (hs.mono_label hLk) hn le_rfl
-  · simp only [checkCost, checkLabels, checkKeys, if_neg hpos] at h ⊢
+  · simp only [checkCost, checkLabels, checkKeys, ite_eq_right hpos] at h ⊢
     rw [mul_add δ _ (chalErr E (c + 1) (halvings cnt + 1)), add_assoc]
     exact real_check_bound prims K keys kT kP F reply tuples cnt hcnt hpos LX LY LZ hag hprod hist hh lab tg Lk c Ks
       hLk hKs s hn hs fuel (fun i st => g i ((), st)) event δ hδ ε h
@@ -1990,17 +2008,19 @@ variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] [Fintype E] [Decid
   (prims : Primitives) (K : Constants C E) (keys : C.Party → Keys C) (kT : C.Term → HashOutput)
   (kP : C.Pair → HashOutput)
 
+omit [Fintype E] [DecidableEq E] in
 theorem histAgree_recordMode (mode : ReshareMode) (h : C.Party → C.Term → List Bit) (hh : HistAgree h)
     (zv : C.Party → Shares C Bit) (Z : Shares C Bit) (n : ℕ)
     (hz : ∀ i T g, i ∈ C.holders T → g < n → zv i T g = Z T g) :
     HistAgree (fun i => recordMode K mode i (h i) (zv i) n) := by
   intro T i hi j hj
-  simp only [recordMode, if_pos hi, if_pos hj, hh T i hi j hj]
+  simp only [recordMode, ite_eq_left hi, ite_eq_left hj, hh T i hi j hj]
   congr 1
   refine List.flatMap_congr fun g hg => ?_
   have hg' : g < n := List.mem_range.1 (List.mem_filter.1 hg).1
   simp only [Function.comp_apply, hz i T g hi hg', hz j T g hj hg']
 
+omit [Fintype E] [DecidableEq E] in
 theorem openRep_prssCtx {ι : Type} {G : OracleSpec ι} (i : C.Party) :
     openRep (G := G) K (prssCtx keys kT kP i) = openRep K (localContext i) := rfl
 
@@ -2057,7 +2077,7 @@ theorem tail_bound [Nonempty C.Party] (F : Functionality C I O L R) (reply : L �
       subst hτ
       intro g hg
       rw [shareValue_one, mul_one, ← hsum g]
-      simp only [shareValue, hw, if_pos hg]
+      simp only [shareValue, hw, ite_eq_left hg]
   have hcnt' : ∀ i, (((p i).2 ++ [(⟨outputShares K jobs (p i).1, one K, zv i, n, .peer⟩ : Tuple C)]).map (·.count)).sum = cnt :=
     fun i => by
       rw [map_count_of_agree i _ _ (hlen' i) (hag' i), hTs', List.map_append, List.sum_append, ← hcnt]
@@ -2075,7 +2095,7 @@ theorem tail_bound [Nonempty C.Party] (F : Functionality C I O L R) (reply : L �
     fun V hV s₃ hn₃ hle₃ hfr₃ => ?_
   have hA : ∀ i, assemble jobs (V i) = mainOutputs jobs x := fun i =>
     assemble_eq K jobs x p W Ts hinv (V i) fun g hg => by
-      rw [hV i g hg, ← hsum g]; simp only [hw]; exact Finset.sum_congr rfl fun T _ => if_pos hg
+      rw [hV i g hg, ← hsum g]; simp only [hw]; exact Finset.sum_congr rfl fun T _ => ite_eq_left hg
   simp only [hA]
   have hs₃ : CacheOK Ks' (lab + 1 + checkLabels cnt) s₃ := cacheOK_of_frame hs₂ hfr₃
   exact h hist' Ks' s₃ hKs₂ hs₃ hn₃ (hle₁.trans (hle₂.trans hle₃))
@@ -2239,12 +2259,14 @@ def inputQuery (ctx : Context C) (job : Job) : OracleComp (RoSpec C) (C.Term →
     else pure []
   pure fun T => terms.getD (C.terms.idxOf T) []
 
+omit [Field E] [Algebra Bit E] in
 theorem inputShares_eq (ctx : Context C) (job : Job) :
     (inputShares (E := E) (G := G) ctx job) = oracleStep (inputQuery ctx job) := by
   simp only [inputShares, inputQuery]
   rw [oracleStep_bind]
   simp only [oracleStep_pure]
 
+omit [Field E] [Algebra Bit E] in
 theorem mapM_oracleStep {α β : Type} (q : α → OracleComp (RoSpec C) β) :
     ∀ l : List α, l.mapM (fun a => (oracleStep (E := E) (G := G) (q a))) = oracleStep (l.mapM q)
   | [] => by simp [oracleStep_pure]
@@ -2273,7 +2295,7 @@ theorem D_inputQuery (h : Query C → HashOutput) (parameter : PublicParameter) 
   simp only [D_bind, D_pure, D_mapM]
   rw [getD_terms_idxOf]
   by_cases hi : i ∈ C.holders T
-  · simp only [prssCtx, if_pos hi, D_flatMapM, prf, D_map, D_hashQuery, inputBits, dealtKeys]
+  · simp only [prssCtx, ite_eq_left hi, D_flatMapM, prf, D_map, D_hashQuery, inputBits, dealtKeys]
   · simp [prssCtx, hi, D_pure]
 
 end Inputs
@@ -2339,7 +2361,7 @@ theorem inputValue_inputBits (h : Query C → HashOutput) (seeds : C.Term → Ha
   obtain ⟨m, b, hb, rfl⟩ : ∃ m b, b < digestBits ∧ g = digestBits * m + b :=
     ⟨g / digestBits, g % digestBits, Nat.mod_lt _ hd, (Nat.div_add_mod g digestBits).symm⟩
   have hm : m < job.points.length := by
-    by_contra hc; push_neg at hc; nlinarith
+    by_contra hc; push Not at hc; nlinarith
   rw [List.getElem_eq_getD 0, getD_flatMap_block _ _ (fun _ => length_bitsOfDigest _) _ m b (by simpa using hm) hb]
   simp only [List.getElem_map, getD_bitsOfDigest_foldl _ _ _ hb, bitsOfDigest_zero_getD, zero_add, List.map_map]
   rw [sum_terms_eq]
@@ -2401,6 +2423,7 @@ theorem FrameR.inputQuery (ctx : Context C) (job : Job) : FrameR prims (inputQue
     fun _ => FrameR.pure _
   exact (FrameR.hashQuery (by rintro (⟨_, _, h⟩ | ⟨_, _, _, h⟩) <;> cases h)).map _ |>.map _
 
+omit [Fintype E] [DecidableEq E] in
 theorem inputShares_fun {ι : Type} {G : OracleSpec ι} (ctx : Context C) :
     (inputShares (E := E) (G := G) ctx) = fun job => oracleStep (inputQuery ctx job) :=
   funext (inputShares_eq ctx)
@@ -2483,6 +2506,7 @@ def realBatch (ctx : Context C) (parameter : PublicParameter) (jobs : List Job) 
   set (state.label, k + 1)
   pure (some outputs)
 
+omit [Fintype E] [DecidableEq E] in
 theorem realBatch_run (ctx : Context C) (parameter : PublicParameter) (jobs : List Job) (st : ℕ × ℕ) :
     (realBatch K circuits mode ctx parameter jobs).run st =
       jobs.mapM (inputShares ctx) >>= fun inputs =>
@@ -2508,6 +2532,7 @@ def chunksCost (E : Type) [Fintype E] (parameter : PublicParameter) : ℕ → Li
   | c, jobs :: js => checkCost E c (batchCount circuits parameter jobs) c +
       chunksCost E parameter (c + checkKeys (batchCount circuits parameter jobs)) js
 
+omit [Field E] [Algebra Bit E] [DecidableEq E] in
 theorem checkCost_mono (c cnt kc : ℕ) (h : kc ≤ c) : checkCost E c cnt kc ≤ checkCost E c cnt c := by
   unfold checkCost
   split_ifs
@@ -3099,7 +3124,7 @@ def topChainEnd (outputs : List (List Bit)) : KeyIndex → ChainIndex → Digest
     (List.finRange chainCount).map fun l => (topKey b, l)).idxOf (e, l)) []) 0
 
 /-- The top tree after the batches of its ceremony. -/
-def topRest (parameter : PublicParameter) (outs : List (Option (List (List Bit)))) (st : ℕ × ℕ) :
+def topRest (parameter : PublicParameter) (outs : List (Option (List (List Bit)))) (_st : ℕ × ℕ) :
     PartyM C E RealSpec TreeOutput :=
   match outs.foldlM (fun acc batch => batch.map (acc ++ ·)) [] with
   | some outputs => oracleStep (tweakable (merkleNode parameter topLayer (topChainEnd outputs) layerHeight 0)) >>=
@@ -3587,11 +3612,11 @@ theorem bottom_body_bound [Nonempty C.Party] {L R : Type} (F : Functionality C P
     simp only [] at ho'
     erw [← hpath, ← htop] at ho'
     split_ifs with hbad
-    · rw [if_pos hbad] at ho'
+    · rw [ite_eq_left hbad] at ho'
       rw [ho'] at hev
       rw [honestRounds_failure]
       simp [hev]
-    · rw [if_neg hbad] at ho'
+    · rw [ite_eq_right hbad] at ho'
       rw [honestRounds_pure]
       simp
       convert hev using 2
@@ -3938,6 +3963,7 @@ theorem monadHom_batched (h : m →ᵐ n) (size : ℕ) (run : List Job → m (Op
     h (batched size run jobs) = batched size (fun js => h (run js)) jobs := by
   simp only [batched, MonadHom.mmap_bind, MonadHom.mmap_pure, monadHom_list_mapM]
 
+omit [LawfulMonad m] [LawfulMonad n] in
 /-- The tree assembly only composes its hash computations and its batch interface. -/
 theorem monadHom_ceremonyOutput (h : m →ᵐ n) (lift : ∀ {α : Type}, OracleComp HashSpec α → m α)
     (parameter : PublicParameter) (run : List Job → m (Option (List (List Bit))))

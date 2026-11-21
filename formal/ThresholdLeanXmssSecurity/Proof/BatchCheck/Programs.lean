@@ -417,6 +417,7 @@ section TreePhases
 variable {C : Committee} {E : Type} [Field E] [Algebra Bit E] [Fintype E] [DecidableEq E]
   (K : Constants C E) (circuits : Circuits) (settings : Settings)
 
+omit [Fintype E] [DecidableEq E] in
 /-- One real batch is the local input work and then the phases of `runAt`. -/
 theorem realBatch_phases (mode : ReshareMode) (ctx : Context C) (parameter : PublicParameter) (jobs : List Job)
     (st : ℕ × ℕ) :

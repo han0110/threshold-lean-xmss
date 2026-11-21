@@ -124,13 +124,13 @@ theorem finish_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
         pure (rb.1.1 && y)) rb.1.2 rb.2) _
   rw [hsign]
   by_cases ht : (signersAt (realSigning a) forgery.signature.leafIndex forgery.message).card < C.t
-  · rw [if_pos ht, if_pos ht]
+  · rw [ite_eq_left ht, ite_eq_left ht]
     simp only [map_pure, simulateQ_pure, StateT.run_pure, pure_bind,
       SigningCompilerO1ChainRelease.runXO1_pure]
     exact relTriple_pure_pure (Or.inr (Or.inr ⟨by rw [hval], rfl, hc, rb.1.2.base.revealed,
       rb.2.1.1.2.1, syncFinal_of_verify prims x s pads u rest noise top ra.1.2 ra.2 (rb.1.2, rb.2)
         hsync'⟩))
-  rw [if_neg ht, if_neg ht]
+  rw [ite_eq_right ht, ite_eq_right ht]
   have htail := tail_sync prims x q s pads u rest noise hkeys top forgery.signature.leafIndex
     forgery.message ra.1.2 ra.2 (rb.1.2, rb.2) ⟨hsync', hpads'⟩ (by rw [hsig']; omega) hsa hsb hmark'
   simp only [pure_bind, SigningCompilerO1ChainRelease.runXO1_bind,

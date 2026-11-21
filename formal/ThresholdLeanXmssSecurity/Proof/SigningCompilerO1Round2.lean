@@ -135,10 +135,10 @@ theorem real_round2 (top : TopTree) (i : C.Party) (J : C.Quorum) (e : KeyIndex) 
     intro st
     split_ifs with hg
     · simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind]
-      rw [if_pos hg]
+      rw [ite_eq_left hg]
       rfl
     · simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind]
-      rw [if_neg hg, StateT.run_bind]
+      rw [ite_eq_right hg, StateT.run_bind]
       refine bind_congr fun z => ?_
       rcases z with ⟨_ | tree, st'⟩
       · rfl
@@ -290,7 +290,7 @@ theorem chain_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top :
         (liftBaseX (sourcePartX prims x i J (.chain bottomLayer e l d) message)) bm.1 bm.2) := by
     cases atThreshold
     · exact ⟨(_, b.2), Or.inr ⟨hrec, hmark, rfl, rfl⟩, hpads, by simpa using hrb⟩
-    · rw [if_pos rfl, SigningCompilerO1ChainRelease.runXO1_bind, mem_support_bind_iff] at hrb
+    · rw [ite_eq_left rfl, SigningCompilerO1ChainRelease.runXO1_bind, mem_support_bind_iff] at hrb
       obtain ⟨mid, hmid', hrb⟩ := hrb
       refine ⟨(mid.1.2, mid.2), ?_, backend_padsFixed x q s pads u rest noise _ b.2 hpads mid hmid',
         hrb⟩
@@ -372,8 +372,8 @@ theorem chains_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
           ra1.2.1.2 = a.1.2 ∧ rb1.2.1.2 = false ∧ rb1.1.2.base.signing = b.1.base.signing ∧
           rb1.1.2.base.trees = b.1.base.trees ∧ realLog a ≤ realLog ra1.2) := by
       by_cases hd : (encoding (g 0)).val < chainLength - 1
-      · rw [if_pos hd, simulateQ_map, StateT.run_map, support_map] at hra1
-        rw [if_pos hd, map_eq_bind_pure_comp, SigningCompilerO1ChainRelease.runXO1_bind,
+      · rw [ite_eq_left hd, simulateQ_map, StateT.run_map, support_map] at hra1
+        rw [ite_eq_left hd, map_eq_bind_pure_comp, SigningCompilerO1ChainRelease.runXO1_bind,
           mem_support_bind_iff] at hrb1
         obtain ⟨w, hw, rfl⟩ := hra1
         obtain ⟨r, hr, hrb1⟩ := hrb1
@@ -386,8 +386,8 @@ theorem chains_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
         · exact Or.inl h
         · exact Or.inr (Or.inl h)
         · exact Or.inr (Or.inr ⟨congrArg some hv, h⟩)
-      · rw [if_neg hd, simulateQ_pure, StateT.run_pure, mem_support_pure_iff] at hra1
-        rw [if_neg hd, SigningCompilerO1ChainRelease.runXO1_pure, mem_support_pure_iff] at hrb1
+      · rw [ite_eq_right hd, simulateQ_pure, StateT.run_pure, mem_support_pure_iff] at hra1
+        rw [ite_eq_right hd, SigningCompilerO1ChainRelease.runXO1_pure, mem_support_pure_iff] at hrb1
         subst hra1 hrb1
         exact Or.inr (Or.inr ⟨rfl, hs, rfl, hmark, rfl, rfl, le_rfl⟩)
     rcases hhead with h | h | ⟨hv1, hs1, hcar1, hm1, hsg1, htr1, hlog1⟩
@@ -500,11 +500,11 @@ theorem tail_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : 
       PadsFixed x pads bm.2 := by
     refine ⟨?_, backend_padsFixed x q s pads u rest noise _ rb1.2 hpads1 bm hbm⟩
     cases hT : roundTwoReleased st0 e message i
-    · rw [hT, if_neg (by decide), SigningCompilerO1ChainRelease.runXO1_pure,
+    · rw [hT, ite_eq_right (by decide), SigningCompilerO1ChainRelease.runXO1_pure,
         mem_support_pure_iff] at hbm
       subst hbm
       exact Or.inr ⟨hmid1, hm1⟩
-    · rw [hT, if_pos rfl] at hbm
+    · rw [hT, ite_eq_left rfl] at hbm
       rcases SigningCompilerO1ChainRelease.releaseKey_mid prims x q s pads u rest noise hkeys top sig
           (SigningCompilerO1Slack.withRecord sig e message i) e ra.2 _ hmid1 hm1 (hcov hT) bm hbm
         with h | ⟨h, -, -, -, hm⟩
@@ -651,7 +651,7 @@ theorem after_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top :
         (compTail x (roundTwoReleased st0 e message i) e message i rb1.1.1) rb1.1.2 rb1.2) := by
       revert hrb
       cases roundTwoReleased st0 e message i <;> intro hrb <;>
-        simpa only [compTail, Bool.false_eq_true, if_false, if_true, pure_bind] using hrb
+        simpa only [compTail, Bool.false_eq_true, ite_false, ite_true, pure_bind] using hrb
     have hcar' : a2.1.2 = a.1.2 := hcar2.trans hcar
     by_cases ha2 : RealStop q a2
     · exact Or.inl (SigningCompilerO1Lemmas.realWorld_run_stop prims x q s pads u rest _ a2 ha2 rv
@@ -697,9 +697,9 @@ theorem step_round2 (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top 
   rw [real_round2, comp_round2, round2X_eq, hflag, SigningCompilerO1ChainRelease.runXO1_bind,
     SigningCompilerO1ChainRelease.runXO1_get, pure_bind]
   by_cases hg : i ∈ (realSigning a).corrupt ∨ i ∉ J.1 ∨ (realSigning a).bound e ≠ some message
-  · rw [if_pos hg, if_pos (hguard.2 hg), SigningCompilerO1ChainRelease.runXO1_pure, map_pure]
+  · rw [ite_eq_left hg, ite_eq_left (hguard.2 hg), SigningCompilerO1ChainRelease.runXO1_pure, map_pure]
     exact relTriple_pure_pure (Or.inr (Or.inr ⟨rfl, hmarked, hs.2⟩))
-  rw [if_neg hg, if_neg (fun h => hg (hguard.1 h)), SigningCompilerO1ChainRelease.runXO1_bind,
+  rw [ite_eq_right hg, ite_eq_right (fun h => hg (hguard.1 h)), SigningCompilerO1ChainRelease.runXO1_bind,
     runXO1_liftBaseX, bind_map_left, map_bind]
   have hin : SyncIn prims x s pads u rest noise top ((realSigning a, a.1.2.1.2), a.1.2.2)
       ((realSigning a, a.1.2.1.2), a.1.2.2) a (b.1, (b.2.1.1, false), b.2.2) :=

@@ -76,7 +76,7 @@ theorem logAgreement_hash (P : PublicParameter) (q : Query C) (s : LoggedState C
     rw [hlog q', ← hs.2 q' hq']
     by_cases he : q = q'
     · subst q'
-      rw [if_pos rfl, hself]
+      rw [ite_eq_left rfl, hself]
       cases hc : s.1.1 q with
       | none => rfl
       | some a =>
@@ -84,7 +84,7 @@ theorem logAgreement_hash (P : PublicParameter) (q : Query C) (s : LoggedState C
         rw [hself] at ha
         rw [ha]
         rfl
-    · rw [if_neg he, hother q' (Ne.symm he)]
+    · rw [ite_eq_right he, hother q' (Ne.symm he)]
       cases s.1.1 q' <;> rfl
 
 /-- A logged call preserves the comparison, even when the initial eager cache

@@ -1052,11 +1052,13 @@ variable {E : Type} [Field E] [Algebra Bit E] (h : Query C → HashOutput) (prim
 def Pins {β : Type} (oa : OracleComp (RoSpec C) β) : Prop :=
   Holds (E := E) h (· = ThresholdLeanXmssSecurity.D prims h oa) (oracleStep oa)
 
+omit [Field E] [Algebra Bit E] in
 theorem pins_pure {β : Type} (b : β) : Pins (E := E) h prims (pure b : OracleComp (RoSpec C) β) := by
   unfold Pins
   rw [oracleStep_pure]
   exact holds_pure h _ b rfl
 
+omit [Field E] [Algebra Bit E] in
 theorem pins_bind {β γ : Type} (oa : OracleComp (RoSpec C) β) (f : β → OracleComp (RoSpec C) γ)
     (ha : Pins (E := E) h prims oa) (hf : ∀ b, Pins (E := E) h prims (f b)) : Pins (E := E) h prims (oa >>= f) := by
   unfold Pins at *

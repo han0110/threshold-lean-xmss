@@ -250,7 +250,7 @@ def realInit : RealState C :=
 def compInit : SourceStateO1 C × CompState C := (sourceInitO1, SigningCompilerShareTables.initial)
 
 /-- The relation before the setup holds at the initial states, for every top tree. -/
-theorem syncBase_init (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree) :
+theorem syncBase_init (_hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (top : TopTree) :
     SyncBase prims x top s pads noise (gOf s pads u) rest (realInit x s pads noise) compInit := by
   have hdata : dataOf x (compInit (C := C)).2 = deferredInit := by
     change (withCache ((compilerInit, 0), fun _ => none, false)

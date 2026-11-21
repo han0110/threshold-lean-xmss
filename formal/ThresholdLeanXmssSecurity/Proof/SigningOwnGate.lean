@@ -97,6 +97,7 @@ theorem size_update_insertEdge (rows : Index → List (State → Option State)) 
   congr 1
   simp [Finset.sum_ite_eq']
 
+omit [DecidableEq Index] in
 theorem sizeTerminal_discounted (target : Index → State) (q : ℕ)
     (rows : Index → List (State → Option State)) (h : SizeTerminal target q rows) :
     (5 : ℝ≥0∞) ^ 68 / growth State ^ q ≤ sizeDiscounted target rows := by
@@ -138,6 +139,7 @@ theorem step_sizeDiscounted (t : Index × Fin 3 × State) (s : GraphState Index 
           ENNReal.mul_div_mul_right _ _ growth_ne_zero growth_ne_top]
         rfl
 
+omit [SampleableType State] in
 /-- `terminal_probability_of_expected` with the number of the edges. -/
 theorem sizeTerminal_probability_of_expected {α : Type}
     (run : ProbComp (α × (Index → List (State → Option State)))) (target : Index → State) (q : ℕ)
@@ -356,12 +358,12 @@ theorem chainWalk_bound (lay : Layer) (key : KeyIndex) (l : ChainIndex) (start :
     apply isQueryBoundP_bind (ih v)
     intro previous _
     by_cases hstep : start + steps < chainLength - 1
-    · rw [dif_pos hstep]
+    · rw [dite_eq_left hstep]
       apply tweakableHash_bound
       rintro ⟨k, hk⟩
       obtain ⟨rfl, rfl, -⟩ := LeanXmss.HashDomain.chain.inj hk
       simp
-    · rw [dif_neg hstep]
+    · rw [dite_eq_right hstep]
       simp
 
 theorem recoverChain_bound (lay : Layer) (key : KeyIndex) (l : ChainIndex) (digit : WinternitzDigit)
@@ -793,7 +795,7 @@ theorem tsig_step_zero (top : TopTree) (q : (TsigSpec C).Domain) (st : TsigState
   | tree b' =>
     have hne : b' ≠ b := hclosed
     simp only [tsigOracles, StateT.run_bind]
-    refine (isQueryBoundP_bind (n := 0) (m := 0) ((bottomOnce_bound x b top b' st).mono (le_of_eq (if_neg hne)))
+    refine (isQueryBoundP_bind (n := 0) (m := 0) ((bottomOnce_bound x b top b' st).mono (le_of_eq (ite_eq_right hne)))
       fun r _ => ?_)
     rcases r with ⟨_ | tree, st'⟩
     · exact isQueryBoundP_pure _ _ _
@@ -815,7 +817,7 @@ theorem tsig_step_zero (top : TopTree) (q : (TsigSpec C).Domain) (st : TsigState
     · have hne : treeOf e ≠ b := fun he => hclosed ⟨he, hguard⟩
       simp only [StateT.run_bind]
       refine isQueryBoundP_bind (n := 0) (m := 0)
-        ((bottomOnce_bound x b top (treeOf e) st).mono (le_of_eq (if_neg hne))) fun r _ => ?_
+        ((bottomOnce_bound x b top (treeOf e) st).mono (le_of_eq (ite_eq_right hne))) fun r _ => ?_
       rcases r with ⟨_ | tree, st'⟩
       · exact isQueryBoundP_pure _ _ _
       · simp only [StateT.run_bind]
@@ -868,7 +870,7 @@ theorem unopened_bound (top : TopTree) {α : Type} (oa : OracleComp (LocalSpec C
     · refine (isQueryBoundP_bind (flagged_step x b top t p ho) fun r _ => ih r.1 _ r.2 (h.2 r.1)).mono ?_
       by_cases hc : SigningOwnCounted t
       · have hn := h.1.resolve_left (not_not.mpr hc)
-        simp only [hc, if_true]
+        simp only [hc, ite_true]
         omega
       · simp [hc]
 
@@ -985,7 +987,7 @@ theorem eager_route_record (x : SigningSecurityProof.Keys3 C) (b : XmssSecurity.
   · have hroute : ProtectedRouting.routeWithSampling (R := HashOutput) (protectedInput x b) e =
         liftM (((ProtectedSlot C →ₒ HashOutput) + (unifSpec + (Query C →ₒ HashOutput))).query
           (.inr (.inr e))) := by
-      simp only [ProtectedRouting.routeWithSampling, ProtectedRouting.route, dif_neg h,
+      simp only [ProtectedRouting.routeWithSampling, ProtectedRouting.route, dite_eq_right h,
         simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query, id_map,
         ProtectedRouting.extend]
     rw [hroute] at hr
@@ -1005,7 +1007,7 @@ theorem size_cacheQuery_le (x : SigningSecurityProof.Keys3 C) (b : XmssSecurity.
     exact Nat.le_add_right _ _
   · have hcall : TopChainCall x b (.inr (.inl (protectedInput x b (.inr (l, k, v))))) :=
       ⟨l, k, v, rfl⟩
-    rw [if_pos hcall]
+    rw [ite_eq_left hcall]
     erw [PublicContinuation.rows_update_chain]
     have h := LayeredGraph.size_update_insertEdge (PublicContinuation.rows record) l k v
       (truncateHash value) (PublicContinuation.rows_length record l)

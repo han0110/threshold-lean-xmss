@@ -35,7 +35,7 @@ theorem openAgrees_honest_polynomial (K : Constants C E) (D : C.Coalition)
     by_cases he : j = i
     · subst j
       simp [openShare]
-    · rw [openShare, if_neg he, hin j hj he]
+    · rw [openShare, ite_eq_right he, hin j hj he]
       simp [openOutbox, Ne.symm he, Msg.elementAt, vector, hg]
 
 /-- Every accepted opening is the fixed interpolation of the honest shares. -/
@@ -124,7 +124,7 @@ theorem interpolate_halvFold (K : Constants C E) (D : Finset C.Party)
     interpolate K D (fun i => halvFold len r (A i) k) 0 =
       halvFold len r (fun k => interpolate K D (fun i => A i k) 0) k := by
   by_cases hk : k + halvedLength len < len <;>
-    simp only [halvFold, hk, if_true, if_false, interpolate, mul_add, add_mul,
+    simp only [halvFold, hk, ite_true, ite_false, interpolate, mul_add, add_mul,
       add_zero, Finset.sum_add_distrib, Finset.mul_sum, mul_comm, mul_assoc]
 
 /-- Gruen's exceptional set still has size two for arbitrary holder-specific offsets. -/
@@ -521,7 +521,7 @@ theorem sound_challenge_normalize {Ia : Type} (prims : Primitives) (K : Constant
         let r ← liftComp (challengeQuery K tag L (List.ofFn v)) (LocalSpec C)
         let p ← (leftAdversary (leftAdversary A)).answer st (List.ofFn v)
         soundChallengeNext K D A fuel hs g p r) := by
-  rw [executePhase_challenge_live K D A fuel st live hs g, if_pos hall,
+  rw [executePhase_challenge_live K D A fuel st live hs g, ite_eq_left hall,
     runFunctionality_coin_local D (leftAdversary (leftAdversary A)) st _
       (by intro i hi; simp [hi])]
   simp only [bind_assoc, pure_bind]
@@ -671,7 +671,7 @@ theorem sound_finalChallenge_phase {Ia : Type} (prims : Primitives) (K : Constan
           · exact ⟨hout'.choose, hout'.choose_spec.2⟩
         · rw [soundChallengeNext_missing K D A _ _ _ p hlive]
           simp)
-  · rw [executePhase_challenge_live, if_neg hall]
+  · rw [executePhase_challenge_live, ite_eq_right hall]
     simp
 
 lemma SoundCache.mono_label {L L' : ℕ} {cache : HashCache C} {seen : Finset (Query C)}
@@ -898,7 +898,7 @@ theorem sound_finalStep {Ia : Type} (prims : Primitives) (K : Constants C E)
   by_cases hall : ∀ i, i ∉ D.1 → live i
   · rw [executePhase_congr_honest D A _ _ st _
       (fun i => (finalStep K (localContext i) (hybridCheckBuildingBlocks K i) (Av i, Bv i, V i)).run' (hs i))
-      (fun i hi => if_pos (hall i hi))]
+      (fun i hi => ite_eq_left (hall i hi))]
     have he := SameLocalOutput.of_sameRun prims (finalStep_masks prims K D A (fuel + 4) st Av Bv V hs)
     rw [(he cache).prEvent_eq]
     apply sound_prefix prims _ _ step (sound_maskReply_bound A step ha st) L cache seen keys hc
@@ -966,7 +966,7 @@ theorem sound_halvRest_succ {Ia : Type} (prims : Primitives) (K : Constants C E)
   rw [halvAfter_form]
   by_cases hrec : ∀ i, i ∉ D.1 → i ∈ pa.2.2.2.2
   swap
-  · rw [executePhase_challenge_live, if_neg hrec]
+  · rw [executePhase_challenge_live, ite_eq_right hrec]
     simp
   let q0 := fun i => conv K (localContext i)
     (halvOut K D (halvedLength^[j] width) A B pa fresh i) 0
@@ -1130,7 +1130,7 @@ theorem sound_sliceRest_succ {Ia : Type} (prims : Primitives) (K : Constants C E
   rw [sliceAfter_form]
   by_cases hrec : ∀ i, i ∉ D.1 → i ∈ pa.2.2.2.2
   swap
-  · rw [executePhase_challenge_live, if_neg hrec]
+  · rw [executePhase_challenge_live, ite_eq_right hrec]
     simp
   let q0 := fun i => conv K (localContext i) (sliceOut K D τ count j xs ys pa fresh i) 0
   let qInf := fun i => conv K (localContext i) (sliceOut K D τ count j xs ys pa fresh i) 1
@@ -1357,7 +1357,7 @@ lemma soundStartNext_missing {Ia : Type} (K : Constants C E) (D : C.Coalition)
   unfold soundStartNext
   rw [executePhase_congr_honest D A _ _ p.1 _ (fun _ => failure), executePhase_failure]
   intro i hi
-  exact if_neg (fun h => hmiss ⟨i, hi, h⟩)
+  exact ite_eq_right (fun h => hmiss ⟨i, hi, h⟩)
 
 theorem sound_afterStart {Ia : Type} (prims : Primitives) (K : Constants C E) (D : C.Coalition)
     (A : CheckAdversary C E Ia) (fuel d : ℕ) (hs : C.Party → RunState C) (tag L : ℕ)
@@ -1467,11 +1467,11 @@ lemma sound_coinProduct_split (τ : List E) (s t h w : ℕ) (hh : h < 2 ^ s) :
   · apply Finset.prod_congr rfl
     intro i hi
     rw [Nat.mul_comm w, Nat.testBit_two_pow_mul_add w hh i,
-      if_pos (Finset.mem_range.mp hi)]
+      ite_eq_left (Finset.mem_range.mp hi)]
   · apply Finset.prod_congr rfl
     intro i hi
     simp only [Nat.mul_comm w, Nat.testBit_two_pow_mul_add w hh (s + i),
-      show ¬ s + i < s by omega, if_false, Nat.add_sub_cancel_left, Nat.zero_add]
+      show ¬ s + i < s by omega, ite_false, Nat.add_sub_cancel_left, Nat.zero_add]
 
 lemma sound_layout (count h w b : ℕ) (hw : w < sliceLength count) (hb : b < 2 ^ wordBits) :
     let k := h * sliceWidth count + w * 2 ^ wordBits + b
@@ -1530,7 +1530,7 @@ lemma soundWeightError_nonzero (K : Constants C E) (count : ℕ) (e : ℕ → Bi
       rw [Nat.mul_comm w, Nat.mul_add_div hS, Nat.div_eq_of_lt hh, Nat.add_zero]
     have hm : (w * 2 ^ sliceBits + h) % 2 ^ sliceBits = h := by
       simp [Nat.add_mod, Nat.mod_eq_of_lt hh]
-    simp only [soundWeightError, hd, hm, if_pos hw]
+    simp only [soundWeightError, hd, hm, ite_eq_left hw]
     apply check_word_weight_ne_zero K
     intro hz
     have hz' := congrFun hz (⟨b, hb⟩ : Fin (2 ^ wordBits))
@@ -1567,7 +1567,7 @@ theorem soundWeightError_sum (K : Constants C E) (count : ℕ) (hcount : count �
       rw [Nat.mul_comm w, Nat.mul_add_div hS, Nat.div_eq_of_lt hh, Nat.add_zero]
     have hm : (w * 2 ^ sliceBits + h) % 2 ^ sliceBits = h := by
       simp [Nat.add_mod, Nat.mod_eq_of_lt hh]
-    rw [soundWeightError, hd, hm, if_pos hw,
+    rw [soundWeightError, hd, hm, ite_eq_left hw,
       show coins count = sliceBits + (coins count - sliceBits) from (Nat.add_sub_of_le hs).symm,
       sound_coinProduct_split τ _ _ _ _ hh]
     simp only [Nat.add_sub_cancel_left]
@@ -1833,7 +1833,7 @@ theorem checkSoundRoundInduction (prims : Primitives) (K : Constants C E) : Chec
     unfold soundStartNext
     simp only [g, require_bind_run']
     by_cases hτ : ∀ b < sliceBits, τ.getD b 0 ≠ 0
-    · simp only [if_pos hτ]
+    · simp only [ite_eq_left hτ]
       apply sound_sliceRest_all prims K D A τ step q H counts.sum hr ha (sliceWidth_pos hpos) hτ
         sliceBits 0 1 (by omega) p.1 (fun i => i ∈ p.2)
         (fun i => ⟨(hs i).history, (hs i).label + 1, (hs i).tag⟩) 0 1
@@ -1844,7 +1844,7 @@ theorem checkSoundRoundInduction (prims : Primitives) (K : Constants C E) : Chec
         omega
       · simp [H, halvings]
         omega
-    · simp only [if_neg hτ, ite_self, executePhase_failure]
+    · simp only [ite_eq_right hτ, ite_self, executePhase_failure]
       simp
   · have hmono := soundError_mono (E := E) q H (coins counts.sum) seen ∅ (by omega) (by simp)
     calc

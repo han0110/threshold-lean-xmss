@@ -132,9 +132,9 @@ theorem finalMasked_missing (K : Constants C E) (D : C.Coalition) (Ad : CheckAdv
     unfold finalMaskedProgram
     rw [multFinish_honest D 2 _ _ _ _ _ _ i hi]
     by_cases hr : i ∈ receivers
-    · simp only [if_pos hr, afterExtend, finalRest, finalOut, finalState]
+    · simp only [ite_eq_left hr, afterExtend, finalRest, finalOut, finalState]
       rfl
-    · simp only [if_neg hr, afterExtend]
+    · simp only [ite_eq_right hr, afterExtend]
 
 /-! ### Generic reorderings -/
 
@@ -153,7 +153,7 @@ theorem executePhase_challenge_live {α : Type} (K : Constants C E) (D : C.Coali
     else pure (st, fun _ => none) := by
   split_ifs with hall
   · rw [executePhase_congr_honest D Ad _ _ st _ (fun i => (challenge K (hybridCheckBuildingBlocks K i) >>= g i).run' (hs i))
-      (fun i hi => if_pos (hall i hi))]
+      (fun i hi => ite_eq_left (hall i hi))]
     exact executePhase_challenge K D Ad fuel st hs g
   · push Not at hall
     let next : C.Party → Option ((List E ⊕ Shares C E) ⊕ (PrssOutput C E ⊕ PrssOutput C Bit)) →
@@ -165,7 +165,7 @@ theorem executePhase_challenge_live {α : Type} (K : Constants C E) (D : C.Coali
     have hp : (fun i => if live i then (challenge K (hybridCheckBuildingBlocks K i) >>= g i).run' (hs i) else failure) =
         (fun i => optionalCall (if live i then some (.inl (.inl 2)) else none) (next i)) := by
       funext i
-      by_cases hi : live i <;> simp only [hi, if_true, if_false, optionalCall, challenge_run', next]
+      by_cases hi : live i <;> simp only [hi, ite_true, ite_false, optionalCall, challenge_run', next]
       apply bind_congr
       intro o
       rcases o with _ | ((a | b) | (c | d)) <;> rfl
@@ -173,7 +173,7 @@ theorem executePhase_challenge_live {α : Type} (K : Constants C E) (D : C.Coali
     apply executePhase_partialCall_abort
     · intro i hi; rfl
     · obtain ⟨i, hi, hl⟩ := hall
-      exact ⟨i, hi, if_neg hl⟩
+      exact ⟨i, hi, ite_eq_right hl⟩
 
 omit [Fintype E] [DecidableEq E] [SampleableType E] in
 omit [Field E] [Algebra Bit E] in
@@ -212,7 +212,7 @@ theorem executePhase_afterChallenge_common (prims : Primitives) (K : Constants C
       rcases r with _ | r
       · rfl
       · simp [StateT.run'_eq, StateT.run_lift]
-    · simp only [hi, if_false, afterChallenge, oa, f, localStep_pure', pure_bind]
+    · simp only [hi, ite_false, afterChallenge, oa, f, localStep_pure', pure_bind]
   rw [hp]
   refine (executePhase_local_fallback prims D Ad _ fuel st oa (fun _ => none) f).trans ?_
   have hsel : SameRun prims (OverPermutation.sequenceFin (fun i => if i ∈ D.1 then pure none else oa i))
@@ -265,7 +265,7 @@ theorem finalMasked_all (K : Constants C E) (D : C.Coalition) (Ad : CheckAdversa
   apply executePhase_congr_honest
   intro i hi
   unfold finalMaskedProgram
-  rw [multFinish_honest D 2 _ _ _ _ _ _ i hi, if_pos (hall i hi)]
+  rw [multFinish_honest D 2 _ _ _ _ _ _ i hi, ite_eq_left (hall i hi)]
   simp only [afterExtend, finalRest, finalTail, finalOut, finalHs, finalState, maskShare]
   rfl
 
@@ -297,7 +297,7 @@ theorem executePhase_afterChallenge_common' {α : Type} (prims : Primitives) (K 
     · simp only [hi, afterChallenge, oa, f, oracleStep, (htag i hi.1).1, (htag i hi.1).2]
       refine bind_congr fun r => ?_
       rcases r with _ | r <;> rfl
-    · simp only [hi, if_false, afterChallenge, oa, f, localStep_pure', pure_bind]
+    · simp only [hi, ite_false, afterChallenge, oa, f, localStep_pure', pure_bind]
   rw [hp]
   refine (executePhase_local_fallback prims D Ad _ fuel st oa (fun _ => none) f).trans ?_
   have hsel : SameRun prims (OverPermutation.sequenceFin (fun i => if i ∈ D.1 then pure none else oa i))
@@ -340,7 +340,7 @@ theorem executePhase_extend_live {α : Type} (K : Constants C E) (D : C.Coalitio
   split_ifs with hall
   · rw [executePhase_congr_honest D Ad _ _ st _
       (fun i => ((hybridCheckBuildingBlocks K i).extendMult (products i) >>= f i).run' (hs i))
-      (fun i hi => if_pos (hall i hi))]
+      (fun i hi => ite_eq_left (hall i hi))]
     exact executePhase_extend K D Ad fuel st products hs f
   · push Not at hall
     let next : C.Party → Option ((List E ⊕ Shares C E) ⊕ (PrssOutput C E ⊕ PrssOutput C Bit)) →
@@ -353,7 +353,7 @@ theorem executePhase_extend_live {α : Type} (K : Constants C E) (D : C.Coalitio
         else failure) =
         (fun i => optionalCall (if live i then some (.inl (.inr (products i))) else none) (next i)) := by
       funext i
-      by_cases hi : live i <;> simp only [hi, if_true, if_false, optionalCall, extendMult_run', next]
+      by_cases hi : live i <;> simp only [hi, ite_true, ite_false, optionalCall, extendMult_run', next]
       apply bind_congr
       intro o
       rcases o with _ | ((a | b) | (c | d)) <;> rfl
@@ -361,7 +361,7 @@ theorem executePhase_extend_live {α : Type} (K : Constants C E) (D : C.Coalitio
     apply executePhase_partialCall_abort
     · intro i hi; rfl
     · obtain ⟨i, hi, hl⟩ := hall
-      exact ⟨i, hi, if_neg hl⟩
+      exact ⟨i, hi, ite_eq_right hl⟩
 
 omit [Fintype E] [DecidableEq E] in
 /-- A missing honest operator at the masks of the randomization stops everyone. -/
@@ -387,17 +387,17 @@ theorem finalStep_missing (K : Constants C E) (D : C.Coalition) (Ad : CheckAdver
       (fun i => optionalCall (if live i then some (.inr (.inl 2)) else none) (next i)) := by
     funext i
     by_cases hi : live i
-    · simp only [hi, if_true, optionalCall]
+    · simp only [hi, ite_true, optionalCall]
       rw [finalStep_eq K i (Av i) (Bv i) (V i) (fun j => Av j 0) (fun j => Bv j 0) rfl rfl, randElements_run']
       apply bind_congr
       intro o
       rcases o with _ | ((a | b) | (c | d)) <;> rfl
-    · simp only [hi, if_false, optionalCall]
+    · simp only [hi, ite_false, optionalCall]
   rw [hp]
   apply executePhase_partialCall_abort
   · intro i hi; rfl
   · obtain ⟨i, hi, hl⟩ := hmiss
-    exact ⟨i, hi, if_neg hl⟩
+    exact ⟨i, hi, ite_eq_right hl⟩
 
 /-- The rest of the check from halving step `j`, with `n` steps left. -/
 def halvProg (K : Constants C E) (width n j : ℕ) (A B : ℕ → E) (V : E) (i : C.Party) :
@@ -478,7 +478,7 @@ theorem halvExtend_local (K : Constants C E) (D : C.Coalition) (Ad : CheckAdvers
     funext i; rw [halvProg_succ]; rfl
   rw [hp, executePhase_extend_live K D Ad F st live hs
     (fun i => halvProducts (halvedLength^[j] width) (A i) (B i)) (fun i => halvNext K width n j (A i) (B i) (V i) i),
-    if_pos hall]
+    ite_eq_left hall]
   change (runFunctionality localRoles D (rightAdversary (leftAdversary Ad)) (FextendMult K) st
     (halvInputs D (halvedLength^[j] width) A B) >>= _) = _
   rw [runFunctionality_extend_local K D (rightAdversary (leftAdversary Ad)) st _ (halvInputs_some D _ A B)]
@@ -499,7 +499,7 @@ theorem halvExtend_missing (K : Constants C E) (D : C.Coalition) (Ad : CheckAdve
       (fun i => if live i then ((hybridCheckBuildingBlocks K i).extendMult (halvProducts (halvedLength^[j] width) (A i) (B i))
         >>= halvNext K width n j (A i) (B i) (V i) i).run' (hs i) else failure) := by
     funext i; rw [halvProg_succ]; rfl
-  rw [hp, executePhase_extend_live K D Ad F st live hs _ _, if_neg hmiss]
+  rw [hp, executePhase_extend_live K D Ad F st live hs _ _, ite_eq_right hmiss]
 
 /-- The output share of the multiplication of a halving step at an honest receiver. -/
 def halvOut {σ' : Type} (K : Constants C E) (D : C.Coalition) (len : ℕ) (A B : C.Party → ℕ → E)
@@ -534,8 +534,8 @@ lemma halvAfter_form (K : Constants C E) (D : C.Coalition) (Ad : CheckAdversary 
   intro i hi
   rw [multFinish_honest D 2 _ _ _ _ _ _ i hi]
   by_cases hr : i ∈ pa.2.2.2.2
-  · simp only [hr, if_true, afterExtend, halvOut, halvNext]
-  · simp only [hr, if_false, afterExtend]
+  · simp only [hr, ite_true, afterExtend, halvOut, halvNext]
+  · simp only [hr, ite_false, afterExtend]
 
 /-- The challenge continuation of a halving step. -/
 def halvCont (K : Constants C E) (width n j : ℕ) (A B : C.Party → ℕ → E) (V : C.Party → E)

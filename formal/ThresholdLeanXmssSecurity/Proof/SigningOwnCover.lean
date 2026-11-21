@@ -232,7 +232,7 @@ theorem resolves_topAuthenticationRoot (S : QueryCache XmssSecurity.HashSpec) (P
     rw [hleft, hright] at hu
     obtain ⟨left, hl, hu⟩ := hu.of_bind
     obtain ⟨right, hr, hu⟩ := hu.of_bind
-    rw [dif_pos hlt] at hu
+    rw [dite_eq_left hlt] at hu
     erw [XmssSecurity.Concrete.topAuthenticationRoot.eq_def]
     simp only
     by_cases hbit : key.val.testBit levels = true
@@ -247,7 +247,7 @@ theorem resolves_topAuthenticationRoot (S : QueryCache XmssSecurity.HashSpec) (P
         rw [hodd, xor_one_odd]
         exact hl)
       refine hcur.bind ?_
-      simp only [hlt, ↓reduceDIte, hbit, if_true, hsib, hindex]
+      simp only [hlt, ↓reduceDIte, hbit, ite_true, hsib, hindex]
       exact hu
     · have heven : key.val / 2 ^ levels = 2 * n := by
         rw [Nat.testBit_eq_decide_div_mod_eq] at hbit
@@ -260,7 +260,7 @@ theorem resolves_topAuthenticationRoot (S : QueryCache XmssSecurity.HashSpec) (P
         rw [heven, xor_one_even]
         exact hr)
       refine hcur.bind ?_
-      simp only [hlt, ↓reduceDIte, hbit, Bool.false_eq_true, if_false, hsib, hindex]
+      simp only [hlt, ↓reduceDIte, hbit, Bool.false_eq_true, ite_false, hsib, hindex]
       exact hu
 
 /-- A successful top search reads the digest of its selected trial, and that digest decodes to the
@@ -371,7 +371,7 @@ theorem resolves_merkleNode_top (S : QueryCache XmssSecurity.HashSpec) (P : Publ
     rw [hleft, hright] at hu
     obtain ⟨left, hl, hu⟩ := hu.of_bind
     obtain ⟨right, hr, hu⟩ := hu.of_bind
-    rw [dif_pos hlt] at hu
+    rw [dite_eq_left hlt] at hu
     rw [merkleNode]
     simp only [hnode]
     exact (ih (by omega) (2 * j) (by omega) left hl).bind
@@ -443,7 +443,7 @@ theorem resolves_merkleNode_bottom (S : QueryCache XmssSecurity.HashSpec) (P : P
     rw [hleft, hright] at hu
     obtain ⟨left, hl, hu⟩ := hu.of_bind
     obtain ⟨right, hr, hu⟩ := hu.of_bind
-    rw [dif_pos hlt] at hu
+    rw [dite_eq_left hlt] at hu
     rw [merkleNode]
     simp only [hnode]
     exact (ih (by omega) (2 * j) (by omega) (fun i hi => hS i (hchild 0 (by omega) i hi)) left hl).bind
@@ -489,14 +489,14 @@ theorem record_le_coverCache (P : PublicParameter) {record bound : HashCache C} 
     record ≤ coverCache P record bound := by
   intro input value h
   simp only [coverCache, QueryCache.ofFn_apply]
-  rw [if_pos (fun _ => by simp [h])]
+  rw [ite_eq_left (fun _ => by simp [h])]
   exact hle h
 
 theorem coverCache_irrelevant {P : PublicParameter} {record bound : HashCache C} {input : Query C}
     {value : HashOutput} (hrel : ¬forestRelevant P input) (h : bound input = some value) :
     coverCache P record bound input = some value := by
   simp only [coverCache, QueryCache.ofFn_apply]
-  rw [if_pos (fun h' => absurd h' hrel)]
+  rw [ite_eq_left (fun h' => absurd h' hrel)]
   exact h
 
 theorem isSome_of_coverCache {P : PublicParameter} {record bound : HashCache C} {input : Query C}
@@ -1012,7 +1012,7 @@ theorem forestRun_covers_top (x : SigningSecurityProof.Keys3 C) (cache : HashCac
     (w : (Option TreeOutput × HashCache C) × HashCache C)
     (hw : w ∈ support ((simulateQ (Query C →ₒ HashOutput).randomOracle
       (recordReads (referenceTree forestHash (forestValue x.2.1) x.1 emptyTop .top) ∅)).run z.2))
-    (input : Query C) (hrel : forestRelevant x.1 input) (hread : (w.1.2 input).isSome) :
+    (input : Query C) (_hrel : forestRelevant x.1 input) (hread : (w.1.2 input).isSome) :
     (z.1.2 input).isSome := by
   obtain ⟨hzw, -, hwrec, hR⟩ := recordReads_resolves _ ∅ z.2 (by intro i v h; cases h) w hw
   obtain ⟨-, -, hzrec, -⟩ := recordReads_resolves (forestRun x) ∅ cache (by intro i v h; cases h) z hz

@@ -177,11 +177,11 @@ theorem Monitor.step_seen (keyOf : XmssSecurity.HashInput → Option XmssSecurit
 
 theorem Monitor.step_of_seen (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) (m : Monitor)
     (entry : XmssSecurity.HashInput × XmssSecurity.Digest × Bool) (h : entry.1 ∈ m.seen) :
-    m.step keyOf entry = m := if_pos h
+    m.step keyOf entry = m := ite_eq_left h
 
 theorem Monitor.step_of_not_seen (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) (m : Monitor)
     (entry : XmssSecurity.HashInput × XmssSecurity.Digest × Bool) (h : entry.1 ∉ m.seen) :
-    m.step keyOf entry = m.fresh keyOf entry.1 entry.2.1 entry.2.2 := if_neg h
+    m.step keyOf entry = m.fresh keyOf entry.1 entry.2.1 entry.2.2 := ite_eq_right h
 
 /-- The potential of the monitor, `1` after a hit and the pending risk before. -/
 def Monitor.risk (m : Monitor) : ℝ≥0∞ :=
@@ -215,10 +215,10 @@ theorem fresh_risk_sum_le (keyOf : XmssSecurity.HashInput → Option XmssSecurit
   cases hk : keyOf input with
   | none =>
     simp only [Monitor.fresh_none keyOf m input _ honest hk, Monitor.risk, hm, Bool.false_eq_true,
-      if_false, Option.isSome_none, add_zero]
+      ite_false, Option.isSome_none, add_zero]
     rw [uniformDigest_sum_const]
   | some e =>
-    simp only [Option.isSome_some, if_true]
+    simp only [Option.isSome_some, ite_true]
     cases hs : m.state.signed e with
     | some target =>
       simp only [Monitor.fresh_signed keyOf m input _ honest e hk target hs, Monitor.risk, hm,
@@ -235,20 +235,20 @@ theorem fresh_risk_sum_le (keyOf : XmssSecurity.HashInput → Option XmssSecurit
     | none =>
       cases honest with
       | false =>
-        simp only [Monitor.fresh_unsigned keyOf m input _ false e hk hs, Bool.false_eq_true, if_false]
+        simp only [Monitor.fresh_unsigned keyOf m input _ false e hk hs, Bool.false_eq_true, ite_false]
         calc _ ≤ ∑ digest : XmssSecurity.Digest, Pr{let z ← ($ᵗ XmssSecurity.Digest : ProbComp XmssSecurity.Digest)}[z = digest] *
               (R + if XmssSecurity.TargetSum.ValidDigest digest then
                 (XmssSecurity.TargetSum.validDigests.card : ℝ≥0∞)⁻¹ else 0) := by
               gcongr with digest
               by_cases hv : XmssSecurity.TargetSum.ValidDigest digest
-              · simp only [hv, if_true, Monitor.risk, hm, Bool.false_eq_true, if_false]
+              · simp only [hv, ite_true, Monitor.risk, hm, Bool.false_eq_true, ite_false]
                 exact XmssSecurity.CappedEncodingMonitor.State.pendingRisk_addPending_le _ _ _
               · simp [hv, Monitor.risk, hm, hR]
           _ = R + (Fintype.card XmssSecurity.Digest : ℝ≥0∞)⁻¹ := by
               simp only [mul_add, Finset.sum_add_distrib, uniformDigest_sum_const,
                 XmssSecurity.CappedEncodingMonitor.uniformDigest_valid_bonus_sum_eq]
       | true =>
-        simp only [Monitor.fresh_unsigned keyOf m input _ true e hk hs, if_true]
+        simp only [Monitor.fresh_unsigned keyOf m input _ true e hk hs, ite_true]
         set R0 := XmssSecurity.CappedEncodingMonitor.State.pendingRisk (m.state.install e 0) with hR0
         have hsplit : R0 + ((m.state.pending e).card : ℝ≥0∞) *
             (XmssSecurity.TargetSum.validDigests.card : ℝ≥0∞)⁻¹ = R :=
@@ -262,10 +262,10 @@ theorem fresh_risk_sum_le (keyOf : XmssSecurity.HashInput → Option XmssSecurit
               by_cases hv : XmssSecurity.TargetSum.ValidDigest digest
               · by_cases hp : digest ∈ m.state.pending e
                 · simp [hv, hp, Monitor.risk]
-                · simp only [hv, hp, if_true, if_false, Monitor.risk, hm, Bool.false_or,
+                · simp only [hv, hp, ite_true, ite_false, Monitor.risk, hm, Bool.false_or,
                     decide_false, Bool.false_eq_true, add_zero]
                   rw [pendingRisk_install_eq m.state e digest 0]
-              · simp only [hv, if_false, Monitor.risk, hm, Bool.false_eq_true]
+              · simp only [hv, ite_false, Monitor.risk, hm, Bool.false_eq_true]
                 rw [hsplit]
           _ ≤ R0 + ((m.state.pending e).card : ℝ≥0∞) *
                 (XmssSecurity.TargetSum.validDigests.card : ℝ≥0∞)⁻¹ := by
@@ -410,7 +410,7 @@ theorem keyedCost_le_bottomDigestCost (x : SigningSecurityProof.Keys3 C) (t : (W
       keyedCost (XmssSecurity.encodingInputLeafIndex? x.1) t ≤ SigningPartnerLinkProof.bottomDigestCost x t := by
     intro t hd hraw hk
     have h := SigningPartnerLinkProof.topDigest_add_bottomDigestCost x t
-    rw [hraw, zero_add, SigningGuessLaneProof.digestCost, if_pos hd] at h
+    rw [hraw, zero_add, SigningGuessLaneProof.digestCost, ite_eq_left hd] at h
     rw [h]
     exact hk
   have hhash : ∀ (input : XmssSecurity.HashInput) (t : (WorldSpec C).Domain),

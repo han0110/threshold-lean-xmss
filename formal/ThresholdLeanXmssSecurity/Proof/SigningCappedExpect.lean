@@ -118,7 +118,7 @@ theorem expectedFinal_flag_le (q : ℕ) (s : K → T) (f : σ × ℕ → ℝ≥0
   induction oa using OracleComp.inductionOn with
   | pure a =>
     intro st stored b
-    simp only [XmssSecurity.expectedFinal_pure, cappedPotential, if_true]
+    simp only [XmssSecurity.expectedFinal_pure, cappedPotential, ite_true]
     gcongr
     exact le_add_self
   | query_bind t k ih =>
@@ -154,7 +154,7 @@ theorem expectedFinal_capped_le_aux (q : ℕ) (Inv : σ × ℕ → Prop) (f : σ
   induction oa using OracleComp.inductionOn with
   | pure a =>
     intro st stored _
-    simp only [XmssSecurity.expectedFinal_pure, cappedPotential, Bool.false_eq_true, if_false,
+    simp only [XmssSecurity.expectedFinal_pure, cappedPotential, Bool.false_eq_true, ite_false,
       zero_add]
     rw [ENNReal.tsum_mul_right]
     exact (mul_le_of_le_one_left' (OracleComp.tsum_prEvent_le_one _)).trans le_self_add
@@ -179,7 +179,7 @@ theorem expectedFinal_capped_le_aux (q : ℕ) (Inv : σ × ℕ → Prop) (f : σ
       have hflag : ∀ s x, G s x (decide (P s)) ≤ (if P s then 1 else 0) + G s x false := by
         intro s x
         by_cases h : P s
-        · simp only [h, decide_true, if_true, hGdef]
+        · simp only [h, decide_true, ite_true, hGdef]
           exact expectedFinal_flag_le impl inputSide p keyOf point q s f (k x.1) x.2 stored false
         · simp [h]
       have hsupp : ∀ x ∈ support mx, x.2.2 = st.2 + if p t then 1 else 0 := by
@@ -190,12 +190,12 @@ theorem expectedFinal_capped_le_aux (q : ℕ) (Inv : σ × ℕ → Prop) (f : σ
       have hhit : ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * (if P s then 1 else 0) ≤
           if cappedCall p q t st ∧ inputSide t then ε else 0 := by
         by_cases hc : cappedCall p q t st ∧ inputSide t
-        · rw [if_pos hc]
+        · rw [ite_eq_left hc]
           simp only [mul_ite, mul_one, mul_zero]
           rw [← OracleComp.prEvent_eq_tsum_ite]
           exact (prEvent_mono_of_support _ _ _ fun s _ h => h.2.2.2).trans
             (le_of_eq (probEvent_uniform_key_eq (keyOf t) (point t)))
-        · rw [if_neg hc]
+        · rw [ite_eq_right hc]
           have : ∀ s, ¬P s := fun s h => hc ⟨h.1, h.2.1⟩
           simp [this]
       have hcont : ∑' x, Pr{let z ← mx}[z = x] * ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * G s x false ≤
@@ -247,13 +247,13 @@ theorem expectedFinal_capped_le_aux (q : ℕ) (Inv : σ × ℕ → Prop) (f : σ
                   gcongr f st + ?_
                   by_cases hpt : p t
                   · by_cases hn : st.2 < q
-                    · rw [if_pos ⟨hpt, hn⟩, if_pos hpt, ← one_add_mul]
+                    · rw [ite_eq_left ⟨hpt, hn⟩, ite_eq_left hpt, ← one_add_mul]
                       gcongr
                       exact_mod_cast (by omega : 1 + (q - (st.2 + 1)) ≤ q - st.2)
-                    · rw [if_neg (fun h => hn h.2), if_pos hpt, zero_add]
+                    · rw [ite_eq_right (fun h => hn h.2), ite_eq_left hpt, zero_add]
                       gcongr
                       omega
-                  · rw [if_neg (fun h => hpt h.1), if_neg hpt, zero_add, add_zero]
+                  · rw [ite_eq_right (fun h => hpt h.1), ite_eq_right hpt, zero_add, add_zero]
     · simp only [XmssSecurity.expectedFinal] at ih ⊢
       cases hstored : stored key with
       | some v =>

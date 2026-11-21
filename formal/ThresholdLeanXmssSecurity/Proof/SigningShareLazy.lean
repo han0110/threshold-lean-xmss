@@ -180,6 +180,7 @@ def fiberTable (order : List κ) (τ : ι → Digest) (st : ShareState κ ι B)
           (fun t => lowHash ((st.cache (t, p)).getD (u (t, p)))))
     else u (b, p)
 
+omit [DecidableEq κ] [DecidableEq ι] in
 /-- An empty cache has slack whenever there is a term, or no point needs slack. -/
 theorem good_init (order : List κ) (τ : ι → Digest)
     (h : order ≠ [] ∨ IsEmpty ι) : Good order τ (init (κ := κ) (B := B)) := by
@@ -341,9 +342,11 @@ end UntilBad
     setsBad order τ q (erase st) = setsBad order τ q st := by
   cases q <;> rfl
 
+omit [DecidableEq κ] [DecidableEq ι] in
 @[simp] theorem erase_bad_none (st : ShareState κ ι (ImplBad Tag)) :
     (erase st).bad = none ↔ st.bad = none := by simp [erase]
 
+omit [DecidableEq κ] [DecidableEq ι] in
 private theorem unerase_erase (st : ShareState κ ι (ImplBad Tag))
     (h : st.bad = none) : unerase (erase st) = st := by
   cases st
@@ -532,6 +535,7 @@ theorem impl_frozen_firstbad (order : List κ) (τ : ι → Digest)
 private theorem xor_left_comm (a b c : Digest) : a ^^^ (b ^^^ c) = b ^^^ (a ^^^ c) := by
   rw [← BitVec.xor_assoc, BitVec.xor_comm a b, BitVec.xor_assoc]
 
+omit [DecidableEq κ] in
 private theorem xorSum_congr (order : List κ) (f g : κ → Digest)
     (h : ∀ b ∈ order, f b = g b) : xorSum order f = xorSum order g := by
   induction order with
@@ -746,7 +750,7 @@ private theorem lazy_step_ratio (order : List κ) (hn : order.Nodup)
                 true_and, not_false_eq_true,
                 hs, Option.orElse_eq_orElse, Option.orElse, OracleComp.prEvent_bind_eq_tsum,
                 prEvent_pure, true_and]
-              simp only [if_pos hbad.2, Option.map_some, Option.some.injEq,
+              simp only [ite_eq_left hbad.2, Option.map_some, Option.some.injEq,
                 Prod.mk.injEq, true_and, decide_eq_false_iff_not, decide_eq_true_eq]
               have he := evalDist_sum_put order hn b (hcover b) st p
               have hp (P : Digest → Prop) :
@@ -816,14 +820,17 @@ theorem fiberTable_cached (order : List κ) (τ : ι → Digest)
     (h : st.cache (b, p) = some v) : fiberTable order τ st u (b, p) = v := by
   simp [fiberTable, h]
 
+omit [DecidableEq κ] [DecidableEq ι] in
 private theorem slack_some (order : List κ) (st : ShareState κ ι B) (p : ι) (b : κ)
     (h : slack order st p = some b) : b ∈ order ∧ st.cache (b, p) = none := by
   exact ⟨List.mem_of_find?_eq_some h, by simpa using List.find?_some h⟩
 
+omit [DecidableEq κ] [DecidableEq ι] in
 private theorem slack_none (order : List κ) (st : ShareState κ ι B) (p : ι) :
     slack order st p = none ↔ ∀ b ∈ order, st.cache (b, p) ≠ none := by
   simp [slack, List.find?_eq_none]
 
+omit [DecidableEq κ] [DecidableEq ι] in
 private theorem good_slack (order : List κ) (hcover : ∀ b, b ∈ order) (τ : ι → Digest)
     (st : ShareState κ ι B) (hgood : Good order τ st) (p : ι) (hp : p ∉ st.done) :
     ∃ b, slack order st p = some b := by
@@ -854,7 +861,7 @@ private theorem slack_put_ne (order : List κ) (st : ShareState κ ι B)
     · simpa [put, Function.update, he] using hleft c hc
 
 /-- With no first-bad read, a fresh read leaves another uncached share. -/
-private theorem good_put (order : List κ) (hcover : ∀ b, b ∈ order) (τ : ι → Digest)
+private theorem good_put (order : List κ) (_hcover : ∀ b, b ∈ order) (τ : ι → Digest)
     (st : ShareState κ ι B) (hg : Good order τ st) (b : κ) (p : ι) (v : HashOutput)
     (hc : st.cache (b, p) = none) (tag : Tag)
     (hs : setsBad order τ (.read b p tag) st = none) : Good order τ (put st b p v) := by
@@ -864,7 +871,7 @@ private theorem good_put (order : List κ) (hcover : ∀ b, b ∈ order) (τ : �
       intro ha
       have hbad : st.cache (b, p) = none ∧ p ∉ st.done ∧
           ∀ a ∈ order, a ≠ b → st.cache (a, p) ≠ none := ⟨hc, hp, ha⟩
-      simp only [setsBad, if_pos hbad, Option.some_ne_none] at hs
+      simp only [setsBad, ite_eq_left hbad, Option.some_ne_none] at hs
     push Not at hn
     exact hn
   refine ⟨?_, ?_⟩
@@ -1030,7 +1037,7 @@ private theorem fiberTable_unique (order : List κ) (hn : order.Nodup)
           | none =>
               have hts : slack order st p ≠ some t := by simpa [hs] using Ne.symm htb
               simp [extend, htcache, h.2.2.2 t p htcache hts]
-        rw [fiberTable_eq, if_pos ⟨hp, hs⟩, ho]
+        rw [fiberTable_eq, ite_eq_left ⟨hp, hs⟩, ho]
         apply pair.injective
         rw [pair.apply_symm_apply]
         apply Prod.ext
@@ -1130,12 +1137,12 @@ private theorem rowRest_other (order : List κ) (hn : order.Nodup)
 private theorem slack_read_answer (order : List κ) (hn : order.Nodup)
     (τ : ι → Digest) (st : ShareState κ ι B) (u : κ × ι → HashOutput)
     (a b : κ) (p : ι) (ha : a ≠ b) (hb : b ∈ order)
-    (hca : st.cache (a, p) = none) (hcb : st.cache (b, p) = none)
+    (_hca : st.cache (a, p) = none) (hcb : st.cache (b, p) = none)
     (hp : p ∉ st.done) (hs : slack order st p = some a) (v w : HashOutput) :
     let moved := (slackMove (τ p) (rowRest order st u a b p)).symm (v, w)
     fiberTable order τ st (rawTwo u a b p moved.1 moved.2) (a, p) = v := by
   dsimp only
-  rw [fiberTable_eq, if_pos ⟨hp, hs⟩,
+  rw [fiberTable_eq, ite_eq_left ⟨hp, hs⟩,
     rowRest_other order hn st u a b p ha hb hcb]
   apply pair.injective
   simp only [rawTwo, Function.update_of_ne (show (a, p) ≠ (b, p) by simp [ha]),
@@ -1574,7 +1581,7 @@ private theorem fiberTable_last (order : List κ) (τ : ι → Digest)
     (hall : ∀ a, a ≠ b → st.cache (a, p) ≠ none) :
     fiberTable order τ st u (b, p) =
       pair.symm ((pair (u (b, p))).1, τ p ^^^ others order st p b) := by
-  rw [fiberTable_eq, if_pos ⟨hp, hs⟩]
+  rw [fiberTable_eq, ite_eq_left ⟨hp, hs⟩]
   congr 2
   congr 1
   apply xorSum_congr
@@ -1790,6 +1797,7 @@ private theorem completeEager_good_table (order : List κ) (hn : order.Nodup)
     rw [show g = fiberTable order τ mid u from hfm.symm]
     exact finish_table_eager order hn hcover τ mid hgm p b u hpm hsm hall
 
+omit [DecidableEq κ] [DecidableEq ι] in
 @[simp] private theorem erase_unerase (st : ShareState κ ι (FrozenBad Tag)) :
     erase (unerase st) = st := by
   rcases st with ⟨cache, done, bad⟩

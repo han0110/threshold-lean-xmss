@@ -69,13 +69,13 @@ lemma split_filledValues_of_history (K : Constants C E) (D : C.Coalition) (T : C
       intro g hg
       rw [hm.1]
       by_cases hf : ∃ j ∈ D.1, filler K b.mode T g = some j
-      · simp only [if_pos hf]
+      · simp only [ite_eq_left hf]
         rw [hc.1, hm.1] at hhead
         apply List.map_inj_left.mp hhead g
         obtain ⟨j, _, hj⟩ := hf
         simp only [List.mem_filter, hj, Option.isSome_some, and_true]
         exact hg
-      · simp only [if_neg hf]
+      · simp only [ite_eq_right hf]
 
 omit [Fintype E] [DecidableEq E] [SampleableType E] in
 lemma split_filledHistory_consistent (K : Constants C E) (counts : List ℕ)
@@ -87,7 +87,7 @@ lemma split_filledHistory_consistent (K : Constants C E) (counts : List ℕ)
   intro i hiT j hjT hi hj
   apply split_filledValues_of_history K D T (x i) (x j)
     ((hx.1 i hi).trans (hx.1 j hj).symm) (hx.2.1 i j hi hj)
-  simpa only [filledHistory, if_pos hiT, if_pos hjT] using hh i hiT j hjT hi hj
+  simpa only [filledHistory, ite_eq_left hiT, ite_eq_left hjT] using hh i hiT j hjT hi hj
 
 omit [Fintype E] [DecidableEq E] [SampleableType E] in
 lemma split_agree_of_vectors (K : Constants C E) (counts : List ℕ)
@@ -123,7 +123,7 @@ lemma split_agree_of_vectors (K : Constants C E) (counts : List ℕ)
     Prod.ext (vector_point (congrArg Prod.fst he) hgi)
     (Prod.ext (vector_point (congrArg (fun p => p.2.1) he) hgi)
       (vector_point (congrArg (fun p => p.2.2) he) hgi))
-  simpa only [if_neg hi, if_neg hj, Option.bind_some, List.getElem?_eq_getElem hi',
+  simpa only [ite_eq_right hi, ite_eq_right hj, Option.bind_some, List.getElem?_eq_getElem hi',
     List.getElem?_eq_getElem hj', Option.map_some, Option.some.injEq] using he'
 
 omit [SampleableType E] in
@@ -155,7 +155,7 @@ lemma splitInit_history_length (K : Constants C E) (counts : List ℕ)
     ((hx.1 i hi).trans (hx.1 j hj).symm) (hx.2.1 i j hi hj)
   have he := congrArg (fun l : List (ℕ × ReshareMode) =>
     (l.map fun p => ((List.range p.1).filter fun g => (filler K p.2 T g).isSome).length).sum) hp
-  simpa only [filledHistory, if_pos hiT, if_pos hjT, List.length_flatMap,
+  simpa only [filledHistory, ite_eq_left hiT, ite_eq_left hjT, List.length_flatMap,
     List.length_map, List.map_map, Function.comp_def] using he
 
 /-- A split prefix cannot be repaired by choosing separate suffixes at the two holders. -/
@@ -289,7 +289,7 @@ lemma splitLocalHashInput_some (prims : Primitives) (t : (LocalSpec C).Domain)
   · simp [splitLocalHashInput] at h
   · by_cases hr : IsFixed r
     · simp [splitLocalHashInput, hr] at h
-    · simp only [splitLocalHashInput, if_neg hr, Option.some.injEq] at h
+    · simp only [splitLocalHashInput, ite_eq_right hr, Option.some.injEq] at h
       subst q
       refine ⟨id, ?_⟩
       change hashAnswer prims r = _
@@ -320,7 +320,7 @@ lemma splitRegion_random_bind {α : Type} (P : Query C → Prop) (q : Query C)
   | none =>
     rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ he, bind_map_left]
     by_cases hq : P q
-    · simp only [if_pos hq] at hf ⊢
+    · simp only [ite_eq_left hq] at hf ⊢
       have h := (prEvent_bind_le_prEvent_add_of_support ($ᵗ HashOutput)
         (fun u => (f u).run (cache.cacheQuery q u))
         (fun u => CacheHasCollision (splitRegionCache P (cache.cacheQuery q u)))
@@ -333,7 +333,7 @@ lemma splitRegion_random_bind {α : Type} (P : Query C → Prop) (q : Query C)
         (add_le_add (by simpa only [splitRegionCache_insert P cache q _ hq]
             using splitHash_insert_birthday (splitRegionCache P cache) q k hno hk) le_rfl)
       simpa only [uniformSampleImpl] using h
-    · simp only [if_neg hq, Nat.add_zero] at hf ⊢
+    · simp only [ite_eq_right hq, Nat.add_zero] at hf ⊢
       rw [zero_add]
       apply prEvent_bind_le_of_forall_le_of_support
       intro u _

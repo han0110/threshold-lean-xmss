@@ -97,7 +97,7 @@ theorem continuationReserve_step {α : Type} (oa : OracleComp (WorldSpec C) α)
               intro r
               by_cases hr : r ∈ support ((loggedImpl prims t).run s)
               · simp only [loggedImpl_log prims t s r hr, transcriptResidual_append, hres, Option.bind_some,
-                  transcriptNext, dif_neg ht, mul_zero]
+                  transcriptNext, dite_eq_right ht, mul_zero]
               · simp [prEvent_eq_zero_of_not_mem_support _ hr]
             rw [hz]
             exact zero_le
@@ -119,7 +119,7 @@ theorem transcriptResidual_wrongQuery {α : Type} (oa : OracleComp (WorldSpec C)
         intro he
         subst t'
         exact h ⟨k, hp⟩
-      simp only [Option.bind_some, transcriptNext, dif_neg ht]
+      simp only [Option.bind_some, transcriptNext, dite_eq_right ht]
 
 theorem continuationReserve_wrongQuery {α : Type} (oa : OracleComp (WorldSpec C) α)
     (event : α × LoggedState C → Prop) (t : (WorldSpec C).Domain) (s : LoggedState C)
@@ -324,7 +324,7 @@ theorem gatedContinuation_terminal {α : Type} (oa : OracleComp (WorldSpec C) α
     (he : event z) (hseen : GateSeen gate z.2.2) :
     gatedContinuation prims oa event gate z.2 = 1 := by
   classical
-  rw [gatedContinuation, if_pos hseen]
+  rw [gatedContinuation, ite_eq_left hseen]
   exact continuationReserve_terminal prims oa event z hz he
 
 open Classical in
@@ -351,7 +351,7 @@ theorem gatedContinuation_sum_step {ι α : Type} [Fintype ι]
       apply add_le_add le_rfl
       by_cases hex : ∃ i, t = gate i
       · obtain ⟨i, hi⟩ := hex
-        rw [if_pos ⟨i, hi⟩, Finset.sum_eq_single i]
+        rw [ite_eq_left ⟨i, hi⟩, Finset.sum_eq_single i]
         · split_ifs <;> simp
         · intro j _ hji
           have hne : t ≠ gate j := fun h => hji (hinj (h.symm.trans hi))
@@ -876,19 +876,19 @@ theorem completedHit_afterCompletion (relevant : Query C → Prop) (target : Com
       (if CompletedHit relevant target cache then 1 else 0) +
         if relevant input then (2 ^ 128 : ℝ≥0∞)⁻¹ else 0 := by
   by_cases hbad : CompletedHit relevant target cache
-  · simp only [if_pos hbad]
+  · simp only [ite_eq_left hbad]
     exact le_trans (prEvent_le_one _) (le_add_right le_rfl)
-  · simp only [if_neg hbad, zero_add]
+  · simp only [ite_eq_right hbad, zero_add]
     by_cases hrel : relevant input
     swap
-    · rw [if_neg hrel]
+    · rw [ite_eq_right hrel]
       calc
         _ ≤ Pr{let _ ← ((Query C →ₒ HashOutput).randomOracle input).run completed}[False] := by
           apply prEvent_mono
           intro z hh
           exact hrel (completedHit_cacheQuery relevant target cache input z.1 hbad hh).1
         _ = 0 := by simp
-    rw [if_pos hrel]
+    rw [ite_eq_left hrel]
     cases hc : completed input with
     | none =>
         rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ hc, prEvent_map]
@@ -1543,7 +1543,7 @@ theorem unopenedRun_probability {α : Type} (x : SigningSecurityProof.Keys3 C) (
         (SigningCoreProof.flaggedOracles x (actualDealt x top) t).run p >>= fun r =>
           unopenedRun x top b (k r.1) r.2) from rfl]
     by_cases ho : Opens b p.1 t
-    · rw [if_pos ho]
+    · rw [ite_eq_left ho]
       simp only [simulateQ_pure, StateT.run_pure, prEvent_pure, reduceCtorEq,
         false_and, exists_false, ↓reduceIte]
       symm
@@ -1557,7 +1557,7 @@ theorem unopenedRun_probability {α : Type} (x : SigningSecurityProof.Keys3 C) (
       simp only [ho, decide_true] at hr
       have htrue := openedRun_mono prims x top b (k v.1.1) v.1.2 v.2 r hr
       simp [htrue] at he
-    · rw [if_neg ho]
+    · rw [ite_eq_right ho]
       simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query,
         OracleQuery.cont_query, id_map, StateT.run_bind, openedOracles, StateT.run_mk,
         Bool.false_or, bind_map_left,
@@ -2781,7 +2781,7 @@ theorem forestTargets_eq (P : PublicParameter) (record : HashCache C)
   have hex : ∃ r : Query C × HashOutput,
       SameStructuralPosition P input r.1 ∧ record r.1 = some r.2 :=
     ⟨(honest, output), hpos, hread⟩
-  rw [forestTargets, dif_pos hex]
+  rw [forestTargets, dite_eq_left hex]
   have hc := Classical.choose_spec hex
   have hi := hunique _ _ hc.1 hc.2
   have ho : (Classical.choose hex).2 = output := by
@@ -3083,7 +3083,7 @@ theorem rowWeight_column (observed : State → Option State) (endpoint : State) 
     have hz : ∀ input ≠ known, rowWeight observed input endpoint = 0 := by
       intro input hi
       unfold rowWeight
-      rw [if_neg (by intro h; exact hi (h known hk).symm)]
+      rw [ite_eq_right (by intro h; exact hi (h known hk).symm)]
     rw [Finset.sum_eq_single known (by intro i _ hi; exact hz i hi) (by simp)]
     unfold rowWeight
     split
@@ -3124,8 +3124,8 @@ theorem law_succ_apply {n : ℕ} (observed : Fin (n + 1) → State → Option St
   apply Finset.sum_congr rfl
   intro next _
   by_cases h : ∀ other, observed 0 other = some next → other = start
-  · simp only [rowWeight, if_pos h]
-  · simp only [rowWeight, if_neg h, PMF.pure_apply, reduceCtorEq, if_false, mul_zero, zero_mul]
+  · simp only [rowWeight, ite_eq_left h]
+  · simp only [rowWeight, ite_eq_right h, PMF.pure_apply, reduceCtorEq, ite_false, mul_zero, zero_mul]
 
 /-- The marked endpoint density is at most one for any number of layers,
 including a transcript with an already known suffix. -/
@@ -3155,7 +3155,7 @@ theorem joint_law_column {Index : Type} [Fintype Index] [DecidableEq Index] {n :
   rw [← Fintype.prod_sum (fun i start => law (observed i) start (some (endpoint i)))]
   calc
     _ ≤ ∏ _i : Index, (1 : ℝ≥0∞) :=
-      Finset.prod_le_prod' (fun i _ => law_column (observed i) (endpoint i))
+      Finset.prod_le_prod (fun i _ => law_column (observed i) (endpoint i))
     _ = 1 := by simp
 
 /-- A jointly uniform vector of starts has marked endpoint-vector density
@@ -3206,7 +3206,7 @@ theorem walk_run {Index : Type} [DecidableEq Index]
     rw [prEvent_pure_prop]
     by_cases h : some start = out
     · subst h; simp
-    · rw [if_neg h, if_neg (fun h' => h h'.symm)]
+    · rw [ite_eq_right h, ite_eq_right (fun h' => h h'.symm)]
   | cons index rest ih =>
     obtain ⟨hnot, hn⟩ := List.nodup_cons.mp hn
     have hrow := hc index (by simp) start
@@ -3227,7 +3227,7 @@ theorem walk_run {Index : Type} [DecidableEq Index]
       rw [prEvent_pure_prop]
       by_cases h : none = out
       · subst h; simp
-      · rw [if_neg h, if_neg (fun h' => h h'.symm)]
+      · rw [ite_eq_right h, ite_eq_right (fun h' => h h'.symm)]
     simp only [walk, simulateQ_bind, simulateQ_spec_query, StateT.run'_eq, StateT.run_bind, map_bind]
     change _ = ((rowLaw (observed index start)).bind fun next =>
       if ∀ other, observed index other = some next → other = start then
@@ -3242,17 +3242,17 @@ theorem walk_run {Index : Type} [DecidableEq Index]
       · simp only [rowLaw, PMF.ofFintype_apply]
         exact SampleableType.prEvent_uniformSample_eq_singleton next
       · by_cases h : ∀ other, observed index other = some next → other = start
-        · simp only [if_pos h]
+        · simp only [ite_eq_left h]
           exact ih hn next (cache.cacheQuery (index, start) next) (htail next)
-        · simp only [if_neg h]
+        · simp only [ite_eq_right h]
           exact hnone _
     | some value =>
       rw [QueryImpl.withCaching_run_some _ (hrow.trans ho)]
       simp only [pure_bind, rowLaw, PMF.pure_bind]
       by_cases h : ∀ other, observed index other = some value → other = start
-      · simp only [if_pos h]
+      · simp only [ite_eq_left h]
         exact ih hn value cache (fun j hj input => hc j (by simp [hj]) input)
-      · simp only [if_neg h]
+      · simp only [ite_eq_right h]
         exact hnone _
 
 end MarkedChain
@@ -3476,7 +3476,7 @@ theorem isHitPotential_of_gated_completion {ι : Type} [Fintype ι]
       intro i h
       obtain ⟨entry, hmem, _⟩ := h
       cases hmem
-    simp only [f, g, reserves, gatedContinuation, hn, if_false, Finset.sum_const_zero, add_zero]
+    simp only [f, g, reserves, gatedContinuation, hn, ite_false, Finset.sum_const_zero, add_zero]
     exact completionPotential_empty relevant completion
   · intro t s hs ht r hr
     exact .step t s hs ht r hr
@@ -3489,12 +3489,12 @@ theorem isHitPotential_of_gated_completion {ι : Type} [Fintype ι]
     by_cases hex : ∃ i, t = gate i
     · obtain ⟨i, rfl⟩ := hex
       have hg := completionPotential_freeHash_step prims relevant completion hreads (input i) s
-      simp only [if_neg (hirrelevant i), add_zero] at hg
-      simp only [if_pos (show ∃ j, gate i = gate j from ⟨i, rfl⟩)] at hf
+      simp only [ite_eq_right (hirrelevant i), add_zero] at hg
+      simp only [ite_eq_left (show ∃ j, gate i = gate j from ⟨i, rfl⟩)] at hf
       calc
         _ ≤ g s.1.1 + (reserves s + (2 ^ 128 : ℝ≥0∞)⁻¹) := add_le_add hg hf
         _ = _ := by simp [f, gate, SeedHitProof.signCost, add_assoc]
-    · simp only [if_neg hex, add_zero] at hf
+    · simp only [ite_eq_right hex, add_zero] at hf
       have hg := completionPotential_loggedStep prims relevant completion hreads t s ht
       calc
         _ ≤ (g s.1.1 + (SeedHitProof.signCost t : ℝ≥0∞) * (2 ^ 128 : ℝ≥0∞)⁻¹) + reserves s :=
@@ -4257,6 +4257,7 @@ theorem drop_insertEdge_of_lt (rows : List (State → Option State)) (skip layer
 def rootFrom (rows : List (State → Option State)) (layer : ℕ) (input : State) : ℕ × State :=
   let r := root (rows.drop layer) input; (layer + r.1, r.2)
 
+omit [DecidableEq State] in
 theorem rootFrom_layer (rows : List (State → Option State)) (layer : ℕ) (input : State) :
     layer ≤ (rootFrom rows layer input).1 := by simp [rootFrom]
 
@@ -4309,7 +4310,7 @@ theorem rootFrom_insertEdge (rows : List (State → Option State)) (layer : ℕ)
       have hl := rootFrom_layer rows startLayer start
       rw [he] at hl
       omega
-    rw [if_neg hn]
+    rw [ite_eq_right hn]
     simp only [rootFrom, drop_insertEdge_of_lt rows startLayer layer input output hlt]
 
 /-- A cached edge, with absent layers treated as empty. -/
@@ -4364,7 +4365,7 @@ theorem pending_insertEdge_le (rows : List (State → Option State)) (layers hea
         rintro ⟨hi, hx⟩
         apply he
         exact Prod.ext (Fin.ext hi) hx
-      rw [edge_insertEdge rows layer input output hlayer, if_neg hne] at hv
+      rw [edge_insertEdge rows layer input output hlayer, ite_eq_right hne] at hv
       exact ⟨hv.1, lt_of_le_of_lt
         (rootFrom_insertEdge_mono rows layer input output hlayer hfresh v.1.val v.2) hv.2⟩
   exact (Finset.card_le_card hsub).trans (Finset.card_insert_le _ _)
@@ -4416,6 +4417,7 @@ theorem pending_insertEdge_boundary_card (rows : List (State → Option State)) 
   rw [pending_insertEdge_boundary rows layers layer input output hlayer hfresh]
   exact Finset.card_sdiff_add_card_eq_card (component_pending rows layers layer input)
 
+omit [DecidableEq State] [Fintype State] in
 theorem rootFrom_gt_of_edge (rows : List (State → Option State)) (layer : ℕ) (input : State)
     (h : (edge rows layer input).isSome) : layer < (rootFrom rows layer input).1 := by
   cases hr : rows[layer]? with
@@ -4432,6 +4434,7 @@ theorem rootFrom_gt_of_edge (rows : List (State → Option State)) (layer : ℕ)
       | none => simp [edge, hr, hv] at h
       | some value => simp [rootFrom, hdrop, root, hv]
 
+omit [DecidableEq State] in
 theorem pending_eq_empty_of_head_le_one (rows : List (State → Option State)) (layers head : ℕ)
     (hh : head ≤ 1) : pending rows layers head = ∅ := by
   apply Finset.eq_empty_iff_forall_notMem.mpr
@@ -4440,6 +4443,7 @@ theorem pending_eq_empty_of_head_le_one (rows : List (State → Option State)) (
   have hgt := rootFrom_gt_of_edge rows v.1.val v.2 hv.1
   omega
 
+omit [DecidableEq State] in
 theorem pending_mono (rows : List (State → Option State)) (layers head head' : ℕ)
     (hh : head ≤ head') : pending rows layers head ⊆ pending rows layers head' := by
   intro v hv
@@ -4465,6 +4469,7 @@ theorem component_card_le (rows : List (State → Option State)) (layers layer :
       exact Finset.mem_range.mpr hgt
     _ = layer := Finset.card_range layer
 
+omit [DecidableEq State] [Fintype State] in
 theorem rootFrom_fresh (rows : List (State → Option State)) (layer : ℕ) (input : State)
     (hlayer : layer < rows.length) (hfresh : rows[layer] input = none) :
     rootFrom rows layer input = (layer, input) := by
@@ -4503,7 +4508,7 @@ theorem component_insertEdge (rows : List (State → Option State)) (layers laye
       rintro ⟨hi, hx⟩
       exact he (Prod.ext (Fin.ext hi) hx)
     simp only [component, Finset.mem_filter, Finset.mem_univ, true_and,
-      edge_insertEdge rows layer input output hlayer, if_neg hne,
+      edge_insertEdge rows layer input output hlayer, ite_eq_right hne,
       rootFrom_insertEdge rows layer input output hlayer hfresh]
     by_cases hr : rootFrom rows v.1.val v.2 = (layer, input)
     · by_cases ht : rootFrom rows (layer + 1) output = (targetLayer, target) <;>
@@ -4527,7 +4532,7 @@ theorem component_insertEdge_card (rows : List (State → Option State)) (layers
     (component (insertEdge rows layer input output) layers targetLayer target).card =
       (component rows layers targetLayer target).card + (component rows layers layer input).card + 1 := by
   rw [component_insertEdge rows layers layer targetLayer input output target hlayer hbound hfresh htarget,
-    if_pos hhit, Finset.card_insert_of_notMem]
+    ite_eq_left hhit, Finset.card_insert_of_notMem]
   · rw [Finset.card_union_of_disjoint]
     apply component_disjoint
     intro h
@@ -4547,6 +4552,7 @@ theorem component_insertEdge_subset (rows : List (State → Option State)) (laye
   · exact Finset.Subset.trans Finset.subset_union_left (Finset.subset_insert _ _)
   · exact Finset.Subset.refl _
 
+omit [DecidableEq State] [Fintype State] in
 /-- Every layer traversed on the way to a root contains a queried vertex
 with that same root. -/
 theorem root_has_vertex (rows : List (State → Option State)) (start : State) (layer : ℕ)
@@ -4567,11 +4573,13 @@ theorem root_has_vertex (rows : List (State → Option State)) (start : State) (
         have h := congrArg (fun r : ℕ × State => (r.1 + 1, r.2)) he
         simpa [rootFrom, root, hr, Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using h
 
+omit [DecidableEq State] [Fintype State] in
 theorem rootFrom_drop (rows : List (State → Option State)) (skip layer : ℕ) (input : State) :
     let r := rootFrom (rows.drop skip) layer input
     (skip + r.1, r.2) = rootFrom rows (skip + layer) input := by
   simp [rootFrom, List.drop_drop, Nat.add_assoc]
 
+omit [DecidableEq State] [Fintype State] in
 theorem rootFrom_has_vertex (rows : List (State → Option State)) (startLayer : ℕ) (start : State)
     (layer : ℕ) (hlo : startLayer ≤ layer) (hhi : layer < (rootFrom rows startLayer start).1) :
     ∃ input, (edge rows layer input).isSome ∧
@@ -4629,6 +4637,7 @@ theorem component_suffix_layer (rows : List (State → Option State)) (layers ta
       _ = _ := Nat.card_Ico _ _
   omega
 
+omit [DecidableEq State] [Fintype State] in
 theorem rootFrom_of_edge_none (rows : List (State → Option State)) (layer : ℕ) (input : State)
     (h : edge rows layer input = none) : rootFrom rows layer input = (layer, input) := by
   have he : edge rows layer input = edge (rows.drop layer) 0 input := by
@@ -4640,6 +4649,7 @@ theorem rootFrom_of_edge_none (rows : List (State → Option State)) (layer : �
     simp only [hdrop, edge, List.getElem?_cons_zero, Option.bind_some] at h
     simp [rootFrom, hdrop, root, h]
 
+omit [DecidableEq State] [Fintype State] in
 theorem edge_some_of_rootFrom_gt (rows : List (State → Option State)) (layer : ℕ) (input : State)
     (h : layer < (rootFrom rows layer input).1) : (edge rows layer input).isSome := by
   cases he : edge rows layer input with
@@ -4678,7 +4688,7 @@ theorem pending_insertEdge_nonincrease (rows : List (State → Option State)) (l
     have hgt := rootFrom_layer rows (layer + 1) output
     rw [hi, hx, hr] at hv
     omega
-  rw [edge_insertEdge rows layer input output hlayer, if_neg hne] at hv
+  rw [edge_insertEdge rows layer input output hlayer, ite_eq_right hne] at hv
   exact ⟨hv.1, lt_of_le_of_lt
     (rootFrom_insertEdge_mono rows layer input output hlayer hfresh v.1.val v.2) hv.2⟩
 
@@ -4715,7 +4725,7 @@ theorem hit_above_head_branches (rows : List (State → Option State)) (layers l
   let q : Fin layers × State := (⟨layer, hlayer.trans_le hbound⟩, input)
   have hq : q ∈ component (insertEdge rows layer input output) layers targetLayer target := by
     rw [component_insertEdge rows layers layer targetLayer input output target hlayer hbound hfresh htarget,
-      if_pos hhit]
+      ite_eq_left hhit]
     exact Finset.mem_insert_self _ _
   have he : v = q := hnew hv' hq hi
   rw [he] at hv
@@ -4783,7 +4793,7 @@ theorem weight_of_branched (N : ℝ) (rows : List (State → Option State)) (tar
   have hsub := component_insertEdge_subset rows 3 layer 3 input output target hlayer hlen.le hfresh
     (by omega)
   unfold weight
-  rw [if_neg]
+  rw [ite_eq_right]
   intro h
   exact hbad (h.mono hsub)
 
@@ -4802,8 +4812,8 @@ theorem weight_below_head (N : ℝ) (hN : 0 < N) (rows : List (State → Option 
   · have hi := not_not.mp hbad
     have hn := no_hit_below_head rows 3 layer 3 output target le_rfl hbelow
     have hc := component_insertEdge rows 3 layer 3 input output target hlayer hlen.le hfresh (by omega)
-    rw [if_neg hn] at hc
-    simp only [weight, hc, if_pos hi]
+    rw [ite_eq_right hn] at hc
+    simp only [weight, hc, ite_eq_left hi]
     exact (suffixWeight_mono N hN _ _ _
       (pending_insertEdge_le rows 3 _ layer input output hlayer hlen.le hfresh)).trans
         (suffixWeight_pending N hN _ _)
@@ -4821,11 +4831,11 @@ theorem weight_above_head (N : ℝ) (hN : 0 < N) (rows : List (State → Option 
     by_cases hhit : rootFrom rows (layer + 1) output = (3, target)
     · have hb := hit_above_head_branches rows 3 layer 3 input output target hlayer hlen.le hfresh
         (by omega) le_rfl hi habove hhit
-      simp only [weight, if_neg hb, if_pos hi]
+      simp only [weight, ite_eq_right hb, ite_eq_left hi]
       exact suffixWeight_nonneg N hN _ _
     · have hc := component_insertEdge rows 3 layer 3 input output target hlayer hlen.le hfresh (by omega)
-      rw [if_neg hhit] at hc
-      simp only [weight, hc, if_pos hi]
+      rw [ite_eq_right hhit] at hc
+      simp only [weight, hc, ite_eq_left hi]
       apply suffixWeight_mono N hN
       exact Finset.card_le_card
         (pending_insertEdge_nonincrease rows 3 _ layer input output hlayer hfresh (by omega))
@@ -4840,8 +4850,8 @@ theorem weight_boundary_miss (N : ℝ) (rows : List (State → Option State)) (t
       suffixWeight N (component rows 3 3 target).card
         ((pending rows 3 (layer + 1)).card - (component rows 3 layer input).card) := by
   have hc := component_insertEdge rows 3 layer 3 input output target hlayer hlen.le hfresh (by omega)
-  rw [if_neg hmiss] at hc
-  simp only [weight, hc, if_pos hinj, ← hhead]
+  rw [ite_eq_right hmiss] at hc
+  simp only [weight, hc, ite_eq_left hinj, ← hhead]
   have hp := pending_insertEdge_boundary_card rows 3 layer input output hlayer hfresh
   congr 1
   omega
@@ -4887,16 +4897,17 @@ theorem weight_boundary_branched (N : ℝ) (hN : 0 < N) (rows : List (State → 
       intro hi
       apply hbranch
       apply hi.mono
-      rw [component_insertEdge rows 3 layer 3 input output target hlayer hlen.le hfresh (by omega), if_pos hh]
+      rw [component_insertEdge rows 3 layer 3 input output target hlayer hlen.le hfresh (by omega), ite_eq_left hh]
       exact Finset.Subset.trans Finset.subset_union_right (Finset.subset_insert _ _)
-    simp only [weight, if_neg hbad, if_pos hinj]
+    simp only [weight, ite_eq_right hbad, ite_eq_left hinj]
     exact suffixWeight_nonneg N hN _ _
   · rw [weight_boundary_miss N rows target hlen layer hlayer input output hfresh hinj hhead hh]
-    simp only [weight, if_pos hinj, ← hhead]
+    simp only [weight, ite_eq_left hinj, ← hhead]
     exact suffixWeight_mono N hN _ _ _ (Nat.sub_le _ _)
 
 variable [Nonempty State]
 
+omit [DecidableEq State] in
 theorem uniform_mean_le_const (f : State → ℝ) (c : ℝ) (h : ∀ input, f input ≤ c) :
     (∑ input, f input) / (Fintype.card State : ℝ) ≤ c := by
   have hN : (0 : ℝ) < Fintype.card State := by exact_mod_cast Fintype.card_pos
@@ -4976,14 +4987,14 @@ theorem weight_mean_step (rows : List (State → Option State)) (target : State)
       (fun hh => ho ((hchoice output).mp hh))).le)
     (weight_boundary_hit _ hN rows target hlen layer hlayer input chosen hfresh hhead ((hchoice chosen).mpr rfl))
   apply hmean.trans
-  simp only [weight, if_pos hinj, ← hhead]
+  simp only [weight, ite_eq_left hinj, ← hhead]
   change _ ≤ (1 + (124 / 3 : ℝ) / Fintype.card State) * suffixWeight (Fintype.card State) d m
   by_cases hz : d + l = 0
   · have hd : d = 0 := by omega
     have hl : l = 0 := by omega
     simpa only [hd, hl, Nat.add_zero, ↓reduceIte, Nat.sub_zero] using
       suffixWeight_first (Fintype.card State) hN m
-  · rw [if_neg hz]
+  · rw [ite_eq_right hz]
     apply suffixWeight_join _ hN1 d m l
     · exact Finset.card_le_card (component_pending rows 3 layer input)
     · have hl := component_card_le rows 3 layer input hsource
@@ -4996,6 +5007,7 @@ variable {Index : Type} [Fintype Index] [DecidableEq Index]
 def productWeight (N : ℝ) (rows : Index → List (State → Option State)) (target : Index → State) : ℝ :=
   ∏ i, weight N (rows i) (target i)
 
+omit [Nonempty State] in
 theorem productWeight_update (N : ℝ) (rows : Index → List (State → Option State)) (target : Index → State)
     (index : Index) (newRows : List (State → Option State)) :
     productWeight N (Function.update rows index newRows) target =
@@ -5038,6 +5050,7 @@ theorem productWeight_mean_step (rows : Index → List (State → Option State))
       exact Finset.mul_prod_erase Finset.univ
         (fun i => weight (Fintype.card State) (rows i) (target i)) (Finset.mem_univ index)
 
+omit [Nonempty State] [DecidableEq Index] in
 /-- Live suffixes of total depth 68 force the product above the threshold
 used in authenticDepth_query_cap. -/
 theorem productWeight_terminal (N : ℝ) (hN : 0 < N)
@@ -5047,7 +5060,7 @@ theorem productWeight_terminal (N : ℝ) (hN : 0 < N)
     (5 : ℝ) ^ 68 ≤ productWeight N rows target := by
   have hweight (i : Index) : (5 : ℝ) ^ (component (rows i) 3 3 (target i)).card ≤
       weight N (rows i) (target i) := by
-    simp only [weight, if_pos (hinj i), suffixWeight]
+    simp only [weight, ite_eq_left (hinj i), suffixWeight]
     have h := mul_nonneg
       (show (0 : ℝ) ≤ 5 ^ (component (rows i) 3 3 (target i)).card by positivity)
       (show (0 : ℝ) ≤ (124 / 3) * (pending (rows i) 3 (3 - (component (rows i) 3 3 (target i)).card)).card / N by positivity)
@@ -5058,12 +5071,14 @@ theorem productWeight_terminal (N : ℝ) (hN : 0 < N)
       (Finset.prod_pow_eq_pow_sum ..).symm
     _ ≤ _ := Finset.prod_le_prod₀ (fun i _ => by positivity) (fun i _ => hweight i)
 
+omit [Fintype State] [Nonempty State] in
 theorem length_insertEdge (rows : List (State → Option State)) (layer : ℕ)
     (input output : State) : (insertEdge rows layer input output).length = rows.length := by
   induction rows generalizing layer with
   | nil => simp [insertEdge]
   | cons row rows ih => cases layer <;> simp [insertEdge, ih]
 
+omit [Nonempty State] [DecidableEq Index] in
 theorem productWeight_nonneg (N : ℝ) (hN : 0 < N)
     (rows : Index → List (State → Option State)) (target : Index → State) :
     0 ≤ productWeight N rows target :=
@@ -5073,6 +5088,7 @@ theorem productWeight_nonneg (N : ℝ) (hN : 0 < N)
 the marked honest computation has already produced public endpoints. -/
 def emptyRows : Index → List (State → Option State) := fun _ => List.replicate 3 (fun _ => none)
 
+omit [Nonempty State] [DecidableEq Index] in
 theorem productWeight_empty (N : ℝ) (target : Index → State) :
     productWeight N (emptyRows (Index := Index)) target = 1 := by
   have he (layer : ℕ) (input : State) :
@@ -5118,13 +5134,16 @@ theorem potential_mean_step [SampleableType State]
   simpa only [potential, growth, tsum_fintype, SampleableType.prEvent_uniformSample_eq_singleton,
     ENNReal.ofReal_natCast, div_eq_mul_inv, Finset.mul_sum, Finset.sum_mul, mul_comm] using h
 
+omit [DecidableEq State] in
 theorem growth_one_le : 1 ≤ growth State := by
   rw [← ENNReal.ofReal_one]
   apply ENNReal.ofReal_le_ofReal
   exact le_add_of_nonneg_right (by positivity)
 
+omit [DecidableEq State] in
 theorem growth_ne_zero : growth State ≠ 0 := ne_of_gt (lt_of_lt_of_le zero_lt_one growth_one_le)
 
+omit [DecidableEq State] [Nonempty State] in
 theorem growth_ne_top : growth State ≠ ∞ := ENNReal.ofReal_ne_top
 
 abbrev GraphState (Index State : Type) := (Index → List (State → Option State)) × ℕ
@@ -5158,6 +5177,7 @@ theorem step_potential (t : Index × Fin 3 × State) (s : GraphState Index State
 def discounted (target : Index → State) (s : GraphState Index State) : ℝ≥0∞ :=
   potential s.1 target / growth State ^ s.2
 
+omit [Fintype State] [Nonempty State] [Fintype Index] in
 theorem step_count (t : Index × Fin 3 × State) (s : GraphState Index State)
     (r : State × GraphState Index State) (hr : r ∈ support (step t s)) : r.2.2 = s.2 + 1 := by
   unfold step at hr
@@ -5192,6 +5212,7 @@ def Terminal (target : Index → State) (q : ℕ) (s : GraphState Index State) :
   (∀ i, Set.InjOn (fun v : Fin 3 × State => v.1.val) (component (s.1 i) 3 3 (target i))) ∧
   68 ≤ ∑ i, (component (s.1 i) 3 3 (target i)).card
 
+omit [SampleableType State] [DecidableEq Index] in
 theorem terminal_discounted (target : Index → State) (q : ℕ) (s : GraphState Index State)
     (h : Terminal target q s) :
     (5 : ℝ≥0∞) ^ 68 / growth State ^ q ≤ discounted target s := by
@@ -5201,6 +5222,7 @@ theorem terminal_discounted (target : Index → State) (q : ℕ) (s : GraphState
       ENNReal.ofReal_le_ofReal (productWeight_terminal _ hN s.1 target h.2.1 h.2.2)
   · exact pow_le_pow_right₀ growth_one_le h.1
 
+omit [SampleableType State] in
 theorem terminal_probability_of_expected {α : Type} (run : ProbComp (α × GraphState Index State))
     (target : Index → State) (q : ℕ)
     (hmean : (∑' r, Pr{let z ← run}[z = r] * discounted target r.2) ≤ 1) :
@@ -5225,6 +5247,7 @@ theorem terminal_probability_of_expected {α : Type} (run : ProbComp (α × Grap
   apply (ENNReal.le_div_iff_mul_le (Or.inl (by norm_num)) (Or.inl (by norm_num))).mpr
   simpa only [one_mul] using hmul
 
+omit [DecidableEq State] [Nonempty State] [SampleableType State] in
 theorem growth_query_cap (q : ℕ) (hq : q < 2 ^ 127) (hcard : Fintype.card State = 2 ^ 128) :
     growth State ^ q / (5 : ℝ≥0∞) ^ 68 ≤ (2 ^ 128 : ℝ≥0∞)⁻¹ := by
   have hg : (1 + (124 / 3 : ℝ) / Fintype.card State) = 1 + 124 / (3 * (2 : ℝ) ^ 128) := by
@@ -5239,6 +5262,7 @@ theorem growth_query_cap (q : ℕ) (hq : q < 2 ^ 127) (hcard : Fintype.card Stat
 
 variable {Aux : Type} {ι : Type} {auxSpec : OracleSpec ι}
 
+omit [DecidableEq State] [Fintype State] [Nonempty State] [SampleableType State] in
 /-- A canonical path with unique observed predecessors admits no branched
 observed component at its endpoint. The premise is supplied by the chosen
 collision-free completion, not by conditioning fresh oracle answers. -/
@@ -5259,6 +5283,7 @@ theorem root_canonical (rows : List (State → Option State)) (a : ℕ → State
         (fun j hj u hu => hunique (j + 1) (by simp; omega) u (by simpa using hu)) output htail
       exact hunique 0 (by simp) input (by simpa only [List.getElem_cons_zero, zero_add, hout] using hr)
 
+omit [Nonempty State] [SampleableType State] in
 theorem component_canonical (rows : List (State → Option State)) (a : ℕ → State)
     (hunique : ∀ j (hj : j < rows.length) input,
       rows[j] input = some (a (j + 1)) → input = a j)
@@ -5301,6 +5326,7 @@ theorem component_canonical_injective_of_length (rows : List (State → Option S
   subst layers
   exact component_canonical_injective rows a hunique
 
+omit [DecidableEq State] [Fintype State] [Nonempty State] [SampleableType State] in
 theorem root_path (rows : List (State → Option State)) (a : ℕ → State)
     (hedges : ∀ j (hj : j < rows.length), rows[j] (a j) = some (a (j + 1))) :
     root rows (a 0) = (rows.length, a rows.length) := by
@@ -5312,6 +5338,7 @@ theorem root_path (rows : List (State → Option State)) (a : ℕ → State)
     have ht := ih (fun j => a (j + 1)) (fun j hj => hedges (j + 1) (by simp; omega))
     simp only [root, h0, ht, List.length_cons]
 
+omit [DecidableEq State] [Fintype State] [Nonempty State] [SampleableType State] in
 theorem rootFrom_path (rows : List (State → Option State)) (a : ℕ → State) (start : ℕ)
     (hstart : start ≤ rows.length)
     (hedges : ∀ j (hj : j < rows.length), start ≤ j → rows[j] (a j) = some (a (j + 1))) :
@@ -5669,12 +5696,14 @@ def route (f : D → E) : QueryImpl (E →ₒ R) (OracleComp ((D →ₒ R) + (E 
     liftM (((D →ₒ R) + (E →ₒ R)).query (.inl h.choose))
     else liftM (((D →ₒ R) + (E →ₒ R)).query (.inr e))
 
+omit [DecidableEq D] in
 theorem aux_preserves (e : E) (s : QueryCache (D →ₒ R) × QueryCache (E →ₒ R))
     (r) (hr : r ∈ support ((aux e).run s)) : r.2.1 = s.1 := by
   simp only [aux, StateT.run, support_map, Set.mem_image] at hr
   obtain ⟨v, _, rfl⟩ := hr
   rfl
 
+omit [SampleableType R] in
 theorem split_update_in (f : D → E) (hinj : Function.Injective f)
     (cache : QueryCache (E →ₒ R)) (d : D) (v : R) :
     split f (cache.cacheQuery (f d) v) = ((split f cache).1.cacheQuery d v, (split f cache).2) := by
@@ -5690,6 +5719,7 @@ theorem split_update_in (f : D → E) (hinj : Function.Injective f)
     · have he : e ≠ f d := fun he => h ⟨d, he.symm⟩
       simp [split, h, QueryCache.cacheQuery_of_ne _ _ he]
 
+omit [DecidableEq D] [SampleableType R] in
 theorem split_update_out (f : D → E) (cache : QueryCache (E →ₒ R))
     (e : E) (hout : ∀ d, f d ≠ e) (v : R) :
     split f (cache.cacheQuery e v) = ((split f cache).1, (split f cache).2.cacheQuery e v) := by
@@ -5731,7 +5761,7 @@ theorem query_eq (f : D → E) (hinj : Function.Injective f) (e : E) :
       simp only [QueryImpl.withCaching_run_none _ hv,
         QueryImpl.withCaching_run_none _ (hc.trans hv), Functor.map_map, Prod.map_apply, id, split_update_in f hinj]
       rfl
-  · simp only [route, dif_neg h, simulateQ_query, OracleQuery.input_query,
+  · simp only [route, dite_eq_right h, simulateQ_query, OracleQuery.input_query,
       OracleQuery.cont_query, id_map, FinitePosterior.lazy, aux, StateT.run]
     change (fun r => (r.1, (split f cache).1, r.2)) <$>
       ((E →ₒ R).randomOracle e).run (split f cache).2 =
@@ -5766,6 +5796,7 @@ def routeWithSampling (f : D → E) (e : E) :
     OracleComp ((D →ₒ R) + (unifSpec + (E →ₒ R))) R := simulateQ extend (route f e)
 
 set_option backward.isDefEq.respectTransparency false in
+omit [DecidableEq D] [DecidableEq E] [SampleableType R] in
 theorem routeWithSampling_in (f : D → E) (hinj : Function.Injective f) (d : D) :
     routeWithSampling (R := R) f (f d) =
       liftM (((D →ₒ R) + (unifSpec + (E →ₒ R))).query (.inl d)) := by
@@ -5781,6 +5812,7 @@ theorem queryWithSampling_eq (f : D → E) (hinj : Function.Injective f) (e : E)
       (simulateQ (FinitePosterior.lazy samplingAux) (routeWithSampling f e)) := by
   simpa only [routeWithSampling, ← QueryImpl.simulateQ_compose, extend_eq] using query_eq (R := R) f hinj e
 
+omit [DecidableEq D] in
 theorem samplingAux_preserves (t : (unifSpec + (E →ₒ R)).Domain)
     (s : QueryCache (D →ₒ R) × QueryCache (E →ₒ R)) (r)
     (hr : r ∈ support ((samplingAux t).run s)) : r.2.1 = s.1 := by
@@ -5799,6 +5831,7 @@ def unrecorded (table : D → R) :
   | .inr (.inr e) => (E →ₒ R).randomOracle e
 
 set_option backward.isDefEq.respectTransparency false in
+omit [DecidableEq D] in
 theorem unrecorded_in (f : D → E) (hinj : Function.Injective f) (table : D → R) (d : D) :
     simulateQ (unrecorded (E := E) table) (routeWithSampling f (f d)) = pure (table d) := by
   rw [routeWithSampling_in f hinj]
@@ -5845,7 +5878,7 @@ theorem eager_route_preserves (f : D → E) (hinj : Function.Injective f) (table
       exact hs other ho
   · have hroute : routeWithSampling (R := R) f e =
         liftM (((D →ₒ R) + (unifSpec + (E →ₒ R))).query (.inr (.inr e))) := by
-      simp only [routeWithSampling, route, dif_neg h, simulateQ_query,
+      simp only [routeWithSampling, route, dite_eq_right h, simulateQ_query,
         OracleQuery.input_query, OracleQuery.cont_query, id_map, extend]
     rw [hroute] at hr
     simp only [simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query, id_map,
@@ -6276,7 +6309,7 @@ theorem uniform_forall_probability {I T : Type} [Fintype I] [DecidableEq I]
       ∏ i, if event i (table i) then (1 : ℝ≥0∞) else 0 := by
     by_cases h : ∀ i, event i (table i)
     · simp [h]
-    · rw [if_neg h]
+    · rw [ite_eq_right h]
       obtain ⟨i, hi⟩ := not_forall.mp h
       symm
       exact Finset.prod_eq_zero (Finset.mem_univ i) (by simp [hi])
@@ -7116,10 +7149,10 @@ theorem overlay_prf_fiber_eq (D : Finset C.Party) (hD : D.card ≤ C.t - 1)
     (shiftTable [] D challenged Tstar δ) ?_ ?_
     (fun ω _ => shiftTable_shiftTable _ _) (fun ω _ => shiftTable_shiftTable _ _)
   · intro ω hω
-    simp only [Finset.coe_filter, Finset.mem_univ, true_and, Set.mem_setOf_eq] at hω ⊢
+    simp only [Finset.coe_filter, Finset.mem_univ, true_and, Set.mem_ofPred_eq] at hω ⊢
     exact hforward c c' (fun p => by simp [δ, p.2]) ω hω
   · intro ω hω
-    simp only [Finset.coe_filter, Finset.mem_univ, true_and, Set.mem_setOf_eq] at hω ⊢
+    simp only [Finset.coe_filter, Finset.mem_univ, true_and, Set.mem_ofPred_eq] at hω ⊢
     exact hforward c' c (fun p => by simp [δ, p.2, add_comm]) ω hω
 
 set_option backward.isDefEq.respectTransparency false in
@@ -7450,10 +7483,10 @@ theorem interpret_chainWalk (x : SigningSecurityProof.Keys3 C) (b : XmssSecurity
         ThresholdLeanXmssSecurity.tweakable_bind,
         ThresholdLeanXmssSecurity.tweakable_oracleHash, thInput_hashDomainFields, MonadHom.mmap_bind, hinput,
         interpret_hash prims x b hno, pure_bind, ThresholdLeanXmssSecurity.tweakable_pure, MonadHom.mmap_pure]
-      simp only [XmssSecurity.Wots.walk, step, dif_pos hk]
+      simp only [XmssSecurity.Wots.walk, step, dite_eq_left hk]
     · change ¬pos + n < 3 at hk
       simp only [ThresholdLeanXmssSecurity.tweakable_pure, MonadHom.mmap_pure]
-      simp only [XmssSecurity.Wots.walk, step, dif_neg hk]
+      simp only [XmssSecurity.Wots.walk, step, dite_eq_right hk]
 
 def starts (table : ProtectedSlot C → HashOutput) (b : XmssSecurity.TopIndex) (l : ChainIndex) : Digest :=
   (C.terms.map fun T => truncateHash
@@ -7889,7 +7922,7 @@ theorem marked_of_path {State R Index : Type} [Fintype State] [DecidableEq State
       map_eq_bind_pure_comp, Function.comp_def, bind_assoc, pure_bind,
       evalRecorded_query_bind, id_eq]
     rw [show project (table (index, a 0)) = a 1 from he]
-    rw [if_pos (show ∀ other, observed index other = some (a 1) → other = a 0 from
+    rw [ite_eq_left (show ∀ other, observed index other = some (a 1) → other = a 0 from
       hunique 0 (by simp))]
     apply ih (a := fun k => a (k + 1))
     · intro k hk
@@ -8028,7 +8061,7 @@ theorem rows_update_chain (record : QueryCache (ProtectedSlot C →ₒ HashOutpu
         have hne' : ¬(i = k.val ∧ input = v) := by
           intro h
           exact he ⟨Fin.ext h.1, h.2⟩
-        rw [QueryCache.cacheQuery_of_ne _ _ hne, if_neg hne']
+        rw [QueryCache.cacheQuery_of_ne _ _ hne, ite_eq_right hne']
         exact (edge_rows record l ⟨i, hi⟩ input).symm
     · have ha : (rows (record.cacheQuery (.inr (l, k, v)) value) l)[i]? = none :=
         List.getElem?_eq_none (by rw [rows_length]; omega)
@@ -8302,7 +8335,7 @@ theorem inner_bound (b : XmssSecurity.TopIndex) (target : ChainIndex → Digest)
       then ((2 ^ 128 : ℝ≥0∞) ^ 58)⁻¹ else 0 := by
   classical
   by_cases ht : LayeredGraph.Terminal target q (PublicContinuation.rows r.2.1, r.2.2.2)
-  · rw [if_pos ht]
+  · rw [ite_eq_left ht]
     by_cases ha : ∃ D : Finset C.Party, D.card ≤ C.t - 1 ∧
         UnopenedPrivacy.RecordAllowed D (UnopenedPrivacy.topStarts b) r.2.1
     · obtain ⟨D, hD, hallowed⟩ := ha
@@ -8311,7 +8344,7 @@ theorem inner_bound (b : XmssSecurity.TopIndex) (target : ChainIndex → Digest)
       exact PosteriorCompletion.marked_density D hD b r.2.1 hallowed (List.finRange 3)
         (List.nodup_finRange 3) target
     · exact le_trans (le_of_eq (prEvent_eq_zero_of_forall_not _ _ fun h hg => ha hg.1)) zero_le
-  · rw [if_neg ht]
+  · rw [ite_eq_right ht]
     exact le_of_eq (prEvent_eq_zero_of_forall_not _ _ fun h hg => ht hg.2.2)
 
 set_option backward.isDefEq.respectTransparency false in
@@ -8816,7 +8849,7 @@ theorem table_path (x : SigningSecurityProof.Keys3 C) (b : XmssSecurity.TopIndex
       (show SigningDescentProof.thView cache
         (XmssSecurity.Concrete.CacheView.topChainInput x.1 b l ⟨j, hj'⟩
           (path prims x cache b l j)) = some value from hv)
-    simp only [SelectedKeygen.step, Nat.zero_add, dif_pos hj', ht]
+    simp only [SelectedKeygen.step, Nat.zero_add, dite_eq_left hj', ht]
     simpa only [path, XmssSecurity.Wots.walk, Nat.zero_add,
       XmssSecurity.Concrete.CacheView.topChainStep, hjchain, ↓reduceDIte,
       truncateHash, XmssSecurity.truncateHash, digestBits, XmssSecurity.digestBits] using hd.symm
@@ -9079,7 +9112,7 @@ theorem freshness_of_fresh (x : SigningSecurityProof.Keys3 C) (out : Output C)
     freshness x out = pure out := by
   rcases out with ⟨flags, _ | ⟨top, state, forgery⟩⟩
   · rfl
-  · simp only [freshness, if_pos (hfresh top state forgery rfl), pure_bind, Bool.and_true]
+  · simp only [freshness, ite_eq_left (hfresh top state forgery rfl), pure_bind, Bool.and_true]
 
 set_option backward.isDefEq.respectTransparency false in
 theorem safe_other_jobs (x : SigningSecurityProof.Keys3 C) (b : XmssSecurity.TopIndex)

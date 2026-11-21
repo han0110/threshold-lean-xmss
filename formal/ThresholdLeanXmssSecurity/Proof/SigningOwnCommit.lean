@@ -46,13 +46,13 @@ theorem record_le_coverCacheAt {record bound : HashCache C} (hle : record ≤ bo
     record ≤ coverCacheAt p record bound := by
   intro input value h
   simp only [coverCacheAt, QueryCache.ofFn_apply]
-  rw [if_pos (fun _ => by simp [h])]
+  rw [ite_eq_left (fun _ => by simp [h])]
   exact hle h
 
 theorem coverCacheAt_irrelevant {record bound : HashCache C} {input : Query C} {value : HashOutput}
     (hrel : ¬p input) (h : bound input = some value) : coverCacheAt p record bound input = some value := by
   simp only [coverCacheAt, QueryCache.ofFn_apply]
-  rw [if_pos (fun h' => absurd h' hrel)]
+  rw [ite_eq_left (fun h' => absurd h' hrel)]
   exact h
 
 theorem isSome_of_coverCacheAt {record bound : HashCache C} {input : Query C}

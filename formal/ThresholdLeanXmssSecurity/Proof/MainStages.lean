@@ -61,7 +61,7 @@ theorem stages_executeRounds_done (fuel : ℕ) (st : A.State) (steps : C.Party �
   cases fuel with
   | zero => simp [executeRounds, h, Step.output]
   | succ fuel =>
-    rw [executeRounds, if_pos (fun i _ => by simp [h, Step.isDone])]
+    rw [executeRounds, ite_eq_left (fun i _ => by simp [h, Step.isDone])]
     simp [h, Step.output]
 
 /-- Rounds from steps that are all done return their outputs, for each pair of roles. -/
@@ -70,7 +70,7 @@ theorem executeRounds_allDone {m : Type → Type} [Monad m] (Ro : Roles C m) (fu
     executeRounds Ro D A F fuel st steps = pure (st, fun i => (steps i).output) := by
   cases fuel with
   | zero => rfl
-  | succ fuel => rw [executeRounds, if_pos (fun i _ => h i)]
+  | succ fuel => rw [executeRounds, ite_eq_left (fun i _ => h i)]
 
 theorem stages_executeRounds_allDone (fuel : ℕ) (st : A.State) (steps : C.Party → Step C E' (CallSpec I O) α)
     (h : ∀ i, (steps i).isDone) :
@@ -116,12 +116,12 @@ theorem stages_executeRounds_abort (fuel : ℕ) (st : A.State) (steps : C.Party 
           · simp [h', Step.isDone]
           · have := hc i hi
             simp [h', Step.callInput] at this
-        rw [if_pos ⟨hcall, fun i hi => by
+        rw [ite_eq_left ⟨hcall, fun i hi => by
           rcases h i hi with h' | ⟨input, resume, h', -⟩
           · simp [h', Step.isDone]
           · simp [h', Step.callInput]⟩]
         unfold runFunctionality
-        rw [if_pos (fun hall => by simpa [hi₀, hdone₀, Step.callInput] using hall i₀ hi₀)]
+        rw [ite_eq_left (fun hall => by simpa [hi₀, hdone₀, Step.callInput] using hall i₀ hi₀)]
         simp only [pure_bind]
         rw [stages_sequenceFin_eq_pure _ (fun _ => Step.done none) (fun j => ?_), pure_bind]
         by_cases hj : j ∈ D.1

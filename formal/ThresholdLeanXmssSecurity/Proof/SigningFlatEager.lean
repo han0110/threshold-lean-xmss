@@ -345,7 +345,7 @@ theorem trialFresh_risk_sum_le (keyOf : XmssSecurity.HashInput → Option XmssSe
     | none =>
       have hfresh : ∀ digest, trialFresh keyOf m input digest = m.fresh keyOf input digest true := fun digest => by
         simp only [trialFresh, hk, hs, Option.bind_some]
-      simp only [hfresh, m.fresh_unsigned keyOf input _ true e hk hs, if_true]
+      simp only [hfresh, m.fresh_unsigned keyOf input _ true e hk hs, ite_true]
       have hrisk : m.risk = XmssSecurity.CappedEncodingMonitor.State.pendingRisk m.state := by
         simp [Monitor.risk, hm]
       rw [hrisk]
@@ -363,10 +363,10 @@ theorem trialFresh_risk_sum_le (keyOf : XmssSecurity.HashInput → Option XmssSe
             by_cases hv : XmssSecurity.TargetSum.ValidDigest digest
             · by_cases hp : digest ∈ m.state.pending e
               · simp [hv, hp, Monitor.risk]
-              · simp only [hv, hp, if_true, if_false, Monitor.risk, hm, Bool.false_or,
+              · simp only [hv, hp, ite_true, ite_false, Monitor.risk, hm, Bool.false_or,
                   decide_false, Bool.false_eq_true, add_zero]
                 rw [pendingRisk_install_eq m.state e digest 0]
-            · simp only [hv, if_false, Monitor.risk, hm, Bool.false_eq_true]
+            · simp only [hv, ite_false, Monitor.risk, hm, Bool.false_eq_true]
               rw [hsplit]
         _ ≤ R0 + ((m.state.pending e).card : ℝ≥0∞) *
               (XmssSecurity.TargetSum.validDigests.card : ℝ≥0∞)⁻¹ := by
@@ -405,12 +405,12 @@ theorem monitoredOracle_risk_le (keyOf : XmssSecurity.HashInput → Option XmssS
   | hash input =>
     by_cases hseen : input ∈ s.2.seen
     · refine tsum_probOutput_mul_le_of_const _ _ _ fun w _ => ?_
-      simp only [trialStep, if_pos hseen, le_refl]
+      simp only [trialStep, ite_eq_left hseen, le_refl]
     have hnone : s.1 (.hash input) = none := by
       by_contra h
       exact hseen (hcov input h)
     rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ hnone, OracleComp.tsum_prEvent_map_mul]
-    simp only [trialStep, if_neg hseen]
+    simp only [trialStep, ite_eq_right hseen]
     exact (le_of_eq (hashOutput_sum_truncate fun digest => (trialFresh keyOf s.2 input digest).risk)).trans
       (trialFresh_risk_sum_le keyOf s.2 input)
   | _ => exact tsum_probOutput_mul_le_of_const _ _ _ fun w _ => le_rfl

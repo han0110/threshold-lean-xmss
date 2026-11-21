@@ -557,7 +557,7 @@ theorem resolves_chainWalk {P : XmssSecurity.PublicParameter} {e : XmssSecurity.
     · exact ih prev hprev k h1 hlt hk
     have hkeq : k = pos + n := by omega
     subst hkeq
-    rw [dif_pos hk] at hrest
+    rw [dite_eq_left hk] at hrest
     have hval := resolves_value hprev
     rw [XmssSecurity.Concrete.CacheReplay.eval_chainWalk] at hval
     rw [show pos + n - pos = n by omega, hval]
@@ -581,7 +581,7 @@ theorem resolves_topChainWalk {P : XmssSecurity.PublicParameter} {e : XmssSecuri
     · exact ih prev hprev k h1 hlt hk
     have hkeq : k = pos + n := by omega
     subst hkeq
-    rw [dif_pos hk] at hrest
+    rw [dite_eq_left hk] at hrest
     have hval := resolves_value hprev
     rw [XmssSecurity.Concrete.CacheReplay.eval_topChainWalk] at hval
     rw [show pos + n - pos = n by omega, hval]
@@ -611,15 +611,15 @@ theorem resolves_authenticationRoot {P : XmssSecurity.PublicParameter} {e : Xmss
     rw [XmssSecurity.Concrete.CacheReplay.eval_authenticationRoot] at hval
     rw [hval]
     unfold XmssSecurity.Concrete.authenticationNodeHash at hrest
-    rw [dif_pos hlevel] at hrest
+    rw [dite_eq_left hlevel] at hrest
     unfold XmssSecurity.Concrete.nodeHash at hrest
     unfold XmssSecurity.Concrete.CacheView.nodeInput XmssSecurity.Concrete.CacheView.authenticationNodePayload
     by_cases hb : (e : ℕ).testBit level = true
-    · rw [if_pos hb] at hrest
-      rw [if_pos hb]
+    · rw [ite_eq_left hb] at hrest
+      rw [ite_eq_left hb]
       exact resolves_tweakableHash hrest
-    · rw [if_neg hb] at hrest
-      rw [if_neg hb]
+    · rw [ite_eq_right hb] at hrest
+      rw [ite_eq_right hb]
       exact resolves_tweakableHash hrest
 
 
@@ -649,18 +649,18 @@ theorem resolves_topAuthenticationRoot {P : XmssSecurity.PublicParameter} {key :
     rw [show XmssSecurity.Concrete.layerPath ⟨0, fun _ => 0, part.authPath⟩ = XmssSecurity.Concrete.layerPath part
       from rfl] at hval
     rw [hval]
-    rw [dif_pos hlevel] at hrest
+    rw [dite_eq_left hlevel] at hrest
     unfold XmssSecurity.Concrete.topNodeHash at hrest
     have hpath : XmssSecurity.Concrete.layerPath part level = part.authPath ⟨level, hlevel⟩ := by
       simp [XmssSecurity.Concrete.layerPath, hlevel]
     rw [hpath]
     unfold XmssSecurity.Concrete.CacheView.topNodeInput XmssSecurity.Concrete.CacheView.topAuthenticationNodePayload
     by_cases hb : (key : ℕ).testBit level = true
-    · rw [if_pos hb] at hrest
-      rw [if_pos hb]
+    · rw [ite_eq_left hb] at hrest
+      rw [ite_eq_left hb]
       exact resolves_tweakableHash hrest
-    · rw [if_neg hb] at hrest
-      rw [if_neg hb]
+    · rw [ite_eq_right hb] at hrest
+      rw [ite_eq_right hb]
       exact resolves_tweakableHash hrest
 
 
@@ -861,7 +861,7 @@ theorem eval_merkleNode_top (K : QueryCache XmssSecurity.HashSpec) (P : PublicPa
       have h := XmssSecurity.Bridge.nodeHash_top P ⟨level, hlt⟩ (XmssSecurity.Concrete.topNodeOfNat j) left right
       rw [hval] at h
       exact h
-    rw [merkleNode, XmssSecurity.Concrete.CacheReplay.topTreeNode_succ_eq, dif_pos hlt, hleft, hright]
+    rw [merkleNode, XmssSecurity.Concrete.CacheReplay.topTreeNode_succ_eq, dite_eq_left hlt, hleft, hright]
     simp only [hnode]
     erw [evalWithAnswerFn_bind, ih (by omega) (2 * j) (by omega), evalWithAnswerFn_bind,
       ih (by omega) (2 * j + 1) hj2]
@@ -932,7 +932,7 @@ theorem eval_merkleNode_bottom (K : QueryCache XmssSecurity.HashSpec) (P : Publi
       intro c hc i hi
       rw [pow_succ, ← Nat.div_div_eq_div_mul, hi]
       omega
-    rw [merkleNode, XmssSecurity.Concrete.CacheReplay.treeNode_succ_eq, dif_pos hlt, hleft, hright]
+    rw [merkleNode, XmssSecurity.Concrete.CacheReplay.treeNode_succ_eq, dite_eq_left hlt, hleft, hright]
     simp only [hnode]
     erw [evalWithAnswerFn_bind, ih (by omega) (2 * j) (by omega) (fun i hi => hS i (hchild 0 (by omega) i hi)),
       evalWithAnswerFn_bind, ih (by omega) (2 * j + 1) hj2 (fun i hi => hS i (hchild 1 (by omega) i hi))]
@@ -963,7 +963,7 @@ theorem D_refBottom_topSignature (h : Query C → HashOutput) (P : PublicParamet
     have hT := topRoot_eq (prims := prims) (h := h) seeds P top htopChain htopRoot b _ r1 e1
       (E_grind_spec _ _ _ _ _ _ _ _ _ hG)
     unfold E at hT
-    rw [hT, if_neg (not_not.mpr rfl), D_pure]
+    rw [hT, ite_eq_right (not_not.mpr rfl), D_pure]
     refine Or.inr ⟨_, rfl, e1, ?_, ?_⟩
     · dsimp only
       have hd := E_grind_spec (prims := prims) (h := h) _ _ _ _ _ _ _ _ _ hG
@@ -1008,13 +1008,13 @@ theorem D_honestSignature_some (h : Query C → HashOutput) (P : PublicParameter
     · show D prims h (do
           let f ← prfValue seeds (.chain bottomLayer e l ⟨1, hv⟩)
           pure ((if 1 = 1 then (tree.cpk e l).1 else (tree.cpk e l).2.1) ^^^ f)) = _
-      rw [D_bind, D_pure, if_pos rfl, hl]
+      rw [D_bind, D_pure, ite_eq_left rfl, hl]
       rw [BitVec.xor_assoc, show (⟨1, hv⟩ : WinternitzDigit) = digit 1 from rfl, BitVec.xor_self, BitVec.xor_zero]
       rfl
     · show D prims h (do
           let f ← prfValue seeds (.chain bottomLayer e l ⟨2, hv⟩)
           pure ((if 2 = 1 then (tree.cpk e l).1 else (tree.cpk e l).2.1) ^^^ f)) = _
-      rw [D_bind, D_pure, if_neg (by decide), hl]
+      rw [D_bind, D_pure, ite_eq_right (by decide), hl]
       rw [BitVec.xor_assoc, show (⟨2, hv⟩ : WinternitzDigit) = digit 2 from rfl, BitVec.xor_self, BitVec.xor_zero]
       rfl
     · show D prims h (pure (tree.cpk e l).2.2) = _

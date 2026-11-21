@@ -609,7 +609,7 @@ noncomputable def run (simulated : Bool) (values : Point → TprfCorrectnessProo
       (Slot C → HashSig.HashOutput) → ProbComp α
   | _, .pure a _ _, _ => Pure.pure a
   | _, .finish result _, ω => Pure.pure (result ω)
-  | _, @ShareProgram.observe _ _ _ _ β instF instD g _ _ next, ω =>
+  | _, @ShareProgram.observe _ _ _ _ _β _instF _instD g _ _ next, ω =>
       run simulated values (next (g ω)) ω
   | v, .release x _ _ h next, ω => run simulated values (next (values x))
       (if simulated then v.install x h ω (values x) else ω)
@@ -2669,18 +2669,18 @@ theorem structuralHitPotential_step (prims : Primitives) (A : TsigAdversary C)
     gate hinj t s (2 ^ 128 : ℝ≥0∞)⁻¹
     (fun b hb he => by subst t; exact hgate b s hs hb)
   by_cases hex : ∃ b, t = gate b
-  · simp only [if_pos hex] at hg
+  · simp only [ite_eq_left hex] at hg
     dsimp only [gate] at hex hg
     simp only [structuralHitPotential, mul_add, ENNReal.tsum_add]
     refine (add_le_add hc hg).trans_eq ?_
-    simp only [structuralHitCost, if_pos hex, Nat.cast_add, Nat.cast_one, add_mul, one_mul]
+    simp only [structuralHitCost, ite_eq_left hex, Nat.cast_add, Nat.cast_one, add_mul, one_mul]
     exact add_add_add_comm (SigningHitProof.completionPotential
       (SigningHitProof.forestRelevant x.1) (SigningHitProof.forestCompletion x) s.1.1) _ _ _
-  · simp only [if_neg hex, add_zero] at hg
+  · simp only [ite_eq_right hex, add_zero] at hg
     dsimp only [gate] at hex hg
     simp only [structuralHitPotential, mul_add, ENNReal.tsum_add]
     refine (add_le_add hc hg).trans_eq ?_
-    simp only [structuralHitCost, if_neg hex, add_zero]
+    simp only [structuralHitCost, ite_eq_right hex, add_zero]
     exact add_right_comm (SigningHitProof.completionPotential
       (SigningHitProof.forestRelevant x.1) (SigningHitProof.forestCompletion x) s.1.1) _ _
 
@@ -2726,9 +2726,9 @@ theorem guarded_domain_step (prims : Primitives) (Inv : LoggedState C → Prop)
   by_cases hb : Programmed s.2 ∨ IsProgram t
   · refine le_trans (le_of_eq (OracleComp.tsum_prEvent_mul_of_const_on_support _ (c := 0)
       (fun r hr => ?_))) zero_le
-    rw [guarded, if_pos (by rw [loggedImpl_log prims t s r hr, programmed_logQuery]; exact hb)]
+    rw [guarded, ite_eq_left (by rw [loggedImpl_log prims t s r hr, programmed_logQuery]; exact hb)]
   · push Not at hb
-    rw [guarded, if_neg hb.1]
+    rw [guarded, ite_eq_right hb.1]
     refine (ENNReal.tsum_le_tsum fun r => ?_).trans (hstep t s (hs hb.1) hb.1 hb.2)
     gcongr
     simp only [guarded]
@@ -2764,7 +2764,7 @@ theorem hit_bound_structural_cost (prims : Primitives) (A : TsigAdversary C)
     (fun t _ => (2 ^ 128 : ℝ≥0∞)⁻¹ * structuralHitCost x T t)
     (fun t s hs => hstep t s (fun _ => hs)) (SigningDescentProof.finalRun A x) loggedInit hi
   have hz : guarded f loggedInit = 0 := by
-    rw [guarded, if_neg (show ¬Programmed (loggedInit (C := C)).2 by simp [loggedInit, Programmed])]
+    rw [guarded, ite_eq_right (show ¬Programmed (loggedInit (C := C)).2 by simp [loggedInit, Programmed])]
     exact structuralHitPotential_zero prims A x T
   rw [hz, zero_add, XmssSecurity.expectedSimulatedCost_const_mul] at hf
   refine le_trans ?_ hf
@@ -2773,7 +2773,7 @@ theorem hit_bound_structural_cost (prims : Primitives) (A : TsigAdversary C)
   intro z
   by_cases hz : z ∈ support (loggedRun prims A x)
   · by_cases hw : WinHit prims x (z.1, z.2.1)
-    · simp only [hw, if_true, guarded, if_neg (noProgramQuery prims C A x z hz)]
+    · simp only [hw, ite_true, guarded, ite_eq_right (noProgramQuery prims C A x z hz)]
       simpa only [mul_one, loggedRun, loggedInit, f] using mul_le_mul_right
         (structuralHitPotential_terminal prims A x T z hz hw) (Pr{let y ← loggedRun prims A x}[y = z])
     · simp [hw]
@@ -2827,7 +2827,7 @@ theorem structuralHitCost_le (x : SigningSecurityProof.Keys3 C) (T : C.Term)
     simp [structuralHitCost, rawDomainCost, SigningHitProof.topGateInput,
       SigningHitProof.forestRelevant_prf, SeedHitProof.signCost]
     split_ifs <;> omega
-  · simp only [structuralHitCost, if_neg hg, add_zero]
+  · simp only [structuralHitCost, ite_eq_right hg, add_zero]
     rcases t with ((n | (q | p)) | prog) | (n | (q | p)) <;>
       simp [rawDomainCost, SeedHitProof.signCost] <;> split_ifs <;> omega
 
@@ -3530,10 +3530,10 @@ theorem topPartnerPotential_step (x : SigningSecurityProof.Keys3 C)
     SigningHitProof.completionPotential (topDigestInput x.1 key) (canonicalTopCompletion x key) cache) + value)
   by_cases hex : ∃ key, topDigestInput x.1 key input
   · obtain ⟨key, hk⟩ := hex
-    rw [if_pos ⟨key, hk⟩, Finset.sum_eq_single key]
+    rw [ite_eq_left ⟨key, hk⟩, Finset.sum_eq_single key]
     · simp [hk]
     · intro other _ hne
-      rw [if_neg (fun ho => hne (topDigestInput_key_unique x.1 input other key ho hk))]
+      rw [ite_eq_right (fun ho => hne (topDigestInput_key_unique x.1 input other key ho hk))]
     · simp
   · simp only [not_exists] at hex
     simp [anyTopDigestInput, hex]
@@ -3568,7 +3568,7 @@ theorem cachePotential_bound_source (prims : Primitives) (A : TsigAdversary C)
   let bad : LoggedState C → Prop := fun s => event s.1.1 ∧ ¬Programmed s.2
   have hbad : ∀ s, bad s → 1 ≤ guarded potential s := by
     intro s hs
-    rw [guarded, if_neg hs.2]
+    rw [guarded, ite_eq_right hs.2]
     exact hterminal _ hs.1
   have hstep : ∀ t s, True →
       ∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] * guarded potential r.2 ≤

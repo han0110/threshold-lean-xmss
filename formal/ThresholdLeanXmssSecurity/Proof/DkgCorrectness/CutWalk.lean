@@ -464,6 +464,7 @@ theorem cutWalk_cutBatch (i : C.Party) (keys : Keys C) (prss : PrssKeys C) (js :
   obtain ⟨hs, hc⟩ := runJobsHead_support K _ _ _ _ _ _ q hq
   exact ⟨rfl, hc, hs⟩
 
+omit [Fintype E] [DecidableEq E] in
 /-- On each path of a full real batch, the label grows by `jobLabel` and the tag by one. -/
 theorem realBatch_support (ctx : Context C) (parameter : PublicParameter) (js : List Job) (st : ℕ × ℕ)
     (r : Option (List (List Bit)) × (ℕ × ℕ))

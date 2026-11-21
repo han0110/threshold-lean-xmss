@@ -83,9 +83,9 @@ theorem stopCharge_le (x : SigningSecurityProof.Keys3 C) (cache : HashCache C) (
       ownKeyedCost x t + if SigningSelectionProof.FreeQ (Keyed x.1) t then 1 else 0 := by
   unfold stopCharge
   by_cases halt : SigningGuessProof.AlternativeCommitment x.2.1 x.1 cache
-  · rw [if_pos halt]
+  · rw [ite_eq_left halt]
     exact Nat.zero_le _
-  rw [if_neg halt]
+  rw [ite_eq_right halt]
   rcases t with ((n | (q | q)) | prog) | (n | (q | q))
   · simp [SigningOwnR1.freshKeyedCost]
   · refine le_trans ?_ (Nat.le_add_right _ _)
@@ -103,7 +103,7 @@ theorem stopCharge_le (x : SigningSecurityProof.Keys3 C) (cache : HashCache C) (
       by_cases hk : Keyed x.1 input
       · have hf : SigningSelectionProof.FreeQ (C := C) (Keyed x.1) (.inr (.inr (.inl (.hash input)))) :=
           ⟨input, rfl, hk⟩
-        rw [if_pos hf]
+        rw [ite_eq_left hf]
         simp only [SigningOwnR1.freshKeyedCost]
         split_ifs <;> simp
       · have hk' : ¬(XmssSecurity.encodingInputLeafIndex? x.1 input).isSome := hk
@@ -161,7 +161,7 @@ theorem ledger_run_alt {α : Type} (x : SigningSecurityProof.Keys3 C) (oa : Orac
     have hgrow := world_cache_le prims x t (p.1.1, p.2) _ hsplit
     have halt' : SigningGuessProof.AlternativeCommitment x.2.1 x.1 mid.2.1.1.1.1.1.1 :=
       SigningGuessProof.alternativeCommitment_mono x.2.1 x.1 _ _ hgrow halt
-    rw [ih mid.1 mid.2 halt' hr, hledger, stopCharge, if_pos halt, Nat.add_zero]
+    rw [ih mid.1 mid.2 halt' hr, hledger, stopCharge, ite_eq_left halt, Nat.add_zero]
 
 /-- A call of `H` on the free copy caches its answer. -/
 theorem countImpl_free_hash_answer (input : HashInput) (s : HashCache C × ℕ)
@@ -257,7 +257,7 @@ theorem ledgerWorld_except (x : SigningSecurityProof.Keys3 C) (X : HashInput) (t
       (if p.1.1.1.1.1.1 (.hash X) = none then 1 else 0) := by
     cases hp : p.1.1.1.1.1.1 (.hash X) with
     | none =>
-      rw [if_pos rfl]
+      rw [ite_eq_left rfl]
       split_ifs <;> omega
     | some v =>
       have hr' : r.2.1.1.1.1.1.1 (.hash X) = some v := hgrow hp
@@ -273,25 +273,25 @@ theorem ledgerWorld_except (x : SigningSecurityProof.Keys3 C) (X : HashInput) (t
         change (r.1, (r.2.1.1, r.2.2)).2.1.1.1.1.1 (.hash X) ≠ none
         rw [hcached]
         exact Option.some_ne_none _
-      rw [if_neg hne, Nat.sub_zero]
+      rw [ite_eq_right hne, Nat.sub_zero]
       unfold stopCharge
       by_cases halt : SigningGuessProof.AlternativeCommitment x.2.1 x.1 p.1.1.1.1.1.1
-      · rw [if_pos halt]
+      · rw [ite_eq_left halt]
         exact Nat.zero_le _
-      rw [if_neg halt]
+      rw [ite_eq_right halt]
       by_cases hn : p.1.1.1.1.1.1 (.hash X) = none
-      · rw [if_pos hn]
+      · rw [ite_eq_left hn]
         simp only [SigningOwnR1.freshKeyedCost]
         split_ifs <;> simp
-      · rw [if_neg hn]
+      · rw [ite_eq_right hn]
         simp only [SigningOwnR1.freshKeyedCost]
-        rw [if_neg (fun h => hn h.2)]
+        rw [ite_eq_right (fun h => hn h.2)]
         exact Nat.zero_le _
     · have hfree : ¬SigningSelectionProof.FreeQ (C := C) (Keyed x.1) t := by
         rintro ⟨input, rfl, hk⟩
         exact ht ⟨input, rfl, hk, fun h => hX (h ▸ rfl)⟩
       have h := stopCharge_le x p.1.1.1.1.1.1 t
-      rw [if_neg hfree, Nat.add_zero] at h
+      rw [ite_eq_right hfree, Nat.add_zero] at h
       exact h.trans (Nat.le_add_right _ _)
   unfold Paid
   rw [hledger, hlog, logCost_logQuery]
@@ -531,7 +531,7 @@ theorem ledger_signCodeword (x : SigningSecurityProof.Keys3 C) (e : KeyIndex) (m
   have hcar1 : opened.2.2 = p.2 := world_carried prims x _ (p.1.1, p.2) _ hsplit1
   have hagree1 : TreeAgrees x opened.2.1.1.1.1.1.1 tree e := hagree.mono hgrow1
   by_cases hbad : truncateHash opened.1 ≠ tree.commitment e
-  · rw [if_pos hbad] at hr
+  · rw [ite_eq_left hbad] at hr
     simp only [tweakable_pure, MonadHom.mmap_pure, simulateQ_pure, StateT.run_pure,
       mem_support_pure_iff] at hr
     rw [hr]
@@ -577,11 +577,11 @@ theorem noCall_freeQ_exists {κ α : Type} (Q : κ → HashInput → Prop) (oa :
       rintro ⟨input, rfl, k, hk⟩
       exact ((h' k).1.resolve_right (by omega)) ⟨input, rfl, hk⟩
     refine ⟨Or.inl ht, fun u => ?_⟩
-    rw [if_neg ht]
+    rw [ite_eq_right ht]
     refine ih u fun k => ?_
     have hu := (h' k).2 u
     have hk : ¬SigningSelectionProof.FreeQ (C := C) (Q k) t := (h' k).1.resolve_right (by omega)
-    rwa [if_neg hk] at hu
+    rwa [ite_eq_right hk] at hu
 
 /-- A program with no call of the free copy at each key has no call of the free copy on a bottom
 digest input. This form feeds `ledger_run_bound` from the lemmas of `SigningSelection`. -/

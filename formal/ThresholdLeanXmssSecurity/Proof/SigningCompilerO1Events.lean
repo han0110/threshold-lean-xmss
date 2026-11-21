@@ -131,9 +131,9 @@ theorem bottom_cell (s : HiddenKey → Digest) (P : PublicParameter) (seeds : C.
       some (v.interpret s) :=
     (hout _ (outsideTrials_chain P e l j _ ⟨0, by decide⟩ (0, 0)).1).symm.trans hvis
   have htr := pending_truncate_next data hvalid _ v hv (.bottomChain e l ⟨j.val + 1, hj⟩)
-    (by simp only [PendingInput.next, dif_pos hj]) s
+    (by simp only [PendingInput.next, dite_eq_left hj]) s
   unfold SigningDescentProof.bottomStep XmssSecurity.Concrete.CacheView.chainStep
-  rw [dif_pos j.isLt]
+  rw [dite_eq_left j.isLt]
   unfold XmssSecurity.Concrete.CacheView.digestAt
   have hth : SigningDescentProof.thView log (XmssSecurity.Concrete.CacheView.chainInput P e l
       ⟨j.val, j.isLt⟩ (s (.bottomChain e l j))) = some (v.interpret s) := hlog
@@ -156,9 +156,9 @@ theorem top_cell (s : HiddenKey → Digest) (P : PublicParameter) (seeds : C.Ter
       (s (.topChain (XmssSecurity.topKeyOf e) l j)))) = some (v.interpret s) :=
     (hout _ (outsideTrials_chain P e l j _ (XmssSecurity.topKeyOf e) (0, 0)).2.1).symm.trans hvis
   have htr := pending_truncate_next data hvalid _ v hv
-    (.topChain (XmssSecurity.topKeyOf e) l ⟨j.val + 1, hj⟩) (by simp only [PendingInput.next, dif_pos hj]) s
+    (.topChain (XmssSecurity.topKeyOf e) l ⟨j.val + 1, hj⟩) (by simp only [PendingInput.next, dite_eq_left hj]) s
   unfold SigningDescentProof.topStep XmssSecurity.Concrete.CacheView.topChainStep
-  rw [dif_pos j.isLt]
+  rw [dite_eq_left j.isLt]
   unfold XmssSecurity.Concrete.CacheView.digestAt
   have hth : SigningDescentProof.thView log (XmssSecurity.Concrete.CacheView.topChainInput P
       (XmssSecurity.topKeyOf e) l ⟨j.val, j.isLt⟩ (s (.topChain (XmssSecurity.topKeyOf e) l j))) =
@@ -183,13 +183,13 @@ theorem partialBottom_value (r : SigningGuessLinkProof.LoggedOutcome C) (top : T
           (prfValue x.2.1 (.chain bottomLayer e l (digit 0)))) l p.val := by
   unfold SigningGuardedFlagProof.partialChainTarget at hv
   by_cases hs : SigningGuardedFlagProof.KeyStartsCached x r.2.1 (.bottomChain e l p)
-  · rw [if_pos hs] at hv
+  · rw [ite_eq_left hs] at hv
     simp only [SigningGuessLinkProof.chainTarget, hm] at hv
     split_ifs at hv with hc
     obtain ⟨he, -⟩ := hc
     subst he
     exact ⟨hs, rfl, (Option.some.inj hv).symm⟩
-  · rw [if_neg hs] at hv
+  · rw [ite_eq_right hs] at hv
     cases hv
 
 /-- A partial top chain target is the honest walk from the cached chain start at the top key of
@@ -207,13 +207,13 @@ theorem partialTop_value (r : SigningGuessLinkProof.LoggedOutcome C) (top : TopT
           (prfValue x.2.1 (.chain topLayer (topKey b) l (digit 0)))) l p.val := by
   unfold SigningGuardedFlagProof.partialChainTarget at hv
   by_cases hs : SigningGuardedFlagProof.KeyStartsCached x r.2.1 (.topChain b l p)
-  · rw [if_pos hs] at hv
+  · rw [ite_eq_left hs] at hv
     simp only [SigningGuessLinkProof.chainTarget, hm] at hv
     split_ifs at hv with hc
     obtain ⟨he, -⟩ := hc
     subst he
     exact ⟨hs, rfl, (Option.some.inj hv).symm⟩
-  · rw [if_neg hs] at hv
+  · rw [ite_eq_right hs] at hv
     cases hv
 
 /-- An unopened top target is the honest walk from the cached chain start at the top key of the
@@ -317,7 +317,7 @@ theorem cachedOpening_constrained (hkeys : ¬TprfSecurityProof.KeyCollision x.2.
 /-- No opening candidate hits its target. -/
 theorem final_no_opening_hit (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (z : RealFinal C) (c : CompFinal C)
-    (hf : FinalFacts prims x s pads u rest noise z c) (hstop : ¬Stop c.2)
+    (hf : FinalFacts prims x s pads u rest noise z c) (_hstop : ¬Stop c.2)
     (hflag : SigningLaneUnionProof.NoFlag (SigningLaneUnionProof.observed z.1))
     (cand : HiddenKey × Digest) (hc : cand ∈ z.1.1.2) (lay : Layer) (e : KeyIndex)
     (hk : cand.1 = .opening lay e) :
@@ -383,8 +383,8 @@ set_option maxRecDepth 100000 in
 /-- No top chain candidate hits one of its two targets. -/
 theorem final_no_top_hit (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (z : RealFinal C) (c : CompFinal C)
-    (hf : FinalFacts prims x s pads u rest noise z c) (hstop : ¬Stop c.2)
-    (hflag : SigningLaneUnionProof.NoFlag (SigningLaneUnionProof.observed z.1))
+    (hf : FinalFacts prims x s pads u rest noise z c) (_hstop : ¬Stop c.2)
+    (_hflag : SigningLaneUnionProof.NoFlag (SigningLaneUnionProof.observed z.1))
     (cand : HiddenKey × Digest) (hc : cand ∈ z.1.1.2) (bi : XmssSecurity.TopIndex)
     (l : XmssSecurity.ChainIndex) (p : XmssSecurity.ChainStep) (hk : cand.1 = .topChain bi l p) :
     SigningGuardedFlagProof.partialChainTarget prims x (loggedOf z.1) cand.1 ≠ some cand.2 ∧
@@ -447,7 +447,7 @@ theorem final_no_top_hit (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     obtain ⟨hsc, hb, hval⟩ := partialTop_value prims x _ _ _ _ hm bi l p cand.2 hhit
     have hnone := (core cand.2 hsc hb hval rfl).1
     unfold SigningGuardedFlagProof.partialChainTarget at hhit
-    rw [if_pos (show SigningGuardedFlagProof.KeyStartsCached x _ (.topChain bi l p) from hsc),
+    rw [ite_eq_left (show SigningGuardedFlagProof.KeyStartsCached x _ (.topChain bi l p) from hsc),
       hnone] at hhit
     cases hhit
   · rw [hk] at hhit
@@ -458,7 +458,7 @@ theorem final_no_top_hit (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
 /-- No bottom chain candidate hits its target. This lemma uses the gate. -/
 theorem final_no_bottom_hit (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
     (z : RealFinal C) (c : CompFinal C)
-    (hf : FinalFacts prims x s pads u rest noise z c) (hstop : ¬Stop c.2)
+    (hf : FinalFacts prims x s pads u rest noise z c) (_hstop : ¬Stop c.2)
     (hflag : SigningLaneUnionProof.NoFlag (SigningLaneUnionProof.observed z.1))
     (hnc : SigningLaneUnionProof.NotChargedLogged prims x (SigningLaneUnionProof.observed z.1))
     (cand : HiddenKey × Digest) (hc : cand ∈ z.1.1.2) (e : XmssSecurity.LeafIndex)
@@ -517,7 +517,7 @@ theorem final_no_bottom_hit (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.
     (c.1.2.starts c.1.1.2.2.signature.leafIndex)
     (fun l d hd => hextra.startsTraced _ l d hd) l p hcov
   unfold SigningGuardedFlagProof.partialChainTarget at hhit
-  rw [if_pos (show SigningGuardedFlagProof.KeyStartsCached x _ (.bottomChain _ l p) from hsc),
+  rw [ite_eq_left (show SigningGuardedFlagProof.KeyStartsCached x _ (.bottomChain _ l p) from hsc),
     hnone] at hhit
   cases hhit
 

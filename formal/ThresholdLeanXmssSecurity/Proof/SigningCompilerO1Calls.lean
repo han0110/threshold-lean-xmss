@@ -143,12 +143,12 @@ theorem prefix_cases (backend : QueryImpl (SpecX C) (StateT (CompState C) ProbCo
       by_cases hp : lay = bottomLayer ∧
           ReadyAfter x.2.1 (dataOf x st) src.signing e (.prf seed (.randomizer lay e))
       · obtain ⟨rfl, hready⟩ := hp
-        simp only [ordinaryPrefix, hready, and_self, if_true] at hr
+        simp only [ordinaryPrefix, hready, and_self, ite_true] at hr
         by_cases hrev : src.revealed (.opening bottomLayer e) = none
         · exact Or.inr ⟨seed, e, rfl, hready, hrev, hr⟩
         · rw [runX_releaseOpening_revealed _ x.1 x.2.1 e src st hrev, mem_support_pure_iff] at hr
           exact Or.inl hr
-      · simp only [ordinaryPrefix, hp, if_false, runX_pure, mem_support_pure_iff] at hr
+      · simp only [ordinaryPrefix, hp, ite_false, runX_pure, mem_support_pure_iff] at hr
         exact Or.inl hr
     | _ => simp only [ordinaryPrefix, runX_pure, mem_support_pure_iff] at hr; exact Or.inl hr
   | _ => simp only [ordinaryPrefix, runX_pure, mem_support_pure_iff] at hr; exact Or.inl hr
@@ -261,21 +261,21 @@ theorem virtual_cases (T : C.Term) (pt : Point) (src : SourceState C) (st : Comp
   | randomizer lay e =>
     by_cases hl : lay = bottomLayer
     · subst hl
-      simp only [if_true, runX_bind, runX_deferred, backendT_snapshot capTag x q s pads
+      simp only [ite_true, runX_bind, runX_deferred, backendT_snapshot capTag x q s pads
         (tauOf s pads) (gOf s pads u) noise rest r0.2 hfree, runX_get, map_pure, pure_bind] at hr
       by_cases hready : OpeningReady x.2.1 (dataOf x r0.2) src.signing e
-      · simp only [hready, if_true] at hr
+      · simp only [hready, ite_true] at hr
         by_cases hrev : src.revealed (.opening bottomLayer e) = none
         · exact Or.inr ⟨e, rfl, hready, hrev, hr⟩
         · rw [runX_releaseOpening_revealed _ x.1 x.2.1 e src r0.2 hrev, mem_support_pure_iff] at hr
           refine Or.inl ⟨hr, fun e' he _ => ?_⟩
           cases he
           exact hrev
-      · simp only [hready, if_false, runX_pure, mem_support_pure_iff] at hr
+      · simp only [hready, ite_false, runX_pure, mem_support_pure_iff] at hr
         refine Or.inl ⟨hr, fun e' he hr' => ?_⟩
         cases he
         exact (hready hr').elim
-    · simp only [hl, if_false, runX_pure, mem_support_pure_iff] at hr
+    · simp only [hl, ite_false, runX_pure, mem_support_pure_iff] at hr
       refine Or.inl ⟨hr, fun e' he _ => ?_⟩
       cases he
       exact (hl rfl).elim
@@ -290,7 +290,7 @@ theorem slotRead_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (fo
     (cCore : Carried C) (z : TprfSecurityProof.Slot C) (a : RealState C) (src : SourceState C)
     (st : CompState C)
     (hs : SyncCore x s pads noise (gOf s pads u) rest (withCarried a cCore) (src, st))
-    (ha : ¬RealStop q a) (hb : ¬Stop st) (hmark : st.1.2 = false)
+    (_ha : ¬RealStop q a) (_hb : ¬Stop st) (hmark : st.1.2 = false)
     (ra : HashOutput × RealState C)
     (hra : ra ∈ support ((readCall prims x s pads u rest forger
       (.inl (TprfSecurityProof.slotInput x.2.1 x.2.2 z))).run a))
@@ -451,7 +451,7 @@ the opening of the key is revealed. -/
 theorem virtualRead_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (cCore : Carried C)
     (T : C.Term) (p : CPoint) (a : RealState C) (src : SourceState C) (st : CompState C)
     (hs : SyncCore x s pads noise (gOf s pads u) rest (withCarried a cCore) (src, st))
-    (ha : ¬RealStop q a) (hb : ¬Stop st) (hmark : st.1.2 = false)
+    (_ha : ¬RealStop q a) (_hb : ¬Stop st) (hmark : st.1.2 = false)
     (ra : HashOutput × RealState C)
     (hra : ra ∈ support ((realCall prims x s pads u rest (.prf (x.2.1 T) p.val)).run a))
     (rb : (Unit × SourceState C) × CompState C)

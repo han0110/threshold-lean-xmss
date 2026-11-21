@@ -203,8 +203,8 @@ theorem cachedExtra_at (P : PublicParameter) (seeds : C.Term → HashOutput)
   have hc : after.1.1.1 (.hash (randomizerInput P bottomLayer e
       (SigningGuessProof.cachedRandomizer seeds before.1.1.1 e) (littleEndianBytes 32 message))) =
       after.1.1.1 (.hash input) := by rw [hi]
-  rw [SigningR1FixedProof.cachedExtra, if_pos ⟨e, hprf, hcall⟩,
-    SigningFlatEagerProof.grindExtra, dif_pos base, chosen]
+  rw [SigningR1FixedProof.cachedExtra, ite_eq_left ⟨e, hprf, hcall⟩,
+    SigningFlatEagerProof.grindExtra, dite_eq_left base, chosen]
   simp only [hm, hc]
   cases after.1.1.1 (.hash input) <;> rfl
 
@@ -241,7 +241,7 @@ theorem cachedExtra_sync (P : PublicParameter) (seeds : C.Term → HashOutput)
           otherBefore.2.1 otherCall := by
       rintro ⟨e, he⟩
       exact h ⟨e, (ht e).mpr he⟩
-    simp only [SigningR1FixedProof.cachedExtra, if_neg h, if_neg h']
+    simp only [SigningR1FixedProof.cachedExtra, ite_eq_right h, ite_eq_right h']
 
 /-- Deterministic replay of a grind depends only on its message-trial cells.
 This is the cache-relative form of the recursion in `relTriple_grind`. -/
@@ -304,7 +304,7 @@ theorem traceStepAt_at (P : PublicParameter) (seeds : C.Term → HashOutput)
   obtain ⟨m, hm', hi⟩ := (baseCall_hashAt_iff P e _ signing input call hroute).mp hb
   have hm'' : m = message := Option.some.inj (hm'.symm.trans hm)
   subst m
-  rw [SigningLaneUnionProof.traceStepAt, dif_pos ht, he, hm]
+  rw [SigningLaneUnionProof.traceStepAt, dite_eq_left ht, he, hm]
   simp only []
   rw [hi]
   congr
@@ -351,7 +351,7 @@ theorem traceStepAt_sync (P : PublicParameter) (seeds : C.Term → HashOutput)
           signing otherCall := by
       rintro ⟨e, he⟩
       exact h ⟨e, (ht e).mpr he⟩
-    simp only [SigningLaneUnionProof.traceStepAt, dif_neg h, dif_neg h']
+    simp only [SigningLaneUnionProof.traceStepAt, dite_eq_right h, dite_eq_right h']
 
 
 set_option linter.constructorNameAsVariable false in
@@ -369,11 +369,11 @@ theorem capHit_stuck (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest)
       (.inl (.inl (.inl (.hash (.hash input)))))).run st)) : Stuck r.2 := by
   have hrout : route x.2.1 (.hash input) = none := by
     unfold route
-    apply dif_neg
+    apply dite_eq_right
     rintro ⟨z, hz⟩
     cases hz
   have hrest : restRoute x.2.1 x.2.2 (.hash input) = none := by
-    apply dif_neg
+    apply dite_eq_right
     rintro ⟨z, hz⟩
     exact not_isSlot_hash x input ⟨z.val, hz⟩
   unfold shareBackendTagT backendRaw ordinaryFullRaw ordinaryRaw at hr
@@ -427,9 +427,9 @@ theorem candidateList_mem (parse : HashInput → Option (HiddenKey × Digest))
       | some candidate =>
         simp only [hh] at hc
         by_cases hr : released candidate.1
-        · simp only [if_pos hr] at hc
+        · simp only [ite_eq_left hr] at hc
           cases hc
-        · simp only [if_neg hr] at hc
+        · simp only [ite_eq_right hr] at hc
           exact congrArg some (List.mem_singleton.mp hc).symm
     | _ => cases hc
   · cases hc

@@ -237,11 +237,11 @@ theorem jointCachedExtra_base (x : SigningSecurityProof.Keys3 C)
       (SigningGuessProof.cachedRandomizer x.2.1 p.1.1.1 e) (littleEndianBytes 32 message))) = some answer) :
     jointCachedExtra x.2.1 x.1 p t p' = baseGrind x.1 e message answer := by
   unfold jointCachedExtra SigningR1FixedProof.cachedExtra
-  rw [if_pos ⟨e, hcache, hbase⟩]
+  rw [ite_eq_left ⟨e, hcache, hbase⟩]
   unfold grindExtra
   have hb : ∃ f, BaseCall x.1 f (SigningGuessProof.cachedRandomizer x.2.1 p.1.1.1 f) p.2.1.1 t :=
     ⟨e, hbase⟩
-  rw [dif_pos hb]
+  rw [dite_eq_left hb]
   have he : hb.choose = e := SigningR1FixedProof.baseCall_key_eq hb.choose_spec hbase
   simp only [he, hbound]
   rw [he, hanswer]

@@ -212,9 +212,9 @@ theorem simulateQ_bound {ι α : Type} {spec : OracleSpec ι} (P : PublicParamet
         (fun _ h => h) ?_
       by_cases hp : p t
       · have := hn.1.resolve_left (not_not.2 hp)
-        simp only [if_pos hp]
+        simp only [ite_eq_left hp]
         omega
-      · simp only [if_neg hp]
+      · simp only [ite_eq_right hp]
         omega
 
 end SourceCharges

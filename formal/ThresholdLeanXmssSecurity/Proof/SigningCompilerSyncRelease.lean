@@ -97,16 +97,16 @@ theorem eagerImpl_doneCached (τ : CPoint → Digest) (g : C.Term × CPoint → 
   | complete p target tag =>
     by_cases hd : p ∈ sh.done
     · simp only [SigningShareLazy.eagerImpl, SigningShareLazy.impl, StateT.run,
-        hd, if_true, mem_support_pure_iff] at hr
+        hd, ite_true, mem_support_pure_iff] at hr
       subst r; exact h
     · cases hs : SigningShareLazy.slack C.terms sh p with
       | none =>
         simp only [SigningShareLazy.eagerImpl, SigningShareLazy.impl, StateT.run,
-          hd, if_false, hs, mem_support_pure_iff] at hr
+          hd, ite_false, hs, mem_support_pure_iff] at hr
         subst r; exact h
       | some T =>
         simp only [SigningShareLazy.eagerImpl, SigningShareLazy.impl, StateT.run,
-          hd, if_false, hs, pure_bind, mem_support_bind_iff, mem_support_pure_iff] at hr
+          hd, ite_false, hs, pure_bind, mem_support_bind_iff, mem_support_pure_iff] at hr
         obtain ⟨filled, hf, rfl⟩ := hr
         have frames := fillTerms_frame (fun y => pure (g y)) p
           (C.terms.filter (· ≠ T)) sh filled hf
@@ -149,20 +149,20 @@ theorem eager_complete_cached (τ : CPoint → Digest) (g : C.Term × CPoint →
       (∀ y v, sh.cache y = some v → r.2.cache y = some v) := by
   by_cases hd : p ∈ sh.done
   · simp only [SigningShareLazy.eagerImpl, SigningShareLazy.impl, StateT.run,
-      hd, if_true, mem_support_pure_iff] at hr
+      hd, ite_true, mem_support_pure_iff] at hr
     subst r
     exact ⟨h p hd, fun _ _ hv => hv⟩
   · cases hs : SigningShareLazy.slack C.terms sh p with
     | none =>
       simp only [SigningShareLazy.eagerImpl, SigningShareLazy.impl, StateT.run,
-        hd, if_false, hs, mem_support_pure_iff] at hr
+        hd, ite_false, hs, mem_support_pure_iff] at hr
       subst r
       have hall : ∀ T ∈ C.terms, sh.cache (T, p) ≠ none := by
         simpa [SigningShareLazy.slack, List.find?_eq_none] using hs
       exact ⟨fun T => hall T (mem_terms T), fun _ _ hv => hv⟩
     | some T =>
       simp only [SigningShareLazy.eagerImpl, SigningShareLazy.impl, StateT.run,
-        hd, if_false, hs, pure_bind, mem_support_bind_iff, mem_support_pure_iff] at hr
+        hd, ite_false, hs, pure_bind, mem_support_bind_iff, mem_support_pure_iff] at hr
       obtain ⟨filled, hf, rfl⟩ := hr
       have frames := fillTerms_frame (fun y => pure (g y)) p
         (C.terms.filter (· ≠ T)) sh filled hf
@@ -305,7 +305,7 @@ theorem backendT_complete (tagOf : CappedCompilerState C × Bool → Tag) (x : K
       (fun a => (a.1, st.1, a.2)) <$>
         (SigningShareLazy.eagerImpl C.terms τ g (.complete p target (tagOf st.1))).run st.2 := by
   simp only [shareBackendTagT, backendRaw, resolvePrivateTable_lift, eagerBackend,
-    SigningCompilerUntil.fuse, shareBackendTag, p.property, dif_pos, StateT.run]
+    SigningCompilerUntil.fuse, shareBackendTag, p.property, dite_eq_left, StateT.run]
   change (fun z => (z.1.1, z.1.2, z.2)) <$>
     ((simulateQ (eagerHandlerTag τ g) (do
       let value ← shareQueryTag (.complete p target (tagOf st.1))
@@ -358,16 +358,16 @@ theorem eager_complete_outside (τ : CPoint → Digest) (g : C.Term × CPoint �
     ∀ y, y.2 ≠ p → r.2.cache y = sh.cache y := by
   by_cases hd : p ∈ sh.done
   · simp only [SigningShareLazy.eagerImpl, SigningShareLazy.impl, StateT.run,
-      hd, if_true, mem_support_pure_iff] at hr
+      hd, ite_true, mem_support_pure_iff] at hr
     subst r; exact fun _ _ => rfl
   · cases hs : SigningShareLazy.slack C.terms sh p with
     | none =>
       simp only [SigningShareLazy.eagerImpl, SigningShareLazy.impl, StateT.run,
-        hd, if_false, hs, mem_support_pure_iff] at hr
+        hd, ite_false, hs, mem_support_pure_iff] at hr
       subst r; exact fun _ _ => rfl
     | some T =>
       simp only [SigningShareLazy.eagerImpl, SigningShareLazy.impl, StateT.run,
-        hd, if_false, hs, pure_bind, mem_support_bind_iff, mem_support_pure_iff] at hr
+        hd, ite_false, hs, pure_bind, mem_support_bind_iff, mem_support_pure_iff] at hr
       obtain ⟨filled, hf, rfl⟩ := hr
       have frames := fillTerms_frame (fun y => pure (g y)) p
         (C.terms.filter (· ≠ T)) sh filled hf
@@ -640,17 +640,17 @@ theorem eager_complete_null (τ : CPoint → Digest) (g : C.Term × CPoint → H
     r.2.bad = none ∨ NullBad r.2 := by
   by_cases hd : p ∈ sh.done
   · simp only [SigningShareLazy.eagerImpl, SigningShareLazy.impl, StateT.run,
-      hd, if_true, mem_support_pure_iff] at hr
+      hd, ite_true, mem_support_pure_iff] at hr
     subst r; exact Or.inl hb
   · cases hs : SigningShareLazy.slack C.terms sh p with
     | none =>
       simp only [SigningShareLazy.eagerImpl, SigningShareLazy.impl, StateT.run,
-        hd, if_false, hs, mem_support_pure_iff] at hr
+        hd, ite_false, hs, mem_support_pure_iff] at hr
       subst r
       exact Or.inr ⟨cap, .complete, false, by simp [hb]⟩
     | some T =>
       simp only [SigningShareLazy.eagerImpl, SigningShareLazy.impl, StateT.run,
-        hd, if_false, hs, pure_bind, mem_support_bind_iff, mem_support_pure_iff] at hr
+        hd, ite_false, hs, pure_bind, mem_support_bind_iff, mem_support_pure_iff] at hr
       obtain ⟨filled, _, rfl⟩ := hr
       by_cases he : target = τ p
       · exact Or.inl (by simp [hb, he])
@@ -701,7 +701,7 @@ theorem releaseOpening_post (x : Keys3 C) (hinj : Function.Injective x.2.1)
   let k := HiddenKey.opening bottomLayer e
   let p : CPoint := ⟨.randomizer bottomLayer e, constrained_bottom_randomizer e⟩
   simp only [sourceReleaseOpeningX, runX_bind, runX_get, pure_bind, hunrev,
-    Option.isNone_none, if_true, runX_modify, runX_pure, mem_support_bind_iff,
+    Option.isNone_none, ite_true, runX_modify, runX_pure, mem_support_bind_iff,
     mem_support_pure_iff] at hr
   obtain ⟨revealed, hrrev, completed, hrcomp, planted, hrplant, rfl⟩ := hr
   have hR := sourceRevealX_sync SigningCompilerShareCap.capTag x q s pads τ g noise rest

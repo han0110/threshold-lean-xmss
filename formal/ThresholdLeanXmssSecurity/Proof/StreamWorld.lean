@@ -104,11 +104,11 @@ theorem prfIdealExp_prgReduction (D : C.Coalition) (game : OracleComp (WorldSpec
   all_goals congr 1
   all_goals funext st
   case pos h =>
-    simp only [QueryImpl.add_apply_inr, if_pos h]
+    simp only [QueryImpl.add_apply_inr, ite_eq_left h]
     simp [StateT.run_bind]
   case neg h =>
     simp only [QueryImpl.add_apply_inr]
-    rw [if_neg h]
+    rw [ite_eq_right h]
     simp [hl, Functor.map_map]
   all_goals first | (simp [hl, Functor.map_map]; done) | (simp [hl, Functor.map_map]; rfl)
 
@@ -137,12 +137,12 @@ theorem prfRealExp_prgReduction (D : C.Coalition) (game : OracleComp (WorldSpec 
   all_goals try split_ifs
   case pos h =>
     simp only [QueryImpl.add_apply_inr]
-    rw [if_pos h]
+    rw [ite_eq_left h]
     refine StateT.ext fun s => ?_
     simp [StateT.run_lift, hiddenStreams]
   case neg h =>
     simp only [QueryImpl.add_apply_inr]
-    rw [if_neg h]
+    rw [ite_eq_right h]
     refine StateT.ext fun s => ?_
     simp [hl]
   all_goals refine StateT.ext fun s => ?_
@@ -233,7 +233,7 @@ theorem evalDist_lazyKeyWorld (D : C.Coalition) {α : Type} (game : OracleComp (
     · by_cases h : Hidden D x.1
       · simp only [simulateQ_bind, simulateQ_query, OracleQuery.cont_query, OracleQuery.input_query, id_map,
           StateT.run'_eq, StateT.run_bind]
-        simp only [lazyKeyWorld, keyWorld, if_pos h, StateT.run_mk, bind_map_left, StateT.run_pure, pure_bind]
+        simp only [lazyKeyWorld, keyWorld, ite_eq_left h, StateT.run_mk, bind_map_left, StateT.run_pure, pure_bind]
         rcases hc : c (x.1, x.2.1) with _ | u
         · rw [QueryImpl.withCaching_run_none _ hc]
           set y := (x.1, x.2.1) with hy
@@ -262,8 +262,8 @@ theorem evalDist_lazyKeyWorld (D : C.Coalition) {α : Type} (game : OracleComp (
             simp [tableExtending, hc]
           simp only [e, EvalDistEq.refl]
       · exact evalDist_lazyKeyWorld_common prims D _ k (localAnswer prims (.inr (.inr x)))
-          (by simp only [lazyKeyWorld, if_neg h]; rfl)
-          (fun _ => by simp only [keyWorld, if_neg h]) ih s c
+          (by simp only [lazyKeyWorld, ite_eq_right h]; rfl)
+          (fun _ => by simp only [keyWorld, ite_eq_right h]) ih s c
 
 theorem keyTableLazy (D : C.Coalition) : KeyTableLazy prims D := by
   intro game
@@ -290,8 +290,8 @@ def cacheFin {D R : Type} [DecidableEq D] : ∀ {n : ℕ},
 
 /-- Distinct fresh queries can be sampled first, with their exact final cache retained. -/
 theorem randomOracle_sequenceFin_fresh {D R : Type} [DecidableEq D] [SampleableType R] :
-    ∀ {n : ℕ} (addr : Fin n → D) (ha : Function.Injective addr) (c : (D →ₒ R).QueryCache)
-      (hc : ∀ i, c (addr i) = none),
+    ∀ {n : ℕ} (addr : Fin n → D) (_ha : Function.Injective addr) (c : (D →ₒ R).QueryCache)
+      (_hc : ∀ i, c (addr i) = none),
       (OverPermutation.sequenceFin fun i => (D →ₒ R).randomOracle (addr i)).run c =
         (fun vals => (vals, cacheFin addr vals c)) <$>
           OverPermutation.sequenceFin (fun _ : Fin n => ($ᵗ R))
@@ -346,7 +346,7 @@ attribute [local instance] Classical.propDecidable
 /-- Inserting a finite table leaves every other coordinate unchanged. -/
 theorem cacheFin_of_not_mem {D R : Type} [DecidableEq D] : ∀ {n : ℕ}
     (addr : Fin n → D) (vals : Fin n → R) (c : (D →ₒ R).QueryCache) (x : D)
-    (hx : ∀ i, x ≠ addr i), cacheFin addr vals c x = c x
+    (_hx : ∀ i, x ≠ addr i), cacheFin addr vals c x = c x
   | 0, addr, vals, c, x, hx => rfl
   | n + 1, addr, vals, c, x, hx => by
     rw [cacheFin, cacheFin_of_not_mem _ _ _ x (fun i => hx i.succ)]
@@ -354,7 +354,7 @@ theorem cacheFin_of_not_mem {D R : Type} [DecidableEq D] : ∀ {n : ℕ}
 
 /-- Every sampled entry is retained in the final cache. -/
 theorem cacheFin_at {D R : Type} [DecidableEq D] : ∀ {n : ℕ}
-    (addr : Fin n → D) (ha : Function.Injective addr) (vals : Fin n → R)
+    (addr : Fin n → D) (_ha : Function.Injective addr) (vals : Fin n → R)
     (c : (D →ₒ R).QueryCache) (i : Fin n), cacheFin addr vals c (addr i) = some (vals i)
   | 0, addr, ha, vals, c, i => i.elim0
   | n + 1, addr, ha, vals, c, i => by
@@ -535,8 +535,8 @@ theorem tvDist_simulateQ_le_probBad_of_good_outputs
     rw [OracleComp.prEvent_eq_tsum_ite, OracleComp.prEvent_eq_tsum_ite]
     refine tsum_congr fun z => ?_
     by_cases hz : p z ∧ ¬ bad z.2
-    · rw [if_pos hz, if_pos hz, simulateQ_probOutput_good_eq I J bad hstep hI hJ game s z hz.2]
-    · rw [if_neg hz, if_neg hz]
+    · rw [ite_eq_left hz, ite_eq_left hz, simulateQ_probOutput_good_eq I J bad hstep hI hJ game s z hz.2]
+    · rw [ite_eq_right hz, ite_eq_right hz]
   have h := measureETVDist_map_le_prEvent_of_agree ((simulateQ I game).run s) ((simulateQ J game).run s)
     Prod.fst (fun z => bad z.2) hgood (simulateQ_probBad_eq I J bad hstep hI hJ game s).ge
   rw [StateT.run'_eq, StateT.run'_eq, measureTVDist_eq_toReal_measureETVDist]
@@ -652,7 +652,7 @@ def jointKeyWorld (prims : Primitives) (D : C.Coalition) (real : Bool) :
 theorem jointHash_eq_of_unused (prims : Primitives) (q : Query C) (s : KeyJointState C)
     (h : ∀ k, q = .streamKey k → s.used k = none) :
     (jointHash prims true q).run s = (jointHash prims false q).run s := by
-  cases q <;> simp only [jointHash, StateT.run_mk, Bool.false_eq_true, if_true, if_false]
+  cases q <;> simp only [jointHash, StateT.run_mk, Bool.false_eq_true, ite_true, ite_false]
   case streamKey k => simp [privateHash_eq_none s k (h k rfl)]
 
 theorem jointHidden_eq_of_fresh (x : KeyName C × HashOutput) (s : KeyJointState C)
@@ -686,11 +686,11 @@ theorem jointKeyWorldCore_eq_of_no_risk (prims : Primitives) (D : C.Coalition)
   · exact jointHash_eq_of_unused prims q s (by
       intro k hk; subst q; simpa [keyJointRisk] using h)
   · by_cases hh : Hidden D x.1
-    · simp only [jointKeyWorldCore, if_pos hh, StateT.run_bind]
+    · simp only [jointKeyWorldCore, ite_eq_left hh, StateT.run_bind]
       rw [jointHidden_eq_of_fresh (x.1, x.2.1) s (by
         intro hk
         simpa [keyJointRisk, hh, hk] using h)]
-    · simp only [jointKeyWorldCore, if_neg hh, jointLocal, StateT.run_bind]
+    · simp only [jointKeyWorldCore, ite_eq_right hh, jointLocal, StateT.run_bind]
       rw [jointHash_eq_of_unused prims (.streamKey x.2.1) s (by
         intro k hk; cases hk; simpa [keyJointRisk, hh] using h)]
 
@@ -794,7 +794,7 @@ theorem jointHidden_false_projection (x : KeyName C × HashOutput) (s : KeyJoint
   | none =>
     rw [QueryImpl.withCaching_run_none _ (show truncateKeyCache s.keys x = none by
       simp [truncateKeyCache, hc])]
-    simp only [jointHidden, StateT.run_mk, hc, Bool.false_eq_true, if_false,
+    simp only [jointHidden, StateT.run_mk, hc, Bool.false_eq_true, ite_false,
       bind_pure_comp, Functor.map_map]
     simp only [keyJointIdealProjection, truncateKeyCache_cacheQuery]
     have h := evalDist_truncateHash_uniform.map
@@ -817,13 +817,13 @@ theorem jointKeyWorld_false_query_projection (prims : Primitives) (D : C.Coaliti
   all_goals try rfl
   case inr.inr.inr =>
     by_cases hh : Hidden D x.1
-    · simp only [if_pos hh, bind_pure_comp, StateT.run_map,
+    · simp only [ite_eq_left hh, bind_pure_comp, StateT.run_map,
         Functor.map_map]
       have h := (jointHidden_false_projection (x.1, x.2.1) s).map
         (fun r : Digest × HashCache C × KeyCache C => (prims.aes.eval r.1 x.2.2, r.2))
       simpa only [Functor.map_map, Function.comp_def, Prod.map, id_eq, StateT.run_mk,
         keyJointIdealProjection] using h
-    · simp only [if_neg hh, onJointHash_idealProjection, StateT.run_mk]
+    · simp only [ite_eq_right hh, onJointHash_idealProjection, StateT.run_mk]
       rfl
 
 /-- The ideal monitored handler projects to `lazyKeyWorld`. The run of a game under
@@ -1009,7 +1009,7 @@ theorem jointHidden_true_projection (x : KeyName C × HashOutput) (s : KeyJointS
     rw [QueryImpl.withCaching_run_some _ (realCache_keys s hs x v hk)]
     simp [jointHidden, hk, Prod.map]
   | none =>
-    simp only [jointHidden, StateT.run_mk, hk, if_true, pure_bind]
+    simp only [jointHidden, StateT.run_mk, hk, ite_true, pure_bind]
     change Prod.map id KeyJointState.realCache <$>
       (match s.realCache (.streamKey x.2) with
         | some v => pure (v, keyJointInsert s x v)
@@ -1038,7 +1038,7 @@ theorem jointHidden_true_coherent (x : KeyName C × HashOutput) (s : KeyJointSta
   cases hk : s.keys x with
   | some v => simpa [jointHidden, hk] using hs
   | none =>
-    simp only [jointHidden, StateT.run_mk, hk, if_true, pure_bind]
+    simp only [jointHidden, StateT.run_mk, hk, ite_true, pure_bind]
     change ∀ r ∈ support (match s.realCache (.streamKey x.2) with
         | some v => pure (v, keyJointInsert s x v)
         | none => ($ᵗ HashOutput : ProbComp HashOutput) >>= fun v => pure (v, keyJointInsert s x v)), r.2.Coherent
@@ -1096,17 +1096,17 @@ theorem jointHash_true_projection (prims : Primitives) (q : Query C) (s : KeyJoi
   case streamKey k =>
     cases hh : s.hash (.streamKey k) with
     | some v =>
-      simp only [jointHash, StateT.run_mk, if_true, hh, hashAnswer, onJointHash]
+      simp only [jointHash, StateT.run_mk, ite_true, hh, hashAnswer, onJointHash]
       rw [QueryImpl.withCaching_run_some _ hh,
         QueryImpl.withCaching_run_some _ (show s.realCache (.streamKey k) = some v by simp [KeyJointState.realCache, hh])]
       simp
     | none =>
       cases hp : s.privateHash k with
       | none =>
-        simp only [jointHash, StateT.run_mk, if_true, hh, hp]
+        simp only [jointHash, StateT.run_mk, ite_true, hh, hp]
         exact onJointHash_randomOracle_projection (.streamKey k) s (by simp [KeyJointState.realCache, hh, hp])
       | some v =>
-        simp only [jointHash, StateT.run_mk, if_true, hh, hp, map_pure, Prod.map, id_eq, hashAnswer]
+        simp only [jointHash, StateT.run_mk, ite_true, hh, hp, map_pure, Prod.map, id_eq, hashAnswer]
         rw [QueryImpl.withCaching_run_some _ (show s.realCache (.streamKey k) = some v by simp [KeyJointState.realCache, hh, hp])]
         rw [realCache_hashInsert]
         congr 2
@@ -1126,16 +1126,16 @@ theorem jointHash_true_coherent (prims : Primitives) (q : Query C) (s : KeyJoint
   case streamKey k =>
     cases hh : s.hash (.streamKey k) with
     | some v =>
-      simp only [jointHash, StateT.run_mk, if_true, hh, hashAnswer, onJointHash]
+      simp only [jointHash, StateT.run_mk, ite_true, hh, hashAnswer, onJointHash]
       rw [QueryImpl.withCaching_run_some _ hh]
       simpa using hs
     | none =>
       cases hp : s.privateHash k with
       | none =>
-        simp only [jointHash, StateT.run_mk, if_true, hh, hp]
+        simp only [jointHash, StateT.run_mk, ite_true, hh, hp]
         exact onJointHash_randomOracle_coherent (.streamKey k) s hs (by simp [KeyJointState.realCache, hh, hp])
       | some v =>
-        simp only [jointHash, StateT.run_mk, if_true, hh, hp, support_pure, Set.mem_singleton_iff]
+        simp only [jointHash, StateT.run_mk, ite_true, hh, hp, support_pure, Set.mem_singleton_iff]
         intro r hr; subst r
         exact coherent_hashInsert s hs (.streamKey k) v (Or.inr (realCache_private s hs k v hp))
   all_goals exact onJointHash_randomOracle_coherent _ s hs rfl
@@ -1167,7 +1167,7 @@ theorem jointProgram_true_projection (x : Query C × HashOutput) (s : KeyJointSt
   case streamKey k =>
     cases hp : s.privateHash k with
     | none =>
-      simp only [jointProgram, StateT.run_mk, hp, Option.isSome_none, Bool.and_false, Bool.false_eq_true, if_false]
+      simp only [jointProgram, StateT.run_mk, hp, Option.isSome_none, Bool.and_false, Bool.false_eq_true, ite_false]
       exact onJointHash_program_projection (.streamKey k, v) s (by simp [KeyJointState.realCache, hp])
     | some w =>
       have hc : (s.realCache (.streamKey k)).isSome = true := by simp [KeyJointState.realCache, hp]
@@ -1181,7 +1181,7 @@ theorem jointProgram_true_coherent (x : Query C × HashOutput) (s : KeyJointStat
   case streamKey k =>
     cases hp : s.privateHash k with
     | none =>
-      simp only [jointProgram, StateT.run_mk, hp, Option.isSome_none, Bool.and_false, Bool.false_eq_true, if_false]
+      simp only [jointProgram, StateT.run_mk, hp, Option.isSome_none, Bool.and_false, Bool.false_eq_true, ite_false]
       exact onJointHash_program_coherent (.streamKey k, v) s hs (by simp [KeyJointState.realCache, hp])
     | some w => simpa [jointProgram, hp] using hs
   all_goals exact onJointHash_program_coherent _ s hs rfl
@@ -1221,12 +1221,12 @@ theorem jointKeyWorldCore_true_projection (prims : Primitives) (D : C.Coalition)
   · exact jointLocal_true_projection prims (.inl u) s
   · exact jointLocal_true_projection prims (.inr (.inl q)) s
   · by_cases hh : Hidden D x.1
-    · simp only [jointKeyWorldCore, if_pos hh, bind_pure_comp, StateT.run_map, Functor.map_map]
+    · simp only [jointKeyWorldCore, ite_eq_left hh, bind_pure_comp, StateT.run_map, Functor.map_map]
       have h := congrArg (fun p => (fun r : HashOutput × HashCache C => (prims.aes.eval (truncateHash r.1) x.2.2, r.2)) <$> p)
         (jointHidden_true_projection (x.1, x.2.1) s hs)
       simpa [worldAnswer, localAnswer, prgAnswer, hashAnswer, bind_pure_comp, StateT.run_map,
         Functor.map_map, Function.comp_def, Prod.map] using h
-    · simp only [jointKeyWorldCore, if_neg hh]
+    · simp only [jointKeyWorldCore, ite_eq_right hh]
       exact jointLocal_true_projection prims (.inr (.inr x)) s
 
 theorem jointKeyWorldCore_true_coherent (prims : Primitives) (D : C.Coalition)
@@ -1241,10 +1241,10 @@ theorem jointKeyWorldCore_true_coherent (prims : Primitives) (D : C.Coalition)
   · exact jointLocal_true_coherent prims (.inr (.inl q)) s hs
   · by_cases hh : Hidden D x.1
     · intro r hr
-      simp only [jointKeyWorldCore, if_pos hh, bind_pure_comp, StateT.run_map, support_map, Set.mem_image] at hr
+      simp only [jointKeyWorldCore, ite_eq_left hh, bind_pure_comp, StateT.run_map, support_map, Set.mem_image] at hr
       obtain ⟨p, hp, rfl⟩ := hr
       exact jointHidden_true_coherent (x.1, x.2.1) s hs p hp
-    · simp only [jointKeyWorldCore, if_neg hh]
+    · simp only [jointKeyWorldCore, ite_eq_right hh]
       exact jointLocal_true_coherent prims (.inr (.inr x)) s hs
 
 theorem jointKeyWorld_true_query_projection (prims : Primitives) (D : C.Coalition)

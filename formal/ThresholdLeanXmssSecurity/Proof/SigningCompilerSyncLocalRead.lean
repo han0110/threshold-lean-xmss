@@ -30,10 +30,10 @@ theorem ordinary_routes (x : Keys3 C) (input : Query C) (hn : ¬IsSlot x input) 
     route x.2.1 input = none ∧ restRoute x.2.1 x.2.2 input = none := by
   constructor
   · unfold route
-    apply dif_neg
+    apply dite_eq_right
     rintro ⟨⟨T, p⟩, h⟩
     exact hn ⟨.inl (T, p), h.symm⟩
-  · apply dif_neg
+  · apply dite_eq_right
     rintro ⟨z, h⟩
     exact hn ⟨z.val, h⟩
 

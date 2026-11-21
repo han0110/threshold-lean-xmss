@@ -46,7 +46,7 @@ theorem noBase_cachedExtra (seeds : C.Term → HashOutput) (P : PublicParameter)
       ∀ e ρ message, i ≠ randomizerInput P bottomLayer e ρ message) :
     SigningR1FixedProof.cachedExtra seeds P before call after = pure () := by
   unfold SigningR1FixedProof.cachedExtra
-  apply if_neg
+  apply ite_eq_right
   rintro ⟨e, _, i, hi, hc⟩
   obtain ⟨message, _, rfl⟩ := Option.map_eq_some_iff.mp hi
   exact hb _ hc _ _ _ rfl
@@ -59,7 +59,7 @@ theorem noBase_traceStepAt (seeds : C.Term → HashOutput) (P : PublicParameter)
       ∀ e ρ message, i ≠ randomizerInput P bottomLayer e ρ message) :
     SigningLaneUnionProof.traceStepAt seeds P before signing call after aux = aux := by
   unfold SigningLaneUnionProof.traceStepAt
-  apply dif_neg
+  apply dite_eq_right
   rintro ⟨e, _, i, hi, hc⟩
   obtain ⟨message, _, rfl⟩ := Option.map_eq_some_iff.mp hi
   exact hb _ hc _ _ _ rfl
@@ -294,7 +294,7 @@ theorem prefix_call (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (cCor
       by_cases hp : lay = bottomLayer ∧
           ReadyAfter x.2.1 (dataOf x st) src.signing e (.prf seed (.randomizer lay e))
       · obtain ⟨rfl, hready⟩ := hp
-        simp only [ordinaryPrefix, hready, and_self, if_true] at hr
+        simp only [ordinaryPrefix, hready, and_self, ite_true] at hr
         by_cases hreveal : src.revealed (.opening bottomLayer e) = none
         · have hinj : Function.Injective x.2.1 := not_not.mp (not_or.mp hkeys).1
           have hafter : VisibleAfter x (gOf s pads u) e (.prf seed (.randomizer bottomLayer e))
@@ -345,7 +345,7 @@ theorem prefix_call (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2) (cCor
             mem_support_pure_iff] at hr
           subst r
           exact Or.inr ⟨hs, CallFrame.refl x a (src, st), hmark⟩
-      · exact hpure (if_neg hp)
+      · exact hpure (ite_eq_right hp)
     | _ => exact hpure rfl
   | _ => exact hpure rfl
 
@@ -490,7 +490,7 @@ theorem ordinaryRead_sync (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
       ∀ e ρ message, input ≠ randomizerInput x.1 bottomLayer e ρ message)
     (a : RealState C) (src : SourceState C) (st : CompState C)
     (hs : SyncCore x s pads noise (gOf s pads u) rest (withCarried a cCore) (src, st))
-    (ha : ¬RealStop q a) (hb : ¬Stop st) (hmark : st.1.2 = false) :
+    (ha : ¬RealStop q a) (_hb : ¬Stop st) (hmark : st.1.2 = false) :
     RelTriple ((readCall prims x s pads u rest forger rq).run a)
       (runX (compBackend x q s pads u rest noise) (sourceRoX prims x.1 x.2.1 rq) src st)
       (fun ra rb => CallPost x q s pads u rest noise cCore

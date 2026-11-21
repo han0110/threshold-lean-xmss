@@ -207,7 +207,7 @@ theorem canonicalTopGrind_covers_bottom (x : Keys3 C) (top : TopTree) (key : Xms
             Classical.byContradiction fun h => hp ⟨ha, h⟩
           subst hi
           simp only [coverCacheAt, QueryCache.ofFn_apply]
-          rw [if_pos (fun _ => by simp [hout])]
+          rw [ite_eq_left (fun _ => by simp [hout])]
           exact hwrec hv
         · exact hT i value ha hv
       have hs' : ∀ (domain : HashDomain) (payload : HashInput), (∀ lay e, domain ≠ .message lay e) →

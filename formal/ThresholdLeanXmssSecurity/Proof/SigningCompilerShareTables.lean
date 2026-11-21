@@ -189,7 +189,7 @@ theorem ordinary_hash_rest (P : PublicParameter) (seeds : C.Term → HashOutput)
       SigningCappedExpectProof.cappedHybrid, revealImpl, countImpl,
       deferredCounted, deferredInputSide, deferredCandidate, Option.isSome_none,
       Bool.false_eq_true, false_and, and_false, or_false, decide_false,
-      Bool.or_false, if_true, compilerImpl, deferredImpl, StateT.run, StateT.mk,
+      Bool.or_false, ite_true, compilerImpl, deferredImpl, StateT.run, StateT.mk,
       map_bind, bind_map_left, map_pure, hashTail]
 
 theorem freshPending_run (edge : ChainNoiseIndex) (st : CappedCompilerState C)
@@ -576,7 +576,7 @@ theorem eagerBackend_fresh (tagOf : CappedCompilerState C × Bool → Tag)
   · simp only [eagerBackend, SigningCompilerUntil.fuse, StateT.run, shareBackendTag, simulateQ_pure] at hr
     subst r; exact h
   · by_cases hp : Constrained p
-    · simp only [eagerBackend, SigningCompilerUntil.fuse, shareBackendTag, hp, dif_pos] at hr
+    · simp only [eagerBackend, SigningCompilerUntil.fuse, shareBackendTag, hp, dite_eq_left] at hr
       change r ∈ support ((fun z => (z.1.1, (z.1.2, z.2))) <$>
         (simulateQ (eagerHandlerTag τ g) (do
           let value ← shareQueryTag (.complete ⟨p, hp⟩ target (tagOf st.1))

@@ -191,13 +191,13 @@ theorem impl_retag_step (f : Tag → Tag') (order : List C.Term)
           have hsl : slack order (mapBad f st) p = none := hs
           simp only [retag, shareQueryTag, simulateQ_spec_query, implHandler,
             QueryImpl.add_apply_inr, impl, StateT.run,
-            show (mapBad f st).done = st.done from rfl, if_neg hd, hsl, hs, map_pure]
+            show (mapBad f st).done = st.done from rfl, ite_eq_right hd, hsl, hs, map_pure]
           cases hb : st.bad <;> simp [mapBad, sum, low, Prod.map, hb]
         | some b =>
           have hsl : slack order (mapBad f st) p = some b := hs
           simp only [retag, shareQueryTag, simulateQ_spec_query, implHandler, QueryImpl.add_apply_inr,
             impl, StateT.run, show (mapBad f st).done = st.done from rfl,
-            if_neg hd, hsl, hs, mapBad_fillTerms, bind_map_left, hf, map_bind, map_pure]
+            ite_eq_right hd, hsl, hs, mapBad_fillTerms, bind_map_left, hf, map_bind, map_pure]
           apply bind_congr
           intro filled
           apply bind_congr

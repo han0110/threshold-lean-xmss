@@ -146,7 +146,7 @@ theorem not_mem_candidateList (parse : HashInput → Option (HiddenKey × Digest
     (hh : parse input = some c) (hr : released c.1) :
     c ∉ candidateList parse released (.inr (.inl (.hash input)) : (LocalSpec C).Domain) := by
   intro hc
-  simp only [candidateList, hh, if_pos hr] at hc
+  simp only [candidateList, hh, ite_eq_left hr] at hc
   exact List.not_mem_nil hc
 
 /-- A candidate of a local query is the hidden candidate of its hash input, and it is not

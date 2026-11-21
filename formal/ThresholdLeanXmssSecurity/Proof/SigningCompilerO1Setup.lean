@@ -93,9 +93,9 @@ theorem top_low_secret (st : DeferredState C) (h : PendingValid st) (bi : XmssSe
     (hp : st.pending (.top bi l k) = some vb) :
     vb.low = .secret (.topChain bi l ⟨k.val + 1, hk⟩) := by
   rcases h _ _ hp with ⟨k', hk', hlow⟩ | ⟨hk', -⟩
-  · simp only [PendingInput.next, dif_pos hk, Option.some.injEq] at hk'
+  · simp only [PendingInput.next, dite_eq_left hk, Option.some.injEq] at hk'
     rw [hlow, hk']
-  · simp [PendingInput.next, dif_pos hk] at hk'
+  · simp [PendingInput.next, dite_eq_left hk] at hk'
 
 /-- The last top chain edge has a known low half. -/
 theorem top_low_known (st : DeferredState C) (h : PendingValid st) (bi : XmssSecurity.TopIndex)
