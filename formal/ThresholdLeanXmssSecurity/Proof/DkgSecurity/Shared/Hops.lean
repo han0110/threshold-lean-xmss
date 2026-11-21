@@ -370,6 +370,26 @@ theorem secondConjunct_of_shared (hit : ℕ → ℝ) (slack : Tree → ℕ → �
   unfold sharedError
   linarith
 
+omit [Field E] [Algebra Bit E] [DecidableEq E] in
+/-- The error of `DkgSecurity` is not negative. -/
+theorem dkgError_nonneg (C : Committee) (q : ℕ) : 0 ≤ dkgError (E := E) circuits settings runLimit C q := by
+  have hsearch : 0 ≤ searchFailure := by
+    rw [← toReal_failure]
+    exact ENNReal.toReal_nonneg
+  have hrun : ∀ tree, 0 ≤ runError (E := E) circuits settings runLimit C q tree := fun tree =>
+    add_nonneg (mul_nonneg (Nat.cast_nonneg _) (checkErrorMax_nonneg circuits settings runLimit q))
+      (by unfold freshError; positivity)
+  have hsum : 0 ≤ ∑ b : Fin (2 ^ layerHeight), runError (E := E) circuits settings runLimit C q (.bottom b) :=
+    Finset.sum_nonneg fun b _ => hrun _
+  have htop := hrun .top
+  have hsplit : 0 ≤ splitError settings runLimit C q := splitRisk_nonneg _ _
+  have hcorrect : 0 ≤ dkgCorrectnessError (E := E) circuits settings runLimit C q := by
+    unfold dkgCorrectnessError seedGenHashError prssSetupHashError freshKeyError prssRandHashError echoError
+      reuseError copyError
+    positivity
+  unfold dkgError privacyHitError privacyStepError seedGenHashError
+  positivity
+
 omit [DecidableEq E] in
 /-- The field `dkgSecurity` from the hops with the shared event and from the inequality between the
 error of these hops and the approved error. -/
@@ -395,12 +415,7 @@ theorem dkgSecurity_of_shared (hit : ℕ → ℝ) (slack : Tree → ℕ → ℝ)
   refine ⟨dkgReduction_cost prims K circuits settings runLimit batch D A q bounded, ?_⟩
   rcases Nat.eq_zero_or_pos runLimit with h0 | runs
   · rw [zeroRuns prims K circuits settings runLimit h0 D A]
-    have hcast : (runLimit : ℝ) = 0 := by simp [h0]
-    have herr : 0 ≤ dkgError (E := E) circuits settings runLimit C q := by
-      unfold dkgError
-      rw [hcast, zero_mul, add_zero]
-      unfold seedGenHashError derivedKeyCollision
-      positivity
+    have herr := dkgError_nonneg (E := E) circuits settings runLimit C q
     have hacc : 0 ≤ accepts prims (tsigGame (dkgReduction K circuits settings runLimit prims.aes D A)) :=
       ENNReal.toReal_nonneg
     have hadv : 0 ≤ streamAdvantage prims D (dkgTsigGame K circuits settings runLimit D A) :=

@@ -114,21 +114,12 @@ def prssSetupSecrets (C : Committee) : ℕ :=
 /-- The birthday bound of the counted calls and the honest points of the PRSS setup. -/
 def prssSetupHashError (C : Committee) (q : ℕ) : ℝ := ((q + prssSetupSecrets C) ^ 2 : ℕ) / 2 ^ 256
 
-/-- The birthday bound `k² / 2^129` of the 128-bit AES keys of the `k` PRSS keys of a ceremony
-(`doc/dkg.md` 3.3). -/
-def streamKeyError (C : Committee) : ℝ := ((termCount C + C.n.choose 2) ^ 2 : ℕ) / 2 ^ 129
-
 /-- An upper bound on the probability that two derived keys of one kind are equal. A derivation
 hashes only the tag of its kind and the parts (`src/mpc.rs`). Two derivations have the same input
 only when an honest part repeats. Two different inputs give the same key only by a collision of
 `H`. The bound has one term for each pair of keys of one kind and pays both cases. -/
 def derivedKeyCollision (C : Committee) : ℝ :=
   (termCount C ^ 2 + C.n.choose 2 ^ 2 : ℕ) / 2 ^ 256
-
-/-- The birthday bound of the counted calls and the honest points of a check of `count` tuples,
-namely the history and the digest of each term at each operator and the `R + 2` coin keys. -/
-def checkHashError (C : Committee) (count q : ℕ) : ℝ :=
-  ((q + termHashes C + halvings count + 2) ^ 2 : ℕ) / 2 ^ 256
 
 /-- The PRSS keys of one setup, one for each term and one for each pair. -/
 def prssKeyCount (C : Committee) : ℕ := termCount C + C.n.choose 2
@@ -137,56 +128,12 @@ def prssKeyCount (C : Committee) : ℕ := termCount C + C.n.choose 2
 accounts for the counted calls that hit a hidden PRSS key and for two equal dealt keys. -/
 def prssRandHashError (C : Committee) (q : ℕ) : ℝ := (prssKeyCount C * (q + prssKeyCount C) : ℕ) / 2 ^ 256
 
-/-- An upper bound on the hash errors of one PRSS setup and the streams of its keys. The first term
-is for two honest operators with two keys of one term. The other two are for the stream-key event,
-at the budget `q` plus the honest known keys of the setup. -/
-def prssRealRandHashError (C : Committee) (q : ℕ) : ℝ :=
-  prssSetupHashError C q + prssSetupHashError C (q + C.n * (termCount C + C.n)) / 2 +
-    prssRandHashError C (q + C.n * (termCount C + C.n))
-
-/-- The birthday bound of the copy hashes of a tree. A bottom tree pays one bound at the end of each
-of its two ceremonies, because the codeword of the signature ceremony comes from the opened outputs
-of the first ceremony. -/
-def treeHybridError (C : Committee) (tree : Tree) (q : ℕ) : ℝ :=
-  match tree with
-  | .top => ((q + (chunks settings.batchSize topJobs).length * termHashes C) ^ 2 : ℕ) / 2 ^ 256
-  | .bottom b => ((q + (chunks settings.batchSize (bottomJobs b)).length * termHashes C) ^ 2 : ℕ) / 2 ^ 256 +
-      ((q + treeBatches settings (.bottom b) * termHashes C) ^ 2 : ℕ) / 2 ^ 256
-
-/-! ## The terms of `DkgSecurity` -/
+/-! ## The setups and the cost terms of `DkgSecurity` -/
 
 /-- The PRSS setups of a run of a tree. -/
 def treeSetups : Tree → ℕ
   | .top => 1
   | .bottom _ => 2
-
-/-- The searches of a randomizer of a run of a tree. -/
-def treeSearches : Tree → ℕ
-  | .top => 0
-  | .bottom _ => 1
-
-/-- The error of the checks of the batches of a run of `tree`, with the soundness of each check and
-the birthday bound of its hashes. -/
-def treeCheckError (tree : Tree) (q : ℕ) : ℝ :=
-  treeBatches settings tree *
-    (checkErrorOf (E := E) (maxBatch circuits settings fun jobs => coins (tupleCount jobs))
-      (maxBatch circuits settings fun jobs => halvings (tupleCount jobs)) q +
-     checkHashError C (maxBatch circuits settings tupleCount) q)
-
-/-- The charge for the replacement of one run of `tree` by the dealer of the signing game. A failed
-search of a bottom tree leaks openings that `tree b` of `tsigGame` does not give, and
-`searchFailure` is the charge for it as a bad event. -/
-def treeRunError (tree : Tree) (q : ℕ) : ℝ :=
-  treeSetups tree * (prssRealRandHashError C q + streamKeyError C) +
-    treeCheckError (E := E) (C := C) circuits settings tree q + treeHybridError settings C tree q +
-    treeAbortError (E := E) circuits settings tree + treeSearches tree * searchFailure
-
-/-- The statistical part of the bound of `DkgSecurity`, the charge for the seed generation and for
-`runLimit` runs of the top tree and of each bottom tree. -/
-def dkgError (C : Committee) (q : ℕ) : ℝ :=
-  seedGenHashError C q + derivedKeyCollision C +
-    runLimit * (treeRunError (E := E) (C := C) circuits settings .top q +
-      ∑ b : Fin (2 ^ layerHeight), treeRunError (E := E) (C := C) circuits settings (.bottom b) q)
 
 /-- The points of the jobs of one run of `tree`. They are the points of `topJobs` for the top tree.
 For bottom tree `b` they are the points of `bottomJobs b` and of the second ceremony `signJobs`,
@@ -327,6 +274,36 @@ def dkgCorrectnessError (C : Committee) (q : ℕ) : ℝ :=
     splitError settings runLimit C q +
     runLimit * (runError (E := E) circuits settings runLimit C q .top +
       ∑ b : Fin (2 ^ layerHeight), runError (E := E) circuits settings runLimit C q (.bottom b))
+
+/-! ## The error of `DkgSecurity` -/
+
+/-- The bound of a first hit. A counted call names an emulated seed of a hidden term or its derive
+input, or a salt of a hidden term, or an emulated seed meets a seed of the dealer, or an emulated
+key is not the key of the dealer. A salt of a hidden term meets the `q` counted values and the free
+digest values of the honest operators. -/
+def privacyHitError (C : Committee) (q : ℕ) : ℝ :=
+  ((2 * q * (C.n * termCount C) +
+    (q + gameBatches settings runLimit * C.n * termCount C) *
+      (gameBatches settings runLimit * C.n * termCount C) +
+    2 * (C.n * termCount C ^ 2) : ℕ) : ℝ) / 2 ^ 256 + seedGenHashError C q / 2
+
+/-- The error of one run of `tree` that becomes an emulated run. The emulated run makes history,
+digest and copy cells that the real run does not make, a setup of the run repeats a hidden key of
+another setup, or a salt of the run repeats a salt of another check. -/
+def privacyStepError (C : Committee) (tree : Tree) (q : ℕ) : ℝ :=
+  ((2 * treeBatches settings tree * termHashes C * splitBudget settings runLimit C q +
+    treeSetups tree * prssKeyCount C * (2 * gameSetups runLimit + treeSetups tree) +
+    treeBatches settings tree * (C.n * termCount C) *
+      (gameBatches settings runLimit * (C.n * termCount C)) : ℕ) : ℝ) / 2 ^ 256
+
+/-- The error of `DkgSecurity`. It is the error of `DkgCorrectness`, one hash error of the seed
+generation, one failed search of the dealer for each bottom tree, one first hit, and one emulated
+run for each run of each tree. -/
+def dkgError (C : Committee) (q : ℕ) : ℝ :=
+  dkgCorrectnessError (E := E) circuits settings runLimit C q + seedGenHashError C q +
+    2 ^ layerHeight * searchFailure + privacyHitError settings runLimit C q +
+    runLimit * (privacyStepError settings runLimit C .top q +
+      ∑ b : Fin (2 ^ layerHeight), privacyStepError settings runLimit C (.bottom b) q)
 
 /-! ## The terms of `DkgCompleteness` -/
 

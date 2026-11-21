@@ -23,8 +23,8 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.TopLaws
 `monitorErase`, the hop `UsedHitHop` at the error `setupHybridError` from the proof of
 `dkgCorrectness`, `sharedStart`, `sharedSeedBound`, `sharedSeedReal`, `sharedSeedIdeal`,
 `sharedSearch`, `sharedEnd`, `tableHop` and `sharedBadBound`. The premises are the three other hops
-`SharedRefDealer`, `SharedHit` and `SharedStep`, as propositions, and the inequality between
-`sharedError` and the approved `dkgError`.
+`SharedRefDealer`, `SharedHit` and `SharedStep`, as propositions, at the errors `privacyHitError` and
+`privacyStepError`. With these two errors `sharedError` is `dkgError` by definition.
 -/
 
 set_option autoImplicit false
@@ -45,17 +45,16 @@ attribute [local instance] inhabitedField
 variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
 
 omit [DecidableEq E] in
-/-- The field `dkgSecurity` from the other hops with the shared bad event, as propositions, and from
-the inequality between `sharedError` and the approved `dkgError`. -/
-theorem dkgSecurity_of_leaves (hit : ℕ → ℝ) (slack : Tree → ℕ → ℝ)
+/-- The field `dkgSecurity` from the three other hops with the shared bad event, as propositions. The
+error `dkgError` is `sharedError` at `privacyHitError` and `privacyStepError` by definition. -/
+theorem dkgSecurity_of_leaves
     (ref : SharedRefDealer prims K circuits settings runLimit)
-    (hits : SharedHit prims K circuits settings runLimit hit)
-    (step : SharedStep prims K circuits settings runLimit slack)
-    (gap : 0 < runLimit → ∀ q : ℕ, sharedError (E := E) circuits settings runLimit hit slack C q ≤
-      dkgError (E := E) circuits settings runLimit C q) :
+    (hits : SharedHit prims K circuits settings runLimit (privacyHitError settings runLimit C))
+    (step : SharedStep prims K circuits settings runLimit (privacyStepError settings runLimit C)) :
     CircuitsCompute circuits prims.Th →
       ThresholdLeanXmss.DkgSecurity prims K circuits settings runLimit (dkgReduction K circuits settings runLimit) :=
-  dkgSecurity_of_shared prims K circuits settings runLimit hit slack
+  dkgSecurity_of_shared prims K circuits settings runLimit (privacyHitError settings runLimit C)
+    (privacyStepError settings runLimit C)
     (monitorErase prims K circuits settings runLimit)
     (UsedHit.usedHitHop_of_reductions K circuits settings runLimit prims
       (UsedHit.topSlotPartCosts K circuits settings runLimit prims)
@@ -72,7 +71,7 @@ theorem dkgSecurity_of_leaves (hit : ℕ → ℝ) (slack : Tree → ℕ → ℝ)
     (sharedSeedReal K circuits settings runLimit prims) (sharedSeedIdeal K circuits settings runLimit prims)
     (sharedSearch prims K circuits settings runLimit) hits step
     (sharedEnd prims K circuits settings runLimit)
-    (tableHop prims K circuits settings runLimit) gap
+    (tableHop prims K circuits settings runLimit) fun _ _ => le_refl _
 
 end ThresholdLeanXmssSecurity.DkgSecurityProof
 

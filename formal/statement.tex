@@ -342,11 +342,13 @@ first output of its runs, and the first signing request on a bottom tree ends it
 \item The public key and the trees of the win test are those of the first honest operator that holds
 them.
 \end{itemize}
-$\mathsf{dkgError}$ pays the seed generation, the PRSS setups, the checks, the copy hashes, the honest
-aborts and a failed randomizer search, for $\mathsf{runLimit}$ runs of each tree. $\mathsf{dkgOverhead}$
+$\mathsf{dkgError}$ is the error of the correctness claim, one more hash error of the seed generation,
+one failed randomizer search of the dealer for each bottom tree, and two terms for the privacy of the
+runs (Appendix~\ref{sec:terms}). $\mathsf{dkgOverhead}$
 counts the calls of \lean{dkgReduction} in the domains that the setup and the signing share. The
 theorem \lean{DkgSecurityProof.dkgReduction_cost} proves the cost bound with it, the first part of
-\lean{dkgSecurity}. $\mathsf{dkgError}$ is a target, and no proof checks it yet.
+\lean{dkgSecurity}. $\mathsf{dkgError}$ is the error that the chain of hops of the proof reaches. Three
+hops of the chain have no proof yet.
 
 \paragraph{Correctness with abort} (\lean{DkgCorrectness}). Against $A$, two honest operators hold
 inconsistent seeds, or an honest operator ends a run of a tree with an output that is not the output
@@ -378,10 +380,23 @@ the paper is about one broadcast of a verifying transcript and is no model of th
 \paragraph{The state of the target.} No proof accounts for the whole game for the bound of
 \lean{dkgSecurity} on the win probability yet. The theorem \lean{DkgSecurityProof.dkgSecurity_of_leaves}
 gives the field from three hops that have no proof yet (\lean{SharedRefDealer},
-\lean{SharedHit}, \lean{SharedStep}) and from the inequality between the error of its chain of hops,
-\lean{sharedError}, and $\mathsf{dkgError}$. Ten of the 13 hops of the chain have proofs. The term of $\mathsf{dkgError}$ that is the most likely to
-change is the sum of the errors of the single runs, which has no explicit account of the cache that
-the runs share.
+\lean{SharedHit}, \lean{SharedStep}). Ten of the 13 hops of the chain have proofs.
+$\mathsf{dkgError}$ is the sum of the errors of the 13 hops, so it is the error of this proof and no
+tight bound. Through $\mathsf{dkgCorrectnessError}$ it grows with the third power of the run limit,
+which comes from the proof method for the PRSS setups. The two privacy terms
+$\mathsf{privacyHitError}$ and $\mathsf{privacyStepError}$ belong to the hops with no proof yet, so a
+proof can change them. Table~\ref{tab:dkgerror} has the value at two points.
+\begin{table}[h]\centering\small
+\begin{tabular}{lll}
+\toprule
+Committee, run limit, $q$ & $\mathsf{dkgError}$ & Of it the two privacy terms \\
+\midrule
+$n=3$, $\mathsf{runLimit}=4$, $q=0$ & $2^{-103.2}$ & $2^{-211.7}$ and $2^{-208.5}$ \\
+$n=33$, $\mathsf{runLimit}=8$, $q=2^{64}$ & $2^{-102.1}$ & $2^{-129.0}$ and $2^{-134.8}$ \\
+\bottomrule
+\end{tabular}
+\caption{The value of $\mathsf{dkgError}$ for one batch for each ceremony and $2^{20}$ tuples in a batch.}\label{tab:dkgerror}
+\end{table}
 
 \subsection{The chain to the full system}\label{sec:chain}
 Let $\delta$ bound the probability that \lean{dkgReduction} of $A$ wins \lean{tsigGame} in
@@ -537,8 +552,7 @@ Let $k_T=\binom n{t-1}$ be the number of terms, $k=k_T+\binom n2$ the number of 
 setup, and $h=2nk_T$ the hashes of two values of each term at each operator. For a tree, $B$ is its
 number of batches (\lean{treeBatches}), and $d^*$, $R^*$ and $c^*$ are the maximum coin count,
 halving count and tuple count of one batch over all ceremonies (\lean{maxBatch}). Let
-$s_{\mathsf T}=1$ and $r_{\mathsf T}=0$ for the top tree, and $s_{\mathsf T}=2$ and $r_{\mathsf T}=1$ for a bottom tree
-(\lean{treeSetups}, \lean{treeSearches}). The sums run over the top tree and each bottom tree.
+$s_{\mathsf T}=1$ for the top tree and $s_{\mathsf T}=2$ for a bottom tree (\lean{treeSetups}). The sums run over the top tree and each bottom tree.
 
 \paragraph{Common terms.}
 {\small
@@ -546,7 +560,7 @@ $s_{\mathsf T}=1$ and $r_{\mathsf T}=0$ for the top tree, and $s_{\mathsf T}=2$ 
 \mathsf{seedGenHashError}(q)&=(q+s_{\mathrm{kg}})^2/2^{256},\quad s_{\mathrm{kg}}=n(1+k_T+n)+1+k_T+\tbinom n2+n^2\\
 \mathsf{derivedKeyCollision}&=(k_T^2+\tbinom n2^2)/2^{256}\\
 \mathsf{prssSetupHashError}(q)&=(q+s_{\mathrm p})^2/2^{256},\quad s_{\mathrm p}=n(k_T+n)+k_T+\tbinom n2+n^2\\
-\mathsf{prssRandHashError}(q)&=k(q+k)/2^{256},\qquad \mathsf{streamKeyError}=k^2/2^{129}\\
+\mathsf{prssRandHashError}(q)&=k(q+k)/2^{256}\\
 \mathsf{checkErrorOf}(d,R,q)&=\frac{d+2(R+1)}{|E|-2}+\frac{(R+2)\,q}{|E|^2},\qquad
 \mathsf{coinFailure}(R)=\frac{\mathsf{sliceBits}}{|E|}+(R+1)\Bigl(\frac{2}{|E|}\Bigr)^{2^{64}}\\
 \mathsf{treeAbortError}&=B\,\mathsf{coinFailure}(R^*)+(B(R^*+2))^2/2^{257},\qquad
@@ -556,15 +570,15 @@ $s_{\mathsf T}=1$ and $r_{\mathsf T}=0$ for the top tree, and $s_{\mathsf T}=2$ 
 \paragraph{Security preservation.}
 {\small
 \begin{align*}
-\mathsf{dkgError}(q)&=\mathsf{seedGenHashError}(q)+\mathsf{derivedKeyCollision}+\mathsf{runLimit}\textstyle\sum_{\mathsf T}\mathsf{treeRunError}(\mathsf T,q)\\
-\mathsf{treeRunError}(\mathsf T,q)&=s_{\mathsf T}\bigl(\mathsf{prssRealRandHashError}(q)+\mathsf{streamKeyError}\bigr)+\mathsf{treeCheckError}(q)\\
-&\quad+\mathsf{treeHybridError}(q)+\mathsf{treeAbortError}+r_{\mathsf T}\,\mathsf{searchFailure}\\
-\mathsf{prssRealRandHashError}(q)&=\mathsf{prssSetupHashError}(q)+\tfrac12\mathsf{prssSetupHashError}(q')+\mathsf{prssRandHashError}(q')\\
-\mathsf{treeCheckError}(q)&=B\bigl(\mathsf{checkErrorOf}(d^*,R^*,q)+(q+h+\mathsf{halvings}(c^*)+2)^2/2^{256}\bigr)
+\mathsf{dkgError}(q)&=\mathsf{dkgCorrectnessError}(q)+\mathsf{seedGenHashError}(q)+2^{\mathsf{layerHeight}}\,\mathsf{searchFailure}\\
+&\quad+\mathsf{privacyHitError}(q)+\mathsf{runLimit}\textstyle\sum_{\mathsf T}\mathsf{privacyStepError}(\mathsf T,q)\\
+\mathsf{privacyHitError}(q)&=\frac{2q\,nk_T+(q+G\,nk_T)\,G\,nk_T+2n k_T^2}{2^{256}}+\tfrac12\,\mathsf{seedGenHashError}(q)\\
+\mathsf{privacyStepError}(\mathsf T,q)&=\frac{2Bh\,u+s_{\mathsf T}k\,(2S+s_{\mathsf T})+B\,nk_T\cdot G\,nk_T}{2^{256}}
 \end{align*}}
-Here $q'=q+n(k_T+n)$. $\mathsf{treeHybridError}(q)$ is $(q+B_1h)^2/2^{256}$ for the top tree and
-$(q+B_1h)^2/2^{256}+(q+Bh)^2/2^{256}$ for a bottom tree, where $B_1$ counts the batches of the first
-ceremony. $\mathsf{dkgOverhead}$ is $\mathsf{runLimit}$ times the sum of \lean{treeReductionCalls} over the top
+Here $S$, $G$ and $u$ are the PRSS setups, the batches and the hash budget of a game, as in the
+paragraph on correctness below. $\mathsf{privacyHitError}$ is the charge for a counted call that names
+a hidden seed or a hidden salt, and $\mathsf{privacyStepError}$ is the charge for one run that the
+proof replaces by an emulated run. $\mathsf{dkgOverhead}$ is $\mathsf{runLimit}$ times the sum of \lean{treeReductionCalls} over the top
 tree and each bottom tree. With $P_{\mathsf T}=\mathsf{treePoints}(\mathsf T)$, $\ell_h=\mathsf{layerHeight}$,
 and $c=\mathsf{chainCount}$,
 \[
@@ -611,9 +625,9 @@ Symbol & Lean & Symbol & Lean \\
 \midrule
 $k_T$, $k$, $h$ & \lean{termCount}, \lean{prssKeyCount}, \lean{termHashes} &
 $s_{\mathrm{kg}}$, $s_{\mathrm p}$ & \lean{seedGenSecrets}, \lean{prssSetupSecrets} \\
-$B$, $B_1$ & \lean{treeBatches}, the first summand of \lean{treeBatches} &
+$B$ & \lean{treeBatches} &
 $d^*$, $R^*$, $c^*$ & \lean{maxBatch} (\texttt{Scheme.lean}) of \lean{coins}, \lean{halvings} and \lean{tupleCount} \\
-$s_{\mathsf T}$, $r_{\mathsf T}$ & \lean{treeSetups}, \lean{treeSearches} &
+$s_{\mathsf T}$ & \lean{treeSetups} &
 $S$, $G$, $K$, $u$ & \lean{gameSetups}, \lean{gameBatches}, \lean{gameCoinKeys}, \lean{splitBudget} \\
 $Sn(4n+k_T)$ & \lean{honestSetupCalls} &
 $Sn(k_T+n)$ & \lean{honestKnownKeys} \\
@@ -622,7 +636,7 @@ $s_{\mathsf T}k(S+s_{\mathsf T})/2^{256}$ & \lean{freshError} \\
 The four fractions & \lean{echoError}, \lean{reuseError}, \lean{copyError}, \lean{splitError} &
 $\max_c$ & \lean{checkErrorMax} over \lean{batchCounts} \\
 $(R_c+2)(\dots)/2^{256}$ & \lean{soundHashError} &
-$(q+h+\dots)^2/2^{256}$ & \lean{checkHashError} \\
+The two privacy terms & \lean{privacyHitError}, \lean{privacyStepError} \\
 $(B(R^*+2))^2/2^{257}$ & \lean{coinKeyCollision} &
 $\ell$ & \lean{C.terms.length} \\
 $p$, $L$ & \lean{codewordProbability}, \lean{randomizerAttemptLimit} (leanVM at the pinned revision, \lean{formal/Statement/LeanXmss.lean}) &

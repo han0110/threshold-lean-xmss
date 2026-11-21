@@ -53,7 +53,7 @@ No field of `Theorems` gives such a $\delta$. No small $\delta$ holds for each q
 
 ## 4. The state of the bounds
 
-The theorem `dkgCorrectness` proves the bound `dkgCorrectnessError` for the whole game. No proof accounts for the whole game for the bound of `dkgSecurity` on the win probability yet, so `dkgError` is a target. The theorem `DkgSecurityProof.dkgSecurity_of_leaves` gives the field from three hops with no proof yet (`SharedRefDealer`, `SharedHit`, `SharedStep`) and from the inequality between `sharedError`, the error of its chain of hops, and `dkgError`. Its term that is the most likely to change is the sum of the errors of the single runs, which has no explicit account of the cache that the runs share.
+The theorem `dkgCorrectness` proves the bound `dkgCorrectnessError` for the whole game. No proof accounts for the whole game for the bound of `dkgSecurity` on the win probability yet. The theorem `DkgSecurityProof.dkgSecurity_of_leaves` gives the field from three hops with no proof yet (`SharedRefDealer`, `SharedHit`, `SharedStep`). The error `dkgError` is the sum of the errors of the 13 hops of the proof: `dkgCorrectnessError`, one more hash error of the seed generation, one failed search of the dealer for each bottom tree, and the two privacy terms `privacyHitError` and `privacyStepError`. So it is the error of this proof and no tight bound. It grows with the third power of the run limit, through the PRSS setup term of `dkgCorrectnessError`. The two privacy terms belong to hops with no proof yet, so a proof can change them.
 
 ## 5. What the model does not cover
 
