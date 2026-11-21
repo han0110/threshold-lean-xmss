@@ -34,15 +34,17 @@ quorum signs (Section~\ref{sec:signing}).
 signing game. It gives consistent seeds and correct trees against the adversary, and its honest run is
 near the trusted dealer (Section~\ref{sec:setup}).
 \end{itemize}
-The two signing claims and the completeness of the setup are proved in this tree. The proofs are the
-three theorems below, in the namespace \lean{ThresholdLeanXmssSecurity}.
+The two signing claims, the correctness and the completeness of the setup are proved in this tree. The
+proofs are the four theorems below, in the namespace \lean{ThresholdLeanXmssSecurity}.
 \begin{itemize}\itemsep0pt
 \item \lean{SigningStronglyUnforgeable.stronglyUnforgeable} proves \lean{stronglyUnforgeable}.
 \item \lean{signingCorrectness} proves \lean{signingCorrectness}.
+\item \lean{dkgCorrectness} proves \lean{dkgCorrectness}.
 \item \lean{dkgCompleteness} proves \lean{dkgCompleteness}.
 \end{itemize}
-The claims \lean{dkgSecurity} and \lean{dkgCorrectness} are stated, and no proof of them is in this
-tree. Their bounds are targets. No proof accounts for the whole game yet, and a proof can change them. Section~\ref{sec:chain} explains why the five claims give a
+The claim \lean{dkgSecurity} is stated. Its cost bound is proved, and no proof of its bound on the win
+probability is in this tree. That bound is a target. No proof accounts for the whole game yet, and a
+proof can change it. Section~\ref{sec:chain} explains why the five claims give a
 bound of the full system only with one more premise.
 
 \paragraph{Where to read it.} The claims are in the folder
@@ -360,8 +362,7 @@ adaptations have no source. The query bound with no bound on the computation is 
 The claim omits the second clause of Definition~6, the reconstruction of the secret key from $t+1$
 honest shares. The bound is a fixed expression, $\Th$ is fixed, and the runs are as for
 \lean{DkgSecurity}. The seeds of the game are those of the first honest holder of each term
-(\lean{gameSeeds}). The bound is a target. Its terms come from the events that an earlier partial
-proof found, and a proof can change it.
+(\lean{gameSeeds}). The theorem \lean{dkgCorrectness} proves the bound.
 
 \paragraph{Completeness} (\lean{DkgCompleteness}). For each bottom tree $b$, each operator of
 \lean{honestDkg}~$b$ holds keys, a top tree and bottom tree $b$, except with probability at most
@@ -374,13 +375,10 @@ GS20 or of \cite{GJM+21} is its model. The abort bound has the form of Lemma 1 o
 the paper is about one broadcast of a verifying transcript and is no model of this bound. The distance to \lean{dealerKeyGen} has no source. The theorem
 \lean{dkgCompleteness} proves both bounds.
 
-\paragraph{The state of the targets.} No proof accounts for the whole game for the bounds of
-\lean{dkgSecurity} and \lean{dkgCorrectness} yet. Two terms are the most likely to change. In
-$\mathsf{dkgCorrectnessError}$ it is $S\cdot\mathsf{prssSetupHashError}(2q+\mathsf{honestSetupCalls})/2$
-(Appendix~\ref{sec:terms}). Its count \lean{honestSetupCalls} has only the honest calls of the PRSS
-setups, and a proof can also need the honest calls of the rest of the game. In $\mathsf{dkgError}$ it
-is the sum of the errors of the single runs, which has no explicit account of the cache that the
-runs share.
+\paragraph{The state of the target.} No proof accounts for the whole game for the bound of
+\lean{dkgSecurity} on the win probability yet. The term of $\mathsf{dkgError}$ that is the most likely to
+change is the sum of the errors of the single runs, which has no explicit account of the cache that
+the runs share.
 
 \subsection{The chain to the full system}\label{sec:chain}
 Let $\delta$ bound the probability that \lean{dkgReduction} of $A$ wins \lean{tsigGame} in
@@ -468,9 +466,9 @@ with strong unforgeability as in leanXMSS & Proved \\
 Proved \\
 \rowrule
 \lean{dkgSecurity} & \lean{DkgSecurity} for \lean{dkgReduction} & \cite{GJM+21}, Definition 8,
-and the form of Lemmas 3 to 5 & Target \\
+and the form of Lemmas 3 to 5 & The cost bound is proved. The bound on the win probability is a target. \\
 \rowrule
-\lean{dkgCorrectness} & \lean{DkgCorrectness} & \cite{GJM+21}, Definition 6, first clause & Target \\
+\lean{dkgCorrectness} & \lean{DkgCorrectness} & \cite{GJM+21}, Definition 6, first clause & Proved \\
 \rowrule
 \lean{dkgCompleteness} & \lean{DkgCompleteness} & No model. The abort bound has the form of
 \cite{GJM+21}, Lemma 1. & Proved \\

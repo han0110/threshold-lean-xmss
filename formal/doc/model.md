@@ -1,6 +1,6 @@
 # The game model
 
-This file describes the model of the five claims of the bundle `Theorems`. Each claim is a game with a fixed error expression. No claim uses a simulation definition or a composition theorem. The two signing claims and `dkgCompleteness` are proved in this tree. The claims `dkgSecurity` and `dkgCorrectness` are stated, and no proof of them is in this tree.
+This file describes the model of the five claims of the bundle `Theorems`. Each claim is a game with a fixed error expression. No claim uses a simulation definition or a composition theorem. The two signing claims, `dkgCorrectness` and `dkgCompleteness` are proved in this tree. The claim `dkgSecurity` is stated. Its cost bound is proved, and no proof of its bound on the win probability is in this tree.
 
 [statement.tex](../statement.tex) has the tables of the claims, of their worlds, preconditions and trivial cases (Section 1 and Section 3.2), of the state of each bound (Appendix A), and of the error terms with their Lean names (Appendix C). The adaptations of the published definitions are in [differences.md](./differences.md), Table B.3, and in the doc comment of each claim.
 
@@ -53,7 +53,7 @@ No field of `Theorems` gives such a $\delta$. No small $\delta$ holds for each q
 
 ## 4. The state of the bounds
 
-No proof accounts for the whole game for the bounds of `dkgSecurity` and `dkgCorrectness` yet, so both are targets. Two terms are the most likely to change. In `dkgCorrectnessError` it is `gameSetups * (prssSetupHashError C (2 * q + honestSetupCalls) / 2)`. Its count `honestSetupCalls` has only the honest calls of the PRSS setups, and a proof can also need the honest calls of the rest of the game. In `dkgError` it is the sum of the errors of the single runs, which has no explicit account of the cache that the runs share.
+The theorem `dkgCorrectness` proves the bound `dkgCorrectnessError` for the whole game. No proof accounts for the whole game for the bound of `dkgSecurity` on the win probability yet, so `dkgError` is a target. Its term that is the most likely to change is the sum of the errors of the single runs, which has no explicit account of the cache that the runs share.
 
 ## 5. What the model does not cover
 

@@ -10,11 +10,13 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Draws.OneKey
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.HeadCut
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Ledger.Cells
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Ledger.Parts
-import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Leaves
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Ready.GameHidden
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Records.Keys
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.RunsUnion
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Schedule.Joint
+import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.BottomCosts
+import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.BottomEnds
+import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.BottomFields
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.Eager
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.EndCells
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.EndWorld
@@ -22,24 +24,27 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.TopCosts
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.TopLaws
 
 /-!
-# The field `dkgCorrectness` from the leaves of the route
+# The field `dkgCorrectness`
 
-`dkgCorrectness_of_leaves` gives the field `dkgCorrectness` of `Theorems`,
-`CircuitsCompute circuits prims.Th → DkgCorrectness prims K circuits settings runLimit`. Its premise
-is the structure `UsedHitParts` of `Leaves.lean`. `ceremonyBad_of_parts`, `provenanceTreeRun_of_parts`,
-`readyHopL_of_ends`, `UsedHit.usedHitHop_of_reductions`, `ceremonySupport_of_parts` with
-`cutState_of_supports`, and `topCover_of_started` and `restCover_of_started` join their fields to the
-statements of the route. `UsedHit.hybridEnd_of_statements` gives `HybridEnd`. The proved leaves
-`cutDead`, `cutMonotone`, `headFuel`, `headCover`, `treePhaseProvenance`, `hiddenNames`,
-`ledgerHidden`, `ceremonyProvenance`, `ledgerSplit`, `ledgerSalts`, `ledgerSound`, `ceremonyCounters`,
-`zeroCheck`, `CutBudget.ceremonyBudget`, `CutBudget.ceremonyTupleInputs`, `freshOne`,
-`ceremonyInterval`, `monitorProvenance`, `ceremonyStarted`, `ceremonyAbort`,
-`Joint.ceremonyCoupling`, `CeremonyRecords.ceremonyMonitor`, `CeremonyRecords.ceremonyBatch`,
-`CeremonyRecords.ceremonySync`, `EchoRound.ceremonyKeysAgree`, `CeremonyRecords.ceremonyOutputsAgree`,
-`shortFuel`, `soundAtEnd`, `hiddenAtEnd`, `UsedHit.topSlotPartCosts`, `UsedHit.topLawReal`,
-`UsedHit.topLawFresh`, `keyProvenance`, `cellsCount`, `eagerDraw`, `keyParametric`, `echoHop`, `reuseHop`, `copyHop` and `splitHop` and the
-hops `flagFirstHop`, `seedsHop` and `runsUnionHop` give the rest. The error of `UsedHitHop` is
-`setupHybridError`, and with it `part1Error` is `dkgCorrectnessError`.
+`dkgCorrectness` proves the field `dkgCorrectness` of `Theorems`,
+`CircuitsCompute circuits prims.Th → DkgCorrectness prims K circuits settings runLimit`. `part1L_of_route`
+gives it from the hops and the statements of the route. The error of `UsedHitHop` is `setupHybridError`,
+and with it `part1Error` is `dkgCorrectnessError`.
+
+`ceremonyBad_of_parts`, `provenanceTreeRun_of_parts`, `readyHopL_of_ends`,
+`UsedHit.usedHitHop_of_reductions`, `ceremonySupport_of_parts` with `cutState_of_supports`, and
+`topCover_of_started` and `restCover_of_started` join their parts to the statements of the route.
+`UsedHit.hybridEnd_of_statements` gives `HybridEnd`. The lemmas `cutDead`, `cutMonotone`, `headFuel`,
+`headCover`, `treePhaseProvenance`, `hiddenNames`, `ledgerHidden`, `ceremonyProvenance`, `ledgerSplit`,
+`ledgerSalts`, `ledgerSound`, `ceremonyCounters`, `zeroCheck`, `CutBudget.ceremonyBudget`,
+`CutBudget.ceremonyTupleInputs`, `freshOne`, `ceremonyInterval`, `monitorProvenance`, `ceremonyStarted`,
+`ceremonyAbort`, `Joint.ceremonyCoupling`, `CeremonyRecords.ceremonyMonitor`,
+`CeremonyRecords.ceremonyBatch`, `CeremonyRecords.ceremonySync`, `EchoRound.ceremonyKeysAgree`,
+`CeremonyRecords.ceremonyOutputsAgree`, `shortFuel`, `soundAtEnd`, `hiddenAtEnd`,
+`UsedHit.topSlotPartCosts`, `UsedHit.topLawReal`, `UsedHit.topLawFresh`, `UsedHit.bottomSlotPartCosts`,
+`UsedHit.bottomLawReal`, `UsedHit.bottomLawFresh`, `UsedHit.endPointsAgree`, `keyProvenance`,
+`cellsCount`, `eagerDraw`, `keyParametric`, `echoHop`, `reuseHop`, `copyHop` and `splitHop` and the hops
+`flagFirstHop`, `seedsHop` and `runsUnionHop` give the parts.
 -/
 
 section
@@ -57,8 +62,8 @@ variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algeb
 
 variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
 
-/-- The field `dkgCorrectness` from the parts of the hop on the used keys. -/
-theorem dkgCorrectness_of_leaves (usedHit : UsedHitParts K circuits settings runLimit) :
+/-- The field `dkgCorrectness` of `Theorems`. -/
+theorem _root_.ThresholdLeanXmssSecurity.dkgCorrectness :
     CircuitsCompute circuits prims.Th → ThresholdLeanXmss.DkgCorrectness prims K circuits settings runLimit := by
   intro compute batch runs D A q bounded
   exact part1L_of_route K circuits settings runLimit (setupHybridError runLimit C)
@@ -73,8 +78,10 @@ theorem dkgCorrectness_of_leaves (usedHit : UsedHitParts K circuits settings run
     (fun prims => UsedHit.usedHitHop_of_reductions K circuits settings runLimit prims
       (UsedHit.topSlotPartCosts K circuits settings runLimit prims)
       (UsedHit.topLawReal K circuits settings runLimit prims) (UsedHit.topLawFresh K circuits settings runLimit prims)
-      (usedHit.bottomCost prims) (usedHit.bottomReal prims)
-      (usedHit.bottomFresh prims) (usedHit.endPoints prims)
+      (UsedHit.bottomSlotPartCosts K circuits settings runLimit prims)
+      (UsedHit.bottomLawReal K circuits settings runLimit prims)
+      (UsedHit.bottomLawFresh K circuits settings runLimit prims)
+      (UsedHit.endPointsAgree K circuits settings runLimit prims)
       (UsedHit.hybridEnd_of_statements prims K circuits settings runLimit
         (eagerDraw K circuits settings runLimit prims)
         (keyProvenance prims K circuits settings runLimit) (keyParametric K circuits settings runLimit)
@@ -109,6 +116,6 @@ end
 
 end
 
-/-- info: 'ThresholdLeanXmssSecurity.DkgCorrectnessProof.dkgCorrectness_of_leaves' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.dkgCorrectness' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.DkgCorrectnessProof.dkgCorrectness_of_leaves
+#print axioms ThresholdLeanXmssSecurity.dkgCorrectness

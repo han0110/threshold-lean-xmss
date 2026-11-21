@@ -1,6 +1,6 @@
 # formal
 
-Lean 4 statements and proofs of the security claims of threshold leanXMSS. The two signing claims and `dkgCompleteness` are proved. The claims `dkgSecurity` and `dkgCorrectness` are stated, and no proof of them is in this tree.
+Lean 4 statements and proofs of the security claims of threshold leanXMSS. The two signing claims, `dkgCorrectness` and `dkgCompleteness` are proved. The claim `dkgSecurity` is stated. Its cost bound is proved, and no proof of its bound on the win probability is in this tree.
 
 ## The claims
 
@@ -11,10 +11,10 @@ The structure `Theorems` in [Statement/Theorems.lean](./ThresholdLeanXmss/Statem
 | `stronglyUnforgeable` | Signing with a trusted dealer is strongly unforgeable with adaptive corruption. | PRAWNS, Definition 3.2 | Proved, `SigningStronglyUnforgeable.stronglyUnforgeable` |
 | `signingCorrectness` | An honest quorum signs, except for a failed search. | PRAWNS, Section 3.1 | Proved, `signingCorrectness` |
 | `dkgSecurity` | An adversary against the signing game with the real DKG wins at most as often as the named forger `dkgReduction` wins the signing game with the dealer, plus a fixed error. | Gurkan and others, Definition 8 | The cost bound of the forger is proved, `DkgSecurityProof.dkgReduction_cost`. The bound on the win probability is a target. |
-| `dkgCorrectness` | Against an adversary, honest operators hold consistent seeds, and each tree output is right or absent. | Gurkan and others, Definition 6 | A target |
+| `dkgCorrectness` | Against an adversary, honest operators hold consistent seeds, and each tree output is right or absent. | Gurkan and others, Definition 6 | Proved, `dkgCorrectness` |
 | `dkgCompleteness` | With no corrupt operator, the DKG gives outputs that are near the outputs of the dealer. | None | Proved, `dkgCompleteness` |
 
-The three proved theorems are in the namespace `ThresholdLeanXmssSecurity`. The bounds of `dkgSecurity` and `dkgCorrectness` are targets with no proof for the whole game yet, so a proof can change them. The coalition of the DKG is static, and the signing game has adaptive corruption. The claims of the DKG fix the function `Th`, and `stronglyUnforgeable` has `Th` in the random oracle.
+The four proved theorems are in the namespace `ThresholdLeanXmssSecurity`. The bound of `dkgSecurity` on the win probability is a target with no proof for the whole game yet, so a proof can change it. The coalition of the DKG is static, and the signing game has adaptive corruption. The claims of the DKG fix the function `Th`, and `stronglyUnforgeable` has `Th` in the random oracle.
 
 ## Map of the claims
 
@@ -36,7 +36,7 @@ flowchart TB
 
   subgraph DKG["Setup by DKG on the real network, static coalition"]
     DSEC["dkgSecurity<br/>dkgTsigGame to tsigGame for dkgReduction,<br/>both in world with the fixed Th"]:::target
-    DCOR["dkgCorrectness<br/>dkgTreeGame"]:::target
+    DCOR["dkgCorrectness<br/>dkgTreeGame"]:::proved
     DCOMP["dkgCompleteness<br/>honestDkg near dealerDkg"]:::proved
   end
 

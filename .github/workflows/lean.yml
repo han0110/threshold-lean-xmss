@@ -44,7 +44,7 @@ jobs:
       - name: Check the axiom footprint
         working-directory: formal
         run: |
-          theorems="SigningStronglyUnforgeable.stronglyUnforgeable signingCorrectness dkgCompleteness"
+          theorems="SigningStronglyUnforgeable.stronglyUnforgeable signingCorrectness dkgCompleteness dkgCorrectness"
           { echo 'import ThresholdLeanXmssSecurity'; for t in $theorems; do echo "#print axioms ThresholdLeanXmssSecurity.$t"; done; } \
             > "$RUNNER_TEMP/axioms.lean"
           lake env lean "$RUNNER_TEMP/axioms.lean" | tee "$RUNNER_TEMP/axioms.txt"
