@@ -342,8 +342,9 @@ them.
 \end{itemize}
 $\mathsf{dkgError}$ pays the seed generation, the PRSS setups, the checks, the copy hashes, the honest
 aborts and a failed randomizer search, for $\mathsf{runLimit}$ runs of each tree. $\mathsf{dkgOverhead}$
-counts the calls of \lean{dkgReduction} in the domains that the setup and the signing share. Both
-are targets, and no proof checks them yet.
+counts the calls of \lean{dkgReduction} in the domains that the setup and the signing share. The
+theorem \lean{DkgSecurityProof.dkgReduction_cost} proves the cost bound with it, the first part of
+\lean{dkgSecurity}. $\mathsf{dkgError}$ is a target, and no proof checks it yet.
 
 \paragraph{Correctness with abort} (\lean{DkgCorrectness}). Against $A$, two honest operators hold
 inconsistent seeds, or an honest operator ends a run of a tree with an output that is not the output
