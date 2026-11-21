@@ -12,11 +12,12 @@ domain `P` and no collision in `P` gets a collision in `P` with probability at m
 `P`.
 
 `Birth n m` states the same for a computation `m` of the game after the PRF hop, which adds at most
-`n` cells of `P` beyond the budget of the runs that remain. The walk through `firstRunWith` follows the
-walk of `firstRun_within` in `Counts.lean` and gives `firstRun_birthday`. The network makes no
-programming call (`noProgram_realExecution`). `firstCollision_le` gives the bound
-`(q + H)² / 2^257` at the world of the first bad record, for each readiness test, from the honest
-budget `H` of the domain.
+`n` cells of `P` beyond the budget of the runs that remain. The walk through `firstRunOf` for a block
+run (`blockRun`) follows the walk of `firstRunOf_within` in `Counts.lean` and gives `firstRun_birthday`.
+The network makes no programming call (`noProgram_realExecution`). `firstCollisionOf_le` gives the
+bound `(q + H)² / 2^257` at the world of the first bad record, for each readiness test, from the honest
+budget `H` of the domain, for each block that keeps the honest budgets (`KeepsBudget`). The block of
+`streamTreeRun` keeps them (`treeBlock_keepsBudget`).
 -/
 
 section
@@ -252,26 +253,28 @@ theorem run_bind_mk {σ α γ : Type} (m : StateT σ ProbComp α) (w : σ) (H : 
     (m.run w >>= H) = (m >>= fun a => StateT.mk fun w' => H (a, w')).run w := by
   simp
 
-/-- The world computation of each run of `tree` makes at most `cost tree` calls that add a cell of
-`P` and no programming call. -/
-def BlockBound (P : Query C → Prop) (cost : Tree → ℕ) (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree) : Prop :=
-  ∀ s : RealState C net.State,
-    GameCount.Bound (WorldRegionCounted P) (FirstCounts.treeBlock K circuits settings D net tree s) (cost tree) ∧
-      GameCount.Bound WorldProgramQuery (FirstCounts.treeBlock K circuits settings D net tree s) 0
+/-- The world computation `block tree s` of each run of `tree` makes at most `cost tree` calls that add
+a cell of `P` and no programming call. -/
+def BlockBound {σ β : Type} (P : Query C → Prop) (cost : Tree → ℕ)
+    (block : Tree → RealState C σ → OracleComp (WorldSpec C) β) (tree : Tree) : Prop :=
+  ∀ s : RealState C σ,
+    GameCount.Bound (WorldRegionCounted P) (block tree s) (cost tree) ∧
+      GameCount.Bound WorldProgramQuery (block tree s) 0
 
+omit [Field E] [Algebra Bit E] in
 /-- A run of `tree` that the game allows takes its cells from the budget of the runs that remain. -/
-theorem firstTreeRun_birthFrom (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
-    (ready : RealState C net.State → StreamState C → Prop) (tree : Tree)
-    (hblock : BlockBound K circuits settings P cost D net tree) (s : FirstState C net.State)
-    (hrun : s.real.runs tree < runLimit) :
-    BirthFrom runLimit P cost N s 0 (firstTreeRunWith prims K circuits settings D net ready tree) := by
-  intro β F L hF cache hidden k hno hk hkN
-  unfold firstTreeRunWith
+theorem firstTreeRun_birthFrom (D : C.Coalition) {σ β : Type}
+    (block : Tree → RealState C σ → OracleComp (WorldSpec C) β) (out : β → σ × (C.Party → Option TreeOutput))
+    (event : StreamState C → β → StreamState C → Bool) (ready : RealState C σ → StreamState C → Prop) (tree : Tree)
+    (hblock : BlockBound P cost block tree) (s : FirstState C σ) (hrun : s.real.runs tree < runLimit) :
+    BirthFrom runLimit P cost N s 0 (firstTreeRunOf (blockRun prims D block out event) ready tree) := by
+  intro γ F L hF cache hidden k hno hk hkN
+  unfold firstTreeRunOf blockRun
   simp only [bind_assoc, StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, StateT.run_set]
   rw [run_bind_mk]
   obtain ⟨h1, h2⟩ := hblock s.real
   have hrem := FirstCounts.remaining_update runLimit cost s.real.runs tree hrun
-  refine world_birthday prims D P (FirstCounts.treeBlock K circuits settings D net tree s.real) (cost tree)
+  refine world_birthday prims D P (block tree s.real) (cost tree)
     ((GameCount.bound_iff _ _ _).1 h1) ((GameCount.bound_iff _ _ _).1 h2) _ N
     (remaining runLimit cost (Function.update s.real.runs tree (s.real.runs tree + 1)) + L) ?_ cache hidden k
     hno hk (by omega)
@@ -280,17 +283,19 @@ theorem firstTreeRun_birthFrom (D : C.Coalition) (net : Adversary C E Unit PEmpt
   dsimp only
   exact hF () _ c' h' k' hno' hk' (by dsimp only; omega)
 
-theorem firstTreeRuns_birth (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
-    (ready : RealState C net.State → StreamState C → Prop) (tree : Tree)
-    (hblock : BlockBound K circuits settings P cost D net tree) :
-    ∀ count, Birth runLimit P cost N 0 (firstTreeRunsWith prims K circuits settings runLimit D net ready tree count)
+omit [Field E] [Algebra Bit E] in
+theorem firstTreeRuns_birth (D : C.Coalition) {σ β : Type}
+    (block : Tree → RealState C σ → OracleComp (WorldSpec C) β) (out : β → σ × (C.Party → Option TreeOutput))
+    (event : StreamState C → β → StreamState C → Bool) (ready : RealState C σ → StreamState C → Prop) (tree : Tree)
+    (hblock : BlockBound P cost block tree) :
+    ∀ count, Birth runLimit P cost N 0 (firstTreeRunsOf runLimit D (blockRun prims D block out event) ready tree count)
   | 0 => birth_pure _
   | count + 1 => by
-    unfold firstTreeRunsWith
+    unfold firstTreeRunsOf
     refine birth_get_bind fun s => ?_
     split_ifs with hmay
-    · exact birthFrom_bind (n := 0) (l := 0) (firstTreeRun_birthFrom prims K circuits settings D net ready tree
-        hblock s (FirstCounts.mayRun_lt runLimit hmay)) fun _ => firstTreeRuns_birth D net ready tree hblock count
+    · exact birthFrom_bind (n := 0) (l := 0) (firstTreeRun_birthFrom prims D block out event ready tree
+        hblock s (FirstCounts.mayRun_lt runLimit hmay)) fun _ => firstTreeRuns_birth D block out event ready tree hblock count
     · exact birth_pure () s
 
 /-- A local call that adds a cell of `P` is in class `c` when each input of `P` is in class `c`. -/
@@ -334,13 +339,15 @@ theorem inStream_birth_zero {c : HashClass} (hPc : ∀ q, P q → queryClass q =
   inStream_birth prims D oa 0 (h.of_imp fun _ ht => adds_of_counted hPc ht)
     (h.of_imp fun _ ht => adds_of_program ht)
 
+omit [Field E] [Algebra Bit E] in
 theorem firstTreeRequest_birth {c : HashClass} (hc : c ≠ .signing) (hPc : ∀ q, P q → queryClass q = c)
-    (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
-    (ready : RealState C net.State → StreamState C → Prop) (b : Fin (2 ^ layerHeight))
-    (hblock : BlockBound K circuits settings P cost D net (.bottom b)) :
-    Birth runLimit P cost N 0 (firstTreeRequestWith prims K circuits settings runLimit D net ready b) := by
-  unfold firstTreeRequestWith
-  refine birth_bind (n := 0) (l := 0) (firstTreeRuns_birth prims K circuits settings D net ready _ hblock 1)
+    (D : C.Coalition) {σ β : Type} (block : Tree → RealState C σ → OracleComp (WorldSpec C) β)
+    (out : β → σ × (C.Party → Option TreeOutput)) (event : StreamState C → β → StreamState C → Bool)
+    (ready : RealState C σ → StreamState C → Prop) (b : Fin (2 ^ layerHeight))
+    (hblock : BlockBound P cost block (.bottom b)) :
+    Birth runLimit P cost N 0 (firstTreeRequestOf prims runLimit D (blockRun prims D block out event) ready b) := by
+  unfold firstTreeRequestOf
+  refine birth_bind (n := 0) (l := 0) (firstTreeRuns_birth prims D block out event ready _ hblock 1)
     fun _ => birth_get_bind fun s => ?_
   split
   · exact birth_bind (n := 0) (l := 0) (inStream_birth_zero prims hPc D _
@@ -422,13 +429,17 @@ theorem firstSignRequest_birth {c : HashClass} (hPc : ∀ q, P q → queryClass 
     birthT_bind (n := 0) (l := 0) (birthT_lift (birth_get_bind fun s => birth_pure s s)) fun s => ?_
   exact operatorAnswer_birth prims hPc hsign D _ _ _ _
 
+omit [Field E] [Algebra Bit E] in
 theorem firstSigning_birth {c : HashClass} (hc : c ≠ .signing) (hPc : ∀ q, P q → queryClass q = c)
-    (D : C.Coalition) (A : DkgTsigAdversary C E) (ready : RealState C A.net.State → StreamState C → Prop)
+    (D : C.Coalition) (A : DkgTsigAdversary C E) {β : Type}
+    (block : Tree → RealState C A.net.State → OracleComp (WorldSpec C) β)
+    (out : β → A.net.State × (C.Party → Option TreeOutput)) (event : StreamState C → β → StreamState C → Bool)
+    (ready : RealState C A.net.State → StreamState C → Prop)
     (forge : ℕ) (hforge : ∀ pk top, IsQueryBoundP (A.forge pk top) (ForgeInClass c) forge)
-    (hblock : ∀ tree, BlockBound K circuits settings P cost D A.net tree)
+    (hblock : ∀ tree, BlockBound P cost block tree)
     (hsign : FirstCounts.SignQuiet (C := C) c) :
-    Birth runLimit P cost N forge (firstSigningWith prims K circuits settings runLimit D A ready) := by
-  unfold firstSigningWith
+    Birth runLimit P cost N forge (firstSigningOf prims runLimit D A (blockRun prims D block out event) ready) := by
+  unfold firstSigningOf
   refine birth_get_bind fun s => ?_
   split
   · refine birthFrom_mono (birth_bind (l := 0) (birthT_simulateQ _ (ForgeInClass c) (fun q => ?_) _ forge
@@ -446,7 +457,7 @@ theorem firstSigning_birth {c : HashClass} (hc : c ≠ .signing) (hPc : ∀ q, P
     · simp only [ForgeInClass, ↓reduceIte]
       rcases q with i | b | ⟨i, J, e, message⟩ | ⟨i, J, e, message, parts⟩
       · exact fun t => birth_pure _
-      · exact birthT_lift (firstTreeRequest_birth prims K circuits settings hc hPc D A.net ready b (hblock _))
+      · exact birthT_lift (firstTreeRequest_birth prims hc hPc D block out event ready b (hblock _))
       all_goals exact firstSignRequest_birth prims hPc hsign D i e _
     · simp only [ForgeInClass, ↓reduceIte]
       rcases q with _ | state
@@ -475,24 +486,27 @@ attribute [local instance] inhabitedField
 
 variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
 
-/-- The birthday bound of the domain `P` at the end of `firstRunWith`. Each input of `P` is in the class
-`c`, which is not `signing`. The seed generation makes at most `seed` calls that add a cell of `P`,
-each run of `tree` at most `cost tree`, and `forge` at most `forge` calls in class `c`. No part makes a
+omit [Field E] [Algebra Bit E] in
+/-- The birthday bound of the domain `P` at the end of `firstRunOf` for a block run. Each input of `P`
+is in the class `c`, which is not `signing`. The seed generation makes at most `seed` calls that add a
+cell of `P`, each run of `tree` at most `cost tree`, and `forge` at most `forge` calls in class `c`. No part makes a
 programming call. Then a collision in `P` at the end has probability at most `birthdaySum 0 N`, with
 `N` the sum of these counts over the game. -/
 theorem firstRun_birthday {c : HashClass} (hc : c ≠ .signing) (P : Query C → Prop)
-    (hPc : ∀ q, P q → queryClass q = c) (cost : Tree → ℕ) (D : C.Coalition) (A : DkgTsigAdversary C E)
+    (hPc : ∀ q, P q → queryClass q = c) (cost : Tree → ℕ) (D : C.Coalition) (A : DkgTsigAdversary C E) {β : Type}
+    (block : Tree → RealState C A.net.State → OracleComp (WorldSpec C) β)
+    (out : β → A.net.State × (C.Party → Option TreeOutput)) (event : StreamState C → β → StreamState C → Bool)
     (ready : RealState C A.net.State → StreamState C → Prop) (seed forge : ℕ)
     (hseed : IsQueryBoundP (realExecution D A.net noFunctionality setupRounds
       (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) (fun _ => ()) []) (WorldRegionCounted P) seed)
     (hseedProgram : IsQueryBoundP (realExecution D A.net noFunctionality setupRounds
       (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) (fun _ => ()) []) WorldProgramQuery 0)
     (hforge : ∀ pk top, IsQueryBoundP (A.forge pk top) (ForgeInClass c) forge)
-    (hblock : ∀ tree, BlockBound K circuits settings P cost D A.net tree)
+    (hblock : ∀ tree, BlockBound P cost block tree)
     (hsign : FirstCounts.SignQuiet (C := C) c) :
-    Pr{let r ← firstRunWith prims K circuits settings runLimit D A ready}[DomainCollision P r.2.1] ≤
+    Pr{let r ← firstRunOf prims runLimit D A (blockRun prims D block out event) ready}[DomainCollision P r.2.1] ≤
       birthdaySum 0 (seed + FirstCounts.remaining runLimit cost (fun _ => 0) + forge) := by
-  unfold firstRunWith
+  unfold firstRunOf
   have hno : ¬ DomainCollision P (∅ : HashCache C) := by
     rintro ⟨_, _, _, _, _, h, _⟩
     simp [splitRegionCache] at h
@@ -501,8 +515,8 @@ theorem firstRun_birthday {c : HashClass} (hc : c ≠ .signing) (P : Query C →
   refine world_birthday prims D P _ seed hseed hseedProgram _ _ (FirstCounts.remaining runLimit cost (fun _ => 0) + forge)
     ?_ ∅ ∅ 0 hno hk (by omega)
   rintro ⟨state, keys⟩ cache hidden k hno' hk' hkN
-  have hB := birth_bind (N := seed + FirstCounts.remaining runLimit cost (fun _ => 0) + forge) (firstTreeRuns_birth prims K circuits settings D A.net ready .top (hblock .top) runLimit)
-    (fun _ => firstSigning_birth prims K circuits settings hc hPc D A ready forge hforge hblock hsign)
+  have hB := birth_bind (N := seed + FirstCounts.remaining runLimit cost (fun _ => 0) + forge) (firstTreeRuns_birth prims D block out event ready .top (hblock .top) runLimit)
+    (fun _ => firstSigning_birth prims hc hPc D A block out event ready forge hforge hblock hsign)
     ⟨startState D state keys, if (startState D state keys).flag then some (.seeds, (cache, hidden)) else none⟩
     Unit pure 0 (fun _ => safe_pure 0 ()) cache hidden k hno' hk' (by
       change k + FirstCounts.remaining runLimit cost (fun _ => 0) + (0 + forge + 0) ≤ _
@@ -651,17 +665,56 @@ theorem counted_or {c : HashClass} {P : Query C → Prop} (hPc : ∀ q, P q → 
 theorem birthdaySum_mono (k : ℕ) {N M : ℕ} (h : N ≤ M) : birthdaySum k N ≤ birthdaySum k M :=
   Finset.sum_le_sum_of_subset (Finset.range_subset_range.2 (by omega))
 
+/-- The block `block` keeps the honest budgets of the domain `P`. For each honest budget of the plain
+runs and each bound `step` on the calls of class `c` of a round of the network, each run of the block
+makes at most `treeFuel * step` calls of the network and the honest calls of the budget that add a cell
+of `P`, and no programming call. -/
+def KeepsBudget (c : HashClass) (P : Query C → Prop) (net : Adversary C E Unit PEmpty PEmpty) {β : Type}
+    (block : Tree → RealState C net.State → OracleComp (WorldSpec C) β) : Prop :=
+  ∀ seed honestRun, HonestBudget K circuits settings P seed honestRun → ∀ step,
+    (∀ state sent, IsQueryBoundP (net.round state sent) (InClass c) step) → ∀ tree,
+      BlockBound P (fun tree => treeFuel circuits settings * step + honestRun tree) block tree
+
 omit [Fintype E] [DecidableEq E] in
-/-- The collision hop of the domain `P` from the honest budgets. Each input of `P` is in the class `c`,
-which is not `signing`. At the world of the first bad record, two cells of `P` collide with probability
-at most `(q + H)² / 2^257`, with `H` the honest cells of the seed generation and of `runLimit` runs of
-each tree. -/
-theorem firstCollision_le {c : HashClass} (hc : c ≠ .signing) (P : Query C → Prop)
+/-- The block of `streamTreeRun` keeps the honest budgets of each domain of a class that is not
+`signing`. The monitor `wrongOutput` adds no cell of the domain and makes no programming call. -/
+theorem treeBlock_keepsBudget {c : HashClass} (hc : c ≠ .signing) {P : Query C → Prop}
+    (hPc : ∀ q, P q → queryClass q = c) (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) :
+    KeepsBudget K circuits settings c P net (FirstCounts.treeBlock K circuits settings D net) := by
+  intro seed honestRun hbudget step hround tree s
+  unfold FirstCounts.treeBlock
+  refine ⟨GameCount.bound_mono (GameCount.bound_bind (m := 0) ((GameCount.bound_iff _ _ _).2
+    (FirstCounts.isQueryBoundP_add (fun _ => counted_or hPc) _ _ _
+      (FirstCounts.ownAdds_executePhase c D net step hround _ _ _)
+      ((GameCount.bound_iff _ _ _).1 (hbudget.2 D net tree s)))) fun r => ?_) (Nat.add_zero _).le,
+    GameCount.bound_bind (n := 0) (m := 0) (FirstCounts.bound_of_noCall
+      (noProgram_executePhase D net _ _ _)) fun r => ?_⟩
+  · exact GameCount.bound_mono (GameCount.bound_bind (n := 0) (m := 0) (FirstCounts.bound_of_noCall
+      (GameCount.wrongOutput_noCall D (WorldRegionCounted P)
+        (fun _ ht hw => FirstCounts.monitorCall_not_adds hc ht (adds_of_counted hPc hw)) _ _ _))
+      fun _ => GameCount.bound_pure _ _) le_rfl
+  · refine GameCount.bound_bind (n := 0) (m := 0) (FirstCounts.bound_of_noCall
+      (GameCount.wrongOutput_noCall D WorldProgramQuery (fun t ht hp => ?_) _ _ _)) fun _ => GameCount.bound_pure _ _
+    rcases t with (u | y) | u
+    · exact ht.elim
+    · exact ht.elim
+    · exact hp.elim
+
+omit [Fintype E] [DecidableEq E] in
+/-- The collision hop of the domain `P` for each block run that keeps the honest budgets of `P`. Each
+input of `P` is in the class `c`, which is not `signing`. At the world of the first bad record, two
+cells of `P` collide with probability at most `(q + H)² / 2^257`, with `H` the honest cells of the seed
+generation and of `runLimit` runs of each tree. -/
+theorem firstCollisionOf_le {c : HashClass} (hc : c ≠ .signing) (P : Query C → Prop)
     (hPc : ∀ q, P q → queryClass q = c) (seed : ℕ) (honestRun : Tree → ℕ)
     (hbudget : HonestBudget K circuits settings P seed honestRun) (hsign : FirstCounts.SignQuiet (C := C) c)
     (prims : Primitives) (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ)
-    (ready : RealState C A.net.State → StreamState C → Prop) (hA : DkgTsigBounded circuits settings runLimit A q) :
-    firstCollisionWith prims K circuits settings runLimit D A ready P ≤
+    (ready : RealState C A.net.State → StreamState C → Prop) (hA : DkgTsigBounded circuits settings runLimit A q)
+    {β : Type} (block : Tree → RealState C A.net.State → OracleComp (WorldSpec C) β)
+    (out : β → A.net.State × (C.Party → Option TreeOutput)) (event : StreamState C → β → StreamState C → Bool)
+    (hblock : KeepsBudget K circuits settings c P A.net block) :
+    (Pr{let r ← firstRunOf prims runLimit D A (blockRun prims D block out event) ready}[
+        ∃ stage world, r.1.first = some (stage, world) ∧ DomainCollision P world.1]).toReal ≤
       (((q + (seed + runLimit * (honestRun .top + ∑ b : Fin (2 ^ layerHeight), honestRun (.bottom b)))) ^ 2 : ℕ) : ℝ) /
         2 ^ 257 := by
   obtain ⟨start, step, forge, hsum, hs, hround, hf⟩ := dkgTsigBounded_classBounded circuits settings runLimit hA c
@@ -674,27 +727,8 @@ theorem firstCollision_le {c : HashClass} (hc : c ≠ .signing) (P : Query C →
       ((GameCount.bound_iff _ _ _).1 (hbudget.1 D A.net))
   have hseedP := (noCall_iff _ _).1 (noProgram_realExecution (E := E) D A.net setupRounds
     (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) (fun _ => ()) [])
-  have hblock : ∀ tree, BlockBound K circuits settings P cost D A.net tree := by
-    intro tree s
-    unfold FirstCounts.treeBlock
-    refine ⟨GameCount.bound_mono (GameCount.bound_bind (m := 0) ((GameCount.bound_iff _ _ _).2
-      (FirstCounts.isQueryBoundP_add (fun _ => counted_or hPc) _ _ _
-        (FirstCounts.ownAdds_executePhase c D A.net step hround _ _ _)
-        ((GameCount.bound_iff _ _ _).1 (hbudget.2 D A.net tree s)))) fun r => ?_) (Nat.add_zero _).le,
-      GameCount.bound_bind (n := 0) (m := 0) (FirstCounts.bound_of_noCall
-        (noProgram_executePhase D A.net _ _ _)) fun r => ?_⟩
-    · exact GameCount.bound_mono (GameCount.bound_bind (n := 0) (m := 0) (FirstCounts.bound_of_noCall
-        (GameCount.wrongOutput_noCall D (WorldRegionCounted P)
-          (fun _ ht hw => FirstCounts.monitorCall_not_adds hc ht (adds_of_counted hPc hw)) _ _ _))
-        fun _ => GameCount.bound_pure _ _) le_rfl
-    · refine GameCount.bound_bind (n := 0) (m := 0) (FirstCounts.bound_of_noCall
-        (GameCount.wrongOutput_noCall D WorldProgramQuery (fun t ht hp => ?_) _ _ _)) fun _ => GameCount.bound_pure _ _
-      rcases t with (u | y) | u
-      · exact ht.elim
-      · exact ht.elim
-      · exact hp.elim
-  have hbirth := firstRun_birthday prims K circuits settings runLimit hc P hPc cost D A ready
-    (start + setupRounds * step + seed) forge hseedW hseedP hf hblock hsign
+  have hbirth := firstRun_birthday prims runLimit hc P hPc cost D A block out event ready
+    (start + setupRounds * step + seed) forge hseedW hseedP hf (hblock seed honestRun hbudget step hround) hsign
   have e : FirstCounts.remaining runLimit cost (fun _ => 0) =
       runLimit * (1 + 2 ^ layerHeight) * treeFuel circuits settings * step +
         runLimit * (honestRun .top + ∑ b : Fin (2 ^ layerHeight), honestRun (.bottom b)) := by
@@ -713,11 +747,11 @@ theorem firstCollision_le {c : HashClass} (hc : c ≠ .signing) (P : Query C →
   have hfin : birthdaySum 0 M ≠ ⊤ := by
     unfold birthdaySum
     exact ENNReal.sum_ne_top.2 fun _ _ => by finiteness
-  unfold firstCollisionWith firstProbWith
   refine (prReal_mono _ _ (fun r => DomainCollision P r.2.1) fun r hr ⟨stage, world, hfirst, hcoll⟩ =>
-    SetupAgree.domainCollision_mono (RecordedCache.recordedBelow prims K circuits settings runLimit D A ready r hr
-      stage world hfirst).1 hcoll).trans ?_
+    SetupAgree.domainCollision_mono (RecordedCache.recordedBelowOf prims runLimit D A _
+      (RecordedCache.blockRun_grows prims D block out event) ready r hr stage world hfirst).1 hcoll).trans ?_
   exact (ENNReal.toReal_mono hfin (hbirth.trans (birthdaySum_mono 0 hNM))).trans (birthdaySum_zero_le M)
+
 
 end Hop
 
@@ -729,6 +763,6 @@ end
 
 end
 
-/-- info: 'ThresholdLeanXmssSecurity.DkgCorrectnessProof.Collision.firstCollision_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.DkgCorrectnessProof.Collision.firstCollisionOf_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.DkgCorrectnessProof.Collision.firstCollision_le
+#print axioms ThresholdLeanXmssSecurity.DkgCorrectnessProof.Collision.firstCollisionOf_le

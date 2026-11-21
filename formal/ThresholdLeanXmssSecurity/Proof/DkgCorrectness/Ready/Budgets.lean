@@ -87,7 +87,7 @@ attribute [local irreducible] streamTreeRun wrongOutput
 theorem firstTreeRun_keeps (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree) :
     Keeps (Inv prims budget D) (firstTreeRunWith prims K circuits settings D net (RunReady prims budget D) tree) := by
   intro s world hs z hz
-  unfold firstTreeRunWith at hz
+  unfold firstTreeRunWith firstTreeRunOf at hz
   simp only [StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, mem_support_bind_iff, StateT.run_set,
     StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
   obtain ⟨_, ⟨x, hx, rfl⟩, rfl⟩ := hz
@@ -150,7 +150,7 @@ theorem firstTreeRuns_keeps (D : C.Coalition) (net : Adversary C E Unit PEmpty P
         (RunReady prims budget D) tree count)
   | 0 => keeps_pure _
   | count + 1 => by
-    unfold firstTreeRunsWith
+    unfold firstTreeRunsWith firstTreeRunsOf
     refine keeps_get_bind fun s => ?_
     split_ifs
     · exact keeps_bind (firstTreeRun_keeps prims K circuits settings budget D net tree) fun _ =>
@@ -161,7 +161,7 @@ theorem firstTreeRequest_keeps (D : C.Coalition) (net : Adversary C E Unit PEmpt
     (b : Fin (2 ^ layerHeight)) :
     Keeps (Inv prims budget D) (firstTreeRequestWith prims K circuits settings runLimit D net
         (RunReady prims budget D) b) := by
-  unfold firstTreeRequestWith
+  unfold firstTreeRequestWith firstTreeRequestOf
   refine keeps_bind (firstTreeRuns_keeps prims K circuits settings runLimit budget D net _ 1) fun _ =>
     keeps_get_bind fun s => ?_
   split
@@ -179,7 +179,7 @@ theorem firstOracles_keeps (D : C.Coalition) (A : DkgTsigAdversary C E) (q : Tsi
 
 theorem firstSigning_keeps (D : C.Coalition) (A : DkgTsigAdversary C E) :
     Keeps (Inv prims budget D) (firstSigningWith prims K circuits settings runLimit D A (RunReady prims budget D)) := by
-  unfold firstSigningWith
+  unfold firstSigningWith firstSigningOf
   refine keeps_get_bind fun s => ?_
   split
   · refine keeps_bind (keepsT_simulateQ _ (fun q => ?_) _ _) fun _ => keeps_pure _
@@ -197,7 +197,7 @@ theorem firstRun_unreadyFails (D : C.Coalition) (A : DkgTsigAdversary C E) :
     ∀ r ∈ support (firstRunWith prims K circuits settings runLimit D A
         (RunReady prims budget D)), UnreadyFails budget r.1.first r.2 := by
   intro r hr
-  unfold firstRunWith at hr
+  unfold firstRunWith firstRunOf at hr
   simp only [StateT.run_bind, mem_support_bind_iff] at hr
   obtain ⟨y, -, hr⟩ := hr
   rcases y with ⟨⟨state, keys⟩, world⟩

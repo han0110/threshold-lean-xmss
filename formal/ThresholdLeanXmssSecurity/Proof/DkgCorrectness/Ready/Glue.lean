@@ -5,8 +5,9 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.RunsUnion
 /-!
 # The readiness hop at the test `RunReadyL`
 
-Part 1 carries `HiddenProvenance` through `firstRunWith` for each test (`firstRunWith_provInv`) and
-proves three of its four preservation statements. Part 2 proves `ReadyHopL` from the four budget parts
+Part 1 carries `HiddenProvenance` through `firstRunOf` for each test and each run that keeps it
+(`firstRunOf_provInv`, with `firstRunWith_provInv` as its instance) and proves three of its four
+preservation statements. Part 2 proves `ReadyHopL` from the four budget parts
 at the test `RunReadyL` (`readyHopL_of_budgets`). Part 3 couples the game at `RunReadyL` with the game
 at `RunReady` (`firstRunWith_coupled`), so that each budget part at `RunReady` gives the part at
 `RunReadyL`. `readyHopL_of_ends` proves `ReadyHopL` from `Ready.SoundAtEnd`, `HiddenAtEnd` and
@@ -191,16 +192,22 @@ theorem provenanceSigning : ProvenanceSigning prims (C := C) := by
         ((SigningSelectionProof.noCall_iff _ _).1
         (DigestBudgets.noCall_of_onlySign (by decide) (GameCount.onlySign_prfValue _ x)))) world hw y hy
 
-omit [Fintype E] [DecidableEq E] in
-theorem firstTreeRunWith_provInv (treeRun : ProvenanceTreeRun prims K circuits settings) (D : C.Coalition)
-    (net : Adversary C E Unit PEmpty PEmpty) (ready : RealState C net.State → StreamState C → Prop) (tree : Tree) :
-    Keeps (ProvInv D) (firstTreeRunWith prims K circuits settings D net ready tree) := by
+/-- Each run of the run `run` keeps the provenance of the hidden keys. `ProvenanceTreeRun` states it for
+`streamTreeRun`. -/
+def ProvenanceRun (D : C.Coalition) {σ : Type} (run : RunOf C σ) : Prop :=
+  ∀ (tree : Tree) (s : RealState C σ) (world : StreamState C), HiddenProvenance D world →
+    ∀ r ∈ support ((run tree s).run world), HiddenProvenance D r.2
+
+omit [Fintype E] [DecidableEq E] [Field E] [Algebra Bit E] in
+theorem firstTreeRunOf_provInv (D : C.Coalition) {σ : Type} (run : RunOf C σ) (treeRun : ProvenanceRun D run)
+    (ready : RealState C σ → StreamState C → Prop) (tree : Tree) :
+    Keeps (ProvInv D) (firstTreeRunOf run ready tree) := by
   intro s world hs z hz
-  unfold firstTreeRunWith at hz
+  unfold firstTreeRunOf at hz
   simp only [StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, mem_support_bind_iff, StateT.run_set,
     StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
   obtain ⟨_, ⟨x, hx, rfl⟩, rfl⟩ := hz
-  have hafter : HiddenProvenance D x.2 := treeRun D net tree s.real world hs.1 x hx
+  have hafter : HiddenProvenance D x.2 := treeRun tree s.real world hs.1 x hx
   refine ⟨hafter, fun stage w hw => ?_⟩
   change ((s.first <|> if ready s.real world then none
     else some (.unready tree (s.real.runs tree), world)) <|>
@@ -220,17 +227,17 @@ theorem firstTreeRunWith_provInv (treeRun : ProvenanceTreeRun prims K circuits s
       obtain ⟨-, rfl⟩ := Prod.mk.inj (Option.some.inj hw)
       exact hs.1
 
-omit [Fintype E] [DecidableEq E] in
-theorem firstTreeRunsWith_provInv (treeRun : ProvenanceTreeRun prims K circuits settings) (D : C.Coalition)
-    (net : Adversary C E Unit PEmpty PEmpty) (ready : RealState C net.State → StreamState C → Prop) (tree : Tree) :
-    ∀ count, Keeps (ProvInv D) (firstTreeRunsWith prims K circuits settings runLimit D net ready tree count)
+omit [Fintype E] [DecidableEq E] [Field E] [Algebra Bit E] in
+theorem firstTreeRunsOf_provInv (D : C.Coalition) {σ : Type} (run : RunOf C σ) (treeRun : ProvenanceRun D run)
+    (ready : RealState C σ → StreamState C → Prop) (tree : Tree) :
+    ∀ count, Keeps (ProvInv D) (firstTreeRunsOf runLimit D run ready tree count)
   | 0 => keeps_pure _
   | count + 1 => by
-    unfold firstTreeRunsWith
+    unfold firstTreeRunsOf
     refine keeps_get_bind fun s => ?_
     split_ifs
-    · exact keeps_bind (firstTreeRunWith_provInv prims K circuits settings treeRun D net ready tree) fun _ =>
-        firstTreeRunsWith_provInv treeRun D net ready tree count
+    · exact keeps_bind (firstTreeRunOf_provInv D run treeRun ready tree) fun _ =>
+        firstTreeRunsOf_provInv D run treeRun ready tree count
     · exact keeps_pure _
 
 omit [Fintype E] [DecidableEq E] [Field E] [Algebra Bit E] in
@@ -243,13 +250,13 @@ theorem firstValue_provInv (signing : ProvenanceSigning prims (C := C)) (D : C.C
         (topKey ⟨0, Nat.two_pow_pos _⟩) (.tree ⟨0, Nat.two_pow_pos _⟩) ⟨D.1, fun _ => none, [], fun _ => none⟩
         s x w hw).2 z hz
 
-omit [Fintype E] [DecidableEq E] in
-theorem firstTreeRequestWith_provInv (treeRun : ProvenanceTreeRun prims K circuits settings)
-    (signing : ProvenanceSigning prims (C := C)) (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
-    (ready : RealState C net.State → StreamState C → Prop) (b : Fin (2 ^ layerHeight)) :
-    Keeps (ProvInv D) (firstTreeRequestWith prims K circuits settings runLimit D net ready b) := by
-  unfold firstTreeRequestWith
-  refine keeps_bind (firstTreeRunsWith_provInv prims K circuits settings runLimit treeRun D net ready _ 1)
+omit [Fintype E] [DecidableEq E] [Field E] [Algebra Bit E] in
+theorem firstTreeRequestOf_provInv (signing : ProvenanceSigning prims (C := C)) (D : C.Coalition) {σ : Type}
+    (run : RunOf C σ) (treeRun : ProvenanceRun D run) (ready : RealState C σ → StreamState C → Prop)
+    (b : Fin (2 ^ layerHeight)) :
+    Keeps (ProvInv D) (firstTreeRequestOf prims runLimit D run ready b) := by
+  unfold firstTreeRequestOf
+  refine keeps_bind (firstTreeRunsOf_provInv runLimit D run treeRun ready _ 1)
     fun _ => keeps_get_bind fun s => ?_
   split
   · exact keeps_bind (firstValue_provInv prims signing D _ _) fun _ => keeps_pure _
@@ -265,44 +272,44 @@ theorem firstSignRequest_provInv (signing : ProvenanceSigning prims (C := C)) (D
   exact keeps_provInv (operatorAnswer_keepsG prims _ (fun _ _ _ h _ => h) D _ _ e q t)
     fun fs w hw z hz => (signing D s.real.operators (s.real.operators i) e q t fs (.randomizer topLayer e) w hw).1 z hz
 
-omit [Fintype E] [DecidableEq E] in
-theorem firstOraclesWith_provInv (treeRun : ProvenanceTreeRun prims K circuits settings)
-    (signing : ProvenanceSigning prims (C := C)) (D : C.Coalition) (A : DkgTsigAdversary C E)
-    (ready : RealState C A.net.State → StreamState C → Prop) (q : TsigQuery C) :
-    KeepsT (ProvInv D) (firstOraclesWith prims K circuits settings runLimit D A ready q) := by
+omit [Fintype E] [DecidableEq E] [Field E] [Algebra Bit E] in
+theorem firstOraclesOf_provInv (signing : ProvenanceSigning prims (C := C)) (D : C.Coalition) {σ : Type}
+    (run : RunOf C σ) (treeRun : ProvenanceRun D run) (ready : RealState C σ → StreamState C → Prop)
+    (q : TsigQuery C) :
+    KeepsT (ProvInv D) (firstOraclesOf prims runLimit D run ready q) := by
   rcases q with i | b | ⟨i, J, e, message⟩ | ⟨i, J, e, message, parts⟩
   · exact fun t => keeps_pure _
-  · exact keepsT_lift (firstTreeRequestWith_provInv prims K circuits settings runLimit treeRun signing D A.net ready b)
+  · exact keepsT_lift (firstTreeRequestOf_provInv prims runLimit signing D run treeRun ready b)
   · exact firstSignRequest_provInv prims signing D i e _
   · exact firstSignRequest_provInv prims signing D i e _
 
-omit [Fintype E] [DecidableEq E] in
-theorem firstSigningWith_provInv (treeRun : ProvenanceTreeRun prims K circuits settings)
-    (counted : ProvenanceCounted prims (C := C)) (signing : ProvenanceSigning prims (C := C)) (D : C.Coalition)
-    (A : DkgTsigAdversary C E) (ready : RealState C A.net.State → StreamState C → Prop) :
-    Keeps (ProvInv D) (firstSigningWith prims K circuits settings runLimit D A ready) := by
-  unfold firstSigningWith
+omit [Fintype E] [DecidableEq E] [Field E] [Algebra Bit E] in
+theorem firstSigningOf_provInv (counted : ProvenanceCounted prims (C := C))
+    (signing : ProvenanceSigning prims (C := C)) (D : C.Coalition) (A : DkgTsigAdversary C E)
+    (run : RunOf C A.net.State) (treeRun : ProvenanceRun D run) (ready : RealState C A.net.State → StreamState C → Prop) :
+    Keeps (ProvInv D) (firstSigningOf prims runLimit D A run ready) := by
+  unfold firstSigningOf
   refine keeps_get_bind fun s => ?_
   split
   · refine keeps_bind (keepsT_simulateQ _ (fun q => ?_) _ _) fun _ => keeps_pure _
     rcases q with t | q | q
     · exact keepsT_lift (inStream_provInv prims D (counted D _))
-    · exact firstOraclesWith_provInv prims K circuits settings runLimit treeRun signing D A ready q
+    · exact firstOraclesOf_provInv prims runLimit signing D run treeRun ready q
     · rcases q with _ | state
       · exact keepsT_lift (keeps_bind keeps_get fun _ => keeps_pure _)
       · exact keepsT_lift (keeps_modify _ fun s w hs => hs)
   · exact keeps_pure _
 
-omit [Fintype E] [DecidableEq E] in
-/-- The walk of the game. Each final state of `firstRunWith`, for each test, has the provenance in
-its final world and in its saved snapshot. -/
-theorem firstRunWith_provInv (seedGen : ProvenanceSeedGen prims (C := C) (E := E))
-    (treeRun : ProvenanceTreeRun prims K circuits settings) (counted : ProvenanceCounted prims (C := C))
-    (signing : ProvenanceSigning prims (C := C)) (D : C.Coalition) (A : DkgTsigAdversary C E)
+omit [Fintype E] [DecidableEq E] [Field E] [Algebra Bit E] in
+/-- The walk of the game for each run that keeps the provenance. Each final state of `firstRunOf`,
+for each test, has the provenance in its final world and in its saved snapshot. -/
+theorem firstRunOf_provInv (seedGen : ProvenanceSeedGen prims (C := C) (E := E))
+    (counted : ProvenanceCounted prims (C := C)) (signing : ProvenanceSigning prims (C := C)) (D : C.Coalition)
+    (A : DkgTsigAdversary C E) (run : RunOf C A.net.State) (treeRun : ProvenanceRun D run)
     (ready : RealState C A.net.State → StreamState C → Prop) :
-    ∀ r ∈ support (firstRunWith prims K circuits settings runLimit D A ready), ProvInv D r.1 r.2 := by
+    ∀ r ∈ support (firstRunOf prims runLimit D A run ready), ProvInv D r.1 r.2 := by
   intro r hr
-  unfold firstRunWith at hr
+  unfold firstRunOf at hr
   simp only [StateT.run_bind, mem_support_bind_iff] at hr
   obtain ⟨y, hy, hr⟩ := hr
   rcases y with ⟨⟨state, keys⟩, world⟩
@@ -315,9 +322,19 @@ theorem firstRunWith_provInv (seedGen : ProvenanceSeedGen prims (C := C) (E := E
     split_ifs at hw
     obtain ⟨-, rfl⟩ := Prod.mk.inj (Option.some.inj hw)
     exact hworld
-  exact keeps_bind (firstTreeRunsWith_provInv prims K circuits settings runLimit treeRun D A.net ready .top runLimit)
-    (fun _ => firstSigningWith_provInv prims K circuits settings runLimit treeRun counted signing D A ready)
+  exact keeps_bind (firstTreeRunsOf_provInv runLimit D run treeRun ready .top runLimit)
+    (fun _ => firstSigningOf_provInv prims runLimit counted signing D A run treeRun ready)
     _ world hstart x (by rw [StateT.run_bind, StateT.run_bind, mem_support_bind_iff]; exact ⟨z, hz, hx⟩)
+
+omit [Fintype E] [DecidableEq E] in
+/-- The walk of the game. Each final state of `firstRunWith`, for each test, has the provenance in
+its final world and in its saved snapshot. -/
+theorem firstRunWith_provInv (seedGen : ProvenanceSeedGen prims (C := C) (E := E))
+    (treeRun : ProvenanceTreeRun prims K circuits settings) (counted : ProvenanceCounted prims (C := C))
+    (signing : ProvenanceSigning prims (C := C)) (D : C.Coalition) (A : DkgTsigAdversary C E)
+    (ready : RealState C A.net.State → StreamState C → Prop) :
+    ∀ r ∈ support (firstRunWith prims K circuits settings runLimit D A ready), ProvInv D r.1 r.2 :=
+  firstRunOf_provInv prims runLimit seedGen counted signing D A _ (treeRun D A.net) ready
 
 omit [Fintype E] [DecidableEq E] in
 /-- `ProvenanceAtUnready` from the four preservation statements. -/
@@ -389,7 +406,7 @@ theorem firstTreeRunWith_keepsL (budget : StartBudget) (D : C.Coalition) (net : 
     (tree : Tree) :
     Keeps (InvL prims budget D) (firstTreeRunWith prims K circuits settings D net (RunReadyL prims budget D) tree) := by
   intro s world hs z hz
-  unfold firstTreeRunWith at hz
+  unfold firstTreeRunWith firstTreeRunOf at hz
   simp only [StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, mem_support_bind_iff, StateT.run_set,
     StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
   obtain ⟨_, ⟨x, hx, rfl⟩, rfl⟩ := hz
@@ -453,7 +470,7 @@ theorem firstTreeRunsWith_keepsL (budget : StartBudget) (D : C.Coalition) (net :
       (firstTreeRunsWith prims K circuits settings runLimit D net (RunReadyL prims budget D) tree count)
   | 0 => keeps_pure _
   | count + 1 => by
-    unfold firstTreeRunsWith
+    unfold firstTreeRunsWith firstTreeRunsOf
     refine keeps_get_bind fun s => ?_
     split_ifs
     · exact keeps_bind (firstTreeRunWith_keepsL prims K circuits settings budget D net tree) fun _ =>
@@ -464,7 +481,7 @@ omit [Fintype E] [DecidableEq E] in
 theorem firstTreeRequestWith_keepsL (budget : StartBudget) (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
     (b : Fin (2 ^ layerHeight)) : Keeps (InvL prims budget D)
       (firstTreeRequestWith prims K circuits settings runLimit D net (RunReadyL prims budget D) b) := by
-  unfold firstTreeRequestWith
+  unfold firstTreeRequestWith firstTreeRequestOf
   refine keeps_bind (firstTreeRunsWith_keepsL prims K circuits settings runLimit budget D net _ 1) fun _ =>
     keeps_get_bind fun s => ?_
   split
@@ -483,7 +500,7 @@ omit [Fintype E] [DecidableEq E] in
 theorem firstSigningWith_keepsL (budget : StartBudget) (D : C.Coalition) (A : DkgTsigAdversary C E) :
     Keeps (InvL prims budget D) (firstSigningWith prims K circuits settings runLimit D A
         (RunReadyL prims budget D)) := by
-  unfold firstSigningWith
+  unfold firstSigningWith firstSigningOf
   refine keeps_get_bind fun s => ?_
   split
   · refine keeps_bind (keepsT_simulateQ _ (fun q => ?_) _ _) fun _ => keeps_pure _
@@ -505,7 +522,7 @@ theorem firstRunWith_unreadyFailsL (budget : StartBudget) (D : C.Coalition) (A :
     ∀ r ∈ support (firstRunWith prims K circuits settings runLimit D A (RunReadyL prims budget D)),
       UnreadyFailsL budget D r.1.first r.2 := by
   intro r hr
-  unfold firstRunWith at hr
+  unfold firstRunWith firstRunOf at hr
   simp only [StateT.run_bind, mem_support_bind_iff] at hr
   obtain ⟨y, -, hr⟩ := hr
   rcases y with ⟨⟨state, keys⟩, world⟩
@@ -675,7 +692,7 @@ theorem firstTreeRunWith_sim (budget : StartBudget) (D : C.Coalition) (net : Adv
     Sim budget (firstTreeRunWith prims K circuits settings D net (RunReadyL prims budget D) tree)
       (firstTreeRunWith prims K circuits settings D net (RunReady prims budget D) tree) := by
   intro s s' w hc z hz
-  unfold firstTreeRunWith at hz
+  unfold firstTreeRunWith firstTreeRunOf at hz
   simp only [StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, mem_support_bind_iff, StateT.run_set,
     StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
   obtain ⟨_, ⟨x, hx, rfl⟩, rfl⟩ := hz
@@ -686,7 +703,7 @@ theorem firstTreeRunWith_sim (budget : StartBudget) (D : C.Coalition) (net : Adv
       (s'.first <|> if RunReady prims budget D s'.real w then none
         else some (.unready tree (s'.real.runs tree), w)) <|>
         if x.1.2 then some (.run tree (s'.real.runs tree), x.2) else none⟩), x.2), ?_, rfl, ⟨?_, ?_, ?_⟩, rfl⟩
-  · unfold firstTreeRunWith
+  · unfold firstTreeRunWith firstTreeRunOf
     simp only [StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, mem_support_bind_iff, StateT.run_set,
       StateT.run_pure, support_pure, Set.mem_singleton_iff]
     exact ⟨_, ⟨x, hx, rfl⟩, rfl⟩
@@ -730,7 +747,7 @@ theorem firstTreeRunsWith_sim (budget : StartBudget) (D : C.Coalition) (net : Ad
       (firstTreeRunsWith prims K circuits settings runLimit D net (RunReady prims budget D) tree count)
   | 0 => sim_pure _
   | count + 1 => by
-    unfold firstTreeRunsWith
+    unfold firstTreeRunsWith firstTreeRunsOf
     refine sim_get_bind fun s s' hc => ?_
     rw [hc.1]
     split_ifs
@@ -743,7 +760,7 @@ theorem firstTreeRequestWith_sim (budget : StartBudget) (D : C.Coalition) (net :
     (b : Fin (2 ^ layerHeight)) :
     Sim budget (firstTreeRequestWith prims K circuits settings runLimit D net (RunReadyL prims budget D) b)
       (firstTreeRequestWith prims K circuits settings runLimit D net (RunReady prims budget D) b) := by
-  unfold firstTreeRequestWith
+  unfold firstTreeRequestWith firstTreeRequestOf
   refine sim_bind (firstTreeRunsWith_sim prims K circuits settings runLimit budget D net _ 1) fun _ =>
     sim_get_bind fun s s' hc => ?_
   rw [hc.1]
@@ -755,7 +772,7 @@ omit [Fintype E] [DecidableEq E] in
 theorem firstSigningWith_sim (budget : StartBudget) (D : C.Coalition) (A : DkgTsigAdversary C E) :
     Sim budget (firstSigningWith prims K circuits settings runLimit D A (RunReadyL prims budget D))
       (firstSigningWith prims K circuits settings runLimit D A (RunReady prims budget D)) := by
-  unfold firstSigningWith
+  unfold firstSigningWith firstSigningOf
   refine sim_get_bind fun s s' hc => ?_
   rw [hc.1]
   cases topHolder D s'.real.operators with
@@ -781,8 +798,8 @@ theorem firstRunWith_coupled (budget : StartBudget) (D : C.Coalition) (A : DkgTs
       ∃ r' ∈ support (firstRunWith prims K circuits settings runLimit D A
           (RunReady prims budget D)), Coupled budget r.1 r'.1 ∧ r.2 = r'.2 := by
   intro r hr
-  unfold firstRunWith at hr
-  unfold firstRunWith
+  unfold firstRunWith firstRunOf at hr
+  unfold firstRunWith firstRunOf
   simp only [StateT.run_bind, mem_support_bind_iff] at hr ⊢
   obtain ⟨y, hy, hr⟩ := hr
   rcases y with ⟨⟨state, keys⟩, world⟩

@@ -12,8 +12,9 @@ program that draws only under the keys of that setup. So the program of a top tr
 the tail of a bottom tree, start with one setup each (`treeProgram_top_setupFirst`,
 `bottomHead_setupFirst`, `bottomTail_setupFirst`). `treeRun_hiddenKeyBound` states that one run of
 `tree` adds at most `treeSetups tree` keys under each hidden name, when the honest operators hold one
-parameter. A bottom tree is split one time at the round count of its head. `hiddenAtEnd` proves
-`HiddenAtEnd` by the walk of `firstRunWith`.
+parameter. A bottom tree is split one time at the round count of its head. `firstRunOf_hiddenKeyBound`
+is the walk of `firstRunOf` for each run with that bound (`HiddenRun`), and `hiddenAtEnd` proves
+`HiddenAtEnd` by its instance at `streamTreeRun`.
 -/
 
 section
@@ -268,22 +269,16 @@ theorem simulateQ_hidden_eq (D : C.Coalition) {α : Type} (oa : OracleComp (Worl
       · exact absurd rfl ht
     rw [ih z.1 hk z.2 y hy, hz']
 
-/-- One run of `tree` adds at most `treeSetups tree` keys under each hidden name, when the honest
-operators hold one parameter. A bottom tree is split one time at the round count of its head. -/
-theorem streamTreeRun_hiddenKeyBound (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree)
+/-- The phase of one run of `tree` adds at most `treeSetups tree` keys under each hidden name, when
+the honest operators hold one parameter. A bottom tree is split one time at the round count of its
+head. -/
+theorem treePhase_hiddenKeyBound (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree)
     (s : RealState C net.State) (w : StreamState C) (m : ℕ) (hpar : ParamAgree D s.operators)
     (hb : HiddenKeyBound w.2 m) :
-    ∀ z ∈ support ((streamTreeRun prims K circuits settings D net tree s).run w),
-      HiddenKeyBound z.2.2 (m + treeSetups tree) := by
-  intro z hz
-  unfold streamTreeRun at hz
-  simp only [simulateQ_bind, simulateQ_pure, StateT.run_bind, StateT.run_pure, mem_support_bind_iff, support_pure,
-    Set.mem_singleton_iff] at hz
-  obtain ⟨r, hr, y, hy, rfl⟩ := hz
-  have hmon : y.2.2 = r.2.2 := simulateQ_hidden_eq prims D _ ((noCall_iff _ _).1
-    (GameCount.wrongOutput_noCall D _ (fun t ht h =>
-      FirstCounts.monitorCall_not_adds (c := .stream) nofun ht (adds_of_honestIn h)) _ _ _)) r.2 y hy
-  rw [show (((r.1, y.1), y.2) : _ × StreamState C).2.2 = y.2.2 from rfl, hmon]
+    ∀ r ∈ support ((simulateQ (streamWorld prims D) (executePhase worldRoles D net noFunctionality
+      (treeFuel circuits settings) s.adversary fun i => treeProgram K circuits settings i (s.operators i) tree)).run w),
+      HiddenKeyBound r.2.2 (m + treeSetups tree) := by
+  intro r hr
   cases tree with
   | top =>
     exact phase_hiddenKeyBound prims D net _ _ _ (treeProgram_top_setupFirst D K circuits settings s) w m hb r hr
@@ -306,6 +301,24 @@ theorem streamTreeRun_hiddenKeyBound (D : C.Coalition) (net : Adversary C E Unit
     have h2 := phase_hiddenKeyBound prims D net _ _ _ (bottomTail_setupFirst D K circuits settings s b r1.1.2) r1.2
       (m + 1) h1 r hr
     simpa [treeSetups, Nat.add_assoc] using h2
+
+/-- One run of `tree` adds at most `treeSetups tree` keys under each hidden name, when the honest
+operators hold one parameter. The monitor writes no hidden cell. -/
+theorem streamTreeRun_hiddenKeyBound (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree)
+    (s : RealState C net.State) (w : StreamState C) (m : ℕ) (hpar : ParamAgree D s.operators)
+    (hb : HiddenKeyBound w.2 m) :
+    ∀ z ∈ support ((streamTreeRun prims K circuits settings D net tree s).run w),
+      HiddenKeyBound z.2.2 (m + treeSetups tree) := by
+  intro z hz
+  unfold streamTreeRun at hz
+  simp only [simulateQ_bind, simulateQ_pure, StateT.run_bind, StateT.run_pure, mem_support_bind_iff, support_pure,
+    Set.mem_singleton_iff] at hz
+  obtain ⟨r, hr, y, hy, rfl⟩ := hz
+  have hmon : y.2.2 = r.2.2 := simulateQ_hidden_eq prims D _ ((noCall_iff _ _).1
+    (GameCount.wrongOutput_noCall D _ (fun t ht h =>
+      FirstCounts.monitorCall_not_adds (c := .stream) nofun ht (adds_of_honestIn h)) _ _ _)) r.2 y hy
+  rw [show (((r.1, y.1), y.2) : _ × StreamState C).2.2 = y.2.2 from rfl, hmon]
+  exact treePhase_hiddenKeyBound prims K circuits settings D net tree s w m hpar hb r hr
 
 end TreeRun
 
@@ -350,16 +363,24 @@ theorem inStream_hiddenMoves {σ β : Type} (oa : OracleComp (WorldSpec C) β)
   change y.2.2 _ ≠ none at hcell
   rwa [he] at hcell
 
+omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
+/-- Each run of the run `run` adds at most `treeSetups tree` keys under each hidden name, when the
+honest operators hold one parameter. `streamTreeRun_hiddenKeyBound` states it for `streamTreeRun`. -/
+def HiddenRun {σ : Type} (run : RunOf C σ) : Prop :=
+  ∀ (tree : Tree) (s : RealState C σ) (w : StreamState C) (m : ℕ), ParamAgree D s.operators →
+    HiddenKeyBound w.2 m → ∀ z ∈ support ((run tree s).run w), HiddenKeyBound z.2.2 (m + treeSetups tree)
+
+omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
 /-- A run of `tree` that the game allows keeps the potential. Its setups come from the runs that
 remain. -/
-theorem firstTreeRun_hiddenPot (net : Adversary C E Unit PEmpty PEmpty)
-    (ready : RealState C net.State → StreamState C → Prop) (tree : Tree)
-    (k : ℕ) (s : FirstState C net.State) (w : StreamState C)
+theorem firstTreeRun_hiddenPot {σ : Type} (run : RunOf C σ) (hhidden : HiddenRun D run)
+    (ready : RealState C σ → StreamState C → Prop) (tree : Tree)
+    (k : ℕ) (s : FirstState C σ) (w : StreamState C)
     (hs : HiddenPot runLimit D k s w) (hrun : s.real.runs tree < runLimit) :
-    ∀ z ∈ support (((firstTreeRunWith prims K circuits settings D net ready tree).run s).run w),
+    ∀ z ∈ support (((firstTreeRunOf run ready tree).run s).run w),
       HiddenPot runLimit D k z.1.2 z.2 := by
   intro z hz
-  unfold firstTreeRunWith at hz
+  unfold firstTreeRunOf at hz
   simp only [StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, mem_support_bind_iff, StateT.run_set,
     StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
   obtain ⟨_, ⟨x, hx, rfl⟩, rfl⟩ := hz
@@ -371,7 +392,7 @@ theorem firstTreeRun_hiddenPot (net : Adversary C E Unit PEmpty PEmpty)
   have hk : remaining runLimit treeSetups s.real.runs ≤ k := by
     obtain ⟨keys, hc, -⟩ := hcells (.parameter)
     omega
-  have h := streamTreeRun_hiddenKeyBound prims K circuits settings D net tree s.real w _ hpar hb x hx
+  have h := hhidden tree s.real w _ hpar hb x hx
   refine ⟨?_, fun name => ?_⟩
   · obtain ⟨parameter, hp⟩ := hpar
     exact ⟨parameter, fun i hi keys hkeys => hp i hi keys (by
@@ -437,14 +458,15 @@ theorem paramAgree_start (D : C.Coalition) (A : DkgTsigAdversary C E) (state : A
     exact ⟨kj.parameter, fun i hi ki hki => hagree i j ki kj hi hj hki hkj⟩
   · refine ⟨0, fun i hi ki hki => absurd ⟨i, hi, ki, hki⟩ h⟩
 
-/-- The hidden keys at the end of `firstRunWith`, for each readiness test. Each name has at most the
-setups of `runLimit` runs of each tree. -/
-theorem firstRun_hiddenKeyBound (D : C.Coalition) (A : DkgTsigAdversary C E)
-    (ready : RealState C A.net.State → StreamState C → Prop) :
-    ∀ r ∈ support (firstRunWith prims K circuits settings runLimit D A ready),
+omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
+/-- The hidden keys at the end of `firstRunOf`, for each readiness test and each run with the bound
+`HiddenRun`. Each name has at most the setups of `runLimit` runs of each tree. -/
+theorem firstRunOf_hiddenKeyBound (D : C.Coalition) (A : DkgTsigAdversary C E) (run : RunOf C A.net.State)
+    (hhidden : HiddenRun D run) (ready : RealState C A.net.State → StreamState C → Prop) :
+    ∀ r ∈ support (firstRunOf prims runLimit D A run ready),
       HiddenKeyBound r.2.2 (gameSetups runLimit) := by
   intro r hr
-  unfold firstRunWith at hr
+  unfold firstRunOf at hr
   simp only [StateT.run_bind, mem_support_bind_iff] at hr
   obtain ⟨y, hy, hr⟩ := hr
   rcases y with ⟨⟨state, keys⟩, world⟩
@@ -468,12 +490,12 @@ theorem firstRun_hiddenKeyBound (D : C.Coalition) (A : DkgTsigAdversary C E)
     rw [isQueryBoundP_query_iff]
     exact fun h => h.elim
   obtain ⟨-, hcells⟩ := FirstCounts.moves_bind
-    (firstTreeRuns_walk prims K circuits settings runLimit D A.net (HiddenPot runLimit D) ready .top
-      (firstTreeRun_hiddenPot prims K circuits settings runLimit D A.net ready .top) runLimit)
-    (fun _ => firstSigning_walk prims K circuits settings runLimit D .stream nofun
-      (DigestBudgets.signQuiet nofun) A (HiddenPot runLimit D)
+    (firstTreeRuns_walk runLimit D (HiddenPot runLimit D) run ready .top
+      (firstTreeRun_hiddenPot runLimit D run hhidden ready .top) runLimit)
+    (fun _ => firstSigning_walk prims runLimit D .stream nofun
+      (DigestBudgets.signQuiet nofun) A run (HiddenPot runLimit D)
       (hiddenPot_mono runLimit D) ready
-      (fun tree => firstTreeRun_hiddenPot prims K circuits settings runLimit D A.net ready tree)
+      (fun tree => firstTreeRun_hiddenPot runLimit D run hhidden ready tree)
       (hiddenPot_quiet prims runLimit D) (hiddenPot_frame runLimit D) (fun _ => False) (fun _ h => h) (fun t => by simpa using hcall t) 0
       fun _ _ => isQueryBoundP_false _)
     _ _ world hpot x (by rw [StateT.run_bind, StateT.run_bind, mem_support_bind_iff]; exact ⟨z, hz, hx⟩)
@@ -485,7 +507,8 @@ theorem firstRun_hiddenKeyBound (D : C.Coalition) (A : DkgTsigAdversary C E)
 
 /-- At the end of the game each hidden name has at most `gameSetups` keys. -/
 theorem hiddenAtEnd : HiddenAtEnd prims K circuits settings runLimit := fun D A _ _ r hr =>
-  firstRun_hiddenKeyBound prims K circuits settings runLimit D A _ r hr
+  firstRunOf_hiddenKeyBound prims runLimit D A _
+    (fun tree s w m => streamTreeRun_hiddenKeyBound prims K circuits settings D A.net tree s w m) _ r hr
 
 end End
 
