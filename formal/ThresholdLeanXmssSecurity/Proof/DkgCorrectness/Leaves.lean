@@ -33,10 +33,6 @@ structure UsedHitParts : Prop where
   bottomFresh : ∀ prims, UsedHit.BottomLawFresh K circuits settings runLimit prims
   /-- The end points of the fixed and of the old numbering have one probability. -/
   endPoints : ∀ prims, UsedHit.EndPointsAgree K circuits settings runLimit prims
-  /-- The hybrid with fresh keys in each slot has the law of the game with a uniform table. -/
-  eager : ∀ prims, UsedHit.EagerDraw K circuits settings runLimit prims
-  /-- The game with a renamed table is the game with the hidden keys of the honest calls renamed. -/
-  keyParametric : UsedHit.KeyParametric K circuits settings runLimit
 
 end ThresholdLeanXmssSecurity.DkgCorrectnessProof
 
