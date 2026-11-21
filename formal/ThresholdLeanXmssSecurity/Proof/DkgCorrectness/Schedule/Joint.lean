@@ -7,23 +7,22 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Schedule.Coupling
 /-!
 # The joint law of the ghost run and the cut at a check
 
+Each program of a phase has a twin with the suffix `At` and the place `early` of the opening record
+(`recCheckOpenWith`). At `early = false` the twin is the program itself.
+
 The ghost run of one ceremony is, in law, three ghost phases. The first runs the recorded prefix up
-to the start of the check of batch `k` (`pre1`), the second runs the check (`chk2`), and the third
-runs the rest (`cont2`). `ghost_eq_phases` states this law by two splits of the ghost executor
+to the start of the check of batch `k` (`pre1At`), the second runs the check (`chk2`), and the third
+runs the rest (`cont2At`). `ghost_eq_phasesAt` states this law by two splits of the ghost executor
 (`GhostSplit.executePhaseR_bind_world`).
 
 The first two phases, read as the cut at check `k` (`cutOutcome`), have the law of `ceremonyCheckAt`
-(`cutOutcome_eq`). With its records dropped, the first phase has the law of the prefix of the cut on
-the starts of the checks (`view1_eq_prefix`), and the second phase has the law of the check of the
-pilot from the joint start (`phase2_eq_check`). On the support of the three phases, the cut outcome
-is linked to the end of the ghost run (`cutLink_phases`). So `couplingLaw` proves `CouplingLaw`, and
-`ceremonyCoupling` proves the leaf `CeremonyCoupling`.
-
-Each program of a phase has a twin with the suffix `At` and the place `early` of the opening record
-(`recCheckOpenWith`). At `early = false` the twin is the program itself, and each lemma above is the
-instance at `false` of its general form. `couplingLawWith` states the joint law at both places, with
-the link `CutLinkFree`. That link needs no honest output, because the bound of the coalition gives an
-honest operator (`exists_honest`).
+(`cutOutcome_eqAt`). With its records dropped, the first phase has the law of the prefix of the cut on
+the starts of the checks (`view1_eq_prefixAt`), and the second phase has the law of the check of the
+pilot from the joint start (`phase2_eq_checkAt`). On the support of the three phases, the cut outcome
+is linked to the end of the ghost run (`cutLink_phasesAt`). The link `CutLinkFree` needs no honest
+output, because the bound of the coalition gives an honest operator (`exists_honest`).
+`couplingLawWith` states the joint law at both places. Its instance at `early = false` is
+`couplingLaw`, which proves `CouplingLaw`, and `ceremonyCoupling` proves `CeremonyCoupling`.
 -/
 
 section
@@ -138,30 +137,15 @@ theorem cont1At_split (early : Bool) (k : ℕ) (i : C.Party) {σ : Type} (c : Ce
   rw [recFinishAt_eq, run_recBind, map_prepend_recCont]
 
 omit [Fintype E] [DecidableEq E] in
-theorem cont1_split (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ) (x : Option (PreOut C) × Record C E) :
-    cont1 K circuits settings k i c x = chk2 K i c x >>= cont2 K circuits settings k i c x :=
-  cont1At_split K circuits settings false k i c x
-
-omit [Fintype E] [DecidableEq E] in
 theorem cont1At_none (early : Bool) (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ) (w : Record C E) :
     cont1At K circuits settings early k i c (none, w) = pure (none, w) := by
   cases hkeys : c.keys i <;> simp only [cont1At, hkeys, recCont]
-
-omit [Fintype E] [DecidableEq E] in
-theorem cont1_none (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ) (w : Record C E) :
-    cont1 K circuits settings k i c (none, w) = pure (none, w) :=
-  cont1At_none K circuits settings false k i c w
 
 omit [Fintype E] [DecidableEq E] in
 theorem cont2At_none (early : Bool) (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ)
     (x : Option (PreOut C) × Record C E) (w : Record C E) :
     cont2At K circuits settings early k i c x (none, w) = pure (none, w) := by
   rcases x with ⟨_ | p, w'⟩ <;> cases hkeys : c.keys i <;> simp only [cont2At, hkeys, recCont]
-
-omit [Fintype E] [DecidableEq E] in
-theorem cont2_none (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ) (x : Option (PreOut C) × Record C E)
-    (w : Record C E) : cont2 K circuits settings k i c x (none, w) = pure (none, w) :=
-  cont2At_none K circuits settings false k i c x w
 
 end Programs
 
@@ -223,14 +207,6 @@ theorem timedR_pre1At (early : Bool) (k : ℕ) (D : C.Coalition) {σ : Type} (c 
     exact (timedLog_recPrefixAt K circuits settings early k i keys c.jobs hk c.counters).mono' (fun x hx => hx.1)
       fun x hx => by rw [hx.1]
 
-omit [Fintype E] [DecidableEq E] in
-/-- The first phase takes the rounds of the prefix under the parameter of the game. -/
-theorem timedR_pre1 (k : ℕ) (D : C.Coalition) {σ : Type} (c : CeremonyStart C σ)
-    (hseeds : seedsDiffer D c.keys = false) (hk : k < (chunks settings.batchSize c.jobs).length) (i : C.Party)
-    (hi : i ∉ D.1) :
-    TimedR (prefixRounds circuits settings (gameParameter D c.keys) c.jobs k) (pre1 K circuits settings k i c) :=
-  timedR_pre1At K circuits settings false k D c hseeds hk i hi
-
 /-- The second phase takes the check rounds of the head of batch `k`, from each result of the first
 phase, at both places of the opening record. -/
 theorem timedR_chk2At (early : Bool) (k : ℕ) (D : C.Coalition) {σ : Type} (c : CeremonyStart C σ)
@@ -252,15 +228,6 @@ theorem timedR_chk2At (early : Bool) (k : ℕ) (D : C.Coalition) {σ : Type} (c 
       rfl
     rw [← hcount]
     exact (timedLog_recCheck K p.1.2.2.1 p.2).map _ (fun y hy => hy.1) fun y hy => hy.1
-
-/-- The second phase takes the check rounds of the head of batch `k`, from each result of the first
-phase. -/
-theorem timedR_chk2 (k : ℕ) (D : C.Coalition) {σ : Type} (c : CeremonyStart C σ)
-    (hseeds : seedsDiffer D c.keys = false) (hk : k < (chunks settings.batchSize c.jobs).length) (i : C.Party)
-    (hi : i ∉ D.1) (x : Option (PreOut C) × Record C E) (hx : x ∈ support (pre1 K circuits settings k i c)) :
-    TimedR (checkLabels (headCounts (((chunks settings.batchSize c.jobs).getD k []).map
-      (circuits (gameParameter D c.keys) ·.kind))).sum) (chk2 K i c x) :=
-  timedR_chk2At K circuits settings false k D c hseeds hk i hi x hx
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
 /-- A ghost phase of timed programs with exactly their rounds ends with each honest step done. -/
@@ -374,20 +341,6 @@ theorem ghost_eq_phasesAt (early : Bool) (k rounds r3 : ℕ) (c : CeremonyStart 
         (hdone i hi))) y1.2).trans ?_
   rw [simulateQ_bind, StateT.run_bind]
   exact EvalDistEq.rfl
-
-/-- The ghost run of one ceremony has the law of its three phases. -/
-theorem ghost_eq_phases (k rounds r3 : ℕ) (c : CeremonyStart C net.State) (world : StreamState C)
-    (hseeds : seedsDiffer D c.keys = false) (hk : k < (chunks settings.batchSize c.jobs).length)
-    (hrounds : rounds = prefixRounds circuits settings (gameParameter D c.keys) c.jobs k +
-      (checkLabels (headCounts (((chunks settings.batchSize c.jobs).getD k []).map
-        (circuits (gameParameter D c.keys) ·.kind))).sum + r3)) :
-    (ghostCeremony prims K circuits settings D net rounds c).run world =ᵈ
-      (phase1 prims K circuits settings D net k (prefixRounds circuits settings (gameParameter D c.keys) c.jobs k)
-          c world >>= fun y1 =>
-        phase2 prims K D net (checkLabels (headCounts (((chunks settings.batchSize c.jobs).getD k []).map
-          (circuits (gameParameter D c.keys) ·.kind))).sum) c y1 >>= fun y2 =>
-          phase3 prims K circuits settings D net k r3 c y1 y2) :=
-  ghost_eq_phasesAt prims K circuits settings D net false k rounds r3 c world hseeds hk hrounds
 
 end Law
 
@@ -769,20 +722,6 @@ theorem phase2_eq_checkAt (early : Bool) (k : ℕ) (c : CeremonyStart C net.Stat
     rw [StateT.run'_eq]
     exact Timed.map _ ht
 
-/-- The second phase from a joint start, with the records dropped and the results forgotten, has the
-law of the check of the pilot from that start. -/
-theorem phase2_eq_check (k : ℕ) (c : CeremonyStart C net.State) (world : StreamState C)
-    (hseeds : seedsDiffer D c.keys = false) (hk : k < (chunks settings.batchSize c.jobs).length)
-    (y1 : (net.State × (C.Party → RStep C E RealSpec (PreOut C) (Record C E))) × StreamState C)
-    (hy1 : y1 ∈ support (phase1 prims K circuits settings D net k
-      (prefixRounds circuits settings (gameParameter D c.keys) c.jobs k) c world))
-    (start : CheckStart C net.State) (hj : jointStopV (E := E) D (view1 K net y1) = some start) :
-    (fun y2 => ((y2.1.1, fun i => (y2.1.2 i).output.map fun _ => ()), y2.2)) <$>
-        phase2 prims K D net (checkLabels (headCounts (((chunks settings.batchSize c.jobs).getD k []).map
-          (circuits (gameParameter D c.keys) ·.kind))).sum) c y1 =ᵈ
-      checkFrom prims K D net start :=
-  phase2_eq_checkAt prims K circuits settings D net false k c world hseeds hk y1 hy1 start hj
-
 end Check
 
 /-! ## The first part of the joint law -/
@@ -846,18 +785,6 @@ theorem cutOutcome_eqAt (early : Bool) (k rounds r3 : ℕ) (c : CeremonyStart C 
     simp only [checkCont, viewCut]
     rw [jointStop_viewCut]
     exact EvalDistEq.rfl
-
-/-- The first two phases, read as the cut at check `k`, have the law of `ceremonyCheckAt`. -/
-theorem cutOutcome_eq (k rounds r3 : ℕ) (c : CeremonyStart C net.State) (world : StreamState C)
-    (hseeds : seedsDiffer D c.keys = false) (hk : k < (chunks settings.batchSize c.jobs).length)
-    (hfuel : prefixRounds circuits settings (gameParameter D c.keys) c.jobs k ≤ rounds) :
-    (phase1 prims K circuits settings D net k (prefixRounds circuits settings (gameParameter D c.keys) c.jobs k)
-        c world >>= fun y1 =>
-      phase2 prims K D net (checkLabels (headCounts (((chunks settings.batchSize c.jobs).getD k []).map
-        (circuits (gameParameter D c.keys) ·.kind))).sum) c y1 >>= fun y2 =>
-        phase3 prims K circuits settings D net k r3 c y1 y2 >>= fun _ => pure (cutOutcome K D net y1 y2)) =ᵈ
-      ceremonyCheckAt prims K circuits settings D net rounds k c world :=
-  cutOutcome_eqAt prims K circuits settings D net false k rounds r3 c world hseeds hk hfuel
 
 end First
 
@@ -1131,22 +1058,6 @@ theorem cutLink_phasesAt (early : Bool) (k r3 : ℕ) (c : CeremonyStart C net.St
   · rw [hworld]
     exact (streamWorld_run_mono prims D _ y1.2 y2 hy2).trans (streamWorld_run_mono prims D _ y2.2 y3 hy3)
   · exact streamWorld_run_mono prims D _ y2.2 y3 hy3
-
-/-- On the support of the three phases, the cut outcome of the first two phases is linked to the end
-of the third. -/
-theorem cutLink_phases (k r3 : ℕ) (c : CeremonyStart C net.State) (world : StreamState C)
-    (hseeds : seedsDiffer D c.keys = false) (hk : k < (chunks settings.batchSize c.jobs).length)
-    (y1 : (net.State × (C.Party → RStep C E RealSpec (PreOut C) (Record C E))) × StreamState C)
-    (hy1 : y1 ∈ support (phase1 prims K circuits settings D net k
-      (prefixRounds circuits settings (gameParameter D c.keys) c.jobs k) c world))
-    (y2 : (net.State × (C.Party → RStep C E RealSpec (ChkOut C) (Record C E))) × StreamState C)
-    (hy2 : y2 ∈ support (phase2 prims K D net (checkLabels (headCounts (((chunks settings.batchSize c.jobs).getD k []).map
-        (circuits (gameParameter D c.keys) ·.kind))).sum) c y1))
-    (y3 : (net.State × CeremonySteps C E) × StreamState C)
-    (hy3 : y3 ∈ support (phase3 prims K circuits settings D net k r3 c y1 y2)) :
-    CutLink K D k (cutOutcome K D net y1 y2) y3 :=
-  fun hstart _ hglobal =>
-    cutLink_phasesAt prims K circuits settings D net false k r3 c world hseeds hk y1 hy1 y2 hy2 y3 hy3 hstart hglobal
 
 end Link
 

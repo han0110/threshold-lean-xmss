@@ -18,7 +18,7 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Schedule.Rounds
 `plainShares`), and `passGhost` is its run on the ghost executor.
 
 * `PassLaw` states that from a ready start there is a joint law of the cut at check `k` and of
-  `passGhost` whose support has `PassLink`, the link of `CutLink` with no premise on an honest output.
+  `passGhost` whose support has `CutLinkFree`, the link of `CutLink` with no premise on an honest output.
   `passLaw` proves it. The program of a pass is `recCeremonyAt` of the library at
   `early = true` (`ghostCeremonyAt_true`), so `PassLaw` is `couplingLawWith` at `early = true`.
   `passCoupling_of_law` gives from it the coupling of a bad check of the records to a bad check of
@@ -66,24 +66,10 @@ def passGhost (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (rounds
   simulateQ (streamWorld prims D) (executePhaseR worldRoles D net noFunctionality ([] : Record C E) rounds
     c.adversary fun i => (passCeremony K circuits settings i c).run.run)
 
-/-- The link of an outcome `r` of the cut at check `k` and an outcome `ω` of the ghost run with the
-record of a pass. It is `CutLink` of the library with no premise on an honest output. An opening in
-the record of `ω` is the pass of a check, so the third clause says that each honest operator that
-passed check `k` accepts in the cut. -/
-def PassLink (D : C.Coalition) (k : ℕ) {σ : Type}
-    (r : Option (CheckStart C σ) × Option ((σ × (C.Party → Option Unit)) × StreamState C))
-    (ω : (σ × CeremonySteps C E) × StreamState C) : Prop :=
-  StartedAt D k ω.1.2 → ¬ GlobalEvent ω.2 →
-    ∃ start out, r = (some start, some out) ∧
-      (∀ i, i ∉ D.1 → start.x i = ceremonyTuplesAt K k ω.1.2 i ∧
-        ∀ b, (startsOf (ceremonyRecord ω.1.2 i))[k]? = some b → b.ctx.prss = start.prss i) ∧
-      (∀ i, i ∉ D.1 → k < (openingsOf (ceremonyRecord ω.1.2 i)).length → out.1.2 i = some ()) ∧
-      start.world.1 ≤ ω.2.1 ∧ out.2.1 ≤ ω.2.1
-
 /-- The joint law of the cut and of one ceremony with the record of a pass, as a statement. From a
 ready start in a phase with the rounds of the ceremony, there is a law `J` of pairs whose first part
 has the law of `ceremonyCheckAt k`, whose second part has the law of the ghost run with the record of
-a pass, and whose support has `PassLink`. It is `CouplingLaw` of the library for the record of a
+a pass, and whose support has `CutLinkFree`. It is `CouplingLaw` of the library for the record of a
 pass, with no honest output in the link. The start is each ready start, so also the start of the
 second ceremony of a bottom tree and the start of a retry. -/
 def PassLaw : Prop :=
@@ -96,52 +82,7 @@ def PassLaw : Prop :=
         ((net.State × CeremonySteps C E) × StreamState C)),
       (Prod.fst <$> J) =ᵈ ceremonyCheckAt prims K circuits settings D net rounds k c world ∧
       (Prod.snd <$> J) =ᵈ (passGhost prims K circuits settings D net rounds c).run world ∧
-      ∀ x ∈ support J, PassLink K D k x.1 x.2
-
-omit [DecidableEq E] in
-/-- A bad check `k` in the records of a pass with no reused key and no global event at the end,
-linked to an outcome `r` of the cut, gives a bad check of the cut. It is `checkBad_of_link` of the
-library with no honest output. -/
-theorem passCheckBad_of_link (D : C.Coalition)
-    (net : Adversary C E Unit PEmpty PEmpty) (rounds : ℕ) (ℓ : StartBudget) (c : CeremonyStart C net.State)
-    (world : StreamState C) (hready : CeremonyReady D ℓ c world) (k : ℕ)
-    (hk : k < (chunks settings.batchSize c.jobs).length)
-    (r : Option (CheckStart C net.State) × Option ((net.State × (C.Party → Option Unit)) × StreamState C))
-    (hr : r ∈ support (ceremonyCheckAt prims K circuits settings D net rounds k c world))
-    (ω : (net.State × CeremonySteps C E) × StreamState C) (hlink : PassLink K D k r ω)
-    (hE : BadCheckAt K D k ω.1.2 ∧ ¬ ReusedKey D world.2 ω.1.2 ∧ ¬ GlobalEvent ω.2) : CheckBad D r := by
-  obtain ⟨⟨hstart, hcase, i₀, hi₀, hopen⟩, hreused, hglobal⟩ := hE
-  obtain ⟨start, out, rfl, hx, hacc, hle₁, hle₂⟩ := hlink hstart hglobal
-  unfold ceremonyCheckAt at hr
-  rw [mem_support_bind_iff] at hr
-  obtain ⟨z, hz, hr⟩ := hr
-  cases hj : jointStop D z.1 z.2 with
-  | none =>
-    rw [hj] at hr
-    simp at hr
-  | some start' =>
-    rw [hj] at hr
-    simp only [support_map, Set.mem_image, Prod.mk.injEq, Option.some.injEq] at hr
-    obtain ⟨out', -, hstart', hout'⟩ := hr
-    subst hstart' hout'
-    obtain ⟨hworld, -⟩ := jointStop_eq hj
-    have hgz : ¬ GlobalEvent z.2 := fun h => hglobal (globalEvent_mono (hworld ▸ hle₁) h)
-    have hfresh : KeysFresh D world.2 start' := by
-      intro i hi name key hname hhidden ρ idx position
-      by_contra hcell
-      obtain ⟨b, hb⟩ := Option.isSome_iff_exists.1 (hstart i hi)
-      refine hreused ⟨name, key, hhidden, ⟨i, hi, b, List.mem_of_getElem? hb, ?_⟩, ρ, idx, position, hcell⟩
-      rw [(hx i hi).2 b hb]
-      exact hname
-    have hview := honestView_congr D fun i hi => (hx i hi).1
-    refine ⟨start', out', rfl, ⟨i₀, hi₀, hacc i₀ hi₀ hopen⟩, ?_,
-      ceremonyInterval prims K circuits settings D net rounds ℓ c world hready k hk z hz start' hj hgz hfresh,
-      by rw [hworld]; exact hgz,
-      fun h => hglobal (Or.inr (Or.inr (Or.inr (SetupAgree.domainCollision_mono hle₂ h))))⟩
-    unfold WrongTuple honestTuples
-    unfold WrongTuple honestTuples at hcase
-    rw [hview]
-    exact hcase
+      ∀ x ∈ support J, CutLinkFree K D k x.1 x.2
 
 omit [DecidableEq E] in
 /-- The coupling of a record of a pass to its cut, with no premise on an honest output. From a ready
@@ -161,8 +102,8 @@ theorem passCoupling_of_law (law : PassLaw prims K circuits settings)
   have hr : x.1 ∈ support (ceremonyCheckAt prims K circuits settings D net rounds k c world) := by
     rw [← support_eq_of_evalDistEq hfst, support_map]
     exact ⟨x, hx, rfl⟩
-  exact passCheckBad_of_link prims K circuits settings D net rounds ℓ c world hready k hk x.1 hr x.2
-    (hlink x hx) hE
+  exact checkBad_of_linkFree prims K circuits settings (ceremonyInterval prims K circuits settings) D net rounds ℓ
+    c world hready k hk x.1 hr x.2 (hlink x hx) hE
 
 /-- The fresh part for one old key, on the ghost run with the record of a pass. It is `FreshOne` of
 the library. The starts of the two ghost runs are the same events, because the two recorded programs
@@ -568,8 +509,7 @@ theorem ghostCeremonyAt_true (D : C.Coalition) (net : Adversary C E Unit PEmpty 
   unfold Joint.ghostCeremonyAt passGhost
   simp only [recCeremonyAt_true]
 
-/-- `PassLaw` holds. It is `couplingLawWith` of the library at `early = true`, whose link
-`CutLinkFree` has the text of `PassLink`. -/
+/-- `PassLaw` holds. It is `couplingLawWith` of the library at `early = true`. -/
 theorem passLaw : PassLaw prims K circuits settings := by
   intro D net rounds ℓ c world hready hfuel k hk
   obtain ⟨J, h1, h2, h3⟩ :=

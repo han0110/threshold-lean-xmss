@@ -11,18 +11,18 @@ of batch `k`. For `k` at least the number of the batches, it is the whole ceremo
 (`prefixRounds_of_le`). `timed_cutCeremony` states that the program of an operator that stops at
 the check of batch `k` takes exactly `prefixRounds` rounds on each path with no abort.
 
-The recorded ceremony is its recorded prefix up to the start of the check of batch `k`
-(`recPrefix`), then the record of the start and the check (`recCheck`), then the rest (`finRest`)
-(`recCeremony_eq`, `recFinish_eq`). The recorded prefix takes `prefixRounds` rounds
-(`timedLog_recPrefix`), each of its leaves holds at most `k` starts (`leafStarts_recPrefix`), and with
-its records dropped it stops at the starts of the checks of the cut program
-(`cutStop_cutCeremony`, `recPrefix_pointAt`). With its record dropped, the check part is the program
-of the pilot (`dropRec_recCheck`).
-
 The twins with the suffix `At` take the place `early` of the opening record (`recCheckOpenWith`).
-Each lemma of the split holds at both places, and the lemma with the present name is its instance
-at `early = false`. With its records dropped, the prefix is the same program at both places
-(`dropRecS_recPrefixAt`).
+At `early = false` the twin is the program itself. Each lemma of the split below holds at both
+places.
+
+The recorded ceremony is its recorded prefix up to the start of the check of batch `k`
+(`recPrefixAt`), then the record of the start and the check (`recCheck`), then the rest (`finRestAt`)
+(`recCeremonyAt_eq`, `recFinishAt_eq`). The recorded prefix takes `prefixRounds` rounds
+(`timedLog_recPrefixAt`), each of its leaves holds at most `k` starts (`leafStarts_recPrefixAt`), and
+with its records dropped it stops at the starts of the checks of the cut program
+(`cutStop_cutCeremony`, `recPrefixAt_pointAt`). With its records dropped, the prefix is the same
+program at both places (`dropRecS_recPrefixAt`). With its record dropped, the check part is the
+program of the pilot (`dropRec_recCheck`).
 -/
 
 section
@@ -374,14 +374,6 @@ theorem recRunAt_eq_prefix (early : Bool) (k : ℕ) (i : C.Party) (keys : Keys C
   rw [List.mapM_append, List.mapM_cons]
   simp only [bind_assoc, pure_bind, recBatchAt_eq_head]
 
-omit [Fintype E] [DecidableEq E] in
-/-- The recorded ceremony is its prefix up to the start of the check of batch `k` and then its rest. -/
-theorem recRun_eq_prefix (k : ℕ) (i : C.Party) (keys : Keys C) (jobs : List Job)
-    (hk : k < (chunks settings.batchSize jobs).length) :
-    recRun K circuits settings i keys jobs =
-      recPrefix K circuits settings k i keys jobs >>= recRest K circuits settings k i keys jobs :=
-  recRunAt_eq_prefix K circuits settings false k i keys jobs hk
-
 end Recorded
 
 /-! ## The starts in the leaves of a recorded program -/
@@ -522,11 +514,6 @@ theorem leafStarts_recCheckOpenWith (early : Bool) (b : BatchStart C) (k : ℕ) 
     exact hz (leafStarts_set _) fun _ => leafStarts_statePure _
 
 omit [Fintype E] [DecidableEq E] in
-theorem leafStarts_recCheckOpen (b : BatchStart C) (k : ℕ) :
-    ∀ st, LeafStarts 1 ((recCheckOpen K b k).run st).run.run :=
-  leafStarts_recCheckOpenWith K false b k
-
-omit [Fintype E] [DecidableEq E] in
 theorem leafStarts_recHead (ctx : Context C) (parameter : PublicParameter) (jobs : List Job) :
     ∀ st, LeafStarts 0 ((recHead K circuits settings ctx parameter jobs).run st).run.run := by
   have hz : ∀ {γ δ : Type} {x : StateT (ℕ × ℕ) (RecM C E) γ} {f : γ → StateT (ℕ × ℕ) (RecM C E) δ},
@@ -547,11 +534,6 @@ theorem leafStarts_recBatchAt (early : Bool) (ctx : Context C) (parameter : Publ
     (fun h => leafStarts_recCheckOpenWith K early h.1 h.2) st
 
 omit [Fintype E] [DecidableEq E] in
-theorem leafStarts_recBatch (ctx : Context C) (parameter : PublicParameter) (jobs : List Job) :
-    ∀ st, LeafStarts 1 ((recBatch K circuits settings ctx parameter jobs).run st).run.run :=
-  leafStarts_recBatchAt K circuits settings false ctx parameter jobs
-
-omit [Fintype E] [DecidableEq E] in
 /-- Each outcome of the recorded prefix up to the start of the check of batch `k` holds at most `k`
 starts, at both places of the opening record. -/
 theorem leafStarts_recPrefixAt (early : Bool) (k : ℕ) (i : C.Party) (keys : Keys C) (jobs : List Job)
@@ -567,12 +549,6 @@ theorem leafStarts_recPrefixAt (early : Bool) (k : ℕ) (i : C.Party) (keys : Ke
   · intro st'
     simpa only [Nat.zero_add] using leafStarts_stateBind (leafStarts_recHead K circuits settings _ _ _)
       (fun h => leafStarts_statePure _) st'
-
-omit [Fintype E] [DecidableEq E] in
-/-- Each leaf of the recorded prefix up to the start of the check of batch `k` holds at most `k` starts. -/
-theorem leafStarts_recPrefix (k : ℕ) (i : C.Party) (keys : Keys C) (jobs : List Job) (st : ℕ × ℕ) :
-    LeafStarts k ((recPrefix K circuits settings k i keys jobs).run st).run.run :=
-  leafStarts_recPrefixAt K circuits settings false k i keys jobs st
 
 omit [Fintype E] [DecidableEq E] in
 /-- The head of a recorded batch takes its AND layers and `Rerand`, and it records nothing. -/
@@ -616,15 +592,6 @@ theorem timedLog_recPrefixAt (early : Bool) (k : ℕ) (i : C.Party) (keys : Keys
     (fun h => (p.1, c.1, h)) c.2
   rw [StateT.run_bind] at h
   exact h
-
-omit [Fintype E] [DecidableEq E] in
-/-- The recorded prefix up to the start of the check of batch `k` takes `prefixRounds` rounds. An abort
-keeps at most `k` openings, and a result has `k` starts and `k` openings. -/
-theorem timedLog_recPrefix (k : ℕ) (i : C.Party) (keys : Keys C) (jobs : List Job)
-    (hk : k < (chunks settings.batchSize jobs).length) (st : ℕ × ℕ) :
-    TimedLog (Stop k) (Full k k) (prefixRounds circuits settings keys.parameter jobs k)
-      ((recPrefix K circuits settings k i keys jobs).run st).run.run :=
-  timedLog_recPrefixAt K circuits settings false k i keys jobs hk st
 
 end StartsBatch
 
@@ -832,16 +799,6 @@ theorem recCeremonyAt_eq (early : Bool) (k : ℕ) (i : C.Party) {σ : Type} (c :
     RecordedOpening.run_recBind]
   rfl
 
-omit [Fintype E] [DecidableEq E] in
-/-- The recorded program of one ceremony is its recorded prefix up to the start of the check of
-batch `k`, and then its rest. -/
-theorem recCeremony_eq (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ) (keys : Keys C)
-    (hkeys : c.keys i = some keys) (hk : k < (chunks settings.batchSize c.jobs).length) :
-    (recCeremony K circuits settings i c).run.run =
-      ((recPrefix K circuits settings k i keys c.jobs).run c.counters).run.run >>=
-        RecordedOpening.recCont (recFinish K circuits settings k i keys c.jobs) :=
-  recCeremonyAt_eq K circuits settings false k i c keys hkeys hk
-
 /-- On each result of the recorded prefix, the start of the check of batch `k` is a start of the cut
 program at check `k`, at both places of the opening record. Its context is that of the operator with
 the PRSS keys of the prefix, its tuples have the counts of the head of batch `k`, and its run state
@@ -881,21 +838,6 @@ theorem recPrefixAt_pointAt (early : Bool) (k : ℕ) (i : C.Party) {σ : Type} (
       simp
     rw [htake, hget, ← hstop]
     exact ⟨prss, hpoint⟩
-
-/-- On each result of the recorded prefix, the start of the check of batch `k` is a start of the cut
-program at check `k`. Its context is that of the operator with the PRSS keys of the prefix, its tuples
-have the counts of the head of batch `k`, and its run state holds the filled history of its tuples at
-the label of the batches before `k` and the tag of batch `k`. -/
-theorem recPrefix_pointAt (k : ℕ) (i : C.Party) {σ : Type} (c : CeremonyStart C σ) (keys : Keys C)
-    (hkeys : c.keys i = some keys) (hk : k < (chunks settings.batchSize c.jobs).length)
-    (x : Option ((PrssKeys C × List (Option (List (List Bit))) × (BatchStart C × ℕ)) × (ℕ × ℕ)) × Record C E)
-    (hx : x ∈ support ((recPrefix K circuits settings k i keys c.jobs).run c.counters).run.run)
-    (d : (PrssKeys C × List (Option (List (List Bit))) × (BatchStart C × ℕ)) × (ℕ × ℕ)) (hd : x.1 = some d) :
-    ∃ prss, PointAt K i ⟨i, keys, prss⟩
-      (headCounts (((chunks settings.batchSize c.jobs).getD k []).map (circuits keys.parameter ·.kind)))
-      (c.counters.1 + (((chunks settings.batchSize c.jobs).take k).map (jobLabel circuits keys.parameter)).sum)
-      (c.counters.2 + k) (pointOf K d.1.2.2.1) :=
-  recPrefixAt_pointAt K circuits settings false k i c keys hkeys hk x hx d hd
 
 /-- The record of the start of the check of `b` and the check, as `recCheckOpen` runs them, with the
 counters `st` kept. -/
@@ -965,15 +907,6 @@ theorem recFinishAt_eq (early : Bool) (k : ℕ) (i : C.Party) (keys : Keys C) (j
   cases early <;>
   simp only [StateT.run_bind, StateT.run_lift, RecM.liftS, StateT.run_mk, bind_assoc, pure_bind, Bool.false_eq_true,
     ↓reduceIte, Bool.not_false, Bool.not_true]
-
-omit [Fintype E] [DecidableEq E] in
-/-- The rest after the prefix is the record of the start and the check, and then the rest after the
-check. -/
-theorem recFinish_eq (k : ℕ) (i : C.Party) (keys : Keys C) (jobs : List Job)
-    (p : (PrssKeys C × List (Option (List (List Bit))) × (BatchStart C × ℕ)) × (ℕ × ℕ)) :
-    recFinish K circuits settings k i keys jobs p =
-      recCheck K p.1.2.2.1 p.2 >>= finRest K circuits settings k i keys jobs p :=
-  recFinishAt_eq K circuits settings false k i keys jobs p
 
 omit [Fintype E] [DecidableEq E] in
 /-- The record of the start and the check take the check rounds. Each leaf holds the record of the

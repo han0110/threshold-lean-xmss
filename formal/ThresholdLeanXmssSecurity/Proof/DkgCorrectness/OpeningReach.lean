@@ -730,14 +730,6 @@ theorem timedLog_recCheckOpenWith (early : Bool) (b : BatchStart C) (k : ℕ) (s
     exact TimedLog.done _ ⟨rfl, rfl, rfl⟩
 
 omit [Fintype E] [DecidableEq E] in
-/-- The check and the opening of a recorded start take the check rounds and one round. An abort
-keeps at most one opening, and a result has one start and one opening. -/
-theorem timedLog_recCheckOpen (b : BatchStart C) (k : ℕ) (st : ℕ × ℕ) :
-    TimedLog (Stop 1) (Full 1 1) (checkLabels (tupleCount b.circuits) + 1)
-      ((recCheckOpen K b k).run st).run.run :=
-  timedLog_recCheckOpenWith K false b k st
-
-omit [Fintype E] [DecidableEq E] in
 /-- The check and the opening of a recorded start at operator `j` reach the exchange of `OpenRep`
 after the check rounds. -/
 theorem reach_recCheckOpen (j : C.Party) (b : BatchStart C) (hj : b.ctx.self = j) (k : ℕ) (st : ℕ × ℕ) :
@@ -827,14 +819,6 @@ theorem timedLog_recBatchAt (early : Bool) (ctx : Context C) (parameter : Public
     ⟨rfl, by simp [openingsOf]⟩ fun p₂ => ?_
   exact timedLog_recCheckOpenWith K early ⟨(realRunBuildingBlocks K ctx settings.mode).mode, jobs, parameter,
     jobs.map (circuits parameter ·.kind), p.1, p₁.1.1, p₂.1.1, ctx, p₂.1.2⟩ k p₂.2
-
-omit [Fintype E] [DecidableEq E] in
-/-- A full recorded batch takes `exactBatchRounds`. An abort keeps at most one opening, and a result
-has one start and one opening. -/
-theorem timedLog_recBatch (ctx : Context C) (parameter : PublicParameter) (jobs : List Job) (st : ℕ × ℕ) :
-    TimedLog (Stop 1) (Full 1 1) (CheckTiming.exactBatchRounds settings.mode (jobs.map (circuits parameter ·.kind)))
-      ((recBatch K circuits settings ctx parameter jobs).run st).run.run :=
-  timedLog_recBatchAt K circuits settings false ctx parameter jobs st
 
 omit [Fintype E] [DecidableEq E] in
 /-- A recorded batch at operator `ctx.self` reaches its exchange of `OpenRep` one round before its

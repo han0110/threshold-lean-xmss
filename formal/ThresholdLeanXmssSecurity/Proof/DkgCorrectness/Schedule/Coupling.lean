@@ -9,8 +9,8 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.CutBounds
 start. `CutLink` is the link of one outcome of each run at check `k`, and `CutLinkFree` is the same
 link with no premise on an honest output. `CouplingLaw` states a joint law
 of the two runs with the link on its support. `ceremonyCoupling_of_law` proves `CeremonyCoupling` from
-`CouplingLaw`. The pointwise step `checkBad_of_link` gives `CheckBad` from the link, with the fresh
-streams of `CeremonyInterval`.
+`CouplingLaw`. The pointwise step `checkBad_of_linkFree` gives `CheckBad` from `CutLinkFree`, with
+the fresh streams of `CeremonyInterval`, and `checkBad_of_link` gives it from `CutLink`.
 -/
 
 section
@@ -89,21 +89,20 @@ theorem honestView_congr (D : C.Coalition) {x y : C.Party → List (Tuple C)} (h
   · rw [h i hi]
 
 omit [Fintype E] [DecidableEq E] in
-/-- A bad check `k` in the records with no reused key, an honest output and no global event at the
-end, linked to an outcome `r` of the cut, gives a bad check of the cut. The streams are fresh at the
+/-- A bad check `k` in the records with no reused key and no global event at the end, linked to an
+outcome `r` of the cut by `CutLinkFree`, gives a bad check of the cut. The streams are fresh at the
 joint start by `CeremonyInterval`, because the PRSS keys of the start are those of the recorded starts
 and no recorded key is reused. -/
-theorem checkBad_of_link (interval : CeremonyInterval prims K circuits settings) (D : C.Coalition)
+theorem checkBad_of_linkFree (interval : CeremonyInterval prims K circuits settings) (D : C.Coalition)
     (net : Adversary C E Unit PEmpty PEmpty) (rounds : ℕ) (ℓ : StartBudget) (c : CeremonyStart C net.State)
     (world : StreamState C) (hready : CeremonyReady D ℓ c world) (k : ℕ)
     (hk : k < (chunks settings.batchSize c.jobs).length)
     (r : Option (CheckStart C net.State) × Option ((net.State × (C.Party → Option Unit)) × StreamState C))
     (hr : r ∈ support (ceremonyCheckAt prims K circuits settings D net rounds k c world))
-    (ω : (net.State × CeremonySteps C E) × StreamState C) (hlink : CutLink K D k r ω)
-    (hE : BadCheckAt K D k ω.1.2 ∧ ¬ ReusedKey D world.2 ω.1.2 ∧ HonestOutput D (ceremonyOutputs ω.1.2) ∧
-      ¬ GlobalEvent ω.2) : CheckBad D r := by
-  obtain ⟨⟨hstart, hcase, i₀, hi₀, hopen⟩, hreused, hhonest, hglobal⟩ := hE
-  obtain ⟨start, out, rfl, hx, hacc, hle₁, hle₂⟩ := hlink hstart hhonest hglobal
+    (ω : (net.State × CeremonySteps C E) × StreamState C) (hlink : CutLinkFree K D k r ω)
+    (hE : BadCheckAt K D k ω.1.2 ∧ ¬ ReusedKey D world.2 ω.1.2 ∧ ¬ GlobalEvent ω.2) : CheckBad D r := by
+  obtain ⟨⟨hstart, hcase, i₀, hi₀, hopen⟩, hreused, hglobal⟩ := hE
+  obtain ⟨start, out, rfl, hx, hacc, hle₁, hle₂⟩ := hlink hstart hglobal
   unfold ceremonyCheckAt at hr
   rw [mem_support_bind_iff] at hr
   obtain ⟨z, hz, hr⟩ := hr
@@ -133,6 +132,22 @@ theorem checkBad_of_link (interval : CeremonyInterval prims K circuits settings)
     unfold WrongTuple honestTuples at hcase
     rw [hview]
     exact hcase
+
+omit [Fintype E] [DecidableEq E] in
+/-- A bad check `k` in the records with no reused key, an honest output and no global event at the
+end, linked to an outcome `r` of the cut by `CutLink`, gives a bad check of the cut. With an honest
+output `CutLink` gives `CutLinkFree`. -/
+theorem checkBad_of_link (interval : CeremonyInterval prims K circuits settings) (D : C.Coalition)
+    (net : Adversary C E Unit PEmpty PEmpty) (rounds : ℕ) (ℓ : StartBudget) (c : CeremonyStart C net.State)
+    (world : StreamState C) (hready : CeremonyReady D ℓ c world) (k : ℕ)
+    (hk : k < (chunks settings.batchSize c.jobs).length)
+    (r : Option (CheckStart C net.State) × Option ((net.State × (C.Party → Option Unit)) × StreamState C))
+    (hr : r ∈ support (ceremonyCheckAt prims K circuits settings D net rounds k c world))
+    (ω : (net.State × CeremonySteps C E) × StreamState C) (hlink : CutLink K D k r ω)
+    (hE : BadCheckAt K D k ω.1.2 ∧ ¬ ReusedKey D world.2 ω.1.2 ∧ HonestOutput D (ceremonyOutputs ω.1.2) ∧
+      ¬ GlobalEvent ω.2) : CheckBad D r :=
+  checkBad_of_linkFree prims K circuits settings interval D net rounds ℓ c world hready k hk r hr ω
+    (fun hstart hglobal => hlink hstart hE.2.2.1 hglobal) ⟨hE.1, hE.2.1, hE.2.2.2⟩
 
 /-! ## `CeremonyCoupling` from the joint law -/
 
