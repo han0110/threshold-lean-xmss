@@ -19,7 +19,9 @@ record of `recCeremony` as the record of `recRun`.
 * `ceremony_delivery` gives the message of `OpenRep` of each honest operator in the mail of the
   opening of another honest operator.
 * `ceremonyMonitor_of`, `ceremonySync` and `ceremonyBatch_of` are the leaves `CeremonyMonitor`,
-  `CeremonySync` and `CeremonyBatch`.
+  `CeremonySync` and `CeremonyBatch`. `ceremonyBatchFor` is the part of `ceremonyBatch_of` for each
+  good `h` that agrees with the clean end cache, with `seedsDiffer = false` in the place of
+  `CeremonyReady`.
 * `ceremonyOutputsAgree_of_parts` gives `CeremonyOutputsAgree` from the ghost path, the start of each
   check, the term keys, the draws of `Rerand` and the digest round.
 -/
@@ -751,29 +753,28 @@ theorem ceremony_deliveredShares (D : C.Coalition) (net : Adversary C E Unit PEm
   rw [MpcCells.cleanCache_of_not (by rintro ⟨_, he, -⟩; cases he)]
   exact hd
 
-/-- `CeremonyBatch` from the ghost path. Take a wrong recorded batch `k` of an honest operator `i`
-with an output, when each honest operator recorded the start of check `k`. Then `i` passed the
-opening of batch `k`. With right tuples and agreeing copies, `opened_right` gives right outputs, with
-the delivery of the opening (`ceremony_delivery`) and no copy collision. -/
-theorem ceremonyBatch_of (hpath : GhostOnPath (C := C) (E := E) prims) : CeremonyBatch prims K circuits settings := by
-  intro D net rounds ℓ c world hready ω hω hglobal k hk ⟨i, hi, hiout, b, out, hb, hout, hwrong⟩
-  by_cases hst : StartedAt D k ω.1.2
-  swap
-  · exact Or.inr hst
-  left
-  have hg : Good prims (hashOf prims (MpcCells.cleanCache ω.2.1)) := good_hashOf prims _
-  have ha : Agrees (hashOf prims (MpcCells.cleanCache ω.2.1)) (MpcCells.cleanCache ω.2.1) :=
-    agrees_hashOf prims (MpcCells.noMpc_cleanCache _)
+/-- A recorded batch `k` of an honest operator with a result, whose output is not right for a good
+`h` that agrees with the clean end cache, gives a wrong tuple or split copies at check `k` when each
+honest operator recorded its start. -/
+theorem ceremonyBatchFor (hpath : GhostOnPath (C := C) (E := E) prims) (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (rounds : ℕ)
+    (c : CeremonyStart C net.State) (world : StreamState C) (hseeds : seedsDiffer D c.keys = false)
+    (ω : (net.State × CeremonySteps C E) × StreamState C)
+    (hω : ω ∈ support ((ghostCeremony prims K circuits settings D net rounds c).run world)) (hglobal : ¬ GlobalEvent ω.2)
+    (k : ℕ) (hk : k < (chunks settings.batchSize c.jobs).length) (i : C.Party) (hi : i ∉ D.1)
+    (hiout : (ω.1.2 i).output.isSome) (b : BatchStart C) (out : List (List Bit))
+    (hb : (startsOf (ceremonyRecord ω.1.2 i))[k]? = some b) (hout : (batchOutputsOf (ceremonyRecord ω.1.2 i))[k]? = some out)
+    (h : Query C → HashOutput) (hg : Good prims h) (ha : Agrees h (MpcCells.cleanCache ω.2.1))
+    (hwrong : ¬ GhostMonitor.RightAt circuits prims h (gameSeeds D c.keys) b out) (hst : StartedAt D k ω.1.2) :
+    WrongTuple D (ceremonyTuplesAt K k ω.1.2) ∨ ¬ MultVerifyAgree D (honestTuples D (ceremonyTuplesAt K k ω.1.2)) := by
   obtain ⟨keys_i, inbox, hki, hopen, hlen, hblock⟩ :=
     ceremony_block prims K circuits settings hpath D net rounds c world ω hω i hi hiout k b out hb hout
-  refine ⟨hst, ?_, i, hi, by rw [hlen]; exact (List.getElem?_eq_some_iff.1 hb).1⟩
   by_contra hgood
   rw [not_or, not_not] at hgood
   obtain ⟨hright, hmv⟩ := hgood
   apply hwrong
   obtain ⟨keys_i', hki', hjobs_i, hshape_i⟩ := ceremony_start prims K circuits settings D net rounds c world ω hω i hi k b hb
   obtain rfl : keys_i = keys_i' := Option.some.inj (hki.symm.trans hki')
-  have hpar_i := parameter_eq_gameParameter D c.keys hready.1 i hi keys_i hki
+  have hpar_i := parameter_eq_gameParameter D c.keys hseeds i hi keys_i hki
   -- the starts of the honest operators
   have hstarts : ∀ l, l ∉ D.1 → ∃ bl, (startsOf (ceremonyRecord ω.1.2 l))[k]? = some bl ∧
       bl.jobs = b.jobs ∧ (l ∉ D.1 → c.keys l = some ((c.keys l).getD noKeys)) ∧
@@ -785,7 +786,7 @@ theorem ceremonyBatch_of (hpath : GhostOnPath (C := C) (E := E) prims) : Ceremon
     obtain ⟨keys, hk, hjobs, -⟩ := ceremony_start prims K circuits settings D net rounds c world ω hω l hl k bl hbl
     refine ⟨bl, hbl, Option.some.inj (hjobs.symm.trans hjobs_i), fun _ => by simp [hk], ?_, fun h hg ha => ?_⟩
     · simp only [hk, Option.getD_some]
-      exact parameter_eq_gameParameter D c.keys hready.1 l hl keys hk
+      exact parameter_eq_gameParameter D c.keys hseeds l hl keys hk
     · simp only [hk, Option.getD_some]
       exact ceremony_startShape prims K circuits settings hpath D net rounds c world ω hω l hl keys hk k bl hbl h hg ha
   have hcirc : b.circuits = b.jobs.map (circuits (gameParameter D c.keys) ·.kind) := by
@@ -798,7 +799,7 @@ theorem ceremonyBatch_of (hpath : GhostOnPath (C := C) (E := E) prims) : Ceremon
     simp [startShares, startProducts, ceremonyTuplesAt, hbl]
   have hshapeX : ∀ l, l ∉ D.1 → ceremonyTuplesAt K k ω.1.2 l =
       batchTuples K settings.mode (b.jobs.map (circuits ((c.keys l).getD noKeys).parameter ·.kind))
-        (batchInputs (hashOf prims (MpcCells.cleanCache ω.2.1)) ((c.keys l).getD noKeys).seed b.jobs l)
+        (batchInputs h ((c.keys l).getD noKeys).seed b.jobs l)
         (startProducts ω.1.2 k l) (startShares ω.1.2 k l) := by
     intro l hl
     obtain ⟨bl, hbl, hjobs, -, -, hshape⟩ := hstarts l hl
@@ -806,7 +807,7 @@ theorem ceremonyBatch_of (hpath : GhostOnPath (C := C) (E := E) prims) : Ceremon
     obtain ⟨-, hmode, -, hcircl, hinputs⟩ := hshape _ hg ha
     rw [hx', hv', hz', hmode, hcircl, hinputs, hjobs]
   have hagree := shares_agree_of_multVerifyAgree K settings.mode (b.jobs.map (circuits (gameParameter D c.keys) ·.kind))
-    D (fun l => batchInputs (hashOf prims (MpcCells.cleanCache ω.2.1)) ((c.keys l).getD noKeys).seed b.jobs l)
+    D (fun l => batchInputs (h) ((c.keys l).getD noKeys).seed b.jobs l)
     (startProducts ω.1.2 k) (startShares ω.1.2 k) (ceremonyTuplesAt K k ω.1.2)
     (fun l hl => by obtain ⟨-, -, -, -, hp, -⟩ := hstarts l hl; rw [hshapeX l hl, hp]) hmv
   set count := (outputsOf (b.jobs.map (circuits (gameParameter D c.keys) ·.kind))).length with hcount
@@ -816,7 +817,7 @@ theorem ceremonyBatch_of (hpath : GhostOnPath (C := C) (E := E) prims) : Ceremon
         C.terms digests := by
     have hjs : (chunks settings.batchSize c.jobs)[k] = b.jobs :=
       Option.some.inj ((List.getElem?_eq_getElem hk).symm.trans hjobs_i)
-    have h := ceremony_deliveredShares prims K circuits settings D net rounds c world hready.1 ω hω k hk hst i hi _ _
+    have h := ceremony_deliveredShares prims K circuits settings D net rounds c world hseeds ω hω k hk hst i hi _ _
       hopen
     rwa [hjs] at h
   have hvi : startShares ω.1.2 k i = b.v' := (hv i hi b hb).1
@@ -834,23 +835,46 @@ theorem ceremonyBatch_of (hpath : GhostOnPath (C := C) (E := E) prims) : Ceremon
   have hcopy := OpenedAgreement.copySound_of_cache K prims D (MpcCells.cleanCache ω.2.1) _ hg ha
     (fun T => startShares ω.1.2 k (refHolder D T) T) (startShares ω.1.2 k) count hvr i hi inbox hchecks hdeliver hcoll
   have hinbox : ∀ j, j ∉ D.1 → j ≠ i → inbox j = repOutbox K j (startShares ω.1.2 k j) count
-      (copyHashes (hashOf prims (MpcCells.cleanCache ω.2.1)) (startShares ω.1.2 k j) count) i := by
+      (copyHashes h (startShares ω.1.2 k j) count) i := by
     intro j hj hji
     obtain ⟨digests, hin, hcells⟩ := hdeliver j hj hji
     exact OpenedAgreement.inbox_of_cached K _ _ ha j i _ count _ digests hin hcells
   have hright' := opened_right prims K settings.mode circuits (gameParameter D c.keys) b.jobs D i hi
-    (hashOf prims (MpcCells.cleanCache ω.2.1)) (gameSeeds D c.keys) (fun l => (c.keys l).getD noKeys)
+    h (gameSeeds D c.keys) (fun l => (c.keys l).getD noKeys)
     (startProducts ω.1.2 k) (startShares ω.1.2 k) (ceremonyTuplesAt K k ω.1.2) inbox hshapeX
     (fun l hl => by obtain ⟨-, -, -, -, hp, -⟩ := hstarts l hl; exact hp)
     (fun l T hl hlT => by
       obtain ⟨-, -, -, hk', -, -⟩ := hstarts l hl
       have hk'' := hk' hl
       rw [hk'']
-      exact seed_eq_gameSeeds D c.keys hready.1 l hl _ hk'' T hlT)
+      exact seed_eq_gameSeeds D c.keys hseeds l hl _ hk'' T hlT)
     hright hagree hinbox (hchecks _ hg ha) hcopy
   have hout' := (hblock _ hg ha).2.2
   simp only at hout'
-  rw [hout', evalRun_eq, ← hashOf_cleanCache prims ω.2.1, ← hright', hcirc, hvi]
+  unfold GhostMonitor.RightAt RightBatch
+  rw [hout', hshape_i.2.1, hpar_i, ← hright', hcirc, hvi]
+
+/-- `CeremonyBatch` from the ghost path. Take a wrong recorded batch `k` of an honest operator `i`
+with an output, when each honest operator recorded the start of check `k`. Then `i` passed the
+opening of batch `k`, and `ceremonyBatchFor` at `hashOf` of the clean end cache gives a bad check. -/
+theorem ceremonyBatch_of (hpath : GhostOnPath (C := C) (E := E) prims) : CeremonyBatch prims K circuits settings := by
+  intro D net rounds ℓ c world hready ω hω hglobal k hk ⟨i, hi, hiout, b, out, hb, hout, hwrong⟩
+  by_cases hst : StartedAt D k ω.1.2
+  swap
+  · exact Or.inr hst
+  left
+  have hg : Good prims (hashOf prims (MpcCells.cleanCache ω.2.1)) := good_hashOf prims _
+  have ha : Agrees (hashOf prims (MpcCells.cleanCache ω.2.1)) (MpcCells.cleanCache ω.2.1) :=
+    agrees_hashOf prims (MpcCells.noMpc_cleanCache _)
+  obtain ⟨-, -, -, -, hlen, -⟩ :=
+    ceremony_block prims K circuits settings hpath D net rounds c world ω hω i hi hiout k b out hb hout
+  refine ⟨hst, ceremonyBatchFor prims K circuits settings hpath D net rounds c world hready.1 ω hω hglobal k hk i hi
+    hiout b out hb hout _ hg ha (fun hright => hwrong ?_) hst, i, hi,
+    by rw [hlen]; exact (List.getElem?_eq_some_iff.1 hb).1⟩
+  obtain ⟨keys_i, hki, -, hshape_i⟩ := ceremony_start prims K circuits settings D net rounds c world ω hω i hi k b hb
+  unfold GhostMonitor.RightAt RightBatch at hright
+  rw [hright, evalRun_eq, ← hashOf_cleanCache prims ω.2.1, hshape_i.2.1,
+    parameter_eq_gameParameter D c.keys hready.1 i hi keys_i hki]
 
 /-! ## The agreement of the opened outputs -/
 
