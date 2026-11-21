@@ -347,8 +347,8 @@ one failed randomizer search of the dealer for each bottom tree, and two terms f
 runs (Appendix~\ref{sec:terms}). $\mathsf{dkgOverhead}$
 counts the calls of \lean{dkgReduction} in the domains that the setup and the signing share. The
 theorem \lean{DkgSecurityProof.dkgReduction_cost} proves the cost bound with it, the first part of
-\lean{dkgSecurity}. $\mathsf{dkgError}$ is the error that the chain of hops of the proof reaches. Two
-hops of the chain have no proof yet.
+\lean{dkgSecurity}. $\mathsf{dkgError}$ is the error that the chain of hops of the proof reaches. One
+hop of the chain has no proof yet.
 
 \paragraph{Correctness with abort} (\lean{DkgCorrectness}). Against $A$, two honest operators hold
 inconsistent seeds, or an honest operator ends a run of a tree with an output that is not the output
@@ -379,14 +379,13 @@ the paper is about one broadcast of a verifying transcript and is no model of th
 
 \paragraph{The state of the target.} No proof accounts for the whole game for the bound of
 \lean{dkgSecurity} on the win probability yet. The theorem \lean{DkgSecurityProof.dkgSecurity_of_leaves}
-gives the field from one hop that has no proof yet (\lean{SharedStep}) and from one part of the
-hop \lean{SharedHit} that has no proof yet (\lean{HitSeed}). Eleven of the 13
-hops of the chain have proofs, and three of the four parts of \lean{SharedHit}.
+gives the field from one hop that has no proof yet (\lean{SharedStep}). Twelve of the 13
+hops of the chain have proofs.
 $\mathsf{dkgError}$ is the sum of the errors of the 13 hops, so it is the error of this proof and no
 tight bound. Through $\mathsf{dkgCorrectnessError}$ it grows with the third power of the run limit,
-which comes from the proof method for the PRSS setups. The two privacy terms
-$\mathsf{privacyHitError}$ and $\mathsf{privacyStepError}$ belong to the hops with no proof yet, so a
-proof can change them. Table~\ref{tab:dkgerror} has the value at two points.
+which comes from the proof method for the PRSS setups. The privacy term
+$\mathsf{privacyStepError}$ belongs to the hop with no proof yet, so a
+proof can change it. Table~\ref{tab:dkgerror} has the value at two points.
 \begin{table}[h]\centering\small
 \begin{tabular}{lll}
 \toprule
