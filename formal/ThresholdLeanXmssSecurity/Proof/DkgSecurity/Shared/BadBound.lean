@@ -1,4 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Shared.Cover
+import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Shared.FirstRecord
 
 /-!
 # The bound of the flag of the real game with the shared event
@@ -190,6 +191,12 @@ theorem sharedBadBound_of_ready (ready : PassReadyHop prims K circuits settings 
     SharedBadBound prims K circuits settings runLimit :=
   sharedBadBound_of_parts prims K circuits settings runLimit (passLaw prims K circuits settings) ready flagFirst
 
+/-- The bound of the shared bad event. The flag of the real game with recorded runs has probability at
+most `flagError`. -/
+theorem sharedBadBound : SharedBadBound prims K circuits settings runLimit :=
+  sharedBadBound_of_ready prims K circuits settings runLimit (passReadyHop prims K circuits settings runLimit)
+    (passFlagFirst prims K circuits settings runLimit)
+
 end ThresholdLeanXmssSecurity.DkgSecurityProof
 
 /-- info: 'ThresholdLeanXmssSecurity.DkgSecurityProof.sharedBadBound_of_parts' depends on axioms: [propext, Classical.choice, Quot.sound] -/
@@ -199,3 +206,7 @@ end ThresholdLeanXmssSecurity.DkgSecurityProof
 /-- info: 'ThresholdLeanXmssSecurity.DkgSecurityProof.sharedBadBound_of_ready' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.DkgSecurityProof.sharedBadBound_of_ready
+
+/-- info: 'ThresholdLeanXmssSecurity.DkgSecurityProof.sharedBadBound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ThresholdLeanXmssSecurity.DkgSecurityProof.sharedBadBound

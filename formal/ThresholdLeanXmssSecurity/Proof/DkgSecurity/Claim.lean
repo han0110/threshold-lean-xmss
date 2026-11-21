@@ -1,3 +1,4 @@
+import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Shared.BadBound
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Shared.End
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Shared.Search
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.SeedTable.RestCount
@@ -21,7 +22,7 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.TopLaws
 `dkgSecurity_of_leaves` is `dkgSecurity_of_shared` with the proved hops filled in. They are
 `monitorErase`, the hop `UsedHitHop` at the error `setupHybridError` from the proof of
 `dkgCorrectness`, `sharedStart`, `sharedSeedBound`, `sharedSeedReal`, `sharedSeedIdeal`,
-`sharedSearch`, `sharedEnd` and `tableHop`. The premises are the four other hops `SharedBadBound`,
+`sharedSearch`, `sharedEnd`, `tableHop` and `sharedBadBound`. The premises are the three other hops
 `SharedRefDealer`, `SharedHit` and `SharedStep`, as propositions, and the inequality between
 `sharedError` and the approved `dkgError`.
 -/
@@ -47,7 +48,6 @@ omit [DecidableEq E] in
 /-- The field `dkgSecurity` from the other hops with the shared bad event, as propositions, and from
 the inequality between `sharedError` and the approved `dkgError`. -/
 theorem dkgSecurity_of_leaves (hit : ℕ → ℝ) (slack : Tree → ℕ → ℝ)
-    (bad : SharedBadBound prims K circuits settings runLimit)
     (ref : SharedRefDealer prims K circuits settings runLimit)
     (hits : SharedHit prims K circuits settings runLimit hit)
     (step : SharedStep prims K circuits settings runLimit slack)
@@ -68,7 +68,7 @@ theorem dkgSecurity_of_leaves (hit : ℕ → ℝ) (slack : Tree → ℕ → ℝ)
         (eagerDraw K circuits settings runLimit prims)
         (keyProvenance prims K circuits settings runLimit) (keyParametric K circuits settings runLimit)
         (cellsCount prims K circuits settings runLimit)))
-    (sharedStart prims K circuits settings runLimit) bad ref (sharedSeedBound K circuits settings runLimit prims)
+    (sharedStart prims K circuits settings runLimit) (sharedBadBound prims K circuits settings runLimit) ref (sharedSeedBound K circuits settings runLimit prims)
     (sharedSeedReal K circuits settings runLimit prims) (sharedSeedIdeal K circuits settings runLimit prims)
     (sharedSearch prims K circuits settings runLimit) hits step
     (sharedEnd prims K circuits settings runLimit)

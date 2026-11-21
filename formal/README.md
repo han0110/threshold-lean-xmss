@@ -10,7 +10,7 @@ The structure `Theorems` in [Statement/Theorems.lean](./ThresholdLeanXmss/Statem
 | --- | --- | --- | --- |
 | `stronglyUnforgeable` | Signing with a trusted dealer is strongly unforgeable with adaptive corruption. | PRAWNS, Definition 3.2 | Proved, `SigningStronglyUnforgeable.stronglyUnforgeable` |
 | `signingCorrectness` | An honest quorum signs, except for a failed search. | PRAWNS, Section 3.1 | Proved, `signingCorrectness` |
-| `dkgSecurity` | An adversary against the signing game with the real DKG wins at most as often as the named forger `dkgReduction` wins the signing game with the dealer, plus a fixed error. | Gurkan and others, Definition 8 | The cost bound of the forger is proved, `DkgSecurityProof.dkgReduction_cost`. The bound on the win probability is a target. `DkgSecurityProof.dkgSecurity_of_leaves` gives the field from four hops with no proof yet and from one inequality between error terms. |
+| `dkgSecurity` | An adversary against the signing game with the real DKG wins at most as often as the named forger `dkgReduction` wins the signing game with the dealer, plus a fixed error. | Gurkan and others, Definition 8 | The cost bound of the forger is proved, `DkgSecurityProof.dkgReduction_cost`. The bound on the win probability is a target. `DkgSecurityProof.dkgSecurity_of_leaves` gives the field from three hops with no proof yet and from one inequality between error terms. |
 | `dkgCorrectness` | Against an adversary, honest operators hold consistent seeds, and each tree output is right or absent. | Gurkan and others, Definition 6 | Proved, `dkgCorrectness` |
 | `dkgCompleteness` | With no corrupt operator, the DKG gives outputs that are near the outputs of the dealer. | None | Proved, `dkgCompleteness` |
 
