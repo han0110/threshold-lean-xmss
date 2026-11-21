@@ -21,6 +21,10 @@ The hops of the game with the first record are then instances of the hops for ea
 `passSeedsHop` states `PassSeedsHop`, `passRunsUnion` states `PassRunsUnion`, and `passEchoHop`,
 `passReuseHop`, `passCopyHop` and `passSplitHop` state `PassCollisionHop` at the four domains of
 `GlobalEvent` with `echoError`, `reuseError`, `copyError` and `splitError`.
+
+`PassReady` is the readiness test of a start for the shared event. Two hops are statements here.
+`PassReadyHop` states that no start up to the first record fails the test `PassReady`, and
+`PassFlagFirst` states that the flag of the real game with the shared event comes with a first record.
 -/
 
 set_option autoImplicit false
@@ -225,6 +229,34 @@ def PassRunsUnion : Prop :=
     passFirstProb prims K circuits settings runLimit D A ready (fun r =>
         ∃ tree index world, r.1.first = some (.run tree index, world) ∧ ¬ GlobalEvent world) ≤
       runLimit * (ε .top + ∑ b : Fin (2 ^ layerHeight), ε (.bottom b))
+
+/-- The readiness of a start for the bound of the shared event. The honest keys are consistent, the
+caches are within the ledger, and the hidden keys have their provenance. It is `RunReadyL` of the
+library with no clause on the kept top trees. The library needs that clause for the monitor of the
+outputs, and the shared event has no monitor. The bound of a ceremony needs `CeremonyReady`, which
+has these three parts. -/
+def PassReady (budget : StartBudget) (D : C.Coalition) {σ : Type} (s : RealState C σ) (world : StreamState C) :
+    Prop :=
+  seedsDiffer D (fun i => (s.operators i).keys) = false ∧ LedgerFits budget world ∧ HiddenProvenance D world
+
+/-- The readiness of each start up to the first record, as a statement. In the game that tests
+`PassReady` at each start of a run, no start is recorded as not ready with no global event. The test
+reads the keys, the ledger and the provenance of the hidden keys, and no kept top tree and no flag.
+So a start after a top tree that an honest operator kept from a faulty check is ready. It has the
+form of `ReadyHopL`. -/
+def PassReadyHop : Prop :=
+  ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ), DkgTsigBounded circuits settings runLimit A q →
+    passFirstProb prims K circuits settings runLimit D A
+      (PassReady (startBudget circuits settings runLimit C q) D)
+      (fun r => ∃ tree index world, r.1.first = some (.unready tree index, world) ∧ ¬ GlobalEvent world) = 0
+
+/-- The flag of the real game with the shared event comes with a first record, for each readiness
+test, as a statement. The log and the records of the game change no flag. It has the form of
+`FlagFirstHopW`. -/
+def PassFlagFirst : Prop :=
+  ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (ready : RealState C A.net.State → StreamState C → Prop),
+    realProb prims K circuits settings runLimit true D A (fun r => r.2 = true) ≤
+      passFirstProb prims K circuits settings runLimit D A ready fun r => r.1.first ≠ none
 
 omit [Fintype E] [DecidableEq E] in
 /-- `PassSeedsHop` is `seedsHopOf` at the recorded run. -/
