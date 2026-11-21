@@ -641,15 +641,13 @@ end CellsNet
 
 /-! ## The stream calls of a ceremony after its setup
 
-The lemmas of the body follow the section `Body` of `Draws/Walk.lean`, with `RoK` in the place of
-`RoBad`. `RoK` constrains each name and the calls of `H` in class `stream`. -/
+The lemmas of the body are the case `LocalK` of `Draws.runJobs_pstate`. `RoK` constrains each name and
+the calls of `H` in class `stream`. -/
 
 namespace KeyCells
 
 section Body
 
-open ThresholdLeanXmssSecurity.SigningSelectionProof (NoCall noCall_iff noCall_pure noCall_bind noCall_map noCall_mapM
-  noCall_query)
 open DigestBudgets (ClassBound StateBound PartyIn RoIn)
 
 variable {C : Committee} {E : Type}
@@ -683,169 +681,15 @@ theorem KOk.of_class {α : Type} {S : KeyName C → HashOutput → Prop} {p : Pa
     (h : ClassBound (E := E) .stream p 0) : KOk S p :=
   SetupBudgets.PBound.of_class localK_stream h
 
-theorem KOkS.of_state {σ α : Type} {S : KeyName C → HashOutput → Prop} {p : StateT σ (PartyM C E RealSpec) α}
-    (h : StateBound (E := E) .stream p 0) : KOkS S p :=
-  SetupBudgets.PState.of_class localK_stream h
-
 theorem KOk.bind {α β : Type} {S : KeyName C → HashOutput → Prop} {p : PartyM C E RealSpec α}
     {f : α → PartyM C E RealSpec β} (h : KOk S p) (hf : ∀ a, KOk S (f a)) : KOk S (p >>= f) :=
   SetupBudgets.PBound.bind h hf
 
-theorem KOkS.bind {σ α β : Type} {S : KeyName C → HashOutput → Prop} {p : StateT σ (PartyM C E RealSpec) α}
-    {f : α → StateT σ (PartyM C E RealSpec) β} (h : KOkS S p) (hf : ∀ a, KOkS S (f a)) : KOkS S (p >>= f) :=
-  SetupBudgets.PState.bind h hf
-
-theorem KOkS.lift {σ α : Type} {S : KeyName C → HashOutput → Prop} {p : PartyM C E RealSpec α} (h : KOk S p) :
-    KOkS S (StateT.lift p : StateT σ (PartyM C E RealSpec) α) :=
-  SetupBudgets.PState.lift h
-
-theorem KOkS.pure {σ α : Type} {S : KeyName C → HashOutput → Prop} (a : α) :
-    KOkS S (Pure.pure a : StateT σ (PartyM C E RealSpec) α) :=
-  SetupBudgets.PState.pure a
-
-theorem KOkS.mapM {σ α β : Type} {S : KeyName C → HashOutput → Prop} (f : α → StateT σ (PartyM C E RealSpec) β)
-    (hf : ∀ a, KOkS S (f a)) : ∀ xs : List α, KOkS S (xs.mapM f)
-  | [] => by simpa using KOkS.pure (S := S) (σ := σ) ([] : List β)
-  | a :: xs => by
-    rw [List.mapM_cons]
-    exact (hf a).bind fun b => (KOkS.mapM f hf xs).bind fun bs => KOkS.pure _
-
-theorem KOkS.foldlM {σ α γ : Type} {S : KeyName C → HashOutput → Prop} (f : α → γ → StateT σ (PartyM C E RealSpec) α)
-    (hf : ∀ a g, KOkS S (f a g)) : ∀ (xs : List γ) (a : α), KOkS S (xs.foldlM f a)
-  | [], a => by simpa using KOkS.pure (S := S) (σ := σ) a
-  | g :: xs, a => by
-    rw [List.foldlM_cons]
-    exact (hf a g).bind fun a' => KOkS.foldlM f hf xs a'
-
-theorem KOk.oracleStep {α : Type} {S : KeyName C → HashOutput → Prop} {oa : OracleComp (RoSpec C) α}
-    (h : NoCall (RoK S) oa) : KOk S (ThresholdLeanXmss.oracleStep oa : PartyM C E RealSpec α) :=
-  SetupBudgets.PBound.oracleStep ((noCall_iff _ _).1 h)
-
-theorem noCall_roK_of_stream {S : KeyName C → HashOutput → Prop} {α : Type} {oa : OracleComp (RoSpec C) α}
-    (h : NoCall (RoIn .stream) oa) : NoCall (RoK S) oa := by
-  rw [noCall_iff] at h ⊢
-  exact IsQueryBoundP.of_imp (fun t ht => by
-    rcases t with _ | x
-    · exact ht
-    · rfl) h
-
-theorem noCall_prgBits_k {S : KeyName C → HashOutput → Prop} (name : KeyName C) (key : HashOutput) (hkey : S name key)
-    (ρ idx count : ℕ) : NoCall (RoK S) (prgBits name key ρ idx count) := by
-  unfold prgBits
-  exact noCall_bind _ (noCall_mapM _ _ _ fun _ => noCall_query _ _ fun h => h hkey) fun _ =>
-    noCall_pure _ _
-
 variable [Field E] [Algebra Bit E] (K : Constants C E) (ctx : Context C)
 
-theorem noCall_elementDraw_k {S : KeyName C → HashOutput → Prop} (name : KeyName C) (key : HashOutput)
-    (hkey : S name key) (ρ idx count : ℕ) :
-    NoCall (RoK S) ((elementCodec K).draw name key ρ idx count) :=
-  noCall_bind _ (noCall_prgBits_k name key hkey _ _ _) fun _ => noCall_pure _ _
-
-omit [Field E] [Algebra Bit E] in
-theorem prssRandomness_k {R : Type} [Zero R] (codec : Codec C E R)
-    (hdraw : ∀ name key, NameKey ctx.self ctx.prss name key → ∀ ρ idx count,
-      NoCall (RoK (NameKey ctx.self ctx.prss)) (codec.draw name key ρ idx count)) (idx count : ℕ) :
-    KOkS (NameKey ctx.self ctx.prss) (prssRandomness ctx codec idx count : RunM C E RealSpec _) := by
-  unfold prssRandomness freshLabel
-  refine KOkS.bind (KOkS.of_state (DigestBudgets.StateBound.modifyGet _)) fun ρ => ?_
-  refine KOkS.bind (KOkS.lift (KOk.oracleStep (noCall_mapM _ _ _ fun T => ?_))) fun _ => ?_
-  · split_ifs with hT
-    · exact hdraw _ _ (Or.inl ⟨T, hT, rfl, rfl⟩) _ _ _
-    · exact noCall_pure _ _
-  refine KOkS.bind (KOkS.lift (KOk.oracleStep (noCall_mapM _ _ _ fun j => ?_))) fun _ => KOkS.pure _
-  split
-  · exact noCall_pure _ _
-  · rename_i h
-    exact hdraw _ _ (Or.inr ⟨j, h, rfl, rfl⟩) _ _ _
-
-theorem prssElements_k (idx count : ℕ) :
-    KOkS (NameKey ctx.self ctx.prss) (prssRandomness ctx (elementCodec K) idx count : RunM C E RealSpec _) :=
-  prssRandomness_k ctx _ (fun name key hkey _ _ _ => noCall_elementDraw_k K name key hkey _ _ _) idx count
-
-omit [Field E] [Algebra Bit E] in
-theorem prssBits_k (idx count : ℕ) :
-    KOkS (NameKey ctx.self ctx.prss) (prssRandomness ctx bitCodec idx count : RunM C E RealSpec _) :=
-  prssRandomness_k ctx _ (fun name key hkey _ _ _ => noCall_prgBits_k name key hkey _ _ _) idx count
-
-theorem coin_k (count : ℕ) :
-    KOkS (NameKey ctx.self ctx.prss) ((realCheckBuildingBlocks K ctx).coin count : RunM C E RealSpec _) := by
-  unfold realCheckBuildingBlocks coinWith
-  exact KOkS.bind (prssElements_k K ctx _ _) fun _ =>
-    KOkS.bind (KOkS.lift (KOk.of_class (DigestBudgets.openSh_bound K ctx _ _))) fun _ => KOkS.pure _
-
-theorem extendMult_k (products : List (Product C E)) :
-    KOkS (NameKey ctx.self ctx.prss) ((realCheckBuildingBlocks K ctx).extendMult products : RunM C E RealSpec _) := by
-  unfold realCheckBuildingBlocks
-  exact KOkS.bind (prssElements_k K ctx _ _) fun _ =>
-    KOkS.of_state (DigestBudgets.reshare_bound K ctx _ _ _ _)
-
-theorem coinKey_k :
-    KOkS (NameKey ctx.self ctx.prss) (coinKey K (realCheckBuildingBlocks K ctx) : RunM C E RealSpec _) := by
-  unfold coinKey
-  exact KOkS.bind (KOkS.of_state DigestBudgets.StateBound.get) fun _ =>
-    KOkS.bind (coin_k K ctx 2) fun _ => KOkS.lift (KOk.oracleStep (noCall_query _ _ fun h => by simp [RoK, InClass, queryClass] at h))
-
-theorem challenge_k :
-    KOkS (NameKey ctx.self ctx.prss) (challenge K (realCheckBuildingBlocks K ctx) : RunM C E RealSpec _) := by
-  unfold challenge
-  refine KOkS.bind (coinKey_k K ctx) fun key => ?_
-  refine KOkS.bind (KOkS.lift (KOk.oracleStep (noCall_roK_of_stream
-    (DigestBudgets.noCall_findChallenge K (by decide) key _ _)))) fun r => ?_
-  split
-  · exact KOkS.pure _
-  · exact KOkS.lift (KOk.of_class DigestBudgets.ClassBound.failure)
-
-theorem check_k (tuples : List (Tuple C)) :
-    KOkS (NameKey ctx.self ctx.prss) (check K ctx (realCheckBuildingBlocks K ctx) tuples : RunM C E RealSpec Unit) := by
-  unfold check
-  dsimp only
-  split_ifs with hz
-  · exact KOkS.pure _
-  refine KOkS.bind (coinKey_k K ctx) fun key => ?_
-  refine KOkS.bind (KOkS.of_state (DigestBudgets.expand_bound (c := .stream) K (by decide) key _)) fun τ => ?_
-  refine KOkS.bind (KOkS.lift (KOk.of_class (DigestBudgets.ClassBound.require _))) fun _ => ?_
-  refine KOkS.bind (KOkS.foldlM _ (fun v j => ?_) _ _) fun v => ?_
-  · rcases v with ⟨xs, ys, d⟩
-    exact KOkS.bind (extendMult_k K ctx _) fun _ =>
-      KOkS.bind (challenge_k K ctx) fun _ => KOkS.pure _
-  rcases v with ⟨xs, ys, d⟩
-  refine KOkS.bind (KOkS.foldlM _ (fun v j => ?_) _ _) fun v => ?_
-  · rcases v with ⟨A, B, d⟩
-    exact KOkS.bind (extendMult_k K ctx _) fun _ =>
-      KOkS.bind (challenge_k K ctx) fun _ => KOkS.pure _
-  rcases v with ⟨A, B, d⟩
-  refine KOkS.bind (prssElements_k K ctx _ _) fun w => ?_
-  refine KOkS.bind (extendMult_k K ctx _) fun q => ?_
-  refine KOkS.bind (prssBits_k ctx _ _) fun salts => ?_
-  refine KOkS.bind (KOkS.of_state ((DigestBudgets.compareDigests_bound ctx _).mono
-    (by simp [DigestBudgets.digestCost]))) fun _ => ?_
-  exact KOkS.bind (challenge_k K ctx) fun _ =>
-    KOkS.bind (KOkS.lift (KOk.of_class (DigestBudgets.openSh_bound K ctx _ _))) fun _ =>
-      KOkS.lift (KOk.of_class (DigestBudgets.ClassBound.require _))
-
-theorem mult_k (mode : ReshareMode) (x y : Shares C Bit) (count : ℕ) :
-    KOkS (NameKey ctx.self ctx.prss) ((realRunBuildingBlocks K ctx mode).mult x y count : RunM C E RealSpec _) := by
-  unfold realRunBuildingBlocks reshareWith
-  refine KOkS.bind (prssBits_k ctx _ _) fun r => ?_
-  cases mode
-  · exact KOkS.of_state (DigestBudgets.reshare_bound K ctx _ _ _ _)
-  · exact KOkS.of_state (DigestBudgets.reshareCollector_bound K ctx _ _ _)
-
 theorem runJobs_k (mode : ReshareMode) (jobs : List Circuit) (inputs : List (C.Term → List Bit)) :
-    KOkS (NameKey ctx.self ctx.prss) (runJobs K (realRunBuildingBlocks K ctx mode) jobs inputs : RunM C E RealSpec _) := by
-  unfold runJobs
-  refine KOkS.bind (KOkS.foldlM _ (fun v layer => ?_) _ _) fun v => ?_
-  · rcases v with ⟨wires, tuples⟩
-    exact KOkS.bind (mult_k K ctx mode _ _ _) fun _ => KOkS.pure _
-  rcases v with ⟨wires, tuples⟩
-  refine KOkS.bind (?_ : KOkS _ ((realRunBuildingBlocks K ctx mode).rerand _ _)) fun v' => ?_
-  · unfold realRunBuildingBlocks
-    exact KOkS.bind (prssBits_k ctx _ _) fun _ => KOkS.of_state (DigestBudgets.reshare_bound K ctx _ _ _ _)
-  refine KOkS.bind (check_k K ctx _) fun _ => ?_
-  exact KOkS.bind (KOkS.lift (KOk.of_class ((DigestBudgets.openRep_bound K ctx _ _).mono
-    (by simp [DigestBudgets.copyCost])))) fun _ => KOkS.pure _
-
+    KOkS (NameKey ctx.self ctx.prss) (runJobs K (realRunBuildingBlocks K ctx mode) jobs inputs : RunM C E RealSpec _) :=
+  Draws.runJobs_pstate K ctx localK_stream (fun _ h h' => h' h) mode jobs inputs
 
 end Body
 

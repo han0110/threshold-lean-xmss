@@ -29,11 +29,16 @@ variable {C : Committee} {E : Type}
 
 variable (D : C.Coalition)
 
-/-! ## The static walk -/
+/-! ## The static walk
+
+A property `Inv` of the world that each free call outside a local predicate `bad` keeps holds through
+the rounds, when each honest step makes no call of `bad` and each call of `bad` is in class `stream`. -/
 
 section Static
 
 variable (prims : Primitives)
+
+open SetupBudgets (HonestP PartyP)
 
 /-- Each hidden cell of the world is under a name and a key that `A` allows. -/
 def CellsIn (A : KeyName C → HashOutput → Prop) (w : StreamState C) : Prop :=
@@ -72,12 +77,14 @@ theorem streamWorld_cellsIn (A : KeyName C → HashOutput → Prop) (t : (WorldS
     · obtain ⟨r, -, rfl⟩ := FirstCounts.onHash_support hy
       exact hw
 
-/-- A computation of the world with no call of `p` keeps `CellsIn A`, when each bad draw is a call
-of `p`. -/
-theorem cellsIn_of_noCall (A : KeyName C → HashOutput → Prop) (p : (WorldSpec C).Domain → Prop)
-    (hp : ∀ t, WorldBad D A t → p t) {α : Type} (oa : OracleComp (WorldSpec C) α) :
-    IsQueryBoundP oa p 0 → ∀ w, CellsIn A w → ∀ z ∈ support ((simulateQ (streamWorld prims D) oa).run w),
-      CellsIn A z.2 := by
+variable {prims}
+
+/-- A computation of the world with no call of `p` keeps `Inv`, when each call of `bad` is a call of
+`p`. -/
+theorem inv_of_noCall {bad : (LocalSpec C).Domain → Prop} {Inv : StreamState C → Prop}
+    (hstep : ∀ t, ¬ HonestP bad t → ∀ w, Inv w → ∀ y ∈ support ((streamWorld prims D t).run w), Inv y.2)
+    (p : (WorldSpec C).Domain → Prop) (hp : ∀ t, HonestP bad t → p t) {α : Type} (oa : OracleComp (WorldSpec C) α) :
+    IsQueryBoundP oa p 0 → ∀ w, Inv w → ∀ z ∈ support ((simulateQ (streamWorld prims D) oa).run w), Inv z.2 := by
   induction oa using OracleComp.inductionOn with
   | pure a =>
     intro _ w hw z hz
@@ -92,10 +99,10 @@ theorem cellsIn_of_noCall (A : KeyName C → HashOutput → Prop) (p : (WorldSpe
     obtain ⟨y, hy, hz⟩ := hz
     have hpt : ¬ p t := h.1.resolve_right (lt_irrefl 0)
     have hcont : IsQueryBoundP (f y.1) p 0 := by simpa only [hpt, ite_false] using h.2 y.1
-    exact ih y.1 hcont y.2 (streamWorld_cellsIn D prims A t (fun hb => hpt (hp t hb)) w hw y hy) z hz
+    exact ih y.1 hcont y.2 (hstep t (fun hb => hpt (hp t hb)) w hw y hy) z hz
 
-theorem free_worldBad (A : KeyName C → HashOutput → Prop) {α : Type} (oa : OracleComp (LocalSpec C) α) :
-    IsQueryBoundP oa (BadDraw D A) 0 → IsQueryBoundP (free oa) (WorldBad D A) 0 := by
+theorem free_honestP (bad : (LocalSpec C).Domain → Prop) {α : Type} (oa : OracleComp (LocalSpec C) α) :
+    IsQueryBoundP oa bad 0 → IsQueryBoundP (free oa) (HonestP bad) 0 := by
   induction oa using OracleComp.inductionOn with
   | pure a => intro _; trivial
   | query_bind t k ih =>
@@ -106,25 +113,25 @@ theorem free_worldBad (A : KeyName C → HashOutput → Prop) {α : Type} (oa : 
       rw [free_bind]
       rfl
     rw [e, isQueryBoundP_query_bind_iff]
-    have ht : ¬ BadDraw D A t := h.1.resolve_right (lt_irrefl 0)
+    have ht : ¬ bad t := h.1.resolve_right (lt_irrefl 0)
     refine ⟨Or.inl ht, fun u => ?_⟩
     have hu := ih u (by simpa only [ht, ite_false] using h.2 u)
-    simpa only [show ¬ WorldBad D A (.inr t) from ht, ite_false] using hu
+    simpa only [show ¬ HonestP bad (.inr t) from ht, ite_false] using hu
 
-/-- The continuation of a stopped program has no bad draw for `A`. -/
-def StepNoBad (A : KeyName C → HashOutput → Prop) {α : Type} : Step C E RealSpec α → Prop
-  | .wait _ resume => ∀ inbox, IsQueryBoundP (resume inbox) (PartyBad D A) 0
+/-- The continuation of a stopped program makes no call of `bad`. -/
+def StepNo (bad : (LocalSpec C).Domain → Prop) {α : Type} : Step C E RealSpec α → Prop
+  | .wait _ resume => ∀ inbox, IsQueryBoundP (resume inbox) (PartyP bad) 0
   | _ => True
 
-/-- The local work of the next round of a stopped program has no bad draw for `A`. -/
-def RoundOk (A : KeyName C → HashOutput → Prop) {α : Type} : Step C E RealSpec α → Prop
-  | .wait _ resume => ∀ inbox, IsQueryBoundP (advance (resume inbox)) (BadDraw D A) 0
+/-- The local work of the next round of a stopped program makes no call of `bad`. -/
+def RoundNo (bad : (LocalSpec C).Domain → Prop) {α : Type} : Step C E RealSpec α → Prop
+  | .wait _ resume => ∀ inbox, IsQueryBoundP (advance (resume inbox)) bad 0
   | _ => True
 
-theorem advance_noBad (A : KeyName C → HashOutput → Prop) {α : Type}
+theorem advance_no (bad : (LocalSpec C).Domain → Prop) {α : Type}
     (oa : OracleComp (PartySpec C E RealSpec) (Option α)) :
-    IsQueryBoundP oa (PartyBad D A) 0 →
-      IsQueryBoundP (advance oa) (BadDraw D A) 0 ∧ ∀ step ∈ support (advance oa), StepNoBad D A step := by
+    IsQueryBoundP oa (PartyP bad) 0 →
+      IsQueryBoundP (advance oa) bad 0 ∧ ∀ step ∈ support (advance oa), StepNo bad step := by
   induction oa using OracleComp.inductionOn with
   | pure out =>
     intro _
@@ -136,9 +143,9 @@ theorem advance_noBad (A : KeyName C → HashOutput → Prop) {α : Type}
     intro h
     rw [isQueryBoundP_query_bind_iff] at h
     rcases t with (q | outbox) | input
-    · have ht : ¬ BadDraw D A q := h.1.resolve_right (lt_irrefl 0)
-      have hk : ∀ u, IsQueryBoundP (k u) (PartyBad D A) 0 := fun u => by
-        simpa only [show ¬ PartyBad (E := E) D A (.inl (.inl q)) from ht, ite_false] using h.2 u
+    · have ht : ¬ bad q := h.1.resolve_right (lt_irrefl 0)
+      have hk : ∀ u, IsQueryBoundP (k u) (PartyP bad) 0 := fun u => by
+        simpa only [show ¬ PartyP (E := E) bad (.inl (.inl q)) from ht, ite_false] using h.2 u
       change IsQueryBoundP (advance (OracleComp.lift (OracleSpec.query (spec := PartySpec C E RealSpec)
         (Sum.inl (Sum.inl q))) >>= k)) _ _ ∧ ∀ step ∈ support (advance (OracleComp.lift
           (OracleSpec.query (spec := PartySpec C E RealSpec) (Sum.inl (Sum.inl q))) >>= k)), _
@@ -148,8 +155,8 @@ theorem advance_noBad (A : KeyName C → HashOutput → Prop) {α : Type}
       · rw [mem_support_bind_iff] at hs
         obtain ⟨u, -, hu⟩ := hs
         exact (ih u (hk u)).2 step hu
-    · have hk : ∀ u, IsQueryBoundP (k u) (PartyBad D A) 0 := fun u => by
-        simpa only [show ¬ PartyBad (E := E) D A (.inl (.inr outbox)) from id, ite_false] using h.2 u
+    · have hk : ∀ u, IsQueryBoundP (k u) (PartyP bad) 0 := fun u => by
+        simpa only [show ¬ PartyP (E := E) bad (.inl (.inr outbox)) from id, ite_false] using h.2 u
       change IsQueryBoundP (pure (Step.wait outbox k) : OracleComp (LocalSpec C) _) _ _ ∧
         ∀ step ∈ support (pure (Step.wait outbox k) : OracleComp (LocalSpec C) _), _
       refine ⟨trivial, fun step hs => ?_⟩
@@ -158,20 +165,22 @@ theorem advance_noBad (A : KeyName C → HashOutput → Prop) {α : Type}
       exact hk
     · exact input.elim
 
-theorem StepNoBad.roundOk {A : KeyName C → HashOutput → Prop} {α : Type} {step : Step C E RealSpec α}
-    (h : StepNoBad D A step) : RoundOk D A step := by
+theorem StepNo.roundNo {bad : (LocalSpec C).Domain → Prop} {α : Type} {step : Step C E RealSpec α}
+    (h : StepNo bad step) : RoundNo bad step := by
   rcases step with _ | ⟨outbox, resume⟩ | _
   · trivial
-  · exact fun inbox => (advance_noBad D A _ (h inbox)).1
+  · exact fun inbox => (advance_no bad _ (h inbox)).1
   · trivial
 
-/-- One round keeps `CellsIn A` when the local work of each honest step has no bad draw. -/
-theorem stepRound_cellsIn {Ia α : Type} (A : KeyName C → HashOutput → Prop) (B : Adversary C E Ia PEmpty PEmpty)
-    (st : B.State) (steps : C.Party → Step C E RealSpec α) (hsteps : ∀ j, j ∉ D.1 → RoundOk D A (steps j))
-    (w : StreamState C) (hw : CellsIn A w)
+/-- One round keeps `Inv` when the local work of each honest step makes no call of `bad`. -/
+theorem stepRound_inv {Ia α : Type} {bad : (LocalSpec C).Domain → Prop} {Inv : StreamState C → Prop}
+    (hstep : ∀ t, ¬ HonestP bad t → ∀ w, Inv w → ∀ y ∈ support ((streamWorld prims D t).run w), Inv y.2)
+    (hq : ∀ t, bad t → InClass .stream t) (B : Adversary C E Ia PEmpty PEmpty)
+    (st : B.State) (steps : C.Party → Step C E RealSpec α) (hsteps : ∀ j, j ∉ D.1 → RoundNo bad (steps j))
+    (w : StreamState C) (hw : Inv w)
     (y : (B.State × (C.Party → Step C E RealSpec α) × (C.Party → C.Party → Option (Msg E))) × StreamState C)
     (hy : y ∈ support ((simulateQ (streamWorld prims D) (stepRound worldRoles D B noFunctionality st steps)).run w)) :
-    CellsIn A y.2 := by
+    Inv y.2 := by
   have hcall : ∀ i, (steps i).callInput = none := fun i => by
     rcases steps i with _ | _ | ⟨input, _⟩
     · rfl
@@ -186,14 +195,12 @@ theorem stepRound_cellsIn {Ia α : Type} (A : KeyName C → HashOutput → Prop)
   simp only [simulateQ_bind, simulateQ_pure, StateT.run_bind, StateT.run_pure, mem_support_bind_iff,
     support_pure, Set.mem_singleton_iff] at hy
   obtain ⟨a, ha, v, hv, rfl⟩ := hy
-  have ha' : CellsIn A a.2 := cellsIn_of_noCall D prims A (HonestIn .stream)
+  have ha' : Inv a.2 := inv_of_noCall D hstep (HonestIn .stream)
     (fun t ht => by
-      rcases t with _ | (_ | _ | x)
+      rcases t with _ | u
       · exact ht.elim
-      · exact ht.elim
-      · exact ht.elim
-      · rfl) _ (DigestBudgets.honestIn_adversary .stream _) w hw a ha
-  refine (sequenceFin_keeps D prims (CellsIn A) a.2 (fun _ _ _ => True) _ (fun _ _ _ _ _ _ => trivial)
+      · exact hq u ht) _ (DigestBudgets.honestIn_adversary .stream _) w hw a ha
+  refine (sequenceFin_keeps D prims Inv a.2 (fun _ _ _ => True) _ (fun _ _ _ _ _ _ => trivial)
     (fun j w' u _ hw' hu => ⟨?_, trivial⟩) a.2 v le_rfl ha' hv).1
   rcases hsj : steps j with out | ⟨outbox, resume⟩ | ⟨input, resume⟩
   · simp only [hsj, simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hu
@@ -206,16 +213,16 @@ theorem stepRound_cellsIn {Ia α : Type} (A : KeyName C → HashOutput → Prop)
     · simp only [hsj, hj, ↓reduceIte] at hu
       have hr := hsteps j hj
       rw [hsj] at hr
-      exact cellsIn_of_noCall D prims A (WorldBad D A) (fun _ h => h) _ (free_worldBad D A _ (hr _)) w' hw' u hu
+      exact inv_of_noCall D hstep (HonestP bad) (fun _ h => h) _ (free_honestP bad _ (hr _)) w' hw' u hu
   · exact input.elim
 
-/-- One round keeps `StepNoBad A` at each honest operator. -/
-theorem stepRound_stepNoBad {Ia α : Type} (A : KeyName C → HashOutput → Prop) (B : Adversary C E Ia PEmpty PEmpty)
-    (st : B.State) (steps : C.Party → Step C E RealSpec α) (hsteps : ∀ j, j ∉ D.1 → StepNoBad D A (steps j))
+/-- One round keeps `StepNo bad` at each honest operator. -/
+theorem stepRound_stepNo {Ia α : Type} (bad : (LocalSpec C).Domain → Prop) (B : Adversary C E Ia PEmpty PEmpty)
+    (st : B.State) (steps : C.Party → Step C E RealSpec α) (hsteps : ∀ j, j ∉ D.1 → StepNo bad (steps j))
     (w : StreamState C)
     (y : (B.State × (C.Party → Step C E RealSpec α) × (C.Party → C.Party → Option (Msg E))) × StreamState C)
     (hy : y ∈ support ((simulateQ (streamWorld prims D) (stepRound worldRoles D B noFunctionality st steps)).run w)) :
-    ∀ j, j ∉ D.1 → StepNoBad D A (y.1.2.1 j) := by
+    ∀ j, j ∉ D.1 → StepNo bad (y.1.2.1 j) := by
   have hcall : ∀ i, (steps i).callInput = none := fun i => by
     rcases steps i with _ | _ | ⟨input, _⟩
     · rfl
@@ -230,7 +237,7 @@ theorem stepRound_stepNoBad {Ia α : Type} (A : KeyName C → HashOutput → Pro
   simp only [simulateQ_bind, simulateQ_pure, StateT.run_bind, StateT.run_pure, mem_support_bind_iff,
     support_pure, Set.mem_singleton_iff] at hy
   obtain ⟨a, -, v, hv, rfl⟩ := hy
-  refine sequenceFin_streamWorld prims D (fun j next _ => j ∉ D.1 → StepNoBad D A next) _
+  refine sequenceFin_streamWorld prims D (fun j next _ => j ∉ D.1 → StepNo bad next) _
     (fun _ _ _ _ h _ => h) (fun j w' u hu hj => ?_) a.2 v hv
   rcases hsj : steps j with out | ⟨outbox, resume⟩ | ⟨input, resume⟩
   · simp only [hsj, simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hu
@@ -243,15 +250,17 @@ theorem stepRound_stepNoBad {Ia α : Type} (A : KeyName C → HashOutput → Pro
       mem_support_advance_of_handler (streamWorld prims D) _ w' _ (by
         rw [StateT.run'_eq, support_map]
         exact ⟨u, hu, rfl⟩)
-    exact (advance_noBad D A _ (hr _)).2 _ hmem
+    exact (advance_no bad _ (hr _)).2 _ hmem
   · exact input.elim
 
-/-- The rounds keep `CellsIn A` when each honest step has no bad draw for `A`. -/
-theorem executeRounds_cellsIn {Ia α : Type} (A : KeyName C → HashOutput → Prop) (B : Adversary C E Ia PEmpty PEmpty) :
+/-- The rounds keep `Inv` when each honest step makes no call of `bad`. -/
+theorem executeRounds_inv {Ia α : Type} {bad : (LocalSpec C).Domain → Prop} {Inv : StreamState C → Prop}
+    (hstep : ∀ t, ¬ HonestP bad t → ∀ w, Inv w → ∀ y ∈ support ((streamWorld prims D t).run w), Inv y.2)
+    (hq : ∀ t, bad t → InClass .stream t) (B : Adversary C E Ia PEmpty PEmpty) :
     ∀ (fuel : ℕ) (st : B.State) (steps : C.Party → Step C E RealSpec α) (w : StreamState C),
-      (∀ j, j ∉ D.1 → StepNoBad D A (steps j)) → CellsIn A w →
+      (∀ j, j ∉ D.1 → StepNo bad (steps j)) → Inv w →
       ∀ z ∈ support ((simulateQ (streamWorld prims D) (executeRounds worldRoles D B noFunctionality fuel st steps)).run w),
-        CellsIn A z.2 := by
+        Inv z.2 := by
   intro fuel
   induction fuel with
   | zero =>
@@ -268,8 +277,8 @@ theorem executeRounds_cellsIn {Ia α : Type} (A : KeyName C → HashOutput → P
       exact hw
     · simp only [simulateQ_bind, StateT.run_bind, mem_support_bind_iff] at hz
       obtain ⟨y, hy, hz⟩ := hz
-      exact ih y.1.1 y.1.2.1 y.2 (stepRound_stepNoBad D prims A B st steps hs w y hy)
-        (stepRound_cellsIn D prims A B st steps (fun j hj => (hs j hj).roundOk) w hw y hy) z hz
+      exact ih y.1.1 y.1.2.1 y.2 (stepRound_stepNo D bad B st steps hs w y hy)
+        (stepRound_inv D hstep hq B st steps (fun j hj => (hs j hj).roundNo) w hw y hy) z hz
 
 end Static
 
@@ -357,13 +366,6 @@ theorem reveal_nextK (s : HashCache C) (inbox : Mail C E) (i : C.Party) (own : P
 
 variable {D}
 
-theorem badDraw_stream {A : KeyName C → HashOutput → Prop} (t : (LocalSpec C).Domain) (h : BadDraw D A t) :
-    InClass .stream t := by
-  rcases t with _ | _ | _
-  · exact h.elim
-  · exact h.elim
-  · rfl
-
 theorem noBad_of_stream {A : KeyName C → HashOutput → Prop} {γ : Type} {oa : OracleComp (LocalSpec C) γ}
     (h : IsQueryBoundP oa (InClass .stream) 0) : IsQueryBoundP oa (BadDraw D A) 0 :=
   IsQueryBoundP.of_imp (fun t ht => badDraw_stream t ht) h
@@ -374,7 +376,7 @@ theorem noBad_hashList {A : KeyName C → HashOutput → Prop} {γ : Type} (l : 
 
 theorem roundOk_commitStepK (A : KeyName C → HashOutput → Prop) (i : C.Party) (own : Parts C)
     (commitments : List HashOutput) (R : PrssKeys C → PartyM C E RealSpec β) :
-    RoundOk D A (commitStepK i own commitments R) := by
+    RoundNo (BadDraw D A) (commitStepK i own commitments R) := by
   intro inbox
   unfold exchangeResume
   split_ifs
@@ -384,7 +386,7 @@ theorem roundOk_commitStepK (A : KeyName C → HashOutput → Prop) (i : C.Party
 
 theorem roundOk_revealStepK (A : KeyName C → HashOutput → Prop) (i : C.Party) (own : Parts C)
     (committed : Mail C E) (R : PrssKeys C → PartyM C E RealSpec β) :
-    RoundOk D A (revealStepK i own committed R) := by
+    RoundNo (BadDraw D A) (revealStepK i own committed R) := by
   intro inbox
   unfold exchangeResume
   split_ifs
@@ -400,7 +402,7 @@ theorem roundOk_revealStepK (A : KeyName C → HashOutput → Prop) (i : C.Party
 theorem stepNoBad_echoStepK (A : KeyName C → HashOutput → Prop) (i : C.Party)
     (keys : HashOutput × (C.Term → HashOutput) × (C.Party → HashOutput)) (shared : List HashOutput)
     (R : PrssKeys C → PartyM C E RealSpec β) (hR : NoBad D A (R (prssOf keys))) :
-    StepNoBad D A (echoStepK i keys shared R) := by
+    StepNo (BadDraw D A) (echoStepK i keys shared R) := by
   intro inbox
   unfold exchangeResume
   split_ifs
@@ -637,7 +639,8 @@ theorem startSteps_setupFirst (program : C.Party → PartyM C E RealSpec β) (h 
     rw [advance_prssSetup_bind]
     exact isQueryBoundP_bind (n := 0) (m := 0) (noBad_of_stream (DigestBudgets.liftComp_prob_bound .stream _))
       fun own _ => isQueryBoundP_bind (n := 0) (m := 0) (noBad_hashList _ _) fun _ _ => trivial
-  refine ⟨cellsIn_of_noCall D prims A (WorldBad D A) (fun _ h => h) _ (free_worldBad D A _ hadv) w' hw' u hu,
+  refine ⟨inv_of_noCall D (streamWorld_cellsIn D prims A) (WorldBad D A) (fun _ h => h) _
+    (free_honestP (BadDraw D A) _ hadv) w' hw' u hu,
     fun _ => Or.inr ?_⟩
   have hmem : u.1 ∈ support (advance (prssSetup j >>= R).run) :=
     mem_support_advance_of_handler (streamWorld prims D) _ w' _ (by
@@ -669,7 +672,7 @@ theorem executePhase_oneKey (B : Adversary C E Unit PEmpty PEmpty) (fuel : ℕ) 
   · exact hstop (by rw [executeRounds_zero_world D prims B st a.1 a.2 r hr]; exact ha1)
   rcases executeRounds_cases D prims B fuel st a.1 a.2 r hr with he | ⟨q1, hq1, hr⟩
   · exact hstop (by rw [he]; exact ha1)
-  have hq1c : CellsIn Old q1.2 := stepRound_cellsIn D prims Old B st a.1 (fun j hj => by
+  have hq1c : CellsIn Old q1.2 := stepRound_inv D (streamWorld_cellsIn D prims Old) badDraw_stream B st a.1 (fun j hj => by
     rcases ha2 j hj with hd | ⟨own, commitments, R, he, -⟩
     · rw [hd]; trivial
     · rw [he]; exact roundOk_commitStepK Old j own commitments R) a.2 ha1 q1 hq1
@@ -678,13 +681,13 @@ theorem executePhase_oneKey (B : Adversary C E Unit PEmpty PEmpty) (fuel : ℕ) 
   · exact hstop (by rw [executeRounds_zero_world D prims B _ _ _ r hr]; exact hq1c)
   rcases executeRounds_cases D prims B fuel _ _ _ r hr with he | ⟨q2, hq2, hr⟩
   · exact hstop (by rw [he]; exact hq1c)
-  have hq2c : CellsIn Old q2.2 := stepRound_cellsIn D prims Old B _ _ (fun j hj => by
+  have hq2c : CellsIn Old q2.2 := stepRound_inv D (streamWorld_cellsIn D prims Old) badDraw_stream B _ _ (fun j hj => by
     rcases h1 j hj with hd | ⟨own, committed, R, he, -⟩
     · rw [hd]; trivial
     · rw [he]; exact roundOk_revealStepK Old j own committed R) q1.2 hq1c q2 hq2
   obtain ⟨input, hk⟩ := setupRounds_oneKey D prims _ B st a.1 ha2 a.2 q1 hq1 q2 hq2
   let A₂ : KeyName C → HashOutput → Prop := fun N k => Old N k ∨ q2.2.1 (input N) = some k
-  have hsteps : ∀ j, j ∉ D.1 → StepNoBad D A₂ (q2.1.2.1 j) := by
+  have hsteps : ∀ j, j ∉ D.1 → StepNo (BadDraw D A₂) (q2.1.2.1 j) := by
     intro j hj
     rcases hk j hj with hd | ⟨keys, shared, R, he, hG, hkey⟩
     · rw [hd]; trivial
@@ -696,7 +699,7 @@ theorem executePhase_oneKey (B : Adversary C E Unit PEmpty PEmpty) (fuel : ℕ) 
       · exact ⟨ht.1, fun hn => ht.2 (Or.inr (hkey _ _ ht.1 hn))⟩
       · exact ht.elim
       · exact ht.elim
-  have hfin := executeRounds_cellsIn D prims A₂ B fuel _ _ q2.2 hsteps
+  have hfin := executeRounds_inv D (streamWorld_cellsIn D prims A₂) badDraw_stream B fuel _ _ q2.2 hsteps
     (fun N k ρ idx position hc => Or.inl (hq2c N k ρ idx position hc)) r hr
   have hle : q2.2.1 ≤ r.2.1 := streamWorld_run_mono prims D _ q2.2 r hr
   exact ⟨input, fun N k ρ idx position hc => (hfin N k ρ idx position hc).imp id fun h' => hle h'⟩

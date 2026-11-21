@@ -201,141 +201,6 @@ theorem streamTreeRun_soundCache (D : C.Coalition) (net : Adversary C E Unit PEm
 
 end Tree
 
-/-! ## The walk of the game for a potential -/
-
-section GameWalk
-
-variable {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
-  (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
-  (D : C.Coalition) (c : HashClass) {σ : Type} (I : ℕ → FirstState C σ → StreamState C → Prop)
-
-attribute [local instance] inhabitedField
-
-/-- A potential of the walk that the free computations with no call of `Adds c` keep. -/
-def QuietKeeps : Prop :=
-  ∀ {β : Type} (oa : OracleComp (WorldSpec C) β), IsQueryBoundP oa (FirstCounts.Adds c) 0 →
-    FirstCounts.Moves I 0 (inStream (σ := σ) prims D oa)
-
-/-- A potential of the walk that reads only the operators and the run counts of the state. -/
-def FrameKeeps : Prop :=
-  ∀ k (s s' : FirstState C σ) w, s'.real.operators = s.real.operators → s'.real.runs = s.real.runs →
-    I k s w → I k s' w
-
-omit [Fintype E] [DecidableEq E] in
-/-- The runs of `tree` keep the potential when each allowed run keeps it. -/
-theorem firstTreeRuns_walk (net : Adversary C E Unit PEmpty PEmpty)
-    (I : ℕ → FirstState C net.State → StreamState C → Prop) (ready : RealState C net.State → StreamState C → Prop)
-    (tree : Tree) (htree : ∀ k s w, I k s w → s.real.runs tree < runLimit →
-      ∀ z ∈ support (((firstTreeRunWith prims K circuits settings D net ready tree).run s).run w), I k z.1.2 z.2) :
-    ∀ count, FirstCounts.Moves I 0 (firstTreeRunsWith prims K circuits settings runLimit D net ready tree count)
-  | 0 => FirstCounts.moves_pure _
-  | count + 1 => by
-    intro k s w hs z hz
-    unfold firstTreeRunsWith at hz
-    simp only [StateT.run_bind, StateT.run_get, pure_bind] at hz
-    split_ifs at hz with hmay
-    · simp only [StateT.run_bind, mem_support_bind_iff] at hz
-      obtain ⟨y, hy, hz⟩ := hz
-      exact firstTreeRuns_walk net I ready tree htree count k y.1.2 y.2
-        (htree k s w hs (FirstCounts.mayRun_lt runLimit hmay) y hy) z hz
-    · simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
-      subst hz
-      exact hs
-
-omit [Fintype E] [DecidableEq E] in
-theorem firstTreeRequest_walk (hc : c ≠ .signing) (net : Adversary C E Unit PEmpty PEmpty)
-    (I : ℕ → FirstState C net.State → StreamState C → Prop) (ready : RealState C net.State → StreamState C → Prop)
-    (b : Fin (2 ^ layerHeight)) (htree : ∀ k s w, I k s w → s.real.runs (.bottom b) < runLimit →
-      ∀ z ∈ support (((firstTreeRunWith prims K circuits settings D net ready (.bottom b)).run s).run w),
-        I k z.1.2 z.2) (hquiet : QuietKeeps prims D c I) :
-    FirstCounts.Moves I 0 (firstTreeRequestWith prims K circuits settings runLimit D net ready b) := by
-  unfold firstTreeRequestWith
-  refine FirstCounts.moves_bind (n := 0) (l := 0) (firstTreeRuns_walk prims K circuits settings runLimit D
-    net I ready _ htree 1) fun _ => FirstCounts.moves_get_bind fun s => ?_
-  split
-  · exact FirstCounts.moves_bind (n := 0) (l := 0) (hquiet _ (FirstCounts.free_noAdds hc
-      (GameCount.onlySign_prfValue _ _))) fun _ => FirstCounts.moves_pure _
-  · exact FirstCounts.moves_pure _
-
-omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
-/-- The answer of an honest operator keeps the potential. It is `tsigOracles` on the free copy. -/
-theorem operatorAnswer_walk (hc : c ≠ .signing) (hquiet : QuietKeeps prims D c I)
-    (operators : C.Party → OperatorState C) (operator : OperatorState C) (e : KeyIndex) (q : TsigQuery C) :
-    FirstCounts.MovesT I 0
-      (operatorAnswer (m := FirstM C σ) (firstLift prims D) (firstValue prims D operators) operator e q) := by
-  intro t
-  unfold operatorAnswer
-  split
-  · rename_i keys top _ _ _ _
-    rw [ownAnswer_run]
-    let ψ := simulateQ' (streamWorld prims D)
-    let freeLift : ∀ {β : Type}, OracleComp (RoSpec C) β → OracleComp (WorldSpec C) β :=
-      fun oa => free (liftComp oa _)
-    let value : Point → OracleComp (WorldSpec C) Digest :=
-      fun x => freeLift (prfValue (gameSeeds D fun i => (operators i).keys) x)
-    let dealt := dealtWith freeLift keys.parameter (fun _ => keys) top value
-    have hdealt : SeedHitProof.Dealt.hmap (streamLift C σ) (SeedHitProof.Dealt.hmap ψ dealt) =
-        dealtWith (m := FirstM C σ) (fun oa => firstLift prims D oa) keys.parameter (fun _ => keys) top
-          (firstValue prims D operators) := by
-      simp only [SeedHitProof.Dealt.hmap, dealt, dealtWith, SeedHitProof.hom_map, SeedHitProof.hom_referenceTree]
-      rfl
-    rw [← hdealt]
-    let t' : TsigState C := { t with trees := fun b => some (operator.bottom b) }
-    have hom₁ := SeedHitProof.hom_tsigOracles (streamLift C σ) (fun oa => ψ (freeLift oa))
-      (SeedHitProof.Dealt.hmap ψ dealt) q t'
-    have hom₂ := SeedHitProof.hom_tsigOracles ψ freeLift dealt q t'
-    change FirstCounts.Moves I 0 ((tsigOracles (fun oa => streamLift C σ (ψ (freeLift oa)))
-      (SeedHitProof.Dealt.hmap (streamLift C σ) (SeedHitProof.Dealt.hmap ψ dealt)) q).run t')
-    rw [← hom₁, ← hom₂]
-    exact hquiet _ (signQuiet hc D operators keys top q t')
-  · exact FirstCounts.moves_pure _
-
-omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
-theorem firstSignRequest_walk (hc : c ≠ .signing) (hquiet : QuietKeeps prims D c I) (hframe : FrameKeeps I)
-    (i : C.Party) (e : KeyIndex) (q : TsigQuery C) :
-    FirstCounts.MovesT I 0 (firstSignRequest (σ := σ) prims D i e q) := by
-  unfold firstSignRequest
-  refine FirstCounts.movesT_bind (n := 0) (l := 0) (FirstCounts.movesT_lift (FirstCounts.moves_modify _
-    fun k s w hs => hframe k s _ w rfl rfl hs)) fun _ => FirstCounts.movesT_bind (n := 0) (l := 0)
-      (FirstCounts.movesT_lift FirstCounts.moves_get) fun s => ?_
-  exact operatorAnswer_walk prims D c I hc hquiet _ _ _ _
-
-omit [Fintype E] [DecidableEq E] in
-/-- The signing phase moves the potential by the calls of `P` of the forger, when each forger call
-moves it by one for a call of `P` and the signing oracles keep it. -/
-theorem firstSigning_walk (hc : c ≠ .signing) (A : DkgTsigAdversary C E)
-    (I : ℕ → FirstState C A.net.State → StreamState C → Prop) (hmono : ∀ k k' s w, k ≤ k' → I k s w → I k' s w)
-    (ready : RealState C A.net.State → StreamState C → Prop)
-    (htree : ∀ tree k s w, I k s w → s.real.runs tree < runLimit →
-      ∀ z ∈ support (((firstTreeRunWith prims K circuits settings D A.net ready tree).run s).run w), I k z.1.2 z.2)
-    (hquiet : QuietKeeps prims D c I) (hframe : FrameKeeps I)
-    (P : (LocalSpec C + (TsigSpec C + StateSpec A.net.State)).Domain → Prop) (hP : ∀ q, ¬ P (.inr q))
-    (hcall : ∀ t, FirstCounts.Moves I (if P (.inl t) then 1 else 0)
-      (inStream prims D (worldRoles.adversary (OracleComp.lift (OracleSpec.query t)))))
-    (forge : ℕ) (hforge : ∀ pk top, IsQueryBoundP (A.forge pk top) P forge) :
-    FirstCounts.Moves I forge (firstSigningWith prims K circuits settings runLimit D A ready) := by
-  unfold firstSigningWith
-  refine FirstCounts.moves_get_bind fun s => ?_
-  split
-  · refine FirstCounts.moves_mono hmono (FirstCounts.moves_bind (l := 0) (FirstCounts.movesT_simulateQ hmono
-      _ P (fun q => ?_) _ forge (hforge _ _) _) fun _ => FirstCounts.moves_pure _) (by omega)
-    rcases q with t | q | q
-    · exact FirstCounts.movesT_lift (hcall t)
-    · simp only [hP, ↓reduceIte]
-      rcases q with i | b | ⟨i, J, e, message⟩ | ⟨i, J, e, message, parts⟩
-      · exact fun t => FirstCounts.moves_pure _
-      · exact FirstCounts.movesT_lift (firstTreeRequest_walk prims K circuits settings runLimit D c hc A.net I ready
-          b (htree _) hquiet)
-      all_goals exact firstSignRequest_walk prims D c I hc hquiet hframe i e _
-    · simp only [hP, ↓reduceIte]
-      rcases q with _ | state
-      · exact FirstCounts.movesT_lift (FirstCounts.moves_bind (n := 0) (l := 0) FirstCounts.moves_get
-          fun _ => FirstCounts.moves_pure _)
-      · exact FirstCounts.movesT_lift (FirstCounts.moves_modify _ fun k s w hs => hframe k s _ w rfl rfl hs)
-  · exact FirstCounts.moves_mono hmono (FirstCounts.moves_pure _) (Nat.zero_le _)
-
-end GameWalk
-
 /-! ## The ledger of the coin keys through the game -/
 
 section Walk
@@ -495,7 +360,8 @@ theorem firstRun_soundCache (D : C.Coalition) (A : DkgTsigAdversary C E)
       (SoundPot circuits settings runLimit step (FirstCounts.remaining runLimit (treeCoins circuits settings C)
         (fun _ => 0))) ready .top
       (firstTreeRun_soundPot prims K circuits settings runLimit step _ D A.net hround ready .top) runLimit)
-    (fun _ => firstSigning_walk prims K circuits settings runLimit D .challenge nofun A
+    (fun _ => firstSigning_walk prims K circuits settings runLimit D .challenge nofun
+      (signQuiet nofun) A
       (SoundPot circuits settings runLimit step (FirstCounts.remaining runLimit (treeCoins circuits settings C)
         (fun _ => 0)))
       (soundPot_mono circuits settings runLimit step _) ready

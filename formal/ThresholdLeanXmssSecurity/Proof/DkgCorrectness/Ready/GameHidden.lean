@@ -29,7 +29,7 @@ namespace ThresholdLeanXmssSecurity.DkgCorrectnessProof
 
 open DigestBudgets (ClassBound StateBound)
 open Draws (NoBad NoBadS SetupFirst)
-open FirstCounts (remaining remaining_update mayRun_lt)
+open FirstCounts (remaining remaining_update mayRun_lt QuietKeeps FrameKeeps firstTreeRuns_walk firstSigning_walk)
 open ThresholdLeanXmssSecurity.SigningSelectionProof (NoCall noCall_iff)
 
 attribute [local instance] Classical.propDecidable
@@ -470,7 +470,8 @@ theorem firstRun_hiddenKeyBound (D : C.Coalition) (A : DkgTsigAdversary C E)
   obtain ⟨-, hcells⟩ := FirstCounts.moves_bind
     (firstTreeRuns_walk prims K circuits settings runLimit D A.net (HiddenPot runLimit D) ready .top
       (firstTreeRun_hiddenPot prims K circuits settings runLimit D A.net ready .top) runLimit)
-    (fun _ => firstSigning_walk prims K circuits settings runLimit D .stream nofun A (HiddenPot runLimit D)
+    (fun _ => firstSigning_walk prims K circuits settings runLimit D .stream nofun
+      (DigestBudgets.signQuiet nofun) A (HiddenPot runLimit D)
       (hiddenPot_mono runLimit D) ready
       (fun tree => firstTreeRun_hiddenPot prims K circuits settings runLimit D A.net ready tree)
       (hiddenPot_quiet prims runLimit D) (hiddenPot_frame runLimit D) (fun _ => False) (fun _ h => h) (fun t => by simpa using hcall t) 0

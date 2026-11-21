@@ -54,13 +54,15 @@ def PartyLate (L : ℕ) : (PartySpec C E RealSpec).Domain → Prop
   | .inl (.inl t) => LateDraw D L t
   | _ => False
 
-/-- A free call of the world that is a late draw. -/
-def WorldLate (L : ℕ) : (WorldSpec C).Domain → Prop
-  | .inr t => LateDraw D L t
-  | _ => False
+/-- A late draw is a call in class `stream`. -/
+theorem lateDraw_stream {L : ℕ} (t : (LocalSpec C).Domain) (h : LateDraw D L t) : InClass .stream t := by
+  rcases t with _ | _ | _
+  · exact h.elim
+  · exact h.elim
+  · rfl
 
 theorem streamWorld_cellsBelow (w₀ : StreamState C) (L : ℕ) (t : (WorldSpec C).Domain)
-    (ht : ¬ WorldLate D L t) (w : StreamState C) (hw : CellsBelow w₀ L w) :
+    (ht : ¬ SetupBudgets.HonestP (LateDraw D L) t) (w : StreamState C) (hw : CellsBelow w₀ L w) :
     ∀ y ∈ support ((streamWorld prims D t).run w), CellsBelow w₀ L y.2 := by
   intro y hy
   rcases t with ((u | p) | (u | q | x))
@@ -85,205 +87,6 @@ theorem streamWorld_cellsBelow (w₀ : StreamState C) (L : ℕ) (t : (WorldSpec 
     · obtain ⟨r, -, rfl⟩ := FirstCounts.onHash_support hy
       exact hw
 
-/-- A computation of the world with no call of `p` keeps `CellsBelow w₀ L`, when each late draw is a call
-of `p`. -/
-theorem cellsBelow_of_noCall (w₀ : StreamState C) (L : ℕ) (p : (WorldSpec C).Domain → Prop)
-    (hp : ∀ t, WorldLate D L t → p t) {α : Type} (oa : OracleComp (WorldSpec C) α) :
-    IsQueryBoundP oa p 0 → ∀ w, CellsBelow w₀ L w → ∀ z ∈ support ((simulateQ (streamWorld prims D) oa).run w),
-      CellsBelow w₀ L z.2 := by
-  induction oa using OracleComp.inductionOn with
-  | pure a =>
-    intro _ w hw z hz
-    simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
-    subst hz
-    exact hw
-  | query_bind t f ih =>
-    intro h w hw z hz
-    rw [isQueryBoundP_query_bind_iff] at h
-    simp only [simulateQ_bind, simulateQ_query, OracleQuery.cont_query, OracleQuery.input_query, id_map,
-      StateT.run_bind, mem_support_bind_iff] at hz
-    obtain ⟨y, hy, hz⟩ := hz
-    have hpt : ¬ p t := h.1.resolve_right (lt_irrefl 0)
-    have hcont : IsQueryBoundP (f y.1) p 0 := by simpa only [hpt, ite_false] using h.2 y.1
-    exact ih y.1 hcont y.2 (streamWorld_cellsBelow D prims w₀ L t (fun hb => hpt (hp t hb)) w hw y hy) z hz
-
-theorem free_late (L : ℕ) {α : Type} (oa : OracleComp (LocalSpec C) α) :
-    IsQueryBoundP oa (LateDraw D L) 0 → IsQueryBoundP (free oa) (WorldLate D L) 0 := by
-  induction oa using OracleComp.inductionOn with
-  | pure a => intro _; trivial
-  | query_bind t k ih =>
-    intro h
-    rw [isQueryBoundP_query_bind_iff] at h
-    have e : free (liftM (OracleSpec.query t) >>= k) =
-        (liftM ((WorldSpec C).query (.inr t)) : OracleComp (WorldSpec C) _) >>= fun u => free (k u) := by
-      rw [free_bind]
-      rfl
-    rw [e, isQueryBoundP_query_bind_iff]
-    have ht : ¬ LateDraw D L t := h.1.resolve_right (lt_irrefl 0)
-    refine ⟨Or.inl ht, fun u => ?_⟩
-    have hu := ih u (by simpa only [ht, ite_false] using h.2 u)
-    simpa only [show ¬ WorldLate D L (.inr t) from ht, ite_false] using hu
-
-/-- The continuation of a stopped program has no late draw. -/
-def StepLate (L : ℕ) {α : Type} : Step C E RealSpec α → Prop
-  | .wait _ resume => ∀ inbox, IsQueryBoundP (resume inbox) (PartyLate D L) 0
-  | _ => True
-
-/-- The local work of the next round of a stopped program has no late draw. -/
-def RoundLate (L : ℕ) {α : Type} : Step C E RealSpec α → Prop
-  | .wait _ resume => ∀ inbox, IsQueryBoundP (advance (resume inbox)) (LateDraw D L) 0
-  | _ => True
-
-theorem advance_late (L : ℕ) {α : Type}
-    (oa : OracleComp (PartySpec C E RealSpec) (Option α)) :
-    IsQueryBoundP oa (PartyLate D L) 0 →
-      IsQueryBoundP (advance oa) (LateDraw D L) 0 ∧ ∀ step ∈ support (advance oa), StepLate D L step := by
-  induction oa using OracleComp.inductionOn with
-  | pure out =>
-    intro _
-    refine ⟨trivial, fun step hs => ?_⟩
-    rw [advance_pure, support_pure, Set.mem_singleton_iff] at hs
-    subst hs
-    trivial
-  | query_bind t k ih =>
-    intro h
-    rw [isQueryBoundP_query_bind_iff] at h
-    rcases t with (q | outbox) | input
-    · have ht : ¬ LateDraw D L q := h.1.resolve_right (lt_irrefl 0)
-      have hk : ∀ u, IsQueryBoundP (k u) (PartyLate D L) 0 := fun u => by
-        simpa only [show ¬ PartyLate (E := E) D L (.inl (.inl q)) from ht, ite_false] using h.2 u
-      change IsQueryBoundP (advance (OracleComp.lift (OracleSpec.query (spec := PartySpec C E RealSpec)
-        (Sum.inl (Sum.inl q))) >>= k)) _ _ ∧ ∀ step ∈ support (advance (OracleComp.lift
-          (OracleSpec.query (spec := PartySpec C E RealSpec) (Sum.inl (Sum.inl q))) >>= k)), _
-      rw [advance_query_bind]
-      refine ⟨(isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl ht, fun u => ?_⟩, fun step hs => ?_⟩
-      · simpa only [ht, ite_false] using (ih u (hk u)).1
-      · rw [mem_support_bind_iff] at hs
-        obtain ⟨u, -, hu⟩ := hs
-        exact (ih u (hk u)).2 step hu
-    · have hk : ∀ u, IsQueryBoundP (k u) (PartyLate D L) 0 := fun u => by
-        simpa only [show ¬ PartyLate (E := E) D L (.inl (.inr outbox)) from id, ite_false] using h.2 u
-      change IsQueryBoundP (pure (Step.wait outbox k) : OracleComp (LocalSpec C) _) _ _ ∧
-        ∀ step ∈ support (pure (Step.wait outbox k) : OracleComp (LocalSpec C) _), _
-      refine ⟨trivial, fun step hs => ?_⟩
-      rw [support_pure, Set.mem_singleton_iff] at hs
-      subst hs
-      exact hk
-    · exact input.elim
-
-theorem StepLate.roundLate {L : ℕ} {α : Type} {step : Step C E RealSpec α}
-    (h : StepLate D L step) : RoundLate D L step := by
-  rcases step with _ | ⟨outbox, resume⟩ | _
-  · trivial
-  · exact fun inbox => (advance_late D L _ (h inbox)).1
-  · trivial
-
-/-- One round keeps `CellsBelow w₀ L` when the local work of each honest step has no late draw. -/
-theorem stepRound_cellsBelow {Ia α : Type} (w₀ : StreamState C) (L : ℕ) (B : Adversary C E Ia PEmpty PEmpty)
-    (st : B.State) (steps : C.Party → Step C E RealSpec α) (hsteps : ∀ j, j ∉ D.1 → RoundLate D L (steps j))
-    (w : StreamState C) (hw : CellsBelow w₀ L w)
-    (y : (B.State × (C.Party → Step C E RealSpec α) × (C.Party → C.Party → Option (Msg E))) × StreamState C)
-    (hy : y ∈ support ((simulateQ (streamWorld prims D) (stepRound worldRoles D B noFunctionality st steps)).run w)) :
-    CellsBelow w₀ L y.2 := by
-  have hcall : ∀ i, (steps i).callInput = none := fun i => by
-    rcases steps i with _ | _ | ⟨input, _⟩
-    · rfl
-    · rfl
-    · exact input.elim
-  have hno : ¬ ((∃ i, i ∉ D.1 ∧ (steps i).callInput.isSome) ∧
-      ∀ i, i ∉ D.1 → (steps i).callInput.isSome ∨ (steps i).isDone) := fun ⟨⟨i, _, hi⟩, _⟩ => by
-    rw [hcall i] at hi
-    cases hi
-  unfold stepRound at hy
-  rw [ite_eq_right hno] at hy
-  simp only [simulateQ_bind, simulateQ_pure, StateT.run_bind, StateT.run_pure, mem_support_bind_iff,
-    support_pure, Set.mem_singleton_iff] at hy
-  obtain ⟨a, ha, v, hv, rfl⟩ := hy
-  have ha' : CellsBelow w₀ L a.2 := cellsBelow_of_noCall D prims w₀ L (HonestIn .stream)
-    (fun t ht => by
-      rcases t with _ | (_ | _ | x)
-      · exact ht.elim
-      · exact ht.elim
-      · exact ht.elim
-      · rfl) _ (DigestBudgets.honestIn_adversary .stream _) w hw a ha
-  refine (sequenceFin_keeps D prims (CellsBelow w₀ L) a.2 (fun _ _ _ => True) _ (fun _ _ _ _ _ _ => trivial)
-    (fun j w' u _ hw' hu => ⟨?_, trivial⟩) a.2 v le_rfl ha' hv).1
-  rcases hsj : steps j with out | ⟨outbox, resume⟩ | ⟨input, resume⟩
-  · simp only [hsj, simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hu
-    subst hu
-    exact hw'
-  · by_cases hj : j ∈ D.1
-    · simp only [hsj, hj, ↓reduceIte, simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hu
-      subst hu
-      exact hw'
-    · simp only [hsj, hj, ↓reduceIte] at hu
-      have hr := hsteps j hj
-      rw [hsj] at hr
-      exact cellsBelow_of_noCall D prims w₀ L (WorldLate D L) (fun _ h => h) _ (free_late D L _ (hr _)) w' hw' u hu
-  · exact input.elim
-
-/-- One round keeps `StepLate L` at each honest operator. -/
-theorem stepRound_late {Ia α : Type} (L : ℕ) (B : Adversary C E Ia PEmpty PEmpty)
-    (st : B.State) (steps : C.Party → Step C E RealSpec α) (hsteps : ∀ j, j ∉ D.1 → StepLate D L (steps j))
-    (w : StreamState C)
-    (y : (B.State × (C.Party → Step C E RealSpec α) × (C.Party → C.Party → Option (Msg E))) × StreamState C)
-    (hy : y ∈ support ((simulateQ (streamWorld prims D) (stepRound worldRoles D B noFunctionality st steps)).run w)) :
-    ∀ j, j ∉ D.1 → StepLate D L (y.1.2.1 j) := by
-  have hcall : ∀ i, (steps i).callInput = none := fun i => by
-    rcases steps i with _ | _ | ⟨input, _⟩
-    · rfl
-    · rfl
-    · exact input.elim
-  have hno : ¬ ((∃ i, i ∉ D.1 ∧ (steps i).callInput.isSome) ∧
-      ∀ i, i ∉ D.1 → (steps i).callInput.isSome ∨ (steps i).isDone) := fun ⟨⟨i, _, hi⟩, _⟩ => by
-    rw [hcall i] at hi
-    cases hi
-  unfold stepRound at hy
-  rw [ite_eq_right hno] at hy
-  simp only [simulateQ_bind, simulateQ_pure, StateT.run_bind, StateT.run_pure, mem_support_bind_iff,
-    support_pure, Set.mem_singleton_iff] at hy
-  obtain ⟨a, -, v, hv, rfl⟩ := hy
-  refine sequenceFin_streamWorld prims D (fun j next _ => j ∉ D.1 → StepLate D L next) _
-    (fun _ _ _ _ h _ => h) (fun j w' u hu hj => ?_) a.2 v hv
-  rcases hsj : steps j with out | ⟨outbox, resume⟩ | ⟨input, resume⟩
-  · simp only [hsj, simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hu
-    subst hu
-    trivial
-  · simp only [hsj, hj, ↓reduceIte] at hu
-    have hr := hsteps j hj
-    rw [hsj] at hr
-    have hmem : u.1 ∈ support (advance (OptionT.mk (resume (roundInbox D a.1.2 steps j))).run) :=
-      mem_support_advance_of_handler (streamWorld prims D) _ w' _ (by
-        rw [StateT.run'_eq, support_map]
-        exact ⟨u, hu, rfl⟩)
-    exact (advance_late D L _ (hr _)).2 _ hmem
-  · exact input.elim
-
-/-- The rounds keep `CellsBelow w₀ L` when each honest step has no late draw for the label. -/
-theorem executeRounds_cellsBelow {Ia α : Type} (w₀ : StreamState C) (L : ℕ) (B : Adversary C E Ia PEmpty PEmpty) :
-    ∀ (fuel : ℕ) (st : B.State) (steps : C.Party → Step C E RealSpec α) (w : StreamState C),
-      (∀ j, j ∉ D.1 → StepLate D L (steps j)) → CellsBelow w₀ L w →
-      ∀ z ∈ support ((simulateQ (streamWorld prims D) (executeRounds worldRoles D B noFunctionality fuel st steps)).run w),
-        CellsBelow w₀ L z.2 := by
-  intro fuel
-  induction fuel with
-  | zero =>
-    intro st steps w _ hw z hz
-    simp only [executeRounds, simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
-    subst hz
-    exact hw
-  | succ fuel ih =>
-    intro st steps w hs hw z hz
-    unfold executeRounds at hz
-    split_ifs at hz
-    · simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
-      subst hz
-      exact hw
-    · simp only [simulateQ_bind, StateT.run_bind, mem_support_bind_iff] at hz
-      obtain ⟨y, hy, hz⟩ := hz
-      exact ih y.1.1 y.1.2.1 y.2 (stepRound_late D prims L B st steps hs w y hy)
-        (stepRound_cellsBelow D prims w₀ L B st steps (fun j hj => (hs j hj).roundLate) w hw y hy) z hz
-
 end Late
 
 /-! ## A phase with no late draw -/
@@ -304,16 +107,17 @@ theorem executePhase_cellsBelow {Ia α : Type} (L : ℕ) (B : Adversary C E Ia P
   simp only [simulateQ_bind, StateT.run_bind, mem_support_bind_iff] at hz
   obtain ⟨a, ha, hz⟩ := hz
   unfold startSteps at ha
-  have hstart := sequenceFin_keeps D prims (CellsBelow w L) w (fun j v _ => j ∉ D.1 → StepLate D L v) _
+  have hstart := sequenceFin_keeps D prims (CellsBelow w L) w (fun j v _ => j ∉ D.1 → StepNo (LateDraw D L) v) _
     (fun _ _ _ _ h _ => h) (fun j w' u _ hw' hu => ?_) w a le_rfl (fun _ _ _ _ _ h => Or.inl h) ha
-  · exact executeRounds_cellsBelow D prims w L B fuel st a.1 a.2 hstart.2 hstart.1 z hz
+  · exact executeRounds_inv D (streamWorld_cellsBelow D prims w L) (lateDraw_stream D) B fuel st a.1 a.2 hstart.2
+      hstart.1 z hz
   by_cases hj : j ∈ D.1
   · simp only [hj, ↓reduceIte, simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hu
     subst hu
     exact ⟨hw', fun h => absurd hj h⟩
   · simp only [hj, ↓reduceIte] at hu
-    obtain ⟨h1, h2⟩ := advance_late D L _ (hp j hj)
-    refine ⟨cellsBelow_of_noCall D prims w L (WorldLate D L) (fun _ h => h) _ (free_late D L _ h1) w' hw' u hu,
+    obtain ⟨h1, h2⟩ := advance_no (LateDraw D L) _ (hp j hj)
+    refine ⟨inv_of_noCall D (streamWorld_cellsBelow D prims w L) _ (fun _ h => h) _ (free_honestP _ _ h1) w' hw' u hu,
       fun _ => h2 _ ?_⟩
     exact mem_support_advance_of_handler (streamWorld prims D) _ w' _ (by
       rw [StateT.run'_eq, support_map]
@@ -483,41 +287,13 @@ theorem withinAt_of_class {α : Type} {n : ℕ} {p : RunM C E RealSpec α} (h : 
   ⟨fun r hr => le_of_eq (moves_support hm st r hr), partyLate_of_stream (h st)⟩
 
 theorem liftComp_ro_late {L : ℕ} {α : Type} (oa : OracleComp (RoSpec C) α) :
-    IsQueryBoundP oa (RoLate D L) 0 → IsQueryBoundP (liftComp oa (LocalSpec C)) (LateDraw D L) 0 := by
-  induction oa using OracleComp.inductionOn with
-  | pure a => intro _; trivial
-  | query_bind t k ih =>
-    intro h
-    rw [isQueryBoundP_query_bind_iff] at h
-    have e : liftComp (liftM (OracleSpec.query t) >>= k) (LocalSpec C) =
-        (liftM ((LocalSpec C).query (.inr t)) : OracleComp (LocalSpec C) _) >>= fun u =>
-          liftComp (k u) (LocalSpec C) := by
-      rw [liftComp_bind]
-      rcases t with _ | _ <;> rfl
-    rw [e]
-    have ht : ¬ RoLate D L t := h.1.resolve_right (lt_irrefl 0)
-    exact (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl ht, fun u => by
-      have hu := ih u (by simpa only [ht, ite_false] using h.2 u)
-      simpa only [show ¬ LateDraw D L (.inr t) from ht, ite_false] using hu⟩
+    IsQueryBoundP oa (RoLate D L) 0 → IsQueryBoundP (liftComp oa (LocalSpec C)) (LateDraw D L) 0 :=
+  SetupBudgets.liftComp_roP oa 0
 
 theorem liftComp_party_late {L : ℕ} {α : Type} (oa : OracleComp (LocalSpec C) α) :
     IsQueryBoundP oa (LateDraw D L) 0 →
-      IsQueryBoundP (liftComp oa (PartySpec C E RealSpec)) (PartyLate D L) 0 := by
-  induction oa using OracleComp.inductionOn with
-  | pure a => intro _; trivial
-  | query_bind t k ih =>
-    intro h
-    rw [isQueryBoundP_query_bind_iff] at h
-    have e : liftComp (liftM (OracleSpec.query t) >>= k) (PartySpec C E RealSpec) =
-        (liftM ((PartySpec C E RealSpec).query (.inl (.inl t))) : OracleComp (PartySpec C E RealSpec) _) >>=
-          fun u => liftComp (k u) (PartySpec C E RealSpec) := by
-      rw [liftComp_bind]
-      rcases t with _ | _ | _ <;> rfl
-    rw [e]
-    have ht : ¬ LateDraw D L t := h.1.resolve_right (lt_irrefl 0)
-    exact (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl ht, fun u => by
-      have hu := ih u (by simpa only [ht, ite_false] using h.2 u)
-      simpa only [show ¬ PartyLate (E := E) D L (.inl (.inl t)) from ht, ite_false] using hu⟩
+      IsQueryBoundP (liftComp oa (PartySpec C E RealSpec)) (PartyLate D L) 0 :=
+  SetupBudgets.liftComp_partyP oa 0
 
 /-- A local step of `H` and `PRG` with no draw at a label at or above the label of the state. -/
 theorem withinAt_lift_oracle {α : Type} {oa : OracleComp (RoSpec C) α} (st : RunState C)

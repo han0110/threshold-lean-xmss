@@ -162,7 +162,7 @@ theorem sum_L (J : C.Quorum) (g : C.Term → XorDigest) : ∑ i ∈ J.1, ∑ T �
     omega
   rw [← Finset.coe_min' hne]
   simp only [WithTop.coe_eq_coe]
-  rw [Finset.sum_ite_eq, if_pos (Finset.mem_sdiff.mp (Finset.min'_mem _ hne)).1]
+  rw [Finset.sum_ite_eq, ite_eq_left (Finset.mem_sdiff.mp (Finset.min'_mem _ hne)).1]
 
 /-- The parts of a quorum combine to `F(x)` for every table of `H`, since each mask appears twice. -/
 theorem combine_eq_prfValue (parameter : PublicParameter) (seeds : C.Term → HashOutput)
@@ -179,7 +179,7 @@ theorem combine_eq_prfValue (parameter : PublicParameter) (seeds : C.Term → Ha
   intro i j
   by_cases hij : i = j
   · rw [hij]
-  · simp only [dealtKeys, dif_neg hij, dif_neg (Ne.symm hij), pairOf_comm i j hij]
+  · simp only [dealtKeys, dite_eq_right hij, dite_eq_right (Ne.symm hij), pairOf_comm i j hij]
 
 /-- `H` and `PRG`, as the world answers them. -/
 abbrev roAnswer : QueryImpl (RoSpec C) (StateT (HashCache C) ProbComp) :=
@@ -212,7 +212,7 @@ theorem hashAnswer_run (q : Query C) {cache : HashCache C} {z : HashOutput × Ha
   cases q
   case hash input =>
     by_cases hmpc : MpcInput input
-    · simp only [hashAnswer, if_pos hmpc, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
+    · simp only [hashAnswer, ite_eq_left hmpc, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
       subst hz
       exact ⟨le_rfl, fun f _ => by simp [tableAnswer, hmpc]; rfl⟩
     · obtain ⟨hle, hans⟩ := hro (by simp [hashAnswer, hmpc])
@@ -415,14 +415,14 @@ theorem gameOracles_step (b : Bool) (seeds : C.Term → HashOutput) (keys : C.Pa
       cases b
       -- With this option `simp` records each `rfl` step, so the kernel does not derive it again.
       · simp -implicitDefEqProofs only [tprfOracles, gameImplWith, StateT.run_bind, StateT.run_get, pure_bind, StateT.run_mk,
-          if_false, Bool.false_eq_true]
+          ite_false, Bool.false_eq_true]
         split_ifs
         · simp
         · simp only [StateT.run_bind, StateT.run_set, StateT.run_map, StateT.run_lift, simulateQ_map,
             simulateQ_free, Functor.map_map, StateT.run_map, bind_pure_comp,
             map_pure]
           rfl
-      · simp -implicitDefEqProofs only [tprfOracles, gameImplWith, StateT.run_bind, StateT.run_get, pure_bind, StateT.run_mk, if_true]
+      · simp -implicitDefEqProofs only [tprfOracles, gameImplWith, StateT.run_bind, StateT.run_get, pure_bind, StateT.run_mk, ite_true]
         split_ifs
         · simp
         · cases s.random x
@@ -634,7 +634,7 @@ theorem onTable_bind {α β : Type} (m : StateT (SlotCache C) ProbComp α) (f : 
 theorem hashAnswer_eq_randomOracle {u : Query C} (hu : ∀ input, u = .hash input → ¬MpcInput input) :
     hashAnswer prims u = (Query C →ₒ HashOutput).randomOracle u := by
   cases u with
-  | hash input => simp only [hashAnswer, if_neg (hu input rfl)]
+  | hash input => simp only [hashAnswer, ite_eq_right (hu input rfl)]
   | _ => rfl
 
 theorem slotInput_ne_hash (s : Slot C) (input : HashInput) : slotInput seeds pairKeys s ≠ .hash input := by
@@ -643,7 +643,7 @@ theorem slotInput_ne_hash (s : Slot C) (input : HashInput) : slotInput seeds pai
 theorem splitCache_fst_of_not_slot {u : Query C} (hu : ∀ s, slotInput seeds pairKeys s ≠ u) (g : HashCache C) :
     (splitCache seeds pairKeys g).1 u = g u := by
   simp only [splitCache, QueryCache.ofFn_apply]
-  rw [if_neg (fun ⟨s, h⟩ => hu s h)]
+  rw [ite_eq_right (fun ⟨s, h⟩ => hu s h)]
 
 theorem splitCache_cacheQuery_of_not_slot {u : Query C} (hu : ∀ s, slotInput seeds pairKeys s ≠ u) (g : HashCache C)
     (v : HashOutput) : splitCache seeds pairKeys (g.cacheQuery u v) =
@@ -652,7 +652,7 @@ theorem splitCache_cacheQuery_of_not_slot {u : Query C} (hu : ∀ s, slotInput s
   · simp only [splitCache, QueryCache.ofFn_apply]
     by_cases hw : w = u
     · subst hw
-      rw [if_neg (fun ⟨s, h⟩ => hu s h), QueryCache.cacheQuery_self, QueryCache.cacheQuery_self]
+      rw [ite_eq_right (fun ⟨s, h⟩ => hu s h), QueryCache.cacheQuery_self, QueryCache.cacheQuery_self]
     · rw [QueryCache.cacheQuery_of_ne _ _ hw, QueryCache.cacheQuery_of_ne _ _ hw, QueryCache.ofFn_apply]
   · simp only [splitCache, QueryCache.ofFn_apply]
     rw [QueryCache.cacheQuery_of_ne _ _ (hu s)]
@@ -663,9 +663,9 @@ theorem splitCache_cacheQuery_slot (hinj : Function.Injective (slotInput seeds p
   refine Prod.ext (QueryCache.ext fun w => ?_) (QueryCache.ext fun s => ?_)
   · simp only [splitCache, QueryCache.ofFn_apply]
     by_cases h : ∃ s, slotInput seeds pairKeys s = w
-    · rw [if_pos h, if_pos h]
+    · rw [ite_eq_left h, ite_eq_left h]
     · have hw : w ≠ slotInput seeds pairKeys s₀ := fun hw => h ⟨s₀, hw.symm⟩
-      rw [if_neg h, if_neg h, QueryCache.cacheQuery_of_ne _ _ hw]
+      rw [ite_eq_right h, ite_eq_right h, QueryCache.cacheQuery_of_ne _ _ hw]
   · by_cases hs : s = s₀
     · subst hs; simp [splitCache]
     · simp [splitCache, QueryCache.cacheQuery_of_ne _ _ hs,
@@ -726,11 +726,11 @@ theorem stateMap_routedAnswer (hinj : Function.Injective (slotInput seeds pairKe
         hinj (Exists.choose_spec (⟨s₀, rfl⟩ : ∃ s, slotInput seeds pairKeys s = slotInput seeds pairKeys s₀))
       have e : routedAnswer prims seeds pairKeys (.inr (.inl (slotInput seeds pairKeys s₀))) =
           onTable (slotOracle s₀) := by
-        simp only [routedAnswer, dif_pos (⟨s₀, rfl⟩ : ∃ s, slotInput seeds pairKeys s = slotInput seeds pairKeys s₀), hc]
+        simp only [routedAnswer, dite_eq_left (⟨s₀, rfl⟩ : ∃ s, slotInput seeds pairKeys s = slotInput seeds pairKeys s₀), hc]
       rw [e]
       exact stateMap_hash_slot prims seeds pairKeys hinj s₀
     · have e : routedAnswer prims seeds pairKeys (.inr (.inl u)) = onCache (hashAnswer prims u) := by
-        simp only [routedAnswer, dif_neg h]
+        simp only [routedAnswer, dite_eq_right h]
       rw [e]
       exact stateMap_hash_of_not_slot prims seeds pairKeys fun s hs => h ⟨s, hs⟩
   · change StateMap _ (prgAnswer prims x) (onCache (prgAnswer prims x))
@@ -757,12 +757,12 @@ theorem stateMap_gameImpl {σ₁ σ₂ : Type} (φ : σ₁ → σ₂) (W₁ : Qu
     · simp only [hs, Functor.map_map]
       rfl
   · cases b
-    · simp only [gameImplWith, StateT.run_mk, Prod.map_apply, id, if_false, Bool.false_eq_true]
+    · simp only [gameImplWith, StateT.run_mk, Prod.map_apply, id, ite_false, Bool.false_eq_true]
       split_ifs
       · simp
       · simp only [hs, Functor.map_map]
         rfl
-    · simp only [gameImplWith, StateT.run_mk, Prod.map_apply, id, if_true]
+    · simp only [gameImplWith, StateT.run_mk, Prod.map_apply, id, ite_true]
       split_ifs
       · simp
       · cases st.random x
@@ -788,7 +788,7 @@ theorem routedAnswer_slot (hinj : Function.Injective (slotInput seeds pairKeys))
     routedAnswer prims seeds pairKeys (.inr (.inl (slotInput seeds pairKeys s₀))) = onTable (slotOracle s₀) := by
   have hc : (⟨s₀, rfl⟩ : ∃ s, slotInput seeds pairKeys s = slotInput seeds pairKeys s₀).choose = s₀ :=
     hinj (Exists.choose_spec (⟨s₀, rfl⟩ : ∃ s, slotInput seeds pairKeys s = slotInput seeds pairKeys s₀))
-  simp only [routedAnswer, dif_pos (⟨s₀, rfl⟩ : ∃ s, slotInput seeds pairKeys s = slotInput seeds pairKeys s₀), hc]
+  simp only [routedAnswer, dite_eq_left (⟨s₀, rfl⟩ : ∃ s, slotInput seeds pairKeys s = slotInput seeds pairKeys s₀), hc]
 
 theorem onTable_map {α β : Type} (f : α → β) (m : StateT (SlotCache C) ProbComp α) :
     onTable (f <$> m) = f <$> onTable m := by
@@ -827,7 +827,7 @@ theorem routed_eval (hinj : Function.Injective (slotInput seeds pairKeys)) (para
         (prf ((dealtKeys parameter seeds pairKeys i).seed T) x) =
       truncateHash <$> onTable (slotOracle (.inl (T, x))) := fun T hT => by
     rw [List.mem_filter] at hT
-    simp only [prf, simulateQ_map, dealtKeys, if_pos (mem_holders_of_mem_L (of_decide_eq_true hT.2))]
+    simp only [prf, simulateQ_map, dealtKeys, ite_eq_left (mem_holders_of_mem_L (of_decide_eq_true hT.2))]
     exact congrArg _ (routed_hashQuery prims seeds pairKeys hinj (.inl (T, x)))
   have hmasks : ∀ j ∈ C.parties.filter (fun j => j ∈ J.1 ∧ j ≠ i),
       simulateQ (roPart (routedAnswer prims seeds pairKeys))
@@ -836,8 +836,8 @@ theorem routed_eval (hinj : Function.Injective (slotInput seeds pairKeys)) (para
     fun j hj => by
     rw [List.mem_filter] at hj
     have hji : j ≠ i := (of_decide_eq_true hj.2).2
-    rw [dif_neg hji, onTable_map, simulateQ_map]
-    simp only [dealtKeys, dif_neg hji]
+    rw [dite_eq_right hji, onTable_map, simulateQ_map]
+    simp only [dealtKeys, dite_eq_right hji]
     exact congrArg _ (routed_hashQuery prims seeds pairKeys hinj (.inr (C.pairOf i j (Ne.symm hji), x, ec, J)))
   simp only [eval, simulateQ_bind, simulateQ_list_mapM, simulateQ_pure, evalSlots, onTable_bind, onTable_mapM,
     onTable_pure]
@@ -912,9 +912,9 @@ theorem symAdversary_eq_routed (hinj : Function.Injective (slotInput seeds pairK
         ⟨s₀, hrev, rfl⟩
       have hc : hex.choose = s₀ := hinj hex.choose_spec.2
       rw [routedAnswer_slot prims seeds pairKeys hinj]
-      simp only [symAdversary, dif_pos hex, hc]
+      simp only [symAdversary, dite_eq_left hex, hc]
     · have h' : ¬∃ s, Revealed D (slotKey s) ∧ slotInput seeds pairKeys s = u := fun ⟨s, _, hs⟩ => h ⟨s, hs⟩
-      simp only [symAdversary, routedAnswer, dif_neg h, dif_neg h']
+      simp only [symAdversary, routedAnswer, dite_eq_right h, dite_eq_right h']
   · rfl
 
 /-- The core of `realImpl`. -/
@@ -936,7 +936,7 @@ theorem realCore_eq_symCore (hinj : Function.Injective (slotInput seeds pairKeys
   · simp only [gameImplWith, StateT.run_mk, routed_eval prims seeds pairKeys hinj]
   · cases b
     · simp only [gameImplWith, StateT.run_mk, routed_prfValue prims seeds pairKeys hinj]
-    · simp only [gameImplWith, StateT.run_mk, if_true]
+    · simp only [gameImplWith, StateT.run_mk, ite_true]
 
 theorem withFired_mono (I : QueryImpl (LocalSpec C + TprfSpec C) (StateT (TprfState C × HashCache C × SlotCache C) ProbComp))
     (t : (LocalSpec C + TprfSpec C).Domain) (p : SymState C × Bool) (hp : p.2 = true) :
@@ -1182,7 +1182,7 @@ theorem presampled_gameImplWith (x : Slot C)
       have := presampled_ite₂ x (fun st => ∃ ec, C.t ≤ (st.corrupt ∪ st.queried y ec).card) _ _ hA hB
       convert this using 1
       ext p : 1
-      simp only [gameImplWith, StateT.run_mk, id, if_false, Bool.false_eq_true]
+      simp only [gameImplWith, StateT.run_mk, id, ite_false, Bool.false_eq_true]
     · have hB := presampled_lift₂ (β := (LocalSpec C + TprfSpec C).Range (.inr (.challenge y))) x
         (fun st => match st.random y with | some d => pure d | none => sampleH)
         (fun st d => (some d, addChallenge st y d)) fun st => by
@@ -1193,7 +1193,7 @@ theorem presampled_gameImplWith (x : Slot C)
       have := presampled_ite₂ x (fun st => ∃ ec, C.t ≤ (st.corrupt ∪ st.queried y ec).card) _ _ hA hB
       convert this using 1
       ext p : 1
-      simp only [gameImplWith, StateT.run_mk, id, if_true]
+      simp only [gameImplWith, StateT.run_mk, id, ite_true]
 
 /-- The slots of the state of the hop. -/
 def getTable (p : SymState C × Bool) : SlotCache C := p.1.1.2.2
@@ -1381,7 +1381,7 @@ theorem pad_isPad (hinv : ∀ x ∈ challenged, ∀ ec, (D ∪ recordQueriers re
       (s := D ∪ recordQueriers records x ec) (t := J.1) (by omega)
     simp only [Finset.mem_union, not_or] at hnot
     exact ⟨j, hj, fun hji => hnot.2 (hji ▸ h.2.2.2), hnot.1, hnot.2⟩
-  rw [pad, dif_pos hex]
+  rw [pad, dite_eq_left hex]
   exact Classical.choose_spec hex
 
 /-- The shift of each slot. -/
@@ -1419,8 +1419,8 @@ theorem shiftOf_mask (δ : Point → XorDigest) {i j : C.Party} (hij : i ≠ j) 
       if Shifted records D challenged Tstar i J x ec ∧ j = pad records D i J x ec then δ x else 0#digestBits := by
   simp only [shiftOf]
   by_cases hs : Shifted records D challenged Tstar i J x ec ∧ j = pad records D i J x ec
-  · rw [if_pos hs, if_pos ⟨i, hs.1, hs.2 ▸ hij, by simp [← hs.2]⟩]
-  · rw [if_neg hs, if_neg]
+  · rw [ite_eq_left hs, ite_eq_left ⟨i, hs.1, hs.2 ▸ hij, by simp [← hs.2]⟩]
+  · rw [ite_eq_right hs, ite_eq_right]
     rintro ⟨i', hs', hne, heq⟩
     rcases (pairOf_eq_iff hij hne).mp heq with ⟨rfl, rfl⟩ | ⟨rfl, -⟩
     · exact hs ⟨hs', rfl⟩
@@ -1442,7 +1442,7 @@ theorem evalSum_shiftTable (δ : Point → XorDigest) (ω : Slot C → HashOutpu
     · simp only [hx, and_true]
       rw [Finset.sum_ite_eq' (L J i) Tstar]
       rfl
-    · simp only [hx, and_false, if_false]
+    · simp only [hx, and_false, ite_false]
       exact Finset.sum_eq_zero fun _ _ => rfl
   have hmask : ∑ j ∈ univ.filter (fun j => j ∈ J.1 ∧ j ≠ i), (if h : j = i then (0 : XorDigest) else
       toXor (shiftOf (records := records) (D := D) (challenged := challenged) (Tstar := Tstar) δ
@@ -1454,7 +1454,7 @@ theorem evalSum_shiftTable (δ : Point → XorDigest) (ω : Slot C → HashOutpu
         if Shifted records D challenged Tstar i J x ec ∧ j = pad records D i J x ec then δ x else 0 := by
       intro j hj
       have hji : j ≠ i := (Finset.mem_filter.mp hj).2.2
-      rw [dif_neg hji, shiftOf_mask hinv δ (Ne.symm hji) hi]
+      rw [dite_eq_right hji, shiftOf_mask hinv δ (Ne.symm hji) hi]
       split_ifs <;> rfl
     rw [Finset.sum_congr rfl hstep]
     by_cases hs : Shifted records D challenged Tstar i J x ec
@@ -1462,8 +1462,8 @@ theorem evalSum_shiftTable (δ : Point → XorDigest) (ω : Slot C → HashOutpu
       have hpad := pad_isPad hinv hs
       have hmem : pad records D i J x ec ∈ univ.filter (fun j => j ∈ J.1 ∧ j ≠ i) :=
         Finset.mem_filter.mpr ⟨Finset.mem_univ _, hpad.1, hpad.2.1⟩
-      rw [Finset.sum_ite_eq' _ (pad records D i J x ec), if_pos hmem, if_pos trivial]
-    · simp only [hs, false_and, if_false]
+      rw [Finset.sum_ite_eq' _ (pad records D i J x ec), ite_eq_left hmem, ite_eq_left trivial]
+    · simp only [hs, false_and, ite_false]
       exact Finset.sum_eq_zero fun _ _ => rfl
   have hiff : (Tstar ∈ L J i ∧ x ∈ challenged) ↔ Shifted records D challenged Tstar i J x ec :=
     ⟨fun h => ⟨mem_L_not_mem hT h.1, h.1, h.2, hi⟩, fun h => ⟨h.2.1, h.2.2.1⟩⟩
@@ -1486,8 +1486,8 @@ theorem evalSum_shiftTable (δ : Point → XorDigest) (ω : Slot C → HashOutpu
     abel
   rw [hsplit]
   by_cases hs : Shifted records D challenged Tstar i J x ec
-  · rw [if_pos (hiff.mpr hs), if_pos hs, XorDigest.add_self, add_zero]
-  · rw [if_neg (fun h => hs (hiff.mp h)), if_neg hs, add_zero, add_zero]
+  · rw [ite_eq_left (hiff.mpr hs), ite_eq_left hs, XorDigest.add_self, add_zero]
+  · rw [ite_eq_right (fun h => hs (hiff.mp h)), ite_eq_right hs, add_zero, add_zero]
 
 omit hT hinv in
 /-- The PRF value at a challenged point moves by `δ x`. -/
@@ -1496,7 +1496,7 @@ theorem prfSum_shiftTable (δ : Point → XorDigest) (ω : Slot C → HashOutput
   simp only [prfSum, toXor_truncateHash_shiftTable, Finset.sum_add_distrib]
   congr 1
   simp only [shiftOf, hx, and_true, apply_ite toXor, toXor_zero]
-  rw [Finset.sum_ite_eq' Finset.univ Tstar, if_pos (Finset.mem_univ _)]
+  rw [Finset.sum_ite_eq' Finset.univ Tstar, ite_eq_left (Finset.mem_univ _)]
   rfl
 
 /-- A revealed slot stays. -/
@@ -1506,13 +1506,13 @@ theorem shiftTable_revealed (δ : Point → XorDigest) (ω : Slot C → HashOutp
       0#digestBits := by
     rcases s with ⟨T, x⟩ | ⟨p, x, ec, J⟩
     · simp only [shiftOf]
-      rw [if_neg]
+      rw [ite_eq_right]
       rintro ⟨rfl, -⟩
       obtain ⟨i, hi, hhold⟩ := hs
       simp only [Committee.holders, Finset.mem_compl] at hhold
       exact hhold (hT hi)
     · simp only [shiftOf]
-      rw [if_neg]
+      rw [ite_eq_right]
       rintro ⟨i, hsh, hne, rfl⟩
       have hpad := pad_isPad hinv hsh
       have hout : ∀ k, k = i ∨ k = pad records D i J x ec → k ∉ D := by
@@ -1546,9 +1546,9 @@ theorem card_consistent_eq (c c' : Point → XorDigest) :
   refine Finset.card_nbij' (shiftTable records D challenged Tstar (fun x => c x + c' x))
     (shiftTable records D challenged Tstar (fun x => c x + c' x)) (fun ω hω => ?_) (fun ω hω => ?_)
     (fun ω _ => shiftTable_shiftTable _ _) (fun ω _ => shiftTable_shiftTable _ _)
-  · simp only [Finset.coe_filter, Finset.mem_univ, true_and, Set.mem_setOf_eq] at hω ⊢
+  · simp only [Finset.coe_filter, Finset.mem_univ, true_and, Set.mem_ofPred_eq] at hω ⊢
     exact consistent_shiftTable hT hinv reads hreads hω
-  · simp only [Finset.coe_filter, Finset.mem_univ, true_and, Set.mem_setOf_eq] at hω ⊢
+  · simp only [Finset.coe_filter, Finset.mem_univ, true_and, Set.mem_ofPred_eq] at hω ⊢
     have h := consistent_shiftTable hT hinv reads hreads (c' := c) hω
     have hδ : (fun x => c' x + c x) = fun x => c x + c' x := funext fun x => add_comm _ _
     rwa [hδ] at h
@@ -1571,10 +1571,10 @@ theorem card_consistent_mul (c : Point → XorDigest) :
     refine congrArg Finset.card (Finset.filter_congr fun ω _ => ?_)
     simp only [Consistent, Finset.notMem_empty, IsEmpty.forall_iff, implies_true, and_true, and_assoc, f]
     refine and_congr_right fun _ => and_congr_right fun _ => ⟨fun h x hx => ?_, fun h => ?_⟩
-    · rw [dif_pos hx, ← h]
+    · rw [dite_eq_left hx, ← h]
     · funext x
       have := h x.1 x.2
-      rwa [dif_pos x.2] at this
+      rwa [dite_eq_left x.2] at this
   have hcard : Fintype.card XorDigest = 2 ^ digestBits := by
     change Fintype.card Digest = _
     simp
@@ -1983,7 +1983,7 @@ theorem balanced_simulateQ (oa : OracleComp (LocalSpec C + TprfSpec C) Bool) :
     · by_cases hrev : ∃ s, Revealed v.1.1.1.corrupt (slotKey s) ∧ slotInput seeds pairKeys s = u
       · have hadv : symAdversary prims seeds pairKeys v.1.1.1.corrupt (.inr (.inl u)) =
             onTable (slotOracle hrev.choose) := by
-          simp only [symAdversary, dif_pos hrev]
+          simp only [symAdversary, dite_eq_left hrev]
         refine balancedAt_observe prims seeds pairKeys parameter hoa ih (A := HashOutput) (fun ω => ω hrev.choose) id
           (fun _ => afterStep seeds pairKeys v (.inl (.inr (.inl u))) v.1.1.1 v.1.1.2.1) (fun _ => records)
           (fun a => reads ++ [(hrev.choose, a)]) (fun b ω => ?_) (fun a => ?_) (fun a => ⟨rfl, rfl⟩)
@@ -2003,7 +2003,7 @@ theorem balanced_simulateQ (oa : OracleComp (LocalSpec C + TprfSpec C) Bool) :
           tauto
       · have hadv : symAdversary prims seeds pairKeys v.1.1.1.corrupt (.inr (.inl u)) =
             onCache (hashAnswer prims u) := by
-          simp only [symAdversary, dif_neg hrev]
+          simp only [symAdversary, dite_eq_right hrev]
         refine balancedAt_indep prims seeds pairKeys parameter hoa ih
           ((fun z => (z.1, afterStep seeds pairKeys v (.inl (.inr (.inl u))) v.1.1.1 z.2)) <$>
             (hashAnswer prims u).run v.1.1.2.1) (fun b ω => ?_) fun w hw => ?_
@@ -2033,7 +2033,7 @@ theorem balanced_simulateQ (oa : OracleComp (LocalSpec C + TprfSpec C) Bool) :
         · rw [symImpl_run_eq]
           show (fun z => _) <$> (if ∃ x ∈ v.1.1.1.challenged, ∃ ec, C.t ≤
             (v.1.1.1.corrupt ∪ v.1.1.1.queried x ec ∪ {i}).card then _ else _) = _
-          rw [if_pos hc]
+          rw [ite_eq_left hc]
           rfl
         · obtain rfl := (mem_support_pure_iff _ _).mp hw
           exact ⟨hv, rfl, rfl⟩
@@ -2043,7 +2043,7 @@ theorem balanced_simulateQ (oa : OracleComp (LocalSpec C + TprfSpec C) Bool) :
         · rw [symImpl_run_eq]
           show (fun z => _) <$> (if ∃ x ∈ v.1.1.1.challenged, ∃ ec, C.t ≤
             (v.1.1.1.corrupt ∪ v.1.1.1.queried x ec ∪ {i}).card then _ else _) = _
-          rw [if_neg hc]
+          rw [ite_eq_right hc]
           rfl
         · obtain rfl := (mem_support_pure_iff _ _).mp hw
           push Not at hc
@@ -2061,7 +2061,7 @@ theorem balanced_simulateQ (oa : OracleComp (LocalSpec C + TprfSpec C) Bool) :
         · rw [symImpl_run_eq]
           show (fun z => _) <$> (if i ∉ J.1 ∨ (C.t ≤ (v.1.1.1.corrupt ∪ v.1.1.1.queried x ec ∪ {i}).card ∧
             x ∈ v.1.1.1.challenged) then _ else _) = _
-          rw [if_pos hc]
+          rw [ite_eq_left hc]
           rfl
         · obtain rfl := (mem_support_pure_iff _ _).mp hw
           exact ⟨hv, rfl, rfl⟩
@@ -2073,7 +2073,7 @@ theorem balanced_simulateQ (oa : OracleComp (LocalSpec C + TprfSpec C) Bool) :
         · rw [symImpl_run_eq]
           show (fun z => _) <$> (if i ∉ J.1 ∨ (C.t ≤ (v.1.1.1.corrupt ∪ v.1.1.1.queried x ec ∪ {i}).card ∧
             x ∈ v.1.1.1.challenged) then _ else _) = _
-          rw [if_neg hc]
+          rw [ite_eq_right hc]
           erw [evalSlots_run_full]
           rfl
         · refine ⟨fun x' hx' ec' => ?_, fun x' ec' => ?_, hv.2.2.1, hv.2.2.2⟩
@@ -2106,7 +2106,7 @@ theorem balanced_simulateQ (oa : OracleComp (LocalSpec C + TprfSpec C) Bool) :
     · by_cases hc : ∃ ec, C.t ≤ (v.1.1.1.corrupt ∪ v.1.1.1.queried x ec).card
       · refine balancedAt_indep prims seeds pairKeys parameter hoa ih
           (pure (none, afterStep seeds pairKeys v (.inr (.challenge x)) v.1.1.1 v.1.1.2.1)) (fun b ω => ?_) fun w hw => ?_
-        · rw [symImpl_run_eq, symCore_challenge_run, if_pos hc]
+        · rw [symImpl_run_eq, symCore_challenge_run, ite_eq_left hc]
           rfl
         · obtain rfl := (mem_support_pure_iff _ _).mp hw
           exact ⟨hv, rfl, rfl⟩
@@ -2128,7 +2128,7 @@ theorem balanced_simulateQ (oa : OracleComp (LocalSpec C + TprfSpec C) Bool) :
       have hstepF : ∀ ω, (symImpl prims seeds pairKeys false parameter (.inr (.challenge x))).run (conc v ω) =
           pure (some (prfDigest ω x), conc (afterStep seeds pairKeys v (.inr (.challenge x))
             (addChallenge v.1.1.1 x (prfDigest ω x)) v.1.1.2.1) ω) := fun ω => by
-        rw [symImpl_run_eq, symCore_challenge_run, if_neg hc]
+        rw [symImpl_run_eq, symCore_challenge_run, ite_eq_right hc]
         erw [prfSlots_run_full]
         rfl
       by_cases hx : x ∈ chalSet v
@@ -2138,7 +2138,7 @@ theorem balanced_simulateQ (oa : OracleComp (LocalSpec C + TprfSpec C) Bool) :
           (fun d => afterStep seeds pairKeys v (.inr (.challenge x)) (addChallenge v.1.1.1 x d) v.1.1.2.1) hstepF
           (fun ω => ?_) (hinv _) ⟨?_, ?_⟩
         · rw [symImpl_run_eq, symCore_challenge_run]
-          simp only [if_neg hc, if_true, hy₀, hcv]
+          simp only [ite_eq_right hc, ite_true, hy₀, hcv]
           rfl
         · exact Finset.insert_eq_of_mem hx
         · funext z
@@ -2156,7 +2156,7 @@ theorem balanced_simulateQ (oa : OracleComp (LocalSpec C + TprfSpec C) Bool) :
         · rw [SampleableType.prEvent_uniformSample_eq_singleton]
           simp
         · rw [symImpl_run_eq, symCore_challenge_run]
-          simp only [if_neg hc, if_true, hnone]
+          simp only [ite_eq_right hc, ite_true, hnone]
           erw [routed_liftComp_run]
           exact map_map_map_eq _ _ _ _ _ _ fun _ => rfl
         · funext z
@@ -2495,7 +2495,7 @@ theorem symImpl_reveals (σ : KeySlot C) (b : Bool) (parameter : PublicParameter
       Revealed z.2.1.1.1.corrupt σ ∧ σ ∉ z.2.1.2 := by
   intro z hz
   obtain ⟨i, rfl, hr, hi⟩ := hrev
-  simp only [symImpl, withFired, StateT.run_mk, gameImplWith, if_neg hr, support_map, support_pure,
+  simp only [symImpl, withFired, StateT.run_mk, gameImplWith, ite_eq_right hr, support_map, support_pure,
     Set.image_singleton, Set.mem_singleton_iff] at hz
   subst hz
   exact ⟨hi, by simp [firedBy, hσ]⟩
@@ -2569,14 +2569,14 @@ theorem sum_hit_le (σ : KeySlot C) (b : Bool) (parameter : PublicParameter) {α
         · obtain ⟨x, m, J, rfl⟩ := hu; trivial
       have hn : 0 < n := hq.1.resolve_left (not_not.mpr hc)
       have h1 : ∑ k : HashOutput, (if Hit σ (.inl (.inr (.inl u))) k then (1 : ℝ≥0∞) else 0) ≤ 1 := by
-        rw [Finset.sum_eq_single k₀ (fun k _ hk => if_neg fun h => hk (hitQuery_unique (by
+        rw [Finset.sum_eq_single k₀ (fun k _ hk => ite_eq_right fun h => hk (hitQuery_unique (by
           obtain ⟨u', hu', h'⟩ := h; cases hu'; exact h') hu)) (by simp)]
         split_ifs <;> simp
-      have hn' : n' = n - 1 := if_pos hc
+      have hn' : n' = n - 1 := ite_eq_left hc
       refine (add_le_add h1 hsum).trans (le_of_eq ?_)
       rw [hn', ← Nat.cast_one, ← Nat.cast_add, Nat.add_sub_cancel' hn]
     · have h0 : ∑ k : HashOutput, (if Hit σ t k then (1 : ℝ≥0∞) else 0) = 0 :=
-        Finset.sum_eq_zero fun k _ => if_neg fun h => hh ⟨k, h⟩
+        Finset.sum_eq_zero fun k _ => ite_eq_right fun h => hh ⟨k, h⟩
       rw [h0, zero_add]
       refine hsum.trans ?_
       simp only [n']
@@ -2718,17 +2718,14 @@ theorem card_pair : Fintype.card C.Pair = C.n.choose 2 := by
     · simp [Finset.min'_insert, Finset.max'_insert, min_eq_left h.le, max_eq_right h.le,
         Finset.pair_comm]
 
-theorem card_term : Fintype.card C.Term = C.n.choose (C.t - 1) := by
-  simp [Committee.Term, Fintype.card_finset_len]
-
 theorem probEvent_bind_le_of_ite {α β : Type} (mx : ProbComp α) (f : α → ProbComp β) (p : α → Prop)
     (q : β → Prop) (h : ∀ a, ¬p a → Pr{let z ← f a}[q z] = 0) : Pr{let z ← mx >>= f}[q z] ≤ Pr{let z ← mx}[p z] := by
   classical
   rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_eq_tsum_ite]
   refine ENNReal.tsum_le_tsum fun a => ?_
   by_cases ha : p a
-  · rw [if_pos ha]; exact mul_le_of_le_one_right' (prEvent_le_one _)
-  · rw [if_neg ha, h a ha, mul_zero]
+  · rw [ite_eq_left ha]; exact mul_le_of_le_one_right' (prEvent_le_one _)
+  · rw [ite_eq_right ha, h a ha, mul_zero]
 
 theorem probEvent_update_le {Ω : Type} [Fintype Ω] [DecidableEq Ω] [SampleableType (Ω → HashOutput)]
     (E : (Ω → HashOutput) → Prop) (d : Ω)

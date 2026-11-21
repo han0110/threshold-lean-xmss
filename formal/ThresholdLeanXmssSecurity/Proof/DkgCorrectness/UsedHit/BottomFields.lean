@@ -1,6 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.BottomPause
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.BottomSplit
-import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.SeedAgree
 
 /-!
 # The laws of a bottom slot
@@ -31,7 +30,7 @@ omit [Field E] [Fintype E] [Algebra Bit E] in
 parameter. -/
 theorem seedParameterAgreeJoint (D : C.Coalition) : SeedParameterAgreeJoint (E := E) prims D :=
   fun net st w y hy i j Ki Kj hi hj hKi hKj =>
-    seedParameterAgree_any (jointKeyWorld prims D false) D net st w y hy i j Ki Kj hi hj hKi hKj
+    SetupParameter.seedParameterAgree_any (jointKeyWorld prims D false) D net st w y hy i j Ki Kj hi hj hKi hKj
 
 theorem bottomLawReal : BottomLawReal K circuits settings runLimit prims :=
   bottomLawReal_of_split K circuits settings runLimit prims (bottomHeadSplit K circuits settings prims)

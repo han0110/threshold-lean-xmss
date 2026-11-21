@@ -7,8 +7,9 @@ import ThresholdLeanXmssSecurity.Proof.PrssRealRand
 `drawGame` is the hybrid with the draw of the fresh keys of a slot as a parameter, and `tableGame F`
 is the game with the uniform table `F` of keys that is drawn before the game. `EagerDraw`,
 `KeyProvenance`, `KeyParametric` and `CellsCount` state the four facts of the game that the bound of
-`HybridEnd` needs. `hybridEnd_of_parts` proves `HybridEnd` from them and `WorldRenaming`, through
-`prob_tableHit_le`, the bound of a hit of a uniform table.
+`HybridEnd` needs. `hybridEnd_of_renaming` proves `HybridEnd` from them with `KeyRenaming` in the place
+of `KeyParametric`, through `prob_tableHit_le`, the bound of a hit of a uniform table.
+`keyRenaming_of_parts` gives `KeyRenaming` from `KeyParametric` and `WorldRenaming`.
 -/
 
 section
@@ -326,7 +327,7 @@ omit [Fintype E] [DecidableEq E] in
 /-- The four statements give `HybridEnd`. The union is over the entries of the table, so the bound is
 the sum of the bounds of the entries, `|Ω| (q + honestKnownKeys + |Ω|) / 2^256` with
 `|Ω| ≤ gameSetups * prssKeyCount`. -/
-theorem hybridEnd_of_leaves (eager : EagerDraw K circuits settings runLimit prims)
+theorem hybridEnd_of_renaming (eager : EagerDraw K circuits settings runLimit prims)
     (prov : KeyProvenance K circuits settings runLimit prims)
     (rename : KeyRenaming K circuits settings runLimit prims)
     (count : CellsCount K circuits settings runLimit prims) :
@@ -442,16 +443,6 @@ theorem keyRenaming_of_parts (param : KeyParametric K circuits settings runLimit
     fun p : Bool × HashCache C => streamCells p.2
   simpa only [Functor.map_map] using h
 
-omit [Fintype E] [DecidableEq E] in
-/-- The five statements give `HybridEnd`. -/
-theorem hybridEnd_of_parts (eager : EagerDraw K circuits settings runLimit prims)
-    (prov : KeyProvenance K circuits settings runLimit prims)
-    (param : KeyParametric K circuits settings runLimit) (world : WorldRenaming (C := C) prims)
-    (count : CellsCount K circuits settings runLimit prims) :
-    HybridEnd K circuits settings runLimit prims :=
-  hybridEnd_of_leaves K circuits settings runLimit prims eager prov
-    (keyRenaming_of_parts K circuits settings runLimit prims param world) count
-
 end ThresholdLeanXmssSecurity.DkgCorrectnessProof.UsedHit
 
 end
@@ -462,10 +453,6 @@ end
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.DkgCorrectnessProof.UsedHit.prob_tableHit_le
 
-/-- info: 'ThresholdLeanXmssSecurity.DkgCorrectnessProof.UsedHit.hybridEnd_of_leaves' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.DkgCorrectnessProof.UsedHit.hybridEnd_of_renaming' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.DkgCorrectnessProof.UsedHit.hybridEnd_of_leaves
-
-/-- info: 'ThresholdLeanXmssSecurity.DkgCorrectnessProof.UsedHit.hybridEnd_of_parts' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.DkgCorrectnessProof.UsedHit.hybridEnd_of_parts
+#print axioms ThresholdLeanXmssSecurity.DkgCorrectnessProof.UsedHit.hybridEnd_of_renaming

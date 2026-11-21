@@ -462,38 +462,33 @@ theorem psafe_of_noBad {α : Type} {S : KeyName C → HashOutput → Prop} {p : 
     (hpost : ∀ a Q', (∀ k, Q k → Q' k) → post a Q') : PSafe D post p Q :=
   safeThen_of_noBad D S _ h _ Q hS fun _ Q' hQ' a _ => hpost a Q' hQ'
 
+/-- A bad draw is a call in class `stream`. -/
+theorem badDraw_stream {S : KeyName C → HashOutput → Prop} (t : (LocalSpec C).Domain) (h : BadDraw D S t) :
+    InClass .stream t := by
+  rcases t with _ | _ | _
+  · exact h.elim
+  · exact h.elim
+  · rfl
+
 theorem NoBad.of_class {α : Type} {S : KeyName C → HashOutput → Prop} {p : PartyM C E RealSpec α}
     (h : ClassBound (E := E) .stream p 0) : NoBad D S p :=
-  IsQueryBoundP.of_imp (fun t ht => by
-    rcases t with ((_ | _ | x) | _) | _
-    · exact ht.elim
-    · exact ht.elim
-    · rfl
-    · exact ht.elim
-    · exact ht.elim) h
+  SetupBudgets.PBound.of_class badDraw_stream h
 
 theorem NoBadS.of_state {σ α : Type} {S : KeyName C → HashOutput → Prop} {p : StateT σ (PartyM C E RealSpec) α}
     (h : StateBound (E := E) .stream p 0) : NoBadS D S p := fun s => NoBad.of_class (h s)
 
 theorem NoBad.bind {α β : Type} {S : KeyName C → HashOutput → Prop} {p : PartyM C E RealSpec α} {f : α → PartyM C E RealSpec β}
-    (h : NoBad D S p) (hf : ∀ a, NoBad D S (f a)) : NoBad D S (p >>= f) := by
-  unfold NoBad
-  simp only [OptionT.run_bind]
-  apply isQueryBoundP_bind (n := 0) (m := 0) h
-  intro a _
-  cases a with
-  | none => exact isQueryBoundP_pure _ _ _
-  | some a => exact hf a
+    (h : NoBad D S p) (hf : ∀ a, NoBad D S (f a)) : NoBad D S (p >>= f) :=
+  SetupBudgets.PBound.bind h hf
 
 theorem NoBadS.bind {σ α β : Type} {S : KeyName C → HashOutput → Prop} {p : StateT σ (PartyM C E RealSpec) α}
     {f : α → StateT σ (PartyM C E RealSpec) β} (h : NoBadS D S p) (hf : ∀ a, NoBadS D S (f a)) :
-    NoBadS D S (p >>= f) := fun s =>
-  NoBad.bind (h s) fun a => hf a.1 a.2
+    NoBadS D S (p >>= f) :=
+  SetupBudgets.PState.bind_zero h hf
 
 theorem NoBadS.lift {σ α : Type} {S : KeyName C → HashOutput → Prop} {p : PartyM C E RealSpec α} (h : NoBad D S p) :
-    NoBadS D S (StateT.lift p : StateT σ (PartyM C E RealSpec) α) := fun s => by
-  change NoBad D S (p >>= fun a => Pure.pure (a, s))
-  exact NoBad.bind h fun a => isQueryBoundP_pure _ _ _
+    NoBadS D S (StateT.lift p : StateT σ (PartyM C E RealSpec) α) :=
+  SetupBudgets.PState.lift h
 
 theorem NoBadS.pure {σ α : Type} {S : KeyName C → HashOutput → Prop} (a : α) :
     NoBadS D S (Pure.pure a : StateT σ (PartyM C E RealSpec) α) := fun _ => isQueryBoundP_pure _ _ _
@@ -505,56 +500,13 @@ theorem NoBadS.mapM {σ α β : Type} {S : KeyName C → HashOutput → Prop} (f
     rw [List.mapM_cons]
     exact (hf a).bind fun b => (NoBadS.mapM f hf xs).bind fun bs => NoBadS.pure _
 
-theorem NoBadS.foldlM {σ α γ : Type} {S : KeyName C → HashOutput → Prop} (f : α → γ → StateT σ (PartyM C E RealSpec) α)
-    (hf : ∀ a g, NoBadS D S (f a g)) : ∀ (xs : List γ) (a : α), NoBadS D S (xs.foldlM f a)
-  | [], a => by simpa using NoBadS.pure (D := D) (S := S) (σ := σ) a
-  | g :: xs, a => by
-    rw [List.foldlM_cons]
-    exact (hf a g).bind fun a' => NoBadS.foldlM f hf xs a'
-
 theorem liftComp_ro_noBad {S : KeyName C → HashOutput → Prop} {α : Type} (oa : OracleComp (RoSpec C) α) :
-    IsQueryBoundP oa (RoBad D S) 0 → IsQueryBoundP (liftComp oa (LocalSpec C)) (BadDraw D S) 0 := by
-  induction oa using OracleComp.inductionOn with
-  | pure a => intro _; trivial
-  | query_bind t k ih =>
-    intro h
-    rw [isQueryBoundP_query_bind_iff] at h
-    have e : liftComp (liftM (OracleSpec.query t) >>= k) (LocalSpec C) =
-        (liftM ((LocalSpec C).query (.inr t)) : OracleComp (LocalSpec C) _) >>= fun u =>
-          liftComp (k u) (LocalSpec C) := by
-      rw [liftComp_bind]
-      rcases t with _ | _ <;> rfl
-    rw [e]
-    have ht : ¬ RoBad D S t := h.1.resolve_right (lt_irrefl 0)
-    exact (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl ht, fun u => by
-      have hu := ih u (by simpa only [ht, ite_false] using h.2 u)
-      simpa only [show ¬ BadDraw D S (.inr t) from ht, ite_false] using hu⟩
-
-theorem liftComp_party_noBad {S : KeyName C → HashOutput → Prop} {α : Type} (oa : OracleComp (LocalSpec C) α) :
-    IsQueryBoundP oa (BadDraw D S) 0 →
-      IsQueryBoundP (liftComp oa (PartySpec C E RealSpec)) (PartyBad D S) 0 := by
-  induction oa using OracleComp.inductionOn with
-  | pure a => intro _; trivial
-  | query_bind t k ih =>
-    intro h
-    rw [isQueryBoundP_query_bind_iff] at h
-    have e : liftComp (liftM (OracleSpec.query t) >>= k) (PartySpec C E RealSpec) =
-        (liftM ((PartySpec C E RealSpec).query (.inl (.inl t))) : OracleComp (PartySpec C E RealSpec) _) >>=
-          fun u => liftComp (k u) (PartySpec C E RealSpec) := by
-      rw [liftComp_bind]
-      rcases t with _ | _ | _ <;> rfl
-    rw [e]
-    have ht : ¬ BadDraw D S t := h.1.resolve_right (lt_irrefl 0)
-    exact (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl ht, fun u => by
-      have hu := ih u (by simpa only [ht, ite_false] using h.2 u)
-      simpa only [show ¬ PartyBad (E := E) D S (.inl (.inl t)) from ht, ite_false] using hu⟩
+    IsQueryBoundP oa (RoBad D S) 0 → IsQueryBoundP (liftComp oa (LocalSpec C)) (BadDraw D S) 0 :=
+  SetupBudgets.liftComp_roP oa 0
 
 theorem NoBad.oracleStep {α : Type} {S : KeyName C → HashOutput → Prop} {oa : OracleComp (RoSpec C) α}
-    (h : NoCall (RoBad D S) oa) : NoBad D S (ThresholdLeanXmss.oracleStep oa : PartyM C E RealSpec α) := by
-  unfold NoBad ThresholdLeanXmss.oracleStep ThresholdLeanXmss.localStep
-  change IsQueryBoundP (liftComp (liftComp oa (LocalSpec C)) (PartySpec C E RealSpec) >>= fun a => Pure.pure (some a)) _ _
-  exact isQueryBoundP_bind (n := 0) (m := 0)
-    (liftComp_party_noBad _ (liftComp_ro_noBad _ ((noCall_iff _ _).1 h))) fun _ _ => isQueryBoundP_pure _ _ _
+    (h : NoCall (RoBad D S) oa) : NoBad D S (ThresholdLeanXmss.oracleStep oa : PartyM C E RealSpec α) :=
+  SetupBudgets.PBound.oracleStep ((noCall_iff _ _).1 h)
 
 end NoBad
 
@@ -564,6 +516,7 @@ section Body
 
 open ThresholdLeanXmssSecurity.SigningSelectionProof (NoCall noCall_iff noCall_pure noCall_bind noCall_map noCall_mapM noCall_query)
 open DigestBudgets (ClassBound StateBound PartyIn RoIn)
+open SetupBudgets (PBound PState)
 
 /-- The keys of operator `i` under the PRSS keys `prss`, one for each held term and each pair. -/
 def KeysOf (i : C.Party) (prss : PrssKeys C) (key : HashOutput) : Prop := ∃ name, NameKey i prss name key
@@ -578,122 +531,155 @@ theorem noCall_roBad_of_stream {S : KeyName C → HashOutput → Prop} {α : Typ
     · exact ht.elim
     · rfl) h
 
-theorem noCall_prgBits {S : KeyName C → HashOutput → Prop} (name : KeyName C) (key : HashOutput) (hkey : Hidden D name → S name key)
-    (ρ idx count : ℕ) : NoCall (RoBad D S) (prgBits name key ρ idx count) := by
-  unfold prgBits
-  exact noCall_bind _ (noCall_mapM _ _ _ fun _ => noCall_query _ _ fun h => h.2 (hkey h.1)) fun _ =>
-    noCall_pure _ _
+variable {q : (LocalSpec C).Domain → Prop}
+
+/-! The lemmas from `prssRandomness_pstate` to `runJobs_pstate` hold for each predicate `q` on the local
+calls that holds only on calls in class `stream` (`hq`) and on no `PRG` call under a key of the operator
+(`hkey`). -/
+
+/-- A step of `H` and `PRG` with no call of `q` makes no local call of `q`. -/
+theorem oracleStep_pstate {α : Type} {oa : OracleComp (RoSpec C) α} (h : NoCall (fun t => q (.inr t)) oa) :
+    PBound q (ThresholdLeanXmss.oracleStep oa : PartyM C E RealSpec α) 0 :=
+  PBound.oracleStep ((noCall_iff _ _).1 h)
+
+theorem noCall_of_stream (hq : ∀ t, q t → InClass .stream t) {α : Type} {oa : OracleComp (RoSpec C) α}
+    (h : NoCall (RoIn .stream) oa) : NoCall (fun t => q (.inr t)) oa := by
+  rw [noCall_iff] at h ⊢
+  exact IsQueryBoundP.of_imp (fun t ht => hq _ ht) h
 
 variable [Field E] [Algebra Bit E] (K : Constants C E) (ctx : Context C)
 
-theorem noCall_elementDraw {S : KeyName C → HashOutput → Prop} (name : KeyName C) (key : HashOutput)
-    (hkey : Hidden D name → S name key) (ρ idx count : ℕ) :
-    NoCall (RoBad D S) ((elementCodec K).draw name key ρ idx count) :=
-  noCall_bind _ (noCall_prgBits name key hkey _ _ _) fun _ => noCall_pure _ _
-
 omit [Field E] [Algebra Bit E] in
-theorem prssRandomness_noBad {R : Type} [Zero R] (codec : Codec C E R)
-    (hdraw : ∀ name key, (Hidden D name → NameKey ctx.self ctx.prss name key) → ∀ ρ idx count,
-      NoCall (RoBad D (NameKey ctx.self ctx.prss)) (codec.draw name key ρ idx count)) (idx count : ℕ) :
-    NoBadS D (NameKey ctx.self ctx.prss) (prssRandomness ctx codec idx count : RunM C E RealSpec _) := by
+theorem prssRandomness_pstate (hq : ∀ t, q t → InClass .stream t) {R : Type} [Zero R] (codec : Codec C E R)
+    (hdraw : ∀ name key, NameKey ctx.self ctx.prss name key → ∀ ρ idx count,
+      NoCall (fun t => q (.inr t)) (codec.draw name key ρ idx count)) (idx count : ℕ) :
+    PState q (prssRandomness ctx codec idx count : RunM C E RealSpec _) 0 := by
   unfold prssRandomness freshLabel
-  refine NoBadS.bind (NoBadS.of_state (DigestBudgets.StateBound.modifyGet _)) fun ρ => ?_
-  refine NoBadS.bind (NoBadS.lift (NoBad.oracleStep (noCall_mapM _ _ _ fun T => ?_))) fun _ => ?_
+  refine PState.bind_zero (PState.of_class hq (DigestBudgets.StateBound.modifyGet (c := .stream) _)) fun ρ => ?_
+  refine PState.bind_zero (PState.lift (oracleStep_pstate (noCall_mapM _ _ _ fun T => ?_))) fun _ => ?_
   · split_ifs with hT
-    · exact hdraw _ _ (fun _ => Or.inl ⟨T, hT, rfl, rfl⟩) _ _ _
+    · exact hdraw _ _ (Or.inl ⟨T, hT, rfl, rfl⟩) _ _ _
     · exact noCall_pure _ _
-  refine NoBadS.bind (NoBadS.lift (NoBad.oracleStep (noCall_mapM _ _ _ fun j => ?_))) fun _ => NoBadS.pure _
+  refine PState.bind_zero (PState.lift (oracleStep_pstate (noCall_mapM _ _ _ fun j => ?_))) fun _ => PState.pure _
   split
   · exact noCall_pure _ _
   · rename_i h
-    exact hdraw _ _ (fun _ => Or.inr ⟨j, h, rfl, rfl⟩) _ _ _
-
-theorem prssElements_noBad (idx count : ℕ) :
-    NoBadS D (NameKey ctx.self ctx.prss) (prssRandomness ctx (elementCodec K) idx count : RunM C E RealSpec _) :=
-  prssRandomness_noBad ctx _ (fun name key hkey _ _ _ => noCall_elementDraw K name key hkey _ _ _) idx count
+    exact hdraw _ _ (Or.inr ⟨j, h, rfl, rfl⟩) _ _ _
 
 omit [Field E] [Algebra Bit E] in
-theorem prssBits_noBad (idx count : ℕ) :
-    NoBadS D (NameKey ctx.self ctx.prss) (prssRandomness ctx bitCodec idx count : RunM C E RealSpec _) :=
-  prssRandomness_noBad ctx _ (fun name key hkey _ _ _ => noCall_prgBits name key hkey _ _ _) idx count
+theorem noCall_prgBits_of (hkey : ∀ x : PrgInput C, NameKey ctx.self ctx.prss x.1 x.2.1 → ¬ q (.inr (.inr x)))
+    (name : KeyName C) (key : HashOutput) (h : NameKey ctx.self ctx.prss name key) (ρ idx count : ℕ) :
+    NoCall (fun t => q (.inr t)) (prgBits name key ρ idx count) := by
+  unfold prgBits
+  exact noCall_bind _ (noCall_mapM _ _ _ fun _ => noCall_query _ _ (hkey _ h)) fun _ => noCall_pure _ _
 
-theorem coin_noBad (count : ℕ) :
-    NoBadS D (NameKey ctx.self ctx.prss) ((realCheckBuildingBlocks K ctx).coin count : RunM C E RealSpec _) := by
+theorem prssElements_pstate (hq : ∀ t, q t → InClass .stream t)
+    (hkey : ∀ x : PrgInput C, NameKey ctx.self ctx.prss x.1 x.2.1 → ¬ q (.inr (.inr x))) (idx count : ℕ) :
+    PState q (prssRandomness ctx (elementCodec K) idx count : RunM C E RealSpec _) 0 :=
+  prssRandomness_pstate ctx hq _ (fun name key h _ _ _ =>
+    noCall_bind _ (noCall_prgBits_of ctx hkey name key h _ _ _) fun _ => noCall_pure _ _) idx count
+
+omit [Field E] [Algebra Bit E] in
+theorem prssBits_pstate (hq : ∀ t, q t → InClass .stream t)
+    (hkey : ∀ x : PrgInput C, NameKey ctx.self ctx.prss x.1 x.2.1 → ¬ q (.inr (.inr x))) (idx count : ℕ) :
+    PState q (prssRandomness ctx bitCodec idx count : RunM C E RealSpec _) 0 :=
+  prssRandomness_pstate ctx hq _ (fun name key h _ _ _ => noCall_prgBits_of ctx hkey name key h _ _ _) idx count
+
+theorem coin_pstate (hq : ∀ t, q t → InClass .stream t)
+    (hkey : ∀ x : PrgInput C, NameKey ctx.self ctx.prss x.1 x.2.1 → ¬ q (.inr (.inr x))) (count : ℕ) :
+    PState q ((realCheckBuildingBlocks K ctx).coin count : RunM C E RealSpec _) 0 := by
   unfold realCheckBuildingBlocks coinWith
-  exact NoBadS.bind (prssElements_noBad K ctx _ _) fun _ =>
-    NoBadS.bind (NoBadS.lift (NoBad.of_class (DigestBudgets.openSh_bound K ctx _ _))) fun _ => NoBadS.pure _
+  exact PState.bind_zero (prssElements_pstate K ctx hq hkey _ _) fun _ =>
+    PState.bind_zero (PState.lift (PBound.of_class hq (DigestBudgets.openSh_bound (c := .stream) K ctx _ _)))
+      fun _ => PState.pure _
 
-theorem extendMult_noBad (products : List (Product C E)) :
-    NoBadS D (NameKey ctx.self ctx.prss) ((realCheckBuildingBlocks K ctx).extendMult products : RunM C E RealSpec _) := by
+theorem extendMult_pstate (hq : ∀ t, q t → InClass .stream t)
+    (hkey : ∀ x : PrgInput C, NameKey ctx.self ctx.prss x.1 x.2.1 → ¬ q (.inr (.inr x))) (products : List (Product C E)) :
+    PState q ((realCheckBuildingBlocks K ctx).extendMult products : RunM C E RealSpec _) 0 := by
   unfold realCheckBuildingBlocks
-  exact NoBadS.bind (prssElements_noBad K ctx _ _) fun _ =>
-    NoBadS.of_state (DigestBudgets.reshare_bound K ctx _ _ _ _)
+  exact PState.bind_zero (prssElements_pstate K ctx hq hkey _ _) fun _ =>
+    PState.of_class hq (DigestBudgets.reshare_bound (c := .stream) K ctx _ _ _ _)
 
-theorem coinKey_noBad :
-    NoBadS D (NameKey ctx.self ctx.prss) (coinKey K (realCheckBuildingBlocks K ctx) : RunM C E RealSpec _) := by
+theorem coinKey_pstate (hq : ∀ t, q t → InClass .stream t)
+    (hkey : ∀ x : PrgInput C, NameKey ctx.self ctx.prss x.1 x.2.1 → ¬ q (.inr (.inr x))) :
+    PState q (coinKey K (realCheckBuildingBlocks K ctx) : RunM C E RealSpec _) 0 := by
   unfold coinKey
-  exact NoBadS.bind (NoBadS.of_state DigestBudgets.StateBound.get) fun _ =>
-    NoBadS.bind (coin_noBad K ctx 2) fun _ => NoBadS.lift (NoBad.oracleStep (noCall_query _ _ fun h => h))
+  exact PState.bind_zero (PState.of_class hq (DigestBudgets.StateBound.get (c := .stream))) fun _ =>
+    PState.bind_zero (coin_pstate K ctx hq hkey 2) fun _ => PState.lift (oracleStep_pstate (noCall_query _ _ fun h => by
+      simpa [InClass, queryClass] using hq _ h))
 
-theorem challenge_noBad :
-    NoBadS D (NameKey ctx.self ctx.prss) (challenge K (realCheckBuildingBlocks K ctx) : RunM C E RealSpec _) := by
+theorem challenge_pstate (hq : ∀ t, q t → InClass .stream t)
+    (hkey : ∀ x : PrgInput C, NameKey ctx.self ctx.prss x.1 x.2.1 → ¬ q (.inr (.inr x))) :
+    PState q (challenge K (realCheckBuildingBlocks K ctx) : RunM C E RealSpec _) 0 := by
   unfold challenge
-  refine NoBadS.bind (coinKey_noBad K ctx) fun key => ?_
-  refine NoBadS.bind (NoBadS.lift (NoBad.oracleStep (noCall_roBad_of_stream
+  refine PState.bind_zero (coinKey_pstate K ctx hq hkey) fun key => ?_
+  refine PState.bind_zero (PState.lift (oracleStep_pstate (noCall_of_stream hq
     (DigestBudgets.noCall_findChallenge K (by decide) key _ _)))) fun r => ?_
   split
-  · exact NoBadS.pure _
-  · exact NoBadS.lift (NoBad.of_class DigestBudgets.ClassBound.failure)
+  · exact PState.pure _
+  · exact PState.lift (PBound.of_class hq (DigestBudgets.ClassBound.failure (c := .stream)))
 
-theorem check_noBad (tuples : List (Tuple C)) :
-    NoBadS D (NameKey ctx.self ctx.prss) (check K ctx (realCheckBuildingBlocks K ctx) tuples : RunM C E RealSpec Unit) := by
+theorem check_pstate (hq : ∀ t, q t → InClass .stream t)
+    (hkey : ∀ x : PrgInput C, NameKey ctx.self ctx.prss x.1 x.2.1 → ¬ q (.inr (.inr x))) (tuples : List (Tuple C)) :
+    PState q (check K ctx (realCheckBuildingBlocks K ctx) tuples : RunM C E RealSpec Unit) 0 := by
   unfold check
   dsimp only
   split_ifs with hz
-  · exact NoBadS.pure _
-  refine NoBadS.bind (coinKey_noBad K ctx) fun key => ?_
-  refine NoBadS.bind (NoBadS.of_state (DigestBudgets.expand_bound (c := .stream) K (by decide) key _)) fun τ => ?_
-  refine NoBadS.bind (NoBadS.lift (NoBad.of_class (DigestBudgets.ClassBound.require _))) fun _ => ?_
-  refine NoBadS.bind (NoBadS.foldlM _ (fun v j => ?_) _ _) fun v => ?_
+  · exact PState.pure _
+  refine PState.bind_zero (coinKey_pstate K ctx hq hkey) fun key => ?_
+  refine PState.bind_zero (PState.of_class hq (DigestBudgets.expand_bound (c := .stream) K (by decide) key _))
+    fun τ => ?_
+  refine PState.bind_zero (PState.lift (PBound.of_class hq (DigestBudgets.ClassBound.require (c := .stream) _)))
+    fun _ => ?_
+  refine PState.bind_zero (PState.foldlM _ (fun v j => ?_) _ _) fun v => ?_
   · rcases v with ⟨xs, ys, d⟩
-    exact NoBadS.bind (extendMult_noBad K ctx _) fun _ =>
-      NoBadS.bind (challenge_noBad K ctx) fun _ => NoBadS.pure _
+    exact PState.bind_zero (extendMult_pstate K ctx hq hkey _) fun _ =>
+      PState.bind_zero (challenge_pstate K ctx hq hkey) fun _ => PState.pure _
   rcases v with ⟨xs, ys, d⟩
-  refine NoBadS.bind (NoBadS.foldlM _ (fun v j => ?_) _ _) fun v => ?_
+  refine PState.bind_zero (PState.foldlM _ (fun v j => ?_) _ _) fun v => ?_
   · rcases v with ⟨A, B, d⟩
-    exact NoBadS.bind (extendMult_noBad K ctx _) fun _ =>
-      NoBadS.bind (challenge_noBad K ctx) fun _ => NoBadS.pure _
+    exact PState.bind_zero (extendMult_pstate K ctx hq hkey _) fun _ =>
+      PState.bind_zero (challenge_pstate K ctx hq hkey) fun _ => PState.pure _
   rcases v with ⟨A, B, d⟩
-  refine NoBadS.bind (prssElements_noBad K ctx _ _) fun w => ?_
-  refine NoBadS.bind (extendMult_noBad K ctx _) fun q => ?_
-  refine NoBadS.bind (prssBits_noBad ctx _ _) fun salts => ?_
-  refine NoBadS.bind (NoBadS.of_state ((DigestBudgets.compareDigests_bound ctx _).mono
+  refine PState.bind_zero (prssElements_pstate K ctx hq hkey _ _) fun w => ?_
+  refine PState.bind_zero (extendMult_pstate K ctx hq hkey _) fun q => ?_
+  refine PState.bind_zero (prssBits_pstate ctx hq hkey _ _) fun salts => ?_
+  refine PState.bind_zero (PState.of_class hq ((DigestBudgets.compareDigests_bound (c := .stream) ctx _).mono
     (by simp [DigestBudgets.digestCost]))) fun _ => ?_
-  exact NoBadS.bind (challenge_noBad K ctx) fun _ =>
-    NoBadS.bind (NoBadS.lift (NoBad.of_class (DigestBudgets.openSh_bound K ctx _ _))) fun _ =>
-      NoBadS.lift (NoBad.of_class (DigestBudgets.ClassBound.require _))
+  exact PState.bind_zero (challenge_pstate K ctx hq hkey) fun _ =>
+    PState.bind_zero (PState.lift (PBound.of_class hq (DigestBudgets.openSh_bound (c := .stream) K ctx _ _)))
+      fun _ => PState.lift (PBound.of_class hq (DigestBudgets.ClassBound.require (c := .stream) _))
 
-theorem mult_noBad (mode : ReshareMode) (x y : Shares C Bit) (count : ℕ) :
-    NoBadS D (NameKey ctx.self ctx.prss) ((realRunBuildingBlocks K ctx mode).mult x y count : RunM C E RealSpec _) := by
+theorem mult_pstate (hq : ∀ t, q t → InClass .stream t)
+    (hkey : ∀ x : PrgInput C, NameKey ctx.self ctx.prss x.1 x.2.1 → ¬ q (.inr (.inr x))) (mode : ReshareMode)
+    (x y : Shares C Bit) (count : ℕ) :
+    PState q ((realRunBuildingBlocks K ctx mode).mult x y count : RunM C E RealSpec _) 0 := by
   unfold realRunBuildingBlocks reshareWith
-  refine NoBadS.bind (prssBits_noBad ctx _ _) fun r => ?_
+  refine PState.bind_zero (prssBits_pstate ctx hq hkey _ _) fun r => ?_
   cases mode
-  · exact NoBadS.of_state (DigestBudgets.reshare_bound K ctx _ _ _ _)
-  · exact NoBadS.of_state (DigestBudgets.reshareCollector_bound K ctx _ _ _)
+  · exact PState.of_class hq (DigestBudgets.reshare_bound (c := .stream) K ctx _ _ _ _)
+  · exact PState.of_class hq (DigestBudgets.reshareCollector_bound (c := .stream) K ctx _ _ _)
+
+theorem runJobs_pstate (hq : ∀ t, q t → InClass .stream t)
+    (hkey : ∀ x : PrgInput C, NameKey ctx.self ctx.prss x.1 x.2.1 → ¬ q (.inr (.inr x))) (mode : ReshareMode)
+    (jobs : List Circuit) (inputs : List (C.Term → List Bit)) :
+    PState q (runJobs K (realRunBuildingBlocks K ctx mode) jobs inputs : RunM C E RealSpec _) 0 := by
+  unfold runJobs
+  refine PState.bind_zero (PState.foldlM _ (fun v layer => ?_) _ _) fun v => ?_
+  · rcases v with ⟨wires, tuples⟩
+    exact PState.bind_zero (mult_pstate K ctx hq hkey mode _ _ _) fun _ => PState.pure _
+  rcases v with ⟨wires, tuples⟩
+  refine PState.bind_zero (?_ : PState q ((realRunBuildingBlocks K ctx mode).rerand _ _) 0) fun v' => ?_
+  · unfold realRunBuildingBlocks
+    exact PState.bind_zero (prssBits_pstate ctx hq hkey _ _) fun _ =>
+      PState.of_class hq (DigestBudgets.reshare_bound (c := .stream) K ctx _ _ _ _)
+  refine PState.bind_zero (check_pstate K ctx hq hkey _) fun _ => ?_
+  exact PState.bind_zero (PState.lift (PBound.of_class hq ((DigestBudgets.openRep_bound (c := .stream) K ctx _ _).mono
+    (by simp [DigestBudgets.copyCost])))) fun _ => PState.pure _
 
 theorem runJobs_noBad (mode : ReshareMode) (jobs : List Circuit) (inputs : List (C.Term → List Bit)) :
-    NoBadS D (NameKey ctx.self ctx.prss) (runJobs K (realRunBuildingBlocks K ctx mode) jobs inputs : RunM C E RealSpec _) := by
-  unfold runJobs
-  refine NoBadS.bind (NoBadS.foldlM _ (fun v layer => ?_) _ _) fun v => ?_
-  · rcases v with ⟨wires, tuples⟩
-    exact NoBadS.bind (mult_noBad K ctx mode _ _ _) fun _ => NoBadS.pure _
-  rcases v with ⟨wires, tuples⟩
-  refine NoBadS.bind (?_ : NoBadS D _ ((realRunBuildingBlocks K ctx mode).rerand _ _)) fun v' => ?_
-  · unfold realRunBuildingBlocks
-    exact NoBadS.bind (prssBits_noBad ctx _ _) fun _ => NoBadS.of_state (DigestBudgets.reshare_bound K ctx _ _ _ _)
-  refine NoBadS.bind (check_noBad K ctx _) fun _ => ?_
-  exact NoBadS.bind (NoBadS.lift (NoBad.of_class ((DigestBudgets.openRep_bound K ctx _ _).mono
-    (by simp [DigestBudgets.copyCost])))) fun _ => NoBadS.pure _
+    NoBadS D (NameKey ctx.self ctx.prss) (runJobs K (realRunBuildingBlocks K ctx mode) jobs inputs : RunM C E RealSpec _) :=
+  runJobs_pstate K ctx (badDraw_stream (D := D)) (fun _ h h' => h'.2 h) mode jobs inputs
 
 end Body
 

@@ -131,7 +131,8 @@ theorem hybridEnd_of_statements (eager : EagerDraw K circuits settings runLimit 
     (param : KeyParametric K circuits settings runLimit)
     (count : CellsCount K circuits settings runLimit prims) :
     HybridEnd K circuits settings runLimit prims :=
-  hybridEnd_of_parts K circuits settings runLimit prims eager prov param (worldRenaming prims) count
+  hybridEnd_of_renaming K circuits settings runLimit prims eager prov
+    (keyRenaming_of_parts K circuits settings runLimit prims param (worldRenaming prims)) count
 
 end ThresholdLeanXmssSecurity.DkgCorrectnessProof.UsedHit
 

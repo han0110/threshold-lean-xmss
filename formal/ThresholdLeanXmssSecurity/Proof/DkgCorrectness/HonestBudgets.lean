@@ -4,8 +4,9 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Counts
 # The honest budgets of the classes `digest` and `copy`
 
 `treeHonest`, `seedHonest` and `signQuiet` bound the honest calls of each class in a run of a tree, in
-the seed generation and in the signing oracles. The honest calls of a class on the network are at most
-the sum of the budgets of the honest programs.
+the seed generation and in the signing oracles. The honest calls of a predicate on the network are at
+most the sum of the budgets of the honest programs (`SetupBudgets.executePhase_boundP`), and a class is
+the case of the predicate `InClass c`.
 -/
 
 section
@@ -170,31 +171,43 @@ theorem signQuiet {c : HashClass} (hc : c ≠ .signing) : FirstCounts.SignQuiet 
 
 end Sign
 
-/-! ## The honest calls of a class on the network
+/-! ## The honest calls of a predicate on the network
 
 The lemmas give the network bound of `ThresholdLeanXmssSecurity/Proof/Check.lean` for `worldRoles`
-and `HonestIn c` in the place of `localRoles` and `Counted`. -/
+and a predicate `p` on the local calls in the place of `localRoles` and `Counted`. The class bounds
+of `DigestBudgets` are the case of the predicate `InClass c`. -/
+
+end DigestBudgets
+
+namespace SetupBudgets
+
+attribute [local instance] Classical.propDecidable
 
 section Network
 
-variable {C : Committee} {E : Type} (c : HashClass)
+variable {C : Committee} {E : Type} (p : (LocalSpec C).Domain → Prop)
 
-/-- A local call of an operator in class `c`. -/
-def PartyIn : (PartySpec C E RealSpec).Domain → Prop
-  | .inl (.inl t) => InClass c t
+/-- A local call of an operator that satisfies `p`. -/
+def PartyP : (PartySpec C E RealSpec).Domain → Prop
+  | .inl (.inl t) => p t
   | _ => False
 
-/-- The budget of class `c` of the continuation of a stopped program. -/
-def StepBound {α : Type} (st : Step C E RealSpec α) (n : ℕ) : Prop :=
+/-- An honest call that satisfies `p`, namely a call on the free copy. -/
+def HonestP : (WorldSpec C).Domain → Prop
+  | .inr t => p t
+  | _ => False
+
+/-- The budget of `p` of the continuation of a stopped program. -/
+def StepBoundP {α : Type} (st : Step C E RealSpec α) (n : ℕ) : Prop :=
   match st with
   | .done _ => True
-  | .wait _ k => ∀ inbox, IsQueryBoundP (k inbox) (PartyIn (C := C) (E := E) c) n
-  | .call _ k => ∀ out, IsQueryBoundP (k out) (PartyIn (C := C) (E := E) c) n
+  | .wait _ k => ∀ inbox, IsQueryBoundP (k inbox) (PartyP (C := C) (E := E) p) n
+  | .call _ k => ∀ out, IsQueryBoundP (k out) (PartyP (C := C) (E := E) p) n
 
 /-- The adversary role makes no honest call. -/
-theorem honestIn_adversary {β : Type} (oa : OracleComp (LocalSpec C) β) :
-    IsQueryBoundP (worldRoles.adversary oa) (HonestIn c) 0 := by
-  suffices h : ∀ n, IsQueryBoundP (worldRoles.adversary oa) (HonestIn c) n from h 0
+theorem honestP_adversary {β : Type} (oa : OracleComp (LocalSpec C) β) :
+    IsQueryBoundP (worldRoles.adversary oa) (HonestP p) 0 := by
+  suffices h : ∀ n, IsQueryBoundP (worldRoles.adversary oa) (HonestP p) n from h 0
   induction oa using OracleComp.inductionOn with
   | pure a => intro n; trivial
   | query_bind t k ih =>
@@ -206,13 +219,13 @@ theorem honestIn_adversary {β : Type} (oa : OracleComp (LocalSpec C) β) :
     rw [e, ThresholdLeanXmssSecurity.adversary_query]
     exact ⟨Or.inl not_false, fun u => ih u _⟩
 
-/-- Advancing an honest operator on the free copy spends its budget of class `c` and leaves the rest
-for its continuation. -/
-theorem free_advance_bind {α β : Type} (oa : OracleComp (PartySpec C E RealSpec) (Option α))
+/-- Advancing an honest operator on the free copy spends its budget of `p` and leaves the rest for its
+continuation. -/
+theorem free_advance_bindP {α β : Type} (oa : OracleComp (PartySpec C E RealSpec) (Option α))
     (k : Step C E RealSpec α → OracleComp (WorldSpec C) β) (extra : ℕ) :
-    ∀ n, IsQueryBoundP oa (PartyIn c) n →
-      (∀ st b, b ≤ n → StepBound c st b → IsQueryBoundP (k st) (HonestIn c) (extra + b)) →
-      IsQueryBoundP (free (advance oa) >>= k) (HonestIn c) (extra + n) := by
+    ∀ n, IsQueryBoundP oa (PartyP p) n →
+      (∀ st b, b ≤ n → StepBoundP p st b → IsQueryBoundP (k st) (HonestP p) (extra + b)) →
+      IsQueryBoundP (free (advance oa) >>= k) (HonestP p) (extra + n) := by
   induction oa using OracleComp.inductionOn with
   | pure a =>
     intro n _ hk
@@ -229,35 +242,35 @@ theorem free_advance_bind {α β : Type} (oa : OracleComp (PartySpec C E RealSpe
         rw [advance_query_bind, free_bind]
         rfl
       rw [e, bind_assoc, isQueryBoundP_query_bind_iff]
-      by_cases hq : InClass c q
+      by_cases hq : p q
       · have hn : 0 < n := h.1.resolve_left (not_not.2 hq)
         refine ⟨Or.inr (by omega), fun u => ?_⟩
         have hu := ih u (n - 1) (by
-          have hq' : PartyIn (E := E) c (Sum.inl (Sum.inl q)) := hq
+          have hq' : PartyP (E := E) p (Sum.inl (Sum.inl q)) := hq
           simpa only [hq', ↓reduceIte] using h.2 u)
           (fun st b hb hs => hk st b (by omega) hs)
-        simp only [HonestIn, hq, ↓reduceIte]
+        simp only [HonestP, hq, ↓reduceIte]
         exact hu.mono (by omega)
       · refine ⟨Or.inl hq, fun u => ?_⟩
-        simp only [HonestIn, hq, ↓reduceIte]
+        simp only [HonestP, hq, ↓reduceIte]
         exact ih u n (by
-          have hq' : ¬ PartyIn (E := E) c (Sum.inl (Sum.inl q)) := hq
+          have hq' : ¬ PartyP (E := E) p (Sum.inl (Sum.inl q)) := hq
           simpa only [hq', ↓reduceIte] using h.2 u) hk
-    · change IsQueryBoundP (free (pure (Step.wait outbox f)) >>= k) (HonestIn c) (extra + n)
+    · change IsQueryBoundP (free (pure (Step.wait outbox f)) >>= k) (HonestP p) (extra + n)
       rw [free_pure, pure_bind]
       exact hk _ n le_rfl fun inbox => by
-        have ho : ¬ PartyIn c (Sum.inl (Sum.inr outbox)) := not_false
+        have ho : ¬ PartyP p (Sum.inl (Sum.inr outbox)) := not_false
         simpa only [ho, ↓reduceIte] using h.2 inbox
     · exact input.elim
 
 /-- Advancing the honest operators one after another spends the budget of each. -/
-theorem sequenceFin_free_advance_bind {α β : Type} : ∀ {N : ℕ}
+theorem sequenceFin_free_advance_bindP {α β : Type} : ∀ {N : ℕ}
     (oa : Fin N → OracleComp (PartySpec C E RealSpec) (Option α)) (budget : Fin N → ℕ)
-    (_ : ∀ i, IsQueryBoundP (oa i) (PartyIn c) (budget i))
+    (_ : ∀ i, IsQueryBoundP (oa i) (PartyP p) (budget i))
     (k : (Fin N → Step C E RealSpec α) → OracleComp (WorldSpec C) β) (extra : ℕ),
-    (∀ st (b : Fin N → ℕ), (∀ i, b i ≤ budget i) → (∀ i, StepBound c (st i) (b i)) →
-      IsQueryBoundP (k st) (HonestIn c) (extra + ∑ i, b i)) →
-    IsQueryBoundP ((OverPermutation.sequenceFin fun i => free (advance (oa i))) >>= k) (HonestIn c)
+    (∀ st (b : Fin N → ℕ), (∀ i, b i ≤ budget i) → (∀ i, StepBoundP p (st i) (b i)) →
+      IsQueryBoundP (k st) (HonestP p) (extra + ∑ i, b i)) →
+    IsQueryBoundP ((OverPermutation.sequenceFin fun i => free (advance (oa i))) >>= k) (HonestP p)
       (extra + ∑ i, budget i)
   | 0, _, _, _, k, extra, hk => by
     simp only [OverPermutation.sequenceFin, pure_bind, Fin.sum_univ_zero, Nat.add_zero]
@@ -268,11 +281,11 @@ theorem sequenceFin_free_advance_bind {α β : Type} : ∀ {N : ℕ}
     have he : extra + (budget 0 + ∑ i : Fin N, budget i.succ) =
         (extra + ∑ i : Fin N, budget i.succ) + budget 0 := by omega
     rw [he]
-    refine free_advance_bind c (oa 0) _ _ (budget 0) (h 0) (fun st0 b0 hb0 hs0 => ?_)
+    refine free_advance_bindP p (oa 0) _ _ (budget 0) (h 0) (fun st0 b0 hb0 hs0 => ?_)
     have he' : (extra + ∑ i : Fin N, budget i.succ) + b0 =
         (extra + b0) + ∑ i : Fin N, budget i.succ := by omega
     rw [he']
-    refine sequenceFin_free_advance_bind (fun i : Fin N => oa i.succ) (fun i => budget i.succ)
+    refine sequenceFin_free_advance_bindP (fun i : Fin N => oa i.succ) (fun i => budget i.succ)
       (fun i => h i.succ) (fun st => k (Fin.cases st0 st)) (extra + b0) (fun st b hb hs => ?_)
     have hp := hk (Fin.cases st0 st) (Fin.cases b0 b)
       (fun i => Fin.cases hb0 hb i) (fun i => Fin.cases hs0 hs i)
@@ -280,10 +293,10 @@ theorem sequenceFin_free_advance_bind {α β : Type} : ∀ {N : ℕ}
 
 variable {Ia : Type} (D : C.Coalition) (A : Adversary C E Ia PEmpty PEmpty)
 
-theorem roundResume_bound {α : Type} (sent : C.Party → C.Party → Option (Msg E))
+theorem roundResume_boundP {α : Type} (sent : C.Party → C.Party → Option (Msg E))
     (steps : C.Party → Step C E RealSpec α) (budget : C.Party → ℕ)
-    (h : ∀ j, StepBound c (steps j) (budget j)) (j : C.Party) :
-    IsQueryBoundP (roundResume D sent steps j) (PartyIn c) (budget j) := by
+    (h : ∀ j, StepBoundP p (steps j) (budget j)) (j : C.Party) :
+    IsQueryBoundP (roundResume D sent steps j) (PartyP p) (budget j) := by
   have hj := h j
   unfold roundResume
   cases hs : steps j with
@@ -293,23 +306,23 @@ theorem roundResume_bound {α : Type} (sent : C.Party → C.Party → Option (Ms
     dsimp only
     split_ifs
     · exact isQueryBoundP_pure _ _ _
-    · simp only [StepBound, hs] at hj
+    · simp only [StepBoundP, hs] at hj
       exact hj _
 
 /-- One round on the real network spends the budgets of the honest operators. -/
-theorem stepRound_bind_bound {α β : Type} (state : A.State) (steps : C.Party → Step C E RealSpec α)
-    (budget : C.Party → ℕ) (h : ∀ j, StepBound c (steps j) (budget j))
+theorem stepRound_bind_boundP {α β : Type} (state : A.State) (steps : C.Party → Step C E RealSpec α)
+    (budget : C.Party → ℕ) (h : ∀ j, StepBoundP p (steps j) (budget j))
     (k : (A.State × (C.Party → Step C E RealSpec α) × (C.Party → C.Party → Option (Msg E))) →
       OracleComp (WorldSpec C) β) (extra : ℕ)
-    (hk : ∀ st (b : C.Party → ℕ), (∀ j, b j ≤ budget j) → (∀ j, StepBound c (st.2.1 j) (b j)) →
-      IsQueryBoundP (k st) (HonestIn c) (extra + ∑ j, b j)) :
-    IsQueryBoundP (stepRound worldRoles D A noFunctionality state steps >>= k) (HonestIn c)
+    (hk : ∀ st (b : C.Party → ℕ), (∀ j, b j ≤ budget j) → (∀ j, StepBoundP p (st.2.1 j) (b j)) →
+      IsQueryBoundP (k st) (HonestP p) (extra + ∑ j, b j)) :
+    IsQueryBoundP (stepRound worldRoles D A noFunctionality state steps >>= k) (HonestP p)
       (extra + ∑ j, budget j) := by
   unfold stepRound
   split_ifs with hcall
   · exact absurd hcall (by simp [ThresholdLeanXmssSecurity.callInput_real])
   simp only [bind_assoc, pure_bind]
-  apply (isQueryBoundP_bind (n := 0) (m := extra + ∑ j, budget j) (honestIn_adversary c _)
+  apply (isQueryBoundP_bind (n := 0) (m := extra + ∑ j, budget j) (honestP_adversary p _)
     (fun result _ => ?_)).mono (by omega)
   have he : (fun j => match steps j with
       | .done out => pure (Step.done out)
@@ -325,36 +338,36 @@ theorem stepRound_bind_bound {α β : Type} (state : A.State) (steps : C.Party �
       split_ifs
       · simp only [advance_pure, free_pure]
       · rfl
-  have hseq := sequenceFin_free_advance_bind c
-    (fun j => roundResume D result.2 steps j) budget (roundResume_bound c D result.2 steps budget h)
+  have hseq := sequenceFin_free_advance_bindP p
+    (fun j => roundResume D result.2 steps j) budget (roundResume_boundP p D result.2 steps budget h)
     (fun st => k (result.1, st, result.2)) extra
     (fun st b hb hs => hk (result.1, st, result.2) b hb hs)
   convert (congrArg (fun f : C.Party → OracleComp (WorldSpec C) (Step C E RealSpec α) =>
     IsQueryBoundP (OverPermutation.sequenceFin f >>= fun st => k (result.1, st, result.2))
-      (HonestIn c) (extra + ∑ j, budget j)) he).mpr hseq using 1
+      (HonestP p) (extra + ∑ j, budget j)) he).mpr hseq using 1
   congr 2
   funext j
   cases steps j <;> rfl
 
 /-- The rounds on the real network spend the budgets of the honest operators. -/
-theorem executeRounds_bound {α : Type} :
+theorem executeRounds_boundP {α : Type} :
     ∀ fuel state (steps : C.Party → Step C E RealSpec α) (budget : C.Party → ℕ),
-      (∀ j, StepBound c (steps j) (budget j)) →
-      IsQueryBoundP (executeRounds worldRoles D A noFunctionality fuel state steps) (HonestIn c) (∑ j, budget j)
+      (∀ j, StepBoundP p (steps j) (budget j)) →
+      IsQueryBoundP (executeRounds worldRoles D A noFunctionality fuel state steps) (HonestP p) (∑ j, budget j)
   | 0, state, steps, budget, h => isQueryBoundP_pure _ _ _
   | fuel + 1, state, steps, budget, h => by
     unfold executeRounds
     split_ifs
     · exact isQueryBoundP_pure _ _ _
-    · refine (stepRound_bind_bound c D A state steps budget h _ 0 ?_).mono (by omega)
+    · refine (stepRound_bind_boundP p D A state steps budget h _ 0 ?_).mono (by omega)
       intro st b hb hs
-      exact (executeRounds_bound fuel st.1 st.2.1 b hs).mono (by omega)
+      exact (executeRounds_boundP fuel st.1 st.2.1 b hs).mono (by omega)
 
-/-- A phase on the real network makes at most the sum of the budgets of class `c` of the honest
-programs of honest calls in class `c`. -/
-theorem executePhase_bound {α : Type} (fuel : ℕ) (state : A.State) (program : C.Party → PartyM C E RealSpec α)
-    (budget : C.Party → ℕ) (hp : ∀ j, j ∉ D.1 → IsQueryBoundP (program j).run (PartyIn c) (budget j)) :
-    IsQueryBoundP (executePhase worldRoles D A noFunctionality fuel state program) (HonestIn c) (∑ j, budget j) := by
+/-- A phase on the real network makes at most the sum of the budgets of `p` of the honest programs of
+honest calls of `p`. -/
+theorem executePhase_boundP {α : Type} (fuel : ℕ) (state : A.State) (program : C.Party → PartyM C E RealSpec α)
+    (budget : C.Party → ℕ) (hp : ∀ j, j ∉ D.1 → IsQueryBoundP (program j).run (PartyP p) (budget j)) :
+    IsQueryBoundP (executePhase worldRoles D A noFunctionality fuel state program) (HonestP p) (∑ j, budget j) := by
   unfold executePhase startSteps
   have he : (fun i => if i ∈ D.1 then pure (Step.done none) else worldRoles.honest (advance (program i).run)) =
       fun i => free (advance (if i ∈ D.1 then pure none else (program i).run)) := by
@@ -364,13 +377,168 @@ theorem executePhase_bound {α : Type} (fuel : ℕ) (state : A.State) (program :
     · rfl
   change IsQueryBoundP ((OverPermutation.sequenceFin _) >>= _) _ _
   rw [he]
-  refine (sequenceFin_free_advance_bind c _ budget ?_ _ 0 ?_).mono (Nat.zero_add _).le
+  refine (sequenceFin_free_advance_bindP p _ budget ?_ _ 0 ?_).mono (Nat.zero_add _).le
   · intro j
     split_ifs with hj
     · exact isQueryBoundP_pure _ _ _
     · exact hp j hj
   · intro st b hb hs
-    exact (executeRounds_bound c D A fuel state st b hs).mono (Nat.zero_add _).ge
+    exact (executeRounds_boundP p D A fuel state st b hs).mono (Nat.zero_add _).ge
+
+end Network
+
+/-! ## The calls of a predicate of one operator -/
+
+section Party
+
+variable {C : Committee} {E : Type} (p : (LocalSpec C).Domain → Prop)
+
+/-- An operator program makes at most `n` local calls of `p` on each path. -/
+def PBound {α : Type} (prog : PartyM C E RealSpec α) (n : ℕ) : Prop :=
+  IsQueryBoundP prog.run (PartyP p) n
+
+/-- A program on a state makes at most `n` local calls of `p` from each state. -/
+def PState {σ α : Type} (prog : StateT σ (PartyM C E RealSpec) α) (n : ℕ) : Prop :=
+  ∀ s, PBound p (prog.run s) n
+
+variable {p}
+
+theorem PBound.mono {α : Type} {prog : PartyM C E RealSpec α} {n m : ℕ} (h : PBound p prog n) (hnm : n ≤ m) :
+    PBound p prog m :=
+  IsQueryBoundP.mono h hnm
+
+theorem PBound.pure {α : Type} (a : α) : PBound p (pure a : PartyM C E RealSpec α) 0 :=
+  isQueryBoundP_pure _ _ _
+
+theorem PBound.bind {α β : Type} {prog : PartyM C E RealSpec α} {f : α → PartyM C E RealSpec β} {n m : ℕ}
+    (h : PBound p prog n) (hf : ∀ a, PBound p (f a) m) : PBound p (prog >>= f) (n + m) := by
+  unfold PBound
+  simp only [OptionT.run_bind]
+  apply isQueryBoundP_bind h
+  intro a _
+  cases a with
+  | none => exact isQueryBoundP_pure _ _ _
+  | some a => exact hf a
+
+
+theorem liftComp_partyP {α : Type} (oa : OracleComp (LocalSpec C) α) :
+    ∀ n, IsQueryBoundP oa p n → IsQueryBoundP (liftComp oa (PartySpec C E RealSpec)) (PartyP p) n := by
+  induction oa using OracleComp.inductionOn with
+  | pure a => intro n _; trivial
+  | query_bind t k ih =>
+    intro n h
+    rw [isQueryBoundP_query_bind_iff] at h
+    have e : liftComp (liftM (OracleSpec.query t) >>= k) (PartySpec C E RealSpec) =
+        (liftM ((PartySpec C E RealSpec).query (.inl (.inl t))) : OracleComp (PartySpec C E RealSpec) _) >>=
+          fun u => liftComp (k u) (PartySpec C E RealSpec) := by
+      rw [liftComp_bind]
+      rcases t with _ | _ | _ <;> rfl
+    rw [e]
+    exact (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨h.1, fun u => ih u _ (h.2 u)⟩
+
+theorem liftComp_roP {α : Type} (oa : OracleComp (RoSpec C) α) :
+    ∀ n, IsQueryBoundP oa (fun t => p (.inr t)) n → IsQueryBoundP (liftComp oa (LocalSpec C)) p n := by
+  induction oa using OracleComp.inductionOn with
+  | pure a => intro n _; trivial
+  | query_bind t k ih =>
+    intro n h
+    rw [isQueryBoundP_query_bind_iff] at h
+    have e : liftComp (liftM (OracleSpec.query t) >>= k) (LocalSpec C) =
+        (liftM ((LocalSpec C).query (.inr t)) : OracleComp (LocalSpec C) _) >>= fun u =>
+          liftComp (k u) (LocalSpec C) := by
+      rw [liftComp_bind]
+      rfl
+    rw [e]
+    exact (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨h.1, fun u => ih u _ (h.2 u)⟩
+
+theorem PBound.localStep {α : Type} {oa : OracleComp (LocalSpec C) α} {n : ℕ} (h : IsQueryBoundP oa p n) :
+    PBound p (ThresholdLeanXmss.localStep oa : PartyM C E RealSpec α) n := by
+  unfold PBound ThresholdLeanXmss.localStep
+  change IsQueryBoundP (liftComp oa (PartySpec C E RealSpec) >>= fun a => Pure.pure (some a)) _ _
+  exact (isQueryBoundP_bind (m := 0) (liftComp_partyP oa n h) fun _ _ => isQueryBoundP_pure _ _ _).mono
+    (Nat.add_zero _).le
+
+theorem PBound.oracleStep {α : Type} {oa : OracleComp (RoSpec C) α} {n : ℕ}
+    (h : IsQueryBoundP oa (fun t => p (.inr t)) n) :
+    PBound p (ThresholdLeanXmss.oracleStep oa : PartyM C E RealSpec α) n :=
+  PBound.localStep (liftComp_roP oa n h)
+
+theorem PState.mono {σ α : Type} {prog : StateT σ (PartyM C E RealSpec) α} {n m : ℕ} (h : PState p prog n)
+    (hnm : n ≤ m) : PState p prog m := fun s => (h s).mono hnm
+
+theorem PState.pure {σ α : Type} (a : α) : PState p (pure a : StateT σ (PartyM C E RealSpec) α) 0 :=
+  fun _ => PBound.pure _
+
+theorem PState.bind {σ α β : Type} {prog : StateT σ (PartyM C E RealSpec) α}
+    {f : α → StateT σ (PartyM C E RealSpec) β} {n m : ℕ} (h : PState p prog n) (hf : ∀ a, PState p (f a) m) :
+    PState p (prog >>= f) (n + m) := fun s =>
+  PBound.bind (h s) fun a => hf a.1 a.2
+
+theorem PState.lift {σ α : Type} {prog : PartyM C E RealSpec α} {n : ℕ} (h : PBound p prog n) :
+    PState p (StateT.lift prog : StateT σ (PartyM C E RealSpec) α) n := fun s => by
+  change PBound p (prog >>= fun a => Pure.pure (a, s)) n
+  simpa using PBound.bind h fun a => PBound.pure (p := p) (a, s)
+
+theorem PState.bind_zero {σ α β : Type} {prog : StateT σ (PartyM C E RealSpec) α}
+    {f : α → StateT σ (PartyM C E RealSpec) β} (h : PState p prog 0) (hf : ∀ a, PState p (f a) 0) :
+    PState p (prog >>= f) 0 :=
+  PState.bind h hf
+
+theorem PState.foldlM {σ α γ : Type} (f : α → γ → StateT σ (PartyM C E RealSpec) α)
+    (hf : ∀ a g, PState p (f a g) 0) : ∀ (xs : List γ) (a : α), PState p (xs.foldlM f a) 0
+  | [], a => by simpa using PState.pure (p := p) (σ := σ) a
+  | g :: xs, a => by
+    rw [List.foldlM_cons]
+    exact (hf a g).bind_zero fun a' => PState.foldlM f hf xs a'
+
+/-- A class bound gives the bound of a predicate that implies the class. -/
+theorem PBound.of_class {c : HashClass} (hp : ∀ t, p t → InClass c t) {α : Type} {prog : PartyM C E RealSpec α}
+    {n : ℕ} (h : PBound (InClass c) prog n) : PBound p prog n :=
+  IsQueryBoundP.of_imp (fun t ht => by
+    rcases t with (t | _) | _
+    · exact hp t ht
+    · exact ht.elim
+    · exact ht.elim) h
+
+theorem PState.of_class {c : HashClass} (hp : ∀ t, p t → InClass c t) {σ α : Type}
+    {prog : StateT σ (PartyM C E RealSpec) α} {n : ℕ} (h : PState (InClass c) prog n) : PState p prog n :=
+  fun s => PBound.of_class hp (h s)
+
+end Party
+
+end SetupBudgets
+
+namespace DigestBudgets
+
+open ThresholdLeanXmssSecurity.SigningSelectionProof (NoCall noCall_iff noCall_pure noCall_bind noCall_map
+  noCall_mapM noCall_mono noCall_sequenceFin noCall_query)
+
+attribute [local instance] Classical.propDecidable
+
+/-! ## The honest calls of a class on the network -/
+
+section Network
+
+variable {C : Committee} {E : Type} (c : HashClass)
+
+/-- A local call of an operator in class `c`. -/
+def PartyIn : (PartySpec C E RealSpec).Domain → Prop
+  | .inl (.inl t) => InClass c t
+  | _ => False
+
+/-- The adversary role makes no honest call. -/
+theorem honestIn_adversary {β : Type} (oa : OracleComp (LocalSpec C) β) :
+    IsQueryBoundP (worldRoles.adversary oa) (HonestIn c) 0 :=
+  SetupBudgets.honestP_adversary (InClass c) oa
+
+variable {Ia : Type} (D : C.Coalition) (A : Adversary C E Ia PEmpty PEmpty)
+
+/-- A phase on the real network makes at most the sum of the budgets of class `c` of the honest
+programs of honest calls in class `c`. -/
+theorem executePhase_bound {α : Type} (fuel : ℕ) (state : A.State) (program : C.Party → PartyM C E RealSpec α)
+    (budget : C.Party → ℕ) (hp : ∀ j, j ∉ D.1 → IsQueryBoundP (program j).run (PartyIn c) (budget j)) :
+    IsQueryBoundP (executePhase worldRoles D A noFunctionality fuel state program) (HonestIn c) (∑ j, budget j) :=
+  SetupBudgets.executePhase_boundP (InClass c) D A fuel state program budget hp
 
 /-- A real execution makes at most the sum of the budgets of class `c` of the honest programs of
 honest calls in class `c`. -/
@@ -389,41 +557,6 @@ end Network
 section Party
 
 variable {C : Committee} {E : Type} (c : HashClass)
-
-/-- A local computation with at most `n` calls in class `c` makes at most `n` local calls in class `c`
-as a computation of an operator. -/
-theorem liftComp_party_bound {α : Type} (oa : OracleComp (LocalSpec C) α) :
-    ∀ n, IsQueryBoundP oa (InClass c) n →
-      IsQueryBoundP (liftComp oa (PartySpec C E RealSpec)) (PartyIn c) n := by
-  induction oa using OracleComp.inductionOn with
-  | pure a => intro n _; trivial
-  | query_bind t k ih =>
-    intro n h
-    rw [isQueryBoundP_query_bind_iff] at h
-    have e : liftComp (liftM (OracleSpec.query t) >>= k) (PartySpec C E RealSpec) =
-        (liftM ((PartySpec C E RealSpec).query (.inl (.inl t))) : OracleComp (PartySpec C E RealSpec) _) >>=
-          fun u => liftComp (k u) (PartySpec C E RealSpec) := by
-      rw [liftComp_bind]
-      rcases t with _ | _ | _ <;> rfl
-    rw [e]
-    exact (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨h.1, fun u => ih u _ (h.2 u)⟩
-
-/-- A computation of `H` and `PRG` with at most `n` calls in class `c` makes at most `n` local calls in
-class `c`. -/
-theorem liftComp_ro_bound {α : Type} (oa : OracleComp (RoSpec C) α) :
-    ∀ n, IsQueryBoundP oa (RoIn c) n → IsQueryBoundP (liftComp oa (LocalSpec C)) (InClass c) n := by
-  induction oa using OracleComp.inductionOn with
-  | pure a => intro n _; trivial
-  | query_bind t k ih =>
-    intro n h
-    rw [isQueryBoundP_query_bind_iff] at h
-    have e : liftComp (liftM (OracleSpec.query t) >>= k) (LocalSpec C) =
-        (liftM ((LocalSpec C).query (.inr t)) : OracleComp (LocalSpec C) _) >>= fun u =>
-          liftComp (k u) (LocalSpec C) := by
-      rw [liftComp_bind]
-      rfl
-    rw [e]
-    exact (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨h.1, fun u => ih u _ (h.2 u)⟩
 
 /-- A private sample makes no call in a class. -/
 theorem liftComp_prob_bound {α : Type} (p : ProbComp α) :
@@ -462,25 +595,16 @@ theorem ClassBound.failure {α : Type} : ClassBound c (failure : PartyM C E Real
   isQueryBoundP_pure _ _ _
 
 theorem ClassBound.bind {α β : Type} {p : PartyM C E RealSpec α} {f : α → PartyM C E RealSpec β} {n m : ℕ}
-    (h : ClassBound c p n) (hf : ∀ a, ClassBound c (f a) m) : ClassBound c (p >>= f) (n + m) := by
-  unfold ClassBound
-  simp only [OptionT.run_bind]
-  apply isQueryBoundP_bind h
-  intro a _
-  cases a with
-  | none => exact isQueryBoundP_pure _ _ _
-  | some a => exact hf a
+    (h : ClassBound c p n) (hf : ∀ a, ClassBound c (f a) m) : ClassBound c (p >>= f) (n + m) :=
+  SetupBudgets.PBound.bind h hf
 
 theorem ClassBound.localStep {α : Type} {oa : OracleComp (LocalSpec C) α} {n : ℕ}
-    (h : IsQueryBoundP oa (InClass c) n) : ClassBound c (ThresholdLeanXmss.localStep oa : PartyM C E RealSpec α) n := by
-  unfold ClassBound ThresholdLeanXmss.localStep
-  change IsQueryBoundP (liftComp oa (PartySpec C E RealSpec) >>= fun a => Pure.pure (some a)) _ _
-  exact (isQueryBoundP_bind (m := 0) (liftComp_party_bound c oa n h) fun _ _ => isQueryBoundP_pure _ _ _).mono
-    (Nat.add_zero _).le
+    (h : IsQueryBoundP oa (InClass c) n) : ClassBound c (ThresholdLeanXmss.localStep oa : PartyM C E RealSpec α) n :=
+  SetupBudgets.PBound.localStep h
 
 theorem ClassBound.oracleStep {α : Type} {oa : OracleComp (RoSpec C) α} {n : ℕ}
     (h : IsQueryBoundP oa (RoIn c) n) : ClassBound c (ThresholdLeanXmss.oracleStep oa : PartyM C E RealSpec α) n :=
-  ClassBound.localStep (liftComp_ro_bound c oa n h)
+  SetupBudgets.PBound.oracleStep h
 
 theorem ClassBound.oracleStep_zero {α : Type} {oa : OracleComp (RoSpec C) α} (h : NoCall (RoIn c) oa) :
     ClassBound c (ThresholdLeanXmss.oracleStep oa : PartyM C E RealSpec α) 0 :=
@@ -518,9 +642,8 @@ theorem StateBound.bind {σ α β : Type} {p : StateT σ (PartyM C E RealSpec) �
   ClassBound.bind (h s) fun a => hf a.1 a.2
 
 theorem StateBound.lift {σ α : Type} {p : PartyM C E RealSpec α} {n : ℕ} (h : ClassBound c p n) :
-    StateBound c (StateT.lift p : StateT σ (PartyM C E RealSpec) α) n := fun s => by
-  change ClassBound c (p >>= fun a => Pure.pure (a, s)) n
-  simpa using ClassBound.bind h fun a => ClassBound.pure (a, s)
+    StateBound c (StateT.lift p : StateT σ (PartyM C E RealSpec) α) n :=
+  SetupBudgets.PState.lift h
 
 theorem StateBound.get {σ : Type} : StateBound c (get : StateT σ (PartyM C E RealSpec) σ) 0 :=
   fun _ => ClassBound.pure _

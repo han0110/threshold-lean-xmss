@@ -541,19 +541,6 @@ theorem readyHopL_of_budgets (split : SplitAtUnreadyL prims K circuits settings 
       salts D A q bounded r hr tree index w hw hglobal, hidden D A q bounded r hr tree index w hw hglobal⟩,
       provenance D A q bounded r hr tree index w hw hglobal⟩
 
-omit [Fintype E] [DecidableEq E] in
-/-- `ReadyHopL` from the three budget parts that are leaves at the test, the four preservation
-statements of the provenance, and the split part. -/
-theorem readyHopL_of_leaves (split : SplitAtUnreadyL prims K circuits settings runLimit)
-    (sound : SoundAtUnreadyL prims K circuits settings runLimit)
-    (salts : SaltsAtUnreadyL prims K circuits settings runLimit)
-    (hidden : HiddenAtUnreadyL prims K circuits settings runLimit)
-    (seedGen : ProvenanceSeedGen prims (C := C) (E := E)) (treeRun : ProvenanceTreeRun prims K circuits settings)
-    (counted : ProvenanceCounted prims (C := C)) (signing : ProvenanceSigning prims (C := C)) :
-    ReadyHopL prims K circuits settings runLimit :=
-  readyHopL_of_budgets prims K circuits settings runLimit split sound salts hidden
-    (provenanceAtUnready_of_keeps prims K circuits settings runLimit seedGen treeRun counted signing)
-
 /-! ## Part 3. The game at `RunReadyL` against the game at `RunReady`
 
 The test changes only the record `first`. `Coupled` relates a state of the game at `RunReadyL` with a
@@ -859,28 +846,6 @@ theorem saltsAtUnreadyL : SaltsAtUnreadyL prims K circuits settings runLimit :=
     runLimit (FirstCounts.saltsAtEnd_of_premises prims K circuits settings runLimit DigestBudgets.seedHonest_digest
       (DigestBudgets.treeHonest_digest K circuits settings) DigestBudgets.signQuiet_digest))
 
-omit [Fintype E] [DecidableEq E] in
-/-- `ReadyHopL` from the budget parts `Ready.SoundAtUnready` and `Ready.HiddenAtUnready` at the test
-`RunReady`, and the four preservation statements of the provenance. -/
-theorem readyHopL_of_old (sound : Ready.SoundAtUnready prims K circuits settings runLimit)
-    (hidden : Ready.HiddenAtUnready prims K circuits settings runLimit)
-    (seedGen : ProvenanceSeedGen prims (C := C) (E := E)) (treeRun : ProvenanceTreeRun prims K circuits settings)
-    (counted : ProvenanceCounted prims (C := C)) (signing : ProvenanceSigning prims (C := C)) :
-    ReadyHopL prims K circuits settings runLimit :=
-  readyHopL_of_leaves prims K circuits settings runLimit (splitAtUnreadyL prims K circuits settings runLimit)
-    (soundAtUnreadyL_of_old prims K circuits settings runLimit sound)
-    (saltsAtUnreadyL prims K circuits settings runLimit)
-    (hiddenAtUnreadyL_of_old prims K circuits settings runLimit hidden) seedGen treeRun counted signing
-
-omit [Fintype E] [DecidableEq E] in
-/-- `ReadyHopL` from `Ready.SoundAtUnready`, `Ready.HiddenAtUnready` and `ProvenanceTreeRun`. -/
-theorem readyHopL_of_open (sound : Ready.SoundAtUnready prims K circuits settings runLimit)
-    (hidden : Ready.HiddenAtUnready prims K circuits settings runLimit)
-    (treeRun : ProvenanceTreeRun prims K circuits settings) :
-    ReadyHopL prims K circuits settings runLimit :=
-  readyHopL_of_old prims K circuits settings runLimit sound hidden (provenanceSeedGen prims) treeRun
-    (provenanceCounted prims) (provenanceSigning prims)
-
 /-- The hidden streams at the end of `firstRunWith` at the test `RunReady` have at most `gameSetups`
 keys under each name. -/
 def HiddenAtEnd : Prop :=
@@ -907,9 +872,14 @@ theorem readyHopL_of_ends (sound : Ready.SoundAtEnd prims K circuits settings ru
     (hidden : HiddenAtEnd prims K circuits settings runLimit)
     (treeRun : ProvenanceTreeRun prims K circuits settings) :
     ReadyHopL prims K circuits settings runLimit :=
-  readyHopL_of_open prims K circuits settings runLimit
-    (Ready.soundAtUnready_of_end prims K circuits settings runLimit sound)
-    (hiddenAtUnready_of_end prims K circuits settings runLimit hidden) treeRun
+  readyHopL_of_budgets prims K circuits settings runLimit (splitAtUnreadyL prims K circuits settings runLimit)
+    (soundAtUnreadyL_of_old prims K circuits settings runLimit
+      (Ready.soundAtUnready_of_end prims K circuits settings runLimit sound))
+    (saltsAtUnreadyL prims K circuits settings runLimit)
+    (hiddenAtUnreadyL_of_old prims K circuits settings runLimit
+      (hiddenAtUnready_of_end prims K circuits settings runLimit hidden))
+    (provenanceAtUnready_of_keeps prims K circuits settings runLimit (provenanceSeedGen prims) treeRun
+      (provenanceCounted prims) (provenanceSigning prims))
 
 end ThresholdLeanXmssSecurity.DkgCorrectnessProof
 
@@ -917,18 +887,7 @@ end
 
 end
 
-/-- info: 'ThresholdLeanXmssSecurity.DkgCorrectnessProof.readyHopL_of_leaves' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.DkgCorrectnessProof.readyHopL_of_leaves
-
 /-- info: 'ThresholdLeanXmssSecurity.DkgCorrectnessProof.readyHopL_of_ends' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.DkgCorrectnessProof.readyHopL_of_ends
 
-/-- info: 'ThresholdLeanXmssSecurity.DkgCorrectnessProof.readyHopL_of_open' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.DkgCorrectnessProof.readyHopL_of_open
-
-/-- info: 'ThresholdLeanXmssSecurity.DkgCorrectnessProof.readyHopL_of_old' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.DkgCorrectnessProof.readyHopL_of_old
