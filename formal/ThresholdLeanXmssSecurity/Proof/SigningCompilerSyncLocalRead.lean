@@ -151,6 +151,16 @@ theorem cacheQuery_rel (P : PublicParameter) (seeds : C.Term → HashOutput)
   simp only [id_map] at hm
   exact hm
 
+private theorem relTriple_cache_le {α β : Type} (left : ProbComp α)
+    (oa : OracleComp (Query C →ₒ HashOutput) β) (cache : HashCache C)
+    (R : α → β × HashCache C → Prop)
+    (h : RelTriple left ((simulateQ (Query C →ₒ HashOutput).randomOracle oa).run cache) R) :
+    RelTriple left ((simulateQ (Query C →ₒ HashOutput).randomOracle oa).run cache)
+      (fun a b => R a b ∧ cache ≤ b.2) := by
+  apply relTriple_post_mono (relTriple_supported h)
+  intro a b hpost
+  exact ⟨hpost.1, SigningGuessProof.raw_randomOracle_cache_le oa cache b hpost.2.2⟩
+
 /-- Both hash routes preserve the cache relation and the entire trace pair. -/
 theorem cacheRead_hash_rel (P : PublicParameter) (seeds : C.Term → HashOutput)
     (s : HiddenKey → Digest) (source : SourceState C) (data : DeferredState C)
@@ -183,13 +193,12 @@ theorem cacheRead_hash_rel (P : PublicParameter) (seeds : C.Term → HashOutput)
     hsource rfl hcache hopening hbound hno hpost
   dsimp only
   rw [← hp]
-  apply relTriple_bind (relTriple_supported (relTriple_cachedExtra P seeds s
+  apply relTriple_bind (relTriple_cache_le _ _ _ _ (relTriple_cachedExtra P seeds s
     (((actual, 0), []), actualSigning, false) (((a.2, 0), []), actualSigning, false)
     call { data with cache := b.2 } a.2 hc))
-  intro c d hcd
-  obtain ⟨⟨_, hcd⟩, _, hd⟩ := hcd
-  have hdgrow := SigningGuessProof.raw_randomOracle_cache_le _ b.2 d hd
-  have hdcached : d.2 (.hash input) = some b.1 := hdgrow hvb
+  intro c d hrun
+  have hcd := hrun.1.2
+  have hdcached : d.2 (.hash input) = some b.1 := hrun.2 hvb
   have hpost' : c.2 (.hash input) = d.2 (.hash input) := hcd.agree (.hash input) (by
     rintro ⟨hn, _⟩
     exact Option.some_ne_none _ (hdcached.symm.trans hn))

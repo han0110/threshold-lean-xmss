@@ -145,7 +145,7 @@ theorem probEvent_bind_le_of_support {α β γ : Type} (oa : ProbComp α) (f : �
     (P : β → Prop) (Q : γ → Prop) (h : ∀ a ∈ support oa, Pr{let z ← f a}[P z] ≤ Pr{let z ← g a}[Q z]) :
     Pr{let z ← oa >>= f}[P z] ≤ Pr{let z ← oa >>= g}[Q z] := by
   rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_bind_eq_tsum]
-  refine ENNReal.tsum_le_tsum fun a => ?_
+  refine tsum_le_tsum fun a => ?_
   by_cases ha : a ∈ support oa
   · exact mul_le_mul' le_rfl (h a ha)
   · rw [prEvent_eq_zero_of_not_mem_support oa ha, zero_mul, zero_mul]

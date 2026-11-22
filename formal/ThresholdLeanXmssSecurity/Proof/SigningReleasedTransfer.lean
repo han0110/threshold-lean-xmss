@@ -21,6 +21,24 @@ variable {C : Committee} (prims : Primitives)
 
 attribute [local instance] Classical.propDecidable
 
+private theorem cachedExtra_induction (seeds : C.Term → HashOutput) (P : PublicParameter)
+    (p : FlatState C) (t : (WorldSpec C).Domain) (p' : FlatState C)
+    (I : OracleComp (Query C →ₒ HashOutput) Unit → Prop)
+    (hgrind : I (grindExtra P (SigningGuessProof.cachedRandomizer seeds p.1.1.1) p t p'))
+    (hpure : I (pure ())) : I (SigningR1FixedProof.cachedExtra seeds P p t p') := by
+  unfold SigningR1FixedProof.cachedExtra
+  split
+  · exact hgrind
+  · exact hpure
+
+private theorem pure_cache_frame (P : PublicParameter) (cache : HashCache C) z
+    (hz : z ∈ support ((simulateQ (randomOracle (spec := Query C →ₒ HashOutput))
+      (pure ())).run cache)) :
+    cache ≤ z.2 ∧ ∀ q, OutsideTrials P q → z.2 q = cache q := by
+  simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
+  subst z
+  exact ⟨le_rfl, fun _ _ => rfl⟩
+
 set_option linter.constructorNameAsVariable false in
 set_option backward.isDefEq.respectTransparency false in
 /-- The actual cached trigger adds only bottom-message trial entries. -/
@@ -29,13 +47,16 @@ theorem cachedExtra_frame (seeds : C.Term → HashOutput) (P : PublicParameter)
     (hz : z ∈ support ((simulateQ (randomOracle (spec := Query C →ₒ HashOutput))
       (SigningR1FixedProof.cachedExtra seeds P p t p')).run p'.1.1.1)) :
     p'.1.1.1 ≤ z.2 ∧ ∀ q, OutsideTrials P q → z.2 q = p'.1.1.1 q := by
-  classical
-  unfold SigningR1FixedProof.cachedExtra at hz
-  split at hz
-  · with_reducible exact grindExtra_cache_frame P (SigningGuessProof.cachedRandomizer seeds p.1.1.1) p t p' z hz
-  · simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
-    subst z
-    exact ⟨le_rfl, fun _ _ => rfl⟩
+  exact cachedExtra_induction seeds P p t p' (fun oa =>
+    ∀ z ∈ support ((simulateQ (randomOracle (spec := Query C →ₒ HashOutput)) oa).run p'.1.1.1),
+      p'.1.1.1 ≤ z.2 ∧ ∀ q, OutsideTrials P q → z.2 q = p'.1.1.1 q)
+    (grindExtra_cache_frame P _ p t p') (pure_cache_frame P p'.1.1.1) z (by with_reducible exact hz)
+
+private theorem jointCachedExtra_induction (seeds : C.Term → HashOutput) (P : PublicParameter)
+    (p : FlatJointState C) (t : (WorldSpec C).Domain) (p' : FlatJointState C)
+    (I : HashCache C → OracleComp (Query C →ₒ HashOutput) Unit → Prop)
+    (h : ∀ l r : FlatState C, I r.1.1.1 (SigningR1FixedProof.cachedExtra seeds P l t r)) :
+    I p'.1.1.1 (jointCachedExtra seeds P p t p') := h (p.1, p.2.1) (p'.1, p'.2.1)
 
 set_option linter.constructorNameAsVariable false in
 set_option backward.isDefEq.respectTransparency false in
@@ -44,26 +65,37 @@ theorem jointCachedExtra_frame (seeds : C.Term → HashOutput) (P : PublicParame
     (p : FlatJointState C) (t : (WorldSpec C).Domain) (p' : FlatJointState C) z
     (hz : z ∈ support ((simulateQ (randomOracle (spec := Query C →ₒ HashOutput))
       (jointCachedExtra seeds P p t p')).run p'.1.1.1)) :
-    p'.1.1.1 ≤ z.2 ∧ ∀ q, OutsideTrials P q → z.2 q = p'.1.1.1 q :=
-  by
-    unfold jointCachedExtra at hz
-    with_reducible exact cachedExtra_frame seeds P (p.1, p.2.1) t (p'.1, p'.2.1) z hz
+    p'.1.1.1 ≤ z.2 ∧ ∀ q, OutsideTrials P q → z.2 q = p'.1.1.1 q := by
+  exact jointCachedExtra_induction seeds P p t p' (fun cache oa =>
+    ∀ z ∈ support ((simulateQ (randomOracle (spec := Query C →ₒ HashOutput)) oa).run cache),
+      cache ≤ z.2 ∧ ∀ q, OutsideTrials P q → z.2 q = cache q)
+    (fun l r => cachedExtra_frame seeds P l t r) z (by with_reducible exact hz)
 
-set_option linter.constructorNameAsVariable false in
-set_option backward.isDefEq.respectTransparency false in
-/-- One world call preserves the frame, including the extra cached grind. -/
-theorem jointWorld_logAgreement (seeds : C.Term → HashOutput) (P : PublicParameter)
-    (t : (WorldSpec C).Domain) (ht : ¬IsProgram t) (p : FlatJointState C)
-    (hp : LogAgreement P p.1) z
-    (hz : z ∈ support ((eagerWorld prims (jointCachedExtra seeds P) t).run p)) :
+private theorem eagerWorld_logAgreement {σ : Type}
+    (extra : LoggedState C × σ → (WorldSpec C).Domain → LoggedState C × σ →
+      OracleComp (Query C →ₒ HashOutput) Unit) (P : PublicParameter)
+    (t : (WorldSpec C).Domain) (ht : ¬IsProgram t) (p : LoggedState C × σ)
+    (frame : ∀ p' z, z ∈ support ((simulateQ (randomOracle (spec := Query C →ₒ HashOutput))
+      (extra p t p')).run p'.1.1.1) →
+      p'.1.1.1 ≤ z.2 ∧ ∀ q, OutsideTrials P q → z.2 q = p'.1.1.1 q)
+    (hp : LogAgreement P p.1) z (hz : z ∈ support ((eagerWorld prims extra t).run p)) :
     LogAgreement P z.2.1 := by
   simp only [eagerWorld, carry, StateT.run_mk, support_bind, support_map,
     Set.mem_iUnion, Set.mem_image] at hz
   obtain ⟨_, ⟨w, hw, rfl⟩, y, hy, rfl⟩ := hz
   dsimp only at hy ⊢
   have hlog := logAgreement_step prims P t ht p.1 hp w hw
-  have hf := jointCachedExtra_frame seeds P p t (w.2, p.2) y (by with_reducible exact hy)
+  have hf := frame (w.2, p.2) y hy
   exact ⟨hlog.1.trans hf.1, fun q hq => (hf.2 q hq).trans (hlog.2 q hq)⟩
+
+/-- One world call preserves the frame, including the extra cached grind. -/
+theorem jointWorld_logAgreement (seeds : C.Term → HashOutput) (P : PublicParameter)
+    (t : (WorldSpec C).Domain) (ht : ¬IsProgram t) (p : FlatJointState C)
+    (hp : LogAgreement P p.1) z
+    (hz : z ∈ support ((eagerWorld prims (jointCachedExtra seeds P) t).run p)) :
+    LogAgreement P z.2.1 :=
+  eagerWorld_logAgreement prims (jointCachedExtra seeds P) P t ht p
+    (jointCachedExtra_frame seeds P p t) hp z hz
 
 set_option linter.constructorNameAsVariable false in
 set_option backward.isDefEq.respectTransparency false in

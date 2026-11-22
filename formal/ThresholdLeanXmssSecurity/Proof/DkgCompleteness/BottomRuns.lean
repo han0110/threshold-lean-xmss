@@ -224,6 +224,12 @@ theorem idealTop_some (prims : Primitives) (hsize : 0 < settings.batchSize) (par
   rw [heq, ho h z.2 hgood le_rfl hagree, ceremonyAt_top]
   exact ⟨_, rfl⟩
 
+-- Transport support before instantiating either game, to keep kernel conversion off the tree computation.
+private theorem mem_support_map_of_eq {α β : Type} (X : ProbComp α) {Y : ProbComp β}
+    (f : α → β) (hY : Y = f <$> X) {y : β} (hy : y ∈ support Y) :
+    ∃ x ∈ support X, y = f x :=
+  mem_support_map_peel f X (hY ▸ hy)
+
 omit [Fintype E] [DecidableEq E] [Algebra Bit E] in
 /-- On dealt keys and from a start cache, the dealer top tree of the game gives a top tree and keeps
 `StartInvariant`. -/
@@ -233,23 +239,17 @@ theorem dealtTopLocal_support (prims : Primitives) (hc : CircuitsCompute circuit
     (hp : p ∈ support ((simulateQ (localAnswer prims)
       (dealtTopLocal (fun i => some (dealtKeys parameter seeds pairKeys i)))).run s)) :
     StartInvariant p.2 ∧ ∃ t, p.1 = some t := by
-  have hD : dealtTopLocal (fun i => some (dealtKeys parameter seeds pairKeys i)) =
-      liftComp (TreeOutput.topTree <$> referenceTree tweakable (prfValue seeds) parameter emptyTop .top) (LocalSpec C) := by
+  let project := fun p : (C.Party → Option TreeOutput) × HashCache C =>
+    (TreeOutput.topTree (p.1 (firstParty C)), p.2)
+  have heq : (simulateQ (localAnswer prims)
+      (dealtTopLocal (fun i => some (dealtKeys parameter seeds pairKeys i)))).run s =
+      project <$> (simulateQ (localAnswer prims) (idealTree circuits settings parameter seeds emptyTop .top)).run s := by
     simp only [dealtTopLocal, Option.isSome_some, implies_true, ↓reduceIte, gameSeeds_dealt, gameParameter_dealt]
-  rw [hD, localRun_liftComp, roRun_map, support_map] at hp
-  generalize hR : roRun prims (referenceTree tweakable (prfValue seeds) parameter emptyTop .top) s = R at hp
-  obtain ⟨q, hq, rfl⟩ := hp
-  rw [← hR, ← roRun_dealer prims circuits settings hc hsize] at hq
-  have hI : ((fun _ => q.1, q.2) : (C.Party → Option TreeOutput) × HashCache C) ∈
-      support ((simulateQ (localAnswer prims) (idealTree circuits settings parameter seeds emptyTop .top)).run s) := by
-    have e : idealTree circuits settings parameter seeds emptyTop .top =
-        liftComp ((fun o (_ : C.Party) => o) <$> (Prod.fst <$> dealerCeremony circuits settings parameter seeds
-          emptyTop .top)) (LocalSpec C) := by
-      simp only [idealTree, Functor.map_map]
-    rw [e, localRun_liftComp, roRun_map, support_map]
-    exact ⟨q, hq, rfl⟩
-  exact ⟨startInvariant_idealTree circuits settings prims parameter seeds emptyTop .top hsize s hs _ hI,
-    idealTop_some circuits settings prims hsize parameter seeds s hs _ hI⟩
+    rw [idealTree, localRun_liftComp, localRun_liftComp, roRun_map, roRun_map,
+      ← roRun_dealer prims circuits settings hc hsize, roRun_map, Functor.map_map, Functor.map_map]
+  obtain ⟨q, hq, rfl⟩ := mem_support_map_of_eq _ project heq hp
+  exact ⟨startInvariant_idealTree circuits settings prims parameter seeds emptyTop .top hsize s hs q hq,
+    idealTop_some circuits settings prims hsize parameter seeds s hs q hq⟩
 
 /-- `BottomRunsHop` from `RealTreeAbortOrCorrect`. Both games share the seed generation and the
 dealer top tree, and `bottomRuns_from` bounds the rest for each outcome. -/

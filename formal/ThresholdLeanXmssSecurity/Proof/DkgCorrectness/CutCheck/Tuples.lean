@@ -142,10 +142,11 @@ theorem recPrefix_shape (k : ℕ) (i : C.Party) (keys : Keys C) (jobs : List Job
 
 /-! ## The input sharings of the heads -/
 
-include prims in
 /-- The head of the recorded prefix with `H` fixed to `h` has the input sharings `batchInputs` of
 batch `k` with the seed of the keys. -/
-theorem recPrefix_fix_inputs (h : Query C → HashOutput) (k : ℕ) (i : C.Party) (keys : Keys C) (jobs : List Job)
+theorem recPrefix_fix_inputs {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
+    (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings)
+    (h : Query C → HashOutput) (k : ℕ) (i : C.Party) (keys : Keys C) (jobs : List Job)
     (st : ℕ × ℕ) (z : Option (Joint.PreOut C) × Record C E)
     (hz : z ∈ support (simulateQ (fixHash h) ((recPrefix K circuits settings k i keys jobs).run st).run.run))
     (d : Joint.PreOut C) (hd : z.1 = some d) :

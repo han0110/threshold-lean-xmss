@@ -1075,14 +1075,14 @@ theorem sum_ff_le (x : Keys3 C) (σ : KeySlot C) (top : TopTree) (q : ℕ) {α :
     simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query, id_map,
       StateT.run_bind, OracleComp.prEvent_bind_eq_tsum] at hq ⊢
     by_cases hf : p.1.1.2 = true
-    · refine le_of_eq_of_le (Finset.sum_eq_zero fun k _ => ENNReal.tsum_eq_zero.mpr fun z => ?_) bot_le
+    · refine le_of_eq_of_le (Finset.sum_eq_zero fun k _ => tsum_eq_zero_iff.mpr fun z => ?_) bot_le
       by_cases hz : z ∈ support ((fusedImpl prims (xk x σ k) top t).run p)
       · obtain ⟨h1, h2⟩ := fused_frozen prims _ top t p hf z hz
         rw [fused_ff_zero prims _ top σ _ z.2 (Or.inr h1) (h2 ▸ hσ), mul_zero]
       · rw [prEvent_eq_zero_of_not_mem_support _ hz, zero_mul]
     have hf' : p.1.1.2 = false := by simpa using hf
     by_cases hrev : RevealsT σ p.1.1.1 t
-    · refine le_of_eq_of_le (Finset.sum_eq_zero fun k _ => ENNReal.tsum_eq_zero.mpr fun z => ?_) bot_le
+    · refine le_of_eq_of_le (Finset.sum_eq_zero fun k _ => tsum_eq_zero_iff.mpr fun z => ?_) bot_le
       by_cases hz : z ∈ support ((fusedImpl prims (xk x σ k) top t).run p)
       · obtain ⟨h1, h2⟩ := fused_reveals prims _ top σ t p hrev hσ z hz
         rw [fused_ff_zero prims _ top σ _ z.2 (Or.inl h1) h2, mul_zero]
@@ -1170,9 +1170,9 @@ theorem sum_ff_le (x : Keys3 C) (σ : KeySlot C) (top : TopTree) (q : ℕ) {α :
             Finset.sum_congr rfl fun k hk => by rw [hstep k hk]
         _ = ∑' z, Pr{let y ← M}[y = z] * ∑ k ∈ Finset.univ \ V',
             Pr{let z' ← (simulateQ (fusedImpl prims (xk x σ k) top) (cont z.1)).run z.2}[σ ∈ z'.2.1.2] := by
-            rw [← Summable.tsum_finsetSum fun _ _ => ENNReal.summable]
+            rw [← Summable.tsum_finsetSum fun _ _ => CompleteLattice.summable]
             exact tsum_congr fun z => (Finset.mul_sum _ _ _).symm
-        _ ≤ ∑' z, Pr{let y ← M}[y = z] * ((q - (p.2.2 + ct) : ℕ) : ℝ≥0∞) := ENNReal.tsum_le_tsum fun z => by
+        _ ≤ ∑' z, Pr{let y ← M}[y = z] * ((q - (p.2.2 + ct) : ℕ) : ℝ≥0∞) := tsum_le_tsum fun z => by
             by_cases hzM : z ∈ support M
             · exact mul_le_mul_right (hz z hzM) _
             · simp [prEvent_eq_zero_of_not_mem_support _ hzM]
@@ -1322,7 +1322,7 @@ theorem probEvent_bind_le_of_imp {α β : Type} (m : ProbComp α) (g : α → Pr
     (h : ∀ a ∈ support m, ∀ b ∈ support (g a), E b → E' a) : Pr{let z ← m >>= g}[E z] ≤ Pr{let z ← m}[E' z] := by
   classical
   rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_eq_tsum_ite]
-  refine ENNReal.tsum_le_tsum fun a => ?_
+  refine tsum_le_tsum fun a => ?_
   by_cases ha : a ∈ support m
   · by_cases hE : E' a
     · rw [ite_eq_left hE]
@@ -1423,14 +1423,14 @@ theorem core_sum (A : TsigAdversary C) (q : ℕ) (hq : HasSigningQueryBound prim
   · rw [he, Finset.sum_empty]; exact zero_le
   have hu₀' : u₀ ∉ V := (Finset.mem_sdiff.mp hu₀).2
   simp only [OracleComp.prEvent_bind_eq_tsum]
-  rw [← Summable.tsum_finsetSum fun _ _ => ENNReal.summable]
+  rw [← Summable.tsum_finsetSum fun _ _ => CompleteLattice.summable]
   calc ∑' os, ∑ u ∈ Finset.univ \ V, Pr{let z ← dealerSlot (C := C) x.1}[z = os] *
         Pr{let w ← restOf prims A (xk x σ u) os}[σ ∈ w.1.2]
       = ∑' os, Pr{let z ← dealerSlot (C := C) x.1}[z = os] *
           ∑ u ∈ Finset.univ \ V, Pr{let w ← restOf prims A (xk x σ u) os}[σ ∈ w.1.2] :=
         tsum_congr fun os => (Finset.mul_sum _ _ _).symm
     _ ≤ ∑' os, Pr{let z ← dealerSlot (C := C) x.1}[z = os] * ((q - C.n.choose (C.t - 1) : ℕ) : ℝ≥0∞) :=
-        ENNReal.tsum_le_tsum fun os => by
+        tsum_le_tsum fun os => by
           by_cases hos : os ∈ support (dealerSlot (C := C) x.1)
           · exact mul_le_mul_right (rest_sum_le prims A q hq x σ V hV u₀ hu₀' os hos) _
           · simp [prEvent_eq_zero_of_not_mem_support _ hos]

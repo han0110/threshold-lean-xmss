@@ -166,7 +166,7 @@ theorem ledgerStep_bind (x : SigningSecurityProof.Keys3 C) {α β : Type}
           tsum_le_of_support _ _ _ fun y hy => (hk y.1 y.2 (hms y hy).1).2
       _ = ∑' y, Pr{let z ← m.run p}[z = y] * f y.2 + c * ∑' y, Pr{let z ← m.run p}[z = y] *
             ∑' z, Pr{let w ← (k y.1).run y.2}[w = z] * ((κ z.2 - κ y.2 : ℕ) : ℝ≥0∞) := by
-          simp only [mul_add, ENNReal.tsum_add]
+          simp only [mul_add, tsum_add]
           congr 1
           rw [← ENNReal.tsum_mul_left]
           exact tsum_congr fun y => by ring
@@ -175,7 +175,7 @@ theorem ledgerStep_bind (x : SigningSecurityProof.Keys3 C) {α β : Type}
           gcongr
       _ = f p + c * ∑' y, Pr{let z ← m.run p}[z = y] * (((κ y.2 - κ p : ℕ) : ℝ≥0∞) +
             ∑' z, Pr{let w ← (k y.1).run y.2}[w = z] * ((κ z.2 - κ y.2 : ℕ) : ℝ≥0∞)) := by
-          rw [add_assoc, ← mul_add, ← ENNReal.tsum_add]
+          rw [add_assoc, ← mul_add, ← tsum_add]
           simp only [mul_add]
       _ = _ := by
           congr 2
@@ -211,7 +211,7 @@ theorem keyedSplitOracle_run_stopRisk_le (x : SigningSecurityProof.Keys3 C)
     split_ifs
     · exact zero_le
     · exact le_rfl
-  refine (ENNReal.tsum_le_tsum fun r => mul_le_mul_right (hpt _ _) _).trans ?_
+  refine (tsum_le_tsum fun r => mul_le_mul_right (hpt _ _) _).trans ?_
   have h := monitoredOracle_run_risk_le keyOf ob s.1 hcov
   rw [← SigningOneRunProof.keyedSplitOracle_run_forget keyOf ob s.1 s.2, OracleComp.tsum_prEvent_map_mul] at h
   exact h
@@ -228,30 +228,24 @@ theorem keyedSplitOracle_run_cacheSeen (keyOf : XmssSecurity.HashInput → Optio
     exact ⟨v, hv, rfl⟩
   exact monitoredOracle_run_cacheSeen keyOf ob s.1 hcov _ hv'
 
+private theorem ledgerWorld_seen (x : SigningSecurityProof.Keys3 C) (t : (WorldSpec C).Domain)
+    (p : LedgerState C) (ht : ¬SigningHitLaneProof.IsProgram t) (hp : CacheSeen p.1.1.1.1.1.1 p.1.1.1.2) :
+    ∀ w ∈ support ((SigningReleasedLinkProof.world prims x t).run (p.1.1, p.2)), CacheSeen w.2.1.1.1.1.1 w.2.1.1.2 := by
+  intro w hw
+  obtain ⟨y, hy, v, hv, rfl⟩ := keyedSplitWorld_steps prims _ _ t (p.1.1, p.2) w hw
+  obtain ⟨l, hl, rfl⟩ := mem_support_map_peel _ _ hy
+  exact keyedSplitOracle_run_cacheSeen _ _ _
+    (logged_query_cacheSeen prims _ t p.1.1.1.1 p.1.1.1.2 hp ht l hl) v (by with_reducible exact hv)
+
 set_option linter.constructorNameAsVariable false in
 /-- One call of the ledger world pays its rise of the stopped potential with its charge. -/
 theorem ledgerStep_world (x : SigningSecurityProof.Keys3 C) (t : (WorldSpec C).Domain)
     (ht : ¬SigningHitLaneProof.IsProgram t) : LedgerStep x (ledgerWorld prims x t) := by
   intro p hp
   set keyOf := XmssSecurity.encodingInputLeafIndex? x.1
-  have hcarry : ∀ y ∈ support ((carry (SigningCostProof.loggedImpl prims) t).run (p.1.1.1.1, p.2)),
-      ∃ l ∈ support ((SigningCostProof.loggedImpl prims t).run p.1.1.1.1), y = (l.1, (l.2, p.2)) := by
-    intro y hy
-    simp only [carry, StateT.run_mk, support_map, Set.mem_image] at hy
-    obtain ⟨l, hl, rfl⟩ := hy
-    exact ⟨l, hl, rfl⟩
-  have hseen : ∀ w ∈ support ((SigningReleasedLinkProof.world prims x t).run (p.1.1, p.2)),
-      CacheSeen w.2.1.1.1.1.1 w.2.1.1.2 := by
-    intro w hw
-    simp only [SigningReleasedLinkProof.world, SigningOneRunProof.keyedSplitWorld, StateT.run_mk, mem_support_bind_iff,
-      support_map, Set.mem_image] at hw
-    obtain ⟨y, hy, v, hv, rfl⟩ := hw
-    obtain ⟨l, hl, rfl⟩ := hcarry y hy
-    exact keyedSplitOracle_run_cacheSeen keyOf _ _
-      (logged_query_cacheSeen prims keyOf t p.1.1.1.1 p.1.1.1.2 hp ht l hl) v (by with_reducible exact hv)
   refine ⟨fun z hz => ?_, ?_⟩
   · obtain ⟨hw, hledger⟩ := ledgerWorld_support prims x t p z hz
-    exact ⟨hseen _ hw, hledger ▸ Nat.le_add_right _ _⟩
+    exact ⟨ledgerWorld_seen prims x t p ht hp _ hw, hledger ▸ Nat.le_add_right _ _⟩
   have hcost : ∑' z, Pr{let y ← (ledgerWorld prims x t).run p}[y = z] * ((z.2.1.2 - p.1.2 : ℕ) : ℝ≥0∞) =
       (stopCharge x p.1.1.1.1.1.1 t : ℝ≥0∞) := by
     rw [tsum_eq_of_support _ _ (fun _ => (stopCharge x p.1.1.1.1.1.1 t : ℝ≥0∞) + 0) fun z hz => by
@@ -272,7 +266,7 @@ theorem ledgerStep_world (x : SigningSecurityProof.Keys3 C) (t : (WorldSpec C).D
   calc _ ≤ ∑' y, Pr{let z ← (carry (SigningCostProof.loggedImpl prims) t).run (p.1.1.1.1, p.2)}[z = y] *
           SigningOwnR1.stopRisk x y.2.1.1.1 (queryEntryStep keyOf p.1.1.1.2 (hashEntry ⟨t, y.1⟩)) := by
         refine tsum_le_of_support _ _ _ fun y hy => ?_
-        obtain ⟨l, hl, rfl⟩ := hcarry y hy
+        obtain ⟨l, hl, rfl⟩ := mem_support_map_peel _ _ hy
         exact keyedSplitOracle_run_stopRisk_le x keyOf _ _
           (logged_query_cacheSeen prims keyOf t p.1.1.1.1 p.1.1.1.2 hp ht l hl)
     _ ≤ _ := by

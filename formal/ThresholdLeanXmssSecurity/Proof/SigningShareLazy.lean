@@ -214,13 +214,9 @@ def slackMove (target rest : Digest) : (HashOutput × HashOutput) ≃
      pair.symm ((pair w.2).1, target ^^^ (pair w.1).2 ^^^ rest))
   left_inv w := by
     apply Prod.ext <;> apply pair.injective <;>
-      simp only [Equiv.apply_symm_apply] <;> apply Prod.ext <;>
-      simp only [← BitVec.xor_assoc, BitVec.xor_self, BitVec.zero_xor] <;>
       simp [BitVec.xor_assoc]
   right_inv w := by
     apply Prod.ext <;> apply pair.injective <;>
-      simp only [Equiv.apply_symm_apply] <;> apply Prod.ext <;>
-      simp only [← BitVec.xor_assoc, BitVec.xor_self, BitVec.zero_xor] <;>
       simp [BitVec.xor_assoc]
 
 section UntilBad
@@ -683,7 +679,7 @@ private theorem sticky_split
           Pr{let z ← (simulateQ I (k y.1)).run y.2}[bad z.2 = some r] else 0) := by
   classical
   let : DecidableEq R := Classical.decEq R
-  rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_eq_tsum_ite, ← ENNReal.tsum_add]
+  rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_eq_tsum_ite, ← tsum_add]
   apply tsum_congr
   intro y
   cases hb : bad y.2 with

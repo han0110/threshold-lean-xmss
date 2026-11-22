@@ -103,7 +103,7 @@ theorem forgerCost_add (A : TsigAdversary C) (x : Keys3 C)
     (c d : (LocalSpec C + TsigSpec C).Domain → ℕ) :
     forgerCost prims A x (fun t => c t + d t) = forgerCost prims A x c + forgerCost prims A x d := by
   unfold forgerCost
-  rw [← ENNReal.tsum_add]
+  rw [← tsum_add]
   refine tsum_congr fun r => ?_
   rw [← mul_add]
   congr 1
@@ -190,7 +190,7 @@ theorem flat_potential_le (A : TsigAdversary C) (x : Keys3 C) (f : LoggedState C
               (flatOracles prims x (SigningHitProof.actualDealt x top)) (fun t _ => (c t : ℝ≥0∞))
               (A ⟨top.root, x.1⟩ top) r.2
           | _ => 0) + ε * finish) := by
-      refine ENNReal.tsum_le_tsum fun r => ?_
+      refine tsum_le_tsum fun r => ?_
       by_cases hr : r ∈ support (dealerRun prims x)
       swap
       · simp [prEvent_eq_zero_of_not_mem_support _ hr]
@@ -214,7 +214,7 @@ theorem flat_potential_le (A : TsigAdversary C) (x : Keys3 C) (f : LoggedState C
           (fun t _ => (c t : ℝ≥0∞)) (A ⟨top.root, x.1⟩ top) p) + ε * finish
         calc
           _ ≤ ∑' z, Pr{let y ← run}[y = z] * (f z.2.1 + ε * finish) := by
-            refine ENNReal.tsum_le_tsum fun z => ?_
+            refine tsum_le_tsum fun z => ?_
             by_cases hz : z ∈ support run
             swap
             · simp [prEvent_eq_zero_of_not_mem_support _ hz]
@@ -226,7 +226,7 @@ theorem flat_potential_le (A : TsigAdversary C) (x : Keys3 C) (f : LoggedState C
           _ = XmssSecurity.expectedFinal impl (fun q => f q.1) (A ⟨top.root, x.1⟩ top) p +
               (∑' z, Pr{let y ← run}[y = z]) * (ε * finish) := by
             simp_rw [mul_add]
-            rw [ENNReal.tsum_add, ENNReal.tsum_mul_right]
+            rw [tsum_add, ENNReal.tsum_mul_right]
             rfl
           _ ≤ _ := add_le_add hfinal (mul_le_of_le_one_left' (OracleComp.tsum_prEvent_le_one _))
       · dsimp only
@@ -235,7 +235,7 @@ theorem flat_potential_le (A : TsigAdversary C) (x : Keys3 C) (f : LoggedState C
     _ = (∑' r, Pr{let z ← dealerRun prims x}[z = r] * f r.2.1) + ε * forgerCost prims A x c +
           (∑' r, Pr{let z ← dealerRun prims x}[z = r]) * (ε * finish) := by
       simp_rw [mul_add]
-      rw [ENNReal.tsum_add, ENNReal.tsum_add, ENNReal.tsum_mul_right, forgerCost,
+      rw [tsum_add, tsum_add, ENNReal.tsum_mul_right, forgerCost,
         ← ENNReal.tsum_mul_left]
       refine congrArg₂ (· + ·) (congrArg₂ (· + ·) rfl (tsum_congr fun r => ?_)) rfl
       ring
@@ -324,7 +324,7 @@ theorem queryCount_layered_le {ι ι' α σ τ : Type} {spec : OracleSpec ι} {s
     rw [XmssSecurity.expectedSimulatedQueryCount_bind]
     refine add_le_add (h t s u) ?_
     rw [flat, StateT.run_mk, OracleComp.tsum_prEvent_map_mul, carry_run, OracleComp.tsum_prEvent_map_mul]
-    refine ENNReal.tsum_le_tsum fun z => ?_
+    refine tsum_le_tsum fun z => ?_
     gcongr
     exact ih z.1.1 z.1.2 z.2
 
@@ -352,13 +352,13 @@ theorem ownKeyed_source_le_forgerCost (A : TsigAdversary C) (x : Keys3 C) :
         exact keyedFree_free x _)
   rw [Nat.cast_zero, nonpos_iff_eq_zero] at hhead
   rw [hhead, zero_add, dealerRun, flatWorld, carry_run, OracleComp.tsum_prEvent_map_mul]
-  refine ENNReal.tsum_le_tsum fun r => ?_
+  refine tsum_le_tsum fun r => ?_
   gcongr
   rcases r with ⟨_ | (top | tree), l⟩
   · simp
   · dsimp only
     rw [XmssSecurity.expectedSimulatedQueryCount_bind]
-    rw [ENNReal.tsum_eq_zero.mpr fun z => ?_, add_zero]
+    rw [tsum_eq_zero_iff.mpr fun z => ?_, add_zero]
     · exact queryCount_layered_le _ _ _ _ (fun t s u =>
         XmssSecurity.expectedSimulatedQueryCount_le_of_isQueryBoundP _ _ _ _ _
           (keyed_flaggedOracles x top t s)) _ _ _

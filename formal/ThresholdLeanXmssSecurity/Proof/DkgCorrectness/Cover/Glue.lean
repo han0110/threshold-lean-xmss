@@ -854,6 +854,53 @@ theorem aliveKeys_eq_some {σ : Type} (s : RealState C σ) (i : C.Party) (k : Ke
     exact ⟨hk, _, ht⟩
   · cases h
 
+/-- The local search lifts each hash call and returns the starting counters. -/
+private theorem firstLocal_run_lift {m : Type → Type} [Monad m] [LawfulMonad m]
+    (lift' : ∀ {β : Type}, OracleComp HashSpec β → m β) (parameter : PublicParameter)
+    (b : Fin (2 ^ layerHeight)) (outputs : List (List Bit)) (st : ℕ × ℕ) :
+    (firstLocal (m := StateT (ℕ × ℕ) m) (fun oa => StateT.lift (lift' oa)) parameter b outputs).run st =
+      (fun a => (a, st)) <$> firstLocal (fun oa => lift' oa) parameter b outputs := by
+  simp only [firstLocal, StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind, map_bind]
+  refine bind_congr fun root => bind_congr fun base => bind_congr fun g => ?_
+  rcases g with _ | ⟨randomness, encoding⟩ <;> simp
+
+omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
+/-- Unwrapping a successful fixed-value run preserves the counters carried by the computation. -/
+private theorem fixedVal_run_at_keys (h : Query C → HashOutput) {α : Type}
+    (f : Keys C → StateT (ℕ × ℕ) (PartyM C E RealSpec) (Option α)) {ks : Option (Keys C)} {k : Keys C}
+    (hk : ks = some k) {P : Option α → Prop} (hf : FixedVal h P (f k)) (st : ℕ × ℕ) (out : α × (ℕ × ℕ))
+    (act : PartyM C E RealSpec (Option α)) (hrun : (f k).run st = (fun a => (a, st)) <$> act)
+    (hp : some out ∈ support (simulateQ (fixHash h) (match ks with
+      | some k => (f k).run st >>= fun p => p.1.elim failure fun a => pure (a, p.2)
+      | none => failure).run)) : P (some out.1) ∧ out.2 = st := by
+  subst ks
+  rw [OptionT.run_bind, Option.elimM, simulateQ_bind, mem_support_bind_iff] at hp
+  obtain ⟨v, hv, hp⟩ := hp
+  rcases v with _ | ⟨a, st'⟩
+  · simp at hp
+  have haf := hf st _ hv a st' rfl
+  rw [hrun, OptionT.run_map, simulateQ_map, support_map] at hv
+  obtain ⟨v, _, hv⟩ := hv
+  rcases v with _ | v <;> cases hv
+  rcases a with _ | a
+  · simp [OptionT.run_failure] at hp
+  simp at hp
+  subst hp
+  exact ⟨haf, rfl⟩
+
+omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
+/-- With the hash fixed, a successful local search returns its clear result and the starting counters. -/
+theorem firstLocal_of_headTail (h : Query C → HashOutput) (operator : OperatorState C) (b : Fin (2 ^ layerHeight))
+    (o : CeremonyResult) (keys : Keys C) (hk : operator.keys = some keys) (x : HeadResult)
+    (hx : some x ∈ support (simulateQ (fixHash h) (headTail (E := E) operator b o).run)) :
+    firstLocal (m := Id) (fun oa => ThresholdLeanXmssSecurity.D prims h (tweakable oa)) keys.parameter b o.1 = some x.1 ∧ x.2 = o.2 := by
+  obtain ⟨hval, hst⟩ := fixedVal_run_at_keys h (fun k : Keys C =>
+    firstLocal (m := StateT (ℕ × ℕ) (PartyM C E RealSpec))
+      (fun oa => StateT.lift (oracleStep (tweakable oa))) k.parameter b o.1) hk
+      (fixedVal_firstLocal prims h keys.parameter b o.1) o.2 x _
+      (firstLocal_run_lift (fun oa => oracleStep (tweakable oa)) keys.parameter b o.1 o.2) hx
+  exact ⟨hval.symm, hst⟩
+
 /-- The cut of a bottom tree at which each honest operator holds the head result `x`, with no global
 event. Each honest operator has keys and a top tree, the search of `x` is the local search on its first
 outputs with `H` fixed to each good `h` that agrees with the cut cache, and the cut cache holds the PRF
@@ -916,17 +963,10 @@ theorem cut_head (cells : CeremonyCells prims K circuits settings) (hsize : 0 < 
   refine ⟨k, hki, fun j hj => ?_, ?_, ?_⟩
   · obtain ⟨kj, hkj⟩ := halive j hj
     rw [hkj, (aliveKeys_eq_some s j kj hkj).1]
-  · simp only [Option.elim_some, headTail, hki] at hpath
-    obtain ⟨v, st', hv, hpath⟩ := fixedVal_run_bind h
-      (fixedVal_firstLocal prims h k.parameter b o.1) o.2 _ x hpath
-    rcases v with _ | x₁
-    · simp [OptionT.run_failure] at hpath
-    simp at hpath
-    subst hpath
-    have hfst := firstLocal_fst (fun {β} (oa : OracleComp HashSpec β) =>
-      ThresholdLeanXmssSecurity.D prims h (tweakable oa)) k.parameter b o.1 x₁ hv.symm
-    rw [hfst]
-    exact hv.symm
+  · have hv := (firstLocal_of_headTail prims h _ b o k hki x hpath).1
+    rw [firstLocal_fst (fun {β} (oa : OracleComp HashSpec β) =>
+      ThresholdLeanXmssSecurity.D prims h (tweakable oa)) k.parameter b o.1 x.1 hv]
+    exact hv
   · intro job hjob T
     exact (cells_of_ceremonyCells prims K circuits settings D net cells hsize a (firstStart b s) world hw hkeys y hy
       (fun hgy => hge (globalEvent_mono hyz hgy)) ⟨i, hi, by rw [hyi]; rfl⟩ job hjob T).mono hyz

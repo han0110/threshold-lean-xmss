@@ -343,10 +343,8 @@ section Glue
 
 theorem card_shifts (T : C.Term) :
     (Fintype.card ({k // k ∈ C.holders T} → HashOutput) : ℝ≥0∞) = 2 ^ (256 * C.t) := by
-  rw [Fintype.card_fun, card_holders, Nat.cast_pow, pow_mul]
-  congr 1
-  simp
-  norm_num
+  rw [Fintype.card_fun, card_holders, Nat.cast_pow, TprfSecurityProof.card_hashOutput,
+    pow_mul]
 
 theorem hidden_add_known (D : C.Coalition) : (hiddenTerms D).card + (knownTerms D).card = termCount C := by
   unfold hiddenTerms knownTerms

@@ -167,14 +167,8 @@ theorem hashTail_grows (P : PublicParameter) (seeds : C.Term → HashOutput)
     (r : HashOutput × CappedCompilerState C)
     (hr : r ∈ support (hashTail P seeds input st value cache)) :
     cache ≤ r.2.1.1.data.cache ∧ r.2.1.1.data.pending = st.1.1.data.pending := by
-  simp only [hashTail, mem_support_bind_iff, mem_support_pure_iff] at hr
-  obtain ⟨a, ha, rfl⟩ := hr
-  have hf := SigningReleasedTransferProof.cachedExtra_frame seeds P
-    (((st.1.1.data.cache, 0), []), compilerSigning st.1.1, false)
-    (.inr (.inr (.inl input))) (((cache, 0), []), compilerSigning st.1.1, false) a (by
-      dsimp only [StateT.run] at ha ⊢
-      with_reducible exact ha)
-  exact ⟨hf.1, rfl⟩
+  have hs := hashTail_support P seeds input st value cache r (by with_reducible exact hr)
+  exact ⟨hs.1, hs.2.2.1⟩
 
 /-- Constructor sibling of ordinary_hash_prf, covering all free slot inputs. -/
 theorem ordinary_hash_rest (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -321,23 +315,34 @@ theorem freshPending_inv (seeds : C.Term → HashOutput) (pairs : C.Pair → Has
       · simpa only [Function.update_of_ne he] using hn
     · simp
 
-theorem freshRest_inv (P : PublicParameter) (seeds : C.Term → HashOutput)
-    (pairs : C.Pair → HashOutput) (z : RestSlot C) (st : CappedCompilerState C)
-    (cache : PrivateCache C) (h : Fresh seeds pairs cache st)
-    (r : (HashOutput × CappedCompilerState C) × PrivateCache C)
-    (hr : r ∈ support ((simulateQ SigningGuessProof.privateRoImpl (freshRest P seeds pairs z st)).run cache)) :
-    Fresh seeds pairs r.2 r.1.2 := by
-  rw [freshRest_run P seeds pairs z st cache (h.2 z)] at hr
+private theorem freshRest_inv_of_run (seeds : C.Term → HashOutput) (pairs : C.Pair → HashOutput)
+    (z : RestSlot C) (st : CappedCompilerState C) (cache : PrivateCache C)
+    (h : Fresh seeds pairs cache st)
+    (tail : HashOutput → HashCache C → ProbComp (HashOutput × CappedCompilerState C))
+    (run : ProbComp ((HashOutput × CappedCompilerState C) × PrivateCache C))
+    (law : run = (match st.1.1.data.cache (restInput seeds pairs z) with
+    | some value => (fun r => (r, cache)) <$>
+        tail value st.1.1.data.cache
+    | none => do
+      let value ← $ᵗ HashOutput
+      let r ← tail value
+        (st.1.1.data.cache.cacheQuery (restInput seeds pairs z) value)
+      pure (r, cache.cacheQuery (.inr z) value)))
+    (grows : ∀ v c r, r ∈ support (tail v c) →
+      c ≤ r.2.1.1.data.cache ∧ r.2.1.1.data.pending = st.1.1.data.pending) :
+    ∀ r ∈ support run, Fresh seeds pairs r.2 r.1.2 := by
+  rw [law]
+  intro r hr
   cases hp : st.1.1.data.cache (restInput seeds pairs z) with
   | some value =>
     simp only [hp, support_map] at hr
     obtain ⟨a, ha, rfl⟩ := hr
-    have hg := hashTail_grows P seeds _ st value _ a ha
+    have hg := grows value _ a ha
     exact h.mono seeds pairs hg.1 (fun p hn => hg.2 ▸ hn)
   | none =>
     simp only [hp, mem_support_bind_iff, mem_support_pure_iff] at hr
     obtain ⟨v, _, a, ha, rfl⟩ := hr
-    have hg := hashTail_grows P seeds _ st v _ a ha
+    have hg := grows v _ a ha
     refine Fresh.cache_right seeds pairs ?_ z v ?_
     · exact h.mono seeds pairs ((QueryCache.le_cacheQuery _ hp).trans hg.1)
         (fun p hn => hg.2 ▸ hn)
@@ -345,6 +350,15 @@ theorem freshRest_inv (P : PublicParameter) (seeds : C.Term → HashOutput)
       have hv := hg.1 (QueryCache.cacheQuery_self st.1.1.data.cache (restInput seeds pairs z) v)
       rw [hn] at hv; cases hv
 
+theorem freshRest_inv (P : PublicParameter) (seeds : C.Term → HashOutput)
+    (pairs : C.Pair → HashOutput) (z : RestSlot C) (st : CappedCompilerState C)
+    (cache : PrivateCache C) (h : Fresh seeds pairs cache st)
+    (r : (HashOutput × CappedCompilerState C) × PrivateCache C)
+    (hr : r ∈ support ((simulateQ SigningGuessProof.privateRoImpl (freshRest P seeds pairs z st)).run cache)) :
+    Fresh seeds pairs r.2 r.1.2 := by
+  exact freshRest_inv_of_run seeds pairs z st cache h _ _
+    (freshRest_run P seeds pairs z st cache (h.2 z))
+    (hashTail_grows P seeds (restInput seeds pairs z) st) r (by with_reducible exact hr)
 
 /-- One private-table step retains the actual visible outcome and freshness. -/
 theorem ordinaryRaw_step (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -481,6 +495,25 @@ theorem eager_read (tagOf : CappedCompilerState C × Bool → Tag)
     bind_pure_comp, eagerImpl_view, simulateQ_map, StateT.run_map, Functor.map_map]
 
 
+/-- A fixed eager read draws the share and the cached hash suffix before returning their combined state. -/
+theorem eager_read_of_run {α : Type} (seeds : C.Term → HashOutput) (st : FullState C Tag)
+    (read : ProbComp (α × SigningShareLazy.ShareState C.Term CPoint (SigningShareLazy.ImplBad Tag)))
+    (tail : α → HashCache C → ProbComp (HashOutput × CappedCompilerState C))
+    (run : ProbComp (HashOutput × FullState C Tag))
+    (law : run = (do
+      let a ← read
+      let b ← tail a.1 (merge seeds st.1.1.1.1.data.cache a.2.cache)
+      pure (b.1, ((splitRest seeds b.2, st.1.2), a.2))))
+    (I : HashOutput × FullState C Tag → Prop)
+    (step : ∀ a ∈ support read, ∀ b ∈ support (tail a.1 (merge seeds st.1.1.1.1.data.cache a.2.cache)),
+      I (b.1, ((splitRest seeds b.2, st.1.2), a.2))) :
+    ∀ r ∈ support run, I r := by
+  rw [law]
+  intro r hr
+  simp only [mem_support_bind_iff, mem_support_pure_iff] at hr
+  obtain ⟨a, ha, b, hb, rfl⟩ := hr
+  exact step a ha b hb
+
 @[simp] theorem fresh_merged (seeds : C.Term → HashOutput) (pairs : C.Pair → HashOutput)
     (hi : Function.Injective (TprfSecurityProof.slotInput seeds pairs))
     (cache : PrivateCache C) (st : CappedCompilerState C) (share : ShareCache C) :
@@ -494,6 +527,28 @@ theorem eager_read (tagOf : CappedCompilerState C × Bool → Tag)
   simp only [Fresh, splitRest, withCache, erase_rest seeds pairs hi]
 
 attribute [local irreducible] ordinaryStepTag readStepTag eagerHandlerTag SigningShareLazy.eagerImpl ordinary
+
+private theorem eager_read_fresh_of_run (seeds : C.Term → HashOutput) (pairs : C.Pair → HashOutput)
+    (hi : Function.Injective (TprfSecurityProof.slotInput seeds pairs))
+    (st : FullState C Tag) (cache : PrivateCache C) (h : Fresh seeds pairs cache st.1.1)
+    (read : ProbComp (HashOutput × ShareStateT C Tag))
+    (tail : HashOutput → HashCache C → ProbComp (HashOutput × CappedCompilerState C))
+    (run : ProbComp (HashOutput × FullState C Tag))
+    (law : run = (do
+      let a ← read
+      let r ← tail a.1 (merge seeds st.1.1.1.1.data.cache a.2.cache)
+      pure (r.1, ((splitRest seeds r.2, st.1.2), a.2))))
+    (grows : ∀ v c r, r ∈ support (tail v c) →
+      c ≤ r.2.1.1.data.cache ∧ r.2.1.1.data.pending = st.1.1.1.1.data.pending) :
+    ∀ r ∈ support run, Fresh seeds pairs cache r.2.1.1 := by
+  apply eager_read_of_run seeds st read tail run law
+  intro a _ b hb
+  apply (fresh_split seeds pairs hi cache b.2).mpr
+  have hg := grows a.1 _ b hb
+  have hf := (fresh_merged seeds pairs hi cache st.1.1 a.2.cache).mpr h
+  refine Fresh.mono seeds pairs hf hg.1 ?_
+  intro p hp
+  simpa only [hg.2, merged, withCache] using hp
 
 theorem eagerBackend_fresh (tagOf : CappedCompilerState C × Bool → Tag)
     (P : PublicParameter) (seeds : C.Term → HashOutput) (pairs : C.Pair → HashOutput)
@@ -521,55 +576,30 @@ theorem eagerBackend_fresh (tagOf : CappedCompilerState C × Bool → Tag)
       (hr : r ∈ support ((fun z => (z.1.1, (z.1.2, z.2))) <$>
         (simulateQ (eagerHandlerTag τ g) (readStepTag tagOf P seeds T p st.1)).run st.2)) :
       Fresh seeds pairs cache r.2.1.1 := by
-    rw [eager_read] at hr
-    simp only [mem_support_bind_iff, mem_support_pure_iff] at hr
-    obtain ⟨a, _, b, hb, rfl⟩ := hr
-    apply (fresh_split seeds pairs hi cache b.2).mpr
-    have hg := hashTail_grows P seeds _ _ a.1 _ b hb
-    have hf := (fresh_merged seeds pairs hi cache st.1.1 a.2.cache).mpr h
-    refine Fresh.mono seeds pairs hf hg.1 ?_
-    intro p hp
-    simpa only [hg.2, merged, withCache] using hp
+    exact eager_read_fresh_of_run seeds pairs hi st cache h _ _ _
+      (eager_read tagOf P seeds τ g T p st)
+      (hashTail_grows P seeds (key seeds (T, p)) (merged seeds st.1.1 st.2.cache))
+      r (by with_reducible exact hr)
   rcases t with ((t | k) | mark) | ⟨p, target⟩
-  · cases t with
-    | hash input =>
+  · cases t <;> simp only [eagerBackend, SigningCompilerUntil.fuse, shareBackendTag] at hr
+    case hash input =>
       cases hrout : route seeds input with
       | none => exact hord (.inl (.hash input)) r (by
-          simp only [eagerBackend, SigningCompilerUntil.fuse, shareBackendTag, hrout] at hr
+          simp only [hrout] at hr
           exact hr)
       | some z => exact hread z.1 z.2 r (by
-          simp only [eagerBackend, SigningCompilerUntil.fuse, shareBackendTag, hrout] at hr
+          simp only [hrout] at hr
           exact hr)
-    | pending p => exact hord (.inl (.pending p)) r (by
-        simp only [eagerBackend, SigningCompilerUntil.fuse, shareBackendTag] at hr
-        exact hr)
-    | virtual T p => exact hord (.inl (.virtual T p)) r (by
-        simp only [eagerBackend, SigningCompilerUntil.fuse, shareBackendTag] at hr
-        exact hr)
-    | pad p => exact hord (.inl (.pad p)) r (by
-        simp only [eagerBackend, SigningCompilerUntil.fuse, shareBackendTag] at hr
-        exact hr)
-    | inspect p => exact hord (.inl (.inspect p)) r (by
-        simp only [eagerBackend, SigningCompilerUntil.fuse, shareBackendTag] at hr
-        exact hr)
-    | plant p v => exact hord (.inl (.plant p v)) r (by
-        simp only [eagerBackend, SigningCompilerUntil.fuse, shareBackendTag] at hr
-        exact hr)
-    | snapshot => exact hord (.inl .snapshot) r (by
-        simp only [eagerBackend, SigningCompilerUntil.fuse, shareBackendTag] at hr
-        exact hr)
-    | sample => exact hord (.inl .sample) r (by
-        simp only [eagerBackend, SigningCompilerUntil.fuse, shareBackendTag] at hr
-        exact hr)
-    | record p v => exact hord (.inl (.record p v)) r (by
-        simp only [eagerBackend, SigningCompilerUntil.fuse, shareBackendTag] at hr
-        exact hr)
-    | uniform n => exact hord (.inl (.uniform n)) r (by
-        simp only [eagerBackend, SigningCompilerUntil.fuse, shareBackendTag] at hr
-        exact hr)
-    | bindKey e m => exact hord (.inl (.bindKey e m)) r (by
-        simp only [eagerBackend, SigningCompilerUntil.fuse, shareBackendTag] at hr
-        exact hr)
+    case pending p => exact hord (.inl (.pending p)) r hr
+    case virtual T p => exact hord (.inl (.virtual T p)) r hr
+    case pad p => exact hord (.inl (.pad p)) r hr
+    case inspect p => exact hord (.inl (.inspect p)) r hr
+    case plant p v => exact hord (.inl (.plant p v)) r hr
+    case snapshot => exact hord (.inl .snapshot) r hr
+    case sample => exact hord (.inl .sample) r hr
+    case record p v => exact hord (.inl (.record p v)) r hr
+    case uniform n => exact hord (.inl (.uniform n)) r hr
+    case bindKey e m => exact hord (.inl (.bindKey e m)) r hr
   · apply hord (.inr k) r
     simp only [eagerBackend, SigningCompilerUntil.fuse, shareBackendTag] at hr
     exact hr
@@ -615,6 +645,12 @@ theorem ordinaryFullRaw_step (P : PublicParameter) (seeds : C.Term → HashOutpu
     obtain ⟨a, ha, rfl⟩ := hr
     exact (fresh_split seeds pairs hi a.2 a.1.2).mpr (hs.2 a ha)
 
+private def RawStep (seeds : C.Term → HashOutput) (pairs : C.Pair → HashOutput)
+    (cache : PrivateCache C) {α : Type} (raw : OracleComp (PrivateSpec C) (α × FullState C Tag))
+    (eager : ProbComp (α × FullState C Tag)) : Prop :=
+  let run := (simulateQ SigningGuessProof.privateRoImpl raw).run cache
+  (Prod.fst <$> run = eager) ∧ ∀ r ∈ support run, Fresh seeds pairs r.2 r.1.2.1.1
+
 theorem backendRaw_step (tagOf : CappedCompilerState C × Bool → Tag)
     (P : PublicParameter) (seeds : C.Term → HashOutput) (pairs : C.Pair → HashOutput)
     (hi : Function.Injective (TprfSecurityProof.slotInput seeds pairs))
@@ -627,13 +663,10 @@ theorem backendRaw_step (tagOf : CappedCompilerState C × Bool → Tag)
       eagerBackend tagOf P seeds q s pads τ g t st) ∧
     (∀ r ∈ support ((simulateQ SigningGuessProof.privateRoImpl
       (backendRaw tagOf P seeds pairs q s pads τ g t st)).run cache), Fresh seeds pairs r.2 r.1.2.1.1) := by
-  have hlift (t : (SpecX C).Domain) :
-      (Prod.fst <$> (simulateQ SigningGuessProof.privateRoImpl
-        (liftM (eagerBackend tagOf P seeds q s pads τ g t st) : OracleComp (PrivateSpec C) _)).run cache =
-        eagerBackend tagOf P seeds q s pads τ g t st) ∧
-      (∀ r ∈ support ((simulateQ SigningGuessProof.privateRoImpl
-        (liftM (eagerBackend tagOf P seeds q s pads τ g t st) : OracleComp (PrivateSpec C) _)).run cache),
-        Fresh seeds pairs r.2 r.1.2.1.1) := by
+  change RawStep seeds pairs cache _ _
+  have hlift (t : (SpecX C).Domain) : RawStep seeds pairs cache
+      (liftM (eagerBackend tagOf P seeds q s pads τ g t st)) (eagerBackend tagOf P seeds q s pads τ g t st) := by
+    unfold RawStep
     rw [SigningGuessProof.privateRoImpl, roSim.run_liftM]
     constructor
     · simp only [Functor.map_map, id_map']
@@ -641,48 +674,24 @@ theorem backendRaw_step (tagOf : CappedCompilerState C × Bool → Tag)
       simp only [support_map] at hr
       obtain ⟨a, ha, rfl⟩ := hr
       exact eagerBackend_fresh tagOf P seeds pairs hi q s pads τ g t st cache h a ha
-  have ho := ordinaryFullRaw_step (Tag := Tag) P seeds pairs hi q s pads τ g
+  have ho (t : DeferredQuery C ⊕ HiddenKey) : RawStep seeds pairs cache
+      (ordinaryFullRaw P seeds pairs q s pads t st) ((fun z => (z.1.1, (z.1.2, z.2))) <$>
+        (simulateQ (eagerHandlerTag τ g) (ordinaryStepTag P seeds q s pads t st.1)).run st.2) :=
+    ordinaryFullRaw_step P seeds pairs hi q s pads τ g t st cache h
   rcases t with ((t | k) | mark) | ⟨p, target⟩
   · cases t with
     | hash input =>
       cases hrout : route seeds input with
       | none =>
         simp only [backendRaw, eagerBackend, SigningCompilerUntil.fuse, shareBackendTag, hrout]
-        exact ho (.inl (.hash input)) st cache h
+        exact ho (.inl (.hash input))
       | some z =>
         simpa only [backendRaw, hrout] using hlift (.inl (.inl (.inl (.hash input))))
-    | pending p =>
+    | _ =>
       simp only [backendRaw, eagerBackend, SigningCompilerUntil.fuse, shareBackendTag]
-      exact ho (.inl (.pending p)) st cache h
-    | virtual T p =>
-      simp only [backendRaw, eagerBackend, SigningCompilerUntil.fuse, shareBackendTag]
-      exact ho (.inl (.virtual T p)) st cache h
-    | pad p =>
-      simp only [backendRaw, eagerBackend, SigningCompilerUntil.fuse, shareBackendTag]
-      exact ho (.inl (.pad p)) st cache h
-    | inspect p =>
-      simp only [backendRaw, eagerBackend, SigningCompilerUntil.fuse, shareBackendTag]
-      exact ho (.inl (.inspect p)) st cache h
-    | plant p v =>
-      simp only [backendRaw, eagerBackend, SigningCompilerUntil.fuse, shareBackendTag]
-      exact ho (.inl (.plant p v)) st cache h
-    | snapshot =>
-      simp only [backendRaw, eagerBackend, SigningCompilerUntil.fuse, shareBackendTag]
-      exact ho (.inl .snapshot) st cache h
-    | sample =>
-      simp only [backendRaw, eagerBackend, SigningCompilerUntil.fuse, shareBackendTag]
-      exact ho (.inl .sample) st cache h
-    | record p v =>
-      simp only [backendRaw, eagerBackend, SigningCompilerUntil.fuse, shareBackendTag]
-      exact ho (.inl (.record p v)) st cache h
-    | uniform n =>
-      simp only [backendRaw, eagerBackend, SigningCompilerUntil.fuse, shareBackendTag]
-      exact ho (.inl (.uniform n)) st cache h
-    | bindKey e m =>
-      simp only [backendRaw, eagerBackend, SigningCompilerUntil.fuse, shareBackendTag]
-      exact ho (.inl (.bindKey e m)) st cache h
+      exact ho _
   · simp only [backendRaw, eagerBackend, SigningCompilerUntil.fuse, shareBackendTag]
-    exact ho (.inr k) st cache h
+    exact ho (.inr k)
   · exact hlift (.inl (.inr mark))
   · exact hlift (.inr (p, target))
 

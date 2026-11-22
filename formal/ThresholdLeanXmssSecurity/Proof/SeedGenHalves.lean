@@ -45,8 +45,8 @@ section Mixture
 theorem probOutput_bind_le_add_tsum {α : Type} (oa : ProbComp α) (f g : α → ProbComp Bool) (e : α → ℝ≥0∞)
     (h : ∀ a, Pr{let z ← f a}[z = true] ≤ Pr{let z ← g a}[z = true] + e a) :
     Pr{let z ← oa >>= f}[z = true] ≤ Pr{let z ← oa >>= g}[z = true] + ∑' a, Pr{let z ← oa}[z = a] * e a := by
-  rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_bind_eq_tsum, ← ENNReal.tsum_add]
-  refine ENNReal.tsum_le_tsum fun a => ?_
+  rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_bind_eq_tsum, ← tsum_add]
+  refine tsum_le_tsum fun a => ?_
   rw [← mul_add]
   gcongr
   exact h a
@@ -606,7 +606,7 @@ theorem tsum_setupIndepHit_le (phase : Phase) (prims : Primitives) (D : C.Coalit
       ∑' p, Pr{let z ← $ᵗ ((S → HashOutput) × (KeyName C → HashOutput))}[z = p] * setupIndepHit (phase := phase) prims D A x z Z S parts p ≤
       ((q * seedGenGuessNames C : ℕ) : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
   simp only [← ENNReal.tsum_mul_left]
-  rw [ENNReal.tsum_comm]
+  rw [tsum_comm]
   calc _ = ∑' p, Pr{let z ← $ᵗ ((S → HashOutput) × (KeyName C → HashOutput))}[z = p] *
         Pr{let r ← seedGenPartsKernel (setupReferenceKernel (phase := phase) prims D (seedGenFiniteTotal prims S p.1) p.2 A x z Z)}[
           ∃ v ∈ r.2.2, SetupHiddenInput phase D r.1 v] := by
@@ -618,7 +618,7 @@ theorem tsum_setupIndepHit_le (phase : Phase) (prims : Primitives) (D : C.Coalit
         ring
     _ ≤ ∑' p, Pr{let z ← $ᵗ ((S → HashOutput) × (KeyName C → HashOutput))}[z = p] *
         (((q * seedGenGuessNames C : ℕ) : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹) :=
-        ENNReal.tsum_le_tsum fun p => by
+        tsum_le_tsum fun p => by
           gcongr
           exact probEvent_setupReference_hidden_guess_names (phase := phase) prims D _ _ A x z Z q hq
     _ ≤ _ := by
@@ -647,7 +647,7 @@ theorem setupStageA (phase : Phase) (prims : Primitives) (D : C.Coalition) (A : 
     with he
   have hsum : ∑' parts, Pr{let z ← OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)}[z = parts] * e parts ≤
       ((seedGenClashCount C + q * seedGenGuessNames C : ℕ) : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹ := by
-    simp only [he, mul_add, ENNReal.tsum_add]
+    simp only [he, mul_add, tsum_add]
     rw [Nat.cast_add, add_mul]
     gcongr
     · calc _ = Pr{let z ← OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)}[SeedGenClash D z] := by
@@ -1215,7 +1215,7 @@ theorem setupStageB_parts (phase : Phase) (prims : Primitives) (D : C.Coalition)
     setupStageBRun_le (phase := phase) prims D A Z S parts w (left w) (right w) w.2.2.2).trans ?_
   gcongr
   rw [OracleComp.prEvent_eq_tsum_ite]
-  refine ENNReal.tsum_le_tsum fun w => ?_
+  refine tsum_le_tsum fun w => ?_
   split_ifs with h₁ h₂
   · simp
   · exact absurd (hg w h₁) h₂

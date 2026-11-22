@@ -181,6 +181,22 @@ theorem realWorld_read_view_route (prims : Primitives) (x : Keys3 C)
   simp only [bind_map_left]
   rfl
 
+/-- Membership in a run's support, kept folded when checking the monitored computation. -/
+def InRun {α : Type} (run : ProbComp α) (x : α) : Prop := x ∈ support run
+
+/-- A postcondition of a read followed by a monitored step holds for the whole run. -/
+theorem post_read_run {α β γ : Type}
+    (run : ProbComp γ) (read : ProbComp α) (step : α → ProbComp β) (finish : α → β → γ)
+    (law : run = (do let z ← read; let y ← step z; pure (finish z y))) (post : γ → Prop)
+    (h : ∀ z ∈ support read, ∀ y, InRun (step z) y → post (finish z y)) :
+    ∀ r ∈ support run, post r := by
+  rw [law]
+  intro r hr
+  obtain ⟨z, hz, hr⟩ := mem_support_bind_peel _ _ hr
+  obtain ⟨y, hy, hr⟩ := mem_support_bind_peel _ _ hr
+  obtain rfl := eq_of_mem_support_pure _ hr
+  exact h z hz y hy
+
 /-- Every real RO or PRG call on either route counts once and retains the opening state. -/
 theorem realWorld_read_fields_route (prims : Primitives) (x : Keys3 C)
     (g : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput)
@@ -189,10 +205,12 @@ theorem realWorld_read_fields_route (prims : Primitives) (x : Keys3 C)
     (r : (WorldSpec C).Range t × RealState C)
     (hr : r ∈ support ((fuse (rawTraceWorld prims x) (realImpl x g rest) t).run a)) :
     r.2.1.2 = a.1.2 ∧ r.2.1.1.1.1.1.1.2 = a.1.1.1.1.1.1.2 + 1 := by
-  rw [rawTraceWorld_read_route prims x g rest rq t ht] at hr
-  simp only [mem_support_bind_iff, mem_support_pure_iff] at hr
-  obtain ⟨z, _, y, _, rfl⟩ := hr
-  exact ⟨rfl, by rcases ht with rfl | rfl <;> cases rq <;> rfl⟩
+  have cost : SeedHitProof.signCost (C := C) t = 1 := by
+    rcases ht with rfl | rfl <;> cases rq <;> rfl
+  refine post_read_run _ _ _ _ (rawTraceWorld_read_route prims x g rest rq t ht a.1 a.2)
+    (fun r => r.2.1.2 = a.1.2 ∧ r.2.1.1.1.1.1.1.2 = a.1.1.1.1.1.1.2 + 1) ?_ r
+    (by with_reducible exact hr)
+  exact fun _ _ _ _ => ⟨rfl, congrArg (_ + ·) cost⟩
 
 end View
 

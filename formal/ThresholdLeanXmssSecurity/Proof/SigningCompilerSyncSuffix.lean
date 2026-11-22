@@ -349,7 +349,8 @@ theorem releaseSuffix_post (x : Keys3 C)
         congrArg SourceState.exposed hp.1, congrArg SourceState.allocated hp.1,
         congrArg SourceState.candidates hp.1, congrArg SourceState.hiddenFlag hp.1,
         ?_, ?_, hp.2.2.2.1, ?_, ?_, ?_, ?_⟩
-      all_goals (rw [hp.2.1] <;> rfl)
+      all_goals rw [hp.2.1]
+      all_goals rfl
     have hframe := hc.toReleaseFrame.trans hpf
     apply Or.inr
     refine {

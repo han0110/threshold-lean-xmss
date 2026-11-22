@@ -3,7 +3,7 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.HonestBudgets
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Counts
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Collision.Birthday
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.TopCosts
-import ThresholdLeanXmssSecurity.Proof.SigningStronglyUnforgeable
+import ThresholdLeanXmssSecurity.Proof.QueryCost
 
 /-!
 # The calls of the pieces of the shared rest

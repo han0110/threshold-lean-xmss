@@ -60,6 +60,12 @@ def capOnly (st : CappedCompilerState C × Bool) : Bool := st.1.2.2
 section CapSupport
 attribute [local irreducible] hashTail
 
+private theorem hashTail_cap (P : PublicParameter) (seeds : C.Term → HashOutput) (q : Query C)
+    (st : CappedCompilerState C) (v : HashOutput) (cache : HashCache C)
+    (r : HashOutput × CappedCompilerState C) (hr : r ∈ support (hashTail P seeds q st v cache)) :
+    st.2.2 ≤ r.2.2.2 := by
+  rw [(hashTail_support P seeds q st v cache r (by with_reducible exact hr)).2.2.2]
+
 /-- Every backend query tags with the starting cap and never lowers that cap.
 This is the cap analogue of Marks.backend_noMark, without a NoMark restriction. -/
 theorem backend_cap (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -68,42 +74,23 @@ theorem backend_cap (P : PublicParameter) (seeds : C.Term → HashOutput)
     Queries (Marks.TagIs (capOnly bm)) ((shareBackendTag capOnly P seeds q s pads t).run bm) ∧
       ∀ r ∈ support ((shareBackendTag capOnly P seeds q s pads t).run bm),
         capOnly bm ≤ capOnly r.2 := by
+  let tagged {α : Type} := Marks.Tagged (C := C) (capOnly bm)
+    (fun r : α × (CappedCompilerState C × Bool) => capOnly bm ≤ capOnly r.2)
+  change tagged _
   have ho (t : DeferredQuery C ⊕ HiddenKey) :
-      Queries (Marks.TagIs (capOnly bm)) ((ordinaryStepTag (Tag := Bool) P seeds q s pads t).run bm) ∧
-        ∀ r ∈ support ((ordinaryStepTag (Tag := Bool) P seeds q s pads t).run bm), capOnly bm ≤ capOnly r.2 := by
-    constructor
-    · exact (Marks.queries_share (capOnly bm) .view trivial).bind fun view =>
-        (Marks.queries_uniform _ (capOnly bm)).bind fun result => Queries.pure _
-    · intro r hr
-      simp only [ordinaryStepTag, StateT.run, mem_support_bind_iff, mem_support_pure_iff] at hr
-      obtain ⟨view, _, result, hs, rfl⟩ := hr
-      exact ordinary_cap P seeds q s pads t (merged seeds bm.1 view.1) result
-        (mem_support_of_mem_support_liftComp (RunSpec C) _ _ hs)
+      tagged ((ordinaryStepTag (Tag := Bool) P seeds q s pads t).run bm) := by
+    refine Marks.Tagged.bind (Marks.queries_share (capOnly bm) .view trivial) fun view => ?_
+    exact Marks.Tagged.uniformReturn (ordinary P seeds q s pads t (merged seeds bm.1 view.1)) _
+      (fun r hr => ordinary_cap P seeds q s pads t (merged seeds bm.1 view.1) r hr)
   have hread (T : C.Term) (p : CPoint) :
-      Queries (Marks.TagIs (capOnly bm)) ((readStepTag capOnly P seeds T p).run bm) ∧
-        ∀ r ∈ support ((readStepTag capOnly P seeds T p).run bm), capOnly bm ≤ capOnly r.2 := by
-    constructor
-    · dsimp only [readStepTag, StateT.run]
-      refine (Marks.queries_share (C := C) (capOnly bm) .view trivial).bind ?_
-      intro view
-      refine (Marks.queries_share (C := C) (capOnly bm) (.read T p (capOnly bm)) rfl).bind ?_
-      intro value
-      refine (Marks.queries_share (C := C) (capOnly bm) .view trivial).bind ?_
-      intro view'
-      refine (Marks.queries_uniform (C := C)
-        (hashTail P seeds (key seeds (T, p)) (merged seeds bm.1 view.1) value
-          (merge seeds bm.1.1.1.data.cache view'.1)) (capOnly bm)).bind ?_
-      intro result
-      exact Queries.pure _
-    · intro r hr
-      simp only [readStepTag, StateT.run, mem_support_bind_iff, mem_support_pure_iff] at hr
-      obtain ⟨view, _, value, _, view', _, result, hs, rfl⟩ := hr
-      have hs := mem_support_of_mem_support_liftComp (RunSpec C)
-        (hashTail P seeds (key seeds (T, p)) (merged seeds bm.1 view.1) value
-          (merge seeds bm.1.1.1.data.cache view'.1)) result hs
-      simp only [hashTail, mem_support_bind_iff, mem_support_pure_iff] at hs
-      obtain ⟨prefetched, _, rfl⟩ := hs
-      exact le_rfl
+      tagged ((readStepTag capOnly P seeds T p).run bm) := by
+    refine Marks.Tagged.bind (Marks.queries_share (capOnly bm) .view trivial) fun view => ?_
+    refine Marks.Tagged.bind (Marks.queries_share (capOnly bm) (.read T p (capOnly bm)) rfl) fun v => ?_
+    refine Marks.Tagged.bind (Marks.queries_share (capOnly bm) .view trivial) fun view' => ?_
+    exact Marks.Tagged.uniformReturn
+      (hashTail P seeds (key seeds (T, p)) (merged seeds bm.1 view.1) v
+        (merge seeds bm.1.1.1.data.cache view'.1)) _
+      (hashTail_cap P seeds (key seeds (T, p)) (merged seeds bm.1 view.1) v _)
   cases t with
   | inl t =>
     cases t with
@@ -119,28 +106,15 @@ theorem backend_cap (P : PublicParameter) (seeds : C.Term → HashOutput)
           | some z => exact hread z.1 z.2
         | _ => exact ho _
     | inr mark =>
-      refine ⟨Queries.pure _, ?_⟩
-      intro r hr
-      simp only [shareBackendTag, StateT.run, mem_support_pure_iff] at hr
-      subst r
-      exact le_rfl
+      exact Marks.Tagged.pure le_rfl
   | inr t =>
     rcases t with ⟨p, target⟩
     by_cases hp : Constrained p
     · simp only [shareBackendTag, hp, dite_true, StateT.run]
-      refine ⟨(Marks.queries_share (capOnly bm) (.complete ⟨p, hp⟩ target (capOnly bm)) rfl).bind
-        (fun _ => Queries.pure _), ?_⟩
-      intro r hr
-      simp only [mem_support_bind_iff, mem_support_pure_iff] at hr
-      obtain ⟨_, _, rfl⟩ := hr
-      exact le_rfl
+      exact Marks.Tagged.bind (Marks.queries_share (capOnly bm) (.complete ⟨p, hp⟩ target (capOnly bm)) rfl)
+        fun _ => Marks.Tagged.pure le_rfl
     · simp only [shareBackendTag, hp, dite_false, StateT.run]
-      refine ⟨Queries.pure _, ?_⟩
-      intro r hr
-      simp only [mem_support_pure_iff] at hr
-      subst r
-      exact le_rfl
-
+      exact Marks.Tagged.pure le_rfl
 
 def capJointRun {α : Type} (H : QueryImpl (RunSpec C) (StateT (ShareState C) ProbComp))
     (P : PublicParameter) (seeds : C.Term → HashOutput) (q : ℕ)

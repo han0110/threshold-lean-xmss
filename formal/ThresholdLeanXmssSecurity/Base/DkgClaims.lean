@@ -1,6 +1,5 @@
 import ThresholdLeanXmssSecurity.Base.Dkg
 import ThresholdLeanXmss.Statement.Dkg
-import Mathlib.Algebra.Polynomial.Eval.Defs
 import VCVio.EvalDist.EvalDistEq
 
 /-!

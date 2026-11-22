@@ -104,14 +104,14 @@ theorem altLe_bind {α β : Type} (oa : OracleComp (WorldSpec C) α) (ob : α �
   rw [simulateQ_bind, StateT.run_bind, OracleComp.tsum_prEvent_bind_mul]
   calc _ ≤ ∑' z, Pr{let y ← (simulateQ (loggedImpl prims) oa).run s}[y = z] *
         (altPotential x z.2 + (2 ^ 128 : ℝ≥0∞)⁻¹ * (b : ℝ≥0∞)) := by
-        refine ENNReal.tsum_le_tsum fun z => ?_
+        refine tsum_le_tsum fun z => ?_
         by_cases hz : z ∈ support ((simulateQ (loggedImpl prims) oa).run s)
         · gcongr
           exact h2 z hz
         · simp [prEvent_eq_zero_of_not_mem_support _ hz]
     _ ≤ (altPotential x s + (2 ^ 128 : ℝ≥0∞)⁻¹ * (a : ℝ≥0∞)) + 1 * ((2 ^ 128 : ℝ≥0∞)⁻¹ * (b : ℝ≥0∞)) := by
         simp_rw [mul_add]
-        rw [ENNReal.tsum_add, ENNReal.tsum_mul_right]
+        rw [tsum_add, ENNReal.tsum_mul_right]
         exact add_le_add h1 (mul_le_mul_left (OracleComp.tsum_prEvent_le_one _) _)
     _ ≤ _ := by
         rw [one_mul, add_assoc, ← mul_add]
@@ -130,7 +130,7 @@ theorem altLe_block {β : Type} (block : OracleComp (Query C →ₒ HashOutput) 
     AltLe prims x (liftFree (SigningHitProof.hashEmbed block)) 0 s := by
   rw [AltLe, Nat.cast_zero, mul_zero, add_zero]
   by_cases hp : Programmed s.2
-  · refine le_of_eq_of_le (ENNReal.tsum_eq_zero.mpr fun r => ?_) zero_le
+  · refine le_of_eq_of_le (tsum_eq_zero_iff.mpr fun r => ?_) zero_le
     by_cases hr : r ∈ support ((simulateQ (loggedImpl prims)
       (liftFree (SigningHitProof.hashEmbed block))).run s)
     · simp [guarded, SigningOwnHit.programmed_run prims _ s hp r hr]
@@ -139,7 +139,7 @@ theorem altLe_block {β : Type} (block : OracleComp (Query C →ₒ HashOutput) 
   have hc := SigningOwnPotential.logged_block_potential_le prims
     (SigningGuessProof.RawCommitmentInput x.1) (SigningGuessProof.rawCommitmentForest x.2.1 x.1)
     (fun _ => SigningGuessProof.commitmentTargets x.2.1 x.1) block s hcovered
-  refine le_trans (ENNReal.tsum_le_tsum fun r => ?_) hc
+  refine le_trans (tsum_le_tsum fun r => ?_) hc
   gcongr
   simp only [altPotential, guarded]
   split_ifs <;> simp [SigningGuessProof.commitmentCompletion]
@@ -556,7 +556,7 @@ theorem altOwn : AltOwn prims (C := C) := by
   rw [Nat.add_zero, Nat.cast_zero, add_zero] at hf
   refine le_trans ?_ hf
   rw [← loggedRun_forget, prEvent_map, OracleComp.prEvent_eq_tsum_ite]
-  refine ENNReal.tsum_le_tsum fun z => ?_
+  refine tsum_le_tsum fun z => ?_
   by_cases hz : z ∈ support (loggedRun prims A x)
   · by_cases hw : SigningGuessProof.AlternativeCommitment x.2.1 x.1 z.2.1.1
     · simp only [hw, ite_true, guarded, ite_eq_right (noProgramQuery prims C A x z hz)]

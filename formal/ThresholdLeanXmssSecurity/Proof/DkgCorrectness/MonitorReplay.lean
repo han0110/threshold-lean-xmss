@@ -987,6 +987,13 @@ theorem globalEvent_cleanWorld (w : StreamState C) : GlobalEvent (cleanWorld w) 
   rw [domainCollision_cleanCache (fun _ h => h), domainCollision_cleanCache (fun _ h => h),
     domainCollision_cleanCache (fun _ h => h), splitHash_cleanCache]
 
+private theorem forall_support_cleanWorld {α : Type} (prims : Primitives) (D : C.Coalition)
+    (oa : OracleComp (WorldSpec C) α) (world : StreamState C) (P : α → Prop)
+    (hP : ∀ z ∈ support ((simulateQ (streamWorld prims D) oa).run world), P z.1) :
+    ∀ z ∈ support ((simulateQ (streamWorld prims D) oa).run (cleanWorld world)), P z.1 := by
+  rw [streamWorld_run_clean, support_map, Set.forall_mem_image]
+  exact hP
+
 /-- The clean world of a ready start is ready. -/
 theorem runReady_cleanWorld (prims : Primitives) (budget : StartBudget) (D : C.Coalition) {σ : Type}
     {s : RealState C σ} {world : StreamState C} (ready : RunReady prims budget D s world) :
@@ -994,8 +1001,7 @@ theorem runReady_cleanWorld (prims : Primitives) (budget : StartBudget) (D : C.C
   obtain ⟨hseeds, htop, hsplit, ⟨seen, keys, hsound, hseen, hkeys⟩, ⟨salts, hsalts, hcard⟩, hhidden⟩ := ready
   refine ⟨hseeds, ?_, ?_, ⟨seen, keys, ⟨?_, ?_⟩, hseen, hkeys⟩, ⟨salts, ?_, hcard⟩, hhidden⟩
   · intro i hi top htop'
-    rw [streamWorld_run_clean, support_map, Set.forall_mem_image]
-    exact htop i hi top htop'
+    exact forall_support_cleanWorld prims D _ world (· = some (TreeOutput.top top)) (htop i hi top htop')
   · show SplitCacheBound (splitRegionCache SplitHashDomain (cleanCache world.1)) budget.split
     rw [splitRegionCache_cleanCache (P := SplitHashDomain) (fun _ h => h)]
     exact hsplit

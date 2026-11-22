@@ -1,3 +1,4 @@
+import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1RealLog
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Frame
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerSyncHonestRead
 import ThresholdLeanXmssSecurity.Proof.SigningCompilerO1Lemmas
@@ -43,6 +44,18 @@ variable (prims : Primitives) (x : Keys3 C) (s : HiddenKey → Digest) (pads : P
   (u : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput)
   (noise : ChainNoiseIndex → HashOutput)
 
+private theorem hashCall_of_route (input : Query C) (t : (WorldSpec C).Domain)
+    (ht : t = .inl (.inl (.inr (.inl input))) ∨ t = .inr (.inr (.inl input))) (v : HashOutput) :
+    SigningCacheLogProof.hashCall ⟨t, cast (by rcases ht with rfl | rfl <;> rfl) v⟩ = some (input, v) := by
+  rcases ht with rfl | rfl <;> rfl
+
+private theorem logCache_le_logQuery (log : QueryLog (WorldSpec C)) (t : (WorldSpec C).Domain)
+    (v : (WorldSpec C).Range t) :
+    SigningCacheLogProof.logCache log ≤ SigningCacheLogProof.logCache (log.logQuery t v) := by
+  intro q w hq
+  rw [SigningCacheLogProof.logCache_logQuery, hq]
+  rfl
+
 set_option linter.constructorNameAsVariable false in
 /-- One real call of `H` on either route. It keeps the log agreement, the private relation and the
 carried state, and it counts once. The trace takes one step. The visible cache grows, and it
@@ -63,63 +76,29 @@ private theorem realRead_facts (input : Query C) (t : (WorldSpec C).Domain)
       visibleOf a ≤ visibleOf r.2 ∧
       ∀ query, SigningPartnerCompareProof.OutsideTrials x.1 query → query ≠ input →
         visibleOf r.2 query = visibleOf a query := by
-  have hpr := realWorld_preserves (x := x) (s := s) (pads := pads) (noise := noise)
-    (g := gOf s pads u) (rest := rest) prims t a hpriv r hr
-  have hfields := realWorld_read_fields_route prims x (gOf s pads u) rest (.inl input) t ht a r hr
   change r ∈ support ((ThresholdLeanXmssSecurity.fuse (rawTraceWorld prims x)
     (realImpl x (gOf s pads u) rest) t).run a) at hr
-  rw [rawTraceWorld_read_route prims x (gOf s pads u) rest (.inl input) t ht a.1 a.2] at hr
-  simp only [mem_support_bind_iff, mem_support_pure_iff] at hr
-  obtain ⟨z, hz, y, hy, rfl⟩ := hr
-  simp only [readInput, readAnswer] at hz hy
-  have hpz : RealPrivate x s pads noise (gOf s pads u) rest z.2
-      ((visibleOf a).cacheQuery input z.1) := by
-    by_cases hs : IsSlot x input
-    · rw [realImpl_slot x _ rest input hs, mem_support_pure_iff] at hz
-      rw [hz]
-      exact hpriv.observe_slot input hs
-    · rw [realImpl_other x _ rest input hs] at hz
-      exact hpriv.observe_other input hs z hz
-  have hw : (z.1, (visibleOf a).cacheQuery input z.1) ∈
-      support (((Query C →ₒ HashOutput).randomOracle input).run (visibleOf a)) := by
-    cases hv : visibleOf a input with
-    | none =>
-      rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_none _ hv]
-      simp [uniformSampleImpl]
-    | some value =>
-      rw [realRead_hit x s pads noise _ rest a.2 (visibleOf a) hpriv input value hv,
-        mem_support_pure_iff] at hz
-      subst z
-      rw [OracleSpec.randomOracle, QueryImpl.withCaching_run_some _ hv,
-        observe_same (visibleOf a) input value hv]
-      simp
-  rw [grind_quiet_transport x s pads noise (gOf s pads u) rest _ _ _ _ _ hpz.quiet,
-    support_map] at hy
-  obtain ⟨y', hy'', hyy⟩ := hy
-  have hy1 : y.1 = y' := by rw [← hyy]
-  have hro := Set.mem_image_of_mem (fun r => (r.1, r.2.1.1)) hy''
-  rw [← support_map, keyedSplit_cache_forget] at hro
-  have hf := SigningReleasedTransferProof.cachedExtra_frame x.2.1 x.1 _ _ _ _ hro
-  have hcall : SigningCacheLogProof.hashCall ⟨t, cast (by rcases ht with rfl | rfl <;> rfl) z.1⟩ =
-      some (input, z.1) := by
-    rcases ht with rfl | rfl <;> rfl
+  revert r
+  refine post_read_run _ _ _ _ (rawTraceWorld_read_route prims x (gOf s pads u) rest (.inl input) t ht a.1 a.2) _ ?_
+  intro z hz y hy
+  dsimp only [readInput, readAnswer] at hz hy ⊢
+  have hpz := SigningCompilerO1RealLog.observed_private x s pads rest noise (gOf s pads u) a.2 (visibleOf a)
+    hpriv input z (by with_reducible exact hz)
+  have hw := SigningCompilerO1RealLog.realRead_observed x s pads rest noise (gOf s pads u) a.2 (visibleOf a)
+    hpriv input z (by with_reducible exact hz)
+  obtain ⟨hpy, hf⟩ := SigningCompilerO1RealLog.grind_posts x s pads rest noise (gOf s pads u) _ _ _ _ z.2
+    rfl hpz y (by with_reducible exact hy)
+  have hcall := hashCall_of_route input t ht z.1
   have hl := SigningPartnerCompareProof.logAgreement_hash x.1 input a.1.1.1.1.1 hlog _ hw
     (a.1.1.1.1.1.2.logQuery t (cast (by rcases ht with rfl | rfl <;> rfl) z.1))
     (fun _ => by rw [SigningCacheLogProof.logCache_logQuery, hcall]; rfl) 0
   have hrd := randomOracle_support input (visibleOf a) _ hw
-  refine ⟨?_, hpr, ?_, hfields.1, hfields.2, rfl, ?_, ?_⟩
-  · rw [hy1]
-    exact ⟨hl.1.trans hf.1, fun q hq => (hf.2 q hq).trans (hl.2 q hq)⟩
-  · intro q v hq
-    change SigningCacheLogProof.logCache (a.1.1.1.1.1.2.logQuery t
-      (cast (by rcases ht with rfl | rfl <;> rfl) z.1)) q = some v
-    rw [SigningCacheLogProof.logCache_logQuery,
-      show SigningCacheLogProof.logCache a.1.1.1.1.1.2 q = some v from hq]
-    rfl
-  · rw [hy1]
-    exact hrd.1.trans hf.1
+  have cost : SeedHitProof.signCost t = 1 := by rcases ht with rfl | rfl <;> rfl
+  refine ⟨?_, hpy, ?_, rfl, congrArg (_ + ·) cost, rfl, ?_, ?_⟩
+  · exact ⟨hl.1.trans hf.1, fun q hq => (hf.2 q hq).trans (hl.2 q hq)⟩
+  · exact logCache_le_logQuery _ _ _
+  · exact hrd.1.trans hf.1
   · intro q hq hne
-    rw [hy1]
     exact (hf.2 q hq).trans (hrd.2.2 q hne)
 end Real
 

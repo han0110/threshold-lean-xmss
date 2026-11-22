@@ -170,7 +170,7 @@ theorem probEvent_hit_le_logKeyed (keyOf : XmssSecurity.HashInput → Option Xms
   simp only [Nat.sub_zero] at h
   refine le_trans ?_ h
   rw [OracleComp.prEvent_eq_tsum_ite]
-  refine ENNReal.tsum_le_tsum fun z => ?_
+  refine tsum_le_tsum fun z => ?_
   split_ifs with hz
   · have hone : z.2.1.2.risk = 1 := by simp [Monitor.risk, hz]
     rw [hone, mul_one]

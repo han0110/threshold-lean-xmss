@@ -1602,7 +1602,7 @@ theorem probEvent_bind_le_mul {α β : Type} {mx : ProbComp α} {my : α → Pro
     Pr{let z ← mx >>= my}[q z] ≤ Pr{let z ← mx}[p z] * ε := by
   classical
   rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_eq_tsum_ite, ← ENNReal.tsum_mul_right]
-  refine ENNReal.tsum_le_tsum fun x => ?_
+  refine tsum_le_tsum fun x => ?_
   by_cases hx : x ∈ support mx
   · refine (mul_le_mul' le_rfl (h x hx)).trans ?_
     split_ifs <;> simp

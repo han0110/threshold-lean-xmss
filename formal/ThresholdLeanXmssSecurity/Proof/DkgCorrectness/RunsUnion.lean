@@ -332,7 +332,9 @@ theorem firstSigning_super (D : C.Coalition) (A : DkgTsigAdversary C E) (run : R
     · exact superT_lift (super_lift _)
     · exact firstOracles_super prims runLimit ε D run ready hbad q
     · rcases q with _ | state
-      · exact superT_lift (super_bind super_get fun _ => super_pure _)
+      · change SuperT _ (StateT.lift ((fun s : FirstState C A.net.State => s.real.adversary) <$> get))
+        rw [map_eq_bind_pure_comp]
+        exact superT_lift (super_bind super_get fun _ => super_pure _)
       · exact superT_lift (super_modify _ fun _ => rfl)
   · exact super_pure _ s world
 

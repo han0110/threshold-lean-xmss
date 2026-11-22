@@ -71,9 +71,8 @@ theorem world_log (x : SigningSecurityProof.Keys3 C) (t : (WorldSpec C).Domain) 
     (r : (WorldSpec C).Range t × SplitState C)
     (hr : r ∈ support ((SigningReleasedLinkProof.world prims x t).run s)) :
     r.2.1.1.1.2 = s.1.1.1.2.logQuery t r.1 := by
-  simp only [SigningReleasedLinkProof.world, SigningOneRunProof.keyedSplitWorld, carry, StateT.run_mk,
-    bind_map_left, mem_support_bind_iff, support_map, Set.mem_image] at hr
-  obtain ⟨z, hz, y, hy, rfl⟩ := hr
+  obtain ⟨called, hc, _, _, rfl⟩ := keyedSplitWorld_steps prims _ _ t s r hr
+  obtain ⟨z, hz, rfl⟩ := mem_support_map_peel _ _ hc
   exact SigningHitLaneProof.loggedImpl_log prims t s.1.1.1 z hz
 
 /-- The charge of a call is at most its own keyed unit and one unit for a call of the free copy on
@@ -434,9 +433,7 @@ theorem world_base_grind (x : SigningSecurityProof.Keys3 C) (t : (WorldSpec C).D
       rw [hb] at hi
       exact Option.some.inj hi
     exact hi'.symm ▸ hc
-  simp only [SigningReleasedLinkProof.world, SigningOneRunProof.keyedSplitWorld, StateT.run_mk,
-    mem_support_bind_iff, support_map, Set.mem_image] at hr
-  obtain ⟨called, hc, ground, hg, rfl⟩ := hr
+  obtain ⟨called, hc, ground, hg, rfl⟩ := keyedSplitWorld_steps prims _ _ t s r hr
   have hc' := hc
   simp only [carry, SigningCostProof.loggedImpl, StateT.run_mk, support_map, Set.mem_image] at hc'
   obtain ⟨outer, ⟨counted, hcounted, rfl⟩, heq⟩ := hc'

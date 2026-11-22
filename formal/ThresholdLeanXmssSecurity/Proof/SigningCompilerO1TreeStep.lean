@@ -129,7 +129,9 @@ theorem sourceTree_eq (top : TopTree) (bi : Fin (2 ^ layerHeight)) (src : Source
 /-- A result of a mapped run is the image of a result of the run. -/
 theorem exists_of_mem_support_map {α β : Type} {f : α → β} {oa : ProbComp α} {z : β}
     (h : z ∈ support (f <$> oa)) : ∃ y ∈ support oa, f y = z := by
-  rwa [support_map, Set.mem_image] at h
+  rw [← bind_pure_comp] at h
+  obtain ⟨y, hy, h⟩ := mem_support_bind_peel _ _ h
+  exact ⟨y, hy, (eq_of_mem_support_pure _ h).symm⟩
 
 /-- A real stop with the flag down is a stop of the count, so another carried state keeps it. -/
 theorem realStop_withCarried (z : RealState C) (c : Carried C) (hz : RealStop q z)

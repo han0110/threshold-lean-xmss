@@ -131,8 +131,8 @@ theorem expectedFinal_flag_le (q : ℕ) (s : K → T) (f : σ × ℕ → ℝ≥0
       generalize (b || decide (cappedCall p q t st ∧ inputSide t ∧
         stored (keyOf t) = none ∧ s (keyOf t) = point t)) = b'
       have hle := fun x : spec.Range t × σ × ℕ => ih x.1 x.2 stored b'
-      refine (ENNReal.tsum_le_tsum fun x => mul_le_mul_right (hle x) _).trans ?_
-      simp only [mul_add, mul_one, ENNReal.tsum_add]
+      refine (tsum_le_tsum fun x => mul_le_mul_right (hle x) _).trans ?_
+      simp only [mul_add, mul_one, tsum_add]
       gcongr
       exact (OracleComp.tsum_prEvent_le_one _)
     · rw [revealImpl_inr_run, revealImpl_inr_run]
@@ -202,7 +202,7 @@ theorem expectedFinal_capped_le_aux (q : ℕ) (Inv : σ × ℕ → Prop) (f : σ
           f st + (if cappedCall p q t st ∧ ¬inputSide t then ε else 0) +
             (q - (st.2 + if p t then 1 else 0) : ℕ) * ε := by
         calc _ ≤ ∑' x, Pr{let z ← mx}[z = x] * (f x.2 + (q - (st.2 + if p t then 1 else 0) : ℕ) * ε) := by
-              refine ENNReal.tsum_le_tsum fun x => ?_
+              refine tsum_le_tsum fun x => ?_
               by_cases hx : x ∈ support mx
               · gcongr
                 have := ih x.1 x.2 stored (hinv t st hst x hx)
@@ -211,7 +211,7 @@ theorem expectedFinal_capped_le_aux (q : ℕ) (Inv : σ × ℕ → Prop) (f : σ
               · simp [prEvent_eq_zero_of_not_mem_support _ hx]
           _ = ∑' x, Pr{let z ← mx}[z = x] * f x.2 +
               ∑' x, Pr{let z ← mx}[z = x] * ((q - (st.2 + if p t then 1 else 0) : ℕ) * ε) := by
-              simp only [mul_add, ENNReal.tsum_add]
+              simp only [mul_add, tsum_add]
           _ ≤ _ := by
               refine add_le_add (hstep t st hst) ?_
               rw [ENNReal.tsum_mul_right]
@@ -224,13 +224,13 @@ theorem expectedFinal_capped_le_aux (q : ℕ) (Inv : σ × ℕ → Prop) (f : σ
             exact hflag s x
         _ ≤ ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * (if P s then 1 else 0) +
             ∑' x, Pr{let z ← mx}[z = x] * ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * G s x false := by
-            simp only [mul_add, ENNReal.tsum_add]
+            simp only [mul_add, tsum_add]
             refine add_le_add ?_ (le_of_eq ?_)
             · gcongr with s
               rw [ENNReal.tsum_mul_right]
               exact mul_le_of_le_one_left' (OracleComp.tsum_prEvent_le_one _)
             · simp only [← ENNReal.tsum_mul_left]
-              rw [ENNReal.tsum_comm]
+              rw [tsum_comm]
               simp only [mul_left_comm]
         _ ≤ (if cappedCall p q t st ∧ inputSide t then ε else 0) +
             (f st + (if cappedCall p q t st ∧ ¬inputSide t then ε else 0) +
@@ -304,7 +304,7 @@ theorem probEvent_capped_expect_le (q : ℕ) (Inv : σ × ℕ → Prop) (f : σ 
   calc _ ≤ ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * XmssSecurity.expectedFinal
         (cappedHybrid impl inputSide p keyOf point q s) (cappedPotential f) oa
         ((σ₀, 0), fun _ => none, false) := by
-        refine ENNReal.tsum_le_tsum fun s => ?_
+        refine tsum_le_tsum fun s => ?_
         gcongr
         simpa using XmssSecurity.const_mul_probEvent_le_expectedFinal _ (cappedPotential f)
           (fun st => st.2.2 = true ∨ E st.1) 1 hΦ oa _

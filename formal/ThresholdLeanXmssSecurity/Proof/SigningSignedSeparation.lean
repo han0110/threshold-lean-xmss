@@ -533,41 +533,51 @@ theorem invariant_extra {C : Committee} (x : SigningSecurityProof.Keys3 C)
     (hr : r ∈ support ((simulateQ (monitoredOracle (XmssSecurity.encodingInputLeafIndex? x.1))
       (jointCachedExtra x.2.1 x.1 p t p')).run (p'.1.1.1, monitor))) :
     CacheInvariant (XmssSecurity.encodingInputLeafIndex? x.1) (digestCache r.2.1) r.2.2 := by
-  have hpure (hp : r ∈ support ((simulateQ
-      (monitoredOracle (XmssSecurity.encodingInputLeafIndex? x.1)) (pure ())).run
-        (p'.1.1.1, monitor))) :
-      CacheInvariant (XmssSecurity.encodingInputLeafIndex? x.1) (digestCache r.2.1) r.2.2 := by
-    simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hp
-    rw [hp]
+  rcases jointCachedExtra_cases x p p' t with hpure | ⟨e, message, answer, -, -, hb, ha, hgrind⟩
+  · rw [hpure, simulateQ_pure, StateT.run_pure, mem_support_pure_iff] at hr
+    rw [hr]
     exact h
-  unfold jointCachedExtra SigningR1FixedProof.cachedExtra at hr
-  split_ifs at hr with htrigger
-  · unfold grindExtra at hr
-    split_ifs at hr with hbase
-    · cases hb : p.2.1.1.bound hbase.choose with
-      | none => simp only [hb] at hr; exact hpure hr
-      | some message =>
-        cases ha : p'.1.1.1 (.hash (randomizerInput x.1 bottomLayer hbase.choose
-            (SigningGuessProof.cachedRandomizer x.2.1 p.1.1.1 hbase.choose) (littleEndianBytes 32 message))) with
-        | none => simp only [hb, ha] at hr; exact hpure hr
-        | some answer =>
-          simp only [hb, ha] at hr
-          cases hs : monitor.state.signed hbase.choose with
-          | none =>
-            exact invariant_baseGrind_unsigned x.1 hbase.choose message answer
-              (p'.1.1.1, monitor) h hs r hr
-          | some target =>
-            rw [witness_base_rerun x p.1.1.1 p'.1.1.1 p.2.1.1 hbase.choose target
-              (hw hbase.choose target hs) hle message hb answer ha monitor h.cacheSeen] at hr
-            have heq := (mem_support_pure_iff _ _).1 hr
-            rw [heq]
-            exact h
-    · exact hpure hr
-  · exact hpure hr
+  · rw [hgrind] at hr
+    cases hs : monitor.state.signed e with
+    | none => exact invariant_baseGrind_unsigned x.1 e message answer (p'.1.1.1, monitor) h hs r hr
+    | some target =>
+      rw [witness_base_rerun x p.1.1.1 p'.1.1.1 p.2.1.1 e target
+        (hw e target hs) hle message hb answer ha monitor h.cacheSeen, mem_support_pure_iff] at hr
+      rw [hr]
+      exact h
 
 /-- The invariant on the actual split state ignores only its counters, flags and carried ledger. -/
 def SplitInvariant {C : Committee} (x : SigningSecurityProof.Keys3 C) (s : SplitState C) : Prop :=
   CacheInvariant (XmssSecurity.encodingInputLeafIndex? x.1) (digestCache s.1.1.1.1.1) s.1.1.2
+
+private theorem keyedSplitWorld_invariant {C : Committee} (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
+    (extra : FlatJointState C → (WorldSpec C).Domain → FlatJointState C → OracleComp (Query C →ₒ HashOutput) Unit)
+    (hextra : ∀ (p p' : FlatJointState C) t (monitor : Monitor), p.1.1.1 ≤ p'.1.1.1 →
+      CacheInvariant (XmssSecurity.encodingInputLeafIndex? x.1) (digestCache p'.1.1.1) monitor →
+      (∀ e target, monitor.state.signed e = some target → SelectionWitness x p.1.1.1 p.2.1.1 e target) →
+      ∀ r ∈ support ((simulateQ (monitoredOracle (XmssSecurity.encodingInputLeafIndex? x.1))
+        (extra p t p')).run (p'.1.1.1, monitor)),
+        CacheInvariant (XmssSecurity.encodingInputLeafIndex? x.1) (digestCache r.2.1) r.2.2)
+    (t : (WorldSpec C).Domain) (ht : ¬SigningHitLaneProof.IsProgram t)
+    (s : SplitState C) (h : SplitInvariant x s) (hw : SelectionWitnesses x s)
+    (r : (WorldSpec C).Range t × SplitState C)
+    (hr : r ∈ support ((keyedSplitWorld prims (XmssSecurity.encodingInputLeafIndex? x.1) extra t).run s)) : SplitInvariant x r.2 := by
+  obtain ⟨called, hc, ground, hg, rfl⟩ := keyedSplitWorld_steps prims _ _ t s r hr
+  simp only [carry, StateT.run_mk, support_map, Set.mem_image] at hc
+  obtain ⟨logged, hl, rfl⟩ := hc
+  let keyOf := XmssSecurity.encodingInputLeafIndex? x.1
+  let monitor := queryEntryStep keyOf s.1.1.2 (hashEntry ⟨t, logged.1⟩)
+  have hi := invariant_logged prims keyOf t s.1.1.1 s.1.1.2 h ht logged hl
+  have hcache : s.1.1.1.1.1 ≤ logged.2.1.1 := by
+    simp only [SigningCostProof.loggedImpl, StateT.run_mk, support_map, Set.mem_image] at hl
+    obtain ⟨counted, hcounted, rfl⟩ := hl
+    exact SigningCacheProof.countImpl_grows prims t s.1.1.1.1 counted hcounted
+  refine hextra (s.1.1.1, s.2) (logged.2, s.2) t monitor hcache hi ?_ (ground.1, ground.2.1) ?_
+  · intro e target hs
+    rw [SigningR1FixedProof.queryEntryStep_signed] at hs
+    exact hw e target hs
+  · exact keyed_run_monitored_support keyOf (extra (s.1.1.1, s.2) t (logged.2, s.2))
+      ((logged.2.1.1, monitor), s.1.2) ground hg
 
 set_option linter.constructorNameAsVariable false in
 /-- Actual unprogrammed world calls preserve both unsigned pending values and signed separation. -/
@@ -576,31 +586,8 @@ theorem invariant_world {C : Committee} (prims : Primitives) (x : SigningSecurit
     (s : SplitState C) (h : SplitInvariant x s) (hw : SelectionWitnesses x s)
     (r : (WorldSpec C).Range t × SplitState C)
     (hr : r ∈ support ((SigningReleasedLinkProof.world prims x t).run s)) : SplitInvariant x r.2 := by
-  simp only [SigningReleasedLinkProof.world, keyedSplitWorld, StateT.run_mk, mem_support_bind_iff,
-    support_map, Set.mem_image] at hr
-  obtain ⟨called, hc, ground, hg, rfl⟩ := hr
-  simp only [carry, StateT.run_mk, support_map, Set.mem_image] at hc
-  obtain ⟨logged, hl, rfl⟩ := hc
-  have hi := invariant_logged prims (XmssSecurity.encodingInputLeafIndex? x.1)
-    t s.1.1.1 s.1.1.2 h ht logged hl
-  have hcache : s.1.1.1.1.1 ≤ logged.2.1.1 := by
-    have hcount := hl
-    simp only [SigningCostProof.loggedImpl, StateT.run_mk, support_map, Set.mem_image] at hcount
-    obtain ⟨counted, hcounted, rfl⟩ := hcount
-    exact SigningCacheProof.countImpl_grows prims t s.1.1.1.1 counted hcounted
-  have hmon : (ground.1, ground.2.1) ∈ support ((simulateQ
-      (monitoredOracle (XmssSecurity.encodingInputLeafIndex? x.1))
-      (jointCachedExtra x.2.1 x.1 (s.1.1.1, s.2) t (logged.2, s.2))).run
-        (logged.2.1.1, queryEntryStep (XmssSecurity.encodingInputLeafIndex? x.1)
-          s.1.1.2 (hashEntry ⟨t, logged.1⟩))) := by
-    rw [← keyedSplitOracle_run_forget _ _ _ s.1.2, support_map, Set.mem_image]
-    with_reducible exact ⟨ground, hg, rfl⟩
-  change CacheInvariant _ (digestCache ground.2.1.1) ground.2.1.2
-  apply invariant_extra x (s.1.1.1, s.2) (logged.2, s.2) t _ hcache hi _
-    (ground.1, ground.2.1) (by with_reducible exact hmon)
-  intro e target hs
-  rw [SigningR1FixedProof.queryEntryStep_signed] at hs
-  exact hw e target hs
+  exact keyedSplitWorld_invariant prims x (jointCachedExtra x.2.1 x.1) (invariant_extra x)
+    t ht s h hw r (by with_reducible exact hr)
 
 /-- A public world program preserves the cache invariant together with its canonical search witnesses. -/
 theorem invariant_world_run {C : Committee} (prims : Primitives)

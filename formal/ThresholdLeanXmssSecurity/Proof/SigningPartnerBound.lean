@@ -287,7 +287,7 @@ def keyedCost (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
 theorem tsum_probOutput_mul_le_of_const {α : Type} (mx : ProbComp α) (F : α → ℝ≥0∞) (c : ℝ≥0∞)
     (h : ∀ z ∈ support mx, F z ≤ c) : ∑' z, Pr{let y ← mx}[y = z] * F z ≤ c := by
   calc ∑' z, Pr{let y ← mx}[y = z] * F z ≤ ∑' z, Pr{let y ← mx}[y = z] * c := by
-        refine ENNReal.tsum_le_tsum fun z => ?_
+        refine tsum_le_tsum fun z => ?_
         by_cases hz : z ∈ support mx
         · gcongr
           exact h z hz

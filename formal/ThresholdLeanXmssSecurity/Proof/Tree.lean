@@ -478,7 +478,8 @@ theorem realCoin_run (ctx : Context C) (count : ℕ) (st : RunState C) :
   refine congrArg (_ >>= ·) (funext fun o => ?_)
   simp [coinWith, StateT.run_lift]
 
-theorem realRand_run {R : Type} [Zero R] (ctx : Context C) (codec : Codec C E R) (idx count : ℕ) (st : RunState C) :
+theorem realRand_run {C : Committee} {E : Type} [Field E] [Algebra Bit E]
+    {ι : Type} {G : OracleSpec ι} {R : Type} [Zero R] (ctx : Context C) (codec : Codec C E R) (idx count : ℕ) (st : RunState C) :
     (prssRandomness (G := G) ctx codec idx count).run st =
       oracleStep (prssDraw ctx codec st.label idx count) >>= fun o => pure (o, nextLabel st) := by
   have := prssRandomness_run (G := G) ctx codec idx count pure st
@@ -1014,7 +1015,9 @@ theorem extendMult_step' [Nonempty C.Party] (F : Functionality C I O L R) (reply
         g i) >>= honestRounds F reply (fuel + 1))).run' s}[event z] ≤ ε :=
   extendMult_step prims K keys kT kP F reply fuel products n hlen st lab hL (fun i a b => g i (a, b)) event s hn ε h
 
-theorem digest_step' [Nonempty C.Party] (F : Functionality C I O L R) (reply : L → R) (fuel : ℕ)
+theorem digest_step' {C : Committee} {E : Type} [Field E] [Algebra Bit E] [Fintype E] [DecidableEq E]
+    {I O L R α : Type} (prims : Primitives) (keys : C.Party → Keys C)
+    (kT : C.Term → HashOutput) (kP : C.Pair → HashOutput) [Nonempty C.Party] (F : Functionality C I O L R) (reply : L → R) (fuel : ℕ)
     (st : C.Party → RunState C) (hh : HistAgree fun i => (st i).history)
     (salts : C.Party → Shares C Bit) (S : Shares C Bit) (hS : ∀ i T, i ∈ C.holders T → salts i T = S T)
     (g : C.Party → Unit × RunState C → PartyM C E (CallSpec I O) α) (event : (C.Party → Option α) → Prop)
@@ -2423,8 +2426,8 @@ theorem FrameR.inputQuery (ctx : Context C) (job : Job) : FrameR prims (inputQue
     fun _ => FrameR.pure _
   exact (FrameR.hashQuery (by rintro (⟨_, _, h⟩ | ⟨_, _, _, h⟩) <;> cases h)).map _ |>.map _
 
-omit [Fintype E] [DecidableEq E] in
-theorem inputShares_fun {ι : Type} {G : OracleSpec ι} (ctx : Context C) :
+theorem inputShares_fun {C : Committee} {E : Type} [Field E] [Algebra Bit E]
+    {ι : Type} {G : OracleSpec ι} (ctx : Context C) :
     (inputShares (E := E) (G := G) ctx) = fun job => oracleStep (inputQuery ctx job) :=
   funext (inputShares_eq ctx)
 
@@ -3778,7 +3781,7 @@ theorem chunksCost_prefix_budget (parameter : PublicParameter) (R B : ℕ) (js :
       have hc' : c + B * (R + 2) ≤ (js.length + B) * (R + 2) := by
         dsimp only [c]; rw [Nat.add_mul]; omega
       gcongr
-      all_goals first | exact hc' | simp only [Nat.cast_add, le_refl]
+      simp only [Nat.cast_add, le_refl]
 
 theorem freshCost_ne_top [Nonempty E] (R : ℕ) : freshCost E R ≠ ⊤ := by
   have hc : (Fintype.card E : ℝ≥0∞) ≠ 0 := by exact_mod_cast Fintype.card_ne_zero
@@ -3808,7 +3811,7 @@ theorem chunksBudget_toReal [Nonempty E] (tree : Tree) :
   rw [ENNReal.toReal_add (by finiteness) (by finiteness)]
   simp only [ENNReal.toReal_div, ENNReal.toReal_natCast, ENNReal.toReal_pow,
     ENNReal.toReal_ofNat, ENNReal.toReal_mul, zero_add, zero_pow (by omega : 2 ≠ 0), Nat.sub_zero, freshCost_toReal]
-  ring
+  exact add_comm _ _
 end ThresholdLeanXmssSecurity
 
 open OracleComp OracleSpec HashSig LeanXmss ThresholdLeanXmss ENNReal Finset

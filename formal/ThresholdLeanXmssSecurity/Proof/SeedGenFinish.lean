@@ -681,7 +681,7 @@ theorem probEvent_bind_mono_of {α β γ : Type} (oa : ProbComp α) (f : α → 
     (P : β → Prop) (Q : γ → Prop) (h : ∀ a, Pr{let z ← f a}[P z] ≤ Pr{let z ← g a}[Q z]) :
     Pr{let z ← oa >>= f}[P z] ≤ Pr{let z ← oa >>= g}[Q z] := by
   rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_bind_eq_tsum]
-  exact ENNReal.tsum_le_tsum fun a => mul_le_mul_right (h a) _
+  exact tsum_le_tsum fun a => mul_le_mul_right (h a) _
 
 theorem probEvent_congr_evalDist {α : Type} {oa ob : ProbComp α} (h : oa =ᵈ ob) (P : α → Prop) :
     Pr{let z ← oa}[P z] = Pr{let z ← ob}[P z] :=
@@ -829,7 +829,7 @@ theorem probEvent_setupIrr_le_u (phase : Phase) (prims : Primitives) (D : C.Coal
     rw [prEvent_map, probOutput_true_map_decide]
   rw [hl, ← (evalDist_bind_seedGenMix (fun s : S => SetupEchoCell (phase := phase) D u s.1) k).prEvent_eq (· = true),
     OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_bind_eq_tsum]
-  refine ENNReal.tsum_le_tsum fun p => mul_le_mul_right ?_ _
+  refine tsum_le_tsum fun p => mul_le_mul_right ?_ _
   rw [probOutput_true_map_decide, prEvent_map]
   exact probEvent_setupIrr_mix_le (phase := phase) prims D A x z S hsk parts u p.1 p.2
 
@@ -1020,7 +1020,7 @@ theorem setupEchoFreshExt (phase : Phase) (prims : Primitives) : SetupEchoFreshE
     calc _ ≤ ∑' parts, Pr{let z ← OverPermutation.sequenceFin fun _ : C.Party => sampleParts (C := C)}[z = parts] *
           (((1 + q + C.n * C.n : ℕ) : ℝ≥0∞) *
             ((Fintype.card C.Pair : ℝ≥0∞) * (Fintype.card HashOutput : ℝ≥0∞)⁻¹)) :=
-          ENNReal.tsum_le_tsum fun parts => mul_le_mul_right
+          tsum_le_tsum fun parts => mul_le_mul_right
             (probEvent_setupEchoIrregular_parts_le (phase := phase) prims D A x z Z q hq S hsk parts) _
       _ ≤ _ := by
           rw [ENNReal.tsum_mul_right]
@@ -1033,13 +1033,12 @@ theorem setupEchoFreshExt (phase : Phase) (prims : Primitives) : SetupEchoFreshE
   have ha := setupEcho_arith (phase := phase) (C := C) q
   unfold setupHashError seedGenStageAError seedGenClashCount seedGenGuessNames
   rw [seedGenFinish_card_pair, seedGenFinish_card_term]
-  have ha' : (4 * ((1 + q + C.n * C.n) * C.n.choose 2) + 4 * (termCount C ^ 2 + 2 * C.n.choose 2 ^ 2 +
-      q * (termCount C + C.n.choose 2)) : ℝ) ≤ ((q + setupSecrets (phase := phase) C) ^ 2 : ℕ) := by exact_mod_cast ha
-  push_cast at ha' ⊢
-  rw [div_le_iff₀ (by positivity)]
-  have h256 : (0 : ℝ) < 2 ^ 256 := by positivity
-  field_simp
-  nlinarith [ha']
+  have scale {a b c d : ℝ} (hd : 0 < d) (h : 4 * a + 4 * b ≤ c) :
+      a / d ≤ (c / d / 2 - 2 * (b / d)) / 2 := by
+    field_simp
+    linarith
+  apply scale (pow_pos (by norm_num) 256)
+  exact_mod_cast ha
 
 end EchoFreshMain
 

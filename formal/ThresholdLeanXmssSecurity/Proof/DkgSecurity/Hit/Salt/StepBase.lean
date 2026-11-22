@@ -1,5 +1,6 @@
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Salt.Provenance
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Salt.Merge
+import ThresholdLeanXmssSecurity.Proof.SigningCompilerCouplingUntil
 
 /-!
 # The parts of the step on the two worlds

@@ -1,3 +1,4 @@
+import ThresholdLeanXmssSecurity.Proof.QueryCost
 import ThresholdLeanXmssSecurity.Proof.SigningOwnBudget
 
 /-! # The signing claim in the form of leanXMSS
@@ -17,19 +18,6 @@ open ThresholdLeanXmss
 namespace SigningStronglyUnforgeable
 
 attribute [local instance] Classical.propDecidable
-
-/-- A count by a predicate is a cost of one for each counted query. -/
-theorem isQueryBoundP_iff_queryCostAtMost {ι : Type} {spec : OracleSpec.{0, 0} ι} {α : Type}
-    (oa : OracleComp spec α) (p : ι → Prop) [DecidablePred p] (n : ℕ) :
-    IsQueryBoundP oa p n ↔ QueryCostAtMost oa (fun t => if p t then 1 else 0) n := by
-  have canQuery : (fun (t : ι) (b : ℕ) => ¬ p t ∨ 0 < b) = fun t b => (if p t then 1 else 0) ≤ b := by
-    funext t b
-    by_cases h : p t <;> simp [h, Nat.one_le_iff_ne_zero, Nat.pos_iff_ne_zero]
-  have cost : (fun (t : ι) (b : ℕ) => if p t then b - 1 else b) = fun t b => b - (if p t then 1 else 0) := by
-    funext t b
-    by_cases h : p t <;> simp [h]
-  unfold IsQueryBoundP QueryCostAtMost
-  rw [canQuery, cost]
 
 variable {C : Committee}
 

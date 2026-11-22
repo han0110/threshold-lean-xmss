@@ -1086,12 +1086,14 @@ theorem pins_hashQuery (q : Query C) : Pins (E := E) h prims (hashQuery q) := by
   simp at hz
   exact hz
 
-theorem pins_mapM {α β : Type} (f : α → OracleComp (RoSpec C) β) (hf : ∀ a, Pins (E := E) h prims (f a)) :
+theorem pins_mapM {E : Type} [Field E] [Algebra Bit E]
+    (h : Query C → HashOutput) (prims : Primitives)
+    {α β : Type} (f : α → OracleComp (RoSpec C) β) (hf : ∀ a, Pins (E := E) h prims (f a)) :
     ∀ l : List α, Pins (E := E) h prims (l.mapM f)
   | [] => pins_pure h prims _
   | a :: l => by
     rw [List.mapM_cons]
-    exact pins_bind h prims _ _ (hf a) fun _ => pins_bind h prims _ _ (pins_mapM f hf l) fun _ => pins_pure h prims _
+    exact pins_bind h prims _ _ (hf a) fun _ => pins_bind h prims _ _ (pins_mapM h prims f hf l) fun _ => pins_pure h prims _
 
 end Pins
 

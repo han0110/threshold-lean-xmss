@@ -483,19 +483,35 @@ theorem rawKeyedSplitOracle_realPrivate
   obtain ⟨a, ha, rfl⟩ := hr
   exact realPrivate_observe h (.inr q) a ha
 
-theorem rawKeyedSplitWorld_realPrivate (prims : Primitives) (t : (WorldSpec C).Domain) :
-    RealPrivateLaw x s pads noise g rest (fun st => st.1.1.1.1.1)
-      (rawKeyedSplitWorld prims x t) := by
+private theorem rawSplit_realPrivate (prims : Primitives) (t : (WorldSpec C).Domain)
+    (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
+    (extra : SigningFlatProof.FlatJointState C → (WorldSpec C).Domain → SigningFlatProof.FlatJointState C →
+      OracleComp (Query C →ₒ HashOutput) Unit) :
+    RealPrivateLaw x s pads noise g rest (fun st : RawSplitState C => st.1.1.1.1.1)
+      (StateT.mk fun st => do
+        let z ← (rawCarriedLogged prims t).run (st.1.1.1, st.2)
+        (fun y => (z.1, ((((SigningFlatEagerProof.ofRest y.2.1.1
+          (SigningFlatEagerProof.restOf z.2)).1, y.2.1.2), y.2.2),
+          (SigningFlatEagerProof.ofRest y.2.1.1 (SigningFlatEagerProof.restOf z.2)).2))) <$>
+            (simulateQ (rawKeyedSplitOracle keyOf) (extra (st.1.1.1, st.2) t z.2)).run
+              ((z.2.1.1.1, SigningFlatEagerProof.queryEntryStep keyOf st.1.1.2
+                (SigningPartnerBoundProof.hashEntry ⟨t, z.1⟩)), st.1.2)) := by
   intro st priv h r hr
-  simp only [rawKeyedSplitWorld, StateT.run_mk, simulateQ_bind, StateT.run_bind,
+  simp only [StateT.run_mk, simulateQ_bind, StateT.run_bind,
     mem_support_bind_iff] at hr
   obtain ⟨z, hz, hr⟩ := hr
   have hz' := rawCarriedLogged_realPrivate prims t (st.1.1.1, st.2) priv h z hz
   simp only [simulateQ_map, StateT.run_map, support_map, Set.mem_image] at hr
   obtain ⟨y, hy, rfl⟩ := hr
   exact RealPrivateLaw.simulateQ (fun st => st.1.1)
-    (rawKeyedSplitOracle (XmssSecurity.encodingInputLeafIndex? x.1))
+    (rawKeyedSplitOracle keyOf)
     (rawKeyedSplitOracle_realPrivate _) _ _ _ hz' y hy
+
+theorem rawKeyedSplitWorld_realPrivate (prims : Primitives) (t : (WorldSpec C).Domain) :
+    RealPrivateLaw x s pads noise g rest (fun st => st.1.1.1.1.1)
+      (rawKeyedSplitWorld prims x t) := by
+  unfold rawKeyedSplitWorld
+  exact rawSplit_realPrivate prims t _ _
 
 theorem rawTraceWorld_realPrivate (prims : Primitives) (t : (WorldSpec C).Domain) :
     RealPrivateLaw x s pads noise g rest (fun st => st.1.1.1.1.1.1)

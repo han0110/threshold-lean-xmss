@@ -84,6 +84,28 @@ theorem hashCallAt_read (rq : (RoSpec C).Domain) (t : (WorldSpec C).Domain)
     (hi : SigningFlatProof.HashCallAt i t) : readInput rq = .hash i := by
   rcases ht with rfl | rfl <;> rcases hi with h | h <;> cases h <;> rfl
 
+/-- Without a bottom base call, a routed read consists of its private read and visible state update. -/
+theorem rawTraceWorld_read_noBase (prims : Primitives) (x : Keys3 C)
+    (g : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput)
+    (q : (RoSpec C).Domain) (t : (WorldSpec C).Domain)
+    (ht : t = .inl (.inl (.inr q)) ∨ t = .inr (.inr q))
+    (hb : ∀ i, SigningFlatProof.HashCallAt i t →
+      ∀ e ρ message, i ≠ randomizerInput x.1 bottomLayer e ρ message)
+    (st : SigningLaneUnionProof.TraceState C) (priv : HashCache C) :
+    ((ThresholdLeanXmssSecurity.fuse (rawTraceWorld prims x) (realImpl x g rest) t).run (st, priv)) = (do
+      let z ← ((realImpl x g rest) (.inr (readInput q))).run priv
+      let visible := st.1.1.1.1.1.1.cacheQuery (readInput q) z.1
+      let value : (WorldSpec C).Range t :=
+        cast (by rcases ht with rfl | rfl <;> rfl) (readAnswer prims q z.1)
+      let logged : SigningHitLaneProof.LoggedState C :=
+        ((visible, st.1.1.1.1.1.2 + SeedHitProof.signCost t), st.1.1.1.1.2.logQuery t value)
+      let monitor := SigningFlatEagerProof.queryEntryStep (XmssSecurity.encodingInputLeafIndex? x.1)
+        st.1.1.1.2 (SigningPartnerBoundProof.hashEntry ⟨t, value⟩)
+      pure (value, (((((logged, monitor), st.1.1.2), st.1.2), st.2), z.2))) := by
+  rw [rawTraceWorld_read_route prims x g rest q t ht st priv]
+  simp only [noBase_cachedExtra x.2.1 x.1 _ _ t hb, simulateQ_pure, StateT.run_pure, pure_bind,
+    noBase_traceStepAt x.2.1 x.1 _ _ _ t _ hb]
+
 end NoBase
 
 section Log
@@ -185,17 +207,14 @@ theorem readCall_support (forger : Bool) (rq : (RoSpec C).Domain) (a : RealState
     have hcount := (realWorld_read_fields_route prims x (gOf s pads u) rest rq t ht a r hr').2
     change r ∈ support ((ThresholdLeanXmssSecurity.fuse (rawTraceWorld prims x)
       (realImpl x (gOf s pads u) rest) t).run (a.1, a.2)) at hr'
-    rw [rawTraceWorld_read_route prims x (gOf s pads u) rest rq t ht a.1 a.2] at hr'
+    rw [rawTraceWorld_read_noBase prims x (gOf s pads u) rest rq t ht hb a.1 a.2] at hr'
     simp only [mem_support_bind_iff, mem_support_pure_iff] at hr'
-    obtain ⟨z, hz, y, hy, rfl⟩ := hr'
-    rw [noBase_cachedExtra x.2.1 x.1 _ _ t hb] at hy
-    simp only [simulateQ_pure, StateT.run_pure, mem_support_pure_iff] at hy
-    subst hy
+    obtain ⟨z, hz, rfl⟩ := hr'
     rw [realRead_ordinary x s pads noise (gOf s pads u) rest a.2 (visibleOf a) hr _ hhit,
       support_map] at hz
     obtain ⟨w, hw, rfl⟩ := hz
     have hv := randomOracle_observe (visibleOf a) _ w hw
-    refine ⟨w, hw, hv, rfl, noBase_traceStepAt x.2.1 x.1 _ _ _ t _ hb, hcount,
+    refine ⟨w, hw, hv, rfl, rfl, hcount,
       logCache_le_logQuery _ _ _, fun hL => ?_⟩
     change SigningPartnerCompareProof.LogAgreement x.1
       (((visibleOf a).cacheQuery (readInput rq) w.1, _), _)

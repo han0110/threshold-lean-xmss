@@ -1,7 +1,6 @@
 import ThresholdLeanXmssSecurity.Base.DkgClaims
 import ThresholdLeanXmssSecurity.Proof.Execution
 import ThresholdLeanXmssSecurity.Proof.Lemmas
-import Mathlib.Algebra.CharP.Algebra
 
 /-!
 # The building blocks
@@ -46,8 +45,6 @@ variable {I O R : Type} [AddCommGroup R] [SampleableType R]
 section Field
 variable [Field E] [Algebra Bit E]
 open Polynomial
-
-theorem charTwo : CharP E 2 := charP_of_injective_algebraMap (algebraMap Bit E).injective 2
 
 /-- The first `t` operators. -/
 abbrev firstParties (C : Committee) : Finset C.Party := Finset.univ.filter fun l : C.Party => l.val < C.t
@@ -388,7 +385,8 @@ theorem getD_ofFn_eq {n : ℕ} (v : Fin n → E) : (fun g : Fin n => (List.ofFn 
   funext g; simp [List.getD_eq_getElem?_getD]
 
 /-- The simulated fresh terms replace the real ones. -/
-theorem WEq.adjust (prims : Primitives) (D : C.Coalition) (known : Shares C E) {n : ℕ} {β : Type}
+theorem WEq.adjust {E : Type} [Field E] [Algebra Bit E] [SampleableType E]
+    (prims : Primitives) (D : C.Coalition) (known : Shares C E) {n : ℕ} {β : Type}
     (L : (C.Term → Fin n → E) → OracleComp (WorldSpec C) β) :
     WEq prims (free (liftComp ($ᵗ (Fin n → E)) (LocalSpec C)) >>= fun v =>
         free (liftComp ($ᵗ (C.Term → Fin n → E)) (LocalSpec C)) >>= fun f' => L (adjust D known f' v))

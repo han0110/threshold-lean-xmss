@@ -138,10 +138,8 @@ set_option linter.constructorNameAsVariable false in
 theorem hashTail_cap (P : PublicParameter) (seeds : C.Term → HashOutput)
     (input : Query C) (st : CappedCompilerState C) (value : HashOutput) (cache : HashCache C)
     (r : HashOutput × CappedCompilerState C)
-    (hr : r ∈ support (hashTail P seeds input st value cache)) : r.2.2.2 = st.2.2 := by
-  simp only [hashTail, mem_support_bind_iff, mem_support_pure_iff] at hr
-  obtain ⟨_, _, rfl⟩ := hr
-  rfl
+    (hr : r ∈ support (hashTail P seeds input st value cache)) : r.2.2.2 = st.2.2 :=
+  congrArg Prod.snd (hashTail_support P seeds input st value cache r hr).2.2.2
 
 attribute [local irreducible] hashTail
 
@@ -154,20 +152,33 @@ theorem freshPending_cap (edge : ChainNoiseIndex) (st : CappedCompilerState C)
   · obtain ⟨_, _, rfl⟩ := hr; rfl
   · subst r; rfl
 
+private theorem freshRest_of_tail (input : Query C) (z : RestSlot C) (st : CappedCompilerState C)
+    (tail : HashOutput → HashCache C → ProbComp (HashOutput × CappedCompilerState C))
+    (h : ∀ v c r, r ∈ support (tail v c) → r.2.2.2 = st.2.2) :
+    ∀ r ∈ support (do
+      let read ← match st.1.1.data.cache input with
+        | some v => pure (v, st.1.1.data.cache)
+        | none => do
+          let v ← query (spec := PrivateSpec C) (.inr (.inr z))
+          pure (v, st.1.1.data.cache.cacheQuery input v)
+      liftM (tail read.1 read.2) : OracleComp (PrivateSpec C) _), r.2.2.2 = st.2.2 := by
+  cases hc : st.1.1.data.cache input with
+  | some value =>
+    simp only [pure_bind]
+    intro r hr
+    exact h value _ r (mem_support_of_mem_support_liftComp (PrivateSpec C) _ _ hr)
+  | none =>
+    simp only [pure_bind]
+    intro r hr
+    obtain ⟨v, _, hr⟩ := mem_support_bind_peel _ _ hr
+    exact h v _ r (mem_support_of_mem_support_liftComp (PrivateSpec C) _ _ hr)
+
 theorem freshRest_cap (P : PublicParameter) (seeds : C.Term → HashOutput)
     (pairs : C.Pair → HashOutput) (z : RestSlot C) (st : CappedCompilerState C)
     (r : HashOutput × CappedCompilerState C)
     (hr : r ∈ support (freshRest P seeds pairs z st)) : r.2.2.2 = st.2.2 := by
-  cases hc : st.1.1.data.cache (restInput seeds pairs z) with
-  | some value =>
-      simp only [freshRest, hc, pure_bind] at hr
-      exact hashTail_cap P seeds _ st value _ r
-        (mem_support_of_mem_support_liftComp (PrivateSpec C) _ _ hr)
-  | none =>
-      simp only [freshRest, hc, pure_bind, mem_support_bind_iff] at hr
-      obtain ⟨value, _, ha⟩ := hr
-      exact hashTail_cap P seeds _ st value _ r
-        (mem_support_of_mem_support_liftComp (PrivateSpec C) _ _ ha)
+  let input := restInput seeds pairs z
+  exact freshRest_of_tail input z st (hashTail P seeds input st) (hashTail_cap P seeds input st) r hr
 
 theorem ordinaryRaw_cap (P : PublicParameter) (seeds : C.Term → HashOutput)
     (pairs : C.Pair → HashOutput) (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
@@ -220,9 +231,8 @@ theorem eagerBackend_stop (P : PublicParameter) (seeds : C.Term → HashOutput)
       (hr : r ∈ support ((fun z => (z.1.1, (z.1.2, z.2))) <$>
         (simulateQ (eagerHandlerTag τ g) (readStepTag capTag P seeds T p st.1)).run st.2)) :
       Stop r.2 := by
-    rw [eager_read] at hr
-    simp only [mem_support_bind_iff, mem_support_pure_iff] at hr
-    obtain ⟨a, ha, b, hb, rfl⟩ := hr
+    refine eager_read_of_run seeds st _ _ _ (eager_read capTag P seeds τ g T p st) (fun r => Stop r.2) ?_ r hr
+    intro a ha b hb
     apply (stop_iff _).mpr
     have he := hashTail_cap P seeds _ _ a.1 _ b hb
     change BadStop b.2.2.2 (SigningShareLazy.erase a.2).bad
@@ -347,12 +357,39 @@ theorem fuse_stop {ι κ σ : Type} {spec : OracleSpec ι} {mid : OracleSpec κ}
     (t : ι) (st : σ × CompState C) (h : Stop st.2)
     (r : spec t × (σ × CompState C))
     (hr : r ∈ support ((SigningCompilerUntil.fuse inner outer t).run st)) : Stop r.2.2 := by
-  simp only [SigningCompilerUntil.fuse, StateT.run, support_map] at hr
-  obtain ⟨a, ha, rfl⟩ := hr
+  simp only [SigningCompilerUntil.fuse, StateT.run, ← bind_pure_comp] at hr
+  obtain ⟨a, ha, hr⟩ := mem_support_bind_peel _ _ hr
+  obtain rfl := eq_of_mem_support_pure _ hr
   exact simulateQ_sticky outer Stop hs ((inner t).run st.1) st.2 h a ha
 
 abbrev TraceCount (st : SigningLaneUnionProof.TraceState C) : ℕ := st.1.1.1.1.1.2
 abbrev TraceFlag (st : SigningLaneUnionProof.TraceState C) : Bool := st.2.1.2
+
+private theorem rawCarriedLogged_control (prims : Primitives) (t : (WorldSpec C).Domain)
+    (st : SigningFlatProof.FlatJointState C) (r : WorldSpec C t × SigningFlatProof.FlatJointState C)
+    (hr : r ∈ support ((rawCarriedLogged prims t).run st)) :
+    r.2.2 = st.2 ∧ st.1.1.2 ≤ r.2.1.1.2 := by
+  obtain ⟨b, _, rfl⟩ := mem_support_map_peel _ _ hr
+  exact ⟨rfl, Nat.le_add_right _ _⟩
+
+private theorem bind_map_all {ι α β γ : Type} {spec : OracleSpec ι} (first : OracleComp spec α)
+    (next : α → OracleComp spec β) (finish : α → β → γ) (I : γ → Prop)
+    (ok : ∀ a ∈ support first, ∀ b, I (finish a b)) (r : γ)
+    (hr : r ∈ support (first >>= fun a => finish a <$> next a)) : I r := by
+  obtain ⟨a, ha, hr⟩ := mem_support_bind_peel _ _ hr
+  obtain ⟨b, _, rfl⟩ := mem_support_map_peel _ _ hr
+  exact ok a ha b
+
+private theorem rawKeyedSplitWorld_control (prims : Primitives) (x : Keys3 C) (t : (WorldSpec C).Domain)
+    (st : RawSplitState C) (r : WorldSpec C t × RawSplitState C)
+    (hr : r ∈ support ((rawKeyedSplitWorld prims x t).run st)) :
+    r.2.2 = st.2 ∧ st.1.1.1.1.2 ≤ r.2.1.1.1.1.2 := by
+  unfold rawKeyedSplitWorld at hr
+  let first := (rawCarriedLogged prims t).run (st.1.1.1, st.2)
+  generalize hc : rawKeyedSplitOracle (XmssSecurity.encodingInputLeafIndex? x.1) = impl at hr
+  refine bind_map_all first _ _ (fun r => r.2.2 = st.2 ∧ st.1.1.1.1.2 ≤ r.2.1.1.1.1.2) ?_ r hr
+  intro z hz _
+  exact rawCarriedLogged_control prims t _ z hz
 
 /-- A raw world call retains the entire opening state and adds its nonnegative cost. -/
 theorem rawTraceWorld_control (prims : Primitives) (x : Keys3 C)
@@ -360,13 +397,8 @@ theorem rawTraceWorld_control (prims : Primitives) (x : Keys3 C)
     (r : WorldSpec C t × SigningLaneUnionProof.TraceState C)
     (hr : r ∈ support ((rawTraceWorld prims x t).run st)) :
     r.2.2 = st.2 ∧ TraceCount st ≤ TraceCount r.2 := by
-  simp only [rawTraceWorld, StateT.run_mk, support_map] at hr
-  obtain ⟨a, ha, rfl⟩ := hr
-  simp only [rawKeyedSplitWorld, StateT.run_mk, mem_support_bind_iff, support_map] at ha
-  obtain ⟨z, hz, y, _, rfl⟩ := ha
-  simp only [rawCarriedLogged, StateT.run_mk, support_map] at hz
-  obtain ⟨b, _, rfl⟩ := hz
-  exact ⟨rfl, Nat.le_add_right _ _⟩
+  obtain ⟨a, ha, rfl⟩ := mem_support_map_peel _ _ hr
+  exact rawKeyedSplitWorld_control prims x t _ a ha
 
 theorem rawTraceWorld_run_control {α : Type} (prims : Primitives) (x : Keys3 C)
     (oa : OracleComp (WorldSpec C) α) (st : SigningLaneUnionProof.TraceState C)

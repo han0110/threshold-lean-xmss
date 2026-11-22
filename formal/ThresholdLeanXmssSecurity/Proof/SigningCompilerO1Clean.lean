@@ -214,7 +214,7 @@ private theorem probEvent_bind_le_bind {α β γ : Type} (oa : ProbComp α) (f :
     (g : α → ProbComp γ) (P : β → Prop) (Q : γ → Prop) (h : ∀ a, Pr{let z ← f a}[P z] ≤ Pr{let z ← g a}[Q z]) :
     Pr{let z ← oa >>= f}[P z] ≤ Pr{let z ← oa >>= g}[Q z] := by
   rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_bind_eq_tsum]
-  exact ENNReal.tsum_le_tsum fun a => mul_le_mul' le_rfl (h a)
+  exact tsum_le_tsum fun a => mul_le_mul' le_rfl (h a)
 
 /-- For fixed hidden labels and pads, the right event of `real_le_table_clean` over the table run
 costs at most the clean event of the pad run. -/

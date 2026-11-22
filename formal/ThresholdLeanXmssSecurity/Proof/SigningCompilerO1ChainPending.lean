@@ -221,12 +221,10 @@ theorem chainCall_readStep (edge : ChainNoiseIndex) (a : RealState C)
   change ra ∈ support ((ThresholdLeanXmssSecurity.fuse (rawTraceWorld prims x)
     (realImpl x (gOf s pads u) rest) (.inr (.inr (.inl (.hash ((chainPending edge).input x.1
       (s (chainPending edge).key))))))).run a) at hra
-  rw [rawTraceWorld_read_honest prims x (gOf s pads u) rest _ a.1 a.2] at hra
+  rw [rawTraceWorld_read_noBase prims x (gOf s pads u) rest _ _ (Or.inr rfl) hb a.1 a.2] at hra
   simp only [readInput, readAnswer] at hra
   rw [realImpl_preload x s pads noise _ rest a.2 (visibleOf a) hpriv edge, pure_bind,
-    noBase_cachedExtra x.2.1 x.1 _ _ _ hb] at hra
-  simp only [simulateQ_pure, StateT.run_pure, pure_bind, mem_support_pure_iff] at hra
-  rw [noBase_traceStepAt x.2.1 x.1 _ _ _ _ _ hb] at hra
+    mem_support_pure_iff] at hra
   subst ra
   exact ⟨rfl, rfl, hseen, rfl, rfl, rfl, rfl, _, _, rfl, rfl⟩
 

@@ -33,6 +33,26 @@ section Share
 variable (prims : Primitives) (A : TsigAdversary C) (x : Keys3 C) (q : ℕ) (s : HiddenKey → Digest)
   (pads : Point → Digest)
 
+private theorem mem_uniform_bind {α β : Type} [SampleableType α] (f : α → ProbComp β)
+    (a : α) (r : β) (h : r ∈ support (f a)) : r ∈ support (($ᵗ α) >>= f) :=
+  (mem_support_bind_iff _ _ _).2 ⟨a, mem_support_uniformSample α, h⟩
+
+private theorem mem_fixed_tables {S P U R N α : Type} [SampleableType S] [SampleableType P]
+    [SampleableType U] [SampleableType R] [SampleableType N]
+    (run : ProbComp α) (fixed : S → P → U → R → N → ProbComp α)
+    (law : run =ᵈ (do
+      let s ← $ᵗ S
+      let p ← $ᵗ P
+      let u ← $ᵗ U
+      let r ← $ᵗ R
+      let n ← $ᵗ N
+      fixed s p u r n))
+    (s : S) (p : P) (u : U) (r : R) (n : N) (z : α)
+    (hz : z ∈ support (fixed s p u r n)) : z ∈ support run := by
+  rw [OracleComp.support_eq_of_evalDistEq law]
+  exact mem_uniform_bind _ s z (mem_uniform_bind _ p z (mem_uniform_bind _ u z
+    (mem_uniform_bind _ r z (mem_uniform_bind _ n z hz))))
+
 set_option linter.constructorNameAsVariable false in
 /-- Each outcome of the real run over fixed tables is an outcome of the trace run. -/
 theorem realRun_mem_traceRun (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
@@ -40,18 +60,10 @@ theorem realRun_mem_traceRun (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2
     (noise : ChainNoiseIndex → HashOutput) (r : SigningLaneUnionProof.TraceOutcome C)
     (hr : r ∈ support (realRun prims A x s pads (gOf s pads u) rest noise)) :
     r ∈ support (SigningLaneUnionProof.traceRun prims A x) := by
-  rw [OracleComp.support_eq_of_evalDistEq (traceRun_eq_realRun prims A x hkeys),
-    mem_support_bind_iff]
-  refine ⟨s, by simp, ?_⟩
-  rw [mem_support_bind_iff]
-  refine ⟨pads, by simp, ?_⟩
-  rw [mem_support_bind_iff]
-  refine ⟨u, by simp, ?_⟩
-  rw [mem_support_bind_iff]
-  refine ⟨rest, by simp, ?_⟩
-  rw [mem_support_bind_iff]
-  refine ⟨noise, by simp, ?_⟩
-  with_reducible exact hr
+  with_reducible
+    exact mem_fixed_tables (SigningLaneUnionProof.traceRun prims A x)
+      (fun ds ps us rs ns => realRun prims A x ds ps (gOf ds ps us) rs ns)
+      (traceRun_eq_realRun prims A x hkeys) s pads u rest noise r hr
 
 set_option maxRecDepth 100000 in
 /-- The flag of the result of the real run over fixed tables is the flag of its final state. -/

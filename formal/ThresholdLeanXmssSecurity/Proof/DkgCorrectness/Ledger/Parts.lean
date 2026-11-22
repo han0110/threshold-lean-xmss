@@ -38,7 +38,9 @@ variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (setting
 
 /-- The real batches of a ceremony add `jobLabel` of each batch to the label and their number to the
 tag. -/
-theorem mapM_realBatch_counters (ctx : Context C) (parameter : PublicParameter) :
+theorem mapM_realBatch_counters {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
+    (K : Constants C E) (circuits : Circuits) (settings : Settings)
+    (ctx : Context C) (parameter : PublicParameter) :
     ∀ (l : List (List Job)) (st : ℕ × ℕ) (r : List (Option (List (List Bit))) × (ℕ × ℕ)),
       some r ∈ support ((l.mapM (realBatch K circuits settings.mode ctx parameter)).run st).run →
         r.2 = (st.1 + (l.map (jobLabel circuits parameter)).sum, st.2 + l.length)
@@ -57,7 +59,7 @@ theorem mapM_realBatch_counters (ctx : Context C) (parameter : PublicParameter) 
     simp only [StateT.run_pure, OptionT.run_pure, support_pure, Set.mem_singleton_iff, Option.some.injEq] at hr
     subst hr
     have h₁ := realBatch_support K circuits settings ctx parameter b st p hp
-    have h₂ := mapM_realBatch_counters ctx parameter l p.2 q hq
+    have h₂ := mapM_realBatch_counters K circuits settings ctx parameter l p.2 q hq
     rw [h₂, h₁]
     simp only [List.map_cons, List.sum_cons, List.length_cons, Prod.mk.injEq]
     constructor <;> ring

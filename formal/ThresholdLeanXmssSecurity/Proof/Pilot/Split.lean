@@ -528,10 +528,10 @@ theorem streamRegion_birthday_real (prims : Primitives) (D : C.Coalition) {α : 
       rw [Finset.sum_range_succ]
       simp only [Nat.cast_add, Nat.cast_one] at *
       nlinarith
-  have hden : (0 : ℝ) < 2 ^ 256 := by positivity
-  unfold splitRisk
-  apply (div_le_div_iff₀ hden (by positivity)).2
-  nlinarith [hsum n]
+  rw [splitRisk, ← div_div]
+  apply div_le_div_of_nonneg_right _ (by positivity)
+  rw [le_div_iff₀ (by norm_num), mul_comm]
+  exact hsum n
 
 /-! ## The calls of a phase on `worldRoles` in a region -/
 

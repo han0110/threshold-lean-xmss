@@ -294,35 +294,8 @@ theorem realCall_support (query : Query C) (t : (WorldSpec C).Domain)
       ra.2.1.1.1.1.1.1.2 = a.1.1.1.1.1.1.2 + 1 ∧ realLog a ≤ realLog ra.2 ∧
       (SigningPartnerCompareProof.LogAgreement x.1 a.1.1.1.1.1 →
         SigningPartnerCompareProof.LogAgreement x.1 ra.2.1.1.1.1.1) := by
-  have ht' : t = .inl (.inl (.inr (.inl query))) ∨ t = .inr (.inr (.inl query)) := Or.inr ht
-  have hb : ∀ i, SigningFlatProof.HashCallAt i t →
-      ∀ e ρ message, i ≠ randomizerInput x.1 bottomLayer e ρ message :=
-    fun i hi => hbase i (hashCallAt_read (.inl query) t ht' i hi)
-  have hcount := (realWorld_read_fields_route prims x (gOf s pads u) rest (.inl query) t ht' a ra
-    hra).2
-  change ra ∈ support ((ThresholdLeanXmssSecurity.fuse (rawTraceWorld prims x)
-    (realImpl x (gOf s pads u) rest) t).run (a.1, a.2)) at hra
-  rw [rawTraceWorld_read_route prims x (gOf s pads u) rest (.inl query) t ht' a.1 a.2] at hra
-  simp only [mem_support_bind_iff, mem_support_pure_iff] at hra
-  obtain ⟨z, hz, y, hy, rfl⟩ := hra
-  rw [noBase_cachedExtra x.2.1 x.1 _ _ t hb] at hy
-  simp only [simulateQ_pure, StateT.run_pure, mem_support_pure_iff] at hy
-  subst hy
-  rw [realRead_ordinary x s pads noise (gOf s pads u) rest a.2 (visibleOf a) hr
-    (readInput (.inl query)) hhit, support_map] at hz
-  obtain ⟨w, hw, rfl⟩ := hz
-  have hv := randomOracle_observe (visibleOf a) query w hw
-  refine ⟨w, hw, hv, rfl, noBase_traceStepAt x.2.1 x.1 _ _ _ t _ hb, hcount,
-    logCache_le_logQuery _ _ _, fun hL => ?_⟩
-  have hfinal := SigningPartnerCompareProof.logAgreement_hash x.1 query _ hL w hw
-    (a.1.1.1.1.1.2.logQuery t (cast (by rcases ht' with rfl | rfl <;> rfl)
-      (readAnswer prims (.inl query) w.1))) ?_ (a.1.1.1.1.1.1.2 + SeedHitProof.signCost t)
-  · rw [← hv] at hfinal
-    exact hfinal
-  intro q'
-  rw [SigningCacheLogProof.logCache_logQuery]
-  subst ht
-  rfl
+  subst t
+  exact readCall_support prims x s pads u rest noise false (.inl query) a hr hhit hbase ra hra
 
 end Honest
 

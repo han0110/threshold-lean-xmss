@@ -539,7 +539,7 @@ variable {C : Committee} (prims : Primitives) {σ : Type}
 
 theorem tsum_le_of_support {α : Type} (mx : ProbComp α) (f g : α → ℝ≥0∞) (h : ∀ z ∈ support mx, f z ≤ g z) :
     ∑' z, Pr{let y ← mx}[y = z] * f z ≤ ∑' z, Pr{let y ← mx}[y = z] * g z := by
-  refine ENNReal.tsum_le_tsum fun z => ?_
+  refine tsum_le_tsum fun z => ?_
   by_cases hz : z ∈ support mx
   · exact mul_le_mul_right (h z hz) _
   · simp [prEvent_eq_zero_of_not_mem_support _ hz]
@@ -552,7 +552,7 @@ theorem tsum_eq_of_support {α : Type} (mx : ProbComp α) (f g : α → ℝ≥0�
 theorem tsum_probOutput_mul_const_add {α : Type} (mx : ProbComp α) (c : ℝ≥0∞) (f : α → ℝ≥0∞) :
     ∑' z, Pr{let y ← mx}[y = z] * (c + f z) = c + ∑' z, Pr{let y ← mx}[y = z] * f z := by
   simp only [mul_add]
-  rw [ENNReal.tsum_add, ENNReal.tsum_mul_right, OracleComp.tsum_prEvent_eq_one, one_mul]
+  rw [tsum_add, ENNReal.tsum_mul_right, OracleComp.tsum_prEvent_eq_one, one_mul]
 
 /-- The keyed calls of a log. -/
 def logKeyed (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) (log : QueryLog (WorldSpec C)) : ℕ :=
@@ -604,7 +604,7 @@ theorem potStep_bind (keyOf : XmssSecurity.HashInput → Option XmssSecurity.Lea
           tsum_le_of_support _ _ _ fun y hy => (hk y.1 y.2 (hms y hy).1).2
       _ = ∑' y, Pr{let z ← m.run p}[z = y] * y.2.1.2.risk + c * ∑' y, Pr{let z ← m.run p}[z = y] *
             ∑' z, Pr{let w ← (k y.1).run y.2}[w = z] * ((κ z.2 - κ y.2 : ℕ) : ℝ≥0∞) := by
-          simp only [mul_add, ENNReal.tsum_add]
+          simp only [mul_add, tsum_add]
           congr 1
           rw [← ENNReal.tsum_mul_left]
           exact tsum_congr fun y => by ring
@@ -613,7 +613,7 @@ theorem potStep_bind (keyOf : XmssSecurity.HashInput → Option XmssSecurity.Lea
           gcongr
       _ = p.1.2.risk + c * ∑' y, Pr{let z ← m.run p}[z = y] * (((κ y.2 - κ p : ℕ) : ℝ≥0∞) +
             ∑' z, Pr{let w ← (k y.1).run y.2}[w = z] * ((κ z.2 - κ y.2 : ℕ) : ℝ≥0∞)) := by
-          rw [add_assoc, ← mul_add, ← ENNReal.tsum_add]
+          rw [add_assoc, ← mul_add, ← tsum_add]
           simp only [mul_add]
       _ = _ := by
           congr 2

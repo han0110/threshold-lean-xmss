@@ -64,8 +64,10 @@ theorem digestCost_add_guessCost (t : (WorldSpec C).Domain) :
 /-- The count of the logged run is the sum of the costs of the calls in its log. -/
 theorem loggedRun_count_eq (A : TsigAdversary C) (x : SigningSecurityProof.Keys3 C) :
     ∀ r ∈ support (loggedRun prims A x), r.2.1.2 = logCost SeedHitProof.signCost r.2.2 := by
+  unfold loggedRun
+  generalize finalRun A x = oa
   refine SeedHitProof.support_simulateQ_inv (loggedImpl prims)
-    (fun s => s.1.2 = logCost SeedHitProof.signCost s.2) ?_ _ _ rfl
+    (fun s => s.1.2 = logCost SeedHitProof.signCost s.2) ?_ oa _ rfl
   intro t s hs z hz
   simp only [loggedImpl, StateT.run_mk, support_map, Set.mem_image] at hz
   obtain ⟨w, hw, rfl⟩ := hz

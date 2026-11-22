@@ -2526,8 +2526,7 @@ theorem compilerImpl_pending_mono (P : PublicParameter) (seeds : C.Term → Hash
     (hp : st.data.pending p ≠ none) : r.2.data.pending p ≠ none := by
   cases t with
   | hash query =>
-      simp only [compilerImpl, StateT.run, mem_support_bind_iff, mem_support_pure_iff] at hr
-      obtain ⟨a, ha, b, _, rfl⟩ := hr
+      obtain ⟨a, ha, _, -, -, rfl⟩ := compilerImpl_hash_steps P seeds query st r hr
       exact deferredImpl_pending_mono (.hash query) st.data a ha p hp
   | bindKey e message =>
       simp only [compilerImpl, StateT.run, mem_support_pure_iff] at hr
@@ -2832,6 +2831,27 @@ theorem deferredImpl_prf_frame (t : DeferredQuery C) (st : DeferredState C)
       subst r
       rfl
 
+private theorem compilerPrefetch_of_frame (P : PublicParameter) (seeds : C.Term → HashOutput)
+    (st : CompilerBackend C) (q : Query C) (a : DeferredState C)
+    (I : HashCache C → OracleComp (Query C →ₒ HashOutput) Unit → Prop)
+    (h : ∀ (p p' : SigningFlatProof.FlatState C) (t : (WorldSpec C).Domain),
+      I p'.1.1.1 (SigningR1FixedProof.cachedExtra seeds P p t p')) :
+    I a.cache (compilerPrefetch P seeds st q a) :=
+  h (((st.data.cache, 0), []), compilerSigning st, false)
+    (((a.cache, 0), []), compilerSigning st, false) (.inr (.inr (.inl q)))
+
+/-- Prefetch leaves every cached entry outside the trial hashes unchanged. -/
+theorem compilerPrefetch_frame (P : PublicParameter) (seeds : C.Term → HashOutput)
+    (st : CompilerBackend C) (q : Query C) (a : DeferredState C) (b : Unit × HashCache C)
+    (hb : b ∈ support ((simulateQ (Query C →ₒ HashOutput).randomOracle
+      (compilerPrefetch P seeds st q a)).run a.cache)) (input : Query C) (hout : SigningPartnerCompareProof.OutsideTrials P input) :
+    b.2 input = a.cache input := by
+  have frame := compilerPrefetch_of_frame P seeds st q a (fun cache oa =>
+    ∀ b ∈ support ((simulateQ (Query C →ₒ HashOutput).randomOracle oa).run cache),
+      cache ≤ b.2 ∧ ∀ query, SigningPartnerCompareProof.OutsideTrials P query → b.2 query = cache query)
+    (fun p p' t => SigningReleasedTransferProof.cachedExtra_frame seeds P p t p') b hb
+  exact frame.2 input hout
+
 set_option linter.constructorNameAsVariable false in
 set_option backward.isDefEq.respectTransparency false in
 /-- The actual cached-extra grind adds only trial hashes, so the full compiler
@@ -2844,17 +2864,10 @@ theorem compilerImpl_prf_frame (P : PublicParameter) (seeds : C.Term → HashOut
     r.2.data.cache (.prf seed point) = st.data.cache (.prf seed point) := by
   cases t with
   | hash query =>
-      obtain ⟨a, ha, b, hb, rfl⟩ := SigningCompilerPotential.compiler_hash_support
-        P seeds query st r hr
-      have frame := SigningReleasedTransferProof.cachedExtra_frame seeds P
-        (((st.data.cache, 0), []), compilerSigning st, false)
-        (.inr (.inr (.inl query)))
-        (((a.2.cache, 0), []), compilerSigning st, false) b (by
-          dsimp only [StateT.run] at hb ⊢
-          with_reducible exact hb)
-      exact (frame.2 (.prf seed point)
+      obtain ⟨a, ha, b, hb, -, rfl⟩ := compilerImpl_hash_steps P seeds query st r hr
+      exact (compilerPrefetch_frame P seeds st query a.2 b hb _
         (SigningPartnerCompareProof.outsideTrials_prf P seed point)).trans
-          (deferredImpl_prf_frame (.hash query) st.data a ha seed point ht)
+        (deferredImpl_prf_frame (.hash query) st.data a ha seed point ht)
   | bindKey e message =>
       simp only [compilerImpl, StateT.run, mem_support_pure_iff] at hr
       subst r
@@ -5895,6 +5908,13 @@ theorem cappedCompiler_eq_padTable (P : PublicParameter) (seeds : C.Term → Has
 section EagerPadTransfer
 set_option backward.isDefEq.respectTransparency false
 
+private theorem support_of_bind_law {α β : Type}
+    (run : ProbComp β) (draw : ProbComp α) (next : α → ProbComp β)
+    (law : run =ᵈ (draw >>= next)) (x : α) (hx : x ∈ support draw) (r : β)
+    (hr : r ∈ support (next x)) : r ∈ support run := by
+  rw [OracleComp.support_eq_of_evalDistEq law, mem_support_bind_iff]
+  exact ⟨x, hx, hr⟩
+
 /-- Every outcome for a fixed eager pad table is supported by the actual compiler. -/
 theorem compilerProgramPads_support (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest) {α : Type}
@@ -5904,12 +5924,8 @@ theorem compilerProgramPads_support (P : PublicParameter) (seeds : C.Term → Ha
     r ∈ support ((simulateQ (SigningCappedExpectProof.cappedHybrid (compilerImpl P seeds)
       (deferredInputSide P) deferredCounted (deferredKey P) (deferredPoint P) q s)
       oa).run backend) := by
-  apply (Set.ext_iff.mp (OracleComp.support_eq_of_evalDistEq
-    (cappedCompiler_eq_padTable P seeds q s oa backend)) r).mpr
-  rw [mem_support_bind_iff]
-  refine ⟨pads, ?_, hr⟩
-  rw [support_uniformSample]
-  trivial
+  exact support_of_bind_law _ ($ᵗ (Point → Digest)) (fun table => compilerProgramPads P seeds q s table oa backend)
+    (cappedCompiler_eq_padTable P seeds q s oa backend) pads (by rw [support_uniformSample]; trivial) r hr
 
 /-- Except for a pad query, the actual backend preserves the visible pad map. -/
 theorem deferredImpl_pads_of_ne (t : DeferredQuery C) (st : DeferredState C)
