@@ -1,0 +1,206 @@
+% Slides of the threshold leanXMSS proof of concept. Build by `latexmk` in doc/ (aux files go to .build/).
+
+\documentclass[t]{beamer}
+\geometry{papersize={720bp,405bp}}
+\usefonttheme{serif}\usefonttheme{professionalfonts}
+\usepackage[no-math]{fontspec}
+\usepackage{amsmath,outlines}
+
+% Settings. Sizes: 12 bp text on a 22 bp line, 24 bp titles, the same at every list level.
+\renewcommand{\normalsize}{\fontsize{12bp}{22bp}\selectfont}
+\setbeamerfont{frametitle}{size=\fontsize{24bp}{30bp}\selectfont}
+\setbeamerfont{itemize/enumerate subbody}{size=\normalsize}
+\setbeamerfont{itemize/enumerate subsubbody}{size=\normalsize}
+\setbeamercolor{structure}{fg=black}
+\setbeamertemplate{navigation symbols}{}\setbeamertemplate{footline}{\vspace{7bp}}
+\setbeamertemplate{frametitle}{\vspace{18bp}\strut\insertframetitle\vspace{-16bp}}
+\setbeamertemplate{title page}{\vspace{125bp}\centering\usebeamerfont{frametitle}\inserttitle\par}
+\setbeamertemplate{itemize items}{\strut--}
+\setbeamerfont{footnote}{size=\fontsize{8bp}{14.4bp}\selectfont}
+\setbeamertemplate{footnote}{\noindent\insertfootnotemark\ \insertfootnotetext\par}
+\renewcommand{\footnoterule}{}\urlstyle{same}\setlength{\tabcolsep}{10bp}\lineskip0pt
+\setbeamersize{text margin left=19bp,text margin right=19bp}
+\setlength{\leftmargini}{25bp}\setlength{\leftmarginii}{18bp}\setlength{\leftmarginiii}{18bp}
+\makeatletter % Lists get no extra space, so every line has the same pitch.
+\def\@listi{\leftmargin\leftmargini\topsep0pt\parsep0pt\itemsep0pt}\let\@listI\@listi
+\def\@listii{\leftmargin\leftmarginii\topsep0pt\parsep0pt\itemsep0pt}
+\def\@listiii{\leftmargin\leftmarginiii\topsep0pt\parsep0pt\itemsep0pt}
+\makeatother
+
+\newcommand{\cpk}{\ensuremath{\mathrm{cpk}}}\newcommand{\mask}{\mathrm{mask}}
+\newcommand{\tbl}[3]{\begin{tabular}[t]{@{}#1@{}}#2\\[-\arrayrulewidth]\hline#3\end{tabular}}
+% \cite{key} prints [key] and jumps to the entry \bib{key}{text} of the Reference slide. \cite[name]{key} prints the name instead.
+\RenewDocumentCommand{\cite}{o m}{\hyperlink{ref:#2}{\IfValueTF{#1}{#1}{[#2]}}}
+\newcommand{\bib}[2]{\1[] \makebox[70bp][l]{\hypertarget{ref:#1}{[#1]}}\parbox[t]{\dimexpr\linewidth-70bp}{\raggedright\strut#2\strut}}
+
+% The slide environment. beamer counts the \begin and \end that it sees in a frame, so the list opens and closes inside macros.
+\newcommand{\openoutline}{\begin{outline}}\newcommand{\closeoutline}{\end{outline}}
+\NewDocumentEnvironment{slide}{O{1} m +b}{\begin{frame}{#2}\splitside{#1}#3\side\side\endsplit\end{frame}}{}
+\long\def\splitside#1#2\side#3\side#4\endsplit{\sidebox{#1}#3\endsidebox\openoutline#2\closeoutline}
+\NewDocumentCommand{\sidebox}{m O{0} +u{\endsidebox}}{\vbox to 0pt{\vskip#2\baselineskip
+  \hbox to \textwidth{\hfill\parbox[t]{\dimexpr\textwidth-#1\textwidth}{\strut#3}}\vss}\nointerlineskip}
+
+\title{Threshold leanXMSS PoC}
+\begin{document}
+\frame{\titlepage}
+
+\begin{slide}{leanXMSS Recap}
+\1 Param
+  \2 Two layers of XMSS of height 16
+  \2 Top tree root is the public key
+  \2 Each leaf of top tree signs root of one bottom tree
+  \2 WOTS has 58 chains of length 4
+\1 Keygen
+  \2 Each XMSS takes $2^{16} \cdot 58 \cdot 3 \approx 11.4$ M keccakf on WOTS chain steps
+\1 Sign
+  \2 Grind randomizer to find a valid codeword ($2^{20}$ tries)
+  \2 Reveal a cut of WOTS chains
+\end{slide}
+
+\begin{slide}{Threshold leanXMSS \cite{Wam26}}
+\1 Keygen
+  \2 With trusted dealer
+    \3 $n = 3f+1$, $t = 2f+1$ as in BLS DVT (e.g. 3-of-4 and 5-of-7)
+    \3 Key secure against $t-1$ corrupt, consensus against $f$
+  \2 With DKG
+    \3 $n = 2t-1$ (e.g. 2-of-3, 3-of-5 and 4-of-7)
+    \3 Key and DKG secure against $t-1 < n/2$ corrupt, with abort
+\1 Sign
+  \2 Same for both keygen setups
+  \2 No MPC, 2 rounds, 944 bytes per operator
+\end{slide}
+
+\begin{slide}[.66]{\cite[PRAWNS]{BBDLN26} for signing}
+\1 Threshold PRF
+  \2 Let $F(x)$ be a $t$-of-$n$ threshold PRF
+  \2 Any $t$ operators evaluate it, $t-1$ learn nothing
+\1 Keygen
+  \2 WOTS chain starts at PRF value $y_0 = F(x_0)$
+  \2 Same chain steps $y_{i+1} = H(y_i)$ (MPC or by dealer in the clear)
+  \2 Publish combiner key $\cpk = \{y_1 \oplus F(x_1),\ y_2 \oplus F(x_2),\ y_3\}$
+  \2 Pairwise keys bind each PRF share to its message $m$ and quorum $J$ by $\mask(x) = H(\mask_{ij}, x, m, J)$
+\1 Sign
+  \2 Operator $i$ reveals its PRF share $F_i(x) \oplus \mask(x)$ for each chain position (1 round, 928 bytes)
+  \2 Any combiner with \cpk\ and PRF shares can rebuild the signature
+\1 Adaptation
+  \2 Additional threshold PRF value $R_0 = H(F(x_s), m)$ for the grinding randomizer (1 round, 16 bytes)
+  \2 With QBFT, shares of $F(x_s)$ can be sent with COMMIT, one per possible quorum $J$, to save 1 round
+\side
+2-of-3 example:\\
+$F(x) = H(k_1, x) \oplus H(k_2, x) \oplus H(k_3, x)$\\
+op 1 holds $\{k_2, k_3\}$ and $\{\mask_{12}, \mask_{13}\}$\\
+op 2 holds $\{k_1, k_3\}$ and $\{\mask_{12}, \mask_{23}\}$\\
+op 3 holds $\{k_1, k_2\}$ and $\{\mask_{13}, \mask_{23}\}$
+\end{slide}
+
+\begin{slide}{Setup by trusted dealer}
+\1 Keygen
+  \2 Generate public param $P$, PRF seeds $k_S$, pairwise keys $\mask_{ij}$
+  \2 Compute top tree
+  \2 Compute \cpk\ for $L$ bottom trees for desired lifetime and sign by top leaves
+  \2 Give each operator its seeds and pairwise keys
+\1 Cost
+  \2 $(\binom{n}{t-1} + 1) \cdot 2^{16} \cdot 58 \cdot 3$ keccakf per tree
+  \2 16.8 B keccakf per year of lifetime for 5-of-7 (1 sig per 12s slot)
+\1 Benchmark (on i9-13900k 24-cores CPU)
+  \2[] \tbl{lrr}{Lifetime & Keygen Time & \cpk\ Size}{
+    1 year & 2.4 mins & 7.3 GB \\
+    5 year & 11.7 mins & 37 GB \\
+    10 year & 23.4 mins & 74 GB}
+\end{slide}
+
+% 16.8 B = 41*36*(2^16)*58*3
+%   - 41 = ceil(365*86400 / (12*2^16))
+%   - 36 = C(7,5-1) + 1
+
+\begin{slide}[.59]{Setup by DKG}
+\1 Requirement
+  \2 Hash-only MPC hides secrets only from fewer than $n/2$ operators
+  \2 MPC runs for every bottom tree, so it must hide them from $t-1$ as signing does $\rightarrow n \ge 2t-1$
+\1 MPC Protocol
+  \2 Replicated sharing \cite{CDI05} for minimum communication per AND gate
+  \2 Malicious security with abort via \cite{GS20}
+\1 Keygen (once)
+  \2 Generate public param $P$, PRF seeds $k_S$, pairwise keys $\mask_{ij}$ by commit-reveal
+  \2 Compute top tree chain ends by MPC, and build tree root in the clear
+\1 Each bottom tree
+  \2 Compute bottom tree \cpk\ by MPC, build tree root in the clear, and sign by next top leaf
+\1 Cost
+  \2 11.4 M keccakf by MPC per tree
+  \2 $38400 = 24 \cdot 25 \cdot 64$ AND gates per keccakf
+  \2 $3 \cdot 24 = 72$ depth
+\side[11]
+\tbl{lrr}{Parameter & Traffic & Average Rate (12s slot)}{
+  2-of-3 & 52.5 GB & 66.7 KB/s \\
+  3-of-5 & 63.7 GB & 81.0 KB/s \\
+  4-of-7 & 70.7 GB & 89.9 KB/s}
+\end{slide}
+
+% average rate is divided by 2^16*12 seconds
+% traffic ~= and + rerand + open
+%   1. and = G * 3(t-1)/n / 8 bytes
+%     - G = 65536 * (58*3 + 1) * 36288 = 416.2 B and gates
+%     - 36288 = (23*25 + 2 - 10) * 64 (output only take 2 lanes and input has 10 lanes in the clear)
+%     - 3(t-1)/n = (n-1 ops to collector + collector to t-1 ops) spread over n ops
+%   2. rerand = (t-1) * W bytes
+%     - (t-1) = each op to (t-1) other holders of its term
+%     - W = 65536 * 58 * 48 B = 182.5 MB
+%   3. open = C(n, t-1) * (t-1)/n * W bytes
+%     - C(n, t-1) = the number of terms
+%     - (t-1)/n = (owner sends to (t-1) ops who miss the term) spread over n ops
+
+\begin{slide}{DKG Benchmark}
+\1 Profile
+  \2 One c4-highmem-8 for each operator, 8 vCPUs and 32 GiB for the DKG process
+  \2[] \tbl{lrr}{Profile & RTT & Upload Limit}{
+    P1 & 1 ms & unlimited \\
+    P140 & 140 ms\footnote{Average cluster latency in \url{https://obol.org/lido_obol_2.pdf}} & 1 Gbps \\
+    P235 & 235 ms\footnote{Recommended intra-cluster latency in \url{https://blog.obol.org/lido-simple-dvt-wave-1-testing-complete}} & 1 Gbps \\
+    P140-100 & 140 ms & 100 Mbps}
+\1 Benchmark (for one bottom tree)\footnote{Source code in \url{https://github.com/han0110/threshold-lean-xmss}}
+  \2[] \tbl{lrrr}{Profile & 2-of-3 & 3-of-5 & 4-of-7}{
+    P1 & 3 mins & 6 mins & 22 mins \\
+    P140 & 9 mins & 13 mins & 31 mins \\
+    P235 & 10 mins & 15 mins & 45 mins \\
+    P140-100 & 75 mins & 92 mins & 104 mins}
+\end{slide}
+
+% | Profile  | 2-of-3            | 3-of-5            | 4-of-7             |
+% | -------- | ----------------- | ----------------- | ------------------ |
+% | P1       |  151 s =  2.5 min |  358 s =  6.0 min | 1337 s =  22.3 min |
+% | P140     |  536 s =  8.9 min |  770 s = 12.8 min | 1840 s =  30.7 min |
+% | P235     |  578 s =  9.6 min |  903 s = 15.1 min | 2682 s =  44.7 min |
+% | P140-100 | 4482 s = 74.7 min | 5520 s = 92.0 min | 6227 s = 103.8 min |
+
+\begin{slide}{Related Work}
+\1 \cite[ObolNetwork/pqdv]{Obol26}
+  \2 Same as ours
+    \3 PRAWNS with randomizer from the threshold PRF
+    \3 Hash-only MPC by replicated sharing
+  \2 Different from ours
+    \3 Key and DKG secure against $f < n/3$ corrupt instead of $t-1 < n/2$, to fit 3-of-4 and 5-of-7 with QBFT
+    \3 Top tree chain values as Shamir shares, key reshare on operator change is cheap
+  \2 Other design choices
+    \3 Top tree MPC only $2^{12}$ real leaves, so registration costs $1/16$ of a full tree
+    \3 Dense leaf allocation
+\end{slide}
+
+\begin{slide}{Future Work}
+  \1 Implement QBFT for signing to improve liveness
+  \1 Implement key reshare for operator change
+  \1 Explore stronger DKG security than abort, e.g.\ \cite{BGIN20}
+\end{slide}
+
+\begin{slide}{Reference}
+\bib{BBDLN26}{D. Boneh, B. Bünz, J. D., Y. Litchev, K. Nazirkhanova. PRAWNS: Threshold Hash-Based Signatures from Threshold PRFs. \href{https://eprint.iacr.org/2026/2142}{ePrint 2026/2142}}
+\bib{BGIN20}{E. Boyle, N. Gilboa, Y. Ishai, A. Nof. Efficient Fully Secure Computation via Distributed Zero-Knowledge Proofs. ASIACRYPT 2020. \href{https://eprint.iacr.org/2020/1451}{ePrint 2020/1451}}
+\bib{CDI05}{R. Cramer, I. Damgård, Y. Ishai. Share Conversion, Pseudorandom Secret-Sharing and Applications to Secure Computation. TCC 2005. \href{https://doi.org/10.1007/978-3-540-30576-7_19}{doi:10.1007/978-3-540-30576-7\_19}}
+\bib{GS20}{V. Goyal, Y. Song. Malicious Security Comes Free in Honest-Majority MPC. CRYPTO 2020. \href{https://eprint.iacr.org/2020/134}{ePrint 2020/134}}
+\bib{Obol26}{Obol Network. Post-quantum distributed validators. \href{https://github.com/ObolNetwork/pqdv/tree/ab25811983c7abc9df01314a74ee90e89d8ad186}{github.com/ObolNetwork/pqdv}}
+\bib{Wam26}{T. Wambsgans. leanXMSS candidate. \href{https://github.com/TomWambsgans/sphincs.art/blob/9a528527d2d0ea41d2b3b322d2548c0828569a6d/leanXMSS.tex}{github.com/TomWambsgans/sphincs.art/leanXMSS.tex}}
+\end{slide}
+
+% \begin{slide}{Appendix -- MPC toy example}
+% \end{slide}
+
+\end{document}

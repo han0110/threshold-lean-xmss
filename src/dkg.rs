@@ -490,7 +490,8 @@ fn digests(bytes: &[u8]) -> Vec<Digest> {
 #[cfg(test)]
 mod tests {
     use std::array::from_fn;
-    use std::env;
+    use std::sync::Mutex;
+    use std::{env, iter, thread};
 
     use lean_xmss::internals::{codeword, message_digest};
 
@@ -499,13 +500,20 @@ mod tests {
     use crate::mpc::tests::{local_networks, local_operators, local_parties, random_keys};
     use crate::net::pack;
     use crate::serve;
-    use crate::wots::{truncated_hash, xor};
+    use crate::wots::xor;
 
     /// The threshold PRF `F(x)` from the seeds of all terms.
     fn prf(all_seeds: &[Key], x: Digest) -> Digest {
-        all_seeds
-            .iter()
-            .map(|seed| truncated_hash(prawns::PRF, &[seed, &x]))
+        let mut inputs = [&prawns::PRF[..], &[0; 32], &x].concat().repeat(all_seeds.len());
+        inputs
+            .chunks_mut(80)
+            .zip(all_seeds)
+            .for_each(|(input, seed)| input[32..64].copy_from_slice(seed));
+        let mut digests = vec![0; 32 * all_seeds.len()];
+        keccak256::hash_many(&inputs, 80, &mut digests);
+        digests
+            .chunks(32)
+            .map(|digest| digest[..16].try_into().unwrap())
             .fold([0; 16], xor)
     }
 
@@ -522,9 +530,11 @@ mod tests {
             .iter()
             .flat_map(|&e| (0..V).map(move |chain| (e, chain)))
             .map(|(e, chain)| {
-                let address = |position| prf_address(layer, e, chain, position);
-                let value = |steps| wots::chain(&public_parameter, layer as usize, e, chain, 0, steps, f(address(0)));
-                [xor(value(1), f(address(1))), xor(value(2), f(address(2))), value(3)]
+                let [start, mask_1, mask_2] = from_fn(|position| f(prf_address(layer, e, chain, position)));
+                let step = |from, value| wots::chain(&public_parameter, layer as usize, e, chain, from, 1, value);
+                let value_1 = step(0, start);
+                let value_2 = step(1, value_1);
+                [xor(value_1, mask_1), xor(value_2, mask_2), step(2, value_2)]
             })
             .collect();
         let leaves = cpk
@@ -550,6 +560,29 @@ mod tests {
             f(layer_address(TWEAK_RANDOMIZER, Layer::Top, 0, top_key, 0))
         });
         (leaves, cpk, commitments, randomizer)
+    }
+
+    /// Times the trusted dealer of the bottom trees for one year of 12 s slots. A t-of-n group has one seed for each
+    /// set of `t - 1` operators.
+    #[test]
+    #[ignore]
+    fn the_trusted_dealer_deals_one_year_of_bottom_trees_at_3_of_4_and_5_of_7() {
+        let trees = (365 * 86_400_u32).div_ceil(12 * KEYS as u32);
+        let keys: Vec<u32> = (0..trees << LAYER_HEIGHT).collect();
+        for (t, n) in [(3, 4), (5, 7)] {
+            let terms = (0..1u32 << n).filter(|set| set.count_ones() + 1 == t).count();
+            let all_seeds: Vec<Key> = (0..terms).map(|_| rand::random()).collect();
+            let (chunks, start) = (Mutex::new(keys.chunks(1024)), Instant::now());
+            let deal = |chunk| trusted_dealer(&all_seeds, [9; 16], Layer::Bottom, chunk).1.len();
+            let rows: usize = thread::scope(|s| {
+                let workers: Vec<_> = (0..thread::available_parallelism().unwrap().get())
+                    .map(|_| s.spawn(|| iter::from_fn(|| chunks.lock().unwrap().next()).map(deal).sum::<usize>()))
+                    .collect();
+                workers.into_iter().map(|worker| worker.join().unwrap()).sum()
+            });
+            assert_eq!(rows, keys.len() * V);
+            println!("{t}-of-{n}, {terms} seeds, {trees} trees: {:.1?}", start.elapsed());
+        }
     }
 
     /// Runs a ceremony of the keys 5 and 9000 with `P = [9; 16]` at the reshare mode, batch size
