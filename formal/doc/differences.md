@@ -1,6 +1,6 @@
 # Differences to the sources
 
-This file lists each difference of the model to GS20 [GS20], PRAWNS [BBD+26], the note [Wam26], leanXMSS [lea26] and the paper of Gurkan and others [GJM+21], with the row ids. [statement.tex](../statement.tex) is the guide, and its Appendix B keeps only the rows that change the meaning of a claim.
+This file lists each difference of the model to GS20 [GS20], PRAWNS [BBD+26], the note [Wam26], leanXMSS [lea26] and the paper of Gurkan and others [GJM+21], with the row ids. [statement.tex](../statement.tex) is the guide, and its Appendix A keeps only the rows that change the meaning of a claim.
 
 Table B.1 lists the basic differences in the model and in the assumptions. Table B.2 lists the adaptations of the protocol and the differences between the model and the implementation. Table B.3 lists the adaptations of the definitions of Gurkan and others. The last column names the claims of the bundle `Theorems` that each row touches. The two signing claims are proved in this tree. The three claims of the setup are stated. The module docs of `Statement/` also list the deviations. The rules 1 to 4 are the rules of the deployment contract in Section 4 of `statement.tex`. The two points below are not differences.
 

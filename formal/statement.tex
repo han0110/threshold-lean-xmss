@@ -8,6 +8,8 @@
 \newcommand{\Th}{\mathrm{Th}}
 \newcommand{\Fn}[1]{\mathcal F_{\mathrm{#1}}}
 \usepackage{xltabular}
+\usepackage{enumitem}
+\setlist[itemize]{itemsep=1pt,parsep=0pt,topsep=3pt,leftmargin=1.5em}
 \newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
 \newcommand{\etalchar}[1]{$^{#1}$}
 \newcommand{\doi}[1]{\href{https://doi.org/#1}{\nolinkurl{doi:#1}}}
@@ -15,7 +17,7 @@
 \setlength{\parskip}{0.35em}
 \newcommand{\rowrule}{\specialrule{0.2pt}{2.5pt}{2.5pt}}
 \makeatletter
-\renewcommand\paragraph{\@startsection{paragraph}{4}{\z@}{2.25ex \@plus .8ex \@minus .2ex}{-1em}{\normalfont\normalsize\bfseries}}
+\renewcommand\paragraph{\@startsection{paragraph}{4}{\z@}{-2.25ex \@plus -.8ex \@minus -.2ex}{0.4ex}{\normalfont\normalsize\bfseries}}
 \makeatother
 \title{The claims about threshold leanXMSS}
 \author{}
@@ -23,201 +25,247 @@
 \begin{document}
 \maketitle
 
-\noindent This document states the claims of the Lean~4 formalization of threshold leanXMSS, and it
-compares each claim with four sources. The sources are the leanXMSS note \cite{Wam26}, PRAWNS
-\cite{BBD+26}, GS20, the paper of Goyal and Song \cite{GS20}, and the paper of Gurkan and others on
-the security of a DKG \cite{GJM+21}. The five claims are games in one game-based model.
-\begin{itemize}\itemsep0pt
-\item Signing with a trusted dealer is strongly unforgeable with adaptive corruption, and an honest
-quorum signs (Section~\ref{sec:signing}).
-\item The setup by distributed key generation (DKG) on the real network preserves the security of the
-signing game. It gives consistent seeds and correct trees against the adversary, and its honest run is
-near the trusted dealer (Section~\ref{sec:setup}).
-\end{itemize}
-The two signing claims, the correctness and the completeness of the setup are proved in this tree. The
-proofs are the four theorems below, in the namespace \lean{ThresholdLeanXmssSecurity}.
-\begin{itemize}\itemsep0pt
-\item \lean{SigningStronglyUnforgeable.stronglyUnforgeable} proves \lean{stronglyUnforgeable}.
-\item \lean{signingCorrectness} proves \lean{signingCorrectness}.
-\item \lean{dkgCorrectness} proves \lean{dkgCorrectness}.
-\item \lean{dkgCompleteness} proves \lean{dkgCompleteness}.
-\end{itemize}
-The claim \lean{dkgSecurity} is stated. Its cost bound is proved, and no proof of its bound on the win
-probability is in this tree. That bound is a target. No proof accounts for the whole game yet, and a
-proof can change it. Section~\ref{sec:chain} explains why the five claims give a
-bound of the full system only with one more premise.
+\noindent This guide states the five claims of the Lean~4 formalization of threshold leanXMSS and
+compares them with their sources. The claims are games in one game-based model.
 
-\paragraph{Where to read it.} The claims are in the folder
-\texttt{formal/ThresholdLeanXmss/Statement/}, and its entry file is \texttt{Theorems.lean}. The
-structure \lean{Theorems} has five fields, one for each claim, and
-\lean{ThresholdLeanXmssSecurityStatement} quantifies it over all parameters. Read
-\texttt{Theorems.lean} first. Its module doc has a table of the world, the preconditions and the
-trivial cases of each claim. Then read \texttt{Signing.lean} (the signing game and its two claims),
-\texttt{DkgGame.lean} (the games of the setup), \texttt{Dkg.lean} (the three claims of the setup),
-\texttt{DkgErrors.lean} (their error and cost terms) and \texttt{DkgReduction.lean} (the forger
-\lean{dkgReduction} of \lean{dkgSecurity}). The proofs are in \texttt{formal/ThresholdLeanXmssSecurity/},
-and the root module \texttt{ThresholdLeanXmssSecurity.lean} checks the axioms of each proved theorem.
-\texttt{RandomOracle.lean} defines the two
-worlds, and \texttt{Execution.lean} the execution of a protocol on the network. \texttt{Scheme.lean} and
-\texttt{Ideal.lean} define the protocol, the dealer and the signing game, and \texttt{Reductions.lean}
-defines the fixed reduction of the PRF term. The folder \lean{formal/doc/} holds the detail. The file
-\lean{model.md} describes the model, and \lean{differences.md} lists all differences to the
-sources. No claim is about Section 2.2 of the note, the setup with $n=3f+1$.
+The sources are the leanXMSS note \cite{Wam26}, PRAWNS \cite{BBD+26}, Goyal and Song \cite{GS20}
+(GS20), and Gurkan and others \cite{GJM+21}.
+\begin{center}\small
+\begin{tabularx}{\textwidth}{@{}L{3.5cm}XL{2.9cm}L{2.3cm}@{}}
+\toprule
+Field & Claim & Source & State \\
+\midrule
+\lean{stronglyUnforgeable} & Signing with a trusted dealer is strongly unforgeable with adaptive
+corruption. & PRAWNS, Definition 3.2 & Proved \\
+\rowrule
+\lean{signingCorrectness} & An honest quorum signs, except for a failed search. & PRAWNS,
+Section 3.1 & Proved \\
+\rowrule
+\lean{dkgSecurity} & The real setup gives an adversary no more than the dealer gives a named
+forger, up to a fixed error. & \cite{GJM+21}, Definition 8 & Cost proved, win bound open \\
+\rowrule
+\lean{dkgCorrectness} & Honest operators hold consistent seeds, and each tree output is right or
+absent. & \cite{GJM+21}, Definition 6, first clause & Proved \\
+\rowrule
+\lean{dkgCompleteness} & With no corrupt operator, the setup is near the trusted dealer. & None &
+Proved \\
+\bottomrule
+\end{tabularx}
+\end{center}
+\begin{itemize}
+\item The namespace \lean{ThresholdLeanXmssSecurity} has one theorem for each proved field, with
+the name of the field.
+\item The one exception is \lean{SigningStronglyUnforgeable.stronglyUnforgeable}.
+\item The win bound of \lean{dkgSecurity} has proofs for twelve of the 13 hops of its chain
+(Section~\ref{sec:setup}).
+\item The five claims give a bound of the full system only with one more premise
+(Section~\ref{sec:chain}).
+\end{itemize}
+
+\paragraph{Where to read}
+\begin{itemize}
+\item Start at \texttt{formal/ThresholdLeanXmss/Statement/Theorems.lean}. The structure
+\lean{Theorems} has one field for each claim.
+\item \texttt{formal/README.md} maps each file.
+\item \texttt{formal/doc/model.md} has the model, and \texttt{formal/doc/differences.md} has each
+difference to the sources.
+\item The proofs are in \texttt{formal/ThresholdLeanXmssSecurity/}. Its root module checks the
+axioms of the four proved field theorems.
+\end{itemize}
 
 \section{The setting}\label{sec:setting}
 
-\paragraph{Parties and network.} There are $n=2t-1$ operators, and at most $t-1$ of them are corrupt.
-The corrupt operators form the coalition. A quorum is a set of $t$ signing operators. The rounds are
-synchronous, and links are private and authenticated (GS20, Section 3.1). The adversary is malicious
-and rushing.
-
-\paragraph{The scheme.} The scheme is leanXMSS of Section 1 of the note, with definitions from leanVM
-\cite{lea26} at the pinned revision. A codeword is a digest whose first 58 base-4 digits have the sum
-106 and whose other digits are zero. A codeword gives the chain positions that a signature opens. The
-randomizer search starts from a secret randomizer value of the key. For each bottom key $e$,
-threshold leanXMSS adds a commitment $c_e$ to that value.
-
-\paragraph{The protocol.} The protocol uses replicated sharing \cite{CDI05}. The seed generation, a
-commit, reveal and echo protocol, deals the parameter $P$, one seed for each $(t-1)$-set and one pair
-key for each pair. A ceremony runs one setup of pseudorandom secret sharing (PRSS) \cite{CDI05}, and
-then evaluates a public list of jobs, which are circuits on shared PRF values. It runs GS20 in batches
-of at most $\mathsf{batchSize}$ jobs, with one check for each batch, and opens every output. The run of a
-tree (\lean{newTree}) has the ceremonies of one tree and their local steps.
-\begin{itemize}\itemsep0pt
-\item The run of the top tree has one ceremony. It hashes the chains of each top key and opens the
-chain ends. Each operator then builds the tree on these ends in the clear.
-\item The run of a bottom tree has two ceremonies. The first does the same for the keys of that tree,
-opens the masked chain values, the commitment $c_e$ of each key and the randomizer value of its top
-key. Each operator then finds the codeword of the root by a local randomizer search. The second
-ceremony, with its own PRSS setup, opens the chain values of the signature of the root by the top key.
+\paragraph{Parties and network}
+\begin{itemize}
+\item There are $n=2t-1$ operators. At most $t-1$ are corrupt, and they form the coalition.
+\item A quorum is a set of $t$ signing operators.
+\item The rounds are synchronous, and the links are private and authenticated (GS20, Section 3.1).
+\item The adversary is malicious and rushing.
 \end{itemize}
-A quorum signs in two rounds and needs no MPC.
 
-\paragraph{Hashing and the two worlds.} $H$ is one lazy random oracle, with a separate domain for each
-use \cite{BR93,BDG20}. The PRG is AES-128, keyed by a hash of the key. Each world has a counted copy
-and a free copy of the oracles, on one cache. The adversary calls the counted copy. The honest
-operators and the dealer call the free copy. In \lean{world} the calls of the free copy cost
-nothing. The inner counter of \lean{signingWorld} counts the calls on both copies, but no claim reads
-that counter. The budget of each claim counts only the adversary.
+\paragraph{The scheme}
+\begin{itemize}
+\item The scheme is leanXMSS of Section 1 of the note, with the definitions of leanVM \cite{lea26}
+at the pinned revision.
+\item A codeword is a digest whose first 58 base-4 digits have the sum 106 and whose other digits
+are zero.
+\item A codeword gives the chain positions that a signature opens.
+\item The randomizer search starts from a secret randomizer value of the key.
+\item For each bottom key $e$, threshold leanXMSS adds a commitment $c_e$ to that value.
+\end{itemize}
+
+\paragraph{The protocol}
+\begin{itemize}
+\item The protocol uses replicated sharing \cite{CDI05}.
+\item The seed generation is a commit, reveal and echo protocol.
+\item It deals the parameter $P$, one seed for each $(t-1)$-set and one pair key for each pair.
+\item A ceremony runs one setup of pseudorandom secret sharing (PRSS) \cite{CDI05}.
+\item Then it evaluates a public list of jobs, which are circuits on shared PRF values.
+\item It runs GS20 in batches of at most $\mathsf{batchSize}$ jobs, with one check for each
+batch, and opens every output.
+\item The run of the top tree has one ceremony. It hashes the chains of each top key and opens the
+chain ends.
+\item Each operator then builds the top tree on these ends in the clear.
+\item The run of a bottom tree has two ceremonies.
+\item The first ceremony opens the masked chain values, each $c_e$ and the randomizer value of its
+top key.
+\item Each operator then finds the codeword of the root by a local randomizer search.
+\item The second ceremony, with its own PRSS setup, opens the chain values of the signature of the
+root by the top key.
+\item A quorum signs in two rounds and needs no MPC.
+\end{itemize}
+
+\paragraph{Hashing and the two worlds}
+\begin{itemize}
+\item $H$ is one lazy random oracle, with a separate domain for each use \cite{BR93,BDG20}.
+\item The PRG is AES-128, keyed by a hash of the key.
+\item Each world has a counted copy and a free copy of the oracles, on one cache.
+\item The adversary calls the counted copy. The honest operators and the dealer call the free copy.
+\end{itemize}
 \begin{center}\small
 \begin{tabularx}{\textwidth}{@{}L{3.4cm}XL{4.6cm}@{}}
 \toprule
 World & $\Th$ & Claims \\
 \midrule
-\lean{world}, run by \lean{runWorld} & The fixed function \lean{prims.Th} on the inputs that the MPC evaluates, namely the chain
-steps and $c_e$ & \lean{signingCorrectness} and the three claims of the setup \\
+\lean{world}, run by \lean{runWorld} & The fixed function \lean{prims.Th} on the inputs that the
+MPC evaluates, namely the chain steps and $c_e$ & \lean{signingCorrectness} and the three claims of
+the setup \\
 \rowrule
-\lean{signingWorld}, run by \lean{signingAccepts} & Part of the random oracle & \lean{stronglyUnforgeable} \\
+\lean{signingWorld}, run by \lean{signingAccepts} & Part of the random oracle &
+\lean{stronglyUnforgeable} \\
 \bottomrule
 \end{tabularx}
 \end{center}
-The MPC evaluates $\Th$ by a circuit, and a random oracle has no circuit. So the claims of the setup
-fix $\Th$ and assume that the circuits compute it (\lean{CircuitsCompute}).
-Section~\ref{sec:chain} gives the place of the random-oracle heuristic for $\Th$.
+The MPC evaluates $\Th$ by a circuit, and a random oracle has no circuit. So the claims of the
+setup fix $\Th$ and assume that the circuits compute it (\lean{CircuitsCompute}).
 
-\paragraph{Budgets.} A budget $q$ bounds the own calls of the adversary to $H$ and to the PRG, on every
-path of its program and for every oracle answer (\lean{QueryCostAtMost}). A forger also pays one unit
-for each round-2 request. The calls of the honest operators, of the dealer and of the final
-verification do not count. A budget counts calls and not time. An adversary has no bound on its
-computation. \cite{BR93} has polynomial-time adversaries, so this point has no source.
+\paragraph{Budgets}
+\begin{itemize}
+\item A budget $q$ bounds the own calls of the adversary to $H$ and to the PRG, on every path and
+for every oracle answer (\lean{QueryCostAtMost}).
+\item A forger also pays one unit for each round-2 request.
+\item The calls of the honest operators, of the dealer and of the final verification do not count.
+\item A budget counts calls and not time. An adversary has no bound on its computation.
+\item This last point has no source, because \cite{BR93} has polynomial-time adversaries.
+\end{itemize}
 
-\paragraph{Quantification.} \lean{Theorems} takes \lean{prims}, the constants \lean{K}, the circuit
-family, the settings (batch size and reshare mode) and \lean{runLimit}. All five claims hold for
-these \lean{prims}. Each field of the setup has the premise \texttt{CircuitsCompute circuits prims.Th}.
-\lean{ThresholdLeanXmssSecurityStatement} quantifies over each \lean{prims}, so the claims of the
-setup hold for each $\Th$ that the circuits compute. Section~\ref{sec:claims} gives the preconditions of each claim. A coalition has at
-most $t-1$ operators, and the empty coalition is one of them. The check field $E$ has characteristic two and exactly $2^{128}$
-elements. No claim states that the constants of the implementation are a value of
-\lean{Constants}. Each bound is a fixed expression where the sources write ``negligible''. The prover
-chooses no error, no adversary class, no advantage and no reduction.
+\paragraph{Quantification}
+\begin{itemize}
+\item \lean{Theorems} takes \lean{prims}, the constants \lean{K}, the circuit family, the settings
+and \lean{runLimit}.
+\item Each field of the setup has the premise \texttt{CircuitsCompute circuits prims.Th}. So the
+claims of the setup hold for each $\Th$ that the circuits compute.
+\item A coalition has at most $t-1$ operators, and the empty coalition is one of them.
+\item The check field $E$ has characteristic two and exactly $2^{128}$ elements.
+\item No claim states that the constants of the implementation are a value of \lean{Constants}.
+\item Each bound is a fixed expression where the sources write ``negligible''.
+\item The prover chooses no error, no adversary class, no advantage and no reduction.
+\end{itemize}
 
 \section{The game with the real setup}\label{sec:game}
 
-\lean{dkgTsigGame} (\texttt{DkgGame.lean}) is the signing game $G^{\mathrm{tsig}}$ of PRAWNS,
-Figure~3, with the real setup in the place of the trusted dealer. The four rules of the deployment
-contract (Section~\ref{sec:contract}) are code of the game.
+\lean{dkgTsigGame} is the signing game of PRAWNS, Figure~3, with the real setup in the place of the
+trusted dealer. The four rules of the deployment contract (Section~\ref{sec:contract}) are code of
+the game.
 
-\paragraph{The adversary.} One adversary \lean{DkgTsigAdversary} plays a static coalition $D$ through
-all phases. Its part \lean{net} plays the corrupt operators in each run on the network. Its part
-\lean{forge} is the forger of the signing phase, and it reads and writes the state of \lean{net}. So
-the adversary keeps its state from the setup into the signing phase, as the text after Definition~8
+\begin{itemize}
+\item One adversary \lean{DkgTsigAdversary} plays a static coalition $D$ through all phases, with
+one state.
+\item So it keeps its state from the setup into the signing phase, as the text after Definition~8
 of \cite{GJM+21} asks.
+\item The seed generation, the top tree and each bottom tree run as the real protocols on the
+network. No functionality is on the real side.
+\item Each honest operator keeps its own keys and the first output of its own runs of each tree.
+\item A run of the top tree needs local keys. A run of a bottom tree also needs a local top tree.
+\item The game has no agreement step.
+\item The public key and the top tree are those of the first honest operator that holds a top
+tree.
+\item With no such operator, the adversary does not win.
+\item A request \lean{tree}~$b$ runs bottom tree $b$ one more time under three conditions.
+\item The tree has fewer than $\mathsf{runLimit}$ runs, an honest operator has no output of it, and
+no signing request was made on it.
+\item The request gives the output of the first honest operator that holds one, with the
+randomizer value of its top key.
+\item Each honest operator answers round 1 and round 2 only with its own keys and trees.
+\item The win test is \lean{forgeryWins} of the signing game, on the keys and the first held
+outputs of the operators.
+\end{itemize}
+The budget \lean{DkgTsigBounded}~$A\,q$ bounds the cost of the adversary in the setup and in the
+signing phase by $q$ in total.
 
-\paragraph{The setup.} The seed generation, the top tree and each bottom tree run as the real
-protocols on the network. No functionality is on the real side. The code of the game makes the
-inputs of each run from the outputs of the earlier runs. Each honest operator keeps its own keys and
-the first output of its own runs of each tree. An operator with no keys or no top tree aborts at
-once, and the game has no agreement step. The top tree runs at most $\mathsf{runLimit}$ times, while an
-honest operator has no top tree.
-
-\paragraph{The signing phase.} The public key and the top tree are those of the first honest operator
-that holds a top tree. With no such operator, the adversary does not win. The forger has the
-requests of \lean{tsigGame} (Section~\ref{sec:signing}). A corruption gives nothing, because $D$ is
-corrupt from the start. A request \lean{tree}~$b$ runs bottom tree $b$ one more time, if it has fewer
-than $\mathsf{runLimit}$ runs, an honest operator has no output of it, and no signing request was made on
-it. It then gives the output of the first honest operator that holds one, with the randomizer value of
-its top key. Each honest operator answers round 1 and round 2 only with its own keys and trees. The
-first signing request on a bottom tree ends its runs. The win test is \lean{forgeryWins} of the
-signing game, on the keys of the operators, $F$ on the seeds of the game and the first held output of
-each bottom tree.
-
-\paragraph{Budget.} \lean{DkgTsigBounded}~$A\,q$ asks for three numbers with
-$\mathsf{start}+\mathsf{dkgTsigRounds}\cdot\mathsf{step}+\mathsf{forge}\le q$. The start of \lean{net} makes at most
-$\mathsf{start}$ calls, each round of \lean{net} at most $\mathsf{step}$, and \lean{forge} has cost at most
-$\mathsf{forge}$. The number $\mathsf{dkgTsigRounds}$ is the most rounds of one game, for the seed generation
-and $\mathsf{runLimit}$ runs of each tree.
-
-\paragraph{The other games.} \lean{dkgTreeGame} is the same run with a monitor, and its output is a
-flag. The flag holds when two honest operators hold inconsistent seeds after the seed generation, or
-when an honest operator ends a run of a tree with an output that is not the output of
-\lean{referenceTree} on the seeds and the parameter of the game. An abort sets no flag.
-\lean{honestDkg}~$b$ runs the seed generation and then at most $\mathsf{runLimit}$ runs of the top tree
-and at most $\mathsf{runLimit}$ runs of bottom tree $b$, with no corrupt operator. The runs of a tree
-stop when each operator holds an output of it. \lean{dealerDkg}~$b$ gives each operator its keys,
-the top tree and bottom tree $b$ from \lean{dealerKeyGen}.
+\paragraph{The other games}
+\begin{itemize}
+\item \lean{dkgTreeGame} is the same run with a monitor, and its output is a flag.
+\item The flag holds when two honest operators hold inconsistent seeds after the seed generation.
+\item The flag also holds when an honest operator ends a run of a tree with an output that is not
+the output of \lean{referenceTree}.
+\item An abort sets no flag.
+\item \lean{honestDkg}~$b$ runs the seed generation, the top tree and bottom tree $b$ with no
+corrupt operator.
+\item \lean{dealerDkg}~$b$ gives each operator its keys, the top tree and bottom tree $b$ from
+\lean{dealerKeyGen}.
+\end{itemize}
+Section 2 of \texttt{formal/doc/model.md} has each point of the game with its Lean name.
 
 \section{The claims}\label{sec:claims}
 
 \subsection{The signing}\label{sec:signing}
-For every $(t-1)$-set $T$, the operators outside $T$ hold one seed for this set. $F(x)$ is the sum of
-the hashes of the input under these seeds (\lean{prfValue}). The parts carry masks under the pair keys,
-which cancel when a quorum combines them. PRAWNS (Section 5) uses a secure PRF where the note uses a
-hash. The number $N=\binom n{t-1}+n^2$ bounds the number of secret keys.
+\begin{itemize}
+\item For every $(t-1)$-set $T$, the operators outside $T$ hold one seed for this set.
+\item $F(x)$ is the sum of the hashes of the input under these seeds (\lean{prfValue}).
+\item The parts carry masks under the pair keys, which cancel when a quorum combines them.
+\item PRAWNS (Section 5) uses a secure PRF where the note uses a hash.
+\item The number $N=\binom n{t-1}+n^2$ bounds the number of secret keys.
+\end{itemize}
 
-The signing game \lean{tsigGame} starts with \lean{dealerKeyGen}, which is the $\mathsf{KeyGen}$ of
-PRAWNS adapted to these trees and this committee. The forger gets the public key and the top tree. On
-request, it gets a bottom tree with the randomizer value of its top key. The forger has three more
-kinds of request.
-\begin{itemize}\itemsep0pt
+\paragraph{The signing game}
+\lean{tsigGame} starts with \lean{dealerKeyGen}, the $\mathsf{KeyGen}$ of PRAWNS adapted to these
+trees and this committee. The forger gets the public key and the top tree. It has four kinds of
+request.
+\begin{itemize}
+\item A tree request gives a bottom tree with the randomizer value of its top key.
 \item A corruption gives the keys of one operator. The forger corrupts adaptively, up to $t-1$
 operators.
-\item A round-1 request for a quorum opens the randomizer parts. The first accepted round-1 request at
-a key fixes the message for all honest operators, even if the run stops. Same-message requests can
-repeat.
-\item A round-2 request checks the sum of the randomizer parts against $c_e$, finds the codeword and
-opens chain parts.
+\item A round-1 request for a quorum opens the randomizer parts. Same-message requests can repeat.
+\item The first accepted round-1 request at a key fixes the message for all honest operators, even
+if the run stops.
+\item A round-2 request checks the sum of the randomizer parts against $c_e$, finds the codeword
+and opens chain parts.
 \end{itemize}
-A verified forgery wins when fewer than $t$ operators, the corrupt ones and the honest ones that
-released a chain part, can give chain parts at its key for its message. It also wins when it differs
-from the signature of the dealer at that key. This is strong unforgeability, which goes beyond the
-one-time unforgeability of PRAWNS (Definition 3.2).
 
-\paragraph{Signing correctness} (\lean{SigningCorrectnessStatement}, in \lean{world}). For every
-honest quorum, key index and message, each output signature verifies. The quorum fails with
-probability at most $2(1-p)^L$, for the search of the top signature and the signing search. Here
-$p=\mathsf{codewordProbability}$ is the probability that a uniform digest is a codeword, and $L$ is the
-limit of attempts. The theorem \lean{signingCorrectness} of the proof library proves this claim.
+\paragraph{The win}
+\begin{itemize}
+\item A verified forgery wins when fewer than $t$ operators can give chain parts at its key for its
+message.
+\item These operators are the corrupt ones and the honest ones that released a chain part.
+\item A verified forgery also wins when it differs from the signature of the dealer at that key.
+\item This is strong unforgeability, which goes beyond the one-time unforgeability of PRAWNS
+(Definition 3.2).
+\end{itemize}
 
-\paragraph{Strong unforgeability} (\lean{ThresholdLeanXmssStronglyUnforgeable}, in
-\lean{signingWorld}). Take an adaptive forger whose own calls of $H$ and of the PRG, plus its round-2
-requests, are at most $q$ in total. Then the forger wins with probability at most
+\paragraph{Signing correctness}
+The claim \lean{SigningCorrectnessStatement} is in \lean{world}. For every honest quorum, key index
+and message, each output signature verifies. The quorum fails with probability at most $2(1-p)^L$.
+\begin{itemize}
+\item The bound has one term for the search of the top signature and one for the signing search.
+\item $p$ is the probability that a uniform digest is a codeword (\lean{codewordProbability}), and
+$L$ is the limit of attempts.
+\end{itemize}
+
+\paragraph{Strong unforgeability}
+The claim \lean{ThresholdLeanXmssStronglyUnforgeable} is in \lean{signingWorld}. Take an adaptive
+forger whose own calls of $H$ and of the PRG, plus its round-2 requests, are at most $q$. It wins
+with probability at most
 \[
  \boxed{\ (q+2^{15}+384)/2^{127}+Nq/2^{256}+N^2/2^{256}\ }.
 \]
-Rejected round-2 requests also count. The fixed slack $2^{15}+384$ pays the security loss from the
-uncounted calls and does not limit their number. A committee with $n\le 33$ has $N<2^{32}$. For such a
-committee, the two last terms are less than $2^{-80}$ times the first term. The theorem
-\lean{SigningStronglyUnforgeable.stronglyUnforgeable} of the proof library proves this claim. The comparison with leanXMSS is in the table.
+\begin{itemize}
+\item Rejected round-2 requests also count.
+\item The fixed slack $2^{15}+384$ pays the security loss from the uncounted calls. It does not
+limit their number.
+\item A committee with $n\le 33$ has $N<2^{32}$. Then the two last terms are less than $2^{-80}$
+times the first term.
+\end{itemize}
 \begin{center}\small
 \begin{tabularx}{\textwidth}{@{}lXX@{}}
 \toprule
@@ -225,25 +273,24 @@ committee, the two last terms are less than $2^{-80}$ times the first term. The 
 \midrule
 Model & Random permutation & Random oracle \\
 \rowrule
-Budget & Permutation calls of the adversary and signing requests, with separate bounds & One budget for
-the own calls of the forger and its round-2 requests \\
+Budget & Permutation calls of the adversary and signing requests, with separate bounds & One budget
+for the own calls of the forger and its round-2 requests \\
 \rowrule
 Bound & $(q+2^{10})/2^{127}$ & $\approx(q+2^{15}+384)/2^{127}$, for $n\le 33$ \\
 \rowrule
-Game & Generic game with one signer that has no state & Adaptive corruption and operators with state \\
+Game & Generic game with one signer that has no state & Adaptive corruption and operators with
+state \\
 \bottomrule
 \end{tabularx}
 \end{center}
 
 \subsection{The setup}\label{sec:setup}
-The three claims run in \lean{world}. Appendix~\ref{sec:terms} expands each error term. In
-\lean{dkgSecurity} and \lean{dkgCorrectness}, $D$ is a static coalition, $A$ an adversary with \lean{DkgTsigBounded}~$A\,q$, and
-$\mathsf{adv}(G)$, short for \lean{streamAdvantage} at \lean{prims}, $D$ and $G$, is the multi-key PRF
-advantage of \lean{prgReduction} against the AES-128 streams of the PRSS under the keys that $D$
-lacks, on the game $G$. \lean{dkgCompleteness} has no adversary and no budget. The table gives the preconditions and the trivial cases of the five claims.
-For circuits that compute no $\Th$, the claims of the setup say nothing. A bound of $1$ or more on a
-probability says nothing. The cost bound of the reduction and the validity of the signatures stay
-meaningful.
+The three claims run in \lean{world}, and Appendix~\ref{sec:terms} expands each error term. In
+\lean{dkgSecurity} and \lean{dkgCorrectness}, $D$ is a static coalition and $A$ is an adversary
+with \lean{DkgTsigBounded}~$A\,q$.
+
+$\mathsf{adv}(G)$ is \lean{streamAdvantage} on the game $G$. It is the multi-key PRF advantage of
+\lean{prgReduction} against the AES-128 streams of the PRSS under the keys that $D$ lacks.
 {\small
 \begin{xltabular}{\textwidth}{@{}lL{2.6cm}XL{4.4cm}@{}}
 \toprule
@@ -254,138 +301,112 @@ Claim & World & Preconditions & Trivial cases \\
 \rowrule
 \lean{signingCorrectness} & \lean{world} & None, for each quorum, key and message & None \\
 \rowrule
-\lean{dkgSecurity} & \lean{world} & Premise \lean{CircuitsCompute} of the field, $\mathsf{batchSize}>0$, budget $q$ of $A$ &
-Vacuous at $\mathsf{batchSize}=0$. At $\mathsf{runLimit}=0$ no top tree exists, so $A$ never wins. \\
+\lean{dkgSecurity} & \lean{world} & \lean{CircuitsCompute}, $\mathsf{batchSize}>0$, budget $q$ of
+$A$ & Vacuous at $\mathsf{batchSize}=0$. At $\mathsf{runLimit}=0$ no top tree exists, so $A$ never
+wins. \\
 \rowrule
-\lean{dkgCorrectness} & \lean{world} & Premise \lean{CircuitsCompute} of the field,
-$\mathsf{batchSize}>0$, $\mathsf{runLimit}>0$, budget $q$ of $A$ & Vacuous at $\mathsf{batchSize}=0$ and at
+\lean{dkgCorrectness} & \lean{world} & \lean{CircuitsCompute}, $\mathsf{batchSize}>0$,
+$\mathsf{runLimit}>0$, budget $q$ of $A$ & Vacuous at $\mathsf{batchSize}=0$ and at
 $\mathsf{runLimit}=0$ \\
 \rowrule
-\lean{dkgCompleteness} & \lean{world}, no corrupt operator & Premise \lean{CircuitsCompute} of the
-field, $\mathsf{batchSize}>0$, $\mathsf{runLimit}>0$ & Vacuous at $\mathsf{batchSize}=0$ and at
-$\mathsf{runLimit}=0$ \\
+\lean{dkgCompleteness} & \lean{world}, no corrupt operator, no adversary, no budget &
+\lean{CircuitsCompute}, $\mathsf{batchSize}>0$, $\mathsf{runLimit}>0$ & Vacuous at
+$\mathsf{batchSize}=0$ and at $\mathsf{runLimit}=0$ \\
 \bottomrule
 \end{xltabular}}
+\begin{itemize}
+\item For circuits that compute no $\Th$, the claims of the setup say nothing.
+\item A bound of $1$ or more on a probability says nothing.
+\item The cost bound of the reduction and the validity of the signatures stay meaningful.
+\end{itemize}
 
-\paragraph{Security preservation} (\lean{DkgSecurity}). The field takes the premise
-\texttt{CircuitsCompute circuits prims.Th} and gives \lean{DkgSecurity} at \lean{prims} for the named
-reduction \lean{dkgReduction} of \texttt{DkgReduction.lean}. For each adversary $A$, the forger
-$B_A$, which is \lean{dkgReduction} at \lean{prims.aes}, $D$ and $A$, has cost at most $q+\mathsf{dkgOverhead}$ on
-every path, and
+\paragraph{Security preservation}
+Under \lean{CircuitsCompute}, the field gives \lean{DkgSecurity} for the named reduction
+\lean{dkgReduction}. Let $B_A$ be \lean{dkgReduction} at \lean{prims.aes}, $D$ and $A$. For each
+adversary $A$, the forger $B_A$ has cost at most $q+\mathsf{dkgOverhead}$ on every path, and
 \[
  \Pr[A\text{ wins }\mathsf{dkgTsigGame}]\le\Pr[B_A\text{ wins }\mathsf{tsigGame}]
  +\mathsf{dkgError}(q)+\mathsf{adv}(\mathsf{dkgTsigGame}).
 \]
-The claim names its reduction because $\Th$ is a fixed function and an adversary has no bound on its
-computation. A search on $\Th$ costs no call. So a claim that some forger exists is empty, because a
-forger that searches wins the dealer game with no help from $A$.
+\begin{itemize}
+\item Both sides run in \lean{world}, with the same fixed $\Th$.
+\item $\Th$ is a fixed function, and an adversary has no bound on its computation. So a search on
+$\Th$ costs no call.
+\item A claim that some forger exists is then empty. A forger that searches wins the dealer game
+with no help from $A$.
+\item So the claim names its forger. The real setup gives an adversary no more than \lean{tsigGame}
+gives \lean{dkgReduction}, up to the stated errors.
+\item It is a relative claim, and it is no bound on a forgery.
+\end{itemize}
 
-With the named forger, the claim says that the real setup gives an adversary no more than
-\lean{tsigGame} gives \lean{dkgReduction}, up to the stated errors $\mathsf{dkgError}$ and
-$\mathsf{adv}$. It is a relative claim, and it is no bound on a forgery.
-
-\paragraph{The forger.} The forger is \lean{dkgReduction}. It runs $A$ and plays the honest
-operators toward it. It asks \lean{corrupt} for the operators of $D$ and takes their keys. It
-emulates the seed generation with fresh parts of the honest operators. It answers each call in a
-domain of $H$ that only the setup uses from its own table.
-
-In each run of a tree, the opening of each batch shifts the first term that $D$ lacks. Outside the
-bad events of consistency and soundness, the shifted opening gives the outputs of the dealer. The
-forger asks \lean{tree}~$b$ for the outputs of bottom tree $b$. Its emulated operators make no
-randomizer search. They take the randomizer of the top signature from the answer of \lean{tree}~$b$
-and get the codeword from one hash. It forwards a signing request of $A$
-to the dealer when the emulated operator holds keys, a top tree and an output of that bottom tree.
-When an honest operator holds a top tree, it runs \lean{forge} of $A$ and outputs its forgery with no
-change. Otherwise it outputs \lean{idleForgery}.
-
+\paragraph{The forger}
+\begin{itemize}
+\item \lean{dkgReduction} runs $A$, plays the honest operators toward it, and takes the keys of $D$
+by \lean{corrupt}.
+\item It emulates the seed generation with fresh parts, and it answers the setup domains of $H$
+from its own table.
+\item In each run of a tree, the opening of each batch shifts the first term that $D$ lacks.
+\item Outside the bad events of consistency and soundness, the shifted opening gives the outputs of
+the dealer.
+\item It asks \lean{tree}~$b$ for the outputs of bottom tree $b$. Its emulated operators make no
+randomizer search.
+\item It forwards a signing request of $A$ to the dealer under one condition.
+\item The emulated operator must hold keys, a top tree and an output of that bottom tree.
+\item When an honest operator holds a top tree, it runs \lean{forge} of $A$ and outputs its forgery
+with no change. Otherwise it outputs \lean{idleForgery}.
+\end{itemize}
 A reader of its code checks four points.
-\begin{itemize}\itemsep0pt
+\begin{itemize}
 \item It is a fixed definition with no parameter for a step.
 \item It makes no search for a secret.
 \item It reads no seed of the dealer that $D$ lacks.
 \item Its table answers only the setup domains.
 \end{itemize}
-The forger differs from the game in five points. Each point is an obligation of a proof, and each
-needs a coupling or a bad event with a bound. No error term is named for them yet.
-\begin{itemize}\itemsep0pt
-\item It gives \lean{forge} the public key and the top tree of the dealer, not those of the first
-honest operator that holds a top tree.
-\item When the randomizer search of the dealer fails, \lean{tree}~$b$ gives no tree and the forger
-runs no tree run, but the state of the dealer game changed. The bound must cover the first
-divergence that the adversary can see.
-\item It asks \lean{tree}~$b$ also when no run is allowed, so the dealer builds that bottom tree
-earlier than the game does. The planned way is a coupling by lazy sampling.
-\item An emulated operator of a bottom run makes no randomizer search. With the same public
-parameter and the same hash oracle, when the outputs of the first ceremony are those of the dealer,
-the result of the dealer is the result that the search of the game gives. The outputs agree outside
-the bad events of consistency and soundness.
-\item A signing request to an emulated operator with an output of the bottom tree goes to the
-dealer, also when the emulated output of that operator is wrong.
+The code of the forger differs from the game in five points, which Section 1 of
+\texttt{formal/doc/model.md} lists. Each point is an obligation of the proof. The chain of hops
+covers all five, on the condition that \lean{SharedStep} holds.
+
+\paragraph{The sources of the claim}
+\begin{itemize}
+\item The model is Definition~8 of \cite{GJM+21}, with the explicit forger of its Lemmas 3 to 5.
+\item The static coalition is as in the paper, and the private links are as in GS20, Section 3.1.
+\item The third table of \texttt{formal/doc/differences.md} has the adaptations G1 to G16, and
+Appendix~\ref{sec:diff} has a selection. Most of them have no source.
 \end{itemize}
-Both sides run in \lean{world}, with the same fixed $\Th$. The model is Definition~8 of
-\cite{GJM+21}. The explicit forger with an additive term is the form of the proofs of its Lemmas 3
-to 5 (Appendix C of the full version). The static coalition is as in the paper. The oracle is a random
-oracle \cite{BR93}. The network has private links and no broadcast channel, as in GS20, Section 3.1.
-The adaptations in the list below have no source.
-\begin{itemize}\itemsep0pt
-\item The bound is a fixed expression, and the forger has a cost bound.
-\item The claim names its reduction, because $\Th$ is a fixed function and the adversary has no bound
-on its computation.
-\item The adversaries are bounded only by their queries, with no bound on their computation. The paper
-and \cite{BR93} take polynomial-time adversaries.
-\item The game is a threshold game with key shares, and the bottom trees run during the signing phase.
-\item The static coalition of the setup is next to the adaptive corruption of \lean{tsigGame}.
-\item The abort is selective, and each honest operator acts on what it holds.
-\item $\Th$ is a fixed function that the circuits compute.
-\item Each tree has at most $\mathsf{runLimit}$ runs, and each run is atomic. Each operator keeps the
-first output of its runs, and the first signing request on a bottom tree ends its runs.
-\item The public key and the trees of the win test are those of the first honest operator that holds
-them.
+
+\paragraph{The error and the cost}
+\begin{itemize}
+\item $\mathsf{dkgError}$ is the sum of the errors of the 13 hops of the proof. It is no tight
+bound.
+\item Its first parts are the correctness error and one more hash error of the seed generation.
+\item Its other parts are one failed search of the dealer for each bottom tree and two privacy
+terms (Appendix~\ref{sec:terms}).
+\item $\mathsf{dkgOverhead}$ counts the calls of \lean{dkgReduction} in the domains that the setup
+and the signing share.
 \end{itemize}
-$\mathsf{dkgError}$ is the error of the correctness claim, one more hash error of the seed generation,
-one failed randomizer search of the dealer for each bottom tree, and two terms for the privacy of the
-runs (Appendix~\ref{sec:terms}). $\mathsf{dkgOverhead}$
-counts the calls of \lean{dkgReduction} in the domains that the setup and the signing share. The
-theorem \lean{DkgSecurityProof.dkgReduction_cost} proves the cost bound with it, the first part of
-\lean{dkgSecurity}. $\mathsf{dkgError}$ is the error that the chain of hops of the proof reaches. One
-hop of the chain has no proof yet.
 
-\paragraph{Correctness with abort} (\lean{DkgCorrectness}). Against $A$, two honest operators hold
-inconsistent seeds, or an honest operator ends a run of a tree with an output that is not the output
-of \lean{referenceTree} on the seeds of the game, with probability at most
-\[
- \Pr[\mathsf{dkgTreeGame}\text{ flags}]\le\mathsf{dkgCorrectnessError}(q)+\mathsf{adv}(\mathsf{dkgTreeGame}).
-\]
-An abort is no win, so the claim allows a selective abort. The nearest model is the first clause of
-robustness (\cite{GJM+21}, Definition~6), by which all honest parties agree on one public key. The
-static coalition is as in the paper, and the private links are as in GS20, Section 3.1. The other
-adaptations have no source. The query bound with no bound on the computation is as for
-\lean{DkgSecurity}. Consistent seeds and reference outputs take the place of one public key.
-The claim omits the second clause of Definition~6, the reconstruction of the secret key from $t+1$
-honest shares. The bound is a fixed expression, $\Th$ is fixed, and the runs are as for
-\lean{DkgSecurity}. The seeds of the game are those of the first honest holder of each term
-(\lean{gameSeeds}). The theorem \lean{dkgCorrectness} proves the bound.
-
-\paragraph{Completeness} (\lean{DkgCompleteness}). For each bottom tree $b$, each operator of
-\lean{honestDkg}~$b$ holds keys, a top tree and bottom tree $b$, except with probability at most
-$\mathsf{dkgAbortError}(b)$. The statistical distance of the outputs of \lean{honestDkg}~$b$ and of
-\lean{dealerDkg}~$b$ is at most $\mathsf{dkgCompletenessError}(b)$. A failed search is in both runs, so it
-is only in the first bound. The claim adds no PRF advantage. It is about an honest run only and is no
-robustness under faults. A corrupt operator can make each honest operator abort. No definition of
-GS20 or of \cite{GJM+21} is its model. The abort bound has the form of Lemma 1 of
-\cite{GJM+21}, which bounds the probability that some nonfaulty party has no transcript. Lemma 2 of
-the paper is about one broadcast of a verifying transcript and is no model of this bound. The distance to \lean{dealerKeyGen} has no source. The theorem
-\lean{dkgCompleteness} proves both bounds.
-
-\paragraph{The state of the target.} No proof accounts for the whole game for the bound of
-\lean{dkgSecurity} on the win probability yet. The theorem \lean{DkgSecurityProof.dkgSecurity_of_leaves}
-gives the field from one hop that has no proof yet (\lean{SharedStep}). Twelve of the 13
-hops of the chain have proofs.
-$\mathsf{dkgError}$ is the sum of the errors of the 13 hops, so it is the error of this proof and no
-tight bound. Through $\mathsf{dkgCorrectnessError}$ it grows with the third power of the run limit,
-which comes from the proof method for the PRSS setups. The privacy term
-$\mathsf{privacyStepError}$ belongs to the hop with no proof yet, so a
-proof can change it. Table~\ref{tab:dkgerror} has the value at two points.
+\paragraph{The state of the proof}
+\begin{center}\small
+\begin{tabularx}{\textwidth}{@{}XL{5.9cm}l@{}}
+\toprule
+Part & Proof & State \\
+\midrule
+The cost bound of the forger & \lean{dkgReduction_cost} & Proved \\
+\rowrule
+Twelve hops of the chain, with the hop to the forger & \lean{tableHop} and eleven more & Proved \\
+\rowrule
+The hop \lean{SharedStep}, in which one real run of a tree becomes an emulated run & None & Open \\
+\rowrule
+The field from \lean{SharedStep} & \lean{dkgSecurity_of_leaves} & Proved \\
+\bottomrule
+\end{tabularx}
+\end{center}
+\begin{itemize}
+\item No proof accounts for the whole game yet, so the win bound is a target.
+\item The privacy term $\mathsf{privacyStepError}$ belongs to the open hop, so a proof can change it.
+\item Through $\mathsf{dkgCorrectnessError}$ the error grows with the third power of the run limit.
+This comes from the proof method for the PRSS setups.
+\end{itemize}
 \begin{table}[h]\centering\small
 \begin{tabular}{lll}
 \toprule
@@ -398,66 +419,118 @@ $n=33$, $\mathsf{runLimit}=8$, $q=2^{64}$ & $2^{-102.1}$ & $2^{-129.0}$ and $2^{
 \caption{The value of $\mathsf{dkgError}$ for one batch for each ceremony and $2^{20}$ tuples in a batch.}\label{tab:dkgerror}
 \end{table}
 
+\paragraph{Correctness with abort}
+The claim is \lean{DkgCorrectness}, and the theorem \lean{dkgCorrectness} proves it. Against $A$,
+\[
+ \Pr[\mathsf{dkgTreeGame}\text{ flags}]\le\mathsf{dkgCorrectnessError}(q)+\mathsf{adv}(\mathsf{dkgTreeGame}).
+\]
+\begin{itemize}
+\item The flag holds for inconsistent seeds of two honest operators, or for an output of an honest
+operator that is not the output of \lean{referenceTree}.
+\item An abort is no win, so the claim allows a selective abort.
+\item The nearest model is the first clause of robustness (\cite{GJM+21}, Definition~6), by which
+all honest parties agree on one public key.
+\item Consistent seeds and reference outputs take the place of one public key.
+\item The claim omits the second clause, the reconstruction of the secret key from $t+1$ honest
+shares.
+\item The seeds of the game are those of the first honest holder of each term (\lean{gameSeeds}).
+\item The query bound, the fixed bound, the fixed $\Th$ and the runs are as for \lean{DkgSecurity}.
+\end{itemize}
+
+\paragraph{Completeness}
+The claim is \lean{DkgCompleteness}, and the theorem \lean{dkgCompleteness} proves both of its
+bounds.
+\begin{itemize}
+\item For each bottom tree $b$, each operator of \lean{honestDkg}~$b$ holds keys, a top tree and
+bottom tree $b$, except with probability at most $\mathsf{dkgAbortError}(b)$.
+\item The statistical distance of the outputs of \lean{honestDkg}~$b$ and of \lean{dealerDkg}~$b$
+is at most $\mathsf{dkgCompletenessError}(b)$.
+\item A failed search is in both runs, so it is only in the first bound. The claim adds no PRF
+advantage.
+\item The claim is about an honest run only and is no robustness under faults. A corrupt operator
+can make each honest operator abort.
+\item No definition of GS20 or of \cite{GJM+21} is its model. The abort bound has the form of
+Lemma 1 of \cite{GJM+21}.
+\item The distance to \lean{dealerKeyGen} has no source.
+\end{itemize}
+
 \subsection{The chain to the full system}\label{sec:chain}
 Let $\delta$ bound the probability that \lean{dkgReduction} of $A$ wins \lean{tsigGame} in
 \lean{world}, with the fixed $\Th$. Then \lean{dkgSecurity} gives
 \[
  \Pr[A\text{ wins }\mathsf{dkgTsigGame}]\le\delta+\mathsf{dkgError}(q)+\mathsf{adv}(\mathsf{dkgTsigGame}).
 \]
-No field gives such a $\delta$, and this step has no Lean text. No small $\delta$ holds for each
-query-bounded adversary with a fixed $\Th$, because a search on $\Th$ costs no call.
-\lean{stronglyUnforgeable} bounds \lean{tsigGame} in \lean{signingWorld}, where $\Th$ is part of the
-random oracle. To take its bound for $\delta$, for an adversary that makes no search on $\Th$, is the
-random-oracle heuristic for Keccak, as in leanXMSS. It is not a theorem. So no proof joins
-\lean{dkgSecurity} and \lean{stronglyUnforgeable}.
+\begin{itemize}
+\item No field gives such a $\delta$, and this step has no Lean text.
+\item No small $\delta$ holds for each query-bounded adversary with a fixed $\Th$, because a search
+on $\Th$ costs no call.
+\item \lean{stronglyUnforgeable} bounds \lean{tsigGame} in \lean{signingWorld}, where $\Th$ is part
+of the random oracle.
+\item To take its bound for $\delta$, for an adversary that makes no search on $\Th$, is the
+random-oracle heuristic for Keccak, as in leanXMSS.
+\item This step is not a theorem. So no proof joins \lean{dkgSecurity} and
+\lean{stronglyUnforgeable}.
+\end{itemize}
 
-\paragraph{An illustration, not a claim.} Take $t=3$, $n=5$ and $\mathsf{runLimit}=1$. Then
-$\mathsf{dkgOverhead}=75\,248\,651\,468\,795\approx2^{46.10}$. The first term of the signing bound,
-$(q+2^{15}+384)/2^{127}$, is linear in the cost. At the cost $q+\mathsf{dkgOverhead}$ of the forger it
-is about $2^{-80.9}$ for an adversary with few calls. The overhead and the cost of the adversary
-are equal near $2^{46.1}$ calls. For a much larger $q$ the overhead has no weight, for example the
-term is $2^{-63.0}$ at $2^{64}$ calls. The floor near $2^{-81}$ is a
-property of the bound, because the signing claim counts each hash call of the forger, also its
-honest PRF calls. It is no attack.
+\paragraph{An illustration, not a claim}
+\begin{itemize}
+\item Take $t=3$, $n=5$ and $\mathsf{runLimit}=1$. Then $\mathsf{dkgOverhead}\approx2^{46.10}$.
+\item At the cost $q+\mathsf{dkgOverhead}$ of the forger, the first term of the signing bound is
+about $2^{-80.9}$ for an adversary with few calls.
+\item This floor is a property of the bound and no attack.
+\item Its cause is that the signing claim counts each hash call of the forger, also its honest PRF
+calls.
+\end{itemize}
 
 \section{The deployment contract}\label{sec:contract}
-The games assume these four rules, and \lean{dkgTsigGame} has them as code. They are requirements on
-a deployment. They are not a security theorem.
-{\small
-\begin{xltabular}{\textwidth}{@{}rL{2.9cm}XL{4.1cm}@{}}
-\toprule
- & Rule & Requirement & In the games \\
-\midrule
-\endhead
-1 & One message for each one-time key & Honest operators agree on the key and the message before any part
-is sent. They sign at most one message with each bottom key. A top key signs one bottom root only, so a
-failed run of a bottom tree runs again on the same seeds. Correct outputs then give the same root. &
-\lean{breaksOneMessagePerKey} of \lean{tsigOracles} \\
-\rowrule
-2 & Use only your own outputs & An operator signs on a tree only with the first valid output of its own
-run of that tree. It starts a signature ceremony only from the output of its own ceremony of that bottom
-tree, with the codeword of its own search. With no output, it runs the tree again. & Each operator keeps
-its first output, and \lean{operatorAnswer} uses only it \\
-\rowrule
-3 & One run at a time, a fixed number of times & One tree run is active at a time. Each tree has a fixed
-limit of runs. All runs of a tree end before the first signing request on it. & Atomic runs,
-\lean{runLimit} and \lean{mayRun} \\
-\rowrule
-4 & Erase the state of each phase & After the seed generation and after each ceremony, an operator
-erases the state of that phase, with its PRSS keys. It keeps only its keys and its tree outputs. & The
-game keeps only the outputs of a run. A corruption in \lean{tsigGame} gives only keys. \\
-\bottomrule
-\end{xltabular}}
+The games assume these four rules, and \lean{dkgTsigGame} has them as code. They are requirements
+on a deployment. They are not a security theorem.
+
+\paragraph{Rule 1, one message for each one-time key}
+\begin{itemize}
+\item Honest operators agree on the key and the message before any part is sent.
+\item They sign at most one message with each bottom key.
+\item A top key signs one bottom root only. So a failed run of a bottom tree runs again on the same
+seeds.
+\item Correct outputs then give the same root.
+\item In the games, this rule is \lean{breaksOneMessagePerKey} of \lean{tsigOracles}.
+\end{itemize}
+
+\paragraph{Rule 2, use only your own outputs}
+\begin{itemize}
+\item An operator signs on a tree only with the first valid output of its own run of that tree.
+\item It starts a signature ceremony only from the output of its own ceremony of that bottom tree,
+with the codeword of its own search.
+\item With no output, it runs the tree again.
+\item In the games, each operator keeps its first output, and \lean{operatorAnswer} uses only it.
+\end{itemize}
+
+\paragraph{Rule 3, one run at a time, a fixed number of times}
+\begin{itemize}
+\item One tree run is active at a time, and each tree has a fixed limit of runs.
+\item All runs of a tree end before the first signing request on it.
+\item In the games, the runs are atomic, with \lean{runLimit} and \lean{mayRun}.
+\end{itemize}
+
+\paragraph{Rule 4, erase the state of each phase}
+\begin{itemize}
+\item After the seed generation and after each ceremony, an operator erases the state of that
+phase, with its PRSS keys.
+\item It keeps only its keys and its tree outputs.
+\item In the games, a run keeps only its outputs, and a corruption in \lean{tsigGame} gives only
+keys.
+\end{itemize}
 
 \section{The limits}\label{sec:limits}
-\begin{itemize}\itemsep0pt
-\item The coalition of the setup is static, as in GS20 and in \cite{GJM+21}. It is fixed before the seed
-generation and stays the same for the whole life of the keys. No claim covers adaptive corruption of
-the system with the real setup. The erasure of rule 4 does not give it, because the keys stay.
+\begin{itemize}
+\item The coalition of the setup is static, as in GS20 and in \cite{GJM+21}.
+\item It is fixed before the seed generation and stays the same for the whole life of the keys.
+\item No claim covers adaptive corruption of the system with the real setup. The erasure of rule 4
+does not give it, because the keys stay.
 \item The claims of the setup fix $\Th$. The step to a random-oracle $\Th$ is the heuristic of
 Section~\ref{sec:chain}.
-\item Each run of a tree is atomic. No signing request and no other run happens during a run. A
-deployment that builds a bottom tree during a signing session is outside the claims.
+\item Each run of a tree is atomic. No signing request and no other run happens during a run.
+\item A deployment that builds a bottom tree during a signing session is outside the claims.
 \item Each tree has at most $\mathsf{runLimit}$ runs, and the bounds grow with $\mathsf{runLimit}$.
 \item The abort is selective. A corrupt operator can stop each run and each signature, and no claim
 covers liveness.
@@ -465,82 +538,68 @@ covers liveness.
 concurrently.
 \item No claim covers transport authentication.
 \item No claim is in the random-permutation model, which leanXMSS uses for its end statement.
-\item No theorem connects the Rust proof of concept to the model. For example, no theorem connects the
-bytes of a hash call to its input in the model.
+\item No claim is about Section 2.2 of the note, the setup with $n=3f+1$.
+\item No theorem connects the Rust proof of concept to the model.
+\item For example, no theorem connects the bytes of a hash call to its input in the model.
 \end{itemize}
 
 \appendix
-\section{Source map}\label{sec:map}
-{\small
-\begin{xltabular}{\textwidth}{@{}lL{6.7cm}XL{2.2cm}@{}}
-\toprule
-Field & Lean claim & Source item & Bound \\
-\midrule
-\endhead
-\lean{stronglyUnforgeable} & \lean{ThresholdLeanXmssStronglyUnforgeable} & PRAWNS, Definition 3.2,
-with strong unforgeability as in leanXMSS & Proved \\
-\rowrule
-\lean{signingCorrectness} & \lean{SigningCorrectnessStatement} & PRAWNS, Section 3.1, honest run &
-Proved \\
-\rowrule
-\lean{dkgSecurity} & \lean{DkgSecurity} for \lean{dkgReduction} & \cite{GJM+21}, Definition 8,
-and the form of Lemmas 3 to 5 & The cost bound is proved. The bound on the win probability is a target. \\
-\rowrule
-\lean{dkgCorrectness} & \lean{DkgCorrectness} & \cite{GJM+21}, Definition 6, first clause & Proved \\
-\rowrule
-\lean{dkgCompleteness} & \lean{DkgCompleteness} & No model. The abort bound has the form of
-\cite{GJM+21}, Lemma 1. & Proved \\
-\bottomrule
-\end{xltabular}}
-
 \section{Differences to the sources}\label{sec:diff}
 The table keeps the differences that change the meaning of a claim, with their ids. The file
-\lean{formal/doc/differences.md} lists all differences in Tables B.1 to B.3.
+\lean{formal/doc/differences.md} lists all differences in its three tables.
 {\footnotesize
 \begin{xltabular}{\textwidth}{@{}l>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X@{}}
 \toprule
 Row & Source & This model and the effect on the claim \\
 \midrule
 \endhead
-A1 & GS20 Functionalities 5, 16 and 18 have a common abort. & Each operator aborts alone \cite{GL05}.
-In \lean{dkgTsigGame} each honest operator acts only on what it holds, and \lean{dkgCorrectness} counts
-an abort as no win. \\
+A1 & GS20 Functionalities 5, 16 and 18 have a common abort. & Each operator aborts alone
+\cite{GL05}. Each honest operator acts only on what it holds, and \lean{dkgCorrectness} counts an
+abort as no win. \\
 \rowrule
-A2 & GS20 is information-theoretic. & $H$ is a random oracle and AES-128 is the PRG. The bounds of the
-setup have hash terms and the PRF advantage $\mathsf{adv}$. \\
+A2 & GS20 is information-theoretic. & $H$ is a random oracle and AES-128 is the PRG. The bounds of
+the setup have hash terms. \lean{dkgSecurity} and \lean{dkgCorrectness} also have $\mathsf{adv}$. \\
 \rowrule
-A4 & GS20, Theorem 2, is in the $\{\Fn{mult},\Fn{multVerify}\}$-hybrid model. & The games run the real
-network, the real PRSS setups and the real checks. \\
+A4 & GS20, Theorem 2, is in the $\{\Fn{mult},\Fn{multVerify}\}$-hybrid model. & The games run the
+real network, the real PRSS setups and the real checks. \\
 \rowrule
 A5 & PRAWNS, Figure 3, line 8, needs $t>(n+|D|)/2$. & Line 8 fails for $n=2t-1$ with one corrupt
 operator or more. \lean{stronglyUnforgeable} holds under rule 1 in place of line 8. \\
 \rowrule
-A7 & leanXMSS ends in the random-permutation model. & \lean{stronglyUnforgeable} is in the random-oracle
-model, at the level of \lean{leanXmss_rom_adversary_bound}. \\
+A7 & leanXMSS ends in the random-permutation model. & \lean{stronglyUnforgeable} is in the
+random-oracle model, at the level of \lean{leanXmss_rom_adversary_bound}. \\
 \rowrule
 A8 & leanXMSS has one model of Keccak. & The setup fixes $\Th$, and \lean{stronglyUnforgeable} has
 $\Th$ in the random oracle. Section~\ref{sec:chain} gives the step. \\
 \rowrule
-A9 & GS20 and \cite{GJM+21} have static corruption, PRAWNS adaptive corruption. & The real game is static,
-\lean{tsigGame} is adaptive. No claim covers adaptive corruption with the real setup. \\
+A9 & GS20 and \cite{GJM+21} have static corruption, PRAWNS adaptive corruption. & The real game is
+static, and \lean{tsigGame} is adaptive. No claim covers adaptive corruption with the real setup. \\
 \rowrule
-B6 & GS20 gives outputs to clients, and the adversary gets only corrupt outputs. & A batch opens all
-outputs to all operators, the adversary too. \\
+B6 & GS20 gives outputs to clients, and the adversary gets only corrupt outputs. & A batch opens
+all outputs to all operators, the adversary too. \\
 \rowrule
-B10 & $\mathsf{OCorrupt}$ of PRAWNS has no limit. & It stops at $t-1$ operators. A forgery also wins when it
-differs from the signature of the dealer. \\
+B10 & $\mathsf{OCorrupt}$ of PRAWNS has no limit. & It stops at $t-1$ operators. A forgery also
+wins when it differs from the signature of the dealer. \\
 \rowrule
-G1, G2 & Definition 8 of \cite{GJM+21} has one adversary on both sides, a negligible term and no
-cost. & The forger is explicit, as in Lemmas 3 to 5. The bound is fixed, and the forger has a cost
-bound. The fixed bound and the cost have no source. \\
+G1, G16 & Definition 8 of \cite{GJM+21} has one adversary on both sides and states no forger. &
+The claim names its forger, as the proofs of Lemmas 3 to 5 build one. The naming has no source. \\
+\rowrule
+G2 & Definition 8 has a negligible term and no cost. & The bound is fixed, and the forger has a
+cost bound. No source. \\
 \rowrule
 G3 & \cite{GJM+21} has games with one key. & The game is a threshold game with key shares, and the
 bottom trees run during the signing phase. No source. \\
 \rowrule
 G5 & \cite{GJM+21} has no abort. & The abort is selective. No source. \\
 \rowrule
-G13, G14 & \cite{GJM+21} has PPT adversaries and a broadcast channel. & The adversaries are bounded only
-by their queries, with no source. The links are private with no broadcast (GS20, Section 3.1). \\
+G7 & The DKG of \cite{GJM+21} runs one time. & Each tree has at most $\mathsf{runLimit}$ atomic
+runs. Each operator keeps the first output of its runs. No source. \\
+\rowrule
+G12 & \cite{GJM+21} has one key line. & The public key and the trees of the win test are those of
+the first honest operator that holds them. No source. \\
+\rowrule
+G13, G14 & \cite{GJM+21} has PPT adversaries and a broadcast channel. & The adversaries are bounded
+only by their queries, with no source. The links are private with no broadcast. \\
 \rowrule
 G15 & Definition 6 of \cite{GJM+21} also asks that honest shares reconstruct the secret key. &
 \lean{dkgCorrectness} omits this clause. No source. \\
@@ -548,13 +607,20 @@ G15 & Definition 6 of \cite{GJM+21} also asks that honest shares reconstruct the
 \end{xltabular}}
 
 \section{The error terms}\label{sec:terms}
-Let $k_T=\binom n{t-1}$ be the number of terms, $k=k_T+\binom n2$ the number of PRSS keys of one
-setup, and $h=2nk_T$ the hashes of two values of each term at each operator. For a tree, $B$ is its
-number of batches (\lean{treeBatches}), and $d^*$, $R^*$ and $c^*$ are the maximum coin count,
-halving count and tuple count of one batch over all ceremonies (\lean{maxBatch}). Let
-$s_{\mathsf T}=1$ for the top tree and $s_{\mathsf T}=2$ for a bottom tree (\lean{treeSetups}). The sums run over the top tree and each bottom tree.
+Each name in sans serif is the Lean definition of that name. The error and cost terms of the setup
+are in \texttt{Statement/DkgErrors.lean}, and the index below has the other definitions.
+\begin{itemize}
+\item The sums run over the top tree and each bottom tree.
+\item $k_T=\binom n{t-1}$ is the number of terms, and $k=k_T+\binom n2$ is the number of PRSS keys
+of one setup.
+\item $h=2nk_T$ counts the hashes of two values of each term at each operator.
+\item $B$ is the number of batches of a tree (\lean{treeBatches}).
+\item $d^*$, $R^*$ and $c^*$ are the maximum coin count, halving count and tuple count of one batch
+over all ceremonies (\lean{maxBatch}).
+\item $s_{\mathsf T}$ is $1$ for the top tree and $2$ for a bottom tree (\lean{treeSetups}).
+\end{itemize}
 
-\paragraph{Common terms.}
+\paragraph{Common terms}
 {\small
 \begin{align*}
 \mathsf{seedGenHashError}(q)&=(q+s_{\mathrm{kg}})^2/2^{256},\quad s_{\mathrm{kg}}=n(1+k_T+n)+1+k_T+\tbinom n2+n^2\\
@@ -567,7 +633,7 @@ $s_{\mathsf T}=1$ for the top tree and $s_{\mathsf T}=2$ for a bottom tree (\lea
 \mathsf{searchFailure}=(1-p)^L
 \end{align*}}
 
-\paragraph{Security preservation.}
+\paragraph{Security preservation}
 {\small
 \begin{align*}
 \mathsf{dkgError}(q)&=\mathsf{dkgCorrectnessError}(q)+\mathsf{seedGenHashError}(q)+2^{\mathsf{layerHeight}}\,\mathsf{searchFailure}\\
@@ -575,22 +641,32 @@ $s_{\mathsf T}=1$ for the top tree and $s_{\mathsf T}=2$ for a bottom tree (\lea
 \mathsf{privacyHitError}(q)&=\frac{2q\,nk_T+(q+G\,nk_T)\,G\,nk_T+2n k_T^2}{2^{256}}+\tfrac12\,\mathsf{seedGenHashError}(q)\\
 \mathsf{privacyStepError}(\mathsf T,q)&=\frac{2Bh\,u+s_{\mathsf T}k\,(2S+s_{\mathsf T})+B\,nk_T\cdot G\,nk_T}{2^{256}}
 \end{align*}}
-Here $S$, $G$ and $u$ are the PRSS setups, the batches and the hash budget of a game, as in the
-paragraph on correctness below. $\mathsf{privacyHitError}$ is the charge for a counted call that names
-a hidden seed or a hidden salt, and $\mathsf{privacyStepError}$ is the charge for one run that the
-proof replaces by an emulated run. $\mathsf{dkgOverhead}$ is $\mathsf{runLimit}$ times the sum of \lean{treeReductionCalls} over the top
-tree and each bottom tree. With $P_{\mathsf T}=\mathsf{treePoints}(\mathsf T)$, $\ell_h=\mathsf{layerHeight}$,
-and $c=\mathsf{chainCount}$,
+\begin{itemize}
+\item $S$, $G$ and $u$ are the PRSS setups, the batches and the hash budget of a game, as in the
+part on correctness below.
+\item $\mathsf{privacyHitError}$ is the charge for a counted call that names a hidden seed or a
+hidden salt.
+\item $\mathsf{privacyStepError}$ is the charge for one run that the proof replaces by an emulated
+run.
+\item $\mathsf{dkgOverhead}$ is $\mathsf{runLimit}$ times the sum of \lean{treeReductionCalls} over
+the top tree and each bottom tree.
+\end{itemize}
+With $P_{\mathsf T}=\mathsf{treePoints}(\mathsf T)$, $\ell_h=\mathsf{layerHeight}$ and
+$c=\mathsf{chainCount}$,
 \[
  \mathsf{treeReductionCalls}(\mathrm{top})=n\bigl(2k_TP_{\mathrm{top}}+2^{\ell_h+1}-1\bigr),\quad
  \mathsf{treeReductionCalls}(b)=n\bigl(2k_TP_b+2^{\ell_h+2}+3c\bigr).
 \]
-$P_{\mathrm{top}}$ is the number of PRF points of the jobs of the top tree, and $P_b$ is that number
-for the jobs of bottom tree $b$ plus $c$.
+Here $P_{\mathrm{top}}$ is the number of PRF points of the jobs of the top tree. $P_b$ is that
+number for the jobs of bottom tree $b$, plus $c$.
 
-\paragraph{Correctness.} Let $S=\mathsf{runLimit}(1+2\cdot2^{\mathsf{layerHeight}})$ be the PRSS setups of a
-game, $G=\mathsf{runLimit}\sum_{\mathsf T}B(\mathsf T)$ its batches, $K=Gn(R^*+2)$ its honest coin keys, and
-$u=q+Gh$ the history, digest and copy cells.
+\paragraph{Correctness}
+\begin{itemize}
+\item $S=\mathsf{runLimit}(1+2\cdot2^{\mathsf{layerHeight}})$ is the number of PRSS setups of a game.
+\item $G=\mathsf{runLimit}\sum_{\mathsf T}B(\mathsf T)$ is the number of its batches, and
+$K=Gn(R^*+2)$ the number of its honest coin keys.
+\item $u=q+Gh$ counts the history, digest and copy cells.
+\end{itemize}
 {\small
 \begin{align*}
 \mathsf{dkgCorrectnessError}(q)&=\mathsf{seedGenHashError}(q)+\tfrac S2\,\mathsf{prssSetupHashError}\bigl(2q+Sn(4n+k_T)\bigr)\\
@@ -601,23 +677,25 @@ $u=q+Gh$ the history, digest and copy cells.
 \mathsf{batchCheckError}(q,c)&=\mathsf{checkErrorOf}(\mathsf{coins}(c),R_c,2q+2K)+\frac{(R_c+2)(2q+4K+R_c+2)}{2^{256}}\\
 &\quad+\frac{\ell\,(6q+2Gh+(n+1)\ell)}{2^{256}}
 \end{align*}}
-Here $R_c=\mathsf{halvings}(c)$, $\ell$ is the length of the list of terms, and the maximum runs over the
-tuple counts of all batches (\lean{batchCounts}). The first three terms pay inconsistent seeds and
-the stream-key event of the PRSS setups. The four fractions pay a collision of two echo hashes, of two
-derived keys, of two copy hashes and of two history or digest cells.
-$\mathsf{runError}$ pays the checks of the batches and a repeated hidden key.
+\begin{itemize}
+\item $R_c=\mathsf{halvings}(c)$, and $\ell$ is the length of the list of terms.
+\item The maximum runs over the tuple counts of all batches (\lean{batchCounts}).
+\item The first three terms pay inconsistent seeds and the stream-key event of the PRSS setups.
+\item The four fractions pay a collision of two echo hashes, of two derived keys, of two copy hashes
+and of two history or digest cells.
+\item $\mathsf{runError}$ pays the checks of the batches and a repeated hidden key.
+\end{itemize}
 
-\paragraph{Completeness.}
+\paragraph{Completeness}
 {\small
 \begin{align*}
 \mathsf{dkgAbortError}(b)&=\mathsf{derivedKeyCollision}+\mathsf{treeAbortError}(\mathrm{top})+\mathsf{treeAbortError}(b)+\mathsf{searchFailure}\\
 \mathsf{dkgCompletenessError}(b)&=\mathsf{derivedKeyCollision}+\mathsf{treeAbortError}(\mathrm{top})+\mathsf{treeAbortError}(b)
 \end{align*}}
 
-\paragraph{Index of the symbols.} Each name in sans serif is the Lean definition of that name.
-The terms of the setup are in \texttt{Statement/DkgErrors.lean}, and \lean{searchFailure},
-\lean{codewordProbability}, \lean{seedHitError} and \lean{seedCollisionError} are in
-\texttt{Statement/Signing.lean}. The table maps each other symbol to its Lean text.
+\paragraph{Index of the symbols}
+The table maps each symbol to its Lean text. \lean{searchFailure} and \lean{codewordProbability}
+are in \texttt{Statement/Signing.lean}.
 {\footnotesize
 \begin{xltabular}{\textwidth}{@{}lX@{\quad}lX@{}}
 \toprule
@@ -639,7 +717,7 @@ $(R_c+2)(\dots)/2^{256}$ & \lean{soundHashError} &
 The two privacy terms & \lean{privacyHitError}, \lean{privacyStepError} \\
 $(B(R^*+2))^2/2^{257}$ & \lean{coinKeyCollision} &
 $\ell$ & \lean{C.terms.length} \\
-$p$, $L$ & \lean{codewordProbability}, \lean{randomizerAttemptLimit} (leanVM at the pinned revision, \lean{formal/Statement/LeanXmss.lean}) &
+$p$, $L$ & \lean{codewordProbability}, \lean{randomizerAttemptLimit} (leanVM at the pinned revision) &
 $\mathsf{adv}$ & \lean{streamAdvantage} \\
 $P_{\mathsf T}$, $c$, $\ell_h$ & \lean{treePoints}, \lean{chainCount}, \lean{layerHeight} &
 $B_A$ & \lean{dkgReduction} in \texttt{Statement/DkgReduction.lean} \\

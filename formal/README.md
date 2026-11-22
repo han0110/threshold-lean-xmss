@@ -1,26 +1,45 @@
 # formal
 
-Lean 4 statements and proofs of the security claims of threshold leanXMSS. The two signing claims, `dkgCorrectness` and `dkgCompleteness` are proved. The claim `dkgSecurity` is stated. Its cost bound is proved, and no proof of its bound on the win probability is in this tree.
+Lean 4 statements and proofs of the security claims of threshold leanXMSS. Four of the five claims are proved. The fifth, `dkgSecurity`, has a proof of its cost bound and of twelve of the 13 hops of its win bound.
 
 ## The claims
 
 The structure `Theorems` in [Statement/Theorems.lean](./ThresholdLeanXmss/Statement/Theorems.lean) has five fields. Each field is a game with a fixed bound. [statement.tex](./statement.tex) is the guide to the claims.
 
-| Field | Claim | Model in the papers | Bound |
+| Field | Claim | Model in the papers | State |
 | --- | --- | --- | --- |
-| `stronglyUnforgeable` | Signing with a trusted dealer is strongly unforgeable with adaptive corruption. | PRAWNS, Definition 3.2 | Proved, `SigningStronglyUnforgeable.stronglyUnforgeable` |
-| `signingCorrectness` | An honest quorum signs, except for a failed search. | PRAWNS, Section 3.1 | Proved, `signingCorrectness` |
-| `dkgSecurity` | An adversary against the signing game with the real DKG wins at most as often as the named forger `dkgReduction` wins the signing game with the dealer, plus a fixed error. | Gurkan and others, Definition 8 | The cost bound of the forger is proved, `DkgSecurityProof.dkgReduction_cost`. The bound on the win probability is a target. `DkgSecurityProof.dkgSecurity_of_leaves` gives the field from one hop with no proof yet, `SharedStep`. Its error `dkgError` is the sum of the errors of the hops of the proof. |
-| `dkgCorrectness` | Against an adversary, honest operators hold consistent seeds, and each tree output is right or absent. | Gurkan and others, Definition 6 | Proved, `dkgCorrectness` |
-| `dkgCompleteness` | With no corrupt operator, the DKG gives outputs that are near the outputs of the dealer. | None | Proved, `dkgCompleteness` |
+| `stronglyUnforgeable` | Signing with a trusted dealer is strongly unforgeable with adaptive corruption. | PRAWNS, Definition 3.2 | Proved |
+| `signingCorrectness` | An honest quorum signs, except for a failed search. | PRAWNS, Section 3.1 | Proved |
+| `dkgSecurity` | The real DKG gives an adversary no more than the dealer gives the named forger `dkgReduction`, up to a fixed error. | Gurkan and others, Definition 8 | Cost bound proved, win bound open |
+| `dkgCorrectness` | Against an adversary, honest operators hold consistent seeds, and each tree output is right or absent. | Gurkan and others, Definition 6 | Proved |
+| `dkgCompleteness` | With no corrupt operator, the DKG gives outputs that are near the outputs of the dealer. | None | Proved |
 
-The four proved theorems are in the namespace `ThresholdLeanXmssSecurity`. The bound of `dkgSecurity` on the win probability is a target with no proof for the whole game yet, so a proof can change it. The coalition of the DKG is static, and the signing game has adaptive corruption. The claims of the DKG fix the function `Th`, and `stronglyUnforgeable` has `Th` in the random oracle.
+- Each proved field has a theorem with its name, in the namespace `ThresholdLeanXmssSecurity`.
+- The one exception is `SigningStronglyUnforgeable.stronglyUnforgeable`.
+- The coalition of the DKG is static, and the signing game has adaptive corruption.
+- The claims of the DKG fix the function `Th`, and `stronglyUnforgeable` has `Th` in the random oracle.
+
+## The state of `dkgSecurity`
+
+| Part | Proof | State |
+| --- | --- | --- |
+| The cost bound of the forger | `dkgReduction_cost` | Proved |
+| Twelve hops of the chain, with the hop to the forger | `tableHop` and eleven more | Proved |
+| The hop `SharedStep`, in which one real run of a tree becomes an emulated run | None | Open |
+| The field from `SharedStep` | `dkgSecurity_of_leaves` | Proved |
+
+- The win bound is a target until `SharedStep` has a proof, so a proof can change it.
+- The error `dkgError` is the sum of the errors of the 13 hops.
+- [doc/model.md](./doc/model.md), Section 4, lists the hops.
 
 ## Map of the claims
 
 <!-- Update this map when a field of the bundle changes or a claim is proved. -->
 
-Green is proved in this tree. Orange is stated with a target bound. Grey is an assumption. The dashed box has no Lean statement.
+- Green is proved in this tree.
+- Orange is stated with a target bound.
+- Grey is an assumption.
+- The dashed box has no Lean statement.
 
 ```mermaid
 flowchart TB
@@ -56,9 +75,11 @@ flowchart TB
   SUF -->|rules 1 and 4| RULES
 ```
 
-| Box | Reason |
-| --- | --- |
-| Bound of `dkgTsigGame` | A bound δ on the success of `dkgReduction` in `tsigGame` in `world` with the fixed `Th` gives δ plus `dkgError` plus `streamAdvantage` for `dkgTsigGame`. No field gives such a δ, and no small δ holds for each query-bounded adversary with a fixed `Th`. To take the bound of `stronglyUnforgeable` for δ, for an adversary that makes no search on `Th`, is the random-oracle heuristic for `Th`. |
+The dashed box is the end-to-end bound of `dkgTsigGame`.
+
+- A bound δ on the success of `dkgReduction` in `tsigGame`, in `world` with the fixed `Th`, gives δ plus `dkgError` plus `streamAdvantage`.
+- No field gives such a δ. No small δ holds for each query-bounded adversary with a fixed `Th`.
+- To take the bound of `stronglyUnforgeable` for δ is the random-oracle heuristic for `Th`. It applies to an adversary that makes no search on `Th`.
 
 ## Files
 
@@ -75,10 +96,10 @@ flowchart TB
 | [ThresholdLeanXmss/Scheme.lean](./ThresholdLeanXmss/Scheme.lean) | The protocol, the oracles and the dealer `dealerKeyGen` |
 | [ThresholdLeanXmss/Ideal.lean](./ThresholdLeanXmss/Ideal.lean) | The oracles of the signing game and its win test |
 | [ThresholdLeanXmss/Reductions.lean](./ThresholdLeanXmss/Reductions.lean) | `prgReduction`, the fixed reduction of the PRF term |
-| [ThresholdLeanXmssSecurity.lean](./ThresholdLeanXmssSecurity.lean) | The root of the proof library. It imports the proof of each proved field and checks the axioms of each proved theorem with `#guard_msgs`. |
+| [ThresholdLeanXmssSecurity.lean](./ThresholdLeanXmssSecurity.lean) | The root of the proof library. It checks the axioms of the four proved field theorems with `#guard_msgs`. |
 | [ThresholdLeanXmssSecurity/Proof/](./ThresholdLeanXmssSecurity/Proof/) | The proofs |
 | [ThresholdLeanXmssSecurity/Base/](./ThresholdLeanXmssSecurity/Base/) | The definitions that the proofs use and that the statement layer does not hold |
-| [statement.tex](./statement.tex) | The guide to the claims, about 12 pages |
+| [statement.tex](./statement.tex) | The guide to the claims |
 | [doc/model.md](./doc/model.md) | The model of the five claims |
 | [doc/differences.md](./doc/differences.md) | Each difference to GS20, PRAWNS, the note, leanXMSS and Gurkan and others |
 
@@ -89,4 +110,4 @@ cd formal
 lake build   # build both default targets, ThresholdLeanXmss and ThresholdLeanXmssSecurity
 ```
 
-The root module of the proof library fails the build unless each proved theorem depends only on `propext`, `Classical.choice` and `Quot.sound`.
+The root module of the proof library fails the build unless each of the four proved field theorems depends only on `propext`, `Classical.choice` and `Quot.sound`.
