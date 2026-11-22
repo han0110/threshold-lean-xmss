@@ -387,7 +387,7 @@ theorem dkgError_nonneg (C : Committee) (q : ℕ) : 0 ≤ dkgError (E := E) circ
     unfold dkgCorrectnessError seedGenHashError prssSetupHashError freshKeyError prssRandHashError echoError
       reuseError copyError
     positivity
-  unfold dkgError privacyHitError privacyStepError seedGenHashError
+  unfold dkgError privacyHitError privacyStepError seedGenHashError copyError
   positivity
 
 omit [DecidableEq E] in

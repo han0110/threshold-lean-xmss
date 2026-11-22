@@ -99,6 +99,7 @@ The proof of `dkgSecurity` is a chain of 13 hops (`Proof/DkgSecurity/Shared/Hops
 - Its other parts are one failed search of the dealer for each bottom tree and the two privacy terms.
 - It grows with the third power of the run limit, through the PRSS setup term of `dkgCorrectnessError`.
 - The privacy term `privacyStepError` belongs to the open hop, so a proof can change it.
+- Its last term is four times `copyError`, and it is quadratic in the budget $q$.
 
 ## 5. What the model does not cover
 

@@ -406,14 +406,17 @@ The field from \lean{SharedStep} & \lean{dkgSecurity_of_leaves} & Proved \\
 \item The privacy term $\mathsf{privacyStepError}$ belongs to the open hop, so a proof can change it.
 \item Through $\mathsf{dkgCorrectnessError}$ the error grows with the third power of the run limit.
 This comes from the proof method for the PRSS setups.
+\item The last term of $\mathsf{privacyStepError}$ is quadratic in $q$.
+\item At the second point of Table~\ref{tab:dkgerror} with $q=2^{70}$, the sum of the step terms is
+about $2^{-95.0}$.
 \end{itemize}
 \begin{table}[h]\centering\small
 \begin{tabular}{lll}
 \toprule
 Committee, run limit, $q$ & $\mathsf{dkgError}$ & Of it the two privacy terms \\
 \midrule
-$n=3$, $\mathsf{runLimit}=4$, $q=0$ & $2^{-103.2}$ & $2^{-211.7}$ and $2^{-208.5}$ \\
-$n=33$, $\mathsf{runLimit}=8$, $q=2^{64}$ & $2^{-102.1}$ & $2^{-129.0}$ and $2^{-134.8}$ \\
+$n=3$, $\mathsf{runLimit}=4$, $q=0$ & $2^{-103.2}$ & $2^{-211.7}$ and $2^{-189.7}$ \\
+$n=33$, $\mathsf{runLimit}=8$, $q=2^{64}$ & $2^{-102.1}$ & $2^{-129.0}$ and $2^{-107.0}$ \\
 \bottomrule
 \end{tabular}
 \caption{The value of $\mathsf{dkgError}$ for one batch for each ceremony and $2^{20}$ tuples in a batch.}\label{tab:dkgerror}
@@ -639,7 +642,7 @@ over all ceremonies (\lean{maxBatch}).
 \mathsf{dkgError}(q)&=\mathsf{dkgCorrectnessError}(q)+\mathsf{seedGenHashError}(q)+2^{\mathsf{layerHeight}}\,\mathsf{searchFailure}\\
 &\quad+\mathsf{privacyHitError}(q)+\mathsf{runLimit}\textstyle\sum_{\mathsf T}\mathsf{privacyStepError}(\mathsf T,q)\\
 \mathsf{privacyHitError}(q)&=\frac{2q\,nk_T+(q+G\,nk_T)\,G\,nk_T+2n k_T^2}{2^{256}}+\tfrac12\,\mathsf{seedGenHashError}(q)\\
-\mathsf{privacyStepError}(\mathsf T,q)&=\frac{2Bh\,u+s_{\mathsf T}k\,(2S+s_{\mathsf T})+B\,nk_T\cdot G\,nk_T}{2^{256}}
+\mathsf{privacyStepError}(\mathsf T,q)&=\frac{2Bh\,u+s_{\mathsf T}k\,(2S+s_{\mathsf T})+B\,nk_T\cdot G\,nk_T}{2^{256}}+\frac{4u^2}{2^{256}}
 \end{align*}}
 \begin{itemize}
 \item $S$, $G$ and $u$ are the PRSS setups, the batches and the hash budget of a game, as in the
@@ -648,6 +651,9 @@ part on correctness below.
 hidden salt.
 \item $\mathsf{privacyStepError}$ is the charge for one run that the proof replaces by an emulated
 run.
+\item Its last term is four times \lean{copyError}.
+\item That term pays a collision of two history, digest or copy cells of the real run and of the
+emulated run.
 \item $\mathsf{dkgOverhead}$ is $\mathsf{runLimit}$ times the sum of \lean{treeReductionCalls} over
 the top tree and each bottom tree.
 \end{itemize}

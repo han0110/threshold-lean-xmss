@@ -289,12 +289,15 @@ def privacyHitError (C : Committee) (q : ℕ) : ℝ :=
 
 /-- The error of one run of `tree` that becomes an emulated run. The emulated run makes history,
 digest and copy cells that the real run does not make, a setup of the run repeats a hidden key of
-another setup, or a salt of the run repeats a salt of another check. -/
+another setup, or a salt of the run repeats a salt of another check. The last term pays a collision
+of two history and digest cells or of two copy cells among the cells of the real run and of the
+emulated run. -/
 def privacyStepError (C : Committee) (tree : Tree) (q : ℕ) : ℝ :=
   ((2 * treeBatches settings tree * termHashes C * splitBudget settings runLimit C q +
     treeSetups tree * prssKeyCount C * (2 * gameSetups runLimit + treeSetups tree) +
     treeBatches settings tree * (C.n * termCount C) *
-      (gameBatches settings runLimit * (C.n * termCount C)) : ℕ) : ℝ) / 2 ^ 256
+      (gameBatches settings runLimit * (C.n * termCount C)) : ℕ) : ℝ) / 2 ^ 256 +
+    4 * copyError settings runLimit C q
 
 /-- The error of `DkgSecurity`. It is the error of `DkgCorrectness`, one hash error of the seed
 generation, one failed search of the dealer for each bottom tree, one first hit, and one emulated
