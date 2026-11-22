@@ -190,7 +190,7 @@ Let $k$ be the number of chains with $p_l < 3$. Then $23 \le k \le 58$, and $k \
 
 ## 4. Security
 
-The signing targets the unforgeability of a threshold one-time signature, the game of [BBDLN26, Def. 3.2, Fig. 3](https://eprint.iacr.org/2026/2142). No complete proof exists.
+The signing targets the unforgeability of a threshold one-time signature, the game of [BBDLN26, Def. 3.2, Fig. 3](https://eprint.iacr.org/2026/2142). Lean proves the formal claim of 4.2 in `formal/`, for the signing with a trusted dealer. No theorem joins it with the claims of the key generation.
 
 The formal claim replaces the threshold PRF property below by the terms of a call on a hidden key. The reduction of [BBDLN26, Thm. 3.1](https://eprint.iacr.org/2026/2142) uses two properties.
 

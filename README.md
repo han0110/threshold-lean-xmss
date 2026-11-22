@@ -11,7 +11,7 @@ This repository implements threshold t-of-(2t-1) leanXMSS (EIP-8450) base on the
 
 See [`doc/dkg.md`](doc/dkg.md) for the DKG and [`doc/sign.md`](doc/sign.md) for signing.
 
-[`formal/`](formal) holds the Lean 4 statements of five security claims of the protocol, as games in one model. Two claims cover the signing with a trusted dealer, and Lean proves both. Three claims cover the DKG on the real network with a static coalition. Lean proves the correctness against an adversary and the completeness of an honest run. For the third claim, the security of the signing with the DKG, Lean proves the cost bound of the reduction, and no proof of its bound on the win probability is in `formal/`. See [`formal/README.md`](formal/README.md).
+[`formal/`](formal) holds the Lean 4 statements of five security claims of the protocol, as games in one model. Two claims cover the signing with a trusted dealer, and Lean proves both. Three claims cover the DKG on the real network with a static coalition. Lean proves the correctness against an adversary and the completeness of an honest run. For the third claim, the security of the signing with the DKG, Lean proves the cost bound of the reduction and twelve of the 13 hops of its bound on the win probability. One hop has no proof yet. See [`formal/README.md`](formal/README.md).
 
 The Rust code uses leanVM at revision `f95bc21a`, and the Lean statements and proofs use revision `f5f3672f`. leanVM does not make some leanXMSS items public at revision `f95bc21a`, so [`src/lean_xmss.rs`](src/lean_xmss.rs) holds verbatim copies of them.
 

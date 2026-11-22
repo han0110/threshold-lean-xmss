@@ -833,7 +833,7 @@ The key generation targets the security of the trusted dealer of $\mathsf{KeyGen
 
 `dkgCorrectness` bounds inconsistent seeds and wrong tree outputs against the adversary. `dkgCompleteness` bounds the abort of an honest run and its distance to the dealer.
 
-The three claims are stated and not proved in `formal/`. The bounds of `dkgSecurity` and `dkgCorrectness` are targets, and a proof can change them.
+Lean proves `dkgCorrectness` and `dkgCompleteness` in `formal/`. For `dkgSecurity`, it proves the cost bound of the forger and twelve of the 13 hops of the bound on the win probability. That bound is a target until the last hop has a proof, and a proof can change it.
 
 The claims cover only $n = 2t - 1$ and a classical adversary. The "Model" section of [`formal/ThresholdLeanXmss/Statement/Theorems.lean`](../formal/ThresholdLeanXmss/Statement/Theorems.lean) gives the full model.
 
@@ -850,7 +850,7 @@ The check misses a wrong tuple with probability at most $(d + 2(m+1)) / (2^{128}
 
 Two PRSS keys give the same 128-bit AES key with probability at most $k^2 / 2^{129}$, for the $k$ PRSS keys of a ceremony.
 
-`dkgSecurity` and `dkgCorrectness` assume that AES-128 is a multi-key PRF on the hidden PRSS keys, and its advantage `streamAdvantage` is a term of their target bounds. The budget $q$ counts oracle calls, not time.
+`dkgSecurity` and `dkgCorrectness` assume that AES-128 is a multi-key PRF on the hidden PRSS keys, and its advantage `streamAdvantage` is a term of their bounds. The budget $q$ counts oracle calls, not time.
 
 The three claims run the real network, with the real PRSS setups and the real checks. No claim is in a hybrid model.
 
