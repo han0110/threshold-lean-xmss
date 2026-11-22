@@ -9,19 +9,19 @@ This note gives the signing protocol. It needs no MPC. It uses the threshold PRF
 
 ### 1.1 Symbols
 
-| symbol                                                                   | meaning                                                                      |
-| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
-| $J$                                                                      | the quorum, a set of $t$ operators that sign together                        |
-| $m$                                                                      | the message, 32 bytes                                                        |
-| $e$                                                                      | the index of the one-time key that signs, used for one message only          |
-| $P$                                                                      | the public parameter                                                         |
-| $\mathrm{Th}(P, A, M)$                                                   | the tweakable hash of [Wam26](#references) at address $A$ on input $M$       |
-| $x_{l,p} = A_{\mathrm{prf}}(e, l, p)$                                    | the PRF input of position $p$ on chain $l$, for $l < 58$ and $p < 4$         |
-| $A_{\mathrm{rnd}}(e, s)$, $A_{\mathrm{msg}}(e)$                          | the addresses of the randomizer, at step $s$, and of the message digest      |
-| $A_{\mathrm{rnd}}(e) = A_{\mathrm{rnd}}(e, 0)$                           | the input of the randomizer value                                            |
-| $`F(x) = \bigoplus_T H(\mathrm{seed}_T \,\Vert\, x)`$                    | the threshold PRF                                                            |
-| $`\mathrm{cpk}_e`$, $c_e$                                                | the public outputs of the key generation for key $e$, see [`dkg.md`](dkg.md) |
-| $`f_{l,p}(y) = \mathrm{Th}(P, A_{\mathrm{chain}}(e, p), y \,\Vert\, l)`$ | the chain step from position $p$ to $p + 1$ on chain $l$                     |
+| symbol                                                                                 | meaning                                                                      |
+| -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| $J$                                                                                    | the quorum, a set of $t$ operators that sign together                        |
+| $m$                                                                                    | the message, 32 bytes                                                        |
+| $e$                                                                                    | the index of the one-time key that signs, used for one message only          |
+| $P$                                                                                    | the public parameter                                                         |
+| $\mathrm{Th}(P, A, M)$                                                                 | the tweakable hash of [Wam26](#references) at address $A$ on input $M$       |
+| $x_{l,p} = A_{\mathrm{prf}}(e, l, p)$                                                  | the PRF input of position $p$ on chain $l$, for $l < 58$ and $p < 4$         |
+| $A_{\mathrm{rnd}}(e, s)$, $A_{\mathrm{msg}}(e)$                                        | the addresses of the randomizer, at step $s$, and of the message digest      |
+| $A_{\mathrm{rnd}}(e) = A_{\mathrm{rnd}}(e, 0)$                                         | the input of the randomizer value                                            |
+| $`F(x) = \bigoplus_T H(\texttt{"thlxmss-prf"} \,\Vert\, \mathrm{seed}_T \,\Vert\, x)`$ | the threshold PRF                                                            |
+| $`\mathrm{cpk}_e`$, $c_e$                                                              | the public outputs of the key generation for key $e$, see [`dkg.md`](dkg.md) |
+| $`f_{l,p}(y) = \mathrm{Th}(P, A_{\mathrm{chain}}(e, p), y \,\Vert\, l)`$               | the chain step from position $p$ to $p + 1$ on chain $l$                     |
 
 ### 1.2 Inputs
 
@@ -35,7 +35,7 @@ Signer $P_i$ holds two kinds of secret keys, as in the key generation.
 - It holds $`\mathrm{seed}_T`$ for each term $T$ with $i \notin T$.
 - It holds $K_{ij} = K_{ji}$ for each other operator $j$.
 
-## 2. Gadgets
+## 2. Building blocks
 
 ### 2.1 Eval
 
@@ -52,8 +52,10 @@ L_i = \{\, T \in \mathcal T : \min (J \setminus T) = i \,\}
 
 The part of $P_i$ adds its terms and one mask for each co-signer.
 ```math
-y_i = \bigoplus_{T \in L_i} H(\mathrm{seed}_T \,\Vert\, x) \ \oplus \bigoplus_{j \in J \setminus \{i\}} H(K_{ij} \,\Vert\, x \,\Vert\, m \,\Vert\, J)
+y_i = \bigoplus_{T \in L_i} H(\texttt{"thlxmss-prf"} \,\Vert\, \mathrm{seed}_T \,\Vert\, x) \ \oplus \bigoplus_{j \in J \setminus \{i\}} H(\texttt{"thlxmss-mask"} \,\Vert\, K_{ij} \,\Vert\, x \,\Vert\, m \,\Vert\, J)
 ```
+
+Each $\texttt{"name"}$ is a tag block of 32 bytes, as [`dkg.md`, 1.1.4](dkg.md#114-keys-and-pseudorandom-streams) defines. The two tags are a difference from the note, which defines the PRF and the masks with no tag.
 
 #### Correctness
 
@@ -69,12 +71,12 @@ So shares of $F(x)$ for two different messages do not combine to $F(x)$.
 <details>
 <summary>Example 2-of-3</summary>
 
-For $`J = \{0, 1\}`$, the terms are $`\{0\}`$, $`\{1\}`$ and $`\{2\}`$. Let $`M = H(K_{01} \,\Vert\, x \,\Vert\, m \,\Vert\, J)`$.
+For $`J = \{0, 1\}`$, the terms are $`\{0\}`$, $`\{1\}`$ and $`\{2\}`$. Let $`M = H(\texttt{"thlxmss-mask"} \,\Vert\, K_{01} \,\Vert\, x \,\Vert\, m \,\Vert\, J)`$.
 
-| signer | $L_i$                | $y_i$                                                                     |
-| ------ | -------------------- | ------------------------------------------------------------------------- |
-| $P_0$  | $`\{1\}`$, $`\{2\}`$ | $`H(\mathrm{seed}_1 \Vert x) \oplus H(\mathrm{seed}_2 \Vert x) \oplus M`$ |
-| $P_1$  | $`\{0\}`$            | $`H(\mathrm{seed}_0 \Vert x) \oplus M`$                                   |
+| signer | $L_i$                | $y_i$                                                                                                                               |
+| ------ | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| $P_0$  | $`\{1\}`$, $`\{2\}`$ | $`H(\texttt{"thlxmss-prf"} \Vert \mathrm{seed}_1 \Vert x) \oplus H(\texttt{"thlxmss-prf"} \Vert \mathrm{seed}_2 \Vert x) \oplus M`$ |
+| $P_1$  | $`\{0\}`$            | $`H(\texttt{"thlxmss-prf"} \Vert \mathrm{seed}_0 \Vert x) \oplus M`$                                                                |
 
 </details>
 
@@ -113,15 +115,30 @@ F(x) = \bigoplus_{i \in J} y_i
 <details>
 <summary>Example 2-of-3</summary>
 
-With the parts above, $`y_0 \oplus y_1 = H(\mathrm{seed}_0 \Vert x) \oplus H(\mathrm{seed}_1 \Vert x) \oplus H(\mathrm{seed}_2 \Vert x) = F(x)`$, because $M \oplus M = 0$.
+With the parts above, $`y_0 \oplus y_1 = H(\texttt{"thlxmss-prf"} \Vert \mathrm{seed}_0 \Vert x) \oplus H(\texttt{"thlxmss-prf"} \Vert \mathrm{seed}_1 \Vert x) \oplus H(\texttt{"thlxmss-prf"} \Vert \mathrm{seed}_2 \Vert x) = F(x)`$, because $M \oplus M = 0$.
 
 </details>
 
 ## 3. Protocol
 
-The quorum $J$ signs $m$ at key $e$ in 2 rounds. Each signer runs the same steps, and each signer aborts alone.
+The quorum $J$ signs $m$ at key $e$ in 2 rounds, after all operators agree on $(e, m)$. The note [Wam26, Section 2.3] assumes this agreement by consensus, and it does not count it as a round. Section 3.1 gives the form of the agreement that the code has. Rounds 1 and 2 run in $J$. Each signer runs the same steps, and each signer aborts alone.
 
-### 3.1 Round 1, the randomizer value
+### 3.1 The agreement on the message
+
+Let $f = t - 1$ and $Q = \lfloor (n + f)/2 \rfloor + 1$, the least integer above $(n + f)/2$. For $n = 3$, $Q = 3$.
+
+1. $P_i$ acknowledges one message for each key. It saves $(e, m)$ to disk with an exclusive create before it sends anything. If it saved another message at $e$, it refuses.
+2. $P_i$ sends its acknowledgement of $(e, m)$ to each other operator. The acknowledgement is $e$ as 4 little-endian bytes and then $m$. A refusing operator sends an empty acknowledgement.
+3. $P_i$ saves a certificate of $(e, m)$ when $Q$ different operators, $P_i$ included, acknowledge exactly $(e, m)$.
+4. A signer aborts round 1 unless it holds a certificate of $(e, m)$.
+
+Two sets of $Q$ operators share at least $2Q - n > f$ operators, so they share an honest operator. So no two honest signers hold certificates of two messages at one key. A second request for the same $(e, m)$ uses the saved acknowledgement and certificate again.
+
+The note [Wam26, Section 2.3] has this step as "agree, by consensus, on (slot, m)". It names no protocol for it and does not count it as a round. The exchange of acknowledgements is one way to do that step with no other consensus layer. A deployment that has a consensus layer for the message can use it in place of the exchange.
+
+The exchange is not in [BBDLN26](https://eprint.iacr.org/2026/2142) or in the leanSPHINCS prototype. Its count follows the condition $t > (n + f)/2$ of [BBDLN26, Sec. 1](https://eprint.iacr.org/2026/2142), applied to the acknowledgements in place of the signature threshold.
+
+### 3.2 Round 1, the randomizer value
 
 1. $P_i$ computes $`y_i = \mathsf{Eval}_i(A_{\mathrm{rnd}}(e), m, J)`$ and sends it to each other signer.
 2. $P_i$ computes $`\rho_e = \mathsf{Combine}(\{y_j\}_{j \in J})`$, which is $F(A_{\mathrm{rnd}}(e))$.
@@ -130,7 +147,7 @@ The quorum $J$ signs $m$ at key $e$ in 2 rounds. Each signer runs the same steps
 \mathrm{Th}\big( P,\ A_{\mathrm{rnd}}(e, 1),\ \rho_e \,\Vert\, 0 \big) = c_e
 ```
 
-### 3.2 Grinding, with no message
+### 3.3 Grinding, with no message
 
 4. $P_i$ computes the start of the search.
 ```math
@@ -144,7 +161,7 @@ d = \mathrm{Th}\big( P,\ A_{\mathrm{msg}}(e),\ m \,\Vert\, R \big)
 
 All signers find the same $R$, because the search is a function of $\rho_e$ and $m$.
 
-### 3.3 Round 2, the chain values
+### 3.4 Round 2, the chain values
 
 7. For each chain $l$ with $p_l < 3$, $P_i$ computes $`y_{i,l} = \mathsf{Eval}_i(x_{l,p_l}, m, J)`$. It sends all $y_{i,l}$ to each other signer.
 8. $P_i$ computes $`F(x_{l,p_l}) = \mathsf{Combine}(\{y_{j,l}\}_{j \in J})`$ and the chain value $\sigma_l$.
@@ -156,25 +173,26 @@ All signers find the same $R$, because the search is a function of $\rho_e$ and 
 f_{l,2} \circ \dots \circ f_{l,p_l}(\sigma_l) = \mathrm{cpk}_e[l, 3] \quad \text{for each } l
 ```
 
-### 3.4 Output
+### 3.5 Output
 
 10. The bottom layer signature is $(R, \sigma_0, \dots, \sigma_{57})$ with the Merkle path of key $e$.
 11. The signature is $e$, the bottom layer signature and the stored top layer signature. It is a plain leanXMSS signature of 2,404 bytes.
 
-### 3.5 Cost
+### 3.6 Cost
 
 Let $k$ be the number of chains with $p_l < 3$. Then $23 \le k \le 58$, and $k \approx 37$ on average.
 
-| round | each signer sends to each other signer | bits    |
-| ----- | -------------------------------------- | ------- |
-| 1     | $y_i$ at $A_{\mathrm{rnd}}(e)$         | $128$   |
-| 2     | $y_{i,l}$ for $k$ chains               | $128 k$ |
+| round     | each signer sends to each other signer      | bits    |
+| --------- | ------------------------------------------- | ------- |
+| agreement | $(e, m)$, also to the operators outside $J$ | $288$   |
+| 1         | $y_i$ at $A_{\mathrm{rnd}}(e)$              | $128$   |
+| 2         | $y_{i,l}$ for $k$ chains                    | $128 k$ |
 
 ## 4. Security
 
-The signing targets the unforgeability of a threshold one-time signature, the game of [BBDLN26, Def. 3.2, Fig. 3](https://eprint.iacr.org/2026/2142). No complete proof exists.
+The signing targets the unforgeability of a threshold one-time signature, the game of [BBDLN26, Def. 3.2, Fig. 3](https://eprint.iacr.org/2026/2142). Lean proves the formal claim of 4.2 in `formal/`, for the signing with a trusted dealer. No theorem joins it with the claims of the key generation.
 
-The reduction of [BBDLN26, Thm. 3.1](https://eprint.iacr.org/2026/2142) uses two properties.
+The formal claim replaces the threshold PRF property below by the terms of a call on a hidden key. The reduction of [BBDLN26, Thm. 3.1](https://eprint.iacr.org/2026/2142) uses two properties.
 
 - The threshold PRF is secure [BBDLN26, Def. 2.2](https://eprint.iacr.org/2026/2142). Its replicated construction with masks is secure in the random-oracle model [BBDLN26, Thm. 5.1](https://eprint.iacr.org/2026/2142).
 - The one-time signature is secure. Here it is leanXMSS [Wam26](#references), in place of the Winternitz scheme of [BBDLN26, Sec. 3.1](https://eprint.iacr.org/2026/2142).
@@ -184,14 +202,20 @@ The game differs from [BBDLN26, Fig. 3](https://eprint.iacr.org/2026/2142) in th
 - $\mathsf{Eval}$ and the signing oracle take the quorum $J$, as [BBDLN26, Sec. 4](https://eprint.iacr.org/2026/2142) allows.
 - Line 8 of the game requires $t > (n + \lvert D \rvert)/2$, which fails for $n = 2t - 1$, $\lvert D \rvert = t - 1$ and $t \ge 2$.
   - So the game drops line 8.
-  - In its place, honest operators sign at most one message for each key, over all quorums and also after an abort, as [Wam26](#references) assumes.
+  - In its place, the honest operators agree on one message for each key, as 4.1 describes.
 - [BBDLN26, Sec. 3.4](https://eprint.iacr.org/2026/2142) samples the randomizer key by a commit-reveal in the quorum. Here $c_e$ from the key generation fixes the randomizer value $F(A_{\mathrm{rnd}}(e))$.
 
-So signing the same $m$ again at key $e$ gives the same signature, and signing another message at $e$ breaks the one-time rule.
-
-A production implementation must enforce this one-message rule.
+So signing the same $m$ again at key $e$ gives the same signature.
 
 The signing claim covers adaptive corruptions [BBDLN26, Def. 3.2](https://eprint.iacr.org/2026/2142) of at most $t - 1$ operators over the lifetime of the key. It is separate from the key generation claims of [`dkg.md`, Section 3.3](dkg.md#33-security). The adversary gets every public output of the key generation.
+
+### 4.1 Authorization
+
+Each honest operator signs at most one message, but two quorums can have different honest operators. For example, with $`D = \{0\}`$ in a 2-of-3 committee, the quorums $`\{0, 1\}`$ and $`\{0, 2\}`$ can sign two messages at one key. So the honest operators must agree on $(e, m)$ before any of them sends a part. The note assumes this agreement by consensus [Wam26, Section 2.3]. The formal game models it as the map `bound` of `tsigOracles`. The code does it with the exchange of acknowledgements of 3.1. The exchange gives no liveness. It waits for an answer from each operator. A refusing operator sends an empty acknowledgement, so the exchange tolerates $n - Q$ refusals. One silent operator stops it.
+
+### 4.2 The formal claim
+
+The formal claim `ThresholdLeanXmssStronglyUnforgeable` models $\mathrm{Th}$ as a random oracle. Its budget $q$ counts only the own calls of the forger and its round-2 requests. This count holds on every path of the forger program and for every answer. The bound is $(q + 2^{15} + 384) / 2^{127}$ plus two terms for the hidden keys and seeds. One term pays a call on a hidden key or seed, and the other pays two equal keys. A forgery wins if it verifies and is fresh. It is fresh if fewer than $t$ operators can give chain parts for its message at its key, or if it differs from the canonical honest signature at its key. This count holds each corrupt operator and each honest operator that released a part. The "Model" section of [`formal/ThresholdLeanXmss/Statement/Theorems.lean`](../formal/ThresholdLeanXmss/Statement/Theorems.lean) gives the full model.
 
 ## References
 

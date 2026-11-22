@@ -1,17 +1,18 @@
 mod check;
 mod circuit;
 mod dkg;
+mod lean_xmss;
 mod mpc;
 mod net;
 mod prawns;
 mod serve;
-mod xmss;
+mod wots;
 
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::process::exit;
 use std::str::FromStr;
-use std::thread;
+use std::{io, thread};
 
 use clap::{ArgGroup, Parser};
 use dkg::BATCH_SIZE;
@@ -22,21 +23,14 @@ use tokio::net::TcpStream;
 use tracing_forest::ForestLayer;
 use tracing_forest::printer::{MakeStderr, PrettyPrinter};
 use tracing_forest::tag::NoTag;
+use tracing_subscriber::filter::filter_fn;
+use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{EnvFilter, Registry};
+use tracing_subscriber::{EnvFilter, Layer, Registry, fmt};
 
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
-
-// Vendored from https://github.com/leanEthereum/leanVM/blob/1acdff19dffcaaf1642e88a9e9b522b415425168/crates/bench/src/allocator.rs
-/// jemalloc's configuration, which it reads before its first allocation.
-///
-/// - Dirty pages never decay, so freed memory never returns to the kernel.
-/// - jemalloc reads a C string pointer here.
-/// - A reference to a byte array is that pointer, with no length beside it.
-#[unsafe(export_name = "_rjem_malloc_conf")]
-static MALLOC_CONF: &[u8; 18] = b"dirty_decay_ms:-1\0";
 
 #[derive(Parser)]
 #[command(about = "A t-of-(2t - 1) threshold leanXMSS key (EIP-8450)")]
@@ -45,10 +39,7 @@ enum Command {
     Serve {
         #[arg(long, help = "The host:port of this operator for the other operators")]
         addr: String,
-        #[arg(
-            long,
-            help = "The host:port of this operator for admin commands, none if not given"
-        )]
+        #[arg(long, help = "The host:port of this operator for admin commands, none if not given")]
         admin: Option<String>,
         #[arg(
             long,
@@ -79,9 +70,7 @@ enum Command {
         )]
         concurrency: NonZeroUsize,
     },
-    #[command(
-        about = "Generates the key and its top tree, or one bottom tree, and prints the public key"
-    )]
+    #[command(about = "Generates the key and its top tree, or one bottom tree, and prints the public key")]
     #[command(group = ArgGroup::new("tree").required(true).args(["top", "bottom"]))]
     Dkg {
         #[arg(long, help = "The admin host:port of an operator")]
@@ -138,10 +127,16 @@ async fn main() {
                 .with_default_directive(tracing::Level::INFO.into())
                 .from_env_lossy(),
         )
-        .with(ForestLayer::new(
-            PrettyPrinter::new().writer(MakeStderr),
-            NoTag,
-        ))
+        .with(ForestLayer::new(PrettyPrinter::new().writer(MakeStderr), NoTag))
+        // The forest printer gives a span only the time in which it runs. This layer prints the
+        // busy time and the idle time of each span when it closes, and their sum is the elapsed
+        // time.
+        .with(
+            fmt::layer()
+                .with_span_events(FmtSpan::CLOSE)
+                .with_writer(io::stderr)
+                .with_filter(filter_fn(|metadata| metadata.is_span())),
+        )
         .init();
     match Command::parse() {
         Command::Serve {
@@ -193,7 +188,7 @@ async fn main() {
             )
         }
         Command::Verify { pk, msg, sig } => {
-            let valid = xmss::verify(&pk.0, &msg.0, &sig.0);
+            let valid = wots::verify(&pk.0, &msg.0, &sig.0);
             println!("{valid}");
             exit(!valid as i32);
         }

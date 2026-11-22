@@ -5,12 +5,12 @@ defaultTargets = ["ThresholdLeanXmss", "ThresholdLeanXmssSecurity"]
 [[require]]
 name = "VCVio"
 git = "https://github.com/Verified-zkEVM/VCVio.git"
-rev = "cbd4144"
+rev = "5f9baf12d29d25ef7e754765d28030d53e728aac"
 
 [[require]]
 name = "lean-xmss-security"
 git = "https://github.com/leanEthereum/leanVM.git"
-rev = "1acdff19dffcaaf1642e88a9e9b522b415425168"
+rev = "f5f3672f2b72d3f89dbbaeff18a53a73c975d620"
 subDir = "formal/lean_xmss"
 
 [[lean_lib]]
@@ -18,3 +18,7 @@ name = "ThresholdLeanXmss"
 
 [[lean_lib]]
 name = "ThresholdLeanXmssSecurity"
+globs = ["ThresholdLeanXmssSecurity.*"]
+# This linter computes the normal form of the type of each bound variable. It gives no warning in the
+# proofs and costs up to half of the build time of a large module. The editor still runs it.
+weakLeanArgs = ["-Dlinter.constructorNameAsVariable=false"]

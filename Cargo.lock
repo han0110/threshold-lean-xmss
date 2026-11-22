@@ -175,6 +175,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "experimental_parallel"
+version = "0.1.0"
+source = "git+https://github.com/leanEthereum/leanVM?rev=f95bc21a4875e10a733f4b2e56f1d4adb81536eb#f95bc21a4875e10a733f4b2e56f1d4adb81536eb"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "experimental_primitives"
+version = "0.1.0"
+source = "git+https://github.com/leanEthereum/leanVM?rev=f95bc21a4875e10a733f4b2e56f1d4adb81536eb#f95bc21a4875e10a733f4b2e56f1d4adb81536eb"
+dependencies = [
+ "experimental_parallel",
+ "fiat_shamir_prover",
+ "keccak256",
+]
+
+[[package]]
+name = "fiat_shamir_prover"
+version = "0.1.0"
+source = "git+https://github.com/leanEthereum/leanVM?rev=f95bc21a4875e10a733f4b2e56f1d4adb81536eb#f95bc21a4875e10a733f4b2e56f1d4adb81536eb"
+dependencies = [
+ "keccak256",
+ "verifier",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -317,10 +344,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
 
 [[package]]
+name = "keccak256"
+version = "0.1.0"
+source = "git+https://github.com/leanEthereum/leanVM?rev=f95bc21a4875e10a733f4b2e56f1d4adb81536eb#f95bc21a4875e10a733f4b2e56f1d4adb81536eb"
+
+[[package]]
 name = "lazy_static"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb"
+
+[[package]]
+name = "lean_xmss"
+version = "0.1.0"
+source = "git+https://github.com/leanEthereum/leanVM?rev=f95bc21a4875e10a733f4b2e56f1d4adb81536eb#f95bc21a4875e10a733f4b2e56f1d4adb81536eb"
+dependencies = [
+ "keccak256",
+]
 
 [[package]]
 name = "libc"
@@ -382,14 +422,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
-name = "parallel"
-version = "0.1.0"
-source = "git+https://github.com/leanEthereum/leanVM?rev=1acdff19dffcaaf1642e88a9e9b522b415425168#1acdff19dffcaaf1642e88a9e9b522b415425168"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "pin-project-lite"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -402,15 +434,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9"
 dependencies = [
  "zerocopy",
-]
-
-[[package]]
-name = "primitives"
-version = "0.1.0"
-source = "git+https://github.com/leanEthereum/leanVM?rev=1acdff19dffcaaf1642e88a9e9b522b415425168#1acdff19dffcaaf1642e88a9e9b522b415425168"
-dependencies = [
- "parallel",
- "serde",
 ]
 
 [[package]]
@@ -484,36 +507,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
-name = "serde"
-version = "1.0.229"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba"
-dependencies = [
- "serde_core",
- "serde_derive",
-]
-
-[[package]]
-name = "serde_core"
-version = "1.0.229"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67dca2c9c51e58a4791a4b1ed58308b39c64224d349a935ab5039aa360942a48"
-dependencies = [
- "serde_derive",
-]
-
-[[package]]
-name = "serde_derive"
-version = "1.0.229"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 3.0.9",
-]
-
-[[package]]
 name = "sharded-slab"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -527,17 +520,6 @@ name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
-
-[[package]]
-name = "signatures"
-version = "0.1.0"
-source = "git+https://github.com/leanEthereum/leanVM?rev=1acdff19dffcaaf1642e88a9e9b522b415425168#1acdff19dffcaaf1642e88a9e9b522b415425168"
-dependencies = [
- "parallel",
- "primitives",
- "rand",
- "serde",
-]
 
 [[package]]
 name = "slab"
@@ -624,12 +606,12 @@ version = "0.1.0"
 dependencies = [
  "aes",
  "clap",
+ "experimental_primitives",
  "futures",
  "hex",
- "parallel",
- "primitives",
+ "keccak256",
+ "lean_xmss",
  "rand",
- "signatures",
  "tikv-jemallocator",
  "tokio",
  "tracing",
@@ -779,6 +761,11 @@ name = "valuable"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
+
+[[package]]
+name = "verifier"
+version = "0.1.0"
+source = "git+https://github.com/leanEthereum/leanVM?rev=f95bc21a4875e10a733f4b2e56f1d4adb81536eb#f95bc21a4875e10a733f4b2e56f1d4adb81536eb"
 
 [[package]]
 name = "wasi"

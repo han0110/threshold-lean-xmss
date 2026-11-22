@@ -17,6 +17,6 @@ tracing = "0.1.44"
 tracing-forest = "0.3.1"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
-parallel = { git = "https://github.com/leanEthereum/leanVM", rev = "1acdff19dffcaaf1642e88a9e9b522b415425168" }
-primitives = { git = "https://github.com/leanEthereum/leanVM", rev = "1acdff19dffcaaf1642e88a9e9b522b415425168" }
-signatures = { git = "https://github.com/leanEthereum/leanVM", rev = "1acdff19dffcaaf1642e88a9e9b522b415425168" }
+keccak256 = { git = "https://github.com/leanEthereum/leanVM", rev = "f95bc21a4875e10a733f4b2e56f1d4adb81536eb" }
+lean_xmss = { git = "https://github.com/leanEthereum/leanVM", rev = "f95bc21a4875e10a733f4b2e56f1d4adb81536eb" }
+primitives = { package = "experimental_primitives", git = "https://github.com/leanEthereum/leanVM", rev = "f95bc21a4875e10a733f4b2e56f1d4adb81536eb" }

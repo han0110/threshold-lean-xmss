@@ -6,10 +6,14 @@
 This repository implements threshold t-of-(2t-1) leanXMSS (EIP-8450) base on the [leanXMSS note](https://github.com/TomWambsgans/sphincs.art/blob/9a528527d2d0ea41d2b3b322d2548c0828569a6d/leanXMSS.tex).
 
 - Key generation is an honest-majority MPC over the replicated secret sharing of [Cramer, Damgard and Ishai](https://doi.org/10.1007/978-3-540-30576-7_19).
-- The batch check of [Goyal and Song](https://eprint.iacr.org/2020/134) makes the MPC secure against malicious operators, with abort.
+- The batch check of [Goyal and Song](https://eprint.iacr.org/2020/134) is the defense of the MPC against malicious operators, with abort.
 - Signing uses the threshold PRF of [PRAWNS](https://eprint.iacr.org/2026/2142) and needs no MPC.
 
 See [`doc/dkg.md`](doc/dkg.md) for the DKG and [`doc/sign.md`](doc/sign.md) for signing.
+
+[`formal/`](formal) holds the Lean 4 statements of five security claims of the protocol, as games in one model. Two claims cover the signing with a trusted dealer, and Lean proves both. Three claims cover the DKG on the real network with a static coalition. Lean proves the correctness against an adversary and the completeness of an honest run. For the third claim, the security of the signing with the DKG, Lean proves the cost bound of the reduction and twelve of the 13 hops of its bound on the win probability. One hop has no proof yet. See [`formal/README.md`](formal/README.md).
+
+The Rust code uses leanVM at revision `f95bc21a`, and the Lean statements and proofs use revision `f5f3672f`. leanVM does not make some leanXMSS items public at revision `f95bc21a`, so [`src/lean_xmss.rs`](src/lean_xmss.rs) holds verbatim copies of them.
 
 ## Usage
 
@@ -43,7 +47,7 @@ Generate bottom tree 0, which holds the first 65536 signing leaves.
 target/release/threshold-lean-xmss dkg --admin 127.0.0.1:48360 --bottom 0
 ```
 
-Sign a 32-byte message at a leaf, which prints the signature. Use each leaf for only one sign command, also after a failure. The operators do not record the used leaves.
+Sign a 32-byte message at a leaf, which prints the signature. Each operator records the one message that it acknowledges at a leaf, so a sign command with another message at a used leaf fails.
 
 ```sh
 target/release/threshold-lean-xmss sign --admin 127.0.0.1:48360 --leaf 0 --msg 030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc
@@ -77,24 +81,27 @@ The table gives the cost of one bottom tree, which holds $2^{16}$ one-time keys.
 
 - The CPU is Intel Core i9-13900K. Each operator has $8$ of its threads.
 - Each operator runs $512$ batches at the same time.
-- The wall time is the MPC time of one full bottom tree, as operator 0 logs it.
+- The wall time is the MPC time of one full bottom tree, as operator 0 logs it. The logged time and bytes do not include the two PRSS setups and the signature of the root.
 - The delay is a fixed $150$ ms one way on every link, with TCP buffers of $128$ MB.
 - The links have no bandwidth limit, jitter or loss, so a real network can take longer.
 - The runs predate the reshare of the outputs before the check. The code now takes $198$ (collector) or $126$ (peer) rounds per batch.
+- The runs also predate the change of the check field from $\mathbb F_{192}$ to $\mathbb F_{128}$ and the coin with two opened values.
 
 ### Sign
 
-A quorum of $t$ operators signs in $2$ rounds with no MPC, as [`doc/sign.md`](doc/sign.md) specifies.
+A quorum of $t$ operators signs in $2$ rounds with no MPC, as [`doc/sign.md`](doc/sign.md) specifies. Before the two rounds, all operators agree on the leaf and the message. The note assumes this agreement by consensus. The proof of concept does it with one exchange of acknowledgements, which is step 0.
 
+0. Each operator acknowledges the leaf and the message and sends its acknowledgement to all $n$ operators. A signer continues only when $Q = \lfloor (n + t - 1)/2 \rfloor + 1$ operators acknowledge the same leaf and message. A refusing operator sends an empty acknowledgement, so the round tolerates $n - Q$ refusals. One silent operator stops it.
 1. Each signer sends its part of $F(A_{\mathrm{rnd}}(e))$ to the other signers. Then each signer grinds the randomizer and finds the codeword.
 2. Each signer sends its part of $F(x_p)$ for each chain with a codeword digit below $3$. Then each signer unmasks the chain values.
 
 A part has $16$ B. Let $k$ be the number of chains with a digit below $3$. Then $23 \le k \le 58$, and $k \approx 37$ on average.
 
-| Round | Bytes from one signer to each other signer | At $k = 37$ | At $k = 58$ |
-| ----- | ------------------------------------------ | ----------- | ----------- |
-| 1     | $16$                                       | $16$ B      | $16$ B      |
-| 2     | $16 k$                                     | $592$ B     | $928$ B     |
-| Total | $16 (k + 1)$                               | $608$ B     | $944$ B     |
+| Round          | Bytes from one signer to each other signer     | At $k = 37$ | At $k = 58$ |
+| -------------- | ---------------------------------------------- | ----------- | ----------- |
+| Agreement      | $36$, also to the operators outside the quorum | $36$ B      | $36$ B      |
+| 1              | $16$                                           | $16$ B      | $16$ B      |
+| 2              | $16 k$                                         | $592$ B     | $928$ B     |
+| Rounds 1 and 2 | $16 (k + 1)$                                   | $608$ B     | $944$ B     |
 
 The signature has $2{,}404$ B.

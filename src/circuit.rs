@@ -1,8 +1,8 @@
 //! This module evaluates circuits on replicated sharings and gives Keccak-f as a circuit of 24
 //! layers, with chi as the AND gates. It also hashes one chain step of each instance in MPC.
 //!
-//! - `plans` finds the AND gates with two secret inputs. Only these gates send messages, and an AND
-//!   gate with a public input is local.
+//! - `plans` finds the AND gates with two secret inputs. Only these gates send messages, and an AND gate with a public
+//!   input is local.
 
 use std::array::from_fn;
 use std::iter;
@@ -68,8 +68,7 @@ fn plans<const W: usize, C: Circuit<W>>(circuit: &C, secret: [bool; W]) -> Vec<P
             let shared = (0..ands.len())
                 .filter(|&a| after_linear[ands[a].0] && after_linear[ands[a].1])
                 .collect();
-            let product_secret: Vec<Secret> =
-                ands.iter().map(|&(x, y)| secret[x] ^ secret[y]).collect();
+            let product_secret: Vec<Secret> = ands.iter().map(|&(x, y)| secret[x] ^ secret[y]).collect();
             circuit.combine(layer, &mut secret);
             for (a, product) in product_secret.into_iter().enumerate() {
                 secret[a] = secret[a] ^ product;
@@ -99,12 +98,7 @@ pub async fn evaluate<const W: usize, C: Circuit<W>>(
     let (words, pairs, term_zero) = (blocks.blocks().len(), party.product_pairs(), party.local(0));
     let plans = plans(circuit, secret);
     let shared: usize = plans.iter().map(|plan| plan.shared.len()).sum();
-    for copy in tuples
-        .x
-        .iter_mut()
-        .chain(&mut tuples.y)
-        .chain(&mut tuples.z)
-    {
+    for copy in tuples.x.iter_mut().chain(&mut tuples.y).chain(&mut tuples.z) {
         copy.reserve(words * shared * LANES);
     }
     let mut product = vec![[Word::ZERO; W]; party.held.len() + 1];
@@ -137,8 +131,7 @@ pub async fn evaluate<const W: usize, C: Circuit<W>>(
                 continue;
             };
             circuit.linear(step, public);
-            held.iter_mut()
-                .for_each(|lanes| circuit.linear(step, lanes));
+            held.iter_mut().for_each(|lanes| circuit.linear(step, lanes));
             // The holders of term 0 move the public part of each secret lane into term 0, so the
             // terms alone hold the gate inputs.
             for l in (0..W).filter(|&l| plan.secret[l]) {
@@ -208,11 +201,7 @@ fn neighbor(lane: usize, offset: usize) -> usize {
 
 impl Keccak {
     fn lanes(&self, layer: usize) -> usize {
-        if layer + 1 == hash::ROUNDS {
-            self.outputs
-        } else {
-            25
-        }
+        if layer + 1 == hash::ROUNDS { self.outputs } else { 25 }
     }
 }
 
@@ -261,10 +250,7 @@ fn chain_step() -> (Keccak, [bool; 25]) {
 /// The AND gates of one chain step that need messages.
 pub fn gates() -> usize {
     let (circuit, secret) = chain_step();
-    plans(&circuit, secret)
-        .iter()
-        .map(|plan| plan.shared.len())
-        .sum()
+    plans(&circuit, secret).iter().map(|plan| plan.shared.len()).sum()
 }
 
 /// Hashes one chain step for each instance. The state holds `P || A || y || l` and the Keccak
@@ -309,16 +295,9 @@ mod tests {
     #[test]
     fn shared_keccak_f_matches_keccak_f() {
         let modes = [(Reshare::Collector, 89), (Reshare::Peer, 65)];
-        for (t, (reshare, expected_rounds)) in [2, 3, 4]
-            .into_iter()
-            .flat_map(|t| modes.map(|mode| (t, mode)))
-        {
+        for (t, (reshare, expected_rounds)) in [2, 3, 4].into_iter().flat_map(|t| modes.map(|mode| (t, mode))) {
             let word = |k: usize, l: usize, b: usize| {
-                u64::from_le_bytes(
-                    hash::hash(&[k as u8, l as u8, b as u8])[..8]
-                        .try_into()
-                        .unwrap(),
-                )
+                u64::from_le_bytes(hash::hash(&[k as u8, l as u8, b as u8])[..8].try_into().unwrap())
             };
             let outcomes = local_parties(t, reshare, async |party, all_seeds| {
                 let terms = all_seeds.len();
@@ -343,16 +322,13 @@ mod tests {
                 .unwrap();
                 let copies = tuples.x.iter().chain(&tuples.y).chain(&tuples.z);
                 assert!(copies.map(Vec::len).all(|words| words as u64 == ands / 64));
-                check::mult_verification(&party, &mut channel, tuples)
-                    .await
-                    .unwrap();
+                check::mult_verification(&party, &mut channel, tuples).await.unwrap();
                 let opened = party.open(&mut channel, &blocks).await.unwrap();
                 (opened, ands, channel.rounds, terms)
             });
             for (opened, ands, rounds, terms) in outcomes {
                 for b in 0..LANES {
-                    let mut expected: [u64; 25] =
-                        from_fn(|l| (0..=terms).fold(0, |a, k| a ^ word(k, l, b)));
+                    let mut expected: [u64; 25] = from_fn(|l| (0..=terms).fold(0, |a, k| a ^ word(k, l, b)));
                     hash::keccak_f(&mut expected);
                     assert_eq!(opened[0].map(|lane| lane.0[b]), expected);
                 }

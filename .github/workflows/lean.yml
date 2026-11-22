@@ -1,0 +1,60 @@
+name: Lean
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push cancels the run of a pull request and never the run of `main`, because the runs of `main` save the caches.
+concurrency:
+  group: lean-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  formalization:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # No option of the lakefile skips the kernel.
+      - name: Forbid kernel-skipping options in the lakefile
+        run: |
+          ! grep -nE 'skipKernelTC|debug\.' formal/lakefile.toml
+      # The statement layer imports nothing of the proof library, so a proof cannot change a claim.
+      - name: Keep the statement apart from the proofs
+        run: |
+          ! grep -rnE '^(public )?(meta )?import ThresholdLeanXmssSecurity' formal/ThresholdLeanXmss formal/ThresholdLeanXmss.lean
+      # The action installs the toolchain of `formal/lean-toolchain`, fetches the Mathlib cache and runs `lake build`
+      # on the default targets `ThresholdLeanXmss` (the statement layer) and `ThresholdLeanXmssSecurity` (the proof
+      # library). The build elaborates each module and the `#guard_msgs` checks of the root module of the proofs.
+      # It uses the manifest of the repository and does not run `lake update`.
+      - uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: formal
+      # The scan is the one of leanVM, from the package that Lake fetched at the pinned revision. It finds a `sorry`,
+      # an `axiom` or a `native_decide` in each file of both libraries, also in a file that no proved theorem reaches.
+      - name: Forbid proof escapes
+        run: |
+          python3 -I formal/.lake/packages/lean-xmss-security/formal/tools/escape-scan.py formal/ThresholdLeanXmss formal/ThresholdLeanXmss.lean formal/ThresholdLeanXmssSecurity formal/ThresholdLeanXmssSecurity.lean
+      # The root module of the proofs guards the axiom list of each proved theorem with `#guard_msgs`. This step asks
+      # again from outside, against the list of this file.
+      - name: Check the axiom footprint
+        working-directory: formal
+        run: |
+          theorems="SigningStronglyUnforgeable.stronglyUnforgeable signingCorrectness dkgCompleteness dkgCorrectness theorems_of_sharedStep"
+          { echo 'import ThresholdLeanXmssSecurity'; for t in $theorems; do echo "#print axioms ThresholdLeanXmssSecurity.$t"; done; } \
+            > "$RUNNER_TEMP/axioms.lean"
+          lake env lean "$RUNNER_TEMP/axioms.lean" | tee "$RUNNER_TEMP/axioms.txt"
+          # Lean wraps a long line, so the check reads the output with each run of white space as one space.
+          tr -s '[:space:]' ' ' < "$RUNNER_TEMP/axioms.txt" > "$RUNNER_TEMP/axioms-flat.txt"
+          for t in $theorems; do
+            grep -qF "'ThresholdLeanXmssSecurity.$t' depends on axioms: [propext, Classical.choice, Quot.sound]" \
+              "$RUNNER_TEMP/axioms-flat.txt"
+          done
+      - uses: actions/upload-artifact@v7
+        with:
+          name: threshold-lean-xmss-axioms
+          path: ${{ runner.temp }}/axioms.txt
