@@ -58,6 +58,7 @@ the name of the field.
 \item The one exception is \lean{SigningStronglyUnforgeable.stronglyUnforgeable}.
 \item The win bound of \lean{dkgSecurity} has proofs for twelve of the 13 hops of its chain
 (Section~\ref{sec:setup}).
+\item The theorem \lean{theorems_of_sharedStep} gives all five claims from the one open hop.
 \item The five claims give a bound of the full system only with one more premise
 (Section~\ref{sec:chain}).
 \end{itemize}
@@ -70,7 +71,7 @@ the name of the field.
 \item \texttt{formal/doc/model.md} has the model, and \texttt{formal/doc/differences.md} has each
 difference to the sources.
 \item The proofs are in \texttt{formal/ThresholdLeanXmssSecurity/}. Its root module checks the
-axioms of the four proved field theorems.
+axioms of the four proved field theorems and of \lean{theorems_of_sharedStep}.
 \end{itemize}
 
 \section{The setting}\label{sec:setting}
@@ -398,6 +399,8 @@ Twelve hops of the chain, with the hop to the forger & \lean{tableHop} and eleve
 The hop \lean{SharedStep}, in which one real run of a tree becomes an emulated run & None & Open \\
 \rowrule
 The field from \lean{SharedStep} & \lean{dkgSecurity_of_leaves} & Proved \\
+\rowrule
+All five claims from \lean{SharedStep} & \lean{theorems_of_sharedStep} & Proved \\
 \bottomrule
 \end{tabularx}
 \end{center}

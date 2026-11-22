@@ -27,6 +27,7 @@ The structure `Theorems` in [Statement/Theorems.lean](./ThresholdLeanXmss/Statem
 | Twelve hops of the chain, with the hop to the forger | `tableHop` and eleven more | Proved |
 | The hop `SharedStep`, in which one real run of a tree becomes an emulated run | None | Open |
 | The field from `SharedStep` | `dkgSecurity_of_leaves` | Proved |
+| All five claims from `SharedStep` | `theorems_of_sharedStep` | Proved |
 
 - The win bound is a target until `SharedStep` has a proof, so a proof can change it.
 - The error `dkgError` is the sum of the errors of the 13 hops.
@@ -96,7 +97,7 @@ The dashed box is the end-to-end bound of `dkgTsigGame`.
 | [ThresholdLeanXmss/Scheme.lean](./ThresholdLeanXmss/Scheme.lean) | The protocol, the oracles and the dealer `dealerKeyGen` |
 | [ThresholdLeanXmss/Ideal.lean](./ThresholdLeanXmss/Ideal.lean) | The oracles of the signing game and its win test |
 | [ThresholdLeanXmss/Reductions.lean](./ThresholdLeanXmss/Reductions.lean) | `prgReduction`, the fixed reduction of the PRF term |
-| [ThresholdLeanXmssSecurity.lean](./ThresholdLeanXmssSecurity.lean) | The root of the proof library. It checks the axioms of the four proved field theorems with `#guard_msgs`. |
+| [ThresholdLeanXmssSecurity.lean](./ThresholdLeanXmssSecurity.lean) | The root of the proof library. It has `theorems_of_sharedStep`, and it checks the axioms of that theorem and of the four proved field theorems. |
 | [ThresholdLeanXmssSecurity/Proof/](./ThresholdLeanXmssSecurity/Proof/) | The proofs |
 | [ThresholdLeanXmssSecurity/Base/](./ThresholdLeanXmssSecurity/Base/) | The definitions that the proofs use and that the statement layer does not hold |
 | [statement.tex](./statement.tex) | The guide to the claims |
@@ -110,4 +111,4 @@ cd formal
 lake build   # build both default targets, ThresholdLeanXmss and ThresholdLeanXmssSecurity
 ```
 
-The root module of the proof library fails the build unless each of the four proved field theorems depends only on `propext`, `Classical.choice` and `Quot.sound`.
+The root module fails the build unless the four proved field theorems and `theorems_of_sharedStep` depend only on `propext`, `Classical.choice` and `Quot.sound`.

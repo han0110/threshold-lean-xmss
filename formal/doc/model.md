@@ -80,6 +80,8 @@ The theorem `dkgCorrectness` proves the bound `dkgCorrectnessError` plus `stream
 
 The proof of `dkgSecurity` is a chain of 13 hops (`Proof/DkgSecurity/Shared/Hops.lean`). Twelve hops are theorems. The theorem `DkgSecurityProof.dkgSecurity_of_leaves` gives the field from the open hop `SharedStep`.
 
+The theorem `theorems_of_sharedStep` of the root module gives the bundle `Theorems` from the same hop.
+
 | Hop | Content | State |
 | --- | --- | --- |
 | `MonitorErase` | The stream-key event of `dkgTsigGame` is at most as likely as the one of `dkgTreeGame`. | Proved |
