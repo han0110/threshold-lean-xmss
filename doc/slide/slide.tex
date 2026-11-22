@@ -1,4 +1,4 @@
-% Slides of the threshold leanXMSS proof of concept. Build by `latexmk` in doc/ (aux files go to .build/).
+% Slides of the threshold leanXMSS proof of concept. Build by `latexmk`.
 
 \documentclass[t]{beamer}
 \geometry{papersize={720bp,405bp}}
@@ -47,7 +47,6 @@
 \begin{slide}{leanXMSS Recap}
 \1 Param
   \2 Two layers of XMSS of height 16
-  \2 Top tree root is the public key
   \2 Each leaf of top tree signs root of one bottom tree
   \2 WOTS has 58 chains of length 4
 \1 Keygen
@@ -67,8 +66,12 @@
     \3 Key and DKG secure against $t-1 < n/2$ corrupt, with abort
 \1 Sign
   \2 Same for both keygen setups
-  \2 No MPC, 2 rounds, 944 bytes per operator
+  \2 No MPC, 2 rounds, at most 944 bytes per operator
+  \2 Assumes operators first agree on the message by consensus
 \end{slide}
+
+% maximum 16*(58+1) = 944 bytes
+% average 16*(37+1) = 608 bytes
 
 \begin{slide}[.66]{\cite[PRAWNS]{BBDLN26} for signing}
 \1 Threshold PRF
@@ -101,7 +104,7 @@ op 3 holds $\{k_1, k_2\}$ and $\{\mask_{13}, \mask_{23}\}$
   \2 Give each operator its seeds and pairwise keys
 \1 Cost
   \2 $(\binom{n}{t-1} + 1) \cdot 2^{16} \cdot 58 \cdot 3$ keccakf per tree
-  \2 16.8 B keccakf per year of lifetime for 5-of-7 (1 sig per 12s slot)
+  \2 16.8 G keccakf per year of lifetime for 5-of-7 (1 sig per 12s slot)
 \1 Benchmark (on i9-13900k 24-cores CPU)
   \2[] \tbl{lrr}{Lifetime & Keygen Time & \cpk\ Size}{
     1 year & 2.4 mins & 7.3 GB \\
@@ -109,7 +112,7 @@ op 3 holds $\{k_1, k_2\}$ and $\{\mask_{13}, \mask_{23}\}$
     10 year & 23.4 mins & 74 GB}
 \end{slide}
 
-% 16.8 B = 41*36*(2^16)*58*3
+% 16.8 G = 41*36*(2^16)*58*3
 %   - 41 = ceil(365*86400 / (12*2^16))
 %   - 36 = C(7,5-1) + 1
 
@@ -139,7 +142,7 @@ op 3 holds $\{k_1, k_2\}$ and $\{\mask_{13}, \mask_{23}\}$
 % average rate is divided by 2^16*12 seconds
 % traffic ~= and + rerand + open
 %   1. and = G * 3(t-1)/n / 8 bytes
-%     - G = 65536 * (58*3 + 1) * 36288 = 416.2 B and gates
+%     - G = 65536 * (58*3 + 1) * 36288 = 416.2 G and gates
 %     - 36288 = (23*25 + 2 - 10) * 64 (output only take 2 lanes and input has 10 lanes in the clear)
 %     - 3(t-1)/n = (n-1 ops to collector + collector to t-1 ops) spread over n ops
 %   2. rerand = (t-1) * W bytes
