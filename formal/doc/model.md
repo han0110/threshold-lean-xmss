@@ -1,6 +1,6 @@
 # The game model
 
-This file describes the model of the five claims of the bundle `Theorems`. Each claim is a game with a fixed error expression. No claim uses a simulation definition or a composition theorem. The two signing claims, `dkgCorrectness` and `dkgCompleteness` are proved in this tree. The claim `dkgSecurity` is stated. Its cost bound is proved, and no proof of its bound on the win probability is in this tree.
+This file describes the model of the five claims of the bundle `Theorems`. Each claim is a game with a fixed error expression. No claim uses a simulation definition or a composition theorem. The two signing claims, `dkgCorrectness` and `dkgCompleteness` are proved in this tree. The claim `dkgSecurityPreservation` is stated. Its cost bound is proved, and no proof of its bound on the win probability is in this tree.
 
 [statement.tex](../statement.tex) has the tables of the claims, of their worlds, preconditions and trivial cases (Section 1 and Section 3.2), of the state of each bound (the first table and Section 3.2), and of the error terms with their Lean names (Appendix B). The adaptations of the published definitions are in [differences.md](./differences.md), Table B.3, and in the doc comment of each claim.
 
@@ -12,7 +12,7 @@ The inner counter of `signingWorld` counts the calls on both copies. The claim `
 
 Each field of the setup has the premise `CircuitsCompute circuits prims.Th` for the `prims` of the bundle, and `ThresholdLeanXmssSecurityStatement` quantifies over each `prims`. The MPC evaluates $\mathrm{Th}$ by a circuit, and a random oracle has no circuit. So the claims of the setup need the fixed $\mathrm{Th}$.
 
-`dkgSecurity` names its reduction, the forger `dkgReduction` of `Statement/DkgReduction.lean`. It reads only `prims.aes` from `prims`. It runs the adversary and plays the honest operators, with the coalition keys from `corrupt` and an own table for the domains of $H$ that only the setup uses. Its openings are shifted, and outside the bad events of consistency and soundness they give the outputs of the dealer. It sends the tree requests to the dealer.
+`dkgSecurityPreservation` names its reduction, the forger `dkgReduction` of `Statement/DkgReduction.lean`. It reads only `prims.aes` from `prims`. It runs the adversary and plays the honest operators, with the coalition keys from `corrupt` and an own table for the domains of $H$ that only the setup uses. Its openings are shifted, and outside the bad events of consistency and soundness they give the outputs of the dealer. It sends the tree requests to the dealer.
 
 Its emulated operators make no randomizer search. They take the randomizer of the top signature from the answer of `tree b` and get the codeword from one hash.
 
@@ -37,11 +37,11 @@ The code of the forger differs from the game in five points. Each point is an ob
 - For the fourth point, take the same public parameter and the same hash oracle, and outputs of the first ceremony that are those of the dealer.
 - Then the result of the dealer is the result that the search of the game gives.
 
-Let $\delta$ bound the probability that `dkgReduction` of an adversary $A$ wins `tsigGame` in `world` with the fixed $\mathrm{Th}$. Then `dkgSecurity` gives a bound of `dkgTsigGame`.
+Let $\delta$ bound the probability that `dkgReduction` of an adversary $A$ wins `tsigGame` in `world` with the fixed $\mathrm{Th}$. Then `dkgSecurityPreservation` gives a bound of `dkgTsigGame`.
 
 $$\Pr[A \text{ wins } \mathsf{dkgTsigGame}] \le \delta + \mathsf{dkgError}(q) + \mathsf{streamAdvantage}$$
 
-No field of `Theorems` gives such a $\delta$. No small $\delta$ holds for each query-bounded adversary with a fixed $\mathrm{Th}$, because a search on $\mathrm{Th}$ costs no call. `stronglyUnforgeable` bounds `tsigGame` in `signingWorld`. To take its bound for $\delta$, for an adversary that makes no search on $\mathrm{Th}$, is the random-oracle heuristic for $\mathrm{Th}$. So no theorem joins `dkgSecurity` and `stronglyUnforgeable`.
+No field of `Theorems` gives such a $\delta$. No small $\delta$ holds for each query-bounded adversary with a fixed $\mathrm{Th}$, because a search on $\mathrm{Th}$ costs no call. `stronglyUnforgeable` bounds `tsigGame` in `signingWorld`. To take its bound for $\delta$, for an adversary that makes no search on $\mathrm{Th}$, is the random-oracle heuristic for $\mathrm{Th}$. So no theorem joins `dkgSecurityPreservation` and `stronglyUnforgeable`.
 
 The next numbers illustrate the bound and are no claim. Take $t=3$, $n=5$ and a run limit of 1. Then `dkgOverhead` is 75 248 651 468 795, about $2^{46.10}$.
 
@@ -76,9 +76,9 @@ The next numbers illustrate the bound and are no claim. Take $t=3$, $n=5$ and a 
 
 ## 4. The state of the bounds
 
-The theorem `dkgCorrectness` proves the bound `dkgCorrectnessError` plus `streamAdvantage` of `dkgTreeGame` for the whole game. No proof accounts for the whole game for the bound of `dkgSecurity` on the win probability yet.
+The theorem `dkgCorrectness` proves the bound `dkgCorrectnessError` plus `streamAdvantage` of `dkgTreeGame` for the whole game. No proof accounts for the whole game for the bound of `dkgSecurityPreservation` on the win probability yet.
 
-The proof of `dkgSecurity` is a chain of 13 hops (`Proof/DkgSecurity/Shared/Hops.lean`). Twelve hops are theorems. The theorem `DkgSecurityProof.dkgSecurity_of_leaves` gives the field from the open hop `SharedStep`.
+The proof of `dkgSecurityPreservation` is a chain of 13 hops (`Proof/DkgSecurity/Shared/Hops.lean`). Twelve hops are theorems. The theorem `DkgSecurityProof.dkgSecurityPreservation_of_leaves` gives the field from the open hop `SharedStep`.
 
 The theorem `theorems_of_sharedStep` of the root module gives the bundle `Theorems` from the same hop.
 

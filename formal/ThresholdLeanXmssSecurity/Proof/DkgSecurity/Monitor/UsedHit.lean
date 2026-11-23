@@ -9,7 +9,7 @@ monitor `wrongOutput D`. Both monitors are free, and `jointKeyWorld prims D fals
 properties of the erasure (`monitorCommutes_joint`, `monitorKeeps_joint`). So the two games give one
 law of `privateView` of the final state, and `UsedHit` has one probability in both
 (`usedHitProb_monitor_eq`). `monitorErase` is the inequality between the two games that the hops of
-`dkgSecurity` use.
+`dkgSecurityPreservation` use.
 -/
 
 set_option autoImplicit false

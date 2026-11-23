@@ -8,18 +8,18 @@ Each field of `Theorems` is one end claim about the protocol of `Scheme.lean`. T
 stated with games. `Signing.lean` holds the signing game and the two signing claims. `DkgGame.lean`
 holds the games of the setup, `DkgErrors.lean` their error terms, `Dkg.lean` the three claims of
 the setup with their adaptations of the papers, and `DkgReduction.lean` the reduction of
-`dkgSecurity`.
+`dkgSecurityPreservation`.
 
 * Signing with a trusted dealer is strongly unforgeable with adaptive corruption
   (`stronglyUnforgeable`). The game is `tsigGame`, the game of PRAWNS, Figure 3, with the dealer
   `dealerKeyGen`. An honest quorum signs (`signingCorrectness`). Its experiment is `honestSigning`,
   not `tsigGame`.
-* The setup by DKG preserves the security of the signing (`dkgSecurity`). The game `dkgTsigGame`
+* The setup by DKG preserves the security of the signing (`dkgSecurityPreservation`). The game `dkgTsigGame`
   is `tsigGame` with the real seed generation and the real runs of the trees in the place of the
   dealer. `dkgCorrectness` bounds inconsistent seeds and wrong trees against the adversary, and
   `dkgCompleteness` bounds the abort of an honest run and its distance to the dealer.
 
-The reduction of `dkgSecurity` is the named forger `dkgReduction`. It reads only `prims.aes` from
+The reduction of `dkgSecurityPreservation` is the named forger `dkgReduction`. It reads only `prims.aes` from
 `prims`. A reviewer reads its code to see that it simulates the honest operators and makes no search
 for a secret. It forwards a signing request when the emulated operator holds what it needs. It
 runs `A.forge` when an honest operator holds a top tree, and it outputs `idleForgery` if not. The
@@ -43,7 +43,7 @@ and every other input of `H` with a lazy random oracle. The signing world answer
 | --- | --- | --- | --- |
 | `stronglyUnforgeable` | signing world (`signingAccepts`) | own cost of the forger at most `q` | none |
 | `signingCorrectness` | `runWorld` | none, for each quorum, key and message | none |
-| `dkgSecurity` | `runWorld` (`accepts`) | `CircuitsCompute circuits prims.Th` (premise of the field), `0 < batchSize`, budget `q` of the adversary | vacuous at `batchSize = 0`, and `A` never wins at `runLimit = 0`, because no top tree exists |
+| `dkgSecurityPreservation` | `runWorld` (`accepts`) | `CircuitsCompute circuits prims.Th` (premise of the field), `0 < batchSize`, budget `q` of the adversary | vacuous at `batchSize = 0`, and `A` never wins at `runLimit = 0`, because no top tree exists |
 | `dkgCorrectness` | `runWorld` (`accepts`) | `CircuitsCompute circuits prims.Th` (premise of the field), `0 < batchSize`, `0 < runLimit`, budget `q` of the adversary | vacuous at `batchSize = 0` and at `runLimit = 0` |
 | `dkgCompleteness` | `runWorld`, no corrupt operator | `CircuitsCompute circuits prims.Th` (premise of the field), `0 < batchSize`, `0 < runLimit` | vacuous at `batchSize = 0` and at `runLimit = 0` |
 
@@ -63,7 +63,7 @@ of an output signature stay meaningful.
   (`breaksOneMessagePerKey`). The signing games enforce it. The PoC has the exchange of
   acknowledgements of `doc/sign.md` 4.1 for it, and a deployment must enforce it too.
 * `H` is one lazy random oracle on `Query`, with one domain for each constructor, except `Th` on
-  the inputs of the MPC in `runWorld`. `PRG` is AES-128 under a hash of the key. `dkgSecurity` and `dkgCorrectness` pay its
+  the inputs of the MPC in `runWorld`. `PRG` is AES-128 under a hash of the key. `dkgSecurityPreservation` and `dkgCorrectness` pay its
   multi-key PRF advantage.
 * In the claims of the setup, the circuits compute the fixed `Th` (`CircuitsCompute`) on the chain
   steps and the commitment `c_e`. The gap between `runWorld` and the signing world is the
@@ -73,7 +73,7 @@ of an output signature stay meaningful.
   every answer of the oracles. A forger also pays one unit for each round-2 request. An adversary
   has no bound on its computation.
 * Each bound is a fixed expression of `q`, of the committee and of the settings. The bounds of
-  `dkgSecurity` and `dkgCorrectness` add the PRF advantage of `prgReduction` (`Reductions.lean`).
+  `dkgSecurityPreservation` and `dkgCorrectness` add the PRF advantage of `prgReduction` (`Reductions.lean`).
   `dkgCompleteness` adds no PRF advantage.
 
 These claims also use `Scheme.lean` and `Ideal.lean`, because they name their definitions. They hold
@@ -82,7 +82,7 @@ the signing game.
 
 ## What no field states
 
-* No field states a bound of `dkgTsigGame` alone. It follows from `dkgSecurity` only with a bound of
+* No field states a bound of `dkgTsigGame` alone. It follows from `dkgSecurityPreservation` only with a bound of
   `tsigGame` for the fixed `Th`.
 * No field states security of the setup against adaptive corruption.
 * No field fixes the basis or the bit encoding of the check field. The claims take every value of
@@ -121,8 +121,8 @@ structure Theorems (prims : Primitives) (K : Constants C E) (circuits : Circuits
   named forger `dkgReduction` turns each adversary of `dkgTsigGame` with a static coalition and
   budget `q` into a forger of `tsigGame` with cost `q + dkgOverhead C`. The adversary wins at most
   `dkgError C q` and the PRF advantage of the streams more often than that forger. -/
-  dkgSecurity : CircuitsCompute circuits prims.Th →
-    DkgSecurity prims K circuits settings runLimit (dkgReduction K circuits settings runLimit)
+  dkgSecurityPreservation : CircuitsCompute circuits prims.Th →
+    DkgSecurityPreservation prims K circuits settings runLimit (dkgReduction K circuits settings runLimit)
   /-- Against an adversary with a static coalition and budget `q`, two honest operators hold
   inconsistent seeds, or an honest operator ends a run of a tree with a wrong output, with
   probability at most `dkgCorrectnessError C q` and the PRF advantage of the streams. An abort is no

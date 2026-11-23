@@ -3,7 +3,7 @@ import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Programs
 /-!
 # The cost bound of the forger of the setup
 
-`dkgReduction_cost` is the first conjunct of `DkgSecurity`. The forger `dkgReduction` costs at most
+`dkgReduction_cost` is the first conjunct of `DkgSecurityPreservation`. The forger `dkgReduction` costs at most
 the budget `q` of the adversary plus `dkgOverhead runLimit C`.
 
 * The seed generation costs the start and `setupRounds` rounds of the adversary
@@ -338,7 +338,7 @@ theorem dkgReduction_cost_of_programCost (A : DkgTsigAdversary C E) (q : ℕ)
 
 end Forger
 
-/-! ## The cost conjunct of `DkgSecurity` -/
+/-! ## The cost conjunct of `DkgSecurityPreservation` -/
 
 section Claim
 
@@ -351,7 +351,7 @@ theorem programCost (K : Constants C E) (circuits : Circuits) (settings : Settin
   ⟨fun i parts => seedGenWith_cost i parts, fun parameter seeds openings randomizer i operator tree =>
     emulatedProgram_cost K circuits settings D hsize parameter seeds openings randomizer i operator tree⟩
 
-/-- The first conjunct of `DkgSecurity`. The forger `dkgReduction` costs at most the budget `q` of
+/-- The first conjunct of `DkgSecurityPreservation`. The forger `dkgReduction` costs at most the budget `q` of
 the adversary plus `dkgOverhead runLimit C`. -/
 theorem dkgReduction_cost (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings)
     (runLimit : ℕ) (hsize : 0 < settings.batchSize) (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ)
@@ -363,7 +363,7 @@ theorem dkgReduction_cost (prims : Primitives) (K : Constants C E) (circuits : C
 
 /-- `dkgReduction_cost` is the first component of the field. -/
 example [Fintype E] [DecidableEq E] (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
-    (h : DkgSecurity prims K circuits settings runLimit (dkgReduction K circuits settings runLimit))
+    (h : DkgSecurityPreservation prims K circuits settings runLimit (dkgReduction K circuits settings runLimit))
     (hsize : 0 < settings.batchSize) (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ)
     (bounded : DkgTsigBounded circuits settings runLimit A q) :
     (h hsize D A q bounded).1 = dkgReduction_cost prims K circuits settings runLimit hsize D A q bounded :=

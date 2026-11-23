@@ -3,7 +3,7 @@ import ThresholdLeanXmssSecurity.Proof.DkgSecurity.ReductionCost
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Game
 
 /-!
-# The hops with the shared bad event and the field `dkgSecurity`
+# The hops with the shared bad event and the field `dkgSecurityPreservation`
 
 Each game of the chain runs in `loggedWorld` with recorded runs and gives the win, the flag of the
 shared event and, after the seed generation of the simulator, the data of the dealer. The hops
@@ -12,7 +12,7 @@ which has one check term for each run. The first hit is paid one time, in the ga
 run. A step of the privacy of the runs has only the slack of a hash collision.
 
 Each hop is a named `Prop`. `MonitorErase` and `TableHop` are the hops at the two ends of the chain.
-`zeroRuns` proves `ZeroRuns`, the case with no run. `dkgSecurity_of_shared` gives the field from the
+`zeroRuns` proves `ZeroRuns`, the case with no run. `dkgSecurityPreservation_of_shared` gives the field from the
 hops and from the inequality between `sharedError` and the approved `dkgError`.
 -/
 
@@ -312,7 +312,7 @@ def sharedError (hit : ℕ → ℝ) (slack : Tree → ℕ → ℝ) (C : Committe
     runLimit * (slack .top q + ∑ b : Fin (2 ^ layerHeight), slack (.bottom b) q)
 
 omit [DecidableEq E] in
-/-- The bound of the second conjunct of `DkgSecurity` with the error `sharedError`, for a positive run
+/-- The bound of the second conjunct of `DkgSecurityPreservation` with the error `sharedError`, for a positive run
 limit. -/
 theorem secondConjunct_of_shared (hit : ℕ → ℝ) (slack : Tree → ℕ → ℝ)
     (monitor : MonitorErase prims K circuits settings runLimit)
@@ -376,7 +376,7 @@ theorem secondConjunct_of_shared (hit : ℕ → ℝ) (slack : Tree → ℕ → �
   linarith
 
 omit [Field E] [Algebra Bit E] [DecidableEq E] in
-/-- The error of `DkgSecurity` is not negative. -/
+/-- The error of `DkgSecurityPreservation` is not negative. -/
 theorem dkgError_nonneg (C : Committee) (q : ℕ) : 0 ≤ dkgError (E := E) circuits settings runLimit C q := by
   have hsearch : 0 ≤ searchFailure := by
     rw [← toReal_failure]
@@ -396,9 +396,9 @@ theorem dkgError_nonneg (C : Committee) (q : ℕ) : 0 ≤ dkgError (E := E) circ
   positivity
 
 omit [DecidableEq E] in
-/-- The field `dkgSecurity` from the hops with the shared event and from the inequality between the
+/-- The field `dkgSecurityPreservation` from the hops with the shared event and from the inequality between the
 error of these hops and the approved error. -/
-theorem dkgSecurity_of_shared (hit : ℕ → ℝ) (slack : Tree → ℕ → ℝ)
+theorem dkgSecurityPreservation_of_shared (hit : ℕ → ℝ) (slack : Tree → ℕ → ℝ)
     (monitor : MonitorErase prims K circuits settings runLimit)
     (usedHit : UsedHitHop prims K circuits settings runLimit (setupHybridError runLimit C))
     (start : SharedStart prims K circuits settings runLimit)
@@ -415,7 +415,7 @@ theorem dkgSecurity_of_shared (hit : ℕ → ℝ) (slack : Tree → ℕ → ℝ)
     (gap : 0 < runLimit → ∀ q : ℕ, sharedError (E := E) circuits settings runLimit hit slack C q ≤
       dkgError (E := E) circuits settings runLimit C q) :
     CircuitsCompute circuits prims.Th →
-      DkgSecurity prims K circuits settings runLimit (dkgReduction K circuits settings runLimit) := by
+      DkgSecurityPreservation prims K circuits settings runLimit (dkgReduction K circuits settings runLimit) := by
   intro compute batch D A q bounded
   refine ⟨dkgReduction_cost prims K circuits settings runLimit batch D A q bounded, ?_⟩
   rcases Nat.eq_zero_or_pos runLimit with h0 | runs
@@ -437,6 +437,6 @@ end ThresholdLeanXmssSecurity.DkgSecurityProof
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.DkgSecurityProof.zeroRuns
 
-/-- info: 'ThresholdLeanXmssSecurity.DkgSecurityProof.dkgSecurity_of_shared' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.DkgSecurityProof.dkgSecurityPreservation_of_shared' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.DkgSecurityProof.dkgSecurity_of_shared
+#print axioms ThresholdLeanXmssSecurity.DkgSecurityProof.dkgSecurityPreservation_of_shared

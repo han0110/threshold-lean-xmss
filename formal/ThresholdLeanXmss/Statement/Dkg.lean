@@ -8,7 +8,7 @@ The three claims of the setup by DKG, on the games of `DkgGame.lean`, with the e
 `DkgErrors.lean`. Each claim takes the fixed functions `prims` as a parameter. `Theorems.lean`
 states each claim for `prims` whose `Th` the circuits compute (`CircuitsCompute`).
 
-* `DkgSecurity` is the security preservation of Gurkan and others, Definition 8. A forger against
+* `DkgSecurityPreservation` is the security preservation of Gurkan and others, Definition 8. A forger against
   the signing game with the real setup gives a forger against `tsigGame`, which has the trusted
   dealer.
 * `DkgCorrectness` bounds inconsistent seeds and wrong outputs of a tree against the adversary.
@@ -81,7 +81,7 @@ The claim adapts Definition 8 in these points.
   computation. The paper takes PPT adversaries. No source.
 * The network has private authenticated links and no broadcast channel, as in GS20, Section 3.1.
   Gurkan and others assume a broadcast channel. -/
-def DkgSecurity (reduction : Aes → C.Coalition → DkgTsigAdversary C E → TsigAdversary C) : Prop :=
+def DkgSecurityPreservation (reduction : Aes → C.Coalition → DkgTsigAdversary C E → TsigAdversary C) : Prop :=
   0 < settings.batchSize →
     ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ), DkgTsigBounded circuits settings runLimit A q →
       (∀ pk top, QueryCostAtMost (reduction prims.aes D A pk top) adversaryCost (q + dkgOverhead runLimit C)) ∧
@@ -109,7 +109,7 @@ honest parties agree on the public key. The claim adapts that clause in these po
 * `Th` is a fixed function. No source.
 * Each tree has at most `runLimit` runs, and each run is atomic. No source.
 * Each operator keeps the first output of its runs of a tree, and the runs of a tree stop as in
-  `DkgSecurity`. No source.
+  `DkgSecurityPreservation`. No source.
 * The seeds of the game are those of the first honest holder of each term (`gameSeeds`), and the
   reference output uses them. No source.
 * The adversary is bounded only by its queries, with no bound on its computation. The paper takes
@@ -138,7 +138,7 @@ bounded probability. The distance to `dealerKeyGen` has no source.
 
 The claim is about an honest run only. It is not robustness under faults. A corrupt operator can
 make each honest operator abort, and no claim excludes that. Each operator keeps the first output of
-its runs of a tree, as in `DkgSecurity`. No source. -/
+its runs of a tree, as in `DkgSecurityPreservation`. No source. -/
 def DkgCompleteness : Prop :=
   0 < settings.batchSize → 0 < runLimit →
     ∀ b : Fin (2 ^ layerHeight),

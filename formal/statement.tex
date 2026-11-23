@@ -41,7 +41,7 @@ corruption. & PRAWNS, Definition 3.2 & Proved \\
 \lean{signingCorrectness} & An honest quorum signs, except for a failed search. & PRAWNS,
 Section 3.1 & Proved \\
 \rowrule
-\lean{dkgSecurity} & The real setup gives an adversary no more than the dealer gives a named
+\lean{dkgSecurityPreservation} & The real setup gives an adversary no more than the dealer gives a named
 forger, up to a fixed error. & \cite{GJM+21}, Definition 8 & Cost proved, win bound open \\
 \rowrule
 \lean{dkgCorrectness} & Honest operators hold consistent seeds, and each tree output is right or
@@ -56,7 +56,7 @@ Proved \\
 \item The namespace \lean{ThresholdLeanXmssSecurity} has one theorem for each proved field, with
 the name of the field.
 \item The one exception is \lean{SigningStronglyUnforgeable.stronglyUnforgeable}.
-\item The win bound of \lean{dkgSecurity} has proofs for twelve of the 13 hops of its chain
+\item The win bound of \lean{dkgSecurityPreservation} has proofs for twelve of the 13 hops of its chain
 (Section~\ref{sec:setup}).
 \item The theorem \lean{theorems_of_sharedStep} gives all five claims from the one open hop.
 \item The five claims give a bound of the full system only with one more premise
@@ -287,7 +287,7 @@ state \\
 
 \subsection{The setup}\label{sec:setup}
 The three claims run in \lean{world}, and Appendix~\ref{sec:terms} expands each error term. In
-\lean{dkgSecurity} and \lean{dkgCorrectness}, $D$ is a static coalition and $A$ is an adversary
+\lean{dkgSecurityPreservation} and \lean{dkgCorrectness}, $D$ is a static coalition and $A$ is an adversary
 with \lean{DkgTsigBounded}~$A\,q$.
 
 $\mathsf{adv}(G)$ is \lean{streamAdvantage} on the game $G$. It is the multi-key PRF advantage of
@@ -302,7 +302,7 @@ Claim & World & Preconditions & Trivial cases \\
 \rowrule
 \lean{signingCorrectness} & \lean{world} & None, for each quorum, key and message & None \\
 \rowrule
-\lean{dkgSecurity} & \lean{world} & \lean{CircuitsCompute}, $\mathsf{batchSize}>0$, budget $q$ of
+\lean{dkgSecurityPreservation} & \lean{world} & \lean{CircuitsCompute}, $\mathsf{batchSize}>0$, budget $q$ of
 $A$ & Vacuous at $\mathsf{batchSize}=0$. At $\mathsf{runLimit}=0$ no top tree exists, so $A$ never
 wins. \\
 \rowrule
@@ -322,7 +322,7 @@ $\mathsf{batchSize}=0$ and at $\mathsf{runLimit}=0$ \\
 \end{itemize}
 
 \paragraph{Security preservation}
-Under \lean{CircuitsCompute}, the field gives \lean{DkgSecurity} for the named reduction
+Under \lean{CircuitsCompute}, the field gives \lean{DkgSecurityPreservation} for the named reduction
 \lean{dkgReduction}. Let $B_A$ be \lean{dkgReduction} at \lean{prims.aes}, $D$ and $A$. For each
 adversary $A$, the forger $B_A$ has cost at most $q+\mathsf{dkgOverhead}$ on every path, and
 \[
@@ -398,7 +398,7 @@ Twelve hops of the chain, with the hop to the forger & \lean{tableHop} and eleve
 \rowrule
 The hop \lean{SharedStep}, in which one real run of a tree becomes an emulated run & None & Open \\
 \rowrule
-The field from \lean{SharedStep} & \lean{dkgSecurity_of_leaves} & Proved \\
+The field from \lean{SharedStep} & \lean{dkgSecurityPreservation_of_leaves} & Proved \\
 \rowrule
 All five claims from \lean{SharedStep} & \lean{theorems_of_sharedStep} & Proved \\
 \bottomrule
@@ -440,7 +440,7 @@ all honest parties agree on one public key.
 \item The claim omits the second clause, the reconstruction of the secret key from $t+1$ honest
 shares.
 \item The seeds of the game are those of the first honest holder of each term (\lean{gameSeeds}).
-\item The query bound, the fixed bound, the fixed $\Th$ and the runs are as for \lean{DkgSecurity}.
+\item The query bound, the fixed bound, the fixed $\Th$ and the runs are as for \lean{DkgSecurityPreservation}.
 \end{itemize}
 
 \paragraph{Completeness}
@@ -462,7 +462,7 @@ Lemma 1 of \cite{GJM+21}.
 
 \subsection{The chain to the full system}\label{sec:chain}
 Let $\delta$ bound the probability that \lean{dkgReduction} of $A$ wins \lean{tsigGame} in
-\lean{world}, with the fixed $\Th$. Then \lean{dkgSecurity} gives
+\lean{world}, with the fixed $\Th$. Then \lean{dkgSecurityPreservation} gives
 \[
  \Pr[A\text{ wins }\mathsf{dkgTsigGame}]\le\delta+\mathsf{dkgError}(q)+\mathsf{adv}(\mathsf{dkgTsigGame}).
 \]
@@ -474,7 +474,7 @@ on $\Th$ costs no call.
 of the random oracle.
 \item To take its bound for $\delta$, for an adversary that makes no search on $\Th$, is the
 random-oracle heuristic for Keccak, as in leanXMSS.
-\item This step is not a theorem. So no proof joins \lean{dkgSecurity} and
+\item This step is not a theorem. So no proof joins \lean{dkgSecurityPreservation} and
 \lean{stronglyUnforgeable}.
 \end{itemize}
 
@@ -564,7 +564,7 @@ A1 & GS20 Functionalities 5, 16 and 18 have a common abort. & Each operator abor
 abort as no win. \\
 \rowrule
 A2 & GS20 is information-theoretic. & $H$ is a random oracle and AES-128 is the PRG. The bounds of
-the setup have hash terms. \lean{dkgSecurity} and \lean{dkgCorrectness} also have $\mathsf{adv}$. \\
+the setup have hash terms. \lean{dkgSecurityPreservation} and \lean{dkgCorrectness} also have $\mathsf{adv}$. \\
 \rowrule
 A4 & GS20, Theorem 2, is in the $\{\Fn{mult},\Fn{multVerify}\}$-hybrid model. & The games run the
 real network, the real PRSS setups and the real checks. \\

@@ -829,11 +829,11 @@ A bottom tree is $2^{16} \cdot 58$ chains, 29,696 chain batches. Signing takes 2
 
 The key generation targets the security of the trusted dealer of $\mathsf{KeyGen}$ [BBDLN26](https://eprint.iacr.org/2026/2142), with selective abort, against a malicious adversary that statically corrupts up to $t - 1$ of the $n = 2t - 1$ operators. The Lean statements in `formal/` state three claims for it, as games on the real network.
 
-`dkgSecurity` states that an adversary against the signing game with the real key generation wins at most as often as the named forger `dkgReduction` wins the signing game with the dealer, up to the stated errors `dkgError` and `streamAdvantage`. It is the security preservation of [GJM+21, Def. 8](https://eprint.iacr.org/2021/005). The forger runs the adversary and plays the honest operators. It is a relative claim and no bound on a forgery.
+`dkgSecurityPreservation` states that an adversary against the signing game with the real key generation wins at most as often as the named forger `dkgReduction` wins the signing game with the dealer, up to the stated errors `dkgError` and `streamAdvantage`. It is the security preservation of [GJM+21, Def. 8](https://eprint.iacr.org/2021/005). The forger runs the adversary and plays the honest operators. It is a relative claim and no bound on a forgery.
 
 `dkgCorrectness` bounds inconsistent seeds and wrong tree outputs against the adversary. `dkgCompleteness` bounds the abort of an honest run and its distance to the dealer.
 
-Lean proves `dkgCorrectness` and `dkgCompleteness` in `formal/`. For `dkgSecurity`, it proves the cost bound of the forger and twelve of the 13 hops of the bound on the win probability. That bound is a target until the last hop has a proof, and a proof can change it.
+Lean proves `dkgCorrectness` and `dkgCompleteness` in `formal/`. For `dkgSecurityPreservation`, it proves the cost bound of the forger and twelve of the 13 hops of the bound on the win probability. That bound is a target until the last hop has a proof, and a proof can change it.
 
 The claims cover only $n = 2t - 1$ and a classical adversary. The "Model" section of [`formal/ThresholdLeanXmss/Statement/Theorems.lean`](../formal/ThresholdLeanXmss/Statement/Theorems.lean) gives the full model.
 
@@ -850,7 +850,7 @@ The check misses a wrong tuple with probability at most $(d + 2(m+1)) / (2^{128}
 
 Two PRSS keys give the same 128-bit AES key with probability at most $k^2 / 2^{129}$, for the $k$ PRSS keys of a ceremony.
 
-`dkgSecurity` and `dkgCorrectness` assume that AES-128 is a multi-key PRF on the hidden PRSS keys, and its advantage `streamAdvantage` is a term of their bounds. The budget $q$ counts oracle calls, not time.
+`dkgSecurityPreservation` and `dkgCorrectness` assume that AES-128 is a multi-key PRF on the hidden PRSS keys, and its advantage `streamAdvantage` is a term of their bounds. The budget $q$ counts oracle calls, not time.
 
 The three claims run the real network, with the real PRSS setups and the real checks. No claim is in a hybrid model.
 
@@ -869,7 +869,7 @@ The fresh PRSS keys and the named commitments of 3.1 are not in the note [Wam26]
 
 A failed run of a tree is run again. Correct outputs give the same tree, because a tree is a function of the public parameter, the seeds and the hash.
 
-Each claim covers one static coalition, corrupted before the seed generation and fixed for the lifetime of the key. At most $t - 1$ operators are corrupted. `dkgSecurity` compares the key generation with the signing game with the dealer for the named forger `dkgReduction`, with the fixed $\mathrm{Th}$. A bound of the full system also needs a bound of the success of that forger with the fixed $\mathrm{Th}$. No theorem gives it. For an adversary that makes no search on $\mathrm{Th}$, the random-oracle heuristic for Keccak is the step to it. [`formal/statement.tex`](../formal/statement.tex) holds the deployment contract and this step.
+Each claim covers one static coalition, corrupted before the seed generation and fixed for the lifetime of the key. At most $t - 1$ operators are corrupted. `dkgSecurityPreservation` compares the key generation with the signing game with the dealer for the named forger `dkgReduction`, with the fixed $\mathrm{Th}$. A bound of the full system also needs a bound of the success of that forger with the fixed $\mathrm{Th}$. No theorem gives it. For an adversary that makes no search on $\mathrm{Th}$, the random-oracle heuristic for Keccak is the step to it. [`formal/statement.tex`](../formal/statement.tex) holds the deployment contract and this step.
 
 The claims cover ceremonies that run one at a time. A ceremony that runs during another ceremony or during a signing session is outside the claims. So production must build each bottom tree with no ceremony of another tree and no open signing session.
 
