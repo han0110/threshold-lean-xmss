@@ -29,6 +29,11 @@
 
 \newcommand{\cpk}{\ensuremath{\mathrm{cpk}}}\newcommand{\mask}{\mathrm{mask}}
 \newcommand{\tbl}[3]{\begin{tabular}[t]{@{}#1@{}}#2\\[-\arrayrulewidth]\hline#3\end{tabular}}
+\newcommand{\sh}[1]{[\![#1]\!]}
+% \flow{a}{b}{c}{d}{e}{f} tabulates the messages of a 2-of-3 round: P0 to P1 and P2, P1 to P0 and P2, P2 to P0 and P1.
+\newcommand{\flow}[6]{\tbl{llll}{From & To $P_0$ & To $P_1$ & To $P_2$}{$P_0$ & & #1 & #2 \\ $P_1$ & #3 & & #4 \\ $P_2$ & #5 & #6 &}}
+% \tnote{text} sets a small note under a table.
+\newcommand{\tnote}[1]{\par\vspace{4bp}{\fontsize{9bp}{13bp}\selectfont#1\par}}
 % \cite{key} prints [key] and jumps to the entry \bib{key}{text} of the Reference slide. \cite[name]{key} prints the name instead.
 \RenewDocumentCommand{\cite}{o m}{\hyperlink{ref:#2}{\IfValueTF{#1}{#1}{[#2]}}}
 \newcommand{\bib}[2]{\1[] \makebox[70bp][l]{\hypertarget{ref:#1}{[#1]}}\parbox[t]{\dimexpr\linewidth-70bp}{\raggedright\strut#2\strut}}
@@ -73,7 +78,7 @@
 % maximum 16*(58+1) = 944 bytes
 % average 16*(37+1) = 608 bytes
 
-\begin{slide}[.66]{\cite[PRAWNS]{BBDLN26} for signing}
+\begin{slide}[.6]{\cite[PRAWNS]{BBDLN26} for Signing}
 \1 Threshold PRF
   \2 Let $F(x)$ be a $t$-of-$n$ threshold PRF
   \2 Any $t$ operators evaluate it, $t-1$ learn nothing
@@ -90,13 +95,13 @@
   \2 With QBFT, shares of $F(x_s)$ can be sent with COMMIT, one per possible quorum $J$, to save 1 round
 \side
 2-of-3 example:\\
-$F(x) = H(k_1, x) \oplus H(k_2, x) \oplus H(k_3, x)$\\
-op 1 holds $\{k_2, k_3\}$ and $\{\mask_{12}, \mask_{13}\}$\\
-op 2 holds $\{k_1, k_3\}$ and $\{\mask_{12}, \mask_{23}\}$\\
-op 3 holds $\{k_1, k_2\}$ and $\{\mask_{13}, \mask_{23}\}$
+$F(x) = H(k_0, x) \oplus H(k_1, x) \oplus H(k_2, x)$\\
+$P_0$ holds $\{k_1, k_2\}$ and $\{\mask_{01}, \mask_{02}\}$\\
+$P_1$ holds $\{k_0, k_2\}$ and $\{\mask_{01}, \mask_{12}\}$\\
+$P_2$ holds $\{k_0, k_1\}$ and $\{\mask_{02}, \mask_{12}\}$
 \end{slide}
 
-\begin{slide}{Setup by trusted dealer}
+\begin{slide}{Setup by Trusted Dealer}
 \1 Keygen
   \2 Generate public param $P$, PRF seeds $k_S$, pairwise keys $\mask_{ij}$
   \2 Compute top tree
@@ -107,21 +112,23 @@ op 3 holds $\{k_1, k_2\}$ and $\{\mask_{13}, \mask_{23}\}$
   \2 16.8 G keccakf per year of lifetime for 5-of-7 (1 sig per 12s slot)
 \1 Benchmark (on i9-13900k 24-cores CPU)
   \2[] \tbl{lrr}{Lifetime & Keygen Time & \cpk\ Size}{
-    1 year & 2.4 mins & 7.3 GB \\
+    1 year & 2.4 mins & 7.5 GB \\
     5 year & 11.7 mins & 37 GB \\
-    10 year & 23.4 mins & 74 GB}
+    10 year & 23.4 mins & 73 GB}
 \end{slide}
 
 % 16.8 G = 41*36*(2^16)*58*3
 %   - 41 = ceil(365*86400 / (12*2^16))
 %   - 36 = C(7,5-1) + 1
+% cpk size = T * 65536 * 58 * 48.
+% for T = 41, 201 and 402, size = 7.48, 36.7 and 73.4 GB.
 
-\begin{slide}[.59]{Setup by DKG}
+\begin{slide}[.6]{Setup by DKG}
 \1 Requirement
   \2 Hash-only MPC hides secrets only from fewer than $n/2$ operators
-  \2 MPC runs for every bottom tree, so it must hide them from $t-1$ as signing does $\rightarrow n \ge 2t-1$
+  \2 MPC runs for every bottom tree, so a threshold beyond that adds no security $\rightarrow t-1 < n/2 \rightarrow n \ge 2t-1$
 \1 MPC Protocol
-  \2 Replicated sharing \cite{CDI05} for minimum communication per AND gate
+  \2 Replicated sharing \cite{CDI05} for minimum communication per AND gate (1, 1.2 and 1.29 bits for 2-of-3, 3-of-5 and 4-of-7)
   \2 Malicious security with abort via \cite{GS20}
 \1 Keygen (once)
   \2 Generate public param $P$, PRF seeds $k_S$, pairwise keys $\mask_{ij}$ by commit-reveal
@@ -192,6 +199,7 @@ op 3 holds $\{k_1, k_2\}$ and $\{\mask_{13}, \mask_{23}\}$
   \1 Implement QBFT for signing to improve liveness
   \1 Implement key reshare for operator change
   \1 Explore stronger DKG security than abort, e.g.\ \cite{BGIN20}
+  \1 Formal verification of the end-to-end DKG protocol
 \end{slide}
 
 \begin{slide}{Reference}
@@ -203,7 +211,173 @@ op 3 holds $\{k_1, k_2\}$ and $\{\mask_{13}, \mask_{23}\}$
 \bib{Wam26}{T. Wambsgans. leanXMSS candidate. \href{https://github.com/TomWambsgans/sphincs.art/blob/9a528527d2d0ea41d2b3b322d2548c0828569a6d/leanXMSS.tex}{github.com/TomWambsgans/sphincs.art/leanXMSS.tex}}
 \end{slide}
 
-% \begin{slide}{Appendix -- MPC toy example}
-% \end{slide}
+\begin{slide}[.6]{Toy MPC -- Setup}
+\1 Goal
+  \2 $P_0, P_1, P_2$ hold shared bits $b_0, \dots, b_7 \in \mathbb F_2$, at most 1 corrupt
+  \2 Open only $b_0 \wedge \dots \wedge b_7$, by 7 AND gates in 3 layers
+\1 Replicated sharing $\sh{v} = (v_0, v_1, v_2)$
+  \2 $v = v_0 \oplus v_1 \oplus v_2$, term $v_k$ held by all but $P_k$
+  \2 $\mathbb F_2$ in the circuit, $\mathbb F_{2^{128}}$ in the check, $\oplus$ is XOR in both
+  \2 One operator lacks one term, so it learns nothing about $v$
+\1 PRSS keys, set up once
+  \2 $\mathrm{prss}_{ij}$ per pair gives a fresh stream $Z_{ij} = \mathsf{PRG}(\mathrm{prss}_{ij}, \rho)$ in round $\rho$
+  \2 $\mathrm{prss}_k$ per term, so $\mathsf{Rand}$ gives $\sh{r}$ with $r_k = \mathsf{PRG}(\mathrm{prss}_k, \rho)$ and no message
+\side
+Terms of each operator\\
+\tbl{llll}{Operator & Holds & Fills & Owns}{
+  $P_0$ & $v_1, v_2$ & $v_1$ & $v_2$ \\
+  $P_1$ & $v_0, v_2$ & $v_2$ & $v_0$ \\
+  $P_2$ & $v_0, v_1$ & $v_0$ & $v_1$}
+\tnote{Fills means the term it sets in a reshare\\Owns means the term it sends in an open}
+\end{slide}
+
+\begin{slide}[.6]{Toy MPC -- AND gate (local product)}
+\1 Input $\sh{x}, \sh{y}$ of $x, y \in \mathbb F_2$
+\1 Output $\sh{z}$ with $z = xy \in \mathbb F_2$
+\1 $xy = \bigoplus_{j,k} x_j y_k$ has 9 products
+  \2 Each product goes to one operator holding both terms
+  \2 $P_i$ adds its 3 products into $w_i \in \mathbb F_2$, with no message
+  \2 So $w_0 \oplus w_1 \oplus w_2 = xy$, an additive sharing
+\side
+Products of each operator\\
+\tbl{lll}{Operator & Products & $w_i$}{
+  $P_0$ & $x_1 y_2 \oplus x_2 y_1 \oplus x_2 y_2$ & 1 \\
+  $P_1$ & $x_0 y_0 \oplus x_0 y_2 \oplus x_2 y_0$ & 0 \\
+  $P_2$ & $x_0 y_1 \oplus x_1 y_0 \oplus x_1 y_1$ & 0}
+\tnote{Example $\sh{x} = (1, 1, 1)$, $\sh{y} = (0, 1, 0)$, so $x = y = 1$}
+\end{slide}
+
+\begin{slide}[.6]{Toy MPC -- AND gate (reshare)}
+\1 Mask $\zeta_i = Z_{ij} \oplus Z_{ik} \in \mathbb F_2$ for the 2 others $j, k$
+  \2 Each stream appears twice, so $\zeta_0 \oplus \zeta_1 \oplus \zeta_2 = 0$
+\1 $P_i$ sends $u_i = w_i \oplus \zeta_i \in \mathbb F_2$
+  \2 To the other holder of the term it fills
+  \2 Both holders set that term to $u_i$
+  \2 So $z_0 \oplus z_1 \oplus z_2 = xy$
+\1 The receiver lacks one stream of $\zeta_i$, so $u_i$ hides $w_i$
+\1 A corrupt sender can flip $u_i$, an error the check catches
+\1 1 round, 1 bit from each operator
+\side
+Messages of the reshare\\
+\flow{}{$u_0 = 0$}{$u_1 = 0$}{}{}{$u_2 = 1$}
+\tnote{Example $Z_{01} = 1$, $Z_{02} = 0$, $Z_{12} = 1$ and $w = (1, 0, 0)$\\
+Result $\sh{z} = (u_2, u_0, u_1) = (1, 0, 0)$, so $z = 1$}
+\end{slide}
+
+\begin{slide}[.6]{Toy MPC -- AND layers (rounds 1--4)}
+\1 Layer $\ell = 1, 2, 3$
+  \2 Gate $g$ computes $z^{(\ell)}_g = z^{(\ell-1)}_{2g} z^{(\ell-1)}_{2g+1} \in \mathbb F_2$
+  \2 $z^{(0)}_e = b_e$
+  \2 All gates of a layer reshare in one round
+\1 Rerand reshares the term each $P_i$ owns
+  \2 $\sh{z'}$ has fresh terms, with $z' = z^{(3)}_0$
+\1 Record 8 tuples $(x_e, y_e, z_e) \in \mathbb F_2^3$ for the check
+  \2 Tuple $e = 0, \dots, 6$ holds the 2 inputs and the output of gate $e$
+  \2 Tuple $e = 7$ is $(z^{(3)}_0, 1, z')$ for rerand, with $\sh{1} = (1, 0, 0)$
+\side
+Bits sent in rounds 1 to 4\\
+\tbl{lll}{Round & Step & Each sends}{
+  1 & Layer 1 & 4 bits \\
+  2 & Layer 2 & 2 bits \\
+  3 & Layer 3 & 1 bit \\
+  4 & Rerand & 1 bit}
+\tnote{Each round $P_0 \to P_2$, $P_1 \to P_0$, $P_2 \to P_1$}
+\end{slide}
+
+\begin{slide}[.6]{Toy MPC -- Check Setup (round 5)}
+\1 A reshare may add errors, so check all tuples first
+\1 Lift the tuples from $\mathbb F_2$ into $\mathbb F_{2^{128}}$
+\1 A coin gives public random $c_0, c_1, c_2 \in \mathbb F_{2^{128}}$
+  \2 $\mathsf{Rand}$ gives 2 shared elements, opened as Shamir shares
+  \2 Abort unless the 3 opened shares lie on one line
+  \2 $c_0, c_1, c_2$ expand a hash of the 2 opened elements
+  \2 Weight $\beta_e = \prod_{k : e_k = 1} c_k$ for $e = \sum_k e_k 2^k$
+\1 Conv turns $\sh{v}$ into the Shamir sharing $\langle v \rangle$ locally \cite{CDI05}
+  \2 $P_i$ holds $V(i+1)$ for a line $V$ over $\mathbb F_{2^{128}}$ with $V(0) = v$
+  \2 $\langle A \rangle = (\beta_e x_e)_{e < 8}$, $\langle B \rangle = (y_e)_{e < 8}$ in $\mathbb F_{2^{128}}^8$
+  \2 $\langle C \rangle = \bigoplus_e \beta_e z_e \in \mathbb F_{2^{128}}$
+\1 Claim $C = \bigoplus_e A_e B_e$, false w.h.p.\ if any $z_e \ne x_e y_e$
+\side
+Messages of a coin\\
+\flow{$s_0$}{$s_0$}{$s_1$}{$s_1$}{$s_2$}{$s_2$}
+\tnote{$s_i$ is the share of $P_i$, 2 elements of $\mathbb F_{2^{128}}$\\
+$c_0, c_1, c_2$ are hashed from the 2 opened elements}
+\vspace{16bp}Conv of each operator\\
+\tbl{ll}{Operator & Shamir share $V(i+1)$}{
+  $P_0$ & $v_1 \psi_1(1) \oplus v_2 \psi_2(1)$ \\
+  $P_1$ & $v_0 \psi_0(2) \oplus v_2 \psi_2(2)$ \\
+  $P_2$ & $v_0 \psi_0(3) \oplus v_1 \psi_1(3)$}
+\tnote{$V(X) = \bigoplus_k v_k \psi_k(X)$ with $\psi_k(X) = 1 \oplus X / (k+1)$\\
+So $V(0) = v$, and $\psi_k(k+1) = 0$ removes the term $P_k$ lacks}
+\end{slide}
+
+\begin{slide}[.6]{Toy MPC -- Halving (rounds 6--11)}
+\1 Halve the claim $C = \bigoplus_e A_e B_e$ from 8 to 4, 2, 1 elements
+\1 Split $A = (A_{\mathrm{lo}}, A_{\mathrm{hi}})$, $B$ likewise
+  \2 $A'(X) = A_{\mathrm{lo}} \oplus X (A_{\mathrm{lo}} \oplus A_{\mathrm{hi}})$, $B'(X)$ likewise
+  \2 $P(X) = \bigoplus_e A'(X)_e B'(X)_e$, quadratic
+\1 Round 1 reshares $p_0 = P(0)$ and $p_2 = [X^2] P$ in $\mathbb F_{2^{128}}$
+  \2 The claim gives $P(1) = C \oplus p_0$, so all of $P$ is shared
+\1 Round 2 opens a coin $r \in \mathbb F_{2^{128}}$
+  \2 Fold $A \leftarrow A'(r)$, $B \leftarrow B'(r)$
+  \2 New claim $C \leftarrow P(r) = p_0 \oplus (C \oplus p_2) r \oplus p_2 r^2$
+\1 A wrong claim survives with probability at most $2 / (2^{128} - 2)$
+\side
+Messages of a halving reshare\\
+\flow{}{$p_0, p_2$}{$p_0, p_2$}{}{}{$p_0, p_2$}
+\tnote{The shares of $p_0, p_2$, masked as in the AND gate\\
+Round 2 sends a coin as in round 5}
+\end{slide}
+
+\begin{slide}[.6]{Toy MPC -- Final Check and Open (rounds 12--15)}
+\1 After 3 halvings the claim is $C = ab$
+\1 Round 12 takes masks $w_a, w_b \in \mathbb F_{2^{128}}$ by $\mathsf{Rand}$
+  \2 Reshare $q_0 = w_a w_b$, $q_2 = (w_a \oplus a)(w_b \oplus b)$
+\1 Round 13 opens a coin $r \in \mathbb F_{2^{128}}$ with digests
+  \2 A digest of each held term goes to all
+  \2 Abort if two holders of a term hold different copies
+\1 Round 14 opens $u, v, w \in \mathbb F_{2^{128}}$, accepted iff $uv = w$
+  \2 $u = w_a \oplus r (w_a \oplus a)$ and $v = w_b \oplus r (w_b \oplus b)$
+  \2 $w = q_0 \oplus (C \oplus q_0 \oplus q_2) r \oplus q_2 r^2$
+\1 Round 15 opens $\sh{z'}$ to get $b_0 \wedge \dots \wedge b_7 \in \mathbb F_2$
+  \2 The owner sends its copy, the other holder its hash
+\side
+Messages of the output open\\
+\flow{$H(z'_1)$}{$z'_2$}{$z'_0$}{$H(z'_2)$}{$H(z'_0)$}{$z'_1$}
+\tnote{$z'_k \in \mathbb F_2$, the term that the receiver lacks\\
+$H$ is a collision-resistant hash}
+\end{slide}
+
+\begin{slide}{Toy MPC -- All Messages}
+\1[] Messages of each round\\
+\tbl{lll}{Round & Step & Each operator sends}{
+  1, 2, 3 & AND layers & 4, 2, 1 elements of $\mathbb F_2$ to next \\
+  4 & Rerand & 1 element of $\mathbb F_2$ to next \\
+  5, 7, 9, 11 & Coin & 2 elements of $\mathbb F_{2^{128}}$ to both others \\
+  6, 8, 10 & Halving & 2 elements of $\mathbb F_{2^{128}}$ to next \\
+  12 & Final masks & 2 elements of $\mathbb F_{2^{128}}$ to next \\
+  13 & Coin and digests & 2 elements of $\mathbb F_{2^{128}}$ and 2 digests to both others \\
+  14 & Final open & 3 elements of $\mathbb F_{2^{128}}$ to both others \\
+  15 & Output open & 1 element of $\mathbb F_2$ and 1 hash}
+\tnote{Next means $P_0 \to P_2$, $P_1 \to P_0$, $P_2 \to P_1$}
+\end{slide}
+
+\begin{slide}{From Toy MPC to DKG}
+\1 Rounds
+  \2 Grow linearly with the circuit depth
+  \2 Grow logarithmically with the number of tuples in the check
+\1 Batching
+  \2 The check keeps every tuple until its coin opens
+  \2 One check for a whole bottom tree would keep over 300 GB per operator
+  \2 So each batch of 128 chains has its own check, with $1.4 \cdot 10^7$ tuples
+  \2 A bottom tree has 29,696 batches, and several run at a time
+\1 Reshare modes
+  \2 Peer mode sends $n(t-1)$ bits per AND gate in 1 round
+  \2 Collector mode sends $3(t-1)$ bits per AND gate in 2 rounds, used for $n > 3$
+\1 Rounds of a batch
+  \2 Depth 72 gives 72 AND rounds in peer mode and 144 in collector mode
+  \2 The check takes $1 + 2 \cdot 24 + 3 = 52$ rounds for 24 halvings
+  \2 Rerand and open take 1 round each, so 126 rounds for 2-of-3 and 198 for 3-of-5 and 4-of-7
+\end{slide}
 
 \end{document}
