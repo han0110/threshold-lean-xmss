@@ -23,7 +23,7 @@ layer. The proof of the completeness of the setup joins four hops on the honest 
 the claims of the building blocks and of one tree in `Proof/Tree.lean` and `Proof/Dealer.lean`. The
 proof of the correctness of the setup follows the game with hops. It cuts a run of a bottom tree into
 two ceremonies, bounds the bad events of one ceremony, and pays the PRSS setups with a hybrid over the
-setup slots. `Proof/DkgSecurity/ReductionCost.lean` proves the cost bound of the field `dkgSecurity`.
+setup slots. `Proof/DkgSecurity/ReductionCost.lean` proves the cost bound of the field `dkgSecurityPreservation`.
 `Proof/DkgSecurity/Claim.lean` gives that field from the hop `SharedStep`, and `theorems_of_sharedStep`
 gives the bundle from the same hop. -/
 
@@ -37,7 +37,7 @@ theorem theorems_of_sharedStep {C : Committee} {E : Type} [Field E] [Fintype E] 
     Theorems prims K circuits settings runLimit where
   stronglyUnforgeable := SigningStronglyUnforgeable.stronglyUnforgeable prims C
   signingCorrectness := signingCorrectness prims C
-  dkgSecurity := DkgSecurityProof.dkgSecurity_of_leaves prims K circuits settings runLimit step
+  dkgSecurityPreservation := DkgSecurityProof.dkgSecurityPreservation_of_leaves prims K circuits settings runLimit step
   dkgCorrectness := dkgCorrectness prims K circuits settings runLimit
   dkgCompleteness := dkgCompleteness prims K circuits settings runLimit
 

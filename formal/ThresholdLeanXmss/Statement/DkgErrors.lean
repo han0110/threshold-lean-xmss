@@ -4,7 +4,7 @@ import ThresholdLeanXmss.Statement.Signing
 # The error and cost terms of the setup
 
 This file holds the error terms of the three claims of `Dkg.lean` and the cost term of the reduction
-of `DkgSecurity`. Each term is a fixed expression of the budget `q`, of the committee and of the
+of `DkgSecurityPreservation`. Each term is a fixed expression of the budget `q`, of the committee and of the
 settings. The terms count the batches, the ceremonies and the PRSS setups of the protocol of
 `Scheme.lean`, which deviates from GS20 in the points below.
 
@@ -128,7 +128,7 @@ def prssKeyCount (C : Committee) : ℕ := termCount C + C.n.choose 2
 accounts for the counted calls that hit a hidden PRSS key and for two equal dealt keys. -/
 def prssRandHashError (C : Committee) (q : ℕ) : ℝ := (prssKeyCount C * (q + prssKeyCount C) : ℕ) / 2 ^ 256
 
-/-! ## The setups and the cost terms of `DkgSecurity` -/
+/-! ## The setups and the cost terms of `DkgSecurityPreservation` -/
 
 /-- The PRSS setups of a run of a tree. -/
 def treeSetups : Tree → ℕ
@@ -275,7 +275,7 @@ def dkgCorrectnessError (C : Committee) (q : ℕ) : ℝ :=
     runLimit * (runError (E := E) circuits settings runLimit C q .top +
       ∑ b : Fin (2 ^ layerHeight), runError (E := E) circuits settings runLimit C q (.bottom b))
 
-/-! ## The error of `DkgSecurity` -/
+/-! ## The error of `DkgSecurityPreservation` -/
 
 /-- The bound of a first hit. A counted call names an emulated seed of a hidden term or its derive
 input, or a salt of a hidden term, or an emulated seed meets a seed of the dealer, or an emulated
@@ -299,7 +299,7 @@ def privacyStepError (C : Committee) (tree : Tree) (q : ℕ) : ℝ :=
       (gameBatches settings runLimit * (C.n * termCount C)) : ℕ) : ℝ) / 2 ^ 256 +
     4 * copyError settings runLimit C q
 
-/-- The error of `DkgSecurity`. It is the error of `DkgCorrectness`, one hash error of the seed
+/-- The error of `DkgSecurityPreservation`. It is the error of `DkgCorrectness`, one hash error of the seed
 generation, one failed search of the dealer for each bottom tree, one first hit, and one emulated
 run for each run of each tree. -/
 def dkgError (C : Committee) (q : ℕ) : ℝ :=

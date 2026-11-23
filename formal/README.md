@@ -1,6 +1,6 @@
 # formal
 
-Lean 4 statements and proofs of the security claims of threshold leanXMSS. Four of the five claims are proved. The fifth, `dkgSecurity`, has a proof of its cost bound and of twelve of the 13 hops of its win bound.
+Lean 4 statements and proofs of the security claims of threshold leanXMSS. Four of the five claims are proved. The fifth, `dkgSecurityPreservation`, has a proof of its cost bound and of twelve of the 13 hops of its win bound.
 
 ## The claims
 
@@ -10,7 +10,7 @@ The structure `Theorems` in [Statement/Theorems.lean](./ThresholdLeanXmss/Statem
 | --- | --- | --- | --- |
 | `stronglyUnforgeable` | Signing with a trusted dealer is strongly unforgeable with adaptive corruption. | PRAWNS, Definition 3.2 | Proved |
 | `signingCorrectness` | An honest quorum signs, except for a failed search. | PRAWNS, Section 3.1 | Proved |
-| `dkgSecurity` | The real DKG gives an adversary no more than the dealer gives the named forger `dkgReduction`, up to a fixed error. | Gurkan and others, Definition 8 | Cost bound proved, win bound open |
+| `dkgSecurityPreservation` | The real DKG gives an adversary no more than the dealer gives the named forger `dkgReduction`, up to a fixed error. | Gurkan and others, Definition 8 | Cost bound proved, win bound open |
 | `dkgCorrectness` | Against an adversary, honest operators hold consistent seeds, and each tree output is right or absent. | Gurkan and others, Definition 6 | Proved |
 | `dkgCompleteness` | With no corrupt operator, the DKG gives outputs that are near the outputs of the dealer. | None | Proved |
 
@@ -19,14 +19,14 @@ The structure `Theorems` in [Statement/Theorems.lean](./ThresholdLeanXmss/Statem
 - The coalition of the DKG is static, and the signing game has adaptive corruption.
 - The claims of the DKG fix the function `Th`, and `stronglyUnforgeable` has `Th` in the random oracle.
 
-## The state of `dkgSecurity`
+## The state of `dkgSecurityPreservation`
 
 | Part | Proof | State |
 | --- | --- | --- |
 | The cost bound of the forger | `dkgReduction_cost` | Proved |
 | Twelve hops of the chain, with the hop to the forger | `tableHop` and eleven more | Proved |
 | The hop `SharedStep`, in which one real run of a tree becomes an emulated run | None | Open |
-| The field from `SharedStep` | `dkgSecurity_of_leaves` | Proved |
+| The field from `SharedStep` | `dkgSecurityPreservation_of_leaves` | Proved |
 | All five claims from `SharedStep` | `theorems_of_sharedStep` | Proved |
 
 - The win bound is a target until `SharedStep` has a proof, so a proof can change it.
@@ -55,7 +55,7 @@ flowchart TB
   end
 
   subgraph DKG["Setup by DKG on the real network, static coalition"]
-    DSEC["dkgSecurity<br/>dkgTsigGame to tsigGame for dkgReduction,<br/>both in world with the fixed Th"]:::target
+    DSEC["dkgSecurityPreservation<br/>dkgTsigGame to tsigGame for dkgReduction,<br/>both in world with the fixed Th"]:::target
     DCOR["dkgCorrectness<br/>dkgTreeGame"]:::proved
     DCOMP["dkgCompleteness<br/>honestDkg near dealerDkg"]:::proved
   end
@@ -91,7 +91,7 @@ The dashed box is the end-to-end bound of `dkgTsigGame`.
 | [ThresholdLeanXmss/Statement/DkgGame.lean](./ThresholdLeanXmss/Statement/DkgGame.lean) | `dkgTsigGame`, `dkgTreeGame`, `honestDkg` and `dealerDkg` |
 | [ThresholdLeanXmss/Statement/Dkg.lean](./ThresholdLeanXmss/Statement/Dkg.lean) | `CircuitsCompute` and the three claims of the DKG, with their adaptations of the papers |
 | [ThresholdLeanXmss/Statement/DkgErrors.lean](./ThresholdLeanXmss/Statement/DkgErrors.lean) | The error and cost terms of the three claims of the DKG |
-| [ThresholdLeanXmss/Statement/DkgReduction.lean](./ThresholdLeanXmss/Statement/DkgReduction.lean) | `dkgReduction`, the named forger of `dkgSecurity` |
+| [ThresholdLeanXmss/Statement/DkgReduction.lean](./ThresholdLeanXmss/Statement/DkgReduction.lean) | `dkgReduction`, the named forger of `dkgSecurityPreservation` |
 | [ThresholdLeanXmss/Statement/RandomOracle.lean](./ThresholdLeanXmss/Statement/RandomOracle.lean) | `world`, `signingWorld` and the count of the calls |
 | [ThresholdLeanXmss/Statement/Execution.lean](./ThresholdLeanXmss/Statement/Execution.lean) | The execution of a protocol on the network |
 | [ThresholdLeanXmss/Scheme.lean](./ThresholdLeanXmss/Scheme.lean) | The protocol, the oracles and the dealer `dealerKeyGen` |

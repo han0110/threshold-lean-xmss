@@ -3,7 +3,7 @@ import ThresholdLeanXmssSecurity.Proof.StreamWorld
 import ThresholdLeanXmssSecurity.Proof.SeedGenAlias
 
 /-!
-# The games of the hops of `dkgSecurity`
+# The games of the hops of `dkgSecurityPreservation`
 
 The games between `dkgTsigGame` and `tsigGame (dkgReduction …)`, as programs of the world.
 

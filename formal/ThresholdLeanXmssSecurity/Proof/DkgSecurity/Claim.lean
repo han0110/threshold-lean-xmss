@@ -22,9 +22,9 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.TopCosts
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.UsedHit.TopLaws
 
 /-!
-# The field `dkgSecurity` from the hops with the shared bad event
+# The field `dkgSecurityPreservation` from the hops with the shared bad event
 
-`dkgSecurity_of_leaves` is `dkgSecurity_of_shared` with the proved hops filled in. They are
+`dkgSecurityPreservation_of_leaves` is `dkgSecurityPreservation_of_shared` with the proved hops filled in. They are
 `monitorErase`, the hop `UsedHitHop` at the error `setupHybridError` from the proof of
 `dkgCorrectness`, `sharedStart`, `sharedRefDealer`, `sharedSeedBound`, `sharedSeedReal`,
 `sharedSeedIdeal`, `sharedSearch`, `sharedEnd`, `tableHop`, `sharedBadBound` and `sharedHit`. The
@@ -57,13 +57,13 @@ theorem sharedHit : SharedHit prims K circuits settings runLimit (privacyHitErro
     (hitSalt prims K circuits settings runLimit) (hitClash prims K circuits settings runLimit)
     (hitMismatch prims K circuits settings runLimit) D A q bounded).trans (hitError_eq settings runLimit C q).le
 
-/-- The field `dkgSecurity` from the hop `SharedStep`, as a proposition. The error `dkgError` is
+/-- The field `dkgSecurityPreservation` from the hop `SharedStep`, as a proposition. The error `dkgError` is
 `sharedError` at `privacyHitError` and `privacyStepError` by definition. -/
-theorem dkgSecurity_of_leaves
+theorem dkgSecurityPreservation_of_leaves
     (step : SharedStep prims K circuits settings runLimit (privacyStepError settings runLimit C)) :
     CircuitsCompute circuits prims.Th →
-      ThresholdLeanXmss.DkgSecurity prims K circuits settings runLimit (dkgReduction K circuits settings runLimit) :=
-  dkgSecurity_of_shared prims K circuits settings runLimit (privacyHitError settings runLimit C)
+      ThresholdLeanXmss.DkgSecurityPreservation prims K circuits settings runLimit (dkgReduction K circuits settings runLimit) :=
+  dkgSecurityPreservation_of_shared prims K circuits settings runLimit (privacyHitError settings runLimit C)
     (privacyStepError settings runLimit C)
     (monitorErase prims K circuits settings runLimit)
     (UsedHit.usedHitHop_of_reductions K circuits settings runLimit prims
@@ -87,6 +87,6 @@ theorem dkgSecurity_of_leaves
 
 end ThresholdLeanXmssSecurity.DkgSecurityProof
 
-/-- info: 'ThresholdLeanXmssSecurity.DkgSecurityProof.dkgSecurity_of_leaves' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.DkgSecurityProof.dkgSecurityPreservation_of_leaves' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.DkgSecurityProof.dkgSecurity_of_leaves
+#print axioms ThresholdLeanXmssSecurity.DkgSecurityProof.dkgSecurityPreservation_of_leaves
