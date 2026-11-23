@@ -484,7 +484,7 @@ theorem r1OwnSource : R1OwnSource prims (C := C) := by
   rw [← ledgerRun_forget, prEvent_map]
   calc _ ≤ ∑' z, Pr{let y ← ledgerRun prims A x}[y = z] * SigningOwnR1.stopRisk x z.2.1.1.1.1.1.1 z.2.1.1.1.2 := by
         rw [OracleComp.prEvent_eq_tsum_ite]
-        refine ENNReal.tsum_le_tsum fun z => ?_
+        refine tsum_le_tsum fun z => ?_
         split_ifs with hz
         · have hone : SigningOwnR1.stopRisk x z.2.1.1.1.1.1.1 z.2.1.1.1.2 = 1 := by
             have hhit : z.2.1.1.1.2.hit = true := hz.1

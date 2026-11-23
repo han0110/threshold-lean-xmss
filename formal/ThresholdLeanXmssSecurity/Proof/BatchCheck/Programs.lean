@@ -435,7 +435,9 @@ theorem timed_inputShares (ctx : Context C) (jobs : List Job) :
   timed_mapM _ (fun _ => Timed.oracleStep_bind 0 _ _ fun _ => timed_pure _) jobs
 
 /-- A real batch takes `batchRounds` rounds from every start of the counters. -/
-theorem runTimed_realBatch (mode : ReshareMode) (ctx : Context C) (parameter : PublicParameter) (jobs : List Job) :
+theorem runTimed_realBatch {E : Type} [Field E] [Algebra Bit E] [Fintype E] [DecidableEq E]
+    (K : Constants C E) (circuits : Circuits)
+    (mode : ReshareMode) (ctx : Context C) (parameter : PublicParameter) (jobs : List Job) :
     RunTimed (batchRounds circuits mode parameter jobs) (realBatch K circuits mode ctx parameter jobs) := fun st => by
   rw [realBatch_phases, batchRounds, batchCount, tupleCount_eq, ← Nat.zero_add (_ + 1), ← Nat.add_zero (_ + 1)]
   refine Timed.bind (timed_inputShares ctx jobs) fun inputs => Timed.bind ?_ fun r => timed_pure _

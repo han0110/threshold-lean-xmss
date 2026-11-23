@@ -194,20 +194,22 @@ theorem grindExtra_cache_frame (P : PublicParameter) (ρ : KeyIndex → Digest)
     (hz : z ∈ support ((simulateQ (randomOracle (spec := Query C →ₒ HashOutput))
       (grindExtra P ρ p t p')).run p'.1.1.1)) :
     p'.1.1.1 ≤ z.2 ∧ ∀ q, OutsideTrials P q → z.2 q = p'.1.1.1 q := by
-  unfold grindExtra at hz
-  split at hz
-  · split at hz
-    · split at hz
-      · exact baseGrind_cache_frame _ _ _ _ _ _ hz
-      · simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
-        subst z
-        exact ⟨le_rfl, fun _ _ => rfl⟩
-    · simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
-      subst z
-      exact ⟨le_rfl, fun _ _ => rfl⟩
-  · simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
+  have h : grindExtra P ρ p t p' = pure () ∨
+      ∃ e m a, grindExtra P ρ p t p' = baseGrind P e m a := by
+    unfold grindExtra
+    split
+    · split
+      · split
+        · exact Or.inr ⟨_, _, _, rfl⟩
+        · exact Or.inl rfl
+      · exact Or.inl rfl
+    · exact Or.inl rfl
+  rcases h with hpure | ⟨e, m, a, hbase⟩
+  · simp only [hpure, simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
     subst z
     exact ⟨le_rfl, fun _ _ => rfl⟩
+  · rw [hbase] at hz
+    exact baseGrind_cache_frame P e m a _ _ hz
 
 /-- The invariant rule for world programs excludes programming only at the
 calls actually permitted by `ProgramFree`. -/

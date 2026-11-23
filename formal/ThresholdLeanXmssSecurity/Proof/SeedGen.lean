@@ -858,26 +858,6 @@ theorem probEvent_parts_collision (X Y : (C.Party → Parts C) → HashOutput) (
     exact prEvent_congr _ _ _ fun parts => BitVec.xor_eq_zero_iff.symm
   rw [this, huniform.prEvent_eq, SampleableType.prEvent_uniformSample_eq_singleton]
 
-theorem card_pair_le (C : Committee) : Fintype.card C.Pair ≤ C.n.choose 2 := by
-  have hinj : Function.Injective fun p : C.Pair =>
-      (⟨{p.1.1, p.1.2}, Finset.card_pair (ne_of_lt p.2)⟩ : {s : Finset C.Party // s.card = 2}) := by
-    rintro ⟨⟨a, b⟩, hab⟩ ⟨⟨a', b'⟩, hab'⟩ h
-    simp only [Subtype.mk.injEq] at h
-    have ha : a ∈ ({a', b'} : Finset C.Party) := h ▸ by simp
-    have hb : b ∈ ({a', b'} : Finset C.Party) := h ▸ by simp
-    have ha' : a' ∈ ({a, b} : Finset C.Party) := h.symm ▸ by simp
-    simp only [Finset.mem_insert, Finset.mem_singleton] at ha hb ha'
-    simp only at hab hab'
-    have : a = a' ∧ b = b' := by
-      rcases ha with rfl | rfl <;> rcases hb with rfl | rfl <;> rcases ha' with h1 | h1 <;>
-        first | exact ⟨rfl, rfl⟩ | (exfalso; subst_vars; exact lt_asymm hab hab') |
-          (exfalso; exact lt_irrefl _ hab) | (exfalso; exact lt_irrefl _ hab') |
-          (exfalso; subst_vars; exact lt_irrefl _ (hab.trans hab'))
-    obtain ⟨rfl, rfl⟩ := this
-    rfl
-  calc Fintype.card C.Pair ≤ Fintype.card {s : Finset C.Party // s.card = 2} := Fintype.card_le_of_injective _ hinj
-    _ = C.n.choose 2 := by rw [Fintype.card_finset_len, Fintype.card_fin]
-
 theorem nodup_seedGenInputs (parts : C.Party → Parts C)
     (hT : ∀ T T', termInput .seedGen parts T = termInput .seedGen parts T' → T = T')
     (hp : ∀ p p', pairInput .seedGen parts p = pairInput .seedGen parts p' → p = p') : (seedGenInputs parts).Nodup := by

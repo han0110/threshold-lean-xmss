@@ -1751,18 +1751,17 @@ lemma soundError_ne_top (K : Constants C E) (q H m : ℕ) : soundError E q H m �
   have hE : 2 < Fintype.card E := by rw [card_field K]; norm_num [elementBits]
   have h0 : (Fintype.card E : ℝ≥0∞) ≠ 0 := by exact_mod_cast (by omega : Fintype.card E ≠ 0)
   have h2 : ((Fintype.card E - 2 : ℕ) : ℝ≥0∞) ≠ 0 := by exact_mod_cast (by omega : Fintype.card E - 2 ≠ 0)
-  unfold soundError
-  finiteness
+  exact ENNReal.add_ne_top.mpr ⟨ENNReal.div_ne_top (ENNReal.natCast_ne_top _) (pow_ne_zero _ h0),
+    ENNReal.add_ne_top.mpr ⟨ENNReal.div_ne_top (ENNReal.natCast_ne_top _) (pow_ne_zero _ two_ne_zero),
+      ENNReal.div_ne_top (ENNReal.natCast_ne_top _) h2⟩⟩
 
 lemma soundError_toReal (K : Constants C E) (q H m : ℕ) :
     (soundError E q H m).toReal =
       (q : ℝ) / (Fintype.card E : ℝ) ^ 2 + ((H + q : ℕ) / (2 : ℝ) ^ 256 + (m : ℝ) / (Fintype.card E - 2 : ℝ)) := by
   have hE : 2 < Fintype.card E := by rw [card_field K]; norm_num [elementBits]
-  have h0 : (Fintype.card E : ℝ≥0∞) ≠ 0 := by exact_mod_cast (by omega : Fintype.card E ≠ 0)
-  have h2 : ((Fintype.card E - 2 : ℕ) : ℝ≥0∞) ≠ 0 := by exact_mod_cast (by omega : Fintype.card E - 2 ≠ 0)
-  unfold soundError
-  rw [ENNReal.toReal_add (by finiteness) (by finiteness),
-    ENNReal.toReal_add (by finiteness) (by finiteness)]
+  obtain ⟨h₁, h₂₃⟩ := ENNReal.add_ne_top.mp (soundError_ne_top K q H m)
+  obtain ⟨h₂, h₃⟩ := ENNReal.add_ne_top.mp h₂₃
+  rw [soundError, ENNReal.toReal_add h₁ h₂₃, ENNReal.toReal_add h₂ h₃]
   simp only [ENNReal.toReal_div, ENNReal.toReal_natCast, ENNReal.toReal_pow, ENNReal.toReal_ofNat,
     Nat.cast_sub (by omega : 2 ≤ Fintype.card E), Nat.cast_ofNat]
 

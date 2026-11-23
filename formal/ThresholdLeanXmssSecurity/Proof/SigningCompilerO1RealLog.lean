@@ -120,7 +120,7 @@ open SigningCompilerO1Sync SigningCompilerUntil SigningCompilerO1Frame
 set_option backward.isDefEq.respectTransparency false
 attribute [local irreducible] grind SigningFlatEagerProof.baseGrind
   SigningR1FixedProof.cachedExtra SigningOneRunProof.jointCachedExtra
-  SigningLaneUnionProof.traceStepAt
+  SigningLaneUnionProof.traceStepAt rawTraceWorld
 variable (prims : Primitives) (x : Keys3 C) (s : HiddenKey → Digest) (pads : Point → Digest)
   (u : C.Term × CPoint → HashOutput) (rest : RestSlot C → HashOutput)
   (noise : ChainNoiseIndex → HashOutput)
@@ -170,6 +170,65 @@ theorem realRead_observed (g : C.Term × CPoint → HashOutput) (priv vis : Hash
       observe_same vis input value hv]
     simp
 
+private theorem frame_of_projected_run {α β γ : Type}
+    (real : ProbComp (α × β)) (monitored : ProbComp α) (observed : ProbComp γ)
+    (sync : α → β) (view : α → γ) (post : γ → Prop)
+    (law : real = (fun a => (a, sync a)) <$> monitored) (project : view <$> monitored = observed)
+    (h : ∀ z ∈ support observed, post z) : ∀ y ∈ support real, post (view y.1) := by
+  rw [law, ← project] at *
+  intro y hy
+  obtain ⟨a, ha, rfl⟩ := mem_support_map_peel _ _ hy
+  exact h _ (by rw [support_map]; exact Set.mem_image_of_mem _ ha)
+
+theorem realGrind_frame (g : C.Term × CPoint → HashOutput)
+    (before after : SigningFlatProof.FlatState C) (t : (WorldSpec C).Domain)
+    (st : (HashCache C × SigningPartnerBoundProof.Monitor) × (XmssSecurity.LeafIndex → Bool))
+    (priv : HashCache C) (hc : st.1.1 = after.1.1.1)
+    (h : RealPrivate x s pads noise g rest priv st.1.1) y
+    (hy : y ∈ support ((simulateQ (realImpl x g rest)
+      ((simulateQ (rawKeyedSplitOracle (XmssSecurity.encodingInputLeafIndex? x.1))
+        (SigningR1FixedProof.cachedExtra x.2.1 x.1 before t after)).run st)).run priv)) :
+    st.1.1 ≤ y.1.2.1.1 ∧ ∀ q, SigningPartnerCompareProof.OutsideTrials x.1 q →
+      y.1.2.1.1 q = st.1.1 q := by
+  have hframe := SigningReleasedTransferProof.cachedExtra_frame x.2.1 x.1 before t after
+  rw [← hc] at hframe
+  exact frame_of_projected_run _ _ _ _ _ (fun z : Unit × (Query C →ₒ HashOutput).QueryCache =>
+    st.1.1 ≤ z.2 ∧ ∀ q, SigningPartnerCompareProof.OutsideTrials x.1 q → z.2 q = st.1.1 q)
+    (grind_quiet_transport x s pads noise g rest before after t st priv h.quiet)
+    (keyedSplit_cache_forget _ _ st) hframe y (by with_reducible exact hy)
+
+private theorem inRun_and {α : Type} (run : ProbComp α) (P Q : α → Prop)
+    (p : ∀ y ∈ support run, P y) (q : ∀ y ∈ support run, Q y) :
+    ∀ y, InRun run y → P y ∧ Q y := fun y hy => ⟨p y hy, q y hy⟩
+
+theorem grind_posts (g : C.Term × CPoint → HashOutput)
+    (before after : SigningFlatProof.FlatState C) (t : (WorldSpec C).Domain)
+    (st : (HashCache C × SigningPartnerBoundProof.Monitor) × (XmssSecurity.LeafIndex → Bool))
+    (priv : HashCache C) (hc : st.1.1 = after.1.1.1)
+    (h : RealPrivate x s pads noise g rest priv st.1.1) y
+    (hy : InRun ((simulateQ (realImpl x g rest)
+      ((simulateQ (rawKeyedSplitOracle (XmssSecurity.encodingInputLeafIndex? x.1))
+        (SigningR1FixedProof.cachedExtra x.2.1 x.1 before t after)).run st)).run priv) y) :
+    RealPrivate x s pads noise g rest y.2 y.1.2.1.1 ∧ st.1.1 ≤ y.1.2.1.1 ∧
+      ∀ q, SigningPartnerCompareProof.OutsideTrials x.1 q → y.1.2.1.1 q = st.1.1 q := by
+  exact inRun_and _ (fun y => RealPrivate x s pads noise g rest y.2 y.1.2.1.1)
+    (fun y => st.1.1 ≤ y.1.2.1.1 ∧ ∀ q, SigningPartnerCompareProof.OutsideTrials x.1 q →
+      y.1.2.1.1 q = st.1.1 q)
+    (realPrivate_keyedSplit x s pads rest noise g (XmssSecurity.encodingInputLeafIndex? x.1)
+      (SigningR1FixedProof.cachedExtra x.2.1 x.1 before t after) st priv h)
+    (realGrind_frame x s pads rest noise g before after t st priv hc h) y (by with_reducible exact hy)
+
+theorem observed_private (g : C.Term × CPoint → HashOutput) (priv vis : HashCache C)
+    (h : RealPrivate x s pads noise g rest priv vis) (input : Query C) z
+    (hz : z ∈ support (((realImpl x g rest) (.inr input)).run priv)) :
+    RealPrivate x s pads noise g rest z.2 (vis.cacheQuery input z.1) := by
+  by_cases hs : IsSlot x input
+  · rw [realImpl_slot x _ rest input hs, mem_support_pure_iff] at hz
+    rw [hz]
+    exact h.observe_slot input hs
+  · rw [realImpl_other x _ rest input hs] at hz
+    exact h.observe_other input hs z hz
+
 set_option linter.constructorNameAsVariable false in
 /-- One honest call of `H` logs its answer and keeps the log agreement, the private relation and
 the carried state. -/
@@ -182,34 +241,26 @@ theorem honest_call (input : Query C) (a : RealState C)
       SigningPartnerCompareProof.LogAgreement x.1 r.2.1.1.1.1.1 ∧
       RealPrivate x s pads noise (gOf s pads u) rest r.2.2 (visibleOf r.2) ∧
       realLog a ≤ realLog r.2 ∧ r.2.1.2 = a.1.2 := by
-  change r ∈ support ((ThresholdLeanXmssSecurity.fuse (rawTraceWorld prims x)
-    (realImpl x (gOf s pads u) rest) (.inr (.inr (.inl input)))).run a) at hr
-  rw [rawTraceWorld_read_honest prims x (gOf s pads u) rest (.inl input) a.1 a.2] at hr
-  simp only [mem_support_bind_iff, mem_support_pure_iff] at hr
-  obtain ⟨z, hz, y, hy, rfl⟩ := hr
-  simp only [readInput, readAnswer] at hz hy ⊢
-  have hpz : RealPrivate x s pads noise (gOf s pads u) rest z.2
-      ((visibleOf a).cacheQuery input z.1) := by
-    by_cases hs : IsSlot x input
-    · rw [realImpl_slot x _ rest input hs, mem_support_pure_iff] at hz
-      rw [hz]
-      exact hpriv.observe_slot input hs
-    · rw [realImpl_other x _ rest input hs] at hz
-      exact hpriv.observe_other input hs z hz
+  have run : (realCall prims x s pads u rest input).run a =
+      (ThresholdLeanXmssSecurity.fuse (rawTraceWorld prims x) (realImpl x (gOf s pads u) rest)
+        (.inr (.inr (.inl input)))).run (a.1, a.2) := rfl
+  rw [run] at hr
+  refine post_read_run _ _ _ _ (rawTraceWorld_read_honest prims x (gOf s pads u) rest (.inl input) a.1 a.2)
+    (fun r => realLog r.2 input = some r.1 ∧ SigningPartnerCompareProof.LogAgreement x.1 r.2.1.1.1.1.1 ∧
+      RealPrivate x s pads noise (gOf s pads u) rest r.2.2 (visibleOf r.2) ∧
+      realLog a ≤ realLog r.2 ∧ r.2.1.2 = a.1.2) ?_ r (by with_reducible exact hr)
+  intro z hz y hy
+  dsimp only [readInput, readAnswer] at hz hy ⊢
+  have hpz := observed_private x s pads rest noise (gOf s pads u) a.2 (visibleOf a) hpriv input z
+    (by with_reducible exact hz)
   have hw := realRead_observed x s pads rest noise (gOf s pads u) a.2 (visibleOf a) hpriv input z
     (by with_reducible exact hz)
-  have hpy := realPrivate_keyedSplit x s pads rest noise (gOf s pads u) _ _ _ _ hpz y hy
-  rw [grind_quiet_transport x s pads noise (gOf s pads u) rest _ _ _ _ _ hpz.quiet,
-    support_map] at hy
-  obtain ⟨y', hy'', hyy⟩ := hy
-  have hy1 : y.1 = y' := by rw [← hyy]
-  have hro := Set.mem_image_of_mem (fun r => (r.1, r.2.1.1)) hy''
-  rw [← support_map, keyedSplit_cache_forget] at hro
-  have hf := SigningReleasedTransferProof.cachedExtra_frame x.2.1 x.1 _ _ _ _ hro
+  obtain ⟨hpy, hf⟩ := grind_posts x s pads rest noise (gOf s pads u) _ _ _ _ z.2 rfl hpz y
+    (by with_reducible exact hy)
   have hl := SigningPartnerCompareProof.logAgreement_hash x.1 input a.1.1.1.1.1 hlog _ hw
     (a.1.1.1.1.1.2.logQuery (.inr (.inr (.inl input))) z.1)
     (fun _ => by rw [SigningCacheLogProof.logCache_logQuery]; rfl) 0
-  refine ⟨?_, ?_, ?_, ?_, trivial⟩
+  refine ⟨?_, ?_, ?_, ?_, rfl⟩
   · change SigningCacheLogProof.logCache (a.1.1.1.1.1.2.logQuery (.inr (.inr (.inl input))) z.1)
       input = some z.1
     rw [SigningCacheLogProof.logCache_logQuery]
@@ -221,8 +272,7 @@ theorem honest_call (input : Query C) (a : RealState C)
         mem_support_pure_iff] at hz
       rw [hz]
       rfl
-  · rw [hy1]
-    exact ⟨hl.1.trans hf.1, fun q hq => (hf.2 q hq).trans (hl.2 q hq)⟩
+  · exact ⟨hl.1.trans hf.1, fun q hq => (hf.2 q hq).trans (hl.2 q hq)⟩
   · exact hpy
   · intro q v hq
     change SigningCacheLogProof.logCache (a.1.1.1.1.1.2.logQuery (.inr (.inr (.inl input))) z.1)
@@ -230,6 +280,14 @@ theorem honest_call (input : Query C) (a : RealState C)
     rw [SigningCacheLogProof.logCache_logQuery,
       show SigningCacheLogProof.logCache a.1.1.1.1.1.2 q = some v from hq]
     rfl
+
+private theorem realHonest_hash_bind {α : Type} (input : Query C)
+    (next : HashOutput → OracleComp (Query C →ₒ HashOutput) α) (a : RealState C) :
+    (realHonest prims x s pads u rest (SigningHitProof.hashEmbed
+      (liftM ((Query C →ₒ HashOutput).query input) >>= next))).run a =
+      (realCall prims x s pads u rest input).run a >>= fun w =>
+        (realHonest prims x s pads u rest (SigningHitProof.hashEmbed (next w.1))).run w.2 := by
+  rfl
 
 set_option linter.constructorNameAsVariable false in
 /-- A hash-only honest computation resolves on the log cache after its real run. The run keeps the
@@ -250,16 +308,8 @@ theorem honest_resolves {α : Type} (oa : OracleComp (Query C →ₒ HashOutput)
     subst r
     exact ⟨.pure v, hlog, hpriv, le_rfl, rfl⟩
   | query_bind input next ih =>
-    have he : SigningHitProof.hashEmbed (liftM ((Query C →ₒ HashOutput).query input) >>= next) =
-        hashQuery input >>= fun answer => SigningHitProof.hashEmbed (next answer) := by
-      simp [SigningHitProof.hashEmbed, simulateQ_bind]
-    rw [realHonest, he, SigningSecurityProof.liftFree, liftComp_bind, free_bind, simulateQ_bind,
-      StateT.run_bind, mem_support_bind_iff] at hr
-    obtain ⟨w, hw, hr⟩ := hr
-    rw [hashQuery, free] at hw
-    erw [liftComp_query, simulateQ_query] at hw
-    simp only [OracleQuery.input_query, OracleQuery.cont_query, id_map] at hw
-    change w ∈ support ((realCall prims x s pads u rest input).run a) at hw
+    rw [realHonest_hash_bind] at hr
+    obtain ⟨w, hw, hr⟩ := mem_support_bind_peel _ _ hr
     obtain ⟨hanswer, hlog', hpriv', hle, hcarried⟩ :=
       honest_call prims x s pads u rest noise input a hlog hpriv w (by with_reducible exact hw)
     obtain ⟨hres, hlog'', hpriv'', hle', hcarried'⟩ :=

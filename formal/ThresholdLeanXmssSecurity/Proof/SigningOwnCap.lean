@@ -169,18 +169,28 @@ theorem walkInv_init (P : PublicParameter) (seeds : C.Term → HashOutput) :
   · exact (SigningCompilerO1Slack.guardedReleaseInvariantS_initial (fun _ => 0) seeds).2
   · exact Nat.zero_le _
 
-set_option linter.constructorNameAsVariable false in
-set_option maxRecDepth 100000 in
+private theorem mem_support_bind_map {α β γ : Type} (top : ProbComp γ) (draw : ProbComp α)
+    (run : α → ProbComp β) (f : β → γ) (htop : top = (draw >>= fun s => f <$> run s))
+    {r : γ} (hr : r ∈ support top) : ∃ s a, a ∈ support (run s) ∧ r = f a := by
+  subst top
+  obtain ⟨s, -, hr⟩ := mem_support_bind_peel draw _ hr
+  obtain ⟨a, ha, rfl⟩ := mem_support_map_peel f _ hr
+  exact ⟨s, a, ha, rfl⟩
+
 /-- The ledger of each run is within `q + capSlack`, and a dirty run has a second opening at its
 end. -/
 theorem ownRun_support (prims : Primitives) (A : TsigAdversary C) (q Q : ℕ) (x : Keys3 C)
     (hown : HasSigningOwnBound A q) (r : CompilerOutcomeO1 C × OwnGhost)
     (hr : r ∈ support (ownRun prims A x Q)) :
     r.2.ledger ≤ q + capSlack ∧ (r.2.dirty = true → SecondOpening x.1 x.2.1 r.1.2.1.1.data) := by
-  simp only [ownRun, mem_support_bind_iff, support_map, Set.mem_image] at hr
-  obtain ⟨s, -, a, ha, rfl⟩ := hr
+  have heq : ownRun prims A x Q = (($ᵗ (HiddenKey → Digest)) >>= fun s =>
+      (fun a => ((a.1, a.2.1), a.2.2)) <$>
+        runSourceL x.1 x.2.1 Q s (sourceGameO1 prims A x) sourceInitO1 ownInit) := rfl
+  have hs := by
+    with_reducible exact mem_support_bind_map _ _ _ _ heq hr
+  obtain ⟨s, a, ha, rfl⟩ := hs
   have h := charges_game prims A q Q x s hown sourceInitO1 ownInit (walkInv_init x.1 x.2.1) trivial
-    ((a.1.1, a.1.2), a.2) ha
+    a (by with_reducible exact ha)
   exact ⟨by simpa [ownInit] using h.2, h.1.dirtySecond⟩
 
 attribute [local irreducible] ownRun in

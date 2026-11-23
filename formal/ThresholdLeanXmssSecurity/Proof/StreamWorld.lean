@@ -812,7 +812,7 @@ theorem jointKeyWorld_false_query_projection (prims : Primitives) (D : C.Coaliti
   rw [hf]
   rcases q with ((u | q | x) | p) | (u | q | x)
   all_goals simp only [jointKeyWorldCore]
-  all_goals try simp only [jointLocal_false, jointProgram_false, onJointHash_idealProjection,
+  all_goals simp only [jointLocal_false, jointProgram_false, onJointHash_idealProjection,
     lazyKeyWorld, StateT.run_mk, keyJointIdealProjection]
   all_goals try rfl
   case inr.inr.inr =>

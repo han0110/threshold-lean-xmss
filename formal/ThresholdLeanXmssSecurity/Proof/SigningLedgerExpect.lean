@@ -146,11 +146,11 @@ theorem expectedFinal_ledger_flag_le (charged : κ → σ × (K → Option T) �
       have hc : (if ledger (aux t (σ₀, stored) g) ≤ B then (1 : ℝ≥0∞) else 0) ≤
           if ledger g ≤ B then 1 else 0 := by
         rw [hledger]
-        split_ifs <;> (try simp) <;> omega
+        split_ifs <;> simp <;> omega
       have hle := fun x : spec t × σ => (ih x.1 x.2 stored b' (aux t (σ₀, stored) g)).trans
         (add_le_add_left hc _)
-      refine (ENNReal.tsum_le_tsum fun x => mul_le_mul_right (hle x) _).trans ?_
-      simp only [mul_add, ENNReal.tsum_add]
+      refine (tsum_le_tsum fun x => mul_le_mul_right (hle x) _).trans ?_
+      simp only [mul_add, tsum_add]
       gcongr
       rw [ENNReal.tsum_mul_right]
       exact mul_le_of_le_one_left' (OracleComp.tsum_prEvent_le_one _)
@@ -236,14 +236,14 @@ theorem expectedFinal_ledger_le_aux (charged : κ → σ × (K → Option T) →
       have hcont : ∑' x, Pr{let z ← mx}[z = x] * ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * G' s x false ≤
           f (σ₀, g) + D + (B - ledger g' : ℕ) * ε := by
         calc _ ≤ ∑' x, Pr{let z ← mx}[z = x] * (f (x.2, g') + (B - ledger g' : ℕ) * ε) := by
-              refine ENNReal.tsum_le_tsum fun x => ?_
+              refine tsum_le_tsum fun x => ?_
               by_cases hx : x ∈ support mx
               · gcongr
                 exact ih x.1 x.2 stored g' (hinv t σ₀ stored g hst x hx)
               · simp [prEvent_eq_zero_of_not_mem_support _ hx]
           _ = ∑' x, Pr{let z ← mx}[z = x] * f (x.2, g') +
               ∑' x, Pr{let z ← mx}[z = x] * ((B - ledger g' : ℕ) * ε) := by
-              simp only [mul_add, ENNReal.tsum_add]
+              simp only [mul_add, tsum_add]
           _ ≤ _ := by
               refine add_le_add (hstep t σ₀ stored g hst) ?_
               rw [ENNReal.tsum_mul_right]
@@ -283,13 +283,13 @@ theorem expectedFinal_ledger_le_aux (charged : κ → σ × (K → Option T) →
             exact hflagle s x
         _ ≤ ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * (if P s then c else 0) +
             ∑' x, Pr{let z ← mx}[z = x] * ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * G' s x false := by
-            simp only [mul_add, ENNReal.tsum_add]
+            simp only [mul_add, tsum_add]
             refine add_le_add ?_ (le_of_eq ?_)
             · gcongr with s
               rw [ENNReal.tsum_mul_right]
               exact mul_le_of_le_one_left' (OracleComp.tsum_prEvent_le_one _)
             · simp only [← ENNReal.tsum_mul_left]
-              rw [ENNReal.tsum_comm]
+              rw [tsum_comm]
               simp only [mul_left_comm]
         _ ≤ A + (f (σ₀, g) + D + (B - ledger g' : ℕ) * ε) := add_le_add hhit hcont
         _ = f (σ₀, g) + (A + D + (B - ledger g' : ℕ) * ε) := by ring
@@ -357,7 +357,7 @@ theorem probEvent_ledger_expect_le (charged : κ → σ × (K → Option T) → 
   calc _ ≤ ∑' s, Pr{let z ← $ᵗ (K → T)}[z = s] * XmssSecurity.expectedFinal
         (ledgerHybrid impl counted inputSide keyOf point aux s) (ledgerPotential ledger B f) oa
         ((σ₀, fun _ => none, false), g₀) := by
-        refine ENNReal.tsum_le_tsum fun s => ?_
+        refine tsum_le_tsum fun s => ?_
         gcongr
         simpa using XmssSecurity.const_mul_probEvent_le_expectedFinal _ (ledgerPotential ledger B f)
           (fun st => (st.1.2.2 = true ∨ E (st.1.1, st.2)) ∧ ledger st.2 ≤ B) 1 hΦ oa _

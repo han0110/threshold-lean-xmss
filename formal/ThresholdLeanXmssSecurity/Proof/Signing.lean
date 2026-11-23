@@ -1,6 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.Execution
 import ThresholdLeanXmssSecurity.Proof.Lemmas
-import Mathlib.Data.Nat.Bitwise
 
 /-!
 # The signing
@@ -1176,7 +1175,7 @@ theorem probEvent_bind_le_mul_of_cases {α β : Type} {mx : ProbComp α} {f : α
     (h0 : ∀ x ∈ support mx, ¬Q x → Pr{let z ← f x}[P z] = 0) : Pr{let z ← mx >>= f}[P z] ≤ Pr{let z ← mx}[Q z] * ε := by
   classical
   rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_eq_tsum_ite, ← ENNReal.tsum_mul_right]
-  refine ENNReal.tsum_le_tsum fun x => ?_
+  refine tsum_le_tsum fun x => ?_
   by_cases hx : x ∈ support mx
   · by_cases hq : Q x
     · rw [ite_eq_left hq]; exact mul_le_mul' le_rfl (h1 x hx hq)

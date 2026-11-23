@@ -81,10 +81,12 @@ theorem logged_expectedCost_eq {C : Committee} (prims : Primitives) {α : Type}
       (fun s => SigningGuessLaneProof.logCost cost s.2) oa s := by
   apply le_antisymm
   · exact XmssSecurity.expectedFinal_ge (loggedImpl prims)
-      (Inv := fun _ => True) (fun _ _ _ _ _ => trivial) _ _
+      (Inv := fun _ => True) (fun _ _ _ _ _ => trivial)
+      (fun s => SigningGuessLaneProof.logCost cost s.2) (fun t _ => cost t)
       (fun t s _ => (logged_step_cost prims cost t s).ge) oa s trivial
   · exact XmssSecurity.expectedFinal_le (loggedImpl prims)
-      (Inv := fun _ => True) (fun _ _ _ _ _ => trivial) _ _
+      (Inv := fun _ => True) (fun _ _ _ _ _ => trivial)
+      (fun s => SigningGuessLaneProof.logCost cost s.2) (fun t _ => cost t)
       (fun t s _ => (logged_step_cost prims cost t s).le) oa s trivial
 
 /-- The signing budget bounds the recursive expected cost of the logged run. -/
@@ -103,7 +105,7 @@ theorem loggedRun_expectedCost_le {C : Committee} (prims : Primitives)
     (SigningGuessLaneProof.logCost SeedHitProof.signCost r.2.2 : ℝ≥0∞)) ≤ q
   calc
     _ ≤ ∑' r, Pr{let z ← loggedRun prims A x}[z = r] * (q : ℝ≥0∞) := by
-      refine ENNReal.tsum_le_tsum fun r => ?_
+      refine tsum_le_tsum fun r => ?_
       by_cases hr : r ∈ support (loggedRun prims A x)
       · refine mul_le_mul_right ?_ _
         rw [← SigningGuessLaneProof.loggedRun_count_eq prims A x r hr]
@@ -328,7 +330,7 @@ theorem releaseStep_append {C : Committee}
   cases t with
   | inl t => simp [releaseStep]
   | inr t =>
-    cases t <;> try simp [releaseStep]
+    cases t <;> simp [releaseStep]
     cases u <;> simp
 
 theorem tsigOracles_releaseStep {C : Committee} {ι : Type} {spec : OracleSpec ι}
@@ -1044,7 +1046,7 @@ theorem signingWithReceipt_forget (dealt : Dealt C (OracleComp (WorldSpec C)))
   cases input with
   | inl input => simp [signingWithReceipt.eq_def, Functor.map_map]
   | inr input =>
-    cases input <;> try simp [signingWithReceipt.eq_def, Functor.map_map]
+    cases input <;> simp [signingWithReceipt.eq_def, Functor.map_map]
     exact round2WithReceipt_forget (fun oa => SigningCoreProof.honestLift oa) dealt _ _ _ _ _ _
 
 def signingReceiptOracles (dealt : Dealt C (OracleComp (WorldSpec C))) :
@@ -1912,7 +1914,7 @@ theorem receiptDealt_bottom_runs (prims : Primitives) (x : SigningSecurityProof.
   refine ⟨result, hs, ?_, rfl⟩
   cases hout : result.1 with
   | none => simp [hout] at ht
-  | some value => cases value <;> simpa [hout] using ht
+  | some value => cases value <;> simp_all
 
 theorem bottomOnce_storedTreeRuns (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (top : TopTree) (b : Fin (2 ^ LeanXmss.layerHeight)) (st : TsigState C)
@@ -2671,14 +2673,14 @@ theorem structuralHitPotential_step (prims : Primitives) (A : TsigAdversary C)
   by_cases hex : ∃ b, t = gate b
   · simp only [ite_eq_left hex] at hg
     dsimp only [gate] at hex hg
-    simp only [structuralHitPotential, mul_add, ENNReal.tsum_add]
+    simp only [structuralHitPotential, mul_add, tsum_add]
     refine (add_le_add hc hg).trans_eq ?_
     simp only [structuralHitCost, ite_eq_left hex, Nat.cast_add, Nat.cast_one, add_mul, one_mul]
     exact add_add_add_comm (SigningHitProof.completionPotential
       (SigningHitProof.forestRelevant x.1) (SigningHitProof.forestCompletion x) s.1.1) _ _ _
   · simp only [ite_eq_right hex, add_zero] at hg
     dsimp only [gate] at hex hg
-    simp only [structuralHitPotential, mul_add, ENNReal.tsum_add]
+    simp only [structuralHitPotential, mul_add, tsum_add]
     refine (add_le_add hc hg).trans_eq ?_
     simp only [structuralHitCost, ite_eq_right hex, add_zero]
     exact add_right_comm (SigningHitProof.completionPotential
@@ -2729,7 +2731,7 @@ theorem guarded_domain_step (prims : Primitives) (Inv : LoggedState C → Prop)
     rw [guarded, ite_eq_left (by rw [loggedImpl_log prims t s r hr, programmed_logQuery]; exact hb)]
   · push Not at hb
     rw [guarded, ite_eq_right hb.1]
-    refine (ENNReal.tsum_le_tsum fun r => ?_).trans (hstep t s (hs hb.1) hb.1 hb.2)
+    refine (tsum_le_tsum fun r => ?_).trans (hstep t s (hs hb.1) hb.1 hb.2)
     gcongr
     simp only [guarded]
     split_ifs <;> simp
@@ -2769,7 +2771,7 @@ theorem hit_bound_structural_cost (prims : Primitives) (A : TsigAdversary C)
   rw [hz, zero_add, XmssSecurity.expectedSimulatedCost_const_mul] at hf
   refine le_trans ?_ hf
   rw [SigningHitLaneProof.winHit_logged, OracleComp.prEvent_eq_tsum_ite, XmssSecurity.expectedFinal]
-  apply ENNReal.tsum_le_tsum
+  apply tsum_le_tsum
   intro z
   by_cases hz : z ∈ support (loggedRun prims A x)
   · by_cases hw : WinHit prims x (z.1, z.2.1)
@@ -3517,7 +3519,7 @@ theorem topPartnerPotential_step (x : SigningSecurityProof.Keys3 C)
       topPartnerPotential x r.2 ≤ topPartnerPotential x cache +
         if anyTopDigestInput x.1 input then (2 ^ 128 : ℝ≥0∞)⁻¹ else 0 := by
   simp only [topPartnerPotential, Finset.mul_sum]
-  have hswap := ENNReal.tsum_comm (f := fun r : HashSig.HashOutput × HashCache C =>
+  have hswap := tsum_comm (f := fun r : HashSig.HashOutput × HashCache C =>
     fun key : XmssSecurity.TopIndex => Pr{let z ← ((Query C →ₒ HashSig.HashOutput).randomOracle input).run cache}[z = r] *
       SigningHitProof.completionPotential (topDigestInput x.1 key) (canonicalTopCompletion x key) r.2)
   simp only [tsum_fintype] at hswap

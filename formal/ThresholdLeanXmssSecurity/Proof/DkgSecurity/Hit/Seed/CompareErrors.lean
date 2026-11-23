@@ -41,6 +41,42 @@ theorem n_le_termCount (C : Committee) (ht : 2 ≤ C.t) : C.n ≤ termCount C :=
   have := Nat.choose_le_middle 1 C.n
   rwa [Nat.choose_one_right] at this
 
+private theorem close_numerator_le {q n m B : ℕ} (hq : 1 ≤ q) (hn : 3 ≤ n) (hnm : n ≤ m)
+    (hB : 2 * q * (n * m) ≤ B) :
+    q * m + (n + 2) * m * (m - 1) ≤ q * n * m * B := by
+  have hqm : q * m ≤ q * n * m := Nat.mul_le_mul_right _ (Nat.le_mul_of_pos_right _ (by omega))
+  have hnmq : n * m ≤ q * n * m := by
+    simpa only [Nat.mul_assoc, Nat.one_mul] using Nat.mul_le_mul_right (n * m) hq
+  have hpos : 0 < q * n * m := Nat.mul_pos (Nat.mul_pos hq (by omega)) (by omega)
+  have hfirst := hqm.trans (Nat.le_mul_of_pos_right (q * n * m) hpos)
+  have hn2 : n + 2 ≤ n * n := by
+    have := Nat.mul_le_mul_left n hn
+    omega
+  have hsecond : (n + 2) * m * (m - 1) ≤ q * n * m * (q * n * m) := calc
+    _ ≤ (n * n) * m * m := Nat.mul_le_mul (Nat.mul_le_mul_right _ hn2) (Nat.sub_le _ _)
+    _ = (n * m) * (n * m) := by ring
+    _ ≤ _ := Nat.mul_le_mul hnmq hnmq
+  calc
+    _ ≤ q * n * m * (q * n * m) + q * n * m * (q * n * m) := add_le_add hfirst hsecond
+    _ = q * n * m * (2 * q * (n * m)) := by ring
+    _ ≤ _ := Nat.mul_le_mul_left _ hB
+
+private theorem hit_numerator_le {q n m : ℕ} (hq : 1 ≤ q) (hn : 1 ≤ n) (hnm : n ≤ m) :
+    q * m + n.choose 2 * (q + 1) ≤ q * n * m := by
+  have hpair : 2 * n.choose 2 = n * (n - 1) := by
+    rw [Nat.choose_two_right]
+    exact Nat.mul_div_cancel' (Nat.even_mul_pred_self n).two_dvd
+  have hpairs : n.choose 2 * (q + 1) ≤ m * (n - 1) * q := calc
+    _ ≤ n.choose 2 * (2 * q) := Nat.mul_le_mul_left _ (by omega)
+    _ = (2 * n.choose 2) * q := by ring
+    _ ≤ _ := by rw [hpair]; exact Nat.mul_le_mul_right _ (Nat.mul_le_mul_right _ hnm)
+  calc
+    _ ≤ q * m + m * (n - 1) * q := Nat.add_le_add_left hpairs _
+    _ = q * ((n - 1) + 1) * m := by ring
+    _ = _ := by rw [Nat.sub_add_cancel hn]
+
+-- Keep elaboration of the hash-space bound from reducing real comparison on powers of two.
+attribute [local irreducible] Real.instLT in
 theorem errors_le (C : Committee) (q : ℕ) (hq : 1 ≤ q)
     (hsmall : ((2 * q * (C.n * termCount C) : ℕ) : ℝ) / 2 ^ 256 < 1) :
     compCloseError C q + compHitError C q ≤ ((2 * q * (C.n * termCount C) : ℕ) : ℝ) / 2 ^ 256 := by
@@ -60,44 +96,10 @@ theorem errors_le (C : Committee) (q : ℕ) (hq : 1 ≤ q)
     have hnm : n ≤ m := n_le_termCount C ht
     have hn3 : 3 ≤ n := by rw [hn]; unfold Committee.n; omega
     have hM : (0 : ℝ) < 2 ^ 256 := by positivity
-    have hsmall' : 2 * q * (n * m) < 2 ^ 256 := by
-      have h := (div_lt_one hM).1 hsmall
-      exact_mod_cast h
-    -- the close error is at most `q n m / 2^256`
-    have hclose_nat : q * m + (n + 2) * m * (m - 1) ≤ q * n * m * 2 ^ 256 := by
-      have h1 : q * m + (n + 2) * m * (m - 1) ≤ 2 * (q * n * m) * (q * n * m) := by
-        have hm1 : 1 ≤ m := le_trans (by omega) hnm
-        have hqm : q * m ≤ q * n * m * (q * n * m) := by
-          have : 1 ≤ q * n * m := Nat.one_le_iff_ne_zero.mpr (by positivity)
-          calc q * m ≤ q * n * m := by
-                have := Nat.mul_le_mul_right m (Nat.le_mul_of_pos_right q (by omega : 0 < n))
-                simpa [Nat.mul_assoc] using this
-            _ ≤ q * n * m * (q * n * m) := Nat.le_mul_of_pos_right _ this
-        have hsq : (n + 2) * m * (m - 1) ≤ q * n * m * (q * n * m) := by
-          have h2 : (n + 2) * m * (m - 1) ≤ (n * n) * (m * m) := by
-            have : m - 1 ≤ m := Nat.sub_le m 1
-            have hn2 : n + 2 ≤ n * n := by nlinarith
-            calc (n + 2) * m * (m - 1) ≤ (n + 2) * m * m := Nat.mul_le_mul_left _ this
-              _ ≤ (n * n) * m * m := by gcongr
-              _ = (n * n) * (m * m) := by ring
-          have h3 : (n * n) * (m * m) ≤ q * n * m * (q * n * m) := by
-            have : (n * n) * (m * m) = (n * m) * (n * m) := by ring
-            rw [this]
-            have hq' : n * m ≤ q * n * m := by
-              have := Nat.mul_le_mul_right (n * m) hq
-              simpa [Nat.mul_assoc] using this
-            exact Nat.mul_le_mul hq' hq'
-          exact h2.trans h3
-        calc q * m + (n + 2) * m * (m - 1) ≤ q * n * m * (q * n * m) + q * n * m * (q * n * m) :=
-              add_le_add hqm hsq
-          _ = 2 * (q * n * m) * (q * n * m) := by ring
-      have h2 : 2 * (q * n * m) * (q * n * m) ≤ q * n * m * 2 ^ 256 := by
-        have : 2 * (q * n * m) ≤ 2 ^ 256 := by
-          have : 2 * q * (n * m) = 2 * (q * n * m) := by ring
-          omega
-        calc 2 * (q * n * m) * (q * n * m) = (q * n * m) * (2 * (q * n * m)) := by ring
-          _ ≤ q * n * m * 2 ^ 256 := Nat.mul_le_mul_left _ this
-      exact h1.trans h2
+    have hB : 2 * q * (n * m) ≤ 2 ^ 256 := by
+      rw [div_lt_one hM] at hsmall
+      exact_mod_cast hsmall.le
+    have hclose_nat := close_numerator_le hq hn3 hnm hB
     have hclose : compCloseError C q ≤ ((q * n * m : ℕ) : ℝ) / 2 ^ 256 := by
       unfold compCloseError
       rw [← hm, ← hn]
@@ -106,31 +108,17 @@ theorem errors_le (C : Committee) (q : ℕ) (hq : 1 ≤ q)
           ≤ ((q * m + (n + 2) * m * (m - 1) : ℕ) : ℝ) / 2 ^ 512 :=
             div_le_div_of_nonneg_left (by positivity) (by positivity) hpow
         _ ≤ ((q * n * m * 2 ^ 256 : ℕ) : ℝ) / 2 ^ 512 := by
-            gcongr
+            exact div_le_div_of_nonneg_right (Nat.cast_le.mpr hclose_nat) (by positivity)
         _ = ((q * n * m : ℕ) : ℝ) / 2 ^ 256 := by
             push_cast
             field_simp
             ring
     -- the hit error is at most `q n m / 2^256`
-    have hhit_nat : q * m + n.choose 2 * (q + 1) ≤ q * n * m := by
-      have h2 : 2 * n.choose 2 = n * (n - 1) := by
-        rw [Nat.choose_two_right]
-        exact Nat.mul_div_cancel' (Nat.even_mul_pred_self n).two_dvd
-      have h3 : n.choose 2 * (q + 1) ≤ n * (n - 1) * q := by
-        have : n.choose 2 * (q + 1) ≤ n.choose 2 * (2 * q) := Nat.mul_le_mul_left _ (by omega)
-        calc n.choose 2 * (q + 1) ≤ n.choose 2 * (2 * q) := this
-          _ = 2 * n.choose 2 * q := by ring
-          _ = n * (n - 1) * q := by rw [h2]
-      have h4 : n * (n - 1) * q ≤ m * (n - 1) * q := by gcongr
-      have h5 : q * m + m * (n - 1) * q = q * n * m := by
-        have e : q * n * m = q * ((n - 1) + 1) * m := by rw [Nat.sub_add_cancel (by omega : 1 ≤ n)]
-        rw [e]
-        ring
-      omega
+    have hhit_nat := hit_numerator_le hq (by omega : 1 ≤ n) hnm
     have hhit : compHitError C q ≤ ((q * n * m : ℕ) : ℝ) / 2 ^ 256 := by
       unfold compHitError
       rw [← hm, ← hn]
-      gcongr
+      exact div_le_div_of_nonneg_right (Nat.cast_le.mpr hhit_nat) hM.le
     calc compCloseError C q + compHitError C q ≤ ((q * n * m : ℕ) : ℝ) / 2 ^ 256 + ((q * n * m : ℕ) : ℝ) / 2 ^ 256 :=
           add_le_add hclose hhit
       _ = ((2 * q * (n * m) : ℕ) : ℝ) / 2 ^ 256 := by

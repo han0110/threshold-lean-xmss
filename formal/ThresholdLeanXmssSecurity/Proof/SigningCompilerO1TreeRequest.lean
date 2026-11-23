@@ -386,13 +386,20 @@ theorem returnOpening_frame (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.
     released := ?_
     bad := ?_ }
   · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, hpend, ?_, (by with_reducible exact hgrow), ?_, ?_, ?_, ?_⟩
-    any_goals (change planted.1.2.signing = _; rw [hsrc])
-    any_goals (change planted.1.2.trees = _; rw [hsrc])
-    any_goals (change planted.1.2.exposed = _; rw [hsrc])
-    any_goals (change planted.1.2.allocated = _; rw [hsrc])
-    any_goals (change planted.1.2.candidates = _; rw [hsrc])
-    any_goals (change planted.1.2.hiddenFlag = _; rw [hsrc])
-    all_goals (rw [hstate]; try rfl)
+    · change planted.1.2.signing = _
+      rw [hsrc]
+    · change planted.1.2.trees = _
+      rw [hsrc]
+    · change planted.1.2.exposed = _
+      rw [hsrc]
+    · change planted.1.2.allocated = _
+      rw [hsrc]
+    · change planted.1.2.candidates = _
+      rw [hsrc]
+    · change planted.1.2.hiddenFlag = _
+      rw [hsrc]
+    all_goals rw [hstate]
+    all_goals rfl
   · intro key hkey
     change planted.1.2.revealed key = src.revealed key
     rw [hrev]
@@ -612,7 +619,8 @@ theorem returnChain_frame (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
       (congrArg SourceState.exposed hR1 :), (congrArg SourceState.allocated hR1 :),
       (congrArg SourceState.candidates hR1 :), (congrArg SourceState.hiddenFlag hR1 :), hpend1, ?_, ?_, ?_,
       ?_, ?_, ?_⟩
-    all_goals (rw [hR2]; try rfl)
+    all_goals rw [hR2]
+    all_goals rfl
   rcases topStartX_post x q s pads u rest noise hinj bi tree l a revealed.1.2 revealed.2 hR3
     (by rw [hR2]; exact hc) (by rw [hR2]; exact hf.restFree) (by rw [hR2]; exact hf.share)
     (by rw [hR2]; exact hf.doneCached) (by rw [hR2]; exact hf.bad) (by rw [hR2]; exact hmark)
@@ -649,7 +657,8 @@ theorem returnChain_frame (hkeys : ¬TprfSecurityProof.KeyCollision x.2.1 x.2.2)
       congrArg SourceState.exposed hplants.1, congrArg SourceState.allocated hplants.1,
       congrArg SourceState.candidates hplants.1, congrArg SourceState.hiddenFlag hplants.1,
       ?_, ?_, (by with_reducible exact hplants.2.2.2.1), ?_, ?_, ?_, ?_⟩
-    all_goals (rw [hplants.2.1] <;> rfl)
+    all_goals rw [hplants.2.1]
+    all_goals rfl
   have rf := (rf1.trans hcp.toReleaseFrame).trans rf3
   have hrevF : planted.1.2.revealed = revealed.1.2.revealed := by
     rw [hplants.1]; exact hrev2

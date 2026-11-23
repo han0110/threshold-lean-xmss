@@ -966,9 +966,9 @@ theorem coinSim_out (K : Constants C E) (D : C.Coalition) {c : ℕ} (known : Sha
     · rw [hsum] at h
       simp [hj, h]
 
-omit [Fintype E] [DecidableEq E] in
 /-- The adjusted fresh terms of the coin simulator are uniform (`dist_adjust`). -/
-theorem sameRun_adjust (prims : Primitives) (D : C.Coalition) (known : Shares C E) {n : ℕ} {β : Type}
+theorem sameRun_adjust {E : Type} [Field E] [Algebra Bit E] [SampleableType E]
+    (prims : Primitives) (D : C.Coalition) (known : Shares C E) {n : ℕ} {β : Type}
     (X : (C.Term → Fin n → E) → OracleComp (LocalSpec C) β) :
     SameRun prims (liftComp ($ᵗ (C.Term → Fin n → E)) (LocalSpec C) >>= X)
       (liftComp ($ᵗ (Fin n → E)) (LocalSpec C) >>= fun v =>

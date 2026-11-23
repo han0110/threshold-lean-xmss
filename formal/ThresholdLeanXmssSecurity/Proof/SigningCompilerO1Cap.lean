@@ -40,7 +40,7 @@ theorem probEvent_or_eq {α : Type} (oa : ProbComp α) (P Q : α → Prop)
     (disjoint : ∀ z, P z → Q z → False) :
     Pr{let z ← oa}[P z ∨ Q z] = Pr{let z ← oa}[P z] + Pr{let z ← oa}[Q z] := by
   rw [OracleComp.prEvent_eq_tsum_ite oa (fun z => P z ∨ Q z), OracleComp.prEvent_eq_tsum_ite oa P,
-    OracleComp.prEvent_eq_tsum_ite oa Q, ← ENNReal.tsum_add]
+    OracleComp.prEvent_eq_tsum_ite oa Q, ← tsum_add]
   apply tsum_congr
   intro z
   by_cases hp : P z <;> by_cases hq : Q z <;> simp_all

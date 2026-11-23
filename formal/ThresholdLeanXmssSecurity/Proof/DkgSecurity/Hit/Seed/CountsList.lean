@@ -1,5 +1,4 @@
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.Counts
-import Mathlib.Data.Sym.Card
 
 /-!
 # The count of the shifts that the list run names

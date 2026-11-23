@@ -1,3 +1,4 @@
+import ThresholdLeanXmssSecurity.Proof.List
 import ThresholdLeanXmssSecurity.Proof.SigningOwnWalk
 import ThresholdLeanXmssSecurity.Proof.SigningOwnFree
 
@@ -266,17 +267,6 @@ theorem mapM_rel {α β : Type} {c : ℕ} (oa : α → SourceM C β)
 
 end Walk
 
-/-- The relation of `Walk.mapM_rel` over `List.finRange` at one index. -/
-theorem forall₂_finRange {β : Type} {n : ℕ} {R : Fin n → β → Prop} {bs : List β} (d : β)
-    (h : List.Forall₂ R (List.finRange n) bs) (k : Fin n) : R k (bs.getD k.val d) := by
-  have hlen := h.length_eq
-  simp only [List.length_finRange] at hlen
-  have hk : k.val < bs.length := by rw [← hlen]; exact k.isLt
-  have := (List.forall₂_iff_get.mp h).2 k.val (by simp) hk
-  simp only [List.get_eq_getElem, List.getElem_finRange] at this
-  rw [List.getD_eq_getElem _ _ hk]
-  exact this
-
 /-- A triple of a base program with `BaseInv` and no exception gives `SourceCharges` of its lift. -/
 theorem charges_of_walk {P : PublicParameter} {seeds : C.Term → HashOutput} {Q : ℕ}
     {s : HiddenKey → Digest} {α : Type} {oa : SourceM C α} {c : ℕ}
@@ -357,8 +347,7 @@ theorem compilerImpl_pending_keep (t : DeferredQuery C) (st : CompilerBackend C)
     r.2.data.pending p = some v := by
   cases t with
   | hash query =>
-      simp only [compilerImpl, StateT.run, mem_support_bind_iff, mem_support_pure_iff] at hr
-      obtain ⟨a, ha, b, _, rfl⟩ := hr
+      obtain ⟨a, ha, _, _, _, rfl⟩ := compilerImpl_hash_steps P seeds query st r hr
       exact deferredImpl_pending_keep (.hash query) st.data a ha (fun _ _ h => by cases h) p v hp
   | bindKey e message =>
       simp only [compilerImpl, StateT.run, mem_support_pure_iff] at hr
@@ -375,8 +364,7 @@ theorem compilerImpl_bound_eq (t : DeferredQuery C) (st : CompilerBackend C)
     (ht : ∀ e message, t ≠ .bindKey e message) : r.2.bound = st.bound := by
   cases t with
   | hash query =>
-      simp only [compilerImpl, StateT.run, mem_support_bind_iff, mem_support_pure_iff] at hr
-      obtain ⟨a, ha, b, _, rfl⟩ := hr
+      obtain ⟨a, ha, _, _, _, rfl⟩ := compilerImpl_hash_steps P seeds query st r hr
       rfl
   | bindKey e message => exact absurd rfl (ht e message)
   | _ =>
@@ -580,8 +568,7 @@ theorem compilerImpl_frame (t : DeferredQuery C) (st : CompilerBackend C)
         st.data.pending q ≠ none ∨ t = .pending q ∨ ∃ value, t = .record q value) := by
   cases t with
   | hash query =>
-      simp only [compilerImpl, StateT.run, mem_support_bind_iff, mem_support_pure_iff] at hr
-      obtain ⟨a, ha, b, _, rfl⟩ := hr
+      obtain ⟨a, ha, _, _, _, rfl⟩ := compilerImpl_hash_steps P seeds query st r hr
       exact deferredImpl_frame (.hash query) st.data a ha
   | bindKey e message =>
       simp only [compilerImpl, StateT.run, mem_support_pure_iff] at hr
@@ -1857,10 +1844,6 @@ end ThresholdLeanXmssSecurity.SigningOwnWalkBuild
 /-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkBuild.Walk.mapM_rel' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms ThresholdLeanXmssSecurity.SigningOwnWalkBuild.Walk.mapM_rel
-
-/-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkBuild.forall₂_finRange' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms ThresholdLeanXmssSecurity.SigningOwnWalkBuild.forall₂_finRange
 
 /-- info: 'ThresholdLeanXmssSecurity.SigningOwnWalkBuild.charges_of_walk' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

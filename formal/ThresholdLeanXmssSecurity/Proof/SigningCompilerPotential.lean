@@ -77,8 +77,8 @@ theorem compilerImpl_entryTrials (P : PublicParameter) (seeds : C.Term → HashO
   have grow := compilerImpl_cache_le P seeds t st r hr
   cases t with
   | hash q =>
-      simp only [compilerImpl, StateT.run, mem_support_bind_iff, mem_support_pure_iff] at hr
-      obtain ⟨a, ha, b, hb, rfl⟩ := hr
+      obtain ⟨a, ha, b, hb, -, rfl⟩ := compilerImpl_hash_steps P seeds q st r hr
+      rw [compilerPrefetch] at hb
       have old : EntryTrials seeds P b.2 st.trace.1 := hs.mono grow
       intro entry he
       change entry ∈ (SigningLaneUnionProof.traceStepAt seeds P st.data.cache (compilerSigning st)
@@ -301,8 +301,10 @@ theorem compiler_hash_support (P : PublicParameter) (seeds : C.Term → HashOutp
           (.inr (.inr (.inl q)))
           (((a.2.cache, 0), []), compilerSigning st, false))).run a.2.cache),
         r = (a.1, { st with data := { a.2 with cache := b.2 }, trace := SigningLaneUnionProof.traceStepAt seeds P st.data.cache (compilerSigning st) (.inr (.inr (.inl q))) b.2 st.trace }) := by
-  simp only [compilerImpl, StateT.run, mem_support_bind_iff, mem_support_pure_iff] at run
-  exact run
+  obtain ⟨a, ha, b, hb, -, heq⟩ := compilerImpl_hash_steps P seeds q st r run
+  rw [compilerPrefetch] at hb
+  refine ⟨a, ha, b, ?_, heq.symm⟩
+  with_reducible exact hb
 
 /-- Reading a compiler state uses just its concrete cache and stored trace. -/
 theorem compilerView_update (data : DeferredState C) (bound : KeyIndex → Option Message)
@@ -328,6 +330,16 @@ theorem compiler_hash_view_support (P : PublicParameter) (seeds : C.Term → Has
   refine ⟨a, ha, b, ?_, ?_⟩
   · with_reducible exact hb
   · exact (congrArg (fun r => compilerView r.2) result).trans (compilerView_update a.2 st.bound _ b.2)
+
+private theorem sign_nCount (key : XmssSecurity.SecretKey) (trace : XmssSecurity.SigningCacheTrace)
+    (initial final : XmssSecurity.HashSpec.QueryCache) (sig : Option XmssSecurity.Signature) :
+    ∀ e m, (sig, final) ∈ support ((simulateQ XmssSecurity.romImpl
+      (XmssSecurity.Concrete.scheme.sign key e m)).run initial) →
+      XmssSecurity.Ghost.nCount key.parameter final (trace ++ [⟨⟨e, m⟩, sig, initial, final⟩]) =
+        XmssSecurity.Ghost.nCount key.parameter initial trace := by
+  apply SigningLane2TraceLinkProof.of_sign_request
+  intro request hsign
+  exact (XmssSecurity.Ghost.counts_sign key (trace := trace) (request := request) hsign).1
 
 set_option linter.constructorNameAsVariable false in
 /-- The message-count ledger freezes a key before its first eager grind, so
@@ -367,8 +379,7 @@ theorem compiler_fresh_base_count (prims : Primitives) (P : PublicParameter)
   have sign := SigningLane2TraceLinkProof.raw_fresh_sign_support prims P e
     (SigningGuessProof.cachedRandomizer seeds st.data.cache e) message st.data.cache a.2.cache
     completed.2 a.1 completed.1 fresh raw hg
-  have ledger := (XmssSecurity.Ghost.counts_sign (laneKey P) (trace := st.trace.1)
-    (request := ⟨e, message⟩) sign).1
+  have ledger := sign_nCount (laneKey P) st.trace.1 _ _ _ e message sign
   rw [canonical]
   rw [traceStepAt_fresh_base P seeds st.data.cache completed.2 (compilerSigning st) st.trace e message
     hprf bound fresh]
@@ -376,6 +387,37 @@ theorem compiler_fresh_base_count (prims : Primitives) (P : PublicParameter)
     (SigningGuessProof.cachedRandomizer seeds st.data.cache e) message st.data.cache a.2.cache
     completed.2 a.1 completed.1 raw hg]
   exact ledger
+
+private theorem snd_of_pure {α β : Type} (oa : ProbComp (α × β)) (a : α) (b : β)
+    (h : oa = pure (a, b)) (r : α × β) (hr : r ∈ support oa) : r.2 = b := by
+  rw [h, mem_support_pure_iff] at hr
+  exact congrArg Prod.snd hr
+
+private theorem resolved_cache (cache : HashCache C) (oa : OracleComp (Query C →ₒ HashOutput) Unit)
+    (resolved : DeterministicSigning.Resolves cache oa ()) (r : Unit × HashCache C)
+    (hr : r ∈ support ((simulateQ (Query C →ₒ HashOutput).randomOracle oa).run cache)) : r.2 = cache := by
+  rw [resolved.run_eq_pure, mem_support_pure_iff] at hr
+  exact congrArg Prod.snd hr
+
+attribute [local irreducible] compilerImpl compilerPrefetch in
+private theorem compilerView_hash_replay (P : PublicParameter) (seeds : C.Term → HashOutput)
+    (st : CompilerBackend C) (q : Query C) (answer : HashOutput)
+    (cached : st.data.cache q = some answer)
+    (replay : DeterministicSigning.Resolves st.data.cache (compilerPrefetch P seeds st q st.data) ())
+    (trace : SigningLaneUnionProof.traceStepAt seeds P st.data.cache (compilerSigning st)
+      (.inr (.inr (.inl q))) st.data.cache st.trace = st.trace)
+    (r : DeferredSpec C (.hash q) × CompilerBackend C)
+    (run : r ∈ support ((compilerImpl P seeds (.hash q)).run st)) : compilerView r.2 = compilerView st := by
+  obtain ⟨a, ha, b, hb, _, result⟩ := compilerImpl_hash_steps P seeds q st r run
+  refine (congrArg (fun r => compilerView r.2) result.symm).trans ((compilerView_update a.2 st.bound _ b.2).trans ?_)
+  have hd := snd_of_pure _ _ _ (deferred_hash_cached q st.data answer cached) a ha
+  have hres : DeterministicSigning.Resolves a.2.cache (compilerPrefetch P seeds st q a.2) () := by
+    rw [hd]
+    exact replay
+  generalize ho : compilerPrefetch P seeds st q a.2 = oa at hres hb
+  have hb' := (resolved_cache _ _ hres b hb).trans (congrArg DeferredState.cache hd)
+  rw [hb', trace]
+  rfl
 
 set_option linter.constructorNameAsVariable false in
 /-- A repeated canonical base at a recorded key replays both its raw answer
@@ -394,27 +436,20 @@ theorem compiler_traced_base_view (P : PublicParameter) (seeds : C.Term → Hash
     (run : r ∈ support ((compilerImpl P seeds (.hash q)).run st)) :
     compilerView r.2 = compilerView st := by
   obtain ⟨answer, cached, resolved⟩ := traced_trials P seeds st bases trials e message bound recorded
-  obtain ⟨a, ha, b, hb, result⟩ := compiler_hash_view_support P seeds q st r run
-  clear run
-  rw [result]
-  clear result
-  have cachedq : st.data.cache q = some answer := by rw [canonical]; exact cached
-  rw [deferred_hash_cached q st.data answer cachedq] at ha
-  have ha' : a = (answer, st.data) := (mem_support_pure_iff (m := ProbComp) _ _).mp ha
-  subst a
-  have base : BaseCall P e (SigningGuessProof.cachedRandomizer seeds st.data.cache e)
-      (compilerSigning st) (.inr (.inr (.inl q))) := by
-    rw [canonical]
-    exact ⟨_, by change (st.bound e).map _ = _; rw [bound]; rfl, Or.inr rfl⟩
-  have extra := cachedExtra_base seeds P
-    (((st.data.cache, 0), []), compilerSigning st, false)
-    (((st.data.cache, 0), []), compilerSigning st, false) _ e message hprf base bound answer cached
-  rw [extra, resolved.run_eq_pure, mem_support_pure_iff] at hb
-  subst b
-  rw [canonical]
-  rw [traceStepAt_traced_base P seeds st.data.cache st.data.cache (compilerSigning st) st.trace e message
-    hprf bound answer cached recorded]
-  rfl
+  refine compilerView_hash_replay P seeds st q answer ?_ ?_ ?_ r run
+  · rw [canonical]; exact cached
+  · have base : BaseCall P e (SigningGuessProof.cachedRandomizer seeds st.data.cache e)
+        (compilerSigning st) (.inr (.inr (.inl q))) := by
+      rw [canonical]
+      exact ⟨_, by change (st.bound e).map _ = _; rw [bound]; rfl, Or.inr rfl⟩
+    let state : FlatState C := (((st.data.cache, 0), []), compilerSigning st, false)
+    have extra := cachedExtra_base seeds P state state _ e message hprf base bound answer cached
+    change DeterministicSigning.Resolves st.data.cache (SigningR1FixedProof.cachedExtra seeds P state _ state) ()
+    rw [extra]
+    exact resolved
+  · rw [canonical]
+    exact traceStepAt_traced_base P seeds st.data.cache st.data.cache (compilerSigning st) st.trace e message
+      hprf bound answer cached recorded
 
 /-- A base call carries a bound message and the exact canonical query address. -/
 theorem base_call_query (P : PublicParameter) (rho : Digest) (state : TsigState C)
@@ -694,7 +729,7 @@ theorem compilerPotential_over_cap (P : PublicParameter) (seeds : C.Term → Has
     (st : CompilerBackend C × ℕ) (over : q ≤ st.2) :
     ∑' r, Pr{let z ← (countImpl (compilerImpl P seeds) deferredCounted t).run st}[z = r] *
       compilerPotential P q r.2 = 0 := by
-  apply ENNReal.tsum_eq_zero.mpr
+  apply tsum_eq_zero_iff.mpr
   intro r
   by_cases hr : r ∈ support ((countImpl (compilerImpl P seeds) deferredCounted t).run st)
   · have count := SigningLane2Proof.countImpl_support_count (compilerImpl P seeds) deferredCounted t st r hr
@@ -714,8 +749,9 @@ theorem counted_potential_le_previousSum (P : PublicParameter) (seeds : C.Term �
   rw [OracleComp.tsum_prEvent_map_mul]
   simp only [ite_eq_left counted]
   rw [← ENNReal.tsum_mul_right]
-  apply ENNReal.tsum_le_tsum
+  apply tsum_le_tsum
   intro r
+  dsimp only
   rw [mul_assoc]
   exact mul_le_mul_right ((compilerPotential_tick P q r.2 st.2).trans
     (compilerPotential_le_sum P q (r.2, st.2) within)) _
@@ -850,8 +886,9 @@ theorem counted_potential_le_nextSum (P : PublicParameter) (seeds : C.Term → H
       (∑' r, Pr{let z ← (countImpl (compilerImpl P seeds) deferredCounted t).run st}[z = r] *
         viewSum P q (compilerView r.2.1, r.2.2)) * ((2 ^ 128 : ℝ≥0∞) * 2 ^ 128)⁻¹ := by
   rw [← ENNReal.tsum_mul_right]
-  apply ENNReal.tsum_le_tsum
+  apply tsum_le_tsum
   intro r
+  dsimp only
   rw [mul_assoc]
   by_cases run : r ∈ support ((countImpl (compilerImpl P seeds) deferredCounted t).run st)
   · have count := SigningLane2Proof.countImpl_support_count (compilerImpl P seeds) deferredCounted t st r run

@@ -1,5 +1,9 @@
-import ThresholdLeanXmss.Scheme
-import LeanXmss.Statement
+module
+
+public import ThresholdLeanXmss.Scheme
+public import LeanXmss.Statement
+
+@[expose] public section
 
 /-!
 # The functionalities and the games

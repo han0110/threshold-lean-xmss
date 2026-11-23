@@ -478,34 +478,46 @@ theorem mem_support_of_simulate_run {ι α σ : Type} {spec : OracleSpec ι}
   rw [StateT.run'_eq, support_map]
   exact Set.mem_image_of_mem _ hz
 
+/-- Every share query has the given tag, and every supported return satisfies the postcondition. -/
+def Tagged {α : Type} (m : Bool) (post : α → Prop) (oa : OracleComp (RunSpec C) α) : Prop :=
+  Queries (TagIs m) oa ∧ ∀ r ∈ support oa, post r
+
+theorem Tagged.bind {α β : Type} {m : Bool} {post : β → Prop}
+    {oa : OracleComp (RunSpec C) α} {k : α → OracleComp (RunSpec C) β}
+    (h : Queries (TagIs m) oa) (hk : ∀ x, Tagged m post (k x)) : Tagged m post (oa >>= k) := by
+  refine ⟨h.bind (fun x => (hk x).1), ?_⟩
+  intro r hr
+  obtain ⟨x, _, hr⟩ := mem_support_bind_peel _ _ hr
+  exact (hk x).2 r hr
+
+theorem Tagged.pure {α : Type} {m : Bool} {post : α → Prop} {a : α} (h : post a) :
+    Tagged (C := C) m post (pure a) := ⟨Queries.pure _, fun _ he => he ▸ h⟩
+
+theorem Tagged.uniformReturn {α β : Type} {m : Bool} {post : β → Prop}
+    (oa : ProbComp α) (f : α → β) (h : ∀ a ∈ support oa, post (f a)) :
+    Tagged (C := C) m post (do let a ← liftM oa; Pure.pure (f a)) := by
+  refine ⟨(queries_uniform oa m).bind (fun _ => Queries.pure _), ?_⟩
+  intro r hr
+  obtain ⟨a, ha, hr⟩ := mem_support_bind_peel _ _ hr
+  obtain rfl := eq_of_mem_support_pure _ hr
+  exact h a (mem_support_of_mem_support_liftComp (RunSpec C) oa a ha)
+
 /-- A non-mark backend step uses only its current mark and retains it. -/
 theorem backend_noMark (P : PublicParameter) (seeds : C.Term → HashOutput)
     (q : ℕ) (s : HiddenKey → Digest) (pads : Point → Digest)
     (t : (SpecX C).Domain) (ht : NoMark t) (bm : CappedCompilerState C × Bool) :
     Queries (TagIs bm.2) ((shareBackend P seeds q s pads t).run bm) ∧
       ∀ r ∈ support ((shareBackend P seeds q s pads t).run bm), r.2.2 = bm.2 := by
+  change Tagged bm.2 (fun r : _ × (CappedCompilerState C × Bool) => r.2.2 = bm.2) _
   have ordinary (t : DeferredQuery C ⊕ HiddenKey) :
-      Queries (TagIs bm.2) ((ordinaryStep P seeds q s pads t).run bm) ∧
-        ∀ r ∈ support ((ordinaryStep P seeds q s pads t).run bm), r.2.2 = bm.2 := by
-    constructor
-    · exact (queries_share bm.2 .view trivial).bind fun view =>
-        (queries_uniform _ bm.2).bind fun result => Queries.pure _
-    · intro r hr
-      simp only [ordinaryStep, StateT.run, mem_support_bind_iff, mem_support_pure_iff] at hr
-      obtain ⟨view, _, result, _, rfl⟩ := hr
-      rfl
-  have read (T : C.Term) (p : CPoint) :
-      Queries (TagIs bm.2) ((readStep P seeds T p).run bm) ∧
-        ∀ r ∈ support ((readStep P seeds T p).run bm), r.2.2 = bm.2 := by
-    constructor
-    · exact (queries_share bm.2 .view trivial).bind fun view =>
-        (queries_share bm.2 (.read T p bm.2) rfl).bind fun value =>
-          (queries_share bm.2 .view trivial).bind fun view' =>
-            (queries_uniform _ bm.2).bind fun result => Queries.pure _
-    · intro r hr
-      simp only [readStep, StateT.run, mem_support_bind_iff, mem_support_pure_iff] at hr
-      obtain ⟨view, _, value, _, view', _, result, _, rfl⟩ := hr
-      rfl
+      Tagged bm.2 (fun r : _ × (CappedCompilerState C × Bool) => r.2.2 = bm.2) ((ordinaryStep P seeds q s pads t).run bm) :=
+    Tagged.bind (queries_share bm.2 .view trivial) fun _ =>
+      Tagged.bind (queries_uniform _ bm.2) fun _ => Tagged.pure rfl
+  have read (T : C.Term) (p : CPoint) : Tagged bm.2 (fun r : _ × (CappedCompilerState C × Bool) => r.2.2 = bm.2) ((readStep P seeds T p).run bm) :=
+    Tagged.bind (queries_share bm.2 .view trivial) fun _ =>
+      Tagged.bind (queries_share bm.2 (.read T p bm.2) rfl) fun _ =>
+        Tagged.bind (queries_share bm.2 .view trivial) fun _ =>
+          Tagged.bind (queries_uniform _ bm.2) fun _ => Tagged.pure rfl
   cases t with
   | inl t =>
       cases t with
@@ -525,18 +537,10 @@ theorem backend_noMark (P : PublicParameter) (seeds : C.Term → HashOutput)
       rcases t with ⟨p, target⟩
       by_cases hp : Constrained p
       · simp only [shareBackend, hp, dite_true, StateT.run]
-        refine ⟨(queries_share bm.2 (.complete ⟨p, hp⟩ target bm.2) rfl).bind
-          (fun _ => Queries.pure _), ?_⟩
-        intro r hr
-        simp only [mem_support_bind_iff, mem_support_pure_iff] at hr
-        obtain ⟨_, _, rfl⟩ := hr
-        rfl
+        exact Tagged.bind (queries_share bm.2 (.complete ⟨p, hp⟩ target bm.2) rfl) fun _ =>
+          Tagged.pure rfl
       · simp only [shareBackend, hp, dite_false, StateT.run]
-        refine ⟨Queries.pure _, ?_⟩
-        intro r hr
-        simp only [mem_support_pure_iff] at hr
-        subst r
-        rfl
+        exact Tagged.pure rfl
 
 def jointRun {α : Type} (H : QueryImpl (RunSpec C) (StateT (ShareState C) ProbComp))
     (P : PublicParameter) (seeds : C.Term → HashOutput) (q : ℕ)

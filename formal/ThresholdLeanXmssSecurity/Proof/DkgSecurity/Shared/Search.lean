@@ -808,7 +808,7 @@ theorem treeKeepsAt_tsig_corrupt (dealt : C.Party → Keys C) (i : C.Party) (ts 
   refine treeKeepsAt_get_bind ?_
   split_ifs
   · exact treeKeepsAt_pure _ _
-  · exact (treeKeepsAt_set rfl).bind fun _ _ => treeKeepsAt_pure _ _
+  · refine TreeKeepsAt.bind (x := set _) (treeKeepsAt_set rfl) fun _ _ => treeKeepsAt_pure _ _
 
 omit [Fintype E] [DecidableEq E] in
 theorem treeKeepsAt_tsig_tree (dealt : C.Party → Keys C) (b' : Fin (2 ^ layerHeight)) (ts : TsigState C) :

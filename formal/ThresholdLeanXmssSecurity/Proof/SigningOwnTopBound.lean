@@ -105,7 +105,7 @@ theorem top_block_le {β : Type} (block : OracleComp (Query C →ₒ HashOutput)
         (liftFree (SigningHitProof.hashEmbed block))).run s)}[z = r] * topPotential x r.2 ≤
       topPotential x s := by
   by_cases hp : Programmed s.2
-  · refine le_of_eq_of_le (ENNReal.tsum_eq_zero.mpr fun r => ?_) zero_le
+  · refine le_of_eq_of_le (tsum_eq_zero_iff.mpr fun r => ?_) zero_le
     by_cases hr : r ∈ support ((simulateQ (loggedImpl prims)
       (liftFree (SigningHitProof.hashEmbed block))).run s)
     · simp [guarded, SigningOwnHit.programmed_run prims _ s hp r hr]
@@ -114,7 +114,7 @@ theorem top_block_le {β : Type} (block : OracleComp (Query C →ₒ HashOutput)
   calc _ ≤ ∑' r, Pr{let z ← ((simulateQ (loggedImpl prims)
         (liftFree (SigningHitProof.hashEmbed block))).run s)}[z = r] *
           SigningGuessProof.topPartnerPotential x r.2.1.1 := by
-        refine ENNReal.tsum_le_tsum fun r => ?_
+        refine tsum_le_tsum fun r => ?_
         gcongr
         unfold guarded
         split_ifs <;> simp
@@ -123,7 +123,7 @@ theorem top_block_le {β : Type} (block : OracleComp (Query C →ₒ HashOutput)
           SigningHitProof.completionPotential (SigningGuessProof.topDigestInput x.1 key)
             (SigningGuessProof.canonicalTopCompletion x key) r.2.1.1 := by
         simp only [SigningGuessProof.topPartnerPotential, Finset.mul_sum]
-        exact Summable.tsum_finsetSum (fun _ _ => ENNReal.summable)
+        exact Summable.tsum_finsetSum (fun _ _ => CompleteLattice.summable)
     _ ≤ _ := Finset.sum_le_sum fun key _ => SigningOwnPotential.logged_block_potential_le prims
         (SigningGuessProof.topDigestInput x.1 key) (SigningGuessProof.canonicalTopGrind x key)
         (SigningGuessProof.topGrindTargets x.1 key) block s (hcovered key)
@@ -139,14 +139,14 @@ theorem top_bind_le {α β : Type} (oa : OracleComp (WorldSpec C) α) (ob : α �
       topPotential x s + (a + b) := by
   rw [simulateQ_bind, StateT.run_bind, OracleComp.tsum_prEvent_bind_mul]
   calc _ ≤ ∑' z, Pr{let y ← (simulateQ (loggedImpl prims) oa).run s}[y = z] * (topPotential x z.2 + b) := by
-        refine ENNReal.tsum_le_tsum fun z => ?_
+        refine tsum_le_tsum fun z => ?_
         by_cases hz : z ∈ support ((simulateQ (loggedImpl prims) oa).run s)
         · gcongr
           exact h2 z hz
         · simp [prEvent_eq_zero_of_not_mem_support _ hz]
     _ ≤ (topPotential x s + a) + 1 * b := by
         simp_rw [mul_add]
-        rw [ENNReal.tsum_add, ENNReal.tsum_mul_right]
+        rw [tsum_add, ENNReal.tsum_mul_right]
         exact add_le_add h1 (mul_le_mul_left (OracleComp.tsum_prEvent_le_one _) _)
     _ = _ := by rw [one_mul, add_assoc]
 
@@ -380,7 +380,7 @@ theorem topFlat_bind {α β : Type} {R : OracleComp (RoSpec C) α}
   rw [show ∀ {α β : Type} (R : OracleComp (RoSpec C) α) (f : α → OracleComp (RoSpec C) β),
     liftFree (R >>= f) = liftFree R >>= fun a => liftFree (f a) from φ_bind, simulateQ_bind,
     StateT.run_bind, OracleComp.tsum_prEvent_bind_mul]
-  refine le_trans (ENNReal.tsum_le_tsum fun z => ?_) (hR s)
+  refine le_trans (tsum_le_tsum fun z => ?_) (hR s)
   gcongr
   exact hf z.1 z.2
 
@@ -566,7 +566,7 @@ theorem topOwn : TopOwn prims (C := C) := by
     (fun top forgery st s _ => top_finish_rise prims x top forgery st s)
   refine le_trans ?_ (hf.trans_eq (by norm_num))
   rw [← loggedRun_forget, prEvent_map, OracleComp.prEvent_eq_tsum_ite]
-  refine ENNReal.tsum_le_tsum fun z => ?_
+  refine tsum_le_tsum fun z => ?_
   by_cases hz : z ∈ support (loggedRun prims A x)
   · by_cases hw : ∃ key, SigningGuessProof.ResolvedTopPartner x key z.2.1.1
     · simp only [hw, ite_true, topPotential, guarded,

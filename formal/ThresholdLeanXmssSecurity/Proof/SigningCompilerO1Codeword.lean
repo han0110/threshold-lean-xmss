@@ -78,13 +78,15 @@ theorem realHonest_oracleHash (input : HashInput) :
   rw [realHonest_tweakable]
   exact (simulateQ_query _ _).trans (id_map _)
 
+attribute [local irreducible] readCall in
 /-- The stop of the real side persists over a hash program. -/
 theorem realHonest_stop {α : Type} (oa : OracleComp HashSpec α) (st : RealState C)
     (h : RealStop q st) :
     ∀ r ∈ support ((realHonest prims x s pads u rest (tweakable oa)).run st), RealStop q r.2 := by
   rw [realHonest_tweakable]
-  exact simulateQ_sticky _ (RealStop q)
-    (fun t st' h' => readCall_stop prims x q s pads u rest (.inl (.hash t)) st' h') oa st h
+  exact simulateQ_sticky (spec := HashSpec)
+    (fun t => readCall prims x s pads u rest false (.inl (.hash t))) (RealStop q)
+    (fun t => readCall_stop prims x q s pads u rest (.inl (.hash t))) oa st h
 
 set_option linter.constructorNameAsVariable false in
 /-- The stop of the compiler side persists over a hash program. -/
@@ -102,7 +104,8 @@ theorem compHash_stop {α : Type} (oa : OracleComp HashSpec α) (src : SourceSta
     fuse_stop (spec := HashSpec)
       (fun input => sourceHashX x.1 x.2.1 (.hash input)) (compBackend x q s pads u rest noise)
       (backendT_stop _ _ _ q s pads _ _ noise rest)
-  exact simulateQ_sticky _ (fun z : SourceState C × CompState C => Stop z.2) hsticky oa (src, st) h z hz
+  with_reducible
+    exact simulateQ_sticky _ (fun z : SourceState C × CompState C => Stop z.2) hsticky oa (src, st) h z hz
 
 /-- The codeword search on both sides, call by call. Both sides give the same result, and the
 source state does not move. -/

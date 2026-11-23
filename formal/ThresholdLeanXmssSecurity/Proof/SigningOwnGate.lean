@@ -139,9 +139,9 @@ theorem step_sizeDiscounted (t : Index × Fin 3 × State) (s : GraphState Index 
           ENNReal.mul_div_mul_right _ _ growth_ne_zero growth_ne_top]
         rfl
 
-omit [SampleableType State] in
+omit [SampleableType State] [DecidableEq Index] in
 /-- `terminal_probability_of_expected` with the number of the edges. -/
-theorem sizeTerminal_probability_of_expected {α : Type}
+theorem sizeTerminal_probability_of_expected [DecidableEq Index] {α : Type}
     (run : ProbComp (α × (Index → List (State → Option State)))) (target : Index → State) (q : ℕ)
     (hmean : (∑' r, Pr{let z ← run}[z = r] * sizeDiscounted target r.2) ≤ 1) :
     Pr{let r ← run}[SizeTerminal target q r.2] ≤ growth State ^ q / (5 : ℝ≥0∞) ^ 68 := by
@@ -153,8 +153,8 @@ theorem sizeTerminal_probability_of_expected {α : Type}
           ((5 : ℝ≥0∞) ^ 68 / growth State ^ q) := by
         rw [OracleComp.prEvent_eq_tsum_ite, ENNReal.tsum_mul_right]
       _ ≤ ∑' r, Pr{let z ← run}[z = r] * sizeDiscounted target r.2 := by
-        apply ENNReal.tsum_le_tsum
-        intro r
+        refine tsum_le_tsum fun r => ?_
+        dsimp only
         split_ifs with hr
         · exact mul_le_mul_right (sizeTerminal_discounted target q r.2 hr) _
         · simp only [zero_mul, zero_le]

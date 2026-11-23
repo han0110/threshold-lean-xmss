@@ -262,6 +262,16 @@ theorem grind_newly_signed (P : PublicParameter) (e : KeyIndex) (message : Messa
         (answer, (cache, monitor), flags) hquery hinvalid
       exact ih (trial + 1) ((cache, monitor), flags) hm r hr target ht
 
+/-- Forgetting the flags retains the trial-monitored execution. -/
+theorem keyed_run_monitored_support
+    (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) {α : Type}
+    (source : OracleComp (Query C →ₒ HashOutput) α) (s : TrialState C) (r : α × TrialState C)
+    (hr : r ∈ support ((simulateQ (keyedSplitOracle keyOf) source).run s)) :
+    (r.1, r.2.1) ∈ support
+      ((simulateQ (monitoredOracle keyOf) source).run s.1) := by
+  rw [← keyedSplitOracle_run_forget keyOf source s.1 s.2, support_map]
+  exact ⟨r, hr, rfl⟩
+
 /-- Forgetting the trial monitor and flags retains the actual lazy-oracle execution. -/
 theorem keyed_run_support
     (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) {α : Type}
@@ -270,9 +280,7 @@ theorem keyed_run_support
     (r.1, r.2.1.1) ∈ support
       ((simulateQ (randomOracle (spec := Query C →ₒ HashOutput)) source).run s.1.1) := by
   rw [← monitoredOracle_run_forget keyOf source s.1.1 s.1.2, support_map]
-  refine ⟨(r.1, r.2.1), ?_, rfl⟩
-  rw [← keyedSplitOracle_run_forget keyOf source s.1 s.2, support_map]
-  exact ⟨r, hr, rfl⟩
+  exact ⟨(r.1, r.2.1), keyed_run_monitored_support keyOf source s r hr, rfl⟩
 
 theorem keyed_run_cache_le
     (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex) {α : Type}
@@ -314,15 +322,28 @@ theorem baseGrind_subrun (P : PublicParameter) (e : KeyIndex) (message : Message
 
 open SigningReleasedLinkProof SigningJointEagerProof
 
+/-- Split a supported world step into the logged call and the extra monitored computation. -/
+theorem keyedSplitWorld_steps (prims : Primitives)
+    (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
+    (extra : FlatJointState C → (WorldSpec C).Domain → FlatJointState C → OracleComp (Query C →ₒ HashOutput) Unit)
+    (t : (WorldSpec C).Domain) (s : SplitState C) (r : (WorldSpec C).Range t × SplitState C)
+    (hr : r ∈ support ((keyedSplitWorld prims keyOf extra t).run s)) :
+    ∃ called ∈ support ((carry (SigningCostProof.loggedImpl prims) t).run (s.1.1.1, s.2)),
+      ∃ ground ∈ support ((simulateQ (keyedSplitOracle keyOf) (extra (s.1.1.1, s.2) t called.2)).run
+        ((called.2.1.1.1, queryEntryStep keyOf s.1.1.2 (hashEntry ⟨t, called.1⟩)), s.1.2)),
+        (called.1, ((((ofRest ground.2.1.1 (restOf called.2)).1, ground.2.1.2), ground.2.2),
+          (ofRest ground.2.1.1 (restOf called.2)).2)) = r := by
+  obtain ⟨called, hc, hr⟩ := mem_support_bind_peel _ _ hr
+  obtain ⟨ground, hg, hr⟩ := mem_support_map_peel _ _ hr
+  exact ⟨called, hc, ground, hg, hr.symm⟩
+
 set_option linter.constructorNameAsVariable false in
 /-- The actual split world only extends its hash cache. -/
 theorem world_cache_le (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (t : (WorldSpec C).Domain) (s : SplitState C) (r : (WorldSpec C).Range t × SplitState C)
     (hr : r ∈ support ((SigningReleasedLinkProof.world prims x t).run s)) :
     s.1.1.1.1.1 ≤ r.2.1.1.1.1.1 := by
-  simp only [SigningReleasedLinkProof.world, keyedSplitWorld, StateT.run_mk,
-    mem_support_bind_iff, support_map, Set.mem_image] at hr
-  obtain ⟨called, hc, ground, hg, rfl⟩ := hr
+  obtain ⟨called, hc, ground, hg, rfl⟩ := keyedSplitWorld_steps prims _ _ t s r hr
   have hground : called.2.1.1.1 ≤ ground.2.1.1 := by
     apply keyed_run_cache_le (XmssSecurity.encodingInputLeafIndex? x.1)
       (jointCachedExtra x.2.1 x.1 (s.1.1.1, s.2) t called.2)
@@ -368,6 +389,33 @@ theorem SelectionWitness.mono (x : SigningSecurityProof.Keys3 C)
   rw [← SigningGuessProof.cachedRandomizer_stable x.2.1 cache cache' e hcache hprf]
   exact hcache hbase
 
+/-- An extra computation either does nothing or grinds at a cached base call. -/
+theorem jointCachedExtra_cases (x : SigningSecurityProof.Keys3 C) (p p' : FlatJointState C)
+    (t : (WorldSpec C).Domain) :
+    jointCachedExtra x.2.1 x.1 p t p' = pure () ∨
+      ∃ e message answer, SigningGuessProof.RandomizerCached x.2.1 p.1.1.1 e ∧
+        BaseCall x.1 e (SigningGuessProof.cachedRandomizer x.2.1 p.1.1.1 e) p.2.1.1 t ∧
+        p.2.1.1.bound e = some message ∧
+        p'.1.1.1 (.hash (randomizerInput x.1 bottomLayer e
+          (SigningGuessProof.cachedRandomizer x.2.1 p.1.1.1 e) (littleEndianBytes 32 message))) = some answer ∧
+        jointCachedExtra x.2.1 x.1 p t p' = baseGrind x.1 e message answer := by
+  unfold jointCachedExtra SigningR1FixedProof.cachedExtra
+  split
+  · rename_i hcached
+    obtain ⟨e, hcache, hbase⟩ := hcached
+    unfold grindExtra
+    split
+    · rename_i hb
+      have he := SigningR1FixedProof.baseCall_key_eq hbase hb.choose_spec
+      subst e
+      split
+      · split
+        · exact Or.inr ⟨hb.choose, _, _, hcache, hbase, by assumption, by assumption, rfl⟩
+        · exact Or.inl rfl
+      · exact Or.inl rfl
+    · exact Or.inl rfl
+  · exact Or.inl rfl
+
 set_option linter.constructorNameAsVariable false in
 /-- A newly installed target comes from the guarded canonical base call of its own key. -/
 theorem world_newly_signed_trigger (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
@@ -378,9 +426,7 @@ theorem world_newly_signed_trigger (prims : Primitives) (x : SigningSecurityProo
     (ht : r.2.1.1.2.state.signed e = some target) :
     SigningGuessProof.RandomizerCached x.2.1 s.1.1.1.1.1 e ∧
       BaseCall x.1 e (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) s.2.1.1 t := by
-  simp only [SigningReleasedLinkProof.world, keyedSplitWorld, StateT.run_mk,
-    mem_support_bind_iff, support_map, Set.mem_image] at hr
-  obtain ⟨called, hc, ground, hg, rfl⟩ := hr
+  obtain ⟨called, hc, ground, hg, rfl⟩ := keyedSplitWorld_steps prims _ _ t s r hr
   change ground.2.1.2.state.signed e = some target at ht
   have hpure (h : ground ∈ support ((simulateQ
       (keyedSplitOracle (XmssSecurity.encodingInputLeafIndex? x.1)) (pure ())).run
@@ -392,42 +438,20 @@ theorem world_newly_signed_trigger (prims : Primitives) (x : SigningSecurityProo
       s.1.1.2 (hashEntry ⟨t, called.1⟩)).state.signed e = some target at ht
     with_reducible rw [SigningR1FixedProof.queryEntryStep_signed, hs] at ht
     cases ht
-  by_cases hG : ∃ g, SigningGuessProof.RandomizerCached x.2.1 s.1.1.1.1.1 g ∧
-      BaseCall x.1 g (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 g) s.2.1.1 t
-  · simp only [jointCachedExtra, SigningR1FixedProof.cachedExtra, ite_eq_left hG] at hg
-    unfold grindExtra at hg
-    split_ifs at hg with hb
-    · cases hbound : s.2.1.1.bound hb.choose with
-      | none =>
-        simp only [hbound] at hg
-        exact (hpure hg).elim
-      | some message =>
-        cases hanswer : called.2.1.1.1 (.hash (randomizerInput x.1 bottomLayer hb.choose
-            (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 hb.choose) (littleEndianBytes 32 message))) with
-        | none =>
-          simp only [hbound, hanswer] at hg
-          exact (hpure hg).elim
-        | some answer =>
-          simp only [hbound, hanswer] at hg
-          by_cases he : e = hb.choose
-          · obtain ⟨g, hcache, hbase⟩ := hG
-            have hge : g = e := (SigningR1FixedProof.baseCall_key_eq hbase hb.choose_spec).trans he.symm
-            subst g
-            exact ⟨hcache, hbase⟩
-          · have hm : (ground.1, ground.2.1) ∈ support ((simulateQ
-                (monitoredOracle (XmssSecurity.encodingInputLeafIndex? x.1))
-                (baseGrind x.1 hb.choose message answer)).run
-                (called.2.1.1.1, queryEntryStep (XmssSecurity.encodingInputLeafIndex? x.1)
-                  s.1.1.2 (hashEntry ⟨t, called.1⟩))) := by
-              rw [← keyedSplitOracle_run_forget _ _ _ s.1.2, support_map]
-              exact ⟨ground, hg, rfl⟩
-            have hn := SigningR1FixedProof.baseGrind_signed_ne x.1 hb.choose message answer
-              _ (ground.1, ground.2.1) hm e he
-            rw [hn, SigningR1FixedProof.queryEntryStep_signed, hs] at ht
-            contradiction
-    · exact (hpure hg).elim
-  · simp only [jointCachedExtra, SigningR1FixedProof.cachedExtra, ite_eq_right hG] at hg
+  rcases jointCachedExtra_cases x (s.1.1.1, s.2) called.2 t with hp | ⟨g, message, answer, hcache, hbase, -, -, hgrind⟩
+  · rw [hp] at hg
     exact (hpure hg).elim
+  · by_cases he : e = g
+    · rw [he]
+      exact ⟨hcache, hbase⟩
+    · rw [hgrind] at hg
+      have hm := keyed_run_monitored_support (XmssSecurity.encodingInputLeafIndex? x.1)
+        (baseGrind x.1 g message answer)
+        ((called.2.1.1.1, queryEntryStep (XmssSecurity.encodingInputLeafIndex? x.1)
+          s.1.1.2 (hashEntry ⟨t, called.1⟩)), s.1.2) ground hg
+      have hn := SigningR1FixedProof.baseGrind_signed_ne x.1 g message answer _ (ground.1, ground.2.1) hm e he
+      rw [hn, SigningR1FixedProof.queryEntryStep_signed, hs] at ht
+      contradiction
 
 set_option linter.constructorNameAsVariable false in
 /-- A new installation retains the successful canonical search that produced its digest. -/
@@ -450,9 +474,7 @@ theorem world_newly_signed_witness (prims : Primitives) (x : SigningSecurityProo
     hinput.symm ▸ hcall
   have hbase' : BaseCall x.1 e (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) s.2.1.1 t :=
     ⟨input, by simp only [baseInput, hbound, Option.map_some]; exact congrArg some hinput, hcall⟩
-  simp only [SigningReleasedLinkProof.world, keyedSplitWorld, StateT.run_mk,
-    mem_support_bind_iff, support_map, Set.mem_image] at hr
-  obtain ⟨called, hc, ground, hg, rfl⟩ := hr
+  obtain ⟨called, hc, ground, hg, rfl⟩ := keyedSplitWorld_steps prims _ _ t s r hr
   change ground.2.1.2.state.signed e = some target at ht
   change s.1.1.1.1.1 ≤ ground.2.1.1 at hle
   have hc' := hc
@@ -494,9 +516,7 @@ theorem world_marked (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (r : (WorldSpec C).Range t × SplitState C)
     (hr : r ∈ support ((SigningReleasedLinkProof.world prims x t).run s)) :
     Marked e digest ((r.2.1.1.1.1.1, r.2.1.1.2), r.2.1.2) := by
-  simp only [SigningReleasedLinkProof.world, keyedSplitWorld, StateT.run_mk, mem_support_bind_iff,
-    support_map, Set.mem_image] at hr
-  obtain ⟨called, hc, ground, hg, rfl⟩ := hr
+  obtain ⟨called, hc, ground, hg, rfl⟩ := keyedSplitWorld_steps prims _ _ t s r hr
   change Marked e digest ground.2
   refine keyed_run_marked (XmssSecurity.encodingInputLeafIndex? x.1) e digest
     (jointCachedExtra x.2.1 x.1 (s.1.1.1, s.2) t called.2)
@@ -537,9 +557,7 @@ theorem world_signed (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (r : (WorldSpec C).Range t × SplitState C)
     (hr : r ∈ support ((SigningReleasedLinkProof.world prims x t).run s)) :
     r.2.1.1.2.state.signed e = some target := by
-  simp only [SigningReleasedLinkProof.world, keyedSplitWorld, StateT.run_mk, mem_support_bind_iff,
-    support_map, Set.mem_image] at hr
-  obtain ⟨called, hc, ground, hg, rfl⟩ := hr
+  obtain ⟨called, hc, ground, hg, rfl⟩ := keyedSplitWorld_steps prims _ _ t s r hr
   change ground.2.1.2.state.signed e = some target
   refine keyed_run_signed (XmssSecurity.encodingInputLeafIndex? x.1) e target
     (jointCachedExtra x.2.1 x.1 (s.1.1.1, s.2) t called.2)
@@ -756,9 +774,7 @@ theorem world_base_marked (prims : Primitives) (x : SigningSecurityProof.Keys3 C
         rw [hb] at hi
         exact Option.some.inj hi
       exact hi'.symm ▸ hc
-    simp only [SigningReleasedLinkProof.world, keyedSplitWorld, StateT.run_mk,
-      mem_support_bind_iff, support_map, Set.mem_image] at hr
-    obtain ⟨called, hc, ground, hg, rfl⟩ := hr
+    obtain ⟨called, hc, ground, hg, rfl⟩ := keyedSplitWorld_steps prims _ _ t s r hr
     have hc' := hc
     simp only [carry, SigningCostProof.loggedImpl, StateT.run_mk, support_map, Set.mem_image] at hc'
     obtain ⟨outer, ⟨counted, hcounted, rfl⟩, heq⟩ := hc'
@@ -848,9 +864,7 @@ theorem world_counted_step (prims : Primitives) (x : SigningSecurityProof.Keys3 
     (hr : r ∈ support ((SigningReleasedLinkProof.world prims x t).run s)) :
     ∃ counted, counted ∈ support ((countImpl prims t).run s.1.1.1.1) ∧
       counted.1 = r.1 ∧ counted.2.1 ≤ r.2.1.1.1.1.1 := by
-  simp only [SigningReleasedLinkProof.world, keyedSplitWorld, StateT.run_mk,
-    mem_support_bind_iff, support_map, Set.mem_image] at hr
-  obtain ⟨called, hc, ground, hg, rfl⟩ := hr
+  obtain ⟨called, hc, ground, hg, rfl⟩ := keyedSplitWorld_steps prims _ _ t s r hr
   have hgrow : called.2.1.1.1 ≤ ground.2.1.1 := by
     apply keyed_run_cache_le (XmssSecurity.encodingInputLeafIndex? x.1)
       (jointCachedExtra x.2.1 x.1 (s.1.1.1, s.2) t called.2)
@@ -1050,6 +1064,8 @@ theorem world_bottomOnce_tree (prims : Primitives) (x : SigningSecurityProof.Key
       built ∈ support ((simulateQ (countImpl prims)
         (SigningSecurityProof.liftFree (referenceTree tweakable (prfValue x.2.1) x.1 top (.bottom b)))).run initial) ∧
       built.1 = some (.bottom tree) ∧ built.2.1 ≤ r.2.1.1.1.1.1 := by
+  change r ∈ support ((simulateQ (SigningReleasedLinkProof.world prims x)
+    ((bottomOnce (SigningGuessProof.receiptDealt x top) b).run st)).run s) at hr
   simp only [bottomOnce, StateT.run_bind, StateT.run_get, pure_bind] at hr
   cases hstored : st.trees b with
   | some stored =>
@@ -1064,8 +1080,6 @@ theorem world_bottomOnce_tree (prims : Primitives) (x : SigningSecurityProof.Key
     simp only [simulateQ_pure, StateT.run_pure, mem_support_pure_iff] at hr
     rw [hr] at hout ⊢
     clear hr
-    change built ∈ support ((simulateQ (SigningReleasedLinkProof.world prims x)
-      ((SigningGuessProof.receiptDealt x top).bottom b)).run s) at hbuilt
     rw [SigningGuessProof.receiptDealt_bottom] at hbuilt
     simp only [simulateQ_map, StateT.run_map, support_map, Set.mem_image] at hbuilt
     obtain ⟨raw, hraw, rfl⟩ := hbuilt

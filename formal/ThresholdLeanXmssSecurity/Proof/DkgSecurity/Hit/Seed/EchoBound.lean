@@ -1,3 +1,4 @@
+import ThresholdLeanXmssSecurity.Proof.List
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Hit.Seed.EchoBlock
 
 /-!
@@ -90,7 +91,7 @@ theorem passTwo_good (j : C.Party) (k : Option (HashOutput × (C.Term → HashOu
     have hF := compLocal_mapM_support prims D parts seed _
       (fun l v c => c (sharedAddress j l keys.2.1) = some v) (fun _ _ _ _ h hv => h hv)
       (fun l c z hz => shared_run prims D parts seed _ c z hz) C.parties c p hp
-    exact SigningOwnWalkBuild.forall₂_finRange (R := fun l v => p.2 (sharedAddress j l keys.2.1) = some v) 0 hF l
+    exact SigningOwnWalkBuild.forall₂_finRange 0 hF l
 
 /-- The support fact of pass 1 of operator `j`. -/
 def PassOneGood (j : C.Party) (a : Option (HashOutput × (C.Term → HashOutput) × (C.Party → HashOutput))) : Prop :=

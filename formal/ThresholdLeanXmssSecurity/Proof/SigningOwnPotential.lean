@@ -82,7 +82,7 @@ theorem completionPotential_recorded_block_le {α β : Type} (relevant : Query C
   simp only [StateT.run_bind, bind_pure_comp, OracleComp.prEvent_bind_eq_tsum]
   calc
     _ ≤ ∑' r, Pr{let z ← F.run cache}[z = r] * (if CompletedHit relevant (T r.1) cache then 1 else 0) := by
-      apply ENNReal.tsum_le_tsum
+      apply tsum_le_tsum
       intro r
       by_cases hr : r ∈ support (F.run cache)
       · refine mul_le_mul_right ?_ _

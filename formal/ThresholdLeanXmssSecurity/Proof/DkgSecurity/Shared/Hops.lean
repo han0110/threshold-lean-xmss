@@ -86,9 +86,14 @@ theorem raised_allTrees (runLimit : ℕ) : raised runLimit allTrees = fun _ => r
   | top => simp [raised, allTrees]
   | bottom b => simp [raised, allTrees]
 
+private theorem sum_cons_finRange {n : ℕ} (head : Tree) (g : Fin n → Tree) (f : Tree → ℝ) :
+    ((head :: (List.finRange n).map g).map f).sum = f head + ∑ i, f (g i) := by
+  simp [List.map_map, Fin.sum_univ_def, Function.comp_def]
+
 theorem allTrees_sum (f : Tree → ℝ) :
     (allTrees.map f).sum = f .top + ∑ b : Fin (2 ^ layerHeight), f (.bottom b) := by
-  simp [allTrees, List.map_map, Fin.sum_univ_def, Function.comp_def]
+  unfold allTrees
+  exact sum_cons_finRange .top .bottom f
 
 end Runs
 

@@ -89,7 +89,7 @@ theorem posterior_bound_size {α : Type}
     _ ≤ ∑' r, Pr{let z ← (simulateQ (FinitePosterior.lazy CountedPosterior.aux) oa).run s}[z = r] *
         (if LayeredGraph.SizeTerminal target q (PublicContinuation.rows r.2.1)
           then ((2 ^ 128 : ℝ≥0∞) ^ 58)⁻¹ else 0) :=
-      ENNReal.tsum_le_tsum fun r => mul_le_mul_right (inner_bound_size b target q r) _
+      tsum_le_tsum fun r => mul_le_mul_right (inner_bound_size b target q r) _
     _ = _ := by
       rw [OracleComp.prEvent_eq_tsum_ite, ← ENNReal.tsum_mul_left]
       apply tsum_congr
@@ -215,7 +215,7 @@ theorem after_private_bound_size (x : SigningSecurityProof.Keys3 C) (b : XmssSec
       (s.1, s.2.1, 0)
     pure (r, table))}[GoodSize b (SelectedKeygen.endpoints p.2 b) q p.1 p.2])
   · simp only [OracleComp.prEvent_bind_eq_tsum, bind_pure_comp, prEvent_map]
-    apply ENNReal.tsum_le_tsum
+    apply tsum_le_tsum
     intro h
     apply mul_le_mul_right
     apply PrivateRecord.private_bind_bound prims x b _ _ _ _ s (FinitePosterior.extending_agrees _ _)

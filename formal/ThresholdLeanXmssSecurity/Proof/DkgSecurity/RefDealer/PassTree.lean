@@ -144,16 +144,8 @@ theorem topTail_fix (h : Query C → HashOutput) (operator : OperatorState C) (o
     (ht : some t ∈ support (simulateQ (fixHash h) (topTail (E := E) operator o).run)) :
     some t = ceremonyOutput (m := Id) (fun oa => D prims h (tweakable oa)) keys.parameter (fun _ => some o.1)
       emptyTop .top := by
-  unfold topTail at ht
-  rw [hk] at ht
-  simp only [ceremonyOutput, pure_bind, StateT.run'_eq, StateT.run_bind, StateT.run_lift, StateT.run_pure,
-    map_bind, bind_assoc] at ht
-  rw [OptionT.run_bind, Option.elimM, simulateQ_bind, fixHash_oracleStep_tweakable prims h] at ht
-  simp only [pure_bind, Option.elim, map_pure, OptionT.run_pure] at ht
-  simp only [simulateQ_pure,
-    support_pure, Set.mem_singleton_iff] at ht
-  rw [ht]
-  rfl
+  simp only [topTail, hk] at ht
+  exact fixedVal_elim h (fixedVal_ceremonyOutput h prims keys.parameter (fun _ => some o.1) emptyTop .top) o.2 t ht
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
 theorem agrees_cleanCache {h : Query C → HashOutput} {c : HashCache C} (ha : Agrees h c) :
@@ -321,29 +313,8 @@ omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
 theorem headTail_fix (h : Query C → HashOutput) (operator : OperatorState C) (b : Fin (2 ^ layerHeight))
     (o : CeremonyResult) (keys : Keys C) (hk : operator.keys = some keys) (x : HeadResult)
     (hx : some x ∈ support (simulateQ (fixHash h) (headTail (E := E) operator b o).run)) :
-    firstLocal (m := Id) (fun oa => D prims h (tweakable oa)) keys.parameter b o.1 = some x.1 ∧ x.2 = o.2 := by
-  unfold headTail at hx
-  rw [hk] at hx
-  simp only [firstLocal, StateT.run_bind, StateT.run_lift, bind_assoc] at hx
-  rw [OptionT.run_bind, Option.elimM, simulateQ_bind, fixHash_oracleStep_tweakable prims h] at hx
-  simp only [pure_bind, Option.elim] at hx
-  rw [OptionT.run_bind, Option.elimM, simulateQ_bind, fixHash_oracleStep_tweakable prims h] at hx
-  simp only [pure_bind, Option.elim] at hx
-  rw [OptionT.run_bind, Option.elimM, simulateQ_bind, fixHash_oracleStep_tweakable prims h] at hx
-  simp only [pure_bind, Option.elim] at hx
-  split at hx
-  · rename_i randomness encoding hgr
-    simp only [StateT.run_pure, OptionT.run_pure, simulateQ_pure, pure_bind,
-      support_pure, Set.mem_singleton_iff, Option.some.injEq] at hx
-    subst hx
-    refine ⟨?_, rfl⟩
-    simp only [firstLocal, bind]
-    rw [hgr]
-    rfl
-  · simp only [StateT.run_pure, simulateQ_pure, pure_bind,
-      OptionT.run_failure, support_pure, Set.mem_singleton_iff] at hx
-    cases hx
-
+    firstLocal (m := Id) (fun oa => D prims h (tweakable oa)) keys.parameter b o.1 = some x.1 ∧ x.2 = o.2 :=
+  firstLocal_of_headTail prims h operator b o keys hk x hx
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
 /-- The local end of a bottom tree with `H` fixed to `h` is the end computed in the clear. -/
@@ -352,23 +323,8 @@ theorem secondTail_fix (h : Query C → HashOutput) (operator : OperatorState C)
     (hk : operator.keys = some keys) (ht : operator.top = some top) (t : TreeOutput)
     (htt : some t ∈ support (simulateQ (fixHash h) (secondTail (E := E) operator b x o).run)) :
     secondLocal (m := Id) (fun oa => D prims h (tweakable oa)) keys.parameter top b x o.1 = some t := by
-  unfold secondTail at htt
-  rw [hk, ht] at htt
-  simp only [secondLocal, StateT.run'_eq, StateT.run_bind, StateT.run_lift, map_bind, bind_assoc] at htt
-  rw [OptionT.run_bind, Option.elimM, simulateQ_bind, fixHash_oracleStep_tweakable prims h] at htt
-  simp only [pure_bind, Option.elim] at htt
-  rw [OptionT.run_bind, Option.elimM, simulateQ_bind, fixHash_oracleStep_tweakable prims h] at htt
-  simp only [pure_bind, Option.elim] at htt
-  simp only [secondLocal, bind]
-  split_ifs at htt ⊢ with hroot
-  · simp only [StateT.run_pure, map_pure, simulateQ_pure,
-      pure_bind, OptionT.run_failure, support_pure, Set.mem_singleton_iff] at htt
-    cases htt
-  · simp only [StateT.run_pure, map_pure, OptionT.run_pure, simulateQ_pure,
-      pure_bind, support_pure, Set.mem_singleton_iff] at htt
-    rw [htt]
-    rfl
-
+  simp only [secondTail, hk, ht] at htt
+  exact (fixedVal_elim h (fixedVal_secondLocal prims h keys.parameter top b x o.1) o.2 t htt).symm
 
 omit [Fintype E] [DecidableEq E] in
 /-- The recorded head of a bottom tree with `H` fixed is one recorded ceremony with `H` fixed and the

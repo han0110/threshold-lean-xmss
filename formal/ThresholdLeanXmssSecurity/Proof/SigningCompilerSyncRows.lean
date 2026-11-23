@@ -64,8 +64,7 @@ theorem compilerImpl_virtual_mono (P : PublicParameter) (seeds : C.Term → Hash
     st.data.virtual ⊆ r.2.data.virtual := by
   cases t with
   | hash query =>
-      simp only [compilerImpl, StateT.run, mem_support_bind_iff, mem_support_pure_iff] at hr
-      obtain ⟨a, ha, b, _, rfl⟩ := hr
+      obtain ⟨a, ha, _, -, -, rfl⟩ := compilerImpl_hash_steps P seeds query st r hr
       exact deferredImpl_virtual_mono (.hash query) st.data a ha
   | bindKey e message =>
       simp only [compilerImpl, StateT.run, mem_support_pure_iff] at hr
@@ -119,18 +118,15 @@ theorem ordinary_virtual_mono (P : PublicParameter) (seeds : C.Term → HashOutp
         subst r <;> exact Finset.Subset.refl _
     | _ => exact cap _ r hr
 
-set_option linter.constructorNameAsVariable false in
+attribute [local irreducible] hashTail
+
 /-- Cached-extra calls update the cache and trace, not the virtual-row set. -/
 theorem hashTail_virtual (P : PublicParameter) (seeds : C.Term → HashOutput)
     (input : Query C) (st : CappedCompilerState C) (value : HashOutput) (cache : HashCache C)
     (r : HashOutput × CappedCompilerState C)
     (hr : r ∈ support (hashTail P seeds input st value cache)) :
     r.2.1.1.data.virtual = st.1.1.data.virtual := by
-  simp only [hashTail, mem_support_bind_iff, mem_support_pure_iff] at hr
-  obtain ⟨a, ha, rfl⟩ := hr
-  rfl
-
-attribute [local irreducible] hashTail
+  with_reducible exact (hashTail_tables P seeds input st value cache r hr).1
 
 /-- Sampling a fixed pending answer retains all old rows and pending entries. -/
 theorem freshPendingT_rows (noise : ChainNoiseIndex → HashOutput)
@@ -165,15 +161,11 @@ theorem freshRestT_rows (x : Keys3 C) (noise : ChainNoiseIndex → HashOutput)
       (freshRest x.1 x.2.1 x.2.2 z st))) :
     st.1.1.data.virtual ⊆ r.2.1.1.data.virtual ∧
       ∀ p, st.1.1.data.pending p ≠ none → r.2.1.1.data.pending p ≠ none := by
-  rw [freshRestT_run] at hr
-  cases hc : st.1.1.data.cache (restInput x.2.1 x.2.2 z) <;> rw [hc] at hr
+  obtain ⟨_, hr⟩ | hr := freshRestT_support x noise rest z st r hr
   all_goals
     have hv := hashTail_virtual x.1 x.2.1 _ st _ _ r hr
     have hp := (hashTail_grows x.1 x.2.1 _ st _ _ r hr).2
-    constructor
-    · rw [hv]
-    · intro p h
-      rwa [hp]
+    exact ⟨hv ▸ Finset.Subset.refl _, fun _ h => hp ▸ h⟩
 
 /-- Every fixed-table ordinary query preserves virtual and pending domains. -/
 theorem ordinaryT_rows (x : Keys3 C)

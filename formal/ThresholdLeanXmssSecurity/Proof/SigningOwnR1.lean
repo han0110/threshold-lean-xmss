@@ -87,7 +87,7 @@ theorem logged_query_stopRisk_le (x : Keys3 C)
     split_ifs
     · exact zero_le
     · exact le_rfl
-  refine (ENNReal.tsum_le_tsum fun z => mul_le_mul_right (hpt _ _) _).trans ?_
+  refine (tsum_le_tsum fun z => mul_le_mul_right (hpt _ _) _).trans ?_
   by_cases hc : CachedHashCall l.1.1 t
   · obtain ⟨input, ht', hin⟩ := hc
     refine (SigningPartnerBoundProof.tsum_probOutput_mul_le_of_const _ _ m.risk fun z _ => ?_).trans le_self_add

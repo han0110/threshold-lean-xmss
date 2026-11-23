@@ -482,7 +482,9 @@ theorem realBatch_support (ctx : Context C) (parameter : PublicParameter) (js : 
 
 /-- One batch of `cutRun`. A batch with the tag `k` stops at the filled history of its tuples, and
 another batch adds `jobLabel` to the label and one to the tag. -/
-theorem cutWalk_batch (k : ℕ) (i : C.Party) (keys : Keys C) (prss : PrssKeys C) (js : List Job) :
+theorem cutWalk_batch {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
+    (K : Constants C E) (circuits : Circuits) (settings : Settings)
+    (k : ℕ) (i : C.Party) (keys : Keys C) (prss : PrssKeys C) (js : List Job) :
     CutWalk (fun st r => r.2 = (st.1 + jobLabel circuits keys.parameter js, st.2 + 1))
       (fun st point => st.2 = k ∧
         PointAt K i ⟨i, keys, prss⟩ (headCounts (js.map (circuits keys.parameter ·.kind))) st.1 k point)

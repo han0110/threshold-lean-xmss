@@ -441,9 +441,7 @@ theorem world_base_data (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
           ((called.2.1.1.1, queryEntryStep (XmssSecurity.encodingInputLeafIndex? x.1)
             s.1.1.2 (hashEntry ⟨t, called.1⟩)), s.1.2)) ∧
       ground.2 = ((r.2.1.1.1.1.1, r.2.1.1.2), r.2.1.2) := by
-  simp only [SigningReleasedLinkProof.world, keyedSplitWorld, StateT.run_mk,
-    mem_support_bind_iff, support_map, Set.mem_image] at hr
-  obtain ⟨called, hc, ground, hg, rfl⟩ := hr
+  obtain ⟨called, hc, ground, hg, rfl⟩ := keyedSplitWorld_steps prims _ _ t s r hr
   obtain ⟨answer, ha⟩ := base_called_support prims t s called hc _
     (hashCallAt_of_baseCall hbase hbound)
   have hanswer := (randomOracle_support _ s.1.1.1.1.1 (answer, called.2.1.1.1) ha).2.1
@@ -461,6 +459,30 @@ theorem signWithBase_run_map (key : XmssSecurity.SecretKey) (request : XmssSecur
         (SigningLane2Proof.signWithBase key request.leafIndex request.message)).run initial := by
   rw [← SigningLane2Proof.snd_signWithBase, simulateQ_map, StateT.run_map]
 
+private theorem mem_support_pair_of_samples {α β γ : Type} {first : ProbComp α}
+    (next : α → ProbComp β) (result : α → β → γ) {a : α} {b : β}
+    (ha : a ∈ support first) (hb : b ∈ support (next a)) :
+    result a b ∈ support (first >>= fun x => next x >>= fun y => pure (result x y)) :=
+  (mem_support_bind_iff _ _ _).2 ⟨a, ha, (mem_support_bind_iff _ _ _).2 ⟨b, hb, by simp⟩⟩
+
+private theorem project_sign_step (key : XmssSecurity.SecretKey) (request : XmssSecurity.SignRequest)
+    (initial : XmssSecurity.HashSpec.QueryCache) :
+    (fun r => (r.1.2, r.2.1.1)) <$>
+      (SigningLane2Proof.signWithBaseStep key request).run ((initial, []), 0) =
+      (simulateQ XmssSecurity.romImpl
+        (XmssSecurity.Concrete.scheme.sign key request.leafIndex request.message)).run initial := by
+  rw [SigningLane2Proof.signWithBaseStep, StateT.run_mk, Functor.map_map, signWithBase_run_map]
+
+private theorem support_of_projection {α β : Type} (f : α → β) {src : ProbComp α} {dst : ProbComp β}
+    (law : f <$> src =ᵈ dst) {a : α} (ha : a ∈ support src) {b : β} (hv : f a = b) : b ∈ support dst := by
+  rw [← OracleComp.support_eq_of_evalDistEq law, support_map]
+  exact ⟨a, ha, hv⟩
+
+private theorem support_of_two_projections {α β γ : Type} {src : ProbComp α} {step : ProbComp β} {dst : ProbComp γ}
+    (f : α → β) (g : β → γ) (law : f <$> src =ᵈ step) (project : g <$> step = dst) {a : α} (ha : a ∈ support src)
+    {c : γ} (hc : g (f a) = c) : c ∈ support dst :=
+  support_of_projection g (EvalDistEq.of_eq project) (support_of_projection f law ha rfl) hc
+
 set_option backward.isDefEq.respectTransparency true in
 /-- Forgetting a sign step's sampled base retains its signing support. -/
 theorem signWithBaseStep_sign_support (key : XmssSecurity.SecretKey)
@@ -470,13 +492,12 @@ theorem signWithBaseStep_sign_support (key : XmssSecurity.SecretKey)
       ((SigningLane2Proof.signWithBaseStep key request).run ((initial, []), 0))) :
     (signature, completed) ∈ support ((simulateQ XmssSecurity.romImpl
       (XmssSecurity.Concrete.scheme.sign key request.leafIndex request.message)).run initial) := by
-  have hrun : (fun r => (r.1.2, r.2.1.1)) <$>
-      (SigningLane2Proof.signWithBaseStep key request).run ((initial, []), 0) =
-      (simulateQ XmssSecurity.romImpl
-        (XmssSecurity.Concrete.scheme.sign key request.leafIndex request.message)).run initial := by
-    rw [SigningLane2Proof.signWithBaseStep, StateT.run_mk, Functor.map_map, signWithBase_run_map]
-  rw [← hrun, support_map]
-  exact ⟨_, h, rfl⟩
+  exact support_of_projection _ (EvalDistEq.of_eq (project_sign_step key request initial)) h rfl
+
+/-- A property of every signing request holds for each leaf index and message. -/
+theorem of_sign_request {I : KeyIndex → Message → Prop}
+    (run : ∀ r : XmssSecurity.SignRequest, I r.leafIndex r.message) : ∀ e message, I e message :=
+  fun e message => run ⟨e, message⟩
 
 /-- A supported fresh lazy base query followed by its grind gives a supported leanVM signature. -/
 theorem raw_fresh_sign_support (prims : Primitives) (P : PublicParameter) (e : KeyIndex)
@@ -489,21 +510,17 @@ theorem raw_fresh_sign_support (prims : Primitives) (P : PublicParameter) (e : K
       (foundGrind P e message answer)).run afterBase)) :
     (signOf (laneKey P) e found, keptView IsMsg completed) ∈ support ((simulateQ XmssSecurity.romImpl
       (XmssSecurity.Concrete.scheme.sign (laneKey P) e message)).run (keptView IsMsg initial)) := by
-  let result : (XmssSecurity.Randomness × Option XmssSecurity.Signature) × XmssSecurity.Ghost.State :=
-    ((truncateHash answer, signOf (laneKey P) e found),
-      ((keptView IsMsg completed, [⟨⟨e, message⟩, signOf (laneKey P) e found,
-        keptView IsMsg initial, keptView IsMsg completed⟩]), 0))
-  have hstep : result ∈ support ((SigningLane2Proof.signWithBaseStep (laneKey P) ⟨e, message⟩).run
-      ((keptView IsMsg initial, []), 0)) := by
-    apply (Set.ext_iff.mp (OracleComp.support_eq_of_evalDistEq
-      (eagerBase_signWithBaseStep prims P rho ⟨e, message⟩ initial hfresh [] 0)) result).mp
-    rw [support_map]
-    refine ⟨((truncateHash answer, found), completed), ?_, rfl⟩
-    rw [mem_support_bind_iff]
-    refine ⟨(answer, afterBase), ha, ?_⟩
-    rw [mem_support_bind_iff]
-    exact ⟨(found, completed), hg, by simp⟩
-  exact signWithBaseStep_sign_support (laneKey P) ⟨e, message⟩ _ _ _ _ hstep
+  revert e message
+  apply of_sign_request
+  intro request hfresh ha hg
+  have hp := mem_support_pair_of_samples
+    (first := ((Query C →ₒ HashOutput).randomOracle
+      (.hash (randomizerInput P bottomLayer request.leafIndex rho (littleEndianBytes 32 request.message)))).run initial)
+    (fun p => (simulateQ (Query C →ₒ HashOutput).randomOracle (foundGrind P request.leafIndex request.message p.1)).run p.2)
+    (fun p w => ((truncateHash p.1, w.1), w.2)) ha hg
+  exact support_of_two_projections _ _
+    (eagerBase_signWithBaseStep prims P rho request initial hfresh [] 0)
+    (project_sign_step (laneKey P) request (keptView IsMsg initial)) hp rfl
 
 /-- The fresh dynamic canonical base step gives the actual leanVM signing support
 for the signature and the two caches stored in its trace entry. -/
@@ -560,6 +577,50 @@ theorem EntryRuns.mono {P : PublicParameter} {cache cache' : HashCache C}
     {trace : XmssSecurity.SigningCacheTrace} (h : EntryRuns P cache trace) (hc : cache ≤ cache') :
     EntryRuns P cache' trace := fun entry he => ⟨(h entry he).1, (h entry he).2.trans (keptView_le hc)⟩
 
+/-- A predicate on entry fields holds throughout the updated trace if it also holds for a fresh signing entry. -/
+private theorem traceStepAt_all (seeds : C.Term → HashOutput) (P : PublicParameter)
+    (cache cache' : HashCache C) (st : TsigState C) (t : (WorldSpec C).Domain)
+    (aux : XmssSecurity.SigningCacheTrace × Bool)
+    (I : KeyIndex → Message → Option XmssSecurity.Signature →
+      XmssSecurity.HashSpec.QueryCache → XmssSecurity.HashSpec.QueryCache → Prop)
+    (hold : ∀ entry ∈ aux.1, I entry.request.leafIndex entry.request.message entry.signature
+      entry.initialCache entry.finalCache)
+    (hnew : ∀ e m, SigningGuessProof.RandomizerCached seeds cache e →
+      BaseCall P e (SigningGuessProof.cachedRandomizer seeds cache e) st t → st.bound e = some m →
+      cache (.hash (randomizerInput P bottomLayer e (SigningGuessProof.cachedRandomizer seeds cache e)
+        (littleEndianBytes 32 m))) = none →
+      I e m (signOf (laneKey P) e (cachedFound cache' P e
+        (SigningGuessProof.cachedRandomizer seeds cache e) m)) (keptView IsMsg cache) (keptView IsMsg cache')) :
+    ∀ entry ∈ (traceStepAt seeds P cache st t cache' aux).1, I entry.request.leafIndex entry.request.message
+      entry.signature entry.initialCache entry.finalCache := by
+  unfold traceStepAt
+  split
+  · rename_i h
+    split
+    · split
+      · intro entry he
+        rcases List.mem_append.mp he with he | he
+        · exact hold entry he
+        · obtain rfl := List.mem_singleton.mp he
+          exact hnew h.choose _ h.choose_spec.1 h.choose_spec.2 (by assumption) (by assumption)
+      · exact hold
+    · exact hold
+  · exact hold
+
+private theorem step_entryRuns (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
+    (t : (WorldSpec C).Domain) (s : SigningReleasedLinkProof.SplitState C)
+    (aux : XmssSecurity.SigningCacheTrace × Bool) (hs : EntryRuns x.1 s.1.1.1.1.1 aux.1)
+    (step : (WorldSpec C).Range t × SigningReleasedLinkProof.SplitState C)
+    (hstep : step ∈ support ((SigningReleasedLinkProof.world prims x t).run s)) :
+    EntryRuns x.1 step.2.1.1.1.1.1 (traceStepAt x.2.1 x.1 s.1.1.1.1.1 s.2.1.1 t step.2.1.1.1.1.1 aux).1 := by
+  have hold := hs.mono (world_cache_le prims x t s step hstep)
+  refine traceStepAt_all x.2.1 x.1 s.1.1.1.1.1 step.2.1.1.1.1.1 s.2.1.1 t aux (fun e m sig before after =>
+    (sig, after) ∈ support ((simulateQ XmssSecurity.romImpl
+      (XmssSecurity.Concrete.scheme.sign (laneKey x.1) e m)).run before) ∧
+      after ≤ keptView IsMsg step.2.1.1.1.1.1) hold ?_
+  intro e m hprf hb hm hf
+  exact ⟨world_fresh_sign_support prims x t s step hstep e m hprf hb hm hf, le_rfl⟩
+
 /-- Every actual trace append retains a supported leanVM signing run. -/
 theorem traceWorld_entryRuns (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (t : (WorldSpec C).Domain) (s : TraceState C)
@@ -567,30 +628,8 @@ theorem traceWorld_entryRuns (prims : Primitives) (x : SigningSecurityProof.Keys
     (r : (WorldSpec C).Range t × TraceState C)
     (hr : r ∈ support ((traceWorld prims x t).run s)) :
     EntryRuns x.1 r.2.1.1.1.1.1.1 r.2.1.2.1 := by
-  simp only [traceWorld, StateT.run_mk, support_map, Set.mem_image] at hr
-  obtain ⟨step, hstep, rfl⟩ := hr
-  have hcache := world_cache_le prims x t (s.1.1, s.2) step hstep
-  have hold := hs.mono hcache
-  change EntryRuns x.1 step.2.1.1.1.1.1
-    (traceStepAt x.2.1 x.1 s.1.1.1.1.1.1 s.2.1.1 t step.2.1.1.1.1.1 s.1.2).1
-  unfold traceStepAt
-  split
-  · rename_i h
-    cases hb : s.2.1.1.bound h.choose with
-    | none => exact hold
-    | some message =>
-      simp only
-      split
-      · rename_i hfresh
-        intro entry he
-        rcases List.mem_append.mp he with he | he
-        · exact hold entry he
-        · simp only [List.mem_singleton] at he
-          subst entry
-          exact ⟨world_fresh_sign_support prims x t (s.1.1, s.2) step hstep h.choose message
-            h.choose_spec.1 h.choose_spec.2 hb hfresh, le_rfl⟩
-      · exact hold
-  · exact hold
+  obtain ⟨step, hstep, rfl⟩ := OracleComp.mem_support_map_peel _ _ hr
+  exact step_entryRuns prims x t (s.1.1, s.2) s.1.2 hs step hstep
 
 set_option linter.constructorNameAsVariable false in
 /-- Any invariant on the world-side state, preserved by a traced world call,
@@ -648,8 +687,7 @@ theorem traceRun_entryRuns (prims : Primitives) (A : TsigAdversary C)
     (fun _ h => (List.not_mem_nil h).elim) z (by with_reducible exact hz)
 
 /-- Supported signing entries have the cache properties used by leanVM's collision split.
-The preservation case split follows pinned `CappedSigningCacheTrace`'s
-`cappedCacheTracedMappedAdversaryImpl_query_preservesOtherValidEncodingInputs`. -/
+Preservation follows from the precomputed signer's later-input preservation lemma. -/
 theorem EntryRuns.properties {P : PublicParameter} {cache : HashCache C}
     {trace : XmssSecurity.SigningCacheTrace} (h : EntryRuns P cache trace) :
     trace.CachesLe (keptView IsMsg cache) ∧ trace.SelectedValid (laneKey P) ∧
@@ -663,15 +701,11 @@ theorem EntryRuns.properties {P : PublicParameter} {cache : HashCache C}
       (r := (entry.signature, entry.finalCache)) (h entry he).1 hs ha
   · intro entry he signature hs targetKey targetPair encoding hd hne hn
     obtain ⟨hr, _⟩ := h entry he
-    rw [hs] at hr
-    by_cases hk : entry.request.leafIndex = targetKey
-    · exact XmssSecurity.Concrete.precomputedCappedSign_preserves_later_valid_other_encodingInput
-        (laneKey P) entry.request.leafIndex targetKey entry.request.message targetPair
-        entry.initialCache entry.finalCache entry.finalCache (some signature) hr le_rfl encoding hd
-        (by intro candidate hc; cases Option.some.inj hc.symm; exact hne) hn rfl
-    · exact XmssSecurity.Concrete.precomputedCappedSign_preserves_other_leafIndex_encodingInput
-        (laneKey P) entry.request.leafIndex targetKey entry.request.message targetPair
-        entry.initialCache entry.finalCache (some signature) hr hk hn
+    rw [show XmssSecurity.Concrete.scheme.sign = XmssSecurity.Concrete.precomputedCappedSign from rfl] at hr
+    exact XmssSecurity.Concrete.precomputedCappedSign_preserves_later_valid_other_encodingInput
+      (laneKey P) entry.request.leafIndex targetKey entry.request.message targetPair
+      entry.initialCache entry.finalCache entry.finalCache entry.signature hr le_rfl encoding hd
+      (fun candidate hc => (Option.some.inj (hc.symm.trans hs)) ▸ hne) hn (by rw [hs]; rfl)
 
 open SigningDescentProof SigningCacheProof
 
@@ -753,7 +787,7 @@ theorem hashEntry_call (t : (WorldSpec C).Domain) (answer : (WorldSpec C).Range 
   rcases t with ((n | (q | p)) | prog) | (n | (q | p))
   all_goals try (cases he)
   all_goals cases q <;> simp only [hashEntry] at he
-  all_goals try (cases he)
+  all_goals cases he
   · exact Or.inl rfl
   · exact Or.inr rfl
 
@@ -794,9 +828,7 @@ theorem world_seenCached (prims : Primitives) (x : SigningSecurityProof.Keys3 C)
     (r : (WorldSpec C).Range t × SigningReleasedLinkProof.SplitState C)
     (hr : r ∈ support ((SigningReleasedLinkProof.world prims x t).run s)) :
     SeenCached r.2.1.1.1.1.1 r.2.1.1.2 := by
-  simp only [SigningReleasedLinkProof.world, keyedSplitWorld, StateT.run_mk,
-    mem_support_bind_iff, support_map, Set.mem_image] at hr
-  obtain ⟨called, hc, ground, hg, rfl⟩ := hr
+  obtain ⟨called, hc, ground, hg, rfl⟩ := keyedSplitWorld_steps prims _ _ t s r hr
   exact keyed_run_seenCached _ _ _ (called_seenCached prims x t s hs called hc) ground
     (by with_reducible exact hg)
 
@@ -996,9 +1028,7 @@ theorem world_raised_trigger (prims : Primitives) (x : SigningSecurityProof.Keys
     (e : KeyIndex) (hs : s.1.2 e = false) (hf : r.2.1.2 e = true) :
     SigningGuessProof.RandomizerCached x.2.1 s.1.1.1.1.1 e ∧
       BaseCall x.1 e (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 e) s.2.1.1 t := by
-  simp only [SigningReleasedLinkProof.world, keyedSplitWorld, StateT.run_mk,
-    mem_support_bind_iff, support_map, Set.mem_image] at hr
-  obtain ⟨called, hc, ground, hg, rfl⟩ := hr
+  obtain ⟨called, hc, ground, hg, rfl⟩ := keyedSplitWorld_steps prims _ _ t s r hr
   change ground.2.2 e = true at hf
   have hpure (h : ground ∈ support ((simulateQ
       (keyedSplitOracle (XmssSecurity.encodingInputLeafIndex? x.1)) (pure ())).run
@@ -1007,34 +1037,16 @@ theorem world_raised_trigger (prims : Primitives) (x : SigningSecurityProof.Keys
     simp only [simulateQ_pure, StateT.run_pure, mem_support_pure_iff] at h
     rw [h, hs] at hf
     cases hf
-  by_cases hG : ∃ g, SigningGuessProof.RandomizerCached x.2.1 s.1.1.1.1.1 g ∧
-      BaseCall x.1 g (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 g) s.2.1.1 t
-  · simp only [jointCachedExtra, SigningR1FixedProof.cachedExtra, ite_eq_left hG] at hg
-    unfold grindExtra at hg
-    split_ifs at hg with hb
-    · cases hbound : s.2.1.1.bound hb.choose with
-      | none =>
-        simp only [hbound] at hg
-        exact (hpure hg).elim
-      | some message =>
-        cases hanswer : called.2.1.1.1 (.hash (randomizerInput x.1 bottomLayer hb.choose
-            (SigningGuessProof.cachedRandomizer x.2.1 s.1.1.1.1.1 hb.choose) (littleEndianBytes 32 message))) with
-        | none =>
-          simp only [hbound, hanswer] at hg
-          exact (hpure hg).elim
-        | some answer =>
-          simp only [hbound, hanswer] at hg
-          obtain ⟨g, hgrind, he⟩ := baseGrind_subrun x.1 hb.choose message answer _ ground hg
-          have hf' : g.2.2 e = true := by rw [he]; exact hf
-          obtain ⟨hkey, _⟩ := grind_raised x.1 hb.choose message (truncateHash answer)
-            randomizerAttemptLimit 0 _ g hgrind e hs hf'
-          obtain ⟨key, hprf, hbase⟩ := hG
-          have hke : key = e := (SigningR1FixedProof.baseCall_key_eq hbase hb.choose_spec).trans hkey
-          subst key
-          exact ⟨hprf, hbase⟩
-    · exact (hpure hg).elim
-  · simp only [jointCachedExtra, SigningR1FixedProof.cachedExtra, ite_eq_right hG] at hg
+  rcases jointCachedExtra_cases x (s.1.1.1, s.2) called.2 t with
+    hp | ⟨key, message, answer, hprf, hbase, _, _, hgrind⟩
+  · rw [hp] at hg
     exact (hpure hg).elim
+  · rw [hgrind] at hg
+    obtain ⟨g, hrun, he⟩ := baseGrind_subrun x.1 key message answer _ ground hg
+    obtain ⟨hkey, _⟩ := grind_raised x.1 key message (truncateHash answer) randomizerAttemptLimit 0 _
+      g hrun e hs (by rw [he]; exact hf)
+    rw [← hkey]
+    exact ⟨hprf, hbase⟩
 
 /-- Raising a flag gives a successful canonical selection and leaves its key unsigned. -/
 theorem world_raised_selection (prims : Primitives) (x : SigningSecurityProof.Keys3 C)

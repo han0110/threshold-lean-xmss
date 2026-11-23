@@ -56,7 +56,7 @@ theorem continuationReserve_step {α : Type} (oa : OracleComp (WorldSpec C) α)
   cases hres : transcriptResidual oa s.2 with
   | none =>
       apply le_of_eq
-      apply ENNReal.tsum_eq_zero.mpr
+      apply tsum_eq_zero_iff.mpr
       intro r
       by_cases hr : r ∈ support ((loggedImpl prims t).run s)
       · simp [loggedImpl_log prims t s r hr, transcriptResidual_append, hres]
@@ -68,7 +68,7 @@ theorem continuationReserve_step {α : Type} (oa : OracleComp (WorldSpec C) α)
               (match transcriptResidual oa r.2.2 with
               | none => 0
               | some c => Pr{let z ← (simulateQ (loggedImpl prims) c).run r.2}[event z])) = 0 := by
-            apply ENNReal.tsum_eq_zero.mpr
+            apply tsum_eq_zero_iff.mpr
             intro r
             by_cases hr : r ∈ support ((loggedImpl prims t).run s)
             · simp only [loggedImpl_log prims t s r hr, transcriptResidual_append, hres, Option.bind_some,
@@ -93,7 +93,7 @@ theorem continuationReserve_step {α : Type} (oa : OracleComp (WorldSpec C) α)
                 (match transcriptResidual oa r.2.2 with
                 | none => 0
                 | some c => Pr{let z ← (simulateQ (loggedImpl prims) c).run r.2}[event z])) = 0 := by
-              apply ENNReal.tsum_eq_zero.mpr
+              apply tsum_eq_zero_iff.mpr
               intro r
               by_cases hr : r ∈ support ((loggedImpl prims t).run s)
               · simp only [loggedImpl_log prims t s r hr, transcriptResidual_append, hres, Option.bind_some,
@@ -125,7 +125,7 @@ theorem continuationReserve_wrongQuery {α : Type} (oa : OracleComp (WorldSpec C
     (event : α × LoggedState C → Prop) (t : (WorldSpec C).Domain) (s : LoggedState C)
     (h : ¬∃ k, transcriptResidual oa s.2 = some (OracleComp.queryBind t k)) :
     (∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] * continuationReserve prims oa event r.2) = 0 := by
-  apply ENNReal.tsum_eq_zero.mpr
+  apply tsum_eq_zero_iff.mpr
   intro r
   by_cases hr : r ∈ support ((loggedImpl prims t).run s)
   · simp [continuationReserve, loggedImpl_log prims t s r hr,
@@ -293,7 +293,7 @@ theorem gatedContinuation_next {α : Type} (oa : OracleComp (WorldSpec C) α)
     by_cases hr : r ∈ support ((loggedImpl prims t).run s)
     · simp [gatedContinuation, loggedImpl_log prims t s r hr, gateSeen_logQuery, h]
     · simp [prEvent_eq_zero_of_not_mem_support _ hr]
-  · apply ENNReal.tsum_eq_zero.mpr
+  · apply tsum_eq_zero_iff.mpr
     intro r
     by_cases hr : r ∈ support ((loggedImpl prims t).run s)
     · simp [gatedContinuation, loggedImpl_log prims t s r hr, gateSeen_logQuery, h]
@@ -341,7 +341,7 @@ theorem gatedContinuation_sum_step {ι α : Type} [Fintype ι]
         if ∃ i, t = gate i then ε else 0 := by
   classical
   simp_rw [Finset.mul_sum]
-  rw [Summable.tsum_finsetSum (fun _ _ => ENNReal.summable)]
+  rw [Summable.tsum_finsetSum (fun _ _ => CompleteLattice.summable)]
   calc
     _ ≤ ∑ i, (gatedContinuation prims oa (event i) (gate i) s +
         if ¬GateSeen (gate i) s.2 ∧ t = gate i then ε else 0) :=
@@ -1606,7 +1606,7 @@ theorem unopenedRun_expectation {α : Type} (x : SigningSecurityProof.Keys3 C) (
       ((simulateQ (openedOracles x top b) oa).run (p, false))).run s)}[z = r] *
       if r.1.2.2 then 0 else weight ((r.1.1, r.1.2.1), r.2) := by
   classical
-  simp only [ENNReal.tsum_prod', tsum_option _ ENNReal.summable, Option.elim_none, Option.elim_some,
+  simp only [tsum_prod', tsum_option _ CompleteLattice.summable, Option.elim_none, Option.elim_some,
     mul_zero, tsum_zero, zero_add]
   simp only [tsum_fintype (β := Bool), Fintype.sum_bool, Bool.false_eq_true,
     ↓reduceIte, mul_zero, tsum_zero, zero_add]
@@ -2921,7 +2921,7 @@ theorem completionPotential_fresh_step (relevant : Query C → Prop)
     _ ≤ ∑' r, Pr{let z ← F.run cache}[z = r] *
         ((if CompletedHit relevant r.1 cache then 1 else 0) +
           if relevant input then (2 ^ 128 : ℝ≥0∞)⁻¹ else 0) := by
-      apply ENNReal.tsum_le_tsum
+      apply tsum_le_tsum
       intro r
       by_cases hr : r ∈ support (F.run cache)
       · apply mul_le_mul_right
@@ -2934,7 +2934,7 @@ theorem completionPotential_fresh_step (relevant : Query C → Prop)
         (∑' r, Pr{let z ← F.run cache}[z = r]) *
           (if relevant input then (2 ^ 128 : ℝ≥0∞)⁻¹ else 0) := by
       simp_rw [mul_add]
-      rw [ENNReal.tsum_add, ENNReal.tsum_mul_right]
+      rw [tsum_add, ENNReal.tsum_mul_right]
       congr 1
       rw [completionPotential, OracleComp.prEvent_eq_tsum_ite]
       simp only [F, mul_ite, mul_one, mul_zero]
@@ -3483,7 +3483,7 @@ theorem isHitPotential_of_gated_completion {ι : Type} [Fintype ι]
   · intro t s hs _ ht
     change (∑' r, Pr{let z ← (loggedImpl prims t).run s}[z = r] * (g r.2.1.1 + reserves r.2)) ≤ _
     simp_rw [mul_add]
-    rw [ENNReal.tsum_add]
+    rw [tsum_add]
     have hf := gatedContinuation_sum_step prims main event gate hginj t s (2 ^ 128 : ℝ≥0∞)⁻¹
       (fun i hseen he => by subst t; exact hgate i s hs hseen)
     by_cases hex : ∃ i, t = gate i
@@ -5222,8 +5222,8 @@ theorem terminal_discounted (target : Index → State) (q : ℕ) (s : GraphState
       ENNReal.ofReal_le_ofReal (productWeight_terminal _ hN s.1 target h.2.1 h.2.2)
   · exact pow_le_pow_right₀ growth_one_le h.1
 
-omit [SampleableType State] in
-theorem terminal_probability_of_expected {α : Type} (run : ProbComp (α × GraphState Index State))
+omit [SampleableType State] [DecidableEq Index] in
+theorem terminal_probability_of_expected [DecidableEq Index] {α : Type} (run : ProbComp (α × GraphState Index State))
     (target : Index → State) (q : ℕ)
     (hmean : (∑' r, Pr{let z ← run}[z = r] * discounted target r.2) ≤ 1) :
     Pr{let r ← run}[Terminal target q r.2] ≤ growth State ^ q / (5 : ℝ≥0∞) ^ 68 := by
@@ -5235,8 +5235,8 @@ theorem terminal_probability_of_expected {α : Type} (run : ProbComp (α × Grap
           ((5 : ℝ≥0∞) ^ 68 / growth State ^ q) := by
         rw [OracleComp.prEvent_eq_tsum_ite, ENNReal.tsum_mul_right]
       _ ≤ ∑' r, Pr{let z ← run}[z = r] * discounted target r.2 := by
-        apply ENNReal.tsum_le_tsum
-        intro r
+        refine tsum_le_tsum fun r => ?_
+        dsimp only
         split_ifs with hr
         · exact mul_le_mul_right (terminal_discounted target q r.2 hr) _
         · simp only [zero_mul, zero_le]
@@ -5307,7 +5307,9 @@ theorem component_canonical (rows : List (State → Option State)) (a : ℕ → 
   apply hunique (v.1.val + j) (by simp only [List.length_drop] at hj; omega) input
   simpa only [List.getElem_drop, Nat.add_assoc] using hin
 
-theorem component_canonical_injective (rows : List (State → Option State)) (a : ℕ → State)
+omit [Nonempty State] [SampleableType State] in
+theorem component_canonical_injective [Nonempty State] [SampleableType State]
+    (rows : List (State → Option State)) (a : ℕ → State)
     (hunique : ∀ j (hj : j < rows.length) input,
       rows[j] input = some (a (j + 1)) → input = a j) :
     Set.InjOn (fun v : Fin rows.length × State => v.1.val)
@@ -5353,7 +5355,9 @@ theorem rootFrom_path (rows : List (State → Option State)) (a : ℕ → State)
   simpa only [rootFrom, Nat.add_zero, ht, hn] using
     congrArg (fun r : ℕ × State => (start + r.1, r.2)) ht
 
-theorem component_depth_of_path (rows : List (State → Option State)) (a : ℕ → State)
+omit [Nonempty State] [SampleableType State] in
+theorem component_depth_of_path [Nonempty State] [SampleableType State]
+    (rows : List (State → Option State)) (a : ℕ → State)
     (start : ℕ) (hstart : start ≤ rows.length)
     (hedges : ∀ j (hj : j < rows.length), start ≤ j → rows[j] (a j) = some (a (j + 1))) :
     rows.length - start ≤ (component rows rows.length rows.length (a rows.length)).card := by
@@ -6825,9 +6829,6 @@ private theorem apply_liftM_ro {σ α : Type} (oa : OracleComp (RoSpec C) α) (s
   rw [map_eq_bind_pure_comp]
   rfl
 
-private theorem apply_pure_ro {σ α : Type} (a : α) (st : σ) :
-    (pure a : StateT σ (OracleComp (RoSpec C)) α) st = pure (a, st) := rfl
-
 theorem safe_bottomOnce (dealt : Dealt C (OracleComp (RoSpec C)))
     (b' : Fin (2 ^ layerHeight)) (st : TsigState C)
     (hbottom : SafeRo prims x b table D (topStarts b) (dealt.bottom b')) :
@@ -6850,11 +6851,7 @@ theorem safe_tsigOracles_nonopening (top : TopTree) (q : (TsigSpec C).Domain)
   cases q with
   | corrupt i =>
     simp only [tsigOracles, StateT.run_bind, StateT.run_get, pure_bind]
-    split_ifs
-    all_goals first
-      | exact safe_pure prims x b table D (topStarts b) _
-      | (simp only [StateT.run_pure, StateT.run_set, pure_bind, apply_pure_ro]
-         exact safe_pure prims x b table D (topStarts b) _)
+    split_ifs <;> exact safe_pure prims x b table D (topStarts b) _
   | tree b' =>
     have hne : b' ≠ b := hclosed
     simp only [tsigOracles, StateT.run_bind]
@@ -8370,7 +8367,7 @@ theorem posterior_bound {α : Type}
     _ ≤ ∑' r, Pr{let z ← (simulateQ (FinitePosterior.lazy CountedPosterior.aux) oa).run s}[z = r] *
         (if LayeredGraph.Terminal target q (PublicContinuation.rows r.2.1, r.2.2.2)
           then ((2 ^ 128 : ℝ≥0∞) ^ 58)⁻¹ else 0) :=
-      ENNReal.tsum_le_tsum fun r => mul_le_mul_right (inner_bound b target q r) _
+      tsum_le_tsum fun r => mul_le_mul_right (inner_bound b target q r) _
     _ = _ := by
       rw [OracleComp.prEvent_eq_tsum_ite, ← ENNReal.tsum_mul_left]
       apply tsum_congr
@@ -8413,14 +8410,14 @@ theorem adaptive_le_sum {T E α : Type} [Fintype E]
   simp only [OracleComp.prEvent_bind_eq_tsum, bind_pure_comp, prEvent_map]
   calc
     _ ≤ ∑' t, Pr{let z ← prior}[z = t] * ∑ e, Pr{let z ← run e t}[event e t z] := by
-      apply ENNReal.tsum_le_tsum
+      apply tsum_le_tsum
       intro t
       apply mul_le_mul_right
       exact Finset.single_le_sum (f := fun e : E => Pr{let z ← run e t}[event e t z])
         (fun _ _ => bot_le) (Finset.mem_univ (choose t))
     _ = _ := by
       simp_rw [Finset.mul_sum]
-      rw [Summable.tsum_finsetSum (fun _ _ => ENNReal.summable)]
+      rw [Summable.tsum_finsetSum (fun _ _ => CompleteLattice.summable)]
 
 set_option backward.isDefEq.respectTransparency false in
 /-- Summing over the endpoint vector cancels its posterior density. The
@@ -8735,7 +8732,7 @@ theorem after_private_bound (x : SigningSecurityProof.Keys3 C) (b : XmssSecurity
       (s.1, s.2.1, 0)
     pure (r, table))}[Good b (SelectedKeygen.endpoints p.2 b) q p.1 p.2])
   · simp only [OracleComp.prEvent_bind_eq_tsum, bind_pure_comp, prEvent_map]
-    apply ENNReal.tsum_le_tsum
+    apply tsum_le_tsum
     intro h
     apply mul_le_mul_right
     apply PrivateRecord.private_bind_bound prims x b _ _ _ _ s (FinitePosterior.extending_agrees _ _)

@@ -45,8 +45,8 @@ theorem prEvent_bind_le_add_of_agree {α β : Type} (oa : ProbComp α) (f g : α
     Pr{let y ← oa >>= f}[event y] ≤ Pr{let a ← oa}[bad a] + Pr{let y ← oa >>= g}[event y] := by
   have hbad : Pr{let a ← oa}[bad a] = ∑' x, Pr{let z ← oa}[z = x] * Pr{let a ← (pure x : ProbComp α)}[bad a] := by
     rw [← prEvent_bind_eq_tsum, bind_pure]
-  rw [prEvent_bind_eq_tsum, prEvent_bind_eq_tsum, hbad, ← ENNReal.tsum_add]
-  refine ENNReal.tsum_le_tsum fun x => ?_
+  rw [prEvent_bind_eq_tsum, prEvent_bind_eq_tsum, hbad, ← tsum_add]
+  refine tsum_le_tsum fun x => ?_
   rw [← mul_add]
   by_cases hx : x ∈ support oa
   · by_cases hb : bad x

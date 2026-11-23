@@ -1,6 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.SigningLaneUnion
 import ThresholdLeanXmssSecurity.Proof.SigningLane2TraceLink
-import Mathlib.Tactic.DeriveFintype
 import ThresholdLeanXmssSecurity.Proof.VendoredExcerpt
 
 /-!
@@ -943,6 +942,53 @@ def CompilerCoupling (prims : Primitives) : Prop :=
         SigningLaneUnionProof.StaleBaseAt z ∨ SigningLaneUnionProof.GhostAt x z)] ≤
         Pr{let r ← compilerRun prims A x q}[r.2.2.2 = true ∨ compilerEvent x.1 q r.2.1]
 
+private theorem randomOracle_cache_le (oa : OracleComp (Query C →ₒ HashOutput) Unit)
+    (cache : HashCache C) (r : Unit × HashCache C)
+    (hr : r ∈ support ((simulateQ (Query C →ₒ HashOutput).randomOracle oa).run cache)) : cache ≤ r.2 :=
+  SeedHitProof.support_simulateQ_inv (Query C →ₒ HashOutput).randomOracle (fun c => cache ≤ c)
+    (fun query c hc answer ha => hc.trans (randomOracle_support query c answer ha).1) oa cache le_rfl r hr
+
+private def compilerHashStep (st : CompilerBackend C) (q : Query C)
+    (prefetch : DeferredState C → OracleComp (Query C →ₒ HashOutput) Unit)
+    (updateTrace : HashCache C → XmssSecurity.SigningCacheTrace × Bool) : ProbComp (DeferredSpec C (.hash q) × CompilerBackend C) := do
+  let a ← (deferredImpl (.hash q)).run st.data
+  let b ← (simulateQ (Query C →ₒ HashOutput).randomOracle (prefetch a.2)).run a.2.cache
+  pure (a.1, { st with data := { a.2 with cache := b.2 }, trace := updateTrace b.2 })
+
+private theorem compilerHashStep_support (st : CompilerBackend C) (q : Query C)
+    (prefetch : DeferredState C → OracleComp (Query C →ₒ HashOutput) Unit)
+    (updateTrace : HashCache C → XmssSecurity.SigningCacheTrace × Bool) (r : DeferredSpec C (.hash q) × CompilerBackend C)
+    (hr : r ∈ support (compilerHashStep st q prefetch updateTrace)) :
+    ∃ a ∈ support ((deferredImpl (.hash q)).run st.data),
+      ∃ b ∈ support ((simulateQ (Query C →ₒ HashOutput).randomOracle (prefetch a.2)).run a.2.cache),
+        a.2.cache ≤ b.2 ∧ (a.1, { st with data := { a.2 with cache := b.2 }, trace := updateTrace b.2 }) = r := by
+  obtain ⟨a, ha, hr⟩ := mem_support_bind_peel _ _ hr
+  obtain ⟨b, hb, hr⟩ := mem_support_bind_peel _ _ hr
+  exact ⟨a, ha, b, hb, randomOracle_cache_le _ _ b hb, ((mem_support_pure_iff _ _).1 hr).symm⟩
+
+/-- Extra signing queries issued after a compiler hash call. -/
+def compilerPrefetch (P : PublicParameter) (seeds : C.Term → HashOutput) (st : CompilerBackend C)
+    (q : Query C) (a : DeferredState C) : OracleComp (Query C →ₒ HashOutput) Unit :=
+  SigningR1FixedProof.cachedExtra seeds P (((st.data.cache, 0), []), compilerSigning st, false)
+    (.inr (.inr (.inl q))) (((a.cache, 0), []), compilerSigning st, false)
+
+/-- A compiler hash call materializes its answer, then extends the cache during prefetch. -/
+theorem compilerImpl_hash_steps (P : PublicParameter) (seeds : C.Term → HashOutput)
+    (q : Query C) (st : CompilerBackend C) (r : DeferredSpec C (.hash q) × CompilerBackend C)
+    (hr : r ∈ support ((compilerImpl P seeds (.hash q)).run st)) :
+    ∃ a ∈ support ((deferredImpl (.hash q)).run st.data),
+      ∃ b ∈ support ((simulateQ (Query C →ₒ HashOutput).randomOracle
+        (compilerPrefetch P seeds st q a.2)).run a.2.cache),
+        a.2.cache ≤ b.2 ∧ (a.1, { st with
+          data := { a.2 with cache := b.2 }
+          trace := SigningLaneUnionProof.traceStepAt seeds P st.data.cache (compilerSigning st)
+            (.inr (.inr (.inl q))) b.2 st.trace }) = r := by
+  let update := fun cache => SigningLaneUnionProof.traceStepAt seeds P st.data.cache
+    (compilerSigning st) (.inr (.inr (.inl q))) cache st.trace
+  have hrun : (compilerImpl P seeds (.hash q)).run st = compilerHashStep st q (compilerPrefetch P seeds st q) update := rfl
+  rw [hrun] at hr
+  with_reducible exact compilerHashStep_support st q (compilerPrefetch P seeds st q) update r hr
+
 /-- The trace adapter preserves the pending-edge invariant of its backend. -/
 theorem compilerImpl_pendingValid (P : PublicParameter) (seeds : C.Term → HashOutput)
     (t : DeferredQuery C) (st : CompilerBackend C) (hs : PendingValid st.data)
@@ -950,8 +996,7 @@ theorem compilerImpl_pendingValid (P : PublicParameter) (seeds : C.Term → Hash
     (hr : r ∈ support ((compilerImpl P seeds t).run st)) : PendingValid r.2.data := by
   cases t with
   | hash q =>
-      simp only [compilerImpl, StateT.run, mem_support_bind_iff, mem_support_pure_iff] at hr
-      obtain ⟨a, ha, b, _, rfl⟩ := hr
+      obtain ⟨a, ha, _, -, -, rfl⟩ := compilerImpl_hash_steps P seeds q st r hr
       exact pendingValid_step (.hash q) st.data hs a ha
   | bindKey e message =>
       simp only [compilerImpl, StateT.run, mem_support_pure_iff] at hr
@@ -978,8 +1023,7 @@ theorem compilerImpl_stale (P : PublicParameter) (seeds : C.Term → HashOutput)
     (hr : r ∈ support ((compilerImpl P seeds t).run st)) : r.2.trace.2 = true := by
   cases t with
   | hash q =>
-      simp only [compilerImpl, StateT.run, mem_support_bind_iff, mem_support_pure_iff] at hr
-      obtain ⟨a, _, b, _, rfl⟩ := hr
+      obtain ⟨_, -, b, -, -, rfl⟩ := compilerImpl_hash_steps P seeds q st r hr
       change (SigningLaneUnionProof.traceStepAt seeds P st.data.cache (compilerSigning st)
         (.inr (.inr (.inl q))) b.2 st.trace).2 = true
       exact (SigningLane2TraceLinkProof.traceStepAt_mono seeds P st.data.cache b.2
@@ -1445,18 +1489,8 @@ theorem compilerImpl_cache_le (P : PublicParameter) (seeds : C.Term → HashOutp
     (hr : r ∈ support ((compilerImpl P seeds t).run st)) : st.data.cache ≤ r.2.data.cache := by
   cases t with
   | hash q =>
-      simp only [compilerImpl, StateT.run, mem_support_bind_iff, mem_support_pure_iff] at hr
-      obtain ⟨a, ha, b, hb, rfl⟩ := hr
-      refine (deferredImpl_cache_le (.hash q) st.data a ha).trans ?_
-      exact SeedHitProof.support_simulateQ_inv (Query C →ₒ HashOutput).randomOracle
-        (fun cache => a.2.cache ≤ cache)
-        (fun query cache hc answer hanswer => hc.trans (randomOracle_support query cache answer hanswer).1)
-        (SigningR1FixedProof.cachedExtra seeds P
-          (((st.data.cache, 0), []), compilerSigning st, false) (.inr (.inr (.inl q)))
-          (((a.2.cache, 0), []), compilerSigning st, false)) a.2.cache le_rfl b
-          (by
-            dsimp only [StateT.run]
-            with_reducible exact hb)
+      obtain ⟨a, ha, _, -, hab, rfl⟩ := compilerImpl_hash_steps P seeds q st r hr
+      exact (deferredImpl_cache_le (.hash q) st.data a ha).trans hab
   | bindKey e message =>
       simp only [compilerImpl, StateT.run, mem_support_pure_iff] at hr
       subst r
@@ -1473,8 +1507,7 @@ theorem compilerImpl_boundExtends (P : PublicParameter) (seeds : C.Term → Hash
     SigningGuessProof.BoundExtends (compilerSigning st) (compilerSigning r.2) := by
   cases t with
   | hash q =>
-      simp only [compilerImpl, StateT.run, mem_support_bind_iff, mem_support_pure_iff] at hr
-      obtain ⟨a, _, b, _, rfl⟩ := hr
+      obtain ⟨_, -, _, -, -, rfl⟩ := compilerImpl_hash_steps P seeds q st r hr
       exact fun _ _ h => h
   | bindKey e message =>
       simp only [compilerImpl, StateT.run, mem_support_pure_iff] at hr
@@ -1511,18 +1544,7 @@ theorem compilerImpl_entryBases (P : PublicParameter) (seeds : C.Term → HashOu
   have hbound := compilerImpl_boundExtends P seeds t st r hr
   cases t with
   | hash q =>
-      simp only [compilerImpl, StateT.run, mem_support_bind_iff, mem_support_pure_iff] at hr
-      obtain ⟨a, ha, b, hb, rfl⟩ := hr
-      have hab : a.2.cache ≤ b.2 :=
-        SeedHitProof.support_simulateQ_inv (Query C →ₒ HashOutput).randomOracle
-          (fun cache => a.2.cache ≤ cache)
-          (fun query cache hc answer hanswer => hc.trans (randomOracle_support query cache answer hanswer).1)
-          (SigningR1FixedProof.cachedExtra seeds P
-            (((st.data.cache, 0), []), compilerSigning st, false) (.inr (.inr (.inl q)))
-            (((a.2.cache, 0), []), compilerSigning st, false)) a.2.cache le_rfl b
-            (by
-              dsimp only [StateT.run]
-              with_reducible exact hb)
+      obtain ⟨a, ha, b, -, hab, rfl⟩ := compilerImpl_hash_steps P seeds q st r hr
       have hac : st.data.cache ≤ a.2.cache := deferredImpl_cache_le (.hash q) st.data a ha
       have hself : a.2.cache q = some a.1 := by
         simp only [deferredImpl, StateT.run, support_map] at ha

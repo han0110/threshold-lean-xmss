@@ -103,6 +103,8 @@ built again. -/
 def PadsFixed (st : CompState C) : Prop :=
   ∀ p v, (dataOf x st).pads p = some v → v = pads p
 
+attribute [local irreducible] hashTail
+
 set_option linter.constructorNameAsVariable false in
 /-- The cached-extra suffix of a read keeps the stored pads. -/
 theorem hashTail_pads (P : PublicParameter) (seeds : C.Term → HashOutput) (input : Query C)
@@ -110,11 +112,7 @@ theorem hashTail_pads (P : PublicParameter) (seeds : C.Term → HashOutput) (inp
     (r : HashOutput × CappedCompilerState C)
     (hr : r ∈ support (hashTail P seeds input st value cache)) :
     r.2.1.1.data.pads = st.1.1.data.pads := by
-  simp only [hashTail, mem_support_bind_iff, mem_support_pure_iff] at hr
-  obtain ⟨a, _, rfl⟩ := hr
-  rfl
-
-attribute [local irreducible] hashTail
+  exact (hashTail_tables P seeds input st value cache r (by with_reducible exact hr)).2
 
 /-- An ordinary capped step stores only fixed pads. -/
 theorem ordinary_padsFixed (P : PublicParameter) (seeds : C.Term → HashOutput)
@@ -154,8 +152,7 @@ theorem freshRestT_padsFixed (z : RestSlot C) (st : CappedCompilerState C)
     (hr : r ∈ support (simulateQ (resolvePrivateTable (Sum.elim noise rest))
       (freshRest x.1 x.2.1 x.2.2 z st))) :
     ∀ p v, r.2.1.1.data.pads p = some v → v = pads p := by
-  rw [freshRestT_run] at hr
-  cases hc : st.1.1.data.cache (restInput x.2.1 x.2.2 z) <;> rw [hc] at hr <;>
+  obtain ⟨_, hr⟩ | hr := freshRestT_support x noise rest z st r hr <;>
     rw [hashTail_pads x.1 x.2.1 _ st _ _ r hr] <;> exact h
 
 /-- An ordinary step over the fixed tables stores only fixed pads. -/

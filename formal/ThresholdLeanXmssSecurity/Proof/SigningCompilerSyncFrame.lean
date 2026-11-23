@@ -120,17 +120,10 @@ theorem compilerImpl_mask_frame (P : PublicParameter) (seeds : C.Term → HashOu
     r.2.data.cache (.mask seed point message J) = st.data.cache (.mask seed point message J) := by
   cases t with
   | hash query =>
-      obtain ⟨a, ha, b, hb, rfl⟩ := SigningCompilerPotential.compiler_hash_support
-        P seeds query st r hr
-      have frame := SigningReleasedTransferProof.cachedExtra_frame seeds P
-        (((st.data.cache, 0), []), compilerSigning st, false)
-        (.inr (.inr (.inl query)))
-        (((a.2.cache, 0), []), compilerSigning st, false) b (by
-          dsimp only [StateT.run] at hb ⊢
-          with_reducible exact hb)
-      exact (frame.2 (.mask seed point message J)
-        (outsideTrials_mask P seed point message J)).trans
-          (deferredImpl_mask_frame (.hash query) st.data a ha seed point message J ht)
+      obtain ⟨a, ha, b, hb, -, rfl⟩ := compilerImpl_hash_steps P seeds query st r hr
+      exact (compilerPrefetch_frame P seeds st query a.2 b (by with_reducible exact hb)
+        (.mask seed point message J) (outsideTrials_mask P seed point message J)).trans
+        (deferredImpl_mask_frame (.hash query) st.data a ha seed point message J ht)
   | bindKey e message =>
       simp only [compilerImpl, StateT.run, mem_support_pure_iff] at hr
       subst r
@@ -173,17 +166,8 @@ theorem hashTail_mask_frame (P : PublicParameter) (seeds : C.Term → HashOutput
     (result : HashOutput × CappedCompilerState C)
     (hr : result ∈ support (hashTail P seeds query st value cache))
     (seed : HashOutput) (p : Point) (message : Message) (J : C.Quorum) :
-    result.2.1.1.data.cache (.mask seed p message J) = cache (.mask seed p message J) := by
-  simp only [hashTail, mem_support_bind_iff, mem_support_pure_iff] at hr
-  obtain ⟨prefetched, hp, rfl⟩ := hr
-  have frame := SigningReleasedTransferProof.cachedExtra_frame seeds P
-    (((st.1.1.data.cache, 0), []), compilerSigning st.1.1, false)
-    (.inr (.inr (.inl query))) (((cache, 0), []), compilerSigning st.1.1, false)
-    prefetched (by
-      dsimp only [StateT.run] at hp ⊢
-      with_reducible exact hp)
-  exact frame.2 (.mask seed p message J) (outsideTrials_mask P seed p message J)
-
+    result.2.1.1.data.cache (.mask seed p message J) = cache (.mask seed p message J) :=
+  (hashTail_support P seeds query st value cache result hr).2.1 _ (outsideTrials_mask P seed p message J)
 
 /-- The cached trial suffix cannot write any free slot. -/
 theorem hashTail_rest_frame (x : Keys3 C) (input : Query C)
@@ -374,6 +358,21 @@ theorem freshRestT_run (x : Keys3 C) (noise : ChainNoiseIndex → HashOutput)
     simp only [freshRest, hc, pure_bind, simulateQ_bind, HasQuery.instOfMonadLift_query, simulateQ_query,
       OracleQuery.input_query, OracleQuery.cont_query, id_map, resolvePrivateTable, Sum.elim_inr, resolvePrivateTable_lift]
 
+/-- Resolving a free read uses its existing cache or inserts the fixed table value. -/
+theorem freshRestT_support (x : Keys3 C) (noise : ChainNoiseIndex → HashOutput)
+    (rest : RestSlot C → HashOutput) (z : RestSlot C) (st : CappedCompilerState C)
+    (r : HashOutput × CappedCompilerState C)
+    (hr : r ∈ support (simulateQ (resolvePrivateTable (Sum.elim noise rest)) (freshRest x.1 x.2.1 x.2.2 z st))) :
+    (∃ value : (Query C →ₒ HashOutput).Range (restInput x.2.1 x.2.2 z), r ∈ support (hashTail x.1 x.2.1 (restInput x.2.1 x.2.2 z) st value st.1.1.data.cache)) ∨
+      r ∈ support (hashTail x.1 x.2.1 (restInput x.2.1 x.2.2 z) st (rest z)
+        (st.1.1.data.cache.cacheQuery (restInput x.2.1 x.2.2 z) (rest z))) := by
+  cases hc : st.1.1.data.cache (restInput x.2.1 x.2.2 z) <;>
+    simp only [freshRest, hc, pure_bind, simulateQ_bind, HasQuery.instOfMonadLift_query, simulateQ_query,
+      OracleQuery.input_query, OracleQuery.cont_query, id_map, resolvePrivateTable, Sum.elim_inr,
+      resolvePrivateTable_lift] at hr
+  · exact Or.inr hr
+  · exact Or.inl ⟨_, hr⟩
+
 /-- Free reads preserve agreement with their fixed table. -/
 theorem freshRestT_restAgree (x : Keys3 C)
     (hi : Function.Injective (TprfSecurityProof.slotInput x.2.1 x.2.2))
@@ -382,15 +381,10 @@ theorem freshRestT_restAgree (x : Keys3 C)
     (r : HashOutput × CappedCompilerState C)
     (hr : r ∈ support (simulateQ (resolvePrivateTable (Sum.elim noise rest))
       (freshRest x.1 x.2.1 x.2.2 z st))) : RestAgree x rest r.2 := by
-  rw [freshRestT_run] at hr
-  cases hc : st.1.1.data.cache (restInput x.2.1 x.2.2 z) with
-  | some v =>
-    rw [hc] at hr
-    intro w v hv
+  obtain ⟨v, hr⟩ | hr := freshRestT_support x noise rest z st r hr
+  · intro w v hv
     exact h w v ((hashTail_rest_frame x _ st _ _ r hr w) ▸ hv)
-  | none =>
-    rw [hc] at hr
-    intro w v hv
+  · intro w v hv
     rw [hashTail_rest_frame x _ st _ _ r hr w] at hv
     by_cases hw : w = z
     · subst w; simpa using hv.symm
@@ -493,6 +487,12 @@ theorem backendT_preserves (permit : (SpecX C).Domain → Prop)
       mem_support_bind_iff, mem_support_pure_iff] at hr
     obtain ⟨a, ha, rfl⟩ := hr
     exact hord t ht st.1.1 st.2 h a ha
+  have read (T : C.Term) (p : CPoint) (r : HashOutput × FullState C Tag)
+      (hr : r ∈ support ((fun z => (z.1.1, (z.1.2, z.2))) <$>
+        (simulateQ (eagerHandlerTag τ g) (readStepTag tagOf x.1 x.2.1 T p st.1)).run st.2)) : I r.2.1.1 r.2.2 := by
+    exact eager_read_of_run (α := (SigningShareLazy.ShareSpec C.Term CPoint Tag).Range (.read T p (tagOf st.1)))
+      x.2.1 st _ _ _ (eager_read tagOf x.1 x.2.1 τ g T p st) (fun r => I r.2.1.1 r.2.2)
+      (hread st.1.1 st.2 h T p (tagOf st.1)) r hr
   rcases t with ((t | k) | mark) | ⟨p, target⟩
   · cases t with
     | hash input =>
@@ -504,12 +504,7 @@ theorem backendT_preserves (permit : (SpecX C).Domain → Prop)
         rcases z with ⟨T, p⟩
         simp only [shareBackendTagT, backendRaw, hrout, resolvePrivateTable_lift,
           eagerBackend, SigningCompilerUntil.fuse, shareBackendTag] at hr
-        change r ∈ support ((fun z => (z.1.1, (z.1.2, z.2))) <$>
-          (simulateQ (eagerHandlerTag τ g) (readStepTag tagOf x.1 x.2.1 T p st.1)).run st.2) at hr
-        rw [eager_read] at hr
-        simp only [mem_support_bind_iff, mem_support_pure_iff] at hr
-        obtain ⟨a, ha, b, hb, rfl⟩ := hr
-        exact hread st.1.1 st.2 h T p (tagOf st.1) a ha b hb
+        exact read T p r hr
     | pending p =>
       simp only [shareBackendTagT, backendRaw] at hr
       exact ho (.inl (.pending p)) ht r hr
@@ -636,8 +631,7 @@ theorem freshRestT_pendingValid (x : Keys3 C) (noise : ChainNoiseIndex → HashO
     (h : PendingValid st.1.1.data) (r : HashOutput × CappedCompilerState C)
     (hr : r ∈ support (simulateQ (resolvePrivateTable (Sum.elim noise rest))
       (freshRest x.1 x.2.1 x.2.2 z st))) : PendingValid r.2.1.1.data := by
-  rw [freshRestT_run] at hr
-  cases hc : st.1.1.data.cache (restInput x.2.1 x.2.2 z) <;> rw [hc] at hr
+  obtain ⟨v, hr⟩ | hr := freshRestT_support x noise rest z st r hr
   all_goals
     have hp := (hashTail_grows x.1 x.2.1 _ st _ _ r hr).2
     intro p v hv; exact h p v (hp ▸ hv)

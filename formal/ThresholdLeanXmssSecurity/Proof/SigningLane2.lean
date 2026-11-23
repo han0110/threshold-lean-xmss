@@ -90,7 +90,7 @@ theorem tsum_add3 {β : Type} (mx : ProbComp β) (F G H : β → ℝ≥0∞) :
     ∑' x, Pr{let z ← mx}[z = x] * (F x + G x + H x) =
       ∑' x, Pr{let z ← mx}[z = x] * F x + ∑' x, Pr{let z ← mx}[z = x] * G x + ∑' x, Pr{let z ← mx}[z = x] * H x := by
   simp_rw [mul_add]
-  rw [ENNReal.tsum_add, ENNReal.tsum_add]
+  rw [tsum_add, tsum_add]
 
 /-- The uncapped lane 2 sum `f1 + (f3 - f2 / l) + f4`. It is `N ^ 2` times a probability. -/
 def lane2Sum (l : ℝ≥0∞) (f1 f2 f3 f4 : σ × ℕ → ℝ≥0∞) (st : σ × ℕ) : ℝ≥0∞ :=
@@ -119,7 +119,7 @@ theorem lane2Sum_step {β : Type} (N l A : ℝ≥0∞) (f1 f2 f3 f4 : σ × ℕ 
     · rw [htop, ENNReal.top_sub (hb st), top_add]; exact le_top
     have hsplit : ∑' x, Pr{let z ← mx}[z = x] * (f3 x.2 - f2 x.2 * l⁻¹) +
         (∑' x, Pr{let z ← mx}[z = x] * f2 x.2) * l⁻¹ = ∑' x, Pr{let z ← mx}[z = x] * f3 x.2 := by
-      rw [← ENNReal.tsum_mul_right, ← ENNReal.tsum_add]
+      rw [← ENNReal.tsum_mul_right, ← tsum_add]
       refine tsum_congr fun x => ?_
       rw [mul_assoc, ← mul_add, tsub_add_cancel_of_le (hle x.2)]
     have hlow : f2 st * l⁻¹ + cost1 t st ≤ (∑' x, Pr{let z ← mx}[z = x] * f2 x.2) * l⁻¹ := by
@@ -245,6 +245,12 @@ variable (publicKey : XmssSecurity.PublicKey) (secretKey : XmssSecurity.SecretKe
   (view : S → XmssSecurity.HashSpec.QueryCache × XmssSecurity.SigningCacheTrace) (st : S × ℕ)
   (input : (XmssSecurity.OracleWorld + XmssSecurity.SigningSpec).Domain) (k : ℕ)
 
+private theorem mem_of_state_law {α β S : Type} (left : ProbComp (α × S)) (right : ProbComp (β × S))
+    (h : (Prod.snd <$> left) =ᵈ (Prod.snd <$> right)) (x) (hx : x ∈ support left) :
+    ∃ y ∈ support right, y.2 = x.2 := by
+  have hm : x.2 ∈ support (Prod.snd <$> left) := by rw [support_map]; exact ⟨x, hx, rfl⟩
+  rwa [support_eq_of_evalDistEq h, support_map] at hm
+
 /-- The view and count of the base-returning sign step keep the counts. -/
 theorem counts_signWithBaseStep (request : XmssSecurity.SignRequest) (s : XmssSecurity.Ghost.State)
     (x) (hx : x ∈ support ((signWithBaseStep secretKey request).run s)) :
@@ -252,14 +258,15 @@ theorem counts_signWithBaseStep (request : XmssSecurity.SignRequest) (s : XmssSe
         XmssSecurity.Ghost.nCount secretKey.parameter s.1.1 s.1.2 ∧
       XmssSecurity.Ghost.vCount secretKey.parameter x.2.1.1 x.2.1.2 =
         XmssSecurity.Ghost.vCount secretKey.parameter s.1.1 s.1.2 ∧ x.2.2 = s.2 := by
+  -- A signing request uses only the secret key.
+  let pk : XmssSecurity.PublicKey := ⟨0, secretKey.parameter⟩
+  obtain ⟨y, hy, heq⟩ := mem_of_state_law _ _
+    (evalDist_signWithBaseStep pk secretKey request s) x hx
+  rw [← heq]
   obtain ⟨⟨cache, trace⟩, k⟩ := s
-  rw [signWithBaseStep, StateT.run_mk, support_map] at hx
-  obtain ⟨r, hr, rfl⟩ := hx
-  have hr' : (r.1.2, r.2) ∈ support ((simulateQ XmssSecurity.romImpl
-      (XmssSecurity.Concrete.scheme.sign secretKey request.leafIndex request.message)).run cache) := by
-    rw [← snd_signWithBase, simulateQ_map, StateT.run_map, support_map]
-    exact ⟨r, hr, rfl⟩
-  have h := XmssSecurity.Ghost.counts_sign secretKey (trace := trace) hr'
+  obtain ⟨r, hr, heq'⟩ := XmssSecurity.Ghost.mem_support_sign pk secretKey hy
+  rw [heq']
+  have h := XmssSecurity.Ghost.counts_sign secretKey (trace := trace) hr
   exact ⟨h.1, h.2.1, rfl⟩
 
 end Split

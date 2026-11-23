@@ -199,18 +199,16 @@ theorem pauseAt_guard (forge j : ℕ) (D : C.Coalition) (A : DkgTsigAdversary C 
     ∀ place ∈ support (pauseAt K circuits settings runLimit j D A p), PlaceGuard runLimit forge j D place := by
   intro place hplace
   unfold pauseAt at hplace
-  split_ifs at hplace with halive hc
-  all_goals first
-    | (simp only [support_pure, Set.mem_singleton_iff] at hplace
-       subst hplace
-       first | exact hp | exact ⟨hp, halive⟩)
-    | (simp only [mem_support_bind_iff] at hplace
-       obtain ⟨_, _, r, _, hplace⟩ := hplace
-       split_ifs at hplace
-       all_goals
-         simp only [support_pure, Set.mem_singleton_iff] at hplace
-         subst hplace
-         exact hp)
+  split at hplace
+  · obtain rfl := OracleComp.eq_of_mem_support_pure _ hplace
+    exact ⟨hp, by assumption⟩
+  · split at hplace
+    · obtain rfl := OracleComp.eq_of_mem_support_pure _ hplace
+      exact hp
+    · obtain ⟨fresh, _, hplace⟩ := OracleComp.mem_support_bind_peel _ _ hplace
+      obtain ⟨⟨adversary, heads⟩, _, hplace⟩ := OracleComp.mem_support_bind_peel _ _ hplace
+      dsimp only at hplace
+      split at hplace <;> obtain rfl := OracleComp.eq_of_mem_support_pure _ hplace <;> exact hp
 
 theorem forgeWalk_guard (forge j : ℕ) (D : C.Coalition) (A : DkgTsigAdversary C E) (keys : Keys C) (top : TopTree)
     (oa : OracleComp (LocalSpec C + (TsigSpec C + StateSpec A.net.State)) Forgery) :
@@ -711,27 +709,52 @@ theorem signingImpl_nontree (h h' : ℕ) (D : C.Coalition) (A : DkgTsigAdversary
         StateT (TsigState C) (RealM C A.net.State) _)
       rfl
 
+private theorem fixedTreeRequest_state (j : ℕ) (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (b : Fin (2 ^ layerHeight)) (s : RealState C net.State) :
+    ∀ r ∈ support ((fixedTreeRequest K circuits settings runLimit j (wrongOutput D) D net b).run s),
+      ∃ x ∈ support ((fixedTreeRuns K circuits settings runLimit j (wrongOutput D) D net (.bottom b) 1).run s),
+        r.2 = x.2 := by
+  unfold fixedTreeRequest
+  rw [StateT.run_bind]
+  intro r hr
+  obtain ⟨x, hx, hy⟩ := OracleComp.mem_support_bind_peel _ _ hr
+  exact ⟨x, hx, (requestRest_adds D b x.2).2 r hy⟩
+
+private theorem fixedTreeRuns_one (j : ℕ) (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (tree : Tree) (s : RealState C net.State) :
+    (fixedTreeRuns K circuits settings runLimit j (wrongOutput D) D net tree 1).run s =
+      if mayRun runLimit D s tree then (fixedTreeRun K circuits settings runLimit j (wrongOutput D) D net tree).run s
+      else pure ((), s) := by
+  simp only [fixedTreeRuns, StateT.run_bind, StateT.run_get, pure_bind]
+  split_ifs
+  · simp only [StateT.run_bind, StateT.run_pure]
+    exact bind_pure _
+  · rfl
+
+/-- A request increments the bottom run count exactly when the guard permits a run. -/
+private theorem fixedTreeRequest_bottomRuns (j : ℕ) (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (b : Fin (2 ^ layerHeight)) (s : RealState C net.State) :
+    ∀ r ∈ support ((fixedTreeRequest K circuits settings runLimit j (wrongOutput D) D net b).run s),
+      bottomRuns r.2.runs = if mayRun runLimit D s (.bottom b) then bottomRuns s.runs + 1 else bottomRuns s.runs := by
+  intro r hr
+  obtain ⟨x, hx, he⟩ := fixedTreeRequest_state K circuits settings runLimit j D net b s r hr
+  rw [he]
+  rw [fixedTreeRuns_one] at hx
+  split_ifs at hx ⊢ with hm
+  · rw [fixedTreeRun_runs K circuits settings runLimit j D net _ s x hx, bottomRuns_update]
+  · obtain rfl := OracleComp.eq_of_mem_support_pure _ hx
+    rfl
+
 theorem fixedTreeRequest_runs_le (j : ℕ) (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
     (b : Fin (2 ^ layerHeight)) (s : RealState C net.State) (k : ℕ)
     (hk : mayRun runLimit D s (.bottom b) → bottomRuns s.runs < k) (hs : bottomRuns s.runs ≤ k) :
     ∀ r ∈ support ((fixedTreeRequest K circuits settings runLimit j (wrongOutput D) D net b).run s),
       bottomRuns r.2.runs ≤ k := by
   intro r hr
-  unfold fixedTreeRequest at hr
-  rw [StateT.run_bind, mem_support_bind_iff] at hr
-  obtain ⟨x, hx, hr⟩ := hr
-  rw [(requestRest_adds D b x.2).2 r hr]
-  simp only [fixedTreeRuns, StateT.run_bind, StateT.run_get, pure_bind] at hx
-  split_ifs at hx with hm
-  · rw [StateT.run_bind, mem_support_bind_iff] at hx
-    obtain ⟨y, hy, hx⟩ := hx
-    simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff] at hx
-    rw [hx, fixedTreeRun_runs K circuits settings runLimit j D net _ s y hy, bottomRuns_update]
-    have := hk hm
-    omega
-  · simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff] at hx
-    rw [hx]
-    exact hs
+  rw [fixedTreeRequest_bottomRuns K circuits settings runLimit j D net b s r hr]
+  split
+  · exact hk (by assumption)
+  · exact hs
 
 /-- `walkCore` reads only slots below `j` before the pause, so the hybrid of its oracles does not matter
 for `h ≥ j`. -/
@@ -816,19 +839,8 @@ theorem signingImpl_runs_mono (h : ℕ) (D : C.Coalition) (A : DkgTsigAdversary 
       StateT (TsigState C) (RealM C A.net.State) _).run st).run s) at hr
     rw [run_lift_tsig, support_map] at hr
     obtain ⟨q, hq, rfl⟩ := hr
-    unfold fixedTreeRequest at hq
-    rw [StateT.run_bind, mem_support_bind_iff] at hq
-    obtain ⟨x, hx, hq⟩ := hq
-    rw [(requestRest_adds D b x.2).2 q hq]
-    simp only [fixedTreeRuns, StateT.run_bind, StateT.run_get, pure_bind] at hx
-    split_ifs at hx
-    · rw [StateT.run_bind, mem_support_bind_iff] at hx
-      obtain ⟨y, hy, hx⟩ := hx
-      simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff] at hx
-      rw [hx, fixedTreeRun_runs K circuits settings runLimit h D A.net _ s y hy, bottomRuns_update]
-      omega
-    · simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff] at hx
-      rw [hx]
+    rw [fixedTreeRequest_bottomRuns K circuits settings runLimit h D A.net b s q hq]
+    split <;> omega
   · rw [(signingImpl_quiet K circuits settings runLimit h D A t (fun b e => ht ⟨b, e⟩) st s).2 r hr]
 
 theorem fixedTreeRequest_congr_above (j h : ℕ) (hjh : j ≤ h) (hh : h ≤ j + 1) (hlo : runLimit ≤ j)

@@ -1,8 +1,16 @@
-import ThresholdLeanXmssSecurity.Base.SigningBudgets
-import Mathlib.Algebra.MvPolynomial.SchwartzZippel
-import Mathlib.LinearAlgebra.Lagrange
-import VCVio.OracleComp.Constructions.SampleableType.Measure
-import VCVio.OracleComp.EvalDist.Sum
+module
+
+public import ThresholdLeanXmss.Ideal
+public import Mathlib.Algebra.CharP.Algebra
+public import Mathlib.Data.List.GetD
+public import Mathlib.Data.Nat.Bitwise
+public import Mathlib.Data.Sym.Card
+public import Mathlib.Algebra.MvPolynomial.SchwartzZippel
+public import Mathlib.LinearAlgebra.Lagrange
+public import VCVio.OracleComp.Constructions.SampleableType.Measure
+public import VCVio.OracleComp.EvalDist.Sum
+
+@[expose] public section
 
 /-!
 # The steps of the proofs
@@ -118,7 +126,24 @@ theorem card_term (C : Committee) : Fintype.card C.Term = C.n.choose (C.t - 1) :
   convert Fintype.card_finset_len (α := C.Party) (C.t - 1)
   simp
 
+theorem card_pair_le (C : Committee) : Fintype.card C.Pair ≤ C.n.choose 2 := by
+  have hc := Sym2.card_subtype_not_diag (α := C.Party)
+  rw [Fintype.card_fin] at hc
+  rw [← hc]
+  let f (p : C.Pair) : {a : Sym2 C.Party // ¬ a.IsDiag} :=
+    ⟨Sym2.mk p.1.1 p.1.2, fun hd => p.2.ne (Sym2.mk_isDiag_iff.mp hd)⟩
+  apply Fintype.card_le_of_injective f
+  rintro ⟨p, hp⟩ ⟨q, hq⟩ h
+  rcases Sym2.mk_eq_mk_iff.mp (congrArg Subtype.val h) with he | he
+  · exact Subtype.ext he
+  · change p = q.swap at he
+    subst p
+    exact (lt_asymm hp hq).elim
+
 /-! ## Sharings -/
+
+omit [Fintype E] [DecidableEq E] in
+theorem charTwo : CharP E 2 := charP_of_injective_algebraMap (algebraMap Bit E).injective 2
 
 omit [Fintype E] [DecidableEq E] in
 open Polynomial in

@@ -1,7 +1,5 @@
 import ThresholdLeanXmssSecurity.Proof.BuildingBlocks
 import VCVio.OracleComp.QueryTracking.LoggingOracle.Core
-import Mathlib.Tactic.ComputeDegree
-import Mathlib.Algebra.CharP.Algebra
 
 /-!
 # The check
@@ -1555,8 +1553,8 @@ theorem probEvent_bind_le_split {α β : Type} {mx : ProbComp α} {my : α → P
     (h : ∀ x ∈ support mx, Pr{let z ← my x}[q z] ≤ (if p₁ x then 1 else 0) + (if p₂ x then B else 0)) :
     Pr{let z ← mx >>= my}[q z] ≤ Pr{let z ← mx}[p₁ z] + Pr{let z ← mx}[p₂ z] * B := by
   rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_eq_tsum_ite, OracleComp.prEvent_eq_tsum_ite, ← ENNReal.tsum_mul_right,
-    ← ENNReal.tsum_add]
-  refine ENNReal.tsum_le_tsum fun x => ?_
+    ← tsum_add]
+  refine tsum_le_tsum fun x => ?_
   by_cases hx : x ∈ support mx
   · refine (mul_le_mul' le_rfl (h x hx)).trans (le_of_eq ?_)
     split_ifs <;> simp [mul_add]

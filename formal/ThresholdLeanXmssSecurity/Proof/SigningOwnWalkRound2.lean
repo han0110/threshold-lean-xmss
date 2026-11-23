@@ -41,13 +41,9 @@ set_option linter.constructorNameAsVariable false in
 theorem compilerImpl_hash_cached (P : PublicParameter) (seeds : C.Term → HashOutput) (q : Query C)
     (st : CompilerBackend C) (r : HashOutput × CompilerBackend C)
     (hr : r ∈ support ((compilerImpl P seeds (.hash q)).run st)) : r.2.data.cache q = some r.1 := by
-  obtain ⟨a, ha, b, hb, hra⟩ := compiler_hash_support P seeds q st r hr
-  have hself := (randomOracle_support q st.data.cache (a.1, a.2.cache)
+  obtain ⟨a, ha, _, -, hle, rfl⟩ := compilerImpl_hash_steps P seeds q st r hr
+  exact hle (randomOracle_support q st.data.cache (a.1, a.2.cache)
     (deferred_hash_support q st.data a ha)).2.1
-  have h1 : r.1 = a.1 := congrArg Prod.fst hra
-  have h2 : r.2.data.cache = b.2 := congrArg (fun r => r.2.data.cache) hra
-  rw [h1, h2]
-  exact DeterministicSigning.cache_le_of_run _ a.2.cache b (by with_reducible exact hb) hself
 
 set_option linter.constructorNameAsVariable false in
 /-- A canonical base call at a bound key with each term cached leaves a stale backend, or a cache
@@ -564,8 +560,9 @@ theorem liftBase {α : Type} {oa : SourceM C α} (h : SourceKeeps SourceState.si
     KeepsSigning (SigningLaneHybridCapO1Proof.liftBase oa) := by
   intro src r hr
   change r ∈ support ((fun r => (r.1, { src with base := r.2 })) <$> oa.run src.base) at hr
-  rw [support_map] at hr
-  obtain ⟨a, ha, rfl⟩ := hr
+  rw [← bind_pure_comp] at hr
+  obtain ⟨a, ha, hr⟩ := mem_support_bind_peel _ _ hr
+  obtain rfl := eq_of_mem_support_pure _ hr
   exact h _ a ha
 
 theorem mapM {α β : Type} (items : List α) (oa : α → SourceMO1 C β)

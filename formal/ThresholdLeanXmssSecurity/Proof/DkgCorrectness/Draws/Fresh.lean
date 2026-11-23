@@ -265,7 +265,7 @@ theorem probEvent_draw_le {X σ U Y : Type} (mA : ProbComp (X × σ)) (p : ProbC
     Pr{let z ← mA >>= fun xs => p >>= fun u => B xs.1 u xs.2}[ev z] ≤ Pr{let u ← p}[Bad u] := by
   refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun xs hxs => ?_
   rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_eq_tsum_ite]
-  refine ENNReal.tsum_le_tsum fun u => ?_
+  refine tsum_le_tsum fun u => ?_
   by_cases hb : Bad u
   · simp only [hb, ↓reduceIte]
     exact mul_le_of_le_one_right' (prEvent_le_one _)

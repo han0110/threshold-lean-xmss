@@ -1633,7 +1633,7 @@ theorem ennreal_mul_cancel (S a K : ℝ≥0∞) (h0 : K ≠ 0) (ht : K ≠ ⊤) 
 
 theorem sum_tsum_mul {Ω β : Type} (S : Finset Ω) (q : β → ℝ≥0∞) (F : β → Ω → ℝ≥0∞) :
     ∑ ω ∈ S, ∑' w, q w * F w ω = ∑' w, q w * ∑ ω ∈ S, F w ω := by
-  rw [← Summable.tsum_finsetSum fun _ _ => ENNReal.summable]
+  rw [← Summable.tsum_finsetSum fun _ _ => CompleteLattice.summable]
   exact tsum_congr fun w => (Finset.mul_sum _ _ _).symm
 
 theorem consistent_empty_iff (records : List (EvalRecord C)) (reads : List (Slot C × HashOutput))
@@ -2329,7 +2329,7 @@ theorem probEvent_revealed_stays (b : Bool) (parameter : PublicParameter) (σ : 
     simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query, id_map,
       StateT.run_bind]
     rw [OracleComp.prEvent_bind_eq_tsum]
-    refine ENNReal.tsum_eq_zero.mpr fun z => ?_
+    refine tsum_eq_zero_iff.mpr fun z => ?_
     by_cases hz : z ∈ support ((symImpl prims seeds pairKeys b parameter t).run p)
     · obtain ⟨h1, h2⟩ := symImpl_revealed_stays prims seeds pairKeys b parameter σ t p hr hσ z hz
       rw [ih z.1 z.2 h1 h2, mul_zero]
@@ -2524,7 +2524,7 @@ theorem sum_hit_le (σ : KeySlot C) (b : Bool) (parameter : PublicParameter) {α
     simp only [simulateQ_bind, simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query, id_map,
       StateT.run_bind, OracleComp.prEvent_bind_eq_tsum]
     by_cases hrev : RevealsAt σ p.1.1.1 t
-    · refine le_of_eq_of_le (Finset.sum_eq_zero fun k _ => ENNReal.tsum_eq_zero.mpr fun z => ?_) bot_le
+    · refine le_of_eq_of_le (Finset.sum_eq_zero fun k _ => tsum_eq_zero_iff.mpr fun z => ?_) bot_le
       by_cases hz : z ∈ support ((symImpl prims (updSeeds σ k seeds) (updPairs σ k pairKeys) b parameter t).run p)
       · obtain ⟨h1, h2⟩ := symImpl_reveals prims seeds pairKeys σ b parameter t p hσ hrev k z hz
         rw [probEvent_revealed_stays _ _ _ b parameter σ _ z.2 h1 h2, mul_zero]
@@ -2546,7 +2546,7 @@ theorem sum_hit_le (σ : KeySlot C) (b : Bool) (parameter : PublicParameter) {α
         exact prEvent_le_one _
       · rw [hstep k h, zero_add]
     refine (Finset.sum_le_sum fun k _ => hk k).trans ?_
-    rw [Finset.sum_add_distrib, ← Summable.tsum_finsetSum fun _ _ => ENNReal.summable]
+    rw [Finset.sum_add_distrib, ← Summable.tsum_finsetSum fun _ _ => CompleteLattice.summable]
     have hM : ∀ z, Pr{let y ← M}[y = z] * ∑ k : HashOutput,
         Pr{let z' ← (simulateQ (symImpl prims (updSeeds σ k seeds) (updPairs σ k pairKeys) b parameter)
           (cont z.1)).run z.2}[σ ∈ z'.2.1.2] ≤
@@ -2558,7 +2558,7 @@ theorem sum_hit_le (σ : KeySlot C) (b : Bool) (parameter : PublicParameter) {α
     have hsum : ∑' z, ∑ k : HashOutput, Pr{let y ← M}[y = z] *
         Pr{let z' ← (simulateQ (symImpl prims (updSeeds σ k seeds) (updPairs σ k pairKeys) b parameter)
           (cont z.1)).run z.2}[σ ∈ z'.2.1.2] ≤ n' := by
-      refine (ENNReal.tsum_le_tsum fun z => (Finset.mul_sum _ _ _).symm.le.trans (hM z)).trans ?_
+      refine (tsum_le_tsum fun z => (Finset.mul_sum _ _ _).symm.le.trans (hM z)).trans ?_
       rw [ENNReal.tsum_mul_right]
       exact mul_le_of_le_one_left' (OracleComp.tsum_prEvent_le_one _)
     by_cases hh : ∃ k₀, Hit σ t k₀
@@ -2632,10 +2632,10 @@ theorem symInit_unrevealed (σ : KeySlot C) : ¬Revealed (symInit (C := C)).1.1.
 theorem sum_tsum_bind_le {β γ : Type} [SampleableType γ] (F : HashOutput → γ → ProbComp β) (E : β → Prop) (c : ℝ≥0∞)
     (h : ∀ y, ∑ u : HashOutput, Pr{let z ← F u y}[E z] ≤ c) : ∑ u : HashOutput, Pr{let z ← $ᵗ γ >>= F u}[E z] ≤ c := by
   simp only [OracleComp.prEvent_bind_eq_tsum]
-  rw [← Summable.tsum_finsetSum fun _ _ => ENNReal.summable]
+  rw [← Summable.tsum_finsetSum fun _ _ => CompleteLattice.summable]
   calc ∑' y, ∑ u : HashOutput, Pr{let z ← $ᵗ γ}[z = y] * Pr{let z ← F u y}[E z]
       = ∑' y, Pr{let z ← $ᵗ γ}[z = y] * ∑ u : HashOutput, Pr{let z ← F u y}[E z] := tsum_congr fun y => (Finset.mul_sum _ _ _).symm
-    _ ≤ ∑' y, Pr{let z ← $ᵗ γ}[z = y] * c := ENNReal.tsum_le_tsum fun y => mul_le_mul_right (h y) _
+    _ ≤ ∑' y, Pr{let z ← $ᵗ γ}[z = y] * c := tsum_le_tsum fun y => mul_le_mul_right (h y) _
     _ ≤ c := by rw [ENNReal.tsum_mul_right]; exact mul_le_of_le_one_left' (OracleComp.tsum_prEvent_le_one _)
 
 open Classical in
@@ -2722,7 +2722,7 @@ theorem probEvent_bind_le_of_ite {α β : Type} (mx : ProbComp α) (f : α → P
     (q : β → Prop) (h : ∀ a, ¬p a → Pr{let z ← f a}[q z] = 0) : Pr{let z ← mx >>= f}[q z] ≤ Pr{let z ← mx}[p z] := by
   classical
   rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_eq_tsum_ite]
-  refine ENNReal.tsum_le_tsum fun a => ?_
+  refine tsum_le_tsum fun a => ?_
   by_cases ha : p a
   · rw [ite_eq_left ha]; exact mul_le_of_le_one_right' (prEvent_le_one _)
   · rw [ite_eq_right ha, h a ha, mul_zero]
@@ -2937,8 +2937,8 @@ theorem tprfSecurity (prims : Primitives) (C : Committee) : TprfSecurityStatemen
       (dealtKeys x.1 x.2.1 x.2.2)) A).run' (tprfInit, ∅)}[z = true] ≤
       Pr{let z ← keyGen3 >>= fun x => (simulateQ (gameImpl (localAnswer prims) (!b) x.2.1
         (dealtKeys x.1 x.2.1 x.2.2)) A).run' (tprfInit, ∅)}[z = true] + ∑' x, w x * c x := fun b => by
-    rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_bind_eq_tsum, ← ENNReal.tsum_add]
-    refine ENNReal.tsum_le_tsum fun x => ?_
+    rw [OracleComp.prEvent_bind_eq_tsum, OracleComp.prEvent_bind_eq_tsum, ← tsum_add]
+    refine tsum_le_tsum fun x => ?_
     rw [← mul_add]
     refine mul_le_mul_right ((gameP_le prims A b x).trans (le_of_eq ?_)) _
     cases b
@@ -2947,7 +2947,7 @@ theorem tprfSecurity (prims : Primitives) (C : Committee) : TprfSecurityStatemen
       ring
   have hc : ∑' x, w x * c x ≤ ((2 * (C.n.choose (C.t - 1) + C.n.choose 2) * q +
       ((C.n.choose (C.t - 1)).choose 2 + (C.n.choose 2).choose 2) : ℕ) : ℝ≥0∞) / 2 ^ 256 := by
-    simp only [c, mul_add, ENNReal.tsum_add]
+    simp only [c, mul_add, tsum_add]
     have hbad : ∀ b, ∑' x, w x * Pr{let z ← symRun prims A b x}[z.2.2 = true] ≤
         (Fintype.card (KeySlot C) * q : ℝ≥0∞) / 2 ^ 256 := fun b => by
       have h := symbolic_bad prims b A q hq

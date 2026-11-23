@@ -255,19 +255,21 @@ theorem D_inputQuery_self (ctx : Context C) (job : Job) :
   · simp only [hi, ↓reduceIte, D_flatMapM, prf, D_map, D_hashQuery, inputBits]
   · simp [hi, D_pure]
 
-omit [Fintype E] [DecidableEq E] in
-theorem pins_map {β γ : Type} (f : β → γ) (oa : OracleComp (RoSpec C) β) (ha : Pins (E := E) h prims oa) :
+theorem pins_map {E : Type} [Field E] [Algebra Bit E]
+    (h : Query C → HashOutput) (prims : Primitives)
+    {β γ : Type} (f : β → γ) (oa : OracleComp (RoSpec C) β) (ha : Pins (E := E) h prims oa) :
     Pins (E := E) h prims (f <$> oa) := by
   rw [map_eq_bind_pure_comp]
   exact pins_bind h prims _ _ ha fun _ => pins_pure h prims _
 
-omit [Fintype E] [DecidableEq E] in
-theorem pins_flatMapM {β γ : Type} (f : β → OracleComp (RoSpec C) (List γ)) (hf : ∀ b, Pins (E := E) h prims (f b)) :
+theorem pins_flatMapM {E : Type} [Field E] [Algebra Bit E]
+    (h : Query C → HashOutput) (prims : Primitives)
+    {β γ : Type} (f : β → OracleComp (RoSpec C) (List γ)) (hf : ∀ b, Pins (E := E) h prims (f b)) :
     ∀ l : List β, Pins (E := E) h prims (l.flatMapM f)
   | [] => pins_pure h prims _
   | a :: l => by
     rw [List.flatMapM_cons]
-    exact pins_bind h prims _ _ (hf a) fun _ => pins_bind h prims _ _ (pins_flatMapM f hf l) fun _ =>
+    exact pins_bind h prims _ _ (hf a) fun _ => pins_bind h prims _ _ (pins_flatMapM h prims f hf l) fun _ =>
       pins_pure h prims _
 
 omit [Fintype E] [DecidableEq E] in
@@ -344,8 +346,10 @@ theorem recOk_recCheckOpen (j : C.Party) (keys : Keys C) (b : BatchStart C)
     exact ⟨hb, hcheck, by rw [hopened]⟩
   · simp [blockOf, hlog]
 
-include prims in
-theorem recOkS_recBatch (j : C.Party) (keys : Keys C) (prss : PrssKeys C) (jobs : List Job) :
+theorem recOkS_recBatch {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
+    (K : Constants C E) (circuits : Circuits) (settings : Settings)
+    (h : Query C → HashOutput) (prims : Primitives)
+    (j : C.Party) (keys : Keys C) (prss : PrssKeys C) (jobs : List Job) :
     RecOkS h (StartShape circuits settings h j keys) (BlockShape K circuits settings h j keys)
       (recBatch K circuits settings ⟨j, keys, prss⟩ keys.parameter jobs) := by
   rintro ⟨label, k⟩ z hz

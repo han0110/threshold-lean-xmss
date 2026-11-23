@@ -1135,7 +1135,7 @@ theorem executeRounds_setupInitialSteps (phase : Phase) (coalition : C.Coalition
   · intro hd
     obtain ⟨i, hi⟩ := seedGen_exists_honest coalition
     have hh := hd i hi
-    simpa only [setupInitialSteps, ite_eq_right hi, setupStart, Step.isDone] using hh
+    simp only [setupInitialSteps, ite_eq_right hi, setupStart, Step.isDone] at hh
 
 /-- The real prefix through the commit round, retaining its private parts and corrupt messages. -/
 def setupLocalCommitPrefix (phase : Phase) (coalition : C.Coalition) (A : Adversary C E Unit PEmpty PEmpty)
@@ -1920,7 +1920,8 @@ theorem setupProgramBlock_dealt (phase : Phase) (D : C.Coalition) (parts : C.Par
     (seedGenCrossCoordinates D).mapM (fun p => program (setupPairProgrammingInput phase D view p) (pairs p))
       >>= fun _ => pure ()) ht
   simp only [bind_assoc, pure_bind] at he
-  convert he using 1 <;> rfl
+  convert he using 1
+  rfl
 
 end ThresholdLeanXmssSecurity
 
@@ -3005,7 +3006,6 @@ theorem sameRun_setupLocal_normalized (phase : Phase) (prims : Primitives) (coal
   refine (sameRun_setupLocal_split phase prims coalition A x z Z).trans (SameRun.of_eq ?_)
   simp only [setupLocalCommitPrefix, seedGenLocalPostCommit, setupNormalizedLocalGame,
     stepRound_setupInitialSteps, bind_assoc, pure_bind]
-  change _ = _
   simp only [setupRounds, Nat.reduceSub, executeRounds_setupRevealSteps_two]
 
 end ThresholdLeanXmssSecurity
@@ -3212,7 +3212,7 @@ theorem setupEchoDataOutput_some (phase : Phase) (coalition : C.Coalition) (data
   | some v =>
     rcases v with ⟨keys, shared⟩
     simp only [hd] at ho
-    split_ifs at ho with hi hb hc <;> try contradiction
+    split_ifs at ho with hi hb hc
     refine ⟨hi, keys, shared, rfl, (Option.some.inj ho).symm, ?_, hc⟩
     exact Bool.eq_false_iff.mpr hb
 
@@ -4501,7 +4501,8 @@ theorem seedGenHashLog_random_length_le {α : Type} (oa : OracleComp (LocalSpec 
     cases hr
     have hrest := ih u _ (hq.2 u) (a, rest) hk
     simp only [List.filter_append, List.length_append, seedGenLocalHashInputs_counted]
-    split_ifs at hrest ⊢ with ht <;> simp_all <;> omega
+    split_ifs at hrest ⊢ with ht <;> simp_all
+    omega
 
 /-- A fixed-oracle interpretation cannot add a new syntactic output. -/
 theorem seedGenFixedLocal_support_subset (prims : Primitives) (h : Query C → HashOutput)

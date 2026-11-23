@@ -160,15 +160,22 @@ theorem forger_release_occurrence (x : SigningSecurityProof.Keys3 C) (top : TopT
   | _ => exact (hb ha).elim
 
 
+private theorem keyedSplitWorld_carried (keyOf : XmssSecurity.HashInput → Option XmssSecurity.LeafIndex)
+    (extra : FlatJointState C → (WorldSpec C).Domain → FlatJointState C →
+      OracleComp (Query C →ₒ HashOutput) Unit)
+    (t : (WorldSpec C).Domain) (s : SplitState C) (r : (WorldSpec C).Range t × SplitState C)
+    (hr : r ∈ support ((keyedSplitWorld prims keyOf extra t).run s)) : r.2.2 = s.2 := by
+  simp only [keyedSplitWorld, carry, StateT.run_mk, bind_map_left,
+    mem_support_bind_iff, support_map, Set.mem_image] at hr
+  obtain ⟨_, _, _, _, heq⟩ := hr
+  exact (congrArg (fun p => p.2.2) heq).symm
+
 set_option linter.constructorNameAsVariable false in
 /-- The monitored world carries the signing state unchanged through every hash call. -/
 theorem world_carried (x : SigningSecurityProof.Keys3 C) (t : (WorldSpec C).Domain)
     (s : SplitState C) (r : (WorldSpec C).Range t × SplitState C)
-    (hr : r ∈ support ((world prims x t).run s)) : r.2.2 = s.2 := by
-  simp only [world, keyedSplitWorld, carry, StateT.run_mk, bind_map_left,
-    mem_support_bind_iff, support_map, Set.mem_image] at hr
-  obtain ⟨z, hz, y, hy, rfl⟩ := hr
-  rfl
+    (hr : r ∈ support ((world prims x t).run s)) : r.2.2 = s.2 :=
+  keyedSplitWorld_carried prims _ _ t s r hr
 
 theorem world_run_carried (x : SigningSecurityProof.Keys3 C) {α : Type}
     (source : OracleComp (WorldSpec C) α) (s : SplitState C) (r : α × SplitState C)

@@ -1,6 +1,6 @@
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.SeedTable.IdealCoupling
 import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Cost
-import ThresholdLeanXmssSecurity.Proof.SigningStronglyUnforgeable
+import ThresholdLeanXmssSecurity.Proof.QueryCost
 
 /-!
 # The budget of the table adversary

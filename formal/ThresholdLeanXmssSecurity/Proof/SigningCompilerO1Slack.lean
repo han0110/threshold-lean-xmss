@@ -272,8 +272,8 @@ theorem ReleaseSlackO1.read {source : SourceState C} {data data' : DeferredState
     rcases h.top_start b l with hd | hl
     · exact Or.inl (hd.mono hc)
     · refine Or.inr (hu _ (fun e he => by cases he) ?_ hl)
-      intro e l' pos
-      intro he; cases he
+      intro e l' pos he
+      cases he
   · intro e m hb hn l pos hcov
     exact hdone e l pos (h.crossed_done e m hb hn l pos hcov)
 

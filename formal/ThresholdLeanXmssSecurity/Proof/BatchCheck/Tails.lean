@@ -412,7 +412,8 @@ theorem headHist_of_steps (prims : Primitives) (K : Constants C E) (D : C.Coalit
 /-! ## The tail of the check in the hybrid model -/
 
 /-- `HeadTailsStatement` and `RestAbortStatement` with `hybridCut` give `HybridTailStatement`. -/
-theorem hybridTail_of_steps (prims : Primitives) (K : Constants C E) (D : C.Coalition)
+theorem hybridTail_of_steps {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] [SampleableType E]
+    (prims : Primitives) (K : Constants C E) (D : C.Coalition)
     (htails : HeadTailsStatement prims K D) (habort : RestAbortStatement K D) : HybridTailStatement prims K D := by
   intro Ia W knownE knownB names hn counts L tg x st hpos hx
   have hcut := RealNetworkC1p.hybridCut prims K D (c1WrapperWith K D W knownE knownB counts.sum (knownHist K D x) names
@@ -1349,7 +1350,7 @@ theorem mask_run (K : Constants C E) (i : C.Party) (hs : RunState C) (A B : ℕ 
   simp only [Option.bind_some, randOutput, Option.elim_some]
   rw [extendMult_run']
   refine bind_congr fun o' => ?_
-  rcases o' with _ | ((v | z) | w) <;> try rfl
+  rcases o' with _ | ((v | z) | w) <;> rfl
 
 /-- The call of `F_extendMult` at the digest round, with the output at once. -/
 theorem maskLast (prims : Primitives) (K : Constants C E) (D : C.Coalition) {Ia : Type}

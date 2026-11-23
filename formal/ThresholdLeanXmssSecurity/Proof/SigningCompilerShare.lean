@@ -839,23 +839,79 @@ theorem ordinary_hash_prf (P : PublicParameter) (seeds : C.Term → HashOutput)
     Bool.or_false, ite_true, compilerImpl, deferredImpl, StateT.run, StateT.mk,
     map_bind, bind_map_left, map_pure, hashTail]
 
-set_option linter.constructorNameAsVariable false in
+private theorem bind_return_all {α β : Type} (oa : ProbComp α) (f : α → β) (I : β → Prop)
+    (h : ∀ x ∈ support oa, I (f x)) : ∀ y ∈ support (oa >>= fun x => pure (f x)), I y := by
+  intro y hy
+  obtain ⟨x, hx, hy⟩ := mem_support_bind_peel _ _ hy
+  obtain rfl := eq_of_mem_support_pure _ hy
+  exact h x hx
+
+/-- Reduce a hash suffix to its cache extension and trace update. Entries outside trials are fixed. -/
+private theorem hashTail_cases (P : PublicParameter) (seeds : C.Term → HashOutput)
+    (query : Query C) (st : CappedCompilerState C) (value : HashOutput) (cache : HashCache C)
+    (I : HashOutput × CappedCompilerState C → Prop)
+    (h : ∀ c trace, cache ≤ c →
+      (∀ q, SigningPartnerCompareProof.OutsideTrials P q → c q = cache q) →
+      I (value, (({ st.1.1 with data := { st.1.1.data with cache := c }, trace := trace },
+        st.1.2 + 1), st.2))) : ∀ r ∈ support (hashTail P seeds query st value cache), I r := by
+  let finish (c : HashCache C) (trace : XmssSecurity.SigningCacheTrace × Bool) :
+      HashOutput × CappedCompilerState C :=
+    (value, (({ st.1.1 with data := { st.1.1.data with cache := c }, trace := trace },
+      st.1.2 + 1), st.2))
+  have transfer (J : HashCache C → ProbComp (HashOutput × CappedCompilerState C) → Prop)
+      (step : ∀ (l r : SigningFlatProof.FlatState C) (t : (WorldSpec C).Domain)
+        (trace : HashCache C → XmssSecurity.SigningCacheTrace × Bool),
+        J r.1.1.1 (do
+          let z ← (simulateQ (Query C →ₒ HashOutput).randomOracle
+            (SigningR1FixedProof.cachedExtra seeds P l t r)).run r.1.1.1
+          pure (finish z.2 (trace z.2)))) : J cache (hashTail P seeds query st value cache) :=
+    step (((st.1.1.data.cache, 0), []), compilerSigning st.1.1, false)
+      (((cache, 0), []), compilerSigning st.1.1, false) (.inr (.inr (.inl query)))
+      (SigningLaneUnionProof.traceStepAt seeds P st.1.1.data.cache (compilerSigning st.1.1)
+        (.inr (.inr (.inl query))) · st.1.1.trace)
+  refine transfer (fun c oa => (∀ c' tr, c ≤ c' → (∀ q, SigningPartnerCompareProof.OutsideTrials P q →
+    c' q = c q) → I (finish c' tr)) → ∀ r ∈ support oa, I r) ?_ h
+  intro l r t trace step
+  have lift (draw : ProbComp (Unit × (Query C →ₒ HashOutput).QueryCache))
+      (frame : ∀ z ∈ support draw, r.1.1.1 ≤ z.2 ∧
+        ∀ q, SigningPartnerCompareProof.OutsideTrials P q → z.2 q = r.1.1.1 q) :
+      ∀ a ∈ support (draw >>= fun z => pure (finish z.2 (trace z.2))), I a :=
+    bind_return_all draw _ _ fun z hz => step z.2 (trace z.2) (frame z hz).1 (frame z hz).2
+  apply lift
+  with_reducible exact SigningReleasedTransferProof.cachedExtra_frame seeds P l t r
+
+/-- Transfer cache and state invariants through the cached trial draws after a hash. -/
+theorem hashTail_support (P : PublicParameter) (seeds : C.Term → HashOutput)
+    (query : Query C) (st : CappedCompilerState C) (value : HashOutput) (cache : HashCache C)
+    (result : HashOutput × CappedCompilerState C)
+    (hr : result ∈ support (hashTail P seeds query st value cache)) :
+    cache ≤ result.2.1.1.data.cache ∧
+    (∀ q, SigningPartnerCompareProof.OutsideTrials P q →
+      result.2.1.1.data.cache q = cache q) ∧
+    result.2.1.1.data.pending = st.1.1.data.pending ∧ result.2.2 = st.2 := by
+  revert result
+  apply hashTail_cases
+  exact fun _ _ hg hf => ⟨hg, hf, rfl, rfl⟩
+
+/-- Both the virtual rows and the stored pads survive the cached trial draws. -/
+theorem hashTail_tables (P : PublicParameter) (seeds : C.Term → HashOutput)
+    (query : Query C) (st : CappedCompilerState C) (value : HashOutput) (cache : HashCache C)
+    (result : HashOutput × CappedCompilerState C)
+    (hr : result ∈ support (hashTail P seeds query st value cache)) :
+    result.2.1.1.data.virtual = st.1.1.data.virtual ∧ result.2.1.1.data.pads = st.1.1.data.pads := by
+  revert result
+  apply hashTail_cases
+  exact fun _ _ _ _ => ⟨rfl, rfl⟩
+
 /-- The actual grind suffix frames all constrained PRF entries. -/
 theorem hashTail_frame (P : PublicParameter) (seeds : C.Term → HashOutput)
     (query : Query C) (st : CappedCompilerState C) (value : HashOutput) (cache : HashCache C)
     (result : HashOutput × CappedCompilerState C)
     (hr : result ∈ support (hashTail P seeds query st value cache))
     (seed : HashOutput) (p : Point) :
-    result.2.1.1.data.cache (.prf seed p) = cache (.prf seed p) := by
-  simp only [hashTail, mem_support_bind_iff, mem_support_pure_iff] at hr
-  obtain ⟨prefetched, hp, rfl⟩ := hr
-  have frame := SigningReleasedTransferProof.cachedExtra_frame seeds P
-    (((st.1.1.data.cache, 0), []), compilerSigning st.1.1, false)
-    (.inr (.inr (.inl query))) (((cache, 0), []), compilerSigning st.1.1, false)
-    prefetched (by
-      dsimp only [StateT.run] at hp ⊢
-      with_reducible exact hp)
-  exact frame.2 (.prf seed p) (SigningPartnerCompareProof.outsideTrials_prf P seed p)
+    result.2.1.1.data.cache (.prf seed p) = cache (.prf seed p) :=
+  (hashTail_support P seeds query st value cache result (by with_reducible exact hr)).2.1 _
+    (SigningPartnerCompareProof.outsideTrials_prf P seed p)
 
 /-- The lazy share read has exactly the original random-oracle cache law. -/
 theorem read_merge (seeds : C.Term → HashOutput) (hinj : Function.Injective seeds)
@@ -985,6 +1041,22 @@ theorem step_ordinary (P : PublicParameter) (seeds : C.Term → HashOutput)
     obtain ⟨r, _, rfl⟩ := mem_support_map_peel _ _ hr
     exact ⟨restFree_erase seeds _, hi.2⟩
 
+private theorem read_invariant_of_law (seeds : C.Term → HashOutput) (tag : Bool)
+    (read : ProbComp (HashOutput × ShareState C))
+    (tail : HashOutput × ShareState C → ProbComp (HashOutput × CappedCompilerState C))
+    (run : ProbComp ((HashOutput × (CappedCompilerState C × Bool)) × ShareState C))
+    (law : run = (do
+      let r ← read
+      let outcome ← tail r
+      pure ((outcome.1, (splitRest seeds outcome.2, tag)), r.2)))
+    (h : ∀ r ∈ support read, DoneCached r.2) :
+    ∀ r ∈ support run, Inv seeds r.1.2 r.2 := by
+  rw [law]
+  intro result hr
+  simp only [mem_support_bind_iff, mem_support_pure_iff] at hr
+  obtain ⟨r, hr, _, _, rfl⟩ := hr
+  exact ⟨restFree_erase seeds _, h r hr⟩
+
 theorem step_read (P : PublicParameter) (seeds : C.Term → HashOutput)
     (hinj : Function.Injective seeds) (q : ℕ) (s : HiddenKey → Digest)
     (pads : Point → Digest) (τ : CPoint → SigningShareLazy.Digest)
@@ -1002,11 +1074,8 @@ theorem step_read (P : PublicParameter) (seeds : C.Term → HashOutput)
         (deferredQuery (.hash (key seeds (T, p))))).run (merged seeds st.1 share.cache) = _
     rw [ordinary_deferredQuery]
     exact (readStep_merge P seeds hinj q s pads τ T p st share).symm
-  · rw [readStep_run]
-    intro result hr
-    simp only [mem_support_bind_iff, mem_support_pure_iff] at hr
-    obtain ⟨r, hr, outcome, _, rfl⟩ := hr
-    exact ⟨restFree_erase seeds _, doneCached_lazy τ share hi.2 (.read T p st.2) r hr⟩
+  · exact read_invariant_of_law seeds st.2 _ _ _ (readStep_run P seeds τ T p st share)
+      (doneCached_lazy τ share hi.2 (.read T p st.2))
 
 /-- The share reification is query-local precisely on the actual source alphabet. -/
 theorem step_law (P : PublicParameter) (seeds : C.Term → HashOutput)

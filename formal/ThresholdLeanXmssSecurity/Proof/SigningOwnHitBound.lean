@@ -124,7 +124,7 @@ theorem hitOwn_of_gate (hgate : KeyGateBoundOwn prims C) : HitOwn prims (C := C)
     (fun top forgery st s hs => hit_finish_rise prims A x T top forgery st s hs)
   refine le_trans ?_ hf
   rw [SigningHitLaneProof.winHit_logged, OracleComp.prEvent_eq_tsum_ite]
-  refine ENNReal.tsum_le_tsum fun z => ?_
+  refine tsum_le_tsum fun z => ?_
   by_cases hz : z ∈ support (loggedRun prims A x)
   · by_cases hw : WinHit prims x (z.1, z.2.1)
     · simp only [hw, ite_true, guarded, ite_eq_right (noProgramQuery prims C A x z hz)]

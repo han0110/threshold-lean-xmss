@@ -2077,15 +2077,13 @@ theorem setupKnownMismatch_of_bounds (phase : Phase) (prims : Primitives) (hP : 
   rw [ENNReal.toReal_add (prEvent_ne_top _) (prEvent_ne_top _)]
   refine (add_le_add (hP D A x z Z q hq) (hX D A x z Z q hq)).trans ?_
   have ha := setupKnown_arith (phase := phase) (C := C) q (seedGenProgrammingCount D) (seedGenProgrammingCount_le D)
-  have ha' : (2 * (q * seedGenProgrammingCount D + seedGenProgrammingCount D ^ 2) +
-      ((q + C.n ^ 2) ^ 2 + 2 * (q + C.n ^ 2)) : ℝ) ≤ ((q + setupSecrets (phase := phase) C) ^ 2 : ℕ) := by exact_mod_cast ha
-  unfold setupHashError
-  push_cast at ha' ⊢
-  rw [div_div, show (2 : ℝ) ^ 256 * 2 = 2 ^ 257 from (pow_succ 2 256).symm]
-  have h256 : (2 : ℝ) ^ 257 = 2 * 2 ^ 256 := pow_succ' 2 256
-  rw [h256] at ⊢
-  rw [div_add_div _ _ (by positivity) (by positivity), div_le_div_iff₀ (by positivity) (by positivity)]
-  nlinarith [ha', show (0 : ℝ) < 2 ^ 256 by positivity]
+  have scale {a b c d : ℝ} (hd : 0 < d) (h : 2 * a + b ≤ c) :
+      a / d + b / (d * 2) ≤ c / d / 2 := by
+    field_simp
+    linarith
+  rw [setupHashError, show (2 : ℝ) ^ 257 = 2 ^ 256 * 2 from pow_succ _ _]
+  apply scale (pow_pos (by norm_num) 256)
+  exact_mod_cast ha
 
 /-- The guessing bound of the programming inputs before the programming (CDG+18). Each counted call
 before the programming hits an honest part of a programming input with probability at most

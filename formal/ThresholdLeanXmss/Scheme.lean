@@ -1,11 +1,15 @@
-import LeanXmss.Scheme
-import Mathlib.Algebra.Field.ZMod
-import Mathlib.LinearAlgebra.LinearIndependent.Defs
-import VCVio.CryptoFoundations.PRF
-import VCVio.OracleComp.QueryTracking.WriterCost
-import VCVio.OracleComp.QueryTracking.QueryBound
-import VCVio.OracleComp.QueryTracking.RandomOracle.Simulation
-import VCVio.EvalDist.MeasureTVDist.Basic
+module
+
+public import LeanXmss.Scheme
+public import Mathlib.Algebra.Field.ZMod
+public import Mathlib.LinearAlgebra.LinearIndependent.Defs
+public import VCVio.CryptoFoundations.PRF
+public import VCVio.OracleComp.QueryTracking.WriterCost
+public import VCVio.OracleComp.QueryTracking.QueryBound
+public import VCVio.OracleComp.QueryTracking.RandomOracle.Simulation
+public import VCVio.EvalDist.MeasureTVDist.Basic
+
+@[expose] public section
 
 /-!
 # Threshold leanXMSS

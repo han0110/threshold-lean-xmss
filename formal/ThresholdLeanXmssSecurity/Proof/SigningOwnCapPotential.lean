@@ -332,7 +332,7 @@ theorem ownPotential_step (prims : Primitives) (x : Keys3 C) (B : ℕ) (hB : B <
     calc _ ≤ ∑' r, Pr{let z ← (compilerImpl x.1 x.2.1 t).run st.1}[z = r] *
           (SigningCompilerPotential.viewSum x.1 B (compilerView r.2, g.ledger) *
             ((2 ^ 128 : ℝ≥0∞) * 2 ^ 128)⁻¹) :=
-          ENNReal.tsum_le_tsum fun r =>
+          tsum_le_tsum fun r =>
             mul_le_mul_right (ownPotential_le x.1 B (r.2, st.2 + if deferredCounted t then 1 else 0)
               g' g.ledger hstep.1 hstep.2) _
       _ = (∑' r, Pr{let z ← (compilerImpl x.1 x.2.1 t).run st.1}[z = r] *
@@ -377,7 +377,7 @@ theorem ownPotential_step (prims : Primitives) (x : Keys3 C) (B : ℕ) (hB : B <
         calc _ ≤ ∑' r, Pr{let z ← (compilerImpl x.1 x.2.1 (.hash (.hash input))).run st.1}[z = r] *
               (SigningCompilerPotential.viewSum x.1 B (compilerView r.2, g.ledger + 1) *
                 ((2 ^ 128 : ℝ≥0∞) * 2 ^ 128)⁻¹) :=
-              ENNReal.tsum_le_tsum fun r => mul_le_mul_right (ownPotential_le x.1 B
+              tsum_le_tsum fun r => mul_le_mul_right (ownPotential_le x.1 B
                 (r.2, st.2 + if deferredCounted (C := C) (.hash (.hash input)) then 1 else 0) g'
                 (g.ledger + 1) (by rw [hledger, ite_eq_left hc]) (by omega)) _
           _ = (∑' r, Pr{let z ← (compilerImpl x.1 x.2.1 (.hash (.hash input))).run st.1}[z = r] *

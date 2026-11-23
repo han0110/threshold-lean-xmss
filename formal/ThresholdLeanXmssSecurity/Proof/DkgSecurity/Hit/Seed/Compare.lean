@@ -128,6 +128,8 @@ def CompHit : Prop :=
 
 /-! ## The glue -/
 
+-- The hypothesis compares real probabilities with a denominator of 2^256.
+attribute [local irreducible] Real.instLT in
 omit [Fintype E] [DecidableEq E] in
 /-- The two statements of the comparison give `CellHit`. -/
 theorem cellHit_of_compare (close : SeedClose prims K circuits settings runLimit)
@@ -150,12 +152,11 @@ theorem cellHit_of_compare (close : SeedClose prims K circuits settings runLimit
   · by_cases big : 1 ≤ hitSeedError C q
     · refine le_trans ?_ big
       exact ENNReal.toReal_le_of_le_ofReal zero_le_one (by simp)
-    · replace big := not_le.1 big
-      have h1 := close D A q bounded
-      have h2 := hit D A q bounded
-      have h3 := errors_le C q hq big
-      unfold hitSeedError
-      linarith
+    · have hsmall : hitSeedError C q < 1 := lt_of_not_ge big
+      unfold hitSeedError at hsmall ⊢
+      refine (close D A q bounded).trans ((add_le_add_left (hit D A q bounded) _).trans ?_)
+      rw [add_comm]
+      exact errors_le C q hq hsmall
 
 omit [Fintype E] [DecidableEq E] in
 /-- The two statements of the comparison give `HitSeed`. -/
