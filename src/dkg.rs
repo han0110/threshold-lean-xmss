@@ -562,12 +562,12 @@ mod tests {
         (leaves, cpk, commitments, randomizer)
     }
 
-    /// Times the trusted dealer of the bottom trees for one year of 12 s slots. A t-of-n group has one seed for each
+    /// Times the trusted dealer of the bottom trees for one year of 384 s epochs. A t-of-n group has one seed for each
     /// set of `t - 1` operators.
     #[test]
     #[ignore]
     fn the_trusted_dealer_deals_one_year_of_bottom_trees_at_3_of_4_and_5_of_7() {
-        let trees = (365 * 86_400_u32).div_ceil(12 * KEYS as u32);
+        let trees = (365 * 86_400_u32).div_ceil(384 * KEYS as u32);
         let keys: Vec<u32> = (0..trees << LAYER_HEIGHT).collect();
         for (t, n) in [(3, 4), (5, 7)] {
             let terms = (0..1u32 << n).filter(|set| set.count_ones() + 1 == t).count();
