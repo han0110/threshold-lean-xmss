@@ -80,7 +80,7 @@
 
 \begin{slide}{Threshold BLS vs Threshold leanXMSS}
 \1[] \tbl{llll}{& Threshold BLS & Threshold leanXMSS with trusted dealer & Threshold leanXMSS with DKG}{
-  Signing & non-interactive, 96 B & 2 rounds, at most 944 B & same \\
+  Signing & 1 round, 96 B & 2 rounds, at most 944 B & same \\
   State & stateless & stateful, one-time key per epoch & same \\
   Key share & 1 scalar & $\binom{n-1}{t-1}$ PRF seeds & same \\
   Threshold & e.g. 3-of-4, 5-of-7 & e.g. 3-of-4, 5-of-7 & e.g. 2-of-3, 3-of-5, 4-of-7 \\
