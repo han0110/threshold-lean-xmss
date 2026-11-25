@@ -11,7 +11,12 @@ states each claim for `prims` whose `Th` the circuits compute (`CircuitsCompute`
 * `DkgSecurityPreservation` is the security preservation of Gurkan and others, Definition 8. A forger against
   the signing game with the real setup gives a forger against `tsigGame`, which has the trusted
   dealer.
-* `DkgCorrectness` bounds inconsistent seeds and wrong outputs of a tree against the adversary.
+* `DkgCorrectness` bounds inconsistent seeds, wrong outputs of a tree and a split of the honest
+  operators against the adversary.
+
+The seed generation and each whole run of a tree end with one vote on a broadcast channel
+(`voteRound`). So the abort is unanimous. Each honest operator keeps its own output of that run, or
+each honest operator discards it.
 * `DkgCompleteness` bounds the abort of an honest run and its distance to `dealerKeyGen`.
 -/
 
@@ -67,8 +72,11 @@ The claim adapts Definition 8 in these points.
   trees are made during the signing phase. The paper has only games with one key. No source.
 * The coalition of the setup is static, as the paper assumes. `tsigGame` has adaptive corruption.
   No game of the paper has a corruption oracle, so this mix has no source.
-* The abort is selective, and each honest operator acts on what it holds. Definition 8 has no
-  abort. No source.
+* The abort is unanimous. The seed generation and each whole run of a tree end with one vote on a
+  broadcast channel, and each honest operator acts on what it holds after the vote. The broadcast of
+  the status after a protocol with abort is in Goldwasser and Lindell (ePrint 2002/040,
+  Section 1.5). The hash of the public result in the place of one bit has no source. Definition 8
+  has no abort.
 * `Th` is a fixed function, and the circuits compute it. The paper uses a programmable random
   oracle. No source.
 * Each tree has at most `runLimit` runs, and each run is atomic. No source.
@@ -79,8 +87,9 @@ The claim adapts Definition 8 in these points.
   them (`topHolder`, `canonicalDealt`). No source.
 * The adversary and the forger are bounded only by their queries, with no bound on their
   computation. The paper takes PPT adversaries. No source.
-* The network has private authenticated links and no broadcast channel, as in GS20, Section 3.1.
-  Gurkan and others assume a broadcast channel. -/
+* The network has private authenticated links, as in GS20, Section 3.1, and a broadcast channel
+  for the one vote after the seed generation and after each whole run of a tree. Gurkan and others
+  assume a synchronous broadcast channel. -/
 def DkgSecurityPreservation (reduction : Aes → C.Coalition → DkgTsigAdversary C E → TsigAdversary C) : Prop :=
   0 < settings.batchSize →
     ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ), DkgTsigBounded circuits settings runLimit A q →
@@ -89,18 +98,33 @@ def DkgSecurityPreservation (reduction : Aes → C.Coalition → DkgTsigAdversar
           accepts prims (tsigGame (reduction prims.aes D A)) + dkgError (E := E) circuits settings runLimit C q +
             streamAdvantage prims D (dkgTsigGame K circuits settings runLimit D A)
 
-/-- Correctness with selective abort of the real setup. For each static coalition `D` and each
-adversary `A` of budget `q`, two honest operators hold inconsistent seeds, or an honest operator ends
-a run of a tree with an output that is not `referenceTree` on the seeds of the game, with a
-probability that `dkgCorrectnessError C q` plus the PRF advantage of the streams bounds. An abort is
-no win. The bundle states the claim for `prims` whose `Th` the circuits compute.
+/-- Correctness with unanimous abort of the real setup. When `0 < settings.batchSize` and
+`0 < runLimit`, for each static coalition `D` and each adversary `A` of budget `q`, the probability
+of the union of these three events is at most `dkgCorrectnessError C q` plus the PRF advantage of
+the streams.
+
+* Two honest operators hold inconsistent seeds at the end of the seed generation.
+* An honest operator ends a run of a tree with an output that is not `referenceTree` on the seeds of
+  the game.
+* One honest operator keeps the output of the seed generation or of a run of a tree after its vote,
+  and another honest operator keeps none.
+
+The first two tests take the outputs of the ceremony, so they also count when the vote discards
+these outputs. A common abort alone is no win. The vote excludes the third event on each path of
+this game, so each honest operator keeps its own output of a run or each honest operator discards
+it. The game keeps the split test. It finds a split when a corrupt sender gives different votes to
+different honest receivers, which the broadcast channel excludes. The bundle states the claim for
+`prims` whose `Th` the circuits compute.
 
 Its nearest model is the first clause of robustness (Gurkan and others, Definition 6), by which all
 honest parties agree on the public key. The claim adapts that clause in these points.
 
 * Consistent seeds take the place of one public key, and each output of a tree must be the reference
   output. The paper has no game for a protocol that runs after the key generation. No source.
-* An abort is no win, so the claim allows a selective abort. Definition 6 has no abort. No source.
+* A common abort alone is no win, and a split of the honest operators is a win. This is the
+  delivery clause of security with unanimous abort (Goldwasser and Lindell, ePrint 2002/040,
+  Definition 3). Definition 6 has no abort. The tests on the outputs that the vote discards have no
+  source.
 * The bound is a fixed function of `q` with the PRF advantage of the streams. The paper states no
   error. No source.
 * The claim omits the second clause of Definition 6, by which `t + 1` honest shares reconstruct the
@@ -114,8 +138,9 @@ honest parties agree on the public key. The claim adapts that clause in these po
   reference output uses them. No source.
 * The adversary is bounded only by its queries, with no bound on its computation. The paper takes
   PPT adversaries. No source.
-* The network has private authenticated links and no broadcast channel, as in GS20, Section 3.1.
-  Gurkan and others assume a broadcast channel. -/
+* The network has private authenticated links, as in GS20, Section 3.1, and a broadcast channel
+  for the one vote after the seed generation and after each whole run of a tree. Gurkan and others
+  assume a synchronous broadcast channel. -/
 def DkgCorrectness : Prop :=
   0 < settings.batchSize → 0 < runLimit →
     ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ), DkgTsigBounded circuits settings runLimit A q →
@@ -137,7 +162,8 @@ of Lemma 1 of Gurkan and others, by which all nonfaulty parties get a transcript
 bounded probability. The distance to `dealerKeyGen` has no source.
 
 The claim is about an honest run only. It is not robustness under faults. A corrupt operator can
-make each honest operator abort, and no claim excludes that. Each operator keeps the first output of
+make all honest operators abort, and no claim excludes that. The honest run has the vote after the
+seed generation and after each run of a tree. Each operator keeps the first output of
 its runs of a tree, as in `DkgSecurityPreservation`. No source. -/
 def DkgCompleteness : Prop :=
   0 < settings.batchSize → 0 < runLimit →

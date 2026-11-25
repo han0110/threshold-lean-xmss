@@ -96,8 +96,12 @@ def secSigningD (m : Mode) (A : DkgTsigAdversary C E) (dealer : Dealt C (RealM C
 /-- `secRest` with the dealer `dealer`. -/
 def secRestD (m : Mode) (A : DkgTsigAdversary C E) (dealer : Dealt C (RealM C A.net.State))
     (emu : C.Party → Option (Keys C)) : RealM C A.net.State Bool := do
-  secRunsD K circuits settings runLimit D m A.net dealer emu .top runLimit
-  secSigningD K circuits settings runLimit D m A dealer emu
+  let s ← get
+  let (state, ok) ← StateT.lift (voteRound worldRoles D A.net s.adversary fun i =>
+    ((s.operators i).keys).map seedVote)
+  set (votedStart D s state ok)
+  secRunsD K circuits settings runLimit D m A.net dealer (committed ok emu) .top runLimit
+  secSigningD K circuits settings runLimit D m A dealer (committed ok emu)
 
 /-- The dealer of a run of its top tree. -/
 def dealerOf {σ : Type} (r : PublicParameter × (C.Term → HashOutput) × (C.Party → Keys C))

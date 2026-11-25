@@ -358,9 +358,8 @@ theorem noFree_secRest (D : C.Coalition) (A : DkgTsigAdversary C E) (T : C.Term)
   have hprog : NoCall WorldProgramQuery
       ((secRest K circuits settings runLimit ⟨true, fun _ => 0⟩ D A parameter seeds dealt emu).run' st) := by
     rw [StateT.run'_eq]
-    exact SigningSelectionProof.noCall_map _ _ (UsedHit.NoProg.bind (noProg_secRuns K circuits settings runLimit D _
-      (fun _ => rfl) A.net parameter seeds dealt emu .top runLimit)
-      (fun _ => noProg_secSigning K circuits settings runLimit D _ (fun _ => rfl) A parameter seeds dealt emu) st)
+    exact SigningSelectionProof.noCall_map _ _ (noProg_secRest K circuits settings runLimit D _ (fun _ => rfl) A
+      parameter seeds dealt emu st)
   exact FirstCounts.isQueryBoundP_add hcases _ 0 0 ((noCall_iff _ _).1 (noCall_secRest_seedGenCell K circuits
     settings runLimit D _ (fun _ => rfl) A parameter seeds dealt emu st)) ((noCall_iff _ _).1 hprog)
 

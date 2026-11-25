@@ -14,7 +14,7 @@ This note gives the MPC building blocks that the protocol uses, and a toy exampl
 | symbol                                                        | meaning                                                                                                      |
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | $n = 2t - 1$                                                  | operators $P_0, \dots, P_{n-1}$                                                                              |
-| $t - 1$                                                       | corrupt operators at most, malicious, security with selective abort [GL05](https://eprint.iacr.org/2002/040) |
+| $t - 1$                                                       | corrupt operators at most, malicious, security with unanimous abort [GL05](https://eprint.iacr.org/2002/040) |
 | $\mathbb F_2$                                                 | the field of the circuit                                                                                     |
 | $\mathbb F_{128}$                                             | the field of the check, the leanVM field $\mathbb F_{64}[y]/(y^2 + xy + 1)$                                  |
 | $\mathbb F$                                                   | either of the two, in a building block that works over both. Both have characteristic 2, so $+$ is XOR and $- = +$   |
@@ -160,6 +160,7 @@ The tags of the threshold PRF and of the signing masks are a difference from the
 | $\texttt{"thlxmss-keygen-echo"}$, $\texttt{"thlxmss-prss-echo"}$ | the term keys that the sender and the receiver share                | 3.1                              |
 | $\texttt{"thlxmss-commit"}$, $\texttt{"thlxmss-prss-commit"}$    | the sender, the receiver and the reveal                             | 3.1                              |
 | $\texttt{"thlxmss-prf"}$                                         | $`\mathrm{seed}_T`$ and the PRF input $x$                           | 3.1                              |
+| $\texttt{"thlxmss-vote"}$                                        | the kind of the ceremony and its public result                      | 3.3                              |
 | $\texttt{"thlxmss-mask"}$                                        | $K_{ij}$, $x$, $m$ and $J$                                          | [`sign.md`](sign.md#21-eval) 2.1 |
 
 #### 1.1.5 Building-block table
@@ -807,6 +808,8 @@ A batch of 128 chains has $L = 72$ AND layers and $m = 24$ halvings. Its check c
 
 A commitment batch has 24 AND layers and 76 (peer) or 100 (collector) rounds, also with the top randomizer value. The PRSS setup adds 3 rounds and $32 (s + 3) + 16$ bytes from $P_i$ to each $P_j$ per ceremony, for $s$ shared terms. So a bottom tree pays it twice, once for its tree and once for the signature of its root.
 
+The seed generation, the top tree and each bottom tree end with one vote round, as 3.3 describes. A vote is 40 bytes from $P_i$ to each $P_j$, and the two frame headers of its channel add 32 bytes. So the seed generation takes 4 rounds in the place of 3. The hash of the public result of a bottom tree, about 186 MB, takes about 0.2 s on the CPU of the benchmark, against about 1,100 s for the tree at 2-of-3.
+
 The AND layers dominate the bandwidth.
 
 - Peer mode sends $`(t-1) N_{\mathrm{and}}`$ bits per batch.
@@ -827,11 +830,11 @@ A bottom tree is $2^{16} \cdot 58$ chains, 29,696 chain batches. Signing takes 2
 
 ### 3.3 Security
 
-The key generation targets the security of the trusted dealer of $\mathsf{KeyGen}$ [BBDLN26](https://eprint.iacr.org/2026/2142), with selective abort, against a malicious adversary that statically corrupts up to $t - 1$ of the $n = 2t - 1$ operators. The Lean statements in `formal/` state three claims for it, as games on the real network.
+The key generation targets the security of the trusted dealer of $\mathsf{KeyGen}$ [BBDLN26](https://eprint.iacr.org/2026/2142), with unanimous abort on an assumed broadcast channel for the vote, against a malicious adversary that statically corrupts up to $t - 1$ of the $n = 2t - 1$ operators. The Lean statements in `formal/` state three claims for it, as games on the real network.
 
 `dkgSecurityPreservation` states that an adversary against the signing game with the real key generation wins at most as often as the named forger `dkgReduction` wins the signing game with the dealer, up to the stated errors `dkgError` and `streamAdvantage`. It is the security preservation of [GJM+21, Def. 8](https://eprint.iacr.org/2021/005). The forger runs the adversary and plays the honest operators. It is a relative claim and no bound on a forgery.
 
-`dkgCorrectness` bounds inconsistent seeds and wrong tree outputs against the adversary. `dkgCompleteness` bounds the abort of an honest run and its distance to the dealer.
+`dkgCorrectness` bounds inconsistent seeds, wrong tree outputs and a split of the honest operators after a vote against the adversary. `dkgCompleteness` bounds the abort of an honest run and its distance to the dealer.
 
 Lean proves `dkgCorrectness` and `dkgCompleteness` in `formal/`. For `dkgSecurityPreservation`, it proves the cost bound of the forger and twelve of the 13 hops of the bound on the win probability. That bound is a target until the last hop has a proof, and a proof can change it.
 
@@ -861,13 +864,57 @@ The protocol differs from [GS20](https://eprint.iacr.org/2020/134) in three poin
   - The same check is in [CGH+18, Prot. 3.3](https://eprint.iacr.org/2018/570) and in [KPPS23](https://eprint.iacr.org/2022/675) $\Pi_{\mathrm{agree}}$.
 - The outputs open with $\mathsf{OpenRep}$ [KPPS23, App. B](https://eprint.iacr.org/2022/675) in place of the Shamir reconstruction of [GS20](https://eprint.iacr.org/2020/134).
   - $\mathsf{Rerand}$ of 1.6 reshares each output first, and the check covers it.
-- Each operator decides alone, as in [GS20, Prot. 15](https://eprint.iacr.org/2020/134), step 8.
-  - So the notion of security of the protocol is security with selective abort [GL05](https://eprint.iacr.org/2002/040).
+- Each operator decides alone in a batch, as in [GS20, Prot. 15](https://eprint.iacr.org/2020/134), step 8.
+  - So the notion of security of a batch is security with selective abort [GL05](https://eprint.iacr.org/2002/040).
   - In the functionalities of [GS20](https://eprint.iacr.org/2020/134), all honest operators abort together.
+  - The vote below brings the abort of all operators together, at the point where an operator writes its files.
 
 The fresh PRSS keys and the named commitments of 3.1 are not in the note [Wam26](https://github.com/TomWambsgans/sphincs.art/blob/9a528527d2d0ea41d2b3b322d2548c0828569a6d/leanXMSS.tex). The fresh keys make the random sharings independent of the outputs, as [GS20, Functionality 1](https://eprint.iacr.org/2020/134) and Hybrid 2 of [GS20, Lemma 4](https://eprint.iacr.org/2020/134) need.
 
+#### Vote
+
+The seed generation, the top tree and each bottom tree end with one vote. An operator writes its files only after the vote. The vote assumes a broadcast channel, on which all operators receive the same vote of an operator. The note and [GS20](https://eprint.iacr.org/2020/134) have no such vote and no such channel.
+
+1. $P_i$ broadcasts $`h_i = H(\texttt{"thlxmss-vote"} \,\Vert\, \mathrm{kind} \,\Vert\, \mathrm{result}_i)`$ for its public result. If its ceremony fails, it broadcasts the empty vote.
+2. $P_i$ commits if its ceremony gave an output and each $h_j$ equals $h_i$. If not, $P_i$ aborts and writes no file.
+
+| ceremony        | public result in the vote                                     |
+| --------------- | ------------------------------------------------------------- |
+| seed generation | $P$                                                           |
+| top tree        | the leaves of the top tree and the public key                 |
+| bottom tree $b$ | $b$ and the tree file, which has the signature of the top key |
+
+The vote has two published parts.
+
+- The broadcast at the end of a protocol with abort is in [GL05, Section 1.5](https://eprint.iacr.org/2002/040). After the protocol ends, each party broadcasts one bit, which says if it received its output.
+- The abort message to all parties is in [GS20, Prot. 6](https://eprint.iacr.org/2020/134), step 2. There a party sends it when a sharing of the coin fails its check.
+
+These parts are adaptations, and no paper has them.
+
+- The vote is the hash of the public result in the place of the bit, with the test that all votes are equal. So the operators that commit also hold the same public result.
+- An empty vote of $P_j$ stops the ceremony of each operator in each of its phases, not only at the coin.
+- The time limit `--time-limit` of an operator gives the empty vote if it ends before the ceremony of the operator.
+- A bottom tree has one vote for its two ceremonies, because an operator keeps nothing between them. The vote does not protect the opening of the signature in a run that aborts, which "Retry" below treats.
+
+With the broadcast channel, all honest operators see the same $n$ votes. If an honest $P_i$ commits, each vote equals $h_i$. So each honest $P_j$ has $h_j = h_i$ and also commits, and the two hold the same public result unless $H$ collides. A corrupt operator can make all operators abort.
+
+The published broadcast is after a common end of the protocol. With the synchronous rounds of the model, all operators that end the ceremony with an output end it in the same round, and the vote is the round after it. The proof of concept has no clock for its rounds. There a corrupt operator can receive the vote of one honest operator before it sends its last ceremony message to another honest operator. So it learns that the first operator accepted, and then it chooses the last message for the second one. Without the vote, no message of the first operator tells this at that point. The agreement on the decision still holds in this order. No proof covers the security of the ceremony in this order.
+
+The time limit never ends the wait for the votes after the vote of the operator. So two operators with different clocks cannot decide differently. An operator that stays connected and sends no vote makes the others wait.
+
+The proof of concept sends the vote on the channels between the operators, which are no broadcast channel. There a corrupt operator can send different votes to different operators. Then some honest operators commit and the others abort. Each honest vote goes to all operators with the same value. So if one honest operator commits, each honest operator computed the same public result unless $H$ collides, also the ones that abort.
+
+The Lean claims have the vote, as one more round on a broadcast channel after the seed generation and after each whole run of a tree. `dkgCorrectness` counts a split of the honest operators as a win of the adversary, and the vote excludes a split on each path of the game. The model differs from the code in the points of rows B24 to B30 of [`formal/doc/differences.md`](../formal/doc/differences.md). The largest ones are the broadcast channel and the time of the vote.
+
+#### Retry
+
 A failed run of a tree is run again. Correct outputs give the same tree, because a tree is a function of the public parameter, the seeds and the hash.
+
+A retry starts from the same files at all operators. On the channels of the proof of concept, a corrupt operator can cause different files with two different votes. If only some operators hold the `operator` file, all operators delete it before the retry. If only some operators hold the files of a tree, these operators do not start its retry, and the code has no repair for this state.
+
+The correct root of a bottom tree, the randomizer of its top key and the codeword are functions of $P$, the seeds and the index $b$. The operators keep $P$ and the seeds from the seed generation, and no failed run changes them. So if each run that opens the signature has the correct root and the correct randomizer, each such run opens the same codeword. Then a retry does not make the top key sign a second root.
+
+A run opens the signature before the vote, and it takes the root and the randomizer from its own first ceremony. `dkgCorrectness` bounds a wrong output only of a run that ends with an output. For a run that aborts after the opening of the signature, no Lean claim states that the root and the randomizer were the correct ones. This gap is also in the protocol without the vote, and the vote does not close it.
 
 Each claim covers one static coalition, corrupted before the seed generation and fixed for the lifetime of the key. At most $t - 1$ operators are corrupted. `dkgSecurityPreservation` compares the key generation with the signing game with the dealer for the named forger `dkgReduction`, with the fixed $\mathrm{Th}$. A bound of the full system also needs a bound of the success of that forger with the fixed $\mathrm{Th}$. No theorem gives it. For an adversary that makes no search on $\mathrm{Th}$, the random-oracle heuristic for Keccak is the step to it. [`formal/statement.tex`](../formal/statement.tex) holds the deployment contract and this step.
 

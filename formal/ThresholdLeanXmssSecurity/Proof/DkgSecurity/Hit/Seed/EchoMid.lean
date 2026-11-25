@@ -351,11 +351,8 @@ theorem noProgram_tail (D : C.Coalition) (A : DkgTsigAdversary C E) (x : PrefixO
       exact noProgram_levelRound D A.net f st d' _ _ _ fun _ _ _ => noCall_pure _ _
   · unfold restOf
     refine noCall_bind _ (noCall_map _ _ ?_) fun _ => noCall_pure _ _
-    exact UsedHit.NoProg.bind
-      (DkgSecurityProof.noProg_secRuns K circuits settings runLimit D _ (fun _ => rfl) A.net x.2.1.1 x.2.1.2.1
-        x.2.1.2.2 y.2 .top runLimit)
-      (fun _ => DkgSecurityProof.noProg_secSigning K circuits settings runLimit D _ (fun _ => rfl) A x.2.1.1
-        x.2.1.2.1 x.2.1.2.2 y.2) _
+    exact DkgSecurityProof.noProg_secRest K circuits settings runLimit D _ (fun _ => rfl) A x.2.1.1 x.2.1.2.1
+      x.2.1.2.2 y.2 _
 
 /-- The block of `midRun` with the answers of the pairs with `SharesHidden` set to `0` has the law of the
 block of the list program and then `discards`, for the result and the cache, from each cache. All calls

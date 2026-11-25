@@ -12,7 +12,7 @@ futures = "0.3.34"
 hex = "0.4.3"
 rand = "0.9.5"
 tikv-jemallocator = "0.7.0"
-tokio = { version = "1.54.1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync"] }
+tokio = { version = "1.54.1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
 tracing = "0.1.44"
 tracing-forest = "0.3.1"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }

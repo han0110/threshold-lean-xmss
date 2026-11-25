@@ -77,6 +77,9 @@ theorem cost_treeRun_seedGen (net : Adversary C E Unit PEmpty PEmpty) (tree : Tr
   obtain ⟨state, outputs⟩ := r
   refine RCost.bind (K := fun _ _ => 0)
     ((RCost.lift (cost_pure_le _ _ 0) _).mono (fun _ _ => le_rfl) fun _ => by simp) fun bad => ?_
+  refine RCost.bind (K := fun _ _ => 0)
+    ((RCost.lift ((cost_callCharge_le_iff _ _ _).2 (FirstCounts.voteRound_honestIn .seedGen (by decide) D net state _
+      fun _ _ => queryClass_map_treeVote)) _).mono (fun _ _ => le_rfl) fun _ => by simp) fun v => ?_
   exact (RCost.set _ _).mono (fun _ _ => le_rfl) fun _ => le_rfl
 
 omit [Fintype E] [DecidableEq E] in
@@ -205,9 +208,18 @@ theorem noCall_secRest_seedGen (m : Mode) (hm : ∀ tree, m.emulated tree = 0) (
   have h : RCost (callCharge (HonestIn .seedGen)) (secRest K circuits settings runLimit m D A parameter seeds dealt emu)
       (fun _ _ => 0) (fun _ => 0) := by
     unfold secRest
+    refine RCost.get_bind fun s => ?_
+    refine (RCost.bind (K := fun _ _ => 0) (k := fun _ _ => (0 : ℕ∞))
+      ((RCost.lift ((cost_callCharge_le_iff _ _ _).2 (FirstCounts.voteRound_honestIn .seedGen (by decide) D A.net
+        s.adversary (fun i => ((s.operators i).keys).map seedVote) fun _ _ => queryClass_map_seedVote))
+          fun _ => 0).mono (Φ' := fun _ => (0 : ℕ∞)) (fun _ _ => le_rfl) fun _ => by simp)
+      fun v => ?_) s
+    obtain ⟨state, ok⟩ := v
+    refine RCost.bind ((RCost.set _ (fun _ _ => 0)).mono (fun _ _ => le_rfl) fun _ => le_rfl) fun _ => ?_
     exact RCost.bind (K := fun _ _ => 0)
-      (rcost_secRuns_seedGen K circuits settings runLimit D m hm A.net parameter seeds dealt emu .top runLimit)
-      fun _ => rcost_secSigning_seedGen K circuits settings runLimit D m hm A parameter seeds dealt emu
+      (rcost_secRuns_seedGen K circuits settings runLimit D m hm A.net parameter seeds dealt (committed ok emu) .top
+        runLimit)
+      fun _ => rcost_secSigning_seedGen K circuits settings runLimit D m hm A parameter seeds dealt (committed ok emu)
   rw [noCall_iff, ← cost_callCharge_le_iff, StateT.run'_eq, cost_map_eq]
   have h0 := h st
   rw [show (fun p : Bool × RealState C A.net.State => (fun (_ : Bool) (_ : RealState C A.net.State) => (0 : ℕ∞)) p.1 p.2) =

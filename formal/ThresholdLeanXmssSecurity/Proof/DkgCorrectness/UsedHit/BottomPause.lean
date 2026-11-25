@@ -101,8 +101,10 @@ theorem fixedTreeRun_setupSplit {α : Type} (h : ℕ) (D : C.Coalition) (net : A
         executePhase worldRoles D net noFunctionality (treeFuel circuits settings - setupRounds) r.1
           (fun i => (r.2 i).elim failure (k a i)) >>= fun so =>
         wrongOutput D (fun i => (s.operators i).keys) tree so.2 >>= fun bad =>
-        pure ((), (⟨so.1, fun i => (s.operators i).keep (so.2 i) tree,
-          Function.update s.runs tree (s.runs tree + 1), s.closed, s.flag || bad⟩ : RealState C net.State)) := by
+        voteRound worldRoles D net so.1 (fun i => (so.2 i).map (treeVote tree)) >>= fun v =>
+        pure ((), (⟨v.1, fun i => (s.operators i).keep (committed v.2 so.2 i) tree,
+          Function.update s.runs tree (s.runs tree + 1), s.closed, s.flag || bad || split D (committed v.2 so.2)⟩ :
+            RealState C net.State)) := by
   have hfuel : treeFuel circuits settings = setupRounds + (treeFuel circuits settings - setupRounds) := by
     unfold treeFuel
     omega
@@ -225,8 +227,10 @@ theorem fixedTreeRun_unfold (h : ℕ) (D : C.Coalition) (net : Adversary C E Uni
       executePhase worldRoles D net noFunctionality (treeFuel circuits settings) s.adversary
           (fun i => slotProgram K circuits settings D (fun c => fresh.getD c none) i (s.operators i) tree) >>= fun so =>
         wrongOutput D (fun i => (s.operators i).keys) tree so.2 >>= fun bad =>
-        pure ((), (⟨so.1, fun i => (s.operators i).keep (so.2 i) tree,
-          Function.update s.runs tree (s.runs tree + 1), s.closed, s.flag || bad⟩ : RealState C net.State)) := by
+        voteRound worldRoles D net so.1 (fun i => (so.2 i).map (treeVote tree)) >>= fun v =>
+        pure ((), (⟨v.1, fun i => (s.operators i).keep (committed v.2 so.2 i) tree,
+          Function.update s.runs tree (s.runs tree + 1), s.closed, s.flag || bad || split D (committed v.2 so.2)⟩ :
+            RealState C net.State)) := by
   simp only [fixedTreeRun, StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, bind_assoc, StateT.run_set]
 
 /-- The tail of an alive operator is its second setup and then `afterSecondSetup`. -/

@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use futures::future::try_join_all;
+use futures::future::{select_all, try_join_all};
 use primitives::{cast_slice, cast_slice_mut};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
@@ -193,13 +193,28 @@ impl Channel {
         }
     }
 
-    /// One round, which sends one message to each member and receives one message from each member.
-    pub async fn exchange(&mut self, outgoing: Vec<Vec<u64>>) -> Result<Vec<Vec<u64>>, String> {
+    /// Sends one message to each member.
+    pub fn send(&self, outgoing: Vec<Vec<u64>>) {
         for (j, words) in outgoing.into_iter().enumerate() {
             if self.receivers[j].is_some() {
                 self.network.send(j, self.tag, words);
             }
         }
+    }
+
+    /// The next ready message of a member `j` with `waiting[j]`. A member that aborts gives no message.
+    pub async fn receive(&mut self, waiting: &[bool]) -> (usize, Option<Vec<u64>>) {
+        let receivers = self.receivers.iter_mut().enumerate();
+        let receives = receivers
+            .filter_map(|(j, receiver)| Some((j, receiver.as_mut()?)))
+            .filter(|&(j, _)| waiting[j])
+            .map(|(j, receiver)| Box::pin(async move { (j, receiver.recv().await) }));
+        select_all(receives).await.0
+    }
+
+    /// One round, which sends one message to each member and receives one message from each member.
+    pub async fn exchange(&mut self, outgoing: Vec<Vec<u64>>) -> Result<Vec<Vec<u64>>, String> {
+        self.send(outgoing);
         let receives = self.receivers.iter_mut().enumerate().map(|(j, receiver)| async move {
             match receiver {
                 Some(receiver) => receiver.recv().await.ok_or_else(|| format!("operator {j} aborts")),

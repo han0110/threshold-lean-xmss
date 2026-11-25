@@ -87,7 +87,7 @@ theorem deriveDomain_class : ∀ x : Query C, DeriveDomain x → queryClass x = 
 theorem copyHopOf : BlockCollisionHop K circuits settings runLimit .copy CopyDomain (copyError settings runLimit C) := by
   intro prims D A q ready hA β block out event hblock
   have hPc := copyDomain_class (C := C)
-  have h := Collision.firstCollisionOf_le K circuits settings runLimit (c := .copy) (by decide) CopyDomain hPc 0
+  have h := Collision.firstCollisionOf_le K circuits settings runLimit (c := .copy) (by decide) (by decide) CopyDomain hPc 0
     (fun tree => treeBatches settings tree * termHashes C)
     (Collision.honestBudget_of_class K circuits settings hPc 0 _ (DigestBudgets.seedHonest (by decide))
       (DigestBudgets.treeHonest K circuits settings (Or.inr rfl)))
@@ -107,7 +107,7 @@ theorem splitHopOf :
     BlockCollisionHop K circuits settings runLimit .digest SplitHashDomain (splitError settings runLimit C) := by
   intro prims D A q ready hA β block out event hblock
   have hPc := splitHashDomain_class (C := C)
-  have h := Collision.firstCollisionOf_le K circuits settings runLimit (c := .digest) (by decide) SplitHashDomain
+  have h := Collision.firstCollisionOf_le K circuits settings runLimit (c := .digest) (by decide) (by decide) SplitHashDomain
     hPc 0 (fun tree => treeBatches settings tree * termHashes C)
     (Collision.honestBudget_of_class K circuits settings hPc 0 _ (DigestBudgets.seedHonest (by decide))
       (DigestBudgets.treeHonest K circuits settings (Or.inl rfl)))
@@ -166,7 +166,8 @@ theorem echoHopOf : BlockCollisionHop K circuits settings runLimit .prssSetup Ec
       (fun view => SetupBudgets.deriveKeys_zero i view fun kind l => by
         simp [SplitRegionCounted, splitLocalHashInput, IsFixed, EchoDomain])
       (fun l => (hashQuery_queryBound _).of_imp fun _ _ => trivial)
-  have h := Collision.firstCollisionOf_le K circuits settings runLimit (c := .prssSetup) (by decide) EchoDomain hPc 0
+  have h := Collision.firstCollisionOf_le K circuits settings runLimit (c := .prssSetup) (by decide) (by decide)
+    EchoDomain hPc 0
     _ (Collision.setupBudget K circuits settings hPc _ hsetup) (DigestBudgets.signQuiet (by decide)) prims D A q ready hA
     block out event hblock
   rw [Collision.runs_setups, SetupAgree.parties_length] at h
@@ -193,7 +194,8 @@ theorem reuseHopOf : BlockCollisionHop K circuits settings runLimit .prssSetup D
       (fun view => SetupBudgets.deriveKeys_count _ i view)
       (fun l => (SigningSelectionProof.noCall_iff _ _).1 (SigningSelectionProof.noCall_query _ _ (by
         simp [SplitRegionCounted, splitLocalHashInput, IsFixed, DeriveDomain])))
-  have h := Collision.firstCollisionOf_le K circuits settings runLimit (c := .prssSetup) (by decide) DeriveDomain hPc
+  have h := Collision.firstCollisionOf_le K circuits settings runLimit (c := .prssSetup) (by decide) (by decide)
+    DeriveDomain hPc
     0 _ (Collision.setupBudget K circuits settings hPc _ hsetup) (DigestBudgets.signQuiet (by decide)) prims D A q ready hA
     block out event hblock
   rw [Collision.runs_setups, SetupAgree.parties_length, check_terms_length] at h

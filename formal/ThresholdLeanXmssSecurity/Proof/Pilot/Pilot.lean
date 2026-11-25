@@ -246,6 +246,8 @@ inductive HashClass
   /-- The domains that the signing also uses, namely `Th` off the inputs of the MPC, the PRF and the
   masks. -/
   | signing
+  /-- The votes after the seed generation and after each run of a tree. -/
+  | vote
   deriving DecidableEq
 
 /-- The class of the domains of a setup in `phase`. -/
@@ -267,6 +269,7 @@ def queryClass {C : Committee} : Query C → HashClass
   | .streamKey _ => .stream
   | .coinKey .. => .challenge
   | .expand .. => .challenge
+  | .vote .. => .vote
 
 variable {C : Committee}
 

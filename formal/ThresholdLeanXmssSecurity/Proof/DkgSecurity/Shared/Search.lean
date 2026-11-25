@@ -631,7 +631,8 @@ theorem noProg_treeRun (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty
     UsedHit.NoProg (treeRun K circuits settings noMonitor D net tree) := by
   unfold treeRun
   exact UsedHit.NoProg.get.bind fun s => (UsedHit.NoProg.lift (Collision.noProgram_executePhase D net _ _ _)).bind
-    fun r => (UsedHit.NoProg.lift (noCall_pure _ _)).bind fun _ => UsedHit.NoProg.set _
+    fun r => (UsedHit.NoProg.lift (noCall_pure _ _)).bind fun _ =>
+      (UsedHit.NoProg.lift (Collision.noProgram_voteRound D net _ _)).bind fun _ => UsedHit.NoProg.set _
 
 omit [Fintype E] [DecidableEq E] in
 theorem noProg_treeRuns (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree) :
@@ -1242,15 +1243,43 @@ theorem wp_sharedRest_le (D : C.Coalition) (A : DkgTsigAdversary C E) (parameter
         dealt emu start).run w) f +
         ∑ b, pot prims (dealerSearch parameter seeds b) (· = none) w.1.1 := by
   unfold sharedRest
-  rw [sharedRuns_skipMode]
+  have e : ∀ m : Mode, (do
+      let s ← get
+      let (state, ok) ← inWorld (loggedWorld prims D) (voteRound worldRoles D A.net s.adversary fun i =>
+        ((s.operators i).keys).map seedVote)
+      set (votedStart D s state ok)
+      sharedRuns K circuits settings runLimit (loggedWorld prims D) Prod.fst m D A.net parameter seeds dealt
+        (committed ok emu) .top runLimit
+      sharedSigning K circuits settings runLimit (loggedWorld prims D) Prod.fst false m D A parameter seeds dealt
+        (committed ok emu) : SharedM C ProbComp (LogState C) A.net.State Bool) =
+      (do
+        let s ← get
+        let v ← inWorld (loggedWorld prims D) (voteRound worldRoles D A.net s.adversary fun i =>
+          ((s.operators i).keys).map seedVote)
+        set (votedStart D s v.1 v.2)
+        pure v.2 : SharedM C ProbComp (LogState C) A.net.State Bool) >>= (fun ok => do
+        sharedRuns K circuits settings runLimit (loggedWorld prims D) Prod.fst m D A.net parameter seeds dealt
+          (committed ok emu) .top runLimit
+        sharedSigning K circuits settings runLimit (loggedWorld prims D) Prod.fst false m D A parameter seeds dealt
+          (committed ok emu)) := fun m => by
+    simp only [bind_assoc, pure_bind]
+  rw [e Mode.real, e skipMode]
   refine wp_prefix_le _ _ _ _ f (fun w => ∑ b, pot prims (dealerSearch parameter seeds b) (· = none) w.1.1)
-    (fun _ s' w' => ?_) (fun s' w' => ?_) start w
-  · rw [wp_run_bind, wp_run_bind]
-    exact wp_sharedSigning_le prims K circuits settings runLimit D A parameter seeds dealt emu s' w' _
-      fun z => wp_le_one _ _ hf
-  · rw [wp_finsetSum]
-    exact Finset.sum_le_sum fun b _ => wp_sharedRuns_pot prims K circuits settings runLimit D A.net parameter seeds
-      dealt emu .top runLimit _ _ (onlySign_dealerSearch parameter seeds b) s' w'
+    (fun ok s₀ w₀ => ?_) (fun s₀ w₀ => ?_) start w
+  · rw [sharedRuns_skipMode]
+    refine wp_prefix_le _ _ _ _ f (fun w => ∑ b, pot prims (dealerSearch parameter seeds b) (· = none) w.1.1)
+      (fun _ s' w' => ?_) (fun s' w' => ?_) s₀ w₀
+    · rw [wp_run_bind, wp_run_bind]
+      exact wp_sharedSigning_le prims K circuits settings runLimit D A parameter seeds dealt (committed ok emu) s' w' _
+        fun z => wp_le_one _ _ hf
+    · rw [wp_finsetSum]
+      exact Finset.sum_le_sum fun b _ => wp_sharedRuns_pot prims K circuits settings runLimit D A.net parameter seeds
+        dealt (committed ok emu) .top runLimit _ _ (onlySign_dealerSearch parameter seeds b) s' w'
+  · simp only [inWorld, StateT.run_bind, StateT.run_get, StateT.run_lift, StateT.run_set, StateT.run_pure, pure_bind,
+      bind_assoc, wp_bind, wp_pure]
+    rw [wp_finsetSum]
+    exact Finset.sum_le_sum fun b _ => wp_pot_simulateQ prims D _ _ (onlySign_dealerSearch parameter seeds b) _
+      (searchSafe_of_noCall (Collision.noProgram_voteRound D A.net _ _)) w₀
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
 /-- The seed generation keeps the mean of the potential of each search of the dealer, from the empty

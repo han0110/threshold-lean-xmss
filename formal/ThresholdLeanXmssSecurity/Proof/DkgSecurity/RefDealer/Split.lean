@@ -162,12 +162,18 @@ theorem loggedWorld_noMpc (D : C.Coalition) {α : Type} (oa : OracleComp (WorldS
     exact ⟨z, hz, rfl⟩
   exact streamWorld_noMpc prims D oa w.1 hw _ hz'
 
-/-- The start state of the rest has the invariant. -/
-theorem refInv_startState {σ : Type} (D : C.Coalition) (state : σ) (keys : C.Party → Option (Keys C))
-    (w : LogState C) (hw : NoMpc w.1.1) : RefInv prims keys D (startState D state keys) w := by
-  refine ⟨fun i => rfl, hw, fun hflag => ⟨hflag, fun i _ h _ _ => ⟨fun t ht => ?_, fun b bt hb => ?_⟩⟩⟩
-  · simp [startState] at ht
-  · simp [startState] at hb
+/-- The state of the rest after the vote of the seed generation has the invariant with the keys after
+the vote. -/
+theorem refInv_votedStart {σ : Type} (D : C.Coalition) (state state' : σ) (keys : C.Party → Option (Keys C))
+    (ok : Bool) (w : LogState C) (hw : NoMpc w.1.1) :
+    RefInv prims (committed ok keys) D (votedStart D (startState D state keys) state' ok) w := by
+  refine ⟨fun i => rfl, hw, fun hflag => ⟨?_, fun i _ h _ _ => ⟨fun t ht => ?_, fun b bt hb => ?_⟩⟩⟩
+  · simp only [votedStart, startState, Bool.or_eq_false_iff] at hflag
+    cases ok
+    · simp [seedsDiffer, committed, votedStart, startState]
+    · exact hflag.1
+  · simp [votedStart, startState] at ht
+  · simp [votedStart, startState] at hb
 
 omit [Fintype E] [DecidableEq E] in
 /-- `SharedRefDealer` from the two parts. -/
@@ -179,15 +185,26 @@ theorem sharedRefDealer_of_parts (keeps : RefRunKeeps prims K circuits settings)
   refine ENNReal.toReal_mono ?_ ?_
   · exact prEvent_ne_top _
   unfold sharedReal sharedRestOf sharedRest
-  simp only [StateT.run_bind]
+  simp only [inWorld, StateT.run_bind, StateT.run_get, StateT.run_lift, StateT.run_set, pure_bind, bind_assoc]
   refine probEvent_bind_le_of_support _ _ _ _ _ fun p hp => ?_
-  simp only [bind_assoc]
+  refine probEvent_bind_le_of_support _ _ _ _ _ fun v hv => ?_
+  have hmpc : NoMpc v.2.1.1 := loggedWorld_noMpc prims D _ _ (loggedWorld_noMpc prims D _ _ noMpc_empty p hp) v hv
   refine probEvent_bind_le_of_support _ _ _ _ _ fun y hy => ?_
-  have hinv := sharedRuns_keeps prims K circuits settings runLimit keeps batch compute p.1.2 D A.net _ _ _ _ .top
-    runLimit _ p.2 (refInv_startState prims D p.1.1 p.1.2 p.2 (loggedWorld_noMpc prims D _ _ noMpc_empty p hp)) y hy
-  have h := signing batch compute p.1.2 D A y.1.2 y.2 hinv
-  simp only [Clean, StateT.run_pure, bind_pure_comp, prEvent_map]
-  exact h
+  have hinv := sharedRuns_keeps prims K circuits settings runLimit keeps batch compute (committed v.1.2 p.1.2) D A.net
+    _ _ _ _ .top runLimit _ v.2 (refInv_votedStart prims D p.1.1 v.1.1 p.1.2 v.1.2 v.2 hmpc) y hy
+  rcases hok : v.1.2 with _ | _
+  · have htop : topHolder D y.1.2.operators = none := by
+      unfold topHolder
+      split
+      · next i _ =>
+        rw [hinv.1 i, hok]
+        rfl
+      · rfl
+    simp [sharedSigning, htop, Clean]
+  · rw [hok] at hinv
+    have h := signing batch compute p.1.2 D A y.1.2 y.2 hinv
+    simp only [Clean, StateT.run_pure, bind_pure_comp, prEvent_map, Vote.committed_true]
+    exact h
 
 /-! ## One real run -/
 
@@ -267,27 +284,30 @@ theorem loggedWorld_cache_le (D : C.Coalition) {α : Type} (oa : OracleComp (Wor
 /-! ## The support of one recorded run -/
 
 omit [Fintype E] [DecidableEq E] in
-/-- An outcome of `sharedRunWith` in `loggedWorld` is an outcome of its phase with the kept outputs,
-the run count and the flag of the run. -/
+/-- An outcome of `sharedRunWith` in `loggedWorld` is an outcome of its phase and of its vote, with
+the outputs kept after the vote, the run count and the flag of the run. -/
 theorem sharedRunWith_support (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
     (program : C.Party → RecM C E TreeOutput) (tree : Tree) (s : RealState C net.State) (w : LogState C)
     (z : (PUnit × RealState C net.State) × LogState C)
     (hz : z ∈ support (((sharedRunWith K circuits settings (loggedWorld prims D) Prod.fst D net program tree).run s).run w)) :
     ∃ r ∈ support ((simulateQ (loggedWorld prims D) (executePhaseR worldRoles D net noFunctionality
         ([] : Record C E) (treeFuel circuits settings) s.adversary fun i => (program i).run.run)).run w),
-      z.2 = r.2 ∧ z.1.2 = ⟨r.1.1, fun i => (s.operators i).keep (r.1.2 i).output tree,
+      ∃ v ∈ support ((simulateQ (loggedWorld prims D) (voteRound worldRoles D net r.1.1 fun i =>
+        ((r.1.2 i).output).map (treeVote tree))).run r.2),
+      z.2 = v.2 ∧ z.1.2 = ⟨v.1.1, fun i => (s.operators i).keep (committed v.1.2 (fun i => (r.1.2 i).output) i) tree,
         Function.update s.runs tree (s.runs tree + 1), s.closed,
         s.flag || decide (PassBad K D (fun i => (r.1.2 i).record []) ∨
-          ReusedBefore D w.1.2 (fun i => (r.1.2 i).record []) ∨ GlobalEvent r.2.1)⟩ := by
+          ReusedBefore D w.1.2 (fun i => (r.1.2 i).record []) ∨ GlobalEvent r.2.1) ||
+          split D (committed v.1.2 fun i => (r.1.2 i).output)⟩ := by
   unfold sharedRunWith inWorld at hz
   simp only [StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, StateT.run_map, StateT.run_set,
     bind_assoc, mem_support_bind_iff, support_map, Set.mem_image] at hz
-  obtain ⟨x, ⟨x1, hx1, rfl⟩, r, hr, x2, ⟨x3, hx3, rfl⟩, hz⟩ := hz
+  obtain ⟨x, ⟨x1, hx1, rfl⟩, r, hr, x2, ⟨x3, hx3, rfl⟩, v, hv, hz⟩ := hz
   simp only [support_pure, Set.mem_singleton_iff] at hx1 hx3
   subst hx1 hx3
   simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
   subst hz
-  exact ⟨r, hr, rfl, rfl⟩
+  exact ⟨r, hr, v, hv, rfl, rfl⟩
 
 
 /-! ## The proof of `RefRunKeeps` -/
@@ -297,22 +317,30 @@ omit [Fintype E] [DecidableEq E] in
 theorem refRunKeeps_of_clean (clean : PassCleanOutput prims K circuits settings) :
     RefRunKeeps prims K circuits settings := by
   intro batch compute keys D net tree s w hinv z hz
-  obtain ⟨r, hr, hz2, hz1⟩ := sharedRunWith_support prims K circuits settings D net _ tree s w z hz
+  obtain ⟨r, hr, v, hv, hz2, hz1⟩ := sharedRunWith_support prims K circuits settings D net _ tree s w z hz
   have hkeys : ∀ i, (z.1.2.operators i).keys = (s.operators i).keys := fun i => by
     rw [hz1]
     exact Ready.keep_keys _ _ _
-  refine ⟨fun i => (hkeys i).trans (hinv.1 i), hz2 ▸ loggedWorld_noMpc prims D _ w hinv.2.1 r hr, fun hflag => ?_⟩
+  refine ⟨fun i => (hkeys i).trans (hinv.1 i),
+    hz2 ▸ loggedWorld_noMpc prims D _ r.2 (loggedWorld_noMpc prims D _ w hinv.2.1 r hr) v hv, fun hflag => ?_⟩
   rw [hz1] at hflag
   simp only [Bool.or_eq_false_iff, decide_eq_false_iff_not, not_or] at hflag
-  obtain ⟨hs, hbad, -, hglobal⟩ := hflag
+  obtain ⟨⟨hs, hbad, -, hglobal⟩, -⟩ := hflag
   obtain ⟨hsame, hout⟩ := hinv.2.2 hs
-  have hle : w.1.1 ≤ z.2.1.1 := hz2 ▸ loggedWorld_cache_le prims D _ w r hr
+  have hrv : r.2.1.1 ≤ z.2.1.1 := hz2 ▸ loggedWorld_cache_le prims D _ r.2 v hv
+  have hle : w.1.1 ≤ z.2.1.1 := le_trans (loggedWorld_cache_le prims D _ w r hr) hrv
   have hk : (fun i => (z.1.2.operators i).keys) = fun i => (s.operators i).keys := funext hkeys
   refine ⟨by rw [hk]; exact hsame, fun i hi h hg ha => ?_⟩
   have ha' : Agrees h w.1.1 := Agrees.mono hle ha
-  have ha'' : Agrees h r.2.1.1 := hz2 ▸ ha
+  have ha'' : Agrees h r.2.1.1 := Agrees.mono hrv ha
+  have hnew' : ∀ o, committed v.1.2 (fun i => (r.1.2 i).output) i = some o → ∀ h, Good prims h →
+      Agrees h r.2.1.1 → ∃ top, treeTop (s.operators i) tree = some top ∧
+        ThresholdLeanXmssSecurity.D prims h (referenceTree tweakable
+          (prfValue (gameSeeds D fun i => (s.operators i).keys)) (gameParameter D fun i => (s.operators i).keys)
+          top tree) = some o := fun o ho =>
+    clean batch compute D net tree s w hinv.2.1 (hinv.2.2 hs) r hr hbad hglobal i hi o
+      (ThresholdLeanXmssSecurity.Vote.committed_eq_some ho)
   obtain ⟨htop, hbottom⟩ := hout i hi h hg ha'
-  have hnew := clean batch compute D net tree s w hinv.2.1 (hinv.2.2 hs) r hr hbad hglobal i hi
   rw [hk]
   rw [hz1]
   cases tree with
@@ -321,10 +349,10 @@ theorem refRunKeeps_of_clean (clean : PassCleanOutput prims K circuits settings)
     · simp only [OperatorState.keep] at ht
       rcases hst : (s.operators i).top with _ | t'
       · simp only [hst, Option.orElse_eq_orElse, Option.orElse_none] at ht
-        rcases hro : (r.1.2 i).output with _ | o
+        rcases hro : committed v.1.2 (fun i => (r.1.2 i).output) i with _ | o
         · rw [hro] at ht
           simp [TreeOutput.topTree] at ht
-        · obtain ⟨top, htop', hD⟩ := hnew o hro h hg ha''
+        · obtain ⟨top, htop', hD⟩ := hnew' o hro h hg ha''
           simp only [treeTop, Option.some.injEq] at htop'
           subst htop'
           rw [hD]
@@ -347,10 +375,10 @@ theorem refRunKeeps_of_clean (clean : PassCleanOutput prims K circuits settings)
         rw [Function.update_self] at hb
         rcases hsb : (s.operators i).bottom b with _ | bt'
         · simp only [hsb, Option.orElse_eq_orElse, Option.orElse_none] at hb
-          rcases hro : (r.1.2 i).output with _ | o
+          rcases hro : committed v.1.2 (fun i => (r.1.2 i).output) i with _ | o
           · rw [hro] at hb
             simp [bottomOf] at hb
-          · obtain ⟨top, htop', hD⟩ := hnew o hro h hg ha''
+          · obtain ⟨top, htop', hD⟩ := hnew' o hro h hg ha''
             refine ⟨top, htop', ?_⟩
             rw [hD]
             rw [hro] at hb
@@ -653,7 +681,7 @@ omit [Fintype E] [DecidableEq E] in
 theorem flagUp_sharedRunWith (net : Adversary C E Unit PEmpty PEmpty) (program : C.Party → RecM C E TreeOutput)
     (tree : Tree) : FlagUp (sharedRunWith K circuits settings (loggedWorld prims D) Prod.fst D net program tree) := by
   intro s w hs z hz
-  obtain ⟨r, -, -, hz1⟩ := sharedRunWith_support prims K circuits settings D net program tree s w z hz
+  obtain ⟨r, -, v, -, -, hz1⟩ := sharedRunWith_support prims K circuits settings D net program tree s w z hz
   rw [hz1]
   simp [hs]
 

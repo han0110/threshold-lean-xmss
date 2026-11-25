@@ -43,6 +43,10 @@ needs a coupling or a bad event with a bound.
   soundness.
 * A signing request to an emulated operator with keys, a top tree and an output of the bottom tree
   goes to the oracle of the dealer, also when the emulated output of that operator is wrong.
+* After the seed generation, each emulated operator with keys votes on the parameter of the public
+  key of the dealer. In the game, each honest operator with keys votes on the parameter of its own
+  keys. The two agree
+  unless an emulated operator ends the seed generation with another parameter.
 -/
 
 set_option autoImplicit false
@@ -304,7 +308,9 @@ def emulatedRun (net : Adversary C E Unit PEmpty PEmpty) (openings : List (List 
   let (state, outputs) ← StateT.lift (executePhase (reductionRoles aes D) D net noFunctionality
     (treeFuel circuits settings) s.adversary fun i =>
       emulatedProgram K circuits settings buildingBlocks randomizer i (s.operators i) tree)
-  let operators := fun i => (s.operators i).keep (outputs i) tree
+  let (state, ok) ← StateT.lift (voteRound (reductionRoles aes D) D net state fun i =>
+    (outputs i).map (treeVote tree))
+  let operators := fun i => (s.operators i).keep (committed ok outputs i) tree
   let runs := Function.update s.runs tree (s.runs tree + 1)
   set (⟨state, operators, runs, s.closed, s.flag⟩ : RealState C net.State)
 
@@ -371,6 +377,9 @@ after the proofs of Lemmas 3 to 5 of Gurkan and others. It follows `dkgTsigRun`.
 
 * It asks `corrupt i` for each operator `i` of `D`.
 * It runs the seed generation with `A` and emulated honest operators (`seedGenEmulation`).
+* It runs the vote round after the seed generation and after each emulated run of a tree, as the
+  game does. An emulated operator with an output hashes its vote in the own table. After the seed
+  generation, each emulated operator with keys votes on the parameter of the public key.
 * It runs the top tree at most `runLimit` times, with the openings from the top tree of the dealer.
   A top run reads no randomizer, so it gets `0`.
 * If no honest operator holds a top tree, it outputs `idleForgery`, where the real game ends with no
@@ -382,8 +391,10 @@ def dkgReduction (A : DkgTsigAdversary C E) : TsigAdversary C := fun pk top =>
     let corrupt ← OverPermutation.sequenceFin fun i =>
       if i ∈ D.1 then tsigCall (.corrupt i) else (pure none : TableM C (Option (Keys C)))
     let (state, keys) ← seedGenEmulation aes D pk.parameter corrupt A.net
+    let (state, ok) ← voteRound (reductionRoles aes D) D A.net state fun i =>
+      (keys i).map fun _ => (.vote 0 0 [bitsOfDigest pk.parameter] : Query C)
     let start : RealState C A.net.State :=
-      ⟨state, fun i => ⟨keys i, none, fun _ => none⟩, fun _ => 0, fun _ => false, false⟩
+      ⟨state, fun i => ⟨committed ok keys i, none, fun _ => none⟩, fun _ => 0, fun _ => false, false⟩
     (do
       emulatedRuns K circuits settings runLimit aes D A.net (topLeak settings top) 0 .top runLimit
       match topHolder D (← get).operators with

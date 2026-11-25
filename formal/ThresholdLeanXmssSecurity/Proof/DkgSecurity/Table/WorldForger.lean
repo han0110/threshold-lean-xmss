@@ -110,7 +110,9 @@ def emulatedRunW (net : Adversary C E Unit PEmpty PEmpty) (openings : List (List
   let (state, outputs) ← StateT.lift (executePhase (forgerWorldRoles (C := C)) D net noFunctionality
     (treeFuel circuits settings) s.adversary fun i =>
       emulatedProgram K circuits settings buildingBlocks randomizer i (s.operators i) tree)
-  let operators := fun i => (s.operators i).keep (outputs i) tree
+  let (state, ok) ← StateT.lift (voteRound (forgerWorldRoles (C := C)) D net state fun i =>
+    (outputs i).map (treeVote tree))
+  let operators := fun i => (s.operators i).keep (committed ok outputs i) tree
   let runs := Function.update s.runs tree (s.runs tree + 1)
   set (⟨state, operators, runs, s.closed, s.flag⟩ : RealState C net.State)
 
@@ -164,8 +166,10 @@ def bodyW (A : DkgTsigAdversary C E) (pk : PublicKey) (top : TopTree) : WorldM C
   let corrupt ← OverPermutation.sequenceFin fun i =>
     if i ∈ D.1 then worldTsig dealt (.corrupt i) else (pure none : WorldM C (Option (Keys C)))
   let (state, keys) ← seedGenWorld D pk.parameter corrupt A.net
+  let (state, ok) ← voteRound (forgerWorldRoles (C := C)) D A.net state fun i =>
+    (keys i).map fun _ => (.vote 0 0 [bitsOfDigest pk.parameter] : Query C)
   let start : RealState C A.net.State :=
-    ⟨state, fun i => ⟨keys i, none, fun _ => none⟩, fun _ => 0, fun _ => false, false⟩
+    ⟨state, fun i => ⟨committed ok keys i, none, fun _ => none⟩, fun _ => 0, fun _ => false, false⟩
   (do
     emulatedRunsW K circuits settings runLimit D A.net (topLeak settings top) 0 .top runLimit
     match topHolder D (← get).operators with
@@ -186,8 +190,10 @@ def bodyR (A : DkgTsigAdversary C E) (pk : PublicKey) (top : TopTree) : TableM C
   let corrupt ← OverPermutation.sequenceFin fun i =>
     if i ∈ D.1 then tsigCall (.corrupt i) else (pure none : TableM C (Option (Keys C)))
   let (state, keys) ← seedGenEmulation aes D pk.parameter corrupt A.net
+  let (state, ok) ← voteRound (reductionRoles aes D) D A.net state fun i =>
+    (keys i).map fun _ => (.vote 0 0 [bitsOfDigest pk.parameter] : Query C)
   let start : RealState C A.net.State :=
-    ⟨state, fun i => ⟨keys i, none, fun _ => none⟩, fun _ => 0, fun _ => false, false⟩
+    ⟨state, fun i => ⟨committed ok keys i, none, fun _ => none⟩, fun _ => 0, fun _ => false, false⟩
   (do
     emulatedRuns K circuits settings runLimit aes D A.net (topLeak settings top) 0 .top runLimit
     match topHolder D (← get).operators with

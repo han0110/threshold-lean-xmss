@@ -16,6 +16,9 @@ The games between `dkgTsigGame` and `tsigGame (dkgReduction …)`, as programs o
   shifted building blocks of `DkgReduction.lean`.
 * `tableNet` and `tableRest` are the adversary and the distinguisher of the seed generation claim
   with a private table for each cell outside the class of the seed generation.
+
+The rest `secRest` starts with the vote of the seed generation on the keys of its start state
+(`votedStart`). After a veto the operators and the emulated operators have no keys.
 -/
 
 set_option autoImplicit false
@@ -65,8 +68,8 @@ def dealerTree {σ : Type} (dealer : Dealt C (RealM C σ)) (b : Fin (2 ^ layerHe
 
 /-! ## The runs -/
 
-/-- One emulated run of `tree` in the world, as `emulatedRun` of `DkgReduction.lean`. The emulated
-operator `i` has the keys `emu i` and the kept outputs of operator `i`. -/
+/-- One emulated run of `tree` in the world, as `emulatedRun` of `DkgReduction.lean`, with its vote.
+The emulated operator `i` has the keys `emu i` and the kept outputs of operator `i`. -/
 def worldEmulatedRun (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
     (emu : C.Party → Option (Keys C)) (openings : List (List (List Bit))) (randomizer : Randomizer)
     (tree : Tree) : RealM C net.State Unit := do
@@ -76,7 +79,8 @@ def worldEmulatedRun (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
     (treeFuel circuits settings) s.adversary fun i =>
       emulatedProgram K circuits settings buildingBlocks randomizer i
         ⟨emu i, (s.operators i).top, (s.operators i).bottom⟩ tree)
-  let operators := fun i => (s.operators i).keep (outputs i) tree
+  let (state, ok) ← StateT.lift (voteRound worldRoles D net state fun i => (outputs i).map (treeVote tree))
+  let operators := fun i => (s.operators i).keep (committed ok outputs i) tree
   let runs := Function.update s.runs tree (s.runs tree + 1)
   set (⟨state, operators, runs, s.closed, s.flag⟩ : RealState C net.State)
 
@@ -170,13 +174,31 @@ def secSigning (m : Mode) (D : C.Coalition) (A : DkgTsigAdversary C E)
       (A.forge ⟨dealer.top.root, dealer.parameter⟩ dealer.top)).run ⟨D.1, fun _ => none, [], fun _ => none⟩
     forgeryWins realLift dealer st forgery
 
-/-- The rest of a game after the seed generation, namely the runs of the top tree and the signing
-phase, in the mode `m`. -/
+/-- The state after the vote of the seed generation, from the state `s` before the vote, the state
+`state` of the adversary after the vote and the decision `ok`. The operators keep their keys after
+the vote, and the flag also holds for a split, as in `seedState`. -/
+def votedStart {σ : Type} (D : C.Coalition) (s : RealState C σ) (state : σ) (ok : Bool) : RealState C σ :=
+  { s with
+    adversary := state
+    operators := fun i => { s.operators i with keys := committed ok (fun j => (s.operators j).keys) i }
+    flag := s.flag || split D (committed ok fun j => (s.operators j).keys) }
+
+/-- The state after the vote from `startState` is `seedState`. -/
+theorem votedStart_startState {σ : Type} (D : C.Coalition) (state state' : σ) (keys : C.Party → Option (Keys C))
+    (ok : Bool) : votedStart D (startState D state keys) state' ok = seedState D state' keys ok := rfl
+
+/-- The rest of a game after the seed generation, namely the vote of the seed generation on the keys
+of the state, the runs of the top tree and the signing phase, in the mode `m`. After the vote the
+emulated operators keep `committed ok emu`. -/
 def secRest (m : Mode) (D : C.Coalition) (A : DkgTsigAdversary C E)
     (parameter : PublicParameter) (seeds : C.Term → HashOutput) (dealt : C.Party → Keys C)
     (emu : C.Party → Option (Keys C)) : RealM C A.net.State Bool := do
-  secRuns K circuits settings runLimit m D A.net parameter seeds dealt emu .top runLimit
-  secSigning K circuits settings runLimit m D A parameter seeds dealt emu
+  let s ← get
+  let (state, ok) ← StateT.lift (voteRound worldRoles D A.net s.adversary fun i =>
+    ((s.operators i).keys).map seedVote)
+  set (votedStart D s state ok)
+  secRuns K circuits settings runLimit m D A.net parameter seeds dealt (committed ok emu) .top runLimit
+  secSigning K circuits settings runLimit m D A parameter seeds dealt (committed ok emu)
 
 /-- The rest of the game with real runs, from the state of the adversary and the keys of the honest
 operators after a seed generation. The dealer has the seeds and the parameter of the game. -/

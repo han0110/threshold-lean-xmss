@@ -855,7 +855,8 @@ theorem noProg_fixedTreeRun (j : ℕ) (D : C.Coalition) (net : Adversary C E Uni
   unfold fixedTreeRun
   exact NoProg.get.bind fun s => (NoProg.lift (Collision.noProgram_free _)).bind fun fresh =>
     (NoProg.lift (Collision.noProgram_executePhase D net _ _ _)).bind fun r =>
-      (NoProg.lift (noProgram_wrongOutput D _ tree _)).bind fun _ => NoProg.set _
+      (NoProg.lift (noProgram_wrongOutput D _ tree _)).bind fun _ =>
+        (NoProg.lift (Collision.noProgram_voteRound D net _ _)).bind fun _ => NoProg.set _
 
 theorem noProg_fixedTreeRuns (j : ℕ) (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree) :
     ∀ count, NoProg (fixedTreeRuns K circuits settings runLimit j (wrongOutput D) D net tree count)
@@ -982,7 +983,7 @@ theorem fixedTreeRun_runs (j : ℕ) (D : C.Coalition) (net : Adversary C E Unit 
   unfold fixedTreeRun at hr
   simp only [StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, bind_assoc, StateT.run_set,
     mem_support_bind_iff, support_pure, Set.mem_singleton_iff] at hr
-  obtain ⟨_, _, _, _, _, _, rfl⟩ := hr
+  obtain ⟨_, _, _, _, _, _, _, _, rfl⟩ := hr
   rfl
 
 end NoProgram

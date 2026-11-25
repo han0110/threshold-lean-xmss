@@ -56,6 +56,9 @@ of an output signature stay meaningful.
 
 * There are `n = 2t - 1` operators, synchronous rounds and private authenticated links (GS20,
   Section 3.1). At most `t - 1` operators are corrupt.
+* The setup also has a broadcast channel for one vote after the seed generation and after each whole
+  run of a tree. So each honest operator keeps its own output of a run, or each honest operator
+  discards it.
 * The coalition of the setup is static, as in GS20 and in Gurkan and others. In `dkgTsigGame` it is
   corrupt from the start and stays the same for the whole life of the keys. The adversary of
   `tsigGame` corrupts adaptively, and a corruption gives only the keys of an operator (PRAWNS).
@@ -123,10 +126,14 @@ structure Theorems (prims : Primitives) (K : Constants C E) (circuits : Circuits
   `dkgError C q` and the PRF advantage of the streams more often than that forger. -/
   dkgSecurityPreservation : CircuitsCompute circuits prims.Th →
     DkgSecurityPreservation prims K circuits settings runLimit (dkgReduction K circuits settings runLimit)
-  /-- Against an adversary with a static coalition and budget `q`, two honest operators hold
-  inconsistent seeds, or an honest operator ends a run of a tree with a wrong output, with
-  probability at most `dkgCorrectnessError C q` and the PRF advantage of the streams. An abort is no
-  win (Gurkan and others, Definition 6, agreement clause, adapted). -/
+  /-- Under the premises of the field, against an adversary with a static coalition and budget
+  `q`, the probability of the union of three events is at most `dkgCorrectnessError C q` plus the
+  PRF advantage of the streams. Two honest operators end the seed generation with inconsistent seeds,
+  or an honest operator ends a run of a tree with a wrong output, or one honest operator keeps the
+  output of the seed generation or of a run after its vote and another keeps none. A common abort
+  alone is no win
+  (Gurkan and others, Definition 6, agreement clause, adapted, with the delivery clause of
+  Goldwasser and Lindell, Definition 3). -/
   dkgCorrectness : CircuitsCompute circuits prims.Th → DkgCorrectness prims K circuits settings runLimit
   /-- With no corrupt operator, each operator ends with its keys, the top tree and bottom tree `b`
   except with probability at most `dkgAbortError C b`. The outputs of all operators are within

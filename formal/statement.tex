@@ -176,9 +176,12 @@ one state.
 of \cite{GJM+21} asks.
 \item The seed generation, the top tree and each bottom tree run as the real protocols on the
 network. No functionality is on the real side.
-\item Each honest operator keeps its own keys and the first output of its own runs of each tree.
+\item One vote round on a broadcast channel follows the seed generation and each run of a tree
+(\lean{voteRound}). It is the agreement step. Each operator keeps its output of a run only if all
+votes are one hash that is not \lean{abort}.
+\item Each honest operator keeps its own keys and the first output of its own runs of each tree,
+after the vote of that run.
 \item A run of the top tree needs local keys. A run of a bottom tree also needs a local top tree.
-\item The game has no agreement step.
 \item The public key and the top tree are those of the first honest operator that holds a top
 tree.
 \item With no such operator, the adversary does not win.
@@ -199,8 +202,10 @@ signing phase by $q$ in total.
 \item \lean{dkgTreeGame} is the same run with a monitor, and its output is a flag.
 \item The flag holds when two honest operators hold inconsistent seeds after the seed generation.
 \item The flag also holds when an honest operator ends a run of a tree with an output that is not
-the output of \lean{referenceTree}.
-\item An abort sets no flag.
+the output of \lean{referenceTree}. Both tests take the outputs before the vote.
+\item The flag also holds for a split of the honest operators after a vote, which the vote
+excludes on each path.
+\item A common abort alone sets no flag.
 \item \lean{honestDkg}~$b$ runs the seed generation, the top tree and bottom tree $b$ with no
 corrupt operator.
 \item \lean{dealerDkg}~$b$ gives each operator its keys, the top tree and bottom tree $b$ from
@@ -425,15 +430,20 @@ $n=33$, $\mathsf{runLimit}=8$, $q=2^{64}$ & $2^{-102.1}$ & $2^{-129.0}$ and $2^{
 \caption{The value of $\mathsf{dkgError}$ for one batch for each ceremony and $2^{20}$ tuples in a batch.}\label{tab:dkgerror}
 \end{table}
 
-\paragraph{Correctness with abort}
+\paragraph{Correctness with unanimous abort}
 The claim is \lean{DkgCorrectness}, and the theorem \lean{dkgCorrectness} proves it. Against $A$,
 \[
  \Pr[\mathsf{dkgTreeGame}\text{ flags}]\le\mathsf{dkgCorrectnessError}(q)+\mathsf{adv}(\mathsf{dkgTreeGame}).
 \]
 \begin{itemize}
 \item The flag holds for inconsistent seeds of two honest operators, or for an output of an honest
-operator that is not the output of \lean{referenceTree}.
-\item An abort is no win, so the claim allows a selective abort.
+operator that is not the output of \lean{referenceTree}. Both tests take the outputs of the
+ceremony, also when the vote discards them.
+\item The flag also holds for a split: after the vote of the seed generation or of a run of a tree,
+one honest operator keeps its output and another keeps none. The vote on the broadcast channel
+excludes a split on each path.
+\item A common abort alone is no win. This is the delivery clause of security with unanimous abort
+(\cite{GL05}, Definition~3).
 \item The nearest model is the first clause of robustness (\cite{GJM+21}, Definition~6), by which
 all honest parties agree on one public key.
 \item Consistent seeds and reference outputs take the place of one public key.
@@ -538,8 +548,9 @@ Section~\ref{sec:chain}.
 \item Each run of a tree is atomic. No signing request and no other run happens during a run.
 \item A deployment that builds a bottom tree during a signing session is outside the claims.
 \item Each tree has at most $\mathsf{runLimit}$ runs, and the bounds grow with $\mathsf{runLimit}$.
-\item The abort is selective. A corrupt operator can stop each run and each signature, and no claim
-covers liveness.
+\item The abort is unanimous. The seed generation and each whole run of a tree end with one vote on
+a broadcast channel, and each honest operator keeps its own output of the run or each one discards
+it. A corrupt operator can stop each run and each signature, and no claim covers liveness.
 \item No claim covers concurrent runs or concurrent batches. The implementation runs batches
 concurrently.
 \item No claim covers transport authentication.
@@ -559,9 +570,10 @@ The table keeps the differences that change the meaning of a claim, with their i
 Row & Source & This model and the effect on the claim \\
 \midrule
 \endhead
-A1 & GS20 Functionalities 5, 16 and 18 have a common abort. & Each operator aborts alone
-\cite{GL05}. Each honest operator acts only on what it holds, and \lean{dkgCorrectness} counts an
-abort as no win. \\
+A1 & GS20 Functionalities 5, 16 and 18 have a common abort. GS20 has no vote. & Each operator
+aborts alone inside a ceremony. One vote on a broadcast channel after each run makes the abort
+unanimous (\cite{GL05}, Section~1.5). The hash of the public result in the vote has no source.
+\lean{dkgCorrectness} counts a split as a win and a common abort alone as no win. \\
 \rowrule
 A2 & GS20 is information-theoretic. & $H$ is a random oracle and AES-128 is the PRG. The bounds of
 the setup have hash terms. \lean{dkgSecurityPreservation} and \lean{dkgCorrectness} also have $\mathsf{adv}$. \\
@@ -596,7 +608,8 @@ cost bound. No source. \\
 G3 & \cite{GJM+21} has games with one key. & The game is a threshold game with key shares, and the
 bottom trees run during the signing phase. No source. \\
 \rowrule
-G5 & \cite{GJM+21} has no abort. & The abort is selective. No source. \\
+G5 & \cite{GJM+21} has no abort. & The abort is unanimous, with the delivery clause of
+\cite{GL05}, Definition~3. The hash vote has no source. \\
 \rowrule
 G7 & The DKG of \cite{GJM+21} runs one time. & Each tree has at most $\mathsf{runLimit}$ atomic
 runs. Each operator keeps the first output of its runs. No source. \\
@@ -605,7 +618,8 @@ G12 & \cite{GJM+21} has one key line. & The public key and the trees of the win 
 the first honest operator that holds them. No source. \\
 \rowrule
 G13, G14 & \cite{GJM+21} has PPT adversaries and a broadcast channel. & The adversaries are bounded
-only by their queries, with no source. The links are private with no broadcast. \\
+only by their queries, with no source. The links are private, and a broadcast channel carries
+only the one vote after each run. \\
 \rowrule
 G15 & Definition 6 of \cite{GJM+21} also asks that honest shares reconstruct the secret key. &
 \lean{dkgCorrectness} omits this clause. No source. \\

@@ -17,6 +17,23 @@ of the deployment contract (`statement.tex`) are code of the game.
   tree by `tree b`. The first signing request on a bottom tree ends its runs.
 * By rule 4, the game keeps only the outputs of a run.
 
+The seed generation and each whole run of a tree end with one vote on a broadcast channel
+(`voteRound`). An operator keeps its output only if the vote of each operator equals its own vote.
+So each honest operator keeps its own output of that run, or each honest operator discards it. This
+is the delivery clause of security with unanimous abort (Goldwasser and Lindell, ePrint 2002/040,
+Definition 3). The claims of this project are games, and they do not state the comparison of that
+paper between a real and an ideal execution.
+
+* The broadcast of the status after the end of a protocol with abort is in Section 1.5 of that
+  paper.
+* An honest operator sends a hash of its public result when its run gives an output, and `abort`
+  when it gives none. The vote says yes exactly when each operator has a vote and all votes are one
+  message that is not `abort`. No source.
+* A run of a bottom tree has two ceremonies and one vote. A veto of a run leaves the outputs of
+  earlier runs in place. No source.
+* Each corrupt receiver sees the vote of each honest operator, also in a run that the vote
+  discards.
+
 The game restricts the execution in four points.
 
 * `Th` is the fixed function `prims.Th` on the inputs that the MPC evaluates, with fixed circuits.
@@ -106,8 +123,9 @@ second PRSS setup of a bottom tree. -/
 def treeFuel : ℕ := setupRounds + ceremonyFuel circuits settings
 
 /-- The most rounds of the adversary in one game, namely the seed generation and `runLimit` runs of
-the top tree and of each bottom tree. -/
-def dkgTsigRounds : ℕ := setupRounds + runLimit * (1 + 2 ^ layerHeight) * treeFuel circuits settings
+the top tree and of each bottom tree, each with its vote round. -/
+def dkgTsigRounds : ℕ :=
+  setupRounds + (1 + runLimit * (1 + 2 ^ layerHeight) * (treeFuel circuits settings + 1))
 
 /-- The budget of an adversary, as a count of its calls. Its start makes at most `start`
 calls of `H` and `PRG`, each round at most `step`, and `forge` has cost at most `forge` on every
@@ -180,6 +198,73 @@ differ. -/
 def startState {σ : Type} (D : C.Coalition) (state : σ) (keys : C.Party → Option (Keys C)) : RealState C σ :=
   ⟨state, fun i => ⟨keys i, none, fun _ => none⟩, fun _ => 0, fun _ => false, seedsDiffer D keys⟩
 
+/-! ## The vote at the end of a setup ceremony -/
+
+/-- The split of the honest operators. One honest operator keeps an output and another keeps none. -/
+def split {α : Type} (D : C.Coalition) (kept : C.Party → Option α) : Bool :=
+  decide (∃ i j, i ∉ D.1 ∧ j ∉ D.1 ∧ (kept i).isSome ∧ (kept j).isNone)
+
+/-- The vote of each operator on the broadcast channel. An honest operator has the one vote
+`honest j` for all receivers. The vote of a corrupt operator `j` is the message `sent j j` of the
+round of the adversary, one message for all receivers. -/
+def broadcast (D : C.Coalition) (honest : C.Party → Msg E) (sent : C.Party → C.Party → Option (Msg E))
+    (j : C.Party) : Option (Msg E) :=
+  if j ∈ D.1 then sent j j else some (honest j)
+
+/-- The decision of the vote. All votes are one vote that is not `abort`. -/
+def decision (votes : C.Party → Option (Msg E)) : Bool :=
+  decide (∃ v, v ≠ Msg.abort ∧ ∀ j, votes j = some v)
+
+/-- The outputs after the vote. `true` gives the outputs as they are, and `false` gives no output
+to each operator. -/
+def committed {α : Type} (ok : Bool) (outputs : C.Party → Option α) (i : C.Party) : Option α :=
+  if ok then outputs i else none
+
+/-- The vote round after a ceremony, for the roles of the game and of the forger. `input i` is the
+hash input of the public result of operator `i`, with no input when its ceremony gave no output.
+
+* Each honest operator with an input hashes it and sends the hash. Each other honest operator sends
+  `abort`.
+* The adversary is rushing. It receives the vote of each honest operator at each corrupt receiver,
+  and then it gives the messages of the corrupt operators for the round.
+* The result is the decision, which all operators share. -/
+def voteRound {m : Type → Type} [Monad m] (Ro : Roles C m) (D : C.Coalition)
+    (net : Adversary C E Unit PEmpty PEmpty) (state : net.State) (input : C.Party → Option (Query C)) :
+    m (net.State × Bool) := do
+  let honest ← OverPermutation.sequenceFin fun j => match input j with
+    | some q => if j ∈ D.1 then pure Msg.abort else
+        Ro.honest ((fun h => Msg.hashes [h]) <$> liftComp (hashQuery q) _)
+    | none => pure Msg.abort
+  let (state, sent) ← Ro.adversary (net.round state fun c i => if c ∈ D.1 ∧ i ∉ D.1 then some (honest i) else none)
+  pure (state, decision (broadcast D honest sent))
+
+/-- The hash input of the vote of the seed generation, namely the public parameter. -/
+def seedVote (keys : Keys C) : Query C := .vote 0 0 [bitsOfDigest keys.parameter]
+
+/-- The hash input of the vote of a tree, namely its index and the digests of its public output in
+the order of its jobs. A bottom tree also has the signature of its root. The last case is not
+reached by an honest operator, because a run of the top tree gives an output of the top tree and a
+run of a bottom tree gives an output of a bottom tree. -/
+def treeVote : Tree → TreeOutput → Query C
+  | .top, .top tree => .vote 1 0 ((topJobs.map fun job => match job.kind with
+      | .chainEnd e l => bitsOfDigest (tree.chainEnd e l)
+      | _ => []) ++ [bitsOfDigest tree.root])
+  | .bottom b, .bottom tree => .vote 2 b.val (((bottomJobs b).map fun job => match job.kind with
+      | .chainRow e l =>
+          bitsOfDigest (tree.cpk e l).1 ++ bitsOfDigest (tree.cpk e l).2.1 ++ bitsOfDigest (tree.cpk e l).2.2
+      | .commitment e => bitsOfDigest (tree.commitment e)
+      | _ => []) ++ [bitsOfDigest tree.root, bitsOfDigest tree.topSignature.randomizer] ++
+      ((List.finRange chainCount).map fun l => bitsOfDigest (tree.topSignature.chainValues l)) ++
+      ((List.finRange layerHeight).map fun k => bitsOfDigest (tree.topSignature.authenticationPath k)))
+  | _, _ => .vote 3 0 []
+
+/-- The state after the seed generation and its vote `ok`. The operators keep the keys after the
+vote. The flag holds when the seeds of the seed generation differ, also when the vote discards them,
+or when the keys after the vote have a split. -/
+def seedState {σ : Type} (D : C.Coalition) (state : σ) (keys : C.Party → Option (Keys C)) (ok : Bool) :
+    RealState C σ :=
+  { startState D state (committed ok keys) with flag := seedsDiffer D keys || split D (committed ok keys) }
+
 /-- The output of bottom tree `b` at the first honest operator that holds one. -/
 def heldBottom (D : C.Coalition) (operators : C.Party → OperatorState C) (b : Fin (2 ^ layerHeight)) :
     Option BottomTree :=
@@ -232,17 +317,21 @@ def treeProgram (i : C.Party) (operator : OperatorState C) : Tree → PartyM C E
     | some keys, some top => newTree K circuits settings i keys top (.bottom b)
     | _, _ => failure
 
-/-- One run of `tree` on the network with `net`, from the state of `net`. Each operator keeps its
-first output, and the run sets the flag when `monitor` holds. -/
+/-- One run of `tree` on the network with `net`, from the state of `net`, and its vote. Each
+operator keeps its first output after the vote. The run sets the flag when `monitor` holds on the
+outputs of the ceremony, also when the vote discards them, or when the outputs after the vote have a
+split. -/
 def treeRun (monitor : TreeMonitor C) (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
     (tree : Tree) : RealM C net.State Unit := do
   let s ← get
   let (state, outputs) ← StateT.lift (executePhase worldRoles D net noFunctionality (treeFuel circuits settings)
     s.adversary fun i => treeProgram K circuits settings i (s.operators i) tree)
   let bad ← StateT.lift (monitor (fun i => (s.operators i).keys) tree outputs)
-  let operators := fun i => (s.operators i).keep (outputs i) tree
+  let (state, ok) ← StateT.lift (voteRound worldRoles D net state fun i => (outputs i).map (treeVote tree))
+  let kept := committed ok outputs
+  let operators := fun i => (s.operators i).keep (kept i) tree
   let runs := Function.update s.runs tree (s.runs tree + 1)
-  set (⟨state, operators, runs, s.closed, s.flag || bad⟩ : RealState C net.State)
+  set (⟨state, operators, runs, s.closed, s.flag || bad || split D kept⟩ : RealState C net.State)
 
 /-- A run of `tree` is allowed. The tree has fewer than `runLimit` runs, an honest operator has no
 output of it, and a bottom tree has no signing request. -/
@@ -337,18 +426,22 @@ def dkgTsigRun (monitor : TreeMonitor C) (D : C.Coalition) (A : DkgTsigAdversary
     OracleComp (WorldSpec C) (Bool × Bool) := do
   let (state, keys) ← realExecution D A.net noFunctionality setupRounds
     (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) (fun _ => ()) []
+  let (state, ok) ← voteRound worldRoles D A.net state fun i => (keys i).map seedVote
   let (win, s) ← (do
       treeRuns K circuits settings runLimit monitor D A.net .top runLimit
-      dkgSigning K circuits settings runLimit monitor D A).run (startState D state keys)
+      dkgSigning K circuits settings runLimit monitor D A).run (seedState D state keys ok)
   pure (win, s.flag)
 
 /-- The game `G^tsig` of PRAWNS with the real setup. -/
 def dkgTsigGame (D : C.Coalition) (A : DkgTsigAdversary C E) : OracleComp (WorldSpec C) Bool :=
   Prod.fst <$> dkgTsigRun K circuits settings runLimit noMonitor D A
 
-/-- The game of inconsistent seeds or a wrong output. The adversary wins if two honest operators hold
-inconsistent seeds after the seed generation, or if an honest operator ends a run of a tree with an
-output that is not the output of `referenceTree` on the seeds of the game. -/
+/-- The game of inconsistent seeds, a wrong output or a split. The adversary wins if two honest
+operators hold inconsistent seeds after the seed generation, or if an honest operator ends a run of
+a tree with an output that is not the output of `referenceTree` on the seeds of the game. Both tests
+take the outputs of the ceremony, so they also see an output that the vote discards. The adversary
+also wins if one honest operator keeps the output of the seed generation or of a run of a tree after
+its vote and another honest operator keeps none. The vote excludes this last event on each path. -/
 def dkgTreeGame (D : C.Coalition) (A : DkgTsigAdversary C E) : OracleComp (WorldSpec C) Bool :=
   Prod.snd <$> dkgTsigRun K circuits settings runLimit (wrongOutput D) D A
 
@@ -366,10 +459,11 @@ abbrev SetupOutputs (C : Committee) := C.Party → Option (Keys C) × Option Top
 def honestDkg (b : Fin (2 ^ layerHeight)) : OracleComp (WorldSpec C) (SetupOutputs C) := do
   let (state, keys) ← realExecution noCoalition honestNet noFunctionality setupRounds
     (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) (fun _ => ()) []
+  let (state, ok) ← voteRound worldRoles noCoalition honestNet state fun i => (keys i).map seedVote
   let (_, s) ← (do
       treeRuns K circuits settings runLimit noMonitor noCoalition honestNet .top runLimit
       treeRuns K circuits settings runLimit noMonitor noCoalition honestNet (.bottom b) runLimit).run
-    (startState noCoalition state keys)
+    (seedState noCoalition state keys ok)
   pure fun i => ((s.operators i).keys, (s.operators i).top, (s.operators i).bottom b)
 
 /-- `dealerKeyGen` and bottom tree `b` of its trees, at each operator. -/

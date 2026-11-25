@@ -8,8 +8,14 @@
 //! - Then `rerand` reshares its outputs, `mult_verification` checks its AND tuples and the reshare, and `open` opens
 //!   the reshared outputs.
 //! - Each ceremony starts with its own `Party`, which derives fresh PRSS keys and drops them at the end.
-//! - A retry of the top ceremony reuses the `operator` file. The operators delete that file together only when the key
-//!   generation itself failed at an operator.
+//! - The seed generation, the top tree and each bottom tree end with a vote on the public result, in `unanimous`.
+//!   - An operator writes its files only after all operators vote for the same result. So all honest operators keep the
+//!     result or none keeps it.
+//!   - The vote assumes a broadcast channel. It is an addition to the note and to GS20, in which each party aborts
+//!     alone.
+//!   - A bottom tree has one vote for its two ceremonies, because it writes one file.
+//! - A retry of the top ceremony reuses the `operator` file. If only some operators hold that file, all operators
+//!   delete it before a retry.
 //! - Each operator starts the batches in batch order and runs at most `concurrency` of them at the same time.
 //!   - So operators with different concurrencies do not deadlock.
 //! - The top tree opens the chain ends. A bottom tree also opens the masked middle values, so that a quorum signs with
@@ -29,18 +35,20 @@ use std::io::Write;
 use std::ops::Deref;
 use std::os::unix::fs::{DirBuilderExt, FileExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
+use std::pin::pin;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use futures::stream::{self, StreamExt, TryStreamExt};
 use primitives::field::F128;
+use tokio::time::sleep;
 use tracing::info;
 
 use crate::check;
 use crate::circuit::{self, HashPublic};
-use crate::mpc::{Group, LANES, Party, Replicated, Reshare, Tuples, Word};
-use crate::net::{Channel, Network};
+use crate::mpc::{Group, Key, LANES, Party, Replicated, Reshare, Tag, Tuples, Word, tag, tagged_hash};
+use crate::net::{Channel, Network, pack};
 use crate::prawns::{self, ChainRow, Operator, digest_lanes};
 use crate::wots::{
     self, Digest, KEYS, LAYER_HEIGHT, LAYER_SIG_SIZE, Layer, TWEAK_CHAIN, TWEAK_RANDOMIZER, V, layer_address,
@@ -334,6 +342,61 @@ async fn ceremony(
     Ok((leaves, cpk, commitments, randomizer, ands, rounds))
 }
 
+/// The tag of the vote of a ceremony.
+pub const VOTE: &Tag = &tag(b"thlxmss-vote");
+
+/// Runs `ceremony` and then the vote on its public result, so that all operators commit its output or all abort.
+///
+/// - `ceremony` gives its output and its vote, the hash of its public result.
+/// - Each operator broadcasts its vote. The vote is empty if its ceremony fails or does not end in `time_limit`.
+/// - An empty vote of another operator stops the ceremony of this operator, as the abort message of GS20 (ePrint
+///   2020/134), Protocol 6. An operator that left the ceremony cannot make the others wait for it.
+/// - The operator commits only if its ceremony gives an output and the vote of each operator equals its own vote. This
+///   is the broadcast at the end of a protocol with abort of Goldwasser and Lindell (ePrint 2002/040), Section 1.5,
+///   with the hash of the public result in the place of one bit.
+/// - The vote assumes a broadcast channel, on which all operators receive the same vote of an operator. The proof of
+///   concept sends the vote on the channels between the operators.
+/// - `doc/dkg.md`, Section 3.3, names each adaptation of the two sources.
+async fn unanimous<T>(
+    network: &Arc<Network>,
+    time_limit: Duration,
+    ceremony: impl AsyncFnOnce() -> Result<(T, Key), String>,
+) -> Result<T, String> {
+    // The vote channel opens before the channels of the ceremony, so all operators give it the same tag.
+    let mut channel = network.channel();
+    let mut waiting: Vec<bool> = (0..network.n).map(|j| j != network.id).collect();
+    let mut votes = vec![vec![]; network.n];
+    let outcome = {
+        let (mut ceremony, mut expiry) = (pin!(ceremony()), pin!(sleep(time_limit)));
+        loop {
+            tokio::select! {
+                outcome = &mut ceremony => break outcome,
+                () = &mut expiry => break Err(format!("the ceremony takes more than {time_limit:?}")),
+                (j, vote) = channel.receive(&waiting), if waiting.contains(&true) => {
+                    (waiting[j], votes[j]) = (false, vote.unwrap_or_default());
+                    if votes[j].is_empty() {
+                        break Err(format!("operator {j} aborts"));
+                    }
+                }
+            }
+        }
+    };
+    let vote = outcome.as_ref().map_or(vec![], |(_, vote)| pack(vote));
+    channel.send(vec![vote.clone(); network.n]);
+    let (output, _) = outcome?;
+    while waiting.contains(&true) {
+        let (j, received) = channel.receive(&waiting).await;
+        (waiting[j], votes[j]) = (false, received.unwrap_or_default());
+        if votes[j].is_empty() {
+            return Err(format!("operator {j} aborts"));
+        }
+    }
+    match (0..network.n).find(|&j| j != network.id && votes[j] != vote) {
+        Some(j) => Err(format!("operator {j} has another result")),
+        None => Ok(output),
+    }
+}
+
 async fn party(
     group: Group,
     operator: &Operator,
@@ -351,12 +414,18 @@ pub async fn new_top_tree(
     reshare: Reshare,
     batch_size: usize,
     concurrency: usize,
+    time_limit: Duration,
 ) -> Result<Vec<u8>, String> {
     let (group, operator) = match dir.join("operator").exists() {
         true => Operator::load(dir),
         false => {
             let group = Group::new(network.n.div_ceil(2));
-            let operator = prawns::seed_gen(&group, network).await?;
+            let seed_gen = async || {
+                let operator = prawns::seed_gen(&group, network).await?;
+                let vote = tagged_hash(VOTE, &[&[0], &operator.public_parameter]);
+                Ok((operator, vote))
+            };
+            let operator = unanimous(network, time_limit, seed_gen).await?;
             DirBuilder::new().recursive(true).mode(0o700).create(dir).unwrap();
             OpenOptions::new()
                 .write(true)
@@ -369,15 +438,21 @@ pub async fn new_top_tree(
             (group, operator)
         }
     };
-    let party = party(group, &operator, network, reshare, batch_size).await?;
-    let keys: Vec<u32> = (0..KEYS as u32).collect();
-    let (leaves, ..) = ceremony(&party, operator.public_parameter, Layer::Top, &keys, concurrency).await?;
-    let pk = [
-        wots::levels(&operator.public_parameter, Layer::Top, 0, leaves.clone())[LAYER_HEIGHT][0],
-        operator.public_parameter,
-    ]
-    .concat();
-    fs::write(dir.join("top"), leaves.concat()).unwrap();
+    let top_tree = async || {
+        let party = party(group, &operator, network, reshare, batch_size).await?;
+        let keys: Vec<u32> = (0..KEYS as u32).collect();
+        let (leaves, ..) = ceremony(&party, operator.public_parameter, Layer::Top, &keys, concurrency).await?;
+        let pk = [
+            wots::levels(&operator.public_parameter, Layer::Top, 0, leaves.clone())[LAYER_HEIGHT][0],
+            operator.public_parameter,
+        ]
+        .concat();
+        let top = leaves.concat();
+        let vote = tagged_hash(VOTE, &[&[1], &top, &pk]);
+        Ok(((top, pk), vote))
+    };
+    let (top, pk) = unanimous(network, time_limit, top_tree).await?;
+    fs::write(dir.join("top"), top).unwrap();
     fs::write(dir.join("pk"), &pk).unwrap();
     Ok(pk)
 }
@@ -389,30 +464,38 @@ pub async fn new_bottom_tree(
     reshare: Reshare,
     batch_size: usize,
     concurrency: usize,
+    time_limit: Duration,
 ) -> Result<(), String> {
     let (group, operator) = Operator::load(dir);
     let public_parameter = operator.public_parameter;
-    let keys: Vec<u32> = (0..KEYS as u32).map(|k| bottom << LAYER_HEIGHT | k).collect();
-    let (leaves, cpk, commitments, randomizer, ..) = {
-        let party = party(group.clone(), &operator, network, reshare, batch_size).await?;
-        ceremony(&party, public_parameter, Layer::Bottom, &keys, concurrency).await?
+    let bottom_tree = async || {
+        let keys: Vec<u32> = (0..KEYS as u32).map(|k| bottom << LAYER_HEIGHT | k).collect();
+        let (leaves, cpk, commitments, randomizer, ..) = {
+            let party = party(group.clone(), &operator, network, reshare, batch_size).await?;
+            ceremony(&party, public_parameter, Layer::Bottom, &keys, concurrency).await?
+        };
+        let levels = wots::levels(&public_parameter, Layer::Bottom, bottom, leaves);
+        let root = levels[LAYER_HEIGHT][0];
+        let top = wots::levels(
+            &public_parameter,
+            Layer::Top,
+            0,
+            digests(&fs::read(dir.join("top")).unwrap()),
+        );
+        let new_party = async || party(group, &operator, network, reshare, batch_size).await;
+        let secret = randomizer.unwrap();
+        let top_signature = top_signature(new_party, public_parameter, bottom, root, secret).await?;
+        let top_signature = [top_signature, wots::path(&top, bottom as usize)].concat();
+        if wots::layer_root(&public_parameter, Layer::Top, bottom, &root, &top_signature) != Some(top[LAYER_HEIGHT][0])
+        {
+            return Err("the top signature does not lead to the top root".into());
+        }
+        let tree = BottomTree::bytes(&levels, &cpk, &top_signature, &commitments);
+        let vote = tagged_hash(VOTE, &[&[2], &bottom.to_le_bytes(), &tree]);
+        Ok((tree, vote))
     };
-    let levels = wots::levels(&public_parameter, Layer::Bottom, bottom, leaves);
-    let root = levels[LAYER_HEIGHT][0];
-    let top = wots::levels(
-        &public_parameter,
-        Layer::Top,
-        0,
-        digests(&fs::read(dir.join("top")).unwrap()),
-    );
-    let new_party = async || party(group, &operator, network, reshare, batch_size).await;
-    let secret = randomizer.unwrap();
-    let top_signature = top_signature(new_party, public_parameter, bottom, root, secret).await?;
-    let top_signature = [top_signature, wots::path(&top, bottom as usize)].concat();
-    if wots::layer_root(&public_parameter, Layer::Top, bottom, &root, &top_signature) != Some(top[LAYER_HEIGHT][0]) {
-        return Err("the top signature does not lead to the top root".into());
-    }
-    BottomTree::write(dir, bottom, &levels, &cpk, &top_signature, &commitments);
+    let tree = unanimous(network, time_limit, bottom_tree).await?;
+    fs::write(tree_file(dir, bottom), tree).unwrap();
     Ok(())
 }
 
@@ -427,24 +510,16 @@ pub struct BottomTree(File);
 const NODES: usize = 2 * KEYS - 1;
 
 impl BottomTree {
-    fn write(
-        dir: &Path,
-        bottom: u32,
-        levels: &[Vec<Digest>],
-        cpk: &[ChainRow],
-        top_signature: &[u8],
-        commitments: &[Digest],
-    ) {
+    fn bytes(levels: &[Vec<Digest>], cpk: &[ChainRow], top_signature: &[u8], commitments: &[Digest]) -> Vec<u8> {
         let nodes = levels.iter().flatten().flatten();
         let cpk = cpk.iter().flatten().flatten();
         let commitments = commitments.iter().flatten();
-        let bytes: Vec<u8> = nodes
+        nodes
             .chain(cpk)
             .chain(top_signature)
             .chain(commitments)
             .copied()
-            .collect();
-        fs::write(tree_file(dir, bottom), bytes).unwrap();
+            .collect()
     }
 
     pub fn open(dir: &Path, bottom: u32) -> BottomTree {
@@ -491,12 +566,12 @@ fn digests(bytes: &[u8]) -> Vec<Digest> {
 mod tests {
     use std::array::from_fn;
     use std::sync::Mutex;
-    use std::{env, iter, thread};
+    use std::{env, future, iter, thread};
 
     use lean_xmss::internals::{codeword, message_digest};
+    use tokio::time::sleep;
 
     use crate::dkg::*;
-    use crate::mpc::Key;
     use crate::mpc::tests::{local_networks, local_operators, local_parties, random_keys};
     use crate::net::pack;
     use crate::serve;
@@ -702,25 +777,164 @@ mod tests {
         }
     }
 
+    /// The error of an operator that stops because operator `j` votes for the abort.
+    fn aborts(error: &str) -> bool {
+        (0..3).any(|j| error == format!("operator {j} aborts"))
+    }
+
     #[test]
     fn a_retry_of_a_failed_top_ceremony_keeps_the_operator_files() {
-        // Operator 2 uses another batch size, so each top ceremony fails after the seed generation.
+        // Operator 2 uses another batch size, so each top ceremony fails after the operators commit the seed
+        // generation.
         let run = rand::random::<u64>();
         let dirs: Vec<PathBuf> = (0..3)
             .map(|id| env::temp_dir().join(format!("threshold-lean-xmss-{run}-{id}")))
             .collect();
         let top_tree = || {
-            local_networks(2, async |network, _| {
+            let outcomes = local_networks(2, async |network, _| {
                 let (dir, batch_size) = (&dirs[network.id], [128, 128, 64][network.id]);
-                let outcome = new_top_tree(dir, &network, Reshare::Peer, batch_size, 1).await;
-                (outcome.err(), fs::read(dir.join("operator")).unwrap())
-            })
+                let outcome = new_top_tree(dir, &network, Reshare::Peer, batch_size, 1, TIME_LIMIT).await;
+                (outcome.unwrap_err(), fs::read(dir.join("operator")).unwrap())
+            });
+            // An operator fails at the batch sizes, or it stops first because another operator votes for the abort.
+            let failed = "the operators use the batch sizes [128, 128, 64]";
+            assert!(outcomes.iter().all(|(error, _)| error == failed || aborts(error)));
+            let files: Vec<Vec<u8>> = outcomes.into_iter().map(|(_, file)| file).collect();
+            assert!(
+                dirs.iter()
+                    .all(|dir| !dir.join("top").exists() && !dir.join("pk").exists())
+            );
+            files
         };
         let first = top_tree();
-        let failed = Some("the operators use the batch sizes [128, 128, 64]".to_string());
-        assert!(first.iter().all(|(error, _)| *error == failed));
         assert_eq!(top_tree(), first);
         dirs.iter().for_each(|dir| fs::remove_dir_all(dir).unwrap());
+    }
+
+    const TIME_LIMIT: Duration = Duration::from_secs(600);
+
+    /// Each operator runs `unanimous` on a ceremony with its outcome of `outcomes`, the vote or the failure. The
+    /// ceremony of an operator with no outcome does not end.
+    fn local_votes(outcomes: [Option<Result<u8, &str>>; 3], time_limit: Duration) -> Vec<Result<usize, String>> {
+        local_networks(2, async |network, _| {
+            let ceremony = async || match outcomes[network.id] {
+                Some(outcome) => outcome.map(|vote| (network.id, [vote; 32])).map_err(String::from),
+                None => future::pending().await,
+            };
+            unanimous(&network, time_limit, ceremony).await
+        })
+    }
+
+    #[test]
+    fn each_operator_commits_only_if_the_votes_of_all_operators_are_equal() {
+        let committed = local_votes([Some(Ok(7)); 3], TIME_LIMIT);
+        assert_eq!(committed, vec![Ok(0), Ok(1), Ok(2)]);
+        let other = local_votes([Some(Ok(7)), Some(Ok(7)), Some(Ok(8))], TIME_LIMIT);
+        let another = |j| Err(format!("operator {j} has another result"));
+        assert_eq!(other, vec![another(2), another(2), another(0)]);
+    }
+
+    #[test]
+    fn one_operator_that_fails_alone_stops_the_ceremony_of_each_operator_and_all_abort() {
+        // The ceremonies of operators 0 and 2 do not end, as the wait for an operator that left the ceremony.
+        let outcomes = local_votes([None, Some(Err("the check fails")), None], TIME_LIMIT);
+        assert_eq!(outcomes[1], Err("the check fails".to_string()));
+        assert!([0, 2].iter().all(|&i| aborts(outcomes[i].as_ref().unwrap_err())));
+        // Operator 1 fails 200 ms after the start, when the others likely voted for the commit. All abort in each
+        // order.
+        let late = local_networks(2, async |network, _| {
+            let ceremony = async || match network.id {
+                1 => {
+                    sleep(Duration::from_millis(200)).await;
+                    Err("the check fails".to_string())
+                }
+                id => Ok((id, [7; 32])),
+            };
+            unanimous(&network, TIME_LIMIT, ceremony).await
+        });
+        let failed = [Err("operator 1 aborts".into()), Err("the check fails".into())];
+        assert_eq!(late, vec![failed[0].clone(), failed[1].clone(), failed[0].clone()]);
+    }
+
+    #[test]
+    fn an_operator_with_two_votes_splits_the_others_on_channels_with_no_broadcast() {
+        // Operator 2 sends the vote of the others to operator 0 and another vote to operator 1. The channels of the
+        // proof of concept are no broadcast channel, so operator 0 commits and operator 1 aborts.
+        let outcomes = local_networks(2, async |network, _| match network.id {
+            2 => {
+                network.channel().send(vec![pack(&[7; 32]), pack(&[8; 32]), vec![]]);
+                Ok(2)
+            }
+            id => unanimous(&network, TIME_LIMIT, async || Ok((id, [7; 32]))).await,
+        });
+        let another = Err("operator 2 has another result".to_string());
+        assert_eq!(outcomes, vec![Ok(0), another, Ok(2)]);
+    }
+
+    #[test]
+    fn an_operator_with_no_vote_makes_the_others_wait_and_all_abort_when_it_leaves() {
+        let silence = Duration::from_millis(300);
+        let outcomes = local_networks(2, async |network, _| {
+            let start = Instant::now();
+            let outcome = match network.id {
+                2 => {
+                    // Operator 2 receives the votes of the others, stays silent and then closes the vote channel.
+                    let (mut channel, mut waiting) = (network.channel(), [true, true, false]);
+                    for _ in 0..2 {
+                        waiting[channel.receive(&waiting).await.0] = false;
+                    }
+                    sleep(silence).await;
+                    Ok(2)
+                }
+                id => unanimous(&network, TIME_LIMIT, async || Ok((id, [7; 32]))).await,
+            };
+            (outcome, start.elapsed())
+        });
+        let aborted = Err("operator 2 aborts".to_string());
+        assert!(
+            outcomes[..2]
+                .iter()
+                .all(|(outcome, waited)| *outcome == aborted && *waited >= silence)
+        );
+    }
+
+    #[test]
+    fn a_ceremony_over_the_time_limit_votes_for_the_abort() {
+        let time_limit = Duration::from_millis(100);
+        let outcomes = local_votes([None; 3], time_limit);
+        let late = format!("the ceremony takes more than {time_limit:?}");
+        assert!(outcomes.iter().all(|outcome| {
+            let error = outcome.as_ref().unwrap_err();
+            *error == late || aborts(error)
+        }));
+        assert!(outcomes.contains(&Err(late)));
+    }
+
+    #[test]
+    fn a_ceremony_with_the_vote_commits_one_result_at_each_operator_and_a_tampered_one_aborts_at_each() {
+        for tampered in [false, true] {
+            let outcomes = local_operators(2, &[(Reshare::Collector, 4); 3], async |party, _| {
+                let mut party = party.unwrap();
+                // The vote channel opens before the batches, so the tag `2 + 3` is batch 2.
+                if tampered && party.id == 0 {
+                    party.tamper = flip_in_batch_3::<0>;
+                }
+                let party = Arc::new(party);
+                let keys = async || {
+                    let (leaves, ..) = ceremony(&party, [9; 16], Layer::Bottom, &[5, 9_000], 1).await?;
+                    let vote = tagged_hash(VOTE, &[leaves.as_flattened()]);
+                    Ok((leaves, vote))
+                };
+                unanimous(&party.network, TIME_LIMIT, keys).await
+            });
+            match tampered {
+                false => assert!(outcomes[0].is_ok() && outcomes.iter().all(|outcome| *outcome == outcomes[0])),
+                true => assert!(outcomes.iter().all(|outcome| {
+                    let error = outcome.as_ref().unwrap_err();
+                    error == "the AND tuples fail the check" || aborts(error)
+                })),
+            }
+        }
     }
 
     fn flip_in_batch_3<const ROUND: u64>(channel: &Channel, mut outgoing: Vec<Vec<u64>>) -> Vec<Vec<u64>> {

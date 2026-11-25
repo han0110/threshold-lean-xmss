@@ -45,24 +45,27 @@ section Walk
 variable {σ : Type} (I : FirstState C σ → Prop)
 
 omit [Fintype E] [DecidableEq E] [Field E] [Algebra Bit E] in
-theorem firstTreeRunsOf_keepsState (D : C.Coalition) (run : RunOf C σ) (ready : RealState C σ → StreamState C → Prop)
-    (tree : Tree) (hrun : Keeps (fun s (_ : StreamState C) => I s) (firstTreeRunOf run ready tree)) :
-    ∀ count, Keeps (fun s (_ : StreamState C) => I s) (firstTreeRunsOf runLimit D run ready tree count)
+theorem firstTreeRunsOf_keepsState (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (I : FirstState C net.State → Prop) (run : RunOf C net.State)
+    (ready : RealState C net.State → StreamState C → Prop) (tree : Tree)
+    (hrun : Keeps (fun s (_ : StreamState C) => I s) (firstTreeRunOf prims D net run ready tree)) :
+    ∀ count, Keeps (fun s (_ : StreamState C) => I s) (firstTreeRunsOf prims runLimit D net run ready tree count)
   | 0 => keeps_pure _
   | count + 1 => by
     unfold firstTreeRunsOf
     refine keeps_get_bind fun s => ?_
     split_ifs
-    · exact keeps_bind hrun fun _ => firstTreeRunsOf_keepsState D run ready tree hrun count
+    · exact keeps_bind hrun fun _ => firstTreeRunsOf_keepsState D net I run ready tree hrun count
     · exact keeps_pure _
 
 omit [Fintype E] [DecidableEq E] [Field E] [Algebra Bit E] in
-theorem firstTreeRequestOf_keepsState (D : C.Coalition) (run : RunOf C σ)
-    (ready : RealState C σ → StreamState C → Prop) (b : Fin (2 ^ layerHeight))
-    (hrun : Keeps (fun s (_ : StreamState C) => I s) (firstTreeRunOf run ready (.bottom b))) :
-    Keeps (fun s (_ : StreamState C) => I s) (firstTreeRequestOf prims runLimit D run ready b) := by
+theorem firstTreeRequestOf_keepsState (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (I : FirstState C net.State → Prop) (run : RunOf C net.State)
+    (ready : RealState C net.State → StreamState C → Prop) (b : Fin (2 ^ layerHeight))
+    (hrun : Keeps (fun s (_ : StreamState C) => I s) (firstTreeRunOf prims D net run ready (.bottom b))) :
+    Keeps (fun s (_ : StreamState C) => I s) (firstTreeRequestOf prims runLimit D net run ready b) := by
   unfold firstTreeRequestOf
-  refine keeps_bind (firstTreeRunsOf_keepsState runLimit I D run ready _ hrun 1) fun _ =>
+  refine keeps_bind (firstTreeRunsOf_keepsState prims runLimit D net I run ready _ hrun 1) fun _ =>
     keeps_get_bind fun s => ?_
   split
   · exact keeps_bind (keeps_lift (fun _ _ _ h _ => h) (Ready.simulateQ_le prims D _)) fun _ => keeps_pure _
@@ -81,7 +84,7 @@ theorem firstSignRequest_keepsState (D : C.Coalition) (i : C.Party) (e : KeyInde
 omit [Fintype E] [DecidableEq E] [Field E] [Algebra Bit E] in
 theorem firstSigningOf_keepsState (D : C.Coalition) (A : DkgTsigAdversary C E) (run : RunOf C A.net.State)
     (ready : RealState C A.net.State → StreamState C → Prop) (I : FirstState C A.net.State → Prop)
-    (hrun : ∀ tree, Keeps (fun s (_ : StreamState C) => I s) (firstTreeRunOf run ready tree))
+    (hrun : ∀ tree, Keeps (fun s (_ : StreamState C) => I s) (firstTreeRunOf prims D A.net run ready tree))
     (hclosed : ∀ (s : FirstState C A.net.State) (e : KeyIndex), I s →
       I { s with real := { s.real with closed := Function.update s.real.closed (treeOf e) true } })
     (hadversary : ∀ (s : FirstState C A.net.State) (state : A.net.State), I s →
@@ -95,7 +98,7 @@ theorem firstSigningOf_keepsState (D : C.Coalition) (A : DkgTsigAdversary C E) (
     · exact keepsT_lift (keeps_lift (fun _ _ _ h _ => h) (Ready.simulateQ_le prims D _))
     · rcases q with i | b | ⟨i, J, e, message⟩ | ⟨i, J, e, message, parts⟩
       · exact fun t => keeps_pure _
-      · exact keepsT_lift (firstTreeRequestOf_keepsState prims runLimit I D run ready b (hrun _))
+      · exact keepsT_lift (firstTreeRequestOf_keepsState prims runLimit D A.net I run ready b (hrun _))
       · exact firstSignRequest_keepsState prims I D i e _ fun s hs => hclosed s e hs
       · exact firstSignRequest_keepsState prims I D i e _ fun s hs => hclosed s e hs
     · rcases q with _ | state
@@ -111,9 +114,9 @@ each start after the seed generation, each run of a tree keeps it, and the write
 phase keep it. -/
 theorem firstRunOf_keepsState (D : C.Coalition) (A : DkgTsigAdversary C E) (run : RunOf C A.net.State)
     (ready : RealState C A.net.State → StreamState C → Prop) (I : FirstState C A.net.State → Prop)
-    (hstart : ∀ (state : A.net.State) (keys : C.Party → Option (Keys C)) (world : StreamState C),
-      I ⟨startState D state keys, if (startState D state keys).flag then some (.seeds, world) else none⟩)
-    (hrun : ∀ tree, Keeps (fun s (_ : StreamState C) => I s) (firstTreeRunOf run ready tree))
+    (hstart : ∀ (state : A.net.State) (keys : C.Party → Option (Keys C)) (ok : Bool) (world : StreamState C),
+      I ⟨seedState D state keys ok, if (seedState D state keys ok).flag then some (.seeds, world) else none⟩)
+    (hrun : ∀ tree, Keeps (fun s (_ : StreamState C) => I s) (firstTreeRunOf prims D A.net run ready tree))
     (hclosed : ∀ (s : FirstState C A.net.State) (e : KeyIndex), I s →
       I { s with real := { s.real with closed := Function.update s.real.closed (treeOf e) true } })
     (hadversary : ∀ (s : FirstState C A.net.State) (state : A.net.State), I s →
@@ -125,10 +128,11 @@ theorem firstRunOf_keepsState (D : C.Coalition) (A : DkgTsigAdversary C E) (run 
   obtain ⟨y, -, hr⟩ := hr
   rcases y with ⟨⟨state, keys⟩, world⟩
   simp only [StateT.run_get, support_pure, Set.mem_singleton_iff, exists_eq_left, StateT.run_pure] at hr
-  obtain ⟨x, ⟨z, hz, hx⟩, rfl⟩ := hr
-  exact keeps_bind (firstTreeRunsOf_keepsState runLimit I D run ready .top (hrun _) runLimit)
-    (fun _ => firstSigningOf_keepsState prims runLimit D A run ready I hrun hclosed hadversary) _ world
-    (hstart state keys world) x (by rw [StateT.run_bind, StateT.run_bind, mem_support_bind_iff]; exact ⟨z, hz, hx⟩)
+  obtain ⟨t, -, x, ⟨z, hz, hx⟩, rfl⟩ := hr
+  exact keeps_bind (firstTreeRunsOf_keepsState prims runLimit D A.net I run ready .top (hrun _) runLimit)
+    (fun _ => firstSigningOf_keepsState prims runLimit D A run ready I hrun hclosed hadversary) _ t.2
+    (hstart t.1.1 keys t.1.2 world) x
+    (by rw [StateT.run_bind, StateT.run_bind, mem_support_bind_iff]; exact ⟨z, hz, hx⟩)
 
 /-! ## The readiness of each start -/
 
@@ -139,20 +143,23 @@ def PassInv (budget : StartBudget) (D : C.Coalition) {σ : Type} (s : FirstState
     ∀ tree index w, s.first = some (.unready tree index, w) → ¬ (LedgerFits budget w ∧ HiddenProvenance D w)
 
 omit [Fintype E] [DecidableEq E] [Field E] [Algebra Bit E] in
-theorem firstTreeRunOf_passInv (budget : StartBudget) (D : C.Coalition) {σ : Type} (run : RunOf C σ) (tree : Tree) :
-    Keeps (fun s (_ : StreamState C) => PassInv budget D s) (firstTreeRunOf run (PassReady budget D) tree) := by
+theorem firstTreeRunOf_passInv (budget : StartBudget) (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (run : RunOf C net.State) (tree : Tree) :
+    Keeps (fun s (_ : StreamState C) => PassInv budget D s)
+      (firstTreeRunOf prims D net run (PassReady budget D) tree) := by
   intro s world hs z hz
-  unfold firstTreeRunOf at hz
-  simp only [StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, mem_support_bind_iff, StateT.run_set,
-    StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
-  obtain ⟨_, ⟨x, -, rfl⟩, rfl⟩ := hz
+  simp only [firstTreeRunOf, inStream, StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, bind_assoc,
+    StateT.run_set, StateT.run_pure, mem_support_bind_iff, support_pure, Set.mem_singleton_iff] at hz
+  obtain ⟨x, -, y, -, rfl⟩ := hz
   obtain ⟨hseeds, hunready⟩ := hs
-  have hkeys : (fun j => ((s.real.operators j).keep (x.1.1.2 j) tree).keys) = fun j => (s.real.operators j).keys :=
+  have hkeys : (fun j => ((s.real.operators j).keep (committed y.1.2 (fun i => x.1.1.2 i) j) tree).keys) =
+      fun j => (s.real.operators j).keys :=
     funext fun j => Ready.keep_keys _ _ _
   refine ⟨fun hn => ?_, fun tree' index w hw => ?_⟩
   · obtain ⟨hn₁, -⟩ := Ready.orElse_eq_none hn
     obtain ⟨hfirst, -⟩ := Ready.orElse_eq_none hn₁
-    change seedsDiffer D (fun j => ((s.real.operators j).keep (x.1.1.2 j) tree).keys) = false
+    change seedsDiffer D (fun j => ((s.real.operators j).keep (committed y.1.2 (fun i => x.1.1.2 i) j) tree).keys)
+      = false
     rw [hkeys]
     exact hseeds hfirst
   · cases hfirst : s.first with
@@ -199,19 +206,22 @@ theorem passFirst_digest (D : C.Coalition) (A : DkgTsigAdversary C E)
   rw [passTreeRun_eq_blockRun] at hr
   have h := FirstCounts.firstRunOf_within prims runLimit .digest
     (fun tree => treeFuel circuits settings * step + treeBatches settings tree * termHashes C) (by decide) D A _ _ _
-    ready (start + setupRounds * step + 0) forge
-    (FirstCounts.seedBlock_bound .digest D A.net start step 0 hs hround DigestBudgets.seedHonest_digest) hf
+    ready (start + setupRounds * step + 0) step forge
+    (FirstCounts.seedBlock_bound .digest D A.net start step 0 hs hround DigestBudgets.seedHonest_digest)
+    (FirstCounts.voteRound_adds .digest (by decide) D A.net step hround) hf
     (fun tree s => passBlock_adds K circuits settings .digest D A.net step hround _
       (DigestBudgets.treeHonest_digest K circuits settings) tree s) DigestBudgets.signQuiet_digest r hr
   have e : FirstCounts.remaining runLimit
-      (fun tree => treeFuel circuits settings * step + treeBatches settings tree * termHashes C) (fun _ => 0) =
-      runLimit * (1 + 2 ^ layerHeight) * treeFuel circuits settings * step +
+      (fun tree => treeFuel circuits settings * step + treeBatches settings tree * termHashes C + step)
+        (fun _ => 0) =
+      runLimit * (1 + 2 ^ layerHeight) * treeFuel circuits settings * step + runLimit * (1 + 2 ^ layerHeight) * step +
         gameBatches settings runLimit * termHashes C := by
     simp only [FirstCounts.remaining, Nat.sub_zero, ← Finset.mul_sum, Finset.sum_add_distrib, Finset.sum_const,
       Finset.card_univ, Fintype.card_fin, smul_eq_mul, gameBatches, ← Finset.sum_mul]
     ring
   have e' : dkgTsigRounds circuits settings runLimit * step =
-      setupRounds * step + runLimit * (1 + 2 ^ layerHeight) * treeFuel circuits settings * step := by
+      setupRounds * step + step + runLimit * (1 + 2 ^ layerHeight) * treeFuel circuits settings * step +
+        runLimit * (1 + 2 ^ layerHeight) * step := by
     unfold dkgTsigRounds
     ring
   rw [e] at h
@@ -246,14 +256,19 @@ theorem passReadyHop : PassReadyHop prims K circuits settings runLimit := by
   rw [prEvent_eq_zero_of_forall_mem_support _ _ fun r hr => ?_, ENNReal.toReal_zero]
   rintro ⟨tree, index, w, hw, -⟩
   have hinv := firstRunOf_keepsState prims runLimit D A _ _ (PassInv (startBudget circuits settings runLimit C q) D)
-    (fun state keys world => ⟨fun hn => by
-        by_contra hflag
-        simp only [startState, Bool.not_eq_false] at hflag hn
-        simp [hflag] at hn,
+    (fun state keys ok world => ⟨fun hn => by
+        have hf : (seedState D state keys ok).flag = false := by
+          by_contra hflag
+          simp only [Bool.not_eq_false] at hflag
+          simp [hflag] at hn
+        simp only [seedState, startState, Bool.or_eq_false_iff] at hf
+        cases ok
+        · simp [seedsDiffer, committed, seedState, startState]
+        · exact hf.1,
       fun tree index w hw => by
         split_ifs at hw
         simp at hw⟩)
-    (fun tree => firstTreeRunOf_passInv _ D _ tree) (fun _ _ h => h) (fun _ _ h => h) r hr
+    (fun tree => firstTreeRunOf_passInv prims _ D A.net _ tree) (fun _ _ h => h) (fun _ _ h => h) r hr
   have hle : w ≤ r.2 := RecordedCache.recordedBelowOf prims runLimit D A _
     (by rw [passTreeRun_eq_blockRun]; exact RecordedCache.blockRun_grows prims D _ _ _) _ r hr _ w hw
   have hprov : HiddenProvenance D w := (firstRunOf_provInv prims runLimit (provenanceSeedGen prims)
@@ -366,13 +381,13 @@ theorem passTracks_sharedRun (D : C.Coalition) (net : Adversary C E Unit PEmpty 
     (seeds : C.Term → HashOutput) (dealt : C.Party → Keys C) (emu : C.Party → Option (Keys C))
     (ready : RealState C net.State → StreamState C → Prop) (tree : Tree) :
     PassTracks (sharedRun K circuits settings (streamWorld prims D) id Mode.real D net parameter seeds dealt emu tree)
-      (firstTreeRunOf (passTreeRun prims K circuits settings D net) ready tree) := by
+      (firstTreeRunOf prims D net (passTreeRun prims K circuits settings D net) ready tree) := by
   intro s
   have hnot : ¬ s.real.runs tree < Mode.real.emulated tree := by simp [Mode.real]
   unfold PassTracksAt sharedRun
   simp only [StateT.run_bind, StateT.run_get, pure_bind, ite_eq_right hnot]
   unfold sharedRunWith firstTreeRunOf passTreeRun
-  simp [inWorld]
+  simp [inWorld, inStream, StateT.run_lift]
 
 omit [Fintype E] [DecidableEq E] in
 theorem passTracks_sharedRuns (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (parameter : PublicParameter)
@@ -380,7 +395,7 @@ theorem passTracks_sharedRuns (D : C.Coalition) (net : Adversary C E Unit PEmpty
     (ready : RealState C net.State → StreamState C → Prop) (tree : Tree) :
     ∀ count, PassTracks (sharedRuns K circuits settings runLimit (streamWorld prims D) id Mode.real D net parameter seeds
         dealt emu tree count)
-      (firstTreeRunsOf runLimit D (passTreeRun prims K circuits settings D net) ready tree count)
+      (firstTreeRunsOf prims runLimit D net (passTreeRun prims K circuits settings D net) ready tree count)
   | 0 => passTracks_pure ()
   | count + 1 => by
     unfold sharedRuns firstTreeRunsOf
@@ -426,7 +441,7 @@ theorem passTracksSign_oracles (D : C.Coalition) (A : DkgTsigAdversary C E) (par
     (ready : RealState C A.net.State → StreamState C → Prop) (q : TsigQuery C) :
     PassTracksSign (sharedOwnOracles K circuits settings runLimit (streamWorld prims D) id Mode.real D A.net parameter seeds
         dealt emu q)
-      (firstOraclesOf prims runLimit D (passTreeRun prims K circuits settings D A.net) ready q) := by
+      (firstOraclesOf prims runLimit D A.net (passTreeRun prims K circuits settings D A.net) ready q) := by
   unfold sharedOwnOracles
   rcases q with i | b | ⟨i, J, e, message⟩ | ⟨i, J, e, message, parts⟩
   · exact fun st => passTracks_pure _
@@ -511,12 +526,14 @@ theorem rest_flag_le (D : C.Coalition) (A : DkgTsigAdversary C E) (parameter : P
     Pr{let z ← ((sharedRuns K circuits settings runLimit (streamWorld prims D) id Mode.real D A.net parameter seeds
         dealt emu .top runLimit >>= fun _ => sharedSigning K circuits settings runLimit (streamWorld prims D) id true
           Mode.real D A parameter seeds dealt emu).run fs.real).run w}[z.1.2.flag = true] ≤
-      Pr{let z ← ((firstTreeRunsOf runLimit D (passTreeRun prims K circuits settings D A.net) ready .top runLimit >>=
+      Pr{let z ← ((firstTreeRunsOf prims runLimit D A.net (passTreeRun prims K circuits settings D A.net) ready .top
+        runLimit >>=
         fun _ => firstSigningOf prims runLimit D A (passTreeRun prims K circuits settings D A.net) ready).run
           fs).run w}[z.1.2.real.flag = true] := by
   have h : (sharedRuns K circuits settings runLimit (streamWorld prims D) id Mode.real D A.net parameter seeds dealt
       emu .top runLimit).run fs.real = (fun r => (r.1, r.2.real)) <$>
-        (firstTreeRunsOf runLimit D (passTreeRun prims K circuits settings D A.net) ready .top runLimit).run fs :=
+        (firstTreeRunsOf prims runLimit D A.net (passTreeRun prims K circuits settings D A.net) ready .top runLimit).run
+          fs :=
     passTracks_sharedRuns prims K circuits settings runLimit D A.net parameter seeds dealt emu ready .top runLimit fs
   rw [StateT.run_bind, h, bind_map_left, StateT.run_bind, StateT.run_bind, StateT.run_bind]
   exact prEvent_bind_mono_of_forall_le _ _ _ _ _ fun a =>
@@ -525,15 +542,18 @@ theorem rest_flag_le (D : C.Coalition) (A : DkgTsigAdversary C E) (parameter : P
 omit [Fintype E] [DecidableEq E] [Field E] [Algebra Bit E] in
 /-- Each run of a tree keeps `FlagRecorded`. A run that sets the flag records itself when no record
 is there. -/
-theorem firstTreeRunOf_flagRecorded {σ : Type} (run : RunOf C σ) (ready : RealState C σ → StreamState C → Prop)
-    (tree : Tree) : Keeps (fun s (_ : StreamState C) => FlagRecorded s) (firstTreeRunOf run ready tree) := by
+theorem firstTreeRunOf_flagRecorded (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (run : RunOf C net.State) (ready : RealState C net.State → StreamState C → Prop) (tree : Tree) :
+    Keeps (fun s (_ : StreamState C) => FlagRecorded s) (firstTreeRunOf prims D net run ready tree) := by
   intro s world hs z hz
-  unfold firstTreeRunOf at hz
-  simp only [StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, mem_support_bind_iff, StateT.run_set,
-    StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
-  obtain ⟨_, ⟨x, -, rfl⟩, rfl⟩ := hz
+  simp only [firstTreeRunOf, inStream, StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, bind_assoc,
+    StateT.run_set, StateT.run_pure, mem_support_bind_iff, support_pure, Set.mem_singleton_iff] at hz
+  obtain ⟨x, -, y, hy, rfl⟩ := hz
+  have hsplit := Vote.voteRound_split_run worldRoles D net x.1.1.1 x.1.1.2 (treeVote tree) (streamWorld prims D) x.2
+    y hy
   intro hflag
   dsimp only at hflag ⊢
+  rw [hsplit, Bool.or_false] at hflag
   cases hfirst : s.first with
   | some v => simp
   | none =>
@@ -557,17 +577,21 @@ theorem passFlagFirst : PassFlagFirst prims K circuits settings runLimit := by
     rw [StateT.run'_eq, StateT.run_bind, StateT.run_bind, map_bind]
     refine prEvent_bind_mono_of_forall_le _ _ _ _ _ fun a => ?_
     rcases a with ⟨⟨state, keys⟩, world⟩
-    simp only [StateT.run_bind, StateT.run_get, pure_bind, StateT.run_pure, map_bind, map_pure]
+    simp only [inWorld, StateT.run_bind, StateT.run_get, pure_bind, StateT.run_pure, StateT.run_lift, StateT.run_set,
+      map_bind, map_pure, bind_assoc, votedStart_startState]
+    dsimp only [startState]
+    refine prEvent_bind_mono_of_support _ _ _ fun p _ => ?_
     have h := rest_flag_le prims K circuits settings runLimit D A (gameParameter D keys) (gameSeeds D keys)
-      (fun i => (keys i).getD noKeys) (fun _ => none) ready
-      ⟨startState D state keys, if (startState D state keys).flag then some (.seeds, world) else none⟩ world
+      (fun i => (keys i).getD noKeys) (committed p.1.2 fun _ => none) ready
+      ⟨seedState D p.1.1 keys p.1.2, if (seedState D p.1.1 keys p.1.2).flag then some (.seeds, world) else none⟩ p.2
     simp only [prEvent_norm, StateT.run_bind] at h ⊢
     exact h
   · exact firstRunOf_keepsState prims runLimit D A _ ready FlagRecorded
-      (fun state keys world hstart => by
-        change (startState D state keys).flag = true at hstart
+      (fun state keys ok world hstart => by
+        change (seedState D state keys ok).flag = true at hstart
         simp [hstart])
-      (fun tree => firstTreeRunOf_flagRecorded _ ready tree) (fun _ _ h => h) (fun _ _ h => h) r hr hflag
+      (fun tree => firstTreeRunOf_flagRecorded prims D A.net _ ready tree) (fun _ _ h => h) (fun _ _ h => h) r hr
+        hflag
 
 end ThresholdLeanXmssSecurity.DkgSecurityProof
 

@@ -131,10 +131,13 @@ theorem peekRep_sharedRestOf_own (own : Bool) (D : C.Coalition) (A : DkgTsigAdve
   | false => exact peekRep_sharedRestOf K circuits settings runLimit impl view D A state keys
   | true =>
     unfold sharedRestOf sharedRest
-    have h := (peekRepS_sharedRuns_real K circuits settings runLimit impl view D A.net (gameParameter D keys)
-      (gameSeeds D keys) (fun i => (keys i).getD noKeys) (fun _ => none) .top runLimit).bind fun _ =>
-        peekRepS_ownSigning K circuits settings runLimit impl view D A (gameParameter D keys) (gameSeeds D keys)
-          (fun i => (keys i).getD noKeys) (fun _ => none)
+    have h := peekRepS_get_bind (impl := impl) (view := view) fun s =>
+      (peekRepS_inWorld (voteRound worldRoles D A.net s.adversary fun i => ((s.operators i).keys).map seedVote)).bind
+        fun (v : A.net.State × Bool) => (peekRepS_set (votedStart D s v.1 v.2)).bind fun _ =>
+          (peekRepS_sharedRuns_real K circuits settings runLimit impl view D A.net (gameParameter D keys)
+            (gameSeeds D keys) (fun i => (keys i).getD noKeys) (committed v.2 fun _ => none) .top runLimit).bind
+            fun _ => peekRepS_ownSigning K circuits settings runLimit impl view D A (gameParameter D keys)
+              (gameSeeds D keys) (fun i => (keys i).getD noKeys) (committed v.2 fun _ => none)
     exact (h (startState D state keys)).bind fun p => by
       rcases p with ⟨win, s⟩
       exact peekRep_pure _

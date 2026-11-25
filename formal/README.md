@@ -11,12 +11,13 @@ The structure `Theorems` in [Statement/Theorems.lean](./ThresholdLeanXmss/Statem
 | `stronglyUnforgeable` | Signing with a trusted dealer is strongly unforgeable with adaptive corruption. | PRAWNS, Definition 3.2 | Proved |
 | `signingCorrectness` | An honest quorum signs, except for a failed search. | PRAWNS, Section 3.1 | Proved |
 | `dkgSecurityPreservation` | The real DKG gives an adversary no more than the dealer gives the named forger `dkgReduction`, up to a fixed error. | Gurkan and others, Definition 8 | Cost bound proved, win bound open |
-| `dkgCorrectness` | Against an adversary, honest operators hold consistent seeds, and each tree output is right or absent. | Gurkan and others, Definition 6 | Proved |
+| `dkgCorrectness` | Against an adversary, honest operators hold consistent seeds, each tree output is right or absent, and the honest operators keep the output of a run together or not at all. | Gurkan and others, Definition 6, and Goldwasser and Lindell, Definition 3 | Proved |
 | `dkgCompleteness` | With no corrupt operator, the DKG gives outputs that are near the outputs of the dealer. | None | Proved |
 
 - Each proved field has a theorem with its name, in the namespace `ThresholdLeanXmssSecurity`.
 - The one exception is `SigningStronglyUnforgeable.stronglyUnforgeable`.
 - The coalition of the DKG is static, and the signing game has adaptive corruption.
+- The seed generation and each run of a tree end with one vote on a broadcast channel, so the abort of the DKG is unanimous.
 - The claims of the DKG fix the function `Th`, and `stronglyUnforgeable` has `Th` in the random oracle.
 
 ## The state of `dkgSecurityPreservation`

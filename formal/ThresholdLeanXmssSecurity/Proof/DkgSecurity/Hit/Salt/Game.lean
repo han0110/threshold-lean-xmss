@@ -80,6 +80,21 @@ theorem quiet_adversary {β : Type} (oa : OracleComp (LocalSpec C) β) :
     IsQueryBoundP (worldRoles.adversary oa) (HonestP (C := C) TailLocal) 0 :=
   SetupBudgets.honestP_adversary TailLocal oa
 
+/-- A computation of the adversary makes no own call of the honest roles. -/
+theorem quiet_round {β : Type} (oa : OracleComp (LocalSpec C) β) :
+    IsQueryBoundP oa (fun t => HonestP (C := C) TailLocal (.inl (.inl t))) 0 := by
+  induction oa using OracleComp.inductionOn with
+  | pure a => trivial
+  | query_bind t k ih => exact (isQueryBoundP_query_bind_iff _ _ _ _).2 ⟨Or.inl not_false, fun u => by simpa using ih u⟩
+
+/-- A vote round on inputs of the class `vote` makes no honest call of `TailLocal`. -/
+theorem quiet_voteRound (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (state : net.State)
+    (input : C.Party → Option (Query C)) (hin : ∀ j q, input j = some q → queryClass q = .vote) :
+    IsQueryBoundP (voteRound worldRoles D net state input) (HonestP (C := C) TailLocal) 0 :=
+  Vote.voteRound_isQueryBoundP D net state input _ 0 (fun _ _ => quiet_round _) fun j q hq h => by
+    obtain ⟨salt, history, rfl⟩ := h
+    exact absurd (hin j _ hq) (by simp [queryClass])
+
 /-- A private sample on the free copy makes no call of `TailLocal`. -/
 theorem quiet_free_prob {α : Type} (oa : ProbComp α) :
     IsQueryBoundP (free (liftComp oa (LocalSpec C))) (HonestP (C := C) TailLocal) 0 := by
@@ -387,7 +402,7 @@ theorem cost_free_tail {α : Type} (oa : OracleComp (RoSpec C) α) (h : NoCall T
   (cost_callCharge_le_iff _ _ 0).2 (IsQueryBoundP.of_imp (honestP_of_tail hp) (quiet_freeHom oa h))
 
 omit [Fintype E] [DecidableEq E] in
-include htree in
+include hp htree in
 /-- One real run of `tree` from a state with fewer than `runLimit` runs of `tree` costs its part of
 the potential. -/
 theorem cost_treeRun (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree)
@@ -409,10 +424,15 @@ theorem cost_treeRun (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree)
   refine RCost.bind (K := fun _ _ => ((FirstCounts.remaining runLimit runCost
       (Function.update s.runs tree (s.runs tree + 1)) : ℕ) : ℕ∞))
     ((RCost.lift (cost_pure_le _ _ 0) _).mono (fun _ _ => le_rfl) fun _ => le_of_eq (zero_add _)) fun bad => ?_
+  refine RCost.bind (K := fun _ _ => ((FirstCounts.remaining runLimit runCost
+      (Function.update s.runs tree (s.runs tree + 1)) : ℕ) : ℕ∞))
+    ((RCost.lift ((cost_callCharge_le_iff _ _ 0).2 (IsQueryBoundP.of_imp (honestP_of_tail hp)
+      (quiet_voteRound D net state _ fun _ _ => queryClass_map_treeVote))) _).mono (fun _ _ => le_rfl)
+      fun _ => le_of_eq (zero_add _)) fun v => ?_
   exact (RCost.set _ _).mono (fun _ _ => le_rfl) fun _ => le_rfl
 
 omit [Fintype E] [DecidableEq E] in
-include htree in
+include hp htree in
 theorem cost_secRun (m : Mode) (hm : ∀ tree, m.emulated tree = 0) (net : Adversary C E Unit PEmpty PEmpty)
     (parameter : PublicParameter) (seeds : C.Term → HashOutput) (dealt : C.Party → Keys C)
     (emu : C.Party → Option (Keys C)) (tree : Tree) (s : RealState C net.State) (hs : s.runs tree < runLimit) :
@@ -420,10 +440,10 @@ theorem cost_secRun (m : Mode) (hm : ∀ tree, m.emulated tree = 0) (net : Adver
       (fun z => runsLeft runLimit runCost z.2) ≤ runsLeft runLimit runCost s := by
   unfold secRun
   rw [StateT.run_bind, StateT.run_get, pure_bind, ite_eq_right (by rw [hm]; exact Nat.not_lt_zero _)]
-  exact cost_treeRun K circuits settings runLimit D runCost htree net tree s hs
+  exact cost_treeRun K circuits settings runLimit D runCost hp htree net tree s hs
 
 omit [Fintype E] [DecidableEq E] in
-include htree in
+include hp htree in
 theorem rcost_secRuns (m : Mode) (hm : ∀ tree, m.emulated tree = 0) (net : Adversary C E Unit PEmpty PEmpty)
     (parameter : PublicParameter) (seeds : C.Term → HashOutput) (dealt : C.Party → Keys C)
     (emu : C.Party → Option (Keys C)) (tree : Tree) :
@@ -437,7 +457,7 @@ theorem rcost_secRuns (m : Mode) (hm : ∀ tree, m.emulated tree = 0) (net : Adv
     by_cases h : mayRun runLimit D s tree
     · rw [ite_eq_left h, StateT.run_bind, PFunctor.FreeM.costWith_bind']
       refine le_trans (costWith_mono _ fun z => ?_)
-        (cost_secRun K circuits settings runLimit D runCost htree m hm net parameter seeds dealt emu tree s
+        (cost_secRun K circuits settings runLimit D runCost hp htree m hm net parameter seeds dealt emu tree s
           (FirstCounts.mayRun_lt runLimit h))
       exact rest z.2
     · rw [ite_eq_right h]
@@ -482,7 +502,7 @@ theorem rcostT_secOracles (m : Mode) (hm : ∀ tree, m.emulated tree = 0) (A : D
       split <;> exact le_rfl
     by_cases hc : m.skip = false ∨ answer.isSome
     · simp only [hc, ↓reduceIte]
-      exact RCostT.bind (RCostT.lift (rcost_secRuns K circuits settings runLimit D runCost htree m hm A.net
+      exact RCostT.bind (RCostT.lift (rcost_secRuns K circuits settings runLimit D runCost hp htree m hm A.net
         parameter seeds dealt emu _ 1)) fun _ => tail
     · simp only [hc, ↓reduceIte]
       exact tail
@@ -558,10 +578,20 @@ theorem rcost_secRest (m : Mode) (hm : ∀ tree, m.emulated tree = 0) (A : DkgTs
     RCost (callCharge (HonestP p)) (secRest K circuits settings runLimit m D A parameter seeds dealt emu)
       (fun _ _ => 0) (fun s => 0 + runsLeft runLimit runCost s) := by
   unfold secRest
+  refine RCost.get_bind fun s => ?_
+  refine (RCost.bind (K := fun _ _ => 0 + runsLeft runLimit runCost s) (k := fun _ _ => (0 : ℕ∞))
+    ((RCost.lift ((cost_callCharge_le_iff _ _ 0).2 (IsQueryBoundP.of_imp (honestP_of_tail hp)
+      (quiet_voteRound D A.net s.adversary _ fun _ _ => queryClass_map_seedVote))) fun _ =>
+        0 + runsLeft runLimit runCost s).mono (fun _ _ => le_rfl) fun _ => le_of_eq (zero_add _))
+    fun v => ?_) s
+  obtain ⟨state, ok⟩ := v
+  refine RCost.bind ((RCost.set _ (fun _ s => 0 + runsLeft runLimit runCost s)).mono
+    (fun _ _ => le_rfl) fun _ => le_rfl) fun _ => ?_
   exact RCost.bind (K := fun _ s => 0 + runsLeft runLimit runCost s)
-    ((rcost_secRuns K circuits settings runLimit D runCost htree m hm A.net parameter seeds dealt emu .top
-      runLimit).frame 0 |>.mono (fun _ s => le_of_eq (add_comm _ _)) fun s => le_of_eq (add_comm _ _))
-    fun _ => rcost_secSigning K circuits settings runLimit D runCost hp htree m hm A parameter seeds dealt emu
+    ((rcost_secRuns K circuits settings runLimit D runCost hp htree m hm A.net parameter seeds dealt (committed ok emu)
+      .top runLimit).frame 0 |>.mono (fun _ s => le_of_eq (add_comm _ _)) fun s => le_of_eq (add_comm _ _))
+    fun _ => rcost_secSigning K circuits settings runLimit D runCost hp htree m hm A parameter seeds dealt
+      (committed ok emu)
 
 end Rest
 

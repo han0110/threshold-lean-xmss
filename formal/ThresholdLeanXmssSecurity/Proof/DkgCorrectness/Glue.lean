@@ -90,9 +90,9 @@ padding of the charge of the pilot. -/
 theorem treeFuel_add_two_le (hrun : 0 < runLimit) :
     treeFuel circuits settings + 2 ≤ dkgTsigRounds circuits settings runLimit := by
   unfold dkgTsigRounds
-  have h : treeFuel circuits settings ≤ runLimit * (1 + 2 ^ layerHeight) * treeFuel circuits settings := by
-    calc treeFuel circuits settings = 1 * 1 * treeFuel circuits settings := by ring
-      _ ≤ runLimit * (1 + 2 ^ layerHeight) * treeFuel circuits settings :=
+  have h : treeFuel circuits settings ≤ runLimit * (1 + 2 ^ layerHeight) * (treeFuel circuits settings + 1) := by
+    calc treeFuel circuits settings ≤ 1 * 1 * (treeFuel circuits settings + 1) := by omega
+      _ ≤ runLimit * (1 + 2 ^ layerHeight) * (treeFuel circuits settings + 1) :=
         Nat.mul_le_mul_right _ (Nat.mul_le_mul hrun (Nat.le_add_right _ _))
   have h2 : 2 ≤ setupRounds := by decide
   omega

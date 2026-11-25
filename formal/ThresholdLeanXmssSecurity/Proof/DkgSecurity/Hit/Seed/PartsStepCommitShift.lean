@@ -232,11 +232,7 @@ theorem noCall_secRest_off (Fam : Query C → Prop) (A : DkgTsigAdversary C E) (
     NoCall (OffCall D Fam) ((secRest K circuits settings runLimit ⟨true, fun _ => 0⟩ D A parameter seeds dealt emu).run' st) := by
   have hprog : DkgCorrectnessProof.UsedHit.NoProg
       (secRest K circuits settings runLimit ⟨true, fun _ => 0⟩ D A parameter seeds dealt emu) :=
-    DkgCorrectnessProof.UsedHit.NoProg.bind
-      (DkgSecurityProof.noProg_secRuns K circuits settings runLimit D _ (fun _ => rfl) A.net parameter seeds dealt emu
-        .top runLimit)
-      fun _ => DkgSecurityProof.noProg_secSigning K circuits settings runLimit D _ (fun _ => rfl) A parameter seeds
-        dealt emu
+    DkgSecurityProof.noProg_secRest K circuits settings runLimit D _ (fun _ => rfl) A parameter seeds dealt emu
   have h1 := noCall_map _ Prod.fst (hprog st)
   have h2 := noCall_secRest_seedGenCell K circuits settings runLimit D ⟨true, fun _ => 0⟩ (fun _ => rfl) A parameter
     seeds dealt emu st

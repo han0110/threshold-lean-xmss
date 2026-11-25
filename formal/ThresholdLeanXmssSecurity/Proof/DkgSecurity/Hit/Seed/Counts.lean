@@ -293,9 +293,9 @@ theorem logged_suffixOf (D : C.Coalition) (A : DkgTsigAdversary C E) (step forge
   have h := LoggedCount.rcost_secRest K circuits settings runLimit D step ⟨true, fun _ => 0⟩ (fun _ => rfl) A hround forge
     hforge x.2.1.1 x.2.1.2.1 x.2.1.2.2 p.2 (startState D p.1 fun i => (p.2 i).map fun _ => x.2.1.2.2 i)
   refine h.trans (le_of_eq ?_)
-  change (forge : ℕ∞) + ((FirstCounts.remaining runLimit (fun _ => treeFuel circuits settings * step)
-    (fun _ => 0) : ℕ) : ℕ∞) = _
-  rw [remaining_start]
+  change (step : ℕ∞) + ((forge : ℕ∞) + ((FirstCounts.remaining runLimit
+    (fun _ => treeFuel circuits settings * step + step) (fun _ => 0) : ℕ) : ℕ∞)) = _
+  rw [← remaining_start]
   push_cast
   ring
 

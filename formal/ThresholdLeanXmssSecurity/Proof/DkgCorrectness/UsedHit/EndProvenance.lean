@@ -469,12 +469,24 @@ theorem drawTreeRun_keeps (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree)
   unfold UsedHit.drawTreeRun
   simp only [StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, bind_assoc, StateT.run_set,
     List.mapM_pure, liftComp_pure, free_pure]
+  have hvote : ∀ (st : net.State) (outputs : C.Party → Option TreeOutput),
+      IsQueryBoundP (voteRound worldRoles D net st fun i => (outputs i).map (treeVote tree))
+        (WorldBad D (TableAllows F)) 0 := fun st outputs =>
+    IsQueryBoundP.of_imp (fun t ht => by
+      rcases t with _ | (_ | _ | _)
+      · exact ht.elim
+      · exact ht.elim
+      · exact ht.elim
+      · rfl) (FirstCounts.voteRound_honestIn .stream (by decide) D net st _ fun j q hq => by
+        obtain ⟨o, -, rfl⟩ := Option.map_eq_some_iff.1 hq
+        exact FirstCounts.queryClass_treeVote tree o)
   refine ⟨(isQueryBoundP_bind (n := 0) (m := 0) ((SetupBudgets.executePhase_boundP _ D net _ _ _ (fun _ => 0)
     fun j _ => runPrograms_noBad K circuits settings runLimit D F s hs tree hrun j).mono (by simp)) fun r _ =>
       (isQueryBoundP_bind (n := 0) (m := 0) (wrongOutput_noBad runLimit D F _ _ _) fun _ _ =>
-        isQueryBoundP_pure _ _ _).mono le_rfl).mono le_rfl, fun z hz => ?_⟩
+        (isQueryBoundP_bind (n := 0) (m := 0) (hvote _ _) fun _ _ =>
+          isQueryBoundP_pure _ _ _).mono le_rfl).mono le_rfl).mono le_rfl, fun z hz => ?_⟩
   simp only [mem_support_bind_iff, support_pure, Set.mem_singleton_iff] at hz
-  obtain ⟨r, -, y, -, rfl⟩ := hz
+  obtain ⟨r, -, y, -, v, -, rfl⟩ := hz
   intro tree'
   by_cases ht : tree' = tree
   · subst ht
@@ -721,8 +733,13 @@ theorem tableGame_noBad (A : DkgTsigAdversary C E) :
   refine (isQueryBoundP_bind (n := 0) (m := 0) (worldBad_of_honestIn ((GameCount.bound_iff _ _ _).1
     (DigestBudgets.seedHonest (C := C) (E := E) (c := .stream) nofun D A.net))) fun y _ => ?_).mono le_rfl
   obtain ⟨state, keys⟩ := y
+  refine (isQueryBoundP_bind (n := 0) (m := 0) (worldBad_of_honestIn (FirstCounts.voteRound_honestIn .stream
+    (by decide) D A.net state _ fun j q hq => by
+      obtain ⟨o, -, rfl⟩ := Option.map_eq_some_iff.1 hq
+      rfl)) fun v _ => ?_).mono le_rfl
+  obtain ⟨state, ok⟩ := v
   have hrun := (rkeeps_bind (drawTreeRuns_keeps K circuits settings (D := D) (F := F) A.net .top runLimit)
-    fun _ => drawSigning_keeps K circuits settings A) (startState D state keys) fun _ => Nat.zero_le _
+    fun _ => drawSigning_keeps K circuits settings A) (seedState D state keys ok) fun _ => Nat.zero_le _
   exact (isQueryBoundP_bind (n := 0) (m := 0) hrun.1 fun _ _ => isQueryBoundP_pure _ _ _).mono le_rfl
 
 end Walk

@@ -16,6 +16,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::Duration;
 use std::{fs, future};
 
 use tokio::net::TcpListener;
@@ -96,13 +97,19 @@ fn parse_members(bytes: &[u8]) -> (Vec<usize>, &[u8]) {
     (ids, &bytes[1 + count..])
 }
 
+/// The settings of the key ceremonies of an operator.
+pub struct Settings {
+    pub reshare: Reshare,
+    pub batch_size: usize,
+    pub concurrency: usize,
+    pub time_limit: Duration,
+}
+
 struct Server {
     dir: PathBuf,
     id: usize,
     network: Arc<Network>,
-    reshare: Reshare,
-    batch_size: usize,
-    concurrency: usize,
+    settings: Settings,
     sessions: AtomicU32,
     announcing: Mutex<()>,
 }
@@ -195,16 +202,25 @@ impl Server {
         match session {
             Session::NewTopTree if self.dir.join("pk").exists() => Err("the key exists".into()),
             Session::NewTopTree => {
-                dkg::new_top_tree(&self.dir, &network, self.reshare, self.batch_size, self.concurrency).await
+                dkg::new_top_tree(
+                    &self.dir,
+                    &network,
+                    self.settings.reshare,
+                    self.settings.batch_size,
+                    self.settings.concurrency,
+                    self.settings.time_limit,
+                )
+                .await
             }
             Session::NewBottomTree { bottom } => {
                 dkg::new_bottom_tree(
                     &self.dir,
                     &network,
                     *bottom,
-                    self.reshare,
-                    self.batch_size,
-                    self.concurrency,
+                    self.settings.reshare,
+                    self.settings.batch_size,
+                    self.settings.concurrency,
+                    self.settings.time_limit,
                 )
                 .await?;
                 Ok(fs::read(self.dir.join("pk")).unwrap())
@@ -215,15 +231,7 @@ impl Server {
     }
 }
 
-pub async fn serve(
-    address: &str,
-    admin: Option<&str>,
-    peers: Vec<String>,
-    dir: PathBuf,
-    reshare: Reshare,
-    batch_size: usize,
-    concurrency: usize,
-) {
+pub async fn serve(address: &str, admin: Option<&str>, peers: Vec<String>, dir: PathBuf, settings: Settings) {
     let mut addresses = [peers, vec![address.to_string()]].concat();
     // Each operator takes the rank of its address among all addresses, in string order, as its
     // number.
@@ -240,9 +248,7 @@ pub async fn serve(
         dir,
         id,
         network,
-        reshare,
-        batch_size,
-        concurrency,
+        settings,
         sessions: AtomicU32::new(0),
         announcing: Mutex::new(()),
     });

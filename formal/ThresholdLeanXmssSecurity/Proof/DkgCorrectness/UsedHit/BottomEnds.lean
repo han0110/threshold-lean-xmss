@@ -269,15 +269,18 @@ theorem endPointsAgree (prims : Primitives) : EndPointsAgree K circuits settings
     refine bind_congr fun p => ?_
     obtain ⟨state, keys⟩ := p
     dsimp only
-    have hs : RunsBounded runLimit (startState D state keys) := fun _ => Nat.zero_le _
+    refine bind_congr fun v => ?_
+    obtain ⟨state, ok⟩ := v
+    dsimp only
+    have hs : RunsBounded runLimit (seedState D state keys ok) := fun _ => Nat.zero_le _
     obtain ⟨heq, hbd⟩ := fixedTreeRuns_eq_hybrid K circuits settings runLimit D A.net .top runLimit _ hs
     rw [StateT.run_bind, StateT.run_bind]
     congr 1
     calc (fixedTreeRuns K circuits settings runLimit (gameSetups runLimit) (wrongOutput D) D A.net .top
-            runLimit).run (startState D state keys) >>=
+            runLimit).run (seedState D state keys ok) >>=
           (fun p => (fixedSigning K circuits settings runLimit (gameSetups runLimit) (wrongOutput D) D A).run p.2)
         = (fixedTreeRuns K circuits settings runLimit (gameSetups runLimit) (wrongOutput D) D A.net .top
-            runLimit).run (startState D state keys) >>=
+            runLimit).run (seedState D state keys ok) >>=
           (fun p => (hybridSigning K circuits settings runLimit (gameSetups runLimit) (wrongOutput D) D A).run p.2) :=
           bind_congr_of_forall_mem_support _ fun p hp =>
             fixedSigning_eq_hybrid K circuits settings runLimit D A p.2 (hbd p hp)

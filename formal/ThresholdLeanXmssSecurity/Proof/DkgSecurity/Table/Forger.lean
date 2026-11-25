@@ -48,6 +48,22 @@ theorem couple_split (t : (LocalSpec C + LocalSpec C).Domain) :
   · exact couple_adversaryCall t
   · exact couple_honestCall t
 
+/-- An oracle implementation moves through a vote round. -/
+theorem simulateQ_voteRound_mapRoles {ι : Type} {spec : OracleSpec ι} {m : Type → Type} [Monad m] [LawfulMonad m]
+    (φ : QueryImpl spec m) (Ro : Roles C (OracleComp spec)) (net : Adversary C E Unit PEmpty PEmpty)
+    (state : net.State) (input : C.Party → Option (Query C)) :
+    simulateQ φ (voteRound Ro D net state input) = voteRound (mapRoles φ Ro) D net state input := by
+  unfold voteRound
+  rw [simulateQ_bind, simulateQ_sequenceFin]
+  congr 1
+  · congr 1
+    funext j
+    cases input j with
+    | none => simp
+    | some q => by_cases hj : j ∈ D.1 <;> simp [hj, mapRoles]
+  · funext honest
+    simp [mapRoles]
+
 section Network
 
 variable {I O L R Ia α : Type} (A : Adversary C E Ia L R) (F : Functionality C I O L R)
@@ -136,7 +152,9 @@ theorem coupleS_emulatedRun (net : Adversary C E Unit PEmpty PEmpty) (openings :
   unfold emulatedRun emulatedRunW
   refine CoupleS.get.bind fun s => ?_
   refine (CoupleS.lift (couple_executePhase _ _ _ _ _)).bind fun r => ?_
-  exact CoupleS.set _
+  refine (CoupleS.lift ?_).bind fun v => CoupleS.set _
+  rw [reductionRoles_eq, forgerWorldRoles_eq, ← simulateQ_voteRound_mapRoles, ← simulateQ_voteRound_mapRoles]
+  exact Couple.simulateQ couple_split _
 
 theorem coupleS_emulatedRuns (net : Adversary C E Unit PEmpty PEmpty) (openings : List (List (List Bit)))
     (randomizer : Randomizer) (tree : Tree) : ∀ count : ℕ,
@@ -206,7 +224,9 @@ theorem couple_body (hdealt : SafeDealt dealt) (A : DkgTsigAdversary C E) (pk : 
       exact Couple.pure _
   refine (couple_seedGen _ _ _).bind fun r => ?_
   obtain ⟨state, keys⟩ := r
-  refine CoupleS.run' ?_ _
+  refine Couple.bind ?_ fun v => CoupleS.run' ?_ _
+  · rw [reductionRoles_eq, forgerWorldRoles_eq, ← simulateQ_voteRound_mapRoles, ← simulateQ_voteRound_mapRoles]
+    exact Couple.simulateQ couple_split _
   refine (coupleS_emulatedRuns K circuits settings runLimit _ _ _ _ _).bind fun _ => CoupleS.get.bind fun s => ?_
   generalize topHolder D s.operators = holder
   cases holder

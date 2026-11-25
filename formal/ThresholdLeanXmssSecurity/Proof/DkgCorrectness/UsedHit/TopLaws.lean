@@ -110,6 +110,7 @@ theorem topCutGameWith_noProgram (post : (C.Party → Option (Keys C)) → ProbC
   refine noCall_bind _ ?_ fun place => ?_
   · unfold topPrefix
     refine noCall_bind _ (Collision.noProgram_realExecution D A.net _ _ _ _) fun p => ?_
+    refine noCall_bind _ (Collision.noProgram_voteRound D A.net _ _) fun v => ?_
     refine noCall_bind _ (noProg_topLoop K circuits settings runLimit j D A.net j _) fun q => ?_
     obtain ⟨ran, s⟩ := q
     dsimp only
@@ -121,7 +122,8 @@ theorem topCutGameWith_noProgram (post : (C.Party → Option (Keys C)) → ProbC
       unfold topLiveRest
       refine noCall_bind _ (Collision.noProgram_executePhase D A.net _ _ _) fun r' => ?_
       obtain ⟨state, outputs⟩ := r'
-      exact noCall_bind _ (noProgram_wrongOutput D _ _ _) fun _ => noProg_topRest K circuits settings runLimit j D A _
+      exact noCall_bind _ (noProgram_wrongOutput D _ _ _) fun _ => noCall_bind _ (Collision.noProgram_voteRound D A.net _ _)
+        fun _ => noProg_topRest K circuits settings runLimit j D A _
     | skip s runJ =>
       dsimp only
       unfold topSkipRest
@@ -427,8 +429,10 @@ theorem fixedTreeRun_live (j : ℕ) (D : C.Coalition) (net : Adversary C E Unit 
             | some keys, some k => topAfterSetup K circuits settings i keys ⟨k.seed, k.pairKey⟩
             | _, _ => failure) >>= fun so =>
         wrongOutput D (fun i => (s.operators i).keys) .top so.2 >>= fun bad =>
-        pure ((), (⟨so.1, fun i => (s.operators i).keep (so.2 i) .top,
-          Function.update s.runs .top (s.runs .top + 1), s.closed, s.flag || bad⟩ : RealState C net.State)) := by
+        voteRound worldRoles D net so.1 (fun i => (so.2 i).map (treeVote .top)) >>= fun v =>
+        pure ((), (⟨v.1, fun i => (s.operators i).keep (committed v.2 so.2 i) .top,
+          Function.update s.runs .top (s.runs .top + 1), s.closed, s.flag || bad || split D (committed v.2 so.2)⟩ :
+            RealState C net.State)) := by
   have hfresh : (List.range (treeSetups .top)).mapM
       (fun c => sampleSlot (C := C) j (fixedSlot runLimit s.runs .top + c)) = pure [none] := by
     simp [treeSetups, fixedSlot, hj, sampleSlot]
@@ -475,8 +479,10 @@ theorem fixedTreeRun_liveFresh (j : ℕ) (D : C.Coalition) (net : Adversary C E 
             | some keys, some k => topAfterSetup K circuits settings i keys (prssOverlay D i (carrierPrssKeys k) f)
             | _, _ => failure) >>= fun so =>
         wrongOutput D (fun i => (s.operators i).keys) .top so.2 >>= fun bad =>
-        pure ((), (⟨so.1, fun i => (s.operators i).keep (so.2 i) .top,
-          Function.update s.runs .top (s.runs .top + 1), s.closed, s.flag || bad⟩ : RealState C net.State)) := by
+        voteRound worldRoles D net so.1 (fun i => (so.2 i).map (treeVote .top)) >>= fun v =>
+        pure ((), (⟨v.1, fun i => (s.operators i).keep (committed v.2 so.2 i) .top,
+          Function.update s.runs .top (s.runs .top + 1), s.closed, s.flag || bad || split D (committed v.2 so.2)⟩ :
+            RealState C net.State)) := by
   have hfresh : (List.range (treeSetups .top)).mapM
       (fun c => sampleSlot (C := C) (j + 1) (fixedSlot runLimit s.runs .top + c)) =
         (fun f => [some f]) <$> sampleFresh := by
@@ -555,18 +561,20 @@ theorem fixedGame_cut (h : ℕ) (post : (C.Party → Option (Keys C)) → ProbCo
   simp only [map_bind, bind_assoc]
   refine JEq.bind prims (JEq.of_eq prims rfl) fun p => ?_
   obtain ⟨state, keys⟩ := p
+  refine JEq.bind prims (JEq.of_eq prims rfl) fun v => ?_
+  obtain ⟨state, ok⟩ := v
   obtain ⟨m, hm⟩ : ∃ m, runLimit = j + (m + 1) := ⟨runLimit - j - 1, by omega⟩
   have hcount : fixedTreeRuns K circuits settings runLimit h (wrongOutput D) D A.net .top runLimit =
       fixedTreeRuns K circuits settings runLimit h (wrongOutput D) D A.net .top (j + (m + 1)) := by
     rw [← hm]
   rw [hcount]
   simp only [StateT.run_bind]
-  rw [fixedTreeRuns_split K circuits settings runLimit h D A.net (m + 1) j, hloop _ (by simp [startState])]
+  rw [fixedTreeRuns_split K circuits settings runLimit h D A.net (m + 1) j, hloop _ (by simp [seedState, startState])]
   simp only [bind_assoc]
   refine JEq.bind_support prims _ fun q hq => ?_
   have hq' : q.1 = true → q.2.runs .top = j := fun hr => by
     have := topLoop_runs K circuits settings runLimit j D A.net j _ q hq hr
-    simpa [startState] using this
+    simpa [seedState, startState] using this
   obtain ⟨ran, s⟩ := q
   have hsign : ∀ s', (fixedSigning K circuits settings runLimit h (wrongOutput D) D A).run s' =
       (fixedSigning K circuits settings runLimit (j + 1) (wrongOutput D) D A).run s' := fun s' => by

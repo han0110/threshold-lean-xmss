@@ -189,6 +189,7 @@ theorem erasedAt_emulatedRun (net : Adversary C E Unit PEmpty PEmpty) (emu : C.P
   refine flagErases_phase D net noFunctionality ([] : Record C E) _ _ _ fun r => ?_
   rcases r with ⟨state, steps⟩
   refine flagErases_read_bind _ fun after => ?_
+  refine (flagErases_lift _).bind fun v => ?_
   exact flagErases_set _ _ rfl
 
 omit [Fintype E] [DecidableEq E] in
@@ -438,12 +439,16 @@ theorem sharedDealt_fst (m : Mode) (D : C.Coalition) (A : DkgTsigAdversary C E) 
   simp only [map_bind, simulateQ_bind, simulateQ_map]
   refine bind_congr fun x => ?_
   rcases x with ⟨state, parameter, seeds, dealt, emu⟩
+  simp only [inWorld, StateT.run'_eq, StateT.run_bind, StateT.run_get, StateT.run_lift, StateT.run_set, pure_bind,
+    bind_assoc, simulateQ_bind, simulateQ_map, map_bind]
+  refine bind_congr fun v => ?_
   have h := ((flagErases_sharedRuns K circuits settings runLimit (loggedWorld prims D) Prod.fst D m A.net
-    parameter seeds dealt emu .top runLimit).bind
+    parameter seeds dealt (committed v.2 emu) .top runLimit).bind
     fun _ => flagErases_dealerSigning K circuits settings runLimit (loggedWorld prims D) Prod.fst D m A
-      parameter seeds dealt emu).fst (startState D state fun i => (emu i).map fun _ => dealt i)
-  simp only [StateT.run_bind, StateT.run'_eq, simulateQ_bind, map_eq_bind_pure_comp, bind_assoc, Function.comp_def,
-    pure_bind, simulateQ_pure] at h ⊢
+      parameter seeds dealt (committed v.2 emu)).fst
+    (votedStart D (startState D state fun i => (emu i).map fun _ => dealt i) v.1 v.2)
+  simp only [StateT.run_bind, simulateQ_bind, map_eq_bind_pure_comp, bind_assoc, Function.comp_def, pure_bind,
+    simulateQ_pure] at h ⊢
   exact h
 
 omit [Fintype E] [DecidableEq E] in

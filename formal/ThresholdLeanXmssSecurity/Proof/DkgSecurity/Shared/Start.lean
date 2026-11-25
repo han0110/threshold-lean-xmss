@@ -156,6 +156,7 @@ theorem flagErases_sharedRun_real (net : Adversary C E Unit PEmpty PEmpty) (para
       (StateT.lift (noMonitor keys tree outputs) : RealM C net.State Bool) = pure false := fun _ _ =>
     StateT.ext fun s => by simp [noMonitor, StateT.run_lift]
   simp only [hm, pure_bind]
+  refine (flagErases_lift _).bind fun v => ?_
   exact flagErases_set _ _ rfl
 
 omit [Fintype E] [DecidableEq E] in
@@ -341,11 +342,16 @@ theorem sharedReal_fst (D : C.Coalition) (A : DkgTsigAdversary C E) :
   simp only [map_bind, simulateQ_bind, simulateQ_map]
   refine bind_congr fun x => ?_
   rcases x with ⟨state, keys⟩
+  simp only [inWorld, StateT.run_bind, StateT.run_get, StateT.run_lift, StateT.run_set, pure_bind, bind_assoc,
+    simulateQ_bind]
+  refine bind_congr fun v => ?_
+  rw [votedStart_startState]
   have h := ((flagErases_sharedRuns_real K circuits settings runLimit (loggedWorld prims D) Prod.fst D A.net
-    (gameParameter D keys) (gameSeeds D keys) (fun i => (keys i).getD noKeys) (fun _ => none) .top runLimit).bind
+    (gameParameter D keys) (gameSeeds D keys) (fun i => (keys i).getD noKeys) (committed v.2 fun _ => none) .top
+    runLimit).bind
     fun _ => flagErases_signing K circuits settings runLimit (loggedWorld prims D) Prod.fst D A
-      (gameParameter D keys) (gameSeeds D keys) (fun i => (keys i).getD noKeys) (fun _ => none)).fst
-    (startState D state keys)
+      (gameParameter D keys) (gameSeeds D keys) (fun i => (keys i).getD noKeys) (committed v.2 fun _ => none)).fst
+    (seedState D v.1 keys v.2)
   simp only [StateT.run_bind, simulateQ_bind, map_eq_bind_pure_comp, bind_assoc, Function.comp_def, pure_bind,
     simulateQ_pure] at h ⊢
   exact h

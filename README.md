@@ -35,6 +35,10 @@ With `--reshare peer` on every `serve` command, each AND layer takes 1 round in 
 
 With the same `--batch-size` on every `serve` command, each batch of a tree holds at most that number of chains or keys. Operators with different values abort. `--concurrency` sets the batches that one operator runs at the same time.
 
+Each key ceremony ends with a vote, and an operator keeps the result only if all operators vote for it. The vote assumes a broadcast channel, as [`doc/dkg.md`](doc/dkg.md) 3.3 describes. The Lean model has the same vote.
+
+`--time-limit` sets the seconds after which an operator that is still in a ceremony votes for its abort. The default is 24 hours. The delay of the network adds about $\lceil N / c \rceil$ times the rounds per batch times the one-way delay to a tree, for $N = \lceil 2^{16} \cdot 58 / B \rceil$ chain batches of the batch size $B$ and the concurrency $c$. Add the time of the computation, which the benchmark gives. Set a larger limit if the sum comes near the limit.
+
 Generate the key and its top tree, which prints the public key.
 
 ```sh
