@@ -376,9 +376,17 @@ attribute [local instance] inhabitedField
 variable (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ) (D : C.Coalition)
   (step : ℕ)
 
-/-- The calls of the runs that remain, with `treeFuel * step` calls for each run. -/
+/-- The calls of the runs that remain, with `treeFuel * step + step` calls for each run and its vote. -/
 def runsLeft {σ : Type} (s : RealState C σ) : ℕ∞ :=
-  (FirstCounts.remaining runLimit (fun _ => treeFuel circuits settings * step) s.runs : ℕ)
+  (FirstCounts.remaining runLimit (fun _ => treeFuel circuits settings * step + step) s.runs : ℕ)
+
+omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
+/-- A vote round makes at most `step` calls of `Logged`. -/
+theorem cost_voteRound_logged (net : Adversary C E Unit PEmpty PEmpty)
+    (hround : ∀ state sent, IsQueryBoundP (net.round state sent) HashCall step) (state : net.State)
+    (input : C.Party → Option (Query C)) : cost (callCharge Logged) (voteRound worldRoles D net state input) ≤ step :=
+  (cost_callCharge_le_iff _ _ _).2 (Vote.voteRound_isQueryBoundP D net state input Logged step hround
+    fun _ _ _ h => h)
 
 omit [Fintype E] [DecidableEq E] in
 /-- One real run of `tree` from a state with fewer than `runLimit` runs of `tree` costs its part of
@@ -390,20 +398,26 @@ theorem cost_treeRun (net : Adversary C E Unit PEmpty PEmpty)
       (fun p => runsLeft circuits settings runLimit step p.2) ≤ runsLeft circuits settings runLimit step s := by
   unfold treeRun
   rw [StateT.run_bind, StateT.run_get, pure_bind]
-  have hpot : ((treeFuel circuits settings * step : ℕ) : ℕ∞) +
-      ((FirstCounts.remaining runLimit (fun _ => treeFuel circuits settings * step)
+  have hpot : ((treeFuel circuits settings * step + step : ℕ) : ℕ∞) +
+      ((FirstCounts.remaining runLimit (fun _ => treeFuel circuits settings * step + step)
         (Function.update s.runs tree (s.runs tree + 1)) : ℕ) : ℕ∞) = runsLeft circuits settings runLimit step s := by
-    rw [runsLeft, ← FirstCounts.remaining_update runLimit _ s.runs tree hs, Nat.cast_add, add_comm]
+    rw [runsLeft, ← FirstCounts.remaining_update runLimit _ s.runs tree hs]
+    push_cast
+    ring
   refine (?_ : RCost (callCharge Logged) _ (fun _ s' => runsLeft circuits settings runLimit step s')
     fun _ => runsLeft circuits settings runLimit step s) s
-  refine RCost.bind (K := fun _ _ => ((FirstCounts.remaining runLimit (fun _ => treeFuel circuits settings * step)
-      (Function.update s.runs tree (s.runs tree + 1)) : ℕ) : ℕ∞))
+  refine RCost.bind (K := fun _ _ => (step : ℕ∞) + ((FirstCounts.remaining runLimit
+      (fun _ => treeFuel circuits settings * step + step) (Function.update s.runs tree (s.runs tree + 1)) : ℕ) : ℕ∞))
     ((RCost.lift ((cost_callCharge_le_iff _ _ _).2 (logged_executePhase D net step hround _ _ _)) _).mono
-      (fun _ _ => le_rfl) fun _ => hpot.le) fun r => ?_
+      (fun _ _ => le_rfl) fun _ => by rw [← hpot, Nat.cast_add, add_assoc]) fun r => ?_
   obtain ⟨state, outputs⟩ := r
-  refine RCost.bind (K := fun _ _ => ((FirstCounts.remaining runLimit (fun _ => treeFuel circuits settings * step)
-      (Function.update s.runs tree (s.runs tree + 1)) : ℕ) : ℕ∞))
+  refine RCost.bind (K := fun _ _ => (step : ℕ∞) + ((FirstCounts.remaining runLimit
+      (fun _ => treeFuel circuits settings * step + step) (Function.update s.runs tree (s.runs tree + 1)) : ℕ) : ℕ∞))
     ((RCost.lift (cost_pure_le _ _ 0) _).mono (fun _ _ => le_rfl) fun _ => le_of_eq (zero_add _)) fun bad => ?_
+  refine RCost.bind (K := fun _ _ => ((FirstCounts.remaining runLimit
+      (fun _ => treeFuel circuits settings * step + step) (Function.update s.runs tree (s.runs tree + 1)) : ℕ) : ℕ∞))
+    ((RCost.lift (cost_voteRound_logged D step net hround _ _) _).mono (fun _ _ => le_rfl) fun _ => le_rfl)
+    fun v => ?_
   exact (RCost.set _ _).mono (fun _ _ => le_rfl) fun _ => le_rfl
 
 omit [Fintype E] [DecidableEq E] in
@@ -558,12 +572,20 @@ theorem rcost_secRest (m : Mode) (hm : ∀ tree, m.emulated tree = 0) (A : DkgTs
     (parameter : PublicParameter) (seeds : C.Term → HashOutput) (dealt : C.Party → Keys C)
     (emu : C.Party → Option (Keys C)) :
     RCost (callCharge Logged) (secRest K circuits settings runLimit m D A parameter seeds dealt emu)
-      (fun _ _ => 0) (fun s => F + runsLeft circuits settings runLimit step s) := by
+      (fun _ _ => 0) (fun s => step + (F + runsLeft circuits settings runLimit step s)) := by
   unfold secRest
+  refine RCost.get_bind fun s => ?_
+  refine (RCost.bind (K := fun _ _ => F + runsLeft circuits settings runLimit step s) (k := fun _ _ => (0 : ℕ∞))
+    (RCost.lift (cost_voteRound_logged D step A.net hround _ _) fun _ => F + runsLeft circuits settings runLimit step s)
+    fun v => ?_) s
+  obtain ⟨state, ok⟩ := v
+  refine RCost.bind ((RCost.set _ (fun _ s => F + runsLeft circuits settings runLimit step s)).mono
+    (fun _ _ => le_rfl) fun _ => le_rfl) fun _ => ?_
   exact RCost.bind (K := fun _ s => F + runsLeft circuits settings runLimit step s)
-    ((rcost_secRuns K circuits settings runLimit D step m hm A.net hround parameter seeds dealt emu .top runLimit).frame F
-      |>.mono (fun _ s => le_of_eq (add_comm _ _)) fun s => le_of_eq (add_comm _ _))
-    fun _ => rcost_secSigning K circuits settings runLimit D step m hm A hround F hforge parameter seeds dealt emu
+    ((rcost_secRuns K circuits settings runLimit D step m hm A.net hround parameter seeds dealt (committed ok emu) .top
+      runLimit).frame F |>.mono (fun _ s => le_of_eq (add_comm _ _)) fun s => le_of_eq (add_comm _ _))
+    fun _ => rcost_secSigning K circuits settings runLimit D step m hm A hround F hforge parameter seeds dealt
+      (committed ok emu)
 
 theorem hashCall_ownCost (t : (LocalSpec C).Domain) (h : HashCall t) : 1 ≤ ownCost t := by
   rcases t with n | q | x
@@ -604,9 +626,9 @@ theorem logged_dealtRun (m : Mode) (hm : ∀ tree, m.emulated tree = 0) (A : Dkg
     have h := rcost_secRest K circuits settings runLimit D step m hm A hround' forge hforge' parameter seeds dealt emu
       (startState D state fun i => (emu i).map fun _ => dealt i)
     refine h.trans (le_of_eq ?_)
-    change (forge : ℕ∞) + ((FirstCounts.remaining runLimit (fun _ => treeFuel circuits settings * step)
-      (fun _ => 0) : ℕ) : ℕ∞) = _
-    rw [remaining_start]
+    change (step : ℕ∞) + ((forge : ℕ∞) + ((FirstCounts.remaining runLimit
+      (fun _ => treeFuel circuits settings * step + step) (fun _ => 0) : ℕ) : ℕ∞)) = _
+    rw [← remaining_start]
     push_cast
     ring
   · rw [← Nat.cast_add]

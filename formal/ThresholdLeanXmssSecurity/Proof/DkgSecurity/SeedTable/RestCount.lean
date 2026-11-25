@@ -100,23 +100,26 @@ omit [Fintype E] [DecidableEq E] in
 /-- The program of the shared rest makes no programming query. -/
 theorem sharedProgramNoProgram : SharedProgramNoProgram K circuits settings runLimit := by
   intro D A state keys
-  have h := cost_sharedProgram_le K circuits settings runLimit (callCharge WorldProgramQuery) (fun _ => 0) D A
-    (fun s tree => (cost_program_run K circuits settings D A.net s tree).trans (by simp)) (fun _ => 0)
+  have h := cost_sharedProgram_le K circuits settings runLimit (callCharge WorldProgramQuery) (fun _ => 0) D A 0
+    (fun state input _ => (cost_callCharge_le_iff _ _ 0).2
+      ((SigningSelectionProof.noCall_iff _ _).1 (Collision.noProgram_voteRound D A.net state input)))
+    (fun s tree => by simpa using cost_program_run K circuits settings D A.net s tree) (fun _ => 0)
     cost_program_adversary 0 (fun pk top => by rw [forgeCharge_zero]; exact cost_zero_le _)
     (cost_dealerTree _ fun oa _ => cost_program_free oa) (cost_dealerOracles _ fun oa _ => cost_program_free oa)
     (cost_dealerWins _ fun oa _ => cost_program_free oa) state keys
   have hrem : FirstCounts.remaining runLimit (fun _ => 0) (fun _ => 0) = 0 := by
     simp [FirstCounts.remaining]
-  rw [peekCharge_program, hrem, Nat.cast_zero, add_zero] at h
+  rw [peekCharge_program, hrem, Nat.cast_zero, add_zero, add_zero] at h
   have hb := (cost_callCharge_le_iff PeekProgramQuery _ 0).1 (by simpa using h)
   exact (isQueryBoundP_zero_iff _ _).1 ((isQueryBoundP_congr_pred fun _ => not_not).2 hb)
 
 /-! ## The calls of the class of the seed generation -/
 
 omit [Fintype E] [DecidableEq E] in
-/-- The potential of the runs at the start is the bound of the rounds after the seed generation. -/
+/-- The potential of the runs at the start and the vote of the seed generation are the bound of the
+rounds after the seed generation. -/
 theorem remaining_start (step : ℕ) :
-    FirstCounts.remaining runLimit (fun _ => treeFuel circuits settings * step) (fun _ => 0) =
+    step + FirstCounts.remaining runLimit (fun _ => treeFuel circuits settings * step + step) (fun _ => 0) =
       (dkgTsigRounds circuits settings runLimit - setupRounds) * step := by
   simp only [FirstCounts.remaining, Nat.sub_zero, Finset.sum_const, Finset.card_univ, Fintype.card_fin,
     smul_eq_mul, dkgTsigRounds, Nat.add_sub_cancel_left]
@@ -133,12 +136,22 @@ theorem sharedProgramClassBound : SharedProgramClassBound K circuits settings ru
   have hforge : ∀ pk top, cost (forgeCharge (callCharge (InClass .seedGen))) (A.forge pk top) ≤ (forge : ℕ∞) :=
     fun pk top => (PFunctor.FreeM.cost_mono forgeCharge_le_forgeCost _).trans
       ((queryCostAtMost_iff_cost_le _ _ _).1 (hf pk top))
+  have hvote : ∀ state (input : C.Party → Option (Query C)), (∀ j q, input j = some q → queryClass q = .vote) →
+      cost (callCharge ClassCall) (voteRound worldRoles D A.net state input) ≤ (step : ℕ∞) :=
+    fun state input hin => (cost_callCharge_le_iff _ _ _).2 (Vote.voteRound_isQueryBoundP D A.net state input
+      ClassCall step (fun state sent => hround state sent) fun j q hq => by
+        have hc := hin j q hq
+        simp only [ClassCall, InClass]
+        split <;> simp_all)
   have h := cost_sharedProgram_le K circuits settings runLimit (callCharge ClassCall)
-    (fun _ => treeFuel circuits settings * step) D A
-    (fun s tree => cost_class_run K circuits settings D A.net step hround s tree) (callCharge (InClass .seedGen))
+    (fun _ => treeFuel circuits settings * step + step) D A step hvote
+    (fun s tree => by
+      push_cast
+      exact add_le_add (cost_class_run K circuits settings D A.net step hround s tree) le_rfl)
+    (callCharge (InClass .seedGen))
     cost_class_adversary forge hforge (cost_dealerTree _ cost_class_free) (cost_dealerOracles _ cost_class_free)
     (cost_dealerWins _ cost_class_free) state keys
-  rw [remaining_start] at h
+  rw [← remaining_start]
   refine (PFunctor.FreeM.cost_mono classCharge_le _).trans (h.trans (le_of_eq ?_))
   push_cast
   ring

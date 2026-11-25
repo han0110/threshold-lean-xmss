@@ -66,8 +66,14 @@ theorem secRest_emu (A : DkgTsigAdversary C E) (emu : C.Party → Option (Keys C
     secRest K circuits settings runLimit m D A parameter seeds dealt emu =
       secRest K circuits settings runLimit m D A parameter seeds dealt (fun _ => none) := by
   unfold secRest secSigning
-  rw [secRuns_emu K circuits settings runLimit D m hm parameter seeds dealt A.net emu .top runLimit,
-    secOracles_emu K circuits settings runLimit D m hm parameter seeds dealt A.net emu]
+  refine bind_congr fun s => bind_congr fun v => ?_
+  obtain ⟨state, ok⟩ := v
+  refine bind_congr fun _ => ?_
+  rw [secRuns_emu K circuits settings runLimit D m hm parameter seeds dealt A.net (committed ok emu) .top runLimit,
+    secRuns_emu K circuits settings runLimit D m hm parameter seeds dealt A.net (committed ok fun _ => none) .top
+      runLimit,
+    secOracles_emu K circuits settings runLimit D m hm parameter seeds dealt A.net (committed ok emu),
+    secOracles_emu K circuits settings runLimit D m hm parameter seeds dealt A.net (committed ok fun _ => none)]
 
 omit [Fintype E] [DecidableEq E] in
 /-- With no emulated run, `secRest` on two values of the emulated keys is the same program. -/

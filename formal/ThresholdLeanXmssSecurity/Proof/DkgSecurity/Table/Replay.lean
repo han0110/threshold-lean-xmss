@@ -173,9 +173,13 @@ theorem secSigning_replay (A : DkgTsigAdversary C E) {dealer : Dealt C (RealM C 
 theorem secRest_replay (A : DkgTsigAdversary C E) {dealer : Dealt C (RealM C A.net.State)}
     (hrep : DealerReplays (prims := prims) (D := D) (c0 := c0) parameter seeds dealt A.net.State dealer) :
     RunEqR prims D c0 (secRest K circuits settings runLimit m D A parameter seeds dealt emu)
-      (secRestD K circuits settings runLimit D m A dealer emu) :=
-  (secRuns_replay K circuits settings runLimit m emu A.net hrep .top runLimit).bind fun _ =>
-    secSigning_replay K circuits settings runLimit m emu A hrep
+      (secRestD K circuits settings runLimit D m A dealer emu) := by
+  unfold secRest secRestD
+  refine RunEqR.bind (RunEqR.refl get) fun st => RunEqR.bind (RunEqR.refl _) fun v => ?_
+  obtain ⟨state, ok⟩ := v
+  exact RunEqR.bind (RunEqR.refl _) fun _ =>
+    (secRuns_replay K circuits settings runLimit m (committed ok emu) A.net hrep .top runLimit).bind fun _ =>
+      secSigning_replay K circuits settings runLimit m (committed ok emu) A hrep
 
 end Code
 

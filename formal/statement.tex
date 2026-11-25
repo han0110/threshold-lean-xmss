@@ -56,9 +56,9 @@ Proved \\
 \item The namespace \lean{ThresholdLeanXmssSecurity} has one theorem for each proved field, with
 the name of the field.
 \item The one exception is \lean{SigningStronglyUnforgeable.stronglyUnforgeable}.
-\item The win bound of \lean{dkgSecurityPreservation} is open. Twelve of the 13 hops of its chain
-have proofs on the game without the vote, and these proofs are not part of the build
+\item The win bound of \lean{dkgSecurityPreservation} has proofs for twelve of the 13 hops of its chain
 (Section~\ref{sec:setup}).
+\item The theorem \lean{theorems_of_sharedStep} gives all five claims from the one open hop.
 \item The five claims give a bound of the full system only with one more premise
 (Section~\ref{sec:chain}).
 \end{itemize}
@@ -71,7 +71,7 @@ have proofs on the game without the vote, and these proofs are not part of the b
 \item \texttt{formal/doc/model.md} has the model, and \texttt{formal/doc/differences.md} has each
 difference to the sources.
 \item The proofs are in \texttt{formal/ThresholdLeanXmssSecurity/}. Its root module checks the
-axioms of the four proved field theorems and of \lean{dkgReduction_cost}.
+axioms of the four proved field theorems and of \lean{theorems_of_sharedStep}.
 \end{itemize}
 
 \section{The setting}\label{sec:setting}
@@ -176,9 +176,12 @@ one state.
 of \cite{GJM+21} asks.
 \item The seed generation, the top tree and each bottom tree run as the real protocols on the
 network. No functionality is on the real side.
-\item Each honest operator keeps its own keys and the first output of its own runs of each tree.
+\item One vote round on a broadcast channel follows the seed generation and each run of a tree
+(\lean{voteRound}). It is the agreement step. Each operator keeps its output of a run only if all
+votes are one hash that is not \lean{abort}.
+\item Each honest operator keeps its own keys and the first output of its own runs of each tree,
+after the vote of that run.
 \item A run of the top tree needs local keys. A run of a bottom tree also needs a local top tree.
-\item The game has no agreement step.
 \item The public key and the top tree are those of the first honest operator that holds a top
 tree.
 \item With no such operator, the adversary does not win.
@@ -199,8 +202,10 @@ signing phase by $q$ in total.
 \item \lean{dkgTreeGame} is the same run with a monitor, and its output is a flag.
 \item The flag holds when two honest operators hold inconsistent seeds after the seed generation.
 \item The flag also holds when an honest operator ends a run of a tree with an output that is not
-the output of \lean{referenceTree}.
-\item An abort sets no flag.
+the output of \lean{referenceTree}. Both tests take the outputs before the vote.
+\item The flag also holds for a split of the honest operators after a vote, which the vote
+excludes on each path.
+\item A common abort alone sets no flag.
 \item \lean{honestDkg}~$b$ runs the seed generation, the top tree and bottom tree $b$ with no
 corrupt operator.
 \item \lean{dealerDkg}~$b$ gives each operator its keys, the top tree and bottom tree $b$ from
@@ -365,7 +370,7 @@ A reader of its code checks four points.
 \end{itemize}
 The code of the forger differs from the game in five points, which Section 1 of
 \texttt{formal/doc/model.md} lists. Each point is an obligation of the proof. The chain of hops
-is the plan for all five.
+covers all five, on the condition that \lean{SharedStep} holds.
 
 \paragraph{The sources of the claim}
 \begin{itemize}
@@ -394,10 +399,13 @@ Part & Proof & State \\
 \midrule
 The cost bound of the forger & \lean{dkgReduction_cost} & Proved \\
 \rowrule
-Twelve hops of the chain, with the hop to the forger & \lean{tableHop} and eleven more, on the
-game without the vote & Not built \\
+Twelve hops of the chain, with the hop to the forger & \lean{tableHop} and eleven more & Proved \\
 \rowrule
 The hop \lean{SharedStep}, in which one real run of a tree becomes an emulated run & None & Open \\
+\rowrule
+The field from \lean{SharedStep} & \lean{dkgSecurityPreservation_of_leaves} & Proved \\
+\rowrule
+All five claims from \lean{SharedStep} & \lean{theorems_of_sharedStep} & Proved \\
 \bottomrule
 \end{tabularx}
 \end{center}

@@ -231,7 +231,7 @@ theorem peekRepS_sharedRunWith (D : C.Coalition) (net : Adversary C E Unit PEmpt
   refine (peekRepS_inWorld _).bind fun r => ?_
   refine peekRepS_read_bind fun after => ?_
   simp only [blind_snd, globalEvent_blind]
-  exact peekRepS_set _
+  exact (peekRepS_inWorld _).bind fun _ => peekRepS_set _
 
 omit [Fintype E] [DecidableEq E] in
 /-- One run in the real mode. -/
@@ -364,10 +364,13 @@ theorem peekRep_sharedRestOf (D : C.Coalition) (A : DkgTsigAdversary C E) (state
     PeekRep impl view (sharedRestOf K circuits settings runLimit impl view false D A state keys)
       (sharedRestOf K circuits settings runLimit peekHandler id false D A state keys) := by
   unfold sharedRestOf sharedRest
-  have h := (peekRepS_sharedRuns_real K circuits settings runLimit impl view D A.net (gameParameter D keys)
-    (gameSeeds D keys) (fun i => (keys i).getD noKeys) (fun _ => none) .top runLimit).bind fun _ =>
-      peekRepS_dealerSigning K circuits settings runLimit impl view D A (gameParameter D keys) (gameSeeds D keys)
-        (fun i => (keys i).getD noKeys) (fun _ => none)
+  have h := peekRepS_get_bind (impl := impl) (view := view) fun s =>
+    (peekRepS_inWorld (voteRound worldRoles D A.net s.adversary fun i => ((s.operators i).keys).map seedVote)).bind
+      fun (v : A.net.State × Bool) => (peekRepS_set (votedStart D s v.1 v.2)).bind fun _ =>
+    (peekRepS_sharedRuns_real K circuits settings runLimit impl view D A.net (gameParameter D keys)
+      (gameSeeds D keys) (fun i => (keys i).getD noKeys) (committed v.2 fun _ => none) .top runLimit).bind fun _ =>
+        peekRepS_dealerSigning K circuits settings runLimit impl view D A (gameParameter D keys) (gameSeeds D keys)
+          (fun i => (keys i).getD noKeys) (committed v.2 fun _ => none)
   exact (h (startState D state keys)).bind fun p => by
     rcases p with ⟨win, s⟩
     exact peekRep_pure _

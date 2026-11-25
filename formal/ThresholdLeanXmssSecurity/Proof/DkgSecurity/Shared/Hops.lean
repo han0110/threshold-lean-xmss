@@ -112,6 +112,11 @@ theorem topHolder_startState {σ : Type} (D : C.Coalition) (state : σ) (keys : 
   unfold topHolder
   rw [List.find?_eq_none.mpr (by simp [startState])]
 
+/-- No operator holds a top tree after the vote of the seed generation. -/
+theorem topHolder_seedState {σ : Type} (D : C.Coalition) (state : σ) (keys : C.Party → Option (Keys C))
+    (ok : Bool) : topHolder D (seedState D state keys ok).operators = none :=
+  topHolder_startState D state (committed ok keys)
+
 /-- A game that ends with `false` never accepts. -/
 theorem accepts_bind_false {α : Type} (X : OracleComp (WorldSpec C) α) :
     accepts prims (X >>= fun _ => (pure false : OracleComp (WorldSpec C) Bool)) = 0 := by
@@ -131,10 +136,11 @@ theorem zeroRuns [Fintype E] [DecidableEq E] : ZeroRuns prims K circuits setting
   intro h0 D A
   subst h0
   have hgame : dkgTsigGame K circuits settings 0 D A =
-      realExecution D A.net noFunctionality setupRounds
-        (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) (fun _ => ()) [] >>= fun _ =>
+      (realExecution D A.net noFunctionality setupRounds
+        (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) (fun _ => ()) [] >>= fun r =>
+          voteRound worldRoles D A.net r.1 fun i => (r.2 i).map seedVote) >>= fun _ =>
           (pure false : OracleComp (WorldSpec C) Bool) := by
-    simp [dkgTsigGame, dkgTsigRun, treeRuns, dkgSigning, topHolder_startState]
+    simp [dkgTsigGame, dkgTsigRun, treeRuns, dkgSigning, topHolder_seedState]
   rw [hgame]
   exact accepts_bind_false prims _
 

@@ -215,7 +215,7 @@ theorem keepsS_sharedRunWith (keys : C.Party → Option (Keys C)) (D : C.Coaliti
   unfold sharedRunWith
   refine keepsS_get_bind fun s hs => ?_
   refine (keepsS_lift _).bind fun before => (keepsS_lift _).bind fun r => (keepsS_lift _).bind fun after => ?_
-  refine keepsS_set _ fun i => ?_
+  refine (keepsS_lift _).bind fun v => keepsS_set _ fun i => ?_
   rw [← hs i]
   cases tree <;> rfl
 
@@ -448,11 +448,11 @@ theorem keepsS_sharedRuns_dead (D : C.Coalition) (net : Adversary C E Unit PEmpt
       refine keepsS_get_bind fun s' hs' => ?_
       refine (keepsS_lift _).bind fun before => keepsS_lift_bind fun r w w' hr => ?_
       rcases r with ⟨state, steps⟩
-      refine (keepsS_lift _).bind fun after => keepsS_set _ ⟨fun i => ?_, fun i hi => ?_⟩
+      refine (keepsS_lift _).bind fun after => (keepsS_lift _).bind fun v => keepsS_set _ ⟨fun i => ?_, fun i hi => ?_⟩
       · rw [← hs'.1 i]
         rfl
       · have hno := loggedRun_dead K circuits settings prims D net s _ i₀ hi₀ ((hs.1 i₀).trans hk) w _ hr i hi
-        simp [OperatorState.keep, hs'.2 i hi, hno, TreeOutput.topTree]
+        simp [OperatorState.keep, committed, hs'.2 i hi, hno, TreeOutput.topTree]
     · rw [ite_eq_right h]
       exact keepsS_pure _
 
@@ -479,20 +479,30 @@ theorem sharedRest_dealt_eq (D : C.Coalition) (A : DkgTsigAdversary C E) (keys :
       (sharedRest K circuits settings runLimit (loggedWorld prims D) Prod.fst false Mode.real D A parameter' seeds'
         dealt' emu' (startState D state keys)).run w := by
   unfold sharedRest
+  simp only [inWorld, StateT.run_bind, StateT.run_get, StateT.run_lift, StateT.run_set, pure_bind, bind_assoc]
+  refine bind_congr fun v => ?_
+  obtain ⟨⟨state', ok⟩, w'⟩ := v
+  have hlive' : (∀ i, i ∉ D.1 → committed ok keys i ≠ none) →
+      parameter = parameter' ∧ seeds = seeds' ∧ ∀ i k, committed ok keys i = some k → dealt i = dealt' i := by
+    cases ok
+    · intro h
+      obtain ⟨i, hi⟩ := exists_honest D
+      exact absurd rfl (h i hi)
+    · exact hlive
+  dsimp only
   rw [sharedRuns_real_params K circuits settings runLimit (loggedWorld prims D) Prod.fst D A.net parameter parameter'
-    seeds seeds' dealt dealt' emu emu' .top runLimit]
-  simp only [StateT.run_bind, bind_assoc]
+    seeds seeds' dealt dealt' (committed ok emu) (committed ok emu') .top runLimit]
   refine bind_congr_of_forall_mem_support _ fun p hp => ?_
-  by_cases hl : ∀ i, i ∉ D.1 → keys i ≠ none
-  · obtain ⟨rfl, rfl, hd⟩ := hlive hl
-    have hk : KeysAre keys p.1.2 := keepsS_sharedRuns K circuits settings runLimit (loggedWorld prims D) Prod.fst keys
-      D A.net _ _ _ _ .top runLimit _ w (fun i => rfl) p hp
-    rw [sharedSigning_dealt_eq K circuits settings runLimit (loggedWorld prims D) Prod.fst D A parameter seeds keys
-      dealt dealt' hd emu emu' p.1.2 hk p.2]
+  by_cases hl : ∀ i, i ∉ D.1 → committed ok keys i ≠ none
+  · obtain ⟨rfl, rfl, hd⟩ := hlive' hl
+    have hk : KeysAre (committed ok keys) p.1.2 := keepsS_sharedRuns K circuits settings runLimit
+      (loggedWorld prims D) Prod.fst (committed ok keys) D A.net _ _ _ _ .top runLimit _ w' (fun i => rfl) p hp
+    rw [sharedSigning_dealt_eq K circuits settings runLimit (loggedWorld prims D) Prod.fst D A parameter seeds
+      (committed ok keys) dealt dealt' hd (committed ok emu) (committed ok emu') p.1.2 hk p.2]
   · push Not at hl
     obtain ⟨i₀, hi₀, hk₀⟩ := hl
-    have hn : NoTop D keys p.1.2 := keepsS_sharedRuns_dead K circuits settings runLimit prims D A.net keys
-      ⟨i₀, hi₀, hk₀⟩ _ _ _ _ runLimit _ w ⟨fun i => rfl, fun i _ => rfl⟩ p hp
+    have hn : NoTop D (committed ok keys) p.1.2 := keepsS_sharedRuns_dead K circuits settings runLimit prims D A.net
+      (committed ok keys) ⟨i₀, hi₀, hk₀⟩ _ _ _ _ runLimit _ w' ⟨fun i => rfl, fun i _ => rfl⟩ p hp
     have htop : topHolder D p.1.2.operators = none := by
       unfold topHolder
       rw [List.find?_eq_none.2 fun i _ => by by_cases hi : i ∈ D.1 <;> simp [hi, hn.2 i]]

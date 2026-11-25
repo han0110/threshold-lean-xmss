@@ -29,8 +29,7 @@ jobs:
           ! grep -rnE '^(public )?(meta )?import ThresholdLeanXmssSecurity' formal/ThresholdLeanXmss formal/ThresholdLeanXmss.lean
       # The action installs the toolchain of `formal/lean-toolchain`, fetches the Mathlib cache and runs `lake build`
       # on the default targets `ThresholdLeanXmss` (the statement layer) and `ThresholdLeanXmssSecurity` (the proof
-      # library). The build elaborates each module that the root module of the proofs imports, and the `#guard_msgs`
-      # checks of that root module.
+      # library). The build elaborates each module and the `#guard_msgs` checks of the root module of the proofs.
       # It uses the manifest of the repository and does not run `lake update`.
       - uses: leanprover/lean-action@v1
         with:
@@ -45,7 +44,7 @@ jobs:
       - name: Check the axiom footprint
         working-directory: formal
         run: |
-          theorems="SigningStronglyUnforgeable.stronglyUnforgeable signingCorrectness dkgCompleteness dkgCorrectness DkgSecurityProof.dkgReduction_cost"
+          theorems="SigningStronglyUnforgeable.stronglyUnforgeable signingCorrectness dkgCompleteness dkgCorrectness theorems_of_sharedStep"
           { echo 'import ThresholdLeanXmssSecurity'; for t in $theorems; do echo "#print axioms ThresholdLeanXmssSecurity.$t"; done; } \
             > "$RUNNER_TEMP/axioms.lean"
           lake env lean "$RUNNER_TEMP/axioms.lean" | tee "$RUNNER_TEMP/axioms.txt"

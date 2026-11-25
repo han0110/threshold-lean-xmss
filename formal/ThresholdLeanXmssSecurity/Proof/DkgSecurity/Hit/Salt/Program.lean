@@ -131,7 +131,9 @@ theorem provS_treeRun (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree) :
   unfold treeRun
   refine provS_get_bind fun s => ?_
   refine (ProvS.bind (provS_lift (prov_executePhase D δ net _ _ _ fun j _ => treeProv K circuits settings j _ tree))
-    fun r => ProvS.bind (provS_lift ?_) fun bad => provS_set _) s
+    fun r => ProvS.bind (provS_lift ?_) fun bad => ProvS.bind (provS_lift (prov_of_noTouch D δ [] _
+      ((noCall_iff _ _).2 (IsQueryBoundP.of_imp touch_tail
+        (quiet_voteRound D net _ _ fun _ _ => queryClass_map_treeVote))))) fun v => provS_set _) s
   simp only [noMonitor]
   exact prov_pure _ _
 
@@ -243,8 +245,15 @@ theorem prov_dealtRun (m : Mode) (hm : ∀ tree, m.emulated tree = 0) (A : DkgTs
   obtain ⟨state, parameter, seeds, dealt, emu⟩ := x
   refine Prov.bind ?_ fun _ => prov_pure _ _
   rw [StateT.run'_eq]
-  exact Prov.map _ ((ProvS.bind (provS_secRuns D δ K circuits settings runLimit m hm A.net parameter seeds dealt
-    emu .top runLimit) fun _ => provS_secSigning D δ K circuits settings runLimit m hm A parameter seeds dealt emu) _)
+  refine Prov.map _ ?_
+  unfold secRest
+  refine provS_get_bind (fun s => ?_) _
+  refine (ProvS.bind (provS_lift (prov_of_noTouch D δ [] _ ((noCall_iff _ _).2 (IsQueryBoundP.of_imp touch_tail
+    (quiet_voteRound D A.net s.adversary _ fun _ _ => queryClass_map_seedVote))))) fun v => ?_) s
+  obtain ⟨state', ok⟩ := v
+  exact ProvS.bind (provS_set _) fun _ => ProvS.bind (provS_secRuns D δ K circuits settings runLimit m hm A.net
+    parameter seeds dealt (committed ok emu) .top runLimit) fun _ => provS_secSigning D δ K circuits settings runLimit
+      m hm A parameter seeds dealt (committed ok emu)
 
 variable (prims : Primitives) in
 omit [Fintype E] [DecidableEq E] in

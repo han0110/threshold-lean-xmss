@@ -261,22 +261,26 @@ theorem worldDealer_run {σ : Type} (parameter : PublicParameter) (seeds : C.Ter
 variable (K : Constants C E) (circuits : Circuits) (settings : Settings)
   (runLimit : ℕ)
 
-/-- With a positive run limit and each run emulated, the rest of `dealtGame` starts with the top
-tree of the dealer. -/
+/-- With a positive run limit and each run emulated, the rest of `dealtGame` starts with the vote of
+the seed generation and then the top tree of the dealer. -/
 theorem secRest_start (hrun : 0 < runLimit) (D : C.Coalition) (A : DkgTsigAdversary C E)
     (parameter : PublicParameter) (seeds : C.Term → HashOutput) (dealt : C.Party → Keys C)
     (emu : C.Party → Option (Keys C)) (state : A.net.State) :
-    ∃ k : Option TreeOutput → OracleComp (WorldSpec C) Bool,
+    ∃ k : A.net.State × Bool → Option TreeOutput → OracleComp (WorldSpec C) Bool,
       (secRest K circuits settings runLimit ⟨true, fun _ => runLimit⟩ D A parameter seeds dealt emu).run'
-        (startState D state fun i => (emu i).map fun _ => dealt i) = dealerTop parameter seeds >>= k := by
+        (startState D state fun i => (emu i).map fun _ => dealt i) =
+        voteRound worldRoles D A.net state (fun i => ((emu i).map fun _ => dealt i).map seedVote) >>= fun v =>
+          dealerTop parameter seeds >>= k v := by
   obtain ⟨n, rfl⟩ : ∃ n, runLimit = n + 1 := ⟨runLimit - 1, by omega⟩
   obtain ⟨i, hi⟩ := exists_honest D
-  have hmay : mayRun (n + 1) D (startState D state fun i => (emu i).map fun _ => dealt i) .top :=
-    ⟨by simp [startState], i, hi, rfl⟩
-  have hlt : (startState D state fun i => (emu i).map fun _ => dealt i).runs .top < n + 1 := by
-    simp [startState]
-  simp only [secRest, secRuns, StateT.run'_eq, StateT.run_bind, StateT.run_get, pure_bind, hmay, ite_true,
-    secRun, hlt, worldDealer_run, bind_map_left, bind_assoc, map_bind]
+  have hmay : ∀ (state' : A.net.State) (ok : Bool),
+      mayRun (n + 1) D (votedStart D (startState D state fun i => (emu i).map fun _ => dealt i) state' ok) .top :=
+    fun _ _ => ⟨by simp [votedStart, startState], i, hi, rfl⟩
+  have hlt : ∀ (state' : A.net.State) (ok : Bool),
+      (votedStart D (startState D state fun i => (emu i).map fun _ => dealt i) state' ok).runs .top < n + 1 := by
+    simp [votedStart, startState]
+  simp only [secRest, secRuns, StateT.run'_eq, StateT.run_bind, StateT.run_get, StateT.run_lift, StateT.run_set,
+    pure_bind, hmay, ite_true, secRun, hlt, worldDealer_run, bind_map_left, bind_assoc, map_bind]
   exact ⟨_, rfl⟩
 
 theorem dealerTop_safe (parameter : PublicParameter) (seeds : C.Term → HashOutput) :
@@ -295,6 +299,15 @@ theorem worldRun_dealerTop_dup (prims : Primitives) (D : C.Coalition) (parameter
   unfold dealerTop at h ⊢
   generalize Tree.top = tree at h ⊢
   exact worldRun_freeLift_dup prims D _ h k
+
+omit [Field E] [Algebra Bit E] in
+theorem noOuter_voteRound (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (state : net.State)
+    (input : C.Party → Option (Query C)) : AllQueriesSatisfy (voteRound worldRoles D net state input) NoOuterProgram :=
+  (UsedHit.allQueries_of_noCall (Collision.noProgram_voteRound D net state input)).mono fun t ht => by
+    rcases t with (t | x) | t
+    · trivial
+    · exact absurd trivial ht
+    · trivial
 
 /-- The keys of the honest operators in `dealtGame`. -/
 def keysOf (dealt : C.Party → Keys C) (emu : C.Party → Option (Keys C)) : C.Party → Option (Keys C) :=
@@ -341,29 +354,42 @@ theorem dealerFirst_worldRun (hrun : 0 < runLimit) (D : C.Coalition) (A : DkgTsi
     (noOuter_observe (A.net.start (corruptInputs D fun _ => ()) [])) _ s).symm) ?_
   refine WorldRun.bind_right _ _ fun r => ?_
   obtain ⟨parameter, seeds, dealt⟩ := r
-  have hY := noOuter_observeTail D A parameter dealt
+  have hY : AllQueriesSatisfy (do
+      let te ← (do
+        let o ← observe (A.net.start (corruptInputs D fun _ => ()) [])
+        seedGenTail D A.net o.1 o.2 parameter dealt)
+      let v ← voteRound worldRoles D A.net te.1 fun i => (keysOf dealt te.2 i).map seedVote
+      pure (te, v)) NoOuterProgram :=
+    allQueriesSatisfy_bind (noOuter_observeTail D A parameter dealt) fun te =>
+      allQueriesSatisfy_bind (noOuter_voteRound D A.net _ _) fun _ => allQueriesSatisfy_pure _ _
   have hT : AllQueriesSatisfy (dealerTop (C := C) parameter seeds) WorldSafe := dealerTop_safe parameter seeds
-  have hk : ∀ te : A.net.State × (C.Party → Option (Keys C)), ∃ k : Option TreeOutput → OracleComp (WorldSpec C) Bool,
+  have hk : ∀ te : A.net.State × (C.Party → Option (Keys C)),
+      ∃ k : A.net.State × Bool → Option TreeOutput → OracleComp (WorldSpec C) Bool,
       (secRest K circuits settings runLimit ⟨true, fun _ => runLimit⟩ D A parameter seeds dealt te.2).run'
-        (startState D te.1 (keysOf dealt te.2)) = dealerTop parameter seeds >>= k :=
+        (startState D te.1 (keysOf dealt te.2)) =
+        voteRound worldRoles D A.net te.1 (fun i => (keysOf dealt te.2 i).map seedVote) >>= fun v =>
+          dealerTop parameter seeds >>= k v :=
     fun te => secRest_start K circuits settings runLimit hrun D A parameter seeds dealt te.2 te.1
   choose k hk using hk
   have eL : (do
       let o ← observe (A.net.start (corruptInputs D fun _ => ()) [])
       dealtTail K circuits settings runLimit D A o (parameter, seeds, dealt)) =
       (do
-        let te ← (do
-          let o ← observe (A.net.start (corruptInputs D fun _ => ()) [])
-          seedGenTail D A.net o.1 o.2 parameter dealt)
+        let tv ← (do
+          let te ← (do
+            let o ← observe (A.net.start (corruptInputs D fun _ => ()) [])
+            seedGenTail D A.net o.1 o.2 parameter dealt)
+          let v ← voteRound worldRoles D A.net te.1 fun i => (keysOf dealt te.2 i).map seedVote
+          pure (te, v))
         let a ← dealerTop parameter seeds
-        k te a) := by
-    simp only [dealtTail, hk, bind_assoc]
+        k tv.1 tv.2 a) := by
+    simp only [dealtTail, hk, bind_assoc, pure_bind]
   show WorldRun _ _ (do
       let _ ← dealerTop parameter seeds
       let o ← observe (A.net.start (corruptInputs D fun _ => ()) [])
       dealtTail K circuits settings runLimit D A o (parameter, seeds, dealt))
   rw [eL]
-  have hswap := worldRun_safe_swap prims D hT hY (fun a te => k te a)
+  have hswap := worldRun_safe_swap prims D hT hY (fun a tv => k tv.1 tv.2 a)
   exact WorldRun.trans (fun s => (hswap s).symm)
     (WorldRun.trans (fun s => (worldRun_dealerTop_dup prims D parameter seeds _ s).symm)
       (WorldRun.bind_right _ _ fun _ => hswap))

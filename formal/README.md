@@ -1,6 +1,6 @@
 # formal
 
-Lean 4 statements and proofs of the security claims of threshold leanXMSS. Four of the five claims are proved. The fifth, `dkgSecurityPreservation`, has a proof of its cost bound. Its win bound is open.
+Lean 4 statements and proofs of the security claims of threshold leanXMSS. Four of the five claims are proved. The fifth, `dkgSecurityPreservation`, has a proof of its cost bound and of twelve of the 13 hops of its win bound.
 
 ## The claims
 
@@ -25,11 +25,12 @@ The structure `Theorems` in [Statement/Theorems.lean](./ThresholdLeanXmss/Statem
 | Part | Proof | State |
 | --- | --- | --- |
 | The cost bound of the forger | `dkgReduction_cost` | Proved |
-| Twelve hops of the chain, with the hop to the forger | `tableHop` and eleven more, on the game without the vote | Not built |
+| Twelve hops of the chain, with the hop to the forger | `tableHop` and eleven more | Proved |
 | The hop `SharedStep`, in which one real run of a tree becomes an emulated run | None | Open |
+| The field from `SharedStep` | `dkgSecurityPreservation_of_leaves` | Proved |
+| All five claims from `SharedStep` | `theorems_of_sharedStep` | Proved |
 
-- The win bound is a target until each hop has a proof on the game with the vote, so a proof can change it.
-- The files of `Proof/DkgSecurity/` other than `ReductionCost.lean` and its imports hold the twelve hops on the game without the vote. The root of the proof library does not import them, so `lake build` does not build them.
+- The win bound is a target until `SharedStep` has a proof, so a proof can change it.
 - The error `dkgError` is the sum of the errors of the 13 hops.
 - [doc/model.md](./doc/model.md), Section 4, lists the hops.
 
@@ -97,7 +98,7 @@ The dashed box is the end-to-end bound of `dkgTsigGame`.
 | [ThresholdLeanXmss/Scheme.lean](./ThresholdLeanXmss/Scheme.lean) | The protocol, the oracles and the dealer `dealerKeyGen` |
 | [ThresholdLeanXmss/Ideal.lean](./ThresholdLeanXmss/Ideal.lean) | The oracles of the signing game and its win test |
 | [ThresholdLeanXmss/Reductions.lean](./ThresholdLeanXmss/Reductions.lean) | `prgReduction`, the fixed reduction of the PRF term |
-| [ThresholdLeanXmssSecurity.lean](./ThresholdLeanXmssSecurity.lean) | The root of the proof library. It checks the axioms of the four proved field theorems and of `dkgReduction_cost`. |
+| [ThresholdLeanXmssSecurity.lean](./ThresholdLeanXmssSecurity.lean) | The root of the proof library. It has `theorems_of_sharedStep`, and it checks the axioms of that theorem and of the four proved field theorems. |
 | [ThresholdLeanXmssSecurity/Proof/](./ThresholdLeanXmssSecurity/Proof/) | The proofs |
 | [ThresholdLeanXmssSecurity/Base/](./ThresholdLeanXmssSecurity/Base/) | The definitions that the proofs use and that the statement layer does not hold |
 | [statement.tex](./statement.tex) | The guide to the claims |
@@ -108,7 +109,7 @@ The dashed box is the end-to-end bound of `dkgTsigGame`.
 
 ```sh
 cd formal
-lake build   # build the statement layer and each module that the root of the proof library imports
+lake build   # build both default targets, ThresholdLeanXmss and ThresholdLeanXmssSecurity
 ```
 
-The root module fails the build unless the four proved field theorems and `dkgReduction_cost` depend only on `propext`, `Classical.choice` and `Quot.sound`.
+The root module fails the build unless the four proved field theorems and `theorems_of_sharedStep` depend only on `propext`, `Classical.choice` and `Quot.sound`.

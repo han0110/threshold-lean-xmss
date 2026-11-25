@@ -458,9 +458,10 @@ theorem sharedRuns_bottom (net : Adversary C E Unit PEmpty PEmpty) (parameter : 
     · rw [StateT.run_bind, StateT.run_bind, mem_support_bind_iff] at hz
       obtain ⟨y, hy, hz⟩ := hz
       rw [sharedRun_real, StateT.run_bind, StateT.run_get, pure_bind] at hy
-      obtain ⟨r, hr, hy2, hy1⟩ := sharedRunWith_support prims K circuits settings D net _ (.bottom b) s w y hy
+      obtain ⟨r, hr, v, hv, hy2, hy1⟩ := sharedRunWith_support prims K circuits settings D net _ (.bottom b) s w y hy
       obtain ⟨hle, hops⟩ := sharedRuns_bottom net parameter seeds dealt emu b count y.1.2 y.2 z hz
-      refine ⟨le_trans (hy2 ▸ loggedWorld_le prims D _ w r hr) hle, fun i => ⟨?_, fun b' bt hb' => ?_⟩⟩
+      refine ⟨le_trans (le_trans (loggedWorld_le prims D _ w r hr) (hy2 ▸ loggedWorld_le prims D _ r.2 v hv)) hle,
+        fun i => ⟨?_, fun b' bt hb' => ?_⟩⟩
       · rw [(hops i).1, hy1]
         rfl
       · refine (hops i).2 b' bt ?_

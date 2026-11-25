@@ -65,6 +65,13 @@ theorem dropLog_executePhase (fuel : ℕ) (state : A.State) (program : C.Party �
   rw [forgerWorldRoles_eq, worldRoles_eq, ← simulateQ_executePhase_mapRoles, ← simulateQ_executePhase_mapRoles]
   exact dropLog_simulateQ _ log st
 
+theorem dropLog_voteRound (net : Adversary C E Unit PEmpty PEmpty) (state : net.State)
+    (input : C.Party → Option (Query C)) (log : CallLog C) (st : TsigState C) :
+    (fun z => (z.1.1, z.2)) <$> ((voteRound forgerWorldRoles D net state input).run log).run st =
+      (fun a => (a, st)) <$> voteRound worldRoles D net state input := by
+  rw [forgerWorldRoles_eq, worldRoles_eq, ← simulateQ_voteRound_mapRoles, ← simulateQ_voteRound_mapRoles]
+  exact dropLog_simulateQ _ log st
+
 end Network
 
 /-! ## The relation -/
@@ -373,6 +380,7 @@ theorem rel1_emulatedRun (net : Adversary C E Unit PEmpty PEmpty) (openings : Li
     rw [hprog]
     rfl
   · obtain ⟨state, outputs⟩ := p
+    refine Rel1.bind (Rel.liftW fun log st => dropLog_voteRound D _ _ _ log st) fun v => ?_
     refine Rel1.set ?_ ?_
     · cases tree <;> rfl
     · intro i
@@ -582,9 +590,18 @@ theorem rel_answerRest (A : DkgTsigAdversary C E) {dealt : Dealt C (OracleComp (
     exact Rel.liftW fun log st' => by simp [toWorld, StateT.run_lift]
 
 theorem secRestC_eq (A : DkgTsigAdversary C E) (dealer : Dealt C (RealM C A.net.State)) :
-    secRestC K circuits settings runLimit D ⟨true, fun _ => runLimit⟩ A dealer emu =
-      Prod.fst <$> (answerRest K circuits settings runLimit D emu A dealer).run ⟨D.1, fun _ => none, [], fun _ => none⟩ := by
-  unfold secRestC secSigningC answerRest answerOracles
+    secRestC K circuits settings runLimit D ⟨true, fun _ => runLimit⟩ A dealer emu = (do
+      let s ← get
+      let (state, ok) ← StateT.lift (voteRound worldRoles D A.net s.adversary fun i =>
+        ((s.operators i).keys).map seedVote)
+      set (votedStart D s state ok)
+      Prod.fst <$> (answerRest K circuits settings runLimit D (committed ok emu) A dealer).run
+        ⟨D.1, fun _ => none, [], fun _ => none⟩) := by
+  unfold secRestC
+  refine bind_congr fun s => bind_congr fun v => ?_
+  obtain ⟨state, ok⟩ := v
+  refine bind_congr fun _ => ?_
+  unfold secSigningC answerRest answerOracles
   simp only [StateT.run_bind, StateT.run_lift, map_bind, bind_assoc, pure_bind]
   refine bind_congr fun _ => bind_congr fun s => ?_
   rcases h : topHolder D s.operators with _ | holder

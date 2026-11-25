@@ -4,8 +4,9 @@ import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Shared.Record
 # The rest of a game with the shared bad event
 
 A run sets the flag of the game when `PassBad` holds, when a hidden key of the run has a stream cell
-from before the run (`ReusedBefore`), or when the world has a global event after the run. The flag
-starts as `seedsDiffer`.
+from before the run (`ReusedBefore`), when the world has a global event after the run, or when its
+vote gives a split. The flag starts as `seedsDiffer`, and the vote of the seed generation adds its
+split.
 
 `sharedRest` is the rest of a game after the seed generation with recorded runs and this flag. It is
 generic in the handler of the world, so that it runs in `loggedWorld` for the games and on the
@@ -56,8 +57,9 @@ def sharedDealer {σ : Type} (parameter : PublicParameter) (seeds : C.Term → H
   let output ← referenceTree (fun oa => sharedLift impl (tweakable oa)) value parameter emptyTop .top
   pure (dealtWith (sharedLift impl) parameter dealt ((TreeOutput.topTree output).getD emptyTop) value)
 
-/-- One recorded run of `tree` with the programs `program`. It sets the flag for a bad check, a
-reused hidden key or a global event after the run. -/
+/-- One recorded run of `tree` with the programs `program`, and its vote as in `treeRun`. It sets
+the flag for a bad check, a reused hidden key or a global event after the run, or a split after the
+vote. The records and the world `after` are from before the vote. -/
 def sharedRunWith (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
     (program : C.Party → RecM C E TreeOutput) (tree : Tree) : SharedM C M W net.State Unit := do
   let s ← get
@@ -67,9 +69,12 @@ def sharedRunWith (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
   let after ← StateT.lift (view <$> get)
   let records := fun i => (steps i).record []
   let bad := decide (PassBad K D records ∨ ReusedBefore D before.2 records ∨ GlobalEvent after)
-  let operators := fun i => (s.operators i).keep (steps i).output tree
+  let (state, ok) ← inWorld impl (voteRound worldRoles D net state fun i =>
+    ((steps i).output).map (treeVote tree))
+  let kept := committed ok fun i => (steps i).output
+  let operators := fun i => (s.operators i).keep (kept i) tree
   let runs := Function.update s.runs tree (s.runs tree + 1)
-  set (⟨state, operators, runs, s.closed, s.flag || bad⟩ : RealState C net.State)
+  set (⟨state, operators, runs, s.closed, s.flag || bad || split D kept⟩ : RealState C net.State)
 
 /-- One run of `tree` in the mode `m`, as `secRun`, with its record. -/
 def sharedRun (m : Mode) (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
@@ -191,14 +196,21 @@ def sharedSigning (own : Bool) (m : Mode) (D : C.Coalition) (A : DkgTsigAdversar
         (A.forge ⟨dealer.top.root, dealer.parameter⟩ dealer.top)).run ⟨D.1, fun _ => none, [], fun _ => none⟩
       forgeryWins (sharedLift impl) dealer st forgery
 
-/-- The rest of a game with the shared event, from the state `start`. It gives the result of the win
-test and the flag. -/
+/-- The rest of a game with the shared event, from the state `start`, as `secRest`. It starts with the
+vote of the seed generation on the keys of `start`. It gives the result of the win test and the
+flag. -/
 def sharedRest (own : Bool) (m : Mode) (D : C.Coalition) (A : DkgTsigAdversary C E)
     (parameter : PublicParameter) (seeds : C.Term → HashOutput) (dealt : C.Party → Keys C)
     (emu : C.Party → Option (Keys C)) (start : RealState C A.net.State) : StateT W M (Bool × Bool) := do
   let (win, s) ← (do
-      sharedRuns K circuits settings runLimit impl view m D A.net parameter seeds dealt emu .top runLimit
-      sharedSigning K circuits settings runLimit impl view own m D A parameter seeds dealt emu).run start
+      let s ← get
+      let (state, ok) ← inWorld impl (voteRound worldRoles D A.net s.adversary fun i =>
+        ((s.operators i).keys).map seedVote)
+      set (votedStart D s state ok)
+      sharedRuns K circuits settings runLimit impl view m D A.net parameter seeds dealt (committed ok emu) .top
+        runLimit
+      sharedSigning K circuits settings runLimit impl view own m D A parameter seeds dealt (committed ok emu)).run
+    start
   pure (win, s.flag)
 
 /-- The rest with real runs after a seed generation with the keys `keys`, as `restOf`. -/

@@ -836,7 +836,7 @@ The key generation targets the security of the trusted dealer of $\mathsf{KeyGen
 
 `dkgCorrectness` bounds inconsistent seeds, wrong tree outputs and a split of the honest operators after a vote against the adversary. `dkgCompleteness` bounds the abort of an honest run and its distance to the dealer.
 
-Lean proves `dkgCorrectness` and `dkgCompleteness` in `formal/`. For `dkgSecurityPreservation`, it proves the cost bound of the forger. The bound on the win probability is open and is a target, so a proof can change it. Twelve of the 13 hops of its chain have proofs on the game without the vote, and these proofs are not part of the build.
+Lean proves `dkgCorrectness` and `dkgCompleteness` in `formal/`. For `dkgSecurityPreservation`, it proves the cost bound of the forger and twelve of the 13 hops of the bound on the win probability. That bound is a target until the last hop has a proof, and a proof can change it.
 
 The claims cover only $n = 2t - 1$ and a classical adversary. The "Model" section of [`formal/ThresholdLeanXmss/Statement/Theorems.lean`](../formal/ThresholdLeanXmss/Statement/Theorems.lean) gives the full model.
 

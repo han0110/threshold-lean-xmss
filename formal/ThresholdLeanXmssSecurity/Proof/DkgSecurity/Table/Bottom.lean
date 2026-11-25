@@ -90,8 +90,12 @@ def secSigningC (m : Mode) (A : DkgTsigAdversary C E) (dealer : Dealt C (RealM C
 /-- `secRestD` with `secSigningC`. -/
 def secRestC (m : Mode) (A : DkgTsigAdversary C E) (dealer : Dealt C (RealM C A.net.State))
     (emu : C.Party → Option (Keys C)) : RealM C A.net.State Bool := do
-  secRunsC K circuits settings runLimit D m A.net dealer emu .top none runLimit
-  secSigningC K circuits settings runLimit D m A dealer emu
+  let s ← get
+  let (state, ok) ← StateT.lift (voteRound worldRoles D A.net s.adversary fun i =>
+    ((s.operators i).keys).map seedVote)
+  set (votedStart D s state ok)
+  secRunsC K circuits settings runLimit D m A.net dealer (committed ok emu) .top none runLimit
+  secSigningC K circuits settings runLimit D m A dealer (committed ok emu)
 
 /-- `givenDealerGame` with the answer of a tree request passed to the run. -/
 def givenAnswerGame (A : DkgTsigAdversary C E) : OracleComp (WorldSpec C) Bool := do
@@ -596,7 +600,8 @@ theorem bottomStage : BottomStage K circuits settings runLimit prims := fun D A 
   simp only [StateT.run'_eq, secRestD, secRestC, secRunsD_top, StateT.run_bind, simulateQ_map, simulateQ_bind,
     StateT.run_map]
   refine EvalDistEq.map_congr _ ?_
-  exact EvalDistEq.bind_right _ fun p => secSigning_bottom prims D r output A te.2 p.1.2 p.2
+  exact EvalDistEq.bind_right _ fun _ => EvalDistEq.bind_right _ fun v => EvalDistEq.bind_right _ fun _ =>
+    EvalDistEq.bind_right _ fun p => secSigning_bottom prims D r output A (committed v.1.1.2 te.2) p.1.2 p.2
 
 /-- `StructureStage` from the two stages. -/
 theorem structureStage_of_stages (bottom : BottomStage K circuits settings runLimit prims)

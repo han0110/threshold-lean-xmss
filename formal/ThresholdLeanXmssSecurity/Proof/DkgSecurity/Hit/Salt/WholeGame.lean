@@ -150,7 +150,10 @@ theorem keepsS_treeRun (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree) :
   unfold treeRun
   refine Salt.keepsS_get_bind fun s => ?_
   refine (Salt.KeepsS.bind (Salt.keepsS_lift (keepsQ_executePhase h₁ h₂ D net _ _ _ fun j _ => htree j _ tree))
-    fun r => Salt.KeepsS.bind (Salt.keepsS_lift (Q := fun _ => True) ?_) fun bad => Salt.keepsS_set _) s
+    fun r => Salt.KeepsS.bind (Salt.keepsS_lift (Q := fun _ => True) ?_) fun bad =>
+      Salt.KeepsS.bind (Salt.keepsS_lift (Q := fun _ => True) (KeepsQ.of_noCall impl Inv h₁ _
+        (IsQueryBoundP.of_imp (honestP_of_tail saltDraw_tail)
+          (quiet_voteRound D net _ _ fun _ _ => queryClass_map_treeVote)))) fun v => Salt.keepsS_set _) s
   simp only [noMonitor]
   exact keepsQ_pure trivial
 
@@ -263,9 +266,15 @@ theorem keeps_dealtRun (m : Mode) (hm : ∀ tree, m.emulated tree = 0) (A : DkgT
   refine KeepsQ.bind (P := fun _ => True) ?_ fun _ _ => keepsQ_pure trivial
   rw [StateT.run'_eq, map_eq_bind_pure_comp]
   refine KeepsQ.bind (P := fun _ => True) ?_ fun _ _ => keepsQ_pure trivial
-  exact (Salt.KeepsS.bind (keepsS_secRuns K circuits settings runLimit D h₁ h₂ htree m hm A.net parameter seeds dealt
-    emu .top runLimit) fun _ => keepsS_secSigning K circuits settings runLimit D h₁ h₂ htree m hm A parameter seeds
-    dealt emu) _
+  unfold secRest
+  refine (Salt.keepsS_get_bind fun s => ?_) _
+  refine (Salt.KeepsS.bind (Salt.keepsS_lift (Q := fun _ => True) (KeepsQ.of_noCall impl Inv h₁ _
+    (IsQueryBoundP.of_imp (honestP_of_tail saltDraw_tail)
+      (quiet_voteRound D A.net s.adversary _ fun _ _ => queryClass_map_seedVote)))) fun v => ?_) s
+  obtain ⟨state', ok⟩ := v
+  exact Salt.KeepsS.bind (Salt.keepsS_set _) fun _ => Salt.KeepsS.bind (keepsS_secRuns K circuits settings runLimit D
+    h₁ h₂ htree m hm A.net parameter seeds dealt (committed ok emu) .top runLimit) fun _ => keepsS_secSigning K
+      circuits settings runLimit D h₁ h₂ htree m hm A parameter seeds dealt (committed ok emu)
 
 end Rest
 

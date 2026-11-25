@@ -222,6 +222,21 @@ theorem noProgDigest_worldSeedGen (net : Adversary C E Unit PEmpty PEmpty) :
   exact noCall_bind _ (np (noProgram_executeRounds_observed D net _ state' steps')) fun _ => noCall_pure _ _
 
 omit [Fintype E] [DecidableEq E] in
+/-- With no emulated run, the rest of a game, with the vote of the seed generation, makes no
+programming call. -/
+theorem noProg_secRest (m : Mode) (hm : ∀ tree, m.emulated tree = 0) (A : DkgTsigAdversary C E)
+    (parameter : PublicParameter) (seeds : C.Term → HashOutput) (dealt : C.Party → Keys C)
+    (emu : C.Party → Option (Keys C)) :
+    NoProg (secRest K circuits settings runLimit m D A parameter seeds dealt emu) := by
+  unfold secRest
+  refine UsedHit.NoProg.get.bind fun s => (UsedHit.NoProg.lift (Collision.noProgram_voteRound D A.net _ _)).bind
+    fun v => ?_
+  obtain ⟨state', ok⟩ := v
+  exact (UsedHit.NoProg.set _).bind fun _ => UsedHit.NoProg.bind (noProg_secRuns K circuits settings runLimit D m hm
+    A.net parameter seeds dealt (committed ok emu) .top runLimit) fun _ => noProg_secSigning K circuits settings
+      runLimit D m hm A parameter seeds dealt (committed ok emu)
+
+omit [Fintype E] [DecidableEq E] in
 /-- `dealtRun` with no emulated run programs no digest cell. -/
 theorem noProgDigest_dealtRun (m : Mode) (hm : ∀ tree, m.emulated tree = 0) (A : DkgTsigAdversary C E) :
     NoCall ProgDigest (dealtRun K circuits settings runLimit m D A) := by
@@ -231,8 +246,7 @@ theorem noProgDigest_dealtRun (m : Mode) (hm : ∀ tree, m.emulated tree = 0) (A
   refine noCall_bind _ ?_ fun _ => noCall_pure _ _
   rw [StateT.run'_eq]
   refine SigningSelectionProof.noCall_map _ _ (noCall_mono _ progDigest_program ?_)
-  exact UsedHit.NoProg.bind (noProg_secRuns K circuits settings runLimit D m hm A.net parameter seeds dealt emu .top
-    runLimit) (fun _ => noProg_secSigning K circuits settings runLimit D m hm A parameter seeds dealt emu) _
+  exact noProg_secRest K circuits settings runLimit D m hm A parameter seeds dealt emu _
 
 omit [Fintype E] [DecidableEq E] in
 /-- `dealtRun` with no emulated run makes at most `q + gameBatches * n * termCount C` calls with a

@@ -11,7 +11,7 @@ This repository implements threshold t-of-(2t-1) leanXMSS (EIP-8450) base on the
 
 See [`doc/dkg.md`](doc/dkg.md) for the DKG and [`doc/sign.md`](doc/sign.md) for signing.
 
-[`formal/`](formal) holds the Lean 4 statements of five security claims of the protocol, as games in one model. Two claims cover the signing with a trusted dealer, and Lean proves both. Three claims cover the DKG on the real network with a static coalition. Lean proves the correctness against an adversary and the completeness of an honest run. For the third claim, the security of the signing with the DKG, Lean proves the cost bound of the reduction. Its bound on the win probability is open. See [`formal/README.md`](formal/README.md).
+[`formal/`](formal) holds the Lean 4 statements of five security claims of the protocol, as games in one model. Two claims cover the signing with a trusted dealer, and Lean proves both. Three claims cover the DKG on the real network with a static coalition. Lean proves the correctness against an adversary and the completeness of an honest run. For the third claim, the security of the signing with the DKG, Lean proves the cost bound of the reduction and twelve of the 13 hops of its bound on the win probability. One hop has no proof yet. See [`formal/README.md`](formal/README.md).
 
 The Rust code uses leanVM at revision `f95bc21a`, and the Lean statements and proofs use revision `fdb31798`. leanVM does not make some leanXMSS items public at revision `f95bc21a`, so [`src/lean_xmss.rs`](src/lean_xmss.rs) holds verbatim copies of them.
 
@@ -35,7 +35,7 @@ With `--reshare peer` on every `serve` command, each AND layer takes 1 round in 
 
 With the same `--batch-size` on every `serve` command, each batch of a tree holds at most that number of chains or keys. Operators with different values abort. `--concurrency` sets the batches that one operator runs at the same time.
 
-Each key ceremony ends with a vote, and an operator keeps the result only if all operators vote for it. The vote assumes a broadcast channel, and the Lean claims do not cover it, as [`doc/dkg.md`](doc/dkg.md) 3.3 describes.
+Each key ceremony ends with a vote, and an operator keeps the result only if all operators vote for it. The vote assumes a broadcast channel, as [`doc/dkg.md`](doc/dkg.md) 3.3 describes. The Lean model has the same vote.
 
 `--time-limit` sets the seconds after which an operator that is still in a ceremony votes for its abort. The default is 24 hours. The delay of the network adds about $\lceil N / c \rceil$ times the rounds per batch times the one-way delay to a tree, for $N = \lceil 2^{16} \cdot 58 / B \rceil$ chain batches of the batch size $B$ and the concurrency $c$. Add the time of the computation, which the benchmark gives. Set a larger limit if the sum comes near the limit.
 

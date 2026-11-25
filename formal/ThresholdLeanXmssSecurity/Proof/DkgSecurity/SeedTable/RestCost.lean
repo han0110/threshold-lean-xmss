@@ -244,13 +244,34 @@ variable (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLim
 /-- The potential of the runs that remain, with the cost `R tree` for each run of `tree`. -/
 def runsLeft {σ : Type} (s : RealState C σ) : ℕ∞ := (FirstCounts.remaining runLimit R s.runs : ℕ)
 
+omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
+theorem queryClass_map_treeVote {tree : Tree} {output : Option TreeOutput} {q : Query C}
+    (h : output.map (treeVote tree) = some q) : queryClass q = .vote := by
+  cases output with
+  | none => cases h
+  | some output =>
+    cases h
+    exact FirstCounts.queryClass_treeVote tree output
+
+omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
+theorem queryClass_map_seedVote {keys : Option (Keys C)} {q : Query C} (h : keys.map seedVote = some q) :
+    queryClass q = .vote := by
+  cases keys with
+  | none => cases h
+  | some keys =>
+    cases h
+    rfl
+
 omit [Fintype E] [DecidableEq E] in
 /-- One real run of `tree` from a state with fewer than `runLimit` runs of `tree` costs its part of
 the potential. -/
 theorem stCost_sharedRun (net : Adversary C E Unit PEmpty PEmpty)
+    (V : ℕ∞) (hvote : ∀ (state : net.State) (input : C.Party → Option (Query C)),
+      (∀ j q, input j = some q → queryClass q = .vote) → cost cW (voteRound worldRoles D net state input) ≤ V)
     (hrun : ∀ (s : RealState C net.State) (tree : Tree),
       cost cW (executePhaseR worldRoles D net noFunctionality ([] : Record C E) (treeFuel circuits settings)
-        s.adversary fun i => (passTree K circuits settings plainShares none i (s.operators i) tree).run.run) ≤ R tree)
+        s.adversary fun i => (passTree K circuits settings plainShares none i (s.operators i) tree).run.run) + V ≤
+          R tree)
     (parameter : PublicParameter) (seeds : C.Term → HashOutput) (dealt : C.Party → Keys C)
     (emu : C.Party → Option (Keys C)) (tree : Tree) (s : RealState C net.State) (hs : s.runs tree < runLimit) :
     StCost (peekCharge cW) ((sharedRun K circuits settings peekHandler id Mode.real D net parameter seeds dealt emu
@@ -267,17 +288,26 @@ theorem stCost_sharedRun (net : Adversary C E Unit PEmpty PEmpty)
   refine (?_ : GameCost (peekCharge cW) _ (fun _ s => runsLeft runLimit R s) fun _ => runsLeft runLimit R s) s
   refine gameCost_read_bind cW fun before => ?_
   refine GameCost.bind (K := fun _ _ =>
-    ((FirstCounts.remaining runLimit R (Function.update s.runs tree (s.runs tree + 1)) : ℕ) : ℕ∞))
-    ((gameCost_inWorld cW _ (hrun s tree) _).mono (fun _ _ => le_rfl) fun _ => hpot.le) fun r => ?_
+    V + ((FirstCounts.remaining runLimit R (Function.update s.runs tree (s.runs tree + 1)) : ℕ) : ℕ∞))
+    ((gameCost_inWorld cW _ le_rfl _).mono (fun _ _ => le_rfl) fun _ => by
+      rw [← add_assoc, ← hpot]
+      exact add_le_add (hrun s tree) le_rfl) fun r => ?_
   refine gameCost_read_bind cW fun after => ?_
+  refine GameCost.bind (K := fun _ _ =>
+    ((FirstCounts.remaining runLimit R (Function.update s.runs tree (s.runs tree + 1)) : ℕ) : ℕ∞))
+    ((gameCost_inWorld cW _ (hvote _ _ fun _ _ => queryClass_map_treeVote) _).mono (fun _ _ => le_rfl)
+      fun _ => le_rfl) fun v => ?_
   exact (GameCost.set _ _).mono (fun _ _ => le_rfl) fun _ => le_rfl
 
 omit [Fintype E] [DecidableEq E] in
 /-- The runs of `tree` cost the drop of the potential. -/
 theorem gameCost_sharedRuns (net : Adversary C E Unit PEmpty PEmpty)
+    (V : ℕ∞) (hvote : ∀ (state : net.State) (input : C.Party → Option (Query C)),
+      (∀ j q, input j = some q → queryClass q = .vote) → cost cW (voteRound worldRoles D net state input) ≤ V)
     (hrun : ∀ (s : RealState C net.State) (tree : Tree),
       cost cW (executePhaseR worldRoles D net noFunctionality ([] : Record C E) (treeFuel circuits settings)
-        s.adversary fun i => (passTree K circuits settings plainShares none i (s.operators i) tree).run.run) ≤ R tree)
+        s.adversary fun i => (passTree K circuits settings plainShares none i (s.operators i) tree).run.run) + V ≤
+          R tree)
     (parameter : PublicParameter) (seeds : C.Term → HashOutput) (dealt : C.Party → Keys C)
     (emu : C.Party → Option (Keys C)) (tree : Tree) :
     ∀ count, GameCost (peekCharge cW)
@@ -285,12 +315,12 @@ theorem gameCost_sharedRuns (net : Adversary C E Unit PEmpty PEmpty)
       (fun _ s => runsLeft runLimit R s) (runsLeft runLimit R)
   | 0 => GameCost.pure _ _
   | count + 1 => by
-    have rest := gameCost_sharedRuns net hrun parameter seeds dealt emu tree count
+    have rest := gameCost_sharedRuns net V hvote hrun parameter seeds dealt emu tree count
     unfold sharedRuns
     refine GameCost.get_bind fun s => ?_
     by_cases h : mayRun runLimit D s tree
     · rw [ite_eq_left h, StateT.run_bind]
-      exact StCost.bind (stCost_sharedRun K circuits settings runLimit cW R D net hrun parameter seeds dealt emu tree s
+      exact StCost.bind (stCost_sharedRun K circuits settings runLimit cW R D net V hvote hrun parameter seeds dealt emu tree s
         (FirstCounts.mayRun_lt runLimit h)) fun p => rest p.2
     · rw [ite_eq_right h]
       exact StCost.pure _ _
@@ -308,9 +338,12 @@ theorem gameCostT_tsig {σ : Type} (d : Dealt C (OracleComp (WorldSpec C))) (q :
 
 omit [Fintype E] [DecidableEq E] in
 theorem gameCostT_dealerOracles (A : DkgTsigAdversary C E)
+    (V : ℕ∞) (hvote : ∀ (state : A.net.State) (input : C.Party → Option (Query C)),
+      (∀ j q, input j = some q → queryClass q = .vote) → cost cW (voteRound worldRoles D A.net state input) ≤ V)
     (hrun : ∀ (s : RealState C A.net.State) (tree : Tree),
       cost cW (executePhaseR worldRoles D A.net noFunctionality ([] : Record C E) (treeFuel circuits settings)
-        s.adversary fun i => (passTree K circuits settings plainShares none i (s.operators i) tree).run.run) ≤ R tree)
+        s.adversary fun i => (passTree K circuits settings plainShares none i (s.operators i) tree).run.run) + V ≤
+          R tree)
     (parameter : PublicParameter) (seeds : C.Term → HashOutput) (dealt : C.Party → Keys C)
     (emu : C.Party → Option (Keys C)) (d : Dealt C (OracleComp (WorldSpec C)))
     (htsig : ∀ q st, cost cW ((tsigOracles (fun oa => free (liftComp oa _)) d q).run st) ≤ 0) (q : TsigQuery C) :
@@ -333,7 +366,7 @@ theorem gameCostT_dealerOracles (A : DkgTsigAdversary C E)
       split <;> exact StCost.pure _ _
     by_cases hc : Mode.real.skip = false ∨ answer.isSome
     · simp only [hc, ↓reduceIte]
-      exact GameCostT.bind (GameCostT.lift (gameCost_sharedRuns K circuits settings runLimit cW R D A.net hrun
+      exact GameCostT.bind (GameCostT.lift (gameCost_sharedRuns K circuits settings runLimit cW R D A.net V hvote hrun
         parameter seeds dealt emu _ 1)) fun _ => tail
     · simp only [hc, ↓reduceIte]
       exact tail
@@ -355,9 +388,12 @@ def forgeCharge {σ : Type} (fc : (LocalSpec C).Domain → ℕ∞) : (LocalSpec 
 
 omit [Fintype E] [DecidableEq E] in
 theorem gameCost_dealerSigning (A : DkgTsigAdversary C E)
+    (V : ℕ∞) (hvote : ∀ (state : A.net.State) (input : C.Party → Option (Query C)),
+      (∀ j q, input j = some q → queryClass q = .vote) → cost cW (voteRound worldRoles D A.net state input) ≤ V)
     (hrun : ∀ (s : RealState C A.net.State) (tree : Tree),
       cost cW (executePhaseR worldRoles D A.net noFunctionality ([] : Record C E) (treeFuel circuits settings)
-        s.adversary fun i => (passTree K circuits settings plainShares none i (s.operators i) tree).run.run) ≤ R tree)
+        s.adversary fun i => (passTree K circuits settings plainShares none i (s.operators i) tree).run.run) + V ≤
+          R tree)
     (fc : (LocalSpec C).Domain → ℕ∞)
     (hforger : ∀ t, cost cW (worldRoles.adversary (OracleComp.lift (OracleSpec.query t))) ≤ fc t)
     (F : ℕ∞) (hforge : ∀ pk top, cost (forgeCharge fc) (A.forge pk top) ≤ F)
@@ -403,7 +439,7 @@ theorem gameCost_dealerSigning (A : DkgTsigAdversary C E)
         (fun _ _ => le_rfl) fun s => add_le_add (hforge _ _) le_rfl) fun p => ?_
     · rcases t with t | q | q
       · exact GameCostT.lift (gameCost_inWorld cW _ (hforger t) _)
-      · exact gameCostT_dealerOracles K circuits settings runLimit cW R D A hrun parameter seeds dealt emu _
+      · exact gameCostT_dealerOracles K circuits settings runLimit cW R D A V hvote hrun parameter seeds dealt emu _
           (htsig _) q
       · rcases q with _ | state
         · exact (GameCostT.lift (GameCost.map_get _ _)).mono (fun _ _ => le_rfl) fun _ => le_add_self
@@ -416,9 +452,12 @@ theorem gameCost_dealerSigning (A : DkgTsigAdversary C E)
 omit [Fintype E] [DecidableEq E] in
 /-- The cost of the shared rest with reads. -/
 theorem stCost_sharedRestOf (A : DkgTsigAdversary C E)
+    (V : ℕ∞) (hvote : ∀ (state : A.net.State) (input : C.Party → Option (Query C)),
+      (∀ j q, input j = some q → queryClass q = .vote) → cost cW (voteRound worldRoles D A.net state input) ≤ V)
     (hrun : ∀ (s : RealState C A.net.State) (tree : Tree),
       cost cW (executePhaseR worldRoles D A.net noFunctionality ([] : Record C E) (treeFuel circuits settings)
-        s.adversary fun i => (passTree K circuits settings plainShares none i (s.operators i) tree).run.run) ≤ R tree)
+        s.adversary fun i => (passTree K circuits settings plainShares none i (s.operators i) tree).run.run) + V ≤
+          R tree)
     (fc : (LocalSpec C).Domain → ℕ∞)
     (hforger : ∀ t, cost cW (worldRoles.adversary (OracleComp.lift (OracleSpec.query t))) ≤ fc t)
     (F : ℕ∞) (hforge : ∀ pk top, cost (forgeCharge fc) (A.forge pk top) ≤ F)
@@ -430,26 +469,38 @@ theorem stCost_sharedRestOf (A : DkgTsigAdversary C E)
       (worldDealt₀ parameter seeds dealt top) st forgery) ≤ 0)
     (state : A.net.State) (keys : C.Party → Option (Keys C)) :
     StCost (peekCharge cW) (sharedRestOf K circuits settings runLimit peekHandler id false D A state keys)
-      (fun _ => 0) (F + runsLeft runLimit R (startState D state keys)) := by
+      (fun _ => 0) (V + (F + runsLeft runLimit R (startState D state keys))) := by
   unfold sharedRestOf sharedRest
-  have h := GameCost.bind (K := fun _ s => F + runsLeft runLimit R s)
-    ((gameCost_sharedRuns K circuits settings runLimit cW R D A.net hrun (gameParameter D keys) (gameSeeds D keys)
-      (fun i => (keys i).getD noKeys) (fun _ => none) .top runLimit).frame F |>.mono
-        (fun _ s => le_of_eq (add_comm _ _)) fun s => le_of_eq (add_comm _ _))
-    fun _ => gameCost_dealerSigning K circuits settings runLimit cW R D A hrun fc hforger F hforge
-      (gameParameter D keys) (gameSeeds D keys) (fun i => (keys i).getD noKeys) (fun _ => none)
-      (hdealer _ _) (htsig _ _ _) (hwins _ _ _)
-  exact StCost.bind (h (startState D state keys)) fun p => by
+  refine StCost.bind (K := fun _ => (0 : ℕ∞)) ?_ fun p => by
     rcases p with ⟨win, s⟩
     exact StCost.pure _ _
+  refine GameCost.get_bind (k := fun _ _ => (0 : ℕ∞)) (Φ := fun s => V + (F + runsLeft runLimit R s)) (fun s => ?_)
+    (startState D state keys)
+  refine GameCost.bind (K := fun _ _ => F + runsLeft runLimit R s) (k := fun _ _ => (0 : ℕ∞))
+    (gameCost_inWorld cW (voteRound worldRoles D A.net s.adversary fun i => ((s.operators i).keys).map seedVote)
+      (hvote _ _ fun _ _ => queryClass_map_seedVote) fun _ => F + runsLeft runLimit R s) (fun v => ?_) s
+  obtain ⟨state', ok⟩ := v
+  refine GameCost.bind ((GameCost.set _ (fun _ s => F + runsLeft runLimit R s)).mono (fun _ _ => le_rfl)
+    fun _ => le_rfl) fun _ => ?_
+  exact GameCost.bind (K := fun _ s => F + runsLeft runLimit R s)
+    ((gameCost_sharedRuns K circuits settings runLimit cW R D A.net V hvote hrun (gameParameter D keys)
+      (gameSeeds D keys) (fun i => (keys i).getD noKeys) (committed ok fun _ => none) .top runLimit).frame F |>.mono
+        (fun _ s => le_of_eq (add_comm _ _)) fun s => le_of_eq (add_comm _ _))
+    fun _ => gameCost_dealerSigning K circuits settings runLimit cW R D A V hvote hrun fc hforger F hforge
+      (gameParameter D keys) (gameSeeds D keys) (fun i => (keys i).getD noKeys) (committed ok fun _ => none)
+      (hdealer _ _) (htsig _ _ _) (hwins _ _ _)
 
 omit [Fintype E] [DecidableEq E] in
-/-- The cost of the program of the shared rest. The runs cost `R tree` each, at most `runLimit` runs
-of each tree, and `forge` costs at most `F`. The dealer and the win test cost nothing. -/
+/-- The cost of the program of the shared rest. The vote of the seed generation costs at most `V`, the
+runs with their votes cost `R tree` each, at most `runLimit` runs of each tree, and `forge` costs at
+most `F`. The dealer and the win test cost nothing. -/
 theorem cost_sharedProgram_le (A : DkgTsigAdversary C E)
+    (V : ℕ∞) (hvote : ∀ (state : A.net.State) (input : C.Party → Option (Query C)),
+      (∀ j q, input j = some q → queryClass q = .vote) → cost cW (voteRound worldRoles D A.net state input) ≤ V)
     (hrun : ∀ (s : RealState C A.net.State) (tree : Tree),
       cost cW (executePhaseR worldRoles D A.net noFunctionality ([] : Record C E) (treeFuel circuits settings)
-        s.adversary fun i => (passTree K circuits settings plainShares none i (s.operators i) tree).run.run) ≤ R tree)
+        s.adversary fun i => (passTree K circuits settings plainShares none i (s.operators i) tree).run.run) + V ≤
+          R tree)
     (fc : (LocalSpec C).Domain → ℕ∞)
     (hforger : ∀ t, cost cW (worldRoles.adversary (OracleComp.lift (OracleSpec.query t))) ≤ fc t)
     (F : ℕ∞) (hforge : ∀ pk top, cost (forgeCharge fc) (A.forge pk top) ≤ F)
@@ -462,8 +513,8 @@ theorem cost_sharedProgram_le (A : DkgTsigAdversary C E)
       (worldDealt₀ parameter seeds dealt top) st forgery) ≤ 0)
     (state : A.net.State) (keys : C.Party → Option (Keys C)) :
     cost (peekCharge cW) (sharedProgram K circuits settings runLimit D A state keys) ≤
-      F + (FirstCounts.remaining runLimit R (fun _ => 0) : ℕ) := by
-  have h := stCost_sharedRestOf K circuits settings runLimit cW R D A hrun fc hforger F hforge hdealer htsig hwins
+      V + (F + (FirstCounts.remaining runLimit R (fun _ => 0) : ℕ)) := by
+  have h := stCost_sharedRestOf K circuits settings runLimit cW R D A V hvote hrun fc hforger F hforge hdealer htsig hwins
     state keys
   unfold sharedProgram programOf
   change costWith (peekCharge cW) (liftM ((PeekSpec C).query (.inr ())) >>= fun w =>

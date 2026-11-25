@@ -383,17 +383,22 @@ theorem commS_sharedRunWith (net : Adversary C E Unit PEmpty PEmpty) (program : 
         simulateQ (loggedWorld prims D) (executePhaseR worldRoles D net noFunctionality ([] : Record C E)
           (treeFuel circuits settings) s.adversary fun i => (program i).run.run) >>= fun r =>
         ((fun w : LogState C => decide (GlobalEvent w.1)) <$> (get : StateT (LogState C) ProbComp _)) >>= fun ge =>
-        pure (PUnit.unit, (⟨r.1, fun i => (s.operators i).keep (r.2 i).output tree,
+        simulateQ (loggedWorld prims D) (voteRound worldRoles D net r.1 fun i => ((r.2 i).output).map (treeVote tree))
+          >>= fun v =>
+        pure (PUnit.unit, (⟨v.1, fun i => (s.operators i).keep (committed v.2 (fun i => (r.2 i).output) i) tree,
           Function.update s.runs tree (s.runs tree + 1), s.closed,
           s.flag || (decide (PassBad K D fun i => (r.2 i).record []) ||
-            (decide (ReusedBefore D hidden fun i => (r.2 i).record []) || ge))⟩ : RealState C net.State)) := by
+            (decide (ReusedBefore D hidden fun i => (r.2 i).record []) || ge)) ||
+            split D (committed v.2 fun i => (r.2 i).output)⟩ : RealState C net.State)) := by
     simp only [sharedRunWith, inWorld, StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift,
       StateT.run_set, bind_assoc, bind_map_left]
     simp [Bool.decide_or]
   rw [e]
   exact CommW.bind prims D (commW_hidden prims D) fun _ =>
     CommW.bind prims D (commW_world prims D _ (UsedHit.allQueries_of_noCall (noProgram_executePhaseR D net _ _ _ _)))
-      fun _ => CommW.bind prims D (commW_global prims D) fun _ => commW_pure prims D _
+      fun _ => CommW.bind prims D (commW_global prims D) fun _ =>
+        CommW.bind prims D (commW_world prims D _ (UsedHit.allQueries_of_noCall (Collision.noProgram_voteRound D net _ _)))
+          fun _ => commW_pure prims D _
 
 omit [Fintype E] [DecidableEq E] in
 /-- The real runs of a tree. -/

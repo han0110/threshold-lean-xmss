@@ -160,6 +160,15 @@ theorem obsEq_monitor_pure (hcomm : MonitorCommutes impl) (hkeep : MonitorKeeps 
   rw [bind_congr_of_forall_mem_support _ fun r hr => by rw [monitor_keeps hkeep m hm p.2 r hr]]
   exact EvalDistEq.bind_const _ _
 
+/-- A computation of the monitor whose result is unused can be dropped before a computation `V` with
+no programming call. -/
+theorem obsEq_monitor_drop (hcomm : MonitorCommutes impl) (hkeep : MonitorKeeps impl obs) {α γ : Type}
+    (m : OracleComp (WorldSpec C) γ) (hm : AllQueriesSatisfy m MonitorCall) (V : OracleComp (WorldSpec C) α)
+    (hV : NoCall WorldProgramQuery V) : ObsEq impl obs (m >>= fun _ => V) V := by
+  have e : (m >>= fun _ => V) = (m >>= fun _ => pure ()) >>= fun _ => V := by simp only [bind_assoc, pure_bind]
+  rw [e]
+  exact ((obsEq_monitor_pure hcomm hkeep m hm ()).bind_left fun _ => hV).trans (ObsEq.of_eq (pure_bind _ _))
+
 end Obs
 
 /-! ## Programs on the state of the game -/
@@ -319,15 +328,19 @@ theorem flagEq_treeRun (hcomm : MonitorCommutes impl) (hkeep : MonitorKeeps impl
   unfold treeRun
   refine flagEq_get_bind (fun s => ?_) fun s₁ s₂ hs => ?_
   · exact (UsedHit.NoProg.lift (Collision.noProgram_executePhase D net _ _ _)).bind fun r =>
-      (UsedHit.NoProg.lift (h₂.noProgram _ _ _)).bind fun _ => UsedHit.NoProg.set _
+      (UsedHit.NoProg.lift (h₂.noProgram _ _ _)).bind fun _ =>
+        (UsedHit.NoProg.lift (Collision.noProgram_voteRound D net _ _)).bind fun _ => UsedHit.NoProg.set _
   · obtain ⟨a₁, o₁, r₁, c₁, f₁⟩ := s₁
     obtain ⟨a₂, o₂, r₂, c₂, f₂⟩ := s₂
     obtain ⟨rfl, rfl, rfl, rfl⟩ := fields_of_eraseFlag hs
     simp only [erasedRun, StateT.run_bind, StateT.run_lift, StateT.run_set, bind_assoc, pure_bind, map_bind,
       map_pure, eraseFlag]
     refine ObsEq.bind_right _ fun r => ?_
-    exact (obsEq_monitor_pure hcomm hkeep _ (h₁.allQueries _ _ _) _).trans
-      (obsEq_monitor_pure hcomm hkeep _ (h₂.allQueries _ _ _) _).symm
+    have hV := fun (x : net.State × Bool → Unit × RealState C net.State) =>
+      noCall_bind (f := fun v => (pure (x v) : OracleComp (WorldSpec C) _)) _
+        (Collision.noProgram_voteRound D net r.1 fun i => (r.2 i).map (treeVote tree)) fun v => noCall_pure _ _
+    exact (obsEq_monitor_drop hcomm hkeep _ (h₁.allQueries _ _ _) _ (hV _)).trans
+      (obsEq_monitor_drop hcomm hkeep _ (h₂.allQueries _ _ _) _ (hV _)).symm
 
 omit [Fintype E] [DecidableEq E] in
 theorem flagEq_treeRuns (hcomm : MonitorCommutes impl) (hkeep : MonitorKeeps impl obs)
@@ -503,8 +516,8 @@ theorem dkgTsigRun_obsEq (hcomm : MonitorCommutes impl) (hkeep : MonitorKeeps im
     fun _ => flagEq_dkgSigning K circuits settings runLimit D hcomm hkeep h₂ h₂ A
   unfold dkgTsigRun
   simp only [map_bind]
-  refine ObsEq.bind_right _ fun p => ?_
-  have h := (body.2 (startState D p.1 p.2) (startState D p.1 p.2) rfl).map Prod.fst
+  refine ObsEq.bind_right _ fun p => ObsEq.bind_right _ fun v => ?_
+  have h := (body.2 (seedState D v.1 p.2 v.2) (seedState D v.1 p.2 v.2) rfl).map Prod.fst
   simp only [erasedRun, Functor.map_map] at h
   simpa [map_eq_bind_pure_comp] using h
 

@@ -16,10 +16,9 @@ subDir = "formal/lean_xmss"
 [[lean_lib]]
 name = "ThresholdLeanXmss"
 
-# The library has the modules that its root `ThresholdLeanXmssSecurity.lean` imports. The files of
-# `Proof/DkgSecurity/` that the root does not import are on the game without the vote.
 [[lean_lib]]
 name = "ThresholdLeanXmssSecurity"
+globs = ["ThresholdLeanXmssSecurity.*"]
 # This linter computes the normal form of the type of each bound variable. It gives no warning in the
 # proofs and costs up to half of the build time of a large module. The editor still runs it.
 weakLeanArgs = ["-Dlinter.constructorNameAsVariable=false"]

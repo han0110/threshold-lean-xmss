@@ -26,10 +26,23 @@ variable {C : Committee} {E : Type} [Field E] [Algebra Bit E]
 theorem streamAccepts_dealtGame_zero (m : Mode) (D : C.Coalition) (A : DkgTsigAdversary C E) :
     streamAccepts prims D (dealtGame K circuits settings 0 m D A) = 0 := by
   have hf : List.find? (fun _ : C.Party => false) C.parties = none := by simp [List.find?_eq_none]
-  have e : dealtGame K circuits settings 0 m D A = (fun _ => false) <$> worldSeedGen D A.net := by
-    simp [dealtGame, dealtRun, secRest, secRuns, secSigning, topHolder, startState, hf]
+  have e : dealtGame K circuits settings 0 m D A = (fun _ => false) <$> (worldSeedGen D A.net >>= fun r =>
+      voteRound worldRoles D A.net r.1 fun i => ((r.2.2.2.2 i).map fun _ => r.2.2.2.1 i).map seedVote) := by
+    unfold dealtGame dealtRun secRest
+    simp only [map_bind]
+    refine bind_congr fun r => ?_
+    simp only [StateT.run'_eq, StateT.run_bind, StateT.run_get, StateT.run_lift, StateT.run_set, pure_bind,
+      bind_assoc, map_bind]
+    rw [map_eq_bind_pure_comp]
+    refine bind_congr fun v => ?_
+    simp [secRuns, secSigning, topHolder, startState, votedStart, hf]
   rw [e]
   unfold streamAccepts
+  rw [ENNReal.toReal_eq_zero_iff]
+  left
+  refine prEvent_eq_zero_of_forall_mem_support _ _ fun r hr => ?_
+  rw [simulateQ_map, StateT.run_map, support_map] at hr
+  obtain ⟨a, -, rfl⟩ := hr
   simp
 
 /-- `dealerFirstGame` wins at most as often as `forgerWorldGame`, for a positive run limit. -/
