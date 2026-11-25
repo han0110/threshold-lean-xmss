@@ -1180,7 +1180,7 @@ pub mod tests {
     use tokio::runtime::Runtime;
 
     use crate::circuit::{Keccak, evaluate};
-    use crate::dkg::BATCH_SIZE;
+    use crate::dkg::{self, BATCH_SIZE};
     use crate::mpc::*;
     use crate::{check, prawns};
 
@@ -1277,6 +1277,7 @@ pub mod tests {
             prawns::KEYGEN_ECHO,
             prawns::PRF,
             prawns::MASK,
+            dkg::VOTE,
         ];
         for (i, tag) in tags.iter().enumerate() {
             assert!(!tag.contains(&0));

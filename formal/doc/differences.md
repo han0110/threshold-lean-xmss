@@ -61,6 +61,7 @@ Table B.1 lists the basic differences in the model and in the assumptions. Table
 | B21 | Each PRSS setup hashes in the same domains of $H$ with no name of its ceremony. | The same. The counters start again for each tree, so the model does not separate the hash inputs of two ceremonies by a domain. | Same as the implementation | `dkgCorrectness` with `freshError`, `echoError` and `reuseError`, `dkgSecurityPreservation` with the terms of the PRSS setups |
 | B22 | The digests travel with the last coin. | The digests travel in their own round before the last coin. No message changes. | Simpler rounds | The round count `treeFuel` of the claims of the setup |
 | B23 | The first round of the PRSS setup carries the reshare mode and the batch size next to each commitment. An operator aborts unless both equal its own. | The mode and the batch size are public settings of all operators. The commit round carries only the commitment. | Public settings | The claims of the setup |
+| B24 | The seed generation, the top tree and each bottom tree end with a vote on the hash of the public result. An operator writes its files only if all votes equal its own. The vote assumes a broadcast channel (`doc/dkg.md`, Section 3.3). | No vote and no broadcast channel. An honest operator keeps its output when its own checks pass, which is row A1. | The model is the protocol without the vote | No claim. The claims of the setup state selective abort, and no claim states that all honest operators commit together. |
 
 ## Table B.3
 

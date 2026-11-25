@@ -12,12 +12,13 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::process::exit;
 use std::str::FromStr;
+use std::time::Duration;
 use std::{io, thread};
 
 use clap::{ArgGroup, Parser};
 use dkg::BATCH_SIZE;
 use mpc::{LANES, Reshare};
-use serve::Session;
+use serve::{Session, Settings};
 use tikv_jemallocator::Jemalloc;
 use tokio::net::TcpStream;
 use tracing_forest::ForestLayer;
@@ -69,6 +70,12 @@ enum Command {
             help = "The batches that this operator runs at the same time"
         )]
         concurrency: NonZeroUsize,
+        #[arg(
+            long,
+            default_value_t = 86_400,
+            help = "The seconds that a key ceremony can take before this operator votes for its abort"
+        )]
+        time_limit: u64,
     },
     #[command(about = "Generates the key and its top tree, or one bottom tree, and prints the public key")]
     #[command(group = ArgGroup::new("tree").required(true).args(["top", "bottom"]))]
@@ -147,17 +154,15 @@ async fn main() {
             reshare,
             batch_size,
             concurrency,
+            time_limit,
         } => {
-            serve::serve(
-                &addr,
-                admin.as_deref(),
-                peers,
-                sk,
+            let settings = Settings {
                 reshare,
                 batch_size,
-                concurrency.get(),
-            )
-            .await
+                concurrency: concurrency.get(),
+                time_limit: Duration::from_secs(time_limit),
+            };
+            serve::serve(&addr, admin.as_deref(), peers, sk, settings).await
         }
         Command::Dkg { admin, bottom, .. } => {
             let session = match bottom {
