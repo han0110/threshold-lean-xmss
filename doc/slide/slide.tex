@@ -4,7 +4,7 @@
 \geometry{papersize={720bp,405bp}}
 \usefonttheme{serif}\usefonttheme{professionalfonts}
 \usepackage[no-math]{fontspec}
-\usepackage{amsmath,outlines}
+\usepackage{amsmath,outlines,tikz}
 
 % Settings. Sizes: 12 bp text on a 22 bp line, 24 bp titles, the same at every list level.
 \renewcommand{\normalsize}{\fontsize{12bp}{22bp}\selectfont}
@@ -81,12 +81,12 @@
 \begin{slide}{Threshold BLS vs Threshold leanXMSS}
 \1[] \tbl{llll}{& Threshold BLS & Threshold leanXMSS with trusted dealer & Threshold leanXMSS with DKG}{
   Signing & 1 round, 96 B & 2 rounds, at most 944 B & same \\
-  State & stateless & stateful, one-time key per epoch & same \\
-  Key share & 1 scalar & $\binom{n-1}{t-1}$ PRF seeds & same \\
+  State & stateless & stateful & same \\
+  Key share & 1 scalar & $\binom{n-1}{t-1}$ PRF keys, $n-1$ pairwise keys & same \\
   Threshold & e.g. 3-of-4, 5-of-7 & e.g. 3-of-4, 5-of-7 & e.g. 2-of-3, 3-of-5, 4-of-7 \\
   Corruptions & $t-1$ & $t-1$ & $t-1 < n/2$ \\
   Keygen & once & once for desired lifetime & top tree, 1 bottom tree per 291 days \\
-  Keygen cost & seconds & 46 seconds for 10 years lifetime & 52.5--70.7 GB bandwidth}
+  Keygen cost & small & 46 seconds for a 10-year lifetime & 52.5--70.7 GB bandwidth per bottom tree}
 \end{slide}
 
 \begin{slide}[.65]{\cite[PRAWNS]{BBDLN26} for Signing}
@@ -103,7 +103,7 @@
   \2 Each operator $P_i$ in quorum $J$ reveals its PRF share for each chain position (1 round, 928 bytes)
   \2 Any combiner with \cpk\ and PRF shares can rebuild the signature
 \1 leanXMSS Adaptation
-  \2 Additional threshold PRF value $R_0 = H(F(x_s), m)$ for the grinding randomizer (1 round, 16 bytes)
+  \2 Additional threshold PRF value $R_0 = H(F(x_s), m)$ for the seed of grinding randomizer (1 round, 16 bytes)
   \2 $R_0$ is unpredictable to $t-1$ before signing, so one cannot search messages with same encoding
 \side
 Example of 2-of-3\\
@@ -119,18 +119,18 @@ $P_1$ gives $H(k_0, x) \oplus H(\mask_{01}, x, m, J)$}
 
 \begin{slide}{Setup by Trusted Dealer}
 \1 Keygen
-  \2 Generate public param $P$, PRF seeds $k_S$, pairwise keys $\mask_{ij}$
+  \2 Generate public param $P$, PRF keys $k_S$, pairwise keys $\mask_{ij}$
   \2 Compute top tree
   \2 Compute \cpk\ for $L$ bottom trees for desired lifetime and sign by top leaves
-  \2 Give each operator its seeds and pairwise keys
+  \2 Give each operator its PRF keys and pairwise keys
 \1 Cost
   \2 $(\binom{n}{t-1} + 1) \cdot 2^{16} \cdot 58 \cdot 3$ keccakf per tree
   \2 514 M keccakf per year of lifetime for 5-of-7 (1 sig per 384s epoch)
-\1 Benchmark (on i9-13900k 24-cores CPU)
+\1 Benchmark (on i9-13900k 24-core CPU)
   \2[] \tbl{lrr}{Lifetime & Keygen Time & \cpk\ Size}{
     1 year & 7 secs & 365 MB \\
-    5 year & 24 secs & 1.3 GB \\
-    10 year & 46 secs & 2.4 GB}
+    5 years & 24 secs & 1.3 GB \\
+    10 years & 46 secs & 2.4 GB}
 \end{slide}
 
 % 514 M = (365*86400 / (384*2^16))*36*(2^16)*58*3
@@ -140,24 +140,24 @@ $P_1$ gives $H(k_0, x) \oplus H(\mask_{01}, x, m, J)$}
 %   For T = 2, 7 and 13, size = 0.365, 1.28 and 2.37 GB.
 
 \begin{slide}[.5]{Setup by DKG}
-\1 Requirement
-  \2 Hash-only MPC hides secrets only from fewer than $n/2$ operators
-  \2 MPC runs for every bottom tree, so a threshold beyond that adds no security $\rightarrow t-1 < n/2 \rightarrow n \ge 2t-1$
+\1 Limitation
+  \2 AND gates in MPC with only symmetric primitives are secure only against fewer than $n/2$ corrupt
+  \2 MPC runs for every bottom tree, so a threshold beyond that adds no secrecy $\rightarrow t-1 < n/2 \rightarrow$ at best $n = 2t-1$
 \1 MPC Protocol
-  \2 Replicated sharing \cite{CDI05} for minimum communication per AND gate (1, 1.2 and 1.29 bits for 2-of-3, 3-of-5 and 4-of-7)
+  \2 Replicated sharing \cite{CDI05}, each operator sends 1, 1.2 and 1.29 bits per AND gate for 2-of-3, 3-of-5 and 4-of-7
   \2 Malicious security with abort via \cite{GS20}
-\1 Keygen (once)
-  \2 Generate public param $P$, PRF seeds $k_S$, pairwise keys $\mask_{ij}$ by commit-reveal
+\1 Top tree (once)
+  \2 Generate public param $P$, PRF keys $k_S$, pairwise keys $\mask_{ij}$ by commit-reveal
   \2 Compute top tree chain ends by MPC, and build tree root in the clear
 \1 Each bottom tree
-  \2 Compute bottom tree \cpk\ by MPC, build tree root in the clear, and sign by next top leaf
+  \2 Compute bottom tree \cpk\ by MPC, build tree root in the clear, and sign by next top leaf by MPC
 \1 Cost
   \2 11.4 M keccakf by MPC per tree
   \2 $38400 = 24 \cdot 25 \cdot 64$ AND gates per keccakf
   \2 $3 \cdot 24 = 72$ depth
 \side[11]
 \tbl{lrr}{Parameter & Traffic & Average Rate (384s epoch)}{
-  2-of-3 & 52.5 GB & 2.08 KB/s \\
+  2-of-3 & 52.5 GB & 2.09 KB/s \\
   3-of-5 & 63.7 GB & 2.53 KB/s \\
   4-of-7 & 70.7 GB & 2.81 KB/s}
 \end{slide}
@@ -208,10 +208,10 @@ $P_1$ gives $H(k_0, x) \oplus H(\mask_{01}, x, m, J)$}
 \begin{slide}{Related Work}
 \1 \cite[ObolNetwork/pqdv]{Obol26}
   \2 Same as ours
-    \3 PRAWNS with randomizer from the threshold PRF
-    \3 Hash-only MPC by replicated sharing
+    \3 PRAWNS with grinding randomizer from threshold PRF
+    \3 MPC with only symmetric primitives by replicated sharing
   \2 Different from ours
-    \3 Key and DKG secure against $f < n/3$ corrupt instead of $t-1 < n/2$, to fit 3-of-4 and 5-of-7 with QBFT
+    \3 Threshold $t = \lceil 2n/3 \rceil$ as in QBFT, which avoids double signing against $f < n/3$ even without agreement
     \3 Top tree chain values as Shamir shares, key reshare on operator change is cheap
   \2 Other design choices
     \3 Top tree MPC only $2^{12}$ real leaves, so registration costs $1/16$ of a full tree
@@ -285,6 +285,18 @@ Messages of the reshare\\
 \flow{}{$u_0 = 0$}{$u_1 = 0$}{}{}{$u_2 = 1$}
 \tnote{Example $Z_{01} = 1$, $Z_{02} = 0$, $Z_{12} = 1$ and $w = (1, 0, 0)$\\
 Result $\sh{z} = (u_2, u_0, u_1) = (1, 0, 0)$, so $z = 1$}
+\par\vspace{24bp}
+\begin{tikzpicture}[x=1bp,y=1bp,>=latex,line width=.5bp,every node/.style={font=\fontsize{9bp}{13bp}\selectfont,inner sep=3bp}]
+  \node[draw,circle] (p0) at (125,100) {$P_0$};
+  \node[draw,circle] (p1) at (55,0) {$P_1$};
+  \node[draw,circle] (p2) at (195,0) {$P_2$};
+  \draw[->] (p0) -- node[right=2bp] {$u_0 = 0$} (p2);
+  \draw[->] (p1) -- node[left=2bp] {$u_1 = 0$} (p0);
+  \draw[->] (p2) -- node[above] {$u_2 = 1$} (p1);
+  \node[align=left,anchor=west] at (p0.east) {before $w_0 = 1$\\after $z_1 = u_0$, $z_2 = u_1$};
+  \node[align=center,anchor=north] at (p1.south) {before $w_1 = 0$\\after $z_0 = u_2$, $z_2 = u_1$};
+  \node[align=center,anchor=north] at (p2.south) {before $w_2 = 0$\\after $z_0 = u_2$, $z_1 = u_0$};
+\end{tikzpicture}
 \end{slide}
 
 \begin{slide}[.6]{Toy MPC -- AND layers (rounds 1--4)}
@@ -294,6 +306,8 @@ Result $\sh{z} = (u_2, u_0, u_1) = (1, 0, 0)$, so $z = 1$}
   \2 All gates of a layer reshare in one round
 \1 Rerand reshares the term each $P_i$ owns
   \2 $\sh{z'}$ has fresh terms, with $z' = z^{(3)}_0$
+  \2 Redundant here, but needed in the DKG for outputs\\
+     linear in the PRF inputs
 \1 Record 8 tuples $(x_e, y_e, z_e) \in \mathbb F_2^3$ for the check
   \2 Tuple $e = 0, \dots, 6$ holds the 2 inputs and the output of gate $e$
   \2 Tuple $e = 7$ is $(z^{(3)}_0, 1, z')$ for rerand, with $\sh{1} = (1, 0, 0)$
@@ -311,9 +325,9 @@ Bits sent in rounds 1 to 4\\
 \1 A reshare may add errors, so check all tuples first
 \1 Lift the tuples from $\mathbb F_2$ into $\mathbb F_{2^{128}}$
 \1 A coin gives public random $c_0, c_1, c_2 \in \mathbb F_{2^{128}}$
-  \2 $\mathsf{Rand}$ gives 2 shared elements, opened as Shamir shares
-  \2 Abort unless the 3 opened shares lie on one line
-  \2 $c_0, c_1, c_2$ expand a hash of the 2 opened elements
+  \2 $\mathsf{Rand}$ gives 2 shared elements $\gamma_0, \gamma_1$, opened as Shamir shares
+  \2 Abort unless the 3 opened shares of each lie on one line
+  \2 $c_k = H(\kappa, k)$ cut to 128 bits, with key $\kappa = H(\rho, \gamma_0, \gamma_1)$ of round $\rho$
   \2 Weight $\beta_e = \prod_{k : e_k = 1} c_k$ for $e = \sum_k e_k 2^k$
 \1 Conv turns $\sh{v}$ into the Shamir sharing $\langle v \rangle$ locally \cite{CDI05}
   \2 $P_i$ holds $V(i+1)$ for a line $V$ over $\mathbb F_{2^{128}}$ with $V(0) = v$
@@ -323,8 +337,8 @@ Bits sent in rounds 1 to 4\\
 \side
 Messages of a coin\\
 \flow{$s_0$}{$s_0$}{$s_1$}{$s_1$}{$s_2$}{$s_2$}
-\tnote{$s_i$ is the share of $P_i$, 2 elements of $\mathbb F_{2^{128}}$\\
-$c_0, c_1, c_2$ are hashed from the 2 opened elements}
+\tnote{$s_i$ holds the shares of $P_i$ of $\gamma_0$ and $\gamma_1$, 2 elements of $\mathbb F_{2^{128}}$\\
+All operators open $\gamma_0, \gamma_1$ from $s_0, s_1, s_2$}
 \vspace{16bp}Conv of each operator\\
 \tbl{ll}{Operator & Shamir share $V(i+1)$}{
   $P_0$ & $v_1 \psi_1(1) \oplus v_2 \psi_2(1)$ \\
@@ -347,8 +361,8 @@ So $V(0) = v$, and $\psi_k(k+1) = 0$ removes the term $P_k$ lacks}
 \1 A wrong claim survives with probability at most $2 / (2^{128} - 2)$
 \side
 Messages of a halving reshare\\
-\flow{}{$p_0, p_2$}{$p_0, p_2$}{}{}{$p_0, p_2$}
-\tnote{The shares of $p_0, p_2$, masked as in the AND gate\\
+\flow{}{$u_0, u_0'$}{$u_1, u_1'$}{}{}{$u_2, u_2'$}
+\tnote{$u_i, u_i'$ are the shares of $P_i$ of $p_0, p_2$, masked as in the AND gate\\
 Round 2 sends a coin as in round 5}
 \end{slide}
 
