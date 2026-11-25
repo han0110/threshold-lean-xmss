@@ -79,14 +79,15 @@
 % Average 16*(37+1) = 608 bytes
 
 \begin{slide}{Threshold BLS vs Threshold leanXMSS}
-\1[] \tbl{llll}{& Threshold BLS & Threshold leanXMSS with trusted dealer & Threshold leanXMSS with DKG}{
+\1[] \tbl{llll}{& Threshold BLS & Threshold leanXMSS (trusted dealer) & Threshold leanXMSS (DKG)}{
   Signing & 1 round, 96 B & 2 rounds, at most 944 B & same \\
   State & stateless & stateful & same \\
   Key share & 1 scalar & $\binom{n-1}{t-1}$ PRF keys, $n-1$ pairwise keys & same \\
   Threshold & e.g. 3-of-4, 5-of-7 & e.g. 3-of-4, 5-of-7 & e.g. 2-of-3, 3-of-5, 4-of-7 \\
   Corruptions & $t-1$ & $t-1$ & $t-1 < n/2$ \\
   Keygen & once & once for desired lifetime & top tree, 1 bottom tree per 291 days \\
-  Keygen cost & small & 46 seconds for a 10-year lifetime & 52.5--70.7 GB bandwidth per bottom tree}
+  Keygen cost & small & 46 seconds for a 10-year lifetime & 52.5, 63.7, 70.7 GB traffic per bottom tree \\
+  & & & (18, 43, 160 mins single-threaded)}
 \end{slide}
 
 \begin{slide}[.65]{\cite[PRAWNS]{BBDLN26} for Signing}
