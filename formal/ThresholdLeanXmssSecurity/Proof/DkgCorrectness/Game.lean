@@ -169,36 +169,39 @@ def blockRun {σ β : Type} (D : C.Coalition) (block : Tree → RealState C σ �
 
 section First
 
-variable {σ : Type}
+variable (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
 
-/-- One run of `tree` with the run `run`. The game first records a start that does not pass the
-readiness test `ready`, and then a run with its event, each with the state of the world. -/
-def firstTreeRunOf (run : RunOf C σ) (ready : RealState C σ → StreamState C → Prop) (tree : Tree) :
-    FirstM C σ Unit := do
+/-- One run of `tree` with the run `run` and the vote of `treeRun`. The game first records a start
+that does not pass the readiness test `ready`, and then a run with its event, each with the state of
+the world. The record of a run has the world before the vote. -/
+def firstTreeRunOf (run : RunOf C net.State) (ready : RealState C net.State → StreamState C → Prop)
+    (tree : Tree) : FirstM C net.State Unit := do
   let s ← get
   let before ← StateT.lift get
   let first := s.first <|> if ready s.real before then none
     else some (.unready tree (s.real.runs tree), before)
   let ((state, outputs), bad) ← StateT.lift (run tree s.real)
   let after ← StateT.lift get
-  let operators := fun i => (s.real.operators i).keep (outputs i) tree
+  let (state, ok) ← inStream prims D (voteRound worldRoles D net state fun i => (outputs i).map (treeVote tree))
+  let kept := committed ok outputs
+  let operators := fun i => (s.real.operators i).keep (kept i) tree
   let runs := Function.update s.real.runs tree (s.real.runs tree + 1)
-  set (⟨⟨state, operators, runs, s.real.closed, s.real.flag || bad⟩,
-    first <|> if bad then some (.run tree (s.real.runs tree), after) else none⟩ : FirstState C σ)
+  set (⟨⟨state, operators, runs, s.real.closed, s.real.flag || bad || split D kept⟩,
+    first <|> if bad then some (.run tree (s.real.runs tree), after) else none⟩ : FirstState C net.State)
 
 /-- At most `count` runs of `tree`, each while a run is allowed. -/
-def firstTreeRunsOf (D : C.Coalition) (run : RunOf C σ) (ready : RealState C σ → StreamState C → Prop)
-    (tree : Tree) : ℕ → FirstM C σ Unit
+def firstTreeRunsOf (run : RunOf C net.State) (ready : RealState C net.State → StreamState C → Prop)
+    (tree : Tree) : ℕ → FirstM C net.State Unit
   | 0 => pure ()
   | count + 1 => do
     if mayRun runLimit D (← get).real tree then
-      firstTreeRunOf run ready tree
-      firstTreeRunsOf D run ready tree count
+      firstTreeRunOf prims D net run ready tree
+      firstTreeRunsOf run ready tree count
 
 /-- A request of bottom tree `b`, as `treeRequest`. -/
-def firstTreeRequestOf (D : C.Coalition) (run : RunOf C σ) (ready : RealState C σ → StreamState C → Prop)
-    (b : Fin (2 ^ layerHeight)) : FirstM C σ (Option (BottomTree × Digest)) := do
-  firstTreeRunsOf runLimit D run ready (.bottom b) 1
+def firstTreeRequestOf (run : RunOf C net.State) (ready : RealState C net.State → StreamState C → Prop)
+    (b : Fin (2 ^ layerHeight)) : FirstM C net.State (Option (BottomTree × Digest)) := do
+  firstTreeRunsOf prims runLimit D net run ready (.bottom b) 1
   let s ← get
   match heldBottom D s.real.operators b with
   | some tree => pure (some (tree, ← firstValue prims D s.real.operators (.randomizer topLayer (topKey b))))
@@ -210,18 +213,18 @@ end First
 `streamTreeRun`. -/
 def firstTreeRunWith (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
     (ready : RealState C net.State → StreamState C → Prop) (tree : Tree) : FirstM C net.State Unit :=
-  firstTreeRunOf (streamTreeRun prims K circuits settings D net) ready tree
+  firstTreeRunOf prims D net (streamTreeRun prims K circuits settings D net) ready tree
 
 /-- At most `count` runs of `tree`, each while a run is allowed. -/
 def firstTreeRunsWith (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
     (ready : RealState C net.State → StreamState C → Prop) (tree : Tree) (count : ℕ) : FirstM C net.State Unit :=
-  firstTreeRunsOf runLimit D (streamTreeRun prims K circuits settings D net) ready tree count
+  firstTreeRunsOf prims runLimit D net (streamTreeRun prims K circuits settings D net) ready tree count
 
 /-- A request of bottom tree `b`, as `treeRequest`. -/
 def firstTreeRequestWith (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
     (ready : RealState C net.State → StreamState C → Prop) (b : Fin (2 ^ layerHeight)) :
     FirstM C net.State (Option (BottomTree × Digest)) :=
-  firstTreeRequestOf prims runLimit D (streamTreeRun prims K circuits settings D net) ready b
+  firstTreeRequestOf prims runLimit D net (streamTreeRun prims K circuits settings D net) ready b
 
 /-- A signing request to operator `i` at key `e`, as `signRequest`. -/
 def firstSignRequest (D : C.Coalition) {σ : Type} (i : C.Party) (e : KeyIndex) (q : TsigQuery C) :
@@ -232,11 +235,12 @@ def firstSignRequest (D : C.Coalition) {σ : Type} (i : C.Party) (e : KeyIndex) 
   operatorAnswer (firstLift prims D) (firstValue prims D s.real.operators) (s.real.operators i) e q
 
 /-- The signing oracles with the run `run`, as `realOracles`. -/
-def firstOraclesOf {σ : Type} (D : C.Coalition) (run : RunOf C σ) (ready : RealState C σ → StreamState C → Prop) :
-    QueryImpl (TsigSpec C) (StateT (TsigState C) (FirstM C σ)) := fun q =>
+def firstOraclesOf (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (run : RunOf C net.State)
+    (ready : RealState C net.State → StreamState C → Prop) :
+    QueryImpl (TsigSpec C) (StateT (TsigState C) (FirstM C net.State)) := fun q =>
   match q with
   | .corrupt i => pure (noAnswer (.corrupt i))
-  | .tree b => StateT.lift (firstTreeRequestOf prims runLimit D run ready b)
+  | .tree b => StateT.lift (firstTreeRequestOf prims runLimit D net run ready b)
   | .round1 i J e message => firstSignRequest prims D i e (.round1 i J e message)
   | .round2 i J e message parts => firstSignRequest prims D i e (.round2 i J e message parts)
 
@@ -252,12 +256,12 @@ def firstSigningOf (D : C.Coalition) (A : DkgTsigAdversary C E) (run : RunOf C A
     | .read => StateT.lift ((·.real.adversary) <$> (get : FirstM C A.net.State _))
     | .write state => StateT.lift (modify fun s : FirstState C A.net.State =>
         { s with real := { s.real with adversary := state } })
-  let _ ← (simulateQ (forger + (firstOraclesOf prims runLimit D run ready + cell))
+  let _ ← (simulateQ (forger + (firstOraclesOf prims runLimit D A.net run ready + cell))
     (A.forge ⟨top.root, keys.parameter⟩ top)).run ⟨D.1, fun _ => none, [], fun _ => none⟩
 
 /-- The run of `dkgTreeGame` after the PRF hop with the run `run`, from the empty caches, with the
-readiness test `ready` at the start of each run. It gives the final state of the game and of the
-world. -/
+readiness test `ready` at the start of each run. The record of the seeds has the world before the
+vote of the seed generation. It gives the final state of the game and of the world. -/
 def firstRunOf (D : C.Coalition) (A : DkgTsigAdversary C E) (run : RunOf C A.net.State)
     (ready : RealState C A.net.State → StreamState C → Prop) :
     ProbComp (FirstState C A.net.State × StreamState C) :=
@@ -265,9 +269,11 @@ def firstRunOf (D : C.Coalition) (A : DkgTsigAdversary C E) (run : RunOf C A.net
     let (state, keys) ← simulateQ (streamWorld prims D) (realExecution D A.net noFunctionality setupRounds
       (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) (fun _ => ()) [])
     let world ← get
-    let start := startState D state keys
+    let (state, ok) ← simulateQ (streamWorld prims D) (voteRound worldRoles D A.net state fun i =>
+      (keys i).map seedVote)
+    let start := seedState D state keys ok
     let (_, s) ← (do
-        firstTreeRunsOf runLimit D run ready .top runLimit
+        firstTreeRunsOf prims runLimit D A.net run ready .top runLimit
         firstSigningOf prims runLimit D A run ready).run
       ⟨start, if start.flag then some (.seeds, world) else none⟩
     pure s).run (∅, ∅)
@@ -276,7 +282,7 @@ def firstRunOf (D : C.Coalition) (A : DkgTsigAdversary C E) (run : RunOf C A.net
 def firstOraclesWith (D : C.Coalition) (A : DkgTsigAdversary C E)
     (ready : RealState C A.net.State → StreamState C → Prop) :
     QueryImpl (TsigSpec C) (StateT (TsigState C) (FirstM C A.net.State)) :=
-  firstOraclesOf prims runLimit D (streamTreeRun prims K circuits settings D A.net) ready
+  firstOraclesOf prims runLimit D A.net (streamTreeRun prims K circuits settings D A.net) ready
 
 /-- The signing phase, as `dkgSigning` without the win test. The win test comes after the last run,
 so it does not change the flag. -/

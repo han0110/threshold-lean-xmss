@@ -1054,25 +1054,29 @@ omit [Fintype E] [DecidableEq E] in
 theorem drawTreeRun_cells (hcells : TreeRunCells prims K circuits settings runLimit)
     (net : Adversary C E Unit PEmpty PEmpty) (hround : ∀ state sent, IsQueryBoundP (net.round state sent) (InClass .stream) step)
     (tree : Tree) (k : ℕ) (s : RealState C net.State) (w : KeyJointState C)
-    (hs : CellPot runLimit (treeCells circuits settings step C) k s w) (hrun : s.runs tree < runLimit) :
+    (hs : CellPot runLimit (fun tree => treeCells circuits settings step C tree + step) k s w) (hrun : s.runs tree < runLimit) :
     ∀ z ∈ support ((simulateQ (jointKeyWorld prims D false) ((UsedHit.drawTreeRun K circuits settings
       (fun slot => pure (tableFresh F slot)) (wrongOutput D) D net tree).run s)).run w),
-        CellPot runLimit (treeCells circuits settings step C) k z.1.2 z.2 := by
+        CellPot runLimit (fun tree => treeCells circuits settings step C tree + step) k z.1.2 z.2 := by
   intro z hz
   unfold UsedHit.drawTreeRun at hz
   simp only [StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, bind_assoc, StateT.run_set,
     List.mapM_pure, liftComp_pure, free_pure] at hz
   simp only [simulateQ_bind, simulateQ_pure, StateT.run_bind, StateT.run_pure, mem_support_bind_iff, support_pure,
     Set.mem_singleton_iff] at hz
-  obtain ⟨y₁, hy₁, y₂, hy₂, rfl⟩ := hz
+  obtain ⟨y₁, hy₁, y₂, hy₂, y₃, hy₃, rfl⟩ := hz
   obtain ⟨k₀, hw, hle⟩ := hs
   have h₁ := hcells D net step hround F tree s hrun w k₀ hw y₁ hy₁
   have hmon : IsQueryBoundP (wrongOutput D (fun i => (s.operators i).keys) tree y₁.1.2) (Adds .stream) 0 :=
     (noCall_iff _ _).1 (GameCount.wrongOutput_noCall D _ (fun _ ht =>
       FirstCounts.monitorCall_not_adds (c := .stream) nofun ht) _ _ _)
   have h₂ := simulateQ_jointWithin prims D _ 0 hmon y₁.2 _ h₁ y₂ hy₂
-  refine ⟨_, h₂, ?_⟩
-  have e := FirstCounts.remaining_update runLimit (treeCells circuits settings step C) s.runs tree hrun
+  have h₃ := simulateQ_jointWithin prims D _ step (FirstCounts.voteRound_adds .stream (by decide) D net step hround
+    y₁.1.1 _ fun j q hq => by
+      obtain ⟨o, -, rfl⟩ := Option.map_eq_some_iff.1 hq
+      exact FirstCounts.queryClass_treeVote tree o) y₂.2 _ h₂ y₃ hy₃
+  refine ⟨_, h₃, ?_⟩
+  have e := FirstCounts.remaining_update runLimit (fun tree => treeCells circuits settings step C tree + step) s.runs tree hrun
   dsimp only
   omega
 
@@ -1080,7 +1084,7 @@ omit [Fintype E] [DecidableEq E] in
 /-- The allowed runs of `tree` keep the potential. -/
 theorem drawTreeRuns_cells (hcells : TreeRunCells prims K circuits settings runLimit)
     (net : Adversary C E Unit PEmpty PEmpty) (hround : ∀ state sent, IsQueryBoundP (net.round state sent) (InClass .stream) step)
-    (tree : Tree) : ∀ count, JMoves prims D runLimit (treeCells circuits settings step C) 0
+    (tree : Tree) : ∀ count, JMoves prims D runLimit (fun tree => treeCells circuits settings step C tree + step) 0
       (UsedHit.drawTreeRuns K circuits settings runLimit (fun slot => pure (tableFresh F slot)) (wrongOutput D) D net tree count)
   | 0 => jmoves_pure _
   | count + 1 => by
@@ -1097,7 +1101,7 @@ omit [Fintype E] [DecidableEq E] in
 theorem drawTreeRequest_cells (hcells : TreeRunCells prims K circuits settings runLimit)
     (net : Adversary C E Unit PEmpty PEmpty) (hround : ∀ state sent, IsQueryBoundP (net.round state sent) (InClass .stream) step)
     (b : Fin (2 ^ layerHeight)) :
-    JMoves prims D runLimit (treeCells circuits settings step C) 0 (UsedHit.drawTreeRequest K circuits settings runLimit
+    JMoves prims D runLimit (fun tree => treeCells circuits settings step C tree + step) 0 (UsedHit.drawTreeRequest K circuits settings runLimit
       (fun slot => pure (tableFresh F slot)) (wrongOutput D) D net b) := by
   unfold UsedHit.drawTreeRequest
   refine jmoves_bind (n := 0) (l := 0) (drawTreeRuns_cells hcells net hround _ 1) fun _ => jmoves_get_bind fun s => ?_
@@ -1141,7 +1145,7 @@ omit [Fintype E] [DecidableEq E] in
 theorem drawSigning_cells (hcells : TreeRunCells prims K circuits settings runLimit) (A : DkgTsigAdversary C E)
     (hround : ∀ state sent, IsQueryBoundP (A.net.round state sent) (InClass .stream) step) (forge : ℕ)
     (hforge : ∀ pk top, IsQueryBoundP (A.forge pk top) (ForgeInClass .stream) forge) :
-    JMoves prims D runLimit (treeCells circuits settings step C) forge (UsedHit.drawSigning K circuits settings runLimit
+    JMoves prims D runLimit (fun tree => treeCells circuits settings step C tree + step) forge (UsedHit.drawSigning K circuits settings runLimit
       (fun slot => pure (tableFresh F slot)) (wrongOutput D) D A) := by
   have hP : ∀ q, ¬ ForgeInClass (C := C) (σ := A.net.State) .stream (.inr q) := fun _ => id
   unfold UsedHit.drawSigning
@@ -1177,10 +1181,10 @@ theorem drawSigning_cells (hcells : TreeRunCells prims K circuits settings runLi
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
 /-- The stream cells of `runLimit` runs of each tree are the rounds of the adversary in the runs and
-`honestKnownKeys`. -/
+their votes and `honestKnownKeys`. -/
 theorem remaining_treeCells :
-    remaining runLimit (treeCells circuits settings step C) (fun _ => 0) =
-      runLimit * (1 + 2 ^ layerHeight) * treeFuel circuits settings * step + honestKnownKeys runLimit C := by
+    remaining runLimit (fun tree => treeCells circuits settings step C tree + step) (fun _ => 0) =
+      runLimit * (1 + 2 ^ layerHeight) * (treeFuel circuits settings + 1) * step + honestKnownKeys runLimit C := by
   simp only [remaining, Nat.sub_zero, treeCells, treeSetups, Finset.sum_const, Finset.card_univ, Fintype.card_fin,
     smul_eq_mul, honestKnownKeys, gameSetups]
   ring
@@ -1193,8 +1197,8 @@ theorem tableGame_within (hcells : TreeRunCells prims K circuits settings runLim
     (hround : ∀ state sent, IsQueryBoundP (A.net.round state sent) (InClass .stream) step)
     (hforge : ∀ pk top, IsQueryBoundP (A.forge pk top) (ForgeInClass .stream) forge) :
     ∀ r ∈ support (UsedHit.jointRun prims D (UsedHit.tableGame K circuits settings runLimit F D A)),
-      Within .stream r.2.hash (start + setupRounds * step +
-        remaining runLimit (treeCells circuits settings step C) (fun _ => 0) + forge) := by
+      Within .stream r.2.hash (start + setupRounds * step + step +
+        remaining runLimit (fun tree => treeCells circuits settings step C tree + step) (fun _ => 0) + forge) := by
   intro r hr
   unfold UsedHit.jointRun UsedHit.tableGame UsedHit.drawGame UsedHit.drawRun at hr
   rw [simulateQ_map, StateT.run_map, support_map] at hr
@@ -1207,15 +1211,20 @@ theorem tableGame_within (hcells : TreeRunCells prims K circuits settings runLim
     keyJointInitial 0 (FirstCounts.within_empty .stream) _ hy
   simp only [simulateQ_bind, simulateQ_pure, StateT.run_bind, StateT.run_pure, mem_support_bind_iff, support_pure,
     Set.mem_singleton_iff] at hr'
+  obtain ⟨⟨⟨state, ok⟩, w₂⟩, hv, hr'⟩ := hr'
+  have hw₂ := simulateQ_jointWithin prims D _ step (FirstCounts.voteRound_adds .stream (by decide) D A.net step hround
+    _ _ fun j q hq => by
+      obtain ⟨o, -, rfl⟩ := Option.map_eq_some_iff.1 hq
+      rfl) w₁ _ hw₁ _ hv
   obtain ⟨y, hy₂, rfl⟩ := hr'
   obtain ⟨x, hx, hy₂⟩ := hy₂
-  have h₁ := drawTreeRuns_cells (D := D) (F := F) hcells A.net hround .top runLimit _ (startState D state keys) w₁
-    ⟨_, hw₁, le_rfl⟩ x hx
+  have h₁ := drawTreeRuns_cells (D := D) (F := F) hcells A.net hround .top runLimit _ (seedState D state keys ok) w₂
+    ⟨_, hw₂, le_rfl⟩ x hx
   obtain ⟨k₀, hw, hle⟩ := drawSigning_cells (D := D) (F := F) hcells A hround forge hforge _ x.1.2 x.2 h₁ y hy₂
-  have hruns : (startState D state keys).runs = fun _ => 0 := rfl
+  have hruns : (seedState D state keys ok).runs = fun _ => 0 := rfl
   rw [hruns] at hle
-  generalize remaining runLimit (treeCells circuits settings step C) (fun _ => 0) = R at hle ⊢
-  generalize remaining runLimit (treeCells circuits settings step C) y.1.2.runs = R' at hle
+  generalize remaining runLimit (fun tree => treeCells circuits settings step C tree + step) (fun _ => 0) = R at hle ⊢
+  generalize remaining runLimit (fun tree => treeCells circuits settings step C tree + step) y.1.2.runs = R' at hle
   generalize setupRounds * step = M at hle ⊢
   exact hw.mono (by omega)
 

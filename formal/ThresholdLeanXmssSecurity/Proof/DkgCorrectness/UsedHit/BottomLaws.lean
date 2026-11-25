@@ -99,6 +99,7 @@ theorem noProg_bottomPrefix (j : ℕ) (D : C.Coalition) (A : DkgTsigAdversary C 
   unfold bottomPrefix
   refine noCall_bind _ (Collision.noProgram_realExecution D A.net _ _ _ _) fun p => ?_
   obtain ⟨state, keys⟩ := p
+  refine noCall_bind _ (Collision.noProgram_voteRound D A.net _ _) fun v => ?_
   refine noCall_bind _ ?_ fun q => noCall_pure _ _
   refine ((noProg_fixedTreeRuns K circuits settings runLimit j D A.net _ _).bind fun _ => NoProg.get.bind
     fun s => ?_) _
@@ -126,12 +127,14 @@ theorem noProg_resumeAfter (j : ℕ) (D : C.Coalition) (A : DkgTsigAdversary C E
 
 theorem noProg_finishResume (j : ℕ) (D : C.Coalition) (A : DkgTsigAdversary C E) (p : BottomPause C A.net.State)
     (X : OracleComp (WorldSpec C) (A.net.State × (C.Party → Option TreeOutput))) (hX : NoCall WorldProgramQuery X) :
-    NoCall WorldProgramQuery (X >>= fun r => finishRun D p r >>= fun s =>
+    NoCall WorldProgramQuery (X >>= fun r => finishRun D A.net p r >>= fun s =>
       resumeAfter K circuits settings runLimit j D A p s) := by
   refine noCall_bind _ hX fun r => ?_
   unfold finishRun
   rw [bind_assoc]
-  exact noCall_bind _ (noProgram_wrongOutput D _ _ _) fun _ => by
+  refine noCall_bind _ (noProgram_wrongOutput D _ _ _) fun _ => ?_
+  rw [bind_assoc]
+  exact noCall_bind _ (Collision.noProgram_voteRound D A.net _ _) fun _ => by
     rw [pure_bind]
     exact noProg_resumeAfter K circuits settings runLimit j D A p _
 
@@ -267,7 +270,7 @@ theorem bottomPrefix_guard (forge j : ℕ) (D : C.Coalition) (A : DkgTsigAdversa
   intro place hplace
   unfold bottomPrefix at hplace
   simp only [mem_support_bind_iff, support_pure, Set.mem_singleton_iff] at hplace
-  obtain ⟨⟨state, keys⟩, _, q, hq, rfl⟩ := hplace
+  obtain ⟨⟨state, keys⟩, _, v, _, q, hq, rfl⟩ := hplace
   rw [StateT.run_bind, mem_support_bind_iff] at hq
   obtain ⟨x, hx, hq⟩ := hq
   have hb := fixedTreeRuns_bounded K circuits settings runLimit j D A.net .top runLimit _
@@ -976,7 +979,7 @@ theorem fixedTreeRun_keys (h : ℕ) (D : C.Coalition) (net : Adversary C E Unit 
   unfold fixedTreeRun at hr
   simp only [StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, bind_assoc, StateT.run_set,
     mem_support_bind_iff, support_pure, Set.mem_singleton_iff] at hr
-  obtain ⟨_, _, _, _, _, _, rfl⟩ := hr
+  obtain ⟨_, _, _, _, _, _, _, _, rfl⟩ := hr
   cases tree <;> rfl
 
 theorem fixedTreeRuns_keys (h : ℕ) (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree) :
@@ -1121,6 +1124,13 @@ theorem fixedGame_bottomCut (h : ℕ) (post : (C.Party → Option (Keys C)) → 
   have hone := hseed w z hz
   obtain ⟨⟨state, keys⟩, w'⟩ := z
   dsimp only at hone ⊢
+  refine JEq.bind_world prims _ fun w₂ v _ => ?_
+  obtain ⟨⟨state, ok⟩, w₂'⟩ := v
+  replace hone : OneParameter D (seedState D state keys ok) := by
+    obtain ⟨parameter, hpar⟩ := hone
+    refine ⟨parameter, fun i hi k hk => hpar i hi k ?_⟩
+    cases ok <;> simp_all [seedState, startState, committed]
+  dsimp only
   rw [StateT.run_bind, StateT.run_bind, fixedTreeRuns_top_congr_below K circuits settings runLimit h j hjh hlo D A.net]
   simp only [bind_assoc]
   refine JEq.bind_support prims _ fun q hq => ?_
@@ -1129,7 +1139,7 @@ theorem fixedGame_bottomCut (h : ℕ) (post : (C.Party → Option (Keys C)) → 
   have hkq := fixedTreeRuns_keys K circuits settings runLimit j D A.net .top runLimit _ q hq
   have h0 : bottomRuns q.2.runs = 0 := by
     rw [fixedTreeRuns_top_bottomRuns K circuits settings runLimit j D A.net runLimit _ q hq]
-    simp [bottomRuns, startState]
+    simp [bottomRuns, seedState, startState]
   rw [fixedSigning_walk K circuits settings runLimit h D A q.2]
   simp only [StateT.run_bind, StateT.run_get, pure_bind]
   rcases hk : topHolder D q.2.operators with _ | ⟨keys', top'⟩

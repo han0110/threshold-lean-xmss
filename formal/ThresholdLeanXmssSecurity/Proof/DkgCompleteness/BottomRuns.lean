@@ -8,7 +8,8 @@ run the honest seed generation and the dealer top tree first. From there the fir
 tree `b` couples with the dealer bottom tree by `firstRun_coupling`. When the dealer gives a bottom
 tree, the later runs do nothing. When the randomizer search of the dealer fails, the search fails
 in each later run too, because it is a function of the seeds and of `H`. `RealTreeAbortOrCorrect`
-gives this, since an honest run gives an abort or the output of the tree under `H`.
+gives this, since an honest run gives an abort or the output of the tree under `H`. The vote of a
+run only removes outputs, so it gives no bottom tree after a failed search.
 -/
 
 set_option autoImplicit false
@@ -110,18 +111,25 @@ theorem localRuns_failed (prims : Primitives) (hcorrect : RealTreeAbortOrCorrect
     split_ifs at hz
     · rw [simulateQ_bind, StateT.run_bind, mem_support_bind_iff] at hz
       obtain ⟨y, hy, hz⟩ := hz
+      rw [simulateQ_bind, StateT.run_bind, mem_support_bind_iff] at hz
+      obtain ⟨v, hv, hz⟩ := hz
       rw [localTreeRun_bottom K circuits settings _ b top parameter seeds pairKeys hkeys htop] at hy
       have hnone := realTree_bottom_none K circuits settings prims hcorrect hsize b top parameter seeds pairKeys s hn
         hfail y hy
-      have hops : (afterRun st y.1 (.bottom b)).operators = st.operators := by
+      have hops : (afterRun st (committed v.1 y.1) (.bottom b)).operators = st.operators := by
         funext i
         have hu : Function.update (st.operators i).bottom b none = (st.operators i).bottom := by
           simp [hbot i]
-        simp [afterRun, OperatorState.keep, hbot i, hnone i, hu]
+        have hc : bottomOf (committed v.1 y.1 i) = none := by
+          unfold committed
+          split_ifs
+          exacts [hnone i, rfl]
+        simp [afterRun, OperatorState.keep, hbot i, hc, hu]
       obtain ⟨hle, hn', -⟩ := localRun_support _ s y hy
-      have := localRuns_failed prims hcorrect hsize b top parameter seeds pairKeys count _ y.2
-        (by rw [hops]; exact hkeys) (by rw [hops]; exact htop) (by rw [hops]; exact hbot) (hn' hn)
-        (fun h hg ha => hfail h hg (ha.mono hle)) z hz
+      obtain ⟨hle', hn'', -⟩ := localRun_support _ y.2 v hv
+      have := localRuns_failed prims hcorrect hsize b top parameter seeds pairKeys count _ v.2
+        (by rw [hops]; exact hkeys) (by rw [hops]; exact htop) (by rw [hops]; exact hbot) (hn'' (hn' hn))
+        (fun h hg ha => hfail h hg (ha.mono (hle.trans hle'))) z hz
       rw [this, hops]
     · simp only [simulateQ_pure, StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
       rw [hz]
@@ -154,8 +162,9 @@ theorem bottomRuns_from (prims : Primitives) (hc : CircuitsCompute circuits prim
       realTree K circuits settings t (.bottom b) parameter seeds pairKeys :=
     localTreeRun_bottom K circuits settings _ b t parameter seeds pairKeys (fun _ => rfl) (fun _ => rfl)
   set f : (C.Party → Option TreeOutput) → OracleComp (LocalSpec C) (SetupOutputs C) := fun z =>
-    localRuns K circuits settings runLimit (.bottom b) n (afterRun st1 z (.bottom b)) >>= fun st =>
-      pure (setupOutputsOf b st) with hf
+    localVote (E := E) (fun i => (z i).map (treeVote (.bottom b))) >>= fun ok =>
+      localRuns K circuits settings runLimit (.bottom b) n (afterRun st1 (committed ok z) (.bottom b)) >>= fun st =>
+        pure (setupOutputsOf b st) with hf
   have hleft : (localRuns K circuits settings runLimit (.bottom b) (n + 1) st1 >>= fun st =>
       pure (setupOutputsOf b st)) = realTree K circuits settings t (.bottom b) parameter seeds pairKeys >>= f := by
     simp only [localRuns, hmay, ↓reduceIte, hreal, bind_assoc, hf]
@@ -169,17 +178,26 @@ theorem bottomRuns_from (prims : Primitives) (hc : CircuitsCompute circuits prim
     obtain ⟨hn, -, o₀, heq, ho⟩ :=
       idealTree_value prims circuits settings parameter seeds t (.bottom b) hsize s hs.1 hs.2 p hp
     rw [heq]
+    refine (run'_localVote_const (E := E) prims (o₀.map (treeVote (.bottom b)))
+      (fun ok => localRuns K circuits settings runLimit (.bottom b) n
+        (afterRun st1 (committed ok fun _ => o₀) (.bottom b)) >>= fun st => pure (setupOutputsOf b st)) p.2).trans ?_
     rcases hob : bottomOf o₀ with _ | tree
-    · have hfail : ∀ h, Good prims h → Agrees h p.2 →
+    · generalize (o₀.map (treeVote (.bottom b))).isSome = ok
+      have hob' : ∀ i, bottomOf (committed ok (fun _ : C.Party => o₀) i) = none := by
+        intro i
+        cases ok
+        exacts [rfl, hob]
+      have hfail : ∀ h, Good prims h → Agrees h p.2 →
           bottomOf (ceremonyAt prims circuits parameter seeds h t (.bottom b)) = none := fun h hgood ha => by
         rw [← ho h p.2 hgood le_rfl ha]; exact hob
-      set st' := afterRun st1 (fun _ => o₀) (.bottom b) with hst'
+      set st' := afterRun st1 (committed ok fun _ => o₀) (.bottom b) with hst'
       have hbot : ∀ i, (st'.operators i).bottom b = none := by
-        intro i; simp [hst', afterRun, OperatorState.keep, hob, hst1, withTop, startState]
-      have hout : ∀ z ∈ support ((simulateQ (localAnswer prims) (f (fun _ => o₀))).run' p.2),
+        intro i; simp [hst', afterRun, OperatorState.keep, hob' i, hst1, withTop, startState]
+      have hout : ∀ z ∈ support ((simulateQ (localAnswer prims)
+          (localRuns K circuits settings runLimit (.bottom b) n st' >>= fun st => pure (setupOutputsOf b st))).run' p.2),
           z = fun i => (keys i, some t, none) := by
         intro z hz
-        simp only [hf, simulateQ_bind, simulateQ_pure, StateT.run'_eq, StateT.run_bind, StateT.run_pure,
+        simp only [simulateQ_bind, simulateQ_pure, StateT.run'_eq, StateT.run_bind, StateT.run_pure,
           map_bind, map_pure, support_bind, support_pure, Set.mem_iUnion, Set.mem_singleton_iff] at hz
         obtain ⟨w, hw, rfl⟩ := hz
         have hops := localRuns_failed K circuits settings runLimit prims hcorrect hsize b t parameter seeds pairKeys n
@@ -191,14 +209,21 @@ theorem bottomRuns_from (prims : Primitives) (hc : CircuitsCompute circuits prim
       refine (evalDist_eq_pure_of_support _ _ hout).trans ?_
       simp only [hg, simulateQ_pure, StateT.run'_eq, StateT.run_pure, map_pure]
       exact .rfl
-    · have hnot : ¬ mayRun runLimit noCoalition (afterRun st1 (fun _ => o₀) (.bottom b)) (.bottom b) := by
-        simp [mayRun, afterRun, OperatorState.keep, hob]
-      have hfg : f (fun _ => o₀) = g (some tree) := by
-        simp only [hf, hg]
+    · have hok : (o₀.map (treeVote (C := C) (.bottom b))).isSome = true := by
+        cases o₀ with
+        | none => simp [bottomOf] at hob
+        | some o => rfl
+      have hnot : ¬ mayRun runLimit noCoalition (afterRun st1 (committed true fun _ => o₀) (.bottom b)) (.bottom b) := by
+        simp [mayRun, afterRun, committed, OperatorState.keep, hob]
+      have hfg : (localRuns K circuits settings runLimit (.bottom b) n
+          (afterRun st1 (committed true fun _ => o₀) (.bottom b)) >>= fun st => pure (setupOutputsOf b st)) =
+          g (some tree) := by
+        simp only [hg]
         rw [localRuns_of_not_mayRun K circuits settings runLimit (.bottom b) _ hnot, pure_bind]
         congr 1
         funext i
-        simp [setupOutputsOf, afterRun, OperatorState.keep, hob, hst1, withTop, startState, hkeys]
+        simp [setupOutputsOf, afterRun, committed, OperatorState.keep, hob, hst1, withTop, startState, hkeys]
+      simp only [hok]
       rw [hfg]
   have hD : (dealtBottomLocal keys b (some t) >>= g) =
       liftComp (referenceTree tweakable (prfValue seeds) parameter t (.bottom b)) (LocalSpec C) >>= fun o =>

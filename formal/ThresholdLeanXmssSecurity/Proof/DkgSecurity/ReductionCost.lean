@@ -8,9 +8,11 @@ the budget `q` of the adversary plus `dkgOverhead runLimit C`.
 
 * The seed generation costs the start and `setupRounds` rounds of the adversary
   (`seedGenEmulation_cost`).
-* A run of a tree costs `treeFuel` rounds of the adversary and the forwarded calls of the honest
-  operators (`emulatedRun_cost`). `runsPotential` pays for the runs that each tree may still make.
-  A run is allowed only below `runLimit` runs, so each run spends its part of the potential.
+* A vote costs one round of the adversary, because the emulated operators hash their votes in the
+  own table (`voteRound_cost`).
+* A run of a tree costs `treeFuel` rounds of the adversary, its vote and the forwarded calls of the
+  honest operators (`emulatedRun_cost`). `runsPotential` pays for the runs that each tree may still
+  make. A run is allowed only below `runLimit` runs, so each run spends its part of the potential.
 * The oracles of `forge` cost at most `forgeCost` and the drop of the potential (`forgeOracles_cost`).
 * `dkgReduction_cost_of_programCost` gives the bound from `ProgramCost`, the bound of the programs of
   the emulated operators, and `programCost` proves `ProgramCost`.
@@ -50,8 +52,8 @@ def ProgramCost : Prop :=
 
 /-! ## The potential of the runs -/
 
-/-- The cost of one run of `tree` with `step` calls of the adversary in each round. -/
-def perRun (step : ℕ) (tree : Tree) : ℕ := treeFuel circuits settings * step + C.n * operatorCalls C tree
+/-- The cost of one run of `tree` and its vote with `step` calls of the adversary in each round. -/
+def perRun (step : ℕ) (tree : Tree) : ℕ := (treeFuel circuits settings + 1) * step + C.n * operatorCalls C tree
 
 /-- The cost of the runs that each tree may still make after `runs` runs. -/
 def runsPotential (step : ℕ) (runs : Tree → ℕ) : ℕ :=
@@ -124,8 +126,34 @@ variable {K circuits settings runLimit aes D}
 variable (hprog : ProgramCost K circuits settings D) (net : Adversary C E Unit PEmpty PEmpty) (step : ℕ)
   (hround : ∀ state sent, cost (fun t => (ownCost t : ℕ∞)) (net.round state sent) ≤ step)
 
+/-- The input of each vote of a tree is in a setup domain. -/
+theorem isSetupQuery_treeVote (tree : Tree) (output : TreeOutput) : isSetupQuery (treeVote tree output : Query C) = true := by
+  cases tree <;> cases output <;> rfl
+
+omit [Field E] [Algebra Bit E] in
+include hround in
+/-- A vote costs one round of the adversary. Each emulated operator hashes its vote in the own table. -/
+theorem voteRound_cost (state : net.State) (input : C.Party → Option (Query C))
+    (hinput : ∀ j q, input j = some q → isSetupQuery q = true) (R : ℕ∞) :
+    TableCost (voteRound (reductionRoles aes D) D net state input) (fun _ => R) (step + R) := by
+  unfold voteRound
+  refine TableCost.bind (K := fun _ => step + R) (((TableCost.sequenceFin (fun _ => 0) _ (fun _ => 0) fun j => ?_).frame
+    (step + R)).mono (fun _ => le_of_eq (by rw [Finset.sum_const_zero, zero_add]))
+      (le_of_eq (by rw [Finset.sum_const_zero, zero_add]))) fun honest => ?_
+  · split
+    · rename_i q hq
+      split_ifs
+      · exact TableCost.pure _ _
+      · exact (tableCost_honest aes D _ _).mono (fun _ => le_rfl)
+          (cost_map_le _ ((cost_liftComp_ro _).trans (roFree_hashQuery q (hinput j q hq))))
+    · exact TableCost.pure _ _
+  refine TableCost.bind (K := fun _ => R) ((tableCost_adversary aes D _ _).mono (fun _ => le_rfl)
+    ((costWith_le_cost_add _ _).trans (add_le_add (hround _ _) iSup_const_le))) fun r => ?_
+  obtain ⟨state', sent⟩ := r
+  exact TableCost.pure _ _
+
 include hprog hround in
-/-- One emulated run of `tree` costs `perRun`. -/
+/-- One emulated run of `tree` and its vote cost `perRun`. -/
 theorem emulatedRun_cost (openings : List (List (List Bit))) (randomizer : Randomizer) (tree : Tree) :
     RedCost (emulatedRun K circuits settings aes D net openings randomizer tree)
       (fun _ s => (runsPotential (C := C) circuits settings runLimit step s.runs : ℕ∞))
@@ -135,12 +163,22 @@ theorem emulatedRun_cost (openings : List (List (List Bit))) (randomizer : Rando
   refine RedCost.get_bind fun s => ?_
   dsimp only
   rw [StateT.run_bind]
-  refine TableCost.bind (K := fun _ => (runsPotential (C := C) circuits settings runLimit step
-      (Function.update s.runs tree (s.runs tree + 1)) : ℕ∞)) ((RedCost.lift (k := fun _ _ => (runsPotential (C := C)
+  refine TableCost.bind (K := fun _ => step + (runsPotential (C := C) circuits settings runLimit step
+      (Function.update s.runs tree (s.runs tree + 1)) : ℕ∞)) ((RedCost.lift (k := fun _ _ => step + (runsPotential (C := C)
         circuits settings runLimit step (Function.update s.runs tree (s.runs tree + 1)) : ℕ∞))
         (Φ := fun _ => ((perRun (C := C) circuits settings step tree + runsPotential (C := C) circuits settings
-          runLimit step (Function.update s.runs tree (s.runs tree + 1)) : ℕ) : ℕ∞)) fun _ => ?_) s)
-    fun p => TableCost.pure _ _
+          runLimit step (Function.update s.runs tree (s.runs tree + 1)) : ℕ) : ℕ∞)) fun _ => ?_) s) fun p => ?_
+  rotate_left
+  · obtain ⟨state, outputs⟩ := p
+    dsimp only
+    rw [StateT.run_bind]
+    refine TableCost.bind ((RedCost.lift (k := fun _ _ => (runsPotential (C := C) circuits settings runLimit step
+      (Function.update s.runs tree (s.runs tree + 1)) : ℕ∞)) fun _ => voteRound_cost net step hround _ _
+        (fun j q h => ?_) _) _) fun r => ?_
+    · obtain ⟨output, -, rfl⟩ := Option.map_eq_some_iff.1 h
+      exact isSetupQuery_treeVote _ _
+    obtain ⟨state', ok⟩ := r
+    exact TableCost.pure _ _
   refine ((executePhase_cost (tableCost_adversary aes D) (tableCost_honest aes D) D net step hround
     (treeFuel circuits settings) s.adversary _ (fun _ => (operatorCalls C tree : ℕ∞))
     fun j _ => hprog.2 _ _ _ _ _ _ _).frame _).mono (fun _ => le_of_eq (zero_add _).symm) (le_of_eq ?_)
@@ -282,7 +320,7 @@ theorem TableCost.cost_le {α : Type} {m : TableM C α} {B : ℕ∞} (h : TableC
 /-- The budget of the adversary and the potential at the start pay the forger. -/
 theorem runsPotential_zero_le (step start forge q : ℕ)
     (hq : start + dkgTsigRounds circuits settings runLimit * step + forge ≤ q) :
-    start + setupRounds * step + (runsPotential (C := C) circuits settings runLimit step (fun _ => 0) + forge) ≤
+    start + (setupRounds + 1) * step + (runsPotential (C := C) circuits settings runLimit step (fun _ => 0) + forge) ≤
       q + dkgOverhead runLimit C := by
   have hsum : ∑ b : Fin (2 ^ layerHeight), treeReductionCalls C (.bottom b) =
       ∑ b : Fin (2 ^ layerHeight), C.n * operatorCalls C (.bottom b) :=
@@ -307,11 +345,11 @@ theorem dkgReduction_cost_of_programCost (A : DkgTsigAdversary C E) (q : ℕ)
   have hforge' := (queryCostAtMost_iff_cost_le _ _ _).1 (hforge pk top)
   rw [queryCostAtMost_iff_cost_le]
   unfold dkgReduction StateT.run'
-  refine cost_map_le _ ((TableCost.cost_le (B := ((start + setupRounds * step : ℕ) : ℕ∞) +
+  refine cost_map_le _ ((TableCost.cost_le (B := ((start + (setupRounds + 1) * step : ℕ) : ℕ∞) +
     ((runsPotential (C := C) circuits settings runLimit step (fun _ => 0) : ℕ∞) + forge)) ?_ _).trans ?_)
   rotate_left
   · exact_mod_cast runsPotential_zero_le circuits settings runLimit step start forge q hq
-  refine TableCost.bind (K := fun _ => ((start + setupRounds * step : ℕ) : ℕ∞) +
+  refine TableCost.bind (K := fun _ => ((start + (setupRounds + 1) * step : ℕ) : ℕ∞) +
       ((runsPotential (C := C) circuits settings runLimit step (fun _ => 0) : ℕ∞) + forge))
     (((TableCost.sequenceFin (fun _ => 0) _ (fun _ => 0) fun i => ?_).frame _).mono
       (fun _ => le_of_eq (by rw [Finset.sum_const_zero, zero_add]))
@@ -321,9 +359,14 @@ theorem dkgReduction_cost_of_programCost (A : DkgTsigAdversary C E) (q : ℕ)
       exact (tableCost_forward _).mono (fun _ => le_rfl) (le_of_eq (by simp [adversaryCost]))
     · simp only [h, ↓reduceIte]
       exact TableCost.pure _ _
-  refine TableCost.bind (K := fun _ => ((runsPotential (C := C) circuits settings runLimit step (fun _ => 0) : ℕ∞) + forge))
+  refine TableCost.bind (K := fun _ => (step : ℕ∞) + ((runsPotential (C := C) circuits settings runLimit step (fun _ => 0) : ℕ∞) + forge))
     ((seedGenEmulation_cost aes D A.net start step hstart' hround' hprog.1 _ _ _).mono (fun _ => le_rfl)
       (le_of_eq (by push_cast; ring))) fun p => ?_
+  obtain ⟨state, keys⟩ := p
+  refine TableCost.bind (voteRound_cost A.net step hround' _ _ (fun j q h => ?_) _) fun r => ?_
+  · obtain ⟨_, -, rfl⟩ := Option.map_eq_some_iff.1 h
+    rfl
+  obtain ⟨state', ok⟩ := r
   refine TableCost.map _ ?_
   refine (?_ : RedCost _ (fun _ _ => 0) fun s => (runsPotential (C := C) circuits settings runLimit step s.runs : ℕ∞) +
     forge) _

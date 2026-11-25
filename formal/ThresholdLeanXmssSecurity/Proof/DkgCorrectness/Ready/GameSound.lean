@@ -10,8 +10,10 @@ import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Glue
 the ledger with its monitor. A run of `tree` adds at most `treeFuel * step + treeCoins tree` charged
 inputs and `treeCoins tree` expansion keys. `SoundRun` is this ledger of one run, and `SoundPot` is
 the potential of the walk of `firstRunOf` for each run with that ledger, in the form of
-`FirstCounts.Pot`. Each attempted run of a tree takes its charge from the runs that remain, the calls
-of the forger move the potential, and the signing answers keep it. `soundAtEndOf` bounds the ledger at
+`FirstCounts.Pot`. A vote adds at most `step` charged inputs and no expansion key
+(`voteRound_challenge`), so each attempted run of a tree with its vote takes the charge
+`treeFuel * step + treeCoins tree + step` from the runs that remain. The calls of the forger move the
+potential, and the signing answers keep it. `soundAtEndOf` bounds the ledger at
 the end for each such run, and `soundAtEnd` proves `Ready.SoundAtEnd` as its instance at
 `streamTreeRun`.
 -/
@@ -232,12 +234,12 @@ attribute [local instance] inhabitedField
 abbrev treeCoins (C : Committee) (tree : Tree) : ℕ := coinKeysOf circuits settings C (treeBatches settings tree)
 
 /-- The potential of the walk. The ledger `SoundCache` holds with `seen` and `keys`, `seen` with the
-charge of the runs that remain is at most `k`, and `keys` with the honest coin keys of the runs that
-remain is at most `keysBound`. -/
+charge of the runs that remain and their votes is at most `k`, and `keys` with the honest coin keys of
+the runs that remain is at most `keysBound`. -/
 def SoundPot {σ : Type} (k : ℕ) (s : FirstState C σ) (w : StreamState C) : Prop :=
   ∃ (seen : Finset (Query C)) (keys : Finset HashOutput), SoundCache 0 w.1 seen keys ∧
     seen.card + FirstCounts.remaining runLimit
-      (fun tree => treeFuel circuits settings * step + treeCoins circuits settings C tree) s.real.runs ≤ k ∧
+      (fun tree => treeFuel circuits settings * step + treeCoins circuits settings C tree + step) s.real.runs ≤ k ∧
     keys.card + FirstCounts.remaining runLimit (treeCoins circuits settings C) s.real.runs ≤ keysBound
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
@@ -296,24 +298,41 @@ def SoundRun {σ : Type} (run : RunOf C σ) : Prop :=
         seen'.card ≤ seen.card + (treeFuel circuits settings * step + treeCoins circuits settings C tree) ∧
         keys'.card ≤ keys.card + treeCoins circuits settings C tree
 
+omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
+/-- A vote on inputs of class `vote` makes at most `step` counted calls in class `challenge` and no
+honest call in class `challenge`. -/
+theorem voteRound_challenge (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (hround : ∀ st sent, IsQueryBoundP (net.round st sent) (InClass .challenge) step) (state : net.State)
+    (input : C.Party → Option (Query C)) (hinput : ∀ j q, input j = some q → queryClass q = .vote) :
+    IsQueryBoundP (voteRound worldRoles D net state input) (OwnAdds .challenge) step ∧
+      IsQueryBoundP (voteRound worldRoles D net state input) (HonestIn .challenge) 0 :=
+  ⟨Vote.voteRound_isQueryBoundP D net state input _ step hround fun _ _ _ => nofun,
+    voteRound_honestIn .challenge (by decide) D net state input hinput⟩
+
 omit [Fintype E] [DecidableEq E] [Field E] [Algebra Bit E] in
-/-- A run of `tree` that the game allows keeps the potential. Its charge comes from the runs that
-remain. -/
-theorem firstTreeRun_soundPot {σ : Type} (run : RunOf C σ) (hsound : SoundRun circuits settings step run)
-    (ready : RealState C σ → StreamState C → Prop) (tree : Tree)
-    (k : ℕ) (s : FirstState C σ) (w : StreamState C)
+/-- A run of `tree` that the game allows keeps the potential. The charge of the run and of its vote
+comes from the runs that remain. -/
+theorem firstTreeRun_soundPot (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (run : RunOf C net.State)
+    (hsound : SoundRun circuits settings step run)
+    (hround : ∀ st sent, IsQueryBoundP (net.round st sent) (InClass .challenge) step)
+    (ready : RealState C net.State → StreamState C → Prop) (tree : Tree)
+    (k : ℕ) (s : FirstState C net.State) (w : StreamState C)
     (hs : SoundPot circuits settings runLimit step keysBound k s w) (hrun : s.real.runs tree < runLimit) :
-    ∀ z ∈ support (((firstTreeRunOf run ready tree).run s).run w),
+    ∀ z ∈ support (((firstTreeRunOf prims D net run ready tree).run s).run w),
       SoundPot circuits settings runLimit step keysBound k z.1.2 z.2 := by
   intro z hz
-  unfold firstTreeRunOf at hz
-  simp only [StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, mem_support_bind_iff, StateT.run_set,
-    StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
-  obtain ⟨_, ⟨x, hx, rfl⟩, rfl⟩ := hz
+  simp only [firstTreeRunOf, inStream, StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, bind_assoc,
+    StateT.run_set, StateT.run_pure, mem_support_bind_iff, support_pure, Set.mem_singleton_iff] at hz
+  obtain ⟨x, hx, y, hy, rfl⟩ := hz
   obtain ⟨seen, keys, hcache, h1, h2⟩ := hs
-  obtain ⟨seen', keys', h', hc', hk'⟩ := hsound tree s.real w seen keys hcache x hx
+  obtain ⟨seen₁, keys₁, h₁, hc₁, hk₁⟩ := hsound tree s.real w seen keys hcache x hx
+  obtain ⟨hown, hhonest⟩ := voteRound_challenge step D net hround x.1.1.1 _ fun j q hq => by
+    obtain ⟨output, -, rfl⟩ := Option.map_eq_some_iff.1 hq
+    exact FirstCounts.queryClass_treeVote tree output
+  obtain ⟨seen', keys', h', hc', hk'⟩ := simulateQ_soundCache prims D _ step 0 ∅ x.2 seen₁ keys₁ hown
+    (worldFlow_of_noHonestChallenge _ hhonest 0 ∅) (Finset.empty_subset _) h₁ y hy
   have e1 := FirstCounts.remaining_update runLimit
-    (fun tree => treeFuel circuits settings * step + treeCoins circuits settings C tree) s.real.runs tree hrun
+    (fun tree => treeFuel circuits settings * step + treeCoins circuits settings C tree + step) s.real.runs tree hrun
   have e2 := FirstCounts.remaining_update runLimit (treeCoins circuits settings C) s.real.runs tree hrun
   have hcoins : treeCoins circuits settings C tree = coinKeysOf circuits settings C (treeBatches settings tree) := rfl
   refine ⟨seen', keys', h', ?_, ?_⟩
@@ -335,8 +354,9 @@ theorem firstRunOf_soundCache (D : C.Coalition) (A : DkgTsigAdversary C E) (run 
     (hforge : ∀ pk top, IsQueryBoundP (A.forge pk top) (ForgeInClass .challenge) forge) :
     ∀ r ∈ support (firstRunOf prims runLimit D A run ready),
       ∃ (seen : Finset (Query C)) (keys : Finset HashOutput), SoundCache 0 r.2.1 seen keys ∧
-        seen.card ≤ start + setupRounds * step + FirstCounts.remaining runLimit
-          (fun tree => treeFuel circuits settings * step + treeCoins circuits settings C tree) (fun _ => 0) + forge ∧
+        seen.card ≤ start + setupRounds * step + step + FirstCounts.remaining runLimit
+          (fun tree => treeFuel circuits settings * step + treeCoins circuits settings C tree + step) (fun _ => 0) +
+            forge ∧
         keys.card ≤ FirstCounts.remaining runLimit (treeCoins circuits settings C) (fun _ => 0) := by
   intro r hr
   unfold firstRunOf at hr
@@ -344,13 +364,19 @@ theorem firstRunOf_soundCache (D : C.Coalition) (A : DkgTsigAdversary C E) (run 
   obtain ⟨y, hy, hr⟩ := hr
   rcases y with ⟨⟨state, keys⟩, world⟩
   simp only [StateT.run_get, support_pure, Set.mem_singleton_iff, exists_eq_left, StateT.run_pure] at hr
-  obtain ⟨x, ⟨z, hz, hx⟩, rfl⟩ := hr
+  obtain ⟨t, ht, x, ⟨z, hz, hx⟩, rfl⟩ := hr
   have hseedOwn := ownAdds_realExecution .challenge D A.net start step hstart hround setupRounds
     (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) (fun _ => ()) []
   have hseedHonest := (GameCount.bound_iff _ _ _).1 (seedHonest (C := C) (E := E) (c := .challenge) nofun D A.net)
   obtain ⟨seen₀, keys₀, h₀, hc₀, hk₀⟩ := simulateQ_soundCache prims D _ _ 0 ∅ (∅, ∅) ∅ ∅ hseedOwn
     (worldFlow_of_noHonestChallenge _ hseedHonest 0 ∅) (Finset.empty_subset _)
     (SoundCache.of_covered 0 ∅ ∅ fun _ h => absurd rfl h) _ hy
+  obtain ⟨hown, hhonest⟩ := voteRound_challenge step D A.net hround state (fun i => (keys i).map seedVote)
+    fun j q hq => by
+      obtain ⟨k, -, rfl⟩ := Option.map_eq_some_iff.1 hq
+      rfl
+  obtain ⟨seen₁, keys₁, h₁, hc₁, hk₁⟩ := simulateQ_soundCache prims D _ step 0 ∅ world seen₀ keys₀ hown
+    (worldFlow_of_noHonestChallenge _ hhonest 0 ∅) (Finset.empty_subset _) h₀ t ht
   have hcall : ∀ t, FirstCounts.Moves (σ := A.net.State)
       (SoundPot circuits settings runLimit step (FirstCounts.remaining runLimit (treeCoins circuits settings C)
         (fun _ => 0))) (if ForgeInClass (σ := A.net.State) .challenge (.inl t) then 1 else 0)
@@ -371,31 +397,31 @@ theorem firstRunOf_soundCache (D : C.Coalition) (A : DkgTsigAdversary C E) (run 
       exact fun h => h.elim
   have hpot : SoundPot circuits settings runLimit step
       (FirstCounts.remaining runLimit (treeCoins circuits settings C) (fun _ => 0))
-      (start + setupRounds * step + FirstCounts.remaining runLimit
-        (fun tree => treeFuel circuits settings * step + treeCoins circuits settings C tree) (fun _ => 0))
-      (⟨startState D state keys, if (startState D state keys).flag then some (.seeds, world) else none⟩ :
-        FirstState C A.net.State) world := by
-    refine ⟨seen₀, keys₀, h₀, ?_, ?_⟩
-    · change seen₀.card + FirstCounts.remaining runLimit _ (fun _ => 0) ≤ _
+      (start + setupRounds * step + step + FirstCounts.remaining runLimit
+        (fun tree => treeFuel circuits settings * step + treeCoins circuits settings C tree + step) (fun _ => 0))
+      (⟨seedState D t.1.1 keys t.1.2, if (seedState D t.1.1 keys t.1.2).flag then some (.seeds, world) else none⟩ :
+        FirstState C A.net.State) t.2 := by
+    refine ⟨seen₁, keys₁, h₁, ?_, ?_⟩
+    · change seen₁.card + FirstCounts.remaining runLimit _ (fun _ => 0) ≤ _
       simp only [Finset.card_empty] at hc₀
       omega
-    · change keys₀.card + FirstCounts.remaining runLimit _ (fun _ => 0) ≤ _
+    · change keys₁.card + FirstCounts.remaining runLimit _ (fun _ => 0) ≤ _
       simp only [Finset.card_empty] at hk₀
       omega
   obtain ⟨seen, keys', hcache, h1, h2⟩ := FirstCounts.moves_bind
-    (firstTreeRuns_walk runLimit D
+    (firstTreeRuns_walk prims runLimit D A.net
       (SoundPot circuits settings runLimit step (FirstCounts.remaining runLimit (treeCoins circuits settings C)
         (fun _ => 0))) run ready .top
-      (firstTreeRun_soundPot circuits settings runLimit step _ run hsound ready .top) runLimit)
+      (firstTreeRun_soundPot prims circuits settings runLimit step _ D A.net run hsound hround ready .top) runLimit)
     (fun _ => firstSigning_walk prims runLimit D .challenge nofun
       (signQuiet nofun) A run
       (SoundPot circuits settings runLimit step (FirstCounts.remaining runLimit (treeCoins circuits settings C)
         (fun _ => 0)))
       (soundPot_mono circuits settings runLimit step _) ready
-      (fun tree => firstTreeRun_soundPot circuits settings runLimit step _ run hsound ready tree)
+      (fun tree => firstTreeRun_soundPot prims circuits settings runLimit step _ D A.net run hsound hround ready tree)
       (soundPot_quiet prims circuits settings runLimit step _ D) (soundPot_frame circuits settings runLimit step _)
       (ForgeInClass .challenge) (fun _ => id) hcall forge hforge)
-    _ _ world hpot x
+    _ _ t.2 hpot x
     (by rw [StateT.run_bind, StateT.run_bind, mem_support_bind_iff]; exact ⟨z, hz, hx⟩)
   exact ⟨seen, keys', hcache, by omega, by omega⟩
 
@@ -423,9 +449,9 @@ theorem remaining_treeCoins :
     ring]
 
 theorem remaining_seenCost (step : ℕ) :
-    FirstCounts.remaining runLimit (fun tree => treeFuel circuits settings * step + treeCoins circuits settings C tree)
-        (fun _ => 0) =
-      runLimit * (1 + 2 ^ layerHeight) * treeFuel circuits settings * step +
+    FirstCounts.remaining runLimit
+        (fun tree => treeFuel circuits settings * step + treeCoins circuits settings C tree + step) (fun _ => 0) =
+      runLimit * (1 + 2 ^ layerHeight) * treeFuel circuits settings * step + runLimit * (1 + 2 ^ layerHeight) * step +
         FirstCounts.remaining runLimit (treeCoins circuits settings C) (fun _ => 0) := by
   simp only [FirstCounts.remaining, Nat.sub_zero, Nat.mul_add, Finset.sum_add_distrib, Finset.sum_const,
     Finset.card_univ, Fintype.card_fin, smul_eq_mul]
@@ -453,7 +479,8 @@ theorem soundAtEndOf (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ)
   rw [remaining_seenCost, remaining_treeCoins] at h1
   rw [remaining_treeCoins] at h2
   have e : dkgTsigRounds circuits settings runLimit * step =
-      setupRounds * step + runLimit * (1 + 2 ^ layerHeight) * treeFuel circuits settings * step := by
+      setupRounds * step + step + runLimit * (1 + 2 ^ layerHeight) * treeFuel circuits settings * step +
+        runLimit * (1 + 2 ^ layerHeight) * step := by
     unfold dkgTsigRounds
     ring
   refine ⟨seen, keys, h, ?_, h2⟩

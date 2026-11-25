@@ -100,9 +100,11 @@ def fixedTreeRun (j : ℕ) (monitor : TreeMonitor C) (D : C.Coalition) (net : Ad
   let (state, outputs) ← StateT.lift (executePhase worldRoles D net noFunctionality (treeFuel circuits settings)
     s.adversary fun i => slotProgram K circuits settings D (fun c => fresh.getD c none) i (s.operators i) tree)
   let bad ← StateT.lift (monitor (fun i => (s.operators i).keys) tree outputs)
-  let operators := fun i => (s.operators i).keep (outputs i) tree
+  let (state, ok) ← StateT.lift (voteRound worldRoles D net state fun i => (outputs i).map (treeVote tree))
+  let kept := committed ok outputs
+  let operators := fun i => (s.operators i).keep (kept i) tree
   let runs := Function.update s.runs tree (s.runs tree + 1)
-  set (⟨state, operators, runs, s.closed, s.flag || bad⟩ : RealState C net.State)
+  set (⟨state, operators, runs, s.closed, s.flag || bad || split D kept⟩ : RealState C net.State)
 
 /-- At most `count` runs of `tree` in hybrid `j`. -/
 def fixedTreeRuns (j : ℕ) (monitor : TreeMonitor C) (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
@@ -152,9 +154,10 @@ def fixedRun (j : ℕ) (monitor : TreeMonitor C) (D : C.Coalition) (A : DkgTsigA
     OracleComp (WorldSpec C) (Bool × Bool) := do
   let (state, keys) ← realExecution D A.net noFunctionality setupRounds
     (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) (fun _ => ()) []
+  let (state, ok) ← voteRound worldRoles D A.net state fun i => (keys i).map seedVote
   let (win, s) ← (do
       fixedTreeRuns K circuits settings runLimit j monitor D A.net .top runLimit
-      fixedSigning K circuits settings runLimit j monitor D A).run (startState D state keys)
+      fixedSigning K circuits settings runLimit j monitor D A).run (seedState D state keys ok)
   pure (win, s.flag)
 
 /-- Hybrid `j` with the top slots first. The slots below `j` have fresh hidden keys. -/
@@ -248,13 +251,14 @@ def topLoop (j : ℕ) (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
       topLoop j D net count
     else pure false
 
-/-- The prefix of hybrid `j` up to top slot `j`. It runs the seed generation and top runs `0` to
-`j - 1`, and it stops before the fresh keys and the setup of top run `j`. -/
+/-- The prefix of hybrid `j` up to top slot `j`. It runs the seed generation with its vote and top
+runs `0` to `j - 1`, and it stops before the fresh keys and the setup of top run `j`. -/
 def topPrefix (j : ℕ) (D : C.Coalition) (A : DkgTsigAdversary C E) :
     OracleComp (WorldSpec C) (TopPlace C A.net.State) := do
   let (state, keys) ← realExecution D A.net noFunctionality setupRounds
     (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) (fun _ => ()) []
-  let (ran, s) ← (topLoop K circuits settings runLimit j D A.net j).run (startState D state keys)
+  let (state, ok) ← voteRound worldRoles D A.net state fun i => (keys i).map seedVote
+  let (ran, s) ← (topLoop K circuits settings runLimit j D A.net j).run (seedState D state keys ok)
   if ran = true ∧ mayRun runLimit D s .top then
     if ∀ i, i ∉ D.1 → (s.operators i).keys.isSome then pure (.live s) else pure (.skip s true)
   else pure (.skip s false)
@@ -282,8 +286,8 @@ def topRest (j : ℕ) (D : C.Coalition) (A : DkgTsigAdversary C E) (s : RealStat
     fixedTreeRuns K circuits settings runLimit (j + 1) (wrongOutput D) D A.net .top (runLimit - (j + 1))
     fixedSigning K circuits settings runLimit (j + 1) (wrongOutput D) D A).run s
 
-/-- The rest of a live top run `j` after its setup, from the state `s` of the prefix, the state of
-the adversary and the setup outputs `r`, and then `topRest`. -/
+/-- The rest of a live top run `j` after its setup, with its vote, from the state `s` of the prefix,
+the state of the adversary and the setup outputs `r`, and then `topRest`. -/
 def topLiveRest (j : ℕ) (D : C.Coalition) (A : DkgTsigAdversary C E) (s : RealState C A.net.State)
     (r : A.net.State × (C.Party → Option (Keys C))) : OracleComp (WorldSpec C) Bool := do
   let (state, outputs) ← executePhase worldRoles D A.net noFunctionality
@@ -292,9 +296,11 @@ def topLiveRest (j : ℕ) (D : C.Coalition) (A : DkgTsigAdversary C E) (s : Real
       | some keys, some k => topAfterSetup K circuits settings i keys ⟨k.seed, k.pairKey⟩
       | _, _ => failure
   let bad ← wrongOutput D (fun i => (s.operators i).keys) .top outputs
+  let (state, ok) ← voteRound worldRoles D A.net state fun i => (outputs i).map (treeVote .top)
+  let kept := committed ok outputs
   topRest K circuits settings runLimit j D A
-    ⟨state, fun i => (s.operators i).keep (outputs i) .top, Function.update s.runs .top (s.runs .top + 1),
-      s.closed, s.flag || bad⟩
+    ⟨state, fun i => (s.operators i).keep (kept i) .top, Function.update s.runs .top (s.runs .top + 1),
+      s.closed, s.flag || bad || split D kept⟩
 
 /-- The rest of the game when top slot `j` is dead (`runJ`) or absent. A dead run `j` runs as in
 hybrid `j + 1`. -/
@@ -333,10 +339,10 @@ def setupClassCalls (C : Committee) : ℕ := C.n * (4 * C.n + termCount C)
 
 /-- The cost of each part of the reduction of top slot `j` in the class `prssSetup`, for an adversary
 with the class budget `start`, `step`, `forge`. The start holds the adversary calls of the seed
-generation and of `j` top runs, and the honest calls of `j` setups. Each of the three rounds holds one
-round of the adversary. The distinguisher holds, for each state and each setup output, at most
-`runLimit - j` top runs (a dead run `j` included) and `runLimit` runs of each bottom tree, each with
-its setups, and `forge`. -/
+generation and of `j` top runs, each with its vote, and the honest calls of `j` setups. Each of the
+three rounds holds one round of the adversary. The distinguisher holds, for each state and each setup
+output, at most `runLimit - j` top runs (a dead run `j` included) and `runLimit` runs of each bottom
+tree, each with its vote and its setups, and `forge`. -/
 def TopSlotPartCosts : Prop :=
   ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (start step forge : ℕ),
     (∀ x z, IsQueryBoundP (A.net.start x z) (InClass .prssSetup) start) →
@@ -344,12 +350,12 @@ def TopSlotPartCosts : Prop :=
     (∀ pk top, IsQueryBoundP (A.forge pk top) (ForgeInClass .prssSetup) forge) →
     ∀ j < runLimit,
       (∀ x z, IsQueryBoundP ((topReduction K circuits settings runLimit prims j D A).start x z) Counted
-        (start + (setupRounds + j * treeFuel circuits settings) * step + j * setupClassCalls C)) ∧
+        (start + (setupRounds + 1 + j * (treeFuel circuits settings + 1)) * step + j * setupClassCalls C)) ∧
       (∀ st sent, IsQueryBoundP ((topReduction K circuits settings runLimit prims j D A).round st sent) Counted
         step) ∧
       (∀ r, IsQueryBoundP (topDistinguisher K circuits settings runLimit prims j D A r) Counted
-        ((runLimit - j) * (treeFuel circuits settings * step + setupClassCalls C) + forge +
-          runLimit * 2 ^ layerHeight * (treeFuel circuits settings * step + 2 * setupClassCalls C)))
+        ((runLimit - j) * ((treeFuel circuits settings + 1) * step + setupClassCalls C) + forge +
+          runLimit * 2 ^ layerHeight * ((treeFuel circuits settings + 1) * step + 2 * setupClassCalls C)))
 
 /-- The cost certificate of top slot `j`. The reduction is `q`-query bounded at the budget of
 `HybridContract`. -/
@@ -368,9 +374,10 @@ omit [Fintype E] [DecidableEq E] in
 because the parts hold `dkgTsigRounds + 3` rounds and `gameSetups` setups. -/
 theorem topSlotCost_arith (q j start step forge : ℕ) (hj : j < runLimit)
     (hq : start + dkgTsigRounds circuits settings runLimit * step + forge ≤ q) :
-    (start + (setupRounds + j * treeFuel circuits settings) * step + j * setupClassCalls C) + setupRounds * step +
-      ((runLimit - j) * (treeFuel circuits settings * step + setupClassCalls C) + forge +
-        runLimit * 2 ^ layerHeight * (treeFuel circuits settings * step + 2 * setupClassCalls C)) ≤
+    (start + (setupRounds + 1 + j * (treeFuel circuits settings + 1)) * step + j * setupClassCalls C) +
+      setupRounds * step +
+      ((runLimit - j) * ((treeFuel circuits settings + 1) * step + setupClassCalls C) + forge +
+        runLimit * 2 ^ layerHeight * ((treeFuel circuits settings + 1) * step + 2 * setupClassCalls C)) ≤
       2 * q + honestSetupCalls runLimit C := by
   obtain ⟨m, rfl⟩ : ∃ m, runLimit = j + 1 + m := ⟨runLimit - (j + 1), by omega⟩
   have hsub : j + 1 + m - j = m + 1 := by omega
@@ -380,7 +387,7 @@ theorem topSlotCost_arith (q j start step forge : ℕ) (hj : j < runLimit)
   set h := setupClassCalls C
   set L := 2 ^ layerHeight
   have h3 : 3 * step ≤ q :=
-    (Nat.mul_le_mul_right step (Nat.le_add_right 3 ((j + 1 + m) * (1 + L) * t))).trans (by omega)
+    (Nat.mul_le_mul_right step (Nat.le_add_right 3 (1 + (j + 1 + m) * (1 + L) * (t + 1)))).trans (by omega)
   nlinarith
 
 omit [Fintype E] [DecidableEq E] in

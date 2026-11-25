@@ -435,8 +435,11 @@ theorem jointRun_drawGame (draw : Draw C) (A : DkgTsigAdversary C E) :
     jointRun prims D (drawGame K circuits settings runLimit draw D A) =
       (simulateQ (jointKeyWorld prims D false) (realExecution D A.net noFunctionality setupRounds
         (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) (fun _ => ()) [])).run keyJointInitial >>=
-        fun p => sem prims D (drawTreeRuns K circuits settings runLimit draw (wrongOutput D) D A.net .top runLimit >>=
-          fun _ => drawSigning K circuits settings runLimit draw (wrongOutput D) D A) (startState D p.1.1 p.1.2) p.2 >>=
+        fun p => (simulateQ (jointKeyWorld prims D false) (voteRound worldRoles D A.net p.1.1 fun i =>
+          (p.1.2 i).map seedVote)).run p.2 >>=
+        fun v => sem prims D (drawTreeRuns K circuits settings runLimit draw (wrongOutput D) D A.net .top runLimit >>=
+          fun _ => drawSigning K circuits settings runLimit draw (wrongOutput D) D A) (seedState D v.1.1 p.1.2 v.1.2)
+            v.2 >>=
           fun r => pure (r.1.2.flag, r.2) := by
   simp only [jointRun, drawGame, drawRun, sem, map_bind, simulateQ_bind, StateT.run_bind, bind_assoc, map_pure,
     simulateQ_pure, StateT.run_pure]
@@ -459,6 +462,8 @@ theorem eagerDraw : EagerDraw K circuits settings runLimit prims := by
     fun _ => good_drawSigning K circuits settings runLimit prims D (wrongOutput D) A
   refine EvalDistEq.trans ?_ (OracleComp.EvalDistEq.bind_bind_swap _ _ _).symm
   refine _root_.EvalDistEq.bind_right _ fun p => ?_
+  refine EvalDistEq.trans ?_ (OracleComp.EvalDistEq.bind_bind_swap _ _ _).symm
+  refine _root_.EvalDistEq.bind_right _ fun v => ?_
   refine (OracleComp.EvalDistEq.bind_const ($ᵗ Table C (gameSetups runLimit)) _).symm.trans ?_
   exact hgood.eager _ _ (fun _ r => pure (r.1.2.flag, r.2)) fun _ _ _ _ => EvalDistEq.rfl
 

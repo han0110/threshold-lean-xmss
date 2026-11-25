@@ -87,13 +87,16 @@ attribute [local irreducible] streamTreeRun wrongOutput
 theorem firstTreeRun_keeps (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree) :
     Keeps (Inv prims budget D) (firstTreeRunWith prims K circuits settings D net (RunReady prims budget D) tree) := by
   intro s world hs z hz
-  unfold firstTreeRunWith firstTreeRunOf at hz
-  simp only [StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, mem_support_bind_iff, StateT.run_set,
-    StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
-  obtain ⟨_, ⟨x, hx, rfl⟩, rfl⟩ := hz
+  unfold firstTreeRunWith at hz
+  simp only [firstTreeRunOf, inStream, StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, bind_assoc,
+    StateT.run_set, StateT.run_pure, mem_support_bind_iff, support_pure, Set.mem_singleton_iff] at hz
+  obtain ⟨x, hx, y, hy, rfl⟩ := hz
   obtain ⟨hlive, hunready⟩ := hs
-  have hgrow : world ≤ x.2 := streamTreeRun_le prims K circuits settings D net tree s.real world x hx
-  have hkeys : (fun j => ((s.real.operators j).keep (x.1.1.2 j) tree).keys) = fun j => (s.real.operators j).keys :=
+  have hvote : x.2 ≤ y.2 := simulateQ_le prims D _ x.2 y hy
+  have hgrow : world ≤ y.2 :=
+    le_trans (streamTreeRun_le prims K circuits settings D net tree s.real world x hx) hvote
+  have hkeys : (fun j => ((s.real.operators j).keep (committed y.1.2 x.1.1.2 j) tree).keys) =
+      fun j => (s.real.operators j).keys :=
     funext fun j => keep_keys _ _ _
   refine ⟨fun hn => ?_, fun tree' index w hw => ?_⟩
   · obtain ⟨hn₁, hn₂⟩ := orElse_eq_none hn
@@ -103,17 +106,17 @@ theorem firstTreeRun_keeps (D : C.Coalition) (net : Adversary C E Unit PEmpty PE
       simp [hb] at hn₂
     obtain ⟨hseeds, htop⟩ := hlive hfirst
     refine ⟨?_, fun i hi topTree htop' => ?_⟩
-    · change seedsDiffer D (fun j => ((s.real.operators j).keep (x.1.1.2 j) tree).keys) = false
+    · change seedsDiffer D (fun j => ((s.real.operators j).keep (committed y.1.2 x.1.1.2 j) tree).keys) = false
       rw [hkeys]
       exact hseeds
-    · change ((s.real.operators i).keep (x.1.1.2 i) tree).top = some topTree at htop'
+    · change ((s.real.operators i).keep (committed y.1.2 x.1.1.2 i) tree).top = some topTree at htop'
       change ∃ w z, z ∈ support (freeRun prims D
-        (refTop D fun j => ((s.real.operators j).keep (x.1.1.2 j) tree).keys) w) ∧ z.1 = some (.top topTree) ∧
-          z.2 ≤ x.2
+        (refTop D fun j => ((s.real.operators j).keep (committed y.1.2 x.1.1.2 j) tree).keys) w) ∧
+          z.1 = some (.top topTree) ∧ z.2 ≤ y.2
       rw [hkeys]
       have old : (s.real.operators i).top = some topTree →
           ∃ w z, z ∈ support (freeRun prims D (refTop D fun j => (s.real.operators j).keys) w) ∧
-            z.1 = some (.top topTree) ∧ z.2 ≤ x.2 := fun h => by
+            z.1 = some (.top topTree) ∧ z.2 ≤ y.2 := fun h => by
         obtain ⟨w₀, z₀, hz₀, hz₀1, hz₀2⟩ := htop i hi topTree h
         refine ⟨w₀, z₀, hz₀, hz₀1, ?_⟩
         exact le_trans hz₀2 hgrow
@@ -126,9 +129,9 @@ theorem firstTreeRun_keeps (D : C.Coalition) (net : Adversary C E Unit PEmpty PE
           exact old (hold.trans htop')
         | none =>
           simp only [OperatorState.keep, hold, none_orElse] at htop'
-          have hout : x.1.1.2 i = some (.top topTree) := topTree_eq_some htop'
+          have hout : x.1.1.2 i = some (.top topTree) := Vote.committed_eq_some (topTree_eq_some htop')
           obtain ⟨w₀, z₀, hz₀, hz₀2, hz₀3⟩ := streamTreeRun_top prims K circuits settings D net s.real world x hx
-          refine ⟨w₀, z₀, hz₀, ?_, le_of_eq hz₀2⟩
+          refine ⟨w₀, z₀, hz₀, ?_, le_trans (le_of_eq hz₀2) hvote⟩
           rw [← hz₀3 hbad i hi (by rw [hout]; rfl), hout]
   · cases hfirst : s.first with
     | some v =>
@@ -202,18 +205,23 @@ theorem firstRun_unreadyFails (D : C.Coalition) (A : DkgTsigAdversary C E) :
   obtain ⟨y, -, hr⟩ := hr
   rcases y with ⟨⟨state, keys⟩, world⟩
   simp only [StateT.run_get, support_pure, Set.mem_singleton_iff, exists_eq_left, StateT.run_pure] at hr
-  obtain ⟨x, ⟨z, hz, hx⟩, rfl⟩ := hr
-  have hstart : Inv prims budget D (⟨startState D state keys,
-      if (startState D state keys).flag then some (.seeds, world) else none⟩ : FirstState C A.net.State) world := by
+  obtain ⟨t, -, x, ⟨z, hz, hx⟩, rfl⟩ := hr
+  have hstart : Inv prims budget D (⟨seedState D t.1.1 keys t.1.2,
+      if (seedState D t.1.1 keys t.1.2).flag then some (.seeds, world) else none⟩ : FirstState C A.net.State)
+      t.2 := by
     refine ⟨fun hn => ⟨?_, fun i _ topTree htop => ?_⟩, fun tree index w hw => ?_⟩
-    · by_contra hflag
-      simp only [startState, Bool.not_eq_false] at hflag hn
-      simp [hflag] at hn
+    · have hflag : (seedState D t.1.1 keys t.1.2).flag = false := by
+        by_contra hflag
+        simp [hflag] at hn
+      cases hok : t.1.2
+      · simp [seedState, startState, committed, seedsDiffer]
+      · simp only [seedState, startState, committed, hok, Bool.or_eq_false_iff] at hflag ⊢
+        exact hflag.1
     · cases htop
     · split_ifs at hw
       simp at hw
   exact (keeps_bind (firstTreeRuns_keeps prims K circuits settings runLimit budget D A.net .top runLimit)
-    (fun _ => firstSigning_keeps prims K circuits settings runLimit budget D A) _ world hstart x
+    (fun _ => firstSigning_keeps prims K circuits settings runLimit budget D A) _ t.2 hstart x
     (by rw [StateT.run_bind, StateT.run_bind, mem_support_bind_iff]; exact ⟨z, hz, hx⟩)).2
 
 end Game
@@ -410,7 +418,7 @@ theorem firstCount_digest (hseed : SeedHonest (C := C) (E := E) .digest 0)
     (htree : TreeHonest K circuits settings .digest fun tree => treeBatches settings tree * termHashes C)
     (hsign : SignQuiet (C := C) .digest) :
     FirstCount prims K circuits settings runLimit .digest (gameBatches settings runLimit * termHashes C) := by
-  have h := firstCount_of prims K circuits settings runLimit .digest (by decide) 0 _ hseed htree hsign
+  have h := firstCount_of prims K circuits settings runLimit .digest (by decide) (by decide) 0 _ hseed htree hsign
   have e : 0 + runLimit * (treeBatches settings .top * termHashes C +
       ∑ b : Fin (2 ^ layerHeight), treeBatches settings (.bottom b) * termHashes C) =
         gameBatches settings runLimit * termHashes C := by

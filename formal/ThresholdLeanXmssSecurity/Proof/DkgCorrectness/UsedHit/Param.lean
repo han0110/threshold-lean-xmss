@@ -151,9 +151,11 @@ def treeRest (monitor : TreeMonitor C) (net : Adversary C E Unit PEmpty PEmpty) 
   let (state, outputs) ← StateT.lift (executePhase worldRoles D net noFunctionality (treeFuel circuits settings)
     s.adversary fun i => slotProgram K circuits settings D (fun c => fresh.getD c none) i (s.operators i) tree)
   let bad ← StateT.lift (monitor (fun i => (s.operators i).keys) tree outputs)
-  let operators := fun i => (s.operators i).keep (outputs i) tree
+  let (state, ok) ← StateT.lift (voteRound worldRoles D net state fun i => (outputs i).map (treeVote tree))
+  let kept := committed ok outputs
+  let operators := fun i => (s.operators i).keep (kept i) tree
   let runs := Function.update s.runs tree (s.runs tree + 1)
-  set (⟨state, operators, runs, s.closed, s.flag || bad⟩ : RealState C net.State)
+  set (⟨state, operators, runs, s.closed, s.flag || bad || split D kept⟩ : RealState C net.State)
 
 theorem drawTreeRun_eq (draw : Draw C) (monitor : TreeMonitor C) (net : Adversary C E Unit PEmpty PEmpty)
     (tree : Tree) : drawTreeRun K circuits settings draw monitor D net tree = (do
@@ -169,7 +171,7 @@ theorem treeRest_runs (monitor : TreeMonitor C) (net : Adversary C E Unit PEmpty
   intro r hr
   simp only [treeRest, StateT.run_bind, StateT.run_lift, bind_assoc, pure_bind, mem_support_bind_iff,
     StateT.run_set, support_pure, Set.mem_singleton_iff] at hr
-  obtain ⟨_, _, _, _, rfl⟩ := hr
+  obtain ⟨_, _, _, _, _, _, rfl⟩ := hr
   rfl
 
 theorem gameValue_grows {S : Type} (operators : C.Party → OperatorState C) (x : Point) :
@@ -331,6 +333,16 @@ theorem renameComp_wrongOutput (keys : C.Party → Option (Keys C)) (tree : Tree
   renameComp_eq_self D σ _ ((SigningSelectionProof.noCall_iff _ _).1
     (GameCount.wrongOutput_noCall D _ monitorCall_not_stream keys tree outputs))
 
+omit [Field E] [Algebra Bit E] in
+/-- The vote round makes no call of `PRG`. -/
+theorem renameComp_voteRound {α : Type} (net : Adversary C E Unit PEmpty PEmpty) (state : net.State)
+    (vote : α → Query C) (hvote : ∀ a, queryClass (vote a) = .vote) (outputs : C.Party → Option α) :
+    renameComp D σ (voteRound worldRoles D net state fun i => (outputs i).map vote) =
+      voteRound worldRoles D net state fun i => (outputs i).map vote :=
+  renameComp_eq_self D σ _ (FirstCounts.voteRound_honestIn .stream (by decide) D net state _ fun j q hq => by
+    obtain ⟨a, -, rfl⟩ := Option.map_eq_some_iff.1 hq
+    exact hvote a)
+
 variable {runLimit D σ}
 
 theorem treeRest_rename (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree) (s : RealState C net.State)
@@ -348,7 +360,8 @@ theorem treeRest_rename (net : Adversary C E Unit PEmpty PEmpty) (tree : Tree) (
   rw [hP, executePhase_rename, renameComp_bind]
   refine congrArg (_ >>= ·) (funext fun p => ?_)
   rcases p with ⟨state, outputs⟩
-  simp only [renameComp_bind, renameComp_wrongOutput, StateT.run_set, renameComp_pure]
+  simp only [renameComp_bind, renameComp_wrongOutput,
+    renameComp_voteRound D σ net _ _ (FirstCounts.queryClass_treeVote tree), StateT.run_set, renameComp_pure]
 
 theorem drawTreeRun_runs (draw : Draw C) (monitor : TreeMonitor C) (net : Adversary C E Unit PEmpty PEmpty)
     (tree : Tree) (s : RealState C net.State) :
@@ -616,11 +629,15 @@ theorem keyParametric : KeyParametric K circuits settings runLimit := by
   refine congrArg (Prod.snd <$> ·) (congrArg (_ >>= ·) (funext fun x => ?_))
   rcases x with ⟨state, keys⟩
   dsimp only
+  rw [renameComp_bind, renameComp_voteRound D σ A.net state seedVote (fun _ => rfl)]
+  refine congrArg (_ >>= ·) (funext fun v => ?_)
+  rcases v with ⟨state, ok⟩
+  dsimp only
   rw [renameComp_bind]
   have hb := ren_bind' (drawTreeRuns_rename (D := D) (σ := σ) K circuits settings F A.net .top runLimit)
     (grows_drawTreeRuns (D := D) K circuits settings (tableDraw runLimit F) (wrongOutput D) A.net .top runLimit)
-    (fun _ => drawSigning_rename (D := D) (σ := σ) K circuits settings F A) (startState D state keys) (fun t => by
-      simp [startState])
+    (fun _ => drawSigning_rename (D := D) (σ := σ) K circuits settings F A) (seedState D state keys ok) (fun t => by
+      simp [seedState, startState])
   unfold RenAt at hb
   erw [hb]
   simp only [renameComp_pure]

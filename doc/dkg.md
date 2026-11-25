@@ -14,7 +14,7 @@ This note gives the MPC building blocks that the protocol uses, and a toy exampl
 | symbol                                                        | meaning                                                                                                      |
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | $n = 2t - 1$                                                  | operators $P_0, \dots, P_{n-1}$                                                                              |
-| $t - 1$                                                       | corrupt operators at most, malicious, security with selective abort [GL05](https://eprint.iacr.org/2002/040) |
+| $t - 1$                                                       | corrupt operators at most, malicious, security with unanimous abort [GL05](https://eprint.iacr.org/2002/040) |
 | $\mathbb F_2$                                                 | the field of the circuit                                                                                     |
 | $\mathbb F_{128}$                                             | the field of the check, the leanVM field $\mathbb F_{64}[y]/(y^2 + xy + 1)$                                  |
 | $\mathbb F$                                                   | either of the two, in a building block that works over both. Both have characteristic 2, so $+$ is XOR and $- = +$   |
@@ -830,13 +830,13 @@ A bottom tree is $2^{16} \cdot 58$ chains, 29,696 chain batches. Signing takes 2
 
 ### 3.3 Security
 
-The key generation targets the security of the trusted dealer of $\mathsf{KeyGen}$ [BBDLN26](https://eprint.iacr.org/2026/2142), with selective abort, against a malicious adversary that statically corrupts up to $t - 1$ of the $n = 2t - 1$ operators. The Lean statements in `formal/` state three claims for it, as games on the real network.
+The key generation targets the security of the trusted dealer of $\mathsf{KeyGen}$ [BBDLN26](https://eprint.iacr.org/2026/2142), with unanimous abort on an assumed broadcast channel for the vote, against a malicious adversary that statically corrupts up to $t - 1$ of the $n = 2t - 1$ operators. The Lean statements in `formal/` state three claims for it, as games on the real network.
 
 `dkgSecurityPreservation` states that an adversary against the signing game with the real key generation wins at most as often as the named forger `dkgReduction` wins the signing game with the dealer, up to the stated errors `dkgError` and `streamAdvantage`. It is the security preservation of [GJM+21, Def. 8](https://eprint.iacr.org/2021/005). The forger runs the adversary and plays the honest operators. It is a relative claim and no bound on a forgery.
 
-`dkgCorrectness` bounds inconsistent seeds and wrong tree outputs against the adversary. `dkgCompleteness` bounds the abort of an honest run and its distance to the dealer.
+`dkgCorrectness` bounds inconsistent seeds, wrong tree outputs and a split of the honest operators after a vote against the adversary. `dkgCompleteness` bounds the abort of an honest run and its distance to the dealer.
 
-Lean proves `dkgCorrectness` and `dkgCompleteness` in `formal/`. For `dkgSecurityPreservation`, it proves the cost bound of the forger and twelve of the 13 hops of the bound on the win probability. That bound is a target until the last hop has a proof, and a proof can change it.
+Lean proves `dkgCorrectness` and `dkgCompleteness` in `formal/`. For `dkgSecurityPreservation`, it proves the cost bound of the forger. The bound on the win probability is open and is a target, so a proof can change it. Twelve of the 13 hops of its chain have proofs on the game without the vote, and these proofs are not part of the build.
 
 The claims cover only $n = 2t - 1$ and a classical adversary. The "Model" section of [`formal/ThresholdLeanXmss/Statement/Theorems.lean`](../formal/ThresholdLeanXmss/Statement/Theorems.lean) gives the full model.
 
@@ -904,7 +904,7 @@ The time limit never ends the wait for the votes after the vote of the operator.
 
 The proof of concept sends the vote on the channels between the operators, which are no broadcast channel. There a corrupt operator can send different votes to different operators. Then some honest operators commit and the others abort. Each honest vote goes to all operators with the same value. So if one honest operator commits, each honest operator computed the same public result unless $H$ collides, also the ones that abort.
 
-The Lean claims do not have the vote. They state the setup with selective abort on a network with no broadcast channel, which is the protocol without the vote. No Lean claim states that all honest operators commit together, and no Lean claim covers the protocol with the vote.
+The Lean claims have the vote, as one more round on a broadcast channel after the seed generation and after each whole run of a tree. `dkgCorrectness` counts a split of the honest operators as a win of the adversary, and the vote excludes a split on each path of the game. The model differs from the code in the points of rows B24 to B30 of [`formal/doc/differences.md`](../formal/doc/differences.md). The largest ones are the broadcast channel and the time of the vote.
 
 #### Retry
 

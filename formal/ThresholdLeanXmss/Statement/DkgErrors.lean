@@ -13,8 +13,10 @@ settings. The terms count the batches, the ceremonies and the PRSS setups of the
 * Replicated sharing replaces Shamir sharing (CDI05). A corrupt operator that fills a term can give
   each honest holder its own copy, and the check also checks the copies (KPPS23, `Π_agree`, and
   CGH+18, Protocol 3.3).
-* Each operator aborts alone, so the setup has selective abort. GS20 aborts all honest operators
-  together.
+* Each operator aborts alone inside a ceremony. One vote on a broadcast channel after the seed
+  generation and after each whole run of a tree makes the abort unanimous, as in the functionalities
+  of GS20. A run of a bottom tree has two ceremonies and one vote. GS20 has no vote and no broadcast
+  channel.
 * The de-linearization weighs tuple `k` by a product of `d` coins in place of the powers of one coin
   of GS20, Protocol 13. The multilinear weights follow the prototype (`crates/rss/src/verify.rs`).
 * Bit `q` of a word of tuples has the public weight `x^q` in place of a coin (`src/check.rs`), so the

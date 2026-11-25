@@ -402,23 +402,26 @@ attribute [local instance] inhabitedField
 
 variable (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
 
-/-- One run of `tree` in hybrid `j` from each state makes at most
-`treeFuel step + treeSetups tree setupClassCalls` calls of `Adds`. -/
+/-- One run of `tree` in hybrid `j` from each state, with its vote, makes at most
+`(treeFuel + 1) step + treeSetups tree setupClassCalls` calls of `Adds`. -/
 theorem fixedTreeRun_adds (j : ℕ) (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (step : ℕ)
     (hround : ∀ st sent, IsQueryBoundP (net.round st sent) (InClass .prssSetup) step) (tree : Tree)
     (s : RealState C net.State) :
     IsQueryBoundP ((fixedTreeRun K circuits settings runLimit j (wrongOutput D) D net tree).run s)
-      (Adds .prssSetup) (treeFuel circuits settings * step + treeSetups tree * setupClassCalls C) := by
+      (Adds .prssSetup) ((treeFuel circuits settings + 1) * step + treeSetups tree * setupClassCalls C) := by
   unfold fixedTreeRun
   simp only [StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, bind_assoc]
   refine (isQueryBoundP_bind (n := 0) (free_prob_adds _ _) fun fresh _ => ?_).mono (Nat.zero_add _).le
   refine (isQueryBoundP_bind (phase_adds D net step hround _ _ _ _
-    fun i => slotProgram_classBound K circuits settings D _ i _ tree) (m := 0) fun r _ => ?_).mono ?_
+    fun i => slotProgram_classBound K circuits settings D _ i _ tree) (m := step) fun r _ => ?_).mono ?_
   · rw [← GameCount.bound_iff]
-    refine GameCount.bound_mono (GameCount.bound_bind (n := 0) (m := 0)
-      (wrongOutput_adds D (fun i => (s.operators i).keys) tree r.2) fun b => ?_) le_rfl
+    refine GameCount.bound_mono (GameCount.bound_bind (n := 0) (m := step)
+      (wrongOutput_adds D (fun i => (s.operators i).keys) tree r.2) fun b => ?_) (Nat.zero_add _).le
     rw [GameCount.bound_iff]
-    exact isQueryBoundP_pure _ _ _
+    exact (isQueryBoundP_bind (n := step) (m := 0) (FirstCounts.voteRound_adds .prssSetup (by decide) D net step
+      hround _ _ fun j q hq => by
+        obtain ⟨o, -, rfl⟩ := Option.map_eq_some_iff.1 hq
+        exact FirstCounts.queryClass_treeVote tree o) fun _ _ => isQueryBoundP_pure _ _ _).mono le_rfl
   · simp only [setupClassCalls]
     nlinarith
 
@@ -427,7 +430,7 @@ theorem fixedTreeRuns_adds (j : ℕ) (D : C.Coalition) (net : Adversary C E Unit
     (hround : ∀ st sent, IsQueryBoundP (net.round st sent) (InClass .prssSetup) step) (tree : Tree) :
     ∀ count (s : RealState C net.State),
       IsQueryBoundP ((fixedTreeRuns K circuits settings runLimit j (wrongOutput D) D net tree count).run s)
-        (Adds .prssSetup) (count * (treeFuel circuits settings * step + treeSetups tree * setupClassCalls C))
+        (Adds .prssSetup) (count * ((treeFuel circuits settings + 1) * step + treeSetups tree * setupClassCalls C))
   | 0, s => isQueryBoundP_pure _ _ _
   | count + 1, s => by
     unfold fixedTreeRuns
@@ -435,7 +438,7 @@ theorem fixedTreeRuns_adds (j : ℕ) (D : C.Coalition) (net : Adversary C E Unit
     split_ifs
     · rw [StateT.run_bind]
       exact (isQueryBoundP_bind (fixedTreeRun_adds K circuits settings runLimit j D net step hround tree s)
-        fun r _ => fixedTreeRuns_adds j D net step hround tree count r.2).mono (by rw [Nat.succ_mul]; omega)
+        fun r _ => fixedTreeRuns_adds j D net step hround tree count r.2).mono (by rw [Nat.succ_mul count]; omega)
     · exact isQueryBoundP_pure _ _ _
 
 /-- The first `count` top runs of the prefix make at most `count` times the cost of one top run. -/
@@ -443,7 +446,7 @@ theorem topLoop_adds (j : ℕ) (D : C.Coalition) (net : Adversary C E Unit PEmpt
     (hround : ∀ st sent, IsQueryBoundP (net.round st sent) (InClass .prssSetup) step) :
     ∀ count (s : RealState C net.State),
       IsQueryBoundP ((topLoop K circuits settings runLimit j D net count).run s)
-        (Adds .prssSetup) (count * (treeFuel circuits settings * step + setupClassCalls C))
+        (Adds .prssSetup) (count * ((treeFuel circuits settings + 1) * step + setupClassCalls C))
   | 0, s => isQueryBoundP_pure _ _ _
   | count + 1, s => by
     unfold topLoop
@@ -453,7 +456,7 @@ theorem topLoop_adds (j : ℕ) (D : C.Coalition) (net : Adversary C E Unit PEmpt
       have h := fixedTreeRun_adds K circuits settings runLimit j D net step hround .top s
       simp only [treeSetups, one_mul] at h
       exact (isQueryBoundP_bind h fun r _ => topLoop_adds j D net step hround count r.2).mono
-        (by rw [Nat.succ_mul]; omega)
+        (by rw [Nat.succ_mul count]; omega)
     · exact isQueryBoundP_pure _ _ _
 
 /-- A local computation on `.hash` and `.prf` of the honest operators adds no cell of the class and
@@ -545,7 +548,7 @@ theorem forgeryWins_adds {σ : Type} (D : C.Coalition) (operators : C.Party → 
 /-- The cost of one run of each tree in the signing phase. The signing phase runs no top tree. -/
 def bottomCost (step : ℕ) : Tree → ℕ
   | .top => 0
-  | .bottom _ => treeFuel circuits settings * step + 2 * setupClassCalls C
+  | .bottom _ => (treeFuel circuits settings + 1) * step + 2 * setupClassCalls C
 
 /-- The rest of a request of bottom tree `b` after its run adds no cell of the class and keeps the
 state. -/
@@ -761,14 +764,14 @@ theorem fixedSigning_adds (j : ℕ) (D : C.Coalition) (A : DkgTsigAdversary C E)
 tree. -/
 theorem remaining_bottom_le (step : ℕ) (runs : Tree → ℕ) :
     FirstCounts.remaining runLimit (bottomCost (C := C) circuits settings step) runs ≤
-      runLimit * 2 ^ layerHeight * (treeFuel circuits settings * step + 2 * setupClassCalls C) := by
+      runLimit * 2 ^ layerHeight * ((treeFuel circuits settings + 1) * step + 2 * setupClassCalls C) := by
   unfold FirstCounts.remaining
   simp only [bottomCost, Nat.mul_zero, Nat.zero_add]
   calc ∑ b : Fin (2 ^ layerHeight), (runLimit - runs (.bottom b)) *
-        (treeFuel circuits settings * step + 2 * setupClassCalls C)
-      ≤ ∑ _b : Fin (2 ^ layerHeight), runLimit * (treeFuel circuits settings * step + 2 * setupClassCalls C) :=
+        ((treeFuel circuits settings + 1) * step + 2 * setupClassCalls C)
+      ≤ ∑ _b : Fin (2 ^ layerHeight), runLimit * ((treeFuel circuits settings + 1) * step + 2 * setupClassCalls C) :=
         Finset.sum_le_sum fun b _ => Nat.mul_le_mul_right _ (Nat.sub_le _ _)
-    _ = runLimit * 2 ^ layerHeight * (treeFuel circuits settings * step + 2 * setupClassCalls C) := by
+    _ = runLimit * 2 ^ layerHeight * ((treeFuel circuits settings + 1) * step + 2 * setupClassCalls C) := by
         rw [Finset.sum_const, Finset.card_univ, Fintype.card_fin, smul_eq_mul]
         ring
 
@@ -779,8 +782,8 @@ theorem topRest_adds (j : ℕ) (D : C.Coalition) (A : DkgTsigAdversary C E) (ste
     (hforge : ∀ pk top, IsQueryBoundP (A.forge pk top) (ForgeInClass .prssSetup) forge)
     (s : RealState C A.net.State) :
     IsQueryBoundP (topRest K circuits settings runLimit j D A s) (Adds .prssSetup)
-      ((runLimit - (j + 1)) * (treeFuel circuits settings * step + setupClassCalls C) +
-        (forge + runLimit * 2 ^ layerHeight * (treeFuel circuits settings * step + 2 * setupClassCalls C))) := by
+      ((runLimit - (j + 1)) * ((treeFuel circuits settings + 1) * step + setupClassCalls C) +
+        (forge + runLimit * 2 ^ layerHeight * ((treeFuel circuits settings + 1) * step + 2 * setupClassCalls C))) := by
   unfold topRest
   rw [isQueryBoundP_map_iff, StateT.run_bind]
   have hruns := fixedTreeRuns_adds K circuits settings runLimit (j + 1) D A.net step hround .top
@@ -790,17 +793,18 @@ theorem topRest_adds (j : ℕ) (D : C.Coalition) (A : DkgTsigAdversary C E) (ste
     (fixedSigning_adds K circuits settings runLimit (j + 1) D A step forge hround hforge p.2).mono
       (Nat.add_le_add_left (remaining_bottom_le circuits settings runLimit step _) _)
 
-/-- The rest of a live top run `j` after its setup, and the game after it. -/
+/-- The rest of a live top run `j` after its setup, with its vote, and the game after it. -/
 theorem topLiveRest_adds (j : ℕ) (D : C.Coalition) (A : DkgTsigAdversary C E) (step forge : ℕ)
     (hround : ∀ st sent, IsQueryBoundP (A.net.round st sent) (InClass .prssSetup) step)
     (hforge : ∀ pk top, IsQueryBoundP (A.forge pk top) (ForgeInClass .prssSetup) forge)
     (s : RealState C A.net.State) (r : A.net.State × (C.Party → Option (Keys C))) :
     IsQueryBoundP (topLiveRest K circuits settings runLimit j D A s r) (Adds .prssSetup)
-      ((treeFuel circuits settings - setupRounds) * step + C.n * 0 +
-        ((runLimit - (j + 1)) * (treeFuel circuits settings * step + setupClassCalls C) +
-          (forge + runLimit * 2 ^ layerHeight * (treeFuel circuits settings * step + 2 * setupClassCalls C)))) := by
+      ((treeFuel circuits settings - setupRounds) * step + C.n * 0 + step +
+        ((runLimit - (j + 1)) * ((treeFuel circuits settings + 1) * step + setupClassCalls C) +
+          (forge + runLimit * 2 ^ layerHeight * ((treeFuel circuits settings + 1) * step + 2 * setupClassCalls C)))) := by
   unfold topLiveRest
-  refine isQueryBoundP_bind (phase_adds D A.net step hround _ _ _ 0 fun i => ?_) fun p _ => ?_
+  refine (isQueryBoundP_bind (phase_adds D A.net step hround _ _ _ 0 fun i => ?_) fun p _ => ?_).mono
+    (Nat.add_assoc _ _ _).ge
   · split
     · exact topAfterSetup_classBound K circuits settings _ _ _
     · exact isQueryBoundP_pure _ _ _
@@ -809,7 +813,11 @@ theorem topLiveRest_adds (j : ℕ) (D : C.Coalition) (A : DkgTsigAdversary C E) 
     refine GameCount.bound_mono (GameCount.bound_bind (n := 0)
       (wrongOutput_adds D (fun i => (s.operators i).keys) .top outputs) fun b => ?_) (Nat.zero_add _).le
     rw [GameCount.bound_iff]
-    exact topRest_adds K circuits settings runLimit j D A step forge hround hforge _
+    exact isQueryBoundP_bind (FirstCounts.voteRound_adds .prssSetup (by decide) D A.net step hround _ _
+      fun j q hq => by
+        obtain ⟨o, -, rfl⟩ := Option.map_eq_some_iff.1 hq
+        exact FirstCounts.queryClass_treeVote .top o) fun _ _ =>
+      topRest_adds K circuits settings runLimit j D A step forge hround hforge _
 
 /-- The rest of the game at a dead or an absent top slot `j`. -/
 theorem topSkipRest_adds (j : ℕ) (D : C.Coalition) (A : DkgTsigAdversary C E) (step forge : ℕ)
@@ -817,9 +825,9 @@ theorem topSkipRest_adds (j : ℕ) (D : C.Coalition) (A : DkgTsigAdversary C E) 
     (hforge : ∀ pk top, IsQueryBoundP (A.forge pk top) (ForgeInClass .prssSetup) forge)
     (s : RealState C A.net.State) (runJ : Bool) :
     IsQueryBoundP (topSkipRest K circuits settings runLimit j D A s runJ) (Adds .prssSetup)
-      ((treeFuel circuits settings * step + setupClassCalls C) +
-        ((runLimit - (j + 1)) * (treeFuel circuits settings * step + setupClassCalls C) +
-          (forge + runLimit * 2 ^ layerHeight * (treeFuel circuits settings * step + 2 * setupClassCalls C)))) := by
+      (((treeFuel circuits settings + 1) * step + setupClassCalls C) +
+        ((runLimit - (j + 1)) * ((treeFuel circuits settings + 1) * step + setupClassCalls C) +
+          (forge + runLimit * 2 ^ layerHeight * ((treeFuel circuits settings + 1) * step + 2 * setupClassCalls C)))) := by
   unfold topSkipRest
   split
   · have hrun := fixedTreeRun_adds K circuits settings runLimit (j + 1) D A.net step hround .top s
@@ -835,11 +843,16 @@ theorem topPrefix_adds (j : ℕ) (D : C.Coalition) (A : DkgTsigAdversary C E) (s
     (hstart : ∀ x z, IsQueryBoundP (A.net.start x z) (InClass .prssSetup) start)
     (hround : ∀ st sent, IsQueryBoundP (A.net.round st sent) (InClass .prssSetup) step) :
     IsQueryBoundP (topPrefix K circuits settings runLimit j D A) (Adds .prssSetup)
-      ((start + setupRounds * step + 0) + (j * (treeFuel circuits settings * step + setupClassCalls C) + 0)) := by
+      ((start + setupRounds * step + 0) + (step + (j * ((treeFuel circuits settings + 1) * step + setupClassCalls C) + 0))) := by
   unfold topPrefix
   refine isQueryBoundP_bind ((GameCount.bound_iff _ _ _).1
     (seedBlock_bound .prssSetup D A.net start step 0 hstart hround (seedHonest (by decide)))) fun p _ => ?_
   obtain ⟨state, keys⟩ := p
+  refine isQueryBoundP_bind (FirstCounts.voteRound_adds .prssSetup (by decide) D A.net step hround _ _
+    fun j q hq => by
+      obtain ⟨o, -, rfl⟩ := Option.map_eq_some_iff.1 hq
+      rfl) fun v _ => ?_
+  obtain ⟨state, ok⟩ := v
   refine isQueryBoundP_bind (topLoop_adds K circuits settings runLimit j D A.net step hround j _) fun q _ => ?_
   obtain ⟨ran, s⟩ := q
   dsimp only
@@ -893,9 +906,9 @@ theorem topSlotPartCosts : TopSlotPartCosts K circuits settings runLimit prims :
     cases place with
     | live s =>
       exact (topLiveRest_adds K circuits settings runLimit j D A step forge hr hf s _).mono
-        (topDistinguisher_arith runLimit j _ _ _ _ _ _ hj (by
-          simp only [setupRounds, Nat.mul_zero, Nat.add_zero]
-          exact (Nat.mul_le_mul_right _ (Nat.sub_le _ _)).trans (Nat.le_add_right _ _)))
+        (topDistinguisher_arith runLimit j _ (setupClassCalls C) (treeFuel circuits settings + 1) step forge _ hj (by
+          rw [Nat.mul_zero, Nat.add_zero, Nat.add_one_mul]
+          exact Nat.le_add_right_of_le (Nat.add_le_add_right (Nat.mul_le_mul_right _ (Nat.sub_le _ _)) _)))
     | skip s runJ =>
       exact (topSkipRest_adds K circuits settings runLimit j D A step forge hr hf s runJ).mono
         (topDistinguisher_arith runLimit j _ _ _ _ _ _ hj le_rfl)

@@ -1,5 +1,6 @@
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Game
 import ThresholdLeanXmssSecurity.Proof.SeedGenAlias
+import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.VoteSupport
 
 /-!
 # The hops of the flag and of the seeds
@@ -97,15 +98,21 @@ theorem tracks_treeRun (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty
       (firstTreeRunWith prims K circuits settings D net ready tree) := by
   intro s
   constructor
-  · simp [treeRun, firstTreeRunWith, firstTreeRunOf, streamTreeRun]
+  · simp [treeRun, firstTreeRunWith, firstTreeRunOf, streamTreeRun, inStream]
   · intro w hs z hz
-    simp [firstTreeRunWith, firstTreeRunOf] at hz
-    obtain ⟨_, _, ⟨_, _, -, rfl⟩ | ⟨_, _, -, rfl⟩⟩ := hz
-    · intro hflag
-      cases hfirst : s.first with
+    simp only [firstTreeRunWith, firstTreeRunOf, inStream, StateT.run_bind, StateT.run_get, pure_bind,
+      StateT.run_lift, bind_assoc, StateT.run_set, StateT.run_pure, mem_support_bind_iff, support_pure,
+      Set.mem_singleton_iff] at hz
+    obtain ⟨x, -, y, hy, rfl⟩ := hz
+    have hsplit := Vote.voteRound_split_run worldRoles D net x.1.1.1 x.1.1.2 (treeVote tree) (streamWorld prims D)
+      x.2 y hy
+    intro hflag
+    simp only [hsplit, Bool.or_false, Bool.or_eq_true] at hflag
+    rcases hflag with hflag | hbad
+    · cases hfirst : s.first with
       | none => exact absurd hfirst (hs hflag)
       | some _ => simp
-    · simp [FlagRecorded]
+    · simp [hbad]
 
 omit [Fintype E] [DecidableEq E] in
 theorem tracks_treeRuns (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
@@ -418,7 +425,7 @@ theorem flagFirstHop : FlagFirstHopW prims K circuits settings runLimit (C := C)
       simp only [simulateQ_map, simulateQ_bind, StateT.run_bind, StateT.run_map, map_bind]
       refine EvalDistEq.bind_right _ fun u => ?_
       simp only [StateT.run_get, pure_bind, StateT.run_pure, map_pure, simulateQ_pure, bind_assoc]
-      exact afterSetup_flag prims K circuits settings runLimit D A ready _ u.2
+      exact EvalDistEq.bind_right _ fun t => afterSetup_flag prims K circuits settings runLimit D A ready _ t.2
     have h := hd.prEvent_eq (· = true)
     rw [prEvent_map, prEvent_map] at h
     exact h.symm
@@ -427,7 +434,7 @@ theorem flagFirstHop : FlagFirstHopW prims K circuits settings runLimit (C := C)
     refine prEvent_mono_of_support _ _ _ fun r hr hflag => ?_
     unfold firstRunWith firstRunOf at hr
     simp only [StateT.run_bind, support_bind, Set.mem_iUnion] at hr
-    obtain ⟨u, -, v, hv, x, ⟨y, hy, hx⟩, hr⟩ := hr
+    obtain ⟨u, -, v, hv, t, -, x, ⟨y, hy, hx⟩, hr⟩ := hr
     simp only [StateT.run_get, support_pure, Set.mem_singleton_iff] at hv
     simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff] at hr
     subst hv hr
@@ -708,13 +715,17 @@ attribute [local instance] inhabitedField
 
 variable (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
 
-theorem firstTreeRunOf_keepsFree {σ : Type} (run : RunOf C σ) (ready : RealState C σ → StreamState C → Prop)
-    (tree : Tree) : KeepsFree (firstTreeRunOf run ready tree) := by
+omit [Field E] [Algebra Bit E] in
+theorem firstTreeRunOf_keepsFree (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (run : RunOf C net.State)
+    (ready : RealState C net.State → StreamState C → Prop) (tree : Tree) :
+    KeepsFree (firstTreeRunOf prims D net run ready tree) := by
   unfold firstTreeRunOf
   refine keepsFree_get_bind fun s hs => keepsFree_bind (keepsFree_lift _) fun before =>
     keepsFree_bind (keepsFree_lift _) fun r => ?_
   rcases r with ⟨⟨state, outputs⟩, bad⟩
-  refine keepsFree_bind (keepsFree_lift _) fun after => keepsFree_set _ ?_
+  refine keepsFree_bind (keepsFree_lift _) fun after => keepsFree_bind (keepsFree_lift _) fun v => ?_
+  rcases v with ⟨state, ok⟩
+  refine keepsFree_set _ ?_
   refine seedsFree_orElse (seedsFree_orElse hs ?_) ?_
   · split_ifs
     · exact seedsFree_none
@@ -725,23 +736,25 @@ theorem firstTreeRunOf_keepsFree {σ : Type} (run : RunOf C σ) (ready : RealSta
       cases h
     · exact seedsFree_none
 
-theorem firstTreeRunsOf_keepsFree {σ : Type} (D : C.Coalition) (run : RunOf C σ)
-    (ready : RealState C σ → StreamState C → Prop) (tree : Tree) :
-    ∀ count, KeepsFree (firstTreeRunsOf runLimit D run ready tree count)
+omit [Field E] [Algebra Bit E] in
+theorem firstTreeRunsOf_keepsFree (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (run : RunOf C net.State) (ready : RealState C net.State → StreamState C → Prop) (tree : Tree) :
+    ∀ count, KeepsFree (firstTreeRunsOf prims runLimit D net run ready tree count)
   | 0 => keepsFree_pure _
   | count + 1 => by
     unfold firstTreeRunsOf
     refine keepsFree_get_bind fun s _ => ?_
     split_ifs
-    · exact keepsFree_bind (firstTreeRunOf_keepsFree run ready tree) fun _ =>
-        firstTreeRunsOf_keepsFree D run ready tree count
+    · exact keepsFree_bind (firstTreeRunOf_keepsFree prims D net run ready tree) fun _ =>
+        firstTreeRunsOf_keepsFree D net run ready tree count
     · exact keepsFree_pure _
 
-theorem firstTreeRequestOf_keepsFree {σ : Type} (D : C.Coalition) (run : RunOf C σ)
-    (ready : RealState C σ → StreamState C → Prop) (b : Fin (2 ^ layerHeight)) :
-    KeepsFree (firstTreeRequestOf prims runLimit D run ready b) := by
+omit [Field E] [Algebra Bit E] in
+theorem firstTreeRequestOf_keepsFree (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (run : RunOf C net.State) (ready : RealState C net.State → StreamState C → Prop) (b : Fin (2 ^ layerHeight)) :
+    KeepsFree (firstTreeRequestOf prims runLimit D net run ready b) := by
   unfold firstTreeRequestOf
-  refine keepsFree_bind (firstTreeRunsOf_keepsFree runLimit D run ready _ 1) fun _ =>
+  refine keepsFree_bind (firstTreeRunsOf_keepsFree prims runLimit D net run ready _ 1) fun _ =>
     keepsFree_get_bind fun s _ => ?_
   split
   · exact keepsFree_bind (keepsFree_lift _) fun _ => keepsFree_pure _
@@ -791,12 +804,13 @@ theorem firstSignRequest_keepsFree (D : C.Coalition) {σ : Type} (i : C.Party) (
     keepsFreeT_bind (keepsFreeT_lift keepsFree_get) fun s => ?_
   exact operatorAnswer_keepsFree prims D _ _ e q
 
-theorem firstOraclesOf_keepsFree {σ : Type} (D : C.Coalition) (run : RunOf C σ)
-    (ready : RealState C σ → StreamState C → Prop) (q : TsigQuery C) :
-    KeepsFreeT (firstOraclesOf prims runLimit D run ready q) := by
+omit [Field E] [Algebra Bit E] in
+theorem firstOraclesOf_keepsFree (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
+    (run : RunOf C net.State) (ready : RealState C net.State → StreamState C → Prop) (q : TsigQuery C) :
+    KeepsFreeT (firstOraclesOf prims runLimit D net run ready q) := by
   rcases q with i | b | ⟨i, J, e, message⟩ | ⟨i, J, e, message, parts⟩
   · exact fun t => keepsFree_pure _
-  · exact keepsFreeT_lift (firstTreeRequestOf_keepsFree prims runLimit D run ready b)
+  · exact keepsFreeT_lift (firstTreeRequestOf_keepsFree prims runLimit D net run ready b)
   · exact firstSignRequest_keepsFree prims D i e _
   · exact firstSignRequest_keepsFree prims D i e _
 
@@ -810,7 +824,7 @@ theorem firstSigningOf_keepsFree (D : C.Coalition) (A : DkgTsigAdversary C E) (r
   · refine keepsFree_bind (keepsFreeT_simulateQ _ (fun q => ?_) _ _) fun _ => keepsFree_pure _
     rcases q with t | q | q
     · exact keepsFreeT_lift (keepsFree_lift _)
-    · exact firstOraclesOf_keepsFree prims runLimit D run ready q
+    · exact firstOraclesOf_keepsFree prims runLimit D A.net run ready q
     · rcases q with _ | state
       · exact keepsFreeT_lift (keepsFree_bind keepsFree_get fun _ => keepsFree_pure _)
       · exact keepsFreeT_lift (keepsFree_modify _ fun s hs => hs)
@@ -863,14 +877,17 @@ theorem seedsHopOf (D : C.Coalition) (A : DkgTsigAdversary C E) (q : ℕ) (run :
   refine (ENNReal.toReal_mono (prEvent_ne_top _) (prEvent_bind_le_of_imp _ _ _
     (fun a => seedsDiffer D a.1.2 = true) ?_)).trans ?_
   · rintro ⟨⟨state, keys⟩, world⟩ hdiffer z hz
-    have hflag : (startState D state keys).flag = false := by simpa [startState] using hdiffer
-    simp only [StateT.run_bind, StateT.run_get, pure_bind, hflag, Bool.false_eq_true, ite_false,
-      mem_support_bind_iff] at hz
+    simp only [StateT.run_bind, StateT.run_get, pure_bind, mem_support_bind_iff] at hz
+    obtain ⟨t, ht, hz⟩ := hz
+    have hsplit := Vote.voteRound_split_run worldRoles D A.net state keys seedVote (streamWorld prims D) world t ht
+    have hflag : (seedState D t.1.1 keys t.1.2).flag = false := by
+      simpa [seedState, startState, hsplit] using hdiffer
+    simp only [hflag, Bool.false_eq_true, ite_false] at hz
     obtain ⟨y, hy, hz⟩ := hz
     simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
     subst hz
     obtain ⟨x, hx, hy⟩ := hy
-    have hruns := firstTreeRunsOf_keepsFree runLimit D run ready .top runLimit _ world seedsFree_none x hx
+    have hruns := firstTreeRunsOf_keepsFree prims runLimit D A.net run ready .top runLimit _ _ seedsFree_none x hx
     exact fun ⟨w, hw⟩ => firstSigningOf_keepsFree prims runLimit D A run ready _ _ hruns y hy w hw
   · rw [streamWorld_seedGen, prEvent_map]
     exact hc

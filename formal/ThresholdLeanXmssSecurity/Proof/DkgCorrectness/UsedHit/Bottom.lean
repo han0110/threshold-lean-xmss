@@ -186,6 +186,7 @@ def bottomPrefix (j : ℕ) (D : C.Coalition) (A : DkgTsigAdversary C E) :
     OracleComp (WorldSpec C) (BottomPlace C A.net.State) := do
   let (state, keys) ← realExecution D A.net noFunctionality setupRounds
     (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) (fun _ => ()) []
+  let (state, ok) ← voteRound worldRoles D A.net state fun i => (keys i).map seedVote
   let (place, _) ← (do
       fixedTreeRuns K circuits settings runLimit j (wrongOutput D) D A.net .top runLimit
       let s ← get
@@ -193,16 +194,19 @@ def bottomPrefix (j : ℕ) (D : C.Coalition) (A : DkgTsigAdversary C E) :
       | none => pure BottomPlace.finished
       | some (keys, top) => (forgeWalk K circuits settings runLimit j D A keys top
           (A.forge ⟨top.root, keys.parameter⟩ top)).run' ⟨D.1, fun _ => none, [], fun _ => none⟩ :
-        RealM C A.net.State (BottomPlace C A.net.State)).run (startState D state keys)
+        RealM C A.net.State (BottomPlace C A.net.State)).run (seedState D state keys ok)
   pure place
 
-/-- The state after the run of the pause `p` with the result `r` of its phase, as `fixedTreeRun`. -/
-def finishRun {σ : Type} (D : C.Coalition) (p : BottomPause C σ) (r : σ × (C.Party → Option TreeOutput)) :
-    OracleComp (WorldSpec C) (RealState C σ) := do
+/-- The state after the run of the pause `p` with the result `r` of its phase and the vote, as
+`fixedTreeRun`. -/
+def finishRun (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (p : BottomPause C net.State)
+    (r : net.State × (C.Party → Option TreeOutput)) : OracleComp (WorldSpec C) (RealState C net.State) := do
   let s := p.state
   let bad ← wrongOutput D (fun i => (s.operators i).keys) (.bottom p.b) r.2
-  pure ⟨r.1, fun i => (s.operators i).keep (r.2 i) (.bottom p.b),
-    Function.update s.runs (.bottom p.b) (s.runs (.bottom p.b) + 1), s.closed, s.flag || bad⟩
+  let (state, ok) ← voteRound worldRoles D net r.1 fun i => (r.2 i).map (treeVote (.bottom p.b))
+  let kept := committed ok r.2
+  pure ⟨state, fun i => (s.operators i).keep (kept i) (.bottom p.b),
+    Function.update s.runs (.bottom p.b) (s.runs (.bottom p.b) + 1), s.closed, s.flag || bad || split D kept⟩
 
 /-- The game after the run of the pause `p` ended in the state `s`, in hybrid `j + 1`: the answer of
 the request, the rest of `forge` and the win test. -/
@@ -233,12 +237,12 @@ def bottomRest (j : ℕ) (D : C.Coalition) (A : DkgTsigAdversary C E) :
           executePhase worldRoles D A.net noFunctionality
             (treeFuel circuits settings - headRounds circuits settings D p - setupRounds) adversary
             fun i => afterSecondSetup K circuits settings i (p.state.operators i) p.b (heads i) (out i)
-      resumeAfter K circuits settings runLimit j D A p (← finishRun D p r)
+      resumeAfter K circuits settings runLimit j D A p (← finishRun D A.net p r)
   | .skip p adversary heads, _ => do
       let r ← executePhase worldRoles D A.net noFunctionality
         (treeFuel circuits settings - headRounds circuits settings D p) adversary
         fun i => (heads i).elim failure (CheckTiming.bottomTail K circuits settings i (p.state.operators i) p.b)
-      resumeAfter K circuits settings runLimit j D A p (← finishRun D p r)
+      resumeAfter K circuits settings runLimit j D A p (← finishRun D A.net p r)
 
 variable (prims : Primitives)
 
@@ -281,9 +285,9 @@ def bottomDistinguisher (forge j : ℕ) (D : C.Coalition) (A : DkgTsigAdversary 
 /-- The cost of each part of the reduction of bottom slot `j` in the class `prssSetup`. With
 `k = (j - runLimit) / 2` and `c = slotParity runLimit j`, the start holds the seed generation, at most
 `runLimit` top runs, `k` bottom runs, for `c = 1` the first setup and the head of run `k`, and the
-calls of `forge` before the request. Its honest calls are those of the `j` slots before slot `j`. The
-distinguisher holds the rest of run `k` (at most one setup), the other bottom runs, and the rest of
-`forge`. -/
+calls of `forge` before the request. The seed generation and each run have one vote round. Its honest
+calls are those of the `j` slots before slot `j`. The distinguisher holds the rest of run `k` (at most
+one setup) with its vote, the other bottom runs, and the rest of `forge`. -/
 def BottomSlotPartCosts : Prop :=
   ∀ (D : C.Coalition) (A : DkgTsigAdversary C E) (start step forge : ℕ),
     (∀ x z, IsQueryBoundP (A.net.start x z) (InClass .prssSetup) start) →
@@ -291,14 +295,14 @@ def BottomSlotPartCosts : Prop :=
     (∀ pk top, IsQueryBoundP (A.forge pk top) (ForgeInClass .prssSetup) forge) →
     ∀ j, runLimit ≤ j → j < gameSetups runLimit →
       (∀ x z, IsQueryBoundP ((bottomReduction K circuits settings runLimit prims j D A).start x z) Counted
-        (start + (setupRounds + (runLimit + (j - runLimit) / 2 + slotParity runLimit j) *
-          treeFuel circuits settings) * step + forge + j * setupClassCalls C)) ∧
+        (start + (setupRounds + 1 + (runLimit + (j - runLimit) / 2 + slotParity runLimit j) *
+          (treeFuel circuits settings + 1)) * step + forge + j * setupClassCalls C)) ∧
       (∀ st sent, IsQueryBoundP ((bottomReduction K circuits settings runLimit prims j D A).round st sent) Counted
         step) ∧
       (∀ r, IsQueryBoundP (bottomDistinguisher K circuits settings runLimit prims forge j D A r) Counted
-        (forge + treeFuel circuits settings * step + setupClassCalls C +
+        (forge + (treeFuel circuits settings + 1) * step + setupClassCalls C +
           (runLimit * 2 ^ layerHeight - (j - runLimit) / 2 - 1) *
-            (treeFuel circuits settings * step + 2 * setupClassCalls C)))
+            ((treeFuel circuits settings + 1) * step + 2 * setupClassCalls C)))
 
 /-- The cost certificate of bottom slot `j`, for the class budget of the adversary. -/
 def BottomSlotCost : Prop :=
@@ -313,16 +317,16 @@ def BottomSlotCost : Prop :=
         (2 * q + honestSetupCalls runLimit C)
 
 omit [Fintype E] [DecidableEq E] in
-/-- The sum of the part costs of a bottom slot. It holds `dkgTsigRounds + 3 + treeFuel` rounds, two
-copies of `forge` and `gameSetups` setups. A game round count of at least `3 + treeFuel` pays the
-extra rounds and the second `forge` from the second `q`. -/
+/-- The sum of the part costs of a bottom slot. It holds `dkgTsigRounds + 3 + (treeFuel + 1)` rounds,
+two copies of `forge` and `gameSetups` setups. A game round count of at least `3 + (treeFuel + 1)`
+pays the extra rounds and the second `forge` from the second `q`. -/
 theorem bottomSlotCost_arith (q j start step forge : ℕ) (hlo : runLimit ≤ j) (hhi : j < gameSetups runLimit)
     (hq : start + dkgTsigRounds circuits settings runLimit * step + forge ≤ q) :
-    (start + (setupRounds + (runLimit + (j - runLimit) / 2 + slotParity runLimit j) *
-        treeFuel circuits settings) * step + forge + j * setupClassCalls C) + setupRounds * step +
-      (forge + treeFuel circuits settings * step + setupClassCalls C +
+    (start + (setupRounds + 1 + (runLimit + (j - runLimit) / 2 + slotParity runLimit j) *
+        (treeFuel circuits settings + 1)) * step + forge + j * setupClassCalls C) + setupRounds * step +
+      (forge + (treeFuel circuits settings + 1) * step + setupClassCalls C +
         (runLimit * 2 ^ layerHeight - (j - runLimit) / 2 - 1) *
-          (treeFuel circuits settings * step + 2 * setupClassCalls C)) ≤
+          ((treeFuel circuits settings + 1) * step + 2 * setupClassCalls C)) ≤
       2 * q + honestSetupCalls runLimit C := by
   rw [honestSetupCalls_eq]
   simp only [gameSetups, slotParity, dkgTsigRounds, setupRounds] at hhi hq ⊢
@@ -345,14 +349,14 @@ theorem bottomSlotCost_arith (q j start step forge : ℕ) (hlo : runLimit ≤ j)
     · subst h0; simp at hhi
     · exact h0
   have hB : 1 ≤ B := Nat.one_le_two_pow
-  have hround : (3 + t) * step ≤ (3 + runLimit * (1 + B) * t) * step := by
+  have hround : (3 + (t + 1)) * step ≤ (3 + (1 + runLimit * (1 + B) * (t + 1))) * step := by
     apply Nat.mul_le_mul_right
-    have : t ≤ runLimit * (1 + B) * t := Nat.le_mul_of_pos_left t (by positivity)
+    have : t + 1 ≤ runLimit * (1 + B) * (t + 1) := Nat.le_mul_of_pos_left (t + 1) (by positivity)
     omega
-  have hc1 : c * t * step ≤ t * step := by
+  have hc1 : c * (t + 1) * step ≤ (t + 1) * step := by
     have : c ≤ 1 := by omega
-    calc c * t * step ≤ 1 * t * step := by gcongr
-      _ = t * step := by ring
+    calc c * (t + 1) * step ≤ 1 * (t + 1) * step := by gcongr
+      _ = (t + 1) * step := by ring
   have hch : c * h ≤ h := by
     have : c ≤ 1 := by omega
     calc c * h ≤ 1 * h := by gcongr

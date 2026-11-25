@@ -1,6 +1,6 @@
 import ThresholdLeanXmssSecurity.Proof.DkgCompleteness.Claim
 import ThresholdLeanXmssSecurity.Proof.DkgCorrectness.Claim
-import ThresholdLeanXmssSecurity.Proof.DkgSecurity.Claim
+import ThresholdLeanXmssSecurity.Proof.DkgSecurity.ReductionCost
 import ThresholdLeanXmssSecurity.Proof.Signing
 import ThresholdLeanXmssSecurity.Proof.SigningStronglyUnforgeable
 
@@ -23,23 +23,14 @@ layer. The proof of the completeness of the setup joins four hops on the honest 
 the claims of the building blocks and of one tree in `Proof/Tree.lean` and `Proof/Dealer.lean`. The
 proof of the correctness of the setup follows the game with hops. It cuts a run of a bottom tree into
 two ceremonies, bounds the bad events of one ceremony, and pays the PRSS setups with a hybrid over the
-setup slots. `Proof/DkgSecurity/ReductionCost.lean` proves the cost bound of the field `dkgSecurityPreservation`.
-`Proof/DkgSecurity/Claim.lean` gives that field from the hop `SharedStep`, and `theorems_of_sharedStep`
-gives the bundle from the same hop. -/
+setup slots. `Proof/DkgSecurity/ReductionCost.lean` proves the cost bound of the field
+`dkgSecurityPreservation` (`DkgSecurityProof.dkgReduction_cost`).
+
+The win bound of `dkgSecurityPreservation` has no proof in this library. The other files of
+`Proof/DkgSecurity/` hold twelve hops of its chain on the game without the vote of
+`Statement/DkgGame.lean`. They are not part of the build until they are on the game with the vote. -/
 
 namespace ThresholdLeanXmssSecurity
-
-open ThresholdLeanXmss in
-/-- The bundle `Theorems` from the hop `SharedStep` at the error `privacyStepError`. -/
-theorem theorems_of_sharedStep {C : Committee} {E : Type} [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E]
-    (prims : Primitives) (K : Constants C E) (circuits : Circuits) (settings : Settings) (runLimit : ℕ)
-    (step : DkgSecurityProof.SharedStep prims K circuits settings runLimit (privacyStepError settings runLimit C)) :
-    Theorems prims K circuits settings runLimit where
-  stronglyUnforgeable := SigningStronglyUnforgeable.stronglyUnforgeable prims C
-  signingCorrectness := signingCorrectness prims C
-  dkgSecurityPreservation := DkgSecurityProof.dkgSecurityPreservation_of_leaves prims K circuits settings runLimit step
-  dkgCorrectness := dkgCorrectness prims K circuits settings runLimit
-  dkgCompleteness := dkgCompleteness prims K circuits settings runLimit
 
 /-! The build fails unless each of the five theorems below depends only on `propext`,
 `Classical.choice` and `Quot.sound`. -/
@@ -60,8 +51,8 @@ theorem theorems_of_sharedStep {C : Committee} {E : Type} [Field E] [Fintype E] 
 #guard_msgs (whitespace := lax) in
 #print axioms dkgCorrectness
 
-/-- info: 'ThresholdLeanXmssSecurity.theorems_of_sharedStep' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'ThresholdLeanXmssSecurity.DkgSecurityProof.dkgReduction_cost' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
-#print axioms theorems_of_sharedStep
+#print axioms DkgSecurityProof.dkgReduction_cost
 
 end ThresholdLeanXmssSecurity

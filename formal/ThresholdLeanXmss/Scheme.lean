@@ -225,6 +225,9 @@ inductive Query (C : Committee)
   | coinKey (tag ρ : ℕ) (value : List Bit)
   /-- Value `index` of the expansion of a coin key, with the tag `thlxmss-expand`. -/
   | expand (key : HashOutput) (index : ℕ)
+  /-- `H` of the kind of a setup ceremony, the index of its tree and the bits of its public result,
+  the vote at its end, with the tag `thlxmss-vote`. -/
+  | vote (kind index : ℕ) (result : List (List Bit))
 deriving DecidableEq
 
 /-- An input `(name, key, ρ, idx, position)` of `PRG`. The name of the key is not an input of AES.

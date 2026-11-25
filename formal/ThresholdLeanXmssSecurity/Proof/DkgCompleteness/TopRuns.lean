@@ -1,19 +1,24 @@
 import ThresholdLeanXmssSecurity.Proof.DkgCompleteness.Hops
 import ThresholdLeanXmssSecurity.Proof.Dealer
+import ThresholdLeanXmssSecurity.Proof.DkgCompleteness.VoteHonest
 
 /-!
 # The runs of the top tree
 
 The honest runs of a tree in the game, with no corrupt operator and the honest adversary, are a local
-computation on the free copy. `localRuns` is that computation, and `treeRuns_run` is the link.
+computation on the free copy. `localRuns` is that computation, and `treeRuns_run` is the link. Each
+local run ends with its vote `localVote`.
 `firstRun_coupling` is the step of the hops for each tree. The first real run of a tree, followed by
 any continuation that reads the cache, is at distance `treeAbortError tree` from the dealer of the
 tree followed by the same continuation on the output of the dealer.
 
 `topRunsHop_of_seedGenEnd` proves `TopRunsHop` from `SeedGenEnd`. The honest seed generation gives
-dealt keys and a start cache. From there the first run of the top tree couples with the dealer top
-tree by `firstRun_coupling`. The dealer top tree never fails, so the later runs of the top tree do
-nothing, and the dealer is `referenceTree` jointly with the cache by `dealer_continuation`.
+dealt keys and a start cache. All operators vote on one parameter, so the vote of the seed
+generation says yes, and its call of `H` changes no later output (`run'_localVote_const`). From
+there the first run of the top tree couples with the dealer top tree by `firstRun_coupling`. The
+vote of a run is in the continuation of `firstRun_coupling`. The dealer top tree never fails, so
+the later runs of the top tree do nothing, and the dealer is `referenceTree` jointly with the cache
+by `dealer_continuation`.
 
 `seedGenEnd` proves `SeedGenEnd`. The honest seed generation makes no query of a coin key or of an
 expansion, so from the empty cache it ends in a cache with `StartInvariant`. `SafeProg` is the
@@ -83,19 +88,20 @@ def localTreeRun (operators : C.Party → OperatorState C) (tree : Tree) :
   honestStart (fun i => treeProgram K circuits settings i (operators i) tree) >>=
     honestRounds noFunctionality (fun l => l.elim) (treeFuel circuits settings)
 
-/-- The state after a run of `tree` with `outputs` and no monitor. Each operator keeps its first
-output. -/
+/-- The state after a run of `tree` with the outputs `outputs` after its vote and no monitor. Each
+operator keeps its first output. -/
 def afterRun {σ : Type} (s : RealState C σ) (outputs : C.Party → Option TreeOutput) (tree : Tree) : RealState C σ :=
   ⟨s.adversary, fun i => (s.operators i).keep (outputs i) tree, Function.update s.runs tree (s.runs tree + 1),
-    s.closed, s.flag || false⟩
+    s.closed, s.flag || split noCoalition outputs⟩
 
-/-- At most `count` honest runs of `tree`, as a local computation. -/
+/-- At most `count` honest runs of `tree`, each with its vote, as a local computation. -/
 def localRuns (tree : Tree) : ℕ → HonestState C E → OracleComp (LocalSpec C) (HonestState C E)
   | 0, s => pure s
   | count + 1, s =>
     if mayRun runLimit noCoalition s tree then
       localTreeRun K circuits settings s.operators tree >>= fun outputs =>
-        localRuns tree count (afterRun s outputs tree)
+        localVote (E := E) (fun i => (outputs i).map (treeVote tree)) >>= fun ok =>
+          localRuns tree count (afterRun s (committed ok outputs) tree)
     else pure s
 
 omit [Fintype E] [DecidableEq E] in
@@ -110,7 +116,7 @@ theorem treeRuns_run (tree : Tree) : ∀ (count : ℕ) (s : HonestState C E),
     · rw [StateT.run_bind, StateT.run_bind, StateT.run_get, pure_bind, StateT.run_bind, StateT.run_lift,
         executePhase_honestNet]
       simp only [localTreeRun, afterRun, free_bind, map_bind, bind_map_left, bind_assoc, StateT.run_bind,
-        StateT.run_lift, pure_bind, StateT.run_set, treeRuns_run tree count, Bool.or_false]
+        StateT.run_lift, pure_bind, StateT.run_set, treeRuns_run tree count, Bool.or_false, voteRound_honestNet]
     · simp
 
 /-! ## The first run of a tree with a continuation -/
@@ -216,7 +222,7 @@ theorem localRuns_operators_congr (tree : Tree) : ∀ (count : ℕ) (s₁ s₂ :
     by_cases h : mayRun runLimit noCoalition s₁ tree
     · simp only [h, hmay.1 h, ↓reduceIte, map_bind]
       rw [ho]
-      refine bind_congr fun outputs => localRuns_operators_congr tree count _ _ ?_ ?_ ?_
+      refine bind_congr fun outputs => bind_congr fun ok => localRuns_operators_congr tree count _ _ ?_ ?_ ?_
       · simp [afterRun, ho]
       · simp [afterRun, hc]
       · simp [afterRun, hr]
@@ -233,8 +239,8 @@ def setupOutputsOf (b : Fin (2 ^ layerHeight)) (s : HonestState C E) : SetupOutp
 
 /-- `honestDkg b` as a local computation. -/
 def honestLocal (b : Fin (2 ^ layerHeight)) : OracleComp (LocalSpec C) (SetupOutputs C) :=
-  seedGenLocal (E := E) >>= fun keys =>
-    localRuns K circuits settings runLimit .top runLimit (startState noCoalition () keys) >>= fun s =>
+  seedGenLocal (E := E) >>= fun keys => localVote (E := E) (fun i => (keys i).map seedVote) >>= fun ok =>
+    localRuns K circuits settings runLimit .top runLimit (seedState noCoalition () keys ok) >>= fun s =>
       localRuns K circuits settings runLimit (.bottom b) runLimit s >>= fun s => pure (setupOutputsOf b s)
 
 omit [Fintype E] [DecidableEq E] in
@@ -243,8 +249,8 @@ theorem honestDkg_eq (b : Fin (2 ^ layerHeight)) :
     honestDkg K circuits settings runLimit b = free (honestLocal K circuits settings runLimit b) := by
   unfold honestDkg honestLocal seedGenLocal
   rw [realExecution_honestNet]
-  simp only [treeRuns_run, StateT.run_bind, map_eq_bind_pure_comp, bind_assoc, pure_bind, Function.comp_apply,
-    free_bind, free_pure]
+  simp only [treeRuns_run, voteRound_honestNet, StateT.run_bind, map_eq_bind_pure_comp, bind_assoc, pure_bind,
+    Function.comp_apply, free_bind, free_pure]
   exact (bind_assoc _ _ _).trans (bind_congr fun x => (bind_assoc _ _ _).trans
     (bind_congr fun y => by simp only [Function.comp_apply]; rfl))
 
@@ -415,8 +421,9 @@ theorem topRuns_from (prims : Primitives) (hc : CircuitsCompute circuits prims.T
       realTree K circuits settings emptyTop .top parameter seeds pairKeys :=
     localTreeRun_top K circuits settings _ parameter seeds pairKeys fun _ => rfl
   set f : (C.Party → Option TreeOutput) → OracleComp (LocalSpec C) (SetupOutputs C) := fun z =>
-    localRuns K circuits settings runLimit .top n (afterRun st0 z .top) >>= fun st =>
-      localRuns K circuits settings runLimit (.bottom b) runLimit st >>= fun st => pure (setupOutputsOf b st) with hf
+    localVote (E := E) (fun i => (z i).map (treeVote .top)) >>= fun ok =>
+      localRuns K circuits settings runLimit .top n (afterRun st0 (committed ok z) .top) >>= fun st =>
+        localRuns K circuits settings runLimit (.bottom b) runLimit st >>= fun st => pure (setupOutputsOf b st) with hf
   have hleft : (localRuns K circuits settings runLimit .top (n + 1) st0 >>= fun st =>
       localRuns K circuits settings runLimit (.bottom b) runLimit st >>= fun st => pure (setupOutputsOf b st)) =
       realTree K circuits settings emptyTop .top parameter seeds pairKeys >>= f := by
@@ -436,17 +443,23 @@ theorem topRuns_from (prims : Primitives) (hc : CircuitsCompute circuits prims.T
     rw [ceremonyAt_top] at ho₀
     rw [heq, ho₀]
     set t : TopTree := _ with ht
-    have hnot : ¬ mayRun runLimit noCoalition (afterRun st0 (fun _ => some (.top t)) .top) .top := by
-      simp [mayRun, afterRun, OperatorState.keep, TreeOutput.topTree]
-    have hfg : f (fun _ => some (.top t)) = g (some t) := by
-      simp only [hf, hg]
+    have hnot : ¬ mayRun runLimit noCoalition (afterRun st0 (committed true fun _ => some (.top t)) .top) .top := by
+      simp [mayRun, afterRun, committed, OperatorState.keep, TreeOutput.topTree]
+    have hfg : (localRuns K circuits settings runLimit .top n (afterRun st0 (committed true fun _ => some (.top t)) .top)
+        >>= fun st => localRuns K circuits settings runLimit (.bottom b) runLimit st >>= fun st =>
+          pure (setupOutputsOf b st)) = g (some t) := by
+      simp only [hg]
       rw [localRuns_of_not_mayRun K circuits settings runLimit .top _ hnot, pure_bind]
       refine localRuns_outputs_congr K circuits settings runLimit (.bottom b) b runLimit _ _ ?_ rfl ?_
       · funext i
-        simp [afterRun, withTop, OperatorState.keep, TreeOutput.topTree, hst0, startState]
+        simp [afterRun, committed, withTop, OperatorState.keep, TreeOutput.topTree, hst0, startState]
       · simp [afterRun, withTop, hst0, startState]
-    rw [hfg]
-    exact .rfl
+    have hvote := run'_localVote_const (E := E) prims (some (treeVote .top (.top t)))
+      (fun ok => localRuns K circuits settings runLimit .top n (afterRun st0 (committed ok fun _ => some (.top t)) .top)
+        >>= fun st => localRuns K circuits settings runLimit (.bottom b) runLimit st >>= fun st =>
+          pure (setupOutputsOf b st)) p.2
+    simp only [Option.isSome_some, hfg] at hvote
+    exact hvote
   have hD : (dealtTopLocal keys >>= g) = liftComp (referenceTree tweakable (prfValue seeds) parameter emptyTop .top)
       (LocalSpec C) >>= fun o => g (TreeOutput.topTree o) := by
     simp only [dealtTopLocal, hkeys, Option.isSome_some, implies_true, ↓reduceIte, gameSeeds_dealt,
@@ -472,7 +485,25 @@ theorem topRunsHop_of_seedGenEnd (seedGenEnd : ∀ prims, SeedGenEnd (C := C) (E
   obtain ⟨parameter, seeds, pairKeys, hkeys⟩ := seedGen_dealt prims p hp
   have hs : StartInvariant p.2 := seedGenEnd prims p hp
   rw [hkeys]
-  exact topRuns_from K circuits settings runLimit prims hc hsize hruns b parameter seeds pairKeys p.2 hs runLimit hruns
+  have hstart : seedState (σ := (honestNet (C := C) (E := E)).State) noCoalition ()
+      (fun i => some (dealtKeys parameter seeds pairKeys i)) true =
+      startState (σ := (honestNet (C := C) (E := E)).State) noCoalition () fun i =>
+        some (dealtKeys parameter seeds pairKeys i) := by
+    unfold seedState
+    dsimp only
+    congr 1
+    simp [split]
+  have hvote := run'_localVote_const (E := E) prims (some (.vote 0 0 [bitsOfDigest parameter] : Query C))
+    (fun ok => localRuns K circuits settings runLimit .top runLimit
+      (seedState noCoalition () (fun i => some (dealtKeys parameter seeds pairKeys i)) ok) >>= fun st =>
+        localRuns K circuits settings runLimit (.bottom b) runLimit st >>= fun st => pure (setupOutputsOf b st)) p.2
+  simp only [Option.isSome_some] at hvote
+  have h := topRuns_from K circuits settings runLimit prims hc hsize hruns b parameter seeds pairKeys p.2 hs runLimit hruns
+  unfold measureTVDist at h ⊢
+  refine le_of_eq_of_le ?_ h
+  congr 1
+  refine hvote.evalDist_eq.trans ?_
+  rw [hstart]
 
 end TopRuns
 

@@ -372,18 +372,21 @@ def HiddenRun {σ : Type} (run : RunOf C σ) : Prop :=
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
 /-- A run of `tree` that the game allows keeps the potential. Its setups come from the runs that
-remain. -/
-theorem firstTreeRun_hiddenPot {σ : Type} (run : RunOf C σ) (hhidden : HiddenRun D run)
-    (ready : RealState C σ → StreamState C → Prop) (tree : Tree)
-    (k : ℕ) (s : FirstState C σ) (w : StreamState C)
+remain. Its vote keeps the hidden streams. -/
+theorem firstTreeRun_hiddenPot (net : Adversary C E Unit PEmpty PEmpty) (run : RunOf C net.State)
+    (hhidden : HiddenRun D run) (ready : RealState C net.State → StreamState C → Prop) (tree : Tree)
+    (k : ℕ) (s : FirstState C net.State) (w : StreamState C)
     (hs : HiddenPot runLimit D k s w) (hrun : s.real.runs tree < runLimit) :
-    ∀ z ∈ support (((firstTreeRunOf run ready tree).run s).run w),
+    ∀ z ∈ support (((firstTreeRunOf prims D net run ready tree).run s).run w),
       HiddenPot runLimit D k z.1.2 z.2 := by
   intro z hz
-  unfold firstTreeRunOf at hz
-  simp only [StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, mem_support_bind_iff, StateT.run_set,
-    StateT.run_pure, support_pure, Set.mem_singleton_iff] at hz
-  obtain ⟨_, ⟨x, hx, rfl⟩, rfl⟩ := hz
+  simp only [firstTreeRunOf, inStream, StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, bind_assoc,
+    StateT.run_set, StateT.run_pure, mem_support_bind_iff, support_pure, Set.mem_singleton_iff] at hz
+  obtain ⟨x, hx, y, hy, rfl⟩ := hz
+  have he := simulateQ_hidden_eq prims D _ (FirstCounts.voteRound_honestIn .stream (by decide) D net x.1.1.1 _
+    fun j q hq => by
+      obtain ⟨output, -, rfl⟩ := Option.map_eq_some_iff.1 hq
+      exact FirstCounts.queryClass_treeVote tree output) x.2 y hy
   obtain ⟨hpar, hcells⟩ := hs
   have e := remaining_update runLimit treeSetups s.real.runs tree hrun
   have hb : HiddenKeyBound w.2 (k - remaining runLimit treeSetups s.real.runs) := fun name => by
@@ -396,12 +399,15 @@ theorem firstTreeRun_hiddenPot {σ : Type} (run : RunOf C σ) (hhidden : HiddenR
   refine ⟨?_, fun name => ?_⟩
   · obtain ⟨parameter, hp⟩ := hpar
     exact ⟨parameter, fun i hi keys hkeys => hp i hi keys (by
-      change ((s.real.operators i).keep (x.1.1.2 i) tree).keys = some keys at hkeys
+      change ((s.real.operators i).keep (committed y.1.2 x.1.1.2 i) tree).keys = some keys at hkeys
       rwa [Ready.keep_keys] at hkeys)⟩
   · obtain ⟨keys, hc, hcover⟩ := h name
-    refine ⟨keys, ?_, hcover⟩
-    change keys.card + remaining runLimit treeSetups (Function.update s.real.runs tree (s.real.runs tree + 1)) ≤ k
-    omega
+    refine ⟨keys, ?_, fun key ρ idx position hcell => hcover key ρ idx position ?_⟩
+    · change keys.card + remaining runLimit treeSetups (Function.update s.real.runs tree (s.real.runs tree + 1)) ≤ k
+      omega
+    change y.2.2 _ ≠ none at hcell
+    rwa [he] at hcell
+
 
 omit [Field E] [Fintype E] [DecidableEq E] [Algebra Bit E] in
 /-- No computation makes a call of the empty predicate. -/
@@ -471,14 +477,20 @@ theorem firstRunOf_hiddenKeyBound (D : C.Coalition) (A : DkgTsigAdversary C E) (
   obtain ⟨y, hy, hr⟩ := hr
   rcases y with ⟨⟨state, keys⟩, world⟩
   simp only [StateT.run_get, support_pure, Set.mem_singleton_iff, exists_eq_left, StateT.run_pure] at hr
-  obtain ⟨x, ⟨z, hz, hx⟩, rfl⟩ := hr
+  obtain ⟨t, ht, x, ⟨z, hz, hx⟩, rfl⟩ := hr
   have hseed := (GameCount.bound_iff _ _ _).1 (DigestBudgets.seedHonest (C := C) (E := E) (c := .stream) nofun D A.net)
   have hworld : world.2 = ∅ := simulateQ_hidden_eq prims D _ hseed (∅, ∅) _ hy
+  have hvote : t.2.2 = world.2 := simulateQ_hidden_eq prims D _ (FirstCounts.voteRound_honestIn .stream (by decide)
+    D A.net state (fun i => (keys i).map seedVote) fun j q hq => by
+      obtain ⟨k, -, rfl⟩ := Option.map_eq_some_iff.1 hq
+      rfl) world t ht
   have hpot : HiddenPot runLimit D (remaining runLimit treeSetups (fun _ => 0))
-      (⟨startState D state keys, if (startState D state keys).flag then some (.seeds, world) else none⟩ :
-        FirstState C A.net.State) world := by
-    refine ⟨paramAgree_start prims D A state keys world hy, fun name => ⟨∅, by simp; rfl, fun key ρ idx position h => ?_⟩⟩
-    rw [hworld] at h
+      (⟨seedState D t.1.1 keys t.1.2, if (seedState D t.1.1 keys t.1.2).flag then some (.seeds, world) else none⟩ :
+        FirstState C A.net.State) t.2 := by
+    obtain ⟨parameter, hp⟩ := paramAgree_start prims D A state keys world hy
+    refine ⟨⟨parameter, fun i hi k hk => hp i hi k (Vote.committed_eq_some hk)⟩,
+      fun name => ⟨∅, by simp; rfl, fun key ρ idx position h => ?_⟩⟩
+    rw [hvote, hworld] at h
     exact absurd rfl h
   have hcall : ∀ t, FirstCounts.Moves (σ := A.net.State) (HiddenPot runLimit D) 0
       (inStream prims D (worldRoles.adversary (OracleComp.lift (OracleSpec.query t)))) := by
@@ -490,15 +502,15 @@ theorem firstRunOf_hiddenKeyBound (D : C.Coalition) (A : DkgTsigAdversary C E) (
     rw [isQueryBoundP_query_iff]
     exact fun h => h.elim
   obtain ⟨-, hcells⟩ := FirstCounts.moves_bind
-    (firstTreeRuns_walk runLimit D (HiddenPot runLimit D) run ready .top
-      (firstTreeRun_hiddenPot runLimit D run hhidden ready .top) runLimit)
+    (firstTreeRuns_walk prims runLimit D A.net (HiddenPot runLimit D) run ready .top
+      (firstTreeRun_hiddenPot prims runLimit D A.net run hhidden ready .top) runLimit)
     (fun _ => firstSigning_walk prims runLimit D .stream nofun
       (DigestBudgets.signQuiet nofun) A run (HiddenPot runLimit D)
       (hiddenPot_mono runLimit D) ready
-      (fun tree => firstTreeRun_hiddenPot runLimit D run hhidden ready tree)
+      (fun tree => firstTreeRun_hiddenPot prims runLimit D A.net run hhidden ready tree)
       (hiddenPot_quiet prims runLimit D) (hiddenPot_frame runLimit D) (fun _ => False) (fun _ h => h) (fun t => by simpa using hcall t) 0
       fun _ _ => isQueryBoundP_false _)
-    _ _ world hpot x (by rw [StateT.run_bind, StateT.run_bind, mem_support_bind_iff]; exact ⟨z, hz, hx⟩)
+    _ _ t.2 hpot x (by rw [StateT.run_bind, StateT.run_bind, mem_support_bind_iff]; exact ⟨z, hz, hx⟩)
   intro name
   obtain ⟨keys', hc, hcover⟩ := hcells name
   refine ⟨keys', ?_, hcover⟩

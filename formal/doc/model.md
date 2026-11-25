@@ -32,7 +32,7 @@ The code of the forger differs from the game in five points. Each point is an ob
 | No randomizer search | The emulated operators of a bottom run make no randomizer search. They take the result of the dealer. |
 | A wrong emulated output | A signing request to an emulated operator with an output of the bottom tree goes to the dealer, also when that emulated output is wrong. |
 
-- The chain of hops covers all five points, on the condition that `SharedStep` holds at `privacyStepError` (Section 4).
+- The chain of hops is the plan for all five points (Section 4).
 - For the second point, the bound must cover the first divergence that the adversary can see.
 - For the fourth point, take the same public parameter and the same hash oracle, and outputs of the first ceremony that are those of the dealer.
 - Then the result of the dealer is the result that the search of the game gives.
@@ -78,9 +78,7 @@ The next numbers illustrate the bound and are no claim. Take $t=3$, $n=5$ and a 
 
 The theorem `dkgCorrectness` proves the bound `dkgCorrectnessError` plus `streamAdvantage` of `dkgTreeGame` for the whole game. No proof accounts for the whole game for the bound of `dkgSecurityPreservation` on the win probability yet.
 
-The proof of `dkgSecurityPreservation` is a chain of 13 hops (`Proof/DkgSecurity/Shared/Hops.lean`). Twelve hops are theorems. The theorem `DkgSecurityProof.dkgSecurityPreservation_of_leaves` gives the field from the open hop `SharedStep`.
-
-The theorem `theorems_of_sharedStep` of the root module gives the bundle `Theorems` from the same hop.
+The proof of `dkgSecurityPreservation` is a chain of 13 hops (`Proof/DkgSecurity/Shared/Hops.lean`). Twelve hops have proofs on the game without the vote of `Statement/DkgGame.lean`. These files are not part of the build until they are on the game with the vote. So the win bound has no proof in the build. The column "State" of the table is for the game without the vote.
 
 | Hop | Content | State |
 | --- | --- | --- |

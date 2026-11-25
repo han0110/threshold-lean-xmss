@@ -186,9 +186,11 @@ def hybridTreeRun (j : ℕ) (monitor : TreeMonitor C) (D : C.Coalition) (net : A
   let (state, outputs) ← StateT.lift (executePhase worldRoles D net noFunctionality (treeFuel circuits settings)
     s.adversary fun i => slotProgram K circuits settings D (fun c => fresh.getD c none) i (s.operators i) tree)
   let bad ← StateT.lift (monitor (fun i => (s.operators i).keys) tree outputs)
-  let operators := fun i => (s.operators i).keep (outputs i) tree
+  let (state, ok) ← StateT.lift (voteRound worldRoles D net state fun i => (outputs i).map (treeVote tree))
+  let kept := committed ok outputs
+  let operators := fun i => (s.operators i).keep (kept i) tree
   let runs := Function.update s.runs tree (s.runs tree + 1)
-  set (⟨state, operators, runs, s.closed, s.flag || bad⟩ : RealState C net.State)
+  set (⟨state, operators, runs, s.closed, s.flag || bad || split D kept⟩ : RealState C net.State)
 
 /-- At most `count` runs of `tree` in hybrid `j`, as `treeRuns`. -/
 def hybridTreeRuns (j : ℕ) (monitor : TreeMonitor C) (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty)
@@ -238,9 +240,10 @@ def hybridRun (j : ℕ) (monitor : TreeMonitor C) (D : C.Coalition) (A : DkgTsig
     OracleComp (WorldSpec C) (Bool × Bool) := do
   let (state, keys) ← realExecution D A.net noFunctionality setupRounds
     (fun i (_ : Unit) => (seedGen i : PartyM C E RealSpec (Keys C))) (fun _ => ()) []
+  let (state, ok) ← voteRound worldRoles D A.net state fun i => (keys i).map seedVote
   let (win, s) ← (do
       hybridTreeRuns K circuits settings runLimit j monitor D A.net .top runLimit
-      hybridSigning K circuits settings runLimit j monitor D A).run (startState D state keys)
+      hybridSigning K circuits settings runLimit j monitor D A).run (seedState D state keys ok)
   pure (win, s.flag)
 
 /-- Hybrid `j` of `dkgTreeGame`. The slots below `j` have fresh hidden keys. -/

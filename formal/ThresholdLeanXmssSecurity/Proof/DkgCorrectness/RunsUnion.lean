@@ -191,15 +191,18 @@ theorem runBad_wp {σ : Type} (run : RunOf C σ) (ready : RealState C σ → Str
   exact (ENNReal.ofReal_toReal (prEvent_ne_top _)).symm.le.trans
     (ENNReal.ofReal_le_ofReal (hbad tree s world hready hflag))
 
+omit [Field E] [Algebra Bit E] in
 /-- One allowed run of `tree` does not raise the expected potential. A ready start with no record and
-no flag trades the bound of one run of `tree` for the event of `RunBadW`. -/
-theorem firstTreeRun_super {σ : Type} (run : RunOf C σ) (ready : RealState C σ → StreamState C → Prop)
-    (ε : Tree → ℝ) (hbad : RunBadOf run ready ε) (tree : Tree) (s : FirstState C σ)
+no flag trades the bound of one run of `tree` for the event of `RunBadW`. The vote after the run sets
+no split (`voteRound_split_run`), so it keeps the potential. -/
+theorem firstTreeRun_super (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (run : RunOf C net.State)
+    (ready : RealState C net.State → StreamState C → Prop)
+    (ε : Tree → ℝ) (hbad : RunBadOf run ready ε) (tree : Tree) (s : FirstState C net.State)
     (world : StreamState C) (hruns : s.real.runs tree < runLimit) :
-    wp (((firstTreeRunOf run ready tree).run s).run world)
+    wp (((firstTreeRunOf prims D net run ready tree).run s).run world)
       (fun z => Weight runLimit (fun t => ENNReal.ofReal (ε t)) z.1.2) ≤
         Weight runLimit (fun t => ENNReal.ofReal (ε t)) s := by
-  unfold firstTreeRunOf
+  unfold firstTreeRunOf inStream
   simp only [StateT.run_bind, StateT.run_get, pure_bind, StateT.run_lift, StateT.run_set, StateT.run_pure,
     wp_bind, wp_pure]
   cases hfirst : s.first with
@@ -215,13 +218,15 @@ theorem firstTreeRun_super {σ : Type} (run : RunOf C σ) (ready : RealState C �
         set after := remaining runLimit e (Function.update s.real.runs tree (s.real.runs tree + 1))
         calc _ ≤ wp ((run tree s.real).run world)
               (fun x => propInd (x.1.2 = true ∧ ¬ GlobalEvent x.2) + after) := by
-              refine wp_mono _ fun x => ?_
+              refine wp_mono _ fun x => wp_le_const_of_support _ fun y hy => ?_
+              have hsplit := Vote.voteRound_split_run worldRoles D net x.1.1.1 x.1.1.2 (treeVote tree)
+                (streamWorld prims D) x.2 y hy
               cases hx : x.1.2 with
               | true =>
                 simp only [ite_true, target_run, true_and]
                 exact le_self_add
               | false =>
-                simp only [Bool.false_eq_true, ite_false, false_and]
+                simp only [hsplit, Bool.false_eq_true, ite_false, false_and]
                 exact le_add_self
           _ ≤ e tree + after := by
               rw [wp_add, wp_const]
@@ -245,25 +250,29 @@ theorem runs_lt_of_mayRun (D : C.Coalition) {σ : Type} (s : RealState C σ) (tr
 
 variable (ε : Tree → ℝ)
 
-theorem firstTreeRuns_super {σ : Type} (D : C.Coalition) (run : RunOf C σ)
-    (ready : RealState C σ → StreamState C → Prop) (hbad : RunBadOf run ready ε) (tree : Tree) :
-    ∀ count, Super (Weight runLimit fun t => ENNReal.ofReal (ε t)) (firstTreeRunsOf runLimit D run ready tree count)
+omit [Field E] [Algebra Bit E] in
+theorem firstTreeRuns_super (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (run : RunOf C net.State)
+    (ready : RealState C net.State → StreamState C → Prop) (hbad : RunBadOf run ready ε) (tree : Tree) :
+    ∀ count, Super (Weight runLimit fun t => ENNReal.ofReal (ε t))
+      (firstTreeRunsOf prims runLimit D net run ready tree count)
   | 0 => super_pure _
   | count + 1 => by
     unfold firstTreeRunsOf
     refine super_get_bind fun s world => ?_
     split_ifs with h
     · rw [StateT.run_bind, StateT.run_bind, wp_bind]
-      exact le_trans (wp_mono _ fun y => firstTreeRuns_super D run ready hbad tree count y.1.2 y.2)
-        (firstTreeRun_super runLimit run ready ε hbad tree s world
+      exact le_trans (wp_mono _ fun y => firstTreeRuns_super D net run ready hbad tree count y.1.2 y.2)
+        (firstTreeRun_super prims runLimit D net run ready ε hbad tree s world
           (runs_lt_of_mayRun runLimit D s.real tree h))
     · exact super_pure _ s world
 
-theorem firstTreeRequest_super {σ : Type} (D : C.Coalition) (run : RunOf C σ)
-    (ready : RealState C σ → StreamState C → Prop) (hbad : RunBadOf run ready ε) (b : Fin (2 ^ layerHeight)) :
-    Super (Weight runLimit fun t => ENNReal.ofReal (ε t)) (firstTreeRequestOf prims runLimit D run ready b) := by
+omit [Field E] [Algebra Bit E] in
+theorem firstTreeRequest_super (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (run : RunOf C net.State)
+    (ready : RealState C net.State → StreamState C → Prop) (hbad : RunBadOf run ready ε)
+    (b : Fin (2 ^ layerHeight)) :
+    Super (Weight runLimit fun t => ENNReal.ofReal (ε t)) (firstTreeRequestOf prims runLimit D net run ready b) := by
   unfold firstTreeRequestOf
-  refine super_bind (firstTreeRuns_super runLimit ε D run ready hbad _ 1) fun _ =>
+  refine super_bind (firstTreeRuns_super prims runLimit ε D net run ready hbad _ 1) fun _ =>
     super_get_bind fun s world => ?_
   split
   · exact super_bind (super_lift _) (fun _ => super_pure _) s world
@@ -311,12 +320,13 @@ theorem firstSignRequest_super (D : C.Coalition) {σ : Type} (V : FirstState C �
     superT_bind (superT_lift super_get) fun s => ?_
   exact operatorAnswer_super prims V D _ _ e q
 
-theorem firstOracles_super {σ : Type} (D : C.Coalition) (run : RunOf C σ)
-    (ready : RealState C σ → StreamState C → Prop) (hbad : RunBadOf run ready ε) (q : TsigQuery C) :
-    SuperT (Weight runLimit fun t => ENNReal.ofReal (ε t)) (firstOraclesOf prims runLimit D run ready q) := by
+omit [Field E] [Algebra Bit E] in
+theorem firstOracles_super (D : C.Coalition) (net : Adversary C E Unit PEmpty PEmpty) (run : RunOf C net.State)
+    (ready : RealState C net.State → StreamState C → Prop) (hbad : RunBadOf run ready ε) (q : TsigQuery C) :
+    SuperT (Weight runLimit fun t => ENNReal.ofReal (ε t)) (firstOraclesOf prims runLimit D net run ready q) := by
   rcases q with i | b | ⟨i, J, e, message⟩ | ⟨i, J, e, message, parts⟩
   · exact fun t => super_pure _
-  · exact superT_lift (firstTreeRequest_super prims runLimit ε D run ready hbad b)
+  · exact superT_lift (firstTreeRequest_super prims runLimit ε D net run ready hbad b)
   · exact firstSignRequest_super prims D _ (fun _ _ => rfl) i e _
   · exact firstSignRequest_super prims D _ (fun _ _ => rfl) i e _
 
@@ -330,7 +340,7 @@ theorem firstSigning_super (D : C.Coalition) (A : DkgTsigAdversary C E) (run : R
   · refine super_bind (superT_simulateQ _ (fun q => ?_) _ _) (fun _ => super_pure _) s world
     rcases q with t | q | q
     · exact superT_lift (super_lift _)
-    · exact firstOracles_super prims runLimit ε D run ready hbad q
+    · exact firstOracles_super prims runLimit ε D A.net run ready hbad q
     · rcases q with _ | state
       · change SuperT _ (StateT.lift ((fun s : FirstState C A.net.State => s.real.adversary) <$> get))
         rw [map_eq_bind_pure_comp]
@@ -346,9 +356,9 @@ theorem firstRun_target (D : C.Coalition) (A : DkgTsigAdversary C E) (run : RunO
       (runLimit : ℝ≥0∞) * ENNReal.ofReal (ε .top) +
         ∑ b : Fin (2 ^ layerHeight), (runLimit : ℝ≥0∞) * ENNReal.ofReal (ε (.bottom b)) := by
   set V := Weight (C := C) (σ := A.net.State) runLimit fun t => ENNReal.ofReal (ε t)
-  have hsuper : Super V (firstTreeRunsOf runLimit D run ready .top runLimit >>=
+  have hsuper : Super V (firstTreeRunsOf prims runLimit D A.net run ready .top runLimit >>=
       fun _ => firstSigningOf prims runLimit D A run ready) :=
-    super_bind (firstTreeRuns_super runLimit ε D run ready hbad .top runLimit)
+    super_bind (firstTreeRuns_super prims runLimit ε D A.net run ready hbad .top runLimit)
       fun _ => firstSigning_super prims runLimit ε D A run ready hbad
   have hend : ∀ z : FirstState C A.net.State, propInd (Target z.first) ≤ V z := by
     intro z
@@ -363,21 +373,21 @@ theorem firstRun_target (D : C.Coalition) (A : DkgTsigAdversary C E) (run : RunO
   rw [prEvent_eq_wp_propInd]
   unfold firstRunOf
   simp only [StateT.run_bind, StateT.run_get, StateT.run_pure, wp_bind, wp_pure, pure_bind]
-  refine wp_le_const_of_support _ fun x _ => ?_
-  set fs : FirstState C A.net.State := ⟨startState D x.1.1 x.1.2,
-    if (startState D x.1.1 x.1.2).flag = true then some (Stage.seeds, x.2) else none⟩
-  have hstep := hsuper fs x.2
+  refine wp_le_const_of_support _ fun x _ => wp_le_const_of_support _ fun y _ => ?_
+  set fs : FirstState C A.net.State := ⟨seedState D y.1.1 x.1.2 y.1.2,
+    if (seedState D y.1.1 x.1.2 y.1.2).flag = true then some (Stage.seeds, x.2) else none⟩
+  have hstep := hsuper fs y.2
   simp only [StateT.run_bind, wp_bind] at hstep
   refine le_trans (wp_mono _ fun y => wp_mono _ fun z => hend z.1.2) (le_trans hstep ?_)
   simp only [V, fs, Weight]
-  cases hflag : (startState D x.1.1 x.1.2).flag with
+  cases hflag : (seedState D y.1.1 x.1.2 y.1.2).flag with
   | true =>
     have hnot : ¬ Target (some (Stage.seeds, x.2)) := by
       rintro ⟨_, _, _, h, -⟩
       cases h
     simp only [ite_true, hnot, propInd_false, zero_le]
   | false =>
-    simp only [Bool.false_eq_true, ite_false, remaining, startState, Nat.sub_zero, le_refl]
+    simp only [Bool.false_eq_true, ite_false, remaining, seedState, startState, Nat.sub_zero, le_refl]
 
 omit [Field E] [Algebra Bit E] in
 /-- The union over the runs for each run, from `firstRun_target` and the bounds of `RunBadOf` that are
