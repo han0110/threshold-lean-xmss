@@ -11,9 +11,36 @@ This repository implements threshold t-of-(2t-1) leanXMSS (EIP-8450) base on the
 
 See [`doc/dkg.md`](doc/dkg.md) for the DKG and [`doc/sign.md`](doc/sign.md) for signing.
 
-[`formal/`](formal) holds the Lean 4 statements of five security claims of the protocol, as games in one model. Two claims cover the signing with a trusted dealer, and Lean proves both. Three claims cover the DKG on the real network with a static coalition. Lean proves the correctness against an adversary and the completeness of an honest run. For the third claim, the security of the signing with the DKG, Lean proves the cost bound of the reduction and twelve of the 13 hops of its bound on the win probability. One hop has no proof yet. See [`formal/README.md`](formal/README.md).
+## Cluster
 
-The Rust code uses leanVM at revision `f95bc21a`, and the Lean statements and proofs use revision `fdb31798`. leanVM does not make some leanXMSS items public at revision `f95bc21a`, so [`src/lean_xmss.rs`](src/lean_xmss.rs) holds verbatim copies of them.
+The table compares threshold BLS with threshold leanXMSS for some $t$-of-$n$ clusters. Each cell is the number of faulty operators that the cluster tolerates.
+
+Both schemes run QBFT before each signature, and an honest operator signs only the message that QBFT decides. QBFT tolerates $f = \lfloor (n-1)/3 \rfloor$ Byzantine operators with the quorum $q = \lfloor (n+f)/2 \rfloor + 1$. Each cluster of the table has $t \le q$.
+
+- Unforgeability is against a static coalition of corrupt operators.
+- Safety is against Byzantine operators. No two messages get a signature for one slot.
+- Liveness is against offline operators. The other operators continue to sign.
+
+| Cluster | Unforgeability <br> (BLS) | Unforgeability <br> (leanXMSS + dealer) | Unforgeability <br> (leanXMSS + DKG) | Safety | Liveness |
+| ------- | ------------------------- | --------------------------------------- | ------------------------------------ | ------ | -------- |
+| 2-of-3  | $1$                       | $1$                                     | $1$                                  | $0$    | $1$      |
+| 3-of-4  | $2$                       | $2$                                     | $\textcolor{red}{1}$                 | $1$    | $1$      |
+| 3-of-5  | $2$                       | $2$                                     | $2$                                  | $1$    | $1$      |
+| 4-of-7  | $3$                       | $3$                                     | $3$                                  | $2$    | $2$      |
+| 5-of-7  | $4$                       | $4$                                     | $\textcolor{red}{3}$                 | $2$    | $2$      |
+| 5-of-9  | $4$                       | $4$                                     | $4$                                  | $2$    | $3$      |
+
+The DKG of leanXMSS is an MPC with only symmetric primitives. Such an MPC keeps its secrets against fewer than $n/2$ corrupt operators. It computes the one-time keys of each tree, so its limit is also the limit of the unforgeability. The rows for 3-of-4 and 5-of-7 assume a DKG with an MPC at that limit.
+
+A trusted dealer computes the trees in the clear, so the limit of the MPC does not apply.
+
+| Property                           | Faulty operators that the cluster tolerates |
+| ---------------------------------- | ------------------------------------------- |
+| Unforgeability (BLS)               | $t - 1$                                     |
+| Unforgeability (leanXMSS + dealer) | $t - 1$                                     |
+| Unforgeability (leanXMSS + DKG)    | $\min(t - 1, \lfloor (n-1)/2 \rfloor)$      |
+| Safety                             | $f$                                         |
+| Liveness                           | $n - q$                                     |
 
 ## Usage
 
@@ -75,21 +102,29 @@ A key has a top tree of $2^{16}$ leaves, and each bottom tree has $2^{16}$ more.
 
 ### DKG
 
-The table gives the cost of one bottom tree, which holds $2^{16}$ one-time keys.
+The following table gives the traffic that each operator sends for one bottom tree. The average rate is over the $2^{16}$ epochs of $384$ s.
 
-| Group  | Delay  | Mode      | Rounds per batch | Wall time     | Sent per operator |
-| ------ | ------ | --------- | ---------------- | ------------- | ----------------- |
-| 2-of-3 | none   | collector | $197$            | $200.5$ s     | $52.3$ GB         |
-| 2-of-3 | 150 ms | collector | $197$            | $1{,}761.6$ s | $52.3$ GB         |
-| 2-of-3 | 150 ms | peer      | $125$            | $1{,}133.0$ s | $52.3$ GB         |
+| Group  | Mode      | Rounds per batch | Sent per operator | Average rate |
+| ------ | --------- | ---------------- | ----------------- | ------------ |
+| 2-of-3 | peer      | $126$            | $52.5$ GB         | $2.09$ KB/s  |
+| 3-of-5 | collector | $198$            | $63.7$ GB         | $2.53$ KB/s  |
+| 4-of-7 | collector | $198$            | $70.7$ GB         | $2.81$ KB/s  |
+| 5-of-9 | collector | $198$            | $81.4$ GB         | $3.24$ KB/s  |
 
-- The CPU is Intel Core i9-13900K. Each operator has $8$ of its threads.
-- Each operator runs $512$ batches at the same time.
-- The wall time is the MPC time of one full bottom tree, as operator 0 logs it. The logged time and bytes do not include the two PRSS setups and the signature of the root.
-- The delay is a fixed $150$ ms one way on every link, with TCP buffers of $128$ MB.
-- The links have no bandwidth limit, jitter or loss, so a real network can take longer.
-- The runs predate the reshare of the outputs before the check. The code now takes $198$ (collector) or $126$ (peer) rounds per batch.
-- The runs also predate the change of the check field from $\mathbb F_{192}$ to $\mathbb F_{128}$ and the coin with two opened values.
+The following table gives the wall time of one bottom tree and its bottleneck. Each operator runs on one c4-highmem-8 machine with $8$ vCPUs and $32$ GiB.
+
+| Profile  | RTT      | Upload     | 2-of-3                 | 3-of-5                 | 4-of-7                  |
+| -------- | -------- | ---------- | ---------------------- | ---------------------- | ----------------------- |
+| P1       | $1$ ms   | no limit   | $2.5$ min / compute    | $6.0$ min / compute    | $22.3$ min / compute    |
+| P140     | $140$ ms | $1$ Gbps   | $8.9$ min / bandwidth  | $12.8$ min / bandwidth | $30.7$ min / latency    |
+| P235     | $235$ ms | $1$ Gbps   | $9.6$ min / bandwidth  | $15.1$ min / latency   | $44.7$ min / latency    |
+| P140-100 | $140$ ms | $100$ Mbps | $74.7$ min / bandwidth | $92.0$ min / bandwidth | $103.8$ min / bandwidth |
+
+- The RTT of $140$ ms is the average latency of a cluster in the [report of Lido and Obol](https://obol.org/lido_obol_2.pdf).
+- The RTT of $235$ ms is the recommended latency inside a cluster in the [Simple DVT test of Lido](https://blog.obol.org/lido-simple-dvt-wave-1-testing-complete).
+- More RAM with more batches in flight hides the latency.
+- More cores make the compute faster.
+- The bandwidth stays the floor. With the bandwidth as the bottleneck, the DKG time is about the traffic divided by the upload rate.
 
 ### Sign
 
