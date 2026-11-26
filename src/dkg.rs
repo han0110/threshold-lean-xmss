@@ -9,11 +9,11 @@
 //!   the reshared outputs.
 //! - Each ceremony starts with its own `Party`, which derives fresh PRSS keys and drops them at the end.
 //! - The seed generation, the top tree and each bottom tree end with a vote on the public result, in `unanimous`.
-//!   - An operator writes its files only after all operators vote for the same result. So all honest operators keep the
-//!     result or none keeps it.
+//!   - An operator writes its output files only after all operators vote for the same result. So all honest operators
+//!     keep the result or none keeps it.
 //!   - The vote assumes a broadcast channel. It is an addition to the note and to GS20, in which each party aborts
 //!     alone.
-//!   - A bottom tree has one vote for its two ceremonies, because it writes one file.
+//!   - A bottom tree has one vote for its two ceremonies, because it writes one output file.
 //! - A retry of the top ceremony reuses the `operator` file. If only some operators hold that file, all operators
 //!   delete it before a retry.
 //! - Each operator starts the batches in batch order and runs at most `concurrency` of them at the same time.
@@ -23,6 +23,12 @@
 //! - The top key of a bottom tree signs its root in MPC, because the top tree stores no masked values.
 //!   - This signature run starts its own `Party` after the randomizer search on the root, so it uses fresh PRSS keys as
 //!     a second ceremony does.
+//! - A ceremony can generate only the first keys of its tree, a power of two.
+//!   - `wots::levels` puts a public surrogate node in the place of each subtree with no keys.
+//!   - An operator records the count of the keys of a bottom tree before its top key signs the root, and `admit`
+//!     refuses a ceremony of that tree with another count.
+//!   - This is an addition to the note, which has full trees and no count. `doc/dkg.md`, Section 3.3, describes it.
+//!   - No Lean claim covers a tree with fewer keys.
 //! - A bottom tree also opens the commitment `c_e` of each key `e`, in commitment batches of the batch size.
 //!   - The commitment hashes `F(A_rnd(e))` once, at `A_rnd(e)` with step 1.
 //!   - The last commitment batch also opens the randomizer value `F(A_rnd)` of the top key, but not its hash output.
@@ -31,7 +37,7 @@
 //!     `F(A_rnd(e))` after the check.
 
 use std::fs::{self, DirBuilder, File, OpenOptions};
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::ops::Deref;
 use std::os::unix::fs::{DirBuilderExt, FileExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
@@ -57,6 +63,14 @@ use crate::wots::{
 
 /// The default chains or keys of a batch, in 32 words of `LANES` instances.
 pub const BATCH_SIZE: usize = 32 * LANES;
+
+/// The settings of the key ceremonies of an operator.
+pub struct Settings {
+    pub reshare: Reshare,
+    pub batch_size: usize,
+    pub concurrency: usize,
+    pub time_limit: Duration,
+}
 
 fn hash_public(public_parameter: &Digest, layer: Layer, e: u32, chain: usize, step: usize) -> HashPublic {
     let [p0, p1] = digest_lanes(public_parameter);
@@ -408,13 +422,12 @@ async fn party(
     Ok(Arc::new(party.await?))
 }
 
+/// Generates the key and its top tree with the first `leaves` top keys, a power of two.
 pub async fn new_top_tree(
     dir: &Path,
     network: &Arc<Network>,
-    reshare: Reshare,
-    batch_size: usize,
-    concurrency: usize,
-    time_limit: Duration,
+    leaves: u32,
+    settings: &Settings,
 ) -> Result<Vec<u8>, String> {
     let (group, operator) = match dir.join("operator").exists() {
         true => Operator::load(dir),
@@ -425,7 +438,7 @@ pub async fn new_top_tree(
                 let vote = tagged_hash(VOTE, &[&[0], &operator.public_parameter]);
                 Ok((operator, vote))
             };
-            let operator = unanimous(network, time_limit, seed_gen).await?;
+            let operator = unanimous(network, settings.time_limit, seed_gen).await?;
             DirBuilder::new().recursive(true).mode(0o700).create(dir).unwrap();
             OpenOptions::new()
                 .write(true)
@@ -435,13 +448,22 @@ pub async fn new_top_tree(
                 .open(dir.join("operator"))
                 .and_then(|mut file| file.write_all(&operator.bytes(group.t)))
                 .unwrap();
+            // Each bottom ceremony of these new seeds records its count of keys, as `admit` describes.
+            fs::write(dir.join("counts"), []).unwrap();
             (group, operator)
         }
     };
     let top_tree = async || {
-        let party = party(group, &operator, network, reshare, batch_size).await?;
-        let keys: Vec<u32> = (0..KEYS as u32).collect();
-        let (leaves, ..) = ceremony(&party, operator.public_parameter, Layer::Top, &keys, concurrency).await?;
+        let party = party(group, &operator, network, settings.reshare, settings.batch_size).await?;
+        let keys: Vec<u32> = (0..leaves).collect();
+        let (leaves, ..) = ceremony(
+            &party,
+            operator.public_parameter,
+            Layer::Top,
+            &keys,
+            settings.concurrency,
+        )
+        .await?;
         let pk = [
             wots::levels(&operator.public_parameter, Layer::Top, 0, leaves.clone())[LAYER_HEIGHT][0],
             operator.public_parameter,
@@ -451,28 +473,29 @@ pub async fn new_top_tree(
         let vote = tagged_hash(VOTE, &[&[1], &top, &pk]);
         Ok(((top, pk), vote))
     };
-    let (top, pk) = unanimous(network, time_limit, top_tree).await?;
+    let (top, pk) = unanimous(network, settings.time_limit, top_tree).await?;
     fs::write(dir.join("top"), top).unwrap();
     fs::write(dir.join("pk"), &pk).unwrap();
     Ok(pk)
 }
 
+/// Generates the bottom tree `bottom` with its first `leaves` keys, a power of two, and signs its root with the top
+/// key `bottom`.
 pub async fn new_bottom_tree(
     dir: &Path,
     network: &Arc<Network>,
     bottom: u32,
-    reshare: Reshare,
-    batch_size: usize,
-    concurrency: usize,
-    time_limit: Duration,
+    leaves: u32,
+    settings: &Settings,
 ) -> Result<(), String> {
     let (group, operator) = Operator::load(dir);
     let public_parameter = operator.public_parameter;
     let bottom_tree = async || {
-        let keys: Vec<u32> = (0..KEYS as u32).map(|k| bottom << LAYER_HEIGHT | k).collect();
+        admit(dir, bottom, leaves)?;
+        let keys: Vec<u32> = (0..leaves).map(|k| bottom << LAYER_HEIGHT | k).collect();
         let (leaves, cpk, commitments, randomizer, ..) = {
-            let party = party(group.clone(), &operator, network, reshare, batch_size).await?;
-            ceremony(&party, public_parameter, Layer::Bottom, &keys, concurrency).await?
+            let party = party(group.clone(), &operator, network, settings.reshare, settings.batch_size).await?;
+            ceremony(&party, public_parameter, Layer::Bottom, &keys, settings.concurrency).await?
         };
         let levels = wots::levels(&public_parameter, Layer::Bottom, bottom, leaves);
         let root = levels[LAYER_HEIGHT][0];
@@ -482,8 +505,11 @@ pub async fn new_bottom_tree(
             0,
             digests(&fs::read(dir.join("top")).unwrap()),
         );
-        let new_party = async || party(group, &operator, network, reshare, batch_size).await;
+        let new_party = async || party(group, &operator, network, settings.reshare, settings.batch_size).await;
         let secret = randomizer.unwrap();
+        // The top key opens its values for this root next. So the count of the tree is on disk first.
+        record(dir, &format!("leaves{bottom}"), &(keys.len() as u32).to_le_bytes())
+            .map_err(|_| format!("bottom tree {bottom} has another count of keys on disk"))?;
         let top_signature = top_signature(new_party, public_parameter, bottom, root, secret).await?;
         let top_signature = [top_signature, wots::path(&top, bottom as usize)].concat();
         if wots::layer_root(&public_parameter, Layer::Top, bottom, &root, &top_signature) != Some(top[LAYER_HEIGHT][0])
@@ -494,8 +520,66 @@ pub async fn new_bottom_tree(
         let vote = tagged_hash(VOTE, &[&[2], &bottom.to_le_bytes(), &tree]);
         Ok((tree, vote))
     };
-    let tree = unanimous(network, time_limit, bottom_tree).await?;
+    let tree = unanimous(network, settings.time_limit, bottom_tree).await?;
     fs::write(tree_file(dir, bottom), tree).unwrap();
+    Ok(())
+}
+
+/// Writes `message` to the new file `name` and syncs it to disk. If the file exists, it must hold
+/// the same message.
+pub fn record(dir: &Path, name: &str, message: &[u8]) -> Result<(), String> {
+    let path = dir.join(name);
+    match OpenOptions::new().write(true).create_new(true).open(&path) {
+        Ok(mut file) => {
+            file.write_all(message).unwrap();
+            file.sync_all().unwrap();
+            File::open(dir).unwrap().sync_all().unwrap();
+            Ok(())
+        }
+        // Another task can read the file before the task that wrote it syncs it, so this task syncs
+        // it too.
+        Err(_) if fs::read(&path).unwrap() == message => {
+            File::open(&path).unwrap().sync_all().unwrap();
+            File::open(dir).unwrap().sync_all().unwrap();
+            Ok(())
+        }
+        Err(_) => Err(format!("{name} holds another message or an incomplete record")),
+    }
+}
+
+/// The count of the keys of bottom tree `bottom` that `new_bottom_tree` recorded on disk.
+pub fn recorded(dir: &Path, bottom: u32) -> Result<Option<u32>, String> {
+    match fs::read(dir.join(format!("leaves{bottom}"))) {
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!(
+            "the count of the keys of bottom tree {bottom} is not readable: {error}"
+        )),
+        Ok(count) => match count.try_into() {
+            Ok(count) => Ok(Some(u32::from_le_bytes(count))),
+            Err(_) => Err(format!(
+                "bottom tree {bottom} has an incomplete record of its count of keys"
+            )),
+        },
+    }
+}
+
+/// Refuses a ceremony of bottom tree `bottom` with `leaves` keys if the tree can have another count of keys.
+///
+/// - The root of the tree depends on its count, and the top key `bottom` signs the root. `new_bottom_tree` records the
+///   count before the top key opens a value, so a recorded count is the only count of the tree.
+/// - The seed generation writes the file `counts` with the seeds. Seeds with no such file get only full bottom trees,
+///   also after a new top ceremony. A version that recorded no count had full trees only.
+pub fn admit(dir: &Path, bottom: u32, leaves: u32) -> Result<(), String> {
+    if let Some(count) = recorded(dir, bottom)?
+        && count != leaves
+    {
+        return Err(format!(
+            "bottom tree {bottom} must have the {count} keys of its earlier ceremony"
+        ));
+    }
+    if leaves as usize != KEYS && !dir.join("counts").exists() {
+        return Err("a key that records no counts has only full bottom trees".into());
+    }
     Ok(())
 }
 
@@ -503,11 +587,18 @@ pub fn tree_file(dir: &Path, bottom: u32) -> PathBuf {
     dir.join(format!("tree{bottom}"))
 }
 
-/// The file of a bottom tree holds its Merkle levels from the leaves to the root. The rows of its
-/// chains, its top signature and the commitments of its keys follow.
-pub struct BottomTree(File);
+/// The file of a bottom tree holds its Merkle levels from the leaves to the root, as `wots::levels` gives them. The
+/// rows of its chains, its top signature and the commitments of its keys follow.
+pub struct BottomTree {
+    file: File,
+    /// The count of the keys of the tree, which follows from the size of the file.
+    pub keys: usize,
+}
 
-const NODES: usize = 2 * KEYS - 1;
+/// The count of the nodes of the levels below `level` in a tree with `keys` keys.
+fn nodes_below(keys: usize, level: usize) -> usize {
+    (0..level).map(|level| (keys >> level).max(2)).sum()
+}
 
 impl BottomTree {
     fn bytes(levels: &[Vec<Digest>], cpk: &[ChainRow], top_signature: &[u8], commitments: &[Digest]) -> Vec<u8> {
@@ -523,37 +614,47 @@ impl BottomTree {
     }
 
     pub fn open(dir: &Path, bottom: u32) -> BottomTree {
-        BottomTree(File::open(tree_file(dir, bottom)).unwrap())
+        let file = File::open(tree_file(dir, bottom)).unwrap();
+        let size = file.metadata().unwrap().len() as usize;
+        let keys = (0..=LAYER_HEIGHT)
+            .map(|height| 1 << height)
+            .find(|&keys| BottomTree::rows_offset(keys) + (48 * V + 16) * keys + LAYER_SIG_SIZE == size);
+        BottomTree {
+            file,
+            keys: keys.unwrap(),
+        }
+    }
+
+    /// The offset of the rows in the file of a tree with `keys` keys, after its nodes and its root.
+    fn rows_offset(keys: usize) -> usize {
+        16 * (nodes_below(keys, LAYER_HEIGHT) + 1)
     }
 
     fn read(&self, offset: usize, length: usize) -> Vec<u8> {
         let mut bytes = vec![0; length];
-        self.0.read_exact_at(&mut bytes, offset as u64).unwrap();
+        self.file.read_exact_at(&mut bytes, offset as u64).unwrap();
         bytes
     }
 
     pub fn path(&self, leaf: usize) -> Vec<u8> {
         (0..LAYER_HEIGHT)
-            .flat_map(|level| {
-                let nodes_before_level = 2 * (KEYS - (KEYS >> level));
-                self.read(16 * (nodes_before_level + ((leaf >> level) ^ 1)), 16)
-            })
+            .flat_map(|level| self.read(16 * (nodes_below(self.keys, level) + ((leaf >> level) ^ 1)), 16))
             .collect()
     }
 
     pub fn cpk(&self, leaf: usize) -> Vec<ChainRow> {
-        self.read(16 * NODES + 48 * V * leaf, 48 * V)
+        self.read(BottomTree::rows_offset(self.keys) + 48 * V * leaf, 48 * V)
             .chunks(48)
             .map(|row| digests(row).try_into().unwrap())
             .collect()
     }
 
     pub fn top_signature(&self) -> Vec<u8> {
-        self.read(16 * NODES + 48 * V * KEYS, LAYER_SIG_SIZE)
+        self.read(BottomTree::rows_offset(self.keys) + 48 * V * self.keys, LAYER_SIG_SIZE)
     }
 
     pub fn commitment(&self, leaf: usize) -> Digest {
-        let offset = 16 * NODES + 48 * V * KEYS + LAYER_SIG_SIZE + 16 * leaf;
+        let offset = BottomTree::rows_offset(self.keys) + 48 * V * self.keys + LAYER_SIG_SIZE + 16 * leaf;
         self.read(offset, 16).try_into().unwrap()
     }
 }
@@ -793,7 +894,13 @@ mod tests {
         let top_tree = || {
             let outcomes = local_networks(2, async |network, _| {
                 let (dir, batch_size) = (&dirs[network.id], [128, 128, 64][network.id]);
-                let outcome = new_top_tree(dir, &network, Reshare::Peer, batch_size, 1, TIME_LIMIT).await;
+                let settings = Settings {
+                    reshare: Reshare::Peer,
+                    batch_size,
+                    concurrency: 1,
+                    time_limit: TIME_LIMIT,
+                };
+                let outcome = new_top_tree(dir, &network, KEYS as u32, &settings).await;
                 (outcome.unwrap_err(), fs::read(dir.join("operator")).unwrap())
             });
             // An operator fails at the batch sizes, or it stops first because another operator votes for the abort.
@@ -1047,6 +1154,29 @@ mod tests {
             Some(wots::verify(&public_key, &message, &signature))
         });
         assert_eq!(outcomes, vec![None, Some(true), Some(true)]);
+    }
+
+    #[test]
+    fn the_file_of_a_bottom_tree_gives_the_path_the_rows_and_the_commitment_of_each_of_its_keys() {
+        let dir = env::temp_dir().join(format!("threshold-lean-xmss-{}", rand::random::<u64>()));
+        fs::create_dir(&dir).unwrap();
+        for (bottom, keys) in [(0, 1), (1, 4)] {
+            let random = |count: usize| -> Vec<Digest> { (0..count).map(|_| rand::random()).collect() };
+            let levels = wots::levels(&[9; 16], Layer::Bottom, bottom, random(keys));
+            let cpk: Vec<ChainRow> = (0..V * keys).map(|_| rand::random()).collect();
+            let top_signature: Vec<u8> = (0..LAYER_SIG_SIZE).map(|_| rand::random()).collect();
+            let commitments = random(keys);
+            let bytes = BottomTree::bytes(&levels, &cpk, &top_signature, &commitments);
+            fs::write(tree_file(&dir, bottom), bytes).unwrap();
+            let tree = BottomTree::open(&dir, bottom);
+            assert_eq!((tree.keys, tree.top_signature()), (keys, top_signature));
+            for leaf in 0..keys {
+                assert_eq!(tree.path(leaf), wots::path(&levels, leaf));
+                assert_eq!(tree.cpk(leaf), cpk[V * leaf..V * (leaf + 1)]);
+                assert_eq!(tree.commitment(leaf), commitments[leaf]);
+            }
+        }
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

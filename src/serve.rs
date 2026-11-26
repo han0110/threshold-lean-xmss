@@ -11,12 +11,9 @@
 //! - An operator runs the acknowledgement session of a peer to its end before it takes the next announcement of that
 //!   peer, so the signing session that follows finds the certificate.
 
-use std::fs::{File, OpenOptions};
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Duration;
 use std::{fs, future};
 
 use tokio::net::TcpListener;
@@ -24,8 +21,8 @@ use tokio::sync::Mutex;
 use tokio::task;
 use tracing::{info, instrument};
 
-use crate::dkg::{self, BottomTree};
-use crate::mpc::{Group, Reshare};
+use crate::dkg::{self, BottomTree, Settings, record};
+use crate::mpc::Group;
 use crate::net::{self, Network};
 use crate::prawns::{self, ChainRow, Operator};
 use crate::wots::{self, Digest, KEYS};
@@ -33,9 +30,12 @@ use crate::wots::{self, Digest, KEYS};
 pub type Outcome = Result<Vec<u8>, String>;
 
 pub enum Session {
-    NewTopTree,
+    NewTopTree {
+        leaves: u32,
+    },
     NewBottomTree {
         bottom: u32,
+        leaves: u32,
     },
     Sign {
         leaf: u32,
@@ -58,8 +58,8 @@ impl Session {
 
     pub fn bytes(&self) -> Vec<u8> {
         let (kind, number, message) = match self {
-            Session::NewTopTree => (0, 0, vec![]),
-            Session::NewBottomTree { bottom } => (1, *bottom, vec![]),
+            Session::NewTopTree { leaves } => (0, *leaves, vec![]),
+            Session::NewBottomTree { bottom, leaves } => (1, *bottom, leaves.to_le_bytes().to_vec()),
             Session::Sign { leaf, quorum, message } => (2, *leaf, [members(quorum), message.clone()].concat()),
             Session::Acknowledge { leaf, message } => (3, *leaf, message.clone()),
         };
@@ -69,8 +69,11 @@ impl Session {
     pub fn parse(bytes: &[u8]) -> Session {
         let number = u32::from_le_bytes(bytes[1..5].try_into().unwrap());
         match bytes[0] {
-            0 => Session::NewTopTree,
-            1 => Session::NewBottomTree { bottom: number },
+            0 => Session::NewTopTree { leaves: number },
+            1 => Session::NewBottomTree {
+                bottom: number,
+                leaves: u32::from_le_bytes(bytes[5..9].try_into().unwrap()),
+            },
             2 => {
                 let (quorum, message) = parse_members(&bytes[5..]);
                 Session::Sign {
@@ -95,14 +98,6 @@ fn parse_members(bytes: &[u8]) -> (Vec<usize>, &[u8]) {
     let count = bytes[0] as usize;
     let ids = bytes[1..1 + count].iter().map(|&j| j as usize).collect();
     (ids, &bytes[1 + count..])
-}
-
-/// The settings of the key ceremonies of an operator.
-pub struct Settings {
-    pub reshare: Reshare,
-    pub batch_size: usize,
-    pub concurrency: usize,
-    pub time_limit: Duration,
 }
 
 struct Server {
@@ -146,24 +141,42 @@ impl Server {
 
     fn session(&self, request: &Session) -> Result<Session, String> {
         let key = self.dir.join("pk").exists();
+        // The file `top` holds the leaves of the top keys.
+        let top_keys = || fs::metadata(self.dir.join("top")).unwrap().len() as usize / 16;
         match *request {
-            Session::NewTopTree if key => Err("the key exists".into()),
-            Session::NewTopTree => Ok(Session::NewTopTree),
-            _ if !key => Err("no key, run dkg --top first".into()),
-            Session::NewBottomTree { bottom } if bottom as usize >= KEYS => {
-                Err(format!("the bottom tree index must be less than {KEYS}"))
+            Session::NewTopTree { .. } if key => Err("the key exists".into()),
+            Session::NewTopTree { leaves } | Session::NewBottomTree { leaves, .. }
+                if !leaves.is_power_of_two() || leaves as usize > KEYS =>
+            {
+                Err(format!("the leaves must be a power of two up to {KEYS}"))
             }
-            Session::NewBottomTree { bottom } if dkg::tree_file(&self.dir, bottom).exists() => {
+            Session::NewTopTree { leaves } => Ok(Session::NewTopTree { leaves }),
+            _ if !key => Err("no key, run dkg --top first".into()),
+            Session::NewBottomTree { bottom, .. } if bottom as usize >= top_keys() => {
+                Err(format!("the bottom tree index must be less than {}", top_keys()))
+            }
+            Session::NewBottomTree { bottom, .. } if dkg::tree_file(&self.dir, bottom).exists() => {
                 Err(format!("bottom tree {bottom} exists"))
             }
-            Session::NewBottomTree { bottom } => Ok(Session::NewBottomTree { bottom }),
+            Session::NewBottomTree { bottom, leaves } => {
+                dkg::admit(&self.dir, bottom, leaves).map(|()| Session::NewBottomTree { bottom, leaves })
+            }
             Session::Sign { ref message, .. } if message.len() != 32 => Err("the message must be 32 bytes".into()),
+            Session::Sign { leaf, .. } if wots::layer_index(leaf, 1) as usize >= top_keys() => {
+                Err(format!("leaf {leaf} has no key"))
+            }
             Session::Sign { leaf, .. } if !dkg::tree_file(&self.dir, wots::layer_index(leaf, 1)).exists() => {
-                Err(format!(
-                    "no bottom tree {}, run dkg --bottom {} first",
-                    wots::layer_index(leaf, 1),
-                    wots::layer_index(leaf, 1)
-                ))
+                let bottom = wots::layer_index(leaf, 1);
+                Err(match dkg::recorded(&self.dir, bottom)? {
+                    Some(count) if leaf as usize % KEYS >= count as usize => format!("leaf {leaf} has no key"),
+                    Some(count) => format!("no bottom tree {bottom}, run dkg --bottom {bottom} --leaves {count} first"),
+                    None => format!("no bottom tree {bottom}, run dkg --bottom {bottom} first"),
+                })
+            }
+            Session::Sign { leaf, .. }
+                if leaf as usize % KEYS >= BottomTree::open(&self.dir, wots::layer_index(leaf, 1)).keys =>
+            {
+                Err(format!("leaf {leaf} has no key"))
             }
             Session::Sign {
                 leaf,
@@ -200,29 +213,10 @@ impl Server {
     async fn run(&self, session_id: u32, session: &Session) -> Outcome {
         let network = self.network.session(session_id);
         match session {
-            Session::NewTopTree if self.dir.join("pk").exists() => Err("the key exists".into()),
-            Session::NewTopTree => {
-                dkg::new_top_tree(
-                    &self.dir,
-                    &network,
-                    self.settings.reshare,
-                    self.settings.batch_size,
-                    self.settings.concurrency,
-                    self.settings.time_limit,
-                )
-                .await
-            }
-            Session::NewBottomTree { bottom } => {
-                dkg::new_bottom_tree(
-                    &self.dir,
-                    &network,
-                    *bottom,
-                    self.settings.reshare,
-                    self.settings.batch_size,
-                    self.settings.concurrency,
-                    self.settings.time_limit,
-                )
-                .await?;
+            Session::NewTopTree { .. } if self.dir.join("pk").exists() => Err("the key exists".into()),
+            Session::NewTopTree { leaves } => dkg::new_top_tree(&self.dir, &network, *leaves, &self.settings).await,
+            Session::NewBottomTree { bottom, leaves } => {
+                dkg::new_bottom_tree(&self.dir, &network, *bottom, *leaves, &self.settings).await?;
                 Ok(fs::read(self.dir.join("pk")).unwrap())
             }
             Session::Sign { leaf, quorum, message } => sign(&self.dir, &network, *leaf, quorum, message).await,
@@ -303,6 +297,7 @@ fn load(dir: &Path, leaf: u32) -> (Group, Operator, Vec<u8>, Vec<ChainRow>, Dige
     let pk = fs::read(dir.join("pk")).unwrap();
     let tree = BottomTree::open(dir, wots::layer_index(leaf, 1));
     let tree_leaf = leaf as usize % wots::KEYS;
+    assert!(tree_leaf < tree.keys, "leaf {leaf} has no key");
     let rest = [tree.path(tree_leaf), tree.top_signature()].concat();
     (
         group,
@@ -353,28 +348,6 @@ pub async fn acknowledge(dir: &Path, network: &Arc<Network>, leaf: u32, message:
     Ok(vec![])
 }
 
-/// Writes `message` to the new file `name` and syncs it to disk. If the file exists, it must hold
-/// the same message.
-fn record(dir: &Path, name: &str, message: &[u8]) -> Result<(), String> {
-    let path = dir.join(name);
-    match OpenOptions::new().write(true).create_new(true).open(&path) {
-        Ok(mut file) => {
-            file.write_all(message).unwrap();
-            file.sync_all().unwrap();
-            File::open(dir).unwrap().sync_all().unwrap();
-            Ok(())
-        }
-        // Another task can read the file before the task that wrote it syncs it, so this task syncs
-        // it too.
-        Err(_) if fs::read(&path).unwrap() == message => {
-            File::open(&path).unwrap().sync_all().unwrap();
-            File::open(dir).unwrap().sync_all().unwrap();
-            Ok(())
-        }
-        Err(_) => Err(format!("{name} holds another message or an incomplete record")),
-    }
-}
-
 /// The operator signs `(leaf, message)` only when its acknowledgement and its certificate both hold
 /// `message`. The acknowledgement is durable before it goes out, so a certificate that a crash
 /// damaged cannot name another message.
@@ -389,8 +362,10 @@ pub fn certified(dir: &Path, leaf: u32, message: &[u8]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use std::sync::Barrier;
+    use std::time::Duration;
     use std::{env, thread};
 
+    use crate::mpc::Reshare;
     use crate::mpc::tests::local_networks;
     use crate::serve::*;
 
@@ -517,6 +492,138 @@ mod tests {
         });
         let refused = Err("leaf 7 has no certificate for this message".to_string());
         assert_eq!(outcomes, vec![refused; 3]);
+    }
+
+    #[test]
+    fn a_key_with_4_top_keys_and_1_key_of_bottom_tree_0_signs_at_leaf_0_and_refuses_a_request_with_no_key() {
+        let (run, message, quorum) = (rand::random::<u64>(), [3; 32], vec![0, 1]);
+        let outcomes = local_networks(2, async |network, _| {
+            let server = Server {
+                dir: env::temp_dir().join(format!("threshold-lean-xmss-{run}-{}", network.id)),
+                id: network.id,
+                network,
+                settings: Settings {
+                    reshare: Reshare::Peer,
+                    batch_size: dkg::BATCH_SIZE,
+                    concurrency: 4,
+                    time_limit: Duration::from_secs(600),
+                },
+                sessions: AtomicU32::new(0),
+                announcing: Mutex::new(()),
+            };
+            let bottom_tree = |bottom, leaves| Session::NewBottomTree { bottom, leaves };
+            let sign = |leaf| Session::Sign {
+                leaf,
+                quorum: quorum.clone(),
+                message: message.to_vec(),
+            };
+            let acknowledge = Session::Acknowledge {
+                leaf: 0,
+                message: message.to_vec(),
+            };
+            let pk = server.run(1, &Session::NewTopTree { leaves: 4 }).await.unwrap();
+            server.run(2, &bottom_tree(0, 1)).await.unwrap();
+            server.run(3, &acknowledge).await.unwrap();
+            let verifies = match quorum.contains(&server.id) {
+                true => Some(wots::verify(&pk, &message, &server.run(4, &sign(0)).await.unwrap())),
+                false => None,
+            };
+            let refused = [
+                sign(1),
+                sign(4 << 16),
+                bottom_tree(4, 1),
+                bottom_tree(0, 2),
+                bottom_tree(1, 3),
+            ]
+            .map(|request| server.session(&request).err().unwrap());
+            // Operator 0 holds the count 2 for bottom tree 1. So it votes for the abort of a ceremony with 1 key, the
+            // others keep no count, and the ceremony with 2 keys ends at each operator.
+            if server.id == 0 {
+                record(&server.dir, "leaves1", &2u32.to_le_bytes()).unwrap();
+            }
+            let other_count = server.run(5, &bottom_tree(1, 1)).await;
+            let kept = fs::read(server.dir.join("leaves1")).ok();
+            let advice = [sign(1 << 16), sign((1 << 16) + 2)].map(|request| server.session(&request).err().unwrap());
+            let retry = server.run(6, &bottom_tree(1, 2)).await.is_ok() && dkg::tree_file(&server.dir, 1).exists();
+            // Seeds of a version that recorded no count get only full bottom trees.
+            fs::remove_file(server.dir.join("counts")).unwrap();
+            let no_count = [bottom_tree(2, 1), bottom_tree(2, 1 << 16)].map(|request| server.session(&request).err());
+            fs::write(server.dir.join("leaves3"), []).unwrap();
+            let incomplete = dkg::admit(&server.dir, 3, 1 << 16);
+            fs::remove_dir_all(&server.dir).unwrap();
+            (
+                verifies,
+                refused,
+                other_count,
+                (kept, advice),
+                retry,
+                (no_count, incomplete),
+            )
+        });
+        let refused = [
+            "leaf 1 has no key",
+            "leaf 262144 has no key",
+            "the bottom tree index must be less than 4",
+            "bottom tree 0 exists",
+            "the leaves must be a power of two up to 65536",
+        ]
+        .map(String::from);
+        let no_count = (
+            [
+                Some("a key that records no counts has only full bottom trees".to_string()),
+                None,
+            ],
+            Err("bottom tree 3 has an incomplete record of its count of keys".to_string()),
+        );
+        let (other_counts, rest): (Vec<_>, Vec<_>) = outcomes
+            .into_iter()
+            .map(|(verifies, refused, other_count, kept, retry, no_count)| {
+                (other_count.unwrap_err(), (verifies, refused, kept, retry, no_count))
+            })
+            .unzip();
+        // Operator 0 refuses the count. Each other operator stops at the abort vote that reaches it first.
+        assert_eq!(
+            other_counts[0],
+            "bottom tree 1 must have the 2 keys of its earlier ceremony"
+        );
+        let aborts = |error: &String| (0..3).any(|j| *error == format!("operator {j} aborts"));
+        assert!(other_counts[1..].iter().all(aborts));
+        // Only operator 0 knows the count of bottom tree 1 before the retry.
+        let known = (
+            Some(vec![2, 0, 0, 0]),
+            [
+                "no bottom tree 1, run dkg --bottom 1 --leaves 2 first",
+                "leaf 65538 has no key",
+            ]
+            .map(String::from),
+        );
+        let unknown = (
+            None,
+            ["no bottom tree 1, run dkg --bottom 1 first"; 2].map(String::from),
+        );
+        let expected = [(Some(true), known), (Some(true), unknown.clone()), (None, unknown)]
+            .map(|(verifies, kept)| (verifies, refused.clone(), kept, true, no_count.clone()));
+        assert_eq!(rest, expected);
+    }
+
+    #[test]
+    fn a_key_ceremony_keeps_its_tree_and_its_count_of_keys_in_the_announcement() {
+        for session in [
+            Session::NewTopTree { leaves: 4096 },
+            Session::NewBottomTree { bottom: 7, leaves: 2 },
+        ] {
+            let parsed = match (Session::parse(&session.bytes()), &session) {
+                (Session::NewTopTree { leaves }, Session::NewTopTree { .. }) => (0, leaves),
+                (Session::NewBottomTree { bottom, leaves }, Session::NewBottomTree { .. }) => (bottom, leaves),
+                _ => unreachable!(),
+            };
+            let expected = match session {
+                Session::NewTopTree { leaves } => (0, leaves),
+                Session::NewBottomTree { bottom, leaves } => (bottom, leaves),
+                _ => unreachable!(),
+            };
+            assert_eq!(parsed, expected);
+        }
     }
 
     #[test]

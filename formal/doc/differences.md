@@ -68,6 +68,7 @@ Table B.1 lists the basic differences in the model and in the assumptions. Table
 | B28 | The vote of the top tree hashes the leaves of the top tree and the public key, which has the root and $P$. | It hashes the chain ends in job order and the root. $P$ is not in the input. | The fields of `TopTree` | The claims of the setup |
 | B29 | The vote of bottom tree $b$ hashes $b$ in four bytes and the tree file: each node from the leaves to the root, the chain rows, the top signature and the commitments. | It hashes the chain rows and the commitments in job order, the root, and the randomizer, the chain values and the path of the top signature. The other nodes are not in the input. | The fields of `BottomTree` | The claims of the setup |
 | B30 | An operator with the `operator` file runs no seed generation and no seed vote. A veto of the seed vote ends the command before the top tree. | Each game has one seed generation with its vote. After a veto, the game still runs the top tree, and each operator fails at once and votes `abort`. | One game for all cases | The claims of the setup |
+| B31 | With `--leaves`, a ceremony generates only the first keys of a tree, and a public surrogate node takes the place of each subtree with no keys. An operator records the count of a bottom tree before its top key signs the root, and then it refuses another count. | Each tree has all $2^{16}$ keys, and no node is a surrogate. | The option is for tests and for a first signature with a short ceremony | No claim covers a tree with fewer keys |
 
 ## Table B.3
 

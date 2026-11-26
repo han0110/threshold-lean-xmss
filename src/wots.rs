@@ -79,16 +79,47 @@ pub fn verify(public_key: &[u8], message: &[u8], signature: &[u8]) -> bool {
     lean_xmss::verify(&public_key, message, &signature)
 }
 
-/// This function follows `LayerTree::build` of [`tree.rs`].
+/// The tweak kind of a surrogate node. It is `TWEAK_SURROGATE` of the pruned keys of leanSPHINCS in [`hash.rs`], and
+/// no leanXMSS hash uses it.
+///
+/// [`hash.rs`]: https://github.com/leanEthereum/leanVM/blob/1acdff19dffcaaf1642e88a9e9b522b415425168/crates/signatures/src/lean_sphincs/hash.rs
+pub const TWEAK_SURROGATE: u8 = 13;
+
+/// The surrogate of node `j` at `level`, which takes the place of a subtree with no keys.
+///
+/// It follows the surrogate nodes of `key_gen_from_seed` of leanSPHINCS in [`scheme.rs`], with these differences.
+///
+/// - leanSPHINCS hashes the master secret, which no operator holds. This function hashes no input.
+/// - leanSPHINCS uses the address `(TWEAK_SURROGATE, level, 0)`. This address also has the layer and the node `j`.
+/// - leanSPHINCS selects the kept subtree by the bits of the public parameter. `levels` keeps the first keys.
+///
+/// [`scheme.rs`]: https://github.com/leanEthereum/leanVM/blob/1acdff19dffcaaf1642e88a9e9b522b415425168/crates/signatures/src/lean_sphincs/scheme.rs
+pub fn surrogate(pp: &Digest, layer: Layer, level: usize, j: u32) -> Digest {
+    th_digests(
+        pp,
+        &tweak(TWEAK_SURROGATE, layer_hi(layer as usize, level as u32), j),
+        &[],
+    )
+}
+
+/// This function follows `LayerTree::build` of [`tree.rs`] for the first keys of a tree, a power of two.
+///
+/// A level above the keys holds its node and then the surrogate beside it, so `path` reads each level in one way.
 ///
 /// [`tree.rs`]: https://github.com/leanEthereum/leanVM/blob/f95bc21a4875e10a733f4b2e56f1d4adb81536eb/crates/lean_xmss/src/tree.rs
 pub fn levels(pp: &Digest, layer: Layer, index: u32, leaves: Vec<Digest>) -> Vec<Vec<Digest>> {
-    let layer = layer as usize;
+    assert!(leaves.len().is_power_of_two() && leaves.len() <= KEYS);
     let first = index << LAYER_HEIGHT;
     let mut levels: Vec<Vec<Digest>> = vec![leaves];
     for level in 1..=LAYER_HEIGHT {
-        let up = levels[level - 1].as_chunks().0.iter().zip(first >> level..);
-        let up = up.map(|(children, j)| node(pp, layer, level, j, children)).collect();
+        let below = &mut levels[level - 1];
+        if below.len() == 1 {
+            below.push(surrogate(pp, layer, level - 1, first >> (level - 1) | 1));
+        }
+        let up = below.as_chunks().0.iter().zip(first >> level..);
+        let up = up
+            .map(|(children, j)| node(pp, layer as usize, level, j, children))
+            .collect();
         levels.push(up);
     }
     levels
@@ -164,6 +195,29 @@ pub mod tests {
         {
             let address = layer_address(kind, layer, (1 << 23) - 1, u32::MAX, step);
             assert_eq!(address[8..], [0; 8]);
+        }
+    }
+
+    #[test]
+    fn the_paths_of_a_tree_of_the_first_keys_fold_to_its_root_through_the_surrogates() {
+        let pp = [5; 16];
+        for (layer, index) in [(Layer::Bottom, 3), (Layer::Top, 0)] {
+            let first = index << LAYER_HEIGHT;
+            for height in [0, 1, 4, LAYER_HEIGHT] {
+                let leaves: Vec<Digest> = (0..1u32 << height).map(|k| [k as u8; 16]).collect();
+                let levels = levels(&pp, layer, index, leaves.clone());
+                for (level, nodes) in levels[..LAYER_HEIGHT].iter().enumerate() {
+                    assert_eq!(nodes.len(), (leaves.len() >> level).max(2));
+                    if level >= height {
+                        assert_eq!(nodes[1], surrogate(&pp, layer, level, first >> level | 1));
+                    }
+                }
+                // Each leaf of a small tree, and 16 leaves of the full tree.
+                for k in (0..leaves.len()).step_by((leaves.len() / 16).max(1)) {
+                    let root = fold(&pp, layer, first | k as u32, leaves[k], &path(&levels, k));
+                    assert_eq!(vec![root], levels[LAYER_HEIGHT]);
+                }
+            }
         }
     }
 

@@ -96,6 +96,19 @@ Generate another bottom tree when the leaves of the existing trees are used.
 target/release/threshold-lean-xmss dkg --admin 127.0.0.1:48360 --bottom 1
 ```
 
+`--leaves` on a `dkg` command generates only the first keys of the tree. The count is a power of two. A public surrogate node takes the place of each part of the tree with no keys. With a count below 65536, the ceremony runs fewer chains.
+
+As another start with new key folders, the next commands generate a key with $2^{12}$ top keys and then bottom tree 0 with one key, for a first signature at leaf 0.
+
+```sh
+target/release/threshold-lean-xmss dkg --admin 127.0.0.1:48360 --top --leaves 4096
+target/release/threshold-lean-xmss dkg --admin 127.0.0.1:48360 --bottom 0 --leaves 1
+```
+
+Once an operator records the count of a bottom tree, it refuses another count for that tree. An operator refuses a sign command at a leaf with no key. A tree with fewer keys is outside the formal claims, as [`doc/dkg.md`](doc/dkg.md) 3.3 describes.
+
+The admin command and all operators must run the same version of the binary, because the announcement of a key ceremony holds the count.
+
 ## Benchmark
 
 A key has a top tree of $2^{16}$ leaves, and each bottom tree has $2^{16}$ more. A leaf is a WOTS key of $58$ chains of length $4$.
