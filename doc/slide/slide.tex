@@ -66,9 +66,12 @@
   \2 With trusted dealer
     \3 $n = 3f+1$, $t = 2f+1$ as in BLS DVT (e.g. 3-of-4 and 5-of-7)
     \3 Key secure against $t-1$ corrupt, consensus against $f$
+    \3 Dealer runs keygen once for the desired lifetime
   \2 With DKG
-    \3 $n = 2t-1$ (e.g. 2-of-3, 3-of-5 and 4-of-7)
+    \3 $n = 2t-1$ (e.g. 2-of-3, 3-of-5, 4-of-7 and 5-of-9)
     \3 Key and DKG secure against $t-1 < n/2$ corrupt, with abort
+    \3 Registration with pruned top tree (e.g. $2^{10}$ leaves) and first leaf of first bottom tree
+    \3 Recurs every 291 days for next bottom tree
 \1 Sign
   \2 Same for both keygen setups
   \2 No MPC, 2 rounds, at most 944 bytes per operator
@@ -79,15 +82,31 @@
 % Average 16*(37+1) = 608 bytes
 
 \begin{slide}{Threshold BLS vs Threshold leanXMSS}
-\1[] \tbl{llll}{& Threshold BLS & Threshold leanXMSS (trusted dealer) & Threshold leanXMSS (DKG)}{
-  Signing & 1 round, 96 B & 2 rounds, at most 944 B & same \\
-  State & stateless & stateful & same \\
-  Key share & 1 scalar & $\binom{n-1}{t-1}$ PRF keys, $n-1$ pairwise keys & same \\
-  Threshold & e.g. 3-of-4, 5-of-7 & e.g. 3-of-4, 5-of-7 & e.g. 2-of-3, 3-of-5, 4-of-7 \\
-  Corruptions & $t-1$ & $t-1$ & $t-1 < n/2$ \\
-  Keygen & once & once for desired lifetime & top tree, 1 bottom tree per 291 days \\
-  Keygen cost & small & 46 seconds for a 10-year lifetime & 52.5, 63.7, 70.7 GB traffic per bottom tree \\
-  & & & (18, 43, 160 mins single-threaded)}
+\1[] {\setlength{\tabcolsep}{8bp}\tbl{llll}{& Threshold BLS & Threshold leanXMSS (trusted dealer) & Threshold leanXMSS (DKG)}{
+  Signing & 1 round, 96 B & 2 rounds, at most 944 B & same as trusted dealer \\
+  State & stateless & stateful & same as trusted dealer \\
+  Key share & 1 scalar & $\binom{n-1}{t-1}$ PRF keys, $n-1$ pairwise keys & same as trusted dealer \\
+  Unforgeability & $t-1$ & $t-1$ & $\lfloor (n-1)/2 \rfloor$ \\
+  Cluster & e.g. 3-of-4, 5-of-7 & e.g. 3-of-4, 5-of-7 & e.g. 2-of-3, 3-of-5, 4-of-7, 5-of-9 \\
+  Keygen (registration) & small cost & 46 seconds for a 10-year lifetime & pruned top tree + 1 leaf of bottom tree \\
+  Keygen (recurring) & -- & -- & 1 bottom tree per 291 days \\
+  & & & 53, 64, 71, 82 GB traffic \\
+  & & & 18, 43, 160, 926 mins single-threaded}}
+\end{slide}
+
+\begin{slide}{Threshold BLS vs Threshold leanXMSS}
+\1 Assumes both schemes run QBFT before each signature, and honest operators sign only the decided message
+  \2 QBFT tolerates $f = \lfloor (n-1)/3 \rfloor$ Byzantine faults with quorum $q = \lfloor (n+f)/2 \rfloor + 1$
+\1 DKG tolerates at most $\lfloor (n-1)/2 \rfloor$ corrupt and recurs, so unforgeability is the minimum of that and the $t-1$ of signing
+\vspace{12bp}
+\1[] \tbl{l|ccc|cc}{& \multicolumn{3}{c|}{Unforgeability} & & \\[-\arrayrulewidth]\hline
+  Cluster & Threshold BLS & Threshold leanXMSS (trusted dealer) & Threshold leanXMSS (DKG) & Safety & Liveness}{
+  3-of-4 & 2 & 2 & \textcolor{red}{1} & 1 & 1 \\
+  3-of-5 & 2 & 2 & 2 & 1 & 1 \\
+  4-of-7 & 3 & 3 & 3 & 2 & 2 \\
+  5-of-7 & 4 & 4 & \textcolor{red}{3} & 2 & 2 \\
+  5-of-9 & 4 & 4 & 4 & 2 & 3 \\[-\arrayrulewidth]\hline
+  $t$-of-$n$ & $t-1$ & $t-1$ & $\min(t-1, \lfloor (n-1)/2 \rfloor)$ & $f$ & $n-q$}
 \end{slide}
 
 \begin{slide}[.65]{\cite[PRAWNS]{BBDLN26} for Signing}
@@ -145,22 +164,22 @@ $P_1$ gives $H(k_0, x) \oplus H(\mask_{01}, x, m, J)$}
   \2 AND gates in MPC with only symmetric primitives are secure only against fewer than $n/2$ corrupt
   \2 MPC runs for every bottom tree, so a threshold beyond that adds no secrecy $\rightarrow t-1 < n/2 \rightarrow$ at best $n = 2t-1$
 \1 MPC Protocol
-  \2 Replicated sharing \cite{CDI05}, each operator sends 1, 1.2 and 1.29 bits per AND gate for 2-of-3, 3-of-5 and 4-of-7
+  \2 Replicated sharing \cite{CDI05}, each operator sends 1--1.5 bits per AND gate
   \2 Malicious security with abort via \cite{GS20}
-\1 Top tree (once)
+\1 Keygen (registration)
   \2 Generate public param $P$, PRF keys $k_S$, pairwise keys $\mask_{ij}$ by commit-reveal
-  \2 Compute top tree chain ends by MPC, and build tree root in the clear
-\1 Each bottom tree
-  \2 Compute bottom tree \cpk\ by MPC, build tree root in the clear, and sign by next top leaf by MPC
-\1 Cost
-  \2 11.4 M keccakf by MPC per tree
-  \2 $38400 = 24 \cdot 25 \cdot 64$ AND gates per keccakf
-  \2 $3 \cdot 24 = 72$ depth
-\side[11]
-\tbl{lrr}{Parameter & Traffic & Average Rate (384s epoch)}{
-  2-of-3 & 52.5 GB & 2.09 KB/s \\
-  3-of-5 & 63.7 GB & 2.53 KB/s \\
-  4-of-7 & 70.7 GB & 2.81 KB/s}
+  \2 Compute pruned top tree chain ends by MPC
+  \2 Compute a bottom tree with only one leaf by MPC, to sign the proof of possession
+\1 Keygen (recurring)
+  \2 Each bottom tree computes its \cpk\ by MPC
+  \2 Sign bottom root with next top leaf by MPC
+  \2 Recurs every 291 days
+\side[10]
+\tbl{lrrr}{Parameter & Bits/AND & Traffic & Average Rate}{
+  2-of-3 & 1 & 52.5 GB & 2.09 KB/s \\
+  3-of-5 & 1.2 & 63.7 GB & 2.53 KB/s \\
+  4-of-7 & 1.29 & 70.7 GB & 2.81 KB/s \\
+  5-of-9 & 1.33 & 81.4 GB & 3.24 KB/s}
 \end{slide}
 
 % Average rate is divided by 2^16*384 seconds
@@ -183,13 +202,13 @@ $P_1$ gives $H(k_0, x) \oplus H(\mask_{01}, x, m, J)$}
   \2 Latency can be hidden by more batches in flight with more RAM
   \2 Compute can be parallelized by more cores
   \2 Bandwidth stays the floor
-\1[]
-\1[] \tbl{lrr|rrr|ccc}{\multicolumn{3}{c|}{Profile} & \multicolumn{3}{c|}{Benchmark (one bottom tree)} & \multicolumn{3}{c}{Bottleneck} \\[-\arrayrulewidth]\hline
-  Name & RTT & Upload & 2-of-3 & 3-of-5 & 4-of-7 & 2-of-3 & 3-of-5 & 4-of-7}{
-  P1 & 1 ms & unlimited & 2.5 mins & 6 mins & 22 mins & compute & compute & compute \\
-  P140 & 140 ms\footnote{Average cluster latency in \url{https://obol.org/lido_obol_2.pdf}} & 1 Gbps & 9 mins & 13 mins & 31 mins & bandwidth & bandwidth & latency \\
-  P235 & 235 ms\footnote{Recommended intra-cluster latency in \url{https://blog.obol.org/lido-simple-dvt-wave-1-testing-complete}} & 1 Gbps & 10 mins & 15 mins & 45 mins & bandwidth & latency & latency \\
-  P140-100 & 140 ms & 100 Mbps & 75 mins & 92 mins & 104 mins & bandwidth & bandwidth & bandwidth}
+\vspace{12bp}
+\1[] {\setlength{\tabcolsep}{6bp}\tbl{lrr|rrrr|cccc}{\multicolumn{3}{c|}{Profile} & \multicolumn{4}{c|}{Benchmark (one bottom tree)} & \multicolumn{4}{c}{Bottleneck} \\[-\arrayrulewidth]\hline
+  Name & RTT & Upload & 2-of-3 & 3-of-5 & 4-of-7 & 5-of-9{\renewcommand{\thefootnote}{*}\footnote{Estimate with no run, the worst case of compute time plus the larger of bandwidth time and latency time}\addtocounter{footnote}{-1}} & 2-of-3 & 3-of-5 & 4-of-7 & 5-of-9{\renewcommand{\thefootnote}{*}\footnotemark[0]}}{
+  P1 & 1 ms & unlimited & 2.5 mins & 6 mins & 22 mins & 129 mins & compute & compute & compute & compute \\
+  P140 & 140 ms\footnote{Average cluster latency in \url{https://obol.org/lido_obol_2.pdf}} & 1 Gbps & 9 mins & 13 mins & 31 mins & 226 mins & bandwidth & bandwidth & latency & compute \\
+  P235 & 235 ms\footnote{Recommended intra-cluster latency in \url{https://blog.obol.org/lido-simple-dvt-wave-1-testing-complete}} & 1 Gbps & 10 mins & 15 mins & 45 mins & 284 mins & bandwidth & latency & latency & latency \\
+  P140-100 & 140 ms & 100 Mbps & 75 mins & 92 mins & 104 mins & 242 mins & bandwidth & bandwidth & bandwidth & compute}}
 \end{slide}
 
 % | Profile  | 2-of-3            | 3-of-5            | 4-of-7             |
@@ -415,7 +434,7 @@ $H$ is a collision-resistant hash}
 \1 Rounds of a batch
   \2 Depth 72 gives 72 AND rounds in peer mode and 144 in collector mode
   \2 The check takes $1 + 2 \cdot 24 + 3 = 52$ rounds for 24 halvings
-  \2 Rerand and open take 1 round each, so 126 rounds for 2-of-3 and 198 for 3-of-5 and 4-of-7
+  \2 Rerand and open take 1 round each, so 126 rounds for 2-of-3 and 198 for 3-of-5, 4-of-7 and 5-of-9
 \end{slide}
 
 \end{document}
