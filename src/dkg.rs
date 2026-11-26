@@ -448,8 +448,6 @@ pub async fn new_top_tree(
                 .open(dir.join("operator"))
                 .and_then(|mut file| file.write_all(&operator.bytes(group.t)))
                 .unwrap();
-            // Each bottom ceremony of these new seeds records its count of keys, as `admit` describes.
-            fs::write(dir.join("counts"), []).unwrap();
             (group, operator)
         }
     };
@@ -567,8 +565,8 @@ pub fn recorded(dir: &Path, bottom: u32) -> Result<Option<u32>, String> {
 ///
 /// - The root of the tree depends on its count, and the top key `bottom` signs the root. `new_bottom_tree` records the
 ///   count before the top key opens a value, so a recorded count is the only count of the tree.
-/// - The seed generation writes the file `counts` with the seeds. Seeds with no such file get only full bottom trees,
-///   also after a new top ceremony. A version that recorded no count had full trees only.
+/// - Seeds of a version that recorded no count get only full bottom trees, also after a new top ceremony.
+///   `Operator::counts` tells them from the file of the operator.
 pub fn admit(dir: &Path, bottom: u32, leaves: u32) -> Result<(), String> {
     if let Some(count) = recorded(dir, bottom)?
         && count != leaves
@@ -577,7 +575,7 @@ pub fn admit(dir: &Path, bottom: u32, leaves: u32) -> Result<(), String> {
             "bottom tree {bottom} must have the {count} keys of its earlier ceremony"
         ));
     }
-    if leaves as usize != KEYS && !dir.join("counts").exists() {
+    if leaves as usize != KEYS && !Operator::counts(dir) {
         return Err("a key that records no counts has only full bottom trees".into());
     }
     Ok(())
@@ -591,7 +589,7 @@ pub fn tree_file(dir: &Path, bottom: u32) -> PathBuf {
 /// rows of its chains, its top signature and the commitments of its keys follow.
 pub struct BottomTree {
     file: File,
-    /// The count of the keys of the tree, which follows from the size of the file.
+    /// The recorded count of the keys of the tree. A tree with no record is from a version with full trees only.
     pub keys: usize,
 }
 
@@ -615,14 +613,14 @@ impl BottomTree {
 
     pub fn open(dir: &Path, bottom: u32) -> BottomTree {
         let file = File::open(tree_file(dir, bottom)).unwrap();
-        let size = file.metadata().unwrap().len() as usize;
-        let keys = (0..=LAYER_HEIGHT)
-            .map(|height| 1 << height)
-            .find(|&keys| BottomTree::rows_offset(keys) + (48 * V + 16) * keys + LAYER_SIG_SIZE == size);
-        BottomTree {
-            file,
-            keys: keys.unwrap(),
-        }
+        let keys = recorded(dir, bottom).unwrap().map_or(KEYS, |count| count as usize);
+        let size = BottomTree::rows_offset(keys) + (48 * V + 16) * keys + LAYER_SIG_SIZE;
+        assert_eq!(
+            file.metadata().unwrap().len(),
+            size as u64,
+            "the file of bottom tree {bottom} is not complete"
+        );
+        BottomTree { file, keys }
     }
 
     /// The offset of the rows in the file of a tree with `keys` keys, after its nodes and its root.
@@ -1168,6 +1166,7 @@ mod tests {
             let commitments = random(keys);
             let bytes = BottomTree::bytes(&levels, &cpk, &top_signature, &commitments);
             fs::write(tree_file(&dir, bottom), bytes).unwrap();
+            record(&dir, &format!("leaves{bottom}"), &(keys as u32).to_le_bytes()).unwrap();
             let tree = BottomTree::open(&dir, bottom);
             assert_eq!((tree.keys, tree.top_signature()), (keys, top_signature));
             for leaf in 0..keys {

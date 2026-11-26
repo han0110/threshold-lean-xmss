@@ -153,7 +153,7 @@ impl Server {
             Session::NewTopTree { leaves } => Ok(Session::NewTopTree { leaves }),
             _ if !key => Err("no key, run dkg --top first".into()),
             Session::NewBottomTree { bottom, .. } if bottom as usize >= top_keys() => {
-                Err(format!("the bottom tree index must be less than {}", top_keys()))
+                Err("the bottom tree index must be less than the count of the top keys".into())
             }
             Session::NewBottomTree { bottom, .. } if dkg::tree_file(&self.dir, bottom).exists() => {
                 Err(format!("bottom tree {bottom} exists"))
@@ -544,9 +544,13 @@ mod tests {
             let other_count = server.run(5, &bottom_tree(1, 1)).await;
             let kept = fs::read(server.dir.join("leaves1")).ok();
             let advice = [sign(1 << 16), sign((1 << 16) + 2)].map(|request| server.session(&request).err().unwrap());
-            let retry = server.run(6, &bottom_tree(1, 2)).await.is_ok() && dkg::tree_file(&server.dir, 1).exists();
-            // Seeds of a version that recorded no count get only full bottom trees.
-            fs::remove_file(server.dir.join("counts")).unwrap();
+            let retry = server.run(6, &bottom_tree(1, 2)).await.is_ok()
+                && dkg::tree_file(&server.dir, 1).exists()
+                && dkg::recorded(&server.dir, 1) == Ok(Some(2));
+            // The file of the operator of a version that recorded no count has no last byte. Such seeds get only
+            // full bottom trees.
+            let operator = fs::read(server.dir.join("operator")).unwrap();
+            fs::write(server.dir.join("operator"), &operator[..operator.len() - 1]).unwrap();
             let no_count = [bottom_tree(2, 1), bottom_tree(2, 1 << 16)].map(|request| server.session(&request).err());
             fs::write(server.dir.join("leaves3"), []).unwrap();
             let incomplete = dkg::admit(&server.dir, 3, 1 << 16);
@@ -563,7 +567,7 @@ mod tests {
         let refused = [
             "leaf 1 has no key",
             "leaf 262144 has no key",
-            "the bottom tree index must be less than 4",
+            "the bottom tree index must be less than the count of the top keys",
             "bottom tree 0 exists",
             "the leaves must be a power of two up to 65536",
         ]
@@ -608,22 +612,18 @@ mod tests {
 
     #[test]
     fn a_key_ceremony_keeps_its_tree_and_its_count_of_keys_in_the_announcement() {
-        for session in [
-            Session::NewTopTree { leaves: 4096 },
-            Session::NewBottomTree { bottom: 7, leaves: 2 },
-        ] {
-            let parsed = match (Session::parse(&session.bytes()), &session) {
-                (Session::NewTopTree { leaves }, Session::NewTopTree { .. }) => (0, leaves),
-                (Session::NewBottomTree { bottom, leaves }, Session::NewBottomTree { .. }) => (bottom, leaves),
-                _ => unreachable!(),
-            };
-            let expected = match session {
-                Session::NewTopTree { leaves } => (0, leaves),
-                Session::NewBottomTree { bottom, leaves } => (bottom, leaves),
-                _ => unreachable!(),
-            };
-            assert_eq!(parsed, expected);
-        }
+        let top = Session::NewTopTree { leaves: 4096 };
+        let bottom = Session::NewBottomTree { bottom: 7, leaves: 2 };
+        assert_eq!(top.bytes(), [0, 0, 16, 0, 0]);
+        assert_eq!(bottom.bytes(), [1, 7, 0, 0, 0, 2, 0, 0, 0]);
+        assert!(matches!(
+            Session::parse(&top.bytes()),
+            Session::NewTopTree { leaves: 4096 }
+        ));
+        assert!(matches!(
+            Session::parse(&bottom.bytes()),
+            Session::NewBottomTree { bottom: 7, leaves: 2 }
+        ));
     }
 
     #[test]

@@ -107,7 +107,7 @@ target/release/threshold-lean-xmss dkg --admin 127.0.0.1:48360 --bottom 0 --leav
 
 Once an operator records the count of a bottom tree, it refuses another count for that tree. An operator refuses a sign command at a leaf with no key. A tree with fewer keys is outside the formal claims, as [`doc/dkg.md`](doc/dkg.md) 3.3 describes.
 
-The admin command and all operators must run the same version of the binary, because the announcement of a key ceremony holds the count.
+The admin command and all operators must run the same version of the binary, because the announcement of a key ceremony holds the count. A version before this option refuses the seeds of this version, because it keeps no count.
 
 ## Benchmark
 

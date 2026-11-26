@@ -873,7 +873,7 @@ The fresh PRSS keys and the named commitments of 3.1 are not in the note [Wam26]
 
 #### Vote
 
-Each ceremony ends with one vote on an assumed broadcast channel. The note and [GS20](https://eprint.iacr.org/2020/134) have no vote.
+The seed generation and each whole run of a tree end with one vote on an assumed broadcast channel. The note and [GS20](https://eprint.iacr.org/2020/134) have no vote.
 
 1. $P_i$ broadcasts $`h_i = H(\texttt{"thlxmss-vote"} \,\Vert\, \mathrm{kind} \,\Vert\, \mathrm{result}_i)`$, or the empty vote if its ceremony fails or passes `--time-limit`.
 2. $P_i$ writes its output files only if each $h_j$ equals $h_i$. An empty vote stops the ceremony of each operator.
@@ -885,7 +885,7 @@ Each ceremony ends with one vote on an assumed broadcast channel. The note and [
 | bottom tree $b$ | $b$ and the tree file                         |
 
 - The vote adapts [GL05, Section 1.5](https://eprint.iacr.org/2002/040), with a hash in the place of a bit, and the abort message of [GS20, Prot. 6](https://eprint.iacr.org/2020/134).
-- With the broadcast channel, all honest operators commit the same result or all abort.
+- With the broadcast channel, all honest operators commit the same result or all abort, unless $H$ collides.
 - The proof of concept has no broadcast channel and no clock for its rounds, and no proof covers that.
 - The Lean claims have the vote, with the differences of rows B24 to B30 of [`formal/doc/differences.md`](../formal/doc/differences.md).
 
@@ -900,11 +900,11 @@ A failed run of a tree is run again, with the same files and the same count of k
 | coalition       | Each claim covers one static coalition of at most $t - 1$ operators.                                                    |
 | forger          | No theorem bounds `dkgReduction` with the fixed $\mathrm{Th}$, as [`formal/statement.tex`](../formal/statement.tex) says. |
 | one at a time   | No claim covers ceremonies or batches at the same time. The implementation runs batches at the same time.               |
-| erasure         | An operator erases its private ceremony state at the end of each ceremony, as [`sign.md`](sign.md#4-security) assumes.  |
+| erasure         | An operator must erase its private ceremony state at the end of each ceremony, as [`sign.md`](sign.md#4-security) assumes. |
 
 #### Fewer keys
 
-With `--leaves` $2^b$, a ceremony generates only the first $2^b$ keys of its tree. The note has full trees, and no Lean claim and no proof covers such a tree.
+With `--leaves` $2^b$, a ceremony generates only the first $2^b$ keys of its tree. The note has full trees, and no Lean claim and no proof covers a tree with fewer keys.
 
 - A surrogate $`\mathrm{Th}(P,\ A_{\mathrm{sur}}(\mathrm{layer}, l, j),\ \varepsilon)`$ with the tweak kind 13 takes the place of each subtree with no keys.
 - Each operator records the count of bottom tree $b$ before the top key $b$ signs the root, and then it refuses another count.

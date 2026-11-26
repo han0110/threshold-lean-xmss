@@ -3,6 +3,8 @@
 //! - `pp` is the public parameter `P`, and `e` is the index of a one-time key in its layer.
 //! - `Layer::Bottom` signs messages and `Layer::Top` signs the roots of the bottom trees. Their discriminants are the
 //!   leanVM layer indices.
+//! - `levels` also builds a tree of the first keys only, with a surrogate node beside each node above them. leanXMSS of
+//!   leanVM has full trees only, and `doc/dkg.md`, Section 3.3, describes this addition.
 //! - The randomizer search of `wots_sign` takes an opened value of the threshold PRF in place of the seed.
 //!   - A quorum opens it for the bottom layer, and the MPC opens it for the top layer.
 //!
@@ -201,7 +203,8 @@ pub mod tests {
     #[test]
     fn the_paths_of_a_tree_of_the_first_keys_fold_to_its_root_through_the_surrogates() {
         let pp = [5; 16];
-        for (layer, index) in [(Layer::Bottom, 3), (Layer::Top, 0)] {
+        let mut all = vec![];
+        for (layer, index) in [(Layer::Bottom, 3), (Layer::Bottom, 4), (Layer::Top, 0)] {
             let first = index << LAYER_HEIGHT;
             for height in [0, 1, 4, LAYER_HEIGHT] {
                 let leaves: Vec<Digest> = (0..1u32 << height).map(|k| [k as u8; 16]).collect();
@@ -212,6 +215,9 @@ pub mod tests {
                         assert_eq!(nodes[1], surrogate(&pp, layer, level, first >> level | 1));
                     }
                 }
+                if height == 0 {
+                    all.extend(levels[..LAYER_HEIGHT].iter().map(|nodes| nodes[1]));
+                }
                 // Each leaf of a small tree, and 16 leaves of the full tree.
                 for k in (0..leaves.len()).step_by((leaves.len() / 16).max(1)) {
                     let root = fold(&pp, layer, first | k as u32, leaves[k], &path(&levels, k));
@@ -219,6 +225,10 @@ pub mod tests {
                 }
             }
         }
+        // The surrogates of the levels of a tree differ, and they differ from the ones of each other tree and layer.
+        all.sort();
+        all.dedup();
+        assert_eq!(all.len(), 3 * LAYER_HEIGHT);
     }
 
     #[tokio::test]
