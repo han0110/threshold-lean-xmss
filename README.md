@@ -111,14 +111,14 @@ The following table gives the traffic that each operator sends for one bottom tr
 | 4-of-7 | collector | $198$            | $70.7$ GB         | $2.81$ KB/s  |
 | 5-of-9 | collector | $198$            | $81.4$ GB         | $3.24$ KB/s  |
 
-The following table gives the wall time of one bottom tree and its bottleneck. Each operator runs on one c4-highmem-8 machine with $8$ vCPUs and $32$ GiB.
+The following table gives the wall time of one bottom tree and its bottleneck (C for computation, L for latency, B for bandwidth). Each operator runs on one c4-highmem-8 machine with $8$ vCPUs and $32$ GiB.
 
-| Profile  | RTT      | Upload     | 2-of-3                | 3-of-5               | 4-of-7                | 5-of-9 (estimate)   |
-| -------- | -------- | ---------- | --------------------- | -------------------- | --------------------- | ------------------- |
-| P1       | $1$ ms   | no limit   | $2.5$ min / compute   | $6.0$ min / compute  | $22$ min / compute    | $129$ min / compute |
-| P140     | $140$ ms | $1$ Gbps   | $8.9$ min / bandwidth | $13$ min / bandwidth | $31$ min / latency    | $226$ min / compute |
-| P235     | $235$ ms | $1$ Gbps   | $10$ min / bandwidth  | $15$ min / latency   | $45$ min / latency    | $284$ min / latency |
-| P140-100 | $140$ ms | $100$ Mbps | $75$ min / bandwidth  | $92$ min / bandwidth | $104$ min / bandwidth | $242$ min / compute |
+| Profile  |      RTT |     Upload |        2-of-3 |        3-of-5 |        4-of-7 | 5-of-9 (estimate) |
+| -------- | -------: | ---------: | ------------: | ------------: | ------------: | ----------------: |
+| P1       |   $1$ ms |   no limit | $2.5$ min / C | $6.0$ min / C |  $22$ min / C |     $129$ min / C |
+| P140     | $140$ ms |   $1$ Gbps | $8.9$ min / B |  $13$ min / B |  $31$ min / L |     $226$ min / C |
+| P235     | $235$ ms |   $1$ Gbps |  $10$ min / B |  $15$ min / L |  $45$ min / L |     $284$ min / L |
+| P140-100 | $140$ ms | $100$ Mbps |  $75$ min / B |  $92$ min / B | $104$ min / B |     $242$ min / C |
 
 - The RTT of $140$ ms is the average latency of a cluster in the [report of Lido and Obol](https://obol.org/lido_obol_2.pdf).
 - The RTT of $235$ ms is the recommended latency inside a cluster in the [Simple DVT test of Lido](https://blog.obol.org/lido-simple-dvt-wave-1-testing-complete).
