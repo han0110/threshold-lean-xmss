@@ -16,9 +16,9 @@ use std::time::Duration;
 use std::{io, thread};
 
 use clap::{ArgGroup, Parser};
-use dkg::BATCH_SIZE;
+use dkg::{BATCH_SIZE, Settings};
 use mpc::{LANES, Reshare};
-use serve::{Session, Settings};
+use serve::Session;
 use tikv_jemallocator::Jemalloc;
 use tokio::net::TcpStream;
 use tracing_forest::ForestLayer;
@@ -86,6 +86,12 @@ enum Command {
         top: bool,
         #[arg(long, help = "Generates the bottom tree with this index")]
         bottom: Option<u32>,
+        #[arg(
+            long,
+            default_value_t = wots::KEYS as u32,
+            help = "The count of the first keys of the tree that the ceremony generates, a power of two"
+        )]
+        leaves: u32,
     },
     #[command(about = "Signs a 32-byte message at a leaf and prints the signature")]
     Sign {
@@ -164,10 +170,12 @@ async fn main() {
             };
             serve::serve(&addr, admin.as_deref(), peers, sk, settings).await
         }
-        Command::Dkg { admin, bottom, .. } => {
+        Command::Dkg {
+            admin, bottom, leaves, ..
+        } => {
             let session = match bottom {
-                None => Session::NewTopTree,
-                Some(bottom) => Session::NewBottomTree { bottom },
+                None => Session::NewTopTree { leaves },
+                Some(bottom) => Session::NewBottomTree { bottom, leaves },
             };
             println!("{}", hex::encode(request(&admin, session).await))
         }

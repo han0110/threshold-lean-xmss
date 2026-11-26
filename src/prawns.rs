@@ -58,23 +58,34 @@ pub struct Operator {
 }
 
 impl Operator {
-    /// The file of an operator holds `t`, the operator number, `P`, the seeds and the pair keys.
+    /// The file of an operator holds `t`, the operator number, `P`, the seeds, the pair keys and one last byte.
+    ///
+    /// A version that recorded no count of the keys of a bottom tree wrote no last byte, and it refuses a file with
+    /// one. So no such version runs a ceremony on the seeds of this file.
     pub fn bytes(&self, t: usize) -> Vec<u8> {
         [
             &[t as u8, self.id as u8][..],
             &self.public_parameter,
             &self.sk.concat(),
             &self.k_ij.concat(),
+            &[0],
         ]
         .concat()
+    }
+
+    /// Whether the file of the operator has the last byte of `bytes`. Then each bottom ceremony of its seeds
+    /// recorded its count of keys.
+    pub fn counts(dir: &Path) -> bool {
+        fs::metadata(dir.join("operator")).unwrap().len() % 32 == 19
     }
 
     pub fn load(dir: &Path) -> (Group, Operator) {
         let bytes = fs::read(dir.join("operator")).unwrap();
         let group = Group::new(bytes[0] as usize);
         let held = group.held(bytes[1] as usize).len();
-        assert_eq!(bytes.len(), 18 + 32 * (held + group.n));
-        let keys: Vec<Key> = bytes[18..].chunks(32).map(|k| k.try_into().unwrap()).collect();
+        let end = 18 + 32 * (held + group.n);
+        assert!(bytes.len() == end || bytes.len() == end + 1);
+        let keys: Vec<Key> = bytes[18..end].chunks(32).map(|k| k.try_into().unwrap()).collect();
         let operator = Operator {
             id: bytes[1] as usize,
             public_parameter: bytes[2..18].try_into().unwrap(),

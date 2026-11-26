@@ -96,6 +96,15 @@ Generate another bottom tree when the leaves of the existing trees are used.
 target/release/threshold-lean-xmss dkg --admin 127.0.0.1:48360 --bottom 1
 ```
 
+`--leaves` on a `dkg` command generates only the first keys of the tree. The count is a power of two. A public surrogate node takes the place of each part of the tree with no keys. With a count below 65536, the ceremony runs fewer chains.
+
+To make PQ key registration fast, one can generate a key of $2^{10}$ top leaves and a bottom tree 0 of one key for the signature for proof of possession.
+
+```sh
+target/release/threshold-lean-xmss dkg --admin 127.0.0.1:48360 --top --leaves 1024
+target/release/threshold-lean-xmss dkg --admin 127.0.0.1:48360 --bottom 0 --leaves 1
+```
+
 ## Benchmark
 
 A key has a top tree of $2^{16}$ leaves, and each bottom tree has $2^{16}$ more. A leaf is a WOTS key of $58$ chains of length $4$.

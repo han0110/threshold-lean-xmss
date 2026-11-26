@@ -867,62 +867,47 @@ The protocol differs from [GS20](https://eprint.iacr.org/2020/134) in three poin
 - Each operator decides alone in a batch, as in [GS20, Prot. 15](https://eprint.iacr.org/2020/134), step 8.
   - So the notion of security of a batch is security with selective abort [GL05](https://eprint.iacr.org/2002/040).
   - In the functionalities of [GS20](https://eprint.iacr.org/2020/134), all honest operators abort together.
-  - The vote below brings the abort of all operators together, at the point where an operator writes its files.
+  - The vote below brings the abort of all operators together, at the point where an operator writes its output files.
 
 The fresh PRSS keys and the named commitments of 3.1 are not in the note [Wam26](https://github.com/TomWambsgans/sphincs.art/blob/9a528527d2d0ea41d2b3b322d2548c0828569a6d/leanXMSS.tex). The fresh keys make the random sharings independent of the outputs, as [GS20, Functionality 1](https://eprint.iacr.org/2020/134) and Hybrid 2 of [GS20, Lemma 4](https://eprint.iacr.org/2020/134) need.
 
 #### Vote
 
-The seed generation, the top tree and each bottom tree end with one vote. An operator writes its files only after the vote. The vote assumes a broadcast channel, on which all operators receive the same vote of an operator. The note and [GS20](https://eprint.iacr.org/2020/134) have no such vote and no such channel.
+The seed generation and each whole run of a tree end with one vote on an assumed broadcast channel. The note and [GS20](https://eprint.iacr.org/2020/134) have no vote.
 
-1. $P_i$ broadcasts $`h_i = H(\texttt{"thlxmss-vote"} \,\Vert\, \mathrm{kind} \,\Vert\, \mathrm{result}_i)`$ for its public result. If its ceremony fails, it broadcasts the empty vote.
-2. $P_i$ commits if its ceremony gave an output and each $h_j$ equals $h_i$. If not, $P_i$ aborts and writes no file.
+1. $P_i$ broadcasts $`h_i = H(\texttt{"thlxmss-vote"} \,\Vert\, \mathrm{kind} \,\Vert\, \mathrm{result}_i)`$, or the empty vote if its ceremony fails or passes `--time-limit`.
+2. $P_i$ writes its output files only if each $h_j$ equals $h_i$. An empty vote stops the ceremony of each operator.
 
-| ceremony        | public result in the vote                                     |
-| --------------- | ------------------------------------------------------------- |
-| seed generation | $P$                                                           |
-| top tree        | the leaves of the top tree and the public key                 |
-| bottom tree $b$ | $b$ and the tree file, which has the signature of the top key |
+| ceremony        | public result in the vote                     |
+| --------------- | --------------------------------------------- |
+| seed generation | $P$                                           |
+| top tree        | the leaves of the top tree and the public key |
+| bottom tree $b$ | $b$ and the tree file                         |
 
-The vote has two published parts.
-
-- The broadcast at the end of a protocol with abort is in [GL05, Section 1.5](https://eprint.iacr.org/2002/040). After the protocol ends, each party broadcasts one bit, which says if it received its output.
-- The abort message to all parties is in [GS20, Prot. 6](https://eprint.iacr.org/2020/134), step 2. There a party sends it when a sharing of the coin fails its check.
-
-These parts are adaptations, and no paper has them.
-
-- The vote is the hash of the public result in the place of the bit, with the test that all votes are equal. So the operators that commit also hold the same public result.
-- An empty vote of $P_j$ stops the ceremony of each operator in each of its phases, not only at the coin.
-- The time limit `--time-limit` of an operator gives the empty vote if it ends before the ceremony of the operator.
-- A bottom tree has one vote for its two ceremonies, because an operator keeps nothing between them. The vote does not protect the opening of the signature in a run that aborts, which "Retry" below treats.
-
-With the broadcast channel, all honest operators see the same $n$ votes. If an honest $P_i$ commits, each vote equals $h_i$. So each honest $P_j$ has $h_j = h_i$ and also commits, and the two hold the same public result unless $H$ collides. A corrupt operator can make all operators abort.
-
-The published broadcast is after a common end of the protocol. With the synchronous rounds of the model, all operators that end the ceremony with an output end it in the same round, and the vote is the round after it. The proof of concept has no clock for its rounds. There a corrupt operator can receive the vote of one honest operator before it sends its last ceremony message to another honest operator. So it learns that the first operator accepted, and then it chooses the last message for the second one. Without the vote, no message of the first operator tells this at that point. The agreement on the decision still holds in this order. No proof covers the security of the ceremony in this order.
-
-The time limit never ends the wait for the votes after the vote of the operator. So two operators with different clocks cannot decide differently. An operator that stays connected and sends no vote makes the others wait.
-
-The proof of concept sends the vote on the channels between the operators, which are no broadcast channel. There a corrupt operator can send different votes to different operators. Then some honest operators commit and the others abort. Each honest vote goes to all operators with the same value. So if one honest operator commits, each honest operator computed the same public result unless $H$ collides, also the ones that abort.
-
-The Lean claims have the vote, as one more round on a broadcast channel after the seed generation and after each whole run of a tree. `dkgCorrectness` counts a split of the honest operators as a win of the adversary, and the vote excludes a split on each path of the game. The model differs from the code in the points of rows B24 to B30 of [`formal/doc/differences.md`](../formal/doc/differences.md). The largest ones are the broadcast channel and the time of the vote.
+- The vote adapts [GL05, Section 1.5](https://eprint.iacr.org/2002/040), with a hash in the place of a bit, and the abort message of [GS20, Prot. 6](https://eprint.iacr.org/2020/134).
+- With the broadcast channel, all honest operators commit the same result or all abort, unless $H$ collides.
+- The proof of concept has no broadcast channel and no clock for its rounds, and no proof covers that.
+- The Lean claims have the vote, with the differences of rows B24 to B30 of [`formal/doc/differences.md`](../formal/doc/differences.md).
 
 #### Retry
 
-A failed run of a tree is run again. Correct outputs give the same tree, because a tree is a function of the public parameter, the seeds and the hash.
+A failed run of a tree is run again, with the same files and the same count of keys. Then correct outputs give the same tree, and the top key signs one root.
 
-A retry starts from the same files at all operators. On the channels of the proof of concept, a corrupt operator can cause different files with two different votes. If only some operators hold the `operator` file, all operators delete it before the retry. If only some operators hold the files of a tree, these operators do not start its retry, and the code has no repair for this state.
+| limit           | detail                                                                                                                  |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| aborted run     | The signature of the top key opens before the vote. No Lean claim covers its root and its randomizer.                   |
+| different files | The code has no repair. All operators delete an `operator` file that only some hold.                                    |
+| coalition       | Each claim covers one static coalition of at most $t - 1$ operators.                                                    |
+| forger          | No theorem bounds `dkgReduction` with the fixed $\mathrm{Th}$, as [`formal/statement.tex`](../formal/statement.tex) says. |
+| one at a time   | No claim covers ceremonies or batches at the same time. The implementation runs batches at the same time.               |
+| erasure         | An operator must erase its private ceremony state at the end of each ceremony, as [`sign.md`](sign.md#4-security) assumes. |
 
-The correct root of a bottom tree, the randomizer of its top key and the codeword are functions of $P$, the seeds and the index $b$. The operators keep $P$ and the seeds from the seed generation, and no failed run changes them. So if each run that opens the signature has the correct root and the correct randomizer, each such run opens the same codeword. Then a retry does not make the top key sign a second root.
+#### Fewer keys
 
-A run opens the signature before the vote, and it takes the root and the randomizer from its own first ceremony. `dkgCorrectness` bounds a wrong output only of a run that ends with an output. For a run that aborts after the opening of the signature, no Lean claim states that the root and the randomizer were the correct ones. This gap is also in the protocol without the vote, and the vote does not close it.
+With `--leaves` $2^b$, a ceremony generates only the first $2^b$ keys of its tree. The note has full trees, and no Lean claim and no proof covers a tree with fewer keys.
 
-Each claim covers one static coalition, corrupted before the seed generation and fixed for the lifetime of the key. At most $t - 1$ operators are corrupted. `dkgSecurityPreservation` compares the key generation with the signing game with the dealer for the named forger `dkgReduction`, with the fixed $\mathrm{Th}$. A bound of the full system also needs a bound of the success of that forger with the fixed $\mathrm{Th}$. No theorem gives it. For an adversary that makes no search on $\mathrm{Th}$, the random-oracle heuristic for Keccak is the step to it. [`formal/statement.tex`](../formal/statement.tex) holds the deployment contract and this step.
-
-The claims cover ceremonies that run one at a time. A ceremony that runs during another ceremony or during a signing session is outside the claims. So production must build each bottom tree with no ceremony of another tree and no open signing session.
-
-The claims cover a ceremony that runs its batches one after another. The implementation runs the signature ceremony as one batch, and it runs several batches of one ceremony at the same time, to limit the memory and to use the waits of the network. No claim covers these concurrent batches. The claims have a distinguisher that sees the final output, and such claims compose in sequence only. The result of [KLR10](https://dblp.uni-trier.de/rec/journals/siamcomp/KushilevitzLR10.html) gives concurrent composition for perfect security with a straight-line simulator. The check has a statistical error and the PRG is computational, so that result does not apply.
-
-At the end of each ceremony, also on abort, an operator must erase its private ceremony state. It keeps only $P$, $`\mathrm{seed}_T`$, $K_{ij}$ and the public outputs. So a later corruption gives only the keys, as [`sign.md`](sign.md#4-security) assumes.
+- A surrogate $`\mathrm{Th}(P,\ A_{\mathrm{sur}}(\mathrm{layer}, l, j),\ \varepsilon)`$ with the tweak kind 13 takes the place of each subtree with no keys.
+- Each operator records the count of bottom tree $b$ before the top key $b$ signs the root, and then it refuses another count.
 
 ## References
 
