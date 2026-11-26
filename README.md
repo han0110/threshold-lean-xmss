@@ -113,18 +113,19 @@ The following table gives the traffic that each operator sends for one bottom tr
 
 The following table gives the wall time of one bottom tree and its bottleneck. Each operator runs on one c4-highmem-8 machine with $8$ vCPUs and $32$ GiB.
 
-| Profile  | RTT      | Upload     | 2-of-3                 | 3-of-5                 | 4-of-7                  |
-| -------- | -------- | ---------- | ---------------------- | ---------------------- | ----------------------- |
-| P1       | $1$ ms   | no limit   | $2.5$ min / compute    | $6.0$ min / compute    | $22.3$ min / compute    |
-| P140     | $140$ ms | $1$ Gbps   | $8.9$ min / bandwidth  | $12.8$ min / bandwidth | $30.7$ min / latency    |
-| P235     | $235$ ms | $1$ Gbps   | $9.6$ min / bandwidth  | $15.1$ min / latency   | $44.7$ min / latency    |
-| P140-100 | $140$ ms | $100$ Mbps | $74.7$ min / bandwidth | $92.0$ min / bandwidth | $103.8$ min / bandwidth |
+| Profile  | RTT      | Upload     | 2-of-3                | 3-of-5               | 4-of-7                | 5-of-9 (estimate)   |
+| -------- | -------- | ---------- | --------------------- | -------------------- | --------------------- | ------------------- |
+| P1       | $1$ ms   | no limit   | $2.5$ min / compute   | $6.0$ min / compute  | $22$ min / compute    | $129$ min / compute |
+| P140     | $140$ ms | $1$ Gbps   | $8.9$ min / bandwidth | $13$ min / bandwidth | $31$ min / latency    | $226$ min / compute |
+| P235     | $235$ ms | $1$ Gbps   | $10$ min / bandwidth  | $15$ min / latency   | $45$ min / latency    | $284$ min / latency |
+| P140-100 | $140$ ms | $100$ Mbps | $75$ min / bandwidth  | $92$ min / bandwidth | $104$ min / bandwidth | $242$ min / compute |
 
 - The RTT of $140$ ms is the average latency of a cluster in the [report of Lido and Obol](https://obol.org/lido_obol_2.pdf).
 - The RTT of $235$ ms is the recommended latency inside a cluster in the [Simple DVT test of Lido](https://blog.obol.org/lido-simple-dvt-wave-1-testing-complete).
 - More RAM with more batches in flight hides the latency.
 - More cores make the compute faster.
 - The bandwidth stays the floor. With the bandwidth as the bottleneck, the DKG time is about the traffic divided by the upload rate.
+- The column for 5-of-9 is an estimate from the measured groups, with no run. It is the worst case, the compute time plus the max of bandwidth and latency time.
 
 ### Sign
 
